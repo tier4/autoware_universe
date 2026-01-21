@@ -156,7 +156,7 @@ lanelet::Ids parse_ids(std::string_view input)
 
 CrosswalkTrafficLightEstimatorNode::CrosswalkTrafficLightEstimatorNode(
   const rclcpp::NodeOptions & options)
-: Node("crosswalk_traffic_light_estimator", options)
+: agnocast::Node("crosswalk_traffic_light_estimator", options)
 {
   using std::placeholders::_1;
 
@@ -177,12 +177,14 @@ CrosswalkTrafficLightEstimatorNode::CrosswalkTrafficLightEstimatorNode(
 
   pub_traffic_light_array_ =
     this->create_publisher<TrafficSignalArray>("~/output/traffic_signals", rclcpp::QoS{1});
-  pub_processing_time_ = std::make_shared<DebugPublisher>(this, "~/debug");
+  pub_processing_time_ =
+    std::make_unique<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>(this, "~/debug");
 }
 
-void CrosswalkTrafficLightEstimatorNode::onMap(const LaneletMapBin::ConstSharedPtr msg)
+void CrosswalkTrafficLightEstimatorNode::onMap(
+  const agnocast::ipc_shared_ptr<LaneletMapBin> & msg)
 {
-  RCLCPP_DEBUG(get_logger(), "[CrosswalkTrafficLightEstimatorNode]: Start loading lanelet");
+  RCLCPP_INFO(get_logger(), "[Agnocast] onMap callback triggered, map data size: %zu bytes", msg->data.size());
   lanelet_map_ptr_ = std::make_shared<lanelet::LaneletMap>();
   lanelet::utils::conversion::fromBinMsg(
     *msg, lanelet_map_ptr_, &traffic_rules_ptr_, &routing_graph_ptr_);
@@ -200,8 +202,10 @@ void CrosswalkTrafficLightEstimatorNode::onMap(const LaneletMapBin::ConstSharedP
   RCLCPP_DEBUG(get_logger(), "[CrosswalkTrafficLightEstimatorNode]: Map is loaded");
 }
 
-void CrosswalkTrafficLightEstimatorNode::onRoute(const LaneletRoute::ConstSharedPtr msg)
+void CrosswalkTrafficLightEstimatorNode::onRoute(
+  const agnocast::ipc_shared_ptr<LaneletRoute> & msg)
 {
+  RCLCPP_INFO(get_logger(), "[Agnocast] onRoute callback triggered, segments: %zu", msg->segments.size());
   if (lanelet_map_ptr_ == nullptr) {
     RCLCPP_WARN(get_logger(), "cannot set traffic light in route because don't receive map");
     return;
@@ -262,8 +266,9 @@ void CrosswalkTrafficLightEstimatorNode::update_crosswalk_overrides_from_map(
 }
 
 void CrosswalkTrafficLightEstimatorNode::onTrafficLightArray(
-  const TrafficSignalArray::ConstSharedPtr msg)
+  const agnocast::ipc_shared_ptr<TrafficSignalArray> & msg)
 {
+  RCLCPP_INFO(get_logger(), "[Agnocast] onTrafficLightArray callback triggered, traffic_light_groups: %zu", msg->traffic_light_groups.size());
   if (lanelet_map_ptr_ == nullptr) {
     RCLCPP_WARN(get_logger(), "cannot process traffic light array because the map is not received");
     return;
@@ -303,10 +308,12 @@ void CrosswalkTrafficLightEstimatorNode::onTrafficLightArray(
   updateLastDetectedSignal(traffic_light_id_map);
   updateLastDetectedSignals(traffic_light_id_map);
 
-  pub_traffic_light_array_->publish(output);
-  pub_processing_time_->publish<Float64Stamped>("processing_time_ms", stop_watch.toc("Total"));
-
-  return;
+  auto pub_msg = pub_traffic_light_array_->borrow_loaned_message();
+  *pub_msg = output;
+  pub_traffic_light_array_->publish(std::move(pub_msg));
+  const auto processing_time = stop_watch.toc("Total");
+  pub_processing_time_->publish<Float64Stamped>("processing_time_ms", processing_time);
+  RCLCPP_INFO(get_logger(), "[Agnocast] Published traffic_signals (%zu groups), processing_time: %.2f ms", output.traffic_light_groups.size(), processing_time);
 }
 
 void CrosswalkTrafficLightEstimatorNode::updateLastDetectedSignal(

@@ -15,8 +15,9 @@
 #ifndef AUTOWARE_CROSSWALK_TRAFFIC_LIGHT_ESTIMATOR__NODE_HPP_
 #define AUTOWARE_CROSSWALK_TRAFFIC_LIGHT_ESTIMATOR__NODE_HPP_
 
-#include <autoware_utils/ros/debug_publisher.hpp>
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
+#include <autoware_utils_debug/debug_publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
@@ -42,7 +43,6 @@ namespace autoware::crosswalk_traffic_light_estimator
 using autoware_internal_debug_msgs::msg::Float64Stamped;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_planning_msgs::msg::LaneletRoute;
-using autoware_utils::DebugPublisher;
 using autoware_utils::StopWatch;
 using TrafficSignal = autoware_perception_msgs::msg::TrafficLightGroup;
 using TrafficSignalArray = autoware_perception_msgs::msg::TrafficLightGroupArray;
@@ -52,16 +52,16 @@ using TrafficLightIdMap = std::unordered_map<lanelet::Id, TrafficSignalAndTime>;
 
 using TrafficLightIdArray = std::unordered_map<lanelet::Id, std::vector<TrafficSignalAndTime>>;
 
-class CrosswalkTrafficLightEstimatorNode : public rclcpp::Node
+class CrosswalkTrafficLightEstimatorNode : public agnocast::Node
 {
 public:
   explicit CrosswalkTrafficLightEstimatorNode(const rclcpp::NodeOptions & options);
 
 private:
-  rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
-  rclcpp::Subscription<LaneletRoute>::SharedPtr sub_route_;
-  rclcpp::Subscription<TrafficSignalArray>::SharedPtr sub_traffic_light_array_;
-  rclcpp::Publisher<TrafficSignalArray>::SharedPtr pub_traffic_light_array_;
+  agnocast::Subscription<LaneletMapBin>::SharedPtr sub_map_;
+  agnocast::Subscription<LaneletRoute>::SharedPtr sub_route_;
+  agnocast::Subscription<TrafficSignalArray>::SharedPtr sub_traffic_light_array_;
+  agnocast::Publisher<TrafficSignalArray>::SharedPtr pub_traffic_light_array_;
 
   lanelet::LaneletMapPtr lanelet_map_ptr_;
   lanelet::traffic_rules::TrafficRulesPtr traffic_rules_ptr_;
@@ -70,9 +70,9 @@ private:
 
   lanelet::ConstLanelets conflicting_crosswalks_;
 
-  void onMap(const LaneletMapBin::ConstSharedPtr msg);
-  void onRoute(const LaneletRoute::ConstSharedPtr msg);
-  void onTrafficLightArray(const TrafficSignalArray::ConstSharedPtr msg);
+  void onMap(const agnocast::ipc_shared_ptr<LaneletMapBin> & msg);
+  void onRoute(const agnocast::ipc_shared_ptr<LaneletRoute> & msg);
+  void onTrafficLightArray(const agnocast::ipc_shared_ptr<TrafficSignalArray> & msg);
 
   void updateLastDetectedSignal(const TrafficLightIdMap & traffic_signals);
   void updateLastDetectedSignals(const TrafficLightIdMap & traffic_signals);
@@ -125,7 +125,7 @@ private:
   StopWatch<std::chrono::milliseconds> stop_watch_;
 
   // Debug
-  std::shared_ptr<DebugPublisher> pub_processing_time_;
+  std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>> pub_processing_time_;
 };
 
 }  // namespace autoware::crosswalk_traffic_light_estimator
