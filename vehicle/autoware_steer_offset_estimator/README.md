@@ -3,7 +3,6 @@
 ## Purpose
 
 The role of this node is to automatically calibrate `steer_offset` used in the `vehicle_interface` node.
-k
 
 ## Inner-workings / Algorithms
 
