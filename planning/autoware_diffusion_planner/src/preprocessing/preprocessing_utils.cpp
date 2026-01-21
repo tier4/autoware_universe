@@ -204,7 +204,7 @@ std::vector<float> create_ego_agent_past(
       odom_msgs[start_index].pose.pose, odom_msgs[end_index].pose.pose, ratio, false);
 
     // Convert pose to 4x4 matrix
-    const Eigen::Matrix4d pose_map_4x4 = utils::pose_to_matrix4f(interpolated_pose);
+    const Eigen::Matrix4d pose_map_4x4 = utils::pose_to_matrix4d(interpolated_pose);
 
     // Transform to ego frame
     const Eigen::Matrix4d pose_ego_4x4 = map_to_ego_transform * pose_map_4x4;

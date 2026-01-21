@@ -351,7 +351,7 @@ void DiffusionPlanner::on_timer()
   const rclcpp::Time frame_time(curr_msgs.ego_kinematic_states.back()->header.stamp);
   const geometry_msgs::msg::Pose & pose_base_link =
     curr_msgs.ego_kinematic_states.back()->pose.pose;
-  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4f(pose_base_link);
+  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(pose_base_link);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
 
   // Update historical data

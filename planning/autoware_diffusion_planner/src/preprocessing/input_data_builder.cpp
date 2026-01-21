@@ -226,7 +226,7 @@ InputDataMap create_input_data(
     const auto & goal_pose = route_ptr->goal_pose;
 
     // Convert goal pose to 4x4 transformation matrix
-    const Eigen::Matrix4d goal_pose_map_4x4 = utils::pose_to_matrix4f(goal_pose);
+    const Eigen::Matrix4d goal_pose_map_4x4 = utils::pose_to_matrix4d(goal_pose);
 
     // Transform to ego frame
     const Eigen::Matrix4d goal_pose_ego_4x4 = map_to_ego_transform * goal_pose_map_4x4;

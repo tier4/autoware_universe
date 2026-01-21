@@ -17,8 +17,6 @@
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 
-#include <geometry_msgs/msg/point.hpp>
-
 #include <algorithm>
 #include <cstdlib>
 #include <string>
@@ -61,8 +59,8 @@ bool is_unknown_object(const TrackedObject & object)
 }  // namespace
 
 AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timestamp)
-: timestamp(timestamp),
-  pose(utils::pose_to_matrix4f(object.kinematics.pose_with_covariance.pose)),
+: pose(utils::pose_to_matrix4d(object.kinematics.pose_with_covariance.pose)),
+  timestamp(timestamp),
   label(get_model_label(object)),
   object_id(autoware_utils_uuid::to_hex_string(object.object_id)),
   original_info(object)
@@ -73,13 +71,18 @@ AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timest
 [[nodiscard]] std::array<float, AGENT_STATE_DIM> AgentState::as_array() const noexcept
 {
   const auto [cos_yaw, sin_yaw] = utils::rotation_matrix_to_cos_sin(pose.block<3, 3>(0, 0));
+  const auto & linear_vel = original_info.kinematics.twist_with_covariance.twist.linear;
+  const double velocity_norm = std::hypot(linear_vel.x, linear_vel.y);
+  const double velocity_x = velocity_norm * cos_yaw;
+  const double velocity_y = velocity_norm * sin_yaw;
+
   return {
-    static_cast<float>(pose(0, 3)),  // position x
-    static_cast<float>(pose(1, 3)),  // position y
-    cos_yaw,
-    sin_yaw,
-    0.0f,  // velocity x: always 0 because we do not use it
-    0.0f,  // velocity y: always 0 because we do not use it
+    static_cast<float>(pose(0, 3)),
+    static_cast<float>(pose(1, 3)),
+    static_cast<float>(cos_yaw),
+    static_cast<float>(sin_yaw),
+    static_cast<float>(velocity_x),
+    static_cast<float>(velocity_y),
     static_cast<float>(original_info.shape.dimensions.y),  // width
     static_cast<float>(original_info.shape.dimensions.x),  // length
     static_cast<float>(label == AgentLabel::VEHICLE),
@@ -160,11 +163,11 @@ std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
   }
 
   std::sort(histories.begin(), histories.end(), [](const AgentHistory & a, const AgentHistory & b) {
-    const double ax = a.get_latest_state().pose(0, 3);
-    const double ay = a.get_latest_state().pose(1, 3);
-    const double bx = b.get_latest_state().pose(0, 3);
-    const double by = b.get_latest_state().pose(1, 3);
-    return (ax * ax + ay * ay) < (bx * bx + by * by);
+    const double a_dist =
+      std::hypot(a.get_latest_state().pose(0, 3), a.get_latest_state().pose(1, 3));
+    const double b_dist =
+      std::hypot(b.get_latest_state().pose(0, 3), b.get_latest_state().pose(1, 3));
+    return a_dist < b_dist;
   });
   if (histories.size() > max_num_agent) {
     histories.erase(
