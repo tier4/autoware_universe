@@ -5,6 +5,7 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(glog REQUIRED)
 find_package(tf2 REQUIRED)
@@ -37,9 +38,10 @@ ament_target_dependencies(map_based_prediction_node
   agnocastlib
 )
 
-rclcpp_components_register_node(map_based_prediction_node
+agnocast_components_register_node(map_based_prediction_node
   PLUGIN "autoware::map_based_prediction::MapBasedPredictionNode"
   EXECUTABLE map_based_prediction
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
 )
 
 ## Tests
