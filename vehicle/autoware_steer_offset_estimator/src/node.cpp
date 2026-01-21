@@ -65,7 +65,8 @@ SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & n
   // Create timer
   auto update_hz = this->declare_parameter<double>("update_hz", 10.0);
   const auto period = rclcpp::Rate(update_hz).period();
-  timer_ = rclcpp::create_timer(this, get_clock(), period, std::bind(&SteerOffsetEstimatorNode::on_timer, this));
+  timer_ = rclcpp::create_timer(
+    this, get_clock(), period, std::bind(&SteerOffsetEstimatorNode::on_timer, this));
 }
 
 void SteerOffsetEstimatorNode::on_timer()

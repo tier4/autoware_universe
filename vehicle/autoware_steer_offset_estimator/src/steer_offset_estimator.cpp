@@ -149,9 +149,7 @@ std::optional<SteeringInfo> SteerOffsetEstimator::get_steering_at_timestamp(
 
   const auto upper = std::find_if(
     steering_buffer_.begin(), steering_buffer_.end(),
-    [&timestamp](const auto & steer_rep) {
-      return rclcpp::Time(steer_rep.stamp) > timestamp;
-    });
+    [&timestamp](const auto & steer_rep) { return rclcpp::Time(steer_rep.stamp) > timestamp; });
 
   const auto pivot = (upper == steering_buffer_.begin()) ? upper : std::prev(upper);
 
