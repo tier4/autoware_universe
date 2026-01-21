@@ -15,7 +15,6 @@
 #include <autoware/traffic_light_arbiter/traffic_light_arbiter.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
-#include <rclcpp/time.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
@@ -70,7 +69,7 @@ std::vector<TrafficLightConstPtr> filter_pedestrian_signals(const LaneletMapCons
 namespace autoware::traffic_light
 {
 TrafficLightArbiter::TrafficLightArbiter(const rclcpp::NodeOptions & options)
-: Node("traffic_light_arbiter", options)
+: agnocast::Node("traffic_light_arbiter", options)
 {
   external_delay_tolerance_ = this->declare_parameter<double>("external_delay_tolerance");
   external_time_tolerance_ = this->declare_parameter<double>("external_time_tolerance");
@@ -117,7 +116,7 @@ TrafficLightArbiter::TrafficLightArbiter(const rclcpp::NodeOptions & options)
   pub_ = create_publisher<TrafficSignalArray>("~/pub/traffic_signals", rclcpp::QoS(1));
 }
 
-void TrafficLightArbiter::onMap(const LaneletMapBin::ConstSharedPtr msg)
+void TrafficLightArbiter::onMap(const agnocast::ipc_shared_ptr<LaneletMapBin> & msg)
 {
   const auto map = std::make_shared<lanelet::LaneletMap>();
   lanelet::utils::conversion::fromBinMsg(*msg, map);
@@ -136,7 +135,7 @@ void TrafficLightArbiter::onMap(const LaneletMapBin::ConstSharedPtr msg)
   }
 }
 
-void TrafficLightArbiter::onPerceptionMsg(const TrafficSignalArray::ConstSharedPtr msg)
+void TrafficLightArbiter::onPerceptionMsg(const agnocast::ipc_shared_ptr<TrafficSignalArray> & msg)
 {
   latest_perception_msg_ = *msg;
 
@@ -147,7 +146,7 @@ void TrafficLightArbiter::onPerceptionMsg(const TrafficSignalArray::ConstSharedP
   arbitrateAndPublish(msg->stamp);
 }
 
-void TrafficLightArbiter::onExternalMsg(const TrafficSignalArray::ConstSharedPtr msg)
+void TrafficLightArbiter::onExternalMsg(const agnocast::ipc_shared_ptr<TrafficSignalArray> & msg)
 {
   const auto current_time = this->now();
   const auto msg_time = rclcpp::Time(msg->stamp);
@@ -227,7 +226,9 @@ void TrafficLightArbiter::arbitrateAndPublish(const builtin_interfaces::msg::Tim
   output_signals_msg.stamp = stamp;
 
   if (map_regulatory_elements_set_->empty()) {
-    pub_->publish(output_signals_msg);
+    auto loaned_msg = pub_->borrow_loaned_message();
+    *loaned_msg = std::move(output_signals_msg);
+    pub_->publish(std::move(loaned_msg));
     return;
   }
 
@@ -302,7 +303,9 @@ void TrafficLightArbiter::arbitrateAndPublish(const builtin_interfaces::msg::Tim
     output_signals_msg.traffic_light_groups.emplace_back(signal_msg);
   }
 
-  pub_->publish(output_signals_msg);
+  auto loaned_msg = pub_->borrow_loaned_message();
+  *loaned_msg = std::move(output_signals_msg);
+  pub_->publish(std::move(loaned_msg));
 
   // Calculate latest time from available sources
   rclcpp::Time latest_time = rclcpp::Time(latest_perception_msg_.stamp);

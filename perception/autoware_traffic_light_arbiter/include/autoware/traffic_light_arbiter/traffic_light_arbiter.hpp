@@ -16,7 +16,8 @@
 #define AUTOWARE__TRAFFIC_LIGHT_ARBITER__TRAFFIC_LIGHT_ARBITER_HPP_
 
 #include <autoware/traffic_light_arbiter/signal_match_validator.hpp>
-#include <rclcpp/rclcpp.hpp>
+
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
@@ -31,7 +32,7 @@
 namespace autoware::traffic_light
 {
 
-class TrafficLightArbiter : public rclcpp::Node
+class TrafficLightArbiter : public agnocast::Node
 {
 public:
   explicit TrafficLightArbiter(const rclcpp::NodeOptions & options);
@@ -43,14 +44,14 @@ private:
   using TrafficSignalArray = autoware_perception_msgs::msg::TrafficLightGroupArray;
   using TrafficSignal = autoware_perception_msgs::msg::TrafficLightGroup;
 
-  rclcpp::Subscription<LaneletMapBin>::SharedPtr map_sub_;
-  rclcpp::Subscription<TrafficSignalArray>::SharedPtr perception_tlr_sub_;
-  rclcpp::Subscription<TrafficSignalArray>::SharedPtr external_tlr_sub_;
-  rclcpp::Publisher<TrafficSignalArray>::SharedPtr pub_;
+  agnocast::Subscription<LaneletMapBin>::SharedPtr map_sub_;
+  agnocast::Subscription<TrafficSignalArray>::SharedPtr perception_tlr_sub_;
+  agnocast::Subscription<TrafficSignalArray>::SharedPtr external_tlr_sub_;
+  agnocast::Publisher<TrafficSignalArray>::SharedPtr pub_;
 
-  void onMap(const LaneletMapBin::ConstSharedPtr msg);
-  void onPerceptionMsg(const TrafficSignalArray::ConstSharedPtr msg);
-  void onExternalMsg(const TrafficSignalArray::ConstSharedPtr msg);
+  void onMap(const agnocast::ipc_shared_ptr<LaneletMapBin> & msg);
+  void onPerceptionMsg(const agnocast::ipc_shared_ptr<TrafficSignalArray> & msg);
+  void onExternalMsg(const agnocast::ipc_shared_ptr<TrafficSignalArray> & msg);
   void arbitrateAndPublish(const builtin_interfaces::msg::Time & stamp);
   void cleanupExpiredExternalSignals(const rclcpp::Time & current_time, double tolerance);
 
