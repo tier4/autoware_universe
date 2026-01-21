@@ -19,15 +19,15 @@
 #include "map_based_prediction/path_generator.hpp"
 #include "map_based_prediction/predictor_vru.hpp"
 
-#include <agnocast/agnocast.hpp>
+#include <agnocast/node/agnocast_node.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
-#include <autoware_utils/ros/debug_publisher.hpp>
-#include <autoware_utils/ros/diagnostics_interface.hpp>
-#include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/ros/transform_listener.hpp>
+#include <autoware_utils_diagnostics/diagnostics_interface.hpp>
+#include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/ros/update_param.hpp>
 #include <autoware_utils/system/lru_cache.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
+#include <autoware_utils_debug/debug_publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <geometry_msgs/msg/pose.hpp>
@@ -76,7 +76,7 @@ using autoware_internal_debug_msgs::msg::StringStamped;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using TrajectoryPoints = std::vector<TrajectoryPoint>;
 
-class MapBasedPredictionNode : public rclcpp::Node
+class MapBasedPredictionNode : public agnocast::Node
 {
 public:
   explicit MapBasedPredictionNode(const rclcpp::NodeOptions & node_options);
@@ -91,7 +91,7 @@ private:
 
   // debug publisher
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
-  std::unique_ptr<autoware_utils::DebugPublisher> processing_time_publisher_;
+  std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>> processing_time_publisher_;
 
   // Object History
   std::unordered_map<std::string, std::deque<ObjectData>> road_users_history_;
@@ -116,7 +116,8 @@ private:
   std::shared_ptr<PredictorVru> predictor_vru_;
 
   // Diagnostics
-  std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_ptr_;
+  std::unique_ptr<autoware_utils_diagnostics::BasicDiagnosticsInterface<agnocast::Node>>
+    diagnostics_interface_ptr_;
   double processing_time_tolerance_ms_;
   double processing_time_consecutive_excess_tolerance_ms_;
   std::optional<rclcpp::Time> last_in_time_processing_timestamp_;
@@ -235,7 +236,7 @@ private:
     const lanelet::routing::LaneletPath & path) const;
 
   ////// Debugger
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<autoware_utils::BasicPublishedTimePublisher<agnocast::Node>> published_time_publisher_;
   agnocast::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
     detailed_processing_time_publisher_;
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;

@@ -18,6 +18,7 @@
 #include "map_based_prediction/data_structure.hpp"
 #include "map_based_prediction/path_generator.hpp"
 
+#include <agnocast/node/agnocast_node.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -50,7 +51,7 @@ using autoware_perception_msgs::msg::TrafficLightGroupArray;
 class PredictorVru
 {
 public:
-  explicit PredictorVru(rclcpp::Node & node) : node_(node) {}
+  explicit PredictorVru(agnocast::Node & node) : node_(node) {}
   ~PredictorVru() = default;
 
   void setParameters(
@@ -98,7 +99,7 @@ public:
   PredictedObjects retrieveUndetectedObjects();
 
 private:
-  rclcpp::Node & node_;
+  agnocast::Node & node_;
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
 
   // Map data

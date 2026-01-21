@@ -361,7 +361,7 @@ void replaceObjectYawWithLaneletsYaw(
 }  // namespace
 
 MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_options)
-: Node("map_based_prediction", node_options)
+: agnocast::Node("map_based_prediction", node_options)
 {
   if (!google::IsGoogleLoggingInitialized()) {
     google::InitGoogleLogging("map_based_prediction_node");
@@ -478,17 +478,17 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   path_generator_->setAccelerationHalfLife(acceleration_exponential_half_life_);
 
   // subscribers
-  sub_objects_ = agnocast::create_subscription<TrackedObjects>(
-    this, "~/input/objects", rclcpp::QoS{1},
+  sub_objects_ = this->create_subscription<TrackedObjects>(
+    "~/input/objects", rclcpp::QoS{1},
     std::bind(&MapBasedPredictionNode::objectsCallback, this, std::placeholders::_1));
-  sub_map_ = agnocast::create_subscription<LaneletMapBin>(
-    this, "/vector_map", rclcpp::QoS{1}.transient_local(),
+  sub_map_ = this->create_subscription<LaneletMapBin>(
+    "/vector_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&MapBasedPredictionNode::mapCallback, this, std::placeholders::_1));
-  sub_traffic_signals_ =
-    std::make_shared<agnocast::PollingSubscriber<TrafficLightGroupArray>>(this, "/traffic_signals");
+  // PollingSubscriber for traffic signals (no callback, use take_data())
+  sub_traffic_signals_ = this->create_subscription<TrafficLightGroupArray>("/traffic_signals", 1);
 
   // publishers
-  pub_objects_ = agnocast::create_publisher<PredictedObjects>(this, "~/output/objects", rclcpp::QoS{1});
+  pub_objects_ = this->create_publisher<PredictedObjects>("~/output/objects", rclcpp::QoS{1});
 
   // stopwatch
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
@@ -497,7 +497,8 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
 
   {  // diagnostics
     diagnostics_interface_ptr_ =
-      std::make_unique<autoware_utils::DiagnosticsInterface>(this, "map_based_prediction");
+      std::make_unique<autoware_utils_diagnostics::BasicDiagnosticsInterface<agnocast::Node>>(
+        this, "map_based_prediction");
 
     // [s] -> [ms]
     processing_time_tolerance_ms_ = declare_parameter<double>("processing_time_tolerance") * 1e3;
@@ -508,15 +509,16 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   // debug publishers
   if (use_time_publisher) {
     processing_time_publisher_ =
-      std::make_unique<autoware_utils::DebugPublisher>(this, "map_based_prediction");
-    published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+      std::make_unique<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>(this, "map_based_prediction");
+    published_time_publisher_ =
+      std::make_unique<autoware_utils::BasicPublishedTimePublisher<agnocast::Node>>(this);
   }
 
   // debug time keeper
   if (use_time_keeper) {
     detailed_processing_time_publisher_ =
-      agnocast::create_publisher<autoware_utils::ProcessingTimeDetail>(
-        this, "~/debug/processing_time_detail_ms", rclcpp::QoS{1});
+      this->create_publisher<autoware_utils::ProcessingTimeDetail>(
+        "~/debug/processing_time_detail_ms", rclcpp::QoS{1});
     auto time_keeper = autoware_utils::TimeKeeper(detailed_processing_time_publisher_);
     time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(time_keeper);
     path_generator_->setTimeKeeper(time_keeper_);
@@ -526,7 +528,7 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   // debug marker
   if (use_debug_marker) {
     pub_debug_markers_ =
-      agnocast::create_publisher<visualization_msgs::msg::MarkerArray>(this, "maneuver", rclcpp::QoS{1});
+      this->create_publisher<visualization_msgs::msg::MarkerArray>("maneuver", rclcpp::QoS{1});
   }
   // dynamic reconfigure
   set_param_res_ = this->add_on_set_parameters_callback(
@@ -562,6 +564,7 @@ void MapBasedPredictionNode::updateDiagnostics(
   diagnostics_interface_ptr_->clear();
   diagnostics_interface_ptr_->add_key_value("timestamp", timestamp.seconds());
   diagnostics_interface_ptr_->add_key_value("processing_time_ms", processing_time_ms);
+
   // check processing time is in time
   bool is_processing_in_time = processing_time_ms <= processing_time_tolerance_ms_;
   diagnostics_interface_ptr_->add_key_value("is_processing_in_time", is_processing_in_time);
