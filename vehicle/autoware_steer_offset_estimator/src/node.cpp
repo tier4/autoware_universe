@@ -14,7 +14,7 @@
 
 #include "node.hpp"
 
-#include "autoware/vehicle_info_utils/vehicle_info_utils.hpp"
+#include <autoware/vehicle_info_utils/vehicle_info_utils.hpp>
 
 #include <fmt/format.h>
 
