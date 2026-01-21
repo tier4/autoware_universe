@@ -122,15 +122,15 @@ void SteerOffsetEstimator::update_steering_buffer(const std::vector<SteeringRepo
   for (const auto & steer : steers) {
     if (
       !steering_buffer_.empty() &&
-      rclcpp::Time(steer.stamp) < rclcpp::Time(steering_buffer_.back()->stamp)) {
+      rclcpp::Time(steer.stamp) < rclcpp::Time(steering_buffer_.back().stamp)) {
       continue;
     }
-    steering_buffer_.emplace_back(std::make_shared<SteeringReport>(steer));
+    steering_buffer_.emplace_back(steer);
   }
 
   // Keep buffer size manageable
-  while (!steering_buffer_.empty() && (rclcpp::Time(steering_buffer_.back()->stamp) -
-                                       rclcpp::Time(steering_buffer_.front()->stamp))
+  while (!steering_buffer_.empty() && (rclcpp::Time(steering_buffer_.back().stamp) -
+                                       rclcpp::Time(steering_buffer_.front().stamp))
                                           .seconds() > params_.max_steer_buffer) {
     steering_buffer_.pop_front();
   }
@@ -143,14 +143,14 @@ std::optional<SteeringInfo> SteerOffsetEstimator::get_steering_at_timestamp(
 
   // ensure latest steering info is not too old
   constexpr double eps = 1e-3;
-  if ((timestamp - rclcpp::Time(steering_buffer_.back()->stamp)).seconds() > eps) {
+  if ((timestamp - rclcpp::Time(steering_buffer_.back().stamp)).seconds() > eps) {
     return std::nullopt;
   }
 
   const auto upper = std::find_if(
     steering_buffer_.begin(), steering_buffer_.end(),
-    [&timestamp](const autoware_vehicle_msgs::msg::SteeringReport::SharedPtr & steer_ptr) {
-      return rclcpp::Time(steer_ptr->stamp) > timestamp;
+    [&timestamp](const auto & steer_rep) {
+      return rclcpp::Time(steer_rep.stamp) > timestamp;
     });
 
   const auto pivot = (upper == steering_buffer_.begin()) ? upper : std::prev(upper);
@@ -167,12 +167,12 @@ std::optional<SteeringInfo> SteerOffsetEstimator::get_steering_at_timestamp(
 
   SteeringInfo steering_info;
 
-  double steering_sum = std::accumulate(start, finish, 0.0, [](double sum, const auto & steer_ptr) {
-    return sum + steer_ptr->steering_tire_angle;
+  double steering_sum = std::accumulate(start, finish, 0.0, [](double sum, const auto & steer_rep) {
+    return sum + steer_rep.steering_tire_angle;
   });
 
   steering_info.steering = steering_sum / static_cast<double>(count);
-  steering_info.stamp = pivot->get()->stamp;
+  steering_info.stamp = pivot->stamp;
   return steering_info;
 }
 
