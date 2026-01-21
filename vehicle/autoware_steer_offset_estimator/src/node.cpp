@@ -52,9 +52,9 @@ SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & n
 {
   // Subscribers
   sub_pose_ =
-    PollingSubscriber<PoseStamped>::create_subscription(this, "~/input/pose", rclcpp::QoS{50});
+    PollingSubscriber<PoseStamped>::create_subscription(this, "~/input/pose", rclcpp::QoS{10});
   sub_steer_ =
-    PollingSubscriber<SteeringReport>::create_subscription(this, "~/input/steer", rclcpp::QoS{50});
+    PollingSubscriber<SteeringReport>::create_subscription(this, "~/input/steer", rclcpp::QoS{10});
 
   // Publishers
   pub_steer_offset_ = this->create_publisher<Float32Stamped>("~/output/steering_offset", 1);
@@ -64,9 +64,8 @@ SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & n
 
   // Create timer
   auto update_hz = this->declare_parameter<double>("update_hz", 10.0);
-  timer_ = this->create_wall_timer(
-    std::chrono::duration<double>(1.0 / update_hz),
-    std::bind(&SteerOffsetEstimatorNode::on_timer, this));
+  const auto period = rclcpp::Rate(update_hz).period();
+  timer_ = rclcpp::create_timer(this, get_clock(), period, std::bind(&SteerOffsetEstimatorNode::on_timer, this));
 }
 
 void SteerOffsetEstimatorNode::on_timer()
