@@ -24,6 +24,11 @@ install(
   DESTINATION share/${PROJECT_NAME}/cmake
 )
 
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
 ament_auto_package(
   CONFIG_EXTRAS "cmake/agnocast_wrapper_config_extras.cmake"
 )
