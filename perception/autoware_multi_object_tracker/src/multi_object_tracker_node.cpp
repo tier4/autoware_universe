@@ -26,8 +26,6 @@
 #include <boost/optional.hpp>
 
 #include <glog/logging.h>
-#include <tf2_ros/create_timer_interface.h>
-#include <tf2_ros/create_timer_ros.h>
 
 #include <iterator>
 #include <list>
@@ -46,7 +44,7 @@ using Label = autoware_perception_msgs::msg::ObjectClassification;
 using LabelType = autoware_perception_msgs::msg::ObjectClassification::_label_type;
 
 MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("multi_object_tracker", node_options),
+: agnocast::Node("multi_object_tracker", node_options),
   last_published_time_(this->now()),
   last_updated_time_(this->now())
 {
@@ -66,8 +64,7 @@ MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
 
   // ROS interface - Publisher
   tracked_objects_pub_ =
-    agnocast::create_publisher<autoware_perception_msgs::msg::TrackedObjects>(
-      this, "output/objects", 1);
+    this->create_publisher<autoware_perception_msgs::msg::TrackedObjects>("output/objects", 1);
 
   // Odometry manager
   odometry_ =
@@ -151,8 +148,8 @@ MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
     publisher_period_ = 1.0 / publish_rate;    // [s]
     constexpr double timer_multiplier = 10.0;  // 10 times frequent for publish timing check
     const auto timer_period = rclcpp::Rate(publish_rate * timer_multiplier).period();
-    publish_timer_ = rclcpp::create_timer(
-      this, get_clock(), timer_period, std::bind(&MultiObjectTracker::onTimer, this));
+    publish_timer_ = create_wall_timer(
+      timer_period, std::bind(&MultiObjectTracker::onTimer, this));
   }
 
   // Initialize processor
@@ -307,7 +304,8 @@ MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
 
   // Debugger
   debugger_ = std::make_unique<TrackerDebugger>(*this, world_frame_id_, input_channels_config_);
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  published_time_publisher_ =
+    std::make_unique<autoware_utils::BasicPublishedTimePublisher<agnocast::Node>>(this);
 
   if (use_time_keeper) {
     detailed_processing_time_publisher_ =

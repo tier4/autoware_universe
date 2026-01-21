@@ -16,9 +16,8 @@
 
 #include "autoware/multi_object_tracker/uncertainty/uncertainty_processor.hpp"
 
+#include <agnocast/node/tf2/create_timer_agnocast.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-
-#include <tf2_ros/create_timer_ros.h>
 
 #include <memory>
 #include <string>
@@ -27,19 +26,20 @@ namespace autoware::multi_object_tracker
 {
 
 Odometry::Odometry(
-  rclcpp::Node & node, const std::string & world_frame_id, const std::string & ego_frame_id,
+  agnocast::Node & node, const std::string & world_frame_id, const std::string & ego_frame_id,
   bool enable_odometry_uncertainty)
 : node_(node),
   ego_frame_id_(ego_frame_id),
   world_frame_id_(world_frame_id),
   tf_buffer_(node_.get_clock()),
-  tf_listener_(tf_buffer_),
+  tf_listener_(std::make_unique<agnocast::TransformListener>(static_cast<tf2::BufferCore &>(tf_buffer_), node)),
   enable_odometry_uncertainty_(enable_odometry_uncertainty)
 {
-  // Create tf timer
-  auto cti = std::make_shared<tf2_ros::CreateTimerROS>(
-    node_.get_node_base_interface(), node_.get_node_timers_interface());
+  // Create tf timer interface for async waitForTransform
+  auto cti = std::make_shared<agnocast::CreateTimerAgnocast>();
   tf_buffer_.setCreateTimerInterface(cti);
+  // Agnocast TransformListener handles TF in a separate callback thread
+  tf_buffer_.setUsingDedicatedThread(true);
 }
 
 void Odometry::updateTfCache(

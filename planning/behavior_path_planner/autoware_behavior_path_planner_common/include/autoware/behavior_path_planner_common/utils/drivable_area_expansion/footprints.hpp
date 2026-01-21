@@ -18,8 +18,6 @@
 #include "autoware/behavior_path_planner_common/utils/drivable_area_expansion/parameters.hpp"
 #include "autoware/behavior_path_planner_common/utils/drivable_area_expansion/types.hpp"
 
-#include <autoware_utils/ros/transform_listener.hpp>
-
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 

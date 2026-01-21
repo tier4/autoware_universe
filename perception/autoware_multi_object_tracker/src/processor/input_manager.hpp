@@ -18,7 +18,7 @@
 #include "autoware/multi_object_tracker/object_model/types.hpp"
 #include "autoware/multi_object_tracker/odometry.hpp"
 
-#include <agnocast/agnocast.hpp>
+#include <agnocast/node/agnocast_node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
@@ -38,7 +38,7 @@ class InputStream
 {
 public:
   InputStream(
-    rclcpp::Node & node, const types::InputChannel & input_channel,
+    agnocast::Node & node, const types::InputChannel & input_channel,
     std::shared_ptr<Odometry> odometry);
 
   void setTriggerFunction(std::function<void(const uint &)> func_trigger)
@@ -69,7 +69,7 @@ public:
   rclcpp::Time getLatestMeasurementTime() const { return latest_measurement_time_; }
 
 private:
-  rclcpp::Node & node_;
+  agnocast::Node & node_;
   const types::InputChannel channel_;
   std::shared_ptr<Odometry> odometry_;
 
@@ -91,7 +91,7 @@ private:
 class InputManager
 {
 public:
-  InputManager(rclcpp::Node & node, std::shared_ptr<Odometry> odometry);
+  InputManager(agnocast::Node & node, std::shared_ptr<Odometry> odometry);
   void init(const std::vector<types::InputChannel> & input_channels);
 
   void setTriggerFunction(std::function<void()> func_trigger) { func_trigger_ = func_trigger; }
@@ -100,7 +100,7 @@ public:
   bool getObjects(const rclcpp::Time & now, ObjectsList & objects_list);
 
 private:
-  rclcpp::Node & node_;
+  agnocast::Node & node_;
   std::shared_ptr<Odometry> odometry_;
 
   std::vector<agnocast::Subscription<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr>

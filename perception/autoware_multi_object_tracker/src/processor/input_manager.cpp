@@ -31,7 +31,7 @@ namespace autoware::multi_object_tracker
 /////// InputStream ///////
 ///////////////////////////
 InputStream::InputStream(
-  rclcpp::Node & node, const types::InputChannel & input_channel,
+  agnocast::Node & node, const types::InputChannel & input_channel,
   std::shared_ptr<Odometry> odometry)
 : node_(node), channel_(input_channel), odometry_(odometry)
 {
@@ -233,7 +233,7 @@ void InputStream::getObjectsOlderThan(
 ////////////////////////////
 /////// InputManager ///////
 ////////////////////////////
-InputManager::InputManager(rclcpp::Node & node, std::shared_ptr<Odometry> odometry)
+InputManager::InputManager(agnocast::Node & node, std::shared_ptr<Odometry> odometry)
 : node_(node), odometry_(odometry)
 {
   latest_exported_object_time_ = node_.now() - rclcpp::Duration::from_seconds(3.0);
@@ -266,8 +266,8 @@ void InputManager::init(const std::vector<types::InputChannel> & input_channels)
       const agnocast::ipc_shared_ptr<autoware_perception_msgs::msg::DetectedObjects> &)>
       func = std::bind(&InputStream::onMessage, input_streams_.at(i), std::placeholders::_1);
     sub_objects_array_.at(i) =
-      agnocast::create_subscription<autoware_perception_msgs::msg::DetectedObjects>(
-        &node_, input_channels[i].input_topic, rclcpp::QoS{1}, func);
+      node_.create_subscription<autoware_perception_msgs::msg::DetectedObjects>(
+        input_channels[i].input_topic, rclcpp::QoS{1}, func);
   }
 
   // Check if any spawn enabled input streams

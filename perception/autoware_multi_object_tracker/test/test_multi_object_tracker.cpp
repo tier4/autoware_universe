@@ -20,6 +20,7 @@
 #include "test_bench_association.hpp"
 #include "test_utils.hpp"
 
+#include <agnocast/node/agnocast_node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
@@ -254,7 +255,7 @@ void runPerformanceTestWithRosbag(const std::string & rosbag_path, bool write_ba
 {
   // === Setup ===
   rclcpp::init(0, nullptr);
-  const auto node = std::make_shared<rclcpp::Node>("multi_object_tracker_test_node");
+  const auto node = std::make_shared<agnocast::Node>("multi_object_tracker_test_node");
   const auto tf_buffer = std::make_shared<tf2_ros::Buffer>(node->get_clock());
   const auto tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer, node);
   RosbagWriterHelper writer(write_bag);

@@ -24,16 +24,17 @@
 namespace autoware::multi_object_tracker
 {
 TrackerDebugger::TrackerDebugger(
-  rclcpp::Node & node, const std::string & frame_id,
+  agnocast::Node & node, const std::string & frame_id,
   const std::vector<types::InputChannel> & channels_config)
-: node_(node), diagnostic_updater_(&node), object_debugger_(frame_id, channels_config)
+: node_(node), object_debugger_(frame_id, channels_config)
 {
   // declare debug parameters to decide whether to publish debug topics
   loadParameters();
   // initialize debug publishers
   if (debug_settings_.publish_processing_time) {
     processing_time_publisher_ =
-      std::make_unique<autoware_utils::DebugPublisher>(&node_, "multi_object_tracker");
+      std::make_unique<autoware_utils::BasicDebugPublisher<agnocast::Node>>(
+        &node_, "multi_object_tracker");
   }
 
   if (debug_settings_.publish_tentative_objects) {
@@ -87,24 +88,27 @@ void TrackerDebugger::loadParameters()
 
 void TrackerDebugger::setupDiagnostics()
 {
-  diagnostic_updater_.setHardwareID(node_.get_name());
-  diagnostic_updater_.add("Tracker Timing Diagnostics", this, &TrackerDebugger::checkAllTiming);
-  diagnostic_updater_.setPeriod(0.1);
+  // TODO(agnocast): Replace with BasicDiagnosticsInterface<agnocast::Node>
+  // diagnostic_updater_.setHardwareID(node_.get_name());
+  // diagnostic_updater_.add("Tracker Timing Diagnostics", this, &TrackerDebugger::checkAllTiming);
+  // diagnostic_updater_.setPeriod(0.1);
 }
 
 void TrackerDebugger::updateDiagnosticValues(double min_extrapolation_time, size_t published_count)
 {
   diagnostic_values_.min_extrapolation_time = min_extrapolation_time;
   diagnostic_values_.published_trackers_count = published_count;
-  // Force update diagnostic values
-  diagnostic_updater_.force_update();
+  // TODO(agnocast): Replace with BasicDiagnosticsInterface<agnocast::Node>
+  // diagnostic_updater_.force_update();
 }
 
 void TrackerDebugger::publishTentativeObjects(
   const autoware_perception_msgs::msg::TrackedObjects & tentative_objects) const
 {
   if (debug_settings_.publish_tentative_objects) {
-    debug_tentative_objects_pub_->publish(tentative_objects);
+    auto msg = debug_tentative_objects_pub_->borrow_loaned_message();
+    *msg = tentative_objects;
+    debug_tentative_objects_pub_->publish(std::move(msg));
   }
 }
 
@@ -196,35 +200,35 @@ TrackerDebugger::TimingCheckResult TrackerDebugger::determineOverallTimingStatus
   return {message, max_level};
 }
 
-// Time measurement functions
-void TrackerDebugger::checkAllTiming(diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  // Check initialization status
-  if (!is_initialized_) {
-    stat.add("Detection status", "Not initialized");
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Measurement time is not set.");
-    return;
-  }
-
-  const double delay = pipeline_latency_ms_ / 1e3;  // [s]
-  // Check if we have any published trackers
-  const bool no_published_trackers = (diagnostic_values_.published_trackers_count == 0);
-
-  // Check individual timing components
-  const auto delay_result = checkDelayTiming(delay);
-  const auto extrapolation_result =
-    checkExtrapolationTiming(diagnostic_values_.min_extrapolation_time, node_.now());
-  // Determine overall status
-  const auto overall_result =
-    determineOverallTimingStatus(no_published_trackers, delay_result, extrapolation_result);
-
-  stat.add("Detection delay (s)", delay);
-  stat.add("Detection status", delay_result.message);
-  stat.add("Extrapolation time (s)", diagnostic_values_.min_extrapolation_time);
-  stat.add("Extrapolation status", extrapolation_result.message);
-  // Set the overall status based on the worst condition
-  stat.summary(overall_result.level, overall_result.message);
-}
+// TODO(agnocast): Replace with BasicDiagnosticsInterface<agnocast::Node>
+// void TrackerDebugger::checkAllTiming(diagnostic_updater::DiagnosticStatusWrapper & stat)
+// {
+//   // Check initialization status
+//   if (!is_initialized_) {
+//     stat.add("Detection status", "Not initialized");
+//     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Measurement time is not set.");
+//     return;
+//   }
+//
+//   const double delay = pipeline_latency_ms_ / 1e3;  // [s]
+//   // Check if we have any published trackers
+//   const bool no_published_trackers = (diagnostic_values_.published_trackers_count == 0);
+//
+//   // Check individual timing components
+//   const auto delay_result = checkDelayTiming(delay);
+//   const auto extrapolation_result =
+//     checkExtrapolationTiming(diagnostic_values_.min_extrapolation_time, node_.now());
+//   // Determine overall status
+//   const auto overall_result =
+//     determineOverallTimingStatus(no_published_trackers, delay_result, extrapolation_result);
+//
+//   stat.add("Detection delay (s)", delay);
+//   stat.add("Detection status", delay_result.message);
+//   stat.add("Extrapolation time (s)", diagnostic_values_.min_extrapolation_time);
+//   stat.add("Extrapolation status", extrapolation_result.message);
+//   // Set the overall status based on the worst condition
+//   stat.summary(overall_result.level, overall_result.message);
+// }
 
 void TrackerDebugger::startMeasurementTime(
   const rclcpp::Time & now, const rclcpp::Time & measurement_header_stamp)
@@ -312,7 +316,9 @@ void TrackerDebugger::publishObjectsMarkers()
 
   // publish markers
   object_debugger_.getMessage(marker_message);
-  debug_objects_markers_pub_->publish(marker_message);
+  auto msg = debug_objects_markers_pub_->borrow_loaned_message();
+  *msg = marker_message;
+  debug_objects_markers_pub_->publish(std::move(msg));
 
   // reset object data
   object_debugger_.reset();

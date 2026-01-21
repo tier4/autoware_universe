@@ -26,7 +26,8 @@
 #include "processor/input_manager.hpp"
 #include "processor/processor.hpp"
 
-#include <agnocast/agnocast.hpp>
+#include <agnocast/node/agnocast_node.hpp>
+#include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -50,6 +51,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -58,7 +60,7 @@
 namespace autoware::multi_object_tracker
 {
 
-class MultiObjectTracker : public rclcpp::Node
+class MultiObjectTracker : public agnocast::Node
 {
 public:
   explicit MultiObjectTracker(const rclcpp::NodeOptions & node_options);
@@ -69,14 +71,15 @@ private:
 
   // debugger
   std::unique_ptr<TrackerDebugger> debugger_;
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<autoware_utils::BasicPublishedTimePublisher<agnocast::Node>>
+    published_time_publisher_;
 
-  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
+  agnocast::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
     detailed_processing_time_publisher_;
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
 
   // publish timer
-  rclcpp::TimerBase::SharedPtr publish_timer_;
+  agnocast::TimerBase::SharedPtr publish_timer_;
   rclcpp::Time last_published_time_;
   rclcpp::Time last_updated_time_;
   double publisher_period_;

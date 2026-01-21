@@ -18,14 +18,17 @@
 #include "autoware/multi_object_tracker/object_model/types.hpp"
 #include "debug_object.hpp"
 
+#include <agnocast/node/agnocast_node.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
-#include <diagnostic_updater/publisher.hpp>
+// TODO(agnocast): Replace with autoware_utils_diagnostics::BasicDiagnosticsInterface<agnocast::Node>
+// #include <diagnostic_updater/diagnostic_updater.hpp>
+// #include <diagnostic_updater/publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
+#include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 
 #include <list>
@@ -45,7 +48,7 @@ class TrackerDebugger
 {
 public:
   TrackerDebugger(
-    rclcpp::Node & node, const std::string & frame_id,
+    agnocast::Node & node, const std::string & frame_id,
     const std::vector<types::InputChannel> & channels_config);
 
 private:
@@ -81,13 +84,14 @@ private:
   } diagnostic_values_;
 
   // ROS node, publishers
-  rclcpp::Node & node_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr
+  agnocast::Node & node_;
+  agnocast::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr
     debug_tentative_objects_pub_;
-  std::unique_ptr<autoware_utils::DebugPublisher> processing_time_publisher_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_objects_markers_pub_;
+  std::unique_ptr<autoware_utils::BasicDebugPublisher<agnocast::Node>> processing_time_publisher_;
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_objects_markers_pub_;
 
-  diagnostic_updater::Updater diagnostic_updater_;
+  // TODO(agnocast): Replace with BasicDiagnosticsInterface<agnocast::Node>
+  // diagnostic_updater::Updater diagnostic_updater_;
   // Object debugger
   TrackerObjectDebugger object_debugger_;
   // Time measurement
@@ -119,8 +123,8 @@ public:
   void endMeasurementTime(const rclcpp::Time & now);
   void startPublishTime(const rclcpp::Time & now);
   void endPublishTime(const rclcpp::Time & now, const rclcpp::Time & object_time);
-  // cppcheck-suppress functionConst
-  void checkAllTiming(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  // TODO(agnocast): Replace with BasicDiagnosticsInterface<agnocast::Node>
+  // void checkAllTiming(diagnostic_updater::DiagnosticStatusWrapper & stat);
   // Debug object
   void collectObjectInfo(
     const rclcpp::Time & message_time, const std::list<std::shared_ptr<Tracker>> & list_tracker,

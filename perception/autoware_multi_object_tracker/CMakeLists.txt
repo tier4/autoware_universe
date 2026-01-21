@@ -5,6 +5,7 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
 
 # Ignore -Wnonportable-include-path in Clang for mussp
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -77,9 +78,10 @@ ament_target_dependencies(${PROJECT_NAME}
   agnocastlib
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::multi_object_tracker::MultiObjectTracker"
   EXECUTABLE multi_object_tracker_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
 )
 
 ## Tests
