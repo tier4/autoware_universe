@@ -39,13 +39,13 @@ TransfusionTRT::TransfusionTRT(
   const DensificationParam & densification_param, TransfusionConfig config)
 : config_(std::move(config))
 {
+  CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
+
   vg_ptr_ = std::make_unique<VoxelGenerator>(densification_param, config_, stream_);
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
   stop_watch_ptr_->tic("processing/inner");
   initPtr();
   initTrt(trt_config);
-
-  CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
 }
 
 TransfusionTRT::~TransfusionTRT()
@@ -92,6 +92,8 @@ void TransfusionTRT::initPtr()
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     shuffle_indices_d_.get(), indexes.data(), config_.cloud_capacity_ * sizeof(unsigned int),
     cudaMemcpyHostToDevice, stream_));
+  // For safety, wait for completion of copying.
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   pre_ptr_ = std::make_unique<PreprocessCuda>(config_, stream_);
   post_ptr_ = std::make_unique<PostprocessCuda>(config_, stream_);
@@ -210,6 +212,7 @@ bool TransfusionTRT::preprocess(
 
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     &params_input, params_input_d_.get(), sizeof(unsigned int), cudaMemcpyDeviceToHost, stream_));
+  // Explicit synchronization to wait for completion of copying.
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
   auto params_input_i32 = static_cast<int32_t>(params_input);
 
@@ -273,6 +276,9 @@ bool TransfusionTRT::postprocess(std::vector<Box3D> & det_boxes3d)
 {
   CHECK_CUDA_ERROR(post_ptr_->generateDetectedBoxes3D_launch(
     cls_output_d_.get(), box_output_d_.get(), dir_cls_output_d_.get(), det_boxes3d, stream_));
+
+  // det_boxes3d is resized in generateDetectedBoxes3D_launch.
+  // Explicit synchronization is necessary.
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
   return true;
 }

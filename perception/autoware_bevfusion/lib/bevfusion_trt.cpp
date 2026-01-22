@@ -43,6 +43,13 @@ BEVFusionTRT::BEVFusionTRT(
   const DensificationParam & densification_param, const BEVFusionConfig & config)
 : config_(config)
 {
+  CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
+
+  camera_streams_.resize(config_.num_cameras_);
+  for (std::int64_t i = 0; i < config_.num_cameras_; i++) {
+    CHECK_CUDA_ERROR(cudaStreamCreate(&camera_streams_[i]));
+  }
+
   vg_ptr_ = std::make_unique<VoxelGenerator>(densification_param, config_, stream_);
 
   stop_watch_ptr_ =
@@ -51,13 +58,6 @@ BEVFusionTRT::BEVFusionTRT(
 
   initPtr();
   initTrt(trt_config);
-
-  CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
-
-  camera_streams_.resize(config_.num_cameras_);
-  for (std::int64_t i = 0; i < config_.num_cameras_; i++) {
-    CHECK_CUDA_ERROR(cudaStreamCreate(&camera_streams_[i]));
-  }
 }
 
 BEVFusionTRT::~BEVFusionTRT()
@@ -417,6 +417,10 @@ bool BEVFusionTRT::preProcess(
         image_buffers_d_[camera_id].get(), image_msgs[camera_id]->data.data(),
         config_.raw_image_height_ * config_.raw_image_width_ * 3, cudaMemcpyHostToDevice, stream_);
 
+      // I think
+      // explicit synchronization is necessary here to wait for completion of copying.
+      CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+
       pre_ptr_->resizeAndExtractRoi_launch(
         image_buffers_d_[camera_id].get(),
         &roi_tensor_d_[camera_id * config_.roi_height_ * config_.roi_width_ * 3],
@@ -425,9 +429,14 @@ bool BEVFusionTRT::preProcess(
         camera_streams_[camera_id]);
     }
 
+    // Is synchronization necessary here?
+
     cudaMemcpyAsync(
       camera_masks_d_.get(), camera_masks.data(), config_.num_cameras_ * sizeof(float),
       cudaMemcpyHostToDevice, stream_);
+    // I think
+    // explicit synchronization is necessary here to wait for completion of copying.
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
   }
 
   const auto num_points = vg_ptr_->generateSweepPoints(points_d_);
@@ -439,12 +448,14 @@ bool BEVFusionTRT::preProcess(
     return false;
   }
 
+  // Explicit synchronization is necessary as generateSweepPoints() is executed asynchronously.
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   auto num_voxels = static_cast<std::int64_t>(pre_ptr_->generateVoxels(
     points_d_.get(), num_points, voxel_features_d_.get(), voxel_coords_d_.get(),
     num_points_per_voxel_d_.get()));
 
+  // Explicit synchronization is necessary as generateVoxels() is executed asynchronously.
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   if (num_voxels < config_.min_num_voxels_) {

@@ -121,6 +121,8 @@ std::int64_t unique(
 
   thrust::sequence(policy, idx_ptr, idx_ptr + num_input_elements + 1, 0);
 
+  // Isn't it necessary to call cudaStreamSynchronize(stream)?
+
   std::int64_t * sorted_input = unique;
   std::int64_t * sorted_idx = thrust::raw_pointer_cast(idx_ptr) + 2 * num_input_elements + 1;
   std::int64_t * inv_loc_ptr = thrust::raw_pointer_cast(idx_ptr) + 3 * num_input_elements + 1;
@@ -142,11 +144,15 @@ std::int64_t unique(
   thrust::adjacent_difference(
     policy, sorted_input, sorted_input + num_input_elements, inv_loc_ptr, not_equal);
 
+  // Isn't it necessary to call cudaStreamSynchronize(stream)?
+
   cudaMemsetAsync(inv_loc_ptr, 0, sizeof(int64_t), stream);
 
   thrust::inclusive_scan(policy, inv_loc_ptr, inv_loc_ptr + num_input_elements, inv_loc_ptr);
+  // Isn't it necessary to call cudaStreamSynchronize(stream)?
   thrust::scatter(
     policy, inv_loc_ptr, inv_loc_ptr + num_input_elements, sorted_idx, inverse_indices);
+  // Isn't it necessary to call cudaStreamSynchronize(stream)?
 
   std::int64_t num_out;
 
@@ -155,12 +161,15 @@ std::int64_t unique(
     thrust::unique_by_key(policy, sorted_input, sorted_input + num_input_elements, range_ptr, equal)
       .first -
     sorted_input;
+  // Isn't it necessary to call cudaStreamSynchronize(stream)?
 
   cudaMemcpyAsync(
     range_ptr + num_out * sizeof(int64_t), &num_input_elements, sizeof(std::int64_t),
     cudaMemcpyHostToDevice, stream);
+  // Isn't it necessary to call cudaStreamSynchronize(stream)?
 
   thrust::adjacent_difference(policy, range_ptr + 1, range_ptr + num_out + 1, unique_counts);
+  // Isn't it necessary to call cudaStreamSynchronize(stream)?
 
   return num_out;
 }

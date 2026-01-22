@@ -30,6 +30,8 @@ cudaError_t argsort(
 
   thrust::sequence(thrust::cuda::par.on(stream), idx_ptr, idx_ptr + num_elements, 0);
 
+  // Isn't int necessary to call cudaStreamSynchronize(stream)?
+
   std::int64_t * input_sorted_d = thrust::raw_pointer_cast(idx_ptr) + num_elements;
 
   return cub::DeviceRadixSort::SortPairs(

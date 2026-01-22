@@ -147,6 +147,8 @@ PostProcessCUDA::PostProcessCUDA(const CenterPointConfig & config, cudaStream_t 
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     score_thresholds_d_ptr_.get(), config_.score_thresholds_.data(),
     config_.score_thresholds_.size() * sizeof(float), cudaMemcpyHostToDevice, stream_));
+  // For safety, wait for completion of copying.
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 }
 
 // cspell: ignore divup
@@ -170,20 +172,45 @@ cudaError_t PostProcessCUDA::generateDetectedBoxes3D_launch(
     config_.has_variance_, thrust::raw_pointer_cast(yaw_norm_thresholds_d.data()),
     thrust::raw_pointer_cast(boxes3d_d.data()));
 
+  // Though the following thrust::count_if() is executed on the same stream,
+  // its arguments are evaluated by the host CPU.
+  // Synchronization is necessary.
+  cudaStreamSynchronize(stream);
+
   // suppress by score
   const auto num_det_boxes3d = thrust::count_if(
-    thrust::device, boxes3d_d.begin(), boxes3d_d.end(),
+    // Executed on the stream to avoid using the default stream.
+    thrust::cuda::par.on(stream),
+    boxes3d_d.begin(), boxes3d_d.end(),
     is_score_greater(score_thresholds_d_ptr_.get()));
   if (num_det_boxes3d == 0) {
     return cudaGetLastError();
   }
+
+  cudaStreamSynchronize(stream);
+  // The stream has been synchronized on completion of thrust::count_if(). <- false?
   thrust::device_vector<Box3D> det_boxes3d_d(num_det_boxes3d);
   thrust::copy_if(
-    thrust::device, boxes3d_d.begin(), boxes3d_d.end(), det_boxes3d_d.begin(),
+    // Executed on the stream to avoid using the default stream.
+    thrust::cuda::par.on(stream),
+    boxes3d_d.begin(), boxes3d_d.end(), det_boxes3d_d.begin(),
     is_score_greater(score_thresholds_d_ptr_.get()));
 
+  // Though the following thrust::sort() is executed on the same stream,
+  // its arguments are evaluated by the host CPU.
+  // Explicit synchronization is necessary.
+  cudaStreamSynchronize(stream);
+
   // sort by score
-  thrust::sort(det_boxes3d_d.begin(), det_boxes3d_d.end(), score_greater());
+  thrust::sort(
+    // Executed on the stream to avoid using the default stream.
+    thrust::cuda::par.on(stream),
+    det_boxes3d_d.begin(), det_boxes3d_d.end(), score_greater());
+
+  // Though the following thrust::copy_if() is executed on the same stream,
+  // its arguments are evaluated by the host CPU.
+  // Explicit synchronization is necessary.
+  cudaStreamSynchronize(stream);
 
   // supress by NMS
   thrust::device_vector<bool> final_keep_mask_d(num_det_boxes3d);
@@ -192,13 +219,35 @@ cudaError_t PostProcessCUDA::generateDetectedBoxes3D_launch(
 
   thrust::device_vector<Box3D> final_det_boxes3d_d(num_final_det_boxes3d);
   thrust::copy_if(
-    thrust::device, det_boxes3d_d.begin(), det_boxes3d_d.end(), final_keep_mask_d.begin(),
+    // Executed on the stream to avoid using the default stream.
+    thrust::cuda::par.on(stream),
+    det_boxes3d_d.begin(), det_boxes3d_d.end(), final_keep_mask_d.begin(),
     final_det_boxes3d_d.begin(), is_kept());
 
-  // memcpy device to host
-  det_boxes3d.resize(num_final_det_boxes3d);
-  thrust::copy(final_det_boxes3d_d.begin(), final_det_boxes3d_d.end(), det_boxes3d.begin());
+  // Though the following thrust::copy() is executed on the same stream,
+  // its arguments are evaluated by the host CPU.
+  // Explicit synchronization is necessary.
+  cudaStreamSynchronize(stream);
 
+  // memcpy device to host
+  det_boxes3d.resize(num_final_det_boxes3d);  // Is this resizing necessary?
+#if 0
+  thrust::copy(
+    // Executed on the stream to avoid using the default stream.
+    // thrust::cuda::par.on(stream), <- This policy triggers segmentation fault!
+    final_det_boxes3d_d.begin(), final_det_boxes3d_d.end(), det_boxes3d.begin());
+#else  // 0
+  // Move from device to host on stream_ to avoid use of the default stream
+  const void* src_ptr = static_cast<const void*>(thrust::raw_pointer_cast(final_det_boxes3d_d.data()));
+  void* dst_ptr = static_cast<void*>(det_boxes3d.data());
+
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    dst_ptr, src_ptr,
+    final_det_boxes3d_d.size() * sizeof(Box3D), cudaMemcpyDeviceToHost, stream_));
+#endif  // 0
+
+  // Explicit synchronization is necessary.
+  cudaStreamSynchronize(stream);
   return cudaGetLastError();
 }
 

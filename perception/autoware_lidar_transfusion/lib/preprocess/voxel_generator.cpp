@@ -90,11 +90,14 @@ std::size_t VoxelGenerator::generateSweepPoints(
     CHECK_CUDA_ERROR(cudaMemcpyAsync(
       affine_past2current_d_.get(), affine_past2current.data(), AFF_MAT_SIZE * sizeof(float),
       cudaMemcpyHostToDevice, stream_));
+    // Explicit synchronization to wait for completion of cudaMemCopyAsync().
     CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
+    // Executed on stream_.
     pre_ptr_->generateSweepPoints_launch(
       reinterpret_cast<uint8_t *>(input_pointcloud_msg_ptr->data.get()), sweep_num_points,
       cloud_info_.point_step, time_lag, affine_past2current_d_.get(), points_d.get() + shift);
+    // Execution may not have completed.
     point_counter += sweep_num_points;
   }
 

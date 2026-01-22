@@ -40,14 +40,14 @@ CenterPointTRT::CenterPointTRT(
   const DensificationParam & densification_param, const CenterPointConfig & config)
 : config_(config)
 {
+  cudaStreamCreate(&stream_);
+
   vg_ptr_ = std::make_unique<VoxelGenerator>(densification_param, config_, stream_);
   pre_proc_ptr_ = std::make_unique<PreprocessCuda>(config_, stream_);
   post_proc_ptr_ = std::make_unique<PostProcessCUDA>(config_, stream_);
 
   initPtr();
   initTrt(encoder_param, head_param);
-
-  cudaStreamCreate(&stream_);
 }
 
 CenterPointTRT::~CenterPointTRT()
@@ -109,6 +109,8 @@ void CenterPointTRT::initPtr()
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     shuffle_indices_d_.get(), indexes.data(), config_.cloud_capacity_ * sizeof(unsigned int),
     cudaMemcpyHostToDevice, stream_));
+  // For safety, wait for completion of copying.
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 }
 
 void CenterPointTRT::initTrt(
@@ -182,6 +184,10 @@ bool CenterPointTRT::detect(
     encoder_in_features_d_.get(), 0, encoder_in_feature_size_ * sizeof(float), stream_));
   CHECK_CUDA_ERROR(
     cudaMemsetAsync(spatial_features_d_.get(), 0, spatial_features_size_ * sizeof(float), stream_));
+  // For safety, wait for completion of memory setting.
+  // encoder_in_features_d_ is referenced in preprocess().
+  // spatial_features_d_ is referenced in inference().
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   if (!preprocess(input_pointcloud_msg_ptr, tf_buffer)) {
     RCLCPP_WARN(
@@ -265,6 +271,9 @@ void CenterPointTRT::inference()
     config_.encoder_out_feature_size_, config_.grid_size_x_, config_.grid_size_y_,
     spatial_features_d_.get(), stream_));
 
+  // Is synchronization necessary here?
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));  // Will this fix?
+
   // head network
   std::vector<void *> head_tensors = {spatial_features_d_.get(), head_out_heatmap_d_.get(),
                                       head_out_offset_d_.get(),  head_out_z_d_.get(),
@@ -280,6 +289,11 @@ void CenterPointTRT::postProcess(std::vector<Box3D> & det_boxes3d)
   CHECK_CUDA_ERROR(post_proc_ptr_->generateDetectedBoxes3D_launch(
     head_out_heatmap_d_.get(), head_out_offset_d_.get(), head_out_z_d_.get(), head_out_dim_d_.get(),
     head_out_rot_d_.get(), head_out_vel_d_.get(), det_boxes3d, stream_));
+
+  // det_box3es3d is resized in generateDetectedBoxes3D_launch
+  // Explicit synchronization is necessary.
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+
   if (det_boxes3d.size() == 0) {
     RCLCPP_DEBUG_STREAM(rclcpp::get_logger(config_.logger_name_.c_str()), "No detected boxes.");
   }

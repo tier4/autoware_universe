@@ -110,9 +110,28 @@ std::size_t circleNMS(
   CHECK_CUDA_ERROR(
     circleNMS_launch(boxes3d, num_boxes3d, col_blocks, distance_threshold, mask_d, stream));
 
+  // Is this false?
+  // As the size of mask_d is constant,
+  // the following thrust::copy() on the same stream can be called without synchronization.
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
+
   // memcpy device to host
   thrust::host_vector<std::uint64_t> mask_h(mask_d.size());
-  thrust::copy(mask_d.begin(), mask_d.end(), mask_h.begin());
+#if 0
+  thrust::copy(
+    // Executed on the stream to avoid using the default stream.
+    // thrust::cuda::par.on(stream), <- This policy triggers segmentation fault!
+    mask_d.begin(), mask_d.end(), mask_h.begin());
+#else  // 0
+  const void* src_ptr = static_cast<const void*>(thrust::raw_pointer_cast(mask_d.data()));
+  void* dst_ptr = static_cast<void*>(mask_h.data());
+  // Move from device to host on stream_ to avoid use of the default stream
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    dst_ptr, src_ptr,
+    mask_d.size() * sizeof(std::uint64_t), cudaMemcpyDeviceToHost, stream));
+#endif  // 0
+
+  // Explicit synchronization to wait for finish of copying.
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
 
   // generate keep_mask
