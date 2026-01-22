@@ -68,6 +68,11 @@ private:
    */
   SteerOffsetEstimator estimator_;
 
+  /**
+   * @brief Current registered steering offset
+   */
+  double current_steering_offset_;
+
   // Subscribers
   /**
    * @brief Subscriber for pose
@@ -89,6 +94,11 @@ private:
    * @brief Publisher for steer offset covariance
    */
   rclcpp::Publisher<Float32Stamped>::SharedPtr pub_steer_offset_covariance_;
+
+  /**
+   * @brief Publisher for steer offset error
+   */
+  rclcpp::Publisher<Float32Stamped>::SharedPtr pub_steer_offset_error_;
 
   /**
    * @brief Publisher for steer offset estimation result

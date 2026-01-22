@@ -60,7 +60,14 @@ SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & n
   pub_steer_offset_ = this->create_publisher<Float32Stamped>("~/output/steering_offset", 1);
   pub_steer_offset_covariance_ =
     this->create_publisher<Float32Stamped>("~/output/steering_offset_covariance", 1);
+  pub_steer_offset_error_ =
+    this->create_publisher<Float32Stamped>("~/output/steering_offset_error", 1);
   pub_debug_info_ = this->create_publisher<StringStamped>("~/output/debug_info", 1);
+
+  // get current registered steering offset
+  auto initial_steer_offset_param_name =
+    this->declare_parameter<std::string>("initial_steer_offset_param_name");
+  current_steering_offset_ = this->declare_parameter<double>(initial_steer_offset_param_name);
 
   // Create timer
   auto update_hz = this->declare_parameter<double>("update_hz", 10.0);
@@ -112,6 +119,9 @@ void SteerOffsetEstimatorNode::publish_data(const SteerOffsetEstimationUpdated &
 
   pub_float(pub_steer_offset_, result.offset);
   pub_float(pub_steer_offset_covariance_, result.covariance);
+
+  const double offset_error = result.offset - current_steering_offset_;
+  pub_float(pub_steer_offset_error_, offset_error);
 
   autoware_internal_debug_msgs::msg::StringStamped debug_info;
   debug_info.stamp = this->now();
