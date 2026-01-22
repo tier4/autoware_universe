@@ -1,0 +1,115 @@
+/**:
+  ros__parameters:
+    # generate_parameter_library parameters
+    planning_frequency_hz: 10.0
+
+    path_length:
+      backward: 5.0
+      forward: 100.0
+
+    output_delta_arc_length: 0.5
+
+    enable_debug_path: true
+    enable_debug_trajectory: true
+
+    # Elastic Band Smoother
+    eb_smoother:
+      enable: true
+
+    # Velocity Smoother
+    velocity_smoother:
+      enable: true
+
+    # TrajectoryVelocityOptimizer plugin parameters
+    trajectory_velocity_optimizer:
+      nearest_dist_threshold_m: 1.5
+      nearest_yaw_threshold_deg: 60.0
+      target_pull_out_speed_mps: 1.0
+      target_pull_out_acc_mps2: 1.0
+      max_speed_mps: 8.33
+      max_lateral_accel_mps2: 1.5
+      set_engage_speed: true
+      limit_speed: true
+      limit_lateral_acceleration: false
+      smooth_velocities: true
+
+    # EBPathSmoother parameters (CommonParam, EgoNearestParam)
+    common:
+      output_delta_arc_length: 0.5
+      output_backward_traj_length: 5.0
+
+    elastic_band:
+      option:
+        enable_warm_start: true
+        enable_optimization_validation: false
+
+      common:
+        num_points: 100
+        delta_arc_length: 1.0
+
+      clearance:
+        num_joint_points: 3
+        clearance_for_fix: 0.0
+        clearance_for_joint: 0.1
+        clearance_for_smooth: 0.1
+
+      weight:
+        smooth_weight: 1.0
+        lat_error_weight: 0.001
+
+      qp:
+        max_iteration: 10000
+        eps_abs: 1.0e-7
+        eps_rel: 1.0e-7
+
+      validation:
+        max_error: 3.0
+
+    # EgoNearestParam for EB smoother
+    ego_nearest_dist_threshold: 3.0
+    ego_nearest_yaw_threshold: 1.046
+
+    # Replan parameters for EB smoother
+    replan:
+      enable: true
+      max_path_shape_around_ego_lat_dist: 2.0
+      max_path_shape_forward_lon_dist: 100.0
+      max_path_shape_forward_lat_dist: 0.2
+      max_ego_moving_dist: 5.0
+      max_goal_moving_dist: 15.0
+      max_delta_time_sec: 0.0
+
+    # SmootherBase parameters (required at top level for JerkFilteredSmoother)
+    normal:
+      max_acc: 1.0
+      min_acc: -0.5
+      max_jerk: 1.0
+      min_jerk: -0.5
+
+    stop_decel: 0.0
+    min_decel_for_lateral_acc_lim_filter: -2.5
+    min_curve_velocity: 2.74
+    decel_distance_before_curve: 3.5
+    decel_distance_after_curve: 2.0
+    resample_ds: 0.1
+    curvature_threshold: 0.02
+    curvature_calculation_distance: 5.0
+
+    lateral_acceleration_limits: [0.8, 0.8, 0.8, 0.8]
+    velocity_thresholds: [0.1, 0.3, 20.0, 30.0]
+    steering_angle_rate_limits: [57.0, 57.0, 57.0, 40.0]
+
+    max_trajectory_length: 200.0
+    min_trajectory_length: 150.0
+    resample_time: 2.0
+    dense_resample_dt: 0.2
+    dense_min_interval_distance: 0.1
+    sparse_resample_dt: 0.5
+    sparse_min_interval_distance: 2.0
+
+    # JerkFilteredSmoother parameters (required at top level)
+    jerk_weight: 10.0
+    over_v_weight: 100000.0
+    over_a_weight: 5000.0
+    over_j_weight: 2000.0
+    jerk_filter_ds: 0.1

@@ -1,0 +1,200 @@
+minimum_rule_based_planner:
+  planning_frequency_hz:
+    type: double
+    default_value: 10.0
+    validation:
+      gt<>: [0.0]
+
+  waypoint_group:
+    separation_threshold:
+      type: double
+      default_value: 1.0
+      description: maximum distance between waypoints to belong to same group [m]
+
+    interval_margin_ratio:
+      type: double
+      default_value: 10.0
+      description: ratio to expand interval bound of group according to lateral distance
+
+  smooth_goal_connection:
+    search_radius_range:
+      type: double
+      default_value: 7.5
+      description: search radius range for smooth goal connection [m]
+
+    pre_goal_offset:
+      type: double
+      default_value: 1.0
+      description: offset before goal for smooth connection [m]
+
+  # Parameters for lanelet matching (different from EB smoother's ego_nearest_* params)
+  lanelet_ego_nearest_dist_threshold:
+    type: double
+    default_value: 3.0
+    description: distance threshold for ego nearest lanelet search [m]
+
+  lanelet_ego_nearest_yaw_threshold:
+    type: double
+    default_value: 1.57
+    description: yaw threshold for ego nearest lanelet search [rad]
+
+  path_length:
+    backward:
+      type: double
+      default_value: 5.0
+      validation:
+        gt<>: [0.0]
+
+    forward:
+      type: double
+      default_value: 100.0
+      validation:
+        gt<>: [0.0]
+
+  output_delta_arc_length:
+    type: double
+    default_value: 0.5
+    description: delta arc length for output trajectory [m]
+    validation:
+      gt<>: [0.0]
+
+  enable_debug_path:
+    type: bool
+    default_value: true
+
+  enable_debug_trajectory:
+    type: bool
+    default_value: true
+
+  # Elastic Band Smoother Parameters
+  eb_smoother:
+    enable:
+      type: bool
+      default_value: true
+
+  # Velocity Smoother Parameters
+  velocity_smoother:
+    enable:
+      type: bool
+      default_value: true
+
+    # Base parameters
+    normal:
+      max_acc:
+        type: double
+        default_value: 1.0
+      min_acc:
+        type: double
+        default_value: -0.5
+      max_jerk:
+        type: double
+        default_value: 1.0
+      min_jerk:
+        type: double
+        default_value: -0.5
+
+    stop_decel:
+      type: double
+      default_value: 0.0
+
+    # Engage parameters (for starting from stop)
+    engage_velocity:
+      type: double
+      default_value: 0.25
+
+    engage_acceleration:
+      type: double
+      default_value: 0.1
+
+    engage_exit_ratio:
+      type: double
+      default_value: 0.5
+
+    min_decel_for_lateral_acc_lim_filter:
+      type: double
+      default_value: -2.5
+
+    min_curve_velocity:
+      type: double
+      default_value: 2.74
+
+    decel_distance_before_curve:
+      type: double
+      default_value: 3.5
+
+    decel_distance_after_curve:
+      type: double
+      default_value: 2.0
+
+    resample_ds:
+      type: double
+      default_value: 0.1
+
+    curvature_threshold:
+      type: double
+      default_value: 0.02
+
+    curvature_calculation_distance:
+      type: double
+      default_value: 5.0
+
+    lateral_acceleration_limits:
+      type: double_array
+      default_value: [0.8, 0.8, 0.8, 0.8]
+
+    velocity_thresholds:
+      type: double_array
+      default_value: [0.1, 0.3, 20.0, 30.0]
+
+    steering_angle_rate_limits:
+      type: double_array
+      default_value: [57.0, 57.0, 57.0, 40.0]
+
+    max_trajectory_length:
+      type: double
+      default_value: 200.0
+
+    min_trajectory_length:
+      type: double
+      default_value: 150.0
+
+    resample_time:
+      type: double
+      default_value: 2.0
+
+    dense_resample_dt:
+      type: double
+      default_value: 0.2
+
+    dense_min_interval_distance:
+      type: double
+      default_value: 0.1
+
+    sparse_resample_dt:
+      type: double
+      default_value: 0.5
+
+    sparse_min_interval_distance:
+      type: double
+      default_value: 2.0
+
+    # JerkFilteredSmoother specific
+    jerk_weight:
+      type: double
+      default_value: 10.0
+
+    over_v_weight:
+      type: double
+      default_value: 100000.0
+
+    over_a_weight:
+      type: double
+      default_value: 5000.0
+
+    over_j_weight:
+      type: double
+      default_value: 2000.0
+
+    jerk_filter_ds:
+      type: double
+      default_value: 0.1
