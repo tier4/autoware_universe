@@ -73,11 +73,13 @@ ShapeEstimationNode::ShapeEstimationNode(const rclcpp::NodeOptions & node_option
 #endif
 
   processing_time_publisher_ =
-    std::make_unique<autoware_utils::DebugPublisher>(this, "shape_estimation");
+    std::make_unique<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>(
+      this, "shape_estimation");
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
   stop_watch_ptr_->tic("cyclic_time");
   stop_watch_ptr_->tic("processing_time");
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  published_time_publisher_ =
+    std::make_unique<autoware_utils_debug::BasicPublishedTimePublisher<agnocast::Node>>(this);
 }
 
 static autoware_perception_msgs::msg::ObjectClassification::_label_type get_label(
@@ -96,17 +98,34 @@ static bool label_is_vehicle(
          Label::TRAILER == label;
 }
 
-void ShapeEstimationNode::callback(const DetectedObjectsWithFeature::ConstSharedPtr input_msg)
+void ShapeEstimationNode::callback(
+  const agnocast::ipc_shared_ptr<DetectedObjectsWithFeature> & input_msg)
 {
+  RCLCPP_INFO(
+    this->get_logger(),
+    "\n======================================================\n"
+    "[ShapeEstimationNode] CALLBACK TRIGGERED (Agnocast)\n"
+    "  Input objects: %zu\n"
+    "  Frame ID: %s\n"
+    "  Timestamp: %d.%09d\n"
+    "======================================================",
+    input_msg->feature_objects.size(),
+    input_msg->header.frame_id.c_str(),
+    input_msg->header.stamp.sec,
+    input_msg->header.stamp.nanosec);
+
   stop_watch_ptr_->toc("processing_time", true);
   // Guard
   if (pub_->get_subscription_count() < 1) {
+    RCLCPP_WARN(
+      this->get_logger(),
+      "[ShapeEstimationNode] No subscribers on output topic, skipping publish");
     return;
   }
 
   // Create output msg
-  DetectedObjectsWithFeature output_msg;
-  output_msg.header = input_msg->header;
+  auto output_msg = pub_->borrow_loaned_message();
+  output_msg->header = input_msg->header;
 
   // Create ml model input batch
   DetectedObjectsWithFeature input_trt_batch;
@@ -155,13 +174,13 @@ void ShapeEstimationNode::callback(const DetectedObjectsWithFeature::ConstShared
     if (!fix_filtered_objects_label_to_unknown_ && !estimated_success) {
       continue;
     }
-    output_msg.feature_objects.push_back(feature_object);
+    output_msg->feature_objects.push_back(feature_object);
     if (!estimated_success) {
-      output_msg.feature_objects.back().object.classification.front().label = Label::UNKNOWN;
+      output_msg->feature_objects.back().object.classification.front().label = Label::UNKNOWN;
     }
 
-    output_msg.feature_objects.back().object.shape = shape;
-    output_msg.feature_objects.back().object.kinematics.pose_with_covariance.pose = pose;
+    output_msg->feature_objects.back().object.shape = shape;
+    output_msg->feature_objects.back().object.kinematics.pose_with_covariance.pose = pose;
   }
 
 #ifdef USE_CUDA
@@ -170,17 +189,34 @@ void ShapeEstimationNode::callback(const DetectedObjectsWithFeature::ConstShared
     tensorrt_shape_estimator_->inference(input_trt_batch, output_model);
   }
   for (auto & feature_object : output_model.feature_objects) {
-    output_msg.feature_objects.push_back(feature_object);
+    output_msg->feature_objects.push_back(feature_object);
   }
 #endif
 
   // Publish
-  pub_->publish(output_msg);
-  published_time_publisher_->publish_if_subscribed(pub_, output_msg.header.stamp);
+  const auto header_stamp = output_msg->header.stamp;
+  const size_t output_size = output_msg->feature_objects.size();
+  pub_->publish(std::move(output_msg));
+
+  const double cyclic_time = stop_watch_ptr_->toc("cyclic_time", true);
+  const double processing_time = stop_watch_ptr_->toc("processing_time", true);
+
+  published_time_publisher_->publish_if_subscribed<DetectedObjectsWithFeature>(pub_, header_stamp);
   processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "debug/cyclic_time_ms", stop_watch_ptr_->toc("cyclic_time", true));
+    "debug/cyclic_time_ms", cyclic_time);
   processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "debug/processing_time_ms", stop_watch_ptr_->toc("processing_time", true));
+    "debug/processing_time_ms", processing_time);
+
+  RCLCPP_INFO(
+    this->get_logger(),
+    "\n------------------------------------------------------\n"
+    "[ShapeEstimationNode] PUBLISH COMPLETE (Agnocast)\n"
+    "  Output objects: %zu\n"
+    "  Cyclic time: %.2f ms\n"
+    "  Processing time: %.2f ms\n"
+    "  Topic: objects\n"
+    "------------------------------------------------------",
+    output_size, cyclic_time, processing_time);
 }
 }  // namespace autoware::shape_estimation
 

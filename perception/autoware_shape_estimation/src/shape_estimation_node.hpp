@@ -23,10 +23,10 @@
 #include <autoware/tensorrt_common/tensorrt_common.hpp>
 #endif
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
 #include <tier4_perception_msgs/msg/detected_objects_with_feature.hpp>
@@ -38,19 +38,21 @@ namespace autoware::shape_estimation
 
 using autoware_perception_msgs::msg::DetectedObjects;
 using tier4_perception_msgs::msg::DetectedObjectsWithFeature;
-class ShapeEstimationNode : public rclcpp::Node
+class ShapeEstimationNode : public agnocast::Node
 {
 private:
   // ros
-  rclcpp::Publisher<DetectedObjectsWithFeature>::SharedPtr pub_;
-  rclcpp::Subscription<DetectedObjectsWithFeature>::SharedPtr sub_;
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  agnocast::Publisher<DetectedObjectsWithFeature>::SharedPtr pub_;
+  agnocast::Subscription<DetectedObjectsWithFeature>::SharedPtr sub_;
+  std::unique_ptr<autoware_utils_debug::BasicPublishedTimePublisher<agnocast::Node>>
+    published_time_publisher_;
 
   // debug publisher
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
-  std::unique_ptr<autoware_utils::DebugPublisher> processing_time_publisher_;
+  std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>
+    processing_time_publisher_;
 
-  void callback(const DetectedObjectsWithFeature::ConstSharedPtr input_msg);
+  void callback(const agnocast::ipc_shared_ptr<DetectedObjectsWithFeature> & input_msg);
 
   std::unique_ptr<ShapeEstimator> estimator_;
   bool use_vehicle_reference_yaw_;
