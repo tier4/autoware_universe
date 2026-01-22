@@ -411,4 +411,12 @@ void print_path_with_lane_id_details(const PathWithLaneId & path, const std::str
   std::cout << "=================================" << std::endl;
 }
 
+std::pair<double, double> calc_start_and_end_shift_length(
+  const lanelet::ConstLanelets & pull_out_lanes, const Pose & start_pose, const Pose & end_pose)
+{
+  double start_shift_length =
+    lanelet::utils::getArcCoordinates(pull_out_lanes, start_pose).distance;
+  double finish_shift_length = lanelet::utils::getArcCoordinates(pull_out_lanes, end_pose).distance;
+  return {start_shift_length, finish_shift_length};
+}
 }  // namespace autoware::behavior_path_planner::start_planner_utils
