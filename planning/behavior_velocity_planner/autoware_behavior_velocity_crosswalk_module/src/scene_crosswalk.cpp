@@ -1569,9 +1569,6 @@ void CrosswalkModule::planCreeping(
   const double creep_velocity = 3.0 / 3.6;  // 3km/h
 
   const bool has_moving_object = [&]() {
-    if (!nearest_stop_factor.has_value()) {
-      return false;
-    }
     const double moving_threshold = planner_param_.stop_object_velocity;
     const auto & objects = planner_data_->predicted_objects->objects;
     for (const auto & uuid : nearest_stop_factor->target_object_ids) {
