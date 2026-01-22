@@ -5,7 +5,6 @@
   <arg name="mission_planner_param_path"/>
   <arg name="launch_remaining_distance_time_calculator" default="false"/>
 
-
   <!--
     The /awapi/awapi_awiv_adapter node tries to retrieve the parameter /max_velocity from the /planning/scenario_planning/velocity_smoother node.
     https://github.com/tier4/tier4_ad_api_adaptor/blob/v0.48.0/awapi_awiv_adapter/src/awapi_awiv_adapter_core.cpp#L32-L39
@@ -17,7 +16,7 @@
     https://github.com/tier4/tier4_ad_api_adaptor/blob/v0.48.0/awapi_awiv_adapter/launch/awapi_awiv_adapter.launch.xml#L66-L67
   -->
   <node pkg="demo_nodes_cpp" exec="parameter_blackboard" name="velocity_smoother" namespace="/planning/scenario_planning" output="screen">
-    <param name="max_velocity" value="16.6" />
+    <param name="max_velocity" value="16.6"/>
   </node>
 
   <group>
@@ -50,16 +49,49 @@
           </include>
           <include file="$(find-pkg-share autoware_trajectory_optimizer)/launch/trajectory_optimizer.launch.xml">
             <arg name="input_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
-            <arg name="output_traj" value="/planning/trajectory"/>
+            <arg name="output_traj" value="/planning/generator/trajectory_optimizer/debug/trajectory"/>
             <arg name="output_trajectories" value="/planning/generator/trajectory_optimizer/candidate_trajectories"/>
           </include>
         </group>
       </group>
 
       <!-- trajectory selector -->
-      <!-- <group>
+      <group>
         <push-ros-namespace namespace="trajectory_selector"/>
-      </group> -->
+
+        <!-- safety filter -->
+        <include file="$(find-pkg-share autoware_trajectory_safety_filter)/launch/trajectory_safety_filter.launch.xml">
+          <arg name="input_trajectories" value="/planning/generator/trajectory_optimizer/candidate_trajectories"/>
+          <arg name="output_trajectories" value="/planning/trajectory_selector/safety_filter/candidate_trajectories"/>
+          <arg name="input_vector_map" value="/map/vector_map"/>
+          <arg name="input_odometry" value="/localization/kinematic_state"/>
+          <arg name="input_objects" value="/perception/object_recognition/objects"/>
+        </include>
+
+        <!-- traffic rule filter -->
+        <include file="$(find-pkg-share autoware_trajectory_traffic_rule_filter)/launch/trajectory_traffic_rule_filter.launch.xml">
+          <arg name="input_trajectories" value="/planning/trajectory_selector/safety_filter/candidate_trajectories"/>
+          <arg name="output_trajectories" value="/planning/trajectory_selector/traffic_rule_filter/candidate_trajectories"/>
+          <arg name="input_map" value="/map/vector_map"/>
+          <arg name="input_traffic_signals" value="/perception/traffic_light_recognition/traffic_signals"/>
+        </include>
+
+        <!-- ranker -->
+        <include file="$(find-pkg-share autoware_trajectory_ranker)/launch/trajectory_ranker.launch.xml">
+          <arg name="input_trajectories" value="/planning/trajectory_selector/traffic_rule_filter/candidate_trajectories"/>
+          <arg name="output_trajectories" value="/planning/trajectory_selector/ranker/scored_trajectories"/>
+          <arg name="input_route" value="/planning/mission_planning/route"/>
+          <arg name="input_vector_map" value="/map/vector_map"/>
+          <arg name="input_odometry" value="/localization/kinematic_state"/>
+          <arg name="input_objects" value="/perception/object_recognition/objects"/>
+        </include>
+
+        <!-- adapter -->
+        <include file="$(find-pkg-share autoware_trajectory_adapter)/launch/trajectory_adapter.launch.xml">
+          <arg name="input_trajectories" value="/planning/trajectory_selector/ranker/scored_trajectories"/>
+          <arg name="output_trajectory" value="/planning/trajectory"/>
+        </include>
+      </group>
     </group>
 
     <!-- mission remaining distance and time calculator -->
