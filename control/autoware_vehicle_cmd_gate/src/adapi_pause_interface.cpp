@@ -56,6 +56,11 @@ void AdapiPauseInterface::publish()
 void AdapiPauseInterface::update(const Control & control)
 {
   is_start_requested_ = eps < std::abs(control.longitudinal.velocity);
+  
+  // Automatically unpause when start is requested
+  if (is_start_requested_ && is_paused_) {
+    is_paused_ = false;
+  }
 }
 
 void AdapiPauseInterface::on_pause(
