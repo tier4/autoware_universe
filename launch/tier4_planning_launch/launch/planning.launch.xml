@@ -47,8 +47,14 @@
             <arg name="output_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
             <arg name="output_turn_indicators" value="/planning/turn_indicators_cmd"/>
           </include>
+          <include file="$(find-pkg-share autoware_trajectory_modifier)/launch/trajectory_modifier.launch.xml">
+            <arg name="input_candidate_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
+            <arg name="output_candidate_trajectories" value="/planning/generator/diffusion_planner/modified_candidate_trajectories"/>
+            <arg name="input_odometry" value="/localization/kinematic_state"/>
+            <arg name="input_acceleration" value="/localization/acceleration"/>
+          </include>
           <include file="$(find-pkg-share autoware_trajectory_optimizer)/launch/trajectory_optimizer.launch.xml">
-            <arg name="input_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
+            <arg name="input_trajectories" value="/planning/generator/diffusion_planner/modified_candidate_trajectories"/>
             <arg name="output_traj" value="/planning/generator/trajectory_optimizer/debug/trajectory"/>
             <arg name="output_trajectories" value="/planning/generator/trajectory_optimizer/candidate_trajectories"/>
           </include>
@@ -58,8 +64,6 @@
       <!-- trajectory selector -->
       <group>
         <push-ros-namespace namespace="trajectory_selector"/>
-
-        <!-- safety filter -->
         <include file="$(find-pkg-share autoware_trajectory_safety_filter)/launch/trajectory_safety_filter.launch.xml">
           <arg name="input_trajectories" value="/planning/generator/trajectory_optimizer/candidate_trajectories"/>
           <arg name="output_trajectories" value="/planning/trajectory_selector/safety_filter/candidate_trajectories"/>
@@ -67,16 +71,12 @@
           <arg name="input_odometry" value="/localization/kinematic_state"/>
           <arg name="input_objects" value="/perception/object_recognition/objects"/>
         </include>
-
-        <!-- traffic rule filter -->
         <include file="$(find-pkg-share autoware_trajectory_traffic_rule_filter)/launch/trajectory_traffic_rule_filter.launch.xml">
           <arg name="input_trajectories" value="/planning/trajectory_selector/safety_filter/candidate_trajectories"/>
           <arg name="output_trajectories" value="/planning/trajectory_selector/traffic_rule_filter/candidate_trajectories"/>
           <arg name="input_map" value="/map/vector_map"/>
           <arg name="input_traffic_signals" value="/perception/traffic_light_recognition/traffic_signals"/>
         </include>
-
-        <!-- ranker -->
         <include file="$(find-pkg-share autoware_trajectory_ranker)/launch/trajectory_ranker.launch.xml">
           <arg name="input_trajectories" value="/planning/trajectory_selector/traffic_rule_filter/candidate_trajectories"/>
           <arg name="output_trajectories" value="/planning/trajectory_selector/ranker/scored_trajectories"/>
@@ -85,8 +85,6 @@
           <arg name="input_odometry" value="/localization/kinematic_state"/>
           <arg name="input_objects" value="/perception/object_recognition/objects"/>
         </include>
-
-        <!-- adapter -->
         <include file="$(find-pkg-share autoware_trajectory_adapter)/launch/trajectory_adapter.launch.xml">
           <arg name="input_trajectories" value="/planning/trajectory_selector/ranker/scored_trajectories"/>
           <arg name="output_trajectory" value="/planning/trajectory"/>
