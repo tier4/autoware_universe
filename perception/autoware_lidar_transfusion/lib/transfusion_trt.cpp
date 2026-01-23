@@ -71,18 +71,18 @@ void TransfusionTRT::initPtr()
   cls_size_ = config_.num_proposals_ * config_.num_classes_;
   box_size_ = config_.num_proposals_ * config_.num_box_values_;
   dir_cls_size_ = config_.num_proposals_ * 2;  // x, y
-  cls_output_d_ = cuda::make_unique<float[]>(cls_size_);
-  box_output_d_ = cuda::make_unique<float[]>(box_size_);
-  dir_cls_output_d_ = cuda::make_unique<float[]>(dir_cls_size_);
+  cls_output_d_ = cuda::make_unique_async<float[]>(cls_size_, stream_);
+  box_output_d_ = cuda::make_unique_async<float[]>(box_size_, stream_);
+  dir_cls_output_d_ = cuda::make_unique_async<float[]>(dir_cls_size_, stream_);
 
-  params_input_d_ = cuda::make_unique<unsigned int>();
-  voxel_features_d_ = cuda::make_unique<float[]>(voxel_features_size_);
-  voxel_num_d_ = cuda::make_unique<unsigned int[]>(voxel_num_size_);
-  voxel_idxs_d_ = cuda::make_unique<unsigned int[]>(voxel_idxs_size_);
-  points_d_ = cuda::make_unique<float[]>(config_.cloud_capacity_ * config_.num_point_feature_size_);
+  params_input_d_ = cuda::make_unique_async<unsigned int>(stream_);
+  voxel_features_d_ = cuda::make_unique_async<float[]>(voxel_features_size_, stream_);
+  voxel_num_d_ = cuda::make_unique_async<unsigned int[]>(voxel_num_size_, stream_);
+  voxel_idxs_d_ = cuda::make_unique_async<unsigned int[]>(voxel_idxs_size_, stream_);
+  points_d_ = cuda::make_unique_async<float[]>(config_.cloud_capacity_ * config_.num_point_feature_size_, stream_);
   points_aux_d_ =
-    cuda::make_unique<float[]>(config_.cloud_capacity_ * config_.num_point_feature_size_);
-  shuffle_indices_d_ = cuda::make_unique<unsigned int[]>(config_.cloud_capacity_);
+    cuda::make_unique_async<float[]>(config_.cloud_capacity_ * config_.num_point_feature_size_, stream_);
+  shuffle_indices_d_ = cuda::make_unique_async<unsigned int[]>(config_.cloud_capacity_, stream_);
 
   std::vector<unsigned int> indexes(config_.cloud_capacity_);
   std::iota(indexes.begin(), indexes.end(), 0);

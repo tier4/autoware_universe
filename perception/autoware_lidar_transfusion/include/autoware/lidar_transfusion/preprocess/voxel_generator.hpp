@@ -50,7 +50,7 @@ public:
     cudaStream_t & stream);
   std::size_t generateSweepPoints(
     const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & msg_ptr,
-    cuda::unique_ptr<float[]> & points_d);
+    cuda::async_unique_ptr<float[]> & points_d);
   bool enqueuePointCloud(
     const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & msg_ptr,
     const tf2_ros::Buffer & tf_buffer);
@@ -63,8 +63,8 @@ private:
   std::unique_ptr<PointCloudDensification> pd_ptr_{nullptr};
   std::unique_ptr<PreprocessCuda> pre_ptr_{nullptr};
   TransfusionConfig config_;
-  cuda::unique_ptr<unsigned char[]> cloud_data_d_{nullptr};
-  cuda::unique_ptr<float[]> affine_past2current_d_{nullptr};
+  cuda::async_unique_ptr<unsigned char[]> cloud_data_d_{nullptr};
+  cuda::async_unique_ptr<float[]> affine_past2current_d_{nullptr};
   std::vector<float> points_;
   cudaStream_t stream_;
   CloudInfo cloud_info_;

@@ -89,6 +89,101 @@ cuda::unique_ptr<T> make_unique()
   return cuda::unique_ptr<T>{p};
 }
 
+// #include <iostream>
+// #include <memory>
+// #include <stdexcept>
+// #include <cuda_runtime.h>
+
+/**
+ * @brief 非同期解放を行うカスタムデリータ
+ */
+struct CudaAsyncDeleter {
+    cudaStream_t stream = nullptr;
+
+    CudaAsyncDeleter() = default;
+/*
+    CudaAsyncDeleter() = delete;
+    CudaAsyncDeleter(const CudaAsyncDeleter&) = delete;
+    CudaAsyncDeleter& operator=(const CudaAsyncDeleter&) = delete;
+    CudaAsyncDeleter(CudaAsyncDeleter&&) noexcept = default;
+    CudaAsyncDeleter& operator=(CudaAsyncDeleter&&) noexcept = default;
+*/
+
+    explicit CudaAsyncDeleter(cudaStream_t s) : stream(s) {}
+
+    void operator()(void* ptr) const {
+        if (ptr) {
+            // cudaFreeAsync は単一オブジェクトでも配列でも共通
+            cudaFreeAsync(ptr, stream);
+        }
+    }
+};
+
+/**
+ * @brief デバイス非同期メモリ管理用 unique_ptr
+ */
+template <typename T>
+using async_unique_ptr = std::unique_ptr<T, CudaAsyncDeleter>;
+
+/**
+ * @brief 単一オブジェクト用 (make_unique_async<T>(stream))
+ */
+template <typename T>
+typename std::enable_if<!std::is_array<T>::value, async_unique_ptr<T>>::type
+make_unique_async(cudaStream_t stream) {
+    T* raw_ptr = nullptr;
+    cudaError_t err = cudaMallocAsync(reinterpret_cast<void**>(&raw_ptr), sizeof(T), stream);
+
+    if (err != cudaSuccess) {
+        throw std::runtime_error(std::string("CUDA Alloc Failed: ") + cudaGetErrorString(err));
+    }
+    return async_unique_ptr<T>(raw_ptr, CudaAsyncDeleter(stream));
+}
+
+/**
+ * @brief 配列用 (make_unique_async<T[]>(count, stream))
+ */
+template <typename T>
+typename std::enable_if<std::is_array<T>::value, async_unique_ptr<T>>::type
+make_unique_async(size_t count, cudaStream_t stream) {
+    using ElementType = typename std::remove_extent<T>::type;
+    ElementType* raw_ptr = nullptr;
+
+    // 要素数 * 型サイズ で確保
+    cudaError_t err = cudaMallocAsync(reinterpret_cast<void**>(&raw_ptr), sizeof(ElementType) * count, stream);
+
+    if (err != cudaSuccess) {
+        throw std::runtime_error(std::string("CUDA Array Alloc Failed: ") + cudaGetErrorString(err));
+    }
+    return async_unique_ptr<T>(raw_ptr, CudaAsyncDeleter(stream));
+}
+
+// --- 使用例 ---
+/*
+int main() {
+    cudaStream_t stream;
+    cudaStreamCreate(&stream);
+
+    try {
+        // 1. 単一オブジェクトの確保
+        auto d_single = make_unique_async<float>(stream);
+
+        // 2. 配列の確保 (例: float[100])
+        size_t n = 100;
+        auto d_array = make_unique_async<float[]>(n, stream);
+
+        // d_array[5] = 1.0f; // ホストからのアクセスは不可 (Device Memoryのため)
+
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << std::endl;
+    }
+
+    cudaStreamSynchronize(stream);
+    cudaStreamDestroy(stream);
+    return 0;
+}
+*/
+
 constexpr std::size_t CUDA_ALIGN = 256;
 
 template <typename T>

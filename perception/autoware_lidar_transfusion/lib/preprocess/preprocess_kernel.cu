@@ -43,8 +43,8 @@ PreprocessCuda::PreprocessCuda(const TransfusionConfig & config, cudaStream_t & 
   voxels_size_ = config_.grid_z_size_ * config_.grid_y_size_ * config_.grid_x_size_ *
                    config_.max_num_points_per_pillar_ * config_.num_point_feature_size_ +
                  1;
-  mask_ = cuda::make_unique<unsigned int[]>(mask_size_);
-  voxels_ = cuda::make_unique<float[]>(voxels_size_);
+  mask_ = cuda::make_unique_async<unsigned int[]>(mask_size_, stream);
+  voxels_ = cuda::make_unique_async<float[]>(voxels_size_, stream);
 }
 
 __global__ void generateSweepPoints_kernel(

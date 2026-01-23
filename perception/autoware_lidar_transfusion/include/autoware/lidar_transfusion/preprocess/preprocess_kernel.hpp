@@ -67,8 +67,8 @@ public:
 private:
   TransfusionConfig config_;
   cudaStream_t stream_;
-  cuda::unique_ptr<unsigned int[]> mask_{nullptr};
-  cuda::unique_ptr<float[]> voxels_{nullptr};
+  cuda::async_unique_ptr<unsigned int[]> mask_{nullptr};
+  cuda::async_unique_ptr<float[]> voxels_{nullptr};
   unsigned int mask_size_;
   unsigned int voxels_size_;
 };

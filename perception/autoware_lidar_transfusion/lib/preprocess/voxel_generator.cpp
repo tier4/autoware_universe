@@ -33,8 +33,8 @@ VoxelGenerator::VoxelGenerator(
 {
   pd_ptr_ = std::make_unique<PointCloudDensification>(densification_param);
   pre_ptr_ = std::make_unique<PreprocessCuda>(config_, stream_);
-  cloud_data_d_ = cuda::make_unique<unsigned char[]>(config_.cloud_capacity_ * MAX_CLOUD_STEP_SIZE);
-  affine_past2current_d_ = cuda::make_unique<float[]>(AFF_MAT_SIZE);
+  cloud_data_d_ = cuda::make_unique_async<unsigned char[]>(config_.cloud_capacity_ * MAX_CLOUD_STEP_SIZE, stream);
+  affine_past2current_d_ = cuda::make_unique_async<float[]>(AFF_MAT_SIZE, stream);
 }
 
 bool VoxelGenerator::enqueuePointCloud(
@@ -46,7 +46,7 @@ bool VoxelGenerator::enqueuePointCloud(
 
 std::size_t VoxelGenerator::generateSweepPoints(
   const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & msg_ptr,
-  cuda::unique_ptr<float[]> & points_d)
+  cuda::async_unique_ptr<float[]> & points_d)
 {
   if (!is_initialized_) {
     initCloudInfo(msg_ptr);
