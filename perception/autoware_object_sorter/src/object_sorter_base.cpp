@@ -30,7 +30,9 @@ using autoware_perception_msgs::msg::DetectedObjects;
 template <typename ObjsMsgType>
 ObjectSorterBase<ObjsMsgType>::ObjectSorterBase(
   const std::string & node_name, const rclcpp::NodeOptions & node_options)
-: Node(node_name, node_options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
+: agnocast::Node(node_name, node_options),
+  tf_buffer_(this->get_clock()),
+  tf_listener_(tf_buffer_, *this)
 {
   // Node Parameter
   range_calc_frame_id_ = declare_parameter<std::string>("range_calc_frame_id");
@@ -107,15 +109,15 @@ void ObjectSorterBase<ObjsMsgType>::setupSortTarget(bool use_distance_thresholdi
 
 template <typename ObjsMsgType>
 void ObjectSorterBase<ObjsMsgType>::objectCallback(
-  const typename ObjsMsgType::ConstSharedPtr input_msg)
+  const agnocast::ipc_shared_ptr<ObjsMsgType> & input_msg)
 {
   // Guard
   if (pub_output_objects_->get_subscription_count() < 1) {
     return;
   }
 
-  ObjsMsgType output_objects;
-  output_objects.header = input_msg->header;
+  auto output_objects = pub_output_objects_->borrow_loaned_message();
+  output_objects->header = input_msg->header;
 
   double tx;
   double ty;
@@ -175,11 +177,11 @@ void ObjectSorterBase<ObjsMsgType>::objectCallback(
       }
     }
 
-    output_objects.objects.push_back(object);
+    output_objects->objects.push_back(object);
   }
 
   // Publish
-  pub_output_objects_->publish(output_objects);
+  pub_output_objects_->publish(std::move(output_objects));
 }
 
 // Explicit instantiation

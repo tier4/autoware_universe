@@ -5,6 +5,9 @@ project(autoware_object_sorter)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 # Targets
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/object_sorter_base.cpp
@@ -12,14 +15,24 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   src/tracked_object_sorter_node.cpp
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN "autoware::object_sorter::DetectedObjectSorterNode"
-  EXECUTABLE detected_object_sorter_node
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+ament_target_dependencies(${PROJECT_NAME}
+  agnocastlib
+)
+
+agnocast_components_register_node(${PROJECT_NAME}
+  PLUGIN "autoware::object_sorter::DetectedObjectSorterNode"
+  EXECUTABLE detected_object_sorter_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+)
+
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::object_sorter::TrackedObjectSorterNode"
   EXECUTABLE tracked_object_sorter_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
 )
 
 # Tests

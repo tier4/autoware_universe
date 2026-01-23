@@ -17,8 +17,6 @@
 
 #include "object_sorter_base.hpp"
 
-#include <rclcpp/rclcpp.hpp>
-
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
 
 namespace autoware::object_sorter

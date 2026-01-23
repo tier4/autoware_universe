@@ -15,14 +15,13 @@
 #ifndef OBJECT_SORTER_BASE_HPP_
 #define OBJECT_SORTER_BASE_HPP_
 
-#include "rclcpp/rclcpp.hpp"
+#include "agnocast/agnocast.hpp"
+#include "agnocast/node/tf2/buffer.hpp"
+#include "agnocast/node/tf2/transform_listener.hpp"
 
 #include <autoware_utils_geometry/geometry.hpp>
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <string>
 #include <unordered_map>
@@ -33,7 +32,7 @@ namespace autoware::object_sorter
 using Label = autoware_perception_msgs::msg::ObjectClassification;
 
 template <typename ObjsMsgType>
-class ObjectSorterBase : public rclcpp::Node
+class ObjectSorterBase : public agnocast::Node
 {
 public:
   explicit ObjectSorterBase(
@@ -60,18 +59,18 @@ public:
 
 private:
   void setupSortTarget(bool use_distance_thresholding);
-  void objectCallback(const typename ObjsMsgType::ConstSharedPtr input_msg);
+  void objectCallback(const agnocast::ipc_shared_ptr<ObjsMsgType> & input_msg);
   void splitByVelocity(const ObjsMsgType & input_object);
   void splitByRange(const ObjsMsgType & input_object);
 
   // Subscriber
-  typename rclcpp::Subscription<ObjsMsgType>::SharedPtr sub_objects_{};
+  typename agnocast::Subscription<ObjsMsgType>::SharedPtr sub_objects_{};
 
   // Publisher
-  typename rclcpp::Publisher<ObjsMsgType>::SharedPtr pub_output_objects_{};
+  typename agnocast::Publisher<ObjsMsgType>::SharedPtr pub_output_objects_{};
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  agnocast::Buffer tf_buffer_;
+  agnocast::TransformListener tf_listener_;
 
   // Parameter
   std::string range_calc_frame_id_;
