@@ -16,16 +16,16 @@
 #define LOW_INTENSITY_CLUSTER_FILTER_NODE_HPP_
 
 #include "autoware/detected_object_validation/utils/utils.hpp"
-#include "autoware_utils/ros/debug_publisher.hpp"
 #include "autoware_utils/system/stop_watch.hpp"
 
 #include <Eigen/Eigen>
-#include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/transform_listener.hpp>
+#include <autoware_utils_debug/debug_publisher.hpp>
 
 #include "tier4_perception_msgs/msg/detected_objects_with_feature.hpp"
 
 #include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <string>
@@ -33,22 +33,23 @@
 namespace autoware::low_intensity_cluster_filter
 {
 
-class LowIntensityClusterFilter : public rclcpp::Node
+class LowIntensityClusterFilter : public agnocast::Node
 {
 public:
   explicit LowIntensityClusterFilter(const rclcpp::NodeOptions & node_options);
 
 private:
   void objectCallback(
-    const tier4_perception_msgs::msg::DetectedObjectsWithFeature::ConstSharedPtr input_msg);
+    agnocast::ipc_shared_ptr<tier4_perception_msgs::msg::DetectedObjectsWithFeature> && input_msg);
   bool isValidatedCluster(const sensor_msgs::msg::PointCloud2 & cluster);
 
-  rclcpp::Publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr object_pub_;
-  rclcpp::Subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr
+  agnocast::Publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr
+    object_pub_;
+  agnocast::Subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr
     object_sub_;
 
   tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  std::unique_ptr<agnocast::TransformListener> tf_listener_;
   double intensity_threshold_;
   double existence_probability_threshold_;
   double max_x_;
@@ -63,7 +64,8 @@ private:
 
   // debugger
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{nullptr};
-  std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_ptr_{nullptr};
+  std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>> debug_publisher_ptr_{
+    nullptr};
 };
 
 }  // namespace autoware::low_intensity_cluster_filter

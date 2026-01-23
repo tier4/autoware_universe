@@ -27,10 +27,14 @@
 namespace autoware::low_intensity_cluster_filter
 {
 LowIntensityClusterFilter::LowIntensityClusterFilter(const rclcpp::NodeOptions & node_options)
-: Node("low_intensity_cluster_filter_node", node_options),
+: agnocast::Node("low_intensity_cluster_filter_node", node_options),
   tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_)
+  tf_listener_(
+    std::make_unique<agnocast::TransformListener>(static_cast<tf2::BufferCore &>(tf_buffer_), *this))
 {
+  // Set using dedicated thread for TF
+  tf_buffer_.setUsingDedicatedThread(true);
+
   intensity_threshold_ = declare_parameter<double>("intensity_threshold");
   existence_probability_threshold_ = declare_parameter<double>("existence_probability_threshold");
   max_x_ = declare_parameter<double>("max_x");
@@ -56,25 +60,25 @@ LowIntensityClusterFilter::LowIntensityClusterFilter(const rclcpp::NodeOptions &
     "output/objects", rclcpp::QoS{1});
   // initialize debug tool
   {
-    using autoware_utils::DebugPublisher;
     using autoware_utils::StopWatch;
     stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
     debug_publisher_ptr_ =
-      std::make_unique<DebugPublisher>(this, "low_intensity_cluster_filter_node");
+      std::make_unique<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>(
+        this, "low_intensity_cluster_filter_node");
     stop_watch_ptr_->tic("cyclic_time");
     stop_watch_ptr_->tic("processing_time");
   }
 }
 
 void LowIntensityClusterFilter::objectCallback(
-  const tier4_perception_msgs::msg::DetectedObjectsWithFeature::ConstSharedPtr input_msg)
+  agnocast::ipc_shared_ptr<tier4_perception_msgs::msg::DetectedObjectsWithFeature> && input_msg)
 {
   // Guard
   stop_watch_ptr_->toc("processing_time", true);
   if (object_pub_->get_subscription_count() < 1) return;
 
-  tier4_perception_msgs::msg::DetectedObjectsWithFeature output_object_msg;
-  output_object_msg.header = input_msg->header;
+  auto output_object_msg = object_pub_->borrow_loaned_message();
+  output_object_msg->header = input_msg->header;
   geometry_msgs::msg::TransformStamped transform_stamp;
   try {
     transform_stamp = tf_buffer_.lookupTransform(
@@ -108,9 +112,9 @@ void LowIntensityClusterFilter::objectCallback(
       !isValidatedCluster(cluster) && existence_probability < existence_probability_threshold_) {
       continue;
     }
-    output_object_msg.feature_objects.emplace_back(feature_object);
+    output_object_msg->feature_objects.emplace_back(feature_object);
   }
-  object_pub_->publish(output_object_msg);
+  object_pub_->publish(std::move(output_object_msg));
   if (debug_publisher_ptr_ && stop_watch_ptr_) {
     const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
     const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);

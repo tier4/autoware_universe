@@ -23,8 +23,9 @@
   <depend>nav_msgs</depend>
   <depend>pcl_conversions</depend>
   <depend>pcl_ros</depend>
+  <depend>agnocast_components</depend>
+  <depend>agnocastlib</depend>
   <depend>rclcpp</depend>
-  <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
   <depend>tf2</depend>
   <depend>tf2_eigen</depend>
