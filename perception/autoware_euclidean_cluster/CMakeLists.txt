@@ -5,6 +5,7 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(PCL REQUIRED)
+find_package(agnocastlib REQUIRED)
 
 include_directories(
   include
@@ -48,6 +49,12 @@ ament_auto_add_library(${PROJECT_NAME}_voxel_grid_node_core SHARED
 target_link_libraries(${PROJECT_NAME}_voxel_grid_node_core
   ${PCL_LIBRARIES}
   ${PROJECT_NAME}_lib
+)
+target_include_directories(${PROJECT_NAME}_voxel_grid_node_core PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+)
+ament_target_dependencies(${PROJECT_NAME}_voxel_grid_node_core
+  agnocastlib
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}_voxel_grid_node_core
