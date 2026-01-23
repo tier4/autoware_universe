@@ -20,12 +20,11 @@
 
 #include <Eigen/Eigen>
 #include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/buffer.hpp>
 #include <agnocast/node/tf2/transform_listener.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 
 #include "tier4_perception_msgs/msg/detected_objects_with_feature.hpp"
-
-#include <tf2_ros/buffer.h>
 
 #include <memory>
 #include <string>
@@ -48,7 +47,7 @@ private:
   agnocast::Subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr
     object_sub_;
 
-  tf2_ros::Buffer tf_buffer_;
+  agnocast::Buffer tf_buffer_;
   std::unique_ptr<agnocast::TransformListener> tf_listener_;
   double intensity_threshold_;
   double existence_probability_threshold_;

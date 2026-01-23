@@ -29,12 +29,8 @@ namespace autoware::low_intensity_cluster_filter
 LowIntensityClusterFilter::LowIntensityClusterFilter(const rclcpp::NodeOptions & node_options)
 : agnocast::Node("low_intensity_cluster_filter_node", node_options),
   tf_buffer_(this->get_clock()),
-  tf_listener_(
-    std::make_unique<agnocast::TransformListener>(static_cast<tf2::BufferCore &>(tf_buffer_), *this))
+  tf_listener_(std::make_unique<agnocast::TransformListener>(tf_buffer_, *this))
 {
-  // Set using dedicated thread for TF
-  tf_buffer_.setUsingDedicatedThread(true);
-
   intensity_threshold_ = declare_parameter<double>("intensity_threshold");
   existence_probability_threshold_ = declare_parameter<double>("existence_probability_threshold");
   max_x_ = declare_parameter<double>("max_x");

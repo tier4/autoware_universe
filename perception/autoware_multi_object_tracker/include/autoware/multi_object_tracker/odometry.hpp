@@ -18,9 +18,9 @@
 #include "autoware/multi_object_tracker/object_model/types.hpp"
 
 #include <agnocast/node/agnocast_node.hpp>
+#include <agnocast/node/tf2/buffer.hpp>
 #include <agnocast/node/tf2/transform_listener.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <tf2_ros/buffer.h>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -54,7 +54,7 @@ private:
   std::string ego_frame_id_;    // ego vehicle frame
   std::string world_frame_id_;  // absolute/relative ground frame
   // tf
-  tf2_ros::Buffer tf_buffer_;
+  agnocast::Buffer tf_buffer_;
   std::unique_ptr<agnocast::TransformListener> tf_listener_;
 
 public:

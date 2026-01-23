@@ -16,7 +16,6 @@
 
 #include "autoware/multi_object_tracker/uncertainty/uncertainty_processor.hpp"
 
-#include <agnocast/node/tf2/create_timer_agnocast.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <memory>
@@ -32,14 +31,9 @@ Odometry::Odometry(
   ego_frame_id_(ego_frame_id),
   world_frame_id_(world_frame_id),
   tf_buffer_(node_.get_clock()),
-  tf_listener_(std::make_unique<agnocast::TransformListener>(static_cast<tf2::BufferCore &>(tf_buffer_), node)),
+  tf_listener_(std::make_unique<agnocast::TransformListener>(tf_buffer_, node)),
   enable_odometry_uncertainty_(enable_odometry_uncertainty)
 {
-  // Create tf timer interface for async waitForTransform
-  auto cti = std::make_shared<agnocast::CreateTimerAgnocast>();
-  tf_buffer_.setCreateTimerInterface(cti);
-  // Agnocast TransformListener handles TF in a separate callback thread
-  tf_buffer_.setUsingDedicatedThread(true);
 }
 
 void Odometry::updateTfCache(
