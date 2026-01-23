@@ -24,6 +24,9 @@
 #include "tracker/tracker_handler.hpp"
 #include "utils/utils.hpp"
 
+#include <agnocast/node/agnocast_node.hpp>
+#include <agnocast/node/tf2/buffer.hpp>
+#include <agnocast/node/tf2/transform_listener.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_perception_msgs/msg/detected_objects.hpp"
@@ -42,9 +45,6 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #endif
 
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-
 #include <deque>
 #include <map>
 #include <memory>
@@ -53,35 +53,37 @@
 namespace autoware::detection_by_tracker
 {
 
-class DetectionByTracker : public rclcpp::Node
+class DetectionByTracker : public agnocast::Node
 {
 public:
   explicit DetectionByTracker(const rclcpp::NodeOptions & node_options);
 
 private:
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr objects_pub_;
-  rclcpp::Subscription<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr trackers_sub_;
-  rclcpp::Subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr
+  agnocast::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr objects_pub_;
+  agnocast::Subscription<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr trackers_sub_;
+  agnocast::Subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr
     initial_objects_sub_;
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  agnocast::Buffer tf_buffer_;
+  std::unique_ptr<agnocast::TransformListener> tf_listener_;
 
   TrackerHandler tracker_handler_;
   std::shared_ptr<autoware::shape_estimation::ShapeEstimator> shape_estimator_;
   std::shared_ptr<autoware::euclidean_cluster::EuclideanClusterInterface> cluster_;
-  std::shared_ptr<Debugger> debugger_;
+  std::unique_ptr<Debugger<agnocast::Node>> debugger_;
   std::map<uint8_t, int> max_search_distance_for_merger_;
   std::map<uint8_t, int> max_search_distance_for_divider_;
 
   detection_by_tracker::utils::TrackerIgnoreLabel tracker_ignore_;
 
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<autoware_utils::BasicPublishedTimePublisher<agnocast::Node>>
+    published_time_publisher_;
 
   void setMaxSearchRange();
 
   void onObjects(
-    const tier4_perception_msgs::msg::DetectedObjectsWithFeature::ConstSharedPtr input_msg);
+    const agnocast::ipc_shared_ptr<tier4_perception_msgs::msg::DetectedObjectsWithFeature> &
+      input_msg);
 
   void divideUnderSegmentedObjects(
     const autoware_perception_msgs::msg::DetectedObjects & tracked_objects,

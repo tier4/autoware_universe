@@ -87,18 +87,22 @@ namespace autoware::detection_by_tracker
 {
 
 DetectionByTracker::DetectionByTracker(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("detection_by_tracker", node_options),
+: agnocast::Node("detection_by_tracker", node_options),
   tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_)
+  tf_listener_(std::make_unique<agnocast::TransformListener>(tf_buffer_, *this))
 {
   // Create publishers and subscribers
   trackers_sub_ = create_subscription<autoware_perception_msgs::msg::TrackedObjects>(
     "~/input/tracked_objects", rclcpp::QoS{1},
-    std::bind(&TrackerHandler::onTrackedObjects, &tracker_handler_, std::placeholders::_1));
+    [this](const agnocast::ipc_shared_ptr<autoware_perception_msgs::msg::TrackedObjects> & msg) {
+      tracker_handler_.onTrackedObjects(msg);
+    });
   initial_objects_sub_ =
     create_subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>(
       "~/input/initial_objects", rclcpp::QoS{1},
-      std::bind(&DetectionByTracker::onObjects, this, std::placeholders::_1));
+      [this](
+        const agnocast::ipc_shared_ptr<tier4_perception_msgs::msg::DetectedObjectsWithFeature> &
+          msg) { this->onObjects(msg); });
   objects_pub_ =
     create_publisher<autoware_perception_msgs::msg::DetectedObjects>("~/output", rclcpp::QoS{1});
 
@@ -119,8 +123,9 @@ DetectionByTracker::DetectionByTracker(const rclcpp::NodeOptions & node_options)
   cluster_ = std::make_shared<autoware::euclidean_cluster::VoxelGridBasedEuclideanCluster>(
     false, 10, 10000, 0.7, 0.3, 0, std::numeric_limits<int>::max(), std::numeric_limits<int>::max(),
     10000);
-  debugger_ = std::make_shared<Debugger>(this);
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  debugger_ = std::make_unique<Debugger<agnocast::Node>>(this);
+  published_time_publisher_ =
+    std::make_unique<autoware_utils::BasicPublishedTimePublisher<agnocast::Node>>(this);
 }
 
 void DetectionByTracker::setMaxSearchRange()
@@ -148,11 +153,10 @@ void DetectionByTracker::setMaxSearchRange()
 }
 
 void DetectionByTracker::onObjects(
-  const tier4_perception_msgs::msg::DetectedObjectsWithFeature::ConstSharedPtr input_msg)
+  const agnocast::ipc_shared_ptr<tier4_perception_msgs::msg::DetectedObjectsWithFeature> &
+    input_msg)
 {
   debugger_->startMeasureProcessingTime();
-  autoware_perception_msgs::msg::DetectedObjects detected_objects;
-  detected_objects.header = input_msg->header;
 
   // get objects from tracking module
   autoware_perception_msgs::msg::DetectedObjects tracked_objects;
@@ -164,8 +168,13 @@ void DetectionByTracker::onObjects(
       !available_trackers ||
       !autoware::object_recognition_utils::transformObjects(
         objects, input_msg->header.frame_id, tf_buffer_, transformed_objects)) {
-      objects_pub_->publish(detected_objects);
-      published_time_publisher_->publish_if_subscribed(objects_pub_, detected_objects.header.stamp);
+      auto detected_objects_msg = objects_pub_->borrow_loaned_message();
+      detected_objects_msg->header = input_msg->header;
+      const auto stamp = detected_objects_msg->header.stamp;
+      objects_pub_->publish(std::move(detected_objects_msg));
+      published_time_publisher_
+        ->publish_if_subscribed<autoware_perception_msgs::msg::DetectedObjects>(
+          objects_pub_, stamp);
       return;
     }
     // to simplify post processes, convert tracked_objects to DetectedObjects message.
@@ -187,16 +196,21 @@ void DetectionByTracker::onObjects(
     no_found_tracked_objects, *input_msg, temp_no_found_tracked_objects, divided_objects);
   debugger_->publishDividedObjects(divided_objects);
 
+  auto detected_objects_msg = objects_pub_->borrow_loaned_message();
+  detected_objects_msg->header = input_msg->header;
+
   // merge under/over segmented objects to build output objects
   for (const auto & merged_object : merged_objects.feature_objects) {
-    detected_objects.objects.push_back(merged_object.object);
+    detected_objects_msg->objects.push_back(merged_object.object);
   }
   for (const auto & divided_object : divided_objects.feature_objects) {
-    detected_objects.objects.push_back(divided_object.object);
+    detected_objects_msg->objects.push_back(divided_object.object);
   }
 
-  objects_pub_->publish(detected_objects);
-  published_time_publisher_->publish_if_subscribed(objects_pub_, detected_objects.header.stamp);
+  const auto stamp = detected_objects_msg->header.stamp;
+  objects_pub_->publish(std::move(detected_objects_msg));
+  published_time_publisher_
+    ->publish_if_subscribed<autoware_perception_msgs::msg::DetectedObjects>(objects_pub_, stamp);
   debugger_->publishProcessingTime();
 }
 

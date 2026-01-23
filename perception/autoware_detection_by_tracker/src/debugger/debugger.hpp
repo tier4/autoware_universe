@@ -18,6 +18,7 @@
 #include "autoware_utils/ros/debug_publisher.hpp"
 #include "autoware_utils/system/stop_watch.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_perception_msgs/msg/detected_objects.hpp"
@@ -42,66 +43,97 @@
 #include <deque>
 #include <memory>
 #include <vector>
+
 namespace autoware::detection_by_tracker
 {
+
+// Type traits for node-specific publisher types
+template <typename NodeT>
+struct DebuggerTraits
+{
+  template <typename MessageT>
+  using PublisherPtr = typename rclcpp::Publisher<MessageT>::SharedPtr;
+  static constexpr bool is_agnocast = false;
+};
+
+template <>
+struct DebuggerTraits<agnocast::Node>
+{
+  template <typename MessageT>
+  using PublisherPtr = typename agnocast::Publisher<MessageT>::SharedPtr;
+  static constexpr bool is_agnocast = true;
+};
+
+template <typename NodeT = rclcpp::Node>
 class Debugger
 {
 public:
-  explicit Debugger(rclcpp::Node * node)
+  using Traits = DebuggerTraits<NodeT>;
+  using DetectedObjectsPublisherPtr =
+    typename Traits::template PublisherPtr<autoware_perception_msgs::msg::DetectedObjects>;
+
+  explicit Debugger(NodeT * node)
   {
-    initial_objects_pub_ = node->create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
-      "debug/initial_objects", 1);
-    tracked_objects_pub_ = node->create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
-      "debug/tracked_objects", 1);
-    merged_objects_pub_ = node->create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
-      "debug/merged_objects", 1);
-    divided_objects_pub_ = node->create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
-      "debug/divided_objects", 1);
+    initial_objects_pub_ = node->template create_publisher<
+      autoware_perception_msgs::msg::DetectedObjects>("debug/initial_objects", 1);
+    tracked_objects_pub_ = node->template create_publisher<
+      autoware_perception_msgs::msg::DetectedObjects>("debug/tracked_objects", 1);
+    merged_objects_pub_ = node->template create_publisher<
+      autoware_perception_msgs::msg::DetectedObjects>("debug/merged_objects", 1);
+    divided_objects_pub_ = node->template create_publisher<
+      autoware_perception_msgs::msg::DetectedObjects>("debug/divided_objects", 1);
     processing_time_publisher_ =
-      std::make_unique<autoware_utils::DebugPublisher>(node, "detection_by_tracker");
+      std::make_unique<autoware_utils::BasicDebugPublisher<NodeT>>(node, "detection_by_tracker");
     stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
     this->startStopWatch();
   }
 
   ~Debugger() {}
+
   void publishInitialObjects(const tier4_perception_msgs::msg::DetectedObjectsWithFeature & input)
   {
-    initial_objects_pub_->publish(removeFeature(input));
+    publishDetectedObjects(initial_objects_pub_, removeFeature(input));
   }
+
   void publishTrackedObjects(const autoware_perception_msgs::msg::DetectedObjects & input)
   {
-    tracked_objects_pub_->publish(input);
+    publishDetectedObjects(tracked_objects_pub_, input);
   }
+
   void publishMergedObjects(const tier4_perception_msgs::msg::DetectedObjectsWithFeature & input)
   {
-    merged_objects_pub_->publish(removeFeature(input));
+    publishDetectedObjects(merged_objects_pub_, removeFeature(input));
   }
+
   void publishDividedObjects(const tier4_perception_msgs::msg::DetectedObjectsWithFeature & input)
   {
-    divided_objects_pub_->publish(removeFeature(input));
+    publishDetectedObjects(divided_objects_pub_, removeFeature(input));
   }
+
   void startStopWatch()
   {
     stop_watch_ptr_->tic("cyclic_time");
     stop_watch_ptr_->tic("processing_time");
   }
+
   void startMeasureProcessingTime() { stop_watch_ptr_->tic("processing_time"); }
+
   void publishProcessingTime()
   {
-    processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    processing_time_publisher_->template publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/cyclic_time_ms", stop_watch_ptr_->toc("cyclic_time", true));
-    processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    processing_time_publisher_->template publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/processing_time_ms", stop_watch_ptr_->toc("processing_time", true));
   }
 
 private:
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr initial_objects_pub_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr tracked_objects_pub_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr merged_objects_pub_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr divided_objects_pub_;
+  DetectedObjectsPublisherPtr initial_objects_pub_;
+  DetectedObjectsPublisherPtr tracked_objects_pub_;
+  DetectedObjectsPublisherPtr merged_objects_pub_;
+  DetectedObjectsPublisherPtr divided_objects_pub_;
   // debug publisher
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
-  std::unique_ptr<autoware_utils::DebugPublisher> processing_time_publisher_;
+  std::unique_ptr<autoware_utils::BasicDebugPublisher<NodeT>> processing_time_publisher_;
 
   static autoware_perception_msgs::msg::DetectedObjects removeFeature(
     const tier4_perception_msgs::msg::DetectedObjectsWithFeature & input)
@@ -113,7 +145,27 @@ private:
     }
     return objects;
   }
+
+  // Helper function to publish detected objects
+  template <typename U = NodeT>
+  typename std::enable_if<!DebuggerTraits<U>::is_agnocast>::type publishDetectedObjects(
+    const DetectedObjectsPublisherPtr & pub,
+    const autoware_perception_msgs::msg::DetectedObjects & msg)
+  {
+    pub->publish(msg);
+  }
+
+  template <typename U = NodeT>
+  typename std::enable_if<DebuggerTraits<U>::is_agnocast>::type publishDetectedObjects(
+    const DetectedObjectsPublisherPtr & pub,
+    const autoware_perception_msgs::msg::DetectedObjects & msg)
+  {
+    auto loaned_msg = pub->borrow_loaned_message();
+    *loaned_msg = msg;
+    pub->publish(std::move(loaned_msg));
+  }
 };
+
 }  // namespace autoware::detection_by_tracker
 
 #endif  // DEBUGGER__DEBUGGER_HPP_

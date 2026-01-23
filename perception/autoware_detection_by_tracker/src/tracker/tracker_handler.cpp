@@ -15,6 +15,8 @@
 #include "tracker_handler.hpp"
 
 #include "autoware_utils/geometry/geometry.hpp"
+
+#include <agnocast/agnocast.hpp>
 #include "autoware_utils/math/normalization.hpp"
 
 #include <tf2/utils.h>
@@ -23,7 +25,7 @@ namespace autoware::detection_by_tracker
 {
 
 void TrackerHandler::onTrackedObjects(
-  const autoware_perception_msgs::msg::TrackedObjects::ConstSharedPtr input_objects_msg)
+  const agnocast::ipc_shared_ptr<autoware_perception_msgs::msg::TrackedObjects> & input_objects_msg)
 {
   constexpr size_t max_buffer_size = 10;
 
