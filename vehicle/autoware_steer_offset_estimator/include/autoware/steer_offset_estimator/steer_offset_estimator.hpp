@@ -144,7 +144,7 @@ private:
   /**
    * @brief Computes steering value at given time stamp
    * @details This function finds the nearest data within the steering buffer to the given timestamp
-              and applies a windowed average around it to compute reiable steering value
+              and applies a windowed average around it to compute reliable steering value
    * @param steers avg steering value at given timestamp, if not found will return a nullopt
    */
   [[nodiscard]] std::optional<SteeringInfo> get_steering_at_timestamp(
