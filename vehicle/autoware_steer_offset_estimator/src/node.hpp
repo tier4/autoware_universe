@@ -16,6 +16,7 @@
 #define NODE_HPP_
 
 #include "autoware/steer_offset_estimator/steer_offset_estimator.hpp"
+#include "autoware/steer_offset_estimator/structs.hpp"
 
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -44,7 +45,7 @@ using PollingSubscriber = autoware_utils_rclcpp::InterProcessPollingSubscriber<
  * @param node Pointer to ROS node for parameter access
  * @return SteerOffsetEstimatorParameters Loaded parameters with default values
  */
-SteerOffsetEstimatorParameters load_parameters(rclcpp::Node * node);
+SteerOffsetEstimatorParameters load_estimator_parameters(rclcpp::Node * node);
 
 /**
  * @brief ROS 2 node for steer offset estimation
@@ -68,6 +69,8 @@ private:
    * @brief Steer offset estimator instance
    */
   SteerOffsetEstimator estimator_;
+
+  SteerOffsetCalibrationParameters calibration_params_;
 
   /**
    * @brief Current registered steering offset
@@ -115,6 +118,8 @@ private:
    * @brief Timer callback for processing pose and steering updates
    */
   void on_timer();
+
+  void set_calibration_parameters();
 
   /**
    * @brief Publish steering offset estimation results

@@ -26,7 +26,7 @@
 namespace autoware::steer_offset_estimator
 {
 
-SteerOffsetEstimatorParameters load_parameters(rclcpp::Node * node)
+SteerOffsetEstimatorParameters load_estimator_parameters(rclcpp::Node * node)
 {
   SteerOffsetEstimatorParameters parameters;
   parameters.initial_covariance = node->declare_parameter<double>("initial_covariance");
@@ -48,7 +48,7 @@ SteerOffsetEstimatorParameters load_parameters(rclcpp::Node * node)
 }
 
 SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & node_options)
-: Node("steer_offset_estimator", node_options), estimator_(load_parameters(this))
+: Node("steer_offset_estimator", node_options), estimator_(load_estimator_parameters(this))
 {
   // Subscribers
   sub_pose_ =
@@ -64,6 +64,8 @@ SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & n
     this->create_publisher<Float32Stamped>("~/output/steering_offset_error", 1);
   pub_debug_info_ = this->create_publisher<StringStamped>("~/output/debug_info", 1);
 
+  set_calibration_parameters();
+
   // get current registered steering offset
   auto initial_steer_offset_param_name =
     this->declare_parameter<std::string>("initial_steer_offset_param_name");
@@ -74,6 +76,30 @@ SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & n
   const auto period = rclcpp::Rate(update_hz).period();
   timer_ = rclcpp::create_timer(
     this, get_clock(), period, std::bind(&SteerOffsetEstimatorNode::on_timer, this));
+}
+
+void SteerOffsetEstimatorNode::set_calibration_parameters()
+{
+  const auto mode_str = this->declare_parameter<std::string>("calibration.mode");
+  if (SteerOffsetCalibrationParameters::mode_map.count(mode_str)) {
+    calibration_params_.mode = SteerOffsetCalibrationParameters::mode_map.at(mode_str);
+  } else {
+    RCLCPP_ERROR(
+      this->get_logger(), "Invalid calibration mode: %s. Defaulting to OFF.", mode_str.c_str());
+    calibration_params_.mode = CalibrationMode::OFF;
+  }
+
+  calibration_params_.error_threshold =
+    this->declare_parameter<double>("calibration.error_threshold");
+  calibration_params_.covariance_threshold =
+    this->declare_parameter<double>("calibration.covariance_threshold");
+  calibration_params_.min_steady_distance =
+    this->declare_parameter<double>("calibration.min_steady_distance");
+  calibration_params_.min_velocity = this->declare_parameter<double>("calibration.min_velocity");
+  calibration_params_.max_offset_limit =
+    this->declare_parameter<double>("calibration.max_offset_limit");
+  calibration_params_.min_update_interval =
+    this->declare_parameter<double>("calibration.min_update_interval");
 }
 
 void SteerOffsetEstimatorNode::on_timer()
