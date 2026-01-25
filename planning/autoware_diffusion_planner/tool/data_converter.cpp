@@ -685,7 +685,7 @@ int main(int argc, char ** argv)
 
       // Get transformation matrix
       const Eigen::Matrix4d bl2map =
-        utils::pose_to_matrix4f(seq.data_list[i].kinematic_state.pose.pose);
+        utils::pose_to_matrix4d(seq.data_list[i].kinematic_state.pose.pose);
       const Eigen::Matrix4d map2bl = utils::inverse(bl2map);
 
       // Create ego sequences
@@ -753,7 +753,7 @@ int main(int argc, char ** argv)
 
       // Get goal pose
       const geometry_msgs::msg::Pose & goal_pose = seq.data_list[i].route.goal_pose;
-      const Eigen::Matrix4d goal_pose_in_map = utils::pose_to_matrix4f(goal_pose);
+      const Eigen::Matrix4d goal_pose_in_map = utils::pose_to_matrix4d(goal_pose);
       const Eigen::Matrix4d goal_pose_in_bl = map2bl * goal_pose_in_map;
       const float goal_x = goal_pose_in_bl(0, 3);
       const float goal_y = goal_pose_in_bl(1, 3);
