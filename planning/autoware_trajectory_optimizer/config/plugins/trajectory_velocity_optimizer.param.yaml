@@ -8,6 +8,7 @@
       # Engage behavior
       target_pull_out_speed_mps: 1.0  # [m/s] Target speed during pull-out maneuver
       target_pull_out_acc_mps2: 1.0   # [m/s²] Target acceleration during pull-out
+      stop_dist_to_prohibit_engage: 0.5  # [m] If stop point is closer than this, do not apply engage speed
       set_engage_speed: false         # Set minimum speed during engage
 
       # Speed limiting

@@ -16,6 +16,7 @@
 
 #include "autoware/trajectory_optimizer/trajectory_optimizer_plugins/plugin_utils/trajectory_velocity_optimizer_utils.hpp"
 
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils_math/unit_conversion.hpp>
 #include <autoware_utils_rclcpp/parameter.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
@@ -65,9 +66,28 @@ void TrajectoryVelocityOptimizer::optimize_trajectory(
                               : target_pull_out_acc_mps2;
 
   if (velocity_params_.set_engage_speed && (current_speed < target_pull_out_speed_mps)) {
-    trajectory_velocity_optimizer_utils::clamp_velocities(
-      traj_points, static_cast<float>(initial_motion_speed),
-      static_cast<float>(initial_motion_acc));
+    // Check distance to stop point to avoid engaging when obstacle is ahead
+    // (same logic as autoware_velocity_smoother)
+    const auto closest_idx =
+      autoware::motion_utils::findNearestIndex(traj_points, current_odometry.pose.pose.position);
+    const auto zero_vel_idx =
+      autoware::motion_utils::searchZeroVelocityIndex(traj_points, closest_idx, traj_points.size());
+
+    bool should_engage = true;
+    if (zero_vel_idx) {
+      const double stop_dist =
+        autoware::motion_utils::calcSignedArcLength(traj_points, closest_idx, *zero_vel_idx);
+      if (stop_dist <= velocity_params_.stop_dist_to_prohibit_engage) {
+        // Stop point is too close, do not apply engage speed
+        should_engage = false;
+      }
+    }
+
+    if (should_engage) {
+      trajectory_velocity_optimizer_utils::clamp_velocities(
+        traj_points, static_cast<float>(initial_motion_speed),
+        static_cast<float>(initial_motion_acc));
+    }
   }
 
   if (velocity_params_.limit_speed) {
@@ -104,6 +124,8 @@ void TrajectoryVelocityOptimizer::set_up_params()
     get_or_declare_parameter<double>(*node_ptr, "trajectory_velocity_optimizer.max_speed_mps");
   velocity_params_.max_lateral_accel_mps2 = get_or_declare_parameter<double>(
     *node_ptr, "trajectory_velocity_optimizer.max_lateral_accel_mps2");
+  velocity_params_.stop_dist_to_prohibit_engage = get_or_declare_parameter<double>(
+    *node_ptr, "trajectory_velocity_optimizer.stop_dist_to_prohibit_engage");
   velocity_params_.set_engage_speed =
     get_or_declare_parameter<bool>(*node_ptr, "trajectory_velocity_optimizer.set_engage_speed");
   velocity_params_.limit_speed =
@@ -136,6 +158,9 @@ rcl_interfaces::msg::SetParametersResult TrajectoryVelocityOptimizer::on_paramet
   update_param(
     parameters, "trajectory_velocity_optimizer.max_lateral_accel_mps2",
     velocity_params_.max_lateral_accel_mps2);
+  update_param(
+    parameters, "trajectory_velocity_optimizer.stop_dist_to_prohibit_engage",
+    velocity_params_.stop_dist_to_prohibit_engage);
   update_param(
     parameters, "trajectory_velocity_optimizer.set_engage_speed",
     velocity_params_.set_engage_speed);

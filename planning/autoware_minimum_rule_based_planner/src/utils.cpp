@@ -67,7 +67,8 @@ lanelet::BasicPoints3d to_lanelet_points(
 }  // namespace
 
 std::optional<lanelet::ConstLanelets> get_lanelets_within_route_up_to(
-  const lanelet::ConstLanelet & lanelet, const PlannerData & planner_data, const double distance)
+  const lanelet::ConstLanelet & lanelet, const InternalPlannerData & planner_data,
+  const double distance)
 {
   if (!exists(planner_data.route_lanelets, lanelet)) {
     return std::nullopt;
@@ -93,7 +94,8 @@ std::optional<lanelet::ConstLanelets> get_lanelets_within_route_up_to(
 }
 
 std::optional<lanelet::ConstLanelets> get_lanelets_within_route_after(
-  const lanelet::ConstLanelet & lanelet, const PlannerData & planner_data, const double distance)
+  const lanelet::ConstLanelet & lanelet, const InternalPlannerData & planner_data,
+  const double distance)
 {
   if (!exists(planner_data.route_lanelets, lanelet)) {
     return std::nullopt;
@@ -118,7 +120,7 @@ std::optional<lanelet::ConstLanelets> get_lanelets_within_route_after(
 }
 
 std::optional<lanelet::ConstLanelet> get_previous_lanelet_within_route(
-  const lanelet::ConstLanelet & lanelet, const PlannerData & planner_data)
+  const lanelet::ConstLanelet & lanelet, const InternalPlannerData & planner_data)
 {
   if (exists(planner_data.start_lanelets, lanelet)) {
     return std::nullopt;
@@ -139,7 +141,7 @@ std::optional<lanelet::ConstLanelet> get_previous_lanelet_within_route(
 }
 
 std::optional<lanelet::ConstLanelet> get_next_lanelet_within_route(
-  const lanelet::ConstLanelet & lanelet, const PlannerData & planner_data)
+  const lanelet::ConstLanelet & lanelet, const InternalPlannerData & planner_data)
 {
   if (planner_data.preferred_lanelets.empty()) {
     return std::nullopt;
@@ -166,7 +168,7 @@ std::optional<lanelet::ConstLanelet> get_next_lanelet_within_route(
 }
 
 PathWithLaneId generate_centerline_path(
-  const lanelet::ConstLanelets & lanelets, const PlannerData & planner_data,
+  const lanelet::ConstLanelets & lanelets, const InternalPlannerData & planner_data,
   const geometry_msgs::msg::Pose & current_pose, const double s_start, const double s_end)
 {
   PathWithLaneId path;
@@ -761,7 +763,7 @@ PathPointTrajectory refine_path_for_goal(
 }
 
 lanelet::ConstLanelets extract_lanelets_from_trajectory(
-  const PathPointTrajectory & trajectory, const PlannerData & planner_data)
+  const PathPointTrajectory & trajectory, const InternalPlannerData & planner_data)
 {
   lanelet::ConstLanelets lanelets{};
   const auto lane_ids = trajectory.get_contained_lane_ids();
@@ -796,7 +798,7 @@ bool is_trajectory_inside_lanelets(
 }
 
 std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
-  const PathPointTrajectory & trajectory, const PlannerData & planner_data,
+  const PathPointTrajectory & trajectory, const InternalPlannerData & planner_data,
   const double search_radius_range, const double pre_goal_offset)
 {
   if (planner_data.preferred_lanelets.empty()) {

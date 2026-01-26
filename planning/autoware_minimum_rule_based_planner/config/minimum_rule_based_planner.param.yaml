@@ -3,6 +3,11 @@
     # generate_parameter_library parameters
     planning_frequency_hz: 10.0
 
+    # Planner modules to load (list of plugin class names)
+    # Example: ["autoware::rule_based_planner::ObstacleStopModule"]
+    planner_modules:
+      - autoware::rule_based_planner::ObstacleStopModule
+
     path_length:
       backward: 5.0
       forward: 300.0
@@ -139,6 +144,7 @@
       limit_speed: true
       limit_lateral_acceleration: false
       smooth_velocities: true
+      stop_dist_to_prohibit_engage: 0.5
 
     # EBPathSmoother parameters (CommonParam, EgoNearestParam)
     common:

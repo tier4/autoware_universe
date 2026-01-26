@@ -1,0 +1,9 @@
+<library path="autoware_rule_based_obstacle_stop_module">
+  <class type="autoware::rule_based_planner::ObstacleStopModule"
+         base_class_type="autoware::rule_based_planner::PluginModuleInterface">
+    <description>
+      Obstacle stop module for rule-based planner.
+      Detects obstacles on the trajectory and inserts stop points.
+    </description>
+  </class>
+</library>

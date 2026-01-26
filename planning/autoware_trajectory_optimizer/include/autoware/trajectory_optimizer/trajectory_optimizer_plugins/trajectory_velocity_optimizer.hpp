@@ -43,6 +43,7 @@ struct TrajectoryVelocityOptimizerParams
   double target_pull_out_acc_mps2{1.0};
   double max_speed_mps{8.33};
   double max_lateral_accel_mps2{1.5};
+  double stop_dist_to_prohibit_engage{0.5};  // [m] if stop point is closer than this, do not engage
   bool set_engage_speed{false};
   bool limit_speed{true};
   bool limit_lateral_acceleration{false};

@@ -17,7 +17,9 @@
 
 #include "autoware/trajectory_optimizer/trajectory_optimizer_plugins/trajectory_optimizer_plugin_base.hpp"
 #include "autoware/trajectory_optimizer/trajectory_optimizer_structs.hpp"
+#include "plugin_manager.hpp"
 
+#include <autoware/rule_based_planner_common/planner_data.hpp>
 #include <autoware/trajectory/path_point_with_lane_id.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
@@ -32,6 +34,7 @@
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
+#include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -51,6 +54,7 @@ using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_internal_planning_msgs::msg::PathPointWithLaneId;
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
 using autoware_map_msgs::msg::LaneletMapBin;
+using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
@@ -64,7 +68,8 @@ using unique_identifier_msgs::msg::UUID;
 using PluginInterface = autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase;
 using PluginLoader = pluginlib::ClassLoader<PluginInterface>;
 
-struct PlannerData
+// Internal planner data (different from rule_based_planner::PlannerData for modules)
+struct InternalPlannerData
 {
   lanelet::LaneletMapPtr lanelet_map_ptr{nullptr};
   lanelet::traffic_rules::TrafficRulesPtr traffic_rules_ptr{nullptr};
@@ -90,6 +95,7 @@ public:
     LaneletMapBin::ConstSharedPtr lanelet_map_bin_ptr;
     Odometry::ConstSharedPtr odometry_ptr;
     AccelWithCovarianceStamped::ConstSharedPtr acceleration_ptr;
+    PredictedObjects::ConstSharedPtr predicted_objects_ptr;
   };
 
 private:
@@ -107,6 +113,11 @@ private:
 
   // Plugin loading
   void load_optimizer_plugins();
+  void load_planner_modules();
+
+  // Create planner data for modules
+  std::shared_ptr<rule_based_planner::PlannerData> create_module_planner_data(
+    const InputData & input_data) const;
 
   // subscriber
   autoware_utils::InterProcessPollingSubscriber<
@@ -123,6 +134,9 @@ private:
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
     acceleration_subscriber_{this, "~/input/acceleration"};
   AccelWithCovarianceStamped::ConstSharedPtr acceleration_ptr_;
+  autoware_utils::InterProcessPollingSubscriber<PredictedObjects> objects_subscriber_{
+    this, "~/input/objects"};
+  PredictedObjects::ConstSharedPtr predicted_objects_ptr_;
 
   // publisher
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
@@ -138,12 +152,15 @@ private:
     debug_processing_time_detail_pub_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
 
-  PlannerData planner_data_;
+  InternalPlannerData planner_data_;
   std::optional<lanelet::ConstLanelet> current_lanelet_{std::nullopt};
 
   // Optimizer plugins
   std::unique_ptr<PluginLoader> plugin_loader_;
   std::vector<std::shared_ptr<PluginInterface>> optimizer_plugins_;
+
+  // Planner module manager
+  PlannerModuleManager planner_module_manager_;
 };
 
 }  // namespace autoware::minimum_rule_based_planner

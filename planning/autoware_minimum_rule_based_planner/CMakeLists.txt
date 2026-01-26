@@ -14,6 +14,7 @@ generate_parameter_library(minimum_rule_based_planner_parameters
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/minimum_rule_based_planner.cpp
   src/plan_path.cpp
+  src/plugin_manager.cpp
   src/utils.cpp
 )
 

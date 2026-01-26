@@ -64,31 +64,33 @@ namespace utils
  * @brief get lanelets within route that are in specified distance backward from target lanelet
  */
 std::optional<lanelet::ConstLanelets> get_lanelets_within_route_up_to(
-  const lanelet::ConstLanelet & lanelet, const PlannerData & planner_data, const double distance);
+  const lanelet::ConstLanelet & lanelet, const InternalPlannerData & planner_data,
+  const double distance);
 
 /**
  * @brief get lanelets within route that are in specified distance forward from target lanelet
  */
 std::optional<lanelet::ConstLanelets> get_lanelets_within_route_after(
-  const lanelet::ConstLanelet & lanelet, const PlannerData & planner_data, const double distance);
+  const lanelet::ConstLanelet & lanelet, const InternalPlannerData & planner_data,
+  const double distance);
 
 /**
  * @brief get previous lanelet within route
  */
 std::optional<lanelet::ConstLanelet> get_previous_lanelet_within_route(
-  const lanelet::ConstLanelet & lanelet, const PlannerData & planner_data);
+  const lanelet::ConstLanelet & lanelet, const InternalPlannerData & planner_data);
 
 /**
  * @brief get next lanelet within route
  */
 std::optional<lanelet::ConstLanelet> get_next_lanelet_within_route(
-  const lanelet::ConstLanelet & lanelet, const PlannerData & planner_data);
+  const lanelet::ConstLanelet & lanelet, const InternalPlannerData & planner_data);
 
 /**
  * @brief generate path from lanelet sequence centerline
  */
 PathWithLaneId generate_centerline_path(
-  const lanelet::ConstLanelets & lanelets, const PlannerData & planner_data,
+  const lanelet::ConstLanelets & lanelets, const InternalPlannerData & planner_data,
   const geometry_msgs::msg::Pose & current_pose, const double s_start, const double s_end);
 
 /**
@@ -155,7 +157,7 @@ PathPointTrajectory refine_path_for_goal(
  * @brief Extract lanelets from the trajectory
  */
 lanelet::ConstLanelets extract_lanelets_from_trajectory(
-  const PathPointTrajectory & trajectory, const PlannerData & planner_data);
+  const PathPointTrajectory & trajectory, const InternalPlannerData & planner_data);
 
 /**
  * @brief Check if the pose is in the lanelets
@@ -172,7 +174,7 @@ bool is_trajectory_inside_lanelets(
  * @brief Modify path for smooth goal connection
  */
 std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
-  const PathPointTrajectory & trajectory, const PlannerData & planner_data,
+  const PathPointTrajectory & trajectory, const InternalPlannerData & planner_data,
   const double search_radius_range, const double pre_goal_offset);
 
 /**

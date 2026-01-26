@@ -25,6 +25,7 @@
 #include <autoware_utils/geometry/geometry.hpp>
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -63,6 +64,11 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   load_optimizer_plugins();
 
   RCLCPP_INFO(get_logger(), "Optimizer plugins loaded.");
+
+  // Load planner modules
+  load_planner_modules();
+
+  RCLCPP_INFO(get_logger(), "Planner modules loaded.");
 
   const auto params = param_listener_->get_params();
 
@@ -121,6 +127,48 @@ void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
   }
 }
 
+void MinimumRuleBasedPlannerNode::load_planner_modules()
+{
+  // Declare parameter for planner modules
+  const std::vector<std::string> default_modules;
+  const auto module_names =
+    declare_parameter<std::vector<std::string>>("planner_modules", default_modules);
+
+  for (const auto & name : module_names) {
+    if (name.empty()) continue;
+    planner_module_manager_.load_module_plugin(*this, name, time_keeper_);
+  }
+}
+
+std::shared_ptr<rule_based_planner::PlannerData>
+MinimumRuleBasedPlannerNode::create_module_planner_data(const InputData & input_data) const
+{
+  auto module_data = std::make_shared<rule_based_planner::PlannerData>();
+
+  // Copy map and route data
+  module_data->lanelet_map_ptr = planner_data_.lanelet_map_ptr;
+  module_data->traffic_rules_ptr = planner_data_.traffic_rules_ptr;
+  module_data->routing_graph_ptr = planner_data_.routing_graph_ptr;
+  module_data->route_frame_id = planner_data_.route_frame_id;
+  module_data->goal_pose = planner_data_.goal_pose;
+  module_data->route_lanelets = planner_data_.route_lanelets;
+  module_data->preferred_lanelets = planner_data_.preferred_lanelets;
+  module_data->start_lanelets = planner_data_.start_lanelets;
+  module_data->goal_lanelets = planner_data_.goal_lanelets;
+
+  // Copy ego state
+  module_data->current_odometry = input_data.odometry_ptr;
+  module_data->current_acceleration = input_data.acceleration_ptr;
+
+  // Set vehicle info
+  module_data->vehicle_info = vehicle_info_;
+
+  // Set perception data
+  module_data->predicted_objects = input_data.predicted_objects_ptr;
+
+  return module_data;
+}
+
 void MinimumRuleBasedPlannerNode::on_timer()
 {
   autoware_utils_debug::ScopedTimeTrack time_keeper_scope(__func__, *time_keeper_);
@@ -144,10 +192,42 @@ void MinimumRuleBasedPlannerNode::on_timer()
   }
 
   // Convert path to trajectory
-  const auto traj_from_path =
+  auto traj_from_path =
     utils::convert_path_to_trajectory(planned_path.value(), params.output_delta_arc_length);
 
-  // TODO(odashima): Apply each planner module (e.g. obstacle stop)
+  // Apply planner modules (e.g. obstacle stop)
+  const auto module_planner_data = create_module_planner_data(input_data);
+  const auto planning_results =
+    planner_module_manager_.plan(traj_from_path.points, module_planner_data);
+  auto insert_stop = [&](
+                       autoware_planning_msgs::msg::Trajectory & trajectory,
+                       const geometry_msgs::msg::Point & stop_point) {
+    // Prevent sudden yaw angle changes by using a larger overlap threshold
+    // when inserting stop points that are very close to existing points
+    const double overlap_threshold = 5e-2;
+    const auto seg_idx =
+      autoware::motion_utils::findNearestSegmentIndex(trajectory.points, stop_point);
+    const auto insert_idx = autoware::motion_utils::insertTargetPoint(
+      seg_idx, stop_point, trajectory.points, overlap_threshold);
+    if (insert_idx) {
+      for (auto idx = *insert_idx; idx < trajectory.points.size(); ++idx)
+        trajectory.points[idx].longitudinal_velocity_mps = 0.0;
+    } else {
+      RCLCPP_WARN(get_logger(), "Failed to insert stop point");
+    }
+  };
+  for (const auto & planning_result : planning_results) {
+    for (const auto & stop_point : planning_result.stop_points)
+      insert_stop(traj_from_path, stop_point);
+    // for (const auto & slowdown_interval : planning_result.slowdown_intervals)
+    // insert_slowdown(output_trajectory_msg, slowdown_interval);
+    // if (planning_result.velocity_limit) {
+    //   velocity_limit_pub_->publish(*planning_result.velocity_limit);
+    // }
+    // if (planning_result.velocity_limit_clear_command) {
+    //   clear_velocity_limit_pub_->publish(*planning_result.velocity_limit_clear_command);
+    // }
+  }
 
   // Apply optimizer plugins
   // TODO(odashima): eb smoother & mpt are must be applied before each planner module?
@@ -171,6 +251,8 @@ void MinimumRuleBasedPlannerNode::on_timer()
     if (!trajectory_points.empty()) {
       autoware::motion_utils::calculate_time_from_start(
         trajectory_points, trajectory_points.front().pose.position);
+      // autoware::motion_utils::calculate_time_from_start(
+      //   trajectory_points, input_data.odometry_ptr->pose.pose.position);
     }
 
     Trajectory traj = traj_from_path;
@@ -233,6 +315,11 @@ MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()
     acceleration_ptr_ = msg;
   }
   input_data.acceleration_ptr = acceleration_ptr_;
+
+  if (const auto msg = objects_subscriber_.take_data()) {
+    predicted_objects_ptr_ = msg;
+  }
+  input_data.predicted_objects_ptr = predicted_objects_ptr_;
 
   return input_data;
 }
