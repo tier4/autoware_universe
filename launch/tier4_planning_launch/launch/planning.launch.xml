@@ -56,7 +56,7 @@
           <include file="$(find-pkg-share autoware_trajectory_optimizer)/launch/trajectory_optimizer.launch.xml">
             <arg name="input_trajectories" value="/planning/generator/diffusion_planner/modified_candidate_trajectories"/>
             <arg name="output_traj" value="/planning/generator/trajectory_optimizer/debug/trajectory"/>
-            <arg name="output_trajectories" value="/planning/generator/trajectory_optimizer/candidate_trajectories"/>
+            <arg name="output_trajectories" value="/planning/generator/candidate_trajectories"/>
           </include>
         </group>
       </group>
@@ -64,8 +64,12 @@
       <!-- trajectory selector -->
       <group>
         <push-ros-namespace namespace="trajectory_selector"/>
+        <include file="$(find-pkg-share autoware_trajectory_concatenator)/launch/trajectory_concatenator.launch.xml">
+          <arg name="concatenator_input_trajectories" value="/planning/generator/candidate_trajectories"/>
+          <arg name="concatenator_output_trajectories" value="/planning/generator/concatenated/candidate_trajectories"/>
+        </include>
         <include file="$(find-pkg-share autoware_trajectory_safety_filter)/launch/trajectory_safety_filter.launch.xml">
-          <arg name="input_trajectories" value="/planning/generator/trajectory_optimizer/candidate_trajectories"/>
+          <arg name="input_trajectories" value="/planning/generator/concatenated/candidate_trajectories"/>
           <arg name="output_trajectories" value="/planning/trajectory_selector/safety_filter/candidate_trajectories"/>
           <arg name="input_vector_map" value="/map/vector_map"/>
           <arg name="input_odometry" value="/localization/kinematic_state"/>
