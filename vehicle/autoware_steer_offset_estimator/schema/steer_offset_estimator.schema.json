@@ -9,7 +9,8 @@
         "initial_covariance": {
           "type": "number",
           "description": "steer offset is larger than tolerance",
-          "default": "1000.0"
+          "default": "1000.0",
+          "minimum": 0.0
         },
         "update_hz": {
           "type": "number",
@@ -55,27 +56,32 @@
         "max_steer": {
           "type": "number",
           "description": "offset estimation is skipped if steering is above this value",
-          "default": "0.03"
+          "default": "0.03",
+          "minimum": 0.0
         },
         "max_steer_rate": {
           "type": "number",
           "description": "offset estimation is skipped if steering rate is above this value",
-          "default": "0.02"
+          "default": "0.02",
+          "minimum": 0.0
         },
         "max_ang_velocity": {
           "type": "number",
           "description": "offset estimation is skipped if angular velocity is above this value",
-          "default": "0.02"
+          "default": "0.02",
+          "minimum": 0.0
         },
         "max_steer_buffer": {
           "type": "number",
           "description": "duration to keep steering values in the buffer",
-          "default": "1.0"
+          "default": "1.0",
+          "minimum": 0.0
         },
         "max_pose_lag": {
           "type": "number",
           "description": "max valid age of previous pose which can be used for twist calculation",
-          "default": "0.5"
+          "default": "0.5",
+          "minimum": 0.0
         }
       },
       "required": [

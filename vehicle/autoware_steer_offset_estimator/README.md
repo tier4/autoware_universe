@@ -95,9 +95,11 @@ Where:
 
 The algorithm only updates when:
 
-- Vehicle velocity > `min_velocity` (ensures reliable kinematic model)
-- $|\delta_{measured}|$ < `max_steer` (avoids nonlinear tire behavior)
 - Both pose and steering data are available
+- Vehicle velocity > `min_velocity` (ensures reliable kinematic model)
+- $|\delta_{\text{measured}}|$ < `max_steer` (avoids nonlinear tire behavior)
+- $|\dot{\delta}_{\text{measured}}|$ < `max_steer_rate` (avoids "zero-crossing" errors during transient maneuvers)
+- angular velocity < `max_ang_velocity` (avoids tire slip and dynamic noise)
 
 This Kalman Filter approach provides continuous, real-time calibration of steering offset during normal driving operations, with process noise allowing adaptation to changing conditions and measurement noise handling sensor uncertainties.
 
@@ -112,11 +114,12 @@ This Kalman Filter approach provides continuous, real-time calibration of steeri
 
 ### Output
 
-| Name                                  | Type                                                | Description                   |
-| ------------------------------------- | --------------------------------------------------- | ----------------------------- |
-| `~/output/steering_offset`            | `autoware_internal_debug_msgs::msg::Float32Stamped` | steering offset               |
-| `~/output/steering_offset_covariance` | `autoware_internal_debug_msgs::msg::Float32Stamped` | covariance of steering offset |
-| `~/output/debug_info`                 | `autoware_internal_debug_msgs::msg::StringStamped`  | debug info                    |
+| Name                                  | Type                                                | Description                                   |
+| ------------------------------------- | --------------------------------------------------- | --------------------------------------------- |
+| `~/output/steering_offset`            | `autoware_internal_debug_msgs::msg::Float32Stamped` | steering offset                               |
+| `~/output/steering_offset_covariance` | `autoware_internal_debug_msgs::msg::Float32Stamped` | covariance of steering offset                 |
+| `~/output/steering_offset_error`      | `autoware_internal_debug_msgs::msg::Float32Stamped` | Difference between estimate and current value |
+| `~/output/debug_info`                 | `autoware_internal_debug_msgs::msg::StringStamped`  | debug info                                    |
 
 ## Parameters
 
