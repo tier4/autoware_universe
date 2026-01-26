@@ -70,11 +70,18 @@ struct SteerOffsetCalibrationParameters
   double min_velocity{1.0};
   double max_offset_limit{0.05};
   double min_update_interval{100.0};
+  std::string steer_offset_param_path;
+  std::string steer_offset_param_name;
 
   static inline const std::unordered_map<std::string, CalibrationMode> mode_map{
     {"off", CalibrationMode::OFF},
     {"manual", CalibrationMode::MANUAL},
     {"auto", CalibrationMode::AUTO}};
+  
+  static inline const std::unordered_map<CalibrationMode, std::string> mode_to_str_map{
+    {CalibrationMode::OFF, "off"},
+    {CalibrationMode::MANUAL, "manual"},
+    {CalibrationMode::AUTO, "auto"}};
 };
 
 struct SteeringInfo
