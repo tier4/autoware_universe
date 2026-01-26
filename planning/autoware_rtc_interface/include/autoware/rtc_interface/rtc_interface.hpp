@@ -23,10 +23,13 @@
 #include "tier4_rtc_msgs/msg/cooperate_response.hpp"
 #include "tier4_rtc_msgs/msg/cooperate_status.hpp"
 #include "tier4_rtc_msgs/msg/cooperate_status_array.hpp"
+#include "tier4_rtc_msgs/msg/creep_command.hpp"
+#include "tier4_rtc_msgs/msg/creep_response.hpp"
 #include "tier4_rtc_msgs/msg/module.hpp"
 #include "tier4_rtc_msgs/msg/state.hpp"
 #include "tier4_rtc_msgs/srv/auto_mode.hpp"
 #include "tier4_rtc_msgs/srv/cooperate_commands.hpp"
+#include "tier4_rtc_msgs/srv/creep_commands.hpp"
 #include <unique_identifier_msgs/msg/uuid.hpp>
 
 #include <mutex>
@@ -41,16 +44,21 @@ using tier4_rtc_msgs::msg::CooperateCommand;
 using tier4_rtc_msgs::msg::CooperateResponse;
 using tier4_rtc_msgs::msg::CooperateStatus;
 using tier4_rtc_msgs::msg::CooperateStatusArray;
+using tier4_rtc_msgs::msg::CreepCommand;
+using tier4_rtc_msgs::msg::CreepResponse;
 using tier4_rtc_msgs::msg::Module;
 using tier4_rtc_msgs::msg::State;
 using tier4_rtc_msgs::srv::AutoMode;
 using tier4_rtc_msgs::srv::CooperateCommands;
+using tier4_rtc_msgs::srv::CreepCommands;
 using unique_identifier_msgs::msg::UUID;
 
 class RTCInterface
 {
 public:
-  RTCInterface(rclcpp::Node * node, const std::string & name, const bool enable_rtc = true);
+  RTCInterface(
+    rclcpp::Node * node, const std::string & name, const bool enable_rtc = true,
+    const bool creep_supported = false);
   void publishCooperateStatus(const rclcpp::Time & stamp);
   /// @brief update the cooperate status of the module identified by the given UUID
   /// @param[in] uuid unique ID of the module
@@ -75,6 +83,8 @@ public:
   bool isRegistered(const UUID & uuid) const;
   bool isRTCEnabled(const UUID & uuid) const;
   bool isTerminated(const UUID & uuid) const;
+  bool isCreepTriggered(const UUID & uuid) const;
+  bool isCreepSupported() const;
   void lockCommandUpdate();
   void unlockCommandUpdate();
   void print() const;
@@ -85,6 +95,9 @@ private:
     const CooperateCommands::Response::SharedPtr responses);
   void onAutoModeService(
     const AutoMode::Request::SharedPtr request, const AutoMode::Response::SharedPtr response);
+  void onCreepCommandService(
+    const CreepCommands::Request::SharedPtr request,
+    const CreepCommands::Response::SharedPtr responses);
   void onTimer();
   std::vector<CooperateResponse> validateCooperateCommands(
     const std::vector<CooperateCommand> & commands);
@@ -97,6 +110,7 @@ private:
   rclcpp::Publisher<AutoModeStatus>::SharedPtr pub_auto_mode_status_;
   rclcpp::Service<CooperateCommands>::SharedPtr srv_commands_;
   rclcpp::Service<AutoMode>::SharedPtr srv_auto_mode_;
+  rclcpp::Service<CreepCommands>::SharedPtr srv_creep_commands_;
   rclcpp::CallbackGroup::SharedPtr callback_group_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Clock::SharedPtr clock_;
@@ -107,11 +121,13 @@ private:
   std::vector<CooperateCommand> stored_commands_;
   bool is_auto_mode_enabled_;
   bool is_locked_;
+  bool is_creep_supported_;
 
   std::string cooperate_status_namespace_ = "/planning/cooperate_status";
   std::string auto_mode_status_namespace_ = "/planning/auto_mode_status";
   std::string cooperate_commands_namespace_ = "/planning/cooperate_commands";
   std::string enable_auto_mode_namespace_ = "/planning/enable_auto_mode";
+  std::string creep_commands_namespace_ = "/planning/creep_commands";
 
   mutable std::mutex mutex_;
 

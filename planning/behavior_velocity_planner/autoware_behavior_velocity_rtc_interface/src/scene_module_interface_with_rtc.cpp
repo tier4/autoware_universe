@@ -39,9 +39,9 @@ SceneModuleInterfaceWithRTC::SceneModuleInterfaceWithRTC(
 }
 
 SceneModuleManagerInterfaceWithRTC::SceneModuleManagerInterfaceWithRTC(
-  rclcpp::Node & node, const char * module_name, const bool enable_rtc)
+  rclcpp::Node & node, const char * module_name, const bool enable_rtc, const bool creep_supported)
 : SceneModuleManagerInterface<SceneModuleInterfaceWithRTC>(node, module_name),
-  rtc_interface_(&node, module_name, enable_rtc),
+  rtc_interface_(&node, module_name, enable_rtc, creep_supported),
   objects_of_interest_marker_interface_(&node, module_name)
 {
 }
@@ -73,6 +73,7 @@ void SceneModuleManagerInterfaceWithRTC::setActivation()
     const UUID uuid = getUUID(scene_module->getModuleId());
     scene_module->setActivation(rtc_interface_.isActivated(uuid));
     scene_module->setRTCEnabled(rtc_interface_.isRTCEnabled(uuid));
+    scene_module->setCreepTriggered(rtc_interface_.isCreepTriggered(uuid));
   }
 }
 

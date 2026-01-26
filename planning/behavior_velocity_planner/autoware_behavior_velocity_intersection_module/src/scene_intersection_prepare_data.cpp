@@ -420,7 +420,7 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
   const std::optional<size_t> map_first_attention_stopline_ip_opt = getFirstAttentionLineFromMap(
     interpolated_path_info, assigned_lanelet, ds, local_footprint, baselink2front);
   const std::optional<size_t> first_footprint_inside_1st_attention_ip_opt =
-    util::getFirstPointInsidePolygonByFootprint(
+    util::getLastPointOutsidePolygonByFootprint(
       first_attention_area, interpolated_path_info, local_footprint, baselink2front);
   if (!first_footprint_inside_1st_attention_ip_opt && !map_first_attention_stopline_ip_opt) {
     return std::nullopt;
@@ -432,6 +432,10 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
       return first_footprint_inside_1st_attention_ip_opt.value();
     }
   }();
+
+  const auto creep_stopline_ip = static_cast<size_t>(std::max(
+    0, static_cast<int>(first_attention_stopline_ip) -
+         static_cast<int>(std::ceil(planner_param_.common.creep_stopline_margin / ds))));
 
   // (2) pass judge line position on interpolated path
   const double braking_dist = planning_utils::calcJudgeLineDistWithJerkLimit(
@@ -580,7 +584,7 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
       // NOTE: when ego vehicle is approaching attention area and already passed
       // first_conflicting_area, this could be null.
       // ==========================================================================================
-      const auto stuck_stopline_idx_ip_opt = util::getFirstPointInsidePolygonByFootprint(
+      const auto stuck_stopline_idx_ip_opt = util::getLastPointOutsidePolygonByFootprint(
         first_conflicting_area, interpolated_path_info, local_footprint, baselink2front);
       if (!stuck_stopline_idx_ip_opt) {
         return {0, false};
@@ -628,6 +632,7 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
     size_t default_stopline{0};
     size_t collision_stopline{0};
     size_t first_attention_stopline{0};
+    size_t creep_stopline{0};
     size_t occlusion_peeking_stopline{0};
     size_t pass_judge_line{0};
     size_t most_footprint_overshoot_line{0};
@@ -640,6 +645,7 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
     {&default_stopline_ip, &intersection_stoplines_temp.default_stopline},
     {&collision_stopline_ip, &intersection_stoplines_temp.collision_stopline},
     {&first_attention_stopline_ip, &intersection_stoplines_temp.first_attention_stopline},
+    {&creep_stopline_ip, &intersection_stoplines_temp.creep_stopline},
     {&occlusion_peeking_line_ip, &intersection_stoplines_temp.occlusion_peeking_stopline},
     {&first_pass_judge_line_ip, &intersection_stoplines_temp.pass_judge_line},
     {&maximum_footprint_overshoot_line_ip,
@@ -670,6 +676,7 @@ std::optional<IntersectionStopLines> IntersectionModule::generateIntersectionSto
   }
   intersection_stoplines.first_attention_stopline =
     intersection_stoplines_temp.first_attention_stopline;
+  intersection_stoplines.creep_stopline = intersection_stoplines_temp.creep_stopline;
   if (occlusion_peeking_line_valid) {
     intersection_stoplines.occlusion_peeking_stopline =
       intersection_stoplines_temp.occlusion_peeking_stopline;

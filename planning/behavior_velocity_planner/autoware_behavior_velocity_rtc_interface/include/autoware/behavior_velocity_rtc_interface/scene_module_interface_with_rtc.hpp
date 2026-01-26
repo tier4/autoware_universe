@@ -60,13 +60,16 @@ public:
   virtual ~SceneModuleInterfaceWithRTC() = default;
 
   void setActivation(const bool activated) { activated_ = activated; }
+  void setCreepTriggered(const bool creep_triggered) { creep_triggered_ = creep_triggered; }
   void setRTCEnabled(const bool enable_rtc) { rtc_enabled_ = enable_rtc; }
   bool isActivated() const { return activated_; }
+  bool isCreepTriggered() const { return creep_triggered_; }
   bool isSafe() const { return safe_; }
   double getDistance() const { return distance_; }
 
 protected:
   bool activated_;
+  bool creep_triggered_;
   bool safe_;
   bool rtc_enabled_;
   double distance_;
@@ -87,7 +90,8 @@ class SceneModuleManagerInterfaceWithRTC
 {
 public:
   SceneModuleManagerInterfaceWithRTC(
-    rclcpp::Node & node, const char * module_name, const bool enable_rtc = true);
+    rclcpp::Node & node, const char * module_name, const bool enable_rtc = true,
+    const bool creep_supported = false);
 
   void plan(autoware_internal_planning_msgs::msg::PathWithLaneId * path) override;
 
