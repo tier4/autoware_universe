@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef MINIMUM_RULE_BASED_PLANNER__MINIMUM_RULE_BASED_PLANNER_HPP_
-#define MINIMUM_RULE_BASED_PLANNER__MINIMUM_RULE_BASED_PLANNER_HPP_
+#ifndef MINIMUM_RULE_BASED_PLANNER_HPP_
+#define MINIMUM_RULE_BASED_PLANNER_HPP_
 
 #include "autoware/trajectory_optimizer/trajectory_optimizer_plugins/trajectory_optimizer_plugin_base.hpp"
 #include "autoware/trajectory_optimizer/trajectory_optimizer_structs.hpp"
@@ -148,4 +148,4 @@ private:
 
 }  // namespace autoware::minimum_rule_based_planner
 
-#endif  // MINIMUM_RULE_BASED_PLANNER__MINIMUM_RULE_BASED_PLANNER_HPP_
+#endif  // MINIMUM_RULE_BASED_PLANNER_HPP_

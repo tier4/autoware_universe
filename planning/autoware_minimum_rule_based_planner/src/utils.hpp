@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef MINIMUM_RULE_BASED_PLANNER__UTILS_HPP_
-#define MINIMUM_RULE_BASED_PLANNER__UTILS_HPP_
+#ifndef UTILS_HPP_
+#define UTILS_HPP_
 
-#include "minimum_rule_based_planner/minimum_rule_based_planner.hpp"
+#include "minimum_rule_based_planner.hpp"
 
 #include <autoware/trajectory/path_point_with_lane_id.hpp>
 
@@ -184,4 +184,4 @@ autoware_planning_msgs::msg::Trajectory convert_path_to_trajectory(
 }  // namespace utils
 }  // namespace autoware::minimum_rule_based_planner
 
-#endif  // MINIMUM_RULE_BASED_PLANNER__UTILS_HPP_
+#endif  // UTILS_HPP_

@@ -25,7 +25,7 @@
 
     # Elastic Band Smoother
     eb_smoother:
-      enable: true
+      enable: false
 
     # Velocity Smoother
     velocity_smoother:

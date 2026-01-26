@@ -1,4 +1,4 @@
-// Copyright 2025 TIER IV, Inc.
+// Copyright 2026 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "minimum_rule_based_planner/minimum_rule_based_planner.hpp"
+#include "minimum_rule_based_planner.hpp"
 
-#include "minimum_rule_based_planner/utils.hpp"
+#include "utils.hpp"
 
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/conversion.hpp>
@@ -186,6 +186,12 @@ void MinimumRuleBasedPlannerNode::on_timer()
     candidate_traj.generator_id = generator_uuid_;
     candidate_traj.points = smoothed_traj.points;
     msg.candidate_trajectories.push_back(candidate_traj);
+
+    autoware_internal_planning_msgs::msg::GeneratorInfo generator_info;
+    generator_info.generator_id = generator_uuid_;
+    generator_info.generator_name.data = "minimum_rule_based_planner";
+    msg.generator_info.push_back(generator_info);
+
     return msg;
   }();
   pub_trajectories_->publish(candidate_trajectories);
