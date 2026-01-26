@@ -14,6 +14,8 @@
 
 #include "minimum_rule_based_planner/utils.hpp"
 
+#include <autoware/motion_utils/resample/resample.hpp>
+#include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/trajectory/interpolator/linear.hpp>
 #include <autoware/trajectory/path_point_with_lane_id.hpp>
 #include <autoware/trajectory/utils/closest.hpp>
@@ -815,6 +817,25 @@ std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
     }
   }
   return std::nullopt;
+}
+
+autoware_planning_msgs::msg::Trajectory convert_path_to_trajectory(
+  const PathWithLaneId & path, double resample_interval)
+{
+  std::vector<autoware_planning_msgs::msg::TrajectoryPoint> traj_points;
+  traj_points.reserve(path.points.size());
+  for (const auto & path_point : path.points) {
+    autoware_planning_msgs::msg::TrajectoryPoint traj_point;
+    traj_point.pose = path_point.point.pose;
+    traj_point.longitudinal_velocity_mps = path_point.point.longitudinal_velocity_mps;
+    traj_point.lateral_velocity_mps = path_point.point.lateral_velocity_mps;
+    traj_point.heading_rate_rps = path_point.point.heading_rate_rps;
+    traj_points.push_back(traj_point);
+  }
+
+  const auto traj_msg = autoware::motion_utils::convertToTrajectory(traj_points, path.header);
+  return autoware::motion_utils::resampleTrajectory(
+    traj_msg, resample_interval, false, true, true, true);
 }
 
 }  // namespace autoware::minimum_rule_based_planner::utils

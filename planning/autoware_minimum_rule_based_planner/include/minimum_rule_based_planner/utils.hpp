@@ -175,6 +175,12 @@ std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
   const PathPointTrajectory & trajectory, const PlannerData & planner_data,
   const double search_radius_range, const double pre_goal_offset);
 
+/**
+ * @brief Convert PathWithLaneId to Trajectory with resampling
+ */
+autoware_planning_msgs::msg::Trajectory convert_path_to_trajectory(
+  const PathWithLaneId & path, double resample_interval);
+
 }  // namespace utils
 }  // namespace autoware::minimum_rule_based_planner
 

@@ -81,9 +81,8 @@ void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
     "autoware_trajectory_optimizer",
     "autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase");
 
-  // Load plugins based on parameters (order matters: EB smoother first, then velocity optimizer)
-
-  // 1. Elastic Band Smoother - path smoothing
+  // Load plugins based on parameters
+  // (order matters: EB smoother -> MPT optimizer -> velocity optimizer)
   if (params.eb_smoother.enable) {
     try {
       auto plugin = plugin_loader_->createSharedInstance(
@@ -96,7 +95,18 @@ void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
     }
   }
 
-  // 2. Velocity Optimizer - velocity profile optimization
+  if (params.mpt_optimizer.enable) {
+    try {
+      auto plugin = plugin_loader_->createSharedInstance(
+        "autoware::trajectory_optimizer::plugin::TrajectoryMPTOptimizer");
+      plugin->initialize("mpt_optimizer", this, time_keeper_);
+      optimizer_plugins_.push_back(plugin);
+      RCLCPP_INFO(get_logger(), "Loaded trajectory MPT optimizer plugin");
+    } catch (const pluginlib::PluginlibException & ex) {
+      RCLCPP_ERROR(get_logger(), "Failed to load trajectory MPT optimizer plugin: %s", ex.what());
+    }
+  }
+
   if (params.velocity_smoother.enable) {
     try {
       auto plugin = plugin_loader_->createSharedInstance(
@@ -133,45 +143,40 @@ void MinimumRuleBasedPlannerNode::on_timer()
     return;
   }
 
-  // TODO(odashima): path_smoother?
-
-  // Convert path to trajectory (instead of path optimizer)
+  // Convert path to trajectory
   const auto traj_from_path =
-    convert_path_to_trajectory(planned_path.value(), params.output_delta_arc_length);
+    utils::convert_path_to_trajectory(planned_path.value(), params.output_delta_arc_length);
 
   // TODO(odashima): Apply each planner module (e.g. obstacle stop)
 
   // Apply optimizer plugins
-  trajectory_optimizer::TrajectoryOptimizerData optimizer_data;
-  optimizer_data.current_odometry = *input_data.odometry_ptr;
-  if (input_data.acceleration_ptr) {
-    optimizer_data.current_acceleration = *input_data.acceleration_ptr;
-  }
+  // TODO(odashima): eb smoother & mpt are must be applied before each planner module?
+  const auto smoothed_traj = [&]() {
+    trajectory_optimizer::TrajectoryOptimizerData optimizer_data;
+    optimizer_data.current_odometry = *input_data.odometry_ptr;
+    if (input_data.acceleration_ptr) {
+      optimizer_data.current_acceleration = *input_data.acceleration_ptr;
+    }
 
-  trajectory_optimizer::TrajectoryOptimizerParams optimizer_params;
-  optimizer_params.use_eb_smoother = params.eb_smoother.enable;
-  optimizer_params.use_velocity_optimizer = params.velocity_smoother.enable;
+    trajectory_optimizer::TrajectoryOptimizerParams optimizer_params;
+    optimizer_params.use_eb_smoother = params.eb_smoother.enable;
+    optimizer_params.use_mpt_optimizer = params.mpt_optimizer.enable;
+    optimizer_params.use_velocity_optimizer = params.velocity_smoother.enable;
 
-  auto trajectory_points = traj_from_path.points;
+    auto trajectory_points = traj_from_path.points;
+    for (const auto & plugin : optimizer_plugins_) {
+      plugin->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
+    }
 
-  // Set terminal velocity to 0 (TrajectoryVelocityOptimizer expects this to be done externally)
-  if (!trajectory_points.empty()) {
-    trajectory_points.back().longitudinal_velocity_mps = 0.0;
-  }
+    if (!trajectory_points.empty()) {
+      autoware::motion_utils::calculate_time_from_start(
+        trajectory_points, trajectory_points.front().pose.position);
+    }
 
-  // Apply optimizer plugins (in-place modification)
-  for (const auto & plugin : optimizer_plugins_) {
-    plugin->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
-  }
-
-  // Calculate time_from_start (TrajectoryVelocityOptimizer doesn't calculate this)
-  if (!trajectory_points.empty()) {
-    autoware::motion_utils::calculate_time_from_start(
-      trajectory_points, trajectory_points.front().pose.position);
-  }
-
-  Trajectory smoothed_traj = traj_from_path;
-  smoothed_traj.points = trajectory_points;
+    Trajectory traj = traj_from_path;
+    traj.points = trajectory_points;
+    return traj;
+  }();
 
   // Create & publish CandidateTrajectories message
   const auto candidate_trajectories = [&]() {
@@ -199,7 +204,6 @@ MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   InputData input_data;
 
-  // route - keep previous data if no new data
   if (const auto msg = route_subscriber_.take_data()) {
     if (!msg->segments.empty()) {
       route_ptr_ = msg;
@@ -209,19 +213,16 @@ MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()
   }
   input_data.route_ptr = route_ptr_;
 
-  // map - keep previous data if no new data
   if (const auto msg = vector_map_subscriber_.take_data()) {
     lanelet_map_bin_ptr_ = msg;
   }
   input_data.lanelet_map_bin_ptr = lanelet_map_bin_ptr_;
 
-  // velocity - always use latest
   if (const auto msg = odometry_subscriber_.take_data()) {
     odometry_ptr_ = msg;
   }
   input_data.odometry_ptr = odometry_ptr_;
 
-  // acceleration - always use latest
   if (const auto msg = acceleration_subscriber_.take_data()) {
     acceleration_ptr_ = msg;
   }
@@ -250,7 +251,10 @@ bool MinimumRuleBasedPlannerNode::is_data_ready(const InputData & input_data)
     notify_waiting("odometry");
     return false;
   }
-  // acceleration is optional - don't require it
+  if (!input_data.acceleration_ptr) {
+    notify_waiting("acceleration");
+    return false;
+  }
   return true;
 }
 
@@ -309,295 +313,6 @@ void MinimumRuleBasedPlannerNode::set_route(const LaneletRoute::ConstSharedPtr &
     };
   set_lanelets_from_segment(route_ptr->segments.front(), planner_data_.start_lanelets);
   set_lanelets_from_segment(route_ptr->segments.back(), planner_data_.goal_lanelets);
-}
-
-std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::plan_path(const InputData & input_data)
-{
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-  const auto & current_pose = input_data.odometry_ptr->pose.pose;
-  const auto params = param_listener_->get_params();
-  const auto path_length_backward = params.path_length.backward;
-  const auto path_length_forward = params.path_length.forward;
-
-  if (!update_current_lanelet(current_pose, params)) {
-    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000, "Failed to update current lanelet");
-    return std::nullopt;
-  }
-
-  lanelet::ConstLanelets lanelets{*current_lanelet_};
-  const auto s_on_current_lanelet =
-    lanelet::utils::getArcCoordinates({*current_lanelet_}, current_pose).length;
-
-  const auto backward_length = std::max(
-    0., path_length_backward + vehicle_info_.max_longitudinal_offset_m - s_on_current_lanelet);
-  const auto backward_lanelets_within_route =
-    utils::get_lanelets_within_route_up_to(*current_lanelet_, planner_data_, backward_length);
-  if (!backward_lanelets_within_route) {
-    RCLCPP_ERROR(
-      get_logger(), "Failed to get backward lanelets within route for current lanelet (id: %ld)",
-      current_lanelet_->id());
-    return std::nullopt;
-  }
-  lanelets.insert(
-    lanelets.begin(), backward_lanelets_within_route->begin(),
-    backward_lanelets_within_route->end());
-
-  //  Extend lanelets by backward_length even outside planned route to ensure
-  //  ego footprint is inside lanelets if ego is at the beginning of start lane
-  auto backward_lanelets_length =
-    lanelet::utils::getLaneletLength2d(*backward_lanelets_within_route);
-  while (backward_lanelets_length < backward_length) {
-    const auto prev_lanelets = planner_data_.routing_graph_ptr->previous(lanelets.front());
-    if (prev_lanelets.empty()) {
-      break;
-    }
-    lanelets.insert(lanelets.begin(), prev_lanelets.front());
-    backward_lanelets_length += lanelet::geometry::length2d(prev_lanelets.front());
-  }
-
-  const auto forward_length = std::max(
-    0., path_length_forward + vehicle_info_.max_longitudinal_offset_m -
-          (lanelet::geometry::length2d(*current_lanelet_) - s_on_current_lanelet));
-  const auto forward_lanelets_within_route =
-    utils::get_lanelets_within_route_after(*current_lanelet_, planner_data_, forward_length);
-  if (!forward_lanelets_within_route) {
-    RCLCPP_ERROR(
-      get_logger(), "Failed to get forward lanelets within route for current lanelet (id: %ld)",
-      current_lanelet_->id());
-    return std::nullopt;
-  }
-  lanelets.insert(
-    lanelets.end(), forward_lanelets_within_route->begin(), forward_lanelets_within_route->end());
-
-  //  Extend lanelets by forward_length even outside planned route to ensure
-  //  ego footprint is inside lanelets if ego is at the end of goal lane
-  auto forward_lanelets_length = lanelet::utils::getLaneletLength2d(*forward_lanelets_within_route);
-  while (forward_lanelets_length < forward_length) {
-    const auto next_lanelets = planner_data_.routing_graph_ptr->following(lanelets.back());
-    if (next_lanelets.empty()) {
-      break;
-    }
-    lanelets.insert(lanelets.end(), next_lanelets.front());
-    forward_lanelets_length += lanelet::geometry::length2d(next_lanelets.front());
-  }
-
-  const auto s = s_on_current_lanelet + backward_lanelets_length;
-  const auto s_start = std::max(0., s - path_length_backward);
-  const auto s_end = [&]() {
-    auto s_end_val = s + path_length_forward;
-
-    if (!utils::get_next_lanelet_within_route(lanelets.back(), planner_data_)) {
-      s_end_val = std::min(s_end_val, lanelet::utils::getLaneletLength2d(lanelets));
-    }
-
-    for (auto [it, goal_arc_length] = std::make_tuple(lanelets.begin(), 0.); it != lanelets.end();
-         ++it) {
-      if (std::any_of(
-            planner_data_.goal_lanelets.begin(), planner_data_.goal_lanelets.end(),
-            [&](const auto & goal_lanelet) { return it->id() == goal_lanelet.id(); })) {
-        goal_arc_length += lanelet::utils::getArcCoordinates({*it}, planner_data_.goal_pose).length;
-        s_end_val = std::min(s_end_val, goal_arc_length);
-        break;
-      }
-      goal_arc_length += lanelet::geometry::length2d(*it);
-    }
-
-    const lanelet::LaneletSequence lanelet_seq(lanelets);
-    if (
-      const auto s_intersection = utils::get_first_intersection_arc_length(
-        lanelet_seq, std::max(0., s_start - vehicle_info_.max_longitudinal_offset_m),
-        s_end_val + vehicle_info_.max_longitudinal_offset_m, vehicle_info_.vehicle_length_m)) {
-      s_end_val = std::min(
-        s_end_val, std::max(0., *s_intersection - vehicle_info_.max_longitudinal_offset_m));
-    }
-
-    return s_end_val;
-  }();
-
-  return generate_path(lanelets, s_start, s_end, params);
-}
-
-std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::generate_path(
-  const lanelet::LaneletSequence & lanelet_sequence, const double s_start, const double s_end,
-  const Params & params)
-{
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-
-  if (lanelet_sequence.empty()) {
-    RCLCPP_ERROR(get_logger(), "Lanelet sequence is empty");
-    return std::nullopt;
-  }
-
-  std::vector<PathPointWithLaneId> path_points_with_lane_id{};
-
-  const auto waypoint_groups = utils::get_waypoint_groups(
-    lanelet_sequence, *planner_data_.lanelet_map_ptr, params.waypoint_group.separation_threshold,
-    params.waypoint_group.interval_margin_ratio);
-
-  auto extended_lanelets = lanelet_sequence.lanelets();
-  auto extended_arc_length = 0.;
-  for (const auto & [waypoints, interval] : waypoint_groups) {
-    while (interval.start + extended_arc_length < 0.) {
-      const auto prev_lanelets =
-        planner_data_.routing_graph_ptr->previous(extended_lanelets.front());
-      if (prev_lanelets.empty()) {
-        break;
-      }
-      extended_lanelets.insert(extended_lanelets.begin(), prev_lanelets.front());
-      extended_arc_length += lanelet::utils::getLaneletLength2d(prev_lanelets.front());
-    }
-  }
-
-  const auto add_path_point =
-    [&](const lanelet::ConstPoint3d & path_point, const lanelet::Id & lane_id) {
-      PathPointWithLaneId path_point_with_lane_id{};
-      path_point_with_lane_id.lane_ids.push_back(lane_id);
-      path_point_with_lane_id.point.pose.position =
-        lanelet::utils::conversion::toGeomMsgPt(path_point);
-      path_point_with_lane_id.point.longitudinal_velocity_mps =
-        planner_data_.traffic_rules_ptr
-          ->speedLimit(planner_data_.lanelet_map_ptr->laneletLayer.get(lane_id))
-          .speedLimit.value();
-      path_points_with_lane_id.push_back(std::move(path_point_with_lane_id));
-    };
-
-  const lanelet::LaneletSequence extended_lanelet_sequence(extended_lanelets);
-  std::optional<size_t> overlapping_waypoint_group_index = std::nullopt;
-
-  for (auto [lanelet_it, s] = std::make_tuple(extended_lanelet_sequence.begin(), 0.);
-       lanelet_it != extended_lanelet_sequence.end(); ++lanelet_it) {
-    const auto & centerline = lanelet_it->centerline();
-
-    for (auto point_it = centerline.begin(); point_it != centerline.end(); ++point_it) {
-      if (point_it != centerline.begin()) {
-        s += lanelet::geometry::distance2d(*std::prev(point_it), *point_it);
-      } else if (lanelet_it != extended_lanelet_sequence.begin()) {
-        continue;
-      }
-
-      if (overlapping_waypoint_group_index) {
-        const auto & [waypoints, interval] = waypoint_groups[*overlapping_waypoint_group_index];
-        if (s >= interval.start + extended_arc_length && s <= interval.end + extended_arc_length) {
-          continue;
-        }
-        overlapping_waypoint_group_index = std::nullopt;
-      }
-
-      for (size_t i = 0; i < waypoint_groups.size(); ++i) {
-        const auto & [waypoints, interval] = waypoint_groups[i];
-        if (s < interval.start + extended_arc_length || s > interval.end + extended_arc_length) {
-          continue;
-        }
-        for (const auto & waypoint : waypoints) {
-          add_path_point(waypoint.point, waypoint.lane_id);
-        }
-        overlapping_waypoint_group_index = i;
-        break;
-      }
-      if (overlapping_waypoint_group_index) {
-        continue;
-      }
-
-      add_path_point(*point_it, lanelet_it->id());
-      if (
-        point_it == std::prev(centerline.end()) &&
-        lanelet_it != std::prev(extended_lanelet_sequence.end())) {
-        if (
-          lanelet_it != extended_lanelet_sequence.begin() ||
-          lanelet_it->id() == lanelet_sequence.begin()->id()) {
-          path_points_with_lane_id.back().lane_ids.push_back(std::next(lanelet_it)->id());
-        } else {
-          path_points_with_lane_id.back().lane_ids = {std::next(lanelet_it)->id()};
-        }
-      }
-    }
-  }
-
-  if (path_points_with_lane_id.empty()) {
-    RCLCPP_ERROR(get_logger(), "No path points generated from lanelet sequence");
-    return std::nullopt;
-  }
-
-  auto trajectory = autoware::experimental::trajectory::pretty_build(path_points_with_lane_id);
-  if (!trajectory) {
-    RCLCPP_ERROR(get_logger(), "Failed to build trajectory from path points");
-    return std::nullopt;
-  }
-
-  // Attach orientation for all the points
-  trajectory->align_orientation_with_trajectory_direction();
-
-  const auto s_path_start = utils::get_arc_length_on_path(
-    extended_lanelet_sequence, path_points_with_lane_id, extended_arc_length + s_start);
-  const auto s_path_end = utils::get_arc_length_on_path(
-    extended_lanelet_sequence, path_points_with_lane_id, extended_arc_length + s_end);
-
-  // Refine the trajectory by cropping
-  if (trajectory->length() - s_path_end > 0) {
-    trajectory->crop(0., s_path_end);
-  }
-
-  // Check if the goal point is in the search range
-  // Note: We only see if the goal is approaching the tail of the path.
-  const auto distance_to_goal = autoware_utils::calc_distance2d(
-    trajectory->compute(trajectory->length()), planner_data_.goal_pose);
-
-  if (distance_to_goal < params.smooth_goal_connection.search_radius_range) {
-    auto refined_path = utils::modify_path_for_smooth_goal_connection(
-      *trajectory, planner_data_, params.smooth_goal_connection.search_radius_range,
-      params.smooth_goal_connection.pre_goal_offset);
-
-    if (refined_path) {
-      refined_path->align_orientation_with_trajectory_direction();
-      *trajectory = *refined_path;
-    }
-  }
-
-  if (trajectory->length() - s_path_start > 0) {
-    trajectory->crop(s_path_start, trajectory->length() - s_path_start);
-  }
-
-  // Compose the polished path
-  PathWithLaneId finalized_path_with_lane_id{};
-  finalized_path_with_lane_id.points = trajectory->restore();
-
-  if (finalized_path_with_lane_id.points.empty()) {
-    RCLCPP_ERROR(get_logger(), "Finalized path points are empty after cropping");
-    return std::nullopt;
-  }
-
-  // Set header which is needed to engage
-  finalized_path_with_lane_id.header.frame_id = planner_data_.route_frame_id;
-  finalized_path_with_lane_id.header.stamp = now();
-
-  const auto [left_bound, right_bound] = utils::get_path_bounds(
-    extended_lanelet_sequence,
-    std::max(0., extended_arc_length + s_start - vehicle_info_.max_longitudinal_offset_m),
-    extended_arc_length + s_end + vehicle_info_.max_longitudinal_offset_m);
-  finalized_path_with_lane_id.left_bound = left_bound;
-  finalized_path_with_lane_id.right_bound = right_bound;
-
-  return finalized_path_with_lane_id;
-}
-
-Trajectory MinimumRuleBasedPlannerNode::convert_path_to_trajectory(
-  const PathWithLaneId & path, double resample_interval)
-{
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-  std::vector<autoware_planning_msgs::msg::TrajectoryPoint> traj_points;
-  traj_points.reserve(path.points.size());
-  for (const auto & path_point : path.points) {
-    autoware_planning_msgs::msg::TrajectoryPoint traj_point;
-    traj_point.pose = path_point.point.pose;
-    traj_point.longitudinal_velocity_mps = path_point.point.longitudinal_velocity_mps;
-    traj_point.lateral_velocity_mps = path_point.point.lateral_velocity_mps;
-    traj_point.heading_rate_rps = path_point.point.heading_rate_rps;
-    traj_points.push_back(traj_point);
-  }
-
-  const auto traj_msg = autoware::motion_utils::convertToTrajectory(traj_points, path.header);
-  return autoware::motion_utils::resampleTrajectory(
-    traj_msg, resample_interval, false, true, true, true);
 }
 
 bool MinimumRuleBasedPlannerNode::update_current_lanelet(

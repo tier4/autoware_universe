@@ -103,7 +103,6 @@ private:
   std::optional<PathWithLaneId> generate_path(
     const lanelet::LaneletSequence & lanelet_sequence, const double s_start, const double s_end,
     const Params & params);
-  Trajectory convert_path_to_trajectory(const PathWithLaneId & path, double resample_interval);
   bool update_current_lanelet(const geometry_msgs::msg::Pose & current_pose, const Params & params);
 
   // Plugin loading

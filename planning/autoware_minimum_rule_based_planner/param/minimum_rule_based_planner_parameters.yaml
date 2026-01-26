@@ -35,7 +35,7 @@ minimum_rule_based_planner:
 
   lanelet_ego_nearest_yaw_threshold:
     type: double
-    default_value: 1.57
+    default_value: 1.046
     description: yaw threshold for ego nearest lanelet search [rad]
 
   path_length:
@@ -68,6 +68,12 @@ minimum_rule_based_planner:
 
   # Elastic Band Smoother Parameters
   eb_smoother:
+    enable:
+      type: bool
+      default_value: true
+
+  # MPT Optimizer Parameters
+  mpt_optimizer:
     enable:
       type: bool
       default_value: true
