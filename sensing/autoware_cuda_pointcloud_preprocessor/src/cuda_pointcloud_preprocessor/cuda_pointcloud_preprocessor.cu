@@ -143,8 +143,8 @@ void CudaPointcloudPreprocessor::setUndistortionType(const UndistortionType & un
 void CudaPointcloudPreprocessor::preallocateOutput()
 {
   output_pointcloud_ptr_ = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-  output_pointcloud_ptr_->data = cuda_blackboard::make_unique_async<std::uint8_t[]>(
-    num_rings_ * max_points_per_ring_ * sizeof(OutputPointType), stream_);
+  output_pointcloud_ptr_->data = cuda_blackboard::make_unique<std::uint8_t[]>(
+    num_rings_ * max_points_per_ring_ * sizeof(OutputPointType));
 }
 
 void CudaPointcloudPreprocessor::organizePointcloud()

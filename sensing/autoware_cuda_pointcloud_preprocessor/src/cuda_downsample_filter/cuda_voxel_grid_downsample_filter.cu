@@ -265,7 +265,7 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaVoxelGridDownsampleFilter:
   // Allocate region actually result filtered pointcloud requires and fill them
   auto filtered_output = std::make_unique<cuda_blackboard::CudaPointCloud2>();
   filtered_output->data =
-    cuda_blackboard::make_unique_async<std::uint8_t[]>(num_valid_voxel * sizeof(OutputPointType), stream_);
+    cuda_blackboard::make_unique<std::uint8_t[]>(num_valid_voxel * sizeof(OutputPointType));
 
   // Calculate actual voxel-filtered points
   auto centroid_buffer_dev = allocateBufferFromPool<Centroid>(num_valid_voxel * sizeof(Centroid));

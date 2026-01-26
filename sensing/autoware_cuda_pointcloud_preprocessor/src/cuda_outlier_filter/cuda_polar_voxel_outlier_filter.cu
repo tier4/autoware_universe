@@ -925,7 +925,7 @@ size_t CudaPolarVoxelOutlierFilter::create_output(
   output_cloud->height = point_cloud_height_organized;
   output_cloud->width = count;
   output_cloud->row_step = output_cloud->width * output_cloud->point_step;
-  output_cloud->data = cuda_blackboard::make_unique_async<std::uint8_t[]>(output_cloud->row_step, stream_);
+  output_cloud->data = cuda_blackboard::make_unique<std::uint8_t[]>(output_cloud->row_step);
 
   dim3 block_dim(512);
   dim3 grid_dim((num_points + block_dim.x - 1) / block_dim.x);
