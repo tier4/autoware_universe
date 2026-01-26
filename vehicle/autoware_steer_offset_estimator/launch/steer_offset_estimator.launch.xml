@@ -10,7 +10,8 @@
   <node pkg="autoware_steer_offset_estimator" exec="steer_offset_estimator_node" name="steer_offset_estimator" output="screen">
     <param from="$(var config_file)"/>
     <param from="$(var initial_steer_offset_param_path)"/>
-    <param name="initial_steer_offset_param_name" value="$(var initial_steer_offset_param_name)"/>
+    <param name="steer_offset_param_path" value="$(var initial_steer_offset_param_path)"/>
+    <param name="steer_offset_param_name" value="$(var initial_steer_offset_param_name)"/>
     <remap from="~/input/pose" to="/localization/pose_estimator/pose"/>
     <remap from="~/input/steer" to="/vehicle/status/steering_status"/>
     <remap from="~/output/steering_offset" to="~/steering_offset"/>

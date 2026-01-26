@@ -25,6 +25,7 @@
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 /**
  * @brief Steer offset estimator namespace
@@ -70,6 +71,8 @@ private:
    */
   SteerOffsetEstimator estimator_;
 
+  std::optional<SteerOffsetEstimationUpdated> current_result_;
+
   SteerOffsetCalibrationParameters calibration_params_;
 
   /**
@@ -113,6 +116,17 @@ private:
    * @brief Timer for periodic processing
    */
   rclcpp::TimerBase::SharedPtr timer_;
+
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr srv_update_offset_;
+
+  /**
+   * @brief Service Callback for updating steering offset
+   */
+  void on_update_offset_request(
+    [[maybe_unused]] const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    const std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+
+  bool execute_calibration_update(const double steer_offset);
 
   /**
    * @brief Timer callback for processing pose and steering updates
