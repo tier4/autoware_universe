@@ -34,12 +34,6 @@ using geometry_msgs::msg::Twist;
 using geometry_msgs::msg::Vector3;
 
 /**
- * @brief Calculate average steer
- * @param steers Steering reports
- * @return Average steer
- */
-double calc_average_steer(const std::vector<SteeringReport> & steers);
-/**
  * @brief Compute relative rotation vector between two quaternions
  *
  * This function computes the rotation vector representing the angular difference
