@@ -27,6 +27,8 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
+#include <memory>
+
 /**
  * @brief Steer offset estimator namespace
  */
@@ -71,9 +73,12 @@ private:
    */
   SteerOffsetEstimator estimator_;
 
-  std::optional<SteerOffsetEstimationUpdated> current_result_;
+  std::optional<SteerOffsetEstimationUpdated> latest_result_;
 
   SteerOffsetCalibrationParameters calibration_params_;
+
+  rclcpp::Time last_calibration_time_;
+  rclcpp::Time last_no_result_time_;
 
   /**
    * @brief Current registered steering offset
@@ -134,6 +139,8 @@ private:
   void on_timer();
 
   void set_calibration_parameters();
+
+  void check_auto_calibration();
 
   /**
    * @brief Publish steering offset estimation results
