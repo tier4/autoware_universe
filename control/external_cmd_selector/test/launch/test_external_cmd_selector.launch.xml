@@ -1,0 +1,3 @@
+<launch>
+  <include file="$(find-pkg-share external_cmd_selector)/launch/external_cmd_selector.launch.xml"/>
+</launch>
