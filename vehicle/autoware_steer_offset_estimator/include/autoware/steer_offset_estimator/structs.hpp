@@ -32,6 +32,7 @@ struct SteerOffsetEstimationUpdated
   double steering_angle{0.0};    ///< Vehicle steering angle [rad]
   double kalman_gain{0.0};       ///< Coefficient for covariance matrix
   double residual{0.0};          ///< Residual [rad/s]
+  double steering_rate{0.0};     ///< Steering angle rate [rad/s]
 };
 
 struct SteerOffsetEstimationNotUpdated
@@ -66,7 +67,7 @@ struct SteerOffsetCalibrationParameters
   CalibrationMode mode{CalibrationMode::OFF};
   double error_threshold{0.005};
   double covariance_threshold{0.0001};
-  double min_steady_distance{10.0};
+  double min_steady_duration{10.0};
   double min_velocity{1.0};
   double max_offset_limit{0.05};
   double min_update_interval{100.0};
@@ -77,7 +78,7 @@ struct SteerOffsetCalibrationParameters
     {"off", CalibrationMode::OFF},
     {"manual", CalibrationMode::MANUAL},
     {"auto", CalibrationMode::AUTO}};
-  
+
   static inline const std::unordered_map<CalibrationMode, std::string> mode_to_str_map{
     {CalibrationMode::OFF, "off"},
     {CalibrationMode::MANUAL, "manual"},
