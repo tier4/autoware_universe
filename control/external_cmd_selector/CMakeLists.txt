@@ -27,6 +27,20 @@ rclcpp_components_register_node(external_cmd_selector_node
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
+
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(
+    test_external_cmd_selector
+    test/test_external_cmd_selector.py
+    APPEND_ENV PYTHONPATH="${CMAKE_CURRENT_SOURCE_DIR}"
+    TIMEOUT 600
+  )
+
+  install(DIRECTORY
+    test/launch
+    DESTINATION share/${PROJECT_NAME}/
+  )
+
 endif()
 
 ament_auto_package(INSTALL_TO_SHARE
