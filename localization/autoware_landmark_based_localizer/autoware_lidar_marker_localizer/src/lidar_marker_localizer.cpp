@@ -549,8 +549,8 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
     std::vector<double> intensity_sum(bin_num, 0.0);
     std::vector<int> intensity_num(bin_num, 0);
     std::vector<double> average_intensity(bin_num, 0.0);
-    // Use ring_loop_index as ring_id for grid positioning (0-based index in ring_points)
-    const size_t ring_id = ring_loop_index;
+    // Use ring_loop_index as ring_array_index for grid positioning (0-based index in ring_points)
+    const size_t ring_array_index = ring_loop_index;
     size_t point_in_ring_index = 0;
     for (const auto & point : one_ring.points) {
       const int bin_index = static_cast<int>((point.x - min_x) / param_.resolution);
@@ -652,14 +652,14 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
           // ignore param_.intensity_pattern[j] == 0
         }
       }
-      const size_t bin_position = i + param_.intensity_pattern.size() / 2 + ring_id * bin_num;
+      const size_t bin_position = i + param_.intensity_pattern.size() / 2 + ring_array_index * bin_num;
 
       // Check bin_position range
       const size_t max_bin_position = center_intensity_grid_msg.info.width * center_intensity_grid_msg.info.height;
       if (bin_position >= max_bin_position) {
         RCLCPP_ERROR_STREAM_THROTTLE(
           this->get_logger(), *this->get_clock(), 1000,
-          "[detect_landmarks] OUT OF RANGE bin_position! ring_id=" << ring_id
+          "[detect_landmarks] OUT OF RANGE bin_position! ring_array_index=" << ring_array_index
                                                                    << ", bin_position=" << bin_position
                                                                    << ", max_bin_position=" << max_bin_position
                                                                    << ", width=" << center_intensity_grid_msg.info.width
