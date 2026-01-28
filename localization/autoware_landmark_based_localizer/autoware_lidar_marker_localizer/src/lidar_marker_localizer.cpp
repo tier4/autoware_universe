@@ -522,8 +522,10 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
   matched_grid_msg = center_intensity_grid_msg;
 
   // for each ring
+  size_t ring_loop_index = 0;
   for (const auto & one_ring : ring_points) {
     if (one_ring.empty()) {
+      ring_loop_index++;
       continue;
     }
     // Find the first non-empty ring for ring_id calculation
@@ -545,9 +547,8 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
     std::vector<double> intensity_sum(bin_num, 0.0);
     std::vector<int> intensity_num(bin_num, 0);
     std::vector<double> average_intensity(bin_num, 0.0);
-    const size_t ring_id =
-      get_ring_id(one_ring.front()) - get_ring_id(ring_points.front().points.front());
-
+    // Use ring_loop_index as ring_id for grid positioning (0-based index in ring_points)
+    const size_t ring_id = ring_loop_index;
     for (const auto & point : one_ring.points) {
       const int bin_index = static_cast<int>((point.x - min_x) / param_.resolution);
       intensity_sum[bin_index] += point.intensity;
@@ -558,6 +559,7 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
         reference_ring_y[bin_index] = std::min(reference_ring_y[bin_index], point.y);
       }
     }
+    ring_loop_index++;
 
     // calc average
     for (int bin_index = 0; bin_index < bin_num; bin_index++) {
