@@ -60,6 +60,10 @@ public:
     rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater);
   virtual ~MpcLateralController();
 
+  void set_steering_offset(double offset) override {
+    m_steering_offset = offset;
+  }
+
 private:
   rclcpp::Clock::SharedPtr clock_;
   rclcpp::Logger logger_;
@@ -148,6 +152,7 @@ private:
 
   // Steering offset estimator for offset compensation.
   std::shared_ptr<SteeringOffsetEstimator> steering_offset_;
+  double m_steering_offset;
 
   /**
    * @brief Initialize the timer
