@@ -549,10 +549,26 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
     std::vector<double> average_intensity(bin_num, 0.0);
     // Use ring_loop_index as ring_id for grid positioning (0-based index in ring_points)
     const size_t ring_id = ring_loop_index;
+    size_t point_in_ring_index = 0;
     for (const auto & point : one_ring.points) {
       const int bin_index = static_cast<int>((point.x - min_x) / param_.resolution);
+
+      // Check bin_index range
+      if (bin_index < 0 || bin_index >= bin_num) {
+        RCLCPP_ERROR_STREAM_THROTTLE(
+          this->get_logger(), *this->get_clock(), 1000,
+          "[detect_landmarks] OUT OF RANGE bin_index! ring[" << ring_loop_index
+                                                              << "], point[" << point_in_ring_index
+                                                              << "], bin_index=" << bin_index
+                                                              << ", bin_num=" << bin_num
+                                                              << ", point.x=" << point.x
+                                                              << ", min_x=" << min_x);
+        return std::vector<landmark_manager::Landmark>{};
+      }
+
       intensity_sum[bin_index] += point.intensity;
       intensity_num[bin_index]++;
+      point_in_ring_index++;
       if (
         (get_ring_id(point) == param_.reference_ring_number) ||
         (param_.reference_ring_number == std::numeric_limits<uint8_t>::max())) {
