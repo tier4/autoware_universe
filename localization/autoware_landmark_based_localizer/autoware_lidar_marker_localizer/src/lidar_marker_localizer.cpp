@@ -415,13 +415,28 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
     return std::vector<landmark_manager::Landmark>{};
   }
 
-  // Use parameters for initial lower/upper ring id
-  uint16_t lower_ring_id = static_cast<uint16_t>(param_.lower_ring_id_init);
-  uint16_t upper_ring_id = static_cast<uint16_t>(param_.upper_ring_id_init);
+  // Calculate actual ring ID range from points
+  // First, find the actual min/max ring IDs in the pointcloud
+  uint16_t actual_min_ring_id = std::numeric_limits<uint16_t>::max();
+  uint16_t actual_max_ring_id = 0;
+  bool has_points = false;
   for (const auto & point : points_ptr->points) {
-    lower_ring_id = std::min(get_ring_id(point), lower_ring_id);
-    upper_ring_id = std::max(get_ring_id(point), upper_ring_id);
+    const uint16_t ring_id = get_ring_id(point);
+    actual_min_ring_id = std::min(ring_id, actual_min_ring_id);
+    actual_max_ring_id = std::max(ring_id, actual_max_ring_id);
+    has_points = true;
   }
+
+  if (!has_points) {
+    RCLCPP_WARN_STREAM_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000, "No points to process!");
+    return std::vector<landmark_manager::Landmark>{};
+  }
+
+  // Use actual range from points (parameters are just hints)
+  // This ensures ring_points has no empty elements
+  uint16_t lower_ring_id = actual_min_ring_id;
+  uint16_t upper_ring_id = actual_max_ring_id;
   uint16_t ring_num = upper_ring_id - lower_ring_id + 1;
 
   std::vector<pcl::PointCloud<PointT>> ring_points(ring_num);
