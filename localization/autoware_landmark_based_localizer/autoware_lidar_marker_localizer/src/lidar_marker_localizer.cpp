@@ -443,10 +443,26 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
 
   float min_x = std::numeric_limits<float>::max();
   float max_x = std::numeric_limits<float>::lowest();
+  size_t point_index = 0;
   for (const auto & point : points_ptr->points) {
-    ring_points[get_ring_id(point) - lower_ring_id].push_back(point);
+    const uint16_t lidar_ring_id = get_ring_id(point);
+    const int32_t ring_index = static_cast<int32_t>(lidar_ring_id) - static_cast<int32_t>(lower_ring_id);
+    // 範囲外アクセスのチェック
+    if (ring_index < 0 || ring_index >= static_cast<int32_t>(ring_num)) {
+      RCLCPP_ERROR_STREAM_THROTTLE(
+        this->get_logger(), *this->get_clock(), 1000,
+        "[detect_landmarks] OUT OF RANGE! Point[" << point_index << "] lidar_ring_id=" << lidar_ring_id
+                                                   << ", ring_index=" << ring_index
+                                                   << ", ring_num=" << ring_num
+                                                   << ", lower_ring_id=" << lower_ring_id
+                                                   << ", upper_ring_id=" << upper_ring_id);
+      return std::vector<landmark_manager::Landmark>{};  // エラー時は空のベクトルを返す
+    }
+
+    ring_points[ring_index].push_back(point);
     min_x = std::min(min_x, point.x);
     max_x = std::max(max_x, point.x);
+    point_index++;
   }
 
   // Check that the leaf size is not too small, given the size of the data
