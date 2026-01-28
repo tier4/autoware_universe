@@ -76,10 +76,9 @@ SteerOffsetEstimator::update(
              ? std::abs(steering_info->steering - previous_steering_->steering) / steering_dt
              : 0.0;
   });
+  previous_steering_ = steering_info;
 
   if (steering_rate > params_.max_steer_rate) return unexpected("steering rate is too large");
-
-  previous_steering_ = steering_info;
 
   if (std::abs(steering_info.value().steering) > params_.max_steer) {
     return unexpected("steering angle is too large");
