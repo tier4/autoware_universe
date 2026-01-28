@@ -633,6 +633,20 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
         }
       }
       const size_t bin_position = i + param_.intensity_pattern.size() / 2 + ring_id * bin_num;
+
+      // Check bin_position range
+      const size_t max_bin_position = center_intensity_grid_msg.info.width * center_intensity_grid_msg.info.height;
+      if (bin_position >= max_bin_position) {
+        RCLCPP_ERROR_STREAM_THROTTLE(
+          this->get_logger(), *this->get_clock(), 1000,
+          "[detect_landmarks] OUT OF RANGE bin_position! ring_id=" << ring_id
+                                                                   << ", bin_position=" << bin_position
+                                                                   << ", max_bin_position=" << max_bin_position
+                                                                   << ", width=" << center_intensity_grid_msg.info.width
+                                                                   << ", height=" << center_intensity_grid_msg.info.height);
+        continue;  // Skip this bin instead of crashing
+      }
+
       center_intensity_grid_msg.data[bin_position] =
         std::min(static_cast<int>(center_intensity), max_vote_percentage);
       positive_grid_msg.data[bin_position] = std::min(
