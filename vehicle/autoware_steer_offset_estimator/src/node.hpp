@@ -116,6 +116,12 @@ private:
    * @brief Publisher for steer offset estimation result
    */
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_info_;
+
+  /**
+   * @brief Publisher steering offset update
+   */
+   rclcpp::Publisher<Float32Stamped>::SharedPtr pub_steer_offset_update_;
+
   // Timer
   /**
    * @brief Timer for periodic processing
