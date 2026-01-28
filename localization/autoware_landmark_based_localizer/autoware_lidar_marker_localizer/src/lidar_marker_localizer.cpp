@@ -526,6 +526,21 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
     if (one_ring.empty()) {
       continue;
     }
+    // Find the first non-empty ring for ring_id calculation
+    const pcl::PointCloud<PointT> * reference_ring = nullptr;
+    for (const auto & ring : ring_points) {
+      if (!ring.empty()) {
+        reference_ring = &ring;
+        break;
+      }
+    }
+
+    if (reference_ring == nullptr) {
+      RCLCPP_ERROR_STREAM_THROTTLE(
+        this->get_logger(), *this->get_clock(), 1000,
+        "[detect_landmarks] ERROR: All rings are empty!");
+      return std::vector<landmark_manager::Landmark>{};
+    }
 
     std::vector<double> intensity_sum(bin_num, 0.0);
     std::vector<int> intensity_num(bin_num, 0);
