@@ -441,14 +441,29 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
   uint16_t upper_ring_id = actual_max_ring_id;
   uint16_t ring_num = upper_ring_id - lower_ring_id + 1;
 
+  RCLCPP_INFO_STREAM_THROTTLE(
+    this->get_logger(), *this->get_clock(), 1000,
+    "[detect_landmarks] Ring ID range: lower=" << lower_ring_id << ", upper=" << upper_ring_id
+                                                << ", ring_num=" << ring_num);
+
   std::vector<pcl::PointCloud<PointT>> ring_points(ring_num);
 
   float min_x = std::numeric_limits<float>::max();
   float max_x = std::numeric_limits<float>::lowest();
   size_t point_index = 0;
+  const size_t max_log_points = 10;  // 最初の10ポイントのみログ出力
   for (const auto & point : points_ptr->points) {
     const uint16_t lidar_ring_id = get_ring_id(point);
     const int32_t ring_index = static_cast<int32_t>(lidar_ring_id) - static_cast<int32_t>(lower_ring_id);
+
+    // ログ出力（最初の数ポイントのみ）
+    if (point_index < max_log_points) {
+      RCLCPP_INFO_STREAM_THROTTLE(
+        this->get_logger(), *this->get_clock(), 1000,
+        "[detect_landmarks] Point[" << point_index << "] lidar_ring_id=" << lidar_ring_id
+                                     << ", ring_index=" << ring_index << ", ring_num=" << ring_num);
+    }
+
     // 範囲外アクセスのチェック
     if (ring_index < 0 || ring_index >= static_cast<int32_t>(ring_num)) {
       RCLCPP_ERROR_STREAM_THROTTLE(
@@ -469,6 +484,13 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
 
   // Check that the leaf size is not too small, given the size of the data
   const int bin_num = static_cast<int>((max_x - min_x) / param_.resolution + 1);
+
+  RCLCPP_INFO_STREAM_THROTTLE(
+    this->get_logger(), *this->get_clock(), 1000,
+    "[detect_landmarks] After point processing: min_x=" << min_x << ", max_x=" << max_x
+                                                          << ", bin_num=" << bin_num
+                                                          << ", ring_points.size()="
+                                                          << ring_points.size());
 
   if (bin_num < static_cast<int>(param_.intensity_pattern.size())) {
     RCLCPP_WARN_STREAM_THROTTLE(
@@ -530,6 +552,12 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
       ring_loop_index++;
       continue;
     }
+
+    RCLCPP_INFO_STREAM_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000,
+      "[detect_landmarks] Processing ring[" << ring_loop_index << "], points=" << one_ring.size()
+                                              << ", ring_points.size()=" << ring_points.size());
+
     // Find the first non-empty ring for ring_id calculation
     const pcl::PointCloud<PointT> * reference_ring = nullptr;
     for (const auto & ring : ring_points) {
@@ -551,6 +579,14 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
     std::vector<double> average_intensity(bin_num, 0.0);
     // Use ring_loop_index as ring_array_index for grid positioning (0-based index in ring_points)
     const size_t ring_array_index = ring_loop_index;
+
+    RCLCPP_INFO_STREAM_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000,
+      "[detect_landmarks] ring_array_index=" << ring_array_index << ", ring_loop_index=" << ring_loop_index
+                                    << ", one_ring.front().ring_id="
+                                    << get_ring_id(one_ring.front())
+                                    << ", ring_num=" << ring_num);
+
     size_t point_in_ring_index = 0;
     for (const auto & point : one_ring.points) {
       const int bin_index = static_cast<int>((point.x - min_x) / param_.resolution);
@@ -577,6 +613,11 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
         reference_ring_y[bin_index] = std::min(reference_ring_y[bin_index], point.y);
       }
     }
+
+    RCLCPP_INFO_STREAM_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000,
+      "[detect_landmarks] Finished processing ring[" << ring_loop_index << "]");
+
     ring_loop_index++;
 
     // calc average
