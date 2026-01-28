@@ -198,7 +198,7 @@ void SteerOffsetEstimatorNode::check_auto_calibration()
 
   if (!latest_result_) return;
 
-  const double offset_error = abs(latest_result_->offset - current_steering_offset_);
+  const double offset_error = std::abs(latest_result_->offset - current_steering_offset_);
 
   if (offset_error < calibration_params_.error_threshold) {
     return;
@@ -239,7 +239,7 @@ void SteerOffsetEstimatorNode::on_update_offset_request(
     return reject(
       "Rejected: High uncertainty. Covariance: " + std::to_string(latest_result_->covariance));
 
-  if (abs(latest_result_->offset) > calibration_params_.max_offset_limit)
+  if (std::abs(latest_result_->offset) > calibration_params_.max_offset_limit)
     return reject(
       "Rejected: Offset value exceeds limit. Offset: " + std::to_string(latest_result_->offset));
 
