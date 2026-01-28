@@ -17,6 +17,7 @@
 
 #include "autoware/localization_util/smart_pose_buffer.hpp"
 
+#include <autoware/landmark_manager/landmark_manager.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -45,9 +46,6 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 #endif
-#include <autoware/landmark_manager/landmark_manager.hpp>
-
-#include <geometry_msgs/msg/pose_array.hpp>
 
 #include <pcl/common/transforms.h>
 #include <pcl/point_types.h>
