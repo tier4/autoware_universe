@@ -66,6 +66,8 @@ SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & n
   pub_steer_offset_error_ =
     this->create_publisher<Float32Stamped>("~/output/steering_offset_error", 1);
   pub_debug_info_ = this->create_publisher<StringStamped>("~/output/debug_info", 1);
+  pub_steer_offset_update_ = this->create_publisher<Float32Stamped>(
+    "~/output/steering_offset_update", rclcpp::QoS{1}.transient_local());
 
   set_calibration_parameters();
 
@@ -281,6 +283,13 @@ bool SteerOffsetEstimatorNode::execute_calibration_update(const double steer_off
     RCLCPP_INFO(
       this->get_logger(), "Saved %.4f to %s as '%s'", steer_offset, param_path.c_str(),
       param_name.c_str());
+
+    current_steering_offset_ = steer_offset;
+    autoware_internal_debug_msgs::msg::Float32Stamped msg;
+    msg.stamp = this->now();
+    msg.data = static_cast<float>(steer_offset);
+    pub_steer_offset_update_->publish(msg);
+
     return true;
   } catch (const std::exception & e) {
     RCLCPP_ERROR(this->get_logger(), "YAML update exception: %s", e.what());

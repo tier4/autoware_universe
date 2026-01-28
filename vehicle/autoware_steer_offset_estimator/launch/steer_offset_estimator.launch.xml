@@ -24,5 +24,6 @@
     <remap from="~/output/steering_offset_covariance" to="~/steering_offset_covariance"/>
     <remap from="~/output/steering_offset_error" to="~/steering_offset_error"/>
     <remap from="~/output/debug_info" to="~/debug_info"/>
+    <remap from="~/output/steering_offset_update" to="~/steering_offset_update"/>
   </node>
 </launch>
