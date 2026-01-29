@@ -637,6 +637,19 @@ void DiffusionPlanner::on_timer()
     return;
   }
 
+  // Debug: Print sampled trajectories in CSV format
+  std::cout << "===SAMPLED_START===" << std::endl;
+  for (int64_t t = 0; t <= std::min(OUTPUT_T, (int64_t)20); ++t) {
+    const size_t base_idx = 0 * (OUTPUT_T + 1) * POSE_DIM + t * POSE_DIM;
+    const float x = input_data_map.at("sampled_trajectories")[base_idx + 0] * 20.0f + 10.0f;
+    const float y = input_data_map.at("sampled_trajectories")[base_idx + 1] * 20.0f;
+    const float cos_yaw = input_data_map.at("sampled_trajectories")[base_idx + 2];
+    const float sin_yaw = input_data_map.at("sampled_trajectories")[base_idx + 3];
+    std::cout << "SAMPLED," << t << "," << x << "," << y << "," << cos_yaw << "," << sin_yaw
+              << std::endl;
+  }
+  std::cout << "===SAMPLED_END===" << std::endl;
+
   // Run inference
   const auto inference_result = tensorrt_inference_->infer(input_data_map);
   if (!inference_result.outputs) {
@@ -650,17 +663,19 @@ void DiffusionPlanner::on_timer()
   }
   const auto & [predictions, turn_indicator_logit] = inference_result.outputs.value();
 
-  // print predictions
-  std::cout << "Predictions (batch 0, agent 0): ";
-  for (int64_t t = 0; t < OUTPUT_T; ++t) {
+  // Debug: Print predictions in CSV format
+  std::cout << "===PREDICTION_START===" << std::endl;
+  for (int64_t t = 0; t < std::min(OUTPUT_T, (int64_t)20); ++t) {
     const size_t base_idx = 0 * (OUTPUT_T)*POSE_DIM + t * POSE_DIM;
-    const float x = predictions[base_idx + 0];
-    const float y = predictions[base_idx + 1];
+    const float x = predictions[base_idx + 0] * 20.0f + 10.0f;
+    const float y = predictions[base_idx + 1] * 20.0f;
     const float cos_yaw = predictions[base_idx + 2];
     const float sin_yaw = predictions[base_idx + 3];
-    std::cout << "[t=" << t << ": x=" << x << ", y=" << y << ", cos_yaw=" << cos_yaw
-              << ", sin_yaw=" << sin_yaw << "]" << std::endl;
+    std::cout << "PREDICTION," << t << "," << x << "," << y << "," << cos_yaw << "," << sin_yaw
+              << std::endl;
   }
+  std::cout << "===PREDICTION_END===" << std::endl;
+
   publish_predictions(predictions, *frame_context, frame_time);
 
   // Publish turn indicators
