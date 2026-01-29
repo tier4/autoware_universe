@@ -314,8 +314,8 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
         delay_step = params_.delay_step;
         for (int64_t t = 0; t <= copy_steps; ++t) {
           const size_t dst_base = agent_idx * (OUTPUT_T + 1) * POSE_DIM + (t)*POSE_DIM;
-          const Eigen::Matrix4d pose_ego = utils::inverse(last_agent_poses_map_[b][agent_idx][0]) *
-                                           last_agent_poses_map_[b][agent_idx][t];
+          const Eigen::Matrix4d pose_ego =
+            map_to_ego_transform * last_agent_poses_map_[b][agent_idx][t];
           const float shifted_x = static_cast<float>(pose_ego(0, 3));
           const float shifted_y = static_cast<float>(pose_ego(1, 3));
           const auto [shifted_cos, shifted_sin] =
