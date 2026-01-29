@@ -73,9 +73,6 @@ CombineCloudHandler<CudaPointCloud2Traits>::CombineCloudHandler(
   }
 }
 
-// cuda_blackboard::make_unique_async() と相性が悪いので、
-// とりあえずコメントアウト
-#if 0
 void CombineCloudHandler<CudaPointCloud2Traits>::allocate_pointclouds()
 {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -89,8 +86,11 @@ void CombineCloudHandler<CudaPointCloud2Traits>::allocate_pointclouds()
   }
 
   concatenated_cloud_ptr_ = std::make_unique<cuda_blackboard::CudaPointCloud2>();
+  // Temporary:
+  // Use per-thread default stream here because there is no appropriate stream.
+  // Avoid using legacy default stream.
   concatenated_cloud_ptr_->data = cuda_blackboard::make_unique_async<std::uint8_t[]>(
-    max_concat_pointcloud_size_ * input_topics_.size(), cuda_concat_struct.stream);
+    max_concat_pointcloud_size_ * input_topics_.size(), cudaStreamPerThread);
 }
 
 ConcatenatedCloudResult<CudaPointCloud2Traits>
@@ -143,8 +143,11 @@ CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
   if (total_data_size > max_concat_pointcloud_size_ || !concatenated_cloud_ptr_) {
     max_concat_pointcloud_size_ = CHUNK_SIZE * (1 + total_data_size / CHUNK_SIZE);
     concatenated_cloud_ptr_ = std::make_unique<cuda_blackboard::CudaPointCloud2>();
+    // Temporary:
+    // Use per-thread default stream here because there is no appropriate stream.
+    // Avoid using legacy default stream.
     concatenated_cloud_ptr_->data = cuda_blackboard::make_unique_async<std::uint8_t[]>(
-      max_concat_pointcloud_size_ * input_topics_.size(), cuda_concat_struct.stream);
+      max_concat_pointcloud_size_ * input_topics_.size(), cudaStreamPerThread);
   }
 
   concatenate_cloud_result.concatenate_cloud_ptr = std::move(concatenated_cloud_ptr_);
@@ -321,7 +324,6 @@ CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
   nvtxRangePop();
   return concatenate_cloud_result;
 }
-#endif  // 0
 
 }  // namespace autoware::pointcloud_preprocessor
 
