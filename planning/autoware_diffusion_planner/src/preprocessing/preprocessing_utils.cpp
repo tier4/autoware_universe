@@ -88,6 +88,11 @@ std::vector<float> create_ego_agent_past(
 
   std::vector<float> ego_agent_past(total_size, 0.0f);
 
+  // Initialize cos values to 1.0 (index 2 of each timestep)
+  for (size_t t = 0; t < num_timesteps; ++t) {
+    ego_agent_past[t * features_per_timestep + EGO_AGENT_PAST_IDX_COS] = 1.0f;
+  }
+
   const size_t start_idx =
     (odom_msgs.size() >= num_timesteps) ? odom_msgs.size() - num_timesteps : 0;
 
