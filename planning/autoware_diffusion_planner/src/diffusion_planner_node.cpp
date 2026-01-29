@@ -447,6 +447,7 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   {
     std::vector<float> single_delay = {static_cast<float>(delay_step)};
     input_data_map["delay"] = replicate_for_batch(single_delay);
+    std::cout << "DEBUG_DELAY: delay_step=" << delay_step << std::endl;
   }
 
   return input_data_map;
@@ -613,18 +614,6 @@ void DiffusionPlanner::on_timer()
     batch_idx);
   diagnostics_inference_->add_key_value("valid_neighbor_count", valid_neighbor_count);
 
-  // print sampled trajectories
-  std::cout << "Sampled trajectories (batch 0, agent 0): ";
-  for (int64_t t = 0; t <= OUTPUT_T; ++t) {
-    const size_t base_idx = 0 * (OUTPUT_T + 1) * POSE_DIM + t * POSE_DIM;
-    const float x = input_data_map.at("sampled_trajectories")[base_idx + 0] * 20.0f + 10.0f;
-    const float y = input_data_map.at("sampled_trajectories")[base_idx + 1] * 20.0f;
-    const float cos_yaw = input_data_map.at("sampled_trajectories")[base_idx + 2];
-    const float sin_yaw = input_data_map.at("sampled_trajectories")[base_idx + 3];
-    std::cout << "[t=" << t << ": x=" << x << ", y=" << y << ", cos_yaw=" << cos_yaw
-              << ", sin_yaw=" << sin_yaw << "]" << std::endl;
-  }
-
   // normalization of data
   preprocess::normalize_input_data(input_data_map, normalization_map_);
   if (!utils::check_input_map(input_data_map)) {
@@ -636,6 +625,11 @@ void DiffusionPlanner::on_timer()
     diagnostics_inference_->publish(current_time);
     return;
   }
+
+  // Debug: Track inference count
+  static int inference_count = 0;
+  inference_count++;
+  std::cout << "DEBUG_INFERENCE_COUNT: " << inference_count << std::endl;
 
   // Debug: Print sampled trajectories in CSV format
   std::cout << "===SAMPLED_START===" << std::endl;
