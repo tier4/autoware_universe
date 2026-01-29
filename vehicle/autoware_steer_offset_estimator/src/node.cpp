@@ -93,6 +93,12 @@ SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & n
     RCLCPP_INFO(this->get_logger(), "Calibration service disabled (OFF mode).");
   }
 
+  // publish initial steer offset value
+  auto initial_msg = std::make_unique<autoware_internal_debug_msgs::msg::Float32Stamped>();
+  initial_msg->stamp = this->now();
+  initial_msg->data = static_cast<float>(current_steering_offset_);
+  pub_steer_offset_update_->publish(std::move(initial_msg));
+
   last_calibration_time_ = this->now();
   last_no_result_time_ = this->now();
 }
