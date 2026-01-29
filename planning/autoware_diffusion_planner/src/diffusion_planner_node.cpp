@@ -667,8 +667,8 @@ void DiffusionPlanner::on_timer()
   std::cout << "===PREDICTION_START===" << std::endl;
   for (int64_t t = 0; t < std::min(OUTPUT_T, (int64_t)20); ++t) {
     const size_t base_idx = 0 * (OUTPUT_T)*POSE_DIM + t * POSE_DIM;
-    const float x = predictions[base_idx + 0] * 20.0f + 10.0f;
-    const float y = predictions[base_idx + 1] * 20.0f;
+    const float x = predictions[base_idx + 0];
+    const float y = predictions[base_idx + 1];
     const float cos_yaw = predictions[base_idx + 2];
     const float sin_yaw = predictions[base_idx + 3];
     std::cout << "PREDICTION," << t << "," << x << "," << y << "," << cos_yaw << "," << sin_yaw
