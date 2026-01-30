@@ -71,6 +71,7 @@ struct SteerOffsetCalibrationParameters
   double min_velocity{1.0};
   double max_offset_limit{0.05};
   double min_update_interval{100.0};
+  bool enable_parameter_file_overwrite{false};
   std::string steer_offset_param_path;
   std::string steer_offset_param_name;
 
