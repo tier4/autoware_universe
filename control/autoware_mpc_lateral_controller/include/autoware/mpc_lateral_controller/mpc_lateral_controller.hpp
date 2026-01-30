@@ -18,7 +18,6 @@
 #include "autoware/mpc_lateral_controller/mpc.hpp"
 #include "autoware/mpc_lateral_controller/mpc_trajectory.hpp"
 #include "autoware/mpc_lateral_controller/mpc_utils.hpp"
-#include "autoware/mpc_lateral_controller/steering_offset/steering_offset.hpp"
 #include "autoware/trajectory_follower_base/lateral_controller_base.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -60,9 +59,7 @@ public:
     rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater);
   virtual ~MpcLateralController();
 
-  void set_steering_offset(double offset) override {
-    m_steering_offset = offset;
-  }
+  void set_steering_offset(double offset) override { m_steering_offset = offset; }
 
 private:
   rclcpp::Clock::SharedPtr clock_;
@@ -150,8 +147,7 @@ private:
   // Flag indicating whether auto steering offset removal is enabled.
   bool enable_auto_steering_offset_removal_;
 
-  // Steering offset estimator for offset compensation.
-  std::shared_ptr<SteeringOffsetEstimator> steering_offset_;
+  // Steering offset value for offset compensation.
   double m_steering_offset;
 
   /**
@@ -177,15 +173,6 @@ private:
    * @return Pointer to the created QP solver interface.
    */
   std::shared_ptr<QPSolverInterface> createQPSolverInterface(rclcpp::Node & node);
-
-  /**
-   * @brief Create the steering offset estimator for offset compensation.
-   * @param wheelbase Vehicle's wheelbase.
-   * @param node Reference to the node.
-   * @return Pointer to the created steering offset estimator.
-   */
-  std::shared_ptr<SteeringOffsetEstimator> createSteerOffsetEstimator(
-    const double wheelbase, rclcpp::Node & node);
 
   /**
    * @brief Check if all necessary data is received and ready to run the control.
