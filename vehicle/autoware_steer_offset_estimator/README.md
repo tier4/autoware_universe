@@ -116,7 +116,7 @@ The node manages how the estimated offset is applied to the vehicle system throu
 ### Calibration Execution Logic
 
 A calibration is executed when a service call is received, or in case of **AUTO** mode update conditions are satisfied.
-When calibration is triggered the node will update the persistent YAML file and publish the offset update value on the topic `~/steering_offset_update`.
+When calibration is triggered the node will update the persistent YAML file (if parameter is enabled) and publish the offset update value on the topic `~/steering_offset_update`.
 
 Calibration is executed only if specific validation checks are satisfied.
 

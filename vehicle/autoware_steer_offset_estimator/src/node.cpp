@@ -126,6 +126,8 @@ void SteerOffsetEstimatorNode::set_calibration_parameters()
     this->declare_parameter<double>("calibration.max_offset_limit");
   calibration_params_.min_update_interval =
     this->declare_parameter<double>("calibration.min_update_interval");
+  calibration_params_.enable_parameter_file_overwrite =
+    this->declare_parameter<bool>("calibration.enable_parameter_file_overwrite");
   calibration_params_.steer_offset_param_path =
     this->declare_parameter<std::string>("steer_offset_param_path");
   calibration_params_.steer_offset_param_name =
@@ -267,6 +269,15 @@ bool SteerOffsetEstimatorNode::execute_calibration_update(const double steer_off
 {
   const auto & param_path = calibration_params_.steer_offset_param_path;
   const auto & param_name = calibration_params_.steer_offset_param_name;
+
+  current_steering_offset_ = steer_offset;
+  autoware_internal_debug_msgs::msg::Float32Stamped msg;
+  msg.stamp = this->now();
+  msg.data = static_cast<float>(steer_offset);
+  pub_steer_offset_update_->publish(msg);
+
+  if (!calibration_params_.enable_parameter_file_overwrite) return true;
+
   try {
     YAML::Node config = YAML::LoadFile(param_path);
     auto node = config["/**"]["ros__parameters"];
@@ -290,12 +301,6 @@ bool SteerOffsetEstimatorNode::execute_calibration_update(const double steer_off
     RCLCPP_INFO(
       this->get_logger(), "Saved %.4f to %s as '%s'", steer_offset, param_path.c_str(),
       param_name.c_str());
-
-    current_steering_offset_ = steer_offset;
-    autoware_internal_debug_msgs::msg::Float32Stamped msg;
-    msg.stamp = this->now();
-    msg.data = static_cast<float>(steer_offset);
-    pub_steer_offset_update_->publish(msg);
 
     return true;
   } catch (const std::exception & e) {

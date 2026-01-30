@@ -126,8 +126,23 @@
               "description": "min interval between offset calibration updates",
               "default": "100.0",
               "minimum": 0.0
+            },
+            "enable_parameter_file_overwrite": {
+              "type": "boolean",
+              "description": "enable parameter file overwrite",
+              "default": "false"
             }
-          }
+          },
+          "required": [
+            "mode",
+            "error_threshold",
+            "covariance_threshold",
+            "min_steady_duration",
+            "min_velocity",
+            "max_offset_limit",
+            "min_update_interval",
+            "enable_parameter_file_overwrite"
+          ]
         }
       },
       "required": [
