@@ -84,9 +84,9 @@ SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & n
 
   if (calibration_params_.mode != CalibrationMode::OFF) {
     srv_update_offset_ = create_service<std_srvs::srv::Trigger>(
-      "~/update_steering_offset", std::bind(
-                                    &SteerOffsetEstimatorNode::on_update_offset_request, this,
-                                    std::placeholders::_1, std::placeholders::_2));
+      "~/trigger_steer_offset_calibration", std::bind(
+                                              &SteerOffsetEstimatorNode::on_update_offset_request,
+                                              this, std::placeholders::_1, std::placeholders::_2));
     RCLCPP_INFO(
       this->get_logger(), "Calibration service initialized in %s mode.",
       SteerOffsetCalibrationParameters::mode_to_str_map.at(calibration_params_.mode).c_str());
