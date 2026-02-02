@@ -162,6 +162,7 @@ bool Tracker::updateWithMeasurement(
     // availability to SIGN_UNKNOWN
     object_.kinematics.orientation_availability = types::OrientationAvailability::SIGN_UNKNOWN;
   }
+  setOrientationAvailability(object_.kinematics.orientation_availability);
 
   // Update object
   measure(object, measurement_time, channel_info);
