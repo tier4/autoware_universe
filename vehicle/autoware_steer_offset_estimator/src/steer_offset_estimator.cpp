@@ -67,8 +67,13 @@ SteerOffsetEstimator::update(
     return unexpected("angular velocity is too high");
   if (!steering_info) return unexpected("steering angle is not available");
 
+  if (std::abs(steering_info.value().steering) > params_.max_steer) {
+    previous_steering_ = steering_info;
+    return unexpected("steering angle is too large");
+  }
+
   const auto steering_rate = std::invoke([this, steering_info]() -> double {
-    if (!previous_steering_) return std::numeric_limits<double>::max();
+    if (!previous_steering_) return 0.0;
     const auto steering_dt =
       rclcpp::Duration(rclcpp::Time(steering_info->stamp) - rclcpp::Time(previous_steering_->stamp))
         .seconds();
@@ -79,10 +84,6 @@ SteerOffsetEstimator::update(
   previous_steering_ = steering_info;
 
   if (steering_rate > params_.max_steer_rate) return unexpected("steering rate is too large");
-
-  if (std::abs(steering_info.value().steering) > params_.max_steer) {
-    return unexpected("steering angle is too large");
-  }
 
   return estimate_offset(velocity, angular_velocity, steering_info.value().steering, steering_rate);
 }
