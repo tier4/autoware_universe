@@ -32,6 +32,8 @@
 #include <stdexcept>
 #include <type_traits>
 
+#include <nvtx3/nvToolsExt.h>
+
 namespace autoware::cuda_pointcloud_preprocessor
 {
 namespace
@@ -525,6 +527,7 @@ size_t get_offset(const T & fields, const std::string & field_name)
 
 CudaPolarVoxelOutlierFilter::CudaPolarVoxelOutlierFilter() : primary_return_type_dev_(std::nullopt)
 {
+  nvtxRangePushA("CudaPolarVoxeloutlierFilter::CudaPolarVoxelOutputFilter");
   CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
 
   // create memory pool to make repeated allocation efficient
@@ -533,13 +536,16 @@ CudaPolarVoxelOutlierFilter::CudaPolarVoxelOutlierFilter() : primary_return_type
   size_t max_mem_pool_size_in_byte = 1e9;  // 1GB
   mem_pool_ =
     autoware::cuda_utils::create_memory_pool(max_mem_pool_size_in_byte, current_device_id);
+  nvtxRangePop();
 }
 
 CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
   const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
   const CudaPolarVoxelOutlierFilterParameters & params, const PolarDataType polar_type)
 {
+  nvtxRangePushA("CudaPolarVoxeloutlierFilter::filter");
   if (!primary_return_type_dev_) {
+    nvtxRangePop();
     return FilterReturn{nullptr, nullptr, 0., 0.};
   }
 
@@ -549,6 +555,7 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
     // For such cases, this filter returns empty results
     auto empty_filtered_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
     auto empty_noise_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
+    nvtxRangePop();
     return FilterReturn{std::move(empty_filtered_cloud), std::move(empty_noise_cloud), 0., 0.};
   }
 
@@ -711,12 +718,14 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
                    static_cast<double>(params.visibility_estimation_max_secondary_voxel_count));
   }
 
+  nvtxRangePop();
   return {std::move(filtered_cloud), std::move(noise_cloud), filter_ratio, visibility};
 }
 
 void CudaPolarVoxelOutlierFilter::set_return_types(
   const std::vector<int> & types, std::optional<ReturnTypeCandidates> & types_dev)
 {
+  nvtxRangePushA("CudaPolarVoxeloutlierFilter::set_return_types");
   if (types_dev) {
     // Reset previously allocated region to refresh the parameters
     CHECK_CUDA_ERROR(cudaFreeAsync(types_dev.value().return_types, stream_));
@@ -736,6 +745,7 @@ void CudaPolarVoxelOutlierFilter::set_return_types(
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   types_dev = ReturnTypeCandidates{return_type, types.size()};
+  nvtxRangePop();
 }
 
 std::tuple<int, CudaPooledUniquePtr<::cuda::std::optional<int>>, CudaPooledUniquePtr<int>>
@@ -743,6 +753,7 @@ CudaPolarVoxelOutlierFilter::calculate_voxel_index(
   const FieldDataComposer<::cuda::std::optional<int32_t> *> & polar_voxel_indices,
   const size_t & num_points)
 {
+  nvtxRangePushA("CudaPolarVoxeloutlierFilter::calculate_voxel_index");
   // Step 1: determine the range of each field indices by taking min and max
   FieldDataComposer<int> polar_voxel_indices_min{0, 0, 0};
   FieldDataComposer<int> polar_voxel_indices_max{0, 0, 0};
@@ -844,6 +855,7 @@ CudaPolarVoxelOutlierFilter::calculate_voxel_index(
     CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));  // Make sure Device to Host copy complete
   }
 
+  nvtxRangePop();
   return std::make_tuple(valid_voxel_num, std::move(point_indices), std::move(voxel_indices));
 }
 
@@ -851,6 +863,7 @@ std::tuple<CudaPooledUniquePtr<int>, size_t>
 CudaPolarVoxelOutlierFilter::calculate_filtered_point_indices(
   const CudaPooledUniquePtr<bool> & valid_points_mask, const size_t & num_points)
 {
+  nvtxRangePushA("CudaPolarVoxeloutlierFilter::calculate_filtered_point_indices");
   // Scan valid_points_mask to calculate the total number of filtered points and map from the source
   // point index to filtered point index
   auto filtered_point_indices =
@@ -873,11 +886,13 @@ CudaPolarVoxelOutlierFilter::calculate_filtered_point_indices(
   dim3 block_dim(512);
   dim3 grid_dim((num_points + block_dim.x - 1) / block_dim.x);
   // Subtract 1 from all elements to make 0 started index
+  // Can't this solved by change of algorythm?
   minus_one_kernel<<<grid_dim, block_dim, 0, stream_>>>(filtered_point_indices.get(), num_points);
 
   // Making sure memcpy device to host operation completed
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
+  nvtxRangePop();
   return std::make_tuple(std::move(filtered_point_indices), num_filtered_points);
 }
 
@@ -886,6 +901,7 @@ void CudaPolarVoxelOutlierFilter::reduce_and_copy_to_host(
   const ReductionType reduction_type, const T & dev_array, const size_t & array_length,
   U * result_dev, U & result_host)
 {
+  nvtxRangePushA("CudaPolarVoxeloutlierFilter::reduce_and_copy_to_host");
   auto reduction_op = [reduction_type](auto &&... args) {
     switch (reduction_type) {
       case ReductionType::Min:
@@ -908,6 +924,7 @@ void CudaPolarVoxelOutlierFilter::reduce_and_copy_to_host(
   // synchronization operation such as cudaStreamSynchronize
   CHECK_CUDA_ERROR(
     cudaMemcpyAsync(&result_host, result_dev, sizeof(U), cudaMemcpyDeviceToHost, stream_));
+  nvtxRangePop();
 }
 
 size_t CudaPolarVoxelOutlierFilter::create_output(
@@ -915,6 +932,7 @@ size_t CudaPolarVoxelOutlierFilter::create_output(
   const CudaPooledUniquePtr<bool> & points_mask, const size_t & num_points,
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> & output_cloud)
 {
+  nvtxRangePushA("CudaPolarVoxeloutlierFilter::create_output");
   auto [filtered_indices, count] = calculate_filtered_point_indices(points_mask, num_points);
 
   output_cloud->header = input_cloud->header;
@@ -934,6 +952,7 @@ size_t CudaPolarVoxelOutlierFilter::create_output(
     input_cloud->data.get(), points_mask.get(), filtered_indices.get(), num_points,
     output_cloud->point_step, output_cloud->data.get());
 
+  nvtxRangePop();
   return count;
 }
 

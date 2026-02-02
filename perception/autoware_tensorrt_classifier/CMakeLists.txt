@@ -57,6 +57,11 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 
 list(APPEND ${PROJECT_NAME}_LIBRARIES "${PROJECT_NAME}")
 
+# if(${CUDA_FOUND})
+#   list(APPEND CUDA_NVCC_FLAGS "--default-stream per-thread")
+# endif()
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} "--default-stream per-thread")
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()

@@ -71,9 +71,12 @@ CudaPooledUniquePtr<T> make_unique(const std::size_t n, cudaStream_t stream, cud
     }
   };
 
+  // Do we really need to clear the region???
   // To prevent unexpected behavior caused by dirty region allocated by the pool,
   // zero clear the taken region
   CHECK_CUDA_ERROR(cudaMemsetAsync(ptr, 0, n * sizeof(T), stream));
+
+  // Is it necessary to wait for completion of clearing?
 
   return CudaPooledUniquePtr<T>(ptr, deleter);
 }

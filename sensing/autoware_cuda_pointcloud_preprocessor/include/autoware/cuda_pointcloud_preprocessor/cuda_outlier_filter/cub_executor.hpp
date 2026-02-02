@@ -86,6 +86,7 @@ public:
     // Allocate temporary storage if needed
     update_temp_storage(temp_storage_bytes, stream, mem_pool);
 
+    // Will cub_lambda() run on the default stream?
     // Execute operation
     CHECK_CUDA_ERROR(
       cub_lambda(temp_storage_.get(), temp_storage_bytes, std::forward<Args>(args)...));

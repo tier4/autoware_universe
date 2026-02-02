@@ -200,7 +200,11 @@ public:
   {
     auto d = stream_.getInputDims();
     input_count_ = stream_.getBatchSize() * d.d[1] * d.d[2] * d.d[3];
-    CHECK_CUDA_ERROR(cudaMalloc(&device_input_, input_count_ * sizeof(float)));
+    // Temporary:
+    // Use the per-thread default stream as there is no appropriate CUDA stream.
+    // Avoid using the legacy default stream.
+    CHECK_CUDA_ERROR(cudaMallocAsync(&device_input_, input_count_ * sizeof(float), cudaStreamPerThread));
+    // The memory will be used on the same stream. No need to synchronize.
     m_std = std;
     m_mean = mean;
     m_quantile = quantile;
@@ -226,7 +230,10 @@ public:
   }
   int getBatchSize() const noexcept override { return stream_.getBatchSize(); }
 
-  virtual ~Int8LegacyCalibrator() { CHECK_CUDA_ERROR(cudaFree(device_input_)); }
+  // Temporary:
+  // Use the per-thread default stream as there is no appropriate CUDA stream.
+  // Avoid using the legacy default stream.
+  virtual ~Int8LegacyCalibrator() { CHECK_CUDA_ERROR(cudaFreeAsync(device_input_, cudaStreamPerThread)); }
 
   bool getBatch(void * bindings[], const char * names[], int nb_bindings) noexcept override
   {
@@ -237,8 +244,11 @@ public:
       return false;
     }
     try {
-      CHECK_CUDA_ERROR(cudaMemcpy(
-        device_input_, stream_.getBatch(), input_count_ * sizeof(float), cudaMemcpyHostToDevice));
+      // Temporary:
+      // Use the per-thread default stream as there is no appropriate CUDA stream.
+      // Avoid using the legacy default stream.
+      CHECK_CUDA_ERROR(cudaMemcpyAsync(
+        device_input_, stream_.getBatch(), input_count_ * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
     } catch (const std::exception & e) {
       // Do nothing
     }
@@ -345,7 +355,11 @@ public:
     m_std = std;
     m_mean = mean;
 
-    CHECK_CUDA_ERROR(cudaMalloc(&device_input_, input_count_ * sizeof(float)));
+    // Temporary:
+    // Use the per-thread default stream as there is no appropriate CUDA stream.
+    // Avoid using the legacy default stream.
+    CHECK_CUDA_ERROR(cudaMallocAsync(&device_input_, input_count_ * sizeof(float), cudaStreamPerThread));
+    // The memory will be used on the same stream. No need to synchronize.
     auto algType = getAlgorithm();
     switch (algType) {
       case (nvinfer1::CalibrationAlgoType::kLEGACY_CALIBRATION):
@@ -367,7 +381,10 @@ public:
   }
   int getBatchSize() const noexcept override { return stream_.getBatchSize(); }
 
-  virtual ~Int8EntropyCalibrator() { CHECK_CUDA_ERROR(cudaFree(device_input_)); }
+  // Temporary:
+  // Use the per-thread default stream as there is no appropriate CUDA stream.
+  // Avoid using the legacy default stream.
+  virtual ~Int8EntropyCalibrator() { CHECK_CUDA_ERROR(cudaFreeAsync(device_input_, cudaStreamPerThread)); }
 
   bool getBatch(void * bindings[], const char * names[], int nb_bindings) noexcept override
   {
@@ -378,8 +395,11 @@ public:
       return false;
     }
     try {
-      CHECK_CUDA_ERROR(cudaMemcpy(
-        device_input_, stream_.getBatch(), input_count_ * sizeof(float), cudaMemcpyHostToDevice));
+      // Temporary:
+      // Use the per-thread default stream as there is no appropriate CUDA stream.
+      // Avoid using the legacy default stream.
+      CHECK_CUDA_ERROR(cudaMemcpyAsync(
+        device_input_, stream_.getBatch(), input_count_ * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
     } catch (const std::exception & e) {
       // Do nothing
     }
@@ -445,7 +465,11 @@ public:
     input_count_ = stream_.getBatchSize() * d.d[1] * d.d[2] * d.d[3];
     m_std = std;
     m_mean = mean;
-    CHECK_CUDA_ERROR(cudaMalloc(&device_input_, input_count_ * sizeof(float)));
+    // Temporary:
+    // Use the per-thread default stream as there is no appropriate CUDA stream.
+    // Avoid using the legacy default stream.
+    CHECK_CUDA_ERROR(cudaMallocAsync(&device_input_, input_count_ * sizeof(float), cudaStreamPerThread));
+    // The memory will be used on the same stream. No need to synchronize.
     auto algType = getAlgorithm();
     switch (algType) {
       case (nvinfer1::CalibrationAlgoType::kLEGACY_CALIBRATION):
@@ -467,7 +491,10 @@ public:
   }
   int getBatchSize() const noexcept override { return stream_.getBatchSize(); }
 
-  virtual ~Int8MinMaxCalibrator() { CHECK_CUDA_ERROR(cudaFree(device_input_)); }
+  // Temporary:
+  // Use the per-thread default stream as there is no appropriate CUDA stream.
+  // Avoid using the legacy default stream.
+  virtual ~Int8MinMaxCalibrator() { CHECK_CUDA_ERROR(cudaFreeAsync(device_input_, cudaStreamPerThread)); }
 
   bool getBatch(void * bindings[], const char * names[], int nb_bindings) noexcept override
   {
@@ -478,8 +505,11 @@ public:
       return false;
     }
     try {
-      CHECK_CUDA_ERROR(cudaMemcpy(
-        device_input_, stream_.getBatch(), input_count_ * sizeof(float), cudaMemcpyHostToDevice));
+      // Temporary:
+      // Use the per-thread default stream as there is no appropriate CUDA stream.
+      // Avoid using the legacy default stream.
+      CHECK_CUDA_ERROR(cudaMemcpyAsync(
+        device_input_, stream_.getBatch(), input_count_ * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
     } catch (const std::exception & e) {
       // Do nothing
     }

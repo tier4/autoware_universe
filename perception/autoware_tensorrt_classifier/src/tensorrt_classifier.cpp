@@ -207,7 +207,7 @@ TrtClassifier::~TrtClassifier()
   try {
     if (m_cuda) {
       if (h_img_) CHECK_CUDA_ERROR(cudaFreeHost(h_img_));
-      if (d_img_) CHECK_CUDA_ERROR(cudaFree(d_img_));
+      if (d_img_) CHECK_CUDA_ERROR(cudaFreeAsync(d_img_, *stream_));
     }
   } catch (const std::exception & e) {
     std::cerr << "Exception in TrtClassifier destructor: " << e.what() << std::endl;
@@ -228,7 +228,7 @@ void TrtClassifier::initPreprocessBuffer(int width, int height)
         h_img_ = NULL;
       }
       if (d_img_) {
-        CHECK_CUDA_ERROR(cudaFree(d_img_));
+        CHECK_CUDA_ERROR(cudaFreeAsync(d_img_, *stream_));
         d_img_ = NULL;
       }
     }
@@ -253,9 +253,10 @@ void TrtClassifier::initPreprocessBuffer(int width, int height)
       CHECK_CUDA_ERROR(cudaMallocHost(
         reinterpret_cast<void **>(&h_img_),
         sizeof(unsigned char) * width * height * 3 * batch_size_));
-      CHECK_CUDA_ERROR(cudaMalloc(
+      CHECK_CUDA_ERROR(cudaMallocAsync(
         reinterpret_cast<void **>(&d_img_),
-        sizeof(unsigned char) * width * height * 3 * batch_size_));
+        sizeof(unsigned char) * width * height * 3 * batch_size_, *stream_));
+      CHECK_CUDA_ERROR(cudaStreamSynchronize(*stream_));
     }
   }
   nvtxRangePop();
@@ -285,7 +286,7 @@ void TrtClassifier::preprocessGpu(const std::vector<cv::Mat> & images)
           h_img_ = NULL;
         }
         if (d_img_) {
-          CHECK_CUDA_ERROR(cudaFree(d_img_));
+          CHECK_CUDA_ERROR(cudaFreeAsync(d_img_, *stream_));
           d_img_ = NULL;
         }
       }
@@ -307,9 +308,11 @@ void TrtClassifier::preprocessGpu(const std::vector<cv::Mat> & images)
       CHECK_CUDA_ERROR(cudaMallocHost(
         reinterpret_cast<void **>(&h_img_),
         sizeof(unsigned char) * image.cols * image.rows * 3 * batch_size));
-      CHECK_CUDA_ERROR(cudaMalloc(
+      CHECK_CUDA_ERROR(cudaMallocAsync(
         reinterpret_cast<void **>(&d_img_),
-        sizeof(unsigned char) * image.cols * image.rows * 3 * batch_size));
+        sizeof(unsigned char) * image.cols * image.rows * 3 * batch_size, *stream_));
+      // d_img_ will be used for the following cudaMemcpyAsync() on the same stream.
+      // No need to synchronize.
     }
     int index = b * image.cols * image.rows * 3;
     // Copy into pinned memory
