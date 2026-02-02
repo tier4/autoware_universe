@@ -54,6 +54,8 @@ target_link_libraries(${PROJECT_NAME}
   ${tier4_perception_msgs_TARGETS}
 )
 
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} "--default-stream per-thread")
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
 

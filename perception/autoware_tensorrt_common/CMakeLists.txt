@@ -68,6 +68,8 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} "--default-stream per-thread")
+
 install(TARGETS ${PROJECT_NAME} EXPORT export_${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
 
