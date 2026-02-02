@@ -105,6 +105,9 @@ if(BUILD_TESTING)
   ${PROJECT_NAME}
   ${autoware_perception_msgs_LIBRARIES}
   )
+  ament_target_dependencies(test_multi_object_tracker
+    agnocastlib
+  )
 endif()
 
 ament_auto_package(INSTALL_TO_SHARE

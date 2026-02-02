@@ -58,6 +58,9 @@ if(BUILD_TESTING)
   target_link_libraries(test_map_based_prediction
   map_based_prediction_node
   )
+  ament_target_dependencies(test_map_based_prediction
+    agnocastlib
+  )
 endif()
 
 ament_auto_package(
