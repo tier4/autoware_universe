@@ -1,0 +1,15 @@
+/**:
+  ros__parameters:
+    # TrajectoryVelocityOptimizer plugin parameters
+    trajectory_velocity_optimizer:
+      nearest_dist_threshold_m: 1.5
+      nearest_yaw_threshold_deg: 60.0
+      target_pull_out_speed_mps: 0.25
+      target_pull_out_acc_mps2: 0.5
+      max_speed_mps: 13.88
+      max_lateral_accel_mps2: 1.5
+      set_engage_speed: true
+      limit_speed: true
+      limit_lateral_acceleration: false
+      smooth_velocities: true
+      stop_dist_to_prohibit_engage: 0.5

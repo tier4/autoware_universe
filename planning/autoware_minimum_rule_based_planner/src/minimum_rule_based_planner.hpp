@@ -17,10 +17,10 @@
 
 #include "autoware/trajectory_optimizer/trajectory_optimizer_plugins/trajectory_optimizer_plugin_base.hpp"
 #include "autoware/trajectory_optimizer/trajectory_optimizer_structs.hpp"
-#include "plugin_manager.hpp"
+#include "plugins/obstacle_stop_modifier.hpp"
 
-#include <autoware/rule_based_planner_common/planner_data.hpp>
 #include <autoware/trajectory/path_point_with_lane_id.hpp>
+#include <autoware/trajectory_modifier/trajectory_modifier_structs.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_minimum_rule_based_planner/minimum_rule_based_planner_parameters.hpp>
@@ -113,11 +113,6 @@ private:
 
   // Plugin loading
   void load_optimizer_plugins();
-  void load_planner_modules();
-
-  // Create planner data for modules
-  std::shared_ptr<rule_based_planner::PlannerData> create_module_planner_data(
-    const InputData & input_data) const;
 
   // subscriber
   autoware_utils::InterProcessPollingSubscriber<
@@ -159,8 +154,9 @@ private:
   std::unique_ptr<PluginLoader> plugin_loader_;
   std::vector<std::shared_ptr<PluginInterface>> optimizer_plugins_;
 
-  // Planner module manager
-  PlannerModuleManager planner_module_manager_;
+  // Trajectory modifier plugins
+  std::shared_ptr<plugin::ObstacleStopModifier> obstacle_stop_modifier_;
+  trajectory_modifier::TrajectoryModifierParams modifier_params_;
 };
 
 }  // namespace autoware::minimum_rule_based_planner

@@ -14,8 +14,8 @@ generate_parameter_library(minimum_rule_based_planner_parameters
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/minimum_rule_based_planner.cpp
   src/plan_path.cpp
-  src/plugin_manager.cpp
   src/utils.cpp
+  src/plugins/obstacle_stop_modifier.cpp
 )
 
 target_include_directories(${PROJECT_NAME}_lib SYSTEM PUBLIC
@@ -57,4 +57,5 @@ rclcpp_components_register_node(${PROJECT_NAME}_lib
 ament_auto_package(
   INSTALL_TO_SHARE
     config
+    launch
 )
