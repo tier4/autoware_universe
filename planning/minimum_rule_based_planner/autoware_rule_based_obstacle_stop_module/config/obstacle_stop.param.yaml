@@ -1,7 +1,0 @@
-/**:
-  ros__parameters:
-    obstacle_stop:
-      stop_margin: 5.0  # Margin distance before obstacle [m]
-      min_behavior_stop_margin: 2.0  # Minimum margin for behavior stop [m]
-      obstacle_check_distance: 100.0  # Distance to check for obstacles [m]
-      obstacle_velocity_threshold: 0.5  # Velocity threshold for moving obstacle [m/s]
