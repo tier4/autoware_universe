@@ -454,7 +454,7 @@ InputDataMap DiffusionPlanner::create_input_data(const FrameContext & frame_cont
   // control delay
   {
     std::vector<float> single_delay = {static_cast<float>(delay_step)};
-    input_data_map["delay"] = replicate_for_batch(single_delay);
+    input_data_map["delay"] = utils::replicate_for_batch(single_delay, params_.batch_size);
   }
 
   return input_data_map;
