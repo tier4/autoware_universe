@@ -217,10 +217,27 @@ BehaviorModuleOutput DirectionChangeModule::plan()
   //   This prevents downstream modules from seeing mixed orientations
   
   if (cusp_point_indices_.empty()) {
-    // No cusps detected: return full path as forward segment (no splitting needed)
-    std::cout << "[MY_DEBUG] [DirectionChange] No cusp points detected, returning full path as forward segment" << std::endl;
-    output.path = reference_path_;
-    modified_path_ = output.path;
+    // No cusps detected in current reference_path
+    // IMPORTANT: If we're already in BACKWARD_ONLY state, maintain that state
+    // This prevents oscillation when cusp detection becomes unstable after passing cusp
+    if (current_segment_state_ == PathSegmentState::BACKWARD_ONLY) {
+      std::cout << "[MY_DEBUG] [DirectionChange] No cusp detected but already in BACKWARD_ONLY state, maintaining backward path" << std::endl;
+      // Continue publishing backward path: reverse orientations and velocities
+      output.path = reference_path_;
+      for (auto & p : output.path.points) {
+        double yaw = tf2::getYaw(p.point.pose.orientation);
+        yaw = autoware_utils::normalize_radian(yaw + M_PI);
+        p.point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
+        p.point.longitudinal_velocity_mps = -std::abs(p.point.longitudinal_velocity_mps);
+      }
+      modified_path_ = output.path;
+    } else {
+      // Not in backward state yet - return full path as forward segment
+      std::cout << "[MY_DEBUG] [DirectionChange] No cusp points detected, returning full path as forward segment" << std::endl;
+      output.path = reference_path_;
+      modified_path_ = output.path;
+      current_segment_state_ = PathSegmentState::FORWARD_ONLY;
+    }
   } else {
     // Cusps detected: implement separate forward/backward publishing strategy
     first_cusp_index_ = cusp_point_indices_[0];
@@ -266,9 +283,20 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       // Using negative threshold because calcSignedArcLength returns negative when ego is before target
       const double cusp_arrival_threshold = 2.0;
       
-        std::cout << "[MY_DEBUG] [DirectionChange] Ego nearest idx: " << ego_nearest_idx 
-                  << ", Distance to cusp: " << distance_to_cusp 
-                  << " m, Threshold: " << cusp_arrival_threshold << " m" << std::endl;
+      auto stateToString = [](const PathSegmentState & s) {
+        switch (s) {
+          case PathSegmentState::FORWARD_ONLY:   return "FORWARD_ONLY";
+          case PathSegmentState::BACKWARD_ONLY:  return "BACKWARD_ONLY";
+          default:                               return "UNKNOWN";
+        }
+      };
+      std::cout << "[MY_DEBUG] [DirectionChange] "
+                << "state=" << stateToString(current_segment_state_)
+                << ", ego_nearest_idx=" << ego_nearest_idx
+                << ", first_cusp_index_=" << first_cusp_index_
+                << ", distance_to_cusp=" << distance_to_cusp
+                << ", threshold=" << cusp_arrival_threshold
+                << std::endl;
         
         // Determine which segment to publish based on ego position
         if (distance_to_cusp < cusp_arrival_threshold) {
@@ -282,7 +310,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
           if (current_segment_state_ != PathSegmentState::FORWARD_ONLY) {
             std::cout << "[MY_DEBUG] [DirectionChange] Ego before cusp, switching to FORWARD_ONLY state" << std::endl;
           }
-          current_segment_state_ = PathSegmentState::FORWARD_ONLY;
+//          current_segment_state_ = PathSegmentState::FORWARD_ONLY;
         }
       }
     }
@@ -306,11 +334,19 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         output.path.points.assign(
           reference_path_.points.begin() + first_cusp_index_,
           reference_path_.points.end());
-        
+
+      // 全点を reverse として扱う（CUSP ロジック不要）
+      for (auto & p : output.path.points) {
+        double yaw = tf2::getYaw(p.point.pose.orientation);
+        yaw = autoware_utils::normalize_radian(yaw + M_PI);
+        p.point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
+        p.point.longitudinal_velocity_mps = -std::abs(p.point.longitudinal_velocity_mps);
+      }          
+
         // Reverse orientations for backward segment
         // Create a vector with single cusp at index 0 (start of backward segment)
         std::vector<size_t> backward_cusp_indices = {0};
-        reverseOrientationAtCusps(&output.path, backward_cusp_indices);
+        //reverseOrientationAtCusps(&output.path, backward_cusp_indices);
         
         std::cout << "[MY_DEBUG] [DirectionChange] Publishing BACKWARD segment: " 
                   << output.path.points.size() << " points (indices " << first_cusp_index_ 
@@ -322,6 +358,21 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     }
     
     modified_path_ = output.path;
+    if (!output.path.points.empty()) {
+      const size_t N = std::min<size_t>(5, output.path.points.size());
+      std::cout << "[MY_DEBUG] [DirectionChange] Output path head " << N
+                << " points (yaw [deg], v [m/s]):" << std::endl;
+      for (size_t i = 0; i < N; ++i) {
+        const auto & pt = output.path.points[i].point;
+        const double yaw = tf2::getYaw(pt.pose.orientation);  // [rad]
+        const double yaw_deg = yaw * 180.0 / M_PI;
+        const double v = pt.longitudinal_velocity_mps;
+        std::cout << "  idx=" << i
+                  << ", yaw=" << yaw_deg
+                  << " deg, v=" << v << " m/s"
+                  << std::endl;
+      }
+    }  
   }
 
   // Publish processed path to topic for debugging

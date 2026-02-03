@@ -19,6 +19,8 @@
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
 #include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
 
+#include <autoware_utils/geometry/geometry.hpp>
+
 #include <angles/angles/angles.h>
 
 #include <algorithm>
@@ -43,9 +45,25 @@ void TrajectoryValidator::validate(
   ControlValidatorStatus & res, const Trajectory & predicted_trajectory,
   const Trajectory & reference_trajectory)
 {
+  // Check if we are in reverse mode by looking at reference trajectory velocity
+  bool is_reverse_mode = false;
+  if (!reference_trajectory.points.empty()) {
+    // Check velocity of first few points to determine if we're in reverse
+    constexpr double kReverseVelThresh = -0.1;  // [m/s]
+    const auto & first_vel = reference_trajectory.points.front().longitudinal_velocity_mps;
+    is_reverse_mode = (first_vel < kReverseVelThresh);
+  }
+
+  // Use relaxed threshold for reverse mode since predicted_trajectory
+  // may not be accurately generated during reverse driving
+  constexpr double kReverseThresholdMultiplier = 3.0;
+  const double effective_threshold = is_reverse_mode
+    ? max_distance_deviation_threshold * kReverseThresholdMultiplier
+    : max_distance_deviation_threshold;
+
   // First, check with the current reference_trajectory
   double max_dist_current = calc_max_lateral_distance(reference_trajectory, predicted_trajectory);
-  bool is_valid_current = max_dist_current <= max_distance_deviation_threshold;
+  bool is_valid_current = max_dist_current <= effective_threshold;
 
   // Note: The reason for comparing with the previous reference_trajectory is that
   // the predicted_trajectory of the current cycle may not have been generated based on
@@ -57,7 +75,7 @@ void TrajectoryValidator::validate(
   if (!is_valid_current && prev_reference_trajectory_.has_value()) {
     max_dist_prev =
       calc_max_lateral_distance(prev_reference_trajectory_.value(), predicted_trajectory);
-    is_valid_prev = max_dist_prev <= max_distance_deviation_threshold;
+    is_valid_prev = max_dist_prev <= effective_threshold;
   }
 
   // Only if both exceed the threshold, it is judged as abnormal
@@ -222,10 +240,35 @@ void YawValidator::validate(
 {
   const auto interpolated_trajectory_point =
     motion_utils::calcInterpolatedPoint(reference_trajectory, kinematics.pose.pose);
-  res.yaw_deviation = std::abs(
-    angles::shortest_angular_distance(
-      tf2::getYaw(interpolated_trajectory_point.pose.orientation),
-      tf2::getYaw(kinematics.pose.pose.orientation)));
+
+  // trajectory 側 yaw
+  const double traj_yaw = tf2::getYaw(interpolated_trajectory_point.pose.orientation);
+  // ego 側 yaw（車体姿勢）
+  const double ego_yaw = tf2::getYaw(kinematics.pose.pose.orientation);
+
+  // まずは通常の yaw 差
+  double raw_diff = angles::shortest_angular_distance(traj_yaw, ego_yaw);
+
+  // -----------------------------------------------
+  // reverse-aware: yaw 差が大きいときは ego_yaw+π でも比較してみる
+  // -----------------------------------------------
+  // ここでは「90°より大きい yaw 差」を
+  // 「reverse 方向（車体前向き vs path 後向き）の可能性が高い」とみなす。
+  double adjusted_diff = raw_diff;
+  constexpr double kReverseYawDetectThresh = M_PI_2;  // 90度
+
+  if (std::fabs(raw_diff) > kReverseYawDetectThresh) {
+    // ego を 180度回転させたものと比較し直す
+    const double ego_yaw_rev = autoware_utils::normalize_radian(ego_yaw + M_PI);
+    const double diff_rev = angles::shortest_angular_distance(traj_yaw, ego_yaw_rev);
+
+    // 「どちらの比較のほうが小さいか」で最終的な yaw_deviation を決める
+    if (std::fabs(diff_rev) < std::fabs(raw_diff)) {
+      adjusted_diff = diff_rev;
+    }
+  }
+
+  res.yaw_deviation = std::fabs(adjusted_diff);
   res.is_valid_yaw = res.yaw_deviation <= yaw_deviation_error_th_;
   res.is_warn_yaw = res.yaw_deviation > yaw_deviation_warn_th_;
 }
