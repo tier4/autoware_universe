@@ -117,6 +117,7 @@ struct DiffusionPlannerParams
   double turn_indicator_hold_duration;
   bool shift_x;
 };
+
 struct DiffusionPlannerDebugParams
 {
   bool publish_debug_route{true};
@@ -150,7 +151,7 @@ struct DiffusionPlannerDebugParams
  * - publish_predictions: Publish model predictions.
  * - on_parameter: Callback for dynamic parameter updates.
  * - preprocess::create_input_data: Prepare input data for inference.
- *
+
  * @section Internal State
  * @brief
  * - agent_data_: Optional input data for inference.
