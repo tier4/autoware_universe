@@ -11,8 +11,6 @@ if(NOT ${CUDA_FOUND})
   return()
 endif()
 
-set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} "--default-stream per-thread")
-
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
