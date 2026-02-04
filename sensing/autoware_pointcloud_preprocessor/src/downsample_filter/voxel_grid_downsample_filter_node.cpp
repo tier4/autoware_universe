@@ -60,30 +60,33 @@
 
 namespace autoware::pointcloud_preprocessor
 {
-VoxelGridDownsampleFilterComponent::VoxelGridDownsampleFilterComponent(
+
+template <typename NodeT>
+VoxelGridDownsampleFilterComponentBase<NodeT>::VoxelGridDownsampleFilterComponentBase(
   const rclcpp::NodeOptions & options)
-: Filter("VoxelGridDownsampleFilter", options)
+: FilterBase<NodeT>("VoxelGridDownsampleFilter", options)
 {
   // set initial parameters
   {
-    voxel_size_x_ = declare_parameter<float>("voxel_size_x");
-    voxel_size_y_ = declare_parameter<float>("voxel_size_y");
-    voxel_size_z_ = declare_parameter<float>("voxel_size_z");
+    voxel_size_x_ = this->template declare_parameter<float>("voxel_size_x");
+    voxel_size_y_ = this->template declare_parameter<float>("voxel_size_y");
+    voxel_size_z_ = this->template declare_parameter<float>("voxel_size_z");
   }
 
   using std::placeholders::_1;
   set_param_res_ = this->add_on_set_parameters_callback(
-    std::bind(&VoxelGridDownsampleFilterComponent::param_callback, this, _1));
+    std::bind(&VoxelGridDownsampleFilterComponentBase::param_callback, this, _1));
 }
 
 // TODO(atsushi421): Temporary Implementation: Delete this function definition when all the filter
 // nodes conform to new API.
-void VoxelGridDownsampleFilterComponent::filter(
+template <typename NodeT>
+void VoxelGridDownsampleFilterComponentBase<NodeT>::filter(
   const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output)
 {
-  std::scoped_lock lock(mutex_);
+  std::scoped_lock lock(this->mutex_);
   if (indices) {
-    RCLCPP_WARN(get_logger(), "Indices are not supported and will be ignored");
+    RCLCPP_WARN(this->get_logger(), "Indices are not supported and will be ignored");
   }
   pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_input(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_output(new pcl::PointCloud<pcl::PointXYZ>);
@@ -101,30 +104,33 @@ void VoxelGridDownsampleFilterComponent::filter(
 
 // TODO(atsushi421): Temporary Implementation: Rename this function to `filter()` when all the
 // filter nodes conform to new API. Then delete the old `filter()` defined above.
-void VoxelGridDownsampleFilterComponent::faster_filter(
+template <typename NodeT>
+void VoxelGridDownsampleFilterComponentBase<NodeT>::faster_filter(
   const PointCloud2ConstPtr & input, [[maybe_unused]] const IndicesPtr & indices,
   PointCloud2 & output, const TransformInfo & transform_info)
 {
-  std::scoped_lock lock(mutex_);
+  std::scoped_lock lock(this->mutex_);
   FasterVoxelGridDownsampleFilter faster_voxel_filter;
   faster_voxel_filter.set_voxel_size(voxel_size_x_, voxel_size_y_, voxel_size_z_);
   faster_voxel_filter.set_field_offsets(input, this->get_logger());
   faster_voxel_filter.filter(input, output, transform_info, this->get_logger());
 }
 
-rcl_interfaces::msg::SetParametersResult VoxelGridDownsampleFilterComponent::param_callback(
+template <typename NodeT>
+rcl_interfaces::msg::SetParametersResult
+VoxelGridDownsampleFilterComponentBase<NodeT>::param_callback(
   const std::vector<rclcpp::Parameter> & p)
 {
-  std::scoped_lock lock(mutex_);
+  std::scoped_lock lock(this->mutex_);
 
   if (get_param(p, "voxel_size_x", voxel_size_x_)) {
-    RCLCPP_DEBUG(get_logger(), "Setting new distance threshold to: %f.", voxel_size_x_);
+    RCLCPP_DEBUG(this->get_logger(), "Setting new distance threshold to: %f.", voxel_size_x_);
   }
   if (get_param(p, "voxel_size_y", voxel_size_y_)) {
-    RCLCPP_DEBUG(get_logger(), "Setting new distance threshold to: %f.", voxel_size_y_);
+    RCLCPP_DEBUG(this->get_logger(), "Setting new distance threshold to: %f.", voxel_size_y_);
   }
   if (get_param(p, "voxel_size_z", voxel_size_z_)) {
-    RCLCPP_DEBUG(get_logger(), "Setting new distance threshold to: %f.", voxel_size_z_);
+    RCLCPP_DEBUG(this->get_logger(), "Setting new distance threshold to: %f.", voxel_size_z_);
   }
 
   rcl_interfaces::msg::SetParametersResult result;
@@ -133,8 +139,15 @@ rcl_interfaces::msg::SetParametersResult VoxelGridDownsampleFilterComponent::par
 
   return result;
 }
+
+// Explicit template instantiation for rclcpp::Node and agnocast::Node versions
+template class VoxelGridDownsampleFilterComponentBase<rclcpp::Node>;
+template class VoxelGridDownsampleFilterComponentBase<agnocast::Node>;
+
 }  // namespace autoware::pointcloud_preprocessor
 
 #include <rclcpp_components/register_node_macro.hpp>
 RCLCPP_COMPONENTS_REGISTER_NODE(
   autoware::pointcloud_preprocessor::VoxelGridDownsampleFilterComponent)
+RCLCPP_COMPONENTS_REGISTER_NODE(
+  autoware::pointcloud_preprocessor::AgnocastVoxelGridDownsampleFilterComponent)

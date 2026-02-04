@@ -34,6 +34,7 @@
   <depend>autoware_sensing_msgs</depend>
   <depend>autoware_utils</depend>
   <depend>autoware_vehicle_msgs</depend>
+  <depend>agnocast</depend>
   <depend>cgal</depend>
   <depend>cv_bridge</depend>
   <depend>diagnostic_updater</depend>

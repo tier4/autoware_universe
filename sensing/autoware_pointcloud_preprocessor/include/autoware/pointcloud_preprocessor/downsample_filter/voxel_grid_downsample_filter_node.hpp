@@ -61,8 +61,16 @@
 
 namespace autoware::pointcloud_preprocessor
 {
-class VoxelGridDownsampleFilterComponent : public autoware::pointcloud_preprocessor::Filter
+
+// Template base class for VoxelGridDownsampleFilter
+template <typename NodeT>
+class VoxelGridDownsampleFilterComponentBase : public FilterBase<NodeT>
 {
+  // Bring in type aliases from base class
+  using PointCloud2 = typename FilterBase<NodeT>::PointCloud2;
+  using PointCloud2ConstPtr = typename FilterBase<NodeT>::PointCloud2ConstPtr;
+  using IndicesPtr = typename FilterBase<NodeT>::IndicesPtr;
+
 protected:
   void filter(
     const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output) override;
@@ -79,15 +87,42 @@ private:
   float voxel_size_z_;
 
   /** \brief Parameter service callback result : needed to be hold */
-  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult param_callback(const std::vector<rclcpp::Parameter> & p);
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW
-  explicit VoxelGridDownsampleFilterComponent(const rclcpp::NodeOptions & options);
+  explicit VoxelGridDownsampleFilterComponentBase(const rclcpp::NodeOptions & options);
 };
+
+// rclcpp::Node version
+class VoxelGridDownsampleFilterComponent
+: public VoxelGridDownsampleFilterComponentBase<rclcpp::Node>
+{
+public:
+  explicit VoxelGridDownsampleFilterComponent(const rclcpp::NodeOptions & options)
+  : VoxelGridDownsampleFilterComponentBase<rclcpp::Node>(options)
+  {
+  }
+};
+
+// Agnocast version: AgnocastVoxelGridDownsampleFilterComponent uses FilterBase<agnocast::Node>
+class AgnocastVoxelGridDownsampleFilterComponent
+: public VoxelGridDownsampleFilterComponentBase<agnocast::Node>
+{
+public:
+  explicit AgnocastVoxelGridDownsampleFilterComponent(const rclcpp::NodeOptions & options)
+  : VoxelGridDownsampleFilterComponentBase<agnocast::Node>(options)
+  {
+  }
+};
+
+// Extern template declarations to avoid multiple instantiations
+extern template class VoxelGridDownsampleFilterComponentBase<rclcpp::Node>;
+extern template class VoxelGridDownsampleFilterComponentBase<agnocast::Node>;
+
 }  // namespace autoware::pointcloud_preprocessor
 
 // clang-format off

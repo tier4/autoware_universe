@@ -157,6 +157,10 @@ rclcpp_components_register_node(pointcloud_preprocessor_filter
   PLUGIN "autoware::pointcloud_preprocessor::VoxelGridDownsampleFilterComponent"
   EXECUTABLE voxel_grid_downsample_filter_node)
 
+rclcpp_components_register_node(pointcloud_preprocessor_filter
+  PLUGIN "autoware::pointcloud_preprocessor::AgnocastVoxelGridDownsampleFilterComponent"
+  EXECUTABLE agnocast_voxel_grid_downsample_filter_node)
+
 # -- Pickup Based Voxel Grid Downsample Filter --
 rclcpp_components_register_node(pointcloud_preprocessor_filter
   PLUGIN "autoware::pointcloud_preprocessor::PickupBasedVoxelGridDownsampleFilterComponent"
