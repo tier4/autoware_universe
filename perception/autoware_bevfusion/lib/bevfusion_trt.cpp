@@ -226,12 +226,9 @@ void BEVFusionTRT::initTrt(const tensorrt_common::TrtCommonConfig & trt_config)
 
   if (config_.sensor_fusion_) {
     std::vector<float> lidar2image_host(config_.num_cameras_ * 4 * 4);
-    // Is this copying really necessary?
-    // lidar2image_host is not used at all!
-    cudaMemcpyAsync(
+    cudaMemcpy(
       lidar2image_host.data(), lidar2image_d_.get(), config_.num_cameras_ * 4 * 4 * sizeof(float),
-      cudaMemcpyDeviceToHost, stream_);
-    cudaStreamSynchronize(stream_);
+      cudaMemcpyDeviceToHost);
 
     network_trt_ptr_->setInputShape("camera_mask", nvinfer1::Dims{1, {config_.num_cameras_}});
     network_trt_ptr_->setInputShape(
@@ -361,18 +358,17 @@ void BEVFusionTRT::setIntrinsicsExtrinsics(
   assert(num_geom_feats_ == 4 * num_ranks_);
   assert(num_ranks_ == num_indices_);
 
-  cudaMemcpyAsync(
+  cudaMemcpy(
     lidar2image_d_.get(), lidar2images_flattened.data(),
-    config_.num_cameras_ * 4 * 4 * sizeof(float), cudaMemcpyHostToDevice, stream_);
-  cudaMemcpyAsync(
+    config_.num_cameras_ * 4 * 4 * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(
     geom_feats_d_.get(), geom_feats.data(), num_geom_feats_ * sizeof(std::int32_t),
-    cudaMemcpyHostToDevice, stream_);
-  cudaMemcpyAsync(kept_d_.get(), kept.data(), num_kept_ * sizeof(std::uint8_t), cudaMemcpyHostToDevice, stream_);
-  cudaMemcpyAsync(
-    ranks_d_.get(), ranks.data(), num_ranks_ * sizeof(std::int64_t), cudaMemcpyHostToDevice, stream_);
-  cudaMemcpyAsync(
-    indices_d_.get(), indices.data(), num_indices_ * sizeof(std::int64_t), cudaMemcpyHostToDevice, stream_);
-  cudaStreamSynchronize(stream_);
+    cudaMemcpyHostToDevice);
+  cudaMemcpy(kept_d_.get(), kept.data(), num_kept_ * sizeof(std::uint8_t), cudaMemcpyHostToDevice);
+  cudaMemcpy(
+    ranks_d_.get(), ranks.data(), num_ranks_ * sizeof(std::int64_t), cudaMemcpyHostToDevice);
+  cudaMemcpy(
+    indices_d_.get(), indices.data(), num_indices_ * sizeof(std::int64_t), cudaMemcpyHostToDevice);
 }
 
 bool BEVFusionTRT::preProcess(

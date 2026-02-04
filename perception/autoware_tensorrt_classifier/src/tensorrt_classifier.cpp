@@ -377,11 +377,9 @@ void TrtClassifier::preprocess_opt(const std::vector<cv::Mat> & images)
       }
     }
   }
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    input_d_.get(), input_h_.data(), input_h_.size() * sizeof(float), cudaMemcpyHostToDevice, *stream_));
-  // No Need for Synchronization?
-  // feedfowardAndDecode is executed on the same stream and the size of input_d_ does not change.
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(*stream_));
+  CHECK_CUDA_ERROR(cudaMemcpy(
+    input_d_.get(), input_h_.data(), input_h_.size() * sizeof(float), cudaMemcpyHostToDevice));
+  // No Need for Sync
   nvtxRangePop();
 }
 

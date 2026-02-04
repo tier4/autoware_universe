@@ -569,11 +569,9 @@ void TrtYoloX::preprocess(const std::vector<cv::Mat> & images)
   input_h_.reserve(data_length);
   const auto flat = chw_images.reshape(1, data_length);
   input_h_ = chw_images.isContinuous() ? flat : flat.clone();
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    input_d_.get(), input_h_.data(), input_h_.size() * sizeof(float), cudaMemcpyHostToDevice, *stream_));
-  // No need for Synchronization?
-  // The next operation will be executed on the same process and the size of input_d_ won't change.
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(*stream_));
+  CHECK_CUDA_ERROR(cudaMemcpy(
+    input_d_.get(), input_h_.data(), input_h_.size() * sizeof(float), cudaMemcpyHostToDevice));
+  // No Need for Sync
 }
 
 bool TrtYoloX::doInference(
@@ -709,11 +707,9 @@ void TrtYoloX::preprocessWithRoi(
   input_h_.reserve(data_length);
   const auto flat = chw_images.reshape(1, data_length);
   input_h_ = chw_images.isContinuous() ? flat : flat.clone();
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    input_d_.get(), input_h_.data(), input_h_.size() * sizeof(float), cudaMemcpyHostToDevice, *stream_));
-  // No need for Synchronization?
-  // The next operation will be executed on the same process and the size of input_d_ won't change.
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(*stream_));
+  CHECK_CUDA_ERROR(cudaMemcpy(
+    input_d_.get(), input_h_.data(), input_h_.size() * sizeof(float), cudaMemcpyHostToDevice));
+  // No Need for Sync
 }
 
 void TrtYoloX::multiScalePreprocessGpu(const cv::Mat & image, const std::vector<cv::Rect> & rois)
@@ -821,11 +817,9 @@ void TrtYoloX::multiScalePreprocess(const cv::Mat & image, const std::vector<cv:
   input_h_.reserve(data_length);
   const auto flat = chw_images.reshape(1, data_length);
   input_h_ = chw_images.isContinuous() ? flat : flat.clone();
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    input_d_.get(), input_h_.data(), input_h_.size() * sizeof(float), cudaMemcpyHostToDevice, *stream_));
-  // No need for Synchronization?
-  // The next operation will be executed on the same process and the size of input_d_ won't change.
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(*stream_));
+  CHECK_CUDA_ERROR(cudaMemcpy(
+    input_d_.get(), input_h_.data(), input_h_.size() * sizeof(float), cudaMemcpyHostToDevice));
+  // No Need for Sync
 }
 
 bool TrtYoloX::doInferenceWithRoi(

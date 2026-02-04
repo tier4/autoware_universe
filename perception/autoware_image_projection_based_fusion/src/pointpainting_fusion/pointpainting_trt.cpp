@@ -59,9 +59,7 @@ bool PointPaintingTRT::detect(
   // Check the actual number of pillars after inference to avoid unnecessary synchronization.
   unsigned int num_pillars = 0;
   CHECK_CUDA_ERROR(
-    cudaMemcpyAsync(&num_pillars, num_voxels_d_.get(), sizeof(unsigned int), cudaMemcpyDeviceToHost, stream_));
-  CHECK_CUDA_ERROR(
-    cudaStreamSynchronize(stream_));
+    cudaMemcpy(&num_pillars, num_voxels_d_.get(), sizeof(unsigned int), cudaMemcpyDeviceToHost));
 
   if (num_pillars >= config_.max_voxel_size_) {
     rclcpp::Clock clock{RCL_ROS_TIME};

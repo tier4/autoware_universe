@@ -395,8 +395,6 @@ size_t CudaVoxelGridDownsampleFilter::searchValidVoxel(
   CHECK_CUDA_ERROR(cudaMemcpyToSymbolAsync(
     voxel_info_dev, &voxel_info_, sizeof(VoxelInfo), 0, cudaMemcpyDefault, stream_));
 
-  // Is synchronization necessary?
-
   // calculate the number of voxel in each axis
   ThreeDim<size_t> num_voxels = {
     static_cast<size_t>(voxel_info_.max_coord.x - voxel_info_.min_coord.x) + 1,
@@ -460,10 +458,9 @@ size_t CudaVoxelGridDownsampleFilter::searchValidVoxel(
 
   //// wait until num_unique_voxels available
   size_t num_unique_voxels = 0;
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+  CHECK_CUDA_ERROR(cudaMemcpy(
     &num_unique_voxels, num_unique_voxels_dev, sizeof(size_t),
-    cudaMemcpyDeviceToHost, stream_));
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+    cudaMemcpyDeviceToHost));  // use default stream for implicit sync
 
   returnBufferToPool(tmp_key_in);
   returnBufferToPool(tmp_val_in);
