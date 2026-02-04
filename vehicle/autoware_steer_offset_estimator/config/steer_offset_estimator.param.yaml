@@ -17,7 +17,7 @@
     calibration:
       mode: "off"  # Options: ["off", "manual", "auto"]
 
-      # Logic hresholds
+      # Logic thresholds
       error_threshold: 0.005        # min error to trigger an AUTO update [rad]
       covariance_threshold: 0.00075 # max uncertainty to trust the estimate
 
