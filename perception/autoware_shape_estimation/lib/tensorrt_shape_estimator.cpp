@@ -205,12 +205,15 @@ void TrtShapeEstimator::preprocess(const DetectedObjectsWithFeature & input)
     }
   }
 
-  CHECK_CUDA_ERROR(cudaMemcpy(
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
     input_pc_d_.get(), input_pc_h_.data(), input_pc_h_.size() * sizeof(float),
-    cudaMemcpyHostToDevice));
-  CHECK_CUDA_ERROR(cudaMemcpy(
+    cudaMemcpyHostToDevice, *stream_));
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
     input_one_hot_d_.get(), input_one_hot_h_.data(), input_one_hot_h_.size() * sizeof(float),
-    cudaMemcpyHostToDevice));
+    cudaMemcpyHostToDevice, *stream_));
+  // No need to synchronize?
+  // feed_forward_and_decode() is executed on the same stream.
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(*stream_));
 }
 
 bool TrtShapeEstimator::feed_forward_and_decode(
