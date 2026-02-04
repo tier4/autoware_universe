@@ -74,7 +74,6 @@ if(CUDA_FOUND)
   #       In LibTorch, CUDA_cublas_device_LIBRARY is used.
   unset(CUDA_cublas_device_LIBRARY CACHE)
   set(CUDA_AVAIL ON)
-  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} "--default-stream per-thread")
 else()
   message("CUDA NOT FOUND")
   set(CUDA_AVAIL OFF)
