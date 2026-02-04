@@ -114,6 +114,10 @@ MpcLateralController::MpcLateralController(
     m_mpc->m_input_buffer = std::deque<double>(static_cast<size_t>(delay_step), 0.0);
   }
 
+  /* steering offset compensation */
+  enable_auto_steering_offset_removal_ =
+    dp_bool("steering_offset.enable_auto_steering_offset_removal");
+
   /* initialize low-pass filter */
   {
     const double steering_lpf_cutoff_hz = dp_double("steering_lpf_cutoff_hz");
