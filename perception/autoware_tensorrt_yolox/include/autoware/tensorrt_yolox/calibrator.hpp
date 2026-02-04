@@ -179,7 +179,9 @@ public:
   {
     auto d = stream_.getInputDims();
     input_count_ = stream_.getBatchSize() * d.d[1] * d.d[2] * d.d[3];
-    CHECK_CUDA_ERROR(cudaMalloc(&device_input_, input_count_ * sizeof(float)));
+    // Temporary: use cudaStreamPerThread because there is no appropriate stream.
+    CHECK_CUDA_ERROR(cudaMallocAsync(&device_input_, input_count_ * sizeof(float), cudaStreamPerThread));
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(cudaStreamPerThread));
     scale_ = scale;
     quantile_ = quantile;
     cutoff_ = cutoff;
@@ -204,7 +206,11 @@ public:
   }
   int getBatchSize() const noexcept override { return stream_.getBatchSize(); }
 
-  virtual ~Int8LegacyCalibrator() { CHECK_CUDA_ERROR(cudaFree(device_input_)); }
+  virtual ~Int8LegacyCalibrator() {
+    // Temporary: use cudaStreamPerThread because there is no appropriate stream.
+    CHECK_CUDA_ERROR(cudaFreeAsync(device_input_, cudaStreamPerThread));
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(cudaStreamPerThread));
+  }
 
   bool getBatch(void * bindings[], const char * names[], int nb_bindings) noexcept override
   {
@@ -215,8 +221,10 @@ public:
       return false;
     }
     try {
-      CHECK_CUDA_ERROR(cudaMemcpy(
-        device_input_, stream_.getBatch(), input_count_ * sizeof(float), cudaMemcpyHostToDevice));
+      // Temporary: use cudaStreamPerThread because there is no appropriate stream.
+      CHECK_CUDA_ERROR(cudaMemcpyAsync(
+        device_input_, stream_.getBatch(), input_count_ * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
+      CHECK_CUDA_ERROR(cudaStreamSynchronize(cudaStreamPerThread));
     } catch (const std::exception & e) {
       // Do nothing
     }
@@ -316,7 +324,9 @@ public:
   {
     auto d = stream_.getInputDims();
     input_count_ = stream_.getBatchSize() * d.d[1] * d.d[2] * d.d[3];
-    CHECK_CUDA_ERROR(cudaMalloc(&device_input_, input_count_ * sizeof(float)));
+    // Temporary: use cudaStreamPerThread because there is no appropriate stream.
+    CHECK_CUDA_ERROR(cudaMallocAsync(&device_input_, input_count_ * sizeof(float), cudaStreamPerThread));
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(cudaStreamPerThread));
     scale_ = scale;
     auto algType = getAlgorithm();
     switch (algType) {
@@ -339,7 +349,11 @@ public:
   }
   int getBatchSize() const noexcept override { return stream_.getBatchSize(); }
 
-  virtual ~Int8EntropyCalibrator() { CHECK_CUDA_ERROR(cudaFree(device_input_)); }
+  virtual ~Int8EntropyCalibrator() {
+    // Temporary: use cudaStreamPerThread because there is no appropriate stream.
+    CHECK_CUDA_ERROR(cudaFreeAsync(device_input_, cudaStreamPerThread));
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(cudaStreamPerThread));
+  }
 
   bool getBatch(void * bindings[], const char * names[], int nb_bindings) noexcept override
   {
@@ -350,8 +364,10 @@ public:
       return false;
     }
     try {
-      CHECK_CUDA_ERROR(cudaMemcpy(
-        device_input_, stream_.getBatch(), input_count_ * sizeof(float), cudaMemcpyHostToDevice));
+      // Temporary: use cudaStreamPerThread because there is no appropriate stream.
+      CHECK_CUDA_ERROR(cudaMemcpyAsync(
+        device_input_, stream_.getBatch(), input_count_ * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
+      CHECK_CUDA_ERROR(cudaStreamSynchronize(cudaStreamPerThread));
     } catch (const std::exception & e) {
       // Do nothing
     }
@@ -411,7 +427,9 @@ public:
   {
     auto d = stream_.getInputDims();
     input_count_ = stream_.getBatchSize() * d.d[1] * d.d[2] * d.d[3];
-    CHECK_CUDA_ERROR(cudaMalloc(&device_input_, input_count_ * sizeof(float)));
+    // Temporary: use cudaStreamPerThread because there is no appropriate stream.
+    CHECK_CUDA_ERROR(cudaMallocAsync(&device_input_, input_count_ * sizeof(float), cudaStreamPerThread));
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(cudaStreamPerThread));
     scale_ = scale;
     auto algType = getAlgorithm();
     switch (algType) {
@@ -434,7 +452,11 @@ public:
   }
   int getBatchSize() const noexcept override { return stream_.getBatchSize(); }
 
-  virtual ~Int8MinMaxCalibrator() { CHECK_CUDA_ERROR(cudaFree(device_input_)); }
+  virtual ~Int8MinMaxCalibrator() {
+    // Temporary: use cudaStreamPerThread because there is no appropriate stream.
+    CHECK_CUDA_ERROR(cudaFreeAsync(device_input_, cudaStreamPerThread));
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(cudaStreamPerThread));
+  }
 
   bool getBatch(void * bindings[], const char * names[], int nb_bindings) noexcept override
   {
@@ -445,8 +467,10 @@ public:
       return false;
     }
     try {
-      CHECK_CUDA_ERROR(cudaMemcpy(
-        device_input_, stream_.getBatch(), input_count_ * sizeof(float), cudaMemcpyHostToDevice));
+      // Temporary: use cudaStreamPerThread because there is no appropriate stream.
+      CHECK_CUDA_ERROR(cudaMemcpyAsync(
+        device_input_, stream_.getBatch(), input_count_ * sizeof(float), cudaMemcpyHostToDevice, cudaStreamPerThread));
+      CHECK_CUDA_ERROR(cudaStreamSynchronize(cudaStreamPerThread));
     } catch (const std::exception & e) {
       // Do nothing
     }

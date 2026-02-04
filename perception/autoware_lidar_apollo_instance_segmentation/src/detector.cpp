@@ -154,9 +154,12 @@ bool LidarApolloInstanceSegmentation::detectDynamicObjects(
   std::shared_ptr<FeatureMapInterface> feature_map_ptr =
     feature_generator_->generate(pcl_pointcloud_raw_ptr);
 
-  CHECK_CUDA_ERROR(cudaMemcpy(
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
     input_d_.get(), feature_map_ptr->map_data.data(),
-    feature_map_ptr->map_data.size() * sizeof(float), cudaMemcpyHostToDevice));
+    feature_map_ptr->map_data.size() * sizeof(float), cudaMemcpyHostToDevice, *stream_));
+  // No need to synchronize?
+  // The next operation will be executed on the same stream and the size of input_d_ won't change.
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(*stream_));
 
   std::vector<void *> buffers = {input_d_.get(), output_d_.get()};
 
