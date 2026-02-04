@@ -55,6 +55,21 @@ void normalize_input_data(
   InputDataMap & input_data_map, const NormalizationMap & normalization_map);
 
 /**
+ * @brief Creates ego current state data from odometry and acceleration messages.
+ *
+ * This function computes the ego vehicle's current state including position, heading,
+ * velocity, acceleration, steering angle, and yaw rate.
+ *
+ * @param[in] kinematic_state_msg Odometry message containing pose and twist
+ * @param[in] acceleration_msg    Acceleration message containing linear acceleration
+ * @param[in] wheel_base          Vehicle wheel base in meters
+ * @return Vector of floats containing [x, y, cos_yaw, sin_yaw, vx, vy, ax, ay, steering, yaw_rate]
+ */
+std::vector<float> create_ego_current_state(
+  const nav_msgs::msg::Odometry & kinematic_state_msg,
+  const geometry_msgs::msg::AccelWithCovarianceStamped & acceleration_msg, const float wheel_base);
+
+/**
  * @brief Creates ego agent past trajectory data from pose messages.
  *
  * This function processes a sequence of pose messages to create ego vehicle's

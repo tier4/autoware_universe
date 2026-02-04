@@ -142,7 +142,7 @@ void normalize_input_data(InputDataMap & input_data_map, const NormalizationMap 
 
 std::vector<float> create_ego_current_state(
   const nav_msgs::msg::Odometry & kinematic_state_msg,
-  const geometry_msgs::msg::AccelWithCovarianceStamped & acceleration_msg, float wheel_base)
+  const geometry_msgs::msg::AccelWithCovarianceStamped & acceleration_msg, const float wheel_base)
 {
   const auto & lin = kinematic_state_msg.twist.twist.linear;
   const auto & ang = kinematic_state_msg.twist.twist.angular;
@@ -155,7 +155,7 @@ std::vector<float> create_ego_current_state(
     steering_angle = 0.0f;
   } else {
     yaw_rate = std::clamp(static_cast<float>(ang.z), -kMaxYawRate, kMaxYawRate);
-    const float raw_steer = std::atan(yaw_rate * wheel_base / std::abs(linear_vel));
+    const float raw_steer = std::atan(yaw_rate * wheel_base / abs(linear_vel));
     steering_angle = std::clamp(raw_steer, -kMaxSteerAngle, kMaxSteerAngle);
   }
 

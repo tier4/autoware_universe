@@ -696,7 +696,7 @@ int main(int argc, char ** argv)
 
       // Create ego current state
       const std::vector<float> ego_current = preprocess::create_ego_current_state(
-        seq.data_list[i].kinematic_state, seq.data_list[i].acceleration, 2.79f);
+        seq.data_list[i].kinematic_state, seq.data_list[i].acceleration, ego_wheel_base);
 
       // Process neighbor agents (both past and future with consistent agent ordering)
       const auto [neighbor_past, neighbor_future] =
