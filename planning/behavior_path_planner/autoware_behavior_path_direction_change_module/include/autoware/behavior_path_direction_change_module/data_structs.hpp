@@ -18,7 +18,9 @@
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <geometry_msgs/msg/point.hpp>
 
+#include <iomanip>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -50,11 +52,75 @@ struct DirectionChangeParameters
   bool publish_debug_marker;
 };
 
+/**
+ * @brief Path evaluation debug data (following start_planner_module pattern)
+ *
+ * Records the evaluation process and results for path judgment.
+ * This structure enables tracing why a path was accepted or rejected.
+ */
+struct PathEvaluationDebugData
+{
+  // Evaluation step results (following start_planner's conditions_evaluation pattern)
+  std::vector<std::string> conditions_evaluation;
+
+  // Path evaluation metrics
+  size_t num_cusp_points{0};
+  size_t first_cusp_index{0};
+  bool has_direction_change_area_tag{false};
+  bool lane_continuity_check_passed{false};
+
+  // Helper to convert double to string with precision
+  static std::string double_to_str(double value, int precision = 1)
+  {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(precision) << value;
+    return oss.str();
+  }
+
+  /**
+   * @brief Generate a formatted evaluation table string for debugging
+   * @return Formatted string showing all evaluation steps and results
+   */
+  std::string to_evaluation_table() const
+  {
+    std::ostringstream oss;
+    oss << "=== Direction Change Path Evaluation ===\n";
+    oss << "direction_change_area_tag: " << (has_direction_change_area_tag ? "found" : "not found")
+        << "\n";
+    oss << "num_cusp_points: " << num_cusp_points << "\n";
+    if (num_cusp_points > 0) {
+      oss << "first_cusp_index: " << first_cusp_index << "\n";
+    }
+    oss << "lane_continuity_check: " << (lane_continuity_check_passed ? "passed" : "failed")
+        << "\n";
+    oss << "--- Evaluation Steps ---\n";
+    for (size_t i = 0; i < conditions_evaluation.size(); ++i) {
+      oss << "  " << (i + 1) << ". " << conditions_evaluation[i] << "\n";
+    }
+    return oss.str();
+  }
+
+  /**
+   * @brief Clear all evaluation data for reuse
+   */
+  void clear()
+  {
+    conditions_evaluation.clear();
+    num_cusp_points = 0;
+    first_cusp_index = 0;
+    has_direction_change_area_tag = false;
+    lane_continuity_check_passed = false;
+  }
+};
+
 struct DirectionChangeDebugData
 {
   std::vector<geometry_msgs::msg::Point> cusp_points{};
   PathWithLaneId forward_path{};
   PathWithLaneId reverse_path{};
+
+  // Path evaluation debug data (following start_planner pattern)
+  PathEvaluationDebugData evaluation_data{};
 };
 
 }  // namespace autoware::behavior_path_planner

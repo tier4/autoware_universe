@@ -32,11 +32,28 @@ namespace autoware::behavior_path_planner
 {
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
 
-// State for tracking which path segment to publish
-enum class PathSegmentState {
-  FORWARD_ONLY,      // Publishing forward segment only (before cusp)
-  BACKWARD_ONLY      // Publishing backward segment only (after cusp)
+// State for cusp-based reverse lane following
+enum class CuspReverseLaneFollowingStatus {
+  IDLE = 0,           // Module is idle/inactive
+  FORWARD_FOLLOWING,  // Following path in forward direction
+  APPROACHING_CUSP,   // Approaching a cusp point (decelerating)
+  AT_CUSP,            // At a cusp point (stopped, preparing for reverse)
+  REVERSE_FOLLOWING,  // Following path in reverse direction
+  COMPLETED           // Direction change completed
 };
+
+// Helper function to convert status to string for debugging
+inline std::string toString(CuspReverseLaneFollowingStatus status) {
+  switch (status) {
+    case CuspReverseLaneFollowingStatus::IDLE: return "IDLE";
+    case CuspReverseLaneFollowingStatus::FORWARD_FOLLOWING: return "FORWARD_FOLLOWING";
+    case CuspReverseLaneFollowingStatus::APPROACHING_CUSP: return "APPROACHING_CUSP";
+    case CuspReverseLaneFollowingStatus::AT_CUSP: return "AT_CUSP";
+    case CuspReverseLaneFollowingStatus::REVERSE_FOLLOWING: return "REVERSE_FOLLOWING";
+    case CuspReverseLaneFollowingStatus::COMPLETED: return "COMPLETED";
+    default: return "UNKNOWN";
+  }
+}
 
 class DirectionChangeModule : public SceneModuleInterface
 {
@@ -80,6 +97,46 @@ private:
 
   // Helper functions
   std::vector<size_t> findCuspPoints() const;
+
+  /**
+   * @brief Evaluate path and determine if module should activate
+   *
+   * Following start_planner_module pattern: performs sequential evaluation
+   * and records each step result in conditions_evaluation.
+   *
+   * Evaluation steps:
+   * 1. Check path existence
+   * 2. Check direction_change_area tag
+   * 3. Detect cusp points
+   * 4. Check lane continuity safety
+   *
+   * @param[out] evaluation_data Debug data to record evaluation results
+   * @return true if module should activate, false otherwise
+   */
+  bool evaluatePath(PathEvaluationDebugData & evaluation_data) const;
+
+  /**
+   * @brief Check if path has direction_change_area tag in any lanelet
+   * @param[out] evaluation_data Debug data to record evaluation step
+   * @return true if tag found, false otherwise
+   */
+  bool checkDirectionChangeAreaTag(PathEvaluationDebugData & evaluation_data) const;
+
+  /**
+   * @brief Detect and validate cusp points in path
+   * @param[out] evaluation_data Debug data to record evaluation step
+   * @return true if valid cusp points found (or none needed), false on error
+   */
+  bool detectAndValidateCuspPoints(PathEvaluationDebugData & evaluation_data);
+
+  /**
+   * @brief Check lane continuity safety for direction change
+   * @param[out] evaluation_data Debug data to record evaluation step
+   * @return true if safety check passed, false otherwise
+   */
+  bool checkLaneContinuitySafetyWithEvaluation(PathEvaluationDebugData & evaluation_data) const;
+
+  // Legacy function (kept for compatibility, delegates to evaluatePath)
   bool shouldActivateModule() const;
 
   // Member variables
@@ -89,10 +146,19 @@ private:
 
   // Direction change data
   std::vector<size_t> cusp_point_indices_{};
-  
-  // Path segment state tracking for separate forward/backward publishing
-  PathSegmentState current_segment_state_{PathSegmentState::FORWARD_ONLY};
+
+  // State machine for cusp-based reverse lane following
+  CuspReverseLaneFollowingStatus status_{CuspReverseLaneFollowingStatus::IDLE};
   size_t first_cusp_index_{0};  // Store first cusp index for path splitting
+  
+  // Store the actual cusp point position (not index) for reliable distance calculation
+  // This is necessary because reference_path_ is updated every cycle with ego-relative indices
+  std::optional<geometry_msgs::msg::Point> first_cusp_position_{std::nullopt};
+  
+  // Parameters for state transitions
+  static constexpr double kApproachingCuspDistance = 5.0;  // [m] Distance to start APPROACHING_CUSP
+  static constexpr double kAtCuspDistance = 0.3;           // [m] Distance to transition to AT_CUSP (now vehicle creeps closer)
+  static constexpr double kStoppedVelocityThreshold = 0.1; // [m/s] Velocity threshold for "stopped"
 
   // Debug data
   mutable DirectionChangeDebugData debug_data_;

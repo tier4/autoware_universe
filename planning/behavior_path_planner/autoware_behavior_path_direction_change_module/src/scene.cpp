@@ -68,8 +68,9 @@ void DirectionChangeModule::initVariables()
   reference_path_ = PathWithLaneId();
   modified_path_ = PathWithLaneId();
   cusp_point_indices_.clear();
-  current_segment_state_ = PathSegmentState::FORWARD_ONLY;
+  status_ = CuspReverseLaneFollowingStatus::IDLE;
   first_cusp_index_ = 0;
+  first_cusp_position_ = std::nullopt;
   resetPathCandidate();
   resetPathReference();
 }
@@ -147,45 +148,139 @@ std::vector<size_t> DirectionChangeModule::findCuspPoints() const
   return detectCuspPoints(reference_path_, parameters_->cusp_detection_angle_threshold_deg);
 }
 
-bool DirectionChangeModule::shouldActivateModule() const
+// ============================================================================
+// Path Evaluation Functions (following start_planner_module pattern)
+// ============================================================================
+
+bool DirectionChangeModule::checkDirectionChangeAreaTag(
+  PathEvaluationDebugData & evaluation_data) const
 {
-  if (reference_path_.points.empty()) {
-    std::cout << "[MY_DEBUG] [DirectionChange] shouldActivateModule: Path empty, module inactive" << std::endl;
+  if (!planner_data_->route_handler) {
+    evaluation_data.conditions_evaluation.emplace_back("route_handler not available");
+    evaluation_data.has_direction_change_area_tag = false;
     return false;
   }
 
-  // Check direction_change_area tag for each lanelet in the path
-  // Decision: Module activates if direction_change_area tag is present (regardless of cusp points)
-  // If no tag → module inactive
-  // If tag exists → module active (will handle cusps if they exist, or just forward path if not)
+  std::set<int64_t> checked_lane_ids;
+  for (const auto & path_point : reference_path_.points) {
+    for (const auto & lane_id : path_point.lane_ids) {
+      if (checked_lane_ids.find(lane_id) != checked_lane_ids.end()) {
+        continue;  // Already checked this lanelet
+      }
+      checked_lane_ids.insert(lane_id);
 
-  // Check lanelets from path points
-  if (planner_data_->route_handler) {
-    std::set<int64_t> checked_lane_ids;
-    for (const auto & path_point : reference_path_.points) {
-      for (const auto & lane_id : path_point.lane_ids) {
-        if (checked_lane_ids.find(lane_id) != checked_lane_ids.end()) {
-          continue;  // Already checked this lanelet
+      try {
+        const auto lanelet = planner_data_->route_handler->getLaneletsFromId(lane_id);
+        if (hasDirectionChangeAreaTag(lanelet)) {
+          evaluation_data.conditions_evaluation.emplace_back(
+            "direction_change_area tag found (lane_id=" + std::to_string(lane_id) + ")");
+          evaluation_data.has_direction_change_area_tag = true;
+          return true;
         }
-        checked_lane_ids.insert(lane_id);
-
-        try {
-          const auto lanelet = planner_data_->route_handler->getLaneletsFromId(lane_id);
-          if (hasDirectionChangeAreaTag(lanelet)) {
-            std::cout << "[MY_DEBUG] [DirectionChange] shouldActivateModule: direction_change_area tag found in lane_id=" << lane_id << ", module ACTIVE" << std::endl;
-            return true;  // Tag found, activate module
-          }
-        } catch (...) {
-          // Lanelet not found, skip
-          continue;
-        }
+      } catch (...) {
+        // Lanelet not found, skip
+        continue;
       }
     }
   }
 
-  // No direction_change_area tag found, module inactive
-  std::cout << "[MY_DEBUG] [DirectionChange] shouldActivateModule: No direction_change_area tag found, module INACTIVE" << std::endl;
+  evaluation_data.conditions_evaluation.emplace_back("no direction_change_area tag found");
+  evaluation_data.has_direction_change_area_tag = false;
   return false;
+}
+
+bool DirectionChangeModule::detectAndValidateCuspPoints(PathEvaluationDebugData & evaluation_data)
+{
+  if (!parameters_->enable_cusp_detection) {
+    evaluation_data.conditions_evaluation.emplace_back("cusp detection disabled");
+    evaluation_data.num_cusp_points = 0;
+    return true;  // Not an error, just disabled
+  }
+
+  cusp_point_indices_ = detectCuspPoints(reference_path_, parameters_->cusp_detection_angle_threshold_deg);
+  evaluation_data.num_cusp_points = cusp_point_indices_.size();
+
+  if (cusp_point_indices_.empty()) {
+    evaluation_data.conditions_evaluation.emplace_back("no cusp points detected");
+    return true;  // Not an error, module can still operate in forward-only mode
+  }
+
+  evaluation_data.first_cusp_index = cusp_point_indices_[0];
+
+  std::ostringstream oss;
+  oss << "cusp points detected: " << cusp_point_indices_.size() << " (indices: ";
+  for (size_t i = 0; i < std::min<size_t>(cusp_point_indices_.size(), 5); ++i) {
+    if (i > 0) oss << ", ";
+    oss << cusp_point_indices_[i];
+  }
+  if (cusp_point_indices_.size() > 5) oss << ", ...";
+  oss << ")";
+  evaluation_data.conditions_evaluation.emplace_back(oss.str());
+
+  return true;
+}
+
+bool DirectionChangeModule::checkLaneContinuitySafetyWithEvaluation(
+  PathEvaluationDebugData & evaluation_data) const
+{
+  if (cusp_point_indices_.empty()) {
+    evaluation_data.conditions_evaluation.emplace_back("lane continuity check: skipped (no cusps)");
+    evaluation_data.lane_continuity_check_passed = true;
+    return true;
+  }
+
+  const bool safety_check_passed =
+    checkLaneContinuitySafety(reference_path_, cusp_point_indices_, planner_data_->route_handler);
+
+  if (safety_check_passed) {
+    evaluation_data.conditions_evaluation.emplace_back("lane continuity check: passed");
+    evaluation_data.lane_continuity_check_passed = true;
+  } else {
+    evaluation_data.conditions_evaluation.emplace_back("lane continuity check: FAILED");
+    evaluation_data.lane_continuity_check_passed = false;
+  }
+
+  return safety_check_passed;
+}
+
+bool DirectionChangeModule::evaluatePath(PathEvaluationDebugData & evaluation_data) const
+{
+  // Clear previous evaluation data
+  evaluation_data.clear();
+
+  // Step 1: Check path existence
+  if (reference_path_.points.empty()) {
+    evaluation_data.conditions_evaluation.emplace_back("path is empty");
+    std::cout << "[MY_DEBUG] [DirectionChange] evaluatePath: " << evaluation_data.to_evaluation_table() << std::endl;
+    return false;
+  }
+  evaluation_data.conditions_evaluation.emplace_back(
+    "path exists (" + std::to_string(reference_path_.points.size()) + " points)");
+
+  // Step 2: Check direction_change_area tag
+  if (!checkDirectionChangeAreaTag(evaluation_data)) {
+    std::cout << "[MY_DEBUG] [DirectionChange] evaluatePath: " << evaluation_data.to_evaluation_table() << std::endl;
+    return false;
+  }
+
+  // Note: Cusp detection and lane continuity checks are done in plan() for expensive operations
+  // evaluatePath() determines if module should activate based on map tags
+
+  evaluation_data.conditions_evaluation.emplace_back("module activation: approved");
+  std::cout << "[MY_DEBUG] [DirectionChange] evaluatePath: " << evaluation_data.to_evaluation_table() << std::endl;
+  return true;
+}
+
+bool DirectionChangeModule::shouldActivateModule() const
+{
+  // Delegate to evaluatePath with mutable debug_data_
+  PathEvaluationDebugData temp_evaluation_data;
+  const bool result = evaluatePath(temp_evaluation_data);
+
+  // Store evaluation results in debug_data_ for visualization
+  debug_data_.evaluation_data = temp_evaluation_data;
+
+  return result;
 }
 
 
@@ -193,23 +288,26 @@ BehaviorModuleOutput DirectionChangeModule::plan()
 {
   // Note: updateData() is already called by SceneModuleInterface::run() before plan()
   // Following standard BPP module pattern: expensive computations happen in plan()
-  
-  // Detect cusp points when actually planning (expensive work done here, not in updateData())
-  cusp_point_indices_ = findCuspPoints();
-  
+
   BehaviorModuleOutput output;
-  
-  std::cout << "[MY_DEBUG] [DirectionChange] plan() called: Path points=" << reference_path_.points.size() << ", Cusp points detected=" << cusp_point_indices_.size() << std::endl;
-  if (!cusp_point_indices_.empty()) {
-    std::stringstream ss;
-    ss << "[MY_DEBUG] [DirectionChange] Cusp indices: ";
-    for (size_t i = 0; i < cusp_point_indices_.size() && i < 10; ++i) {
-      ss << cusp_point_indices_[i];
-      if (i < cusp_point_indices_.size() - 1 && i < 9) ss << ", ";
-    }
-    if (cusp_point_indices_.size() > 10) ss << "... (total: " << cusp_point_indices_.size() << ")";
-    std::cout << ss.str() << std::endl;
+
+  // Clear previous evaluation data and start fresh evaluation for plan()
+  debug_data_.evaluation_data.clear();
+  debug_data_.evaluation_data.conditions_evaluation.emplace_back("plan() started");
+
+  // Step 1: Detect and validate cusp points (expensive work done here, not in updateData())
+  if (!detectAndValidateCuspPoints(debug_data_.evaluation_data)) {
+    std::cout << "[MY_DEBUG] [DirectionChange] plan() cusp detection failed: "
+              << debug_data_.evaluation_data.to_evaluation_table() << std::endl;
+    output.path = reference_path_;
+    output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
+    output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
+    return output;
   }
+
+  std::cout << "[MY_DEBUG] [DirectionChange] plan() called: Path points="
+            << reference_path_.points.size()
+            << ", Cusp points detected=" << cusp_point_indices_.size() << std::endl;
 
   // Strategy: Separate forward/backward path publishing
   // - If no cusps: return full path as forward segment
@@ -218,10 +316,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
   
   if (cusp_point_indices_.empty()) {
     // No cusps detected in current reference_path
-    // IMPORTANT: If we're already in BACKWARD_ONLY state, maintain that state
+    // IMPORTANT: If we're already in REVERSE_FOLLOWING state, maintain that state
     // This prevents oscillation when cusp detection becomes unstable after passing cusp
-    if (current_segment_state_ == PathSegmentState::BACKWARD_ONLY) {
-      std::cout << "[MY_DEBUG] [DirectionChange] No cusp detected but already in BACKWARD_ONLY state, maintaining backward path" << std::endl;
+    if (status_ == CuspReverseLaneFollowingStatus::REVERSE_FOLLOWING) {
+      std::cout << "[MY_DEBUG] [DirectionChange] No cusp detected but already in REVERSE_FOLLOWING state, maintaining backward path" << std::endl;
       // Continue publishing backward path: reverse orientations and velocities
       output.path = reference_path_;
       for (auto & p : output.path.points) {
@@ -236,142 +334,290 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       std::cout << "[MY_DEBUG] [DirectionChange] No cusp points detected, returning full path as forward segment" << std::endl;
       output.path = reference_path_;
       modified_path_ = output.path;
-      current_segment_state_ = PathSegmentState::FORWARD_ONLY;
+      status_ = CuspReverseLaneFollowingStatus::FORWARD_FOLLOWING;
     }
   } else {
     // Cusps detected: implement separate forward/backward publishing strategy
     first_cusp_index_ = cusp_point_indices_[0];
+    debug_data_.evaluation_data.first_cusp_index = first_cusp_index_;
     
-    std::cout << "[MY_DEBUG] [DirectionChange] First cusp at index: " << first_cusp_index_ << std::endl;
-    
-    // Critical Safety Check: Lane Continuity with Reverse Exit
-    const bool safety_check_passed = checkLaneContinuitySafety(
-      reference_path_, cusp_point_indices_, planner_data_->route_handler);
-    
-    std::cout << "[MY_DEBUG] [DirectionChange] Safety check result: " << (safety_check_passed ? "PASSED" : "FAILED") << std::endl;
-    
-    if (!safety_check_passed) {
-      std::cout << "[MY_DEBUG] [DirectionChange] FATAL: Lane continuity safety check failed. Returning path without modification." << std::endl;
+    // Store the actual cusp point position (world coordinates) on first detection
+    // This is critical because reference_path_ indices change every cycle as ego moves
+    if (!first_cusp_position_.has_value() && first_cusp_index_ < reference_path_.points.size()) {
+      first_cusp_position_ = reference_path_.points[first_cusp_index_].point.pose.position;
+      std::cout << "[MY_DEBUG] [DirectionChange] Stored cusp position: ("
+                << first_cusp_position_->x << ", " << first_cusp_position_->y << ")" << std::endl;
+    }
+
+    std::cout << "[MY_DEBUG] [DirectionChange] First cusp at index: " << first_cusp_index_
+              << std::endl;
+
+    // Step 2: Critical Safety Check - Lane Continuity with Reverse Exit
+    // (following start_planner pattern: record evaluation result)
+    if (!checkLaneContinuitySafetyWithEvaluation(debug_data_.evaluation_data)) {
+      std::cout << "[MY_DEBUG] [DirectionChange] FATAL: Lane continuity safety check failed.\n"
+                << debug_data_.evaluation_data.to_evaluation_table() << std::endl;
+      debug_data_.evaluation_data.conditions_evaluation.emplace_back(
+        "plan() aborted: safety check failed");
       output.path = reference_path_;
       output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
       output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
       return output;
     }
     
-    // Get ego's current position
-    if (!planner_data_ || !planner_data_->self_odometry) {
-      std::cout << "[MY_DEBUG] [DirectionChange] WARNING: No ego odometry available, defaulting to forward segment" << std::endl;
-      current_segment_state_ = PathSegmentState::FORWARD_ONLY;
-    } else {
-      const auto & ego_pose = planner_data_->self_odometry->pose.pose;
+    // ========== STATE MACHINE FOR CUSP-BASED REVERSE LANE FOLLOWING ==========
+    // Get ego's current state
+    double distance_to_cusp = std::numeric_limits<double>::max();
+    double ego_velocity = 0.0;
+    geometry_msgs::msg::Pose ego_pose;
+    
+    if (planner_data_ && planner_data_->self_odometry) {
+      ego_pose = planner_data_->self_odometry->pose.pose;
+      ego_velocity = std::abs(planner_data_->self_odometry->twist.twist.linear.x);
       
-      // Find ego's nearest point on the reference path
-      const auto ego_nearest_idx_opt = findNearestIndex(reference_path_.points, ego_pose);
-      
-      if (!ego_nearest_idx_opt) {
-        std::cout << "[MY_DEBUG] [DirectionChange] WARNING: Could not find nearest index for ego pose, defaulting to forward segment" << std::endl;
-        current_segment_state_ = PathSegmentState::FORWARD_ONLY;
-      } else {
-        const size_t ego_nearest_idx = *ego_nearest_idx_opt;
-        
-        // Calculate signed arc length from ego to first cusp point
-        // Negative = ego is before cusp, Positive = ego is after cusp
-        const double distance_to_cusp = calcSignedArcLength(
-          reference_path_.points, ego_nearest_idx, first_cusp_index_);
-      
-      // Threshold for "reached cusp" (2.0 meters before cusp)
-      // Using negative threshold because calcSignedArcLength returns negative when ego is before target
-      const double cusp_arrival_threshold = 2.0;
-      
-      auto stateToString = [](const PathSegmentState & s) {
-        switch (s) {
-          case PathSegmentState::FORWARD_ONLY:   return "FORWARD_ONLY";
-          case PathSegmentState::BACKWARD_ONLY:  return "BACKWARD_ONLY";
-          default:                               return "UNKNOWN";
-        }
-      };
-      std::cout << "[MY_DEBUG] [DirectionChange] "
-                << "state=" << stateToString(current_segment_state_)
-                << ", ego_nearest_idx=" << ego_nearest_idx
-                << ", first_cusp_index_=" << first_cusp_index_
-                << ", distance_to_cusp=" << distance_to_cusp
-                << ", threshold=" << cusp_arrival_threshold
-                << std::endl;
-        
-        // Determine which segment to publish based on ego position
-        if (distance_to_cusp < cusp_arrival_threshold) {
-          // Ego has reached/near cusp → switch to backward segment
-          if (current_segment_state_ != PathSegmentState::BACKWARD_ONLY) {
-            std::cout << "[MY_DEBUG] [DirectionChange] Ego reached cusp, switching to BACKWARD_ONLY state" << std::endl;
-          }
-          current_segment_state_ = PathSegmentState::BACKWARD_ONLY;
-        } else {
-          // Ego still on forward segment → publish forward segment only
-          if (current_segment_state_ != PathSegmentState::FORWARD_ONLY) {
-            std::cout << "[MY_DEBUG] [DirectionChange] Ego before cusp, switching to FORWARD_ONLY state" << std::endl;
-          }
-//          current_segment_state_ = PathSegmentState::FORWARD_ONLY;
-        }
+      if (first_cusp_position_.has_value()) {
+        distance_to_cusp = calc_distance2d(ego_pose.position, *first_cusp_position_);
       }
     }
     
-    // Split path and publish appropriate segment
-    if (current_segment_state_ == PathSegmentState::FORWARD_ONLY) {
-      // Extract forward segment: [0, first_cusp_index] (inclusive)
-      if (first_cusp_index_ < reference_path_.points.size()) {
-        output.path.points.assign(
-          reference_path_.points.begin(),
-          reference_path_.points.begin() + first_cusp_index_ + 1);
-        std::cout << "[MY_DEBUG] [DirectionChange] Publishing FORWARD segment: " 
-                  << output.path.points.size() << " points (indices 0-" << first_cusp_index_ << ")" << std::endl;
-      } else {
-        std::cout << "[MY_DEBUG] [DirectionChange] ERROR: First cusp index out of bounds, using full path" << std::endl;
-        output.path = reference_path_;
-      }
-    } else {
-      // Extract backward segment: [first_cusp_index, end] (inclusive)
-      if (first_cusp_index_ < reference_path_.points.size()) {
-        output.path.points.assign(
-          reference_path_.points.begin() + first_cusp_index_,
-          reference_path_.points.end());
-
-      // 全点を reverse として扱う（CUSP ロジック不要）
-      for (auto & p : output.path.points) {
-        double yaw = tf2::getYaw(p.point.pose.orientation);
-        yaw = autoware_utils::normalize_radian(yaw + M_PI);
-        p.point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
-        p.point.longitudinal_velocity_mps = -std::abs(p.point.longitudinal_velocity_mps);
-      }          
-
-        // Reverse orientations for backward segment
-        // Create a vector with single cusp at index 0 (start of backward segment)
-        std::vector<size_t> backward_cusp_indices = {0};
-        //reverseOrientationAtCusps(&output.path, backward_cusp_indices);
+    // Initialize status if IDLE
+    if (status_ == CuspReverseLaneFollowingStatus::IDLE) {
+      status_ = CuspReverseLaneFollowingStatus::FORWARD_FOLLOWING;
+    }
+    
+    // State transition logic
+    CuspReverseLaneFollowingStatus prev_status = status_;
+    
+    switch (status_) {
+      case CuspReverseLaneFollowingStatus::FORWARD_FOLLOWING:
+        // Transition to APPROACHING_CUSP when within approach distance
+        if (distance_to_cusp <= kApproachingCuspDistance) {
+          status_ = CuspReverseLaneFollowingStatus::APPROACHING_CUSP;
+        }
+        break;
         
-        std::cout << "[MY_DEBUG] [DirectionChange] Publishing BACKWARD segment: " 
-                  << output.path.points.size() << " points (indices " << first_cusp_index_ 
-                  << "-" << (reference_path_.points.size() - 1) << ") with reversed orientations" << std::endl;
-      } else {
-        std::cout << "[MY_DEBUG] [DirectionChange] ERROR: First cusp index out of bounds, using full path" << std::endl;
-        output.path = reference_path_;
+      case CuspReverseLaneFollowingStatus::APPROACHING_CUSP:
+        // Transition to AT_CUSP when close enough AND stopped
+        {
+          const bool distance_ok = (distance_to_cusp <= kAtCuspDistance);
+          const bool velocity_ok = (ego_velocity < kStoppedVelocityThreshold);
+          std::cout << "[MY_DEBUG] [DirectionChange] APPROACHING_CUSP check: "
+                    << "distance_ok=" << (distance_ok ? "true" : "false")
+                    << " (" << distance_to_cusp << " <= " << kAtCuspDistance << ")"
+                    << ", velocity_ok=" << (velocity_ok ? "true" : "false")
+                    << " (" << ego_velocity << " < " << kStoppedVelocityThreshold << ")"
+                    << std::endl;
+          if (distance_ok && velocity_ok) {
+            status_ = CuspReverseLaneFollowingStatus::AT_CUSP;
+          }
+        }
+        break;
+        
+      case CuspReverseLaneFollowingStatus::AT_CUSP:
+        // Immediately transition to REVERSE_FOLLOWING
+        status_ = CuspReverseLaneFollowingStatus::REVERSE_FOLLOWING;
+        break;
+        
+      case CuspReverseLaneFollowingStatus::REVERSE_FOLLOWING:
+        // Stay in REVERSE_FOLLOWING until completed
+        // (Completion logic can be added later)
+        break;
+        
+      case CuspReverseLaneFollowingStatus::COMPLETED:
+        // Stay completed
+        break;
+        
+      default:
+        break;
+    }
+    
+    // Log state transition
+    if (prev_status != status_) {
+      std::cout << "[MY_DEBUG] [DirectionChange] State transition: " 
+                << toString(prev_status) << " -> " << toString(status_) << std::endl;
+    }
+    
+    std::cout << "[MY_DEBUG] [DirectionChange] "
+              << "status=" << toString(status_)
+              << ", ego_pos=(" << ego_pose.position.x << ", " << ego_pose.position.y << ")"
+              << ", ego_vel=" << ego_velocity << "m/s"
+              << ", cusp_pos=(" << (first_cusp_position_.has_value() ? 
+                 std::to_string(first_cusp_position_->x) + ", " + std::to_string(first_cusp_position_->y) : "N/A") << ")"
+              << ", distance_to_cusp=" << distance_to_cusp << "m"
+              << std::endl;
+    
+    // ========== PATH GENERATION BASED ON STATUS ==========
+    switch (status_) {
+      case CuspReverseLaneFollowingStatus::FORWARD_FOLLOWING:
+      case CuspReverseLaneFollowingStatus::APPROACHING_CUSP:
+      {
+        // Generate forward path to CUSP point
+        if (first_cusp_index_ < reference_path_.points.size() && planner_data_ && planner_data_->self_odometry) {
+          // Create forward segment [0, first_cusp_index]
+          PathWithLaneId forward_segment;
+          forward_segment.points.assign(
+            reference_path_.points.begin(),
+            reference_path_.points.begin() + first_cusp_index_ + 1);
+          
+          // Find ego's nearest point on the forward segment
+          const auto ego_nearest_idx_opt = findNearestIndex(forward_segment.points, ego_pose);
+          size_t start_idx = 0;
+          if (ego_nearest_idx_opt) {
+            start_idx = *ego_nearest_idx_opt;
+          }
+          
+          // Build output path from start_idx to cusp
+          output.path.points.clear();
+          for (size_t i = start_idx; i < forward_segment.points.size(); ++i) {
+            output.path.points.push_back(forward_segment.points[i]);
+          }
+          
+          // Set velocity based on status
+          // Strategy: Keep low velocity at CUSP point, set stop point AFTER cusp
+          // This allows the vehicle to reach closer to the actual CUSP point
+          const double forward_velocity = parameters_->cusp_approach_speed;
+          const double cusp_creep_velocity = 0.3;  // [m/s] Low velocity to creep towards cusp
+          const double stop_distance_after_cusp = 0.5;  // [m] Distance after cusp to place stop point
+          
+          for (size_t i = 0; i < output.path.points.size(); ++i) {
+            // All points including CUSP get low velocity (not zero)
+            output.path.points[i].point.longitudinal_velocity_mps = 
+              (i < output.path.points.size() - 1) ? forward_velocity : cusp_creep_velocity;
+          }
+          
+          // Calculate path direction at cusp for extension
+          double current_length = 0.0;
+          for (size_t i = 1; i < output.path.points.size(); ++i) {
+            current_length += autoware_utils::calc_distance2d(
+              output.path.points[i-1].point.pose.position,
+              output.path.points[i].point.pose.position);
+          }
+          
+          if (output.path.points.size() >= 2) {
+            const auto & cusp_point = output.path.points.back();
+            const auto & prev_point = output.path.points[output.path.points.size() - 2];
+            
+            const double dx_raw = cusp_point.point.pose.position.x - prev_point.point.pose.position.x;
+            const double dy_raw = cusp_point.point.pose.position.y - prev_point.point.pose.position.y;
+            const double dist = std::hypot(dx_raw, dy_raw);
+            const double dx = (dist > 0.01) ? dx_raw / dist : 1.0;
+            const double dy = (dist > 0.01) ? dy_raw / dist : 0.0;
+            
+            // Add stop point after cusp (this is where motion planner will try to stop)
+            PathPointWithLaneId stop_point = cusp_point;
+            stop_point.point.pose.position.x += dx * stop_distance_after_cusp;
+            stop_point.point.pose.position.y += dy * stop_distance_after_cusp;
+            stop_point.point.longitudinal_velocity_mps = 0.0;
+            output.path.points.push_back(stop_point);
+            
+            // Add extra points to meet minimum path length
+            const double min_path_length = 10.0;
+            const double total_length = current_length + stop_distance_after_cusp;
+            if (total_length < min_path_length) {
+              const int num_extra_points = static_cast<int>((min_path_length - total_length) / 1.0) + 1;
+              for (int i = 1; i <= num_extra_points; ++i) {
+                PathPointWithLaneId extra_point = stop_point;
+                extra_point.point.pose.position.x += dx * i * 1.0;
+                extra_point.point.pose.position.y += dy * i * 1.0;
+                extra_point.point.longitudinal_velocity_mps = 0.0;
+                output.path.points.push_back(extra_point);
+              }
+            }
+          }
+          
+          std::cout << "[MY_DEBUG] [DirectionChange] Publishing FORWARD path: " 
+                    << output.path.points.size() << " points (start_idx=" << start_idx
+                    << ", cusp_idx=" << first_cusp_index_ << ", path_length=" << current_length << "m)" << std::endl;
+        } else {
+          output.path = reference_path_;
+        }
+        break;
       }
+      
+      case CuspReverseLaneFollowingStatus::AT_CUSP:
+      {
+        // Generate stop path at CUSP (all velocities = 0)
+        if (first_cusp_index_ < reference_path_.points.size()) {
+          // Just output a single point at cusp with velocity 0
+          output.path.points.clear();
+          output.path.points.push_back(reference_path_.points[first_cusp_index_]);
+          output.path.points.back().point.longitudinal_velocity_mps = 0.0;
+          
+          std::cout << "[MY_DEBUG] [DirectionChange] AT_CUSP: Outputting stop path" << std::endl;
+        }
+        break;
+      }
+      
+      case CuspReverseLaneFollowingStatus::REVERSE_FOLLOWING:
+      {
+        // Generate backward path from CUSP point
+        if (first_cusp_index_ < reference_path_.points.size() && planner_data_ && planner_data_->self_odometry) {
+          // Extract backward segment: [first_cusp_index, end]
+          PathWithLaneId backward_segment;
+          backward_segment.points.assign(
+            reference_path_.points.begin() + first_cusp_index_,
+            reference_path_.points.end());
+          
+          // Find ego's nearest point on the backward segment
+          const auto ego_nearest_idx_opt = findNearestIndex(backward_segment.points, ego_pose);
+          size_t start_idx = 0;
+          if (ego_nearest_idx_opt) {
+            start_idx = *ego_nearest_idx_opt;
+          }
+          
+          // Build output path from start_idx to end
+          output.path.points.clear();
+          for (size_t i = start_idx; i < backward_segment.points.size(); ++i) {
+            output.path.points.push_back(backward_segment.points[i]);
+          }
+          
+          // Reverse orientations and set negative velocity for backward driving
+          const double reverse_velocity = parameters_->reverse_speed_limit;  // e.g., -2.0 m/s
+          for (auto & p : output.path.points) {
+            double yaw = tf2::getYaw(p.point.pose.orientation);
+            yaw = autoware_utils::normalize_radian(yaw + M_PI);
+            p.point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
+            p.point.longitudinal_velocity_mps = -std::abs(reverse_velocity);
+          }
+          
+          std::cout << "[MY_DEBUG] [DirectionChange] Publishing BACKWARD path: " 
+                    << output.path.points.size() << " points (start_idx=" << start_idx << ")" << std::endl;
+        } else {
+          output.path = reference_path_;
+        }
+        break;
+      }
+      
+      case CuspReverseLaneFollowingStatus::COMPLETED:
+      case CuspReverseLaneFollowingStatus::IDLE:
+      default:
+        output.path = reference_path_;
+        break;
     }
     
     modified_path_ = output.path;
-    if (!output.path.points.empty()) {
-      const size_t N = std::min<size_t>(5, output.path.points.size());
-      std::cout << "[MY_DEBUG] [DirectionChange] Output path head " << N
-                << " points (yaw [deg], v [m/s]):" << std::endl;
-      for (size_t i = 0; i < N; ++i) {
-        const auto & pt = output.path.points[i].point;
-        const double yaw = tf2::getYaw(pt.pose.orientation);  // [rad]
-        const double yaw_deg = yaw * 180.0 / M_PI;
-        const double v = pt.longitudinal_velocity_mps;
-        std::cout << "  idx=" << i
-                  << ", yaw=" << yaw_deg
-                  << " deg, v=" << v << " m/s"
-                  << std::endl;
+    if (!output.path.points.empty() && planner_data_ && planner_data_->self_odometry) {
+      // Calculate total path length
+      double total_length = 0.0;
+      for (size_t i = 1; i < output.path.points.size(); ++i) {
+        total_length += calc_distance2d(
+          output.path.points[i-1].point.pose.position,
+          output.path.points[i].point.pose.position);
       }
+      
+      // Show first point, last point, and path length
+      const auto & ego_pos = planner_data_->self_odometry->pose.pose.position;
+      const auto & first_pt = output.path.points.front().point;
+      const auto & last_pt = output.path.points.back().point;
+      const double dist_ego_to_first = calc_distance2d(ego_pos, first_pt.pose.position);
+      
+      std::cout << "[MY_DEBUG] [DirectionChange] Output path: " 
+                << output.path.points.size() << " points, total_length=" << total_length << "m" << std::endl;
+      std::cout << "  ego:   (" << ego_pos.x << ", " << ego_pos.y << ")" << std::endl;
+      std::cout << "  first: (" << first_pt.pose.position.x << ", " << first_pt.pose.position.y 
+                << "), v=" << first_pt.longitudinal_velocity_mps << " m/s, dist_from_ego=" << dist_ego_to_first << "m" << std::endl;
+      std::cout << "  last:  (" << last_pt.pose.position.x << ", " << last_pt.pose.position.y 
+                << "), v=" << last_pt.longitudinal_velocity_mps << " m/s" << std::endl;
     }  
   }
 
@@ -397,13 +643,13 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     
     path_publisher_->publish(path_msg);
     std::cout << "[MY_DEBUG] [DirectionChange] Published " 
-              << (current_segment_state_ == PathSegmentState::FORWARD_ONLY ? "FORWARD" : "BACKWARD")
+              << toString(status_)
               << " segment to topic: " << path_publisher_->get_topic_name() 
               << " with " << path_msg.points.size() << " points" << std::endl;
   }
 
   output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
-  
+
   // Preserve drivable area information from previous module
   // This is critical: PlannerManager's generateCombinedDrivableArea() needs drivable_area_info
   // (specifically drivable_lanes) to compute left_bound and right_bound. Since we only modify
@@ -411,6 +657,12 @@ BehaviorModuleOutput DirectionChangeModule::plan()
   // be preserved. Without this, generateDrivableArea() fails to compute bounds and throws error:
   // "The right or left bound of drivable area is empty"
   output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
+
+  // Final evaluation record
+  debug_data_.evaluation_data.conditions_evaluation.emplace_back(
+    "plan() completed: " +
+    toString(status_) +
+    " segment with " + std::to_string(output.path.points.size()) + " points");
 
   return output;
 }
@@ -435,7 +687,7 @@ bool DirectionChangeModule::canTransitSuccessState()
 {
   // Module can complete only after backward segment is published and ego has completed it
   if (!cusp_point_indices_.empty() && 
-      current_segment_state_ == PathSegmentState::BACKWARD_ONLY) {
+      status_ == CuspReverseLaneFollowingStatus::REVERSE_FOLLOWING) {
     // Check if ego has completed backward segment
     if (planner_data_ && planner_data_->self_odometry && !modified_path_.points.empty()) {
       const auto & ego_pose = planner_data_->self_odometry->pose.pose;
@@ -472,6 +724,13 @@ void DirectionChangeModule::setDebugMarkersVisualization() const
     if (cusp_idx < reference_path_.points.size()) {
       debug_data_.cusp_points.push_back(reference_path_.points[cusp_idx].point.pose.position);
     }
+  }
+
+  // Note: evaluation_data is already updated during evaluatePath() and plan()
+  // Output evaluation table for debugging if debug marker publishing is enabled
+  if (parameters_->publish_debug_marker && !debug_data_.evaluation_data.conditions_evaluation.empty()) {
+    std::cout << "[MY_DEBUG] [DirectionChange] Evaluation Summary:\n"
+              << debug_data_.evaluation_data.to_evaluation_table() << std::endl;
   }
 }
 
