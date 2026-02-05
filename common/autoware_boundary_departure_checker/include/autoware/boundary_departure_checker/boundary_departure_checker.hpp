@@ -17,7 +17,7 @@
 
 #include "autoware/boundary_departure_checker/parameters.hpp"
 
-#include <autoware_utils/system/time_keeper.hpp>
+#include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rosidl_runtime_cpp/message_initialization.hpp>
 #include <tl_expected/expected.hpp>
@@ -38,9 +38,9 @@
 #include <lanelet2_core/geometry/LineString.h>
 #include <lanelet2_core/geometry/Polygon.h>
 
-#include <map>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -52,16 +52,16 @@ class BoundaryDepartureChecker
 {
 public:
   explicit BoundaryDepartureChecker(
-    std::shared_ptr<autoware_utils::TimeKeeper> time_keeper =
-      std::make_shared<autoware_utils::TimeKeeper>())
+    std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper =
+      std::make_shared<autoware_utils_debug::TimeKeeper>())
   : time_keeper_(std::move(time_keeper))
   {
   }
 
   BoundaryDepartureChecker(
     Param param, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-    std::shared_ptr<autoware_utils::TimeKeeper> time_keeper =
-      std::make_shared<autoware_utils::TimeKeeper>())
+    std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper =
+      std::make_shared<autoware_utils_debug::TimeKeeper>())
   : param_(std::move(param)),
     vehicle_info_ptr_(std::make_shared<autoware::vehicle_info_utils::VehicleInfo>(vehicle_info)),
     time_keeper_(std::move(time_keeper))
@@ -73,8 +73,8 @@ public:
   BoundaryDepartureChecker(
     lanelet::LaneletMapPtr lanelet_map_ptr, const VehicleInfo & vehicle_info,
     const Param & param = Param{},
-    std::shared_ptr<autoware_utils::TimeKeeper> time_keeper =
-      std::make_shared<autoware_utils::TimeKeeper>());
+    std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper =
+      std::make_shared<autoware_utils_debug::TimeKeeper>());
 
   bool checkPathWillLeaveLane(
     const lanelet::ConstLanelets & lanelets, const PathWithLaneId & path) const;
@@ -82,13 +82,13 @@ public:
   std::vector<std::pair<double, lanelet::Lanelet>> getLaneletsFromPath(
     const lanelet::LaneletMapPtr lanelet_map_ptr, const PathWithLaneId & path) const;
 
-  std::optional<autoware_utils::Polygon2d> getFusedLaneletPolygonForPath(
+  std::optional<autoware_utils_geometry::Polygon2d> getFusedLaneletPolygonForPath(
     const lanelet::LaneletMapPtr lanelet_map_ptr, const PathWithLaneId & path) const;
 
   bool updateFusedLaneletPolygonForPath(
     const lanelet::LaneletMapPtr lanelet_map_ptr, const PathWithLaneId & path,
     std::vector<lanelet::Id> & fused_lanelets_id,
-    std::optional<autoware_utils::Polygon2d> & fused_lanelets_polygon) const;
+    std::optional<autoware_utils_geometry::Polygon2d> & fused_lanelets_polygon) const;
 
   bool checkPathWillLeaveLane(
     const lanelet::LaneletMapPtr lanelet_map_ptr, const PathWithLaneId & path) const;
@@ -96,12 +96,12 @@ public:
   bool checkPathWillLeaveLane(
     const lanelet::LaneletMapPtr lanelet_map_ptr, const PathWithLaneId & path,
     std::vector<lanelet::Id> & fused_lanelets_id,
-    std::optional<autoware_utils::Polygon2d> & fused_lanelets_polygon) const;
+    std::optional<autoware_utils_geometry::Polygon2d> & fused_lanelets_polygon) const;
 
   PathWithLaneId cropPointsOutsideOfLanes(
     const lanelet::LaneletMapPtr lanelet_map_ptr, const PathWithLaneId & path,
     const size_t end_index, std::vector<lanelet::Id> & fused_lanelets_id,
-    std::optional<autoware_utils::Polygon2d> & fused_lanelets_polygon);
+    std::optional<autoware_utils_geometry::Polygon2d> & fused_lanelets_polygon);
 
   static bool isOutOfLane(
     const lanelet::ConstLanelets & candidate_lanelets, const LinearRing2d & vehicle_footprint);
@@ -141,19 +141,54 @@ public:
     const SteeringReport & current_steering);
 
   /**
-   * @brief Find closest uncrossable boundary segments for the left and right sides of the ego
-   * vehicle.
+   * @brief Queries a spatial index (R-tree) to find nearby uncrossable lane boundaries and filters
+   * them.
    *
-   * Queries an R-tree to find the nearest segments to the ego's left and right footprints,
-   * ensuring no duplicate segments are recorded for a given lanelet line string.
-   *
-   * @param ego_sides_from_footprints Left and right polygonal side representations of ego
-   * footprints.
-   * @return BoundarySideWithIdx containing nearest segments on each side or error string if
-   * prerequisites fail.
+   * @param ego_ref_segment The reference side of the ego vehicle (e.g., the left side) used as the
+   * query origin.
+   * @param ego_opposite_ref_segment The opposite side of the ego vehicle (e.g., the right side),
+   * used to filter out boundaries on the wrong side.
+   * @param ego_z_position The current vertical (Z-axis) position of the ego vehicle, used to filter
+   * boundaries by height.
+   * @param unique_id A set of segment IDs that have already been processed, used to avoid adding
+   * duplicate boundaries.
+   * @return A vector of `SegmentWithIdx` containing the filtered boundary segments that are deemed
+   * relevant and close to the reference side.
    */
-  tl::expected<BoundarySideWithIdx, std::string> get_boundary_segments_from_side(
-    const EgoSides & ego_sides_from_footprints);
+  std::vector<SegmentWithIdx> find_closest_boundary_segments(
+    const Segment2d & ego_ref_segment, const Segment2d & ego_opposite_ref_segment,
+    const double ego_z_position,
+    const std::unordered_set<IdxForRTreeSegment, IdxForRTreeSegmentHash> & unique_id);
+
+  /**
+   * @brief A helper function to find closest boundaries and update the provided result containers.
+   *
+   * @param ego_ref_segment Reference ego side segment, passed to `find_closest_boundary_segments`.
+   * @param ego_opposite_ref_segment Opposite ego side segment, passed to
+   * `find_closest_boundary_segments`.
+   * @param ego_z_position The ego vehicle's Z-position, passed to `find_closest_boundary_segments`.
+   * @param[in, out] unique_ids A set of unique segment IDs. Newly found IDs will be inserted into
+   * this set.
+   * @param[out] output_segments The vector where newly found, relevant segments will be appended.
+   */
+  void update_closest_boundary_segments(
+    const Segment2d & ego_ref_segment, const Segment2d & ego_opposite_ref_segment,
+    const double ego_z_position,
+    std::unordered_set<IdxForRTreeSegment, IdxForRTreeSegmentHash> & unique_ids,
+    std::vector<SegmentWithIdx> & output_segments);
+
+  /**
+   * @brief Collects all relevant uncrossable boundary segments along a predicted trajectory.
+   *
+   * @param ego_sides_from_footprints A container of the vehicle's left and right side segments for
+   * each point along the trajectory.
+   * @param trimmed_pred_trajectory The predicted trajectory of the ego vehicle, used to get the
+   * Z-position at each step.
+   * @return A `BoundarySideWithIdx` struct containing two vectors: one for all unique, relevant
+   * boundaries found to the left of the trajectory, and one for the right.
+   */
+  BoundarySideWithIdx get_boundary_segments(
+    const EgoSides & ego_sides_from_footprints, const TrajectoryPoints & trimmed_pred_trajectory);
 
   /**
    * @brief Select the closest projections to road boundaries for a specific side.
@@ -223,9 +258,9 @@ private:
     const std::vector<LinearRing2d> & vehicle_footprints,
     const SegmentRtree & uncrossable_segments) const;
 
-  autoware_utils::Polygon2d toPolygon2D(const lanelet::BasicPolygon2d & poly) const;
+  autoware_utils_geometry::Polygon2d toPolygon2D(const lanelet::BasicPolygon2d & poly) const;
 
-  mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
+  mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
 
   Footprint get_ego_footprints(
     const AbnormalityType abnormality_type, const FootprintMargin uncertainty_fp_margin);
