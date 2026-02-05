@@ -88,7 +88,7 @@ struct TrainingDataBinary
   // Fixed size data arrays
   float ego_agent_past[EGO_HISTORY_SHAPE[1] * EGO_HISTORY_SHAPE[2]];
   float ego_current_state[EGO_CURRENT_STATE_SHAPE[1]];
-  float ego_agent_future[OUTPUT_T * EGO_HISTORY_SHAPE[2]];
+  float ego_agent_future[OUTPUT_T * POSE_DIM];
   float neighbor_agents_past[MAX_NUM_NEIGHBORS * INPUT_T_WITH_CURRENT * NEIGHBOR_PAST_DIM];
   float neighbor_agents_future[MAX_NUM_NEIGHBORS * OUTPUT_T * NEIGHBOR_FUTURE_DIM];
   float static_objects[STATIC_OBJECTS_SHAPE[1] * STATIC_OBJECTS_SHAPE[2]];
@@ -609,7 +609,6 @@ int main(int argc, char ** argv)
     if (!ok) {
       if (sequence.data_list.empty()) {
         // At the beginning of recording, some msgs may be missing - Skip this frame
-        std::cout << "Skip this frame i=" << i << "/n=" << n << std::endl;
         continue;
       } else {
         // If the msg is missing in the middle of recording, we can use the msgs to this point
@@ -685,8 +684,16 @@ int main(int argc, char ** argv)
       // Create ego sequences
       const std::vector<float> ego_past = create_ego_sequence(
         seq.data_list, i - INPUT_T_WITH_CURRENT + 1, INPUT_T_WITH_CURRENT, map2bl);
-      const std::vector<float> ego_future =
+      // Create ego future without timestamp (only x, y, cos, sin)
+      const std::vector<float> ego_future_with_ts =
         create_ego_sequence(seq.data_list, i + 1, OUTPUT_T, map2bl);
+      std::vector<float> ego_future;
+      ego_future.reserve(OUTPUT_T * POSE_DIM);
+      for (int64_t t = 0; t < OUTPUT_T; ++t) {
+        for (int64_t d = 0; d < POSE_DIM; ++d) {
+          ego_future.push_back(ego_future_with_ts[t * EGO_HISTORY_DIM + d]);
+        }
+      }
 
       // Create ego current state
       const std::vector<float> ego_current = preprocess::create_ego_current_state(
@@ -805,14 +812,9 @@ int main(int argc, char ** argv)
       const bool is_future_forward = sum_mileage > 1.0;
 
       if (is_stop && is_red_or_yellow && is_future_forward) {
-        std::cout << "Skip this frame " << i
-                  << " because it is stop at red or yellow light and future trajectory is forward"
-                  << std::endl;
         continue;
       }
       if (stopping_count > (INPUT_T + 5) && is_red_or_yellow) {
-        std::cout << "Skip this frame " << i << " because stopping_count=" << stopping_count
-                  << " and red or yellow light" << std::endl;
         continue;
       }
 
