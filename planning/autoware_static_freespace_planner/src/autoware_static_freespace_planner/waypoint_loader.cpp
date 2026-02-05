@@ -1,16 +1,17 @@
 // Copyright 2026 TIER IV, Inc.
 
 #include "autoware/static_freespace_planner/waypoint_loader.hpp"
-#include <fstream>
-#include <sstream>
-#include <set>
-#include <stdexcept>
+
 #include <algorithm>
+#include <fstream>
+#include <set>
+#include <sstream>
+#include <stdexcept>
 
 namespace autoware::static_freespace_planner
 {
 WaypointLoader::WaypointLoader() = default;
-std::vector<WaypointLoader::Waypoint> WaypointLoader::loadWaypoints(const std::string& csv_path)
+std::vector<WaypointLoader::Waypoint> WaypointLoader::loadWaypoints(const std::string & csv_path)
 {
   std::vector<Waypoint> waypoints;
   std::ifstream file(csv_path);
@@ -30,7 +31,7 @@ std::vector<WaypointLoader::Waypoint> WaypointLoader::loadWaypoints(const std::s
   return waypoints;
 }
 
-std::vector<int> WaypointLoader::getAvailableSeqs(const std::string& csv_path)
+std::vector<int> WaypointLoader::getAvailableSeqs(const std::string & csv_path)
 {
   std::vector<int> available_seqs;
   std::ifstream file(csv_path);
@@ -52,11 +53,12 @@ std::vector<int> WaypointLoader::getAvailableSeqs(const std::string& csv_path)
   file.close();
   // Sort and remove duplicates
   std::sort(available_seqs.begin(), available_seqs.end());
-  available_seqs.erase(std::unique(available_seqs.begin(), available_seqs.end()), available_seqs.end());
+  available_seqs.erase(
+    std::unique(available_seqs.begin(), available_seqs.end()), available_seqs.end());
   return available_seqs;
 }
 
-WaypointLoader::Waypoint WaypointLoader::loadFirstWaypoint(const std::string& csv_path)
+WaypointLoader::Waypoint WaypointLoader::loadFirstWaypoint(const std::string & csv_path)
 {
   std::ifstream file(csv_path);
   if (!file.is_open()) {
@@ -76,7 +78,7 @@ WaypointLoader::Waypoint WaypointLoader::loadFirstWaypoint(const std::string& cs
   }
 }
 
-WaypointLoader::Waypoint WaypointLoader::loadLastWaypoint(const std::string& csv_path)
+WaypointLoader::Waypoint WaypointLoader::loadLastWaypoint(const std::string & csv_path)
 {
   std::ifstream file(csv_path);
   if (!file.is_open()) {
@@ -103,7 +105,7 @@ WaypointLoader::Waypoint WaypointLoader::loadLastWaypoint(const std::string& csv
 }
 
 std::vector<WaypointLoader::Waypoint> WaypointLoader::loadWaypointsBySeq(
-  const std::string& csv_path, int seq)
+  const std::string & csv_path, int seq)
 {
   std::vector<Waypoint> waypoints;
   std::ifstream file(csv_path);
@@ -126,7 +128,7 @@ std::vector<WaypointLoader::Waypoint> WaypointLoader::loadWaypointsBySeq(
   return waypoints;
 }
 
-WaypointLoader::Waypoint WaypointLoader::parseCSVLine(const std::string& line)
+WaypointLoader::Waypoint WaypointLoader::parseCSVLine(const std::string & line)
 {
   std::stringstream ss(line);
   std::string item;

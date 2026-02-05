@@ -1,6 +1,7 @@
 // Copyright 2026 TIER IV, Inc.
 
 #include "autoware/static_freespace_planner/trajectory_generator.hpp"
+
 #include "autoware/static_freespace_planner/waypoint_loader.hpp"
 
 namespace autoware::static_freespace_planner
@@ -8,20 +9,19 @@ namespace autoware::static_freespace_planner
 using autoware_planning_msgs::msg::TrajectoryPoint;
 
 Trajectory TrajectoryGenerator::createTrajectoryForSeq(
-  const std::vector<WaypointLoader::Waypoint>& all_waypoints,
-  int target_seq,
-  const PoseStamped& current_pose)
+  const std::vector<WaypointLoader::Waypoint> & all_waypoints, int target_seq,
+  const PoseStamped & current_pose)
 {
   Trajectory traj;
 
-  for (const auto& waypoint : all_waypoints) {
+  for (const auto & waypoint : all_waypoints) {
     if (waypoint.seq != target_seq) {
       continue;
     }
 
     TrajectoryPoint point;
     point.pose = waypointToPose(waypoint);
-    point.pose.position.z = current_pose.pose.position.z; // Set height to current z value
+    point.pose.position.z = current_pose.pose.position.z;  // Set height to current z value
 
     // Use the specified speed in the waypoint (m/s)
     // Positive: forward, Negative: backward
@@ -34,8 +34,7 @@ Trajectory TrajectoryGenerator::createTrajectoryForSeq(
 }
 
 Trajectory TrajectoryGenerator::createStopTrajectory(
-  const PoseStamped& current_pose,
-  const rclcpp::Clock::SharedPtr clock)
+  const PoseStamped & current_pose, const rclcpp::Clock::SharedPtr clock)
 {
   Trajectory traj;
   traj.header.stamp = clock->now();
@@ -50,14 +49,13 @@ Trajectory TrajectoryGenerator::createStopTrajectory(
 }
 
 Trajectory TrajectoryGenerator::createTrajectory(
-  const std::vector<WaypointLoader::Waypoint>& waypoints,
-  const PoseStamped& current_pose)
+  const std::vector<WaypointLoader::Waypoint> & waypoints, const PoseStamped & current_pose)
 {
   Trajectory traj;
-  for (const auto& waypoint : waypoints) {
+  for (const auto & waypoint : waypoints) {
     TrajectoryPoint point;
     point.pose = waypointToPose(waypoint);
-    point.pose.position.z = current_pose.pose.position.z; // Set height to current z value
+    point.pose.position.z = current_pose.pose.position.z;  // Set height to current z value
 
     // Use the specified speed in the waypoint (m/s)
     // Positive: forward, Negative: backward
@@ -69,7 +67,7 @@ Trajectory TrajectoryGenerator::createTrajectory(
   return traj;
 }
 
-Pose TrajectoryGenerator::waypointToPose(const WaypointLoader::Waypoint& waypoint)
+Pose TrajectoryGenerator::waypointToPose(const WaypointLoader::Waypoint & waypoint)
 {
   Pose pose;
   pose.position.x = waypoint.x;
@@ -81,4 +79,4 @@ Pose TrajectoryGenerator::waypointToPose(const WaypointLoader::Waypoint& waypoin
   pose.orientation.w = waypoint.qw;
   return pose;
 }
-} // namespace autoware::static_freespace_planner
+}  // namespace autoware::static_freespace_planner

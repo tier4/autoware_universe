@@ -30,7 +30,9 @@ StaticFreespacePlannerNode::StaticFreespacePlannerNode(const rclcpp::NodeOptions
     // Check if the static_path directory exists
     if (!std::filesystem::exists(static_path)) {
       // output fatal error and throw exception
-      RCLCPP_FATAL(get_logger(), "static_path directory not found. Expected static paths in directory: %s", static_path.c_str());
+      RCLCPP_FATAL(
+        get_logger(), "static_path directory not found. Expected static paths in directory: %s",
+        static_path.c_str());
       throw std::runtime_error("static_path not found");
     }
 
@@ -43,7 +45,8 @@ StaticFreespacePlannerNode::StaticFreespacePlannerNode(const rclcpp::NodeOptions
   }
 
   // Subscribers
-  route_sub_ = create_subscription<LaneletRoute>("~/input/route", rclcpp::QoS{1}.transient_local(),
+  route_sub_ = create_subscription<LaneletRoute>(
+    "~/input/route", rclcpp::QoS{1}.transient_local(),
     std::bind(&StaticFreespacePlannerNode::onRoute, this, _1));
 
   // Publishers
@@ -68,15 +71,15 @@ StaticFreespacePlannerNode::StaticFreespacePlannerNode(const rclcpp::NodeOptions
   route_loader_ = std::make_unique<RouteIndexLoader>(node_param_.map_path);
   waypoint_loader_ = std::make_unique<WaypointLoader>();
   trajectory_generator_ = std::make_unique<TrajectoryGenerator>();
-  debug_publisher_ = std::make_unique<DebugPublisher>(this, debug_path_marker_pub_, debug_route_name_pub_);
+  debug_publisher_ =
+    std::make_unique<DebugPublisher>(this, debug_path_marker_pub_, debug_route_name_pub_);
 
   // Load route definitions
   loadRoutes();
 
   // Create RouteMatcher
   route_matcher_ = std::make_unique<RouteMatcher>(
-    route_definitions_,
-    node_param_.waypoint_search_radius_m,
+    route_definitions_, node_param_.waypoint_search_radius_m,
     node_param_.waypoint_yaw_threshold_rad);
 }
 
@@ -94,7 +97,8 @@ void StaticFreespacePlannerNode::onRoute(const LaneletRoute::ConstSharedPtr msg)
   }
 
   // Find matching route definition
-  auto route_definition = route_matcher_->findMatchingRoute(lanelet_route->start_pose, lanelet_route->goal_pose);
+  auto route_definition =
+    route_matcher_->findMatchingRoute(lanelet_route->start_pose, lanelet_route->goal_pose);
   if (!route_definition) {
     RCLCPP_ERROR(get_logger(), "Failed to find matching route definition.");
     handleMatchingFailure(lanelet_route->start_pose, lanelet_route->goal_pose);
@@ -192,20 +196,23 @@ void StaticFreespacePlannerNode::loadRoutes()
   return;
 }
 
-void StaticFreespacePlannerNode::loadWaypoints(const std::string& csv_path)
+void StaticFreespacePlannerNode::loadWaypoints(const std::string & csv_path)
 {
   current_waypoints_ = waypoint_loader_->loadWaypoints(csv_path);
   available_seqs_ = waypoint_loader_->getAvailableSeqs(csv_path);
   current_seq_index_ = 0;
 }
 
-void StaticFreespacePlannerNode::handleMatchingFailure(const Pose& start_pose, const Pose& goal_pose)
+void StaticFreespacePlannerNode::handleMatchingFailure(
+  const Pose & start_pose, const Pose & goal_pose)
 {
   // Output error log
-  RCLCPP_ERROR(get_logger(),
+  RCLCPP_ERROR(
+    get_logger(),
     "No matching route found for requested start/goal poses. "
     "start: (%.2f, %.2f), goal: (%.2f, %.2f), search_radius: %.2f m",
-    start_pose.position.x, start_pose.position.y, goal_pose.position.x, goal_pose.position.y, node_param_.waypoint_search_radius_m);
+    start_pose.position.x, start_pose.position.y, goal_pose.position.x, goal_pose.position.y,
+    node_param_.waypoint_search_radius_m);
 
   // Publish stop trajectory
   publishStopTrajectory();
@@ -226,7 +233,7 @@ void StaticFreespacePlannerNode::handleMatchingFailure(const Pose& start_pose, c
   publishDiagnostics(diag);
 }
 
-void StaticFreespacePlannerNode::publishDiagnostics(const DiagnosticStatus& status)
+void StaticFreespacePlannerNode::publishDiagnostics(const DiagnosticStatus & status)
 {
   diagnostic_msgs::msg::DiagnosticArray diag_array;
   diag_array.header.stamp = this->get_clock()->now();
@@ -258,7 +265,8 @@ void StaticFreespacePlannerNode::planTrajectory()
   current_pose.pose = odom_->pose.pose;
   current_pose.header = odom_->header;
 
-  trajectory_ = trajectory_generator_->createTrajectoryForSeq(current_waypoints_, current_seq_index_, current_pose);
+  trajectory_ = trajectory_generator_->createTrajectoryForSeq(
+    current_waypoints_, current_seq_index_, current_pose);
 
   trajectory_pub_->publish(trajectory_);
 }
@@ -315,8 +323,7 @@ void StaticFreespacePlannerNode::updateTargetSeq()
 
   if (it != available_seqs_.end()) {
     planTrajectory();
-  }
-  else {
+  } else {
     publishCompleted(true);
   }
 }

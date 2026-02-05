@@ -1,20 +1,25 @@
 // Copyright 2026 TIER IV, Inc.
 
 #include "autoware/static_freespace_planner/route_matcher.hpp"
+
 #include "autoware/static_freespace_planner/route_index_loader.hpp"
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2/LinearMath/Matrix3x3.h>
+
 #include <autoware_utils/geometry/geometry.hpp>
+
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/LinearMath/Quaternion.h>
 
 namespace autoware::static_freespace_planner
 {
-RouteMatcher::RouteMatcher(const std::vector<RouteIndexLoader::RouteDefinition>& routes, double search_radius_m, double yaw_threshold_rad)
+RouteMatcher::RouteMatcher(
+  const std::vector<RouteIndexLoader::RouteDefinition> & routes, double search_radius_m,
+  double yaw_threshold_rad)
 : routes_(routes), search_radius_m_(search_radius_m), yaw_threshold_rad_(yaw_threshold_rad)
-{}
+{
+}
 
 std::optional<RouteIndexLoader::RouteDefinition> RouteMatcher::findMatchingRoute(
-  const Pose& start_pose,
-  const Pose& goal_pose)
+  const Pose & start_pose, const Pose & goal_pose)
 {
   if (routes_.empty()) {
     return std::nullopt;
@@ -23,10 +28,10 @@ std::optional<RouteIndexLoader::RouteDefinition> RouteMatcher::findMatchingRoute
   RouteIndexLoader::RouteDefinition candidate_route;
   double candidate_total_distance = std::numeric_limits<double>::max();
 
-  for (const auto& route_definition : routes_) {
+  for (const auto & route_definition : routes_) {
     // Load waypoints from the route definition
-    const auto& route_start_wp = waypoint_loader_.loadFirstWaypoint(route_definition.csv_path);
-    const auto& route_goal_wp = waypoint_loader_.loadLastWaypoint(route_definition.csv_path);
+    const auto & route_start_wp = waypoint_loader_.loadFirstWaypoint(route_definition.csv_path);
+    const auto & route_goal_wp = waypoint_loader_.loadLastWaypoint(route_definition.csv_path);
 
     Pose route_start_pose;
     route_start_pose.position.x = route_start_wp.x;
@@ -53,10 +58,9 @@ std::optional<RouteIndexLoader::RouteDefinition> RouteMatcher::findMatchingRoute
     const double goal_yaw_diff = calcYawDifference(goal_pose, route_goal_pose);
 
     // If all thresholds are met, matching is successful
-    if (start_distance <= search_radius_m_ &&
-        goal_distance <= search_radius_m_ &&
-        start_yaw_diff <= yaw_threshold_rad_ &&
-        goal_yaw_diff <= yaw_threshold_rad_) {
+    if (
+      start_distance <= search_radius_m_ && goal_distance <= search_radius_m_ &&
+      start_yaw_diff <= yaw_threshold_rad_ && goal_yaw_diff <= yaw_threshold_rad_) {
       const double total_distance = start_distance + goal_distance;
       // Select the route with the smallest total distance
       if (candidate_total_distance > total_distance) {
@@ -74,19 +78,17 @@ std::optional<RouteIndexLoader::RouteDefinition> RouteMatcher::findMatchingRoute
   return candidate_route;
 }
 
-double RouteMatcher::calcDistance2D(const Pose& p1, const Pose& p2)
+double RouteMatcher::calcDistance2D(const Pose & p1, const Pose & p2)
 {
   const double dx = p1.position.x - p2.position.x;
   const double dy = p1.position.y - p2.position.y;
   return std::sqrt(dx * dx + dy * dy);
 }
-double RouteMatcher::calcYawDifference(const Pose& p1, const Pose& p2)
+double RouteMatcher::calcYawDifference(const Pose & p1, const Pose & p2)
 {
-  // Extract yaw angle from quaternion  
-  tf2::Quaternion q1(p1.orientation.x, p1.orientation.y,
-  p1.orientation.z, p1.orientation.w);
-  tf2::Quaternion q2(p2.orientation.x, p2.orientation.y,
-  p2.orientation.z, p2.orientation.w);
+  // Extract yaw angle from quaternion
+  tf2::Quaternion q1(p1.orientation.x, p1.orientation.y, p1.orientation.z, p1.orientation.w);
+  tf2::Quaternion q2(p2.orientation.x, p2.orientation.y, p2.orientation.z, p2.orientation.w);
 
   tf2::Matrix3x3 mat1(q1);
   tf2::Matrix3x3 mat2(q2);
@@ -104,6 +106,5 @@ double RouteMatcher::calcYawDifference(const Pose& p1, const Pose& p2)
 
   // Return absolute value in radians
   return std::abs(diff);
-
 }
-} // namespace autoware::static_freespace_planner
+}  // namespace autoware::static_freespace_planner
