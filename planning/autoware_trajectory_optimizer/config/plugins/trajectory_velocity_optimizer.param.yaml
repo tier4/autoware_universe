@@ -1,21 +1,33 @@
 /**:
   ros__parameters:
     trajectory_velocity_optimizer:
-      # Trajectory matching thresholds
-      nearest_dist_threshold_m: 1.5  # [m] Distance threshold for trajectory matching
-      nearest_yaw_threshold_deg: 60.0  # [deg] Yaw threshold for trajectory matching
-
-      # Engage behavior
-      target_pull_out_speed_mps: 1.0  # [m/s] Target speed during pull-out maneuver
-      target_pull_out_acc_mps2: 1.0   # [m/s²] Target acceleration during pull-out
-      set_engage_speed: false         # Set minimum speed during engage
-
       # Speed limiting (uses external_velocity_limit topic to set max speed)
-      limit_speed: true               # Enable speed limiting
+      limit_speed: true
 
       # Lateral acceleration limiting
-      max_lateral_accel_mps2: 1.5     # [m/s²] Maximum lateral acceleration
-      limit_lateral_acceleration: false  # Enable lateral acceleration limiting
+      max_lateral_accel_mps2: 1.5
+      limit_lateral_acceleration: true
 
-      # Velocity smoothing
-      smooth_velocities: false        # Enable jerk-filtered velocity smoothing
+      # QP-based velocity smoothing
+      smooth_velocities: true
+
+      # QP optimization weights
+      qp_weight_jerk: 50.0
+      qp_base_fidelity_weight: 1.0
+
+      # QP time discretization (should match upstream trajectory dt)
+      qp_time_step_s: 0.1
+
+      # Jerk threshold for activating smoothing [m/s³]
+      qp_jerk_threshold_mps3: 5.0
+
+      # OSQP solver settings
+      qp_osqp_eps_abs: 1.0e-4
+      qp_osqp_eps_rel: 1.0e-4
+      qp_osqp_max_iter: 4000
+      qp_osqp_verbose: false
+
+      # Acceleration bounds (optional constraints)
+      qp_max_acceleration_mps2: 2.0
+      qp_min_acceleration_mps2: -3.0
+      qp_enforce_acceleration_bounds: true
