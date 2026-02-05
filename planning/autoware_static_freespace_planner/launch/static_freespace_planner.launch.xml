@@ -20,6 +20,5 @@
     <remap from="~/output/is_completed" to="$(var is_completed)"/>
     <remap from="~/output/diagnostics" to="$(var diagnostics)"/>
     <param from="$(var param_file)" allow_substs="true"/>
-
   </node>
 </launch>

@@ -4,6 +4,8 @@
 
 #include "autoware/static_freespace_planner/waypoint_loader.hpp"
 
+#include <vector>
+
 namespace autoware::static_freespace_planner
 {
 using autoware_planning_msgs::msg::TrajectoryPoint;

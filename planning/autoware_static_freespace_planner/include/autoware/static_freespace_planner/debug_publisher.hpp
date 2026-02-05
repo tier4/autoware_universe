@@ -9,6 +9,8 @@
 
 #include <std_msgs/msg/string.hpp>
 #include <visualization_msgs/msg/marker.hpp>
+#include <string>
+#include <vector>
 
 class TestDebugPublisher;
 

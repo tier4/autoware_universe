@@ -3,6 +3,8 @@
 #include "autoware/static_freespace_planner/debug_publisher.hpp"
 
 #include <geometry_msgs/msg/point.hpp>
+#include <string>
+#include <vector>
 
 namespace autoware::static_freespace_planner
 {

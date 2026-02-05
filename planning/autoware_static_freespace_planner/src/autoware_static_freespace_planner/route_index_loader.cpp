@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <string>
+#include <vector>
 
 namespace autoware::static_freespace_planner
 {
