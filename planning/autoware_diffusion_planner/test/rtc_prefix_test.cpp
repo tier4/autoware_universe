@@ -93,8 +93,8 @@ void verify_prefix_constraint(int delay)
       }
     }
 
-    EXPECT_TRUE(has_difference)
-      << "Non-prefix values should be independent at delay=" << delay << ", t=" << t;
+    EXPECT_TRUE(has_difference) << "Non-prefix values should be independent at delay=" << delay
+                                << ", t=" << t;
   }
 }
 

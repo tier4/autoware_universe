@@ -707,9 +707,8 @@ int main(int argc, char ** argv)
 
       std::vector<autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr> msg_vec;
       for (const auto & traffic_signal_msg : seq.data_list[i].traffic_signals) {
-        msg_vec.push_back(
-          std::make_shared<autoware_perception_msgs::msg::TrafficLightGroupArray>(
-            traffic_signal_msg));
+        msg_vec.push_back(std::make_shared<autoware_perception_msgs::msg::TrafficLightGroupArray>(
+          traffic_signal_msg));
       }
       preprocess::process_traffic_signals(msg_vec, traffic_light_id_map, current_time, 5.0);
 
