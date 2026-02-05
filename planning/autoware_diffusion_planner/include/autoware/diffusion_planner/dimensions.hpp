@@ -96,5 +96,6 @@ inline constexpr std::array<int64_t, 4> LINE_STRINGS_SHAPE = {
 inline constexpr std::array<int64_t, 2> GOAL_POSE_SHAPE = {1, POSE_DIM};
 inline constexpr std::array<int64_t, 2> EGO_SHAPE_SHAPE = {1, 3};
 inline constexpr std::array<int64_t, 2> TURN_INDICATORS_SHAPE = {1, INPUT_T + 1};
+inline constexpr std::array<int64_t, 2> DELAY_SHAPE = {1, 1};
 }  // namespace autoware::diffusion_planner
 #endif  // AUTOWARE__DIFFUSION_PLANNER__DIMENSIONS_HPP_
