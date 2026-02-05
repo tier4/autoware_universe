@@ -59,12 +59,12 @@ void apply_spline(
     return;
   }
   trajectory_interpolation_util->align_orientation_with_trajectory_direction();
-  TrajectoryPoints output_points{traj_points.front()};
+  TrajectoryPoints output_points;
   constexpr double min_interpolation_step = 1e-2;
   const auto ds = std::max(interpolation_resolution_m, min_interpolation_step);
-  output_points.reserve(static_cast<size_t>(trajectory_interpolation_util->length() / ds));
+  output_points.reserve(static_cast<size_t>(trajectory_interpolation_util->length() / ds) + 1);
 
-  for (auto s = ds; s <= trajectory_interpolation_util->length(); s += ds) {
+  for (auto s = 0.0; s <= trajectory_interpolation_util->length(); s += ds) {
     auto p = trajectory_interpolation_util->compute(s);
     if (!autoware::trajectory_optimizer::utils::validate_point(p)) {
       continue;
@@ -79,22 +79,33 @@ void apply_spline(
       "Not enough points in trajectory after akima spline interpolation");
     return;
   }
-  const auto & last_interpolated_point = output_points.back();
-  auto & original_trajectory_last_point = traj_points.back();
 
-  if (!autoware::trajectory_optimizer::utils::validate_point(original_trajectory_last_point)) {
+  const auto bases = trajectory_interpolation_util->get_underlying_bases();
+  if (bases.empty()) {
     auto clock = rclcpp::Clock::make_shared(RCL_ROS_TIME);
     RCLCPP_WARN_THROTTLE(
       rclcpp::get_logger("trajectory_spline_smoother"), *clock, 5000,
-      "Last point in original trajectory is invalid. Removing last point");
+      "No underlying bases in trajectory");
+    return;
+  }
+
+  const auto last_base_s = bases.back();
+  auto last_base_point = trajectory_interpolation_util->compute(last_base_s);
+
+  if (!autoware::trajectory_optimizer::utils::validate_point(last_base_point)) {
+    auto clock = rclcpp::Clock::make_shared(RCL_ROS_TIME);
+    RCLCPP_WARN_THROTTLE(
+      rclcpp::get_logger("trajectory_spline_smoother"), *clock, 5000,
+      "Last base point from spline is invalid");
     traj_points = output_points;
     return;
   }
 
+  const auto & last_interpolated_point = output_points.back();
   auto d = autoware_utils_geometry::calc_distance2d(
-    last_interpolated_point.pose.position, original_trajectory_last_point.pose.position);
+    last_interpolated_point.pose.position, last_base_point.pose.position);
   if (d > min_interpolation_step) {
-    output_points.push_back(original_trajectory_last_point);
+    output_points.push_back(last_base_point);
   }
 
   if (preserve_original_orientation) {

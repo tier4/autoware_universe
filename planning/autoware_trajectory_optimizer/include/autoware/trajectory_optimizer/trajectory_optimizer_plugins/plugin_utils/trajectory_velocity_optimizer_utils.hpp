@@ -34,6 +34,12 @@ using autoware_planning_msgs::msg::TrajectoryPoint;
 using TrajectoryPoints = std::vector<TrajectoryPoint>;
 using nav_msgs::msg::Odometry;
 
+struct LateralAccelDebugData
+{
+  std::vector<double> yaw_rates;
+  std::vector<double> lateral_accels;
+};
+
 /**
  * @brief Clamps the velocities of trajectory points to specified minimum values.
  *
@@ -70,10 +76,11 @@ void set_max_velocity(TrajectoryPoints & input_trajectory_array, const float max
  * @param input_trajectory_array The trajectory points to be updated (modified in place)
  * @param max_lateral_accel_mps2 Maximum allowed lateral acceleration
  * @param current_odometry Current vehicle odometry for time calculation
+ * @param debug_data Output parameter for debug data (yaw rates and lateral accelerations)
  */
 void limit_lateral_acceleration(
   TrajectoryPoints & input_trajectory_array, const double max_lateral_accel_mps2,
-  const Odometry & current_odometry);
+  const Odometry & current_odometry, LateralAccelDebugData & debug_data);
 
 /**
  * @brief Filters velocity profile using jerk-constrained smoothing.

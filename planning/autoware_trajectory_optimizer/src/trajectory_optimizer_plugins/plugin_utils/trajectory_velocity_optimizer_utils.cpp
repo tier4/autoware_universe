@@ -17,10 +17,8 @@
 #include "autoware/trajectory_optimizer/utils.hpp"
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
 #include <rclcpp/logging.hpp>
-
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2/convert.h>
 
 #include <algorithm>
 #include <cmath>
@@ -147,11 +145,14 @@ void set_max_velocity(TrajectoryPoints & input_trajectory_array, const float max
 
 void limit_lateral_acceleration(
   TrajectoryPoints & input_trajectory_array, const double max_lateral_accel_mps2,
-  const Odometry & current_odometry)
+  const Odometry & current_odometry, LateralAccelDebugData & debug_data)
 {
   if (input_trajectory_array.empty()) {
     return;
   }
+
+  debug_data.yaw_rates.clear();
+  debug_data.lateral_accels.clear();
 
   auto get_delta_time = [](const auto & next, const auto & current) -> double {
     return next->time_from_start.sec + next->time_from_start.nanosec * 1e-9 -
@@ -172,23 +173,18 @@ void limit_lateral_acceleration(
     const auto next_pose = std::next(itr)->pose;
     const auto delta_time = get_delta_time(std::next(itr), itr);
 
-    tf2::Quaternion q_current;
-    tf2::Quaternion q_next;
-    tf2::convert(current_pose.orientation, q_current);
-    tf2::convert(next_pose.orientation, q_next);
-    double delta_theta = q_current.angleShortestPath(q_next);
-    // Handle wrap-around
-    if (delta_theta > M_PI) {
-      delta_theta -= 2.0 * M_PI;
-    } else if (delta_theta < -M_PI) {
-      delta_theta += 2.0 * M_PI;
-    }
+    const double yaw_current = autoware_utils_geometry::get_rpy(current_pose).z;
+    const double yaw_next = autoware_utils_geometry::get_rpy(next_pose).z;
+    const double delta_yaw = autoware_utils_geometry::normalize_radian(yaw_next - yaw_current);
 
     constexpr double epsilon_yaw_rate = 1.0e-5;
-    const double yaw_rate = std::max(std::abs(delta_theta / delta_time), epsilon_yaw_rate);
+    const double yaw_rate = std::max(std::abs(delta_yaw / delta_time), epsilon_yaw_rate);
     const double current_speed = std::abs(itr->longitudinal_velocity_mps);
-    // Compute lateral acceleration
     const double lateral_acceleration = current_speed * yaw_rate;
+
+    debug_data.yaw_rates.push_back(yaw_rate);
+    debug_data.lateral_accels.push_back(lateral_acceleration);
+
     if (lateral_acceleration < max_lateral_accel_mps2) continue;
 
     itr->longitudinal_velocity_mps = static_cast<float>(max_lateral_accel_mps2 / yaw_rate);

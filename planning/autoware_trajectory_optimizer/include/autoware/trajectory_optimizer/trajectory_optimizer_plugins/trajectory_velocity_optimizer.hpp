@@ -26,6 +26,7 @@
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 
 #include <memory>
 #include <optional>
@@ -77,6 +78,8 @@ private:
   std::shared_ptr<autoware_utils_rclcpp::InterProcessPollingSubscriber<VelocityLimit>>
     sub_planning_velocity_;
   rclcpp::Publisher<VelocityLimit>::SharedPtr pub_velocity_limit_;
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_debug_yaw_rate_;
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_debug_lateral_accel_;
 };
 }  // namespace autoware::trajectory_optimizer::plugin
 

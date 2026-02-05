@@ -21,6 +21,8 @@
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/logging.hpp>
 
+#include <std_msgs/msg/float64_multi_array.hpp>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -41,6 +43,12 @@ void TrajectoryVelocityOptimizer::initialize(
 
   pub_velocity_limit_ = node_ptr->create_publisher<VelocityLimit>(
     "~/output/current_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
+
+  pub_debug_yaw_rate_ = node_ptr->create_publisher<std_msgs::msg::Float64MultiArray>(
+    "~/debug/lateral_accel_limit/yaw_rate", rclcpp::QoS{1});
+
+  pub_debug_lateral_accel_ = node_ptr->create_publisher<std_msgs::msg::Float64MultiArray>(
+    "~/debug/lateral_accel_limit/lateral_accel", rclcpp::QoS{1});
 
   // publish default max velocity
   VelocityLimit max_vel_msg{};
@@ -75,8 +83,17 @@ void TrajectoryVelocityOptimizer::optimize_trajectory(
   const double & target_pull_out_acc_mps2 = velocity_params_.target_pull_out_acc_mps2;
 
   if (velocity_params_.limit_lateral_acceleration) {
+    trajectory_velocity_optimizer_utils::LateralAccelDebugData debug_data;
     trajectory_velocity_optimizer_utils::limit_lateral_acceleration(
-      traj_points, velocity_params_.max_lateral_accel_mps2, data.current_odometry);
+      traj_points, velocity_params_.max_lateral_accel_mps2, data.current_odometry, debug_data);
+
+    std_msgs::msg::Float64MultiArray yaw_rate_msg;
+    yaw_rate_msg.data = debug_data.yaw_rates;
+    pub_debug_yaw_rate_->publish(yaw_rate_msg);
+
+    std_msgs::msg::Float64MultiArray lateral_accel_msg;
+    lateral_accel_msg.data = debug_data.lateral_accels;
+    pub_debug_lateral_accel_->publish(lateral_accel_msg);
   }
 
   auto initial_motion_speed =
