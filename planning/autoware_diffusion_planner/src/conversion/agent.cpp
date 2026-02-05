@@ -67,13 +67,16 @@ AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timest
 }
 
 // Return the state attribute as an array.
-[[nodiscard]] std::array<float, AGENT_STATE_DIM> AgentState::as_array() const noexcept
+[[nodiscard]] std::array<float, AGENT_STATE_DIM> AgentState::as_array(
+  const rclcpp::Time & reference_time) const noexcept
 {
   const auto [cos_yaw, sin_yaw] = utils::rotation_matrix_to_cos_sin(pose.block<3, 3>(0, 0));
   const auto & linear_vel = original_info.kinematics.twist_with_covariance.twist.linear;
   const double velocity_norm = std::hypot(linear_vel.x, linear_vel.y);
   const double velocity_x = velocity_norm * cos_yaw;
   const double velocity_y = velocity_norm * sin_yaw;
+  const float timestamp_delta =
+    static_cast<float>((timestamp - reference_time).seconds());
 
   return {
     static_cast<float>(pose(0, 3)),
@@ -87,6 +90,7 @@ AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timest
     static_cast<float>(label == AgentLabel::VEHICLE),
     static_cast<float>(label == AgentLabel::PEDESTRIAN),
     static_cast<float>(label == AgentLabel::BICYCLE),
+    timestamp_delta,
   };
 }
 

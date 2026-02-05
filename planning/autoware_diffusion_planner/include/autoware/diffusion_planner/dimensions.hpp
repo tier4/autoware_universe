@@ -40,6 +40,7 @@ inline constexpr int64_t EGO_AGENT_PAST_IDX_X = 0;
 inline constexpr int64_t EGO_AGENT_PAST_IDX_Y = 1;
 inline constexpr int64_t EGO_AGENT_PAST_IDX_COS = 2;
 inline constexpr int64_t EGO_AGENT_PAST_IDX_SIN = 3;
+inline constexpr int64_t EGO_AGENT_PAST_IDX_TIMESTAMP = 4;
 
 // Index for each field
 inline constexpr int64_t X = 0;
@@ -64,6 +65,7 @@ inline constexpr int64_t INPUT_T = 30;
 inline constexpr int64_t INPUT_T_WITH_CURRENT = INPUT_T + 1;  // Including current time step
 inline constexpr int64_t OUTPUT_T = 80;                       // Output timestamp number
 inline constexpr int64_t POSE_DIM = 4;                        // x, y, cos(yaw), sin(yaw)
+inline constexpr int64_t EGO_HISTORY_DIM = POSE_DIM + 1;     // x, y, cos(yaw), sin(yaw), timestamp
 inline constexpr std::array<int64_t, 4> OUTPUT_SHAPE = {1, MAX_NUM_AGENTS, OUTPUT_T, POSE_DIM};
 
 inline constexpr int64_t TURN_INDICATOR_OUTPUT_NONE = 0;
@@ -76,9 +78,9 @@ inline constexpr std::array<int64_t, 2> TURN_INDICATOR_LOGIT_SHAPE = {1, TURN_IN
 
 inline constexpr std::array<int64_t, 4> SAMPLED_TRAJECTORIES_SHAPE = {
   1, MAX_NUM_AGENTS, OUTPUT_T + 1, POSE_DIM};
-inline constexpr std::array<int64_t, 3> EGO_HISTORY_SHAPE = {1, INPUT_T + 1, POSE_DIM};
+inline constexpr std::array<int64_t, 3> EGO_HISTORY_SHAPE = {1, INPUT_T + 1, EGO_HISTORY_DIM};
 inline constexpr std::array<int64_t, 2> EGO_CURRENT_STATE_SHAPE = {1, 10};
-inline constexpr std::array<int64_t, 4> NEIGHBOR_SHAPE = {1, MAX_NUM_NEIGHBORS, INPUT_T + 1, 11};
+inline constexpr std::array<int64_t, 4> NEIGHBOR_SHAPE = {1, MAX_NUM_NEIGHBORS, INPUT_T + 1, 12};
 inline constexpr std::array<int64_t, 3> STATIC_OBJECTS_SHAPE = {1, 5, 10};
 inline constexpr std::array<int64_t, 4> LANES_SHAPE = {
   1, NUM_SEGMENTS_IN_LANE, POINTS_PER_SEGMENT, SEGMENT_POINT_DIM};

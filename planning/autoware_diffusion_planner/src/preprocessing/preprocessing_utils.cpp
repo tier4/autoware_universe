@@ -18,6 +18,8 @@
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 
+#include <rclcpp/time.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <deque>
@@ -116,7 +118,7 @@ std::vector<float> create_ego_agent_past(
   const std::deque<nav_msgs::msg::Odometry> & odom_msgs, size_t num_timesteps,
   const Eigen::Matrix4d & map_to_ego_transform)
 {
-  const size_t features_per_timestep = 4;  // x, y, cos, sin
+  const size_t features_per_timestep = EGO_HISTORY_DIM;  // x, y, cos, sin, timestamp
   const size_t total_size = num_timesteps * features_per_timestep;
 
   std::vector<float> ego_agent_past(total_size, 0.0f);
@@ -128,6 +130,9 @@ std::vector<float> create_ego_agent_past(
 
   const size_t start_idx =
     (odom_msgs.size() >= num_timesteps) ? odom_msgs.size() - num_timesteps : 0;
+
+  // Reference time: the most recent kinematic_state header time
+  const rclcpp::Time reference_time(odom_msgs.back().header.stamp);
 
   for (size_t i = start_idx; i < odom_msgs.size(); ++i) {
     const auto & historical_pose = odom_msgs[i].pose.pose;
@@ -146,6 +151,10 @@ std::vector<float> create_ego_agent_past(
     const auto [cos_yaw, sin_yaw] =
       utils::rotation_matrix_to_cos_sin(pose_ego_4x4.block<3, 3>(0, 0));
 
+    // Compute timestamp delta in seconds relative to the latest kinematic_state
+    const rclcpp::Time stamp(odom_msgs[i].header.stamp);
+    const float timestamp_delta = static_cast<float>((stamp - reference_time).seconds());
+
     // Store in flat array: [timestep, features]
     const size_t timestep_idx = i - start_idx;
     const size_t base_idx = timestep_idx * features_per_timestep;
@@ -153,6 +162,7 @@ std::vector<float> create_ego_agent_past(
     ego_agent_past[base_idx + EGO_AGENT_PAST_IDX_Y] = y;
     ego_agent_past[base_idx + EGO_AGENT_PAST_IDX_COS] = cos_yaw;
     ego_agent_past[base_idx + EGO_AGENT_PAST_IDX_SIN] = sin_yaw;
+    ego_agent_past[base_idx + EGO_AGENT_PAST_IDX_TIMESTAMP] = timestamp_delta;
   }
 
   return ego_agent_past;

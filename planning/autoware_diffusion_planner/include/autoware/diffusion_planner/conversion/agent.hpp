@@ -47,7 +47,7 @@ namespace autoware::diffusion_planner
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::TrackedObject;
 using autoware_perception_msgs::msg::TrackedObjects;
-constexpr size_t AGENT_STATE_DIM = 11;
+constexpr size_t AGENT_STATE_DIM = 12;
 
 enum AgentLabel { VEHICLE = 0, PEDESTRIAN = 1, BICYCLE = 2 };
 
@@ -60,7 +60,8 @@ struct AgentState
 
   AgentState(const TrackedObject & object, const rclcpp::Time & timestamp);
 
-  [[nodiscard]] std::array<float, AGENT_STATE_DIM> as_array() const noexcept;
+  [[nodiscard]] std::array<float, AGENT_STATE_DIM> as_array(
+    const rclcpp::Time & reference_time) const noexcept;
 
   // Only the pose is mutable (by `apply_transform` in AgentHistory)
   Eigen::Matrix4d pose{Eigen::Matrix4d::Identity()};
@@ -96,11 +97,11 @@ struct AgentHistory
     push_back(state);
   }
 
-  [[nodiscard]] std::vector<float> as_array() const noexcept
+  [[nodiscard]] std::vector<float> as_array(const rclcpp::Time & reference_time) const noexcept
   {
     std::vector<float> output;
     for (const auto & state : queue_) {
-      for (const auto & v : state.as_array()) {
+      for (const auto & v : state.as_array(reference_time)) {
         output.push_back(v);
       }
     }
@@ -148,13 +149,14 @@ private:
 
 // Convert histories to a flattened vector
 inline std::vector<float> flatten_histories_to_vector(
-  const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t time_length)
+  const std::vector<AgentHistory> & histories, size_t max_num_agent, size_t time_length,
+  const rclcpp::Time & reference_time)
 {
   std::vector<float> data;
   data.reserve(histories.size() * time_length * AGENT_STATE_DIM);
 
   for (const auto & history : histories) {
-    const auto history_array = history.as_array();
+    const auto history_array = history.as_array(reference_time);
     data.insert(data.end(), history_array.begin(), history_array.end());
   }
 

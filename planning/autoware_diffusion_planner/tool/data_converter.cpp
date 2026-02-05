@@ -204,8 +204,10 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
   }
   const auto transformed_histories =
     agent_data_past.transformed_and_trimmed_histories(map2bl_matrix, MAX_NUM_NEIGHBORS);
+  const rclcpp::Time reference_time(data_list[current_idx].kinematic_state.header.stamp);
   const std::vector<float> neighbor_past =
-    flatten_histories_to_vector(transformed_histories, MAX_NUM_NEIGHBORS, INPUT_T_WITH_CURRENT);
+    flatten_histories_to_vector(
+      transformed_histories, MAX_NUM_NEIGHBORS, INPUT_T_WITH_CURRENT, reference_time);
 
   // Build id -> AgentHistory map for future filling
   const std::vector<AgentHistory> agent_histories = transformed_histories;
@@ -247,7 +249,7 @@ std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_fu
     future_history.apply_transform(map2bl_matrix);
 
     // Fill future array for this agent
-    const std::vector<float> arr = future_history.as_array();
+    const std::vector<float> arr = future_history.as_array(reference_time);
     for (int64_t t = 0; t < OUTPUT_T; ++t) {
       const int64_t base_idx = agent_idx * OUTPUT_T * NEIGHBOR_FUTURE_DIM + t * NEIGHBOR_FUTURE_DIM;
       for (int64_t d = 0; d < NEIGHBOR_FUTURE_DIM; ++d) {
