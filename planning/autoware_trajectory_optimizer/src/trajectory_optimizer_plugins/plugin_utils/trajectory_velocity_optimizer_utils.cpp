@@ -176,18 +176,22 @@ void limit_lateral_acceleration(
     tf2::Quaternion q_next;
     tf2::convert(current_pose.orientation, q_current);
     tf2::convert(next_pose.orientation, q_next);
-    double delta_theta = q_current.angleShortestPath(q_next);
-    // Handle wrap-around
-    if (delta_theta > M_PI) {
-      delta_theta -= 2.0 * M_PI;
-    } else if (delta_theta < -M_PI) {
-      delta_theta += 2.0 * M_PI;
+
+    double yaw_current = tf2::getYaw(q_current);
+    double yaw_next = tf2::getYaw(q_next);
+
+    double delta_yaw = yaw_next - yaw_current;
+
+    if (delta_yaw > M_PI) {
+      delta_yaw -= 2.0 * M_PI;
+    } else if (delta_yaw < -M_PI) {
+      delta_yaw += 2.0 * M_PI;
     }
 
     constexpr double epsilon_yaw_rate = 1.0e-5;
-    const double yaw_rate = std::max(std::abs(delta_theta / delta_time), epsilon_yaw_rate);
+    const double yaw_rate = std::max(std::abs(delta_yaw / delta_time), epsilon_yaw_rate);
     const double current_speed = std::abs(itr->longitudinal_velocity_mps);
-    // Compute lateral acceleration
+
     const double lateral_acceleration = current_speed * yaw_rate;
     if (lateral_acceleration < max_lateral_accel_mps2) continue;
 
