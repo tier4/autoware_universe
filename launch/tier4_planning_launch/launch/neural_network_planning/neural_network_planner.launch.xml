@@ -44,6 +44,7 @@
       <arg name="input_vector_map" value="/map/vector_map"/>
       <arg name="input_odometry" value="/localization/kinematic_state"/>
       <arg name="input_objects" value="/perception/object_recognition/objects"/>
+      <arg name="input_acceleration" value="/localization/acceleration"/>
     </include>
     <include file="$(find-pkg-share autoware_trajectory_traffic_rule_filter)/launch/trajectory_traffic_rule_filter.launch.xml">
       <arg name="input_trajectories" value="/planning/trajectory_selector/safety_filter/candidate_trajectories"/>

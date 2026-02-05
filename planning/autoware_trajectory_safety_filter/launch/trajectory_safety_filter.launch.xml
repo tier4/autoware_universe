@@ -6,7 +6,7 @@
   <arg name="input_vector_map" default="~/input/vector_map"/>
   <arg name="input_odometry" default="~/input/odometry"/>
   <arg name="input_objects" default="~/input/objects"/>
-  <arg name="input_acceleration" default="~/input/acceleration"/>
+  <arg name="input_acceleration" default="/localization/acceleration"/>
 
   <node pkg="autoware_trajectory_safety_filter" exec="autoware_trajectory_safety_filter_node" name="trajectory_safety_filter_node" output="screen">
     <param from="$(var trajectory_safety_filter_param_path)" allow_substs="true"/>
