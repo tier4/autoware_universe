@@ -10,6 +10,7 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+
 #include <vector>
 
 class TestTrajectoryGenerator;
