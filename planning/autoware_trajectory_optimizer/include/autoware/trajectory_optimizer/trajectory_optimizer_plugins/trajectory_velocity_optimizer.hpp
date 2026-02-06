@@ -29,7 +29,6 @@
 #include <std_msgs/msg/float64_multi_array.hpp>
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
