@@ -36,6 +36,7 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <memory>
+#include <mutex>
 #include <string>
 
 namespace autoware::occupancy_grid_map
@@ -62,8 +63,8 @@ private:
   void onPointcloudWithObstacleAndRaw();
   void checkProcessingTime(double processing_time_ms);
 
-  OccupancyGrid::UniquePtr OccupancyGridMapToMsgPtr(
-    const std::string & frame_id, const Time & stamp, const float & robot_pose_z,
+  void fillOccupancyGridMsg(
+    OccupancyGrid & msg, const std::string & frame_id, const Time & stamp, const float & robot_pose_z,
     const Costmap2D & occupancy_grid_map);
 
 private:
@@ -105,6 +106,10 @@ private:
   std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_ptr_;
   double processing_time_tolerance_ms_;
   double processing_time_consecutive_excess_tolerance_ms_;
+
+  // Cached message to reduce heap allocations (component_container_mt may be multi-threaded)
+  std::mutex occupancy_grid_msg_mutex_;
+  OccupancyGrid occupancy_grid_msg_;
 };
 
 }  // namespace autoware::occupancy_grid_map

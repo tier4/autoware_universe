@@ -39,6 +39,7 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 
@@ -299,9 +300,13 @@ void PointcloudBasedOccupancyGridMapNode::onPointcloudWithObstacleAndRaw()
     occupancy_grid_map_ptr_->copyDeviceCostmapToHost();
 
     // publish
-    occupancy_grid_map_pub_->publish(OccupancyGridMapToMsgPtr(
-      map_frame_, raw_pointcloud_.header.stamp, robot_pose.position.z,
-      *occupancy_grid_map_ptr_));  // (todo) robot_pose may be altered with gridmap_origin
+    {
+      std::lock_guard<std::mutex> lock(occupancy_grid_msg_mutex_);
+      fillOccupancyGridMsg(
+        occupancy_grid_msg_, map_frame_, raw_pointcloud_.header.stamp, robot_pose.position.z,
+        *occupancy_grid_map_ptr_);  // (todo) robot_pose may be altered with gridmap_origin
+      occupancy_grid_map_pub_->publish(occupancy_grid_msg_);
+    }
   } else {
     std::unique_ptr<ScopedTimeTrack> inner_st_ptr;
     if (time_keeper_)
@@ -313,9 +318,13 @@ void PointcloudBasedOccupancyGridMapNode::onPointcloudWithObstacleAndRaw()
     occupancy_grid_map_updater_ptr_->copyDeviceCostmapToHost();
 
     // publish
-    occupancy_grid_map_pub_->publish(OccupancyGridMapToMsgPtr(
-      map_frame_, raw_pointcloud_.header.stamp, robot_pose.position.z,
-      *occupancy_grid_map_updater_ptr_));
+    {
+      std::lock_guard<std::mutex> lock(occupancy_grid_msg_mutex_);
+      fillOccupancyGridMsg(
+        occupancy_grid_msg_, map_frame_, raw_pointcloud_.header.stamp, robot_pose.position.z,
+        *occupancy_grid_map_updater_ptr_);
+      occupancy_grid_map_pub_->publish(occupancy_grid_msg_);
+    }
   }
 
   if (debug_publisher_ptr_ && stop_watch_ptr_) {
@@ -337,37 +346,38 @@ void PointcloudBasedOccupancyGridMapNode::onPointcloudWithObstacleAndRaw()
   }
 }
 
-OccupancyGrid::UniquePtr PointcloudBasedOccupancyGridMapNode::OccupancyGridMapToMsgPtr(
-  const std::string & frame_id, const Time & stamp, const float & robot_pose_z,
+void PointcloudBasedOccupancyGridMapNode::fillOccupancyGridMsg(
+  OccupancyGrid & msg, const std::string & frame_id, const Time & stamp, const float & robot_pose_z,
   const Costmap2D & occupancy_grid_map)
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
-  auto msg_ptr = std::make_unique<OccupancyGrid>();
+  msg.header.frame_id = frame_id;
+  msg.header.stamp = stamp;
+  msg.info.resolution = occupancy_grid_map.getResolution();
 
-  msg_ptr->header.frame_id = frame_id;
-  msg_ptr->header.stamp = stamp;
-  msg_ptr->info.resolution = occupancy_grid_map.getResolution();
-
-  msg_ptr->info.width = occupancy_grid_map.getSizeInCellsX();
-  msg_ptr->info.height = occupancy_grid_map.getSizeInCellsY();
+  msg.info.width = occupancy_grid_map.getSizeInCellsX();
+  msg.info.height = occupancy_grid_map.getSizeInCellsY();
 
   double wx{};
   double wy{};
   occupancy_grid_map.mapToWorld(0, 0, wx, wy);
-  msg_ptr->info.origin.position.x = occupancy_grid_map.getOriginX();
-  msg_ptr->info.origin.position.y = occupancy_grid_map.getOriginY();
-  msg_ptr->info.origin.position.z = robot_pose_z;
-  msg_ptr->info.origin.orientation.w = 1.0;
+  msg.info.origin.position.x = occupancy_grid_map.getOriginX();
+  msg.info.origin.position.y = occupancy_grid_map.getOriginY();
+  msg.info.origin.position.z = robot_pose_z;
+  msg.info.origin.orientation.w = 1.0;
 
-  msg_ptr->data.resize(msg_ptr->info.width * msg_ptr->info.height);
-
-  unsigned char * data = occupancy_grid_map.getCharMap();
-  for (unsigned int i = 0; i < msg_ptr->data.size(); ++i) {
-    msg_ptr->data[i] = cost_value::cost_translation_table[data[i]];
+  const size_t required_size = msg.info.width * msg.info.height;
+  if (msg.data.size() != required_size) {
+    // Resize only when size changes; capacity is reused otherwise.
+    msg.data.resize(required_size);
   }
-  return msg_ptr;
+
+  const unsigned char * data = occupancy_grid_map.getCharMap();
+  for (size_t i = 0; i < required_size; ++i) {
+    msg.data[i] = cost_value::cost_translation_table[data[i]];
+  }
 }
 
 }  // namespace autoware::occupancy_grid_map
