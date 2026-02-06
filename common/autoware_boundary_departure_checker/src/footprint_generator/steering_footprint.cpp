@@ -71,9 +71,8 @@ Footprints SteeringFootprintGenerator::generate(
   vehicle_footprints.reserve(pred_traj.size());
   const auto local_vehicle_footprint = info.createFootprint(0.0, 0.0, 0.0, 0.0, 0.0, true);
 
-  vehicle_footprints.push_back(
-    autoware_utils_geometry::transform_vector(
-      local_vehicle_footprint, autoware_utils_geometry::pose2transform(pred_traj.front().pose)));
+  vehicle_footprints.push_back(autoware_utils_geometry::transform_vector(
+    local_vehicle_footprint, autoware_utils_geometry::pose2transform(pred_traj.front().pose)));
 
   if (pred_traj.size() < 2) return vehicle_footprints;
 
@@ -89,9 +88,8 @@ Footprints SteeringFootprintGenerator::generate(
       if (!delayed_index) delayed_index = i;
       continue;
     }
-    vehicle_footprints.push_back(
-      autoware_utils_geometry::transform_vector(
-        local_vehicle_footprint, autoware_utils_geometry::pose2transform(pred_traj[i].pose)));
+    vehicle_footprints.push_back(autoware_utils_geometry::transform_vector(
+      local_vehicle_footprint, autoware_utils_geometry::pose2transform(pred_traj[i].pose)));
     const auto dt = rclcpp::Duration(pred_traj[i + 1].time_from_start) -
                     rclcpp::Duration(pred_traj[i].time_from_start);
     t += dt.seconds();
@@ -109,9 +107,8 @@ Footprints SteeringFootprintGenerator::generate(
     const auto v = (prev_p.longitudinal_velocity_mps + curr_p.longitudinal_velocity_mps) * 0.5;
     // simulate the ego vehicle motion
     pose = update_pose_with_bicycle_model(pose, steering_angle, v, dt.seconds(), info.wheel_base_m);
-    vehicle_footprints.push_back(
-      autoware_utils_geometry::transform_vector(
-        local_vehicle_footprint, autoware_utils_geometry::pose2transform(pose)));
+    vehicle_footprints.push_back(autoware_utils_geometry::transform_vector(
+      local_vehicle_footprint, autoware_utils_geometry::pose2transform(pose)));
 
     // update the simulated steering angle
     const auto steering_change = original_steering_changes[i - *delayed_index] * config.factor +
