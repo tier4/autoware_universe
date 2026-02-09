@@ -85,7 +85,7 @@ SteerOffsetEstimator::update(
 
   if (steering_rate > params_.max_steer_rate) return unexpected("steering rate is too large");
 
-  return estimate_offset(velocity, angular_velocity, steering_info.value().steering, steering_rate);
+  return estimate_offset(velocity, angular_velocity, steering_info.value().steering);
 }
 
 std::optional<geometry_msgs::msg::Twist> SteerOffsetEstimator::calculate_twist(
@@ -178,8 +178,7 @@ std::optional<SteeringInfo> SteerOffsetEstimator::get_steering_at_timestamp(
 }
 
 SteerOffsetEstimationUpdated SteerOffsetEstimator::estimate_offset(
-  const double velocity, const double angular_velocity, const double steering_angle,
-  const double steering_rate)
+  const double velocity, const double angular_velocity, const double steering_angle)
 {
   // 1) Regressor and measurement for the regression model y = phi * theta + noise
   const double phi = velocity / params_.wheel_base;          // regressor
@@ -216,7 +215,6 @@ SteerOffsetEstimationUpdated SteerOffsetEstimator::estimate_offset(
   updated_result.steering_angle = steering_angle;
   updated_result.kalman_gain = K;
   updated_result.residual = residual;
-  updated_result.steering_rate = steering_rate;
   return updated_result;
 }
 

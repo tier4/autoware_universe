@@ -32,7 +32,6 @@ struct SteerOffsetEstimationUpdated
   double steering_angle{0.0};    ///< Vehicle steering angle [rad]
   double kalman_gain{0.0};       ///< Coefficient for covariance matrix
   double residual{0.0};          ///< Residual [rad/s]
-  double steering_rate{0.0};     ///< Steering angle rate [rad/s]
 };
 
 struct SteerOffsetEstimationNotUpdated

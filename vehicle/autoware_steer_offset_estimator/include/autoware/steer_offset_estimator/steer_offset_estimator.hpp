@@ -117,8 +117,7 @@ private:
    * @result estimation result containing steering offset, covariance, and other data
    */
   SteerOffsetEstimationUpdated estimate_offset(
-    const double velocity, const double angular_velocity, const double steering_angle,
-    const double steering_rate);
+    const double velocity, const double angular_velocity, const double steering_angle);
 
   std::optional<geometry_msgs::msg::PoseStamped> previous_pose_;
   std::deque<autoware_vehicle_msgs::msg::SteeringReport> steering_buffer_;
