@@ -137,6 +137,11 @@ private:
     [[maybe_unused]] const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
     const std::shared_ptr<std_srvs::srv::Trigger::Response> response);
 
+  /**
+   * @brief Apply a new steering offset and optionally persist it to the parameter file
+   * @param steer_offset Estimated steering offset in radians to apply
+   * @return true if the update (and file write, if enabled) succeeded, false otherwise
+   */
   bool execute_calibration_update(const double steer_offset);
 
   /**
@@ -144,8 +149,15 @@ private:
    */
   void on_timer();
 
+  /**
+   * @brief Load calibration parameters from the ROS parameter server into calibration_params_
+   */
   void set_calibration_parameters();
 
+  /**
+   * @brief In AUTO mode, evaluate whether to apply the latest estimated offset and call
+   *        execute_calibration_update if thresholds and timing constraints are satisfied
+   */
   void check_auto_calibration();
 
   /**
