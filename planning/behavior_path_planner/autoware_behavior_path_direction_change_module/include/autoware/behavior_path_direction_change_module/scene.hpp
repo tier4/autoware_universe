@@ -79,7 +79,6 @@ private:
   void initVariables();
 
   // Helper functions
-  std::vector<size_t> findCuspPoints() const;
   bool shouldActivateModule() const;
 
   // Member variables
@@ -93,6 +92,8 @@ private:
   // Path segment state tracking for separate forward/backward publishing
   PathSegmentState current_segment_state_{PathSegmentState::FORWARD_ONLY};
   size_t first_cusp_index_{0};  // Store first cusp index for path splitting
+  geometry_msgs::msg::Point first_cusp_position_;  // Store cusp point position
+  bool has_valid_cusp_{false};  // Check if there is a valid cusp point
 
   // Debug data
   mutable DirectionChangeDebugData debug_data_;

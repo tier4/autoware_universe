@@ -2,10 +2,10 @@
   ros__parameters:
     direction_change:
       # Cusp detection parameters
-      cusp_detection_distance_threshold: 10.0  # [m] Distance threshold to detect approaching cusp
+      cusp_detection_distance_threshold: 2.0  # [m] Distance threshold to detect approaching cusp
       cusp_detection_angle_threshold_deg: 90.0  # [deg] Angle threshold to detect cusp point
       cusp_approach_speed: 2.0  # [m/s] Speed limit when approaching cusp
-      cusp_stop_distance: 1.0  # [m] Distance from cusp to stop
+      cusp_stop_distance: 0.0  # [m] Distance from cusp to stop
 
       # Reverse lane following parameters
       reverse_speed_limit: 2.0  # [m/s] Maximum reverse speed
