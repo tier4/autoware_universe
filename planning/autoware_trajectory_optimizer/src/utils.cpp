@@ -18,6 +18,7 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <rclcpp/logging.hpp>
+
 #include <tf2/utils.h>
 
 #include <algorithm>
@@ -138,8 +139,7 @@ void debug_log_trajectory_tail_orientations(
   }
 
   const size_t traj_size = traj.size();
-  const size_t start_idx =
-    (traj_size > num_tail_points) ? (traj_size - num_tail_points) : 0;
+  const size_t start_idx = (traj_size > num_tail_points) ? (traj_size - num_tail_points) : 0;
 
   std::ostringstream oss;
   oss << std::fixed << std::setprecision(4);

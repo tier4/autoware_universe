@@ -73,7 +73,8 @@ void set_max_velocity(TrajectoryPoints & input_trajectory_array, const float max
  * boundaries (e.g., from spline interpolation using original start/end points with different
  * orientations than the interpolated trajectory).
  *
- * @param input_trajectory_array The trajectory points (used for reading geometry/time, not modified)
+ * @param input_trajectory_array The trajectory points (used for reading geometry/time, not
+ * modified)
  * @param max_velocity_per_point Per-point velocity upper bounds (modified in place)
  * @param max_lateral_accel_mps2 Maximum allowed lateral acceleration
  * @param min_limited_speed_mps Minimum speed when applying lateral acceleration limit

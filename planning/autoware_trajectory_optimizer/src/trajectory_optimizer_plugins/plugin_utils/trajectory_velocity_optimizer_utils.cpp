@@ -185,7 +185,8 @@ std::vector<double> limit_lateral_acceleration(
     static_cast<std::vector<TrajectoryPoint>::difference_type>(start_index));
 
   size_t current_index = start_index;
-  for (auto itr = start_itr; itr < std::prev(input_trajectory_array.end()); ++itr, ++current_index) {
+  for (auto itr = start_itr; itr < std::prev(input_trajectory_array.end());
+       ++itr, ++current_index) {
     // Skip tail points to avoid orientation discontinuity issues
     if (current_index > end_index) {
       continue;
@@ -219,7 +220,8 @@ std::vector<double> limit_lateral_acceleration(
     }
 
     // Compute velocity limit based on lateral acceleration constraint
-    const double limited_velocity = std::max(max_lateral_accel_mps2 / yaw_rate, min_limited_speed_mps);
+    const double limited_velocity =
+      std::max(max_lateral_accel_mps2 / yaw_rate, min_limited_speed_mps);
 
     if (current_speed < limited_velocity) {
       // No modification needed

@@ -79,7 +79,8 @@ void TrajectoryOptimizer::initialize_optimizers()
     load_plugin(plugin_names[i]);
 
     // Extract short plugin name from full class name
-    // e.g., "autoware::trajectory_optimizer::plugin::TrajectoryPointFixer" -> "TrajectoryPointFixer"
+    // e.g., "autoware::trajectory_optimizer::plugin::TrajectoryPointFixer" ->
+    // "TrajectoryPointFixer"
     std::string short_name = plugin_names[i];
     const auto last_colon = short_name.rfind("::");
     if (last_colon != std::string::npos) {

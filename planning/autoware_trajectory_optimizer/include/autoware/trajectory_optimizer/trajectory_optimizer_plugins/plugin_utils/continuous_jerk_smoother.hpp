@@ -38,18 +38,18 @@ using TrajectoryPoints = std::vector<TrajectoryPoint>;
 struct ContinuousJerkSmootherParams
 {
   // QP optimization weights
-  double jerk_weight{10.0};                 ///< Weight for jerk minimization
-  double over_v_weight{10000.0};            ///< Weight for velocity limit violation
-  double over_a_weight{5000.0};             ///< Weight for acceleration limit violation
-  double over_j_weight{200.0};              ///< Weight for jerk limit violation
-  double velocity_tracking_weight{100.0};   ///< Weight for tracking reference velocity
-  double accel_tracking_weight{10.0};       ///< Weight for tracking reference acceleration
+  double jerk_weight{10.0};                ///< Weight for jerk minimization
+  double over_v_weight{10000.0};           ///< Weight for velocity limit violation
+  double over_a_weight{5000.0};            ///< Weight for acceleration limit violation
+  double over_j_weight{200.0};             ///< Weight for jerk limit violation
+  double velocity_tracking_weight{100.0};  ///< Weight for tracking reference velocity
+  double accel_tracking_weight{10.0};      ///< Weight for tracking reference acceleration
 
   // Kinematic limits
-  double max_accel{2.0};    ///< Maximum acceleration [m/s²]
-  double min_decel{-3.0};   ///< Minimum deceleration [m/s²]
-  double max_jerk{1.5};     ///< Maximum jerk [m/s³]
-  double min_jerk{-1.5};    ///< Minimum jerk [m/s³]
+  double max_accel{2.0};   ///< Maximum acceleration [m/s²]
+  double min_decel{-3.0};  ///< Minimum deceleration [m/s²]
+  double max_jerk{1.5};    ///< Maximum jerk [m/s³]
+  double min_jerk{-1.5};   ///< Minimum jerk [m/s³]
 };
 
 /**
@@ -124,4 +124,3 @@ private:
 }  // namespace autoware::trajectory_optimizer::plugin
 
 #endif  // AUTOWARE__TRAJECTORY_OPTIMIZER__TRAJECTORY_OPTIMIZER_PLUGINS__PLUGIN_UTILS__CONTINUOUS_JERK_SMOOTHER_HPP_
-
