@@ -14,6 +14,7 @@ generate_parameter_library(minimum_rule_based_planner_parameters
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/minimum_rule_based_planner.cpp
   src/plan_path.cpp
+  src/path_shift_to_ego.cpp
   src/utils.cpp
   src/plugins/obstacle_stop_modifier.cpp
   src/plugins/polygon_utils.cpp

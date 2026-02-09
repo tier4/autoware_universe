@@ -58,6 +58,23 @@ minimum_rule_based_planner:
     validation:
       gt<>: [0.0]
 
+  # Path Shift to Ego Parameters
+  path_shift:
+    enable:
+      type: bool
+      default_value: true
+      description: enable path shifting from ego position to centerline
+
+    minimum_shift_length:
+      type: double
+      default_value: 0.1
+      description: minimum lateral offset to trigger path shifting [m]
+
+    minimum_shift_distance:
+      type: double
+      default_value: 5.0
+      description: skip distance ahead of ego for spline waypoint insertion [m]
+
   enable_debug_path:
     type: bool
     default_value: true

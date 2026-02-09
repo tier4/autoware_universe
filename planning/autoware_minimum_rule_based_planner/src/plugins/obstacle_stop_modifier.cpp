@@ -39,6 +39,9 @@ ObstacleStopModifier::ObstacleStopModifier(
 : TrajectoryModifierPluginBase(name, node_ptr, time_keeper, params),
   vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(*node_ptr).getVehicleInfo())
 {
+  planning_factor_interface_ =
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+      node_ptr, "obstacle_stop");
   set_up_params();
 }
 
@@ -160,7 +163,7 @@ std::vector<StopObstacle> ObstacleStopModifier::filter_stop_obstacle_for_predict
 
 void ObstacleStopModifier::plan_stop(
   Trajectory & traj, const std::vector<StopObstacle> & stop_obstacles,
-  const TrajectoryModifierData & /*data*/)
+  const TrajectoryModifierData & data)
 {
   if (stop_obstacles.empty()) {
     return;
@@ -194,6 +197,13 @@ void ObstacleStopModifier::plan_stop(
   // Set zero velocity from stop point to end of trajectory
   // This replaces insertStopPoint() + manual velocity loop
   traj.longitudinal_velocity_mps().range(*determined_zero_vel_dist, traj.length()).set(0.0);
+
+  // Add PlanningFactor for the stop decision
+  const auto stop_traj_point = traj.compute(*determined_zero_vel_dist);
+  const auto traj_points = traj.restore();
+  planning_factor_interface_->add(
+    traj_points, data.current_odometry.pose.pose, stop_traj_point.pose, PlanningFactor::STOP,
+    SafetyFactorArray{});
 }
 
 std::vector<StopObstacle> ObstacleStopModifier::get_closest_stop_obstacles(

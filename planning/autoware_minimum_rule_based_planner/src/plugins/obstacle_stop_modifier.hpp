@@ -32,6 +32,8 @@ using autoware::trajectory_modifier::TrajectoryModifierData;
 using autoware::trajectory_modifier::TrajectoryModifierParams;
 using autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase;
 using autoware::trajectory_modifier::plugin::TrajectoryPoints;
+using autoware_internal_planning_msgs::msg::PlanningFactor;
+using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using Trajectory = autoware::experimental::trajectory::Trajectory<TrajectoryPoint>;
@@ -83,6 +85,7 @@ public:
     const TrajectoryPoints & traj_points, const TrajectoryModifierParams & params,
     const TrajectoryModifierData & data) const override;
 
+  // TODO(odashima): add to TrajectoryModifierData struct
   void set_predicted_objects(const PredictedObjects::ConstSharedPtr & objects);
 
 private:

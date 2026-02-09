@@ -14,6 +14,7 @@
 
 #include "minimum_rule_based_planner.hpp"
 
+#include "path_shift_to_ego.hpp"
 #include "utils.hpp"
 
 #include <autoware/motion_utils/resample/resample.hpp>
@@ -133,19 +134,19 @@ void MinimumRuleBasedPlannerNode::on_timer()
   autoware_utils_debug::ScopedTimeTrack time_keeper_scope(__func__, *time_keeper_);
   const auto params = param_listener_->get_params();
 
-  auto publish_optimizer_trajectory = [&](
-                                        auto & plugin, const TrajectoryPoints & trajectory_points) {
-    Trajectory traj;
-    traj.points = trajectory_points;
-    pub_debug_optimizer_module_trajectories_[plugin->get_name()]->publish(traj);
-  };
+  auto publish_optimizer_debug_trajectory =
+    [&](auto & plugin, const TrajectoryPoints & trajectory_points) {
+      Trajectory traj;
+      traj.points = trajectory_points;
+      pub_debug_optimizer_module_trajectories_[plugin->get_name()]->publish(traj);
+    };
 
-  auto publish_modifier_trajectory = [&](
-                                       auto & plugin, const TrajectoryPoints & trajectory_points) {
-    Trajectory traj;
-    traj.points = trajectory_points;
-    pub_debug_modifier_module_trajectories_[plugin->get_name()]->publish(traj);
-  };
+  auto publish_modifier_debug_trajectory =
+    [&](auto & plugin, const TrajectoryPoints & trajectory_points) {
+      Trajectory traj;
+      traj.points = trajectory_points;
+      pub_debug_modifier_module_trajectories_[plugin->get_name()]->publish(traj);
+    };
 
   // 1. Check data availability
   const auto input_data = take_data();
@@ -177,6 +178,17 @@ void MinimumRuleBasedPlannerNode::on_timer()
   auto traj_from_path =
     utils::convert_path_to_trajectory(planned_path.value(), params.output_delta_arc_length);
 
+  // 2-3. Shift trajectory to ego position (handles both lateral offset and yaw deviation)
+  if (params.path_shift.enable) {
+    autoware_utils_debug::ScopedTimeTrack tt("shift_trajectory_to_ego", *time_keeper_);
+    TrajectoryShiftParams shift_params;
+    shift_params.minimum_shift_length = params.path_shift.minimum_shift_length;
+    shift_params.minimum_shift_distance = params.path_shift.minimum_shift_distance;
+    traj_from_path = shift_trajectory_to_ego(
+      traj_from_path, input_data.odometry_ptr->pose.pose, shift_params,
+      params.output_delta_arc_length);
+  }
+
   // 3. Smoothing path
   auto smoothed_path = [&]() {
     autoware_utils_debug::ScopedTimeTrack tt("smoothing_path", *time_keeper_);
@@ -188,14 +200,14 @@ void MinimumRuleBasedPlannerNode::on_timer()
 
     trajectory_optimizer::TrajectoryOptimizerParams optimizer_params;
     optimizer_params.use_eb_smoother = params.eb_smoother.enable;
-    optimizer_params.use_mpt_optimizer = params.mpt_optimizer.enable;
+    // optimizer_params.use_mpt_optimizer = params.mpt_optimizer.enable;
     // optimizer_params.use_velocity_optimizer = params.velocity_smoother.enable;
 
     auto trajectory_points = traj_from_path.points;
     if (path_smoother_) {
       autoware_utils_debug::ScopedTimeTrack tt(path_smoother_->get_name(), *time_keeper_);
       path_smoother_->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
-      publish_optimizer_trajectory(path_smoother_, trajectory_points);
+      publish_optimizer_debug_trajectory(path_smoother_, trajectory_points);
     }
 
     Trajectory traj = traj_from_path;
@@ -216,7 +228,8 @@ void MinimumRuleBasedPlannerNode::on_timer()
 
     obstacle_stop_modifier_->modify_trajectory(
       smoothed_path.points, modifier_params_, modifier_data);
-    publish_modifier_trajectory(obstacle_stop_modifier_, smoothed_path.points);
+    obstacle_stop_modifier_->publish_planning_factor();
+    publish_modifier_debug_trajectory(obstacle_stop_modifier_, smoothed_path.points);
   }
 
   // 5. Velocity optimization
