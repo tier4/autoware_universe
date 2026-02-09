@@ -82,17 +82,13 @@ SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & n
   timer_ = rclcpp::create_timer(
     this, get_clock(), period, std::bind(&SteerOffsetEstimatorNode::on_timer, this));
 
-  if (calibration_params_.mode != CalibrationMode::OFF) {
-    srv_update_offset_ = create_service<std_srvs::srv::Trigger>(
-      "~/trigger_steer_offset_calibration", std::bind(
-                                              &SteerOffsetEstimatorNode::on_update_offset_request,
-                                              this, std::placeholders::_1, std::placeholders::_2));
-    RCLCPP_INFO(
-      this->get_logger(), "Calibration service initialized in %s mode.",
-      SteerOffsetCalibrationParameters::mode_to_str_map.at(calibration_params_.mode).c_str());
-  } else {
-    RCLCPP_INFO(this->get_logger(), "Calibration service disabled (OFF mode).");
-  }
+  srv_update_offset_ = create_service<std_srvs::srv::Trigger>(
+    "~/trigger_steer_offset_calibration", std::bind(
+                                            &SteerOffsetEstimatorNode::on_update_offset_request,
+                                            this, std::placeholders::_1, std::placeholders::_2));
+  RCLCPP_INFO(
+    this->get_logger(), "Calibration service initialized in %s mode.",
+    SteerOffsetCalibrationParameters::mode_to_str_map.at(calibration_params_.mode).c_str());
 
   // publish initial steer offset value
   auto initial_msg = std::make_unique<autoware_internal_debug_msgs::msg::Float32Stamped>();
