@@ -14,16 +14,15 @@
 
 #include "autoware/trajectory_optimizer/trajectory_optimizer_plugins/plugin_utils/continuous_jerk_smoother.hpp"
 
+#include <Eigen/Core>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/qp_interface/proxqp_interface.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 
-
-#include <Eigen/Core>
-
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <vector>
 
 namespace autoware::trajectory_optimizer::plugin
@@ -85,12 +84,12 @@ bool ContinuousJerkSmoother::apply(
   const double over_j_weight = params_.over_j_weight;
   const double over_v_weight = params_.over_v_weight;
   const double over_a_weight = params_.over_a_weight;
-  // const double velocity_tracking_weight = params_.velocity_tracking_weight;
+  // const double a_stop_decel = 0.0;
+  const double velocity_tracking_weight = params_.velocity_tracking_weight;
 
   // Search for stop point (zero velocity) starting from index 1
   // to avoid getting 0 as a stop point at the beginning
-  const auto zero_vel_id =
-    autoware::motion_utils::searchZeroVelocityIndex(input, 1, input.size());
+  const auto zero_vel_id = autoware::motion_utils::searchZeroVelocityIndex(input, 1, input.size());
 
   // Determine optimization horizon N
   const size_t total_size = input.size();
@@ -133,7 +132,7 @@ bool ContinuousJerkSmoother::apply(
    *      a[0], a[1], .... a[N-1],               : N ~ 2N-1
    *      delta[0], ..., delta[N-1],             : 2N ~ 3N-1
    *      sigma[0], sigma[1], ...., sigma[N-1],  : 3N ~ 4N-1
-   *      gamma[0], gamma[1], ..., gamma[N-2]    : 4N ~ 5N-2
+   *      gamma[0], gamma[1], ..., gamma[N-1]    : 4N ~ 5N-2
    *     ]
    *
    * b[i]  : velocity^2
@@ -147,8 +146,8 @@ bool ContinuousJerkSmoother::apply(
   const uint32_t IDX_SIGMA0 = 3 * N;
   const uint32_t IDX_GAMMA0 = 4 * N;
 
-  const uint32_t l_variables = 5 * N - 1;  // gamma has N-1 elements
-  const uint32_t l_constraints = 4 * N;    // N + N + (N-1) + (N-1) + 2 = 4N
+  const uint32_t l_variables = 5 * N;    // gamma has N-1 elements
+  const uint32_t l_constraints = 4 * N;  // N + N + (N-1) + (N-1) + 2 = 4N - 2
 
   // Allocate matrices
   Eigen::MatrixXd A = Eigen::MatrixXd::Zero(l_constraints, l_variables);
@@ -178,12 +177,18 @@ bool ContinuousJerkSmoother::apply(
   // P term: weight on b^2
   // q term: -2*weight*v_ref^2 on b
   for (size_t i = 0; i < N; ++i) {
+    const double ref_vel = v_ref_arr.at(i);
+    // const double ref_vel = 1.0;
+    P(IDX_B0 + i, IDX_B0 + i) += velocity_tracking_weight;
+    q.at(IDX_B0 + i) += -velocity_tracking_weight * ref_vel * ref_vel;
+  }
+
+  // Slack variable costs
+  for (size_t i = 0; i < N; ++i) {
     // Slack variable costs
     P(IDX_DELTA0 + i, IDX_DELTA0 + i) += over_v_weight;  // over velocity cost
     P(IDX_SIGMA0 + i, IDX_SIGMA0 + i) += over_a_weight;  // over acceleration cost
-    if (i < N - 1) {
-      P(IDX_GAMMA0 + i, IDX_GAMMA0 + i) += over_j_weight;  // over jerk cost
-    }
+    P(IDX_GAMMA0 + i, IDX_GAMMA0 + i) += over_j_weight;  // over jerk cost
   }
 
   // Reference acceleration tracking: minimize weight * (a - a_ref)^2
@@ -194,7 +199,7 @@ bool ContinuousJerkSmoother::apply(
   for (size_t i = 0; i < N; ++i) {
     const double a_ref = input.at(i).acceleration_mps2;
     P(IDX_A0 + i, IDX_A0 + i) += accel_tracking_weight;
-    q.at(IDX_A0 + i) += -2.0 * accel_tracking_weight * a_ref;
+    q.at(IDX_A0 + i) += -accel_tracking_weight * a_ref;
   }
 
   /**************************************************************/
@@ -286,4 +291,3 @@ bool ContinuousJerkSmoother::apply(
 }
 
 }  // namespace autoware::trajectory_optimizer::plugin
-
