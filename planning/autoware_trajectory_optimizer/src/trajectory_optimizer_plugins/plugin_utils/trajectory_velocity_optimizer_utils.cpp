@@ -241,13 +241,27 @@ void filter_velocity(
     input_trajectory, current_odometry.pose.pose, nearest_dist_threshold_m,
     nearest_yaw_threshold_rad);
 
-  // // Clip trajectory from closest point
+  // Clip trajectory from closest point
   TrajectoryPoints clipped;
   clipped.insert(
     clipped.end(),
     input_trajectory.begin() + static_cast<TrajectoryPoints::difference_type>(traj_closest),
     input_trajectory.end());
   input_trajectory = clipped;
+
+  // --- Feature 3: Set terminal velocity to 0 before QP ---
+  if (!input_trajectory.empty()) {
+    input_trajectory.back().longitudinal_velocity_mps = 0.0;
+  }
+
+  // --- Feature 2: Save stop point pose before QP (velocities will be modified) ---
+  const auto stop_idx = autoware::motion_utils::searchZeroVelocityIndex(input_trajectory);
+  bool has_stop_pose = false;
+  geometry_msgs::msg::Pose stop_pose;
+  if (stop_idx) {
+    stop_pose = input_trajectory.at(*stop_idx).pose;
+    has_stop_pose = true;
+  }
 
   std::vector<TrajectoryPoints> debug_trajectories;
   if (!smoother->apply(
@@ -257,6 +271,22 @@ void filter_velocity(
     RCLCPP_WARN_THROTTLE(
       rclcpp::get_logger("trajectory_velocity_optimizer"), *clock, 5000,
       "Fail to solve optimization.");
+  }
+
+  // --- Feature 2: Overwrite stop point - set 0 velocity from stop point onward ---
+  if (has_stop_pose) {
+    const auto nearest_output_idx = autoware::motion_utils::findNearestIndex(
+      input_trajectory, stop_pose, nearest_dist_threshold_m, nearest_yaw_threshold_rad);
+    if (nearest_output_idx) {
+      for (size_t i = *nearest_output_idx; i < input_trajectory.size(); ++i) {
+        input_trajectory[i].longitudinal_velocity_mps = 0.0;
+      }
+    }
+  }
+
+  // --- Feature 3: Ensure terminal velocity is 0 after QP ---
+  if (!input_trajectory.empty()) {
+    input_trajectory.back().longitudinal_velocity_mps = 0.0;
   }
 }
 

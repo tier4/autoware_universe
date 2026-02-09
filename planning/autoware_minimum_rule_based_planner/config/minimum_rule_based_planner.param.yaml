@@ -30,11 +30,11 @@
 
     # Elastic Band Smoother
     eb_smoother:
-      enable: false
+      enable: true
 
     # Velocity Smoother
-    velocity_smoother:
-      enable: true
+    # velocity_smoother:
+    #   enable: true
 
     mpt_optimizer:
-      enable: true
+      enable: false

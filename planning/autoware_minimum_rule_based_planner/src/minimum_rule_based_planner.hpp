@@ -43,6 +43,7 @@
 #include <lanelet2_routing/RoutingGraph.h>
 #include <lanelet2_traffic_rules/TrafficRules.h>
 
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -96,6 +97,7 @@ public:
     Odometry::ConstSharedPtr odometry_ptr;
     AccelWithCovarianceStamped::ConstSharedPtr acceleration_ptr;
     PredictedObjects::ConstSharedPtr predicted_objects_ptr;
+    PathWithLaneId::ConstSharedPtr test_path_with_lane_id_ptr;
   };
 
 private:
@@ -133,10 +135,19 @@ private:
     this, "~/input/objects"};
   PredictedObjects::ConstSharedPtr predicted_objects_ptr_;
 
+  autoware_utils::InterProcessPollingSubscriber<
+    PathWithLaneId, autoware_utils::polling_policy::Newest>
+    test_path_with_lane_id_subscriber_{this, "~/input/test/path_with_lane_id"};
+  PathWithLaneId::ConstSharedPtr test_path_with_lane_id_ptr;
+
   // publisher
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
   rclcpp::Publisher<PathWithLaneId>::SharedPtr pub_debug_path_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
+  std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
+    pub_debug_optimizer_module_trajectories_;
+  std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
+    pub_debug_modifier_module_trajectories_;
 
   // others
   rclcpp::TimerBase::SharedPtr timer_;
@@ -152,7 +163,8 @@ private:
 
   // Optimizer plugins
   std::unique_ptr<PluginLoader> plugin_loader_;
-  std::vector<std::shared_ptr<PluginInterface>> optimizer_plugins_;
+  std::shared_ptr<PluginInterface> path_smoother_;
+  std::shared_ptr<PluginInterface> velocity_optimizer_;
 
   // Trajectory modifier plugins
   std::shared_ptr<plugin::ObstacleStopModifier> obstacle_stop_modifier_;

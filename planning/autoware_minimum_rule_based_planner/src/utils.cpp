@@ -29,6 +29,7 @@
 #include <lanelet2_core/geometry/Lanelet.h>
 
 #include <algorithm>
+#include <limits>
 #include <set>
 #include <vector>
 
@@ -544,6 +545,34 @@ double get_arc_length_on_path(
     }
     target_path_segment.push_back(
       lanelet::utils::conversion::toLaneletPoint(it->point.pose.position).basicPoint2d());
+  }
+
+  // guard: toArcCoordinates requires at least 2 points in the line string,
+  // otherwise closestSegment() dereferences a null pointer.
+  if (target_path_segment.size() < 2) {
+    RCLCPP_WARN(
+      rclcpp::get_logger("path_generator").get_child("utils").get_child(__func__),
+      "target_path_segment has insufficient points (%zu), "
+      "falling back to closest point search on path",
+      target_path_segment.size());
+    // fallback: find the closest point on the entire path to point_on_centerline
+    double min_dist_sq = std::numeric_limits<double>::max();
+    double s_closest = 0.;
+    double s_acc = 0.;
+    for (size_t i = 0; i < path.size(); ++i) {
+      const auto & pos = path[i].point.pose.position;
+      const double dx = pos.x - point_on_centerline->x();
+      const double dy = pos.y - point_on_centerline->y();
+      const double dist_sq = dx * dx + dy * dy;
+      if (dist_sq < min_dist_sq) {
+        min_dist_sq = dist_sq;
+        s_closest = s_acc;
+      }
+      if (i + 1 < path.size()) {
+        s_acc += autoware_utils::calc_distance2d(path[i], path[i + 1]);
+      }
+    }
+    return s_closest;
   }
 
   s_path += lanelet::geometry::toArcCoordinates(target_path_segment, *point_on_centerline).length;

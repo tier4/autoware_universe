@@ -16,6 +16,7 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/plan_path.cpp
   src/utils.cpp
   src/plugins/obstacle_stop_modifier.cpp
+  src/plugins/polygon_utils.cpp
 )
 
 target_include_directories(${PROJECT_NAME}_lib SYSTEM PUBLIC

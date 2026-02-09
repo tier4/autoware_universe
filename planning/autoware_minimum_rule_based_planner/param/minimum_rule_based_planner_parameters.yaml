@@ -73,10 +73,10 @@ minimum_rule_based_planner:
       default_value: true
 
   # MPT Optimizer Parameters
-  mpt_optimizer:
-    enable:
-      type: bool
-      default_value: true
+  # mpt_optimizer:
+  #   enable:
+  #     type: bool
+  #     default_value: true
 
   # Velocity Smoother Parameters
   velocity_smoother:

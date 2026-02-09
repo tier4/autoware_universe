@@ -3,9 +3,9 @@
     # SmootherBase parameters (required at top level for JerkFilteredSmoother)
     normal:
       max_acc: 1.0
-      min_acc: -0.5
-      max_jerk: 1.0
-      min_jerk: -0.5
+      min_acc: -1.0
+      max_jerk: 1.6
+      min_jerk: -1.6
 
     stop_decel: 0.0
     min_decel_for_lateral_acc_lim_filter: -2.5

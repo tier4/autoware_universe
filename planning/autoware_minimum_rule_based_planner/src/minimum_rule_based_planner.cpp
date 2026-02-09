@@ -34,6 +34,9 @@
 namespace autoware::minimum_rule_based_planner
 {
 
+using autoware_planning_msgs::msg::TrajectoryPoint;
+using TrajectoryPoints = std::vector<TrajectoryPoint>;
+
 MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("minimum_rule_based_planner_node", options),
   generator_uuid_(autoware_utils_uuid::generate_uuid()),
@@ -68,6 +71,9 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   // Initialize trajectory modifier plugins
   obstacle_stop_modifier_ = std::make_shared<plugin::ObstacleStopModifier>(
     "obstacle_stop", this, time_keeper_, modifier_params_);
+  pub_debug_modifier_module_trajectories_[obstacle_stop_modifier_->get_name()] =
+    this->create_publisher<Trajectory>(
+      "~/debug/modifier/" + obstacle_stop_modifier_->get_name() + "/trajectory", 1);
 
   RCLCPP_INFO(get_logger(), "Trajectory modifier plugins initialized.");
 
@@ -88,43 +94,37 @@ void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
     "autoware_trajectory_optimizer",
     "autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase");
 
-  // Load plugins based on parameters
-  // (order matters: EB smoother -> MPT optimizer -> velocity optimizer)
-  if (params.eb_smoother.enable) {
+  auto try_load_optimizer_plugin = [&](
+                                     const std::string & plugin_path,
+                                     const std::string & name) -> std::shared_ptr<PluginInterface> {
     try {
-      auto plugin = plugin_loader_->createSharedInstance(
-        "autoware::trajectory_optimizer::plugin::TrajectoryEBSmootherOptimizer");
-      plugin->initialize("eb_smoother", this, time_keeper_);
-      optimizer_plugins_.push_back(plugin);
-      RCLCPP_INFO(get_logger(), "Loaded trajectory EB smoother optimizer plugin");
-    } catch (const pluginlib::PluginlibException & ex) {
-      RCLCPP_ERROR(get_logger(), "Failed to load trajectory EB smoother plugin: %s", ex.what());
-    }
-  }
-
-  if (params.mpt_optimizer.enable) {
-    try {
-      auto plugin = plugin_loader_->createSharedInstance(
-        "autoware::trajectory_optimizer::plugin::TrajectoryMPTOptimizer");
-      plugin->initialize("mpt_optimizer", this, time_keeper_);
-      optimizer_plugins_.push_back(plugin);
-      RCLCPP_INFO(get_logger(), "Loaded trajectory MPT optimizer plugin");
-    } catch (const pluginlib::PluginlibException & ex) {
-      RCLCPP_ERROR(get_logger(), "Failed to load trajectory MPT optimizer plugin: %s", ex.what());
-    }
-  }
-
-  if (params.velocity_smoother.enable) {
-    try {
-      auto plugin = plugin_loader_->createSharedInstance(
-        "autoware::trajectory_optimizer::plugin::TrajectoryVelocityOptimizer");
-      plugin->initialize("velocity_optimizer", this, time_keeper_);
-      optimizer_plugins_.push_back(plugin);
-      RCLCPP_INFO(get_logger(), "Loaded trajectory velocity optimizer plugin");
+      auto plugin = plugin_loader_->createSharedInstance(plugin_path);
+      plugin->initialize(name, this, time_keeper_);
+      pub_debug_optimizer_module_trajectories_[plugin->get_name()] =
+        this->create_publisher<Trajectory>(
+          "~/debug/optimizer/" + plugin->get_name() + "/trajectory", 1);
+      RCLCPP_INFO(get_logger(), "Loaded trajectory %s plugin", name.c_str());
+      return plugin;
     } catch (const pluginlib::PluginlibException & ex) {
       RCLCPP_ERROR(
-        get_logger(), "Failed to load trajectory velocity optimizer plugin: %s", ex.what());
+        get_logger(), "Failed to load trajectory %s plugin: %s", name.c_str(), ex.what());
+      return nullptr;
     }
+  };
+
+  if (params.eb_smoother.enable) {
+    path_smoother_ = try_load_optimizer_plugin(
+      "autoware::trajectory_optimizer::plugin::TrajectoryEBSmootherOptimizer", "eb_smoother");
+  }
+
+  // if (params.mpt_optimizer.enable) {
+  //   path_smoother_ = try_load_optimizer_plugin(
+  //     "autoware::trajectory_optimizer::plugin::TrajectoryMPTOptimizer", "mpt_optimizer");
+  // }
+
+  if (params.velocity_smoother.enable) {
+    velocity_optimizer_ = try_load_optimizer_plugin(
+      "autoware::trajectory_optimizer::plugin::TrajectoryVelocityOptimizer", "velocity_optimizer");
   }
 }
 
@@ -133,7 +133,21 @@ void MinimumRuleBasedPlannerNode::on_timer()
   autoware_utils_debug::ScopedTimeTrack time_keeper_scope(__func__, *time_keeper_);
   const auto params = param_listener_->get_params();
 
-  // Check data availability
+  auto publish_optimizer_trajectory = [&](
+                                        auto & plugin, const TrajectoryPoints & trajectory_points) {
+    Trajectory traj;
+    traj.points = trajectory_points;
+    pub_debug_optimizer_module_trajectories_[plugin->get_name()]->publish(traj);
+  };
+
+  auto publish_modifier_trajectory = [&](
+                                       auto & plugin, const TrajectoryPoints & trajectory_points) {
+    Trajectory traj;
+    traj.points = trajectory_points;
+    pub_debug_modifier_module_trajectories_[plugin->get_name()]->publish(traj);
+  };
+
+  // 1. Check data availability
   const auto input_data = take_data();
   set_planner_data(input_data);
   if (!is_data_ready(input_data)) {
@@ -143,34 +157,29 @@ void MinimumRuleBasedPlannerNode::on_timer()
     return;
   }
 
-  // Plan path
-  const auto planned_path = plan_path(input_data);
+  // 2. Get path
+  // 2-1. planning or subscribe PathWithLaneId
+  const auto planned_path = [&]() -> std::optional<PathWithLaneId> {
+    autoware_utils_debug::ScopedTimeTrack tt("plan_path", *time_keeper_);
+    if (input_data.test_path_with_lane_id_ptr) {
+      return std::make_optional(*input_data.test_path_with_lane_id_ptr);
+    }
+
+    return plan_path(input_data);
+  }();
+
   if (!planned_path) {
     RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Failed to plan path.");
     return;
   }
 
-  // Convert path to trajectory
+  // 2-2. Convert path to trajectory
   auto traj_from_path =
     utils::convert_path_to_trajectory(planned_path.value(), params.output_delta_arc_length);
 
-  // Apply obstacle stop modifier
-  {
-    obstacle_stop_modifier_->set_predicted_objects(input_data.predicted_objects_ptr);
-
-    trajectory_modifier::TrajectoryModifierData modifier_data;
-    modifier_data.current_odometry = *input_data.odometry_ptr;
-    if (input_data.acceleration_ptr) {
-      modifier_data.current_acceleration = *input_data.acceleration_ptr;
-    }
-
-    obstacle_stop_modifier_->modify_trajectory(
-      traj_from_path.points, modifier_params_, modifier_data);
-  }
-
-  // Apply optimizer plugins
-  // TODO(odashima): eb smoother & mpt are must be applied before each planner module?
-  const auto smoothed_traj = [&]() {
+  // 3. Smoothing path
+  auto smoothed_path = [&]() {
+    autoware_utils_debug::ScopedTimeTrack tt("smoothing_path", *time_keeper_);
     trajectory_optimizer::TrajectoryOptimizerData optimizer_data;
     optimizer_data.current_odometry = *input_data.odometry_ptr;
     if (input_data.acceleration_ptr) {
@@ -180,18 +189,13 @@ void MinimumRuleBasedPlannerNode::on_timer()
     trajectory_optimizer::TrajectoryOptimizerParams optimizer_params;
     optimizer_params.use_eb_smoother = params.eb_smoother.enable;
     optimizer_params.use_mpt_optimizer = params.mpt_optimizer.enable;
-    optimizer_params.use_velocity_optimizer = params.velocity_smoother.enable;
+    // optimizer_params.use_velocity_optimizer = params.velocity_smoother.enable;
 
     auto trajectory_points = traj_from_path.points;
-    for (const auto & plugin : optimizer_plugins_) {
-      plugin->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
-    }
-
-    if (!trajectory_points.empty()) {
-      autoware::motion_utils::calculate_time_from_start(
-        trajectory_points, trajectory_points.front().pose.position);
-      // autoware::motion_utils::calculate_time_from_start(
-      //   trajectory_points, input_data.odometry_ptr->pose.pose.position);
+    if (path_smoother_) {
+      autoware_utils_debug::ScopedTimeTrack tt(path_smoother_->get_name(), *time_keeper_);
+      path_smoother_->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
+      publish_optimizer_trajectory(path_smoother_, trajectory_points);
     }
 
     Trajectory traj = traj_from_path;
@@ -199,7 +203,52 @@ void MinimumRuleBasedPlannerNode::on_timer()
     return traj;
   }();
 
-  // Create & publish CandidateTrajectories message
+  // 4. Apply obstacle stop modifier
+  {
+    autoware_utils_debug::ScopedTimeTrack tt("obstacle_stop", *time_keeper_);
+    obstacle_stop_modifier_->set_predicted_objects(input_data.predicted_objects_ptr);
+
+    trajectory_modifier::TrajectoryModifierData modifier_data;
+    modifier_data.current_odometry = *input_data.odometry_ptr;
+    if (input_data.acceleration_ptr) {
+      modifier_data.current_acceleration = *input_data.acceleration_ptr;
+    }
+
+    obstacle_stop_modifier_->modify_trajectory(
+      smoothed_path.points, modifier_params_, modifier_data);
+    publish_modifier_trajectory(obstacle_stop_modifier_, smoothed_path.points);
+  }
+
+  // 5. Velocity optimization
+  const auto smoothed_traj = [&]() {
+    autoware_utils_debug::ScopedTimeTrack tt("velocity_optimization", *time_keeper_);
+    trajectory_optimizer::TrajectoryOptimizerData optimizer_data;
+    optimizer_data.current_odometry = *input_data.odometry_ptr;
+    if (input_data.acceleration_ptr) {
+      optimizer_data.current_acceleration = *input_data.acceleration_ptr;
+    }
+
+    trajectory_optimizer::TrajectoryOptimizerParams optimizer_params;
+    // optimizer_params.use_eb_smoother = params.eb_smoother.enable;
+    // optimizer_params.use_mpt_optimizer = params.mpt_optimizer.enable;
+    optimizer_params.use_velocity_optimizer = params.velocity_smoother.enable;
+
+    auto trajectory_points = smoothed_path.points;
+    if (velocity_optimizer_) {
+      velocity_optimizer_->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
+    }
+
+    // if (!trajectory_points.empty()) {
+    autoware::motion_utils::calculate_time_from_start(
+      trajectory_points, input_data.odometry_ptr->pose.pose.position);
+    // }
+
+    Trajectory traj = traj_from_path;
+    traj.points = trajectory_points;
+    return traj;
+  }();
+
+  // 6. Create & publish CandidateTrajectories message
   const auto candidate_trajectories = [&]() {
     CandidateTrajectories msg;
     autoware_internal_planning_msgs::msg::CandidateTrajectory candidate_traj;
@@ -217,7 +266,7 @@ void MinimumRuleBasedPlannerNode::on_timer()
   }();
   pub_trajectories_->publish(candidate_trajectories);
 
-  // Publish debug information if enabled
+  // 7. Publish debug information if enabled
   if (params.enable_debug_path) {
     pub_debug_path_->publish(planned_path.value());
   }
@@ -260,6 +309,11 @@ MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()
   }
   input_data.predicted_objects_ptr = predicted_objects_ptr_;
 
+  if (const auto msg = test_path_with_lane_id_subscriber_.take_data()) {
+    test_path_with_lane_id_ptr = msg;
+  }
+  input_data.test_path_with_lane_id_ptr = test_path_with_lane_id_ptr;
+
   return input_data;
 }
 
@@ -271,7 +325,8 @@ bool MinimumRuleBasedPlannerNode::is_data_ready(const InputData & input_data)
       get_logger(), *get_clock(), 5000, "waiting for %s", name.c_str());
   };
 
-  if (!input_data.route_ptr) {
+  // NOTE(odashima): on test mode, minimum rule based planner receives path_with_lane_id topic
+  if (!input_data.route_ptr && !input_data.test_path_with_lane_id_ptr) {
     notify_waiting("route");
     return false;
   }
