@@ -352,7 +352,8 @@ int main(int argc, char ** argv)
 
   if (argc < 4) {
     std::cerr << "Usage: data_converter <rosbag_path> <vector_map_path> <save_dir> [--step=1] "
-                 "[--limit=-1] [--min_frames=1700] [--convert_yellow=0] [--convert_red=0] "
+                 "[--limit=-1] [--min_frames=1700] [--min_distance=50.0] [--convert_yellow=0] "
+                 "[--convert_red=0] "
                  "[--ego_wheel_base=2.75] [--ego_length=4.34] [--ego_width=1.70]"
               << std::endl;
     return 1;
@@ -368,6 +369,7 @@ int main(int argc, char ** argv)
   int64_t search_nearest_route = 1;
   int64_t convert_yellow = 0;
   int64_t convert_red = 0;
+  double min_distance = 50.0;
   float ego_wheel_base = -1.0;
   float ego_length = -1.0;
   float ego_width = -1.0;
@@ -382,6 +384,8 @@ int main(int argc, char ** argv)
       limit = std::stoll(arg.substr(8));
     } else if (arg.find("--min_frames=") == 0) {
       min_frames = std::stoll(arg.substr(13));
+    } else if (arg.find("--min_distance=") == 0) {
+      min_distance = std::stod(arg.substr(15));
     } else if (arg.find("--search_nearest_route=") == 0) {
       search_nearest_route = std::stoll(arg.substr(23));
     } else if (arg.find("--convert_yellow=") == 0) {
@@ -409,6 +413,7 @@ int main(int argc, char ** argv)
   std::cout << "Vector map: " << vector_map_path << std::endl;
   std::cout << "Save directory: " << save_dir << std::endl;
   std::cout << "Step: " << step << ", Limit: " << limit << ", Min frames: " << min_frames
+            << ", Min distance: " << min_distance
             << ", Search nearest route: " << search_nearest_route
             << ", Convert yellow: " << convert_yellow << ", Convert red: " << convert_red
             << std::endl;
@@ -664,6 +669,22 @@ int main(int argc, char ** argv)
     if (n < min_frames) {
       std::cout << "Skipping sequence with only " << n << " frames (min: " << min_frames << ")"
                 << std::endl;
+      continue;
+    }
+
+    // Calculate the traveled distance and skip if it's too short
+    double traveled_distance = 0.0;
+    for (int64_t i = 1; i < n; ++i) {
+      const auto & pos1 = seq.data_list[i - 1].kinematic_state.pose.pose.position;
+      const auto & pos2 = seq.data_list[i].kinematic_state.pose.pose.position;
+      const double dx = pos2.x - pos1.x;
+      const double dy = pos2.y - pos1.y;
+      traveled_distance += std::sqrt(dx * dx + dy * dy);
+    }
+    std::cout << "Traveled distance: " << traveled_distance << " meters" << std::endl;
+    if (traveled_distance < min_distance) {
+      std::cout << "Skipping sequence with traveled distance " << traveled_distance
+                << " meters (min: " << min_distance << " meters)" << std::endl;
       continue;
     }
 
