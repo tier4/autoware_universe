@@ -265,6 +265,15 @@ void SteerOffsetEstimatorNode::on_update_offset_request(
   }
 }
 
+std::string get_timestamp_string()
+{
+  auto now = std::chrono::system_clock::now();
+  auto timestamp = std::chrono::system_clock::to_time_t(now);
+  std::stringstream ss;
+  ss << std::put_time(std::localtime(&timestamp), "%Y-%m-%d %H:%M:%S");
+  return ss.str();
+}
+
 bool SteerOffsetEstimatorNode::execute_calibration_update(const double steer_offset)
 {
   const auto & param_path = calibration_params_.steer_offset_param_path;
@@ -295,6 +304,8 @@ bool SteerOffsetEstimatorNode::execute_calibration_update(const double steer_off
       return false;
     }
 
+    fout << "# " << param_name << " was AUTOMATICALLY UPDATED BY steer_offset_estimator "
+         << get_timestamp_string() << "\n";
     fout << config;
     fout.close();
 
