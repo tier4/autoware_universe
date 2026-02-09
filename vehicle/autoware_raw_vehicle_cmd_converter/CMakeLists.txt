@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_raw_vehicle_cmd_converter)
 
 find_package(autoware_cmake REQUIRED)
+find_package(agnocast_components REQUIRED)
 autoware_package()
 
 ament_auto_add_library(actuation_map_converter SHARED
@@ -26,9 +27,10 @@ target_link_libraries(autoware_raw_vehicle_cmd_converter_node_component
   vehicle_adaptor
 )
 
-rclcpp_components_register_node(autoware_raw_vehicle_cmd_converter_node_component
+agnocast_components_register_node(autoware_raw_vehicle_cmd_converter_node_component
   PLUGIN "autoware::raw_vehicle_cmd_converter::RawVehicleCommandConverterNode"
   EXECUTABLE autoware_raw_vehicle_cmd_converter_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 if(BUILD_TESTING)
