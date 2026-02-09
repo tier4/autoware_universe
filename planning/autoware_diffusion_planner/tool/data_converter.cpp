@@ -65,7 +65,6 @@ constexpr int64_t NEIGHBOR_FUTURE_DIM = 4;  // x, y, cos(yaw), sin(yaw)
 struct FrameData
 {
   int64_t timestamp;
-  LaneletRoute route;
   TrackedObjects tracked_objects;
   Odometry kinematic_state;
   AccelWithCovarianceStamped acceleration;
@@ -624,8 +623,7 @@ int main(int argc, char ** argv)
     // Shift kinematic pose to center
     // kinematic.pose.pose = utils::shift_x(kinematic.pose.pose, (ego_wheel_base / 2.0));
 
-    const FrameData frame_data{timestamp, sequence.route, tracking, kinematic,
-                               accel,     traffic_signal, turn_ind};
+    const FrameData frame_data{timestamp, tracking, kinematic, accel, traffic_signal, turn_ind};
 
     sequence.data_list.push_back(frame_data);
   }
@@ -687,6 +685,9 @@ int main(int argc, char ** argv)
                 << " meters (min: " << min_distance << " meters)" << std::endl;
       continue;
     }
+
+    // Replace the goal pose with the last frame's pose
+    seq.route.goal_pose = seq.data_list.back().kinematic_state.pose.pose;
 
     // Process frames with stopping count tracking
     int64_t stopping_count = 0;
@@ -751,7 +752,7 @@ int main(int argc, char ** argv)
       // Get route lanes data with speed limits
       const std::vector<int64_t> segment_indices =
         lane_segment_context.select_route_segment_indices(
-          seq.data_list[i].route, center_x, center_y, center_z, NUM_SEGMENTS_IN_ROUTE);
+          seq.route, center_x, center_y, center_z, NUM_SEGMENTS_IN_ROUTE);
       const auto [route_lanes, route_lanes_speed_limit] =
         lane_segment_context.create_tensor_data_from_indices(
           map2bl, traffic_light_id_map, segment_indices, NUM_SEGMENTS_IN_ROUTE);
@@ -769,7 +770,7 @@ int main(int argc, char ** argv)
         lane_segment_context.create_line_string_tensor(map2bl, center_x, center_y);
 
       // Get goal pose
-      const geometry_msgs::msg::Pose & goal_pose = seq.data_list[i].route.goal_pose;
+      const geometry_msgs::msg::Pose & goal_pose = seq.route.goal_pose;
       const Eigen::Matrix4d goal_pose_in_map = utils::pose_to_matrix4d(goal_pose);
       const Eigen::Matrix4d goal_pose_in_bl = map2bl * goal_pose_in_map;
       const float goal_x = goal_pose_in_bl(0, 3);
