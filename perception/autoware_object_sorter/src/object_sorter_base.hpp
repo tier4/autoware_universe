@@ -37,6 +37,7 @@ public:
   {
     double min_velocity_threshold{};
     double min_range_threshold{};
+    double max_range_threshold{};
   };
 
 private:
@@ -62,6 +63,7 @@ private:
   NodeParam node_param_{};
   std::string range_calc_frame_id;
   double min_range_threshold_sq_;
+  double max_range_threshold_sq_;
 };
 
 }  // namespace autoware::object_sorter

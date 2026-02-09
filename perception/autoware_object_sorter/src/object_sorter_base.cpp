@@ -60,8 +60,10 @@ ObjectSorterBase<ObjsMsgType>::ObjectSorterBase(
   range_calc_frame_id = declare_parameter<std::string>("range_calc_frame_id");
   node_param_.min_velocity_threshold = declare_parameter<double>("min_velocity_threshold");
   node_param_.min_range_threshold = declare_parameter<double>("min_range_threshold");
+  node_param_.max_range_threshold = declare_parameter<double>("max_range_threshold");
 
   min_range_threshold_sq_ = node_param_.min_range_threshold * node_param_.min_range_threshold;
+  max_range_threshold_sq_ = node_param_.max_range_threshold * node_param_.max_range_threshold;
 
   // Subscriber
   sub_objects_ = create_subscription<ObjsMsgType>(
@@ -116,7 +118,7 @@ void ObjectSorterBase<ObjsMsgType>::objectCallback(
 
       // Filter by range
       const auto object_sq_dist = object_pos_x * object_pos_x + object_pos_y * object_pos_y;
-      if (object_sq_dist < min_range_threshold_sq_) {
+      if ((object_sq_dist < min_range_threshold_sq_) || (object_sq_dist > max_range_threshold_sq_)) {
         // Short range object
         continue;
       }
@@ -141,6 +143,7 @@ rcl_interfaces::msg::SetParametersResult ObjectSorterBase<ObjsMsgType>::onSetPar
 
       update_param(params, "min_velocity_threshold", p.min_velocity_threshold);
       update_param(params, "min_range_threshold", p.min_range_threshold);
+      // update_param(params, "max_range_threshold", p.max_range_threshold);
     }
   } catch (const rclcpp::exceptions::InvalidParameterTypeException & e) {
     result.successful = false;
@@ -149,6 +152,7 @@ rcl_interfaces::msg::SetParametersResult ObjectSorterBase<ObjsMsgType>::onSetPar
   }
 
   min_range_threshold_sq_ = node_param_.min_range_threshold * node_param_.min_range_threshold;
+  // max_range_threshold_sq_ = node_param_.max_range_threshold * node_param_.max_range_threshold;
 
   result.successful = true;
   result.reason = "success";

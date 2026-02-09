@@ -72,7 +72,7 @@ bool StopLineModule::modifyPathVelocity(PathWithLaneId * path)
     true /*is_driving_forward*/, 0.0, 0.0 /*shift distance*/, "stopline");
 
   updateStateAndStoppedTime(
-    &state_, &stopped_time_, clock_->now(), *stop_point - ego_s, planner_data_->isVehicleStopped(1.0));
+    &state_, &stopped_time_, clock_->now(), *stop_point - ego_s, planner_data_->isVehicleStopped(0.5)); //1.0
 
   geometry_msgs::msg::Pose stop_pose = trajectory->compute(*stop_point).point.pose;
 
