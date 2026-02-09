@@ -35,6 +35,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -96,6 +97,11 @@ private:
   double max_height_;
   bool enable_single_frame_mode_;
   bool filter_obstacle_pointcloud_by_raw_pointcloud_;
+
+  // Approximate sync (raw/obstacle) settings
+  int64_t approximate_sync_tolerance_ns_{0};
+  builtin_interfaces::msg::Time last_processed_raw_stamp_{};
+  builtin_interfaces::msg::Time last_processed_obstacle_stamp_{};
 
   // time keeper
   rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr

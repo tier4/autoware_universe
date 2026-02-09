@@ -37,6 +37,7 @@
 #endif
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <sstream>
@@ -49,6 +50,19 @@ using costmap_2d::OccupancyGridMapBBFUpdater;
 using costmap_2d::OccupancyGridMapFixedBlindSpot;
 using costmap_2d::OccupancyGridMapProjectiveBlindSpot;
 using geometry_msgs::msg::Pose;
+
+namespace
+{
+inline int64_t toNanoseconds(const builtin_interfaces::msg::Time & t)
+{
+  return static_cast<int64_t>(t.sec) * 1000000000LL + static_cast<int64_t>(t.nanosec);
+}
+
+inline bool isZeroStamp(const builtin_interfaces::msg::Time & t)
+{
+  return t.sec == 0U && t.nanosec == 0U;
+}
+}  // namespace
 
 PointcloudBasedOccupancyGridMapNode::PointcloudBasedOccupancyGridMapNode(
   const rclcpp::NodeOptions & node_options)
@@ -70,6 +84,9 @@ PointcloudBasedOccupancyGridMapNode::PointcloudBasedOccupancyGridMapNode(
     this->declare_parameter<bool>("filter_obstacle_pointcloud_by_raw_pointcloud");
   const double map_length = this->declare_parameter<double>("map_length");
   const double map_resolution = this->declare_parameter<double>("map_resolution");
+  const int64_t approximate_sync_tolerance_ms =
+    this->declare_parameter<int64_t>("approximate_sync_tolerance_ms", 30);
+  approximate_sync_tolerance_ns_ = approximate_sync_tolerance_ms * 1000000LL;
 
   /* Subscriber and publisher */
   obstacle_pointcloud_sub_ptr_ = this->create_subscription<PointCloud2>(
@@ -162,7 +179,27 @@ void PointcloudBasedOccupancyGridMapNode::obstaclePointcloudCallback(
 {
   obstacle_pointcloud_.fromROSMsgAsync(input_obstacle_msg);
 
-  if (obstacle_pointcloud_.header.stamp == raw_pointcloud_.header.stamp) {
+  const auto & obs_stamp = obstacle_pointcloud_.header.stamp;
+  const auto & raw_stamp = raw_pointcloud_.header.stamp;
+  if (isZeroStamp(obs_stamp) || isZeroStamp(raw_stamp)) {
+    return;
+  }
+
+  const int64_t obs_ns = toNanoseconds(obs_stamp);
+  const int64_t raw_ns = toNanoseconds(raw_stamp);
+  const int64_t diff_ns = (obs_ns > raw_ns) ? (obs_ns - raw_ns) : (raw_ns - obs_ns);
+
+  if (diff_ns <= approximate_sync_tolerance_ns_) {
+    // avoid double-processing of the same pair
+    if (
+      last_processed_obstacle_stamp_.sec == obs_stamp.sec &&
+      last_processed_obstacle_stamp_.nanosec == obs_stamp.nanosec &&
+      last_processed_raw_stamp_.sec == raw_stamp.sec &&
+      last_processed_raw_stamp_.nanosec == raw_stamp.nanosec) {
+      return;
+    }
+    last_processed_obstacle_stamp_ = obs_stamp;
+    last_processed_raw_stamp_ = raw_stamp;
     onPointcloudWithObstacleAndRaw();
   }
 }
@@ -172,7 +209,27 @@ void PointcloudBasedOccupancyGridMapNode::rawPointcloudCallback(
 {
   raw_pointcloud_.fromROSMsgAsync(input_raw_msg);
 
-  if (obstacle_pointcloud_.header.stamp == raw_pointcloud_.header.stamp) {
+  const auto & obs_stamp = obstacle_pointcloud_.header.stamp;
+  const auto & raw_stamp = raw_pointcloud_.header.stamp;
+  if (isZeroStamp(obs_stamp) || isZeroStamp(raw_stamp)) {
+    return;
+  }
+
+  const int64_t obs_ns = toNanoseconds(obs_stamp);
+  const int64_t raw_ns = toNanoseconds(raw_stamp);
+  const int64_t diff_ns = (obs_ns > raw_ns) ? (obs_ns - raw_ns) : (raw_ns - obs_ns);
+
+  if (diff_ns <= approximate_sync_tolerance_ns_) {
+    // avoid double-processing of the same pair
+    if (
+      last_processed_obstacle_stamp_.sec == obs_stamp.sec &&
+      last_processed_obstacle_stamp_.nanosec == obs_stamp.nanosec &&
+      last_processed_raw_stamp_.sec == raw_stamp.sec &&
+      last_processed_raw_stamp_.nanosec == raw_stamp.nanosec) {
+      return;
+    }
+    last_processed_obstacle_stamp_ = obs_stamp;
+    last_processed_raw_stamp_ = raw_stamp;
     onPointcloudWithObstacleAndRaw();
   }
 }
