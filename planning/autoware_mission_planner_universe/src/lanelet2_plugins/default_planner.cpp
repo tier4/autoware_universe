@@ -243,7 +243,6 @@ bool DefaultPlanner::is_goal_valid(const geometry_msgs::msg::Pose & goal)
 {
   const auto logger = node_->get_logger();
   const auto goal_lanelet_pt = lanelet::utils::conversion::toLaneletPoint(goal.position);
-  const auto goal_yaw = tf2::getYaw(goal.orientation);
   const double standard_threshold = autoware_utils::deg2rad(param_.goal_angle_threshold_deg);
   const double relaxed_threshold = autoware_utils::deg2rad(90.0);
 
@@ -252,6 +251,7 @@ bool DefaultPlanner::is_goal_valid(const geometry_msgs::msg::Pose & goal)
   const auto shoulder_lanelets = route_handler_.getShoulderLaneletsAtPose(goal);
   if (lanelet::utils::query::getClosestLanelet(shoulder_lanelets, goal, &closest_shoulder_lanelet)) {
     const auto lane_yaw = lanelet::utils::getLaneletAngle(closest_shoulder_lanelet, goal.position);
+    const auto goal_yaw = tf2::getYaw(goal.orientation);
     const auto angle_diff = autoware_utils::normalize_radian(lane_yaw - goal_yaw);
     const bool has_direction_change_tag = hasDirectionChangeAreaTag(closest_shoulder_lanelet);
     const double th_angle = has_direction_change_tag ? relaxed_threshold : standard_threshold;
@@ -323,6 +323,7 @@ bool DefaultPlanner::is_goal_valid(const geometry_msgs::msg::Pose & goal)
   // Check orientation if goal is in lane
   if (is_in_lane(closest_lanelet_to_goal, goal_lanelet_pt)) {
     const auto lane_yaw = lanelet::utils::getLaneletAngle(closest_lanelet_to_goal, goal.position);
+    const auto goal_yaw = tf2::getYaw(goal.orientation);
     const auto angle_diff = autoware_utils::normalize_radian(lane_yaw - goal_yaw);
     const bool has_direction_change_tag = hasDirectionChangeAreaTag(closest_lanelet_to_goal);
     const double th_angle = has_direction_change_tag ? relaxed_threshold : standard_threshold;
