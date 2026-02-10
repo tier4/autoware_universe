@@ -29,10 +29,13 @@ namespace autoware::trajectory_safety_filter::plugin
 class UncrossableBoundaryDepartureFilter : public SafetyFilterInterface
 {
 public:
-  UncrossableBoundaryDepartureFilter() : SafetyFilterInterface("UncrossableBoundaryDepartureFilter") {};
+  UncrossableBoundaryDepartureFilter() : SafetyFilterInterface("UncrossableBoundaryDepartureFilter")
+  {
+  }
 
   bool is_feasible(const TrajectoryPoints & traj_points, const FilterContext & context) final;
-  void set_parameters([[maybe_unused]]const std::unordered_map<std::string, std::any> & params) final{};
+  void set_parameters(
+    [[maybe_unused]] const std::unordered_map<std::string, std::any> & params) final {};
 
 private:
   std::unique_ptr<autoware::boundary_departure_checker::UncrossableBoundaryDepartureChecker>

@@ -17,8 +17,9 @@
 #include "autoware/trajectory_safety_filter/filter_context.hpp"
 #include "autoware/trajectory_safety_filter/safety_filter_interface.hpp"
 
-#include <autoware_internal_planning_msgs/msg/detail/candidate_trajectory__struct.hpp>
 #include <autoware/route_handler/route_handler.hpp>
+
+#include <autoware_internal_planning_msgs/msg/detail/candidate_trajectory__struct.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/LaneletMap.h>

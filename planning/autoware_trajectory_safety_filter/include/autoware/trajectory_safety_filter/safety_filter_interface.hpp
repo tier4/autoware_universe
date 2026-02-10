@@ -65,7 +65,6 @@ protected:
   std::string name_;
   std::shared_ptr<VehicleInfo> vehicle_info_ptr_;
   MarkerArray debug_markers_;
-
 };
 }  // namespace autoware::trajectory_safety_filter::plugin
 
