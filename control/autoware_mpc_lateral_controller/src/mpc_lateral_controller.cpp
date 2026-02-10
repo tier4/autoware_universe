@@ -47,7 +47,8 @@ MpcLateralController::MpcLateralController(
 
   m_mpc = std::make_unique<MPC>(node);
 
-  m_mpc->m_ctrl_period = node.get_parameter("ctrl_period").as_double();
+  const auto ctrl_period = node.get_parameter("ctrl_period").as_double();
+  m_mpc->m_ctrl_period = ctrl_period;
 
   auto & p_filt = m_trajectory_filtering_param;
   p_filt.enable_path_smoothing = dp_bool("enable_path_smoothing");
@@ -114,8 +115,18 @@ MpcLateralController::MpcLateralController(
   }
 
   /* steering offset compensation */
-  enable_auto_steering_offset_removal_ =
-    dp_bool("steering_offset.enable_auto_steering_offset_removal");
+  {
+    const auto steer_offset_param_name =
+      node.declare_parameter<std::string>("steer_offset_param_name");
+    m_steering_offset_ = node.declare_parameter<double>(steer_offset_param_name);
+    enable_auto_steering_offset_removal_ =
+      dp_bool("steering_offset.enable_auto_steering_offset_removal");
+    if (enable_auto_steering_offset_removal_) {
+      const auto cutoff_hz = dp_double("steering_offset.steer_offset_filter_cutoff_hz");
+      lpf_steer_offset_ =
+        std::make_shared<Butterworth2dFilter>(ctrl_period, cutoff_hz, m_steering_offset_);
+    }
+  }
 
   /* initialize low-pass filter */
   {
@@ -240,9 +251,10 @@ trajectory_follower::LateralOutput MpcLateralController::run(
 
   m_current_kinematic_state = input_data.current_odometry;
   m_current_steering = input_data.current_steering;
-  if (enable_auto_steering_offset_removal_) {
-    m_current_steering.steering_tire_angle += static_cast<float>(m_steering_offset);
-  }
+
+  m_steering_offset_filtered_ =
+    enable_auto_steering_offset_removal_ ? lpf_steer_offset_->filter(m_steering_offset_) : 0.0;
+  m_current_steering.steering_tire_angle += static_cast<float>(m_steering_offset_filtered_);
 
   Lateral ctrl_cmd;
   Trajectory predicted_traj;
@@ -282,9 +294,7 @@ trajectory_follower::LateralOutput MpcLateralController::run(
     setSteeringToHistory(ctrl_cmd);
   }
 
-  if (enable_auto_steering_offset_removal_) {
-    ctrl_cmd.steering_tire_angle -= static_cast<float>(m_steering_offset);
-  }
+  ctrl_cmd.steering_tire_angle -= static_cast<float>(m_steering_offset_filtered_);
 
   publishPredictedTraj(predicted_traj);
   publishDebugValues(debug_values);
@@ -490,7 +500,7 @@ void MpcLateralController::publishDebugValues(Float32MultiArrayStamped & debug_v
 
   Float32Stamped offset;
   offset.stamp = clock_->now();
-  offset.data = static_cast<float>(m_steering_offset);
+  offset.data = static_cast<float>(m_steering_offset_filtered_);
   m_pub_steer_offset->publish(offset);
 }
 
