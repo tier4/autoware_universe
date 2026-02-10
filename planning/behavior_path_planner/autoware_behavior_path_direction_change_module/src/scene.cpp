@@ -356,8 +356,8 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         std::cout << "[MY_DEBUG] [DirectionChange] WARNING: Could not find nearest index for ego pose, defaulting to forward segment" << std::endl;
         current_segment_state_ = PathSegmentState::FORWARD_ONLY;
       } else {
-        // Threshold for "reached cusp" (2.0 meters before cusp)
-        const double cusp_arrival_threshold = 2.0;
+        // Threshold for "reached cusp"
+        const double cusp_arrival_threshold = parameters_->cusp_detection_distance_threshold;
         
         auto stateToString = [](const PathSegmentState & s) {
           switch (s) {
@@ -416,22 +416,37 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       const double max_dist_step    = 0.5;                            // 調整パラメータ
       densifyPathByYawAndDistance(output.path.points, max_yaw_step_rad, max_dist_step);
       
-          // パラメータ例（仮）
-      const double backward_cruise_speed = 2.78;       // [m/s] バック時の巡航速度
-      const double backward_slow_speed   = 0.5;   // CUSP 直後の超低速
-      for (size_t i = 0; i < output.path.points.size(); ++i) {
-        auto & p = output.path.points[i];
-        // yaw を π だけ反転
-        double yaw = tf2::getYaw(p.point.pose.orientation);
-        yaw = autoware_utils::normalize_radian(yaw + M_PI);
-        p.point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
-        // 速度プロファイルを上書き
-        if (i == 0) {
-          // ほんの少しだけ動く (yaw大変化 × 0.1 m/s)
-          p.point.longitudinal_velocity_mps = -backward_slow_speed;
-        } else {
-          p.point.longitudinal_velocity_mps = -backward_cruise_speed;
-        }
+          // Calculate speed limits based on reference path and parameters
+          const double reference_speed_limit = [&]() -> double {
+            // Use the speed from the first cusp point as reference, or a default if not available
+            if (first_cusp_index_ < current_reference_path.points.size()) {
+              return std::abs(static_cast<double>(current_reference_path.points[first_cusp_index_].point.longitudinal_velocity_mps));
+            }
+            return 2.0;  // Default fallback speed [m/s]
+          }();
+
+          // Determine effective speed limits with safety checks
+          const double effective_cusp_speed = std::min(parameters_->reverse_initial_speed, parameters_->reverse_speed_limit);
+          const double effective_reverse_speed = parameters_->reverse_speed_limit;
+
+          // Calculate backward speeds with reference path consideration
+          const double backward_cruise_speed = std::min(reference_speed_limit, effective_reverse_speed);
+          const double backward_slow_speed = std::min(reference_speed_limit, effective_cusp_speed);
+
+          for (size_t i = 0; i < output.path.points.size(); ++i) {
+            auto & p = output.path.points[i];
+            // yaw を π だけ反転
+            double yaw = tf2::getYaw(p.point.pose.orientation);
+            yaw = autoware_utils::normalize_radian(yaw + M_PI);
+            p.point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
+            // 速度プロファイルを上書き
+            if (i == 0) {
+              // CUSP直後：超低速（yaw大変化対策）
+              p.point.longitudinal_velocity_mps = -backward_slow_speed;
+            } else {
+              // それ以降：参照パス速度にreverse_speed_limitを上限とした巡航速度
+              p.point.longitudinal_velocity_mps = -backward_cruise_speed;
+            }
         
         // Filter lane_ids: Keep only the maximum ID (backward lanelet)
         // OSM creation rule: forward lanelet ID < backward lanelet ID

@@ -31,10 +31,10 @@ struct DirectionChangeParameters
   // Cusp detection parameters
   double cusp_detection_distance_threshold;
   double cusp_detection_angle_threshold_deg;
-  double cusp_approach_speed;
   double cusp_stop_distance;
 
   // Direction change parameters
+  double reverse_initial_speed;
   double reverse_speed_limit;
   double reverse_lookahead_distance;
   double reverse_safety_margin;
