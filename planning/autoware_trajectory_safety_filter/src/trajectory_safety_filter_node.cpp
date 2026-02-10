@@ -137,6 +137,8 @@ void TrajectorySafetyFilter::map_callback(const LaneletMapBin::ConstSharedPtr ms
 
 void TrajectorySafetyFilter::load_metric(const std::string & name)
 {
+  if (name == "") return;
+
   try {
     auto plugin = plugin_loader_.createSharedInstance(name);
 

@@ -122,6 +122,8 @@ void TrajectoryTrafficRuleFilter::map_callback(const LaneletMapBin::ConstSharedP
 
 void TrajectoryTrafficRuleFilter::load_metric(const std::string & name)
 {
+  if (name == "") return;
+
   try {
     auto plugin = plugin_loader_.createSharedInstance(name);
 
