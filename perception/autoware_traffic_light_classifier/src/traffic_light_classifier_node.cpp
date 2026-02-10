@@ -13,6 +13,8 @@
 // limitations under the License.
 #include "traffic_light_classifier_node.hpp"
 
+#include <autoware/traffic_light_utils/traffic_light_utils.hpp>
+
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <tier4_perception_msgs/msg/traffic_light_element.hpp>
 
@@ -31,7 +33,8 @@ TrafficLightClassifierNodelet::TrafficLightClassifierNodelet(const rclcpp::NodeO
   using std::placeholders::_1;
   using std::placeholders::_2;
   is_approximate_sync_ = this->declare_parameter<bool>("approximate_sync");
-  backlight_threshold_ = this->declare_parameter<double>("backlight_threshold");
+  over_exposure_threshold_ = this->declare_parameter<double>("over_exposure_threshold");
+  under_exposure_threshold_ = this->declare_parameter<double>("under_exposure_threshold");
 
   if (is_approximate_sync_) {
     approximate_sync_.reset(new ApproximateSync(ApproximateSyncPolicy(10), image_sub_, roi_sub_));
@@ -110,8 +113,11 @@ void TrafficLightClassifierNodelet::imageRoiCallback(
 
   output_msg.signals.resize(input_rois_msg->rois.size());
 
+  bool detect_over_exposure = false;
+  bool detect_under_exposure = false;
+
   std::vector<cv::Mat> images;
-  std::vector<size_t> backlight_indices;
+  std::vector<size_t> exposure_out_of_range_indices;
   size_t idx_valid_roi = 0;
   for (const auto & input_roi : input_rois_msg->rois) {
     // ignore if the roi is not the type to be classified
@@ -129,8 +135,13 @@ void TrafficLightClassifierNodelet::imageRoiCallback(
 
     const sensor_msgs::msg::RegionOfInterest & roi = input_roi.roi;
     auto roi_img = cv_ptr->image(cv::Rect(roi.x_offset, roi.y_offset, roi.width, roi.height));
-    if (is_harsh_backlight(roi_img)) {
-      backlight_indices.emplace_back(idx_valid_roi);
+    const double brightness = utils::compute_brightness(roi_img);
+    if (brightness >= over_exposure_threshold_) {
+      exposure_out_of_range_indices.emplace_back(idx_valid_roi);
+      detect_over_exposure = true;
+    } else if (brightness <= under_exposure_threshold_) {
+      exposure_out_of_range_indices.emplace_back(idx_valid_roi);
+      detect_under_exposure = true;
     }
     images.emplace_back(roi_img);
     idx_valid_roi++;
@@ -151,25 +162,18 @@ void TrafficLightClassifierNodelet::imageRoiCallback(
     if (
       (input_roi.roi.height == 0 || input_roi.roi.width == 0) &&
       input_roi.traffic_light_type == classify_traffic_light_type_) {
-      tier4_perception_msgs::msg::TrafficLight tlr_sig;
-      tlr_sig.traffic_light_id = input_roi.traffic_light_id;
-      tlr_sig.traffic_light_type = input_roi.traffic_light_type;
-      tier4_perception_msgs::msg::TrafficLightElement element;
-      element.color = tier4_perception_msgs::msg::TrafficLightElement::UNKNOWN;
-      element.shape = tier4_perception_msgs::msg::TrafficLightElement::CIRCLE;
-      element.confidence = 0.0;
-      tlr_sig.elements.push_back(element);
-      output_msg.signals.push_back(tlr_sig);
+      tier4_perception_msgs::msg::TrafficLight signal;
+      signal.traffic_light_id = input_roi.traffic_light_id;
+      signal.traffic_light_type = input_roi.traffic_light_type;
+      traffic_light_utils::setSignalUnknown(signal, 0.0);
+      output_msg.signals.push_back(signal);
     }
   }
 
-  for (const auto & idx : backlight_indices) {
-    auto & elements = output_msg.signals.at(idx).elements;
-    for (auto & element : elements) {
-      element.color = tier4_perception_msgs::msg::TrafficLightElement::UNKNOWN;
-      element.shape = tier4_perception_msgs::msg::TrafficLightElement::UNKNOWN;
-      element.confidence = 0.0;
-    }
+  // overwrite the out-of-range exposure rois with unknown
+  for (const auto & idx : exposure_out_of_range_indices) {
+    auto & signal = output_msg.signals.at(idx);
+    traffic_light_utils::setSignalUnknown(signal, 0.0);
   }
 
   output_msg.header = input_image_msg->header;
@@ -177,28 +181,17 @@ void TrafficLightClassifierNodelet::imageRoiCallback(
 
   // publish diagnostics
   diagnostics_interface_ptr_->clear();
-  bool found_harsh_backlight = backlight_indices.size() != 0;
-  diagnostics_interface_ptr_->add_key_value("found_harsh_backlight", found_harsh_backlight);
-  if (found_harsh_backlight) {
+  diagnostics_interface_ptr_->add_key_value(
+    "detect_traffic_light_over_exposure", detect_over_exposure);
+  diagnostics_interface_ptr_->add_key_value(
+    "detect_traffic_light_under_exposure", detect_under_exposure);
+
+  if (detect_over_exposure || detect_under_exposure) {
     diagnostics_interface_ptr_->update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::WARN,
-      "Found harsh backlight in ROI(s) and corresponding ROI(s) were overwritten by UNKNOWN");
+      "Detected out-of-range exposure in ROI. Corresponding ROI was overwritten with UNKNOWN.");
   }
   diagnostics_interface_ptr_->publish(output_msg.header.stamp);
-}
-
-bool TrafficLightClassifierNodelet::is_harsh_backlight(const cv::Mat & img) const
-{
-  if (img.empty()) {
-    return false;
-  }
-  cv::Mat y_cr_cb;
-  cv::cvtColor(img, y_cr_cb, cv::COLOR_RGB2YCrCb);
-
-  const cv::Scalar mean_values = cv::mean(y_cr_cb);
-  const double intensity = (mean_values[0] - 112.5) / 112.5;
-
-  return backlight_threshold_ <= intensity;
 }
 
 }  // namespace autoware::traffic_light
