@@ -144,8 +144,8 @@ def launch_setup(context, *args, **kwargs):
     container = ComposableNodeContainer(
         name="pointcloud_preprocessor_container",
         namespace=ns,
-        package="rclcpp_components",
-        executable="component_container",
+        package="agnocastlib",
+        executable="agnocast_component_container_cie",
         composable_node_descriptions=concat_components + [cropbox_component],
         output="screen",
     )

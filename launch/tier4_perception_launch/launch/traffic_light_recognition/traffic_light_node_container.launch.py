@@ -101,7 +101,7 @@ def create_traffic_light_node_container(namespace, context, *args, **kwargs):
     container = ComposableNodeContainer(
         name="traffic_light_node_container",
         namespace="",
-        package="rclcpp_components",
+        package="agnocastlib",
         executable=LaunchConfiguration("container_executable"),
         composable_node_descriptions=[
             ComposableNode(

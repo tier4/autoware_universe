@@ -69,8 +69,8 @@ def launch_setup(context, *args, **kwargs):
     container = ComposableNodeContainer(
         name="scan_ground_filter_container",
         namespace="",
-        package="rclcpp_components",
-        executable="component_container",
+        package="agnocastlib",
+        executable="agnocast_component_container_cie",
         composable_node_descriptions=nodes,
         output="screen",
         condition=LaunchConfigurationEquals("container", ""),

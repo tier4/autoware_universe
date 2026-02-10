@@ -37,6 +37,7 @@
 
   <exec_depend>autoware_pointcloud_preprocessor</exec_depend>
   <exec_depend>pointcloud_to_laserscan</exec_depend>
+  <exec_depend>agnocastlib</exec_depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_lint_auto</test_depend>

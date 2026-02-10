@@ -43,8 +43,8 @@
   <arg name="use_intra_process" default="false" description="use ROS 2 component container communication"/>
   <arg name="use_multithread" default="true" description="use multithread"/>
 
-  <let name="container_executable" value="component_container" unless="$(var use_multithread)"/>
-  <let name="container_executable" value="component_container_mt" if="$(var use_multithread)"/>
+  <let name="container_executable" value="agnocast_component_container_cie" unless="$(var use_multithread)"/>
+  <let name="container_executable" value="agnocast_component_container_cie" if="$(var use_multithread)"/>
 
   <!-- temporary: control_command_gate migration -->
   <arg name="use_control_command_gate" default="false"/>
@@ -77,7 +77,7 @@
 
     <group>
       <!-- set a control container to run all required components in the same process -->
-      <node_container pkg="rclcpp_components" exec="$(var container_executable)" name="control_container" namespace="">
+      <node_container pkg="agnocastlib" exec="$(var container_executable)" name="control_container" namespace="">
         <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_control_container_component"/>
         <!-- shift decider -->
         <composable_node pkg="autoware_shift_decider" plugin="autoware::shift_decider::ShiftDecider" name="autoware_shift_decider">
@@ -206,7 +206,7 @@
 
     <group>
       <!-- set a control check container to run all control checker components in the same process -->
-      <node_container pkg="rclcpp_components" exec="$(var container_executable)" name="control_check_container" namespace="">
+      <node_container pkg="agnocastlib" exec="$(var container_executable)" name="control_check_container" namespace="">
         <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_control_check_container_component"/>
       </node_container>
 

@@ -41,7 +41,7 @@
   <arg name="output_trajectory" default="/planning/trajectory"/>
 
   <group>
-    <node_container pkg="rclcpp_components" exec="$(var container_type)" name="planning_validator_container" namespace="" args="" output="both">
+    <node_container pkg="agnocastlib" exec="$(var container_type)" name="planning_validator_container" namespace="" args="" output="both">
       <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component" namespace=""/>
       <composable_node pkg="autoware_planning_validator" plugin="autoware::planning_validator::PlanningValidatorNode" name="planning_validator" namespace="">
         <remap from="~/input/objects" to="$(var input_objects_topic_name)"/>

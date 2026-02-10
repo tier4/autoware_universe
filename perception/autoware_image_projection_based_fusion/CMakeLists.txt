@@ -4,6 +4,7 @@ project(autoware_image_projection_based_fusion)
 add_compile_options(-Wno-unknown-pragmas -fopenmp)
 
 find_package(autoware_cmake REQUIRED)
+find_package(agnocast_components REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 autoware_package()
@@ -34,24 +35,28 @@ target_link_libraries(${PROJECT_NAME}
   ${EIGEN3_LIBRARIES}
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::image_projection_based_fusion::RoiDetectedObjectFusionNode"
   EXECUTABLE roi_detected_object_fusion_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::image_projection_based_fusion::RoiClusterFusionNode"
   EXECUTABLE roi_cluster_fusion_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::image_projection_based_fusion::SegmentPointCloudFusionNode"
   EXECUTABLE segmentation_pointcloud_fusion_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::image_projection_based_fusion::RoiPointCloudFusionNode"
   EXECUTABLE roi_pointcloud_fusion_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 set(CUDA_VERBOSE OFF)
@@ -151,9 +156,10 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     pointpainting_cuda_lib
   )
 
-  rclcpp_components_register_node(pointpainting_lib
+  agnocast_components_register_node(pointpainting_lib
     PLUGIN "autoware::image_projection_based_fusion::PointPaintingFusionNode"
     EXECUTABLE pointpainting_fusion_node
+    EXECUTOR CallbackIsolatedAgnocastExecutor
   )
 
   install(

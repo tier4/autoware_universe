@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_detection_by_tracker)
 
 find_package(autoware_cmake REQUIRED)
+find_package(agnocast_components REQUIRED)
 autoware_package()
 
 # Ignore -Wnonportable-include-path in Clang for mussp
@@ -33,9 +34,10 @@ target_link_libraries(${PROJECT_NAME}
   ${PCL_LIBRARIES}
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::detection_by_tracker::DetectionByTracker"
   EXECUTABLE detection_by_tracker_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 ament_auto_package(INSTALL_TO_SHARE
   launch
