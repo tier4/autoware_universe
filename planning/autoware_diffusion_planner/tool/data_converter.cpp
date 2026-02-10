@@ -65,7 +65,6 @@ constexpr int64_t NEIGHBOR_FUTURE_DIM = 4;  // x, y, cos(yaw), sin(yaw)
 struct FrameData
 {
   int64_t timestamp;
-  LaneletRoute route;
   TrackedObjects tracked_objects;
   Odometry kinematic_state;
   AccelWithCovarianceStamped acceleration;
@@ -352,7 +351,8 @@ int main(int argc, char ** argv)
 
   if (argc < 4) {
     std::cerr << "Usage: data_converter <rosbag_path> <vector_map_path> <save_dir> [--step=1] "
-                 "[--limit=-1] [--min_frames=1700] [--convert_yellow=0] [--convert_red=0] "
+                 "[--limit=-1] [--min_frames=1700] [--min_distance=50.0] [--convert_yellow=0] "
+                 "[--convert_red=0] "
                  "[--ego_wheel_base=2.75] [--ego_length=4.34] [--ego_width=1.70]"
               << std::endl;
     return 1;
@@ -368,6 +368,7 @@ int main(int argc, char ** argv)
   int64_t search_nearest_route = 1;
   int64_t convert_yellow = 0;
   int64_t convert_red = 0;
+  double min_distance = 50.0;
   float ego_wheel_base = -1.0;
   float ego_length = -1.0;
   float ego_width = -1.0;
@@ -382,6 +383,8 @@ int main(int argc, char ** argv)
       limit = std::stoll(arg.substr(8));
     } else if (arg.find("--min_frames=") == 0) {
       min_frames = std::stoll(arg.substr(13));
+    } else if (arg.find("--min_distance=") == 0) {
+      min_distance = std::stod(arg.substr(15));
     } else if (arg.find("--search_nearest_route=") == 0) {
       search_nearest_route = std::stoll(arg.substr(23));
     } else if (arg.find("--convert_yellow=") == 0) {
@@ -409,6 +412,7 @@ int main(int argc, char ** argv)
   std::cout << "Vector map: " << vector_map_path << std::endl;
   std::cout << "Save directory: " << save_dir << std::endl;
   std::cout << "Step: " << step << ", Limit: " << limit << ", Min frames: " << min_frames
+            << ", Min distance: " << min_distance
             << ", Search nearest route: " << search_nearest_route
             << ", Convert yellow: " << convert_yellow << ", Convert red: " << convert_red
             << std::endl;
@@ -619,8 +623,7 @@ int main(int argc, char ** argv)
     // Shift kinematic pose to center
     // kinematic.pose.pose = utils::shift_x(kinematic.pose.pose, (ego_wheel_base / 2.0));
 
-    const FrameData frame_data{timestamp, sequence.route, tracking, kinematic,
-                               accel,     traffic_signal, turn_ind};
+    const FrameData frame_data{timestamp, tracking, kinematic, accel, traffic_signal, turn_ind};
 
     sequence.data_list.push_back(frame_data);
   }
@@ -666,6 +669,25 @@ int main(int argc, char ** argv)
                 << std::endl;
       continue;
     }
+
+    // Calculate the traveled distance and skip if it's too short
+    double traveled_distance = 0.0;
+    for (int64_t i = 1; i < n; ++i) {
+      const auto & pos1 = seq.data_list[i - 1].kinematic_state.pose.pose.position;
+      const auto & pos2 = seq.data_list[i].kinematic_state.pose.pose.position;
+      const double dx = pos2.x - pos1.x;
+      const double dy = pos2.y - pos1.y;
+      traveled_distance += std::sqrt(dx * dx + dy * dy);
+    }
+    std::cout << "Traveled distance: " << traveled_distance << " meters" << std::endl;
+    if (traveled_distance < min_distance) {
+      std::cout << "Skipping sequence with traveled distance " << traveled_distance
+                << " meters (min: " << min_distance << " meters)" << std::endl;
+      continue;
+    }
+
+    // Replace the goal pose with the last frame's pose
+    seq.route.goal_pose = seq.data_list.back().kinematic_state.pose.pose;
 
     // Process frames with stopping count tracking
     int64_t stopping_count = 0;
@@ -730,7 +752,7 @@ int main(int argc, char ** argv)
       // Get route lanes data with speed limits
       const std::vector<int64_t> segment_indices =
         lane_segment_context.select_route_segment_indices(
-          seq.data_list[i].route, center_x, center_y, center_z, NUM_SEGMENTS_IN_ROUTE);
+          seq.route, center_x, center_y, center_z, NUM_SEGMENTS_IN_ROUTE);
       const auto [route_lanes, route_lanes_speed_limit] =
         lane_segment_context.create_tensor_data_from_indices(
           map2bl, traffic_light_id_map, segment_indices, NUM_SEGMENTS_IN_ROUTE);
@@ -748,7 +770,7 @@ int main(int argc, char ** argv)
         lane_segment_context.create_line_string_tensor(map2bl, center_x, center_y);
 
       // Get goal pose
-      const geometry_msgs::msg::Pose & goal_pose = seq.data_list[i].route.goal_pose;
+      const geometry_msgs::msg::Pose & goal_pose = seq.route.goal_pose;
       const Eigen::Matrix4d goal_pose_in_map = utils::pose_to_matrix4d(goal_pose);
       const Eigen::Matrix4d goal_pose_in_bl = map2bl * goal_pose_in_map;
       const float goal_x = goal_pose_in_bl(0, 3);
