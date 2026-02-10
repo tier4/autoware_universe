@@ -33,6 +33,9 @@ StopPointFixer::StopPointFixer(
   const TrajectoryModifierParams & params)
 : TrajectoryModifierPluginBase(name, node_ptr, time_keeper, params)
 {
+  planning_factor_interface_ =
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+      node_ptr, "stop_point_fixer");
   set_up_params();
 }
 
@@ -61,6 +64,13 @@ void StopPointFixer::modify_trajectory(
 {
   if (is_trajectory_modification_required(traj_points, params, data)) {
     utils::replace_trajectory_with_stop_point(traj_points, data.current_odometry.pose.pose);
+
+    // Add PlanningFactor for the stop decision
+    const auto & ego_pose = data.current_odometry.pose.pose;
+    planning_factor_interface_->add(
+      traj_points, ego_pose, ego_pose, PlanningFactor::STOP,
+      autoware_internal_planning_msgs::msg::SafetyFactorArray{});
+
     auto clock_ptr = get_node_ptr()->get_clock();
     RCLCPP_DEBUG_THROTTLE(
       get_node_ptr()->get_logger(), *clock_ptr, 5000,
