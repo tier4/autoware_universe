@@ -679,8 +679,15 @@ bool TrajectoryChecker::check_trajectory_shift()
   bool is_valid = true;
   const auto & data = context_->data;
 
+  RCLCPP_DEBUG(logger_, "[trajectory_shift] check_trajectory_shift() called - enable: %s, has_last_valid_trajectory: %s",
+               params_.trajectory_shift.enable ? "true" : "false",
+               data->last_valid_trajectory ? "true" : "false");
+
   // チェック無効 or 前回の有効 trajectory がない場合は何もしない
   if (!params_.trajectory_shift.enable || !data->last_valid_trajectory) {
+    RCLCPP_DEBUG(logger_, "[trajectory_shift] Validation skipped - enable: %s, has_last_valid_trajectory: %s",
+                 params_.trajectory_shift.enable ? "true" : "false",
+                 data->last_valid_trajectory ? "true" : "false");
     return is_valid;
   }
 
@@ -737,6 +744,8 @@ bool TrajectoryChecker::check_trajectory_shift()
   // シフト判定自体をスキップする
   // ================================
   if (curr_reverse != prev_reverse) {
+    RCLCPP_DEBUG(logger_, "[trajectory_shift] Direction change detected (forward↔reverse), skipping validation. curr_reverse: %s, prev_reverse: %s",
+                 curr_reverse ? "true" : "false", prev_reverse ? "true" : "false");
     // 方向切替サイクルは「意図的な大きな変更」とみなし、trajectory_shift では弾かない
     status->longitudinal_shift = 0.0;
     return is_valid;  // true のまま
@@ -744,10 +753,23 @@ bool TrajectoryChecker::check_trajectory_shift()
 
   // ここから先は forward 同士 / reverse 同士のみ（従来ロジックを適用）
 
+  // デバッグ: 判定に使用する値をログ出力
+  RCLCPP_DEBUG(logger_, "[trajectory_shift] Validation values - ego_lat_dist: %.3f, lat_shift: %.3f, lon_shift: %.3f, "
+               "thresholds: lat_shift_th=%.3f, forward_shift_th=%.3f, backward_shift_th=%.3f, curr_idx: %zu",
+               ego_lat_dist, lat_shift, 0.0, // lon_shiftはまだ計算されていないので0.0でプレースホルダー
+               params_.trajectory_shift.lat_shift_th,
+               params_.trajectory_shift.forward_shift_th,
+               params_.trajectory_shift.backward_shift_th,
+               curr_idx);
+
   // 横シフトが両方でしきい値を超えていれば NG
   if (
     ego_lat_dist > params_.trajectory_shift.lat_shift_th &&
     lat_shift > params_.trajectory_shift.lat_shift_th) {
+    RCLCPP_WARN(logger_, "[trajectory_shift] ERROR: Lateral shift validation failed! "
+                "ego_lat_dist=%.3f > lat_shift_th=%.3f AND lat_shift=%.3f > lat_shift_th=%.3f",
+                ego_lat_dist, params_.trajectory_shift.lat_shift_th,
+                lat_shift, params_.trajectory_shift.lat_shift_th);
     context_->set_handling(params_.trajectory_shift.handling_type);
     override_all_error_diag_ |= params_.trajectory_shift.override_error_diag;
     context_->debug_pose_publisher->pushPoseMarker(nearest_pose, "trajectory_shift");
@@ -769,6 +791,8 @@ bool TrajectoryChecker::check_trajectory_shift()
 
   // 縦シフトチェック不要の場合
   if (!is_check_lon_shift) {
+    RCLCPP_DEBUG(logger_, "[trajectory_shift] Longitudinal shift check skipped - prev_idx: %zu, prev_trajectory_size: %zu, curr_idx: %zu, trajectory_size: %zu",
+                 prev_idx, prev_trajectory.points.size(), curr_idx, trajectory.points.size());
     status->longitudinal_shift = 0.0;
     return is_valid;
   }
@@ -779,9 +803,16 @@ bool TrajectoryChecker::check_trajectory_shift()
 
   status->longitudinal_shift = std::abs(lon_shift) > epsilon ? lon_shift : 0.0;
 
+  // デバッグ: 縦方向シフトの値を更新してログ出力
+  RCLCPP_DEBUG(logger_, "[trajectory_shift] Longitudinal shift calculated - lon_shift: %.3f, curr_idx: %zu, trajectory_size: %zu",
+               lon_shift, curr_idx, trajectory.points.size());
+
   // 先頭セグメント側なら「forward シフト」判定
   if (curr_idx == 0) {
     if (lon_shift > params_.trajectory_shift.forward_shift_th) {
+      RCLCPP_WARN(logger_, "[trajectory_shift] ERROR: Forward shift validation failed at trajectory start! "
+                  "lon_shift=%.3f > forward_shift_th=%.3f (curr_idx=%zu)",
+                  lon_shift, params_.trajectory_shift.forward_shift_th, curr_idx);
       context_->set_handling(params_.trajectory_shift.handling_type);
       override_all_error_diag_ |= params_.trajectory_shift.override_error_diag;
       context_->debug_pose_publisher->pushPoseMarker(nearest_pose, "trajectory_shift");
@@ -792,12 +823,16 @@ bool TrajectoryChecker::check_trajectory_shift()
 
   // 末尾側なら「backward シフト」判定
   if (lon_shift < 0.0 && std::abs(lon_shift) > params_.trajectory_shift.backward_shift_th) {
+    RCLCPP_WARN(logger_, "[trajectory_shift] ERROR: Backward shift validation failed at trajectory end! "
+                "lon_shift=%.3f < 0.0 AND |lon_shift|=%.3f > backward_shift_th=%.3f (curr_idx=%zu)",
+                lon_shift, std::abs(lon_shift), params_.trajectory_shift.backward_shift_th, curr_idx);
     context_->set_handling(params_.trajectory_shift.handling_type);
     override_all_error_diag_ |= params_.trajectory_shift.override_error_diag;
     context_->debug_pose_publisher->pushPoseMarker(nearest_pose, "trajectory_shift");
     is_valid = false;
   }
 
+  RCLCPP_DEBUG(logger_, "[trajectory_shift] check_trajectory_shift() result: %s", is_valid ? "VALID" : "INVALID");
   return is_valid;
 }
 
