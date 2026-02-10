@@ -63,6 +63,14 @@ TrafficLightClassifierNodelet::TrafficLightClassifierNodelet(const rclcpp::NodeO
     RCLCPP_ERROR(
       this->get_logger(), "please install CUDA, CUDNN and TensorRT to use cnn classifier");
 #endif
+  } else if (classifier_type == TrafficLightClassifierNodelet::ClassifierType::CoMLOpsTLR) {
+#if ENABLE_GPU
+    classifier_ptr_ = std::make_shared<CoMLOpsTLRClassifier>(this);
+#else
+    RCLCPP_ERROR(
+      this->get_logger(),
+      "please install CUDA, CUDNN and TensorRT to use CoMLOps-TLR classifier");
+#endif
   }
 
   diagnostics_interface_ptr_ =
