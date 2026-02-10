@@ -20,6 +20,7 @@
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <any>
 #include <memory>
@@ -33,15 +34,13 @@ namespace autoware::trajectory_safety_filter::plugin
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using TrajectoryPoints = std::vector<TrajectoryPoint>;
 using VehicleInfo = autoware::vehicle_info_utils::VehicleInfo;
+using MarkerArray = visualization_msgs::msg::MarkerArray;
 
 class SafetyFilterInterface
 {
 public:
   explicit SafetyFilterInterface(std::string name) : name_(std::move(name)) {}
-  SafetyFilterInterface(std::string name, const VehicleInfo & vehicle_info)
-  : name_(std::move(name)), vehicle_info_ptr_(std::make_shared<VehicleInfo>(vehicle_info))
-  {
-  }
+
   virtual ~SafetyFilterInterface() = default;
   SafetyFilterInterface(const SafetyFilterInterface &) = delete;
   SafetyFilterInterface & operator=(const SafetyFilterInterface &) = delete;
@@ -60,11 +59,13 @@ public:
     vehicle_info_ptr_ = std::make_shared<VehicleInfo>(vehicle_info);
   }
 
-  std::string get_name() const { return name_; }
+  [[nodiscard]] std::string get_name() const { return name_; }
 
 protected:
   std::string name_;
   std::shared_ptr<VehicleInfo> vehicle_info_ptr_;
+  MarkerArray debug_markers_;
+
 };
 }  // namespace autoware::trajectory_safety_filter::plugin
 

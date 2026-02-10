@@ -18,6 +18,7 @@
 #include "autoware/trajectory_safety_filter/safety_filter_interface.hpp"
 
 #include <autoware_internal_planning_msgs/msg/detail/candidate_trajectory__struct.hpp>
+#include <autoware/route_handler/route_handler.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/LaneletMap.h>
@@ -46,7 +47,7 @@ TrajectorySafetyFilter::TrajectorySafetyFilter(const rclcpp::NodeOptions & optio
   }
 
   sub_map_ = create_subscription<LaneletMapBin>(
-    "~/input/lanelet2_map", rclcpp::QoS{1}.transient_local(),
+    "/map/vector_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&TrajectorySafetyFilter::map_callback, this, std::placeholders::_1));
 
   sub_trajectories_ = create_subscription<CandidateTrajectories>(
@@ -136,8 +137,11 @@ void TrajectorySafetyFilter::map_callback(const LaneletMapBin::ConstSharedPtr ms
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  lanelet_map_ptr_ = std::make_shared<lanelet::LaneletMap>();
-  lanelet::utils::conversion::fromBinMsg(*msg, lanelet_map_ptr_);
+  if (!msg) {
+    return;
+  }
+  route_handler::RouteHandler route_handler(*msg);
+  lanelet_map_ptr_ = route_handler.getLaneletMapPtr();
 }
 
 void TrajectorySafetyFilter::load_metric(const std::string & name)

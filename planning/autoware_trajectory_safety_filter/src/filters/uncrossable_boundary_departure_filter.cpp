@@ -22,6 +22,7 @@ namespace autoware::trajectory_safety_filter::plugin
 bool UncrossableBoundaryDepartureFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
+  std::cerr << "UncrossableBoundaryDepartureFilter::is_feasible called" << std::endl;
   if (const auto has_invalid_input = is_invalid_input(traj_points, context)) {
     warn_throttle("%s", has_invalid_input->c_str());
     return false;
@@ -37,10 +38,16 @@ bool UncrossableBoundaryDepartureFilter::is_feasible(
     traj_points, traj_points, context.odometry->pose, context.odometry->twist.twist.linear.x,
     context.acceleration->accel.accel.linear.x);
 
+  std::cerr << "ll ptr << " << context.lanelet_map->size() << std::endl;
   if (!departure_data) {
-    warn_throttle("Failed to get departure data.");
+    warn_throttle("%s", departure_data.error().c_str());
     return false;
   }
+
+  std::cerr << "Departure data "
+            << departure_data->footprints_sides[boundary_departure_checker::FootprintType::NORMAL].size() << std::endl;
+  std::cerr << "Critical departure points size: "
+            << departure_data->critical_departure_points.size() << std::endl;
 
   return departure_data->critical_departure_points.empty();
 }
