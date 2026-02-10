@@ -17,10 +17,7 @@
           "default": 0.5
         }
       },
-      "required": [
-        "enable_auto_steering_offset_removal",
-        "steer_offset_filter_cutoff_hz"
-      ],
+      "required": ["enable_auto_steering_offset_removal", "steer_offset_filter_cutoff_hz"],
       "additionalProperties": false
     }
   },
