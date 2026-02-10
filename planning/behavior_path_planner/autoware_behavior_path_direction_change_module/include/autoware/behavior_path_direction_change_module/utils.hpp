@@ -81,6 +81,13 @@ bool checkLaneContinuitySafety(
   const PathWithLaneId & path, const std::vector<size_t> & cusp_indices,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler);
 
+
+void densifyPathByYawAndDistance(
+  std::vector<autoware_internal_planning_msgs::msg::PathPointWithLaneId> & points,
+  const double max_yaw_step_rad,   // 例: 5 deg = 0.087 rad
+  const double max_dist_step       // 例: 0.5 m
+);
+
 }  // namespace autoware::behavior_path_planner
 
 #endif  // AUTOWARE__BEHAVIOR_PATH_DIRECTION_CHANGE_MODULE__UTILS_HPP_

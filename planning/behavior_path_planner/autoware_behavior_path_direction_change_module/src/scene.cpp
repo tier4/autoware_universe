@@ -35,6 +35,55 @@
 #include <string>
 #include <unordered_map>
 
+namespace
+{
+void logDirectionChangeDebugInfo(
+  const autoware_internal_planning_msgs::msg::PathWithLaneId & current_reference_path,
+  const autoware_internal_planning_msgs::msg::PathWithLaneId & output_path,
+  const geometry_msgs::msg::Pose & ego_pose)
+{
+  using autoware_internal_planning_msgs::msg::PathPointWithLaneId;
+  auto print_path = [](const std::string & label,
+                       const autoware_internal_planning_msgs::msg::PathWithLaneId & path)
+  {
+    std::cout << "[MY_DEBUG] [DirectionChange] " << label
+              << " size=" << path.points.size() << std::endl;
+    std::cout << std::fixed << std::setprecision(3);
+    for (size_t i = 0; i < path.points.size(); ++i) {
+      const auto & pt = path.points[i].point;
+      const double x   = pt.pose.position.x;
+      const double y   = pt.pose.position.y;
+      const double yaw = tf2::getYaw(pt.pose.orientation);            // [rad]
+      const double yaw_deg = yaw * 180.0 / M_PI;                      // [deg]
+      const double v   = pt.longitudinal_velocity_mps;                // [m/s]
+      std::cout << "  idx=" << i
+                << ", x="   << x
+                << ", y="   << y
+                << ", yaw=" << yaw_deg << " deg"
+                << ", v="   << v << " m/s"
+                << std::endl;
+    }
+  };
+  // ① current_reference_path
+  print_path("Current reference path (input)", current_reference_path);
+  // ② output.path
+  print_path("Output path (DirectionChange output)", output_path);
+  // ③ Ego
+  {
+    std::cout << "[MY_DEBUG] [DirectionChange] Ego state:" << std::endl;
+    std::cout << std::fixed << std::setprecision(3);
+    const double ex   = ego_pose.position.x;
+    const double ey   = ego_pose.position.y;
+    const double eyaw = tf2::getYaw(ego_pose.orientation);
+    const double eyaw_deg = eyaw * 180.0 / M_PI;
+    std::cout << "  x="   << ex
+              << ", y="   << ey
+              << ", yaw=" << eyaw_deg << " deg"
+              << std::endl;
+  }
+}
+}  // namespace
+
 namespace autoware::behavior_path_planner
 {
 using autoware::motion_utils::calcSignedArcLength;
@@ -362,12 +411,42 @@ BehaviorModuleOutput DirectionChangeModule::plan()
           current_reference_path.points.begin() + first_cusp_index_,
           current_reference_path.points.end());
 
-      // 全点を reverse として扱う（CUSP ロジック不要）
-      for (auto & p : output.path.points) {
+      // ★ ここで幾何だけ densify（yaw と速度をいじる前）
+      const double max_yaw_step_rad = autoware_utils::deg2rad(5.0);  // 調整パラメータ
+      const double max_dist_step    = 0.5;                            // 調整パラメータ
+      densifyPathByYawAndDistance(output.path.points, max_yaw_step_rad, max_dist_step);
+      
+          // パラメータ例（仮）
+      const double backward_cruise_speed = 2.78;       // [m/s] バック時の巡航速度
+      const double backward_slow_speed   = 0.5;   // CUSP 直後の超低速
+      for (size_t i = 0; i < output.path.points.size(); ++i) {
+        auto & p = output.path.points[i];
+        // yaw を π だけ反転
         double yaw = tf2::getYaw(p.point.pose.orientation);
         yaw = autoware_utils::normalize_radian(yaw + M_PI);
         p.point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
-        p.point.longitudinal_velocity_mps = -std::abs(p.point.longitudinal_velocity_mps);
+        // 速度プロファイルを上書き
+        if (i == 0) {
+          // ほんの少しだけ動く (yaw大変化 × 0.1 m/s)
+          p.point.longitudinal_velocity_mps = -backward_slow_speed;
+        } else {
+          p.point.longitudinal_velocity_mps = -backward_cruise_speed;
+        }
+        
+        // Filter lane_ids: Keep only the maximum ID (backward lanelet)
+        // OSM creation rule: forward lanelet ID < backward lanelet ID
+        if (!p.lane_ids.empty() && p.lane_ids.size() > 1) {
+          std::vector<int64_t> original_ids = p.lane_ids;
+          int64_t max_lane_id = *std::max_element(p.lane_ids.begin(), p.lane_ids.end());
+          p.lane_ids = {max_lane_id};
+          
+          std::cout << "[MY_DEBUG] [DirectionChange] Filtered lane_ids: [";
+          for (size_t i = 0; i < original_ids.size(); ++i) {
+            std::cout << original_ids[i];
+            if (i < original_ids.size() - 1) std::cout << ", ";
+          }
+          std::cout << "] -> [" << max_lane_id << "]" << std::endl;
+        }
       }          
 
         // Reverse orientations for backward segment
@@ -385,21 +464,21 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     }
     
     modified_path_ = output.path;
-    if (!output.path.points.empty()) {
-      const size_t N = std::min<size_t>(5, output.path.points.size());
-      std::cout << "[MY_DEBUG] [DirectionChange] Output path head " << N
-                << " points (yaw [deg], v [m/s]):" << std::endl;
-      for (size_t i = 0; i < N; ++i) {
-        const auto & pt = output.path.points[i].point;
-        const double yaw = tf2::getYaw(pt.pose.orientation);  // [rad]
-        const double yaw_deg = yaw * 180.0 / M_PI;
-        const double v = pt.longitudinal_velocity_mps;
-        std::cout << "  idx=" << i
-                  << ", yaw=" << yaw_deg
-                  << " deg, v=" << v << " m/s"
-                  << std::endl;
-      }
-    }  
+//    if (!output.path.points.empty()) {
+//      const size_t N = std::min<size_t>(5, output.path.points.size());
+//      std::cout << "[MY_DEBUG] [DirectionChange] Output path head " << N
+//                << " points (yaw [deg], v [m/s]):" << std::endl;
+//     for (size_t i = 0; i < N; ++i) {
+//        const auto & pt = output.path.points[i].point;
+//        const double yaw = tf2::getYaw(pt.pose.orientation);  // [rad]
+//        const double yaw_deg = yaw * 180.0 / M_PI;
+//        const double v = pt.longitudinal_velocity_mps;
+//        std::cout << "  idx=" << i
+//                  << ", yaw=" << yaw_deg
+//                  << " deg, v=" << v << " m/s"
+//                  << std::endl;
+//      }
+//    }  
   }
 
   // Publish processed path to topic for debugging
@@ -431,13 +510,80 @@ BehaviorModuleOutput DirectionChangeModule::plan()
 
   output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
   
-  // Preserve drivable area information from previous module
-  // This is critical: PlannerManager's generateCombinedDrivableArea() needs drivable_area_info
-  // (specifically drivable_lanes) to compute left_bound and right_bound. Since we only modify
-  // path point orientations (yaw), not geometry, the lane information remains valid and should
-  // be preserved. Without this, generateDrivableArea() fails to compute bounds and throws error:
-  // "The right or left bound of drivable area is empty"
-  output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
+  // Handle drivable area information based on segment state
+  // For backward segment, filter drivable_lanes to match the actual path lane_ids
+  // to avoid mismatch between path (Lanelet1498) and drivable_area (Lanelet1483)
+  if (current_segment_state_ == PathSegmentState::BACKWARD_ONLY && !output.path.points.empty()) {
+    // Collect lane_ids from backward segment path
+    std::set<int64_t> backward_lane_ids;
+    for (const auto & point : output.path.points) {
+      backward_lane_ids.insert(point.lane_ids.begin(), point.lane_ids.end());
+    }
+    
+    std::cout << "[MY_DEBUG] [DirectionChange] Backward segment lane_ids: ";
+    for (const auto & id : backward_lane_ids) {
+      std::cout << id << " ";
+    }
+    std::cout << std::endl;
+    
+    // Filter drivable_lanes to only include lanes present in backward segment
+    auto prev_drivable_info = getPreviousModuleOutput().drivable_area_info;
+    output.drivable_area_info = prev_drivable_info;  // Copy structure
+    output.drivable_area_info.drivable_lanes.clear();  // Clear lanes for filtering
+    
+    for (const auto & drivable_lane : prev_drivable_info.drivable_lanes) {
+      // Check if any lane in this DrivableLanes is in backward_lane_ids
+      bool contains_backward_lane = false;
+      std::vector<int64_t> drivable_lane_ids;
+      
+      // Collect all lane IDs from this DrivableLanes
+      drivable_lane_ids.push_back(drivable_lane.right_lane.id());
+      drivable_lane_ids.push_back(drivable_lane.left_lane.id());
+      for (const auto & middle_lane : drivable_lane.middle_lanes) {
+        drivable_lane_ids.push_back(middle_lane.id());
+      }
+      
+      // Check if any of these IDs match backward segment
+      for (const auto & id : drivable_lane_ids) {
+        if (backward_lane_ids.count(id) > 0) {
+          contains_backward_lane = true;
+          break;
+        }
+      }
+      
+      if (contains_backward_lane) {
+        output.drivable_area_info.drivable_lanes.push_back(drivable_lane);
+        std::cout << "[MY_DEBUG] [DirectionChange] Keeping drivable_lane with ids: ";
+        for (const auto & id : drivable_lane_ids) {
+          std::cout << id << " ";
+        }
+        std::cout << std::endl;
+      } else {
+        std::cout << "[MY_DEBUG] [DirectionChange] Filtering out drivable_lane with ids: ";
+        for (const auto & id : drivable_lane_ids) {
+          std::cout << id << " ";
+        }
+        std::cout << std::endl;
+      }
+    }
+    
+    std::cout << "[MY_DEBUG] [DirectionChange] Filtered drivable_lanes count: " 
+              << output.drivable_area_info.drivable_lanes.size() 
+              << " (original: " << prev_drivable_info.drivable_lanes.size() << ")" << std::endl;
+  } else {
+    // Forward segment or no cusps: preserve drivable area information from previous module
+    output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
+  }
+
+  // debug infoを出力
+  if (planner_data_ && planner_data_->self_odometry) {
+    const auto & ego_pose = planner_data_->self_odometry->pose.pose;
+
+  logDirectionChangeDebugInfo(
+    current_reference_path,   // ① input
+    output.path,              // ② output
+    ego_pose);                // ③ ego pose
+  }
 
   return output;
 }
