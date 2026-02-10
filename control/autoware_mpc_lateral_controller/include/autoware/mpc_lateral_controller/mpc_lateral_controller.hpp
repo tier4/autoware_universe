@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__MPC_LATERAL_CONTROLLER__MPC_LATERAL_CONTROLLER_HPP_
 #define AUTOWARE__MPC_LATERAL_CONTROLLER__MPC_LATERAL_CONTROLLER_HPP_
 
+#include "autoware/mpc_lateral_controller/lowpass_filter.hpp"
 #include "autoware/mpc_lateral_controller/mpc.hpp"
 #include "autoware/mpc_lateral_controller/mpc_trajectory.hpp"
 #include "autoware/mpc_lateral_controller/mpc_utils.hpp"
@@ -59,7 +60,7 @@ public:
     rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater);
   virtual ~MpcLateralController();
 
-  void set_steering_offset(double offset) override { m_steering_offset = offset; }
+  void set_steering_offset(double offset) override { m_steering_offset_ = offset; }
 
 private:
   rclcpp::Clock::SharedPtr clock_;
@@ -68,6 +69,10 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr m_pub_predicted_traj;
   rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr m_pub_debug_values;
   rclcpp::Publisher<Float32Stamped>::SharedPtr m_pub_steer_offset;
+
+  std::shared_ptr<Butterworth2dFilter> lpf_steer_offset_;
+  double m_steering_offset_;
+  double m_steering_offset_filtered_;
 
   std::shared_ptr<diagnostic_updater::Updater>
     diag_updater_{};  // Diagnostic updater for publishing diagnostic data.
@@ -146,9 +151,6 @@ private:
 
   // Flag indicating whether auto steering offset removal is enabled.
   bool enable_auto_steering_offset_removal_;
-
-  // Steering offset value for offset compensation.
-  double m_steering_offset;
 
   /**
    * @brief Initialize the timer
