@@ -1,0 +1,9 @@
+/**:
+  ros__parameters:
+    static_map_path: "$(find-pkg-share autoware_static_freespace_planner)/map_path"
+    waypoint_search_radius_m: 2.0  # [m]
+    waypoint_yaw_threshold_rad: 0.26  # [rad]
+    update_rate: 1.0  # [Hz]
+    th_arrived_distance_m: 1.0  # [m]
+    th_stopped_time_sec: 1.0  # [s]
+    th_stopped_velocity_mps: 0.1  # [m/s]
