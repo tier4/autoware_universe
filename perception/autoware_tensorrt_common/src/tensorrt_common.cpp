@@ -653,10 +653,18 @@ bool TrtCommon::validateNetworkIO()
 {
   auto success = true;
   if (!network_io_ || network_io_->empty()) {
-    logger_->log(
-      nvinfer1::ILogger::Severity::kWARNING,
-      "Network IO is empty, skipping validation. It might lead to undefined behavior");
-    return success;
+    if (engine_) {
+      network_io_ = std::make_unique<std::vector<NetworkIO>>();
+      const int32_t n = getNbIOTensors();
+      for (int32_t i = 0; i < n; ++i) {
+        network_io_->emplace_back(getIOTensorName(i), getTensorShape(i));
+      }
+    } else {
+      logger_->log(
+        nvinfer1::ILogger::Severity::kWARNING,
+        "Network IO is empty, skipping validation. It might lead to undefined behavior");
+      return success;
+    }
   }
 
   if (network_io_->size() != static_cast<size_t>(getNbIOTensors())) {

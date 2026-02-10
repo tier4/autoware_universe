@@ -4,6 +4,11 @@ Changelog for package autoware_traffic_light_classifier
 
 0.46.0 (2025-06-20)
 -------------------
+* feat: add CoMLOps-TLR classifier option (classifier_type: 2)
+  * Load CoMLOps-TLR-v1.0.1-dynamic_batch ONNX, build TensorRT engine, run inference
+  * Decode TLR output (color + type) and remap to TrafficLightArray (same interface as CNN classifier)
+  * Parameters: model_path, precision, score_threshold, max_batch_size, input_height, input_width
+  * Engine file is generated from ONNX and cached as ``.engine`` alongside the model
 
 0.45.0 (2025-05-22)
 -------------------

@@ -44,6 +44,7 @@
 
 #if ENABLE_GPU
 #include "classifier/cnn_classifier.hpp"
+#include "classifier/comlops_tlr_classifier.hpp"
 #endif
 
 #include "classifier/color_classifier.hpp"
@@ -65,6 +66,7 @@ public:
   enum ClassifierType {
     HSVFilter = 0,
     CNN = 1,
+    CoMLOpsTLR = 2,
   };
 
   uint8_t classify_traffic_light_type_;

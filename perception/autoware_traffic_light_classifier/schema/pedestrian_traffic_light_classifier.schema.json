@@ -39,13 +39,33 @@
         },
         "classifier_type": {
           "type": "integer",
-          "description": "Type of classifier used. {0: hsv_filter, 1: cnn}.",
+          "description": "Type of classifier used. {0: hsv_filter, 1: cnn, 2: comlops_tlr}.",
           "default": 1
         },
         "traffic_light_type": {
           "type": "integer",
           "description": "Type of traffic light to classify. {0: car, 1: pedestrian}.",
           "default": 1
+        },
+        "score_threshold": {
+          "type": "number",
+          "description": "Detection score threshold for CoMLOps-TLR.",
+          "default": 0.2
+        },
+        "max_batch_size": {
+          "type": "integer",
+          "description": "Max batch size for CoMLOps-TLR.",
+          "default": 64
+        },
+        "input_height": {
+          "type": "integer",
+          "description": "Model input height for CoMLOps-TLR.",
+          "default": 64
+        },
+        "input_width": {
+          "type": "integer",
+          "description": "Model input width for CoMLOps-TLR.",
+          "default": 64
         }
       },
       "required": [

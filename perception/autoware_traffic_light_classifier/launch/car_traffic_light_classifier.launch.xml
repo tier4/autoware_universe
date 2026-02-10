@@ -5,8 +5,9 @@
   <arg name="input/rois" default="~/rois"/>
   <arg name="output/traffic_signals" default="classified/traffic_signals"/>
   <arg name="param_path" default="$(find-pkg-share autoware_traffic_light_classifier)/config/car_traffic_light_classifier.param.yaml" description="classifier param path"/>
-  <arg name="model_path" default="$(var data_path)/traffic_light_classifier/traffic_light_classifier_mobilenetv2_batch_6.onnx" description="car model path"/>
-  <arg name="label_path" default="$(var data_path)/traffic_light_classifier/lamp_labels.txt" description="car label path"/>
+  <!-- For classifier_type 1 (CNN): use mobilenet/efficientnet onnx; for classifier_type 2 (CoMLOps-TLR): use CoMLOps-TLR-v1.0.1-dynamic_batch.onnx -->
+  <arg name="model_path" default="$(var data_path)/traffic_light_classifier/traffic_light_classifier_mobilenetv2_batch_6.onnx" description="car model path (CNN or CoMLOps-TLR onnx)"/>
+  <arg name="label_path" default="$(var data_path)/traffic_light_classifier/lamp_labels.txt" description="car label path (used for CNN only)"/>
   <arg name="build_only" default="false" description="exit after trt engine is built"/>
 
   <node pkg="autoware_traffic_light_classifier" exec="traffic_light_classifier_node" name="traffic_light_classifier" output="screen">
