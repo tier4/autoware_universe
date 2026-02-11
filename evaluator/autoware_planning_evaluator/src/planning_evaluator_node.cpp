@@ -47,6 +47,9 @@ PlanningEvaluatorNode::PlanningEvaluatorNode(const rclcpp::NodeOptions & node_op
   tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
   transform_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
+  objects_sub_ =
+    std::make_shared<agnocast::PollingSubscriber<PredictedObjects>>(this, "~/input/objects");
+
   // Timer callback to publish evaluator diagnostics
   using namespace std::literals::chrono_literals;
   timer_ = rclcpp::create_timer(
@@ -302,7 +305,7 @@ void PlanningEvaluatorNode::onTimer()
   const auto ego_state_ptr = odometry_sub_.take_data();
   onOdometry(ego_state_ptr);
   {
-    const auto objects_msg = objects_sub_.take_data();
+    const auto objects_msg = objects_sub_->take_data();
     onObjects(objects_msg);
   }
 
@@ -427,7 +430,8 @@ void PlanningEvaluatorNode::onReferenceTrajectory(const Trajectory::ConstSharedP
   metrics_calculator_.setReferenceTrajectory(*traj_msg);
 }
 
-void PlanningEvaluatorNode::onObjects(const PredictedObjects::ConstSharedPtr objects_msg)
+void PlanningEvaluatorNode::onObjects(
+  const agnocast::ipc_shared_ptr<const PredictedObjects> & objects_msg)
 {
   if (!objects_msg) {
     return;

@@ -26,6 +26,8 @@
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_utils/math/accumulator.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
+
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
@@ -102,7 +104,7 @@ public:
    * @brief callback on receiving a dynamic objects array
    * @param [in] objects_msg received dynamic object array message
    */
-  void onObjects(const PredictedObjects::ConstSharedPtr objects_msg);
+  void onObjects(const agnocast::ipc_shared_ptr<const PredictedObjects> & objects_msg);
 
   /**
    * @brief callback on receiving a modified goal
@@ -169,8 +171,7 @@ private:
   autoware_utils::InterProcessPollingSubscriber<Trajectory> traj_sub_{this, "~/input/trajectory"};
   autoware_utils::InterProcessPollingSubscriber<Trajectory> ref_sub_{
     this, "~/input/reference_trajectory"};
-  autoware_utils::InterProcessPollingSubscriber<PredictedObjects> objects_sub_{
-    this, "~/input/objects"};
+  agnocast::PollingSubscriber<PredictedObjects>::SharedPtr objects_sub_;
   autoware_utils::InterProcessPollingSubscriber<PoseWithUuidStamped> modified_goal_sub_{
     this, "~/input/modified_goal"};
   autoware_utils::InterProcessPollingSubscriber<Odometry> odometry_sub_{this, "~/input/odometry"};
