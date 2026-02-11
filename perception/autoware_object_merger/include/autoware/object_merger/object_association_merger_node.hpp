@@ -20,14 +20,18 @@
 #include "autoware_utils/ros/published_time_publisher.hpp"
 #include "autoware_utils/system/stop_watch.hpp"
 
+#include <agnocast/agnocast_timer.hpp>
+#include <agnocast/message_filters/subscriber.hpp>
+#include <agnocast/message_filters/sync_policies/approximate_time.hpp>
+#include <agnocast/message_filters/synchronizer.hpp>
+#include <agnocast/node/agnocast_node.hpp>
+#include <agnocast/node/tf2/buffer.hpp>
+#include <agnocast/node/tf2/transform_listener.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_perception_msgs/msg/detected_objects.hpp"
 
-#include <message_filters/subscriber.h>
-#include <message_filters/sync_policies/approximate_time.h>
-#include <message_filters/synchronizer.h>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2/convert.h>
 #include <tf2/transform_datatypes.h>
@@ -38,9 +42,6 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #endif
 
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-
 #include <map>
 #include <memory>
 #include <optional>
@@ -49,7 +50,7 @@
 
 namespace autoware::object_merger
 {
-class ObjectAssociationMergerNode : public rclcpp::Node
+class ObjectAssociationMergerNode : public agnocast::Node
 {
   using Label = autoware_perception_msgs::msg::ObjectClassification;
 
@@ -59,20 +60,24 @@ public:
 
 private:
   void objectsCallback(
-    const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr & input_objects0_msg,
-    const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr & input_objects1_msg);
+    const agnocast::ipc_shared_ptr<autoware_perception_msgs::msg::DetectedObjects const> &
+      input_objects0_msg,
+    const agnocast::ipc_shared_ptr<autoware_perception_msgs::msg::DetectedObjects const> &
+      input_objects1_msg);
 
   void diagCallback();
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr merged_object_pub_;
-  message_filters::Subscriber<autoware_perception_msgs::msg::DetectedObjects> object0_sub_{};
-  message_filters::Subscriber<autoware_perception_msgs::msg::DetectedObjects> object1_sub_{};
+  agnocast::Buffer tf_buffer_;
+  std::unique_ptr<agnocast::TransformListener> tf_listener_;
+  agnocast::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr merged_object_pub_;
+  agnocast::message_filters::Subscriber<autoware_perception_msgs::msg::DetectedObjects,
+    agnocast::Node> object0_sub_{};
+  agnocast::message_filters::Subscriber<autoware_perception_msgs::msg::DetectedObjects,
+    agnocast::Node> object1_sub_{};
 
-  using SyncPolicy = message_filters::sync_policies::ApproximateTime<
+  using SyncPolicy = agnocast::message_filters::sync_policies::ApproximateTime<
     autoware_perception_msgs::msg::DetectedObjects, autoware_perception_msgs::msg::DetectedObjects>;
-  using Sync = message_filters::Synchronizer<SyncPolicy>;
+  using Sync = agnocast::message_filters::Synchronizer<SyncPolicy>;
   typename std::shared_ptr<Sync> sync_ptr_;
 
   int sync_queue_size_;
@@ -84,8 +89,9 @@ private:
   double initialization_timeout_sec_;
   std::optional<rclcpp::Time> last_sync_time_;
   std::optional<double> message_interval_;
-  rclcpp::TimerBase::SharedPtr timeout_timer_;
-  std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_ptr_;
+  agnocast::WallTimer<std::function<void()>>::SharedPtr timeout_timer_;
+  std::unique_ptr<autoware_utils::BasicDiagnosticsInterface<agnocast::Node>>
+    diagnostics_interface_ptr_;
 
   PriorityMode priority_mode_;
   std::vector<int64_t> class_based_priority_matrix_;
@@ -102,10 +108,12 @@ private:
   } overlapped_judge_param_;
 
   // debug publisher
-  std::unique_ptr<autoware_utils::DebugPublisher> processing_time_publisher_;
+  std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>
+    processing_time_publisher_;
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
 
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<autoware_utils::BasicPublishedTimePublisher<agnocast::Node>>
+    published_time_publisher_;
 };
 }  // namespace autoware::object_merger
 
