@@ -10,6 +10,8 @@ find_package(Boost REQUIRED)
 find_package(PCL REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(OpenMP)
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
 
 include_directories(
   include
@@ -56,6 +58,13 @@ rclcpp_components_register_node(${PROJECT_NAME}
 rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::ground_segmentation::ScanGroundFilterComponent"
   EXECUTABLE scan_ground_filter_node)
+
+agnocast_components_register_node(${PROJECT_NAME}
+  PLUGIN "autoware::ground_segmentation::AgnocastScanGroundFilterComponent"
+  EXECUTABLE agnocast_scan_ground_filter_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
+)
 
 
 ament_auto_package(INSTALL_TO_SHARE

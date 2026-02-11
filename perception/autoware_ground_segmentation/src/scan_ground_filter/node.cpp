@@ -19,7 +19,6 @@
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/math/normalization.hpp>
 #include <autoware_utils/math/unit_conversion.hpp>
-#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
 #include <memory>
 #include <string>
@@ -28,59 +27,69 @@
 namespace autoware::ground_segmentation
 {
 using autoware::pointcloud_preprocessor::get_param;
-using autoware::vehicle_info_utils::VehicleInfoUtils;
+using autoware::pointcloud_preprocessor::is_rclcpp_node_v;
+using autoware::vehicle_info_utils::VehicleInfoUtilsTemplate;
 using autoware_utils::calc_distance3d;
 using autoware_utils::deg2rad;
 using autoware_utils::normalize_degree;
 using autoware_utils::normalize_radian;
 using autoware_utils::ScopedTimeTrack;
 
-ScanGroundFilterComponent::ScanGroundFilterComponent(const rclcpp::NodeOptions & options)
-: autoware::pointcloud_preprocessor::Filter("ScanGroundFilter", options)
+template <typename NodeT>
+ScanGroundFilterComponentBase<NodeT>::ScanGroundFilterComponentBase(
+  const rclcpp::NodeOptions & options)
+: autoware::pointcloud_preprocessor::FilterBase<NodeT>("ScanGroundFilter", options)
 {
   // set initial parameters
   {
     // modes
-    elevation_grid_mode_ = declare_parameter<bool>("elevation_grid_mode");
+    elevation_grid_mode_ = this->template declare_parameter<bool>("elevation_grid_mode");
 
     // common parameters
-    radial_divider_angle_rad_ =
-      static_cast<float>(deg2rad(declare_parameter<double>("radial_divider_angle_deg")));
+    radial_divider_angle_rad_ = static_cast<float>(
+      deg2rad(this->template declare_parameter<double>("radial_divider_angle_deg")));
     radial_dividers_num_ = std::ceil(2.0 * M_PI / radial_divider_angle_rad_);
 
     // common thresholds
-    global_slope_max_angle_rad_ =
-      static_cast<float>(deg2rad(declare_parameter<double>("global_slope_max_angle_deg")));
-    local_slope_max_angle_rad_ =
-      static_cast<float>(deg2rad(declare_parameter<double>("local_slope_max_angle_deg")));
+    global_slope_max_angle_rad_ = static_cast<float>(
+      deg2rad(this->template declare_parameter<double>("global_slope_max_angle_deg")));
+    local_slope_max_angle_rad_ = static_cast<float>(
+      deg2rad(this->template declare_parameter<double>("local_slope_max_angle_deg")));
     global_slope_max_ratio_ = std::tan(global_slope_max_angle_rad_);
     local_slope_max_ratio_ = std::tan(local_slope_max_angle_rad_);
-    split_points_distance_tolerance_ =
-      static_cast<float>(declare_parameter<double>("split_points_distance_tolerance"));
+    split_points_distance_tolerance_ = static_cast<float>(
+      this->template declare_parameter<double>("split_points_distance_tolerance"));
 
     // vehicle info
-    vehicle_info_ = VehicleInfoUtils(*this).getVehicleInfo();
+    vehicle_info_ = VehicleInfoUtilsTemplate<NodeT>(*this).getVehicleInfo();
 
     // non-grid parameters
-    use_virtual_ground_point_ = declare_parameter<bool>("use_virtual_ground_point");
-    split_height_distance_ = static_cast<float>(declare_parameter<double>("split_height_distance"));
+    use_virtual_ground_point_ =
+      this->template declare_parameter<bool>("use_virtual_ground_point");
+    split_height_distance_ =
+      static_cast<float>(this->template declare_parameter<double>("split_height_distance"));
 
     // grid mode parameters
-    use_recheck_ground_cluster_ = declare_parameter<bool>("use_recheck_ground_cluster");
+    use_recheck_ground_cluster_ =
+      this->template declare_parameter<bool>("use_recheck_ground_cluster");
     recheck_start_distance_ =
-      static_cast<float>(declare_parameter<double>("recheck_start_distance"));
-    use_lowest_point_ = declare_parameter<bool>("use_lowest_point");
-    detection_range_z_max_ = static_cast<float>(declare_parameter<double>("detection_range_z_max"));
-    low_priority_region_x_ = static_cast<float>(declare_parameter<double>("low_priority_region_x"));
-    center_pcl_shift_ = static_cast<float>(declare_parameter<double>("center_pcl_shift"));
+      static_cast<float>(this->template declare_parameter<double>("recheck_start_distance"));
+    use_lowest_point_ = this->template declare_parameter<bool>("use_lowest_point");
+    detection_range_z_max_ =
+      static_cast<float>(this->template declare_parameter<double>("detection_range_z_max"));
+    low_priority_region_x_ =
+      static_cast<float>(this->template declare_parameter<double>("low_priority_region_x"));
+    center_pcl_shift_ =
+      static_cast<float>(this->template declare_parameter<double>("center_pcl_shift"));
     non_ground_height_threshold_ =
-      static_cast<float>(declare_parameter<double>("non_ground_height_threshold"));
+      static_cast<float>(this->template declare_parameter<double>("non_ground_height_threshold"));
 
     // grid parameters
-    grid_size_m_ = static_cast<float>(declare_parameter<double>("grid_size_m"));
+    grid_size_m_ =
+      static_cast<float>(this->template declare_parameter<double>("grid_size_m"));
     grid_mode_switch_radius_ =
-      static_cast<float>(declare_parameter<double>("grid_mode_switch_radius"));
-    gnd_grid_buffer_size_ = declare_parameter<int>("gnd_grid_buffer_size");
+      static_cast<float>(this->template declare_parameter<double>("grid_mode_switch_radius"));
+    gnd_grid_buffer_size_ = this->template declare_parameter<int>("gnd_grid_buffer_size");
     virtual_lidar_z_ = vehicle_info_.vehicle_height_m;
 
     // initialize grid filter
@@ -109,21 +118,23 @@ ScanGroundFilterComponent::ScanGroundFilterComponent(const rclcpp::NodeOptions &
 
   using std::placeholders::_1;
   set_param_res_ = this->add_on_set_parameters_callback(
-    std::bind(&ScanGroundFilterComponent::onParameter, this, _1));
+    std::bind(&ScanGroundFilterComponentBase::onParameter, this, _1));
 
   // initialize debug tool
   {
-    using autoware_utils::DebugPublisher;
     using autoware_utils::StopWatch;
     stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
-    debug_publisher_ptr_ = std::make_unique<DebugPublisher>(this, "scan_ground_filter");
+    debug_publisher_ptr_ =
+      std::make_unique<autoware_utils::BasicDebugPublisher<NodeT>>(this, "scan_ground_filter");
     stop_watch_ptr_->tic("cyclic_time");
     stop_watch_ptr_->tic("processing_time");
+  }
 
-    bool use_time_keeper = declare_parameter<bool>("publish_processing_time_detail");
+  {
+    bool use_time_keeper = this->template declare_parameter<bool>("publish_processing_time_detail");
     if (use_time_keeper) {
       detailed_processing_time_publisher_ =
-        this->create_publisher<autoware_utils::ProcessingTimeDetail>(
+        this->template create_publisher<autoware_utils::ProcessingTimeDetail>(
           "~/debug/processing_time_detail_ms", 1);
       auto time_keeper = autoware_utils::TimeKeeper(detailed_processing_time_publisher_);
       time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(time_keeper);
@@ -134,7 +145,8 @@ ScanGroundFilterComponent::ScanGroundFilterComponent(const rclcpp::NodeOptions &
   }
 }
 
-void ScanGroundFilterComponent::convertPointcloud(
+template <typename NodeT>
+void ScanGroundFilterComponentBase<NodeT>::convertPointcloud(
   const PointCloud2ConstPtr & in_cloud,
   std::vector<PointCloudVector> & out_radial_ordered_points) const
 {
@@ -186,14 +198,16 @@ void ScanGroundFilterComponent::convertPointcloud(
   }
 }
 
-void ScanGroundFilterComponent::calcVirtualGroundOrigin(pcl::PointXYZ & point) const
+template <typename NodeT>
+void ScanGroundFilterComponentBase<NodeT>::calcVirtualGroundOrigin(pcl::PointXYZ & point) const
 {
   point.x = vehicle_info_.wheel_base_m;
   point.y = 0;
   point.z = 0;
 }
 
-void ScanGroundFilterComponent::classifyPointCloud(
+template <typename NodeT>
+void ScanGroundFilterComponentBase<NodeT>::classifyPointCloud(
   const PointCloud2ConstPtr & in_cloud,
   const std::vector<PointCloudVector> & in_radial_ordered_clouds,
   pcl::PointIndices & out_no_ground_indices) const
@@ -316,7 +330,8 @@ void ScanGroundFilterComponent::classifyPointCloud(
   }
 }
 
-void ScanGroundFilterComponent::extractObjectPoints(
+template <typename NodeT>
+void ScanGroundFilterComponentBase<NodeT>::extractObjectPoints(
   const PointCloud2ConstPtr & in_cloud_ptr, const pcl::PointIndices & in_indices,
   PointCloud2 & out_object_cloud) const
 {
@@ -333,7 +348,8 @@ void ScanGroundFilterComponent::extractObjectPoints(
   }
 }
 
-void ScanGroundFilterComponent::faster_filter(
+template <typename NodeT>
+void ScanGroundFilterComponentBase<NodeT>::faster_filter(
   const PointCloud2ConstPtr & input, [[maybe_unused]] const IndicesPtr & indices,
   PointCloud2 & output,
   [[maybe_unused]] const autoware::pointcloud_preprocessor::TransformInfo & transform_info)
@@ -341,7 +357,7 @@ void ScanGroundFilterComponent::faster_filter(
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
-  std::scoped_lock lock(mutex_);
+  std::scoped_lock lock(this->mutex_);
   if (stop_watch_ptr_) stop_watch_ptr_->toc("processing_time", true);
 
   if (!data_accessor_.isInitialized()) {
@@ -372,16 +388,17 @@ void ScanGroundFilterComponent::faster_filter(
   if (debug_publisher_ptr_ && stop_watch_ptr_) {
     const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
     const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
-    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    debug_publisher_ptr_->template publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/cyclic_time_ms", cyclic_time_ms);
-    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    debug_publisher_ptr_->template publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/processing_time_ms", processing_time_ms);
   }
 }
 
 // TODO(taisa1): Temporary Implementation: Delete this function definition when all the filter
 // nodes conform to new API.
-void ScanGroundFilterComponent::filter(
+template <typename NodeT>
+void ScanGroundFilterComponentBase<NodeT>::filter(
   const PointCloud2ConstPtr & input, [[maybe_unused]] const IndicesPtr & indices,
   PointCloud2 & output)
 {
@@ -390,7 +407,8 @@ void ScanGroundFilterComponent::filter(
   (void)output;
 }
 
-rcl_interfaces::msg::SetParametersResult ScanGroundFilterComponent::onParameter(
+template <typename NodeT>
+rcl_interfaces::msg::SetParametersResult ScanGroundFilterComponentBase<NodeT>::onParameter(
   const std::vector<rclcpp::Parameter> & param)
 {
   if (get_param(param, "grid_size_m", grid_size_m_)) {
@@ -399,51 +417,63 @@ rcl_interfaces::msg::SetParametersResult ScanGroundFilterComponent::onParameter(
   if (get_param(param, "grid_mode_switch_radius", grid_mode_switch_radius_)) {
     // grid_ptr_->initialize(grid_size_m_, radial_divider_angle_rad_, grid_mode_switch_radius_);
   }
-  double global_slope_max_angle_deg{get_parameter("global_slope_max_angle_deg").as_double()};
+  double global_slope_max_angle_deg{
+    this->get_parameter("global_slope_max_angle_deg").as_double()};
   if (get_param(param, "global_slope_max_angle_deg", global_slope_max_angle_deg)) {
     global_slope_max_angle_rad_ = deg2rad(global_slope_max_angle_deg);
     global_slope_max_ratio_ = std::tan(global_slope_max_angle_rad_);
     RCLCPP_DEBUG(
-      get_logger(), "Setting global_slope_max_angle_rad to: %f.", global_slope_max_angle_rad_);
-    RCLCPP_DEBUG(get_logger(), "Setting global_slope_max_ratio to: %f.", global_slope_max_ratio_);
+      this->get_logger(), "Setting global_slope_max_angle_rad to: %f.",
+      global_slope_max_angle_rad_);
+    RCLCPP_DEBUG(
+      this->get_logger(), "Setting global_slope_max_ratio to: %f.", global_slope_max_ratio_);
   }
-  double local_slope_max_angle_deg{get_parameter("local_slope_max_angle_deg").as_double()};
+  double local_slope_max_angle_deg{
+    this->get_parameter("local_slope_max_angle_deg").as_double()};
   if (get_param(param, "local_slope_max_angle_deg", local_slope_max_angle_deg)) {
     local_slope_max_angle_rad_ = deg2rad(local_slope_max_angle_deg);
     local_slope_max_ratio_ = std::tan(local_slope_max_angle_rad_);
     RCLCPP_DEBUG(
-      get_logger(), "Setting local_slope_max_angle_rad to: %f.", local_slope_max_angle_rad_);
-    RCLCPP_DEBUG(get_logger(), "Setting local_slope_max_ratio to: %f.", local_slope_max_ratio_);
+      this->get_logger(), "Setting local_slope_max_angle_rad to: %f.",
+      local_slope_max_angle_rad_);
+    RCLCPP_DEBUG(
+      this->get_logger(), "Setting local_slope_max_ratio to: %f.", local_slope_max_ratio_);
   }
-  double radial_divider_angle_deg{get_parameter("radial_divider_angle_deg").as_double()};
+  double radial_divider_angle_deg{
+    this->get_parameter("radial_divider_angle_deg").as_double()};
   if (get_param(param, "radial_divider_angle_deg", radial_divider_angle_deg)) {
     radial_divider_angle_rad_ = deg2rad(radial_divider_angle_deg);
     radial_dividers_num_ = std::ceil(2.0 * M_PI / radial_divider_angle_rad_);
     // grid_ptr_->initialize(grid_size_m_, radial_divider_angle_rad_, grid_mode_switch_radius_);
     RCLCPP_DEBUG(
-      get_logger(), "Setting radial_divider_angle_rad to: %f.", radial_divider_angle_rad_);
-    RCLCPP_DEBUG(get_logger(), "Setting radial_dividers_num to: %zu.", radial_dividers_num_);
+      this->get_logger(), "Setting radial_divider_angle_rad to: %f.",
+      radial_divider_angle_rad_);
+    RCLCPP_DEBUG(
+      this->get_logger(), "Setting radial_dividers_num to: %zu.", radial_dividers_num_);
   }
   if (get_param(param, "split_points_distance_tolerance", split_points_distance_tolerance_)) {
     RCLCPP_DEBUG(
-      get_logger(), "Setting split_points_distance_tolerance to: %f.",
+      this->get_logger(), "Setting split_points_distance_tolerance to: %f.",
       split_points_distance_tolerance_);
   }
   if (get_param(param, "split_height_distance", split_height_distance_)) {
-    RCLCPP_DEBUG(get_logger(), "Setting split_height_distance to: %f.", split_height_distance_);
+    RCLCPP_DEBUG(
+      this->get_logger(), "Setting split_height_distance to: %f.", split_height_distance_);
   }
   if (get_param(param, "use_virtual_ground_point", use_virtual_ground_point_)) {
     RCLCPP_DEBUG_STREAM(
-      get_logger(),
+      this->get_logger(),
       "Setting use_virtual_ground_point to: " << std::boolalpha << use_virtual_ground_point_);
   }
   if (get_param(param, "use_recheck_ground_cluster", use_recheck_ground_cluster_)) {
     RCLCPP_DEBUG_STREAM(
-      get_logger(),
-      "Setting use_recheck_ground_cluster to: " << std::boolalpha << use_recheck_ground_cluster_);
+      this->get_logger(),
+      "Setting use_recheck_ground_cluster to: " << std::boolalpha
+                                                 << use_recheck_ground_cluster_);
   }
   if (get_param(param, "recheck_start_distance", recheck_start_distance_)) {
-    RCLCPP_DEBUG(get_logger(), "Setting recheck_start_distance to: %f.", recheck_start_distance_);
+    RCLCPP_DEBUG(
+      this->get_logger(), "Setting recheck_start_distance to: %f.", recheck_start_distance_);
   }
   rcl_interfaces::msg::SetParametersResult result;
   result.successful = true;
@@ -452,7 +482,12 @@ rcl_interfaces::msg::SetParametersResult ScanGroundFilterComponent::onParameter(
   return result;
 }
 
+// Explicit template instantiation for rclcpp::Node and agnocast::Node versions
+template class ScanGroundFilterComponentBase<rclcpp::Node>;
+template class ScanGroundFilterComponentBase<agnocast::Node>;
+
 }  // namespace autoware::ground_segmentation
 
 #include <rclcpp_components/register_node_macro.hpp>
 RCLCPP_COMPONENTS_REGISTER_NODE(autoware::ground_segmentation::ScanGroundFilterComponent)
+RCLCPP_COMPONENTS_REGISTER_NODE(autoware::ground_segmentation::AgnocastScanGroundFilterComponent)

@@ -21,7 +21,7 @@
 #include <autoware/pointcloud_preprocessor/filter.hpp>
 #include <autoware/pointcloud_preprocessor/transform_info.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
-#include <autoware_vehicle_info_utils/vehicle_info.hpp>
+#include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
@@ -47,8 +47,14 @@ namespace autoware::ground_segmentation
 {
 using autoware::vehicle_info_utils::VehicleInfo;
 
-class ScanGroundFilterComponent : public autoware::pointcloud_preprocessor::Filter
+template <typename NodeT>
+class ScanGroundFilterComponentBase : public autoware::pointcloud_preprocessor::FilterBase<NodeT>
 {
+  using PointCloud2 = typename autoware::pointcloud_preprocessor::FilterBase<NodeT>::PointCloud2;
+  using PointCloud2ConstPtr =
+    typename autoware::pointcloud_preprocessor::FilterBase<NodeT>::PointCloud2ConstPtr;
+  using IndicesPtr = typename autoware::pointcloud_preprocessor::FilterBase<NodeT>::IndicesPtr;
+
 private:
   // classified point label
   // (0: not classified, 1: ground, 2: not ground, 3: follow previous point,
@@ -191,7 +197,10 @@ private:
   std::unique_ptr<GridGroundFilter> grid_ground_filter_ptr_;
 
   // time keeper related
-  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
+  std::conditional_t<
+    autoware::pointcloud_preprocessor::is_rclcpp_node_v<NodeT>,
+    typename rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr,
+    typename agnocast::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr>
     detailed_processing_time_publisher_;
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
 
@@ -243,7 +252,7 @@ private:
     PointCloud2 & out_object_cloud) const;
 
   /** \brief Parameter service callback result : needed to be hold */
-  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult onParameter(
@@ -251,15 +260,40 @@ private:
 
   // debugger
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{nullptr};
-  std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_ptr_{nullptr};
+  std::unique_ptr<autoware_utils::BasicDebugPublisher<NodeT>> debug_publisher_ptr_{nullptr};
 
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-  explicit ScanGroundFilterComponent(const rclcpp::NodeOptions & options);
+  explicit ScanGroundFilterComponentBase(const rclcpp::NodeOptions & options);
 
   // for test
   friend ScanGroundFilterTest;
 };
+
+// rclcpp::Node version (backward compatible)
+class ScanGroundFilterComponent : public ScanGroundFilterComponentBase<rclcpp::Node>
+{
+public:
+  explicit ScanGroundFilterComponent(const rclcpp::NodeOptions & options)
+  : ScanGroundFilterComponentBase<rclcpp::Node>(options)
+  {
+  }
+};
+
+// agnocast::Node version
+class AgnocastScanGroundFilterComponent : public ScanGroundFilterComponentBase<agnocast::Node>
+{
+public:
+  explicit AgnocastScanGroundFilterComponent(const rclcpp::NodeOptions & options)
+  : ScanGroundFilterComponentBase<agnocast::Node>(options)
+  {
+  }
+};
+
+// Extern template declarations
+extern template class ScanGroundFilterComponentBase<rclcpp::Node>;
+extern template class ScanGroundFilterComponentBase<agnocast::Node>;
+
 }  // namespace autoware::ground_segmentation
 
 #endif  // SCAN_GROUND_FILTER__NODE_HPP_
