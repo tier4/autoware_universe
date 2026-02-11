@@ -288,6 +288,8 @@ private:
   void validate_intensity_field(const PointCloud2 & input);
   bool has_field(const PointCloud2 & input, const std::string & field_name);
 
+  agnocast::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr agnocast_sub_input_;
+
   // Parameter validation helpers (static, private)
   static bool validate_positive_double(const rclcpp::Parameter & param, std::string & reason);
   static bool validate_non_negative_double(const rclcpp::Parameter & param, std::string & reason);

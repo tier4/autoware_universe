@@ -166,6 +166,16 @@ PolarVoxelOutlierFilterComponent::PolarVoxelOutlierFilterComponent(
   set_param_res_ = this->add_on_set_parameters_callback(
     [this](const std::vector<rclcpp::Parameter> & p) { return param_callback(p); });
 
+  // Replace rclcpp subscription with agnocast subscription for zero-copy IPC
+  sub_input_.reset();
+  agnocast_sub_input_ = agnocast::create_subscription<sensor_msgs::msg::PointCloud2>(
+    this, "input", rclcpp::SensorDataQoS().keep_last(max_queue_size_),
+    [this](agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> msg) {
+      auto input_ptr =
+        std::shared_ptr<const sensor_msgs::msg::PointCloud2>(msg.get(), [](const sensor_msgs::msg::PointCloud2 *) {});
+      this->input_indices_callback(input_ptr, PointIndicesConstPtr());
+    });
+
   RCLCPP_INFO(
     get_logger(),
     "Polar Voxel Outlier Filter initialized - supports PointXYZIRC and PointXYZIRCAEDT with %s "
