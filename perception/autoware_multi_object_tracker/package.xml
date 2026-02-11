@@ -15,6 +15,7 @@
   <buildtool_depend>eigen3_cmake_module</buildtool_depend>
 
   <depend>agnocastlib</depend>
+  <depend>agnocast_components</depend>
   <depend>autoware_object_recognition_utils</depend>
   <depend>autoware_perception_msgs</depend>
   <depend>autoware_utils</depend>
