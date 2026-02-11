@@ -210,6 +210,8 @@ private:
    */
   void publish_debug_info(const DebugInfo & debug_info) const;
 
+  agnocast::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr agnocast_sub_input_;
+
   Updater updater_{this};
 
   // Debug parameters
