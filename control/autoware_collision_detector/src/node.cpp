@@ -171,6 +171,12 @@ CollisionDetectorNode::CollisionDetectorNode(const rclcpp::NodeOptions & node_op
   updater_.add("collision_detect", this, &CollisionDetectorNode::checkCollision);
   updater_.setPeriod(0.1);
 
+  // Agnocast polling subscribers
+  sub_pointcloud_ = std::make_shared<agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>>(
+    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos());
+  sub_dynamic_objects_ = std::make_shared<agnocast::PollingSubscriber<PredictedObjects>>(
+    this, "~/input/objects");
+
   vehicle_stop_checker_ = std::make_unique<autoware::motion_utils::VehicleStopChecker>(this);
 }
 
@@ -339,10 +345,9 @@ void CollisionDetectorNode::checkCollision(diagnostic_updater::DiagnosticStatusW
     return;
   }
 
-  pointcloud_ptr_ = sub_pointcloud_.take_data();
-  object_ptr_ = sub_dynamic_objects_.take_data();
+  pointcloud_ptr_ = sub_pointcloud_->take_data();
+  object_ptr_ = sub_dynamic_objects_->take_data();
   operation_mode_ptr_ = sub_operation_mode_.take_data();
-
   if (node_param_.use_pointcloud && !pointcloud_ptr_) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), 5000 /* ms */, "waiting for pointcloud info...");

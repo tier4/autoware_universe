@@ -211,6 +211,12 @@ AEB::AEB(const rclcpp::NodeOptions & node_options)
   const auto period_ns = rclcpp::Rate(aeb_hz).period();
   timer_ = rclcpp::create_timer(this, this->get_clock(), period_ns, std::bind(&AEB::onTimer, this));
 
+  // Agnocast polling subscribers
+  sub_point_cloud_ = std::make_shared<agnocast::PollingSubscriber<PointCloud2>>(
+    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos());
+  predicted_objects_sub_ = std::make_shared<agnocast::PollingSubscriber<PredictedObjects>>(
+    this, "~/input/objects");
+
   debug_processing_time_detail_pub_ =
     create_publisher<autoware_utils::ProcessingTimeDetail>("~/debug/processing_time_detail_ms", 1);
   time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(debug_processing_time_detail_pub_);
@@ -289,7 +295,7 @@ void AEB::onImu(const Imu::ConstSharedPtr input_msg)
   tf2::doTransform(input_msg->angular_velocity, *angular_velocity_ptr_, transform_stamped.value());
 }
 
-void AEB::onPointCloud(const PointCloud2::ConstSharedPtr input_msg)
+void AEB::onPointCloud(const agnocast::ipc_shared_ptr<const PointCloud2> & input_msg)
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
   PointCloud::Ptr pointcloud_ptr(new PointCloud);
@@ -348,7 +354,7 @@ bool AEB::fetchLatestData()
   }
 
   if (use_pointcloud_data_) {
-    const auto pointcloud_ptr = sub_point_cloud_.take_data();
+    const auto pointcloud_ptr = sub_point_cloud_->take_data();
     if (!pointcloud_ptr) {
       return missing("object pointcloud message");
     }
@@ -362,7 +368,7 @@ bool AEB::fetchLatestData()
   }
 
   if (use_predicted_object_data_) {
-    predicted_objects_ptr_ = predicted_objects_sub_.take_data();
+    predicted_objects_ptr_ = predicted_objects_sub_->take_data();
     if (!predicted_objects_ptr_) {
       return missing("predicted objects");
     }

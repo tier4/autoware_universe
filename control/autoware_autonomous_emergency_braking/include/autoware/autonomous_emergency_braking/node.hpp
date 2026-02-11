@@ -17,6 +17,7 @@
 
 #include "autoware_utils/system/time_keeper.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
@@ -331,15 +332,13 @@ public:
   explicit AEB(const rclcpp::NodeOptions & node_options);
 
   // subscriber
-  autoware_utils::InterProcessPollingSubscriber<PointCloud2> sub_point_cloud_{
-    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos()};
+  agnocast::PollingSubscriber<PointCloud2>::SharedPtr sub_point_cloud_;
   autoware_utils::InterProcessPollingSubscriber<VelocityReport> sub_velocity_{
     this, "~/input/velocity"};
   autoware_utils::InterProcessPollingSubscriber<Imu> sub_imu_{this, "~/input/imu"};
   autoware_utils::InterProcessPollingSubscriber<Trajectory> sub_predicted_traj_{
     this, "~/input/predicted_trajectory"};
-  autoware_utils::InterProcessPollingSubscriber<PredictedObjects> predicted_objects_sub_{
-    this, "~/input/objects"};
+  agnocast::PollingSubscriber<PredictedObjects>::SharedPtr predicted_objects_sub_;
   autoware_utils::InterProcessPollingSubscriber<AutowareState> sub_autoware_state_{
     this, "/autoware/state"};
   // publisher
@@ -359,7 +358,7 @@ public:
    * @brief Callback for point cloud messages
    * @param input_msg Shared pointer to the point cloud message
    */
-  void onPointCloud(const PointCloud2::ConstSharedPtr input_msg);
+  void onPointCloud(const agnocast::ipc_shared_ptr<const PointCloud2> & input_msg);
 
   /**
    * @brief Callback for IMU messages
@@ -538,7 +537,7 @@ public:
   VelocityReport::ConstSharedPtr current_velocity_ptr_{nullptr};
   Vector3::SharedPtr angular_velocity_ptr_{nullptr};
   Trajectory::ConstSharedPtr predicted_traj_ptr_{nullptr};
-  PredictedObjects::ConstSharedPtr predicted_objects_ptr_{nullptr};
+  agnocast::ipc_shared_ptr<const PredictedObjects> predicted_objects_ptr_;
   AutowareState::ConstSharedPtr autoware_state_{nullptr};
 
   tf2_ros::Buffer tf_buffer_{get_clock()};
