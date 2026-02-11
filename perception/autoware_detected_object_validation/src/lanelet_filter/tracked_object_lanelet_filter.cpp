@@ -22,7 +22,9 @@ namespace lanelet_filter
 TrackedObjectLaneletFilterNode::TrackedObjectLaneletFilterNode(
   const rclcpp::NodeOptions & node_options)
 : ObjectLaneletFilterBase<
-    autoware_perception_msgs::msg::TrackedObjects, autoware_perception_msgs::msg::TrackedObject>(
+    autoware_perception_msgs::msg::TrackedObjects,
+    autoware_perception_msgs::msg::TrackedObject,
+    agnocast::Node>(
     "tracked_object_lanelet_filter_node", node_options)
 {
 }

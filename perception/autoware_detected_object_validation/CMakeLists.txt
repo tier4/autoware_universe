@@ -17,6 +17,9 @@ find_package(Eigen3 REQUIRED)
 ### Find Boost Dependencies
 find_package(Boost REQUIRED)
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 include_directories(
   include
   SYSTEM
@@ -58,6 +61,7 @@ ament_auto_add_library(object_lanelet_filter SHARED
 target_link_libraries(object_lanelet_filter
   Eigen3::Eigen
 )
+ament_target_dependencies(object_lanelet_filter agnocastlib)
 
 ament_auto_add_library(object_position_filter SHARED
   src/position_filter/position_filter.cpp
@@ -69,14 +73,18 @@ rclcpp_components_register_node(obstacle_pointcloud_based_validator
   EXECUTABLE obstacle_pointcloud_based_validator_node
 )
 
-rclcpp_components_register_node(object_lanelet_filter
+agnocast_components_register_node(object_lanelet_filter
   PLUGIN "autoware::detected_object_validation::lanelet_filter::DetectedObjectLaneletFilterNode"
   EXECUTABLE object_lanelet_filter_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components_detected
 )
 
-rclcpp_components_register_node(object_lanelet_filter
+agnocast_components_register_node(object_lanelet_filter
   PLUGIN "autoware::detected_object_validation::lanelet_filter::TrackedObjectLaneletFilterNode"
   EXECUTABLE tracked_object_lanelet_filter_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 rclcpp_components_register_node(object_position_filter

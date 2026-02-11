@@ -22,7 +22,9 @@ namespace lanelet_filter
 DetectedObjectLaneletFilterNode::DetectedObjectLaneletFilterNode(
   const rclcpp::NodeOptions & node_options)
 : ObjectLaneletFilterBase<
-    autoware_perception_msgs::msg::DetectedObjects, autoware_perception_msgs::msg::DetectedObject>(
+    autoware_perception_msgs::msg::DetectedObjects,
+    autoware_perception_msgs::msg::DetectedObject,
+    agnocast::Node>(
     "object_lanelet_filter_node", node_options)
 {
 }

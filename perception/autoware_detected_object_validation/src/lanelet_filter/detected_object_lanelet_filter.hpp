@@ -17,7 +17,7 @@
 
 #include "lanelet_filter_base.hpp"
 
-#include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_perception_msgs/msg/detected_object.hpp>
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
@@ -29,7 +29,9 @@ namespace lanelet_filter
 
 class DetectedObjectLaneletFilterNode
 : public ObjectLaneletFilterBase<
-    autoware_perception_msgs::msg::DetectedObjects, autoware_perception_msgs::msg::DetectedObject>
+    autoware_perception_msgs::msg::DetectedObjects,
+    autoware_perception_msgs::msg::DetectedObject,
+    agnocast::Node>
 {
 public:
   explicit DetectedObjectLaneletFilterNode(const rclcpp::NodeOptions & node_options);

@@ -6,6 +6,7 @@
   <arg name="filtering_range_param" default="$(find-pkg-share autoware_detected_object_validation)/config/tracked_object_lanelet_filter.param.yaml"/>
 
   <node pkg="autoware_detected_object_validation" exec="tracked_object_lanelet_filter_node" name="tracked_object_lanelet_filter" output="screen">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
     <remap from="input/vector_map" to="$(var vector_map_topic)"/>
     <remap from="input/object" to="$(var input/object)"/>
     <remap from="output/object" to="$(var output/object)"/>

@@ -99,8 +99,8 @@ std::optional<visualization_msgs::msg::Marker> createPolygonMarker(
   return marker;
 }
 
-template <typename ObjsMsgType, typename ObjMsgType>
-void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::publishDebugMarkers(
+template <typename ObjsMsgType, typename ObjMsgType, typename NodeType>
+void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType, NodeType>::publishDebugMarkers(
   rclcpp::Time stamp, const LinearRing2d & hull, const std::vector<BoxAndLanelet> & lanelets)
 {
   using visualization_msgs::msg::Marker;
@@ -130,14 +130,22 @@ void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::publishDebugMarkers(
       marker_array.markers.push_back(std::move(*marker));
     }
   }
-  viz_pub_->publish(marker_array);
+
+  if constexpr (is_rclcpp_node_v<NodeType>) {
+    viz_pub_->publish(marker_array);
+  } else {
+    auto loaned = viz_pub_->borrow_loaned_message();
+    *loaned = marker_array;
+    viz_pub_->publish(std::move(loaned));
+  }
 }
 
 // explicit instantiation
 template class ObjectLaneletFilterBase<
   autoware_perception_msgs::msg::DetectedObjects, autoware_perception_msgs::msg::DetectedObject>;
 template class ObjectLaneletFilterBase<
-  autoware_perception_msgs::msg::TrackedObjects, autoware_perception_msgs::msg::TrackedObject>;
+  autoware_perception_msgs::msg::TrackedObjects, autoware_perception_msgs::msg::TrackedObject,
+  agnocast::Node>;
 
 }  // namespace lanelet_filter
 }  // namespace autoware::detected_object_validation

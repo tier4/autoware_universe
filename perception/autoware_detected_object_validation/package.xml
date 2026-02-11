@@ -30,6 +30,8 @@
   <depend>rclcpp_components</depend>
   <depend>tf2_geometry_msgs</depend>
   <depend>tf2_ros</depend>
+  <depend>agnocastlib</depend>
+  <depend>agnocast_components</depend>
 
   <exec_depend>autoware_probabilistic_occupancy_grid_map</exec_depend>
 

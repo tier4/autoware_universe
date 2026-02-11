@@ -17,7 +17,7 @@
 
 #include "lanelet_filter_base.hpp"
 
-#include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_perception_msgs/msg/tracked_object.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
@@ -29,7 +29,9 @@ namespace lanelet_filter
 
 class TrackedObjectLaneletFilterNode
 : public ObjectLaneletFilterBase<
-    autoware_perception_msgs::msg::TrackedObjects, autoware_perception_msgs::msg::TrackedObject>
+    autoware_perception_msgs::msg::TrackedObjects,
+    autoware_perception_msgs::msg::TrackedObject,
+    agnocast::Node>
 {
 public:
   explicit TrackedObjectLaneletFilterNode(const rclcpp::NodeOptions & node_options);
