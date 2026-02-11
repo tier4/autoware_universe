@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 project(autoware_planning_validator)
 
 find_package(autoware_cmake REQUIRED)
+find_package(agnocastlib REQUIRED)
 autoware_package()
 
 # planning validator

@@ -55,6 +55,10 @@ PlanningValidatorNode::PlanningValidatorNode(const rclcpp::NodeOptions & options
     manager_.load_plugin(*this, name, context_);
   }
 
+  // Agnocast polling subscriber
+  sub_pointcloud_ = std::make_shared<agnocast::PollingSubscriber<PointCloud2>>(
+    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos());
+
   logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 }
@@ -98,7 +102,17 @@ void PlanningValidatorNode::setData(const Trajectory::ConstSharedPtr & traj_msg)
   auto & data = context_->data;
   data->current_kinematics = sub_kinematics_.take_data();
   data->current_acceleration = sub_acceleration_.take_data();
-  data->obstacle_pointcloud = sub_pointcloud_.take_data();
+  {
+    auto agnocast_pc = sub_pointcloud_->take_data();
+    if (agnocast_pc) {
+      auto holder =
+        std::make_shared<agnocast::ipc_shared_ptr<const PointCloud2>>(std::move(agnocast_pc));
+      data->obstacle_pointcloud =
+        PointCloud2::ConstSharedPtr(holder->get(), [holder](const PointCloud2 *) {});
+    } else {
+      data->obstacle_pointcloud = nullptr;
+    }
+  }
   data->traffic_signals = sub_traffic_signals_.take_data();
   data->set_current_trajectory(traj_msg);
   data->set_route(sub_route_.take_data());
