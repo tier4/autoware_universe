@@ -15,7 +15,11 @@
 #ifndef TRAFFIC_LIGHT_MULTI_CAMERA_FUSION_NODE_HPP_
 #define TRAFFIC_LIGHT_MULTI_CAMERA_FUSION_NODE_HPP_
 
-#include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
+#include <agnocast/message_filters/subscriber.hpp>
+#include <agnocast/message_filters/sync_policies/approximate_time.hpp>
+#include <agnocast/message_filters/sync_policies/exact_time.hpp>
+#include <agnocast/message_filters/synchronizer.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
@@ -24,10 +28,6 @@
 #include <tier4_perception_msgs/msg/traffic_light_roi_array.hpp>
 
 #include <lanelet2_core/Forward.h>
-#include <message_filters/subscriber.h>
-#include <message_filters/sync_policies/approximate_time.h>
-#include <message_filters/sync_policies/exact_time.h>
-#include <message_filters/synchronizer.h>
 
 #include <list>
 #include <map>
@@ -39,7 +39,7 @@
 namespace autoware::traffic_light
 {
 
-namespace mf = message_filters;
+namespace mf = agnocast::message_filters;
 
 struct FusionRecord
 {
@@ -62,7 +62,7 @@ bool operator<(const FusionRecordArr & r1, const FusionRecordArr & r2)
   return rclcpp::Time(r1.header.stamp) < rclcpp::Time(r2.header.stamp);
 }
 
-class MultiCameraFusion : public rclcpp::Node
+class MultiCameraFusion : public agnocast::Node
 {
 public:
   using CamInfoType = sensor_msgs::msg::CameraInfo;
@@ -80,10 +80,11 @@ public:
 
 private:
   void trafficSignalRoiCallback(
-    const CamInfoType::ConstSharedPtr cam_info_msg, const RoiArrayType::ConstSharedPtr roi_msg,
-    const SignalArrayType::ConstSharedPtr signal_msg);
+    const agnocast::ipc_shared_ptr<CamInfoType const> & cam_info_msg,
+    const agnocast::ipc_shared_ptr<RoiArrayType const> & roi_msg,
+    const agnocast::ipc_shared_ptr<SignalArrayType const> & signal_msg);
 
-  void mapCallback(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr input_msg);
+  void mapCallback(const agnocast::ipc_shared_ptr<autoware_map_msgs::msg::LaneletMapBin> & input_msg);
 
   void multiCameraFusion(std::map<IdType, FusionRecord> & fused_record_map);
 
@@ -100,14 +101,14 @@ private:
     mf::sync_policies::ApproximateTime<CamInfoType, RoiArrayType, SignalArrayType>;
   using ApproximateSync = mf::Synchronizer<ApproximateSyncPolicy>;
 
-  std::vector<std::unique_ptr<mf::Subscriber<SignalArrayType>>> signal_subs_;
-  std::vector<std::unique_ptr<mf::Subscriber<RoiArrayType>>> roi_subs_;
-  std::vector<std::unique_ptr<mf::Subscriber<CamInfoType>>> cam_info_subs_;
+  std::vector<std::unique_ptr<mf::Subscriber<SignalArrayType, agnocast::Node>>> signal_subs_;
+  std::vector<std::unique_ptr<mf::Subscriber<RoiArrayType, agnocast::Node>>> roi_subs_;
+  std::vector<std::unique_ptr<mf::Subscriber<CamInfoType, agnocast::Node>>> cam_info_subs_;
   std::vector<std::unique_ptr<ExactSync>> exact_sync_subs_;
   std::vector<std::unique_ptr<ApproximateSync>> approximate_sync_subs_;
-  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr map_sub_;
+  agnocast::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr map_sub_;
 
-  rclcpp::Publisher<NewSignalArrayType>::SharedPtr signal_pub_;
+  agnocast::Publisher<NewSignalArrayType>::SharedPtr signal_pub_;
   /*
   the mapping from traffic light id (instance id) to regulatory element id (group id)
   */

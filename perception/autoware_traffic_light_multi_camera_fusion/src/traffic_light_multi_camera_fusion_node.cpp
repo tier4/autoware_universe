@@ -141,7 +141,7 @@ namespace autoware::traffic_light
 {
 
 MultiCameraFusion::MultiCameraFusion(const rclcpp::NodeOptions & node_options)
-: Node("traffic_light_multi_camera_fusion", node_options)
+: agnocast::Node("traffic_light_multi_camera_fusion", node_options)
 {
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -156,11 +156,46 @@ MultiCameraFusion::MultiCameraFusion(const rclcpp::NodeOptions & node_options)
     std::string roi_topic = camera_ns + "/detection/rois";
     std::string cam_info_topic = camera_ns + "/camera_info";
     roi_subs_.emplace_back(
-      new mf::Subscriber<RoiArrayType>(this, roi_topic, rclcpp::QoS{1}.get_rmw_qos_profile()));
-    signal_subs_.emplace_back(new mf::Subscriber<SignalArrayType>(
+      new mf::Subscriber<RoiArrayType, agnocast::Node>(
+        this, roi_topic, rclcpp::QoS{1}.get_rmw_qos_profile()));
+    signal_subs_.emplace_back(new mf::Subscriber<SignalArrayType, agnocast::Node>(
       this, signal_topic, rclcpp::QoS{1}.get_rmw_qos_profile()));
-    cam_info_subs_.emplace_back(new mf::Subscriber<CamInfoType>(
+    cam_info_subs_.emplace_back(new mf::Subscriber<CamInfoType, agnocast::Node>(
       this, cam_info_topic, rclcpp::SensorDataQoS().get_rmw_qos_profile()));
+
+    // Debug: log each individual topic arrival
+    std::string ns = camera_ns;
+    roi_subs_.back()->registerCallback(
+      std::function<void(const agnocast::ipc_shared_ptr<RoiArrayType const> &)>(
+        [this, ns](const agnocast::ipc_shared_ptr<RoiArrayType const> & msg) {
+          RCLCPP_INFO(
+            get_logger(),
+            "===============================================\n"
+            "  [DEBUG] ROI arrived: %s  stamp: %.3f  count: %zu\n"
+            "===============================================",
+            ns.c_str(), rclcpp::Time(msg->header.stamp).seconds(), msg->rois.size());
+        }));
+    signal_subs_.back()->registerCallback(
+      std::function<void(const agnocast::ipc_shared_ptr<SignalArrayType const> &)>(
+        [this, ns](const agnocast::ipc_shared_ptr<SignalArrayType const> & msg) {
+          RCLCPP_INFO(
+            get_logger(),
+            "===============================================\n"
+            "  [DEBUG] SIGNAL arrived: %s  stamp: %.3f  count: %zu\n"
+            "===============================================",
+            ns.c_str(), rclcpp::Time(msg->header.stamp).seconds(), msg->signals.size());
+        }));
+    cam_info_subs_.back()->registerCallback(
+      std::function<void(const agnocast::ipc_shared_ptr<CamInfoType const> &)>(
+        [this, ns](const agnocast::ipc_shared_ptr<CamInfoType const> & msg) {
+          RCLCPP_INFO(
+            get_logger(),
+            "===============================================\n"
+            "  [DEBUG] CAM_INFO arrived: %s  stamp: %.3f\n"
+            "===============================================",
+            ns.c_str(), rclcpp::Time(msg->header.stamp).seconds());
+        }));
+
     if (is_approximate_sync_ == false) {
       exact_sync_subs_.emplace_back(new ExactSync(
         ExactSyncPolicy(10), *(cam_info_subs_.back()), *(roi_subs_.back()),
@@ -176,16 +211,25 @@ MultiCameraFusion::MultiCameraFusion(const rclcpp::NodeOptions & node_options)
     }
   }
 
-  map_sub_ = create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
-    "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
+  map_sub_ = agnocast::create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
+    this, "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&MultiCameraFusion::mapCallback, this, _1));
-  signal_pub_ = create_publisher<NewSignalArrayType>("~/output/traffic_signals", rclcpp::QoS{1});
+  signal_pub_ = agnocast::create_publisher<NewSignalArrayType>(
+    this, "~/output/traffic_signals", rclcpp::QoS{1});
 }
 
 void MultiCameraFusion::trafficSignalRoiCallback(
-  const CamInfoType::ConstSharedPtr cam_info_msg, const RoiArrayType::ConstSharedPtr roi_msg,
-  const SignalArrayType::ConstSharedPtr signal_msg)
+  const agnocast::ipc_shared_ptr<CamInfoType const> & cam_info_msg,
+  const agnocast::ipc_shared_ptr<RoiArrayType const> & roi_msg,
+  const agnocast::ipc_shared_ptr<SignalArrayType const> & signal_msg)
 {
+  RCLCPP_INFO(
+    get_logger(),
+    "===============================================\n"
+    "  [trafficSignalRoiCallback] CALLED\n"
+    "  frame_id: %s, rois: %zu, signals: %zu\n"
+    "===============================================",
+    cam_info_msg->header.frame_id.c_str(), roi_msg->rois.size(), signal_msg->signals.size());
   rclcpp::Time stamp(roi_msg->header.stamp);
   /*
   Insert the received record array to the table.
@@ -198,15 +242,22 @@ void MultiCameraFusion::trafficSignalRoiCallback(
   multiCameraFusion(fused_record_map);
   groupFusion(fused_record_map, grouped_record_map);
 
-  NewSignalArrayType msg_out;
-  convertOutputMsg(grouped_record_map, msg_out);
-  msg_out.stamp = cam_info_msg->header.stamp;
-  signal_pub_->publish(msg_out);
+  auto msg_out = signal_pub_->borrow_loaned_message();
+  convertOutputMsg(grouped_record_map, *msg_out);
+  msg_out->stamp = cam_info_msg->header.stamp;
+  signal_pub_->publish(std::move(msg_out));
 }
 
 void MultiCameraFusion::mapCallback(
-  const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr input_msg)
+  const agnocast::ipc_shared_ptr<autoware_map_msgs::msg::LaneletMapBin> & input_msg)
 {
+  RCLCPP_INFO(
+    get_logger(),
+    "===============================================\n"
+    "  [mapCallback] CALLED\n"
+    "  map data size: %zu\n"
+    "===============================================",
+    input_msg->data.size());
   lanelet::LaneletMapPtr lanelet_map_ptr = std::make_shared<lanelet::LaneletMap>();
 
   lanelet::utils::conversion::fromBinMsg(*input_msg, lanelet_map_ptr);
