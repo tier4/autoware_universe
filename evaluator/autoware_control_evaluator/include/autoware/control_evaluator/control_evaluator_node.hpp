@@ -19,6 +19,7 @@
 #include "autoware/control_evaluator/metrics/metric.hpp"
 #include "autoware_utils/math/accumulator.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
@@ -107,8 +108,7 @@ private:
     this, "~/input/behavior_path"};
   autoware_utils::InterProcessPollingSubscriber<SteeringReport> steering_sub_{
     this, "~/input/steering_status"};
-  autoware_utils::InterProcessPollingSubscriber<PredictedObjects> objects_sub_{
-    this, "~/input/objects"};
+  agnocast::PollingSubscriber<PredictedObjects>::SharedPtr objects_sub_;
   std::unordered_map<
     std::string, autoware_utils::InterProcessPollingSubscriber<PlanningFactorArray>>
     planning_factors_sub_;

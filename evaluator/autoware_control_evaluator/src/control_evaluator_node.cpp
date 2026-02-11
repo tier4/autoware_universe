@@ -66,6 +66,9 @@ ControlEvaluatorNode::ControlEvaluatorNode(const rclcpp::NodeOptions & node_opti
     stop_deviation_abs_accumulators_.emplace(module_name, Accumulator<double>());
   }
 
+  objects_sub_ =
+    std::make_shared<agnocast::PollingSubscriber<PredictedObjects>>(this, "~/input/objects");
+
   // Publisher
   processing_time_pub_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
@@ -555,7 +558,7 @@ void ControlEvaluatorNode::onTimer()
     AddStopDeviationMetricMsg(*odom);
 
     // add object related metrics
-    const auto objects = objects_sub_.take_data();
+    const auto objects = objects_sub_->take_data();
     if (objects) {
       AddObjectMetricMsg(*odom, *objects);
     }

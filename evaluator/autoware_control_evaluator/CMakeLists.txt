@@ -4,6 +4,8 @@ project(autoware_control_evaluator)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
 find_package(pluginlib REQUIRED)
 
 ament_auto_add_library(control_evaluator_node SHARED
@@ -13,6 +15,13 @@ ament_auto_add_library(control_evaluator_node SHARED
 rclcpp_components_register_node(control_evaluator_node
   PLUGIN "control_diagnostics::ControlEvaluatorNode"
   EXECUTABLE control_evaluator
+)
+
+agnocast_components_register_node(control_evaluator_node
+  PLUGIN "control_diagnostics::ControlEvaluatorNode"
+  EXECUTABLE agnocast_control_evaluator
+  EXECUTOR SingleThreadedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 if(BUILD_TESTING)
