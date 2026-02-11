@@ -22,6 +22,7 @@ from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch.substitutions import PathJoinSubstitution
 from launch_ros.actions import LoadComposableNodes
+from launch_ros.actions import Node as LaunchNode
 from launch_ros.descriptions import ComposableNode
 from launch_ros.parameter_descriptions import ParameterFile
 from launch_ros.substitutions import FindPackageShare
@@ -29,9 +30,12 @@ import yaml
 
 
 class GroundSegmentationPipeline:
+    agnocast_heaphook_path = "/opt/ros/humble/lib/libagnocast_heaphook.so"
+
     def __init__(self, context):
         self.context = context
         self.vehicle_info = self.get_vehicle_info()
+        self.standalone_nodes = []
         ground_segmentation_param_path = os.path.join(
             LaunchConfiguration("obstacle_segmentation_ground_segmentation_param_path").perform(
                 context
@@ -98,10 +102,10 @@ class GroundSegmentationPipeline:
         ground_segmentation_plugin_name = ground_segmentation_plugin_name.split("::")[-1]
 
         components = []
-        components.append(
-            ComposableNode(
+        self.standalone_nodes.append(
+            LaunchNode(
                 package="autoware_pointcloud_preprocessor",
-                plugin="autoware::pointcloud_preprocessor::CropBoxFilterComponent",
+                executable="agnocast_crop_box_filter_node",
                 name=f"{lidar_name}_crop_box_filter",
                 remappings=[
                     ("input", f"/sensing/lidar/{lidar_name}/pointcloud"),
@@ -116,16 +120,18 @@ class GroundSegmentationPipeline:
                     },
                     self.ground_segmentation_param[f"{lidar_name}_crop_box_filter"]["parameters"],
                 ],
-                extra_arguments=[
-                    {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
-                ],
+                additional_env={
+                    "LD_PRELOAD": self.agnocast_heaphook_path
+                    + ":"
+                    + os.environ.get("LD_PRELOAD", ""),
+                },
             )
         )
 
-        components.append(
-            ComposableNode(
+        self.standalone_nodes.append(
+            LaunchNode(
                 package="autoware_ground_segmentation",
-                plugin="autoware::ground_segmentation::" + ground_segmentation_plugin_name,
+                executable="agnocast_scan_ground_filter_node",
                 name=f"{lidar_name}_ground_filter",
                 remappings=[
                     ("input", f"{lidar_name}/range_cropped/pointcloud"),
@@ -134,9 +140,11 @@ class GroundSegmentationPipeline:
                 parameters=[
                     self.ground_segmentation_param[f"{lidar_name}_ground_filter"]["parameters"]
                 ],
-                extra_arguments=[
-                    {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
-                ],
+                additional_env={
+                    "LD_PRELOAD": self.agnocast_heaphook_path
+                    + ":"
+                    + os.environ.get("LD_PRELOAD", ""),
+                },
             )
         )
 
@@ -250,10 +258,10 @@ class GroundSegmentationPipeline:
         ground_segmentation_plugin_name = ground_segmentation_plugin_name.split("::")[-1]
 
         components = []
-        components.append(
-            ComposableNode(
+        self.standalone_nodes.append(
+            LaunchNode(
                 package="autoware_pointcloud_preprocessor",
-                plugin="autoware::pointcloud_preprocessor::CropBoxFilterComponent",
+                executable="agnocast_crop_box_filter_node",
                 name="crop_box_filter",
                 remappings=[
                     ("input", input_topic),
@@ -268,16 +276,18 @@ class GroundSegmentationPipeline:
                     },
                     self.ground_segmentation_param["common_crop_box_filter"]["parameters"],
                 ],
-                extra_arguments=[
-                    {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
-                ],
+                additional_env={
+                    "LD_PRELOAD": self.agnocast_heaphook_path
+                    + ":"
+                    + os.environ.get("LD_PRELOAD", ""),
+                },
             )
         )
 
-        components.append(
-            ComposableNode(
+        self.standalone_nodes.append(
+            LaunchNode(
                 package="autoware_ground_segmentation",
-                plugin="autoware::ground_segmentation::" + ground_segmentation_plugin_name,
+                executable="agnocast_scan_ground_filter_node",
                 name="common_ground_filter",
                 remappings=[
                     ("input", "range_cropped/pointcloud"),
@@ -289,9 +299,11 @@ class GroundSegmentationPipeline:
                     {"input_frame": "base_link"},
                     {"output_frame": "base_link"},
                 ],
-                extra_arguments=[
-                    {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
-                ],
+                additional_env={
+                    "LD_PRELOAD": self.agnocast_heaphook_path
+                    + ":"
+                    + os.environ.get("LD_PRELOAD", ""),
+                },
             )
         )
         return components
@@ -562,11 +574,14 @@ def launch_setup(context, *args, **kwargs):
                 ),
             )
         )
-    pointcloud_container_loader = LoadComposableNodes(
-        composable_node_descriptions=components,
-        target_container=LaunchConfiguration("pointcloud_container_name"),
-    )
-    return [pointcloud_container_loader]
+    actions = pipeline.standalone_nodes
+    if components:
+        pointcloud_container_loader = LoadComposableNodes(
+            composable_node_descriptions=components,
+            target_container=LaunchConfiguration("pointcloud_container_name"),
+        )
+        actions = [pointcloud_container_loader] + actions
+    return actions
 
 
 def generate_launch_description():

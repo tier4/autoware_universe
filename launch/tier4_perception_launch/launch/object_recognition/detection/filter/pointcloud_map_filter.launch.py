@@ -21,6 +21,7 @@ from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import LoadComposableNodes
+from launch_ros.actions import Node as LaunchNode
 from launch_ros.descriptions import ComposableNode
 import yaml
 
@@ -41,7 +42,7 @@ class PointcloudMapFilterPipeline:
         if self.use_pointcloud_map == "true":
             return self.create_compare_map_pipeline()
         else:
-            return self.create_no_compare_map_pipeline()
+            return self.create_no_compare_map_pipeline(), []
 
     def create_no_compare_map_pipeline(self):
         components = []
@@ -70,13 +71,15 @@ class PointcloudMapFilterPipeline:
 
     def create_compare_map_pipeline(self):
         components = []
+        standalone_nodes = []
         down_sample_topic = (
             "/perception/obstacle_segmentation/pointcloud_map_filtered/downsampled/pointcloud"
         )
-        components.append(
-            ComposableNode(
+        agnocast_heaphook_path = "/opt/ros/humble/lib/libagnocast_heaphook.so"
+        standalone_nodes.append(
+            LaunchNode(
                 package="autoware_pointcloud_preprocessor",
-                plugin="autoware::pointcloud_preprocessor::VoxelGridDownsampleFilterComponent",
+                executable="agnocast_voxel_grid_downsample_filter_node",
                 name="voxel_grid_downsample_filter",
                 remappings=[
                     ("input", LaunchConfiguration("input_topic")),
@@ -89,15 +92,17 @@ class PointcloudMapFilterPipeline:
                         "voxel_size_z": self.voxel_size,
                     }
                 ],
-                extra_arguments=[
-                    {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
-                ],
-            ),
+                additional_env={
+                    "LD_PRELOAD": agnocast_heaphook_path
+                    + ":"
+                    + os.environ.get("LD_PRELOAD", ""),
+                },
+            )
         )
-        components.append(
-            ComposableNode(
+        standalone_nodes.append(
+            LaunchNode(
                 package="autoware_compare_map_segmentation",
-                plugin="autoware::compare_map_segmentation::VoxelBasedCompareMapFilterComponent",
+                executable="voxel_based_compare_map_filter_node_agnocast",
                 name="voxel_based_compare_map_filter",
                 remappings=[
                     ("input", down_sample_topic),
@@ -112,23 +117,29 @@ class PointcloudMapFilterPipeline:
                         "input_frame": "map",
                     },
                 ],
-                extra_arguments=[
-                    {"use_intra_process_comms": False},
-                ],
+                additional_env={
+                    "LD_PRELOAD": agnocast_heaphook_path
+                    + ":"
+                    + os.environ.get("LD_PRELOAD", ""),
+                },
             )
         )
-        return components
+        return components, standalone_nodes
 
 
 def launch_setup(context, *args, **kwargs):
     pipeline = PointcloudMapFilterPipeline(context)
-    components = []
-    components.extend(pipeline.create_pipeline())
-    pointcloud_container_loader = LoadComposableNodes(
-        composable_node_descriptions=components,
-        target_container=LaunchConfiguration("pointcloud_container_name"),
-    )
-    return [pointcloud_container_loader]
+    components, standalone_nodes = pipeline.create_pipeline()
+    actions = []
+    if components:
+        actions.append(
+            LoadComposableNodes(
+                composable_node_descriptions=components,
+                target_container=LaunchConfiguration("pointcloud_container_name"),
+            )
+        )
+    actions.extend(standalone_nodes)
+    return actions
 
 
 def generate_launch_description():

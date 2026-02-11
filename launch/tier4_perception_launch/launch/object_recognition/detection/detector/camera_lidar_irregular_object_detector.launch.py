@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import launch
 from launch.actions import DeclareLaunchArgument
 from launch.actions import OpaqueFunction
@@ -111,48 +113,49 @@ class SmallUnknownPipeline:
         return p
 
     def create_irregular_object_pipeline(self, input_topic, concat_info_topic, output_topic):
+        agnocast_heaphook_path = "/opt/ros/humble/lib/libagnocast_heaphook.so"
         components = []
-        # create cropbox filter
-        components.append(
-            ComposableNode(
-                package="autoware_pointcloud_preprocessor",
-                plugin="autoware::pointcloud_preprocessor::CropBoxFilterComponent",
-                name="crop_box_filter",
-                remappings=[
-                    ("input", input_topic),
-                    ("input/concatenation_info", concat_info_topic),
-                    ("output", "cropped_range/pointcloud"),
-                ],
-                parameters=[
-                    {
-                        "input_frame": LaunchConfiguration("base_frame"),
-                        "output_frame": LaunchConfiguration("base_frame"),
-                    },
-                    self.irregular_object_detector_param["crop_box_filter"]["parameters"],
-                ],
-                extra_arguments=[
-                    {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
-                ],
-            )
+        # create cropbox filter (agnocast standalone node)
+        self.standalone_crop_box_filter = Node(
+            package="autoware_pointcloud_preprocessor",
+            executable="agnocast_crop_box_filter_node",
+            name="crop_box_filter",
+            remappings=[
+                ("input", input_topic),
+                ("input/concatenation_info", concat_info_topic),
+                ("output", "cropped_range/pointcloud"),
+            ],
+            parameters=[
+                {
+                    "input_frame": LaunchConfiguration("base_frame"),
+                    "output_frame": LaunchConfiguration("base_frame"),
+                },
+                self.irregular_object_detector_param["crop_box_filter"]["parameters"],
+            ],
+            additional_env={
+                "LD_PRELOAD": agnocast_heaphook_path
+                + ":"
+                + os.environ.get("LD_PRELOAD", ""),
+            },
         )
 
-        # create ground_segmentation
-        components.append(
-            ComposableNode(
-                package="autoware_ground_segmentation",
-                plugin="autoware::ground_segmentation::ScanGroundFilterComponent",
-                name="ground_filter",
-                remappings=[
-                    ("input", "cropped_range/pointcloud"),
-                    ("output", "obstacle_segmentation/pointcloud"),
-                ],
-                parameters=[
-                    self.irregular_object_detector_param["ground_segmentation"]["parameters"]
-                ],
-                extra_arguments=[
-                    {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
-                ],
-            )
+        # create ground_segmentation (agnocast standalone node)
+        self.standalone_ground_filter = Node(
+            package="autoware_ground_segmentation",
+            executable="agnocast_scan_ground_filter_node",
+            name="ground_filter",
+            remappings=[
+                ("input", "cropped_range/pointcloud"),
+                ("output", "obstacle_segmentation/pointcloud"),
+            ],
+            parameters=[
+                self.irregular_object_detector_param["ground_segmentation"]["parameters"]
+            ],
+            additional_env={
+                "LD_PRELOAD": agnocast_heaphook_path
+                + ":"
+                + os.environ.get("LD_PRELOAD", ""),
+            },
         )
         return components
 
@@ -184,14 +187,17 @@ def launch_setup(context, *args, **kwargs):
             obstacle_pointcloud_topic,
         )
     )
-    loader = LoadComposableNodes(
-        composable_node_descriptions=components,
-        target_container=LaunchConfiguration("pointcloud_container_name"),
-    )
     roi_pointcloud_fusion_node = pipeline.create_roi_pointcloud_fusion_node(
         obstacle_pointcloud_topic, LaunchConfiguration("output_topic")
     )
-    return [loader, roi_pointcloud_fusion_node]
+    actions = [pipeline.standalone_crop_box_filter, pipeline.standalone_ground_filter, roi_pointcloud_fusion_node]
+    if components:
+        loader = LoadComposableNodes(
+            composable_node_descriptions=components,
+            target_container=LaunchConfiguration("pointcloud_container_name"),
+        )
+        actions = [loader] + actions
+    return actions
 
 
 def generate_launch_description():
