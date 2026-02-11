@@ -103,7 +103,11 @@ private:
     double processing_time_threshold_sec{0.0};
   } param_;
 
-  rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr crop_box_polygon_pub_;
+  std::conditional_t<
+    is_rclcpp_node_v<NodeT>,
+    typename rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr,
+    typename agnocast::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr>
+    crop_box_polygon_pub_;
 
   /** \brief Parameter service callback result : needed to be hold */
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;

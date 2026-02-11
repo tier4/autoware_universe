@@ -70,12 +70,12 @@ template <typename NodeT>
 CropBoxFilterComponentBase<NodeT>::CropBoxFilterComponentBase(const rclcpp::NodeOptions & options)
 : FilterBase<NodeT>("CropBoxFilter", options)
 {
-  // initialize debug tool (only for rclcpp::Node)
-  if constexpr (is_rclcpp_node_v<NodeT>) {
-    using autoware_utils::DebugPublisher;
+  // initialize debug tool
+  {
     using autoware_utils::StopWatch;
     this->stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
-    this->debug_publisher_ = std::make_unique<DebugPublisher>(this, this->get_name());
+    this->debug_publisher_ =
+      std::make_unique<autoware_utils::BasicDebugPublisher<NodeT>>(this, this->get_name());
     this->stop_watch_ptr_->tic("cyclic_time");
     this->stop_watch_ptr_->tic("processing_time");
   }
@@ -97,19 +97,21 @@ CropBoxFilterComponentBase<NodeT>::CropBoxFilterComponentBase(const rclcpp::Node
     }
   }
 
-  // Diagnostic (only for rclcpp::Node)
-  if constexpr (is_rclcpp_node_v<NodeT>) {
-    this->diagnostics_interface_ = std::make_unique<autoware_utils::DiagnosticsInterface>(
+  // Diagnostic
+  this->diagnostics_interface_ =
+    std::make_unique<autoware_utils::BasicDiagnosticsInterface<NodeT>>(
       this, this->get_fully_qualified_name());
-  }
 
   // set additional publishers
   {
-    rclcpp::PublisherOptions pub_options;
-    pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
     if constexpr (is_rclcpp_node_v<NodeT>) {
+      rclcpp::PublisherOptions pub_options;
+      pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
       crop_box_polygon_pub_ = this->template create_publisher<geometry_msgs::msg::PolygonStamped>(
         "~/crop_box_polygon", 10, pub_options);
+    } else {
+      crop_box_polygon_pub_ = this->template create_publisher<geometry_msgs::msg::PolygonStamped>(
+        "~/crop_box_polygon", 10);
     }
   }
 
@@ -140,9 +142,7 @@ void CropBoxFilterComponentBase<NodeT>::faster_filter(
   const TransformInfo & transform_info)
 {
   std::scoped_lock lock(this->mutex_);
-  if constexpr (is_rclcpp_node_v<NodeT>) {
-    this->stop_watch_ptr_->toc("processing_time", true);
-  }
+  this->stop_watch_ptr_->toc("processing_time", true);
 
   if (indices) {
     RCLCPP_WARN_THROTTLE(
@@ -212,120 +212,120 @@ void CropBoxFilterComponentBase<NodeT>::faster_filter(
   output.width = static_cast<uint32_t>(output.data.size() / output.height / output.point_step);
   output.row_step = static_cast<uint32_t>(output.data.size() / output.height);
 
-  if constexpr (is_rclcpp_node_v<NodeT>) {
-    publish_crop_box_polygon();
+  publish_crop_box_polygon();
 
-    const double cyclic_time_ms = this->stop_watch_ptr_->toc("cyclic_time", true);
-    const double processing_time_ms = this->stop_watch_ptr_->toc("processing_time", true);
-    const double pipeline_latency_ms =
-      std::chrono::duration<double, std::milli>(
-        std::chrono::nanoseconds((this->get_clock()->now() - input->header.stamp).nanoseconds()))
-        .count();
+  const double cyclic_time_ms = this->stop_watch_ptr_->toc("cyclic_time", true);
+  const double processing_time_ms = this->stop_watch_ptr_->toc("processing_time", true);
+  const double pipeline_latency_ms =
+    std::chrono::duration<double, std::milli>(
+      std::chrono::nanoseconds((this->get_clock()->now() - input->header.stamp).nanoseconds()))
+      .count();
 
-    // Debug output
-    if (this->debug_publisher_) {
-      this->debug_publisher_->template publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-        "debug/cyclic_time_ms", cyclic_time_ms);
-      this->debug_publisher_->template publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-        "debug/processing_time_ms", processing_time_ms);
-      this->debug_publisher_->template publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-        "debug/pipeline_latency_ms", pipeline_latency_ms);
-    }
-
-    auto latency_diagnostics = std::make_shared<LatencyDiagnostics>(
-      input->header.stamp, processing_time_ms, pipeline_latency_ms,
-      param_.processing_time_threshold_sec * 1000.0);
-    auto pass_rate_diagnostics = std::make_shared<PassRateDiagnostics>(
-      static_cast<int>(input->width * input->height),
-      static_cast<int>(output.width * output.height));
-    auto crop_box_diagnostics = std::make_shared<CropBoxDiagnostics>(skipped_count);
-
-    publish_diagnostics({latency_diagnostics, pass_rate_diagnostics, crop_box_diagnostics});
+  // Debug output
+  if (this->debug_publisher_) {
+    this->debug_publisher_->template publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/cyclic_time_ms", cyclic_time_ms);
+    this->debug_publisher_->template publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/processing_time_ms", processing_time_ms);
+    this->debug_publisher_->template publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/pipeline_latency_ms", pipeline_latency_ms);
   }
+
+  auto latency_diagnostics = std::make_shared<LatencyDiagnostics>(
+    input->header.stamp, processing_time_ms, pipeline_latency_ms,
+    param_.processing_time_threshold_sec * 1000.0);
+  auto pass_rate_diagnostics = std::make_shared<PassRateDiagnostics>(
+    static_cast<int>(input->width * input->height),
+    static_cast<int>(output.width * output.height));
+  auto crop_box_diagnostics = std::make_shared<CropBoxDiagnostics>(skipped_count);
+
+  publish_diagnostics({latency_diagnostics, pass_rate_diagnostics, crop_box_diagnostics});
 }
 
 template <typename NodeT>
 void CropBoxFilterComponentBase<NodeT>::publish_diagnostics(
   const std::vector<std::shared_ptr<const DiagnosticsBase>> & diagnostics)
 {
-  if constexpr (is_rclcpp_node_v<NodeT>) {
-    this->diagnostics_interface_->clear();
+  this->diagnostics_interface_->clear();
 
-    std::string message;
-    int worst_level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+  std::string message;
+  int worst_level = diagnostic_msgs::msg::DiagnosticStatus::OK;
 
-    for (const auto & diag : diagnostics) {
-      diag->add_to_interface(*this->diagnostics_interface_);
-      if (const auto status = diag->evaluate_status(); status.has_value()) {
-        worst_level = std::max(worst_level, status->first);
-        if (!message.empty()) {
-          message += " / ";
-        }
-        message += status->second;
+  for (const auto & diag : diagnostics) {
+    diag->add_to_interface(*this->diagnostics_interface_);
+    if (const auto status = diag->evaluate_status(); status.has_value()) {
+      worst_level = std::max(worst_level, status->first);
+      if (!message.empty()) {
+        message += " / ";
       }
+      message += status->second;
     }
-
-    if (message.empty()) {
-      message = "CropBoxFilter operating normally";
-    }
-
-    this->diagnostics_interface_->update_level_and_message(
-      static_cast<int8_t>(worst_level), message);
-    this->diagnostics_interface_->publish(this->get_clock()->now());
   }
+
+  if (message.empty()) {
+    message = "CropBoxFilter operating normally";
+  }
+
+  this->diagnostics_interface_->update_level_and_message(
+    static_cast<int8_t>(worst_level), message);
+  this->diagnostics_interface_->publish(this->get_clock()->now());
 }
 
 template <typename NodeT>
 void CropBoxFilterComponentBase<NodeT>::publish_crop_box_polygon()
 {
+  auto generatePoint = [](double x, double y, double z) {
+    geometry_msgs::msg::Point32 point;
+    point.x = x;
+    point.y = y;
+    point.z = z;
+    return point;
+  };
+
+  const double x1 = param_.max_x;
+  const double x2 = param_.min_x;
+  const double x3 = param_.min_x;
+  const double x4 = param_.max_x;
+
+  const double y1 = param_.max_y;
+  const double y2 = param_.max_y;
+  const double y3 = param_.min_y;
+  const double y4 = param_.min_y;
+
+  const double z1 = param_.min_z;
+  const double z2 = param_.max_z;
+
+  geometry_msgs::msg::PolygonStamped polygon_msg;
+  polygon_msg.header.frame_id = this->tf_input_frame_;
+  polygon_msg.header.stamp = this->get_clock()->now();
+  polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z1));
+  polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z1));
+  polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z1));
+  polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z1));
+  polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z1));
+
+  polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z2));
+
+  polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z2));
+  polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z1));
+  polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z2));
+
+  polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z2));
+  polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z1));
+  polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z2));
+
+  polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z2));
+  polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z1));
+  polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z2));
+
+  polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z2));
+
   if constexpr (is_rclcpp_node_v<NodeT>) {
-    auto generatePoint = [](double x, double y, double z) {
-      geometry_msgs::msg::Point32 point;
-      point.x = x;
-      point.y = y;
-      point.z = z;
-      return point;
-    };
-
-    const double x1 = param_.max_x;
-    const double x2 = param_.min_x;
-    const double x3 = param_.min_x;
-    const double x4 = param_.max_x;
-
-    const double y1 = param_.max_y;
-    const double y2 = param_.max_y;
-    const double y3 = param_.min_y;
-    const double y4 = param_.min_y;
-
-    const double z1 = param_.min_z;
-    const double z2 = param_.max_z;
-
-    geometry_msgs::msg::PolygonStamped polygon_msg;
-    polygon_msg.header.frame_id = this->tf_input_frame_;
-    polygon_msg.header.stamp = this->get_clock()->now();
-    polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z1));
-    polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z1));
-    polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z1));
-    polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z1));
-    polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z1));
-
-    polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z2));
-
-    polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z2));
-    polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z1));
-    polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z2));
-
-    polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z2));
-    polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z1));
-    polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z2));
-
-    polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z2));
-    polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z1));
-    polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z2));
-
-    polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z2));
-
     crop_box_polygon_pub_->publish(polygon_msg);
+  } else {
+    auto loaned_msg = crop_box_polygon_pub_->borrow_loaned_message();
+    *loaned_msg = polygon_msg;
+    crop_box_polygon_pub_->publish(std::move(loaned_msg));
   }
 }
 
