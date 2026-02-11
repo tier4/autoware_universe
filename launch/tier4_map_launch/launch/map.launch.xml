@@ -13,13 +13,14 @@
 
   <!-- select container type -->
   <arg name="use_multithread" default="false"/>
-  <let name="container_type" value="component_container" unless="$(var use_multithread)"/>
-  <let name="container_type" value="component_container_mt" if="$(var use_multithread)"/>
+  <let name="container_type" value="agnocast_component_container" unless="$(var use_multithread)"/>
+  <let name="container_type" value="agnocast_component_container_mt" if="$(var use_multithread)"/>
 
   <group>
     <push-ros-namespace namespace="map"/>
 
-    <node_container pkg="rclcpp_components" exec="$(var container_type)" name="map_container" namespace="" output="both">
+    <node_container pkg="agnocastlib" exec="$(var container_type)" name="map_container" namespace="" output="both">
+      <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so"/>
       <composable_node pkg="autoware_map_loader" plugin="autoware::map_loader::PointCloudMapLoaderNode" name="pointcloud_map_loader">
         <param from="$(var pointcloud_map_loader_param_path)"/>
         <param name="pcd_paths_or_directory" value="[$(var pointcloud_map_path)]"/>
