@@ -37,7 +37,7 @@ public:
   {
   }
 
-  void add_to_interface(autoware_utils::DiagnosticsInterface & interface) const override
+  void add_to_interface(autoware_utils::DiagnosticsInterfaceBase & interface) const override
   {
     interface.add_key_value("Timestamp mismatch count", timestamp_mismatch_count_);
     interface.add_key_value(

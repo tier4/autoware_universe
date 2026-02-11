@@ -32,7 +32,7 @@ public:
   {
   }
 
-  void add_to_interface(autoware_utils::DiagnosticsInterface & interface) const override
+  void add_to_interface(autoware_utils::DiagnosticsInterfaceBase & interface) const override
   {
     interface.add_key_value("Input point count", input_point_count_);
     interface.add_key_value("Output point count", output_point_count_);

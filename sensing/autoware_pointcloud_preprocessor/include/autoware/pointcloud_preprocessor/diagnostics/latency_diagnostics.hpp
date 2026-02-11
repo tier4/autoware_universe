@@ -37,7 +37,7 @@ public:
   {
   }
 
-  void add_to_interface(autoware_utils::DiagnosticsInterface & interface) const override
+  void add_to_interface(autoware_utils::DiagnosticsInterfaceBase & interface) const override
   {
     interface.add_key_value(
       "Pointcloud header timestamp", format_timestamp(cloud_header_timestamp_.seconds()));

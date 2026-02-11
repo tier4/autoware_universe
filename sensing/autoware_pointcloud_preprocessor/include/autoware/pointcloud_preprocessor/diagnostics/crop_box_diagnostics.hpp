@@ -25,7 +25,7 @@ class CropBoxDiagnostics : public DiagnosticsBase
 public:
   explicit CropBoxDiagnostics(int skipped_count) : skipped_count_(skipped_count) {}
 
-  void add_to_interface(autoware_utils::DiagnosticsInterface & interface) const override
+  void add_to_interface(autoware_utils::DiagnosticsInterfaceBase & interface) const override
   {
     interface.add_key_value("Skipped NaN point count", skipped_count_);
   }
