@@ -110,7 +110,7 @@ void CoMLOpsTLRClassifier::preprocess(const std::vector<cv::Mat> & images)
   const float scale = 1.0f / 255.0f;
   const cv::Size input_size(input_width_, input_height_);
   cv::Mat blob = cv::dnn::blobFromImages(
-    images, scale, input_size, cv::Scalar(0, 0, 0), true, false, CV_32F);
+    images, scale, input_size, cv::Scalar(0, 0, 0), false, false, CV_32F); // Skip swap RB channels
   if (!blob.isContinuous()) {
     blob = blob.clone();
   }
