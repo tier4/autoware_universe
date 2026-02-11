@@ -9,8 +9,9 @@
   <arg name="model_path" default="$(var data_path)/traffic_light_classifier/traffic_light_classifier_mobilenetv2_batch_6.onnx" description="car model path (CNN or CoMLOps-TLR onnx)"/>
   <arg name="label_path" default="$(var data_path)/traffic_light_classifier/lamp_labels.txt" description="car label path (used for CNN only)"/>
   <arg name="build_only" default="false" description="exit after trt engine is built"/>
+  <arg name="node_name" default="car_traffic_light_classifier" description="node name"/>
 
-  <node pkg="autoware_traffic_light_classifier" exec="traffic_light_classifier_node" name="traffic_light_classifier" output="screen">
+  <node pkg="autoware_traffic_light_classifier" exec="traffic_light_classifier_node" name="$(var node_name)" output="screen">
     <remap from="~/input/image" to="$(var input/image)"/>
     <remap from="~/input/rois" to="$(var input/rois)"/>
     <remap from="~/output/traffic_signals" to="$(var output/traffic_signals)"/>
