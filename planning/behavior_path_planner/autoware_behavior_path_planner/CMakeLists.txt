@@ -4,6 +4,7 @@ project(autoware_behavior_path_planner)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(magic_enum CONFIG REQUIRED)
 

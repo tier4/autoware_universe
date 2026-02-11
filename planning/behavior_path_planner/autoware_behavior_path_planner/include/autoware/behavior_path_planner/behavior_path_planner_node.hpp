@@ -23,6 +23,8 @@
 
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
+
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
@@ -100,10 +102,8 @@ private:
     acceleration_subscriber_{this, "~/input/accel"};
   autoware_utils::InterProcessPollingSubscriber<Scenario> scenario_subscriber_{
     this, "~/input/scenario"};
-  autoware_utils::InterProcessPollingSubscriber<PredictedObjects> perception_subscriber_{
-    this, "~/input/perception"};
-  autoware_utils::InterProcessPollingSubscriber<OccupancyGrid> occupancy_grid_subscriber_{
-    this, "~/input/occupancy_grid_map"};
+  agnocast::PollingSubscriber<PredictedObjects>::SharedPtr perception_subscriber_;
+  agnocast::PollingSubscriber<OccupancyGrid>::SharedPtr occupancy_grid_subscriber_;
   autoware_utils::InterProcessPollingSubscriber<OccupancyGrid> costmap_subscriber_{
     this, "~/input/costmap"};
   autoware_utils::InterProcessPollingSubscriber<TrafficLightGroupArray> traffic_signals_subscriber_{

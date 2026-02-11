@@ -121,6 +121,13 @@ BehaviorPathPlannerNode::BehaviorPathPlannerNode(const rclcpp::NodeOptions & nod
       turn_signal_search_time, turn_signal_intersection_angle_threshold_deg);
   }
 
+  // Agnocast polling subscribers
+  perception_subscriber_ =
+    std::make_shared<agnocast::PollingSubscriber<PredictedObjects>>(this, "~/input/perception");
+  occupancy_grid_subscriber_ =
+    std::make_shared<agnocast::PollingSubscriber<OccupancyGrid>>(
+      this, "~/input/occupancy_grid_map");
+
   // Start timer
   {
     const auto planning_hz = declare_parameter<double>("planning_hz");
@@ -202,16 +209,16 @@ void BehaviorPathPlannerNode::takeData()
   }
   // perception
   {
-    const auto msg = perception_subscriber_.take_data();
+    const auto msg = perception_subscriber_->take_data();
     if (msg) {
-      planner_data_->dynamic_object = msg;
+      planner_data_->dynamic_object = std::make_shared<PredictedObjects>(*msg);
     }
   }
   // occupancy_grid
   {
-    const auto msg = occupancy_grid_subscriber_.take_data();
+    const auto msg = occupancy_grid_subscriber_->take_data();
     if (msg) {
-      planner_data_->occupancy_grid = msg;
+      planner_data_->occupancy_grid = std::make_shared<OccupancyGrid>(*msg);
     }
   }
   // costmap

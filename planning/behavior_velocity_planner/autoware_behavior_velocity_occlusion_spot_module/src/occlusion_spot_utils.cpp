@@ -207,7 +207,7 @@ bool isMovingVehicle(const PredictedObject & obj, const double min_vel)
 }
 
 std::vector<PredictedObject> extractVehicles(
-  const PredictedObjects::ConstSharedPtr objects_ptr, const Point ego_position,
+  const agnocast::ipc_shared_ptr<const PredictedObjects> & objects_ptr, const Point ego_position,
   const double distance)
 {
   std::vector<PredictedObject> vehicles;

@@ -23,6 +23,8 @@
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware_lanelet2_extension/visualization/visualization.hpp>
 
+#include <agnocast/agnocast.hpp>
+
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
@@ -219,7 +221,7 @@ void clipPathByLength(
 bool isStuckVehicle(const PredictedObject & obj, const double min_vel);
 bool isMovingVehicle(const PredictedObject & obj, const double min_vel);
 std::vector<PredictedObject> extractVehicles(
-  const PredictedObjects::ConstSharedPtr objects_ptr, const Point ego_position,
+  const agnocast::ipc_shared_ptr<const PredictedObjects> & objects_ptr, const Point ego_position,
   const double distance);
 std::vector<PredictedObject> filterVehiclesByDetectionArea(
   const std::vector<PredictedObject> & objs, const Polygons2d & polys);

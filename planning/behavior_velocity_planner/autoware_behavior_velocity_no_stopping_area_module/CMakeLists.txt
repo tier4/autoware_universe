@@ -3,6 +3,8 @@ project(autoware_behavior_velocity_no_stopping_area_module)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
+
+find_package(agnocastlib REQUIRED)
 pluginlib_export_plugin_description_file(autoware_behavior_velocity_planner plugins.xml)
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
