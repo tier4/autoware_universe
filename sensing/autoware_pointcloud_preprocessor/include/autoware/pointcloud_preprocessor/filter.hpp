@@ -56,6 +56,10 @@
 #include "autoware/pointcloud_preprocessor/utility/memory.hpp"
 
 #include <agnocast/agnocast.hpp>
+#include <agnocast/message_filters/subscriber.hpp>
+#include <agnocast/message_filters/sync_policies/approximate_time.hpp>
+#include <agnocast/message_filters/sync_policies/exact_time.hpp>
+#include <agnocast/message_filters/synchronizer.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
@@ -150,6 +154,11 @@ public:
   using ApproximateTimeSyncPolicy =
     message_filters::Synchronizer<sync_policies::ApproximateTime<PointCloud2, PointIndices>>;
 
+  using AgnocastExactTimeSyncPolicy = agnocast::message_filters::Synchronizer<
+    agnocast::message_filters::sync_policies::ExactTime<PointCloud2, PointIndices>>;
+  using AgnocastApproximateTimeSyncPolicy = agnocast::message_filters::Synchronizer<
+    agnocast::message_filters::sync_policies::ApproximateTime<PointCloud2, PointIndices>>;
+
   PCL_MAKE_ALIGNED_OPERATOR_NEW
   explicit FilterBase(
     const std::string & filter_name = "pointcloud_preprocessor_filter",
@@ -178,14 +187,16 @@ protected:
     typename agnocast::Publisher<PointCloud2>::SharedPtr>
     pub_output_;
 
-  /** \brief The message filter subscriber for PointCloud2. (only for rclcpp::Node) */
+  /** \brief The message filter subscriber for PointCloud2. */
   std::conditional_t<
-    is_rclcpp_node_v<NodeT>, message_filters::Subscriber<PointCloud2>, std::monostate>
+    is_rclcpp_node_v<NodeT>, message_filters::Subscriber<PointCloud2>,
+    agnocast::message_filters::Subscriber<PointCloud2, agnocast::Node>>
     sub_input_filter_;
 
-  /** \brief The message filter subscriber for PointIndices. (only for rclcpp::Node) */
+  /** \brief The message filter subscriber for PointIndices. */
   std::conditional_t<
-    is_rclcpp_node_v<NodeT>, message_filters::Subscriber<PointIndices>, std::monostate>
+    is_rclcpp_node_v<NodeT>, message_filters::Subscriber<PointIndices>,
+    agnocast::message_filters::Subscriber<PointIndices, agnocast::Node>>
     sub_indices_filter_;
 
   /** \brief The desired user filter field name. */
@@ -216,12 +227,12 @@ protected:
   std::mutex mutex_;
 
   /** \brief The diagnostic message */
-  std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_;
+  std::unique_ptr<autoware_utils::BasicDiagnosticsInterface<NodeT>> diagnostics_interface_;
 
   /** \brief processing time publisher. **/
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
   std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<NodeT>> debug_publisher_;
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<autoware_utils::BasicPublishedTimePublisher<NodeT>> published_time_publisher_;
 
   /** \brief Virtual abstract filter method. To be implemented by every child.
    * \param input the input point cloud dataset.
@@ -326,11 +337,14 @@ private:
   rcl_interfaces::msg::SetParametersResult filter_param_callback(
     const std::vector<rclcpp::Parameter> & p);
 
-  /** \brief Synchronized input, and indices. (only for rclcpp::Node) */
-  std::conditional_t<is_rclcpp_node_v<NodeT>, std::shared_ptr<ExactTimeSyncPolicy>, std::monostate>
+  /** \brief Synchronized input, and indices. */
+  std::conditional_t<
+    is_rclcpp_node_v<NodeT>, std::shared_ptr<ExactTimeSyncPolicy>,
+    std::shared_ptr<AgnocastExactTimeSyncPolicy>>
     sync_input_indices_e_;
   std::conditional_t<
-    is_rclcpp_node_v<NodeT>, std::shared_ptr<ApproximateTimeSyncPolicy>, std::monostate>
+    is_rclcpp_node_v<NodeT>, std::shared_ptr<ApproximateTimeSyncPolicy>,
+    std::shared_ptr<AgnocastApproximateTimeSyncPolicy>>
     sync_input_indices_a_;
 
   /** \brief Get a matrix for conversion from the original frame to the target frame */
@@ -396,16 +410,6 @@ FilterBase<NodeT>::FilterBase(const std::string & filter_name, const rclcpp::Nod
     latched_indices_ = this->template declare_parameter<bool>("latched_indices", false);
     approximate_sync_ = this->template declare_parameter<bool>("approximate_sync", false);
 
-    // TODO(agnocast): message_filters (use_indices) is not supported for agnocast::Node
-    if constexpr (is_agnocast_node_v<NodeT>) {
-      if (use_indices_) {
-        RCLCPP_ERROR(
-          this->get_logger(),
-          "use_indices is not supported for agnocast::Node. Please set use_indices to false.");
-        throw std::runtime_error("use_indices is not supported for agnocast::Node");
-      }
-    }
-
     RCLCPP_DEBUG_STREAM(
       this->get_logger(),
       "Filter (as Component) successfully created with the following parameters:"
@@ -436,9 +440,8 @@ FilterBase<NodeT>::FilterBase(const std::string & filter_name, const rclcpp::Nod
   set_param_res_filter_ = this->add_on_set_parameters_callback(
     std::bind(&FilterBase::filter_param_callback, this, std::placeholders::_1));
 
-  if constexpr (is_rclcpp_node_v<NodeT>) {
-    published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
-  }
+  published_time_publisher_ =
+    std::make_unique<autoware_utils::BasicPublishedTimePublisher<NodeT>>(this);
   RCLCPP_DEBUG(this->get_logger(), "[Filter Constructor] successfully created.");
 }
 
@@ -501,27 +504,60 @@ void FilterBase<NodeT>::subscribe(const std::string & filter_name)
         "input", rclcpp::SensorDataQoS().keep_last(max_queue_size_), cb);
     }
   } else if constexpr (is_agnocast_node_v<NodeT>) {
-    // For agnocast::Node, use ipc_shared_ptr callback
-    // use_indices is already checked in the constructor and should be false here
     auto callback = supported_nodes.find(filter_name) != supported_nodes.end()
                       ? &FilterBase::faster_input_indices_callback
                       : &FilterBase::input_indices_callback;
 
-    sub_input_ = this->template create_subscription<PointCloud2>(
-      "input", rclcpp::SensorDataQoS().keep_last(max_queue_size_),
-      [this, callback](const agnocast::ipc_shared_ptr<PointCloud2> & msg) {
-        RCLCPP_INFO_THROTTLE(
-          this->get_logger(), *this->get_clock(), 5000,
-          "\n=============================="
-          "\n[FilterBase] agnocast::Node CALLBACK INVOKED"
-          "\n  frame_id: %s"
-          "\n  points: %u"
-          "\n==============================",
-          msg->header.frame_id.c_str(), msg->width * msg->height);
-        // Convert ipc_shared_ptr to shared_ptr<const> (non-owning wrapper)
-        auto input_ptr = std::shared_ptr<const PointCloud2>(msg.get(), [](const PointCloud2 *) {});
-        (this->*callback)(input_ptr, PointIndicesConstPtr());
-      });
+    if (use_indices_) {
+      // Subscribe using agnocast message_filters
+      sub_input_filter_.subscribe(
+        static_cast<agnocast::Node *>(this), "input",
+        rclcpp::SensorDataQoS().keep_last(max_queue_size_).get_rmw_qos_profile());
+      sub_indices_filter_.subscribe(
+        static_cast<agnocast::Node *>(this), "indices",
+        rclcpp::SensorDataQoS().keep_last(max_queue_size_).get_rmw_qos_profile());
+
+      // NullP type for unused synchronizer slots
+      using NullP = const std::shared_ptr<::message_filters::NullType const> &;
+      using SyncCb = std::function<void(
+        const agnocast::ipc_shared_ptr<PointCloud2 const> &,
+        const agnocast::ipc_shared_ptr<PointIndices const> &, NullP, NullP, NullP, NullP, NullP,
+        NullP, NullP)>;
+
+      const SyncCb sync_cb = [this, callback](
+                          const agnocast::ipc_shared_ptr<PointCloud2 const> & cloud,
+                          const agnocast::ipc_shared_ptr<PointIndices const> & indices, NullP,
+                          NullP, NullP, NullP, NullP, NullP, NullP) {
+        auto cloud_ptr =
+          std::shared_ptr<const PointCloud2>(cloud.get(), [](const PointCloud2 *) {});
+        auto indices_ptr =
+          std::shared_ptr<const PointIndices>(indices.get(), [](const PointIndices *) {});
+        (this->*callback)(cloud_ptr, indices_ptr);
+      };
+
+      if (approximate_sync_) {
+        agnocast::message_filters::sync_policies::ApproximateTime<PointCloud2, PointIndices>
+          approx_policy(max_queue_size_);
+        sync_input_indices_a_ =
+          std::make_shared<AgnocastApproximateTimeSyncPolicy>(approx_policy);
+        sync_input_indices_a_->connectInput(sub_input_filter_, sub_indices_filter_);
+        sync_input_indices_a_->registerCallback(sync_cb);
+      } else {
+        agnocast::message_filters::sync_policies::ExactTime<PointCloud2, PointIndices> exact_policy(
+          max_queue_size_);
+        sync_input_indices_e_ = std::make_shared<AgnocastExactTimeSyncPolicy>(exact_policy);
+        sync_input_indices_e_->connectInput(sub_input_filter_, sub_indices_filter_);
+        sync_input_indices_e_->registerCallback(sync_cb);
+      }
+    } else {
+      sub_input_ = this->template create_subscription<PointCloud2>(
+        "input", rclcpp::SensorDataQoS().keep_last(max_queue_size_),
+        [this, callback](const agnocast::ipc_shared_ptr<PointCloud2> & msg) {
+          auto input_ptr =
+            std::shared_ptr<const PointCloud2>(msg.get(), [](const PointCloud2 *) {});
+          (this->*callback)(input_ptr, PointIndicesConstPtr());
+        });
+    }
   }
 }
 
@@ -529,14 +565,12 @@ template <typename NodeT>
 void FilterBase<NodeT>::unsubscribe()
 {
   if (use_indices_) {
-    if constexpr (is_rclcpp_node_v<NodeT>) {
-      sub_input_filter_.unsubscribe();
-      sub_indices_filter_.unsubscribe();
-      if (approximate_sync_) {
-        sync_input_indices_a_.reset();
-      } else {
-        sync_input_indices_e_.reset();
-      }
+    sub_input_filter_.unsubscribe();
+    sub_indices_filter_.unsubscribe();
+    if (approximate_sync_) {
+      sync_input_indices_a_.reset();
+    } else {
+      sync_input_indices_e_.reset();
     }
   } else {
     sub_input_.reset();
@@ -577,6 +611,8 @@ void FilterBase<NodeT>::compute_publish(
     auto loaned_output = pub_output_->borrow_loaned_message();
     *loaned_output = *output;
     pub_output_->publish(std::move(loaned_output));
+    published_time_publisher_->template publish_if_subscribed<PointCloud2>(
+      pub_output_, input->header.stamp);
   }
 }
 
@@ -784,6 +820,15 @@ void FilterBase<NodeT>::faster_input_indices_callback(
       "\n  points: %u"
       "\n==============================",
       cloud->header.frame_id.c_str(), cloud->width * cloud->height);
+  } else if constexpr (is_agnocast_node_v<NodeT>) {
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000,
+      "\n=============================="
+      "\n[FilterBase] agnocast::Node CALLBACK INVOKED"
+      "\n  frame_id: %s"
+      "\n  points: %u"
+      "\n==============================",
+      cloud->header.frame_id.c_str(), cloud->width * cloud->height);
   }
 
   if (indices) {
@@ -829,14 +874,20 @@ void FilterBase<NodeT>::faster_input_indices_callback(
     pub_output_->publish(std::move(output));
     published_time_publisher_->publish_if_subscribed(pub_output_, cloud->header.stamp);
   } else if constexpr (is_agnocast_node_v<NodeT>) {
-    auto output = pub_output_->borrow_loaned_message();
+    // Use a local buffer for faster_filter so that no loaned message is outstanding
+    // while faster_filter publishes diagnostics/debug messages.
+    PointCloud2 output_buffer;
 
     // TODO(sykwer): Change to `filter()` call after when the filter nodes conform to new API.
-    faster_filter(cloud, vindices, *output, transform_info);
+    faster_filter(cloud, vindices, output_buffer, transform_info);
 
     // For agnocast, we skip the costly transform for now
-    output->header.stamp = cloud->header.stamp;
+    output_buffer.header.stamp = cloud->header.stamp;
+    auto output = pub_output_->borrow_loaned_message();
+    *output = output_buffer;
     pub_output_->publish(std::move(output));
+    published_time_publisher_->template publish_if_subscribed<PointCloud2>(
+      pub_output_, cloud->header.stamp);
   }
 }
 
