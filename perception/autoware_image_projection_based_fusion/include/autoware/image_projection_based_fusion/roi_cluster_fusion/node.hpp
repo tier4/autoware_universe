@@ -17,6 +17,8 @@
 
 #include "autoware/image_projection_based_fusion/fusion_node.hpp"
 
+#include <agnocast/agnocast.hpp>
+
 #include <map>
 #include <memory>
 #include <string>
@@ -28,6 +30,9 @@ class RoiClusterFusionNode : public FusionNode<ClusterMsgType, RoiMsgType, Clust
 {
 public:
   explicit RoiClusterFusionNode(const rclcpp::NodeOptions & options);
+
+protected:
+  void publish(const ClusterMsgType & output_msg) override;
 
 private:
   void preprocess(ClusterMsgType & output_cluster_msg) override;
@@ -56,6 +61,9 @@ private:
   double cal_iou_by_mode(
     const sensor_msgs::msg::RegionOfInterest & roi_1,
     const sensor_msgs::msg::RegionOfInterest & roi_2, const std::string iou_mode);
+
+  agnocast::Publisher<ClusterMsgType>::SharedPtr agnocast_pub_ptr_;
+  agnocast::Subscription<ClusterMsgType>::SharedPtr agnocast_msg3d_sub_;
 };
 
 }  // namespace autoware::image_projection_based_fusion

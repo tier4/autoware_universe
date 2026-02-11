@@ -8,6 +8,7 @@ find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 autoware_package()
 
+find_package(agnocast_components REQUIRED)
 find_package(OpenMP REQUIRED)
 if(OpenMP_FOUND)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
@@ -39,9 +40,10 @@ rclcpp_components_register_node(${PROJECT_NAME}
   EXECUTABLE roi_detected_object_fusion_node
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::image_projection_based_fusion::RoiClusterFusionNode"
   EXECUTABLE roi_cluster_fusion_node
+  RESOURCE_INDEX agnocast_components
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}

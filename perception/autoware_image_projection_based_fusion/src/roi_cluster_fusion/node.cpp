@@ -54,8 +54,23 @@ RoiClusterFusionNode::RoiClusterFusionNode(const rclcpp::NodeOptions & options)
   fusion_distance_ = declare_parameter<double>("fusion_distance");
   strict_iou_fusion_distance_ = declare_parameter<double>("strict_iou_fusion_distance");
 
-  // publisher
-  pub_ptr_ = this->create_publisher<ClusterMsgType>("output", rclcpp::QoS{1});
+  // Replace rclcpp publisher with agnocast publisher
+  agnocast_pub_ptr_ =
+    agnocast::create_publisher<ClusterMsgType>(this, "output", rclcpp::QoS{1});
+
+  // Replace rclcpp subscription with agnocast subscription for zero-copy IPC
+  msg3d_sub_.reset();
+  agnocast_msg3d_sub_ = agnocast::create_subscription<ClusterMsgType>(
+    this, "input", rclcpp::QoS(1).best_effort(),
+    [this](agnocast::ipc_shared_ptr<ClusterMsgType> msg) {
+      // Capture ipc_shared_ptr in the custom deleter to keep the agnocast message alive
+      // as long as the shared_ptr is held by FusionCollector
+      auto captured_msg =
+        std::make_shared<agnocast::ipc_shared_ptr<ClusterMsgType>>(std::move(msg));
+      auto input_ptr = std::shared_ptr<const ClusterMsgType>(
+        captured_msg->get(), [captured_msg](const ClusterMsgType *) {});
+      this->sub_callback(input_ptr);
+    });
 }
 
 void RoiClusterFusionNode::preprocess(ClusterMsgType & output_cluster_msg)
@@ -301,6 +316,20 @@ void RoiClusterFusionNode::postprocess(
       }
     }
   }
+}
+
+void RoiClusterFusionNode::publish(const ClusterMsgType & output_msg)
+{
+  if (!agnocast_pub_ptr_) {
+    return;
+  }
+
+  if (agnocast_pub_ptr_->get_subscription_count() < 1) {
+    return;
+  }
+  auto loaned_msg = agnocast_pub_ptr_->borrow_loaned_message();
+  *loaned_msg = output_msg;
+  agnocast_pub_ptr_->publish(std::move(loaned_msg));
 }
 
 }  // namespace autoware::image_projection_based_fusion
