@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_surround_obstacle_checker)
 
 find_package(autoware_cmake REQUIRED)
+find_package(agnocastlib REQUIRED)
 autoware_package()
 
 find_package(eigen3_cmake_module REQUIRED)

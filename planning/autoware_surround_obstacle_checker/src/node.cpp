@@ -76,6 +76,12 @@ SurroundObstacleCheckerNode::SurroundObstacleCheckerNode(const rclcpp::NodeOptio
 
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
 
+  // Agnocast polling subscribers
+  sub_pointcloud_ = std::make_shared<agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>>(
+    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos());
+  sub_dynamic_objects_ = std::make_shared<agnocast::PollingSubscriber<PredictedObjects>>(
+    this, "~/input/objects");
+
   // Publishers
   pub_clear_velocity_limit_ = this->create_publisher<VelocityLimitClearCommand>(
     "~/output/velocity_limit_clear_command", rclcpp::QoS{1}.transient_local());
@@ -129,9 +135,8 @@ void SurroundObstacleCheckerNode::onTimer()
   stop_watch.tic();
 
   odometry_ptr_ = sub_odometry_.take_data();
-  pointcloud_ptr_ = sub_pointcloud_.take_data();
-  object_ptr_ = sub_dynamic_objects_.take_data();
-
+  pointcloud_ptr_ = sub_pointcloud_->take_data();
+  object_ptr_ = sub_dynamic_objects_->take_data();
   if (!odometry_ptr_) {
     RCLCPP_INFO_THROTTLE(
       this->get_logger(), *this->get_clock(), 5000 /* ms */, "waiting for current velocity...");

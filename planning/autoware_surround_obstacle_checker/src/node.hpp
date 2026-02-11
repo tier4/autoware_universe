@@ -24,6 +24,8 @@
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <agnocast/agnocast.hpp>
+
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
 #include <autoware_internal_planning_msgs/msg/velocity_limit_clear_command.hpp>
@@ -100,10 +102,8 @@ private:
   // publisher and subscriber
   autoware_utils::InterProcessPollingSubscriber<nav_msgs::msg::Odometry> sub_odometry_{
     this, "~/input/odometry"};
-  autoware_utils::InterProcessPollingSubscriber<sensor_msgs::msg::PointCloud2> sub_pointcloud_{
-    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos()};
-  autoware_utils::InterProcessPollingSubscriber<PredictedObjects> sub_dynamic_objects_{
-    this, "~/input/objects"};
+  agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pointcloud_;
+  agnocast::PollingSubscriber<PredictedObjects>::SharedPtr sub_dynamic_objects_;
   rclcpp::Publisher<VelocityLimitClearCommand>::SharedPtr pub_clear_velocity_limit_;
   rclcpp::Publisher<VelocityLimit>::SharedPtr pub_velocity_limit_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
@@ -124,8 +124,8 @@ private:
 
   // data
   nav_msgs::msg::Odometry::ConstSharedPtr odometry_ptr_;
-  sensor_msgs::msg::PointCloud2::ConstSharedPtr pointcloud_ptr_;
-  PredictedObjects::ConstSharedPtr object_ptr_;
+  agnocast::ipc_shared_ptr<const sensor_msgs::msg::PointCloud2> pointcloud_ptr_;
+  agnocast::ipc_shared_ptr<const PredictedObjects> object_ptr_;
 
   // State Machine
   State state_ = State::PASS;
