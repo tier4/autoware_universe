@@ -34,6 +34,11 @@ void OccupancyGridMapLOBFUpdater::initRosParam(rclcpp::Node & /*node*/)
   // nothing to load
 }
 
+void OccupancyGridMapLOBFUpdater::initRosParam(agnocast::Node & /*node*/)
+{
+  // nothing to load
+}
+
 inline unsigned char OccupancyGridMapLOBFUpdater::applyLOBF(
   const unsigned char & z, const unsigned char & o)
 {

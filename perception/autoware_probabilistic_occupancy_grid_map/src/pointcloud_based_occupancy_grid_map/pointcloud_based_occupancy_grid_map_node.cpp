@@ -19,8 +19,6 @@
 #include "autoware/probabilistic_occupancy_grid_map/costmap_2d/occupancy_grid_map_projective.hpp"
 #include "autoware/probabilistic_occupancy_grid_map/utils/utils.hpp"
 
-#include <autoware_utils/ros/debug_publisher.hpp>
-#include <autoware_utils/system/stop_watch.hpp>
 #include <pcl_ros/transforms.hpp>
 
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -44,7 +42,7 @@
 
 namespace autoware::occupancy_grid_map
 {
-using autoware_utils::ScopedTimeTrack;
+using autoware_utils_debug::ScopedTimeTrack;
 using costmap_2d::OccupancyGridMapBBFUpdater;
 using costmap_2d::OccupancyGridMapFixedBlindSpot;
 using costmap_2d::OccupancyGridMapProjectiveBlindSpot;
@@ -52,10 +50,9 @@ using geometry_msgs::msg::Pose;
 
 PointcloudBasedOccupancyGridMapNode::PointcloudBasedOccupancyGridMapNode(
   const rclcpp::NodeOptions & node_options)
-: Node("pointcloud_based_occupancy_grid_map_node", node_options)
+: agnocast::Node("pointcloud_based_occupancy_grid_map_node", node_options)
 {
   using std::placeholders::_1;
-  using std::placeholders::_2;
 
   /* params */
   map_frame_ = this->declare_parameter<std::string>("map_frame");
@@ -129,13 +126,17 @@ PointcloudBasedOccupancyGridMapNode::PointcloudBasedOccupancyGridMapNode(
   occupancy_grid_map_ptr_->initRosParam(*this);
   occupancy_grid_map_updater_ptr_->initRosParam(*this);
 
+  // Initialize TF2
+  tf2_ = std::make_shared<agnocast::Buffer>(this->get_clock());
+  tf2_listener_ = std::make_unique<agnocast::TransformListener>(*tf2_, *this);
+
   // initialize debug tool
   {
-    using autoware_utils::DebugPublisher;
-    using autoware_utils::StopWatch;
+    using autoware_utils_debug::BasicDebugPublisher;
+    using autoware_utils_system::StopWatch;
     stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
     debug_publisher_ptr_ =
-      std::make_unique<DebugPublisher>(this, "pointcloud_based_occupancy_grid_map");
+      std::make_unique<BasicDebugPublisher<agnocast::Node>>(this, "pointcloud_based_occupancy_grid_map");
     stop_watch_ptr_->tic("cyclic_time");
     stop_watch_ptr_->tic("processing_time");
 
@@ -143,22 +144,23 @@ PointcloudBasedOccupancyGridMapNode::PointcloudBasedOccupancyGridMapNode(
     bool use_time_keeper = declare_parameter<bool>("publish_processing_time_detail");
     if (use_time_keeper) {
       detailed_processing_time_publisher_ =
-        this->create_publisher<autoware_utils::ProcessingTimeDetail>(
+        this->create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
           "~/debug/processing_time_detail_ms", 1);
-      auto time_keeper = autoware_utils::TimeKeeper(detailed_processing_time_publisher_);
-      time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(time_keeper);
+      time_keeper_ =
+        std::make_shared<autoware_utils_debug::TimeKeeper>(detailed_processing_time_publisher_);
     }
   }
 
   processing_time_tolerance_ms_ = this->declare_parameter<double>("processing_time_tolerance_ms");
   processing_time_consecutive_excess_tolerance_ms_ =
     this->declare_parameter<double>("processing_time_consecutive_excess_tolerance_ms");
-  diagnostics_interface_ptr_ = std::make_unique<autoware_utils::DiagnosticsInterface>(
-    this, "pointcloud_based_probabilistic_occupancy_grid_map");
+  diagnostics_interface_ptr_ =
+    std::make_unique<autoware_utils_diagnostics::BasicDiagnosticsInterface<agnocast::Node>>(
+      this, "pointcloud_based_probabilistic_occupancy_grid_map");
 }
 
 void PointcloudBasedOccupancyGridMapNode::obstaclePointcloudCallback(
-  const PointCloud2::ConstSharedPtr & input_obstacle_msg)
+  const agnocast::ipc_shared_ptr<PointCloud2> & input_obstacle_msg)
 {
   obstacle_pointcloud_.fromROSMsgAsync(input_obstacle_msg);
 
@@ -168,7 +170,7 @@ void PointcloudBasedOccupancyGridMapNode::obstaclePointcloudCallback(
 }
 
 void PointcloudBasedOccupancyGridMapNode::rawPointcloudCallback(
-  const PointCloud2::ConstSharedPtr & input_raw_msg)
+  const agnocast::ipc_shared_ptr<PointCloud2> & input_raw_msg)
 {
   raw_pointcloud_.fromROSMsgAsync(input_raw_msg);
 
@@ -299,9 +301,11 @@ void PointcloudBasedOccupancyGridMapNode::onPointcloudWithObstacleAndRaw()
     occupancy_grid_map_ptr_->copyDeviceCostmapToHost();
 
     // publish
-    occupancy_grid_map_pub_->publish(OccupancyGridMapToMsgPtr(
-      map_frame_, raw_pointcloud_.header.stamp, robot_pose.position.z,
-      *occupancy_grid_map_ptr_));  // (todo) robot_pose may be altered with gridmap_origin
+    auto msg_ptr = occupancy_grid_map_pub_->borrow_loaned_message();
+    fillOccupancyGridMsg(
+      msg_ptr, map_frame_, raw_pointcloud_.header.stamp, robot_pose.position.z,
+      *occupancy_grid_map_ptr_);  // (todo) robot_pose may be altered with gridmap_origin
+    occupancy_grid_map_pub_->publish(std::move(msg_ptr));
   } else {
     std::unique_ptr<ScopedTimeTrack> inner_st_ptr;
     if (time_keeper_)
@@ -313,9 +317,11 @@ void PointcloudBasedOccupancyGridMapNode::onPointcloudWithObstacleAndRaw()
     occupancy_grid_map_updater_ptr_->copyDeviceCostmapToHost();
 
     // publish
-    occupancy_grid_map_pub_->publish(OccupancyGridMapToMsgPtr(
-      map_frame_, raw_pointcloud_.header.stamp, robot_pose.position.z,
-      *occupancy_grid_map_updater_ptr_));
+    auto msg_ptr = occupancy_grid_map_pub_->borrow_loaned_message();
+    fillOccupancyGridMsg(
+      msg_ptr, map_frame_, raw_pointcloud_.header.stamp, robot_pose.position.z,
+      *occupancy_grid_map_updater_ptr_);
+    occupancy_grid_map_pub_->publish(std::move(msg_ptr));
   }
 
   if (debug_publisher_ptr_ && stop_watch_ptr_) {
@@ -335,16 +341,16 @@ void PointcloudBasedOccupancyGridMapNode::onPointcloudWithObstacleAndRaw()
 
     checkProcessingTime(processing_time_ms);
   }
+
 }
 
-OccupancyGrid::UniquePtr PointcloudBasedOccupancyGridMapNode::OccupancyGridMapToMsgPtr(
+void PointcloudBasedOccupancyGridMapNode::fillOccupancyGridMsg(
+  agnocast::ipc_shared_ptr<OccupancyGrid> & msg_ptr,
   const std::string & frame_id, const Time & stamp, const float & robot_pose_z,
   const Costmap2D & occupancy_grid_map)
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
-
-  auto msg_ptr = std::make_unique<OccupancyGrid>();
 
   msg_ptr->header.frame_id = frame_id;
   msg_ptr->header.stamp = stamp;
@@ -367,7 +373,6 @@ OccupancyGrid::UniquePtr PointcloudBasedOccupancyGridMapNode::OccupancyGridMapTo
   for (unsigned int i = 0; i < msg_ptr->data.size(); ++i) {
     msg_ptr->data[i] = cost_value::cost_translation_table[data[i]];
   }
-  return msg_ptr;
 }
 
 }  // namespace autoware::occupancy_grid_map

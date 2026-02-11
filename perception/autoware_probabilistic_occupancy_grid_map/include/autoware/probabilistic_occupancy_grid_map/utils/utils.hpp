@@ -34,6 +34,8 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
+#include <agnocast/node/tf2/tf2.hpp>
+
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <tf2_ros/buffer.h>
@@ -82,6 +84,22 @@ geometry_msgs::msg::Pose getPose(
 
 geometry_msgs::msg::Pose getPose(
   const builtin_interfaces::msg::Time & stamp, const tf2_ros::Buffer & tf2,
+  const std::string & source_frame, const std::string & target_frame);
+
+// agnocast::Buffer overloads
+#ifdef USE_CUDA
+bool transformPointcloudAsync(
+  CudaPointCloud2 & input, const agnocast::Buffer & tf2, const std::string & target_frame,
+  autoware::cuda_utils::CudaUniquePtr<Eigen::Matrix3f> & device_rotation,
+  autoware::cuda_utils::CudaUniquePtr<Eigen::Vector3f> & device_translation);
+#endif
+
+geometry_msgs::msg::Pose getPose(
+  const std_msgs::msg::Header & source_header, const agnocast::Buffer & tf2,
+  const std::string & target_frame);
+
+geometry_msgs::msg::Pose getPose(
+  const builtin_interfaces::msg::Time & stamp, const agnocast::Buffer & tf2,
   const std::string & source_frame, const std::string & target_frame);
 
 // get inverted pose

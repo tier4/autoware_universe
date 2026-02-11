@@ -40,6 +40,7 @@ public:
     const Pose & robot_pose, const Pose & scan_origin) override;
 
   void initRosParam(rclcpp::Node & node) override;
+  void initRosParam(agnocast::Node & node) override;
 
 private:
   float projection_dz_threshold_;

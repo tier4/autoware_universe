@@ -58,6 +58,7 @@
 #include <autoware/cuda_utils/cuda_unique_ptr.hpp>
 #endif
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils/math/unit_conversion.hpp>
 #include <nav2_costmap_2d/costmap_2d.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -93,6 +94,7 @@ public:
   void resetMaps() override;
 
   virtual void initRosParam(rclcpp::Node & node) = 0;
+  virtual void initRosParam(agnocast::Node & node) = 0;
 
   void setHeightLimit(const double min_height, const double max_height);
 

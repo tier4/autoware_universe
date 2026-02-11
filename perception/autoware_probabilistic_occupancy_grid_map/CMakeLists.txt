@@ -4,6 +4,9 @@ project(autoware_probabilistic_occupancy_grid_map)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 find_package(CUDA)
 find_package(eigen3_cmake_module REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -77,9 +80,11 @@ if(${CUDA_FOUND})
     ${PROJECT_NAME}_cuda
   )
 
-  rclcpp_components_register_node(pointcloud_based_occupancy_grid_map
+  agnocast_components_register_node(pointcloud_based_occupancy_grid_map
     PLUGIN "autoware::occupancy_grid_map::PointcloudBasedOccupancyGridMapNode"
     EXECUTABLE pointcloud_based_occupancy_grid_map_node
+    EXECUTOR AgnocastOnlyMultiThreadedExecutor
+    RESOURCE_INDEX agnocast_components
   )
 
   # GridMapFusionNode

@@ -164,5 +164,11 @@ void OccupancyGridMapFixedBlindSpot::initRosParam(rclcpp::Node & node)
     node.declare_parameter<double>("OccupancyGridMapFixedBlindSpot.distance_margin");
 }
 
+void OccupancyGridMapFixedBlindSpot::initRosParam(agnocast::Node & node)
+{
+  distance_margin_ =
+    node.declare_parameter<double>("OccupancyGridMapFixedBlindSpot.distance_margin");
+}
+
 }  // namespace costmap_2d
 }  // namespace autoware::occupancy_grid_map

@@ -22,8 +22,12 @@ from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import LoadComposableNodes
+from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
 import yaml
+
+# agnocast heaphook path for LD_PRELOAD
+AGNOCAST_HEAPHOOK_PATH = "/opt/ros/humble/lib/libagnocast_heaphook.so"
 
 
 def get_downsample_filter_node(setting: dict) -> ComposableNode:
@@ -79,7 +83,7 @@ def launch_setup(context, *args, **kwargs):
     with open(updater_param_file, "r") as f:
         occupancy_grid_map_updater_params = yaml.safe_load(f)["/**"]["ros__parameters"]
 
-    # composable nodes
+    # composable nodes for downsample preprocessing
     composable_nodes = []
 
     # add downsample process
@@ -93,56 +97,61 @@ def launch_setup(context, *args, **kwargs):
         downsample_preprocess_nodes = get_downsample_preprocess_nodes(voxel_grid_size)
         composable_nodes.extend(downsample_preprocess_nodes)
 
-    composable_nodes.append(
-        ComposableNode(
-            package="autoware_probabilistic_occupancy_grid_map",
-            plugin="autoware::occupancy_grid_map::PointcloudBasedOccupancyGridMapNode",
-            name="occupancy_grid_map_node",
-            remappings=[
+    # occupancy_grid_map_node as agnocast standalone node
+    occupancy_grid_map_node = Node(
+        package="autoware_probabilistic_occupancy_grid_map",
+        executable="pointcloud_based_occupancy_grid_map_node",
+        name="occupancy_grid_map_node",
+        remappings=[
+            (
+                "~/input/obstacle_pointcloud",
                 (
-                    "~/input/obstacle_pointcloud",
-                    (
-                        LaunchConfiguration("input/obstacle_pointcloud")
-                        if not downsample_input_pointcloud
-                        else "obstacle/downsample/pointcloud"
-                    ),
+                    LaunchConfiguration("input/obstacle_pointcloud").perform(context)
+                    if not downsample_input_pointcloud
+                    else "obstacle/downsample/pointcloud"
                 ),
+            ),
+            (
+                "~/input/raw_pointcloud",
                 (
-                    "~/input/raw_pointcloud",
-                    (
-                        LaunchConfiguration("input/raw_pointcloud")
-                        if not downsample_input_pointcloud
-                        else "raw/downsample/pointcloud"
-                    ),
+                    LaunchConfiguration("input/raw_pointcloud").perform(context)
+                    if not downsample_input_pointcloud
+                    else "raw/downsample/pointcloud"
                 ),
-                ("~/output/occupancy_grid_map", LaunchConfiguration("output")),
-            ],
-            parameters=[
-                pointcloud_based_occupancy_grid_map_node_params,
-                occupancy_grid_map_updater_params,
-                {"updater_type": LaunchConfiguration("updater_type")},
-            ],
-            extra_arguments=[{"use_intra_process_comms": LaunchConfiguration("use_intra_process")}],
-        )
-    )
-
-    occupancy_grid_map_container = ComposableNodeContainer(
-        name=LaunchConfiguration("individual_container_name"),
-        namespace="",
-        package="rclcpp_components",
-        executable=LaunchConfiguration("container_executable"),
-        composable_node_descriptions=composable_nodes,
-        condition=UnlessCondition(LaunchConfiguration("use_pointcloud_container")),
+            ),
+            ("~/output/occupancy_grid_map", LaunchConfiguration("output").perform(context)),
+        ],
+        parameters=[
+            pointcloud_based_occupancy_grid_map_node_params,
+            occupancy_grid_map_updater_params,
+            {"updater_type": LaunchConfiguration("updater_type").perform(context)},
+        ],
+        additional_env={"LD_PRELOAD": AGNOCAST_HEAPHOOK_PATH},
         output="screen",
     )
 
-    load_composable_nodes = LoadComposableNodes(
-        composable_node_descriptions=composable_nodes,
-        target_container=LaunchConfiguration("pointcloud_container_name"),
-        condition=IfCondition(LaunchConfiguration("use_pointcloud_container")),
-    )
+    launch_entities = [occupancy_grid_map_node]
 
-    return [occupancy_grid_map_container, load_composable_nodes]
+    # Add downsample nodes if needed
+    if composable_nodes:
+        occupancy_grid_map_container = ComposableNodeContainer(
+            name=LaunchConfiguration("individual_container_name"),
+            namespace="",
+            package="rclcpp_components",
+            executable=LaunchConfiguration("container_executable"),
+            composable_node_descriptions=composable_nodes,
+            condition=UnlessCondition(LaunchConfiguration("use_pointcloud_container")),
+            output="screen",
+        )
+
+        load_composable_nodes = LoadComposableNodes(
+            composable_node_descriptions=composable_nodes,
+            target_container=LaunchConfiguration("pointcloud_container_name"),
+            condition=IfCondition(LaunchConfiguration("use_pointcloud_container")),
+        )
+        launch_entities.extend([occupancy_grid_map_container, load_composable_nodes])
+
+    return launch_entities
 
 
 def generate_launch_description():

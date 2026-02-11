@@ -17,9 +17,15 @@
   <buildtool_depend>autoware_cmake</buildtool_depend>
   <buildtool_depend>eigen3_cmake_module</buildtool_depend>
 
+  <depend>agnocast</depend>
+  <depend>agnocast_components</depend>
   <depend>autoware_cuda_dependency_meta</depend>
   <depend>autoware_cuda_utils</depend>
+  <depend>autoware_internal_debug_msgs</depend>
   <depend>autoware_utils</depend>
+  <depend>autoware_utils_debug</depend>
+  <depend>autoware_utils_diagnostics</depend>
+  <depend>autoware_utils_system</depend>
   <depend>grid_map_costmap_2d</depend>
   <depend>grid_map_msgs</depend>
   <depend>grid_map_ros</depend>

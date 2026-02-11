@@ -37,6 +37,7 @@ public:
     const float resolution);
   bool update(const OccupancyGridMapInterface & single_frame_occupancy_grid_map) override;
   void initRosParam(rclcpp::Node & node) override;
+  void initRosParam(agnocast::Node & node) override;
 
 private:
   inline unsigned char applyBBF(const unsigned char & z, const unsigned char & o);

@@ -20,10 +20,12 @@
 #include "autoware/probabilistic_occupancy_grid_map/updater/ogm_updater_interface.hpp"
 #include "autoware/probabilistic_occupancy_grid_map/utils/cuda_pointcloud.hpp"
 
-#include <autoware_utils/ros/debug_publisher.hpp>
-#include <autoware_utils/ros/diagnostics_interface.hpp>
-#include <autoware_utils/system/stop_watch.hpp>
-#include <autoware_utils/system/time_keeper.hpp>
+#include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/tf2.hpp>
+#include <autoware_utils_debug/debug_publisher.hpp>
+#include <autoware_utils_debug/time_keeper.hpp>
+#include <autoware_utils_diagnostics/diagnostics_interface.hpp>
+#include <autoware_utils_system/stop_watch.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <laser_geometry/laser_geometry.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -32,8 +34,6 @@
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
 #include <cuda_runtime.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <string>
@@ -48,33 +48,32 @@ using nav2_costmap_2d::Costmap2D;
 using nav_msgs::msg::OccupancyGrid;
 using sensor_msgs::msg::LaserScan;
 using sensor_msgs::msg::PointCloud2;
-using tf2_ros::Buffer;
-using tf2_ros::TransformListener;
 
-class PointcloudBasedOccupancyGridMapNode : public rclcpp::Node
+class PointcloudBasedOccupancyGridMapNode : public agnocast::Node
 {
 public:
   explicit PointcloudBasedOccupancyGridMapNode(const rclcpp::NodeOptions & node_options);
 
 private:
-  void obstaclePointcloudCallback(const PointCloud2::ConstSharedPtr & input_obstacle_msg);
-  void rawPointcloudCallback(const PointCloud2::ConstSharedPtr & input_raw_msg);
+  void obstaclePointcloudCallback(const agnocast::ipc_shared_ptr<PointCloud2> & input_obstacle_msg);
+  void rawPointcloudCallback(const agnocast::ipc_shared_ptr<PointCloud2> & input_raw_msg);
   void onPointcloudWithObstacleAndRaw();
   void checkProcessingTime(double processing_time_ms);
 
-  OccupancyGrid::UniquePtr OccupancyGridMapToMsgPtr(
+  void fillOccupancyGridMsg(
+    agnocast::ipc_shared_ptr<OccupancyGrid> & msg_ptr,
     const std::string & frame_id, const Time & stamp, const float & robot_pose_z,
     const Costmap2D & occupancy_grid_map);
 
 private:
-  rclcpp::Publisher<OccupancyGrid>::SharedPtr occupancy_grid_map_pub_;
-  rclcpp::Subscription<PointCloud2>::SharedPtr obstacle_pointcloud_sub_ptr_;
-  rclcpp::Subscription<PointCloud2>::SharedPtr raw_pointcloud_sub_ptr_;
-  std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{};
-  std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_ptr_{};
+  agnocast::Publisher<OccupancyGrid>::SharedPtr occupancy_grid_map_pub_;
+  agnocast::Subscription<PointCloud2>::SharedPtr obstacle_pointcloud_sub_ptr_;
+  agnocast::Subscription<PointCloud2>::SharedPtr raw_pointcloud_sub_ptr_;
+  std::unique_ptr<autoware_utils_system::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{};
+  std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>> debug_publisher_ptr_{};
 
-  std::shared_ptr<Buffer> tf2_{std::make_shared<Buffer>(get_clock())};
-  std::shared_ptr<TransformListener> tf2_listener_{std::make_shared<TransformListener>(*tf2_)};
+  std::shared_ptr<agnocast::Buffer> tf2_;
+  std::unique_ptr<agnocast::TransformListener> tf2_listener_;
 
   std::unique_ptr<OccupancyGridMapInterface> occupancy_grid_map_ptr_;
   std::unique_ptr<OccupancyGridMapUpdaterInterface> occupancy_grid_map_updater_ptr_;
@@ -98,11 +97,12 @@ private:
   bool filter_obstacle_pointcloud_by_raw_pointcloud_;
 
   // time keeper
-  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
+  agnocast::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     detailed_processing_time_publisher_;
-  std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
+  std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
   // diagnostics
-  std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_ptr_;
+  std::unique_ptr<autoware_utils_diagnostics::BasicDiagnosticsInterface<agnocast::Node>>
+    diagnostics_interface_ptr_;
   double processing_time_tolerance_ms_;
   double processing_time_consecutive_excess_tolerance_ms_;
 };

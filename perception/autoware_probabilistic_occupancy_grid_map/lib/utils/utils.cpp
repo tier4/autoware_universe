@@ -174,5 +174,68 @@ geometry_msgs::msg::Pose getInversePose(const geometry_msgs::msg::Pose & pose)
   return inv_pose;
 }
 
+// agnocast::Buffer overloads
+#ifdef USE_CUDA
+bool transformPointcloudAsync(
+  CudaPointCloud2 & input, const agnocast::Buffer & tf2, const std::string & target_frame,
+  autoware::cuda_utils::CudaUniquePtr<Eigen::Matrix3f> & device_rotation,
+  autoware::cuda_utils::CudaUniquePtr<Eigen::Vector3f> & device_translation)
+{
+  geometry_msgs::msg::TransformStamped tf_stamped;
+  // lookup transform
+  try {
+    tf_stamped = tf2.lookupTransform(
+      target_frame, input.header.frame_id, input.header.stamp, rclcpp::Duration::from_seconds(0.5));
+  } catch (tf2::TransformException & ex) {
+    RCLCPP_WARN(
+      rclcpp::get_logger("probabilistic_occupancy_grid_map"), "Failed to lookup transform: %s",
+      ex.what());
+    return false;
+  }
+  // transform pointcloud
+  Eigen::Matrix4f tf_matrix = tf2::transformToEigen(tf_stamped.transform).matrix().cast<float>();
+  Eigen::Matrix3f rotation = tf_matrix.block<3, 3>(0, 0);
+  Eigen::Vector3f translation = tf_matrix.block<3, 1>(0, 3);
+
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    device_rotation.get(), rotation.data(), sizeof(Eigen::Matrix3f), cudaMemcpyHostToDevice,
+    input.stream));
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    device_translation.get(), translation.data(), sizeof(Eigen::Vector3f), cudaMemcpyHostToDevice,
+    input.stream));
+
+  transformPointCloudLaunch(
+    input.data.get(), input.width * input.height, input.point_step, device_rotation.get(),
+    device_translation.get(), input.stream);
+
+  input.header.frame_id = target_frame;
+  return true;
+}
+#endif
+
+geometry_msgs::msg::Pose getPose(
+  const std_msgs::msg::Header & source_header, const agnocast::Buffer & tf2,
+  const std::string & target_frame)
+{
+  geometry_msgs::msg::Pose pose;
+  geometry_msgs::msg::TransformStamped tf_stamped;
+  tf_stamped = tf2.lookupTransform(
+    target_frame, source_header.frame_id, source_header.stamp, rclcpp::Duration::from_seconds(0.5));
+  pose = autoware_utils::transform2pose(tf_stamped.transform);
+  return pose;
+}
+
+geometry_msgs::msg::Pose getPose(
+  const builtin_interfaces::msg::Time & stamp, const agnocast::Buffer & tf2,
+  const std::string & source_frame, const std::string & target_frame)
+{
+  geometry_msgs::msg::Pose pose;
+  geometry_msgs::msg::TransformStamped tf_stamped;
+  tf_stamped =
+    tf2.lookupTransform(target_frame, source_frame, stamp, rclcpp::Duration::from_seconds(0.5));
+  pose = autoware_utils::transform2pose(tf_stamped.transform);
+  return pose;
+}
+
 }  // namespace utils
 }  // namespace autoware::occupancy_grid_map

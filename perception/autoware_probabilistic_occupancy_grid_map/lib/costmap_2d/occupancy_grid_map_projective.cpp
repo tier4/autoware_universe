@@ -169,5 +169,13 @@ void OccupancyGridMapProjectiveBlindSpot::initRosParam(rclcpp::Node & node)
     "OccupancyGridMapProjectiveBlindSpot.obstacle_separation_threshold");
 }
 
+void OccupancyGridMapProjectiveBlindSpot::initRosParam(agnocast::Node & node)
+{
+  projection_dz_threshold_ =
+    node.declare_parameter<float>("OccupancyGridMapProjectiveBlindSpot.projection_dz_threshold");
+  obstacle_separation_threshold_ = node.declare_parameter<float>(
+    "OccupancyGridMapProjectiveBlindSpot.obstacle_separation_threshold");
+}
+
 }  // namespace costmap_2d
 }  // namespace autoware::occupancy_grid_map
