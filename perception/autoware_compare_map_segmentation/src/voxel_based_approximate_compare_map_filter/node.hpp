@@ -18,9 +18,6 @@
 #include "autoware/compare_map_segmentation/voxel_grid_map_loader.hpp"
 #include "autoware/pointcloud_preprocessor/filter.hpp"
 
-#include <autoware_utils/ros/diagnostics_interface.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
-
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/search/pcl_search.h>
 
@@ -34,7 +31,7 @@ class VoxelBasedApproximateStaticMapLoader : public VoxelGridStaticMapLoader
 {
 public:
   explicit VoxelBasedApproximateStaticMapLoader(
-    rclcpp::Node * node, double leaf_size, double downsize_ratio_z_axis,
+    agnocast::Node * node, double leaf_size, double downsize_ratio_z_axis,
     std::string * tf_map_input_frame)
   : VoxelGridStaticMapLoader(node, leaf_size, downsize_ratio_z_axis, tf_map_input_frame)
   {
@@ -47,7 +44,7 @@ class VoxelBasedApproximateDynamicMapLoader : public VoxelGridDynamicMapLoader
 {
 public:
   VoxelBasedApproximateDynamicMapLoader(
-    rclcpp::Node * node, double leaf_size, double downsize_ratio_z_axis,
+    agnocast::Node * node, double leaf_size, double downsize_ratio_z_axis,
     std::string * tf_map_input_frame, rclcpp::CallbackGroup::SharedPtr main_callback_group)
   : VoxelGridDynamicMapLoader(
       node, leaf_size, downsize_ratio_z_axis, tf_map_input_frame, main_callback_group)
@@ -58,7 +55,7 @@ public:
 };
 
 class VoxelBasedApproximateCompareMapFilterComponent
-: public autoware::pointcloud_preprocessor::Filter
+: public autoware::pointcloud_preprocessor::FilterBase<agnocast::Node>
 {
 protected:
   void filter(
@@ -68,9 +65,9 @@ private:
   double distance_threshold_;
   std::unique_ptr<VoxelGridMapLoader> voxel_based_approximate_map_loader_;
 
-  // diagnostics
-  diagnostic_updater::Updater diagnostic_updater_;
-  void checkStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  // TODO(agnocast): diagnostic_updater::Updater is not compatible with agnocast::Node
+  // diagnostic_updater::Updater diagnostic_updater_;
+  // void checkStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW

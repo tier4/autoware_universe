@@ -28,7 +28,7 @@ namespace autoware::compare_map_segmentation
 {
 
 void DistanceBasedStaticMapLoader::onMapCallback(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr map)
+  const agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> & map)
 {
   pcl::PointCloud<pcl::PointXYZ> map_pcl;
   pcl::fromROSMsg<pcl::PointXYZ>(*map, map_pcl);
@@ -110,14 +110,15 @@ bool DistanceBasedDynamicMapLoader::is_close_to_map(
 
 DistanceBasedCompareMapFilterComponent::DistanceBasedCompareMapFilterComponent(
   const rclcpp::NodeOptions & options)
-: Filter("DistanceBasedCompareMapFilter", options)
+: FilterBase<agnocast::Node>("DistanceBasedCompareMapFilter", options)
 {
   // initialize debug tool
   {
-    using autoware_utils::DebugPublisher;
     using autoware_utils::StopWatch;
     stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
-    debug_publisher_ = std::make_unique<DebugPublisher>(this, "distance_based_compare_map_filter");
+    debug_publisher_ =
+      std::make_unique<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>(
+        this, "distance_based_compare_map_filter");
     stop_watch_ptr_->tic("cyclic_time");
     stop_watch_ptr_->tic("processing_time");
   }

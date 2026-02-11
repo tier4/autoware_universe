@@ -28,7 +28,7 @@ namespace autoware::compare_map_segmentation
 {
 
 void VoxelDistanceBasedStaticMapLoader::onMapCallback(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr map)
+  const agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> & map)
 {
   pcl::PointCloud<pcl::PointXYZ> map_pcl;
   pcl::fromROSMsg<pcl::PointXYZ>(*map, map_pcl);
@@ -111,26 +111,27 @@ bool VoxelDistanceBasedDynamicMapLoader::is_close_to_map(
 
 VoxelDistanceBasedCompareMapFilterComponent::VoxelDistanceBasedCompareMapFilterComponent(
   const rclcpp::NodeOptions & options)
-: Filter("VoxelDistanceBasedCompareMapFilter", options), diagnostic_updater_(this)
+: FilterBase<agnocast::Node>("VoxelDistanceBasedCompareMapFilter", options)
 {
   // initialize debug tool
   {
-    using autoware_utils::DebugPublisher;
     using autoware_utils::StopWatch;
     stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
     debug_publisher_ =
-      std::make_unique<DebugPublisher>(this, "voxel_distance_based_compare_map_filter");
+      std::make_unique<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>(
+        this, "voxel_distance_based_compare_map_filter");
     stop_watch_ptr_->tic("cyclic_time");
     stop_watch_ptr_->tic("processing_time");
   }
 
-  // setup diagnostics
-  {
-    diagnostic_updater_.setHardwareID(this->get_name());
-    diagnostic_updater_.add(
-      "Compare map filter status", this, &VoxelDistanceBasedCompareMapFilterComponent::checkStatus);
-    diagnostic_updater_.setPeriod(0.1);
-  }
+  // TODO(agnocast): diagnostic_updater::Updater is not compatible with agnocast::Node
+  // {
+  //   diagnostic_updater_.setHardwareID(this->get_name());
+  //   diagnostic_updater_.add(
+  //     "Compare map filter status", this,
+  //     &VoxelDistanceBasedCompareMapFilterComponent::checkStatus);
+  //   diagnostic_updater_.setPeriod(0.1);
+  // }
 
   // Declare parameters
   distance_threshold_ = declare_parameter<double>("distance_threshold");
@@ -151,21 +152,22 @@ VoxelDistanceBasedCompareMapFilterComponent::VoxelDistanceBasedCompareMapFilterC
   }
 }
 
-void VoxelDistanceBasedCompareMapFilterComponent::checkStatus(
-  diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  // map loader status
-  DiagStatus & map_loader_status =
-    (*voxel_distance_based_map_loader_).diagnostics_map_voxel_status_;
-  if (map_loader_status.level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
-    stat.add("Map loader status", "OK");
-  } else {
-    stat.add("Map loader status", "NG");
-  }
-
-  // final status = map loader status
-  stat.summary(map_loader_status.level, map_loader_status.message);
-}
+// TODO(agnocast): diagnostic_updater::Updater is not compatible with agnocast::Node
+// void VoxelDistanceBasedCompareMapFilterComponent::checkStatus(
+//   diagnostic_updater::DiagnosticStatusWrapper & stat)
+// {
+//   // map loader status
+//   DiagStatus & map_loader_status =
+//     (*voxel_distance_based_map_loader_).diagnostics_map_voxel_status_;
+//   if (map_loader_status.level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
+//     stat.add("Map loader status", "OK");
+//   } else {
+//     stat.add("Map loader status", "NG");
+//   }
+//
+//   // final status = map loader status
+//   stat.summary(map_loader_status.level, map_loader_status.message);
+// }
 
 void VoxelDistanceBasedCompareMapFilterComponent::filter(
   const PointCloud2ConstPtr & input, [[maybe_unused]] const IndicesPtr & indices,

@@ -18,19 +18,17 @@
 #include "autoware/compare_map_segmentation/voxel_grid_map_loader.hpp"
 #include "autoware/pointcloud_preprocessor/filter.hpp"
 
-#include <autoware_utils/ros/diagnostics_interface.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
-
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/search/pcl_search.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
+#include <agnocast/node/tf2/tf2.hpp>
 
 #include <memory>
 
 namespace autoware::compare_map_segmentation
 {
-class VoxelBasedCompareMapFilterComponent : public autoware::pointcloud_preprocessor::Filter
+
+class VoxelBasedCompareMapFilterComponent
+: public autoware::pointcloud_preprocessor::FilterBase<agnocast::Node>
 {
   using PointCloud2 = sensor_msgs::msg::PointCloud2;
   using PointCloud2ConstPtr = sensor_msgs::msg::PointCloud2::ConstSharedPtr;
@@ -38,6 +36,9 @@ class VoxelBasedCompareMapFilterComponent : public autoware::pointcloud_preproce
   using PointIndices = pcl_msgs::msg::PointIndices;
   using PointIndicesPtr = PointIndices::SharedPtr;
   using PointIndicesConstPtr = PointIndices::ConstSharedPtr;
+
+  using IndicesPtr =
+    autoware::pointcloud_preprocessor::FilterBase<agnocast::Node>::IndicesPtr;
 
 protected:
   void filter(
@@ -48,26 +49,25 @@ protected:
   bool convert_output_costly(std::unique_ptr<PointCloud2> & output) override;
 
 private:
-  // pcl::SegmentDifferences<pcl::PointXYZ> impl_;
-
   // interfaces
   std::unique_ptr<VoxelGridMapLoader> voxel_grid_map_loader_;
   rclcpp::Subscription<PointCloud2>::SharedPtr sub_map_;
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  agnocast::Buffer tf_buffer_;
+  agnocast::TransformListener tf_listener_;
 
   // parameters
   double distance_threshold_;
   bool set_map_in_voxel_grid_;
 
-  // diagnostics
-  diagnostic_updater::Updater diagnostic_updater_;
-  void checkStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  // TODO(agnocast): diagnostic_updater::Updater is not compatible with agnocast::Node
+  // diagnostic_updater::Updater diagnostic_updater_;
+  // void checkStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW
   explicit VoxelBasedCompareMapFilterComponent(const rclcpp::NodeOptions & options);
 };
+
 }  // namespace autoware::compare_map_segmentation
 
 #endif  // VOXEL_BASED_COMPARE_MAP_FILTER__NODE_HPP_

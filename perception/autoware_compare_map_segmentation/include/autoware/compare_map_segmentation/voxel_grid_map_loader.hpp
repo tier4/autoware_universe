@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__COMPARE_MAP_SEGMENTATION__VOXEL_GRID_MAP_LOADER_HPP_
 #define AUTOWARE__COMPARE_MAP_SEGMENTATION__VOXEL_GRID_MAP_LOADER_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_map_msgs/srv/get_differential_point_cloud_map.hpp>
@@ -101,7 +102,7 @@ protected:
   bool debug_ = false;
 
   // interfaces
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr downsampled_map_pub_;
+  agnocast::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr downsampled_map_pub_;
 
   // diagnostics
   bool isFeasibleWithPCLVoxelGrid(
@@ -113,7 +114,7 @@ public:
   using FilteredPointCloud = typename pcl::Filter<pcl::PointXYZ>::PointCloud;
   using FilteredPointCloudPtr = typename FilteredPointCloud::Ptr;
   explicit VoxelGridMapLoader(
-    rclcpp::Node * node, double leaf_size, double downsize_ratio_z_axis,
+    agnocast::Node * node, double leaf_size, double downsize_ratio_z_axis,
     std::string * tf_map_input_frame);
 
   virtual ~VoxelGridMapLoader() = default;
@@ -146,13 +147,14 @@ protected:
   std::atomic_bool is_initialized_{false};
 
   // interface of map subscription
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_map_;
+  agnocast::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_map_;
 
 public:
   explicit VoxelGridStaticMapLoader(
-    rclcpp::Node * node, double leaf_size, double downsize_ratio_z_axis,
+    agnocast::Node * node, double leaf_size, double downsize_ratio_z_axis,
     std::string * tf_map_input_frame);
-  virtual void onMapCallback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr map);
+  virtual void onMapCallback(
+    const agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> & map);
   bool is_close_to_map(const pcl::PointXYZ & point, const double distance_threshold) override;
 };
 
@@ -172,15 +174,15 @@ protected:
   /** \brief Map to hold loaded map grid id and it's voxel filter */
   VoxelGridDict current_voxel_grid_dict_;
   std::mutex dynamic_map_loader_mutex_;
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_kinematic_state_;
+  agnocast::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_kinematic_state_;
 
   std::optional<geometry_msgs::msg::Point> current_position_ = std::nullopt;
   std::optional<geometry_msgs::msg::Point> last_updated_position_ = std::nullopt;
-  rclcpp::TimerBase::SharedPtr map_update_timer_;
+  agnocast::TimerBase::SharedPtr map_update_timer_;
   double map_update_distance_threshold_;
   double map_loader_radius_;
   double max_map_grid_size_;
-  rclcpp::Client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>::SharedPtr
+  agnocast::Client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>::SharedPtr
     map_update_client_;
   rclcpp::CallbackGroup::SharedPtr client_callback_group_;
   rclcpp::CallbackGroup::SharedPtr timer_callback_group_;
@@ -208,15 +210,16 @@ protected:
 
 public:
   explicit VoxelGridDynamicMapLoader(
-    rclcpp::Node * node, double leaf_size, double downsize_ratio_z_axis,
+    agnocast::Node * node, double leaf_size, double downsize_ratio_z_axis,
     std::string * tf_map_input_frame, rclcpp::CallbackGroup::SharedPtr main_callback_group);
-  void onEstimatedPoseCallback(nav_msgs::msg::Odometry::ConstSharedPtr msg);
+  void onEstimatedPoseCallback(
+    const agnocast::ipc_shared_ptr<nav_msgs::msg::Odometry> & msg);
 
   void timer_callback();
   static bool should_update_map(
     const geometry_msgs::msg::Point & current_point, const geometry_msgs::msg::Point & last_point,
     const double map_update_distance_threshold);
-  void request_update_map(const geometry_msgs::msg::Point & position);
+  virtual void request_update_map(const geometry_msgs::msg::Point & position);
   bool is_close_to_map(const pcl::PointXYZ & point, const double distance_threshold) override;
   /** \brief Check if point close to map pointcloud in the */
   bool is_close_to_next_map_grid(

@@ -39,28 +39,30 @@ namespace autoware::compare_map_segmentation
 
 VoxelBasedCompareMapFilterComponent::VoxelBasedCompareMapFilterComponent(
   const rclcpp::NodeOptions & options)
-: Filter("VoxelBasedCompareMapFilter", options),
+: autoware::pointcloud_preprocessor::FilterBase<agnocast::Node>(
+    "VoxelBasedCompareMapFilter", options),
   tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_),
-  diagnostic_updater_(this)
+  tf_listener_(tf_buffer_, *this)
 {
   // initialize debug tool
   {
-    using autoware_utils::DebugPublisher;
     using autoware_utils::StopWatch;
     stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
-    debug_publisher_ = std::make_unique<DebugPublisher>(this, "voxel_based_compare_map_filter");
+    debug_publisher_ =
+      std::make_unique<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>(
+        this, "voxel_based_compare_map_filter");
     stop_watch_ptr_->tic("cyclic_time");
     stop_watch_ptr_->tic("processing_time");
   }
 
-  // setup diagnostics
-  {
-    diagnostic_updater_.setHardwareID(this->get_name());
-    diagnostic_updater_.add(
-      "Compare map filter status", this, &VoxelBasedCompareMapFilterComponent::checkStatus);
-    diagnostic_updater_.setPeriod(0.1);
-  }
+  // TODO(agnocast): diagnostic_updater::Updater is not compatible with agnocast::Node
+  // {
+  //   diagnostic_updater_.setHardwareID(this->get_name());
+  //   diagnostic_updater_.add(
+  //     "Compare map filter status", this,
+  //     &VoxelBasedCompareMapFilterComponent::checkStatus);
+  //   diagnostic_updater_.setPeriod(0.1);
+  // }
 
   // Declare parameters
   distance_threshold_ = declare_parameter<double>("distance_threshold");
@@ -73,31 +75,35 @@ VoxelBasedCompareMapFilterComponent::VoxelBasedCompareMapFilterComponent(
   set_map_in_voxel_grid_ = false;
   if (use_dynamic_map_loading) {
     rclcpp::CallbackGroup::SharedPtr main_callback_group;
-    main_callback_group = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    main_callback_group =
+      this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     voxel_grid_map_loader_ = std::make_unique<VoxelGridDynamicMapLoader>(
-      this, distance_threshold_, downsize_ratio_z_axis, &tf_input_frame_, main_callback_group);
+      this, distance_threshold_, downsize_ratio_z_axis,
+      &tf_input_frame_, main_callback_group);
   } else {
     voxel_grid_map_loader_ = std::make_unique<VoxelGridStaticMapLoader>(
-      this, distance_threshold_, downsize_ratio_z_axis, &tf_input_frame_);
+      this, distance_threshold_, downsize_ratio_z_axis,
+      &tf_input_frame_);
   }
   tf_input_frame_ = *(voxel_grid_map_loader_->tf_map_input_frame_);
   RCLCPP_INFO(this->get_logger(), "tf_map_input_frame: %s", tf_input_frame_.c_str());
 }
 
-void VoxelBasedCompareMapFilterComponent::checkStatus(
-  diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  // map loader status
-  DiagStatus & map_loader_status = (*voxel_grid_map_loader_).diagnostics_map_voxel_status_;
-  if (map_loader_status.level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
-    stat.add("Map loader status", "OK");
-  } else {
-    stat.add("Map loader status", "NG");
-  }
-
-  // final status = map loader status
-  stat.summary(map_loader_status.level, map_loader_status.message);
-}
+// TODO(agnocast): diagnostic_updater::Updater is not compatible with agnocast::Node
+// void VoxelBasedCompareMapFilterComponent::checkStatus(
+//   diagnostic_updater::DiagnosticStatusWrapper & stat)
+// {
+//   // map loader status
+//   DiagStatus & map_loader_status = (*voxel_grid_map_loader_).diagnostics_map_voxel_status_;
+//   if (map_loader_status.level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
+//     stat.add("Map loader status", "OK");
+//   } else {
+//     stat.add("Map loader status", "NG");
+//   }
+//
+//   // final status = map loader status
+//   stat.summary(map_loader_status.level, map_loader_status.message);
+// }
 
 // TODO(badai-nguyen): Temporary Implementation of input_indices_callback and  convert_output_costly
 // functions; Delete this override function when autoware_utils refactor

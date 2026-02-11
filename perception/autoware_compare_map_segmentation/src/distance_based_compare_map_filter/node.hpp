@@ -40,13 +40,14 @@ private:
 
 public:
   DistanceBasedStaticMapLoader(
-    rclcpp::Node * node, double leaf_size, std::string * tf_map_input_frame)
+    agnocast::Node * node, double leaf_size, std::string * tf_map_input_frame)
   : VoxelGridStaticMapLoader(node, leaf_size, 1.0, tf_map_input_frame)
   {
     RCLCPP_INFO(logger_, "DistanceBasedStaticMapLoader initialized.\n");
   }
 
-  void onMapCallback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr map) override;
+  void onMapCallback(
+    const agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> & map) override;
   bool is_close_to_map(const pcl::PointXYZ & point, const double distance_threshold) override;
 };
 
@@ -54,7 +55,7 @@ class DistanceBasedDynamicMapLoader : public VoxelGridDynamicMapLoader
 {
 public:
   DistanceBasedDynamicMapLoader(
-    rclcpp::Node * node, double leaf_size, std::string * tf_map_input_frame,
+    agnocast::Node * node, double leaf_size, std::string * tf_map_input_frame,
     rclcpp::CallbackGroup::SharedPtr main_callback_group)
   : VoxelGridDynamicMapLoader(node, leaf_size, 1.0, tf_map_input_frame, main_callback_group)
   {
@@ -101,7 +102,8 @@ public:
   }
 };
 
-class DistanceBasedCompareMapFilterComponent : public autoware::pointcloud_preprocessor::Filter
+class DistanceBasedCompareMapFilterComponent
+: public autoware::pointcloud_preprocessor::FilterBase<agnocast::Node>
 {
 protected:
   void filter(

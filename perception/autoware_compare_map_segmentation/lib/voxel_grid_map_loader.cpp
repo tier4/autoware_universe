@@ -21,8 +21,13 @@
 
 namespace autoware::compare_map_segmentation
 {
+
+// ============================================================================
+// VoxelGridMapLoader
+// ============================================================================
+
 VoxelGridMapLoader::VoxelGridMapLoader(
-  rclcpp::Node * node, double leaf_size, double downsize_ratio_z_axis,
+  agnocast::Node * node, double leaf_size, double downsize_ratio_z_axis,
   std::string * tf_map_input_frame)
 : logger_(node->get_logger()),
   voxel_leaf_size_(leaf_size),
@@ -85,10 +90,10 @@ bool VoxelGridMapLoader::isFeasibleWithPCLVoxelGrid(
 void VoxelGridMapLoader::publish_downsampled_map(
   const pcl::PointCloud<pcl::PointXYZ> & downsampled_pc)
 {
-  sensor_msgs::msg::PointCloud2 downsampled_map_msg;
-  pcl::toROSMsg(downsampled_pc, downsampled_map_msg);
-  downsampled_map_msg.header.frame_id = "map";
-  downsampled_map_pub_->publish(downsampled_map_msg);
+  auto loaned_msg = downsampled_map_pub_->borrow_loaned_message();
+  pcl::toROSMsg(downsampled_pc, *loaned_msg);
+  loaned_msg->header.frame_id = "map";
+  downsampled_map_pub_->publish(std::move(loaned_msg));
 }
 
 bool VoxelGridMapLoader::is_close_to_neighbor_voxels(
@@ -295,8 +300,12 @@ bool VoxelGridMapLoader::is_in_voxel(
   return false;
 }
 
+// ============================================================================
+// VoxelGridStaticMapLoader
+// ============================================================================
+
 VoxelGridStaticMapLoader::VoxelGridStaticMapLoader(
-  rclcpp::Node * node, double leaf_size, double downsize_ratio_z_axis,
+  agnocast::Node * node, double leaf_size, double downsize_ratio_z_axis,
   std::string * tf_map_input_frame)
 : VoxelGridMapLoader(node, leaf_size, downsize_ratio_z_axis, tf_map_input_frame)
 {
@@ -308,7 +317,7 @@ VoxelGridStaticMapLoader::VoxelGridStaticMapLoader(
 }
 
 void VoxelGridStaticMapLoader::onMapCallback(
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr map)
+  const agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> & map)
 {
   pcl::PointCloud<pcl::PointXYZ> map_pcl;
   pcl::fromROSMsg<pcl::PointXYZ>(*map, map_pcl);
@@ -341,8 +350,12 @@ bool VoxelGridStaticMapLoader::is_close_to_map(
   return false;
 }
 
+// ============================================================================
+// VoxelGridDynamicMapLoader
+// ============================================================================
+
 VoxelGridDynamicMapLoader::VoxelGridDynamicMapLoader(
-  rclcpp::Node * node, double leaf_size, double downsize_ratio_z_axis,
+  agnocast::Node * node, double leaf_size, double downsize_ratio_z_axis,
   std::string * tf_map_input_frame, rclcpp::CallbackGroup::SharedPtr main_callback_group)
 : VoxelGridMapLoader(node, leaf_size, downsize_ratio_z_axis, tf_map_input_frame)
 {
@@ -351,18 +364,20 @@ VoxelGridDynamicMapLoader::VoxelGridDynamicMapLoader(
   map_update_distance_threshold_ = node->declare_parameter<double>("map_update_distance_threshold");
   map_loader_radius_ = node->declare_parameter<double>("map_loader_radius");
   max_map_grid_size_ = node->declare_parameter<double>("max_map_grid_size");
-  auto main_sub_opt = rclcpp::SubscriptionOptions();
-  main_sub_opt.callback_group = main_callback_group;
+
+  agnocast::SubscriptionOptions sub_options;
+  sub_options.callback_group = main_callback_group;
   sub_kinematic_state_ = node->create_subscription<nav_msgs::msg::Odometry>(
     "kinematic_state", rclcpp::QoS{1},
     std::bind(&VoxelGridDynamicMapLoader::onEstimatedPoseCallback, this, std::placeholders::_1),
-    main_sub_opt);
+    sub_options);
   RCLCPP_INFO(logger_, "VoxelGridDynamicMapLoader initialized.\n");
 
   client_callback_group_ =
     node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  map_update_client_ = node->create_client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>(
-    "map_loader_service", rmw_qos_profile_services_default, client_callback_group_);
+  map_update_client_ =
+    node->create_client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>(
+      "map_loader_service", rclcpp::ServicesQoS(), client_callback_group_);
 
   while (!map_update_client_->wait_for_service(std::chrono::seconds(1)) && rclcpp::ok()) {
     RCLCPP_INFO(logger_, "service not available, waiting again ...");
@@ -371,11 +386,13 @@ VoxelGridDynamicMapLoader::VoxelGridDynamicMapLoader(
   const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
     std::chrono::milliseconds(timer_interval_ms));
   timer_callback_group_ = node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  map_update_timer_ = rclcpp::create_timer(
-    node, node->get_clock(), period_ns, std::bind(&VoxelGridDynamicMapLoader::timer_callback, this),
+  map_update_timer_ = node->create_timer(
+    period_ns, std::bind(&VoxelGridDynamicMapLoader::timer_callback, this),
     timer_callback_group_);
 }
-void VoxelGridDynamicMapLoader::onEstimatedPoseCallback(nav_msgs::msg::Odometry::ConstSharedPtr msg)
+
+void VoxelGridDynamicMapLoader::onEstimatedPoseCallback(
+  const agnocast::ipc_shared_ptr<nav_msgs::msg::Odometry> & msg)
 {
   std::lock_guard<std::mutex> lock(dynamic_map_loader_mutex_);
   current_position_ = msg->pose.pose.position;
@@ -496,32 +513,34 @@ bool VoxelGridDynamicMapLoader::should_update_map(
 
 void VoxelGridDynamicMapLoader::request_update_map(const geometry_msgs::msg::Point & position)
 {
-  auto request = std::make_shared<autoware_map_msgs::srv::GetDifferentialPointCloudMap::Request>();
+  auto request = map_update_client_->borrow_loaned_request();
   request->area.center_x = position.x;
   request->area.center_y = position.y;
   request->area.radius = map_loader_radius_;
   request->cached_ids = getCurrentMapIDs();
 
-  auto result{map_update_client_->async_send_request(
-    request,
-    [](rclcpp::Client<autoware_map_msgs::srv::GetDifferentialPointCloudMap>::SharedFuture) {})};
+  auto result = map_update_client_->async_send_request(
+    std::move(request),
+    [](typename agnocast::Client<
+      autoware_map_msgs::srv::GetDifferentialPointCloudMap>::SharedFuture) {});
 
-  std::future_status status = result.wait_for(std::chrono::seconds(0));
+  std::future_status status = result.future.wait_for(std::chrono::seconds(0));
   while (status != std::future_status::ready) {
     RCLCPP_INFO(logger_, "Waiting for response...\n");
     if (!rclcpp::ok()) {
       return;
     }
-    status = result.wait_for(std::chrono::seconds(1));
+    status = result.future.wait_for(std::chrono::seconds(1));
   }
-  //
+
   if (status == std::future_status::ready) {
+    auto response = result.future.get();
     if (
-      result.get()->new_pointcloud_with_ids.size() == 0 &&
-      result.get()->ids_to_remove.size() == 0) {
+      response->new_pointcloud_with_ids.size() == 0 &&
+      response->ids_to_remove.size() == 0) {
       return;
     }
-    updateDifferentialMapCells(result.get()->new_pointcloud_with_ids, result.get()->ids_to_remove);
+    updateDifferentialMapCells(response->new_pointcloud_with_ids, response->ids_to_remove);
     if (debug_) {
       publish_downsampled_map(getCurrentDownsampledMapPc());
     }
