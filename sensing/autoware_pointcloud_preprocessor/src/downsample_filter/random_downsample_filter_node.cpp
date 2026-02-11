@@ -52,26 +52,29 @@
 
 namespace autoware::pointcloud_preprocessor
 {
-RandomDownsampleFilterComponent::RandomDownsampleFilterComponent(
+
+template <typename NodeT>
+RandomDownsampleFilterComponentBase<NodeT>::RandomDownsampleFilterComponentBase(
   const rclcpp::NodeOptions & options)
-: Filter("RandomDownsampleFilter", options)
+: FilterBase<NodeT>("RandomDownsampleFilter", options)
 {
   // set initial parameters
   {
-    sample_num_ = static_cast<size_t>(declare_parameter<int64_t>("sample_num"));
+    sample_num_ = static_cast<size_t>(this->template declare_parameter<int64_t>("sample_num"));
   }
 
   using std::placeholders::_1;
   set_param_res_ = this->add_on_set_parameters_callback(
-    std::bind(&RandomDownsampleFilterComponent::param_callback, this, _1));
+    std::bind(&RandomDownsampleFilterComponentBase::param_callback, this, _1));
 }
 
-void RandomDownsampleFilterComponent::filter(
+template <typename NodeT>
+void RandomDownsampleFilterComponentBase<NodeT>::filter(
   const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output)
 {
-  std::scoped_lock lock(mutex_);
+  std::scoped_lock lock(this->mutex_);
   if (indices) {
-    RCLCPP_WARN(get_logger(), "Indices are not supported and will be ignored");
+    RCLCPP_WARN(this->get_logger(), "Indices are not supported and will be ignored");
   }
   pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_input(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_output(new pcl::PointCloud<pcl::PointXYZ>);
@@ -87,13 +90,15 @@ void RandomDownsampleFilterComponent::filter(
   output.header = input->header;
 }
 
-rcl_interfaces::msg::SetParametersResult RandomDownsampleFilterComponent::param_callback(
+template <typename NodeT>
+rcl_interfaces::msg::SetParametersResult
+RandomDownsampleFilterComponentBase<NodeT>::param_callback(
   const std::vector<rclcpp::Parameter> & p)
 {
-  std::scoped_lock lock(mutex_);
+  std::scoped_lock lock(this->mutex_);
 
   if (get_param(p, "sample_num", sample_num_)) {
-    RCLCPP_DEBUG(get_logger(), "Setting new sample num to: %zu.", sample_num_);
+    RCLCPP_DEBUG(this->get_logger(), "Setting new sample num to: %zu.", sample_num_);
   }
 
   rcl_interfaces::msg::SetParametersResult result;
@@ -103,6 +108,13 @@ rcl_interfaces::msg::SetParametersResult RandomDownsampleFilterComponent::param_
   return result;
 }
 
+// Explicit template instantiation
+template class RandomDownsampleFilterComponentBase<rclcpp::Node>;
+template class RandomDownsampleFilterComponentBase<agnocast::Node>;
+
 }  // namespace autoware::pointcloud_preprocessor
+
 #include <rclcpp_components/register_node_macro.hpp>
 RCLCPP_COMPONENTS_REGISTER_NODE(autoware::pointcloud_preprocessor::RandomDownsampleFilterComponent)
+RCLCPP_COMPONENTS_REGISTER_NODE(
+  autoware::pointcloud_preprocessor::AgnocastRandomDownsampleFilterComponent)

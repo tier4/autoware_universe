@@ -14,6 +14,8 @@ find_package(Boost REQUIRED)
 find_package(PCL REQUIRED)
 find_package(CGAL REQUIRED COMPONENTS Core)
 find_package(tf2_sensor_msgs REQUIRED)
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
 
 include_directories(
   include
@@ -80,6 +82,7 @@ target_include_directories(concatenate_data PUBLIC
 
 ament_target_dependencies(concatenate_data
   SYSTEM
+  agnocastlib
   autoware_point_types
   autoware_sensing_msgs
   autoware_utils
@@ -151,15 +154,25 @@ rclcpp_components_register_node(pointcloud_preprocessor_filter
   PLUGIN "autoware::pointcloud_preprocessor::CropBoxFilterComponent"
   EXECUTABLE crop_box_filter_node)
 
+agnocast_components_register_node(pointcloud_preprocessor_filter
+  PLUGIN "autoware::pointcloud_preprocessor::AgnocastCropBoxFilterComponent"
+  EXECUTABLE agnocast_crop_box_filter_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
+)
+
 # ========== Down Sampler Filter ==========
 # -- Voxel Grid Downsample Filter --
 rclcpp_components_register_node(pointcloud_preprocessor_filter
   PLUGIN "autoware::pointcloud_preprocessor::VoxelGridDownsampleFilterComponent"
   EXECUTABLE voxel_grid_downsample_filter_node)
 
-rclcpp_components_register_node(pointcloud_preprocessor_filter
+agnocast_components_register_node(pointcloud_preprocessor_filter
   PLUGIN "autoware::pointcloud_preprocessor::AgnocastVoxelGridDownsampleFilterComponent"
-  EXECUTABLE agnocast_voxel_grid_downsample_filter_node)
+  EXECUTABLE agnocast_voxel_grid_downsample_filter_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
+)
 
 # -- Pickup Based Voxel Grid Downsample Filter --
 rclcpp_components_register_node(pointcloud_preprocessor_filter
@@ -170,6 +183,13 @@ rclcpp_components_register_node(pointcloud_preprocessor_filter
 rclcpp_components_register_node(pointcloud_preprocessor_filter
   PLUGIN "autoware::pointcloud_preprocessor::RandomDownsampleFilterComponent"
   EXECUTABLE random_downsample_filter_node)
+
+agnocast_components_register_node(pointcloud_preprocessor_filter
+  PLUGIN "autoware::pointcloud_preprocessor::AgnocastRandomDownsampleFilterComponent"
+  EXECUTABLE agnocast_random_downsample_filter_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
+)
 
 rclcpp_components_register_node(pointcloud_preprocessor_filter
   PLUGIN "autoware::pointcloud_preprocessor::ApproximateDownsampleFilterComponent"

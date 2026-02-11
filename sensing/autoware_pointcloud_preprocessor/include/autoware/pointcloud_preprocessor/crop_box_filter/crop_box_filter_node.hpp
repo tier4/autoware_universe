@@ -69,8 +69,15 @@
 
 namespace autoware::pointcloud_preprocessor
 {
-class CropBoxFilterComponent : public autoware::pointcloud_preprocessor::Filter
+
+// Template base class for CropBoxFilter
+template <typename NodeT>
+class CropBoxFilterComponentBase : public FilterBase<NodeT>
 {
+  using PointCloud2 = typename FilterBase<NodeT>::PointCloud2;
+  using PointCloud2ConstPtr = typename FilterBase<NodeT>::PointCloud2ConstPtr;
+  using IndicesPtr = typename FilterBase<NodeT>::IndicesPtr;
+
 protected:
   void filter(
     const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output) override;
@@ -99,7 +106,7 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr crop_box_polygon_pub_;
 
   /** \brief Parameter service callback result : needed to be hold */
-  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult param_callback(const std::vector<rclcpp::Parameter> & p);
@@ -107,8 +114,33 @@ private:
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW
-  explicit CropBoxFilterComponent(const rclcpp::NodeOptions & options);
+  explicit CropBoxFilterComponentBase(const rclcpp::NodeOptions & options);
 };
+
+// rclcpp::Node version (backward compatible)
+class CropBoxFilterComponent : public CropBoxFilterComponentBase<rclcpp::Node>
+{
+public:
+  explicit CropBoxFilterComponent(const rclcpp::NodeOptions & options)
+  : CropBoxFilterComponentBase<rclcpp::Node>(options)
+  {
+  }
+};
+
+// agnocast::Node version
+class AgnocastCropBoxFilterComponent : public CropBoxFilterComponentBase<agnocast::Node>
+{
+public:
+  explicit AgnocastCropBoxFilterComponent(const rclcpp::NodeOptions & options)
+  : CropBoxFilterComponentBase<agnocast::Node>(options)
+  {
+  }
+};
+
+// Extern template declarations
+extern template class CropBoxFilterComponentBase<rclcpp::Node>;
+extern template class CropBoxFilterComponentBase<agnocast::Node>;
+
 }  // namespace autoware::pointcloud_preprocessor
 
 #endif  // AUTOWARE__POINTCLOUD_PREPROCESSOR__CROP_BOX_FILTER__CROP_BOX_FILTER_NODE_HPP_

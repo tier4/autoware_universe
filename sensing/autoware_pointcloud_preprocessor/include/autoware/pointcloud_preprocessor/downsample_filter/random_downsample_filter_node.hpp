@@ -59,8 +59,16 @@
 
 namespace autoware::pointcloud_preprocessor
 {
-class RandomDownsampleFilterComponent : public autoware::pointcloud_preprocessor::Filter
+
+// Template base class for RandomDownsampleFilter
+template <typename NodeT>
+class RandomDownsampleFilterComponentBase : public FilterBase<NodeT>
 {
+  // Bring in type aliases from base class
+  using PointCloud2 = typename FilterBase<NodeT>::PointCloud2;
+  using PointCloud2ConstPtr = typename FilterBase<NodeT>::PointCloud2ConstPtr;
+  using IndicesPtr = typename FilterBase<NodeT>::IndicesPtr;
+
 protected:
   void filter(
     const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output) override;
@@ -69,15 +77,42 @@ private:
   size_t sample_num_;
 
   /** \brief Parameter service callback result : needed to be hold */
-  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult param_callback(const std::vector<rclcpp::Parameter> & p);
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW
-  explicit RandomDownsampleFilterComponent(const rclcpp::NodeOptions & options);
+  explicit RandomDownsampleFilterComponentBase(const rclcpp::NodeOptions & options);
 };
+
+// rclcpp::Node version
+class RandomDownsampleFilterComponent
+: public RandomDownsampleFilterComponentBase<rclcpp::Node>
+{
+public:
+  explicit RandomDownsampleFilterComponent(const rclcpp::NodeOptions & options)
+  : RandomDownsampleFilterComponentBase<rclcpp::Node>(options)
+  {
+  }
+};
+
+// Agnocast version
+class AgnocastRandomDownsampleFilterComponent
+: public RandomDownsampleFilterComponentBase<agnocast::Node>
+{
+public:
+  explicit AgnocastRandomDownsampleFilterComponent(const rclcpp::NodeOptions & options)
+  : RandomDownsampleFilterComponentBase<agnocast::Node>(options)
+  {
+  }
+};
+
+// Extern template declarations to avoid multiple instantiations
+extern template class RandomDownsampleFilterComponentBase<rclcpp::Node>;
+extern template class RandomDownsampleFilterComponentBase<agnocast::Node>;
+
 }  // namespace autoware::pointcloud_preprocessor
 
 // clang-format off

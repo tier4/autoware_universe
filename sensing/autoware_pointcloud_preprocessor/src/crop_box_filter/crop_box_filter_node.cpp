@@ -65,57 +65,66 @@
 
 namespace autoware::pointcloud_preprocessor
 {
-CropBoxFilterComponent::CropBoxFilterComponent(const rclcpp::NodeOptions & options)
-: Filter("CropBoxFilter", options)
+
+template <typename NodeT>
+CropBoxFilterComponentBase<NodeT>::CropBoxFilterComponentBase(const rclcpp::NodeOptions & options)
+: FilterBase<NodeT>("CropBoxFilter", options)
 {
-  // initialize debug tool
-  {
+  // initialize debug tool (only for rclcpp::Node)
+  if constexpr (is_rclcpp_node_v<NodeT>) {
     using autoware_utils::DebugPublisher;
     using autoware_utils::StopWatch;
-    stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
-    debug_publisher_ = std::make_unique<DebugPublisher>(this, this->get_name());
-    stop_watch_ptr_->tic("cyclic_time");
-    stop_watch_ptr_->tic("processing_time");
+    this->stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
+    this->debug_publisher_ = std::make_unique<DebugPublisher>(this, this->get_name());
+    this->stop_watch_ptr_->tic("cyclic_time");
+    this->stop_watch_ptr_->tic("processing_time");
   }
 
   // set initial parameters
   {
     auto & p = param_;
-    p.min_x = declare_parameter<double>("min_x");
-    p.min_y = declare_parameter<double>("min_y");
-    p.min_z = declare_parameter<double>("min_z");
-    p.max_x = declare_parameter<double>("max_x");
-    p.max_y = declare_parameter<double>("max_y");
-    p.max_z = declare_parameter<double>("max_z");
-    p.negative = declare_parameter<bool>("negative");
-    p.processing_time_threshold_sec = declare_parameter<double>("processing_time_threshold_sec");
-    if (tf_input_frame_.empty()) {
+    p.min_x = this->template declare_parameter<double>("min_x");
+    p.min_y = this->template declare_parameter<double>("min_y");
+    p.min_z = this->template declare_parameter<double>("min_z");
+    p.max_x = this->template declare_parameter<double>("max_x");
+    p.max_y = this->template declare_parameter<double>("max_y");
+    p.max_z = this->template declare_parameter<double>("max_z");
+    p.negative = this->template declare_parameter<bool>("negative");
+    p.processing_time_threshold_sec =
+      this->template declare_parameter<double>("processing_time_threshold_sec");
+    if (this->tf_input_frame_.empty()) {
       throw std::invalid_argument("Crop box requires non-empty input_frame");
     }
   }
 
-  // Diagnostic
-  diagnostics_interface_ =
-    std::make_unique<autoware_utils::DiagnosticsInterface>(this, this->get_fully_qualified_name());
+  // Diagnostic (only for rclcpp::Node)
+  if constexpr (is_rclcpp_node_v<NodeT>) {
+    this->diagnostics_interface_ = std::make_unique<autoware_utils::DiagnosticsInterface>(
+      this, this->get_fully_qualified_name());
+  }
+
   // set additional publishers
   {
     rclcpp::PublisherOptions pub_options;
     pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
-    crop_box_polygon_pub_ = this->create_publisher<geometry_msgs::msg::PolygonStamped>(
-      "~/crop_box_polygon", 10, pub_options);
+    if constexpr (is_rclcpp_node_v<NodeT>) {
+      crop_box_polygon_pub_ = this->template create_publisher<geometry_msgs::msg::PolygonStamped>(
+        "~/crop_box_polygon", 10, pub_options);
+    }
   }
 
   // set parameter service callback
   {
     using std::placeholders::_1;
     set_param_res_ = this->add_on_set_parameters_callback(
-      std::bind(&CropBoxFilterComponent::param_callback, this, _1));
+      std::bind(&CropBoxFilterComponentBase::param_callback, this, _1));
   }
 }
 
 // TODO(sykwer): Temporary Implementation: Delete this function definition when all the filter nodes
 // conform to new API.
-void CropBoxFilterComponent::filter(
+template <typename NodeT>
+void CropBoxFilterComponentBase<NodeT>::filter(
   const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output)
 {
   (void)input;
@@ -125,16 +134,20 @@ void CropBoxFilterComponent::filter(
 
 // TODO(sykwer): Temporary Implementation: Rename this function to `filter()` when all the filter
 // nodes conform to new API. Then delete the old `filter()` defined above.
-void CropBoxFilterComponent::faster_filter(
+template <typename NodeT>
+void CropBoxFilterComponentBase<NodeT>::faster_filter(
   const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output,
   const TransformInfo & transform_info)
 {
-  std::scoped_lock lock(mutex_);
-  stop_watch_ptr_->toc("processing_time", true);
+  std::scoped_lock lock(this->mutex_);
+  if constexpr (is_rclcpp_node_v<NodeT>) {
+    this->stop_watch_ptr_->toc("processing_time", true);
+  }
 
   if (indices) {
     RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 1000, "Indices are not supported and will be ignored");
+      this->get_logger(), *this->get_clock(), 1000,
+      "Indices are not supported and will be ignored");
   }
 
   int x_offset = input->fields[pcl::getFieldIndex(*input, "x")].offset;
@@ -181,15 +194,15 @@ void CropBoxFilterComponent::faster_filter(
 
   if (skipped_count > 0) {
     RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 1000, "%d points contained NaN values and have been ignored",
-      skipped_count);
+      this->get_logger(), *this->get_clock(), 1000,
+      "%d points contained NaN values and have been ignored", skipped_count);
   }
 
   output.data.resize(output_size);
 
   // Note that tf_input_orig_frame_ is the input frame, while tf_input_frame_ is the frame of the
   // crop box
-  output.header.frame_id = tf_input_frame_;
+  output.header.frame_id = this->tf_input_frame_;
 
   output.height = 1;
   output.fields = input->fields;
@@ -199,117 +212,128 @@ void CropBoxFilterComponent::faster_filter(
   output.width = static_cast<uint32_t>(output.data.size() / output.height / output.point_step);
   output.row_step = static_cast<uint32_t>(output.data.size() / output.height);
 
-  publish_crop_box_polygon();
+  if constexpr (is_rclcpp_node_v<NodeT>) {
+    publish_crop_box_polygon();
 
-  const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
-  const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
-  const double pipeline_latency_ms =
-    std::chrono::duration<double, std::milli>(
-      std::chrono::nanoseconds((this->get_clock()->now() - input->header.stamp).nanoseconds()))
-      .count();
+    const double cyclic_time_ms = this->stop_watch_ptr_->toc("cyclic_time", true);
+    const double processing_time_ms = this->stop_watch_ptr_->toc("processing_time", true);
+    const double pipeline_latency_ms =
+      std::chrono::duration<double, std::milli>(
+        std::chrono::nanoseconds((this->get_clock()->now() - input->header.stamp).nanoseconds()))
+        .count();
 
-  // Debug output
-  if (debug_publisher_) {
-    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/cyclic_time_ms", cyclic_time_ms);
-    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/processing_time_ms", processing_time_ms);
-    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/pipeline_latency_ms", pipeline_latency_ms);
+    // Debug output
+    if (this->debug_publisher_) {
+      this->debug_publisher_->template publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+        "debug/cyclic_time_ms", cyclic_time_ms);
+      this->debug_publisher_->template publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+        "debug/processing_time_ms", processing_time_ms);
+      this->debug_publisher_->template publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+        "debug/pipeline_latency_ms", pipeline_latency_ms);
+    }
+
+    auto latency_diagnostics = std::make_shared<LatencyDiagnostics>(
+      input->header.stamp, processing_time_ms, pipeline_latency_ms,
+      param_.processing_time_threshold_sec * 1000.0);
+    auto pass_rate_diagnostics = std::make_shared<PassRateDiagnostics>(
+      static_cast<int>(input->width * input->height),
+      static_cast<int>(output.width * output.height));
+    auto crop_box_diagnostics = std::make_shared<CropBoxDiagnostics>(skipped_count);
+
+    publish_diagnostics({latency_diagnostics, pass_rate_diagnostics, crop_box_diagnostics});
   }
-
-  auto latency_diagnostics = std::make_shared<LatencyDiagnostics>(
-    input->header.stamp, processing_time_ms, pipeline_latency_ms,
-    param_.processing_time_threshold_sec * 1000.0);
-  auto pass_rate_diagnostics = std::make_shared<PassRateDiagnostics>(
-    static_cast<int>(input->width * input->height), static_cast<int>(output.width * output.height));
-  auto crop_box_diagnostics = std::make_shared<CropBoxDiagnostics>(skipped_count);
-
-  publish_diagnostics({latency_diagnostics, pass_rate_diagnostics, crop_box_diagnostics});
 }
 
-void CropBoxFilterComponent::publish_diagnostics(
+template <typename NodeT>
+void CropBoxFilterComponentBase<NodeT>::publish_diagnostics(
   const std::vector<std::shared_ptr<const DiagnosticsBase>> & diagnostics)
 {
-  diagnostics_interface_->clear();
+  if constexpr (is_rclcpp_node_v<NodeT>) {
+    this->diagnostics_interface_->clear();
 
-  std::string message;
-  int worst_level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+    std::string message;
+    int worst_level = diagnostic_msgs::msg::DiagnosticStatus::OK;
 
-  for (const auto & diag : diagnostics) {
-    diag->add_to_interface(*diagnostics_interface_);
-    if (const auto status = diag->evaluate_status(); status.has_value()) {
-      worst_level = std::max(worst_level, status->first);
-      if (!message.empty()) {
-        message += " / ";
+    for (const auto & diag : diagnostics) {
+      diag->add_to_interface(*this->diagnostics_interface_);
+      if (const auto status = diag->evaluate_status(); status.has_value()) {
+        worst_level = std::max(worst_level, status->first);
+        if (!message.empty()) {
+          message += " / ";
+        }
+        message += status->second;
       }
-      message += status->second;
     }
-  }
 
-  if (message.empty()) {
-    message = "CropBoxFilter operating normally";
-  }
+    if (message.empty()) {
+      message = "CropBoxFilter operating normally";
+    }
 
-  diagnostics_interface_->update_level_and_message(static_cast<int8_t>(worst_level), message);
-  diagnostics_interface_->publish(this->get_clock()->now());
+    this->diagnostics_interface_->update_level_and_message(
+      static_cast<int8_t>(worst_level), message);
+    this->diagnostics_interface_->publish(this->get_clock()->now());
+  }
 }
 
-void CropBoxFilterComponent::publish_crop_box_polygon()
+template <typename NodeT>
+void CropBoxFilterComponentBase<NodeT>::publish_crop_box_polygon()
 {
-  auto generatePoint = [](double x, double y, double z) {
-    geometry_msgs::msg::Point32 point;
-    point.x = x;
-    point.y = y;
-    point.z = z;
-    return point;
-  };
+  if constexpr (is_rclcpp_node_v<NodeT>) {
+    auto generatePoint = [](double x, double y, double z) {
+      geometry_msgs::msg::Point32 point;
+      point.x = x;
+      point.y = y;
+      point.z = z;
+      return point;
+    };
 
-  const double x1 = param_.max_x;
-  const double x2 = param_.min_x;
-  const double x3 = param_.min_x;
-  const double x4 = param_.max_x;
+    const double x1 = param_.max_x;
+    const double x2 = param_.min_x;
+    const double x3 = param_.min_x;
+    const double x4 = param_.max_x;
 
-  const double y1 = param_.max_y;
-  const double y2 = param_.max_y;
-  const double y3 = param_.min_y;
-  const double y4 = param_.min_y;
+    const double y1 = param_.max_y;
+    const double y2 = param_.max_y;
+    const double y3 = param_.min_y;
+    const double y4 = param_.min_y;
 
-  const double z1 = param_.min_z;
-  const double z2 = param_.max_z;
+    const double z1 = param_.min_z;
+    const double z2 = param_.max_z;
 
-  geometry_msgs::msg::PolygonStamped polygon_msg;
-  polygon_msg.header.frame_id = tf_input_frame_;
-  polygon_msg.header.stamp = get_clock()->now();
-  polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z1));
-  polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z1));
-  polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z1));
-  polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z1));
-  polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z1));
+    geometry_msgs::msg::PolygonStamped polygon_msg;
+    polygon_msg.header.frame_id = this->tf_input_frame_;
+    polygon_msg.header.stamp = this->get_clock()->now();
+    polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z1));
+    polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z1));
+    polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z1));
+    polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z1));
+    polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z1));
 
-  polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z2));
+    polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z2));
 
-  polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z2));
-  polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z1));
-  polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z2));
+    polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z2));
+    polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z1));
+    polygon_msg.polygon.points.push_back(generatePoint(x2, y2, z2));
 
-  polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z2));
-  polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z1));
-  polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z2));
+    polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z2));
+    polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z1));
+    polygon_msg.polygon.points.push_back(generatePoint(x3, y3, z2));
 
-  polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z2));
-  polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z1));
-  polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z2));
+    polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z2));
+    polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z1));
+    polygon_msg.polygon.points.push_back(generatePoint(x4, y4, z2));
 
-  polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z2));
+    polygon_msg.polygon.points.push_back(generatePoint(x1, y1, z2));
 
-  crop_box_polygon_pub_->publish(polygon_msg);
+    crop_box_polygon_pub_->publish(polygon_msg);
+  }
 }
 
-rcl_interfaces::msg::SetParametersResult CropBoxFilterComponent::param_callback(
+template <typename NodeT>
+rcl_interfaces::msg::SetParametersResult CropBoxFilterComponentBase<NodeT>::param_callback(
   const std::vector<rclcpp::Parameter> & p)
 {
-  std::scoped_lock lock(mutex_);
+  std::scoped_lock lock(this->mutex_);
 
   CropBoxParam new_param{};
 
@@ -323,15 +347,23 @@ rcl_interfaces::msg::SetParametersResult CropBoxFilterComponent::param_callback(
       param_.min_y != new_param.min_y || param_.max_y != new_param.max_y ||
       param_.min_z != new_param.min_z || param_.max_z != new_param.max_z ||
       param_.negative != new_param.negative) {
+      const char * node_name = nullptr;
+      if constexpr (is_rclcpp_node_v<NodeT>) {
+        node_name = this->get_name();
+      } else {
+        static thread_local std::string name_storage;
+        name_storage = this->get_name();
+        node_name = name_storage.c_str();
+      }
       RCLCPP_DEBUG(
-        get_logger(), "[%s::param_callback] Setting the minimum point to: %f %f %f.", get_name(),
-        new_param.min_x, new_param.min_y, new_param.min_z);
+        this->get_logger(), "[%s::param_callback] Setting the minimum point to: %f %f %f.",
+        node_name, new_param.min_x, new_param.min_y, new_param.min_z);
       RCLCPP_DEBUG(
-        get_logger(), "[%s::param_callback] Setting the minimum point to: %f %f %f.", get_name(),
-        new_param.max_x, new_param.max_y, new_param.max_z);
+        this->get_logger(), "[%s::param_callback] Setting the minimum point to: %f %f %f.",
+        node_name, new_param.max_x, new_param.max_y, new_param.max_z);
       RCLCPP_DEBUG(
-        get_logger(), "[%s::param_callback] Setting the filter negative flag to: %s.", get_name(),
-        new_param.negative ? "true" : "false");
+        this->get_logger(), "[%s::param_callback] Setting the filter negative flag to: %s.",
+        node_name, new_param.negative ? "true" : "false");
       param_ = new_param;
     }
   }
@@ -343,7 +375,12 @@ rcl_interfaces::msg::SetParametersResult CropBoxFilterComponent::param_callback(
   return result;
 }
 
+// Explicit template instantiation for rclcpp::Node and agnocast::Node versions
+template class CropBoxFilterComponentBase<rclcpp::Node>;
+template class CropBoxFilterComponentBase<agnocast::Node>;
+
 }  // namespace autoware::pointcloud_preprocessor
 
 #include <rclcpp_components/register_node_macro.hpp>
 RCLCPP_COMPONENTS_REGISTER_NODE(autoware::pointcloud_preprocessor::CropBoxFilterComponent)
+RCLCPP_COMPONENTS_REGISTER_NODE(autoware::pointcloud_preprocessor::AgnocastCropBoxFilterComponent)
