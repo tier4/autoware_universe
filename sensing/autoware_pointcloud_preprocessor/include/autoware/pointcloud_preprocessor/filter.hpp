@@ -60,6 +60,7 @@
 #include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
+#include <managed_transform_buffer/agnocast_managed_transform_buffer.hpp>
 #include <managed_transform_buffer/managed_transform_buffer.hpp>
 
 #include <boost/thread/mutex.hpp>
@@ -219,7 +220,7 @@ protected:
 
   /** \brief processing time publisher. **/
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
-  std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_;
+  std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<NodeT>> debug_publisher_;
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
 
   /** \brief Virtual abstract filter method. To be implemented by every child.
@@ -284,7 +285,11 @@ protected:
    * versus an exact one (false by default). */
   bool approximate_sync_ = false;
 
-  std::unique_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_{nullptr};
+  using ManagedTFBufferType = std::conditional_t<
+    is_agnocast_node_v<NodeT>,
+    managed_transform_buffer::AgnocastManagedTransformBuffer,
+    managed_transform_buffer::ManagedTransformBuffer>;
+  std::unique_ptr<ManagedTFBufferType> managed_tf_buffer_{nullptr};
 
   inline bool is_valid(
     const PointCloud2ConstPtr & cloud, const std::string & /*topic_name*/ = "input")
@@ -440,7 +445,12 @@ FilterBase<NodeT>::FilterBase(const std::string & filter_name, const rclcpp::Nod
 template <typename NodeT>
 void FilterBase<NodeT>::setup_tf()
 {
-  managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
+  if constexpr (is_rclcpp_node_v<NodeT>) {
+    managed_tf_buffer_ = std::make_unique<managed_transform_buffer::ManagedTransformBuffer>();
+  } else if constexpr (is_agnocast_node_v<NodeT>) {
+    managed_tf_buffer_ =
+      std::make_unique<managed_transform_buffer::AgnocastManagedTransformBuffer>();
+  }
 }
 
 template <typename NodeT>
@@ -667,7 +677,7 @@ bool FilterBase<NodeT>::calculate_transform_matrix(
     this->get_logger(), "[get_transform_matrix] Transforming input dataset from %s to %s.",
     from.header.frame_id.c_str(), target_frame.c_str());
 
-  auto eigen_transform_opt = managed_tf_buffer_->getTransform<Eigen::Matrix4f>(
+  auto eigen_transform_opt = managed_tf_buffer_->template getTransform<Eigen::Matrix4f>(
     target_frame, from.header.frame_id, from.header.stamp, rclcpp::Duration::from_seconds(1.0),
     this->get_logger());
   if (!eigen_transform_opt) {
