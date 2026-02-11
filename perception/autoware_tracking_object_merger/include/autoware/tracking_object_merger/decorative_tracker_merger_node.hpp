@@ -18,11 +18,14 @@
 #include "autoware/tracking_object_merger/association/data_association.hpp"
 #include "autoware/tracking_object_merger/utils/tracker_state.hpp"
 #include "autoware/tracking_object_merger/utils/utils.hpp"
-#include "autoware/universe_utils/ros/diagnostics_interface.hpp"
+#include "autoware_utils/ros/diagnostics_interface.hpp"
 #include "autoware_utils/ros/debug_publisher.hpp"
 #include "autoware_utils/ros/published_time_publisher.hpp"
 #include "autoware_utils/system/stop_watch.hpp"
 
+#include <agnocast/node/agnocast_node.hpp>
+#include <agnocast/node/tf2/buffer.hpp>
+#include <agnocast/node/tf2/transform_listener.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_perception_msgs/msg/tracked_objects.hpp"
@@ -34,9 +37,6 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #endif
 
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-
 #include <map>
 #include <memory>
 #include <random>
@@ -47,7 +47,7 @@
 namespace autoware::tracking_object_merger
 {
 
-class DecorativeTrackerMergerNode : public rclcpp::Node
+class DecorativeTrackerMergerNode : public agnocast::Node
 {
 public:
   explicit DecorativeTrackerMergerNode(const rclcpp::NodeOptions & node_options);
@@ -59,9 +59,9 @@ private:
     std::unordered_map<std::string, std::unique_ptr<DataAssociation>> & data_association_map);
 
   void mainObjectsCallback(
-    const autoware_perception_msgs::msg::TrackedObjects::ConstSharedPtr & main_objects);
+    const agnocast::ipc_shared_ptr<autoware_perception_msgs::msg::TrackedObjects> & main_objects);
   void subObjectsCallback(
-    const autoware_perception_msgs::msg::TrackedObjects::ConstSharedPtr & msg);
+    const agnocast::ipc_shared_ptr<autoware_perception_msgs::msg::TrackedObjects> & msg);
 
   bool decorativeMerger(
     const MEASUREMENT_STATE input_sensor,
@@ -80,16 +80,18 @@ private:
   void updateDiagnostics();
 
 private:
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr merged_object_pub_;
-  rclcpp::Subscription<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr sub_main_objects_;
-  rclcpp::Subscription<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr sub_sub_objects_;
+  agnocast::Buffer tf_buffer_;
+  std::unique_ptr<agnocast::TransformListener> tf_listener_;
+  agnocast::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr merged_object_pub_;
+  agnocast::Subscription<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr
+    sub_main_objects_;
+  agnocast::Subscription<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr sub_sub_objects_;
   // debug object publisher
-  rclcpp::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr debug_object_pub_;
+  agnocast::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr debug_object_pub_;
   bool publish_interpolated_sub_objects_;
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
-  std::unique_ptr<autoware_utils::DebugPublisher> processing_time_publisher_;
+  std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>
+    processing_time_publisher_;
 
   /* handle objects */
   std::unordered_map<MEASUREMENT_STATE, std::function<void(TrackedObject &, const TrackedObject &)>>
@@ -108,7 +110,8 @@ private:
   // tracker default settings
   TrackerStateParameter tracker_state_parameter_;
 
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<autoware_utils::BasicPublishedTimePublisher<agnocast::Node>>
+    published_time_publisher_;
 
   // merge policy (currently not used)
   struct
@@ -133,7 +136,8 @@ private:
   } logging_;
 
   // diagnostics
-  std::unique_ptr<autoware::universe_utils::DiagnosticsInterface> diagnostics_interface_ptr_;
+  std::unique_ptr<autoware_utils::BasicDiagnosticsInterface<agnocast::Node>>
+    diagnostics_interface_ptr_;
   double delay_main_objects_tolerance_;
   double duration_empty_main_objects_tolerance_;
   double delay_sub_objects_tolerance_;

@@ -7,6 +7,8 @@ endif()
 
 find_package(autoware_cmake REQUIRED)
 find_package(glog REQUIRED)
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
 autoware_package()
 
 
@@ -35,9 +37,18 @@ target_link_libraries(${PROJECT_NAME}
   glog::glog
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+)
+
+ament_target_dependencies(${PROJECT_NAME}
+  agnocastlib
+)
+
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::tracking_object_merger::DecorativeTrackerMergerNode"
   EXECUTABLE decorative_tracker_merger_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
 )
 
 ament_auto_package(INSTALL_TO_SHARE
