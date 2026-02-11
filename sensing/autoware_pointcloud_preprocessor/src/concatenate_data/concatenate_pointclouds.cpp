@@ -106,8 +106,11 @@ PointCloudConcatenationComponent::PointCloudConcatenationComponent(
   {
     rclcpp::PublisherOptions pub_options;
     pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
-    pub_output_ = this->create_publisher<PointCloud2>(
-      "output", rclcpp::SensorDataQoS().keep_last(maximum_queue_size_), pub_options);
+    // Use agnocast::Publisher for the main output
+    agnocast::PublisherOptions agnocast_pub_options;
+    agnocast_pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
+    pub_output_ = std::make_shared<agnocast::Publisher<PointCloud2>>(
+      this, "output", rclcpp::SensorDataQoS().keep_last(maximum_queue_size_), agnocast_pub_options);
     pub_output_info_ =
       this->create_publisher<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo>(
         "output_info", rclcpp::SensorDataQoS().keep_last(maximum_queue_size_), pub_options);
@@ -299,9 +302,10 @@ void PointCloudConcatenationComponent::publish()
     }
   }
 
-  // publish concatenated pointcloud
+  // publish concatenated pointcloud (agnocast)
   if (concat_cloud_ptr) {
-    auto output = std::make_unique<sensor_msgs::msg::PointCloud2>(*concat_cloud_ptr);
+    auto output = pub_output_->borrow_loaned_message();
+    *output = *concat_cloud_ptr;
     pub_output_->publish(std::move(output));
   } else {
     RCLCPP_WARN(this->get_logger(), "concat_cloud_ptr is nullptr, skipping pointcloud publish.");

@@ -63,6 +63,7 @@
 #include <vector>
 
 // ROS includes
+#include <agnocast/agnocast.hpp>
 #include <autoware/point_types/types.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
@@ -112,8 +113,8 @@ public:
   virtual ~PointCloudConcatenationComponent() {}
 
 private:
-  /** \brief The output PointCloud publisher. */
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_output_;
+  /** \brief The output PointCloud publisher (agnocast). */
+  agnocast::Publisher<PointCloud2>::SharedPtr pub_output_;
   /** \brief The output ConcatenatedPointCloudInfo publisher. */
   rclcpp::Publisher<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo>::SharedPtr
     pub_output_info_;

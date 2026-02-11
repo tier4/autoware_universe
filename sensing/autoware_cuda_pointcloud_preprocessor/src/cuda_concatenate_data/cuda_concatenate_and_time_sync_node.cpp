@@ -18,6 +18,9 @@
 #include "autoware/cuda_pointcloud_preprocessor/cuda_concatenate_data/cuda_traits.hpp"
 #include "autoware/pointcloud_preprocessor/utility/memory.hpp"
 
+#include <agnocast/agnocast.hpp>
+#include <cuda_blackboard/cuda_adaptation.hpp>
+
 #include <autoware_sensing_msgs/msg/concatenated_point_cloud_info.hpp>
 
 #include <memory>
@@ -34,10 +37,21 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<
 {
   concatenated_cloud_publisher_ =
     std::make_shared<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
-      *this, "output");
+      *this, "output", /* skip_compatible_publisher */ true);
   concatenation_info_publisher_ =
     this->create_publisher<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo>(
       "output_info", rclcpp::SensorDataQoS().keep_last(params_.maximum_queue_size));
+
+  // Create agnocast publisher for the concatenated PointCloud2 output
+  auto agnocast_pub = agnocast::create_publisher<sensor_msgs::msg::PointCloud2>(
+    this, "output", rclcpp::SensorDataQoS().keep_last(params_.maximum_queue_size));
+  agnocast_pre_publish_callback_ =
+    [agnocast_pub](const cuda_blackboard::CudaPointCloud2 & cuda_msg) {
+      auto ros_msg = agnocast_pub->borrow_loaned_message();
+      rclcpp::TypeAdapter<cuda_blackboard::CudaPointCloud2, sensor_msgs::msg::PointCloud2>::
+        convert_to_ros_message(cuda_msg, *ros_msg);
+      agnocast_pub->publish(std::move(ros_msg));
+    };
 
   for (auto & topic : params_.input_topics) {
     std::string new_topic =

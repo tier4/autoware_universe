@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <list>
 #include <memory>
 #include <string>
@@ -133,6 +134,10 @@ private:
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
 
   std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_;
+
+  // Optional callback for publishing via agnocast (set by CUDA specialization)
+  std::function<void(const PointCloudMessage &)> agnocast_pre_publish_callback_;
+
   void publish_debug_message(
     const double processing_time, const double cyclic_time,
     const std::unordered_map<std::string, double> & topic_to_pipeline_latency_map);
