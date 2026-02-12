@@ -19,13 +19,13 @@ on:
         description: Product identifier for labeling (e.g., pilotone)
         required: true
         type: string
-      target_repository:
+      pilot_auto_repository:
         description: Target repository for auto-sync (e.g., tier4/pilot-auto.x2)
-        required: false
+        required: true
         type: string
-      target_branch:
+      pilot_auto_branch:
         description: Target branch in the target repository (e.g., beta/v4.2/pilotone)
-        required: false
+        required: true
         type: string
 
 jobs:
@@ -46,6 +46,15 @@ jobs:
             echo "Error: product_name is required"
             exit 1
           fi
+          if [[ -z "${{ inputs.pilot_auto_repository }}" ]]; then
+            echo "Error: pilot_auto_repository is required"
+            exit 1
+          fi
+          if [[ -z "${{ inputs.pilot_auto_branch }}" ]]; then
+            echo "Error: pilot_auto_branch is required"
+            exit 1
+          fi
+          echo "Input validation passed"
 
       - name: Generate token
         id: generate-token
@@ -120,6 +129,8 @@ jobs:
           base_branch: ${{ inputs.base_branch }}
           commit: ${{ steps.get-commit.outputs.commit }}
           product_name: ${{ inputs.product_name }}
+          pilot_auto_repository: ${{ inputs.pilot_auto_repository }}
+          pilot_auto_branch: ${{ inputs.pilot_auto_branch }}
           created_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
           EOF
           echo "Created .github/branch-meta.yaml"
@@ -131,51 +142,25 @@ jobs:
           cp /tmp/workflow-templates/auto-add-label.yaml.template \
              .github/workflows/auto-add-label.yaml
           echo "Copied auto-add-label.yaml to child branch"
-
-      - name: Render auto-sync-pilot-auto workflow for child branch
+      
+      - name: Copy auto-sync-pilot-auto workflow template to child branch
         run: |
           mkdir -p .github/workflows
-          TEMPLATE_FILE="/tmp/workflow-templates/auto-sync-pilot-auto.yaml.template"
-          OUTPUT_FILE=".github/workflows/auto-sync-pilot-auto.yaml"
-
-          if [ -f "$TEMPLATE_FILE" ]; then
-            echo "Rendering auto-sync-pilot-auto.yaml template for child branch"
-
-            # Read template file
-            TEMPLATE_CONTENT=$(cat "$TEMPLATE_FILE")
-
-            # Replace template variables
-            # Using sed with different delimiters to avoid issues with slashes in branch names
-            RENDERED_CONTENT=$(echo "$TEMPLATE_CONTENT" | \
-              sed "s|{{SOURCE_BRANCH}}|${{ inputs.branch_name }}|g" | \
-              sed "s|{{TARGET_REPOSITORY}}|${{ inputs.target_repository }}|g" | \
-              sed "s|{{TARGET_BRANCH}}|${{ inputs.target_branch }}|g")
-
-            # Write rendered content to output file
-            echo "$RENDERED_CONTENT" > "$OUTPUT_FILE"
-
-            echo "Created auto-sync-pilot-auto.yaml for child branch"
-            echo "Source branch: ${{ inputs.branch_name }}"
-            echo "Target repository: ${{ inputs.target_repository }}"
-            echo "Target branch: ${{ inputs.target_branch }}"
-          else
-            echo "Warning: auto-sync-pilot-auto.yaml.template not found, skipping"
-          fi
+          cp /tmp/workflow-templates/auto-sync-pilot-auto.yaml.template \
+             .github/workflows/auto-sync-pilot-auto.yaml
+          echo "Copied auto-sync-pilot-auto.yaml to child branch"
 
       - name: Commit and push child branch
         run: |
           git add .github/branch-meta.yaml .github/workflows/auto-add-label.yaml
 
-          # Add the auto-sync workflow if it exists
-          if [ -f ".github/workflows/auto-sync-pilot-auto.yaml" ]; then
-            git add .github/workflows/auto-sync-pilot-auto.yaml
-          fi
+          git add .github/workflows/auto-sync-pilot-auto.yaml
 
           git commit -m "chore: initialize child branch with meta file and workflows
 
           - Add .github/branch-meta.yaml with branch metadata
           - Add .github/workflows/auto-add-label.yaml for automatic PR labeling
-          - Add .github/workflows/auto-sync-pilot-auto.yaml for syncing to ${{ inputs.target_repository }}
+          - Add .github/workflows/auto-sync-pilot-auto.yaml for syncing to ${{ inputs.pilot_auto_repository }}
           - Base branch: ${{ inputs.base_branch }}
           - Product: ${{ inputs.product_name }}"
           git push origin "${{ inputs.branch_name }}"

@@ -22,6 +22,26 @@ jobs:
         with:
           path: universe-repo # Checkout into a subfolder to keep things clean
 
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.49.2/yq_linux_amd64
+          echo "be2c0ddcf426b6a231648610ec5d1666ae50e9f6473e82f6486f9f4cb6e3e2f7  /usr/local/bin/yq" | sha256sum -c -
+          sudo chmod a+x /usr/local/bin/yq
+    
+      - name: Read branch meta
+        id: meta
+        run: |
+          if [ ! -f .github/branch-meta.yaml ]; then
+            echo "No branch-meta.yaml found, skipping labeling"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          TARGET_REPOSITORY=$(yq '.pilot_auto_repository' .github/branch-meta.yaml)
+          TARGET_BRANCH=$(yq '.pilot_auto_branch' .github/branch-meta.yaml)
+          echo "target_repository=$TARGET_REPOSITORY" >> $GITHUB_OUTPUT
+          echo "target_branch=$TARGET_BRANCH" >> $GITHUB_OUTPUT
+          echo "skip=false" >> $GITHUB_OUTPUT
+
       - name: Get current commit SHA and author
         id: vars
         run: |
@@ -29,13 +49,13 @@ jobs:
           echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
           echo "author=$(git log -1 --pretty=format:'%an')" >> $GITHUB_OUTPUT
 
-      - name: Checkout {{TARGET_REPOSITORY}}
+      - name: Checkout pilot-auto
         uses: actions/checkout@v4
         with:
-          repository: {{TARGET_REPOSITORY}}
+          repository: ${{ steps.meta.outputs.target_repository}}
           token: ${{ steps.generate-token.outputs.token }}
           path: pilot-auto-repo
-          ref: {{TARGET_BRANCH}} # The target branch in {{TARGET_REPOSITORY}}
+          ref: ${{ steps.meta.outputs.target_branch }}
 
       - name: Update autoware.repos
         env:
@@ -46,7 +66,7 @@ jobs:
           # Use the verified sed command
           sed -i "/${REPO_KEY//\//\\\/}:/,/version:/ s/\(version:[[:space:]]*\).*/\1$NEW_SHA/" autoware.repos
 
-      - name: Create Pull Request in {{TARGET_REPOSITORY}}
+      - name: Create Pull Request in pilot-auto
         uses: peter-evans/create-pull-request@v5
         with:
           path: pilot-auto-repo
@@ -57,7 +77,7 @@ jobs:
             Auto-generated PR to sync autoware/universe version from merged changes in universe repository.
 
             cc: @${{ github.actor }} (commit author: ${{ steps.vars.outputs.author }})
-          base: {{TARGET_BRANCH}}
+          base: ${{ steps.meta.outputs.target_branch }}
           commit-message: "chore: update autoware/universe version"
           delete-branch: true
           reviewers: ${{ github.actor }}
