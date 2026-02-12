@@ -6,6 +6,9 @@
       cusp_detection_angle_threshold_deg: 90.0  # [deg] Angle threshold to detect cusp point
       cusp_stop_distance: 0.0  # [m] Distance from cusp to stop
 
+      # State transition parameters
+      cusp_detection_distance_start_approaching: 10.0  # [m] Distance to start approaching cusp (transition to APPROACHING_CUSP)
+
       # Reverse lane following parameters
       reverse_initial_speed: 0.5 # [m/s] Upper speed limit for backward_slow_speed 
       reverse_speed_limit: 2.0  # [m/s] Upper speed limit for backward_cruise_speed (clamped by reference path speed)

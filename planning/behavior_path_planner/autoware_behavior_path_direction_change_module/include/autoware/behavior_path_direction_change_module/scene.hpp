@@ -34,8 +34,12 @@ using autoware_internal_planning_msgs::msg::PathWithLaneId;
 
 // State for tracking which path segment to publish
 enum class PathSegmentState {
-  FORWARD_ONLY,      // Publishing forward segment only (before cusp)
-  BACKWARD_ONLY      // Publishing backward segment only (after cusp)
+  IDLE = 0,              // Module is idle/inactive
+  FORWARD_FOLLOWING,     // Following path in forward direction
+  APPROACHING_CUSP,      // Approaching a cusp point
+  AT_CUSP,               // At a cusp point
+  REVERSE_FOLLOWING,     // Following path in reverse direction
+  COMPLETED              // Module has completed processing
 };
 
 class DirectionChangeModule : public SceneModuleInterface
@@ -90,7 +94,7 @@ private:
   std::vector<size_t> cusp_point_indices_{};
   
   // Path segment state tracking for separate forward/backward publishing
-  PathSegmentState current_segment_state_{PathSegmentState::FORWARD_ONLY};
+  PathSegmentState current_segment_state_{PathSegmentState::FORWARD_FOLLOWING};
   size_t first_cusp_index_{0};  // Store first cusp index for path splitting
   geometry_msgs::msg::Point first_cusp_position_;  // Store cusp point position
   bool has_valid_cusp_{false};  // Check if there is a valid cusp point

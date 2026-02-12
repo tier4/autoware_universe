@@ -33,6 +33,9 @@ struct DirectionChangeParameters
   double cusp_detection_angle_threshold_deg;
   double cusp_stop_distance;
 
+  // State transition parameters
+  double cusp_detection_distance_start_approaching;  // [m] Distance to start approaching cusp (transition to APPROACHING_CUSP)
+
   // Direction change parameters
   double reverse_initial_speed;
   double reverse_speed_limit;
