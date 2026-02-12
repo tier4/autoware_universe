@@ -8,7 +8,7 @@ jobs:
   auto-label:
     runs-on: ubuntu-latest
     # Skip if the PR author is a bot
-    if: ${{ !contains(github.event.pull_request.user.login, 'bot') }}
+    if: ${{ github.event.pull_request.user.type != 'Bot' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
