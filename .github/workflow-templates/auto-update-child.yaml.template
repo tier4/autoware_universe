@@ -74,7 +74,7 @@ jobs:
     with:
       label: tag:enable-automatic-cherry-pick
 
-  read-children-branches:
+  read-child-branches:
     runs-on: ubuntu-latest
     needs: make-sure-label-is-present
     if: |
@@ -93,12 +93,12 @@ jobs:
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
-      - name: Read children-branches.yaml
+      - name: Read child-branches.yaml
         id: read
         run: |
-          CHILDREN_FILE=".github/children-branches.yaml"
+          CHILDREN_FILE=".github/child-branches.yaml"
           if [ ! -f "$CHILDREN_FILE" ]; then
-            echo "No children-branches.yaml found"
+            echo "No child-branches.yaml found"
             echo "children=[]" >> $GITHUB_OUTPUT
             echo "has_children=false" >> $GITHUB_OUTPUT
             exit 0
@@ -118,14 +118,14 @@ jobs:
           fi
 
   cherry-pick-to-children:
-    needs: read-children-branches
-    if: needs.read-children-branches.outputs.has_children == 'true'
+    needs: read-child-branches
+    if: needs.read-child-branches.outputs.has_children == 'true'
     runs-on: ubuntu-latest
     name: Cherry-pick to child branches
     strategy:
       fail-fast: false
       matrix:
-        child-branch: ${{ fromJson(needs.read-children-branches.outputs.children) }}
+        child-branch: ${{ fromJson(needs.read-child-branches.outputs.children) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
