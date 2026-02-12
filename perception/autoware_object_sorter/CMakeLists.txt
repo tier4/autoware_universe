@@ -3,6 +3,7 @@ project(autoware_object_sorter)
 
 # Dependencies
 find_package(autoware_cmake REQUIRED)
+find_package(agnocast_components REQUIRED)
 autoware_package()
 
 # Targets
@@ -12,14 +13,16 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   src/tracked_object_sorter_node.cpp
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::object_sorter::DetectedObjectSorterNode"
   EXECUTABLE detected_object_sorter_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::object_sorter::TrackedObjectSorterNode"
   EXECUTABLE tracked_object_sorter_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 # Tests
