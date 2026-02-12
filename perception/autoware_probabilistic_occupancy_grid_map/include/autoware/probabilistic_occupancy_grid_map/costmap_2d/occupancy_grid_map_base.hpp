@@ -53,9 +53,10 @@
 #define AUTOWARE__PROBABILISTIC_OCCUPANCY_GRID_MAP__COSTMAP_2D__OCCUPANCY_GRID_MAP_BASE_HPP_
 
 #ifdef USE_CUDA
-#include "autoware/probabilistic_occupancy_grid_map/utils/cuda_pointcloud.hpp"
+// #include "autoware/probabilistic_occupancy_grid_map/utils/cuda_pointcloud.hpp"
+#include <cuda_blackboard/cuda_pointcloud2.hpp>
 
-#include <autoware/cuda_utils/cuda_unique_ptr.hpp>
+// #include <autoware/cuda_utils/cuda_unique_ptr.hpp>
 #endif
 
 #include <autoware_utils/math/unit_conversion.hpp>
@@ -83,8 +84,8 @@ public:
 
 #ifdef USE_CUDA
   virtual void updateWithPointCloud(
-    [[maybe_unused]] const CudaPointCloud2 & raw_pointcloud,
-    [[maybe_unused]] const CudaPointCloud2 & obstacle_pointcloud,
+    [[maybe_unused]] const cuda_blackboard::CudaPointCloud2 & raw_pointcloud,
+    [[maybe_unused]] const cuda_blackboard::CudaPointCloud2 & obstacle_pointcloud,
     [[maybe_unused]] const Pose & robot_pose, [[maybe_unused]] const Pose & scan_origin) {};
 #endif
 
@@ -110,7 +111,7 @@ public:
 #ifdef USE_CUDA
   void setCudaStream(const cudaStream_t & stream);
 
-  const autoware::cuda_utils::CudaUniquePtr<std::uint8_t[]> & getDeviceCostmap() const;
+  const cuda_blackboard::CudaUniquePtr<std::uint8_t[]> & getDeviceCostmap() const;
 
   void copyDeviceCostmapToHost() const;
 #endif
@@ -124,15 +125,16 @@ protected:
   bool first_iteration_{true};
 
 #ifdef USE_CUDA
-  cudaStream_t stream_;
+  // Avoid using Legacy Default Stream in case setCudaStream() is not called.
+  cudaStream_t stream_{cudaStreamPerThread};
 
-  autoware::cuda_utils::CudaUniquePtr<std::uint8_t[]> device_costmap_;
-  autoware::cuda_utils::CudaUniquePtr<std::uint8_t[]> device_costmap_aux_;
+  cuda_blackboard::CudaUniquePtr<std::uint8_t[]> device_costmap_;
+  cuda_blackboard::CudaUniquePtr<std::uint8_t[]> device_costmap_aux_;
 
-  autoware::cuda_utils::CudaUniquePtr<Eigen::Matrix3f> device_rotation_map_;
-  autoware::cuda_utils::CudaUniquePtr<Eigen::Vector3f> device_translation_map_;
-  autoware::cuda_utils::CudaUniquePtr<Eigen::Matrix3f> device_rotation_scan_;
-  autoware::cuda_utils::CudaUniquePtr<Eigen::Vector3f> device_translation_scan_;
+  cuda_blackboard::CudaUniquePtr<Eigen::Matrix3f> device_rotation_map_;
+  cuda_blackboard::CudaUniquePtr<Eigen::Vector3f> device_translation_map_;
+  cuda_blackboard::CudaUniquePtr<Eigen::Matrix3f> device_rotation_scan_;
+  cuda_blackboard::CudaUniquePtr<Eigen::Vector3f> device_translation_scan_;
 #endif
 };
 

@@ -50,7 +50,7 @@ void OccupancyGridMapBBFUpdater::initRosParam(rclcpp::Node & node)
 #ifdef USE_CUDA
   if (use_cuda_) {
     device_probability_matrix_ =
-      autoware::cuda_utils::make_unique<float[]>(Index::NUM_STATES * Index::NUM_STATES);
+      cuda_blackboard::make_unique<float[]>(Index::NUM_STATES * Index::NUM_STATES);
 
     std::vector<float> probability_matrix_vector;
     probability_matrix_vector.resize(Index::NUM_STATES * Index::NUM_STATES);

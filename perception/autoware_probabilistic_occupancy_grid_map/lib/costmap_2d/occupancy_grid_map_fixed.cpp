@@ -19,7 +19,7 @@
 #include "autoware/probabilistic_occupancy_grid_map/utils/utils.hpp"
 #include "autoware/probabilistic_occupancy_grid_map/utils/utils_kernel.hpp"
 
-#include <autoware/cuda_utils/cuda_unique_ptr.hpp>
+// #include <autoware/cuda_utils/cuda_unique_ptr.hpp>
 #include <autoware_utils/math/unit_conversion.hpp>
 #include <grid_map_costmap_2d/grid_map_costmap_2d.hpp>
 #include <pcl_ros/transforms.hpp>
@@ -58,9 +58,9 @@ OccupancyGridMapFixedBlindSpot::OccupancyGridMapFixedBlindSpot(
       static_cast<std::size_t>(std::sqrt(2) * std::max(num_cells_x, num_cells_y) / 2.0) + 1;
 
     raw_points_tensor_ =
-      autoware::cuda_utils::make_unique<std::uint64_t[]>(2 * angle_bin_size * range_bin_size);
+      cuda_blackboard::make_unique<std::uint64_t[]>(2 * angle_bin_size * range_bin_size);
     obstacle_points_tensor_ =
-      autoware::cuda_utils::make_unique<std::uint64_t[]>(2 * angle_bin_size * range_bin_size);
+      cuda_blackboard::make_unique<std::uint64_t[]>(2 * angle_bin_size * range_bin_size);
   }
 }
 
@@ -73,7 +73,8 @@ OccupancyGridMapFixedBlindSpot::OccupancyGridMapFixedBlindSpot(
  * @param scan_origin manually chosen grid map origin frame
  */
 void OccupancyGridMapFixedBlindSpot::updateWithPointCloud(
-  const CudaPointCloud2 & raw_pointcloud, const CudaPointCloud2 & obstacle_pointcloud,
+  const cuda_blackboard::CudaPointCloud2 & raw_pointcloud,
+  const cuda_blackboard::CudaPointCloud2 & obstacle_pointcloud,
   const Pose & robot_pose, const Pose & scan_origin)
 {
   const size_t angle_bin_size =

@@ -50,10 +50,10 @@ OccupancyGridMapProjectiveBlindSpot::OccupancyGridMapProjectiveBlindSpot(
       static_cast<std::size_t>(std::sqrt(2) * std::max(num_cells_x, num_cells_y) / 2.0) + 1;
 
     raw_points_tensor_ =
-      autoware::cuda_utils::make_unique<std::uint64_t[]>(7 * angle_bin_size * range_bin_size);
+      cuda_blackboard::make_unique<std::uint64_t[]>(7 * angle_bin_size * range_bin_size);
     obstacle_points_tensor_ =
-      autoware::cuda_utils::make_unique<std::uint64_t[]>(7 * angle_bin_size * range_bin_size);
-    device_translation_scan_origin_ = autoware::cuda_utils::make_unique<Eigen::Vector3f>();
+      cuda_blackboard::make_unique<std::uint64_t[]>(7 * angle_bin_size * range_bin_size);
+    device_translation_scan_origin_ = cuda_blackboard::make_unique<Eigen::Vector3f>();
   }
 }
 
@@ -66,7 +66,8 @@ OccupancyGridMapProjectiveBlindSpot::OccupancyGridMapProjectiveBlindSpot(
  * @param scan_origin manually chosen grid map origin frame
  */
 void OccupancyGridMapProjectiveBlindSpot::updateWithPointCloud(
-  const CudaPointCloud2 & raw_pointcloud, const CudaPointCloud2 & obstacle_pointcloud,
+  const cuda_blackboard::CudaPointCloud2 & raw_pointcloud,
+  const cuda_blackboard::CudaPointCloud2 & obstacle_pointcloud,
   const Pose & robot_pose, const Pose & scan_origin)
 {
   const size_t angle_bin_size =

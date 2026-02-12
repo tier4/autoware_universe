@@ -118,13 +118,13 @@ PointcloudBasedOccupancyGridMapNode::PointcloudBasedOccupancyGridMapNode(
   }
 
   cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking);
-  raw_pointcloud_.stream = stream_;
-  obstacle_pointcloud_.stream = stream_;
+  // raw_pointcloud_.stream = stream_;
+  // obstacle_pointcloud_.stream = stream_;
   occupancy_grid_map_ptr_->setCudaStream(stream_);
   occupancy_grid_map_updater_ptr_->setCudaStream(stream_);
 
-  device_rotation_ = autoware::cuda_utils::make_unique<Eigen::Matrix3f>();
-  device_translation_ = autoware::cuda_utils::make_unique<Eigen::Vector3f>();
+  device_rotation_ = cuda_blackboard::make_unique<Eigen::Matrix3f>();
+  device_translation_ = cuda_blackboard::make_unique<Eigen::Vector3f>();
 
   occupancy_grid_map_ptr_->initRosParam(*this);
   occupancy_grid_map_updater_ptr_->initRosParam(*this);
@@ -160,7 +160,9 @@ PointcloudBasedOccupancyGridMapNode::PointcloudBasedOccupancyGridMapNode(
 void PointcloudBasedOccupancyGridMapNode::obstaclePointcloudCallback(
   const PointCloud2::ConstSharedPtr & input_obstacle_msg)
 {
-  obstacle_pointcloud_.fromROSMsgAsync(input_obstacle_msg);
+  cuda_blackboard::CudaPointCloud2 obstacle_pointcloud(*input_obstacle_msg);
+  obstacle_pointcloud_ = std::move(obstacle_pointcloud);
+  // obstacle_pointcloud_.fromROSMsgAsync(input_obstacle_msg);
 
   if (obstacle_pointcloud_.header.stamp == raw_pointcloud_.header.stamp) {
     onPointcloudWithObstacleAndRaw();
@@ -170,7 +172,9 @@ void PointcloudBasedOccupancyGridMapNode::obstaclePointcloudCallback(
 void PointcloudBasedOccupancyGridMapNode::rawPointcloudCallback(
   const PointCloud2::ConstSharedPtr & input_raw_msg)
 {
-  raw_pointcloud_.fromROSMsgAsync(input_raw_msg);
+  cuda_blackboard::CudaPointCloud2 raw_pointcloud(*input_raw_msg);
+  raw_pointcloud_ = std::move(raw_pointcloud);
+  // raw_pointcloud_.fromROSMsgAsync(input_raw_msg);
 
   if (obstacle_pointcloud_.header.stamp == raw_pointcloud_.header.stamp) {
     onPointcloudWithObstacleAndRaw();

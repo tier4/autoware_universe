@@ -44,7 +44,7 @@ private:
   double v_ratio_;
 
 #ifdef USE_CUDA
-  autoware::cuda_utils::CudaUniquePtr<float[]> device_probability_matrix_;
+  cuda_blackboard::CudaUniquePtr<float[]> device_probability_matrix_;
 #endif
 };
 

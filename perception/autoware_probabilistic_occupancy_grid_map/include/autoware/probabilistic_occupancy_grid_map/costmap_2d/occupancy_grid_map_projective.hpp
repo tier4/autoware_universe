@@ -36,7 +36,8 @@ public:
     const float resolution);
 
   void updateWithPointCloud(
-    const CudaPointCloud2 & raw_pointcloud, const CudaPointCloud2 & obstacle_pointcloud,
+    const cuda_blackboard::CudaPointCloud2 & raw_pointcloud,
+    const cuda_blackboard::CudaPointCloud2 & obstacle_pointcloud,
     const Pose & robot_pose, const Pose & scan_origin) override;
 
   void initRosParam(rclcpp::Node & node) override;
@@ -45,9 +46,12 @@ private:
   float projection_dz_threshold_;
   float obstacle_separation_threshold_;
 
-  autoware::cuda_utils::CudaUniquePtr<std::uint64_t[]> raw_points_tensor_;
-  autoware::cuda_utils::CudaUniquePtr<std::uint64_t[]> obstacle_points_tensor_;
-  autoware::cuda_utils::CudaUniquePtr<Eigen::Vector3f> device_translation_scan_origin_;
+  // autoware::cuda_utils::CudaUniquePtr<std::uint64_t[]> raw_points_tensor_;
+  // autoware::cuda_utils::CudaUniquePtr<std::uint64_t[]> obstacle_points_tensor_;
+  // autoware::cuda_utils::CudaUniquePtr<Eigen::Vector3f> device_translation_scan_origin_;
+  cuda_blackboard::CudaUniquePtr<std::uint64_t[]> raw_points_tensor_;
+  cuda_blackboard::CudaUniquePtr<std::uint64_t[]> obstacle_points_tensor_;
+  cuda_blackboard::CudaUniquePtr<Eigen::Vector3f> device_translation_scan_origin_;
 };
 
 }  // namespace costmap_2d

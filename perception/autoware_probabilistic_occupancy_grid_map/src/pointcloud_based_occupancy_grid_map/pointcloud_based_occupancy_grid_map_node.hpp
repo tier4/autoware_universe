@@ -18,7 +18,8 @@
 #include "autoware/probabilistic_occupancy_grid_map/costmap_2d/occupancy_grid_map_base.hpp"
 #include "autoware/probabilistic_occupancy_grid_map/updater/binary_bayes_filter_updater.hpp"
 #include "autoware/probabilistic_occupancy_grid_map/updater/ogm_updater_interface.hpp"
-#include "autoware/probabilistic_occupancy_grid_map/utils/cuda_pointcloud.hpp"
+// #include "autoware/probabilistic_occupancy_grid_map/utils/cuda_pointcloud.hpp"
+#include <cuda_blackboard/cuda_pointcloud2.hpp>
 
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
@@ -80,11 +81,11 @@ private:
   std::unique_ptr<OccupancyGridMapUpdaterInterface> occupancy_grid_map_updater_ptr_;
 
   cudaStream_t stream_;
-  CudaPointCloud2 raw_pointcloud_;
-  CudaPointCloud2 obstacle_pointcloud_;
+  cuda_blackboard::CudaPointCloud2 raw_pointcloud_;
+  cuda_blackboard::CudaPointCloud2 obstacle_pointcloud_;
 
-  autoware::cuda_utils::CudaUniquePtr<Eigen::Matrix3f> device_rotation_;
-  autoware::cuda_utils::CudaUniquePtr<Eigen::Vector3f> device_translation_;
+  cuda_blackboard::CudaUniquePtr<Eigen::Matrix3f> device_rotation_;
+  cuda_blackboard::CudaUniquePtr<Eigen::Vector3f> device_translation_;
 
   // ROS Parameters
   std::string map_frame_;

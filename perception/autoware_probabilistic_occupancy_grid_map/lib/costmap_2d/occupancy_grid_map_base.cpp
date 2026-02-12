@@ -91,14 +91,14 @@ OccupancyGridMapInterface::OccupancyGridMapInterface(
     const auto num_cells_x = this->getSizeInCellsX();
     const auto num_cells_y = this->getSizeInCellsY();
 
-    device_costmap_ = autoware::cuda_utils::make_unique<std::uint8_t[]>(num_cells_x * num_cells_y);
+    device_costmap_ = cuda_blackboard::make_unique<std::uint8_t[]>(num_cells_x * num_cells_y);
     device_costmap_aux_ =
-      autoware::cuda_utils::make_unique<std::uint8_t[]>(num_cells_x * num_cells_y);
+      cuda_blackboard::make_unique<std::uint8_t[]>(num_cells_x * num_cells_y);
 
-    device_rotation_map_ = autoware::cuda_utils::make_unique<Eigen::Matrix3f>();
-    device_translation_map_ = autoware::cuda_utils::make_unique<Eigen::Vector3f>();
-    device_rotation_scan_ = autoware::cuda_utils::make_unique<Eigen::Matrix3f>();
-    device_translation_scan_ = autoware::cuda_utils::make_unique<Eigen::Vector3f>();
+    device_rotation_map_ = cuda_blackboard::make_unique<Eigen::Matrix3f>();
+    device_translation_map_ = cuda_blackboard::make_unique<Eigen::Vector3f>();
+    device_rotation_scan_ = cuda_blackboard::make_unique<Eigen::Matrix3f>();
+    device_translation_scan_ = cuda_blackboard::make_unique<Eigen::Vector3f>();
   }
 #endif
 }
@@ -247,7 +247,7 @@ void OccupancyGridMapInterface::setCudaStream(const cudaStream_t & stream)
   }
 }
 
-const autoware::cuda_utils::CudaUniquePtr<std::uint8_t[]> &
+const cuda_blackboard::CudaUniquePtr<std::uint8_t[]> &
 OccupancyGridMapInterface::getDeviceCostmap() const
 {
   return device_costmap_;
