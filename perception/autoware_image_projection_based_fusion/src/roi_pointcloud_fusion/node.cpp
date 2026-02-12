@@ -48,8 +48,21 @@ RoiPointCloudFusionNode::RoiPointCloudFusionNode(const rclcpp::NodeOptions & opt
   override_class_with_unknown_ = declare_parameter<bool>("override_class_with_unknown");
   max_object_size_ = declare_parameter<double>("max_object_size");
 
-  // publisher
-  pub_ptr_ = this->create_publisher<ClusterMsgType>("output", rclcpp::QoS{1});
+  // Replace rclcpp subscription with agnocast subscription for zero-copy IPC
+  msg3d_sub_.reset();
+  agnocast_msg3d_sub_ = agnocast::create_subscription<PointCloudMsgType>(
+    this, "input", rclcpp::QoS(1).best_effort(),
+    [this](agnocast::ipc_shared_ptr<PointCloudMsgType> msg) {
+      auto captured_msg =
+        std::make_shared<agnocast::ipc_shared_ptr<PointCloudMsgType>>(std::move(msg));
+      auto input_ptr = std::shared_ptr<const PointCloudMsgType>(
+        captured_msg->get(), [captured_msg](const PointCloudMsgType *) {});
+      this->sub_callback(input_ptr);
+    });
+
+  // Replace rclcpp publisher with agnocast publisher
+  agnocast_pub_ptr_ =
+    agnocast::create_publisher<ClusterMsgType>(this, "output", rclcpp::QoS{1});
   cluster_debug_pub_ = this->create_publisher<PointCloudMsgType>("debug/clusters", 1);
 }
 
@@ -202,12 +215,16 @@ void RoiPointCloudFusionNode::postprocess(
 
 void RoiPointCloudFusionNode::publish(const ClusterMsgType & output_msg)
 {
-  const auto objects_sub_count =
-    pub_ptr_->get_subscription_count() + pub_ptr_->get_intra_process_subscription_count();
-  if (objects_sub_count < 1) {
+  if (!agnocast_pub_ptr_) {
     return;
   }
-  pub_ptr_->publish(output_msg);
+
+  if (agnocast_pub_ptr_->get_subscription_count() < 1) {
+    return;
+  }
+  auto loaned_msg = agnocast_pub_ptr_->borrow_loaned_message();
+  *loaned_msg = output_msg;
+  agnocast_pub_ptr_->publish(std::move(loaned_msg));
 }
 }  // namespace autoware::image_projection_based_fusion
 

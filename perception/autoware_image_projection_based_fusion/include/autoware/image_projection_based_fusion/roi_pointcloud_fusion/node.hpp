@@ -17,6 +17,7 @@
 
 #include "autoware/image_projection_based_fusion/fusion_node.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/image_projection_based_fusion/utils/utils.hpp>
 
 #include <memory>
@@ -51,6 +52,9 @@ private:
   bool override_class_with_unknown_{false};
 
   std::vector<ClusterObjType> output_fused_objects_;
+
+  agnocast::Publisher<ClusterMsgType>::SharedPtr agnocast_pub_ptr_;
+  agnocast::Subscription<PointCloudMsgType>::SharedPtr agnocast_msg3d_sub_;
 };
 
 }  // namespace autoware::image_projection_based_fusion
