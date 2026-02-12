@@ -172,6 +172,7 @@ void TrajectorySafetyFilter::load_metric(const std::string & name)
 
     plugin->set_vehicle_info(vehicle_info_);
     plugin->set_parameters(params);
+    plugin->set_diagnostic_updater(*this);
 
     plugins_.push_back(plugin);
 
