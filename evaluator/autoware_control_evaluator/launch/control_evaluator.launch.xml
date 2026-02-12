@@ -13,7 +13,7 @@
   <!-- control evaluator -->
   <group>
     <node name="control_evaluator" exec="agnocast_control_evaluator" pkg="autoware_control_evaluator">
-      <env name="LD_PRELOAD" value="$(var agnocast_heaphook_path)"/>
+      <env name="LD_PRELOAD" value="$(var agnocast_heaphook_path):$(env LD_PRELOAD '')"/>
       <param from="$(find-pkg-share autoware_control_evaluator)/config/control_evaluator.param.yaml"/>
       <param name="output_metrics" value="$(var output_metrics)"/>
       <remap from="~/input/odometry" to="$(var input/odometry)"/>

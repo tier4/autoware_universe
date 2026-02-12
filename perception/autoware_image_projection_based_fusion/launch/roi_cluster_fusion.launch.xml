@@ -36,7 +36,7 @@
   <arg name="input/image8" default="/image_raw8"/>
   <group>
     <node pkg="autoware_image_projection_based_fusion" exec="roi_cluster_fusion_node" name="roi_cluster_fusion" output="screen">
-      <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so"/>
+      <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
       <param name="rois_number" value="$(var input/rois_number)"/>
       <param from="$(var param_path)"/>
       <param from="$(var sync_param_path)"/>

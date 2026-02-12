@@ -14,6 +14,6 @@
     <remap from="output/object" to="$(var output)"/>
     <param from="$(var data_association_matrix_path)"/>
     <param from="$(var node_param_file_path)"/>
-    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so"/>
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
   </node>
 </launch>

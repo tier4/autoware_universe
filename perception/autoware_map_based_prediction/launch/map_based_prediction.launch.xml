@@ -10,7 +10,7 @@
   <arg name="input_topic" default="/perception/object_recognition/tracking/objects"/>
 
   <node pkg="autoware_map_based_prediction" exec="map_based_prediction" name="map_based_prediction" output="both">
-    <env name="LD_PRELOAD" value="$(var agnocast_heaphook_path)"/>
+    <env name="LD_PRELOAD" value="$(var agnocast_heaphook_path):$(env LD_PRELOAD '')"/>
     <param from="$(var param_path)"/>
     <remap from="/vector_map" to="$(var vector_map_topic)"/>
     <remap from="/traffic_signals" to="$(var traffic_signals_topic)"/>

@@ -11,7 +11,7 @@
   <arg name="config_file" default="$(find-pkg-share autoware_shape_estimation)/config/shape_estimation.param.yaml"/>
 
   <node pkg="autoware_shape_estimation" exec="shape_estimation_node" name="$(var node_name)" output="screen">
-    <env name="LD_PRELOAD" value="$(var agnocast_heaphook_path)"/>
+    <env name="LD_PRELOAD" value="$(var agnocast_heaphook_path):$(env LD_PRELOAD '')"/>
     <remap from="input" to="$(var input/objects)"/>
     <remap from="objects" to="$(var output/objects)"/>
     <param name="model_path" value="$(var model_path)"/>

@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import launch
 from launch.actions import DeclareLaunchArgument
 from launch.actions import OpaqueFunction
@@ -78,7 +80,11 @@ def launch_setup(context, *args, **kwargs):
         composable_node_descriptions=[],
         output="screen",
         condition=UnlessCondition(LaunchConfiguration("use_pointcloud_container")),
-        additional_env={"LD_PRELOAD": "/opt/ros/humble/lib/libagnocast_heaphook.so"},
+        additional_env={
+            "LD_PRELOAD": "/opt/ros/humble/lib/libagnocast_heaphook.so"
+            + ":"
+            + os.environ.get("LD_PRELOAD", ""),
+        },
     )
 
     target_container = (

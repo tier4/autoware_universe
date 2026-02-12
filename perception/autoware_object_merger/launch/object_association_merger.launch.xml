@@ -19,6 +19,6 @@
 
     <!-- Be careful when moving this parameter to param.yaml, since this value depends on which part this launcher is called -->
     <param name="priority_mode" value="$(var priority_mode)"/>
-    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so"/>
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
   </node>
 </launch>

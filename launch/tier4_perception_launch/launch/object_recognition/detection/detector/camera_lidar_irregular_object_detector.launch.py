@@ -160,6 +160,7 @@ class SmallUnknownPipeline:
         return components
 
     def create_roi_pointcloud_fusion_node(self, input_topic, output_topic):
+        agnocast_heaphook_path = "/opt/ros/humble/lib/libagnocast_heaphook.so"
         node = Node(
             package="autoware_image_projection_based_fusion",
             executable="roi_pointcloud_fusion_node",
@@ -172,6 +173,11 @@ class SmallUnknownPipeline:
                 self.roi_pointcloud_fusion_sync_param,
                 self.roi_pointcloud_fusion_param,
             ],
+            additional_env={
+                "LD_PRELOAD": agnocast_heaphook_path
+                + ":"
+                + os.environ.get("LD_PRELOAD", ""),
+            },
         )
         return node
 

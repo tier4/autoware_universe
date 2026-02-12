@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
@@ -126,7 +128,11 @@ def launch_setup(context, *args, **kwargs):
             occupancy_grid_map_updater_params,
             {"updater_type": LaunchConfiguration("updater_type").perform(context)},
         ],
-        additional_env={"LD_PRELOAD": AGNOCAST_HEAPHOOK_PATH},
+        additional_env={
+            "LD_PRELOAD": AGNOCAST_HEAPHOOK_PATH
+            + ":"
+            + os.environ.get("LD_PRELOAD", ""),
+        },
         output="screen",
     )
 
