@@ -34,9 +34,10 @@ namespace autoware::trajectory_optimizer
 
 TrajectoryOptimizer::TrajectoryOptimizer(const rclcpp::NodeOptions & options)
 : Node("trajectory_optimizer", options),
-  plugin_loader_(std::make_unique<pluginlib::ClassLoader<plugin::TrajectoryOptimizerPluginBase>>(
-    "autoware_trajectory_optimizer",
-    "autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase"))
+  plugin_loader_(
+    std::make_unique<pluginlib::ClassLoader<plugin::TrajectoryOptimizerPluginBase>>(
+      "autoware_trajectory_optimizer",
+      "autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase"))
 {
   debug_processing_time_detail_pub_ = create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
     "~/debug/processing_time_detail_ms", 1);
@@ -48,13 +49,6 @@ TrajectoryOptimizer::TrajectoryOptimizer(const rclcpp::NodeOptions & options)
 
   set_param_res_ = add_on_set_parameters_callback(
     std::bind(&TrajectoryOptimizer::on_parameter, this, std::placeholders::_1));
-
-  velocity_limit_pub_ = create_publisher<VelocityLimit>(
-    "~/output/current_velocity_limit_mps", rclcpp::QoS{1}.transient_local());
-  publish_default_velocity_limit();
-  external_velocity_limit_sub_ = create_subscription<VelocityLimit>(
-    "~/input/external_velocity_limit_mps", rclcpp::QoS{1}.transient_local(),
-    std::bind(&TrajectoryOptimizer::on_external_velocity_limit, this, std::placeholders::_1));
 
   trajectories_sub_ = create_subscription<CandidateTrajectories>(
     "~/input/trajectories", 1,
@@ -76,7 +70,6 @@ void TrajectoryOptimizer::initialize_optimizers()
   for (const auto & plugin_name : plugin_names) {
     load_plugin(plugin_name);
   }
-
   initialized_optimizers_ = true;
 }
 
@@ -125,11 +118,6 @@ rcl_interfaces::msg::SetParametersResult TrajectoryOptimizer::on_parameter(
     parameters, "use_kinematic_feasibility_enforcer", params.use_kinematic_feasibility_enforcer);
   update_param<bool>(parameters, "use_mpt_optimizer", params.use_mpt_optimizer);
 
-  const bool max_velocity_updated = update_param(parameters, "max_velocity", max_velocity_);
-  if (max_velocity_updated && !external_velocity_limit_received_) {
-    publish_default_velocity_limit();
-  }
-
   params_ = params;
 
   // Forward parameter updates to all loaded plugins
@@ -172,29 +160,6 @@ void TrajectoryOptimizer::set_up_params()
   params_.use_kinematic_feasibility_enforcer =
     get_or_declare_parameter<bool>(*this, "use_kinematic_feasibility_enforcer");
   params_.use_mpt_optimizer = get_or_declare_parameter<bool>(*this, "use_mpt_optimizer");
-  max_velocity_ = get_or_declare_parameter<double>(*this, "max_velocity");
-}
-
-void TrajectoryOptimizer::publish_default_velocity_limit()
-{
-  VelocityLimit velocity_limit{};
-  velocity_limit.stamp = now();
-  velocity_limit.max_velocity = max_velocity_;
-  publish_velocity_limit(velocity_limit);
-}
-
-void TrajectoryOptimizer::publish_velocity_limit(const VelocityLimit & velocity_limit)
-{
-  current_velocity_limit_ = velocity_limit;
-  if (velocity_limit_pub_) {
-    velocity_limit_pub_->publish(current_velocity_limit_);
-  }
-}
-
-void TrajectoryOptimizer::on_external_velocity_limit(const VelocityLimit::ConstSharedPtr msg)
-{
-  external_velocity_limit_received_ = true;
-  publish_velocity_limit(*msg);
 }
 
 void TrajectoryOptimizer::on_traj([[maybe_unused]] const CandidateTrajectories::ConstSharedPtr msg)
