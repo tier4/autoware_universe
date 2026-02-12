@@ -578,64 +578,27 @@ bool TrajectoryChecker::check_valid_yaw_deviation()
     return true;
   }
 
-  const auto & data   = context_->data;
-  auto & status       = context_->validation_status;
+  const auto & data = context_->data;
+  auto & status = context_->validation_status;
   const auto & trajectory = *data->current_trajectory;
-  const auto & ego_pose   = data->current_kinematics->pose.pose;
+  const auto & ego_pose = data->current_kinematics->pose.pose;
 
-  // ego 位置に対応する trajectory 上の補間点
   const auto interpolated_trajectory_point =
     motion_utils::calcInterpolatedPoint(trajectory, ego_pose);
+  status->yaw_deviation = std::abs(
+    angles::shortest_angular_distance(
+      tf2::getYaw(interpolated_trajectory_point.pose.orientation),
+      tf2::getYaw(ego_pose.orientation)));
 
-  // trajectory 側 yaw
-  const double traj_yaw =
-    tf2::getYaw(interpolated_trajectory_point.pose.orientation);
-  // ego 側 yaw（車体姿勢）
-  const double ego_yaw =
-    tf2::getYaw(ego_pose.orientation);
-
-  // まずは通常の yaw 差
-  double raw_diff = angles::shortest_angular_distance(traj_yaw, ego_yaw);
-
-  // -----------------------------------------------
-  // reverse-aware: yaw 差が大きいときは ego_yaw+π でも比較してみる
-  // -----------------------------------------------
-  //
-  // ここでは「90°より大きい yaw 差」を
-  // 「reverse 方向（車体前向き vs path 後向き）の可能性が高い」とみなす。
-  //
-  double adjusted_diff = raw_diff;
-  constexpr double kReverseYawDetectThresh = M_PI_2;  // = 1.570796..., 90度
-
-  if (std::fabs(raw_diff) > kReverseYawDetectThresh) {
-    // ego を 180度回転させたものと比較し直す
-    const double ego_yaw_rev =
-      autoware_utils::normalize_radian(ego_yaw + M_PI);
-
-    const double diff_rev =
-      angles::shortest_angular_distance(traj_yaw, ego_yaw_rev);
-
-    // 「どちらの比較のほうが小さいか」で最終的な yaw_deviation を決める
-    if (std::fabs(diff_rev) < std::fabs(raw_diff)) {
-      adjusted_diff = diff_rev;
-    }
-  }
-
-  status->yaw_deviation = std::fabs(adjusted_diff);
-
-  // 既存の trajectory_yaw_shift 条件はそのまま
   const auto check_condition =
     !data->last_valid_trajectory ||
-    nearest_trajectory_yaw_shift(
-      *data->last_valid_trajectory, interpolated_trajectory_point) >
+    nearest_trajectory_yaw_shift(*data->last_valid_trajectory, interpolated_trajectory_point) >
       params_.yaw_deviation.th_trajectory_yaw_shift;
-
   if (check_condition && status->yaw_deviation > params_.yaw_deviation.threshold) {
     context_->set_handling(params_.yaw_deviation.handling_type);
     override_all_error_diag_ |= params_.yaw_deviation.override_error_diag;
     return false;
   }
-
   return true;
 }
 
@@ -678,26 +641,16 @@ bool TrajectoryChecker::check_trajectory_shift()
 {
   bool is_valid = true;
   const auto & data = context_->data;
-
-  RCLCPP_DEBUG(logger_, "[trajectory_shift] check_trajectory_shift() called - enable: %s, has_last_valid_trajectory: %s",
-               params_.trajectory_shift.enable ? "true" : "false",
-               data->last_valid_trajectory ? "true" : "false");
-
-  // チェック無効 or 前回の有効 trajectory がない場合は何もしない
   if (!params_.trajectory_shift.enable || !data->last_valid_trajectory) {
-    RCLCPP_DEBUG(logger_, "[trajectory_shift] Validation skipped - enable: %s, has_last_valid_trajectory: %s",
-                 params_.trajectory_shift.enable ? "true" : "false",
-                 data->last_valid_trajectory ? "true" : "false");
     return is_valid;
   }
 
-  auto & status           = context_->validation_status;
+  auto & status = context_->validation_status;
   const auto & trajectory = *data->current_trajectory;
   const auto & prev_trajectory = *data->last_valid_trajectory;
-  const auto & ego_pose   = data->current_kinematics->pose.pose;
+  const auto & ego_pose = data->current_kinematics->pose.pose;
 
-  const auto nearest_seg_idx =
-    data->nearest_segment_index;
+  const auto nearest_seg_idx = data->nearest_segment_index;
   const auto prev_nearest_seg_idx =
     autoware::motion_utils::findNearestSegmentIndex(prev_trajectory.points, ego_pose);
 
@@ -705,114 +658,51 @@ bool TrajectoryChecker::check_trajectory_shift()
     return is_valid;
   }
 
-  // 近傍インデックスを取得
-  const size_t curr_idx = *nearest_seg_idx;
-  const size_t prev_idx = *prev_nearest_seg_idx;
+  const auto & nearest_pose = trajectory.points.at(*nearest_seg_idx).pose;
+  const auto & prev_nearest_pose = prev_trajectory.points.at(*prev_nearest_seg_idx).pose;
 
-  if (curr_idx >= trajectory.points.size() ||
-      prev_idx >= prev_trajectory.points.size()) {
-    return is_valid;
-  }
-
-  // 近傍の TrajectoryPoint / Pose
-  const auto & curr_pt  = trajectory.points.at(curr_idx);
-  const auto & prev_pt  = prev_trajectory.points.at(prev_idx);
-  const auto & nearest_pose      = curr_pt.pose;
-  const auto & prev_nearest_pose = prev_pt.pose;
-
-  // この関数内だけで使う reverse 判定（速度符号ベース）
-  constexpr double kReverseVelThresh = 0.1;  // [m/s] ノイズ対策
-  const bool curr_reverse =
-    curr_pt.longitudinal_velocity_mps < -kReverseVelThresh;
-  const bool prev_reverse =
-    prev_pt.longitudinal_velocity_mps < -kReverseVelThresh;
-
-  // ego から現在軌道への横偏差
-  const auto ego_lat_dist =
+  const auto & ego_lat_dist =
     std::abs(autoware_utils::calc_lateral_deviation(ego_pose, nearest_pose.position));
 
-  // 前回軌道 vs 今回軌道の横方向シフト量
   const auto lat_shift =
     std::abs(autoware_utils::calc_lateral_deviation(prev_nearest_pose, nearest_pose.position));
 
   static constexpr auto epsilon = 0.01;
   status->lateral_shift = lat_shift > epsilon ? lat_shift : 0.0;
 
-  // ================================
-  // reverse-aware 部分その1:
-  // forward ↔ reverse の切替境界では
-  // シフト判定自体をスキップする
-  // ================================
-  if (curr_reverse != prev_reverse) {
-    RCLCPP_DEBUG(logger_, "[trajectory_shift] Direction change detected (forward↔reverse), skipping validation. curr_reverse: %s, prev_reverse: %s",
-                 curr_reverse ? "true" : "false", prev_reverse ? "true" : "false");
-    // 方向切替サイクルは「意図的な大きな変更」とみなし、trajectory_shift では弾かない
-    status->longitudinal_shift = 0.0;
-    return is_valid;  // true のまま
-  }
-
-  // ここから先は forward 同士 / reverse 同士のみ（従来ロジックを適用）
-
-  // デバッグ: 判定に使用する値をログ出力
-  RCLCPP_DEBUG(logger_, "[trajectory_shift] Validation values - ego_lat_dist: %.3f, lat_shift: %.3f, lon_shift: %.3f, "
-               "thresholds: lat_shift_th=%.3f, forward_shift_th=%.3f, backward_shift_th=%.3f, curr_idx: %zu",
-               ego_lat_dist, lat_shift, 0.0, // lon_shiftはまだ計算されていないので0.0でプレースホルダー
-               params_.trajectory_shift.lat_shift_th,
-               params_.trajectory_shift.forward_shift_th,
-               params_.trajectory_shift.backward_shift_th,
-               curr_idx);
-
-  // 横シフトが両方でしきい値を超えていれば NG
   if (
     ego_lat_dist > params_.trajectory_shift.lat_shift_th &&
     lat_shift > params_.trajectory_shift.lat_shift_th) {
-    RCLCPP_WARN(logger_, "[trajectory_shift] ERROR: Lateral shift validation failed! "
-                "ego_lat_dist=%.3f > lat_shift_th=%.3f AND lat_shift=%.3f > lat_shift_th=%.3f",
-                ego_lat_dist, params_.trajectory_shift.lat_shift_th,
-                lat_shift, params_.trajectory_shift.lat_shift_th);
     context_->set_handling(params_.trajectory_shift.handling_type);
     override_all_error_diag_ |= params_.trajectory_shift.override_error_diag;
     context_->debug_pose_publisher->pushPoseMarker(nearest_pose, "trajectory_shift");
     is_valid = false;
   }
 
-  // 縦方向シフトをチェックするかどうかの条件
   const auto is_check_lon_shift = std::invoke([&]() {
-    if (prev_idx == prev_trajectory.points.size() - 2) {
-      // prev trajectory の末尾付近なら縦シフトチェック不要
-      return false;
+    if (*prev_nearest_seg_idx == prev_trajectory.points.size() - 2) {
+      return false;  // no need to check longitudinal shift if at the end of previous trajectory
     }
-    if (curr_idx > 0 && curr_idx < trajectory.points.size() - 2) {
-      // ego が current trajectory の「中」にいるなら縦シフトチェック不要
-      return false;
+    if (*nearest_seg_idx > 0 && *nearest_seg_idx < trajectory.points.size() - 2) {
+      return false;  // no need to check longitudinal shift if ego is within the current trajectory
     }
     return true;
   });
 
-  // 縦シフトチェック不要の場合
+  // if nearest segment is within the trajectory no need to check longitudinal shift
   if (!is_check_lon_shift) {
-    RCLCPP_DEBUG(logger_, "[trajectory_shift] Longitudinal shift check skipped - prev_idx: %zu, prev_trajectory_size: %zu, curr_idx: %zu, trajectory_size: %zu",
-                 prev_idx, prev_trajectory.points.size(), curr_idx, trajectory.points.size());
     status->longitudinal_shift = 0.0;
     return is_valid;
   }
 
-  // 前回 vs 今回の縦方向シフト
   const auto lon_shift =
     autoware_utils::calc_longitudinal_deviation(prev_nearest_pose, nearest_pose.position);
 
   status->longitudinal_shift = std::abs(lon_shift) > epsilon ? lon_shift : 0.0;
 
-  // デバッグ: 縦方向シフトの値を更新してログ出力
-  RCLCPP_DEBUG(logger_, "[trajectory_shift] Longitudinal shift calculated - lon_shift: %.3f, curr_idx: %zu, trajectory_size: %zu",
-               lon_shift, curr_idx, trajectory.points.size());
-
-  // 先頭セグメント側なら「forward シフト」判定
-  if (curr_idx == 0) {
+  // if the nearest segment is the first segment, check forward shift
+  if (*nearest_seg_idx == 0) {
     if (lon_shift > params_.trajectory_shift.forward_shift_th) {
-      RCLCPP_WARN(logger_, "[trajectory_shift] ERROR: Forward shift validation failed at trajectory start! "
-                  "lon_shift=%.3f > forward_shift_th=%.3f (curr_idx=%zu)",
-                  lon_shift, params_.trajectory_shift.forward_shift_th, curr_idx);
       context_->set_handling(params_.trajectory_shift.handling_type);
       override_all_error_diag_ |= params_.trajectory_shift.override_error_diag;
       context_->debug_pose_publisher->pushPoseMarker(nearest_pose, "trajectory_shift");
@@ -821,18 +711,14 @@ bool TrajectoryChecker::check_trajectory_shift()
     return is_valid;
   }
 
-  // 末尾側なら「backward シフト」判定
+  // if the nearest segment is the last segment, check backward shift
   if (lon_shift < 0.0 && std::abs(lon_shift) > params_.trajectory_shift.backward_shift_th) {
-    RCLCPP_WARN(logger_, "[trajectory_shift] ERROR: Backward shift validation failed at trajectory end! "
-                "lon_shift=%.3f < 0.0 AND |lon_shift|=%.3f > backward_shift_th=%.3f (curr_idx=%zu)",
-                lon_shift, std::abs(lon_shift), params_.trajectory_shift.backward_shift_th, curr_idx);
     context_->set_handling(params_.trajectory_shift.handling_type);
     override_all_error_diag_ |= params_.trajectory_shift.override_error_diag;
     context_->debug_pose_publisher->pushPoseMarker(nearest_pose, "trajectory_shift");
     is_valid = false;
   }
 
-  RCLCPP_DEBUG(logger_, "[trajectory_shift] check_trajectory_shift() result: %s", is_valid ? "VALID" : "INVALID");
   return is_valid;
 }
 

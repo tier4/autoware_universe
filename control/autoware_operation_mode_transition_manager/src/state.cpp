@@ -17,7 +17,6 @@
 #include "util.hpp"
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
-#include "autoware/motion_utils/trajectory/interpolation.hpp"
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/geometry/pose_deviation.hpp>
 
@@ -25,7 +24,6 @@
 #include <cmath>
 #include <memory>
 #include <utility>
-
 
 namespace autoware::operation_mode_transition_manager
 {
@@ -136,37 +134,19 @@ bool AutonomousMode::isModeChangeCompleted(const InputData & input_data)
     return unstable();
   }
 
-// check for yaw deviation (reverse-aware)
-// 従来どおり forward 前提の yaw 差を計算
-const auto yaw_deviation_raw =
-  autoware::motion_utils::calcYawDeviation(trajectory.points, kinematics.pose.pose);
-if (std::isnan(yaw_deviation_raw)) {
-  RCLCPP_INFO_THROTTLE(
-    logger_, *clock_, 3000, "Not stable yet: lateral offset calculation failed.");
-  return unstable();
-}
-
-// ---- reverse-aware 補正 ----
-//
-// calcYawDeviation は 0〜π [rad] の差を返す前提。
-// 逆走中（車体前向き・path 後向き）は yaw_deviation_raw ≒ π になるので、
-// π - yaw_deviation_raw を取った方が「真のずれ角」に近い。
-// よって、min(θ, |π-θ|) を最終的な yaw_deviation とする。
-//
-double yaw_deviation = yaw_deviation_raw;
-// π が使えるように <cmath> + M_PI を利用
-constexpr double PI = M_PI;
-if (yaw_deviation_raw > PI / 2.0) {
-  const double alt = std::fabs(PI - yaw_deviation_raw);
-  yaw_deviation = std::min(yaw_deviation_raw, alt);
-}
-// ここから先は従来どおりの threshold 判定
-if (yaw_deviation > stable_check_param_.yaw_threshold) {
-  RCLCPP_INFO_THROTTLE(
-    logger_, *clock_, 3000,
-    "Not stable yet: yaw deviation is too large: %f", yaw_deviation);
-  return unstable();
-}
+  // check for yaw deviation
+  const auto yaw_deviation =
+    autoware::motion_utils::calcYawDeviation(trajectory.points, kinematics.pose.pose);
+  if (std::isnan(yaw_deviation)) {
+    RCLCPP_INFO_THROTTLE(
+      logger_, *clock_, 3000, "Not stable yet: lateral offset calculation failed.");
+    return unstable();
+  }
+  if (yaw_deviation > stable_check_param_.yaw_threshold) {
+    RCLCPP_INFO_THROTTLE(
+      logger_, *clock_, 3000, "Not stable yet: yaw deviation is too large: %f", yaw_deviation);
+    return unstable();
+  }
 
   // check for speed deviation
   const auto speed_deviation =
