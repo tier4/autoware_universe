@@ -142,7 +142,7 @@ jobs:
           cp /tmp/workflow-templates/auto-add-label.yaml.template \
              .github/workflows/auto-add-label.yaml
           echo "Copied auto-add-label.yaml to child branch"
-      
+
       - name: Copy auto-sync-pilot-auto workflow template to child branch
         run: |
           mkdir -p .github/workflows
