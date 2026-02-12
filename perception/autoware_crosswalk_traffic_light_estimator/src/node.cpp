@@ -184,7 +184,6 @@ CrosswalkTrafficLightEstimatorNode::CrosswalkTrafficLightEstimatorNode(
 void CrosswalkTrafficLightEstimatorNode::onMap(
   const agnocast::ipc_shared_ptr<LaneletMapBin> & msg)
 {
-  RCLCPP_INFO(get_logger(), "[Agnocast] onMap callback triggered, map data size: %zu bytes", msg->data.size());
   lanelet_map_ptr_ = std::make_shared<lanelet::LaneletMap>();
   lanelet::utils::conversion::fromBinMsg(
     *msg, lanelet_map_ptr_, &traffic_rules_ptr_, &routing_graph_ptr_);

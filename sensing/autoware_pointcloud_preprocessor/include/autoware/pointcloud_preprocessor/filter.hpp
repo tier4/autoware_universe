@@ -380,25 +380,6 @@ template <typename NodeT>
 FilterBase<NodeT>::FilterBase(const std::string & filter_name, const rclcpp::NodeOptions & options)
 : NodeT(filter_name, options), filter_field_name_(filter_name)
 {
-  // Debug log to confirm node type
-  if constexpr (is_rclcpp_node_v<NodeT>) {
-    RCLCPP_INFO(
-      this->get_logger(),
-      "\n=============================="
-      "\n[FilterBase] NodeT = rclcpp::Node"
-      "\n  filter_name: %s"
-      "\n==============================",
-      filter_name.c_str());
-  } else if constexpr (is_agnocast_node_v<NodeT>) {
-    RCLCPP_INFO(
-      this->get_logger(),
-      "\n=============================="
-      "\n[FilterBase] NodeT = agnocast::Node"
-      "\n  filter_name: %s"
-      "\n==============================",
-      filter_name.c_str());
-  }
-
   // Set parameters (moved from NodeletLazy onInit)
   {
     tf_input_frame_ = this->template declare_parameter<std::string>("input_frame", std::string(""));
@@ -808,27 +789,6 @@ void FilterBase<NodeT>::faster_input_indices_callback(
   if (indices && !is_valid(indices)) {
     RCLCPP_ERROR(this->get_logger(), "[input_indices_callback] Invalid indices!");
     return;
-  }
-
-  // Add RCLCPP_INFO_THROTTLE for rclcpp::Node
-  if constexpr (is_rclcpp_node_v<NodeT>) {
-    RCLCPP_INFO_THROTTLE(
-      this->get_logger(), *this->get_clock(), 5000,
-      "\n=============================="
-      "\n[FilterBase] rclcpp::Node CALLBACK INVOKED"
-      "\n  frame_id: %s"
-      "\n  points: %u"
-      "\n==============================",
-      cloud->header.frame_id.c_str(), cloud->width * cloud->height);
-  } else if constexpr (is_agnocast_node_v<NodeT>) {
-    RCLCPP_INFO_THROTTLE(
-      this->get_logger(), *this->get_clock(), 5000,
-      "\n=============================="
-      "\n[FilterBase] agnocast::Node CALLBACK INVOKED"
-      "\n  frame_id: %s"
-      "\n  points: %u"
-      "\n==============================",
-      cloud->header.frame_id.c_str(), cloud->width * cloud->height);
   }
 
   if (indices) {

@@ -251,13 +251,6 @@ void MultiCameraFusion::trafficSignalRoiCallback(
 void MultiCameraFusion::mapCallback(
   const agnocast::ipc_shared_ptr<autoware_map_msgs::msg::LaneletMapBin> & input_msg)
 {
-  RCLCPP_INFO(
-    get_logger(),
-    "===============================================\n"
-    "  [mapCallback] CALLED\n"
-    "  map data size: %zu\n"
-    "===============================================",
-    input_msg->data.size());
   lanelet::LaneletMapPtr lanelet_map_ptr = std::make_shared<lanelet::LaneletMap>();
 
   lanelet::utils::conversion::fromBinMsg(*input_msg, lanelet_map_ptr);
