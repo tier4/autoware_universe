@@ -10,7 +10,7 @@ jobs:
     # Add the label only when the PR is opened or reopened, and the PR is not created by a bot
     if: |
       (github.event.action == 'opened' || github.event.action == 'reopened') &&
-      !contains(github.event.pull_request.user.login, 'bot')
+      github.event.pull_request.user.type != 'Bot'
     name: Auto-add cherry-pick label
     steps:
       - name: Generate token
