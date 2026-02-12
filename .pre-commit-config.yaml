@@ -50,6 +50,7 @@ repos:
     rev: v0.10.0
     hooks:
       - id: flake8-ros
+        additional_dependencies: [setuptools]
       - id: prettier-xacro
       - id: prettier-launch-xml
       - id: prettier-package-xml
