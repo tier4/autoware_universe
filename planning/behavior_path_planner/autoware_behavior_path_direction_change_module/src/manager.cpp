@@ -40,11 +40,12 @@ void DirectionChangeModuleManager::init(rclcpp::Node * node)
   p.cusp_detection_angle_threshold_deg =
     node->declare_parameter<double>(ns + "cusp_detection_angle_threshold_deg");
   p.reverse_initial_speed = node->declare_parameter<double>(ns + "reverse_initial_speed");
-  p.cusp_stop_distance = node->declare_parameter<double>(ns + "cusp_stop_distance");
 
   // State transition parameters
   p.cusp_detection_distance_start_approaching =
     node->declare_parameter<double>(ns + "cusp_detection_distance_start_approaching");
+  p.stop_velocity_threshold =
+    node->declare_parameter<double>(ns + "stop_velocity_threshold");
 
   // Reverse lane following parameters
   p.reverse_speed_limit = node->declare_parameter<double>(ns + "reverse_speed_limit");

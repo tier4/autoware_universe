@@ -428,11 +428,13 @@ BehaviorModuleOutput DirectionChangeModule::plan()
             default:                                   return "UNKNOWN";
           }
         };
+        const double vehicle_velocity = std::abs(planner_data_->self_odometry->twist.twist.linear.x);
         std::cout << "[MY_DEBUG] [DirectionChange] "
                   << "state=" << stateToString(current_segment_state_)
                   << ", ego_nearest_idx=" << ego_nearest_idx
                   << ", first_cusp_index_=" << first_cusp_index_
                   << ", distance_to_cusp=" << distance_to_cusp
+                  << ", vehicle_velocity=" << vehicle_velocity << " [m/s]"
                   << ", start_approaching_threshold=" << parameters_->cusp_detection_distance_start_approaching
                   << ", at_cusp_threshold=" << parameters_->cusp_detection_distance_threshold
                   << std::endl;
@@ -459,10 +461,16 @@ BehaviorModuleOutput DirectionChangeModule::plan()
             }
             break;
 
-          case PathSegmentState::AT_CUSP:
-            // Unconditionally transition to REVERSE_FOLLOWING when AT_CUSP is reached
-            new_state = PathSegmentState::REVERSE_FOLLOWING;
+          case PathSegmentState::AT_CUSP: {
+            // Transition to REVERSE_FOLLOWING only when vehicle has stopped
+            const double vehicle_velocity = std::abs(planner_data_->self_odometry->twist.twist.linear.x);
+            
+            if (vehicle_velocity < parameters_->stop_velocity_threshold) {
+              new_state = PathSegmentState::REVERSE_FOLLOWING;
+            }
+            // Otherwise, stay in AT_CUSP state until vehicle stops
             break;
+          }
 
           case PathSegmentState::REVERSE_FOLLOWING:
             // REVERSE_FOLLOWING状態は基本的に維持
@@ -491,8 +499,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     
     // Split path and publish appropriate segment based on state
     if (current_segment_state_ == PathSegmentState::FORWARD_FOLLOWING ||
-        current_segment_state_ == PathSegmentState::APPROACHING_CUSP) {
+        current_segment_state_ == PathSegmentState::APPROACHING_CUSP ||
+        current_segment_state_ == PathSegmentState::AT_CUSP) {
       // Extract forward segment: [0, first_cusp_index] (inclusive)
+      // AT_CUSP state will output forward segment with stop command until vehicle stops
       if (first_cusp_index_ < current_reference_path.points.size()) {
         output.path.points.assign(
           current_reference_path.points.begin(),
@@ -503,8 +513,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         std::cout << "[MY_DEBUG] [DirectionChange] ERROR: First cusp index out of bounds, using full path" << std::endl;
         output.path = current_reference_path;
       }
-    } else if (current_segment_state_ == PathSegmentState::AT_CUSP ||
-               current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING) {
+    } else if (current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING) {
       // Extract backward segment: [first_cusp_index, end] (inclusive)
       if (first_cusp_index_ < current_reference_path.points.size()) {
         output.path.points.assign(
@@ -632,6 +641,49 @@ BehaviorModuleOutput DirectionChangeModule::plan()
               << segment_type
               << " segment to topic: " << path_publisher_->get_topic_name()
               << " with " << path_msg.points.size() << " points" << std::endl;
+
+    // Debug logging for stop point analysis
+    bool has_stop_point = false;
+    double first_point_vel = 0.0;
+    double last_point_vel = 0.0;
+
+    size_t stop_point_index = 0;
+    if (!path_msg.points.empty()) {
+      first_point_vel = path_msg.points.front().point.longitudinal_velocity_mps;
+      last_point_vel = path_msg.points.back().point.longitudinal_velocity_mps;
+
+      for (size_t i = 0; i < path_msg.points.size(); ++i) {
+        if (std::abs(path_msg.points[i].point.longitudinal_velocity_mps) < 1e-3) {
+          has_stop_point = true;
+          stop_point_index = i;
+          break;
+        }
+      }
+    }
+
+    // Convert state to string
+    std::string state_str;
+    switch (current_segment_state_) {
+      case PathSegmentState::IDLE:               state_str = "IDLE"; break;
+      case PathSegmentState::FORWARD_FOLLOWING:  state_str = "FORWARD_FOLLOWING"; break;
+      case PathSegmentState::APPROACHING_CUSP:   state_str = "APPROACHING_CUSP"; break;
+      case PathSegmentState::AT_CUSP:            state_str = "AT_CUSP"; break;
+      case PathSegmentState::REVERSE_FOLLOWING:  state_str = "REVERSE_FOLLOWING"; break;
+      case PathSegmentState::COMPLETED:          state_str = "COMPLETED"; break;
+      default:                                   state_str = "UNKNOWN"; break;
+    }
+
+    std::cout << "[DIRECTION_CHANGE_DEBUG] Generated path analysis:" << std::endl;
+    std::cout << "  state: " << state_str << std::endl;
+    std::cout << "  path_points: " << path_msg.points.size() << std::endl;
+    std::cout << "  has_stop_point: " << (has_stop_point ? "YES" : "NO") << std::endl;
+    if (has_stop_point) {
+      const auto& stop_point = path_msg.points[stop_point_index].point.pose.position;
+      std::cout << "  stop_point_index: " << stop_point_index << std::endl;
+      std::cout << "  stop_point_position: x=" << stop_point.x << " y=" << stop_point.y << std::endl;
+    }
+    std::cout << "  first_point_vel: " << first_point_vel << " [m/s]" << std::endl;
+    std::cout << "  last_point_vel: " << last_point_vel << " [m/s]" << std::endl;
   }
 
   output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
