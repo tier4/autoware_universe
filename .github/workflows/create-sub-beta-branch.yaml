@@ -137,23 +137,23 @@ jobs:
           mkdir -p .github/workflows
           TEMPLATE_FILE="/tmp/workflow-templates/auto-sync-pilot-auto.yaml.template"
           OUTPUT_FILE=".github/workflows/auto-sync-pilot-auto.yaml"
-          
+
           if [ -f "$TEMPLATE_FILE" ]; then
             echo "Rendering auto-sync-pilot-auto.yaml template for child branch"
-            
+
             # Read template file
             TEMPLATE_CONTENT=$(cat "$TEMPLATE_FILE")
-            
+
             # Replace template variables
             # Using sed with different delimiters to avoid issues with slashes in branch names
             RENDERED_CONTENT=$(echo "$TEMPLATE_CONTENT" | \
               sed "s|{{SOURCE_BRANCH}}|${{ inputs.branch_name }}|g" | \
               sed "s|{{TARGET_REPOSITORY}}|${{ inputs.target_repository }}|g" | \
               sed "s|{{TARGET_BRANCH}}|${{ inputs.target_branch }}|g")
-            
+
             # Write rendered content to output file
             echo "$RENDERED_CONTENT" > "$OUTPUT_FILE"
-            
+
             echo "Created auto-sync-pilot-auto.yaml for child branch"
             echo "Source branch: ${{ inputs.branch_name }}"
             echo "Target repository: ${{ inputs.target_repository }}"
@@ -165,12 +165,12 @@ jobs:
       - name: Commit and push child branch
         run: |
           git add .github/branch-meta.yaml .github/workflows/auto-add-label.yaml
-          
+
           # Add the auto-sync workflow if it exists
           if [ -f ".github/workflows/auto-sync-pilot-auto.yaml" ]; then
             git add .github/workflows/auto-sync-pilot-auto.yaml
           fi
-          
+
           git commit -m "chore: initialize child branch with meta file and workflows
 
           - Add .github/branch-meta.yaml with branch metadata
