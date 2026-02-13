@@ -1,0 +1,83 @@
+name: sync-version-to-pilot-auto
+
+on:
+  push:
+    branches:
+      - {{SOURCE_BRANCH}} # Target branch in universe repo
+
+jobs:
+  sync-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate token
+        id: generate-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app_id: ${{ secrets.INTERNAL_APP_ID }}
+          private_key: ${{ secrets.INTERNAL_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout universe
+        uses: actions/checkout@v4
+        with:
+          path: universe-repo # Checkout into a subfolder to keep things clean
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.49.2/yq_linux_amd64
+          echo "be2c0ddcf426b6a231648610ec5d1666ae50e9f6473e82f6486f9f4cb6e3e2f7  /usr/local/bin/yq" | sha256sum -c -
+          sudo chmod a+x /usr/local/bin/yq
+
+      - name: Read branch meta
+        id: meta
+        run: |
+          if [ ! -f .github/branch-meta.yaml ]; then
+            echo "No branch-meta.yaml found, skipping labeling"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          TARGET_REPOSITORY=$(yq '.pilot_auto_repository' .github/branch-meta.yaml)
+          TARGET_BRANCH=$(yq '.pilot_auto_branch' .github/branch-meta.yaml)
+          echo "target_repository=$TARGET_REPOSITORY" >> $GITHUB_OUTPUT
+          echo "target_branch=$TARGET_BRANCH" >> $GITHUB_OUTPUT
+          echo "skip=false" >> $GITHUB_OUTPUT
+
+      - name: Get current commit SHA and author
+        id: vars
+        run: |
+          cd universe-repo
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "author=$(git log -1 --pretty=format:'%an')" >> $GITHUB_OUTPUT
+
+      - name: Checkout pilot-auto
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.meta.outputs.target_repository}}
+          token: ${{ steps.generate-token.outputs.token }}
+          path: pilot-auto-repo
+          ref: ${{ steps.meta.outputs.target_branch }}
+
+      - name: Update autoware.repos
+        env:
+          REPO_KEY: autoware/universe
+          NEW_SHA: ${{ steps.vars.outputs.sha }}
+        run: |
+          cd pilot-auto-repo
+          # Use the verified sed command
+          sed -i "/${REPO_KEY//\//\\\/}:/,/version:/ s/\(version:[[:space:]]*\).*/\1$NEW_SHA/" autoware.repos
+
+      - name: Create Pull Request in pilot-auto
+        uses: peter-evans/create-pull-request@v5
+        with:
+          path: pilot-auto-repo
+          token: ${{ steps.generate-token.outputs.token }}
+          branch: sync-universe-${{ steps.vars.outputs.sha }}
+          title: "chore: update autoware/universe to ${{ steps.vars.outputs.sha }}"
+          body: |
+            Auto-generated PR to sync autoware/universe version from merged changes in universe repository.
+
+            cc: @${{ github.actor }} (commit author: ${{ steps.vars.outputs.author }})
+          base: ${{ steps.meta.outputs.target_branch }}
+          commit-message: "chore: update autoware/universe version"
+          delete-branch: true
+          reviewers: ${{ github.actor }}
