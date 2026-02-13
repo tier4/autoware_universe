@@ -147,11 +147,12 @@ bool CoMLOpsTLRClassifier::doInference(size_t batch_size)
 
 void CoMLOpsTLRClassifier::decodeTlrOutput(
   size_t batch_size, std::vector<int> & colors, std::vector<int> & types,
-  std::vector<float> & confidences)
+  std::vector<float> & confidences, std::vector<float> * angles)
 {
   colors.resize(batch_size, 0);
   types.resize(batch_size, 0);
   confidences.resize(batch_size, 0.0f);
+  if (angles) angles->resize(batch_size, 0.0f);
 
   const int grid_size = output_grid_h_ * output_grid_w_;
   const int out_c = TLR_NUM_ANCHORS * TLR_CHANS_PER_ANCHOR;  // 48
@@ -162,6 +163,8 @@ void CoMLOpsTLRClassifier::decodeTlrOutput(
     float best_score = 0.0f;
     int best_color = 0;
     int best_type = 0;
+    float best_cos = 1.0f;
+    float best_sin = 0.0f;
 
     for (int y = 0; y < output_grid_h_; ++y) {
       for (int x = 0; x < output_grid_w_; ++x) {
@@ -194,6 +197,8 @@ void CoMLOpsTLRClassifier::decodeTlrOutput(
             best_score = score;
             best_color = color_idx;
             best_type = type_idx;
+            best_cos = out[base + TLR_COS_INDEX * grid_size];
+            best_sin = out[base + TLR_SIN_INDEX * grid_size];
           }
         }
       }
@@ -201,6 +206,9 @@ void CoMLOpsTLRClassifier::decodeTlrOutput(
     colors[b] = best_color;
     types[b] = best_type;
     confidences[b] = best_score;
+    if (angles) {
+      (*angles)[b] = std::atan2(best_sin, best_cos);  // radians
+    }
   }
 }
 
@@ -309,8 +317,8 @@ bool CoMLOpsTLRClassifier::getTrafficSignals(
     }
 
     std::vector<int> colors, types;
-    std::vector<float> confidences;
-    decodeTlrOutput(current_batch_size, colors, types, confidences);
+    std::vector<float> confidences, angles;
+    decodeTlrOutput(current_batch_size, colors, types, confidences, &angles);
 
     for (size_t i = 0; i < current_batch_size; i++) {
       toTrafficLightElements(
