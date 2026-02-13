@@ -50,8 +50,7 @@ using autoware_utils_diagnostics::DiagnosticsInterface;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 
-class TrajectorySafetyFilter
-: public rclcpp::Node
+class TrajectorySafetyFilter : public rclcpp::Node
 {
 public:
   explicit TrajectorySafetyFilter(const rclcpp::NodeOptions & node_options);
@@ -95,7 +94,8 @@ private:
   pluginlib::ClassLoader<plugin::SafetyFilterInterface> plugin_loader_;
   std::vector<std::shared_ptr<plugin::SafetyFilterInterface>> plugins_;
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
-  std::unique_ptr<DiagnosticsInterface> diagnostics_interface_ptr_ = std::make_unique<DiagnosticsInterface>(this, "trajectory_safety_filter");
+  std::unique_ptr<DiagnosticsInterface> diagnostics_interface_ptr_ =
+    std::make_unique<DiagnosticsInterface>(this, "trajectory_safety_filter");
 };
 
 }  // namespace autoware::trajectory_safety_filter

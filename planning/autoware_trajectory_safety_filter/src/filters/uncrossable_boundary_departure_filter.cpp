@@ -19,12 +19,11 @@
 
 namespace autoware::trajectory_safety_filter::plugin
 {
-bool UncrossableBoundaryDepartureFilter::is_feasible(
+std::optional<std::string> UncrossableBoundaryDepartureFilter::validate(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
-  if (const auto has_invalid_input = is_invalid_input(traj_points, context)) {
-    warn_throttle("%s", has_invalid_input->c_str());
-    return false;
+  if (auto has_invalid_input = is_invalid_input(traj_points, context)) {
+    return has_invalid_input;
   }
 
   if (!uncrossable_boundary_departure_checker_ptr_) {
@@ -38,12 +37,15 @@ bool UncrossableBoundaryDepartureFilter::is_feasible(
     context.acceleration->accel.accel.linear.x);
 
   if (!departure_data) {
-    warn_throttle("%s", departure_data.error().c_str());
-    return false;
+    return departure_data.error();
   }
 
-  return departure_data->critical_departure_points.empty();
+  if (!departure_data->critical_departure_points.empty()) {
+    return "Trajectory departs from uncrossable boundaries.";
+  }
+  return std::nullopt;
 }
+
 std::optional<std::string> UncrossableBoundaryDepartureFilter::is_invalid_input(
   const TrajectoryPoints & traj_points, const FilterContext & context) const
 {
