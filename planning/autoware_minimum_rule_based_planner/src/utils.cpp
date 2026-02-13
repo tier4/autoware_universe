@@ -68,8 +68,7 @@ lanelet::BasicPoints3d to_lanelet_points(
 }  // namespace
 
 std::optional<lanelet::ConstLanelets> get_lanelets_within_route_up_to(
-  const lanelet::ConstLanelet & lanelet, const InternalPlannerData & planner_data,
-  const double distance)
+  const lanelet::ConstLanelet & lanelet, const RouteContext & planner_data, const double distance)
 {
   if (!exists(planner_data.route_lanelets, lanelet)) {
     return std::nullopt;
@@ -95,8 +94,7 @@ std::optional<lanelet::ConstLanelets> get_lanelets_within_route_up_to(
 }
 
 std::optional<lanelet::ConstLanelets> get_lanelets_within_route_after(
-  const lanelet::ConstLanelet & lanelet, const InternalPlannerData & planner_data,
-  const double distance)
+  const lanelet::ConstLanelet & lanelet, const RouteContext & planner_data, const double distance)
 {
   if (!exists(planner_data.route_lanelets, lanelet)) {
     return std::nullopt;
@@ -121,7 +119,7 @@ std::optional<lanelet::ConstLanelets> get_lanelets_within_route_after(
 }
 
 std::optional<lanelet::ConstLanelet> get_previous_lanelet_within_route(
-  const lanelet::ConstLanelet & lanelet, const InternalPlannerData & planner_data)
+  const lanelet::ConstLanelet & lanelet, const RouteContext & planner_data)
 {
   if (exists(planner_data.start_lanelets, lanelet)) {
     return std::nullopt;
@@ -142,7 +140,7 @@ std::optional<lanelet::ConstLanelet> get_previous_lanelet_within_route(
 }
 
 std::optional<lanelet::ConstLanelet> get_next_lanelet_within_route(
-  const lanelet::ConstLanelet & lanelet, const InternalPlannerData & planner_data)
+  const lanelet::ConstLanelet & lanelet, const RouteContext & planner_data)
 {
   if (planner_data.preferred_lanelets.empty()) {
     return std::nullopt;
@@ -169,7 +167,7 @@ std::optional<lanelet::ConstLanelet> get_next_lanelet_within_route(
 }
 
 PathWithLaneId generate_centerline_path(
-  const lanelet::ConstLanelets & lanelets, const InternalPlannerData & planner_data,
+  const lanelet::ConstLanelets & lanelets, const RouteContext & planner_data,
   const geometry_msgs::msg::Pose & current_pose, const double s_start, const double s_end)
 {
   PathWithLaneId path;
@@ -297,23 +295,21 @@ std::optional<double> get_first_intersection_arc_length(
     return std::nullopt;
   }
 
-  std::optional<double> s_intersection{std::nullopt};
+  std::optional<double> s_intersection;
 
   const auto s_start_on_bounds = get_arc_length_on_bounds(lanelet_sequence, s_start);
   const auto s_end_on_bounds = get_arc_length_on_bounds(lanelet_sequence, s_end);
 
-  const auto cropped_centerline = lanelet::utils::to2D(to_lanelet_points(crop_line_string(
-    to_geometry_msgs_points(
-      lanelet_sequence.centerline2d().begin(), lanelet_sequence.centerline2d().end()),
-    s_start, s_end)));
-  const auto cropped_left_bound = lanelet::utils::to2D(to_lanelet_points(crop_line_string(
-    to_geometry_msgs_points(
-      lanelet_sequence.leftBound2d().begin(), lanelet_sequence.leftBound2d().end()),
-    s_start_on_bounds.left, s_end_on_bounds.left)));
-  const auto cropped_right_bound = lanelet::utils::to2D(to_lanelet_points(crop_line_string(
-    to_geometry_msgs_points(
-      lanelet_sequence.rightBound2d().begin(), lanelet_sequence.rightBound2d().end()),
-    s_start_on_bounds.right, s_end_on_bounds.right)));
+  const auto crop_and_convert = [](const auto & line, double s0, double s1) {
+    return lanelet::utils::to2D(to_lanelet_points(
+      crop_line_string(to_geometry_msgs_points(line.begin(), line.end()), s0, s1)));
+  };
+
+  const auto cropped_centerline = crop_and_convert(lanelet_sequence.centerline2d(), s_start, s_end);
+  const auto cropped_left_bound =
+    crop_and_convert(lanelet_sequence.leftBound2d(), s_start_on_bounds.left, s_end_on_bounds.left);
+  const auto cropped_right_bound = crop_and_convert(
+    lanelet_sequence.rightBound2d(), s_start_on_bounds.right, s_end_on_bounds.right);
 
   if (cropped_centerline.empty() || cropped_left_bound.empty() || cropped_right_bound.empty()) {
     return std::nullopt;
@@ -322,22 +318,18 @@ std::optional<double> get_first_intersection_arc_length(
   const lanelet::BasicLineString2d start_edge{
     cropped_left_bound.front(), cropped_right_bound.front()};
 
-  // self intersection
+  // Helper: offset an optional arc length by a base value
+  auto offset_optional = [](std::optional<double> s, double base) -> std::optional<double> {
+    if (s) *s += base;
+    return s;
+  };
+
+  // Self intersection of bounds
   {
-    const auto s_left_bound = [&]() {
-      auto s = get_first_self_intersection_arc_length(cropped_left_bound);
-      if (s) {
-        *s += s_start_on_bounds.left;
-      }
-      return s;
-    }();
-    const auto s_right_bound = [&]() {
-      auto s = get_first_self_intersection_arc_length(cropped_right_bound);
-      if (s) {
-        *s += s_start_on_bounds.right;
-      }
-      return s;
-    }();
+    const auto s_left_bound = offset_optional(
+      get_first_self_intersection_arc_length(cropped_left_bound), s_start_on_bounds.left);
+    const auto s_right_bound = offset_optional(
+      get_first_self_intersection_arc_length(cropped_right_bound), s_start_on_bounds.right);
 
     const auto [s_left, s_right] =
       get_arc_length_on_centerline(lanelet_sequence, s_left_bound, s_right_bound);
@@ -360,7 +352,7 @@ std::optional<double> get_first_intersection_arc_length(
           lanelet::geometry::toArcCoordinates(cropped_left_bound, intersection).length,
         s_start_on_bounds.right +
           lanelet::geometry::toArcCoordinates(cropped_right_bound, intersection).length);
-      const auto s_mutual = [&]() {
+      const auto s_mutual = [&]() -> std::optional<double> {
         if (s_on_centerline.left && s_on_centerline.right) {
           return std::max(s_on_centerline.left, s_on_centerline.right);
         }
@@ -426,7 +418,7 @@ std::optional<double> get_first_intersection_arc_length(
 
   // intersection between start edge of drivable area and center line
   {
-    std::optional<double> s_start_edge = std::nullopt;
+    std::optional<double> s_start_edge;
     lanelet::BasicPoints2d start_edge_intersections;
     boost::geometry::intersection(start_edge, cropped_centerline, start_edge_intersections);
     for (const auto & intersection : start_edge_intersections) {
@@ -454,8 +446,8 @@ std::optional<double> get_first_self_intersection_arc_length(
     return std::nullopt;
   }
 
-  std::optional<size_t> first_self_intersection_index = std::nullopt;
-  std::optional<double> intersection_arc_length_on_latter_segment = std::nullopt;
+  std::optional<size_t> first_self_intersection_index;
+  std::optional<double> intersection_arc_length_on_latter_segment;
   double s = 0.;
 
   for (size_t i = 0; i < line_string.size() - 1; ++i) {
@@ -494,8 +486,8 @@ double get_arc_length_on_path(
   const lanelet::LaneletSequence & lanelet_sequence, const std::vector<PathPointWithLaneId> & path,
   const double s_centerline)
 {
-  std::optional<lanelet::Id> target_lanelet_id = std::nullopt;
-  std::optional<lanelet::BasicPoint2d> point_on_centerline = std::nullopt;
+  std::optional<lanelet::Id> target_lanelet_id;
+  std::optional<lanelet::BasicPoint2d> point_on_centerline;
 
   if (lanelet_sequence.empty() || path.empty()) {
     RCLCPP_WARN(
@@ -674,8 +666,8 @@ PathRange<std::optional<double>> get_arc_length_on_centerline(
   const lanelet::LaneletSequence & lanelet_sequence, const std::optional<double> & s_left_bound,
   const std::optional<double> & s_right_bound)
 {
-  std::optional<double> s_left_centerline = std::nullopt;
-  std::optional<double> s_right_centerline = std::nullopt;
+  std::optional<double> s_left_centerline;
+  std::optional<double> s_right_centerline;
 
   if (s_left_bound && *s_left_bound < 0.) {
     RCLCPP_WARN(
@@ -734,15 +726,12 @@ PathPointTrajectory refine_path_for_goal(
   const lanelet::Id goal_lane_id, const double search_radius_range, const double pre_goal_offset)
 {
   auto contain_goal_lane_id = [&](const PathPointWithLaneId & point) {
-    const auto & lane_ids = point.lane_ids;
-    const bool is_goal_lane_id_in_point =
-      std::find(lane_ids.begin(), lane_ids.end(), goal_lane_id) != lane_ids.end();
-    return is_goal_lane_id_in_point;
+    const auto & ids = point.lane_ids;
+    return std::find(ids.begin(), ids.end(), goal_lane_id) != ids.end();
   };
 
   auto outside_circle = [&](const PathPointWithLaneId & point) {
-    const double dist = autoware_utils::calc_distance2d(point.point.pose, goal_pose);
-    return dist > search_radius_range;
+    return autoware_utils::calc_distance2d(point.point.pose, goal_pose) > search_radius_range;
   };
 
   auto closest_to_goal = autoware::experimental::trajectory::closest_with_constraint(
@@ -769,19 +758,16 @@ PathPointTrajectory refine_path_for_goal(
   }
 
   auto goal = input.compute(autoware::experimental::trajectory::closest(input, goal_pose));
-
   goal.point.pose = goal_pose;
-
   goal.point.longitudinal_velocity_mps = 0.0;
 
-  auto pre_goal_pose = autoware_utils::calc_offset_pose(goal_pose, -pre_goal_offset, 0.0, 0.0);
-
+  const auto pre_goal_pose =
+    autoware_utils::calc_offset_pose(goal_pose, -pre_goal_offset, 0.0, 0.0);
   auto pre_goal = input.compute(autoware::experimental::trajectory::closest(input, pre_goal_pose));
-
   pre_goal.point.pose = pre_goal_pose;
 
-  goal_connected_trajectory_points.emplace_back(pre_goal);
-  goal_connected_trajectory_points.emplace_back(goal);
+  goal_connected_trajectory_points.push_back(pre_goal);
+  goal_connected_trajectory_points.push_back(goal);
 
   if (
     const auto output =
@@ -792,7 +778,7 @@ PathPointTrajectory refine_path_for_goal(
 }
 
 lanelet::ConstLanelets extract_lanelets_from_trajectory(
-  const PathPointTrajectory & trajectory, const InternalPlannerData & planner_data)
+  const PathPointTrajectory & trajectory, const RouteContext & planner_data)
 {
   lanelet::ConstLanelets lanelets{};
   const auto lane_ids = trajectory.get_contained_lane_ids();
@@ -806,12 +792,9 @@ lanelet::ConstLanelets extract_lanelets_from_trajectory(
 
 bool is_in_lanelets(const geometry_msgs::msg::Pose & pose, const lanelet::ConstLanelets & lanes)
 {
-  for (const auto & lane : lanes) {
-    if (lanelet::utils::isInLanelet(pose, lane)) {
-      return true;
-    }
-  }
-  return false;
+  return std::any_of(lanes.begin(), lanes.end(), [&](const auto & lane) {
+    return lanelet::utils::isInLanelet(pose, lane);
+  });
 }
 
 bool is_trajectory_inside_lanelets(
@@ -827,7 +810,7 @@ bool is_trajectory_inside_lanelets(
 }
 
 std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
-  const PathPointTrajectory & trajectory, const InternalPlannerData & planner_data,
+  const PathPointTrajectory & trajectory, const RouteContext & planner_data,
   const double search_radius_range, const double pre_goal_offset)
 {
   if (planner_data.preferred_lanelets.empty()) {

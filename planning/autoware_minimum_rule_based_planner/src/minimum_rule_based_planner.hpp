@@ -17,9 +17,10 @@
 
 #include "autoware/trajectory_optimizer/trajectory_optimizer_plugins/trajectory_optimizer_plugin_base.hpp"
 #include "autoware/trajectory_optimizer/trajectory_optimizer_structs.hpp"
-#include "plugins/obstacle_stop_modifier.hpp"
+#include "utils.hpp"
 
 #include <autoware/trajectory/path_point_with_lane_id.hpp>
+#include <autoware/trajectory_modifier/trajectory_modifier_plugins/trajectory_modifier_plugin_base.hpp>
 #include <autoware/trajectory_modifier/trajectory_modifier_structs.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
@@ -39,9 +40,6 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
-
-#include <lanelet2_routing/RoutingGraph.h>
-#include <lanelet2_traffic_rules/TrafficRules.h>
 
 #include <map>
 #include <memory>
@@ -65,31 +63,17 @@ using TrajectoryClass = autoware::experimental::trajectory::Trajectory<PathPoint
 using autoware::vehicle_info_utils::VehicleInfo;
 using unique_identifier_msgs::msg::UUID;
 
-// Plugin types
 using PluginInterface = autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase;
 using PluginLoader = pluginlib::ClassLoader<PluginInterface>;
-
-// Internal planner data (different from rule_based_planner::PlannerData for modules)
-struct InternalPlannerData
-{
-  lanelet::LaneletMapPtr lanelet_map_ptr{nullptr};
-  lanelet::traffic_rules::TrafficRulesPtr traffic_rules_ptr{nullptr};
-  lanelet::routing::RoutingGraphPtr routing_graph_ptr{nullptr};
-
-  std::string route_frame_id{};
-  geometry_msgs::msg::Pose goal_pose{};
-
-  lanelet::ConstLanelets route_lanelets{};
-  lanelet::ConstLanelets preferred_lanelets{};
-  lanelet::ConstLanelets start_lanelets{};
-  lanelet::ConstLanelets goal_lanelets{};
-};
 
 class MinimumRuleBasedPlannerNode : public rclcpp::Node
 {
 public:
   explicit MinimumRuleBasedPlannerNode(const rclcpp::NodeOptions & options);
 
+  /**
+   * @brief aggregated input data consumed each planning cycle
+   */
   struct InputData
   {
     LaneletRoute::ConstSharedPtr route_ptr;
@@ -101,74 +85,116 @@ public:
   };
 
 private:
+  /**
+   ***********************************************************
+   * @defgroup core pipeline
+   * on_timer() is the main entry point, called at planning_frequency_hz.
+   * @{
+   */
   void on_timer();
-
   InputData take_data();
   bool is_data_ready(const InputData & input_data);
+
+  rclcpp::TimerBase::SharedPtr timer_;
+  std::shared_ptr<::minimum_rule_based_planner::ParamListener> param_listener_;
+  const UUID generator_uuid_;
+  const VehicleInfo vehicle_info_;
+  std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
+  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
+    debug_processing_time_detail_pub_;
+  /** @} */
+
+private:
+  /**
+   ***********************************************************
+   * @defgroup route, map, and path planning
+   * set_planner_data() initializes route_context_ from map/route messages.
+   * plan_path() / generate_path() produce a PathWithLaneId from the route.
+   * @{
+   */
   void set_planner_data(const InputData & input_data);
   void set_route(const LaneletRoute::ConstSharedPtr & route_ptr);
+  bool update_current_lanelet(const geometry_msgs::msg::Pose & current_pose, const Params & params);
   std::optional<PathWithLaneId> plan_path(const InputData & input_data);
   std::optional<PathWithLaneId> generate_path(
     const lanelet::LaneletSequence & lanelet_sequence, const double s_start, const double s_end,
     const Params & params);
-  bool update_current_lanelet(const geometry_msgs::msg::Pose & current_pose, const Params & params);
 
-  // Plugin loading
+  //! route, map, and routing graph context resolved from the current route
+  RouteContext route_context_;
+
+  //! lanelet ego is currently driving on (updated each cycle)
+  std::optional<lanelet::ConstLanelet> current_lanelet_;
+  /** @} */
+
+private:
+  /**
+   ***********************************************************
+   * @defgroup optimizer-plugins trajectory optimizer plugins
+   * @{
+   */
   void load_optimizer_plugins();
 
-  // subscriber
+  std::unique_ptr<PluginLoader> plugin_loader_;
+  std::shared_ptr<PluginInterface> path_smoother_;
+  std::shared_ptr<PluginInterface> velocity_optimizer_;
+  std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
+    pub_debug_optimizer_module_trajectories_;
+  /** @} */
+
+private:
+  /**
+   ***********************************************************
+   * @defgroup modifier-plugins trajectory modifier plugins
+   * @{
+   */
+  void load_modifier_plugins();
+
+  std::vector<std::shared_ptr<trajectory_modifier::plugin::TrajectoryModifierPluginBase>>
+    trajectory_modifiers_;
+  trajectory_modifier::TrajectoryModifierParams modifier_params_;
+  std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
+    pub_debug_modifier_module_trajectories_;
+  /** @} */
+
+private:
+  /**
+   ***********************************************************
+   * @defgroup subscribers and publishers
+   * @{
+   */
   autoware_utils::InterProcessPollingSubscriber<
     LaneletRoute, autoware_utils::polling_policy::Newest>
     route_subscriber_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
   LaneletRoute::ConstSharedPtr route_ptr_;
+
   autoware_utils::InterProcessPollingSubscriber<
     LaneletMapBin, autoware_utils::polling_policy::Newest>
     vector_map_subscriber_{this, "~/input/vector_map", rclcpp::QoS{1}.transient_local()};
   LaneletMapBin::ConstSharedPtr lanelet_map_bin_ptr_;
+
   autoware_utils::InterProcessPollingSubscriber<Odometry> odometry_subscriber_{
     this, "~/input/odometry"};
   Odometry::ConstSharedPtr odometry_ptr_;
+
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
     acceleration_subscriber_{this, "~/input/acceleration"};
   AccelWithCovarianceStamped::ConstSharedPtr acceleration_ptr_;
+
   autoware_utils::InterProcessPollingSubscriber<PredictedObjects> objects_subscriber_{
     this, "~/input/objects"};
   PredictedObjects::ConstSharedPtr predicted_objects_ptr_;
 
+  //! test input: bypasses path planning when provided
   autoware_utils::InterProcessPollingSubscriber<
     PathWithLaneId, autoware_utils::polling_policy::Newest>
     test_path_with_lane_id_subscriber_{this, "~/input/test/path_with_lane_id"};
   PathWithLaneId::ConstSharedPtr test_path_with_lane_id_ptr;
 
-  // publisher
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
   rclcpp::Publisher<PathWithLaneId>::SharedPtr pub_debug_path_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
-  std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
-    pub_debug_optimizer_module_trajectories_;
-  std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
-    pub_debug_modifier_module_trajectories_;
-
-  // others
-  rclcpp::TimerBase::SharedPtr timer_;
-  std::shared_ptr<::minimum_rule_based_planner::ParamListener> param_listener_;
-  const UUID generator_uuid_;
-  const VehicleInfo vehicle_info_;
-  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
-    debug_processing_time_detail_pub_;
-  std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
-
-  InternalPlannerData planner_data_;
-  std::optional<lanelet::ConstLanelet> current_lanelet_{std::nullopt};
-
-  // Optimizer plugins
-  std::unique_ptr<PluginLoader> plugin_loader_;
-  std::shared_ptr<PluginInterface> path_smoother_;
-  std::shared_ptr<PluginInterface> velocity_optimizer_;
-
-  // Trajectory modifier plugins
-  std::shared_ptr<plugin::ObstacleStopModifier> obstacle_stop_modifier_;
-  trajectory_modifier::TrajectoryModifierParams modifier_params_;
+  /** @} */
 };
 
 }  // namespace autoware::minimum_rule_based_planner

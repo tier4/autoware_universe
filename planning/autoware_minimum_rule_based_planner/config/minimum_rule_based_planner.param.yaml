@@ -12,6 +12,9 @@
       backward: 5.0
       forward: 300.0
 
+    path_shift:
+      enable: true
+
     waypoint_group:
       separation_threshold: 1.0
       interval_margin_ratio: 10.0
@@ -33,8 +36,8 @@
       enable: true
 
     # Velocity Smoother
-    # velocity_smoother:
-    #   enable: true
+    velocity_smoother:
+      enable: true
 
     mpt_optimizer:
       enable: false

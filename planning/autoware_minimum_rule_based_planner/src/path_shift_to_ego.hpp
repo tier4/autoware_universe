@@ -24,7 +24,9 @@ namespace autoware::minimum_rule_based_planner
 struct TrajectoryShiftParams
 {
   double minimum_shift_length{0.1};    // [m] below this, no shift is applied
-  double minimum_shift_distance{5.0};  // [m] skip distance ahead of ego for spline waypoint
+  double minimum_shift_distance{5.0};  // [m] base skip distance ahead of ego
+  double shift_length_to_distance_ratio{
+    8.0};  // [-] ratio to scale shift distance by lateral offset
 };
 
 /// @brief Shift a centerline-based trajectory so that it starts from ego position+yaw

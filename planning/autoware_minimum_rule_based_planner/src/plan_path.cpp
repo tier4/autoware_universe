@@ -15,9 +15,8 @@
 #include "minimum_rule_based_planner.hpp"
 #include "utils.hpp"
 
-#include <autoware/motion_utils/resample/resample.hpp>
-#include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/trajectory/utils/pretty_build.hpp>
+#include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 
@@ -42,18 +41,35 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::plan_path(const Input
     return std::nullopt;
   }
 
-  lanelet::ConstLanelets lanelets{*current_lanelet_};
+  // Use the closest preferred lanelet as the base for path generation.
+  // This ensures the path follows the preferred lane (e.g., the lane where the goal is),
+  // even when ego is currently on a different lane.
+  const auto & base_lanelet = [&]() -> const lanelet::ConstLanelet & {
+    if (route_context_.preferred_lanelets.empty()) {
+      return *current_lanelet_;
+    }
+    lanelet::ConstLanelet closest;
+    if (lanelet::utils::query::getClosestLanelet(
+          route_context_.preferred_lanelets, current_pose, &closest)) {
+      // Store the result in route_context_ to keep it alive beyond this lambda
+      route_context_.closest_preferred_lanelet = closest;
+      return *route_context_.closest_preferred_lanelet;
+    }
+    return *current_lanelet_;
+  }();
+
+  lanelet::ConstLanelets lanelets{base_lanelet};
   const auto s_on_current_lanelet =
-    lanelet::utils::getArcCoordinates({*current_lanelet_}, current_pose).length;
+    lanelet::utils::getArcCoordinates({base_lanelet}, current_pose).length;
 
   const auto backward_length = std::max(
     0., path_length_backward + vehicle_info_.max_longitudinal_offset_m - s_on_current_lanelet);
   const auto backward_lanelets_within_route =
-    utils::get_lanelets_within_route_up_to(*current_lanelet_, planner_data_, backward_length);
+    utils::get_lanelets_within_route_up_to(base_lanelet, route_context_, backward_length);
   if (!backward_lanelets_within_route) {
     RCLCPP_ERROR(
       get_logger(), "Failed to get backward lanelets within route for current lanelet (id: %ld)",
-      current_lanelet_->id());
+      base_lanelet.id());
     return std::nullopt;
   }
   lanelets.insert(
@@ -65,7 +81,7 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::plan_path(const Input
   auto backward_lanelets_length =
     lanelet::utils::getLaneletLength2d(*backward_lanelets_within_route);
   while (backward_lanelets_length < backward_length) {
-    const auto prev_lanelets = planner_data_.routing_graph_ptr->previous(lanelets.front());
+    const auto prev_lanelets = route_context_.routing_graph_ptr->previous(lanelets.front());
     if (prev_lanelets.empty()) {
       break;
     }
@@ -75,13 +91,13 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::plan_path(const Input
 
   const auto forward_length = std::max(
     0., path_length_forward + vehicle_info_.max_longitudinal_offset_m -
-          (lanelet::geometry::length2d(*current_lanelet_) - s_on_current_lanelet));
+          (lanelet::geometry::length2d(base_lanelet) - s_on_current_lanelet));
   const auto forward_lanelets_within_route =
-    utils::get_lanelets_within_route_after(*current_lanelet_, planner_data_, forward_length);
+    utils::get_lanelets_within_route_after(base_lanelet, route_context_, forward_length);
   if (!forward_lanelets_within_route) {
     RCLCPP_ERROR(
       get_logger(), "Failed to get forward lanelets within route for current lanelet (id: %ld)",
-      current_lanelet_->id());
+      base_lanelet.id());
     return std::nullopt;
   }
   lanelets.insert(
@@ -91,7 +107,7 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::plan_path(const Input
   //  ego footprint is inside lanelets if ego is at the end of goal lane
   auto forward_lanelets_length = lanelet::utils::getLaneletLength2d(*forward_lanelets_within_route);
   while (forward_lanelets_length < forward_length) {
-    const auto next_lanelets = planner_data_.routing_graph_ptr->following(lanelets.back());
+    const auto next_lanelets = route_context_.routing_graph_ptr->following(lanelets.back());
     if (next_lanelets.empty()) {
       break;
     }
@@ -104,16 +120,21 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::plan_path(const Input
   const auto s_end = [&]() {
     auto s_end_val = s + path_length_forward;
 
-    if (!utils::get_next_lanelet_within_route(lanelets.back(), planner_data_)) {
+    if (!utils::get_next_lanelet_within_route(lanelets.back(), route_context_)) {
       s_end_val = std::min(s_end_val, lanelet::utils::getLaneletLength2d(lanelets));
     }
 
+    auto is_goal_lanelet = [&](const lanelet::ConstLanelet & ll) {
+      return std::any_of(
+        route_context_.goal_lanelets.begin(), route_context_.goal_lanelets.end(),
+        [&](const auto & goal_ll) { return ll.id() == goal_ll.id(); });
+    };
+
     for (auto [it, goal_arc_length] = std::make_tuple(lanelets.begin(), 0.); it != lanelets.end();
          ++it) {
-      if (std::any_of(
-            planner_data_.goal_lanelets.begin(), planner_data_.goal_lanelets.end(),
-            [&](const auto & goal_lanelet) { return it->id() == goal_lanelet.id(); })) {
-        goal_arc_length += lanelet::utils::getArcCoordinates({*it}, planner_data_.goal_pose).length;
+      if (is_goal_lanelet(*it)) {
+        goal_arc_length +=
+          lanelet::utils::getArcCoordinates({*it}, route_context_.goal_pose).length;
         s_end_val = std::min(s_end_val, goal_arc_length);
         break;
       }
@@ -149,7 +170,7 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::generate_path(
   std::vector<PathPointWithLaneId> path_points_with_lane_id{};
 
   const auto waypoint_groups = utils::get_waypoint_groups(
-    lanelet_sequence, *planner_data_.lanelet_map_ptr, params.waypoint_group.separation_threshold,
+    lanelet_sequence, *route_context_.lanelet_map_ptr, params.waypoint_group.separation_threshold,
     params.waypoint_group.interval_margin_ratio);
 
   auto extended_lanelets = lanelet_sequence.lanelets();
@@ -157,7 +178,7 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::generate_path(
   for (const auto & [waypoints, interval] : waypoint_groups) {
     while (interval.start + extended_arc_length < 0.) {
       const auto prev_lanelets =
-        planner_data_.routing_graph_ptr->previous(extended_lanelets.front());
+        route_context_.routing_graph_ptr->previous(extended_lanelets.front());
       if (prev_lanelets.empty()) {
         break;
       }
@@ -173,14 +194,14 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::generate_path(
       path_point_with_lane_id.point.pose.position =
         lanelet::utils::conversion::toGeomMsgPt(path_point);
       path_point_with_lane_id.point.longitudinal_velocity_mps =
-        planner_data_.traffic_rules_ptr
-          ->speedLimit(planner_data_.lanelet_map_ptr->laneletLayer.get(lane_id))
+        route_context_.traffic_rules_ptr
+          ->speedLimit(route_context_.lanelet_map_ptr->laneletLayer.get(lane_id))
           .speedLimit.value();
       path_points_with_lane_id.push_back(std::move(path_point_with_lane_id));
     };
 
   const lanelet::LaneletSequence extended_lanelet_sequence(extended_lanelets);
-  std::optional<size_t> overlapping_waypoint_group_index = std::nullopt;
+  std::optional<size_t> overlapping_waypoint_group_index;
 
   for (auto [lanelet_it, s] = std::make_tuple(extended_lanelet_sequence.begin(), 0.);
        lanelet_it != extended_lanelet_sequence.end(); ++lanelet_it) {
@@ -198,7 +219,7 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::generate_path(
         if (s >= interval.start + extended_arc_length && s <= interval.end + extended_arc_length) {
           continue;
         }
-        overlapping_waypoint_group_index = std::nullopt;
+        overlapping_waypoint_group_index.reset();
       }
 
       for (size_t i = 0; i < waypoint_groups.size(); ++i) {
@@ -258,11 +279,11 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::generate_path(
   // Check if the goal point is in the search range
   // Note: We only see if the goal is approaching the tail of the path.
   const auto distance_to_goal = autoware_utils::calc_distance2d(
-    trajectory->compute(trajectory->length()), planner_data_.goal_pose);
+    trajectory->compute(trajectory->length()), route_context_.goal_pose);
 
   if (distance_to_goal < params.smooth_goal_connection.search_radius_range) {
     auto refined_path = utils::modify_path_for_smooth_goal_connection(
-      *trajectory, planner_data_, params.smooth_goal_connection.search_radius_range,
+      *trajectory, route_context_, params.smooth_goal_connection.search_radius_range,
       params.smooth_goal_connection.pre_goal_offset);
 
     if (refined_path) {
@@ -285,7 +306,7 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::generate_path(
   }
 
   // Set header which is needed to engage
-  finalized_path_with_lane_id.header.frame_id = planner_data_.route_frame_id;
+  finalized_path_with_lane_id.header.frame_id = route_context_.route_frame_id;
   finalized_path_with_lane_id.header.stamp = now();
 
   const auto [left_bound, right_bound] = utils::get_path_bounds(

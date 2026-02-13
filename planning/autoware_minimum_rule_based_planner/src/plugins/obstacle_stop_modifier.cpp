@@ -49,16 +49,7 @@ bool ObstacleStopModifier::is_trajectory_modification_required(
   const TrajectoryPoints & traj_points, const TrajectoryModifierParams & /*params*/,
   const TrajectoryModifierData & /*data*/) const
 {
-  if (traj_points.empty()) {
-    return false;
-  }
-  if (!predicted_objects_) {
-    return false;
-  }
-  if (predicted_objects_->objects.empty()) {
-    return false;
-  }
-  return true;
+  return !traj_points.empty() && predicted_objects_ && !predicted_objects_->objects.empty();
 }
 
 void ObstacleStopModifier::modify_trajectory(
@@ -69,41 +60,27 @@ void ObstacleStopModifier::modify_trajectory(
     return;
   }
 
-  // 1. Build Trajectory from input points
   auto traj_opt = trajectory_ns::pretty_build(traj_points);
   if (!traj_opt) {
     return;
   }
   auto & traj = *traj_opt;
 
-  // 2. Find ego position on trajectory
   const double s_ego = trajectory_ns::closest(traj, data.current_odometry.pose.pose);
-
-  // 3. Generate decimated arc length values from ego to end
   const auto decimated_s_values =
     traj.base_arange({s_ego, traj.length()}, params_.decimate_step_length_m);
   if (decimated_s_values.empty()) {
     return;
   }
 
-  // 4. Compute discrete TrajectoryPoints at decimated arc lengths (for polygon collision check)
   const auto decimated_traj_points = traj.compute(decimated_s_values);
-
-  // 5. Init variables
   const double x_offset_to_bumper = vehicle_info_.max_longitudinal_offset_m;
 
-  // 6. Filter obstacles using Trajectory + decimated data
   auto stop_obstacles = filter_stop_obstacle_for_predicted_object(
     data, traj, decimated_traj_points, decimated_s_values, x_offset_to_bumper);
 
-  // 7. (skip point cloud filtering)
-
-  // 8. (no concat needed - only predicted objects)
-
-  // 9. Plan stop (modifies velocity on the Trajectory)
   plan_stop(traj, stop_obstacles, data);
 
-  // 10. Restore: convert Trajectory back to vector<TrajectoryPoint>
   traj_points = traj.restore();
 }
 
@@ -126,30 +103,22 @@ std::vector<StopObstacle> ObstacleStopModifier::filter_stop_obstacle_for_predict
   for (const auto & object : predicted_objects_->objects) {
     const auto & obj_pose = object.kinematics.initial_pose_with_covariance.pose;
 
-    // 1. rough filtering
-    // 1.1. Check if the obstacle is in front of the ego
+    // Skip obstacles behind ego or beyond detection range
     const double s_obj = trajectory_ns::closest(traj, obj_pose);
     const double lon_dist = s_obj - s_ego;
-    if (lon_dist < 0.0) {
+    if (lon_dist < 0.0 || lon_dist > params_.detection_range_m) {
       continue;
     }
 
-    // 1.2. Check if the obstacle is within detection range
-    if (lon_dist > params_.detection_range_m) {
-      continue;
-    }
-
-    // 2. collision check with trajectory polygons
+    // Collision check with trajectory polygons
     const auto obj_polygon = autoware_utils_geometry::to_polygon2d(obj_pose, object.shape);
     const auto collision_point = polygon_utils::get_collision_point(
       decimated_traj_points, decimated_traj_polys, decimated_s_values, obj_pose.position,
       obj_polygon, x_offset_to_bumper);
-
     if (!collision_point) {
       continue;
     }
 
-    // 3. create StopObstacle (dist is now arc length on main trajectory directly)
     const double obj_vel = object.kinematics.initial_twist_with_covariance.twist.linear.x;
     stop_obstacles.emplace_back(
       object.object_id, predicted_objects_stamp, obj_pose, obj_vel, object.shape,
@@ -171,26 +140,16 @@ void ObstacleStopModifier::plan_stop(
 
   const auto closest_stop_obstacles = get_closest_stop_obstacles(stop_obstacles);
 
-  std::optional<StopObstacle> determined_stop_obstacle;
   std::optional<double> determined_zero_vel_dist;
-
   for (const auto & stop_obstacle : closest_stop_obstacles) {
-    // dist_to_collide_on_traj is already arc length on main trajectory
-    const double dist_to_collide = stop_obstacle.dist_to_collide_on_traj;
-
-    const double desired_stop_margin = params_.stop_margin_m;
-    const double candidate_zero_vel_dist = std::max(0.0, dist_to_collide - desired_stop_margin);
-
-    // select obstacle with smallest stop distance
-    if (
-      !determined_stop_obstacle ||
-      stop_obstacle.dist_to_collide_on_traj < determined_stop_obstacle->dist_to_collide_on_traj) {
-      determined_zero_vel_dist = candidate_zero_vel_dist;
-      determined_stop_obstacle = stop_obstacle;
+    const double candidate =
+      std::max(0.0, stop_obstacle.dist_to_collide_on_traj - params_.stop_margin_m);
+    if (!determined_zero_vel_dist || candidate < *determined_zero_vel_dist) {
+      determined_zero_vel_dist = candidate;
     }
   }
 
-  if (!determined_zero_vel_dist || !determined_stop_obstacle) {
+  if (!determined_zero_vel_dist) {
     return;
   }
 

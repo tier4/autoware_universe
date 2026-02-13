@@ -24,9 +24,9 @@
     min_trajectory_length: 150.0
     resample_time: 2.0
     dense_resample_dt: 0.2
-    dense_min_interval_distance: 0.5
+    dense_min_interval_distance: 0.1
     sparse_resample_dt: 0.5
-    sparse_min_interval_distance: 0.5
+    sparse_min_interval_distance: 4.0
 
     # JerkFilteredSmoother parameters (required at top level)
     jerk_weight: 10.0
