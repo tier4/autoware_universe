@@ -213,7 +213,7 @@ void CoMLOpsTLRClassifier::decodeTlrOutput(
 }
 
 void CoMLOpsTLRClassifier::toTrafficLightElements(
-  int color_index, int type_index, float confidence,
+  int color_index, int type_index, float confidence, float angle_rad,
   tier4_perception_msgs::msg::TrafficLight & traffic_signal)
 {
   TrafficLightElement element;
@@ -229,21 +229,38 @@ void CoMLOpsTLRClassifier::toTrafficLightElements(
     element.color = TrafficLightElement::UNKNOWN;
   }
 
+  // Type order: 0=circle, 1=arrow, 2=uturn, 3=ped, 4=number, 5=cross
   switch (type_index) {
     case 0:
       element.shape = TrafficLightElement::CIRCLE;
       break;
-    case 1:
-      element.shape = TrafficLightElement::UP_ARROW;
+    case 1: {
+      // Arrow: use angle_rad to select direction (angle in radians, -pi to pi)
+      constexpr float pi = 3.14159265358979f;
+      const float a = angle_rad;
+      if (a >= -pi / 8.0f && a < pi / 8.0f) {
+        element.shape = TrafficLightElement::UP_ARROW;
+      } else if (a >= pi / 8.0f && a < 3.0f * pi / 8.0f) {
+        element.shape = TrafficLightElement::UP_RIGHT_ARROW;
+      } else if (a >= 3.0f * pi / 8.0f && a < 5.0f * pi / 8.0f) {
+        element.shape = TrafficLightElement::RIGHT_ARROW;
+      } else if (a >= 5.0f * pi / 8.0f && a < 7.0f * pi / 8.0f) {
+        element.shape = TrafficLightElement::DOWN_RIGHT_ARROW;
+      } else if (a >= 7.0f * pi / 8.0f || a < -7.0f * pi / 8.0f) {
+        element.shape = TrafficLightElement::DOWN_ARROW;
+      } else if (a >= -7.0f * pi / 8.0f && a < -5.0f * pi / 8.0f) {
+        element.shape = TrafficLightElement::DOWN_LEFT_ARROW;
+      } else if (a >= -5.0f * pi / 8.0f && a < -3.0f * pi / 8.0f) {
+        element.shape = TrafficLightElement::LEFT_ARROW;
+      } else {
+        element.shape = TrafficLightElement::UP_LEFT_ARROW;
+      }
       break;
-    case 2:
-      element.shape = TrafficLightElement::LEFT_ARROW;
-      break;
-    case 3:
-      element.shape = TrafficLightElement::CIRCLE;
-      break;
-    case 4:
-      element.shape = TrafficLightElement::CIRCLE;
+    }
+    case 2:  // uturn – no U_TURN in msg
+    case 3:  // ped
+    case 4:  // number
+      element.shape = TrafficLightElement::UNKNOWN;
       break;
     case 5:
       element.shape = TrafficLightElement::CROSS;
@@ -258,20 +275,42 @@ void CoMLOpsTLRClassifier::toTrafficLightElements(
 void CoMLOpsTLRClassifier::outputDebugImage(
   cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal)
 {
+  // One token per lamp, comma-separated: green | left,red | red,right,straight | red,up_left | etc.
   std::string label;
   float probability = 0.0f;
+  const auto colorStr = [](uint8_t c) -> std::string {
+    if (c == TrafficLightElement::GREEN) return "green";
+    if (c == TrafficLightElement::AMBER) return "yellow";
+    if (c == TrafficLightElement::RED) return "red";
+    return "unknown";
+  };
+  const auto shapeStr = [](uint8_t s) -> std::string {
+    if (s == TrafficLightElement::CIRCLE) return "circle";
+    if (s == TrafficLightElement::UP_ARROW) return "straight";
+    if (s == TrafficLightElement::LEFT_ARROW) return "left";
+    if (s == TrafficLightElement::RIGHT_ARROW) return "right";
+    if (s == TrafficLightElement::UP_LEFT_ARROW) return "up_left";
+    if (s == TrafficLightElement::UP_RIGHT_ARROW) return "up_right";
+    if (s == TrafficLightElement::DOWN_ARROW) return "down";
+    if (s == TrafficLightElement::DOWN_LEFT_ARROW) return "down_left";
+    if (s == TrafficLightElement::DOWN_RIGHT_ARROW) return "down_right";
+    if (s == TrafficLightElement::CROSS) return "cross";
+    return "unknown";
+  };
   for (std::size_t i = 0; i < traffic_signal.elements.size(); i++) {
     const auto & light = traffic_signal.elements.at(i);
-    if (light.color == TrafficLightElement::GREEN) label += "green";
-    else if (light.color == TrafficLightElement::AMBER) label += "yellow";
-    else if (light.color == TrafficLightElement::RED) label += "red";
-    else label += "unknown";
-    if (light.shape == TrafficLightElement::CIRCLE) label += "-circle";
-    else if (light.shape == TrafficLightElement::UP_ARROW) label += "-arrow";
-    else if (light.shape == TrafficLightElement::CROSS) label += "-cross";
-    else label += "";
+    if (i > 0) label += ",";
+    const std::string c = colorStr(light.color);
+    const std::string sh = shapeStr(light.shape);
+    bool is_arrow = (light.shape != TrafficLightElement::CIRCLE &&
+                     light.shape != TrafficLightElement::CROSS &&
+                     light.shape != TrafficLightElement::UNKNOWN);
+    if (is_arrow) {
+      label += sh;  // one token per lamp: "left" "right" "straight" "up_left" "up_right"
+    } else {
+      label += c;  // one token per lamp: "green" "red" "yellow" "unknown"
+    }
     probability = light.confidence;
-    if (i < traffic_signal.elements.size() - 1) label += ",";
   }
   const int expand_w = 200;
   const int expand_h =
@@ -321,8 +360,10 @@ bool CoMLOpsTLRClassifier::getTrafficSignals(
     decodeTlrOutput(current_batch_size, colors, types, confidences, &angles);
 
     for (size_t i = 0; i < current_batch_size; i++) {
+      // throw current_batch_size info for debug
+      RCLCPP_INFO(node_ptr_->get_logger(), "current_batch_size: %zu", current_batch_size);
       toTrafficLightElements(
-        colors[i], types[i], confidences[i], traffic_signals.signals[signal_i]);
+        colors[i], types[i], confidences[i], angles[i], traffic_signals.signals[signal_i]);
       if (image_pub_.getNumSubscribers() > 0) {
         outputDebugImage(batch[i], traffic_signals.signals[signal_i]);
       }

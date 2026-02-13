@@ -66,7 +66,7 @@ private:
     size_t batch_size, std::vector<int> & colors, std::vector<int> & types,
     std::vector<float> & confidences, std::vector<float> * angles = nullptr);
   void toTrafficLightElements(
-    int color_index, int type_index, float confidence,
+    int color_index, int type_index, float confidence, float angle_rad,
     tier4_perception_msgs::msg::TrafficLight & traffic_signal);
   void outputDebugImage(
     cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal);
