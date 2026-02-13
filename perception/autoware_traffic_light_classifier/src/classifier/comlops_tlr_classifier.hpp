@@ -47,8 +47,7 @@ using autoware::cuda_utils::makeCudaStream;
 using autoware::cuda_utils::StreamUniquePtr;
 
 /**
- * @brief Traffic light classifier using CoMLOps-TLR-v1.0.1-dynamic_batch ONNX model.
- * Decodes TLR detection output (color + type) and remaps to TrafficLightArray format.
+ * @brief Traffic light classifier using CoMLOps-TLR ONNX model.
  */
 class CoMLOpsTLRClassifier : public ClassifierInterface
 {
@@ -65,7 +64,7 @@ private:
   bool doInference(size_t batch_size);
   void decodeTlrOutput(
     size_t batch_size, std::vector<int> & colors, std::vector<int> & types,
-    std::vector<float> & confidences);
+    std::vector<float> & confidences, std::vector<float> * angles = nullptr);
   void toTrafficLightElements(
     int color_index, int type_index, float confidence,
     tier4_perception_msgs::msg::TrafficLight & traffic_signal);
