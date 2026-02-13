@@ -26,6 +26,7 @@
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,7 @@ struct TrajectoryVelocityOptimizerParams
   double target_pull_out_acc_mps2{1.0};
   double max_speed_mps{8.33};
   double max_lateral_accel_mps2{1.5};
+  double stop_dist_to_prohibit_engage{0.5};  // [m] if stop point is closer than this, do not engage
   bool set_engage_speed{false};
   bool limit_speed{true};
   bool limit_lateral_acceleration{false};
@@ -67,6 +69,12 @@ public:
 private:
   std::shared_ptr<JerkFilteredSmoother> jerk_filtered_smoother_{nullptr};
   TrajectoryVelocityOptimizerParams velocity_params_;
+
+  // Previous cycle's QP output for temporal consistency (like velocity_smoother's prev_output_)
+  TrajectoryPoints prev_output_;
+
+  std::optional<TrajectoryPoint> calcProjectedTrajectoryPointFromEgo(
+    const TrajectoryPoints & trajectory, const geometry_msgs::msg::Pose & ego_pose) const;
 };
 }  // namespace autoware::trajectory_optimizer::plugin
 
