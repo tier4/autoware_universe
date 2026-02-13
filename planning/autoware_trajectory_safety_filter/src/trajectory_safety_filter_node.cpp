@@ -90,6 +90,8 @@ void TrajectorySafetyFilter::process(const CandidateTrajectories::ConstSharedPtr
     return;
   }
 
+  diagnostics_interface_ptr_->clear();
+
   // Create output message for filtered trajectories
   auto filtered_msg = std::make_shared<CandidateTrajectories>();
 
@@ -104,11 +106,20 @@ void TrajectorySafetyFilter::process(const CandidateTrajectories::ConstSharedPtr
     for (const auto & plugin : plugins_) {
       if (!plugin->is_feasible(trajectory.points, context)) {
         is_feasible = false;
+        diagnostics_interface_ptr_->add_key_value(plugin->get_name(), std::string{"infeasible trajectory"});
         break;
       }
     }
 
     if (is_feasible) filtered_msg->candidate_trajectories.push_back(trajectory);
+  }
+
+  if (filtered_msg->candidate_trajectories.empty()) {
+    diagnostics_interface_ptr_->update_level_and_message(
+      diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No feasible trajectories found");
+  } else {
+    diagnostics_interface_ptr_->update_level_and_message(
+      diagnostic_msgs::msg::DiagnosticStatus::OK, "");
   }
 
   // Also filter generator_info to match kept trajectories
@@ -131,6 +142,7 @@ void TrajectorySafetyFilter::process(const CandidateTrajectories::ConstSharedPtr
     }
   }
 
+  diagnostics_interface_ptr_->publish(this->get_clock()->now());
   pub_trajectories_->publish(*filtered_msg);
 }
 
@@ -172,7 +184,6 @@ void TrajectorySafetyFilter::load_metric(const std::string & name)
 
     plugin->set_vehicle_info(vehicle_info_);
     plugin->set_parameters(params);
-    plugin->set_diagnostic_updater(*this);
 
     plugins_.push_back(plugin);
 

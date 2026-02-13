@@ -61,34 +61,6 @@ public:
     vehicle_info_ptr_ = std::make_shared<VehicleInfo>(vehicle_info);
   }
 
-  void set_diagnostic_updater(rclcpp::Node & node)
-  {
-    updater_ptr_ = std::make_unique<diagnostic_updater::Updater>(&node);
-
-    const std::string snake_case_name = std::invoke([&]() {
-      std::string snake_case_name;
-      snake_case_name.reserve(name_.size() * 2);
-
-      std::for_each(name_.begin(), name_.end(), [&snake_case_name, first = true](char c) mutable {
-        if (std::isupper(static_cast<unsigned char>(c))) {
-          if (!first) snake_case_name += '_';
-          snake_case_name += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        } else {
-          snake_case_name += c;
-        }
-        first = false;
-      });
-      return snake_case_name;
-    });
-
-    updater_ptr_->setHardwareID(node.get_name());
-    updater_ptr_->add(snake_case_name, [this](diagnostic_updater::DiagnosticStatusWrapper & stat) {
-      const auto [lvl, msg] = diagnostic_status_;
-      stat.summary(lvl, msg);
-    });
-
-  }
-
   [[nodiscard]] std::string get_name() const { return name_; }
 
   [[nodiscard]] const std::pair<int8_t, std::string> & get_diagnostic_status() const
@@ -99,7 +71,6 @@ public:
 protected:
   std::string name_;
   std::shared_ptr<VehicleInfo> vehicle_info_ptr_;
-  std::unique_ptr<diagnostic_updater::Updater> updater_ptr_;
   std::pair<int8_t, std::string> diagnostic_status_{diagnostic_msgs::msg::DiagnosticStatus::OK, ""};
   MarkerArray debug_markers_;
 };

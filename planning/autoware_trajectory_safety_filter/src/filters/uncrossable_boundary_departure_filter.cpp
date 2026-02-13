@@ -33,7 +33,7 @@ bool UncrossableBoundaryDepartureFilter::is_feasible(
         clock_, context.lanelet_map, *vehicle_info_ptr_);
   }
 
-  const auto departure_data = uncrossable_boundary_departure_checker_ptr_->get_abnormalities_data(
+  const auto departure_data = uncrossable_boundary_departure_checker_ptr_->get_departure_data(
     traj_points, traj_points, context.odometry->pose, context.odometry->twist.twist.linear.x,
     context.acceleration->accel.accel.linear.x);
 
