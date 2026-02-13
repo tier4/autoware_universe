@@ -37,6 +37,17 @@ using autoware_utils::calc_distance2d;
 using autoware_utils::get_point;
 using geometry_msgs::msg::Point;
 
+// Small additional safety buffer [m] applied on top of min_drivable_area_margin.
+// lanelet::geometry::distance2d() computes distance to the nearest polyline segment of a lanelet
+// boundary. Because boundaries are piecewise-linear approximations of the real road edge, the
+// true perpendicular distance can be shorter than the computed value by up to:
+//   error <= segment_length² / (8 * curvature_radius)
+// For typical Autoware lanelet maps (segment ≈ 1 m, curvature radius >= 10 m) this is ≈ 0.013 m.
+// We use 0.05 m (~4× worst-case) to also absorb floating-point rounding in coordinate transforms
+// and interpolation. This is intentionally NOT a tunable parameter: it is a numerical guard rather
+// than a design-level margin (use min_drivable_area_margin for that purpose).
+constexpr double kLaneBoundaryDiscretizationBuffer = 0.05;
+
 SideShiftModule::SideShiftModule(
   const std::string & name, rclcpp::Node & node,
   const std::shared_ptr<SideShiftParameters> & parameters,
@@ -693,22 +704,24 @@ void SideShiftModule::updateLaneLimitsForInsidePoint(
   const double dist_to_left = lanelet::geometry::distance2d(left_bound, target_point);
   const double dist_to_right = lanelet::geometry::distance2d(right_bound, target_point);
 
-  const double extra_buffer = 0.05;
-
   // Calculate maximum left shift (positive value)
-  double current_max_left = dist_to_left - vehicle_half_width - margin - extra_buffer;
+  double current_max_left =
+    dist_to_left - vehicle_half_width - margin - kLaneBoundaryDiscretizationBuffer;
   if (allow_left && !point_in_adjacent) {
     const double dist_to_far_left =
       lanelet::geometry::distance2d(left_lane_val.leftBound2d(), target_point);
-    current_max_left = dist_to_far_left - vehicle_half_width - margin - extra_buffer;
+    current_max_left =
+      dist_to_far_left - vehicle_half_width - margin - kLaneBoundaryDiscretizationBuffer;
   }
 
   // Calculate maximum right shift
-  double current_max_right = dist_to_right - vehicle_half_width - margin - extra_buffer;
+  double current_max_right =
+    dist_to_right - vehicle_half_width - margin - kLaneBoundaryDiscretizationBuffer;
   if (allow_right && !point_in_adjacent) {
     const double dist_to_far_right =
       lanelet::geometry::distance2d(right_lane_val.rightBound2d(), target_point);
-    current_max_right = dist_to_far_right - vehicle_half_width - margin - extra_buffer;
+    current_max_right =
+      dist_to_far_right - vehicle_half_width - margin - kLaneBoundaryDiscretizationBuffer;
   }
 
   limits.safe_left_limit = std::min(limits.safe_left_limit, std::max(0.0, current_max_left));
