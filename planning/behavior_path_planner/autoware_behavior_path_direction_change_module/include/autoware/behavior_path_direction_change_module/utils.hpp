@@ -61,9 +61,9 @@ void reverseOrientationAtCusps(PathWithLaneId * path, const std::vector<size_t> 
 std::vector<size_t> detectLaneBoundaries(const PathWithLaneId & path);
 
 /**
- * @brief Checks if a lanelet has the direction_change_area tag
+ * @brief Checks if a lanelet has the direction_change_area tag set to "yes"
  * @param [in] lanelet Lanelet to check
- * @return True if direction_change_area tag exists, false otherwise
+ * @return True if direction_change_area attribute is "yes", false otherwise
  */
 bool hasDirectionChangeAreaTag(const lanelet::ConstLanelet & lanelet);
 

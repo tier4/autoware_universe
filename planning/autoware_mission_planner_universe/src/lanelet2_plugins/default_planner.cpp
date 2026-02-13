@@ -77,12 +77,12 @@ lanelet::ConstLanelets get_lanelets_to(
 /**
  * @brief Check if a lanelet has the direction_change_area tag
  * @param lanelet The lanelet to check
- * @return true if the lanelet has the direction_change_area attribute with a non-"none" value
+ * @return true if the lanelet has the direction_change_area attribute set to "yes"
  */
 bool hasDirectionChangeAreaTag(const lanelet::ConstLanelet & lanelet)
 {
   const std::string direction_change_area = lanelet.attributeOr("direction_change_area", "none");
-  return direction_change_area != "none";
+  return direction_change_area == "yes";
 }
 }  // namespace
 

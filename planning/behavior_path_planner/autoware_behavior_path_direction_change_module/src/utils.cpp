@@ -193,7 +193,7 @@ std::vector<size_t> detectLaneBoundaries(const PathWithLaneId & path)
 bool hasDirectionChangeAreaTag(const lanelet::ConstLanelet & lanelet)
 {
   const std::string direction_change_area = lanelet.attributeOr("direction_change_area", "none");
-  return direction_change_area != "none";
+  return direction_change_area == "yes";
 }
 
 bool checkLaneContinuitySafety(
