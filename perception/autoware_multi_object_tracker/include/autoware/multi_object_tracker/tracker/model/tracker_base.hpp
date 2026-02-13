@@ -186,6 +186,12 @@ public:
   double computeAdaptiveThreshold(
     double base_threshold, double fallback_threshold, const AdaptiveThresholdCache & cache,
     const std::optional<geometry_msgs::msg::Pose> & ego_pose) const;
+
+  virtual void setOrientationAvailability(
+    const types::OrientationAvailability & orientation_availability)
+  {
+    object_.kinematics.orientation_availability = orientation_availability;
+  }
 };
 
 }  // namespace autoware::multi_object_tracker
