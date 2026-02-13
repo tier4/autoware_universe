@@ -16,6 +16,7 @@
 #define AUTOWARE__DIFFUSION_PLANNER__PREPROCESSING__PREPROCESSING_UTILS_HPP_
 
 #include <Eigen/Core>
+#include <rclcpp/time.hpp>
 
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -65,20 +66,22 @@ std::vector<float> create_ego_current_state(
   const geometry_msgs::msg::AccelWithCovarianceStamped & acceleration_msg, const float wheel_base);
 
 /**
- * @brief Creates ego agent past trajectory data from pose messages.
+ * @brief Creates ego agent past trajectory data from pose messages with time-based interpolation.
  *
- * This function processes a sequence of pose messages to create ego vehicle's
- * past trajectory data in the ego reference frame. Each timestep contains
- * x, y position and heading information as cos(yaw) and sin(yaw).
+ * This function generates ego vehicle's past trajectory in the ego reference frame by
+ * interpolating poses at regular time intervals (0.1s) backwards from the reference time.
+ * For each target timestamp, the two surrounding odometry messages are found and linearly
+ * interpolated. Each timestep contains x, y position and heading as cos(yaw) and sin(yaw).
  *
- * @param[in] odom_msgs        Deque of odometry messages
+ * @param[in] odom_msgs           Deque of odometry messages
  * @param[in] num_timesteps       Number of timesteps to process
  * @param[in] map_to_ego_transform Transformation matrix from map to ego frame
+ * @param[in] reference_time      Reference time (included as the latest timestep)
  * @return Vector of floats containing [x, y, cos_yaw, sin_yaw] for each timestep
  */
 std::vector<float> create_ego_agent_past(
   const std::deque<nav_msgs::msg::Odometry> & odom_msgs, size_t num_timesteps,
-  const Eigen::Matrix4d & map_to_ego_transform);
+  const Eigen::Matrix4d & map_to_ego_transform, const rclcpp::Time & reference_time);
 
 /**
  * @brief Creates random sampled trajectories for diffusion model input.

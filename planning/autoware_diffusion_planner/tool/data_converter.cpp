@@ -174,7 +174,7 @@ std::vector<T> check_and_update_msg(
 
 std::vector<float> create_ego_sequence(
   const std::vector<FrameData> & data_list, const int64_t start_idx, const int64_t time_steps,
-  const Eigen::Matrix4d & map2bl_matrix)
+  const Eigen::Matrix4d & map2bl_matrix, const rclcpp::Time & reference_time)
 {
   // Extract pose messages from FrameData
   std::deque<nav_msgs::msg::Odometry> odom_deque;
@@ -182,7 +182,7 @@ std::vector<float> create_ego_sequence(
     const int64_t index = std::min(start_idx + j, static_cast<int64_t>(data_list.size()) - 1);
     odom_deque.push_back(data_list[index].kinematic_state);
   }
-  return preprocess::create_ego_agent_past(odom_deque, time_steps, map2bl_matrix);
+  return preprocess::create_ego_agent_past(odom_deque, time_steps, map2bl_matrix, reference_time);
 }
 
 std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_future(
@@ -703,10 +703,15 @@ int main(int argc, char ** argv)
       const Eigen::Matrix4d map2bl = utils::inverse(bl2map);
 
       // Create ego sequences
+      const rclcpp::Time past_reference_time(seq.data_list[i].kinematic_state.header.stamp);
       const std::vector<float> ego_past = create_ego_sequence(
-        seq.data_list, i - INPUT_T_WITH_CURRENT + 1, INPUT_T_WITH_CURRENT, map2bl);
+        seq.data_list, i - INPUT_T_WITH_CURRENT + 1, INPUT_T_WITH_CURRENT, map2bl,
+        past_reference_time);
+      const rclcpp::Time future_reference_time =
+        past_reference_time +
+        rclcpp::Duration::from_seconds(OUTPUT_T * constants::PREDICTION_TIME_STEP_S);
       const std::vector<float> ego_future =
-        create_ego_sequence(seq.data_list, i + 1, OUTPUT_T, map2bl);
+        create_ego_sequence(seq.data_list, i, OUTPUT_T, map2bl, future_reference_time);
 
       // Create ego current state
       const std::vector<float> ego_current = preprocess::create_ego_current_state(
