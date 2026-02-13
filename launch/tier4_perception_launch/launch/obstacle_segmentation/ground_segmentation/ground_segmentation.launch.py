@@ -15,10 +15,12 @@ import os
 
 import launch
 from launch.actions import DeclareLaunchArgument
+from launch.actions import IncludeLaunchDescription
 from launch.actions import OpaqueFunction
 from launch.actions import SetLaunchConfiguration
 from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
+from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch.substitutions import PathJoinSubstitution
 from launch_ros.actions import LoadComposableNodes
@@ -502,7 +504,9 @@ class GroundSegmentationPipeline:
         )
 
     @staticmethod
-    def get_single_frame_obstacle_segmentation_concatenated_component(input_topics, output_topic):
+    def get_single_frame_obstacle_segmentation_concatenated_component(
+        input_topics, output_topic, output_info_topic
+    ):
         return ComposableNode(
             package="autoware_pointcloud_preprocessor",
             plugin="autoware::pointcloud_preprocessor::PointCloudConcatenateDataSynchronizerComponent",
@@ -524,6 +528,15 @@ class GroundSegmentationPipeline:
 
 def launch_setup(context, *args, **kwargs):
     pipeline = GroundSegmentationPipeline(context)
+    launch_lidar_frnet = LaunchConfiguration("launch_lidar_frnet").perform(context)
+    if isinstance(launch_lidar_frnet, str):
+        launch_lidar_frnet = launch_lidar_frnet.lower() == "true"
+
+    launch_ptv3 = LaunchConfiguration("launch_ptv3").perform(context)
+    if isinstance(launch_ptv3, str):
+        launch_ptv3 = launch_ptv3.lower() == "true"
+
+    actions = []
 
     components = []
     components.extend(
@@ -566,7 +579,57 @@ def launch_setup(context, *args, **kwargs):
         composable_node_descriptions=components,
         target_container=LaunchConfiguration("pointcloud_container_name"),
     )
-    return [pointcloud_container_loader]
+    actions.append(pointcloud_container_loader)
+
+    # Additionally launch lidar_frnet if enabled
+    if launch_lidar_frnet:
+        lidar_frnet_launch = IncludeLaunchDescription(
+            AnyLaunchDescriptionSource(
+                PathJoinSubstitution(
+                    [
+                        FindPackageShare("autoware_lidar_frnet"),
+                        "launch",
+                        "lidar_frnet.launch.xml",
+                    ]
+                )
+            ),
+            launch_arguments={
+                "input/pointcloud": LaunchConfiguration("input/pointcloud"),
+                "output/pointcloud/filtered": LaunchConfiguration("lidar_frnet_output/pointcloud/filtered"),
+                "output/pointcloud/visualization": LaunchConfiguration("lidar_frnet_output/pointcloud/visualization"),
+                "output/pointcloud/segmentation": LaunchConfiguration("lidar_frnet_output/pointcloud/segmentation"),
+                "pointcloud_container_name": LaunchConfiguration("pointcloud_container_name"),
+                "use_pointcloud_container": LaunchConfiguration("lidar_frnet_use_pointcloud_container"),
+            }.items(),
+        )
+        actions.append(lidar_frnet_launch)
+
+    # Additionally launch ptv3 if enabled
+    if launch_ptv3:
+        ptv3_launch = IncludeLaunchDescription(
+            AnyLaunchDescriptionSource(
+                PathJoinSubstitution(
+                    [
+                        FindPackageShare("autoware_ptv3"),
+                        "launch",
+                        "ptv3.launch.xml",
+                    ]
+                )
+            ),
+            launch_arguments={
+                "input/pointcloud": LaunchConfiguration("input/pointcloud"),
+                "segmented/pointcloud": LaunchConfiguration("ptv3_output/segmented/pointcloud"),
+                "ground_segmented/pointcloud": LaunchConfiguration("ptv3_output/ground_segmented/pointcloud"),
+                "probs/pointcloud": LaunchConfiguration("ptv3_output/probs/pointcloud"),
+                "pointcloud_container_name": LaunchConfiguration("pointcloud_container_name"),
+                "use_pointcloud_container": LaunchConfiguration("ptv3_use_pointcloud_container"),
+                "data_path": LaunchConfiguration("data_path"),
+                "model_name": LaunchConfiguration("ptv3_model_name"),
+            }.items(),
+        )
+        actions.append(ptv3_launch)
+
+    return actions
 
 
 def generate_launch_description():
@@ -580,6 +643,19 @@ def generate_launch_description():
     add_launch_arg("use_intra_process", "True")
     add_launch_arg("pointcloud_container_name", "pointcloud_container")
     add_launch_arg("input/pointcloud", "/sensing/lidar/concatenated/pointcloud")
+    add_launch_arg("launch_lidar_frnet", "False")
+    add_launch_arg("lidar_frnet_use_pointcloud_container", "True")
+    add_launch_arg("lidar_frnet_output/pointcloud/filtered", "/perception/obstacle_segmentation/frnet/pointcloud")
+    add_launch_arg("lidar_frnet_output/pointcloud/visualization", "/perception/frnet/visualization")
+    add_launch_arg("lidar_frnet_output/pointcloud/segmentation", "/perception/frnet/segmentation")
+    add_launch_arg("launch_ptv3", "True")
+    add_launch_arg("ptv3_use_pointcloud_container", "True")
+    add_launch_arg("ptv3_output/segmented/pointcloud", "/perception/ptv3/segmented/pointcloud")
+    add_launch_arg("ptv3_output/ground_segmented/pointcloud", "/perception/obstacle_segmentation/ptv3/pointcloud")
+    add_launch_arg("ptv3_output/probs/pointcloud", "/perception/ptv3/probs/pointcloud")
+    add_launch_arg("data_path", "/opt/autoware/mlmodels")
+    # add_launch_arg("model_path", [LaunchConfiguration("data_path"), "/ptv3_grid0.05_range102.4_concerto"])
+    add_launch_arg("ptv3_model_name", "ptv3")
     add_launch_arg(
         "ogm_outlier_filter_param_path",
         [
