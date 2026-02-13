@@ -50,6 +50,11 @@
   <arg name="input/camera_vru/channel" default="camera_vru"/>
   <arg name="input/camera_vru/objects" default="/perception/object_recognition/detection/camera_vru/objects"/>
 
+  <arg name="input/camera_only/objects" default="/perception/object_recognition/detection/camera_only/objects"/>
+  <arg name="input/camera_only/channel" default="camera_streampetr"/>
+  <arg name="input/camera_vru/channel" default="camera_vru"/>
+  <arg name="input/camera_vru/objects" default="/perception/object_recognition/detection/camera_vru/objects"/>
+
   <arg name="output/objects" default="$(var ns)/objects"/>
 
   <group unless="$(var use_multi_channel_tracker_merger)">
