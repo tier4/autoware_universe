@@ -408,6 +408,9 @@ private:
   std::optional<geometry_msgs::msg::Pose> getDefaultStopPose(
     const PathWithLaneId & ego_path,
     const geometry_msgs::msg::Point & first_path_point_on_crosswalk) const;
+  std::optional<geometry_msgs::msg::Pose> getDeadlineStopPose(
+    const PathWithLaneId & ego_path,
+    const geometry_msgs::msg::Point & first_path_point_on_crosswalk) const;
 
   std::optional<geometry_msgs::msg::Pose> calcStopPose(
     const PathWithLaneId & ego_path, double dist_nearest_cp,
@@ -450,6 +453,10 @@ private:
     const PathWithLaneId & ego_path,
     const std::optional<geometry_msgs::msg::Pose> & default_stop_pose,
     const std::optional<StopPoseWithObjectUuids> & stop_factor);
+
+  void planCreeping(
+    PathWithLaneId & ego_path, const std::optional<StopPoseWithObjectUuids> & nearest_stop_factor,
+    geometry_msgs::msg::Pose deadline_stop_pose);
 
   void planGo(
     PathWithLaneId & ego_path, const std::optional<StopPoseWithObjectUuids> & stop_factor) const;
@@ -520,7 +527,7 @@ private:
 
   void set_previous_stop_pose(const std::optional<StopPoseWithObjectUuids> & current_stop_pose)
   {
-    if (!current_stop_pose) {
+    if (!current_stop_pose && !isCreepTriggered()) {
       previous_stop_pose_.reset();
       return;
     }
@@ -560,6 +567,10 @@ private:
   // occluded space time buffer
   std::optional<rclcpp::Time> current_initial_occlusion_time_;
   std::optional<rclcpp::Time> most_recent_occlusion_time_;
+
+  double max_ego_speed_from_creep_triggered_{0.0};
+  bool yield_stuck_{false};
+  bool passed_pass_judge_{false};
 
   std::optional<StopPoseWithObjectUuids> previous_stop_pose_;
 
