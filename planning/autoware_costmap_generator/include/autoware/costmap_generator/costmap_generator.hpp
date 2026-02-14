@@ -92,6 +92,7 @@ private:
   lanelet::LaneletMapPtr lanelet_map_;
   PredictedObjects::ConstSharedPtr objects_;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr points_;
+  grid_map_msgs::msg::GridMap::ConstSharedPtr cuda_costmap_;
 
   grid_map::GridMap costmap_;
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
@@ -109,6 +110,7 @@ private:
     this, "~/input/objects"};
   autoware_utils::InterProcessPollingSubscriber<autoware_internal_planning_msgs::msg::Scenario>
     sub_scenario_{this, "~/input/scenario"};
+  rclcpp::Subscription<grid_map_msgs::msg::GridMap>::SharedPtr sub_cuda_costmap_;
 
   rclcpp::TimerBase::SharedPtr timer_;
 
@@ -135,6 +137,9 @@ private:
 
   /// \brief callback for loading lanelet2 map
   void onLaneletMapBin(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg);
+
+  /// \brief callback for receiving CUDA-generated costmap
+  void onCudaCostmap(const grid_map_msgs::msg::GridMap::ConstSharedPtr msg);
 
   void update_data();
 

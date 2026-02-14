@@ -168,6 +168,11 @@ CostmapGenerator::CostmapGenerator(const rclcpp::NodeOptions & node_options)
     "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&CostmapGenerator::onLaneletMapBin, this, std::placeholders::_1));
 
+  // CUDA costmap subscriber (optional)
+  sub_cuda_costmap_ = this->create_subscription<grid_map_msgs::msg::GridMap>(
+    "~/input/cuda_costmap", rclcpp::QoS{10},
+    std::bind(&CostmapGenerator::onCudaCostmap, this, std::placeholders::_1));
+
   // Publishers
   pub_costmap_ = this->create_publisher<grid_map_msgs::msg::GridMap>("~/output/grid_map", 1);
   pub_occupancy_grid_ =
@@ -247,6 +252,11 @@ void CostmapGenerator::onLaneletMapBin(
   }
 }
 
+void CostmapGenerator::onCudaCostmap(const grid_map_msgs::msg::GridMap::ConstSharedPtr msg)
+{
+  cuda_costmap_ = msg;
+}
+
 void CostmapGenerator::update_data()
 {
   objects_ = sub_objects_.take_data();
@@ -301,9 +311,51 @@ void CostmapGenerator::onTimer()
     costmap_[LayerName::objects] = generateObjectsCostmap(objects_);
   }
 
-  if (param_->use_points && points_) {
-    autoware_utils::ScopedTimeTrack st("generatePointsCostmap()", *time_keeper_);
-    costmap_[LayerName::points] = generatePointsCostmap(points_, tf.transform.translation.z);
+  if (param_->use_points) {
+    if (cuda_costmap_) {
+      // Use CUDA-generated costmap if available
+      autoware_utils::ScopedTimeTrack st("useCudaCostmap()", *time_keeper_);
+      grid_map::GridMap cuda_grid_map;
+      grid_map::GridMapRosConverter::fromMessage(*cuda_costmap_, cuda_grid_map);
+
+      // Extract the "points" layer from CUDA costmap
+      if (cuda_grid_map.exists("points")) {
+        // Check if geometry matches (within tolerance)
+        const double resolution_diff =
+          std::abs(cuda_grid_map.getResolution() - costmap_.getResolution());
+        const double length_x_diff =
+          std::abs(cuda_grid_map.getLength().x() - costmap_.getLength().x());
+        const double length_y_diff =
+          std::abs(cuda_grid_map.getLength().y() - costmap_.getLength().y());
+
+        if (resolution_diff < 1e-6 && length_x_diff < 1e-6 && length_y_diff < 1e-6) {
+          // Geometry matches, directly copy the layer
+          costmap_[LayerName::points] = cuda_grid_map["points"];
+        } else {
+          RCLCPP_WARN_THROTTLE(
+            this->get_logger(), *get_clock(), 5000,
+            "CUDA costmap geometry does not match. Resolution: %.3f vs %.3f, "
+            "Length X: %.3f vs %.3f, Length Y: %.3f vs %.3f. Falling back to CPU generation.",
+            cuda_grid_map.getResolution(), costmap_.getResolution(), cuda_grid_map.getLength().x(),
+            costmap_.getLength().x(), cuda_grid_map.getLength().y(), costmap_.getLength().y());
+          if (points_) {
+            costmap_[LayerName::points] =
+              generatePointsCostmap(points_, tf.transform.translation.z);
+          }
+        }
+      } else {
+        RCLCPP_WARN_THROTTLE(
+          this->get_logger(), *get_clock(), 5000,
+          "CUDA costmap does not contain 'points' layer. Falling back to CPU generation.");
+        if (points_) {
+          costmap_[LayerName::points] = generatePointsCostmap(points_, tf.transform.translation.z);
+        }
+      }
+    } else if (points_) {
+      // Fall back to CPU generation if CUDA costmap is not available
+      autoware_utils::ScopedTimeTrack st("generatePointsCostmap()", *time_keeper_);
+      costmap_[LayerName::points] = generatePointsCostmap(points_, tf.transform.translation.z);
+    }
   }
 
   {
