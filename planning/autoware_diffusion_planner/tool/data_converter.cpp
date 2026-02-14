@@ -47,6 +47,7 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -172,17 +173,26 @@ std::vector<T> check_and_update_msg(
   return result;
 }
 
-std::vector<float> create_ego_sequence(
-  const std::vector<FrameData> & data_list, const int64_t start_idx, const int64_t time_steps,
+std::optional<std::vector<float>> create_ego_sequence(
+  const std::vector<FrameData> & data_list, const int64_t start_idx, const size_t num_timesteps,
   const Eigen::Matrix4d & map2bl_matrix, const rclcpp::Time & reference_time)
 {
-  // Extract pose messages from FrameData
+  // Collect odom messages from start_idx until timestamp >= reference_time
   std::deque<nav_msgs::msg::Odometry> odom_deque;
-  for (int64_t j = 0; j < time_steps; ++j) {
-    const int64_t index = std::min(start_idx + j, static_cast<int64_t>(data_list.size()) - 1);
-    odom_deque.push_back(data_list[index].kinematic_state);
+  for (size_t j = static_cast<size_t>(std::max(int64_t(0), start_idx)); j < data_list.size(); ++j) {
+    odom_deque.push_back(data_list[j].kinematic_state);
+    if (rclcpp::Time(data_list[j].kinematic_state.header.stamp) >= reference_time) {
+      break;
+    }
   }
-  return preprocess::create_ego_agent_past(odom_deque, time_steps, map2bl_matrix, reference_time);
+
+  // Error: data doesn't cover the reference_time
+  if (odom_deque.empty() || rclcpp::Time(odom_deque.back().header.stamp) < reference_time) {
+    return std::nullopt;
+  }
+
+  return preprocess::create_ego_agent_past(
+    odom_deque, num_timesteps, map2bl_matrix, reference_time);
 }
 
 std::pair<std::vector<float>, std::vector<float>> process_neighbor_agents_and_future(
@@ -652,6 +662,13 @@ int main(int argc, char ** argv)
     sequences.erase(sequences.begin() + i + 1);
   }
 
+  // Sort each sequence's data_list by timestamp to ensure ascending order
+  for (auto & seq : sequences) {
+    std::sort(
+      seq.data_list.begin(), seq.data_list.end(),
+      [](const FrameData & a, const FrameData & b) { return a.timestamp < b.timestamp; });
+  }
+
   const std::string rosbag_dir_name = std::filesystem::path(rosbag_path).filename();
   const int64_t sequence_num = static_cast<int64_t>(sequences.size());
   std::cout << "Total " << sequence_num << " sequences" << std::endl;
@@ -704,14 +721,25 @@ int main(int argc, char ** argv)
 
       // Create ego sequences
       const rclcpp::Time past_reference_time(seq.data_list[i].kinematic_state.header.stamp);
-      const std::vector<float> ego_past = create_ego_sequence(
+      const auto ego_past_opt = create_ego_sequence(
         seq.data_list, i - INPUT_T_WITH_CURRENT + 1, INPUT_T_WITH_CURRENT, map2bl,
         past_reference_time);
+      if (!ego_past_opt) {
+        std::cout << "Failed to create ego past at frame " << i << std::endl;
+        break;
+      }
+      const std::vector<float> & ego_past = ego_past_opt.value();
+
       const rclcpp::Time future_reference_time =
         past_reference_time +
         rclcpp::Duration::from_seconds(OUTPUT_T * constants::PREDICTION_TIME_STEP_S);
-      const std::vector<float> ego_future =
+      const auto ego_future_opt =
         create_ego_sequence(seq.data_list, i, OUTPUT_T, map2bl, future_reference_time);
+      if (!ego_future_opt) {
+        std::cout << "Reached end of sequence at frame " << i << "/" << n << std::endl;
+        break;
+      }
+      const std::vector<float> & ego_future = ego_future_opt.value();
 
       // Create ego current state
       const std::vector<float> ego_current = preprocess::create_ego_current_state(
