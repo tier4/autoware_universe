@@ -22,6 +22,7 @@
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 
+#include <deque>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -84,6 +85,8 @@ private:
 
   // Helper functions
   bool shouldActivateModule() const;
+  /// Push current odometry and return true if velocity has been below stop_velocity_threshold for at least th_stopped_time
+  bool isSustainedStoppedForDirectionSwitch();
 
   // Member variables
   PathWithLaneId reference_path_{};
@@ -92,12 +95,15 @@ private:
 
   // Direction change data
   std::vector<size_t> cusp_point_indices_{};
-  
-  // Path segment state tracking for separate forward/backward publishing
+
+  // Path segment state tracking for separate forward/backward publishing (multi-cusp)
   PathSegmentState current_segment_state_{PathSegmentState::FORWARD_FOLLOWING};
-  size_t first_cusp_index_{0};  // Store first cusp index for path splitting
-  geometry_msgs::msg::Point first_cusp_position_;  // Store cusp point position
-  bool has_valid_cusp_{false};  // Check if there is a valid cusp point
+  size_t current_segment_index_{0};  // Segment index (0 = first forward, 1 = first reverse, ...)
+  geometry_msgs::msg::Point first_cusp_position_;  // Position of current segment end (cusp) for debug/log
+  bool has_valid_cusp_{false};
+
+  // Sustained stop: buffer (timestamp, velocity) for direction switch at cusp
+  std::deque<std::pair<rclcpp::Time, double>> odometry_buffer_direction_switch_{};
 
   // Debug data
   mutable DirectionChangeDebugData debug_data_;

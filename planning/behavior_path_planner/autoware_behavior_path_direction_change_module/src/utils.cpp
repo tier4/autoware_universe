@@ -26,6 +26,8 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include <limits>
+
 #include <tf2/utils.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
@@ -188,6 +190,71 @@ std::vector<size_t> detectLaneBoundaries(const PathWithLaneId & path)
   }
 
   return lane_boundary_indices;
+}
+
+PathWithLaneId getReferencePathFromDirectionChangeLanelets(
+  const PathWithLaneId & path,
+  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
+{
+  PathWithLaneId out;
+  if (!route_handler || path.points.empty()) {
+    return out;
+  }
+  std::vector<int64_t> ordered_lane_ids;
+  for (const auto & pt : path.points) {
+    for (const auto & lane_id : pt.lane_ids) {
+      try {
+        const auto lanelet = route_handler->getLaneletsFromId(lane_id);
+        if (!hasDirectionChangeAreaTag(lanelet)) {
+          continue;
+        }
+        if (ordered_lane_ids.empty() || ordered_lane_ids.back() != lane_id) {
+          ordered_lane_ids.push_back(lane_id);
+        }
+      } catch (...) {
+        continue;
+      }
+    }
+  }
+  if (ordered_lane_ids.empty()) {
+    return out;
+  }
+  lanelet::ConstLanelets lanelet_sequence;
+  lanelet_sequence.reserve(ordered_lane_ids.size());
+  for (const auto & id : ordered_lane_ids) {
+    try {
+      lanelet_sequence.push_back(route_handler->getLaneletsFromId(id));
+    } catch (...) {
+      return out;
+    }
+  }
+  const auto raw_path = route_handler->getCenterLinePath(
+    lanelet_sequence, 0.0, std::numeric_limits<double>::max());
+  if (raw_path.points.empty()) {
+    return out;
+  }
+  out = raw_path;
+  out.header = route_handler->getRouteHeader();
+
+  // Crop path at route goal so the vehicle does not drive to the physical end of the lane.
+  // Snap the path end to the goal pose so arrival works when the goal is slightly off centerline.
+  try {
+    const auto goal_pose = route_handler->getGoalPose();
+    const auto goal_idx_opt =
+      autoware::motion_utils::findNearestIndex(out.points, goal_pose.position);
+    if (goal_idx_opt < out.points.size()) {
+      const size_t goal_idx = goal_idx_opt;
+      out.points.resize(goal_idx + 1);
+      // if (!out.points.empty()) {
+        out.points.back().point.pose = goal_pose;
+        out.points.back().point.longitudinal_velocity_mps = 0.0;
+      //}
+    }
+  } catch (...) {
+    // No goal or getGoalPose failed; keep full path
+  }
+
+  return out;
 }
 
 bool hasDirectionChangeAreaTag(const lanelet::ConstLanelet & lanelet)

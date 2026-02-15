@@ -35,6 +35,7 @@ struct DirectionChangeParameters
   // State transition parameters
   double cusp_detection_distance_start_approaching;  // [m] Distance to start approaching cusp (transition to APPROACHING_CUSP)
   double stop_velocity_threshold;  // [m/s] Velocity threshold to determine vehicle has stopped
+  double th_stopped_time;  // [s] Duration velocity must stay below stop_velocity_threshold before direction switch at cusp
 
   // Direction change parameters
   double reverse_initial_speed;
@@ -51,6 +52,7 @@ struct DirectionChangeParameters
   bool enable_cusp_detection;
   bool enable_reverse_following;
   bool publish_debug_marker;
+  double th_arrived_distance;  // [m] If ego is within this distance of route goal, do not activate (avoid re-entry after completion)
 };
 
 struct DirectionChangeDebugData

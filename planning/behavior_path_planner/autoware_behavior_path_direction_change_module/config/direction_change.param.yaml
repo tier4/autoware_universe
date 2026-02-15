@@ -7,7 +7,8 @@
 
       # State transition parameters
       cusp_detection_distance_start_approaching: 10.0  # [m] Distance to start approaching cusp (transition to APPROACHING_CUSP)
-      stop_velocity_threshold: 0.001  # [m/s] Velocity threshold to determine vehicle has stopped
+      stop_velocity_threshold: 0.5 # [m/s] Velocity threshold to determine vehicle has stopped
+      th_stopped_time: 0.090  # [s] Duration velocity must stay below stop_velocity_threshold before direction switch at cusp
 
       # Reverse lane following parameters
       reverse_initial_speed: 0.5 # [m/s] Upper speed limit for backward_slow_speed 
@@ -24,4 +25,5 @@
       enable_cusp_detection: true  # Enable cusp point detection
       enable_reverse_following: true  # Enable reverse lane following
       publish_debug_marker: false  # Publish debug markers for visualization
+      th_arrived_distance: 0.5  # [m] If ego within this distance of route goal, do not activate (align with arrival_check / th_arrived_distance)
 

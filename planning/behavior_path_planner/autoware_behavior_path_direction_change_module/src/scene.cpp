@@ -49,6 +49,7 @@ void logDirectionChangeDebugInfo(
     std::cout << "[MY_DEBUG] [DirectionChange] " << label
               << " size=" << path.points.size() << std::endl;
     std::cout << std::fixed << std::setprecision(3);
+    /*
     for (size_t i = 0; i < path.points.size(); ++i) {
       const auto & pt = path.points[i].point;
       const double x   = pt.pose.position.x;
@@ -62,7 +63,7 @@ void logDirectionChangeDebugInfo(
                 << ", yaw=" << yaw_deg << " deg"
                 << ", v="   << v << " m/s"
                 << std::endl;
-    }
+    } */
   };
   // ① current_reference_path
   print_path("Current reference path (input)", current_reference_path);
@@ -171,21 +172,26 @@ bool DirectionChangeModule::isReadyForNextRequest(
 
 void DirectionChangeModule::updateData()
 {
-  // Lightweight data update: Only update reference path from previous module output
-  // Following standard BPP module pattern: updateData() should be lightweight,
-  // expensive computations (like cusp detection) are done in plan()
-  // For the first module, this is the reference path generated from route handler
-  // (route comes from /planning/mission_planning/route topic)
-  // For subsequent modules, this is the output from the previous module
-  // Path points should already have lane_ids assigned and be on centerline
   const auto previous_output = getPreviousModuleOutput();
   if (previous_output.path.points.empty()) {
     std::cout << "[MY_DEBUG] [DirectionChange] Previous module output path is empty. Cannot update data." << std::endl;
     return;
   }
-  
+
+  if (planner_data_ && planner_data_->route_handler) {
+    const auto centerline_path = getReferencePathFromDirectionChangeLanelets(
+      previous_output.path, planner_data_->route_handler);
+    if (!centerline_path.points.empty()) {
+      reference_path_ = centerline_path;
+      std::cout << "[MY_DEBUG] [DirectionChange] Using centerline from direction_change lanelets ("
+                << reference_path_.points.size() << " points)" << std::endl;
+      return;
+    }
+  }
+
+  // Fallback: use previous module output when not in direction_change area, or when
+  // centerline from lanelets is unavailable (no route_handler, no tagged lane_ids, or empty path).
   reference_path_ = previous_output.path;
-  // Note: Cusp detection is done in plan() when actually planning, not here
 }
 
 
@@ -196,12 +202,6 @@ bool DirectionChangeModule::shouldActivateModule() const
     return false;
   }
 
-  // Check direction_change_area tag for each lanelet in the path
-  // Decision: Module activates if direction_change_area tag is present (regardless of cusp points)
-  // If no tag → module inactive
-  // If tag exists → module active (will handle cusps if they exist, or just forward path if not)
-
-  // Check lanelets from path points
   if (planner_data_->route_handler) {
     std::set<int64_t> checked_lane_ids;
     for (const auto & path_point : reference_path_.points) {
@@ -214,8 +214,24 @@ bool DirectionChangeModule::shouldActivateModule() const
         try {
           const auto lanelet = planner_data_->route_handler->getLaneletsFromId(lane_id);
           if (hasDirectionChangeAreaTag(lanelet)) {
+            // Activate only when in tag area and away from goal (avoid re-entry after completion).
+            // Goal planner and start planner also follow similar checks for goal arrival
+            if (planner_data_->self_odometry) {
+              try {
+                const auto goal_pose = planner_data_->route_handler->getGoalPose();
+                const double dist_to_goal = autoware_utils::calc_distance2d(
+                  planner_data_->self_odometry->pose.pose.position, goal_pose.position);
+                if (dist_to_goal < parameters_->th_arrived_distance) {
+                  std::cout << "[MY_DEBUG] [DirectionChange] shouldActivateModule: at goal (dist="
+                            << dist_to_goal << " m), module INACTIVE" << std::endl;
+                  return false;
+                }
+              } catch (...) {
+                // No goal or getGoalPose failed; allow activation
+              }
+            }
             std::cout << "[MY_DEBUG] [DirectionChange] shouldActivateModule: direction_change_area tag found in lane_id=" << lane_id << ", module ACTIVE" << std::endl;
-            return true;  // Tag found, activate module
+            return true;  // Tag found and away from goal, activate module
           }
         } catch (...) {
           // Lanelet not found, skip
@@ -268,7 +284,6 @@ bool DirectionChangeModule::isSustainedStoppedForDirectionSwitch()
 BehaviorModuleOutput DirectionChangeModule::plan()
 {
   // Note: updateData() is already called by SceneModuleInterface::run() before plan()
-  // Following standard BPP module pattern: expensive computations happen in plan()
   BehaviorModuleOutput output;
   
   // Copy reference_path_ to local variable for stability
@@ -424,8 +439,9 @@ BehaviorModuleOutput DirectionChangeModule::plan()
               }
               break;
             case PathSegmentState::AT_CUSP: {
-              if (isSustainedStoppedForDirectionSwitch()) {
-                odometry_buffer_direction_switch_.clear();
+              // if (isSustainedStoppedForDirectionSwitch()) {
+              //  odometry_buffer_direction_switch_.clear();
+              if (vehicle_velocity < parameters_->stop_velocity_threshold) {
                 current_segment_index_++;
                 new_state = (current_segment_index_ % 2 == 0)
                               ? PathSegmentState::FORWARD_FOLLOWING
@@ -434,6 +450,9 @@ BehaviorModuleOutput DirectionChangeModule::plan()
               break;
             }
             case PathSegmentState::REVERSE_FOLLOWING:
+              if (distance_to_cusp <= parameters_->cusp_detection_distance_start_approaching) {
+                new_state = PathSegmentState::APPROACHING_CUSP;
+              }
               break;
             case PathSegmentState::COMPLETED:
               break;
@@ -493,6 +512,12 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       std::cout << "[MY_DEBUG] [DirectionChange] Publishing REVERSE segment: "
                 << output.path.points.size() << " points (indices " << c_start << "-" << c_end << ")" << std::endl;
     } else {
+      // When in AT_CUSP we must command stop at segment end so the vehicle stops before direction
+      // switch. Otherwise the reference path velocities (e.g. from centerline) keep the vehicle
+      // creeping and sustained stop is never satisfied, leading to lane departure.
+      if (current_segment_state_ == PathSegmentState::AT_CUSP && !output.path.points.empty()) {
+        output.path.points.back().point.longitudinal_velocity_mps = 0.0;
+      }
       std::cout << "[MY_DEBUG] [DirectionChange] Publishing FORWARD segment: "
                 << output.path.points.size() << " points (indices " << c_start << "-" << c_end << ")" << std::endl;
     }
@@ -523,10 +548,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     path_publisher_->publish(path_msg);
     std::string segment_type;
     if (current_segment_state_ == PathSegmentState::FORWARD_FOLLOWING ||
-        current_segment_state_ == PathSegmentState::APPROACHING_CUSP) {
-      segment_type = "FORWARD";
-    } else if (current_segment_state_ == PathSegmentState::AT_CUSP ||
-               current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING) {
+        current_segment_state_ == PathSegmentState::APPROACHING_CUSP ||
+        current_segment_state_ == PathSegmentState::AT_CUSP) {
+      segment_type = (current_segment_state_ == PathSegmentState::AT_CUSP) ? "FORWARD (stop at cusp)" : "FORWARD";
+    } else if (current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING) {
       segment_type = "BACKWARD";
     } else {
       segment_type = "UNKNOWN";
@@ -675,38 +700,35 @@ CandidateOutput DirectionChangeModule::planCandidate() const
   return output;
 }
 
-// Removed: planForwardFollowing(), planReverseFollowing(), planAtCusp()
-// These methods are no longer needed with simplified design
-// Velocity signs are applied directly in plan() via applySignedVelocityToPath()
-
 bool DirectionChangeModule::canTransitSuccessState()
 {
-  // Module can complete only after backward segment is published and ego has completed it
-  if (!cusp_point_indices_.empty() &&
-      current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING) {
-    // Check if ego has completed backward segment
-    if (planner_data_ && planner_data_->self_odometry && !modified_path_.points.empty()) {
-      const auto & ego_pose = planner_data_->self_odometry->pose.pose;
-      const auto ego_nearest_idx_opt = findNearestIndex(modified_path_.points, ego_pose);
-      
-      if (ego_nearest_idx_opt && *ego_nearest_idx_opt < modified_path_.points.size()) {
-        const size_t ego_nearest_idx = *ego_nearest_idx_opt;
-        const double remaining_distance = calcSignedArcLength(
-          modified_path_.points, ego_nearest_idx, modified_path_.points.size() - 1);
-        
-        // Complete if ego is near end of backward segment (within 1 meter)
-        const double completion_threshold = 1.0;
-        if (remaining_distance < completion_threshold) {
-          std::cout << "[MY_DEBUG] [DirectionChange] Ego completed backward segment, module can transit to SUCCESS" << std::endl;
-          return true;
-        }
-      }
-    }
-    // Still in backward segment
+  // Only complete when we're on the LAST segment and ego has reached its end.
+  // With multiple cusps we have multiple segments; we must not exit after the first reverse segment.
+  const bool is_last_segment = (current_segment_index_ >= cusp_point_indices_.size());
+  if (!is_last_segment) {
     return false;
   }
-  
-  // No cusps or still in forward segment - module stays active
+  if (current_segment_state_ != PathSegmentState::REVERSE_FOLLOWING &&
+      current_segment_state_ != PathSegmentState::FORWARD_FOLLOWING) {
+    return false;
+  }
+  if (!planner_data_ || !planner_data_->self_odometry || modified_path_.points.empty()) {
+    return false;
+  }
+  const auto & ego_pose = planner_data_->self_odometry->pose.pose;
+  const auto ego_nearest_idx_opt = findNearestIndex(modified_path_.points, ego_pose);
+  if (!ego_nearest_idx_opt || *ego_nearest_idx_opt >= modified_path_.points.size()) {
+    return false;
+  }
+  const size_t ego_nearest_idx = *ego_nearest_idx_opt;
+  const double remaining_distance = calcSignedArcLength(
+    modified_path_.points, ego_nearest_idx, modified_path_.points.size() - 1);
+  // const double completion_threshold = 1.0;
+  if (remaining_distance <  parameters_->th_arrived_distance) {
+    current_segment_state_ = PathSegmentState::COMPLETED;
+    std::cout << "[MY_DEBUG] [DirectionChange] Ego completed last segment, state=COMPLETED, module can transit to SUCCESS" << std::endl;
+    return true;
+  }
   return false;
 }
 

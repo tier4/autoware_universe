@@ -46,6 +46,7 @@ void DirectionChangeModuleManager::init(rclcpp::Node * node)
     node->declare_parameter<double>(ns + "cusp_detection_distance_start_approaching");
   p.stop_velocity_threshold =
     node->declare_parameter<double>(ns + "stop_velocity_threshold");
+  p.th_stopped_time = node->declare_parameter<double>(ns + "th_stopped_time");
 
   // Reverse lane following parameters
   p.reverse_speed_limit = node->declare_parameter<double>(ns + "reverse_speed_limit");
@@ -62,6 +63,7 @@ void DirectionChangeModuleManager::init(rclcpp::Node * node)
   p.enable_cusp_detection = node->declare_parameter<bool>(ns + "enable_cusp_detection");
   p.enable_reverse_following = node->declare_parameter<bool>(ns + "enable_reverse_following");
   p.publish_debug_marker = node->declare_parameter<bool>(ns + "publish_debug_marker");
+  p.th_arrived_distance = node->declare_parameter<double>(ns + "th_arrived_distance");
 
   parameters_ = std::make_shared<DirectionChangeParameters>(p);
 }

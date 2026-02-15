@@ -61,6 +61,19 @@ void reverseOrientationAtCusps(PathWithLaneId * path, const std::vector<size_t> 
 std::vector<size_t> detectLaneBoundaries(const PathWithLaneId & path);
 
 /**
+ * @brief Build reference path from the full centerline of lanelets that have direction_change_area.
+ *        Used to avoid upstream path flip (nearest-point ambiguity) when the path crosses a single
+ *        lanelet with multiple branches (e.g. cross with two cusps). No resampling is applied;
+ *        the planner manager resamples the final path with output_path_interval.
+ * @param [in] path Current path with lane_ids (used only to discover which lane_ids have the tag)
+ * @param [in] route_handler Route handler to get centerline from map
+ * @return PathWithLaneId Full centerline of direction_change lanelets in path order, or empty if none
+ */
+PathWithLaneId getReferencePathFromDirectionChangeLanelets(
+  const PathWithLaneId & path,
+  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler);
+
+/**
  * @brief Checks if a lanelet has the direction_change_area tag set to "yes"
  * @param [in] lanelet Lanelet to check
  * @return True if direction_change_area attribute is "yes", false otherwise
