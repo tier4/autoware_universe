@@ -22,6 +22,7 @@
 #include <cmath>
 #include <numeric>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace autoware::traffic_light
@@ -51,19 +52,22 @@ static constexpr float TLR_BBOX_OFFSET = 0.5f * (TLR_SCALE_X_Y - 1.0f);
 // Anchor dimensions (pw, ph) per anchor - adjust if model uses different anchors
 static constexpr float TLR_ANCHORS[TLR_NUM_ANCHORS * 2] = {1.0f, 1.0f, 2.0f, 2.0f, 4.0f, 4.0f};
 
-static float boxIou(const BBox & a, const BBox & b)
+static float boxIou(const BBox & bbox1, const BBox & bbox2)
 {
-  const float ix1 = std::max(a.x1, b.x1);
-  const float iy1 = std::max(a.y1, b.y1);
-  const float ix2 = std::min(a.x2, b.x2);
-  const float iy2 = std::min(a.y2, b.y2);
-  const float iw = std::max(0.0f, ix2 - ix1);
-  const float ih = std::max(0.0f, iy2 - iy1);
-  const float inter = iw * ih;
-  const float area_a = (a.x2 - a.x1) * (a.y2 - a.y1);
-  const float area_b = (b.x2 - b.x1) * (b.y2 - b.y1);
-  const float uni = area_a + area_b - inter;
-  return (uni > 1e-6f) ? (inter / uni) : 0.0f;
+  auto overlap1D = [](float x1min, float x1max, float x2min, float x2max) -> float {
+    if (x1min > x2min) {
+      std::swap(x1min, x2min);
+      std::swap(x1max, x2max);
+    }
+    return x1max < x2min ? 0.0f : std::min(x1max, x2max) - x2min;
+  };
+  const float overlap_x = overlap1D(bbox1.x1, bbox1.x2, bbox2.x1, bbox2.x2);
+  const float overlap_y = overlap1D(bbox1.y1, bbox1.y2, bbox2.y1, bbox2.y2);
+  const float area1 = (bbox1.x2 - bbox1.x1) * (bbox1.y2 - bbox1.y1);
+  const float area2 = (bbox2.x2 - bbox2.x1) * (bbox2.y2 - bbox2.y1);
+  const float overlap_2d = overlap_x * overlap_y;
+  const float u = area1 + area2 - overlap_2d;
+  return (u == 0.0f) ? 0.0f : overlap_2d / u;
 }
 
 static void runNms(
@@ -72,25 +76,19 @@ static void runNms(
 {
   out.clear();
   if (detections.empty()) return;
-  std::vector<int> order(detections.size());
-  std::iota(order.begin(), order.end(), 0);
-  std::sort(order.begin(), order.end(), [&detections](int i, int j) {
-    return detections[i].prob > detections[j].prob;
-  });
-  std::vector<bool> suppressed(detections.size(), false);
-  for (size_t i = 0; i < order.size(); ++i) {
-    const int idx = order[i];
-    if (suppressed[idx]) continue;
-    out.push_back(detections[idx]);
-    const BBoxInfo & a = detections[idx];
-    for (size_t j = i + 1; j < order.size(); ++j) {
-      const int jdx = order[j];
-      if (suppressed[jdx]) continue;
-      const BBoxInfo & b = detections[jdx];
-      if (a.classId != b.classId || a.subClassId != b.subClassId) continue;
-      const float iou = boxIou(a.box, b.box);
-      if (iou > iou_threshold) suppressed[jdx] = true;
+  std::stable_sort(detections.begin(), detections.end(),
+    [](const BBoxInfo & b1, const BBoxInfo & b2) { return b1.prob > b2.prob; });
+  for (const auto & i : detections) {
+    bool keep = true;
+    for (const auto & j : out) {
+      if (keep) {
+        const float overlap = boxIou(i.box, j.box);
+        keep = (overlap <= iou_threshold);
+      } else {
+        break;
+      }
     }
+    if (keep) out.push_back(i);
   }
 }
 
