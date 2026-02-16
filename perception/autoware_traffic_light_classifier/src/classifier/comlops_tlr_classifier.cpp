@@ -397,8 +397,33 @@ void CoMLOpsTLRClassifier::toTrafficLightElements(
 }
 
 void CoMLOpsTLRClassifier::outputDebugImage(
-  cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal)
+  cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
+  const std::vector<BBoxInfo> * detections)
 {
+  const int img_w = debug_image.cols;
+  const int img_h = debug_image.rows;
+
+  if (detections && !detections->empty()) {
+    // Image is RGB: (R, G, B)
+    static const cv::Scalar colors[] = {
+      cv::Scalar(0, 255, 0),    // green  (R, G, B)
+      cv::Scalar(255, 255, 0),  // yellow/amber
+      cv::Scalar(255, 0, 0),    // red
+    };
+    for (const auto & d : *detections) {
+      const int x1 = static_cast<int>(d.box.x1 * img_w);
+      const int y1 = static_cast<int>(d.box.y1 * img_h);
+      const int x2 = static_cast<int>(d.box.x2 * img_w);
+      const int y2 = static_cast<int>(d.box.y2 * img_h);
+      const int color_idx = std::min(2, std::max(0, d.subClassId));
+      cv::rectangle(debug_image, cv::Point(x1, y1), cv::Point(x2, y2), colors[color_idx], 2);
+      const std::string prob_str = std::to_string(static_cast<int>(d.prob * 100)) + "%";
+      cv::putText(
+        debug_image, prob_str, cv::Point(x1, std::max(12, y1 - 2)), cv::FONT_HERSHEY_SIMPLEX,
+        0.4, colors[color_idx], 1);
+    }
+  }
+
   // One token per lamp, comma-separated: green | left,red | red,right,straight | red,up_left | etc.
   std::string label;
   float probability = 0.0f;
@@ -492,7 +517,7 @@ bool CoMLOpsTLRClassifier::getTrafficSignals(
           d.subClassId, d.classId, d.prob, angle_rad, traffic_signals.signals[signal_i]);
       }
       if (image_pub_.getNumSubscribers() > 0) {
-        outputDebugImage(batch[i], traffic_signals.signals[signal_i]);
+        outputDebugImage(batch[i], traffic_signals.signals[signal_i], &detections_per_roi[i]);
       }
       signal_i++;
     }
