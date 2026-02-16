@@ -38,8 +38,8 @@ struct PolygonIntersection
 {
   bool is_path_inside_of_polygon = false;  // true if path is completely inside the speed bump
                                            // polygon (no intersection point)
-  std::optional<double> first_intersection_s;
-  std::optional<double> second_intersection_s;
+  std::optional<double> first_intersection_s = std::nullopt;
+  std::optional<double> second_intersection_s = std::nullopt;
 };
 
 PolygonIntersection getPathIntersectionWithSpeedBumpPolygon(
