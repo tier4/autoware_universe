@@ -25,7 +25,6 @@
 #include <rclcpp/subscription.hpp>
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
-#include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -38,7 +37,6 @@ namespace autoware::trajectory_optimizer
 {
 
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
-using autoware_internal_planning_msgs::msg::VelocityLimit;
 using autoware_planning_msgs::msg::Trajectory;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
@@ -54,9 +52,6 @@ private:
   void initialize_optimizers();
   void load_plugin(const std::string & plugin_name);
   bool initialized_optimizers_{false};
-  void publish_default_velocity_limit();
-  void on_external_velocity_limit(const VelocityLimit::ConstSharedPtr msg);
-  void publish_velocity_limit(const VelocityLimit & velocity_limit);
 
   /**
    * @brief Callback for parameter updates
@@ -75,19 +70,14 @@ private:
   // interface publisher
   rclcpp::Publisher<Trajectory>::SharedPtr trajectory_pub_;
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr trajectories_pub_;
-  rclcpp::Publisher<VelocityLimit>::SharedPtr velocity_limit_pub_;
 
   autoware_utils::InterProcessPollingSubscriber<Odometry> sub_current_odometry_{
     this, "~/input/odometry"};
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
     sub_current_acceleration_{this, "~/input/acceleration"};
-  rclcpp::Subscription<VelocityLimit>::SharedPtr external_velocity_limit_sub_;
 
   Odometry::ConstSharedPtr current_odometry_ptr_;  // current odometry
   AccelWithCovarianceStamped::ConstSharedPtr current_acceleration_ptr_;
-  VelocityLimit current_velocity_limit_;
-  double max_velocity_{0.0};
-  bool external_velocity_limit_received_{false};
 
   rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
