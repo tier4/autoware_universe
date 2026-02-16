@@ -29,15 +29,70 @@ namespace autoware::traffic_light
 
 using tier4_perception_msgs::msg::TrafficLightElement;
 
-// TLR output layout per anchor: bbox(4) + obj(1) + color(3) + type(6) + angle(2) = 16
+// TLR output layout per anchor (same as TrtLightnet): bbox(4) + obj(1) + color(3) + type(6) + angle(2) = 16
+//  {bbox}       {obj}  {color}        {type}           {angle}
+//  {0 1 2 3}    {4}    {5 6 7}   {8 9 10 11 12 13}   {14 15}
 static constexpr int TLR_NUM_ANCHORS = 3;
 static constexpr int TLR_CHANS_PER_ANCHOR = 16;
-static constexpr int TLR_COLOR_START = 5;
-static constexpr int TLR_TYPE_START = 8;
+static constexpr int TLR_X_INDEX = 0;
+static constexpr int TLR_Y_INDEX = 1;
+static constexpr int TLR_W_INDEX = 2;
+static constexpr int TLR_H_INDEX = 3;
+static constexpr int TLR_OBJ_INDEX = 4;
+static constexpr int TLR_COLOR_START = 5;   // 5, 6, 7
+static constexpr int TLR_TYPE_START = 8;    // 8..13 (5+3+num_class_)
 static constexpr int TLR_NUM_TYPES = 6;
 static constexpr int TLR_NUM_COLORS = 3;
 static constexpr int TLR_COS_INDEX = 14;
 static constexpr int TLR_SIN_INDEX = 15;
+// Scaled-YOLOv4 bbox decoding (sigmoid in last layer)
+static constexpr float TLR_SCALE_X_Y = 2.0f;
+static constexpr float TLR_BBOX_OFFSET = 0.5f * (TLR_SCALE_X_Y - 1.0f);
+// Anchor dimensions (pw, ph) per anchor - adjust if model uses different anchors
+static constexpr float TLR_ANCHORS[TLR_NUM_ANCHORS * 2] = {1.0f, 1.0f, 2.0f, 2.0f, 4.0f, 4.0f};
+
+static float boxIou(const BBox & a, const BBox & b)
+{
+  const float ix1 = std::max(a.x1, b.x1);
+  const float iy1 = std::max(a.y1, b.y1);
+  const float ix2 = std::min(a.x2, b.x2);
+  const float iy2 = std::min(a.y2, b.y2);
+  const float iw = std::max(0.0f, ix2 - ix1);
+  const float ih = std::max(0.0f, iy2 - iy1);
+  const float inter = iw * ih;
+  const float area_a = (a.x2 - a.x1) * (a.y2 - a.y1);
+  const float area_b = (b.x2 - b.x1) * (b.y2 - b.y1);
+  const float uni = area_a + area_b - inter;
+  return (uni > 1e-6f) ? (inter / uni) : 0.0f;
+}
+
+static void runNms(
+  std::vector<BBoxInfo> & detections, float iou_threshold,
+  std::vector<BBoxInfo> & out)
+{
+  out.clear();
+  if (detections.empty()) return;
+  std::vector<int> order(detections.size());
+  std::iota(order.begin(), order.end(), 0);
+  std::sort(order.begin(), order.end(), [&detections](int i, int j) {
+    return detections[i].prob > detections[j].prob;
+  });
+  std::vector<bool> suppressed(detections.size(), false);
+  for (size_t i = 0; i < order.size(); ++i) {
+    const int idx = order[i];
+    if (suppressed[idx]) continue;
+    out.push_back(detections[idx]);
+    const BBoxInfo & a = detections[idx];
+    for (size_t j = i + 1; j < order.size(); ++j) {
+      const int jdx = order[j];
+      if (suppressed[jdx]) continue;
+      const BBoxInfo & b = detections[jdx];
+      if (a.classId != b.classId || a.subClassId != b.subClassId) continue;
+      const float iou = boxIou(a.box, b.box);
+      if (iou > iou_threshold) suppressed[jdx] = true;
+    }
+  }
+}
 
 CoMLOpsTLRClassifier::CoMLOpsTLRClassifier(rclcpp::Node * node_ptr) : node_ptr_(node_ptr)
 {
@@ -48,6 +103,8 @@ CoMLOpsTLRClassifier::CoMLOpsTLRClassifier(rclcpp::Node * node_ptr) : node_ptr_(
   const std::string precision = node_ptr_->declare_parameter<std::string>("precision");
   score_threshold_ =
     static_cast<float>(node_ptr_->declare_parameter<double>("score_threshold", 0.2));
+  nms_threshold_ =
+    static_cast<float>(node_ptr_->declare_parameter<double>("nms_threshold", 0.5));
   max_batch_size_ = node_ptr_->declare_parameter<int>("max_batch_size", 64);
   const int default_input_h = node_ptr_->declare_parameter<int>("input_height", 64);
   const int default_input_w = node_ptr_->declare_parameter<int>("input_width", 64);
@@ -90,19 +147,39 @@ CoMLOpsTLRClassifier::CoMLOpsTLRClassifier(rclcpp::Node * node_ptr) : node_ptr_(
     throw std::runtime_error("CoMLOpsTLRClassifier: Failed to setup TensorRT engine");
   }
 
-  nvinfer1::Dims output_dims = trt_common_->getOutputDims(0);
-  const int out_c = output_dims.d[1] > 0 ? output_dims.d[1] : 48;
-  output_grid_h_ = output_dims.d[2] > 0 ? output_dims.d[2] : 8;
-  output_grid_w_ = output_dims.d[3] > 0 ? output_dims.d[3] : 8;
+  const int32_t nb_io = trt_common_->getNbIOTensors();
+  const int32_t num_outputs = nb_io - 1;
+  if (num_outputs < 1) {
+    throw std::runtime_error("CoMLOpsTLRClassifier: engine has no output bindings");
+  }
+
+  output_d_.resize(num_outputs);
+  output_h_.resize(num_outputs);
+
+  for (int32_t o = 0; o < num_outputs; ++o) {
+    nvinfer1::Dims dims = trt_common_->getOutputDims(o);
+    const int32_t batch_dim = dims.d[0] > 0 ? dims.d[0] : max_batch_size_;
+    dims.d[0] = batch_dim >= 1 ? batch_dim : 1;
+    if (o == 0) {
+      out_c_ = dims.d[1] > 0 ? dims.d[1] : 48;
+      output_grid_h_ = dims.d[2] > 0 ? dims.d[2] : 8;
+      output_grid_w_ = dims.d[3] > 0 ? dims.d[3] : 8;
+      dims.d[1] = out_c_;
+      dims.d[2] = output_grid_h_;
+      dims.d[3] = output_grid_w_;
+    }
+    for (int32_t j = 1; j < dims.nbDims; ++j) {
+      if (dims.d[j] <= 0) dims.d[j] = 1;
+    }
+    const size_t vol = std::accumulate(
+      dims.d, dims.d + dims.nbDims, static_cast<size_t>(1), std::multiplies<size_t>());
+    output_d_[o] = autoware::cuda_utils::make_unique<float[]>(vol);
+    output_h_[o] = autoware::cuda_utils::make_unique_host<float[]>(vol, cudaHostAllocPortable);
+  }
 
   const size_t input_vol = static_cast<size_t>(max_batch_size_) * input_c_ * input_height_ *
                             input_width_;
   input_d_ = autoware::cuda_utils::make_unique<float[]>(input_vol);
-
-  const size_t output_vol = static_cast<size_t>(max_batch_size_) * out_c * output_grid_h_ *
-                            output_grid_w_;
-  output_d_ = autoware::cuda_utils::make_unique<float[]>(output_vol);
-  output_h_ = autoware::cuda_utils::make_unique_host<float[]>(output_vol, cudaHostAllocPortable);
 }
 
 void CoMLOpsTLRClassifier::preprocess(const std::vector<cv::Mat> & images)
@@ -129,86 +206,133 @@ bool CoMLOpsTLRClassifier::doInference(size_t batch_size)
     return false;
   }
 
-  const int out_c = 48;
-  const size_t out_vol =
-    static_cast<size_t>(batch_size) * out_c * output_grid_h_ * output_grid_w_;
-  std::vector<void *> buffers = {input_d_.get(), output_d_.get()};
+  std::vector<void *> buffers = {input_d_.get()};
+  for (size_t i = 0; i < output_d_.size(); ++i) {
+    buffers.push_back(output_d_.at(i).get());
+  }
   if (!trt_common_->setTensorsAddresses(buffers)) {
     return false;
   }
   if (!trt_common_->enqueueV3(*stream_)) {
     return false;
   }
-  CHECK_CUDA_ERROR(cudaMemcpyAsync(
-    output_h_.get(), output_d_.get(), out_vol * sizeof(float), cudaMemcpyDeviceToHost, *stream_));
+
+  for (size_t i = 0; i < output_d_.size(); ++i) {
+    nvinfer1::Dims dims = trt_common_->getOutputDims(static_cast<int32_t>(i));
+    dims.d[0] = static_cast<int32_t>(batch_size);
+    for (int32_t j = 1; j < dims.nbDims; ++j) {
+      if (dims.d[j] <= 0) dims.d[j] = 1;
+    }
+    const size_t output_size =
+      std::accumulate(dims.d, dims.d + dims.nbDims, static_cast<size_t>(1), std::multiplies<size_t>());
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(
+      output_h_.at(i).get(), output_d_.at(i).get(), output_size * sizeof(float),
+      cudaMemcpyDeviceToHost, *stream_));
+  }
   CHECK_CUDA_ERROR(cudaStreamSynchronize(*stream_));
   return true;
 }
 
 void CoMLOpsTLRClassifier::decodeTlrOutput(
-  size_t batch_size, std::vector<int> & colors, std::vector<int> & types,
-  std::vector<float> & confidences, std::vector<float> * angles)
+  size_t batch_size, std::vector<std::vector<BBoxInfo>> & detections_per_roi)
 {
-  colors.resize(batch_size, 0);
-  types.resize(batch_size, 0);
-  confidences.resize(batch_size, 0.0f);
-  if (angles) angles->resize(batch_size, 0.0f);
+  detections_per_roi.resize(batch_size);
 
   const int grid_size = output_grid_h_ * output_grid_w_;
-  const int out_c = TLR_NUM_ANCHORS * TLR_CHANS_PER_ANCHOR;  // 48
-  const size_t batch_stride = static_cast<size_t>(out_c) * grid_size;
-
+  const size_t batch_stride =
+    static_cast<size_t>(out_c_) * static_cast<size_t>(output_grid_h_) * output_grid_w_;
+  const float * out_base = output_h_.at(0).get();
   for (size_t b = 0; b < batch_size; ++b) {
-    const float * out = output_h_.get() + b * batch_stride;
-    float best_score = 0.0f;
-    int best_color = 0;
-    int best_type = 0;
-    float best_cos = 1.0f;
-    float best_sin = 0.0f;
+    detections_per_roi[b].clear();
+
+    // 1) Decode all raw detections (bbox + obj + color + type + angle) as in TrtLightnet::decodeTLRTensor.
+    std::vector<BBoxInfo> raw;
+    const float * out = out_base + b * batch_stride;
+    const float grid_w_f = static_cast<float>(output_grid_w_);
+    const float grid_h_f = static_cast<float>(output_grid_h_);
 
     for (int y = 0; y < output_grid_h_; ++y) {
       for (int x = 0; x < output_grid_w_; ++x) {
         const int cell = y * output_grid_w_ + x;
         for (int a = 0; a < TLR_NUM_ANCHORS; ++a) {
           const int base = (a * TLR_CHANS_PER_ANCHOR) * grid_size + cell;
-          const float obj = out[base + 4 * grid_size];
-          if (obj < score_threshold_) continue;
 
+          const float objectness = out[base + TLR_OBJ_INDEX * grid_size];
+          if (objectness < score_threshold_) continue;
+
+          // Decode bounding box (Scaled-YOLOv4): bx = x + scale_x_y*tx - offset; bw = pw*(tw*2)^2
+          const float pw = TLR_ANCHORS[a * 2];
+          const float ph = TLR_ANCHORS[a * 2 + 1];
+          const float tx = out[base + TLR_X_INDEX * grid_size];
+          const float ty = out[base + TLR_Y_INDEX * grid_size];
+          const float tw = out[base + TLR_W_INDEX * grid_size];
+          const float th = out[base + TLR_H_INDEX * grid_size];
+          const float bx = x + TLR_SCALE_X_Y * tx - TLR_BBOX_OFFSET;
+          const float by = y + TLR_SCALE_X_Y * ty - TLR_BBOX_OFFSET;
+          const float bw = pw * std::pow(tw * 2.0f, 2.0f);
+          const float bh = ph * std::pow(th * 2.0f, 2.0f);
+
+          // Decode class (type) probabilities and take max
           float max_type_prob = 0.0f;
           int type_idx = 0;
           for (int t = 0; t < TLR_NUM_TYPES; ++t) {
-            float p = out[base + (TLR_TYPE_START + t) * grid_size];
+            const float p = out[base + (TLR_TYPE_START + t) * grid_size];
             if (p > max_type_prob) {
               max_type_prob = p;
               type_idx = t;
             }
           }
+          // Decode sub-class (color) probabilities and take max
           float max_color_prob = 0.0f;
           int color_idx = 0;
           for (int c = 0; c < TLR_NUM_COLORS; ++c) {
-            float p = out[base + (TLR_COLOR_START + c) * grid_size];
+            const float p = out[base + (TLR_COLOR_START + c) * grid_size];
             if (p > max_color_prob) {
               max_color_prob = p;
               color_idx = c;
             }
           }
-          const float score = obj * max_type_prob;
-          if (score > best_score) {
-            best_score = score;
-            best_color = color_idx;
-            best_type = type_idx;
-            best_cos = out[base + TLR_COS_INDEX * grid_size];
-            best_sin = out[base + TLR_SIN_INDEX * grid_size];
-          }
+
+          const float score = objectness * max_type_prob;
+          if (score < score_threshold_) continue;
+
+          const float cos_val = out[base + TLR_COS_INDEX * grid_size];
+          const float sin_val = out[base + TLR_SIN_INDEX * grid_size];
+
+          // Convert decoded box (grid space) to normalized [0,1] (x1,y1,x2,y2)
+          const float cx = bx / grid_w_f;
+          const float cy = by / grid_h_f;
+          const float half_w = (bw * 0.5f) / grid_w_f;
+          const float half_h = (bh * 0.5f) / grid_h_f;
+          float x1 = cx - half_w;
+          float y1 = cy - half_h;
+          float x2 = cx + half_w;
+          float y2 = cy + half_h;
+          x1 = std::max(0.0f, std::min(1.0f, x1));
+          y1 = std::max(0.0f, std::min(1.0f, y1));
+          x2 = std::max(0.0f, std::min(1.0f, x2));
+          y2 = std::max(0.0f, std::min(1.0f, y2));
+
+          BBoxInfo info;
+          info.box.x1 = x1;
+          info.box.y1 = y1;
+          info.box.x2 = x2;
+          info.box.y2 = y2;
+          info.label = type_idx;
+          info.classId = type_idx;
+          info.prob = score;
+          info.isHierarchical = true;
+          info.subClassId = color_idx;
+          info.sin = sin_val;
+          info.cos = cos_val;
+          info.keypoint.clear();
+          raw.push_back(info);
         }
       }
     }
-    colors[b] = best_color;
-    types[b] = best_type;
-    confidences[b] = best_score;
-    if (angles) {
-      (*angles)[b] = std::atan2(best_sin, best_cos);  // radians
-    }
+
+    // 2) NMS: keep highest-score per (classId, subClassId), suppress overlapping boxes.
+    runNms(raw, nms_threshold_, detections_per_roi[b]);
   }
 }
 
@@ -355,15 +479,18 @@ bool CoMLOpsTLRClassifier::getTrafficSignals(
       return false;
     }
 
-    std::vector<int> colors, types;
-    std::vector<float> confidences, angles;
-    decodeTlrOutput(current_batch_size, colors, types, confidences, &angles);
+    std::vector<std::vector<BBoxInfo>> detections_per_roi;
+    decodeTlrOutput(current_batch_size, detections_per_roi);
 
     for (size_t i = 0; i < current_batch_size; i++) {
-      // throw current_batch_size info for debug
-      RCLCPP_INFO(node_ptr_->get_logger(), "current_batch_size: %zu", current_batch_size);
-      toTrafficLightElements(
-        colors[i], types[i], confidences[i], angles[i], traffic_signals.signals[signal_i]);
+      RCLCPP_INFO(
+        node_ptr_->get_logger(), "batch index %zu, number of output per image: %zu", i,
+        detections_per_roi[i].size());
+      for (const auto & d : detections_per_roi[i]) {
+        const float angle_rad = std::atan2(d.sin, d.cos);
+        toTrafficLightElements(
+          d.subClassId, d.classId, d.prob, angle_rad, traffic_signals.signals[signal_i]);
+      }
       if (image_pub_.getNumSubscribers() > 0) {
         outputDebugImage(batch[i], traffic_signals.signals[signal_i]);
       }

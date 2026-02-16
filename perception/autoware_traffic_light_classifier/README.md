@@ -2,16 +2,12 @@
 
 ## Purpose
 
-`autoware_traffic_light_classifier` is a package for classifying traffic light labels using cropped image around a traffic light. This package has three classifier options: `hsv_classifier`, `cnn_classifier`, and `comlops_tlr_classifier`.
+`autoware_traffic_light_classifier` is a package for classifying traffic light labels using cropped image around a traffic light. This package has two classifier models: `cnn_classifier` and `hsv_classifier`.
 
 ## Inner-workings / Algorithms
 
 If height and width of `~/input/rois` is `0`, color, shape, and confidence of `~/output/traffic_signals` become `UNKNOWN`, `CIRCLE`, and `0.0`.
 If `~/input/rois` is judged as backlight, color, shape, and confidence of `~/output/traffic_signals` become `UNKNOWN`, `UNKNOWN`, and `0.0`.
-
-### comlops_tlr_classifier (classifier_type: 2)
-
-Traffic light is classified using the **CoMLOps-TLR-v1.0.1-dynamic_batch** ONNX model. The node builds a TensorRT engine from the ONNX (or loads a cached `.engine` file), runs batched inference on cropped ROIs, decodes the TLR detection output (color: green/yellow/red; type: circle, arrow, cross, etc.), and remaps results to the same `TrafficLightArray` message format as the CNN classifier. Set `classifier_type: 2` and `model_path` to the CoMLOps-TLR ONNX path. Optional parameters: `score_threshold`, `max_batch_size`, `input_height`, `input_width`. Use `build_only: true` once to generate the engine file.
 
 ### cnn_classifier
 
