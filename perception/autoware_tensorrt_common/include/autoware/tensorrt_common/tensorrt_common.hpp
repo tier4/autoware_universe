@@ -140,6 +140,9 @@ public:
    */
   [[nodiscard]] nvinfer1::Dims getOutputDims(const int32_t index) const;
 
+  // temporary method for accessing engine, which will be used for checking engine compatibility with trt-config and for getting engine information for profiling. It will be removed after the compatibility check and profiling information retrieval are implemented in setup() method.
+  [[nodiscard]] nvinfer1::ICudaEngine* getEngine() const { return engine_.get(); }
+
   /**
    * @brief Set tensor address by index via TensorRT context.
    *
