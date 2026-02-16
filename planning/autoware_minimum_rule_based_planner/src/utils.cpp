@@ -157,6 +157,29 @@ std::optional<lanelet::ConstLanelet> get_next_lanelet_within_route(
     return std::nullopt;
   }
 
+  // // 1. Check if any following lanelet is preferred
+  // for (const auto & next : next_lanelets) {
+  //   if (exists(planner_data.preferred_lanelets, next)) {
+  //     RCLCPP_INFO(rclcpp::get_logger(""), "next: %ld", next.id());
+  //     return next;
+  //   }
+  // }
+
+  // // 2. Check if a preferred lanelet is adjacent to any following route lanelet
+  // for (const auto & next : next_lanelets) {
+  //   if (!exists(planner_data.route_lanelets, next)) {
+  //     continue;
+  //   }
+  //   const auto & rg = planner_data.routing_graph_ptr;
+  //   for (const auto & beside : rg->besides(next)) {
+  //     if (beside.id() != next.id() && exists(planner_data.preferred_lanelets, beside)) {
+  //       RCLCPP_INFO(rclcpp::get_logger(""), "beside: %ld", next.id());
+  //       return beside;
+  //     }
+  //   }
+  // }
+
+  // 3. Fallback: any route lanelet
   const auto next_lanelet_itr = std::find_if(
     next_lanelets.cbegin(), next_lanelets.cend(),
     [&](const lanelet::ConstLanelet & l) { return exists(planner_data.route_lanelets, l); });
@@ -850,6 +873,228 @@ autoware_planning_msgs::msg::Trajectory convert_path_to_trajectory(
   const auto traj_msg = autoware::motion_utils::convertToTrajectory(traj_points, path.header);
   return autoware::motion_utils::resampleTrajectory(
     traj_msg, resample_interval, false, true, true, true);
+}
+
+std::optional<LaneTransitionInfo> detect_lane_transition(
+  const lanelet::ConstLanelet & current_lanelet, const RouteContext & route_context,
+  const double forward_distance)
+{
+  // Helper lambda: BFS laterally through adjacent lanelets to find a preferred lanelet.
+  // Supports multi-lane transitions (e.g. 3-4 lanes across).
+  auto try_build_transition =
+    [&](const lanelet::ConstLanelet & lanelet) -> std::optional<LaneTransitionInfo> {
+    std::vector<lanelet::Id> visited = {lanelet.id()};
+    std::vector<lanelet::ConstLanelet> queue;
+
+    // Seed BFS with direct adjacents
+    for (const auto & beside : route_context.routing_graph_ptr->besides(lanelet)) {
+      if (beside.id() != lanelet.id()) {
+        queue.push_back(beside);
+        visited.push_back(beside.id());
+      }
+    }
+
+    while (!queue.empty()) {
+      std::vector<lanelet::ConstLanelet> next_queue;
+      for (const auto & candidate : queue) {
+        if (exists(route_context.preferred_lanelets, candidate)) {
+          // Found a preferred lanelet (possibly multiple lanes away)
+          LaneTransitionInfo info;
+          info.pre_transition_lanelets.push_back(current_lanelet);
+          info.transition_from = lanelet;
+          info.transition_to = candidate;
+
+          // Build post-transition lanelets from the preferred lanelet forward
+          info.post_transition_lanelets.push_back(candidate);
+          auto post_current = candidate;
+          double post_length = 0.0;
+          while (post_length < forward_distance) {
+            const auto post_next = get_next_lanelet_within_route(post_current, route_context);
+            if (!post_next) {
+              break;
+            }
+            info.post_transition_lanelets.push_back(*post_next);
+            post_current = *post_next;
+            post_length += lanelet::geometry::length2d(*post_next);
+          }
+          return info;
+        }
+
+        // Continue BFS: expand to adjacents of candidate
+        for (const auto & beside : route_context.routing_graph_ptr->besides(candidate)) {
+          if (
+            std::find(visited.begin(), visited.end(), beside.id()) == visited.end()) {
+            next_queue.push_back(beside);
+            visited.push_back(beside.id());
+          }
+        }
+      }
+      queue = next_queue;
+    }
+    return std::nullopt;
+  };
+
+  // First check if current lanelet itself has an adjacent preferred lanelet
+  // (ego is already on the transition lanelet)
+  if (!exists(route_context.preferred_lanelets, current_lanelet)) {
+    if (auto info = try_build_transition(current_lanelet)) {
+      // pre_transition_lanelets already contains current_lanelet from the lambda
+      return info;
+    }
+  }
+
+  // Walk forward to find a transition point ahead
+  auto current = current_lanelet;
+  double accumulated_length = 0.0;
+  lanelet::ConstLanelets intermediate_lanelets;
+
+  while (accumulated_length < forward_distance) {
+    const auto following = route_context.routing_graph_ptr->following(current);
+    if (following.empty()) {
+      break;
+    }
+
+    // Find next route lanelet
+    const auto next_it = std::find_if(
+      following.cbegin(), following.cend(),
+      [&](const lanelet::ConstLanelet & l) { return exists(route_context.route_lanelets, l); });
+    if (next_it == following.cend()) {
+      break;
+    }
+    const auto & next = *next_it;
+
+    // If next is directly a preferred lanelet, the path continues on the preferred lane
+    // without needing a lateral transition → no blend needed
+    if (exists(route_context.preferred_lanelets, next)) {
+      return std::nullopt;
+    }
+
+    // Check if the next lanelet has an adjacent preferred lanelet
+    if (auto info = try_build_transition(next)) {
+      // Insert intermediate lanelets into pre_transition_lanelets
+      // (lambda already has current_lanelet as first element)
+      for (const auto & ll : intermediate_lanelets) {
+        info->pre_transition_lanelets.push_back(ll);
+      }
+      info->pre_transition_lanelets.push_back(next);
+      return info;
+    }
+
+    // Continue forward on current lane
+    intermediate_lanelets.push_back(next);
+    current = next;
+    accumulated_length += lanelet::geometry::length2d(next);
+  }
+
+  return std::nullopt;
+}
+
+std::vector<PathPointWithLaneId> blend_centerlines(
+  const std::vector<PathPointWithLaneId> & source_points,
+  const std::vector<PathPointWithLaneId> & target_points, const double blend_start_s,
+  const double blend_length)
+{
+  if (source_points.empty() || target_points.empty() || blend_length <= 0.0) {
+    return source_points;
+  }
+
+  // Compute arc lengths for source points
+  std::vector<double> source_arc_lengths(source_points.size(), 0.0);
+  for (size_t i = 1; i < source_points.size(); ++i) {
+    source_arc_lengths[i] = source_arc_lengths[i - 1] + autoware_utils::calc_distance2d(
+                                                          source_points[i - 1].point.pose.position,
+                                                          source_points[i].point.pose.position);
+  }
+
+  // Compute arc lengths for target points
+  std::vector<double> target_arc_lengths(target_points.size(), 0.0);
+  for (size_t i = 1; i < target_points.size(); ++i) {
+    target_arc_lengths[i] = target_arc_lengths[i - 1] + autoware_utils::calc_distance2d(
+                                                          target_points[i - 1].point.pose.position,
+                                                          target_points[i].point.pose.position);
+  }
+
+  const double blend_end_s = blend_start_s + blend_length;
+
+  std::vector<PathPointWithLaneId> blended_points;
+  blended_points.reserve(source_points.size() + target_points.size());
+
+  // Phase 1: Source points before blend zone
+  for (size_t i = 0; i < source_points.size(); ++i) {
+    if (source_arc_lengths[i] >= blend_start_s) {
+      break;
+    }
+    blended_points.push_back(source_points[i]);
+  }
+
+  // Phase 2: Blend zone - interpolate between source and target
+  // Use source points in the blend zone and interpolate target position at same arc length
+  for (size_t i = 0; i < source_points.size(); ++i) {
+    const double s = source_arc_lengths[i];
+    if (s < blend_start_s || s > blend_end_s) {
+      continue;
+    }
+
+    // Smoothstep weight: w = 3t^2 - 2t^3
+    const double t = std::clamp((s - blend_start_s) / blend_length, 0.0, 1.0);
+    const double w = t * t * (3.0 - 2.0 * t);
+
+    // Find corresponding position on target centerline at same relative progress within blend zone
+    // Map blend progress [0,1] to target arc length [0, blend_length]
+    const double target_s = t * std::min(blend_length, target_arc_lengths.back());
+
+    // Find target point by linear interpolation at target_s
+    size_t target_idx = 0;
+    for (size_t j = 1; j < target_points.size(); ++j) {
+      if (target_arc_lengths[j] >= target_s) {
+        target_idx = j - 1;
+        break;
+      }
+      target_idx = j;
+    }
+
+    geometry_msgs::msg::Point target_pos;
+    if (target_idx + 1 < target_points.size()) {
+      const double seg_len = target_arc_lengths[target_idx + 1] - target_arc_lengths[target_idx];
+      const double ratio =
+        (seg_len > 1e-6) ? (target_s - target_arc_lengths[target_idx]) / seg_len : 0.0;
+      const auto & p0 = target_points[target_idx].point.pose.position;
+      const auto & p1 = target_points[target_idx + 1].point.pose.position;
+      target_pos.x = p0.x + ratio * (p1.x - p0.x);
+      target_pos.y = p0.y + ratio * (p1.y - p0.y);
+      target_pos.z = p0.z + ratio * (p1.z - p0.z);
+    } else {
+      target_pos = target_points.back().point.pose.position;
+    }
+
+    // Interpolate position
+    PathPointWithLaneId blended_point = source_points[i];
+    blended_point.point.pose.position.x =
+      (1.0 - w) * source_points[i].point.pose.position.x + w * target_pos.x;
+    blended_point.point.pose.position.y =
+      (1.0 - w) * source_points[i].point.pose.position.y + w * target_pos.y;
+    blended_point.point.pose.position.z =
+      (1.0 - w) * source_points[i].point.pose.position.z + w * target_pos.z;
+
+    // Use target lane_id in the latter half of the blend
+    if (w > 0.5 && !target_points.empty()) {
+      blended_point.lane_ids =
+        target_points[std::min(target_idx, target_points.size() - 1)].lane_ids;
+    }
+
+    blended_points.push_back(blended_point);
+  }
+
+  // Phase 3: Target points after blend zone
+  // Append target points whose arc length exceeds the blend portion (blend_length)
+  const double target_s_at_blend_end = std::min(blend_length, target_arc_lengths.back());
+  for (size_t i = 0; i < target_points.size(); ++i) {
+    if (target_arc_lengths[i] > target_s_at_blend_end) {
+      blended_points.push_back(target_points[i]);
+    }
+  }
+
+  return blended_points;
 }
 
 }  // namespace autoware::minimum_rule_based_planner::utils

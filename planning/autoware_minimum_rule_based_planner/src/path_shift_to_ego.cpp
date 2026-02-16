@@ -47,6 +47,7 @@ Trajectory shift_trajectory_to_ego(
     return trajectory;
   }
 
+  // TODO: 速度依存で決める
   // Scale shift distance based on lateral offset so that cross-lane shifts get enough room
   const double shift_distance = std::max(
     params.minimum_shift_distance,

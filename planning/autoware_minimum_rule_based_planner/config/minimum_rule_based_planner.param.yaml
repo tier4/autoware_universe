@@ -14,6 +14,9 @@
 
     path_shift:
       enable: true
+      minimum_shift_length: 0.3
+      minimum_shift_distance: 5.0
+      shift_length_to_distance_ratio: 8.0
 
     waypoint_group:
       separation_threshold: 1.0
@@ -39,5 +42,12 @@
     velocity_smoother:
       enable: true
 
-    mpt_optimizer:
-      enable: false
+    # Post-optimization resample
+    post_resample:
+      max_trajectory_length: 300.0
+      min_trajectory_length: 30.0
+      resample_time: 10.0
+      dense_resample_dt: 0.1
+      dense_min_interval_distance: 0.1
+      sparse_resample_dt: 0.1
+      sparse_min_interval_distance: 1.0

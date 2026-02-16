@@ -22,6 +22,7 @@
 #include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/trajectory/utils/pretty_build.hpp>
+#include <autoware/velocity_smoother/resample.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
@@ -76,6 +77,8 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
     this->create_publisher<CandidateTrajectories>("~/output/candidate_trajectories", 1);
   pub_debug_path_ = this->create_publisher<PathWithLaneId>("~/debug/path_with_lane_id", 1);
   pub_debug_trajectory_ = this->create_publisher<Trajectory>("~/debug/trajectory", 1);
+  pub_debug_shifted_trajectory_ =
+    this->create_publisher<Trajectory>("~/debug/shifted_trajectory", 1);
   debug_processing_time_detail_pub_ =
     this->create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
       "~/debug/processing_time_detail_ms", 1);
@@ -187,9 +190,16 @@ void MinimumRuleBasedPlannerNode::on_timer()
     const TrajectoryShiftParams shift_params{
       params.path_shift.minimum_shift_length, params.path_shift.minimum_shift_distance,
       params.path_shift.shift_length_to_distance_ratio};
+
     traj_from_path = shift_trajectory_to_ego(
       traj_from_path, input_data.odometry_ptr->pose.pose, shift_params,
       params.output_delta_arc_length);
+
+    // デバッグ用にpublishする
+    Trajectory shifted_traj;
+    shifted_traj.header = planned_path->header;
+    shifted_traj.points = traj_from_path.points;
+    pub_debug_shifted_trajectory_->publish(shifted_traj);
   }
 
   // 5. Smooth path
@@ -240,6 +250,31 @@ void MinimumRuleBasedPlannerNode::on_timer()
     auto trajectory_points = smoothed_path.points;
     if (velocity_optimizer_) {
       velocity_optimizer_->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
+    }
+
+    // Post-optimization resample (same as autoware_velocity_smoother)
+    {
+      autoware::velocity_smoother::resampling::ResampleParam post_resample_param;
+      post_resample_param.max_trajectory_length = params.post_resample.max_trajectory_length;
+      post_resample_param.min_trajectory_length = params.post_resample.min_trajectory_length;
+      post_resample_param.resample_time = params.post_resample.resample_time;
+      post_resample_param.dense_resample_dt = params.post_resample.dense_resample_dt;
+      post_resample_param.dense_min_interval_distance =
+        params.post_resample.dense_min_interval_distance;
+      post_resample_param.sparse_resample_dt = params.post_resample.sparse_resample_dt;
+      post_resample_param.sparse_min_interval_distance =
+        params.post_resample.sparse_min_interval_distance;
+
+      const auto & ego_pose = input_data.odometry_ptr->pose.pose;
+      const double v_current = input_data.odometry_ptr->twist.twist.linear.x;
+
+      trajectory_points = autoware::velocity_smoother::resampling::resampleTrajectory(
+        trajectory_points, v_current, ego_pose, params.lanelet_ego_nearest_dist_threshold,
+        params.lanelet_ego_nearest_yaw_threshold, post_resample_param, false);
+
+      if (!trajectory_points.empty()) {
+        trajectory_points.back().longitudinal_velocity_mps = 0.0;
+      }
     }
 
     autoware::motion_utils::calculate_time_from_start(
@@ -429,6 +464,19 @@ bool MinimumRuleBasedPlannerNode::update_current_lanelet(
     const auto next_lanelet =
       utils::get_next_lanelet_within_route(*current_lanelet_, route_context_)) {
     candidates.push_back(*next_lanelet);
+  }
+
+  // Include adjacent route lanelets so that ego transitions to the correct lane
+  // during lane changes (e.g., 2→4) instead of being picked up by a longitudinally
+  // adjacent lanelet on the wrong lane (e.g., 3)
+  for (const auto & beside : route_context_.routing_graph_ptr->besides(*current_lanelet_)) {
+    if (
+      beside.id() != current_lanelet_->id() &&
+      std::any_of(
+        route_context_.route_lanelets.begin(), route_context_.route_lanelets.end(),
+        [&](const auto & rl) { return rl.id() == beside.id(); })) {
+      candidates.push_back(beside);
+    }
   }
 
   if (lanelet::utils::query::getClosestLaneletWithConstrains(

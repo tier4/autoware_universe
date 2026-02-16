@@ -69,6 +69,16 @@ struct WaypointGroup
   Interval interval;
 };
 
+struct LaneTransitionInfo
+{
+  lanelet::ConstLanelets pre_transition_lanelets;   // lanelets on current lane (includes
+                                                    // transition_from)
+  lanelet::ConstLanelet transition_from;            // last lanelet before lane change
+  lanelet::ConstLanelet transition_to;              // first lanelet on preferred lane
+  lanelet::ConstLanelets post_transition_lanelets;  // lanelets on preferred lane (includes
+                                                    // transition_to)
+};
+
 template <typename T>
 struct PathRange
 {
@@ -199,6 +209,29 @@ std::optional<PathPointTrajectory> modify_path_for_smooth_goal_connection(
  */
 autoware_planning_msgs::msg::Trajectory convert_path_to_trajectory(
   const PathWithLaneId & path, double resample_interval);
+
+/**
+ * @brief Detect where the route requires a transition from the current lane to an adjacent
+ *        preferred lane.
+ * @return nullopt if no transition is needed (current lane is preferred, or no adjacent preferred
+ *         lane found within forward_distance)
+ */
+std::optional<LaneTransitionInfo> detect_lane_transition(
+  const lanelet::ConstLanelet & current_lanelet, const RouteContext & route_context,
+  const double forward_distance);
+
+/**
+ * @brief Blend two centerline point sequences at a transition zone using smoothstep.
+ * @param source_points Points on the source (current lane) centerline
+ * @param target_points Points on the target (preferred lane) centerline
+ * @param blend_start_s Arc length on source centerline where blending begins
+ * @param blend_length Longitudinal distance over which to blend [m]
+ * @return Blended point sequence: source -> smoothstep blend -> target
+ */
+std::vector<PathPointWithLaneId> blend_centerlines(
+  const std::vector<PathPointWithLaneId> & source_points,
+  const std::vector<PathPointWithLaneId> & target_points, const double blend_start_s,
+  const double blend_length);
 
 }  // namespace utils
 }  // namespace autoware::minimum_rule_based_planner

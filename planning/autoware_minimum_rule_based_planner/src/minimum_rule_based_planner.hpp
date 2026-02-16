@@ -119,12 +119,19 @@ private:
   std::optional<PathWithLaneId> generate_path(
     const lanelet::LaneletSequence & lanelet_sequence, const double s_start, const double s_end,
     const Params & params);
+  std::optional<PathWithLaneId> generate_blended_path(
+    const LaneTransitionInfo & transition_info, const lanelet::ConstLanelets & backward_lanelets,
+    const geometry_msgs::msg::Pose & current_pose, const double path_length_backward,
+    const double path_length_forward, const Params & params);
 
   //! route, map, and routing graph context resolved from the current route
   RouteContext route_context_;
 
   //! lanelet ego is currently driving on (updated each cycle)
   std::optional<lanelet::ConstLanelet> current_lanelet_;
+
+  //! stores lane transition info for continuity across planning cycles
+  std::optional<LaneTransitionInfo> active_transition_;
   /** @} */
 
 private:
@@ -194,6 +201,7 @@ private:
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
   rclcpp::Publisher<PathWithLaneId>::SharedPtr pub_debug_path_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;
   /** @} */
 };
 
