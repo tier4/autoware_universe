@@ -230,13 +230,10 @@ void applyVelocityToPath(Trajectory & path, const double velocity)
 }
 
 bool buildDetectionAreaPolygons(
-  Polygons2d & polygons, const Trajectory & path, const geometry_msgs::msg::Pose & target_pose,
-  const size_t target_seg_idx, const occlusion_spot_utils::PlannerParam & param)
+  Polygons2d & polygons, const Trajectory & path, const double s_ego,
+  const occlusion_spot_utils::PlannerParam & param)
 {
   polygons.clear();
-
-  PathWithLaneId path_msg;
-  path_msg.points = path.restore();
 
   DetectionRange detection_range;
   detection_range.interval = param.detection_area.slice_length;
@@ -251,7 +248,7 @@ bool buildDetectionAreaPolygons(
   detection_range.left_overhang = param.left_overhang;
 
   return planning_utils::createDetectionAreaPolygons(
-    polygons, path_msg, target_pose, target_seg_idx, detection_range, param.pedestrian_vel);
+    polygons, path, s_ego, detection_range, param.pedestrian_vel);
 }
 
 bool generatePossibleCollisionsFromGridMap(

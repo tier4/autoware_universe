@@ -34,8 +34,8 @@ void applyVelocityToPath(Trajectory & path, const double velocity);
 
 //!< @brief wrapper for detection area polygon generation
 bool buildDetectionAreaPolygons(
-  Polygons2d & polygons, const Trajectory & path, const geometry_msgs::msg::Pose & target_pose,
-  const size_t target_seg_idx, const occlusion_spot_utils::PlannerParam & param);
+  Polygons2d & polygons, const Trajectory & path, const double s_ego,
+  const occlusion_spot_utils::PlannerParam & param);
 
 //!< @brief generate possible collisions coming from occlusion spots on the side of the path
 bool generatePossibleCollisionsFromGridMap(

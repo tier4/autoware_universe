@@ -293,9 +293,8 @@ bool OcclusionSpotModule::modifyPathVelocity(
   }
   DEBUG_PRINT(show_time, "apply velocity [ms]: ", stop_watch_.toc("processing_time", true));
 
-  const auto ego_seg_idx = findEgoSegmentIndex(new_path.restore(), planner_data);
   if (!utils::buildDetectionAreaPolygons(
-        debug_data_.detection_area_polygons, new_path, ego_pose, ego_seg_idx, param_)) {
+        debug_data_.detection_area_polygons, new_path, *s_ego, param_)) {
     return true;  // path point is not enough
   }
   DEBUG_PRINT(show_time, "generate poly[ms]: ", stop_watch_.toc("processing_time", true));
