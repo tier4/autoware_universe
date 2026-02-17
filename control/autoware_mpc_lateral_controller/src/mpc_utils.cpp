@@ -258,7 +258,7 @@ std::vector<double> calcTrajectoryCurvature(
   return curvature_vec;
 }
 
-MPCTrajectory convertToMPCTrajectory(const Trajectory & input)
+MPCTrajectory convertToMPCTrajectory(const Trajectory & input, const bool use_temporal_trajectory)
 {
   MPCTrajectory output;
   for (const TrajectoryPoint & p : input.points) {
@@ -268,10 +268,20 @@ MPCTrajectory convertToMPCTrajectory(const Trajectory & input)
     const double yaw = tf2::getYaw(p.pose.orientation);
     const double vx = p.longitudinal_velocity_mps;
     const double k = 0.0;
-    const double t = 0.0;
+
+    // Time handling: temporal (use timestamps) vs spatial (calculate from distance/velocity)
+    const double t = use_temporal_trajectory
+                       ? (p.time_from_start.sec + p.time_from_start.nanosec * 1e-9)
+                       : 0.0;  // Will be recalculated by calcMPCTrajectoryTime()
     output.push_back(x, y, z, yaw, vx, k, k, t);
   }
-  calcMPCTrajectoryTime(output);
+
+  if (!use_temporal_trajectory) {
+    // Spatial mode: recalculate time from distance and velocity
+    calcMPCTrajectoryTime(output);
+  }
+  // else: Temporal mode - preserve original timestamps
+
   return output;
 }
 
@@ -316,7 +326,7 @@ bool calcMPCTrajectoryTime(MPCTrajectory & traj)
 
 void dynamicSmoothingVelocity(
   const size_t start_seg_idx, const double start_vel, const double acc_lim, const double tau,
-  MPCTrajectory & traj)
+  MPCTrajectory & traj, const bool use_temporal_trajectory)
 {
   double curr_v = start_vel;
   // set current velocity in both start and end point of the segment
@@ -334,7 +344,14 @@ void dynamicSmoothingVelocity(
     curr_v = curr_v + dv;
     traj.vx.at(i) = curr_v;
   }
-  calcMPCTrajectoryTime(traj);
+
+  if (!use_temporal_trajectory) {
+    // Spatial mode: recalculate time after velocity changes
+    calcMPCTrajectoryTime(traj);
+  }
+  // else: Temporal mode - preserve original timestamps even after velocity smoothing.
+  // The velocity filtering may result in inconsistency between velocity and time,
+  // but MPC uses time as the primary reference for trajectory following.
 }
 
 bool calcNearestPoseInterp(

@@ -137,6 +137,8 @@ MpcLateralController::MpcLateralController(
 
   m_mpc->m_use_delayed_initial_state = dp_bool("use_delayed_initial_state");
 
+  m_mpc->m_use_temporal_trajectory = dp_bool("use_temporal_trajectory");
+
   m_mpc->m_publish_debug_trajectories = dp_bool("publish_debug_trajectories");
 
   m_pub_predicted_traj = node.create_publisher<Trajectory>("~/output/predicted_trajectory", 1);
