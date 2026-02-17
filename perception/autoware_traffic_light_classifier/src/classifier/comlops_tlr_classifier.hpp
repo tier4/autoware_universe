@@ -41,37 +41,31 @@
 namespace autoware::traffic_light
 {
 
+// --- Detection / geometry types ---
 struct BBox {
-  float x1{0.f}, y1{0.f};  ///< Top-left corner of the bounding box.
-  float x2{0.f}, y2{0.f};  ///< Bottom-right corner of the bounding box.
+  float x1{0.f}, y1{0.f};
+  float x2{0.f}, y2{0.f};
 };
 
 struct KeypointInfo {
   float x{0.f}, y{0.f};
 };
 
-/**
- * @brief Contains information about a detected object, including its bounding box,
- * label, class ID, and the probability of the detection.
- */
 struct BBoxInfo {
-  BBox box;                                    ///< Bounding box of the detected object.
-  int label{0};                                ///< Label of the detected object.
-  int classId{0};                              ///< Class ID (e.g. type: circle, arrow, ...).
-  float prob{0.f};                             ///< Probability of the detection.
-  bool isHierarchical{false};                  ///< True if subClassId (e.g. color) is used.
-  int subClassId{0};                           ///< Sub-class ID (e.g. color: red, green, ...).
-  float sin{0.f};                              ///< Sine of angle, if applicable.
-  float cos{1.f};                              ///< Cosine of angle, if applicable.
-  std::vector<KeypointInfo> keypoint;          ///< Associated keypoints (empty for TLR).
+  BBox box;
+  int label{0};
+  int classId{0};       // type: circle=0, arrow=1, uturn=2, ped=3, number=4, cross=5
+  float prob{0.f};
+  bool isHierarchical{false};
+  int subClassId{0};     // color: green=0, amber=1, red=2
+  float sin{0.f};
+  float cos{1.f};
+  std::vector<KeypointInfo> keypoint;
 };
-enum class Color {
-  GREEN = 0,
-  AMBER = 1,
-  RED = 2,
-  UNKNOWN = 3,
-};
-// shape order: 0=circle, 1=arrow, 2=uturn, 3=ped, 4=number, 5=cross
+
+// --- Internal element representation (before mapping to ROS message) ---
+enum class Color { GREEN = 0, AMBER = 1, RED = 2, UNKNOWN = 3 };
+
 enum class ArrowDirection {
   UP_ARROW = 0,
   DOWN_ARROW = 1,
@@ -83,6 +77,7 @@ enum class ArrowDirection {
   DOWN_RIGHT_ARROW = 7,
   UNKNOWN = 8,
 };
+
 enum class Shape {
   CIRCLE = 0,
   ARROW = 1,
@@ -100,10 +95,7 @@ struct TrafficLightElement {
   BBox box;
   float confidence{0.f};
 };
-// color order: 0=green, 1=amber, 2=red
-// Data type for color:
 
-// struct for unique traffic light elements
 struct UniqueTrafficLightElement {
   Color color;
   Shape shape;
@@ -111,13 +103,14 @@ struct UniqueTrafficLightElement {
   float confidence{0.f};
 };
 
+// --- CUDA / TensorRT aliases ---
 using autoware::cuda_utils::CudaUniquePtr;
 using autoware::cuda_utils::CudaUniquePtrHost;
 using autoware::cuda_utils::makeCudaStream;
 using autoware::cuda_utils::StreamUniquePtr;
 
 /**
- * @brief Traffic light classifier using CoMLOps-TLR ONNX model.
+ * @brief Traffic light classifier using CoMLOps-TLR ONNX/TensorRT model.
  */
 class CoMLOpsTLRClassifier : public ClassifierInterface
 {
@@ -132,40 +125,33 @@ public:
 private:
   void preprocess(const std::vector<cv::Mat> & images);
   bool doInference(size_t batch_size);
-  /** Decode all raw detections, filter by score, run NMS; output per-ROI BBoxInfo list. */
   void decodeTlrOutput(size_t batch_size, std::vector<std::vector<BBoxInfo>> & detections_per_roi);
-  void toTrafficLightElements(
-    int color_index, int type_index, float confidence, float angle_rad,
-    tier4_perception_msgs::msg::TrafficLight & traffic_signal);
-  void appendAllDetectionsToTrafficSignal(
-    const std::vector<std::vector<BBoxInfo>> & detections_per_roi,
+  void updateTrafficSignals(
+    const std::vector<TrafficLightElement> & elements,
     tier4_perception_msgs::msg::TrafficLight & traffic_signal);
   void outputDebugImage(
-    cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
-    const std::vector<TrafficLightElement> * unique_elements = nullptr);
-  void postProcess(const std::vector<BBoxInfo> & detections, tier4_perception_msgs::msg::TrafficLight & traffic_signal);
-  void updateTrafficSignals(const std::vector<TrafficLightElement> & unique_elements, tier4_perception_msgs::msg::TrafficLight & traffic_signal);
+    cv::Mat & debug_image,
+    const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
+    const std::vector<TrafficLightElement> * elements = nullptr);
+
   rclcpp::Node * node_ptr_;
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> trt_common_;
+  StreamUniquePtr stream_{makeCudaStream()};
 
   std::vector<float> input_h_;
   CudaUniquePtr<float[]> input_d_;
-  /** Device buffers for each output binding (one per output; index 0 = first output) */
   std::vector<CudaUniquePtr<float[]>> output_d_;
-  /** Host buffers for each output binding */
   std::vector<CudaUniquePtrHost<float[]>> output_h_;
-
-  StreamUniquePtr stream_{makeCudaStream()};
 
   int input_c_;
   int input_height_;
   int input_width_;
   int max_batch_size_;
-  int out_c_;              /**< output channels from engine (e.g. 48 or 7), first output only */
+  int out_c_;
   int output_grid_h_;
   int output_grid_w_;
   float score_threshold_;
-  float nms_threshold_;    /**< IoU threshold for NMS (overlapping detections suppressed) */
+  float nms_threshold_;
 
   image_transport::Publisher image_pub_;
 };
