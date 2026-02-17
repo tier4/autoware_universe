@@ -377,6 +377,8 @@ void CoMLOpsTLRClassifier::outputDebugImage(
 
   // One token per lamp, comma-separated: green | left,red | red,right,straight | red,up_left | etc.
   std::string label;
+  // check if traffic_signal.traffic_light_type is pedestrian (=1)
+  bool is_pedestrian = traffic_signal.traffic_light_type == 1;
   float probability = 0.0f;
   const auto colorStr = [](uint8_t c) -> std::string {
     if (c == MsgTE::GREEN) return "green";
@@ -395,6 +397,7 @@ void CoMLOpsTLRClassifier::outputDebugImage(
     if (s == MsgTE::DOWN_RIGHT_ARROW) return "down_right";
     return "unknown";
   };
+  
   for (std::size_t i = 0; i < traffic_signal.elements.size(); i++) {
     const auto & light = traffic_signal.elements.at(i);
     if (i > 0) label += ",";
@@ -405,6 +408,8 @@ void CoMLOpsTLRClassifier::outputDebugImage(
                      light.shape != MsgTE::UNKNOWN);
     if (is_arrow) {
       label += sh;  // one token per lamp: "left" "right" "straight" "up_left" "up_right"
+    } else if(is_pedestrian) {
+      label += "ped_" + c;  // one token per lamp: "ped_green" "ped_red" "ped_yellow" "ped_unknown"
     } else {
       label += c;  // one token per lamp: "green" "red" "yellow" "unknown"
     }
@@ -465,7 +470,7 @@ void CoMLOpsTLRClassifier::updateTrafficSignals(const std::vector<TrafficLightEl
           default: element.shape = MsgTE::UNKNOWN; break;
         }
         break;
-      case Shape::CROSS:
+      case Shape::PED:
         element.shape = MsgTE::CROSS;
         switch (e.color) {
           case Color::GREEN: element.color = MsgTE::GREEN; break;
