@@ -27,7 +27,7 @@
       # Note: max_velocity uses max_speed_mps from parent namespace
       continuous_jerk_smoother:
         # QP optimization weights
-        jerk_weight: 100.0                     # Weight for jerk minimization (smoothness)
+        jerk_weight: 10.0                     # Weight for jerk minimization (smoothness)
         over_v_weight: 1000.0               # Weight for velocity limit violation (slack)
         over_a_weight: 30.0                 # Weight for acceleration limit violation (slack)
         over_j_weight: 10.0                  # Weight for jerk limit violation (slack)
