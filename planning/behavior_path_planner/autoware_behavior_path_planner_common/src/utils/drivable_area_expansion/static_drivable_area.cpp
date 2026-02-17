@@ -1853,12 +1853,12 @@ bool isKTurnEnvironment(const std::vector<DrivableLanes> & lanes,
     return false;
   }
 
-  // Check if any lanelet has direction_change_area tag set to "yes"
+  // Check if any lanelet has direction_change_lane tag set to "yes"
   for (const auto & drivable_lane : lanes) {
     const auto lanelets = utils::transformToLanelets({drivable_lane});
     for (const auto & lanelet : lanelets) {
-      const std::string direction_change_area = lanelet.attributeOr("direction_change_area", "none");
-      if (direction_change_area == "yes") {
+      const std::string direction_change_lane = lanelet.attributeOr("direction_change_lane", "none");
+      if (direction_change_lane == "yes") {
         return true;
       }
     }

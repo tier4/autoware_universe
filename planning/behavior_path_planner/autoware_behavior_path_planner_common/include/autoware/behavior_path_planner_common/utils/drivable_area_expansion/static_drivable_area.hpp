@@ -157,7 +157,7 @@ std::vector<DrivableLanes> combineDrivableLanes(
   const std::vector<DrivableLanes> & new_drivable_lanes_vec);
 
 /**
- * @brief Check if the given lanes contain K-turn environment (direction_change_area set to "yes")
+ * @brief Check if the given lanes contain K-turn environment (direction_change_lane set to "yes")
  * @param [in] lanes lanes to check
  * @param [in] planner_data planner data with route handler
  * @return true if K-turn environment is detected

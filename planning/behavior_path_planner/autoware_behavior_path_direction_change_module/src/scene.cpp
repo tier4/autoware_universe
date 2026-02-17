@@ -230,7 +230,7 @@ bool DirectionChangeModule::shouldActivateModule() const
                 // No goal or getGoalPose failed; allow activation
               }
             }
-            std::cout << "[MY_DEBUG] [DirectionChange] shouldActivateModule: direction_change_area tag found in lane_id=" << lane_id << ", module ACTIVE" << std::endl;
+            std::cout << "[MY_DEBUG] [DirectionChange] shouldActivateModule: direction_change_lane tag found in lane_id=" << lane_id << ", module ACTIVE" << std::endl;
             return true;  // Tag found and away from goal, activate module
           }
         } catch (...) {
@@ -241,8 +241,8 @@ bool DirectionChangeModule::shouldActivateModule() const
     }
   }
 
-  // No direction_change_area tag found, module inactive
-  std::cout << "[MY_DEBUG] [DirectionChange] shouldActivateModule: No direction_change_area tag found, module INACTIVE" << std::endl;
+  // No direction_change_lane tag found, module inactive
+  std::cout << "[MY_DEBUG] [DirectionChange] shouldActivateModule: No direction_change_lane tag found, module INACTIVE" << std::endl;
   return false;
 }
 
@@ -442,10 +442,37 @@ BehaviorModuleOutput DirectionChangeModule::plan()
               // if (isSustainedStoppedForDirectionSwitch()) {
               //  odometry_buffer_direction_switch_.clear();
               if (vehicle_velocity < parameters_->stop_velocity_threshold) {
-                current_segment_index_++;
-                new_state = (current_segment_index_ % 2 == 0)
-                              ? PathSegmentState::FORWARD_FOLLOWING
-                              : PathSegmentState::REVERSE_FOLLOWING;
+                // Check if this is the last cusp and close to goal -> transition to COMPLETED
+                const bool is_next_cusp_available = (current_segment_index_ < cusp_point_indices_.size());
+                double distance_to_goal = std::numeric_limits<double>::max();
+                bool goal_available = false;
+                
+                if (planner_data_->route_handler) {
+                  try {
+                    const auto goal_pose = planner_data_->route_handler->getGoalPose();
+                    distance_to_goal = autoware_utils::calc_distance2d(
+                      ego_pose.position, goal_pose.position);
+                    goal_available = true;
+                  } catch (...) {
+                    // Goal not available, continue with normal transition
+                  }
+                }
+                
+                // Transition to COMPLETED if all conditions are met:
+                // 1. velocity < stop_velocity_threshold (already checked)
+                // 2. no next cusp point
+                // 3. distance to goal < th_arrived_distance
+                if (!is_next_cusp_available && goal_available && 
+                    distance_to_goal < parameters_->th_arrived_distance) {
+                  new_state = PathSegmentState::COMPLETED;
+                  std::cout << "[MY_DEBUG] [DirectionChange] Transition to COMPLETED" << std::endl;
+                } else {
+                  // Normal transition to next segment
+                  current_segment_index_++;
+                  new_state = (current_segment_index_ % 2 == 0)
+                                ? PathSegmentState::FORWARD_FOLLOWING
+                                : PathSegmentState::REVERSE_FOLLOWING;
+                }
               }
               break;
             }

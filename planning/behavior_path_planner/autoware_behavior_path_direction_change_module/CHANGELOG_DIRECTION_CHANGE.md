@@ -5,7 +5,7 @@
 ### Changed
 
 - **Reference path from direction_change lanelet centerline (path flip fix)**
-  - When the path runs through lanelets with `direction_change_area: "yes"`, the module now builds the reference path from the **full centerline of those lanelets** (from the map) instead of using the path from the previous module.
+  - When the path runs through lanelets with `direction_change_lane: "yes"`, the module now builds the reference path from the **full centerline of those lanelets** (from the map) instead of using the path from the previous module.
   - **Reason:** On a single lanelet that forms a cross (e.g. two cusps), the upstream reference path is built from the "current" position on the centerline. Near the cross center, the nearest point on the centerline can jump between branches (vertical vs horizontal), so the reference path could flip segment (vertical ↔ horizontal). Using the lanelet centerline directly gives a stable, fixed geometry for the direction_change segment.
   - **Impact:** Cusp detection and segment publishing (forward/reverse, multi-cusp, sustained stop) now operate on a stable reference path in direction_change areas. No change to behavior outside direction_change lanelets (previous module output is still used there).
   - **Resampling:** No resampling is applied inside the module for this path; the planner manager resamples the final path with `output_path_interval` after all modules run.

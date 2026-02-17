@@ -61,7 +61,7 @@ void reverseOrientationAtCusps(PathWithLaneId * path, const std::vector<size_t> 
 std::vector<size_t> detectLaneBoundaries(const PathWithLaneId & path);
 
 /**
- * @brief Build reference path from the full centerline of lanelets that have direction_change_area.
+ * @brief Build reference path from the full centerline of lanelets that have direction_change_lane.
  *        Used to avoid upstream path flip (nearest-point ambiguity) when the path crosses a single
  *        lanelet with multiple branches (e.g. cross with two cusps). No resampling is applied;
  *        the planner manager resamples the final path with output_path_interval.
@@ -74,9 +74,9 @@ PathWithLaneId getReferencePathFromDirectionChangeLanelets(
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler);
 
 /**
- * @brief Checks if a lanelet has the direction_change_area tag set to "yes"
+ * @brief Checks if a lanelet has the direction_change_lane tag set to "yes"
  * @param [in] lanelet Lanelet to check
- * @return True if direction_change_area attribute is "yes", false otherwise
+ * @return True if direction_change_lane attribute is "yes", false otherwise
  */
 bool hasDirectionChangeAreaTag(const lanelet::ConstLanelet & lanelet);
 
@@ -86,7 +86,7 @@ bool hasDirectionChangeAreaTag(const lanelet::ConstLanelet & lanelet);
  * @param [in] cusp_indices Detected cusp point indices
  * @param [in] route_handler Route handler to access lanelet map
  * @return True if safe (no fatal condition), false if fatal condition detected
- * @details Checks if odd number of cusps (reverse exit) conflicts with next lane without direction_change_area tag
+ * @details Checks if odd number of cusps (reverse exit) conflicts with next lane without direction_change_lane tag
  * @note This is a critical safety check to prevent fatal conditions where vehicle exits
  *       in reverse but next lane expects forward motion (Autoware default)
  */
