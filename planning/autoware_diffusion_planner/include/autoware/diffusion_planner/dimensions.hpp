@@ -26,7 +26,7 @@ namespace autoware::diffusion_planner
 inline constexpr int64_t NUM_SEGMENTS_IN_LANE = 140;
 inline constexpr int64_t NUM_SEGMENTS_IN_ROUTE = 25;
 inline constexpr int64_t NUM_POLYGONS = 10;
-inline constexpr int64_t NUM_LINE_STRINGS = 20;
+inline constexpr int64_t NUM_LINE_STRINGS = 60;
 inline constexpr int64_t MAX_NUM_NEIGHBORS = 32;
 inline constexpr int64_t MAX_NUM_AGENTS = MAX_NUM_NEIGHBORS + 1;  // Including ego
 inline constexpr int64_t POINTS_PER_SEGMENT = 20;
