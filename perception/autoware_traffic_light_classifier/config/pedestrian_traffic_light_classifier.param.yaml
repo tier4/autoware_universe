@@ -7,10 +7,5 @@
     over_exposure_threshold: 0.85
     under_exposure_threshold: -0.83
     backlight_threshold: 0.85
-    # classifier_type: 0 = HSVFilter, 1 = CNN, 2 = CoMLOps-TLR
     classifier_type: 1
     traffic_light_type: 1
-    score_threshold: 0.2
-    max_batch_size: 64
-    input_height: 64
-    input_width: 64
