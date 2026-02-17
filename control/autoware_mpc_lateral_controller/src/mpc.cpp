@@ -23,6 +23,7 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -41,6 +42,12 @@ MPC::MPC(rclcpp::Node & node)
     "~/debug/predicted_trajectory_in_frenet_coordinate", rclcpp::QoS(1));
   m_debug_resampled_reference_trajectory_pub =
     node.create_publisher<Trajectory>("~/debug/resampled_reference_trajectory", rclcpp::QoS(1));
+  m_debug_nearest_pose_pub =
+    node.create_publisher<PoseStamped>("~/debug/nearest_pose", rclcpp::QoS(1));
+  m_debug_nearest_segment_pub =
+    node.create_publisher<Trajectory>("~/debug/nearest_segment", rclcpp::QoS(1));
+  m_debug_nearest_info_pub =
+    node.create_publisher<Float32MultiArrayStamped>("~/debug/nearest_info", rclcpp::QoS(1));
 }
 
 ResultWithReason MPC::calculateMPC(
@@ -54,10 +61,22 @@ ResultWithReason MPC::calculateMPC(
     applyVelocityDynamicsFilter(m_reference_trajectory, current_kinematics);
 
   // get the necessary data
-  const auto [get_data_result, mpc_data] =
+  const auto [get_data_result, mpc_data_raw] =
     getData(reference_trajectory, current_steer, current_kinematics);
   if (!get_data_result.result) {
     return ResultWithReason{false, fmt::format("getting MPC Data ({}).", get_data_result.reason)};
+  }
+
+  // For temporal mode, shift the internal MPC time origin to the ego-projected nearest point.
+  // This keeps planner-provided time intervals while making t=0 correspond to "current ego".
+  MPCTrajectory mpc_reference_trajectory = reference_trajectory;
+  MPCData mpc_data = mpc_data_raw;
+  if (m_use_temporal_trajectory) {
+    const double nearest_time_offset = mpc_data_raw.nearest_time;
+    for (auto & t : mpc_reference_trajectory.relative_time) {
+      t -= nearest_time_offset;
+    }
+    mpc_data.nearest_time = 0.0;
   }
 
   // calculate initial state of the error dynamics
@@ -65,7 +84,7 @@ ResultWithReason MPC::calculateMPC(
 
   // apply time delay compensation to the initial state
   const auto [success_delay, x0_delayed] =
-    updateStateForDelayCompensation(reference_trajectory, mpc_data.nearest_time, x0);
+    updateStateForDelayCompensation(mpc_reference_trajectory, mpc_data.nearest_time, x0);
   if (!success_delay) {
     return ResultWithReason{false, "delay compensation."};
   }
@@ -73,10 +92,10 @@ ResultWithReason MPC::calculateMPC(
   // resample reference trajectory with mpc sampling time
   const double mpc_start_time = mpc_data.nearest_time + m_param.input_delay;
   const double prediction_dt =
-    getPredictionDeltaTime(mpc_start_time, reference_trajectory, current_kinematics);
+    getPredictionDeltaTime(mpc_start_time, mpc_reference_trajectory, current_kinematics);
 
   const auto [resample_result, mpc_resampled_ref_trajectory] =
-    resampleMPCTrajectoryByTime(mpc_start_time, prediction_dt, reference_trajectory);
+    resampleMPCTrajectoryByTime(mpc_start_time, prediction_dt, mpc_reference_trajectory);
   if (!resample_result.result) {
     return ResultWithReason{
       false, fmt::format("trajectory resampling ({}).", resample_result.reason)};
@@ -141,7 +160,7 @@ ResultWithReason MPC::calculateMPC(
     lateral.steering_tire_angle = static_cast<float>(std::clamp(*it, -m_steer_lim, m_steer_lim));
     lateral.steering_tire_rotation_rate =
       (lateral.steering_tire_angle - ctrl_cmd_horizon.controls.back().steering_tire_angle) /
-      m_ctrl_period;
+      prediction_dt;
     ctrl_cmd_horizon.controls.push_back(lateral);
   }
 
@@ -200,6 +219,16 @@ void MPC::setReferenceTrajectory(
   const Trajectory & trajectory_msg, const TrajectoryFilteringParam & param,
   const Odometry & current_kinematics)
 {
+  if (m_use_temporal_trajectory) {
+    const rclcpp::Time current_stamp(trajectory_msg.header.stamp);
+    if (!m_prev_trajectory_stamp.has_value() || current_stamp != *m_prev_trajectory_stamp) {
+      m_prev_nearest_time.reset();
+      m_prev_trajectory_stamp = current_stamp;
+    }
+  } else {
+    m_prev_trajectory_stamp.reset();
+  }
+
   const size_t nearest_seg_idx =
     autoware::motion_utils::findFirstNearestSegmentIndexWithSoftConstraints(
       trajectory_msg.points, current_kinematics.pose.pose, ego_nearest_dist_threshold,
@@ -207,21 +236,37 @@ void MPC::setReferenceTrajectory(
   const double ego_offset_to_segment = autoware::motion_utils::calcLongitudinalOffsetToSegment(
     trajectory_msg.points, nearest_seg_idx, current_kinematics.pose.pose.position);
 
-  const auto mpc_traj_raw = MPCUtils::convertToMPCTrajectory(trajectory_msg);
+  const auto mpc_traj_raw =
+    MPCUtils::convertToMPCTrajectory(trajectory_msg, m_use_temporal_trajectory);
 
   // resampling
-  const auto [success_resample, mpc_traj_resampled] = MPCUtils::resampleMPCTrajectoryByDistance(
-    mpc_traj_raw, param.traj_resample_dist, nearest_seg_idx, ego_offset_to_segment);
-  if (!success_resample) {
-    warn_throttle("[setReferenceTrajectory] spline error when resampling by distance");
-    return;
+  // Note: For temporal trajectories, skip distance-based resampling to preserve timestamps.
+  // Time-based resampling will be performed later in calculateMPC().
+  MPCTrajectory mpc_traj_resampled;
+  if (m_use_temporal_trajectory) {
+    mpc_traj_resampled = mpc_traj_raw;
+  } else {
+    const auto [success_resample, resampled] = MPCUtils::resampleMPCTrajectoryByDistance(
+      mpc_traj_raw, param.traj_resample_dist, nearest_seg_idx, ego_offset_to_segment);
+    if (!success_resample) {
+      warn_throttle("[setReferenceTrajectory] spline error when resampling by distance");
+      return;
+    }
+    mpc_traj_resampled = resampled;
   }
 
-  const auto is_forward_shift =
-    autoware::motion_utils::isDrivingForward(mpc_traj_resampled.toTrajectoryPoints());
+  if (m_use_temporal_trajectory) {
+    // Temporary policy for temporal mode: force forward direction.
+    // TODO(go-sakayori): Revisit with velocity-sign-based direction detection when reverse
+    // support is required in temporal mode.
+    m_is_forward_shift = true;
+  } else {
+    const auto is_forward_shift =
+      autoware::motion_utils::isDrivingForward(mpc_traj_resampled.toTrajectoryPoints());
 
-  // if driving direction is unknown, use previous value
-  m_is_forward_shift = is_forward_shift ? is_forward_shift.value() : m_is_forward_shift;
+    // if driving direction is unknown, use previous value
+    m_is_forward_shift = is_forward_shift ? is_forward_shift.value() : m_is_forward_shift;
+  }
 
   // path smoothing
   MPCTrajectory mpc_traj_smoothed = mpc_traj_resampled;  // smooth filtered trajectory
@@ -252,7 +297,9 @@ void MPC::setReferenceTrajectory(
   }
 
   // calculate yaw angle
-  MPCUtils::calcTrajectoryYawFromXY(mpc_traj_smoothed, m_is_forward_shift);
+  const bool use_input_yaw_for_short_segment = m_use_temporal_trajectory;
+  MPCUtils::calcTrajectoryYawFromXY(
+    mpc_traj_smoothed, m_is_forward_shift, use_input_yaw_for_short_segment);
   MPCUtils::convertEulerAngleToMonotonic(mpc_traj_smoothed.yaw);
 
   // calculate curvature
@@ -297,6 +344,11 @@ std::pair<ResultWithReason, MPCData> MPC::getData(
         ego_nearest_dist_threshold, ego_nearest_yaw_threshold)) {
     return {ResultWithReason{false, "error in calculating nearest pose"}, MPCData{}};
   }
+  if (m_use_temporal_trajectory) {
+    m_prev_nearest_time = data.nearest_time;
+  } else {
+    m_prev_nearest_time.reset();
+  }
 
   // get data
   data.steer = static_cast<double>(current_steer.steering_tire_angle);
@@ -307,14 +359,107 @@ std::pair<ResultWithReason, MPCData> MPC::getData(
   // get predicted steer
   data.predicted_steer = m_steering_predictor->calcSteerPrediction();
 
+  if (m_publish_debug_trajectories) {
+    publishNearestDebug(traj, current_pose, data);
+  }
+
   // check trajectory time length
-  const double max_prediction_time =
-    m_param.min_prediction_length / static_cast<double>(m_param.prediction_horizon - 1);
-  auto end_time = data.nearest_time + m_param.input_delay + m_ctrl_period + max_prediction_time;
+  const double required_prediction_time = [&]() {
+    if (m_use_temporal_trajectory) {
+      return m_param.prediction_dt * static_cast<double>(m_param.prediction_horizon - 1);
+    }
+    return m_param.min_prediction_length / static_cast<double>(m_param.prediction_horizon - 1);
+  }();
+  auto end_time =
+    data.nearest_time + m_param.input_delay + m_ctrl_period + required_prediction_time;
   if (end_time > traj.relative_time.back()) {
     return {ResultWithReason{false, "path is too short for prediction."}, MPCData{}};
   }
   return {ResultWithReason{true}, data};
+}
+
+void MPC::publishNearestDebug(
+  const MPCTrajectory & traj, const Pose & self_pose, const MPCData & mpc_data) const
+{
+  if (traj.empty()) {
+    return;
+  }
+
+  const auto now = m_clock->now();
+  const auto autoware_traj = MPCUtils::convertToAutowareTrajectory(traj);
+  if (autoware_traj.points.empty()) {
+    return;
+  }
+
+  const size_t nearest_idx = std::min(mpc_data.nearest_idx, traj.size() - 1);
+
+  PoseStamped nearest_pose_msg;
+  nearest_pose_msg.header.stamp = now;
+  nearest_pose_msg.header.frame_id = "map";
+  nearest_pose_msg.pose = mpc_data.nearest_pose;
+  m_debug_nearest_pose_pub->publish(nearest_pose_msg);
+
+  size_t prev_idx = nearest_idx;
+  size_t next_idx = nearest_idx;
+  if (traj.size() >= 2) {
+    if (nearest_idx == 0) {
+      prev_idx = 0;
+      next_idx = 1;
+    } else if (nearest_idx == traj.size() - 1) {
+      prev_idx = traj.size() - 2;
+      next_idx = traj.size() - 1;
+    } else {
+      const double signed_length = autoware::motion_utils::calcLongitudinalOffsetToSegment(
+        autoware_traj.points, nearest_idx, self_pose.position);
+      if (signed_length <= 0.0) {
+        prev_idx = nearest_idx - 1;
+        next_idx = nearest_idx;
+      } else {
+        prev_idx = nearest_idx;
+        next_idx = nearest_idx + 1;
+      }
+    }
+  }
+
+  Trajectory nearest_segment_msg;
+  nearest_segment_msg.header.stamp = now;
+  nearest_segment_msg.header.frame_id = "map";
+  nearest_segment_msg.points.push_back(autoware_traj.points.at(prev_idx));
+  if (nearest_idx != prev_idx && nearest_idx != next_idx) {
+    nearest_segment_msg.points.push_back(autoware_traj.points.at(nearest_idx));
+  }
+  if (next_idx != prev_idx) {
+    nearest_segment_msg.points.push_back(autoware_traj.points.at(next_idx));
+  }
+  m_debug_nearest_segment_pub->publish(nearest_segment_msg);
+
+  const double prev_t = traj.relative_time.at(prev_idx);
+  const double next_t = traj.relative_time.at(next_idx);
+  const double dt = next_t - prev_t;
+  const double ratio = (std::fabs(dt) < std::numeric_limits<double>::epsilon())
+                         ? 0.0
+                         : std::clamp((mpc_data.nearest_time - prev_t) / dt, 0.0, 1.0);
+
+  const double dx = self_pose.position.x - mpc_data.nearest_pose.position.x;
+  const double dy = self_pose.position.y - mpc_data.nearest_pose.position.y;
+  const double distance = std::hypot(dx, dy);
+  const double nearest_yaw = tf2::getYaw(mpc_data.nearest_pose.orientation);
+  const double longitudinal_error = std::cos(nearest_yaw) * dx + std::sin(nearest_yaw) * dy;
+
+  Float32MultiArrayStamped info_msg;
+  info_msg.stamp = now;
+  info_msg.data.reserve(9);
+  info_msg.data.push_back(static_cast<float>(nearest_idx));            // [0] nearest_idx
+  info_msg.data.push_back(static_cast<float>(mpc_data.nearest_time));  // [1] nearest_time [s]
+  info_msg.data.push_back(static_cast<float>(prev_idx));               // [2] prev_idx
+  info_msg.data.push_back(static_cast<float>(next_idx));               // [3] next_idx
+  info_msg.data.push_back(static_cast<float>(prev_t));                 // [4] prev_time [s]
+  info_msg.data.push_back(static_cast<float>(next_t));                 // [5] next_time [s]
+  info_msg.data.push_back(static_cast<float>(ratio));                  // [6] interpolation ratio
+  info_msg.data.push_back(static_cast<float>(distance));  // [7] ego-nearest distance [m]
+  info_msg.data.push_back(
+    static_cast<float>(longitudinal_error));  // [8] signed longitudinal error [m]
+  m_debug_nearest_info_pub->publish(info_msg);
 }
 
 std::pair<ResultWithReason, MPCTrajectory> MPC::resampleMPCTrajectoryByTime(
@@ -423,7 +568,7 @@ MPCTrajectory MPC::applyVelocityDynamicsFilter(
   MPCTrajectory output = input;
   MPCUtils::dynamicSmoothingVelocity(
     nearest_seg_idx, current_kinematics.twist.twist.linear.x, m_param.acceleration_limit,
-    m_param.velocity_time_constant, output);
+    m_param.velocity_time_constant, output, m_use_temporal_trajectory);
 
   auto last_point = output.back();
   last_point.relative_time += 100.0;  // extra time to prevent mpc calc failure due to short time
@@ -698,35 +843,60 @@ void MPC::addSteerWeightF(const double prediction_dt, MatrixXd & f) const
 double MPC::getPredictionDeltaTime(
   const double start_time, const MPCTrajectory & input, const Odometry & current_kinematics) const
 {
-  // Calculate the time min_prediction_length ahead from current_pose
-  const auto autoware_traj = MPCUtils::convertToAutowareTrajectory(input);
-  const size_t nearest_idx = autoware::motion_utils::findFirstNearestIndexWithSoftConstraints(
-    autoware_traj.points, current_kinematics.pose.pose, ego_nearest_dist_threshold,
-    ego_nearest_yaw_threshold);
-  double sum_dist = 0;
-  const double target_time = [&]() {
+  if (m_use_temporal_trajectory) {
+    // Temporal mode: use fixed prediction_dt from parameters
+    // Calculate the end time of the prediction horizon
+    const double horizon_end_time =
+      start_time + m_param.prediction_dt * static_cast<double>(m_param.prediction_horizon - 1);
+
+    // Check if the trajectory is long enough to cover the prediction horizon
     const double t_ext = 100.0;  // extra time to prevent mpc calculation failure due to short time
-    for (size_t i = nearest_idx + 1; i < input.relative_time.size(); i++) {
-      const double segment_dist = MPCUtils::calcDistance2d(input, i, i - 1);
-      sum_dist += segment_dist;
-      if (m_param.min_prediction_length < sum_dist) {
-        const double prev_sum_dist = sum_dist - segment_dist;
-        const double ratio = (m_param.min_prediction_length - prev_sum_dist) / segment_dist;
-        const double relative_time_at_i = i == input.relative_time.size() - 1
-                                            ? input.relative_time.at(i) - t_ext
-                                            : input.relative_time.at(i);
-        return input.relative_time.at(i - 1) +
-               (relative_time_at_i - input.relative_time.at(i - 1)) * ratio;
-      }
+    const double available_end_time = input.relative_time.back() - t_ext;
+
+    if (horizon_end_time > available_end_time) {
+      // If trajectory is too short, reduce dt to fit within available trajectory
+      const double available_time = available_end_time - start_time;
+      const double reduced_dt =
+        available_time / static_cast<double>(m_param.prediction_horizon - 1);
+      // Use reduced dt, but ensure it's not too small (at least 10% of nominal dt)
+      return std::max(reduced_dt, m_param.prediction_dt * 0.1);
     }
-    return input.relative_time.back() - t_ext;
-  }();
 
-  // Calculate delta time for min_prediction_length
-  const double dt =
-    (target_time - start_time) / static_cast<double>(m_param.prediction_horizon - 1);
+    // Trajectory is long enough, use nominal prediction_dt
+    return m_param.prediction_dt;
+  } else {
+    // Spatial mode (original implementation): calculate dt from distance
+    // Calculate the time min_prediction_length ahead from current_pose
+    const auto autoware_traj = MPCUtils::convertToAutowareTrajectory(input);
+    const size_t nearest_idx = autoware::motion_utils::findFirstNearestIndexWithSoftConstraints(
+      autoware_traj.points, current_kinematics.pose.pose, ego_nearest_dist_threshold,
+      ego_nearest_yaw_threshold);
+    double sum_dist = 0;
+    const double target_time = [&]() {
+      const double t_ext =
+        100.0;  // extra time to prevent mpc calculation failure due to short time
+      for (size_t i = nearest_idx + 1; i < input.relative_time.size(); i++) {
+        const double segment_dist = MPCUtils::calcDistance2d(input, i, i - 1);
+        sum_dist += segment_dist;
+        if (m_param.min_prediction_length < sum_dist) {
+          const double prev_sum_dist = sum_dist - segment_dist;
+          const double ratio = (m_param.min_prediction_length - prev_sum_dist) / segment_dist;
+          const double relative_time_at_i = i == input.relative_time.size() - 1
+                                              ? input.relative_time.at(i) - t_ext
+                                              : input.relative_time.at(i);
+          return input.relative_time.at(i - 1) +
+                 (relative_time_at_i - input.relative_time.at(i - 1)) * ratio;
+        }
+      }
+      return input.relative_time.back() - t_ext;
+    }();
 
-  return std::max(dt, m_param.prediction_dt);
+    // Calculate delta time for min_prediction_length
+    const double dt =
+      (target_time - start_time) / static_cast<double>(m_param.prediction_horizon - 1);
+
+    return std::max(dt, m_param.prediction_dt);
+  }
 }
 
 double MPC::calcDesiredSteeringRate(

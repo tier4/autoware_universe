@@ -34,6 +34,7 @@
 #include "geometry_msgs/msg/twist_stamped.hpp"
 
 #include <cmath>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -74,9 +75,12 @@ double calcLateralError(const Pose & ego_pose, const Pose & ref_pose);
 /**
  * @brief convert the given Trajectory msg to a MPCTrajectory object
  * @param [in] input trajectory to convert
+ * @param [in] use_temporal_trajectory if true, use time_from_start directly; if false, calculate
+ * from distance/velocity
  * @return resulting MPCTrajectory
  */
-MPCTrajectory convertToMPCTrajectory(const Trajectory & input);
+MPCTrajectory convertToMPCTrajectory(
+  const Trajectory & input, const bool use_temporal_trajectory = true);
 
 /**
  * @brief convert the given MPCTrajectory to a Trajectory msg
@@ -136,17 +140,23 @@ bool calcMPCTrajectoryTime(MPCTrajectory & traj);
  * @param [in] acc_lim limit on the acceleration
  * @param [in] tau constant to control the smoothing (high-value = very smooth)
  * @param [inout] traj MPCTrajectory for which to calculate the smoothed velocity
+ * @param [in] use_temporal_trajectory if true, preserve timestamps; if false, recalculate time from
+ * velocity
  */
 void dynamicSmoothingVelocity(
   const size_t start_seg_idx, const double start_vel, const double acc_lim, const double tau,
-  MPCTrajectory & traj);
+  MPCTrajectory & traj, const bool use_temporal_trajectory = true);
 
 /**
  * @brief calculate yaw angle in MPCTrajectory from xy vector
  * @param [inout] traj object trajectory
  * @param [in] shift is forward or not
+ * @param [in] use_input_yaw_for_short_segment if true, preserve input yaw for very short
+ * segments
  */
-void calcTrajectoryYawFromXY(MPCTrajectory & traj, const bool is_forward_shift);
+void calcTrajectoryYawFromXY(
+  MPCTrajectory & traj, const bool is_forward_shift,
+  const bool use_input_yaw_for_short_segment = false);
 
 /**
  * @brief Calculate path curvature by 3-points circle fitting with smoothing num (use nearest 3
@@ -181,7 +191,10 @@ std::vector<double> calcTrajectoryCurvature(
  */
 bool calcNearestPoseInterp(
   const MPCTrajectory & traj, const Pose & self_pose, Pose * nearest_pose, size_t * nearest_index,
-  double * nearest_time, const double max_dist, const double max_yaw);
+  double * nearest_time, const double max_dist, const double max_yaw,
+  const bool use_time_window = false,
+  const double min_time_window_sec = -std::numeric_limits<double>::infinity(),
+  const double max_time_window_sec = std::numeric_limits<double>::infinity());
 
 /**
  * @brief calculate distance to stopped point
