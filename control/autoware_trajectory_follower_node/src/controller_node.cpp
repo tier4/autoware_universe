@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -55,6 +56,12 @@ Controller::Controller(const rclcpp::NodeOptions & node_options) : Node("control
   using std::placeholders::_1;
 
   const double ctrl_period = declare_parameter<double>("ctrl_period");
+  const auto trajectory_reference_mode =
+    declare_parameter<std::string>("trajectory_reference_mode", "spatial");
+  if (trajectory_reference_mode != "spatial" && trajectory_reference_mode != "temporal") {
+    throw std::invalid_argument(
+      "Invalid trajectory_reference_mode. Expected \"spatial\" or \"temporal\".");
+  }
   timeout_thr_sec_ = declare_parameter<double>("timeout_thr_sec");
   // NOTE: It is possible that using control_horizon could be expected to enhance performance,
   // but it is not a formal interface topic, only an experimental one.
