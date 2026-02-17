@@ -74,9 +74,12 @@ double calcLateralError(const Pose & ego_pose, const Pose & ref_pose);
 /**
  * @brief convert the given Trajectory msg to a MPCTrajectory object
  * @param [in] input trajectory to convert
+ * @param [in] use_temporal_trajectory if true, use time_from_start directly; if false, calculate
+ * from distance/velocity
  * @return resulting MPCTrajectory
  */
-MPCTrajectory convertToMPCTrajectory(const Trajectory & input);
+MPCTrajectory convertToMPCTrajectory(
+  const Trajectory & input, const bool use_temporal_trajectory = true);
 
 /**
  * @brief convert the given MPCTrajectory to a Trajectory msg
@@ -136,10 +139,12 @@ bool calcMPCTrajectoryTime(MPCTrajectory & traj);
  * @param [in] acc_lim limit on the acceleration
  * @param [in] tau constant to control the smoothing (high-value = very smooth)
  * @param [inout] traj MPCTrajectory for which to calculate the smoothed velocity
+ * @param [in] use_temporal_trajectory if true, preserve timestamps; if false, recalculate time from
+ * velocity
  */
 void dynamicSmoothingVelocity(
   const size_t start_seg_idx, const double start_vel, const double acc_lim, const double tau,
-  MPCTrajectory & traj);
+  MPCTrajectory & traj, const bool use_temporal_trajectory = true);
 
 /**
  * @brief calculate yaw angle in MPCTrajectory from xy vector
