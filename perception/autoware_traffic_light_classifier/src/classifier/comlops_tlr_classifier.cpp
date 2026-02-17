@@ -31,27 +31,38 @@ namespace autoware::traffic_light
 
 using MsgTE = tier4_perception_msgs::msg::TrafficLightElement;
 
-// TLR output layout per anchor (same as TrtLightnet): bbox(4) + obj(1) + color(3) + type(6) + angle(2) = 16
-//  {bbox}       {obj}  {color}        {type}           {angle}
-//  {0 1 2 3}    {4}    {5 6 7}   {8 9 10 11 12 13}   {14 15}
-static constexpr int TLR_NUM_ANCHORS = 3;
-static constexpr int TLR_CHANS_PER_ANCHOR = 16;
-static constexpr int TLR_X_INDEX = 0;
-static constexpr int TLR_Y_INDEX = 1;
-static constexpr int TLR_W_INDEX = 2;
-static constexpr int TLR_H_INDEX = 3;
-static constexpr int TLR_OBJ_INDEX = 4;
-static constexpr int TLR_COLOR_START = 5;   // 5, 6, 7
-static constexpr int TLR_TYPE_START = 8;    // 8..13 (5+3+num_class_)
-static constexpr int TLR_NUM_TYPES = 6;
-static constexpr int TLR_NUM_COLORS = 3;
-static constexpr int TLR_COS_INDEX = 14;
-static constexpr int TLR_SIN_INDEX = 15;
-// Scaled-YOLOv4 bbox decoding (sigmoid in last layer)
-static constexpr float TLR_SCALE_X_Y = 2.0f;
-static constexpr float TLR_BBOX_OFFSET = 0.5f * (TLR_SCALE_X_Y - 1.0f);
-// Anchor dimensions (pw, ph) per anchor - adjust if model uses different anchors
-static constexpr float TLR_ANCHORS[TLR_NUM_ANCHORS * 2] = {1.0f, 1.0f, 2.0f, 2.0f, 4.0f, 4.0f};
+namespace
+{
+
+constexpr float kPi = 3.14159265358979f;
+constexpr int kDebugImageWidth = 200;
+constexpr int kDebugTextHeight = 50;
+
+// TLR output layout per anchor (bbox(4) + obj(1) + color(3) + type(6) + angle(2) = 16)
+constexpr int TLR_NUM_ANCHORS = 3;
+constexpr int TLR_CHANS_PER_ANCHOR = 16;
+constexpr int TLR_X_INDEX = 0, TLR_Y_INDEX = 1, TLR_W_INDEX = 2, TLR_H_INDEX = 3;
+constexpr int TLR_OBJ_INDEX = 4;
+constexpr int TLR_COLOR_START = 5, TLR_TYPE_START = 8;
+constexpr int TLR_NUM_TYPES = 6, TLR_NUM_COLORS = 3;
+constexpr int TLR_COS_INDEX = 14, TLR_SIN_INDEX = 15;
+constexpr float TLR_SCALE_X_Y = 2.0f;
+constexpr float TLR_BBOX_OFFSET = 0.5f * (TLR_SCALE_X_Y - 1.0f);
+constexpr float TLR_ANCHORS[TLR_NUM_ANCHORS * 2] = {1.0f, 1.0f, 2.0f, 2.0f, 4.0f, 4.0f};
+
+ArrowDirection angleToArrowDirection(float angle_rad)
+{
+  if (angle_rad >= -kPi / 8.0f && angle_rad < kPi / 8.0f) return ArrowDirection::UP_ARROW;
+  if (angle_rad >= kPi / 8.0f && angle_rad < 3.0f * kPi / 8.0f) return ArrowDirection::UP_RIGHT_ARROW;
+  if (angle_rad >= 3.0f * kPi / 8.0f && angle_rad < 5.0f * kPi / 8.0f) return ArrowDirection::RIGHT_ARROW;
+  if (angle_rad >= 5.0f * kPi / 8.0f && angle_rad < 7.0f * kPi / 8.0f) return ArrowDirection::DOWN_RIGHT_ARROW;
+  if (angle_rad >= 7.0f * kPi / 8.0f || angle_rad < -7.0f * kPi / 8.0f) return ArrowDirection::DOWN_ARROW;
+  if (angle_rad >= -7.0f * kPi / 8.0f && angle_rad < -5.0f * kPi / 8.0f) return ArrowDirection::DOWN_LEFT_ARROW;
+  if (angle_rad >= -5.0f * kPi / 8.0f && angle_rad < -3.0f * kPi / 8.0f) return ArrowDirection::LEFT_ARROW;
+  return ArrowDirection::UP_LEFT_ARROW;
+}
+
+}  // namespace
 
 static float boxIou(const BBox & bbox1, const BBox & bbox2)
 {
@@ -399,12 +410,11 @@ void CoMLOpsTLRClassifier::outputDebugImage(
     }
     probability = light.confidence;
   }
-  const int expand_w = 200;
   const int expand_h =
-    std::max(static_cast<int>((expand_w * debug_image.rows) / debug_image.cols), 1);
-  cv::resize(debug_image, debug_image, cv::Size(expand_w, expand_h));
-  cv::Mat text_img(cv::Size(expand_w, 50), CV_8UC3, cv::Scalar(0, 0, 0));
-  std::string text = label + " " + std::to_string(probability);
+    std::max(static_cast<int>((kDebugImageWidth * debug_image.rows) / debug_image.cols), 1);
+  cv::resize(debug_image, debug_image, cv::Size(kDebugImageWidth, expand_h));
+  cv::Mat text_img(cv::Size(kDebugImageWidth, kDebugTextHeight), CV_8UC3, cv::Scalar(0, 0, 0));
+  const std::string text = label + " " + std::to_string(probability);
   cv::putText(
     text_img, text, cv::Point(5, 25), cv::FONT_HERSHEY_COMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
   cv::vconcat(debug_image, text_img, debug_image);
@@ -413,32 +423,14 @@ void CoMLOpsTLRClassifier::outputDebugImage(
   image_pub_.publish(debug_image_msg);
 }
 
-void cvtBBoxInfo2TrafficLightElement(const BBoxInfo & d, TrafficLightElement & element)
+static void cvtBBoxInfo2TrafficLightElement(const BBoxInfo & d, TrafficLightElement & element)
 {
-  constexpr float pi = 3.14159265358979f;
   element.color = static_cast<Color>(std::min(2, std::max(0, d.subClassId)));
   element.confidence = d.prob;
   element.box = d.box;
   element.shape = static_cast<Shape>(d.classId);
   if (element.shape == Shape::ARROW) {
-    const float angle_rad = std::atan2(d.sin, d.cos);
-    if (angle_rad >= -pi / 8.0f && angle_rad < pi / 8.0f) {
-      element.arrow_direction = ArrowDirection::UP_ARROW;
-    } else if (angle_rad >= pi / 8.0f && angle_rad < 3.0f * pi / 8.0f) {
-      element.arrow_direction = ArrowDirection::UP_RIGHT_ARROW;
-    } else if (angle_rad >= 3.0f * pi / 8.0f && angle_rad < 5.0f * pi / 8.0f) {
-      element.arrow_direction = ArrowDirection::RIGHT_ARROW;
-    } else if (angle_rad >= 5.0f * pi / 8.0f && angle_rad < 7.0f * pi / 8.0f) {
-      element.arrow_direction = ArrowDirection::DOWN_RIGHT_ARROW;
-    } else if (angle_rad >= 7.0f * pi / 8.0f || angle_rad < -7.0f * pi / 8.0f) {
-      element.arrow_direction = ArrowDirection::DOWN_ARROW;
-    } else if (angle_rad >= -7.0f * pi / 8.0f && angle_rad < -5.0f * pi / 8.0f) {
-      element.arrow_direction = ArrowDirection::DOWN_LEFT_ARROW;
-    } else if (angle_rad >= -5.0f * pi / 8.0f && angle_rad < -3.0f * pi / 8.0f) {
-      element.arrow_direction = ArrowDirection::LEFT_ARROW;
-    } else {
-      element.arrow_direction = ArrowDirection::UP_LEFT_ARROW;
-    }
+    element.arrow_direction = angleToArrowDirection(std::atan2(d.sin, d.cos));
     element.color = Color::GREEN;
   }
 } 
@@ -524,34 +516,31 @@ bool CoMLOpsTLRClassifier::getTrafficSignals(
     decodeTlrOutput(current_batch_size, detections_per_roi);
     size_t total_detections = 0;
     for (size_t i = 0; i < current_batch_size; ++i) {
-      // log the number of detections for each image
-      RCLCPP_INFO(node_ptr_->get_logger(), "batch %zu detections: %zu", signal_i + i, detections_per_roi[i].size());
+      const size_t sig_idx = signal_i + i;
       total_detections += detections_per_roi[i].size();
+
       std::vector<TrafficLightElement> traffic_light_elements;
       for (const auto & d : detections_per_roi[i]) {
         TrafficLightElement element;
         cvtBBoxInfo2TrafficLightElement(d, element);
         traffic_light_elements.push_back(element);
       }
+
       std::vector<TrafficLightElement> unique_traffic_light_elements;
-      // remove the duplicate elements shape:
-      for (const auto & traffic_light_element : traffic_light_elements) {
-        auto it = std::find_if(unique_traffic_light_elements.begin(), unique_traffic_light_elements.end(), [&](const TrafficLightElement & element) {
-          return element.shape == traffic_light_element.shape && element.arrow_direction == traffic_light_element.arrow_direction;
-        });
+      for (const auto & el : traffic_light_elements) {
+        auto it = std::find_if(
+          unique_traffic_light_elements.begin(), unique_traffic_light_elements.end(),
+          [&](const TrafficLightElement & e) {
+            return e.shape == el.shape && e.arrow_direction == el.arrow_direction;
+          });
         if (it == unique_traffic_light_elements.end()) {
-          unique_traffic_light_elements.push_back(traffic_light_element);
+          unique_traffic_light_elements.push_back(el);
         } else {
-          it->confidence = std::max(it->confidence, traffic_light_element.confidence);
+          it->confidence = std::max(it->confidence, el.confidence);
         }
       }
-      RCLCPP_INFO(node_ptr_->get_logger(), "batch %zu unique traffic light elements: %zu", signal_i + i, unique_traffic_light_elements.size());
-      const size_t sig_idx = signal_i + i;
-      const auto saved_id = traffic_signals.signals[sig_idx].traffic_light_id;
-      const auto saved_type = traffic_signals.signals[sig_idx].traffic_light_type;
+
       updateTrafficSignals(unique_traffic_light_elements, traffic_signals.signals[sig_idx]);
-      traffic_signals.signals[sig_idx].traffic_light_id = saved_id;
-      traffic_signals.signals[sig_idx].traffic_light_type = saved_type;
 
       if (image_pub_.getNumSubscribers() > 0) {
         cv::Mat debug_img = batch[i].clone();
