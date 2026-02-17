@@ -119,11 +119,6 @@ private:
   std::optional<PathWithLaneId> generate_path(
     const lanelet::LaneletSequence & lanelet_sequence, const double s_start, const double s_end,
     const Params & params);
-  std::optional<PathWithLaneId> generate_blended_path(
-    const LaneTransitionInfo & transition_info, const lanelet::ConstLanelets & backward_lanelets,
-    const geometry_msgs::msg::Pose & current_pose, const double path_length_backward,
-    const double path_length_forward, const Params & params);
-
   //! route, map, and routing graph context resolved from the current route
   RouteContext route_context_;
 

@@ -17,6 +17,7 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/trajectory/utils/pretty_build.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
+#include <autoware_utils/math/normalization.hpp>
 
 #include <tf2/utils.h>
 
@@ -30,9 +31,31 @@ namespace autoware::minimum_rule_based_planner
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 
+double lookup_table(
+  const std::vector<double> & breakpoints, const std::vector<double> & values, const double query)
+{
+  if (breakpoints.empty()) {
+    return 0.0;
+  }
+  // Clamp at boundaries (no extrapolation)
+  if (query <= breakpoints.front()) {
+    return values.front();
+  }
+  if (query >= breakpoints.back()) {
+    return values.back();
+  }
+  // Find the upper bracket
+  const auto it = std::lower_bound(breakpoints.begin(), breakpoints.end(), query);
+  const size_t idx = static_cast<size_t>(it - breakpoints.begin());
+  const double v0 = breakpoints[idx - 1];
+  const double v1 = breakpoints[idx];
+  const double ratio = (query - v0) / (v1 - v0);
+  return values[idx - 1] + ratio * (values[idx] - values[idx - 1]);
+}
+
 Trajectory shift_trajectory_to_ego(
   const Trajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose,
-  const TrajectoryShiftParams & params, const double delta_arc_length)
+  const double ego_velocity, const TrajectoryShiftParams & params, const double delta_arc_length)
 {
   if (trajectory.points.size() < 2) {
     return trajectory;
@@ -42,16 +65,27 @@ Trajectory shift_trajectory_to_ego(
   const double lateral_offset =
     autoware::motion_utils::calcLateralOffset(trajectory.points, ego_pose.position);
 
-  // If the offset is small enough, no shift needed
-  if (std::abs(lateral_offset) < params.minimum_shift_length) {
+  // Calculate yaw deviation between ego and the nearest trajectory point
+  const size_t nearest_idx =
+    autoware::motion_utils::findNearestIndex(trajectory.points, ego_pose.position);
+  const double ego_yaw_raw = tf2::getYaw(ego_pose.orientation);
+  const double traj_yaw = tf2::getYaw(trajectory.points.at(nearest_idx).pose.orientation);
+  const double yaw_deviation = std::abs(autoware_utils::normalize_radian(ego_yaw_raw - traj_yaw));
+
+  // If both lateral offset and yaw deviation are small enough, no shift needed
+  if (
+    std::abs(lateral_offset) < params.minimum_shift_length &&
+    yaw_deviation < params.minimum_shift_yaw) {
     return trajectory;
   }
 
-  // TODO: 速度依存で決める
-  // Scale shift distance based on lateral offset so that cross-lane shifts get enough room
-  const double shift_distance = std::max(
-    params.minimum_shift_distance,
-    std::abs(lateral_offset) * params.shift_length_to_distance_ratio);
+  // Look up ratio and guide_distance from velocity-dependent LUT
+  const double ratio = lookup_table(
+    params.velocity_breakpoints, params.shift_length_to_distance_ratio_table, ego_velocity);
+  const double shift_distance =
+    std::max(params.minimum_shift_distance, std::abs(lateral_offset) * ratio);
+  const double guide_distance = 1.0;  // std::max(2.0, shift_distance * 0.3);
+  // lookup_table(params.velocity_breakpoints, params.guide_distance_table, ego_velocity);
 
   // Find the nearest index on the trajectory for ego position
   const size_t ego_nearest_idx =
@@ -76,7 +110,6 @@ Trajectory shift_trajectory_to_ego(
 
   // Build new waypoints: ego + guide point + remaining trajectory from skip_idx onward
   const double ref_velocity = trajectory.points.at(ego_nearest_idx).longitudinal_velocity_mps;
-  const double guide_distance = std::max(2.0, shift_distance * 0.15);
   const double ego_yaw = tf2::getYaw(ego_pose.orientation);
 
   TrajectoryPoint ego_point;
@@ -98,6 +131,7 @@ Trajectory shift_trajectory_to_ego(
   new_points.insert(
     new_points.end(), trajectory.points.begin() + skip_idx, trajectory.points.end());
 
+  // (void)delta_arc_length;
   // Build smooth trajectory using pretty_build (CubicSpline interpolation)
   const auto smooth_traj =
     autoware::experimental::trajectory::pretty_build<TrajectoryPoint>(new_points);

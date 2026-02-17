@@ -68,17 +68,32 @@ minimum_rule_based_planner:
     minimum_shift_length:
       type: double
       default_value: 0.1
-      description: minimum lateral offset to trigger path shifting [m]
+      description: lateral offset threshold to trigger path shifting [m]
+
+    minimum_shift_yaw:
+      type: double
+      default_value: 0.1
+      description: yaw deviation threshold to trigger path shifting [rad]
 
     minimum_shift_distance:
       type: double
       default_value: 5.0
-      description: base skip distance ahead of ego for spline waypoint insertion [m]
+      description: floor for shift distance ahead of ego [m]
 
-    shift_length_to_distance_ratio:
-      type: double
-      default_value: 8.0
-      description: ratio to scale shift distance by lateral offset (e.g. 3.5m offset * 8.0 = 28m shift distance) [-]
+    velocity_breakpoints:
+      type: double_array
+      default_value: [0.0]
+      description: velocity breakpoints for LUT [m/s]
+
+    shift_length_to_distance_ratio_table:
+      type: double_array
+      default_value: [8.0]
+      description: ratio to scale shift distance by lateral offset per velocity breakpoint [-]
+
+    guide_distance_table:
+      type: double_array
+      default_value: [2.0]
+      description: guide distance per velocity breakpoint [m]
 
   enable_debug_path:
     type: bool

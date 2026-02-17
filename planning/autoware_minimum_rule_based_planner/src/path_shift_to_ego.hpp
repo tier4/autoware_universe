@@ -18,28 +18,41 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 
+#include <vector>
+
 namespace autoware::minimum_rule_based_planner
 {
 
 struct TrajectoryShiftParams
 {
-  double minimum_shift_length{0.1};    // [m] below this, no shift is applied
-  double minimum_shift_distance{5.0};  // [m] base skip distance ahead of ego
-  double shift_length_to_distance_ratio{
-    8.0};  // [-] ratio to scale shift distance by lateral offset
+  double minimum_shift_length{0.1};    // [m] lateral offset threshold to trigger shift
+  double minimum_shift_yaw{0.1};      // [rad] yaw deviation threshold to trigger shift
+  double minimum_shift_distance{5.0};  // [m] floor for shift distance
+
+  // LUT for velocity-dependent parameters.
+  // velocity_breakpoints must be sorted in ascending order.
+  // No extrapolation: values are clamped at the table boundaries.
+  std::vector<double> velocity_breakpoints;                // [m/s]
+  std::vector<double> shift_length_to_distance_ratio_table;  // [-] ratio per velocity breakpoint
+  std::vector<double> guide_distance_table;                // [m] guide distance per velocity breakpoint
 };
+
+/// @brief Look up a value from a 1-D LUT (piecewise-linear interpolation, no extrapolation).
+double lookup_table(
+  const std::vector<double> & breakpoints, const std::vector<double> & values, double query);
 
 /// @brief Shift a centerline-based trajectory so that it starts from ego position+yaw
 ///        and smoothly transitions to the centerline using spline interpolation.
 /// @param trajectory The centerline-based trajectory to shift
 /// @param ego_pose The current ego pose (position + orientation)
+/// @param ego_velocity The current ego velocity [m/s]
 /// @param params Trajectory shift parameters
 /// @param delta_arc_length Resampling interval [m]
 /// @return The shifted trajectory, or the original trajectory if shifting is not needed or fails
 autoware_planning_msgs::msg::Trajectory shift_trajectory_to_ego(
   const autoware_planning_msgs::msg::Trajectory & trajectory,
-  const geometry_msgs::msg::Pose & ego_pose, const TrajectoryShiftParams & params,
-  double delta_arc_length);
+  const geometry_msgs::msg::Pose & ego_pose, double ego_velocity,
+  const TrajectoryShiftParams & params, double delta_arc_length);
 
 }  // namespace autoware::minimum_rule_based_planner
 

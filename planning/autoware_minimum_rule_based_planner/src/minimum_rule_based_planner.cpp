@@ -187,12 +187,18 @@ void MinimumRuleBasedPlannerNode::on_timer()
   // 4. Shift trajectory to ego position
   if (params.path_shift.enable) {
     autoware_utils_debug::ScopedTimeTrack st("shift_trajectory_to_ego", *time_keeper_);
-    const TrajectoryShiftParams shift_params{
-      params.path_shift.minimum_shift_length, params.path_shift.minimum_shift_distance,
-      params.path_shift.shift_length_to_distance_ratio};
+    TrajectoryShiftParams shift_params;
+    shift_params.minimum_shift_length = params.path_shift.minimum_shift_length;
+    shift_params.minimum_shift_yaw = params.path_shift.minimum_shift_yaw;
+    shift_params.minimum_shift_distance = params.path_shift.minimum_shift_distance;
+    shift_params.velocity_breakpoints = params.path_shift.velocity_breakpoints;
+    shift_params.shift_length_to_distance_ratio_table =
+      params.path_shift.shift_length_to_distance_ratio_table;
+    shift_params.guide_distance_table = params.path_shift.guide_distance_table;
 
+    const double ego_velocity = input_data.odometry_ptr->twist.twist.linear.x;
     traj_from_path = shift_trajectory_to_ego(
-      traj_from_path, input_data.odometry_ptr->pose.pose, shift_params,
+      traj_from_path, input_data.odometry_ptr->pose.pose, ego_velocity, shift_params,
       params.output_delta_arc_length);
 
     // デバッグ用にpublishする
@@ -297,7 +303,7 @@ void MinimumRuleBasedPlannerNode::on_timer()
 
     autoware_internal_planning_msgs::msg::GeneratorInfo generator_info;
     generator_info.generator_id = generator_uuid_;
-    generator_info.generator_name.data = "minimum_rule_based_planner";
+    generator_info.generator_name.data = "MinimumRuleBasedPlanner";
     msg.generator_info.push_back(generator_info);
 
     pub_trajectories_->publish(msg);
