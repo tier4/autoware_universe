@@ -7,5 +7,12 @@
     over_exposure_threshold: 0.85
     under_exposure_threshold: -0.83
     backlight_threshold: 0.85
-    classifier_type: 1
+    # classifier_type: 0 = HSVFilter, 1 = CNN, 2 = CoMLOps-TLR (CoMLOps-TLR-v1.0.1-dynamic_batch)
+    classifier_type: 2
     traffic_light_type: 1
+    # CoMLOps-TLR (classifier_type: 2) optional parameters
+    score_threshold: 0.2
+    nms_threshold: 0.2  # IoU threshold for NMS; lower = merge more overlapping same-class boxes (e.g. arrows)
+    max_batch_size: 64
+    input_height: 256   # CoMLOps-TLR-v1.0.1-dynamic_batch input H (fallback if ONNX dims dynamic)
+    input_width: 256    # CoMLOps-TLR-v1.0.1-dynamic_batch input W (fallback if ONNX dims dynamic)
