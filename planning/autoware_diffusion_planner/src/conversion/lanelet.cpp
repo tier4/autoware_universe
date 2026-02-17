@@ -185,23 +185,25 @@ LaneletMap convert_to_internal_lanelet_map(const lanelet::LaneletMapConstPtr lan
   // parse polygon layers
   for (const auto & polygon : lanelet_map_ptr->polygonLayer) {
     const std::string polygon_type = polygon.attributeOr("type", "");
-    if (polygon_type != "intersection_area") {
+    const auto it = POLYGON_TYPE_MAP.find(polygon_type);
+    if (it == POLYGON_TYPE_MAP.end()) {
       continue;
     }
-    const Polyline polyline(
+    const std::vector<LanePoint> points(
       interpolate_points(convert_to_polyline(polygon.basicLineString()), POINTS_PER_POLYGON));
-    lanelet_map.polygons.push_back(polyline);
+    lanelet_map.polygons.push_back(Polygon{points, it->second});
   }
 
   // parse line string layers
   for (const auto & line_string : lanelet_map_ptr->lineStringLayer) {
     const std::string line_string_type = line_string.attributeOr("type", "");
-    if (line_string_type != "stop_line") {
+    const auto it = LINE_STRING_TYPE_MAP.find(line_string_type);
+    if (it == LINE_STRING_TYPE_MAP.end()) {
       continue;
     }
-    const Polyline polyline(
+    const std::vector<LanePoint> points(
       interpolate_points(convert_to_polyline(line_string), POINTS_PER_LINE_STRING));
-    lanelet_map.line_strings.push_back(polyline);
+    lanelet_map.line_strings.push_back(LineString{points, it->second});
   }
 
   return lanelet_map;
