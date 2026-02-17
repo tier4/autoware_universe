@@ -50,14 +50,12 @@ void DirectionChangeModuleManager::init(rclcpp::Node * node)
 
   // Reverse lane following parameters
   p.reverse_speed_limit = node->declare_parameter<double>(ns + "reverse_speed_limit");
-  p.reverse_lookahead_distance =
-    node->declare_parameter<double>(ns + "reverse_lookahead_distance");
-  p.reverse_safety_margin = node->declare_parameter<double>(ns + "reverse_safety_margin");
 
-  // Path generation parameters
-  p.path_resolution = node->declare_parameter<double>(ns + "path_resolution");
-  p.backward_path_length = node->declare_parameter<double>(ns + "backward_path_length");
-  p.forward_path_length = node->declare_parameter<double>(ns + "forward_path_length");
+  // Path densification parameters
+  p.reverse_path_densify_max_yaw_step_deg =
+    node->declare_parameter<double>(ns + "reverse_path_densify_max_yaw_step_deg");
+  p.reverse_path_densify_max_distance_step =
+    node->declare_parameter<double>(ns + "reverse_path_densify_max_distance_step");
 
   // General parameters
   p.enable_cusp_detection = node->declare_parameter<bool>(ns + "enable_cusp_detection");

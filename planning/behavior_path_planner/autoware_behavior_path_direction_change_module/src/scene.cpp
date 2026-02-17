@@ -511,8 +511,8 @@ BehaviorModuleOutput DirectionChangeModule::plan()
 
     const bool apply_reversal = (current_segment_index_ % 2 == 1);
     if (apply_reversal && !output.path.points.empty()) {
-      const double max_yaw_step_rad = autoware_utils::deg2rad(5.0);
-      const double max_dist_step = 0.5;
+      const double max_yaw_step_rad = autoware_utils::deg2rad(parameters_->reverse_path_densify_max_yaw_step_deg);
+      const double max_dist_step = parameters_->reverse_path_densify_max_distance_step;
       densifyPathByYawAndDistance(output.path.points, max_yaw_step_rad, max_dist_step);
       const size_t cusp_local = 0u;
       const double reference_speed_limit =

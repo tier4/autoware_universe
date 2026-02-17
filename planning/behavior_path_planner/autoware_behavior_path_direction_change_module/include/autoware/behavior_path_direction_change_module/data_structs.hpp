@@ -40,13 +40,10 @@ struct DirectionChangeParameters
   // Direction change parameters
   double reverse_initial_speed;
   double reverse_speed_limit;
-  double reverse_lookahead_distance;
-  double reverse_safety_margin;
 
-  // Path generation parameters
-  double path_resolution;
-  double backward_path_length;
-  double forward_path_length;
+  // Path densification parameters
+  double reverse_path_densify_max_yaw_step_deg;  // [deg] Maximum yaw angle step for reverse path densification
+  double reverse_path_densify_max_distance_step;  // [m] Maximum distance step for reverse path densification
 
   // General parameters
   bool enable_cusp_detection;
