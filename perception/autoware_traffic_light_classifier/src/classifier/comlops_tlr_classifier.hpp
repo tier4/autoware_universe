@@ -65,6 +65,51 @@ struct BBoxInfo {
   float cos{1.f};                              ///< Cosine of angle, if applicable.
   std::vector<KeypointInfo> keypoint;          ///< Associated keypoints (empty for TLR).
 };
+enum class Color {
+  GREEN = 0,
+  AMBER = 1,
+  RED = 2,
+  UNKNOWN = 3,
+};
+// shape order: 0=circle, 1=arrow, 2=uturn, 3=ped, 4=number, 5=cross
+enum class ArrowDirection {
+  UP_ARROW = 0,
+  DOWN_ARROW = 1,
+  LEFT_ARROW = 2,
+  RIGHT_ARROW = 3,
+  UP_LEFT_ARROW = 4,
+  UP_RIGHT_ARROW = 5,
+  DOWN_LEFT_ARROW = 6,
+  DOWN_RIGHT_ARROW = 7,
+  UNKNOWN = 8,
+};
+enum class Shape {
+  CIRCLE = 0,
+  ARROW = 1,
+  U_TURN = 2,
+  PED = 3,
+  NUMBER = 4,
+  CROSS = 5,
+  UNKNOWN = 6,
+};
+
+struct TrafficLightElement {
+  Color color;
+  Shape shape;
+  ArrowDirection arrow_direction;
+  BBox box;
+  float confidence{0.f};
+};
+// color order: 0=green, 1=amber, 2=red
+// Data type for color:
+
+// struct for unique traffic light elements
+struct UniqueTrafficLightElement {
+  Color color;
+  Shape shape;
+  BBox box;
+  float confidence{0.f};
+};
 
 using autoware::cuda_utils::CudaUniquePtr;
 using autoware::cuda_utils::CudaUniquePtrHost;
@@ -92,9 +137,14 @@ private:
   void toTrafficLightElements(
     int color_index, int type_index, float confidence, float angle_rad,
     tier4_perception_msgs::msg::TrafficLight & traffic_signal);
+  void appendAllDetectionsToTrafficSignal(
+    const std::vector<std::vector<BBoxInfo>> & detections_per_roi,
+    tier4_perception_msgs::msg::TrafficLight & traffic_signal);
   void outputDebugImage(
-    cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal);
-
+    cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
+    const std::vector<TrafficLightElement> * unique_elements = nullptr);
+  void postProcess(const std::vector<BBoxInfo> & detections, tier4_perception_msgs::msg::TrafficLight & traffic_signal);
+  void updateTrafficSignals(const std::vector<TrafficLightElement> & unique_elements, tier4_perception_msgs::msg::TrafficLight & traffic_signal);
   rclcpp::Node * node_ptr_;
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> trt_common_;
 

@@ -22,13 +22,14 @@
 #include <cmath>
 #include <numeric>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace autoware::traffic_light
 {
 
-using tier4_perception_msgs::msg::TrafficLightElement;
+using MsgTE = tier4_perception_msgs::msg::TrafficLightElement;
 
 // TLR output layout per anchor (same as TrtLightnet): bbox(4) + obj(1) + color(3) + type(6) + angle(2) = 16
 //  {bbox}       {obj}  {color}        {type}           {angle}
@@ -334,88 +335,29 @@ void CoMLOpsTLRClassifier::decodeTlrOutput(
   }
 }
 
-void CoMLOpsTLRClassifier::toTrafficLightElements(
-  int color_index, int type_index, float confidence, float angle_rad,
-  tier4_perception_msgs::msg::TrafficLight & traffic_signal)
-{
-  TrafficLightElement element;
-  element.confidence = confidence;
-
-  if (color_index == 0) {
-    element.color = TrafficLightElement::GREEN;
-  } else if (color_index == 1) {
-    element.color = TrafficLightElement::AMBER;
-  } else if (color_index == 2) {
-    element.color = TrafficLightElement::RED;
-  } else {
-    element.color = TrafficLightElement::UNKNOWN;
-  }
-
-  // Type order: 0=circle, 1=arrow, 2=uturn, 3=ped, 4=number, 5=cross
-  switch (type_index) {
-    case 0:
-      element.shape = TrafficLightElement::CIRCLE;
-      break;
-    case 1: {
-      // Arrow: use angle_rad to select direction (angle in radians, -pi to pi)
-      constexpr float pi = 3.14159265358979f;
-      const float a = angle_rad;
-      if (a >= -pi / 8.0f && a < pi / 8.0f) {
-        element.shape = TrafficLightElement::UP_ARROW;
-      } else if (a >= pi / 8.0f && a < 3.0f * pi / 8.0f) {
-        element.shape = TrafficLightElement::UP_RIGHT_ARROW;
-      } else if (a >= 3.0f * pi / 8.0f && a < 5.0f * pi / 8.0f) {
-        element.shape = TrafficLightElement::RIGHT_ARROW;
-      } else if (a >= 5.0f * pi / 8.0f && a < 7.0f * pi / 8.0f) {
-        element.shape = TrafficLightElement::DOWN_RIGHT_ARROW;
-      } else if (a >= 7.0f * pi / 8.0f || a < -7.0f * pi / 8.0f) {
-        element.shape = TrafficLightElement::DOWN_ARROW;
-      } else if (a >= -7.0f * pi / 8.0f && a < -5.0f * pi / 8.0f) {
-        element.shape = TrafficLightElement::DOWN_LEFT_ARROW;
-      } else if (a >= -5.0f * pi / 8.0f && a < -3.0f * pi / 8.0f) {
-        element.shape = TrafficLightElement::LEFT_ARROW;
-      } else {
-        element.shape = TrafficLightElement::UP_LEFT_ARROW;
-      }
-      break;
-    }
-    case 2:  // uturn – no U_TURN in msg
-    case 3:  // ped
-    case 4:  // number
-      element.shape = TrafficLightElement::UNKNOWN;
-      break;
-    case 5:
-      element.shape = TrafficLightElement::CROSS;
-      break;
-    default:
-      element.shape = TrafficLightElement::UNKNOWN;
-  }
-
-  traffic_signal.elements.push_back(element);
-}
 
 void CoMLOpsTLRClassifier::outputDebugImage(
   cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
-  const std::vector<BBoxInfo> * detections)
+  const std::vector<TrafficLightElement> * unique_elements)
 {
   const int img_w = debug_image.cols;
   const int img_h = debug_image.rows;
 
-  if (detections && !detections->empty()) {
+  if (unique_elements && !unique_elements->empty()) {
     // Image is RGB: (R, G, B)
     static const cv::Scalar colors[] = {
       cv::Scalar(0, 255, 0),    // green  (R, G, B)
       cv::Scalar(255, 255, 0),  // yellow/amber
       cv::Scalar(255, 0, 0),    // red
     };
-    for (const auto & d : *detections) {
+    for (const auto & d : *unique_elements) {
       const int x1 = static_cast<int>(d.box.x1 * img_w);
       const int y1 = static_cast<int>(d.box.y1 * img_h);
       const int x2 = static_cast<int>(d.box.x2 * img_w);
       const int y2 = static_cast<int>(d.box.y2 * img_h);
-      const int color_idx = std::min(2, std::max(0, d.subClassId));
+      const int color_idx = std::min(2, std::max(0, static_cast<int>(d.color)));
       cv::rectangle(debug_image, cv::Point(x1, y1), cv::Point(x2, y2), colors[color_idx], 2);
-      const std::string prob_str = std::to_string(static_cast<int>(d.prob * 100)) + "%";
+      const std::string prob_str = std::to_string(static_cast<int>(d.confidence * 100)) + "%";
       cv::putText(
         debug_image, prob_str, cv::Point(x1, std::max(12, y1 - 2)), cv::FONT_HERSHEY_SIMPLEX,
         0.4, colors[color_idx], 1);
@@ -426,22 +368,20 @@ void CoMLOpsTLRClassifier::outputDebugImage(
   std::string label;
   float probability = 0.0f;
   const auto colorStr = [](uint8_t c) -> std::string {
-    if (c == TrafficLightElement::GREEN) return "green";
-    if (c == TrafficLightElement::AMBER) return "yellow";
-    if (c == TrafficLightElement::RED) return "red";
+    if (c == MsgTE::GREEN) return "green";
+    if (c == MsgTE::AMBER) return "yellow";
+    if (c == MsgTE::RED) return "red";
     return "unknown";
   };
   const auto shapeStr = [](uint8_t s) -> std::string {
-    if (s == TrafficLightElement::CIRCLE) return "circle";
-    if (s == TrafficLightElement::UP_ARROW) return "straight";
-    if (s == TrafficLightElement::LEFT_ARROW) return "left";
-    if (s == TrafficLightElement::RIGHT_ARROW) return "right";
-    if (s == TrafficLightElement::UP_LEFT_ARROW) return "up_left";
-    if (s == TrafficLightElement::UP_RIGHT_ARROW) return "up_right";
-    if (s == TrafficLightElement::DOWN_ARROW) return "down";
-    if (s == TrafficLightElement::DOWN_LEFT_ARROW) return "down_left";
-    if (s == TrafficLightElement::DOWN_RIGHT_ARROW) return "down_right";
-    if (s == TrafficLightElement::CROSS) return "cross";
+    if (s == MsgTE::UP_ARROW) return "straight";
+    if (s == MsgTE::DOWN_ARROW) return "down";
+    if (s == MsgTE::LEFT_ARROW) return "left";
+    if (s == MsgTE::RIGHT_ARROW) return "right";
+    if (s == MsgTE::UP_LEFT_ARROW) return "up_left";
+    if (s == MsgTE::UP_RIGHT_ARROW) return "up_right";
+    if (s == MsgTE::DOWN_LEFT_ARROW) return "down_left";
+    if (s == MsgTE::DOWN_RIGHT_ARROW) return "down_right";
     return "unknown";
   };
   for (std::size_t i = 0; i < traffic_signal.elements.size(); i++) {
@@ -449,9 +389,9 @@ void CoMLOpsTLRClassifier::outputDebugImage(
     if (i > 0) label += ",";
     const std::string c = colorStr(light.color);
     const std::string sh = shapeStr(light.shape);
-    bool is_arrow = (light.shape != TrafficLightElement::CIRCLE &&
-                     light.shape != TrafficLightElement::CROSS &&
-                     light.shape != TrafficLightElement::UNKNOWN);
+    bool is_arrow = (light.shape != MsgTE::CIRCLE &&
+                     light.shape != MsgTE::CROSS &&
+                     light.shape != MsgTE::UNKNOWN);
     if (is_arrow) {
       label += sh;  // one token per lamp: "left" "right" "straight" "up_left" "up_right"
     } else {
@@ -471,6 +411,84 @@ void CoMLOpsTLRClassifier::outputDebugImage(
   const auto debug_image_msg =
     cv_bridge::CvImage(std_msgs::msg::Header(), "rgb8", debug_image).toImageMsg();
   image_pub_.publish(debug_image_msg);
+}
+
+void cvtBBoxInfo2TrafficLightElement(const BBoxInfo & d, TrafficLightElement & element)
+{
+  constexpr float pi = 3.14159265358979f;
+  element.color = static_cast<Color>(std::min(2, std::max(0, d.subClassId)));
+  element.confidence = d.prob;
+  element.box = d.box;
+  element.shape = static_cast<Shape>(d.classId);
+  if (element.shape == Shape::ARROW) {
+    const float angle_rad = std::atan2(d.sin, d.cos);
+    if (angle_rad >= -pi / 8.0f && angle_rad < pi / 8.0f) {
+      element.arrow_direction = ArrowDirection::UP_ARROW;
+    } else if (angle_rad >= pi / 8.0f && angle_rad < 3.0f * pi / 8.0f) {
+      element.arrow_direction = ArrowDirection::UP_RIGHT_ARROW;
+    } else if (angle_rad >= 3.0f * pi / 8.0f && angle_rad < 5.0f * pi / 8.0f) {
+      element.arrow_direction = ArrowDirection::RIGHT_ARROW;
+    } else if (angle_rad >= 5.0f * pi / 8.0f && angle_rad < 7.0f * pi / 8.0f) {
+      element.arrow_direction = ArrowDirection::DOWN_RIGHT_ARROW;
+    } else if (angle_rad >= 7.0f * pi / 8.0f || angle_rad < -7.0f * pi / 8.0f) {
+      element.arrow_direction = ArrowDirection::DOWN_ARROW;
+    } else if (angle_rad >= -7.0f * pi / 8.0f && angle_rad < -5.0f * pi / 8.0f) {
+      element.arrow_direction = ArrowDirection::DOWN_LEFT_ARROW;
+    } else if (angle_rad >= -5.0f * pi / 8.0f && angle_rad < -3.0f * pi / 8.0f) {
+      element.arrow_direction = ArrowDirection::LEFT_ARROW;
+    } else {
+      element.arrow_direction = ArrowDirection::UP_LEFT_ARROW;
+    }
+    element.color = Color::GREEN;
+  }
+} 
+
+void CoMLOpsTLRClassifier::updateTrafficSignals(const std::vector<TrafficLightElement> & unique_elements, tier4_perception_msgs::msg::TrafficLight & traffic_signal)
+{
+  traffic_signal.elements.clear();
+  MsgTE element;
+  for (const auto & e : unique_elements) {
+    element.confidence = e.confidence;
+    switch (e.shape) {
+      case Shape::CIRCLE:
+        element.shape = MsgTE::CIRCLE;
+        switch (e.color) {
+          case Color::GREEN: element.color = MsgTE::GREEN; break;
+          case Color::AMBER: element.color = MsgTE::AMBER; break;
+          case Color::RED: element.color = MsgTE::RED; break;
+          default: element.color = MsgTE::UNKNOWN; break;
+        }
+        break;
+      case Shape::ARROW:
+        element.color = MsgTE::GREEN;
+        switch (e.arrow_direction) {
+          case ArrowDirection::UP_ARROW: element.shape = MsgTE::UP_ARROW; break;
+          case ArrowDirection::DOWN_ARROW: element.shape = MsgTE::DOWN_ARROW; break;
+          case ArrowDirection::LEFT_ARROW: element.shape = MsgTE::LEFT_ARROW; break;
+          case ArrowDirection::RIGHT_ARROW: element.shape = MsgTE::RIGHT_ARROW; break;
+          case ArrowDirection::UP_LEFT_ARROW: element.shape = MsgTE::UP_LEFT_ARROW; break;
+          case ArrowDirection::UP_RIGHT_ARROW: element.shape = MsgTE::UP_RIGHT_ARROW; break;
+          case ArrowDirection::DOWN_LEFT_ARROW: element.shape = MsgTE::DOWN_LEFT_ARROW; break;
+          case ArrowDirection::DOWN_RIGHT_ARROW: element.shape = MsgTE::DOWN_RIGHT_ARROW; break;
+          default: element.shape = MsgTE::UNKNOWN; break;
+        }
+        break;
+      case Shape::CROSS:
+        element.shape = MsgTE::CROSS;
+        switch (e.color) {
+          case Color::GREEN: element.color = MsgTE::GREEN; break;
+          case Color::AMBER: element.color = MsgTE::AMBER; break;
+          case Color::RED: element.color = MsgTE::RED; break;
+          default: element.color = MsgTE::UNKNOWN; break;
+        }
+        break;
+      default:
+        element.color = MsgTE::UNKNOWN;
+        element.shape = MsgTE::UNKNOWN;
+        break;
+    }
+    traffic_signal.elements.push_back(element);
+  }
 }
 
 bool CoMLOpsTLRClassifier::getTrafficSignals(
@@ -504,21 +522,45 @@ bool CoMLOpsTLRClassifier::getTrafficSignals(
 
     std::vector<std::vector<BBoxInfo>> detections_per_roi;
     decodeTlrOutput(current_batch_size, detections_per_roi);
-
-    for (size_t i = 0; i < current_batch_size; i++) {
-      RCLCPP_INFO(
-        node_ptr_->get_logger(), "batch index %zu, number of output per image: %zu", i,
-        detections_per_roi[i].size());
+    size_t total_detections = 0;
+    for (size_t i = 0; i < current_batch_size; ++i) {
+      // log the number of detections for each image
+      RCLCPP_INFO(node_ptr_->get_logger(), "batch %zu detections: %zu", signal_i + i, detections_per_roi[i].size());
+      total_detections += detections_per_roi[i].size();
+      std::vector<TrafficLightElement> traffic_light_elements;
       for (const auto & d : detections_per_roi[i]) {
-        const float angle_rad = std::atan2(d.sin, d.cos);
-        toTrafficLightElements(
-          d.subClassId, d.classId, d.prob, angle_rad, traffic_signals.signals[signal_i]);
+        TrafficLightElement element;
+        cvtBBoxInfo2TrafficLightElement(d, element);
+        traffic_light_elements.push_back(element);
       }
+      std::vector<TrafficLightElement> unique_traffic_light_elements;
+      // remove the duplicate elements shape:
+      for (const auto & traffic_light_element : traffic_light_elements) {
+        auto it = std::find_if(unique_traffic_light_elements.begin(), unique_traffic_light_elements.end(), [&](const TrafficLightElement & element) {
+          return element.shape == traffic_light_element.shape && element.arrow_direction == traffic_light_element.arrow_direction;
+        });
+        if (it == unique_traffic_light_elements.end()) {
+          unique_traffic_light_elements.push_back(traffic_light_element);
+        } else {
+          it->confidence = std::max(it->confidence, traffic_light_element.confidence);
+        }
+      }
+      RCLCPP_INFO(node_ptr_->get_logger(), "batch %zu unique traffic light elements: %zu", signal_i + i, unique_traffic_light_elements.size());
+      const size_t sig_idx = signal_i + i;
+      const auto saved_id = traffic_signals.signals[sig_idx].traffic_light_id;
+      const auto saved_type = traffic_signals.signals[sig_idx].traffic_light_type;
+      updateTrafficSignals(unique_traffic_light_elements, traffic_signals.signals[sig_idx]);
+      traffic_signals.signals[sig_idx].traffic_light_id = saved_id;
+      traffic_signals.signals[sig_idx].traffic_light_type = saved_type;
+
       if (image_pub_.getNumSubscribers() > 0) {
-        outputDebugImage(batch[i], traffic_signals.signals[signal_i], &detections_per_roi[i]);
+        cv::Mat debug_img = batch[i].clone();
+        outputDebugImage(debug_img, traffic_signals.signals[sig_idx], &unique_traffic_light_elements);
       }
-      signal_i++;
     }
+    signal_i += current_batch_size;
+    RCLCPP_INFO(
+      node_ptr_->get_logger(), "batch combined signal: %zu detections", total_detections);
     batch.clear();
   }
   return true;
