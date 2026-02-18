@@ -27,25 +27,20 @@
 namespace autoware::trajectory_modifier::plugin
 {
 
-StopPointFixer::StopPointFixer(
-  const std::string & name, rclcpp::Node * node_ptr,
-  const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper,
-  const TrajectoryModifierParams & params)
-: TrajectoryModifierPluginBase(name, node_ptr, time_keeper, params)
+void StopPointFixer::on_initialize(const TrajectoryModifierParams & params)
 {
+  const auto node_ptr = get_node_ptr();
   planning_factor_interface_ =
     std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
       node_ptr, "stop_point_fixer");
-  set_up_params();
+
+  params_ = params.stop_point_fixer;
+  enabled_ = params.use_stop_point_fixer;
 }
 
 bool StopPointFixer::is_trajectory_modification_required(
-  const TrajectoryPoints & traj_points, const TrajectoryModifierParams & params,
-  const TrajectoryModifierData & data) const
+  const TrajectoryPoints & traj_points, const TrajectoryModifierData & data) const
 {
-  if (!params.use_stop_point_fixer) {
-    return false;
-  }
   if (traj_points.empty()) {
     return false;
   }
@@ -59,62 +54,30 @@ bool StopPointFixer::is_trajectory_modification_required(
 }
 
 void StopPointFixer::modify_trajectory(
-  TrajectoryPoints & traj_points, const TrajectoryModifierParams & params,
-  const TrajectoryModifierData & data)
+  TrajectoryPoints & traj_points, const TrajectoryModifierData & data)
 {
-  if (is_trajectory_modification_required(traj_points, params, data)) {
-    utils::replace_trajectory_with_stop_point(traj_points, data.current_odometry.pose.pose);
-
-    // Add PlanningFactor for the stop decision
-    const auto & ego_pose = data.current_odometry.pose.pose;
-    planning_factor_interface_->add(
-      traj_points, ego_pose, ego_pose, PlanningFactor::STOP,
-      autoware_internal_planning_msgs::msg::SafetyFactorArray{});
-
-    auto clock_ptr = get_node_ptr()->get_clock();
-    RCLCPP_DEBUG_THROTTLE(
-      get_node_ptr()->get_logger(), *clock_ptr, 5000,
-      "StopPointFixer: Replaced trajectory with stop point. Distance to last point: %.2f m",
-      utils::calculate_distance_to_last_point(traj_points, data.current_odometry.pose.pose));
-  }
-}
-
-void StopPointFixer::set_up_params()
-{
-  auto * node = get_node_ptr();
-
-  // Declare plugin parameters with descriptors
-  rcl_interfaces::msg::ParameterDescriptor velocity_desc;
-  velocity_desc.description = "Velocity threshold below which ego vehicle is considered stationary";
-  params_.velocity_threshold_mps =
-    node->declare_parameter<double>("stop_point_fixer.velocity_threshold_mps", 0.1, velocity_desc);
-
-  rcl_interfaces::msg::ParameterDescriptor distance_desc;
-  distance_desc.description = "Minimum distance threshold to trigger trajectory replacement";
-  params_.min_distance_threshold_m = node->declare_parameter<double>(
-    "stop_point_fixer.min_distance_threshold_m", 1.0, distance_desc);
-}
-
-rcl_interfaces::msg::SetParametersResult StopPointFixer::on_parameter(
-  const std::vector<rclcpp::Parameter> & parameters)
-{
-  using autoware_utils_rclcpp::update_param;
-
-  rcl_interfaces::msg::SetParametersResult result;
-  result.successful = true;
-  result.reason = "success";
-
-  try {
-    update_param<double>(
-      parameters, "stop_point_fixer.velocity_threshold_mps", params_.velocity_threshold_mps);
-    update_param<double>(
-      parameters, "stop_point_fixer.min_distance_threshold_m", params_.min_distance_threshold_m);
-  } catch (const std::exception & e) {
-    result.successful = false;
-    result.reason = e.what();
+  if (!enabled_ || !is_trajectory_modification_required(traj_points, data)) {
+    return;
   }
 
-  return result;
+  utils::replace_trajectory_with_stop_point(traj_points, data.current_odometry.pose.pose);
+
+  // Add PlanningFactor for the stop decision
+  const auto & ego_pose = data.current_odometry.pose.pose;
+  planning_factor_interface_->add(
+    traj_points, ego_pose, ego_pose, PlanningFactor::STOP,
+    autoware_internal_planning_msgs::msg::SafetyFactorArray{});
+
+  auto clock_ptr = get_node_ptr()->get_clock();
+  RCLCPP_DEBUG_THROTTLE(
+    get_node_ptr()->get_logger(), *clock_ptr, 5000,
+    "StopPointFixer: Replaced trajectory with stop point. Distance to last point: %.2f m",
+    utils::calculate_distance_to_last_point(traj_points, data.current_odometry.pose.pose));
 }
 
 }  // namespace autoware::trajectory_modifier::plugin
+
+#include <pluginlib/class_list_macros.hpp>
+PLUGINLIB_EXPORT_CLASS(
+  autoware::trajectory_modifier::plugin::StopPointFixer,
+  autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase)
