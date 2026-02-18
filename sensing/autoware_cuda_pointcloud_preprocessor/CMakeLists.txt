@@ -48,7 +48,7 @@ include_directories(
     ${CUDA_INCLUDE_DIRS}
 )
 
-if(NOT CUDA_VERSION VERSION_LESS "13.0")
+if(CUDA_VERSION VERSION_GREATER_EQUAL "13.0")
   include_directories(SYSTEM ${CUDA_INCLUDE_DIRS}/cccl)
 endif()
 
