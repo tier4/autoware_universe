@@ -26,15 +26,15 @@ namespace autoware::minimum_rule_based_planner
 struct TrajectoryShiftParams
 {
   double minimum_shift_length{0.1};    // [m] lateral offset threshold to trigger shift
-  double minimum_shift_yaw{0.1};      // [rad] yaw deviation threshold to trigger shift
+  double minimum_shift_yaw{0.1};       // [rad] yaw deviation threshold to trigger shift
   double minimum_shift_distance{5.0};  // [m] floor for shift distance
 
   // LUT for velocity-dependent parameters.
   // velocity_breakpoints must be sorted in ascending order.
   // No extrapolation: values are clamped at the table boundaries.
-  std::vector<double> velocity_breakpoints;                // [m/s]
+  std::vector<double> velocity_breakpoints;                  // [m/s]
   std::vector<double> shift_length_to_distance_ratio_table;  // [-] ratio per velocity breakpoint
-  std::vector<double> guide_distance_table;                // [m] guide distance per velocity breakpoint
+  std::vector<double> guide_distance_table;  // [m] guide distance per velocity breakpoint
 };
 
 /// @brief Look up a value from a 1-D LUT (piecewise-linear interpolation, no extrapolation).

@@ -922,8 +922,7 @@ std::optional<LaneTransitionInfo> detect_lane_transition(
 
         // Continue BFS: expand to adjacents of candidate
         for (const auto & beside : route_context.routing_graph_ptr->besides(candidate)) {
-          if (
-            std::find(visited.begin(), visited.end(), beside.id()) == visited.end()) {
+          if (std::find(visited.begin(), visited.end(), beside.id()) == visited.end()) {
             next_queue.push_back(beside);
             visited.push_back(beside.id());
           }
