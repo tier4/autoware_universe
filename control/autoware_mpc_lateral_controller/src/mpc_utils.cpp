@@ -279,8 +279,17 @@ MPCTrajectory convertToMPCTrajectory(const Trajectory & input, const bool use_te
   if (!use_temporal_trajectory) {
     // Spatial mode: recalculate time from distance and velocity
     calcMPCTrajectoryTime(output);
+  } else {
+    // Temporal mode: validate that timestamps are strictly increasing
+    for (size_t i = 1; i < output.relative_time.size(); ++i) {
+      if (output.relative_time[i] <= output.relative_time[i - 1]) {
+        // Timestamps are not strictly increasing - this will cause interpolation errors
+        // Fall back to spatial mode calculation
+        calcMPCTrajectoryTime(output);
+        break;
+      }
+    }
   }
-  // else: Temporal mode - preserve original timestamps
 
   return output;
 }
