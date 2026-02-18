@@ -39,6 +39,7 @@
 #include <tf2/utils.h>
 
 #include <limits>
+#include <string>
 #include <vector>
 
 namespace autoware::mission_planner_universe::lanelet2
