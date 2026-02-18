@@ -443,6 +443,14 @@ static void cvtBBoxInfo2TrafficLightElement(const BBoxInfo & d, TrafficLightElem
 void CoMLOpsTLRClassifier::updateTrafficSignals(const std::vector<TrafficLightElement> & unique_elements, tier4_perception_msgs::msg::TrafficLight & traffic_signal)
 {
   traffic_signal.elements.clear();
+  if (unique_elements.empty()) {
+    MsgTE unknown_elem;
+    unknown_elem.color = MsgTE::UNKNOWN;
+    unknown_elem.shape = MsgTE::UNKNOWN;
+    unknown_elem.confidence = 0.0;
+    traffic_signal.elements.push_back(unknown_elem);
+    return;
+  }
   MsgTE element;
   for (const auto & e : unique_elements) {
     element.confidence = e.confidence;
