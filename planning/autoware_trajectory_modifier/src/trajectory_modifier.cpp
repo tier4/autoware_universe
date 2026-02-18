@@ -69,6 +69,7 @@ void TrajectoryModifier::on_traj(const CandidateTrajectories::ConstSharedPtr msg
   for (auto & trajectory : output_trajectories.candidate_trajectories) {
     for (auto & modifier : modifier_plugins_) {
       modifier->modify_trajectory(trajectory.points, params_, data_);
+      modifier->publish_planning_factor();
     }
   }
 
