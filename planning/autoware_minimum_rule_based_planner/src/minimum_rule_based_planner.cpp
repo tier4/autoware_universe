@@ -197,9 +197,17 @@ void MinimumRuleBasedPlannerNode::on_timer()
     shift_params.guide_distance_table = params.path_shift.guide_distance_table;
 
     const double ego_velocity = input_data.odometry_ptr->twist.twist.linear.x;
-    traj_from_path = shift_trajectory_to_ego(
-      traj_from_path, input_data.odometry_ptr->pose.pose, ego_velocity, shift_params,
-      params.output_delta_arc_length);
+    const double ego_yaw_rate = input_data.odometry_ptr->twist.twist.angular.z;
+    if (params.path_shift.use_quintic_polynomial) {
+      // NOTE(odashima): not stable
+      traj_from_path = shift_trajectory_to_ego_quintic(
+        traj_from_path, input_data.odometry_ptr->pose.pose, ego_velocity, ego_yaw_rate,
+        shift_params, params.output_delta_arc_length);
+    } else {
+      traj_from_path = shift_trajectory_to_ego(
+        traj_from_path, input_data.odometry_ptr->pose.pose, ego_velocity, shift_params,
+        params.output_delta_arc_length);
+    }
 
     // デバッグ用にpublishする
     Trajectory shifted_traj;

@@ -17,9 +17,10 @@
       minimum_shift_length: 0.5
       minimum_shift_yaw: 0.349 # 20 deg
       minimum_shift_distance: 5.0
-      velocity_breakpoints: [0.0, 15.0] # m/s
-      shift_length_to_distance_ratio_table: [8.0, 20.0] # m / (m/s)
-      guide_distance_table: [3.0, 10.0]
+      velocity_breakpoints: [0.0, 8.33] # m/s max 30kmph
+      shift_length_to_distance_ratio_table: [2.0, 55.0] # m / (m/s)
+      guide_distance_table: [1.0, 10.0]
+      use_quintic_polynomial: true
 
     waypoint_group:
       separation_threshold: 1.0

@@ -95,6 +95,11 @@ minimum_rule_based_planner:
       default_value: [2.0]
       description: guide distance per velocity breakpoint [m]
 
+    use_quintic_polynomial:
+      type: bool
+      default_value: false
+      description: use quintic polynomial instead of spline for path shifting
+
   enable_debug_path:
     type: bool
     default_value: true

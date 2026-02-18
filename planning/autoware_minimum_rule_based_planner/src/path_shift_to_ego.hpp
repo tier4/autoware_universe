@@ -54,6 +54,13 @@ autoware_planning_msgs::msg::Trajectory shift_trajectory_to_ego(
   const geometry_msgs::msg::Pose & ego_pose, double ego_velocity,
   const TrajectoryShiftParams & params, double delta_arc_length);
 
+/// @brief Shift a centerline-based trajectory so that it starts from ego position+yaw
+///        and smoothly transitions to the centerline using a quintic polynomial.
+autoware_planning_msgs::msg::Trajectory shift_trajectory_to_ego_quintic(
+  const autoware_planning_msgs::msg::Trajectory & trajectory,
+  const geometry_msgs::msg::Pose & ego_pose, double ego_velocity, const double ego_yaw_rate,
+  const TrajectoryShiftParams & params, double delta_arc_length);
+
 }  // namespace autoware::minimum_rule_based_planner
 
 #endif  // PATH_SHIFT_TO_EGO_HPP_

@@ -83,9 +83,11 @@ Trajectory shift_trajectory_to_ego(
   const double ratio = lookup_table(
     params.velocity_breakpoints, params.shift_length_to_distance_ratio_table, ego_velocity);
   const double shift_distance =
-    std::max(params.minimum_shift_distance, std::abs(lateral_offset) * ratio);
-  const double guide_distance = 1.0;  // std::max(2.0, shift_distance * 0.3);
-  // lookup_table(params.velocity_breakpoints, params.guide_distance_table, ego_velocity);
+    std::max(params.minimum_shift_distance, /*std::abs(lateral_offset) **/ ratio);
+  const double guide_distance =
+    lookup_table(params.velocity_breakpoints, params.guide_distance_table, ego_velocity);
+
+  RCLCPP_INFO(rclcpp::get_logger(""), "shift_distance: %lf", shift_distance);
 
   // Find the nearest index on the trajectory for ego position
   const size_t ego_nearest_idx =
@@ -159,6 +161,130 @@ Trajectory shift_trajectory_to_ego(
   Trajectory output;
   output.header = trajectory.header;
   output.points = resampled_points;
+  return output;
+}
+
+Trajectory shift_trajectory_to_ego_quintic(
+  const Trajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose,
+  const double ego_velocity, const double ego_yaw_rate, const TrajectoryShiftParams & params,
+  const double delta_arc_length)
+{
+  if (trajectory.points.size() < 2) {
+    return trajectory;
+  }
+
+  // Calculate lateral offset and yaw deviation
+  const double lateral_offset =
+    autoware::motion_utils::calcLateralOffset(trajectory.points, ego_pose.position);
+  const size_t nearest_idx =
+    autoware::motion_utils::findNearestIndex(trajectory.points, ego_pose.position);
+  const double ego_yaw = tf2::getYaw(ego_pose.orientation);
+  const double traj_yaw = tf2::getYaw(trajectory.points.at(nearest_idx).pose.orientation);
+  const double signed_yaw_dev = autoware_utils::normalize_radian(ego_yaw - traj_yaw);
+  const double abs_yaw_dev = std::abs(signed_yaw_dev);
+
+  // If both lateral offset and yaw deviation are small enough, no shift needed
+  if (
+    std::abs(lateral_offset) < params.minimum_shift_length &&
+    abs_yaw_dev < params.minimum_shift_yaw) {
+    return trajectory;
+  }
+
+  // Compute initial curvature from yaw rate and velocity
+  // κ₀ = yaw_rate / velocity, with velocity clamped to avoid division by near-zero
+  constexpr double min_velocity_for_curvature = 2.77;  // [m/s]
+  const double clamped_velocity = std::max(std::abs(ego_velocity), min_velocity_for_curvature);
+
+  // Calculate merge distance L so that peak lateral acceleration stays below a_limit.
+  // Peak curvature of the quintic polynomial: \kappa_max ≈ 5.77 * |d| / L²
+  // Lateral acceleration: a_lat = v² * κ_max ≤ a_limit
+  // → L ≥ v * √(5.77 * |d| / a_limit)
+  constexpr double a_limit = 0.5;       // [m/s²] maximum lateral acceleration
+  constexpr double kappa_coeff = 5.77;  // peak curvature coefficient of quintic polynomial
+  const double abs_d = std::abs(lateral_offset);
+  double L = std::max(
+    params.minimum_shift_distance,
+    std::abs(clamped_velocity) * std::sqrt(kappa_coeff * abs_d / a_limit));
+
+  // Walk forward to find merge index, clamping L to available trajectory length
+  double accumulated_length = 0.0;
+  size_t merge_idx = nearest_idx;
+  for (size_t i = nearest_idx; i + 1 < trajectory.points.size(); ++i) {
+    accumulated_length += autoware_utils::calc_distance2d(
+      trajectory.points.at(i).pose.position, trajectory.points.at(i + 1).pose.position);
+    merge_idx = i + 1;
+    if (accumulated_length >= L) {
+      break;
+    }
+  }
+  if (merge_idx >= trajectory.points.size() - 1) {
+    // Clamp L to the remaining trajectory length and set merge_idx to the second-to-last point
+    L = accumulated_length;
+    merge_idx = trajectory.points.size() - 2;
+  }
+
+  const double kappa0 = ego_yaw_rate / clamped_velocity;
+
+  // Quintic polynomial coefficients (analytical solution)
+  // y(s) = a0 + a1*s + a2*s^2 + a3*s^3 + a4*s^4 + a5*s^5
+  // Boundary conditions:
+  //   s=0: y=d, y'=tan(Δθ), y''=κ₀
+  //   s=L: y=0, y'=0, y''=0
+  const double d = lateral_offset;
+  const double q = std::tan(std::clamp(signed_yaw_dev, -M_PI / 4.0, M_PI / 4.0));
+  const double L2 = L * L;
+  const double L3 = L2 * L;
+  const double a0 = d;
+  const double a1 = q;
+  const double a2 = kappa0 / 2.0;
+  const double a3 = -(20.0 * d + 12.0 * q * L + 3.0 * kappa0 * L2) / (2.0 * L3);
+  const double a4 = (30.0 * d + 16.0 * q * L + 3.0 * kappa0 * L2) / (2.0 * L3 * L);
+  const double a5 = -(12.0 * d + 6.0 * q * L + kappa0 * L2) / (2.0 * L3 * L2);
+
+  // Sample points along the reference trajectory with lateral offset from quintic polynomial
+  const double ref_velocity = trajectory.points.at(nearest_idx).longitudinal_velocity_mps;
+  std::vector<TrajectoryPoint> shifted_points;
+
+  // First point is the ego position directly
+  TrajectoryPoint ego_pt;
+  ego_pt.pose = ego_pose;
+  ego_pt.longitudinal_velocity_mps = ref_velocity;
+  shifted_points.push_back(ego_pt);
+
+  for (double s = delta_arc_length; s < L; s += delta_arc_length) {
+    // Evaluate quintic polynomial
+    const double s2 = s * s;
+    const double s3 = s2 * s;
+    const double y_s = a0 + a1 * s + a2 * s2 + a3 * s3 + a4 * s3 * s + a5 * s3 * s2;
+    const double yp_s = a1 + 2.0 * a2 * s + 3.0 * a3 * s2 + 4.0 * a4 * s3 + 5.0 * a5 * s3 * s;
+
+    // Get corresponding pose on the original trajectory
+    const auto base_pose =
+      autoware::motion_utils::calcLongitudinalOffsetPose(trajectory.points, ego_pose.position, s);
+    if (!base_pose) {
+      break;
+    }
+
+    // Offset laterally: normal vector is (-sin(yaw), cos(yaw)), left-positive
+    const double base_yaw = tf2::getYaw(base_pose->orientation);
+    TrajectoryPoint pt;
+    pt.pose.position.x = base_pose->position.x + y_s * (-std::sin(base_yaw));
+    pt.pose.position.y = base_pose->position.y + y_s * std::cos(base_yaw);
+    pt.pose.position.z = base_pose->position.z;
+    pt.pose.orientation =
+      autoware_utils::create_quaternion_from_yaw(base_yaw + std::atan2(yp_s, 1.0));
+    pt.longitudinal_velocity_mps = ref_velocity;
+    shifted_points.push_back(pt);
+  }
+
+  // Append remaining trajectory points after merge
+  for (size_t i = merge_idx; i < trajectory.points.size(); ++i) {
+    shifted_points.push_back(trajectory.points.at(i));
+  }
+
+  Trajectory output;
+  output.header = trajectory.header;
+  output.points = shifted_points;
   return output;
 }
 
