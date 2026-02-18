@@ -211,11 +211,19 @@ void MPC::setReferenceTrajectory(
     MPCUtils::convertToMPCTrajectory(trajectory_msg, m_use_temporal_trajectory);
 
   // resampling
-  const auto [success_resample, mpc_traj_resampled] = MPCUtils::resampleMPCTrajectoryByDistance(
-    mpc_traj_raw, param.traj_resample_dist, nearest_seg_idx, ego_offset_to_segment);
-  if (!success_resample) {
-    warn_throttle("[setReferenceTrajectory] spline error when resampling by distance");
-    return;
+  // Note: For temporal trajectories, skip distance-based resampling to preserve timestamps.
+  // Time-based resampling will be performed later in calculateMPC().
+  MPCTrajectory mpc_traj_resampled;
+  if (m_use_temporal_trajectory) {
+    mpc_traj_resampled = mpc_traj_raw;
+  } else {
+    const auto [success_resample, resampled] = MPCUtils::resampleMPCTrajectoryByDistance(
+      mpc_traj_raw, param.traj_resample_dist, nearest_seg_idx, ego_offset_to_segment);
+    if (!success_resample) {
+      warn_throttle("[setReferenceTrajectory] spline error when resampling by distance");
+      return;
+    }
+    mpc_traj_resampled = resampled;
   }
 
   const auto is_forward_shift =
