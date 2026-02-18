@@ -26,7 +26,6 @@
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -69,12 +68,6 @@ public:
 private:
   std::shared_ptr<JerkFilteredSmoother> jerk_filtered_smoother_{nullptr};
   TrajectoryVelocityOptimizerParams velocity_params_;
-
-  // Previous cycle's QP output for temporal consistency (like velocity_smoother's prev_output_)
-  TrajectoryPoints prev_output_;
-
-  std::optional<TrajectoryPoint> calcProjectedTrajectoryPointFromEgo(
-    const TrajectoryPoints & trajectory, const geometry_msgs::msg::Pose & ego_pose) const;
 };
 }  // namespace autoware::trajectory_optimizer::plugin
 

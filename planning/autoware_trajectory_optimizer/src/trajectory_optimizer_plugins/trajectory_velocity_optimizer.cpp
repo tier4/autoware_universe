@@ -21,8 +21,6 @@
 #include <autoware_utils_rclcpp/parameter.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
-#include <algorithm>
-#include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
@@ -38,42 +36,6 @@ void TrajectoryVelocityOptimizer::set_up_velocity_smoother(
   double wheelbase = vehicle_info.wheel_base_m;  // vehicle_info.wheel_base_m;
   jerk_filtered_smoother_ = std::make_shared<JerkFilteredSmoother>(*node_ptr, time_keeper);
   jerk_filtered_smoother_->setWheelBase(wheelbase);
-}
-
-std::optional<TrajectoryPoint> TrajectoryVelocityOptimizer::calcProjectedTrajectoryPointFromEgo(
-  const TrajectoryPoints & trajectory, const geometry_msgs::msg::Pose & ego_pose) const
-{
-  if (trajectory.size() < 2) {
-    return std::nullopt;
-  }
-
-  const auto seg_idx = autoware::motion_utils::findFirstNearestSegmentIndexWithSoftConstraints(
-    trajectory, ego_pose, velocity_params_.nearest_dist_threshold_m,
-    autoware_utils_math::deg2rad(velocity_params_.nearest_yaw_threshold_deg));
-
-  const auto & p0 = trajectory.at(seg_idx);
-  const auto & p1 = trajectory.at(seg_idx + 1);
-
-  const double dx = p1.pose.position.x - p0.pose.position.x;
-  const double dy = p1.pose.position.y - p0.pose.position.y;
-  const double seg_len_sq = dx * dx + dy * dy;
-
-  if (seg_len_sq < 1e-10) {
-    return p0;
-  }
-
-  const double ex = ego_pose.position.x - p0.pose.position.x;
-  const double ey = ego_pose.position.y - p0.pose.position.y;
-  const double ratio = std::clamp((ex * dx + ey * dy) / seg_len_sq, 0.0, 1.0);
-
-  TrajectoryPoint result = p0;
-  result.longitudinal_velocity_mps = static_cast<float>(
-    p0.longitudinal_velocity_mps +
-    ratio * (p1.longitudinal_velocity_mps - p0.longitudinal_velocity_mps));
-  result.acceleration_mps2 = static_cast<float>(
-    p0.acceleration_mps2 + ratio * (p1.acceleration_mps2 - p0.acceleration_mps2));
-
-  return result;
 }
 
 void TrajectoryVelocityOptimizer::optimize_trajectory(
@@ -97,28 +59,11 @@ void TrajectoryVelocityOptimizer::optimize_trajectory(
       traj_points, velocity_params_.max_lateral_accel_mps2, data.current_odometry);
   }
 
-  // --- Feature 1: Compute initial motion from prev_output_ for temporal consistency ---
-  auto initial_motion_speed = current_speed;
-  auto initial_motion_acc = current_linear_acceleration;
-
-  if (current_speed < target_pull_out_speed_mps) {
-    // Vehicle is slow (starting/pull-out): use pull-out parameters
-    initial_motion_speed = target_pull_out_speed_mps;
-    initial_motion_acc = target_pull_out_acc_mps2;
-  } else if (!prev_output_.empty()) {
-    // Vehicle is moving: use prev_output for temporal consistency when tracking is good
-    const auto projected =
-      calcProjectedTrajectoryPointFromEgo(prev_output_, current_odometry.pose.pose);
-    if (projected) {
-      const double desired_vel = std::fabs(projected->longitudinal_velocity_mps);
-      const double desired_acc = projected->acceleration_mps2;
-      constexpr double replan_vel_deviation = 3.0;  // [m/s]
-      if (std::fabs(current_speed - desired_vel) <= replan_vel_deviation) {
-        initial_motion_speed = desired_vel;
-        initial_motion_acc = desired_acc;
-      }
-    }
-  }
+  auto initial_motion_speed =
+    (current_speed > target_pull_out_speed_mps) ? current_speed : target_pull_out_speed_mps;
+  auto initial_motion_acc = (current_speed > target_pull_out_speed_mps)
+                              ? current_linear_acceleration
+                              : target_pull_out_acc_mps2;
 
   if (velocity_params_.set_engage_speed && (current_speed < target_pull_out_speed_mps)) {
     // Check distance to stop point to avoid engaging when obstacle is ahead
@@ -159,11 +104,6 @@ void TrajectoryVelocityOptimizer::optimize_trajectory(
       traj_points, initial_motion, velocity_params_.nearest_dist_threshold_m,
       autoware_utils_math::deg2rad(velocity_params_.nearest_yaw_threshold_deg),
       jerk_filtered_smoother_, current_odometry);
-
-    // Save output for temporal consistency in next cycle
-    if (!traj_points.empty()) {
-      prev_output_ = traj_points;
-    }
   }
 }
 
