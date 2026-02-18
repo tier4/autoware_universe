@@ -27,29 +27,27 @@ namespace autoware::trajectory_modifier::plugin
 class StopPointFixer : public TrajectoryModifierPluginBase
 {
 public:
-  StopPointFixer(
-    const std::string & name, rclcpp::Node * node_ptr,
-    const std::shared_ptr<autoware_utils_debug::TimeKeeper> & time_keeper,
-    const TrajectoryModifierParams & params);
+  StopPointFixer() = default;
 
   void modify_trajectory(
-    TrajectoryPoints & traj_points, const TrajectoryModifierParams & params,
-    const TrajectoryModifierData & data) override;
-  void set_up_params() override;
-  rcl_interfaces::msg::SetParametersResult on_parameter(
-    const std::vector<rclcpp::Parameter> & parameters) override;
-  bool is_trajectory_modification_required(
-    const TrajectoryPoints & traj_points, const TrajectoryModifierParams & params,
-    const TrajectoryModifierData & data) const override;
+    TrajectoryPoints & traj_points, const TrajectoryModifierData & data) override;
+
+  [[nodiscard]] bool is_trajectory_modification_required(
+    const TrajectoryPoints & traj_points, const TrajectoryModifierData & data) const override;
+
+  void update_params(const TrajectoryModifierParams & params) override
+  {
+    params_ = params.stop_point_fixer;
+    enabled_ = params.use_stop_point_fixer;
+  }
+
+  const TrajectoryModifierParams::StopPointFixer & get_params() const { return params_; }
+
+protected:
+  void on_initialize(const TrajectoryModifierParams & params) override;
 
 private:
-  struct Parameters
-  {
-    double velocity_threshold_mps{0.1};
-    double min_distance_threshold_m{1.0};
-  };
-
-  Parameters params_;
+  TrajectoryModifierParams::StopPointFixer params_;
 };
 
 }  // namespace autoware::trajectory_modifier::plugin
