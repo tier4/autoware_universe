@@ -19,12 +19,11 @@
 
 namespace autoware::trajectory_safety_filter::plugin
 {
-bool UncrossableBoundaryDepartureFilter::is_feasible(
+tl::expected<void, std::string> UncrossableBoundaryDepartureFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   if (const auto has_invalid_input = is_invalid_input(traj_points, context)) {
-    warn_throttle("%s", has_invalid_input->c_str());
-    return false;
+    return tl::make_unexpected(*has_invalid_input);
   }
 
   if (!uncrossable_boundary_departure_checker_ptr_) {
@@ -33,16 +32,20 @@ bool UncrossableBoundaryDepartureFilter::is_feasible(
         clock_, context.lanelet_map, *vehicle_info_ptr_);
   }
 
-  const auto departure_data = uncrossable_boundary_departure_checker_ptr_->get_departure_data(
+  auto departure_data = uncrossable_boundary_departure_checker_ptr_->get_departure_data(
     traj_points, traj_points, context.odometry->pose, context.odometry->twist.twist.linear.x,
     context.acceleration->accel.accel.linear.x);
 
   if (!departure_data) {
     warn_throttle("%s", departure_data.error().c_str());
-    return false;
+    return tl::make_unexpected(departure_data.error());
   }
 
-  return departure_data->critical_departure_points.empty();
+  if (!departure_data->critical_departure_points.empty()) {
+    return tl::make_unexpected("Found critical departure");
+  }
+
+  return {};
 }
 std::optional<std::string> UncrossableBoundaryDepartureFilter::is_invalid_input(
   const TrajectoryPoints & traj_points, const FilterContext & context) const

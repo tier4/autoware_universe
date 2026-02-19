@@ -78,7 +78,7 @@ TrajectorySafetyFilter::TrajectorySafetyFilter(const rclcpp::NodeOptions & optio
   }
 
   sub_map_ = create_subscription<LaneletMapBin>(
-    "/map/vector_map", rclcpp::QoS{1}.transient_local(),
+    "~/input/lanelet2_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&TrajectorySafetyFilter::map_callback, this, std::placeholders::_1));
 
   sub_trajectories_ = create_subscription<CandidateTrajectories>(
@@ -243,11 +243,12 @@ void TrajectorySafetyFilter::update_diagnostic(const CandidateTrajectories & fil
   if (filtered_trajectories.candidate_trajectories.empty()) {
     diagnostics_interface_ptr_->update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No feasible trajectories found");
-  } else if (has_diffusion_planner_trajectory(uuid_to_name_map, filtered_trajectories)) {
+  } else if (!has_diffusion_planner_trajectory(uuid_to_name_map, filtered_trajectories)) {
     diagnostics_interface_ptr_->update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::WARN,
       "All diffusion planner trajectories are infeasible");
   } else {
+    diagnostics_interface_ptr_->clear();
     diagnostics_interface_ptr_->update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::OK, "");
   }
