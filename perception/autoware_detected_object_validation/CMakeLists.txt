@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_detected_object_validation)
 
 find_package(autoware_cmake REQUIRED)
+find_package(agnocast_components REQUIRED)
 autoware_package()
 
 ### Find OpenCV Dependencies
@@ -64,29 +65,34 @@ ament_auto_add_library(object_position_filter SHARED
   lib/utils/utils.cpp
 )
 
-rclcpp_components_register_node(obstacle_pointcloud_based_validator
+agnocast_components_register_node(obstacle_pointcloud_based_validator
   PLUGIN "autoware::detected_object_validation::obstacle_pointcloud::ObstaclePointCloudBasedValidator"
   EXECUTABLE obstacle_pointcloud_based_validator_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
-rclcpp_components_register_node(object_lanelet_filter
+agnocast_components_register_node(object_lanelet_filter
   PLUGIN "autoware::detected_object_validation::lanelet_filter::DetectedObjectLaneletFilterNode"
   EXECUTABLE object_lanelet_filter_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
-rclcpp_components_register_node(object_lanelet_filter
+agnocast_components_register_node(object_lanelet_filter
   PLUGIN "autoware::detected_object_validation::lanelet_filter::TrackedObjectLaneletFilterNode"
   EXECUTABLE tracked_object_lanelet_filter_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
-rclcpp_components_register_node(object_position_filter
+agnocast_components_register_node(object_position_filter
   PLUGIN "autoware::detected_object_validation::position_filter::ObjectPositionFilterNode"
   EXECUTABLE object_position_filter_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
-rclcpp_components_register_node(occupancy_grid_based_validator
+agnocast_components_register_node(occupancy_grid_based_validator
   PLUGIN "autoware::detected_object_validation::occupancy_grid_map::OccupancyGridBasedValidator"
   EXECUTABLE occupancy_grid_based_validator_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 if(BUILD_TESTING)

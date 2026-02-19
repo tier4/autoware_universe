@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_diagnostic_graph_aggregator)
 
 find_package(autoware_cmake REQUIRED)
+find_package(agnocast_components REQUIRED)
 find_package(yaml-cpp REQUIRED)
 autoware_package()
 
@@ -46,14 +47,16 @@ ament_auto_add_library(${PROJECT_NAME}_test SHARED
 )
 target_include_directories(${PROJECT_NAME}_test PRIVATE src/common)
 
-rclcpp_components_register_node(aggregator
+agnocast_components_register_node(aggregator
   PLUGIN "autoware::diagnostic_graph_aggregator::AggregatorNode"
   EXECUTABLE "aggregator_node"
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
-rclcpp_components_register_node(converter
+agnocast_components_register_node(converter
   PLUGIN "autoware::diagnostic_graph_aggregator::ConverterNode"
   EXECUTABLE "converter_node"
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 if(BUILD_TESTING)

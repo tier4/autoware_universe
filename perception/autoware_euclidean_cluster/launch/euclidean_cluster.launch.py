@@ -72,8 +72,8 @@ def launch_setup(context, *args, **kwargs):
     container = ComposableNodeContainer(
         name="euclidean_cluster_container",
         namespace=ns,
-        package="rclcpp_components",
-        executable="component_container",
+        package="agnocast_components",
+        executable="agnocast_component_container_cie",
         composable_node_descriptions=[],
         output="screen",
         condition=UnlessCondition(LaunchConfiguration("use_pointcloud_container")),

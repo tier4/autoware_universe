@@ -25,6 +25,7 @@
   <depend>mussp</depend>
   <depend>nav_msgs</depend>
   <depend>rclcpp</depend>
+  <depend>agnocast_components</depend>
   <depend>rclcpp_components</depend>
   <depend>rosbag2_cpp</depend>
   <depend>tf2</depend>

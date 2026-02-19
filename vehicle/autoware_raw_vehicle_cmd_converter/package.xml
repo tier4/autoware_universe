@@ -30,6 +30,7 @@
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>rclcpp</depend>
+  <depend>agnocast_components</depend>
   <depend>rclcpp_components</depend>
   <depend>tier4_vehicle_msgs</depend>
 

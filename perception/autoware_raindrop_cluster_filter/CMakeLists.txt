@@ -6,6 +6,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 # find dependencies
 find_package(autoware_cmake REQUIRED)
+find_package(agnocast_components REQUIRED)
 autoware_package()
 
 # Targets
@@ -13,9 +14,11 @@ ament_auto_add_library(low_intensity_cluster_filter SHARED
   src/low_intensity_cluster_filter_node.cpp
 )
 
-rclcpp_components_register_node(low_intensity_cluster_filter
+agnocast_components_register_node(low_intensity_cluster_filter
   PLUGIN "autoware::low_intensity_cluster_filter::LowIntensityClusterFilter"
-  EXECUTABLE low_intensity_cluster_filter_node)
+  EXECUTABLE low_intensity_cluster_filter_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
+)
 
 
 if(BUILD_TESTING)

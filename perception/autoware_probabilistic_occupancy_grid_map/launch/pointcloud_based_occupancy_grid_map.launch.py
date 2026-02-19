@@ -129,7 +129,7 @@ def launch_setup(context, *args, **kwargs):
     occupancy_grid_map_container = ComposableNodeContainer(
         name=LaunchConfiguration("individual_container_name"),
         namespace="",
-        package="rclcpp_components",
+        package=LaunchConfiguration("container_package"),
         executable=LaunchConfiguration("container_executable"),
         composable_node_descriptions=composable_nodes,
         condition=UnlessCondition(LaunchConfiguration("use_pointcloud_container")),
@@ -154,10 +154,20 @@ def generate_launch_description():
         "component_container",
         condition=UnlessCondition(LaunchConfiguration("use_multithread")),
     )
+    set_container_package = SetLaunchConfiguration(
+        "container_package",
+        "rclcpp_components",
+        condition=UnlessCondition(LaunchConfiguration("use_multithread")),
+    )
 
     set_container_mt_executable = SetLaunchConfiguration(
         "container_executable",
-        "component_container_mt",
+        "agnocast_component_container_cie",
+        condition=IfCondition(LaunchConfiguration("use_multithread")),
+    )
+    set_container_mt_package = SetLaunchConfiguration(
+        "container_package",
+        "agnocast_components",
         condition=IfCondition(LaunchConfiguration("use_multithread")),
     )
 
@@ -183,7 +193,9 @@ def generate_launch_description():
                 + "/config/binary_bayes_filter_updater.param.yaml",
             ),
             set_container_executable,
+            set_container_package,
             set_container_mt_executable,
+            set_container_mt_package,
         ]
         + [OpaqueFunction(function=launch_setup)]
     )

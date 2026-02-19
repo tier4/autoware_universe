@@ -55,8 +55,8 @@ def generate_launch_description():
     container = ComposableNodeContainer(
         name="pointcloud_densifier_container",
         namespace="",
-        package="rclcpp_components",
-        executable="component_container",
+        package="agnocast_components",
+        executable="agnocast_component_container_cie",
         composable_node_descriptions=[component],
         output="screen",
     )
