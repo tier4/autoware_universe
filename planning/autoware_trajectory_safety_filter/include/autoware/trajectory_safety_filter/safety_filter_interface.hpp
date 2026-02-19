@@ -61,6 +61,8 @@ public:
 
   [[nodiscard]] std::string get_name() const { return name_; }
 
+  [[nodiscard]] virtual bool is_debug_mode() const { return false; }
+
 protected:
   std::string name_;
   std::shared_ptr<VehicleInfo> vehicle_info_ptr_;

@@ -135,7 +135,7 @@ void TrajectorySafetyFilter::process(const CandidateTrajectories::ConstSharedPtr
     bool is_feasible = true;
     for (const auto & plugin : plugins_) {
       if (const auto res = plugin->is_feasible(trajectory.points, context); !res) {
-        is_feasible = false;
+        is_feasible = !plugin->is_debug_mode();
         RCLCPP_WARN(get_logger(), "Not feasible: %s", res.error().c_str());
         diagnostics_interface_ptr_->add_key_value(plugin->get_name(), res.error());
       }
