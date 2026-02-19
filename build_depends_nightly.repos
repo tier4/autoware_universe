@@ -8,8 +8,8 @@ repositories:
     version: main
   core/autoware_core:
     type: git
-    url: https://github.com/autowarefoundation/autoware_core.git
-    version: main
+    url: https://github.com/tier4/autoware_core.git
+    version: beta/v0.64
   core/autoware_cmake:
     type: git
     url: https://github.com/autowarefoundation/autoware_cmake.git
@@ -26,7 +26,7 @@ repositories:
   universe/external/tier4_autoware_msgs:
     type: git
     url: https://github.com/tier4/tier4_autoware_msgs.git
-    version: tier4/universe
+    version: beta/v0.64
   universe/external/managed_transform_buffer:
     type: git
     url: https://github.com/autowarefoundation/managed_transform_buffer.git
