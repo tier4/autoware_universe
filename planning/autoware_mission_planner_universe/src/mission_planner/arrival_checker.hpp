@@ -36,7 +36,8 @@ public:
   bool is_arrived(const PoseStamped & pose) const;
 
 private:
-  double distance_;
+  double distance_lateral_;
+  double distance_longitudinal_;
   double angle_;
   double duration_;
   std::optional<PoseWithUuidStamped> goal_with_uuid_;

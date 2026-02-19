@@ -20,6 +20,8 @@
 
 #include <tf2/utils.h>
 
+#include <cmath>
+
 namespace autoware::mission_planner_universe
 {
 
@@ -27,7 +29,15 @@ ArrivalChecker::ArrivalChecker(rclcpp::Node * node) : vehicle_stop_checker_(node
 {
   const double angle_deg = node->declare_parameter<double>("arrival_check_angle_deg");
   angle_ = autoware_utils::deg2rad(angle_deg);
-  distance_ = node->declare_parameter<double>("arrival_check_distance");
+  if (node->has_parameter("arrival_check_distance_lateral") &&
+      node->has_parameter("arrival_check_distance_longitudinal")) {
+    distance_lateral_ = node->declare_parameter<double>("arrival_check_distance_lateral");
+    distance_longitudinal_ = node->declare_parameter<double>("arrival_check_distance_longitudinal");
+  } else {
+    const double distance = node->declare_parameter<double>("arrival_check_distance");
+    distance_lateral_ = distance;
+    distance_longitudinal_ = distance;
+  }
   duration_ = node->declare_parameter<double>("arrival_check_duration");
 }
 
@@ -56,7 +66,17 @@ bool ArrivalChecker::is_arrived(const PoseStamped & pose) const
   }
 
   // Check distance.
-  if (distance_ < autoware_utils::calc_distance2d(pose.pose, goal.pose)) {
+  const double dx = goal.pose.position.x - pose.pose.position.x;
+  const double dy = goal.pose.position.y - pose.pose.position.y;
+  const double yaw_goal = tf2::getYaw(goal.pose.orientation);
+  const double cos_yaw = std::cos(yaw_goal);
+  const double sin_yaw = std::sin(yaw_goal);
+  const double lon_distance = dx * cos_yaw + dy * sin_yaw;
+  const double lat_distance = -dx * sin_yaw + dy * cos_yaw;
+  if (std::fabs(lon_distance) > distance_longitudinal_) {
+    return false;
+  }
+  if (std::fabs(lat_distance) > distance_lateral_) {
     return false;
   }
 
