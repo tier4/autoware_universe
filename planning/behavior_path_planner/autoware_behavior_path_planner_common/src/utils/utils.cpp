@@ -112,7 +112,7 @@ bool has_collision_between_shifted_path_footprints_and_objects(
 
     const auto check_shifted_path = [&](const auto & obj) {
       const double obj_speed = obj.kinematics.initial_twist_with_covariance.twist.linear.x;
-      if (obj_speed < th_stopped_obj_vel && shift_length < th_min_shift_length) {
+      if (obj_speed < th_stopped_obj_vel) {
         return false;
       }
       const auto obj_polygon = autoware_utils::to_polygon2d(obj);
