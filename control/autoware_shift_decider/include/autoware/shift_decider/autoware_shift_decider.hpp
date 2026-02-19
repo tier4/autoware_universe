@@ -59,6 +59,7 @@ private:
   uint8_t prev_shift_command = autoware_vehicle_msgs::msg::GearCommand::PARK;
 
   bool park_on_goal_;
+  bool park_on_waiting_for_engage_;
 };
 }  // namespace autoware::shift_decider
 

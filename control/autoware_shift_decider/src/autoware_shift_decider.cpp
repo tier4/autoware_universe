@@ -73,6 +73,9 @@ void ShiftDecider::updateCurrentShiftCmd()
        autoware_state_->state == AutowareState::WAITING_FOR_ROUTE) &&
       park_on_goal_) {
       shift_cmd_.command = GearCommand::PARK;
+    } else if (
+      autoware_state_->state == AutowareState::WAITING_FOR_ENGAGE && park_on_waiting_for_engage_) {
+      shift_cmd_.command = GearCommand::PARK;
     } else {
       shift_cmd_.command = current_gear_ptr_->report;
     }
