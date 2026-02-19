@@ -12,20 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/boundary_departure_checker/steering_abnormality_utils.hpp"
+#ifndef DATA_STRUCTS_HPP_
+#define DATA_STRUCTS_HPP_
 
-#include <autoware/interpolation/linear_interpolation.hpp>
-#include <autoware_utils_geometry/geometry.hpp>
-#include <autoware_vehicle_info_utils/vehicle_info.hpp>
-#include <tf2/utils.hpp>
+#include "type_alias.hpp"
 
-#include <autoware_vehicle_msgs/msg/steering_report.hpp>
-#include <geometry_msgs/msg/pose.hpp>
-
-#include <cmath>
 #include <vector>
 
-namespace autoware::boundary_departure_checker::utils::steering
+namespace autoware::motion_velocity_planner::experimental
 {
+struct DepartureInterval
+{
+  TrajectoryPoint start;
+  TrajectoryPoint end;
+  SideKey side_key;
+  double start_dist_on_traj;
+  double end_dist_on_traj;
 
-}  // namespace autoware::boundary_departure_checker::utils::steering
+  bool start_at_traj_front{false};
+
+  DeparturePoints candidates;
+};
+using DepartureIntervals = std::vector<DepartureInterval>;
+
+}  // namespace autoware::motion_velocity_planner::experimental
+
+#endif  // DATA_STRUCTS_HPP_
