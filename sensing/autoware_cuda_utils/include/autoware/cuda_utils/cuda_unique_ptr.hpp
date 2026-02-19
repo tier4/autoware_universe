@@ -30,7 +30,10 @@ namespace autoware::cuda_utils
 {
 struct CudaDeleter
 {
-  void operator()(void * p) const { CHECK_CUDA_ERROR(::cudaFree(p)); }
+  void operator()(void * p) const {
+    CHECK_CUDA_ERROR(::cudaFreeAsync(p, cudaStreamPerThread));
+    CHECK_CUDA_ERROR(::cudaStreamSynchronize(cudaStreamPerThread));
+  }
 };
 template <typename T>
 using CudaUniquePtr = std::unique_ptr<T, CudaDeleter>;
@@ -41,7 +44,8 @@ typename std::enable_if_t<std::is_array<T>::value, CudaUniquePtr<T>> make_unique
 {
   using U = typename std::remove_extent_t<T>;
   U * p;
-  CHECK_CUDA_ERROR(::cudaMalloc(reinterpret_cast<void **>(&p), sizeof(U) * n));
+  CHECK_CUDA_ERROR(::cudaMallocAsync(reinterpret_cast<void **>(&p), sizeof(U) * n, cudaStreamPerThread));
+  CHECK_CUDA_ERROR(::cudaStreamSynchronize(cudaStreamPerThread));
   return CudaUniquePtr<T>{p};
 }
 
@@ -49,7 +53,8 @@ template <typename T>
 CudaUniquePtr<T> make_unique()
 {
   T * p;
-  CHECK_CUDA_ERROR(::cudaMalloc(reinterpret_cast<void **>(&p), sizeof(T)));
+  CHECK_CUDA_ERROR(::cudaMallocAsync(reinterpret_cast<void **>(&p), sizeof(T), cudaStreamPerThread));
+  CHECK_CUDA_ERROR(::cudaStreamSynchronize(cudaStreamPerThread));
   return CudaUniquePtr<T>{p};
 }
 
