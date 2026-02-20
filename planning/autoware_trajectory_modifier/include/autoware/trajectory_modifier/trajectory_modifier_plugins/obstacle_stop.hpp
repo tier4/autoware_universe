@@ -1,4 +1,4 @@
-// Copyright 2025 TIER IV, Inc.
+// Copyright 2026 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__STOP_POINT_FIXER_HPP_
-#define AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__STOP_POINT_FIXER_HPP_
+#ifndef AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__OBSTACLE_STOP_HPP_
+#define AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__OBSTACLE_STOP_HPP_
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/trajectory_modifier_plugin_base.hpp"
+
+#include <autoware_utils_rclcpp/polling_subscriber.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <memory>
 #include <string>
@@ -24,10 +27,10 @@
 namespace autoware::trajectory_modifier::plugin
 {
 
-class StopPointFixer : public TrajectoryModifierPluginBase
+class ObstacleStop : public TrajectoryModifierPluginBase
 {
 public:
-  StopPointFixer() = default;
+  ObstacleStop() = default;
 
   void modify_trajectory(TrajectoryPoints & traj_points) override;
 
@@ -36,19 +39,22 @@ public:
 
   void update_params(const TrajectoryModifierParams & params) override
   {
-    params_ = params.stop_point_fixer;
-    enabled_ = params.use_stop_point_fixer;
+    params_ = params.obstacle_stop;
+    enabled_ = params.use_obstacle_stop;
   }
-
-  const TrajectoryModifierParams::StopPointFixer & get_params() const { return params_; }
+  const TrajectoryModifierParams::ObstacleStop & get_params() const { return params_; }
 
 protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
 
 private:
-  TrajectoryModifierParams::StopPointFixer params_;
+  TrajectoryModifierParams::ObstacleStop params_;
+
+  bool check_obstacles();
+  bool check_predicted_objects();
+  bool check_pointcloud();
 };
 
 }  // namespace autoware::trajectory_modifier::plugin
 
-#endif  // AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__STOP_POINT_FIXER_HPP_
+#endif  // AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__OBSTACLE_STOP_HPP_
