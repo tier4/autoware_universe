@@ -66,6 +66,8 @@ IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
     ip.common.max_jerk = get_or_declare_parameter<double>(node, ns + ".common.max_jerk");
     ip.common.delay_response_time =
       get_or_declare_parameter<double>(node, ns + ".common.delay_response_time");
+    ip.common.creep_stopline_margin =
+      get_or_declare_parameter<double>(node, ns + ".common.creep_stopline_margin");
   }
 
   // stuck
@@ -311,6 +313,11 @@ IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
   planning_factor_interface_for_occlusion_ =
     std::make_shared<planning_factor_interface::PlanningFactorInterface>(
       &node, "intersection_occlusion", enable_console_output, throttle_duration_ms);
+
+  // Initialize creep guidance interface
+  creep_guidance_interface_ =
+    std::make_shared<autoware::creep_guidance_interface::CreepGuidanceInterface>(
+      &node, "intersection");
 }
 
 void IntersectionModuleManager::launchNewModules(
@@ -351,7 +358,8 @@ void IntersectionModuleManager::launchNewModules(
     const auto new_module = std::make_shared<IntersectionModule>(
       module_id, lane_id, planner_data_, intersection_param_, associative_ids, turn_direction,
       has_traffic_light, node_, logger_.get_child("intersection_module"), clock_, time_keeper_,
-      planning_factor_interface_, planning_factor_interface_for_occlusion_);
+      planning_factor_interface_, planning_factor_interface_for_occlusion_,
+      creep_guidance_interface_);
     generate_uuid(module_id);
     /* set RTC status as non_occluded status initially */
     const UUID uuid = getUUID(new_module->getModuleId());
@@ -379,6 +387,8 @@ void IntersectionModuleManager::launchNewModules(
       occlusion_uuid, true, State::WAITING_FOR_EXECUTION, std::numeric_limits<double>::lowest(),
       std::numeric_limits<double>::lowest(), clock_->now(), false,
       override_occlusion_rtc_auto_mode);
+
+    creep_guidance_interface_->add(new_module->getModuleId());
     registerModule(std::move(new_module));
   }
 }
@@ -440,6 +450,8 @@ void IntersectionModuleManager::sendRTC(const Time & stamp)
     occlusion_rtc_interface_.updateCooperateStatus(
       occlusion_uuid, occlusion_safety, State::RUNNING, occlusion_distance, occlusion_distance,
       stamp);
+    creep_guidance_interface_->update_distance(
+      scene_module->getModuleId(), scene_module->getDistance(), scene_module->getDistance());
 
     // ==========================================================================================
     // module debug data
@@ -453,6 +465,7 @@ void IntersectionModuleManager::sendRTC(const Time & stamp)
   }
   rtc_interface_.publishCooperateStatus(stamp);  // publishRTCStatus()
   occlusion_rtc_interface_.publishCooperateStatus(stamp);
+  creep_guidance_interface_->publish_creep_status_array();
 
   // ==========================================================================================
   // publish module debug data
@@ -498,6 +511,7 @@ void IntersectionModuleManager::deleteExpiredModules(
       const auto occlusion_uuid = intersection_module->getOcclusionUUID();
       occlusion_rtc_interface_.removeCooperateStatus(occlusion_uuid);
       registered_module_id_set_.erase((*itr)->getModuleId());
+      creep_guidance_interface_->remove((*itr)->getModuleId());
       itr = scene_modules_.erase(itr);
     } else {
       itr++;
