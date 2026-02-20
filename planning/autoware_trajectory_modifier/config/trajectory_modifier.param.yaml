@@ -1,8 +1,38 @@
 /**:
   ros__parameters:
     use_stop_point_fixer: true
+    use_obstacle_stop: true
 
     # Stop Point Fixer Plugin Parameters
     stop_point_fixer:
       velocity_threshold_mps: 0.1
       min_distance_threshold_m: 1.0
+
+    # Obstacle Stop Plugin Parameters
+    obstacle_stop:
+      use_objects: true
+      use_pointcloud: true
+      stop_margin_m: 5.0
+      on_time_buffer: 0.5 # [s]
+      off_time_buffer: 1.0 # [s]
+
+      objects:
+        object_types: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "unknown"] # object types to consider for obstacle stop
+        safety_buffer_m: 0.5      # safety buffer to add to bounding box of object [m]
+        lateral_margin_m: 0.5     # lateral margin from trajectory to consider for obstacle stop [m]
+        max_velocity_th: 1.0      # maximum velocity threshold for target object [m/s]
+
+      pointcloud:
+        height_buffer: 0.5  # height buffer to add above ego height [m]
+        min_height: 0.2  # minimum height of pointcloud [m]
+        detection_range: 100.0 # detection range [m]
+        voxel_grid_filter:
+          x: 0.2
+          y: 0.2
+          z: 0.2
+          min_size: 3
+        clustering:
+          tolerance: 0.5  #[m]
+          min_height: 0.5
+          min_size: 10
+          max_size: 10000
