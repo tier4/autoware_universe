@@ -36,7 +36,7 @@
     }
   },
   "properties": {
-    "/trajectory_modifier": {
+    "/**": {
       "type": "object",
       "properties": {
         "ros__parameters": {
@@ -47,6 +47,6 @@
       "additionalProperties": false
     }
   },
-  "required": ["/trajectory_modifier"],
+  "required": ["/**"],
   "additionalProperties": false
 }
