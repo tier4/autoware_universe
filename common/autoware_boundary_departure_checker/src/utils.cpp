@@ -22,10 +22,10 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/trajectory/trajectory_point.hpp>
 #include <autoware/trajectory/utils/closest.hpp>
-#include <autoware_utils/geometry/geometry.hpp>
-#include <autoware_utils/math/unit_conversion.hpp>
+#include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware_utils_geometry/boost_geometry.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_utils_math/unit_conversion.hpp>
 #include <range/v3/view.hpp>
 #include <tl_expected/expected.hpp>
 
@@ -41,12 +41,11 @@
 
 namespace
 {
-using autoware::boundary_departure_checker::ClosestProjectionsToBound;
-using autoware::boundary_departure_checker::ClosestProjectionToBound;
 using autoware::boundary_departure_checker::DeparturePoint;
 using autoware::boundary_departure_checker::DeparturePoints;
 using autoware::boundary_departure_checker::DepartureType;
 using autoware::boundary_departure_checker::IdxForRTreeSegment;
+using autoware::boundary_departure_checker::ProjectionToBound;
 using autoware::boundary_departure_checker::Segment2d;
 using autoware::boundary_departure_checker::SegmentWithIdx;
 using autoware::boundary_departure_checker::VehicleInfo;
@@ -54,21 +53,23 @@ using autoware::boundary_departure_checker::utils::to_segment_2d;
 namespace bg = boost::geometry;
 
 DeparturePoint create_departure_point(
-  const ClosestProjectionToBound & projection_to_bound,
+  const ProjectionToBound & projection_to_bound,
   const std::vector<double> & pred_traj_idx_to_ref_traj_lon_dist,
   const double th_point_merge_distance_m)
 {
   DeparturePoint point;
-  point.uuid = autoware_utils::to_hex_string(autoware_utils::generate_uuid());
   point.lat_dist_to_bound = projection_to_bound.lat_dist;
-  point.departure_type = projection_to_bound.departure_type;
+  point.can_be_removed =
+    !projection_to_bound.departure_type_opt || point.ego_dist_on_ref_traj <= 0.0;
+  if (point.can_be_removed) {
+    return point;
+  }
+  point.departure_type = projection_to_bound.departure_type_opt.value();
   point.point = projection_to_bound.pt_on_bound;
   point.th_point_merge_distance_m = th_point_merge_distance_m;
   point.idx_from_ego_traj = projection_to_bound.ego_sides_idx;
   point.ego_dist_on_ref_traj =
     pred_traj_idx_to_ref_traj_lon_dist[projection_to_bound.ego_sides_idx];
-  point.can_be_removed =
-    (point.departure_type == DepartureType::NONE) || point.ego_dist_on_ref_traj <= 0.0;
   return point;
 }
 
@@ -113,7 +114,7 @@ TrajectoryPoints cutTrajectory(const TrajectoryPoints & trajectory, const double
   TrajectoryPoints cut;
 
   double total_length = 0.0;
-  auto last_point = autoware_utils::from_msg(trajectory.front().pose.position);
+  auto last_point = autoware_utils_geometry::from_msg(trajectory.front().pose.position);
   auto end_it = std::next(trajectory.cbegin());
   for (; end_it != trajectory.cend(); ++end_it) {
     const auto remain_distance = length - total_length;
@@ -124,7 +125,7 @@ TrajectoryPoints cutTrajectory(const TrajectoryPoints & trajectory, const double
     }
 
     const auto & new_pose = end_it->pose;
-    const auto new_point = autoware_utils::from_msg(new_pose.position);
+    const auto new_point = autoware_utils_geometry::from_msg(new_pose.position);
     const auto points_distance = boost::geometry::distance(last_point.to_2d(), new_point.to_2d());
 
     if (remain_distance <= points_distance) {
@@ -158,11 +159,11 @@ TrajectoryPoints resampleTrajectory(const Trajectory & trajectory, const double 
   TrajectoryPoints resampled;
 
   resampled.push_back(trajectory.points.front());
-  auto prev_point = autoware_utils::from_msg(trajectory.points.front().pose.position);
+  auto prev_point = autoware_utils_geometry::from_msg(trajectory.points.front().pose.position);
   for (size_t i = 1; i < trajectory.points.size() - 1; ++i) {
     const auto & traj_point = trajectory.points.at(i);
 
-    const auto next_point = autoware_utils::from_msg(traj_point.pose.position);
+    const auto next_point = autoware_utils_geometry::from_msg(traj_point.pose.position);
 
     if (boost::geometry::distance(prev_point.to_2d(), next_point.to_2d()) >= interval) {
       resampled.push_back(traj_point);
@@ -188,8 +189,9 @@ std::vector<LinearRing2d> createVehicleFootprints(
   // Create vehicle footprint on each TrajectoryPoint
   std::vector<LinearRing2d> vehicle_footprints;
   for (const auto & p : trajectory) {
-    vehicle_footprints.push_back(autoware_utils::transform_vector(
-      local_vehicle_footprint, autoware_utils::pose2transform(p.pose)));
+    vehicle_footprints.push_back(
+      autoware_utils_geometry::transform_vector(
+        local_vehicle_footprint, autoware_utils_geometry::pose2transform(p.pose)));
   }
 
   return vehicle_footprints;
@@ -205,8 +207,9 @@ std::vector<LinearRing2d> createVehicleFootprints(
   // Create vehicle footprint on each Path point
   std::vector<LinearRing2d> vehicle_footprints;
   for (const auto & p : path.points) {
-    vehicle_footprints.push_back(autoware_utils::transform_vector(
-      local_vehicle_footprint, autoware_utils::pose2transform(p.point.pose)));
+    vehicle_footprints.push_back(
+      autoware_utils_geometry::transform_vector(
+        local_vehicle_footprint, autoware_utils_geometry::pose2transform(p.point.pose)));
   }
 
   return vehicle_footprints;
@@ -313,8 +316,8 @@ std::vector<LinearRing2d> create_vehicle_footprints(
   std::transform(
     trajectory.begin(), trajectory.end(), std::back_inserter(vehicle_footprints),
     [&](const TrajectoryPoint & p) -> LinearRing2d {
-      using autoware_utils::transform_vector;
-      using autoware_utils::pose2transform;
+      using autoware_utils_geometry::transform_vector;
+      using autoware_utils_geometry::pose2transform;
 
       auto margin = uncertainty_fp_margin;
       const auto & lon_tracking = longitudinal_config.lon_tracking;
@@ -338,43 +341,12 @@ std::vector<LinearRing2d> create_vehicle_footprints(
   std::transform(
     trajectory.begin(), trajectory.end(), std::back_inserter(vehicle_footprints),
     [&](const auto & p) -> LinearRing2d {
-      using autoware_utils::transform_vector;
-      using autoware_utils::pose2transform;
+      using autoware_utils_geometry::transform_vector;
+      using autoware_utils_geometry::pose2transform;
       return transform_vector(local_vehicle_footprint, pose2transform(p.pose));
     });
 
   return vehicle_footprints;
-}
-
-std::vector<LinearRing2d> create_ego_footprints(
-  const AbnormalityType abnormality_type, const FootprintMargin & uncertainty_fp_margin,
-  const TrajectoryPoints & ego_pred_traj, const SteeringReport & current_steering,
-  const VehicleInfo & vehicle_info, const Param & param)
-{
-  if (abnormality_type == AbnormalityType::LONGITUDINAL) {
-    const auto longitudinal_config_opt =
-      param.get_abnormality_config<LongitudinalConfig>(abnormality_type);
-    return create_vehicle_footprints(
-      ego_pred_traj, vehicle_info, uncertainty_fp_margin, longitudinal_config_opt->get());
-  }
-
-  if (
-    abnormality_type == AbnormalityType::STEERING_ACCELERATED ||
-    abnormality_type == AbnormalityType::STEERING_STUCK ||
-    abnormality_type == AbnormalityType::STEERING_SUDDEN_LEFT ||
-    abnormality_type == AbnormalityType::STEERING_SUDDEN_RIGHT) {
-    const auto config = param.get_abnormality_config<SteeringConfig>(abnormality_type);
-    return utils::steering::create_vehicle_footprints(
-      ego_pred_traj, vehicle_info, current_steering, *config);
-  }
-
-  FootprintMargin margin = uncertainty_fp_margin;
-  if (abnormality_type == AbnormalityType::LOCALIZATION) {
-    const auto loc_config_opt = param.get_abnormality_config<LocalizationConfig>(abnormality_type);
-    const auto & footprint_envelop = loc_config_opt->get().footprint_envelop;
-    margin = margin + footprint_envelop;
-  }
-  return utils::create_vehicle_footprints(ego_pred_traj, vehicle_info, margin);
 }
 
 Side<Segment2d> get_footprint_sides(
@@ -486,14 +458,14 @@ tl::expected<ProjectionToBound, std::string> segment_to_segment_nearest_projecti
   const auto & [lane_pt1, lane_pt2] = lane_seg;
 
   if (
-    const auto is_intersecting = autoware_utils::intersect(
+    const auto is_intersecting = autoware_utils_geometry::intersect(
       to_geom_pt(ego_f), to_geom_pt(ego_b), to_geom_pt(lane_pt1), to_geom_pt(lane_pt2))) {
     Point2d point(is_intersecting->x, is_intersecting->y);
     return ProjectionToBound{
       point, point, lane_seg, 0.0, boost::geometry::distance(point, ego_f), ego_sides_idx};
   }
 
-  std::vector<ProjectionToBound> projections;
+  ProjectionsToBound projections;
   projections.reserve(4);
   constexpr bool swap_result = true;
   if (const auto projection_opt = point_to_segment_projection(ego_f, lane_seg, swap_result)) {
@@ -554,7 +526,7 @@ ProjectionToBound find_closest_segment(
     }
 
     if (
-      const auto is_intersecting_rear = autoware_utils::intersect(
+      const auto is_intersecting_rear = autoware_utils_geometry::intersect(
         to_geom_pt(ego_lr), to_geom_pt(ego_rr), to_geom_pt(seg_f), to_geom_pt(seg_r))) {
       Point2d point(is_intersecting_rear->x, is_intersecting_rear->y);
       closest_proj =
@@ -575,11 +547,11 @@ ProjectionToBound find_closest_segment(
   return ProjectionToBound(curr_fp_idx);
 }
 
-ProjectionsToBound get_closest_boundary_segments_from_side(
+Side<ProjectionsToBound> get_closest_boundary_segments_from_side(
   const TrajectoryPoints & ego_pred_traj, const BoundarySideWithIdx & boundaries,
   const EgoSides & ego_sides_from_footprints)
 {
-  ProjectionsToBound side;
+  Side<ProjectionsToBound> side;
   for (const auto & side_key : g_side_keys) {
     side[side_key].reserve(ego_sides_from_footprints.size());
   }
@@ -654,7 +626,7 @@ DeparturePoints cluster_by_distance(const DeparturePoints & departure_points)
 }
 
 DeparturePoints get_departure_points(
-  const std::vector<ClosestProjectionToBound> & projections_to_bound,
+  const ProjectionsToBound & projections_to_bound,
   const std::vector<double> & pred_traj_idx_to_ref_traj_lon_dist,
   const double th_point_merge_distance_m)
 {
@@ -813,4 +785,20 @@ std::optional<double> calc_signed_lateral_distance_to_boundary(
   return signed_lateral_distance;
 }
 
+std::optional<std::pair<double, double>> is_point_shifted(
+  const autoware::boundary_departure_checker::Pose & prev_iter_pt,
+  const autoware::boundary_departure_checker::Pose & curr_iter_pt, const double th_shift_m,
+  const double th_yaw_diff_rad)
+{
+  const auto curr_pt_yaw_rad = tf2::getYaw(curr_iter_pt.orientation);
+  const auto prev_pt_yaw_rad = tf2::getYaw(prev_iter_pt.orientation);
+  const auto yaw_diff_rad = std::abs(curr_pt_yaw_rad - prev_pt_yaw_rad);
+
+  const auto dist_m =
+    autoware::universe_utils::calcDistance2d(curr_iter_pt.position, prev_iter_pt.position);
+  if (dist_m > th_shift_m || yaw_diff_rad > th_yaw_diff_rad) {
+    return std::make_pair(dist_m, yaw_diff_rad);
+  }
+  return std::nullopt;
+}
 }  // namespace autoware::boundary_departure_checker::utils

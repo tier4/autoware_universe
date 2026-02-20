@@ -15,6 +15,7 @@
 #ifndef UTILS_HPP_
 #define UTILS_HPP_
 
+#include "data_structs.hpp"
 #include "parameters.hpp"
 #include "slow_down_interpolator.hpp"
 
@@ -25,36 +26,6 @@
 
 namespace autoware::motion_velocity_planner::experimental::utils
 {
-
-/**
- * @brief Erase elements from an associative container if they match a given predicate.
- *
- * This function iterates over a `std::map` or `std::unordered_map` and removes all key-value
- * pairs for which the predicate returns true. The predicate must accept a `std::pair<Key, Value>`.
- *
- * @tparam Container Must be either `std::map` or `std::unordered_map`.
- * @tparam Predicate Unary function or lambda that returns true for elements to be removed.
- * @param container The map to remove elements from.
- * @param pred      The predicate used to test elements for removal.
- */
-template <
-  typename Container, typename Predicate,
-  typename = std::enable_if_t<
-    std::is_same_v<
-      Container, std::map<typename Container::key_type, typename Container::mapped_type>> ||
-    std::is_same_v<
-      Container,
-      std::unordered_map<typename Container::key_type, typename Container::mapped_type>>>>
-void erase_if(Container & container, Predicate pred)
-{
-  for (auto it = container.begin(); it != container.end();) {
-    if (pred(*it)) {  // For map, *it is a std::pair, so pred should handle pair<Key, Value>
-      it = container.erase(it);
-    } else {
-      ++it;
-    }
-  }
-}
 
 /**
  * @brief Remove elements from a sequential container based on a predicate.
@@ -84,17 +55,6 @@ void remove_if(Container & container, Predicate pred)
 inline geometry_msgs::msg::Point to_geom_pt(const Point2d & point)
 {
   return autoware_utils::to_msg(point.to_3d(0.0));
-}
-
-/**
- * @brief Convert a ROS 3D point into a 2D point by discarding the z-component.
- *
- * @param point A ROS point with x, y, z coordinates.
- * @return A 2D point containing only the x and y values.
- */
-inline Point2d to_pt2d(const geometry_msgs::msg::Point & point)
-{
-  return {point.x, point.y};
 }
 
 /**
@@ -165,48 +125,10 @@ void update_departure_intervals(
  * @param[in] th_pt_shift_dist_m Threshold distance to detect point drift.
  * @param[in] th_pt_shift_angle_rad Threshold angle to detect pose change.
  */
-CriticalDeparturePoints find_new_critical_departure_points(
-  const Side<DeparturePoints> & new_departure_points,
-  const CriticalDeparturePoints & critical_departure_points,
-  const std::vector<TrajectoryPoint> & raw_ref_traj, const double th_point_merge_distance_m);
-
-/**
- * @brief Build slow-down segments ahead of the ego vehicle.
- *
- * For each active departure interval:
- *   • Pick the interval edge still in front of the ego.
- *   • Use `slow_down_interpolator` to get a target velocity that respects
- *     longitudinal and lateral clearance.
- *   • Emit a tuple (start_pose, end_pose, target_vel) when the ego has not
- *     yet reached that edge and the computed target is valid.
- *
- * @param ref_traj_pts         Reference trajectory.
- * @param departure_intervals  Boundary-departure intervals to check.
- * @param slow_down_interpolator  Provides (rel_dist, vel, accel) lookup.
- * @param vehicle_info         Needed for longitudinal footprint checks.
- * @param boundary_segments     (reserved, currently unused)
- * @param curr_vel             Current ego speed [m/s].
- * @param ego_dist_on_traj_m   Ego arc-length position on the trajectory.
- * @return Vector of (start_pose, end_pose, target_vel) triples.
- */
 std::vector<std::tuple<Pose, Pose, double>> get_slow_down_intervals(
   const trajectory::Trajectory<TrajectoryPoint> & ref_traj_pts,
   const DepartureIntervals & departure_intervals,
   const SlowDownInterpolator & slow_down_interpolator, const double curr_vel, const double curr_acc,
   const double ego_dist_on_traj_m);
-
-/**
- * @brief Detect whether a pose has shifted beyond distance or yaw limits.
- *
- * @param prev_iter_pt       Pose from the previous frame/iteration.
- * @param curr_iter_pt       Current pose.
- * @param th_shift_m         Linear shift threshold [m].
- * @param th_yaw_diff_rad    Yaw-difference threshold [rad].
- * @return Pair {shift_m, yaw_diff_rad} if either threshold is exceeded,
- *         otherwise std::nullopt.
- */
-std::optional<std::pair<double, double>> is_point_shifted(
-  const Pose & prev_iter_pt, const Pose & curr_iter_pt, const double th_shift_m,
-  const double th_yaw_diff_rad);
 }  // namespace autoware::motion_velocity_planner::experimental::utils
 #endif  // UTILS_HPP_

@@ -52,9 +52,6 @@ protected:
 
     // Create HADMapBin message from the OSM file
     map_bin_msg_ = autoware::test_utils::make_map_bin_msg(test_map_path, 1.0);
-
-    // Convert HADMapBin to lanelet map
-    lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::from_autoware_map_msgs(map_bin_msg_);
   }
 
   void TearDown() override { lanelet_map_ptr_.reset(); }
