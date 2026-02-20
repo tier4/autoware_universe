@@ -18,6 +18,7 @@
 #include "autoware/trajectory_safety_filter/filter_context.hpp"
 
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
+#include <tl_expected/expected.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
@@ -38,10 +39,7 @@ class SafetyFilterInterface
 {
 public:
   explicit SafetyFilterInterface(std::string name) : name_(std::move(name)) {}
-  SafetyFilterInterface(std::string name, const VehicleInfo & vehicle_info)
-  : name_(std::move(name)), vehicle_info_ptr_(std::make_shared<VehicleInfo>(vehicle_info))
-  {
-  }
+
   virtual ~SafetyFilterInterface() = default;
   SafetyFilterInterface(const SafetyFilterInterface &) = delete;
   SafetyFilterInterface & operator=(const SafetyFilterInterface &) = delete;
@@ -49,7 +47,8 @@ public:
   SafetyFilterInterface & operator=(SafetyFilterInterface &&) = delete;
 
   // Main filter method with context for plugin-specific data
-  virtual bool is_feasible(const TrajectoryPoints & traj_points, const FilterContext & context) = 0;
+  virtual tl::expected<void, std::string> is_feasible(
+    const TrajectoryPoints & traj_points, const FilterContext & context) = 0;
 
   // Set parameters directly (for testing and runtime configuration)
   virtual void set_parameters(const std::unordered_map<std::string, std::any> & params) = 0;
@@ -60,7 +59,9 @@ public:
     vehicle_info_ptr_ = std::make_shared<VehicleInfo>(vehicle_info);
   }
 
-  std::string get_name() const { return name_; }
+  [[nodiscard]] std::string get_name() const { return name_; }
+
+  [[nodiscard]] virtual bool is_debug_mode() const { return false; }
 
 protected:
   std::string name_;
