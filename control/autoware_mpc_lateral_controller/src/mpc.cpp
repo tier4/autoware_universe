@@ -141,7 +141,7 @@ ResultWithReason MPC::calculateMPC(
     lateral.steering_tire_angle = static_cast<float>(std::clamp(*it, -m_steer_lim, m_steer_lim));
     lateral.steering_tire_rotation_rate =
       (lateral.steering_tire_angle - ctrl_cmd_horizon.controls.back().steering_tire_angle) /
-      m_ctrl_period;
+      prediction_dt;
     ctrl_cmd_horizon.controls.push_back(lateral);
   }
 
@@ -226,11 +226,18 @@ void MPC::setReferenceTrajectory(
     mpc_traj_resampled = resampled;
   }
 
-  const auto is_forward_shift =
-    autoware::motion_utils::isDrivingForward(mpc_traj_resampled.toTrajectoryPoints());
+  if (m_use_temporal_trajectory) {
+    // Temporary policy for temporal mode: force forward direction.
+    // TODO(go-sakayori): Revisit with velocity-sign-based direction detection when reverse
+    // support is required in temporal mode.
+    m_is_forward_shift = true;
+  } else {
+    const auto is_forward_shift =
+      autoware::motion_utils::isDrivingForward(mpc_traj_resampled.toTrajectoryPoints());
 
-  // if driving direction is unknown, use previous value
-  m_is_forward_shift = is_forward_shift ? is_forward_shift.value() : m_is_forward_shift;
+    // if driving direction is unknown, use previous value
+    m_is_forward_shift = is_forward_shift ? is_forward_shift.value() : m_is_forward_shift;
+  }
 
   // path smoothing
   MPCTrajectory mpc_traj_smoothed = mpc_traj_resampled;  // smooth filtered trajectory
@@ -317,9 +324,14 @@ std::pair<ResultWithReason, MPCData> MPC::getData(
   data.predicted_steer = m_steering_predictor->calcSteerPrediction();
 
   // check trajectory time length
-  const double max_prediction_time =
-    m_param.min_prediction_length / static_cast<double>(m_param.prediction_horizon - 1);
-  auto end_time = data.nearest_time + m_param.input_delay + m_ctrl_period + max_prediction_time;
+  const double required_prediction_time = [&]() {
+    if (m_use_temporal_trajectory) {
+      return m_param.prediction_dt * static_cast<double>(m_param.prediction_horizon - 1);
+    }
+    return m_param.min_prediction_length / static_cast<double>(m_param.prediction_horizon - 1);
+  }();
+  auto end_time =
+    data.nearest_time + m_param.input_delay + m_ctrl_period + required_prediction_time;
   if (end_time > traj.relative_time.back()) {
     return {ResultWithReason{false, "path is too short for prediction."}, MPCData{}};
   }
@@ -426,8 +438,8 @@ MPCTrajectory MPC::applyVelocityDynamicsFilter(
 
   const size_t nearest_seg_idx =
     autoware::motion_utils::findFirstNearestSegmentIndexWithSoftConstraints(
-      autoware_traj.points, current_kinematics.pose.pose, ego_nearest_dist_threshold,
-      ego_nearest_yaw_threshold);
+    autoware_traj.points, current_kinematics.pose.pose, ego_nearest_dist_threshold,
+    ego_nearest_yaw_threshold);
 
   MPCTrajectory output = input;
   MPCUtils::dynamicSmoothingVelocity(
