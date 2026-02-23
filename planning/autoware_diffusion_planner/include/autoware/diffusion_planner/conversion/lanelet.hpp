@@ -51,13 +51,40 @@ const std::map<std::string, LineType> LINE_TYPE_MAP = {
   {"road_border", LINE_TYPE_ROAD_BORDER}, {"road_shoulder", LINE_TYPE_ROAD_SHOULDER},
   {"virtual", LINE_TYPE_VIRTUAL},         {"zebra_marking", LINE_TYPE_ZEBRA_MARKING}};
 
+enum LineStringType {
+  LINE_STRING_TYPE_STOP_LINE = 0,
+  LINE_STRING_TYPE_ROAD_BORDER = 1,
+  LINE_STRING_TYPE_NUM = 2
+};
+
+const std::map<std::string, LineStringType> LINE_STRING_TYPE_MAP = {
+  {"stop_line", LINE_STRING_TYPE_STOP_LINE}, {"road_border", LINE_STRING_TYPE_ROAD_BORDER}};
+
+enum PolygonType {
+  POLYGON_TYPE_INTERSECTION_AREA = 0,
+  POLYGON_TYPE_NUM = 1
+};
+
+const std::map<std::string, PolygonType> POLYGON_TYPE_MAP = {
+  {"intersection_area", POLYGON_TYPE_INTERSECTION_AREA}};
+
 const std::set<std::string> ACCEPTABLE_LANE_SUBTYPES = {
   "bicycle_lane", "crosswalk", "highway", "pedestrian_lane", "road", "road_shoulder", "walkway"};
 
 using LanePoint = Eigen::Vector3d;
 using Polyline = std::vector<LanePoint>;
-using Polygon = std::vector<LanePoint>;
-using LineString = std::vector<LanePoint>;
+
+struct Polygon
+{
+  std::vector<LanePoint> points;
+  PolygonType type;
+};
+
+struct LineString
+{
+  std::vector<LanePoint> points;
+  LineStringType type;
+};
 
 struct LaneSegment
 {
