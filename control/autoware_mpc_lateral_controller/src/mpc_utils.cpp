@@ -201,15 +201,35 @@ void calcTrajectoryYawFromXY(MPCTrajectory & traj, const bool is_forward_shift)
     return;
   }
 
+  constexpr double min_xy_distance_for_yaw_calc = 1.0e-3;
+
   // interpolate yaw
   for (int i = 1; i < static_cast<int>(traj.yaw.size()) - 1; ++i) {
     const double dx = traj.x.at(i + 1) - traj.x.at(i - 1);
     const double dy = traj.y.at(i + 1) - traj.y.at(i - 1);
+    if (std::hypot(dx, dy) < min_xy_distance_for_yaw_calc) {
+      traj.yaw.at(i) = traj.yaw.at(i - 1);
+      continue;
+    }
     traj.yaw.at(i) = is_forward_shift ? std::atan2(dy, dx) : std::atan2(dy, dx) + M_PI;
   }
   if (traj.yaw.size() > 1) {
-    traj.yaw.at(0) = traj.yaw.at(1);
-    traj.yaw.back() = traj.yaw.at(traj.yaw.size() - 2);
+    const double dx0 = traj.x.at(1) - traj.x.at(0);
+    const double dy0 = traj.y.at(1) - traj.y.at(0);
+    if (std::hypot(dx0, dy0) >= min_xy_distance_for_yaw_calc) {
+      traj.yaw.at(0) = is_forward_shift ? std::atan2(dy0, dx0) : std::atan2(dy0, dx0) + M_PI;
+    } else {
+      traj.yaw.at(0) = traj.yaw.at(1);
+    }
+
+    const size_t last = traj.yaw.size() - 1;
+    const double dxn = traj.x.at(last) - traj.x.at(last - 1);
+    const double dyn = traj.y.at(last) - traj.y.at(last - 1);
+    if (std::hypot(dxn, dyn) >= min_xy_distance_for_yaw_calc) {
+      traj.yaw.back() = is_forward_shift ? std::atan2(dyn, dxn) : std::atan2(dyn, dxn) + M_PI;
+    } else {
+      traj.yaw.back() = traj.yaw.at(last - 1);
+    }
   }
 }
 
@@ -277,18 +297,7 @@ MPCTrajectory convertToMPCTrajectory(const Trajectory & input, const bool use_te
   }
 
   if (!use_temporal_trajectory) {
-    // Spatial mode: recalculate time from distance and velocity
     calcMPCTrajectoryTime(output);
-  } else {
-    // Temporal mode: validate that timestamps are strictly increasing
-    for (size_t i = 1; i < output.relative_time.size(); ++i) {
-      if (output.relative_time[i] <= output.relative_time[i - 1]) {
-        // Timestamps are not strictly increasing - this will cause interpolation errors
-        // Fall back to spatial mode calculation
-        calcMPCTrajectoryTime(output);
-        break;
-      }
-    }
   }
 
   return output;
@@ -346,7 +355,14 @@ void dynamicSmoothingVelocity(
 
   for (size_t i = start_seg_idx + 2; i < traj.size(); ++i) {
     const double ds = calcDistance2d(traj, i, i - 1);
-    const double dt = ds / std::max(std::fabs(curr_v), std::numeric_limits<double>::epsilon());
+    const double dt = [&]() {
+      if (use_temporal_trajectory) {
+        const double time_dt = traj.relative_time.at(i) - traj.relative_time.at(i - 1);
+        constexpr double min_time_dt = 1.0e-4;
+        return std::max(time_dt, min_time_dt);
+      }
+      return ds / std::max(std::fabs(curr_v), std::numeric_limits<double>::epsilon());
+    }();
     const double a = tau / std::max(tau + dt, std::numeric_limits<double>::epsilon());
     const double updated_v = a * curr_v + (1.0 - a) * traj.vx.at(i);
     const double dv = std::max(-acc_lim * dt, std::min(acc_lim * dt, updated_v - curr_v));
@@ -358,9 +374,7 @@ void dynamicSmoothingVelocity(
     // Spatial mode: recalculate time after velocity changes
     calcMPCTrajectoryTime(traj);
   }
-  // else: Temporal mode - preserve original timestamps even after velocity smoothing.
-  // The velocity filtering may result in inconsistency between velocity and time,
-  // but MPC uses time as the primary reference for trajectory following.
+  // Temporal mode keeps timestamps and updates velocity using time delta.
 }
 
 bool calcNearestPoseInterp(

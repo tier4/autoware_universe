@@ -15,6 +15,7 @@
 #include "autoware/mpc_lateral_controller/mpc_trajectory.hpp"
 #include "autoware/mpc_lateral_controller/mpc_utils.hpp"
 #include "gtest/gtest.h"
+#include "rclcpp/rclcpp.hpp"
 
 #include "autoware_planning_msgs/msg/trajectory.hpp"
 #include "autoware_planning_msgs/msg/trajectory_point.hpp"
@@ -62,4 +63,23 @@ TEST(TestMPC, CalcStopDistance)
   EXPECT_EQ(MPCUtils::calcStopDistance(trajectory_msg, 6), 0.0);
   EXPECT_EQ(MPCUtils::calcStopDistance(trajectory_msg, 7), -1.0);
 }
+
+TEST(TestMPC, ConvertToMPCTrajectoryTemporalUsesTimeFromStart)
+{
+  Trajectory trajectory_msg;
+  auto p0 = makePoint(0.0, 0.0, 2.0f);
+  auto p1 = makePoint(1.0, 0.0, 2.0f);
+  auto p2 = makePoint(2.0, 0.0, 2.0f);
+  p0.time_from_start = rclcpp::Duration::from_seconds(0.0);
+  p1.time_from_start = rclcpp::Duration::from_seconds(0.3);
+  p2.time_from_start = rclcpp::Duration::from_seconds(0.8);
+  trajectory_msg.points = {p0, p1, p2};
+
+  const auto mpc_traj = MPCUtils::convertToMPCTrajectory(trajectory_msg, true);
+  ASSERT_EQ(mpc_traj.relative_time.size(), 3UL);
+  EXPECT_DOUBLE_EQ(mpc_traj.relative_time.at(0), 0.0);
+  EXPECT_DOUBLE_EQ(mpc_traj.relative_time.at(1), 0.3);
+  EXPECT_DOUBLE_EQ(mpc_traj.relative_time.at(2), 0.8);
+}
+
 }  // namespace
