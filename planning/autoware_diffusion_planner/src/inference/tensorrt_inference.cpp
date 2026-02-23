@@ -284,8 +284,8 @@ TensorrtInference::InferenceResult TensorrtInference::infer(
   CHECK_CUDA_ERROR(cudaMemcpy(
     turn_indicators_d_.get(), turn_indicators.data(), turn_indicators.size() * sizeof(float),
     cudaMemcpyHostToDevice));
-  CHECK_CUDA_ERROR(
-    cudaMemcpy(delay_d_.get(), delay.data(), delay.size() * sizeof(float), cudaMemcpyHostToDevice));
+  CHECK_CUDA_ERROR(cudaMemcpy(
+    delay_d_.get(), delay.data(), delay.size() * sizeof(float), cudaMemcpyHostToDevice));
 
   const auto to_dims_with_batch = [batch_size](auto const & arr) {
     nvinfer1::Dims dims;
@@ -329,7 +329,8 @@ TensorrtInference::InferenceResult TensorrtInference::infer(
     network_trt_ptr_->setInputShape("ego_shape", to_dims_with_batch(EGO_SHAPE_SHAPE));
   set_input_shapes &=
     network_trt_ptr_->setInputShape("turn_indicators", to_dims_with_batch(TURN_INDICATORS_SHAPE));
-  set_input_shapes &= network_trt_ptr_->setInputShape("delay", to_dims_with_batch(DELAY_SHAPE));
+  set_input_shapes &=
+    network_trt_ptr_->setInputShape("delay", to_dims_with_batch(DELAY_SHAPE));
 
   if (!set_input_shapes) {
     InferenceResult result;
