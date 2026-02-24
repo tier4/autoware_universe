@@ -445,28 +445,21 @@ void CoMLOpsTLRClassifier::updateTrafficSignals(const std::vector<TrafficLightEl
   traffic_signal.elements.clear();
   bool is_pedestrian = traffic_signal.traffic_light_type == 1;
   if (unique_elements.empty()) {
-    MsgTE unknown_elem;
-    unknown_elem.color = MsgTE::UNKNOWN;
-    unknown_elem.shape = MsgTE::UNKNOWN;
-    unknown_elem.confidence = 0.0;
-    traffic_signal.elements.push_back(unknown_elem);
     return;
   }
   MsgTE element;
   for (const auto & e : unique_elements) {
     element.confidence = e.confidence;
+    switch (e.color) {
+      case Color::GREEN: element.color = MsgTE::GREEN; break;
+      case Color::AMBER: element.color = MsgTE::AMBER; break;
+      case Color::RED: element.color = MsgTE::RED; break;
+      default: element.color = MsgTE::UNKNOWN; break;
+    }
     if(is_pedestrian || e.shape == Shape::PED) {
       // log e.shape and e.color
       if(e.shape == Shape::PED) {
         element.shape = MsgTE::CIRCLE;
-      } else {
-        element.shape = MsgTE::CROSS;
-      }
-      switch (e.color) {
-        case Color::GREEN: element.color = MsgTE::GREEN; break;
-        case Color::AMBER: element.color = MsgTE::AMBER; break;
-        case Color::RED: element.color = MsgTE::RED; break;
-        default: element.color = MsgTE::UNKNOWN; break;
       }
       traffic_signal.elements.push_back(element);
       continue;
@@ -474,15 +467,8 @@ void CoMLOpsTLRClassifier::updateTrafficSignals(const std::vector<TrafficLightEl
     switch (e.shape) {
       case Shape::CIRCLE:
         element.shape = MsgTE::CIRCLE;
-        switch (e.color) {
-          case Color::GREEN: element.color = MsgTE::GREEN; break;
-          case Color::AMBER: element.color = MsgTE::AMBER; break;
-          case Color::RED: element.color = MsgTE::RED; break;
-          default: element.color = MsgTE::UNKNOWN; break;
-        }
         break;
       case Shape::ARROW:
-        element.color = MsgTE::GREEN;
         switch (e.arrow_direction) {
           case ArrowDirection::UP_ARROW: element.shape = MsgTE::UP_ARROW; break;
           case ArrowDirection::DOWN_ARROW: element.shape = MsgTE::DOWN_ARROW; break;
@@ -495,17 +481,7 @@ void CoMLOpsTLRClassifier::updateTrafficSignals(const std::vector<TrafficLightEl
           default: element.shape = MsgTE::UNKNOWN; break;
         }
         break;
-      case Shape::PED:
-        element.shape = MsgTE::CROSS;
-        switch (e.color) {
-          case Color::GREEN: element.color = MsgTE::GREEN; break;
-          case Color::AMBER: element.color = MsgTE::AMBER; break;
-          case Color::RED: element.color = MsgTE::RED; break;
-          default: element.color = MsgTE::UNKNOWN; break;
-        }
-        break;
       default:
-        element.color = MsgTE::UNKNOWN;
         element.shape = MsgTE::UNKNOWN;
         break;
     }
