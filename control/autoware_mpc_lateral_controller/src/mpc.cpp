@@ -313,6 +313,27 @@ std::pair<ResultWithReason, MPCData> MPC::getData(
         ego_nearest_dist_threshold, ego_nearest_yaw_threshold)) {
     return {ResultWithReason{false, "error in calculating nearest pose"}, MPCData{}};
   }
+  if (m_use_temporal_trajectory) {
+    const double traj_start_time = traj.relative_time.front();
+    const double traj_end_time = traj.relative_time.back();
+    if (
+      m_prev_nearest_time.has_value() &&
+      (*m_prev_nearest_time < traj_start_time || traj_end_time < *m_prev_nearest_time)) {
+      m_prev_nearest_time.reset();
+    }
+    if (!m_prev_nearest_time.has_value()) {
+      m_prev_nearest_time = data.nearest_time;
+    } else {
+      constexpr double min_time_advance = 0.05;
+      const double max_time_advance = std::max(3.0 * m_ctrl_period, min_time_advance);
+      const double clamped_time = std::clamp(
+        data.nearest_time, *m_prev_nearest_time, *m_prev_nearest_time + max_time_advance);
+      data.nearest_time = std::clamp(clamped_time, traj_start_time, traj_end_time);
+      m_prev_nearest_time = data.nearest_time;
+    }
+  } else {
+    m_prev_nearest_time.reset();
+  }
 
   // get data
   data.steer = static_cast<double>(current_steer.steering_tire_angle);
@@ -438,8 +459,8 @@ MPCTrajectory MPC::applyVelocityDynamicsFilter(
 
   const size_t nearest_seg_idx =
     autoware::motion_utils::findFirstNearestSegmentIndexWithSoftConstraints(
-    autoware_traj.points, current_kinematics.pose.pose, ego_nearest_dist_threshold,
-    ego_nearest_yaw_threshold);
+      autoware_traj.points, current_kinematics.pose.pose, ego_nearest_dist_threshold,
+      ego_nearest_yaw_threshold);
 
   MPCTrajectory output = input;
   MPCUtils::dynamicSmoothingVelocity(

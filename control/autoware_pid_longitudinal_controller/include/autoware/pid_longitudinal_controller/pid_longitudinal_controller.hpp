@@ -44,6 +44,7 @@
 #include <deque>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -138,6 +139,8 @@ private:
 
   // delay compensation
   double m_delay_compensation_time;
+  bool m_use_temporal_trajectory{false};
+  std::optional<double> m_prev_nearest_time{std::nullopt};
 
   // enable flags
   bool m_enable_smooth_stop;
