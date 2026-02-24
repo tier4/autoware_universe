@@ -33,6 +33,11 @@ namespace longitudinal_utils
 {
 bool isValidTrajectory(const Trajectory & traj, const bool use_temporal_trajectory)
 {
+  // Check if trajectory is empty first
+  if (traj.points.empty()) {
+    return false;
+  }
+
   double prev_t = -std::numeric_limits<double>::infinity();
   for (const auto & p : traj.points) {
     if (
@@ -52,11 +57,6 @@ bool isValidTrajectory(const Trajectory & traj, const bool use_temporal_trajecto
       }
       prev_t = t;
     }
-  }
-
-  // when trajectory is empty
-  if (traj.points.empty()) {
-    return false;
   }
 
   return true;
