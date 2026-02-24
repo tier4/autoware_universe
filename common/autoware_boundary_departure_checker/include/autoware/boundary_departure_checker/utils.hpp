@@ -400,6 +400,42 @@ std::optional<std::pair<double, double>> is_point_shifted(
   const autoware::boundary_departure_checker::Pose & prev_iter_pt,
   const autoware::boundary_departure_checker::Pose & curr_iter_pt, const double th_shift_m,
   const double th_yaw_diff_rad);
+
+/**
+ * @brief Evaluates all footprint projections for a specific side and selects the most
+ * critical/closest ones.
+ *
+ * Evaluates multiple abnormality-aware projections (e.g., NORMAL, LOCALIZATION) for each
+ * trajectory index, and selects the best candidate based on lateral distance and classification
+ * logic (CRITICAL/NEAR).
+ *
+ * @param projections_to_bound Footprint sides' projections to boundaries.
+ * @param param Checker parameters.
+ * @param min_braking_dist Minimum braking distance.
+ * @param max_braking_dist Maximum braking distance.
+ * @param side_key Side to process (left or right).
+ * @return Vector of closest projections with departure classification, or std::nullopt on failure.
+ */
+std::optional<ProjectionsToBound> get_closest_projections_for_side(
+  const FootprintMap<Side<ProjectionsToBound>> & projections_to_bound, const Param & param,
+  const double min_braking_dist, const double max_braking_dist, const SideKey side_key);
+
+/**
+ * @brief Process and find the closest projection at a specific index across all footprint types.
+ *
+ * @param candidate_projections List of projections for different footprint types at a single index.
+ * @param param Checker parameters.
+ * @param min_braking_dist Minimum braking distance.
+ * @param max_braking_dist Maximum braking distance.
+ * @param side_key Side to process (left or right).
+ * @param previous_longitudinal_distance Optional longitudinal distance of the previously added
+ * projection to filter out points that are too close.
+ * @return The closest projection that meets the criteria, if any.
+ */
+std::optional<ProjectionToBound> get_closest_projection_at_index(
+  const std::vector<ProjectionToBound> & candidate_projections, const Param & param,
+  const double min_braking_dist, const double max_braking_dist, const SideKey side_key,
+  const std::optional<double> previous_longitudinal_distance);
 }  // namespace autoware::boundary_departure_checker::utils
 
 #endif  // AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__UTILS_HPP_
