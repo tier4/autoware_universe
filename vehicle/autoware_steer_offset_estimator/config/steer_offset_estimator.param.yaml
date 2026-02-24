@@ -18,8 +18,8 @@
       mode: "off"  # Options: ["off", "manual", "auto"]
 
       # Logic thresholds
-      error_threshold: 0.005        # min error to trigger an AUTO update [rad]
-      covariance_threshold: 0.00075 # max uncertainty to trust the estimate
+      update_offset_th: 0.001        # min error to trigger an AUTO update [rad]
+      covariance_th: 0.0008 # max uncertainty to trust the estimate
 
       # Persistence & Safety
       min_steady_duration: 10.0     # required duration of continuous estimation data [s]
@@ -27,4 +27,4 @@
       max_offset_limit: 0.05        # safety cap to prevent extreme calibration jumps [rad]
       min_update_interval: 100.0    # minimum duration between updates [s]
 
-      enable_parameter_file_overwrite: false
+      warning_offset_th: 0.005      # error threshold to trigger a warning [rad]
