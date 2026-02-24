@@ -138,8 +138,13 @@ MpcLateralController::MpcLateralController(
 
   m_mpc->m_use_delayed_initial_state = dp_bool("use_delayed_initial_state");
 
+  // trajectory_reference_mode is declared at controller_node level
+  // If not available, declare it with default value for standalone usage
   const auto trajectory_reference_mode =
-    node.declare_parameter<std::string>("trajectory_reference_mode", "spatial");
+    node.has_parameter("trajectory_reference_mode")
+      ? node.get_parameter("trajectory_reference_mode").as_string()
+      : node.declare_parameter<std::string>("trajectory_reference_mode", "spatial");
+
   if (trajectory_reference_mode == "temporal") {
     m_mpc->m_use_temporal_trajectory = true;
   } else if (trajectory_reference_mode == "spatial") {
