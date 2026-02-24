@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -42,6 +43,19 @@ PidLongitudinalController::PidLongitudinalController(
 
   // parameters timer
   m_longitudinal_ctrl_period = node.get_parameter("ctrl_period").as_double();
+
+  const auto trajectory_reference_mode =
+    node.has_parameter("trajectory_reference_mode")
+      ? node.get_parameter("trajectory_reference_mode").as_string()
+      : node.declare_parameter<std::string>("trajectory_reference_mode", "spatial");
+  if (trajectory_reference_mode == "temporal") {
+    m_use_temporal_trajectory = true;
+  } else if (trajectory_reference_mode == "spatial") {
+    m_use_temporal_trajectory = false;
+  } else {
+    throw std::invalid_argument(
+      "Invalid trajectory_reference_mode. Expected \"spatial\" or \"temporal\".");
+  }
 
   m_wheel_base = autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo().wheel_base_m;
   m_vehicle_width =
@@ -246,7 +260,7 @@ void PidLongitudinalController::setCurrentOperationMode(const OperationModeState
 
 void PidLongitudinalController::setTrajectory(const autoware_planning_msgs::msg::Trajectory & msg)
 {
-  if (!longitudinal_utils::isValidTrajectory(msg)) {
+  if (!longitudinal_utils::isValidTrajectory(msg, m_use_temporal_trajectory)) {
     RCLCPP_ERROR_THROTTLE(logger_, *clock_, 3000, "received invalid trajectory. ignore.");
     return;
   }
@@ -477,7 +491,39 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
 
   // calculate the target motion for delay compensation
   constexpr double min_running_dist = 0.01;
-  if (control_data.state_after_delay.running_distance > min_running_dist) {
+  if (m_use_temporal_trajectory) {
+    const double raw_nearest_time = rclcpp::Duration(nearest_point.time_from_start).seconds();
+    const double traj_start_time =
+      rclcpp::Duration(control_data.interpolated_traj.points.front().time_from_start).seconds();
+    const double traj_end_time =
+      rclcpp::Duration(control_data.interpolated_traj.points.back().time_from_start).seconds();
+    if (
+      m_prev_nearest_time.has_value() &&
+      (*m_prev_nearest_time < traj_start_time || traj_end_time < *m_prev_nearest_time)) {
+      m_prev_nearest_time.reset();
+    }
+    const double nearest_time = [&]() {
+      if (!m_prev_nearest_time.has_value()) {
+        m_prev_nearest_time = raw_nearest_time;
+        return raw_nearest_time;
+      }
+      constexpr double min_time_advance = 0.05;
+      const double max_time_advance = std::max(3.0 * control_data.dt, min_time_advance);
+      const double clamped_time =
+        std::clamp(raw_nearest_time, *m_prev_nearest_time, *m_prev_nearest_time + max_time_advance);
+      const double stabilized_time = std::clamp(clamped_time, traj_start_time, traj_end_time);
+      m_prev_nearest_time = stabilized_time;
+      return stabilized_time;
+    }();
+    const double target_time = nearest_time + m_delay_compensation_time;
+    const auto target_interpolated_point = longitudinal_utils::lerpTrajectoryPointByTime(
+      control_data.interpolated_traj.points, target_time);
+    control_data.target_idx = target_interpolated_point.second + 1;
+    control_data.interpolated_traj.points.insert(
+      control_data.interpolated_traj.points.begin() + control_data.target_idx,
+      target_interpolated_point.first);
+    target_point = target_interpolated_point.first;
+  } else if (control_data.state_after_delay.running_distance > min_running_dist) {
     control_data.interpolated_traj.points =
       autoware::motion_utils::removeOverlapPoints(control_data.interpolated_traj.points);
     const auto target_pose = longitudinal_utils::findTrajectoryPoseAfterDistance(
@@ -493,21 +539,23 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
   }
 
   // ==========================================================================================
-  // NOTE: due to removeOverlapPoints(), the obtained control_data.target_idx and
-  // control_data.nearest_idx may become invalid if the number of points decreased.
-  // current API does not provide the way to check duplication beforehand and this function
-  // does not tell how many/which index points were removed, so there is no way
-  // to tell if our `control_data.target_idx` point still exists or removed.
+  // NOTE (spatial path): removeOverlapPoints() may change point indices, so previously computed
+  // nearest/target indices can become invalid and must be re-acquired after de-duplication.
+  // Temporal path intentionally skips removeOverlapPoints() to preserve same-position points with
+  // different timestamps.
   // ==========================================================================================
-  // Remove overlapped points after inserting the interpolated points
-  control_data.interpolated_traj.points =
-    autoware::motion_utils::removeOverlapPoints(control_data.interpolated_traj.points);
-  control_data.nearest_idx = autoware::motion_utils::findFirstNearestIndexWithSoftConstraints(
-    control_data.interpolated_traj.points, nearest_point.pose, m_ego_nearest_dist_threshold,
-    m_ego_nearest_yaw_threshold);
-  control_data.target_idx = autoware::motion_utils::findFirstNearestIndexWithSoftConstraints(
-    control_data.interpolated_traj.points, target_point.pose, m_ego_nearest_dist_threshold,
-    m_ego_nearest_yaw_threshold);
+  // Spatial-only de-duplication and index re-acquisition after inserting interpolated points.
+  if (!m_use_temporal_trajectory) {
+    m_prev_nearest_time.reset();
+    control_data.interpolated_traj.points =
+      autoware::motion_utils::removeOverlapPoints(control_data.interpolated_traj.points);
+    control_data.nearest_idx = autoware::motion_utils::findFirstNearestIndexWithSoftConstraints(
+      control_data.interpolated_traj.points, nearest_point.pose, m_ego_nearest_dist_threshold,
+      m_ego_nearest_yaw_threshold);
+    control_data.target_idx = autoware::motion_utils::findFirstNearestIndexWithSoftConstraints(
+      control_data.interpolated_traj.points, target_point.pose, m_ego_nearest_dist_threshold,
+      m_ego_nearest_yaw_threshold);
+  }
 
   // send debug values
   m_debug_values.setValues(DebugValues::TYPE::PREDICTED_VEL, control_data.state_after_delay.vel);

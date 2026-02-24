@@ -138,8 +138,8 @@ MpcLateralController::MpcLateralController(
 
   m_mpc->m_use_delayed_initial_state = dp_bool("use_delayed_initial_state");
 
-  const auto trajectory_reference_mode = node.declare_parameter<std::string>(
-    "trajectory_reference_mode", "");
+  const auto trajectory_reference_mode =
+    node.declare_parameter<std::string>("trajectory_reference_mode", "");
   if (!trajectory_reference_mode.empty()) {
     if (trajectory_reference_mode == "temporal") {
       m_mpc->m_use_temporal_trajectory = true;
@@ -151,7 +151,8 @@ MpcLateralController::MpcLateralController(
     }
   } else {
     // Backward-compatible fallback for existing configuration.
-    m_mpc->m_use_temporal_trajectory = node.declare_parameter<bool>("use_temporal_trajectory", false);
+    m_mpc->m_use_temporal_trajectory =
+      node.declare_parameter<bool>("use_temporal_trajectory", false);
   }
 
   m_mpc->m_publish_debug_trajectories = dp_bool("publish_debug_trajectories");
@@ -715,8 +716,7 @@ bool MpcLateralController::isValidTrajectory(const Trajectory & traj) const
     }
 
     if (m_mpc->m_use_temporal_trajectory) {
-      const double t = static_cast<double>(p.time_from_start.sec) +
-                       static_cast<double>(p.time_from_start.nanosec) * 1e-9;
+      const double t = rclcpp::Duration(p.time_from_start).seconds();
       if (!std::isfinite(t) || t <= prev_time_from_start) {
         return false;
       }

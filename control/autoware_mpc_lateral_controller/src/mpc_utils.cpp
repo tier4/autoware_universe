@@ -291,7 +291,7 @@ MPCTrajectory convertToMPCTrajectory(const Trajectory & input, const bool use_te
 
     // Time handling: temporal (use timestamps) vs spatial (calculate from distance/velocity)
     const double t = use_temporal_trajectory
-                       ? (p.time_from_start.sec + p.time_from_start.nanosec * 1e-9)
+                       ? rclcpp::Duration(p.time_from_start).seconds()
                        : 0.0;  // Will be recalculated by calcMPCTrajectoryTime()
     output.push_back(x, y, z, yaw, vx, k, k, t);
   }
