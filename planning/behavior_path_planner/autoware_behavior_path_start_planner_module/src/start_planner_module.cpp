@@ -1664,7 +1664,7 @@ bool StartPlannerModule::hasReachedPullOutEnd() const
 bool StartPlannerModule::needToPrepareBlinkerBeforeStartDrivingForward() const
 {
   if (!status_.first_engaged_and_driving_forward_time) {
-    return true;
+    return false;
   }
   const auto first_engaged_and_driving_forward_time =
     status_.first_engaged_and_driving_forward_time.value();
