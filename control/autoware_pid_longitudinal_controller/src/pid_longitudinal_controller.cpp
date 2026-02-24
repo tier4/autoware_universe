@@ -497,16 +497,23 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
       rclcpp::Duration(control_data.interpolated_traj.points.front().time_from_start).seconds();
     const double traj_end_time =
       rclcpp::Duration(control_data.interpolated_traj.points.back().time_from_start).seconds();
-    if (
+
+    // Reset previous time if it's outside the new trajectory's time range
+    const bool is_prev_time_out_of_range =
       m_prev_nearest_time.has_value() &&
-      (*m_prev_nearest_time < traj_start_time || traj_end_time < *m_prev_nearest_time)) {
+      (*m_prev_nearest_time < traj_start_time || *m_prev_nearest_time > traj_end_time);
+    if (is_prev_time_out_of_range) {
       m_prev_nearest_time.reset();
     }
+    // Stabilize nearest_time to prevent jitter from localization noise or trajectory updates
     const double nearest_time = [&]() {
       if (!m_prev_nearest_time.has_value()) {
         m_prev_nearest_time = raw_nearest_time;
         return raw_nearest_time;
       }
+      // Prevent backward time jumps and limit excessive forward jumps
+      // min_time_advance: Minimum time progression per control cycle (prevents backward jumps)
+      // max_time_advance: Maximum allowed jump (3x dt accounts for delayed trajectory updates)
       constexpr double min_time_advance = 0.05;
       const double max_time_advance = std::max(3.0 * control_data.dt, min_time_advance);
       const double clamped_time =
