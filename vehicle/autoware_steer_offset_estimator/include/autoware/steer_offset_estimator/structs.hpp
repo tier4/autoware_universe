@@ -64,13 +64,13 @@ enum class CalibrationMode : uint8_t { OFF, MANUAL, AUTO };
 struct SteerOffsetCalibrationParameters
 {
   CalibrationMode mode{CalibrationMode::OFF};
-  double error_threshold{0.005};
-  double covariance_threshold{0.0001};
+  double update_offset_th{0.001};
+  double covariance_th{0.0008};
   double min_steady_duration{10.0};
   double min_velocity{1.0};
   double max_offset_limit{0.05};
   double min_update_interval{100.0};
-  bool enable_parameter_file_overwrite{false};
+  double warning_offset_th{0.005};
   std::string steer_offset_param_path;
   std::string steer_offset_param_name;
 

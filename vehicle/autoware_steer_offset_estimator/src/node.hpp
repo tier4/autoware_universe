@@ -85,6 +85,11 @@ private:
    */
   double current_steering_offset_;
 
+  /**
+   * @brief Current registered steering offset
+   */
+  double last_offset_update_;
+
   // Subscribers
   /**
    * @brief Subscriber for pose
@@ -161,10 +166,16 @@ private:
   void check_auto_calibration();
 
   /**
+   * @brief Check if an offset update should be published
+   * @return true if the offset should be published, false otherwise
+   */
+  bool is_publish_update(const SteerOffsetEstimationUpdated & result) const;
+
+  /**
    * @brief Publish steering offset estimation results
    * @param result steer offset estimation result
    */
-  void publish_data(const SteerOffsetEstimationUpdated & result) const;
+  void publish_data(const SteerOffsetEstimationUpdated & result);
 };
 
 }  // namespace autoware::steer_offset_estimator

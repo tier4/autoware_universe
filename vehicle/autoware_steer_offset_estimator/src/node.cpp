@@ -15,6 +15,7 @@
 #include "node.hpp"
 
 #include <autoware/vehicle_info_utils/vehicle_info_utils.hpp>
+#include <rclcpp/logging.hpp>
 
 #include <fmt/format.h>
 #include <yaml-cpp/yaml.h>
@@ -111,10 +112,11 @@ void SteerOffsetEstimatorNode::set_calibration_parameters()
     calibration_params_.mode = CalibrationMode::OFF;
   }
 
-  calibration_params_.error_threshold =
-    this->declare_parameter<double>("calibration.error_threshold");
-  calibration_params_.covariance_threshold =
-    this->declare_parameter<double>("calibration.covariance_threshold");
+  calibration_params_.update_offset_th =
+    this->declare_parameter<double>("calibration.update_offset_th");
+  calibration_params_.covariance_th = this->declare_parameter<double>("calibration.covariance_th");
+  calibration_params_.warning_offset_th =
+    this->declare_parameter<double>("calibration.warning_offset_th");
   calibration_params_.min_steady_duration =
     this->declare_parameter<double>("calibration.min_steady_duration");
   calibration_params_.min_velocity = this->declare_parameter<double>("calibration.min_velocity");
@@ -122,8 +124,6 @@ void SteerOffsetEstimatorNode::set_calibration_parameters()
     this->declare_parameter<double>("calibration.max_offset_limit");
   calibration_params_.min_update_interval =
     this->declare_parameter<double>("calibration.min_update_interval");
-  calibration_params_.enable_parameter_file_overwrite =
-    this->declare_parameter<bool>("calibration.enable_parameter_file_overwrite");
   calibration_params_.steer_offset_param_path =
     this->declare_parameter<std::string>("steer_offset_param_path");
   calibration_params_.steer_offset_param_name =
@@ -165,7 +165,7 @@ void SteerOffsetEstimatorNode::on_timer()
   }
 }
 
-void SteerOffsetEstimatorNode::publish_data(const SteerOffsetEstimationUpdated & result) const
+void SteerOffsetEstimatorNode::publish_data(const SteerOffsetEstimationUpdated & result)
 {
   auto pub_float = [this](const auto & publisher, const double value) {
     autoware_internal_debug_msgs::msg::Float32Stamped msg;
@@ -180,6 +180,11 @@ void SteerOffsetEstimatorNode::publish_data(const SteerOffsetEstimationUpdated &
   const double offset_error = result.offset - current_steering_offset_;
   pub_float(pub_steer_offset_error_, offset_error);
 
+  if (is_publish_update(result)) {
+    pub_float(pub_steer_offset_update_, result.offset);
+    last_offset_update_ = result.offset;
+  }
+
   autoware_internal_debug_msgs::msg::StringStamped debug_info;
   debug_info.stamp = this->now();
   debug_info.data = fmt::format(
@@ -192,9 +197,29 @@ void SteerOffsetEstimatorNode::publish_data(const SteerOffsetEstimationUpdated &
   pub_debug_info_->publish(debug_info);
 }
 
+bool SteerOffsetEstimatorNode::is_publish_update(const SteerOffsetEstimationUpdated & result) const
+{
+  const double diff = std::abs(result.offset - last_offset_update_);
+  return diff > calibration_params_.update_offset_th &&
+         result.covariance < calibration_params_.covariance_th;
+}
+
 void SteerOffsetEstimatorNode::check_auto_calibration()
 {
-  if (calibration_params_.mode != CalibrationMode::AUTO) return;
+  if (!latest_result_) return;
+
+  if (calibration_params_.mode != CalibrationMode::AUTO) {
+    if (
+      std::abs(latest_result_->offset) > calibration_params_.warning_offset_th &&
+      latest_result_->covariance < calibration_params_.covariance_th) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *get_clock(), 1000,
+        "Estimated steering offset %.4f exceeds warning threshold %.4f. Consider calibrating the "
+        "steering offset.",
+        latest_result_->offset, calibration_params_.warning_offset_th);
+    }
+    return;
+  }
 
   const auto now = this->now();
   if (
@@ -203,17 +228,12 @@ void SteerOffsetEstimatorNode::check_auto_calibration()
     return;
   }
 
-  if (!latest_result_) return;
-
-  const double offset_error = std::abs(latest_result_->offset - current_steering_offset_);
-
-  if (offset_error < calibration_params_.error_threshold) {
+  if (std::abs(latest_result_->offset) < calibration_params_.update_offset_th) {
     return;
   }
 
   if (
-    latest_result_->velocity < calibration_params_.min_velocity ||
-    latest_result_->covariance > calibration_params_.covariance_threshold ||
+    latest_result_->covariance > calibration_params_.covariance_th ||
     std::abs(latest_result_->offset) > calibration_params_.max_offset_limit) {
     return;
   }
@@ -242,7 +262,7 @@ void SteerOffsetEstimatorNode::on_update_offset_request(
 
   if (!latest_result_) return reject("Rejected: estimation result not available");
 
-  if (latest_result_->covariance > calibration_params_.covariance_threshold)
+  if (latest_result_->covariance > calibration_params_.covariance_th)
     return reject(
       "Rejected: High uncertainty. Covariance: " + std::to_string(latest_result_->covariance));
 
@@ -275,14 +295,6 @@ bool SteerOffsetEstimatorNode::execute_calibration_update(const double steer_off
   const auto & param_path = calibration_params_.steer_offset_param_path;
   const auto & param_name = calibration_params_.steer_offset_param_name;
 
-  current_steering_offset_ = steer_offset;
-  autoware_internal_debug_msgs::msg::Float32Stamped msg;
-  msg.stamp = this->now();
-  msg.data = static_cast<float>(steer_offset);
-  pub_steer_offset_update_->publish(msg);
-
-  if (!calibration_params_.enable_parameter_file_overwrite) return true;
-
   try {
     YAML::Node config = YAML::LoadFile(param_path);
     auto node = config["/**"]["ros__parameters"];
@@ -300,7 +312,7 @@ bool SteerOffsetEstimatorNode::execute_calibration_update(const double steer_off
       return false;
     }
 
-    fout << "# " << param_name << " was AUTOMATICALLY UPDATED BY steer_offset_estimator "
+    fout << "# " << param_name << " was AUTOMATICALLY SET BY steer_offset_estimator at "
          << get_timestamp_string() << "\n";
     fout << config;
     fout.close();
