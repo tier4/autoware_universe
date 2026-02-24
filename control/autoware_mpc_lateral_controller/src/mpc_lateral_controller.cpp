@@ -140,20 +140,14 @@ MpcLateralController::MpcLateralController(
   m_mpc->m_use_delayed_initial_state = dp_bool("use_delayed_initial_state");
 
   const auto trajectory_reference_mode =
-    node.declare_parameter<std::string>("trajectory_reference_mode", "");
-  if (!trajectory_reference_mode.empty()) {
-    if (trajectory_reference_mode == "temporal") {
-      m_mpc->m_use_temporal_trajectory = true;
-    } else if (trajectory_reference_mode == "spatial") {
-      m_mpc->m_use_temporal_trajectory = false;
-    } else {
-      throw std::invalid_argument(
-        "Invalid trajectory_reference_mode. Expected \"spatial\" or \"temporal\".");
-    }
+    node.declare_parameter<std::string>("trajectory_reference_mode", "spatial");
+  if (trajectory_reference_mode == "temporal") {
+    m_mpc->m_use_temporal_trajectory = true;
+  } else if (trajectory_reference_mode == "spatial") {
+    m_mpc->m_use_temporal_trajectory = false;
   } else {
-    // Backward-compatible fallback for existing configuration.
-    m_mpc->m_use_temporal_trajectory =
-      node.declare_parameter<bool>("use_temporal_trajectory", false);
+    throw std::invalid_argument(
+      "Invalid trajectory_reference_mode. Expected \"spatial\" or \"temporal\".");
   }
 
   m_mpc->m_publish_debug_trajectories = dp_bool("publish_debug_trajectories");
