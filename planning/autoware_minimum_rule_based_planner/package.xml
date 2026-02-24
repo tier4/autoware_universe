@@ -16,11 +16,6 @@
 
   <build_depend>generate_parameter_library</build_depend>
 
-  <!-- <depend>autoware_adapi_v1_msgs</depend> -->
-  <!-- <depend>autoware_behavior_path_planner_common</depend> -->
-  <!-- <depend>autoware_freespace_planning_algorithms</depend> -->
-  <!-- <depend>autoware_frenet_planner</depend> -->
-  <!-- <depend>autoware_internal_debug_msgs</depend> -->
   <depend>autoware_internal_planning_msgs</depend>
   <depend>autoware_lanelet2_extension</depend>
   <depend>autoware_map_msgs</depend>
@@ -54,11 +49,6 @@
   <depend>tf2_ros</depend>
   <depend>tier4_planning_msgs</depend>
   <depend>visualization_msgs</depend>
-  <!-- <depend>autoware_interpolation</depend> -->
-  <!-- <depend>autoware_object_recognition_utils</depend> -->
-  <!-- <depend>autoware_path_sampler</depend> -->
-  <!-- <depend>autoware_signal_processing</depend> -->
-  <!-- <depend>behaviortree_cpp_v3</depend> -->
 
   <test_depend>ament_cmake_ros</test_depend>
   <test_depend>ament_lint_auto</test_depend>
