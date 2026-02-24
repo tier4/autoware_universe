@@ -83,6 +83,7 @@ struct DiffusionPlannerParams
   float turn_indicator_keep_offset;
   double turn_indicator_hold_duration;
   bool shift_x;
+  int64_t delay_step;
 };
 
 /**
@@ -215,6 +216,17 @@ public:
   int64_t get_previous_turn_indicator_report() const;
 
   /**
+   * @brief Set the last agent poses map from inference results.
+   *
+   * @param agent_poses_map Parsed prediction poses in map frame
+   */
+  void set_last_agent_poses_map(
+    const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses_map)
+  {
+    last_agent_poses_map_ = agent_poses_map;
+  }
+
+  /**
    * @brief Get current route pointer.
    *
    * @return Shared pointer to current route
@@ -235,6 +247,7 @@ private:
   std::deque<TurnIndicatorsReport> turn_indicators_history_;
   AgentData agent_data_;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map_;
+  std::vector<std::vector<std::vector<Eigen::Matrix4d>>> last_agent_poses_map_;
 
   // Lanelet map
   LaneletRoute::ConstSharedPtr route_ptr_;
