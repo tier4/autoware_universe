@@ -1,0 +1,41 @@
+- repository: autowarefoundation/sync-file-templates
+  source-dir: sources
+  files:
+    - source: .github/workflows/backport.yaml
+    - source: .github/workflows/pr-agent.yaml
+    - source: .github/workflows/pre-commit.yaml
+    - source: .github/workflows/pre-commit-optional.yaml
+    - source: .github/workflows/semantic-pull-request.yaml
+    - source: .github/workflows/spell-check-differential.yaml
+      pre-commands: |
+        sd "        with:\n" "        with:\n          local-cspell-json: .cspell.json\n" {source}
+    - source: .github/workflows/sync-files.yaml
+    - source: .markdownlint.yaml
+    - source: .pre-commit-config-optional.yaml
+    - source: .pre-commit-config.yaml
+
+# yq is available in the sync-files workflow.
+# caveat: by using yq, the original formatting of the yaml files might be lost (especially line breaks)
+- repository: autowarefoundation/autoware_universe
+  files:
+    - source: .github/workflows/build-and-test-differential.yaml
+      pre-commands: |
+        yq -i '.on.workflow_call.inputs.runner.default = "ubuntu-22.04-m"' {source}
+        yq -i '.jobs."build-and-test-differential".runs-on = "${{ inputs.runner }}"' {source}
+    - source: .github/workflows/build-and-test-differential-arm64.yaml
+      pre-commands: |
+        yq -i '.jobs."build-and-test-differential-arm64".runs-on = "codebuild-autoware-us-east-1-${{ github.run_id }}-${{ github.run_attempt }}-arm-3.0-large"' {source}
+    - source: .github/workflows/build-test-tidy-pr.yaml
+      pre-commands: |
+        yq -i '.jobs."build-and-test-differential-cuda".with.runner = "ubuntu-22.04-m"' {source}
+        yq -i '.jobs."clang-tidy-differential-cuda".with.runner = "ubuntu-22.04-m"' {source}
+        yq -i '.jobs."build-and-test-packages-above-differential".with.runner = "ubuntu-22.04-m"' {source}
+    - source: .github/workflows/clang-tidy-differential.yaml
+      pre-commands: |
+        yq -i '.on.workflow_call.inputs.runner.default = "ubuntu-22.04-m"' {source}
+        yq -i '.jobs."clang-tidy-differential".runs-on = "${{ inputs.runner }}"' {source}
+    - source: .github/workflows/check-build-depends.yaml
+    - source: .github/workflows/cppcheck-differential.yaml
+    - source: .github/workflows/json-schema-check.yaml
+    - source: .github/workflows/pr-labeler.yaml
+    - source: .github/workflows/pre-commit-lite.yaml
