@@ -28,6 +28,7 @@
 #include <std_srvs/srv/trigger.hpp>
 
 #include <memory>
+#include <string>
 
 /**
  * @brief Steer offset estimator namespace
@@ -73,17 +74,12 @@ private:
    */
   SteerOffsetEstimator estimator_;
 
-  std::optional<SteerOffsetEstimationUpdated> latest_result_;
+  std::optional<SteerOffsetEstimationUpdated> latest_reliable_result_;
 
   SteerOffsetCalibrationParameters calibration_params_;
 
   rclcpp::Time last_calibration_time_;
   rclcpp::Time last_no_result_time_;
-
-  /**
-   * @brief Current registered steering offset
-   */
-  double current_steering_offset_;
 
   /**
    * @brief Current registered steering offset
@@ -113,11 +109,6 @@ private:
   rclcpp::Publisher<Float32Stamped>::SharedPtr pub_steer_offset_covariance_;
 
   /**
-   * @brief Publisher for steer offset error
-   */
-  rclcpp::Publisher<Float32Stamped>::SharedPtr pub_steer_offset_error_;
-
-  /**
    * @brief Publisher for steer offset estimation result
    */
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_info_;
@@ -143,13 +134,6 @@ private:
     const std::shared_ptr<std_srvs::srv::Trigger::Response> response);
 
   /**
-   * @brief Apply a new steering offset and optionally persist it to the parameter file
-   * @param steer_offset Estimated steering offset in radians to apply
-   * @return true if the update (and file write, if enabled) succeeded, false otherwise
-   */
-  bool execute_calibration_update(const double steer_offset);
-
-  /**
    * @brief Timer callback for processing pose and steering updates
    */
   void on_timer();
@@ -159,6 +143,8 @@ private:
    */
   void set_calibration_parameters();
 
+  void set_latest_reliable_result(const SteerOffsetEstimationUpdated & result);
+
   /**
    * @brief In AUTO mode, evaluate whether to apply the latest estimated offset and call
    *        execute_calibration_update if thresholds and timing constraints are satisfied
@@ -167,9 +153,27 @@ private:
 
   /**
    * @brief Check if an offset update should be published
+   * @param result The latest steer offset estimation result
    * @return true if the offset should be published, false otherwise
    */
   bool is_publish_update(const SteerOffsetEstimationUpdated & result) const;
+
+  /**
+   * @brief Log value of most recent offset update
+   * @param result The latest steer offset estimation result
+   */
+  void log_offset_update(const SteerOffsetEstimationUpdated & result) const;
+
+  /**
+   * @brief Apply a new steering offset and optionally persist it to the parameter file
+   * @param steer_offset Estimated steering offset in radians to apply
+   * @return true if the update (and file write, if enabled) succeeded, false otherwise
+   */
+  tl::expected<double, std::string> execute_calibration_update(const double steer_offset);
+
+  tl::expected<double, std::string> write_to_yaml(
+    const std::string & file_path, const std::string & param_name, double value,
+    const bool accumulate = false) const;
 
   /**
    * @brief Publish steering offset estimation results
