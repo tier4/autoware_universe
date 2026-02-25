@@ -65,17 +65,11 @@ SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & n
   pub_steer_offset_ = this->create_publisher<Float32Stamped>("~/output/steering_offset", 1);
   pub_steer_offset_covariance_ =
     this->create_publisher<Float32Stamped>("~/output/steering_offset_covariance", 1);
-  pub_steer_offset_error_ =
-    this->create_publisher<Float32Stamped>("~/output/steering_offset_error", 1);
   pub_debug_info_ = this->create_publisher<StringStamped>("~/output/debug_info", 1);
   pub_steer_offset_update_ = this->create_publisher<Float32Stamped>(
     "~/output/steering_offset_update", rclcpp::QoS{1}.transient_local());
 
   set_calibration_parameters();
-
-  // get current registered steering offset
-  current_steering_offset_ =
-    this->declare_parameter<double>(calibration_params_.steer_offset_param_name);
 
   // Create timer
   auto update_hz = this->declare_parameter<double>("update_hz", 10.0);
@@ -92,9 +86,12 @@ SteerOffsetEstimatorNode::SteerOffsetEstimatorNode(const rclcpp::NodeOptions & n
     SteerOffsetCalibrationParameters::mode_to_str_map.at(calibration_params_.mode).c_str());
 
   // publish initial steer offset value
+  // get current registered steering offset
+  last_offset_update_ =
+    this->declare_parameter<double>(calibration_params_.steer_offset_param_name);
   auto initial_msg = std::make_unique<autoware_internal_debug_msgs::msg::Float32Stamped>();
   initial_msg->stamp = this->now();
-  initial_msg->data = static_cast<float>(current_steering_offset_);
+  initial_msg->data = static_cast<float>(last_offset_update_);
   pub_steer_offset_update_->publish(std::move(initial_msg));
 
   last_calibration_time_ = this->now();
@@ -128,6 +125,10 @@ void SteerOffsetEstimatorNode::set_calibration_parameters()
     this->declare_parameter<std::string>("steer_offset_param_path");
   calibration_params_.steer_offset_param_name =
     this->declare_parameter<std::string>("steer_offset_param_name");
+  calibration_params_.calibration_file_path =
+    this->declare_parameter<std::string>("calibration_file_path");
+  calibration_params_.calibration_param_name =
+    this->declare_parameter<std::string>("calibration_param_name");
 }
 
 void SteerOffsetEstimatorNode::on_timer()
@@ -149,7 +150,7 @@ void SteerOffsetEstimatorNode::on_timer()
 
   auto result = estimator_.update(poses, steers);
   if (result) {
-    latest_result_ = result.value();
+    set_latest_reliable_result(result.value());
     publish_data(result.value());
     check_auto_calibration();
   } else {
@@ -165,6 +166,21 @@ void SteerOffsetEstimatorNode::on_timer()
   }
 }
 
+void SteerOffsetEstimatorNode::set_latest_reliable_result(
+  const SteerOffsetEstimationUpdated & result)
+{
+  if (result.covariance > calibration_params_.covariance_th) {
+    return;
+  }
+
+  const auto now = this->now();
+  if ((now - last_no_result_time_).seconds() < calibration_params_.min_steady_duration) {
+    return;
+  }
+
+  latest_reliable_result_ = result;
+}
+
 void SteerOffsetEstimatorNode::publish_data(const SteerOffsetEstimationUpdated & result)
 {
   auto pub_float = [this](const auto & publisher, const double value) {
@@ -177,12 +193,10 @@ void SteerOffsetEstimatorNode::publish_data(const SteerOffsetEstimationUpdated &
   pub_float(pub_steer_offset_, result.offset);
   pub_float(pub_steer_offset_covariance_, result.covariance);
 
-  const double offset_error = result.offset - current_steering_offset_;
-  pub_float(pub_steer_offset_error_, offset_error);
-
   if (is_publish_update(result)) {
     pub_float(pub_steer_offset_update_, result.offset);
     last_offset_update_ = result.offset;
+    log_offset_update(result);
   }
 
   autoware_internal_debug_msgs::msg::StringStamped debug_info;
@@ -204,19 +218,31 @@ bool SteerOffsetEstimatorNode::is_publish_update(const SteerOffsetEstimationUpda
          result.covariance < calibration_params_.covariance_th;
 }
 
+void SteerOffsetEstimatorNode::log_offset_update(const SteerOffsetEstimationUpdated & result) const
+{
+  const auto & param_path = calibration_params_.steer_offset_param_path;
+  const auto & param_name = calibration_params_.steer_offset_param_name;
+
+  auto write_result = write_to_yaml(param_path, param_name, result.offset);
+  if (!write_result) {
+    RCLCPP_ERROR(
+      this->get_logger(), "Failed to write steer offset to YAML: %s", write_result.error().c_str());
+  }
+}
+
 void SteerOffsetEstimatorNode::check_auto_calibration()
 {
-  if (!latest_result_) return;
+  if (!latest_reliable_result_) return;
 
   if (calibration_params_.mode != CalibrationMode::AUTO) {
     if (
-      std::abs(latest_result_->offset) > calibration_params_.warning_offset_th &&
-      latest_result_->covariance < calibration_params_.covariance_th) {
+      std::abs(latest_reliable_result_->offset) > calibration_params_.warning_offset_th &&
+      latest_reliable_result_->covariance < calibration_params_.covariance_th) {
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *get_clock(), 1000,
         "Estimated steering offset %.4f exceeds warning threshold %.4f. Consider calibrating the "
         "steering offset.",
-        latest_result_->offset, calibration_params_.warning_offset_th);
+        latest_reliable_result_->offset, calibration_params_.warning_offset_th);
     }
     return;
   }
@@ -224,24 +250,14 @@ void SteerOffsetEstimatorNode::check_auto_calibration()
   const auto now = this->now();
   if (
     (now - last_calibration_time_).seconds() < calibration_params_.min_update_interval ||
-    (now - last_no_result_time_).seconds() < calibration_params_.min_steady_duration) {
+    std::abs(latest_reliable_result_->offset) < calibration_params_.update_offset_th ||
+    std::abs(latest_reliable_result_->offset) > calibration_params_.max_offset_limit) {
     return;
   }
 
-  if (std::abs(latest_result_->offset) < calibration_params_.update_offset_th) {
-    return;
-  }
-
-  if (
-    latest_result_->covariance > calibration_params_.covariance_th ||
-    std::abs(latest_result_->offset) > calibration_params_.max_offset_limit) {
-    return;
-  }
-
-  if (execute_calibration_update(latest_result_->offset)) {
+  if (execute_calibration_update(latest_reliable_result_->offset)) {
     last_calibration_time_ = now;
-    RCLCPP_INFO(
-      this->get_logger(), "Auto calibration updated offset to %.4f rad.", latest_result_->offset);
+    RCLCPP_INFO(this->get_logger(), "Auto calibration updated offset successfully.");
   } else {
     RCLCPP_ERROR(this->get_logger(), "Auto calibration failed to write to YAML path.");
   }
@@ -260,24 +276,22 @@ void SteerOffsetEstimatorNode::on_update_offset_request(
   if (calibration_params_.mode == CalibrationMode::OFF)
     return reject("Rejected: calibration is in OFF mode");
 
-  if (!latest_result_) return reject("Rejected: estimation result not available");
+  if (!latest_reliable_result_) return reject("Rejected: latest reliable result not available");
 
-  if (latest_result_->covariance > calibration_params_.covariance_th)
+  if (std::abs(latest_reliable_result_->offset) > calibration_params_.max_offset_limit)
     return reject(
-      "Rejected: High uncertainty. Covariance: " + std::to_string(latest_result_->covariance));
+      "Rejected: Offset value exceeds limit. Offset: " +
+      std::to_string(latest_reliable_result_->offset));
 
-  if (std::abs(latest_result_->offset) > calibration_params_.max_offset_limit)
-    return reject(
-      "Rejected: Offset value exceeds limit. Offset: " + std::to_string(latest_result_->offset));
-
-  if (execute_calibration_update(latest_result_->offset)) {
+  const auto calibration_result = execute_calibration_update(latest_reliable_result_->offset);
+  if (calibration_result) {
     response->success = true;
     response->message =
-      "Success: Offset updated to " + std::to_string(latest_result_->offset) + " rad.";
+      "Success: Offset updated to " + std::to_string(calibration_result.value()) + " rad.";
     last_calibration_time_ = this->now();
   } else {
     response->success = false;
-    response->message = "Error: Failed to write to YAML path.";
+    response->message = "Error: " + calibration_result.error();
   }
 }
 
@@ -290,26 +304,34 @@ std::string get_timestamp_string()
   return ss.str();
 }
 
-bool SteerOffsetEstimatorNode::execute_calibration_update(const double steer_offset)
+tl::expected<double, std::string> SteerOffsetEstimatorNode::execute_calibration_update(
+  const double steer_offset)
 {
-  const auto & param_path = calibration_params_.steer_offset_param_path;
-  const auto & param_name = calibration_params_.steer_offset_param_name;
+  const auto & param_path = calibration_params_.calibration_file_path;
+  const auto & param_name = calibration_params_.calibration_param_name;
 
+  return write_to_yaml(param_path, param_name, steer_offset, true);
+}
+
+tl::expected<double, std::string> SteerOffsetEstimatorNode::write_to_yaml(
+  const std::string & file_path, const std::string & param_name, double value,
+  const bool accumulate) const
+{
   try {
-    YAML::Node config = YAML::LoadFile(param_path);
+    YAML::Node config = YAML::LoadFile(file_path);
     auto node = config["/**"]["ros__parameters"];
 
-    if (node) {
-      node[param_name] = steer_offset;
-    } else {
-      RCLCPP_ERROR(this->get_logger(), "Could not find 'ros__parameters' key in YAML.");
-      return false;
+    if (!node) {
+      return tl::make_unexpected("Could not find 'ros__parameters' key in YAML.");
     }
 
-    std::ofstream fout(param_path);
+    auto write_value =
+      accumulate ? value + (node[param_name] ? node[param_name].as<double>() : 0.0) : value;
+    node[param_name] = write_value;
+
+    std::ofstream fout(file_path);
     if (!fout.is_open()) {
-      RCLCPP_ERROR(this->get_logger(), "Failed to open file for writing: %s", param_path.c_str());
-      return false;
+      return tl::make_unexpected(fmt::format("Failed to open file for writing: {}", file_path));
     }
 
     fout << "# " << param_name << " was AUTOMATICALLY SET BY steer_offset_estimator at "
@@ -318,13 +340,12 @@ bool SteerOffsetEstimatorNode::execute_calibration_update(const double steer_off
     fout.close();
 
     RCLCPP_INFO(
-      this->get_logger(), "Saved %.4f to %s as '%s'", steer_offset, param_path.c_str(),
+      this->get_logger(), "Saved %.4f to %s as '%s'", write_value, file_path.c_str(),
       param_name.c_str());
 
-    return true;
+    return write_value;
   } catch (const std::exception & e) {
-    RCLCPP_ERROR(this->get_logger(), "YAML update exception: %s", e.what());
-    return false;
+    return tl::make_unexpected(fmt::format("YAML update exception: {}", e.what()));
   }
 }
 

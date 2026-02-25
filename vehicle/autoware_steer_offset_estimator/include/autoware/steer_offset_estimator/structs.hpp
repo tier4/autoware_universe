@@ -73,6 +73,8 @@ struct SteerOffsetCalibrationParameters
   double warning_offset_th{0.005};
   std::string steer_offset_param_path;
   std::string steer_offset_param_name;
+  std::string calibration_file_path;
+  std::string calibration_param_name;
 
   static inline const std::unordered_map<std::string, CalibrationMode> mode_map{
     {"off", CalibrationMode::OFF},
