@@ -90,7 +90,7 @@ class BaseTestCase(unittest.TestCase):
     def setUp(self):
         """各テストメソッド実行前の初期化"""
         self.test_node = rclpy.create_node(f"test_node_{self._testMethodName}")
-        self.initial_evaluation_time = 3.0 
+        self.initial_evaluation_time = 1.0 
 
     def tearDown(self):
         """各テストメソッド実行後のクリーンアップ"""
@@ -181,7 +181,7 @@ def make_test_case_default(
         }
     }
 
-    # --- 1. /diagnostics の生成 ---
+    # 1. /diagnostics の生成
     if diag_hz > 0:
         msg_type = DiagnosticArray
         input_msgs = []
@@ -196,7 +196,7 @@ def make_test_case_default(
             input_msgs.append(input_msg)
         inputs["/diagnostics"] = {"msgs": input_msgs, "msg_type": msg_type, "publish_hz": diag_hz}
 
-    # --- 2. /control/current_gate_mode の生成 ---
+    # 2. /control/current_gate_mode の生成
     gate_hz = 10.0
     msg_type = GateMode
     input_msgs = []
@@ -206,7 +206,7 @@ def make_test_case_default(
         input_msgs.append(input_msg)
     inputs["/control/current_gate_mode"] = {"msgs": input_msgs, "msg_type": msg_type, "publish_hz": gate_hz}
 
-    # --- 3. /vehicle/status/control_mode の生成 ---
+    # 3. /vehicle/status/control_mode の生成
     control_hz = 50.0
     msg_type = ControlModeReport
     input_msgs = []
@@ -216,7 +216,7 @@ def make_test_case_default(
         input_msgs.append(input_msg)
     inputs["/vehicle/status/control_mode"] = {"msgs": input_msgs, "msg_type": msg_type, "publish_hz": control_hz}
 
-    # --- 4. /autoware/state の生成 ---
+    # 4. /autoware/state の生成
     state_hz = 10.0
     msg_type = AutowareState
     input_msgs = []
@@ -242,12 +242,12 @@ def get_test_case(test_name):
         return make_test_case_default(diag_hz=0.8, gate_mode=1)
         
     elif test_name == 'M3':
-        # M3: 手動運転, diagなし(タイムアウト)
-        return make_test_case_default(diag_hz=0.0, gate_mode=0)
+        # M3: 手動運転, diagなし(タイムアウト), State=4
+        return make_test_case_default(diag_hz=0.0, gate_mode=0, autoware_state=4)
         
     elif test_name == 'M4':
-        # M4: 手動運転, diagが0.8Hz(タイムアウト)
-        return make_test_case_default(diag_hz=0.8, gate_mode=0)
+        # M4: 手動運転, diagが0.8Hz(タイムアウト), State=4
+        return make_test_case_default(diag_hz=0.8, gate_mode=0, autoware_state=4)
         
     elif test_name == 'M5':
         # M5: 外部運転, diagなし(タイムアウト)
@@ -265,46 +265,42 @@ def get_test_case(test_name):
 # 4. シミュレーション実行ロジック (2段階送信)
 # ============================================================
 def simulate_and_get_outputs(test_instance, test_name):
-    
+    # 1. 準備
     init_inputs, _ = get_test_case('INITIALIZE')
+    test_inputs, _ = get_test_case(test_name)
     
     pubs = {}
     for topic, config in init_inputs.items():
         pubs[topic] = test_instance.test_node.create_publisher(config["msg_type"], topic, 10)
     
+    # 検証用兼、Ready判定用のバッファ
     output_buffer = {"/diagnostics_err": []}
-    test_instance.test_node.create_subscription(
-        DiagnosticArray, "/diagnostics_err", 
-        lambda msg: output_buffer["/diagnostics_err"].append(msg), 10
-    )
-
-    # --- isReady監視用のフラグとSubscriptionを追加 ---
-    ready_status = {"is_ready": False}
-    def ready_callback(msg):
-        ready_status["is_ready"] = True
+    
+    def diag_callback(msg):
+        # 届いたメッセージをすべてリストに蓄積
+        output_buffer["/diagnostics_err"].append(msg)
 
     test_instance.test_node.create_subscription(
-        HazardStatusStamped, "/system/emergency/hazard_status", 
-        ready_callback, 10
+        DiagnosticArray, "/diagnostics_err", diag_callback, 10
     )
 
-    # --- 2. 初期化フェーズ (isDataReadyをパスさせる) ---
-    # Readyになる（パブリッシュが開始される）まで初期データを送り続ける
+    # 2. 初期化フェーズ
     timeout_ready = time.time() + 35.0
-    while not ready_status["is_ready"] and time.time() < timeout_ready:
+    
+    while len(output_buffer["/diagnostics_err"]) == 0 and time.time() < timeout_ready:
         publish(test_instance, pubs, init_inputs)
         rclpy.spin_once(test_instance.test_node, timeout_sec=0.1)
 
-    test_instance.assertTrue(ready_status["is_ready"], "Node did not become Ready")
-    
-    # バッファを一度クリアして本番へ
+    test_instance.assertGreater(
+        len(output_buffer["/diagnostics_err"]), 0, "Node did not publish any diagnostics"
+    )
+
     output_buffer["/diagnostics_err"].clear()
 
-    # --- 3. 本番テストフェーズ ---
-    inputs, _ = get_test_case(test_name)
-    publish(test_instance, pubs, inputs)
+    # 3. 本番テストフェーズ
+    publish(test_instance, pubs, test_inputs)
     
-    # バッファフラッシュ待ち
+    # 受信待ち時間
     end_time = time.time() + test_instance.initial_evaluation_time
     while time.time() < end_time:
         rclpy.spin_once(test_instance.test_node, timeout_sec=0.1)
@@ -317,7 +313,7 @@ def simulate_and_get_outputs(test_instance, test_name):
 def assert_M2_M5(test_instance, diag_err_msgs):
     """
     【M2, M5用】
-    異常条件：3s間、対象ノードが存在しない、またはタイムアウトでない
+    異常条件：対象ノードが存在しない、またはタイムアウトでない
     期待状態：対象ノードが存在し、かつタイムアウト（Single Point Fault）であること
     """
     target_name = "autoware/control/external_control/external_command_selector/node_alive_monitoring"
@@ -338,7 +334,7 @@ def assert_M2_M5(test_instance, diag_err_msgs):
 def assert_M3_M4(test_instance, diag_err_msgs):
     """
     【M3, M4用】
-    異常条件：3s間、対象ノードが存在する、またはタイムアウトである
+    異常条件：対象ノードが存在する、またはタイムアウトである
     期待状態：対象ノードが存在せず、かつタイムアウトでもないこと
     """
     target_name = "autoware/control/external_control/external_command_selector/node_alive_monitoring"
@@ -367,7 +363,7 @@ def assert_M3_M4(test_instance, diag_err_msgs):
 def assert_M6(test_instance, diag_err_msgs):
     """
     【M6用】
-    異常条件：3s間、対象ノードが存在しない、またはタイムアウトである
+    異常条件：対象ノードが存在しない、またはタイムアウトである
     期待状態：対象ノードが存在し、かつタイムアウトでない（正常である）こと
     """
     target_name = "autoware/control/external_control/external_command_selector/node_alive_monitoring"

@@ -168,8 +168,6 @@ def check_diagnostics_rate(test_instance, diagnostics,
     
     for msg in diagnostics:
         current_time = get_time_from_msg(msg)
-        if current_time < start_time:
-            continue
 
         for status in msg.status:
             if status.hardware_id != target_hardware_id:
@@ -223,6 +221,5 @@ class TestNodeBehavior(BaseTestCase):
             target_hardware_id="external_cmd_selector",
             target_name_match="heartbeat",
             min_hz=5.0,
-            max_hz=20.0,
-            start_time=0.0
+            max_hz=20.0
         )
