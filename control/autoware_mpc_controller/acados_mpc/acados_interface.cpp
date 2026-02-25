@@ -14,16 +14,23 @@
 
 #include "acados_interface.hpp"
 
+#include "acados_c/ocp_nlp_interface.h"
 #include "acados_c/sim_interface.h"
 
 #include <cmath>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <vector>
 
 namespace
 {
 constexpr double kSimStepMax = 0.01;  // max step for sim integration [s]
+// OCP horizon (must match mpc.py): Tf=10, N=50
+constexpr double kTf = 10.0;
+constexpr int kNyPath = 7;   // y = [s, v, a, eY, ePsi, u_cmd, delta]
+constexpr int kNyTerminal = 5;  // terminal cost states only
 }
 
 AcadosInterface::AcadosInterface(int max_iter, double tol)
@@ -130,6 +137,35 @@ void AcadosInterface::setWarmStart(std::array<double, NX> x0, std::array<double,
     nlp_config_, nlp_dims_, nlp_out_, nlp_in_, static_cast<int>(N), "x", x0.data());
 }
 
+void AcadosInterface::setCostReference(double s0, double v_ref)
+{
+  const double dt = kTf / static_cast<double>(N);
+  // Path stages 0..N-1: yref = [s_ref, v_ref, 0, 0, 0, 0, 0]
+  double yref_path[kNyPath];
+  for (int stage = 0; stage < static_cast<int>(N); ++stage) {
+    const double s_ref = s0 + v_ref * static_cast<double>(stage) * dt;
+    yref_path[0] = s_ref;
+    yref_path[1] = v_ref;
+    yref_path[2] = 0.0;
+    yref_path[3] = 0.0;
+    yref_path[4] = 0.0;
+    yref_path[5] = 0.0;
+    yref_path[6] = 0.0;
+    ocp_nlp_cost_model_set(
+      nlp_config_, nlp_dims_, nlp_in_, stage, "yref", yref_path);
+  }
+  // Terminal stage N: yref_e = [s_ref, v_ref, 0, 0, 0]
+  const double s_ref_N = s0 + v_ref * static_cast<double>(N) * dt;
+  double yref_terminal[kNyTerminal];
+  yref_terminal[0] = s_ref_N;
+  yref_terminal[1] = v_ref;
+  yref_terminal[2] = 0.0;
+  yref_terminal[3] = 0.0;
+  yref_terminal[4] = 0.0;
+  ocp_nlp_cost_model_set(
+    nlp_config_, nlp_dims_, nlp_in_, static_cast<int>(N), "yref", yref_terminal);
+}
+
 void AcadosInterface::setInitialState(std::array<double, NX> x0)
 {
   ocp_nlp_constraints_model_set(
@@ -154,6 +190,72 @@ std::array<std::array<double, NU>, N> AcadosInterface::getControlTrajectory() co
     ocp_nlp_out_get(nlp_config_, nlp_dims_, nlp_out_, static_cast<int>(ii), "u", &utraj[ii]);
   }
   return utraj;
+}
+
+std::string AcadosInterface::getSolverStatsString() const
+{
+  int nlp_iter = 0;
+  int stat_n = 0;
+  int stat_m = 0;
+  ocp_nlp_get(nlp_solver_, "nlp_iter", &nlp_iter);
+  ocp_nlp_get(nlp_solver_, "stat_n", &stat_n);
+  ocp_nlp_get(nlp_solver_, "stat_m", &stat_m);
+  if (stat_m <= 0 || stat_n <= 0) {
+    return "";
+  }
+  const int max_buf = 512;
+  if (stat_m * (stat_n + 1) > max_buf) {
+    return "(statistics buffer too large)";
+  }
+  double stat[max_buf];
+  ocp_nlp_get(nlp_solver_, "statistics", stat);
+
+  const int nrow = (nlp_iter + 1 < stat_m) ? (nlp_iter + 1) : stat_m;
+  std::ostringstream os;
+  os << "iter\tres_stat\tres_eq\t\tres_ineq\tres_comp\tqp_stat\tqp_iter\talpha";
+  if (stat_n > 8) {
+    os << "\t\tqp_res_stat\tqp_res_eq\tqp_res_ineq\tqp_res_comp";
+  }
+  os << "\n";
+  for (int i = 0; i < nrow; i++) {
+    for (int j = 0; j < stat_n + 1; j++) {
+      const double v = stat[i + j * nrow];
+      if (j == 0 || j == 5 || j == 6) {
+        os << static_cast<int>(v) << "\t";
+      } else {
+        os << std::scientific << std::setprecision(6) << v << "\t";
+      }
+    }
+    os << "\n";
+  }
+  return os.str();
+}
+
+std::string AcadosInterface::getLambdasString() const
+{
+  const int stages_to_log = 3;  // stage 0 (applied control), 1, 2
+  std::ostringstream os;
+  // Labels for NBU=2: typically [lbu_0, ubu_0, lbu_1, ubu_1] = u_cmd_lb, u_cmd_ub, delta_lb, delta_ub
+  const char * lam_labels_4[] = {"u_cmd_lb", "u_cmd_ub", "delta_lb", "delta_ub"};
+  for (int stage = 0; stage < stages_to_log && stage <= static_cast<int>(N); ++stage) {
+    const int nlam = ocp_nlp_dims_get_from_attr(nlp_config_, nlp_dims_, nlp_out_, stage, "lam");
+    if (nlam <= 0) {
+      continue;
+    }
+    std::vector<double> lam(static_cast<size_t>(nlam), 0.0);
+    ocp_nlp_out_get(nlp_config_, nlp_dims_, nlp_out_, stage, "lam", lam.data());
+    os << "stage " << stage << " lam(" << nlam << "):";
+    for (int i = 0; i < nlam; ++i) {
+      const double v = lam[static_cast<size_t>(i)];
+      if (nlam == 4 && i < 4) {
+        os << " " << lam_labels_4[i] << "=" << std::scientific << std::setprecision(4) << v;
+      } else {
+        os << " [" << i << "]=" << std::scientific << std::setprecision(4) << v;
+      }
+    }
+    os << "\n";
+  }
+  return os.str();
 }
 
 int AcadosInterface::solve()
@@ -198,8 +300,6 @@ AcadosSolution AcadosInterface::getControl(std::array<double, NX> x0)
   int sqp_iter = 0;
   ocp_nlp_get(nlp_solver_, "sqp_iter", &sqp_iter);
 
-  combined_longitudinal_lateral_acados_print_stats(capsule_);
-
   std::stringstream ss;
   ss << "\nSolver info: SQP iter " << sqp_iter << " time " << (elapsed_time * 1000) << " ms KKT "
      << kkt_norm_inf << std::endl;
@@ -212,5 +312,7 @@ AcadosSolution AcadosInterface::getControl(std::array<double, NX> x0)
   solution.elapsed_time = elapsed_time;
   solution.status = status;
   solution.info = ss.str();
+  solution.solver_stats = getSolverStatsString();
+  solution.lam_summary = getLambdasString();
   return solution;
 }

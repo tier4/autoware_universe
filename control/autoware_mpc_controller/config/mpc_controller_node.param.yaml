@@ -10,3 +10,4 @@
     timeout_trajectory_sec: 1.0
     mpc_max_iter: 20
     mpc_tol: 0.0001
+    solver_verbose: true   # set true to log SQP stats and inequality lambdas (lam) at 1 Hz to debug active constraints

@@ -43,6 +43,10 @@ struct AcadosSolution
 
   int status;
   std::string info;
+  /** Per-iteration SQP stats table (when requested). Empty if not filled. */
+  std::string solver_stats;
+  /** Inequality constraint Lagrange multipliers (lam) for stage 0,1,2 when requested. Non-zero => constraint active. */
+  std::string lam_summary;
 };
 
 class AcadosInterface
@@ -88,9 +92,23 @@ public:
   void setParametersAllStages(std::array<double, NP> params);
   void setWarmStart(std::array<double, NX> x0, std::array<double, NU> u0);
 
+  /**
+   * Set path cost reference so the MPC tracks velocity and advancing path position.
+   * OCP cost is LINEAR_LS with y = [s, v, a, eY, ePsi, u_cmd, delta]. Without this,
+   * yref is zero and the MPC drives v→0 and s→0 (vehicle never moves).
+   * Call before getControl/getControlWithDelayCompensation.
+   * @param s0 current path position [m]
+   * @param v_ref desired velocity from trajectory [m/s]
+   */
+  void setCostReference(double s0, double v_ref);
+
 private:
   std::array<std::array<double, NX>, N + 1> getStateTrajectory() const;
   std::array<std::array<double, NU>, N> getControlTrajectory() const;
+  /** Build per-iteration SQP stats table from ocp_nlp "statistics". */
+  std::string getSolverStatsString() const;
+  /** Format inequality multipliers (lam) for stages 0,1,2 for debugging active constraints. */
+  std::string getLambdasString() const;
 
   combined_longitudinal_lateral_solver_capsule * capsule_;
   ocp_nlp_config * nlp_config_;

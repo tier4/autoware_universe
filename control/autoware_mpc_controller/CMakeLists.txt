@@ -7,6 +7,7 @@ find_package(acados REQUIRED)
 find_package(autoware_control_msgs REQUIRED)
 find_package(autoware_motion_utils REQUIRED)
 find_package(autoware_planning_msgs REQUIRED)
+find_package(autoware_utils_geometry REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(tf2 REQUIRED)
@@ -23,6 +24,7 @@ ament_target_dependencies(mpc_controller_node
   autoware_control_msgs
   autoware_motion_utils
   autoware_planning_msgs
+  autoware_utils_geometry
   geometry_msgs
   nav_msgs
   tf2
@@ -39,6 +41,11 @@ install(
 install(
   DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
+)
+
+install(
+  PROGRAMS scripts/visualize_mpc_control.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 # Install model generator scripts for use with acados or symbolic tooling

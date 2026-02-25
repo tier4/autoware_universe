@@ -22,6 +22,7 @@
 
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_control_msgs/msg/control.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -61,6 +62,7 @@ public:
 
     const int max_iter = declare_parameter<int>("mpc_max_iter", 20);
     const double tol = declare_parameter<double>("mpc_tol", 1e-4);
+    solver_verbose_ = declare_parameter<bool>("solver_verbose", false);
 
     interface_ = std::make_unique<AcadosInterface>(max_iter, tol);
 
@@ -83,6 +85,8 @@ public:
 
     pub_control_ = create_publisher<autoware_control_msgs::msg::Control>(
       "~/output/control_cmd", rclcpp::QoS(1).transient_local());
+    pub_predicted_trajectory_ = create_publisher<autoware_planning_msgs::msg::Trajectory>(
+      "~/output/predicted_trajectory", rclcpp::QoS(1).transient_local());
 
     timer_ = rclcpp::create_timer(
       this, get_clock(), std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -94,20 +98,27 @@ private:
   void onTimer()
   {
     if (!enable_controller_) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000, "[MPC] Controller disabled.");
       return;
     }
     if (!trajectory_ || !odometry_ || !accel_) {
-      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000, "Waiting for trajectory, odometry, accel.");
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "[MPC] Skip: waiting for data (traj=%d odom=%d accel=%d)",
+        trajectory_ ? 1 : 0, odometry_ ? 1 : 0, accel_ ? 1 : 0);
       return;
     }
     if (trajectory_->points.size() < 2) {
-      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000, "Trajectory too short.");
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "[MPC] Skip: trajectory too short (size=%zu)", trajectory_->points.size());
       return;
     }
-    if ((this->now() - rclcpp::Time(trajectory_->header.stamp)).seconds() > timeout_trajectory_sec_) {
+    const double traj_age = (this->now() - rclcpp::Time(trajectory_->header.stamp)).seconds();
+    if (traj_age > timeout_trajectory_sec_) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "Trajectory too old (%.1f s), skipping.", timeout_trajectory_sec_);
+        "[MPC] Skip: trajectory too old (%.1f s > %.1f s)", traj_age, timeout_trajectory_sec_);
       return;
     }
 
@@ -126,7 +137,8 @@ private:
         trajectory_->points, static_cast<size_t>(0), ego_pose.position);
       s_opt = s;
     } catch (const std::exception & e) {
-      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000, "calcSignedArcLength: %s", e.what());
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000, "[MPC] Skip: calcSignedArcLength failed: %s", e.what());
       return;
     }
 
@@ -134,7 +146,8 @@ private:
       const double eY = autoware::motion_utils::calcLateralOffset(trajectory_->points, ego_pose.position);
       eY_opt = eY;
     } catch (const std::exception & e) {
-      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000, "calcLateralOffset: %s", e.what());
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000, "[MPC] Skip: calcLateralOffset failed: %s", e.what());
       return;
     }
 
@@ -142,7 +155,8 @@ private:
     try {
       ref_point = autoware::motion_utils::calcInterpolatedPoint(*trajectory_, ego_pose, false);
     } catch (const std::exception & e) {
-      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 1000, "calcInterpolatedPoint: %s", e.what());
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000, "[MPC] Skip: calcInterpolatedPoint failed: %s", e.what());
       return;
     }
 
@@ -167,6 +181,11 @@ private:
     ref_velocity_opt = static_cast<double>(ref_point.longitudinal_velocity_mps);
 
     if (!s_opt || !eY_opt || !ePsi_opt || !kappa_ref_opt || !ref_velocity_opt) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "[MPC] Skip: missing state (s=%d eY=%d ePsi=%d kappa=%d v_ref=%d)",
+        s_opt ? 1 : 0, eY_opt ? 1 : 0, ePsi_opt ? 1 : 0,
+        kappa_ref_opt ? 1 : 0, ref_velocity_opt ? 1 : 0);
       return;
     }
 
@@ -174,13 +193,21 @@ private:
       *s_opt, v, a, *eY_opt, *ePsi_opt
     };
 
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 500,
+      "[MPC] state s=%.1f v=%.2f a=%.2f eY=%.3f ePsi=%.3f kappa_ref=%.4f v_ref=%.2f",
+      x0[0], x0[1], x0[2], x0[3], x0[4], *kappa_ref_opt, *ref_velocity_opt);
+
+    interface_->setCostReference(*s_opt, *ref_velocity_opt);
+
     AcadosSolution sol = interface_->getControlWithDelayCompensation(
       x0, delay_compensation_time_, *kappa_ref_opt, tau_equiv_, wheelbase_lf_, wheelbase_lr_);
 
     if (sol.status != 0) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 500,
-        "MPC solve status=%d iter=%d", sol.status, sol.sqp_iter);
+        "[MPC] Solve failed: status=%d sqp_iter=%d time=%.1f ms (not publishing control)",
+        sol.status, sol.sqp_iter, sol.elapsed_time * 1000.0);
       return;
     }
 
@@ -208,10 +235,56 @@ private:
 
     pub_control_->publish(out);
 
-    RCLCPP_DEBUG_THROTTLE(
-      get_logger(), *get_clock(), 200,
-      "MPC: u_cmd=%.2f delta=%.3f v_ref=%.2f status=%d time=%.1f ms",
-      u_cmd, delta, *ref_velocity_opt, sol.status, sol.elapsed_time * 1000.0);
+    // Publish predicted trajectory (for AEB, lane_departure_checker, control_validator)
+    autoware_planning_msgs::msg::Trajectory pred_traj;
+    pred_traj.header.stamp = this->now();
+    pred_traj.header.frame_id = trajectory_->header.frame_id;
+    pred_traj.points.reserve(sol.xtraj.size());
+    for (size_t i = 0; i < sol.xtraj.size(); ++i) {
+      const double s = sol.xtraj[i][0];
+      const double v = sol.xtraj[i][1];
+      const double a = sol.xtraj[i][2];
+      const double eY = sol.xtraj[i][3];
+      const double ePsi = sol.xtraj[i][4];
+      const size_t u_idx = (i < sol.utraj.size()) ? i : sol.utraj.size() - 1;
+      const double steer = (sol.utraj.size() > 0) ? sol.utraj[u_idx][1] : 0.0;
+      geometry_msgs::msg::Pose ref_pose;
+      if (trajectory_->points.size() < 2 || s < 0.0) {
+        ref_pose = trajectory_->points.front().pose;
+      } else {
+        ref_pose = autoware::motion_utils::calcInterpolatedPose(trajectory_->points, s);
+      }
+      const double ref_yaw = tf2::getYaw(ref_pose.orientation);
+      const double nx = -std::sin(ref_yaw);
+      const double ny = std::cos(ref_yaw);
+      geometry_msgs::msg::Pose world_pose;
+      world_pose.position.x = ref_pose.position.x + nx * eY;
+      world_pose.position.y = ref_pose.position.y + ny * eY;
+      world_pose.position.z = ref_pose.position.z;
+      world_pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0, 0, 1), ref_yaw + ePsi));
+      autoware_planning_msgs::msg::TrajectoryPoint pt;
+      pt.pose = world_pose;
+      pt.longitudinal_velocity_mps = static_cast<float>(v);
+      pt.acceleration_mps2 = static_cast<float>(a);
+      pt.front_wheel_angle_rad = static_cast<float>(steer);
+      pred_traj.points.push_back(pt);
+    }
+    pub_predicted_trajectory_->publish(pred_traj);
+
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 500,
+      "[MPC] Published: accel=%.2f steering=%.3f v_ref=%.2f (solve %.1f ms)",
+      u_cmd, delta, *ref_velocity_opt, sol.elapsed_time * 1000.0);
+
+    if (solver_verbose_ && !sol.solver_stats.empty()) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000, "[MPC] SQP stats:\n%s", sol.solver_stats.c_str());
+    }
+    if (solver_verbose_ && !sol.lam_summary.empty()) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000, "[MPC] Inequality lambdas (active if non-zero):\n%s",
+        sol.lam_summary.c_str());
+    }
   }
 
   rclcpp::Subscription<autoware_planning_msgs::msg::Trajectory>::SharedPtr sub_trajectory_;
@@ -219,6 +292,7 @@ private:
   rclcpp::Subscription<autoware_vehicle_msgs::msg::SteeringReport>::SharedPtr sub_steering_;
   rclcpp::Subscription<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr sub_accel_;
   rclcpp::Publisher<autoware_control_msgs::msg::Control>::SharedPtr pub_control_;
+  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr pub_predicted_trajectory_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   autoware_planning_msgs::msg::Trajectory::ConstSharedPtr trajectory_;
@@ -228,6 +302,7 @@ private:
 
   std::unique_ptr<AcadosInterface> interface_;
   bool enable_controller_;
+  bool solver_verbose_;
   double ctrl_period_;
   double delay_compensation_time_;
   double tau_equiv_;
