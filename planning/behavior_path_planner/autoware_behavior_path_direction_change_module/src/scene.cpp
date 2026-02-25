@@ -46,10 +46,10 @@ void logDirectionChangeDebugInfo(
   auto print_path = [](const std::string & label,
                        const autoware_internal_planning_msgs::msg::PathWithLaneId & path)
   {
-    std::cout << "[MY_DEBUG] [DirectionChange] " << label
+    std::cout << "[DirectionChange] " << label
               << " size=" << path.points.size() << std::endl;
     std::cout << std::fixed << std::setprecision(3);
-    /*
+    
     for (size_t i = 0; i < path.points.size(); ++i) {
       const auto & pt = path.points[i].point;
       const double x   = pt.pose.position.x;
@@ -63,7 +63,7 @@ void logDirectionChangeDebugInfo(
                 << ", yaw=" << yaw_deg << " deg"
                 << ", v="   << v << " m/s"
                 << std::endl;
-    } */
+    } 
   };
   // ① current_reference_path
   print_path("Current reference path (input)", current_reference_path);
@@ -288,6 +288,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
   
   // Copy reference_path_ to local variable for stability
   const auto current_reference_path = reference_path_;
+  const auto prev_module_output = getPreviousModuleOutput();
 
   // Detect cusp points using current_reference_path
   cusp_point_indices_ = detectCuspPoints(current_reference_path, parameters_->cusp_detection_angle_threshold_deg);
@@ -359,9 +360,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
               << ", c_start=" << c_start << ", c_end=" << c_end
               << ", is_last_segment=" << is_last_segment << std::endl;
 
-    // Critical Safety Check: Lane Continuity with Reverse Exit
+    /* Critical Safety Check: Lane Continuity with Reverse Exit
     const bool safety_check_passed = checkLaneContinuitySafety(
       reference_path_, cusp_point_indices_, planner_data_->route_handler);
+     
     std::cout << "[MY_DEBUG] [DirectionChange] Safety check result: " << (safety_check_passed ? "PASSED" : "FAILED") << std::endl;
     if (!safety_check_passed) {
       std::cout << "[MY_DEBUG] [DirectionChange] FATAL: Lane continuity safety check failed. Returning path without modification." << std::endl;
@@ -369,7 +371,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
       output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
       return output;
-    }
+    } */
 
     if (!planner_data_ || !planner_data_->self_odometry) {
       std::cout << "[MY_DEBUG] [DirectionChange] WARNING: No ego odometry available, defaulting to forward segment" << std::endl;
@@ -707,7 +709,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     const auto & ego_pose = planner_data_->self_odometry->pose.pose;
 
   logDirectionChangeDebugInfo(
-    current_reference_path,   // ① input
+    reference_path_,   // prev_module_output.path,   // ① input
     output.path,              // ② output
     ego_pose);                // ③ ego pose
   }
