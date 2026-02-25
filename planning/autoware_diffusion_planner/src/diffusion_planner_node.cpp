@@ -43,6 +43,7 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
     this->create_publisher<PredictedObjects>("~/output/predicted_objects", rclcpp::QoS(1));
   pub_route_marker_ = this->create_publisher<MarkerArray>("~/debug/route_marker", 10);
   pub_lane_marker_ = this->create_publisher<MarkerArray>("~/debug/lane_marker", 10);
+  pub_road_border_marker_ = this->create_publisher<MarkerArray>("~/debug/road_border_marker", 10);
   pub_turn_indicators_ =
     this->create_publisher<TurnIndicatorsCommand>("~/output/turn_indicators", 1);
   pub_traffic_signal_ = this->create_publisher<autoware_perception_msgs::msg::TrafficLightGroup>(
@@ -225,6 +226,12 @@ void DiffusionPlanner::publish_debug_markers(
       std::vector<int64_t>(LANES_SHAPE.begin(), LANES_SHAPE.end()), timestamp, lifetime,
       {0.1, 0.1, 0.7, 0.8}, "map", true);
     pub_lane_marker_->publish(lane_markers);
+
+    auto road_border_markers = utils::create_road_border_marker(
+      ego_to_map_transform, input_data_map.at("road_border"),
+      std::vector<int64_t>(ROAD_BORDERS_SHAPE.begin(), ROAD_BORDERS_SHAPE.end()), timestamp,
+      lifetime, {0.7, 0.1, 0.1, 0.8}, "map");
+    pub_road_border_marker_->publish(road_border_markers);
   }
 }
 

@@ -84,6 +84,7 @@ inline constexpr std::array<int64_t, 4> LANES_SHAPE = {
   1, NUM_SEGMENTS_IN_LANE, POINTS_PER_SEGMENT, SEGMENT_POINT_DIM};
 inline constexpr std::array<int64_t, 3> LANES_HAS_SPEED_LIMIT_SHAPE = {1, NUM_SEGMENTS_IN_LANE, 1};
 inline constexpr std::array<int64_t, 3> LANES_SPEED_LIMIT_SHAPE = {1, NUM_SEGMENTS_IN_LANE, 1};
+inline constexpr std::array<int64_t, 4> ROAD_BORDERS_SHAPE = LANES_SHAPE;
 inline constexpr std::array<int64_t, 4> ROUTE_LANES_SHAPE = {
   1, NUM_SEGMENTS_IN_ROUTE, POINTS_PER_SEGMENT, SEGMENT_POINT_DIM};
 inline constexpr std::array<int64_t, 3> ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE = {

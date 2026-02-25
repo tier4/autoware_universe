@@ -139,6 +139,15 @@ ColorRGBA get_traffic_light_color(float g, float y, float r, const ColorRGBA & o
   return original_color;
 };
 
+MarkerArray create_road_border_marker(
+  const Eigen::Matrix4d & transform_ego_to_map, const std::vector<float> & road_border_vector,
+  const std::vector<int64_t> & shape, const Time & stamp, const rclcpp::Duration & lifetime,
+  const std::array<float, 4> colors, const std::string & frame_id)
+{
+  return create_lane_marker(
+    transform_ego_to_map, road_border_vector, shape, stamp, lifetime, colors, frame_id, false);
+}
+
 MarkerArray create_lane_marker(
   const Eigen::Matrix4d & transform_ego_to_map, const std::vector<float> & lane_vector,
   const std::vector<int64_t> & shape, const Time & stamp, const rclcpp::Duration & lifetime,
