@@ -2,11 +2,11 @@
 # https://github.com/autowarefoundation/sync-file-templates
 # To make changes, update the source repository and follow the guidelines in its README.
 
-name: pre-commit-optional-autoupdate
+name: sync-files
 
 on:
   schedule:
-    - cron: 0 0 1 1,4,7,10 * # quarterly
+    - cron: 0 0 * * *
   workflow_dispatch:
 
 concurrency:
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pre-commit-optional-autoupdate:
+  sync-files:
     runs-on: ubuntu-22.04
     steps:
       - name: Generate token
@@ -24,15 +24,11 @@ jobs:
           app_id: ${{ secrets.APP_ID }}
           private_key: ${{ secrets.PRIVATE_KEY }}
 
-      - name: Run pre-commit-autoupdate
-        uses: autowarefoundation/autoware-github-actions/pre-commit-autoupdate@v1
+      - name: Run sync-files
+        uses: autowarefoundation/autoware-github-actions/sync-files@v1
         with:
           token: ${{ steps.generate-token.outputs.token }}
-          pre-commit-config: .pre-commit-config-optional.yaml
           pr-labels: |
             tag:bot
-            tag:pre-commit-autoupdate
-          pr-branch: pre-commit-optional-autoupdate
-          pr-title: "ci(pre-commit-optional): autoupdate"
-          pr-commit-message: "ci(pre-commit-optional): autoupdate"
+            tag:sync-files
           auto-merge-method: squash
