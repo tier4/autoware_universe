@@ -118,6 +118,7 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<double>("turn_indicator_hold_duration", 0.0);
   params_.shift_x = this->declare_parameter<bool>("shift_x", false);
   params_.delay_step = this->declare_parameter<int64_t>("delay_step", 0);
+  params_.line_string_max_step_m = this->declare_parameter<double>("line_string_max_step_m", 2.0);
 
   // debug params
   debug_params_.publish_debug_map =
@@ -144,6 +145,7 @@ SetParametersResult DiffusionPlanner::on_parameter(
     const auto previous_args_path = params_.args_path;
     const auto previous_model_path = params_.model_path;
     const auto previous_batch_size = params_.batch_size;
+    const auto previous_line_string_max_step_m = params_.line_string_max_step_m;
     update_param<std::string>(parameters, "onnx_model_path", temp_params.model_path);
     update_param<std::string>(parameters, "args_path", temp_params.args_path);
     update_param<bool>(
@@ -165,9 +167,12 @@ SetParametersResult DiffusionPlanner::on_parameter(
       parameters, "turn_indicator_hold_duration", temp_params.turn_indicator_hold_duration);
     update_param<bool>(parameters, "shift_x", temp_params.shift_x);
     update_param<int64_t>(parameters, "delay_step", temp_params.delay_step);
+    update_param<double>(parameters, "line_string_max_step_m", temp_params.line_string_max_step_m);
     const bool args_path_changed = temp_params.args_path != previous_args_path;
     const bool model_path_changed = temp_params.model_path != previous_model_path;
     const bool batch_size_changed = temp_params.batch_size != previous_batch_size;
+    const bool line_string_max_step_changed =
+      temp_params.line_string_max_step_m != previous_line_string_max_step_m;
     params_ = temp_params;
     core_->update_params(params_);
 
@@ -181,6 +186,10 @@ SetParametersResult DiffusionPlanner::on_parameter(
         result.reason = e.what();
         return result;
       }
+    }
+
+    if (line_string_max_step_changed && lanelet_map_ptr_) {
+      core_->set_map(lanelet_map_ptr_);
     }
   }
 
@@ -228,8 +237,8 @@ void DiffusionPlanner::publish_debug_markers(
     pub_lane_marker_->publish(lane_markers);
 
     auto road_border_markers = utils::create_road_border_marker(
-      ego_to_map_transform, input_data_map.at("road_border"),
-      std::vector<int64_t>(ROAD_BORDERS_SHAPE.begin(), ROAD_BORDERS_SHAPE.end()), timestamp,
+      ego_to_map_transform, input_data_map.at("line_strings"),
+      std::vector<int64_t>(LINE_STRINGS_SHAPE.begin(), LINE_STRINGS_SHAPE.end()), timestamp,
       lifetime, {0.7, 0.1, 0.1, 0.8}, "map");
     pub_road_border_marker_->publish(road_border_markers);
   }
@@ -364,9 +373,8 @@ void DiffusionPlanner::on_timer()
 
 void DiffusionPlanner::on_map(const HADMapBin::ConstSharedPtr map_msg)
 {
-  std::shared_ptr<const lanelet::LaneletMap> lanelet_map_ptr =
-    autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*map_msg);
-  core_->set_map(lanelet_map_ptr);
+  lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*map_msg);
+  core_->set_map(lanelet_map_ptr_);
 }
 
 }  // namespace autoware::diffusion_planner

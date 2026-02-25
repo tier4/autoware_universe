@@ -144,8 +144,55 @@ MarkerArray create_road_border_marker(
   const std::vector<int64_t> & shape, const Time & stamp, const rclcpp::Duration & lifetime,
   const std::array<float, 4> colors, const std::string & frame_id)
 {
-  return create_lane_marker(
-    transform_ego_to_map, road_border_vector, shape, stamp, lifetime, colors, frame_id, false);
+  MarkerArray marker_array;
+  const int64_t P = shape[2];
+  const int64_t D = shape[3];
+  const size_t num_line_strings = road_border_vector.size() / (P * D);
+  constexpr float near_zero_threshold = 1e-2f;
+  // Line string feature layout: [x, y, is_stop_line, is_road_border]
+  // is_road_border is at index 2 + LINE_STRING_TYPE_ROAD_BORDER = 2 + 1 = 3
+  constexpr int64_t road_border_type_idx = 3;
+
+  ColorRGBA color;
+  color.r = colors[0];
+  color.g = colors[1];
+  color.b = colors[2];
+  color.a = colors[3];
+
+  for (size_t l = 0; l < num_line_strings; ++l) {
+    // All points in a line string share the same type; check the first point's type flag
+    if (road_border_vector[P * D * static_cast<int64_t>(l) + road_border_type_idx] < 0.5f) {
+      continue;
+    }
+
+    Marker marker = create_base_marker(
+      stamp, frame_id, "road_border", static_cast<int>(l), Marker::LINE_STRIP, color, lifetime,
+      0.2);
+
+    float total_norm = 0.0f;
+    for (int64_t p = 0; p < P; ++p) {
+      const float x = road_border_vector[P * D * static_cast<int64_t>(l) + p * D + X];
+      const float y = road_border_vector[P * D * static_cast<int64_t>(l) + p * D + Y];
+      const float norm = std::sqrt(x * x + y * y);
+      total_norm += norm;
+
+      if (norm < near_zero_threshold) {
+        continue;
+      }
+
+      const Eigen::Vector4d pt_ego(x, y, 0.0, 1.0);
+      const Eigen::Vector4d pt_map = transform_ego_to_map * pt_ego;
+      add_point_to_marker(marker, pt_map.x(), pt_map.y(), pt_map.z() + 0.1);
+    }
+
+    if (total_norm < near_zero_threshold || marker.points.empty()) {
+      continue;
+    }
+
+    marker_array.markers.push_back(marker);
+  }
+
+  return marker_array;
 }
 
 MarkerArray create_lane_marker(

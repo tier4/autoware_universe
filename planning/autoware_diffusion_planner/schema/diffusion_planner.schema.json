@@ -105,6 +105,12 @@
           "minimum": 0,
           "description": "Input delay step for inference"
         },
+        "line_string_max_step_m": {
+          "type": "number",
+          "default": 1.0,
+          "exclusiveMinimum": 0,
+          "description": "Maximum arc-length step per model point when resampling line strings [m]. Smaller values produce more fixed-size sub-segments per line string."
+        },
         "debug_params": {
           "type": "object",
           "properties": {

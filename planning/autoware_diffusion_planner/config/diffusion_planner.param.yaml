@@ -16,6 +16,7 @@
     turn_indicator_hold_duration: 1.0
     shift_x: false
     delay_step: 0
+    line_string_max_step_m: 1.0
     debug_params:
       publish_debug_route: true
       publish_debug_map: false

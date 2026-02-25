@@ -196,6 +196,9 @@ private:
   VehicleInfo vehicle_info_;
 
   std::unique_ptr<DiagnosticsInterface> diagnostics_inference_;
+  std::shared_ptr<const lanelet::LaneletMap> lanelet_map_ptr_{nullptr};
+  postprocess::TurnIndicatorManager turn_indicator_manager_{
+    rclcpp::Duration::from_seconds(0.0), 0.0f};
 };
 
 }  // namespace autoware::diffusion_planner

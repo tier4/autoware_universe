@@ -51,8 +51,9 @@ uint8_t identify_current_light_status(
 
 // LaneSegmentContext implementation
 LaneSegmentContext::LaneSegmentContext(
-  const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr)
-: lanelet_map_(convert_to_internal_lanelet_map(lanelet_map_ptr)),
+  const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr,
+  const double line_string_max_step_m)
+: lanelet_map_(convert_to_internal_lanelet_map(lanelet_map_ptr, line_string_max_step_m)),
   lanelet_id_to_array_index_(create_lane_id_to_array_index_map(lanelet_map_.lane_segments))
 {
   if (lanelet_map_.lane_segments.empty()) {

@@ -66,7 +66,9 @@ public:
    *
    * @param lanelet_map_ptr Shared pointer to the lanelet map.
    */
-  explicit LaneSegmentContext(const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr);
+  explicit LaneSegmentContext(
+    const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr,
+    double line_string_max_step_m = 2.0);
 
   /**
    * @brief Select route segment indices based on route and constraints.
@@ -138,8 +140,8 @@ public:
     const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y) const
   {
     return create_line_tensor(
-      lanelet_map_.polygons, transform_matrix, center_x, center_y, NUM_POLYGONS,
-      POINTS_PER_POLYGON, POLYGON_TYPE_NUM);
+      lanelet_map_.polygons, transform_matrix, center_x, center_y, NUM_POLYGONS, POINTS_PER_POLYGON,
+      POLYGON_TYPE_NUM);
   }
   std::vector<float> create_line_string_tensor(
     const Eigen::Matrix4d & transform_matrix, const double center_x, const double center_y) const
