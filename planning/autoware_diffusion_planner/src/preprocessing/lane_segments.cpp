@@ -28,6 +28,30 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <type_traits>
+
+namespace
+{
+template <typename T, typename = void>
+struct has_predictions : std::false_type
+{
+};
+
+template <typename T>
+struct has_predictions<T, std::void_t<decltype(std::declval<T>().predictions)>> : std::true_type
+{
+};
+
+template <typename T>
+void clear_predictions_if_exists(T & msg)
+{
+  // autoware_perception_msgs::msg::TrafficLightElement older than 1.8.0 does not have `predictions`
+  // field, so check if the field exists before clearing it.
+  if constexpr (has_predictions<T>::value) {
+    msg.predictions.clear();
+  }
+}
+}  // namespace
 #include <map>
 #include <memory>
 #include <tuple>
@@ -146,7 +170,7 @@ LaneSegmentContext::get_first_traffic_light_on_route(
       unknown_element.status = TrafficLightElement::UNKNOWN;
       unknown_element.confidence = 0.0f;
       result.elements = {unknown_element};
-      result.predictions.clear();
+      clear_predictions_if_exists(result);
     }
     return result;
   }
