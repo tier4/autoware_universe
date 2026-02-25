@@ -198,10 +198,15 @@ private:
       "[MPC] state s=%.1f v=%.2f a=%.2f eY=%.3f ePsi=%.3f kappa_ref=%.4f v_ref=%.2f",
       x0[0], x0[1], x0[2], x0[3], x0[4], *kappa_ref_opt, *ref_velocity_opt);
 
-    interface_->setCostReference(*s_opt, *ref_velocity_opt);
-
-    AcadosSolution sol = interface_->getControlWithDelayCompensation(
-      x0, delay_compensation_time_, *kappa_ref_opt, tau_equiv_, wheelbase_lf_, wheelbase_lr_);
+    AcadosSolution sol;
+    if (delay_compensation_time_ <= 0.0) {
+      interface_->setCostReference(*s_opt, *ref_velocity_opt);
+      sol = interface_->getControl(x0);
+    } else {
+      sol = interface_->getControlWithDelayCompensation(
+        x0, delay_compensation_time_, *kappa_ref_opt, *ref_velocity_opt,
+        tau_equiv_, wheelbase_lf_, wheelbase_lr_);
+    }
 
     if (sol.status != 0) {
       RCLCPP_WARN_THROTTLE(

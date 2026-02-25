@@ -113,8 +113,8 @@ class CombinedMPC:
         ocp.solver_options.N_horizon = self.N
 
         # Cost: track (s, v, a, eY, ePsi) and penalize (u_cmd, delta)
-        Q = np.diag([1e0, 1e0, 1e-1, 1e-2, 1e-1])  # s, v, a, eY, ePsi
-        R = np.diag([2e-1, 2e-1])  # u_cmd, delta
+        Q = np.diag([1e0, 1e5, 1e-3, 1e-3, 1e-3])  # s, v, a, eY, ePsi
+        R = np.diag([2e-2, 2e-1])  # u_cmd, delta
         Qe = 5.0 * Q
 
         ocp.cost.cost_type = "LINEAR_LS"

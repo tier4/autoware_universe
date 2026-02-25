@@ -279,12 +279,18 @@ AcadosSolution AcadosInterface::getControlWithDelayCompensation(
   const std::array<double, NX> & current_state,
   double delay_time,
   double kappa_ref,
+  double v_ref,
   double tau_equiv,
   double lf,
   double lr)
 {
+  if (delay_time <= 0.0) {
+    return getControl(current_state);
+  }
   std::array<double, NP> p = {tau_equiv, kappa_ref, lf, lr};
-  return getControlWithDelayCompensation(current_state, delay_time, p);
+  std::array<double, NX> x0_pred = predictStateAfterDelay(current_state, delay_time, p);
+  setCostReference(x0_pred[0], v_ref);
+  return getControl(x0_pred);
 }
 
 AcadosSolution AcadosInterface::getControl(std::array<double, NX> x0)

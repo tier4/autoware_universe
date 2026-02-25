@@ -77,11 +77,13 @@ public:
     double delay_time,
     const std::array<double, NP> & p);
 
-  /** Convenience: build p = [tau_equiv, kappa_ref, lf, lr] and call getControlWithDelayCompensation. */
+  /** Convenience: build p = [tau_equiv, kappa_ref, lf, lr] and call getControlWithDelayCompensation.
+   * When delay_time > 0, sets cost reference from predicted state s so yref matches OCP initial state. */
   AcadosSolution getControlWithDelayCompensation(
     const std::array<double, NX> & current_state,
     double delay_time,
     double kappa_ref,
+    double v_ref,
     double tau_equiv = 1.5,
     double lf = 1.0,
     double lr = 1.0);
