@@ -116,9 +116,6 @@ MpcLateralController::MpcLateralController(
 
   /* steering offset compensation */
   {
-    const auto steer_offset_param_name =
-      node.declare_parameter<std::string>("steer_offset_param_name");
-    m_steering_offset_ = node.declare_parameter<double>(steer_offset_param_name);
     enable_auto_steering_offset_removal_ =
       dp_bool("steering_offset.enable_auto_steering_offset_removal");
     if (enable_auto_steering_offset_removal_) {
