@@ -13,6 +13,7 @@
     - source: .markdownlint.yaml
     - source: .pre-commit-config-optional.yaml
     - source: .pre-commit-config.yaml
+    - source: .yamllint.yaml
 
 # yq is available in the sync-files workflow.
 # caveat: by using yq, the original formatting of the yaml files might be lost (especially line breaks)
