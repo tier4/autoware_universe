@@ -261,4 +261,4 @@ This package uses the **same curvature structure** as the spatial model but in *
 
 with **β = atan(lr · tan(δ) / (lf + lr))** and **κ = cos(β) · tan(δ) / (lf + lr)**.
 
-Horizon is **time Tf** [s]. See **`generators/bicycle_model_curvilinear.py`** and **`generators/lateral_mpc_curvilinear.py`**.
+Horizon is **time Tf** [s]. See **`generators/bicycle_model_curvilinear.py`** and **`generators/mpc.py`** (combined OCP).

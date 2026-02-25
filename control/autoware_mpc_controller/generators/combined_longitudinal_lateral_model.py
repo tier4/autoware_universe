@@ -15,8 +15,16 @@
 """
 Combined longitudinal (FOPDT) + lateral (curvature-based bicycle) model in time.
 State x = [s, v, a, eY, ePsi], input u = [u_cmd, delta].
-Longitudinal: ṡ=v, v̇=a, τ_equiv·ȧ = u_cmd − a.
+Longitudinal: ṡ=v, v̇=a, τ_equiv·ȧ = u_cmd - a.
 Lateral: deY/dt = v·(deY/ds), dePsi/dt = v·(dePsi/ds) using curvature (eY, ePsi, delta).
+
+Delay (dead time τ) is not included in this model. The dynamics use u_cmd at current
+time; in a full FOPDT formulation one would have u_cmd(t-τ). Delay can be handled in
+the MPC description file (OCP/solver wrapper) instead, e.g. by delay compensation:
+predict state forward by delay_compensation_time and pass as x0, and shift the applied
+input so the first portion of the horizon covers the delay. See longitudinal_inferred_model.md
+and the path_tracking_mpc_spatial_with_body_points-style OCP setup (e.g. in
+autoware_path_optimizer) for reference.
 """
 
 import types
@@ -65,7 +73,7 @@ def combined_longitudinal_lateral_model(tau_equiv: float = 1.5):
 
     xdot = vertcat(s_dot, v_dot, a_dot, eYdot, ePsidot)
 
-    # longitudinal: ṡ = v, v̇ = a, τ_equiv·ȧ = u_cmd − a
+    # longitudinal: ṡ = v, v̇ = a, τ_equiv·ȧ = u_cmd - a (no dead time τ here; handle in MPC/OCP)
     f_lon = vertcat(v, a, (u_cmd - a) / p_tau)
 
     # lateral: curvature-based, d/dt = v * (d/ds)

@@ -13,17 +13,22 @@
 # limitations under the License.
 
 """
-Lateral MPC using curvature-based bicycle dynamics in time.
-Model: d/dt (eY, ePsi) = v * (d/ds terms), with v = ds/dt from longitudinal_fopdt_model.
-Horizon is time Tf [s]; parameters p = [v, kappa_ref, lf, lr].
+Combined longitudinal + lateral MPC (path_tracking_mpc_spatial_with_body_points-style).
+
+Builds a single acados OCP from the combined model: state x = [s, v, a, eY, ePsi],
+input u = [u_cmd, delta], cost on tracking all states and inputs, bounds on
+acceleration and steering. One solver for both axes.
+
+Delay compensation is implemented in C++ (acados_interface.hpp/cpp); this script
+only generates the OCP and C code.
 """
 
 from __future__ import annotations
 
 try:
-    from .bicycle_model_curvilinear import bicycle_model_curvilinear
+    from .combined_longitudinal_lateral_model import combined_longitudinal_lateral_model
 except ImportError:
-    from bicycle_model_curvilinear import bicycle_model_curvilinear
+    from combined_longitudinal_lateral_model import combined_longitudinal_lateral_model
 
 try:
     from acados_template import AcadosModel
@@ -31,43 +36,48 @@ try:
     from acados_template import AcadosOcpSolver
 except ImportError as e:
     raise ImportError(
-        "lateral_mpc_curvilinear requires acados_template and casadi."
+        "mpc requires acados_template (and casadi). Install with pip or use the package venv."
     ) from e
 
 import numpy as np
 
-
 # Default wheelbase [m]
 DEFAULT_LF = 1.0
 DEFAULT_LR = 1.0
-# Default speed [m/s] for parameter_values; v = ds/dt from longitudinal model
-DEFAULT_V = 5.0
 
 
-class LateralMPCCurvilinear:
+class CombinedMPC:
     """
-    Lateral path-tracking MPC with curvature-based dynamics in time.
-    deY/dt = v*(deY/ds), dePsi/dt = v*(dePsi/ds); v = ds/dt from longitudinal model.
-    Horizon is time Tf [s]. Parameters p = [v, kappa_ref, lf, lr].
+    Combined longitudinal + lateral MPC with FOPDT longitudinal and curvature-based
+    lateral dynamics in time. Single OCP: state [s, v, a, eY, ePsi], input [u_cmd, delta].
+    Delay compensation is done in C++ (see acados_interface).
     """
 
     def __init__(
         self,
         Tf: float,
         N: int,
+        tau_equiv: float = 1.5,
+        u_cmd_min: float = -3.0,
+        u_cmd_max: float = 2.0,
+        delta_min: float = -0.7,
+        delta_max: float = 0.7,
         lf: float = DEFAULT_LF,
         lr: float = DEFAULT_LR,
-        v_default: float = DEFAULT_V,
         build: bool = True,
         generate: bool = True,
-        code_export_directory: str = "c_generated_code_lateral",
-        json_file: str = "acados_ocp_lateral.json",
+        code_export_directory: str = "c_generated_code",
+        json_file: str = "acados_ocp.json",
     ):
         self.Tf = Tf
         self.N = N
+        self.tau_equiv = tau_equiv
+        self.u_cmd_min = u_cmd_min
+        self.u_cmd_max = u_cmd_max
+        self.delta_min = delta_min
+        self.delta_max = delta_max
         self.lf = lf
         self.lr = lr
-        self.v_default = v_default
         self.code_export_directory = code_export_directory
         self.json_file = json_file
         self.constraint, self.model, self.acados_solver = self._acados_settings(
@@ -77,7 +87,11 @@ class LateralMPCCurvilinear:
     def _acados_settings(self, build: bool = True, generate: bool = True):
         ocp = AcadosOcp()
 
-        model, constraint = bicycle_model_curvilinear()
+        model, constraint = combined_longitudinal_lateral_model(tau_equiv=self.tau_equiv)
+        model.u_cmd_min = self.u_cmd_min
+        model.u_cmd_max = self.u_cmd_max
+        model.delta_min = self.delta_min
+        model.delta_max = self.delta_max
 
         model_ac = AcadosModel()
         model_ac.f_impl_expr = model.f_impl_expr
@@ -98,9 +112,9 @@ class LateralMPCCurvilinear:
 
         ocp.solver_options.N_horizon = self.N
 
-        # cost: track (eY, ePsi) to 0, penalize steering
-        Q = np.diag([1e-2, 1e-1])
-        R = np.eye(nu) * 2e-1
+        # Cost: track (s, v, a, eY, ePsi) and penalize (u_cmd, delta)
+        Q = np.diag([1e0, 1e0, 1e-1, 1e-2, 1e-1])  # s, v, a, eY, ePsi
+        R = np.diag([2e-1, 2e-1])  # u_cmd, delta
         Qe = 5.0 * Q
 
         ocp.cost.cost_type = "LINEAR_LS"
@@ -119,7 +133,8 @@ class LateralMPCCurvilinear:
         ocp.cost.Vx = Vx
 
         Vu = np.zeros((ny, nu))
-        Vu[ny - 1, 0] = 1.0
+        Vu[nx, 0] = 1.0
+        Vu[nx + 1, 1] = 1.0
         ocp.cost.Vu = Vu
 
         Vx_e = np.zeros((ny_e, nx))
@@ -129,16 +144,16 @@ class LateralMPCCurvilinear:
         ocp.cost.yref = np.zeros(ny)
         ocp.cost.yref_e = np.zeros(ny_e)
 
-        ocp.constraints.lbu = np.array([model.delta_min])
-        ocp.constraints.ubu = np.array([model.delta_max])
-        ocp.constraints.idxbu = np.array([0])
+        # Input constraints: acceleration and steering bounds
+        ocp.constraints.lbu = np.array([model.u_cmd_min, model.delta_min])
+        ocp.constraints.ubu = np.array([model.u_cmd_max, model.delta_max])
+        ocp.constraints.idxbu = np.array([0, 1])
 
         ocp.constraints.x0 = np.zeros(nx)
 
-        # p = [v, kappa_ref, lf, lr]; v = ds/dt from longitudinal model
-        ocp.parameter_values = np.array([self.v_default, 0.0, self.lf, self.lr])
+        # p = [tau_equiv, kappa_ref, lf, lr]; kappa_ref set per-stage at runtime
+        ocp.parameter_values = np.array([self.tau_equiv, 0.0, self.lf, self.lr])
 
-        # time horizon [s]
         ocp.solver_options.tf = self.Tf
         ocp.solver_options.qp_solver = "FULL_CONDENSING_HPIPM"
         ocp.solver_options.nlp_solver_type = "SQP"
@@ -163,16 +178,21 @@ class LateralMPCCurvilinear:
 
 
 def main():
-    Tf = 5.0
+    Tf = 10.0
     N = 50
-    LateralMPCCurvilinear(
+    mpc = CombinedMPC(
         Tf, N,
-        lf=1.0, lr=1.0,
-        v_default=5.0,
+        tau_equiv=1.5,
+        u_cmd_min=-3.0,
+        u_cmd_max=2.0,
+        delta_min=-0.7,
+        delta_max=0.7,
+        lf=1.0,
+        lr=1.0,
         build=False,
         generate=True,
     )
-    print("Lateral curvilinear MPC code generated.")
+    print("Combined MPC code generated.")
 
 
 if __name__ == "__main__":

@@ -55,6 +55,7 @@ Controller::Controller(const rclcpp::NodeOptions & node_options) : Node("control
   using std::placeholders::_1;
 
   const double ctrl_period = declare_parameter<double>("ctrl_period");
+  enable_controller_ = declare_parameter<bool>("enable_controller", true);
   timeout_thr_sec_ = declare_parameter<double>("timeout_thr_sec");
   // NOTE: It is possible that using control_horizon could be expected to enhance performance,
   // but it is not a formal interface topic, only an experimental one.
@@ -204,6 +205,10 @@ boost::optional<trajectory_follower::InputData> Controller::createInputData(rclc
 
 void Controller::callbackTimerControl()
 {
+  if (!enable_controller_) {
+    return;
+  }
+
   autoware_control_msgs::msg::Control out;
   out.stamp = this->now();
 

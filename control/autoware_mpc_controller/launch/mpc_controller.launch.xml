@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="autoware_mpc_controller" exec="mpc_controller_node" name="mpc_controller_node" output="screen">
+    <param from="$(find-pkg-share autoware_mpc_controller)/config/mpc_controller_node.param.yaml"/>
+    <remap from="~/input/reference_trajectory" to="/planning/trajectory"/>
+    <remap from="~/input/current_odometry" to="/localization/kinematic_state"/>
+    <remap from="~/input/current_accel" to="/localization/acceleration"/>
+    <remap from="~/input/current_steering" to="/vehicle/status/steering_status"/>
+    <remap from="~/output/control_cmd" to="/control/trajectory_follower/control_cmd"/>
+  </node>
+</launch>

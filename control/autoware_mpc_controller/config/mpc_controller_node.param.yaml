@@ -1,0 +1,12 @@
+/**:
+  ros__parameters:
+    enable_controller: true   # set false to disable combined MPC (e.g. when using old PID+MPC)
+    ctrl_period: 0.03
+    delay_compensation_time: 0.17
+    tau_equiv: 1.5
+    wheelbase_lf: 1.0
+    wheelbase_lr: 1.0
+    max_steer_rad: 0.7
+    timeout_trajectory_sec: 1.0
+    mpc_max_iter: 20
+    mpc_tol: 0.0001

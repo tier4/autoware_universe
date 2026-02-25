@@ -77,6 +77,7 @@ public:
 
 private:
   rclcpp::TimerBase::SharedPtr timer_control_;
+  bool enable_controller_{true};
   double timeout_thr_sec_;
   bool enable_control_cmd_horizon_pub_{false};
   boost::optional<LongitudinalOutput> longitudinal_output_{boost::none};
