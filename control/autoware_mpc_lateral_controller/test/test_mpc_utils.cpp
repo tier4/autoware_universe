@@ -20,6 +20,7 @@
 #include "autoware_planning_msgs/msg/trajectory.hpp"
 #include "autoware_planning_msgs/msg/trajectory_point.hpp"
 
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -80,6 +81,66 @@ TEST(TestMPC, ConvertToMPCTrajectoryTemporalUsesTimeFromStart)
   EXPECT_DOUBLE_EQ(mpc_traj.relative_time.at(0), 0.0);
   EXPECT_DOUBLE_EQ(mpc_traj.relative_time.at(1), 0.3);
   EXPECT_DOUBLE_EQ(mpc_traj.relative_time.at(2), 0.8);
+}
+
+TEST(TestMPC, CalcNearestPoseInterpUsesTimeWindowCandidates)
+{
+  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
+  using geometry_msgs::msg::Pose;
+
+  MPCTrajectory traj;
+  traj.push_back(0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+  traj.push_back(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+  traj.push_back(2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0);
+  traj.push_back(3.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 3.0);
+
+  Pose self_pose{};
+  self_pose.position.x = 2.05;
+  self_pose.position.y = 0.0;
+  self_pose.orientation.w = 1.0;
+
+  Pose nearest_pose{};
+  size_t nearest_index = 0;
+  double nearest_time = 0.0;
+  constexpr double max_dist = 10.0;
+  constexpr double max_yaw = M_PI;
+  const bool ok = MPCUtils::calcNearestPoseInterp(
+    traj, self_pose, &nearest_pose, &nearest_index, &nearest_time, max_dist, max_yaw, true, 1.8,
+    2.2);
+
+  ASSERT_TRUE(ok);
+  EXPECT_GE(nearest_time, 1.8);
+  EXPECT_LE(nearest_time, 2.2);
+  EXPECT_NEAR(nearest_pose.position.x, 2.05, 1e-6);
+}
+
+TEST(TestMPC, CalcNearestPoseInterpFallsBackWhenTimeWindowHasNoCandidates)
+{
+  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
+  using geometry_msgs::msg::Pose;
+
+  MPCTrajectory traj;
+  traj.push_back(0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+  traj.push_back(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+  traj.push_back(2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0);
+
+  Pose self_pose{};
+  self_pose.position.x = 0.2;
+  self_pose.position.y = 0.0;
+  self_pose.orientation.w = 1.0;
+
+  Pose nearest_pose{};
+  size_t nearest_index = 0;
+  double nearest_time = 0.0;
+  constexpr double max_dist = 10.0;
+  constexpr double max_yaw = M_PI;
+  const bool ok = MPCUtils::calcNearestPoseInterp(
+    traj, self_pose, &nearest_pose, &nearest_index, &nearest_time, max_dist, max_yaw, true, 10.0,
+    11.0);
+
+  ASSERT_TRUE(ok);
+  EXPECT_NEAR(nearest_pose.position.x, 0.2, 1e-6);
+  EXPECT_NEAR(nearest_time, 0.2, 1e-6);
 }
 
 }  // namespace
