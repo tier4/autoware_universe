@@ -18,6 +18,7 @@
 #include "autoware/behavior_path_planner_common/utils/drivable_area_expansion/static_drivable_area.hpp"
 #include "autoware/behavior_path_planner_common/utils/path_utils.hpp"
 #include "autoware/behavior_path_planner_common/utils/utils.hpp"
+#include "autoware/behavior_path_side_shift_module/drivable_area_utils.hpp"
 #include "autoware/behavior_path_side_shift_module/utils.hpp"
 
 #include <autoware/motion_utils/trajectory/path_shift.hpp>
@@ -36,17 +37,6 @@ using autoware::motion_utils::findNearestSegmentIndex;
 using autoware_utils::calc_distance2d;
 using autoware_utils::get_point;
 using geometry_msgs::msg::Point;
-
-// Small additional safety buffer [m] applied on top of min_drivable_area_margin.
-// lanelet::geometry::distance2d() computes distance to the nearest polyline segment of a lanelet
-// boundary. Because boundaries are piecewise-linear approximations of the real road edge, the
-// true perpendicular distance can be shorter than the computed value by up to:
-//   error <= segment_length² / (8 * curvature_radius)
-// For typical Autoware lanelet maps (segment ≈ 1 m, curvature radius >= 10 m) this is ≈ 0.013 m.
-// We use 0.05 m (~4× worst-case) to also absorb floating-point rounding in coordinate transforms
-// and interpolation. This is intentionally NOT a tunable parameter: it is a numerical guard rather
-// than a design-level margin (use min_drivable_area_margin for that purpose).
-constexpr double kLaneBoundaryDiscretizationBuffer = 0.05;
 
 SideShiftModule::SideShiftModule(
   const std::string & name, rclcpp::Node & node,
@@ -611,8 +601,7 @@ double SideShiftModule::calcMaxLateralOffset(const double requested_offset) cons
   return clampOffsetToLimits(requested_offset, limits.safe_left_limit, limits.safe_right_limit);
 }
 
-SideShiftModule::AdjacentLaneInfo SideShiftModule::getAdjacentLaneInfo(
-  const lanelet::ConstLanelet & lane) const
+AdjacentLaneInfo SideShiftModule::getAdjacentLaneInfo(const lanelet::ConstLanelet & lane) const
 {
   AdjacentLaneInfo info;
 
@@ -636,114 +625,6 @@ SideShiftModule::AdjacentLaneInfo SideShiftModule::getAdjacentLaneInfo(
   }
 
   return info;
-}
-
-SideShiftModule::LanePositionResult SideShiftModule::determineLanePosition(
-  const lanelet::ConstLanelet & lane, const lanelet::BasicPoint2d & target_point,
-  const AdjacentLaneInfo & adj_info) const
-{
-  LanePositionResult result;
-  result.check_lane = lane;
-
-  const bool in_current_lane = lanelet::geometry::inside(lane, target_point);
-  if (in_current_lane) {
-    return result;
-  }
-
-  // Not in current lane - check adjacent lanes
-  const bool in_left_lane =
-    adj_info.has_left && lanelet::geometry::inside(adj_info.left_lane, target_point);
-  const bool in_right_lane =
-    adj_info.has_right && lanelet::geometry::inside(adj_info.right_lane, target_point);
-
-  if (in_left_lane) {
-    result.check_lane = adj_info.left_lane;
-    result.is_in_adjacent = true;
-  } else if (in_right_lane) {
-    result.check_lane = adj_info.right_lane;
-    result.is_in_adjacent = true;
-  } else {
-    result.is_outside_all = true;
-  }
-
-  return result;
-}
-
-void SideShiftModule::updateLaneLimitsForOutsidePoint(
-  const lanelet::ConstLanelet & lane, const lanelet::BasicPoint2d & target_point,
-  double vehicle_half_width, double margin, LaneLimitInfo & limits) const
-{
-  const auto left_bound = lane.leftBound2d();
-  const auto right_bound = lane.rightBound2d();
-  const double dist_to_left = lanelet::geometry::distance2d(left_bound, target_point);
-  const double dist_to_right = lanelet::geometry::distance2d(right_bound, target_point);
-
-  if (dist_to_left < dist_to_right) {
-    // Point is on the left side - only allow shift back to the right
-    limits.safe_left_limit = 0.0;
-    const double return_distance = dist_to_left + vehicle_half_width + margin;
-    limits.safe_right_limit = std::min(limits.safe_right_limit, return_distance);
-  } else {
-    // Point is on the right side - only allow shift back to the left
-    limits.safe_right_limit = 0.0;
-    const double return_distance = dist_to_right + vehicle_half_width + margin;
-    limits.safe_left_limit = std::min(limits.safe_left_limit, return_distance);
-  }
-  limits.found_valid_limit = true;
-}
-
-void SideShiftModule::updateLaneLimitsForInsidePoint(
-  const lanelet::ConstLanelet & current_check_lane, const lanelet::BasicPoint2d & target_point,
-  bool allow_left, bool allow_right, bool point_in_adjacent,
-  const lanelet::ConstLanelet & left_lane_val, const lanelet::ConstLanelet & right_lane_val,
-  double vehicle_half_width, double margin, LaneLimitInfo & limits) const
-{
-  const auto left_bound = current_check_lane.leftBound2d();
-  const auto right_bound = current_check_lane.rightBound2d();
-
-  const double dist_to_left = lanelet::geometry::distance2d(left_bound, target_point);
-  const double dist_to_right = lanelet::geometry::distance2d(right_bound, target_point);
-
-  // Calculate maximum left shift (positive value)
-  double current_max_left =
-    dist_to_left - vehicle_half_width - margin - kLaneBoundaryDiscretizationBuffer;
-  if (allow_left && !point_in_adjacent) {
-    const double dist_to_far_left =
-      lanelet::geometry::distance2d(left_lane_val.leftBound2d(), target_point);
-    current_max_left =
-      dist_to_far_left - vehicle_half_width - margin - kLaneBoundaryDiscretizationBuffer;
-  }
-
-  // Calculate maximum right shift
-  double current_max_right =
-    dist_to_right - vehicle_half_width - margin - kLaneBoundaryDiscretizationBuffer;
-  if (allow_right && !point_in_adjacent) {
-    const double dist_to_far_right =
-      lanelet::geometry::distance2d(right_lane_val.rightBound2d(), target_point);
-    current_max_right =
-      dist_to_far_right - vehicle_half_width - margin - kLaneBoundaryDiscretizationBuffer;
-  }
-
-  limits.safe_left_limit = std::min(limits.safe_left_limit, std::max(0.0, current_max_left));
-  limits.safe_right_limit = std::min(limits.safe_right_limit, std::max(0.0, current_max_right));
-  limits.found_valid_limit = true;
-}
-
-double SideShiftModule::clampOffsetToLimits(
-  double requested_offset, double safe_left_limit, double safe_right_limit) const
-{
-  constexpr double tolerance = 1e-3;
-
-  if (requested_offset > 0.0) {
-    // Left shift: clamp to safe_left_limit
-    const double result = std::min(requested_offset, safe_left_limit);
-    return (result < tolerance) ? 0.0 : result;
-  } else if (requested_offset < 0.0) {
-    // Right shift: clamp to negative of safe_right_limit
-    const double result = std::max(requested_offset, -safe_right_limit);
-    return (result > -tolerance) ? 0.0 : result;
-  }
-  return 0.0;
 }
 
 void SideShiftModule::setDebugMarkersVisualization() const
