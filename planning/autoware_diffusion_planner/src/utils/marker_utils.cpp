@@ -139,40 +139,54 @@ ColorRGBA get_traffic_light_color(float g, float y, float r, const ColorRGBA & o
   return original_color;
 };
 
-MarkerArray create_road_border_marker(
-  const Eigen::Matrix4d & transform_ego_to_map, const std::vector<float> & road_border_vector,
+MarkerArray create_linestring_marker(
+  const Eigen::Matrix4d & transform_ego_to_map, const std::vector<float> & linestring_vector,
   const std::vector<int64_t> & shape, const Time & stamp, const rclcpp::Duration & lifetime,
-  const std::array<float, 4> colors, const std::string & frame_id)
+  const std::string & frame_id)
 {
   MarkerArray marker_array;
   const int64_t P = shape[2];
   const int64_t D = shape[3];
-  const size_t num_line_strings = road_border_vector.size() / (P * D);
+  const size_t num_line_strings = linestring_vector.size() / (P * D);
   constexpr float near_zero_threshold = 1e-2f;
   // Line string feature layout: [x, y, is_stop_line, is_road_border]
-  // is_road_border is at index 2 + LINE_STRING_TYPE_ROAD_BORDER = 2 + 1 = 3
+  constexpr int64_t stop_line_type_idx = 2;
   constexpr int64_t road_border_type_idx = 3;
 
-  ColorRGBA color;
-  color.r = colors[0];
-  color.g = colors[1];
-  color.b = colors[2];
-  color.a = colors[3];
+  // Dark red
+  ColorRGBA road_border_color;
+  road_border_color.r = 0.8f;
+  road_border_color.g = 0.0f;
+  road_border_color.b = 0.2f;
+  road_border_color.a = 0.8f;
+
+  // Orange
+  ColorRGBA stop_line_color;
+  stop_line_color.r = 1.0f;
+  stop_line_color.g = 0.65f;
+  stop_line_color.b = 0.0f;
+  stop_line_color.a = 0.8f;
 
   for (size_t l = 0; l < num_line_strings; ++l) {
     // All points in a line string share the same type; check the first point's type flag
-    if (road_border_vector[P * D * static_cast<int64_t>(l) + road_border_type_idx] < 0.5f) {
+    const bool is_stop_line =
+      linestring_vector[P * D * static_cast<int64_t>(l) + stop_line_type_idx] > 0.5f;
+    const bool is_road_border =
+      linestring_vector[P * D * static_cast<int64_t>(l) + road_border_type_idx] > 0.5f;
+
+    if (!is_road_border && !is_stop_line) {
       continue;
     }
 
+    std::string ns = is_stop_line ? "stop_line" : "road_border";
+    ColorRGBA color = is_stop_line ? stop_line_color : road_border_color;
     Marker marker = create_base_marker(
-      stamp, frame_id, "road_border", static_cast<int>(l), Marker::LINE_STRIP, color, lifetime,
-      0.2);
+      stamp, frame_id, ns, static_cast<int>(l), Marker::LINE_STRIP, color, lifetime, 0.2);
 
     float total_norm = 0.0f;
     for (int64_t p = 0; p < P; ++p) {
-      const float x = road_border_vector[P * D * static_cast<int64_t>(l) + p * D + X];
-      const float y = road_border_vector[P * D * static_cast<int64_t>(l) + p * D + Y];
+      const float x = linestring_vector[P * D * static_cast<int64_t>(l) + p * D + X];
+      const float y = linestring_vector[P * D * static_cast<int64_t>(l) + p * D + Y];
       const float norm = std::sqrt(x * x + y * y);
       total_norm += norm;
 

@@ -123,9 +123,14 @@
               "type": "boolean",
               "default": true,
               "description": "Publish debug route markers"
+            },
+            "publish_debug_linestrings": {
+              "type": "boolean",
+              "default": false,
+              "description": "Publish debug linestring markers"
             }
           },
-          "required": ["publish_debug_map", "publish_debug_route"]
+          "required": ["publish_debug_map", "publish_debug_route", "publish_debug_linestrings"]
         }
       },
       "required": [

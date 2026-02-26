@@ -382,8 +382,8 @@ std::vector<float> LaneSegmentContext::create_line_tensor(
     for (const auto & point : element.points) {
       const Eigen::Vector4d transformed_point =
         transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
-      transformed_polyline.push_back(
-        Eigen::Vector3d(transformed_point.x(), transformed_point.y(), transformed_point.z()));
+      transformed_polyline.emplace_back(
+        transformed_point.x(), transformed_point.y(), transformed_point.z());
     }
 
     double min_distance = std::numeric_limits<double>::max();

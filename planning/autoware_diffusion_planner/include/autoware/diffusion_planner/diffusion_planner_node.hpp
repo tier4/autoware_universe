@@ -59,6 +59,7 @@ struct DiffusionPlannerDebugParams
 {
   bool publish_debug_route{true};
   bool publish_debug_map{false};
+  bool publish_debug_linestrings{false};
 };
 
 /**
@@ -168,7 +169,7 @@ private:
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_{nullptr};
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_lane_marker_{nullptr};
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_road_border_marker_{nullptr};
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_linestring_marker_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_route_marker_{nullptr};
   rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr pub_turn_indicators_{nullptr};
   rclcpp::Publisher<autoware_perception_msgs::msg::TrafficLightGroup>::SharedPtr

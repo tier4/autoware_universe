@@ -83,21 +83,18 @@ MarkerArray create_lane_marker(
  * shape. The markers can be customized with color, frame, and lifetime, and optionally colored for
  * traffic lights.
  *
- * @param road_border_vector A vector of floats representing the road border geometry or points.
- * @param shape A vector of longs specifying the shape or dimensions of the road border data.
+ * @param transform_ego_to_map The transformation matrix to convert points from ego frame to map
+ * frame.
+ * @param linestring_vector A vector of floats representing the linestring geometry or points.
+ * @param shape A vector of longs specifying the shape or dimensions of the linestring data.
  * @param stamp The timestamp to assign to the marker messages.
  * @param lifetime The duration for which the markers should remain visible.
- * @param colors An array of 4 floats specifying the RGBA color of the road border markers (default:
- * green with alpha 0.8).
  * @param frame_id The coordinate frame in which to publish the markers (default: "base_link").
- * @param set_traffic_light_color If true, sets the marker color based on traffic light state
- * (default: false).
- * @return MarkerArray containing the generated road border markers.
+ * @return MarkerArray containing the generated linestring markers.
  */
-MarkerArray create_road_border_marker(
-  const Eigen::Matrix4d & transform_ego_to_map, const std::vector<float> & road_border_vector,
+MarkerArray create_linestring_marker(
+  const Eigen::Matrix4d & transform_ego_to_map, const std::vector<float> & linestring_vector,
   const std::vector<int64_t> & shape, const Time & stamp, const rclcpp::Duration & lifetime,
-  const std::array<float, 4> colors = {1.0f, 0.0f, 0.8f, 0.8f},
   const std::string & frame_id = "base_link");
 }  // namespace autoware::diffusion_planner::utils
 #endif  // AUTOWARE__DIFFUSION_PLANNER__UTILS__MARKER_UTILS_HPP_

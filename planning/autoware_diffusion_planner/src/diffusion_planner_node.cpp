@@ -43,7 +43,7 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
     this->create_publisher<PredictedObjects>("~/output/predicted_objects", rclcpp::QoS(1));
   pub_route_marker_ = this->create_publisher<MarkerArray>("~/debug/route_marker", 10);
   pub_lane_marker_ = this->create_publisher<MarkerArray>("~/debug/lane_marker", 10);
-  pub_road_border_marker_ = this->create_publisher<MarkerArray>("~/debug/road_border_marker", 10);
+  pub_linestring_marker_ = this->create_publisher<MarkerArray>("~/debug/linestring_marker", 10);
   pub_turn_indicators_ =
     this->create_publisher<TurnIndicatorsCommand>("~/output/turn_indicators", 1);
   pub_traffic_signal_ = this->create_publisher<autoware_perception_msgs::msg::TrafficLightGroup>(
@@ -125,6 +125,8 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<bool>("debug_params.publish_debug_map", false);
   debug_params_.publish_debug_route =
     this->declare_parameter<bool>("debug_params.publish_debug_route", true);
+  debug_params_.publish_debug_linestrings =
+    this->declare_parameter<bool>("debug_params.publish_debug_linestrings", false);
 }
 
 void DiffusionPlanner::load_model()
@@ -199,6 +201,9 @@ SetParametersResult DiffusionPlanner::on_parameter(
       parameters, "debug_params.publish_debug_map", temp_debug_params.publish_debug_map);
     update_param<bool>(
       parameters, "debug_params.publish_debug_route", temp_debug_params.publish_debug_route);
+    update_param<bool>(
+      parameters, "debug_params.publish_debug_linestrings",
+      temp_debug_params.publish_debug_linestrings);
     debug_params_ = temp_debug_params;
   }
 
@@ -235,12 +240,15 @@ void DiffusionPlanner::publish_debug_markers(
       std::vector<int64_t>(LANES_SHAPE.begin(), LANES_SHAPE.end()), timestamp, lifetime,
       {0.1, 0.1, 0.7, 0.8}, "map", true);
     pub_lane_marker_->publish(lane_markers);
+  }
 
-    auto road_border_markers = utils::create_road_border_marker(
+  if (debug_params_.publish_debug_linestrings) {
+    auto lifetime = rclcpp::Duration::from_seconds(0.2);
+    auto linestring_markers = utils::create_linestring_marker(
       ego_to_map_transform, input_data_map.at("line_strings"),
       std::vector<int64_t>(LINE_STRINGS_SHAPE.begin(), LINE_STRINGS_SHAPE.end()), timestamp,
-      lifetime, {0.7, 0.1, 0.1, 0.8}, "map");
-    pub_road_border_marker_->publish(road_border_markers);
+      lifetime, "map");
+    pub_linestring_marker_->publish(linestring_markers);
   }
 }
 

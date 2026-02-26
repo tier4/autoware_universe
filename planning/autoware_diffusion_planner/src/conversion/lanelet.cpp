@@ -130,7 +130,9 @@ std::vector<std::vector<LanePoint>> resample_line_string(
   const auto n_segments = static_cast<size_t>(std::max(1.0, std::ceil(step_m / max_step_m)));
 
   // Extract per-axis value arrays for interpolator construction
-  std::vector<double> x_vals(input.size()), y_vals(input.size()), z_vals(input.size());
+  std::vector<double> x_vals(input.size());
+  std::vector<double> y_vals(input.size());
+  std::vector<double> z_vals(input.size());
   for (size_t i = 0; i < input.size(); ++i) {
     x_vals[i] = input[i].x();
     y_vals[i] = input[i].y();
@@ -141,7 +143,9 @@ std::vector<std::vector<LanePoint>> resample_line_string(
   std::function<LanePoint(double)> compute_point;
 
   if (input.size() >= 5) {
-    AkimaSpline x_spline, y_spline, z_spline;
+    AkimaSpline x_spline;
+    AkimaSpline y_spline;
+    AkimaSpline z_spline;
     const auto rx = x_spline.build(arc_lengths, x_vals);
     const auto ry = y_spline.build(arc_lengths, y_vals);
     const auto rz = z_spline.build(arc_lengths, z_vals);
@@ -153,7 +157,9 @@ std::vector<std::vector<LanePoint>> resample_line_string(
       return LanePoint{x_spline.compute(s), y_spline.compute(s), z_spline.compute(s)};
     };
   } else {
-    Linear x_spline, y_spline, z_spline;
+    Linear x_spline;
+    Linear y_spline;
+    Linear z_spline;
     const auto rx = x_spline.build(arc_lengths, x_vals);
     const auto ry = y_spline.build(arc_lengths, y_vals);
     const auto rz = z_spline.build(arc_lengths, z_vals);
