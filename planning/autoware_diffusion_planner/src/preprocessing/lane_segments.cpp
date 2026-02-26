@@ -51,8 +51,9 @@ uint8_t identify_current_light_status(
 
 // LaneSegmentContext implementation
 LaneSegmentContext::LaneSegmentContext(
-  const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr)
-: lanelet_map_(convert_to_internal_lanelet_map(lanelet_map_ptr)),
+  const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr,
+  const double line_string_max_step_m)
+: lanelet_map_(convert_to_internal_lanelet_map(lanelet_map_ptr, line_string_max_step_m)),
   lanelet_id_to_array_index_(create_lane_id_to_array_index_map(lanelet_map_.lane_segments))
 {
   if (lanelet_map_.lane_segments.empty()) {
@@ -381,8 +382,8 @@ std::vector<float> LaneSegmentContext::create_line_tensor(
     for (const auto & point : element.points) {
       const Eigen::Vector4d transformed_point =
         transform_matrix * Eigen::Vector4d(point.x(), point.y(), point.z(), 1.0);
-      transformed_polyline.push_back(
-        Eigen::Vector3d(transformed_point.x(), transformed_point.y(), transformed_point.z()));
+      transformed_polyline.emplace_back(
+        transformed_point.x(), transformed_point.y(), transformed_point.z());
     }
 
     double min_distance = std::numeric_limits<double>::max();

@@ -66,7 +66,8 @@ void DiffusionPlannerCore::update_params(const DiffusionPlannerParams & params)
 void DiffusionPlannerCore::set_map(
   const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr)
 {
-  lane_segment_context_ = std::make_unique<preprocess::LaneSegmentContext>(lanelet_map_ptr);
+  lane_segment_context_ = std::make_unique<preprocess::LaneSegmentContext>(
+    lanelet_map_ptr, params_.line_string_max_step_m);
 }
 
 std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
