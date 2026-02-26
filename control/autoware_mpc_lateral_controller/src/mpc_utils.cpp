@@ -379,7 +379,8 @@ void dynamicSmoothingVelocity(
 
 bool calcNearestPoseInterp(
   const MPCTrajectory & traj, const Pose & self_pose, Pose * nearest_pose, size_t * nearest_index,
-  double * nearest_time, const double max_dist, const double max_yaw)
+  double * nearest_time, const double max_dist, const double max_yaw, const bool use_time_window,
+  const double min_time_window_sec, const double max_time_window_sec)
 {
   if (traj.empty() || !nearest_pose || !nearest_index || !nearest_time) {
     return false;
@@ -395,6 +396,42 @@ bool calcNearestPoseInterp(
 
   *nearest_index = autoware::motion_utils::findFirstNearestIndexWithSoftConstraints(
     autoware_traj.points, self_pose, max_dist, max_yaw);
+  if (use_time_window) {
+    const double min_time_sec = std::min(min_time_window_sec, max_time_window_sec);
+    const double max_time_sec = std::max(min_time_window_sec, max_time_window_sec);
+    std::vector<size_t> candidates;
+    candidates.reserve(traj.size());
+    for (size_t i = 0; i < traj.size(); ++i) {
+      const double t = traj.relative_time.at(i);
+      if (min_time_sec <= t && t <= max_time_sec) {
+        candidates.push_back(i);
+      }
+    }
+    if (!candidates.empty()) {
+      const double self_yaw = tf2::getYaw(self_pose.orientation);
+      size_t best_relaxed_idx = candidates.front();
+      double best_relaxed_dist2 = std::numeric_limits<double>::max();
+      size_t best_strict_idx = candidates.front();
+      double best_strict_dist2 = std::numeric_limits<double>::max();
+      bool has_strict_candidate = false;
+      for (const auto idx : candidates) {
+        const double dx = traj.x.at(idx) - self_pose.position.x;
+        const double dy = traj.y.at(idx) - self_pose.position.y;
+        const double dist2 = dx * dx + dy * dy;
+        if (dist2 < best_relaxed_dist2) {
+          best_relaxed_dist2 = dist2;
+          best_relaxed_idx = idx;
+        }
+        const double yaw_error = std::fabs(normalize_radian(self_yaw - traj.yaw.at(idx)));
+        if (std::sqrt(dist2) <= max_dist && yaw_error <= max_yaw && dist2 < best_strict_dist2) {
+          best_strict_dist2 = dist2;
+          best_strict_idx = idx;
+          has_strict_candidate = true;
+        }
+      }
+      *nearest_index = has_strict_candidate ? best_strict_idx : best_relaxed_idx;
+    }
+  }
   const size_t traj_size = traj.size();
 
   if (traj.size() == 1) {

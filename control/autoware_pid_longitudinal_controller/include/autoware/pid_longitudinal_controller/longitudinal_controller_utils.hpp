@@ -127,6 +127,12 @@ std::pair<TrajectoryPoint, size_t> lerpTrajectoryPoint(
   return std::make_pair(interpolated_point, seg_idx);
 }
 
+/**
+ * @brief apply linear interpolation to trajectory point at specified trajectory time
+ * @param [in] points trajectory points (time_from_start must be strictly increasing)
+ * @param [in] target_time target time_from_start [s]
+ * @return interpolated trajectory point and source segment index
+ */
 std::pair<TrajectoryPoint, size_t> lerpTrajectoryPointByTime(
   const std::vector<TrajectoryPoint> & points, const double target_time);
 
