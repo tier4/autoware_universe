@@ -123,6 +123,28 @@ if(TRT_AVAIL AND CUDA_AVAIL)
       ${CUBLAS_LIBRARIES}
       ${CUDNN_LIBRARY}
     )
+
+    add_executable(map_exporter
+      tool/map_exporter.cpp
+    )
+    target_include_directories(map_exporter PUBLIC
+      ${CUDA_INCLUDE_DIRS}
+      ${autoware_cuda_utils_INCLUDE_DIRS}
+    )
+    target_link_libraries(map_exporter
+      autoware_diffusion_planner_component
+      ${NVINFER}
+      ${NVONNXPARSER}
+      ${CUDA_LIBRARIES}
+      ${CUBLAS_LIBRARIES}
+      ${CUDNN_LIBRARY}
+    )
+
+    install(TARGETS
+      data_converter
+      map_exporter
+      DESTINATION lib/${PROJECT_NAME}
+    )
   endif()
 endif()
 ament_auto_package(
@@ -130,4 +152,5 @@ ament_auto_package(
   config
   launch
   test_map
+  tool/map_eval
 )

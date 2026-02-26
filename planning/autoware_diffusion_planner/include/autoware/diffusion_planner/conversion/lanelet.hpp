@@ -111,7 +111,7 @@ struct LaneletMap
  * @return LaneletMap
  */
 [[nodiscard]] LaneletMap convert_to_internal_lanelet_map(
-  const lanelet::LaneletMapConstPtr lanelet_map_ptr);
+  const lanelet::LaneletMapConstPtr lanelet_map_ptr, bool interpolate = true);
 
 }  // namespace autoware::diffusion_planner
 

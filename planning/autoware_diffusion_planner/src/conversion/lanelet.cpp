@@ -109,7 +109,7 @@ std::vector<LanePoint> convert_to_polyline(const T & line_string) noexcept
 }
 }  // namespace
 
-LaneletMap convert_to_internal_lanelet_map(const lanelet::LaneletMapConstPtr lanelet_map_ptr)
+LaneletMap convert_to_internal_lanelet_map(const lanelet::LaneletMapConstPtr lanelet_map_ptr, bool interpolate)
 {
   LaneletMap lanelet_map;
   lanelet_map.lane_segments.reserve(lanelet_map_ptr->laneletLayer.size());
@@ -126,12 +126,14 @@ LaneletMap convert_to_internal_lanelet_map(const lanelet::LaneletMapConstPtr lan
       continue;
     }
     const Polyline centerline(
-      interpolate_points(convert_to_polyline(lanelet.centerline3d()), POINTS_PER_SEGMENT));
+      interpolate ? interpolate_points(convert_to_polyline(lanelet.centerline3d()), POINTS_PER_SEGMENT)
+                  : convert_to_polyline(lanelet.centerline3d()));
     const Polyline left_boundary(
-      interpolate_points(convert_to_polyline(lanelet.leftBound3d()), POINTS_PER_SEGMENT));
+      interpolate ? interpolate_points(convert_to_polyline(lanelet.leftBound3d()), POINTS_PER_SEGMENT)
+                  : convert_to_polyline(lanelet.leftBound3d()));
     const Polyline right_boundary(
-      interpolate_points(convert_to_polyline(lanelet.rightBound3d()), POINTS_PER_SEGMENT));
-
+      interpolate ? interpolate_points(convert_to_polyline(lanelet.rightBound3d()), POINTS_PER_SEGMENT)
+                  : convert_to_polyline(lanelet.rightBound3d()));
     LanePoint mean_point(0.0, 0.0, 0.0);
     for (const LanePoint & p : centerline) {
       mean_point += p;
@@ -188,7 +190,8 @@ LaneletMap convert_to_internal_lanelet_map(const lanelet::LaneletMapConstPtr lan
       continue;
     }
     const Polyline polyline(
-      interpolate_points(convert_to_polyline(polygon.basicLineString()), POINTS_PER_POLYGON));
+      interpolate ? interpolate_points(convert_to_polyline(polygon.basicLineString()), POINTS_PER_POLYGON)
+                  : convert_to_polyline(polygon.basicLineString()));
     lanelet_map.polygons.push_back(polyline);
   }
 
@@ -199,7 +202,8 @@ LaneletMap convert_to_internal_lanelet_map(const lanelet::LaneletMapConstPtr lan
       continue;
     }
     const Polyline polyline(
-      interpolate_points(convert_to_polyline(line_string), POINTS_PER_LINE_STRING));
+      interpolate ? interpolate_points(convert_to_polyline(line_string), POINTS_PER_LINE_STRING)
+                  : convert_to_polyline(line_string));
     lanelet_map.line_strings.push_back(polyline);
   }
 
