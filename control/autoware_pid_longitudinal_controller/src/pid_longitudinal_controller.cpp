@@ -270,6 +270,16 @@ void PidLongitudinalController::setTrajectory(const autoware_planning_msgs::msg:
     return;
   }
 
+  if (m_use_temporal_trajectory) {
+    const rclcpp::Time current_stamp(msg.header.stamp);
+    if (!m_prev_trajectory_stamp.has_value() || current_stamp != *m_prev_trajectory_stamp) {
+      m_prev_nearest_time.reset();
+      m_prev_trajectory_stamp = current_stamp;
+    }
+  } else {
+    m_prev_trajectory_stamp.reset();
+  }
+
   m_trajectory = msg;
 }
 
@@ -467,10 +477,42 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
   control_data.current_motion.vel = m_current_kinematic_state.twist.twist.linear.x;
   control_data.current_motion.acc = m_current_accel.accel.accel.linear.x;
   control_data.interpolated_traj = m_trajectory;
+  const double traj_start_time =
+    rclcpp::Duration(control_data.interpolated_traj.points.front().time_from_start).seconds();
+  const double traj_end_time =
+    rclcpp::Duration(control_data.interpolated_traj.points.back().time_from_start).seconds();
 
   // calculate the interpolated point and segment
-  const auto current_interpolated_pose =
-    calcInterpolatedTrajPointAndSegment(control_data.interpolated_traj, current_pose);
+  std::pair<autoware_planning_msgs::msg::TrajectoryPoint, size_t> current_interpolated_pose;
+  if (m_use_temporal_trajectory) {
+    if (m_prev_nearest_time.has_value()) {
+      const double nearest_time_ref = std::clamp(
+        *m_prev_nearest_time + std::max(control_data.dt, 0.0), traj_start_time, traj_end_time);
+      current_interpolated_pose = longitudinal_utils::lerpTrajectoryPointByTime(
+        control_data.interpolated_traj.points, nearest_time_ref);
+    } else {
+      const double elapsed_from_traj_start_raw =
+        (clock_->now() - rclcpp::Time(control_data.interpolated_traj.header.stamp)).seconds();
+      constexpr double future_tolerance_sec = 0.1;
+      const double stale_tolerance_sec = std::max(control_data.dt, 0.0);
+      const double elapsed_from_traj_start = [&]() {
+        if (elapsed_from_traj_start_raw < -future_tolerance_sec) {
+          return traj_start_time;
+        }
+        if (elapsed_from_traj_start_raw > traj_end_time + stale_tolerance_sec) {
+          return traj_end_time;
+        }
+        return elapsed_from_traj_start_raw;
+      }();
+      const double nearest_time_init =
+        std::clamp(elapsed_from_traj_start, traj_start_time, traj_end_time);
+      current_interpolated_pose = longitudinal_utils::lerpTrajectoryPointByTime(
+        control_data.interpolated_traj.points, nearest_time_init);
+    }
+  } else {
+    current_interpolated_pose =
+      calcInterpolatedTrajPointAndSegment(control_data.interpolated_traj, current_pose);
+  }
 
   // Insert the interpolated point
   control_data.interpolated_traj.points.insert(
@@ -490,10 +532,6 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
   constexpr double min_running_dist = 0.01;
   if (m_use_temporal_trajectory) {
     const double raw_nearest_time = rclcpp::Duration(nearest_point.time_from_start).seconds();
-    const double traj_start_time =
-      rclcpp::Duration(control_data.interpolated_traj.points.front().time_from_start).seconds();
-    const double traj_end_time =
-      rclcpp::Duration(control_data.interpolated_traj.points.back().time_from_start).seconds();
 
     // Reset previous time if it's outside the new trajectory's time range
     const bool is_prev_time_out_of_range =
@@ -509,10 +547,11 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
         return raw_nearest_time;
       }
       // Prevent backward time jumps and limit excessive forward jumps
-      // min_time_advance: Minimum time progression per control cycle (prevents backward jumps)
-      // max_time_advance: Maximum allowed jump (3x dt accounts for delayed trajectory updates)
-      constexpr double min_time_advance = 0.05;
-      const double max_time_advance = std::max(3.0 * control_data.dt, min_time_advance);
+      // max_time_advance: Allow limited forward time jump to absorb delayed trajectory updates.
+      constexpr double max_advance_cycles = 3.0;
+      const double min_time_window_sec = std::max(control_data.dt, 0.0);
+      const double max_time_advance =
+        std::max(max_advance_cycles * control_data.dt, min_time_window_sec);
       const double clamped_time =
         std::clamp(raw_nearest_time, *m_prev_nearest_time, *m_prev_nearest_time + max_time_advance);
       const double stabilized_time = std::clamp(clamped_time, traj_start_time, traj_end_time);

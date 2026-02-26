@@ -28,6 +28,7 @@
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 #include <cmath>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -180,7 +181,10 @@ std::vector<double> calcTrajectoryCurvature(
  */
 bool calcNearestPoseInterp(
   const MPCTrajectory & traj, const Pose & self_pose, Pose * nearest_pose, size_t * nearest_index,
-  double * nearest_time, const double max_dist, const double max_yaw);
+  double * nearest_time, const double max_dist, const double max_yaw,
+  const bool use_time_window = false,
+  const double min_time_window_sec = -std::numeric_limits<double>::infinity(),
+  const double max_time_window_sec = std::numeric_limits<double>::infinity());
 
 /**
  * @brief calculate distance to stopped point

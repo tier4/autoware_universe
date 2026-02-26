@@ -35,6 +35,88 @@ using autoware_utils::calc_distance2d;
 using autoware_utils::normalize_radian;
 using autoware_utils::rad2deg;
 
+namespace
+{
+/**
+ * @brief construct Pose from MPCTrajectory at a specific index
+ */
+Pose makePoseFromTrajectory(const MPCTrajectory & traj, const size_t index)
+{
+  Pose pose{};
+  pose.position.x = traj.x.at(index);
+  pose.position.y = traj.y.at(index);
+  pose.position.z = traj.z.at(index);
+  tf2::Quaternion q;
+  q.setRPY(0.0, 0.0, traj.yaw.at(index));
+  pose.orientation = tf2::toMsg(q);
+  return pose;
+}
+
+/**
+ * @brief linearly interpolate pose on MPCTrajectory by relative_time
+ * @return interpolated pose and nearest discrete index around the interpolation segment
+ */
+std::pair<Pose, size_t> interpolatePoseByTime(const MPCTrajectory & traj, const double target_time)
+{
+  if (traj.size() == 1) {
+    return {makePoseFromTrajectory(traj, 0), 0};
+  }
+  if (target_time <= traj.relative_time.front()) {
+    return {makePoseFromTrajectory(traj, 0), 0};
+  }
+  if (target_time >= traj.relative_time.back()) {
+    const size_t last_idx = traj.size() - 1;
+    return {makePoseFromTrajectory(traj, last_idx), last_idx};
+  }
+
+  const auto next_it =
+    std::lower_bound(traj.relative_time.begin(), traj.relative_time.end(), target_time);
+  const size_t next = static_cast<size_t>(std::distance(traj.relative_time.begin(), next_it));
+  const size_t prev = next - 1;
+  const double t0 = traj.relative_time.at(prev);
+  const double t1 = traj.relative_time.at(next);
+  const double ratio = std::clamp(
+    (target_time - t0) / std::max(t1 - t0, std::numeric_limits<double>::epsilon()), 0.0, 1.0);
+
+  Pose pose{};
+  pose.position.x = autoware::interpolation::lerp(traj.x.at(prev), traj.x.at(next), ratio);
+  pose.position.y = autoware::interpolation::lerp(traj.y.at(prev), traj.y.at(next), ratio);
+  pose.position.z = autoware::interpolation::lerp(traj.z.at(prev), traj.z.at(next), ratio);
+  const double yaw0 = traj.yaw.at(prev);
+  const double yaw1 = traj.yaw.at(next);
+  const double yaw = yaw0 + ratio * normalize_radian(yaw1 - yaw0);
+  tf2::Quaternion q;
+  q.setRPY(0.0, 0.0, yaw);
+  pose.orientation = tf2::toMsg(q);
+
+  const size_t nearest_idx = std::abs(target_time - t0) <= std::abs(t1 - target_time) ? prev : next;
+  return {pose, nearest_idx};
+}
+
+/**
+ * @brief initialize temporal nearest time using trajectory header stamp
+ * @details handles invalid stamp drift by clamping to trajectory start/end bounds
+ */
+double initializeNearestTimeFromStamp(
+  const std::optional<rclcpp::Time> & trajectory_stamp, const rclcpp::Time & now,
+  const double traj_start_time, const double traj_end_time, const double ctrl_period)
+{
+  if (!trajectory_stamp.has_value()) {
+    return traj_start_time;
+  }
+  const double elapsed_from_traj_start_raw = (now - *trajectory_stamp).seconds();
+  constexpr double future_tolerance_sec = 0.1;
+  const double stale_tolerance_sec = std::max(ctrl_period, 0.0);
+  if (elapsed_from_traj_start_raw < -future_tolerance_sec) {
+    return traj_start_time;
+  }
+  if (elapsed_from_traj_start_raw > traj_end_time + stale_tolerance_sec) {
+    return traj_end_time;
+  }
+  return elapsed_from_traj_start_raw;
+}
+}  // namespace
+
 MPC::MPC(rclcpp::Node & node)
 {
   m_debug_frenet_predicted_trajectory_pub = node.create_publisher<Trajectory>(
@@ -200,6 +282,16 @@ void MPC::setReferenceTrajectory(
   const Trajectory & trajectory_msg, const TrajectoryFilteringParam & param,
   const Odometry & current_kinematics)
 {
+  if (m_use_temporal_trajectory) {
+    const rclcpp::Time current_stamp(trajectory_msg.header.stamp);
+    if (!m_prev_trajectory_stamp.has_value() || current_stamp != *m_prev_trajectory_stamp) {
+      m_prev_nearest_time.reset();
+      m_prev_trajectory_stamp = current_stamp;
+    }
+  } else {
+    m_prev_trajectory_stamp.reset();
+  }
+
   const size_t nearest_seg_idx =
     autoware::motion_utils::findFirstNearestSegmentIndexWithSoftConstraints(
       trajectory_msg.points, current_kinematics.pose.pose, ego_nearest_dist_threshold,
@@ -308,11 +400,6 @@ std::pair<ResultWithReason, MPCData> MPC::getData(
   const auto current_pose = current_kinematics.pose.pose;
 
   MPCData data;
-  if (!MPCUtils::calcNearestPoseInterp(
-        traj, current_pose, &(data.nearest_pose), &(data.nearest_idx), &(data.nearest_time),
-        ego_nearest_dist_threshold, ego_nearest_yaw_threshold)) {
-    return {ResultWithReason{false, "error in calculating nearest pose"}, MPCData{}};
-  }
   if (m_use_temporal_trajectory) {
     const double traj_start_time = traj.relative_time.front();
     const double traj_end_time = traj.relative_time.back();
@@ -321,17 +408,31 @@ std::pair<ResultWithReason, MPCData> MPC::getData(
       (*m_prev_nearest_time < traj_start_time || traj_end_time < *m_prev_nearest_time)) {
       m_prev_nearest_time.reset();
     }
+
     if (!m_prev_nearest_time.has_value()) {
-      m_prev_nearest_time = data.nearest_time;
+      const double nearest_time_init = initializeNearestTimeFromStamp(
+        m_prev_trajectory_stamp, m_clock->now(), traj_start_time, traj_end_time, m_ctrl_period);
+      data.nearest_time = std::clamp(nearest_time_init, traj_start_time, traj_end_time);
     } else {
-      constexpr double min_time_advance = 0.05;
-      const double max_time_advance = std::max(3.0 * m_ctrl_period, min_time_advance);
-      const double clamped_time = std::clamp(
-        data.nearest_time, *m_prev_nearest_time, *m_prev_nearest_time + max_time_advance);
-      data.nearest_time = std::clamp(clamped_time, traj_start_time, traj_end_time);
-      m_prev_nearest_time = data.nearest_time;
+      constexpr double max_advance_cycles = 3.0;
+      const double min_time_step_sec = std::max(m_ctrl_period, 0.0);
+      const double max_time_advance =
+        std::max(max_advance_cycles * m_ctrl_period, min_time_step_sec);
+      const double nearest_time_ref = *m_prev_nearest_time + min_time_step_sec;
+      const double bounded_upper_time =
+        std::min(traj_end_time, *m_prev_nearest_time + max_time_advance);
+      data.nearest_time = std::clamp(nearest_time_ref, traj_start_time, bounded_upper_time);
     }
+    const auto [nearest_pose, nearest_idx] = interpolatePoseByTime(traj, data.nearest_time);
+    data.nearest_pose = nearest_pose;
+    data.nearest_idx = nearest_idx;
+    m_prev_nearest_time = data.nearest_time;
   } else {
+    if (!MPCUtils::calcNearestPoseInterp(
+          traj, current_pose, &(data.nearest_pose), &(data.nearest_idx), &(data.nearest_time),
+          ego_nearest_dist_threshold, ego_nearest_yaw_threshold)) {
+      return {ResultWithReason{false, "error in calculating nearest pose"}, MPCData{}};
+    }
     m_prev_nearest_time.reset();
   }
 
