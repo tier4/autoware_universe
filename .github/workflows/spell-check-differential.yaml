@@ -21,7 +21,6 @@ jobs:
       - name: Run spell-check
         uses: autowarefoundation/autoware-github-actions/spell-check@v1
         with:
-          local-cspell-json: .cspell.json
           cspell-json-url: https://raw.githubusercontent.com/autowarefoundation/autoware-spell-check-dict/main/.cspell.json
           dict-packages: |
             https://github.com/autowarefoundation/autoware-spell-check-dict

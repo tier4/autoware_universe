@@ -5,7 +5,6 @@
 extends: default
 
 ignore: |
-  .github/workflows/*.yaml
   *.param.yaml
 
 rules:
