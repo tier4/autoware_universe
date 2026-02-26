@@ -2,8 +2,8 @@
   <arg name="input_objects_topic_name" default="/perception/object_recognition/objects"/>
   <arg name="input_pointcloud_topic_name" default="/perception/obstacle_segmentation/pointcloud"/>
 
-  <!-- parking scenario -->
-  <group if="$(eval launch_parking_module == 'true' or launch_parking_module == 'FreespacePlanner')">
+  <!-- FreespacePlanner (“®“IŒo˜H¶¬) -->
+  <group if="$(eval '&quot;$(var launch_parking_module)&quot; == &quot;true&quot; or &quot;$(var launch_parking_module)&quot; == &quot;FreespacePlanner&quot;')">
     <push-ros-namespace namespace="parking"/>
 
     <node_container pkg="rclcpp_components" exec="$(var container_type)" name="parking_container" namespace="" output="screen">
@@ -38,8 +38,8 @@
       <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component" namespace=""/>
     </node_container>
   </group>
-  <!-- StaticFreespacePlanner -->
-  <group if="$(eval launch_parking_module == 'StaticFreespacePlanner')">
+  <!-- StaticFreespacePlanner (Ž–‘O“o˜^Œo˜H) -->
+  <group if="$(eval '&quot;$(var launch_parking_module)&quot; == &quot;StaticFreespacePlanner&quot;')">
     <push-ros-namespace namespace="parking"/>
     <node_container pkg="rclcpp_components" exec="$(var container_type)" name="parking_container" namespace="" output="screen">
       <composable_node pkg="autoware_static_freespace_planner" plugin="autoware::static_freespace_planner::StaticFreespacePlannerNode" name="static_freespace_planner" namespace="">
