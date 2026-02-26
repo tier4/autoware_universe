@@ -104,13 +104,8 @@ std::vector<LanePoint> interpolate_points(const std::vector<LanePoint> & input, 
   return result;
 }
 
-// Resample a polyline into one or more fixed-size segments using arc-length parameterized spline
-// interpolation. When the naive step size (total_length / (num_points - 1)) exceeds max_step_m,
-// the input is subdivided into multiple segments so that each segment's step stays within the
-// resolution bound. Every output segment contains exactly num_points points.
-// AkimaSpline is used for inputs with >= 5 points; Linear is used otherwise.
-// The first point of the first segment and the last point of the last segment are always equal to
-// input.front() and input.back() respectively (exact, not spline-evaluated).
+// Subdivides into multiple segments when step_m exceeds max_step_m so each segment stays within
+// the resolution bound. First/last points are exact (not spline-evaluated).
 std::vector<std::vector<LanePoint>> resample_line_string(
   const std::vector<LanePoint> & input, const size_t num_points, const double max_step_m)
 {
@@ -124,6 +119,11 @@ std::vector<std::vector<LanePoint>> resample_line_string(
     arc_lengths[i] = arc_lengths[i - 1] + (input[i] - input[i - 1]).norm();
   }
   const double total_length = arc_lengths.back();
+
+  constexpr double k_epsilon = 1e-6;
+  if (total_length < k_epsilon) {
+    return {std::vector<LanePoint>(num_points, input.front())};
+  }
 
   // Determine the number of output segments needed to satisfy the resolution bound
   const double step_m = total_length / static_cast<double>(num_points - 1);

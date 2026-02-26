@@ -107,7 +107,7 @@
         },
         "line_string_max_step_m": {
           "type": "number",
-          "default": 1.0,
+          "default": 5.0,
           "exclusiveMinimum": 0,
           "description": "Maximum arc-length step per model point when resampling line strings [m]. Smaller values produce more fixed-size sub-segments per line string."
         },

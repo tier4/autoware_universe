@@ -135,7 +135,7 @@ struct LaneletMap
  * @return LaneletMap
  */
 [[nodiscard]] LaneletMap convert_to_internal_lanelet_map(
-  const lanelet::LaneletMapConstPtr lanelet_map_ptr, double line_string_max_step_m = 2.0);
+  const lanelet::LaneletMapConstPtr lanelet_map_ptr, double line_string_max_step_m = 5.0);
 
 }  // namespace autoware::diffusion_planner
 

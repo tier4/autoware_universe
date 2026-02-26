@@ -145,9 +145,15 @@ MarkerArray create_linestring_marker(
   const std::string & frame_id)
 {
   MarkerArray marker_array;
+  if (shape.size() < 4) {
+    return marker_array;
+  }
   const int64_t P = shape[2];
   const int64_t D = shape[3];
-  const size_t num_line_strings = linestring_vector.size() / (P * D);
+  if (P <= 0 || D <= 0 || linestring_vector.size() % static_cast<size_t>(P * D) != 0) {
+    return marker_array;
+  }
+  const size_t num_line_strings = linestring_vector.size() / static_cast<size_t>(P * D);
   constexpr float near_zero_threshold = 1e-2f;
   // The tensor layout is [x, y, one_hot_types...], so the type indices come from 2 + LineStringType
   constexpr int64_t stop_line_type_idx = 2 + LINE_STRING_TYPE_STOP_LINE;

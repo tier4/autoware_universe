@@ -68,7 +68,7 @@ public:
    */
   explicit LaneSegmentContext(
     const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr,
-    double line_string_max_step_m = 2.0);
+    double line_string_max_step_m = 5.0);
 
   /**
    * @brief Select route segment indices based on route and constraints.

@@ -77,11 +77,8 @@ MarkerArray create_lane_marker(
   const std::string & frame_id = "base_link", const bool set_traffic_light_color = false);
 
 /**
- * @brief Creates a visualization marker array representing a lane.
- *
- * This function generates a MarkerArray for visualizing a lane using the provided lane vector and
- * shape. The markers can be customized with color, frame, and lifetime, and optionally colored for
- * traffic lights.
+ * @brief Creates a visualization marker array representing linestrings (e.g., road borders and
+ * stop lines).
  *
  * @param transform_ego_to_map The transformation matrix to convert points from ego frame to map
  * frame.
