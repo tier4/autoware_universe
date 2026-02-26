@@ -53,6 +53,8 @@ struct DirectionChangeParameters
   bool enable_cusp_detection;
   bool enable_reverse_following;
   bool publish_debug_marker;
+  bool print_debug_info{
+    false};  // When true, log debug info (segment state, cusps, path analysis, etc.)
   double th_arrived_distance;  // [m] If ego is within this distance of route goal, do not activate
                                // (avoid re-entry after completion)
 };

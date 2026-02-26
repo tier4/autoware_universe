@@ -60,6 +60,7 @@ void DirectionChangeModuleManager::init(rclcpp::Node * node)
   p.enable_cusp_detection = node->declare_parameter<bool>(ns + "enable_cusp_detection");
   p.enable_reverse_following = node->declare_parameter<bool>(ns + "enable_reverse_following");
   p.publish_debug_marker = node->declare_parameter<bool>(ns + "publish_debug_marker");
+  p.print_debug_info = node->declare_parameter<bool>(ns + "print_debug_info");
   p.th_arrived_distance = node->declare_parameter<double>(ns + "th_arrived_distance");
 
   parameters_ = std::make_shared<DirectionChangeParameters>(p);
@@ -73,7 +74,7 @@ void DirectionChangeModuleManager::updateModuleParams(
   [[maybe_unused]] auto p = parameters_;
 
   [[maybe_unused]] const std::string ns = "direction_change.";
-  // update_param<bool>(parameters, ns + ..., ...);
+  update_param<bool>(parameters, ns + "print_debug_info", p->print_debug_info);
 
   std::for_each(observers_.begin(), observers_.end(), [&p](const auto & observer) {
     if (!observer.expired()) observer.lock()->updateModuleParams(p);

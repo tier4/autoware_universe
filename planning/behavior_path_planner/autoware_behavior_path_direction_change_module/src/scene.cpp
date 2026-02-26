@@ -21,13 +21,13 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/math/unit_conversion.hpp>
+#include <rclcpp/logging.hpp>
 
 #include <lanelet2_core/Forward.h>
 #include <lanelet2_core/LaneletMap.h>
 #include <tf2/utils.h>
 
 #include <algorithm>
-#include <iostream>
 #include <limits>
 #include <memory>
 #include <set>
@@ -39,47 +39,44 @@
 namespace
 {
 void logDirectionChangeDebugInfo(
+  const rclcpp::Logger & logger, bool condition,
   const autoware_internal_planning_msgs::msg::PathWithLaneId & current_reference_path,
   const autoware_internal_planning_msgs::msg::PathWithLaneId & output_path,
   const geometry_msgs::msg::Pose & ego_pose)
 {
+  if (!condition) {
+    return;
+  }
   using autoware_internal_planning_msgs::msg::PathPointWithLaneId;
-  auto print_path = [](
+  std::stringstream ss;
+
+  auto print_path = [&ss](
                       const std::string & label,
                       const autoware_internal_planning_msgs::msg::PathWithLaneId & path) {
-    std::cout << "[DirectionChange] " << label << " size=" << path.points.size() << std::endl;
-    std::cout << std::fixed << std::setprecision(3);
-    /*
+    ss << "[DirectionChange] " << label << " size=" << path.points.size() << "\n";
     for (size_t i = 0; i < path.points.size(); ++i) {
       const auto & pt = path.points[i].point;
-      const double x   = pt.pose.position.x;
-      const double y   = pt.pose.position.y;
-      const double yaw = tf2::getYaw(pt.pose.orientation);            // [rad]
-      const double yaw_deg = yaw * 180.0 / M_PI;                      // [deg]
-      const double v   = pt.longitudinal_velocity_mps;                // [m/s]
-      std::cout << "  idx=" << i
-                << ", x="   << x
-                << ", y="   << y
-                << ", yaw=" << yaw_deg << " deg"
-                << ", v="   << v << " m/s"
-                << std::endl;
-    } */
+      const double x = pt.pose.position.x;
+      const double y = pt.pose.position.y;
+      const double yaw = tf2::getYaw(pt.pose.orientation);
+      const double yaw_deg = yaw * 180.0 / M_PI;
+      const double v = pt.longitudinal_velocity_mps;
+      ss << "  idx=" << i << ", x=" << x << ", y=" << y << ", yaw=" << yaw_deg << " deg"
+         << ", v=" << v << " m/s\n";
+    }
   };
-  // ① current_reference_path
+
   print_path("Current reference path (input)", current_reference_path);
-  // ② output.path
   print_path("Output path (DirectionChange output)", output_path);
-  // ③ Ego
-  {
-    std::cout << "[DirectionChange] Ego state:" << std::endl;
-    std::cout << std::fixed << std::setprecision(3);
-    const double ego_x = ego_pose.position.x;
-    const double ego_y = ego_pose.position.y;
-    const double ego_yaw = tf2::getYaw(ego_pose.orientation);
-    const double ego_yaw_deg = ego_yaw * 180.0 / M_PI;
-    std::cout << "  x=" << ego_x << ", y=" << ego_y << ", yaw=" << ego_yaw_deg << " deg"
-              << std::endl;
-  }
+
+  ss << "[DirectionChange] Ego state:\n";
+  const double ex = ego_pose.position.x;
+  const double ey = ego_pose.position.y;
+  const double eyaw = tf2::getYaw(ego_pose.orientation);
+  const double eyaw_deg = eyaw * 180.0 / M_PI;
+  ss << "  x=" << ex << ", y=" << ey << ", yaw=" << eyaw_deg << " deg\n";
+
+  RCLCPP_DEBUG_STREAM(logger, ss.str());
 }
 }  // namespace
 
@@ -105,6 +102,7 @@ DirectionChangeModule::DirectionChangeModule(
   // /planning/scenario_planning/lane_driving/behavior_planning/behavior_path_planner/output/direction_change/path
   path_publisher_ = node.create_publisher<autoware_internal_planning_msgs::msg::PathWithLaneId>(
     "~/output/direction_change/path", 1);
+  RCLCPP_DEBUG(getLogger(), "Created path publisher: %s", path_publisher_->get_topic_name());
 }
 
 void DirectionChangeModule::initVariables()
@@ -122,12 +120,14 @@ void DirectionChangeModule::initVariables()
 
 void DirectionChangeModule::processOnEntry()
 {
+  RCLCPP_DEBUG(getLogger(), "Module entry - initializing variables");
   initVariables();
   updateData();
 }
 
 void DirectionChangeModule::processOnExit()
 {
+  RCLCPP_DEBUG(getLogger(), "Module exit - resetting variables");
   initVariables();
 }
 
@@ -167,8 +167,7 @@ void DirectionChangeModule::updateData()
 {
   const auto previous_output = getPreviousModuleOutput();
   if (previous_output.path.points.empty()) {
-    //    std::cout << "[DirectionChange] Previous module output path is empty. Cannot update data."
-    //    << std::endl;
+    RCLCPP_WARN(getLogger(), "Previous module output path is empty. Cannot update data.");
     return;
   }
 
@@ -177,6 +176,9 @@ void DirectionChangeModule::updateData()
       previous_output.path, planner_data_->route_handler);
     if (!centerline_path.points.empty()) {
       reference_path_ = centerline_path;
+      RCLCPP_DEBUG(
+        getLogger(), "Using centerline from direction_change lanelets (%zu points)",
+        reference_path_.points.size());
       return;
     }
   }
@@ -189,8 +191,9 @@ void DirectionChangeModule::updateData()
 bool DirectionChangeModule::shouldActivateModule() const
 {
   if (reference_path_.points.empty()) {
-    //    std::cout << "[DirectionChange] shouldActivateModule: Path empty, module inactive" <<
-    //    std::endl;
+    RCLCPP_DEBUG_EXPRESSION(
+      getLogger(), parameters_->print_debug_info,
+      "shouldActivateModule: Path empty, module inactive");
     return false;
   }
 
@@ -214,12 +217,19 @@ bool DirectionChangeModule::shouldActivateModule() const
                 const double dist_to_goal = autoware_utils::calc_distance2d(
                   planner_data_->self_odometry->pose.pose.position, goal_pose.position);
                 if (dist_to_goal < parameters_->th_arrived_distance) {
+                  RCLCPP_WARN(
+                    getLogger(), "shouldActivateModule: at goal (dist=%.2f m), module INACTIVE",
+                    dist_to_goal);
                   return false;
                 }
               } catch (...) {
                 // No goal or getGoalPose failed; allow activation
               }
             }
+            RCLCPP_DEBUG_EXPRESSION(
+              getLogger(), parameters_->print_debug_info,
+              "shouldActivateModule: direction_change_lane tag found in lane_id=%ld, module ACTIVE",
+              static_cast<int64_t>(lane_id));
             return true;  // Tag found and away from goal, activate module
           }
         } catch (...) {
@@ -231,6 +241,9 @@ bool DirectionChangeModule::shouldActivateModule() const
   }
 
   // No direction_change_lane tag found, module inactive
+  RCLCPP_DEBUG_EXPRESSION(
+    getLogger(), parameters_->print_debug_info,
+    "shouldActivateModule: No direction_change_lane tag found, module INACTIVE");
   return false;
 }
 
@@ -280,17 +293,18 @@ BehaviorModuleOutput DirectionChangeModule::plan()
   cusp_point_indices_ =
     detectCuspPoints(current_reference_path, parameters_->cusp_detection_angle_threshold_deg);
 
-  std::cout << "[DirectionChange] plan() called: Path points=" << reference_path_.points.size()
-            << ", Cusp points detected=" << cusp_point_indices_.size() << std::endl;
-  if (!cusp_point_indices_.empty()) {
+  RCLCPP_DEBUG_EXPRESSION(
+    getLogger(), parameters_->print_debug_info, "plan(): path_points=%zu, cusp_points=%zu",
+    reference_path_.points.size(), cusp_point_indices_.size());
+  if (!cusp_point_indices_.empty() && parameters_->print_debug_info) {
     std::stringstream ss;
-    ss << "[DirectionChange] Cusp indices: ";
+    ss << "Cusp indices: ";
     for (size_t i = 0; i < cusp_point_indices_.size() && i < 10; ++i) {
       ss << cusp_point_indices_[i];
       if (i < cusp_point_indices_.size() - 1 && i < 9) ss << ", ";
     }
     if (cusp_point_indices_.size() > 10) ss << "... (total: " << cusp_point_indices_.size() << ")";
-    std::cout << ss.str() << std::endl;
+    RCLCPP_DEBUG_STREAM(getLogger(), ss.str());
   }
 
   // Strategy: Separate forward/backward path publishing
@@ -305,6 +319,8 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     if (
       current_segment_state_ == PathSegmentState::AT_CUSP ||
       current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING) {
+      RCLCPP_DEBUG(
+        getLogger(), "No cusp detected but already in reverse state, maintaining backward path");
       // Continue publishing backward path: reverse orientations and velocities
       output.path = reference_path_;
       for (auto & p : output.path.points) {
@@ -316,6 +332,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       modified_path_ = output.path;
     } else {
       // Not in backward state yet - return full path as forward segment
+      RCLCPP_DEBUG(getLogger(), "No cusp points detected, returning full path as forward segment");
       output.path = reference_path_;
       modified_path_ = output.path;
       current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
@@ -341,11 +358,22 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     } else {
       has_valid_cusp_ = false;
     }
+    RCLCPP_DEBUG_EXPRESSION(
+      getLogger(), parameters_->print_debug_info,
+      "segment_index=%zu, c_start=%zu, c_end=%zu, is_last_segment=%d", current_segment_index_,
+      c_start, c_end, static_cast<int>(is_last_segment));
 
     /* Critical Safety Check: Lane Continuity with Reverse Exit
-    const bool safety_check_passed =
-      checkLaneContinuitySafety(reference_path_, cusp_point_indices_, planner_data_->route_handler);
+    const bool safety_check_passed = checkLaneContinuitySafety(
+      reference_path_, cusp_point_indices_, planner_data_->route_handler);
+
+    RCLCPP_DEBUG_EXPRESSION(
+      getLogger(), parameters_->print_debug_info,
+      "Safety check result: %s", safety_check_passed ? "PASSED" : "FAILED");
     if (!safety_check_passed) {
+      RCLCPP_DEBUG_EXPRESSION(
+        getLogger(), parameters_->print_debug_info,
+        "FATAL: Lane continuity safety check failed. Returning path without modification.");
       output.path = reference_path_;
       output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
       output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
@@ -353,6 +381,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     }*/
 
     if (!planner_data_ || !planner_data_->self_odometry) {
+      RCLCPP_WARN(getLogger(), "No ego odometry available, defaulting to forward segment");
       current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
     } else {
       const auto & ego_pose = planner_data_->self_odometry->pose.pose;
@@ -374,6 +403,8 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       }
 
       if (!found_nearest) {
+        RCLCPP_WARN(
+          getLogger(), "Could not find nearest index for ego pose, defaulting to forward segment");
         current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
       } else {
         auto stateToString = [](const PathSegmentState & s) {
@@ -396,11 +427,12 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         };
         const double vehicle_velocity =
           std::abs(planner_data_->self_odometry->twist.twist.linear.x);
-        std::cout << "[DirectionChange] "
-                  << "state=" << stateToString(current_segment_state_)
-                  << ", ego_nearest_idx=" << ego_nearest_idx << ", c_start=" << c_start
-                  << ", c_end=" << c_end << ", distance_to_cusp=" << distance_to_cusp
-                  << ", vehicle_velocity=" << vehicle_velocity << " [m/s]" << std::endl;
+        RCLCPP_DEBUG_EXPRESSION(
+          getLogger(), parameters_->print_debug_info,
+          "state=%s, ego_nearest_idx=%zu, c_start=%zu, c_end=%zu, distance_to_cusp=%.2f, "
+          "vehicle_velocity=%.2f m/s",
+          stateToString(current_segment_state_), ego_nearest_idx, c_start, c_end, distance_to_cusp,
+          vehicle_velocity);
 
         PathSegmentState new_state = current_segment_state_;
 
@@ -459,7 +491,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
                     !is_next_cusp_available && goal_available &&
                     distance_to_goal < parameters_->th_arrived_distance) {
                     new_state = PathSegmentState::COMPLETED;
-                    std::cout << "[DirectionChange] Transition to COMPLETED" << std::endl;
+                    RCLCPP_DEBUG(getLogger(), "Transition to COMPLETED");
                   } else {
                     // Normal transition to next segment
                     current_segment_index_++;
@@ -468,10 +500,22 @@ BehaviorModuleOutput DirectionChangeModule::plan()
                                   : PathSegmentState::REVERSE_FOLLOWING;
                   }
                 }
-              } else {
-                // Velocity exceeded threshold: reset stop timer
-                if (cusp_stopped_since_.has_value()) {
-                  cusp_stopped_since_.reset();
+
+                // Transition to COMPLETED if all conditions are met:
+                // 1. velocity < stop_velocity_threshold (already checked)
+                // 2. no next cusp point
+                // 3. distance to goal < th_arrived_distance
+                if (
+                  !is_next_cusp_available && goal_available &&
+                  distance_to_goal < parameters_->th_arrived_distance) {
+                  new_state = PathSegmentState::COMPLETED;
+                  RCLCPP_DEBUG(getLogger(), "Transition to COMPLETED");
+                } else {
+                  // Normal transition to next segment
+                  current_segment_index_++;
+                  new_state = (current_segment_index_ % 2 == 0)
+                                ? PathSegmentState::FORWARD_FOLLOWING
+                                : PathSegmentState::REVERSE_FOLLOWING;
                 }
               }
               break;
@@ -490,12 +534,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         }
 
         if (new_state != current_segment_state_) {
-          std::cout << "[DirectionChange] State transition: "
-                    << stateToString(current_segment_state_) << " -> " << stateToString(new_state)
-                    << ", segment_index=" << current_segment_index_ << std::endl;
-          if (new_state == PathSegmentState::AT_CUSP) {
-            cusp_stopped_since_.reset();
-          }
+          RCLCPP_DEBUG(
+            getLogger(), "State transition: %s -> %s, segment_index=%zu",
+            stateToString(current_segment_state_), stateToString(new_state),
+            current_segment_index_);
           current_segment_state_ = new_state;
           segmentBounds(current_segment_index_, c_start, c_end);
         }
@@ -541,8 +583,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         }
         output.path.points.back().point.longitudinal_velocity_mps = 0.0;
       }
-      std::cout << "[DirectionChange] Publishing REVERSE segment: " << output.path.points.size()
-                << " points (indices " << c_start << "-" << c_end << ")" << std::endl;
+      RCLCPP_DEBUG_EXPRESSION(
+        getLogger(), parameters_->print_debug_info,
+        "Publishing REVERSE segment: %zu points (indices %zu-%zu)", output.path.points.size(),
+        c_start, c_end);
     } else {
       // When in AT_CUSP we must command stop at segment end so the vehicle stops before direction
       // switch. Otherwise the reference path velocities (e.g. from centerline) keep the vehicle
@@ -550,8 +594,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       if (current_segment_state_ == PathSegmentState::AT_CUSP && !output.path.points.empty()) {
         output.path.points.back().point.longitudinal_velocity_mps = 0.0;
       }
-      std::cout << "[DirectionChange] Publishing FORWARD segment: " << output.path.points.size()
-                << " points (indices " << c_start << "-" << c_end << ")" << std::endl;
+      RCLCPP_DEBUG_EXPRESSION(
+        getLogger(), parameters_->print_debug_info,
+        "Publishing FORWARD segment: %zu points (indices %zu-%zu)", output.path.points.size(),
+        c_start, c_end);
     }
 
     modified_path_ = output.path;
@@ -591,6 +637,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     } else {
       segment_type = "UNKNOWN";
     }
+
+    RCLCPP_DEBUG_EXPRESSION(
+      getLogger(), parameters_->print_debug_info, "Published %s segment to %s with %zu points",
+      segment_type.c_str(), path_publisher_->get_topic_name(), path_msg.points.size());
 
     // Debug logging for stop point analysis
     bool has_stop_point = false;
@@ -637,18 +687,17 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         break;
     }
 
-    std::cout << "[DIRECTION_CHANGE_DEBUG] Generated path analysis:" << std::endl;
-    std::cout << "  state: " << state_str << std::endl;
-    std::cout << "  path_points: " << path_msg.points.size() << std::endl;
-    std::cout << "  has_stop_point: " << (has_stop_point ? "YES" : "NO") << std::endl;
-    if (has_stop_point) {
-      const auto & stop_point = path_msg.points[stop_point_index].point.pose.position;
-      std::cout << "  stop_point_index: " << stop_point_index << std::endl;
-      std::cout << "  stop_point_position: x=" << stop_point.x << " y=" << stop_point.y
-                << std::endl;
+    if (parameters_->print_debug_info) {
+      std::ostringstream ss;
+      ss << "Path analysis: state=" << state_str << " path_points=" << path_msg.points.size()
+         << " has_stop_point=" << (has_stop_point ? "YES" : "NO")
+         << " first_vel=" << first_point_vel << " last_vel=" << last_point_vel;
+      if (has_stop_point) {
+        const auto & stop_point = path_msg.points[stop_point_index].point.pose.position;
+        ss << " stop_idx=" << stop_point_index << " x=" << stop_point.x << " y=" << stop_point.y;
+      }
+      RCLCPP_DEBUG_STREAM(getLogger(), ss.str());
     }
-    std::cout << "  first_point_vel: " << first_point_vel << " [m/s]" << std::endl;
-    std::cout << "  last_point_vel: " << last_point_vel << " [m/s]" << std::endl;
   }
 
   output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
@@ -664,6 +713,12 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     std::set<int64_t> backward_lane_ids;
     for (const auto & point : output.path.points) {
       backward_lane_ids.insert(point.lane_ids.begin(), point.lane_ids.end());
+    }
+
+    if (parameters_->print_debug_info) {
+      std::ostringstream ss_ids;
+      for (const auto & id : backward_lane_ids) ss_ids << id << " ";
+      RCLCPP_DEBUG(getLogger(), "Backward segment lane_ids: %s", ss_ids.str().c_str());
     }
 
     // Filter drivable_lanes to only include lanes present in backward segment
@@ -693,21 +748,35 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       // TODO(shin.sato): Remove drivable_lane if not contains_backward_lane
       if (contains_backward_lane) {
         output.drivable_area_info.drivable_lanes.push_back(drivable_lane);
+        if (parameters_->print_debug_info) {
+          std::ostringstream ss_keep;
+          for (const auto & id : drivable_lane_ids) ss_keep << id << " ";
+          RCLCPP_DEBUG(getLogger(), "Keeping drivable_lane with ids: %s", ss_keep.str().c_str());
+        }
+      } else {
+        if (parameters_->print_debug_info) {
+          std::ostringstream ss_filter;
+          for (const auto & id : drivable_lane_ids) ss_filter << id << " ";
+          RCLCPP_DEBUG(
+            getLogger(), "Filtering out drivable_lane with ids: %s", ss_filter.str().c_str());
+        }
       }
     }
+
+    RCLCPP_DEBUG_EXPRESSION(
+      getLogger(), parameters_->print_debug_info,
+      "Filtered drivable_lanes count: %zu (original: %zu)",
+      output.drivable_area_info.drivable_lanes.size(), prev_drivable_info.drivable_lanes.size());
   } else {
     // Forward segment or no cusps: preserve drivable area information from previous module
     output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
   }
 
-  // debug infoを出力
+  // Debug path/ego info
   if (planner_data_ && planner_data_->self_odometry) {
-    const auto & ego_pose = planner_data_->self_odometry->pose.pose;
-
     logDirectionChangeDebugInfo(
-      current_reference_path,  // ① input
-      output.path,             // ② output
-      ego_pose);               // ③ ego pose
+      getLogger(), parameters_->print_debug_info, reference_path_, output.path,
+      planner_data_->self_odometry->pose.pose);
   }
 
   return output;
@@ -753,9 +822,8 @@ bool DirectionChangeModule::canTransitSuccessState()
 
   if (remaining_distance < parameters_->th_arrived_distance) {
     current_segment_state_ = PathSegmentState::COMPLETED;
-    std::cout << "[DirectionChange] Ego completed last segment, state=COMPLETED, module can "
-                 "transit to SUCCESS"
-              << std::endl;
+    RCLCPP_DEBUG(
+      getLogger(), "Ego completed last segment, state=COMPLETED, module can transit to SUCCESS");
     return true;
   }
   return false;

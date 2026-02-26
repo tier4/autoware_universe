@@ -8,6 +8,7 @@
       enable_cusp_detection: true  # Enable cusp point detection
       enable_reverse_following: true  # Enable reverse lane following
       publish_debug_marker: false  # Publish debug markers for visualization
+      print_debug_info: false  # When true, log debug info (segment state, cusps, path analysis, etc.)
       th_arrived_distance: 0.5  # [m] If ego within this distance of route goal, do not activate (align with arrival_check / th_arrived_distance)
 
       # ========================================
