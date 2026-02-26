@@ -149,9 +149,9 @@ MarkerArray create_linestring_marker(
   const int64_t D = shape[3];
   const size_t num_line_strings = linestring_vector.size() / (P * D);
   constexpr float near_zero_threshold = 1e-2f;
-  // Line string feature layout: [x, y, is_stop_line, is_road_border]
-  constexpr int64_t stop_line_type_idx = 2;
-  constexpr int64_t road_border_type_idx = 3;
+  // The tensor layout is [x, y, one_hot_types...], so the type indices come from 2 + LineStringType
+  constexpr int64_t stop_line_type_idx = 2 + LINE_STRING_TYPE_STOP_LINE;
+  constexpr int64_t road_border_type_idx = 2 + LINE_STRING_TYPE_ROAD_BORDER;
 
   // Dark red
   ColorRGBA road_border_color;
