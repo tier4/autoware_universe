@@ -40,17 +40,25 @@ lanelet::Id nextId()
   return g_next_id++;
 }
 
-lanelet::Lanelet makeStraightLanelet(
-  lanelet::Id id, double x_start, double x_end, double y_left, double y_right,
-  double interval = 1.0)
+/// Geometry parameters for creating a straight lanelet in tests.
+struct LaneletGeometry
+{
+  double x_start;
+  double x_end;
+  double y_left;
+  double y_right;
+  double interval = 1.0;
+};
+
+lanelet::Lanelet makeStraightLanelet(lanelet::Id id, const LaneletGeometry & geom)
 {
   lanelet::Points3d left_pts, right_pts;
-  const int num = static_cast<int>(std::ceil((x_end - x_start) / interval)) + 1;
+  const int num = static_cast<int>(std::ceil((geom.x_end - geom.x_start) / geom.interval)) + 1;
   for (int i = 0; i < num; ++i) {
-    const double x = x_start + i * interval;
+    const double x = geom.x_start + i * geom.interval;
     // Use unique IDs to avoid collisions
-    left_pts.emplace_back(nextId(), x, y_left, 0.0);
-    right_pts.emplace_back(nextId(), x, y_right, 0.0);
+    left_pts.emplace_back(nextId(), x, geom.y_left, 0.0);
+    right_pts.emplace_back(nextId(), x, geom.y_right, 0.0);
   }
   lanelet::LineString3d left_ls(nextId(), left_pts);
   lanelet::LineString3d right_ls(nextId(), right_pts);
@@ -67,14 +75,79 @@ protected:
   void SetUp() override
   {
     // Default lane: x=[0..50], left_y=2.0, right_y=-2.0 → width 4.0 m, centered on y=0
-    center_lane_ = makeStraightLanelet(100, 0.0, 50.0, 2.0, -2.0);
+    center_lane_ = makeStraightLanelet(100, {0.0, 50.0, 2.0, -2.0});
     // Left adjacent lane: same x, y=[2.0..5.5] → width 3.5 m
-    left_lane_ = makeStraightLanelet(101, 0.0, 50.0, 5.5, 2.0);
+    left_lane_ = makeStraightLanelet(101, {0.0, 50.0, 5.5, 2.0});
     // Right adjacent lane: same x, y=[-2.0..-5.5] → width 3.5 m
-    right_lane_ = makeStraightLanelet(102, 0.0, 50.0, -2.0, -5.5);
+    right_lane_ = makeStraightLanelet(102, {0.0, 50.0, -2.0, -5.5});
 
     vehicle_half_width_ = 0.9;  // typical passenger car ~1.8 m width
     margin_ = 0.3;
+  }
+
+  /// Build an AdjacentLaneInfo with the fixture's left/right lanes.
+  AdjacentLaneInfo makeAdjacentInfo(bool left, bool right) const
+  {
+    AdjacentLaneInfo adj;
+    if (left) {
+      adj.has_left = true;
+      adj.allow_left = true;
+      adj.left_lane = left_lane_;
+    }
+    if (right) {
+      adj.has_right = true;
+      adj.allow_right = true;
+      adj.right_lane = right_lane_;
+    }
+    return adj;
+  }
+
+  /// Build a LaneCheckContext from a lane (no adjacent info).
+  LaneCheckContext makeContext(const lanelet::ConstLanelet & lane) const
+  {
+    LanePositionResult pos;
+    pos.check_lane = lane;
+    AdjacentLaneInfo adj;
+    return {pos, adj, vehicle_half_width_, margin_};
+  }
+
+  /// Build a LaneCheckContext from a lane and adjacent info.
+  LaneCheckContext makeContext(
+    const lanelet::ConstLanelet & lane, const AdjacentLaneInfo & adj,
+    bool in_adjacent = false) const
+  {
+    LanePositionResult pos;
+    pos.check_lane = lane;
+    pos.is_in_adjacent = in_adjacent;
+    return {pos, adj, vehicle_half_width_, margin_};
+  }
+
+  /// Convenience: compute inside-point limits in one call (no adjacent).
+  LaneLimitInfo computeInsideLimits(
+    const lanelet::ConstLanelet & lane, const lanelet::BasicPoint2d & pt) const
+  {
+    LaneLimitInfo limits;
+    updateLaneLimitsForInsidePoint(pt, makeContext(lane), limits);
+    return limits;
+  }
+
+  /// Convenience: compute inside-point limits in one call (with adjacent info).
+  LaneLimitInfo computeInsideLimits(
+    const lanelet::ConstLanelet & lane, const lanelet::BasicPoint2d & pt,
+    const AdjacentLaneInfo & adj, bool in_adjacent = false) const
+  {
+    LaneLimitInfo limits;
+    updateLaneLimitsForInsidePoint(pt, makeContext(lane, adj, in_adjacent), limits);
+    return limits;
+  }
+
+  /// Convenience: compute outside-point limits in one call.
+  LaneLimitInfo computeOutsideLimits(
+    const lanelet::ConstLanelet & lane, const lanelet::BasicPoint2d & pt) const
+  {
+    LaneLimitInfo limits;
+    updateLaneLimitsForOutsidePoint(pt, makeContext(lane), limits);
+    return limits;
   }
 
   lanelet::Lanelet center_lane_;
@@ -164,10 +237,7 @@ TEST_F(DrivableAreaUtilsTest, DeterminePosition_PointInCurrentLane)
 TEST_F(DrivableAreaUtilsTest, DeterminePosition_PointInLeftAdjacentLane)
 {
   const lanelet::BasicPoint2d pt(10.0, 3.5);  // inside left lane
-  AdjacentLaneInfo adj;
-  adj.has_left = true;
-  adj.left_lane = left_lane_;
-  const auto result = determineLanePosition(center_lane_, pt, adj);
+  const auto result = determineLanePosition(center_lane_, pt, makeAdjacentInfo(true, false));
   EXPECT_TRUE(result.is_in_adjacent);
   EXPECT_FALSE(result.is_outside_all);
   EXPECT_EQ(result.check_lane.id(), left_lane_.id());
@@ -176,10 +246,7 @@ TEST_F(DrivableAreaUtilsTest, DeterminePosition_PointInLeftAdjacentLane)
 TEST_F(DrivableAreaUtilsTest, DeterminePosition_PointInRightAdjacentLane)
 {
   const lanelet::BasicPoint2d pt(10.0, -3.5);  // inside right lane
-  AdjacentLaneInfo adj;
-  adj.has_right = true;
-  adj.right_lane = right_lane_;
-  const auto result = determineLanePosition(center_lane_, pt, adj);
+  const auto result = determineLanePosition(center_lane_, pt, makeAdjacentInfo(false, true));
   EXPECT_TRUE(result.is_in_adjacent);
   EXPECT_FALSE(result.is_outside_all);
   EXPECT_EQ(result.check_lane.id(), right_lane_.id());
@@ -208,12 +275,7 @@ TEST_F(DrivableAreaUtilsTest, DeterminePosition_PointOnLeftBoundary)
   // Exactly on left boundary (y=2.0). lanelet::geometry::inside considers this.
   // The exact boundary behavior depends on lanelet2 implementation.
   const lanelet::BasicPoint2d pt(10.0, 2.0);
-  AdjacentLaneInfo adj;
-  adj.has_left = true;
-  adj.left_lane = left_lane_;
-  adj.has_right = true;
-  adj.right_lane = right_lane_;
-  const auto result = determineLanePosition(center_lane_, pt, adj);
+  const auto result = determineLanePosition(center_lane_, pt, makeAdjacentInfo(true, true));
   // The point is on boundary - should be classified as either current or adjacent, not outside
   EXPECT_FALSE(result.is_outside_all);
 }
@@ -225,8 +287,7 @@ TEST_F(DrivableAreaUtilsTest, OutsidePoint_LeftSide)
 {
   // Point is to the left of the lane (y=3.0, left boundary at y=2.0)
   const lanelet::BasicPoint2d pt(10.0, 3.0);
-  LaneLimitInfo limits;
-  updateLaneLimitsForOutsidePoint(center_lane_, pt, vehicle_half_width_, margin_, limits);
+  const auto limits = computeOutsideLimits(center_lane_, pt);
 
   EXPECT_TRUE(limits.found_valid_limit);
   // Point is on the left → safe_left_limit should be 0 (no more left shift allowed)
@@ -239,8 +300,7 @@ TEST_F(DrivableAreaUtilsTest, OutsidePoint_RightSide)
 {
   // Point is to the right of the lane (y=-3.0, right boundary at y=-2.0)
   const lanelet::BasicPoint2d pt(10.0, -3.0);
-  LaneLimitInfo limits;
-  updateLaneLimitsForOutsidePoint(center_lane_, pt, vehicle_half_width_, margin_, limits);
+  const auto limits = computeOutsideLimits(center_lane_, pt);
 
   EXPECT_TRUE(limits.found_valid_limit);
   // Point is on the right → safe_right_limit should be 0 (no more right shift allowed)
@@ -253,8 +313,7 @@ TEST_F(DrivableAreaUtilsTest, OutsidePoint_ReturnDistanceCalculation)
 {
   // Point is 1.0 m to the left of left boundary (left boundary at y=2.0, point at y=3.0)
   const lanelet::BasicPoint2d pt(10.0, 3.0);
-  LaneLimitInfo limits;
-  updateLaneLimitsForOutsidePoint(center_lane_, pt, vehicle_half_width_, margin_, limits);
+  const auto limits = computeOutsideLimits(center_lane_, pt);
 
   // return_distance = dist_to_left_bound + vehicle_half_width + margin
   // dist_to_left ~= 1.0 (approximately, depends on boundary discretization)
@@ -266,13 +325,14 @@ TEST_F(DrivableAreaUtilsTest, OutsidePoint_AccumulatesMultiple)
 {
   // Two outside points: limits should take the most restrictive
   LaneLimitInfo limits;
+  const auto ctx = makeContext(center_lane_);
 
   const lanelet::BasicPoint2d pt1(10.0, 3.0);  // left side, 1m from boundary
-  updateLaneLimitsForOutsidePoint(center_lane_, pt1, vehicle_half_width_, margin_, limits);
+  updateLaneLimitsForOutsidePoint(pt1, ctx, limits);
   const double first_right_limit = limits.safe_right_limit;
 
   const lanelet::BasicPoint2d pt2(20.0, 4.0);  // left side, 2m from boundary → larger return
-  updateLaneLimitsForOutsidePoint(center_lane_, pt2, vehicle_half_width_, margin_, limits);
+  updateLaneLimitsForOutsidePoint(pt2, ctx, limits);
 
   // safe_left_limit stays 0 (both points on left)
   EXPECT_DOUBLE_EQ(limits.safe_left_limit, 0.0);
@@ -289,12 +349,7 @@ TEST_F(DrivableAreaUtilsTest, InsidePoint_CenterOfLane_NoAdjacent)
 {
   // Point at center of a 4m-wide lane
   const lanelet::BasicPoint2d pt(10.0, 0.0);
-  LaneLimitInfo limits;
-  const lanelet::ConstLanelet dummy;  // not used when allow_left/right = false
-
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt, /*allow_left=*/false, /*allow_right=*/false,
-    /*point_in_adjacent=*/false, dummy, dummy, vehicle_half_width_, margin_, limits);
+  const auto limits = computeInsideLimits(center_lane_, pt);
 
   EXPECT_TRUE(limits.found_valid_limit);
   // dist_to_left = 2.0, dist_to_right = 2.0
@@ -309,11 +364,7 @@ TEST_F(DrivableAreaUtilsTest, InsidePoint_OffsetFromCenter)
 {
   // Point shifted 1m to the left (y=1.0) inside a 4m-wide lane
   const lanelet::BasicPoint2d pt(10.0, 1.0);
-  LaneLimitInfo limits;
-  const lanelet::ConstLanelet dummy;
-
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt, false, false, false, dummy, dummy, vehicle_half_width_, margin_, limits);
+  const auto limits = computeInsideLimits(center_lane_, pt);
 
   EXPECT_TRUE(limits.found_valid_limit);
   // dist_to_left ≈ 1.0, dist_to_right ≈ 3.0
@@ -330,13 +381,9 @@ TEST_F(DrivableAreaUtilsTest, InsidePoint_InsufficientSpace)
 {
   // Very narrow lane: width = 1.6m, vehicle_half_width = 0.9m, margin = 0.3m
   // Available space per side = 0.8m, needed = 0.9 + 0.3 + 0.05 = 1.25 → negative → 0
-  auto narrow_lane = makeStraightLanelet(200, 0.0, 50.0, 0.8, -0.8);  // 1.6m wide
+  auto narrow_lane = makeStraightLanelet(200, {0.0, 50.0, 0.8, -0.8});  // 1.6m wide
   const lanelet::BasicPoint2d pt(10.0, 0.0);
-  LaneLimitInfo limits;
-  const lanelet::ConstLanelet dummy;
-
-  updateLaneLimitsForInsidePoint(
-    narrow_lane, pt, false, false, false, dummy, dummy, vehicle_half_width_, margin_, limits);
+  const auto limits = computeInsideLimits(narrow_lane, pt);
 
   EXPECT_TRUE(limits.found_valid_limit);
   // Both limits should be 0 since there's not enough space
@@ -348,12 +395,7 @@ TEST_F(DrivableAreaUtilsTest, InsidePoint_WithLeftAdjacentLane)
 {
   // allow_left = true, so max left shift uses left lane's far-left boundary
   const lanelet::BasicPoint2d pt(10.0, 0.0);
-  LaneLimitInfo limits;
-  const lanelet::ConstLanelet dummy;
-
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt, /*allow_left=*/true, /*allow_right=*/false,
-    /*point_in_adjacent=*/false, left_lane_, dummy, vehicle_half_width_, margin_, limits);
+  const auto limits = computeInsideLimits(center_lane_, pt, makeAdjacentInfo(true, false));
 
   EXPECT_TRUE(limits.found_valid_limit);
   // dist_to_far_left (left_lane's left boundary at y=5.5) from pt(10, 0) ≈ 5.5
@@ -371,12 +413,7 @@ TEST_F(DrivableAreaUtilsTest, InsidePoint_WithRightAdjacentLane)
 {
   // allow_right = true, so max right shift uses right lane's far-right boundary
   const lanelet::BasicPoint2d pt(10.0, 0.0);
-  LaneLimitInfo limits;
-  const lanelet::ConstLanelet dummy;
-
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt, /*allow_left=*/false, /*allow_right=*/true,
-    /*point_in_adjacent=*/false, dummy, right_lane_, vehicle_half_width_, margin_, limits);
+  const auto limits = computeInsideLimits(center_lane_, pt, makeAdjacentInfo(false, true));
 
   EXPECT_TRUE(limits.found_valid_limit);
   // Left shift uses current lane's left boundary
@@ -393,19 +430,12 @@ TEST_F(DrivableAreaUtilsTest, InsidePoint_WithBothAdjacentLanes)
 {
   // Both adjacent lanes available
   const lanelet::BasicPoint2d pt(10.0, 0.0);
-  LaneLimitInfo limits;
-
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt, /*allow_left=*/true, /*allow_right=*/true,
-    /*point_in_adjacent=*/false, left_lane_, right_lane_, vehicle_half_width_, margin_, limits);
+  const auto limits = computeInsideLimits(center_lane_, pt, makeAdjacentInfo(true, true));
 
   EXPECT_TRUE(limits.found_valid_limit);
-  const double expected_left =
-    5.5 - vehicle_half_width_ - margin_ - kLaneBoundaryDiscretizationBuffer;
-  const double expected_right =
-    5.5 - vehicle_half_width_ - margin_ - kLaneBoundaryDiscretizationBuffer;
-  EXPECT_NEAR(limits.safe_left_limit, expected_left, 0.1);
-  EXPECT_NEAR(limits.safe_right_limit, expected_right, 0.1);
+  const double expected = 5.5 - vehicle_half_width_ - margin_ - kLaneBoundaryDiscretizationBuffer;
+  EXPECT_NEAR(limits.safe_left_limit, expected, 0.1);
+  EXPECT_NEAR(limits.safe_right_limit, expected, 0.1);
 }
 
 TEST_F(DrivableAreaUtilsTest, InsidePoint_InAdjacentLane_NoFurtherExpansion)
@@ -413,11 +443,8 @@ TEST_F(DrivableAreaUtilsTest, InsidePoint_InAdjacentLane_NoFurtherExpansion)
   // Point is already in the adjacent lane (point_in_adjacent=true)
   // → should NOT use the far boundary even if allow_left/right is true
   const lanelet::BasicPoint2d pt(10.0, 3.5);  // inside left_lane
-  LaneLimitInfo limits;
-
-  updateLaneLimitsForInsidePoint(
-    left_lane_, pt, /*allow_left=*/true, /*allow_right=*/true,
-    /*point_in_adjacent=*/true, left_lane_, right_lane_, vehicle_half_width_, margin_, limits);
+  const auto limits =
+    computeInsideLimits(left_lane_, pt, makeAdjacentInfo(true, true), /*in_adjacent=*/true);
 
   EXPECT_TRUE(limits.found_valid_limit);
   // Since point_in_adjacent=true, adjacent expansion is skipped.
@@ -435,20 +462,18 @@ TEST_F(DrivableAreaUtilsTest, InsidePoint_AccumulatesMinimum)
 {
   // Multiple points should accumulate the minimum (most restrictive) limit
   LaneLimitInfo limits;
-  const lanelet::ConstLanelet dummy;
+  const auto ctx = makeContext(center_lane_);
 
   // First point: center
   const lanelet::BasicPoint2d pt1(10.0, 0.0);
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt1, false, false, false, dummy, dummy, vehicle_half_width_, margin_, limits);
+  updateLaneLimitsForInsidePoint(pt1, ctx, limits);
 
   const double left1 = limits.safe_left_limit;
   const double right1 = limits.safe_right_limit;
 
   // Second point: shifted 0.5m to the left → more restrictive left limit
   const lanelet::BasicPoint2d pt2(20.0, 0.5);
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt2, false, false, false, dummy, dummy, vehicle_half_width_, margin_, limits);
+  updateLaneLimitsForInsidePoint(pt2, ctx, limits);
 
   // Left limit should be reduced (more restrictive)
   EXPECT_LE(limits.safe_left_limit, left1);
@@ -463,11 +488,7 @@ TEST_F(DrivableAreaUtilsTest, Integration_PointInsideLane_ClampLeft)
 {
   // Simulate a point in the center of a 4m lane, requesting 5m left shift
   const lanelet::BasicPoint2d pt(10.0, 0.0);
-  LaneLimitInfo limits;
-  const lanelet::ConstLanelet dummy;
-
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt, false, false, false, dummy, dummy, vehicle_half_width_, margin_, limits);
+  const auto limits = computeInsideLimits(center_lane_, pt);
 
   const double result = clampOffsetToLimits(5.0, limits.safe_left_limit, limits.safe_right_limit);
   // Should be clamped to the safe_left_limit
@@ -480,11 +501,7 @@ TEST_F(DrivableAreaUtilsTest, Integration_PointInsideLane_ClampRight)
 {
   // Simulate requesting -5m (right) shift
   const lanelet::BasicPoint2d pt(10.0, 0.0);
-  LaneLimitInfo limits;
-  const lanelet::ConstLanelet dummy;
-
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt, false, false, false, dummy, dummy, vehicle_half_width_, margin_, limits);
+  const auto limits = computeInsideLimits(center_lane_, pt);
 
   const double result = clampOffsetToLimits(-5.0, limits.safe_left_limit, limits.safe_right_limit);
   EXPECT_DOUBLE_EQ(result, -limits.safe_right_limit);
@@ -495,13 +512,9 @@ TEST_F(DrivableAreaUtilsTest, Integration_PointInsideLane_ClampRight)
 TEST_F(DrivableAreaUtilsTest, Integration_NarrowLane_BothDirectionsBlocked)
 {
   // Very narrow lane where no shift is possible
-  auto narrow_lane = makeStraightLanelet(300, 0.0, 50.0, 0.8, -0.8);
+  auto narrow_lane = makeStraightLanelet(300, {0.0, 50.0, 0.8, -0.8});
   const lanelet::BasicPoint2d pt(10.0, 0.0);
-  LaneLimitInfo limits;
-  const lanelet::ConstLanelet dummy;
-
-  updateLaneLimitsForInsidePoint(
-    narrow_lane, pt, false, false, false, dummy, dummy, vehicle_half_width_, margin_, limits);
+  const auto limits = computeInsideLimits(narrow_lane, pt);
 
   // Both limits should be 0
   const double left_result =
@@ -518,17 +531,10 @@ TEST_F(DrivableAreaUtilsTest, Integration_WithAdjacentLanes_LargerShiftAllowed)
   const lanelet::BasicPoint2d pt(10.0, 0.0);
 
   // Without adjacent lanes
-  LaneLimitInfo limits_no_adj;
-  const lanelet::ConstLanelet dummy;
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt, false, false, false, dummy, dummy, vehicle_half_width_, margin_,
-    limits_no_adj);
+  const auto limits_no_adj = computeInsideLimits(center_lane_, pt);
 
   // With left adjacent lane
-  LaneLimitInfo limits_with_adj;
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt, true, false, false, left_lane_, dummy, vehicle_half_width_, margin_,
-    limits_with_adj);
+  const auto limits_with_adj = computeInsideLimits(center_lane_, pt, makeAdjacentInfo(true, false));
 
   // Left limit should be larger with adjacent lane
   EXPECT_GT(limits_with_adj.safe_left_limit, limits_no_adj.safe_left_limit);
@@ -540,16 +546,15 @@ TEST_F(DrivableAreaUtilsTest, Integration_OutsidePointThenInsidePoint)
 {
   // First point outside (left), then point inside
   LaneLimitInfo limits;
-  const lanelet::ConstLanelet dummy;
+  const auto ctx = makeContext(center_lane_);
 
   // Outside point on left (y=3.0)
   const lanelet::BasicPoint2d pt_out(10.0, 3.0);
-  updateLaneLimitsForOutsidePoint(center_lane_, pt_out, vehicle_half_width_, margin_, limits);
+  updateLaneLimitsForOutsidePoint(pt_out, ctx, limits);
 
   // Inside point at center
   const lanelet::BasicPoint2d pt_in(20.0, 0.0);
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt_in, false, false, false, dummy, dummy, vehicle_half_width_, margin_, limits);
+  updateLaneLimitsForInsidePoint(pt_in, ctx, limits);
 
   // Left is restricted by outside point → safe_left_limit = 0
   EXPECT_DOUBLE_EQ(limits.safe_left_limit, 0.0);
@@ -600,12 +605,8 @@ TEST_F(DrivableAreaUtilsTest, EdgeCase_PointExactlyOnBoundary)
 {
   // Point exactly on the left boundary
   const lanelet::BasicPoint2d pt(10.0, 2.0);
-  LaneLimitInfo limits;
-  const lanelet::ConstLanelet dummy;
-
   // Should not crash; behavior depends on lanelet2's inside() definition
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt, false, false, false, dummy, dummy, vehicle_half_width_, margin_, limits);
+  const auto limits = computeInsideLimits(center_lane_, pt);
   // Test that limits are set regardless
   EXPECT_TRUE(limits.found_valid_limit);
 }
@@ -625,10 +626,12 @@ TEST_F(DrivableAreaUtilsTest, EdgeCase_NegativeMarginValues)
   // Even with negative margin (which shouldn't happen in practice), function should not crash
   const lanelet::BasicPoint2d pt(10.0, 0.0);
   LaneLimitInfo limits;
-  const lanelet::ConstLanelet dummy;
+  LanePositionResult pos;
+  pos.check_lane = center_lane_;
+  AdjacentLaneInfo adj;
+  const LaneCheckContext ctx{pos, adj, vehicle_half_width_, -1.0};
 
-  EXPECT_NO_THROW(updateLaneLimitsForInsidePoint(
-    center_lane_, pt, false, false, false, dummy, dummy, vehicle_half_width_, -1.0, limits));
+  EXPECT_NO_THROW(updateLaneLimitsForInsidePoint(pt, ctx, limits));
   EXPECT_TRUE(limits.found_valid_limit);
 }
 
@@ -637,11 +640,12 @@ TEST_F(DrivableAreaUtilsTest, EdgeCase_ZeroWidthVehicle)
   // Zero vehicle half width (degenerate case)
   const lanelet::BasicPoint2d pt(10.0, 0.0);
   LaneLimitInfo limits;
-  const lanelet::ConstLanelet dummy;
+  LanePositionResult pos;
+  pos.check_lane = center_lane_;
+  AdjacentLaneInfo adj;
+  const LaneCheckContext ctx{pos, adj, /*vehicle_half_width=*/0.0, margin_};
 
-  updateLaneLimitsForInsidePoint(
-    center_lane_, pt, false, false, false, dummy, dummy, /*vehicle_half_width=*/0.0, margin_,
-    limits);
+  updateLaneLimitsForInsidePoint(pt, ctx, limits);
 
   EXPECT_TRUE(limits.found_valid_limit);
   // With zero vehicle width, more shift should be allowed

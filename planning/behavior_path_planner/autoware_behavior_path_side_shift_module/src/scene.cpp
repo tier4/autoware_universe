@@ -579,17 +579,15 @@ double SideShiftModule::calcMaxLateralOffset(const double requested_offset) cons
 
     // Determine which lane the reference point is in
     const auto lane_pos = determineLanePosition(lane, target_point, adj_info);
+    const LaneCheckContext ctx{lane_pos, adj_info, vehicle_half_width, margin};
 
     if (lane_pos.is_outside_all) {
-      updateLaneLimitsForOutsidePoint(lane, target_point, vehicle_half_width, margin, limits);
+      updateLaneLimitsForOutsidePoint(target_point, ctx, limits);
       continue;
     }
 
     // Calculate available space based on the lane the point is in
-    updateLaneLimitsForInsidePoint(
-      lane_pos.check_lane, target_point, adj_info.allow_left, adj_info.allow_right,
-      lane_pos.is_in_adjacent, adj_info.left_lane, adj_info.right_lane, vehicle_half_width, margin,
-      limits);
+    updateLaneLimitsForInsidePoint(target_point, ctx, limits);
   }
 
   if (!limits.found_valid_limit) {

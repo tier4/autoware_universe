@@ -58,6 +58,15 @@ struct LanePositionResult
   bool is_outside_all{false};
 };
 
+/// Context bundling lane position, adjacency info, and vehicle geometry for drivable-area checks.
+struct LaneCheckContext
+{
+  LanePositionResult lane_position;
+  AdjacentLaneInfo adjacent_info;
+  double vehicle_half_width{0.0};
+  double margin{0.0};
+};
+
 /**
  * @brief Determine which lane a point belongs to (current, adjacent, or outside all).
  * @param lane          The current (closest-route) lanelet.
@@ -75,15 +84,12 @@ LanePositionResult determineLanePosition(
  * Only the side closest to the point is penalised (limit set to 0), while the
  * opposite side gets just enough room to "return" into the lane.
  *
- * @param lane               Current closest lanelet.
  * @param target_point       The reference point.
- * @param vehicle_half_width Half of the vehicle width [m].
- * @param margin             Minimum drivable-area margin [m].
+ * @param ctx                Lane check context (position, adjacency, vehicle geometry).
  * @param[in,out] limits     Accumulated lane limits (modified in place).
  */
 void updateLaneLimitsForOutsidePoint(
-  const lanelet::ConstLanelet & lane, const lanelet::BasicPoint2d & target_point,
-  double vehicle_half_width, double margin, LaneLimitInfo & limits);
+  const lanelet::BasicPoint2d & target_point, const LaneCheckContext & ctx, LaneLimitInfo & limits);
 
 /**
  * @brief Update lane limits when a reference point is inside a lane.
@@ -92,24 +98,12 @@ void updateLaneLimitsForOutsidePoint(
  * (half-width + margin + discretization buffer) inside the lane boundaries
  * (or extended into an adjacent lane in mode 2).
  *
- * @param current_check_lane The lanelet the point is inside.
  * @param target_point       The reference point.
- * @param allow_left         Whether extending into the left adjacent lane is allowed.
- * @param allow_right        Whether extending into the right adjacent lane is allowed.
- * @param point_in_adjacent  True if the point is already in an adjacent lane.
- * @param left_lane_val      Left adjacent lanelet (only used when allow_left &&
- * !point_in_adjacent).
- * @param right_lane_val     Right adjacent lanelet (only used when allow_right &&
- * !point_in_adjacent).
- * @param vehicle_half_width Half of the vehicle width [m].
- * @param margin             Minimum drivable-area margin [m].
+ * @param ctx                Lane check context (position, adjacency, vehicle geometry).
  * @param[in,out] limits     Accumulated lane limits (modified in place).
  */
 void updateLaneLimitsForInsidePoint(
-  const lanelet::ConstLanelet & current_check_lane, const lanelet::BasicPoint2d & target_point,
-  bool allow_left, bool allow_right, bool point_in_adjacent,
-  const lanelet::ConstLanelet & left_lane_val, const lanelet::ConstLanelet & right_lane_val,
-  double vehicle_half_width, double margin, LaneLimitInfo & limits);
+  const lanelet::BasicPoint2d & target_point, const LaneCheckContext & ctx, LaneLimitInfo & limits);
 
 /**
  * @brief Clamp a requested lateral offset to the computed safe limits.

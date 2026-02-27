@@ -54,9 +54,9 @@ LanePositionResult determineLanePosition(
 }
 
 void updateLaneLimitsForOutsidePoint(
-  const lanelet::ConstLanelet & lane, const lanelet::BasicPoint2d & target_point,
-  double vehicle_half_width, double margin, LaneLimitInfo & limits)
+  const lanelet::BasicPoint2d & target_point, const LaneCheckContext & ctx, LaneLimitInfo & limits)
 {
+  const auto & lane = ctx.lane_position.check_lane;
   const auto left_bound = lane.leftBound2d();
   const auto right_bound = lane.rightBound2d();
   const double dist_to_left = lanelet::geometry::distance2d(left_bound, target_point);
@@ -65,47 +65,48 @@ void updateLaneLimitsForOutsidePoint(
   if (dist_to_left < dist_to_right) {
     // Point is on the left side - only allow shift back to the right
     limits.safe_left_limit = 0.0;
-    const double return_distance = dist_to_left + vehicle_half_width + margin;
+    const double return_distance = dist_to_left + ctx.vehicle_half_width + ctx.margin;
     limits.safe_right_limit = std::min(limits.safe_right_limit, return_distance);
   } else {
     // Point is on the right side - only allow shift back to the left
     limits.safe_right_limit = 0.0;
-    const double return_distance = dist_to_right + vehicle_half_width + margin;
+    const double return_distance = dist_to_right + ctx.vehicle_half_width + ctx.margin;
     limits.safe_left_limit = std::min(limits.safe_left_limit, return_distance);
   }
   limits.found_valid_limit = true;
 }
 
 void updateLaneLimitsForInsidePoint(
-  const lanelet::ConstLanelet & current_check_lane, const lanelet::BasicPoint2d & target_point,
-  bool allow_left, bool allow_right, bool point_in_adjacent,
-  const lanelet::ConstLanelet & left_lane_val, const lanelet::ConstLanelet & right_lane_val,
-  double vehicle_half_width, double margin, LaneLimitInfo & limits)
+  const lanelet::BasicPoint2d & target_point, const LaneCheckContext & ctx, LaneLimitInfo & limits)
 {
-  const auto left_bound = current_check_lane.leftBound2d();
-  const auto right_bound = current_check_lane.rightBound2d();
+  const auto & lane = ctx.lane_position.check_lane;
+  const auto & adj = ctx.adjacent_info;
+  const bool point_in_adjacent = ctx.lane_position.is_in_adjacent;
+
+  const auto left_bound = lane.leftBound2d();
+  const auto right_bound = lane.rightBound2d();
 
   const double dist_to_left = lanelet::geometry::distance2d(left_bound, target_point);
   const double dist_to_right = lanelet::geometry::distance2d(right_bound, target_point);
 
   // Calculate maximum left shift (positive value)
   double current_max_left =
-    dist_to_left - vehicle_half_width - margin - kLaneBoundaryDiscretizationBuffer;
-  if (allow_left && !point_in_adjacent) {
+    dist_to_left - ctx.vehicle_half_width - ctx.margin - kLaneBoundaryDiscretizationBuffer;
+  if (adj.allow_left && !point_in_adjacent) {
     const double dist_to_far_left =
-      lanelet::geometry::distance2d(left_lane_val.leftBound2d(), target_point);
+      lanelet::geometry::distance2d(adj.left_lane.leftBound2d(), target_point);
     current_max_left =
-      dist_to_far_left - vehicle_half_width - margin - kLaneBoundaryDiscretizationBuffer;
+      dist_to_far_left - ctx.vehicle_half_width - ctx.margin - kLaneBoundaryDiscretizationBuffer;
   }
 
   // Calculate maximum right shift
   double current_max_right =
-    dist_to_right - vehicle_half_width - margin - kLaneBoundaryDiscretizationBuffer;
-  if (allow_right && !point_in_adjacent) {
+    dist_to_right - ctx.vehicle_half_width - ctx.margin - kLaneBoundaryDiscretizationBuffer;
+  if (adj.allow_right && !point_in_adjacent) {
     const double dist_to_far_right =
-      lanelet::geometry::distance2d(right_lane_val.rightBound2d(), target_point);
+      lanelet::geometry::distance2d(adj.right_lane.rightBound2d(), target_point);
     current_max_right =
-      dist_to_far_right - vehicle_half_width - margin - kLaneBoundaryDiscretizationBuffer;
+      dist_to_far_right - ctx.vehicle_half_width - ctx.margin - kLaneBoundaryDiscretizationBuffer;
   }
 
   limits.safe_left_limit = std::min(limits.safe_left_limit, std::max(0.0, current_max_left));
