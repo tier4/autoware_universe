@@ -92,7 +92,7 @@ void updateLaneLimitsForInsidePoint(
   // Calculate maximum left shift (positive value)
   double current_max_left =
     dist_to_left - ctx.vehicle_half_width - ctx.margin - kLaneBoundaryDiscretizationBuffer;
-  if (adj.allow_left && !point_in_adjacent) {
+  if (adj.allow_left && adj.has_left && !point_in_adjacent) {
     const double dist_to_far_left =
       lanelet::geometry::distance2d(adj.left_lane.leftBound2d(), target_point);
     current_max_left =
@@ -102,7 +102,7 @@ void updateLaneLimitsForInsidePoint(
   // Calculate maximum right shift
   double current_max_right =
     dist_to_right - ctx.vehicle_half_width - ctx.margin - kLaneBoundaryDiscretizationBuffer;
-  if (adj.allow_right && !point_in_adjacent) {
+  if (adj.allow_right && adj.has_right && !point_in_adjacent) {
     const double dist_to_far_right =
       lanelet::geometry::distance2d(adj.right_lane.rightBound2d(), target_point);
     current_max_right =
