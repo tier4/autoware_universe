@@ -286,15 +286,14 @@ void SideShiftModule::replaceShiftLine()
   if (shift_aborted) {
     RCLCPP_WARN(
       getLogger(),
-      "SideShift: Shift aborted due to insufficient space. Clearing request to accept next "
-      "command.");
+      "SideShift: Shift aborted due to insufficient space. Maintaining current offset.");
 
-    // Clear the request flags to allow accepting new commands immediately
+    // Clear only the change request flag. Keep requested/inserted offsets at their current
+    // values so the module does not exit (processOnExit resets everything including base_offset)
+    // and the shift can be retried on subsequent cycles when the reference path is longer.
     lateral_offset_change_request_ = false;
-    requested_lateral_offset_ = 0.0;
-    inserted_lateral_offset_ = 0.0;
 
-    // Don't insert the aborted shift line - keep the shifter empty
+    // Keep the shifter with existing (empty) shift lines; base_offset is preserved.
     path_shifter_.setShiftLines(shift_lines);  // Empty list
     return;
   }
@@ -446,6 +445,16 @@ ShiftLine SideShiftModule::calcShiftLine() const
   double final_shift_length = requested_lateral_offset_;
   if (parameters_->drivable_area_check_mode > 0) {
     final_shift_length = calcMaxLateralOffset(requested_lateral_offset_);
+
+    // Prevent unintended backward shift when user requests more shift in the same direction.
+    // The boundary check may return a smaller offset due to tighter lane limits at future
+    // reference points. In that case, maintain at least the current offset to avoid snap-back.
+    const double current_base = path_shifter_.getBaseOffset();
+    if (requested_lateral_offset_ > current_base && final_shift_length < current_base) {
+      final_shift_length = current_base;
+    } else if (requested_lateral_offset_ < current_base && final_shift_length > current_base) {
+      final_shift_length = current_base;
+    }
   }
 
   const size_t nearest_idx = planner_data_->findEgoIndex(reference_path_.points);
@@ -593,8 +602,9 @@ double SideShiftModule::calcMaxLateralOffset(const double requested_offset) cons
 
   if (!limits.found_valid_limit) {
     RCLCPP_WARN_THROTTLE(
-      getLogger(), *clock_, 1000, "SideShift: No valid lane found for limit check. Returning 0.0");
-    return 0.0;
+      getLogger(), *clock_, 1000,
+      "SideShift: No valid lane found for limit check. Returning requested offset.");
+    return requested_offset;
   }
 
   return clampOffsetToLimits(requested_offset, limits.safe_left_limit, limits.safe_right_limit);
