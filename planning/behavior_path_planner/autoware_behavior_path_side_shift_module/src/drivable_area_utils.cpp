@@ -130,4 +130,18 @@ double clampOffsetToLimits(double requested_offset, double safe_left_limit, doub
   return 0.0;
 }
 
+double guardAgainstSnapBack(
+  const double requested_offset, const double clamped_offset, const double current_base)
+{
+  // User requests more leftward shift but clamp pulled it below current position
+  if (requested_offset > current_base && clamped_offset < current_base) {
+    return current_base;
+  }
+  // User requests more rightward shift but clamp pushed it above current position
+  if (requested_offset < current_base && clamped_offset > current_base) {
+    return current_base;
+  }
+  return clamped_offset;
+}
+
 }  // namespace autoware::behavior_path_planner

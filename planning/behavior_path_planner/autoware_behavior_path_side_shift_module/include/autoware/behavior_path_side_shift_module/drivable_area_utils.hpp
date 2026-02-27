@@ -120,6 +120,21 @@ void updateLaneLimitsForInsidePoint(
 double clampOffsetToLimits(
   double requested_offset, double safe_left_limit, double safe_right_limit);
 
+/**
+ * @brief Prevent the clamped offset from jumping backward past the current base.
+ *
+ * When the user requests *more* shift in a given direction but the boundary
+ * check returns a value smaller than the current offset (due to tighter limits
+ * at future reference points), this function floors / ceils the result at
+ * @p current_base so the vehicle never snaps back.
+ *
+ * @param requested_offset  The original user request [m].
+ * @param clamped_offset    The offset already clamped to lane limits [m].
+ * @param current_base      The current PathShifter base offset [m].
+ * @return The guarded offset.
+ */
+double guardAgainstSnapBack(double requested_offset, double clamped_offset, double current_base);
+
 }  // namespace autoware::behavior_path_planner
 
 #endif  // AUTOWARE__BEHAVIOR_PATH_SIDE_SHIFT_MODULE__DRIVABLE_AREA_UTILS_HPP_

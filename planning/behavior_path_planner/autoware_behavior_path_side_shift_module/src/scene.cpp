@@ -445,16 +445,8 @@ ShiftLine SideShiftModule::calcShiftLine() const
   double final_shift_length = requested_lateral_offset_;
   if (parameters_->drivable_area_check_mode > 0) {
     final_shift_length = calcMaxLateralOffset(requested_lateral_offset_);
-
-    // Prevent unintended backward shift when user requests more shift in the same direction.
-    // The boundary check may return a smaller offset due to tighter lane limits at future
-    // reference points. In that case, maintain at least the current offset to avoid snap-back.
-    const double current_base = path_shifter_.getBaseOffset();
-    if (requested_lateral_offset_ > current_base && final_shift_length < current_base) {
-      final_shift_length = current_base;
-    } else if (requested_lateral_offset_ < current_base && final_shift_length > current_base) {
-      final_shift_length = current_base;
-    }
+    final_shift_length = guardAgainstSnapBack(
+      requested_lateral_offset_, final_shift_length, path_shifter_.getBaseOffset());
   }
 
   const size_t nearest_idx = planner_data_->findEgoIndex(reference_path_.points);
@@ -472,11 +464,11 @@ ShiftLine SideShiftModule::calcShiftLine() const
   // Ensure enough span for shifter (needs at least 2-point gap)
   if (shift_line.end_idx <= shift_line.start_idx + 1) {
     shift_line.end_idx = std::min(reference_path_.points.size() - 1, shift_line.start_idx + 2);
-    if (shift_line.end_idx <= shift_line.start_idx + 1) {
-      RCLCPP_WARN(getLogger(), "SideShift: shift span too short, aborting shift request");
-      shift_line.end_shift_length = 0.0;
-      shift_line.end_idx = shift_line.start_idx;
-    }
+  }
+  if (shift_line.end_idx <= shift_line.start_idx + 1) {
+    RCLCPP_WARN(getLogger(), "SideShift: shift span too short, aborting shift request");
+    shift_line.end_shift_length = 0.0;
+    shift_line.end_idx = shift_line.start_idx;
   }
 
   shift_line.start = reference_path_.points.at(shift_line.start_idx).point.pose;
@@ -557,8 +549,12 @@ double SideShiftModule::calcMaxLateralOffset(const double requested_offset) cons
   const double dist_to_start = std::max(
     parameters_->min_distance_to_start_shifting, ego_speed * parameters_->time_to_start_shifting);
 
-  // Estimate shifting distance to determine check horizon
-  const double shift_length = std::abs(requested_offset);
+  // Estimate shifting distance to determine check horizon.
+  // Use delta (from current offset to requested) so that the check horizon matches the actual
+  // shift line length. Using the absolute requested offset would over-extend the check range,
+  // picking up restrictive lane limits far ahead (e.g. intersections) and blocking the shift.
+  const double current_offset = path_shifter_.getBaseOffset();
+  const double shift_length = std::abs(requested_offset - current_offset);
   const double jerk_shifting_distance = autoware::motion_utils::calc_longitudinal_dist_from_jerk(
     shift_length, parameters_->shifting_lateral_jerk,
     std::max(ego_speed, parameters_->min_shifting_speed));
