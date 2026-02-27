@@ -29,8 +29,8 @@ namespace
 constexpr double kSimStepMax = 0.01;  // max step for sim integration [s]
 // OCP horizon (must match mpc.py): Tf=10, N=50
 constexpr double kTf = 10.0;
-constexpr int kNyPath = 7;   // y = [s, v, a, eY, ePsi, u_cmd, delta]
-constexpr int kNyTerminal = 5;  // terminal cost states only
+constexpr int kNyPath = static_cast<int>(NX + NU);
+constexpr int kNyTerminal = static_cast<int>(NX);
 }
 
 AcadosInterface::AcadosInterface(int max_iter, double tol)
@@ -139,30 +139,22 @@ void AcadosInterface::setWarmStart(std::array<double, NX> x0, std::array<double,
 void AcadosInterface::setCostReference(double s0, double v_ref)
 {
   const double dt = kTf / static_cast<double>(N);
-  // Path stages 0..N-1: yref = [s_ref, v_ref, 0, 0, 0, 0, 0]
-  double yref_path[kNyPath];
+  // Path stages 0..N-1: yref = [s_ref, v_ref, 0, ... , 0]
+  std::array<double, static_cast<size_t>(kNyPath)> yref_path{};
   for (int stage = 0; stage < static_cast<int>(N); ++stage) {
     const double s_ref = s0 + v_ref * static_cast<double>(stage) * dt;
     yref_path[0] = s_ref;
     yref_path[1] = v_ref;
-    yref_path[2] = 0.0;
-    yref_path[3] = 0.0;
-    yref_path[4] = 0.0;
-    yref_path[5] = 0.0;
-    yref_path[6] = 0.0;
     ocp_nlp_cost_model_set(
-      nlp_config_, nlp_dims_, nlp_in_, stage, "yref", yref_path);
+      nlp_config_, nlp_dims_, nlp_in_, stage, "yref", yref_path.data());
   }
-  // Terminal stage N: yref_e = [s_ref, v_ref, 0, 0, 0]
+  // Terminal stage N: yref_e = [s_ref, v_ref, 0, ... , 0]
   const double s_ref_N = s0 + v_ref * static_cast<double>(N) * dt;
-  double yref_terminal[kNyTerminal];
+  std::array<double, static_cast<size_t>(kNyTerminal)> yref_terminal{};
   yref_terminal[0] = s_ref_N;
   yref_terminal[1] = v_ref;
-  yref_terminal[2] = 0.0;
-  yref_terminal[3] = 0.0;
-  yref_terminal[4] = 0.0;
   ocp_nlp_cost_model_set(
-    nlp_config_, nlp_dims_, nlp_in_, static_cast<int>(N), "yref", yref_terminal);
+    nlp_config_, nlp_dims_, nlp_in_, static_cast<int>(N), "yref", yref_terminal.data());
 }
 
 void AcadosInterface::setInitialState(std::array<double, NX> x0)
@@ -283,9 +275,10 @@ AcadosSolution AcadosInterface::getControlWithDelayCompensation(
   const std::array<double, NU> & u_hold,
   double tau_equiv,
   double lf,
-  double lr)
+  double lr,
+  double steer_tau)
 {
-  std::array<double, NP> p = {tau_equiv, kappa_ref, lf, lr};
+  std::array<double, NP> p = {tau_equiv, kappa_ref, lf, lr, steer_tau};
   setParametersAllStages(p);
   if (delay_time <= 0.0) {
     setCostReference(current_state[0], v_ref);

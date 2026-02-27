@@ -89,7 +89,8 @@ public:
     const std::array<double, NU> & u_hold,
     double tau_equiv = 1.5,
     double lf = 1.0,
-    double lr = 1.0);
+    double lr = 1.0,
+    double steer_tau = 0.27);
 
   void setSolverOptions(int max_iter, double tol);
   void setInitialState(std::array<double, NX> x0);

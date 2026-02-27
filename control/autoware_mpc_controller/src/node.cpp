@@ -31,13 +31,16 @@
 #include <tf2/utils.h>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace
 {
 constexpr double kPi = 3.141592653589793;
+constexpr double kHorizonTf = 10.0;  // Must match OCP horizon in generators/mpc.py.
 double normalizeAngle(double a)
 {
   while (a > kPi) a -= 2.0 * kPi;
@@ -55,10 +58,12 @@ public:
     ctrl_period_ = declare_parameter<double>("ctrl_period", 0.03);
     delay_compensation_time_ = declare_parameter<double>("delay_compensation_time", 0.17);
     tau_equiv_ = declare_parameter<double>("tau_equiv", 1.5);
-    wheelbase_lf_ = declare_parameter<double>("wheelbase_lf", 1.0);
-    wheelbase_lr_ = declare_parameter<double>("wheelbase_lr", 1.0);
-    max_steer_rad_ = declare_parameter<double>("max_steer_rad", 0.7);
+    steer_tau_ = declare_parameter<double>("steer_tau", 0.27);
+    wheelbase_lf_ = declare_parameter<double>("wheelbase_lf", 1.395);
+    wheelbase_lr_ = declare_parameter<double>("wheelbase_lr", 1.395);
+    max_steer_rad_ = declare_parameter<double>("max_steer_rad", M_PI/3);
     timeout_trajectory_sec_ = declare_parameter<double>("timeout_trajectory_sec", 1.0);
+    accel_state_lpf_alpha_ = declare_parameter<double>("accel_state_lpf_alpha", 0.8);
 
     const int max_iter = declare_parameter<int>("mpc_max_iter", 20);
     const double tol = declare_parameter<double>("mpc_tol", 1e-4);
@@ -97,17 +102,33 @@ public:
   }
 
 private:
+  double sampleCurvatureAtArcLength(
+    const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & points,
+    const std::vector<double> & curvatures, const double s) const
+  {
+    if (points.size() < 2 || curvatures.empty()) {
+      return 0.0;
+    }
+    try {
+      const auto ref_pose = autoware::motion_utils::calcInterpolatedPose(points, std::max(0.0, s));
+      const size_t idx = autoware::motion_utils::findNearestIndex(points, ref_pose.position);
+      return curvatures.at(std::min(idx, curvatures.size() - 1));
+    } catch (const std::exception &) {
+      return curvatures.back();
+    }
+  }
+
   void onTimer()
   {
     if (!enable_controller_) {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000, "[MPC] Controller disabled.");
       return;
     }
-    if (!trajectory_ || !odometry_ || !accel_) {
+    if (!trajectory_ || !odometry_ || !steering_ || !accel_) {
       RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "[MPC] Skip: waiting for data (traj=%d odom=%d accel=%d)",
-        trajectory_ ? 1 : 0, odometry_ ? 1 : 0, accel_ ? 1 : 0);
+        "[MPC] Skip: waiting for data (traj=%d odom=%d steer=%d accel=%d)",
+        trajectory_ ? 1 : 0, odometry_ ? 1 : 0, steering_ ? 1 : 0, accel_ ? 1 : 0);
       return;
     }
     if (trajectory_->points.size() < 2) {
@@ -126,8 +147,19 @@ private:
 
     const geometry_msgs::msg::Pose ego_pose = odometry_->pose.pose;
     const double v = odometry_->twist.twist.linear.x;
+    const double steer_meas =
+      std::clamp(static_cast<double>(steering_->steering_tire_angle), -max_steer_rad_, max_steer_rad_);
     const double a_meas = accel_->accel.accel.linear.x;
-    const double a = a_meas;
+    if (!a_state_initialized_) {
+      a_state_filtered_ = a_meas;
+      a_state_initialized_ = true;
+      // Use measured acceleration as initial hold command to avoid startup delay-predict mismatch.
+      last_u_cmd_ = a_meas;
+    } else {
+      a_state_filtered_ =
+        accel_state_lpf_alpha_ * a_state_filtered_ + (1.0 - accel_state_lpf_alpha_) * a_meas;
+    }
+    const double a = a_state_filtered_;
 
     std::optional<double> s_opt;
     std::optional<double> eY_opt;
@@ -167,19 +199,14 @@ private:
     const double ego_yaw = tf2::getYaw(ego_pose.orientation);
     ePsi_opt = normalizeAngle(ego_yaw - ref_yaw);
 
-    const double wheelbase = wheelbase_lf_ + wheelbase_lr_;
-    if (std::fabs(ref_point.front_wheel_angle_rad) > 1e-6) {
-      kappa_ref_opt = std::tan(ref_point.front_wheel_angle_rad) / wheelbase;
+    const auto curvatures = autoware::motion_utils::calcCurvature(trajectory_->points);
+    if (!curvatures.empty()) {
+      const size_t nearest_idx =
+        autoware::motion_utils::findNearestIndex(trajectory_->points, ego_pose.position);
+      const size_t idx = std::min(nearest_idx, curvatures.size() - 1);
+      kappa_ref_opt = curvatures[idx];
     } else {
-      const auto curvatures = autoware::motion_utils::calcCurvature(trajectory_->points);
-      const auto nearest_idx = autoware::motion_utils::findNearestIndex(
-        trajectory_->points, ego_pose.position);
-      if (nearest_idx && !curvatures.empty()) {
-        const size_t idx = std::min(nearest_idx, curvatures.size() - 1);
-        kappa_ref_opt = curvatures[idx];
-      } else {
-        kappa_ref_opt = 0.0;
-      }
+      kappa_ref_opt = 0.0;
     }
     ref_velocity_opt = static_cast<double>(ref_point.longitudinal_velocity_mps);
 
@@ -193,7 +220,7 @@ private:
     }
 
     std::array<double, NX> x0 = {
-      *s_opt, v, a, *eY_opt, *ePsi_opt
+      *s_opt, v, a, *eY_opt, *ePsi_opt, steer_meas
     };
 
     RCLCPP_INFO_THROTTLE(
@@ -201,18 +228,23 @@ private:
       "[MPC] state s=%.1f v=%.2f a=%.2f eY=%.3f ePsi=%.3f kappa_ref=%.4f v_ref=%.2f",
       x0[0], x0[1], x0[2], x0[3], x0[4], *kappa_ref_opt, *ref_velocity_opt);
 
-    AcadosSolution sol;
     const std::array<double, NU> u_hold = {last_u_cmd_, last_delta_};
-    if (delay_compensation_time_ <= 0.0) {
-      const std::array<double, NP> p = {tau_equiv_, *kappa_ref_opt, wheelbase_lf_, wheelbase_lr_};
-      interface_->setParametersAllStages(p);
-      interface_->setCostReference(*s_opt, *ref_velocity_opt);
-      sol = interface_->getControl(x0);
-    } else {
-      sol = interface_->getControlWithDelayCompensation(
-        x0, delay_compensation_time_, *kappa_ref_opt, *ref_velocity_opt, u_hold,
-        tau_equiv_, wheelbase_lf_, wheelbase_lr_);
+    std::array<double, NX> x_for_mpc = x0;
+    if (delay_compensation_time_ > 0.0) {
+      const std::array<double, NP> p_now = {
+        tau_equiv_, *kappa_ref_opt, wheelbase_lf_, wheelbase_lr_, steer_tau_};
+      x_for_mpc = interface_->predictStateAfterDelay(x0, delay_compensation_time_, p_now, u_hold);
     }
+    const double s_base = x_for_mpc[0];
+    interface_->setCostReference(s_base, *ref_velocity_opt);
+    const double dt_h = kHorizonTf / static_cast<double>(N);
+    for (size_t stage = 0; stage <= N; ++stage) {
+      const double s_stage = s_base + *ref_velocity_opt * static_cast<double>(stage) * dt_h;
+      const double kappa_stage = sampleCurvatureAtArcLength(trajectory_->points, curvatures, s_stage);
+      interface_->setParameters(
+        static_cast<int>(stage), {tau_equiv_, kappa_stage, wheelbase_lf_, wheelbase_lr_, steer_tau_});
+    }
+    AcadosSolution sol = interface_->getControl(x_for_mpc);
 
     if (sol.status != 0) {
       RCLCPP_WARN_THROTTLE(
@@ -262,8 +294,7 @@ private:
       const double a = sol.xtraj[i][2];
       const double eY = sol.xtraj[i][3];
       const double ePsi = sol.xtraj[i][4];
-      const size_t u_idx = (i < sol.utraj.size()) ? i : sol.utraj.size() - 1;
-      const double steer = (sol.utraj.size() > 0) ? sol.utraj[u_idx][1] : 0.0;
+      const double steer = sol.xtraj[i][5];
       geometry_msgs::msg::Pose ref_pose;
       if (trajectory_->points.size() < 2 || s < 0.0) {
         ref_pose = trajectory_->points.front().pose;
@@ -323,10 +354,12 @@ private:
   double ctrl_period_;
   double delay_compensation_time_;
   double tau_equiv_;
+  double steer_tau_;
   double wheelbase_lf_;
   double wheelbase_lr_;
   double max_steer_rad_;
   double timeout_trajectory_sec_;
+  double accel_state_lpf_alpha_;
   double a_state_filtered_{0.0};
   bool a_state_initialized_{false};
   double last_u_cmd_{0.0};

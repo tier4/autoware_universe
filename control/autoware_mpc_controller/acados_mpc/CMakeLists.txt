@@ -30,6 +30,9 @@ set(GENERATED_MPC_FILES
   ${GEN_DIR}/${MODEL}_model/${MODEL}_expl_vde_adj.c
   ${GEN_DIR}/${MODEL}_model/${MODEL}_expl_vde_forw.c
   ${GEN_DIR}/${MODEL}_model/${MODEL}_model.h
+  ${GEN_DIR}/${MODEL}_constraints/${MODEL}_constraints.h
+  ${GEN_DIR}/${MODEL}_constraints/${MODEL}_constr_h_fun.c
+  ${GEN_DIR}/${MODEL}_constraints/${MODEL}_constr_h_fun_jac_uxt_zt.c
 )
 set_source_files_properties(${GENERATED_MPC_FILES} PROPERTIES GENERATED TRUE)
 

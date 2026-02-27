@@ -15,8 +15,8 @@
 """
 Combined longitudinal + lateral MPC (path_tracking_mpc_spatial_with_body_points-style).
 
-Builds a single acados OCP from the combined model: state x = [s, v, a, eY, ePsi],
-input u = [u_cmd, delta], cost on tracking all states and inputs, bounds on
+Builds a single acados OCP from the combined model: state x = [s, v, a, eY, ePsi, steer],
+input u = [u_cmd, delta_cmd], cost on tracking all states and inputs, bounds on
 acceleration and steering. One solver for both axes.
 
 Delay compensation is implemented in C++ (acados_interface.hpp/cpp); this script
@@ -40,6 +40,10 @@ except ImportError as e:
     ) from e
 
 import numpy as np
+from casadi import atan
+from casadi import cos
+from casadi import tan
+from casadi import vertcat
 
 # Default wheelbase [m]
 DEFAULT_LF = 1.0
@@ -49,7 +53,7 @@ DEFAULT_LR = 1.0
 class CombinedMPC:
     """
     Combined longitudinal + lateral MPC with FOPDT longitudinal and curvature-based
-    lateral dynamics in time. Single OCP: state [s, v, a, eY, ePsi], input [u_cmd, delta].
+    lateral dynamics in time. Single OCP: state [s, v, a, eY, ePsi, steer], input [u_cmd, delta_cmd].
     Delay compensation is done in C++ (see acados_interface).
     """
 
@@ -58,6 +62,8 @@ class CombinedMPC:
         Tf: float,
         N: int,
         tau_equiv: float = 1.5,
+        steer_tau: float = 0.27,
+        a_lat_max: float = 2.0,
         u_cmd_min: float = -3.0,
         u_cmd_max: float = 2.0,
         delta_min: float = -0.7,
@@ -72,6 +78,8 @@ class CombinedMPC:
         self.Tf = Tf
         self.N = N
         self.tau_equiv = tau_equiv
+        self.steer_tau = steer_tau
+        self.a_lat_max = a_lat_max
         self.u_cmd_min = u_cmd_min
         self.u_cmd_max = u_cmd_max
         self.delta_min = delta_min
@@ -87,7 +95,9 @@ class CombinedMPC:
     def _acados_settings(self, build: bool = True, generate: bool = True):
         ocp = AcadosOcp()
 
-        model, constraint = combined_longitudinal_lateral_model(tau_equiv=self.tau_equiv)
+        model, constraint = combined_longitudinal_lateral_model(
+            tau_equiv=self.tau_equiv, steer_tau=self.steer_tau
+        )
         model.u_cmd_min = self.u_cmd_min
         model.u_cmd_max = self.u_cmd_max
         model.delta_min = self.delta_min
@@ -112,9 +122,10 @@ class CombinedMPC:
 
         ocp.solver_options.N_horizon = self.N
 
-        # Cost: track (s, v, a, eY, ePsi) and penalize (u_cmd, delta)
-        Q = np.diag([1e-1, 1e-1, 1e-1, 1e-1, 1e-1])  # s, v, a, eY, ePsi
-        R = np.diag([2e-2, 2e-1])  # u_cmd, delta
+        # Cost: track (s, v, a, eY, ePsi, steer) and penalize (u_cmd, delta_cmd).
+        # Keep steering-command penalty moderate; too large makes MPC prefer path departure over steering.
+        Q = np.diag([1e-1, 2e-1, 1e-1, 5e0, 3e0, 1e-1])  # s, v, a, eY, ePsi, steer
+        R = np.diag([5e-2, 2e0])  # u_cmd, delta_cmd
         Qe = 5.0 * Q
 
         ocp.cost.cost_type = "LINEAR_LS"
@@ -149,10 +160,38 @@ class CombinedMPC:
         ocp.constraints.ubu = np.array([model.u_cmd_max, model.delta_max])
         ocp.constraints.idxbu = np.array([0, 1])
 
+        # Lateral acceleration constraint: |a_lat| <= a_lat_max
+        # a_lat = v^2 * curvature(steer), where curvature follows the bicycle model.
+        v_sym = model_ac.x[1]
+        steer_sym = model_ac.x[5]
+        lf_sym = model_ac.p[2]
+        lr_sym = model_ac.p[3]
+        beta = atan(lr_sym * tan(steer_sym) / (lf_sym + lr_sym))
+        kappa = cos(beta) * tan(steer_sym) / (lf_sym + lr_sym)
+        a_lat = v_sym * v_sym * kappa
+        ocp.model.con_h_expr = vertcat(a_lat)
+        ocp.constraints.lh = np.array([-self.a_lat_max])
+        ocp.constraints.uh = np.array([self.a_lat_max])
+
+        # Add state constraints for ePsi (heading error) and eY (lateral error)
+        # State vector: [s, v, a, eY, ePsi, steer]
+        # Indices for eY and ePsi are 3 and 4 respectively
+
+        # Example box bounds, these can be parameters or tuned
+        e_y_min = -1.5
+        e_y_max = 1.5
+        e_psi_min = -np.pi/4
+        e_psi_max = np.pi/4
+
+        # Combine indices for state constraints (in addition to input constraints)
+        ocp.constraints.idxbx = np.array([3, 4])
+        ocp.constraints.lbx = np.array([e_y_min, e_psi_min])
+        ocp.constraints.ubx = np.array([e_y_max, e_psi_max])
+
         ocp.constraints.x0 = np.zeros(nx)
 
-        # p = [tau_equiv, kappa_ref, lf, lr]; kappa_ref set per-stage at runtime
-        ocp.parameter_values = np.array([self.tau_equiv, 0.0, self.lf, self.lr])
+        # p = [tau_equiv, kappa_ref, lf, lr, steer_tau]; kappa_ref set per-stage at runtime
+        ocp.parameter_values = np.array([self.tau_equiv, 0.0, self.lf, self.lr, self.steer_tau])
 
         ocp.solver_options.tf = self.Tf
         ocp.solver_options.qp_solver = "FULL_CONDENSING_HPIPM"
@@ -183,10 +222,12 @@ def main():
     mpc = CombinedMPC(
         Tf, N,
         tau_equiv=1.5,
+        steer_tau=0.27,
+        a_lat_max=2.0,
         u_cmd_min=-3.0,
         u_cmd_max=2.0,
-        delta_min=-0.7,
-        delta_max=0.7,
+        delta_min=-np.pi/3,
+        delta_max=np.pi/3,
         lf=1.0,
         lr=1.0,
         build=False,

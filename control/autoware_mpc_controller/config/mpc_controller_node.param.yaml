@@ -4,6 +4,7 @@
     ctrl_period: 0.03
     delay_compensation_time: 0.17
     tau_equiv: 1.5
+    steer_tau: 0.27
     wheelbase_lf: 1.395  # hardcoded from sample_vehicle wheel_base=2.79
     wheelbase_lr: 1.395  # hardcoded from sample_vehicle wheel_base=2.79
     max_steer_rad: 0.7

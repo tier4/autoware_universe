@@ -32,7 +32,7 @@ def main():
 
     # Straight line: kappa_ref = 0 (already in default params)
     s0 = 0.0
-    x0 = np.array([s0, 0.0, 0.0, 0.0, 0.0])  # s, v, a, eY, ePsi
+    x0 = np.array([s0, 0.0, 0.0, 0.0, 0.0, 0.0])  # s, v, a, eY, ePsi, steer
 
     num_steps = 100
     history = {
@@ -53,10 +53,10 @@ def main():
         # Cost reference: advance s along horizon, constant v_ref (same as C++ setCostReference)
         for k in range(N):
             s_ref = s0 + v_ref * k * dt
-            yref = np.array([s_ref, v_ref, 0.0, 0.0, 0.0, 0.0, 0.0])
+            yref = np.array([s_ref, v_ref, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
             solver.cost_set(k, "yref", yref)
         s_ref_N = s0 + v_ref * N * dt
-        yref_e = np.array([s_ref_N, v_ref, 0.0, 0.0, 0.0])
+        yref_e = np.array([s_ref_N, v_ref, 0.0, 0.0, 0.0, 0.0])
         solver.cost_set(N, "yref", yref_e)
 
         status = solver.solve()
@@ -69,9 +69,11 @@ def main():
 
         # Simple Euler step (longitudinal only for this test)
         tau = mpc.tau_equiv
+        steer_tau = mpc.steer_tau
         s0 = x0[0] + x0[1] * dt
         x0[1] = x0[1] + u_cmd * dt  # v
         x0[2] = x0[2] + (u_cmd - x0[2]) / tau * dt  # a (FOPDT)
+        x0[5] = x0[5] + (delta - x0[5]) / steer_tau * dt  # steer actuator 1st-order
         x0[0] = s0
         # keep eY, ePsi 0
 
