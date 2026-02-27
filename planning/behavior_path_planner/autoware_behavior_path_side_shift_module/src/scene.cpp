@@ -466,6 +466,7 @@ ShiftLine SideShiftModule::calcShiftLine() const
     if (shift_line.end_idx <= shift_line.start_idx + 1) {
       RCLCPP_WARN(getLogger(), "SideShift: shift span too short, aborting shift request");
       shift_line.end_shift_length = 0.0;
+      shift_line.end_idx = shift_line.start_idx;
     }
   }
 
