@@ -15,11 +15,11 @@
       stop_margin_m: 5.0
       on_time_buffer: 0.5 # [s]
       off_time_buffer: 1.0 # [s]
+      lateral_margin_m: 0.5     # lateral margin on top of ego width from trajectory to consider for obstacle stop [m]
+      duplicate_check_threshold_m: 1.0 # threshold to check if the stop point is already in the trajectory [m]
 
       objects:
         object_types: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "unknown"] # object types to consider for obstacle stop
-        safety_buffer_m: 0.5      # safety buffer to add to bounding box of object [m]
-        lateral_margin_m: 0.5     # lateral margin from trajectory to consider for obstacle stop [m]
         max_velocity_th: 1.0      # maximum velocity threshold for target object [m/s]
 
       pointcloud:

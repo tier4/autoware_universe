@@ -20,10 +20,13 @@
 #include <autoware_utils/ros/update_param.hpp>
 #include <autoware_utils/transform/transforms.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <range/v3/view.hpp>
 #include <rclcpp/logging.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -31,8 +34,13 @@
 namespace autoware::trajectory_modifier::plugin
 {
 using utils::obstacle_stop::cluster_pointcloud;
+using utils::obstacle_stop::filter_objects_by_type;
+using utils::obstacle_stop::filter_objects_by_velocity;
 using utils::obstacle_stop::filter_pointcloud_by_range;
 using utils::obstacle_stop::filter_pointcloud_by_voxel_grid;
+using utils::obstacle_stop::get_nearest_object_collision;
+using utils::obstacle_stop::get_nearest_pcd_collision;
+using utils::obstacle_stop::get_trajectory_polygon;
 using utils::obstacle_stop::PointCloud;
 using utils::obstacle_stop::PointCloud2;
 
@@ -47,34 +55,138 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
   enabled_ = params.use_obstacle_stop;
 }
 
-bool ObstacleStop::is_trajectory_modification_required(const TrajectoryPoints & traj_points) const
+bool ObstacleStop::is_trajectory_modification_required(const TrajectoryPoints & traj_points)
 {
-  (void)traj_points;
-  return false;
+  const auto trajectory_polygon = get_trajectory_polygon(
+    traj_points, data_->current_odometry->pose.pose, data_->vehicle_info, params_.lateral_margin_m);
+  const auto collision_point_pcd = check_pointcloud(traj_points, trajectory_polygon);
+  update_collision_points_buffer(traj_points, collision_point_pcd);
+  const auto collision_point_objects = check_predicted_objects(traj_points, trajectory_polygon);
+  update_collision_points_buffer(traj_points, collision_point_objects);
+
+  nearest_collision_point_ = get_nearest_collision_point();
+  return nearest_collision_point_ != std::nullopt;
 }
 
 void ObstacleStop::modify_trajectory(TrajectoryPoints & traj_points)
 {
   if (!enabled_ || !is_trajectory_modification_required(traj_points)) return;
 
-  // TODO: Implement the obstacle stop logic
-  return;
+  if (!nearest_collision_point_) return;
+
+  const auto target_stop_point_arc_length =
+    std::max(nearest_collision_point_->arc_length - params_.stop_margin_m, 0.0);
+
+  constexpr double stop_velocity_threshold = 0.01;
+
+  auto checked_distance = 0.0;
+  for (const auto & [p_1, p_2] : traj_points | ranges::views::sliding(2)) {
+    checked_distance += autoware_utils::calc_distance2d(p_1->pose.position, p_2->pose.position);
+    if (p_2->longitudinal_velocity_mps > stop_velocity_threshold) continue;
+    if (abs(target_stop_point_arc_length - checked_distance) < params_.duplicate_check_threshold_m)
+      return;
+    if (checked_distance > target_stop_point_arc_length + params_.duplicate_check_threshold_m)
+      break;
+  }
+
+  motion_utils::insertDecelPoint(
+    traj_points.begin()->pose.position, target_stop_point_arc_length, 0.0, traj_points);
 }
 
-bool ObstacleStop::check_obstacles()
+void ObstacleStop::update_collision_points_buffer(
+  const TrajectoryPoints & traj_points, const std::optional<CollisionPoint> & collision_point)
 {
-  return false;
+  constexpr double close_distance_threshold = 0.5;
+
+  const auto now = get_clock()->now();
+
+  std::optional<double> closest_distance_diff = std::nullopt;
+  collision_points_buffer_.erase(
+    std::remove_if(
+      collision_points_buffer_.begin(), collision_points_buffer_.end(),
+      [&](CollisionPoint & cp) {
+        if (cp.is_active && (now - cp.start_time).seconds() > params_.off_time_buffer) return true;
+        if (!collision_point && !cp.is_active) return true;
+
+        cp.arc_length = motion_utils::calcSignedArcLength(traj_points, 0LU, cp.point);
+        const auto distance_diff = collision_point ? collision_point->arc_length - cp.arc_length
+                                                   : std::numeric_limits<double>::max();
+        const bool is_close = abs(distance_diff) < close_distance_threshold;
+
+        if (!cp.is_active && !is_close) return true;
+
+        if (!cp.is_active && (now - cp.start_time).seconds() > params_.on_time_buffer) {
+          cp.is_active = true;
+          cp.start_time = now;
+        }
+
+        if (
+          is_close &&
+          (!closest_distance_diff || abs(distance_diff) < abs(*closest_distance_diff))) {
+          closest_distance_diff = distance_diff;
+        }
+
+        return false;
+      }),
+    collision_points_buffer_.end());
+
+  if (!collision_point) return;
+
+  constexpr double eps = 1e-3;
+  if (collision_points_buffer_.empty() || !closest_distance_diff) {
+    collision_points_buffer_.emplace_back(*collision_point, now, params_.on_time_buffer < eps);
+    return;
+  }
+
+  auto nearest_collision_point_it = std::find_if(
+    collision_points_buffer_.begin(), collision_points_buffer_.end(),
+    [&](const CollisionPoint & cp) {
+      return abs(cp.arc_length - collision_point->arc_length) < abs(*closest_distance_diff) + eps;
+    });
+
+  if (nearest_collision_point_it == collision_points_buffer_.end()) return;
+
+  if (*closest_distance_diff < 0.0) {
+    nearest_collision_point_it->point = collision_point->point;
+    nearest_collision_point_it->arc_length = collision_point->arc_length;
+  }
+
+  if (nearest_collision_point_it->is_active) {
+    nearest_collision_point_it->start_time = now;
+  }
 }
 
-bool ObstacleStop::check_predicted_objects()
+std::optional<CollisionPoint> ObstacleStop::get_nearest_collision_point() const
 {
-  return false;
+  std::optional<CollisionPoint> nearest_collision_point = std::nullopt;
+  if (collision_points_buffer_.empty()) return std::nullopt;
+
+  auto minimum_arc_length = std::numeric_limits<double>::max();
+  for (const auto & cp : collision_points_buffer_) {
+    if (cp.is_active > minimum_arc_length || !cp.is_active) continue;
+    nearest_collision_point = cp;
+    minimum_arc_length = cp.arc_length;
+  }
+  return nearest_collision_point;
 }
 
-bool ObstacleStop::check_pointcloud()
+std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
+  const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon)
+{
+  if (!data_->predicted_objects || data_->predicted_objects->objects.empty()) return std::nullopt;
+  auto predicted_objects = *data_->predicted_objects;
+
+  filter_objects_by_type(predicted_objects, params_.objects.object_types);
+  filter_objects_by_velocity(predicted_objects, params_.objects.max_velocity_th);
+
+  return get_nearest_object_collision(traj_points, trajectory_polygon, predicted_objects);
+}
+
+std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
+  const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon)
 {
   const auto & pointcloud = data_->obstacle_pointcloud;
-  if (pointcloud->data.empty()) return false;
+  if (pointcloud->data.empty()) return std::nullopt;
 
   PointCloud::Ptr filtered_pointcloud(new PointCloud);
   pcl::fromROSMsg(*pointcloud, *filtered_pointcloud);
@@ -109,7 +221,7 @@ bool ObstacleStop::check_pointcloud()
     filtered_pointcloud, clustered_points, p_cluster.min_size, p_cluster.max_size,
     p_cluster.tolerance, p_cluster.min_height, height_offset);
 
-  return false;
+  return get_nearest_pcd_collision(traj_points, trajectory_polygon, clustered_points);
 }
 
 }  // namespace autoware::trajectory_modifier::plugin

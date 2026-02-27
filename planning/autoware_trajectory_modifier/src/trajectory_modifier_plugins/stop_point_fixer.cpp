@@ -38,7 +38,7 @@ void StopPointFixer::on_initialize(const TrajectoryModifierParams & params)
   enabled_ = params.use_stop_point_fixer;
 }
 
-bool StopPointFixer::is_trajectory_modification_required(const TrajectoryPoints & traj_points) const
+bool StopPointFixer::is_trajectory_modification_required(const TrajectoryPoints & traj_points)
 {
   if (traj_points.empty()) {
     return false;

@@ -61,7 +61,7 @@ public:
 
   virtual ~TrajectoryModifierPluginBase() = default;
   virtual void modify_trajectory(TrajectoryPoints & traj_points) = 0;
-  virtual bool is_trajectory_modification_required(const TrajectoryPoints & traj_points) const = 0;
+  virtual bool is_trajectory_modification_required(const TrajectoryPoints & traj_points) = 0;
   std::string get_name() const { return name_; }
   rclcpp::Node * get_node_ptr() const { return node_ptr_; }
   std::shared_ptr<autoware_utils_debug::TimeKeeper> get_time_keeper() const { return time_keeper_; }
@@ -87,6 +87,8 @@ protected:
     planning_factor_interface_;
   std::shared_ptr<TrajectoryModifierData> data_;
   bool enabled_{true};
+
+  rclcpp::Clock::SharedPtr get_clock() const { return node_ptr_->get_clock(); }
 
 private:
   std::string name_;

@@ -25,6 +25,8 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <string>
+
 namespace autoware::trajectory_modifier
 {
 using autoware_perception_msgs::msg::PredictedObjects;
