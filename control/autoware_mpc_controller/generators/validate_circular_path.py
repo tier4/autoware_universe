@@ -99,7 +99,7 @@ def main():
         s0 = float(x0[0])
         for k in range(n_horizon):
             s_ref = s0 + v_ref * k * dt
-            yref = np.array([s_ref, v_ref, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+            yref = np.array([s_ref, v_ref, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
             solver.cost_set(k, "yref", yref)
         s_ref_n = s0 + v_ref * n_horizon * dt
         yref_e = np.array([s_ref_n, v_ref, 0.0, 0.0, 0.0, 0.0])

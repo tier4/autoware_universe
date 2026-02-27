@@ -29,8 +29,8 @@ namespace
 constexpr double kSimStepMax = 0.01;  // max step for sim integration [s]
 // OCP horizon (must match mpc.py): Tf=10, N=50
 constexpr double kTf = 10.0;
-constexpr int kNyPath = static_cast<int>(NX + NU);
-constexpr int kNyTerminal = static_cast<int>(NX);
+constexpr int kNyPath = COMBINED_LONGITUDINAL_LATERAL_NY;
+constexpr int kNyTerminal = COMBINED_LONGITUDINAL_LATERAL_NYN;
 }
 
 AcadosInterface::AcadosInterface(int max_iter, double tol)

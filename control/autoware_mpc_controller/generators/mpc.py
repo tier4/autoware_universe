@@ -64,6 +64,7 @@ class CombinedMPC:
         tau_equiv: float = 1.5,
         steer_tau: float = 0.27,
         a_lat_max: float = 2.0,
+        weight_steer_rate: float = 2.0,
         u_cmd_min: float = -3.0,
         u_cmd_max: float = 2.0,
         delta_min: float = -0.7,
@@ -80,6 +81,7 @@ class CombinedMPC:
         self.tau_equiv = tau_equiv
         self.steer_tau = steer_tau
         self.a_lat_max = a_lat_max
+        self.weight_steer_rate = weight_steer_rate
         self.u_cmd_min = u_cmd_min
         self.u_cmd_max = u_cmd_max
         self.delta_min = delta_min
@@ -117,15 +119,15 @@ class CombinedMPC:
 
         nx = model.x.rows()
         nu = model.u.rows()
-        ny = nx + nu
+        ny = nx + nu + 1
         ny_e = nx
 
         ocp.solver_options.N_horizon = self.N
 
         # Cost: track (s, v, a, eY, ePsi, steer) and penalize (u_cmd, delta_cmd).
         # Keep steering-command penalty moderate; too large makes MPC prefer path departure over steering.
-        Q = np.diag([1e-1, 2e-1, 1e-1, 5e0, 3e0, 1e-1])  # s, v, a, eY, ePsi, steer
-        R = np.diag([5e-2, 2e0])  # u_cmd, delta_cmd
+        Q = np.diag([1e-1, 2e-1, 1e-1, 1e0, 3e0, 1e-1])  # s, v, a, eY, ePsi, steer
+        R = np.diag([5e-2, 1e1, self.weight_steer_rate])  # u_cmd, delta_cmd, steer_rate proxy
         Qe = 5.0 * Q
 
         ocp.cost.cost_type = "LINEAR_LS"
@@ -146,6 +148,9 @@ class CombinedMPC:
         Vu = np.zeros((ny, nu))
         Vu[nx, 0] = 1.0
         Vu[nx + 1, 1] = 1.0
+        # steer_rate proxy: (delta_cmd - steer) / steer_tau => linear proxy (delta_cmd - steer)
+        Vx[nx + 2, 5] = -1.0
+        Vu[nx + 2, 1] = 1.0
         ocp.cost.Vu = Vu
 
         Vx_e = np.zeros((ny_e, nx))

@@ -53,7 +53,7 @@ def main():
         # Cost reference: advance s along horizon, constant v_ref (same as C++ setCostReference)
         for k in range(N):
             s_ref = s0 + v_ref * k * dt
-            yref = np.array([s_ref, v_ref, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+            yref = np.array([s_ref, v_ref, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
             solver.cost_set(k, "yref", yref)
         s_ref_N = s0 + v_ref * N * dt
         yref_e = np.array([s_ref_N, v_ref, 0.0, 0.0, 0.0, 0.0])
