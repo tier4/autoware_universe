@@ -17,7 +17,7 @@
 
 #include "autoware/trajectory_traffic_rule_filter/traffic_rule_filter_interface.hpp"
 
-#include <autoware_trajectory_traffic_rule_filter_param.hpp>
+#include <autoware_trajectory_traffic_rule_filter/autoware_trajectory_traffic_rule_filter_param.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
@@ -78,6 +78,7 @@ private:
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
 
   std::unique_ptr<traffic_rule_filter::ParamListener> listener_;
+  bool debug_mode_{};
 
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
