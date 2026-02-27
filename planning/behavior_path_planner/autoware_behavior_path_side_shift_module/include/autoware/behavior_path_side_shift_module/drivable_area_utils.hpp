@@ -40,6 +40,11 @@ struct AdjacentLaneInfo
   bool has_right{false};
   lanelet::ConstLanelet left_lane;
   lanelet::ConstLanelet right_lane;
+
+  /// True when shifting into the left adjacent lane is both allowed and the lane exists.
+  bool canShiftLeft() const { return allow_left && has_left; }
+  /// True when shifting into the right adjacent lane is both allowed and the lane exists.
+  bool canShiftRight() const { return allow_right && has_right; }
 };
 
 /// Accumulated lane boundary limits used by the drivable-area check.
