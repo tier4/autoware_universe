@@ -66,6 +66,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
 
   # cSpell:ignore expt
   list(APPEND CUDA_NVCC_FLAGS "--expt-relaxed-constexpr")
+  list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_75,code=sm_75")
   list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_86,code=sm_86")
   list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_87,code=sm_87")
   list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_89,code=sm_89")
@@ -77,6 +78,8 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     endif()
     list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_120,code=sm_120")
     list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_120,code=compute_120")
+  else()
+    list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_89,code=compute_89")
   endif()
 
   cuda_add_library(${PROJECT_NAME}_cuda_lib SHARED

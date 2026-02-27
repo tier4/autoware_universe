@@ -30,6 +30,7 @@ if(${CUDA_FOUND})
 
   # cSpell: ignore expt
   list(APPEND CUDA_NVCC_FLAGS --expt-relaxed-constexpr -diag-suppress 20012 --compiler-options -fPIC)
+  list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_75,code=sm_75")
   list(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_86,code=sm_86)
   list(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_87,code=sm_87)
   list(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_89,code=sm_89)
@@ -41,6 +42,8 @@ if(${CUDA_FOUND})
     endif()
     list(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_120,code=sm_120)
     list(APPEND CUDA_NVCC_FLAGS -gencode arch=compute_120,code=compute_120)
+  else()
+    list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_89,code=compute_89")
   endif()
 
   set(CUDA_SEPARABLE_COMPILATION ON)

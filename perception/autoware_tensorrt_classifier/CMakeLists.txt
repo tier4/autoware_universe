@@ -27,6 +27,7 @@ ament_target_dependencies(${PROJECT_NAME}
   OpenCV
 )
 
+list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_75,code=sm_75")
 list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_86,code=sm_86")
 list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_87,code=sm_87")
 list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_89,code=sm_89")
@@ -38,6 +39,8 @@ if(CUDA_VERSION VERSION_GREATER_EQUAL "12.8")
   endif()
   list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_120,code=sm_120")
   list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_120,code=compute_120")
+else()
+    list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_89,code=compute_89")
 endif()
 
 cuda_add_library(${PROJECT_NAME}_gpu_preprocess
