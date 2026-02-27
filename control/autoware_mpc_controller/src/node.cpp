@@ -87,6 +87,8 @@ public:
       "~/output/control_cmd", rclcpp::QoS(1).transient_local());
     pub_predicted_trajectory_ = create_publisher<autoware_planning_msgs::msg::Trajectory>(
       "~/output/predicted_trajectory", rclcpp::QoS(1).transient_local());
+    pub_current_steering_ = create_publisher<autoware_vehicle_msgs::msg::SteeringReport>(
+      "~/output/current_steering", rclcpp::QoS(1).transient_local());
 
     timer_ = rclcpp::create_timer(
       this, get_clock(), std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -124,7 +126,8 @@ private:
 
     const geometry_msgs::msg::Pose ego_pose = odometry_->pose.pose;
     const double v = odometry_->twist.twist.linear.x;
-    const double a = accel_->accel.accel.linear.x;
+    const double a_meas = accel_->accel.accel.linear.x;
+    const double a = a_meas;
 
     std::optional<double> s_opt;
     std::optional<double> eY_opt;
@@ -199,12 +202,15 @@ private:
       x0[0], x0[1], x0[2], x0[3], x0[4], *kappa_ref_opt, *ref_velocity_opt);
 
     AcadosSolution sol;
+    const std::array<double, NU> u_hold = {last_u_cmd_, last_delta_};
     if (delay_compensation_time_ <= 0.0) {
+      const std::array<double, NP> p = {tau_equiv_, *kappa_ref_opt, wheelbase_lf_, wheelbase_lr_};
+      interface_->setParametersAllStages(p);
       interface_->setCostReference(*s_opt, *ref_velocity_opt);
       sol = interface_->getControl(x0);
     } else {
       sol = interface_->getControlWithDelayCompensation(
-        x0, delay_compensation_time_, *kappa_ref_opt, *ref_velocity_opt,
+        x0, delay_compensation_time_, *kappa_ref_opt, *ref_velocity_opt, u_hold,
         tau_equiv_, wheelbase_lf_, wheelbase_lr_);
     }
 
@@ -219,6 +225,8 @@ private:
     double u_cmd = sol.utraj[0][0];
     double delta = sol.utraj[0][1];
     delta = std::clamp(delta, -max_steer_rad_, max_steer_rad_);
+    last_u_cmd_ = u_cmd;
+    last_delta_ = delta;
 
     autoware_control_msgs::msg::Control out;
     out.stamp = this->now();
@@ -239,6 +247,9 @@ private:
     out.longitudinal.is_defined_jerk = false;
 
     pub_control_->publish(out);
+    if (steering_) {
+      pub_current_steering_->publish(*steering_);
+    }
 
     // Publish predicted trajectory (for AEB, lane_departure_checker, control_validator)
     autoware_planning_msgs::msg::Trajectory pred_traj;
@@ -298,6 +309,7 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr sub_accel_;
   rclcpp::Publisher<autoware_control_msgs::msg::Control>::SharedPtr pub_control_;
   rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr pub_predicted_trajectory_;
+  rclcpp::Publisher<autoware_vehicle_msgs::msg::SteeringReport>::SharedPtr pub_current_steering_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   autoware_planning_msgs::msg::Trajectory::ConstSharedPtr trajectory_;
@@ -315,6 +327,10 @@ private:
   double wheelbase_lr_;
   double max_steer_rad_;
   double timeout_trajectory_sec_;
+  double a_state_filtered_{0.0};
+  bool a_state_initialized_{false};
+  double last_u_cmd_{0.0};
+  double last_delta_{0.0};
 };
 
 int main(int argc, char * argv[])

@@ -39,20 +39,29 @@ import rclpy
 from rclpy.node import Node
 from autoware_control_msgs.msg import Control
 from autoware_planning_msgs.msg import Trajectory
+from autoware_vehicle_msgs.msg import SteeringReport
 from nav_msgs.msg import Odometry
 
 
 class ControlVizNode(Node):
-    def __init__(self, history_sec: float = 30.0, control_cmd_topic: str = None):
+    def __init__(
+        self, history_sec: float = 30.0, control_cmd_topic: str = None, current_steering_topic: str = None
+    ):
         super().__init__("visualize_mpc_control")
         self.declare_parameter("history_sec", history_sec)
         self.declare_parameter("control_cmd_topic", control_cmd_topic or "")
+        self.declare_parameter(
+            "current_steering_topic",
+            current_steering_topic or "/control/trajectory_follower/current_steering",
+        )
         history_sec = self.get_parameter("history_sec").value
         control_cmd_topic = self.get_parameter("control_cmd_topic").value or "/control/command/control_cmd"
+        current_steering_topic = self.get_parameter("current_steering_topic").value
 
         self._lock = Lock()
         self._t = deque(maxlen=int(history_sec * 100))  # assume ~10 Hz, keep history_sec
         self._steering = deque(maxlen=self._t.maxlen)
+        self._steering_current = deque(maxlen=self._t.maxlen)
         self._accel_cmd = deque(maxlen=self._t.maxlen)
         self._v_ref = deque(maxlen=self._t.maxlen)
         self._v_actual = deque(maxlen=self._t.maxlen)
@@ -60,6 +69,7 @@ class ControlVizNode(Node):
         self._pred_traj = None
         self._start_time = None
         self._latest_v = 0.0
+        self._latest_steering_current = 0.0
 
         self._sub_control = self.create_subscription(
             Control,
@@ -71,6 +81,12 @@ class ControlVizNode(Node):
             Odometry,
             "/localization/kinematic_state",
             self._cb_odom,
+            10,
+        )
+        self._sub_current_steering = self.create_subscription(
+            SteeringReport,
+            current_steering_topic,
+            self._cb_current_steering,
             10,
         )
         self._sub_ref = self.create_subscription(
@@ -87,7 +103,7 @@ class ControlVizNode(Node):
         )
 
         self.get_logger().info(
-            f"Visualizing control: {control_cmd_topic}, odom, ref trajectory, predicted trajectory"
+            f"Visualizing control: {control_cmd_topic}, {current_steering_topic}, odom, ref trajectory, predicted trajectory"
         )
         self.get_logger().info("Run: python3 -c \"from scripts.visualize_mpc_control import run_viz; run_viz()\" or use the launch helper.")
 
@@ -102,6 +118,7 @@ class ControlVizNode(Node):
             t = self._now_sec() - self._start_time
             self._t.append(t)
             self._steering.append(msg.lateral.steering_tire_angle)
+            self._steering_current.append(self._latest_steering_current)
             self._accel_cmd.append(msg.longitudinal.acceleration)
             self._v_ref.append(msg.longitudinal.velocity)
             self._v_actual.append(self._latest_v)
@@ -109,6 +126,10 @@ class ControlVizNode(Node):
     def _cb_odom(self, msg: Odometry):
         with self._lock:
             self._latest_v = msg.twist.twist.linear.x
+
+    def _cb_current_steering(self, msg: SteeringReport):
+        with self._lock:
+            self._latest_steering_current = msg.steering_tire_angle
 
     def _cb_ref(self, msg: Trajectory):
         with self._lock:
@@ -122,12 +143,13 @@ class ControlVizNode(Node):
         with self._lock:
             t = list(self._t)
             steering = list(self._steering)
+            steering_current = list(self._steering_current)
             accel = list(self._accel_cmd)
             v_ref = list(self._v_ref)
             v_actual = list(self._v_actual)
             ref = self._ref_traj
             pred = self._pred_traj
-        return t, steering, accel, v_ref, v_actual, ref, pred
+        return t, steering, steering_current, accel, v_ref, v_actual, ref, pred
 
 
 def run_visualizer(viz_opts=None):
@@ -140,6 +162,7 @@ def run_visualizer(viz_opts=None):
     node = ControlVizNode(
         history_sec=getattr(viz_opts, "history_sec", 30.0) if viz_opts else 30.0,
         control_cmd_topic=getattr(viz_opts, "control_cmd_topic", None) if viz_opts else None,
+        current_steering_topic=getattr(viz_opts, "current_steering_topic", None) if viz_opts else None,
     )
 
     # Run ROS in a background thread so the UI stays responsive
@@ -157,7 +180,7 @@ def run_visualizer(viz_opts=None):
     plt.tight_layout()
 
     def animate(_):
-        t, steering, accel, v_ref, v_actual, ref, pred = node.get_snapshot()
+        t, steering, steering_current, accel, v_ref, v_actual, ref, pred = node.get_snapshot()
         for ax in axes.flat:
             ax.clear()
 
@@ -171,7 +194,8 @@ def run_visualizer(viz_opts=None):
                        transform=ax_xy.transAxes, ha="center", va="center", fontsize=9)
             return
 
-        ax_steer.plot(t, steering, "b-", label="steering")
+        ax_steer.plot(t, steering, "b-", label="steering_cmd")
+        ax_steer.plot(t, steering_current, "k--", label="steering_current")
         ax_steer.set_ylabel("steering_tire_angle (rad)")
         ax_steer.legend(loc="upper right")
         ax_steer.grid(True)
@@ -219,6 +243,12 @@ def main(args=None):
         default="/control/command/control_cmd",
         help="Control command topic (use /control/trajectory_follower/control_cmd if before vehicle_cmd_gate)",
     )
+    parser.add_argument(
+        "--current-steering-topic",
+        type=str,
+        default="/control/trajectory_follower/current_steering",
+        help="Current steering topic published by MPC node (or /vehicle/status/steering_status).",
+    )
     args = parser.parse_args(args)
 
     class Wrap:
@@ -226,6 +256,7 @@ def main(args=None):
     w = Wrap()
     w.history_sec = args.history_sec
     w.control_cmd_topic = args.control_cmd_topic
+    w.current_steering_topic = args.current_steering_topic
     run_visualizer(w)
 
 

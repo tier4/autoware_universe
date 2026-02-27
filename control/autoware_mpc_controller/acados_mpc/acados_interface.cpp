@@ -67,7 +67,8 @@ AcadosInterface::~AcadosInterface()
 std::array<double, NX> AcadosInterface::predictStateAfterDelay(
   const std::array<double, NX> & x,
   double delay_time,
-  const std::array<double, NP> & p)
+  const std::array<double, NP> & p,
+  const std::array<double, NU> & u_hold)
 {
   if (delay_time <= 0.0) {
     return x;
@@ -81,14 +82,12 @@ std::array<double, NX> AcadosInterface::predictStateAfterDelay(
   double T = delay_time / n_steps;
 
   std::array<double, NX> x_current = x;
-  std::array<double, NU> u_zero{};
-  u_zero.fill(0.0);
 
   combined_longitudinal_lateral_acados_sim_update_params(sim_capsule_, const_cast<double *>(p.data()), NP);
 
   for (int i = 0; i < n_steps; ++i) {
     sim_in_set(acados_sim_config, acados_sim_dims, acados_sim_in, "x", x_current.data());
-    sim_in_set(acados_sim_config, acados_sim_dims, acados_sim_in, "u", u_zero.data());
+    sim_in_set(acados_sim_config, acados_sim_dims, acados_sim_in, "u", const_cast<double *>(u_hold.data()));
     sim_in_set(acados_sim_config, acados_sim_dims, acados_sim_in, "T", &T);
     combined_longitudinal_lateral_acados_sim_solve(sim_capsule_);
     sim_out_get(acados_sim_config, acados_sim_dims, acados_sim_out, "x", x_current.data());
@@ -266,12 +265,13 @@ int AcadosInterface::solve()
 AcadosSolution AcadosInterface::getControlWithDelayCompensation(
   const std::array<double, NX> & current_state,
   double delay_time,
-  const std::array<double, NP> & p)
+  const std::array<double, NP> & p,
+  const std::array<double, NU> & u_hold)
 {
   if (delay_time <= 0.0) {
     return getControl(current_state);
   }
-  std::array<double, NX> x0 = predictStateAfterDelay(current_state, delay_time, p);
+  std::array<double, NX> x0 = predictStateAfterDelay(current_state, delay_time, p, u_hold);
   return getControl(x0);
 }
 
@@ -280,15 +280,18 @@ AcadosSolution AcadosInterface::getControlWithDelayCompensation(
   double delay_time,
   double kappa_ref,
   double v_ref,
+  const std::array<double, NU> & u_hold,
   double tau_equiv,
   double lf,
   double lr)
 {
+  std::array<double, NP> p = {tau_equiv, kappa_ref, lf, lr};
+  setParametersAllStages(p);
   if (delay_time <= 0.0) {
+    setCostReference(current_state[0], v_ref);
     return getControl(current_state);
   }
-  std::array<double, NP> p = {tau_equiv, kappa_ref, lf, lr};
-  std::array<double, NX> x0_pred = predictStateAfterDelay(current_state, delay_time, p);
+  std::array<double, NX> x0_pred = predictStateAfterDelay(current_state, delay_time, p, u_hold);
   setCostReference(x0_pred[0], v_ref);
   return getControl(x0_pred);
 }

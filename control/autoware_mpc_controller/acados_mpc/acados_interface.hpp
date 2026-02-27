@@ -65,7 +65,8 @@ public:
   std::array<double, NX> predictStateAfterDelay(
     const std::array<double, NX> & x,
     double delay_time,
-    const std::array<double, NP> & p);
+    const std::array<double, NP> & p,
+    const std::array<double, NU> & u_hold);
 
   /**
    * Solve with delay compensation: predict state after delay_time (acados sim), use as x0,
@@ -75,7 +76,8 @@ public:
   AcadosSolution getControlWithDelayCompensation(
     const std::array<double, NX> & current_state,
     double delay_time,
-    const std::array<double, NP> & p);
+    const std::array<double, NP> & p,
+    const std::array<double, NU> & u_hold);
 
   /** Convenience: build p = [tau_equiv, kappa_ref, lf, lr] and call getControlWithDelayCompensation.
    * When delay_time > 0, sets cost reference from predicted state s so yref matches OCP initial state. */
@@ -84,6 +86,7 @@ public:
     double delay_time,
     double kappa_ref,
     double v_ref,
+    const std::array<double, NU> & u_hold,
     double tau_equiv = 1.5,
     double lf = 1.0,
     double lr = 1.0);

@@ -19,6 +19,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/acados_mpc)
 # Node that uses the MPC interface (replacement for longitudinal + lateral MPC)
 add_executable(mpc_controller_node src/node.cpp)
 target_link_libraries(mpc_controller_node acados_interface)
+set_target_properties(mpc_controller_node PROPERTIES INSTALL_RPATH "\$ORIGIN")
 ament_target_dependencies(mpc_controller_node
   rclcpp
   autoware_control_msgs
@@ -31,7 +32,11 @@ ament_target_dependencies(mpc_controller_node
   autoware_vehicle_msgs
 )
 # Codegen is triggered when acados_interface is built (generated files are its sources)
-install(TARGETS mpc_controller_node DESTINATION lib/${PROJECT_NAME})
+install(TARGETS
+  mpc_controller_node
+  acados_interface
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 install(
   DIRECTORY config

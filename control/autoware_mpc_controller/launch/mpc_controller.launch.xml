@@ -8,5 +8,6 @@
     <remap from="~/input/current_steering" to="/vehicle/status/steering_status"/>
     <remap from="~/output/control_cmd" to="/control/trajectory_follower/control_cmd"/>
     <remap from="~/output/predicted_trajectory" to="/control/trajectory_follower/lateral/predicted_trajectory"/>
+    <remap from="~/output/current_steering" to="/control/trajectory_follower/current_steering"/>
   </node>
 </launch>
