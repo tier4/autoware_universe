@@ -58,27 +58,26 @@ trajectory_modifier_params:
       validation:
         gt_eq<>: [0.0]
       read_only: false
+    lateral_margin_m:
+      type: double
+      default_value: 0.5
+      description: Lateral margin on top of ego width from trajectory to consider for obstacle stop [m]
+      validation:
+        gt_eq<>: [0.0]
+      read_only: false
+    duplicate_check_threshold_m:
+      type: double
+      default_value: 1.0
+      description: Threshold to check if the stop point is already in the trajectory [m]
+      validation:
+        gt_eq<>: [0.0]
+      read_only: false
 
     objects:
       object_types:
         type: string_array
-        default_value:
-          ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "unknown"]
+        default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, unknown]
         description: Types of objects to consider for obstacle stop
-        read_only: false
-      safety_buffer_m:
-        type: double
-        default_value: 0.5
-        description: Safety buffer to add to bounding box of object [m]
-        validation:
-          gt_eq<>: [0.0]
-        read_only: false
-      lateral_margin_m:
-        type: double
-        default_value: 0.5
-        description: Lateral margin from trajectory to consider for obstacle stop [m]
-        validation:
-          gt_eq<>: [0.0]
         read_only: false
       max_velocity_th:
         type: double
