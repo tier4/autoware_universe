@@ -13,20 +13,22 @@
 # limitations under the License.
 
 import os
+import signal
+import subprocess
 import time
 import unittest
-import subprocess
-import signal
 
 from ament_index_python.packages import get_package_share_directory
-import rclpy
-
-# メッセージ型のインポート
-from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
-from tier4_control_msgs.msg import GateMode
-from autoware_auto_vehicle_msgs.msg import ControlModeReport
 from autoware_auto_system_msgs.msg import AutowareState
 from autoware_auto_system_msgs.msg import HazardStatusStamped
+from autoware_auto_vehicle_msgs.msg import ControlModeReport
+
+# メッセージ型のインポート
+from diagnostic_msgs.msg import DiagnosticArray
+from diagnostic_msgs.msg import DiagnosticStatus
+import rclpy
+from tier4_control_msgs.msg import GateMode
+
 
 # ============================================================
 # 1. 基底テストクラス
@@ -37,25 +39,26 @@ class BaseTestCase(unittest.TestCase):
     - クラス単位でlaunchプロセスを管理
     - テストメソッド単位でROSノードを管理
     """
+
     _launch_process = None
 
     @classmethod
     def setUpClass(cls):
         """クラス全体の初期化（1回のみ実行）"""
         rclpy.init()
-        
+
         launch_file = os.path.join(
             get_package_share_directory("system_error_monitor"),
             "launch",
             "test_system_error_monitor.launch.xml",
         )
         cls._launch_process = subprocess.Popen(
-            ['ros2', 'launch', launch_file],
+            ["ros2", "launch", launch_file],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            preexec_fn=os.setsid  # プロセスグループ作成
+            preexec_fn=os.setsid,  # プロセスグループ作成
         )
-        
+
         # ノード起動待ち
         time.sleep(3.0)
 
@@ -84,13 +87,13 @@ class BaseTestCase(unittest.TestCase):
                 pass
             finally:
                 cls._launch_process = None
-        
+
         rclpy.shutdown()
 
     def setUp(self):
         """各テストメソッド実行前の初期化"""
         self.test_node = rclpy.create_node(f"test_node_{self._testMethodName}")
-        self.initial_evaluation_time = 1.0 
+        self.initial_evaluation_time = 1.0
 
     def tearDown(self):
         """各テストメソッド実行後のクリーンアップ"""
@@ -103,34 +106,43 @@ class BaseTestCase(unittest.TestCase):
 # 2. ユーティリティ・パブリッシュ関数
 # ============================================================
 def recursive_assign_stamp(obj, now_stamp):
-    if hasattr(obj, 'stamp'):
-        try: setattr(obj, 'stamp', now_stamp)
-        except Exception: pass
-    if hasattr(obj, 'header'):
-        try: setattr(obj.header, 'stamp', now_stamp)
-        except Exception: pass
+    if hasattr(obj, "stamp"):
+        try:
+            setattr(obj, "stamp", now_stamp)
+        except Exception:
+            pass
+    if hasattr(obj, "header"):
+        try:
+            setattr(obj.header, "stamp", now_stamp)
+        except Exception:
+            pass
+
 
 def publish(test_instance, publishers, inputs):
     """
     複数トピックを最小公倍数(LCM)のリズムで完全に同期してパブリッシュする
     """
     import math
-    
-    hz_list_x10 = [int(float(config["publish_hz"]) * 10) for config in inputs.values() if float(config["publish_hz"]) > 0]
-    
+
+    hz_list_x10 = [
+        int(float(config["publish_hz"]) * 10)
+        for config in inputs.values()
+        if float(config["publish_hz"]) > 0
+    ]
+
     if not hz_list_x10:
         return
 
     lcm_hz_x10 = math.lcm(*hz_list_x10)
-    
+
     base_lcm_hz = lcm_hz_x10 / 10.0
-    
+
     lcm_hz_msgs = {}
     for topic, config in inputs.items():
         msgs = config["msgs"]
         hz = float(config["publish_hz"])
         skip_period = int(base_lcm_hz // hz)
-        
+
         padded_msgs = []
         msg_idx = 0
         tick = 0
@@ -146,7 +158,7 @@ def publish(test_instance, publishers, inputs):
     min_len = min(len(m) for m in lcm_hz_msgs.values())
     publish_period = 1.0 / base_lcm_hz
     publish_start = time.time()
-    
+
     for i in range(min_len):
         for topic in lcm_hz_msgs.keys():
             publisher = publishers[topic]
@@ -154,7 +166,7 @@ def publish(test_instance, publishers, inputs):
             if msg is not None:
                 recursive_assign_stamp(msg, test_instance.test_node.get_clock().now().to_msg())
                 publisher.publish(msg)
-        
+
         while time.time() < publish_start + publish_period * (i + 1):
             rclpy.spin_once(test_instance.test_node, timeout_sec=0)
 
@@ -164,22 +176,17 @@ def publish(test_instance, publishers, inputs):
 # ============================================================
 def make_test_case_default(
     diag_hz=10.0,
-    gate_mode=1,       # 1: 外部運転(EXTERNAL), 0: 手動運転(AUTO)
-    control_mode=2,    # 2: MANUAL
+    gate_mode=1,  # 1: 外部運転(EXTERNAL), 0: 手動運転(AUTO)
+    control_mode=2,  # 2: MANUAL
     autoware_state=5,  # 5: DRIVING
-    publish_duration=5.0
+    publish_duration=5.0,
 ):
     """
     デフォルトのテストケースを生成
     引数でHzやデータ内容を上書き可能
     """
     inputs = {}
-    outputs = {
-        "/diagnostics_err": {
-            "msg_type": DiagnosticArray,
-            "pub_on_timer": False
-        }
-    }
+    outputs = {"/diagnostics_err": {"msg_type": DiagnosticArray, "pub_on_timer": False}}
 
     # 1. /diagnostics の生成
     if diag_hz > 0:
@@ -188,10 +195,10 @@ def make_test_case_default(
         for _ in range(int(publish_duration * diag_hz)):
             input_msg = msg_type()
             status = DiagnosticStatus()
-            status.level = b'\x00'  
-            status.name = 'external_cmd_selector: heartbeat'
-            status.message = 'Alive'
-            status.hardware_id = 'external_cmd_selector'
+            status.level = b"\x00"
+            status.name = "external_cmd_selector: heartbeat"
+            status.message = "Alive"
+            status.hardware_id = "external_cmd_selector"
             input_msg.status.append(status)
             input_msgs.append(input_msg)
         inputs["/diagnostics"] = {"msgs": input_msgs, "msg_type": msg_type, "publish_hz": diag_hz}
@@ -204,7 +211,11 @@ def make_test_case_default(
         input_msg = msg_type()
         input_msg.data = gate_mode
         input_msgs.append(input_msg)
-    inputs["/control/current_gate_mode"] = {"msgs": input_msgs, "msg_type": msg_type, "publish_hz": gate_hz}
+    inputs["/control/current_gate_mode"] = {
+        "msgs": input_msgs,
+        "msg_type": msg_type,
+        "publish_hz": gate_hz,
+    }
 
     # 3. /vehicle/status/control_mode の生成
     control_hz = 50.0
@@ -214,7 +225,11 @@ def make_test_case_default(
         input_msg = msg_type()
         input_msg.mode = control_mode
         input_msgs.append(input_msg)
-    inputs["/vehicle/status/control_mode"] = {"msgs": input_msgs, "msg_type": msg_type, "publish_hz": control_hz}
+    inputs["/vehicle/status/control_mode"] = {
+        "msgs": input_msgs,
+        "msg_type": msg_type,
+        "publish_hz": control_hz,
+    }
 
     # 4. /autoware/state の生成
     state_hz = 10.0
@@ -233,30 +248,30 @@ def get_test_case(test_name):
     """
     テスト名に応じたテストケースを返す
     """
-    if test_name == 'INITIALIZE':
+    if test_name == "INITIALIZE":
         # 初期化フェーズは is_ready を通すためだけの短いデータ
         return make_test_case_default(publish_duration=1.0, gate_mode=0)
-        
-    elif test_name == 'M2':
+
+    elif test_name == "M2":
         # M2: 外部運転, diagが0.8Hz(タイムアウト)
         return make_test_case_default(diag_hz=0.8, gate_mode=1)
-        
-    elif test_name == 'M3':
+
+    elif test_name == "M3":
         # M3: 手動運転, diagなし(タイムアウト), State=4
         return make_test_case_default(diag_hz=0.0, gate_mode=0, autoware_state=4)
-        
-    elif test_name == 'M4':
+
+    elif test_name == "M4":
         # M4: 手動運転, diagが0.8Hz(タイムアウト), State=4
         return make_test_case_default(diag_hz=0.8, gate_mode=0, autoware_state=4)
-        
-    elif test_name == 'M5':
+
+    elif test_name == "M5":
         # M5: 外部運転, diagなし(タイムアウト)
         return make_test_case_default(diag_hz=0.0, gate_mode=1)
-        
-    elif test_name == 'M6':
+
+    elif test_name == "M6":
         # M6: 外部運転, diag正常(10Hz) -> エラーなしの正常ケース
         return make_test_case_default(diag_hz=10.0, gate_mode=1)
-        
+
     else:
         raise ValueError(f"Invalid test name: {test_name}")
 
@@ -266,16 +281,16 @@ def get_test_case(test_name):
 # ============================================================
 def simulate_and_get_outputs(test_instance, test_name):
     # 1. 準備
-    init_inputs, _ = get_test_case('INITIALIZE')
+    init_inputs, _ = get_test_case("INITIALIZE")
     test_inputs, _ = get_test_case(test_name)
-    
+
     pubs = {}
     for topic, config in init_inputs.items():
         pubs[topic] = test_instance.test_node.create_publisher(config["msg_type"], topic, 10)
-    
+
     # 検証用兼、Ready判定用のバッファ
     output_buffer = {"/diagnostics_err": []}
-    
+
     def diag_callback(msg):
         # 届いたメッセージをすべてリストに蓄積
         output_buffer["/diagnostics_err"].append(msg)
@@ -286,7 +301,7 @@ def simulate_and_get_outputs(test_instance, test_name):
 
     # 2. 初期化フェーズ
     timeout_ready = time.time() + 35.0
-    
+
     while len(output_buffer["/diagnostics_err"]) == 0 and time.time() < timeout_ready:
         publish(test_instance, pubs, init_inputs)
         rclpy.spin_once(test_instance.test_node, timeout_sec=0.1)
@@ -299,13 +314,14 @@ def simulate_and_get_outputs(test_instance, test_name):
 
     # 3. 本番テストフェーズ
     publish(test_instance, pubs, test_inputs)
-    
+
     # 受信待ち時間
     end_time = time.time() + test_instance.initial_evaluation_time
     while time.time() < end_time:
         rclpy.spin_once(test_instance.test_node, timeout_sec=0.1)
-        
+
     return output_buffer
+
 
 # ============================================================
 # 5. 検証（アサーション）関数
@@ -316,9 +332,11 @@ def assert_M2_M5(test_instance, diag_err_msgs):
     異常条件：対象ノードが存在しない、またはタイムアウトでない
     期待状態：対象ノードが存在し、かつタイムアウト（Single Point Fault）であること
     """
-    target_name = "autoware/control/external_control/external_command_selector/node_alive_monitoring"
+    target_name = (
+        "autoware/control/external_control/external_command_selector/node_alive_monitoring"
+    )
     target_msg = "Single Point Fault"
-    
+
     exist_and_timeout = False
     for msg in diag_err_msgs:
         for status in msg.status:
@@ -327,9 +345,9 @@ def assert_M2_M5(test_instance, diag_err_msgs):
                 break
 
     test_instance.assertTrue(
-        exist_and_timeout, 
-        "M2/M5失敗: 対象ノードが存在しない、またはタイムアウト(Single Point Fault)ではありません。"
+        exist_and_timeout, "M2/M5失敗: 対象ノードが存在しない、またはタイムアウト(Single Point Fault)ではありません。"
     )
+
 
 def assert_M3_M4(test_instance, diag_err_msgs):
     """
@@ -337,28 +355,28 @@ def assert_M3_M4(test_instance, diag_err_msgs):
     異常条件：対象ノードが存在する、またはタイムアウトである
     期待状態：対象ノードが存在せず、かつタイムアウトでもないこと
     """
-    target_name = "autoware/control/external_control/external_command_selector/node_alive_monitoring"
+    target_name = (
+        "autoware/control/external_control/external_command_selector/node_alive_monitoring"
+    )
     target_msg = "Single Point Fault"
-    
+
     exists = False
     timeout = False
-    
+
     for msg in diag_err_msgs:
         for status in msg.status:
             # 1. まず対象ノードが存在するか確認
             if target_name in status.name:
                 exists = True
-                
+
                 # 2. 対象ノードからのメッセージにタイムアウトが含まれているか確認
                 if target_msg in status.message:
                     timeout = True
-    
+
     success_condition = (not exists) and (not timeout)
 
-    test_instance.assertTrue(
-        success_condition, 
-        "M3/M4失敗: 手動運転中に対象ノードが存在する、またはタイムアウトが検出されました。"
-    )
+    test_instance.assertTrue(success_condition, "M3/M4失敗: 手動運転中に対象ノードが存在する、またはタイムアウトが検出されました。")
+
 
 def assert_M6(test_instance, diag_err_msgs):
     """
@@ -366,12 +384,14 @@ def assert_M6(test_instance, diag_err_msgs):
     異常条件：対象ノードが存在しない、またはタイムアウトである
     期待状態：対象ノードが存在し、かつタイムアウトでない（正常である）こと
     """
-    target_name = "autoware/control/external_control/external_command_selector/node_alive_monitoring"
+    target_name = (
+        "autoware/control/external_control/external_command_selector/node_alive_monitoring"
+    )
     target_msg = "Single Point Fault"
-    
+
     exists = False
     timeout = False
-    
+
     for msg in diag_err_msgs:
         for status in msg.status:
             if target_name in status.name:
@@ -379,40 +399,38 @@ def assert_M6(test_instance, diag_err_msgs):
                 if target_msg in status.message:
                     timeout = True
 
-    success_condition = (exists and not timeout)
-    test_instance.assertTrue(
-        success_condition, 
-        "M6失敗: 対象ノードが存在しない、または正常動作中(10Hz)にタイムアウトが検出されました。"
-    )
+    success_condition = exists and not timeout
+    test_instance.assertTrue(success_condition, "M6失敗: 対象ノードが存在しない、または正常動作中(10Hz)にタイムアウトが検出されました。")
 
 
 # ============================================================
 # 6. テストクラス実装
 # ============================================================
 class TestSystemErrorMonitor2(BaseTestCase):
-
     def test_M2_check_error_detection(self):
-        outputs = simulate_and_get_outputs(self, 'M2')
+        outputs = simulate_and_get_outputs(self, "M2")
         assert_M2_M5(self, outputs["/diagnostics_err"])
 
-class TestSystemErrorMonitor3(BaseTestCase):
 
+class TestSystemErrorMonitor3(BaseTestCase):
     def test_M3_check_error_detection(self):
-        outputs = simulate_and_get_outputs(self, 'M3')
+        outputs = simulate_and_get_outputs(self, "M3")
         assert_M3_M4(self, outputs["/diagnostics_err"])
+
 
 class TestSystemErrorMonitor4(BaseTestCase):
     def test_M4_check_error_detection(self):
-        outputs = simulate_and_get_outputs(self, 'M4')
+        outputs = simulate_and_get_outputs(self, "M4")
         assert_M3_M4(self, outputs["/diagnostics_err"])
+
 
 class TestSystemErrorMonitor5(BaseTestCase):
     def test_M5_check_error_detection(self):
-        outputs = simulate_and_get_outputs(self, 'M5')
+        outputs = simulate_and_get_outputs(self, "M5")
         assert_M2_M5(self, outputs["/diagnostics_err"])
+
 
 class TestSystemErrorMonitor6(BaseTestCase):
     def test_M6_check_error_detection(self):
-        outputs = simulate_and_get_outputs(self, 'M6')
+        outputs = simulate_and_get_outputs(self, "M6")
         assert_M6(self, outputs["/diagnostics_err"])
-        
