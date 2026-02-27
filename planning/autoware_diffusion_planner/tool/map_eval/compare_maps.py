@@ -168,11 +168,6 @@ def compare_lane_segments(internal: Dict, reference: Dict) -> Tuple[Dict, List[D
             if int(i_lane.get(key, -999999)) == int(ref_lane.get(key, -888888)):
                 attr_agree[key] += 1
 
-        i_speed = i_lane.get("speed_limit_mps")
-        ref_speed = ref_lane.get("speed_limit_mps")
-        if i_speed is not None and ref_speed is not None:
-            speed_abs.append(abs(float(i_speed) - float(ref_speed)))
-
         entity_rows.append(
             {
                 "entity_type": "lane_segment",
@@ -202,7 +197,6 @@ def compare_lane_segments(internal: Dict, reference: Dict) -> Tuple[Dict, List[D
         "right_boundary_symmetric_chamfer_like_m": summarize(right_sym),
         "length_relative_error": summarize(length_rel),
         "heading_diff_deg": summarize(heading),
-        "speed_limit_abs_error_mps": summarize(speed_abs),
         "attribute_agreement_rate": attr_rates,
         "pass_rate": {
             "centerline_symmetric_hausdorff_lt_0p2m": float(np.mean(np.asarray(center_haus) < 0.2))
@@ -225,20 +219,31 @@ def compare_lane_segments(internal: Dict, reference: Dict) -> Tuple[Dict, List[D
 
 
 def match_geometry_only(
-    int_items: List[Dict], ref_items: List[Dict], key_name: str, max_match_distance: float
+    int_items: List[Dict], ref_items: List[Dict], max_match_distance: float
 ) -> Tuple[List[Tuple[int, int, float]], List[int], List[int]]:
     if not int_items or not ref_items:
         return [], list(range(len(int_items))), list(range(len(ref_items)))
     used_ref = set()
+    print("int_items: ", len(int_items))
+    print("ref_items: ", len(ref_items))
     matches = []
-    for i, item in enumerate(int_items):
-        p_i = points3_to_np(item[key_name])
+    
+    first_points_int  = np.array([item['points'][0][:2] for item in int_items])
+    first_points_ref  = np.array([ref['points'][0][:2] for ref in ref_items])
+    print("first_points_int: ", first_points_int.shape)
+    print("first_points_ref: ", first_points_ref.shape)
+    start_distances_matrix = np.linalg.norm(first_points_int[:, None] - first_points_ref[None, :], axis=2)
+    start_distances_mask_matrix = start_distances_matrix < 1.0
+    print("start_distances_mask_matrix: ", start_distances_mask_matrix.shape)
+    
+    import tqdm
+    for i, item in tqdm.tqdm(enumerate(int_items)):
+        p_i = points3_to_np(item['points'])
         best_j = -1
         best_score = float("inf")
-        for j, ref in enumerate(ref_items):
-            if j in used_ref:
-                continue
-            p_ref = points3_to_np(ref[key_name])
+        ref_indices = np.where(start_distances_mask_matrix[i])[0]
+        for j in ref_indices:
+            p_ref = points3_to_np(ref_items[j]['points'])
             score = symmetric_distance_stats(p_i, p_ref)["symmetric_chamfer_like"]
             if score < best_score:
                 best_j = j
@@ -254,7 +259,7 @@ def match_geometry_only(
 def compare_line_strings(internal: Dict, reference: Dict, max_match_distance: float) -> Tuple[Dict, List[Dict]]:
     in_lines = internal["line_strings"]
     ref_lines = reference["line_strings"]
-    matches, unmatched_i, unmatched_ref = match_geometry_only(in_lines, ref_lines, "points", max_match_distance)
+    matches, unmatched_i, unmatched_ref = match_geometry_only(in_lines, ref_lines, max_match_distance)
 
     sym, haus, endpoint, length_err, orient = [], [], [], [], []
     rows = []
@@ -303,7 +308,7 @@ def compare_line_strings(internal: Dict, reference: Dict, max_match_distance: fl
 def compare_polygons(internal: Dict, reference: Dict, max_match_distance: float) -> Tuple[Dict, List[Dict]]:
     in_polys = internal["polygons"]
     ref_polys = reference["polygons"]
-    matches, unmatched_i, unmatched_ref = match_geometry_only(in_polys, ref_polys, "points", max_match_distance)
+    matches, unmatched_i, unmatched_ref = match_geometry_only(in_polys, ref_polys, max_match_distance)
 
     sym, haus, area_abs, area_rel, centroid = [], [], [], [], []
     rows = []
@@ -646,8 +651,11 @@ def evaluate_core(
     internal = load_json(internal_map_path)
     reference = load_json(reference_map_path)
 
+    print("[2.0/3] Computing Lane metrics...")
     lane_metrics, lane_rows, mismatch = compare_lane_segments(internal, reference)
+    print("[2.3/3] Computing Line String metrics...")
     line_metrics, line_rows = compare_line_strings(internal, reference, max_match_distance)
+    print("[2.6/3] Computing Polygon metrics...")
     poly_metrics, poly_rows = compare_polygons(internal, reference, max_match_distance)
 
     worst_k_by_hausdorff = []

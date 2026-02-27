@@ -16,6 +16,7 @@
 #include "autoware/diffusion_planner/dimensions.hpp"
 
 #include <autoware_lanelet2_extension/projection/mgrs_projector.hpp>
+#include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_io/Io.h>
 #include <rclcpp/rclcpp.hpp>
 
@@ -49,6 +50,16 @@ json to_json_polyline(const std::vector<LanePoint> & polyline)
   return out;
 }
 
+template <typename LineStringT>
+json lanelet_line_string_to_json(const LineStringT & ls)
+{
+  json out = json::array();
+  for (const auto & pt : ls) {
+    out.push_back(json::array({pt.x(), pt.y(), pt.z()}));
+  }
+  return out;
+}
+
 json to_json_lanelet_map(const LaneletMap & map)
 {
   json root;
@@ -59,22 +70,53 @@ json to_json_lanelet_map(const LaneletMap & map)
        {"centerline", to_json_polyline(lane.centerline)},
        {"left_boundary", to_json_polyline(lane.left_boundary)},
        {"right_boundary", to_json_polyline(lane.right_boundary)},
-       {"mean_point", to_json_point(lane.mean_point)},
-       {"left_line_type", lane.left_line_type},
-       {"right_line_type", lane.right_line_type},
-       {"speed_limit_mps", lane.speed_limit_mps.has_value() ? json(*lane.speed_limit_mps) : json()},
-       {"turn_direction", lane.turn_direction},
-       {"traffic_light_id", lane.traffic_light_id}});
+       });
   }
 
   root["polygons"] = json::array();
   for (const auto & poly : map.polygons) {
-    root["polygons"].push_back({{"points", to_json_polyline(poly)}});
+    root["polygons"].push_back(json{{"points", to_json_polyline(poly.points)}});
   }
 
   root["line_strings"] = json::array();
   for (const auto & line : map.line_strings) {
-    root["line_strings"].push_back({{"points", to_json_polyline(line)}});
+    root["line_strings"].push_back(json{{"points", to_json_polyline(line.points)}});
+  }
+  return root;
+}
+
+json to_json_raw_lanelet_map(const lanelet::LaneletMapConstPtr & map_ptr)
+{
+  json root;
+  root["lane_segments"] = json::array();
+  for (const auto & ll : map_ptr->laneletLayer) {
+    const auto center = lanelet_line_string_to_json(ll.centerline3d());
+    const auto left = lanelet_line_string_to_json(ll.leftBound3d());
+    const auto right = lanelet_line_string_to_json(ll.rightBound3d());
+    if (center.empty() || left.empty() || right.empty()) {
+      continue;
+    }
+    root["lane_segments"].push_back(
+      json{{"id", static_cast<int64_t>(ll.id())},
+           {"centerline", center},
+           {"left_boundary", left},
+           {"right_boundary", right}});
+  }
+
+  root["polygons"] = json::array();
+  for (const auto & poly : map_ptr->polygonLayer) {
+    const auto pts = lanelet_line_string_to_json(poly.basicLineString());
+    if (!pts.empty()) {
+      root["polygons"].push_back(json{{"points", pts}});
+    }
+  }
+
+  root["line_strings"] = json::array();
+  for (const auto & ls : map_ptr->lineStringLayer) {
+    const auto pts = lanelet_line_string_to_json(ls);
+    if (!pts.empty()) {
+      root["line_strings"].push_back(json{{"points", pts}});
+    }
   }
   return root;
 }
@@ -130,7 +172,6 @@ int main(int argc, char ** argv)
 
   const LaneletMap internal_map =
     autoware::diffusion_planner::convert_to_internal_lanelet_map(lanelet_map_const_ptr);
-  const LaneletMap reference_map = autoware::diffusion_planner::convert_to_internal_lanelet_map(lanelet_map_const_ptr, false);
 
   json internal_json;
   internal_json["meta"] = {
@@ -145,9 +186,10 @@ int main(int argc, char ** argv)
   json reference_json;
   reference_json["meta"] = {
     {"source_map_path", map_path},
-    {"map_type", "reference"},
+    {"map_type", "reference_raw"},
+    {"description", "All lanelets, polygons, and line strings from raw Lanelet2 map (no subtype/type filtering)"},
   };
-  reference_json.update(to_json_lanelet_map(reference_map));
+  reference_json.update(to_json_raw_lanelet_map(lanelet_map_const_ptr));
 
   {
     std::ofstream ofs(internal_out);
