@@ -1,4 +1,4 @@
-# Copyright 2024 TIER IV, Inc.
+# Copyright 2026 TIER IV, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -328,7 +328,7 @@ def assert_M2_M5(test_instance, diag_err_msgs):
 
     test_instance.assertTrue(
         exist_and_timeout, 
-        "M2/M5失敗: 対象ノードが存在しない、またはタイムアウト(Single Point Fault)ではありません。"
+        "M2/M5 Failed: Target node does not exist, or it is not a timeout (Single Point Fault)."
     )
 
 def assert_M3_M4(test_instance, diag_err_msgs):
@@ -357,7 +357,7 @@ def assert_M3_M4(test_instance, diag_err_msgs):
 
     test_instance.assertTrue(
         success_condition, 
-        "M3/M4失敗: 手動運転中に対象ノードが存在する、またはタイムアウトが検出されました。"
+        "M3/M4 Failed: Target node exists during manual driving, or a timeout was detected."
     )
 
 def assert_M6(test_instance, diag_err_msgs):
@@ -382,7 +382,7 @@ def assert_M6(test_instance, diag_err_msgs):
     success_condition = (exists and not timeout)
     test_instance.assertTrue(
         success_condition, 
-        "M6失敗: 対象ノードが存在しない、または正常動作中(10Hz)にタイムアウトが検出されました。"
+        "M6 Failed: Target node does not exist, or a timeout was detected during normal operation (10Hz)."
     )
 
 

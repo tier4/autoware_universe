@@ -1,4 +1,4 @@
-# Copyright 2024 TIER IV, Inc.
+# Copyright 2026 TIER IV, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,68 +33,66 @@ from diagnostic_msgs.msg import DiagnosticArray
 class BaseTestCase(unittest.TestCase):
     """
     テストの基底クラス
-    - クラス単位でlaunchプロセスを管理
-    - テストメソッド単位でROSノードを管理
+    - setUpClass/tearDownClass: rclpyの初期化のみ
+    - setUp/tearDown: 各テスト用のノード作成とプロセスクリーンアップ
     """
-    _launch_process = None
-
     @classmethod
     def setUpClass(cls):
-        """クラス全体の初期化（1回のみ実行）"""
+        """クラス全体の初期化(1回のみ実行)"""
         rclpy.init()
-        
-        launch_file = os.path.join(
-            get_package_share_directory("external_cmd_selector"),
-            "launch",
-            "test_external_cmd_selector.launch.xml",
-        )
-        cls._launch_process = subprocess.Popen(
-            ['ros2', 'launch', launch_file],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid  # プロセスグループ作成
-        )
-        
-        # ノード起動待ち
-        time.sleep(5.0)
 
     @classmethod
     def tearDownClass(cls):
-        """クラス全体のクリーンアップ（1回のみ実行）"""
-        if cls._launch_process is not None:
-            try:
-                if cls._launch_process.poll() is None:
-                    try:
-                        pgid = os.getpgid(cls._launch_process.pid)
-                        os.killpg(pgid, signal.SIGTERM)
-                    except ProcessLookupError:
-                        pass
-                    else:
-                        try:
-                            cls._launch_process.wait(timeout=5.0)
-                        except subprocess.TimeoutExpired:
-                            try:
-                                pgid = os.getpgid(cls._launch_process.pid)
-                                os.killpg(pgid, signal.SIGKILL)
-                                cls._launch_process.wait(timeout=2.0)
-                            except (ProcessLookupError, subprocess.TimeoutExpired):
-                                pass
-            except Exception:
-                pass
-            finally:
-                cls._launch_process = None
-        
+        """クラス全体のクリーンアップ(1回のみ実行)"""
         rclpy.shutdown()
 
     def setUp(self):
         """各テストメソッド実行前の初期化"""
         self.test_node = rclpy.create_node(f"test_node_{self._testMethodName}")
+        self._launch_process = None
 
     def tearDown(self):
         """各テストメソッド実行後のクリーンアップ"""
+        if self._launch_process is not None:
+            try:
+                if self._launch_process.poll() is None:
+                    try:
+                        pgid = os.getpgid(self._launch_process.pid)
+                        os.killpg(pgid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                    else:
+                        try:
+                            self._launch_process.wait(timeout=5.0)
+                        except subprocess.TimeoutExpired:
+                            try:
+                                pgid = os.getpgid(self._launch_process.pid)
+                                os.killpg(pgid, signal.SIGKILL)
+                                self._launch_process.wait(timeout=2.0)
+                            except (ProcessLookupError, subprocess.TimeoutExpired):
+                                pass
+            except Exception:
+                pass
+            finally:
+                self._launch_process = None
+        
         if self.test_node is not None:
             self.test_node.destroy_node()
             self.test_node = None
+
+    def launch_target_node(self):
+        """テスト対象のノードを起動する"""
+        launch_file = os.path.join(
+            get_package_share_directory("external_cmd_selector"),
+            "launch",
+            "test_external_cmd_selector.launch.xml",
+        )
+        self._launch_process = subprocess.Popen(
+            ['ros2', 'launch', launch_file],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid  # プロセスグループ作成
+        )
 
 # ============================================================
 # 3. テストケースファクトリ関数
@@ -127,7 +125,7 @@ def get_time_from_msg(msg):
     else:
         return None
 
-def collect_diagnostics(test_instance, timeout_sec):
+def collect_diagnostics(test_instance, timeout_sec, first_msg_timeout_sec=10.0):
     """
     診断メッセージの収集
     Returns:
@@ -142,6 +140,17 @@ def collect_diagnostics(test_instance, timeout_sec):
         lambda msg: received_msgs.append(msg), 
         10
     )
+
+    test_instance.launch_target_node()
+
+    # 最初のメッセージを受信するまで待機（イベント駆動）
+    wait_start_time = time.time()
+    while not received_msgs:
+        if (time.time() - wait_start_time) > first_msg_timeout_sec:
+            test_instance.test_node.destroy_subscription(sub)
+            test_instance.fail(f"Timeout: Did not receive the first /diagnostics message within {first_msg_timeout_sec}s.")
+            return []
+        rclpy.spin_once(test_instance.test_node, timeout_sec=0.1)
     
     # 指定時間データ収集
     start_time = time.time()
@@ -157,7 +166,7 @@ def collect_diagnostics(test_instance, timeout_sec):
 
 def check_diagnostics_rate(test_instance, diagnostics, 
                              target_hardware_id, target_name_match, 
-                             min_hz=5.0, max_hz=20.0, start_time=0.0):
+                             min_hz=5.0, max_hz=20.0):
     """
     指定した診断項目の更新周期が指定範囲内か検証する
     """
