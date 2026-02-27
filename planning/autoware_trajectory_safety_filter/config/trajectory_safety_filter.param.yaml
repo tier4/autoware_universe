@@ -4,6 +4,7 @@
       [
         "autoware::trajectory_safety_filter::plugin::OutOfLaneFilter",
         "autoware::trajectory_safety_filter::plugin::CollisionFilter",
+        "autoware::trajectory_safety_filter::plugin::CollisionCheckFilter",
         "autoware::trajectory_safety_filter::plugin::UncrossableBoundaryDepartureFilter",
         "autoware::trajectory_safety_filter::plugin::VehicleConstraintFilter",
       ]
