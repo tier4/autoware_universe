@@ -18,7 +18,8 @@
 #include "autoware/trajectory_safety_filter/safety_filter_interface.hpp"
 
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
-#include <autoware_trajectory_safety_filter_param.hpp>
+// #include <autoware_trajectory_safety_filter_param.hpp>
+#include <autoware_trajectory_safety_filter/autoware_trajectory_safety_filter_param.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>

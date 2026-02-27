@@ -29,6 +29,36 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#define debug(var)             \
+  do {                         \
+    std::cerr << #var << ": "; \
+    view(var);                 \
+  } while (0)
+template <typename T>
+void view(T e)
+{
+  std::cerr << e << std::endl;
+}
+template <typename T>
+void view(const std::vector<T> & v)
+{
+  for (const auto & e : v) {
+    std::cerr << e << " ";
+  }
+  std::cerr << std::endl;
+}
+template <typename T>
+void view(const std::vector<std::vector<T> > & vv)
+{
+  for (const auto & v : vv) {
+    view(v);
+  }
+}
+#define line()                                             \
+  {                                                        \
+    std::cerr << __FILE__ << ":" << __LINE__ << std::endl; \
+  }
+
 namespace autoware::trajectory_safety_filter
 {
 
@@ -41,7 +71,9 @@ TrajectorySafetyFilter::TrajectorySafetyFilter(const rclcpp::NodeOptions & optio
   vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo())
 {
   const auto filters = listener_->get_params().filter_names;
+  std::cerr << "filter_size: " << filters.size() << " filters to load: " << std::endl;
   for (const auto & filter : filters) {
+    std::cerr << "Loading filter: " << filter << std::endl;
     load_metric(filter);
   }
 
