@@ -37,6 +37,7 @@ class BaseTestCase(unittest.TestCase):
     - setUpClass/tearDownClass: rclpyの初期化のみ
     - setUp/tearDown: 各テスト用のノード作成とプロセスクリーンアップ
     """
+
     @classmethod
     def setUpClass(cls):
         """クラス全体の初期化(1回のみ実行)"""
@@ -76,7 +77,7 @@ class BaseTestCase(unittest.TestCase):
                 pass
             finally:
                 self._launch_process = None
-        
+
         if self.test_node is not None:
             self.test_node.destroy_node()
             self.test_node = None
@@ -89,11 +90,12 @@ class BaseTestCase(unittest.TestCase):
             "test_external_cmd_selector.launch.xml",
         )
         self._launch_process = subprocess.Popen(
-            ['ros2', 'launch', launch_file],
+            ["ros2", "launch", launch_file],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            preexec_fn=os.setsid  # プロセスグループ作成
+            preexec_fn=os.setsid,  # プロセスグループ作成
         )
+
 
 # ============================================================
 # 3. テストケースファクトリ関数
@@ -127,6 +129,7 @@ def get_time_from_msg(msg):
     else:
         return None
 
+
 def collect_diagnostics(test_instance, timeout_sec, first_msg_timeout_sec=10.0):
     """
     診断メッセージの収集
@@ -147,10 +150,12 @@ def collect_diagnostics(test_instance, timeout_sec, first_msg_timeout_sec=10.0):
     while not received_msgs:
         if (time.time() - wait_start_time) > first_msg_timeout_sec:
             test_instance.test_node.destroy_subscription(sub)
-            test_instance.fail(f"Timeout: Did not receive the first /diagnostics message within {first_msg_timeout_sec}s.")
+            test_instance.fail(
+                f"Timeout: Did not receive the first /diagnostics message within {first_msg_timeout_sec}s."
+            )
             return []
         rclpy.spin_once(test_instance.test_node, timeout_sec=0.1)
-    
+
     # 指定時間データ収集
     start_time = time.time()
     while (time.time() - start_time) < timeout_sec:
@@ -164,9 +169,10 @@ def collect_diagnostics(test_instance, timeout_sec, first_msg_timeout_sec=10.0):
 # 6. アサーションヘルパー
 # ============================================================
 
-def check_diagnostics_rate(test_instance, diagnostics, 
-                             target_hardware_id, target_name_match, 
-                             min_hz=5.0, max_hz=20.0):
+
+def check_diagnostics_rate(
+    test_instance, diagnostics, target_hardware_id, target_name_match, min_hz=5.0, max_hz=20.0
+):
     """
     指定した診断項目の更新周期が指定範囲内か検証する
     """

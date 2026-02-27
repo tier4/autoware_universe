@@ -345,8 +345,8 @@ def assert_M2_M5(test_instance, diag_err_msgs):
                 break
 
     test_instance.assertTrue(
-        exist_and_timeout, 
-        "M2/M5 Failed: Target node does not exist, or it is not a timeout (Single Point Fault)."
+        exist_and_timeout,
+        "M2/M5 Failed: Target node does not exist, or it is not a timeout (Single Point Fault).",
     )
 
 
@@ -377,9 +377,10 @@ def assert_M3_M4(test_instance, diag_err_msgs):
     success_condition = (not exists) and (not timeout)
 
     test_instance.assertTrue(
-        success_condition, 
-        "M3/M4 Failed: Target node exists during manual driving, or a timeout was detected."
+        success_condition,
+        "M3/M4 Failed: Target node exists during manual driving, or a timeout was detected.",
     )
+
 
 def assert_M6(test_instance, diag_err_msgs):
     """
@@ -402,10 +403,10 @@ def assert_M6(test_instance, diag_err_msgs):
                 if target_msg in status.message:
                     timeout = True
 
-    success_condition = (exists and not timeout)
+    success_condition = exists and not timeout
     test_instance.assertTrue(
-        success_condition, 
-        "M6 Failed: Target node does not exist, or a timeout was detected during normal operation (10Hz)."
+        success_condition,
+        "M6 Failed: Target node does not exist, or a timeout was detected during normal operation (10Hz).",
     )
 
 
