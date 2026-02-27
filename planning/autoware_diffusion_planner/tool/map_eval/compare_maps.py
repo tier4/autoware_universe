@@ -3,16 +3,17 @@
 import argparse
 import csv
 import json
-import subprocess
 from pathlib import Path
-from typing import Dict, List, Tuple
+import subprocess
+from typing import Dict
+from typing import List
+from typing import Tuple
 
+from jinja2 import Environment
+from jinja2 import FileSystemLoader
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-
-from jinja2 import Environment, FileSystemLoader
-
 
 
 def load_json(path: Path) -> Dict:
@@ -32,7 +33,9 @@ def polyline_segments_xy(poly: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     return poly[:-1, :2], poly[1:, :2]
 
 
-def point_to_segments_distance_xy(points: np.ndarray, seg_start: np.ndarray, seg_end: np.ndarray) -> np.ndarray:
+def point_to_segments_distance_xy(
+    points: np.ndarray, seg_start: np.ndarray, seg_end: np.ndarray
+) -> np.ndarray:
     if len(points) == 0:
         return np.zeros((0,), dtype=np.float64)
     if len(seg_start) == 0:
@@ -149,9 +152,9 @@ def compare_lane_segments(internal: Dict, reference: Dict) -> Tuple[Dict, List[D
         "left_boundary_symmetric_chamfer_like_m": summarize(left_sym),
         "right_boundary_symmetric_chamfer_like_m": summarize(right_sym),
         "pass_rate": {
-            "centerline_symmetric_hausdorff_lt_0p2m": float(np.mean(np.asarray(center_haus) < 0.2))
-            if center_haus
-            else 0.0
+            "centerline_symmetric_hausdorff_lt_0p2m": (
+                float(np.mean(np.asarray(center_haus) < 0.2)) if center_haus else 0.0
+            )
         },
         "worst_k_centerline": worst,
     }
@@ -167,16 +170,18 @@ def match_geometry_only(
     matches = []
     first_points_int = np.array([item["points"][0][:2] for item in int_items])
     first_points_ref = np.array([ref["points"][0][:2] for ref in ref_items])
-    start_distances_matrix = np.linalg.norm(first_points_int[:, None] - first_points_ref[None, :], axis=2)
+    start_distances_matrix = np.linalg.norm(
+        first_points_int[:, None] - first_points_ref[None, :], axis=2
+    )
     start_distances_mask_matrix = start_distances_matrix < 1.0
 
     for i, item in enumerate(int_items):
-        p_i = points3_to_np(item['points'])
+        p_i = points3_to_np(item["points"])
         best_j = -1
         best_score = float("inf")
         ref_indices = np.where(start_distances_mask_matrix[i])[0]
         for j in ref_indices:
-            p_ref = points3_to_np(ref_items[j]['points'])
+            p_ref = points3_to_np(ref_items[j]["points"])
             score = symmetric_distance_stats(p_i, p_ref)["symmetric_chamfer_like"]
             if score < best_score:
                 best_j = j
@@ -189,10 +194,14 @@ def match_geometry_only(
     return matches, unmatched_i, unmatched_ref
 
 
-def compare_line_strings(internal: Dict, reference: Dict, max_match_distance: float) -> Tuple[Dict, List[Dict]]:
+def compare_line_strings(
+    internal: Dict, reference: Dict, max_match_distance: float
+) -> Tuple[Dict, List[Dict]]:
     in_lines = internal["line_strings"]
     ref_lines = reference["line_strings"]
-    matches, unmatched_i, unmatched_ref = match_geometry_only(in_lines, ref_lines, max_match_distance)
+    matches, unmatched_i, unmatched_ref = match_geometry_only(
+        in_lines, ref_lines, max_match_distance
+    )
 
     sym, haus, orient = [], [], []
     rows = []
@@ -218,16 +227,24 @@ def compare_line_strings(internal: Dict, reference: Dict, max_match_distance: fl
             "symmetric_chamfer_like_m": summarize(sym),
             "symmetric_hausdorff_like_m": summarize(haus),
             "orientation_error_deg": summarize(orient),
-            "pass_rate": {"symmetric_hausdorff_lt_0p2m": float(np.mean(np.asarray(haus) < 0.2)) if haus else 0.0},
+            "pass_rate": {
+                "symmetric_hausdorff_lt_0p2m": (
+                    float(np.mean(np.asarray(haus) < 0.2)) if haus else 0.0
+                )
+            },
         },
         rows,
     )
 
 
-def compare_polygons(internal: Dict, reference: Dict, max_match_distance: float) -> Tuple[Dict, List[Dict]]:
+def compare_polygons(
+    internal: Dict, reference: Dict, max_match_distance: float
+) -> Tuple[Dict, List[Dict]]:
     in_polys = internal["polygons"]
     ref_polys = reference["polygons"]
-    matches, unmatched_i, unmatched_ref = match_geometry_only(in_polys, ref_polys, max_match_distance)
+    matches, unmatched_i, unmatched_ref = match_geometry_only(
+        in_polys, ref_polys, max_match_distance
+    )
 
     sym, haus = [], []
     rows = []
@@ -251,7 +268,11 @@ def compare_polygons(internal: Dict, reference: Dict, max_match_distance: float)
             "key_metric_symmetric_hausdorff_like_m": summarize(haus),
             "symmetric_chamfer_like_m": summarize(sym),
             "symmetric_hausdorff_like_m": summarize(haus),
-            "pass_rate": {"symmetric_hausdorff_lt_0p2m": float(np.mean(np.asarray(haus) < 0.2)) if haus else 0.0},
+            "pass_rate": {
+                "symmetric_hausdorff_lt_0p2m": (
+                    float(np.mean(np.asarray(haus) < 0.2)) if haus else 0.0
+                )
+            },
         },
         rows,
     )
@@ -266,8 +287,12 @@ def make_static_plots(
     out_path: Path,
 ) -> None:
     lane_error_map = {int(r["entity_id"]): float(r["center_sym_hausdorff_like"]) for r in lane_rows}
-    line_error_map = {int(r["match_index"].split(":")[0]): float(r["sym_hausdorff_like"]) for r in line_rows}
-    poly_error_map = {int(r["match_index"].split(":")[0]): float(r["sym_hausdorff_like"]) for r in poly_rows}
+    line_error_map = {
+        int(r["match_index"].split(":")[0]): float(r["sym_hausdorff_like"]) for r in line_rows
+    }
+    poly_error_map = {
+        int(r["match_index"].split(":")[0]): float(r["sym_hausdorff_like"]) for r in poly_rows
+    }
 
     lane_haus = list(lane_error_map.values())
     line_haus = list(line_error_map.values())
@@ -288,8 +313,8 @@ def make_static_plots(
         c = points3_to_np(lane["centerline"])
         if len(c):
             ax1.plot(c[:, 0], c[:, 1], color="#2d5016", alpha=0.7, linewidth=1.5)
-    for l in reference["line_strings"]:
-        s = points3_to_np(l["points"])
+    for line_string in reference["line_strings"]:
+        s = points3_to_np(line_string["points"])
         if len(s):
             ax1.plot(s[:, 0], s[:, 1], color="#2d5016", alpha=0.7, linewidth=1.5)
     for p in reference["polygons"]:
@@ -301,14 +326,16 @@ def make_static_plots(
         c = points3_to_np(lane["centerline"])
         if len(c):
             ax1.plot(c[:, 0], c[:, 1], color="blue", alpha=0.55, linewidth=0.9)
-    for i, l in enumerate(internal["line_strings"]):
-        s = points3_to_np(l["points"])
+    for i, line_string in enumerate(internal["line_strings"]):
+        s = points3_to_np(line_string["points"])
         if len(s):
             ax1.plot(s[:, 0], s[:, 1], color="red", alpha=0.8)
-    for i, p in enumerate(internal["polygons"]):
-        poly = points3_to_np(p["points"])
+    for i, polygon in enumerate(internal["polygons"]):
+        poly = points3_to_np(polygon["points"])
         if len(poly):
-            ax1.fill(poly[:, 0], poly[:, 1], color="green", alpha=0.4, edgecolor="green", linewidth=1)
+            ax1.fill(
+                poly[:, 0], poly[:, 1], color="green", alpha=0.4, edgecolor="green", linewidth=1
+            )
 
     ax1.set_title("Fused Overlay (Reference + Internal)")
     ax1.set_aspect("equal")
@@ -345,7 +372,14 @@ def make_static_plots(
         poly = points3_to_np(p["points"])
         if len(poly):
             err = poly_error_map.get(i, 0.0)
-            ax4.fill(poly[:, 0], poly[:, 1], color=cmap(norm_poly(err)), alpha=0.5, edgecolor=cmap(norm_poly(err)), linewidth=1)
+            ax4.fill(
+                poly[:, 0],
+                poly[:, 1],
+                color=cmap(norm_poly(err)),
+                alpha=0.5,
+                edgecolor=cmap(norm_poly(err)),
+                linewidth=1,
+            )
     ax4.set_title("Polygon Error Heatmap (Hausdorff)")
     ax4.set_aspect("equal")
     sm4 = matplotlib.cm.ScalarMappable(cmap=cmap, norm=norm_poly)
@@ -377,8 +411,12 @@ def render_html_dashboard(
     if Environment is None:
         return
     lane_error_map = {int(r["entity_id"]): float(r["center_sym_hausdorff_like"]) for r in lane_rows}
-    line_error_map = {int(r["match_index"].split(":")[0]): float(r["sym_hausdorff_like"]) for r in line_rows}
-    poly_error_map = {int(r["match_index"].split(":")[0]): float(r["sym_hausdorff_like"]) for r in poly_rows}
+    line_error_map = {
+        int(r["match_index"].split(":")[0]): float(r["sym_hausdorff_like"]) for r in line_rows
+    }
+    poly_error_map = {
+        int(r["match_index"].split(":")[0]): float(r["sym_hausdorff_like"]) for r in poly_rows
+    }
 
     lanes_ref = []
     for lane in reference["lane_segments"]:
@@ -390,33 +428,51 @@ def render_html_dashboard(
         c = points3_to_np(lane["centerline"])
         if len(c):
             lane_id = int(lane["id"])
-            lanes_int.append({"coordinates": _pts_to_coords(c), "id": lane_id, "hausdorff": lane_error_map.get(lane_id, 0.0)})
+            lanes_int.append(
+                {
+                    "coordinates": _pts_to_coords(c),
+                    "id": lane_id,
+                    "hausdorff": lane_error_map.get(lane_id, 0.0),
+                }
+            )
     lines_ref = []
-    for l in reference["line_strings"]:
-        s = points3_to_np(l["points"])
+    for line_string in reference["line_strings"]:
+        s = points3_to_np(line_string["points"])
         if len(s):
             lines_ref.append({"coordinates": _pts_to_coords(s)})
     lines_int = []
-    for i, l in enumerate(internal["line_strings"]):
-        s = points3_to_np(l["points"])
+    for i, line_string in enumerate(internal["line_strings"]):
+        s = points3_to_np(line_string["points"])
         if len(s):
-            lines_int.append({"coordinates": _pts_to_coords(s), "index": i, "hausdorff": line_error_map.get(i, 0.0)})
+            lines_int.append(
+                {
+                    "coordinates": _pts_to_coords(s),
+                    "index": i,
+                    "hausdorff": line_error_map.get(i, 0.0),
+                }
+            )
     polys_ref = []
-    for p in reference["polygons"]:
-        poly = points3_to_np(p["points"])
+    for polygon in reference["polygons"]:
+        poly = points3_to_np(polygon["points"])
         if len(poly):
             ring = _pts_to_coords(poly)
             if ring and (ring[0] != ring[-1]):
                 ring.append(ring[0])
             polys_ref.append({"coordinates": [ring] if ring else []})
     polys_int = []
-    for i, p in enumerate(internal["polygons"]):
-        poly = points3_to_np(p["points"])
+    for i, polygon in enumerate(internal["polygons"]):
+        poly = points3_to_np(polygon["points"])
         if len(poly):
             ring = _pts_to_coords(poly)
             if ring and (ring[0] != ring[-1]):
                 ring.append(ring[0])
-            polys_int.append({"coordinates": [ring] if ring else [], "index": i, "hausdorff": poly_error_map.get(i, 0.0)})
+            polys_int.append(
+                {
+                    "coordinates": [ring] if ring else [],
+                    "index": i,
+                    "hausdorff": poly_error_map.get(i, 0.0),
+                }
+            )
 
     lane_haus = list(lane_error_map.values())
     line_haus = list(line_error_map.values())
@@ -424,7 +480,11 @@ def render_html_dashboard(
     vmax_lane = max(float(np.max(lane_haus)), 1e-6) if lane_haus else 1.0
     vmax_line = max(float(np.max(line_haus)), 1e-6) if line_haus else 1.0
     vmax_poly = max(float(np.max(poly_haus)), 1e-6) if poly_haus else 1.0
-    metrics_json = {"lane": lane_error_map, "line": {str(k): v for k, v in line_error_map.items()}, "poly": {str(k): v for k, v in poly_error_map.items()}}
+    metrics_json = {
+        "lane": lane_error_map,
+        "line": {str(k): v for k, v in line_error_map.items()},
+        "poly": {str(k): v for k, v in poly_error_map.items()},
+    }
 
     template_dir = Path(__file__).resolve().parent / "templates"
     env = Environment(loader=FileSystemLoader(str(template_dir)))
@@ -444,7 +504,9 @@ def render_html_dashboard(
     out_path.write_text(html, encoding="utf-8")
 
 
-def write_entity_csv(out_dir: Path, lane_rows: List[Dict], line_rows: List[Dict], poly_rows: List[Dict]) -> None:
+def write_entity_csv(
+    out_dir: Path, lane_rows: List[Dict], line_rows: List[Dict], poly_rows: List[Dict]
+) -> None:
     rows = lane_rows + line_rows + poly_rows
     keys = sorted(set().union(*[r.keys() for r in rows])) if rows else []
     with (out_dir / "entity_metrics.csv").open("w", encoding="utf-8", newline="") as f:
@@ -476,13 +538,21 @@ def write_worst_case_debug(
             json.dump(payload, f, indent=2)
     worst_lines = sorted(line_rows, key=lambda x: x["sym_hausdorff_like"], reverse=True)[:k]
     for idx, row in enumerate(worst_lines):
-        payload = {"metrics": row, "internal_line": internal["line_strings"][int(row["match_index"].split(":")[0])], "reference_line": reference["line_strings"][int(row["match_index"].split(":")[1])]}
+        payload = {
+            "metrics": row,
+            "internal_line": internal["line_strings"][int(row["match_index"].split(":")[0])],
+            "reference_line": reference["line_strings"][int(row["match_index"].split(":")[1])],
+        }
         with (dbg_dir / f"line_string_{idx}.json").open("w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
     worst_polys = sorted(poly_rows, key=lambda x: x["sym_hausdorff_like"], reverse=True)[:k]
     for idx, row in enumerate(worst_polys):
         i_idx, r_idx = map(int, row["match_index"].split(":"))
-        payload = {"metrics": row, "internal_polygon": internal["polygons"][i_idx], "reference_polygon": reference["polygons"][r_idx]}
+        payload = {
+            "metrics": row,
+            "internal_polygon": internal["polygons"][i_idx],
+            "reference_polygon": reference["polygons"][r_idx],
+        }
         with (dbg_dir / f"polygon_{idx}.json").open("w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
 
@@ -499,12 +569,16 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Map evaluator (no Python interpolation).")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    eval_only = subparsers.add_parser("eval-only", help="Evaluate existing internal/reference JSON files.")
+    eval_only = subparsers.add_parser(
+        "eval-only", help="Evaluate existing internal/reference JSON files."
+    )
     eval_only.add_argument("--internal_map", required=True, type=Path)
     eval_only.add_argument("--reference_map", required=True, type=Path)
     add_common_eval_args(eval_only)
 
-    export_eval = subparsers.add_parser("export-eval", help="Export maps via ros2 run map_exporter, then evaluate.")
+    export_eval = subparsers.add_parser(
+        "export-eval", help="Export maps via ros2 run map_exporter, then evaluate."
+    )
     export_eval.add_argument("--map_path", required=True, type=Path)
     export_eval.add_argument("--internal_json_out", type=Path, default=None)
     export_eval.add_argument("--reference_json_out", type=Path, default=None)
@@ -565,17 +639,34 @@ def evaluate_core(
     worst_k_by_hausdorff = []
     for r in lane_rows:
         worst_k_by_hausdorff.append(
-            {"entity_type": "lane_segment", "entity_id": r["entity_id"], "match_index": -1, "sym_hausdorff_like": r["center_sym_hausdorff_like"]}
+            {
+                "entity_type": "lane_segment",
+                "entity_id": r["entity_id"],
+                "match_index": -1,
+                "sym_hausdorff_like": r["center_sym_hausdorff_like"],
+            }
         )
     for r in line_rows:
         worst_k_by_hausdorff.append(
-            {"entity_type": "line_string", "entity_id": -1, "match_index": r["match_index"], "sym_hausdorff_like": r["sym_hausdorff_like"]}
+            {
+                "entity_type": "line_string",
+                "entity_id": -1,
+                "match_index": r["match_index"],
+                "sym_hausdorff_like": r["sym_hausdorff_like"],
+            }
         )
     for r in poly_rows:
         worst_k_by_hausdorff.append(
-            {"entity_type": "polygon", "entity_id": -1, "match_index": r["match_index"], "sym_hausdorff_like": r["sym_hausdorff_like"]}
+            {
+                "entity_type": "polygon",
+                "entity_id": -1,
+                "match_index": r["match_index"],
+                "sym_hausdorff_like": r["sym_hausdorff_like"],
+            }
         )
-    worst_k_by_hausdorff = sorted(worst_k_by_hausdorff, key=lambda x: x["sym_hausdorff_like"], reverse=True)[:20]
+    worst_k_by_hausdorff = sorted(
+        worst_k_by_hausdorff, key=lambda x: x["sym_hausdorff_like"], reverse=True
+    )[:20]
 
     exec_summary = {
         "key_metric_symmetric_hausdorff_like_m": {
@@ -620,7 +711,11 @@ def evaluate_core(
     with metrics_json_path.open("w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)
 
-    _HAUSDORFF_FIRST = ("key_metric_symmetric_hausdorff_like_m", "centerline_symmetric_hausdorff_like_m", "symmetric_hausdorff_like_m")
+    _HAUSDORFF_FIRST = (
+        "key_metric_symmetric_hausdorff_like_m",
+        "centerline_symmetric_hausdorff_like_m",
+        "symmetric_hausdorff_like_m",
+    )
 
     with summary_csv_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
@@ -638,9 +733,13 @@ def evaluate_core(
                     ordered.append((metric_name, metric_value))
                     seen.add(metric_name)
             for metric_name, metric_value in ordered:
-                if isinstance(metric_value, dict) and {"count", "mean", "median", "p95", "max"}.issubset(
-                    metric_value.keys()
-                ):
+                if isinstance(metric_value, dict) and {
+                    "count",
+                    "mean",
+                    "median",
+                    "p95",
+                    "max",
+                }.issubset(metric_value.keys()):
                     writer.writerow(
                         [
                             entity,
@@ -654,7 +753,9 @@ def evaluate_core(
                     )
 
     write_entity_csv(out_dir, lane_rows, line_rows, poly_rows)
-    write_worst_case_debug(internal, reference, lane_rows, line_rows, poly_rows, out_dir, top_k_debug)
+    write_worst_case_debug(
+        internal, reference, lane_rows, line_rows, poly_rows, out_dir, top_k_debug
+    )
     make_static_plots(internal, reference, lane_rows, line_rows, poly_rows, overlay_png_path)
     if not skip_html:
         render_html_dashboard(internal, reference, lane_rows, line_rows, poly_rows, html_path)

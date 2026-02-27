@@ -16,21 +16,22 @@
 #include "autoware/diffusion_planner/dimensions.hpp"
 
 #include <autoware_lanelet2_extension/projection/mgrs_projector.hpp>
-#include <lanelet2_core/LaneletMap.h>
-#include <lanelet2_io/Io.h>
+#include <nlohmann/json.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <nlohmann/json.hpp>
+#include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_io/Io.h>
 
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace
 {
-using autoware::diffusion_planner::LanePoint;
 using autoware::diffusion_planner::LaneletMap;
+using autoware::diffusion_planner::LanePoint;
 using autoware::diffusion_planner::POINTS_PER_LINE_STRING;
 using autoware::diffusion_planner::POINTS_PER_POLYGON;
 using autoware::diffusion_planner::POINTS_PER_SEGMENT;
@@ -65,12 +66,12 @@ json to_json_lanelet_map(const LaneletMap & map)
   json root;
   root["lane_segments"] = json::array();
   for (const auto & lane : map.lane_segments) {
-    root["lane_segments"].push_back(
-      {{"id", lane.id},
-       {"centerline", to_json_polyline(lane.centerline)},
-       {"left_boundary", to_json_polyline(lane.left_boundary)},
-       {"right_boundary", to_json_polyline(lane.right_boundary)},
-       });
+    root["lane_segments"].push_back({
+      {"id", lane.id},
+      {"centerline", to_json_polyline(lane.centerline)},
+      {"left_boundary", to_json_polyline(lane.left_boundary)},
+      {"right_boundary", to_json_polyline(lane.right_boundary)},
+    });
   }
 
   root["polygons"] = json::array();
@@ -96,11 +97,11 @@ json to_json_raw_lanelet_map(const lanelet::LaneletMapConstPtr & map_ptr)
     if (center.empty() || left.empty() || right.empty()) {
       continue;
     }
-    root["lane_segments"].push_back(
-      json{{"id", static_cast<int64_t>(ll.id())},
-           {"centerline", center},
-           {"left_boundary", left},
-           {"right_boundary", right}});
+    root["lane_segments"].push_back(json{
+      {"id", static_cast<int64_t>(ll.id())},
+      {"centerline", center},
+      {"left_boundary", left},
+      {"right_boundary", right}});
   }
 
   root["polygons"] = json::array();
@@ -187,7 +188,8 @@ int main(int argc, char ** argv)
   reference_json["meta"] = {
     {"source_map_path", map_path},
     {"map_type", "reference_raw"},
-    {"description", "All lanelets, polygons, and line strings from raw Lanelet2 map (no subtype/type filtering)"},
+    {"description",
+     "All lanelets, polygons, and line strings from raw Lanelet2 map (no subtype/type filtering)"},
   };
   reference_json.update(to_json_raw_lanelet_map(lanelet_map_const_ptr));
 

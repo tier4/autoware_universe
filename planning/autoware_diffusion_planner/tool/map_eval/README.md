@@ -22,6 +22,7 @@ The evaluator intentionally does **not** resample or interpolate in Python.
 It compares geometries using direct point-to-segment / point-to-boundary distances.
 
 For a polyline pair A and B:
+
 - A -> B: each point in A to nearest segment of B
 - B -> A: each point in B to nearest segment of A
 - symmetric metrics combine both directions
@@ -100,4 +101,3 @@ ros2 run autoware_diffusion_planner map_exporter --ros-args \
   -p internal_out:=/tmp/internal_map.json \
   -p reference_out:=/tmp/reference.json
 ```
-
