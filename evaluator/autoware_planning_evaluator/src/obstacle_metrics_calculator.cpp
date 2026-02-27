@@ -416,23 +416,35 @@ void ObstacleMetricsCalculator::ProcessObstaclesTrajectory()
 
       for (size_t i = 1; i < obstacle_trajectory_points_.size(); ++i) {
         const auto & obstacle_trajectory_point = obstacle_trajectory_points_[i];
-        const auto & ego_trajectory_point = ego_trajectory_points_[i];
         if (!obstacle_trajectory_point.is_collision_with_ego_trajectory) continue;
 
-        // calculate ego_end_vel at the collision point needed for deceleration:
-        //  - ego decelerate max to stop.
-        //  - consider two cases of forward and backward.
-        const double yaw_diff = tf2::getYaw(ego_trajectory_point.pose.orientation) -
-                                tf2::getYaw(obstacle_trajectory_point.pose.orientation);
-        double ego_end_vel = obstacle_trajectory_point.velocity_mps * std::cos(yaw_diff);
-        ego_end_vel =
-          ego_start_vel >= 0.0 ? std::max(ego_end_vel, 0.0) : std::min(ego_end_vel, 0.0);
+        const size_t ego_first_overlap_idx =
+          obstacle_trajectory_point.first_overlapping_ego_trajectory_index;
+        if (ego_first_overlap_idx == 0) {  // skip if overlap at t=0 (Ego have been here)
+          continue;
+        }
+        const auto & ego_first_overlap = ego_trajectory_points_[ego_first_overlap_idx - 1];
+        const auto point_drac = 2 *
+                                (ego_start_vel - obstacle_trajectory_point.time_from_start_s -
+                                 ego_first_overlap.distance_from_start_m) /
+                                std::pow(obstacle_trajectory_point.time_from_start_s, 2);
+        obstacle_drac = std::max(obstacle_drac, point_drac);
+        // 从前往后看每个object点，看是否重叠，如果是重叠则看最早重叠和最晚重叠的ego的时间以观察是否有减速必要（看最早是否比他早，最晚是否比他晚，之类的，剔除ego比obj还早通过该点的情况），如果是碰撞点，找对应的重叠ego点的最前点，保证减速到此时才到达即可（因为对后面的object点都要观察，所以一定能找到一个回避点，不用考虑后续时间步因为速度更快导致的碰撞），如果是未达点（ego还没到这）则安全不用计算，如果是超越点（ego这个时间点已经到更前面），超越点有可能是潜在的回避点（减速后到达同速导致刚好回避成功），则计算该点的回避所需drac，以寻找正确值（考虑到底最大还是最小）
 
-        // calculate DRAC
-        const double distance_to_collision = ego_trajectory_point.distance_from_start_m;
-        const double point_drac =
-          std::pow(ego_end_vel - ego_start_vel, 2) / (2.0 * distance_to_collision + 1e-6);
-        obstacle_drac = std::max(obstacle_drac, std::abs(point_drac));
+        // // calculate ego_end_vel at the collision point needed for deceleration:
+        // //  - ego decelerate max to stop.
+        // //  - consider two cases of forward and backward.
+        // const double yaw_diff = tf2::getYaw(ego_trajectory_point.pose.orientation) -
+        //                         tf2::getYaw(obstacle_trajectory_point.pose.orientation);
+        // double ego_end_vel = obstacle_trajectory_point.velocity_mps * std::cos(yaw_diff);
+        // ego_end_vel =
+        //   ego_start_vel >= 0.0 ? std::max(ego_end_vel, 0.0) : std::min(ego_end_vel, 0.0);
+
+        // // calculate DRAC
+        // const double relative_distance = ego_trajectory_point.distance_from_start_m -
+        // obstacle_trajectory_point.distance_from_start_m; const double point_drac =
+        //   std::pow(ego_end_vel - ego_start_vel, 2) / (2.0 * distance_to_collision + 1e-6);
+        // obstacle_drac = std::max(obstacle_drac, std::abs(point_drac));
       }
 
       // Add to metric statistics if we found any valid DRAC value
