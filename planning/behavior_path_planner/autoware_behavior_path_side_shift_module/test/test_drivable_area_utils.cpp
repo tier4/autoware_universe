@@ -20,6 +20,7 @@
 #include <lanelet2_core/primitives/LineString.h>
 #include <lanelet2_core/primitives/Point.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 
