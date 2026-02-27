@@ -126,6 +126,8 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     endif()
     list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_120,code=sm_120")
     list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_120,code=compute_120")
+  else()
+    list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_89,code=compute_89")
   endif()
 
   cuda_add_library(pointpainting_cuda_lib SHARED
