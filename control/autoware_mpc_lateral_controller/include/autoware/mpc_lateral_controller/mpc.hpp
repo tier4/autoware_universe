@@ -28,6 +28,7 @@
 #include "autoware_planning_msgs/msg/trajectory.hpp"
 #include "autoware_vehicle_msgs/msg/steering_report.hpp"
 #include "geometry_msgs/msg/pose.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 
 #include <deque>
@@ -46,6 +47,7 @@ using autoware_internal_debug_msgs::msg::Float32MultiArrayStamped;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_vehicle_msgs::msg::SteeringReport;
 using geometry_msgs::msg::Pose;
+using geometry_msgs::msg::PoseStamped;
 using nav_msgs::msg::Odometry;
 
 using Eigen::MatrixXd;
@@ -232,6 +234,9 @@ private:
 
   rclcpp::Publisher<Trajectory>::SharedPtr m_debug_frenet_predicted_trajectory_pub;
   rclcpp::Publisher<Trajectory>::SharedPtr m_debug_resampled_reference_trajectory_pub;
+  rclcpp::Publisher<PoseStamped>::SharedPtr m_debug_nearest_pose_pub;
+  rclcpp::Publisher<Trajectory>::SharedPtr m_debug_nearest_segment_pub;
+  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr m_debug_nearest_info_pub;
   /**
    * @brief Get variables for MPC calculation.
    * @param trajectory The reference trajectory.
@@ -393,6 +398,15 @@ private:
     const MPCTrajectory & reference_trajectory, const MPCData & mpc_data,
     const MPCMatrix & mpc_matrix, const Lateral & ctrl_cmd, const VectorXd & Uex,
     const Odometry & current_kinematics) const;
+
+  /**
+   * @brief Publish nearest-point debug information for RViz and log analysis.
+   * @param traj The current reference trajectory.
+   * @param self_pose The current ego pose.
+   * @param mpc_data The nearest-point related MPC data.
+   */
+  void publishNearestDebug(
+    const MPCTrajectory & traj, const Pose & self_pose, const MPCData & mpc_data) const;
 
   /**
    * @brief calculate steering rate limit along with the target trajectory

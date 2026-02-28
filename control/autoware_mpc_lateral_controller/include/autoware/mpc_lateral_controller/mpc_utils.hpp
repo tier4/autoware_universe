@@ -151,8 +151,12 @@ void dynamicSmoothingVelocity(
  * @brief calculate yaw angle in MPCTrajectory from xy vector
  * @param [inout] traj object trajectory
  * @param [in] shift is forward or not
+ * @param [in] use_input_yaw_for_short_segment if true, preserve input yaw for very short
+ * segments
  */
-void calcTrajectoryYawFromXY(MPCTrajectory & traj, const bool is_forward_shift);
+void calcTrajectoryYawFromXY(
+  MPCTrajectory & traj, const bool is_forward_shift,
+  const bool use_input_yaw_for_short_segment = false);
 
 /**
  * @brief Calculate path curvature by 3-points circle fitting with smoothing num (use nearest 3

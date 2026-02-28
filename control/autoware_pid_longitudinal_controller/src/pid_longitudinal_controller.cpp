@@ -485,37 +485,10 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
   const double traj_end_time =
     rclcpp::Duration(control_data.interpolated_traj.points.back().time_from_start).seconds();
 
-  // calculate the interpolated point and segment
-  std::pair<autoware_planning_msgs::msg::TrajectoryPoint, size_t> current_interpolated_pose;
-  if (m_use_temporal_trajectory) {
-    if (m_prev_nearest_time.has_value()) {
-      const double nearest_time_ref = std::clamp(
-        *m_prev_nearest_time + std::max(control_data.dt, 0.0), traj_start_time, traj_end_time);
-      current_interpolated_pose = longitudinal_utils::lerpTrajectoryPointByTime(
-        control_data.interpolated_traj.points, nearest_time_ref);
-    } else {
-      const double elapsed_from_traj_start_raw =
-        (clock_->now() - rclcpp::Time(control_data.interpolated_traj.header.stamp)).seconds();
-      constexpr double future_tolerance_sec = 0.1;
-      const double stale_tolerance_sec = std::max(control_data.dt, 0.0);
-      const double elapsed_from_traj_start = [&]() {
-        if (elapsed_from_traj_start_raw < -future_tolerance_sec) {
-          return traj_start_time;
-        }
-        if (elapsed_from_traj_start_raw > traj_end_time + stale_tolerance_sec) {
-          return traj_end_time;
-        }
-        return elapsed_from_traj_start_raw;
-      }();
-      const double nearest_time_init =
-        std::clamp(elapsed_from_traj_start, traj_start_time, traj_end_time);
-      current_interpolated_pose = longitudinal_utils::lerpTrajectoryPointByTime(
-        control_data.interpolated_traj.points, nearest_time_init);
-    }
-  } else {
-    current_interpolated_pose =
-      calcInterpolatedTrajPointAndSegment(control_data.interpolated_traj, current_pose);
-  }
+  // Calculate the interpolated nearest point from geometric projection in both spatial/temporal.
+  // Temporal mode still uses trajectory timestamps later for target-time lookup.
+  const auto current_interpolated_pose =
+    calcInterpolatedTrajPointAndSegment(control_data.interpolated_traj, current_pose);
 
   // Insert the interpolated point
   control_data.interpolated_traj.points.insert(
