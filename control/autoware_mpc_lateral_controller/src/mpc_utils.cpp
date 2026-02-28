@@ -191,7 +191,8 @@ bool linearInterpMPCTrajectory(
   return true;
 }
 
-void calcTrajectoryYawFromXY(MPCTrajectory & traj, const bool is_forward_shift)
+void calcTrajectoryYawFromXY(
+  MPCTrajectory & traj, const bool is_forward_shift, const bool use_input_yaw_for_short_segment)
 {
   if (traj.yaw.size() < 3) {  // at least 3 points are required to calculate yaw
     return;
@@ -202,13 +203,14 @@ void calcTrajectoryYawFromXY(MPCTrajectory & traj, const bool is_forward_shift)
   }
 
   constexpr double min_xy_distance_for_yaw_calc = 1.0e-3;
+  const auto input_yaw = traj.yaw;
 
   // interpolate yaw
   for (int i = 1; i < static_cast<int>(traj.yaw.size()) - 1; ++i) {
     const double dx = traj.x.at(i + 1) - traj.x.at(i - 1);
     const double dy = traj.y.at(i + 1) - traj.y.at(i - 1);
     if (std::hypot(dx, dy) < min_xy_distance_for_yaw_calc) {
-      traj.yaw.at(i) = traj.yaw.at(i - 1);
+      traj.yaw.at(i) = use_input_yaw_for_short_segment ? input_yaw.at(i) : traj.yaw.at(i - 1);
       continue;
     }
     traj.yaw.at(i) = is_forward_shift ? std::atan2(dy, dx) : std::atan2(dy, dx) + M_PI;
@@ -219,7 +221,7 @@ void calcTrajectoryYawFromXY(MPCTrajectory & traj, const bool is_forward_shift)
     if (std::hypot(dx0, dy0) >= min_xy_distance_for_yaw_calc) {
       traj.yaw.at(0) = is_forward_shift ? std::atan2(dy0, dx0) : std::atan2(dy0, dx0) + M_PI;
     } else {
-      traj.yaw.at(0) = traj.yaw.at(1);
+      traj.yaw.at(0) = use_input_yaw_for_short_segment ? input_yaw.at(0) : traj.yaw.at(1);
     }
 
     const size_t last = traj.yaw.size() - 1;
@@ -228,7 +230,8 @@ void calcTrajectoryYawFromXY(MPCTrajectory & traj, const bool is_forward_shift)
     if (std::hypot(dxn, dyn) >= min_xy_distance_for_yaw_calc) {
       traj.yaw.back() = is_forward_shift ? std::atan2(dyn, dxn) : std::atan2(dyn, dxn) + M_PI;
     } else {
-      traj.yaw.back() = traj.yaw.at(last - 1);
+      traj.yaw.back() =
+        use_input_yaw_for_short_segment ? input_yaw.at(last) : traj.yaw.at(last - 1);
     }
   }
 }
