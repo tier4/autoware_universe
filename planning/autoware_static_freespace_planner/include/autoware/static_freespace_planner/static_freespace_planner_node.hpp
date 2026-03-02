@@ -86,6 +86,7 @@ private:
   std::vector<int> available_seqs_;  // available seq numbers in current waypoints
   int current_seq_index_;            // current sequence index
   bool is_completed_ = false;        // completion flag for all sequences
+  bool is_waypoint_loaded_ = false;  // flag to indicate whether waypoints are loaded for the current route
 
   // ros2 interfaces
   TrajectoryPublisher::SharedPtr trajectory_pub_;
@@ -120,6 +121,7 @@ private:
   bool isStopped(
     const std::deque<Odometry::ConstSharedPtr> & odom_buffer, const double th_stopped_velocity_mps);
   bool isActive(Scenario::ConstSharedPtr scenario);
+  bool isDataReady();
   void updateData();
   void onOdometry(const Odometry::ConstSharedPtr msg);
   void reset();
@@ -132,6 +134,7 @@ private:
   Scenario::ConstSharedPtr scenario_;
   Odometry::ConstSharedPtr odom_;
   std::deque<Odometry::ConstSharedPtr> odom_buffer_;
+  LaneletRoute::ConstSharedPtr lanelet_route_;
 
   friend class ::TestStaticFreespacePlanner;
 };

@@ -56,7 +56,7 @@ StaticFreespacePlannerNode::StaticFreespacePlannerNode(const rclcpp::NodeOptions
     trajectory_pub_ = create_publisher<Trajectory>("~/output/trajectory", qos);
     debug_path_marker_pub_ = create_publisher<Marker>("~/debug/path_marker", qos);
     debug_route_name_pub_ = create_publisher<String>("~/debug/route_name", qos);
-    parking_state_pub_ = create_publisher<Bool>("~/output/is_completed", qos);
+    parking_state_pub_ = create_publisher<Bool>("is_completed", qos);
     diagnostics_pub_ = create_publisher<DiagnosticArray>("~/output/diagnostics", qos);
   }
 
@@ -85,38 +85,9 @@ StaticFreespacePlannerNode::StaticFreespacePlannerNode(const rclcpp::NodeOptions
 
 void StaticFreespacePlannerNode::onRoute(const LaneletRoute::ConstSharedPtr msg)
 {
-  const auto lanelet_route = msg;
+  lanelet_route_ = msg;
 
-  // Update odometry data
-  updateData();
-
-  // Check if the parking scenario is active
-  if (!isActive(scenario_)) {
-    reset();
-    return;
-  }
-
-  // Find matching route definition
-  auto route_definition =
-    route_matcher_->findMatchingRoute(lanelet_route->start_pose, lanelet_route->goal_pose);
-  if (!route_definition) {
-    RCLCPP_ERROR(get_logger(), "Failed to find matching route definition.");
-    handleMatchingFailure(lanelet_route->start_pose, lanelet_route->goal_pose);
-    return;
-  }
-
-  // Load waypoints for the matched route
-  loadWaypoints(route_definition->csv_path);
-
-  // Plan initial trajectory
-  planTrajectory();
-
-  // Reset completion flag
-  publishCompleted(false);
-
-  // Publish debug information
-  debug_publisher_->publishPathMarker(current_waypoints_, "map");
-  debug_publisher_->publishRouteName(route_definition->name);
+  reset();
 }
 
 void StaticFreespacePlannerNode::onOdometry(const Odometry::ConstSharedPtr msg)
@@ -147,16 +118,62 @@ void StaticFreespacePlannerNode::updateData()
   }
 }
 
+bool StaticFreespacePlannerNode::isDataReady()
+{
+  bool is_ready = true;
+
+  if (!lanelet_route_) {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000, "Waiting for lanelet route data.");
+    is_ready = false;
+  }
+
+  if (!odom_) {
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000, "Waiting for odometry data.");
+    is_ready = false;
+  }
+
+  return is_ready;
+}
+
 void StaticFreespacePlannerNode::onTimer()
 {
-  updateData();
-
   scenario_ = scenario_sub_.take_data();
 
   // Check if the parking scenario is active
   if (!isActive(scenario_)) {
     reset();
     return;
+  }
+
+  updateData();
+
+  if (!isDataReady()) {
+    return;
+  }
+
+  if (is_waypoint_loaded_ == false) {
+    const auto start_pose = odom_->pose.pose;
+
+    // Find matching route definition
+    auto route_definition =
+      route_matcher_->findMatchingRoute(start_pose, lanelet_route_->goal_pose);
+    if (!route_definition) {
+      RCLCPP_ERROR(get_logger(), "Failed to find matching route definition.");
+      handleMatchingFailure(start_pose, lanelet_route_->goal_pose);
+      return;
+    }
+
+    // Load waypoints for the matched route
+    loadWaypoints(route_definition->csv_path);
+
+    // Plan initial trajectory
+    planTrajectory();
+
+    // Publish debug information
+    debug_publisher_->publishPathMarker(current_waypoints_, "map");
+    debug_publisher_->publishRouteName(route_definition->name);
+
+    is_waypoint_loaded_ = true;
   }
 
   // If planning is completed, publish stop trajectory
@@ -274,8 +291,8 @@ void StaticFreespacePlannerNode::planTrajectory()
 void StaticFreespacePlannerNode::reset()
 {
   trajectory_ = Trajectory();
-
   publishCompleted(false);
+  is_waypoint_loaded_ = false;
 
   return;
 }

@@ -34,8 +34,12 @@ std::optional<RouteIndexLoader::RouteDefinition> RouteMatcher::findMatchingRoute
 
   for (const auto & route_definition : routes_) {
     // Load waypoints from the route definition
-    const auto & route_start_wp = waypoint_loader_.loadFirstWaypoint(route_definition.csv_path);
-    const auto & route_goal_wp = waypoint_loader_.loadLastWaypoint(route_definition.csv_path);
+    const auto waypoints = waypoint_loader_.loadWaypoints(route_definition.csv_path);
+    if (waypoints.empty()) {
+      continue;
+    }
+    const auto & route_start_wp = waypoints.front();
+    const auto & route_goal_wp = waypoints.back();
 
     Pose route_start_pose;
     route_start_pose.position.x = route_start_wp.x;

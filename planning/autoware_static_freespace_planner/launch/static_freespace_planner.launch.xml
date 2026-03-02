@@ -17,7 +17,7 @@
     <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
     <remap from="~/debug/path_marker" to="$(var debug_path_marker)"/>
     <remap from="~/debug/route_name" to="$(var debug_route_name)"/>
-    <remap from="~/output/is_completed" to="$(var is_completed)"/>
+    <remap from="is_completed" to="$(var is_completed)"/>
     <remap from="~/output/diagnostics" to="$(var diagnostics)"/>
     <param from="$(var param_file)" allow_substs="true"/>
   </node>

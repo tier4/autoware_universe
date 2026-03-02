@@ -1,6 +1,7 @@
 // Copyright 2026 TIER IV, Inc.
 
 #include "autoware/static_freespace_planner/waypoint_loader.hpp"
+#include <rclcpp/rclcpp.hpp>
 
 #include <algorithm>
 #include <fstream>
@@ -26,7 +27,14 @@ std::vector<WaypointLoader::Waypoint> WaypointLoader::loadWaypoints(const std::s
   std::getline(file, line);
 
   while (std::getline(file, line)) {
-    waypoints.push_back(parseCSVLine(line));
+    auto wp_opt = parseCSVLine(line);
+    if (wp_opt) {
+      waypoints.push_back(*wp_opt);
+    } else {
+      RCLCPP_WARN(rclcpp::get_logger("WaypointLoader"),
+        "Skipping invalid waypoint at line %zu in file '%s'", waypoints.size() + 2, csv_path.c_str());
+      return std::vector<Waypoint>();  // Return empty if any line is invalid
+    }
   }
 
   file.close();
@@ -46,9 +54,16 @@ std::vector<int> WaypointLoader::getAvailableSeqs(const std::string & csv_path)
   std::getline(file, line);
 
   while (std::getline(file, line)) {
-    Waypoint wp = parseCSVLine(line);
-    if (std::find(available_seqs.begin(), available_seqs.end(), wp.seq) == available_seqs.end()) {
-      available_seqs.push_back(wp.seq);
+    auto wp_opt = parseCSVLine(line);
+    if (wp_opt) {
+      const auto & wp = *wp_opt;
+      if (std::find(available_seqs.begin(), available_seqs.end(), wp.seq) == available_seqs.end()) {
+        available_seqs.push_back(wp.seq);
+      }
+    } else {
+      RCLCPP_WARN(rclcpp::get_logger("WaypointLoader"),
+        "Skipping invalid waypoint at line %zu in file '%s' while loading available seqs", available_seqs.size() + 2, csv_path.c_str());
+      return available_seqs;  // Return empty if any line is invalid
     }
   }
 
@@ -58,52 +73,6 @@ std::vector<int> WaypointLoader::getAvailableSeqs(const std::string & csv_path)
   available_seqs.erase(
     std::unique(available_seqs.begin(), available_seqs.end()), available_seqs.end());
   return available_seqs;
-}
-
-WaypointLoader::Waypoint WaypointLoader::loadFirstWaypoint(const std::string & csv_path)
-{
-  std::ifstream file(csv_path);
-  if (!file.is_open()) {
-    throw std::runtime_error("Could not open file: " + csv_path);
-  }
-
-  std::string line;
-  // Skip header line
-  std::getline(file, line);
-
-  if (std::getline(file, line)) {
-    file.close();
-    return parseCSVLine(line);
-  } else {
-    file.close();
-    throw std::runtime_error("No waypoints found in file: " + csv_path);
-  }
-}
-
-WaypointLoader::Waypoint WaypointLoader::loadLastWaypoint(const std::string & csv_path)
-{
-  std::ifstream file(csv_path);
-  if (!file.is_open()) {
-    throw std::runtime_error("Could not open file: " + csv_path);
-  }
-
-  std::string line;
-  // Skip header line
-  std::getline(file, line);
-
-  Waypoint last_waypoint;
-  bool found = false;
-  while (std::getline(file, line)) {
-    last_waypoint = parseCSVLine(line);
-    found = true;
-  }
-
-  file.close();
-  if (found) {
-    return last_waypoint;
-  } else {
-    throw std::runtime_error("No waypoints found in file: " + csv_path);
-  }
 }
 
 std::vector<WaypointLoader::Waypoint> WaypointLoader::loadWaypointsBySeq(
@@ -120,9 +89,9 @@ std::vector<WaypointLoader::Waypoint> WaypointLoader::loadWaypointsBySeq(
   std::getline(file, line);
 
   while (std::getline(file, line)) {
-    Waypoint wp = parseCSVLine(line);
-    if (wp.seq == seq) {
-      waypoints.push_back(wp);
+    auto wp_opt = parseCSVLine(line);
+    if (wp_opt && wp_opt->seq == seq) {
+      waypoints.push_back(*wp_opt);
     }
   }
 
@@ -130,7 +99,7 @@ std::vector<WaypointLoader::Waypoint> WaypointLoader::loadWaypointsBySeq(
   return waypoints;
 }
 
-WaypointLoader::Waypoint WaypointLoader::parseCSVLine(const std::string & line)
+std::optional<WaypointLoader::Waypoint> WaypointLoader::parseCSVLine(const std::string & line)
 {
   std::stringstream ss(line);
   std::string item;
@@ -144,20 +113,30 @@ WaypointLoader::Waypoint WaypointLoader::parseCSVLine(const std::string & line)
 
   // Check if items size is valid
   if (items.size() < 9) {
-    wp = Waypoint{};
-    return wp;
+    return std::nullopt;
   }
 
-  // Parse each item
-  wp.seq = std::stoi(items[0]);
-  wp.x = std::stod(items[1]);
-  wp.y = std::stod(items[2]);
-  wp.z = std::stod(items[3]);
-  wp.qx = std::stod(items[4]);
-  wp.qy = std::stod(items[5]);
-  wp.qz = std::stod(items[6]);
-  wp.qw = std::stod(items[7]);
-  wp.mps = std::stod(items[8]);
+  try {
+    // seq
+    wp.seq = std::stoi(items[0]);
+
+    // x, y, z
+    wp.x  = std::stod(items[1]);
+    wp.y  = std::stod(items[2]);
+    wp.z  = std::stod(items[3]);
+
+    // qx, qy, qz, qw
+    wp.qx = std::stod(items[4]);
+    wp.qy = std::stod(items[5]);
+    wp.qz = std::stod(items[6]);
+    wp.qw = std::stod(items[7]);
+
+    // mps
+    wp.mps = std::stod(items[8]);
+  }
+  catch (...) {
+    return std::nullopt;
+  }
 
   return wp;
 }

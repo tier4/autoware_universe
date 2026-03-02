@@ -5,6 +5,7 @@
 
 #include <string>
 #include <vector>
+#include <optional>
 
 class TestWaypointLoader;
 
@@ -23,8 +24,6 @@ public:
   WaypointLoader();
 
   std::vector<Waypoint> loadWaypoints(const std::string & csv_path);
-  Waypoint loadFirstWaypoint(const std::string & csv_path);
-  Waypoint loadLastWaypoint(const std::string & csv_path);
 
   // Load waypoints filtered by seq
   std::vector<Waypoint> loadWaypointsBySeq(const std::string & csv_path, int seq);
@@ -33,7 +32,7 @@ public:
   std::vector<int> getAvailableSeqs(const std::string & csv_path);
 
 private:
-  Waypoint parseCSVLine(const std::string & line);
+  std::optional<Waypoint> parseCSVLine(const std::string & line);
 
   friend class ::TestWaypointLoader;
 };
