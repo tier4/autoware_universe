@@ -500,22 +500,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
                                   : PathSegmentState::REVERSE_FOLLOWING;
                   }
                 }
-
-                // Transition to COMPLETED if all conditions are met:
-                // 1. velocity < stop_velocity_threshold (already checked)
-                // 2. no next cusp point
-                // 3. distance to goal < th_arrived_distance
-                if (
-                  !is_next_cusp_available && goal_available &&
-                  distance_to_goal < parameters_->th_arrived_distance) {
-                  new_state = PathSegmentState::COMPLETED;
-                  RCLCPP_DEBUG(getLogger(), "Transition to COMPLETED");
-                } else {
-                  // Normal transition to next segment
-                  current_segment_index_++;
-                  new_state = (current_segment_index_ % 2 == 0)
-                                ? PathSegmentState::FORWARD_FOLLOWING
-                                : PathSegmentState::REVERSE_FOLLOWING;
+              } else {
+                // Velocity exceeded threshold: reset stop timer
+                if (cusp_stopped_since_.has_value()) {
+                  cusp_stopped_since_.reset();
                 }
               }
               break;
@@ -538,6 +526,9 @@ BehaviorModuleOutput DirectionChangeModule::plan()
             getLogger(), "State transition: %s -> %s, segment_index=%zu",
             stateToString(current_segment_state_), stateToString(new_state),
             current_segment_index_);
+          if (new_state == PathSegmentState::AT_CUSP) {
+            cusp_stopped_since_.reset();
+          }
           current_segment_state_ = new_state;
           segmentBounds(current_segment_index_, c_start, c_end);
         }
