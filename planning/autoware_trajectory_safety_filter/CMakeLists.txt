@@ -40,6 +40,26 @@ target_link_libraries(autoware_trajectory_safety_filter_plugins
   ${PROJECT_NAME}
 )
 
+if(BUILD_TESTING)
+  ament_add_ros_isolated_gtest(test_constant_curvature
+    test/collision_check_filter/test_constant_curvature_predictor.cpp
+  )
+  target_link_libraries(test_constant_curvature gtest_main ${PROJECT_NAME})
+  target_include_directories(test_constant_curvature PRIVATE src)
+
+  ament_add_ros_isolated_gtest(test_motion
+    test/collision_check_filter/test_motion.cpp
+  )
+  target_link_libraries(test_motion gtest_main ${PROJECT_NAME})
+  target_include_directories(test_motion PRIVATE src)
+
+  ament_add_ros_isolated_gtest(test_polygon
+    test/collision_check_filter/test_polygon.cpp
+  )
+  target_link_libraries(test_polygon gtest_main ${PROJECT_NAME})
+  target_include_directories(test_polygon PRIVATE src)
+endif()
+
 ament_auto_package(
   INSTALL_TO_SHARE
   config
