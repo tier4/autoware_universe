@@ -3,6 +3,8 @@
   <arg name="input_candidate_trajectories" default="/planning/diffusion_planner/candidate_trajectories"/>
   <arg name="input_odometry" default="/localization/kinematic_state"/>
   <arg name="input_acceleration" default="/localization/acceleration"/>
+  <arg name="input_objects_topic_name" default="/perception/object_recognition/objects"/>
+  <arg name="input_pointcloud_topic_name" default="/perception/obstacle_segmentation/pointcloud"/>
   <arg name="output_candidate_trajectories" default="~/output/candidate_trajectories"/>
   <arg name="launch_stop_point_fixer" default="true"/>
   <arg name="launch_obstacle_stop" default="true"/>

@@ -65,10 +65,12 @@ private:
   std::optional<CollisionPoint> check_pointcloud(
     const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon);
 
-  void update_collision_points_buffer(
-    const TrajectoryPoints & traj_points, const std::optional<CollisionPoint> & collision_point);
+  // void update_collision_points_buffer(
+  //   const TrajectoryPoints & traj_points, const std::optional<CollisionPoint> & collision_point);
 
-  std::optional<CollisionPoint> get_nearest_collision_point() const;
+  // std::optional<CollisionPoint> get_nearest_collision_point() const;
+
+  void set_stop_point(TrajectoryPoints & traj_points);
 };
 
 }  // namespace autoware::trajectory_modifier::plugin

@@ -12,7 +12,7 @@
     obstacle_stop:
       use_objects: true
       use_pointcloud: true
-      stop_margin_m: 5.0
+      stop_margin_m: 6.0
       on_time_buffer: 0.5 # [s]
       off_time_buffer: 1.0 # [s]
       lateral_margin_m: 0.5     # lateral margin on top of ego width from trajectory to consider for obstacle stop [m]
