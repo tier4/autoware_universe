@@ -1,134 +1,117 @@
-# Avoidance module for dynamic objects
-
-This module is under development.
+# Dynamic Obstacle Avoidance Module
 
 ## Purpose / Role
 
-This module provides avoidance functions for vehicles, pedestrians, and obstacles in the vicinity of the ego's path in combination with the [autoware_path_optimizer](https://autowarefoundation.github.io/autoware_universe/main/planning/autoware_path_optimizer/).
-Each module performs the following roles.
-Dynamic Avoidance module cuts off the drivable area according to the position and velocity of the target to be avoided.
-Obstacle Avoidance module modifies the path to be followed so that it fits within the received drivable area.
+This module constrains the drivable area around obstacles near the ego path so that downstream path generation stays inside a safer corridor.
 
-Static obstacle's avoidance functions are also provided by the [Static Avoidance module](https://autowarefoundation.github.io/autoware_universe/main/planning/autoware_behavior_path_static_obstacle_avoidance_module/), but these modules have different roles.
-The Static Obstacle Avoidance module performs avoidance through the outside of own lanes but cannot avoid the moving objects.
-On the other hand, this module can avoid moving objects.
-For this reason, the word "dynamic" is used in the module's name.
-The table below lists the avoidance modules that can handle each situation.
+- This module: clips drivable area by adding obstacle polygons.
+- Obstacle Avoidance module: generates a path inside the clipped drivable area.
 
-|                          |                         avoid within the own lane                          | avoid through the outside of own lanes |
-| :----------------------- | :------------------------------------------------------------------------: | :------------------------------------: |
-| avoid not-moving objects | Avoidance Module <br> Dynamic Avoidance Module + Obstacle Avoidance Module |            Avoidance Module            |
-| avoid moving objects     |            Dynamic Avoidance Module + Obstacle Avoidance Module            |     No Module (Under Development)      |
+Although the package name contains `dynamic`, the current implementation is intentionally simplified and focused on **stopped or very low-speed objects**.
 
-## Policy of algorithms
+## Current Scope
 
-Here, we describe the policy of inner algorithms.
-The inner algorithms can be separated into two parts: The first decides whether to avoid the obstacles and the second cuts off the drivable area against the corresponding obstacle.
+### What this module handles
 
-### Select obstacles to avoid
+- Objects close to the ego path and enabled by class filter (`car`, `truck`, `bus`, `trailer`, `unknown`, `bicycle`, `motorcycle`, `pedestrian`).
+- Objects whose speed norm is below `target_object.stopped_object.max_object_vel`.
+- In-lane drivable-area clipping (it does not expand drivable lanes by itself).
 
-To decide whether to avoid an object, both the predicted path and the state (pose and twist) of each object are used.
-The type of objects the user wants this module to avoid is also required.
-Using this information, the module decides to _avoid_ objects that _obstruct the ego's passage_ and _can be avoided_.
+### What this module does not handle
 
-The definition of _obstruct the ego's passage_ is implemented as the object that collides within seconds.
-The other, _can be avoided_ denotes whether it can be avoided without risk to the passengers or the other vehicles.
-For this purpose, the module judges whether the obstacle can be avoided with satisfying the constraints of lateral acceleration and lateral jerk.
-For example, the module decides not to avoid an object that is too close or fast in the lateral direction.
+- Dynamic-object reasoning based on predicted paths.
+- Cut-in / cut-out / crossing classification.
+- Time-to-collision based longitudinal extension.
+- Lateral feasibility checks based on ego lateral acceleration/jerk.
 
-### Cuts off the drivable area against the selected vehicles
+In other words, moving-object avoidance behavior that relied on predictive motion logic is not part of the current module behavior.
 
-For the selected obstacles to be avoided, the module cuts off the drivable area.
-As inputs to decide the shapes of cut-off polygons, poses of the obstacles are mainly used, assuming they move in parallel to the ego's path, instead of its predicted path.
-This design arises from that the predicted path of objects is not accurate enough to use the path modifications (at least currently).
-Furthermore, the output drivable area shape is designed as a rectangular cutout along the ego's path to make the computation scalar rather than planar.
+## Algorithm Overview
 
-#### Determination of lateral dimension
+The processing flow has two stages.
 
-The lateral dimensions of the polygon are calculated as follows.
-The polygon's width to extract from the drivable area is the obstacle width and `drivable_area_generation.lat_offset_from_obstacle`.
-We can limit the lateral shift length by `drivable_area_generation.max_lat_offset_to_avoid`.
+1. Select target objects.
+2. Generate obstacle polygons and subtract them from drivable area.
 
-![drivable_area_extraction_width](./image/drivable_area_extraction_width.drawio.svg)
+### 1) Target object selection
 
-#### Determination of longitudinal dimension
+For each perceived object:
 
-Then, extracting the same directional and opposite directional obstacles from the drivable area will work as follows considering TTC (time to collision).
+- Check object class against target class flags.
+- Check speed threshold with `target_object.stopped_object.max_object_vel`.
+- Check lateral proximity to the ego path using `min_obj_lat_offset_to_ego_path` and `max_obj_lat_offset_to_ego_path`.
 
-Regarding the same directional obstacles, obstacles whose TTC is negative will be ignored (e.g., The obstacle is in front of the ego, and the obstacle's velocity is larger than the ego's velocity.).
+Objects that pass these checks are considered avoidance candidates.
 
-Same directional obstacles (Parameter names may differ from implementation)
-![same_directional_object](./image/same_directional_object.svg)
+### 2) Polygon generation and drivable-area clipping
 
-Opposite directional obstacles (Parameter names may differ from implementation)
-![opposite_directional_object](./image/opposite_directional_object.svg)
+#### Regulated objects (vehicle-like classes)
 
-### Cuts off the drivable area against the selected pedestrians
+- Build a polygon along the ego reference path around the object longitudinal interval.
+- Lateral width is determined from object lateral coverage and:
+  - `drivable_area_generation.lat_offset_from_obstacle`
+  - `drivable_area_generation.max_lat_offset_to_avoid`
+  - `drivable_area_generation.lpf_gain_for_lat_avoid_to_offset`
+  - `target_object.front_object.max_ego_path_lat_cover_ratio`
 
-Then, we describe the logic to generate the drivable areas against pedestrians to be avoided.
-Objects of this type are considered to have priority right of way over the ego's vehicle while ensuring a minimum safety of the ego's vehicle.
-In other words, the module assigns a drivable area to an obstacle with a specific margin based on the predicted paths with specific confidences for a specific time interval, as shown in the following figure.
+The result is a path-aligned clipped region.
 
-<figure>
-    <img src="./image/2024-04-18_15-13-01.png" width="600">
-    <figcaption> Restriction areas are generated from each pedestrian's predicted paths</figcaption>
-</figure>
+#### Unregulated objects (pedestrian-like classes)
 
-Apart from polygons for objects, the module also generates another polygon to ensure the ego's safety, i.e., to avoid abrupt steering or significant changes from the path.
-This is similar to avoidance against the vehicles and takes precedence over keeping a safe distance from the object to be avoided.
-As a result, as shown in the figure below, the polygons around the objects reduced by the secured polygon of the ego are subtracted from the ego's drivable area.
+- Build polygon from the **current object footprint only** (no predicted-path hull).
+- Expand it by `drivable_area_generation.margin_distance_around_pedestrian`.
+- Subtract ego reserve polygon to keep minimum ego corridor.
 
-<figure>
-    <img src="./image/2024-04-18_15-32-03.png" width="600">
-    <figcaption> Ego's minimum requirements are prioritized against object margin</figcaption>
-</figure>
+## Relation to Other Avoidance Modules
 
-## Example
+Compared with [Static Obstacle Avoidance module](https://autowarefoundation.github.io/autoware_universe/main/planning/autoware_behavior_path_static_obstacle_avoidance_module/):
 
-<figure>
-    <img src="./image/image-20230807-151945.png" width="800">
-    <figcaption>Avoidance for the bus departure</figcaption>
-</figure>
+- Static Obstacle Avoidance is responsible for larger path-shift behavior (including outside-lane maneuvering depending on scenario).
+- This module is a drivable-area clipping module around nearby low-speed obstacles.
 
-<figure>  
-    <img src="./image/image-20230807-152835.png" width="800">
-    <figcaption>Avoidance on curve </figcaption>
-</figure>
+Both may contribute to overall avoidance behavior depending on planner configuration.
 
-<figure>
-    <img src="./image/image-20230808-095936.png" width="800">
-    <figcaption>Avoidance against the opposite direction vehicle</figcaption>
-</figure>
+## Limitations
 
-<figure>
-    <img src="./image/image-20230808-152853.png" width="800">
-    <figcaption>Avoidance for multiple vehicle</figcaption>
-</figure>
-
-## Future works
-
-Currently, the path shifting length is limited to 0.5 meters or less by `drivable_area_generation.max_lat_offset_to_avoid`.
-This is caused by the lack of functionality to work with other modules and the structure of the planning component.
-Due to this issue, this module can only handle situations where a small avoidance width is sufficient.
-This issue is the most significant for this module.
-In addition, the ability of this module to extend the drivable area as needed is also required.
+- Moving objects above `stopped_object.max_object_vel` are filtered out by design.
+- The module keeps existing drivable lanes from upstream and does not perform internal lane expansion.
+- `max_lat_offset_to_avoid` limits how much lateral clearance can be enforced in clipping.
 
 ## Parameters
 
-Under development
+All parameters are under `dynamic_avoidance`.
 
-| Name                                                                  | Unit  | Type   | Description                                                | Default value |
-| :-------------------------------------------------------------------- | :---- | :----- | :--------------------------------------------------------- | :------------ |
-| target_object.car                                                     | [-]   | bool   | The flag whether to avoid cars or not                      | true          |
-| target_object.truck                                                   | [-]   | bool   | The flag whether to avoid trucks or not                    | true          |
-| ...                                                                   | [-]   | bool   | ...                                                        | ...           |
-| target_object.min_obstacle_vel                                        | [m/s] | double | Minimum obstacle velocity to avoid                         | 1.0           |
-| drivable_area_generation.lat_offset_from_obstacle                     | [m]   | double | Lateral offset to avoid from obstacles                     | 0.8           |
-| drivable_area_generation.max_lat_offset_to_avoid                      | [m]   | double | Maximum lateral offset to avoid                            | 0.5           |
-| drivable_area_generation.overtaking_object.max_time_to_collision      | [s]   | double | Maximum value when calculating time to collision           | 3.0           |
-| drivable_area_generation.overtaking_object.start_duration_to_avoid    | [s]   | double | Duration to consider avoidance before passing by obstacles | 4.0           |
-| drivable_area_generation.overtaking_object.end_duration_to_avoid      | [s]   | double | Duration to consider avoidance after passing by obstacles  | 5.0           |
-| drivable_area_generation.overtaking_object.duration_to_hold_avoidance | [s]   | double | Duration to hold avoidance after passing by obstacles      | 3.0           |
-| drivable_area_generation.oncoming_object.max_time_to_collision        | [s]   | double | Maximum value when calculating time to collision           | 3.0           |
-| drivable_area_generation.oncoming_object.start_duration_to_avoid      | [s]   | double | Duration to consider avoidance before passing by obstacles | 9.0           |
-| drivable_area_generation.oncoming_object.end_duration_to_avoid        | [s]   | double | Duration to consider avoidance after passing by obstacles  | 0.0           |
+### common
+
+| Name                               | Unit  | Type   | Description                                                     | Default |
+| :--------------------------------- | :---- | :----- | :-------------------------------------------------------------- | :------ |
+| `common.enable_debug_info`         | `[-]` | `bool` | Enable debug logging for this module                            | `false` |
+| `common.use_hatched_road_markings` | `[-]` | `bool` | Enable hatched road marking handling in drivable area utilities | `true`  |
+
+### target_object
+
+| Name                                                                | Unit    | Type     | Description                                                     | Default |
+| :------------------------------------------------------------------ | :------ | :------- | :-------------------------------------------------------------- | :------ |
+| `target_object.car`                                                 | `[-]`   | `bool`   | Avoid cars                                                      | `true`  |
+| `target_object.truck`                                               | `[-]`   | `bool`   | Avoid trucks                                                    | `true`  |
+| `target_object.bus`                                                 | `[-]`   | `bool`   | Avoid buses                                                     | `true`  |
+| `target_object.trailer`                                             | `[-]`   | `bool`   | Avoid trailers                                                  | `true`  |
+| `target_object.unknown`                                             | `[-]`   | `bool`   | Avoid unknown objects                                           | `false` |
+| `target_object.bicycle`                                             | `[-]`   | `bool`   | Avoid bicycles                                                  | `true`  |
+| `target_object.motorcycle`                                          | `[-]`   | `bool`   | Avoid motorcycles                                               | `true`  |
+| `target_object.pedestrian`                                          | `[-]`   | `bool`   | Avoid pedestrians                                               | `true`  |
+| `target_object.successive_num_to_entry_dynamic_avoidance_condition` | `[-]`   | `int`    | Consecutive count to enter valid target state                   | `5`     |
+| `target_object.successive_num_to_exit_dynamic_avoidance_condition`  | `[-]`   | `int`    | Consecutive count threshold to remove valid target state        | `1`     |
+| `target_object.min_obj_lat_offset_to_ego_path`                      | `[m]`   | `double` | Minimum lateral overlap margin to treat object as on ego path   | `0.0`   |
+| `target_object.max_obj_lat_offset_to_ego_path`                      | `[m]`   | `double` | Maximum lateral distance from ego path to consider object       | `1.0`   |
+| `target_object.front_object.max_ego_path_lat_cover_ratio`           | `[-]`   | `double` | Ignore object if it laterally covers too much of ego path width | `0.3`   |
+| `target_object.stopped_object.max_object_vel`                       | `[m/s]` | `double` | Maximum speed treated as stopped/low-speed target               | `0.5`   |
+
+### drivable_area_generation
+
+| Name                                                         | Unit  | Type     | Description                                            | Default |
+| :----------------------------------------------------------- | :---- | :------- | :----------------------------------------------------- | :------ |
+| `drivable_area_generation.lat_offset_from_obstacle`          | `[m]` | `double` | Base lateral clearance margin from obstacle            | `1.0`   |
+| `drivable_area_generation.margin_distance_around_pedestrian` | `[m]` | `double` | Buffer margin for unregulated-object footprint polygon | `2.0`   |
+| `drivable_area_generation.max_lat_offset_to_avoid`           | `[m]` | `double` | Maximum lateral offset reserved for clipping policy    | `0.5`   |
+| `drivable_area_generation.lpf_gain_for_lat_avoid_to_offset`  | `[-]` | `double` | LPF gain for lateral avoidance boundary stabilization  | `0.9`   |
