@@ -283,7 +283,7 @@ void StaticFreespacePlannerNode::planTrajectory()
   current_pose.header = odom_->header;
 
   trajectory_ = trajectory_generator_->createTrajectoryForSeq(
-    current_waypoints_, current_seq_index_, current_pose);
+    current_waypoints_, current_seq_index_, current_pose, get_clock());
 
   trajectory_pub_->publish(trajectory_);
 }

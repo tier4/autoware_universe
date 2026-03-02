@@ -12,10 +12,10 @@ using autoware_planning_msgs::msg::TrajectoryPoint;
 
 Trajectory TrajectoryGenerator::createTrajectoryForSeq(
   const std::vector<WaypointLoader::Waypoint> & all_waypoints, int target_seq,
-  const PoseStamped & current_pose)
+  const PoseStamped & current_pose, const rclcpp::Clock::SharedPtr clock)
 {
   Trajectory traj;
-  traj.header.stamp = clock()->now();
+  traj.header.stamp = clock->now();
   traj.header.frame_id = current_pose.header.frame_id;
 
   for (const auto & waypoint : all_waypoints) {

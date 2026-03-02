@@ -33,7 +33,7 @@ public:
   // Generate trajectory filtered by Seq
   Trajectory createTrajectoryForSeq(
     const std::vector<WaypointLoader::Waypoint> & all_waypoints, int target_seq,
-    const PoseStamped & current_pose);
+    const PoseStamped & current_pose, const rclcpp::Clock::SharedPtr clock);
 
 private:
   Pose waypointToPose(const WaypointLoader::Waypoint & waypoint);
