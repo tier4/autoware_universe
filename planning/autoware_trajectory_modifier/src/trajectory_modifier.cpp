@@ -95,17 +95,21 @@ void TrajectoryModifier::set_data()
 
 void TrajectoryModifier::load_plugin(const std::string & name)
 {
-  // Check if the plugin is already loaded.
-  if (plugin_loader_.isClassLoaded(name)) {
-    RCLCPP_WARN(this->get_logger(), "The plugin '%s' is already loaded.", name.c_str());
+  // Check if the plugin is already instantiated
+  auto it = std::find_if(
+    plugins_.begin(), plugins_.end(), [&](const auto & p) { return p->get_name() == name; });
+  if (it != plugins_.end()) {
+    RCLCPP_WARN(
+      this->get_logger(), "The plugin '%s' is already in the plugins list.", name.c_str());
     return;
   }
+
   if (plugin_loader_.isClassAvailable(name)) {
     const auto plugin = plugin_loader_.createSharedInstance(name);
     plugin->initialize(name, this, time_keeper_, data_, params_);
     // register
     plugins_.push_back(plugin);
-    RCLCPP_DEBUG(this->get_logger(), "The plugin '%s' has been loaded", name.c_str());
+    RCLCPP_INFO(this->get_logger(), "The plugin '%s' has been loaded", name.c_str());
     initialized_modifiers_ = true;
   } else {
     RCLCPP_ERROR(this->get_logger(), "The plugin '%s' is not available", name.c_str());
