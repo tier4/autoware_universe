@@ -1,6 +1,6 @@
-# Longitudinal and lateral dynamics for combined MPC
+# Longitudinal and lateral dynamics (reference)
 
-This document summarizes (1) the longitudinal dynamics inferred from the PID longitudinal controller, and (2) the lateral (steering) dynamics used by `autoware_mpc_lateral_controller`. Together they define the plant assumed for a combined lateral–longitudinal MPC.
+This document summarizes (1) the longitudinal dynamics inferred from the PID longitudinal controller (used by this package’s longitudinal-only MPC), and (2) the lateral (steering) dynamics used by `autoware_mpc_lateral_controller`. Part I is the reference for the longitudinal FOPDT model in `generators/longitudinal_only_model.py`.
 
 ---
 
@@ -136,7 +136,7 @@ They are not the same: one is in the plant, one in the controller. In the loop, 
 
 ## 5. MPC design: no LPF, continuous dynamics, equivalent lag
 
-For a combined lateral + longitudinal MPC that replaces the PID:
+For the longitudinal MPC (and for a hypothetical combined lateral+longitudinal MPC):
 
 1. **No LPF after the MPC.** The MPC output (e.g. acceleration command) is sent directly to the vehicle interface. The PID's LPF was on the *error* to shape feedback; the MPC encodes dynamics in the model, so adding an LPF on the output would duplicate or distort the intended response.
 
@@ -157,7 +157,7 @@ For a combined lateral + longitudinal MPC that replaces the PID:
 
 ---
 
-## 6. Summary for longitudinal (combined MPC)
+## 6. Summary for longitudinal (MPC)
 
 1. **Longitudinal kinematics (continuous):** ṡ = v, v̇ = a.
 2. **Longitudinal actuator (continuous FOPDT):** Delay τ (from `delay_compensation_time`) and **single** first-order lag τ_equiv = τ_a + τ_lpf:
@@ -230,20 +230,20 @@ The package also provides a **dynamics** bicycle model (four states: lateral err
 
 ---
 
-## 8. Combined lateral + longitudinal summary
+## 8. Lateral + longitudinal (reference)
 
-For a **combined MPC** that replaces both the PID longitudinal and the lateral MPC:
+For reference, the separate axes used in the stack:
 
 | Axis        | State           | Input        | Main dynamics |
 |------------|------------------|--------------|-------------------------------|
 | Longitudinal | s, v, a        | u (acc cmd)  | ṡ=v, v̇=a, τ_equiv·ȧ = u(t−τ)−a |
 | Lateral    | e, θ, δ         | δ_d (steer)  | ė=v·sin(θ), θ̇=v·tan(δ)/W−κ·v, δ̇=−(δ−δ_d)/τ_steer |
 
-- **Longitudinal:** delay τ and equivalent lag τ_equiv as in Part I; no LPF on MPC output.  
-- **Lateral:** curvature κ (and v) from reference path; steering first-order lag τ_steer (e.g. `vehicle_model_steer_tau`); optional steering delay handled like longitudinal delay.  
+- **Longitudinal:** delay τ and equivalent lag τ_equiv as in Part I; used by this package’s longitudinal-only MPC.  
+- **Lateral:** curvature κ (and v) from reference path; steering first-order lag τ_steer (e.g. `vehicle_model_steer_tau`); handled by `autoware_mpc_lateral_controller`.  
 - **Coupling:** shared speed **v** (from longitudinal state or reference).
 
-This document and the code in `autoware_mpc_lateral_controller` (and the longitudinal FOPDT model in this package) provide the basis for a single combined lateral–longitudinal model and MPC formulation.
+This document and `autoware_mpc_lateral_controller` provide the background; this package implements only the longitudinal FOPDT MPC.
 
 ---
 
@@ -261,4 +261,4 @@ This package uses the **same curvature structure** as the spatial model but in *
 
 with **β = atan(lr · tan(δ) / (lf + lr))** and **κ = cos(β) · tan(δ) / (lf + lr)**.
 
-Horizon is **time Tf** [s]. See **`generators/bicycle_model_curvilinear.py`** and **`generators/mpc.py`** (combined OCP).
+Horizon is **time Tf** [s]. The longitudinal-only MPC in this package uses only Part I (FOPDT); see **`generators/longitudinal_only_model.py`** and **`generators/mpc_longitudinal_only.py`**.

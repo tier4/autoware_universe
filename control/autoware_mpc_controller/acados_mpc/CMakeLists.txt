@@ -1,4 +1,4 @@
-# acados_mpc - MPC solver using acados
+# acados_mpc - Longitudinal-only MPC solver using acados
 # Requires acados installed (e.g. at /opt/acados via ansible-playbook autoware.dev_env.setup_acados)
 # and ACADOS_SOURCE_DIR set (env or parent). Parent must find_package(acados) before add_subdirectory.
 
@@ -15,26 +15,9 @@ foreach(_check "bin/t_renderer" ".venv/bin/python3" "interfaces/acados_template"
   endif()
 endforeach()
 
-# --- Code generation (Python → C via t_renderer) ---
 get_filename_component(PKG_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 set(GENERATORS_DIR "${PKG_SOURCE_DIR}/generators")
-set(MODEL "combined_longitudinal_lateral")
 set(GEN_DIR "${GENERATORS_DIR}/c_generated_code")
-
-set(GENERATED_MPC_FILES
-  ${GEN_DIR}/acados_solver_${MODEL}.h
-  ${GEN_DIR}/acados_solver_${MODEL}.c
-  ${GEN_DIR}/acados_sim_solver_${MODEL}.h
-  ${GEN_DIR}/acados_sim_solver_${MODEL}.c
-  ${GEN_DIR}/${MODEL}_model/${MODEL}_expl_ode_fun.c
-  ${GEN_DIR}/${MODEL}_model/${MODEL}_expl_vde_adj.c
-  ${GEN_DIR}/${MODEL}_model/${MODEL}_expl_vde_forw.c
-  ${GEN_DIR}/${MODEL}_model/${MODEL}_model.h
-  ${GEN_DIR}/${MODEL}_constraints/${MODEL}_constraints.h
-  ${GEN_DIR}/${MODEL}_constraints/${MODEL}_constr_h_fun.c
-  ${GEN_DIR}/${MODEL}_constraints/${MODEL}_constr_h_fun_jac_uxt_zt.c
-)
-set_source_files_properties(${GENERATED_MPC_FILES} PROPERTIES GENERATED TRUE)
 
 set(_template_path "${ACADOS_SOURCE_DIR}/interfaces/acados_template")
 set(_env_vars
@@ -42,23 +25,37 @@ set(_env_vars
   "PYTHONPATH=$ENV{PYTHONPATH}:${_template_path}"
 )
 
+# --- Longitudinal-only MPC code generation ---
+set(LON_MODEL "longitudinal_only")
+set(LON_GENERATED_FILES
+  ${GEN_DIR}/acados_solver_${LON_MODEL}.h
+  ${GEN_DIR}/acados_solver_${LON_MODEL}.c
+  ${GEN_DIR}/acados_sim_solver_${LON_MODEL}.h
+  ${GEN_DIR}/acados_sim_solver_${LON_MODEL}.c
+  ${GEN_DIR}/${LON_MODEL}_model/${LON_MODEL}_expl_ode_fun.c
+  ${GEN_DIR}/${LON_MODEL}_model/${LON_MODEL}_expl_vde_adj.c
+  ${GEN_DIR}/${LON_MODEL}_model/${LON_MODEL}_expl_vde_forw.c
+  ${GEN_DIR}/${LON_MODEL}_model/${LON_MODEL}_model.h
+)
+set_source_files_properties(${LON_GENERATED_FILES} PROPERTIES GENERATED TRUE)
+
 add_custom_command(
-  OUTPUT ${GENERATED_MPC_FILES}
+  OUTPUT ${LON_GENERATED_FILES}
   COMMAND ${CMAKE_COMMAND} -E env ${_env_vars}
-  ${ACADOS_SOURCE_DIR}/.venv/bin/python3 mpc.py
+  ${ACADOS_SOURCE_DIR}/.venv/bin/python3 mpc_longitudinal_only.py
   WORKING_DIRECTORY ${GENERATORS_DIR}
-  DEPENDS ${GENERATORS_DIR}/mpc.py ${GENERATORS_DIR}/combined_longitudinal_lateral_model.py
-  COMMENT "Generating MPC solver code..."
+  DEPENDS ${GENERATORS_DIR}/mpc_longitudinal_only.py ${GENERATORS_DIR}/longitudinal_only_model.py
+  COMMENT "Generating longitudinal-only MPC solver code..."
   VERBATIM
 )
 
-# --- acados_interface library ---
-add_library(acados_interface SHARED
-  acados_interface.cpp
-  ${GENERATED_MPC_FILES}
+# --- acados_longitudinal_interface library (longitudinal-only OCP) ---
+add_library(acados_longitudinal_interface SHARED
+  acados_longitudinal_interface.cpp
+  ${LON_GENERATED_FILES}
 )
 
-target_include_directories(acados_interface PUBLIC
+target_include_directories(acados_longitudinal_interface PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:include>
   $<BUILD_INTERFACE:${GEN_DIR}>
@@ -69,10 +66,10 @@ target_include_directories(acados_interface PUBLIC
   ${ACADOS_SOURCE_DIR}/include/hpipm/include
 )
 
-target_link_libraries(acados_interface PRIVATE acados)
+target_link_libraries(acados_longitudinal_interface PRIVATE acados)
 
 # Suppress warnings on generated C code
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
-  set_source_files_properties(${GENERATED_MPC_FILES} PROPERTIES
+  set_source_files_properties(${LON_GENERATED_FILES} PROPERTIES
     COMPILE_OPTIONS "-Wno-all;-Wno-extra;-Wno-unused-function")
 endif()
