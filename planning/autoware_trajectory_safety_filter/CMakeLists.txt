@@ -73,7 +73,7 @@ if(BUILD_TESTING)
   # ==========================================
   # 3. Node Integration/Unit Tests
   # ==========================================
-  ament_add_gtest(test_trajectory_safety_filter_node
+  ament_add_ros_isolated_gtest(test_trajectory_safety_filter_node
     test/node/test_trajectory_safety_filter_node.cpp
   )
 
