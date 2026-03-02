@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>autoware_mpc_controller</name>
+  <version>0.1.0</version>
+  <description>Longitudinal-only MPC (Acados, FOPDT model) for trajectory_follower; optional visualization script.</description>
+
+  <maintainer email="autoware@tier4.jp">Autoware</maintainer>
+  <license>Apache 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>autoware_control_msgs</depend>
+  <depend>autoware_motion_utils</depend>
+  <depend>autoware_planning_msgs</depend>
+  <depend>autoware_utils_geometry</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>tf2</depend>
+  <depend>autoware_vehicle_msgs</depend>
+  <depend>autoware_trajectory_follower_base</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

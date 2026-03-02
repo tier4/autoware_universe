@@ -77,6 +77,7 @@ public:
 
 private:
   rclcpp::TimerBase::SharedPtr timer_control_;
+  bool enable_controller_{true};
   double timeout_thr_sec_;
   bool enable_control_cmd_horizon_pub_{false};
   boost::optional<LongitudinalOutput> longitudinal_output_{boost::none};
@@ -86,6 +87,8 @@ private:
       this);  // Diagnostic updater for publishing diagnostic data.
 
   std::shared_ptr<trajectory_follower::LongitudinalControllerBase> longitudinal_controller_;
+  /** Optional: when longitudinal_controller_mode is longitudinal_mpc, run PID for comparison. */
+  std::shared_ptr<trajectory_follower::LongitudinalControllerBase> longitudinal_controller_compare_;
   std::shared_ptr<trajectory_follower::LateralControllerBase> lateral_controller_;
 
   // Subscribers
@@ -106,6 +109,8 @@ private:
 
   // Publishers
   rclcpp::Publisher<autoware_control_msgs::msg::Control>::SharedPtr control_cmd_pub_;
+  /** When longitudinal_mpc + enable_longitudinal_pid_compare: PID output for comparison. */
+  rclcpp::Publisher<autoware_control_msgs::msg::Control>::SharedPtr control_cmd_longitudinal_pid_compare_pub_;
   rclcpp::Publisher<Float64Stamped>::SharedPtr pub_processing_time_lat_ms_;
   rclcpp::Publisher<Float64Stamped>::SharedPtr pub_processing_time_lon_ms_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
@@ -125,6 +130,7 @@ private:
   enum class LongitudinalControllerMode {
     INVALID = 0,
     PID = 1,
+    LONGITUDINAL_MPC = 2,
   };
 
   /**
