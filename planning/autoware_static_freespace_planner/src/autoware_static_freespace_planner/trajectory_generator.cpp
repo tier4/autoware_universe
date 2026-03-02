@@ -15,6 +15,8 @@ Trajectory TrajectoryGenerator::createTrajectoryForSeq(
   const PoseStamped & current_pose)
 {
   Trajectory traj;
+  traj.header.stamp = clock()->now();
+  traj.header.frame_id = current_pose.header.frame_id;
 
   for (const auto & waypoint : all_waypoints) {
     if (waypoint.seq != target_seq) {
