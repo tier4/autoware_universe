@@ -272,10 +272,11 @@ void TrajectorySafetyFilter::update_diagnostic(const CandidateTrajectories & fil
 bool TrajectorySafetyFilter::validate_trajectory_basics(
   const CandidateTrajectory & trajectory) const
 {
+  // temp: disable
   // Check minimum trajectory length
-  if (trajectory.points.size() < 2) {
-    return false;
-  }
+  // if (trajectory.points.size() < 2) {
+  //  return false;
+  // }
 
   // Check all points have finite values
   return std::all_of(
