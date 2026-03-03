@@ -92,13 +92,14 @@ void appendObjectMarker(
   marker_array.markers.push_back(marker);
 }
 
-void appendExtractedPolygonMarker(
-  MarkerArray & marker_array, const autoware_utils::Polygon2d & obj_poly, const double obj_z)
+void appendPolygonMarker(
+  MarkerArray & marker_array, const autoware_utils::Polygon2d & obj_poly, const double obj_z,
+  const std::string & marker_namespace, const std_msgs::msg::ColorRGBA & color)
 {
   auto marker = autoware_utils::create_default_marker(
-    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "extracted_polygons", marker_array.markers.size(),
+    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), marker_namespace, marker_array.markers.size(),
     visualization_msgs::msg::Marker::LINE_STRIP, autoware_utils::create_marker_scale(0.1, 0.0, 0.0),
-    autoware_utils::create_marker_color(1.0, 0.5, 0.6, 0.8));
+    color);
 
   // NOTE: obj_poly.outer() has already duplicated points to close the polygon.
   for (size_t i = 0; i < obj_poly.outer().size(); ++i) {
@@ -309,6 +310,14 @@ BehaviorModuleOutput DynamicObstacleAvoidanceModule::plan()
   // create obstacles to avoid (= extract from the drivable area)
   std::vector<DrivableAreaInfo::Obstacle> obstacles_for_drivable_area;
   for (const auto & object : target_objects_) {
+    const auto expanded_object_poly_for_debug = [&]() -> std::optional<autoware_utils::Polygon2d> {
+      if (getObjectType(object.label) != ObjectType::UNREGULATED) {
+        return std::nullopt;
+      }
+
+      return calcExpandedCurrentPoseObjectPolygon(object);
+    }();
+
     const auto obstacle_poly = [&]() {
       if (getObjectType(object.label) == ObjectType::UNREGULATED) {
         auto output = calcCurrentPoseBasedDynamicObstaclePolygon(object, ego_path_reserve_poly);
@@ -321,7 +330,14 @@ BehaviorModuleOutput DynamicObstacleAvoidanceModule::plan()
         {object.pose, obstacle_poly.value(), object.is_collision_left});
 
       appendObjectMarker(info_marker_, object);
-      appendExtractedPolygonMarker(debug_marker_, obstacle_poly.value(), object.pose.position.z);
+      if (expanded_object_poly_for_debug) {
+        appendPolygonMarker(
+          debug_marker_, expanded_object_poly_for_debug.value(), object.pose.position.z,
+          "expanded_object_polygons", autoware_utils::create_marker_color(0.2, 0.9, 0.4, 0.9));
+      }
+      appendPolygonMarker(
+        debug_marker_, obstacle_poly.value(), object.pose.position.z, "extracted_polygons",
+        autoware_utils::create_marker_color(1.0, 0.5, 0.6, 0.8));
     }
   }
   // generate drivable lanes
@@ -965,26 +981,12 @@ std::optional<autoware_utils::Polygon2d>
 DynamicObstacleAvoidanceModule::calcCurrentPoseBasedDynamicObstaclePolygon(
   const DynamicAvoidanceObject & object, const EgoPathReservePoly & ego_path_poly) const
 {
-  autoware_utils::Polygon2d obj_poly;
-  boost::geometry::append(
-    obj_poly, autoware_utils::to_footprint(
-                object.pose, object.shape.dimensions.x * 0.5, object.shape.dimensions.x * 0.5,
-                object.shape.dimensions.y * 0.5)
-                .outer());
-  boost::geometry::correct(obj_poly);
-
-  autoware_utils::MultiPolygon2d expanded_poly;
-  namespace strategy = boost::geometry::strategy::buffer;
-  boost::geometry::buffer(
-    obj_poly, expanded_poly,
-    strategy::distance_symmetric<double>(parameters_->margin_distance_around_pedestrian),
-    strategy::side_straight(), strategy::join_round(), strategy::end_flat(),
-    strategy::point_circle());
-  if (expanded_poly.empty()) return {};
+  const auto expanded_poly = calcExpandedCurrentPoseObjectPolygon(object);
+  if (!expanded_poly) return {};
 
   autoware_utils::MultiPolygon2d output_poly;
   boost::geometry::difference(
-    expanded_poly[0],
+    expanded_poly.value(),
     object.is_collision_left ? ego_path_poly.right_avoid : ego_path_poly.left_avoid, output_poly);
 
   if (output_poly.empty()) {
@@ -1003,6 +1005,32 @@ DynamicObstacleAvoidanceModule::calcCurrentPoseBasedDynamicObstaclePolygon(
   }
 
   return output_poly[0];
+}
+
+std::optional<autoware_utils::Polygon2d>
+DynamicObstacleAvoidanceModule::calcExpandedCurrentPoseObjectPolygon(
+  const DynamicAvoidanceObject & object) const
+{
+  autoware_utils::Polygon2d obj_poly;
+  boost::geometry::append(
+    obj_poly, autoware_utils::to_footprint(
+                object.pose, object.shape.dimensions.x * 0.5, object.shape.dimensions.x * 0.5,
+                object.shape.dimensions.y * 0.5)
+                .outer());
+  boost::geometry::correct(obj_poly);
+
+  autoware_utils::MultiPolygon2d expanded_poly;
+  namespace strategy = boost::geometry::strategy::buffer;
+  boost::geometry::buffer(
+    obj_poly, expanded_poly,
+    strategy::distance_symmetric<double>(parameters_->margin_distance_around_pedestrian),
+    strategy::side_straight(), strategy::join_round(), strategy::end_flat(),
+    strategy::point_circle());
+  if (expanded_poly.empty()) {
+    return std::nullopt;
+  }
+
+  return expanded_poly[0];
 }
 
 // Calculate the driving area required to ensure the safety of the own vehicle.

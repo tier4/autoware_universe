@@ -333,6 +333,8 @@ private:
     const DynamicAvoidanceObject & object) const;
   std::optional<autoware_utils::Polygon2d> calcCurrentPoseBasedDynamicObstaclePolygon(
     const DynamicAvoidanceObject & object, const EgoPathReservePoly & ego_path_poly) const;
+  std::optional<autoware_utils::Polygon2d> calcExpandedCurrentPoseObjectPolygon(
+    const DynamicAvoidanceObject & object) const;
   EgoPathReservePoly calcEgoPathReservePoly(const PathWithLaneId & ego_path) const;
 
   std::vector<DynamicObstacleAvoidanceModule::DynamicAvoidanceObject> target_objects_;
