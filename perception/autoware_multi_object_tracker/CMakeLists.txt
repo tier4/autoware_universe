@@ -62,14 +62,27 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   ${${PROJECT_NAME}_lib}
 )
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 target_link_libraries(${PROJECT_NAME}
   Eigen3::Eigen
   glog::glog
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+)
+
+ament_target_dependencies(${PROJECT_NAME}
+  agnocastlib
+)
+
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::multi_object_tracker::MultiObjectTracker"
   EXECUTABLE multi_object_tracker_node
+  EXECUTOR SingleThreadedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 ## Tests

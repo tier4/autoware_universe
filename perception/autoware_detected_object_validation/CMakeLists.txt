@@ -55,8 +55,19 @@ ament_auto_add_library(object_lanelet_filter SHARED
   lib/utils/utils.cpp
 )
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 target_link_libraries(object_lanelet_filter
   Eigen3::Eigen
+)
+
+target_include_directories(object_lanelet_filter PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+)
+
+ament_target_dependencies(object_lanelet_filter
+  agnocastlib
 )
 
 ament_auto_add_library(object_position_filter SHARED
@@ -69,9 +80,11 @@ rclcpp_components_register_node(obstacle_pointcloud_based_validator
   EXECUTABLE obstacle_pointcloud_based_validator_node
 )
 
-rclcpp_components_register_node(object_lanelet_filter
+agnocast_components_register_node(object_lanelet_filter
   PLUGIN "autoware::detected_object_validation::lanelet_filter::DetectedObjectLaneletFilterNode"
   EXECUTABLE object_lanelet_filter_node
+  EXECUTOR SingleThreadedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 rclcpp_components_register_node(object_lanelet_filter
@@ -90,13 +103,24 @@ rclcpp_components_register_node(occupancy_grid_based_validator
 )
 
 if(BUILD_TESTING)
-  ament_auto_add_gtest(detection_object_validation_tests
+  find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_lint_auto REQUIRED)
+  ament_lint_auto_find_test_dependencies()
+
+  ament_add_gtest(detection_object_validation_tests
     test/test_utils.cpp
     test/object_position_filter/test_object_position_filter.cpp
   )
-  ament_auto_add_gtest(object_lanelet_filter_tests
+  target_link_libraries(detection_object_validation_tests
+    object_position_filter
+  )
+
+  ament_add_gtest(object_lanelet_filter_tests
     test/test_utils.cpp
     test/lanelet_filter/test_lanelet_filter.cpp
+  )
+  target_link_libraries(object_lanelet_filter_tests
+    object_lanelet_filter
   )
 endif()
 

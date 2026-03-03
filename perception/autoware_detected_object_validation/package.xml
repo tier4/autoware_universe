@@ -17,6 +17,8 @@
 
   <build_depend>libopencv-dev</build_depend>
 
+  <depend>agnocastlib</depend>
+  <depend>agnocast_components</depend>
   <depend>autoware_lanelet2_extension</depend>
   <depend>autoware_map_msgs</depend>
   <depend>autoware_object_recognition_utils</depend>

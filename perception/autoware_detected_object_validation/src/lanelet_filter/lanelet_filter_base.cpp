@@ -41,6 +41,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -103,7 +104,12 @@ ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::ObjectLaneletFilterBase(
     std::bind(&ObjectLaneletFilterBase::mapCallback, this, _1));
   object_sub_ = this->create_subscription<ObjsMsgType>(
     "input/object", rclcpp::QoS{1}, std::bind(&ObjectLaneletFilterBase::objectCallback, this, _1));
-  object_pub_ = this->create_publisher<ObjsMsgType>("output/object", rclcpp::QoS{1});
+  if constexpr (std::is_same_v<ObjsMsgType, autoware_perception_msgs::msg::DetectedObjects>) {
+    agnocast_object_pub_ =
+      agnocast::create_publisher<ObjsMsgType>(this, "output/object", rclcpp::QoS{1});
+  } else {
+    object_pub_ = this->create_publisher<ObjsMsgType>("output/object", rclcpp::QoS{1});
+  }
 
   debug_publisher_ =
     std::make_unique<autoware_utils::DebugPublisher>(this, "object_lanelet_filter");
@@ -331,12 +337,6 @@ void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::objectCallback(
 {
   stop_watch_ptr_->tic("processing_time");
 
-  // Guard
-  if (object_pub_->get_subscription_count() < 1) return;
-
-  ObjsMsgType output_object_msg;
-  output_object_msg.header = input_msg->header;
-
   if (!lanelet_map_ptr_) {
     RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 3000, "No vector map received.");
     return;
@@ -349,41 +349,99 @@ void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::objectCallback(
     return;
   }
 
-  if (!transformed_objects.objects.empty()) {
-    // calculate convex hull
-    const auto convex_hull = getConvexHull(transformed_objects);
+  if constexpr (std::is_same_v<ObjsMsgType, autoware_perception_msgs::msg::DetectedObjects>) {
+    // === Agnocast publish path: write directly into loaned message ===
+    if (agnocast_object_pub_->get_subscription_count() < 1) return;
 
-    // get intersected lanelets
-    std::vector<BoxAndLanelet> intersected_lanelets_with_bbox = getIntersectedLanelets(convex_hull);
+    auto output_object_msg = agnocast_object_pub_->borrow_loaned_message();
+    output_object_msg->header = input_msg->header;
 
-    // create R-Tree with intersected_lanelets for fast search
-    bgi::rtree<BoxAndLanelet, RtreeAlgo> local_rtree;
-    for (const auto & bbox_and_lanelet : intersected_lanelets_with_bbox) {
-      local_rtree.insert(bbox_and_lanelet);
+    if (!transformed_objects.objects.empty()) {
+      const auto convex_hull = getConvexHull(transformed_objects);
+      std::vector<BoxAndLanelet> intersected_lanelets_with_bbox =
+        getIntersectedLanelets(convex_hull);
+      bgi::rtree<BoxAndLanelet, RtreeAlgo> local_rtree;
+      for (const auto & bbox_and_lanelet : intersected_lanelets_with_bbox) {
+        local_rtree.insert(bbox_and_lanelet);
+      }
+      if (filter_settings_.debug) {
+        publishDebugMarkers(input_msg->header.stamp, convex_hull, intersected_lanelets_with_bbox);
+      }
+      for (size_t index = 0; index < transformed_objects.objects.size(); ++index) {
+        const auto & transformed_object = transformed_objects.objects.at(index);
+        const auto & input_object = input_msg->objects.at(index);
+        filterObject(transformed_object, input_object, local_rtree, *output_object_msg);
+      }
     }
 
-    if (filter_settings_.debug) {
-      publishDebugMarkers(input_msg->header.stamp, convex_hull, intersected_lanelets_with_bbox);
+    // Agnocast latency measurement
+    {
+      struct timespec ts;
+      clock_gettime(CLOCK_MONOTONIC, &ts);
+      int64_t now_ns = static_cast<int64_t>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+      publish_time_buffer_.push_back(now_ns);
     }
-    // filtering process
-    for (size_t index = 0; index < transformed_objects.objects.size(); ++index) {
-      const auto & transformed_object = transformed_objects.objects.at(index);
-      const auto & input_object = input_msg->objects.at(index);
-      filterObject(transformed_object, input_object, local_rtree, output_object_msg);
+    const auto output_stamp = output_object_msg->header.stamp;
+    agnocast_object_pub_->publish(std::move(output_object_msg));
+    if (publish_time_buffer_.size() >= 240) {
+      std::ofstream ofs(
+        "/tmp/agnocast_object_lanelet_filter_publish_timestamps.txt", std::ios::app);
+      for (size_t i = 0; i < publish_time_buffer_.size(); ++i) {
+        ofs << publish_time_buffer_[i] << "\n";
+      }
+      ofs.close();
+      RCLCPP_INFO(
+        get_logger(),
+        "[Agnocast] wrote 240 publish timestamps to "
+        "/tmp/agnocast_object_lanelet_filter_publish_timestamps.txt");
+      publish_time_buffer_.clear();
     }
+
+    const double pipeline_latency =
+      std::chrono::duration<double, std::milli>(
+        std::chrono::nanoseconds(
+          (this->get_clock()->now() - output_stamp).nanoseconds()))
+        .count();
+    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/pipeline_latency_ms", pipeline_latency);
+  } else {
+    // === rclcpp publish path ===
+    if (object_pub_->get_subscription_count() < 1) return;
+
+    ObjsMsgType output_object_msg;
+    output_object_msg.header = input_msg->header;
+
+    if (!transformed_objects.objects.empty()) {
+      const auto convex_hull = getConvexHull(transformed_objects);
+      std::vector<BoxAndLanelet> intersected_lanelets_with_bbox =
+        getIntersectedLanelets(convex_hull);
+      bgi::rtree<BoxAndLanelet, RtreeAlgo> local_rtree;
+      for (const auto & bbox_and_lanelet : intersected_lanelets_with_bbox) {
+        local_rtree.insert(bbox_and_lanelet);
+      }
+      if (filter_settings_.debug) {
+        publishDebugMarkers(input_msg->header.stamp, convex_hull, intersected_lanelets_with_bbox);
+      }
+      for (size_t index = 0; index < transformed_objects.objects.size(); ++index) {
+        const auto & transformed_object = transformed_objects.objects.at(index);
+        const auto & input_object = input_msg->objects.at(index);
+        filterObject(transformed_object, input_object, local_rtree, output_object_msg);
+      }
+    }
+
+    const auto output_stamp = output_object_msg.header.stamp;
+    object_pub_->publish(output_object_msg);
+    published_time_publisher_->publish_if_subscribed(object_pub_, output_stamp);
+
+    const double pipeline_latency =
+      std::chrono::duration<double, std::milli>(
+        std::chrono::nanoseconds(
+          (this->get_clock()->now() - output_stamp).nanoseconds()))
+        .count();
+    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/pipeline_latency_ms", pipeline_latency);
   }
 
-  object_pub_->publish(output_object_msg);
-  published_time_publisher_->publish_if_subscribed(object_pub_, output_object_msg.header.stamp);
-
-  // Publish debug info
-  const double pipeline_latency =
-    std::chrono::duration<double, std::milli>(
-      std::chrono::nanoseconds(
-        (this->get_clock()->now() - output_object_msg.header.stamp).nanoseconds()))
-      .count();
-  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "debug/pipeline_latency_ms", pipeline_latency);
   debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "debug/processing_time_ms", stop_watch_ptr_->toc("processing_time", true));
 }

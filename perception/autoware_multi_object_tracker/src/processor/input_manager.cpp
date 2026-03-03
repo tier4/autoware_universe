@@ -49,9 +49,42 @@ InputStream::InputStream(
 }
 
 void InputStream::onMessage(
+  const agnocast::ipc_shared_ptr<autoware_perception_msgs::msg::DetectedObjects> & msg)
+{
+  // Agnocast latency measurement
+  ++subscribe_callback_count_;
+  {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    int64_t now_ns = static_cast<int64_t>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+    subscribe_time_buffer_.push_back(now_ns);
+  }
+  if (subscribe_time_buffer_.size() >= 100) {
+    std::ofstream ofs(
+      "/tmp/agnocast_multi_object_tracker_subscribe_timestamps.txt", std::ios::app);
+    for (size_t i = 0; i < subscribe_time_buffer_.size(); ++i) {
+      ofs << subscribe_time_buffer_[i] << "\n";
+    }
+    ofs.close();
+    RCLCPP_INFO(
+      node_.get_logger(),
+      "[Agnocast] wrote 100 subscribe timestamps to "
+      "/tmp/agnocast_multi_object_tracker_subscribe_timestamps.txt");
+    subscribe_time_buffer_.clear();
+  }
+
+  processMessage(*msg);
+}
+
+void InputStream::onMessageRclcpp(
   const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr msg)
 {
-  const autoware_perception_msgs::msg::DetectedObjects & objects = *msg;
+  processMessage(*msg);
+}
+
+void InputStream::processMessage(
+  const autoware_perception_msgs::msg::DetectedObjects & objects)
+{
   const rclcpp::Time timestamp = objects.header.stamp;
 
   types::DynamicObjectList dynamic_objects = types::toDynamicObjectList(objects, channel_.index);
@@ -249,7 +282,8 @@ void InputManager::init(const std::vector<types::InputChannel> & input_channels)
   }
 
   // Initialize input streams
-  sub_objects_array_.resize(input_size_);
+  agnocast_sub_objects_array_.resize(input_size_);
+  rclcpp_sub_objects_array_.resize(input_size_);
   bool is_any_spawn_enabled = false;
   for (size_t i = 0; i < input_size_; i++) {
     InputStream input_stream(node_, input_channels[i], odometry_);
@@ -259,14 +293,29 @@ void InputManager::init(const std::vector<types::InputChannel> & input_channels)
     is_any_spawn_enabled |= input_streams_.at(i)->isSpawnEnabled();
 
     // Set subscription
+    const std::string & topic = input_channels[i].input_topic;
+    const bool use_agnocast =
+      (topic == "/perception/object_recognition/detection/objects");
     RCLCPP_INFO(
-      node_.get_logger(), "InputManager::init Initializing %s input stream from %s",
-      input_channels[i].long_name.c_str(), input_channels[i].input_topic.c_str());
-    std::function<void(const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr msg)>
-      func = std::bind(&InputStream::onMessage, input_streams_.at(i), std::placeholders::_1);
-    sub_objects_array_.at(i) =
-      node_.create_subscription<autoware_perception_msgs::msg::DetectedObjects>(
-        input_channels[i].input_topic, rclcpp::QoS{1}, func);
+      node_.get_logger(), "InputManager::init Initializing %s input stream from %s (agnocast: %s)",
+      input_channels[i].long_name.c_str(), topic.c_str(),
+      use_agnocast ? "true" : "false");
+
+    if (use_agnocast) {
+      std::function<void(
+        const agnocast::ipc_shared_ptr<autoware_perception_msgs::msg::DetectedObjects> &)>
+        func = std::bind(&InputStream::onMessage, input_streams_.at(i), std::placeholders::_1);
+      agnocast_sub_objects_array_.at(i) =
+        agnocast::create_subscription<autoware_perception_msgs::msg::DetectedObjects>(
+          &node_, topic, rclcpp::QoS{1}, func);
+    } else {
+      std::function<void(
+        const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr)>
+        func = std::bind(&InputStream::onMessageRclcpp, input_streams_.at(i), std::placeholders::_1);
+      rclcpp_sub_objects_array_.at(i) =
+        node_.create_subscription<autoware_perception_msgs::msg::DetectedObjects>(
+          topic, rclcpp::QoS{1}, func);
+    }
   }
 
   // Check if any spawn enabled input streams

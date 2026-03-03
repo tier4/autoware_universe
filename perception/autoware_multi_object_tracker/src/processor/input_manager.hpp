@@ -19,9 +19,13 @@
 #include "autoware/multi_object_tracker/odometry.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include <agnocast/agnocast.hpp>
+
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
 
+#include <cstdint>
 #include <deque>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <string>
@@ -44,7 +48,10 @@ public:
     func_trigger_ = func_trigger;
   }
 
-  void onMessage(const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr msg);
+  void onMessage(
+    const agnocast::ipc_shared_ptr<autoware_perception_msgs::msg::DetectedObjects> & msg);
+  void onMessageRclcpp(
+    const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr msg);
   void updateTimingStatus(const rclcpp::Time & now, const rclcpp::Time & objects_time);
 
   bool isTimeInitialized() const { return initial_count_ > 0; }
@@ -83,6 +90,12 @@ private:
 
   rclcpp::Time latest_measurement_time_;
   rclcpp::Time latest_message_time_;
+
+  void processMessage(const autoware_perception_msgs::msg::DetectedObjects & objects);
+
+  // Agnocast latency measurement
+  std::vector<int64_t> subscribe_time_buffer_;
+  size_t subscribe_callback_count_{0};
 };
 
 class InputManager
@@ -100,8 +113,10 @@ private:
   rclcpp::Node & node_;
   std::shared_ptr<Odometry> odometry_;
 
+  std::vector<agnocast::Subscription<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr>
+    agnocast_sub_objects_array_{};
   std::vector<rclcpp::Subscription<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr>
-    sub_objects_array_{};
+    rclcpp_sub_objects_array_{};
 
   bool is_initialized_{false};
   rclcpp::Time latest_exported_object_time_;

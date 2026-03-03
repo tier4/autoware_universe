@@ -22,6 +22,7 @@
 #include "autoware_utils/ros/published_time_publisher.hpp"
 #include "autoware_utils/system/stop_watch.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_map_msgs/msg/lanelet_map_bin.hpp"
@@ -34,6 +35,8 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <cstdint>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <string>
@@ -75,6 +78,7 @@ private:
   void publishDebugMarkers(
     rclcpp::Time stamp, const LinearRing2d & hull, const std::vector<BoxAndLanelet> & lanelets);
 
+  typename agnocast::Publisher<ObjsMsgType>::SharedPtr agnocast_object_pub_;
   typename rclcpp::Publisher<ObjsMsgType>::SharedPtr object_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr viz_pub_;
   rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr map_sub_;
@@ -127,6 +131,9 @@ private:
 
   lanelet::BasicPolygon2d getPolygon(const lanelet::ConstLanelet & lanelet);
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+
+  // Agnocast latency measurement
+  mutable std::vector<int64_t> publish_time_buffer_;
 };
 
 }  // namespace lanelet_filter
