@@ -2,11 +2,13 @@
 <launch>
   <arg name="input_topic" default="imu_raw"/>
   <arg name="output_topic" default="imu_data"/>
+  <arg name="is_offline_calibration" default="false"/>
   <arg name="param_file" default="$(find-pkg-share autoware_imu_corrector)/config/imu_corrector.param.yaml"/>
 
   <node pkg="autoware_imu_corrector" exec="imu_corrector_node" output="both">
     <remap from="input" to="$(var input_topic)"/>
     <remap from="output" to="$(var output_topic)"/>
+    <param name="is_offline_calibration" value="$(var is_offline_calibration)"/>
     <param from="$(var param_file)"/>
   </node>
 </launch>
