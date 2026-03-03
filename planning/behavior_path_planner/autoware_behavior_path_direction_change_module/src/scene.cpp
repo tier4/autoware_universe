@@ -284,7 +284,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
 {
   // Note: updateData() is already called by SceneModuleInterface::run() before plan()
   BehaviorModuleOutput output;
-//  output.reference_path = reference_path_;
+  //  output.reference_path = reference_path_;
 
   // Copy reference_path_ to local variable for stability
   const auto current_reference_path = reference_path_;
