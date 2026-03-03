@@ -62,7 +62,7 @@ public:
 
   [[nodiscard]] std::string get_name() const { return name_; }
 
-  [[nodiscard]] virtual bool is_debug_mode() const { return false; }
+  [[nodiscard]] virtual bool is_debug_mode() const { return true; }
 
 protected:
   std::string name_;
