@@ -274,8 +274,8 @@ void DynamicObstacleAvoidanceModule::updateData()
   target_objects_manager_.initialize();
 
   // 1. Rough filtering of target objects with small computing cost
-  registerRegulatedObjects(prev_objects);
-  registerUnregulatedObjects(prev_objects);
+  registerRegulatedObjects();
+  registerUnregulatedObjects();
 
   target_objects_manager_.finalize();
 
@@ -386,8 +386,7 @@ ObjectType DynamicObstacleAvoidanceModule::getObjectType(const uint8_t label) co
   return ObjectType::OUT_OF_SCOPE;
 }
 
-void DynamicObstacleAvoidanceModule::registerRegulatedObjects(
-  const std::vector<DynamicAvoidanceObject> & prev_objects)
+void DynamicObstacleAvoidanceModule::registerRegulatedObjects()
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -401,7 +400,6 @@ void DynamicObstacleAvoidanceModule::registerRegulatedObjects(
     const double obj_vel_norm = std::hypot(
       predicted_object.kinematics.initial_twist_with_covariance.twist.linear.x,
       predicted_object.kinematics.initial_twist_with_covariance.twist.linear.y);
-    const auto prev_object = getObstacleFromUuid(prev_objects, obj_uuid);
     const size_t obj_seg_idx =
       autoware::motion_utils::findNearestSegmentIndex(input_points, obj_pose.position);
     const size_t obj_idx =
@@ -427,47 +425,22 @@ void DynamicObstacleAvoidanceModule::registerRegulatedObjects(
       continue;
     }
 
-    // 1.f. calculate the object is on ego's path or not
-    const bool is_object_on_ego_path =
-      obj_dist_to_path <
-      planner_data_->parameters.vehicle_width / 2.0 + parameters_->min_obj_lat_offset_to_ego_path;
-
-    // 1.g. calculate latest time inside ego's path
-    const auto latest_time_inside_ego_path = [&]() -> std::optional<rclcpp::Time> {
-      if (!prev_object || !prev_object->latest_time_inside_ego_path) {
-        if (is_object_on_ego_path) {
-          return clock_->now();
-        }
-        return std::nullopt;
-      }
-      if (is_object_on_ego_path) {
-        return clock_->now();
-      }
-      return *prev_object->latest_time_inside_ego_path;
-    }();
-
-    const auto target_object =
-      DynamicAvoidanceObject(predicted_object, is_object_on_ego_path, latest_time_inside_ego_path);
+    const auto target_object = DynamicAvoidanceObject(predicted_object);
     target_objects_manager_.updateObject(obj_uuid, target_object);
   }
 }
 
-void DynamicObstacleAvoidanceModule::registerUnregulatedObjects(
-  const std::vector<DynamicAvoidanceObject> & prev_objects)
+void DynamicObstacleAvoidanceModule::registerUnregulatedObjects()
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  const auto input_path = getPreviousModuleOutput().path;
-  const auto input_points = toGeometryPoints(input_path.points);  // for efficient computation
   const auto & predicted_objects = planner_data_->dynamic_object->objects;
 
   for (const auto & predicted_object : predicted_objects) {
     const auto obj_uuid = autoware_utils::to_hex_string(predicted_object.object_id);
-    const auto & obj_pose = predicted_object.kinematics.initial_pose_with_covariance.pose;
     const double obj_vel_norm = std::hypot(
       predicted_object.kinematics.initial_twist_with_covariance.twist.linear.x,
       predicted_object.kinematics.initial_twist_with_covariance.twist.linear.y);
-    const auto prev_object = getObstacleFromUuid(prev_objects, obj_uuid);
 
     // 1.a. Check if the obstacle is labeled as pedestrians, bicycle or similar.
     if (getObjectType(predicted_object.classification.front().label) != ObjectType::UNREGULATED) {
@@ -478,33 +451,8 @@ void DynamicObstacleAvoidanceModule::registerUnregulatedObjects(
     if (obj_vel_norm > parameters_->max_stopped_object_vel) {
       continue;
     }
-    // Blocks for compatibility with existing code
-    //  1.e. check if object lateral distance to ego's path is small enough
-    //  1.f. calculate the object is on ego's path or not
-
-    const double dist_obj_center_to_path =
-      std::abs(autoware::motion_utils::calcLateralOffset(input_points, obj_pose.position));
-    const bool is_object_on_ego_path =
-      dist_obj_center_to_path <
-      planner_data_->parameters.vehicle_width / 2.0 + parameters_->min_obj_lat_offset_to_ego_path;
-
-    // 1.g. calculate last time inside ego's path
-    const auto latest_time_inside_ego_path = [&]() -> std::optional<rclcpp::Time> {
-      if (!prev_object || !prev_object->latest_time_inside_ego_path) {
-        if (is_object_on_ego_path) {
-          return clock_->now();
-        }
-        return std::nullopt;
-      }
-      if (is_object_on_ego_path) {
-        return clock_->now();
-      }
-      return *prev_object->latest_time_inside_ego_path;
-    }();
-
     // register the object
-    const auto target_object =
-      DynamicAvoidanceObject(predicted_object, is_object_on_ego_path, latest_time_inside_ego_path);
+    const auto target_object = DynamicAvoidanceObject(predicted_object);
     target_objects_manager_.updateObject(obj_uuid, target_object);
   }
 }
@@ -580,7 +528,7 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstRegulatedObje
 
     const bool should_be_avoided = true;
     target_objects_manager_.updateObjectVariables(
-      obj_uuid, lon_offset_to_avoid, *lat_offset_to_avoid, is_collision_left, should_be_avoided,
+      obj_uuid, lon_offset_to_avoid, lat_offset_to_avoid, is_collision_left, should_be_avoided,
       ref_points_for_obj_poly);
   }
 }
@@ -631,8 +579,7 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstUnregulatedOb
       continue;
     }
 
-    // 2.h. calculate longitudinal and lateral offset to avoid to generate object polygon by
-    // "ego_path_base"
+    // 2.h. calculate lateral offset to avoid for target selection and side decision.
     const auto lat_offset_to_avoid = calcMinMaxLateralOffsetToAvoidUnregulatedObject(
       ref_points_for_obj_poly, getObstacleFromUuid(prev_objects, obj_uuid), object);
     if (!lat_offset_to_avoid) {
@@ -645,11 +592,10 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstUnregulatedOb
     }
 
     const bool is_collision_left = (lat_offset_to_avoid.value().max_value > 0.0);
-    const auto lon_offset_to_avoid = MinMaxValue{0.0, 1.0};  // not used. dummy value
 
     const bool should_be_avoided = true;
     target_objects_manager_.updateObjectVariables(
-      obj_uuid, lon_offset_to_avoid, *lat_offset_to_avoid, is_collision_left, should_be_avoided,
+      obj_uuid, std::nullopt, lat_offset_to_avoid, is_collision_left, should_be_avoided,
       ref_points_for_obj_poly);
   }
 }

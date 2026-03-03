@@ -2,34 +2,33 @@
   ros__parameters:
     dynamic_avoidance:
       common:
-        enable_debug_info: false
-        use_hatched_road_markings: true
+        enable_debug_info: false # Enable verbose debug logs for object filtering and polygon generation.
+        use_hatched_road_markings: true # Keep hatched road markings available in drivable area output handling.
 
       # avoidance is performed for the object type with true
       target_object:
-        car: true
-        truck: true
-        bus: true
-        trailer: true
-        unknown: false
-        bicycle: true
-        motorcycle: true
-        pedestrian: true
+        car: true # Treat CAR as avoidance target.
+        truck: true # Treat TRUCK as avoidance target.
+        bus: true # Treat BUS as avoidance target.
+        trailer: true # Treat TRAILER as avoidance target.
+        unknown: false # Treat UNKNOWN as avoidance target (handled as unregulated object).
+        bicycle: true # Treat BICYCLE as avoidance target (handled as unregulated object).
+        motorcycle: true # Treat MOTORCYCLE as avoidance target.
+        pedestrian: true # Treat PEDESTRIAN as avoidance target (handled as unregulated object).
 
-        successive_num_to_entry_dynamic_avoidance_condition: 5
-        successive_num_to_exit_dynamic_avoidance_condition: 1
+        successive_num_to_entry_dynamic_avoidance_condition: 5 # Consecutive detection count required to activate an object as valid target.
+        successive_num_to_exit_dynamic_avoidance_condition: 1 # Counter threshold to keep an object valid; below this value the object is removed.
 
-        min_obj_lat_offset_to_ego_path: 0.0 # [m]
-        max_obj_lat_offset_to_ego_path: 1.0 # [m]
+        max_obj_lat_offset_to_ego_path: 1.0 # [m] Maximum lateral distance from ego path to consider regulated objects.
 
         front_object:
-          max_ego_path_lat_cover_ratio: 0.3  # [-] The object will be ignored if the ratio of the object covering the ego's path is higher than this value.
+          max_ego_path_lat_cover_ratio: 0.3 # [-] Ignore regulated object when its lateral overlap with ego path exceeds this ratio.
 
         stopped_object:
-          max_object_vel: 0.5 # [m/s] The object will be determined as stopped if the velocity is smaller than this value.
+          max_object_vel: 0.5 # [m/s] Maximum speed magnitude considered as stopped/low-speed target in this module.
 
       drivable_area_generation:
-        lat_offset_from_obstacle: 1.0 # [m]
-        margin_distance_around_pedestrian: 2.0 # [m]
-        max_lat_offset_to_avoid: 0.5 # [m]
-        lpf_gain_for_lat_avoid_to_offset: 0.9 # [-]
+        lat_offset_from_obstacle: 1.0 # [m] Base lateral clearance added around obstacle occupancy for lateral bounds.
+        margin_distance_around_pedestrian: 2.0 # [m] Isotropic buffer for unregulated-object (e.g., pedestrian) final clipping polygon.
+        max_lat_offset_to_avoid: 0.5 # [m] Maximum lateral clipping amount allowed on the ego side.
+        lpf_gain_for_lat_avoid_to_offset: 0.9 # [-] Low-pass filter gain for stabilizing near-side lateral bound between frames.

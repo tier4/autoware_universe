@@ -98,7 +98,6 @@ struct DynamicAvoidanceParameters
   int successive_num_to_entry_dynamic_avoidance_condition{0};
   int successive_num_to_exit_dynamic_avoidance_condition{0};
 
-  double min_obj_lat_offset_to_ego_path{0.0};
   double max_obj_lat_offset_to_ego_path{0.0};
 
   double max_front_object_ego_path_lat_cover_ratio{0.0};
@@ -121,15 +120,11 @@ public:
 
   struct DynamicAvoidanceObject
   {
-    DynamicAvoidanceObject(
-      const PredictedObject & predicted_object, const bool arg_is_object_on_ego_path,
-      const std::optional<rclcpp::Time> & arg_latest_time_inside_ego_path)
+    explicit DynamicAvoidanceObject(const PredictedObject & predicted_object)
     : uuid(autoware_utils::to_hex_string(predicted_object.object_id)),
       label(predicted_object.classification.front().label),
       pose(predicted_object.kinematics.initial_pose_with_covariance.pose),
-      shape(predicted_object.shape),
-      is_object_on_ego_path(arg_is_object_on_ego_path),
-      latest_time_inside_ego_path(arg_latest_time_inside_ego_path)
+      shape(predicted_object.shape)
     {
     }
 
@@ -137,8 +132,6 @@ public:
     uint8_t label{};
     geometry_msgs::msg::Pose pose{};
     autoware_perception_msgs::msg::Shape shape;
-    bool is_object_on_ego_path{false};
-    std::optional<rclcpp::Time> latest_time_inside_ego_path{std::nullopt};
 
     // NOTE: Previous values of the following are used for low-pass filtering.
     //       Therefore, they has to be initialized as nullopt.
@@ -150,8 +143,9 @@ public:
 
     // add additional information (not update to the latest data)
     void update(
-      const MinMaxValue & arg_lon_offset_to_avoid, const MinMaxValue & arg_lat_offset_to_avoid,
-      const bool arg_is_collision_left, const bool arg_should_be_avoided,
+      const std::optional<MinMaxValue> & arg_lon_offset_to_avoid,
+      const std::optional<MinMaxValue> & arg_lat_offset_to_avoid, const bool arg_is_collision_left,
+      const bool arg_should_be_avoided,
       const std::vector<geometry_msgs::msg::Pose> & arg_ref_points_for_obj_poly)
     {
       lon_offset_to_avoid = arg_lon_offset_to_avoid;
@@ -248,8 +242,8 @@ public:
       return valid_objects;
     }
     void updateObjectVariables(
-      const std::string & uuid, const MinMaxValue & lon_offset_to_avoid,
-      const MinMaxValue & lat_offset_to_avoid, const bool is_collision_left,
+      const std::string & uuid, const std::optional<MinMaxValue> & lon_offset_to_avoid,
+      const std::optional<MinMaxValue> & lat_offset_to_avoid, const bool is_collision_left,
       const bool should_be_avoided,
       const std::vector<geometry_msgs::msg::Pose> & ref_points_for_obj_poly)
     {
@@ -312,8 +306,8 @@ private:
   bool canTransitFailureState() override { return false; }
 
   ObjectType getObjectType(const uint8_t label) const;
-  void registerRegulatedObjects(const std::vector<DynamicAvoidanceObject> & prev_objects);
-  void registerUnregulatedObjects(const std::vector<DynamicAvoidanceObject> & prev_objects);
+  void registerRegulatedObjects();
+  void registerUnregulatedObjects();
   void determineWhetherToAvoidAgainstRegulatedObjects(
     const std::vector<DynamicAvoidanceObject> & prev_objects);
   void determineWhetherToAvoidAgainstUnregulatedObjects(

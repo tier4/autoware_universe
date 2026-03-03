@@ -39,7 +39,7 @@ For each perceived object:
 
 - Check object class against target class flags.
 - Check speed threshold with `target_object.stopped_object.max_object_vel`.
-- Check lateral proximity to the ego path using `min_obj_lat_offset_to_ego_path` and `max_obj_lat_offset_to_ego_path`.
+- Check lateral proximity to the ego path using `max_obj_lat_offset_to_ego_path`.
 
 Objects that pass these checks are considered avoidance candidates.
 
@@ -102,7 +102,6 @@ All parameters are under `dynamic_avoidance`.
 | `target_object.pedestrian`                                          | `[-]`   | `bool`   | Avoid pedestrians                                               | `true`  |
 | `target_object.successive_num_to_entry_dynamic_avoidance_condition` | `[-]`   | `int`    | Consecutive count to enter valid target state                   | `5`     |
 | `target_object.successive_num_to_exit_dynamic_avoidance_condition`  | `[-]`   | `int`    | Consecutive count threshold to remove valid target state        | `1`     |
-| `target_object.min_obj_lat_offset_to_ego_path`                      | `[m]`   | `double` | Minimum lateral overlap margin to treat object as on ego path   | `0.0`   |
 | `target_object.max_obj_lat_offset_to_ego_path`                      | `[m]`   | `double` | Maximum lateral distance from ego path to consider object       | `1.0`   |
 | `target_object.front_object.max_ego_path_lat_cover_ratio`           | `[-]`   | `double` | Ignore object if it laterally covers too much of ego path width | `0.3`   |
 | `target_object.stopped_object.max_object_vel`                       | `[m/s]` | `double` | Maximum speed treated as stopped/low-speed target               | `0.5`   |

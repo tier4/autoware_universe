@@ -52,8 +52,6 @@ void DynamicObstacleAvoidanceModuleManager::init(rclcpp::Node * node)
     p.successive_num_to_exit_dynamic_avoidance_condition =
       node->declare_parameter<int>(ns + "successive_num_to_exit_dynamic_avoidance_condition");
 
-    p.min_obj_lat_offset_to_ego_path =
-      node->declare_parameter<double>(ns + "min_obj_lat_offset_to_ego_path");
     p.max_obj_lat_offset_to_ego_path =
       node->declare_parameter<double>(ns + "max_obj_lat_offset_to_ego_path");
     p.max_front_object_ego_path_lat_cover_ratio =
@@ -107,8 +105,6 @@ void DynamicObstacleAvoidanceModuleManager::updateModuleParams(
       parameters, ns + "successive_num_to_exit_dynamic_avoidance_condition",
       p->successive_num_to_exit_dynamic_avoidance_condition);
 
-    update_param<double>(
-      parameters, ns + "min_obj_lat_offset_to_ego_path", p->min_obj_lat_offset_to_ego_path);
     update_param<double>(
       parameters, ns + "max_obj_lat_offset_to_ego_path", p->max_obj_lat_offset_to_ego_path);
     update_param<double>(
