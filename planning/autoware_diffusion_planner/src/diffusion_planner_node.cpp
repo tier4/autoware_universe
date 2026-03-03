@@ -117,6 +117,7 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<double>("turn_indicator_hold_duration", 0.0);
   params_.shift_x = this->declare_parameter<bool>("shift_x", false);
   params_.delay_step = this->declare_parameter<int64_t>("delay_step", 0);
+  params_.use_time_interpolation = this->declare_parameter<bool>("use_time_interpolation", false);
 
   // debug params
   debug_params_.publish_debug_map =
@@ -164,6 +165,7 @@ SetParametersResult DiffusionPlanner::on_parameter(
       parameters, "turn_indicator_hold_duration", temp_params.turn_indicator_hold_duration);
     update_param<bool>(parameters, "shift_x", temp_params.shift_x);
     update_param<int64_t>(parameters, "delay_step", temp_params.delay_step);
+    update_param<bool>(parameters, "use_time_interpolation", temp_params.use_time_interpolation);
     const bool args_path_changed = temp_params.args_path != previous_args_path;
     const bool model_path_changed = temp_params.model_path != previous_model_path;
     const bool batch_size_changed = temp_params.batch_size != previous_batch_size;

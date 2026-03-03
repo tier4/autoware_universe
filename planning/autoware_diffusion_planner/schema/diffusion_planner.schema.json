@@ -105,6 +105,11 @@
           "minimum": 0,
           "description": "Input delay step for inference"
         },
+        "use_time_interpolation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to interpolate ego past trajectory at regular time intervals"
+        },
         "debug_params": {
           "type": "object",
           "properties": {
