@@ -76,7 +76,7 @@ void logDirectionChangeDebugInfo(
   const double ego_yaw_deg = ego_yaw * 180.0 / M_PI;
   ss << "  x=" << ego_x << ", y=" << ego_y << ", yaw=" << ego_yaw_deg << " deg\n";
 
-  RCLCPP_DEBUG_STREAM(logger, ss.str());
+  RCLCPP_INFO_STREAM(logger, ss.str());
 }
 }  // namespace
 
@@ -284,7 +284,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
 {
   // Note: updateData() is already called by SceneModuleInterface::run() before plan()
   BehaviorModuleOutput output;
-  output.reference_path = reference_path_;
+//  output.reference_path = reference_path_;
 
   // Copy reference_path_ to local variable for stability
   const auto current_reference_path = reference_path_;
@@ -293,7 +293,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
   cusp_point_indices_ =
     detectCuspPoints(current_reference_path, parameters_->cusp_detection_angle_threshold_deg);
 
-  RCLCPP_DEBUG_EXPRESSION(
+  RCLCPP_INFO_EXPRESSION(
     getLogger(), parameters_->print_debug_info, "plan(): path_points=%zu, cusp_points=%zu",
     reference_path_.points.size(), cusp_point_indices_.size());
   if (!cusp_point_indices_.empty() && parameters_->print_debug_info) {
@@ -427,7 +427,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         };
         const double vehicle_velocity =
           std::abs(planner_data_->self_odometry->twist.twist.linear.x);
-        RCLCPP_DEBUG_EXPRESSION(
+        RCLCPP_INFO_EXPRESSION(
           getLogger(), parameters_->print_debug_info,
           "state=%s, ego_nearest_idx=%zu, c_start=%zu, c_end=%zu, distance_to_cusp=%.2f, "
           "vehicle_velocity=%.2f m/s",
@@ -522,7 +522,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         }
 
         if (new_state != current_segment_state_) {
-          RCLCPP_DEBUG(
+          RCLCPP_INFO(
             getLogger(), "State transition: %s -> %s, segment_index=%zu",
             stateToString(current_segment_state_), stateToString(new_state),
             current_segment_index_);
