@@ -70,11 +70,11 @@ void logDirectionChangeDebugInfo(
   print_path("Output path (DirectionChange output)", output_path);
 
   ss << "[DirectionChange] Ego state:\n";
-  const double ex = ego_pose.position.x;
-  const double ey = ego_pose.position.y;
-  const double eyaw = tf2::getYaw(ego_pose.orientation);
-  const double eyaw_deg = eyaw * 180.0 / M_PI;
-  ss << "  x=" << ex << ", y=" << ey << ", yaw=" << eyaw_deg << " deg\n";
+  const double ego_x = ego_pose.position.x;
+  const double ego_y = ego_pose.position.y;
+  const double ego_yaw = tf2::getYaw(ego_pose.orientation);
+  const double ego_yaw_deg = ego_yaw * 180.0 / M_PI;
+  ss << "  x=" << ego_x << ", y=" << ego_y << ", yaw=" << ego_yaw_deg << " deg\n";
 
   RCLCPP_DEBUG_STREAM(logger, ss.str());
 }
