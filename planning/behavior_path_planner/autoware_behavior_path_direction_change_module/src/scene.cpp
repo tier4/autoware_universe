@@ -110,6 +110,7 @@ void DirectionChangeModule::initVariables()
   reference_path_ = PathWithLaneId();
   modified_path_ = PathWithLaneId();
   cusp_point_indices_.clear();
+  previous_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
   current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
   current_segment_index_ = 0;
   odometry_buffer_direction_switch_.clear();
@@ -308,41 +309,31 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     RCLCPP_DEBUG_STREAM(getLogger(), ss.str());
   }
 
-  // ----- 3. State transition -----
+  // Segment bounds and ego-related values for state transition (used in Section 3).
+  // When cusps exist: segment bounds, nearest index, distance_to_cusp, vehicle_velocity, goal info.
   size_t c_start = 0;
   size_t c_end =
     current_reference_path.points.empty() ? 0 : current_reference_path.points.size() - 1;
+  bool is_last_segment = false;
+  double distance_to_cusp = 0.0;
+  double vehicle_velocity = 0.0;
+  bool found_nearest = false;
+  double distance_to_goal = std::numeric_limits<double>::max();
+  bool goal_available = false;
 
   if (cusp_point_indices_.empty()) {
-    // No cusps: treat full path as single segment; no transition (maintain state or FORWARD)
-    // No cusps detected in current reference_path
-    // IMPORTANT: If we're already in reverse states, maintain that state
-    // This prevents oscillation when cusp detection becomes unstable after passing cusp
-    if (
-      current_segment_state_ == PathSegmentState::AT_CUSP ||
-      current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING) {
-      RCLCPP_DEBUG(
-        getLogger(), "No cusp detected but already in reverse state, maintaining backward path");
-    } else {
-      // Not in backward state yet - return full path as forward segment
-      RCLCPP_DEBUG(getLogger(), "No cusp points detected, returning full path as forward segment");
-      current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
-    }
-    current_segment_index_ = 0;
     has_valid_cusp_ = false;
   } else {
-    // Cusps present: compute segment bounds and run state machine
+    // Cusps present: compute segment bounds, ego nearest, distance to cusp, etc.
     const size_t num_segments = cusp_point_indices_.size() + 1u;
     if (current_segment_index_ >= num_segments) {
       current_segment_index_ = num_segments - 1u;
     }
-    auto segmentBounds = [&](size_t seg_idx, size_t & start, size_t & end) {
-      start = (seg_idx == 0u) ? 0u : cusp_point_indices_[seg_idx - 1u];
-      end = (seg_idx < cusp_point_indices_.size()) ? cusp_point_indices_[seg_idx]
-                                                   : (current_reference_path.points.size() - 1u);
-    };
-    segmentBounds(current_segment_index_, c_start, c_end);
-    const bool is_last_segment = (current_segment_index_ >= cusp_point_indices_.size());
+    c_start = (current_segment_index_ == 0u) ? 0u : cusp_point_indices_[current_segment_index_ - 1u];
+    c_end = (current_segment_index_ < cusp_point_indices_.size())
+              ? cusp_point_indices_[current_segment_index_]
+              : (current_reference_path.points.size() - 1u);
+    is_last_segment = (current_segment_index_ >= cusp_point_indices_.size());
 
     if (c_end < current_reference_path.points.size()) {
       first_cusp_position_ = current_reference_path.points[c_end].point.pose.position;
@@ -372,18 +363,13 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       return output;
     }*/
 
-    if (!planner_data_ || !planner_data_->self_odometry) {
-      RCLCPP_WARN(getLogger(), "No ego odometry available, defaulting to forward segment");
-      current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
-    } else {
+    if (planner_data_ && planner_data_->self_odometry) {
       const auto & ego_pose = planner_data_->self_odometry->pose.pose;
       std::vector<PathPointWithLaneId> current_segment(
         current_reference_path.points.begin() + static_cast<std::ptrdiff_t>(c_start),
         current_reference_path.points.begin() + static_cast<std::ptrdiff_t>(c_end) + 1);
       const auto ego_nearest_idx_opt = findNearestIndex(current_segment, ego_pose);
       size_t ego_nearest_idx = 0;
-      double distance_to_cusp = 0.0;
-      bool found_nearest = false;
       if (ego_nearest_idx_opt) {
         ego_nearest_idx = *ego_nearest_idx_opt;
         if (!is_last_segment && current_segment.size() > 0) {
@@ -393,12 +379,21 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         }
         found_nearest = true;
       }
+      vehicle_velocity =
+        std::abs(planner_data_->self_odometry->twist.twist.linear.x);
 
-      if (!found_nearest) {
-        RCLCPP_WARN(
-          getLogger(), "Could not find nearest index for ego pose, defaulting to forward segment");
-        current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
-      } else {
+      if (planner_data_->route_handler) {
+        try {
+          const auto goal_pose = planner_data_->route_handler->getGoalPose();
+          distance_to_goal =
+            autoware_utils::calc_distance2d(ego_pose.position, goal_pose.position);
+          goal_available = true;
+        } catch (...) {
+          // Goal not available, continue with normal transition
+        }
+      }
+
+      if (found_nearest && parameters_->print_debug_info) {
         auto stateToString = [](const PathSegmentState & s) {
           switch (s) {
             case PathSegmentState::IDLE:
@@ -417,36 +412,70 @@ BehaviorModuleOutput DirectionChangeModule::plan()
               return "UNKNOWN";
           }
         };
-        const double vehicle_velocity =
-          std::abs(planner_data_->self_odometry->twist.twist.linear.x);
         RCLCPP_INFO_EXPRESSION(
           getLogger(), parameters_->print_debug_info,
           "state=%s, ego_nearest_idx=%zu, c_start=%zu, c_end=%zu, distance_to_cusp=%.2f, "
           "vehicle_velocity=%.2f m/s",
           stateToString(current_segment_state_), ego_nearest_idx, c_start, c_end, distance_to_cusp,
           vehicle_velocity);
+      }
+    }
+  }
 
-        PathSegmentState new_state = current_segment_state_;
+  // ----- 3. State transition -----
+  previous_segment_state_ = current_segment_state_;
 
+  if (cusp_point_indices_.empty()) {
+    // No cusps: treat full path as single segment; no transition (maintain state or FORWARD)
+    // No cusps detected in current reference_path
+    // IMPORTANT: If we're already in reverse states, maintain that state
+    // This prevents oscillation when cusp detection becomes unstable after passing cusp
+    if (
+      previous_segment_state_ == PathSegmentState::AT_CUSP ||
+      previous_segment_state_ == PathSegmentState::REVERSE_FOLLOWING) {
+      RCLCPP_DEBUG(
+        getLogger(), "No cusp detected but already in reverse state, maintaining backward path");
+    } else {
+      // Not in backward state yet - return full path as forward segment
+      RCLCPP_DEBUG(getLogger(), "No cusp points detected, returning full path as forward segment");
+      current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
+    }
+    current_segment_index_ = 0;
+    has_valid_cusp_ = false;
+  } else {
+  // Input invalid default: when cusps exist but odometry unavailable or ego nearest not found,
+  // force FORWARD_FOLLOWING so that we do not rely on invalid input for state machine.
+  // TODO: 異常時の挙動は一律FORWARDで安全？（リリースまでに議論したいので、あえて日本語で記載。）
+  if (!planner_data_ || !planner_data_->self_odometry) {
+      RCLCPP_WARN(getLogger(), "No ego odometry available, defaulting to forward segment");
+      current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
+    } else if (!found_nearest) {
+      RCLCPP_WARN(
+        getLogger(), "Could not find nearest index for ego pose, defaulting to forward segment");
+        current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
+    } else {
+
+      if (planner_data_ && planner_data_->self_odometry && found_nearest) {
+        current_segment_state_ = previous_segment_state_;
         if (is_last_segment) {
           // Last segment: no APPROACHING/AT_CUSP; keep FORWARD or REVERSE by parity
           if (current_segment_index_ % 2 == 0) {
-            new_state = PathSegmentState::FORWARD_FOLLOWING;
+            current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
           } else {
-            new_state = PathSegmentState::REVERSE_FOLLOWING;
+            current_segment_state_ = PathSegmentState::REVERSE_FOLLOWING;
           }
         } else {
-          switch (current_segment_state_) {
+          switch (previous_segment_state_) {
             case PathSegmentState::IDLE:
               break;
             case PathSegmentState::FORWARD_FOLLOWING:
               if (distance_to_cusp <= parameters_->cusp_detection_distance_start_approaching) {
-                new_state = PathSegmentState::APPROACHING_CUSP;
+                current_segment_state_ = PathSegmentState::APPROACHING_CUSP;
               }
               break;
             case PathSegmentState::APPROACHING_CUSP:
               if (distance_to_cusp <= parameters_->cusp_detection_distance_threshold) {
-                new_state = PathSegmentState::AT_CUSP;
+                current_segment_state_ = PathSegmentState::AT_CUSP;
               }
               break;
             case PathSegmentState::AT_CUSP: {
@@ -461,19 +490,6 @@ BehaviorModuleOutput DirectionChangeModule::plan()
                   // Check if this is the last cusp and close to goal -> transition to COMPLETED
                   const bool is_next_cusp_available =
                     (current_segment_index_ < cusp_point_indices_.size());
-                  double distance_to_goal = std::numeric_limits<double>::max();
-                  bool goal_available = false;
-
-                  if (planner_data_->route_handler) {
-                    try {
-                      const auto goal_pose = planner_data_->route_handler->getGoalPose();
-                      distance_to_goal =
-                        autoware_utils::calc_distance2d(ego_pose.position, goal_pose.position);
-                      goal_available = true;
-                    } catch (...) {
-                      // Goal not available, continue with normal transition
-                    }
-                  }
 
                   // Transition to COMPLETED if all conditions are met:
                   // 1. velocity < stop_velocity_threshold for th_stopped_time
@@ -482,14 +498,14 @@ BehaviorModuleOutput DirectionChangeModule::plan()
                   if (
                     !is_next_cusp_available && goal_available &&
                     distance_to_goal < parameters_->th_arrived_distance) {
-                    new_state = PathSegmentState::COMPLETED;
+                    current_segment_state_ = PathSegmentState::COMPLETED;
                     RCLCPP_DEBUG(getLogger(), "Transition to COMPLETED");
                   } else {
                     // Normal transition to next segment
                     current_segment_index_++;
-                    new_state = (current_segment_index_ % 2 == 0)
-                                  ? PathSegmentState::FORWARD_FOLLOWING
-                                  : PathSegmentState::REVERSE_FOLLOWING;
+                    current_segment_state_ = (current_segment_index_ % 2 == 0)
+                                          ? PathSegmentState::FORWARD_FOLLOWING
+                                          : PathSegmentState::REVERSE_FOLLOWING;
                   }
                 }
               } else {
@@ -502,29 +518,48 @@ BehaviorModuleOutput DirectionChangeModule::plan()
             }
             case PathSegmentState::REVERSE_FOLLOWING:
               if (distance_to_cusp <= parameters_->cusp_detection_distance_start_approaching) {
-                new_state = PathSegmentState::APPROACHING_CUSP;
+                current_segment_state_ = PathSegmentState::APPROACHING_CUSP;
               }
               break;
             case PathSegmentState::COMPLETED:
               break;
             default:
-              new_state = PathSegmentState::FORWARD_FOLLOWING;
+              current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
               break;
           }
         }
-
-        if (new_state != current_segment_state_) {
-          RCLCPP_INFO(
-            getLogger(), "State transition: %s -> %s, segment_index=%zu",
-            stateToString(current_segment_state_), stateToString(new_state),
-            current_segment_index_);
-          if (new_state == PathSegmentState::AT_CUSP) {
-            cusp_stopped_since_.reset();
-          }
-          current_segment_state_ = new_state;
-          segmentBounds(current_segment_index_, c_start, c_end);
-        }
       }
+    }
+    if (current_segment_state_ != previous_segment_state_) {
+      auto stateToString = [](const PathSegmentState & s) {
+        switch (s) {
+          case PathSegmentState::IDLE:
+            return "IDLE";
+          case PathSegmentState::FORWARD_FOLLOWING:
+            return "FORWARD_FOLLOWING";
+          case PathSegmentState::APPROACHING_CUSP:
+            return "APPROACHING_CUSP";
+          case PathSegmentState::AT_CUSP:
+            return "AT_CUSP";
+          case PathSegmentState::REVERSE_FOLLOWING:
+            return "REVERSE_FOLLOWING";
+          case PathSegmentState::COMPLETED:
+            return "COMPLETED";
+          default:
+            return "UNKNOWN";
+        }
+      };
+      RCLCPP_INFO(
+        getLogger(), "State transition: %s -> %s, segment_index=%zu",
+        stateToString(previous_segment_state_), stateToString(current_segment_state_),
+        current_segment_index_);
+      if (current_segment_state_ == PathSegmentState::AT_CUSP) {
+        cusp_stopped_since_.reset();
+      }
+      c_start = (current_segment_index_ == 0u) ? 0u : cusp_point_indices_[current_segment_index_ - 1u];
+      c_end = (current_segment_index_ < cusp_point_indices_.size())
+                ? cusp_point_indices_[current_segment_index_]
+                : (current_reference_path.points.size() - 1u);
     }
   }
 
