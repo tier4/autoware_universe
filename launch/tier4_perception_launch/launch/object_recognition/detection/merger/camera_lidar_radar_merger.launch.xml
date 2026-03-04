@@ -134,6 +134,7 @@
   </group>
 
   <!-- 1st merger -->
+  <!-- skip alpha merger for evaluator without camera_lidar_fusion -->
   <group>
     <include file="$(find-pkg-share autoware_object_merger)/launch/object_association_merger.launch.xml">
       <arg name="node_name" value="object_association_merger_alpha"/>
@@ -151,7 +152,7 @@
   <group if="$(var use_detection_by_tracker)">
     <include file="$(find-pkg-share autoware_object_merger)/launch/object_association_merger.launch.xml">
       <arg name="node_name" value="object_association_merger_beta"/>
-      <arg name="input/object0" value="$(var merger2/input/objects0)"/>
+      <arg name="input/object0" value="$(var merger1/input/objects0)"/>
       <arg name="input/object1" value="$(var merger2/input/objects1)"/>
       <arg name="output/object" value="$(var merger2/output/objects)"/>
       <arg name="priority_mode" value="0"/>
