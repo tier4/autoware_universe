@@ -1758,6 +1758,10 @@ TurnSignalInfo StartPlannerModule::calcTurnSignalInfo()
     prev_turn_signal.turn_signal.command = parameters_->turn_signal_on_centerline_start == "LEFT"
                                              ? TurnIndicatorsCommand::ENABLE_LEFT
                                              : TurnIndicatorsCommand::ENABLE_RIGHT;
+    prev_turn_signal.desired_start_point = current_pose;
+    prev_turn_signal.required_start_point = current_pose;
+    prev_turn_signal.desired_end_point = status_.pull_out_path.end_pose;
+    prev_turn_signal.required_end_point = status_.pull_out_path.end_pose;
     return prev_turn_signal;
   }
 
