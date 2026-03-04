@@ -48,12 +48,6 @@ struct StopLinePositions
 std::vector<lanelet::Id> find_lane_ids_up_to(const Trajectory & path, const lanelet::Id lane_id);
 
 /**
- * @brief generate a linestring consisting of two points of the entry part of `lanelet`
- * @note returned linestring is from left to right of `lanelet`'s boundary
- */
-lanelet::ConstLineString3d get_entry_line(const lanelet::ConstLanelet & lanelet);
-
-/**
  * @brief generate the attention_area for blind_spot (see document figure)
  * @param lane_ids_upto_intersection the lane ids upto the intersection itself, excluding the
  * intersection lane itself
@@ -66,24 +60,6 @@ std::optional<lanelet::CompoundPolygon3d> generate_attention_area(
   const lanelet::ConstLineString3d & virtual_ego_straight_path_after_turning,
   const lanelet::ConstLanelet & intersection_lanelet, const Trajectory & path,
   const TurnDirection & turn_direction, const double ego_width);
-
-/**
- * @brief collect the lanelets before the intersection upto given `backward_attention_length`
- * @return non-empty list of Lanelets in the order of driving direction, or null.
- */
-std::optional<std::pair<lanelet::ConstLanelets, lanelet::ConstLanelets>>
-generate_blind_side_lanelets_before_turning(
-  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
-  const TurnDirection & turn_direction, const double backward_attention_length,
-  const std::vector<lanelet::Id> & lane_ids_upto_intersection,
-  const lanelet::Id intersection_lane_id);
-
-/**
- * @brief return the extend outer boundary of `leftmost_lanelet`
- */
-lanelet::ConstLineString3d generate_virtual_blind_side_boundary_after_turning(
-  const lanelet::ConstLanelet & outermost_lanelet,
-  const lanelet::ConstLanelet & intersection_lanelet, const TurnDirection & turn_direction);
 
 /**
  * @brief generate virtual LineString which is normal to the entry line of `intersection_lanelet`,
@@ -116,20 +92,6 @@ std::optional<StopLinePositions> generate_stop_points(
   const lanelet::ConstLanelet & intersection_lanelet,
   const lanelet::ConstLineString3d & virtual_ego_straight_path_after_turning,
   const double braking_distance, const double critical_stopline_margin, Trajectory & path);
-
-/**
- * @brief Calculate the minimum lateral gap from the ego vehicle's side to the relevant road
- * boundary just before a turn.
- * @param[in] ego_footprint The 2D geometric footprint of the ego vehicle.
- * @param[in] last_lanelets_before_turning The lanelets the vehicle occupies just before the turn,
- * used to define the blind spot area boundary.
- * @param[in] turn_direction The direction of the upcoming turn (left/right), which determines the
- * relevant vehicle side and road boundary.
- * @return An optional value containing the minimum lateral distance in meters on success.
- */
-std::optional<double> calc_ego_to_blind_spot_lanelet_lateral_gap(
-  const autoware_utils::LinearRing2d & footprint,
-  const lanelet::ConstLanelets & lanelets_before_turning, const TurnDirection & turn_direction);
 }  // namespace autoware::behavior_velocity_planner::experimental
 
 #endif  // EXPERIMENTAL__UTIL_HPP_

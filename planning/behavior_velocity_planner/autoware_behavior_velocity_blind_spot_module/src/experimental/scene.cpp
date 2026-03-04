@@ -14,13 +14,13 @@
 
 #include "scene.hpp"
 
+#include "autoware/behavior_velocity_blind_spot_module/util.hpp"
 #include "time_to_collision.hpp"
 #include "util.hpp"
 
 #include <autoware/behavior_velocity_planner_common/utilization/debug.hpp>
 #include <autoware/lanelet2_utils/geometry.hpp>
 #include <autoware/trajectory/utils/find_nearest.hpp>
-#include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <range/v3/all.hpp>
 
 #include <lanelet2_core/geometry/Polygon.h>
