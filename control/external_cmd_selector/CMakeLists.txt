@@ -33,6 +33,7 @@ if(BUILD_TESTING)
     test_external_cmd_selector
     test/test_external_cmd_selector.py
     APPEND_ENV PYTHONPATH="${CMAKE_CURRENT_SOURCE_DIR}"
+    ENV PYTEST_ADDOPTS="-v"
     TIMEOUT 600
   )
 

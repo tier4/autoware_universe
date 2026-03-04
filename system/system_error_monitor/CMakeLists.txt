@@ -35,6 +35,7 @@ if(BUILD_TESTING)
     test_system_error_monitor
     test/test_system_error_monitor.py
     APPEND_ENV PYTHONPATH="${CMAKE_CURRENT_SOURCE_DIR}"
+    ENV PYTEST_ADDOPTS="-v"
     TIMEOUT 600
   )
 
