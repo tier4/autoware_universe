@@ -187,17 +187,17 @@ BlindSpotDecision BlindSpotModule::modifyPathVelocityDetail(
     return InternalError{"there are no lanelets before turning"};
   }
 
+  const auto & road_lanelets_before_turning_merged = road_lanelets_before_turning_merged_.value();
   const auto & last_blind_spot_lanelet_before_turning = blind_side_lanelets_before_turning_->back();
   if (!virtual_blind_lane_boundary_after_turning_) {
     virtual_blind_lane_boundary_after_turning_ = generate_virtual_blind_side_boundary_after_turning(
       last_blind_spot_lanelet_before_turning, assigned_lanelet, turn_direction_);
-    if (!virtual_blind_lane_boundary_after_turning_) {
-      return InternalError{"failed to generate virtual_blind_lane_boundary_after_turning"};
-    }
   }
   debug_data_.virtual_blind_lane_boundary_after_turning =
     virtual_blind_lane_boundary_after_turning_;
 
+  const auto virtual_blind_lane_boundary_after_turning =
+    virtual_blind_lane_boundary_after_turning_.value();
   const auto & ego_width = planner_data.vehicle_info_.vehicle_width_m;
 
   // NOTE: this scale is to avoid regarding ego vehicle which is stopping at stopline touches the
@@ -212,8 +212,8 @@ BlindSpotDecision BlindSpotModule::modifyPathVelocityDetail(
   debug_data_.virtual_ego_straight_path_after_turning = virtual_ego_straight_path_after_turning;
 
   const auto attention_area = generate_attention_area(
-    *road_lanelets_before_turning_merged_, *blind_side_lanelets_before_turning_,
-    *virtual_blind_lane_boundary_after_turning_, *virtual_ego_straight_path_after_turning,
+    road_lanelets_before_turning_merged, *blind_side_lanelets_before_turning_,
+    virtual_blind_lane_boundary_after_turning, *virtual_ego_straight_path_after_turning,
     assigned_lanelet, path, turn_direction_, ego_width);
   if (!attention_area) {
     return InternalError{"failed to generate attention_area"};
@@ -236,9 +236,9 @@ BlindSpotDecision BlindSpotModule::modifyPathVelocityDetail(
 
   const auto & first_line = (turn_direction_ == TurnDirection::Left)
                               ? *virtual_ego_straight_path_after_turning
-                              : *virtual_blind_lane_boundary_after_turning_;
+                              : virtual_blind_lane_boundary_after_turning;
   const auto & second_line = (turn_direction_ == TurnDirection::Left)
-                               ? *virtual_blind_lane_boundary_after_turning_
+                               ? virtual_blind_lane_boundary_after_turning
                                : *virtual_ego_straight_path_after_turning;
   const auto ego_passage_interval = compute_passage_time_interval(
     ego_future_profile, planner_data.vehicle_info_.createFootprint(0.0, 0.0), first_line,
@@ -440,20 +440,15 @@ std::vector<UnsafeObject> BlindSpotModule::collect_unsafe_objects(
   for (const auto & attention_object : attention_objects) {
     const auto object_passage_intervals =
       compute_passage_time_intervals(attention_object, first_line, entry_line, second_line);
-    for (size_t i = 0; i < object_passage_intervals.size(); ++i) {
-      const auto & object_passage_interval = object_passage_intervals[i];
-      if (!object_passage_interval) {
+    for (const auto & [object_passage_interval, predicted_path] : object_passage_intervals) {
+      const auto collision_time = get_unsafe_time_if_critical(
+        ego_passage_interval, object_passage_interval, planner_param_.ttc_start_margin,
+        planner_param_.ttc_end_margin);
+      if (!collision_time) {
         continue;
       }
-
-      if (
-        const auto collision_time = get_unsafe_time_if_critical(
-          ego_passage_interval, *object_passage_interval, planner_param_.ttc_start_margin,
-          planner_param_.ttc_end_margin)) {
-        unsafe_objects.emplace_back(
-          attention_object, *collision_time, attention_object.kinematics.predicted_paths[i],
-          *object_passage_interval);
-      }
+      unsafe_objects.emplace_back(
+        attention_object, *collision_time, predicted_path, object_passage_interval);
     }
   }
 

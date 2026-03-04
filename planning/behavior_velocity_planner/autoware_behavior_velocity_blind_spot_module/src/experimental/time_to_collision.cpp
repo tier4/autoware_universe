@@ -138,13 +138,14 @@ std::optional<TimeInterval> compute_passage_time_interval(
   return TimeInterval{*entry_time, *exit_time};
 }
 
-std::vector<std::optional<TimeInterval>> compute_passage_time_intervals(
+std::vector<std::pair<TimeInterval, autoware_perception_msgs::msg::PredictedPath>>
+compute_passage_time_intervals(
   const autoware_perception_msgs::msg::PredictedObject & object,
   const lanelet::ConstLineString3d & line1, const lanelet::ConstLineString3d & entry_line,
   const lanelet::ConstLineString3d & line2)
 {
-  std::vector<std::optional<TimeInterval>> passage_time_intervals(
-    object.kinematics.predicted_paths.size(), std::nullopt);
+  std::vector<std::pair<TimeInterval, autoware_perception_msgs::msg::PredictedPath>>
+    passage_time_intervals{};
 
   for (size_t i = 0; i < object.kinematics.predicted_paths.size(); ++i) {
     const auto & predicted_path = object.kinematics.predicted_paths[i];
@@ -196,7 +197,7 @@ std::vector<std::optional<TimeInterval>> compute_passage_time_intervals(
     }
 
     // in case the object is completely inside conflict_area, it is regarded entry_time = 0.0
-    passage_time_intervals[i] = {*entry_time, *exit_time};
+    passage_time_intervals.emplace_back(TimeInterval{*entry_time, *exit_time}, predicted_path);
   }
 
   return passage_time_intervals;

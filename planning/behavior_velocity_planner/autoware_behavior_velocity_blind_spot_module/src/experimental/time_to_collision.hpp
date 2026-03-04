@@ -58,7 +58,8 @@ std::optional<TimeInterval> compute_passage_time_interval(
  * @brief compute the time interval for `object` to pass from `line1` (or `entry_line` instead) to
  * `line2` along every predicted path considering footprint
  */
-std::vector<std::optional<TimeInterval>> compute_passage_time_intervals(
+std::vector<std::pair<TimeInterval, autoware_perception_msgs::msg::PredictedPath>>
+compute_passage_time_intervals(
   const autoware_perception_msgs::msg::PredictedObject & object,
   const lanelet::ConstLineString3d & line1, const lanelet::ConstLineString3d & entry_line,
   const lanelet::ConstLineString3d & line2);
