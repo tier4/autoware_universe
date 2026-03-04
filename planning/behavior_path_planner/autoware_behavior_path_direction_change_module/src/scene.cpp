@@ -282,13 +282,14 @@ bool DirectionChangeModule::isSustainedStoppedForDirectionSwitch()
 
 BehaviorModuleOutput DirectionChangeModule::plan()
 {
+  // ----- 1. Initialization -----
   // Note: updateData() is already called by SceneModuleInterface::run() before plan()
   BehaviorModuleOutput output;
-  //  output.reference_path = reference_path_;
 
   // Copy reference_path_ to local variable for stability
   const auto current_reference_path = reference_path_;
 
+  // ----- 2. Cusp point detection -----
   // Detect cusp points using current_reference_path
   cusp_point_indices_ =
     detectCuspPoints(current_reference_path, parameters_->cusp_detection_angle_threshold_deg);
@@ -307,12 +308,13 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     RCLCPP_DEBUG_STREAM(getLogger(), ss.str());
   }
 
-  // Strategy: Separate forward/backward path publishing
-  // - If no cusps: return full path as forward segment
-  // - If cusps exist: split at first cusp and publish forward/backward segments separately
-  //   This prevents downstream modules from seeing mixed orientations
+  // ----- 3. State transition -----
+  size_t c_start = 0;
+  size_t c_end =
+    current_reference_path.points.empty() ? 0 : current_reference_path.points.size() - 1;
 
   if (cusp_point_indices_.empty()) {
+    // No cusps: treat full path as single segment; no transition (maintain state or FORWARD)
     // No cusps detected in current reference_path
     // IMPORTANT: If we're already in reverse states, maintain that state
     // This prevents oscillation when cusp detection becomes unstable after passing cusp
@@ -321,24 +323,15 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING) {
       RCLCPP_DEBUG(
         getLogger(), "No cusp detected but already in reverse state, maintaining backward path");
-      // Continue publishing backward path: reverse orientations and velocities
-      output.path = reference_path_;
-      for (auto & p : output.path.points) {
-        double yaw = tf2::getYaw(p.point.pose.orientation);
-        yaw = autoware_utils::normalize_radian(yaw + M_PI);
-        p.point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
-        p.point.longitudinal_velocity_mps = -std::abs(p.point.longitudinal_velocity_mps);
-      }
-      modified_path_ = output.path;
     } else {
       // Not in backward state yet - return full path as forward segment
       RCLCPP_DEBUG(getLogger(), "No cusp points detected, returning full path as forward segment");
-      output.path = reference_path_;
-      modified_path_ = output.path;
       current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
     }
+    current_segment_index_ = 0;
+    has_valid_cusp_ = false;
   } else {
-    // Cusps detected: multi-cusp segment-based strategy
+    // Cusps present: compute segment bounds and run state machine
     const size_t num_segments = cusp_point_indices_.size() + 1u;
     if (current_segment_index_ >= num_segments) {
       current_segment_index_ = num_segments - 1u;
@@ -348,7 +341,6 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       end = (seg_idx < cusp_point_indices_.size()) ? cusp_point_indices_[seg_idx]
                                                    : (current_reference_path.points.size() - 1u);
     };
-    size_t c_start = 0, c_end = 0;
     segmentBounds(current_segment_index_, c_start, c_end);
     const bool is_last_segment = (current_segment_index_ >= cusp_point_indices_.size());
 
@@ -534,66 +526,70 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         }
       }
     }
+  }
 
+  // ----- 4. Output setting per state -----
     // Output current segment [c_start, c_end]
-    if (c_end >= current_reference_path.points.size()) {
-      output.path = current_reference_path;
-    } else {
-      output.path.points.assign(
-        current_reference_path.points.begin() + static_cast<std::ptrdiff_t>(c_start),
-        current_reference_path.points.begin() + static_cast<std::ptrdiff_t>(c_end) + 1);
-    }
+  if (c_end >= current_reference_path.points.size()) {
+    output.path = current_reference_path;
+  } else {
+    output.path.points.assign(
+      current_reference_path.points.begin() + static_cast<std::ptrdiff_t>(c_start),
+      current_reference_path.points.begin() + static_cast<std::ptrdiff_t>(c_end) + 1);
+  }
 
-    const bool apply_reversal = (current_segment_index_ % 2 == 1);
-    if (apply_reversal && !output.path.points.empty()) {
-      const double max_yaw_step_rad =
-        autoware_utils::deg2rad(parameters_->reverse_path_densify_max_yaw_step_deg);
-      const double max_dist_step = parameters_->reverse_path_densify_max_distance_step;
-      densifyPathByYawAndDistance(output.path.points, max_yaw_step_rad, max_dist_step);
-      const size_t cusp_local = 0u;
-      const double reference_speed_limit =
-        (cusp_local < output.path.points.size())
-          ? std::abs(
-              static_cast<double>(output.path.points[cusp_local].point.longitudinal_velocity_mps))
-          : 2.0;
-      const double effective_cusp_speed =
-        std::min(parameters_->reverse_initial_speed, parameters_->reverse_speed_limit);
-      const double effective_reverse_speed = parameters_->reverse_speed_limit;
-      const double backward_cruise_speed = std::min(reference_speed_limit, effective_reverse_speed);
-      const double backward_slow_speed = std::min(reference_speed_limit, effective_cusp_speed);
-      for (size_t i = 0; i < output.path.points.size(); ++i) {
-        auto & p = output.path.points[i];
-        double yaw = tf2::getYaw(p.point.pose.orientation);
-        yaw = autoware_utils::normalize_radian(yaw + M_PI);
-        p.point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
-        p.point.longitudinal_velocity_mps =
-          (i == 0) ? -backward_slow_speed : -backward_cruise_speed;
-        if (!p.lane_ids.empty() && p.lane_ids.size() > 1) {
-          int64_t max_lane_id = *std::max_element(p.lane_ids.begin(), p.lane_ids.end());
-          p.lane_ids = {max_lane_id};
-        }
-        output.path.points.back().point.longitudinal_velocity_mps = 0.0;
+  const bool apply_reversal = cusp_point_indices_.empty()
+                                ? (current_segment_state_ == PathSegmentState::AT_CUSP ||
+                                   current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING)
+                                : (current_segment_index_ % 2 == 1);
+  if (apply_reversal && !output.path.points.empty()) {
+    const double max_yaw_step_rad =
+      autoware_utils::deg2rad(parameters_->reverse_path_densify_max_yaw_step_deg);
+    const double max_dist_step = parameters_->reverse_path_densify_max_distance_step;
+    densifyPathByYawAndDistance(output.path.points, max_yaw_step_rad, max_dist_step);
+    const size_t cusp_local = 0u;
+    const double reference_speed_limit =
+      (cusp_local < output.path.points.size())
+        ? std::abs(
+            static_cast<double>(output.path.points[cusp_local].point.longitudinal_velocity_mps))
+        : 2.0;
+    const double effective_cusp_speed =
+      std::min(parameters_->reverse_initial_speed, parameters_->reverse_speed_limit);
+    const double effective_reverse_speed = parameters_->reverse_speed_limit;
+    const double backward_cruise_speed = std::min(reference_speed_limit, effective_reverse_speed);
+    const double backward_slow_speed = std::min(reference_speed_limit, effective_cusp_speed);
+    for (size_t i = 0; i < output.path.points.size(); ++i) {
+      auto & p = output.path.points[i];
+      double yaw = tf2::getYaw(p.point.pose.orientation);
+      yaw = autoware_utils::normalize_radian(yaw + M_PI);
+      p.point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
+      p.point.longitudinal_velocity_mps = (i == 0) ? -backward_slow_speed : -backward_cruise_speed;
+      if (!p.lane_ids.empty() && p.lane_ids.size() > 1) {
+        int64_t max_lane_id = *std::max_element(p.lane_ids.begin(), p.lane_ids.end());
+        p.lane_ids = {max_lane_id};
       }
-      RCLCPP_DEBUG_EXPRESSION(
-        getLogger(), parameters_->print_debug_info,
-        "Publishing REVERSE segment: %zu points (indices %zu-%zu)", output.path.points.size(),
-        c_start, c_end);
-    } else {
+      output.path.points.back().point.longitudinal_velocity_mps = 0.0;
+    }
+    RCLCPP_DEBUG_EXPRESSION(
+      getLogger(), parameters_->print_debug_info,
+      "Publishing REVERSE segment: %zu points (indices %zu-%zu)", output.path.points.size(),
+      c_start, c_end);
+  } else {
       // When in AT_CUSP we must command stop at segment end so the vehicle stops before direction
       // switch. Otherwise the reference path velocities (e.g. from centerline) keep the vehicle
       // creeping and sustained stop is never satisfied, leading to lane departure.
-      if (current_segment_state_ == PathSegmentState::AT_CUSP && !output.path.points.empty()) {
-        output.path.points.back().point.longitudinal_velocity_mps = 0.0;
-      }
-      RCLCPP_DEBUG_EXPRESSION(
-        getLogger(), parameters_->print_debug_info,
-        "Publishing FORWARD segment: %zu points (indices %zu-%zu)", output.path.points.size(),
-        c_start, c_end);
+    if (current_segment_state_ == PathSegmentState::AT_CUSP && !output.path.points.empty()) {
+      output.path.points.back().point.longitudinal_velocity_mps = 0.0;
     }
-
-    modified_path_ = output.path;
+    RCLCPP_DEBUG_EXPRESSION(
+      getLogger(), parameters_->print_debug_info,
+      "Publishing FORWARD segment: %zu points (indices %zu-%zu)", output.path.points.size(),
+      c_start, c_end);
   }
 
+  modified_path_ = output.path;
+
+  // ----- 5. Debug output -----
   // Publish processed path to topic for debugging
   if (path_publisher_ && !output.path.points.empty()) {
     autoware_internal_planning_msgs::msg::PathWithLaneId path_msg;
@@ -691,6 +687,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     }
   }
 
+  // ----- 6. Output processing -----
   output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
 
   // Handle drivable area information based on segment state
