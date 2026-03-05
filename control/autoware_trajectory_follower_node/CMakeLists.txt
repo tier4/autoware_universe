@@ -9,6 +9,7 @@ ament_auto_add_library(${CONTROLLER_NODE} SHARED
   include/autoware/trajectory_follower_node/controller_node.hpp
   src/controller_node.cpp
 )
+ament_target_dependencies(${CONTROLLER_NODE} autoware_mpc_controller)
 
 rclcpp_components_register_node(${CONTROLLER_NODE}
   PLUGIN "autoware::motion::control::trajectory_follower_node::Controller"

@@ -14,6 +14,7 @@
 
 #include "autoware/trajectory_follower_node/controller_node.hpp"
 
+#include "autoware/longitudinal_mpc_controller/longitudinal_mpc_controller.hpp"
 #include "autoware/mpc_lateral_controller/mpc_lateral_controller.hpp"
 #include "autoware/pid_longitudinal_controller/pid_longitudinal_controller.hpp"
 #include "autoware/pure_pursuit/autoware_pure_pursuit_lateral_controller.hpp"
@@ -55,6 +56,7 @@ Controller::Controller(const rclcpp::NodeOptions & node_options) : Node("control
   using std::placeholders::_1;
 
   const double ctrl_period = declare_parameter<double>("ctrl_period");
+  enable_controller_ = declare_parameter<bool>("enable_controller", true);
   timeout_thr_sec_ = declare_parameter<double>("timeout_thr_sec");
   // NOTE: It is possible that using control_horizon could be expected to enhance performance,
   // but it is not a formal interface topic, only an experimental one.
@@ -88,6 +90,22 @@ Controller::Controller(const rclcpp::NodeOptions & node_options) : Node("control
       longitudinal_controller_ =
         std::make_shared<pid_longitudinal_controller::PidLongitudinalController>(
           *this, diag_updater_);
+      break;
+    }
+    case LongitudinalControllerMode::LONGITUDINAL_MPC: {
+      longitudinal_controller_ =
+        std::make_shared<longitudinal_mpc_controller::LongitudinalMpcController>(
+          *this, diag_updater_);
+      const bool enable_longitudinal_pid_compare =
+        declare_parameter<bool>("enable_longitudinal_pid_compare", false);
+      if (enable_longitudinal_pid_compare) {
+        longitudinal_controller_compare_ =
+          std::make_shared<pid_longitudinal_controller::PidLongitudinalController>(
+            *this, diag_updater_);
+        control_cmd_longitudinal_pid_compare_pub_ =
+          create_publisher<autoware_control_msgs::msg::Control>(
+            "~/output/control_cmd_longitudinal_pid_compare", rclcpp::QoS{1}.transient_local());
+      }
       break;
     }
     default:
@@ -134,6 +152,7 @@ Controller::LongitudinalControllerMode Controller::getLongitudinalControllerMode
   const std::string & controller_mode) const
 {
   if (controller_mode == "pid") return LongitudinalControllerMode::PID;
+  if (controller_mode == "longitudinal_mpc") return LongitudinalControllerMode::LONGITUDINAL_MPC;
 
   return LongitudinalControllerMode::INVALID;
 }
@@ -204,6 +223,10 @@ boost::optional<trajectory_follower::InputData> Controller::createInputData(rclc
 
 void Controller::callbackTimerControl()
 {
+  if (!enable_controller_) {
+    return;
+  }
+
   autoware_control_msgs::msg::Control out;
   out.stamp = this->now();
 
@@ -248,6 +271,18 @@ void Controller::callbackTimerControl()
   out.lateral = lat_out.control_cmd;
   out.longitudinal = lon_out.control_cmd;
   control_cmd_pub_->publish(out);
+
+  // 5b. when longitudinal_mpc + enable_longitudinal_pid_compare: publish PID output for comparison
+  if (longitudinal_controller_compare_) {
+    const auto lon_out_pid = longitudinal_controller_compare_->run(*input_data);
+    longitudinal_controller_compare_->sync(lat_out.sync_data);
+    autoware_control_msgs::msg::Control out_pid;
+    out_pid.stamp = out.stamp;
+    out_pid.control_time = out.control_time;
+    out_pid.lateral = lat_out.control_cmd;
+    out_pid.longitudinal = lon_out_pid.control_cmd;
+    control_cmd_longitudinal_pid_compare_pub_->publish(out_pid);
+  }
 
   // 6. publish debug
   published_time_publisher_->publish_if_subscribed(control_cmd_pub_, out.stamp);
