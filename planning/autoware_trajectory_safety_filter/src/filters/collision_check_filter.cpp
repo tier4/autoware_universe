@@ -14,7 +14,7 @@
 
 #include "autoware/trajectory_safety_filter/filters/collision_check_filter.hpp"
 
-#include <autoware/universe_utils/geometry/boost_polygon_utils.hpp>
+#include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -178,7 +178,7 @@ FootprintTrajectory compute_footprint_trajectory(
   footprint_trajectory.reserve(pose_trajectory.size());
 
   for (const auto & pose : pose_trajectory) {
-    const auto footprint = autoware::universe_utils::toPolygon2d(pose, object_shape);
+    const auto footprint = autoware_utils_geometry::to_polygon2d(pose, object_shape);
     footprint_trajectory.push_back(footprint);
   }
   return footprint_trajectory;
@@ -191,7 +191,7 @@ FootprintTrajectory compute_footprint_trajectory(
   footprint_trajectory.reserve(pose_trajectory.size());
 
   for (const auto & pose : pose_trajectory) {
-    const auto footprint = autoware::universe_utils::toFootprint(
+    const auto footprint = autoware_utils_geometry::to_footprint(
       pose, vehicle_info.max_longitudinal_offset_m, vehicle_info.min_longitudinal_offset_m,
       vehicle_info.vehicle_width_m);
     footprint_trajectory.push_back(footprint);
@@ -376,6 +376,7 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
     return {};  // No objects to check collision with
   }
+  
 
   const auto ego_trajectory_data = generate_ego_trajectory(
     context.odometry->twist.twist, 0.5, pet_collision_params_.ego_assumed_acceleration, 10.0,
@@ -394,7 +395,8 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   std::string error_msg{};
   for (const auto & object_trajectory_data : object_trajectory_data_list) {
     if (check_pet_collision(
-          ego_trajectory_data, object_trajectory_data, pet_collision_params_.time_threshold)) {
+          ego_trajectory_data, object_trajectory_data,
+          pet_collision_params_.collision_time_threshold)) {
       error_msg +=
         std::string("PET collision, ID: ") + object_trajectory_data.getId() + std::string("; ");
     }

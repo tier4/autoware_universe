@@ -92,25 +92,21 @@ if(BUILD_TESTING)
     test/collision_check_filter/test_constant_curvature_predictor.cpp
   )
   target_link_libraries(test_constant_curvature gtest_main ${PROJECT_NAME})
-  target_include_directories(test_constant_curvature PRIVATE src)
 
   ament_add_ros_isolated_gtest(test_motion
     test/collision_check_filter/test_motion.cpp
   )
   target_link_libraries(test_motion gtest_main ${PROJECT_NAME})
-  target_include_directories(test_motion PRIVATE src)
 
   ament_add_ros_isolated_gtest(test_polygon
     test/collision_check_filter/test_polygon.cpp
   )
   target_link_libraries(test_polygon gtest_main ${PROJECT_NAME})
-  target_include_directories(test_polygon PRIVATE src)
 
   ament_add_ros_isolated_gtest(test_collision_check_filter
     test/collision_check_filter/test_collision.cpp
   )
   target_link_libraries(test_collision_check_filter gtest_main ${PROJECT_NAME})
-  target_include_directories(test_collision_check_filter PRIVATE src)
 endif()
 
 ament_auto_package(

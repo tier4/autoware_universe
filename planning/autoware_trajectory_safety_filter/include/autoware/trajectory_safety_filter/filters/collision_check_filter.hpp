@@ -147,8 +147,9 @@ private:
   {
     double ego_braking_delay{0.0};
     double ego_assumed_acceleration{0.0};  // used for code test, not used in actual collision check
-    double collision_time_threshold{0.0};            // time threshold for PET collision check
+    double collision_time_threshold{1.0};  // time threshold for PET collision check
   } pet_collision_params_;
+};
 
 }  // namespace autoware::trajectory_safety_filter::plugin
 
