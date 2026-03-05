@@ -36,71 +36,68 @@ from tier4_control_msgs.msg import GateMode
 class BaseTestCase(unittest.TestCase):
     """
     テストの基底クラス
-    - クラス単位でlaunchプロセスを管理
-    - テストメソッド単位でROSノードを管理
+    - setUpClass/tearDownClass: rclpyの初期化のみ
+    - setUp/tearDown: 各テスト用のノード作成とプロセスクリーンアップ
     """
-
-    _launch_process = None
 
     @classmethod
     def setUpClass(cls):
-        """クラス全体の初期化（1回のみ実行）"""
+        """クラス全体の初期化(1回のみ実行)"""
         rclpy.init()
-
-        launch_file = os.path.join(
-            get_package_share_directory("system_error_monitor"),
-            "launch",
-            "test_system_error_monitor.launch.xml",
-        )
-        cls._launch_process = subprocess.Popen(
-            ["ros2", "launch", launch_file],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            preexec_fn=os.setsid,  # プロセスグループ作成
-        )
-
-        # ノード起動待ち
-        time.sleep(3.0)
 
     @classmethod
     def tearDownClass(cls):
         """クラス全体のクリーンアップ（1回のみ実行）"""
-        if cls._launch_process is not None:
-            try:
-                if cls._launch_process.poll() is None:
-                    try:
-                        pgid = os.getpgid(cls._launch_process.pid)
-                        os.killpg(pgid, signal.SIGTERM)
-                    except ProcessLookupError:
-                        pass
-                    else:
-                        try:
-                            cls._launch_process.wait(timeout=5.0)
-                        except subprocess.TimeoutExpired:
-                            try:
-                                pgid = os.getpgid(cls._launch_process.pid)
-                                os.killpg(pgid, signal.SIGKILL)
-                                cls._launch_process.wait(timeout=2.0)
-                            except (ProcessLookupError, subprocess.TimeoutExpired):
-                                pass
-            except Exception:
-                pass
-            finally:
-                cls._launch_process = None
-
         rclpy.shutdown()
 
     def setUp(self):
         """各テストメソッド実行前の初期化"""
         self.test_node = rclpy.create_node(f"test_node_{self._testMethodName}")
         self.initial_evaluation_time = 1.0
+        self._launch_process = None
 
     def tearDown(self):
         """各テストメソッド実行後のクリーンアップ"""
+        if self._launch_process is not None:
+            try:
+                if self._launch_process.poll() is None:
+                    try:
+                        pgid = os.getpgid(self._launch_process.pid)
+                        os.killpg(pgid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                    else:
+                        try:
+                            self._launch_process.wait(timeout=5.0)
+                        except subprocess.TimeoutExpired:
+                            try:
+                                pgid = os.getpgid(self._launch_process.pid)
+                                os.killpg(pgid, signal.SIGKILL)
+                                self._launch_process.wait(timeout=2.0)
+                            except (ProcessLookupError, subprocess.TimeoutExpired):
+                                pass
+            except Exception:
+                pass
+            finally:
+                self._launch_process = None
+
         if self.test_node is not None:
             self.test_node.destroy_node()
             self.test_node = None
-
+    
+    def launch_target_node(self):
+        """テスト対象のノードをバックグラウンドで起動する"""
+        launch_file = os.path.join(
+            get_package_share_directory("system_error_monitor"),
+            "launch",
+            "test_system_error_monitor.launch.xml",
+        )
+        self._launch_process = subprocess.Popen(
+            ["ros2", "launch", launch_file],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid,  # プロセスグループ作成
+        )
 
 # ============================================================
 # 2. ユーティリティ・パブリッシュ関数
@@ -248,11 +245,7 @@ def get_test_case(test_name):
     """
     テスト名に応じたテストケースを返す
     """
-    if test_name == "INITIALIZE":
-        # 初期化フェーズは is_ready を通すためだけの短いデータ
-        return make_test_case_default(publish_duration=1.0, gate_mode=0)
-
-    elif test_name == "M2":
+    if test_name == "M2":
         # M2: 外部運転, diagが0.8Hz(タイムアウト)
         return make_test_case_default(diag_hz=0.8, gate_mode=1)
 
@@ -281,14 +274,13 @@ def get_test_case(test_name):
 # ============================================================
 def simulate_and_get_outputs(test_instance, test_name):
     # 1. 準備
-    init_inputs, _ = get_test_case("INITIALIZE")
     test_inputs, _ = get_test_case(test_name)
 
     pubs = {}
-    for topic, config in init_inputs.items():
+    for topic, config in test_inputs.items():
         pubs[topic] = test_instance.test_node.create_publisher(config["msg_type"], topic, 10)
 
-    # 検証用兼、Ready判定用のバッファ
+    # 検証用
     output_buffer = {"/diagnostics_err": []}
 
     def diag_callback(msg):
@@ -299,23 +291,13 @@ def simulate_and_get_outputs(test_instance, test_name):
         DiagnosticArray, "/diagnostics_err", diag_callback, 10
     )
 
-    # 2. 初期化フェーズ
-    timeout_ready = time.time() + 35.0
+    # 2. 対象ノードの起動プロセスを開始
+    test_instance.launch_target_node()
 
-    while len(output_buffer["/diagnostics_err"]) == 0 and time.time() < timeout_ready:
-        publish(test_instance, pubs, init_inputs)
-        rclpy.spin_once(test_instance.test_node, timeout_sec=0.1)
-
-    test_instance.assertGreater(
-        len(output_buffer["/diagnostics_err"]), 0, "Node did not publish any diagnostics"
-    )
-
-    output_buffer["/diagnostics_err"].clear()
-
-    # 3. 本番テストフェーズ
+    # 3. データの配信開始
     publish(test_instance, pubs, test_inputs)
 
-    # 受信待ち時間
+    # 4. 受信待ち時間 (パブリッシュ終了後、ノードが処理する猶予)
     end_time = time.time() + test_instance.initial_evaluation_time
     while time.time() < end_time:
         rclpy.spin_once(test_instance.test_node, timeout_sec=0.1)
