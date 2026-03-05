@@ -243,7 +243,7 @@ class TestExternalCmdSelectorM1(BaseTestCase):
 
     def test_check_rate_10hz(self):
         """
-        /diagnosticsに含まれる h7eartbeat の周期が
+        /diagnosticsに含まれる heartbeat の周期が
         5Hz < 周期 < 20Hz の範囲内であることを確認するテスト
         """
 
