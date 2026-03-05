@@ -188,7 +188,6 @@ def check_diagnostics_rate(
     start_time = get_time_from_msg(diagnostics[0])
     inspection_end_time = start_time + timeout_sec
 
-
     found_timestamps = []
 
     for msg in diagnostics:
@@ -220,7 +219,7 @@ def check_diagnostics_rate(
                 f"Time: {found_timestamps[i]:.2f}"
             ),
         )
-    
+
     last_interval = inspection_end_time - found_timestamps[-1]
     test_instance.assertTrue(
         last_interval < max_interval,
@@ -228,9 +227,9 @@ def check_diagnostics_rate(
             f"Data stopped unexpectedly! "
             f"Time from last heartbeat to end of inspection: {last_interval:.4f}s, "
             f"Expected max delay: {max_interval:.4f}s"
-        )
+        ),
     )
-    
+
     print(f"Diagnostics period check passed for {target_hardware_id}:{target_name_match}.")
 
 
