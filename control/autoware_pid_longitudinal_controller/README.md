@@ -249,7 +249,6 @@ If `stopped_acc` is not sufficiently low, there is a possibility of sliding down
 | :----------- | :----- | :------------------------------------------- | :------------ |
 | stopped_vel  | double | target velocity in STOPPED state [m/s]       | 0.0           |
 | stopped_acc  | double | target acceleration in STOPPED state [m/s^2] | -3.4          |
-| stopped_jerk | double | target jerk in STOPPED state [m/s^3]         | -5.0          |
 
 ### EMERGENCY Parameter
 
