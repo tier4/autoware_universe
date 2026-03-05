@@ -536,30 +536,31 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       c_end = (current_segment_index_ < cusp_point_indices_.size())
                 ? cusp_point_indices_[current_segment_index_]
                 : (current_reference_path.points.size() - 1u);
-    }
-    auto stateToString = [](const PathSegmentState & s) {
-      switch (s) {
-        case PathSegmentState::IDLE:
-          return "IDLE";
-        case PathSegmentState::FORWARD_FOLLOWING:
-          return "FORWARD_FOLLOWING";
-        case PathSegmentState::APPROACHING_CUSP:
-          return "APPROACHING_CUSP";
-        case PathSegmentState::AT_CUSP:
-          return "AT_CUSP";
-        case PathSegmentState::REVERSE_FOLLOWING:
-          return "REVERSE_FOLLOWING";
-        case PathSegmentState::COMPLETED:
-          return "COMPLETED";
-        default:
-          return "UNKNOWN";
+
+      auto stateToString = [](const PathSegmentState & s) {
+        switch (s) {
+          case PathSegmentState::IDLE:
+            return "IDLE";
+          case PathSegmentState::FORWARD_FOLLOWING:
+            return "FORWARD_FOLLOWING";
+          case PathSegmentState::APPROACHING_CUSP:
+            return "APPROACHING_CUSP";
+          case PathSegmentState::AT_CUSP:
+            return "AT_CUSP";
+          case PathSegmentState::REVERSE_FOLLOWING:
+            return "REVERSE_FOLLOWING";
+          case PathSegmentState::COMPLETED:
+            return "COMPLETED";
+          default:
+            return "UNKNOWN";
+        }
+      };
+      RCLCPP_INFO(
+        getLogger(), "State transition: %s -> %s, segment_index=%zu",
+        stateToString(previous_segment_state_), stateToString(current_segment_state_),
+        current_segment_index_);
       }
-    };
-    RCLCPP_INFO(
-      getLogger(), "State transition: %s -> %s, segment_index=%zu",
-      stateToString(previous_segment_state_), stateToString(current_segment_state_),
-      current_segment_index_);
-  }
+    }
 
   // ----- 4. Output setting per state -----
     // Output current segment [c_start, c_end]
@@ -571,54 +572,96 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       current_reference_path.points.begin() + static_cast<std::ptrdiff_t>(c_end) + 1);
   }
 
-  const bool apply_reversal = cusp_point_indices_.empty()
-                                ? (current_segment_state_ == PathSegmentState::AT_CUSP ||
-                                   current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING)
-                                : (current_segment_index_ % 2 == 1);
-  if (apply_reversal && !output.path.points.empty()) {
+  bool apply_reversal = false;
+
+  // TODO:do_reversalは別メソッドにする
+  auto do_reversal = [&]() {
+
     const double max_yaw_step_rad =
       autoware_utils::deg2rad(parameters_->reverse_path_densify_max_yaw_step_deg);
     const double max_dist_step = parameters_->reverse_path_densify_max_distance_step;
     densifyPathByYawAndDistance(output.path.points, max_yaw_step_rad, max_dist_step);
-    const size_t cusp_local = 0u;
-    const double reference_speed_limit =
-      (cusp_local < output.path.points.size())
-        ? std::abs(
-            static_cast<double>(output.path.points[cusp_local].point.longitudinal_velocity_mps))
-        : 2.0;
-    const double effective_cusp_speed =
-      std::min(parameters_->reverse_initial_speed, parameters_->reverse_speed_limit);
-    const double effective_reverse_speed = parameters_->reverse_speed_limit;
-    const double backward_cruise_speed = std::min(reference_speed_limit, effective_reverse_speed);
-    const double backward_slow_speed = std::min(reference_speed_limit, effective_cusp_speed);
+
+    // Determines the maximum reverse speed and the low-speed start speed
+    // 1. Derive the maximum allowed speed from the original forward path
+    const double path_reference_speed_limit = [&]() {
+      if (output.path.points.empty()) {
+        // If the path is empty, fall back to the reverse speed limit parameter
+        return parameters_->reverse_speed_limit;
+      }
+      const auto & p0 = output.path.points[0];  // Use the first point as reference
+      return std::abs(static_cast<double>(p0.point.longitudinal_velocity_mps));
+    }();
+
+    // 2. Compute reverse-direction speed caps from parameters
+    const double reverse_max_speed_param = parameters_->reverse_speed_limit;
+    const double reverse_initial_speed_param = parameters_->reverse_initial_speed;
+
+    // Upper bound for low-speed behavior around the cusp / reverse start
+    const double reverse_cusp_speed_cap =
+      std::min(reverse_initial_speed_param, reverse_max_speed_param);
+
+    // 3. Final backward speeds, clipped by both path-based and parameter-based limits
+    const double backward_cruise_speed =
+      std::min(path_reference_speed_limit, reverse_max_speed_param);  // for normal reverse cruising
+    const double backward_slow_speed =
+      std::min(path_reference_speed_limit, reverse_cusp_speed_cap);  // for cusp / initial reverse
+
     for (size_t i = 0; i < output.path.points.size(); ++i) {
       auto & p = output.path.points[i];
+      // Rotate yaw by π so that the pose faces backward.
       double yaw = tf2::getYaw(p.point.pose.orientation);
       yaw = autoware_utils::normalize_radian(yaw + M_PI);
       p.point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
+      // Set a low reverse speed (negative) for the first point,
+      // and a cruising reverse speed (negative) for the others.
       p.point.longitudinal_velocity_mps = (i == 0) ? -backward_slow_speed : -backward_cruise_speed;
+      // If a point has multiple lane_ids, keep only the maximum lane ID.
       if (!p.lane_ids.empty() && p.lane_ids.size() > 1) {
         int64_t max_lane_id = *std::max_element(p.lane_ids.begin(), p.lane_ids.end());
         p.lane_ids = {max_lane_id};
       }
+      // Set the last point's speed to 0 to make it a stop point.
       output.path.points.back().point.longitudinal_velocity_mps = 0.0;
     }
-    RCLCPP_DEBUG_EXPRESSION(
-      getLogger(), parameters_->print_debug_info,
-      "Publishing REVERSE segment: %zu points (indices %zu-%zu)", output.path.points.size(),
-      c_start, c_end);
-  } else {
+  };
+
+  switch (current_segment_state_) {
+    case PathSegmentState::IDLE:
+    case PathSegmentState::FORWARD_FOLLOWING:
+      break;
+    case PathSegmentState::APPROACHING_CUSP:
+      if (current_segment_index_ % 2 == 1) {
+        apply_reversal = true;
+        do_reversal();     
+      }
+      break;
+    case PathSegmentState::AT_CUSP:
       // When in AT_CUSP we must command stop at segment end so the vehicle stops before direction
       // switch. Otherwise the reference path velocities (e.g. from centerline) keep the vehicle
       // creeping and sustained stop is never satisfied, leading to lane departure.
-    if (current_segment_state_ == PathSegmentState::AT_CUSP && !output.path.points.empty()) {
-      output.path.points.back().point.longitudinal_velocity_mps = 0.0;
-    }
-    RCLCPP_DEBUG_EXPRESSION(
-      getLogger(), parameters_->print_debug_info,
-      "Publishing FORWARD segment: %zu points (indices %zu-%zu)", output.path.points.size(),
-      c_start, c_end);
+      if (!output.path.points.empty()) {
+        output.path.points.back().point.longitudinal_velocity_mps = 0.0;
+      }
+      if ((current_segment_index_ % 2 == 1) || cusp_point_indices_.empty()) {
+        apply_reversal = true;
+        do_reversal();
+      }
+      break;
+    case PathSegmentState::REVERSE_FOLLOWING:
+      apply_reversal = true;
+      do_reversal();
+      break;
+    case PathSegmentState::COMPLETED:
+      break;
+    default:
+      break;
   }
+
+  RCLCPP_DEBUG_EXPRESSION(
+    getLogger(), parameters_->print_debug_info,
+    "Publishing %s segment: %zu points (indices %zu-%zu)",
+    apply_reversal ? "REVERSE" : "FORWARD", output.path.points.size(), c_start, c_end);
 
   modified_path_ = output.path;
 
