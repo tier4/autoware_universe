@@ -766,75 +766,13 @@ BehaviorModuleOutput DirectionChangeModule::plan()
   // ----- 6. Output processing -----
   output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
 
-  // Handle drivable area information based on segment state
-  // For backward segment, filter drivable_lanes to match the actual path lane_ids
-  // to avoid mismatch between path (Lanelet1498) and drivable_area (Lanelet1483)
-  if (
-    (current_segment_state_ == PathSegmentState::AT_CUSP ||
-     current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING) &&
-    !output.path.points.empty()) {
-    // Collect lane_ids from backward segment path
-    std::set<int64_t> backward_lane_ids;
-    for (const auto & point : output.path.points) {
-      backward_lane_ids.insert(point.lane_ids.begin(), point.lane_ids.end());
-    }
-
-    if (parameters_->print_debug_info) {
-      std::ostringstream ss_ids;
-      for (const auto & id : backward_lane_ids) ss_ids << id << " ";
-      RCLCPP_DEBUG(getLogger(), "Backward segment lane_ids: %s", ss_ids.str().c_str());
-    }
-
-    // Filter drivable_lanes to only include lanes present in backward segment
-    auto prev_drivable_info = getPreviousModuleOutput().drivable_area_info;
-    output.drivable_area_info = prev_drivable_info;    // Copy structure
-    output.drivable_area_info.drivable_lanes.clear();  // Clear lanes for filtering
-
-    for (const auto & drivable_lane : prev_drivable_info.drivable_lanes) {
-      // Check if any lane in this DrivableLanes is in backward_lane_ids
-      bool contains_backward_lane = false;
-      std::vector<int64_t> drivable_lane_ids;
-
-      // Collect all lane IDs from this DrivableLanes
-      drivable_lane_ids.push_back(drivable_lane.right_lane.id());
-      drivable_lane_ids.push_back(drivable_lane.left_lane.id());
-      for (const auto & middle_lane : drivable_lane.middle_lanes) {
-        drivable_lane_ids.push_back(middle_lane.id());
-      }
-
-      // Check if any of these IDs match backward segment
-      for (const auto & id : drivable_lane_ids) {
-        if (backward_lane_ids.count(id) > 0) {
-          contains_backward_lane = true;
-          break;
-        }
-      }
-      // TODO(shin.sato): Remove drivable_lane if not contains_backward_lane
-      if (contains_backward_lane) {
-        output.drivable_area_info.drivable_lanes.push_back(drivable_lane);
-        if (parameters_->print_debug_info) {
-          std::ostringstream ss_keep;
-          for (const auto & id : drivable_lane_ids) ss_keep << id << " ";
-          RCLCPP_DEBUG(getLogger(), "Keeping drivable_lane with ids: %s", ss_keep.str().c_str());
-        }
-      } else {
-        if (parameters_->print_debug_info) {
-          std::ostringstream ss_filter;
-          for (const auto & id : drivable_lane_ids) ss_filter << id << " ";
-          RCLCPP_DEBUG(
-            getLogger(), "Filtering out drivable_lane with ids: %s", ss_filter.str().c_str());
-        }
-      }
-    }
-
-    RCLCPP_DEBUG_EXPRESSION(
-      getLogger(), parameters_->print_debug_info,
-      "Filtered drivable_lanes count: %zu (original: %zu)",
-      output.drivable_area_info.drivable_lanes.size(), prev_drivable_info.drivable_lanes.size());
-  } else {
-    // Forward segment or no cusps: preserve drivable area information from previous module
-    output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
-  }
+  // Preserve drivable area information from previous module
+  // This is critical: PlannerManager's generateCombinedDrivableArea() needs drivable_area_info
+  // (specifically drivable_lanes) to compute left_bound and right_bound. Since we only modify
+  // path point orientations (yaw), not geometry, the lane information remains valid and should
+  // be preserved. Without this, generateDrivableArea() fails to compute bounds and throws error:
+  // "The right or left bound of drivable area is empty"
+  output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
 
   // Debug path/ego info
   if (planner_data_ && planner_data_->self_odometry) {
