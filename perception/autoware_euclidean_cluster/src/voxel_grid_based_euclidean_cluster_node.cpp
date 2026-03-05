@@ -41,23 +41,24 @@ VoxelGridBasedEuclideanClusterNode::VoxelGridBasedEuclideanClusterNode(
     min_points_number_per_voxel, min_voxel_cluster_size_for_filtering,
     max_points_per_voxel_in_large_cluster, max_voxel_cluster_for_output);
 
-  using std::placeholders::_1;
   pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
     "input", rclcpp::SensorDataQoS().keep_last(1),
-    std::bind(&VoxelGridBasedEuclideanClusterNode::onPointCloud, this, _1));
+    [this](AUTOWARE_MESSAGE_UNIQUE_PTR(sensor_msgs::msg::PointCloud2) && msg) {
+      this->onPointCloud(std::move(msg));
+    });
 
-  cluster_pub_ = this->create_publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>(
-    "output", rclcpp::QoS{1});
+  cluster_pub_ = this->create_publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>("output", 1);
   debug_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("debug/clusters", 1);
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
   debug_publisher_ =
-    std::make_unique<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>(this, "voxel_grid_based_euclidean_cluster");
+    std::make_unique<autoware_utils_debug::BasicDebugPublisher<autoware::agnocast_wrapper::Node>>(
+      this, "voxel_grid_based_euclidean_cluster");
   stop_watch_ptr_->tic("cyclic_time");
   stop_watch_ptr_->tic("processing_time");
 }
 
 void VoxelGridBasedEuclideanClusterNode::onPointCloud(
-  const agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> & input_msg)
+  AUTOWARE_MESSAGE_UNIQUE_PTR(sensor_msgs::msg::PointCloud2) && input_msg)
 {
   stop_watch_ptr_->toc("processing_time", true);
 
@@ -70,16 +71,16 @@ void VoxelGridBasedEuclideanClusterNode::onPointCloud(
 
   // cluster and build output msg
   tier4_perception_msgs::msg::DetectedObjectsWithFeature output_data;
-  sensor_msgs::msg::PointCloud2::ConstSharedPtr ros_msg_ptr(input_msg.get(), [](auto*){});
+  sensor_msgs::msg::PointCloud2::ConstSharedPtr ros_msg_ptr(input_msg.get(), [](auto *) {});
   cluster_->cluster(ros_msg_ptr, output_data);
 
-  auto output = cluster_pub_->borrow_loaned_message();
+  auto output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(cluster_pub_);
   *output = output_data;
   cluster_pub_->publish(std::move(output));
 
   // build debug msg
   if (debug_pub_->get_subscription_count() >= 1) {
-    auto debug = debug_pub_->borrow_loaned_message();
+    auto debug = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(debug_pub_);
     convertObjectMsg2SensorMsg(output_data, *debug);
     debug_pub_->publish(std::move(debug));
   }

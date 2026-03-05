@@ -6,6 +6,7 @@ autoware_package()
 
 find_package(PCL REQUIRED)
 find_package(agnocastlib REQUIRED)
+find_package(autoware_agnocast_wrapper REQUIRED)
 
 include_directories(
   include
@@ -50,14 +51,13 @@ target_link_libraries(${PROJECT_NAME}_voxel_grid_node_core
   ${PCL_LIBRARIES}
   ${PROJECT_NAME}_lib
 )
-target_include_directories(${PROJECT_NAME}_voxel_grid_node_core PRIVATE
-  ${agnocastlib_INCLUDE_DIRS}
-)
 ament_target_dependencies(${PROJECT_NAME}_voxel_grid_node_core
   agnocastlib
+  autoware_agnocast_wrapper
 )
+autoware_agnocast_wrapper_setup(${PROJECT_NAME}_voxel_grid_node_core)
 
-rclcpp_components_register_node(${PROJECT_NAME}_voxel_grid_node_core
+autoware_agnocast_wrapper_register_node(${PROJECT_NAME}_voxel_grid_node_core
   PLUGIN "autoware::euclidean_cluster::VoxelGridBasedEuclideanClusterNode"
   EXECUTABLE voxel_grid_based_euclidean_cluster_node
 )
