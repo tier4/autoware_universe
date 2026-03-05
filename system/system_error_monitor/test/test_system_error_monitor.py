@@ -84,7 +84,7 @@ class BaseTestCase(unittest.TestCase):
         if self.test_node is not None:
             self.test_node.destroy_node()
             self.test_node = None
-    
+
     def launch_target_node(self):
         """テスト対象のノードをバックグラウンドで起動する"""
         launch_file = os.path.join(
@@ -98,6 +98,7 @@ class BaseTestCase(unittest.TestCase):
             stderr=subprocess.PIPE,
             preexec_fn=os.setsid,  # プロセスグループ作成
         )
+
 
 # ============================================================
 # 2. ユーティリティ・パブリッシュ関数
