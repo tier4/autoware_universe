@@ -40,9 +40,11 @@ using Label = autoware_perception_msgs::msg::ObjectClassification;
 ShapeEstimationNode::ShapeEstimationNode(const rclcpp::NodeOptions & node_options)
 : Node("shape_estimation", node_options)
 {
-  using std::placeholders::_1;
   sub_ = create_subscription<DetectedObjectsWithFeature>(
-    "input", rclcpp::QoS{1}, std::bind(&ShapeEstimationNode::callback, this, _1));
+    "input", rclcpp::QoS{1},
+    [this](AUTOWARE_MESSAGE_UNIQUE_PTR(DetectedObjectsWithFeature) && msg) {
+      this->callback(std::move(msg));
+    });
 
   pub_ = create_publisher<DetectedObjectsWithFeature>("objects", rclcpp::QoS{1});
   bool use_corrector = declare_parameter<bool>("use_corrector");
@@ -73,13 +75,14 @@ ShapeEstimationNode::ShapeEstimationNode(const rclcpp::NodeOptions & node_option
 #endif
 
   processing_time_publisher_ =
-    std::make_unique<autoware_utils_debug::BasicDebugPublisher<agnocast::Node>>(
+    std::make_unique<autoware_utils_debug::BasicDebugPublisher<autoware::agnocast_wrapper::Node>>(
       this, "shape_estimation");
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
   stop_watch_ptr_->tic("cyclic_time");
   stop_watch_ptr_->tic("processing_time");
   published_time_publisher_ =
-    std::make_unique<autoware_utils_debug::BasicPublishedTimePublisher<agnocast::Node>>(this);
+    std::make_unique<
+      autoware_utils_debug::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>(this);
 }
 
 static autoware_perception_msgs::msg::ObjectClassification::_label_type get_label(
@@ -99,7 +102,7 @@ static bool label_is_vehicle(
 }
 
 void ShapeEstimationNode::callback(
-  const agnocast::ipc_shared_ptr<DetectedObjectsWithFeature> & input_msg)
+  AUTOWARE_MESSAGE_UNIQUE_PTR(DetectedObjectsWithFeature) && input_msg)
 {
   stop_watch_ptr_->toc("processing_time", true);
   // Guard
@@ -108,7 +111,7 @@ void ShapeEstimationNode::callback(
   }
 
   // Create output msg
-  auto output_msg = pub_->borrow_loaned_message();
+  auto output_msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_);
   output_msg->header = input_msg->header;
 
   // Create ml model input batch

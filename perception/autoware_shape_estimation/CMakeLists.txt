@@ -13,7 +13,7 @@ find_package(pcl_conversions REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(agnocastlib REQUIRED)
-find_package(agnocast_components REQUIRED)
+find_package(autoware_agnocast_wrapper REQUIRED)
 
 find_package(CUDA)
 find_package(CUDNN)
@@ -82,11 +82,13 @@ target_include_directories(${PROJECT_NAME}
   PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
   ${agnocastlib_INCLUDE_DIRS}
+  ${autoware_agnocast_wrapper_INCLUDE_DIRS}
 )
 
 ament_target_dependencies(${PROJECT_NAME}
   ${SHAPE_ESTIMATION_DEPENDENCIES}
   agnocastlib
+  autoware_agnocast_wrapper
 )
 
 target_link_libraries(${PROJECT_NAME}
@@ -103,10 +105,11 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
   TENSORRT_VERSION_MAJOR=${TENSORRT_VERSION_MAJOR}
 )
 
-agnocast_components_register_node(${PROJECT_NAME}
+autoware_agnocast_wrapper_setup(${PROJECT_NAME})
+
+autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::shape_estimation::ShapeEstimationNode"
   EXECUTABLE shape_estimation_node
-  EXECUTOR AgnocastOnlySingleThreadedExecutor
 )
 
 ament_auto_package(INSTALL_TO_SHARE
