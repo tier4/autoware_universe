@@ -175,6 +175,7 @@ def check_diagnostics_rate(
     diagnostics,
     target_hardware_id,
     target_name_match,
+    timeout_sec,
     min_hz=5.0,
     max_hz=20.0,
 ):
@@ -183,6 +184,10 @@ def check_diagnostics_rate(
     """
     min_interval = 1.0 / max_hz
     max_interval = 1.0 / min_hz
+
+    start_time = get_time_from_msg(diagnostics[0])
+    inspection_end_time = start_time + timeout_sec
+
 
     found_timestamps = []
 
@@ -215,6 +220,17 @@ def check_diagnostics_rate(
                 f"Time: {found_timestamps[i]:.2f}"
             ),
         )
+    
+    last_interval = inspection_end_time - found_timestamps[-1]
+    test_instance.assertTrue(
+        last_interval < max_interval,
+        msg=(
+            f"Data stopped unexpectedly! "
+            f"Time from last heartbeat to end of inspection: {last_interval:.4f}s, "
+            f"Expected max delay: {max_interval:.4f}s"
+        )
+    )
+    
     print(f"Diagnostics period check passed for {target_hardware_id}:{target_name_match}.")
 
 
@@ -243,6 +259,7 @@ class TestExternalCmdSelectorM1(BaseTestCase):
             diagnostics=diag_msgs,
             target_hardware_id="external_cmd_selector",
             target_name_match="heartbeat",
+            timeout_sec=wait_time_sec,
             min_hz=5.0,
             max_hz=20.0,
         )
