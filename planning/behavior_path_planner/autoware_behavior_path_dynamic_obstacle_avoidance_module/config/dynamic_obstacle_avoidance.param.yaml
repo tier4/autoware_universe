@@ -2,82 +2,33 @@
   ros__parameters:
     dynamic_avoidance:
       common:
-        enable_debug_info: false
-        use_hatched_road_markings: true
+        enable_debug_info: false # Enable verbose debug logs for object filtering and polygon generation.
+        use_hatched_road_markings: true # Keep hatched road markings available in drivable area output handling.
 
       # avoidance is performed for the object type with true
       target_object:
-        car: true
-        truck: true
-        bus: true
-        trailer: true
-        unknown: false
-        bicycle: true
-        motorcycle: true
-        pedestrian: true
+        car: true # Treat CAR as avoidance target.
+        truck: true # Treat TRUCK as avoidance target.
+        bus: true # Treat BUS as avoidance target.
+        trailer: true # Treat TRAILER as avoidance target.
+        unknown: false # Treat UNKNOWN as avoidance target (handled as unregulated object).
+        bicycle: true # Treat BICYCLE as avoidance target (handled as unregulated object).
+        motorcycle: true # Treat MOTORCYCLE as avoidance target.
+        pedestrian: true # Treat PEDESTRIAN as avoidance target (handled as unregulated object).
 
-        max_obstacle_vel: 100.0 # [m/s]
-        min_obstacle_vel: 0.0 # [m/s]
+        successive_num_to_entry_dynamic_avoidance_condition: 5 # Consecutive detection count required to activate an object as valid target.
+        successive_num_to_exit_dynamic_avoidance_condition: 1 # Counter threshold to keep an object valid; below this value the object is removed.
 
-        successive_num_to_entry_dynamic_avoidance_condition: 5
-        successive_num_to_exit_dynamic_avoidance_condition: 1
-
-        min_obj_lat_offset_to_ego_path: 0.0 # [m]
-        max_obj_lat_offset_to_ego_path: 1.0 # [m]
-
-        cut_in_object:
-          min_time_to_start_cut_in: 1.0 # [s]
-          min_lon_offset_ego_to_object: 0.0 # [m]
-          min_object_vel: 0.5 # [m/s]
-
-        cut_out_object:
-          max_time_from_outside_ego_path: 2.0 # [s]
-          min_object_lat_vel: 0.3 # [m/s]
-          min_object_vel: 0.5 # [m/s]
-
-        crossing_object:
-          min_overtaking_object_vel: 1.0
-          max_overtaking_object_angle: 1.05
-          min_oncoming_object_vel: 1.0
-          max_oncoming_object_angle: 0.523
-          max_pedestrian_crossing_vel: 0.8
+        max_obj_lat_offset_to_ego_path: 1.0 # [m] Maximum lateral distance from ego path to consider regulated objects.
 
         front_object:
-          max_object_angle: 0.785
-          min_object_vel: -0.5               # [m/s] The value is negative considering the noisy velocity of the stopped vehicle.
-          max_ego_path_lat_cover_ratio: 0.3  # [-] The object will be ignored if the ratio of the object covering the ego's path is higher than this value.
+          max_ego_path_lat_cover_ratio: 0.3 # [-] Ignore regulated object when its lateral overlap with ego path exceeds this ratio.
 
         stopped_object:
-          max_object_vel: 0.5 # [m/s] The object will be determined as stopped if the velocity is smaller than this value.
+          max_object_vel: 0.5 # [m/s] Maximum speed magnitude considered as stopped/low-speed target in this module.
 
       drivable_area_generation:
-        expand_drivable_area: false
-        polygon_generation_method: "ego_path_base" # choose "ego_path_base" and "object_path_base"
-        object_path_base:
-          min_longitudinal_polygon_margin: 3.0 # [m]
-
-        lat_offset_from_obstacle: 1.0 # [m]
-        margin_distance_around_pedestrian: 2.0 # [m]
-        predicted_path:
-          end_time_to_consider: 2.0 # [s]
-          threshold_confidence: 0.0 # [] not probability
-        max_lat_offset_to_avoid: 0.5 # [m]
-        max_time_for_object_lat_shift: 0.0 # [s]
-        lpf_gain_for_lat_avoid_to_offset: 0.9 # [-]
-
-        max_ego_lat_acc: 0.3        # [m/ss]
-        max_ego_lat_jerk: 0.3       # [m/sss]
-        delay_time_ego_shift: 1.0   # [s]
-
-        # for same directional object
-        overtaking_object:
-          max_time_to_collision: 40.0 # [s]
-          start_duration_to_avoid: 1.0  # [s]
-          end_duration_to_avoid: 1.0  # [s]
-          duration_to_hold_avoidance: 3.0 # [s]
-
-        # for opposite directional object
-        oncoming_object:
-          max_time_to_collision: 40.0 # [s] This value should be the same as overtaking_object's one to suppress chattering of this value for parked vehicles
-          start_duration_to_avoid: 1.0  # [s]
-          end_duration_to_avoid: 0.0  # [s]
+        lat_offset_from_obstacle: 1.0 # [m] Base lateral clearance added around obstacle occupancy for lateral bounds.
+        margin_distance_around_pedestrian: 2.0 # [m] Isotropic buffer for unregulated-object (e.g., pedestrian) final clipping polygon.
+        max_lat_offset_to_avoid: 0.5 # [m] Maximum lateral clipping amount allowed on the ego side.
+        lpf_gain_for_lat_avoid_to_offset: 0.9 # [-] Low-pass filter gain for stabilizing near-side lateral bound between frames.
