@@ -89,6 +89,17 @@ struct CollisionPoint
   }
 };
 
+struct DebugData
+{
+  PointCloud2::SharedPtr cluster_points;
+  PointCloud2::SharedPtr voxel_points;
+  PointCloud2::SharedPtr target_pcd_points;
+  std::vector<autoware_utils_geometry::Polygon2d> target_polygons;
+  autoware_utils_geometry::MultiPolygon2d trajectory_polygon;
+  std::vector<geometry_msgs::msg::Point> target_collision_points;
+  geometry_msgs::msg::Point active_collision_point;
+};
+
 autoware_utils_geometry::MultiPolygon2d get_trajectory_polygon(
   const TrajectoryPoints & trajectory_points, const geometry_msgs::msg::Pose & ego_pose,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double lateral_margin = 0.0,
