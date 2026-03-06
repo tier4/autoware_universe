@@ -397,7 +397,6 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
 
   std::vector<TrajectoryData> object_trajectory_data_list{};
   for (const auto & object : context.predicted_objects->objects) {
-    std::cerr << "object id: " << autoware_utils_uuid::to_hex_string(object.object_id) << std::endl;
     object_trajectory_data_list.push_back(
       generate_predicted_path_trajectory(object, 0.0, 0.0, objects_reference_time, 10.0));
 
