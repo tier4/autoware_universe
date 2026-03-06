@@ -115,6 +115,7 @@ def recursive_assign_stamp(obj, now_stamp):
         except Exception:
             pass
 
+
 def get_time_from_msg(msg):
     """Get timestamp from message"""
     if hasattr(msg, "stamp"):
@@ -125,6 +126,7 @@ def get_time_from_msg(msg):
         return stamp.sec + stamp.nanosec * 1e-9
     else:
         return None
+
 
 def publish(test_instance, publishers, inputs):
     """
@@ -320,16 +322,16 @@ def assert_duration_at_least_5s(test_instance, msgs):
     """Verify if data duration is at least 5 seconds"""
     start_time = get_time_from_msg(msgs[0])
     end_time = get_time_from_msg(msgs[-1])
-    
+
     if start_time is None or end_time is None:
         test_instance.fail("Could not extract timestamps from messages.")
-        
+
     duration = end_time - start_time
-    
+
     test_instance.assertTrue(
-        duration >= 5.0, 
-        f"Data duration too short: {duration:.2f}s. Expected >= 5.0s."
+        duration >= 5.0, f"Data duration too short: {duration:.2f}s. Expected >= 5.0s."
     )
+
 
 def assert_M2_M5(test_instance, diag_err_msgs):
     """

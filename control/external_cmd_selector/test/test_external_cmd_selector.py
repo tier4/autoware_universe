@@ -22,7 +22,6 @@ import time
 import unittest
 
 from ament_index_python.packages import get_package_share_directory
-
 from diagnostic_msgs.msg import DiagnosticArray
 import rclpy
 
