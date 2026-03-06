@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
+  <arg name="config_file" default="$(find-pkg-share system_launch)/config/system_error_monitor.param.yaml"/>
+
   <include file="$(find-pkg-share system_error_monitor)/launch/system_error_monitor.launch.xml">
-    <arg name="config_file" value="$(find-pkg-share system_launch)/config/system_error_monitor.param.yaml"/>
+    <arg name="config_file" value="$(var config_file)"/>
     <arg name="use_emergency_hold" value="true"/>
 
     <arg name="extra_agg_config_file_system" value="$(find-pkg-share system_launch)/config/diagnostic_aggregator/system.param.yaml"/>

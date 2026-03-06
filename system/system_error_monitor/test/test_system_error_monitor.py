@@ -53,7 +53,7 @@ class BaseTestCase(unittest.TestCase):
     def setUp(self):
         """Initialize before each test method"""
         self.test_node = rclpy.create_node(f"test_node_{self._testMethodName}")
-        self.initial_evaluation_time = 1.0
+        self.initial_evaluation_time = 3.0
         self._launch_process = None
 
     def tearDown(self):
@@ -85,15 +85,25 @@ class BaseTestCase(unittest.TestCase):
             self.test_node.destroy_node()
             self.test_node = None
 
-    def launch_target_node(self):
-        """Launch the target node in the background"""
+    def launch_target_node(self, is_psim=False):
         launch_file = os.path.join(
             get_package_share_directory("system_error_monitor"),
             "launch",
             "test_system_error_monitor.launch.xml",
         )
+        
+        cmd = ["ros2", "launch", launch_file]
+        
+        if is_psim:
+            psim_config = os.path.join(
+                get_package_share_directory("system_launch"),
+                "config",
+                "system_error_monitor.planning_simulation.param.yaml"
+            )
+            cmd.append(f"config_file:={psim_config}")
+
         self._launch_process = subprocess.Popen(
-            ["ros2", "launch", launch_file],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             preexec_fn=os.setsid,
@@ -283,7 +293,7 @@ def get_test_case(test_name):
 # ============================================================
 # 4. Simulation Execution Logic
 # ============================================================
-def simulate_and_get_outputs(test_instance, test_name):
+def simulate_and_get_outputs(test_instance, test_name, is_psim=False):
     # 1. Preparation
     test_inputs, _ = get_test_case(test_name)
 
@@ -302,7 +312,7 @@ def simulate_and_get_outputs(test_instance, test_name):
     )
 
     # 2. Start target node launch process
-    test_instance.launch_target_node()
+    test_instance.launch_target_node(is_psim=is_psim)
 
     # 3. Start data transmission
     publish(test_instance, pubs, test_inputs)
@@ -451,4 +461,29 @@ class TestSystemErrorMonitor5(BaseTestCase):
 class TestSystemErrorMonitor6(BaseTestCase):
     def test_M6_check_error_detection(self):
         outputs = simulate_and_get_outputs(self, "M6")
+        assert_M6(self, outputs["/diagnostics_err"])
+
+class TestSystemErrorMonitor7(BaseTestCase):
+    def test_M7_check_error_detection(self):
+        outputs = simulate_and_get_outputs(self, "M2", is_psim=True)
+        assert_M2_M5(self, outputs["/diagnostics_err"])
+
+class TestSystemErrorMonitor8(BaseTestCase):
+    def test_M8_check_error_detection(self):
+        outputs = simulate_and_get_outputs(self, "M3", is_psim=True)
+        assert_M3_M4(self, outputs["/diagnostics_err"])
+
+class TestSystemErrorMonitor9(BaseTestCase):
+    def test_M9_check_error_detection(self):
+        outputs = simulate_and_get_outputs(self, "M4", is_psim=True)
+        assert_M3_M4(self, outputs["/diagnostics_err"])
+
+class TestSystemErrorMonitor10(BaseTestCase):
+    def test_M10_check_error_detection(self):
+        outputs = simulate_and_get_outputs(self, "M5", is_psim=True)
+        assert_M2_M5(self, outputs["/diagnostics_err"])
+
+class TestSystemErrorMonitor11(BaseTestCase):
+    def test_M11_check_error_detection(self):
+        outputs = simulate_and_get_outputs(self, "M6", is_psim=True)
         assert_M6(self, outputs["/diagnostics_err"])
