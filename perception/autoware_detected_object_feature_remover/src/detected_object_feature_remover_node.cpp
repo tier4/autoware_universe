@@ -21,18 +21,27 @@ namespace autoware::detected_object_feature_remover
 DetectedObjectFeatureRemover::DetectedObjectFeatureRemover(const rclcpp::NodeOptions & node_options)
 : Node("detected_object_feature_remover", node_options)
 {
-  using std::placeholders::_1;
-
   pub_ = this->create_publisher<DetectedObjects>("~/output", 1);
 
   sub_ = this->create_subscription<DetectedObjectsWithFeature>(
-    "~/input", 1, std::bind(&DetectedObjectFeatureRemover::objectCallback, this, _1));
+    "~/input", 1,
+    [this](AUTOWARE_MESSAGE_UNIQUE_PTR(DetectedObjectsWithFeature) && msg) {
+      this->objectCallback(std::move(msg));
+    });
 }
 
 void DetectedObjectFeatureRemover::objectCallback(
-  const agnocast::ipc_shared_ptr<DetectedObjectsWithFeature> & input)
+  AUTOWARE_MESSAGE_UNIQUE_PTR(DetectedObjectsWithFeature) && input)
 {
-  auto output = pub_->borrow_loaned_message();
+  RCLCPP_INFO(
+    this->get_logger(),
+    "========================================================\n"
+    "  [DetectedObjectFeatureRemover] objectCallback invoked\n"
+    "  input objects count: %zu\n"
+    "========================================================",
+    input->feature_objects.size());
+
+  auto output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_);
   convert(*input, *output);
   pub_->publish(std::move(output));
 }
