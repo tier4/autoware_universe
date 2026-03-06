@@ -36,48 +36,55 @@ namespace autoware::trajectory_safety_filter::plugin
 
 namespace motion
 {
-MotionProfile compute_motion_profile_1d(
-  const geometry_msgs::msg::Twist & initial_twist, double assumed_lag, double assumed_acceleration,
-  double max_time)
+std::pair<TimeTrajectory, TravelDistanceTrajectory> compute_motion_profile_1d(
+  const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
+  double start_time, double max_time)
 {
-  MotionProfile profile;
+  struct MotionProfile
+  {
+    double time;
+    double distance;
+  };
+
   const double initial_velocity = std::hypot(initial_twist.linear.x, initial_twist.linear.y);
 
   if (initial_velocity <= 0.0) {
-    profile.times.push_back(0.0);
-    profile.distances.push_back(0.0);
-    return profile;
+    return {{start_time}, {0.0}};
   }
 
-  const size_t estimated_size = static_cast<size_t>(max_time / TIME_RESOLUTION) + 1;
-  profile.times.reserve(estimated_size);
-  profile.distances.reserve(estimated_size);
+  std::vector<MotionProfile> profile;
 
-  for (double t = 0.0; t < max_time; t += TIME_RESOLUTION) {
-    profile.times.push_back(t);
-
-    if (t < assumed_lag) {
-      profile.distances.push_back(initial_velocity * t);
+  for (double t = start_time; t < max_time;
+       t = std::floor((t + TIME_RESOLUTION + 1e-6) / TIME_RESOLUTION) * TIME_RESOLUTION) {
+    if (t < braking_lag) {
+      profile.emplace_back(MotionProfile{t, initial_velocity * t});
     } else {
-      const double lag_distance = initial_velocity * assumed_lag;
-      const double time_after_lag = t - assumed_lag;
+      const double lag_distance = initial_velocity * braking_lag;
+      const double time_after_lag = t - braking_lag;
       const double current_velocity = initial_velocity + assumed_acceleration * time_after_lag;
 
       if (current_velocity <= 0.0) {
         const double time_to_stop = initial_velocity / -assumed_acceleration;
         const double stop_distance = lag_distance + (initial_velocity * time_to_stop) +
                                      (0.5 * assumed_acceleration * time_to_stop * time_to_stop);
-        profile.distances.push_back(stop_distance);
+        profile.emplace_back(MotionProfile{braking_lag + time_to_stop, stop_distance});
         break;
       }
 
       const double distance = lag_distance + (initial_velocity * time_after_lag) +
                               (0.5 * assumed_acceleration * time_after_lag * time_after_lag);
-      profile.distances.push_back(distance);
+      profile.emplace_back(MotionProfile{t, distance});
     }
   }
 
-  return profile;
+  TimeTrajectory return_times;
+  TravelDistanceTrajectory return_distances;
+  for (const auto & p : profile) {
+    return_times.push_back(p.time);
+    return_distances.push_back(p.distance);
+  }
+
+  return {return_times, return_distances};
 }
 
 }  // namespace motion
@@ -251,63 +258,67 @@ bool check_path_polygon_convex_collision(
 }  // namespace polygon
 
 TrajectoryData generate_ego_trajectory(
-  const geometry_msgs::msg::Twist & initial_twist, double assumed_lag, double assumed_acceleration,
+  const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
   double max_time, const TrajectoryPoints & traj_points, VehicleInfo & vehicle_info)
 {
-  auto profile =
-    motion::compute_motion_profile_1d(initial_twist, assumed_lag, assumed_acceleration, max_time);
+  auto [times, distances] = motion::compute_motion_profile_1d(
+    initial_twist, braking_lag, assumed_acceleration, 0.0, max_time);
 
-  auto poses = compute_pose_trajectory(traj_points, profile.distances);
+  double distance_offset =
+    autoware::motion_utils::calcSignedArcLength(traj_points, traj_points.front().pose.position, 0);
+  for (double & val : distances) {
+    val += distance_offset;
+  }
+  auto poses = compute_pose_trajectory(traj_points, distances);
+
   auto footprints = polygon::compute_footprint_trajectory(poses, vehicle_info);
 
   return TrajectoryData(
-    std::string("ego"), std::move(profile.times), std::move(profile.distances), std::move(poses),
+    std::string("ego"), std::move(times), std::move(distances), std::move(poses),
     std::move(footprints));
 }
 
 // todo: consider time delay
 // todo: use all predicted paths
 TrajectoryData generate_predicted_path_trajectory(
-  const autoware_perception_msgs::msg::PredictedObject & predicted_object, double assumed_lag,
-  double assumed_acceleration, double max_time)
+  const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
+  double assumed_acceleration, rclcpp::Duration start_time, double max_time)
 {
   const auto & max_confidence_path = std::max_element(
     predicted_object.kinematics.predicted_paths.begin(),
     predicted_object.kinematics.predicted_paths.end(),
     [](const auto & a, const auto & b) { return a.confidence < b.confidence; });
-  auto profile = motion::compute_motion_profile_1d(
-    predicted_object.kinematics.initial_twist_with_covariance.twist, assumed_lag,
-    assumed_acceleration,
+  auto [times, distances] = motion::compute_motion_profile_1d(
+    predicted_object.kinematics.initial_twist_with_covariance.twist, braking_lag,
+    assumed_acceleration, start_time.seconds(),
     std::min(
       max_time, max_confidence_path->path.size() *
                   rclcpp::Duration(max_confidence_path->time_step).seconds()));
 
-  auto poses = compute_pose_trajectory(max_confidence_path->path, profile.distances);
+  auto poses = compute_pose_trajectory(max_confidence_path->path, distances);
   auto footprints = polygon::compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(
     autoware_utils_uuid::to_hex_string(predicted_object.object_id) + "_predicted_path",
-    std::move(profile.times), std::move(profile.distances), std::move(poses),
-    std::move(footprints));
+    std::move(times), std::move(distances), std::move(poses), std::move(footprints));
 }
 
 TrajectoryData generate_constant_curvature_path_trajectory(
-  const autoware_perception_msgs::msg::PredictedObject & predicted_object, double assumed_lag,
-  double assumed_acceleration, double max_time)
+  const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
+  double assumed_acceleration, rclcpp::Duration start_time, double max_time)
 {
-  auto profile = motion::compute_motion_profile_1d(
-    predicted_object.kinematics.initial_twist_with_covariance.twist, assumed_lag,
-    assumed_acceleration, max_time);
+  auto [times, distances] = motion::compute_motion_profile_1d(
+    predicted_object.kinematics.initial_twist_with_covariance.twist, braking_lag,
+    assumed_acceleration, start_time.seconds(), max_time);
 
   auto poses = constant_curvature_predictor::compute(
     predicted_object.kinematics.initial_pose_with_covariance.pose,
-    predicted_object.kinematics.initial_twist_with_covariance.twist, profile.distances);
+    predicted_object.kinematics.initial_twist_with_covariance.twist, distances);
   auto footprints = polygon::compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(
     autoware_utils_uuid::to_hex_string(predicted_object.object_id) + "_constant_curvature_path",
-    std::move(profile.times), std::move(profile.distances), std::move(poses),
-    std::move(footprints));
+    std::move(times), std::move(distances), std::move(poses), std::move(footprints));
 }
 
 bool check_pet_collision(
@@ -377,18 +388,20 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
     return {};  // No objects to check collision with
   }
 
+  rclcpp::Duration objects_reference_time = rclcpp::Time(context.predicted_objects->header.stamp) -
+                                            rclcpp::Time(context.odometry->header.stamp);
+
   const auto ego_trajectory_data = generate_ego_trajectory(
     context.odometry->twist.twist, pet_collision_params_.ego_braking_delay,
     pet_collision_params_.ego_assumed_acceleration, 10.0, traj_points, *vehicle_info_ptr_);
 
   std::vector<TrajectoryData> object_trajectory_data_list{};
   for (const auto & object : context.predicted_objects->objects) {
-    std::cerr << "object id: " << autoware_utils_uuid::to_hex_string(object.object_id) << std::endl;
     object_trajectory_data_list.push_back(
-      generate_predicted_path_trajectory(object, 0.0, 0.0, 10.0));
+      generate_predicted_path_trajectory(object, 0.0, 0.0, objects_reference_time, 10.0));
 
     object_trajectory_data_list.push_back(
-      generate_constant_curvature_path_trajectory(object, 0.0, 0.0, 10.0));
+      generate_constant_curvature_path_trajectory(object, 0.0, 0.0, objects_reference_time, 10.0));
   }
 
   std::string error_msg{};
