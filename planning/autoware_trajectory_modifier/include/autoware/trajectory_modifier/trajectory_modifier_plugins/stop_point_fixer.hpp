@@ -51,9 +51,9 @@ private:
   {
     bool force_stop_long_stopped_trajectories{true};
     bool force_stop_close_stopped_trajectories{true};
-    double velocity_threshold_mps{0.1};
+    double velocity_threshold_mps{0.25};
     double min_distance_threshold_m{1.0};
-    double min_stop_duration_s{1.0};
+    double min_stop_duration_s{0.5};
   };
 
   Parameters params_;
