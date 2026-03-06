@@ -87,6 +87,7 @@ protected:
     planning_factor_interface_;
   std::shared_ptr<TrajectoryModifierData> data_;
   bool enabled_{true};
+  double trajectory_time_step_{0.1};
 
   rclcpp::Clock::SharedPtr get_clock() const { return node_ptr_->get_clock(); }
 

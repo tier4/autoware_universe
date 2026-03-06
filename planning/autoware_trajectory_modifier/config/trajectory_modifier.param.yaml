@@ -2,6 +2,7 @@
   ros__parameters:
     use_stop_point_fixer: true
     use_obstacle_stop: true
+    trajectory_time_step: 0.1 # [s]
 
     # Stop Point Fixer Plugin Parameters
     stop_point_fixer:
@@ -13,6 +14,10 @@
       use_objects: true
       use_pointcloud: true
       stop_margin_m: 6.0
+      nom_stopping_decel: -2.0 # [m/s^2]
+      nom_stopping_jerk: -3.0 # [m/s^3]
+      max_stopping_decel: -4.0 # [m/s^2]
+      max_stopping_jerk: -8.0 # [m/s^3]
       on_time_buffer: 0.5 # [s]
       off_time_buffer: 1.0 # [s]
       lateral_margin_m: 0.5     # lateral margin on top of ego width from trajectory to consider for obstacle stop [m]
