@@ -78,6 +78,26 @@ void logDirectionChangeDebugInfo(
 
   RCLCPP_INFO_STREAM(logger, ss.str());
 }
+
+std::string pathSegmentStateToString(const autoware::behavior_path_planner::PathSegmentState & s)
+{
+  switch (s) {
+    case autoware::behavior_path_planner::PathSegmentState::IDLE:
+      return "IDLE";
+    case autoware::behavior_path_planner::PathSegmentState::FORWARD_FOLLOWING:
+      return "FORWARD_FOLLOWING";
+    case autoware::behavior_path_planner::PathSegmentState::APPROACHING_CUSP:
+      return "APPROACHING_CUSP";
+    case autoware::behavior_path_planner::PathSegmentState::AT_CUSP:
+      return "AT_CUSP";
+    case autoware::behavior_path_planner::PathSegmentState::REVERSE_FOLLOWING:
+      return "REVERSE_FOLLOWING";
+    case autoware::behavior_path_planner::PathSegmentState::COMPLETED:
+      return "COMPLETED";
+    default:
+      return "UNKNOWN";
+  }
+}
 }  // namespace
 
 namespace autoware::behavior_path_planner
@@ -394,176 +414,151 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       }
 
       if (found_nearest && parameters_->print_debug_info) {
-        auto stateToString = [](const PathSegmentState & s) {
-          switch (s) {
-            case PathSegmentState::IDLE:
-              return "IDLE";
-            case PathSegmentState::FORWARD_FOLLOWING:
-              return "FORWARD_FOLLOWING";
-            case PathSegmentState::APPROACHING_CUSP:
-              return "APPROACHING_CUSP";
-            case PathSegmentState::AT_CUSP:
-              return "AT_CUSP";
-            case PathSegmentState::REVERSE_FOLLOWING:
-              return "REVERSE_FOLLOWING";
-            case PathSegmentState::COMPLETED:
-              return "COMPLETED";
-            default:
-              return "UNKNOWN";
-          }
-        };
         RCLCPP_INFO_EXPRESSION(
           getLogger(), parameters_->print_debug_info,
           "state=%s, ego_nearest_idx=%zu, c_start=%zu, c_end=%zu, distance_to_cusp=%.2f, "
           "vehicle_velocity=%.2f m/s",
-          stateToString(current_segment_state_), ego_nearest_idx, c_start, c_end, distance_to_cusp,
-          vehicle_velocity);
+          pathSegmentStateToString(current_segment_state_).c_str(), ego_nearest_idx, c_start,
+          c_end, distance_to_cusp, vehicle_velocity);
       }
     }
+  }
+
+  // Abnormal input: transition to COMPLETED and pass through (no further state transitions).
+  if (!planner_data_ || !planner_data_->self_odometry) {
+    RCLCPP_WARN(getLogger(), "No ego odometry available, transitioning to COMPLETED and passing through");
+    current_segment_state_ = PathSegmentState::COMPLETED;
+    return getPreviousModuleOutput();
+  }
+  if (!cusp_point_indices_.empty() && !found_nearest) {
+    RCLCPP_WARN(
+      getLogger(),
+      "Could not find nearest index for ego pose, transitioning to COMPLETED and passing through");
+    current_segment_state_ = PathSegmentState::COMPLETED;
+    return getPreviousModuleOutput();
   }
 
   // ----- 3. State transition -----
   previous_segment_state_ = current_segment_state_;
 
-  if (cusp_point_indices_.empty()) {
-    // No cusps: treat full path as single segment; no transition (maintain state or FORWARD)
-    // No cusps detected in current reference_path
-    // IMPORTANT: If we're already in reverse states, maintain that state
-    // This prevents oscillation when cusp detection becomes unstable after passing cusp
-    if (
-      previous_segment_state_ == PathSegmentState::AT_CUSP ||
-      previous_segment_state_ == PathSegmentState::REVERSE_FOLLOWING) {
-      RCLCPP_DEBUG(
-        getLogger(), "No cusp detected but already in reverse state, maintaining backward path");
-    } else {
-      // Not in backward state yet - return full path as forward segment
-      RCLCPP_DEBUG(getLogger(), "No cusp points detected, returning full path as forward segment");
+  {
+    auto apply_no_cusp_forward = [&]() {
+      current_segment_index_ = 0;
+      has_valid_cusp_ = false;
       current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
-    }
-    current_segment_index_ = 0;
-    has_valid_cusp_ = false;
-  } else {
-  // Input invalid default: when cusps exist but odometry unavailable or ego nearest not found,
-  // force FORWARD_FOLLOWING so that we do not rely on invalid input for state machine.
-  // TODO: 異常時の挙動は一律FORWARDで安全？（リリースまでに議論したいので、あえて日本語で記載。）
-  if (!planner_data_ || !planner_data_->self_odometry) {
-      RCLCPP_WARN(getLogger(), "No ego odometry available, defaulting to forward segment");
-      current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
-    } else if (!found_nearest) {
-      RCLCPP_WARN(
-        getLogger(), "Could not find nearest index for ego pose, defaulting to forward segment");
-        current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
-    } else {
+    };
+    auto apply_no_cusp_keep = [&]() {
+      current_segment_index_ = 0;
+      has_valid_cusp_ = false;
+    };
+    auto set_last_segment_state = [&]() {
+      current_segment_state_ = (current_segment_index_ % 2 == 0)
+                                 ? PathSegmentState::FORWARD_FOLLOWING
+                                 : PathSegmentState::REVERSE_FOLLOWING;
+    };
 
-      if (is_last_segment) {
-        // Last segment: no APPROACHING/AT_CUSP; keep FORWARD or REVERSE by parity
-        if (current_segment_index_ % 2 == 0) {
-          current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
+    switch (previous_segment_state_) {
+      case PathSegmentState::IDLE:
+        break;
+      case PathSegmentState::FORWARD_FOLLOWING:
+        if (cusp_point_indices_.empty()) {
+          apply_no_cusp_forward();
+          break;
+        }
+        if (is_last_segment) {
+          set_last_segment_state();
+        } else if (
+          distance_to_cusp <= parameters_->cusp_detection_distance_start_approaching) {
+          current_segment_state_ = PathSegmentState::APPROACHING_CUSP;
+        }
+        break;
+      case PathSegmentState::APPROACHING_CUSP:
+        if (cusp_point_indices_.empty()) {
+          apply_no_cusp_forward();
+          break;
+        }
+        if (is_last_segment) {
+          set_last_segment_state();
+        } else if (
+          distance_to_cusp <= parameters_->cusp_detection_distance_threshold) {
+          current_segment_state_ = PathSegmentState::AT_CUSP;
+        }
+        break;
+      case PathSegmentState::AT_CUSP:
+        if (cusp_point_indices_.empty()) {
+          apply_no_cusp_keep();
+          break;
+        }
+        if (is_last_segment) {
+          set_last_segment_state();
         } else {
-          current_segment_state_ = PathSegmentState::REVERSE_FOLLOWING;
-        }
-      } else {
-        switch (previous_segment_state_) {
-          case PathSegmentState::IDLE:
-            break;
-          case PathSegmentState::FORWARD_FOLLOWING:
-            if (distance_to_cusp <= parameters_->cusp_detection_distance_start_approaching) {
-              current_segment_state_ = PathSegmentState::APPROACHING_CUSP;
+          if (vehicle_velocity < parameters_->stop_velocity_threshold) {
+            if (!cusp_stopped_since_.has_value()) {
+              cusp_stopped_since_ = clock_->now();
             }
-            break;
-          case PathSegmentState::APPROACHING_CUSP:
-            if (distance_to_cusp <= parameters_->cusp_detection_distance_threshold) {
-              current_segment_state_ = PathSegmentState::AT_CUSP;
-            }
-            break;
-          case PathSegmentState::AT_CUSP: {
-            if (vehicle_velocity < parameters_->stop_velocity_threshold) {
-              if (!cusp_stopped_since_.has_value()) {
-                cusp_stopped_since_ = clock_->now();
-              }
-              const double stopped_duration =
-                (clock_->now() - cusp_stopped_since_.value()).seconds();
-              if (stopped_duration >= parameters_->th_stopped_time) {
-                cusp_stopped_since_.reset();
-                // Check if this is the last cusp and close to goal -> transition to COMPLETED
-                const bool is_next_cusp_available =
-                  (current_segment_index_ < cusp_point_indices_.size());
-
-                // Transition to COMPLETED if all conditions are met:
-                // 1. velocity < stop_velocity_threshold for th_stopped_time
-                // 2. no next cusp point
-                // 3. distance to goal < th_arrived_distance
-                if (
-                  !is_next_cusp_available && goal_available &&
-                  distance_to_goal < parameters_->th_arrived_distance) {
-                  current_segment_state_ = PathSegmentState::COMPLETED;
-                  RCLCPP_DEBUG(getLogger(), "Transition to COMPLETED");
-                } else {
-                  // Normal transition to next segment
-                  current_segment_index_++;
-                  current_segment_state_ = (current_segment_index_ % 2 == 0)
-                                        ? PathSegmentState::FORWARD_FOLLOWING
-                                        : PathSegmentState::REVERSE_FOLLOWING;
-                }
-              }
-            } else {
-              // Velocity exceeded threshold: reset stop timer
-              if (cusp_stopped_since_.has_value()) {
-                cusp_stopped_since_.reset();
+            const double stopped_duration =
+              (clock_->now() - cusp_stopped_since_.value()).seconds();
+            if (stopped_duration >= parameters_->th_stopped_time) {
+              cusp_stopped_since_.reset();
+              const bool is_next_cusp_available =
+                (current_segment_index_ < cusp_point_indices_.size());
+              if (
+                !is_next_cusp_available && goal_available &&
+                distance_to_goal < parameters_->th_arrived_distance) {
+                current_segment_state_ = PathSegmentState::COMPLETED;
+                RCLCPP_DEBUG(getLogger(), "Transition to COMPLETED");
+              } else {
+                current_segment_index_++;
+                set_last_segment_state();
               }
             }
-            break;
+          } else {
+            if (cusp_stopped_since_.has_value()) {
+              cusp_stopped_since_.reset();
+            }
           }
-          case PathSegmentState::REVERSE_FOLLOWING:
-            if (distance_to_cusp <= parameters_->cusp_detection_distance_start_approaching) {
-              current_segment_state_ = PathSegmentState::APPROACHING_CUSP;
-            }
-            break;
-          case PathSegmentState::COMPLETED:
-            break;
-          default:
-            current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
-            break;
         }
-      }
-    }
-    if (current_segment_state_ != previous_segment_state_) {
-
-      if (current_segment_state_ == PathSegmentState::AT_CUSP) {
-        cusp_stopped_since_.reset();
-      }
-      c_start = (current_segment_index_ == 0u) ? 0u : cusp_point_indices_[current_segment_index_ - 1u];
-      c_end = (current_segment_index_ < cusp_point_indices_.size())
-                ? cusp_point_indices_[current_segment_index_]
-                : (current_reference_path.points.size() - 1u);
-
-      auto stateToString = [](const PathSegmentState & s) {
-        switch (s) {
-          case PathSegmentState::IDLE:
-            return "IDLE";
-          case PathSegmentState::FORWARD_FOLLOWING:
-            return "FORWARD_FOLLOWING";
-          case PathSegmentState::APPROACHING_CUSP:
-            return "APPROACHING_CUSP";
-          case PathSegmentState::AT_CUSP:
-            return "AT_CUSP";
-          case PathSegmentState::REVERSE_FOLLOWING:
-            return "REVERSE_FOLLOWING";
-          case PathSegmentState::COMPLETED:
-            return "COMPLETED";
-          default:
-            return "UNKNOWN";
+        break;
+      case PathSegmentState::REVERSE_FOLLOWING:
+        if (cusp_point_indices_.empty()) {
+          apply_no_cusp_keep();
+          break;
         }
-      };
-      RCLCPP_INFO(
-        getLogger(), "State transition: %s -> %s, segment_index=%zu",
-        stateToString(previous_segment_state_), stateToString(current_segment_state_),
-        current_segment_index_);
-      }
+        if (is_last_segment) {
+          set_last_segment_state();
+        } else if (
+          distance_to_cusp <= parameters_->cusp_detection_distance_start_approaching) {
+          current_segment_state_ = PathSegmentState::APPROACHING_CUSP;
+        }
+        break;
+      case PathSegmentState::COMPLETED:
+        break;
+      default:
+        RCLCPP_WARN(
+          getLogger(),
+          "Unexpected segment state, transitioning to COMPLETED and passing through");
+        current_segment_state_ = PathSegmentState::COMPLETED;
+        return getPreviousModuleOutput();
     }
+  }
+
+  if (current_segment_state_ != previous_segment_state_) {
+    if (current_segment_state_ == PathSegmentState::AT_CUSP) {
+      cusp_stopped_since_.reset();
+    }
+    c_start = (current_segment_index_ == 0u) ? 0u : cusp_point_indices_[current_segment_index_ - 1u];
+    c_end = (current_segment_index_ < cusp_point_indices_.size())
+              ? cusp_point_indices_[current_segment_index_]
+              : (current_reference_path.points.size() - 1u);
+
+    RCLCPP_INFO(
+      getLogger(), "State transition: %s -> %s, segment_index=%zu",
+      pathSegmentStateToString(previous_segment_state_).c_str(),
+      pathSegmentStateToString(current_segment_state_).c_str(), current_segment_index_);
+  }
 
   // ----- 4. Output setting per state -----
-    // Output current segment [c_start, c_end]
+  // Output current segment [c_start, c_end]
   if (c_end >= current_reference_path.points.size()) {
     output.path = current_reference_path;
   } else {
@@ -724,35 +719,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       }
     }
 
-    // Convert state to string
-    std::string state_str;
-    switch (current_segment_state_) {
-      case PathSegmentState::IDLE:
-        state_str = "IDLE";
-        break;
-      case PathSegmentState::FORWARD_FOLLOWING:
-        state_str = "FORWARD_FOLLOWING";
-        break;
-      case PathSegmentState::APPROACHING_CUSP:
-        state_str = "APPROACHING_CUSP";
-        break;
-      case PathSegmentState::AT_CUSP:
-        state_str = "AT_CUSP";
-        break;
-      case PathSegmentState::REVERSE_FOLLOWING:
-        state_str = "REVERSE_FOLLOWING";
-        break;
-      case PathSegmentState::COMPLETED:
-        state_str = "COMPLETED";
-        break;
-      default:
-        state_str = "UNKNOWN";
-        break;
-    }
-
     if (parameters_->print_debug_info) {
       std::ostringstream ss;
-      ss << "Path analysis: state=" << state_str << " path_points=" << path_msg.points.size()
+      ss << "Path analysis: state=" << pathSegmentStateToString(current_segment_state_)
+         << " path_points=" << path_msg.points.size()
          << " has_stop_point=" << (has_stop_point ? "YES" : "NO")
          << " first_vel=" << first_point_vel << " last_vel=" << last_point_vel;
       if (has_stop_point) {
