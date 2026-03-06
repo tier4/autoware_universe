@@ -11,6 +11,7 @@
     # available filters:
     #  "autoware::trajectory_safety_filter::plugin::OutOfLaneFilter"
     #  "autoware::trajectory_safety_filter::plugin::CollisionFilter"
+    #  "autoware::trajectory_safety_filter::plugin::CollisionCheckFilter"
     #  "autoware::trajectory_safety_filter::plugin::UncrossableBoundaryDepartureFilter"
     #  "autoware::trajectory_safety_filter::plugin::VehicleConstraintFilter"
 
@@ -21,6 +22,13 @@
     collision:
       time: 3.0
       min_value: 2.0
+    
+    collision_check:
+      pet_collision:
+        ego_braking_delay: 0.4
+        ego_assumed_acceleration: -5.0
+        collision_time_threshold: 0.0
+
 
     vehicle_constraint:
       max_speed: 16.7 # m/s
