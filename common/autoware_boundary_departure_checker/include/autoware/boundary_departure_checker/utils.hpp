@@ -421,15 +421,14 @@ std::optional<ProjectionsToBound> get_closest_projections_for_side(
   const double min_braking_dist, const double max_braking_dist, const SideKey side_key);
 
 /**
- * @brief Evaluates multiple footprint candidates and selects the
- * projection with the highest departure priority.
+ * @brief Evaluates multiple footprint candidates and selects the projection with the highest
+ * departure priority.
  *
  * This function determines the worst-case boundary departure scenario for a specific point in time
  * by applying a strict safety hierarchy:
- * 1. Higher severity states (CRITICAL > APPROACHING > NEAR) always override lower
- * ones.
- * 2. If candidates share the exact same departure type, the one with the
- * shortest lateral distance to the boundary is selected.
+ * 1. Higher severity states (CRITICAL > APPROACHING > NEAR) always override lower ones.
+ * 2. If candidates share the exact same departure type, the one with the shortest lateral distance
+ * to the boundary is selected.
  *
  * @param candidate_projections List of projections from various footprint types
  * @param param Configuration parameters containing safety thresholds
