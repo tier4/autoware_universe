@@ -902,7 +902,8 @@ std::optional<ProjectionToBound> get_closest_projection_at_index(
   // point
   if (
     previous_longitudinal_distance && !closest_projection->is_critical_departure() &&
-    std::abs(*previous_longitudinal_distance - closest_projection->lon_dist_on_pred_traj) < 0.5) {
+    std::abs(*previous_longitudinal_distance - closest_projection->lon_dist_on_pred_traj) <=
+      param.th_point_merge_distance_m) {
     return std::nullopt;
   }
 
