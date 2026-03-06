@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # ============================================================
-# 1. インポート部
+# 1. Imports
 # ============================================================
 import os
 import signal
@@ -23,38 +23,37 @@ import unittest
 
 from ament_index_python.packages import get_package_share_directory
 
-# テスト対象のメッセージ型をインポート
 from diagnostic_msgs.msg import DiagnosticArray
 import rclpy
 
 
 # ============================================================
-# 2. 基底テストクラス
+# 2. Base Test Class
 # ============================================================
 class BaseTestCase(unittest.TestCase):
     """
-    テストの基底クラス
-    - setUpClass/tearDownClass: rclpyの初期化のみ
-    - setUp/tearDown: 各テスト用のノード作成とプロセスクリーンアップ
+    Base class for tests
+    - setUpClass/tearDownClass: Initialize rclpy only
+    - setUp/tearDown: Create node for each test and cleanup processes
     """
 
     @classmethod
     def setUpClass(cls):
-        """クラス全体の初期化(1回のみ実行)"""
+        """Initialize class"""
         rclpy.init()
 
     @classmethod
     def tearDownClass(cls):
-        """クラス全体のクリーンアップ(1回のみ実行)"""
+        """Cleanup for the class"""
         rclpy.shutdown()
 
     def setUp(self):
-        """各テストメソッド実行前の初期化"""
+        """Initialize before each test method"""
         self.test_node = rclpy.create_node(f"test_node_{self._testMethodName}")
         self._launch_process = None
 
     def tearDown(self):
-        """各テストメソッド実行後のクリーンアップ"""
+        """Cleanup after each test method"""
         if self._launch_process is not None:
             try:
                 if self._launch_process.poll() is None:
@@ -83,7 +82,7 @@ class BaseTestCase(unittest.TestCase):
             self.test_node = None
 
     def launch_target_node(self):
-        """テスト対象のノードを起動する"""
+        """Launch the target node in the background"""
         launch_file = os.path.join(
             get_package_share_directory("external_cmd_selector"),
             "launch",
@@ -93,24 +92,24 @@ class BaseTestCase(unittest.TestCase):
             ["ros2", "launch", launch_file],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            preexec_fn=os.setsid,  # プロセスグループ作成
+            preexec_fn=os.setsid,
         )
 
 
 # ============================================================
-# 3. テストケースファクトリ関数
+# 3. Test Case Factory Functions
 # ============================================================
 """
-「入力条件：なし」のため、入力データの作成・定義が不要
-テスト対象の出力データが1つであり、定義と使用関数で分ける必要性がないため、出力データの作成・定義が不要
+Because there are "no input conditions," creating/defining input data is not necessary.
+Since the test target has only one output data and there is no need to separate its definition and usage, creating/defining output data is not necessary either.
 """
 
 
 # ============================================================
-# 4. ユーティリティ関数群
+# 4. Utility Functions
 # ============================================================
 """
-本テストコードからデータを出力しないため、タイムスタンプの取得・設定が不要
+Since this test code does not publish data, acquiring/setting timestamps for publishing is not necessary.
 """
 
 # ============================================================
@@ -119,7 +118,7 @@ class BaseTestCase(unittest.TestCase):
 
 
 def get_time_from_msg(msg):
-    """メッセージからタイムスタンプを取得"""
+    """Get timestamp from message"""
     if hasattr(msg, "stamp"):
         stamp = getattr(msg, "stamp")
         return stamp.sec + stamp.nanosec * 1e-9
@@ -132,20 +131,20 @@ def get_time_from_msg(msg):
 
 def collect_diagnostics(test_instance, timeout_sec, first_msg_timeout_sec=10.0):
     """
-    診断メッセージの収集
+    Collect diagnostic messages
     Returns:
-        received_msgs: 受信したDiagnosticArrayのリスト
+        received_msgs: List of received DiagnosticArray messages
     """
     received_msgs = []
 
-    # Subscriber作成
+    # Create Subscriber
     sub = test_instance.test_node.create_subscription(
         DiagnosticArray, "/diagnostics", lambda msg: received_msgs.append(msg), 10
     )
 
     test_instance.launch_target_node()
 
-    # 最初のメッセージを受信するまで待機（イベント駆動）
+    # Wait until the first message is received
     wait_start_time = time.time()
     while not received_msgs:
         if (time.time() - wait_start_time) > first_msg_timeout_sec:
@@ -156,7 +155,7 @@ def collect_diagnostics(test_instance, timeout_sec, first_msg_timeout_sec=10.0):
             return []
         rclpy.spin_once(test_instance.test_node, timeout_sec=0.1)
 
-    # 指定時間データ収集
+    # Collect data for the specified duration
     start_time = time.time()
     while (time.time() - start_time) < timeout_sec:
         rclpy.spin_once(test_instance.test_node, timeout_sec=0.1)
@@ -166,7 +165,7 @@ def collect_diagnostics(test_instance, timeout_sec, first_msg_timeout_sec=10.0):
 
 
 # ============================================================
-# 6. アサーションヘルパー
+# 6. Assertion Helpers
 # ============================================================
 
 
@@ -180,7 +179,7 @@ def check_diagnostics_rate(
     max_hz=20.0,
 ):
     """
-    指定した診断項目の更新周期が指定範囲内か検証する
+    Verify if the update period of the specified diagnostic item is within the specified range
     """
     min_interval = 1.0 / max_hz
     max_interval = 1.0 / min_hz
@@ -234,23 +233,23 @@ def check_diagnostics_rate(
 
 
 # ============================================================
-# 7. テストクラス実装
+# 7. Test Class Implementation
 # ============================================================
 
 
 class TestExternalCmdSelectorM1(BaseTestCase):
-    """ノードの振る舞いをテスト"""
+    """Test node behavior"""
 
     def test_check_rate_10hz(self):
         """
-        /diagnosticsに含まれる heartbeat の周期が
-        5Hz < 周期 < 20Hz の範囲内であることを確認するテスト
+        Test to verify that the heartbeat period included in /diagnostics
+        is within the range of 5Hz < period < 20Hz
         """
 
-        # 監視時間の設定
+        # Set monitoring time
         wait_time_sec = 3.0
 
-        # 診断メッセージの収集
+        # Collect diagnostic messages
         diag_msgs = collect_diagnostics(self, timeout_sec=wait_time_sec)
 
         check_diagnostics_rate(
