@@ -33,14 +33,6 @@ DetectedObjectFeatureRemover::DetectedObjectFeatureRemover(const rclcpp::NodeOpt
 void DetectedObjectFeatureRemover::objectCallback(
   AUTOWARE_MESSAGE_UNIQUE_PTR(DetectedObjectsWithFeature) && input)
 {
-  RCLCPP_INFO(
-    this->get_logger(),
-    "========================================================\n"
-    "  [DetectedObjectFeatureRemover] objectCallback invoked\n"
-    "  input objects count: %zu\n"
-    "========================================================",
-    input->feature_objects.size());
-
   auto output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_);
   convert(*input, *output);
   pub_->publish(std::move(output));
