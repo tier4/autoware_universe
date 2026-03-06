@@ -29,6 +29,20 @@ ament_auto_add_executable(${PROJECT_NAME}
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
+
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(
+    test_system_error_monitor
+    test/test_system_error_monitor.py
+    APPEND_ENV PYTHONPATH="${CMAKE_CURRENT_SOURCE_DIR}"
+    ENV PYTEST_ADDOPTS="-v"
+    TIMEOUT 600
+  )
+
+  install(DIRECTORY
+    test/launch
+    DESTINATION share/${PROJECT_NAME}/
+  )
 endif()
 
 # Install
