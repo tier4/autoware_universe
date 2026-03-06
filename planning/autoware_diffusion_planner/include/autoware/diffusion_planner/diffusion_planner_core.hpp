@@ -109,7 +109,6 @@ struct DiffusionPlannerParams
   double planning_frequency_hz;
   bool ignore_neighbors;
   bool ignore_unknown_neighbors;
-  bool predict_neighbor_trajectory;
   double traffic_light_group_msg_timeout_seconds;
   int batch_size;
   std::vector<double> temperature_list;
@@ -120,6 +119,7 @@ struct DiffusionPlannerParams
   bool shift_x;
   int64_t delay_step;
   double line_string_max_step_m;
+  bool use_time_interpolation;
 };
 
 /**
