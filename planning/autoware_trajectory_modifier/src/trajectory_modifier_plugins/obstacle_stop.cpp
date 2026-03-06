@@ -194,13 +194,16 @@ bool ObstacleStop::apply_stopping(
   const float max_lon_velocity, const float max_lon_accel) const
 {
   const auto [stopping_distance, stopping_accel, stopping_jerk] = std::invoke([&]() {
-    auto distance = motion_utils::calcStoppingDistWithJerkLimit(
+    auto distance = motion_utils::calculate_stop_distance(
       max_lon_velocity, max_lon_accel, params_.nom_stopping_decel, params_.nom_stopping_jerk);
-    if (distance < target_stop_point_arc_length)
-      return std::make_tuple(distance, params_.nom_stopping_decel, params_.nom_stopping_jerk);
-    distance = motion_utils::calcStoppingDistWithJerkLimit(
+    if (distance && *distance < target_stop_point_arc_length)
+      return std::make_tuple(*distance, params_.nom_stopping_decel, params_.nom_stopping_jerk);
+    distance = motion_utils::calculate_stop_distance(
       max_lon_velocity, max_lon_accel, params_.max_stopping_decel, params_.max_stopping_jerk);
-    return std::make_tuple(distance, params_.max_stopping_decel, params_.max_stopping_jerk);
+    if (distance && *distance < target_stop_point_arc_length)
+      return std::make_tuple(*distance, params_.max_stopping_decel, params_.max_stopping_jerk);
+    return std::make_tuple(
+      target_stop_point_arc_length, params_.max_stopping_decel, params_.max_stopping_jerk);
   });
 
   if (stopping_distance < 1e-3) return false;
