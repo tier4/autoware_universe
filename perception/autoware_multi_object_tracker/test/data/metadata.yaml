@@ -1,3 +1,4 @@
+# cspell: ignore nsec
 rosbag2_bagfile_information:
   version: 5
   storage_identifier: sqlite3
