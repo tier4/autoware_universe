@@ -29,11 +29,10 @@ class StopPointFixer : public TrajectoryModifierPluginBase
 public:
   StopPointFixer() = default;
 
-  void modify_trajectory(
-    TrajectoryPoints & traj_points, const TrajectoryModifierData & data) override;
+  void modify_trajectory(TrajectoryPoints & traj_points) override;
 
   [[nodiscard]] bool is_trajectory_modification_required(
-    const TrajectoryPoints & traj_points, const TrajectoryModifierData & data) const override;
+    const TrajectoryPoints & traj_points) override;
 
   void update_params(const TrajectoryModifierParams & params) override
   {
