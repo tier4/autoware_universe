@@ -22,6 +22,8 @@
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <visualization_msgs/msg/marker_array.hpp>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -31,6 +33,9 @@ namespace autoware::trajectory_modifier::plugin
 using autoware_utils_geometry::MultiPolygon2d;
 using autoware_utils_geometry::Polygon2d;
 using utils::obstacle_stop::CollisionPoint;
+using utils::obstacle_stop::DebugData;
+using visualization_msgs::msg::Marker;
+using visualization_msgs::msg::MarkerArray;
 
 class ObstacleStop : public TrajectoryModifierPluginBase
 {
@@ -50,6 +55,8 @@ public:
   }
   const TrajectoryModifierParams::ObstacleStop & get_params() const { return params_; }
 
+  void publish_debug_data([[maybe_unused]] const std::string & ns) const override;
+
 protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
 
@@ -59,7 +66,13 @@ private:
   std::vector<CollisionPoint> collision_points_buffer_;
   std::optional<CollisionPoint> nearest_collision_point_;
 
-  TrajectoryPoints trim_trajectory(const TrajectoryPoints & traj_points) const;
+  DebugData debug_data_;
+
+  MarkerArray marker_array_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_voxel_pointcloud_;
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_cluster_pointcloud_;
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_target_pcd_pointcloud_;
 
   std::optional<CollisionPoint> check_predicted_objects(
     const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon);

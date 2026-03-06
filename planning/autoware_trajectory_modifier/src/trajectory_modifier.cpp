@@ -75,10 +75,14 @@ void TrajectoryModifier::on_traj(const CandidateTrajectories::ConstSharedPtr msg
     update_params();
   }
 
+  auto trajectory_count = 0;
   for (auto & trajectory : output_trajectories.candidate_trajectories) {
     for (auto & modifier : plugins_) {
       modifier->modify_trajectory(trajectory.points);
       modifier->publish_planning_factor();
+      const auto ns = "trajectory_" + std::to_string(trajectory_count);
+      modifier->publish_debug_data(ns);
+      trajectory_count++;
     }
   }
 
