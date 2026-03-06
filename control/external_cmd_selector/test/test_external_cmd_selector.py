@@ -112,7 +112,7 @@ Since this test code does not publish data, acquiring/setting timestamps for pub
 """
 
 # ============================================================
-# 5. Publish/Subscribe ヘルパー
+# 5. Publish/Subscribe
 # ============================================================
 
 
