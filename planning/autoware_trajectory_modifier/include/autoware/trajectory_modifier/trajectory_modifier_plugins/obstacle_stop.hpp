@@ -46,6 +46,7 @@ public:
   {
     params_ = params.obstacle_stop;
     enabled_ = params.use_obstacle_stop;
+    trajectory_time_step_ = params.trajectory_time_step;
   }
   const TrajectoryModifierParams::ObstacleStop & get_params() const { return params_; }
 
@@ -71,6 +72,13 @@ private:
   // std::optional<CollisionPoint> get_nearest_collision_point() const;
 
   void set_stop_point(TrajectoryPoints & traj_points);
+
+  bool apply_stopping(
+    TrajectoryPoints & traj_points, const double target_stop_point_arc_length,
+    const float max_lon_velocity, const float max_lon_accel) const;
+
+  static constexpr double ego_low_speed_threshold = 1.0;
+  static constexpr double ego_stop_point_distance_threshold = 1.0;
 };
 
 }  // namespace autoware::trajectory_modifier::plugin
