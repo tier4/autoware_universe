@@ -91,29 +91,29 @@ public:
       return FootprintTrajectory{};
     }
 
-    size_t start_index = getIndex(start_time);
-    size_t end_index = getIndex(end_time);
+    const size_t start_index = getIndex(start_time);
+    const size_t end_index = getIndex(end_time);
 
     if (start_index > end_index) {
       return FootprintTrajectory{};
     }
 
-    auto start_iter = footprints_.begin() + start_index;
-    auto end_iter = footprints_.begin() + std::min(end_index + 1, footprints_.size());
+    const auto start_iter = footprints_.begin() + start_index;
+    const auto end_iter = footprints_.begin() + std::min(end_index + 1, footprints_.size());
 
     return FootprintTrajectory(start_iter, end_iter);
   }
 
 private:
-  size_t getIndex(double t) const
+  size_t getIndex(const double t) const
   {
-    auto it = std::lower_bound(times_.begin(), times_.end(), t);
+    const auto it = std::lower_bound(times_.begin(), times_.end(), t);
 
     if (it == times_.begin()) return 0;
     if (it == times_.end()) return times_.size() - 1;
 
-    auto prev_it = it - 1;
-    auto closest_it = (std::abs(*it - t) < std::abs(*prev_it - t)) ? it : prev_it;
+    const auto prev_it = it - 1;
+    const auto closest_it = (std::abs(*it - t) < std::abs(*prev_it - t)) ? it : prev_it;
     return std::distance(times_.begin(), closest_it);
   }
 };
