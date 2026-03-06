@@ -38,7 +38,7 @@ std::string removeInvalidTopicString(const std::string & input_string)
   }
 
   result = std::regex_replace(result, std::regex(R"(/+)"), "/");
-  result = std::regex_replace(result, std::regex(R"(/(\d))"), "/_$1");
+  result = std::regex_replace(result, std::regex(R"(\/([0-9a-fA-F]{32})(?=\/|$))"), "/_$1");
   return result;
 }
 
