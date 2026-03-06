@@ -1,6 +1,7 @@
 // Copyright 2026 TIER IV, Inc.
 
 #include "autoware/static_freespace_planner/waypoint_loader.hpp"
+
 #include <rclcpp/rclcpp.hpp>
 
 #include <algorithm>
@@ -31,8 +32,9 @@ std::vector<WaypointLoader::Waypoint> WaypointLoader::loadWaypoints(const std::s
     if (wp_opt) {
       waypoints.push_back(*wp_opt);
     } else {
-      RCLCPP_WARN(rclcpp::get_logger("WaypointLoader"),
-        "Skipping invalid waypoint at line %zu in file '%s'", waypoints.size() + 2, csv_path.c_str());
+      RCLCPP_WARN(
+        rclcpp::get_logger("WaypointLoader"), "Skipping invalid waypoint at line %zu in file '%s'",
+        waypoints.size() + 2, csv_path.c_str());
       return std::vector<Waypoint>();  // Return empty if any line is invalid
     }
   }
@@ -61,8 +63,10 @@ std::vector<int> WaypointLoader::getAvailableSeqs(const std::string & csv_path)
         available_seqs.push_back(wp.seq);
       }
     } else {
-      RCLCPP_WARN(rclcpp::get_logger("WaypointLoader"),
-        "Skipping invalid waypoint at line %zu in file '%s' while loading available seqs", available_seqs.size() + 2, csv_path.c_str());
+      RCLCPP_WARN(
+        rclcpp::get_logger("WaypointLoader"),
+        "Skipping invalid waypoint at line %zu in file '%s' while loading available seqs",
+        available_seqs.size() + 2, csv_path.c_str());
       return available_seqs;  // Return empty if any line is invalid
     }
   }
@@ -121,9 +125,9 @@ std::optional<WaypointLoader::Waypoint> WaypointLoader::parseCSVLine(const std::
     wp.seq = std::stoi(items[0]);
 
     // x, y, z
-    wp.x  = std::stod(items[1]);
-    wp.y  = std::stod(items[2]);
-    wp.z  = std::stod(items[3]);
+    wp.x = std::stod(items[1]);
+    wp.y = std::stod(items[2]);
+    wp.z = std::stod(items[3]);
 
     // qx, qy, qz, qw
     wp.qx = std::stod(items[4]);
@@ -133,8 +137,7 @@ std::optional<WaypointLoader::Waypoint> WaypointLoader::parseCSVLine(const std::
 
     // mps
     wp.mps = std::stod(items[8]);
-  }
-  catch (...) {
+  } catch (...) {
     return std::nullopt;
   }
 

@@ -3,9 +3,9 @@
 #ifndef AUTOWARE__STATIC_FREESPACE_PLANNER__WAYPOINT_LOADER_HPP_
 #define AUTOWARE__STATIC_FREESPACE_PLANNER__WAYPOINT_LOADER_HPP_
 
+#include <optional>
 #include <string>
 #include <vector>
-#include <optional>
 
 class TestWaypointLoader;
 

@@ -187,6 +187,10 @@ void StaticFreespacePlannerNode::onTimer()
     updateTargetSeq();
   }
 
+  // Publish current trajectory
+  trajectory_.header.stamp = get_clock()->now();
+  trajectory_pub_->publish(trajectory_);
+
   return;
 }
 
@@ -284,8 +288,6 @@ void StaticFreespacePlannerNode::planTrajectory()
 
   trajectory_ = trajectory_generator_->createTrajectoryForSeq(
     current_waypoints_, current_seq_index_, current_pose, get_clock());
-
-  trajectory_pub_->publish(trajectory_);
 }
 
 void StaticFreespacePlannerNode::reset()
