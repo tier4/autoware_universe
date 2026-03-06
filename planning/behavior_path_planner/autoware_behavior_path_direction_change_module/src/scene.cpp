@@ -310,6 +310,12 @@ BehaviorModuleOutput DirectionChangeModule::plan()
   // Copy reference_path_ to local variable for stability
   const auto current_reference_path = reference_path_;
 
+  if (!planner_data_ || !planner_data_->self_odometry) {
+    RCLCPP_WARN(getLogger(), "No ego odometry available, transitioning to COMPLETED and passing through");
+    current_segment_state_ = PathSegmentState::COMPLETED;
+    return getPreviousModuleOutput();
+  }
+
   // ----- 2. Cusp point detection -----
   // Detect cusp points using current_reference_path
   cusp_point_indices_ =
@@ -366,23 +372,6 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       "segment_index=%zu, c_start=%zu, c_end=%zu, is_last_segment=%d", current_segment_index_,
       c_start, c_end, static_cast<int>(is_last_segment));
 
-    /* Critical Safety Check: Lane Continuity with Reverse Exit
-    const bool safety_check_passed = checkLaneContinuitySafety(
-      reference_path_, cusp_point_indices_, planner_data_->route_handler);
-
-    RCLCPP_DEBUG_EXPRESSION(
-      getLogger(), parameters_->print_debug_info,
-      "Safety check result: %s", safety_check_passed ? "PASSED" : "FAILED");
-    if (!safety_check_passed) {
-      RCLCPP_DEBUG_EXPRESSION(
-        getLogger(), parameters_->print_debug_info,
-        "FATAL: Lane continuity safety check failed. Returning path without modification.");
-      output.path = reference_path_;
-      output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
-      output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
-      return output;
-    }*/
-
     if (planner_data_ && planner_data_->self_odometry) {
       const auto & ego_pose = planner_data_->self_odometry->pose.pose;
       std::vector<PathPointWithLaneId> current_segment(
@@ -424,12 +413,6 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     }
   }
 
-  // Abnormal input: transition to COMPLETED and pass through (no further state transitions).
-  if (!planner_data_ || !planner_data_->self_odometry) {
-    RCLCPP_WARN(getLogger(), "No ego odometry available, transitioning to COMPLETED and passing through");
-    current_segment_state_ = PathSegmentState::COMPLETED;
-    return getPreviousModuleOutput();
-  }
   if (!cusp_point_indices_.empty() && !found_nearest) {
     RCLCPP_WARN(
       getLogger(),
@@ -437,6 +420,22 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     current_segment_state_ = PathSegmentState::COMPLETED;
     return getPreviousModuleOutput();
   }
+    /* Critical Safety Check: Lane Continuity with Reverse Exit
+  const bool safety_check_passed = checkLaneContinuitySafety(
+    reference_path_, cusp_point_indices_, planner_data_->route_handler);
+
+  RCLCPP_DEBUG_EXPRESSION(
+    getLogger(), parameters_->print_debug_info,
+    "Safety check result: %s", safety_check_passed ? "PASSED" : "FAILED");
+  if (!safety_check_passed) {
+    RCLCPP_DEBUG_EXPRESSION(
+      getLogger(), parameters_->print_debug_info,
+      "FATAL: Lane continuity safety check failed. Returning path without modification.");
+    output.path = reference_path_;
+    output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
+    output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
+    return output;
+  }*/
 
   // ----- 3. State transition -----
   previous_segment_state_ = current_segment_state_;
@@ -567,10 +566,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       current_reference_path.points.begin() + static_cast<std::ptrdiff_t>(c_end) + 1);
   }
 
-  bool apply_reversal = false;
+  bool reversed = false;
 
   // TODO:do_reversalは別メソッドにする
-  auto do_reversal = [&]() {
+  auto do_reversal = [&]() -> bool {
 
     const double max_yaw_step_rad =
       autoware_utils::deg2rad(parameters_->reverse_path_densify_max_yaw_step_deg);
@@ -619,6 +618,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       // Set the last point's speed to 0 to make it a stop point.
       output.path.points.back().point.longitudinal_velocity_mps = 0.0;
     }
+    return true;
   };
 
   switch (current_segment_state_) {
@@ -627,8 +627,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       break;
     case PathSegmentState::APPROACHING_CUSP:
       if (current_segment_index_ % 2 == 1) {
-        apply_reversal = true;
-        do_reversal();     
+        reversed = do_reversal();
       }
       break;
     case PathSegmentState::AT_CUSP:
@@ -639,13 +638,11 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         output.path.points.back().point.longitudinal_velocity_mps = 0.0;
       }
       if ((current_segment_index_ % 2 == 1) || cusp_point_indices_.empty()) {
-        apply_reversal = true;
-        do_reversal();
+        reversed = do_reversal();
       }
       break;
     case PathSegmentState::REVERSE_FOLLOWING:
-      apply_reversal = true;
-      do_reversal();
+      reversed = do_reversal();
       break;
     case PathSegmentState::COMPLETED:
       break;
@@ -656,11 +653,22 @@ BehaviorModuleOutput DirectionChangeModule::plan()
   RCLCPP_DEBUG_EXPRESSION(
     getLogger(), parameters_->print_debug_info,
     "Publishing %s segment: %zu points (indices %zu-%zu)",
-    apply_reversal ? "REVERSE" : "FORWARD", output.path.points.size(), c_start, c_end);
+    reversed ? "REVERSE" : "FORWARD", output.path.points.size(), c_start, c_end);
 
   modified_path_ = output.path;
 
-  // ----- 5. Debug output -----
+  // ----- 5. Output processing -----
+  output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
+
+  // Preserve drivable area information from previous module
+  // This is critical: PlannerManager's generateCombinedDrivableArea() needs drivable_area_info
+  // (specifically drivable_lanes) to compute left_bound and right_bound. Since we only modify
+  // path point orientations (yaw), not geometry, the lane information remains valid and should
+  // be preserved. Without this, generateDrivableArea() fails to compute bounds and throws error:
+  // "The right or left bound of drivable area is empty"
+  output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
+
+  // ----- 6. Debug output -----
   // Publish processed path to topic for debugging
   if (path_publisher_ && !output.path.points.empty()) {
     autoware_internal_planning_msgs::msg::PathWithLaneId path_msg;
@@ -682,23 +690,9 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     }
 
     path_publisher_->publish(path_msg);
-    std::string segment_type;
-    if (
-      current_segment_state_ == PathSegmentState::FORWARD_FOLLOWING ||
-      current_segment_state_ == PathSegmentState::APPROACHING_CUSP ||
-      current_segment_state_ == PathSegmentState::AT_CUSP) {
-      segment_type = (current_segment_state_ == PathSegmentState::AT_CUSP)
-                       ? "FORWARD (stop at cusp)"
-                       : "FORWARD";
-    } else if (current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING) {
-      segment_type = "BACKWARD";
-    } else {
-      segment_type = "UNKNOWN";
-    }
-
     RCLCPP_DEBUG_EXPRESSION(
       getLogger(), parameters_->print_debug_info, "Published %s segment to %s with %zu points",
-      segment_type.c_str(), path_publisher_->get_topic_name(), path_msg.points.size());
+      reversed ? "REVERSE" : "FORWARD", path_publisher_->get_topic_name(), path_msg.points.size());
 
     // Debug logging for stop point analysis
     bool has_stop_point = false;
@@ -732,17 +726,6 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       RCLCPP_DEBUG_STREAM(getLogger(), ss.str());
     }
   }
-
-  // ----- 6. Output processing -----
-  output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
-
-  // Preserve drivable area information from previous module
-  // This is critical: PlannerManager's generateCombinedDrivableArea() needs drivable_area_info
-  // (specifically drivable_lanes) to compute left_bound and right_bound. Since we only modify
-  // path point orientations (yaw), not geometry, the lane information remains valid and should
-  // be preserved. Without this, generateDrivableArea() fails to compute bounds and throws error:
-  // "The right or left bound of drivable area is empty"
-  output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
 
   // Debug path/ego info
   if (planner_data_ && planner_data_->self_odometry) {
