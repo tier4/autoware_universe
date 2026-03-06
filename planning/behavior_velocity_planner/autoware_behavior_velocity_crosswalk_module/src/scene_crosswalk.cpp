@@ -283,7 +283,10 @@ bool CrosswalkModule::modifyPathVelocity(PathWithLaneId * path)
   recordTime(3);
 
   // Set safe or unsafe
-  setSafe(!nearest_stop_factor);
+  // In MANUAL + creep mode, always report unsafe to keep RTC state as RUNNING
+  // (prevents invalid RUNNING → WAITING_FOR_EXECUTION transition)
+  const bool force_unsafe = rtc_enabled_ && isCreepTriggered();
+  setSafe(!nearest_stop_factor && !force_unsafe);
 
   // Set distance
   // NOTE: If no stop point is inserted, distance to the virtual stop line has to be calculated.
@@ -302,10 +305,17 @@ bool CrosswalkModule::modifyPathVelocity(PathWithLaneId * path)
     planGo(*path, nearest_stop_factor);
   } else {
     if (is_creep_activated) {
-      if (deadline_stop_pose.has_value()) {
-        planCreeping(*path, nearest_stop_factor, deadline_stop_pose.value());
+      if (rtc_enabled_) {
+        // MANUAL: stop at deadline_stop_pose regardless of pedestrian presence
+        if (deadline_stop_pose.has_value()) {
+          planStop(*path, std::nullopt, deadline_stop_pose, reason);
+        }
+      } else {
+        if (deadline_stop_pose.has_value()) {
+          planCreeping(*path, nearest_stop_factor, deadline_stop_pose.value());
+        }
+        // If no deadline stop pose is available, already passed the stop line, so do nothing.
       }
-      // If no deadline stop pose is available, already passed the stop line, so do nothing.
     } else {
       planStop(*path, nearest_stop_factor, default_stop_pose, reason);
     }
