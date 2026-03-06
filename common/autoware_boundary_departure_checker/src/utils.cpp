@@ -835,7 +835,7 @@ std::optional<ProjectionsToBound> get_closest_projections_for_side(
       min_to_bound.empty() ? std::nullopt
                            : std::make_optional(min_to_bound.back().lon_dist_on_pred_traj);
 
-    auto closest_projection = get_closest_projection_at_index(
+    auto closest_projection = get_closest_projection_by_departure_severity(
       candidate_projections, param, min_braking_dist, max_braking_dist, side_key,
       previous_longitudinal_distance);
 
@@ -861,7 +861,7 @@ std::optional<ProjectionsToBound> get_closest_projections_for_side(
   return min_to_bound;
 }
 
-std::optional<ProjectionToBound> get_closest_projection_at_index(
+std::optional<ProjectionToBound> get_closest_projection_by_departure_severity(
   const std::vector<ProjectionToBound> & candidate_projections, const Param & param,
   const double min_braking_dist, const double max_braking_dist, const SideKey side_key,
   const std::optional<double> previous_longitudinal_distance)

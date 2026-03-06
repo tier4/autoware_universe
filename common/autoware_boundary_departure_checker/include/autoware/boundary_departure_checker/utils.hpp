@@ -421,18 +421,27 @@ std::optional<ProjectionsToBound> get_closest_projections_for_side(
   const double min_braking_dist, const double max_braking_dist, const SideKey side_key);
 
 /**
- * @brief Process and find the closest projection at a specific index across all footprint types.
+ * @brief Evaluates multiple footprint candidates and selects the
+ * projection with the highest departure priority.
  *
- * @param candidate_projections List of projections for different footprint types at a single index.
- * @param param Checker parameters.
- * @param min_braking_dist Minimum braking distance.
- * @param max_braking_dist Maximum braking distance.
- * @param side_key Side to process (left or right).
- * @param previous_longitudinal_distance Optional longitudinal distance of the previously added
- * projection to filter out points that are too close.
- * @return The closest projection that meets the criteria, if any.
+ * This function determines the worst-case boundary departure scenario for a specific point in time
+ * by applying a strict safety hierarchy:
+ * 1. Higher severity states (CRITICAL > APPROACHING > NEAR) always override lower
+ * ones.
+ * 2. If candidates share the exact same departure type, the one with the
+ * shortest lateral distance to the boundary is selected.
+ *
+ * @param candidate_projections List of projections from various footprint types
+ * @param param Configuration parameters containing safety thresholds
+ * @param min_braking_dist Minimum longitudinal distance required to physically stop the vehicle.
+ * @param max_braking_dist Maximum longitudinal distance threshold to consider a boundary relevant.
+ * @param side_key The lateral side of the ego vehicle being evaluated (LEFT or RIGHT).
+ * @param previous_longitudinal_distance The longitudinal distance of the last recorded projection,
+ * used to safely downsample redundant non-critical points.
+ * @return The projection representing the most severe departure threat, or std::nullopt if no
+ * departure exists or it was filtered out.
  */
-std::optional<ProjectionToBound> get_closest_projection_at_index(
+std::optional<ProjectionToBound> get_closest_projection_by_departure_severity(
   const std::vector<ProjectionToBound> & candidate_projections, const Param & param,
   const double min_braking_dist, const double max_braking_dist, const SideKey side_key,
   const std::optional<double> previous_longitudinal_distance);

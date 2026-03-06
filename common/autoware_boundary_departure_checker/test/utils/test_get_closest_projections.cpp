@@ -65,7 +65,7 @@ Param create_mock_param()
 }  // namespace
 
 // ==============================================================================
-// 1. Tests for get_closest_projection_at_index (Single Index Logic)
+// 1. Tests for get_closest_projection_by_departure_severity (Single Index Logic)
 // ==============================================================================
 
 struct ProjectionAtIndexTestParam
@@ -92,7 +92,7 @@ TEST_P(GetClosestProjectionAtIndexTest, TestAllBranches)
 {
   const auto & p = GetParam();
 
-  const auto result = utils::get_closest_projection_at_index(
+  const auto result = utils::get_closest_projection_by_departure_severity(
     p.candidates, param, braking_dist_min, braking_dist_max, SideKey::LEFT,
     p.previous_longitudinal_distance);
 
