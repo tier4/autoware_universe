@@ -37,9 +37,7 @@ std::string removeInvalidTopicString(const std::string & input_string)
     result += itr->str();
   }
 
-  result = std::regex_replace(result, std::regex(R"(/+)"), "/");
-  result = std::regex_replace(result, std::regex(R"(\/([0-9a-fA-F]{32})(?=\/|$))"), "/_$1");
-  return result;
+  return std::regex_replace(result, std::regex(R"(/+)"), "/");
 }
 
 MetricConverter::MetricConverter(const rclcpp::NodeOptions & node_options)
@@ -76,8 +74,12 @@ MetricConverter::MetricConverter(const rclcpp::NodeOptions & node_options)
 void MetricConverter::onMetrics(
   const MetricArray::ConstSharedPtr metrics_msg, const std::string & base_topic_name)
 {
+  static const std::regex uuid_pattern{R"(\/[0-9a-fA-F]{32}(\/|$))"};
   for (const auto & metric : metrics_msg->metric_array) {
     std::string metric_name = base_topic_name + (metric.name.empty() ? "" : "/" + metric.name);
+    if (std::regex_search(metric_name, uuid_pattern)) {
+      continue;
+    }
     const auto valid_topic_name = removeInvalidTopicString(metric_name);
     getPublisher(valid_topic_name)->publish(createUserDefinedValue(metric));
   }
