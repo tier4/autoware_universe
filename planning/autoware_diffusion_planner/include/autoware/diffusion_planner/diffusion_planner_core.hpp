@@ -67,6 +67,22 @@ using utils::NormalizationMap;
 using InputDataMap = std::unordered_map<std::string, std::vector<float>>;
 using AgentPoses = std::vector<std::vector<std::vector<Eigen::Matrix4d>>>;
 
+struct VehicleSpec
+{
+  double wheel_base;
+  double vehicle_length;
+  double vehicle_width;
+  double base_link_to_center;
+
+  explicit VehicleSpec(const VehicleInfo & info)
+  : wheel_base(info.wheel_base_m),
+    vehicle_length(info.front_overhang_m + info.wheel_base_m + info.rear_overhang_m),
+    vehicle_width(info.left_overhang_m + info.wheel_tread_m + info.right_overhang_m),
+    base_link_to_center((info.front_overhang_m + info.wheel_base_m - info.rear_overhang_m) / 2.0)
+  {
+  }
+};
+
 struct PlannerOutput
 {
   Trajectory trajectory;
@@ -93,7 +109,6 @@ struct DiffusionPlannerParams
   double planning_frequency_hz;
   bool ignore_neighbors;
   bool ignore_unknown_neighbors;
-  bool predict_neighbor_trajectory;
   double traffic_light_group_msg_timeout_seconds;
   int batch_size;
   std::vector<double> temperature_list;
@@ -102,6 +117,7 @@ struct DiffusionPlannerParams
   float turn_indicator_keep_offset;
   double turn_indicator_hold_duration;
   bool shift_x;
+  bool use_time_interpolation;
 };
 
 /**
@@ -254,7 +270,7 @@ public:
 private:
   // Parameters
   DiffusionPlannerParams params_;
-  VehicleInfo vehicle_info_;
+  VehicleSpec vehicle_spec_;
   NormalizationMap normalization_map_;
 
   // Inference engine
