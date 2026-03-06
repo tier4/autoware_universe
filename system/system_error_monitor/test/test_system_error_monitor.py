@@ -91,14 +91,14 @@ class BaseTestCase(unittest.TestCase):
             "launch",
             "test_system_error_monitor.launch.xml",
         )
-        
+
         cmd = ["ros2", "launch", launch_file]
-        
+
         if is_psim:
             psim_config = os.path.join(
                 get_package_share_directory("system_launch"),
                 "config",
-                "system_error_monitor.planning_simulation.param.yaml"
+                "system_error_monitor.planning_simulation.param.yaml",
             )
             cmd.append(f"config_file:={psim_config}")
 
@@ -463,25 +463,30 @@ class TestSystemErrorMonitor6(BaseTestCase):
         outputs = simulate_and_get_outputs(self, "M6")
         assert_M6(self, outputs["/diagnostics_err"])
 
+
 class TestSystemErrorMonitor7(BaseTestCase):
     def test_M7_check_error_detection(self):
         outputs = simulate_and_get_outputs(self, "M2", is_psim=True)
         assert_M2_M5(self, outputs["/diagnostics_err"])
+
 
 class TestSystemErrorMonitor8(BaseTestCase):
     def test_M8_check_error_detection(self):
         outputs = simulate_and_get_outputs(self, "M3", is_psim=True)
         assert_M3_M4(self, outputs["/diagnostics_err"])
 
+
 class TestSystemErrorMonitor9(BaseTestCase):
     def test_M9_check_error_detection(self):
         outputs = simulate_and_get_outputs(self, "M4", is_psim=True)
         assert_M3_M4(self, outputs["/diagnostics_err"])
 
+
 class TestSystemErrorMonitor10(BaseTestCase):
     def test_M10_check_error_detection(self):
         outputs = simulate_and_get_outputs(self, "M5", is_psim=True)
         assert_M2_M5(self, outputs["/diagnostics_err"])
+
 
 class TestSystemErrorMonitor11(BaseTestCase):
     def test_M11_check_error_detection(self):
