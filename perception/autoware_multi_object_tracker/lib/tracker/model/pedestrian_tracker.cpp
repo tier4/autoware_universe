@@ -22,18 +22,14 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
-#include <autoware_utils/math/normalization.hpp>
-#include <autoware_utils/math/unit_conversion.hpp>
-#include <autoware_utils/ros/msg_covariance.hpp>
+#include <autoware_utils_geometry/boost_polygon_utils.hpp>
+#include <autoware_utils_math/normalization.hpp>
+#include <autoware_utils_math/unit_conversion.hpp>
+#include <tf2/utils.hpp>
+
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <bits/stdc++.h>
-#include <tf2/utils.h>
-
-#ifdef ROS_DISTRO_GALACTIC
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#else
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#endif
 
 namespace autoware::multi_object_tracker
 {
@@ -71,7 +67,7 @@ PedestrianTracker::PedestrianTracker(const rclcpp::Time & time, const types::Dyn
 
   // Set initial state
   {
-    using autoware_utils::xyzrpy_covariance_index::XYZRPY_COV_IDX;
+    using autoware_utils_geometry::xyzrpy_covariance_index::XYZRPY_COV_IDX;
     const double x = object.pose.position.x;
     const double y = object.pose.position.y;
     const double yaw = tf2::getYaw(object.pose.orientation);
@@ -223,7 +219,7 @@ bool PedestrianTracker::getTrackedObject(
   // if the tracker is to be published, check twist uncertainty
   // in case the twist uncertainty is large, lower the twist value
   if (to_publish) {
-    using autoware_utils::xyzrpy_covariance_index::XYZRPY_COV_IDX;
+    using autoware_utils_geometry::xyzrpy_covariance_index::XYZRPY_COV_IDX;
     // lower the x twist magnitude 1 sigma smaller
     // if the twist is smaller than 1 sigma, the twist is zeroed
     auto & twist = object.twist;

@@ -18,7 +18,6 @@
 #include "autoware/multi_object_tracker/object_model/types.hpp"
 #include "autoware/multi_object_tracker/tracker/model/tracker_base.hpp"
 
-#include <autoware_utils/ros/uuid_helper.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
@@ -56,7 +55,7 @@ struct ObjectData
   bool is_associated{false};
 
   // existence probabilities
-  std::vector<float> existence_vector;
+  std::vector<types::ExistenceProbability> existence_vector;
   float total_existence_probability;
 
   // detection channel id
