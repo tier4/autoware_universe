@@ -109,14 +109,17 @@ TEST_P(GetClosestProjectionAtIndexTest, TestAllBranches)
     auto plt = autoware::pyplot::import();
 
     plt.axhline(
-      Args(th_critical), Kwargs("color"_a = "red", "linestyle"_a = "--", "label"_a = "Critical Thresh"));
+      Args(th_critical),
+      Kwargs("color"_a = "red", "linestyle"_a = "--", "label"_a = "Critical Thresh"));
     plt.axhline(
       Args(th_near), Kwargs("color"_a = "orange", "linestyle"_a = "--", "label"_a = "Near Thresh"));
 
     plt.axvline(
-      Args(braking_dist_min), Kwargs("color"_a = "gray", "linestyle"_a = ":", "label"_a = "Min Braking"));
+      Args(braking_dist_min),
+      Kwargs("color"_a = "gray", "linestyle"_a = ":", "label"_a = "Min Braking"));
     plt.axvline(
-      Args(braking_dist_max), Kwargs("color"_a = "black", "linestyle"_a = ":", "label"_a = "Max Braking"));
+      Args(braking_dist_max),
+      Kwargs("color"_a = "black", "linestyle"_a = ":", "label"_a = "Max Braking"));
 
     std::vector<double> cx;
     std::vector<double> cy;
@@ -125,7 +128,8 @@ TEST_P(GetClosestProjectionAtIndexTest, TestAllBranches)
       cy.push_back(cand.lat_dist);
     }
     if (!cx.empty()) {
-      plt.scatter(Args(cx, cy), Kwargs("color"_a = "blue", "marker"_a = "x", "label"_a = "Candidates"));
+      plt.scatter(
+        Args(cx, cy), Kwargs("color"_a = "blue", "marker"_a = "x", "label"_a = "Candidates"));
     }
 
     if (result) {
@@ -154,45 +158,63 @@ INSTANTIATE_TEST_SUITE_P(
     ProjectionAtIndexTestParam{
       "NoFootprintType",
       {create_mock_projection(std::nullopt, 0.1, 5.0, 1.0)},
-      std::nullopt, std::nullopt, std::nullopt},
+      std::nullopt,
+      std::nullopt,
+      std::nullopt},
     ProjectionAtIndexTestParam{
       "NormalCriticalPriority",
       {create_mock_projection(FootprintType::LOCALIZATION, 0.1, 5.0, 1.0),
        create_mock_projection(FootprintType::NORMAL, 0.4, 5.0, 1.0)},
-      std::nullopt, DepartureType::CRITICAL_DEPARTURE, 0.4},
+      std::nullopt,
+      DepartureType::CRITICAL_DEPARTURE,
+      0.4},
     ProjectionAtIndexTestParam{
       "OutsideNearThreshold",
       {create_mock_projection(FootprintType::NORMAL, 3.0, 5.0, 1.0)},
-      std::nullopt, std::nullopt, std::nullopt},
+      std::nullopt,
+      std::nullopt,
+      std::nullopt},
     ProjectionAtIndexTestParam{
       "ClosestNearBoundary",
       {create_mock_projection(FootprintType::NORMAL, 1.5, 5.0, 1.0),
        create_mock_projection(FootprintType::LOCALIZATION, 0.8, 5.0, 1.0),
        create_mock_projection(FootprintType::STEERING_STUCK, 1.9, 5.0, 1.0)},
-      std::nullopt, DepartureType::NEAR_BOUNDARY, 0.8},
+      std::nullopt,
+      DepartureType::NEAR_BOUNDARY,
+      0.8},
     ProjectionAtIndexTestParam{
       "FilteredByPreviousLongitudinalDistance",
       {create_mock_projection(FootprintType::LOCALIZATION, 0.8, 5.2, 1.0)},
-      5.0, std::nullopt, std::nullopt},
+      5.0,
+      std::nullopt,
+      std::nullopt},
     ProjectionAtIndexTestParam{
       "CriticalNotFilteredByPreviousDistance",
       {create_mock_projection(FootprintType::NORMAL, 0.2, 5.2, 1.0)},
-      5.0, DepartureType::CRITICAL_DEPARTURE, 0.2},
+      5.0,
+      DepartureType::CRITICAL_DEPARTURE,
+      0.2},
     ProjectionAtIndexTestParam{
       "NearBoundaryExceedsCutoff",
       {create_mock_projection(
         FootprintType::NORMAL, 1.0, braking_dist_max + 1.0, cutoff_time_near + 0.5)},
-      std::nullopt, std::nullopt, std::nullopt},
+      std::nullopt,
+      std::nullopt,
+      std::nullopt},
     ProjectionAtIndexTestParam{
       "CriticalDowngradedToApproaching",
       {create_mock_projection(
         FootprintType::NORMAL, 0.2, braking_dist_min + 1.0, cutoff_time_crit + 0.5)},
-      std::nullopt, DepartureType::APPROACHING_DEPARTURE, 0.2},
+      std::nullopt,
+      DepartureType::APPROACHING_DEPARTURE,
+      0.2},
     ProjectionAtIndexTestParam{
       "ValidNearBoundaryWithinCutoffs",
       {create_mock_projection(
         FootprintType::NORMAL, 1.0, braking_dist_max - 1.0, cutoff_time_near + 0.5)},
-      std::nullopt, DepartureType::NEAR_BOUNDARY, 1.0}),
+      std::nullopt,
+      DepartureType::NEAR_BOUNDARY,
+      1.0}),
   ::testing::PrintToStringParamName());
 
 // ==============================================================================
@@ -268,7 +290,8 @@ TEST_F(GetClosestProjectionsForSideTest, TestApproachingDowngradeLoop)
   };
 
   // Dummy data so map matches sizes
-  projections[FootprintType::LOCALIZATION][SideKey::LEFT] = projections[FootprintType::NORMAL][SideKey::LEFT];
+  projections[FootprintType::LOCALIZATION][SideKey::LEFT] =
+    projections[FootprintType::NORMAL][SideKey::LEFT];
   projections[FootprintType::STEERING_STUCK][SideKey::LEFT] =
     projections[FootprintType::NORMAL][SideKey::LEFT];
 
@@ -315,15 +338,22 @@ TEST_F(GetClosestProjectionsForSideTest, TestApproachingDowngradeLoop)
       }
     }
 
-    plt.axhline(Args(th_critical), Kwargs("color"_a = "red", "linestyle"_a = "--", "label"_a = "Critical Thresh"));
+    plt.axhline(
+      Args(th_critical),
+      Kwargs("color"_a = "red", "linestyle"_a = "--", "label"_a = "Critical Thresh"));
 
     // Plot the start of the braking zone relative to the critical point
     double braking_start = res_vec.back().lon_dist_on_pred_traj - braking_dist_max;
-    plt.axvline(Args(braking_start), Kwargs("color"_a = "orange", "linestyle"_a = ":", "label"_a = "Braking Zone Start"));
+    plt.axvline(
+      Args(braking_start),
+      Kwargs("color"_a = "orange", "linestyle"_a = ":", "label"_a = "Braking Zone Start"));
 
-    if (!near_x.empty()) plt.scatter(Args(near_x, near_y), Kwargs("color"_a = "green", "label"_a = "Near"));
-    if (!app_x.empty()) plt.scatter(Args(app_x, app_y), Kwargs("color"_a = "orange", "label"_a = "Approaching"));
-    if (!crit_x.empty()) plt.scatter(Args(crit_x, crit_y), Kwargs("color"_a = "red", "label"_a = "Critical"));
+    if (!near_x.empty())
+      plt.scatter(Args(near_x, near_y), Kwargs("color"_a = "green", "label"_a = "Near"));
+    if (!app_x.empty())
+      plt.scatter(Args(app_x, app_y), Kwargs("color"_a = "orange", "label"_a = "Approaching"));
+    if (!crit_x.empty())
+      plt.scatter(Args(crit_x, crit_y), Kwargs("color"_a = "red", "label"_a = "Critical"));
 
     plt.xlabel(Args("Longitudinal Distance [m]"));
     plt.ylabel(Args("Lateral Distance [m]"));
