@@ -22,7 +22,7 @@
     collision:
       time: 3.0
       min_value: 2.0
-    
+
     collision_check:
       pet_collision:
         ego_braking_delay: 0.4

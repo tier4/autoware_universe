@@ -376,11 +376,10 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
     return {};  // No objects to check collision with
   }
-  
 
   const auto ego_trajectory_data = generate_ego_trajectory(
-    context.odometry->twist.twist, pet_collision_params_.ego_braking_delay, pet_collision_params_.ego_assumed_acceleration, 10.0,
-    traj_points, *vehicle_info_ptr_);
+    context.odometry->twist.twist, pet_collision_params_.ego_braking_delay,
+    pet_collision_params_.ego_assumed_acceleration, 10.0, traj_points, *vehicle_info_ptr_);
 
   std::vector<TrajectoryData> object_trajectory_data_list{};
   for (const auto & object : context.predicted_objects->objects) {

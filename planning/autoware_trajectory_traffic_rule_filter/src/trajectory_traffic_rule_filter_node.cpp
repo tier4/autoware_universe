@@ -150,7 +150,7 @@ void TrajectoryTrafficRuleFilter::process(const CandidateTrajectories::ConstShar
   }
 
   update_diagnostic(*filtered_msg);
-  if(debug_mode_) {  // publish the original messages
+  if (debug_mode_) {  // publish the original messages
     pub_trajectories_->publish(*msg);
   } else {
     pub_trajectories_->publish(*filtered_msg);

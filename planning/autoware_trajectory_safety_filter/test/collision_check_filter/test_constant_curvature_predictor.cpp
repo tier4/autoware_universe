@@ -130,8 +130,7 @@ TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, ComputeTrajectory)
 
   TravelDistanceTrajectory distance_trajectory = {0.0, 1.0, 2.0};
 
-  const auto curvature_pose_trajectory = compute(
-    initial_pose, initial_twist, distance_trajectory);
+  const auto curvature_pose_trajectory = compute(initial_pose, initial_twist, distance_trajectory);
 
   ASSERT_EQ(curvature_pose_trajectory.size(), 3u);
   {
@@ -156,8 +155,7 @@ TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, ComputeTrajectory)
   initial_twist.linear.y = 0.0;
   initial_twist.angular.z = 0.0;
 
-  const auto straight_pose_trajectory = compute(
-    initial_pose, initial_twist, distance_trajectory);
+  const auto straight_pose_trajectory = compute(initial_pose, initial_twist, distance_trajectory);
 
   ASSERT_EQ(straight_pose_trajectory.size(), 3u);
   {
@@ -193,8 +191,7 @@ TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, ComputeTrajectory)
   initial_twist.linear.y = 0.0;
   initial_twist.angular.z = M_PI_4;
 
-  const auto circular_pose_trajectory = compute(
-    initial_pose, initial_twist, distance_trajectory);
+  const auto circular_pose_trajectory = compute(initial_pose, initial_twist, distance_trajectory);
   {
     const auto pose = circular_pose_trajectory[0];
     EXPECT_DOUBLE_EQ(pose.position.x, r / sqrt(2.0));
@@ -219,4 +216,4 @@ TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, ComputeTrajectory)
   }
 }
 
-}  // namespace autoware::trajectory_safety_filter::plugin::constant_curvature_estimator
+}  // namespace autoware::trajectory_safety_filter::plugin::constant_curvature_predictor

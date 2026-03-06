@@ -127,4 +127,4 @@ TEST_F(ComputeMotionProfile1dTest, LagLongerThanMaxTime)
   }
 }
 
-}  // namespace autoware::trajectory_safety_filter::plugin
+}  // namespace autoware::trajectory_safety_filter::plugin::motion
