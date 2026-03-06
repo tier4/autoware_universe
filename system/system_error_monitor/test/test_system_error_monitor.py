@@ -115,6 +115,16 @@ def recursive_assign_stamp(obj, now_stamp):
         except Exception:
             pass
 
+def get_time_from_msg(msg):
+    """メッセージからタイムスタンプを取得"""
+    if hasattr(msg, "stamp"):
+        stamp = getattr(msg, "stamp")
+        return stamp.sec + stamp.nanosec * 1e-9
+    elif hasattr(msg, "header") and hasattr(msg.header, "stamp"):
+        stamp = getattr(msg.header, "stamp")
+        return stamp.sec + stamp.nanosec * 1e-9
+    else:
+        return None
 
 def publish(test_instance, publishers, inputs):
     """
@@ -271,7 +281,7 @@ def get_test_case(test_name):
 
 
 # ============================================================
-# 4. シミュレーション実行ロジック (2段階送信)
+# 4. シミュレーション実行ロジック
 # ============================================================
 def simulate_and_get_outputs(test_instance, test_name):
     # 1. 準備
@@ -309,12 +319,30 @@ def simulate_and_get_outputs(test_instance, test_name):
 # ============================================================
 # 5. 検証（アサーション）関数
 # ============================================================
+def assert_duration_at_least_5s(test_instance, msgs):
+    """データ期間が5秒以上あるか検証する"""
+    start_time = get_time_from_msg(msgs[0])
+    end_time = get_time_from_msg(msgs[-1])
+    
+    # タイムスタンプ取得失敗時のケア
+    if start_time is None or end_time is None:
+        test_instance.fail("Could not extract timestamps from messages.")
+        
+    duration = end_time - start_time
+    
+    test_instance.assertTrue(
+        duration >= 5.0, 
+        f"Data duration too short: {duration:.2f}s. Expected >= 5.0s."
+    )
+
 def assert_M2_M5(test_instance, diag_err_msgs):
     """
     【M2, M5用】
     異常条件：対象ノードが存在しない、またはタイムアウトでない
     期待状態：対象ノードが存在し、かつタイムアウト（Single Point Fault）であること
     """
+    assert_duration_at_least_5s(test_instance, diag_err_msgs)
+
     target_name = (
         "autoware/control/external_control/external_command_selector/node_alive_monitoring"
     )
@@ -339,6 +367,8 @@ def assert_M3_M4(test_instance, diag_err_msgs):
     異常条件：対象ノードが存在する、またはタイムアウトである
     期待状態：対象ノードが存在せず、かつタイムアウトでもないこと
     """
+    assert_duration_at_least_5s(test_instance, diag_err_msgs)
+
     target_name = (
         "autoware/control/external_control/external_command_selector/node_alive_monitoring"
     )
@@ -371,6 +401,8 @@ def assert_M6(test_instance, diag_err_msgs):
     異常条件：対象ノードが存在しない、またはタイムアウトである
     期待状態：対象ノードが存在し、かつタイムアウトでない（正常である）こと
     """
+    assert_duration_at_least_5s(test_instance, diag_err_msgs)
+
     target_name = (
         "autoware/control/external_control/external_command_selector/node_alive_monitoring"
     )
