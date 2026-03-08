@@ -143,4 +143,25 @@ TEST(TestMPC, CalcNearestPoseInterpFallsBackWhenTimeWindowHasNoCandidates)
   EXPECT_NEAR(nearest_time, 0.2, 1e-6);
 }
 
+TEST(TestMPC, TemporalYawAndCurvatureStayStableForShortSegments)
+{
+  using autoware::motion::control::mpc_lateral_controller::MPCTrajectory;
+
+  MPCTrajectory traj;
+  traj.push_back(0.0, 0.0, 0.0, 0.3, 0.0, 0.0, 0.0, 0.0);
+  traj.push_back(0.01, 0.0, 0.0, 0.3, 0.0, 0.0, 0.0, 0.1);
+  traj.push_back(0.02, 0.0, 0.0, 0.3, 0.0, 0.0, 0.0, 0.2);
+  traj.push_back(1.0, 0.0, 0.0, 0.3, 1.0, 0.0, 0.0, 0.3);
+
+  MPCUtils::calcTrajectoryYawFromXY(traj, true, true);
+  MPCUtils::calcTrajectoryCurvature(1, 1, traj, true);
+
+  EXPECT_NEAR(traj.yaw.at(0), 0.3, 1e-6);
+  EXPECT_NEAR(traj.yaw.at(1), 0.3, 1e-6);
+  EXPECT_NEAR(traj.yaw.at(2), 0.3, 1e-6);
+  EXPECT_NEAR(traj.k.at(0), 0.0, 1e-6);
+  EXPECT_NEAR(traj.k.at(1), 0.0, 1e-6);
+  EXPECT_NEAR(traj.k.at(2), 0.0, 1e-6);
+}
+
 }  // namespace

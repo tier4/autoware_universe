@@ -51,7 +51,9 @@ std::vector<T> resampleHorizonByZeroOrderHold(
 
 namespace autoware::motion::control::trajectory_follower_node
 {
-Controller::Controller(const rclcpp::NodeOptions & node_options) : Node("controller", node_options)
+Controller::Controller(const rclcpp::NodeOptions & node_options)
+: Node("controller", node_options),
+  diag_updater_(std::make_shared<diagnostic_updater::Updater>(this))
 {
   using std::placeholders::_1;
 
