@@ -4,6 +4,9 @@ project(autoware_external_velocity_limit_selector)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 generate_parameter_library(external_velocity_limit_selector_parameters
   param/external_velocity_limit_selector_parameters.yaml
 )
@@ -16,9 +19,18 @@ target_link_libraries(external_velocity_limit_selector_node
   external_velocity_limit_selector_parameters
 )
 
-rclcpp_components_register_node(external_velocity_limit_selector_node
+target_include_directories(external_velocity_limit_selector_node PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+)
+
+ament_target_dependencies(external_velocity_limit_selector_node
+  agnocastlib
+)
+
+agnocast_components_register_node(external_velocity_limit_selector_node
   PLUGIN "autoware::external_velocity_limit_selector::ExternalVelocityLimitSelectorNode"
   EXECUTABLE external_velocity_limit_selector
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
 )
 
 if(BUILD_TESTING)

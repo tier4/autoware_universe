@@ -11,6 +11,7 @@
   <arg name="output_debug_string" default="/planning/scenario_planning/external_velocity_limit_selector/debug"/>
 
   <node pkg="autoware_external_velocity_limit_selector" exec="external_velocity_limit_selector" name="external_velocity_limit_selector" output="screen">
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
     <param from="$(var common_param_path)"/>
     <param from="$(var param_path)"/>
     <remap from="input/velocity_limit_from_api" to="$(var input_velocity_limit_from_api)"/>
