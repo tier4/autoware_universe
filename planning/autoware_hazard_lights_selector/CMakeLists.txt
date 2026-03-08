@@ -4,13 +4,18 @@ project(autoware_hazard_lights_selector)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/node.cpp
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::hazard_lights_selector::HazardLightsSelector"
   EXECUTABLE ${PROJECT_NAME}_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 ament_auto_package(

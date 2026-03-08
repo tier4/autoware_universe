@@ -18,7 +18,7 @@ namespace autoware::hazard_lights_selector
 {
 
 HazardLightsSelector::HazardLightsSelector(const rclcpp::NodeOptions & node_options)
-: Node("autoware_hazard_lights_selector", node_options)
+: agnocast::Node("autoware_hazard_lights_selector", node_options)
 {
   using std::placeholders::_1;
 
@@ -47,13 +47,13 @@ HazardLightsSelector::HazardLightsSelector(const rclcpp::NodeOptions & node_opti
 }
 
 void HazardLightsSelector::on_hazard_lights_command_from_planning(
-  const autoware_vehicle_msgs::msg::HazardLightsCommand::SharedPtr msg)
+  const agnocast::ipc_shared_ptr<autoware_vehicle_msgs::msg::HazardLightsCommand> & msg)
 {
   hazard_lights_command_from_planning_ = msg;
 }
 
 void HazardLightsSelector::on_hazard_lights_command_from_system(
-  const autoware_vehicle_msgs::msg::HazardLightsCommand::SharedPtr msg)
+  const agnocast::ipc_shared_ptr<autoware_vehicle_msgs::msg::HazardLightsCommand> & msg)
 {
   hazard_lights_command_from_system_ = msg;
 }
@@ -77,7 +77,9 @@ void HazardLightsSelector::on_timer()
     }
   }
 
-  pub_hazard_lights_command_->publish(hazard_lights_command);
+  auto loaned_msg = pub_hazard_lights_command_->borrow_loaned_message();
+  *loaned_msg = hazard_lights_command;
+  pub_hazard_lights_command_->publish(std::move(loaned_msg));
 }
 
 }  // namespace autoware::hazard_lights_selector
