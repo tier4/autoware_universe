@@ -497,6 +497,9 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
       std::max(control_data.dt, 1.0e-3));
     const double backward_window = std::max(local_dt, std::max(control_data.dt, 0.0));
     const double forward_window = std::max(3.0 * local_dt, std::max(control_data.dt, 0.0));
+    control_data.temporal_predicted_time = predicted_time;
+    control_data.temporal_window_min = predicted_time - backward_window;
+    control_data.temporal_window_max = predicted_time + forward_window;
     const auto observed_time = longitudinal_utils::estimateTrajectoryTimeFromPose(
       control_data.interpolated_traj.points, current_pose, m_ego_nearest_dist_threshold,
       m_ego_nearest_yaw_threshold, predicted_time - backward_window,
@@ -504,6 +507,8 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
 
     double nearest_time = predicted_time;
     if (observed_time.has_value()) {
+      control_data.temporal_observed_time = *observed_time;
+      control_data.temporal_observation_used = true;
       const double max_phase_correction = std::max(2.0 * local_dt, std::max(control_data.dt, 0.0));
       const double bounded_correction =
         std::clamp(*observed_time - predicted_time, -max_phase_correction, max_phase_correction);
@@ -511,6 +516,7 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
       nearest_time = std::clamp(
         predicted_time + observation_gain * bounded_correction, traj_start_time, traj_end_time);
     }
+    control_data.temporal_fused_time = nearest_time;
     m_prev_nearest_time = nearest_time;
 
     const auto nearest_interpolated_point = longitudinal_utils::lerpTrajectoryPointByTime(
@@ -1020,6 +1026,19 @@ void PidLongitudinalController::publishDebugData(
   m_debug_values.setValues(DebugValues::TYPE::STOP_DIST, control_data.stop_dist);
   m_debug_values.setValues(DebugValues::TYPE::CONTROL_STATE, static_cast<double>(m_control_state));
   m_debug_values.setValues(DebugValues::TYPE::ACC_CMD_PUBLISHED, ctrl_cmd.acc);
+  m_debug_values.setValues(
+    DebugValues::TYPE::TEMPORAL_PREDICTED_TIME, control_data.temporal_predicted_time);
+  m_debug_values.setValues(
+    DebugValues::TYPE::TEMPORAL_OBSERVED_TIME, control_data.temporal_observed_time);
+  m_debug_values.setValues(
+    DebugValues::TYPE::TEMPORAL_FUSED_TIME, control_data.temporal_fused_time);
+  m_debug_values.setValues(
+    DebugValues::TYPE::TEMPORAL_OBSERVATION_USED,
+    control_data.temporal_observation_used ? 1.0 : 0.0);
+  m_debug_values.setValues(
+    DebugValues::TYPE::TEMPORAL_WINDOW_MIN, control_data.temporal_window_min);
+  m_debug_values.setValues(
+    DebugValues::TYPE::TEMPORAL_WINDOW_MAX, control_data.temporal_window_max);
 
   // publish debug values
   autoware_internal_debug_msgs::msg::Float32MultiArrayStamped debug_msg{};

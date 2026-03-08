@@ -274,6 +274,12 @@ Float32MultiArrayStamped MPC::generateDiagData(
   append_diag(iteration_num);             // [18] iteration number
   append_diag(runtime);                   // [19] runtime of the latest problem solved
   append_diag(objective_value);           // [20] objective value of the latest problem solved
+  append_diag(mpc_data.temporal_predicted_time);                // [21] temporal predicted time
+  append_diag(mpc_data.temporal_observed_time);                 // [22] temporal observed time
+  append_diag(mpc_data.temporal_fused_time);                    // [23] temporal fused time
+  append_diag(mpc_data.temporal_observation_used ? 1.0 : 0.0);  // [24] observation used
+  append_diag(mpc_data.temporal_window_min);                    // [25] temporal window min
+  append_diag(mpc_data.temporal_window_max);                    // [26] temporal window max
 
   return diagnostic;
 }
@@ -412,6 +418,9 @@ std::pair<ResultWithReason, MPCData> MPC::getData(
       std::max(estimateLocalTimeStep(traj, predicted_time), std::max(m_ctrl_period, 1.0e-3));
     const double backward_window = std::max(local_dt, m_ctrl_period);
     const double forward_window = std::max(3.0 * local_dt, m_ctrl_period);
+    data.temporal_predicted_time = predicted_time;
+    data.temporal_window_min = predicted_time - backward_window;
+    data.temporal_window_max = predicted_time + forward_window;
 
     Pose observed_pose{};
     size_t observed_index = 0;
@@ -423,6 +432,8 @@ std::pair<ResultWithReason, MPCData> MPC::getData(
 
     double fused_time = predicted_time;
     if (observed) {
+      data.temporal_observed_time = observed_time;
+      data.temporal_observation_used = true;
       const double max_phase_correction = std::max(2.0 * local_dt, m_ctrl_period);
       const double bounded_correction =
         std::clamp(observed_time - predicted_time, -max_phase_correction, max_phase_correction);
@@ -430,6 +441,7 @@ std::pair<ResultWithReason, MPCData> MPC::getData(
       fused_time = std::clamp(
         predicted_time + observation_gain * bounded_correction, traj_start_time, traj_end_time);
     }
+    data.temporal_fused_time = fused_time;
 
     if (!interpolateReferenceStateAtTime(
           traj, fused_time, &(data.nearest_pose), &(data.nearest_time), &(data.nearest_idx))) {
@@ -543,7 +555,7 @@ void MPC::publishNearestDebug(
 
   Float32MultiArrayStamped info_msg;
   info_msg.stamp = now;
-  info_msg.data.reserve(9);
+  info_msg.data.reserve(15);
   info_msg.data.push_back(static_cast<float>(nearest_idx));            // [0] nearest_idx
   info_msg.data.push_back(static_cast<float>(mpc_data.nearest_time));  // [1] nearest_time [s]
   info_msg.data.push_back(static_cast<float>(prev_idx));               // [2] prev_idx
@@ -554,6 +566,18 @@ void MPC::publishNearestDebug(
   info_msg.data.push_back(static_cast<float>(distance));  // [7] ego-nearest distance [m]
   info_msg.data.push_back(
     static_cast<float>(longitudinal_error));  // [8] signed longitudinal error [m]
+  info_msg.data.push_back(
+    static_cast<float>(mpc_data.temporal_predicted_time));  // [9] temporal predicted time [s]
+  info_msg.data.push_back(
+    static_cast<float>(mpc_data.temporal_observed_time));  // [10] temporal observed time [s]
+  info_msg.data.push_back(
+    static_cast<float>(mpc_data.temporal_fused_time));  // [11] temporal fused time [s]
+  info_msg.data.push_back(
+    static_cast<float>(mpc_data.temporal_observation_used ? 1.0 : 0.0));  // [12] used
+  info_msg.data.push_back(
+    static_cast<float>(mpc_data.temporal_window_min));  // [13] temporal window min [s]
+  info_msg.data.push_back(
+    static_cast<float>(mpc_data.temporal_window_max));  // [14] temporal window max [s]
   m_debug_nearest_info_pub->publish(info_msg);
 }
 
