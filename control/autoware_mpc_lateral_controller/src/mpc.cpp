@@ -370,7 +370,8 @@ void MPC::setReferenceTrajectory(
 
   // calculate curvature
   MPCUtils::calcTrajectoryCurvature(
-    param.curvature_smoothing_num_traj, param.curvature_smoothing_num_ref_steer, mpc_traj_smoothed);
+    param.curvature_smoothing_num_traj, param.curvature_smoothing_num_ref_steer, mpc_traj_smoothed,
+    m_use_temporal_trajectory);
 
   // stop velocity at a terminal point
   mpc_traj_smoothed.vx.back() = 0.0;
