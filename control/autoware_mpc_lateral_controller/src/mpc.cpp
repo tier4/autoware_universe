@@ -17,6 +17,7 @@
 #include "autoware/interpolation/linear_interpolation.hpp"
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
 #include "autoware/mpc_lateral_controller/mpc_utils.hpp"
+#include "autoware_utils/geometry/geometry.hpp"
 #include "autoware_utils/math/unit_conversion.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -35,6 +36,68 @@ namespace autoware::motion::control::mpc_lateral_controller
 using autoware_utils::calc_distance2d;
 using autoware_utils::normalize_radian;
 using autoware_utils::rad2deg;
+
+namespace
+{
+double estimateLocalTimeStep(const MPCTrajectory & traj, const double target_time)
+{
+  if (traj.size() < 2) {
+    return 0.0;
+  }
+
+  if (target_time <= traj.relative_time.front()) {
+    return traj.relative_time.at(1) - traj.relative_time.front();
+  }
+  if (target_time >= traj.relative_time.back()) {
+    return traj.relative_time.back() - traj.relative_time.at(traj.size() - 2);
+  }
+
+  for (size_t i = 0; i < traj.size() - 1; ++i) {
+    if (target_time <= traj.relative_time.at(i + 1)) {
+      return traj.relative_time.at(i + 1) - traj.relative_time.at(i);
+    }
+  }
+
+  return traj.relative_time.back() - traj.relative_time.at(traj.size() - 2);
+}
+
+bool interpolateReferenceStateAtTime(
+  const MPCTrajectory & traj, const double target_time, Pose * pose, double * nearest_time,
+  size_t * nearest_index)
+{
+  if (!pose || !nearest_time || !nearest_index) {
+    return false;
+  }
+  if (traj.empty()) {
+    return false;
+  }
+
+  const std::vector<double> out_time{
+    std::clamp(target_time, traj.relative_time.front(), traj.relative_time.back())};
+  MPCTrajectory interpolated;
+  if (!MPCUtils::linearInterpMPCTrajectory(traj.relative_time, traj, out_time, interpolated)) {
+    return false;
+  }
+  if (interpolated.empty()) {
+    return false;
+  }
+
+  pose->position.x = interpolated.x.front();
+  pose->position.y = interpolated.y.front();
+  pose->position.z = interpolated.z.front();
+  pose->orientation = autoware_utils::create_quaternion_from_yaw(interpolated.yaw.front());
+  *nearest_time = interpolated.relative_time.front();
+
+  const auto upper =
+    std::lower_bound(traj.relative_time.begin(), traj.relative_time.end(), *nearest_time);
+  if (upper == traj.relative_time.end()) {
+    *nearest_index = traj.size() - 1;
+  } else {
+    *nearest_index = static_cast<size_t>(std::distance(traj.relative_time.begin(), upper));
+  }
+  return true;
+}
+}  // namespace
 
 MPC::MPC(rclcpp::Node & node)
 {
@@ -221,10 +284,7 @@ void MPC::setReferenceTrajectory(
 {
   if (m_use_temporal_trajectory) {
     const rclcpp::Time current_stamp(trajectory_msg.header.stamp);
-    if (!m_prev_trajectory_stamp.has_value() || current_stamp != *m_prev_trajectory_stamp) {
-      m_prev_nearest_time.reset();
-      m_prev_trajectory_stamp = current_stamp;
-    }
+    m_prev_trajectory_stamp = current_stamp;
   } else {
     m_prev_trajectory_stamp.reset();
   }
@@ -339,14 +399,49 @@ std::pair<ResultWithReason, MPCData> MPC::getData(
   const auto current_pose = current_kinematics.pose.pose;
 
   MPCData data;
-  if (!MPCUtils::calcNearestPoseInterp(
-        traj, current_pose, &(data.nearest_pose), &(data.nearest_idx), &(data.nearest_time),
-        ego_nearest_dist_threshold, ego_nearest_yaw_threshold)) {
-    return {ResultWithReason{false, "error in calculating nearest pose"}, MPCData{}};
-  }
   if (m_use_temporal_trajectory) {
+    const double traj_start_time = traj.relative_time.front();
+    const double traj_end_time = traj.relative_time.back();
+    const double prev_nearest_time =
+      m_prev_nearest_time.has_value()
+        ? std::clamp(*m_prev_nearest_time, traj_start_time, traj_end_time)
+        : traj_start_time;
+    const double predicted_time =
+      std::clamp(prev_nearest_time + m_ctrl_period, traj_start_time, traj_end_time);
+    const double local_dt =
+      std::max(estimateLocalTimeStep(traj, predicted_time), std::max(m_ctrl_period, 1.0e-3));
+    const double backward_window = std::max(local_dt, m_ctrl_period);
+    const double forward_window = std::max(3.0 * local_dt, m_ctrl_period);
+
+    Pose observed_pose{};
+    size_t observed_index = 0;
+    double observed_time = predicted_time;
+    const bool observed = MPCUtils::calcNearestPoseInterp(
+      traj, current_pose, &observed_pose, &observed_index, &observed_time,
+      ego_nearest_dist_threshold, ego_nearest_yaw_threshold, true, predicted_time - backward_window,
+      predicted_time + forward_window);
+
+    double fused_time = predicted_time;
+    if (observed) {
+      const double max_phase_correction = std::max(2.0 * local_dt, m_ctrl_period);
+      const double bounded_correction =
+        std::clamp(observed_time - predicted_time, -max_phase_correction, max_phase_correction);
+      constexpr double observation_gain = 0.5;
+      fused_time = std::clamp(
+        predicted_time + observation_gain * bounded_correction, traj_start_time, traj_end_time);
+    }
+
+    if (!interpolateReferenceStateAtTime(
+          traj, fused_time, &(data.nearest_pose), &(data.nearest_time), &(data.nearest_idx))) {
+      return {ResultWithReason{false, "error in calculating temporal nearest pose"}, MPCData{}};
+    }
     m_prev_nearest_time = data.nearest_time;
   } else {
+    if (!MPCUtils::calcNearestPoseInterp(
+          traj, current_pose, &(data.nearest_pose), &(data.nearest_idx), &(data.nearest_time),
+          ego_nearest_dist_threshold, ego_nearest_yaw_threshold)) {
+      return {ResultWithReason{false, "error in calculating nearest pose"}, MPCData{}};
+    }
     m_prev_nearest_time.reset();
   }
 
