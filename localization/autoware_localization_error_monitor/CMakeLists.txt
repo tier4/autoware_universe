@@ -14,6 +14,14 @@ rclcpp_components_register_node(${PROJECT_NAME}
   EXECUTOR SingleThreadedExecutor
 )
 
+find_package(agnocast_components REQUIRED)
+agnocast_components_register_node(${PROJECT_NAME}
+  PLUGIN "autoware::localization_error_monitor::LocalizationErrorMonitor"
+  EXECUTABLE agnocast_${PROJECT_NAME}_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
+)
+
 if(BUILD_TESTING)
   function(add_testcase filepath)
     get_filename_component(filename ${filepath} NAME)

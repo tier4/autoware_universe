@@ -18,9 +18,9 @@
 #include "autoware/localization_util/covariance_ellipse.hpp"
 
 #include <Eigen/Dense>
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_logging/logger_level_configure.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <nav_msgs/msg/odometry.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -29,17 +29,17 @@
 
 namespace autoware::localization_error_monitor
 {
-class LocalizationErrorMonitor : public rclcpp::Node
+class LocalizationErrorMonitor : public agnocast::Node
 {
 private:
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
-  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr ellipse_marker_pub_;
+  agnocast::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+  agnocast::Publisher<visualization_msgs::msg::Marker>::SharedPtr ellipse_marker_pub_;
 
-  rclcpp::TimerBase::SharedPtr timer_;
+  std::unique_ptr<autoware_utils_logging::BasicLoggerLevelConfigure<agnocast::Node>>
+    logger_configure_;
 
-  std::unique_ptr<autoware_utils_logging::LoggerLevelConfigure> logger_configure_;
-
-  std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface> diagnostics_error_monitor_;
+  std::unique_ptr<autoware_utils_diagnostics::BasicDiagnosticsInterface<agnocast::Node>>
+    diagnostics_error_monitor_;
 
   double scale_;
   double error_ellipse_size_;
@@ -48,7 +48,7 @@ private:
   double warn_ellipse_size_lateral_direction_;
   autoware::localization_util::Ellipse ellipse_;
 
-  void on_odom(nav_msgs::msg::Odometry::ConstSharedPtr input_msg);
+  void on_odom(const agnocast::ipc_shared_ptr<nav_msgs::msg::Odometry> & input_msg);
 
 public:
   explicit LocalizationErrorMonitor(const rclcpp::NodeOptions & options);
