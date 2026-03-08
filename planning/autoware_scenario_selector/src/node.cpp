@@ -100,7 +100,7 @@ bool isInParkingLot(
 }
 
 bool isNearTrajectoryEnd(
-  const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr trajectory,
+  const autoware_planning_msgs::msg::Trajectory * trajectory,
   const geometry_msgs::msg::Pose & current_pose, const double th_dist)
 {
   if (!trajectory || trajectory->points.empty()) {
@@ -129,17 +129,17 @@ bool isStopped(
 
 }  // namespace
 
-autoware_planning_msgs::msg::Trajectory::ConstSharedPtr ScenarioSelectorNode::getScenarioTrajectory(
-  const std::string & scenario)
+const autoware_planning_msgs::msg::Trajectory *
+ScenarioSelectorNode::getScenarioTrajectory(const std::string & scenario)
 {
   if (scenario == autoware_internal_planning_msgs::msg::Scenario::LANEDRIVING) {
-    return lane_driving_trajectory_;
+    return lane_driving_trajectory_ ? lane_driving_trajectory_.get() : nullptr;
   }
   if (scenario == autoware_internal_planning_msgs::msg::Scenario::PARKING) {
-    return parking_trajectory_;
+    return parking_trajectory_ ? parking_trajectory_.get() : nullptr;
   }
   RCLCPP_ERROR_STREAM(this->get_logger(), "invalid scenario argument: " << scenario);
-  return lane_driving_trajectory_;
+  return lane_driving_trajectory_ ? lane_driving_trajectory_.get() : nullptr;
 }
 
 std::string ScenarioSelectorNode::selectScenarioByPosition()
@@ -180,7 +180,7 @@ void ScenarioSelectorNode::updateCurrentScenario()
 {
   const auto prev_scenario = current_scenario_;
 
-  const auto scenario_trajectory = getScenarioTrajectory(current_scenario_);
+  const auto * scenario_trajectory = getScenarioTrajectory(current_scenario_);
   const auto is_near_trajectory_end =
     isNearTrajectoryEnd(scenario_trajectory, current_pose_->pose.pose, th_arrived_distance_m_);
 
@@ -264,13 +264,14 @@ bool ScenarioSelectorNode::isEmptyParkingTrajectory() const
   return false;
 }
 
-void ScenarioSelectorNode::onMap(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg)
+void ScenarioSelectorNode::onMap(
+  AUTOWARE_MESSAGE_UNIQUE_PTR(autoware_map_msgs::msg::LaneletMapBin) msg)
 {
   route_handler_ = std::make_shared<autoware::route_handler::RouteHandler>(*msg);
 }
 
 void ScenarioSelectorNode::onRoute(
-  const autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr msg)
+  AUTOWARE_MESSAGE_UNIQUE_PTR(autoware_planning_msgs::msg::LaneletRoute) msg)
 {
   // When the route id is the same (e.g. rerouting with modified goal) keep the current scenario.
   // Otherwise, reset the scenario.
@@ -278,10 +279,12 @@ void ScenarioSelectorNode::onRoute(
     current_scenario_ = autoware_internal_planning_msgs::msg::Scenario::EMPTY;
   }
 
-  route_ = msg;
+  route_ = AUTOWARE_MESSAGE_SHARED_PTR(const autoware_planning_msgs::msg::LaneletRoute)(
+    std::make_shared<const autoware_planning_msgs::msg::LaneletRoute>(*msg));
 }
 
-void ScenarioSelectorNode::onOdom(const nav_msgs::msg::Odometry::ConstSharedPtr msg)
+void ScenarioSelectorNode::onOdom(
+  AUTOWARE_MESSAGE_SHARED_PTR(const nav_msgs::msg::Odometry) msg)
 {
   current_pose_ = msg;
   auto twist = std::make_shared<geometry_msgs::msg::TwistStamped>();
@@ -351,7 +354,7 @@ void ScenarioSelectorNode::updateData()
   }
   {
     auto msg = sub_parking_state_->take_data();
-    is_parking_completed_ = msg ? msg->data : is_parking_completed_;
+    if (msg) is_parking_completed_ = msg->data;
   }
 
   {
@@ -381,54 +384,61 @@ void ScenarioSelectorNode::onTimer()
   }
 
   updateCurrentScenario();
-  autoware_internal_planning_msgs::msg::Scenario scenario;
-  scenario.current_scenario = current_scenario_;
+  auto output_scenario = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_scenario_);
+  output_scenario->current_scenario = current_scenario_;
 
   if (current_scenario_ == autoware_internal_planning_msgs::msg::Scenario::PARKING) {
-    scenario.activating_scenarios.push_back(current_scenario_);
+    output_scenario->activating_scenarios.push_back(current_scenario_);
   }
 
-  pub_scenario_->publish(scenario);
+  pub_scenario_->publish(std::move(output_scenario));
 
   // Publish ProcessingTime
-  autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
-  processing_time_msg.stamp = get_clock()->now();
-  processing_time_msg.data = stop_watch.toc();
-  pub_processing_time_->publish(processing_time_msg);
+  auto output_pt = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_processing_time_);
+  output_pt->stamp = get_clock()->now();
+  output_pt->data = stop_watch.toc();
+  pub_processing_time_->publish(std::move(output_pt));
 }
 
 void ScenarioSelectorNode::onLaneDrivingTrajectory(
-  const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg)
+  AUTOWARE_MESSAGE_UNIQUE_PTR(autoware_planning_msgs::msg::Trajectory) msg)
 {
-  lane_driving_trajectory_ = msg;
+  lane_driving_trajectory_ = AUTOWARE_MESSAGE_SHARED_PTR(
+    const autoware_planning_msgs::msg::Trajectory)(
+    std::make_shared<const autoware_planning_msgs::msg::Trajectory>(*msg));
 
   if (current_scenario_ != autoware_internal_planning_msgs::msg::Scenario::LANEDRIVING) {
     return;
   }
 
-  publishTrajectory(msg);
+  publishTrajectory(*msg);
 }
 
 void ScenarioSelectorNode::onParkingTrajectory(
-  const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg)
+  AUTOWARE_MESSAGE_UNIQUE_PTR(autoware_planning_msgs::msg::Trajectory) msg)
 {
-  parking_trajectory_ = msg;
+  parking_trajectory_ = AUTOWARE_MESSAGE_SHARED_PTR(
+    const autoware_planning_msgs::msg::Trajectory)(
+    std::make_shared<const autoware_planning_msgs::msg::Trajectory>(*msg));
 
   if (current_scenario_ != autoware_internal_planning_msgs::msg::Scenario::PARKING) {
     return;
   }
 
-  publishTrajectory(msg);
+  publishTrajectory(*msg);
 }
 
 void ScenarioSelectorNode::publishTrajectory(
-  const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg)
+  const autoware_planning_msgs::msg::Trajectory & msg)
 {
   const auto now = this->now();
-  const auto delay_sec = (now - msg->header.stamp).seconds();
+  const auto delay_sec = (now - msg.header.stamp).seconds();
   if (delay_sec <= th_max_message_delay_sec_) {
-    pub_trajectory_->publish(*msg);
-    published_time_publisher_->publish_if_subscribed(pub_trajectory_, msg->header.stamp);
+    auto output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_trajectory_);
+    *output = msg;
+    pub_trajectory_->publish(std::move(output));
+    published_time_publisher_->publish_if_subscribed<autoware_planning_msgs::msg::Trajectory>(
+      pub_trajectory_, msg.header.stamp);
   } else {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), std::chrono::milliseconds(1000).count(),
@@ -438,7 +448,7 @@ void ScenarioSelectorNode::publishTrajectory(
 }
 
 ScenarioSelectorNode::ScenarioSelectorNode(const rclcpp::NodeOptions & node_options)
-: Node("scenario_selector", node_options),
+: autoware::agnocast_wrapper::Node("scenario_selector", node_options),
   current_scenario_(autoware_internal_planning_msgs::msg::Scenario::EMPTY),
   update_rate_(this->declare_parameter<double>("update_rate")),
   th_max_message_delay_sec_(this->declare_parameter<double>("th_max_message_delay_sec")),
@@ -451,7 +461,7 @@ ScenarioSelectorNode::ScenarioSelectorNode(const rclcpp::NodeOptions & node_opti
   lane_driving_stop_time_ = {};
   empty_parking_trajectory_time_ = {};
 
-  // Input
+  // Input - callback subscriptions
   sub_lane_driving_trajectory_ = this->create_subscription<autoware_planning_msgs::msg::Trajectory>(
     "input/lane_driving/trajectory", rclcpp::QoS{1},
     std::bind(&ScenarioSelectorNode::onLaneDrivingTrajectory, this, std::placeholders::_1));
@@ -468,15 +478,16 @@ ScenarioSelectorNode::ScenarioSelectorNode(const rclcpp::NodeOptions & node_opti
     "input/route", rclcpp::QoS{1}.transient_local(),
     std::bind(&ScenarioSelectorNode::onRoute, this, std::placeholders::_1));
 
-  sub_odom_ = decltype(sub_odom_)::element_type::create_subscription(
-    this, "input/odometry", rclcpp::QoS{100});
+  sub_odom_ = this->create_all_polling_subscriber<nav_msgs::msg::Odometry>(
+    "input/odometry", rclcpp::QoS{100});
 
-  sub_parking_state_ = decltype(sub_parking_state_)::element_type::create_subscription(
-    this, "is_parking_completed", rclcpp::QoS{1});
+  // Input - polling subscriptions
+  sub_parking_state_ = this->create_polling_subscriber<std_msgs::msg::Bool>(
+    "is_parking_completed", rclcpp::QoS{1});
 
   sub_operation_mode_state_ =
-    decltype(sub_operation_mode_state_)::element_type::create_subscription(
-      this, "input/operation_mode_state", rclcpp::QoS{1}.transient_local());
+    this->create_polling_subscriber<autoware_adapi_v1_msgs::msg::OperationModeState>(
+      "input/operation_mode_state", rclcpp::QoS{1}.transient_local());
 
   // Output
   pub_scenario_ = this->create_publisher<autoware_internal_planning_msgs::msg::Scenario>(
@@ -487,9 +498,10 @@ ScenarioSelectorNode::ScenarioSelectorNode(const rclcpp::NodeOptions & node_opti
   // Timer Callback
   const auto period_ns = rclcpp::Rate(static_cast<double>(update_rate_)).period();
 
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), period_ns, std::bind(&ScenarioSelectorNode::onTimer, this));
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  timer_ = this->create_timer(
+    period_ns, std::bind(&ScenarioSelectorNode::onTimer, this));
+  published_time_publisher_ = std::make_unique<
+    autoware_utils::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>(this);
   pub_processing_time_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
 }

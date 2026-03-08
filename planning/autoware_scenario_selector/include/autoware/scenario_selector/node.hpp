@@ -15,8 +15,8 @@
 #ifndef AUTOWARE__SCENARIO_SELECTOR__NODE_HPP_
 #define AUTOWARE__SCENARIO_SELECTOR__NODE_HPP_
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
@@ -31,17 +31,9 @@
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_routing/RoutingGraph.h>
 #include <lanelet2_traffic_rules/TrafficRules.h>
-#ifdef ROS_DISTRO_GALACTIC
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#else
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#endif
 #include <autoware/route_handler/route_handler.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <deque>
 #include <memory>
@@ -49,24 +41,26 @@
 
 namespace autoware::scenario_selector
 {
-class ScenarioSelectorNode : public rclcpp::Node
+class ScenarioSelectorNode : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit ScenarioSelectorNode(const rclcpp::NodeOptions & node_options);
 
-  void onOdom(const nav_msgs::msg::Odometry::ConstSharedPtr msg);
-
+  void onOdom(AUTOWARE_MESSAGE_SHARED_PTR(const nav_msgs::msg::Odometry) msg);
   bool isDataReady();
   void onTimer();
-  void onMap(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg);
-  void onRoute(const autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr msg);
-  void onLaneDrivingTrajectory(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg);
-  void onParkingTrajectory(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg);
-  void publishTrajectory(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg);
+  void onMap(AUTOWARE_MESSAGE_UNIQUE_PTR(autoware_map_msgs::msg::LaneletMapBin) msg);
+  void onRoute(AUTOWARE_MESSAGE_UNIQUE_PTR(autoware_planning_msgs::msg::LaneletRoute) msg);
+  void onLaneDrivingTrajectory(
+    AUTOWARE_MESSAGE_UNIQUE_PTR(autoware_planning_msgs::msg::Trajectory) msg);
+  void onParkingTrajectory(
+    AUTOWARE_MESSAGE_UNIQUE_PTR(autoware_planning_msgs::msg::Trajectory) msg);
+  void publishTrajectory(
+    const autoware_planning_msgs::msg::Trajectory & msg);
 
   void updateCurrentScenario();
   std::string selectScenarioByPosition();
-  autoware_planning_msgs::msg::Trajectory::ConstSharedPtr getScenarioTrajectory(
+  const autoware_planning_msgs::msg::Trajectory * getScenarioTrajectory(
     const std::string & scenario);
 
   void updateData();
@@ -87,38 +81,43 @@ private:
     return current_scenario_ == autoware_internal_planning_msgs::msg::Scenario::PARKING;
   }
 
-  rclcpp::TimerBase::SharedPtr timer_;
+  autoware::agnocast_wrapper::Timer::SharedPtr timer_;
 
   // subscribers
-  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_lanelet_map_;
-  rclcpp::Subscription<autoware_planning_msgs::msg::LaneletRoute>::SharedPtr sub_route_;
-  rclcpp::Subscription<autoware_planning_msgs::msg::Trajectory>::SharedPtr
+  AUTOWARE_SUBSCRIPTION_PTR(autoware_map_msgs::msg::LaneletMapBin) sub_lanelet_map_;
+  AUTOWARE_SUBSCRIPTION_PTR(autoware_planning_msgs::msg::LaneletRoute) sub_route_;
+  AUTOWARE_SUBSCRIPTION_PTR(autoware_planning_msgs::msg::Trajectory)
     sub_lane_driving_trajectory_;
-  rclcpp::Subscription<autoware_planning_msgs::msg::Trajectory>::SharedPtr sub_parking_trajectory_;
-  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr pub_trajectory_;
-  rclcpp::Publisher<autoware_internal_planning_msgs::msg::Scenario>::SharedPtr pub_scenario_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+  AUTOWARE_SUBSCRIPTION_PTR(autoware_planning_msgs::msg::Trajectory) sub_parking_trajectory_;
+  AUTOWARE_ALL_POLLING_SUBSCRIBER_PTR(nav_msgs::msg::Odometry) sub_odom_;
+
+  // publishers
+  AUTOWARE_PUBLISHER_PTR(autoware_planning_msgs::msg::Trajectory) pub_trajectory_;
+  AUTOWARE_PUBLISHER_PTR(autoware_internal_planning_msgs::msg::Scenario) pub_scenario_;
+  AUTOWARE_PUBLISHER_PTR(autoware_internal_debug_msgs::msg::Float64Stamped)
     pub_processing_time_;
 
   // polling subscribers
-  autoware_utils::InterProcessPollingSubscriber<
-    nav_msgs::msg::Odometry, autoware_utils::polling_policy::All>::SharedPtr sub_odom_;
-  autoware_utils::InterProcessPollingSubscriber<std_msgs::msg::Bool>::SharedPtr sub_parking_state_;
-  autoware_utils::InterProcessPollingSubscriber<
-    autoware_adapi_v1_msgs::msg::OperationModeState>::SharedPtr sub_operation_mode_state_;
+  AUTOWARE_POLLING_SUBSCRIBER_PTR(std_msgs::msg::Bool) sub_parking_state_;
+  AUTOWARE_POLLING_SUBSCRIBER_PTR(autoware_adapi_v1_msgs::msg::OperationModeState)
+    sub_operation_mode_state_;
 
-  autoware_adapi_v1_msgs::msg::OperationModeState::ConstSharedPtr operation_mode_state_;
-  autoware_planning_msgs::msg::Trajectory::ConstSharedPtr lane_driving_trajectory_;
-  autoware_planning_msgs::msg::Trajectory::ConstSharedPtr parking_trajectory_;
-  autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr route_;
-  nav_msgs::msg::Odometry::ConstSharedPtr current_pose_;
+  AUTOWARE_MESSAGE_SHARED_PTR(const autoware_adapi_v1_msgs::msg::OperationModeState)
+    operation_mode_state_;
+  AUTOWARE_MESSAGE_SHARED_PTR(const autoware_planning_msgs::msg::Trajectory)
+    lane_driving_trajectory_;
+  AUTOWARE_MESSAGE_SHARED_PTR(const autoware_planning_msgs::msg::Trajectory) parking_trajectory_;
+  AUTOWARE_MESSAGE_SHARED_PTR(const autoware_planning_msgs::msg::LaneletRoute) route_;
+  AUTOWARE_MESSAGE_SHARED_PTR(const nav_msgs::msg::Odometry) current_pose_;
   geometry_msgs::msg::TwistStamped::ConstSharedPtr twist_;
 
   std::string current_scenario_;
   std::deque<geometry_msgs::msg::TwistStamped::ConstSharedPtr> twist_buffer_;
 
   std::shared_ptr<autoware::route_handler::RouteHandler> route_handler_;
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<
+    autoware_utils::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>
+    published_time_publisher_;
 
   // Parameters
   double update_rate_;
