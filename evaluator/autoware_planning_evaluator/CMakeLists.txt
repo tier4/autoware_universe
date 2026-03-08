@@ -5,23 +5,18 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(agnocastlib REQUIRED)
-find_package(agnocast_components REQUIRED)
+find_package(autoware_agnocast_wrapper REQUIRED)
 find_package(pluginlib REQUIRED)
 
 ament_auto_add_library(planning_evaluator_node SHARED
   DIRECTORY src
 )
 
-rclcpp_components_register_node(planning_evaluator_node
+autoware_agnocast_wrapper_setup(planning_evaluator_node)
+
+autoware_agnocast_wrapper_register_node(planning_evaluator_node
   PLUGIN "planning_diagnostics::PlanningEvaluatorNode"
   EXECUTABLE planning_evaluator
-)
-
-agnocast_components_register_node(planning_evaluator_node
-  PLUGIN "planning_diagnostics::PlanningEvaluatorNode"
-  EXECUTABLE agnocast_planning_evaluator
-  EXECUTOR SingleThreadedAgnocastExecutor
-  RESOURCE_INDEX agnocast_components
 )
 
 rclcpp_components_register_node(planning_evaluator_node
