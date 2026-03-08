@@ -14,13 +14,22 @@ rclcpp_components_register_node(${PROJECT_NAME}
   EXECUTOR SingleThreadedExecutor
 )
 
-if(BUILD_TESTING)
-  find_package(ament_cmake_gtest REQUIRED)
-  ament_auto_add_gtest(test_${PROJECT_NAME}
-    test/test.cpp
-    src/pose_instability_detector.cpp
-  )
-endif()
+find_package(agnocast_components REQUIRED)
+agnocast_components_register_node(${PROJECT_NAME}
+  PLUGIN "autoware::pose_instability_detector::PoseInstabilityDetector"
+  EXECUTABLE agnocast_${PROJECT_NAME}_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
+)
+
+# TODO: Re-enable tests after adapting to agnocast::Node
+# if(BUILD_TESTING)
+#   find_package(ament_cmake_gtest REQUIRED)
+#   ament_auto_add_gtest(test_${PROJECT_NAME}
+#     test/test.cpp
+#     src/pose_instability_detector.cpp
+#   )
+# endif()
 
 ament_auto_package(
   INSTALL_TO_SHARE

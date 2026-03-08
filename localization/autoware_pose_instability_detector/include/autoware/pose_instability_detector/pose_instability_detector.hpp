@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__POSE_INSTABILITY_DETECTOR__POSE_INSTABILITY_DETECTOR_HPP_
 #define AUTOWARE__POSE_INSTABILITY_DETECTOR__POSE_INSTABILITY_DETECTOR_HPP_
 
-#include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -29,7 +29,7 @@
 namespace autoware::pose_instability_detector
 {
 
-class PoseInstabilityDetector : public rclcpp::Node
+class PoseInstabilityDetector : public agnocast::Node
 {
   using Quaternion = geometry_msgs::msg::Quaternion;
   using Twist = geometry_msgs::msg::Twist;
@@ -59,8 +59,9 @@ public:
     const std::deque<TwistWithCovarianceStamped> & twist_deque, Pose::SharedPtr & estimated_pose);
 
 private:
-  void callback_odometry(Odometry::ConstSharedPtr odometry_msg_ptr);
-  void callback_twist(TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr);
+  void callback_odometry(const agnocast::ipc_shared_ptr<Odometry> & odometry_msg_ptr);
+  void callback_twist(
+    const agnocast::ipc_shared_ptr<TwistWithCovarianceStamped> & twist_msg_ptr);
   void callback_timer();
 
   static std::deque<TwistWithCovarianceStamped> clip_out_necessary_twist(
@@ -68,13 +69,13 @@ private:
     const rclcpp::Time & end_time);
 
   // subscribers and timer
-  rclcpp::Subscription<Odometry>::SharedPtr odometry_sub_;
-  rclcpp::Subscription<TwistWithCovarianceStamped>::SharedPtr twist_sub_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::Subscription<Odometry>::SharedPtr odometry_sub_;
+  agnocast::Subscription<TwistWithCovarianceStamped>::SharedPtr twist_sub_;
+  agnocast::TimerBase::SharedPtr timer_;
 
   // publisher
-  rclcpp::Publisher<PoseStamped>::SharedPtr diff_pose_pub_;
-  rclcpp::Publisher<DiagnosticArray>::SharedPtr diagnostics_pub_;
+  agnocast::Publisher<PoseStamped>::SharedPtr diff_pose_pub_;
+  agnocast::Publisher<DiagnosticArray>::SharedPtr diagnostics_pub_;
 
   // parameters
   const double timer_period_;  // [sec]

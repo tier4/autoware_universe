@@ -30,7 +30,7 @@
 namespace autoware::pose_instability_detector
 {
 PoseInstabilityDetector::PoseInstabilityDetector(const rclcpp::NodeOptions & options)
-: rclcpp::Node("pose_instability_detector", options),
+: agnocast::Node("pose_instability_detector", options),
   timer_period_(this->declare_parameter<double>("timer_period")),
   heading_velocity_maximum_(this->declare_parameter<double>("heading_velocity_maximum")),
   heading_velocity_scale_factor_tolerance_(
@@ -67,21 +67,22 @@ PoseInstabilityDetector::PoseInstabilityDetector(const rclcpp::NodeOptions & opt
     "~/input/twist", 10,
     std::bind(&PoseInstabilityDetector::callback_twist, this, std::placeholders::_1));
 
-  timer_ = rclcpp::create_timer(
-    this, this->get_clock(), std::chrono::duration<double>(timer_period_),
+  timer_ = this->create_timer(
+    std::chrono::duration<double>(timer_period_),
     std::bind(&PoseInstabilityDetector::callback_timer, this));
 
   diff_pose_pub_ = this->create_publisher<PoseStamped>("~/debug/diff_pose", 10);
   diagnostics_pub_ = this->create_publisher<DiagnosticArray>("/diagnostics", 10);
 }
 
-void PoseInstabilityDetector::callback_odometry(Odometry::ConstSharedPtr odometry_msg_ptr)
+void PoseInstabilityDetector::callback_odometry(
+  const agnocast::ipc_shared_ptr<Odometry> & odometry_msg_ptr)
 {
   latest_odometry_ = *odometry_msg_ptr;
 }
 
 void PoseInstabilityDetector::callback_twist(
-  TwistWithCovarianceStamped::ConstSharedPtr twist_msg_ptr)
+  const agnocast::ipc_shared_ptr<TwistWithCovarianceStamped> & twist_msg_ptr)
 {
   twist_buffer_.push_back(*twist_msg_ptr);
 }
@@ -142,11 +143,13 @@ void PoseInstabilityDetector::callback_timer()
   const std::vector<double> values = {pos.x, pos.y, pos.z, ang_x, ang_y, ang_z};
 
   // publish diff_pose for debug
-  PoseStamped diff_pose;
-  diff_pose.header.stamp = latest_odometry_time;
-  diff_pose.header.frame_id = "base_link";
-  diff_pose.pose = ekf_to_dr;
-  diff_pose_pub_->publish(diff_pose);
+  {
+    auto loaned_msg = diff_pose_pub_->borrow_loaned_message();
+    loaned_msg->header.stamp = latest_odometry_time;
+    loaned_msg->header.frame_id = "base_link";
+    loaned_msg->pose = ekf_to_dr;
+    diff_pose_pub_->publish(std::move(loaned_msg));
+  }
 
   // publish diagnostics
   ThresholdValues threshold_values =
@@ -184,10 +187,12 @@ void PoseInstabilityDetector::callback_timer()
   status.level = (all_ok ? DiagnosticStatus::OK : DiagnosticStatus::ERROR);
   status.message = (all_ok ? "OK" : "ERROR");
 
-  DiagnosticArray diagnostics;
-  diagnostics.header.stamp = latest_odometry_time;
-  diagnostics.status.emplace_back(status);
-  diagnostics_pub_->publish(diagnostics);
+  {
+    auto loaned_msg = diagnostics_pub_->borrow_loaned_message();
+    loaned_msg->header.stamp = latest_odometry_time;
+    loaned_msg->status.emplace_back(status);
+    diagnostics_pub_->publish(std::move(loaned_msg));
+  }
 
   // prepare for next loop
   prev_odometry_ = latest_odometry_;
