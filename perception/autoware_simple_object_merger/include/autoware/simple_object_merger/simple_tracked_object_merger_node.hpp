@@ -16,8 +16,6 @@
 #define AUTOWARE__SIMPLE_OBJECT_MERGER__SIMPLE_TRACKED_OBJECT_MERGER_NODE_HPP_
 
 #include "autoware/simple_object_merger/simple_object_merger_base.hpp"
-#include "autoware_utils/ros/transform_listener.hpp"
-#include "rclcpp/rclcpp.hpp"
 
 #include "autoware_perception_msgs/msg/tracked_objects.hpp"
 #include <unique_identifier_msgs/msg/uuid.hpp>
@@ -49,8 +47,8 @@ private:
   std::unordered_map<std::string, UUIDMapping> uuid_mapper_;
 
   void approximateMerger(
-    const TrackedObjects::ConstSharedPtr & object_msg0,
-    const TrackedObjects::ConstSharedPtr & object_msg1) override;
+    AUTOWARE_MESSAGE_SHARED_PTR(const TrackedObjects) && object_msg0,
+    AUTOWARE_MESSAGE_SHARED_PTR(const TrackedObjects) && object_msg1) override;
   void onTimer() override;
 
   void mapUUID(TrackedObject & object, const int & node_id);

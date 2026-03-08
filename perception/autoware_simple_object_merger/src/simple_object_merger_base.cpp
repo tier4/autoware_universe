@@ -78,9 +78,9 @@ SimpleObjectMergerBase<ObjsMsgType>::SimpleObjectMergerBase(
   }
 
   // Subscriber
-  transform_listener_ = std::make_shared<autoware_utils::TransformListener>(this);
+  transform_listener_ = autoware::agnocast_wrapper::make_transform_listener(this);
   if (input_topic_size_ == 2) {
-    // Trigger the process and publish by message_filter
+    // Trigger the process and publish by message_filter (wrapper handles rclcpp/agnocast switching)
     input0_.subscribe(
       this, node_param_.topic_names.at(0), rclcpp::QoS{1}.best_effort().get_rmw_qos_profile());
     input1_.subscribe(
@@ -96,15 +96,16 @@ SimpleObjectMergerBase<ObjsMsgType>::SimpleObjectMergerBase(
 
     // subscriber
     for (size_t i = 0; i < input_topic_size_; i++) {
-      std::function<void(const typename ObjsMsgType::ConstSharedPtr msg)> func =
-        std::bind(&SimpleObjectMergerBase::onData, this, std::placeholders::_1, i);
       sub_objects_array.at(i) = create_subscription<ObjsMsgType>(
-        node_param_.topic_names.at(i), rclcpp::QoS{1}.best_effort(), func);
+        node_param_.topic_names.at(i), rclcpp::QoS{1}.best_effort(),
+        [this, i](AUTOWARE_MESSAGE_UNIQUE_PTR(ObjsMsgType) && msg) {
+          this->onData(std::move(msg), i);
+        });
     }
 
     // process callback
     const auto update_period_ns = rclcpp::Rate(node_param_.update_rate_hz).period();
-    timer_ = rclcpp::create_timer(
+    timer_ = create_timer(
       this, get_clock(), update_period_ns, std::bind(&SimpleObjectMergerBase::onTimer, this));
   }
 
@@ -117,7 +118,7 @@ typename ObjsMsgType::SharedPtr SimpleObjectMergerBase<ObjsMsgType>::getTransfor
   typename ObjsMsgType::ConstSharedPtr objects, const std::string & target_frame_id,
   geometry_msgs::msg::TransformStamped::ConstSharedPtr transform)
 {
-  typename ObjsMsgType::SharedPtr output_objects = std::const_pointer_cast<ObjsMsgType>(objects);
+  auto output_objects = std::const_pointer_cast<ObjsMsgType>(objects);
 
   if (objects->header.frame_id == target_frame_id) {
     return output_objects;
@@ -138,17 +139,18 @@ typename ObjsMsgType::SharedPtr SimpleObjectMergerBase<ObjsMsgType>::getTransfor
 
 template <class ObjsMsgType>
 void SimpleObjectMergerBase<ObjsMsgType>::approximateMerger(
-  [[maybe_unused]] const typename ObjsMsgType::ConstSharedPtr & object_msg0,
-  [[maybe_unused]] const typename ObjsMsgType::ConstSharedPtr & object_msg1)
+  [[maybe_unused]] AUTOWARE_MESSAGE_SHARED_PTR(const ObjsMsgType) && object_msg0,
+  [[maybe_unused]] AUTOWARE_MESSAGE_SHARED_PTR(const ObjsMsgType) && object_msg1)
 {
   // This must be overridden
 }
 
 template <class ObjsMsgType>
 void SimpleObjectMergerBase<ObjsMsgType>::onData(
-  typename ObjsMsgType::ConstSharedPtr msg, const size_t array_number)
+  AUTOWARE_MESSAGE_UNIQUE_PTR(ObjsMsgType) && msg, const size_t array_number)
 {
-  objects_data_.at(array_number) = msg;
+  // Convert wrapper unique_ptr to ConstSharedPtr for storage
+  objects_data_.at(array_number) = std::make_shared<const ObjsMsgType>(*msg);
 }
 
 template <class ObjsMsgType>

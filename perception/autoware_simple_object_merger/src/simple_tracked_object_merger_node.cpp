@@ -91,52 +91,51 @@ SimpleTrackedObjectMergerNode::SimpleTrackedObjectMergerNode(
 }
 
 void SimpleTrackedObjectMergerNode::approximateMerger(
-  const TrackedObjects::ConstSharedPtr & object_msg0,
-  const TrackedObjects::ConstSharedPtr & object_msg1)
+  AUTOWARE_MESSAGE_SHARED_PTR(const TrackedObjects) && object_msg0,
+  AUTOWARE_MESSAGE_SHARED_PTR(const TrackedObjects) && object_msg1)
 {
-  TrackedObjects::SharedPtr transformed_objects0;
-  if (node_param_.new_frame_id == object_msg0->header.frame_id) {
-    transformed_objects0 = std::make_shared<TrackedObjects>(*object_msg0);
-  } else {
+  // Make mutable copies for transformation and UUID mapping
+  auto transformed_objects0 = std::make_shared<TrackedObjects>(*object_msg0);
+  if (node_param_.new_frame_id != object_msg0->header.frame_id) {
     auto transform0 = transform_listener_->get_transform(
       node_param_.new_frame_id, object_msg0->header.frame_id, object_msg0->header.stamp,
       rclcpp::Duration::from_seconds(0.01));
     if (!transform0) {
       return;
     }
-    transformed_objects0 = getTransformedObjects(object_msg0, node_param_.new_frame_id, transform0);
+    transformed_objects0 =
+      getTransformedObjects(transformed_objects0, node_param_.new_frame_id, transform0);
   }
 
-  TrackedObjects::SharedPtr transformed_objects1;
-  if (node_param_.new_frame_id == object_msg1->header.frame_id) {
-    transformed_objects1 = std::make_shared<TrackedObjects>(*object_msg1);
-  } else {
+  auto transformed_objects1 = std::make_shared<TrackedObjects>(*object_msg1);
+  if (node_param_.new_frame_id != object_msg1->header.frame_id) {
     auto transform1 = transform_listener_->get_transform(
       node_param_.new_frame_id, object_msg1->header.frame_id, object_msg1->header.stamp,
       rclcpp::Duration::from_seconds(0.01));
     if (!transform1) {
       return;
     }
-    transformed_objects1 = getTransformedObjects(object_msg1, node_param_.new_frame_id, transform1);
+    transformed_objects1 =
+      getTransformedObjects(transformed_objects1, node_param_.new_frame_id, transform1);
   }
 
-  TrackedObjects output_objects;
-  output_objects.header = object_msg0->header;
-  output_objects.header.frame_id = node_param_.new_frame_id;
-  output_objects.objects.reserve(
+  auto output_msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_objects_);
+  output_msg->header = object_msg0->header;
+  output_msg->header.frame_id = node_param_.new_frame_id;
+  output_msg->objects.reserve(
     transformed_objects0->objects.size() + transformed_objects1->objects.size());
 
   for (auto & object : transformed_objects0->objects) {
     mapUUID(object, 0);
-    output_objects.objects.push_back(object);
+    output_msg->objects.push_back(object);
   }
 
   for (auto & object : transformed_objects1->objects) {
     mapUUID(object, 1);
-    output_objects.objects.push_back(object);
+    output_msg->objects.push_back(object);
   }
 
-  pub_objects_->publish(output_objects);
+  pub_objects_->publish(std::move(output_msg));
   cleanupUUIDMap();
 }
 
@@ -146,9 +145,9 @@ void SimpleTrackedObjectMergerNode::onTimer()
     return;
   }
 
-  TrackedObjects output_objects;
-  output_objects.header = objects_data_.at(0)->header;
-  output_objects.header.frame_id = node_param_.new_frame_id;
+  auto output_msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_objects_);
+  output_msg->header = objects_data_.at(0)->header;
+  output_msg->header.frame_id = node_param_.new_frame_id;
 
   constexpr double throttle_interval = 3.0;  // seconds
   const rclcpp::Time now = this->now();
@@ -177,7 +176,7 @@ void SimpleTrackedObjectMergerNode::onTimer()
       }
       for (auto & object : transformed_objects->objects) {
         mapUUID(object, i);
-        output_objects.objects.push_back(object);
+        output_msg->objects.push_back(object);
       }
     } else if (shouldLogThrottle(i, now, last_log_times, throttle_interval)) {
       RCLCPP_INFO(
@@ -186,7 +185,7 @@ void SimpleTrackedObjectMergerNode::onTimer()
     }
   }
 
-  pub_objects_->publish(output_objects);
+  pub_objects_->publish(std::move(output_msg));
   cleanupUUIDMap();
 }
 
