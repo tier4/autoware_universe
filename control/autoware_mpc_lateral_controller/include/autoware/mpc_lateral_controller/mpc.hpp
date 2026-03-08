@@ -32,6 +32,7 @@
 #include "nav_msgs/msg/odometry.hpp"
 
 #include <deque>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -158,6 +159,14 @@ struct MPCData
 
   // Pose (position and orientation) of the nearest point in the trajectory.
   Pose nearest_pose{};
+
+  // Temporal tracking debug values.
+  double temporal_predicted_time{std::numeric_limits<double>::quiet_NaN()};
+  double temporal_observed_time{std::numeric_limits<double>::quiet_NaN()};
+  double temporal_fused_time{std::numeric_limits<double>::quiet_NaN()};
+  double temporal_window_min{std::numeric_limits<double>::quiet_NaN()};
+  double temporal_window_max{std::numeric_limits<double>::quiet_NaN()};
+  bool temporal_observation_used{false};
 
   // Current steering angle.
   double steer{};

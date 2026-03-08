@@ -40,6 +40,28 @@ double calcLongitudinalOffset(
 
   return segment_vec.dot(target_vec) / segment_vec.norm();
 }
+
+bool isTemporalShortSegment(
+  const double ds, const double dt, const double vx, const bool use_short_segment_protection)
+{
+  if (!use_short_segment_protection) {
+    return ds < 1.0e-3;
+  }
+
+  constexpr double min_distance_threshold = 2.0e-2;
+  constexpr double stop_like_velocity_threshold = 1.0e-1;
+  constexpr double min_velocity_floor = 1.0e-1;
+  constexpr double expected_distance_ratio = 0.5;
+  constexpr double min_time_step = 1.0e-3;
+
+  if (ds < min_distance_threshold && std::fabs(vx) < stop_like_velocity_threshold) {
+    return true;
+  }
+
+  const double bounded_dt = std::max(dt, min_time_step);
+  const double expected_distance = std::max(std::fabs(vx), min_velocity_floor) * bounded_dt;
+  return ds < expected_distance_ratio * expected_distance;
+}
 }  // namespace
 
 namespace MPCUtils
@@ -202,14 +224,23 @@ void calcTrajectoryYawFromXY(
     return;
   }
 
-  constexpr double min_xy_distance_for_yaw_calc = 1.0e-3;
   const auto input_yaw = traj.yaw;
 
   // interpolate yaw
   for (int i = 1; i < static_cast<int>(traj.yaw.size()) - 1; ++i) {
     const double dx = traj.x.at(i + 1) - traj.x.at(i - 1);
     const double dy = traj.y.at(i + 1) - traj.y.at(i - 1);
-    if (std::hypot(dx, dy) < min_xy_distance_for_yaw_calc) {
+    const auto curr_idx = static_cast<size_t>(i);
+    const double prev_dist = calcDistance2d(traj, curr_idx, curr_idx - 1);
+    const double next_dist = calcDistance2d(traj, curr_idx + 1, curr_idx);
+    const double prev_dt = traj.relative_time.at(curr_idx) - traj.relative_time.at(curr_idx - 1);
+    const double next_dt = traj.relative_time.at(curr_idx + 1) - traj.relative_time.at(curr_idx);
+    const double prev_vx = 0.5 * (traj.vx.at(curr_idx - 1) + traj.vx.at(curr_idx));
+    const double next_vx = 0.5 * (traj.vx.at(curr_idx) + traj.vx.at(curr_idx + 1));
+    if (
+      std::hypot(dx, dy) < 1.0e-3 ||
+      isTemporalShortSegment(prev_dist, prev_dt, prev_vx, use_input_yaw_for_short_segment) ||
+      isTemporalShortSegment(next_dist, next_dt, next_vx, use_input_yaw_for_short_segment)) {
       traj.yaw.at(i) = use_input_yaw_for_short_segment ? input_yaw.at(i) : traj.yaw.at(i - 1);
       continue;
     }
@@ -218,7 +249,12 @@ void calcTrajectoryYawFromXY(
   if (traj.yaw.size() > 1) {
     const double dx0 = traj.x.at(1) - traj.x.at(0);
     const double dy0 = traj.y.at(1) - traj.y.at(0);
-    if (std::hypot(dx0, dy0) >= min_xy_distance_for_yaw_calc) {
+    const double ds0 = calcDistance2d(traj, 1, 0);
+    const double dt0 = traj.relative_time.at(1) - traj.relative_time.at(0);
+    const double vx0 = 0.5 * (traj.vx.at(0) + traj.vx.at(1));
+    if (
+      std::hypot(dx0, dy0) >= 1.0e-3 &&
+      !isTemporalShortSegment(ds0, dt0, vx0, use_input_yaw_for_short_segment)) {
       traj.yaw.at(0) = is_forward_shift ? std::atan2(dy0, dx0) : std::atan2(dy0, dx0) + M_PI;
     } else {
       traj.yaw.at(0) = use_input_yaw_for_short_segment ? input_yaw.at(0) : traj.yaw.at(1);
@@ -227,7 +263,12 @@ void calcTrajectoryYawFromXY(
     const size_t last = traj.yaw.size() - 1;
     const double dxn = traj.x.at(last) - traj.x.at(last - 1);
     const double dyn = traj.y.at(last) - traj.y.at(last - 1);
-    if (std::hypot(dxn, dyn) >= min_xy_distance_for_yaw_calc) {
+    const double dsn = calcDistance2d(traj, last, last - 1);
+    const double dtn = traj.relative_time.at(last) - traj.relative_time.at(last - 1);
+    const double vxn = 0.5 * (traj.vx.at(last - 1) + traj.vx.at(last));
+    if (
+      std::hypot(dxn, dyn) >= 1.0e-3 &&
+      !isTemporalShortSegment(dsn, dtn, vxn, use_input_yaw_for_short_segment)) {
       traj.yaw.back() = is_forward_shift ? std::atan2(dyn, dxn) : std::atan2(dyn, dxn) + M_PI;
     } else {
       traj.yaw.back() =
@@ -238,16 +279,22 @@ void calcTrajectoryYawFromXY(
 
 void calcTrajectoryCurvature(
   const int curvature_smoothing_num_traj, const int curvature_smoothing_num_ref_steer,
-  MPCTrajectory & traj)
+  MPCTrajectory & traj, const bool use_short_segment_protection)
 {
-  traj.k = calcTrajectoryCurvature(curvature_smoothing_num_traj, traj);
-  traj.smooth_k = calcTrajectoryCurvature(curvature_smoothing_num_ref_steer, traj);
+  traj.k =
+    calcTrajectoryCurvature(curvature_smoothing_num_traj, traj, use_short_segment_protection);
+  traj.smooth_k =
+    calcTrajectoryCurvature(curvature_smoothing_num_ref_steer, traj, use_short_segment_protection);
 }
 
 std::vector<double> calcTrajectoryCurvature(
-  const int curvature_smoothing_num, const MPCTrajectory & traj)
+  const int curvature_smoothing_num, const MPCTrajectory & traj,
+  const bool use_short_segment_protection)
 {
   std::vector<double> curvature_vec(traj.x.size());
+  if (traj.x.size() < 3) {
+    return curvature_vec;
+  }
 
   /* calculate curvature by circle fitting from three points */
   geometry_msgs::msg::Point p1, p2, p3;
@@ -258,6 +305,22 @@ std::vector<double> calcTrajectoryCurvature(
     const size_t curr_idx = i;
     const size_t prev_idx = curr_idx - L;
     const size_t next_idx = curr_idx + L;
+    const double dist_prev = calcDistance2d(traj, curr_idx, prev_idx);
+    const double dist_next = calcDistance2d(traj, next_idx, curr_idx);
+    const double dist_span = calcDistance2d(traj, next_idx, prev_idx);
+    const double dt_prev = traj.relative_time.at(curr_idx) - traj.relative_time.at(prev_idx);
+    const double dt_next = traj.relative_time.at(next_idx) - traj.relative_time.at(curr_idx);
+    const double dt_span = traj.relative_time.at(next_idx) - traj.relative_time.at(prev_idx);
+    const double vx_prev = 0.5 * (traj.vx.at(prev_idx) + traj.vx.at(curr_idx));
+    const double vx_next = 0.5 * (traj.vx.at(curr_idx) + traj.vx.at(next_idx));
+    const double vx_span = 0.5 * (traj.vx.at(prev_idx) + traj.vx.at(next_idx));
+    if (
+      isTemporalShortSegment(dist_prev, dt_prev, vx_prev, use_short_segment_protection) ||
+      isTemporalShortSegment(dist_next, dt_next, vx_next, use_short_segment_protection) ||
+      isTemporalShortSegment(dist_span, dt_span, vx_span, use_short_segment_protection)) {
+      curvature_vec.at(curr_idx) = curr_idx > 0 ? curvature_vec.at(curr_idx - 1) : 0.0;
+      continue;
+    }
     p1.x = traj.x.at(prev_idx);
     p2.x = traj.x.at(curr_idx);
     p3.x = traj.x.at(next_idx);
@@ -268,7 +331,7 @@ std::vector<double> calcTrajectoryCurvature(
       curvature_vec.at(curr_idx) = autoware_utils::calc_curvature(p1, p2, p3);
     } catch (...) {
       std::cerr << "[MPC] 2 points are too close to calculate curvature." << std::endl;
-      curvature_vec.at(curr_idx) = 0.0;
+      curvature_vec.at(curr_idx) = curr_idx > 0 ? curvature_vec.at(curr_idx - 1) : 0.0;
     }
   }
 

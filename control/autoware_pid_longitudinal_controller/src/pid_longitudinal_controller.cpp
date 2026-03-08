@@ -272,10 +272,7 @@ void PidLongitudinalController::setTrajectory(const autoware_planning_msgs::msg:
 
   if (m_use_temporal_trajectory) {
     const rclcpp::Time current_stamp(msg.header.stamp);
-    if (!m_prev_trajectory_stamp.has_value() || current_stamp != *m_prev_trajectory_stamp) {
-      m_prev_nearest_time.reset();
-      m_prev_trajectory_stamp = current_stamp;
-    }
+    m_prev_trajectory_stamp = current_stamp;
   } else {
     m_prev_trajectory_stamp.reset();
   }
@@ -485,19 +482,69 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
   const double traj_end_time =
     rclcpp::Duration(control_data.interpolated_traj.points.back().time_from_start).seconds();
 
-  // Calculate the interpolated nearest point from geometric projection in both spatial/temporal.
-  // Temporal mode still uses trajectory timestamps later for target-time lookup.
-  const auto current_interpolated_pose =
-    calcInterpolatedTrajPointAndSegment(control_data.interpolated_traj, current_pose);
+  autoware_planning_msgs::msg::TrajectoryPoint nearest_point;
+  autoware_planning_msgs::msg::TrajectoryPoint target_point;
 
-  // Insert the interpolated point
-  control_data.interpolated_traj.points.insert(
-    control_data.interpolated_traj.points.begin() + current_interpolated_pose.second + 1,
-    current_interpolated_pose.first);
-  control_data.nearest_idx = current_interpolated_pose.second + 1;
-  control_data.target_idx = control_data.nearest_idx;
-  const auto nearest_point = current_interpolated_pose.first;
-  auto target_point = current_interpolated_pose.first;
+  if (m_use_temporal_trajectory) {
+    const double prev_nearest_time = [&]() {
+      if (!m_prev_nearest_time.has_value()) {
+        return traj_start_time;
+      }
+      return std::clamp(*m_prev_nearest_time, traj_start_time, traj_end_time);
+    }();
+    const double predicted_time = std::clamp(
+      prev_nearest_time + std::max(control_data.dt, 0.0), traj_start_time, traj_end_time);
+    const double local_dt = std::max(
+      longitudinal_utils::estimateLocalTrajectoryTimeStep(
+        control_data.interpolated_traj.points, predicted_time),
+      std::max(control_data.dt, 1.0e-3));
+    const double backward_window = std::max(local_dt, std::max(control_data.dt, 0.0));
+    const double forward_window = std::max(3.0 * local_dt, std::max(control_data.dt, 0.0));
+    control_data.temporal_predicted_time = predicted_time;
+    control_data.temporal_window_min = predicted_time - backward_window;
+    control_data.temporal_window_max = predicted_time + forward_window;
+    const auto observed_time = longitudinal_utils::estimateTrajectoryTimeFromPose(
+      control_data.interpolated_traj.points, current_pose, m_ego_nearest_dist_threshold,
+      m_ego_nearest_yaw_threshold, predicted_time - backward_window,
+      predicted_time + forward_window);
+
+    double nearest_time = predicted_time;
+    if (observed_time.has_value()) {
+      control_data.temporal_observed_time = *observed_time;
+      control_data.temporal_observation_used = true;
+      const double max_phase_correction = std::max(2.0 * local_dt, std::max(control_data.dt, 0.0));
+      const double bounded_correction =
+        std::clamp(*observed_time - predicted_time, -max_phase_correction, max_phase_correction);
+      constexpr double observation_gain = 0.5;
+      nearest_time = std::clamp(
+        predicted_time + observation_gain * bounded_correction, traj_start_time, traj_end_time);
+    }
+    control_data.temporal_fused_time = nearest_time;
+    m_prev_nearest_time = nearest_time;
+
+    const auto nearest_interpolated_point = longitudinal_utils::lerpTrajectoryPointByTime(
+      control_data.interpolated_traj.points, nearest_time);
+    control_data.nearest_idx = nearest_interpolated_point.second + 1;
+    control_data.target_idx = control_data.nearest_idx;
+    control_data.interpolated_traj.points.insert(
+      control_data.interpolated_traj.points.begin() + control_data.nearest_idx,
+      nearest_interpolated_point.first);
+    nearest_point = nearest_interpolated_point.first;
+    target_point = nearest_interpolated_point.first;
+  } else {
+    // Calculate the interpolated nearest point from geometric projection.
+    const auto current_interpolated_pose =
+      calcInterpolatedTrajPointAndSegment(control_data.interpolated_traj, current_pose);
+
+    // Insert the interpolated point
+    control_data.interpolated_traj.points.insert(
+      control_data.interpolated_traj.points.begin() + current_interpolated_pose.second + 1,
+      current_interpolated_pose.first);
+    control_data.nearest_idx = current_interpolated_pose.second + 1;
+    control_data.target_idx = control_data.nearest_idx;
+    nearest_point = current_interpolated_pose.first;
+    target_point = current_interpolated_pose.first;
+  }
 
   // Delay compensation - Calculate the distance we got, predicted velocity and predicted
   // acceleration after delay
@@ -507,33 +554,7 @@ PidLongitudinalController::ControlData PidLongitudinalController::getControlData
   // calculate the target motion for delay compensation
   constexpr double min_running_dist = 0.01;
   if (m_use_temporal_trajectory) {
-    const double raw_nearest_time = rclcpp::Duration(nearest_point.time_from_start).seconds();
-
-    // Reset previous time if it's outside the new trajectory's time range
-    const bool is_prev_time_out_of_range =
-      m_prev_nearest_time.has_value() &&
-      (*m_prev_nearest_time < traj_start_time || *m_prev_nearest_time > traj_end_time);
-    if (is_prev_time_out_of_range) {
-      m_prev_nearest_time.reset();
-    }
-    // Stabilize nearest_time to prevent jitter from localization noise or trajectory updates
-    const double nearest_time = [&]() {
-      if (!m_prev_nearest_time.has_value()) {
-        m_prev_nearest_time = raw_nearest_time;
-        return raw_nearest_time;
-      }
-      // Prevent backward time jumps and limit excessive forward jumps
-      // max_time_advance: Allow limited forward time jump to absorb delayed trajectory updates.
-      constexpr double max_advance_cycles = 3.0;
-      const double min_time_window_sec = std::max(control_data.dt, 0.0);
-      const double max_time_advance =
-        std::max(max_advance_cycles * control_data.dt, min_time_window_sec);
-      const double clamped_time =
-        std::clamp(raw_nearest_time, *m_prev_nearest_time, *m_prev_nearest_time + max_time_advance);
-      const double stabilized_time = std::clamp(clamped_time, traj_start_time, traj_end_time);
-      m_prev_nearest_time = stabilized_time;
-      return stabilized_time;
-    }();
+    const double nearest_time = rclcpp::Duration(nearest_point.time_from_start).seconds();
     const double target_time = nearest_time + m_delay_compensation_time;
     const auto target_interpolated_point = longitudinal_utils::lerpTrajectoryPointByTime(
       control_data.interpolated_traj.points, target_time);
@@ -1002,6 +1023,19 @@ void PidLongitudinalController::publishDebugData(
   m_debug_values.setValues(DebugValues::TYPE::STOP_DIST, control_data.stop_dist);
   m_debug_values.setValues(DebugValues::TYPE::CONTROL_STATE, static_cast<double>(m_control_state));
   m_debug_values.setValues(DebugValues::TYPE::ACC_CMD_PUBLISHED, ctrl_cmd.acc);
+  m_debug_values.setValues(
+    DebugValues::TYPE::TEMPORAL_PREDICTED_TIME, control_data.temporal_predicted_time);
+  m_debug_values.setValues(
+    DebugValues::TYPE::TEMPORAL_OBSERVED_TIME, control_data.temporal_observed_time);
+  m_debug_values.setValues(
+    DebugValues::TYPE::TEMPORAL_FUSED_TIME, control_data.temporal_fused_time);
+  m_debug_values.setValues(
+    DebugValues::TYPE::TEMPORAL_OBSERVATION_USED,
+    control_data.temporal_observation_used ? 1.0 : 0.0);
+  m_debug_values.setValues(
+    DebugValues::TYPE::TEMPORAL_WINDOW_MIN, control_data.temporal_window_min);
+  m_debug_values.setValues(
+    DebugValues::TYPE::TEMPORAL_WINDOW_MAX, control_data.temporal_window_max);
 
   // publish debug values
   autoware_internal_debug_msgs::msg::Float32MultiArrayStamped debug_msg{};
