@@ -20,7 +20,7 @@
 #include <cmath>
 #include <vector>
 
-namespace autoware::trajectory_validator::plugin::motion
+namespace autoware::trajectory_validator::plugin::safety::motion
 {
 class ComputeMotionProfile1dTest : public ::testing::Test
 {
@@ -127,4 +127,4 @@ TEST_F(ComputeMotionProfile1dTest, LagLongerThanMaxTime)
   }
 }
 
-}  // namespace autoware::trajectory_validator::plugin::motion
+}  // namespace autoware::trajectory_validator::plugin::safety::motion

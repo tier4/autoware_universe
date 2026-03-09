@@ -23,7 +23,7 @@
 
 #include <cmath>
 
-namespace autoware::trajectory_validator::plugin::constant_curvature_predictor
+namespace autoware::trajectory_validator::plugin::safety::constant_curvature_predictor
 {
 
 TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, PoseToIsometry)
@@ -216,4 +216,4 @@ TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, ComputeTrajectory)
   }
 }
 
-}  // namespace autoware::trajectory_validator::plugin::constant_curvature_predictor
+}  // namespace autoware::trajectory_validator::plugin::safety::constant_curvature_predictor

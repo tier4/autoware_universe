@@ -17,7 +17,7 @@
 #include <memory>
 #include <string>
 
-namespace autoware::trajectory_validator::plugin
+namespace autoware::trajectory_validator::plugin::safety
 {
 tl::expected<void, std::string> UncrossableBoundaryDepartureFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
@@ -64,9 +64,11 @@ std::optional<std::string> UncrossableBoundaryDepartureFilter::is_invalid_input(
 
   return std::nullopt;
 }
-}  // namespace autoware::trajectory_validator::plugin
+}  // namespace autoware::trajectory_validator::plugin::safety
 
 #include <pluginlib/class_list_macros.hpp>
+namespace safety = autoware::trajectory_validator::plugin::safety;
+
 PLUGINLIB_EXPORT_CLASS(
-  autoware::trajectory_validator::plugin::UncrossableBoundaryDepartureFilter,
+  safety::UncrossableBoundaryDepartureFilter,
   autoware::trajectory_validator::plugin::ValidatorInterface)

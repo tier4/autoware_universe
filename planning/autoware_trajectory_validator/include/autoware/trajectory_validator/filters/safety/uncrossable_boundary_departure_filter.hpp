@@ -24,9 +24,9 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-namespace autoware::trajectory_validator::plugin
+namespace autoware::trajectory_validator::plugin::safety
 {
-class UncrossableBoundaryDepartureFilter : public ValidatorInterface
+class UncrossableBoundaryDepartureFilter : public plugin::ValidatorInterface
 {
 public:
   UncrossableBoundaryDepartureFilter() : ValidatorInterface("UncrossableBoundaryDepartureFilter") {}
@@ -63,6 +63,6 @@ private:
     RCLCPP_WARN_THROTTLE(log_, *clock_, 5000, fmt, args...);
   }
 };
-}  // namespace autoware::trajectory_validator::plugin
+}  // namespace autoware::trajectory_validator::plugin::safety
 
 #endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_
