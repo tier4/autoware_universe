@@ -60,10 +60,7 @@ enum LineStringType {
 const std::map<std::string, LineStringType> LINE_STRING_TYPE_MAP = {
   {"stop_line", LINE_STRING_TYPE_STOP_LINE}, {"road_border", LINE_STRING_TYPE_ROAD_BORDER}};
 
-enum PolygonType {
-  POLYGON_TYPE_INTERSECTION_AREA = 0,
-  POLYGON_TYPE_NUM = 1
-};
+enum PolygonType { POLYGON_TYPE_INTERSECTION_AREA = 0, POLYGON_TYPE_NUM = 1 };
 
 const std::map<std::string, PolygonType> POLYGON_TYPE_MAP = {
   {"intersection_area", POLYGON_TYPE_INTERSECTION_AREA}};
@@ -138,7 +135,7 @@ struct LaneletMap
  * @return LaneletMap
  */
 [[nodiscard]] LaneletMap convert_to_internal_lanelet_map(
-  const lanelet::LaneletMapConstPtr lanelet_map_ptr);
+  const lanelet::LaneletMapConstPtr lanelet_map_ptr, double line_string_max_step_m = 5.0);
 
 }  // namespace autoware::diffusion_planner
 
