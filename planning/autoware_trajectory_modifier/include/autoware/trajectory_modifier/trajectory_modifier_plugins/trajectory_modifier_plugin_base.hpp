@@ -67,7 +67,7 @@ public:
   std::shared_ptr<autoware_utils_debug::TimeKeeper> get_time_keeper() const { return time_keeper_; }
   virtual void update_params(const TrajectoryModifierParams & params) = 0;
 
-  virtual void publish_debug_data([[maybe_unused]] const std::string & ns) const {};
+  virtual void publish_debug_data([[maybe_unused]] const std::string & ns) const {}
 
   virtual void publish_planning_factor()
   {

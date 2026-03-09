@@ -86,11 +86,11 @@ bool ObstacleStop::is_trajectory_modification_required(const TrajectoryPoints & 
     check_predicted_objects(traj_points, debug_data_.trajectory_polygon);
   if (!collision_point_pcd && !collision_point_objects) return false;
 
-  if (!collision_point_pcd)
+  if (!collision_point_pcd) {
     nearest_collision_point_ = collision_point_objects;
-  else if (!collision_point_objects)
+  } else if (!collision_point_objects) {
     nearest_collision_point_ = collision_point_pcd;
-  else {
+  } else {
     nearest_collision_point_ = collision_point_pcd->arc_length < collision_point_objects->arc_length
                                  ? collision_point_pcd
                                  : collision_point_objects;
