@@ -19,7 +19,6 @@
 
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
-
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <rclcpp/duration.hpp>
@@ -117,19 +116,6 @@ private:
     return std::distance(times_.begin(), closest_it);
   }
 };
-
-template <class T>
-PoseTrajectory compute_pose_trajectory(
-  const T & traj_points, const TravelDistanceTrajectory & distance_trajectory)
-{
-  PoseTrajectory pose_trajectory;
-  pose_trajectory.reserve(distance_trajectory.size());
-  for (const auto & distance : distance_trajectory) {
-    const auto pose = autoware::motion_utils::calcInterpolatedPose(traj_points, distance);
-    pose_trajectory.push_back(pose);
-  }
-  return pose_trajectory;
-}
 
 class CollisionCheckFilter : public SafetyFilterInterface
 {

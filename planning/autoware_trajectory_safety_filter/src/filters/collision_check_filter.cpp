@@ -176,6 +176,22 @@ PoseTrajectory compute(
 
 }  // namespace constant_curvature_predictor
 
+namespace trajectory_utils
+{
+template <class T>
+PoseTrajectory compute_pose_trajectory(
+  const T & traj_points, const TravelDistanceTrajectory & distance_trajectory)
+{
+  PoseTrajectory pose_trajectory;
+  pose_trajectory.reserve(distance_trajectory.size());
+  for (const auto & distance : distance_trajectory) {
+    const auto pose = autoware::motion_utils::calcInterpolatedPose(traj_points, distance);
+    pose_trajectory.push_back(pose);
+  }
+  return pose_trajectory;
+}
+
+}
 namespace polygon
 {
 FootprintTrajectory compute_footprint_trajectory(
@@ -241,18 +257,13 @@ bool check_path_polygon_convex_collision(
 {
   const auto overall_box1 = compute_overall_envelope(footprints1);
   const auto overall_box2 = compute_overall_envelope(footprints2);
-
   if (!boost::geometry::intersects(overall_box1, overall_box2)) {
     return false;
   }
 
   const auto overall_convex1 = compute_overall_convex_hull(footprints1);
   const auto overall_convex2 = compute_overall_convex_hull(footprints2);
-  if (!boost::geometry::intersects(overall_convex1, overall_convex2)) {
-    return false;
-  }
-
-  return true;
+  return boost::geometry::intersects(overall_convex1, overall_convex2);
 }
 
 }  // namespace polygon
@@ -269,7 +280,7 @@ TrajectoryData generate_ego_trajectory(
   for (double & val : distances) {
     val += distance_offset;
   }
-  auto poses = compute_pose_trajectory(traj_points, distances);
+  auto poses = trajectory_utils::compute_pose_trajectory(traj_points, distances);
 
   auto footprints = polygon::compute_footprint_trajectory(poses, vehicle_info);
 
@@ -278,7 +289,6 @@ TrajectoryData generate_ego_trajectory(
     std::move(footprints));
 }
 
-// todo: consider time delay
 // todo: use all predicted paths
 TrajectoryData generate_predicted_path_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
@@ -295,7 +305,7 @@ TrajectoryData generate_predicted_path_trajectory(
       max_time, max_confidence_path->path.size() *
                   rclcpp::Duration(max_confidence_path->time_step).seconds()));
 
-  auto poses = compute_pose_trajectory(max_confidence_path->path, distances);
+  auto poses = trajectory_utils::compute_pose_trajectory(max_confidence_path->path, distances);
   auto footprints = polygon::compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(
@@ -348,6 +358,54 @@ bool check_pet_collision(
   }
 
   return false;
+}
+
+std::optional<double> compute_pet(
+  const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
+  double pet_threshold)
+{
+  if (!polygon::check_path_polygon_convex_collision(
+        ref_trajectory.getFootprints(), test_trajectory.getFootprintsInTimeRange(
+                                          0.0, ref_trajectory.getTimes().back() + pet_threshold))) {
+    return std::nullopt;
+  }
+
+  std::optional<double> candidate_pet{};
+  for (size_t i = 0; i < ref_trajectory.size(); ++i) {
+    const double ref_start_time = ref_trajectory.getTimes().at(i);
+    const double ref_end_time = ref_start_time + TIME_RESOLUTION;
+    const auto & ref_poly = ref_trajectory.getFootprintsInTimeRange(ref_start_time, ref_end_time);
+    auto check_slice_collision = [&](double start, double end) {
+      const auto & slice_poly = test_trajectory.getFootprintsInTimeRange(start, end);
+      return polygon::check_path_polygon_convex_collision(ref_poly, slice_poly);
+    };
+
+    const double current_pet_limit = candidate_pet.value_or(pet_threshold);
+    const double test_start_time = ref_start_time - current_pet_limit;
+    const double test_end_time = ref_end_time + current_pet_limit;
+    if (!check_slice_collision(test_start_time, test_end_time)) {
+      continue;
+    }
+    for (double pet_range = 0.0; pet_range <= current_pet_limit; pet_range += TIME_RESOLUTION) {
+      const double test_start_time_before = ref_start_time - pet_range;
+      const double test_end_time_before = test_start_time_before + TIME_RESOLUTION;
+
+      const double test_start_time_after = ref_end_time + pet_range - TIME_RESOLUTION;
+      const double test_end_time_after = ref_end_time + pet_range;
+
+      if (
+        check_slice_collision(test_start_time_before, test_end_time_before) ||
+        check_slice_collision(test_start_time_after, test_end_time_after)) {
+        candidate_pet = pet_range;
+        break;
+      }
+    }
+    if (candidate_pet.has_value() && candidate_pet.value() == 0.0) {
+      return candidate_pet;
+    }
+  }
+
+  return candidate_pet;
 }
 
 void CollisionCheckFilter::set_parameters(rclcpp::Node & node)
