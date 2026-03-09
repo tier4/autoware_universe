@@ -17,6 +17,10 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/velocity_smoother.cpp
 )
 
+target_include_directories(${PROJECT_NAME}_lib PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/plugins>
+)
+
 target_include_directories(${PROJECT_NAME}_lib SYSTEM PUBLIC
   ${EIGEN3_INCLUDE_DIR}
 )

@@ -16,9 +16,9 @@
 #define TYPE_ALIAS_HPP_
 
 #include "autoware/trajectory_optimizer/trajectory_optimizer_plugins/trajectory_optimizer_plugin_base.hpp"
+#include "plugin_interface.hpp"
 
 #include <autoware/trajectory/path_point_with_lane_id.hpp>
-#include <autoware/trajectory_modifier/trajectory_modifier_plugins/trajectory_modifier_plugin_base.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 #include <autoware_minimum_rule_based_planner/minimum_rule_based_planner_parameters.hpp>
 #include <pluginlib/class_loader.hpp>
@@ -62,7 +62,7 @@ using OptimizerPluginInterface =
 using OptimizerPluginLoader = pluginlib::ClassLoader<OptimizerPluginInterface>;
 
 using ModifierPluginLoader =
-  pluginlib::ClassLoader<trajectory_modifier::plugin::TrajectoryModifierPluginBase>;
+  pluginlib::ClassLoader<minimum_rule_based_planner::plugin::PluginInterface>;
 
 }  // namespace autoware::minimum_rule_based_planner
 

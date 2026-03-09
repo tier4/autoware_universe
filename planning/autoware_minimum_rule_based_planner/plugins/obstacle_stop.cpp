@@ -21,25 +21,14 @@
 namespace autoware::minimum_rule_based_planner::plugin
 {
 
-void ObstacleStop::on_initialize([[maybe_unused]] const TrajectoryModifierParams & params)
+void ObstacleStop::on_initialize([[maybe_unused]] const MinimumRuleBasedPlannerParams & params)
 {
   planning_factor_interface_ =
     std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
       get_node_ptr(), "obstacle_stop");
 }
 
-bool ObstacleStop::is_trajectory_modification_required(
-  [[maybe_unused]] const TrajectoryPoints & traj_points)
-{
-  return false;
-}
-
-void ObstacleStop::modify_trajectory([[maybe_unused]] TrajectoryPoints & traj_points)
-{
-  // TODO(odashima): implement logic
-}
-
-void ObstacleStop::update_params([[maybe_unused]] const TrajectoryModifierParams & params)
+void ObstacleStop::run([[maybe_unused]] TrajectoryPoints & traj_points)
 {
   // TODO(odashima): implement logic
 }
@@ -49,4 +38,4 @@ void ObstacleStop::update_params([[maybe_unused]] const TrajectoryModifierParams
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
   autoware::minimum_rule_based_planner::plugin::ObstacleStop,
-  autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase)
+  autoware::minimum_rule_based_planner::plugin::PluginInterface)

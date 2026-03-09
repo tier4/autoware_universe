@@ -50,9 +50,9 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   generator_uuid_(autoware_utils_uuid::generate_uuid()),
   vehicle_info_(vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()),
   modifier_plugin_loader_(
-    "autoware_trajectory_modifier",
-    "autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase"),
-  modifier_data_(std::make_shared<TrajectoryModifierData>(this))
+    "autoware_minimum_rule_based_planner",
+    "autoware::minimum_rule_based_planner::plugin::PluginInterface"),
+  modifier_data_(std::make_shared<plugin::ModifierData>(this))
 {
   param_listener_ =
     std::make_shared<::minimum_rule_based_planner::ParamListener>(get_node_parameters_interface());
@@ -72,12 +72,12 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   load_optimizer_plugins();
   load_modifier_plugins();
 
-  const auto params = param_listener_->get_params();
+  params_ = param_listener_->get_params();
 
   path_planner_ =
-    std::make_unique<PathPlanner>(get_logger(), get_clock(), time_keeper_, params, vehicle_info_);
+    std::make_unique<PathPlanner>(get_logger(), get_clock(), time_keeper_, params_, vehicle_info_);
   timer_ = rclcpp::create_timer(
-    this, get_clock(), rclcpp::Rate(params.planning_frequency_hz).period(),
+    this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
     std::bind(&MinimumRuleBasedPlannerNode::on_timer, this));
 
   RCLCPP_INFO(get_logger(), "Minimum Rule Based Planner Node has been started.");
@@ -167,7 +167,7 @@ void MinimumRuleBasedPlannerNode::load_plugin(const std::string & name)
   }
   if (modifier_plugin_loader_.isClassAvailable(name)) {
     const auto plugin = modifier_plugin_loader_.createSharedInstance(name);
-    plugin->initialize(name, this, time_keeper_, modifier_data_, modifier_params_);
+    plugin->initialize(name, this, time_keeper_, modifier_data_, vehicle_info_, params_);
 
     // Convert "autoware::...::ObstacleStop" to "obstacle_stop"
     const auto short_name = [](const std::string & plugin_name) {
@@ -214,9 +214,9 @@ void MinimumRuleBasedPlannerNode::unload_plugin(const std::string & name)
 void MinimumRuleBasedPlannerNode::set_modifier_data(
   const MinimumRuleBasedPlannerNode::InputData & input_data)
 {
-  modifier_data_->current_odometry = input_data.odometry_ptr;
-  modifier_data_->current_acceleration = input_data.acceleration_ptr;
-  modifier_data_->predicted_objects = input_data.predicted_objects_ptr;
+  modifier_data_->odometry_ptr = input_data.odometry_ptr;
+  modifier_data_->acceleration_ptr = input_data.acceleration_ptr;
+  modifier_data_->predicted_objects_ptr = input_data.predicted_objects_ptr;
 }
 
 void MinimumRuleBasedPlannerNode::on_timer()
@@ -314,7 +314,7 @@ void MinimumRuleBasedPlannerNode::on_timer()
     set_modifier_data(input_data);
     for (auto & modifier : modifier_plugins_) {
       autoware_utils_debug::ScopedTimeTrack st(modifier->get_name(), *time_keeper_);
-      modifier->modify_trajectory(smoothed_path.points);
+      modifier->run(smoothed_path.points);
       modifier->publish_planning_factor();
       if (params.debug.enable_modifier_trajectory) {
         publish_debug_trajectory(

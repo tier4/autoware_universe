@@ -73,6 +73,7 @@ private:
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
+  minimum_rule_based_planner::Params params_;
   /** @} */
 
 private:
@@ -117,13 +118,11 @@ private:
 
   bool initialized_modifiers_{false};
   ModifierPluginLoader modifier_plugin_loader_;
-  std::vector<std::shared_ptr<trajectory_modifier::plugin::TrajectoryModifierPluginBase>>
-    modifier_plugins_;
-  trajectory_modifier_params::Params modifier_params_;
+  std::vector<std::shared_ptr<plugin::PluginInterface>> modifier_plugins_;
   std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
     pub_debug_modifier_module_trajectories_;
 
-  std::shared_ptr<TrajectoryModifierData> modifier_data_;
+  std::shared_ptr<plugin::ModifierData> modifier_data_;
   /** @} */
 
 private:
