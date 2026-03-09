@@ -98,7 +98,7 @@ void limit_lateral_acceleration(
  *        This allows enforcing lateral acceleration limits as hard constraints in the QP.
  */
 void filter_velocity(
-  TrajectoryPoints & input_trajectory, const InitialMotion & initial_motion,
+  TrajectoryPoints & input_trajectory,
   const double nearest_dist_threshold_m, const double nearest_yaw_threshold_rad,
   const std::shared_ptr<ContinuousJerkSmoother> & smoother, const Odometry & current_odometry,
   const std::vector<double> & max_velocity_per_point = {});
