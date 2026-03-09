@@ -19,7 +19,6 @@
 
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
-
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <rclcpp/duration.hpp>

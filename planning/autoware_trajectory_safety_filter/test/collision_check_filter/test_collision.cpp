@@ -79,8 +79,7 @@ protected:
 
     auto [times, distances] =
       motion::compute_motion_profile_1d(twist, assumed_lag, assumed_acceleration, 0.0, max_time);
-    auto pose_trajectory =
-      constant_curvature_predictor::compute(initial_pose, twist, distances);
+    auto pose_trajectory = constant_curvature_predictor::compute(initial_pose, twist, distances);
 
     autoware_perception_msgs::msg::PredictedPath predicted_path;
     predicted_path.confidence = 1.0;
