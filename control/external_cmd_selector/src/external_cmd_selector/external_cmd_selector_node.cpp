@@ -96,6 +96,7 @@ ExternalCmdSelector::ExternalCmdSelector(const rclcpp::NodeOptions & node_option
 
   // Diagnostics Updater
   updater_.setHardwareID("external_cmd_selector");
+  updater_.setPeriod(0.1);
   updater_.add("heartbeat", [](auto & stat) {
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Alive");
   });
