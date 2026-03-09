@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_validator/filters/out_of_lane_filter.hpp"
+#include "autoware/trajectory_validator/filters/safety/out_of_lane_filter.hpp"
 
 #include <rclcpp/duration.hpp>
 

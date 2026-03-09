@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "../..//src/filters/collision_check_filter.cpp"
+#include "../..//src/filters/safety/collision_check_filter.cpp"
 
 #include <gtest/gtest.h>
 

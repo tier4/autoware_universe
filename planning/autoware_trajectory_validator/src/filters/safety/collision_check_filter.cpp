@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_validator/filters/collision_check_filter.hpp"
+#include "autoware/trajectory_validator/filters/safety/collision_check_filter.hpp"
 
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>

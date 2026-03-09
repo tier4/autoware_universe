@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_validator/filters/uncrossable_boundary_departure_filter.hpp"
+#include "autoware/trajectory_validator/filters/safety/uncrossable_boundary_departure_filter.hpp"
 
 #include <memory>
 #include <string>
