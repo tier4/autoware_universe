@@ -157,7 +157,7 @@ void TrajectorySafetyFilter::process(const CandidateTrajectories::ConstSharedPtr
     }
   }
 
-  update_diagnostic(*filtered_msg);
+  update_diagnostic(*msg, *filtered_msg);
   pub_trajectories_->publish(*filtered_msg);
 }
 
@@ -217,13 +217,17 @@ void TrajectorySafetyFilter::unload_metric(const std::string & name)
   }
 }
 
-void TrajectorySafetyFilter::update_diagnostic(const CandidateTrajectories & filtered_trajectories)
+void TrajectorySafetyFilter::update_diagnostic(
+  const CandidateTrajectories & input_trajectories,
+  const CandidateTrajectories & filtered_trajectories)
 {
-  const auto uuid_to_name_map = get_generator_uuid_to_name_map(filtered_trajectories);
-  if (filtered_trajectories.candidate_trajectories.empty()) {
+  const auto uuid_to_name_map = get_generator_uuid_to_name_map(input_trajectories);
+  const auto input_has_diffusion_trajectories = has_trajectory_from_generator(uuid_to_name_map, input_trajectories, "Diffusion");
+  const auto filtered_has_diffusion_trajectories = has_trajectory_from_generator(uuid_to_name_map, filtered_trajectories, "Diffusion");
+  if (!input_trajectories.candidate_trajectories.empty() && filtered_trajectories.candidate_trajectories.empty()) {
     diagnostics_interface_.update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No feasible trajectories found");
-  } else if (!has_trajectory_from_generator(uuid_to_name_map, filtered_trajectories, "Diffusion")) {
+  } else if (input_has_diffusion_trajectories && !filtered_has_diffusion_trajectories) {
     diagnostics_interface_.update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::WARN,
       "All diffusion planner trajectories are infeasible");
