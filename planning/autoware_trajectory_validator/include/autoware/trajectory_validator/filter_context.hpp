@@ -29,7 +29,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace autoware::trajectory_safety_filter
+namespace autoware::trajectory_validator
 {
 
 // Base context that all filters can access
@@ -40,6 +40,6 @@ struct FilterContext
   std::shared_ptr<lanelet::LaneletMap> lanelet_map;
   autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr predicted_objects;
 };
-}  // namespace autoware::trajectory_safety_filter
+}  // namespace autoware::trajectory_validator
 
 #endif  // AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTER_CONTEXT_HPP_

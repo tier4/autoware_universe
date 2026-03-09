@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_safety_filter/filters/collision_check_filter.hpp"
+#include "autoware/trajectory_validator/filters/collision_check_filter.hpp"
 
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
@@ -31,7 +31,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::trajectory_safety_filter::plugin
+namespace autoware::trajectory_validator::plugin
 {
 
 namespace motion
@@ -420,9 +420,9 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   return {};
 }
 
-}  // namespace autoware::trajectory_safety_filter::plugin
+}  // namespace autoware::trajectory_validator::plugin
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::trajectory_safety_filter::plugin::CollisionCheckFilter,
-  autoware::trajectory_safety_filter::plugin::SafetyFilterInterface)
+  autoware::trajectory_validator::plugin::CollisionCheckFilter,
+  autoware::trajectory_validator::plugin::ValidatorInterface)
