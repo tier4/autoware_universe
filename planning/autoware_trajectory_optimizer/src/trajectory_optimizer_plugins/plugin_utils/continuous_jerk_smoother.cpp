@@ -247,8 +247,7 @@ bool ContinuousJerkSmoother::apply(
 
   // Initial condition constraints
   {
-    const double v0 =
-      std::min(input.front().longitudinal_velocity_mps, max_velocity_per_point.front());
+    const double v0 = std::min(v_ref_arr.at(0), max_velocity_per_point.at(0));
     A(constr_idx, IDX_B0) = 1.0;  // b0
     upper_bound[constr_idx] = v0 * v0;
     lower_bound[constr_idx] = v0 * v0;
