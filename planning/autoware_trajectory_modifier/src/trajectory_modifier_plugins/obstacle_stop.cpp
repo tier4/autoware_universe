@@ -113,7 +113,8 @@ void ObstacleStop::modify_trajectory(TrajectoryPoints & traj_points)
     "[TM ObstacleStop] Detected collision point at arc length %f m",
     nearest_collision_point_->arc_length);
 
-  set_stop_point(traj_points);
+  // TODO(Quda): enable this when stopping behavior is improved
+  // set_stop_point(traj_points);
 }
 
 void ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
@@ -166,6 +167,7 @@ void ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
   if (
     ego_nearest_index && ego_lon_vel < ego_low_speed_threshold &&
     target_stop_point_arc_length - ego_arc_length < ego_stop_point_distance_threshold) {
+    traj_points.clear();
     TrajectoryPoint stop_point;
     stop_point.pose = ego_pose;
     stop_point.longitudinal_velocity_mps = 0.0;

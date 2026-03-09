@@ -69,6 +69,10 @@ void TrajectoryModifier::on_traj(const CandidateTrajectories::ConstSharedPtr msg
     return;
   }
 
+  if (!is_ready.value().empty()) {
+    RCLCPP_WARN(get_logger(), "Missing data: %s", is_ready.value().c_str());
+  }
+
   CandidateTrajectories output_trajectories = *msg;
 
   if (param_listener_->is_old(params_)) {

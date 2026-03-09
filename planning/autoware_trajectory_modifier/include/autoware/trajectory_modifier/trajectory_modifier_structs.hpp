@@ -52,7 +52,7 @@ struct TrajectoryModifierData
   tf2_ros::Buffer tf_buffer;
   tf2_ros::TransformListener tf_listener;
 
-  tl::expected<void, std::string> is_ready()
+  tl::expected<std::string, std::string> is_ready()
   {
     if (!current_odometry) {
       return tl::make_unexpected("current_odometry is not set");
@@ -61,12 +61,12 @@ struct TrajectoryModifierData
       return tl::make_unexpected("current_acceleration is not set");
     }
     if (!predicted_objects) {
-      return tl::make_unexpected("predicted_objects is not set");
+      return "predicted_objects is not set";
     }
     if (!obstacle_pointcloud) {
-      return tl::make_unexpected("obstacle_pointcloud is not set");
+      return "obstacle_pointcloud is not set";
     }
-    return {};
+    return "";
   }
 };
 }  // namespace autoware::trajectory_modifier
