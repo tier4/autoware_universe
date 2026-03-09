@@ -125,7 +125,7 @@ void DiffusionPlanner::set_up_params()
   debug_params_.publish_debug_route =
     this->declare_parameter<bool>("debug_params.publish_debug_route", true);
   debug_params_.publish_debug_linestrings =
-    this->declare_parameter<bool>("debug_params.publish_debug_linestrings", false);
+    this->declare_parameter<bool>("debug_params.publish_debug_linestrings", true);
 }
 
 void DiffusionPlanner::load_model()

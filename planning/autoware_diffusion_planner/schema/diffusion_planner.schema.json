@@ -126,7 +126,7 @@
             },
             "publish_debug_linestrings": {
               "type": "boolean",
-              "default": false,
+              "default": true,
               "description": "Publish debug linestring markers"
             }
           },
