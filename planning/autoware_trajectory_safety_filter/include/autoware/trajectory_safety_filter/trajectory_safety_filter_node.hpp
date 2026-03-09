@@ -67,7 +67,8 @@ private:
    * @param name Metric plugin name to unload
    */
   void unload_metric(const std::string & name);
-  void update_diagnostic(const CandidateTrajectories & input_trajectories,
+  void update_diagnostic(
+    const CandidateTrajectories & input_trajectories,
     const CandidateTrajectories & filtered_trajectories);
 
   rcl_interfaces::msg::SetParametersResult on_parameter(

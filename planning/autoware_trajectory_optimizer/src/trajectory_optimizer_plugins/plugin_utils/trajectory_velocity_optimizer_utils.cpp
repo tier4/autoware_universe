@@ -228,10 +228,9 @@ void limit_lateral_acceleration(
 }
 
 void filter_velocity(
-  TrajectoryPoints & input_trajectory,
-  const double nearest_dist_threshold_m, const double nearest_yaw_threshold_rad,
-  const std::shared_ptr<ContinuousJerkSmoother> & smoother, const Odometry & current_odometry,
-  const std::vector<double> & max_velocity_per_point)
+  TrajectoryPoints & input_trajectory, const double nearest_dist_threshold_m,
+  const double nearest_yaw_threshold_rad, const std::shared_ptr<ContinuousJerkSmoother> & smoother,
+  const Odometry & current_odometry, const std::vector<double> & max_velocity_per_point)
 {
   if (!smoother) {
     auto clock = rclcpp::Clock::make_shared(RCL_ROS_TIME);
@@ -268,8 +267,7 @@ void filter_velocity(
   }
 
   // Apply continuous jerk smoother with per-point velocity constraints
-  if (!smoother->apply(
-        input_trajectory, input_trajectory, clipped_max_vel)) {
+  if (!smoother->apply(input_trajectory, input_trajectory, clipped_max_vel)) {
     auto clock = rclcpp::Clock::make_shared(RCL_ROS_TIME);
     RCLCPP_WARN_THROTTLE(
       rclcpp::get_logger("trajectory_velocity_optimizer"), *clock, 5000,

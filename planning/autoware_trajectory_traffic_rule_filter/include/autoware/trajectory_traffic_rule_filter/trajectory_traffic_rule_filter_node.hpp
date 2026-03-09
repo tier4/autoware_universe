@@ -56,7 +56,8 @@ private:
 
   void load_metric(const std::string & name);
   void unload_metric(const std::string & name);
-  void update_diagnostic(const CandidateTrajectories & input_trajectories,
+  void update_diagnostic(
+    const CandidateTrajectories & input_trajectories,
     const CandidateTrajectories & filtered_trajectories);
 
   lanelet::ConstLanelets get_lanelets_from_trajectory(
