@@ -134,13 +134,16 @@ protected:
 TEST_F(TrafficLightFilterTest, IsFeasibleEmptyInput)
 {
   std::vector<TrajectoryPoint> points;
-  EXPECT_TRUE(filter_->is_feasible(points)) << "Empty trajectory should always be feasible";
+  EXPECT_TRUE(filter_->is_feasible(points))
+    << "Empty trajectory should always be feasible (if empty they cannot cross a traffic light)";
 }
 
 TEST_F(TrafficLightFilterTest, IsFeasibleNoMap)
 {
   auto points = create_trajectory(0.0, 1.0);
-  EXPECT_FALSE(filter_->is_feasible(points)) << "Should not be feasible without a map";
+  EXPECT_FALSE(filter_->is_feasible(points))
+    << "Should not be feasible without a map (cannot verify whether a trajectory crosses a traffic "
+       "light)";
 }
 
 TEST_F(TrafficLightFilterTest, IsInfeasibleWithRedLightIntersection)
