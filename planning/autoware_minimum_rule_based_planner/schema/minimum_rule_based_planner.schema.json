@@ -8,7 +8,7 @@
       "properties": {
         "planning_frequency_hz": {
           "type": "number",
-          "description": "Planning frequency [Hz]",
+          "description": "Planning loop frequency [Hz]",
           "default": 10.0,
           "minimum": 0.0
         },
@@ -20,13 +20,13 @@
               "properties": {
                 "backward": {
                   "type": "number",
-                  "description": "Backward path length [m]",
+                  "description": "Path length behind ego [m]",
                   "default": 5.0,
                   "minimum": 0.0
                 },
                 "forward": {
                   "type": "number",
-                  "description": "Forward path length [m]",
+                  "description": "Path length ahead of ego [m]",
                   "default": 300.0,
                   "minimum": 0.0
                 }
@@ -39,13 +39,13 @@
               "properties": {
                 "search_radius_range": {
                   "type": "number",
-                  "description": "Search radius range [m]",
+                  "description": "Search radius for goal connection [m]",
                   "default": 7.5,
                   "minimum": 0.0
                 },
                 "pre_goal_offset": {
                   "type": "number",
-                  "description": "Pre goal offset [m]",
+                  "description": "Offset before goal for smooth connection [m]",
                   "default": 1.0,
                   "minimum": 0.0
                 }
@@ -58,13 +58,13 @@
               "properties": {
                 "dist_threshold": {
                   "type": "number",
-                  "description": "Distance threshold [m]",
+                  "description": "Distance threshold for ego nearest lanelet [m]",
                   "default": 3.0,
                   "minimum": 0.0
                 },
                 "yaw_threshold": {
                   "type": "number",
-                  "description": "Yaw threshold [rad]",
+                  "description": "Yaw threshold for ego nearest lanelet [rad]",
                   "default": 0.174533,
                   "minimum": 0.0
                 }
@@ -77,37 +77,37 @@
               "properties": {
                 "enable": {
                   "type": "boolean",
-                  "description": "Enable path shift [m]",
+                  "description": "Enable path shifting to ego pose",
                   "default": true,
                   "minimum": 0.0
                 },
                 "minimum_shift_length": {
                   "type": "number",
-                  "description": "Minimum shift length [m]",
+                  "description": "Lateral offset threshold to trigger shift [m]",
                   "default": 0.5,
                   "minimum": 0.0
                 },
                 "minimum_shift_yaw": {
                   "type": "number",
-                  "description": "Minimum shift yaw [rad]",
+                  "description": "Yaw deviation threshold to trigger shift [rad]",
                   "default": 0.349,
                   "minimum": 0.0
                 },
                 "minimum_shift_distance": {
                   "type": "number",
-                  "description": "Minimum shift distance [m]",
+                  "description": "Floor for shift distance [m]",
                   "default": 5.0,
                   "minimum": 0.0
                 },
                 "min_speed_for_curvature": {
                   "type": "number",
-                  "description": "Minimum speed for curvature [m/s]",
+                  "description": "Lower bound on speed for curvature computation [m/s]",
                   "default": 2.77,
                   "minimum": 0.0
                 },
                 "lateral_accel_limit": {
                   "type": "number",
-                  "description": "Lateral acceleration limit [m/s^2]",
+                  "description": "Lateral acceleration limit for shift [m/s^2]",
                   "default": 1.0,
                   "minimum": 0.0
                 }
@@ -120,13 +120,13 @@
               "properties": {
                 "separation_threshold": {
                   "type": "number",
-                  "description": "Separation threshold [m]",
+                  "description": "Max distance between waypoints in same group [m]",
                   "default": 1.0,
                   "minimum": 0.0
                 },
                 "interval_margin_ratio": {
                   "type": "number",
-                  "description": "Interval margin ratio [m]",
+                  "description": "IRatio to expand group interval by lateral distance",
                   "default": 10.0,
                   "minimum": 0.0
                 }
@@ -139,7 +139,7 @@
               "properties": {
                 "delta_arc_length": {
                   "type": "number",
-                  "description": "Output trajectory resolution [m]",
+                  "description": "Resampling interval for path-to-trajectory conversion [m]",
                   "default": 0.5,
                   "minimum": 0.0
                 }
@@ -358,25 +358,25 @@
             },
             "set_engage_speed": {
               "type": "boolean",
-              "description": "Set engage speed [m]",
+              "description": "Set engage speed at start",
               "default": true,
               "minimum": 0.0
             },
             "limit_speed": {
               "type": "boolean",
-              "description": "Limit speed [m]",
+              "description": "Apply max speed limit",
               "default": true,
               "minimum": 0.0
             },
             "limit_lateral_acceleration": {
               "type": "boolean",
-              "description": "Limit lateral acceleration [m]",
+              "description": "Apply max lateral acceleration limit",
               "default": false,
               "minimum": 0.0
             },
             "smooth_velocities": {
               "type": "boolean",
-              "description": "Smooth velocities [m]",
+              "description": "Apply jerk-filtered velocity smoothing",
               "default": true,
               "minimum": 0.0
             },
@@ -395,43 +395,43 @@
           "properties": {
             "max_trajectory_length": {
               "type": "number",
-              "description": "Max trajectory length [m]",
+              "description": "Max trajectory length for post-optimization resampling [m]",
               "default": 300.0,
               "minimum": 0.0
             },
             "min_trajectory_length": {
               "type": "number",
-              "description": "Min trajectory length [m]",
+              "description": "Minimum trajectory length for post-optimization resampling [m]",
               "default": 30.0,
               "minimum": 0.0
             },
             "resample_time": {
               "type": "number",
-              "description": "Resample time [s]",
+              "description": "Resample total time [s]",
               "default": 10.0,
               "minimum": 0.0
             },
             "dense_resample_dt": {
               "type": "number",
-              "description": "Dense resample time step [s]",
+              "description": "Dense sampling time interval [s]",
               "default": 0.1,
               "minimum": 0.0
             },
             "dense_min_interval_distance": {
               "type": "number",
-              "description": "Dense min interval distance [m]",
+              "description": "Dense sampling min interval [m]",
               "default": 0.1,
               "minimum": 0.0
             },
             "sparse_resample_dt": {
               "type": "number",
-              "description": "Sparse resample time step [s]",
+              "description": "Sparse sampling time interval [s]",
               "default": 0.1,
               "minimum": 0.0
             },
             "sparse_min_interval_distance": {
               "type": "number",
-              "description": "Sparse min interval distance [m]",
+              "description": "Sparse sampling min interval [m]",
               "default": 1.0,
               "minimum": 0.0
             }
@@ -444,31 +444,31 @@
           "properties": {
             "enable_path": {
               "type": "boolean",
-              "description": "Enable path [m]",
+              "description": "Enable path debugging",
               "default": true,
               "minimum": 0.0
             },
             "enable_shifted_trajectory": {
               "type": "boolean",
-              "description": "Enable shifted trajectory [m]",
+              "description": "Enable shifted trajectory debugging",
               "default": true,
               "minimum": 0.0
             },
             "enable_optimizer_trajectory": {
               "type": "boolean",
-              "description": "Enable optimizer trajectory [m]",
+              "description": "Enable optimizer trajectory debugging",
               "default": true,
               "minimum": 0.0
             },
             "enable_modifier_trajectory": {
               "type": "boolean",
-              "description": "Enable modifier trajectory [m]",
+              "description": "Enable modifier trajectory debugging",
               "default": true,
               "minimum": 0.0
             },
             "enable_output_trajectory": {
               "type": "boolean",
-              "description": "Enable output trajectory [m]",
+              "description": "Enable output trajectory debugging",
               "default": true,
               "minimum": 0.0
             }
