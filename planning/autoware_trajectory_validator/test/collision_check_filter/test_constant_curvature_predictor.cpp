@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// #include "autoware/trajectory_validator/filters/collision_check_filter.cpp"
+// #include "autoware/trajectory_safety_filter/filters/collision_check_filter.cpp"
 #include "../..//src/filters/collision_check_filter.cpp"
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -23,7 +23,7 @@
 
 #include <cmath>
 
-namespace autoware::trajectory_validator::plugin::constant_curvature_predictor
+namespace autoware::trajectory_safety_filter::plugin::constant_curvature_predictor
 {
 
 TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, PoseToIsometry)
@@ -216,4 +216,4 @@ TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, ComputeTrajectory)
   }
 }
 
-}  // namespace autoware::trajectory_validator::plugin::constant_curvature_predictor
+}  // namespace autoware::trajectory_safety_filter::plugin::constant_curvature_predictor

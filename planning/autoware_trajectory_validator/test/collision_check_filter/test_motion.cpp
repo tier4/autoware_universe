@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// #include "autoware/trajectory_validator/filters/collision_check_filter.hpp"
+// #include "autoware/trajectory_safety_filter/filters/collision_check_filter.hpp"
 #include "../../src/filters/collision_check_filter.cpp"
 
 #include <gtest/gtest.h>
@@ -20,7 +20,7 @@
 #include <cmath>
 #include <vector>
 
-namespace autoware::trajectory_validator::plugin::motion
+namespace autoware::trajectory_safety_filter::plugin::motion
 {
 class ComputeMotionProfile1dTest : public ::testing::Test
 {
@@ -127,4 +127,4 @@ TEST_F(ComputeMotionProfile1dTest, LagLongerThanMaxTime)
   }
 }
 
-}  // namespace autoware::trajectory_validator::plugin::motion
+}  // namespace autoware::trajectory_safety_filter::plugin::motion

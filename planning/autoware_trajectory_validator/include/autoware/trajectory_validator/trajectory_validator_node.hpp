@@ -15,10 +15,10 @@
 #ifndef AUTOWARE__TRAJECTORY_SAFETY_FILTER__TRAJECTORY_SAFETY_FILTER_NODE_HPP_
 #define AUTOWARE__TRAJECTORY_SAFETY_FILTER__TRAJECTORY_SAFETY_FILTER_NODE_HPP_
 
-#include "autoware/trajectory_validator/validator_interface.hpp"
+#include "autoware/trajectory_safety_filter/safety_filter_interface.hpp"
 
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
-#include <autoware_trajectory_validator_param.hpp>
+#include <autoware_trajectory_safety_filter_param.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
@@ -39,7 +39,7 @@
 #include <string>
 #include <vector>
 
-namespace autoware::trajectory_validator
+namespace autoware::trajectory_safety_filter
 {
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_internal_planning_msgs::msg::CandidateTrajectory;
@@ -50,10 +50,10 @@ using autoware_utils_diagnostics::DiagnosticsInterface;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 
-class TrajectoryValidator : public rclcpp::Node
+class TrajectorySafetyFilter : public rclcpp::Node
 {
 public:
-  explicit TrajectoryValidator(const rclcpp::NodeOptions & node_options);
+  explicit TrajectorySafetyFilter(const rclcpp::NodeOptions & node_options);
 
 private:
   void process(const CandidateTrajectories::ConstSharedPtr msg);
@@ -74,7 +74,7 @@ private:
   rcl_interfaces::msg::SetParametersResult on_parameter(
     const std::vector<rclcpp::Parameter> & parameters);
 
-  std::unique_ptr<validator::ParamListener> listener_;
+  std::unique_ptr<safety_filter::ParamListener> listener_;
 
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
@@ -96,14 +96,14 @@ private:
 
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
-  pluginlib::ClassLoader<plugin::ValidatorInterface> plugin_loader_;
+  pluginlib::ClassLoader<plugin::SafetyFilterInterface> plugin_loader_;
 
-  std::vector<std::shared_ptr<plugin::ValidatorInterface>> plugins_;
+  std::vector<std::shared_ptr<plugin::SafetyFilterInterface>> plugins_;
 
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
-  DiagnosticsInterface diagnostics_interface_{this, "trajectory_validator"};
+  DiagnosticsInterface diagnostics_interface_{this, "trajectory_safety_filter"};
 };
 
-}  // namespace autoware::trajectory_validator
+}  // namespace autoware::trajectory_safety_filter
 
 #endif  // AUTOWARE__TRAJECTORY_SAFETY_FILTER__TRAJECTORY_SAFETY_FILTER_NODE_HPP_

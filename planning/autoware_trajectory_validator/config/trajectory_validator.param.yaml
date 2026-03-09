@@ -2,18 +2,18 @@
   ros__parameters:
     filter_names:
       [
-        "autoware::trajectory_validator::plugin::OutOfLaneFilter",
-        "autoware::trajectory_validator::plugin::CollisionFilter",
-        "autoware::trajectory_validator::plugin::CollisionCheckFilter",
-        "autoware::trajectory_validator::plugin::UncrossableBoundaryDepartureFilter",
-        "autoware::trajectory_validator::plugin::VehicleConstraintFilter",
+        "autoware::trajectory_safety_filter::plugin::OutOfLaneFilter",
+        "autoware::trajectory_safety_filter::plugin::CollisionFilter",
+        "autoware::trajectory_safety_filter::plugin::CollisionCheckFilter",
+        "autoware::trajectory_safety_filter::plugin::UncrossableBoundaryDepartureFilter",
+        "autoware::trajectory_safety_filter::plugin::VehicleConstraintFilter",
       ]
     # available filters:
-    #  "autoware::trajectory_validator::plugin::OutOfLaneFilter"
-    #  "autoware::trajectory_validator::plugin::CollisionFilter"
-    #  "autoware::trajectory_validator::plugin::CollisionCheckFilter"
-    #  "autoware::trajectory_validator::plugin::UncrossableBoundaryDepartureFilter"
-    #  "autoware::trajectory_validator::plugin::VehicleConstraintFilter"
+    #  "autoware::trajectory_safety_filter::plugin::OutOfLaneFilter"
+    #  "autoware::trajectory_safety_filter::plugin::CollisionFilter"
+    #  "autoware::trajectory_safety_filter::plugin::CollisionCheckFilter"
+    #  "autoware::trajectory_safety_filter::plugin::UncrossableBoundaryDepartureFilter"
+    #  "autoware::trajectory_safety_filter::plugin::VehicleConstraintFilter"
 
     out_of_lane:
       time: 2.0

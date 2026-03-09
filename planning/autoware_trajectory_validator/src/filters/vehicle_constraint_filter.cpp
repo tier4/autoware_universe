@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_validator/filters/vehicle_constraint_filter.hpp"
+#include "autoware/trajectory_safety_filter/filters/vehicle_constraint_filter.hpp"
 
 #include <autoware_utils_geometry/geometry.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-namespace autoware::trajectory_validator::plugin
+namespace autoware::trajectory_safety_filter::plugin
 {
 namespace
 {
@@ -90,7 +90,7 @@ double to_steering_rate(
 }  // namespace
 
 VehicleConstraintFilter::VehicleConstraintFilter()
-: ValidatorInterface("VehicleConstraintFilter")
+: SafetyFilterInterface("VehicleConstraintFilter")
 {
 }
 
@@ -260,9 +260,9 @@ bool is_steering_rate_ok(
   }
   return true;
 }
-}  // namespace autoware::trajectory_validator::plugin
+}  // namespace autoware::trajectory_safety_filter::plugin
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::trajectory_validator::plugin::VehicleConstraintFilter,
-  autoware::trajectory_validator::plugin::ValidatorInterface)
+  autoware::trajectory_safety_filter::plugin::VehicleConstraintFilter,
+  autoware::trajectory_safety_filter::plugin::SafetyFilterInterface)
