@@ -116,7 +116,10 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
     trajectory_ls.emplace_back(p.pose.position.x, p.pose.position.y);
   }
 
-  if (!lanelet_map_ || !traffic_lights_ || trajectory_ls.size() < 2 || !vehicle_info_ptr_) {
+  if (trajectory_ls.size() < 2 ) {
+    return {}; // allow stopped trajectories
+  }
+  if (!lanelet_map_ || !traffic_lights_ || !vehicle_info_ptr_) {
     return tl::make_unexpected("No data available");  // Reject if no data available
   }
 
