@@ -34,6 +34,9 @@ public:
 private:
   std::optional<Waypoint> parseCSVLine(const std::string & line);
 
+  int pre_seq_ = 0;
+  double pre_mps_ = 0.0;
+
   friend class ::TestWaypointLoader;
 };
 }  // namespace autoware::static_freespace_planner
