@@ -79,7 +79,7 @@ public:
     name_ = std::move(name);
     node_ptr_ = node_ptr;
     time_keeper_ = time_keeper;
-    modifier_data_ = modifier_data;
+    data_ = modifier_data;
     vehicle_info_ = vehicle_info;
     RCLCPP_DEBUG(node_ptr_->get_logger(), "instantiated PluginInterface: %s", name_.c_str());
     on_initialize(params);
@@ -111,7 +111,7 @@ protected:
   std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
     planning_factor_interface_;
   VehicleInfo vehicle_info_;
-  std::shared_ptr<ModifierData> modifier_data_;
+  std::shared_ptr<ModifierData> data_;
 
   rclcpp::Clock::SharedPtr get_clock() const { return node_ptr_->get_clock(); }
 

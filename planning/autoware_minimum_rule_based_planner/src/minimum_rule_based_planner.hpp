@@ -52,6 +52,7 @@ public:
     Odometry::ConstSharedPtr odometry_ptr;
     AccelWithCovarianceStamped::ConstSharedPtr acceleration_ptr;
     PredictedObjects::ConstSharedPtr predicted_objects_ptr;
+    PointCloud2::ConstSharedPtr obstacle_pointcloud_ptr;
     PathWithLaneId::ConstSharedPtr test_path_with_lane_id_ptr;
   };
 
@@ -65,6 +66,7 @@ private:
   void on_timer();
   InputData take_data();
   bool is_data_ready(const InputData & input_data);
+  void update_params();
 
   rclcpp::TimerBase::SharedPtr timer_;
   std::shared_ptr<::minimum_rule_based_planner::ParamListener> param_listener_;
@@ -152,6 +154,10 @@ private:
   autoware_utils::InterProcessPollingSubscriber<PredictedObjects> objects_subscriber_{
     this, "~/input/objects"};
   PredictedObjects::ConstSharedPtr predicted_objects_ptr_;
+
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<PointCloud2> pointcloud_subscriber_{
+    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos()};
+  PointCloud2::ConstSharedPtr obstacle_pointcloud_ptr_;
 
   //! test input: bypasses path planning when provided
   autoware_utils::InterProcessPollingSubscriber<

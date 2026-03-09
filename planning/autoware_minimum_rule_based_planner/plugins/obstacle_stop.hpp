@@ -58,20 +58,30 @@ protected:
 private:
   MinimumRuleBasedPlannerParams::ObstacleStop params_;
 
-  std::vector<CollisionPoint> collision_points_buffer_;
+  struct CollisionPointBuffer
+  {
+    std::vector<CollisionPoint> pcd;
+    std::vector<CollisionPoint> objects;
+
+    bool empty() const { return pcd.empty() && objects.empty(); }
+  } collision_points_buffer_;
+
   std::optional<CollisionPoint> nearest_collision_point_;
 
   DebugData debug_data_;
+
+  bool is_obstacle_detected(const TrajectoryPoints & traj_points);
 
   std::optional<CollisionPoint> check_predicted_objects(
     const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon);
   std::optional<CollisionPoint> check_pointcloud(
     const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon);
 
-  // void update_collision_points_buffer(
-  //   const TrajectoryPoints & traj_points, const std::optional<CollisionPoint> & collision_point);
+  void update_collision_points_buffer(
+    std::vector<CollisionPoint> & collision_points_buffer, const TrajectoryPoints & traj_points,
+    const std::optional<CollisionPoint> & collision_point);
 
-  // std::optional<CollisionPoint> get_nearest_collision_point() const;
+  std::optional<CollisionPoint> get_nearest_collision_point() const;
 
   void set_stop_point(TrajectoryPoints & traj_points);
 };
