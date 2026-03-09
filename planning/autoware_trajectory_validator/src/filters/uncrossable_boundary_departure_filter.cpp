@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_validator/filters/uncrossable_boundary_departure_filter.hpp"
+#include "autoware/trajectory_safety_filter/filters/uncrossable_boundary_departure_filter.hpp"
 
 #include <memory>
 #include <string>
 
-namespace autoware::trajectory_validator::plugin
+namespace autoware::trajectory_safety_filter::plugin
 {
 tl::expected<void, std::string> UncrossableBoundaryDepartureFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
@@ -64,9 +64,9 @@ std::optional<std::string> UncrossableBoundaryDepartureFilter::is_invalid_input(
 
   return std::nullopt;
 }
-}  // namespace autoware::trajectory_validator::plugin
+}  // namespace autoware::trajectory_safety_filter::plugin
 
 #include <pluginlib/class_list_macros.hpp>
 PLUGINLIB_EXPORT_CLASS(
-  autoware::trajectory_validator::plugin::UncrossableBoundaryDepartureFilter,
-  autoware::trajectory_validator::plugin::ValidatorInterface)
+  autoware::trajectory_safety_filter::plugin::UncrossableBoundaryDepartureFilter,
+  autoware::trajectory_safety_filter::plugin::SafetyFilterInterface)
