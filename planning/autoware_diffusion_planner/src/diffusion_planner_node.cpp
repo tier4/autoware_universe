@@ -102,8 +102,6 @@ void DiffusionPlanner::set_up_params()
   params_.ignore_neighbors = this->declare_parameter<bool>("ignore_neighbors", false);
   params_.ignore_unknown_neighbors =
     this->declare_parameter<bool>("ignore_unknown_neighbors", false);
-  params_.predict_neighbor_trajectory =
-    this->declare_parameter<bool>("predict_neighbor_trajectory", false);
   params_.traffic_light_group_msg_timeout_seconds =
     this->declare_parameter<double>("traffic_light_group_msg_timeout_seconds", 0.2);
   params_.batch_size = this->declare_parameter<int>("batch_size", 1);
@@ -117,6 +115,7 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<double>("turn_indicator_hold_duration", 0.0);
   params_.shift_x = this->declare_parameter<bool>("shift_x", false);
   params_.delay_step = this->declare_parameter<int64_t>("delay_step", 0);
+  params_.use_time_interpolation = this->declare_parameter<bool>("use_time_interpolation", false);
 
   // debug params
   debug_params_.publish_debug_map =
@@ -148,8 +147,6 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<bool>(
       parameters, "ignore_unknown_neighbors", temp_params.ignore_unknown_neighbors);
     update_param<bool>(parameters, "ignore_neighbors", temp_params.ignore_neighbors);
-    update_param<bool>(
-      parameters, "predict_neighbor_trajectory", temp_params.predict_neighbor_trajectory);
     update_param<double>(
       parameters, "traffic_light_group_msg_timeout_seconds",
       temp_params.traffic_light_group_msg_timeout_seconds);
@@ -164,6 +161,7 @@ SetParametersResult DiffusionPlanner::on_parameter(
       parameters, "turn_indicator_hold_duration", temp_params.turn_indicator_hold_duration);
     update_param<bool>(parameters, "shift_x", temp_params.shift_x);
     update_param<int64_t>(parameters, "delay_step", temp_params.delay_step);
+    update_param<bool>(parameters, "use_time_interpolation", temp_params.use_time_interpolation);
     const bool args_path_changed = temp_params.args_path != previous_args_path;
     const bool model_path_changed = temp_params.model_path != previous_model_path;
     const bool batch_size_changed = temp_params.batch_size != previous_batch_size;
@@ -346,9 +344,7 @@ void DiffusionPlanner::on_timer()
 
   pub_trajectory_->publish(planner_output.trajectory);
   pub_trajectories_->publish(planner_output.candidate_trajectories);
-  if (params_.predict_neighbor_trajectory) {
-    pub_objects_->publish(planner_output.predicted_objects);
-  }
+  pub_objects_->publish(planner_output.predicted_objects);
   pub_turn_indicators_->publish(planner_output.turn_indicator_command);
 
   // Publish diagnostics
