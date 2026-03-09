@@ -67,7 +67,7 @@ std::vector<float> create_ego_current_state(
   const geometry_msgs::msg::AccelWithCovarianceStamped & acceleration_msg, const float wheel_base);
 
 /**
- * @brief Creates ego agent past trajectory data from pose messages with time-based interpolation.
+ * @brief Creates ego agent past trajectory data from pose messages.
  *
  * When reference_time is provided, generates trajectory by interpolating poses at regular
  * time intervals (0.1s) backwards from the reference time. When reference_time is std::nullopt,
