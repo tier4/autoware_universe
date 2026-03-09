@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_SAFETY_FILTER__SAFETY_FILTER_INTERFACE_HPP_
-#define AUTOWARE__TRAJECTORY_SAFETY_FILTER__SAFETY_FILTER_INTERFACE_HPP_
+#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__VALIDATOR_INTERFACE_HPP_
+#define AUTOWARE__TRAJECTORY_VALIDATOR__VALIDATOR_INTERFACE_HPP_
 
 #include "autoware/trajectory_validator/filter_context.hpp"
 
@@ -71,4 +71,4 @@ protected:
 }  // namespace autoware::trajectory_validator::plugin
 
 // NOLINTNEXTLINE
-#endif  // AUTOWARE__TRAJECTORY_SAFETY_FILTER__SAFETY_FILTER_INTERFACE_HPP_
+#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__VALIDATOR_INTERFACE_HPP_

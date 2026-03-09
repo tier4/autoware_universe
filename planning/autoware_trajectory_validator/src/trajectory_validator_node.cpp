@@ -68,8 +68,7 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
 : Node{"trajectory_validator_node", options},
   listener_{std::make_unique<validator::ParamListener>(get_node_parameters_interface())},
   plugin_loader_(
-    "autoware_trajectory_validator",
-    "autoware::trajectory_validator::plugin::ValidatorInterface"),
+    "autoware_trajectory_validator", "autoware::trajectory_validator::plugin::ValidatorInterface"),
   vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo())
 {
   const auto filters = listener_->get_params().filter_names;
@@ -192,8 +191,7 @@ void TrajectoryValidator::load_metric(const std::string & name)
       get_logger(), "The scene plugin '" << name << "' is loaded and initialized.");
   } catch (const pluginlib::CreateClassException & e) {
     RCLCPP_ERROR_STREAM(
-      get_logger(),
-      "[validator] createSharedInstance failed for '" << name << "': " << e.what());
+      get_logger(), "[validator] createSharedInstance failed for '" << name << "': " << e.what());
   } catch (const std::exception & e) {
     RCLCPP_ERROR_STREAM(
       get_logger(), "[validator] unexpected exception for '" << name << "': " << e.what());

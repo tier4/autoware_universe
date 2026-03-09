@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_
-#define AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_
+#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_
+#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
@@ -29,9 +29,7 @@ namespace autoware::trajectory_validator::plugin
 class UncrossableBoundaryDepartureFilter : public ValidatorInterface
 {
 public:
-  UncrossableBoundaryDepartureFilter() : ValidatorInterface("UncrossableBoundaryDepartureFilter")
-  {
-  }
+  UncrossableBoundaryDepartureFilter() : ValidatorInterface("UncrossableBoundaryDepartureFilter") {}
 
   tl::expected<void, std::string> is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) final;
@@ -67,4 +65,4 @@ private:
 };
 }  // namespace autoware::trajectory_validator::plugin
 
-#endif  // AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_
+#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_

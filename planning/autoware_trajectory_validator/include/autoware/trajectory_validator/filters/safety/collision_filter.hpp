@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__COLLISION_FILTER_HPP_
-#define AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__COLLISION_FILTER_HPP_
+#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_FILTER_HPP_
+#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_FILTER_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
@@ -73,4 +73,4 @@ private:
 
 }  // namespace autoware::trajectory_validator::plugin
 
-#endif  // AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__COLLISION_FILTER_HPP_
+#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_FILTER_HPP_

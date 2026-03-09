@@ -89,8 +89,7 @@ double to_steering_rate(
 }
 }  // namespace
 
-VehicleConstraintFilter::VehicleConstraintFilter()
-: ValidatorInterface("VehicleConstraintFilter")
+VehicleConstraintFilter::VehicleConstraintFilter() : ValidatorInterface("VehicleConstraintFilter")
 {
 }
 

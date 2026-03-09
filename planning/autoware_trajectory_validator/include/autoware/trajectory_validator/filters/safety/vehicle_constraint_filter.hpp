@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__VEHICLE_CONSTRAINT_FILTER_HPP_
-#define AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__VEHICLE_CONSTRAINT_FILTER_HPP_
+#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__VEHICLE_CONSTRAINT_FILTER_HPP_
+#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__VEHICLE_CONSTRAINT_FILTER_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
@@ -123,4 +123,4 @@ bool is_steering_angle_ok(
 bool is_steering_rate_ok(
   const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info, double max_steering_rate);
 }  // namespace autoware::trajectory_validator::plugin
-#endif  // AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__VEHICLE_CONSTRAINT_FILTER_HPP_
+#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__VEHICLE_CONSTRAINT_FILTER_HPP_
