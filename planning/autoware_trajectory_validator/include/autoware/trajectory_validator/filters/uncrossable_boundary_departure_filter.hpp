@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_
 #define AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_
 
-#include "autoware/trajectory_safety_filter/safety_filter_interface.hpp"
+#include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <autoware/boundary_departure_checker/uncrossable_boundary_departure_checker.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -24,12 +24,12 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-namespace autoware::trajectory_safety_filter::plugin
+namespace autoware::trajectory_validator::plugin
 {
-class UncrossableBoundaryDepartureFilter : public SafetyFilterInterface
+class UncrossableBoundaryDepartureFilter : public ValidatorInterface
 {
 public:
-  UncrossableBoundaryDepartureFilter() : SafetyFilterInterface("UncrossableBoundaryDepartureFilter")
+  UncrossableBoundaryDepartureFilter() : ValidatorInterface("UncrossableBoundaryDepartureFilter")
   {
   }
 
@@ -65,6 +65,6 @@ private:
     RCLCPP_WARN_THROTTLE(log_, *clock_, 5000, fmt, args...);
   }
 };
-}  // namespace autoware::trajectory_safety_filter::plugin
+}  // namespace autoware::trajectory_validator::plugin
 
 #endif  // AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_

@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__COLLISION_CHECK_FILTER_HPP_
 #define AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__COLLISION_CHECK_FILTER_HPP_
 
-#include "autoware/trajectory_safety_filter/safety_filter_interface.hpp"
+#include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
@@ -33,7 +33,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace autoware::trajectory_safety_filter::plugin
+namespace autoware::trajectory_validator::plugin
 {
 using autoware_utils_geometry::Box2d;
 using autoware_utils_geometry::MultiPoint2d;
@@ -130,10 +130,10 @@ PoseTrajectory compute_pose_trajectory(
   return pose_trajectory;
 }
 
-class CollisionCheckFilter : public SafetyFilterInterface
+class CollisionCheckFilter : public ValidatorInterface
 {
 public:
-  CollisionCheckFilter() : SafetyFilterInterface("CollisionCheckFilter") {}
+  CollisionCheckFilter() : ValidatorInterface("CollisionCheckFilter") {}
 
   tl::expected<void, std::string> is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) override;
@@ -151,6 +151,6 @@ private:
   } pet_collision_params_;
 };
 
-}  // namespace autoware::trajectory_safety_filter::plugin
+}  // namespace autoware::trajectory_validator::plugin
 
 #endif  // AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__COLLISION_CHECK_FILTER_HPP_

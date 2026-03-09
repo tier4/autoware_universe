@@ -15,19 +15,19 @@
 #ifndef AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__VEHICLE_CONSTRAINT_FILTER_HPP_
 #define AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__VEHICLE_CONSTRAINT_FILTER_HPP_
 
-#include "autoware/trajectory_safety_filter/safety_filter_interface.hpp"
+#include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <array>
 #include <string>
 #include <vector>
 
-namespace autoware::trajectory_safety_filter::plugin
+namespace autoware::trajectory_validator::plugin
 {
 /**
  * @brief VehicleConstraintFilter class - checks if the trajectory respects vehicle constraints
  * (e.g., max speed, max acceleration/deceleration).
  */
-class VehicleConstraintFilter final : public SafetyFilterInterface
+class VehicleConstraintFilter final : public ValidatorInterface
 {
 public:
   using result_t = tl::expected<void, std::string>;
@@ -122,5 +122,5 @@ bool is_steering_angle_ok(
  */
 bool is_steering_rate_ok(
   const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info, double max_steering_rate);
-}  // namespace autoware::trajectory_safety_filter::plugin
+}  // namespace autoware::trajectory_validator::plugin
 #endif  // AUTOWARE__TRAJECTORY_SAFETY_FILTER__FILTERS__VEHICLE_CONSTRAINT_FILTER_HPP_
