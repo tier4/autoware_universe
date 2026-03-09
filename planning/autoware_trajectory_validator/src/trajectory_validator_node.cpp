@@ -123,6 +123,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   }
 
   diagnostics_interface_.clear();
+  evaluation_tables_.clear();
 
   // Create output message for filtered trajectories
   auto filtered_msg = std::make_unique<CandidateTrajectories>();
@@ -130,20 +131,65 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   // Process and filter trajectories
   for (const auto & trajectory : msg->candidate_trajectories) {
     // Apply each filter to the trajectory
-    bool is_feasible = true;
+
+    EvaluationTable table;
+    table.generator_id = autoware_utils_uuid::to_hex_string(trajectory.generator_id);
+    table.is_overall_feasible = true;
+
     for (const auto & plugin : plugins_) {
+      PluginEvaluation evaluation;
+      evaluation.plugin_name = plugin->get_name();
+
       if (const auto res = plugin->is_feasible(trajectory.points, context); !res) {
-        if (!plugin->is_debug_mode()) {
-          is_feasible = false;
-        }
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000, "Not feasible: %s", res.error().c_str());
         diagnostics_interface_.add_key_value(plugin->get_name(), res.error());
+
+        evaluation.is_feasible = false;
+        evaluation.reason = res.error();
+
+        if (!plugin->is_debug_mode()) {
+          table.is_overall_feasible = false;
+        }
       }
+
+      table.evaluations[plugin->category()].push_back(evaluation);
     }
 
-    if (is_feasible) filtered_msg->candidate_trajectories.push_back(trajectory);
+    evaluation_tables_.push_back(table);
+
+    if (table.is_overall_feasible) filtered_msg->candidate_trajectories.push_back(trajectory);
   }
+
+// // --- PRINT THE TABLE ---
+//   if (!evaluation_tables_.empty()) {
+//     // Iterate through whatever categories exist (e.g., "safety", "traffic_rule")
+//     for (const auto& [category, _] : evaluation_tables_.front().evaluations) {
+//       std::string table_output = "\n=== " + category + " Table ===\n";
+
+//       // Header Row
+//       table_output += fmt::format("{:<20} | ", "Trajectory");
+//       for (const auto& eval : evaluation_tables_.front().evaluations.at(category)) {
+//           table_output += fmt::format("{:<30} | ", eval.plugin_name);
+//       }
+//       table_output += "\n" + std::string(100, '-') + "\n";
+
+//       // Data Rows
+//       for (const auto& record : evaluation_tables_) {
+//           table_output += fmt::format("{:<20} | ", record.generator_id);
+//           for (const auto& eval : record.evaluations.at(category)) {
+//               std::string cell_text = eval.is_feasible ? "Pass" : "Fail: " + eval.reason;
+//               if (cell_text.length() > 28) cell_text = cell_text.substr(0, 25) + "..."; // Truncate long errors
+//               table_output += fmt::format("{:<30} | ", cell_text);
+//           }
+//           table_output += "\n";
+//       }
+
+//       // Print using RCLCPP_INFO (or DEBUG if you prefer)
+//       RCLCPP_INFO_STREAM(get_logger(), table_output);
+//     }
+//   }
+
 
   // Also filter generator_info to match kept trajectories
   for (const auto & traj : filtered_msg->candidate_trajectories) {
@@ -170,7 +216,7 @@ void TrajectoryValidator::map_callback(const LaneletMapBin::ConstSharedPtr msg)
 
 void TrajectoryValidator::load_metric(const std::string & name)
 {
-  if (name == "") return;
+  if (name.empty()) return;
 
   try {
     auto plugin = plugin_loader_.createSharedInstance(name);
@@ -184,6 +230,12 @@ void TrajectoryValidator::load_metric(const std::string & name)
 
     plugin->set_vehicle_info(vehicle_info_);
     plugin->set_parameters(*this);
+    std::string category;
+    size_t pos = name.find("::");
+    if (pos != std::string::npos) {
+      category = name.substr(0, pos);
+    }
+    plugin->set_category(category);
 
     plugins_.push_back(plugin);
 
