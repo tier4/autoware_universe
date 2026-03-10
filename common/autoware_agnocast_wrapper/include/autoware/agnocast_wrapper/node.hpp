@@ -53,10 +53,7 @@ public:
   void cancel() override { timer_->cancel(); }
   void reset() override { timer_->reset(); }
   bool is_canceled() const override { return timer_->is_canceled(); }
-  void set_period(std::chrono::nanoseconds /*period*/) override
-  {
-    // TODO(agnocast): agnocast TimerBase does not support dynamic period change yet
-  }
+  void set_period(std::chrono::nanoseconds period) override { timer_->set_period(period); }
   std::chrono::nanoseconds time_until_trigger() const override
   {
     // TODO(agnocast): agnocast TimerBase does not support time_until_trigger yet
