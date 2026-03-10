@@ -88,7 +88,6 @@ void limit_lateral_acceleration(
  * This smoother is designed for continuous trajectories without stop points.
  *
  * @param input_trajectory The trajectory points to be filtered (modified in place)
- * @param initial_motion The initial speed and acceleration for motion
  * @param nearest_dist_threshold_m Distance threshold for trajectory matching
  * @param nearest_yaw_threshold_rad Yaw threshold for trajectory matching
  * @param smoother The continuous jerk smoother instance
