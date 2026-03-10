@@ -13,8 +13,6 @@
 
 #include <vector>
 
-class TestTrajectoryGenerator;
-
 namespace autoware::static_freespace_planner
 {
 using autoware_planning_msgs::msg::Trajectory;
@@ -37,7 +35,6 @@ public:
 
 private:
   Pose waypointToPose(const WaypointLoader::Waypoint & waypoint);
-  friend class ::TestTrajectoryGenerator;
 };
 }  // namespace autoware::static_freespace_planner
 #endif  // AUTOWARE__STATIC_FREESPACE_PLANNER__TRAJECTORY_GENERATOR_HPP_

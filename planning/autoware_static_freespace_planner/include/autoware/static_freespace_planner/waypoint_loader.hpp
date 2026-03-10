@@ -7,8 +7,6 @@
 #include <string>
 #include <vector>
 
-class TestWaypointLoader;
-
 namespace autoware::static_freespace_planner
 {
 class WaypointLoader
@@ -36,8 +34,6 @@ private:
 
   int pre_seq_ = 0;
   double pre_mps_ = 0.0;
-
-  friend class ::TestWaypointLoader;
 };
 }  // namespace autoware::static_freespace_planner
 #endif  // AUTOWARE__STATIC_FREESPACE_PLANNER__WAYPOINT_LOADER_HPP_

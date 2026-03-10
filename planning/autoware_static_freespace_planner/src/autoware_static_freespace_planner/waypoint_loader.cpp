@@ -34,7 +34,8 @@ std::vector<WaypointLoader::Waypoint> WaypointLoader::loadWaypoints(const std::s
       if ((pre_seq_ == wp_opt->seq) && (pre_mps_ * wp_opt->mps < 0)) {
         RCLCPP_WARN(
           rclcpp::get_logger("WaypointLoader"),
-          "Inconsistent mps direction for the same seq '%d' at line '%s'. Previous mps: %f, Current mps: %f",
+          "Inconsistent mps direction for the same seq '%d' at line '%s'. Previous mps: %f, "
+          "Current mps: %f",
           wp_opt->seq, line.c_str(), pre_mps_, wp_opt->mps);
         return std::vector<Waypoint>();  // Return empty if inconsistent mps direction is found
       }
@@ -55,7 +56,8 @@ std::vector<WaypointLoader::Waypoint> WaypointLoader::loadWaypoints(const std::s
   if (waypoints.size() < 2) {
     RCLCPP_WARN(
       rclcpp::get_logger("WaypointLoader"),
-      "Not enough waypoints loaded from file '%s'. At least 2 waypoints are required to form a valid route definition.",
+      "Not enough waypoints loaded from file '%s'. At least 2 waypoints are required to form a "
+      "valid route definition.",
       csv_path.c_str());
     return std::vector<Waypoint>();
   }
@@ -147,8 +149,8 @@ std::optional<WaypointLoader::Waypoint> WaypointLoader::parseCSVLine(const std::
     if (wp.seq < 0) {
       RCLCPP_WARN(
         rclcpp::get_logger("WaypointLoader"),
-        "Invalid sequence number '%d' at line '%s'. Sequence number must be non-negative.",
-        wp.seq, line.c_str());
+        "Invalid sequence number '%d' at line '%s'. Sequence number must be non-negative.", wp.seq,
+        line.c_str());
       return std::nullopt;
     }
 

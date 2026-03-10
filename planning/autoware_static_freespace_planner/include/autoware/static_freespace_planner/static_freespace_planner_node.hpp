@@ -27,8 +27,6 @@
 #include <string>
 #include <vector>
 
-class TestStaticFreespacePlanner;
-
 namespace autoware::static_freespace_planner
 {
 
@@ -136,8 +134,6 @@ private:
   Odometry::ConstSharedPtr odom_;
   std::deque<Odometry::ConstSharedPtr> odom_buffer_;
   LaneletRoute::ConstSharedPtr lanelet_route_;
-
-  friend class ::TestStaticFreespacePlanner;
 };
 }  // namespace autoware::static_freespace_planner
 

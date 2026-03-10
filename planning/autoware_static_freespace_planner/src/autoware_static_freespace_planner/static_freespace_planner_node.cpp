@@ -57,7 +57,7 @@ StaticFreespacePlannerNode::StaticFreespacePlannerNode(const rclcpp::NodeOptions
     debug_path_marker_pub_ = create_publisher<Marker>("~/debug/path_marker", qos);
     debug_route_name_pub_ = create_publisher<String>("~/debug/route_name", qos);
     parking_state_pub_ = create_publisher<Bool>("is_completed", qos);
-    diagnostics_pub_ = create_publisher<DiagnosticArray>("~/output/diagnostics", qos);
+    diagnostics_pub_ = create_publisher<DiagnosticArray>("diagnostics", qos);
   }
 
   // Timer

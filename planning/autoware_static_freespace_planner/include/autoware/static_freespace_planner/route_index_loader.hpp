@@ -6,8 +6,6 @@
 #include <string>
 #include <vector>
 
-class TestRouteIndexLoader;
-
 namespace autoware::static_freespace_planner
 {
 class RouteIndexLoader
@@ -26,8 +24,6 @@ private:
   std::string map_path_;
   std::string getStaticPathDir() const;  // return {map_path}/static_path/
   std::string extractRouteName(const std::string & filename) const;  // exclude extension
-
-  friend class ::TestRouteIndexLoader;
 };
 }  // namespace autoware::static_freespace_planner
 #endif  // AUTOWARE__STATIC_FREESPACE_PLANNER__ROUTE_INDEX_LOADER_HPP_

@@ -12,8 +12,6 @@
 #include <string>
 #include <vector>
 
-class TestRouteMatcher;
-
 namespace autoware::static_freespace_planner
 {
 using geometry_msgs::msg::Pose;
@@ -35,8 +33,6 @@ private:
 
   double calcDistance2D(const Pose & p1, const Pose & p2);
   double calcYawDifference(const Pose & p1, const Pose & p2);
-
-  friend class ::TestRouteMatcher;
 };
 }  // namespace autoware::static_freespace_planner
 #endif  // AUTOWARE__STATIC_FREESPACE_PLANNER__ROUTE_MATCHER_HPP_
