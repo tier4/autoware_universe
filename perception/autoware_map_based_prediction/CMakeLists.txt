@@ -6,7 +6,6 @@ find_package(agnocast_components REQUIRED)
 autoware_package()
 
 find_package(Eigen3 REQUIRED)
-find_package(glog REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 
@@ -24,7 +23,6 @@ ament_auto_add_library(map_based_prediction_node SHARED
 )
 
 target_link_libraries(map_based_prediction_node
-  glog::glog
   tf2::tf2
   tf2_geometry_msgs::tf2_geometry_msgs
 )

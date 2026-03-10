@@ -7,7 +7,6 @@ endif()
 
 find_package(autoware_cmake REQUIRED)
 find_package(agnocast_components REQUIRED)
-find_package(glog REQUIRED)
 autoware_package()
 
 
@@ -33,7 +32,6 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 
 target_link_libraries(${PROJECT_NAME}
   Eigen3::Eigen
-  glog::glog
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
