@@ -48,7 +48,7 @@ constexpr int TLR_NUM_TYPES = 6, TLR_NUM_COLORS = 3;
 constexpr int TLR_COS_INDEX = 14, TLR_SIN_INDEX = 15;
 constexpr float TLR_SCALE_X_Y = 2.0f;
 constexpr float TLR_BBOX_OFFSET = 0.5f * (TLR_SCALE_X_Y - 1.0f);
-constexpr float TLR_ANCHORS[TLR_NUM_ANCHORS * 2] = {1.0f, 1.0f, 2.0f, 2.0f, 4.0f, 4.0f};
+constexpr float TLR_ANCHORS[TLR_NUM_ANCHORS * 2] = {7.0f, 7.0f, 14.0f, 14.0f, 42.0f, 42.0f};
 
 ArrowDirection angleToArrowDirection(float angle_rad)
 {
