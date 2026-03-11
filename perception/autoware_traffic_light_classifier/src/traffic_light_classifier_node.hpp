@@ -98,6 +98,7 @@ private:
 
   double over_exposure_threshold_;
   double under_exposure_threshold_;
+  double roi_expand_ratio_;
 };
 
 }  // namespace autoware::traffic_light
