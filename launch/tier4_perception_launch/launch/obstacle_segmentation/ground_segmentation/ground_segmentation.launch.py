@@ -623,6 +623,7 @@ def launch_setup(context, *args, **kwargs):
                 "use_pointcloud_container": LaunchConfiguration("ptv3_use_pointcloud_container"),
                 "data_path": LaunchConfiguration("data_path"),
                 "model_name": LaunchConfiguration("ptv3_model_name"),
+                "model_path": LaunchConfiguration("ptv3_model_path"),
             }.items(),
         )
         actions.append(ptv3_launch)
@@ -651,8 +652,12 @@ def generate_launch_description():
     add_launch_arg("ptv3_output/segmented/pointcloud", "/perception/ptv3/segmented/pointcloud")
     add_launch_arg("ptv3_output/ground_segmented/pointcloud", "/perception/obstacle_segmentation/ptv3/pointcloud")
     add_launch_arg("ptv3_output/probs/pointcloud", "/perception/ptv3/probs/pointcloud")
-    add_launch_arg("data_path", "/opt/autoware/mlmodels")
+    # add_launch_arg("data_path", "/opt/autoware/mlmodels")
+    add_launch_arg("data_path", "/home/kyoichi-sugahara/autoware_data")
+    # add_launch_arg("data_path", "/home/kyoichi-sugahara/autoware_data")
     add_launch_arg("ptv3_model_name", "ptv3")
+    # comment out this line if you want to use the model in the /opt/autoware/mlmodels directory
+    add_launch_arg("ptv3_model_path", "/home/kyoichi-sugahara/autoware_data/ptv3_grid0.05_range102.4_concerto")
     add_launch_arg(
         "ogm_outlier_filter_param_path",
         [
