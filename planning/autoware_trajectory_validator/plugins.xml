@@ -30,4 +30,11 @@
       Filters trajectories based on collision checks with predicted objects
     </description>
   </class>
+  <class type="traffic_rule::TrafficLightFilter"
+         base_class_type="autoware::trajectory_validator::plugin::ValidatorInterface">
+    <description>
+      Filter for checking traffic light violations.
+      Rejects trajectories that would pass through red or amber traffic lights.
+    </description>
+  </class>
 </library>

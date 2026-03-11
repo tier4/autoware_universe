@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_TRAFFIC_RULE_FILTER__FILTERS__TRAFFIC_LIGHT_FILTER_HPP_
-#define AUTOWARE__TRAJECTORY_TRAFFIC_RULE_FILTER__FILTERS__TRAFFIC_LIGHT_FILTER_HPP_
+#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__TRAFFIC_RULE__TRAFFIC_LIGHT_FILTER_HPP_
+#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__TRAFFIC_RULE__TRAFFIC_LIGHT_FILTER_HPP_
 
-#include "autoware/trajectory_traffic_rule_filter/traffic_rule_filter_interface.hpp"
-
-#include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
+#include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <lanelet2_core/Forward.h>
 
@@ -25,22 +23,36 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::trajectory_traffic_rule_filter::plugin
+namespace autoware::trajectory_validator::plugin::traffic_rule
 {
 
-class TrafficLightFilter : public TrafficRuleFilterInterface
+struct Params
+{
+  double deceleration_limit;  // trajectories crossing an amber light are rejected if ego can stop
+                              // at the stop line without breaking this limit
+  double jerk_limit;  // trajectories crossing an amber light are rejected if ego can stop at the
+                      // stop line without breaking this limit
+  double
+    delay_response_time;  // delay response time used to estimate the minimum ego stopping distance
+  double crossing_time_limit;  // trajectories crossing an amber light are rejected if they cannot
+                               // cross before this time
+  bool treat_amber_light_as_red_light;  // when true, amber lights are handled like red lights
+};
+
+class TrafficLightFilter : public ValidatorInterface
 {
 public:
   TrafficLightFilter();
 
-  tl::expected<void, std::string> is_feasible(const TrajectoryPoints & trajectory_points) override;
-  void set_traffic_lights(
-    const autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr & traffic_lights)
-    override;
+  tl::expected<void, std::string> is_feasible(
+    const TrajectoryPoints & traj_points, const FilterContext & context) final;
 
-  void set_parameters(const traffic_rule_filter::Params & params) override { params_ = params; }
+  void set_parameters(rclcpp::Node & node) final;
+
+  void update_parameters(const std::vector<rclcpp::Parameter> & parameters) final;
 
   /// @brief return true if ego can safely pass an amber traffic light
+  /// @note made public for testing purposes
   [[nodiscard]] bool can_pass_amber_light(
     const double distance_to_stop_line, const double current_velocity,
     const double current_acceleration, const double time_to_cross_stop_line) const;
@@ -49,12 +61,13 @@ private:
   /// @brief return the red and amber stop lines related to the given lanelets
   [[nodiscard]] std::pair<
     std::vector<lanelet::BasicLineString2d>, std::vector<lanelet::BasicLineString2d>>
-  get_stop_lines(const lanelet::Lanelets & lanelets) const;
+  get_stop_lines(
+    const lanelet::Lanelets & lanelets,
+    const autoware_perception_msgs::msg::TrafficLightGroupArray & traffic_lights) const;
 
-  autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr traffic_lights_;
-  traffic_rule_filter::Params params_;
+  Params params_{};
 };
 
-}  // namespace autoware::trajectory_traffic_rule_filter::plugin
+}  // namespace autoware::trajectory_validator::plugin::traffic_rule
 
-#endif  // AUTOWARE__TRAJECTORY_TRAFFIC_RULE_FILTER__FILTERS__TRAFFIC_LIGHT_FILTER_HPP_
+#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__TRAFFIC_RULE__TRAFFIC_LIGHT_FILTER_HPP_
