@@ -6,6 +6,7 @@
     std: [58.395, 57.12, 57.375]
     over_exposure_threshold: 0.85
     under_exposure_threshold: -0.83
+    roi_expand_ratio: 1.1  # Expand ROI from center (1.0 = no expand)
     backlight_threshold: 0.85
     # classifier_type: 0 = HSVFilter, 1 = CNN, 2 = CoMLOps-TLR (CoMLOps-TLR-v1.0.1-dynamic_batch)
     classifier_type: 2
