@@ -656,6 +656,62 @@ TEST_F(DrivableAreaUtilsTest, EdgeCase_ZeroWidthVehicle)
 }
 
 // ===========================================================================
+// guardAgainstSnapBack
+// ===========================================================================
+TEST(GuardAgainstSnapBackTest, NormalClamp_NoSnapBack)
+{
+  // User requests left shift (2.0), clamp reduces it to 1.5, current base is 0.0
+  // No snap-back since clamped (1.5) >= current_base (0.0)
+  EXPECT_DOUBLE_EQ(guardAgainstSnapBack(2.0, 1.5, 0.0), 1.5);
+}
+
+TEST(GuardAgainstSnapBackTest, LeftShift_ClampBelowBase)
+{
+  // User requests more left shift (3.0) from current base (1.0),
+  // but clamp pulls it to 0.5 (below current base) → snap-back to base
+  EXPECT_DOUBLE_EQ(guardAgainstSnapBack(3.0, 0.5, 1.0), 1.0);
+}
+
+TEST(GuardAgainstSnapBackTest, RightShift_ClampAboveBase)
+{
+  // User requests more right shift (-3.0) from current base (-1.0),
+  // but clamp pushes it to -0.5 (above current base) → snap-back to base
+  EXPECT_DOUBLE_EQ(guardAgainstSnapBack(-3.0, -0.5, -1.0), -1.0);
+}
+
+TEST(GuardAgainstSnapBackTest, RightShift_NormalClamp)
+{
+  // User requests right shift (-2.0), clamp reduces to -1.5, current base is 0.0
+  // clamped (-1.5) < current_base (0.0) is fine (shifting right from 0)
+  EXPECT_DOUBLE_EQ(guardAgainstSnapBack(-2.0, -1.5, 0.0), -1.5);
+}
+
+TEST(GuardAgainstSnapBackTest, ClampExactlyAtBase)
+{
+  // Clamped == current_base → no snap-back needed
+  EXPECT_DOUBLE_EQ(guardAgainstSnapBack(2.0, 1.0, 1.0), 1.0);
+  EXPECT_DOUBLE_EQ(guardAgainstSnapBack(-2.0, -1.0, -1.0), -1.0);
+}
+
+TEST(GuardAgainstSnapBackTest, ZeroBase_LeftShift)
+{
+  // From zero base, request left, clamp is positive → no snap-back
+  EXPECT_DOUBLE_EQ(guardAgainstSnapBack(1.0, 0.8, 0.0), 0.8);
+}
+
+TEST(GuardAgainstSnapBackTest, ZeroBase_RightShift)
+{
+  // From zero base, request right, clamp is negative → no snap-back
+  EXPECT_DOUBLE_EQ(guardAgainstSnapBack(-1.0, -0.8, 0.0), -0.8);
+}
+
+TEST(GuardAgainstSnapBackTest, RequestEqualsBase)
+{
+  // Request equals base → clamped doesn't cross base
+  EXPECT_DOUBLE_EQ(guardAgainstSnapBack(1.0, 1.0, 1.0), 1.0);
+}
+
+// ===========================================================================
 // kLaneBoundaryDiscretizationBuffer constant
 // ===========================================================================
 TEST(ConstantsTest, DiscretizationBufferIsPositive)
