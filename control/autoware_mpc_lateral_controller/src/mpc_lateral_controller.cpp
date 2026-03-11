@@ -14,6 +14,7 @@
 
 #include "autoware/mpc_lateral_controller/mpc_lateral_controller.hpp"
 
+#include "autoware/motion_utils/trajectory/interpolation.hpp"
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
 #include "autoware/mpc_lateral_controller/qp_solver/qp_solver_osqp.hpp"
 #include "autoware/mpc_lateral_controller/qp_solver/qp_solver_unconstraint_fast.hpp"
@@ -387,17 +388,34 @@ void MpcLateralController::setTrajectory(
 {
   m_current_trajectory = msg;
 
-  if (msg.points.size() < 3) {
+  if (m_current_trajectory.points.size() == 2) {
+    // Insert midpoint to satisfy the minimum 3-point requirement for yaw calculation.
+    // (yaw is computed via central difference: needs i-1 and i+1)
+    const auto & p0 = m_current_trajectory.points.at(0);
+    const auto & p1 = m_current_trajectory.points.at(1);
+    geometry_msgs::msg::Pose mid_pose;
+    mid_pose.position.x = (p0.pose.position.x + p1.pose.position.x) * 0.5;
+    mid_pose.position.y = (p0.pose.position.y + p1.pose.position.y) * 0.5;
+    mid_pose.position.z = (p0.pose.position.z + p1.pose.position.z) * 0.5;
+    mid_pose.orientation = p0.pose.orientation;
+    const auto mid =
+      autoware::motion_utils::calcInterpolatedPoint(m_current_trajectory, mid_pose);
+    m_current_trajectory.points.insert(m_current_trajectory.points.begin() + 1, mid);
+    RCLCPP_DEBUG(logger_, "trajectory has 2 points: inserted midpoint to make 3.");
+  }
+
+  if (m_current_trajectory.points.size() < 3) {
     RCLCPP_DEBUG(logger_, "received path size is < 3, not enough.");
     return;
   }
 
-  if (!isValidTrajectory(msg)) {
+  if (!isValidTrajectory(m_current_trajectory)) {
     RCLCPP_ERROR(logger_, "Trajectory is invalid!! stop computing.");
     return;
   }
 
-  m_mpc->setReferenceTrajectory(msg, m_trajectory_filtering_param, current_kinematics);
+  m_mpc->setReferenceTrajectory(
+    m_current_trajectory, m_trajectory_filtering_param, current_kinematics);
 
   // update trajectory buffer to check the trajectory shape change.
   m_trajectory_buffer.push_back(m_current_trajectory);
