@@ -242,6 +242,6 @@ bool TrafficLightFilter::can_pass_amber_light(
 }  // namespace autoware::trajectory_validator::plugin::traffic_rule
 
 #include <pluginlib/class_list_macros.hpp>
+namespace traffic_rule = autoware::trajectory_validator::plugin::traffic_rule;
 PLUGINLIB_EXPORT_CLASS(
-  autoware::trajectory_validator::plugin::traffic_rule::TrafficLightFilter,
-  autoware::trajectory_validator::plugin::ValidatorInterface)
+  traffic_rule::TrafficLightFilter, autoware::trajectory_validator::plugin::ValidatorInterface)
