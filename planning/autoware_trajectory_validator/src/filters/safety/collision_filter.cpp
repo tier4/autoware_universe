@@ -18,8 +18,6 @@
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
-#include <fmt/format.h>
-
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -271,18 +269,16 @@ CollisionFilter::result_t CollisionFilter::is_feasible(
 
     // Check collision with each cached object
     for (size_t obj_idx = 0; obj_idx < cache.size(); ++obj_idx) {
-      const bool is_collision = check_collision(point, cache, obj_idx, time_from_start);
-
       // NOTE: Once an error occurred validation level will be ERROR
-      is_overall_ok = is_overall_ok && !is_collision;
-
-      metrics.push_back(
-        autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
-          .name(fmt::format("check_collision_at_{:.2f}s", time_from_start))
-          .level(is_collision ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
-          .score(is_collision ? 0.0 : 1.0));
+      is_overall_ok = is_overall_ok && !check_collision(point, cache, obj_idx, time_from_start);
     }
   }
+
+  metrics.push_back(
+    autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+      .name("check_collision")
+      .level(is_overall_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
+      .score(is_overall_ok ? 1.0 : 0.0));
 
   return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
     .name(get_name())

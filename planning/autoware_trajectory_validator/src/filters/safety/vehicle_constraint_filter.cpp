@@ -159,7 +159,7 @@ VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_speed(
     autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
       .name("check_speed")
       .level(is_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
-      .score(is_ok ? 0.0 : 1.0),
+      .score(is_ok ? 1.0 : 0.0),
     is_ok};
 }
 
@@ -172,7 +172,7 @@ VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_acceleration(
     autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
       .name("check_acceleration")
       .level(is_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
-      .score(is_ok ? 0.0 : 1.0),
+      .score(is_ok ? 1.0 : 0.0),
     is_ok};
 }
 
@@ -185,7 +185,7 @@ VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_deceleration(
     autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
       .name("check_deceleration")
       .level(is_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
-      .score(is_ok ? 0.0 : 1.0),
+      .score(is_ok ? 1.0 : 0.0),
     is_ok};
 }
 
@@ -199,7 +199,7 @@ VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_steering_angle(
     autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
       .name("check_steering_angle")
       .level(is_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
-      .score(is_ok ? 0.0 : 1.0),
+      .score(is_ok ? 1.0 : 0.0),
     is_ok};
 }
 
@@ -213,7 +213,7 @@ VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_steering_rate(
     autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
       .name("check_steering_rate")
       .level(is_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
-      .score(is_ok ? 0.0 : 1.0),
+      .score(is_ok ? 1.0 : 0.0),
     is_ok};
 }
 
