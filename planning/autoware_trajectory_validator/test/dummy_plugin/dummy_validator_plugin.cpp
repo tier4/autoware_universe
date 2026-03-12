@@ -46,9 +46,7 @@ public:
     return {};  // All other trajectories are feasible
   }
 
-  void update_parameters([[maybe_unused]]const validator::Params & params) final
-  {
-  }
+  void update_parameters([[maybe_unused]] const validator::Params & params) final {}
 
 private:
   DummyFilterParam params_;

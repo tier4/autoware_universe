@@ -16,8 +16,8 @@
 #define AUTOWARE__TRAJECTORY_VALIDATOR__VALIDATOR_INTERFACE_HPP_
 
 #include "autoware/trajectory_validator/filter_context.hpp"
-#include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 
+#include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <tl_expected/expected.hpp>
 
