@@ -19,7 +19,7 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
-tl::expected<void, std::string> UncrossableBoundaryDepartureFilter::is_feasible(
+UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   if (const auto has_invalid_input = is_invalid_input(traj_points, context)) {

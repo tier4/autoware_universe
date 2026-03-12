@@ -86,7 +86,7 @@ void OutOfLaneFilter::update_parameters(const std::vector<rclcpp::Parameter> & p
   autoware_utils_rclcpp::update_param(parameters, "out_of_lane.min_value", params_.min_value);
 }
 
-tl::expected<void, std::string> OutOfLaneFilter::is_feasible(
+OutOfLaneFilter::result_t OutOfLaneFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   // Check required context data

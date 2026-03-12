@@ -247,7 +247,7 @@ void CollisionFilter::set_parameters(rclcpp::Node & node)
   params_.min_ttc = get_or_declare_parameter<double>(node, "collision.min_value");
 }
 
-tl::expected<void, std::string> CollisionFilter::is_feasible(
+CollisionFilter::result_t CollisionFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {

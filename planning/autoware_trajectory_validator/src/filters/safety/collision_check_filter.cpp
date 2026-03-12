@@ -381,7 +381,7 @@ void CollisionCheckFilter::update_parameters(const std::vector<rclcpp::Parameter
   }
 }
 
-tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
+CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {

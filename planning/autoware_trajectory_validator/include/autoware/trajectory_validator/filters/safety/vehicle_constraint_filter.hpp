@@ -30,8 +30,6 @@ namespace autoware::trajectory_validator::plugin::safety
 class VehicleConstraintFilter final : public plugin::ValidatorInterface
 {
 public:
-  using result_t = tl::expected<void, std::string>;
-
   VehicleConstraintFilter();
 
   result_t is_feasible(const TrajectoryPoints & traj_points, const FilterContext & context) final;
