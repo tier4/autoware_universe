@@ -113,6 +113,7 @@ def create_traffic_light_node_container(namespace, context, *args, **kwargs):
                     car_traffic_light_classifier_param,
                     {
                         "build_only": False,
+                        "classifier_type": LaunchConfiguration("classification/car/classifier_type"),
                         "label_path": LaunchConfiguration("classification/car/label_path"),
                         "model_path": LaunchConfiguration("classification/car/model_path"),
                     },
@@ -135,6 +136,7 @@ def create_traffic_light_node_container(namespace, context, *args, **kwargs):
                     pedestrian_traffic_light_classifier_param,
                     {
                         "build_only": False,
+                        "classifier_type": LaunchConfiguration("classification/pedestrian/classifier_type"),
                         "label_path": LaunchConfiguration("classification/pedestrian/label_path"),
                         "model_path": LaunchConfiguration("classification/pedestrian/model_path"),
                     },
@@ -350,8 +352,10 @@ def generate_launch_description():
     add_launch_arg("traffic_light_fine_detector_param_path")
 
     # traffic_light_classifier
+    add_launch_arg("classification/car/classifier_type")
     add_launch_arg("classification/car/model_path")
     add_launch_arg("classification/car/label_path")
+    add_launch_arg("classification/pedestrian/classifier_type")
     add_launch_arg("classification/pedestrian/model_path")
     add_launch_arg("classification/pedestrian/label_path")
     add_launch_arg("car_traffic_light_classifier_param_path")

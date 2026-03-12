@@ -157,8 +157,10 @@
   <arg name="traffic_light_recognition/whole_image_detection/label_path"/>
   <arg name="traffic_light_recognition/fine_detection/model_path"/>
   <arg name="traffic_light_recognition/fine_detection/label_path"/>
+  <arg name="traffic_light_recognition/classification/car/classifier_type"/>
   <arg name="traffic_light_recognition/classification/car/model_path"/>
   <arg name="traffic_light_recognition/classification/car/label_path"/>
+  <arg name="traffic_light_recognition/classification/pedestrian/classifier_type"/>
   <arg name="traffic_light_recognition/classification/pedestrian/model_path"/>
   <arg name="traffic_light_recognition/classification/pedestrian/label_path"/>
 
@@ -384,8 +386,10 @@
         <arg name="whole_image_detection/label_path" value="$(var traffic_light_recognition/whole_image_detection/label_path)"/>
         <arg name="fine_detection/model_path" value="$(var traffic_light_recognition/fine_detection/model_path)"/>
         <arg name="fine_detection/label_path" value="$(var traffic_light_recognition/fine_detection/label_path)"/>
+        <arg name="classification/car/classifier_type" value="$(var traffic_light_recognition/classification/car/classifier_type)"/>
         <arg name="classification/car/model_path" value="$(var traffic_light_recognition/classification/car/model_path)"/>
         <arg name="classification/car/label_path" value="$(var traffic_light_recognition/classification/car/label_path)"/>
+        <arg name="classification/pedestrian/classifier_type" value="$(var traffic_light_recognition/classification/pedestrian/classifier_type)"/>
         <arg name="classification/pedestrian/model_path" value="$(var traffic_light_recognition/classification/pedestrian/model_path)"/>
         <arg name="classification/pedestrian/label_path" value="$(var traffic_light_recognition/classification/pedestrian/label_path)"/>
       </include>
