@@ -90,9 +90,6 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
     "~/debug/processing_time_detail_ms/feasible_trajectory_filter", 1);
   time_keeper_ =
     std::make_shared<autoware_utils_debug::TimeKeeper>(debug_processing_time_detail_pub_);
-
-  set_param_res_ = this->add_on_set_parameters_callback(
-    std::bind(&TrajectoryValidator::on_parameter, this, std::placeholders::_1));
 }
 
 void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr msg)
@@ -199,13 +196,6 @@ void TrajectoryValidator::load_metric(const std::string & name)
     }
 
     plugin->set_vehicle_info(vehicle_info_);
-    plugin->set_parameters(*this);
-    std::string category;
-    size_t pos = name.find("::");
-    if (pos != std::string::npos) {
-      category = name.substr(0, pos);
-    }
-    plugin->set_category(category);
 
     plugins_.push_back(plugin);
 
@@ -260,27 +250,6 @@ void TrajectoryValidator::update_diagnostic(
   }
 
   diagnostics_interface_.publish(this->get_clock()->now());
-}
-
-rcl_interfaces::msg::SetParametersResult TrajectoryValidator::on_parameter(
-  const std::vector<rclcpp::Parameter> & parameters)
-{
-  rcl_interfaces::msg::SetParametersResult result;
-  result.successful = true;
-  result.reason = "success";
-
-  try {
-    // Broadcast the changed parameters to all loaded plugins
-    for (const auto & plugin : plugins_) {
-      plugin->update_parameters(parameters);
-    }
-  } catch (const rclcpp::exceptions::InvalidParameterTypeException & e) {
-    // Cleanly reject the parameter change if any plugin detects a type mismatch
-    result.successful = false;
-    result.reason = e.what();
-  }
-
-  return result;
 }
 }  // namespace autoware::trajectory_validator
 

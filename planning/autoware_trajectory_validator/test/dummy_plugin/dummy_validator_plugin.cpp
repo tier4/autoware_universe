@@ -46,17 +46,8 @@ public:
     return {};  // All other trajectories are feasible
   }
 
-  void set_parameters(rclcpp::Node & node) final
+  void update_parameters([[maybe_unused]]const validator::Params & params) final
   {
-    using autoware_utils_rclcpp::get_or_declare_parameter;
-    params_.dummy_param = get_or_declare_parameter<double>(node, "dummy.dummy_param");
-  }
-
-  void update_parameters(const std::vector<rclcpp::Parameter> & parameters) final
-  {
-    using autoware_utils_rclcpp::update_param;
-
-    update_param<double>(parameters, "dummy.dummy_param", params_.dummy_param);
   }
 
 private:

@@ -86,9 +86,6 @@ private:
     const CandidateTrajectories & input_trajectories,
     const CandidateTrajectories & filtered_trajectories);
 
-  rcl_interfaces::msg::SetParametersResult on_parameter(
-    const std::vector<rclcpp::Parameter> & parameters);
-
   std::unique_ptr<validator::ParamListener> listener_;
 
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
@@ -108,8 +105,6 @@ private:
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
 
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
-
-  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   pluginlib::ClassLoader<plugin::ValidatorInterface> plugin_loader_;
 
