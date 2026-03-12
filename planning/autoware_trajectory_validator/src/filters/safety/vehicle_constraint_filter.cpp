@@ -150,7 +150,7 @@ VehicleConstraintFilter::result_t VehicleConstraintFilter::is_feasible(
     .metrics(std::move(metrics));
 }
 
-VehicleConstraintFilter::metric_result_t VehicleConstraintFilter::check_speed(
+VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_speed(
   const TrajectoryPoints & traj_points) const
 {
   const bool is_ok = is_speed_ok(traj_points, params_.max_speed);
@@ -163,7 +163,7 @@ VehicleConstraintFilter::metric_result_t VehicleConstraintFilter::check_speed(
     is_ok};
 }
 
-VehicleConstraintFilter::metric_result_t VehicleConstraintFilter::check_acceleration(
+VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_acceleration(
   const TrajectoryPoints & traj_points) const
 {
   const bool is_ok = is_acceleration_ok(traj_points, params_.max_acceleration);
@@ -176,7 +176,7 @@ VehicleConstraintFilter::metric_result_t VehicleConstraintFilter::check_accelera
     is_ok};
 }
 
-VehicleConstraintFilter::metric_result_t VehicleConstraintFilter::check_deceleration(
+VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_deceleration(
   const TrajectoryPoints & traj_points) const
 {
   const bool is_ok = is_deceleration_ok(traj_points, params_.max_deceleration);
@@ -189,7 +189,7 @@ VehicleConstraintFilter::metric_result_t VehicleConstraintFilter::check_decelera
     is_ok};
 }
 
-VehicleConstraintFilter::metric_result_t VehicleConstraintFilter::check_steering_angle(
+VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_steering_angle(
   const TrajectoryPoints & traj_points) const
 {
   const bool is_ok =
@@ -203,7 +203,7 @@ VehicleConstraintFilter::metric_result_t VehicleConstraintFilter::check_steering
     is_ok};
 }
 
-VehicleConstraintFilter::metric_result_t VehicleConstraintFilter::check_steering_rate(
+VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_steering_rate(
   const TrajectoryPoints & traj_points) const
 {
   const bool is_ok =
