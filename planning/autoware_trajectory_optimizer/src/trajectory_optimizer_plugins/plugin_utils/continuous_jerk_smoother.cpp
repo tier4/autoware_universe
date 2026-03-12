@@ -146,8 +146,10 @@ bool ContinuousJerkSmoother::apply(
   const uint32_t IDX_SIGMA0 = 3 * N;
   const uint32_t IDX_GAMMA0 = 4 * N;
 
-  const uint32_t l_variables = 5 * N;        // gamma has N-1 elements
-  const uint32_t l_constraints = 4 * N - 2;  // N + N + (N-1) + (N-1) + 1 = 4N - 1
+  const uint32_t l_variables = 5 * N;  // gamma has N-1 elements
+  // If zero velocity is found, add 1 constraint for end constraints
+  const uint32_t l_constraints =
+    4 * N - 2 + (zero_vel_id ? 1 : 0);  // N + N + (N-1) + (N-1) + 2 = 4N
 
   // Allocate matrices
   Eigen::MatrixXd A = Eigen::MatrixXd::Zero(l_constraints, l_variables);
@@ -244,6 +246,22 @@ bool ContinuousJerkSmoother::apply(
     upper_bound[constr_idx] = 0.0;
     lower_bound[constr_idx] = 0.0;
   }
+
+  //// Initial condition constraints
+  //{
+  //  A(constr_idx, IDX_B0) = 1.0;
+  //  upper_bound[constr_idx] = v0 * v0;
+  //  lower_bound[constr_idx] = v0 * v0;
+  //   ++constr_idx;
+  //}
+
+  // End Constraints for zero velocity
+  if (zero_vel_id) {
+    A(constr_idx, IDX_B0 + N - 1) = 1.0;
+    upper_bound[constr_idx] = 0.0;
+    lower_bound[constr_idx] = 0.0;
+  }
+
   // Execute optimization
   const auto optval = qp_interface_->optimize(P, A, q, lower_bound, upper_bound);
 
