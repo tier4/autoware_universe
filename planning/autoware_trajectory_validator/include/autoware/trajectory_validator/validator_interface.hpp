@@ -60,12 +60,17 @@ public:
     vehicle_info_ptr_ = std::make_shared<VehicleInfo>(vehicle_info);
   }
 
+  void set_category(const std::string & category) { category_ = category; }
+
+  [[nodiscard]] std::string category() const { return category_; }
+
   [[nodiscard]] std::string get_name() const { return name_; }
 
   [[nodiscard]] virtual bool is_debug_mode() const { return true; }
 
 protected:
   std::string name_;
+  std::string category_;
   std::shared_ptr<VehicleInfo> vehicle_info_ptr_;
 };
 }  // namespace autoware::trajectory_validator::plugin

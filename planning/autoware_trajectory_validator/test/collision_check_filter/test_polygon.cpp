@@ -20,7 +20,7 @@
 #include <cmath>
 #include <vector>
 
-namespace autoware::trajectory_validator::plugin::polygon
+namespace autoware::trajectory_validator::plugin::safety::polygon
 {
 
 class PolygonCollisionTest : public ::testing::Test
@@ -95,4 +95,4 @@ TEST_F(PolygonCollisionTest, CheckPathPolygonConvexCollision)
   EXPECT_TRUE(check_path_polygon_convex_collision(traj1_collide, traj2_collide));
 }
 
-}  // namespace autoware::trajectory_validator::plugin::polygon
+}  // namespace autoware::trajectory_validator::plugin::safety::polygon

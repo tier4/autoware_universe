@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-namespace autoware::trajectory_validator::plugin
+namespace autoware::trajectory_validator::plugin::safety
 {
 
 class CollisionCheckFilterTest : public ::testing::Test
@@ -227,4 +227,4 @@ TEST_F(CollisionCheckFilterTest, ObjectWillEnterPath)
     << "Error string did not contain 'constant_curvature_path'. Actual: " << error_msg;
 }
 
-}  // namespace autoware::trajectory_validator::plugin
+}  // namespace autoware::trajectory_validator::plugin::safety

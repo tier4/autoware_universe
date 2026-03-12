@@ -33,7 +33,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace autoware::trajectory_validator::plugin
+namespace autoware::trajectory_validator::plugin::safety
 {
 using autoware_utils_geometry::Box2d;
 using autoware_utils_geometry::MultiPoint2d;
@@ -130,7 +130,7 @@ PoseTrajectory compute_pose_trajectory(
   return pose_trajectory;
 }
 
-class CollisionCheckFilter : public ValidatorInterface
+class CollisionCheckFilter : public plugin::ValidatorInterface
 {
 public:
   CollisionCheckFilter() : ValidatorInterface("CollisionCheckFilter") {}
@@ -151,6 +151,6 @@ private:
   } pet_collision_params_;
 };
 
-}  // namespace autoware::trajectory_validator::plugin
+}  // namespace autoware::trajectory_validator::plugin::safety
 
 #endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER_HPP_

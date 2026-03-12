@@ -31,7 +31,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::trajectory_validator::plugin
+namespace autoware::trajectory_validator::plugin::safety
 {
 
 namespace motion
@@ -420,9 +420,10 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   return {};
 }
 
-}  // namespace autoware::trajectory_validator::plugin
+}  // namespace autoware::trajectory_validator::plugin::safety
 
 #include <pluginlib/class_list_macros.hpp>
+namespace safety = autoware::trajectory_validator::plugin::safety;
+
 PLUGINLIB_EXPORT_CLASS(
-  autoware::trajectory_validator::plugin::CollisionCheckFilter,
-  autoware::trajectory_validator::plugin::ValidatorInterface)
+  safety::CollisionCheckFilter, autoware::trajectory_validator::plugin::ValidatorInterface)
