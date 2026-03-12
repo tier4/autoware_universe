@@ -139,24 +139,11 @@ public:
   tl::expected<void, std::string> is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) override;
 
-  void set_parameters(rclcpp::Node & node) final;
-
-  void update_parameters(const std::vector<rclcpp::Parameter> & parameters) final;
+  void update_parameters(const validator::Params & params) final;
 
 private:
-  struct PetCollisionParams
-  {
-    double ego_braking_delay{0.0};
-    double ego_assumed_acceleration{0.0};  // used for code test, not used in actual collision check
-    double collision_time_threshold{1.0};  // time threshold for PET collision check
-  } pet_collision_params_;
-
-  struct RssParams
-  {
-    double ego_deceleration_threshold{0.0};  // threshold to determine RSS collision
-    double ego_reaction_time{0.0};           // reaction time of the ego vehicle
-    double object_acceleration{0.0};  // assumed acceleration of the object for RSS calculation
-  } rss_params_;
+  validator::Params::CollisionCheck::PetCollision pet_collision_params_;
+  validator::Params::CollisionCheck::Rss rss_params_;
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety
