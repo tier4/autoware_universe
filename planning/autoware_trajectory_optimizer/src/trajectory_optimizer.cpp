@@ -182,8 +182,9 @@ void TrajectoryOptimizer::on_traj([[maybe_unused]] const CandidateTrajectories::
   CandidateTrajectories output_trajectories = *msg;
   for (auto & trajectory : output_trajectories.candidate_trajectories) {
     // Apply optimizations - plugins execute in order from plugin_names parameter
+    SemanticSpeedTracker semantic_speed_tracker;
     for (auto & plugin : plugins_) {
-      plugin->optimize_trajectory(trajectory.points, params_, data);
+      plugin->optimize_trajectory(trajectory.points, semantic_speed_tracker, params_, data);
     }
     motion_utils::calculate_time_from_start(
       trajectory.points, current_odometry_ptr_->pose.pose.position);

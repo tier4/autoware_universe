@@ -66,8 +66,8 @@ public:
   ~TrajectoryKinematicFeasibilityEnforcer() = default;
 
   void optimize_trajectory(
-    TrajectoryPoints & traj_points, const TrajectoryOptimizerParams & params,
-    const TrajectoryOptimizerData & data) override;
+    TrajectoryPoints & traj_points, SemanticSpeedTracker & semantic_speed_tracker,
+    const TrajectoryOptimizerParams & params, const TrajectoryOptimizerData & data) override;
 
   void set_up_params() override;
 

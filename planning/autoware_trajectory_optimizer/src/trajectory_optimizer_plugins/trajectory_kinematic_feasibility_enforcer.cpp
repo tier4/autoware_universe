@@ -63,8 +63,8 @@ double compute_average_dt(const TrajectoryPoints & traj_points)
 }  // namespace
 
 void TrajectoryKinematicFeasibilityEnforcer::optimize_trajectory(
-  TrajectoryPoints & traj_points, const TrajectoryOptimizerParams & params,
-  const TrajectoryOptimizerData & data)
+  TrajectoryPoints & traj_points, [[maybe_unused]] SemanticSpeedTracker & semantic_speed_tracker,
+  const TrajectoryOptimizerParams & params, const TrajectoryOptimizerData & data)
 {
   // Check if plugin is enabled
   if (!params.use_kinematic_feasibility_enforcer) {
