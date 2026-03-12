@@ -262,7 +262,7 @@ CollisionFilter::result_t CollisionFilter::is_feasible(
     precompute_object_positions(*context.predicted_objects, params_.max_check_time);
 
   // Check each trajectory point within time horizon
-  bool is_any_error = false;
+  bool is_overall_ok = true;
   for (const auto & point : traj_points) {
     const double time_from_start = rclcpp::Duration(point.time_from_start).seconds();
     if (time_from_start > params_.max_check_time) {
@@ -273,7 +273,8 @@ CollisionFilter::result_t CollisionFilter::is_feasible(
     for (size_t obj_idx = 0; obj_idx < cache.size(); ++obj_idx) {
       const bool is_collision = check_collision(point, cache, obj_idx, time_from_start);
 
-      is_any_error |= is_collision;
+      // NOTE: Once an error occurred validation level will be ERROR
+      is_overall_ok = is_overall_ok && !is_collision;
 
       metrics.push_back(
         autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
@@ -285,7 +286,7 @@ CollisionFilter::result_t CollisionFilter::is_feasible(
 
   return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
     .name(get_name())
-    .level(is_any_error ? TrajectoryValidationStatus::ERROR : TrajectoryValidationStatus::OK)
+    .level(is_overall_ok ? TrajectoryValidationStatus::OK : TrajectoryValidationStatus::ERROR)
     .metrics(std::move(metrics));
 }
 

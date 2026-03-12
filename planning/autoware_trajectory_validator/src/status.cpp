@@ -48,8 +48,8 @@ std::pair<std::vector<TrajectoryCategoryStatus>, bool> to_category_statuses(
         .level(is_validation_ok ? TrajectoryCategoryStatus::OK : TrajectoryCategoryStatus::ERROR)
         .validations(statuses));
 
-    // Category level will OK if all validation result is OK
-    is_category_ok &= is_validation_ok;
+    // Once an error occurred category level will be ERROR
+    is_category_ok = is_category_ok && is_validation_ok;
   }
   return {categories, is_category_ok};
 }

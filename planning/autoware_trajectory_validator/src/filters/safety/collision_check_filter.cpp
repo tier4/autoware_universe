@@ -408,12 +408,13 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
       generate_constant_curvature_path_trajectory(object, 0.0, 0.0, objects_reference_time, 10.0));
   }
 
-  bool is_any_error = false;
+  bool is_overall_ok = true;
   for (const auto & object_trajectory_data : object_trajectory_data_list) {
     const bool is_collision = check_pet_collision(
       ego_trajectory_data, object_trajectory_data, pet_collision_params_.collision_time_threshold);
 
-    is_any_error |= is_collision;
+    // NOTE: Once an error occurred validation level will be ERROR
+    is_overall_ok = is_overall_ok && !is_collision;
 
     metrics.push_back(
       autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
@@ -424,7 +425,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
 
   return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
     .name(get_name())
-    .level(is_any_error ? TrajectoryValidationStatus::ERROR : TrajectoryValidationStatus::OK)
+    .level(is_overall_ok ? TrajectoryValidationStatus::OK : TrajectoryValidationStatus::ERROR)
     .metrics(std::move(metrics));
 }
 

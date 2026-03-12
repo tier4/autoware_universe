@@ -63,7 +63,7 @@ TEST(VehicleConstraintFilterTest, FeasibleWhenAllConstraintsSatisfied)
   auto result = filter.is_feasible(traj_points, context);
 
   ASSERT_TRUE(result.has_value());
-  EXPECT_FALSE(check_validation_status(result.value()));
+  EXPECT_TRUE(check_validation_status(result.value()));
 }
 
 TEST(VehicleConstraintFilterTest, InfeasibleWhenSpeedExceedsMax)

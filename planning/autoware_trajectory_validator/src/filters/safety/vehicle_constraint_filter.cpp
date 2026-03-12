@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -133,16 +134,19 @@ VehicleConstraintFilter::result_t VehicleConstraintFilter::is_feasible(
 
   // NOTE: Feasibility decision logic might be more complex in the future
   std::vector<TrajectoryMetricStatus> metrics;
-  bool is_any_error = false;
+  bool is_overall_ok = true;
   for (const auto & checker : checkers_) {
     auto [status, is_ok] = (this->*checker)(traj_points);
-    is_any_error |= is_ok;
+
+    // NOTE: Once an error occurred validation level will be ERROR
+    is_overall_ok = is_overall_ok && is_ok;
+
     metrics.push_back(std::move(status));
   }
 
   return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
     .name(get_name())
-    .level(is_any_error ? TrajectoryValidationStatus::ERROR : TrajectoryValidationStatus::OK)
+    .level(is_overall_ok ? TrajectoryValidationStatus::OK : TrajectoryValidationStatus::ERROR)
     .metrics(std::move(metrics));
 }
 
