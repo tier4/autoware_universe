@@ -1,0 +1,16 @@
+/**:
+  ros__parameters:
+    # onnx_path, names_file are set from launch.
+    rgb_colormap: "data/T4x.colormap"
+    precision: "fp16"  # fp32, fp16, int8
+    calibration_images: ""
+    calib: "Entropy"   # Entropy, Minmax, Legacy
+    sparse: true       # 2:4 Sparsity (used at build time for TensorRT; ignored for ONNX)
+    anchors: [8, 9, 36, 11, 15, 28, 40, 36, 29, 72, 104, 24, 86, 67, 58, 140, 265, 70, 147, 134, 164, 303, 337, 206, 491, 400, 664, 705, 1269, 832]
+    num_anchors: 5
+    num_classes: 10
+    score_thresh: 0.2
+    nms_thresh: 0.6
+    use_cuda: true     # Use CUDA execution provider for ONNX Runtime
+    # Only publish ROIs for this class name (empty = all detections)
+    traffic_light_class_name: "TRAFFIC_LIGHT"
