@@ -39,6 +39,7 @@ constexpr int kDebugImageWidth = 200;
 constexpr int kDebugTextHeight = 50;
 
 // TLR output layout per anchor (bbox(4) + obj(1) + color(3) + type(6) + angle(2) = 16)
+// Anchors must match CoMLOps-TLR subnet_anchors (e.g. 7,7,14,14,42,42) so decoded box sizes match trt-lightnet.
 constexpr int TLR_NUM_ANCHORS = 3;
 constexpr int TLR_CHANS_PER_ANCHOR = 16;
 constexpr int TLR_X_INDEX = 0, TLR_Y_INDEX = 1, TLR_W_INDEX = 2, TLR_H_INDEX = 3;
@@ -48,7 +49,7 @@ constexpr int TLR_NUM_TYPES = 6, TLR_NUM_COLORS = 3;
 constexpr int TLR_COS_INDEX = 14, TLR_SIN_INDEX = 15;
 constexpr float TLR_SCALE_X_Y = 2.0f;
 constexpr float TLR_BBOX_OFFSET = 0.5f * (TLR_SCALE_X_Y - 1.0f);
-constexpr float TLR_ANCHORS[TLR_NUM_ANCHORS * 2] = {1.0f, 1.0f, 2.0f, 2.0f, 4.0f, 4.0f};
+constexpr float TLR_ANCHORS[TLR_NUM_ANCHORS * 2] = {7.0f, 7.0f, 14.0f, 14.0f, 42.0f, 42.0f};
 
 ArrowDirection angleToArrowDirection(float angle_rad)
 {
@@ -309,11 +310,13 @@ void CoMLOpsTLRClassifier::decodeTlrOutput(
           const float cos_val = out[base + TLR_COS_INDEX * grid_size];
           const float sin_val = out[base + TLR_SIN_INDEX * grid_size];
 
-          // Convert decoded box (grid space) to normalized [0,1] (x1,y1,x2,y2)
+          // Convert to normalized [0,1]: (bx,by) are in grid coords; (bw,bh) are in input pixels (match trt-lightnet convertBboxRes)
           const float cx = bx / grid_w_f;
           const float cy = by / grid_h_f;
-          const float half_w = (bw * 0.5f) / grid_w_f;
-          const float half_h = (bh * 0.5f) / grid_h_f;
+          const float input_w_f = static_cast<float>(input_width_);
+          const float input_h_f = static_cast<float>(input_height_);
+          const float half_w = (bw * 0.5f) / input_w_f;
+          const float half_h = (bh * 0.5f) / input_h_f;
           float x1 = cx - half_w;
           float y1 = cy - half_h;
           float x2 = cx + half_w;
