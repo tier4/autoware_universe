@@ -5,8 +5,8 @@
   <arg name="input/rois" default="~/rois"/>
   <arg name="output/traffic_signals" default="classified/traffic_signals"/>
   <arg name="param_path" default="$(find-pkg-share autoware_traffic_light_classifier)/config/car_traffic_light_classifier.param.yaml" description="classifier param path"/>
-  <!-- classifier_type: 0 = HSVFilter, 1 = CNN, 2 = CoMLOps-TLR; set with artifact paths -->
-  <arg name="classifier_type" default="2" description="0=HSVFilter, 1=CNN, 2=CoMLOps-TLR"/>
+  <!-- classifier_type: 0=HSVFilter, 1=CNN, 2=LampRecognizer; set with artifact paths -->
+  <arg name="classifier_type" default="2" description="0=HSVFilter, 1=CNN, 2=LampRecognizer"/>
   <arg name="model_path" default="$(var data_path)/traffic_light_classifier/traffic_light_classifier_mobilenetv2_batch_6.onnx" description="car model path"/>
   <arg name="label_path" default="$(var data_path)/traffic_light_classifier/lamp_labels.txt" description="car label path"/>
   <arg name="build_only" default="false" description="exit after trt engine is built"/>
