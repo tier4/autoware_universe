@@ -10,8 +10,9 @@
 #include <rclcpp/qos.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
-#include <tier4_perception_msgs/msg/traffic_light_roi.hpp>
-#include <tier4_perception_msgs/msg/traffic_light_roi_array.hpp>
+#include <autoware_perception_msgs/msg/object_classification.hpp>
+#include <tier4_perception_msgs/msg/detected_object_with_feature.hpp>
+#include <tier4_perception_msgs/msg/detected_objects_with_feature.hpp>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -105,8 +106,8 @@ public:
     image_sub_ = create_subscription<sensor_msgs::msg::Image>(
       "~/input/image", rclcpp::SensorDataQoS(),
       std::bind(&WholeImageDetectorNode::onImage, this, std::placeholders::_1));
-    roi_pub_ =
-      create_publisher<tier4_perception_msgs::msg::TrafficLightRoiArray>("~/output/rois", 1);
+    objects_pub_ = create_publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>(
+      "~/output/rois", 1);
     debug_image_pub_ = create_publisher<sensor_msgs::msg::Image>("~/output/debug/image", 1);
   }
 
@@ -125,9 +126,9 @@ private:
       stop_watch_ptr_->toc("processing_time", true);
     }
     if (!detector_) {
-      tier4_perception_msgs::msg::TrafficLightRoiArray out_msg;
+      tier4_perception_msgs::msg::DetectedObjectsWithFeature out_msg;
       out_msg.header = msg->header;
-      roi_pub_->publish(out_msg);
+      objects_pub_->publish(out_msg);
       return;
     }
     cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
@@ -135,9 +136,9 @@ private:
     std::vector<whole_image_detector::BBoxInfo> all_boxes;
     if (!detector_->detect(img, all_boxes)) {
       RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000, "ComlopsDetector::detect failed");
-      tier4_perception_msgs::msg::TrafficLightRoiArray out_msg;
+      tier4_perception_msgs::msg::DetectedObjectsWithFeature out_msg;
       out_msg.header = msg->header;
-      roi_pub_->publish(out_msg);
+      objects_pub_->publish(out_msg);
       return;
     }
     // Filter to traffic_light class if specified
@@ -146,20 +147,25 @@ private:
       if (traffic_light_class_id_ >= 0 && b.class_id != traffic_light_class_id_) continue;
       filtered.push_back(b);
     }
-    tier4_perception_msgs::msg::TrafficLightRoiArray out_msg;
+    tier4_perception_msgs::msg::DetectedObjectsWithFeature out_msg;
     out_msg.header = msg->header;
     for (size_t i = 0; i < filtered.size(); ++i) {
       const auto & b = filtered[i];
-      tier4_perception_msgs::msg::TrafficLightRoi roi;
-      roi.roi.x_offset = static_cast<uint32_t>(std::max(0.f, b.box.x1));
-      roi.roi.y_offset = static_cast<uint32_t>(std::max(0.f, b.box.y1));
-      roi.roi.width = static_cast<uint32_t>(std::max(0.f, b.box.x2 - b.box.x1));
-      roi.roi.height = static_cast<uint32_t>(std::max(0.f, b.box.y2 - b.box.y1));
-      roi.traffic_light_id = static_cast<int64_t>(i);
-      roi.traffic_light_type = tier4_perception_msgs::msg::TrafficLightRoi::CAR_TRAFFIC_LIGHT;
-      out_msg.rois.push_back(roi);
+      tier4_perception_msgs::msg::DetectedObjectWithFeature obj;
+      obj.object.existence_probability = static_cast<float>(b.prob);
+      autoware_perception_msgs::msg::ObjectClassification cl;
+      cl.label = autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+      cl.probability = static_cast<float>(b.prob);
+      obj.object.classification.push_back(cl);
+      obj.feature.roi.x_offset = static_cast<uint32_t>(std::max(0, static_cast<int>(b.box.x1)));
+      obj.feature.roi.y_offset = static_cast<uint32_t>(std::max(0, static_cast<int>(b.box.y1)));
+      obj.feature.roi.width =
+        static_cast<uint32_t>(std::max(0.f, b.box.x2 - b.box.x1));
+      obj.feature.roi.height =
+        static_cast<uint32_t>(std::max(0.f, b.box.y2 - b.box.y1));
+      out_msg.feature_objects.push_back(obj);
     }
-    roi_pub_->publish(out_msg);
+    objects_pub_->publish(out_msg);
 
     if (debug_publisher_) {
       const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
@@ -202,14 +208,15 @@ private:
     }
 #else
     (void)msg;
-    tier4_perception_msgs::msg::TrafficLightRoiArray out_msg;
+    tier4_perception_msgs::msg::DetectedObjectsWithFeature out_msg;
     out_msg.header = msg->header;
-    roi_pub_->publish(out_msg);
+    objects_pub_->publish(out_msg);
 #endif
   }
 
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
-  rclcpp::Publisher<tier4_perception_msgs::msg::TrafficLightRoiArray>::SharedPtr roi_pub_;
+  rclcpp::Publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>::SharedPtr
+    objects_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_image_pub_;
   std::vector<std::string> names_;
   std::string traffic_light_class_name_;
