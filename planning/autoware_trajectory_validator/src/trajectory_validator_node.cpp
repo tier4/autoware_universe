@@ -161,36 +161,6 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
     if (table.is_overall_feasible) filtered_msg->candidate_trajectories.push_back(trajectory);
   }
 
-// // --- PRINT THE TABLE ---
-//   if (!evaluation_tables_.empty()) {
-//     // Iterate through whatever categories exist (e.g., "safety", "traffic_rule")
-//     for (const auto& [category, _] : evaluation_tables_.front().evaluations) {
-//       std::string table_output = "\n=== " + category + " Table ===\n";
-
-//       // Header Row
-//       table_output += fmt::format("{:<20} | ", "Trajectory");
-//       for (const auto& eval : evaluation_tables_.front().evaluations.at(category)) {
-//           table_output += fmt::format("{:<30} | ", eval.plugin_name);
-//       }
-//       table_output += "\n" + std::string(100, '-') + "\n";
-
-//       // Data Rows
-//       for (const auto& record : evaluation_tables_) {
-//           table_output += fmt::format("{:<20} | ", record.generator_id);
-//           for (const auto& eval : record.evaluations.at(category)) {
-//               std::string cell_text = eval.is_feasible ? "Pass" : "Fail: " + eval.reason;
-//               if (cell_text.length() > 28) cell_text = cell_text.substr(0, 25) + "..."; // Truncate long errors
-//               table_output += fmt::format("{:<30} | ", cell_text);
-//           }
-//           table_output += "\n";
-//       }
-
-//       // Print using RCLCPP_INFO (or DEBUG if you prefer)
-//       RCLCPP_INFO_STREAM(get_logger(), table_output);
-//     }
-//   }
-
-
   // Also filter generator_info to match kept trajectories
   for (const auto & traj : filtered_msg->candidate_trajectories) {
     auto it = std::find_if(
