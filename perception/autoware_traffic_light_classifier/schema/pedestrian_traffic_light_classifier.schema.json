@@ -49,7 +49,7 @@
         },
         "classifier_type": {
           "type": "integer",
-          "description": "Type of classifier used. {0: hsv_filter, 1: cnn}.",
+          "description": "Backend producing classification from ROI. 0: HSVFilter (rule-based), 1: CNN (single-crop), 2: LampRecognizer (per-lamp).",
           "default": 1
         },
         "traffic_light_type": {
