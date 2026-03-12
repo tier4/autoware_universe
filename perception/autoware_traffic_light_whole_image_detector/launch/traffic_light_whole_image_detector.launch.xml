@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="input/image" default="~/input/image"/>
+  <arg name="output/rois" default="~/output/rois"/>
+  <arg name="output/debug/image" default="~/output/debug/image"/>
+  <arg name="param_path" default="$(find-pkg-share autoware_traffic_light_whole_image_detector)/config/whole_image_detector.param.yaml"/>
+  <!-- Model: path to ONNX file (absolute or relative to package share). -->
+  <arg name="onnx_path" default="/home/dainguyen/autoware_data/traffic_light_classifier/CoMLOps-Large-Detection-Model-v1.0.1.onnx"/>
+  <arg name="names_file" default="/home/dainguyen/autoware_data/traffic_light_classifier/CoMLOps-Large-Detection-Model-v1.0.1.txt"/>
+
+  <node pkg="autoware_traffic_light_whole_image_detector" exec="traffic_light_whole_image_detector_node" name="traffic_light_whole_image_detector" output="screen">
+    <remap from="~/input/image" to="$(var input/image)"/>
+    <remap from="~/output/rois" to="$(var output/rois)"/>
+    <remap from="~/output/debug/image" to="$(var output/debug/image)"/>
+    <param from="$(var param_path)"/>
+    <param name="onnx_path" value="$(var onnx_path)"/>
+    <param name="names_file" value="$(var names_file)"/>
+  </node>
+</launch>
