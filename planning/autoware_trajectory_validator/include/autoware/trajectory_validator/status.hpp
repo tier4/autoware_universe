@@ -85,20 +85,5 @@ inline bool check_validation_statues(const std::vector<TrajectoryValidationStatu
   }
   return true;
 }
-
-inline bool check_category_status(const TrajectoryCategoryStatus & category)
-{
-  return category.level == TrajectoryCategoryStatus::OK;
-}
-
-inline bool check_category_statuses(const std::vector<TrajectoryCategoryStatus> & categories)
-{
-  for (const auto & category : categories) {
-    if (!check_category_status(category)) {
-      return false;
-    }
-  }
-  return true;
-}
 }  // namespace autoware::trajectory_validator
 #endif  // AUTOWARE__TRAJECTORY_VALIDATOR__STATUS_HPP_

@@ -42,14 +42,14 @@ std::pair<std::vector<TrajectoryCategoryStatus>, bool> to_category_statuses(
   for (const auto & [category, statuses] : validations) {
     const bool is_validation_ok = check_validation_statues(statuses);
 
+    // Once an error occurred category level will be ERROR
+    is_category_ok = is_category_ok && is_validation_ok;
+
     categories.push_back(
       autoware_internal_planning_msgs::build<TrajectoryCategoryStatus>()
         .name(category)
         .level(is_validation_ok ? TrajectoryCategoryStatus::OK : TrajectoryCategoryStatus::ERROR)
         .validations(statuses));
-
-    // Once an error occurred category level will be ERROR
-    is_category_ok = is_category_ok && is_validation_ok;
   }
   return {categories, is_category_ok};
 }
