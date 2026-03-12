@@ -1,4 +1,4 @@
-// Copyright 2025 TIER IV, Inc.
+// Copyright 2026 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CLASSIFIER__COMLOPS_TLR_CLASSIFIER_HPP_
-#define CLASSIFIER__COMLOPS_TLR_CLASSIFIER_HPP_
+#ifndef CLASSIFIER__CNN_LAMP_RECOGNIZER_HPP_
+#define CLASSIFIER__CNN_LAMP_RECOGNIZER_HPP_
 
 #include "classifier_interface.hpp"
 
@@ -110,13 +110,13 @@ using autoware::cuda_utils::makeCudaStream;
 using autoware::cuda_utils::StreamUniquePtr;
 
 /**
- * @brief Traffic light classifier using CoMLOps-TLR ONNX/TensorRT model.
+ * @brief Lamp recognizer: per-lamp bbox + color + type + angle (ONNX/TensorRT).
  */
-class CoMLOpsTLRClassifier : public ClassifierInterface
+class CnnLampRecognizer : public ClassifierInterface
 {
 public:
-  explicit CoMLOpsTLRClassifier(rclcpp::Node * node_ptr);
-  ~CoMLOpsTLRClassifier() override = default;
+  explicit CnnLampRecognizer(rclcpp::Node * node_ptr);
+  ~CnnLampRecognizer() override = default;
 
   bool getTrafficSignals(
     const std::vector<cv::Mat> & images,
@@ -158,4 +158,4 @@ private:
 
 }  // namespace autoware::traffic_light
 
-#endif  // CLASSIFIER__COMLOPS_TLR_CLASSIFIER_HPP_
+#endif  // CLASSIFIER__CNN_LAMP_RECOGNIZER_HPP_

@@ -1,4 +1,4 @@
-// Copyright 2025 TIER IV, Inc.
+// Copyright 2026 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "comlops_tlr_classifier.hpp"
+#include "cnn_lamp_recognizer.hpp"
 
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 
@@ -39,7 +39,7 @@ constexpr int kDebugImageWidth = 200;
 constexpr int kDebugTextHeight = 50;
 
 // TLR output layout per anchor (bbox(4) + obj(1) + color(3) + type(6) + angle(2) = 16)
-// Anchors must match CoMLOps-TLR subnet_anchors (e.g. 7,7,14,14,42,42) so decoded box sizes match trt-lightnet.
+// Anchors (e.g. 7,7,14,14,42,42) must match the model so decoded box sizes are correct.
 constexpr int TLR_NUM_ANCHORS = 3;
 constexpr int TLR_CHANS_PER_ANCHOR = 16;
 constexpr int TLR_X_INDEX = 0, TLR_Y_INDEX = 1, TLR_W_INDEX = 2, TLR_H_INDEX = 3;
@@ -105,7 +105,7 @@ static void runNms(
   }
 }
 
-CoMLOpsTLRClassifier::CoMLOpsTLRClassifier(rclcpp::Node * node_ptr) : node_ptr_(node_ptr)
+CnnLampRecognizer::CnnLampRecognizer(rclcpp::Node * node_ptr) : node_ptr_(node_ptr)
 {
   image_pub_ = image_transport::create_publisher(
     node_ptr_, "~/output/debug/image", rclcpp::QoS{1}.get_rmw_qos_profile());
@@ -155,13 +155,13 @@ CoMLOpsTLRClassifier::CoMLOpsTLRClassifier(rclcpp::Node * node_ptr) : node_ptr_(
     autoware::tensorrt_common::ProfileDims(0, dim_min, dim_opt, dim_max));
 
   if (!trt_common_->setup(std::move(profile_dims), nullptr)) {
-    throw std::runtime_error("CoMLOpsTLRClassifier: Failed to setup TensorRT engine");
+    throw std::runtime_error("CnnLampRecognizer: Failed to setup TensorRT engine");
   }
 
   const int32_t nb_io = trt_common_->getNbIOTensors();
   const int32_t num_outputs = nb_io - 1;
   if (num_outputs < 1) {
-    throw std::runtime_error("CoMLOpsTLRClassifier: engine has no output bindings");
+    throw std::runtime_error("CnnLampRecognizer: engine has no output bindings");
   }
 
   output_d_.resize(num_outputs);
@@ -193,12 +193,12 @@ CoMLOpsTLRClassifier::CoMLOpsTLRClassifier(rclcpp::Node * node_ptr) : node_ptr_(
   input_d_ = autoware::cuda_utils::make_unique<float[]>(input_vol);
 }
 
-void CoMLOpsTLRClassifier::preprocess(const std::vector<cv::Mat> & images)
+void CnnLampRecognizer::preprocess(const std::vector<cv::Mat> & images)
 {
   const float scale = 1.0f / 255.0f;
   const cv::Size input_size(input_width_, input_height_);
   cv::Mat blob = cv::dnn::blobFromImages(
-    images, scale, input_size, cv::Scalar(0, 0, 0), false, false, CV_32F); // Skip swap RB channels
+    images, scale, input_size, cv::Scalar(0, 0, 0), false, false, CV_32F);
   if (!blob.isContinuous()) {
     blob = blob.clone();
   }
@@ -208,12 +208,12 @@ void CoMLOpsTLRClassifier::preprocess(const std::vector<cv::Mat> & images)
     cudaMemcpyAsync(input_d_.get(), input_h_.data(), copy_size, cudaMemcpyHostToDevice, *stream_));
 }
 
-bool CoMLOpsTLRClassifier::doInference(size_t batch_size)
+bool CnnLampRecognizer::doInference(size_t batch_size)
 {
   nvinfer1::Dims input_dims = trt_common_->getInputDims(0);
   input_dims.d[0] = static_cast<int32_t>(batch_size);
   if (!trt_common_->setInputShape(0, input_dims)) {
-    RCLCPP_ERROR(node_ptr_->get_logger(), "CoMLOpsTLR: setInputShape failed");
+    RCLCPP_ERROR(node_ptr_->get_logger(), "LampRecognizer: setInputShape failed");
     return false;
   }
 
@@ -244,7 +244,7 @@ bool CoMLOpsTLRClassifier::doInference(size_t batch_size)
   return true;
 }
 
-void CoMLOpsTLRClassifier::decodeTlrOutput(
+void CnnLampRecognizer::decodeTlrOutput(
   size_t batch_size, std::vector<std::vector<BBoxInfo>> & detections_per_roi)
 {
   detections_per_roi.resize(batch_size);
@@ -256,7 +256,6 @@ void CoMLOpsTLRClassifier::decodeTlrOutput(
   for (size_t b = 0; b < batch_size; ++b) {
     detections_per_roi[b].clear();
 
-    // 1) Decode all raw detections (bbox + obj + color + type + angle) as in TrtLightnet::decodeTLRTensor.
     std::vector<BBoxInfo> raw;
     const float * out = out_base + b * batch_stride;
     const float grid_w_f = static_cast<float>(output_grid_w_);
@@ -271,7 +270,6 @@ void CoMLOpsTLRClassifier::decodeTlrOutput(
           const float objectness = out[base + TLR_OBJ_INDEX * grid_size];
           if (objectness < score_threshold_) continue;
 
-          // Decode bounding box (Scaled-YOLOv4): bx = x + scale_x_y*tx - offset; bw = pw*(tw*2)^2
           const float pw = TLR_ANCHORS[a * 2];
           const float ph = TLR_ANCHORS[a * 2 + 1];
           const float tx = out[base + TLR_X_INDEX * grid_size];
@@ -283,7 +281,6 @@ void CoMLOpsTLRClassifier::decodeTlrOutput(
           const float bw = pw * std::pow(tw * 2.0f, 2.0f);
           const float bh = ph * std::pow(th * 2.0f, 2.0f);
 
-          // Decode class (type) probabilities and take max
           float max_type_prob = 0.0f;
           int type_idx = 0;
           for (int t = 0; t < TLR_NUM_TYPES; ++t) {
@@ -293,7 +290,6 @@ void CoMLOpsTLRClassifier::decodeTlrOutput(
               type_idx = t;
             }
           }
-          // Decode sub-class (color) probabilities and take max
           float max_color_prob = 0.0f;
           int color_idx = 0;
           for (int c = 0; c < TLR_NUM_COLORS; ++c) {
@@ -310,7 +306,6 @@ void CoMLOpsTLRClassifier::decodeTlrOutput(
           const float cos_val = out[base + TLR_COS_INDEX * grid_size];
           const float sin_val = out[base + TLR_SIN_INDEX * grid_size];
 
-          // Convert to normalized [0,1]: (bx,by) are in grid coords; (bw,bh) are in input pixels (match trt-lightnet convertBboxRes)
           const float cx = bx / grid_w_f;
           const float cy = by / grid_h_f;
           const float input_w_f = static_cast<float>(input_width_);
@@ -344,13 +339,12 @@ void CoMLOpsTLRClassifier::decodeTlrOutput(
       }
     }
 
-    // 2) NMS: keep highest-score per (classId, subClassId), suppress overlapping boxes.
     runNms(raw, nms_threshold_, detections_per_roi[b]);
   }
 }
 
 
-void CoMLOpsTLRClassifier::outputDebugImage(
+void CnnLampRecognizer::outputDebugImage(
   cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
   const std::vector<TrafficLightElement> * unique_elements)
 {
@@ -358,7 +352,6 @@ void CoMLOpsTLRClassifier::outputDebugImage(
   const int img_h = debug_image.rows;
 
   if (unique_elements && !unique_elements->empty()) {
-    // Image is RGB: (R, G, B)
     static const cv::Scalar colors[] = {
       cv::Scalar(0, 255, 0),    // green  (R, G, B)
       cv::Scalar(255, 255, 0),  // yellow/amber
@@ -378,9 +371,7 @@ void CoMLOpsTLRClassifier::outputDebugImage(
     }
   }
 
-  // One token per lamp, comma-separated: green | left,red | red,right,straight | red,up_left | etc.
   std::string label;
-  // check if traffic_signal.traffic_light_type is pedestrian (=1)
   bool is_pedestrian = traffic_signal.traffic_light_type == 1;
   float probability = 0.0f;
   const auto colorStr = [](uint8_t c) -> std::string {
@@ -400,7 +391,7 @@ void CoMLOpsTLRClassifier::outputDebugImage(
     if (s == MsgTE::DOWN_RIGHT_ARROW) return "down_right";
     return "unknown";
   };
-  
+
   for (std::size_t i = 0; i < traffic_signal.elements.size(); i++) {
     const auto & light = traffic_signal.elements.at(i);
     if (i > 0) label += ",";
@@ -410,11 +401,11 @@ void CoMLOpsTLRClassifier::outputDebugImage(
                      light.shape != MsgTE::CROSS &&
                      light.shape != MsgTE::UNKNOWN);
     if (is_arrow) {
-      label += sh;  // one token per lamp: "left" "right" "straight" "up_left" "up_right"
+      label += sh;
     } else if(is_pedestrian) {
-      label += "ped_" + c;  // one token per lamp: "ped_green" "ped_red" "ped_yellow" "ped_unknown"
+      label += "ped_" + c;
     } else {
-      label += c;  // one token per lamp: "green" "red" "yellow" "unknown"
+      label += c;
     }
     probability = light.confidence;
   }
@@ -441,9 +432,9 @@ static void cvtBBoxInfo2TrafficLightElement(const BBoxInfo & d, TrafficLightElem
     element.arrow_direction = angleToArrowDirection(std::atan2(d.sin, d.cos));
     element.color = Color::GREEN;
   }
-} 
+}
 
-void CoMLOpsTLRClassifier::updateTrafficSignals(const std::vector<TrafficLightElement> & unique_elements, tier4_perception_msgs::msg::TrafficLight & traffic_signal)
+void CnnLampRecognizer::updateTrafficSignals(const std::vector<TrafficLightElement> & unique_elements, tier4_perception_msgs::msg::TrafficLight & traffic_signal)
 {
   traffic_signal.elements.clear();
   bool is_pedestrian = traffic_signal.traffic_light_type == 1;
@@ -465,7 +456,6 @@ void CoMLOpsTLRClassifier::updateTrafficSignals(const std::vector<TrafficLightEl
       default: element.color = MsgTE::UNKNOWN; break;
     }
     if(is_pedestrian || e.shape == Shape::PED) {
-      // log e.shape and e.color
       if(e.shape == Shape::PED) {
         element.shape = MsgTE::CIRCLE;
       } else {
@@ -496,7 +486,6 @@ void CoMLOpsTLRClassifier::updateTrafficSignals(const std::vector<TrafficLightEl
         element.color = MsgTE::UNKNOWN;
         break;
       default:
-        element.color = MsgTE::UNKNOWN;
         element.shape = MsgTE::UNKNOWN;
         break;
     }
@@ -504,14 +493,14 @@ void CoMLOpsTLRClassifier::updateTrafficSignals(const std::vector<TrafficLightEl
   }
 }
 
-bool CoMLOpsTLRClassifier::getTrafficSignals(
+bool CnnLampRecognizer::getTrafficSignals(
   const std::vector<cv::Mat> & images,
   tier4_perception_msgs::msg::TrafficLightArray & traffic_signals)
 {
   if (images.size() != traffic_signals.signals.size()) {
     RCLCPP_WARN(
       node_ptr_->get_logger(),
-      "CoMLOpsTLR: image count (%zu) != signal count (%zu)", images.size(),
+      "LampRecognizer: image count (%zu) != signal count (%zu)", images.size(),
       traffic_signals.signals.size());
     return false;
   }
@@ -529,7 +518,7 @@ bool CoMLOpsTLRClassifier::getTrafficSignals(
 
     preprocess(batch);
     if (!doInference(current_batch_size)) {
-      RCLCPP_ERROR(node_ptr_->get_logger(), "CoMLOpsTLR: inference failed");
+      RCLCPP_ERROR(node_ptr_->get_logger(), "LampRecognizer: inference failed");
       return false;
     }
 
@@ -569,8 +558,6 @@ bool CoMLOpsTLRClassifier::getTrafficSignals(
       }
     }
     signal_i += current_batch_size;
-    RCLCPP_INFO(
-      node_ptr_->get_logger(), "batch combined signal: %zu detections", total_detections);
     batch.clear();
   }
   return true;
