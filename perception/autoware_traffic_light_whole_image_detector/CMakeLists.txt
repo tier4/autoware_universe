@@ -52,8 +52,8 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
   ament_target_dependencies(${PROJECT_NAME}
-    ament_index_cpp autoware_cuda_utils autoware_internal_debug_msgs autoware_tensorrt_common
-    autoware_utils cv_bridge rclcpp sensor_msgs tier4_perception_msgs
+    ament_index_cpp autoware_cuda_utils autoware_internal_debug_msgs autoware_perception_msgs
+    autoware_tensorrt_common autoware_utils cv_bridge rclcpp sensor_msgs tier4_perception_msgs
   )
   target_link_libraries(${PROJECT_NAME}
     ${OpenCV_LIBRARIES}
@@ -67,7 +67,7 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
   )
   message(STATUS "TensorRT found: building whole_image_detector with inference (ComlopsDetector)")
 else()
-  message(STATUS "TensorRT/CUDA/cuDNN not all available; building stub (empty ROIs)")
+  message(STATUS "TensorRT/CUDA/cuDNN not all available; building stub (empty DetectedObjectsWithFeature)")
   ament_auto_add_library(${PROJECT_NAME} SHARED src/whole_image_detector_node_stub.cpp)
   ament_target_dependencies(${PROJECT_NAME} rclcpp sensor_msgs tier4_perception_msgs)
   rclcpp_components_register_node(${PROJECT_NAME}
@@ -79,6 +79,4 @@ endif()
 ament_auto_package(INSTALL_TO_SHARE
   launch
   config
-  data
-  models
 )

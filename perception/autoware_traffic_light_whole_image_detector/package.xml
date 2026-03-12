@@ -3,7 +3,7 @@
 <package format="3">
   <name>autoware_traffic_light_whole_image_detector</name>
   <version>0.1.0</version>
-  <description>Whole-image traffic light detector using CoMLOps regression model (ONNX). Outputs TrafficLightRoiArray.</description>
+  <description>Whole-image traffic light detector using CoMLOps regression model (ONNX). Outputs DetectedObjectsWithFeature (2D ROIs).</description>
   <maintainer email="user@example.com">User</maintainer>
   <license>Apache License 2.0</license>
 
@@ -21,6 +21,7 @@
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>autoware_perception_msgs</depend>
   <depend>tier4_perception_msgs</depend>
 
   <export>
