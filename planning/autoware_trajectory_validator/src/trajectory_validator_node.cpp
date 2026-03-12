@@ -15,6 +15,7 @@
 #include "autoware/trajectory_validator/trajectory_validator_node.hpp"
 
 #include "autoware/trajectory_validator/filter_context.hpp"
+#include "autoware/trajectory_validator/status.hpp"
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <autoware_utils_uuid/uuid_helper.hpp>
@@ -86,6 +87,7 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
 
   pub_trajectories_ = create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
 
+  debug_status_publisher_ = create_publisher<TrajectoryStatusArray>("~/debug/status", 1);
   debug_processing_time_detail_pub_ = create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
     "~/debug/processing_time_detail_ms/feasible_trajectory_filter", 1);
   time_keeper_ =
@@ -129,6 +131,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   auto filtered_msg = std::make_unique<CandidateTrajectories>();
 
   // Process and filter trajectories
+  std::vector<TrajectoryStatus> trajectory_statuses;
   for (const auto & trajectory : msg->candidate_trajectories) {
     // Apply each filter to the trajectory
 
@@ -136,29 +139,43 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
     table.generator_id = autoware_utils_uuid::to_hex_string(trajectory.generator_id);
     table.is_overall_feasible = true;
 
+    // Hashmap of validation statuses for each category
+    std::unordered_map<std::string, std::vector<TrajectoryValidationStatus>> validation_statuses;
     for (const auto & plugin : plugins_) {
       PluginEvaluation evaluation;
       evaluation.plugin_name = plugin->get_name();
 
-      if (const auto res = plugin->is_feasible(trajectory.points, context); !res) {
+      const auto result = plugin->is_feasible(trajectory.points, context);
+      if (!result) {
+        // Log error if unexpected behavior occurred while validation and skip following steps
+        RCLCPP_ERROR_THROTTLE(
+          get_logger(), *get_clock(), 1000, "Got unexpected behavior: %s", result.error().c_str());
+
+        continue;
+      } else if (!check_validation_status(result.value())) {
         RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 1000, "Not feasible: %s", res.error().c_str());
-        diagnostics_interface_.add_key_value(plugin->get_name(), res.error());
+          get_logger(), *get_clock(), 1000, "Not feasible: %s", result.value().name.c_str());
 
+        diagnostics_interface_.add_key_value(plugin->get_name(), std::string("NG"));
+
+        // Update evaluation table
         evaluation.is_feasible = false;
-        evaluation.reason = res.error();
-
+        evaluation.reason = result.value().name;
         if (!plugin->is_debug_mode()) {
           table.is_overall_feasible = false;
         }
+      } else {
+        diagnostics_interface_.add_key_value(plugin->get_name(), std::string("OK"));
       }
 
       table.evaluations[plugin->category()].push_back(evaluation);
+      validation_statuses[plugin->category()].push_back(result.value());
     }
 
     evaluation_tables_.push_back(table);
 
     if (table.is_overall_feasible) filtered_msg->candidate_trajectories.push_back(trajectory);
+    trajectory_statuses.push_back(to_trajectory_status(trajectory, validation_statuses));
   }
 
   // Also filter generator_info to match kept trajectories
@@ -174,6 +191,9 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
 
   update_diagnostic(*msg, *filtered_msg);
   pub_trajectories_->publish(*filtered_msg);
+
+  debug_status_publisher_->publish(
+    to_trajectory_status_array(get_clock()->now(), trajectory_statuses));
 }
 
 void TrajectoryValidator::map_callback(const LaneletMapBin::ConstSharedPtr msg)

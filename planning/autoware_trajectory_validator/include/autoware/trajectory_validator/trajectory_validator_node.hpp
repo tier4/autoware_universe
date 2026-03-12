@@ -28,6 +28,10 @@
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
+#include <autoware_internal_planning_msgs/msg/trajectory_category_status.hpp>
+#include <autoware_internal_planning_msgs/msg/trajectory_status.hpp>
+#include <autoware_internal_planning_msgs/msg/trajectory_status_array.hpp>
+#include <autoware_internal_planning_msgs/msg/trajectory_validation_status.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
@@ -44,6 +48,10 @@ namespace autoware::trajectory_validator
 {
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_internal_planning_msgs::msg::CandidateTrajectory;
+using autoware_internal_planning_msgs::msg::TrajectoryCategoryStatus;
+using autoware_internal_planning_msgs::msg::TrajectoryStatus;
+using autoware_internal_planning_msgs::msg::TrajectoryStatusArray;
+using autoware_internal_planning_msgs::msg::TrajectoryValidationStatus;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::TrajectoryPoint;
@@ -91,6 +99,7 @@ private:
 
   std::unique_ptr<validator::ParamListener> listener_;
 
+  rclcpp::Publisher<TrajectoryStatusArray>::SharedPtr debug_status_publisher_;
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};
