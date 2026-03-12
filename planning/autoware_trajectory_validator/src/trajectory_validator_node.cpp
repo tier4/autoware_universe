@@ -66,12 +66,13 @@ namespace autoware::trajectory_validator
 
 TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
 : Node{"trajectory_validator_node", options},
-  listener_{std::make_unique<validator::ParamListener>(get_node_parameters_interface())},
+  listener_{get_node_parameters_interface()},
+  params_(listener_.get_params()),
   plugin_loader_(
     "autoware_trajectory_validator", "autoware::trajectory_validator::plugin::ValidatorInterface"),
   vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo())
 {
-  const auto filters = listener_->get_params().filter_names;
+  const auto filters = params_.filter_names;
   for (const auto & filter : filters) {
     load_metric(filter);
   }
@@ -117,6 +118,15 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   context.lanelet_map = lanelet_map_ptr_;
   if (!context.lanelet_map) {
     return;
+  }
+
+  if (listener_.is_old(params_)) {
+    params_ = listener_.get_params();
+
+    for (const auto & plugin : plugins_) {
+      plugin->update_parameters(params_);
+    }
+    RCLCPP_INFO(get_logger(), "Dynamic parameters updated successfully.");
   }
 
   diagnostics_interface_.clear();
