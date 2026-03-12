@@ -384,8 +384,12 @@ void CollisionCheckFilter::update_parameters(const std::vector<rclcpp::Parameter
 CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
+  std::vector<TrajectoryMetricStatus> metrics;
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
-    return {};  // No objects to check collision with
+    return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+      .name(get_name())
+      .level(TrajectoryValidationStatus::OK)
+      .metrics(std::move(metrics));  // No objects to check collision with
   }
 
   rclcpp::Duration objects_reference_time = rclcpp::Time(context.predicted_objects->header.stamp) -
@@ -404,20 +408,24 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
       generate_constant_curvature_path_trajectory(object, 0.0, 0.0, objects_reference_time, 10.0));
   }
 
-  std::string error_msg{};
+  bool is_any_error = false;
   for (const auto & object_trajectory_data : object_trajectory_data_list) {
-    if (check_pet_collision(
-          ego_trajectory_data, object_trajectory_data,
-          pet_collision_params_.collision_time_threshold)) {
-      error_msg +=
-        std::string("PET collision, ID: ") + object_trajectory_data.getId() + std::string("; ");
-    }
-  }
-  if (!error_msg.empty()) {
-    return tl::make_unexpected(error_msg);
+    const bool is_collision = check_pet_collision(
+      ego_trajectory_data, object_trajectory_data, pet_collision_params_.collision_time_threshold);
+
+    is_any_error |= is_collision;
+
+    metrics.push_back(
+      autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+        .name("check_PET_collision_" + object_trajectory_data.getId())
+        .level(is_collision ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
+        .score(is_collision ? 0.0 : 1.0));
   }
 
-  return {};
+  return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+    .name(get_name())
+    .level(is_any_error ? TrajectoryValidationStatus::ERROR : TrajectoryValidationStatus::OK)
+    .metrics(std::move(metrics));
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety

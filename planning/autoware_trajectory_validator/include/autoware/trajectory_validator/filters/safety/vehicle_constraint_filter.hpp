@@ -19,6 +19,7 @@
 
 #include <array>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -30,6 +31,8 @@ namespace autoware::trajectory_validator::plugin::safety
 class VehicleConstraintFilter final : public plugin::ValidatorInterface
 {
 public:
+  using metric_result_t = std::pair<TrajectoryMetricStatus, bool>;
+
   VehicleConstraintFilter();
 
   result_t is_feasible(const TrajectoryPoints & traj_points, const FilterContext & context) final;
@@ -39,13 +42,13 @@ public:
   void update_parameters(const std::vector<rclcpp::Parameter> & parameters) final;
 
 private:
-  result_t check_speed(const TrajectoryPoints & traj_points) const;
-  result_t check_acceleration(const TrajectoryPoints & traj_points) const;
-  result_t check_deceleration(const TrajectoryPoints & traj_points) const;
-  result_t check_steering_angle(const TrajectoryPoints & traj_points) const;
-  result_t check_steering_rate(const TrajectoryPoints & traj_points) const;
+  metric_result_t check_speed(const TrajectoryPoints & traj_points) const;
+  metric_result_t check_acceleration(const TrajectoryPoints & traj_points) const;
+  metric_result_t check_deceleration(const TrajectoryPoints & traj_points) const;
+  metric_result_t check_steering_angle(const TrajectoryPoints & traj_points) const;
+  metric_result_t check_steering_rate(const TrajectoryPoints & traj_points) const;
 
-  using Checker = result_t (VehicleConstraintFilter::*)(const TrajectoryPoints &) const;
+  using Checker = metric_result_t (VehicleConstraintFilter::*)(const TrajectoryPoints &) const;
 
   inline static const std::array<Checker, 5> checkers_ = {{
     &VehicleConstraintFilter::check_speed,

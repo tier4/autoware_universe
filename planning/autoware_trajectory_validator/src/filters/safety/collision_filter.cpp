@@ -250,14 +250,19 @@ void CollisionFilter::set_parameters(rclcpp::Node & node)
 CollisionFilter::result_t CollisionFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
+  std::vector<TrajectoryMetricStatus> metrics;
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
-    return {};  // No objects to check collision with
+    return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+      .name(get_name())
+      .level(TrajectoryValidationStatus::OK)
+      .metrics(std::move(metrics));  // No objects to check collision with
   }
 
   const auto cache =
     precompute_object_positions(*context.predicted_objects, params_.max_check_time);
 
   // Check each trajectory point within time horizon
+  bool is_any_error = false;
   for (const auto & point : traj_points) {
     const double time_from_start = rclcpp::Duration(point.time_from_start).seconds();
     if (time_from_start > params_.max_check_time) {
@@ -266,14 +271,22 @@ CollisionFilter::result_t CollisionFilter::is_feasible(
 
     // Check collision with each cached object
     for (size_t obj_idx = 0; obj_idx < cache.size(); ++obj_idx) {
-      if (check_collision(point, cache, obj_idx, time_from_start)) {
-        return tl::make_unexpected(
-          fmt::format("Collision with object at time {:.2f}s", time_from_start));
-      }
+      const bool is_collision = check_collision(point, cache, obj_idx, time_from_start);
+
+      is_any_error |= is_collision;
+
+      metrics.push_back(
+        autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+          .name(fmt::format("check_collision_at_{:.2f}s", time_from_start))
+          .level(is_collision ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
+          .score(is_collision ? 0.0 : 1.0));
     }
   }
 
-  return {};
+  return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+    .name(get_name())
+    .level(is_any_error ? TrajectoryValidationStatus::ERROR : TrajectoryValidationStatus::OK)
+    .metrics(std::move(metrics));
 }
 
 void CollisionFilter::update_parameters(const std::vector<rclcpp::Parameter> & parameters)

@@ -102,11 +102,16 @@ OutOfLaneFilter::result_t OutOfLaneFilter::is_feasible(
   const bool will_leave_lane =
     boundary_departure_checker_->checkPathWillLeaveLane(context.lanelet_map, path);
 
-  // Return false if the path will leave the lane
-  if (will_leave_lane) {
-    return tl::make_unexpected("Trajectory goes out of lane boundaries");
-  }
-  return {};
+  std::vector<TrajectoryMetricStatus> metrics{
+    autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+      .name("check_path_will_leave_lane")
+      .level(will_leave_lane ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
+      .score(will_leave_lane ? 0.0 : 1.0)};
+
+  return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+    .name(get_name())
+    .level(will_leave_lane ? TrajectoryValidationStatus::ERROR : TrajectoryValidationStatus::OK)
+    .metrics(std::move(metrics));
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety
