@@ -32,36 +32,6 @@
 #include <unordered_map>
 #include <vector>
 
-namespace
-{
-// for error diagnostic. Will be removed once node is combined.
-std::unordered_map<std::string, std::string> get_generator_uuid_to_name_map(
-  const autoware_internal_planning_msgs::msg::CandidateTrajectories & candidate_trajectories)
-{
-  std::unordered_map<std::string, std::string> uuid_to_name;
-  uuid_to_name.reserve(candidate_trajectories.generator_info.size());
-  for (const auto & info : candidate_trajectories.generator_info) {
-    uuid_to_name[autoware_utils_uuid::to_hex_string(info.generator_id)] = info.generator_name.data;
-  }
-  return uuid_to_name;
-}
-
-bool has_trajectory_from_generator(
-  const std::unordered_map<std::string, std::string> & uuid_to_generator_name_map,
-  const autoware_internal_planning_msgs::msg::CandidateTrajectories & trajectories,
-  const std::string & generator_name_prefix)
-{
-  return std::any_of(
-    trajectories.candidate_trajectories.cbegin(), trajectories.candidate_trajectories.cend(),
-    [&](const autoware_internal_planning_msgs::msg::CandidateTrajectory & trajectory) {
-      const auto generator_id_str = autoware_utils_uuid::to_hex_string(trajectory.generator_id);
-      const auto generator_name_it = uuid_to_generator_name_map.find(generator_id_str);
-      return generator_name_it != uuid_to_generator_name_map.end() &&
-             generator_name_it->second.rfind(generator_name_prefix, 0) == 0;
-    });
-}
-}  // namespace
-
 namespace autoware::trajectory_validator
 {
 
@@ -261,20 +231,16 @@ void TrajectoryValidator::update_diagnostic(
   const CandidateTrajectories & input_trajectories,
   const CandidateTrajectories & filtered_trajectories)
 {
-  const auto uuid_to_name_map = get_generator_uuid_to_name_map(input_trajectories);
-  const auto input_has_diffusion_trajectories =
-    has_trajectory_from_generator(uuid_to_name_map, input_trajectories, "Diffusion");
-  const auto filtered_has_diffusion_trajectories =
-    has_trajectory_from_generator(uuid_to_name_map, filtered_trajectories, "Diffusion");
   if (
     !input_trajectories.candidate_trajectories.empty() &&
     filtered_trajectories.candidate_trajectories.empty()) {
     diagnostics_interface_.update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No feasible trajectories found");
-  } else if (input_has_diffusion_trajectories && !filtered_has_diffusion_trajectories) {
+  } else if (
+    input_trajectories.candidate_trajectories.size() !=
+    filtered_trajectories.candidate_trajectories.size()) {
     diagnostics_interface_.update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN,
-      "All diffusion planner trajectories are infeasible");
+      diagnostic_msgs::msg::DiagnosticStatus::WARN, "Some trajectories are infeasible");
   } else {
     diagnostics_interface_.update_level_and_message(diagnostic_msgs::msg::DiagnosticStatus::OK, "");
   }
