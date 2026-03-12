@@ -46,6 +46,7 @@ public:
     declare_parameter<double>("score_thresh", 0.2);
     declare_parameter<double>("nms_thresh", 0.6);
     declare_parameter<bool>("use_cuda", true);
+    declare_parameter<bool>("build_only", false);
     declare_parameter<std::string>("traffic_light_class_name", "TRAFFIC_LIGHT");
 
     std::string package_share =
@@ -91,6 +92,11 @@ public:
     } catch (const std::exception & e) {
       RCLCPP_ERROR(get_logger(), "ComlopsDetector init failed: %s", e.what());
       detector_.reset();
+    }
+    if (get_parameter("build_only").as_bool()) {
+      RCLCPP_INFO(get_logger(), "TensorRT engine built; exiting (build_only=true).");
+      rclcpp::shutdown();
+      return;
     }
 #else
     (void)onnx_path;
