@@ -17,6 +17,7 @@
 #include <pluginlib/class_list_macros.hpp>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin
@@ -39,11 +40,18 @@ public:
     }
 
     // Magic trigger: If we set velocity to -999.0 in our test, simulate a plugin rejection
-    if (traj_points.front().longitudinal_velocity_mps == -999.0) {
-      return tl::make_unexpected("Dummy filter explicitly rejected this trajectory");
-    }
+    const bool is_ok = traj_points.front().longitudinal_velocity_mps == -999.0;
 
-    return {};  // All other trajectories are feasible
+    std::vector<TrajectoryMetricStatus> metrics{
+      autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+        .name("check_dummy_metric")
+        .level(is_ok ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
+        .score(is_ok ? 0.0 : 1.0)};
+
+    return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+      .name(get_name())
+      .level(is_ok ? TrajectoryValidationStatus::ERROR : TrajectoryValidationStatus::OK)
+      .metrics(std::move(metrics));
   }
 
   void set_parameters(rclcpp::Node & node) final
@@ -58,6 +66,8 @@ public:
 
     update_param<double>(parameters, "dummy.dummy_param", params_.dummy_param);
   }
+
+  [[nodiscard]] bool is_debug_mode() const override { return false; }
 
 private:
   DummyFilterParam params_;

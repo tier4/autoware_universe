@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "../..//src/filters/safety/collision_check_filter.cpp"
+#include "autoware/trajectory_validator/status.hpp"
 
 #include <gtest/gtest.h>
 
@@ -144,7 +145,9 @@ TEST_F(CollisionCheckFilterTest, EmptyObjects)
   context.predicted_objects = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
 
   const auto result = filter_->is_feasible(ego_path, context);
-  EXPECT_TRUE(result.has_value());
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(check_validation_status(result.value()));
 }
 
 TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)
@@ -166,14 +169,9 @@ TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)
   context.predicted_objects = predicted_objects_msg;
 
   const auto result = filter_->is_feasible(ego_path, context);
-  EXPECT_TRUE(!result.has_value());
 
-  ASSERT_FALSE(result.has_value());
-  const std::string & error_msg = result.error();
-  EXPECT_NE(error_msg.find("predicted_path"), std::string::npos)
-    << "Error string did not contain 'predicted_path'. Actual: " << error_msg;
-  EXPECT_NE(error_msg.find("constant_curvature_path"), std::string::npos)
-    << "Error string did not contain 'constant_curvature_path'. Actual: " << error_msg;
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(check_validation_status(result.value()));
 }
 
 TEST_F(CollisionCheckFilterTest, ObjectWillDepartFromPath)
@@ -195,7 +193,9 @@ TEST_F(CollisionCheckFilterTest, ObjectWillDepartFromPath)
   context.predicted_objects = predicted_objects_msg;
 
   const auto result = filter_->is_feasible(ego_path, context);
-  EXPECT_TRUE(result.has_value());
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(check_validation_status(result.value()));
 }
 
 TEST_F(CollisionCheckFilterTest, ObjectWillEnterPath)
@@ -217,14 +217,9 @@ TEST_F(CollisionCheckFilterTest, ObjectWillEnterPath)
   context.predicted_objects = predicted_objects_msg;
 
   const auto result = filter_->is_feasible(ego_path, context);
-  EXPECT_TRUE(!result.has_value());
 
-  ASSERT_FALSE(result.has_value());
-  const std::string & error_msg = result.error();
-  EXPECT_NE(error_msg.find("predicted_path"), std::string::npos)
-    << "Error string did not contain 'predicted_path'. Actual: " << error_msg;
-  EXPECT_NE(error_msg.find("constant_curvature_path"), std::string::npos)
-    << "Error string did not contain 'constant_curvature_path'. Actual: " << error_msg;
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(check_validation_status(result.value()));
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety

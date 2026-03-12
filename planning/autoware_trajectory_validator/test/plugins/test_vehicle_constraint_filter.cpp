@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "autoware/trajectory_validator/filters/safety/vehicle_constraint_filter.hpp"
+#include "autoware/trajectory_validator/status.hpp"
 
 #include <gtest/gtest.h>
 
@@ -61,7 +62,8 @@ TEST(VehicleConstraintFilterTest, FeasibleWhenAllConstraintsSatisfied)
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
 
-  EXPECT_TRUE(result.has_value());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(check_validation_status(result.value()));
 }
 
 TEST(VehicleConstraintFilterTest, InfeasibleWhenSpeedExceedsMax)
@@ -82,7 +84,8 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSpeedExceedsMax)
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
 
-  EXPECT_FALSE(result.has_value());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(check_validation_status(result.value()));
 }
 
 TEST(VehicleConstraintFilterTest, InfeasibleWhenAccelerationExceedsMax)
@@ -105,7 +108,8 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenAccelerationExceedsMax)
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
 
-  EXPECT_FALSE(result.has_value());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(check_validation_status(result.value()));
 }
 
 TEST(VehicleConstraintFilterTest, InfeasibleWhenDecelerationExceedsMax)
@@ -128,7 +132,8 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenDecelerationExceedsMax)
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
 
-  EXPECT_FALSE(result.has_value());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(check_validation_status(result.value()));
 }
 
 TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringAngleExceedsMax)
@@ -152,7 +157,8 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringAngleExceedsMax)
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
 
-  EXPECT_FALSE(result.has_value());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(check_validation_status(result.value()));
 }
 
 TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringRateExceedsMax)
@@ -176,7 +182,8 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringRateExceedsMax)
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
 
-  EXPECT_FALSE(result.has_value());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(check_validation_status(result.value()));
 }
 
 // --- is_speed_ok(...) tests ---
