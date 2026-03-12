@@ -23,6 +23,7 @@ from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch.substitutions import PythonExpression
+from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import LoadComposableNodes
 from launch_ros.actions import PushRosNamespace
@@ -76,7 +77,7 @@ def create_traffic_light_node_container(namespace, context, *args, **kwargs):
 
     # parameter files
     traffic_light_whole_image_detector_param = ParameterFile(
-        param_file=LaunchConfiguration("yolox_traffic_light_detector_param_path").perform(context),
+        param_file=LaunchConfiguration("traffic_light_whole_image_detector_param_path").perform(context),
         allow_substs=True,
     )
     traffic_light_fine_detector_param = ParameterFile(
@@ -247,32 +248,30 @@ def create_traffic_light_node_container(namespace, context, *args, **kwargs):
     whole_img_detector_loader = LoadComposableNodes(
         composable_node_descriptions=[
             ComposableNode(
-                package="autoware_tensorrt_yolox",
-                plugin="autoware::tensorrt_yolox::TrtYoloXNode",
+                package="autoware_traffic_light_whole_image_detector",
+                plugin="autoware::traffic_light::WholeImageDetectorNode",
                 name=internal_node_name,
                 namespace=f"{namespace}/detection",
                 parameters=[
                     traffic_light_whole_image_detector_param,
                     {
-                        "build_only": False,
-                        "label_path": LaunchConfiguration("whole_image_detection/label_path"),
-                        "model_path": LaunchConfiguration("whole_image_detection/model_path"),
-                        "color_map_path": "",  # not used
+                        "onnx_path": LaunchConfiguration("whole_image_detection/model_path"),
+                        "names_file": LaunchConfiguration("whole_image_detection/label_path"),
                     },
                 ],
                 remappings=[
-                    ("~/in/image", camera_arguments["input/image"]),
-                    ("~/out/objects", internal_node_name + "/rois"),
-                    ("~/out/image", internal_node_name + "/debug/image"),
+                    ("~/input/image", camera_arguments["input/image"]),
+                    ("~/output/rois", internal_node_name + "/rois"),
+                    ("~/output/debug/image", internal_node_name + "/debug/image"),
                     (
-                        "~/out/image/compressed",
+                        "~/output/debug/image/compressed",
                         internal_node_name + "/debug/image/compressed",
                     ),
                     (
-                        "~/out/image/compressedDepth",
+                        "~/output/debug/image/compressedDepth",
                         internal_node_name + "/debug/image/compressedDepth",
                     ),
-                    ("~/out/image/theora", internal_node_name + "/debug/image/theora"),
+                    ("~/output/debug/image/theora", internal_node_name + "/debug/image/theora"),
                 ],
                 extra_arguments=[
                     {"use_intra_process_comms": LaunchConfiguration("use_intra_process")}
@@ -342,7 +341,14 @@ def generate_launch_description():
     # whole image detector by yolox
     add_launch_arg("whole_image_detection/model_path")
     add_launch_arg("whole_image_detection/label_path")
-    add_launch_arg("yolox_traffic_light_detector_param_path")
+    add_launch_arg(
+        "traffic_light_whole_image_detector_param_path",
+        [
+            FindPackageShare("autoware_traffic_light_whole_image_detector"),
+            "/config/whole_image_detector.param.yaml",
+        ],
+    )
+    
 
     # traffic_light_fine_detector
     add_launch_arg("fine_detection/model_path")
