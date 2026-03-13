@@ -15,7 +15,7 @@
         "path_planning": {
           "type": "object",
           "properties": {
-            "path_length  ": {
+            "path_length": {
               "type": "object",
               "properties": {
                 "backward": {
@@ -78,8 +78,7 @@
                 "enable": {
                   "type": "boolean",
                   "description": "Enable path shifting to ego pose",
-                  "default": true,
-                  "minimum": 0.0
+                  "default": true
                 },
                 "minimum_shift_length": {
                   "type": "number",
@@ -157,20 +156,17 @@
             "enable": {
               "type": "boolean",
               "description": "Enable obstacle stop [m]",
-              "default": true,
-              "minimum": 0.0
+              "default": true
             },
             "use_objects": {
               "type": "boolean",
               "description": "Enable object detection [m]",
-              "default": true,
-              "minimum": 0.0
+              "default": true
             },
             "use_pointcloud": {
               "type": "boolean",
               "description": "Enable pointcloud detection [m]",
-              "default": true,
-              "minimum": 0.0
+              "default": true
             },
             "stop_margin_m": {
               "type": "number",
@@ -359,26 +355,22 @@
             "set_engage_speed": {
               "type": "boolean",
               "description": "Set engage speed at start",
-              "default": true,
-              "minimum": 0.0
+              "default": true
             },
             "limit_speed": {
               "type": "boolean",
               "description": "Apply max speed limit",
-              "default": true,
-              "minimum": 0.0
+              "default": true
             },
             "limit_lateral_acceleration": {
               "type": "boolean",
               "description": "Apply max lateral acceleration limit",
-              "default": false,
-              "minimum": 0.0
+              "default": false
             },
             "smooth_velocities": {
               "type": "boolean",
               "description": "Apply jerk-filtered velocity smoothing",
-              "default": true,
-              "minimum": 0.0
+              "default": true
             },
             "stop_dist_to_prohibit_engage": {
               "type": "number",
@@ -445,32 +437,27 @@
             "enable_path": {
               "type": "boolean",
               "description": "Enable path debugging",
-              "default": true,
-              "minimum": 0.0
+              "default": true
             },
             "enable_shifted_trajectory": {
               "type": "boolean",
               "description": "Enable shifted trajectory debugging",
-              "default": true,
-              "minimum": 0.0
+              "default": true
             },
             "enable_optimizer_trajectory": {
               "type": "boolean",
               "description": "Enable optimizer trajectory debugging",
-              "default": true,
-              "minimum": 0.0
+              "default": true
             },
             "enable_modifier_trajectory": {
               "type": "boolean",
               "description": "Enable modifier trajectory debugging",
-              "default": true,
-              "minimum": 0.0
+              "default": true
             },
             "enable_output_trajectory": {
               "type": "boolean",
               "description": "Enable output trajectory debugging",
-              "default": true,
-              "minimum": 0.0
+              "default": true
             }
           },
           "required": [],
