@@ -22,6 +22,8 @@
 #include <rclcpp/node.hpp>
 #include <tl_expected/expected.hpp>
 
+#include <autoware_internal_planning_msgs/msg/trajectory_metric_status.hpp>
+#include <autoware_internal_planning_msgs/msg/trajectory_validation_status.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <memory>
@@ -34,10 +36,14 @@ namespace autoware::trajectory_validator::plugin
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using TrajectoryPoints = std::vector<TrajectoryPoint>;
 using VehicleInfo = autoware::vehicle_info_utils::VehicleInfo;
+using autoware_internal_planning_msgs::msg::TrajectoryMetricStatus;
+using autoware_internal_planning_msgs::msg::TrajectoryValidationStatus;
 
 class ValidatorInterface
 {
 public:
+  using result_t = tl::expected<TrajectoryValidationStatus, std::string>;
+
   explicit ValidatorInterface(std::string name) : name_(std::move(name)) {}
 
   virtual ~ValidatorInterface() = default;
@@ -47,7 +53,7 @@ public:
   ValidatorInterface & operator=(ValidatorInterface &&) = delete;
 
   // Main filter method with context for plugin-specific data
-  virtual tl::expected<void, std::string> is_feasible(
+  virtual result_t is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) = 0;
 
   virtual void set_parameters(rclcpp::Node & node) = 0;

@@ -15,6 +15,7 @@
 #include "autoware/trajectory_validator/trajectory_validator_node.hpp"
 
 #include "autoware/trajectory_validator/filter_context.hpp"
+#include "autoware/trajectory_validator/status.hpp"
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <autoware_utils_uuid/uuid_helper.hpp>
@@ -31,6 +32,8 @@
 #include <unordered_map>
 #include <vector>
 
+namespace autoware::trajectory_validator
+{
 namespace
 {
 // for error diagnostic. Will be removed once node is combined.
@@ -44,25 +47,7 @@ std::unordered_map<std::string, std::string> get_generator_uuid_to_name_map(
   }
   return uuid_to_name;
 }
-
-bool has_trajectory_from_generator(
-  const std::unordered_map<std::string, std::string> & uuid_to_generator_name_map,
-  const autoware_internal_planning_msgs::msg::CandidateTrajectories & trajectories,
-  const std::string & generator_name_prefix)
-{
-  return std::any_of(
-    trajectories.candidate_trajectories.cbegin(), trajectories.candidate_trajectories.cend(),
-    [&](const autoware_internal_planning_msgs::msg::CandidateTrajectory & trajectory) {
-      const auto generator_id_str = autoware_utils_uuid::to_hex_string(trajectory.generator_id);
-      const auto generator_name_it = uuid_to_generator_name_map.find(generator_id_str);
-      return generator_name_it != uuid_to_generator_name_map.end() &&
-             generator_name_it->second.rfind(generator_name_prefix, 0) == 0;
-    });
-}
 }  // namespace
-
-namespace autoware::trajectory_validator
-{
 
 TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
 : Node{"trajectory_validator_node", options},
@@ -86,6 +71,7 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
 
   pub_trajectories_ = create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
 
+  debug_status_publisher_ = create_publisher<TrajectoryStatusArray>("~/debug/status", 1);
   debug_processing_time_detail_pub_ = create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
     "~/debug/processing_time_detail_ms/feasible_trajectory_filter", 1);
   time_keeper_ =
@@ -130,7 +116,10 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   // Create output message for filtered trajectories
   auto filtered_msg = std::make_unique<CandidateTrajectories>();
 
+  const auto uuid_to_name = get_generator_uuid_to_name_map(*msg);
+
   // Process and filter trajectories
+  std::vector<TrajectoryStatus> trajectory_statuses;
   for (const auto & trajectory : msg->candidate_trajectories) {
     // Apply each filter to the trajectory
 
@@ -138,29 +127,52 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
     table.generator_id = autoware_utils_uuid::to_hex_string(trajectory.generator_id);
     table.is_overall_feasible = true;
 
+    // Hashmap of validation statuses for each category
+    std::unordered_map<std::string, std::vector<TrajectoryValidationStatus>> validation_statuses;
     for (const auto & plugin : plugins_) {
       PluginEvaluation evaluation;
+      evaluation.is_feasible = true;
       evaluation.plugin_name = plugin->get_name();
 
-      if (const auto res = plugin->is_feasible(trajectory.points, context); !res) {
-        RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 1000, "Not feasible: %s", res.error().c_str());
-        diagnostics_interface_.add_key_value(plugin->get_name(), res.error());
+      const auto result = plugin->is_feasible(trajectory.points, context);
+      if (!result) {
+        // NOTE: Filter out the trajectory when exception occurred while validation
+        RCLCPP_ERROR_THROTTLE(
+          get_logger(), *get_clock(), 1000, "Got unexpected behavior: %s", result.error().c_str());
 
+        diagnostics_interface_.add_key_value(plugin->get_name(), std::string("NG"));
+
+        // Update evaluation table
         evaluation.is_feasible = false;
-        evaluation.reason = res.error();
-
+        evaluation.reason = result.error();
         if (!plugin->is_debug_mode()) {
           table.is_overall_feasible = false;
         }
+      } else if (!check_validation_status(result.value())) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000, "Not feasible: %s", result.value().name.c_str());
+
+        diagnostics_interface_.add_key_value(plugin->get_name(), std::string("NG"));
+
+        // Update evaluation table
+        evaluation.is_feasible = false;
+        evaluation.reason = result.value().name;
+        if (!plugin->is_debug_mode()) {
+          table.is_overall_feasible = false;
+        }
+      } else {
+        diagnostics_interface_.add_key_value(plugin->get_name(), std::string("OK"));
       }
 
       table.evaluations[plugin->category()].push_back(evaluation);
+      validation_statuses[plugin->category()].push_back(result.value());
     }
 
     evaluation_tables_.push_back(table);
 
     if (table.is_overall_feasible) filtered_msg->candidate_trajectories.push_back(trajectory);
+    trajectory_statuses.push_back(
+      to_trajectory_status(trajectory, validation_statuses, uuid_to_name));
   }
 
   // Also filter generator_info to match kept trajectories
@@ -176,6 +188,9 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
 
   update_diagnostic(*msg, *filtered_msg);
   pub_trajectories_->publish(*filtered_msg);
+
+  debug_status_publisher_->publish(
+    to_trajectory_status_array(get_clock()->now(), trajectory_statuses));
 }
 
 void TrajectoryValidator::map_callback(const LaneletMapBin::ConstSharedPtr msg)
@@ -243,20 +258,16 @@ void TrajectoryValidator::update_diagnostic(
   const CandidateTrajectories & input_trajectories,
   const CandidateTrajectories & filtered_trajectories)
 {
-  const auto uuid_to_name_map = get_generator_uuid_to_name_map(input_trajectories);
-  const auto input_has_diffusion_trajectories =
-    has_trajectory_from_generator(uuid_to_name_map, input_trajectories, "Diffusion");
-  const auto filtered_has_diffusion_trajectories =
-    has_trajectory_from_generator(uuid_to_name_map, filtered_trajectories, "Diffusion");
   if (
     !input_trajectories.candidate_trajectories.empty() &&
     filtered_trajectories.candidate_trajectories.empty()) {
     diagnostics_interface_.update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No feasible trajectories found");
-  } else if (input_has_diffusion_trajectories && !filtered_has_diffusion_trajectories) {
+  } else if (
+    input_trajectories.candidate_trajectories.size() !=
+    filtered_trajectories.candidate_trajectories.size()) {
     diagnostics_interface_.update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN,
-      "All diffusion planner trajectories are infeasible");
+      diagnostic_msgs::msg::DiagnosticStatus::WARN, "Some trajectories are infeasible");
   } else {
     diagnostics_interface_.update_level_and_message(diagnostic_msgs::msg::DiagnosticStatus::OK, "");
   }

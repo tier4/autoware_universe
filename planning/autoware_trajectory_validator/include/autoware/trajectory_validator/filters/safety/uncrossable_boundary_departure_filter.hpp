@@ -31,8 +31,7 @@ class UncrossableBoundaryDepartureFilter : public plugin::ValidatorInterface
 public:
   UncrossableBoundaryDepartureFilter() : ValidatorInterface("UncrossableBoundaryDepartureFilter") {}
 
-  tl::expected<void, std::string> is_feasible(
-    const TrajectoryPoints & traj_points, const FilterContext & context) final;
+  result_t is_feasible(const TrajectoryPoints & traj_points, const FilterContext & context) final;
 
   void set_parameters([[maybe_unused]] rclcpp::Node & node) final {}
 

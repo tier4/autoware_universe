@@ -16,10 +16,12 @@
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
 {
-tl::expected<void, std::string> UncrossableBoundaryDepartureFilter::is_feasible(
+UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   if (const auto has_invalid_input = is_invalid_input(traj_points, context)) {
@@ -41,12 +43,21 @@ tl::expected<void, std::string> UncrossableBoundaryDepartureFilter::is_feasible(
     return tl::make_unexpected(departure_data.error());
   }
 
-  if (!departure_data->critical_departure_points.empty()) {
-    return tl::make_unexpected("Found critical departure");
-  }
+  bool found_critical_depature = !departure_data->critical_departure_points.empty();
 
-  return {};
+  std::vector<TrajectoryMetricStatus> metrics{
+    autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+      .name("check_critical_departure")
+      .level(found_critical_depature ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
+      .score(0.0)};  // To be updated
+
+  return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+    .name(get_name())
+    .level(
+      found_critical_depature ? TrajectoryValidationStatus::ERROR : TrajectoryValidationStatus::OK)
+    .metrics(std::move(metrics));
 }
+
 std::optional<std::string> UncrossableBoundaryDepartureFilter::is_invalid_input(
   const TrajectoryPoints & traj_points, const FilterContext & context) const
 {

@@ -18,8 +18,6 @@
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
-#include <fmt/format.h>
-
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -247,17 +245,22 @@ void CollisionFilter::set_parameters(rclcpp::Node & node)
   params_.min_ttc = get_or_declare_parameter<double>(node, "collision.min_value");
 }
 
-tl::expected<void, std::string> CollisionFilter::is_feasible(
+CollisionFilter::result_t CollisionFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
+  std::vector<TrajectoryMetricStatus> metrics;
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
-    return {};  // No objects to check collision with
+    return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+      .name(get_name())
+      .level(TrajectoryValidationStatus::OK)
+      .metrics(std::move(metrics));  // No objects to check collision with
   }
 
   const auto cache =
     precompute_object_positions(*context.predicted_objects, params_.max_check_time);
 
   // Check each trajectory point within time horizon
+  bool is_overall_ok = true;
   for (const auto & point : traj_points) {
     const double time_from_start = rclcpp::Duration(point.time_from_start).seconds();
     if (time_from_start > params_.max_check_time) {
@@ -266,14 +269,21 @@ tl::expected<void, std::string> CollisionFilter::is_feasible(
 
     // Check collision with each cached object
     for (size_t obj_idx = 0; obj_idx < cache.size(); ++obj_idx) {
-      if (check_collision(point, cache, obj_idx, time_from_start)) {
-        return tl::make_unexpected(
-          fmt::format("Collision with object at time {:.2f}s", time_from_start));
-      }
+      // NOTE: Once an error occurred validation level will be ERROR
+      is_overall_ok = is_overall_ok && !check_collision(point, cache, obj_idx, time_from_start);
     }
   }
 
-  return {};
+  metrics.push_back(
+    autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+      .name("check_collision")
+      .level(is_overall_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
+      .score(0.0));  // To be updated
+
+  return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+    .name(get_name())
+    .level(is_overall_ok ? TrajectoryValidationStatus::OK : TrajectoryValidationStatus::ERROR)
+    .metrics(std::move(metrics));
 }
 
 void CollisionFilter::update_parameters(const std::vector<rclcpp::Parameter> & parameters)

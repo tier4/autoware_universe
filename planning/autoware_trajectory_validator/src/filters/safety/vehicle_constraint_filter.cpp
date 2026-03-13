@@ -17,7 +17,9 @@
 #include <autoware_utils_geometry/geometry.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
 
+#include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -130,71 +132,89 @@ VehicleConstraintFilter::result_t VehicleConstraintFilter::is_feasible(
     return tl::make_unexpected("Vehicle info not set");
   }
 
-  // NOTE: Feasibility decision logic might be more complex in the future, but for now we just
-  // check all constraints and return false if any are violated
+  // NOTE: Feasibility decision logic might be more complex in the future
+  std::vector<TrajectoryMetricStatus> metrics;
+  bool is_overall_ok = true;
   for (const auto & checker : checkers_) {
-    const auto result = (this->*checker)(traj_points);
-    if (!result) {
-      return result;
-    }
+    auto [status, is_ok] = (this->*checker)(traj_points);
+
+    // NOTE: Once an error occurred validation level will be ERROR
+    is_overall_ok = is_overall_ok && is_ok;
+
+    metrics.push_back(std::move(status));
   }
 
-  return {};
+  return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+    .name(get_name())
+    .level(is_overall_ok ? TrajectoryValidationStatus::OK : TrajectoryValidationStatus::ERROR)
+    .metrics(std::move(metrics));
 }
 
-VehicleConstraintFilter::result_t VehicleConstraintFilter::check_speed(
+VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_speed(
   const TrajectoryPoints & traj_points) const
 {
-  if (is_speed_ok(traj_points, params_.max_speed)) {
-    return {};
-  }
+  const bool is_ok = is_speed_ok(traj_points, params_.max_speed);
 
-  return tl::make_unexpected(
-    "Trajectory violates constraint speed: " + std::to_string(params_.max_speed));
+  return {
+    autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+      .name("check_speed")
+      .level(is_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
+      .score(0.0),  // To be updated
+    is_ok};
 }
 
-VehicleConstraintFilter::result_t VehicleConstraintFilter::check_acceleration(
+VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_acceleration(
   const TrajectoryPoints & traj_points) const
 {
-  if (is_acceleration_ok(traj_points, params_.max_acceleration)) {
-    return {};
-  }
+  const bool is_ok = is_acceleration_ok(traj_points, params_.max_acceleration);
 
-  return tl::make_unexpected(
-    "Trajectory violates constraint acceleration: " + std::to_string(params_.max_acceleration));
+  return {
+    autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+      .name("check_acceleration")
+      .level(is_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
+      .score(0.0),  // To be updated
+    is_ok};
 }
 
-VehicleConstraintFilter::result_t VehicleConstraintFilter::check_deceleration(
+VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_deceleration(
   const TrajectoryPoints & traj_points) const
 {
-  if (is_deceleration_ok(traj_points, params_.max_deceleration)) {
-    return {};
-  }
+  const bool is_ok = is_deceleration_ok(traj_points, params_.max_deceleration);
 
-  return tl::make_unexpected(
-    "Trajectory violates constraint deceleration: " + std::to_string(params_.max_deceleration));
+  return {
+    autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+      .name("check_deceleration")
+      .level(is_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
+      .score(0.0),  // To be updated
+    is_ok};
 }
 
-VehicleConstraintFilter::result_t VehicleConstraintFilter::check_steering_angle(
+VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_steering_angle(
   const TrajectoryPoints & traj_points) const
 {
-  if (is_steering_angle_ok(traj_points, *vehicle_info_ptr_, params_.max_steering_angle)) {
-    return {};
-  }
+  const bool is_ok =
+    is_steering_angle_ok(traj_points, *vehicle_info_ptr_, params_.max_steering_angle);
 
-  return tl::make_unexpected(
-    "Trajectory violates constraint steering angle: " + std::to_string(params_.max_steering_angle));
+  return {
+    autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+      .name("check_steering_angle")
+      .level(is_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
+      .score(0.0),  // To be updated
+    is_ok};
 }
 
-VehicleConstraintFilter::result_t VehicleConstraintFilter::check_steering_rate(
+VehicleConstraintFilter::metric_t VehicleConstraintFilter::check_steering_rate(
   const TrajectoryPoints & traj_points) const
 {
-  if (is_steering_rate_ok(traj_points, *vehicle_info_ptr_, params_.max_steering_rate)) {
-    return {};
-  }
+  const bool is_ok =
+    is_steering_rate_ok(traj_points, *vehicle_info_ptr_, params_.max_steering_rate);
 
-  return tl::make_unexpected(
-    "Trajectory violates constraint steering rate: " + std::to_string(params_.max_steering_rate));
+  return {
+    autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+      .name("check_steering_rate")
+      .level(is_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
+      .score(0.0),  // To be updated
+    is_ok};
 }
 
 // --- Helper functions for constraint checks ---

@@ -19,7 +19,6 @@
 
 #include <lanelet2_core/Forward.h>
 
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -44,8 +43,7 @@ class TrafficLightFilter : public ValidatorInterface
 public:
   TrafficLightFilter();
 
-  tl::expected<void, std::string> is_feasible(
-    const TrajectoryPoints & traj_points, const FilterContext & context) final;
+  result_t is_feasible(const TrajectoryPoints & traj_points, const FilterContext & context) final;
 
   void set_parameters(rclcpp::Node & node) final;
 

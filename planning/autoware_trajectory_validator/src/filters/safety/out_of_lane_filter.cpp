@@ -22,6 +22,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -86,7 +87,7 @@ void OutOfLaneFilter::update_parameters(const std::vector<rclcpp::Parameter> & p
   autoware_utils_rclcpp::update_param(parameters, "out_of_lane.min_value", params_.min_value);
 }
 
-tl::expected<void, std::string> OutOfLaneFilter::is_feasible(
+OutOfLaneFilter::result_t OutOfLaneFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   // Check required context data
@@ -102,11 +103,16 @@ tl::expected<void, std::string> OutOfLaneFilter::is_feasible(
   const bool will_leave_lane =
     boundary_departure_checker_->checkPathWillLeaveLane(context.lanelet_map, path);
 
-  // Return false if the path will leave the lane
-  if (will_leave_lane) {
-    return tl::make_unexpected("Trajectory goes out of lane boundaries");
-  }
-  return {};
+  std::vector<TrajectoryMetricStatus> metrics{
+    autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+      .name("check_path_will_leave_lane")
+      .level(will_leave_lane ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
+      .score(0.0)};  // To be updated
+
+  return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+    .name(get_name())
+    .level(will_leave_lane ? TrajectoryValidationStatus::ERROR : TrajectoryValidationStatus::OK)
+    .metrics(std::move(metrics));
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety

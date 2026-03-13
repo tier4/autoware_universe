@@ -29,10 +29,9 @@
 
 #include <boost/range/iterator_range.hpp>
 
-#include <any>
-#include <memory>
+#include <algorithm>
 #include <string>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -132,7 +131,7 @@ class CollisionCheckFilter : public plugin::ValidatorInterface
 public:
   CollisionCheckFilter() : ValidatorInterface("CollisionCheckFilter") {}
 
-  tl::expected<void, std::string> is_feasible(
+  result_t is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) override;
 
   void set_parameters(rclcpp::Node & node) final;

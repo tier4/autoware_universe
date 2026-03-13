@@ -23,12 +23,8 @@
 #include <boost/geometry.hpp>
 
 #include <algorithm>
-#include <any>
 #include <cmath>
-#include <limits>
-#include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -444,7 +440,7 @@ void CollisionCheckFilter::update_parameters(const std::vector<rclcpp::Parameter
 }
 
 // todo(takagi): separate the core logic which returns detailed collision information.
-tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
+CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   // autoware_utils::StopWatch<std::chrono::microseconds> stopwatch;
@@ -455,14 +451,20 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
     // std::cerr
     //   << "CollisionCheckFilter: No predicted objects, skipping collision check. Time taken: "
     //   << total_time_us / 1000.0 << " ms" << std::endl;
-    return {};  // No objects to check collision with
+    return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+      .name(get_name())
+      .level(TrajectoryValidationStatus::OK)
+      .metrics({});  // No objects to check collision with
   }
 
   if (traj_points.empty()) {
     // const auto total_time_us = stopwatch.toc();
     // std::cerr << "CollisionCheckFilter: Empty trajectory, skipping collision check. Time taken: "
     //           << total_time_us / 1000.0 << " ms" << std::endl;
-    return {};  // No trajectory to check
+    return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+      .name(get_name())
+      .level(TrajectoryValidationStatus::OK)
+      .metrics({});  // No trajectory to check
   }
 
   rclcpp::Duration objects_reference_time = rclcpp::Time(context.predicted_objects->header.stamp) -
@@ -486,29 +488,34 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
       ego_consider_time_for_pet + pet_collision_params_.collision_time_threshold));
   }
 
-  std::string error_msg{};
+  std::vector<TrajectoryMetricStatus> metrics;
+  bool is_overall_ok = true;
   for (const auto & object_trajectory_data : object_trajectory_data_list) {
-    auto [pet, ttc] = compute_pet_and_ttc(
+    const auto [pet, ttc] = compute_pet_and_ttc(
       ego_trajectory_data, object_trajectory_data, pet_collision_params_.collision_time_threshold);
-    if (pet.has_value()) {
-      error_msg += std::string("PET collision, ID: ") + object_trajectory_data.getId() +
-                   std::string(", PET: ") + std::to_string(pet.value()) + std::string(", TTC: ") +
-                   (ttc.has_value() ? std::to_string(ttc.value()) : "N/A") + std::string("; ");
-    }
-  }
-  if (!error_msg.empty()) {
-    // const auto total_time_us = stopwatch.toc();
-    // std::cerr << "CollisionCheckFilter: " << error_msg << " Time taken: " << total_time_us /
-    // 1000.0
-    //           << " ms" << std::endl;
-    RCLCPP_WARN(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", error_msg.c_str());
-    return tl::make_unexpected(error_msg);
+
+    const auto is_pet_ok = !pet.has_value();
+    const auto is_ttc_ok = !ttc.has_value();
+
+    is_overall_ok = is_overall_ok && is_pet_ok;
+
+    metrics.push_back(
+      autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+        .name("check_PET_collision_" + object_trajectory_data.getId())
+        .level(is_pet_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
+        .score(pet.value_or(0.0)));
+
+    metrics.push_back(
+      autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+        .name("check_TTC_collision_" + object_trajectory_data.getId())
+        .level(is_ttc_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
+        .score(ttc.value_or(0.0)));
   }
 
-  // const auto total_time_us = stopwatch.toc();
-  // std::cerr << "CollisionCheckFilter: No collisions detected. Time taken: "
-  //           << total_time_us / 1000.0 << " ms" << std::endl;
-  return {};
+  return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+    .name(get_name())
+    .level(is_overall_ok ? TrajectoryValidationStatus::OK : TrajectoryValidationStatus::ERROR)
+    .metrics(std::move(metrics));
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety
