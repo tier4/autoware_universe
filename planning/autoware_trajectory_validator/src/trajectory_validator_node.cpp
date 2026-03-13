@@ -113,15 +113,23 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
     std::unordered_map<std::string, std::vector<TrajectoryValidationStatus>> validation_statuses;
     for (const auto & plugin : plugins_) {
       PluginEvaluation evaluation;
+      evaluation.is_feasible = true;
       evaluation.plugin_name = plugin->get_name();
 
       const auto result = plugin->is_feasible(trajectory.points, context);
       if (!result) {
-        // Log error if unexpected behavior occurred while validation and skip following steps
+        // NOTE: Filter out the trajectory when exception occurred while validation
         RCLCPP_ERROR_THROTTLE(
           get_logger(), *get_clock(), 1000, "Got unexpected behavior: %s", result.error().c_str());
 
-        continue;
+        diagnostics_interface_.add_key_value(plugin->get_name(), std::string("NG"));
+
+        // Update evaluation table
+        evaluation.is_feasible = false;
+        evaluation.reason = result.error();
+        if (!plugin->is_debug_mode()) {
+          table.is_overall_feasible = false;
+        }
       } else if (!check_validation_status(result.value())) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000, "Not feasible: %s", result.value().name.c_str());
