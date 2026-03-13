@@ -278,7 +278,7 @@ CollisionFilter::result_t CollisionFilter::is_feasible(
     autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
       .name("check_collision")
       .level(is_overall_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
-      .score(is_overall_ok ? 1.0 : 0.0));
+      .score(0.0));  // To be updated
 
   return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
     .name(get_name())

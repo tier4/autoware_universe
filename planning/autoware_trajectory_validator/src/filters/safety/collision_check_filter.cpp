@@ -420,7 +420,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
       autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
         .name("check_PET_collision_" + object_trajectory_data.getId())
         .level(is_collision ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
-        .score(is_collision ? 0.0 : 1.0));
+        .score(0.0));  // To be updated
   }
 
   return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()

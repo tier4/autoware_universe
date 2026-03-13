@@ -22,6 +22,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -106,7 +107,7 @@ OutOfLaneFilter::result_t OutOfLaneFilter::is_feasible(
     autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
       .name("check_path_will_leave_lane")
       .level(will_leave_lane ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
-      .score(will_leave_lane ? 0.0 : 1.0)};
+      .score(0.0)};  // To be updated
 
   return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
     .name(get_name())

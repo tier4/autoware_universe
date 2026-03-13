@@ -16,6 +16,8 @@
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
 {
@@ -47,7 +49,7 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
     autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
       .name("check_critical_departure")
       .level(found_critical_depature ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
-      .score(found_critical_depature ? 0.0 : 1.0)};
+      .score(0.0)};  // To be updated
 
   return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
     .name(get_name())
