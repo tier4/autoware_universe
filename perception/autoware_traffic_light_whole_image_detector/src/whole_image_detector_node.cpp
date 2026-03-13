@@ -53,6 +53,32 @@ public:
       ament_index_cpp::get_package_share_directory("autoware_traffic_light_whole_image_detector");
     std::string onnx_path = resolvePath(get_parameter("onnx_path").as_string(), package_share);
     std::string names_path = resolvePath(get_parameter("names_file").as_string(), package_share);
+    {
+      // log all parameters at startup for easier debugging
+      RCLCPP_INFO(get_logger(), "Parameters:");
+      RCLCPP_INFO(get_logger(), "  onnx_path: %s", onnx_path.c_str());
+      RCLCPP_INFO(get_logger(), "  names_file: %s", names_path.c_str());
+      RCLCPP_INFO(get_logger(), "  precision: %s", get_parameter("precision").as_string().c_str());
+      RCLCPP_INFO(get_logger(), "  calibration_images: %s", get_parameter("calibration_images").as_string().c_str()); 
+      RCLCPP_INFO(get_logger(), "  calib: %s", get_parameter("calib").as_string().c_str());
+      RCLCPP_INFO(get_logger(), "  sparse: %s", get_parameter("sparse").as_bool() ? "true" : "false");
+      RCLCPP_INFO(get_logger(), "  anchors: [%s]", [&]() {
+        std::string s;
+        for (size_t i = 0; i < get_parameter("anchors").as_integer_array().size(); ++i) {
+          s += std::to_string(get_parameter("anchors").as_integer_array().at(i));
+          if (i != get_parameter("anchors").as_integer_array().size() - 1) s += ", ";
+        }
+        return s;
+      }());
+      RCLCPP_INFO(get_logger(), "  num_anchors: %d", get_parameter("num_anchors").as_int());
+      RCLCPP_INFO(get_logger(), "  num_classes: %d", get_parameter("num_classes").as_int());
+      RCLCPP_INFO(get_logger(), "  score_thresh: %f", get_parameter("score_thresh").as_double());
+      RCLCPP_INFO(get_logger(), "  nms_thresh: %f", get_parameter("nms_thresh").as_double());
+      RCLCPP_INFO(get_logger(), "  use_cuda: %s", get_parameter("use_cuda").as_bool() ? "true" : "false");
+      RCLCPP_INFO(get_logger(), "  build_only: %s", get_parameter("build_only").as_bool() ? "true" : "false");
+      RCLCPP_INFO(get_logger(), "  traffic_light_class_name: %s", get_parameter("traffic_light_class_name").as_string().c_str()); 
+      
+    }
 
     names_ = whole_image_detector::loadNames(names_path);
     if (names_.empty()) {
