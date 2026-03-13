@@ -70,8 +70,7 @@ TrafficLightClassifierNodelet::TrafficLightClassifierNodelet(const rclcpp::NodeO
     classifier_ptr_ = std::make_shared<CnnLampRecognizer>(this);
 #else
     RCLCPP_ERROR(
-      this->get_logger(),
-      "please install CUDA, CUDNN and TensorRT to use LampRecognizer");
+      this->get_logger(), "please install CUDA, CUDNN and TensorRT to use LampRecognizer");
 #endif
   }
 

@@ -42,22 +42,25 @@ namespace autoware::traffic_light
 {
 
 // --- Detection / geometry types ---
-struct BBox {
+struct BBox
+{
   float x1{0.f}, y1{0.f};
   float x2{0.f}, y2{0.f};
 };
 
-struct KeypointInfo {
+struct KeypointInfo
+{
   float x{0.f}, y{0.f};
 };
 
-struct BBoxInfo {
+struct BBoxInfo
+{
   BBox box;
   int label{0};
-  int classId{0};       // type: circle=0, arrow=1, uturn=2, ped=3, number=4, cross=5
+  int classId{0};  // type: circle=0, arrow=1, uturn=2, ped=3, number=4, cross=5
   float prob{0.f};
   bool isHierarchical{false};
-  int subClassId{0};     // color: green=0, amber=1, red=2
+  int subClassId{0};  // color: green=0, amber=1, red=2
   float sin{0.f};
   float cos{1.f};
   std::vector<KeypointInfo> keypoint;
@@ -88,7 +91,8 @@ enum class Shape {
   UNKNOWN = 6,
 };
 
-struct TrafficLightElement {
+struct TrafficLightElement
+{
   Color color;
   Shape shape;
   ArrowDirection arrow_direction;
@@ -96,7 +100,8 @@ struct TrafficLightElement {
   float confidence{0.f};
 };
 
-struct UniqueTrafficLightElement {
+struct UniqueTrafficLightElement
+{
   Color color;
   Shape shape;
   BBox box;
@@ -130,8 +135,7 @@ private:
     const std::vector<TrafficLightElement> & elements,
     tier4_perception_msgs::msg::TrafficLight & traffic_signal);
   void outputDebugImage(
-    cv::Mat & debug_image,
-    const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
+    cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
     const std::vector<TrafficLightElement> * elements = nullptr);
 
   rclcpp::Node * node_ptr_;
