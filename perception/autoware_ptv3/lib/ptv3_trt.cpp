@@ -288,7 +288,9 @@ bool PTv3TRT::preProcess(const std::shared_ptr<const cuda_blackboard::CudaPointC
       rclcpp::get_logger("ptv3"), "Actual number of voxels ("
                                     << num_voxels_
                                     << ") is over the limit for the actual optimization profile ("
-                                    << config_.max_num_voxels_ << "). Clipping to the limit.");
+                                    << config_.max_num_voxels_ << "). Clipping to the limit. "
+                                    << "Voxel size: [" << config_.voxel_x_size_ << ", "
+                                    << config_.voxel_y_size_ << ", " << config_.voxel_z_size_ << "]");
     num_voxels_ = config_.max_num_voxels_;
   }
 
