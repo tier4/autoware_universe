@@ -54,12 +54,18 @@ constexpr float TLR_ANCHORS[TLR_NUM_ANCHORS * 2] = {7.0f, 7.0f, 14.0f, 14.0f, 42
 ArrowDirection angleToArrowDirection(float angle_rad)
 {
   if (angle_rad >= -kPi / 8.0f && angle_rad < kPi / 8.0f) return ArrowDirection::UP_ARROW;
-  if (angle_rad >= kPi / 8.0f && angle_rad < 3.0f * kPi / 8.0f) return ArrowDirection::UP_RIGHT_ARROW;
-  if (angle_rad >= 3.0f * kPi / 8.0f && angle_rad < 5.0f * kPi / 8.0f) return ArrowDirection::RIGHT_ARROW;
-  if (angle_rad >= 5.0f * kPi / 8.0f && angle_rad < 7.0f * kPi / 8.0f) return ArrowDirection::DOWN_RIGHT_ARROW;
-  if (angle_rad >= 7.0f * kPi / 8.0f || angle_rad < -7.0f * kPi / 8.0f) return ArrowDirection::DOWN_ARROW;
-  if (angle_rad >= -7.0f * kPi / 8.0f && angle_rad < -5.0f * kPi / 8.0f) return ArrowDirection::DOWN_LEFT_ARROW;
-  if (angle_rad >= -5.0f * kPi / 8.0f && angle_rad < -3.0f * kPi / 8.0f) return ArrowDirection::LEFT_ARROW;
+  if (angle_rad >= kPi / 8.0f && angle_rad < 3.0f * kPi / 8.0f)
+    return ArrowDirection::UP_RIGHT_ARROW;
+  if (angle_rad >= 3.0f * kPi / 8.0f && angle_rad < 5.0f * kPi / 8.0f)
+    return ArrowDirection::RIGHT_ARROW;
+  if (angle_rad >= 5.0f * kPi / 8.0f && angle_rad < 7.0f * kPi / 8.0f)
+    return ArrowDirection::DOWN_RIGHT_ARROW;
+  if (angle_rad >= 7.0f * kPi / 8.0f || angle_rad < -7.0f * kPi / 8.0f)
+    return ArrowDirection::DOWN_ARROW;
+  if (angle_rad >= -7.0f * kPi / 8.0f && angle_rad < -5.0f * kPi / 8.0f)
+    return ArrowDirection::DOWN_LEFT_ARROW;
+  if (angle_rad >= -5.0f * kPi / 8.0f && angle_rad < -3.0f * kPi / 8.0f)
+    return ArrowDirection::LEFT_ARROW;
   return ArrowDirection::UP_LEFT_ARROW;
 }
 
@@ -84,12 +90,12 @@ static float boxIou(const BBox & bbox1, const BBox & bbox2)
 }
 
 static void runNms(
-  std::vector<BBoxInfo> & detections, float iou_threshold,
-  std::vector<BBoxInfo> & out)
+  std::vector<BBoxInfo> & detections, float iou_threshold, std::vector<BBoxInfo> & out)
 {
   out.clear();
   if (detections.empty()) return;
-  std::stable_sort(detections.begin(), detections.end(),
+  std::stable_sort(
+    detections.begin(), detections.end(),
     [](const BBoxInfo & b1, const BBoxInfo & b2) { return b1.prob > b2.prob; });
   for (const auto & i : detections) {
     bool keep = true;
@@ -114,8 +120,7 @@ CnnLampRecognizer::CnnLampRecognizer(rclcpp::Node * node_ptr) : node_ptr_(node_p
   const std::string precision = node_ptr_->declare_parameter<std::string>("precision");
   score_threshold_ =
     static_cast<float>(node_ptr_->declare_parameter<double>("score_threshold", 0.2));
-  nms_threshold_ =
-    static_cast<float>(node_ptr_->declare_parameter<double>("nms_threshold", 0.5));
+  nms_threshold_ = static_cast<float>(node_ptr_->declare_parameter<double>("nms_threshold", 0.5));
   max_batch_size_ = node_ptr_->declare_parameter<int>("max_batch_size", 64);
   const int default_input_h = node_ptr_->declare_parameter<int>("input_height", 64);
   const int default_input_w = node_ptr_->declare_parameter<int>("input_width", 64);
@@ -151,8 +156,7 @@ CnnLampRecognizer::CnnLampRecognizer(rclcpp::Node * node_ptr) : node_ptr_(node_p
   dim_max.d[3] = input_width_;
 
   auto profile_dims = std::make_unique<std::vector<autoware::tensorrt_common::ProfileDims>>();
-  profile_dims->push_back(
-    autoware::tensorrt_common::ProfileDims(0, dim_min, dim_opt, dim_max));
+  profile_dims->push_back(autoware::tensorrt_common::ProfileDims(0, dim_min, dim_opt, dim_max));
 
   if (!trt_common_->setup(std::move(profile_dims), nullptr)) {
     throw std::runtime_error("CnnLampRecognizer: Failed to setup TensorRT engine");
@@ -188,8 +192,8 @@ CnnLampRecognizer::CnnLampRecognizer(rclcpp::Node * node_ptr) : node_ptr_(node_p
     output_h_[o] = autoware::cuda_utils::make_unique_host<float[]>(vol, cudaHostAllocPortable);
   }
 
-  const size_t input_vol = static_cast<size_t>(max_batch_size_) * input_c_ * input_height_ *
-                            input_width_;
+  const size_t input_vol =
+    static_cast<size_t>(max_batch_size_) * input_c_ * input_height_ * input_width_;
   input_d_ = autoware::cuda_utils::make_unique<float[]>(input_vol);
 }
 
@@ -197,8 +201,8 @@ void CnnLampRecognizer::preprocess(const std::vector<cv::Mat> & images)
 {
   const float scale = 1.0f / 255.0f;
   const cv::Size input_size(input_width_, input_height_);
-  cv::Mat blob = cv::dnn::blobFromImages(
-    images, scale, input_size, cv::Scalar(0, 0, 0), false, false, CV_32F);
+  cv::Mat blob =
+    cv::dnn::blobFromImages(images, scale, input_size, cv::Scalar(0, 0, 0), false, false, CV_32F);
   if (!blob.isContinuous()) {
     blob = blob.clone();
   }
@@ -234,8 +238,8 @@ bool CnnLampRecognizer::doInference(size_t batch_size)
     for (int32_t j = 1; j < dims.nbDims; ++j) {
       if (dims.d[j] <= 0) dims.d[j] = 1;
     }
-    const size_t output_size =
-      std::accumulate(dims.d, dims.d + dims.nbDims, static_cast<size_t>(1), std::multiplies<size_t>());
+    const size_t output_size = std::accumulate(
+      dims.d, dims.d + dims.nbDims, static_cast<size_t>(1), std::multiplies<size_t>());
     CHECK_CUDA_ERROR(cudaMemcpyAsync(
       output_h_.at(i).get(), output_d_.at(i).get(), output_size * sizeof(float),
       cudaMemcpyDeviceToHost, *stream_));
@@ -343,7 +347,6 @@ void CnnLampRecognizer::decodeTlrOutput(
   }
 }
 
-
 void CnnLampRecognizer::outputDebugImage(
   cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
   const std::vector<TrafficLightElement> * unique_elements)
@@ -366,8 +369,8 @@ void CnnLampRecognizer::outputDebugImage(
       cv::rectangle(debug_image, cv::Point(x1, y1), cv::Point(x2, y2), colors[color_idx], 2);
       const std::string prob_str = std::to_string(static_cast<int>(d.confidence * 100)) + "%";
       cv::putText(
-        debug_image, prob_str, cv::Point(x1, std::max(12, y1 - 2)), cv::FONT_HERSHEY_SIMPLEX,
-        0.4, colors[color_idx], 1);
+        debug_image, prob_str, cv::Point(x1, std::max(12, y1 - 2)), cv::FONT_HERSHEY_SIMPLEX, 0.4,
+        colors[color_idx], 1);
     }
   }
 
@@ -397,12 +400,12 @@ void CnnLampRecognizer::outputDebugImage(
     if (i > 0) label += ",";
     const std::string c = colorStr(light.color);
     const std::string sh = shapeStr(light.shape);
-    bool is_arrow = (light.shape != MsgTE::CIRCLE &&
-                     light.shape != MsgTE::CROSS &&
-                     light.shape != MsgTE::UNKNOWN);
+    bool is_arrow =
+      (light.shape != MsgTE::CIRCLE && light.shape != MsgTE::CROSS &&
+       light.shape != MsgTE::UNKNOWN);
     if (is_arrow) {
       label += sh;
-    } else if(is_pedestrian) {
+    } else if (is_pedestrian) {
       label += "ped_" + c;
     } else {
       label += c;
@@ -434,7 +437,9 @@ static void cvtBBoxInfo2TrafficLightElement(const BBoxInfo & d, TrafficLightElem
   }
 }
 
-void CnnLampRecognizer::updateTrafficSignals(const std::vector<TrafficLightElement> & unique_elements, tier4_perception_msgs::msg::TrafficLight & traffic_signal)
+void CnnLampRecognizer::updateTrafficSignals(
+  const std::vector<TrafficLightElement> & unique_elements,
+  tier4_perception_msgs::msg::TrafficLight & traffic_signal)
 {
   traffic_signal.elements.clear();
   bool is_pedestrian = traffic_signal.traffic_light_type == 1;
@@ -450,13 +455,21 @@ void CnnLampRecognizer::updateTrafficSignals(const std::vector<TrafficLightEleme
     MsgTE element;
     element.confidence = e.confidence;
     switch (e.color) {
-      case Color::GREEN: element.color = MsgTE::GREEN; break;
-      case Color::AMBER: element.color = MsgTE::AMBER; break;
-      case Color::RED: element.color = MsgTE::RED; break;
-      default: element.color = MsgTE::UNKNOWN; break;
+      case Color::GREEN:
+        element.color = MsgTE::GREEN;
+        break;
+      case Color::AMBER:
+        element.color = MsgTE::AMBER;
+        break;
+      case Color::RED:
+        element.color = MsgTE::RED;
+        break;
+      default:
+        element.color = MsgTE::UNKNOWN;
+        break;
     }
-    if(is_pedestrian || e.shape == Shape::PED) {
-      if(e.shape == Shape::PED) {
+    if (is_pedestrian || e.shape == Shape::PED) {
+      if (e.shape == Shape::PED) {
         element.shape = MsgTE::CIRCLE;
       } else {
         element.shape = MsgTE::CROSS;
@@ -470,15 +483,33 @@ void CnnLampRecognizer::updateTrafficSignals(const std::vector<TrafficLightEleme
         break;
       case Shape::ARROW:
         switch (e.arrow_direction) {
-          case ArrowDirection::UP_ARROW: element.shape = MsgTE::UP_ARROW; break;
-          case ArrowDirection::DOWN_ARROW: element.shape = MsgTE::DOWN_ARROW; break;
-          case ArrowDirection::LEFT_ARROW: element.shape = MsgTE::LEFT_ARROW; break;
-          case ArrowDirection::RIGHT_ARROW: element.shape = MsgTE::RIGHT_ARROW; break;
-          case ArrowDirection::UP_LEFT_ARROW: element.shape = MsgTE::UP_LEFT_ARROW; break;
-          case ArrowDirection::UP_RIGHT_ARROW: element.shape = MsgTE::UP_RIGHT_ARROW; break;
-          case ArrowDirection::DOWN_LEFT_ARROW: element.shape = MsgTE::DOWN_LEFT_ARROW; break;
-          case ArrowDirection::DOWN_RIGHT_ARROW: element.shape = MsgTE::DOWN_RIGHT_ARROW; break;
-          default: element.shape = MsgTE::UNKNOWN; break;
+          case ArrowDirection::UP_ARROW:
+            element.shape = MsgTE::UP_ARROW;
+            break;
+          case ArrowDirection::DOWN_ARROW:
+            element.shape = MsgTE::DOWN_ARROW;
+            break;
+          case ArrowDirection::LEFT_ARROW:
+            element.shape = MsgTE::LEFT_ARROW;
+            break;
+          case ArrowDirection::RIGHT_ARROW:
+            element.shape = MsgTE::RIGHT_ARROW;
+            break;
+          case ArrowDirection::UP_LEFT_ARROW:
+            element.shape = MsgTE::UP_LEFT_ARROW;
+            break;
+          case ArrowDirection::UP_RIGHT_ARROW:
+            element.shape = MsgTE::UP_RIGHT_ARROW;
+            break;
+          case ArrowDirection::DOWN_LEFT_ARROW:
+            element.shape = MsgTE::DOWN_LEFT_ARROW;
+            break;
+          case ArrowDirection::DOWN_RIGHT_ARROW:
+            element.shape = MsgTE::DOWN_RIGHT_ARROW;
+            break;
+          default:
+            element.shape = MsgTE::UNKNOWN;
+            break;
         }
         break;
       case Shape::PED:
@@ -499,9 +530,8 @@ bool CnnLampRecognizer::getTrafficSignals(
 {
   if (images.size() != traffic_signals.signals.size()) {
     RCLCPP_WARN(
-      node_ptr_->get_logger(),
-      "LampRecognizer: image count (%zu) != signal count (%zu)", images.size(),
-      traffic_signals.signals.size());
+      node_ptr_->get_logger(), "LampRecognizer: image count (%zu) != signal count (%zu)",
+      images.size(), traffic_signals.signals.size());
     return false;
   }
 
@@ -554,7 +584,8 @@ bool CnnLampRecognizer::getTrafficSignals(
 
       if (image_pub_.getNumSubscribers() > 0) {
         cv::Mat debug_img = batch[i].clone();
-        outputDebugImage(debug_img, traffic_signals.signals[sig_idx], &unique_traffic_light_elements);
+        outputDebugImage(
+          debug_img, traffic_signals.signals[sig_idx], &unique_traffic_light_elements);
       }
     }
     signal_i += current_batch_size;
