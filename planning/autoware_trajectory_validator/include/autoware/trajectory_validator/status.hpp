@@ -53,11 +53,13 @@ TrajectoryStatusArray to_trajectory_status_array(
  *
  * @param trajectory Candidate trajectory.
  * @param categories A vector of category statuses.
+ * @param uuid_to_name A hashmap of generator ID and trajectory name.
  * @return Trajectory status message.
  */
 TrajectoryStatus to_trajectory_status(
   const CandidateTrajectory & trajectory,
-  const std::unordered_map<std::string, std::vector<TrajectoryValidationStatus>> & validations);
+  const std::unordered_map<std::string, std::vector<TrajectoryValidationStatus>> & validations,
+  const std::unordered_map<std::string, std::string> & uuid_to_name);
 
 /**
  * @brief Check a trajectory validation status.

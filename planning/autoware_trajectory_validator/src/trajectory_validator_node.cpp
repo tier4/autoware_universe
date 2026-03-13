@@ -34,6 +34,20 @@
 
 namespace autoware::trajectory_validator
 {
+namespace
+{
+// for error diagnostic. Will be removed once node is combined.
+std::unordered_map<std::string, std::string> get_generator_uuid_to_name_map(
+  const autoware_internal_planning_msgs::msg::CandidateTrajectories & candidate_trajectories)
+{
+  std::unordered_map<std::string, std::string> uuid_to_name;
+  uuid_to_name.reserve(candidate_trajectories.generator_info.size());
+  for (const auto & info : candidate_trajectories.generator_info) {
+    uuid_to_name[autoware_utils_uuid::to_hex_string(info.generator_id)] = info.generator_name.data;
+  }
+  return uuid_to_name;
+}
+}  // namespace
 
 TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
 : Node{"trajectory_validator_node", options},
@@ -100,6 +114,8 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   // Create output message for filtered trajectories
   auto filtered_msg = std::make_unique<CandidateTrajectories>();
 
+  const auto uuid_to_name = get_generator_uuid_to_name_map(*msg);
+
   // Process and filter trajectories
   std::vector<TrajectoryStatus> trajectory_statuses;
   for (const auto & trajectory : msg->candidate_trajectories) {
@@ -153,7 +169,8 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
     evaluation_tables_.push_back(table);
 
     if (table.is_overall_feasible) filtered_msg->candidate_trajectories.push_back(trajectory);
-    trajectory_statuses.push_back(to_trajectory_status(trajectory, validation_statuses));
+    trajectory_statuses.push_back(
+      to_trajectory_status(trajectory, validation_statuses, uuid_to_name));
   }
 
   // Also filter generator_info to match kept trajectories
