@@ -93,6 +93,9 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
 
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&TrajectoryValidator::on_parameter, this, std::placeholders::_1));
+  pub_processing_time_text_ = create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
+    "~/debug/processing_time_text", rclcpp::QoS(1));
+
   pub_processing_time_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
 }
 
@@ -318,6 +321,34 @@ void TrajectoryValidator::publish_processing_time(
     if (key != "Total") {
       sorted_keys.push_back(key);
     }
+    // 2. Format the string output
+    std::string text_output = "--- Trajectory Validator Processing Time ---\n";
+
+    // Extract Total first so we can put it at the top
+    auto total_it = processing_time.find("Total");
+    if (total_it != processing_time.end()) {
+      text_output += fmt::format("Total: {:.3f} ms\n", total_it->second);
+    }
+
+    // Extract and sort the remaining plugin keys for stable output
+    std::vector<std::string> sorted_keys;
+    for (const auto & [key, _] : processing_time) {
+      if (key != "Total") {
+        sorted_keys.push_back(key);
+      }
+    }
+    std::sort(sorted_keys.begin(), sorted_keys.end());
+
+    // Append each plugin's time
+    for (const auto & key : sorted_keys) {
+      text_output += fmt::format("- {}: {:.3f} ms\n", key, processing_time.at(key));
+    }
+
+    // 3. Publish the StringStamped message
+    autoware_internal_debug_msgs::msg::StringStamped text_msg;
+    text_msg.stamp = this->now();
+    text_msg.data = text_output;
+    pub_processing_time_text_->publish(text_msg);
   }
   std::sort(sorted_keys.begin(), sorted_keys.end());
 
