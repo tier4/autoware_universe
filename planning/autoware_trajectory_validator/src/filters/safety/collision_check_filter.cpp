@@ -14,6 +14,7 @@
 
 #include "autoware/trajectory_validator/filters/safety/collision_check_filter.hpp"
 
+#include <autoware_utils/system/stop_watch.hpp>
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 
@@ -22,12 +23,8 @@
 #include <boost/geometry.hpp>
 
 #include <algorithm>
-#include <any>
 #include <cmath>
-#include <limits>
-#include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -38,7 +35,7 @@ namespace motion
 {
 std::pair<TimeTrajectory, TravelDistanceTrajectory> compute_motion_profile_1d(
   const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
-  double start_time, double max_time)
+  double start_time, double max_end_time)
 {
   struct MotionProfile
   {
@@ -48,13 +45,13 @@ std::pair<TimeTrajectory, TravelDistanceTrajectory> compute_motion_profile_1d(
 
   const double initial_velocity = std::hypot(initial_twist.linear.x, initial_twist.linear.y);
 
-  if (initial_velocity <= 0.0) {
+  if (initial_velocity <= 0.0 || start_time >= max_end_time) {
     return {{start_time}, {0.0}};
   }
 
   std::vector<MotionProfile> profile;
 
-  for (double t = start_time; t < max_time;
+  for (double t = start_time; t < max_end_time;
        t = std::floor((t + TIME_RESOLUTION + 1e-6) / TIME_RESOLUTION) * TIME_RESOLUTION) {
     if (t < braking_lag) {
       profile.emplace_back(MotionProfile{t, initial_velocity * t});
@@ -185,8 +182,7 @@ FootprintTrajectory compute_footprint_trajectory(
   footprint_trajectory.reserve(pose_trajectory.size());
 
   for (const auto & pose : pose_trajectory) {
-    const auto footprint = autoware_utils_geometry::to_polygon2d(pose, object_shape);
-    footprint_trajectory.push_back(footprint);
+    footprint_trajectory.push_back(autoware_utils_geometry::to_polygon2d(pose, object_shape));
   }
   return footprint_trajectory;
 }
@@ -198,15 +194,15 @@ FootprintTrajectory compute_footprint_trajectory(
   footprint_trajectory.reserve(pose_trajectory.size());
 
   for (const auto & pose : pose_trajectory) {
-    const auto footprint = autoware_utils_geometry::to_footprint(
+    footprint_trajectory.push_back(autoware_utils_geometry::to_footprint(
       pose, vehicle_info.max_longitudinal_offset_m, vehicle_info.min_longitudinal_offset_m,
-      vehicle_info.vehicle_width_m);
-    footprint_trajectory.push_back(footprint);
+      vehicle_info.vehicle_width_m));
   }
   return footprint_trajectory;
 }
 
-Box2d compute_overall_envelope(const FootprintTrajectory & polygons)
+template <typename Range>
+Box2d compute_overall_envelope(const Range & polygons)
 {
   Box2d overall_box;
   boost::geometry::assign_inverse(overall_box);
@@ -220,7 +216,8 @@ Box2d compute_overall_envelope(const FootprintTrajectory & polygons)
   return overall_box;
 }
 
-Polygon2d compute_overall_convex_hull(const FootprintTrajectory & polygons)
+template <typename Range>
+Polygon2d compute_overall_convex_hull(const Range & polygons)
 {
   MultiPoint2d all_points;
 
@@ -236,8 +233,8 @@ Polygon2d compute_overall_convex_hull(const FootprintTrajectory & polygons)
   return hull;
 }
 
-bool check_path_polygon_convex_collision(
-  const FootprintTrajectory & footprints1, const FootprintTrajectory & footprints2)
+template <typename Range1, typename Range2>
+bool check_path_polygon_convex_collision(const Range1 & footprints1, const Range2 & footprints2)
 {
   const auto overall_box1 = compute_overall_envelope(footprints1);
   const auto overall_box2 = compute_overall_envelope(footprints2);
@@ -256,6 +253,19 @@ bool check_path_polygon_convex_collision(
 }
 
 }  // namespace polygon
+
+template <class T>
+PoseTrajectory compute_pose_trajectory(
+  const T & traj_points, const TravelDistanceTrajectory & distance_trajectory)
+{
+  PoseTrajectory pose_trajectory;
+  pose_trajectory.reserve(distance_trajectory.size());
+  for (const auto & distance : distance_trajectory) {
+    const auto pose = autoware::motion_utils::calcInterpolatedPose(traj_points, distance);
+    pose_trajectory.push_back(pose);
+  }
+  return pose_trajectory;
+}
 
 TrajectoryData generate_ego_trajectory(
   const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
@@ -278,7 +288,6 @@ TrajectoryData generate_ego_trajectory(
     std::move(footprints));
 }
 
-// todo: consider time delay
 // todo: use all predicted paths
 TrajectoryData generate_predicted_path_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
@@ -338,9 +347,8 @@ bool check_pet_collision(
     double test_start_time = ref_start_time - pet_threshold;
     double test_end_time = ref_end_time + pet_threshold;
 
-    const auto & ref_poly = ref_trajectory.getFootprintsInTimeRange(ref_start_time, ref_end_time);
-    const auto & test_poly =
-      test_trajectory.getFootprintsInTimeRange(test_start_time, test_end_time);
+    const auto ref_poly = ref_trajectory.getFootprintsInTimeRange(ref_start_time, ref_end_time);
+    const auto test_poly = test_trajectory.getFootprintsInTimeRange(test_start_time, test_end_time);
 
     if (polygon::check_path_polygon_convex_collision(ref_poly, test_poly)) {
       return true;
@@ -348,6 +356,56 @@ bool check_pet_collision(
   }
 
   return false;
+}
+
+std::pair<std::optional<double>, std::optional<double>> compute_pet_and_ttc(
+  const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
+  double pet_threshold)
+{
+  if (!polygon::check_path_polygon_convex_collision(
+        ref_trajectory.getFootprints(), test_trajectory.getFootprintsInTimeRange(
+                                          0.0, ref_trajectory.getTimes().back() + pet_threshold))) {
+    return std::make_pair(std::nullopt, std::nullopt);
+  }
+
+  std::optional<double> candidate_pet{};
+  std::optional<double> candidate_ttc{};
+  for (size_t i = 0; i < ref_trajectory.size(); ++i) {
+    const double ref_start_time = ref_trajectory.getTimes().at(i);
+    const double ref_end_time = ref_start_time + TIME_RESOLUTION;
+    const auto ref_poly = ref_trajectory.getFootprintsInTimeRange(ref_start_time, ref_end_time);
+    auto check_slice_collision = [&](double start, double end) {
+      const auto slice_poly = test_trajectory.getFootprintsInTimeRange(start, end);
+      return polygon::check_path_polygon_convex_collision(ref_poly, slice_poly);
+    };
+
+    const double current_pet_limit = candidate_pet.value_or(pet_threshold);
+    const double test_start_time = ref_start_time - current_pet_limit;
+    const double test_end_time = ref_end_time + current_pet_limit;
+    if (!check_slice_collision(test_start_time, test_end_time)) {
+      continue;
+    }
+    for (double pet_range = 0.0; pet_range <= current_pet_limit; pet_range += TIME_RESOLUTION) {
+      const double test_start_time_before = ref_start_time - pet_range;
+      const double test_end_time_before = test_start_time_before + TIME_RESOLUTION;
+
+      const double test_start_time_after = ref_end_time + pet_range - TIME_RESOLUTION;
+      const double test_end_time_after = ref_end_time + pet_range;
+
+      if (
+        check_slice_collision(test_start_time_before, test_end_time_before) ||
+        check_slice_collision(test_start_time_after, test_end_time_after)) {
+        candidate_pet = pet_range;
+        candidate_ttc = ref_start_time;
+        break;
+      }
+    }
+    if (candidate_pet.has_value() && candidate_pet.value() == 0.0) {
+      return std::make_pair(candidate_pet, candidate_ttc);
+    }
+  }
+
+  return std::make_pair(candidate_pet, candidate_ttc);
 }
 
 void CollisionCheckFilter::set_parameters(rclcpp::Node & node)
@@ -381,46 +439,77 @@ void CollisionCheckFilter::update_parameters(const std::vector<rclcpp::Parameter
   }
 }
 
+// todo(takagi): separate the core logic which returns detailed collision information.
 CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
-  std::vector<TrajectoryMetricStatus> metrics;
+  // autoware_utils::StopWatch<std::chrono::microseconds> stopwatch;
+  // stopwatch.tic();
+
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
+    // const auto total_time_us = stopwatch.toc();
+    // std::cerr
+    //   << "CollisionCheckFilter: No predicted objects, skipping collision check. Time taken: "
+    //   << total_time_us / 1000.0 << " ms" << std::endl;
     return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
       .name(get_name())
       .level(TrajectoryValidationStatus::OK)
-      .metrics(std::move(metrics));  // No objects to check collision with
+      .metrics({});  // No objects to check collision with
+  }
+
+  if (traj_points.empty()) {
+    // const auto total_time_us = stopwatch.toc();
+    // std::cerr << "CollisionCheckFilter: Empty trajectory, skipping collision check. Time taken: "
+    //           << total_time_us / 1000.0 << " ms" << std::endl;
+    return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+      .name(get_name())
+      .level(TrajectoryValidationStatus::OK)
+      .metrics({});  // No trajectory to check
   }
 
   rclcpp::Duration objects_reference_time = rclcpp::Time(context.predicted_objects->header.stamp) -
                                             rclcpp::Time(context.odometry->header.stamp);
 
+  const double ego_consider_time_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
+                                             -pet_collision_params_.ego_assumed_acceleration +
+                                           pet_collision_params_.ego_braking_delay;
   const auto ego_trajectory_data = generate_ego_trajectory(
-    context.odometry->twist.twist, pet_collision_params_.ego_braking_delay,
-    pet_collision_params_.ego_assumed_acceleration, 10.0, traj_points, *vehicle_info_ptr_);
+    context.odometry->twist.twist, 0.0, 0.0, ego_consider_time_for_pet, traj_points,
+    *vehicle_info_ptr_);
 
   std::vector<TrajectoryData> object_trajectory_data_list{};
   for (const auto & object : context.predicted_objects->objects) {
-    object_trajectory_data_list.push_back(
-      generate_predicted_path_trajectory(object, 0.0, 0.0, objects_reference_time, 10.0));
+    object_trajectory_data_list.push_back(generate_predicted_path_trajectory(
+      object, 0.0, 0.0, objects_reference_time,
+      ego_consider_time_for_pet + pet_collision_params_.collision_time_threshold));
 
-    object_trajectory_data_list.push_back(
-      generate_constant_curvature_path_trajectory(object, 0.0, 0.0, objects_reference_time, 10.0));
+    object_trajectory_data_list.push_back(generate_constant_curvature_path_trajectory(
+      object, 0.0, 0.0, objects_reference_time,
+      ego_consider_time_for_pet + pet_collision_params_.collision_time_threshold));
   }
 
+  std::vector<TrajectoryMetricStatus> metrics;
   bool is_overall_ok = true;
   for (const auto & object_trajectory_data : object_trajectory_data_list) {
-    const bool is_collision = check_pet_collision(
+    const auto [pet, ttc] = compute_pet_and_ttc(
       ego_trajectory_data, object_trajectory_data, pet_collision_params_.collision_time_threshold);
 
-    // NOTE: Once an error occurred validation level will be ERROR
-    is_overall_ok = is_overall_ok && !is_collision;
+    const auto is_pet_ok = !pet.has_value();
+    const auto is_ttc_ok = !ttc.has_value();
+
+    is_overall_ok = is_overall_ok && is_pet_ok && is_ttc_ok;
 
     metrics.push_back(
       autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
         .name("check_PET_collision_" + object_trajectory_data.getId())
-        .level(is_collision ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
-        .score(0.0));  // To be updated
+        .level(is_pet_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
+        .score(pet.value_or(0.0)));
+
+    metrics.push_back(
+      autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+        .name("check_TTC_collision_" + object_trajectory_data.getId())
+        .level(is_ttc_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
+        .score(ttc.value_or(0.0)));
   }
 
   return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()

@@ -27,10 +27,11 @@
 #include <geometry_msgs/msg/point.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
-#include <any>
-#include <memory>
+#include <boost/range/iterator_range.hpp>
+
+#include <algorithm>
 #include <string>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -67,11 +68,18 @@ public:
     poses_(std::move(poses)),
     footprints_(std::move(footprints))
   {
-    assert(!times_.empty() && "Trajectory must not be empty");
-    assert(times_.size() == distances_.size() && "Trajectory sizes mismatch (times vs distances)");
-    assert(times_.size() == poses_.size() && "Trajectory sizes mismatch (times vs poses)");
-    assert(
-      times_.size() == footprints_.size() && "Trajectory sizes mismatch (times vs footprints)");
+    if (times_.empty()) {
+      throw std::invalid_argument("Trajectory must not be empty " + id_);
+    }
+    if (times_.size() != distances_.size()) {
+      throw std::invalid_argument("Trajectory sizes mismatch (times vs distances) " + id_);
+    }
+    if (times_.size() != poses_.size()) {
+      throw std::invalid_argument("Trajectory sizes mismatch (times vs poses) " + id_);
+    }
+    if (times_.size() != footprints_.size()) {
+      throw std::invalid_argument("Trajectory sizes mismatch (times vs footprints) " + id_);
+    }
   }
 
   TrajectoryData() = delete;
@@ -84,23 +92,24 @@ public:
 
   size_t size() const { return times_.size(); }
 
-  FootprintTrajectory getFootprintsInTimeRange(double start_time, double end_time) const
+  boost::iterator_range<FootprintTrajectory::const_iterator> getFootprintsInTimeRange(
+    double start_time, double end_time) const
   {
     if (start_time > end_time || footprints_.empty()) {
-      return FootprintTrajectory{};
+      return boost::make_iterator_range(footprints_.end(), footprints_.end());
     }
 
     const size_t start_index = getIndex(start_time);
     const size_t end_index = getIndex(end_time);
 
     if (start_index > end_index) {
-      return FootprintTrajectory{};
+      return boost::make_iterator_range(footprints_.end(), footprints_.end());
     }
 
     const auto start_iter = footprints_.begin() + start_index;
     const auto end_iter = footprints_.begin() + std::min(end_index + 1, footprints_.size());
 
-    return FootprintTrajectory(start_iter, end_iter);
+    return boost::make_iterator_range(start_iter, end_iter);
   }
 
 private:
@@ -116,19 +125,6 @@ private:
     return std::distance(times_.begin(), closest_it);
   }
 };
-
-template <class T>
-PoseTrajectory compute_pose_trajectory(
-  const T & traj_points, const TravelDistanceTrajectory & distance_trajectory)
-{
-  PoseTrajectory pose_trajectory;
-  pose_trajectory.reserve(distance_trajectory.size());
-  for (const auto & distance : distance_trajectory) {
-    const auto pose = autoware::motion_utils::calcInterpolatedPose(traj_points, distance);
-    pose_trajectory.push_back(pose);
-  }
-  return pose_trajectory;
-}
 
 class CollisionCheckFilter : public plugin::ValidatorInterface
 {
