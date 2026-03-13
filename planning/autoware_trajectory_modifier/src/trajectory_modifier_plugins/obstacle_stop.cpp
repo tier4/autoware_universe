@@ -271,7 +271,7 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
 std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
   const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon)
 {
-  if (!data_->obstacle_pointcloud || data_->obstacle_pointcloud->data.empty()){
+  if (!data_->obstacle_pointcloud || data_->obstacle_pointcloud->data.empty()) {
     return std::nullopt;
   }
 
@@ -382,86 +382,6 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
 
   debug_viz_pub_->publish(marker_array);
 }
-
-// TODO(Quda): move logic to minimum rule based planner
-// void ObstacleStop::update_collision_points_buffer(
-//   const TrajectoryPoints & traj_points, const std::optional<CollisionPoint> & collision_point)
-// {
-//   constexpr double close_distance_threshold = 0.5;
-
-//   const auto now = get_clock()->now();
-
-//   std::optional<double> closest_distance_diff = std::nullopt;
-//   collision_points_buffer_.erase(
-//     std::remove_if(
-//       collision_points_buffer_.begin(), collision_points_buffer_.end(),
-//       [&](CollisionPoint & cp) {
-//         if (cp.is_active && (now - cp.start_time).seconds() > params_.off_time_buffer) return
-//         true; if (!collision_point && !cp.is_active) return true;
-
-//         cp.arc_length = motion_utils::calcSignedArcLength(traj_points, 0LU, cp.point);
-//         const auto distance_diff = collision_point ? collision_point->arc_length - cp.arc_length
-//                                                    : std::numeric_limits<double>::max();
-//         const bool is_close = abs(distance_diff) < close_distance_threshold;
-
-//         if (!cp.is_active && !is_close) return true;
-
-//         if (!cp.is_active && (now - cp.start_time).seconds() > params_.on_time_buffer) {
-//           cp.is_active = true;
-//           cp.start_time = now;
-//         }
-
-//         if (
-//           is_close &&
-//           (!closest_distance_diff || abs(distance_diff) < abs(*closest_distance_diff))) {
-//           closest_distance_diff = distance_diff;
-//         }
-
-//         return false;
-//       }),
-//     collision_points_buffer_.end());
-
-//   if (!collision_point) return;
-
-//   constexpr double eps = 1e-3;
-//   if (collision_points_buffer_.empty() || !closest_distance_diff) {
-//     collision_points_buffer_.emplace_back(*collision_point, now, params_.on_time_buffer < eps);
-//     return;
-//   }
-
-//   auto nearest_collision_point_it = std::find_if(
-//     collision_points_buffer_.begin(), collision_points_buffer_.end(),
-//     [&](const CollisionPoint & cp) {
-//       return abs(cp.arc_length - collision_point->arc_length) < abs(*closest_distance_diff) +
-//       eps;
-//     });
-
-//   if (nearest_collision_point_it == collision_points_buffer_.end()) return;
-
-//   if (*closest_distance_diff < 0.0) {
-//     nearest_collision_point_it->point = collision_point->point;
-//     nearest_collision_point_it->arc_length = collision_point->arc_length;
-//   }
-
-//   if (nearest_collision_point_it->is_active) {
-//     nearest_collision_point_it->start_time = now;
-//   }
-// }
-
-// TODO(Quda): move logic to minimum rule based planner
-// std::optional<CollisionPoint> ObstacleStop::get_nearest_collision_point() const
-// {
-//   std::optional<CollisionPoint> nearest_collision_point = std::nullopt;
-//   if (collision_points_buffer_.empty()) return std::nullopt;
-
-//   auto minimum_arc_length = std::numeric_limits<double>::max();
-//   for (const auto & cp : collision_points_buffer_) {
-//     if (cp.is_active > minimum_arc_length || !cp.is_active) continue;
-//     nearest_collision_point = cp;
-//     minimum_arc_length = cp.arc_length;
-//   }
-//   return nearest_collision_point;
-// }
 
 }  // namespace autoware::trajectory_modifier::plugin
 

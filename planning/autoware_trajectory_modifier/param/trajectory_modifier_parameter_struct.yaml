@@ -96,20 +96,6 @@ trajectory_modifier_params:
       validation:
         lt<>: [0.0]
       read_only: false
-    on_time_buffer:
-      type: double
-      default_value: 0.5
-      description: Duration an obstacle must be detected before stopping [s]
-      validation:
-        gt_eq<>: [0.0]
-      read_only: false
-    off_time_buffer:
-      type: double
-      default_value: 1.0
-      description: Duration an obstacle must be gone before removing stop [s]
-      validation:
-        gt_eq<>: [0.0]
-      read_only: false
     lateral_margin_m:
       type: double
       default_value: 0.5

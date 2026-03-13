@@ -96,18 +96,6 @@
               "description": "Maximum jerk during stopping [m/s^3]",
               "default": -8.0
             },
-            "on_time_buffer": {
-              "type": "number",
-              "description": "Duration an obstacle must be detected before stopping [s]",
-              "default": 0.5,
-              "minimum": 0.0
-            },
-            "off_time_buffer": {
-              "type": "number",
-              "description": "Duration an obstacle must be detected before stopping [s]",
-              "default": 1.0,
-              "minimum": 0.0
-            },
             "lateral_margin_m": {
               "type": "number",
               "description": "Lateral margin on top of ego width from trajectory to consider for obstacle stop [m]",
