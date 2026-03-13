@@ -63,7 +63,6 @@ protected:
 private:
   TrajectoryModifierParams::ObstacleStop params_;
 
-  std::vector<CollisionPoint> collision_points_buffer_;
   std::optional<CollisionPoint> nearest_collision_point_;
 
   DebugData debug_data_;
@@ -82,11 +81,7 @@ private:
   void set_stop_point(TrajectoryPoints & traj_points);
 
   bool apply_stopping(
-    TrajectoryPoints & traj_points, const double target_stop_point_arc_length,
-    const float max_lon_velocity, const float max_lon_accel) const;
-
-  static constexpr double ego_low_speed_threshold = 1.0;
-  static constexpr double ego_stop_point_distance_threshold = 1.0;
+    TrajectoryPoints & traj_points, const double target_stop_point_arc_length) const;
 };
 
 }  // namespace autoware::trajectory_modifier::plugin
