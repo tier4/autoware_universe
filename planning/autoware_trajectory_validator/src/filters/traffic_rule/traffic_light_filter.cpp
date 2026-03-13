@@ -144,7 +144,7 @@ TrafficLightFilter::get_stop_lines(
   return {red_stop_lines, amber_stop_lines};
 }
 
-tl::expected<void, std::string> TrafficLightFilter::is_feasible(
+TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   if (const auto has_invalid_input = is_invalid_input(context, vehicle_info_ptr_)) {
@@ -166,7 +166,11 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
   }
 
   if (trajectory_ls.size() < 2) {
-    return {};  // allow empty or stopped trajectories as they do not cross traffic lights
+    // allow empty or stopped trajectories as they do not cross traffic lights
+    return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+      .name(get_name())
+      .level(TrajectoryValidationStatus::OK)
+      .metrics({});
   }
 
   if (vehicle_info_ptr_->max_longitudinal_offset_m > 0.0) {
@@ -182,14 +186,22 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
     }
   }
 
+  std::vector<TrajectoryMetricStatus> metrics;
+  bool is_overall_ok = true;
   const auto bbox = boost::geometry::return_envelope<lanelet::BoundingBox2d>(trajectory_ls);
   const lanelet::Lanelets candidate_lanelets = context.lanelet_map->laneletLayer.search(bbox);
   const auto [red_stop_lines, amber_stop_lines] =
     get_stop_lines(candidate_lanelets, *context.traffic_light_signals);
   for (const auto & red_stop_line : red_stop_lines) {
-    if (boost::geometry::intersects(trajectory_ls, red_stop_line)) {
-      return tl::make_unexpected("crosses red light");  // Reject trajectory (cross red light)
-    }
+    const auto is_crossing_red = boost::geometry::intersects(trajectory_ls, red_stop_line);
+
+    is_overall_ok = is_overall_ok && !is_crossing_red;
+
+    metrics.push_back(
+      autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+        .name("check_crossing_red_light")
+        .level(is_crossing_red ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
+        .score(0.0));  // To be updated with a meaningful score if needed
   }
   for (const auto & amber_stop_line : amber_stop_lines) {
     auto distance_to_stop_line = 0.0;
@@ -213,14 +225,24 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
     }
     const auto current_velocity = trajectory.front().longitudinal_velocity_mps;
     const auto current_acceleration = trajectory.front().acceleration_mps2;
-    if (
+    const auto is_crossing_amber =
       amber_stop_line_crossing_time && !can_pass_amber_light(
                                          distance_to_stop_line, current_velocity,
-                                         current_acceleration, *amber_stop_line_crossing_time)) {
-      return tl::make_unexpected("crosses amber light");  // Reject trajectory (cross amber light)
-    }
+                                         current_acceleration, *amber_stop_line_crossing_time);
+
+    is_overall_ok = is_overall_ok && !is_crossing_amber;
+
+    metrics.push_back(
+      autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+        .name("check_crossing_amber_light")
+        .level(is_crossing_amber ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
+        .score(0.0));  // To be updated with a meaningful score if needed
   }
-  return {};  // Allow trajectory
+
+  return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
+    .name(get_name())
+    .level(is_overall_ok ? TrajectoryValidationStatus::OK : TrajectoryValidationStatus::ERROR)
+    .metrics(metrics);
 }
 
 bool TrafficLightFilter::can_pass_amber_light(
