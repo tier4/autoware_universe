@@ -501,6 +501,7 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
     // std::cerr << "CollisionCheckFilter: " << error_msg << " Time taken: " << total_time_us /
     // 1000.0
     //           << " ms" << std::endl;
+    RCLCPP_WARN(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", error_msg.c_str());
     return tl::make_unexpected(error_msg);
   }
 
