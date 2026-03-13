@@ -497,7 +497,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     const auto is_pet_ok = !pet.has_value();
     const auto is_ttc_ok = !ttc.has_value();
 
-    is_overall_ok = is_overall_ok && is_pet_ok && is_ttc_ok;
+    is_overall_ok = is_overall_ok && is_pet_ok;
 
     metrics.push_back(
       autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
