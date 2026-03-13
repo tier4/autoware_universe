@@ -42,7 +42,7 @@ class ObstacleStop : public TrajectoryModifierPluginBase
 public:
   ObstacleStop() = default;
 
-  void modify_trajectory(TrajectoryPoints & traj_points) override;
+  bool modify_trajectory(TrajectoryPoints & traj_points) override;
 
   [[nodiscard]] bool is_trajectory_modification_required(
     const TrajectoryPoints & traj_points) override;
@@ -78,7 +78,7 @@ private:
   std::optional<CollisionPoint> check_pointcloud(
     const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon);
 
-  void set_stop_point(TrajectoryPoints & traj_points);
+  bool set_stop_point(TrajectoryPoints & traj_points);
 
   bool apply_stopping(
     TrajectoryPoints & traj_points, const double target_stop_point_arc_length) const;

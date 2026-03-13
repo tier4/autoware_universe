@@ -102,21 +102,21 @@ bool ObstacleStop::is_trajectory_modification_required(const TrajectoryPoints & 
   return nearest_collision_point_ != std::nullopt;
 }
 
-void ObstacleStop::modify_trajectory(TrajectoryPoints & traj_points)
+bool ObstacleStop::modify_trajectory(TrajectoryPoints & traj_points)
 {
-  if (!enabled_ || !is_trajectory_modification_required(traj_points)) return;
+  if (!enabled_ || !is_trajectory_modification_required(traj_points)) return false;
 
-  if (!nearest_collision_point_) return;
+  if (!nearest_collision_point_) return false;
 
   RCLCPP_WARN_THROTTLE(
     get_node_ptr()->get_logger(), *get_clock(), 500,
     "[TM ObstacleStop] Detected collision point at arc length %f m",
     nearest_collision_point_->arc_length);
 
-  set_stop_point(traj_points);
+  return set_stop_point(traj_points);
 }
 
-void ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
+bool ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
 {
   const auto stop_margin = params_.stop_margin_m + data_->vehicle_info.max_longitudinal_offset_m;
   const auto target_stop_point_arc_length =
@@ -126,7 +126,7 @@ void ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
     RCLCPP_WARN_THROTTLE(
       get_node_ptr()->get_logger(), *get_clock(), 1000,
       "[TM ObstacleStop] %s, skip inserting stop point", msg.c_str());
-    return;
+    return false;
   };
 
   constexpr double stop_velocity_threshold = 0.01;
@@ -176,6 +176,7 @@ void ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
   RCLCPP_WARN_THROTTLE(
     get_node_ptr()->get_logger(), *get_clock(), 1000,
     "[TM ObstacleStop] Inserted stop point at arc length %f m", target_stop_point_arc_length);
+  return true;
 }
 
 size_t update_velocities(TrajectoryPoints & trajectory, const double jerk, const double decel)
