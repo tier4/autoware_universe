@@ -37,6 +37,7 @@ ament_auto_add_library(autoware_trajectory_validator_plugins SHARED
   src/filters/safety/uncrossable_boundary_departure_filter.cpp
   src/filters/safety/vehicle_constraint_filter.cpp
   src/filters/safety/collision_check_filter.cpp
+  src/filters/traffic_rule/traffic_light_filter.cpp
 )
 
 target_link_libraries(autoware_trajectory_validator_plugins
@@ -77,6 +78,13 @@ if(BUILD_TESTING)
     test/collision_check_filter/test_collision.cpp
   )
   target_link_libraries(test_collision_check_filter gtest_main ${PROJECT_NAME})
+
+  ament_add_gtest(test_traffic_light_filter
+    test/plugins/test_traffic_light_filter.cpp
+  )
+  target_link_libraries(test_traffic_light_filter
+    autoware_trajectory_validator_plugins
+  )
 
   # ==========================================
   # 2. Dummy Plugin (Test Utility)
