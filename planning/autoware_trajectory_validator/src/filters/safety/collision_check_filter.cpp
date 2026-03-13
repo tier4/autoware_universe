@@ -350,35 +350,13 @@ bool check_pet_collision(
   return false;
 }
 
-void CollisionCheckFilter::set_parameters(rclcpp::Node & node)
+void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
-  using autoware_utils_rclcpp::get_or_declare_parameter;
-  std::string filter_name = "collision_check";
-
-  {
-    std::string ns = filter_name + ".pet_collision";
-    pet_collision_params_.ego_braking_delay =
-      get_or_declare_parameter<double>(node, ns + ".ego_braking_delay");
-    pet_collision_params_.ego_assumed_acceleration =
-      get_or_declare_parameter<double>(node, ns + ".ego_assumed_acceleration");
-    pet_collision_params_.collision_time_threshold =
-      get_or_declare_parameter<double>(node, ns + ".collision_time_threshold");
-  }
-}
-
-void CollisionCheckFilter::update_parameters(const std::vector<rclcpp::Parameter> & parameters)
-{
-  using autoware_utils_rclcpp::update_param;
-  std::string filter_name = "collision_check";
-
-  {
-    std::string ns = filter_name + ".pet_collision";
-    update_param(parameters, ns + ".ego_braking_delay", pet_collision_params_.ego_braking_delay);
-    update_param(
-      parameters, ns + ".ego_assumed_acceleration", pet_collision_params_.ego_assumed_acceleration);
-    update_param(
-      parameters, ns + ".collision_time_threshold", pet_collision_params_.collision_time_threshold);
-  }
+  pet_collision_params_.ego_braking_delay = params.collision_check.pet_collision.ego_braking_delay;
+  pet_collision_params_.ego_assumed_acceleration =
+    params.collision_check.pet_collision.ego_assumed_acceleration;
+  pet_collision_params_.collision_time_threshold =
+    params.collision_check.pet_collision.collision_time_threshold;
 }
 
 tl::expected<void, std::string> CollisionCheckFilter::is_feasible(

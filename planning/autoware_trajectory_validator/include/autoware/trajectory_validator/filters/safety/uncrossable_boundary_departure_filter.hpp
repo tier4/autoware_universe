@@ -34,11 +34,7 @@ public:
   tl::expected<void, std::string> is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) final;
 
-  void set_parameters([[maybe_unused]] rclcpp::Node & node) final {}
-
-  void update_parameters([[maybe_unused]] const std::vector<rclcpp::Parameter> & parameters) final
-  {
-  }
+  void update_parameters([[maybe_unused]] const validator::Params & params) final {};
 
 private:
   std::unique_ptr<autoware::boundary_departure_checker::UncrossableBoundaryDepartureChecker>

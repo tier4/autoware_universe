@@ -18,7 +18,7 @@
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
-#include <autoware_trajectory_validator_param.hpp>
+#include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
@@ -87,10 +87,8 @@ private:
     const CandidateTrajectories & input_trajectories,
     const CandidateTrajectories & filtered_trajectories);
 
-  rcl_interfaces::msg::SetParametersResult on_parameter(
-    const std::vector<rclcpp::Parameter> & parameters);
-
-  std::unique_ptr<validator::ParamListener> listener_;
+  validator::ParamListener listener_;
+  validator::Params params_;
 
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
@@ -113,10 +111,7 @@ private:
 
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
 
-  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
-
   pluginlib::ClassLoader<plugin::ValidatorInterface> plugin_loader_;
-
   std::vector<std::shared_ptr<plugin::ValidatorInterface>> plugins_;
   std::vector<EvaluationTable> evaluation_tables_;
 
