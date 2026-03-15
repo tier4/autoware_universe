@@ -96,7 +96,8 @@ if(TRT_AVAIL AND CUDA_AVAIL)
       test/preprocessing_utils_edge_case_test.cpp
       test/agent_edge_case_test.cpp
       test/lanelet_edge_case_test.cpp
-      test/diffusion_planner_integration_test.cpp)
+      test/diffusion_planner_integration_test.cpp
+      test/rtc_prefix_test.cpp)
 
     target_link_libraries(test_diffusion_planner autoware_diffusion_planner_component)
     ament_target_dependencies(test_diffusion_planner
@@ -104,6 +105,24 @@ if(TRT_AVAIL AND CUDA_AVAIL)
       autoware_map_msgs
       autoware_perception_msgs
       autoware_test_utils
+    )
+  endif()
+
+  if(BUILD_TOOL)
+    add_executable(data_converter
+      tool/data_converter.cpp
+    )
+    target_include_directories(data_converter PUBLIC
+      ${CUDA_INCLUDE_DIRS}
+      ${autoware_cuda_utils_INCLUDE_DIRS}
+    )
+    target_link_libraries(data_converter
+      autoware_diffusion_planner_component
+      ${NVINFER}
+      ${NVONNXPARSER}
+      ${CUDA_LIBRARIES}
+      ${CUBLAS_LIBRARIES}
+      ${CUDNN_LIBRARY}
     )
   endif()
 endif()
