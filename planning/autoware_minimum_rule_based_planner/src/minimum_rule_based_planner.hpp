@@ -35,6 +35,7 @@
 
 namespace autoware::minimum_rule_based_planner
 {
+using TrajectoryModifierData = trajectory_modifier::TrajectoryModifierData;
 
 class MinimumRuleBasedPlannerNode : public rclcpp::Node
 {
@@ -51,6 +52,7 @@ public:
     Odometry::ConstSharedPtr odometry_ptr;
     AccelWithCovarianceStamped::ConstSharedPtr acceleration_ptr;
     PredictedObjects::ConstSharedPtr predicted_objects_ptr;
+    PointCloud2::ConstSharedPtr obstacle_pointcloud_ptr;
     PathWithLaneId::ConstSharedPtr test_path_with_lane_id_ptr;
   };
 
@@ -64,6 +66,7 @@ private:
   void on_timer();
   InputData take_data();
   bool is_data_ready(const InputData & input_data);
+  void update_params();
 
   rclcpp::TimerBase::SharedPtr timer_;
   std::shared_ptr<::minimum_rule_based_planner::ParamListener> param_listener_;
@@ -72,6 +75,7 @@ private:
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
+  minimum_rule_based_planner::Params params_;
   /** @} */
 
 private:
@@ -112,13 +116,15 @@ private:
   void load_plugin(const std::string & name);
   void unload_plugin(const std::string & name);
 
+  void set_modifier_data(const MinimumRuleBasedPlannerNode::InputData & input_data);
+
   bool initialized_modifiers_{false};
   ModifierPluginLoader modifier_plugin_loader_;
-  std::vector<std::shared_ptr<trajectory_modifier::plugin::TrajectoryModifierPluginBase>>
-    modifier_plugins_;
-  trajectory_modifier_params::Params modifier_params_;
+  std::vector<std::shared_ptr<plugin::PluginInterface>> modifier_plugins_;
   std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
     pub_debug_modifier_module_trajectories_;
+
+  std::shared_ptr<plugin::ModifierData> modifier_data_;
   /** @} */
 
 private:
@@ -148,6 +154,10 @@ private:
   autoware_utils::InterProcessPollingSubscriber<PredictedObjects> objects_subscriber_{
     this, "~/input/objects"};
   PredictedObjects::ConstSharedPtr predicted_objects_ptr_;
+
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<PointCloud2> pointcloud_subscriber_{
+    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos()};
+  PointCloud2::ConstSharedPtr obstacle_pointcloud_ptr_;
 
   //! test input: bypasses path planning when provided
   autoware_utils::InterProcessPollingSubscriber<

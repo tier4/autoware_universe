@@ -14,7 +14,7 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/stop_point_fixer.hpp"
 
-#include "autoware/trajectory_modifier/utils.hpp"
+#include "autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp"
 
 #include <autoware_utils/ros/update_param.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
@@ -38,41 +38,65 @@ void StopPointFixer::on_initialize(const TrajectoryModifierParams & params)
   enabled_ = params.use_stop_point_fixer;
 }
 
-bool StopPointFixer::is_trajectory_modification_required(
-  const TrajectoryPoints & traj_points, const TrajectoryModifierData & data) const
+bool StopPointFixer::is_long_stop_trajectory(const TrajectoryPoints & traj_points) const
 {
-  if (traj_points.empty()) {
+  if (traj_points.empty() || !params_.force_stop_long_stopped_trajectories) {
     return false;
   }
-  if (utils::is_ego_vehicle_moving(
-        data.current_odometry.twist.twist, params_.velocity_threshold_mps)) {
-    return false;
+
+  for (const auto & point : traj_points) {
+    const auto time_from_start = static_cast<double>(point.time_from_start.sec) +
+                                 static_cast<double>(point.time_from_start.nanosec) * 1e-9;
+
+    if (time_from_start > params_.min_stop_duration_s) {
+      return true;
+    }
+    if (point.longitudinal_velocity_mps > params_.velocity_threshold_mps) {
+      return false;
+    }
   }
-  const double distance_to_last_point =
-    utils::calculate_distance_to_last_point(traj_points, data.current_odometry.pose.pose);
-  return distance_to_last_point < params_.min_distance_threshold_m;
+  return true;
 }
 
-void StopPointFixer::modify_trajectory(
-  TrajectoryPoints & traj_points, const TrajectoryModifierData & data)
+bool StopPointFixer::is_stop_point_close_to_ego(const TrajectoryPoints & traj_points) const
 {
-  if (!enabled_ || !is_trajectory_modification_required(traj_points, data)) {
-    return;
+  if (!params_.force_stop_close_stopped_trajectories) {
+    return false;
+  }
+  return utils::calculate_distance_to_last_point(traj_points, data_->current_odometry->pose.pose) <
+         params_.min_distance_threshold_m;
+}
+
+bool StopPointFixer::is_trajectory_modification_required(const TrajectoryPoints & traj_points)
+{
+  if (!enabled_ || traj_points.empty()) {
+    return false;
   }
 
-  utils::replace_trajectory_with_stop_point(traj_points, data.current_odometry.pose.pose);
+  if (utils::is_ego_vehicle_moving(
+        data_->current_odometry->twist.twist, params_.velocity_threshold_mps)) {
+    return false;
+  }
 
-  // Add PlanningFactor for the stop decision
-  const auto & ego_pose = data.current_odometry.pose.pose;
-  planning_factor_interface_->add(
-    traj_points, ego_pose, ego_pose, PlanningFactor::STOP,
-    autoware_internal_planning_msgs::msg::SafetyFactorArray{});
+  return is_stop_point_close_to_ego(traj_points) || is_long_stop_trajectory(traj_points);
+}
 
+bool StopPointFixer::modify_trajectory(TrajectoryPoints & traj_points)
+{
+  if (!is_trajectory_modification_required(traj_points)) return false;
+
+  utils::replace_trajectory_with_stop_point(traj_points, data_->current_odometry->pose.pose);
   auto clock_ptr = get_node_ptr()->get_clock();
   RCLCPP_DEBUG_THROTTLE(
     get_node_ptr()->get_logger(), *clock_ptr, 5000,
-    "StopPointFixer: Replaced trajectory with stop point. Distance to last point: %.2f m",
-    utils::calculate_distance_to_last_point(traj_points, data.current_odometry.pose.pose));
+    "StopPointFixer: Replaced trajectory with stop point.");
+
+  // Add PlanningFactor for the stop decision
+  const auto & ego_pose = data_->current_odometry->pose.pose;
+  planning_factor_interface_->add(
+    traj_points, ego_pose, ego_pose, PlanningFactor::STOP,
+    autoware_internal_planning_msgs::msg::SafetyFactorArray{});
+  return true;
 }
 
 }  // namespace autoware::trajectory_modifier::plugin

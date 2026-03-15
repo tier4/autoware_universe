@@ -46,7 +46,7 @@ The yaw rate limit restricts heading changes over time:
 Δψ_rate = ψ_dot_max * Δt
 ```
 
-where `Δt` is the time interval between trajectory points.
+where `Δt` is a the time_step_s parameter defined in the trajectory_kinematic_enforcer parameter file. The same value is used for every segment.
 
 #### 3. Combined Constraint
 
@@ -83,8 +83,7 @@ vehicle pose:
 
 ### Key Algorithm Properties
 
-- **Arc length preservation**: Maintains `dt = s / v` relationship for each
-  segment
+- **Arc length preservation**: Segment distances are preserved
 - **Forward causality**: Each point depends only on previous points (no
   backward propagation)
 - **Velocity preservation**: Original velocity profile unchanged
@@ -163,17 +162,14 @@ the plugin pipeline to ensure:
 1. **Path deviation**: Kinematic constraints may cause significant deviation
    from the original planner path, especially for aggressive maneuvers.
 
-2. **Velocity-time assumptions**: Algorithm assumes constant velocity within
-   each segment (`dt = s / v`). Large velocity changes may affect accuracy.
-
-3. **Steering dynamics**: Does not model steering rate limits or steering
+2. **Steering dynamics**: Does not model steering rate limits or steering
    system dynamics - only considers geometric and yaw rate constraints.
 
-4. **Lateral acceleration**: Does not directly constrain lateral acceleration
+3. **Lateral acceleration**: Does not directly constrain lateral acceleration
    (though indirectly limited by yaw rate constraint).
 
-5. **Reverse driving**: Assumes forward motion. May need special handling for
+4. **Reverse driving**: Assumes forward motion. May need special handling for
    reverse trajectories.
 
-6. **Computation time**: Forward propagation through entire trajectory adds
+5. **Computation time**: Forward propagation through entire trajectory adds
    overhead (typically < 1 ms for 100-point trajectory).
