@@ -24,6 +24,7 @@
   <depend>autoware_perception_msgs</depend>
   <depend>autoware_utils</depend>
   <depend>rclcpp</depend>
+  <depend>autoware_agnocast_wrapper</depend>
   <depend>rclcpp_components</depend>
   <depend>tf2</depend>
   <depend>tf2_geometry_msgs</depend>

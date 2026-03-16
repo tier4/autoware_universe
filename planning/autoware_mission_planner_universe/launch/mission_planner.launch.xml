@@ -1,4 +1,8 @@
 <launch>
+  <include file="$(find-pkg-share autoware_agnocast_wrapper)/launch/agnocast_env.launch.xml">
+    <arg name="use_multithread" value="true"/>
+  </include>
+
   <arg name="modified_goal_topic_name" default="/planning/scenario_planning/modified_goal"/>
   <arg name="map_topic_name" default="/map/vector_map"/>
   <arg name="route_topic_name" default="/planning/route"/>
@@ -9,7 +13,7 @@
   <arg name="visualization_topic_name" default="/planning/mission_planning/route_marker"/>
   <arg name="mission_planner_param_path" default="$(find-pkg-share autoware_mission_planner_universe)/config/mission_planner.param.yaml"/>
 
-  <node_container pkg="rclcpp_components" exec="component_container_mt" name="mission_planner_container" namespace="">
+  <node_container pkg="$(var container_package)" exec="$(var container_executable)" name="mission_planner_container" namespace="">
     <composable_node pkg="autoware_mission_planner_universe" plugin="autoware::mission_planner_universe::MissionPlanner" name="mission_planner" namespace="">
       <param from="$(var mission_planner_param_path)"/>
       <remap from="~/input/modified_goal" to="$(var modified_goal_topic_name)"/>

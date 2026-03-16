@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_object_merger)
 
 find_package(autoware_cmake REQUIRED)
+find_package(autoware_agnocast_wrapper REQUIRED)
 autoware_package()
 
 # Ignore -Wnonportable-include-path in Clang for mussp
@@ -28,9 +29,11 @@ target_link_libraries(${PROJECT_NAME}
   Eigen3::Eigen
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::object_merger::ObjectAssociationMergerNode"
   EXECUTABLE object_association_merger_node
+  ROS2_EXECUTOR SingleThreadedExecutor
+  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 ament_auto_package(INSTALL_TO_SHARE

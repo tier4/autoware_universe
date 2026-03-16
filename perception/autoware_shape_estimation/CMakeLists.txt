@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_shape_estimation)
 
 find_package(autoware_cmake REQUIRED)
+find_package(autoware_agnocast_wrapper REQUIRED)
 autoware_package()
 
 # TODO(amadeuszsz): Remove -Wno-deprecated-declarations once removing implicit quantization
@@ -96,9 +97,11 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
   TENSORRT_VERSION_MAJOR=${TENSORRT_VERSION_MAJOR}
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::shape_estimation::ShapeEstimationNode"
   EXECUTABLE shape_estimation_node
+  ROS2_EXECUTOR SingleThreadedExecutor
+  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 ament_auto_package(INSTALL_TO_SHARE

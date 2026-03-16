@@ -18,7 +18,9 @@ from ament_index_python.packages import get_package_share_directory
 import launch
 from launch.actions import DeclareLaunchArgument
 from launch.actions import GroupAction
+from launch.actions import IncludeLaunchDescription
 from launch.actions import OpaqueFunction
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import LaunchConfigurationEquals
 from launch.conditions import LaunchConfigurationNotEquals
 from launch.substitutions import LaunchConfiguration
@@ -69,8 +71,8 @@ def launch_setup(context, *args, **kwargs):
     container = ComposableNodeContainer(
         name="scan_ground_filter_container",
         namespace="",
-        package="rclcpp_components",
-        executable="component_container",
+        package=LaunchConfiguration("container_package"),
+        executable=LaunchConfiguration("container_executable"),
         composable_node_descriptions=nodes,
         output="screen",
         condition=LaunchConfigurationEquals("container", ""),
@@ -100,6 +102,17 @@ def generate_launch_description():
         description="Path to config file for vehicle information",
     )
 
+    agnocast_env = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory("autoware_agnocast_wrapper"),
+                "launch",
+                "agnocast_env.launch.py",
+            )
+        ),
+        launch_arguments={"use_multithread": "true"}.items(),
+    )
+
     return launch.LaunchDescription(
         [
             vehicle_info_param,
@@ -107,5 +120,5 @@ def generate_launch_description():
             add_launch_arg("input/pointcloud", "pointcloud"),
             add_launch_arg("output/pointcloud", "no_ground/pointcloud"),
         ]
-        + [OpaqueFunction(function=launch_setup)]
+        + [agnocast_env, OpaqueFunction(function=launch_setup)]
     )

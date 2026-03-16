@@ -21,6 +21,7 @@
   <depend>mussp</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
+  <depend>autoware_agnocast_wrapper</depend>
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
 
