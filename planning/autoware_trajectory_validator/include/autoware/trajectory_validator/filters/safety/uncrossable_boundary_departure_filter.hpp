@@ -29,7 +29,9 @@ namespace autoware::trajectory_validator::plugin::safety
 class UncrossableBoundaryDepartureFilter : public plugin::ValidatorInterface
 {
 public:
-  UncrossableBoundaryDepartureFilter() : ValidatorInterface("UncrossableBoundaryDepartureFilter") {}
+  UncrossableBoundaryDepartureFilter() : ValidatorInterface("uncrossable_boundary_departure_filter")
+  {
+  }
 
   tl::expected<void, std::string> is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) final;
