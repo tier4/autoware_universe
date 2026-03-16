@@ -255,6 +255,7 @@ def create_traffic_light_node_container(namespace, context, *args, **kwargs):
                 parameters=[
                     traffic_light_whole_image_detector_param,
                     {
+                        "build_only": False,
                         "onnx_path": LaunchConfiguration("whole_image_detection/model_path"),
                         "names_file": LaunchConfiguration("whole_image_detection/label_path"),
                     },
