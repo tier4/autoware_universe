@@ -18,6 +18,7 @@
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <tier4_perception_msgs/msg/traffic_light_element.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <memory>

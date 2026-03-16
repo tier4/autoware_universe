@@ -56,7 +56,6 @@ struct KeypointInfo
 struct BBoxInfo
 {
   BBox box;
-  int label{0};
   int classId{0};  // type: circle=0, arrow=1, uturn=2, ped=3, number=4, cross=5
   float prob{0.f};
   bool isHierarchical{false};
