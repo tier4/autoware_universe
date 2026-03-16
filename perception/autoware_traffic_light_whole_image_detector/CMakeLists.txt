@@ -52,7 +52,7 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
   ament_target_dependencies(${PROJECT_NAME}
-    ament_index_cpp autoware_cuda_utils autoware_internal_debug_msgs autoware_perception_msgs
+    autoware_cuda_utils autoware_internal_debug_msgs autoware_perception_msgs
     autoware_tensorrt_common autoware_utils cv_bridge rclcpp sensor_msgs tier4_perception_msgs
   )
   target_link_libraries(${PROJECT_NAME}

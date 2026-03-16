@@ -2,7 +2,6 @@
 // Licensed under the Apache License, Version 2.0.
 
 #include "autoware_traffic_light_whole_image_detector/lightnet_decoder.hpp"
-#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
@@ -33,52 +32,21 @@ public:
   explicit WholeImageDetectorNode(const rclcpp::NodeOptions & options)
   : Node("traffic_light_whole_image_detector_node", options)
   {
-    declare_parameter<std::string>("onnx_path", "models/CoMLOps-Large-Detection-Model-v1.0.1.onnx");
-    declare_parameter<std::string>("names_file", "data/T4x.names");
-    declare_parameter<std::string>("precision", "fp16");
-    declare_parameter<std::string>("calibration_images", "");
-    declare_parameter<std::string>("calib", "Entropy");
-    declare_parameter<bool>("sparse", true);
-    declare_parameter<std::vector<int64_t>>("anchors",
-      std::vector<int64_t>{8, 9, 36, 11, 15, 28, 40, 36, 29, 72, 104, 24, 86, 67, 58, 140, 265, 70, 147, 134, 164, 303, 337, 206, 491, 400, 664, 705, 1269, 832});
-    declare_parameter<int>("num_anchors", 5);
-    declare_parameter<int>("num_classes", 10);
-    declare_parameter<double>("score_thresh", 0.2);
-    declare_parameter<double>("nms_thresh", 0.6);
-    declare_parameter<bool>("use_cuda", true);
-    declare_parameter<bool>("build_only", false);
-    declare_parameter<std::string>("traffic_light_class_name", "TRAFFIC_LIGHT");
-
-    std::string package_share =
-      ament_index_cpp::get_package_share_directory("autoware_traffic_light_whole_image_detector");
-    std::string onnx_path = resolvePath(get_parameter("onnx_path").as_string(), package_share);
-    std::string names_path = resolvePath(get_parameter("names_file").as_string(), package_share);
-    {
-      // log all parameters at startup for easier debugging
-      RCLCPP_INFO(get_logger(), "Parameters:");
-      RCLCPP_INFO(get_logger(), "  onnx_path: %s", onnx_path.c_str());
-      RCLCPP_INFO(get_logger(), "  names_file: %s", names_path.c_str());
-      RCLCPP_INFO(get_logger(), "  precision: %s", get_parameter("precision").as_string().c_str());
-      RCLCPP_INFO(get_logger(), "  calibration_images: %s", get_parameter("calibration_images").as_string().c_str()); 
-      RCLCPP_INFO(get_logger(), "  calib: %s", get_parameter("calib").as_string().c_str());
-      RCLCPP_INFO(get_logger(), "  sparse: %s", get_parameter("sparse").as_bool() ? "true" : "false");
-      RCLCPP_INFO(get_logger(), "  anchors: [%s]", [&]() {
-        std::string s;
-        for (size_t i = 0; i < get_parameter("anchors").as_integer_array().size(); ++i) {
-          s += std::to_string(get_parameter("anchors").as_integer_array().at(i));
-          if (i != get_parameter("anchors").as_integer_array().size() - 1) s += ", ";
-        }
-        return s;
-      }());
-      RCLCPP_INFO(get_logger(), "  num_anchors: %d", get_parameter("num_anchors").as_int());
-      RCLCPP_INFO(get_logger(), "  num_classes: %d", get_parameter("num_classes").as_int());
-      RCLCPP_INFO(get_logger(), "  score_thresh: %f", get_parameter("score_thresh").as_double());
-      RCLCPP_INFO(get_logger(), "  nms_thresh: %f", get_parameter("nms_thresh").as_double());
-      RCLCPP_INFO(get_logger(), "  use_cuda: %s", get_parameter("use_cuda").as_bool() ? "true" : "false");
-      RCLCPP_INFO(get_logger(), "  build_only: %s", get_parameter("build_only").as_bool() ? "true" : "false");
-      RCLCPP_INFO(get_logger(), "  traffic_light_class_name: %s", get_parameter("traffic_light_class_name").as_string().c_str()); 
-      
-    }
+    // remove default set values in declare_parameter to avoid confusion
+    std::string onnx_path = this->declare_parameter<std::string>("onnx_path");
+    std::string names_path = this->declare_parameter<std::string>("names_file");
+    std::string precision = this->declare_parameter<std::string>("precision");
+    std::string calibration_images =  this->declare_parameter<std::string>("calibration_images");
+    std::string calib = this->declare_parameter<std::string>("calib");
+    // bool sparse = this->declare_parameter<bool>("sparse");
+    bool build_only = this->declare_parameter<bool>("build_only");
+    // bool use_cuda = this->declare_parameter<bool>("use_cuda");
+    std::string traffic_light_class_name = this->declare_parameter<std::string>("traffic_light_class_name");
+    float score_thresh = static_cast<float>(this->declare_parameter<double>("score_thresh"));
+    float nms_thresh = static_cast<float>(this->declare_parameter<double>("nms_thresh"));
+    int num_anchors = this->declare_parameter<int>("num_anchors");
+    int num_classes = this->declare_parameter<int>("num_classes");
+    std::vector<int64_t> anchors_param = this->declare_parameter<std::vector<int64_t>>("anchors");
 
     names_ = whole_image_detector::loadNames(names_path);
     if (names_.empty()) {
@@ -88,13 +56,19 @@ public:
       names_.push_back("TRAFFIC_LIGHT");
     }
 
-    traffic_light_class_name_ = get_parameter("traffic_light_class_name").as_string();
+    traffic_light_class_name_ = traffic_light_class_name;
     traffic_light_class_id_ = -1;
     for (size_t i = 0; i < names_.size(); ++i) {
       if (names_[i] == traffic_light_class_name_) {
         traffic_light_class_id_ = static_cast<int>(i);
         break;
       }
+    }
+    RCLCPP_INFO(
+      get_logger(), "Loaded %zu class names from %s", names_.size(), names_path.c_str());
+    // log names_:
+    for (size_t i = 0; i < names_.size(); ++i) {
+      RCLCPP_INFO(get_logger(), "  class_id=%zu: %s", i, names_[i].c_str());
     }
     if (traffic_light_class_id_ < 0 && !traffic_light_class_name_.empty()) {
       RCLCPP_WARN(
@@ -103,23 +77,22 @@ public:
         traffic_light_class_name_.c_str());
     }
 
-    std::vector<int64_t> anchors_param = get_parameter("anchors").as_integer_array();
     anchors_.assign(anchors_param.begin(), anchors_param.end());
-    num_anchors_ = get_parameter("num_anchors").as_int();
-    num_classes_ = get_parameter("num_classes").as_int();
-    score_thresh_ = get_parameter("score_thresh").as_double();
-    nms_thresh_ = get_parameter("nms_thresh").as_double();
+    num_anchors_ = num_anchors;
+    num_classes_ = num_classes;
+    score_thresh_ = static_cast<double>(score_thresh);
+    nms_thresh_ = static_cast<double>(nms_thresh);
 
 #ifdef ENABLE_GPU
     try {
       detector_ = std::make_unique<whole_image_detector::ComlopsDetector>(
-        this, onnx_path, get_parameter("precision").as_string(), anchors_, num_anchors_,
-        num_classes_, score_thresh_, nms_thresh_);
+        this, onnx_path, precision, anchors_, num_anchors_, num_classes_, score_thresh_,
+        nms_thresh_);
     } catch (const std::exception & e) {
       RCLCPP_ERROR(get_logger(), "ComlopsDetector init failed: %s", e.what());
       detector_.reset();
     }
-    if (get_parameter("build_only").as_bool()) {
+    if (build_only) {
       RCLCPP_INFO(get_logger(), "TensorRT engine built; exiting (build_only=true).");
       rclcpp::shutdown();
       return;
@@ -144,13 +117,6 @@ public:
   }
 
 private:
-  static std::string resolvePath(const std::string & path, const std::string & package_share_dir)
-  {
-    if (path.empty()) return path;
-    if (path[0] == '/') return path;
-    return package_share_dir + "/" + path;
-  }
-
   void onImage(const sensor_msgs::msg::Image::ConstSharedPtr msg)
   {
 #ifdef ENABLE_GPU

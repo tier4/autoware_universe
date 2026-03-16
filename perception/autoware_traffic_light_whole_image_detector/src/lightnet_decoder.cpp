@@ -232,11 +232,4 @@ std::vector<std::string> loadNames(const std::string & path)
   return names;
 }
 
-std::string resolvePath(const std::string & path, const std::string & package_share_dir)
-{
-  if (path.empty()) return path;
-  if (path[0] == '/') return path;
-  return package_share_dir + "/" + path;
-}
-
 }  // namespace autoware::traffic_light::whole_image_detector

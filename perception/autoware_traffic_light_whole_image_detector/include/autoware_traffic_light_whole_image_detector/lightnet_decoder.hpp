@@ -79,9 +79,6 @@ private:
 /** Load class names from file (one per line). */
 std::vector<std::string> loadNames(const std::string & path);
 
-/** Resolve path: if not absolute, relative to package share dir or cwd. */
-std::string resolvePath(const std::string & path, const std::string & package_share_dir);
-
 }  // namespace autoware::traffic_light::whole_image_detector
 
 #endif  // AUTOWARE_TRAFFIC_LIGHT_WHOLE_IMAGE_DETECTOR__LIGHTNET_DECODER_HPP_
