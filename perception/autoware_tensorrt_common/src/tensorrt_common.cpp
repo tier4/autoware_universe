@@ -537,6 +537,20 @@ bool TrtCommon::buildEngineFromOnnx()
   file.write(reinterpret_cast<const char *>(plan->data()), plan->size());  // NOLINT
   file.close();
 
+  // Debug: log engine file location and properties
+  try {
+    fs::path engine_path = trt_config_->engine_path;
+    std::error_code ec;
+    auto file_size = fs::file_size(engine_path, ec);
+    auto perms = fs::status(engine_path, ec).permissions();
+    logger_->log(
+      nvinfer1::ILogger::Severity::kINFO,
+      "Engine file saved: %s | Size: %zu bytes | Permissions: %d",
+      engine_path.string().c_str(), file_size, static_cast<int>(perms));
+  } catch (const std::exception & e) {
+    logger_->log(nvinfer1::ILogger::Severity::kWARNING, "Failed to get engine file properties: %s", e.what());
+  }
+
   context_ = TrtUniquePtr<nvinfer1::IExecutionContext>(engine_->createExecutionContext());
   if (!context_) {
     logger_->log(nvinfer1::ILogger::Severity::kERROR, "Fail to create context");
