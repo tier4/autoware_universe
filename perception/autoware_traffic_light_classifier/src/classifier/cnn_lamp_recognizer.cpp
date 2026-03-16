@@ -503,7 +503,7 @@ void CnnLampRecognizer::updateTrafficSignals(
             break;
           default:
             element.shape = MsgTE::UNKNOWN;
-            unknown_elem.confidence = 0.0;
+            element.confidence = 0.0;
             break;
         }
         break;
@@ -516,7 +516,7 @@ void CnnLampRecognizer::updateTrafficSignals(
       // TODO(badai-nguyen): update u-turn, number when msgs are updated
       default:
         element.shape = MsgTE::UNKNOWN;
-        unknown_elem.confidence = 0.0;
+        element.confidence = 0.0;
         break;
     }
     traffic_signal.elements.push_back(element);
