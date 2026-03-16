@@ -16,6 +16,9 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 import launch
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
 from launch_ros.parameter_descriptions import ParameterFile
@@ -36,18 +39,30 @@ def generate_launch_description():
         parameters=[ParameterFile(param_file, allow_substs=True)],
     )
 
+    agnocast_env = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory("autoware_agnocast_wrapper"),
+                "launch",
+                "agnocast_env.launch.py",
+            )
+        ),
+        launch_arguments={"use_multithread": "true"}.items(),
+    )
+
     # set container to run all required components in the same process
     container = ComposableNodeContainer(
         name="pointcloud_preprocessor_container",
         namespace=ns,
-        package="rclcpp_components",
-        executable="component_container",
+        package=LaunchConfiguration("container_package"),
+        executable=LaunchConfiguration("container_executable"),
         composable_node_descriptions=[my_component],
         output="screen",
     )
 
     return launch.LaunchDescription(
         [
+            agnocast_env,
             container,
         ]
     )

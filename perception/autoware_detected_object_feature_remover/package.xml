@@ -19,6 +19,7 @@
   <depend>libopencv-dev</depend>
   <depend>pcl_conversions</depend>
   <depend>rclcpp</depend>
+  <depend>autoware_agnocast_wrapper</depend>
   <depend>rclcpp_components</depend>
   <depend>tier4_perception_msgs</depend>
 

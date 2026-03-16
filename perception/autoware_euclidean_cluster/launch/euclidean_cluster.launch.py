@@ -12,9 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
+from ament_index_python.packages import get_package_share_directory
 import launch
 from launch.actions import DeclareLaunchArgument
+from launch.actions import IncludeLaunchDescription
 from launch.actions import OpaqueFunction
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
 from launch.substitutions import AnonName
@@ -72,8 +77,8 @@ def launch_setup(context, *args, **kwargs):
     container = ComposableNodeContainer(
         name="euclidean_cluster_container",
         namespace=ns,
-        package="rclcpp_components",
-        executable="component_container",
+        package=LaunchConfiguration("container_package"),
+        executable=LaunchConfiguration("container_executable"),
         composable_node_descriptions=[],
         output="screen",
         condition=UnlessCondition(LaunchConfiguration("use_pointcloud_container")),
@@ -107,6 +112,17 @@ def generate_launch_description():
     def add_launch_arg(name: str, default_value=None):
         return DeclareLaunchArgument(name, default_value=default_value)
 
+    agnocast_env = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory("autoware_agnocast_wrapper"),
+                "launch",
+                "agnocast_env.launch.py",
+            )
+        ),
+        launch_arguments={"use_multithread": "true"}.items(),
+    )
+
     return launch.LaunchDescription(
         [
             add_launch_arg("input_pointcloud", "/perception/obstacle_segmentation/pointcloud"),
@@ -122,6 +138,7 @@ def generate_launch_description():
                     "/config/euclidean_cluster.param.yaml",
                 ],
             ),
+            agnocast_env,
             OpaqueFunction(function=launch_setup),
         ]
     )

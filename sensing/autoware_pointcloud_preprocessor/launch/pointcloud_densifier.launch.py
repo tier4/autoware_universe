@@ -17,6 +17,8 @@ import os
 from ament_index_python.packages import get_package_share_directory
 import launch
 from launch.actions import DeclareLaunchArgument
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
@@ -51,12 +53,23 @@ def generate_launch_description():
         parameters=[config_file],
     )
 
+    agnocast_env = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory("autoware_agnocast_wrapper"),
+                "launch",
+                "agnocast_env.launch.py",
+            )
+        ),
+        launch_arguments={"use_multithread": "true"}.items(),
+    )
+
     # Create container
     container = ComposableNodeContainer(
         name="pointcloud_densifier_container",
         namespace="",
-        package="rclcpp_components",
-        executable="component_container",
+        package=LaunchConfiguration("container_package"),
+        executable=LaunchConfiguration("container_executable"),
         composable_node_descriptions=[component],
         output="screen",
     )
@@ -67,6 +80,7 @@ def generate_launch_description():
             input_topic,
             output_topic,
             # Nodes
+            agnocast_env,
             container,
         ]
     )

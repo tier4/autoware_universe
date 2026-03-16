@@ -17,8 +17,10 @@ import os
 from ament_index_python.packages import get_package_share_directory
 import launch
 from launch.actions import DeclareLaunchArgument
+from launch.actions import IncludeLaunchDescription
 from launch.actions import LogInfo
 from launch.actions import OpaqueFunction
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch.substitutions import PythonExpression
 from launch_ros.actions import ComposableNodeContainer
@@ -144,8 +146,8 @@ def launch_setup(context, *args, **kwargs):
     container = ComposableNodeContainer(
         name="pointcloud_preprocessor_container",
         namespace=ns,
-        package="rclcpp_components",
-        executable="component_container",
+        package=LaunchConfiguration("container_package"),
+        executable=LaunchConfiguration("container_executable"),
         composable_node_descriptions=concat_components + [cropbox_component],
         output="screen",
     )
@@ -226,4 +228,17 @@ def generate_launch_description():
         "Set True to separate concatenate node and time_sync node. which will cause to larger memory usage.",
     )
 
-    return launch.LaunchDescription(launch_arguments + [OpaqueFunction(function=launch_setup)])
+    agnocast_env = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory("autoware_agnocast_wrapper"),
+                "launch",
+                "agnocast_env.launch.py",
+            )
+        ),
+        launch_arguments={"use_multithread": "true"}.items(),
+    )
+
+    return launch.LaunchDescription(
+        launch_arguments + [agnocast_env, OpaqueFunction(function=launch_setup)]
+    )
