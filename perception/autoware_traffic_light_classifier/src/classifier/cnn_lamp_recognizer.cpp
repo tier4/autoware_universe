@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -366,10 +367,6 @@ void CnnLampRecognizer::outputDebugImage(
       const int y2 = static_cast<int>(d.box.y2 * img_h);
       const int color_idx = std::min(2, std::max(0, static_cast<int>(d.color)));
       cv::rectangle(debug_image, cv::Point(x1, y1), cv::Point(x2, y2), colors[color_idx], 2);
-      const std::string prob_str = std::to_string(static_cast<int>(d.confidence * 100)) + "%";
-      cv::putText(
-        debug_image, prob_str, cv::Point(x1, std::max(12, y1 - 2)), cv::FONT_HERSHEY_SIMPLEX, 0.4,
-        colors[color_idx], 1);
     }
   }
 
@@ -396,6 +393,7 @@ void CnnLampRecognizer::outputDebugImage(
 
   for (std::size_t i = 0; i < traffic_signal.elements.size(); i++) {
     const auto & light = traffic_signal.elements.at(i);
+    probability = light.confidence;
     if (i > 0) label += ",";
     const std::string c = colorStr(light.color);
     const std::string sh = shapeStr(light.shape);
@@ -409,19 +407,17 @@ void CnnLampRecognizer::outputDebugImage(
     } else {
       label += c;
     }
-    probability = light.confidence;
+    char prob_buf[32];
+    std::snprintf(prob_buf, sizeof(prob_buf), "%.1f", probability);
+    label += " " + std::string(prob_buf);
   }
   const int expand_h =
     std::max(static_cast<int>((kDebugImageWidth * debug_image.rows) / debug_image.cols), 1);
   cv::resize(debug_image, debug_image, cv::Size(kDebugImageWidth, expand_h));
   cv::Mat text_img(cv::Size(kDebugImageWidth, kDebugTextHeight), CV_8UC3, cv::Scalar(0, 0, 0));
-  const std::string text = label + " " + std::to_string(probability);
   cv::putText(
-    text_img, text, cv::Point(5, 25), cv::FONT_HERSHEY_COMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+    text_img, label, cv::Point(5, 25), cv::FONT_HERSHEY_COMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
   cv::vconcat(debug_image, text_img, debug_image);
-  const auto debug_image_msg =
-    cv_bridge::CvImage(std_msgs::msg::Header(), "rgb8", debug_image).toImageMsg();
-  image_pub_.publish(debug_image_msg);
 }
 
 static void cvtBBoxInfo2TrafficLightElement(const BBoxInfo & d, TrafficLightElement & element)
@@ -536,6 +532,7 @@ bool CnnLampRecognizer::getTrafficSignals(
 
   size_t signal_i = 0;
   std::vector<cv::Mat> batch;
+  std::vector<std::vector<TrafficLightElement>> unique_traffic_light_elements_per_image;
 
   for (size_t image_i = 0; image_i < images.size(); image_i++) {
     batch.push_back(images[image_i]);
@@ -580,15 +577,31 @@ bool CnnLampRecognizer::getTrafficSignals(
       }
 
       updateTrafficSignals(unique_traffic_light_elements, traffic_signals.signals[sig_idx]);
+      unique_traffic_light_elements_per_image.push_back(unique_traffic_light_elements);
 
-      if (image_pub_.getNumSubscribers() > 0) {
-        cv::Mat debug_img = batch[i].clone();
-        outputDebugImage(
-          debug_img, traffic_signals.signals[sig_idx], &unique_traffic_light_elements);
-      }
     }
     signal_i += current_batch_size;
     batch.clear();
+  }
+  if (image_pub_.getNumSubscribers() > 0 && !images.empty()) {
+    // build debug image by vertically concatenating each image's debug view
+    const int strip_width = 200;
+    const int strip_height = 130;
+    cv::Mat debug_img;
+    for (size_t i = 0; i < images.size(); i++) {
+      cv::Mat debug_img_i = images[i].clone();
+      outputDebugImage(
+        debug_img_i, traffic_signals.signals[i], &unique_traffic_light_elements_per_image[i]);
+      cv::resize(debug_img_i, debug_img_i, cv::Size(strip_width, strip_height));
+      if (i == 0) {
+        debug_img = debug_img_i;
+      } else {
+        cv::vconcat(debug_img, debug_img_i, debug_img);
+      }
+    }
+    const auto debug_image_msg =
+      cv_bridge::CvImage(std_msgs::msg::Header(), "rgb8", debug_img).toImageMsg();
+    image_pub_.publish(debug_image_msg);
   }
   return true;
 }
