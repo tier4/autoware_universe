@@ -18,6 +18,7 @@
 #include "autoware/trajectory_validator/status.hpp"
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
+#include <autoware_utils_system/stop_watch.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 
 #include <autoware_internal_planning_msgs/msg/detail/candidate_trajectory__struct.hpp>
@@ -72,19 +73,26 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
   pub_trajectories_ = create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
 
   debug_status_publisher_ = create_publisher<TrajectoryStatusArray>("~/debug/status", 1);
-  debug_processing_time_detail_pub_ = create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
+  pub_processing_time_detail_ = create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
     "~/debug/processing_time_detail_ms/feasible_trajectory_filter", 1);
-  time_keeper_ =
-    std::make_shared<autoware_utils_debug::TimeKeeper>(debug_processing_time_detail_pub_);
+  time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>(pub_processing_time_detail_);
 
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&TrajectoryValidator::on_parameter, this, std::placeholders::_1));
+  pub_processing_time_text_ = create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
+    "~/debug/processing_time_text", rclcpp::QoS(1));
+
+  pub_processing_time_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
 }
 
 void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr msg)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
+  autoware_utils_system::StopWatch<std::chrono::milliseconds> stop_watch;
+  std::unordered_map<std::string, double> processing_time_ms;
+
+  stop_watch.tic("Total");
   // Prepare context for filters
   FilterContext context;
 
@@ -113,16 +121,14 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   diagnostics_interface_.clear();
   evaluation_tables_.clear();
 
-  // Create output message for filtered trajectories
   auto filtered_msg = std::make_unique<CandidateTrajectories>();
 
   const auto uuid_to_name = get_generator_uuid_to_name_map(*msg);
 
   // Process and filter trajectories
   std::vector<TrajectoryStatus> trajectory_statuses;
+  diagnostics_interface_.clear();
   for (const auto & trajectory : msg->candidate_trajectories) {
-    // Apply each filter to the trajectory
-
     EvaluationTable table;
     table.generator_id = autoware_utils_uuid::to_hex_string(trajectory.generator_id);
     table.is_overall_feasible = true;
@@ -133,6 +139,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
       PluginEvaluation evaluation;
       evaluation.is_feasible = true;
       evaluation.plugin_name = plugin->get_name();
+      stop_watch.tic(evaluation.plugin_name);
 
       const auto result = plugin->is_feasible(trajectory.points, context);
       if (!result) {
@@ -163,6 +170,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
       } else {
         diagnostics_interface_.add_key_value(plugin->get_name(), std::string("OK"));
       }
+      processing_time_ms[evaluation.plugin_name] += stop_watch.toc(evaluation.plugin_name);
 
       table.evaluations[plugin->category()].push_back(evaluation);
       validation_statuses[plugin->category()].push_back(result.value());
@@ -186,6 +194,9 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
     }
   }
 
+  processing_time_ms["Total"] = stop_watch.toc("Total");
+
+  publish_processing_time(processing_time_ms);
   update_diagnostic(*msg, *filtered_msg);
   pub_trajectories_->publish(*filtered_msg);
 
@@ -294,6 +305,76 @@ rcl_interfaces::msg::SetParametersResult TrajectoryValidator::on_parameter(
   }
 
   return result;
+}
+
+void TrajectoryValidator::publish_processing_time(
+  const std::unordered_map<std::string, double> & processing_time)
+{
+  for (const auto & [key, value] : processing_time) {
+    if (key == "Total") {
+      pub_processing_time_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+        "processing_time_ms", value);
+      continue;
+    }
+    pub_processing_time_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      key + "processing_time_ms", value);
+  }
+  // 2. Format the string output
+  std::string text_output = "--- Trajectory Validator Processing Time ---\n";
+
+  // Extract Total first so we can put it at the top
+  auto total_it = processing_time.find("Total");
+  if (total_it != processing_time.end()) {
+    text_output += fmt::format("Total: {:.3f} ms\n", total_it->second);
+  }
+
+  // Extract and sort the remaining plugin keys for stable output
+  std::vector<std::string> sorted_keys;
+  for (const auto & [key, _] : processing_time) {
+    if (key != "Total") {
+      sorted_keys.push_back(key);
+    }
+    // 2. Format the string output
+    std::string text_output = "--- Trajectory Validator Processing Time ---\n";
+
+    // Extract Total first so we can put it at the top
+    auto total_it = processing_time.find("Total");
+    if (total_it != processing_time.end()) {
+      text_output += fmt::format("Total: {:.3f} ms\n", total_it->second);
+    }
+
+    // Extract and sort the remaining plugin keys for stable output
+    std::vector<std::string> sorted_keys;
+    for (const auto & [key, _] : processing_time) {
+      if (key != "Total") {
+        sorted_keys.push_back(key);
+      }
+    }
+    std::sort(sorted_keys.begin(), sorted_keys.end());
+
+    // Append each plugin's time
+    for (const auto & key : sorted_keys) {
+      text_output += fmt::format("- {}: {:.3f} ms\n", key, processing_time.at(key));
+    }
+
+    // 3. Publish the StringStamped message
+    autoware_internal_debug_msgs::msg::StringStamped text_msg;
+    text_msg.stamp = this->now();
+    text_msg.data = text_output;
+    pub_processing_time_text_->publish(text_msg);
+  }
+  std::sort(sorted_keys.begin(), sorted_keys.end());
+
+  // Append each plugin's time
+  for (const auto & key : sorted_keys) {
+    text_output += fmt::format("- {}: {:.3f} ms\n", key, processing_time.at(key));
+  }
+
+  // 3. Publish the StringStamped message
+  autoware_internal_debug_msgs::msg::StringStamped text_msg;
+  text_msg.stamp = this->now();
+  text_msg.data = text_output;
+  pub_processing_time_text_->publish(text_msg);
 }
 }  // namespace autoware::trajectory_validator
 

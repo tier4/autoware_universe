@@ -19,6 +19,7 @@
 
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_trajectory_validator_param.hpp>
+#include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
@@ -26,6 +27,7 @@
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
 #include <autoware_internal_planning_msgs/msg/trajectory_category_status.hpp>
@@ -80,12 +82,10 @@ public:
   explicit TrajectoryValidator(const rclcpp::NodeOptions & node_options);
 
 private:
-  void process(const CandidateTrajectories::ConstSharedPtr msg);
-
+  // Methods
   void map_callback(const LaneletMapBin::ConstSharedPtr msg);
-
+  void process(const CandidateTrajectories::ConstSharedPtr msg);
   void load_metric(const std::string & name);
-
   /**
    * @brief Unloads a metric plugin
    * @param name Metric plugin name to unload
@@ -94,18 +94,19 @@ private:
   void update_diagnostic(
     const CandidateTrajectories & input_trajectories,
     const CandidateTrajectories & filtered_trajectories);
+  void publish_processing_time(const std::unordered_map<std::string, double> & processing_time);
 
   rcl_interfaces::msg::SetParametersResult on_parameter(
     const std::vector<rclcpp::Parameter> & parameters);
 
   std::unique_ptr<validator::ParamListener> listener_;
 
-  rclcpp::Publisher<TrajectoryStatusArray>::SharedPtr debug_status_publisher_;
-  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
-    debug_processing_time_detail_pub_;
-  mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};
+  // Plugin infrastructure
+  pluginlib::ClassLoader<plugin::ValidatorInterface> plugin_loader_;
+  std::vector<std::shared_ptr<plugin::ValidatorInterface>> plugins_;
+  std::vector<EvaluationTable> evaluation_tables_;
 
-  rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
+  // Subscribers
   autoware_utils_rclcpp::InterProcessPollingSubscriber<Odometry> sub_odometry_{
     this, "~/input/odometry"};
   autoware_utils_rclcpp::InterProcessPollingSubscriber<PredictedObjects> sub_objects_{
@@ -116,20 +117,25 @@ private:
     autoware_perception_msgs::msg::TrafficLightGroupArray>
     sub_traffic_lights_{this, "~/input/traffic_signals"};
 
+  rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
   rclcpp::Subscription<CandidateTrajectories>::SharedPtr sub_trajectories_;
 
+  // Publishers
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
+  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
+    pub_processing_time_detail_;
+  std::shared_ptr<autoware_utils_debug::DebugPublisher> pub_processing_time_;
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
+    pub_processing_time_text_;
+  rclcpp::Publisher<TrajectoryStatusArray>::SharedPtr debug_status_publisher_;
 
+  // Internal State
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
-
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
-
-  pluginlib::ClassLoader<plugin::ValidatorInterface> plugin_loader_;
-
-  std::vector<std::shared_ptr<plugin::ValidatorInterface>> plugins_;
-  std::vector<EvaluationTable> evaluation_tables_;
-
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
+
+  // Tools
+  mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};
   DiagnosticsInterface diagnostics_interface_{this, "trajectory_validator"};
 };
 

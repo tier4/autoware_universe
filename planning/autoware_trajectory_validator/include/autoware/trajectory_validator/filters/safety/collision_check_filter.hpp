@@ -129,7 +129,7 @@ private:
 class CollisionCheckFilter : public plugin::ValidatorInterface
 {
 public:
-  CollisionCheckFilter() : ValidatorInterface("CollisionCheckFilter") {}
+  CollisionCheckFilter() : ValidatorInterface("collision_check_filter") {}
 
   result_t is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) override;
