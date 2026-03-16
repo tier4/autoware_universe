@@ -20,12 +20,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <memory>
 #include <numeric>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
-
 namespace autoware::traffic_light
 {
 
@@ -118,12 +119,11 @@ CnnLampRecognizer::CnnLampRecognizer(rclcpp::Node * node_ptr) : node_ptr_(node_p
 
   const std::string model_path = node_ptr_->declare_parameter<std::string>("model_path");
   const std::string precision = node_ptr_->declare_parameter<std::string>("precision");
-  score_threshold_ =
-    static_cast<float>(node_ptr_->declare_parameter<double>("score_threshold", 0.2));
-  nms_threshold_ = static_cast<float>(node_ptr_->declare_parameter<double>("nms_threshold", 0.5));
-  max_batch_size_ = node_ptr_->declare_parameter<int>("max_batch_size", 64);
-  const int default_input_h = node_ptr_->declare_parameter<int>("input_height", 64);
-  const int default_input_w = node_ptr_->declare_parameter<int>("input_width", 64);
+  score_threshold_ = static_cast<float>(node_ptr_->declare_parameter<double>("score_threshold"));
+  nms_threshold_ = static_cast<float>(node_ptr_->declare_parameter<double>("nms_threshold"));
+  max_batch_size_ = node_ptr_->declare_parameter<int>("max_batch_size");
+  const int default_input_h = node_ptr_->declare_parameter<int>("input_height");
+  const int default_input_w = node_ptr_->declare_parameter<int>("input_width");
 
   autoware::tensorrt_common::TrtCommonConfig config(
     model_path, precision, "", (1ULL << 30U), -1, false);
@@ -330,7 +330,6 @@ void CnnLampRecognizer::decodeTlrOutput(
           info.box.y1 = y1;
           info.box.x2 = x2;
           info.box.y2 = y2;
-          info.label = type_idx;
           info.classId = type_idx;
           info.prob = score;
           info.isHierarchical = true;
@@ -433,7 +432,6 @@ static void cvtBBoxInfo2TrafficLightElement(const BBoxInfo & d, TrafficLightElem
   element.shape = static_cast<Shape>(d.classId);
   if (element.shape == Shape::ARROW) {
     element.arrow_direction = angleToArrowDirection(std::atan2(d.sin, d.cos));
-    element.color = Color::GREEN;
   }
 }
 
@@ -469,11 +467,7 @@ void CnnLampRecognizer::updateTrafficSignals(
         break;
     }
     if (is_pedestrian || e.shape == Shape::PED) {
-      if (e.shape == Shape::PED) {
-        element.shape = MsgTE::CIRCLE;
-      } else {
-        element.shape = MsgTE::CROSS;
-      }
+      element.shape = MsgTE::CIRCLE;
       traffic_signal.elements.push_back(element);
       continue;
     }
@@ -509,15 +503,20 @@ void CnnLampRecognizer::updateTrafficSignals(
             break;
           default:
             element.shape = MsgTE::UNKNOWN;
+            unknown_elem.confidence = 0.0;
             break;
         }
         break;
       case Shape::PED:
-        element.shape = MsgTE::UNKNOWN;
-        element.color = MsgTE::UNKNOWN;
+        element.shape = MsgTE::CIRCLE;
         break;
+      case Shape::CROSS:
+        element.shape = MsgTE::CROSS;
+        break;
+      // TODO(badai-nguyen): update u-turn, number when msgs are updated
       default:
         element.shape = MsgTE::UNKNOWN;
+        unknown_elem.confidence = 0.0;
         break;
     }
     traffic_signal.elements.push_back(element);
