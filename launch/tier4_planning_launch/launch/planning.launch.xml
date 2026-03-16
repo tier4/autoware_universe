@@ -33,8 +33,12 @@
             <arg name="output_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
             <arg name="output_turn_indicators" value="/planning/turn_indicators_cmd"/>
           </include>
+           <include file="$(find-pkg-share autoware_trajectory_modifier)/launch/trajectory_modifier.launch.xml">
+            <arg name="input_candidate_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
+            <arg name="output_candidate_trajectories" value="/planning/generator/trajectory_modifier/candidate_trajectories"/>
+          </include>
           <include file="$(find-pkg-share autoware_trajectory_optimizer)/launch/trajectory_optimizer.launch.xml">
-            <arg name="input_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
+            <arg name="input_trajectories" value="/planning/generator/trajectory_modifier/candidate_trajectories"/>
             <arg name="output_traj" value="/planning/trajectory"/>
             <arg name="output_trajectories" value="/planning/generator/trajectory_optimizer/candidate_trajectories"/>
           </include>
