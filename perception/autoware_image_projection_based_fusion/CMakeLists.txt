@@ -34,9 +34,11 @@ target_link_libraries(${PROJECT_NAME}
   ${EIGEN3_LIBRARIES}
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::image_projection_based_fusion::RoiDetectedObjectFusionNode"
   EXECUTABLE roi_detected_object_fusion_node
+  ROS2_EXECUTOR SingleThreadedExecutor
+  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}
