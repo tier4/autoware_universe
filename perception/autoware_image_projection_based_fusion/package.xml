@@ -33,6 +33,7 @@
   <depend>message_filters</depend>
   <depend>perception_utils</depend>
   <depend>rclcpp</depend>
+  <depend>agnocast_components</depend>
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
   <depend>tf2_eigen</depend>

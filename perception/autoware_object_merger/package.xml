@@ -20,6 +20,7 @@
   <depend>eigen</depend>
   <depend>mussp</depend>
   <depend>rclcpp</depend>
+  <depend>agnocast_components</depend>
   <depend>rclcpp_components</depend>
   <depend>tf2</depend>
   <depend>tf2_ros</depend>

@@ -45,8 +45,8 @@ def launch_setup(context, *args, **kwargs):
     container = ComposableNodeContainer(
         name="mrm_emergency_stop_operator_container",
         namespace="mrm_emergency_stop_operator",
-        package="rclcpp_components",
-        executable="component_container",
+        package="agnocastlib",
+        executable="agnocast_component_container_cie",
         composable_node_descriptions=[
             component,
         ],

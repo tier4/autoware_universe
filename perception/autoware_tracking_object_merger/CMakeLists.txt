@@ -6,6 +6,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(autoware_cmake REQUIRED)
+find_package(agnocast_components REQUIRED)
 find_package(glog REQUIRED)
 autoware_package()
 
@@ -35,9 +36,10 @@ target_link_libraries(${PROJECT_NAME}
   glog::glog
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::tracking_object_merger::DecorativeTrackerMergerNode"
   EXECUTABLE decorative_tracker_merger_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 ament_auto_package(INSTALL_TO_SHARE

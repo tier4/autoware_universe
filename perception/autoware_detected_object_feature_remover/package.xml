@@ -16,6 +16,7 @@
   <depend>autoware_perception_msgs</depend>
   <depend>autoware_utils</depend>
   <depend>rclcpp</depend>
+  <depend>agnocast_components</depend>
   <depend>rclcpp_components</depend>
   <depend>tier4_perception_msgs</depend>
 

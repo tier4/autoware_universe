@@ -50,7 +50,7 @@
     <!-- planning validator -->
     <group>
       <include file="$(find-pkg-share autoware_planning_validator)/launch/planning_validator.launch.xml">
-        <arg name="container_type" value="component_container_mt"/>
+        <arg name="container_type" value="agnocast_component_container_cie"/>
         <arg name="input_trajectory_name" value="/planning/scenario_planning/velocity_smoother/trajectory"/>
         <arg name="output_trajectory" value="/planning/trajectory"/>
         <arg name="input_objects_topic_name" value="$(var input_objects_topic_name)"/>
