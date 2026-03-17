@@ -97,11 +97,14 @@ struct DynamicAvoidanceParameters
   bool avoid_pedestrian{false};
   int successive_num_to_entry_dynamic_avoidance_condition{0};
   int successive_num_to_exit_dynamic_avoidance_condition{0};
+  bool enable_ttc_based_avoidance_filter{true};
 
   double max_obj_lat_offset_to_ego_path{0.0};
 
   double max_front_object_ego_path_lat_cover_ratio{0.0};
   double max_stopped_object_vel{0.0};
+  double ttc_threshold_to_hold_avoidance_regulated{0.0};
+  double ttc_threshold_to_hold_avoidance_unregulated{0.0};
 
   // drivable area generation
   double lat_offset_from_obstacle{0.0};
@@ -336,6 +339,13 @@ private:
   std::optional<autoware_utils::Polygon2d> calcExpandedCurrentPoseObjectPolygon(
     const DynamicAvoidanceObject & object) const;
   EgoPathReservePoly calcEgoPathReservePoly(const PathWithLaneId & ego_path) const;
+  std::optional<double> calcTimeToCollisionOnPath(
+    const std::vector<geometry_msgs::msg::Pose> & points,
+    const geometry_msgs::msg::Point & object_pos) const;
+  bool shouldKeepPreviousAvoidanceState(
+    const std::vector<geometry_msgs::msg::Pose> & points,
+    const std::optional<DynamicAvoidanceObject> & prev_object,
+    const geometry_msgs::msg::Point & object_pos, const double ttc_threshold) const;
 
   std::vector<DynamicObstacleAvoidanceModule::DynamicAvoidanceObject> target_objects_;
   // std::vector<DynamicObstacleAvoidanceModule::DynamicAvoidanceObject> prev_target_objects_;

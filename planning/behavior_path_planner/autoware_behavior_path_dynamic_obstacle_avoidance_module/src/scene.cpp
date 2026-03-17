@@ -487,6 +487,28 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstRegulatedObje
     }
     const auto obj_uuid = object.uuid;
     const auto prev_object = getObstacleFromUuid(prev_objects, obj_uuid);
+    if (
+      parameters_->enable_ttc_based_avoidance_filter && !prev_object &&
+      parameters_->ttc_threshold_to_hold_avoidance_regulated > 0.0) {
+      const auto ttc = calcTimeToCollisionOnPath(input_points, object.pose.position);
+      if (ttc && *ttc < parameters_->ttc_threshold_to_hold_avoidance_regulated) {
+        continue;
+      }
+    }
+    if (
+      parameters_->enable_ttc_based_avoidance_filter &&
+      shouldKeepPreviousAvoidanceState(
+        input_points, prev_object, object.pose.position,
+        parameters_->ttc_threshold_to_hold_avoidance_regulated)) {
+      const auto & ref_points_for_obj_poly = prev_object->ref_points_for_obj_poly.empty()
+                                               ? input_points
+                                               : prev_object->ref_points_for_obj_poly;
+      target_objects_manager_.updateObjectVariables(
+        obj_uuid, prev_object->lon_offset_to_avoid, prev_object->lat_offset_to_avoid,
+        prev_object->is_collision_left, prev_object->should_be_avoided, ref_points_for_obj_poly);
+      continue;
+    }
+
     const size_t obj_seg_idx =
       autoware::motion_utils::findNearestSegmentIndex(input_points, object.pose.position);
     const size_t obj_idx =
@@ -566,6 +588,29 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstUnregulatedOb
       autoware::motion_utils::findNearestSegmentIndex(input_points, object.pose.position);
 
     const auto obj_uuid = object.uuid;
+    const auto prev_object = getObstacleFromUuid(prev_objects, obj_uuid);
+    if (
+      parameters_->enable_ttc_based_avoidance_filter && !prev_object &&
+      parameters_->ttc_threshold_to_hold_avoidance_unregulated > 0.0) {
+      const auto ttc = calcTimeToCollisionOnPath(input_points, object.pose.position);
+      if (ttc && *ttc < parameters_->ttc_threshold_to_hold_avoidance_unregulated) {
+        continue;
+      }
+    }
+    if (
+      parameters_->enable_ttc_based_avoidance_filter &&
+      shouldKeepPreviousAvoidanceState(
+        input_points, prev_object, object.pose.position,
+        parameters_->ttc_threshold_to_hold_avoidance_unregulated)) {
+      const auto & ref_points_for_obj_poly = prev_object->ref_points_for_obj_poly.empty()
+                                               ? input_points
+                                               : prev_object->ref_points_for_obj_poly;
+      target_objects_manager_.updateObjectVariables(
+        obj_uuid, prev_object->lon_offset_to_avoid, prev_object->lat_offset_to_avoid,
+        prev_object->is_collision_left, prev_object->should_be_avoided, ref_points_for_obj_poly);
+      continue;
+    }
+
     const auto & ref_points_for_obj_poly = input_points;
 
     // 2.g. check if the ego is not ahead of the object.
@@ -596,8 +641,8 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstUnregulatedOb
     }
 
     // 2.h. calculate lateral offset to avoid for target selection and side decision.
-    const auto lat_offset_to_avoid = calcMinMaxLateralOffsetToAvoidUnregulatedObject(
-      ref_points_for_obj_poly, getObstacleFromUuid(prev_objects, obj_uuid), object);
+    const auto lat_offset_to_avoid =
+      calcMinMaxLateralOffsetToAvoidUnregulatedObject(ref_points_for_obj_poly, prev_object, object);
     if (!lat_offset_to_avoid) {
       RCLCPP_INFO_EXPRESSION(
         getLogger(), parameters_->enable_debug_info,
@@ -624,6 +669,47 @@ bool DynamicObstacleAvoidanceModule::isObjectFarFromPath(
     0.0, obj_dist_to_path - planner_data_->parameters.vehicle_width / 2.0 - obj_max_length);
 
   return parameters_->max_obj_lat_offset_to_ego_path < min_obj_dist_to_path;
+}
+
+std::optional<double> DynamicObstacleAvoidanceModule::calcTimeToCollisionOnPath(
+  const std::vector<geometry_msgs::msg::Pose> & points,
+  const geometry_msgs::msg::Point & object_pos) const
+{
+  if (points.size() < 2) {
+    return std::nullopt;
+  }
+
+  constexpr double min_ego_speed = 1e-3;
+  const double ego_speed = std::abs(planner_data_->self_odometry->twist.twist.linear.x);
+  if (ego_speed < min_ego_speed) {
+    return std::nullopt;
+  }
+
+  const size_t ego_seg_idx =
+    autoware::motion_utils::findNearestSegmentIndex(points, getEgoPose().position);
+  const size_t obj_seg_idx = autoware::motion_utils::findNearestSegmentIndex(points, object_pos);
+  const size_t obj_idx = getNearestIndexFromSegmentIndex(points, obj_seg_idx, object_pos);
+
+  const double dist_ego_to_obj = autoware::motion_utils::calcSignedArcLength(
+    points, getEgoPose().position, ego_seg_idx, obj_idx);
+  if (dist_ego_to_obj <= 0.0) {
+    return std::nullopt;
+  }
+
+  return dist_ego_to_obj / ego_speed;
+}
+
+bool DynamicObstacleAvoidanceModule::shouldKeepPreviousAvoidanceState(
+  const std::vector<geometry_msgs::msg::Pose> & points,
+  const std::optional<DynamicAvoidanceObject> & prev_object,
+  const geometry_msgs::msg::Point & object_pos, const double ttc_threshold) const
+{
+  if (!prev_object || ttc_threshold <= 0.0) {
+    return false;
+  }
+
+  const auto ttc = calcTimeToCollisionOnPath(points, object_pos);
+  return ttc && *ttc < ttc_threshold;
 }
 
 DynamicObstacleAvoidanceModule::LatLonOffset

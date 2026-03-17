@@ -18,6 +18,7 @@
 
         successive_num_to_entry_dynamic_avoidance_condition: 5 # Consecutive detection count required to activate an object as valid target.
         successive_num_to_exit_dynamic_avoidance_condition: 1 # Counter threshold to keep an object valid; below this value the object is removed.
+        enable_ttc_based_avoidance_filter: true # Enable TTC-based filtering that holds previous states and defers first-time avoidance for near-time collisions.
 
         max_obj_lat_offset_to_ego_path: 1.0 # [m] Maximum lateral distance from ego path to consider regulated objects.
 
@@ -26,6 +27,10 @@
 
         stopped_object:
           max_object_vel: 0.5 # [m/s] Maximum speed magnitude considered as stopped/low-speed target in this module.
+
+        ttc_threshold_to_hold_avoidance:
+          regulated: 2.0 # [s] Hold previous avoid/not-avoid state and defer first-time avoidance for new regulated objects when path-wise TTC is below this threshold.
+          unregulated: 2.0 # [s] Hold previous avoid/not-avoid state and defer first-time avoidance for new unregulated objects when path-wise TTC is below this threshold.
 
       drivable_area_generation:
         lat_offset_from_obstacle: 1.0 # [m] Base lateral clearance added around obstacle occupancy for lateral bounds.
