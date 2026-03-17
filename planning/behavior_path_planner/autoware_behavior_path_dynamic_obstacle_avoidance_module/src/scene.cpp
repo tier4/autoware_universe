@@ -55,13 +55,13 @@ MinMaxValue getMinMaxValues(const std::vector<double> & vec)
 }
 
 void appendObjectMarker(
-  MarkerArray & marker_array, const DynamicObstacleAvoidanceModule::DynamicAvoidanceObject & object)
+  MarkerArray & marker_array, const DynamicObstacleAvoidanceModule::DynamicAvoidanceObject & object,
+  const std::string & marker_namespace, const std_msgs::msg::ColorRGBA & color)
 {
   auto marker = autoware_utils::create_default_marker(
-    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), "dynamic_objects_to_avoid",
-    marker_array.markers.size(), visualization_msgs::msg::Marker::CUBE,
-    autoware_utils::create_marker_scale(0.1, 0.1, 0.1),
-    autoware_utils::create_marker_color(1.0, 0.5, 0.6, 0.8));
+    "map", rclcpp::Clock{RCL_ROS_TIME}.now(), marker_namespace, marker_array.markers.size(),
+    visualization_msgs::msg::Marker::CUBE, autoware_utils::create_marker_scale(0.1, 0.1, 0.1),
+    color);
 
   marker.pose = object.pose;
   const auto & shape = object.shape;
@@ -286,7 +286,11 @@ void DynamicObstacleAvoidanceModule::updateData()
 
   const auto target_objects_candidate = target_objects_manager_.getValidObjects();
   target_objects_.clear();
+  ttc_filtered_objects_.clear();
   for (const auto & target_object_candidate : target_objects_candidate) {
+    if (target_object_candidate.is_ttc_filtered) {
+      ttc_filtered_objects_.push_back(target_object_candidate);
+    }
     if (target_object_candidate.should_be_avoided) {
       target_objects_.push_back(target_object_candidate);
     }
@@ -306,6 +310,12 @@ BehaviorModuleOutput DynamicObstacleAvoidanceModule::plan()
   }
 
   const auto ego_path_reserve_poly = calcEgoPathReservePoly(input_path);
+
+  for (const auto & object : ttc_filtered_objects_) {
+    appendObjectMarker(
+      debug_marker_, object, "dynamic_objects_ttc_filtered",
+      autoware_utils::create_marker_color(1.0, 1.0, 0.1, 0.9));
+  }
 
   // create obstacles to avoid (= extract from the drivable area)
   std::vector<DrivableAreaInfo::Obstacle> obstacles_for_drivable_area;
@@ -329,7 +339,9 @@ BehaviorModuleOutput DynamicObstacleAvoidanceModule::plan()
       obstacles_for_drivable_area.push_back(
         {object.pose, obstacle_poly.value(), object.is_collision_left});
 
-      appendObjectMarker(info_marker_, object);
+      appendObjectMarker(
+        info_marker_, object, "dynamic_objects_to_avoid",
+        autoware_utils::create_marker_color(1.0, 0.5, 0.6, 0.8));
       if (expanded_object_poly_for_debug) {
         appendPolygonMarker(
           debug_marker_, expanded_object_poly_for_debug.value(), object.pose.position.z,
@@ -492,6 +504,8 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstRegulatedObje
       parameters_->ttc_threshold_to_hold_avoidance_regulated > 0.0) {
       const auto ttc = calcTimeToCollisionOnPath(input_points, object.pose.position);
       if (ttc && *ttc < parameters_->ttc_threshold_to_hold_avoidance_regulated) {
+        target_objects_manager_.updateObjectVariables(
+          obj_uuid, std::nullopt, std::nullopt, false, false, true, input_points);
         continue;
       }
     }
@@ -505,7 +519,8 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstRegulatedObje
                                                : prev_object->ref_points_for_obj_poly;
       target_objects_manager_.updateObjectVariables(
         obj_uuid, prev_object->lon_offset_to_avoid, prev_object->lat_offset_to_avoid,
-        prev_object->is_collision_left, prev_object->should_be_avoided, ref_points_for_obj_poly);
+        prev_object->is_collision_left, prev_object->should_be_avoided,
+        !prev_object->should_be_avoided, ref_points_for_obj_poly);
       continue;
     }
 
@@ -567,7 +582,7 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstRegulatedObje
     const bool should_be_avoided = true;
     target_objects_manager_.updateObjectVariables(
       obj_uuid, lon_offset_to_avoid, lat_offset_to_avoid, is_collision_left, should_be_avoided,
-      ref_points_for_obj_poly);
+      false, ref_points_for_obj_poly);
   }
 }
 
@@ -594,6 +609,8 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstUnregulatedOb
       parameters_->ttc_threshold_to_hold_avoidance_unregulated > 0.0) {
       const auto ttc = calcTimeToCollisionOnPath(input_points, object.pose.position);
       if (ttc && *ttc < parameters_->ttc_threshold_to_hold_avoidance_unregulated) {
+        target_objects_manager_.updateObjectVariables(
+          obj_uuid, std::nullopt, std::nullopt, false, false, true, input_points);
         continue;
       }
     }
@@ -607,7 +624,8 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstUnregulatedOb
                                                : prev_object->ref_points_for_obj_poly;
       target_objects_manager_.updateObjectVariables(
         obj_uuid, prev_object->lon_offset_to_avoid, prev_object->lat_offset_to_avoid,
-        prev_object->is_collision_left, prev_object->should_be_avoided, ref_points_for_obj_poly);
+        prev_object->is_collision_left, prev_object->should_be_avoided,
+        !prev_object->should_be_avoided, ref_points_for_obj_poly);
       continue;
     }
 
@@ -656,7 +674,7 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstUnregulatedOb
 
     const bool should_be_avoided = true;
     target_objects_manager_.updateObjectVariables(
-      obj_uuid, std::nullopt, lat_offset_to_avoid, is_collision_left, should_be_avoided,
+      obj_uuid, std::nullopt, lat_offset_to_avoid, is_collision_left, should_be_avoided, false,
       ref_points_for_obj_poly);
   }
 }

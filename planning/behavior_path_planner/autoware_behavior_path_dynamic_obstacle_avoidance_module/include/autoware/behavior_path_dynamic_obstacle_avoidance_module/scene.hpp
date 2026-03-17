@@ -142,19 +142,21 @@ public:
     std::optional<MinMaxValue> lat_offset_to_avoid{std::nullopt};
     bool is_collision_left{false};
     bool should_be_avoided{false};
+    bool is_ttc_filtered{false};
     std::vector<geometry_msgs::msg::Pose> ref_points_for_obj_poly;
 
     // add additional information (not update to the latest data)
     void update(
       const std::optional<MinMaxValue> & arg_lon_offset_to_avoid,
       const std::optional<MinMaxValue> & arg_lat_offset_to_avoid, const bool arg_is_collision_left,
-      const bool arg_should_be_avoided,
+      const bool arg_should_be_avoided, const bool arg_is_ttc_filtered,
       const std::vector<geometry_msgs::msg::Pose> & arg_ref_points_for_obj_poly)
     {
       lon_offset_to_avoid = arg_lon_offset_to_avoid;
       lat_offset_to_avoid = arg_lat_offset_to_avoid;
       is_collision_left = arg_is_collision_left;
       should_be_avoided = arg_should_be_avoided;
+      is_ttc_filtered = arg_is_ttc_filtered;
       ref_points_for_obj_poly = arg_ref_points_for_obj_poly;
     }
   };
@@ -247,13 +249,13 @@ public:
     void updateObjectVariables(
       const std::string & uuid, const std::optional<MinMaxValue> & lon_offset_to_avoid,
       const std::optional<MinMaxValue> & lat_offset_to_avoid, const bool is_collision_left,
-      const bool should_be_avoided,
+      const bool should_be_avoided, const bool is_ttc_filtered,
       const std::vector<geometry_msgs::msg::Pose> & ref_points_for_obj_poly)
     {
       if (object_map_.count(uuid) != 0) {
         object_map_.at(uuid).update(
           lon_offset_to_avoid, lat_offset_to_avoid, is_collision_left, should_be_avoided,
-          ref_points_for_obj_poly);
+          is_ttc_filtered, ref_points_for_obj_poly);
       }
     }
 
@@ -348,6 +350,7 @@ private:
     const geometry_msgs::msg::Point & object_pos, const double ttc_threshold) const;
 
   std::vector<DynamicObstacleAvoidanceModule::DynamicAvoidanceObject> target_objects_;
+  std::vector<DynamicObstacleAvoidanceModule::DynamicAvoidanceObject> ttc_filtered_objects_;
   // std::vector<DynamicObstacleAvoidanceModule::DynamicAvoidanceObject> prev_target_objects_;
   std::shared_ptr<DynamicAvoidanceParameters> parameters_;
 
