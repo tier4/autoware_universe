@@ -519,8 +519,8 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstRegulatedObje
                                                : prev_object->ref_points_for_obj_poly;
       target_objects_manager_.updateObjectVariables(
         obj_uuid, prev_object->lon_offset_to_avoid, prev_object->lat_offset_to_avoid,
-        prev_object->is_collision_left, prev_object->should_be_avoided,
-        !prev_object->should_be_avoided, ref_points_for_obj_poly);
+        prev_object->is_collision_left, prev_object->should_be_avoided, true,
+        ref_points_for_obj_poly);
       continue;
     }
 
@@ -624,8 +624,8 @@ void DynamicObstacleAvoidanceModule::determineWhetherToAvoidAgainstUnregulatedOb
                                                : prev_object->ref_points_for_obj_poly;
       target_objects_manager_.updateObjectVariables(
         obj_uuid, prev_object->lon_offset_to_avoid, prev_object->lat_offset_to_avoid,
-        prev_object->is_collision_left, prev_object->should_be_avoided,
-        !prev_object->should_be_avoided, ref_points_for_obj_poly);
+        prev_object->is_collision_left, prev_object->should_be_avoided, true,
+        ref_points_for_obj_poly);
       continue;
     }
 
