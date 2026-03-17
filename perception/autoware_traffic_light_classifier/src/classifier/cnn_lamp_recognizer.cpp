@@ -578,7 +578,6 @@ bool CnnLampRecognizer::getTrafficSignals(
 
       updateTrafficSignals(unique_traffic_light_elements, traffic_signals.signals[sig_idx]);
       unique_traffic_light_elements_per_image.push_back(unique_traffic_light_elements);
-
     }
     signal_i += current_batch_size;
     batch.clear();
