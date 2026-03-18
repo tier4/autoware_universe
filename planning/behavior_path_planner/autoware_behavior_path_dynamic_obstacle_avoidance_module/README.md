@@ -106,6 +106,7 @@ All parameters are under `dynamic_avoidance`.
 | `target_object.max_obj_lat_offset_to_ego_path`                      | `[m]`   | `double` | Maximum lateral distance from ego path to consider object                                                           | `1.0`   |
 | `target_object.front_object.max_ego_path_lat_cover_ratio`           | `[-]`   | `double` | Ignore object if it laterally covers too much of ego path width                                                     | `0.3`   |
 | `target_object.stopped_object.max_object_vel`                       | `[m/s]` | `double` | Maximum speed treated as stopped/low-speed target                                                                   | `0.5`   |
+| `target_object.ttc_force_zero_distance_threshold`                   | `[m]`   | `double` | Force TTC to zero when signed path distance from ego to object is below this threshold                              | `0.0`   |
 | `target_object.ttc_threshold_to_hold_avoidance.regulated`           | `[s]`   | `double` | Keep previous avoid/not-avoid decision and defer first-time avoidance for new regulated objects when TTC is small   | `2.0`   |
 | `target_object.ttc_threshold_to_hold_avoidance.unregulated`         | `[s]`   | `double` | Keep previous avoid/not-avoid decision and defer first-time avoidance for new unregulated objects when TTC is small | `2.0`   |
 

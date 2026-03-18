@@ -697,12 +697,6 @@ std::optional<double> DynamicObstacleAvoidanceModule::calcTimeToCollisionOnPath(
     return std::nullopt;
   }
 
-  constexpr double min_ego_speed = 1e-3;
-  const double ego_speed = std::abs(planner_data_->self_odometry->twist.twist.linear.x);
-  if (ego_speed < min_ego_speed) {
-    return std::nullopt;
-  }
-
   const size_t ego_seg_idx =
     autoware::motion_utils::findNearestSegmentIndex(points, getEgoPose().position);
   const size_t obj_seg_idx = autoware::motion_utils::findNearestSegmentIndex(points, object_pos);
@@ -710,6 +704,15 @@ std::optional<double> DynamicObstacleAvoidanceModule::calcTimeToCollisionOnPath(
 
   const double dist_ego_to_obj = autoware::motion_utils::calcSignedArcLength(
     points, getEgoPose().position, ego_seg_idx, obj_idx);
+  if (dist_ego_to_obj <= parameters_->ttc_force_zero_distance_threshold) {
+    return 0.0;
+  }
+
+  constexpr double min_ego_speed = 1e-3;
+  const double ego_speed = std::abs(planner_data_->self_odometry->twist.twist.linear.x);
+  if (ego_speed < min_ego_speed) {
+    return std::nullopt;
+  }
   if (dist_ego_to_obj <= 0.0) {
     return std::nullopt;
   }

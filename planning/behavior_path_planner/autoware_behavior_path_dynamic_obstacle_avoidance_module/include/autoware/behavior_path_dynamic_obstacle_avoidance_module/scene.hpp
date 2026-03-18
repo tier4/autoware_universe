@@ -103,6 +103,7 @@ struct DynamicAvoidanceParameters
 
   double max_front_object_ego_path_lat_cover_ratio{0.0};
   double max_stopped_object_vel{0.0};
+  double ttc_force_zero_distance_threshold{0.0};
   double ttc_threshold_to_hold_avoidance_regulated{0.0};
   double ttc_threshold_to_hold_avoidance_unregulated{0.0};
 

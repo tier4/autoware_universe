@@ -61,6 +61,8 @@ void DynamicObstacleAvoidanceModuleManager::init(rclcpp::Node * node)
 
     p.max_stopped_object_vel =
       node->declare_parameter<double>(ns + "stopped_object.max_object_vel");
+    p.ttc_force_zero_distance_threshold =
+      node->declare_parameter<double>(ns + "ttc_force_zero_distance_threshold");
     p.ttc_threshold_to_hold_avoidance_regulated =
       node->declare_parameter<double>(ns + "ttc_threshold_to_hold_avoidance.regulated");
     p.ttc_threshold_to_hold_avoidance_unregulated =
@@ -121,6 +123,8 @@ void DynamicObstacleAvoidanceModuleManager::updateModuleParams(
 
     update_param<double>(
       parameters, ns + "stopped_object.max_object_vel", p->max_stopped_object_vel);
+    update_param<double>(
+      parameters, ns + "ttc_force_zero_distance_threshold", p->ttc_force_zero_distance_threshold);
     update_param<double>(
       parameters, ns + "ttc_threshold_to_hold_avoidance.regulated",
       p->ttc_threshold_to_hold_avoidance_regulated);
