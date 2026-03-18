@@ -171,7 +171,7 @@ trajectory_modifier_params:
         min_size:
           type: int
           validation:
-            gt<>: [0]
+            bounds<>: [1, 2147483647]
           read_only: false
       clustering:
         tolerance:
@@ -189,10 +189,10 @@ trajectory_modifier_params:
         min_size:
           type: int
           validation:
-            gt<>: [0]
+            bounds<>: [1, 2147483647]
           read_only: false
         max_size:
           type: int
           validation:
-            gt<>: [0]
+            bounds<>: [1, 2147483647]
           read_only: false
