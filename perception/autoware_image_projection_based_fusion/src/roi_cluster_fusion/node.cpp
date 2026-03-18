@@ -58,8 +58,34 @@ RoiClusterFusionNode::RoiClusterFusionNode(const rclcpp::NodeOptions & options)
   fusion_distance_ = declare_parameter<double>("fusion_distance");
   strict_iou_fusion_distance_ = declare_parameter<double>("strict_iou_fusion_distance");
 
+  // Pedestrian size validation parameters
+  pedestrian_size_params_.enable_size_validation =
+    declare_parameter<bool>("pedestrian_size_validation.enable");
+  pedestrian_size_params_.min_width =
+    declare_parameter<double>("pedestrian_size_validation.min_width");
+  pedestrian_size_params_.max_width =
+    declare_parameter<double>("pedestrian_size_validation.max_width");
+
+  RCLCPP_INFO(
+    get_logger(), "Pedestrian size validation: %s",
+    pedestrian_size_params_.enable_size_validation ? "enabled" : "disabled");
+
+  // Replace base class subscription with Agnocast subscription
+  // TODO(Koichi98): replace sub_callback in FusionNode with agnocast_wrapper to avoid copy
+  msg3d_sub_.reset();
+  agnocast_msg3d_sub_ = AUTOWARE_CREATE_SUBSCRIPTION(
+    ClusterMsgType, "input", rclcpp::QoS(1).best_effort(),
+    // cppcheck-suppress unknownMacro
+    [this](AUTOWARE_MESSAGE_CONST_SHARED_PTR(ClusterMsgType) msg) {
+      auto ros2_msg = std::make_shared<const ClusterMsgType>(*msg);
+      this->sub_callback(ros2_msg);
+    },
+    AUTOWARE_SUBSCRIPTION_OPTIONS{});
+
+
   // publisher
-  pub_ptr_ = this->create_publisher<ClusterMsgType>("output", rclcpp::QoS{1});
+  // TODO(Koichi98): replace pub_ptr_ in FusionNode with agnocast_wrapper
+  agnocast_pub_ptr_ = AUTOWARE_CREATE_PUBLISHER2(ClusterMsgType, "output", rclcpp::QoS{1});
 }
 
 void RoiClusterFusionNode::preprocess(ClusterMsgType & output_cluster_msg)
@@ -306,6 +332,27 @@ void RoiClusterFusionNode::postprocess(
     }
   }
 }
+
+bool RoiClusterFusionNode::validateSizeForClass(
+  const sensor_msgs::msg::PointCloud2 & cluster, const uint8_t label)
+{
+  // NOTE: Currently only validate pedestrians, the other classes are passed through
+  switch (label) {
+    case ObjectClassification::PEDESTRIAN:
+      return validatePedestrianSize(cluster, pedestrian_size_params_);
+    default:
+      return true;
+  }
+}
+
+void RoiClusterFusionNode::publish(const ClusterMsgType & output_msg)
+{
+  // TODO(Koichi98): replace publish function in FusionNode with agnocast_wrapper
+  auto agnocast_output_msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(agnocast_pub_ptr_);
+  *agnocast_output_msg = output_msg;
+  agnocast_pub_ptr_->publish(std::move(agnocast_output_msg));
+}
+
 
 }  // namespace autoware::image_projection_based_fusion
 
