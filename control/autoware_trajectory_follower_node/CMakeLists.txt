@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_trajectory_follower_node)
 
 find_package(autoware_cmake REQUIRED)
+find_package(autoware_agnocast_wrapper REQUIRED)
 autoware_package()
 
 set(CONTROLLER_NODE controller_node)
@@ -10,9 +11,15 @@ ament_auto_add_library(${CONTROLLER_NODE} SHARED
   src/controller_node.cpp
 )
 
-rclcpp_components_register_node(${CONTROLLER_NODE}
+ament_target_dependencies(${CONTROLLER_NODE}
+  autoware_agnocast_wrapper
+)
+
+autoware_agnocast_wrapper_register_node(${CONTROLLER_NODE}
   PLUGIN "autoware::motion::control::trajectory_follower_node::Controller"
   EXECUTABLE ${CONTROLLER_NODE}_exe
+  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+  ROS2_EXECUTOR SingleThreadedExecutor
 )
 
 # simple trajectory follower
@@ -22,9 +29,15 @@ ament_auto_add_library(${SIMPLE_TRAJECTORY_FOLLOWER_NODE} SHARED
   src/simple_trajectory_follower.cpp
 )
 
-rclcpp_components_register_node(${SIMPLE_TRAJECTORY_FOLLOWER_NODE}
+ament_target_dependencies(${SIMPLE_TRAJECTORY_FOLLOWER_NODE}
+  autoware_agnocast_wrapper
+)
+
+autoware_agnocast_wrapper_register_node(${SIMPLE_TRAJECTORY_FOLLOWER_NODE}
   PLUGIN "simple_trajectory_follower::SimpleTrajectoryFollower"
   EXECUTABLE ${SIMPLE_TRAJECTORY_FOLLOWER_NODE}_exe
+  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+  ROS2_EXECUTOR SingleThreadedExecutor
 )
 
 if(BUILD_TESTING)
