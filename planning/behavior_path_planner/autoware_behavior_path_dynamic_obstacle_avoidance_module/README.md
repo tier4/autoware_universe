@@ -90,21 +90,25 @@ All parameters are under `dynamic_avoidance`.
 
 ### target_object
 
-| Name                                                                | Unit    | Type     | Description                                                     | Default |
-| :------------------------------------------------------------------ | :------ | :------- | :-------------------------------------------------------------- | :------ |
-| `target_object.car`                                                 | `[-]`   | `bool`   | Avoid cars                                                      | `true`  |
-| `target_object.truck`                                               | `[-]`   | `bool`   | Avoid trucks                                                    | `true`  |
-| `target_object.bus`                                                 | `[-]`   | `bool`   | Avoid buses                                                     | `true`  |
-| `target_object.trailer`                                             | `[-]`   | `bool`   | Avoid trailers                                                  | `true`  |
-| `target_object.unknown`                                             | `[-]`   | `bool`   | Avoid unknown objects                                           | `false` |
-| `target_object.bicycle`                                             | `[-]`   | `bool`   | Avoid bicycles                                                  | `true`  |
-| `target_object.motorcycle`                                          | `[-]`   | `bool`   | Avoid motorcycles                                               | `true`  |
-| `target_object.pedestrian`                                          | `[-]`   | `bool`   | Avoid pedestrians                                               | `true`  |
-| `target_object.successive_num_to_entry_dynamic_avoidance_condition` | `[-]`   | `int`    | Consecutive count to enter valid target state                   | `5`     |
-| `target_object.successive_num_to_exit_dynamic_avoidance_condition`  | `[-]`   | `int`    | Consecutive count threshold to remove valid target state        | `1`     |
-| `target_object.max_obj_lat_offset_to_ego_path`                      | `[m]`   | `double` | Maximum lateral distance from ego path to consider object       | `1.0`   |
-| `target_object.front_object.max_ego_path_lat_cover_ratio`           | `[-]`   | `double` | Ignore object if it laterally covers too much of ego path width | `0.3`   |
-| `target_object.stopped_object.max_object_vel`                       | `[m/s]` | `double` | Maximum speed treated as stopped/low-speed target               | `0.5`   |
+| Name                                                                | Unit    | Type     | Description                                                                                                         | Default |
+| :------------------------------------------------------------------ | :------ | :------- | :------------------------------------------------------------------------------------------------------------------ | :------ |
+| `target_object.car`                                                 | `[-]`   | `bool`   | Avoid cars                                                                                                          | `true`  |
+| `target_object.truck`                                               | `[-]`   | `bool`   | Avoid trucks                                                                                                        | `true`  |
+| `target_object.bus`                                                 | `[-]`   | `bool`   | Avoid buses                                                                                                         | `true`  |
+| `target_object.trailer`                                             | `[-]`   | `bool`   | Avoid trailers                                                                                                      | `true`  |
+| `target_object.unknown`                                             | `[-]`   | `bool`   | Avoid unknown objects                                                                                               | `false` |
+| `target_object.bicycle`                                             | `[-]`   | `bool`   | Avoid bicycles                                                                                                      | `true`  |
+| `target_object.motorcycle`                                          | `[-]`   | `bool`   | Avoid motorcycles                                                                                                   | `true`  |
+| `target_object.pedestrian`                                          | `[-]`   | `bool`   | Avoid pedestrians                                                                                                   | `true`  |
+| `target_object.successive_num_to_entry_dynamic_avoidance_condition` | `[-]`   | `int`    | Consecutive count to enter valid target state                                                                       | `5`     |
+| `target_object.successive_num_to_exit_dynamic_avoidance_condition`  | `[-]`   | `int`    | Consecutive count threshold to remove valid target state                                                            | `1`     |
+| `target_object.enable_ttc_based_avoidance_filter`                   | `[-]`   | `bool`   | Enable TTC-based filtering for hold-state hysteresis and new-object defer behavior                                  | `true`  |
+| `target_object.max_obj_lat_offset_to_ego_path`                      | `[m]`   | `double` | Maximum lateral distance from ego path to consider object                                                           | `1.0`   |
+| `target_object.front_object.max_ego_path_lat_cover_ratio`           | `[-]`   | `double` | Ignore object if it laterally covers too much of ego path width                                                     | `0.3`   |
+| `target_object.stopped_object.max_object_vel`                       | `[m/s]` | `double` | Maximum speed treated as stopped/low-speed target                                                                   | `0.5`   |
+| `target_object.ttc_force_zero_distance_threshold`                   | `[m]`   | `double` | Force TTC to zero when signed path distance from ego to object is below this threshold                              | `0.0`   |
+| `target_object.ttc_threshold_to_hold_avoidance.regulated`           | `[s]`   | `double` | Keep previous avoid/not-avoid decision and defer first-time avoidance for new regulated objects when TTC is small   | `2.0`   |
+| `target_object.ttc_threshold_to_hold_avoidance.unregulated`         | `[s]`   | `double` | Keep previous avoid/not-avoid decision and defer first-time avoidance for new unregulated objects when TTC is small | `2.0`   |
 
 ### drivable_area_generation
 

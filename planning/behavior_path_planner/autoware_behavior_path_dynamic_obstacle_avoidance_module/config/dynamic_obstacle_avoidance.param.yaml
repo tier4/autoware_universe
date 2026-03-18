@@ -27,6 +27,12 @@
         stopped_object:
           max_object_vel: 0.5 # [m/s] Maximum speed magnitude considered as stopped/low-speed target in this module.
 
+        enable_ttc_based_avoidance_filter: true # Enable TTC-based filtering that holds previous states and defers first-time avoidance for near-time collisions.
+        ttc_force_zero_distance_threshold: 3.0 # [m] Force TTC to 0 when signed arc-length from ego to object is below this threshold (includes objects behind/alongside ego and near-front objects).
+        ttc_threshold_to_hold_avoidance:
+          regulated: 5.0 # [s] Hold previous avoid/not-avoid state and defer first-time avoidance for new regulated objects when path-wise TTC is below this threshold.
+          unregulated: 5.0 # [s] Hold previous avoid/not-avoid state and defer first-time avoidance for new unregulated objects when path-wise TTC is below this threshold.
+
       drivable_area_generation:
         lat_offset_from_obstacle: 1.0 # [m] Base lateral clearance added around obstacle occupancy for lateral bounds.
         margin_distance_around_pedestrian: 2.0 # [m] Isotropic buffer for unregulated-object (e.g., pedestrian) final clipping polygon.

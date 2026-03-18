@@ -51,6 +51,8 @@ void DynamicObstacleAvoidanceModuleManager::init(rclcpp::Node * node)
       node->declare_parameter<int>(ns + "successive_num_to_entry_dynamic_avoidance_condition");
     p.successive_num_to_exit_dynamic_avoidance_condition =
       node->declare_parameter<int>(ns + "successive_num_to_exit_dynamic_avoidance_condition");
+    p.enable_ttc_based_avoidance_filter =
+      node->declare_parameter<bool>(ns + "enable_ttc_based_avoidance_filter");
 
     p.max_obj_lat_offset_to_ego_path =
       node->declare_parameter<double>(ns + "max_obj_lat_offset_to_ego_path");
@@ -59,6 +61,12 @@ void DynamicObstacleAvoidanceModuleManager::init(rclcpp::Node * node)
 
     p.max_stopped_object_vel =
       node->declare_parameter<double>(ns + "stopped_object.max_object_vel");
+    p.ttc_force_zero_distance_threshold =
+      node->declare_parameter<double>(ns + "ttc_force_zero_distance_threshold");
+    p.ttc_threshold_to_hold_avoidance_regulated =
+      node->declare_parameter<double>(ns + "ttc_threshold_to_hold_avoidance.regulated");
+    p.ttc_threshold_to_hold_avoidance_unregulated =
+      node->declare_parameter<double>(ns + "ttc_threshold_to_hold_avoidance.unregulated");
   }
 
   {  // drivable_area_generation
@@ -104,6 +112,8 @@ void DynamicObstacleAvoidanceModuleManager::updateModuleParams(
     update_param<int>(
       parameters, ns + "successive_num_to_exit_dynamic_avoidance_condition",
       p->successive_num_to_exit_dynamic_avoidance_condition);
+    update_param<bool>(
+      parameters, ns + "enable_ttc_based_avoidance_filter", p->enable_ttc_based_avoidance_filter);
 
     update_param<double>(
       parameters, ns + "max_obj_lat_offset_to_ego_path", p->max_obj_lat_offset_to_ego_path);
@@ -113,6 +123,14 @@ void DynamicObstacleAvoidanceModuleManager::updateModuleParams(
 
     update_param<double>(
       parameters, ns + "stopped_object.max_object_vel", p->max_stopped_object_vel);
+    update_param<double>(
+      parameters, ns + "ttc_force_zero_distance_threshold", p->ttc_force_zero_distance_threshold);
+    update_param<double>(
+      parameters, ns + "ttc_threshold_to_hold_avoidance.regulated",
+      p->ttc_threshold_to_hold_avoidance_regulated);
+    update_param<double>(
+      parameters, ns + "ttc_threshold_to_hold_avoidance.unregulated",
+      p->ttc_threshold_to_hold_avoidance_unregulated);
   }
 
   {  // drivable_area_generation
