@@ -35,6 +35,16 @@ protected:
   {
     rclcpp::init(0, nullptr);
     node_ = std::make_shared<rclcpp::Node>("test_node");
+    node_->declare_parameter<double>("wheel_radius", 0.383);
+    node_->declare_parameter<double>("wheel_width", 0.235);
+    node_->declare_parameter<double>("wheel_base", 2.79);
+    node_->declare_parameter<double>("wheel_tread", 1.64);
+    node_->declare_parameter<double>("front_overhang", 1.0);
+    node_->declare_parameter<double>("rear_overhang", 1.1);
+    node_->declare_parameter<double>("left_overhang", 0.5);
+    node_->declare_parameter<double>("right_overhang", 0.5);
+    node_->declare_parameter<double>("vehicle_height", 2.5);
+    node_->declare_parameter<double>("max_steer_angle", 0.7);
     time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>();
     data_ = std::make_shared<TrajectoryModifierData>(node_.get());
     params_.use_stop_point_fixer = true;
@@ -384,8 +394,8 @@ TEST_F(StopPointFixerIntegrationTest, ForceCloseStopFlag_False_CloseStopConditio
 
 TEST_F(StopPointFixerIntegrationTest, ForceCloseStopFlag_True_CloseStopConditionTriggers)
 {
-  params_.stop_point_fixer.force_stop_long_stopped_trajectories = true;
-  params_.stop_point_fixer.force_stop_close_stopped_trajectories = false;
+  params_.stop_point_fixer.force_stop_long_stopped_trajectories = false;
+  params_.stop_point_fixer.force_stop_close_stopped_trajectories = true;
   params_.use_stop_point_fixer = true;
   plugin_->update_params(params_);
 
