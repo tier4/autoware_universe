@@ -47,8 +47,31 @@ public:
     int num_anchors = this->declare_parameter<int>("num_anchors");
     int num_classes = this->declare_parameter<int>("num_classes");
     std::vector<int64_t> anchors_param = this->declare_parameter<std::vector<int64_t>>("anchors");
-
     names_ = whole_image_detector::loadNames(names_path);
+
+    // log all parameters for debug purpose
+    RCLCPP_INFO(get_logger(), "Parameters:");
+    RCLCPP_INFO(get_logger(), "  onnx_path: %s", onnx_path.c_str());
+    RCLCPP_INFO(get_logger(), "  names_path: %s", names_path.c_str());
+    RCLCPP_INFO(get_logger(), "  precision: %s", precision.c_str());
+    RCLCPP_INFO(get_logger(), "  calibration_images: %s", calibration_images.c_str());
+    RCLCPP_INFO(get_logger(), "  calib: %s", calib.c_str());
+    RCLCPP_INFO(get_logger(), "  build_only: %s", build_only ? "true" : "false");
+    RCLCPP_INFO(get_logger(), "  traffic_light_class_name: %s", traffic_light_class_name.c_str());
+    RCLCPP_INFO(get_logger(), "  score_thresh: %f", score_thresh);
+    RCLCPP_INFO(get_logger(), "  nms_thresh: %f", nms_thresh);
+    RCLCPP_INFO(get_logger(), "  num_anchors: %d", num_anchors);
+    RCLCPP_INFO(get_logger(), "  num_classes: %d", num_classes);
+    RCLCPP_INFO(get_logger(), "  anchors:");
+    for (size_t i = 0; i < anchors_param.size(); i += 2) {
+      if (i + 1 < anchors_param.size()) {
+        RCLCPP_INFO(
+          get_logger(), "    - [%d, %d]", anchors_param[i], anchors_param[i + 1]);
+      } else {
+        RCLCPP_INFO(get_logger(), "    - [%d]", anchors_param[i]);
+      }
+    }
+
     if (names_.empty()) {
       RCLCPP_WARN(
         get_logger(), "No class names loaded from %s, using default TRAFFIC_LIGHT",
