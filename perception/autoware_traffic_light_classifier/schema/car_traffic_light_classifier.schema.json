@@ -42,14 +42,17 @@
           "description": "If the intensity get lesser than this overwrite with UNKNOWN in corresponding RoI. Note that, if the value is much lesser, the node only overwrites in the under exposure situations. Therefore, If you wouldn't like to use this feature set this value to `-1.0`. The confidence of overwritten signal is set to `0.0`.",
           "default": -0.83
         },
-        "roi_expand_ratio": {
-          "type": "number",
-          "description": "Expand each ROI from its center by this ratio (e.g. 1.1 = 10% larger). Clamped to image bounds.",
-          "default": 1.1
+        "roi_expand_pixels": {
+          "type": "integer",
+          "description": "Expand each ROI by this many pixels on each side. Clamped to image bounds.",
+          "default": 0
         },
         "classifier_type": {
-          "type": "integer",
-          "description": "Backend producing classification from ROI. 0: HSVFilter (rule-based), 1: CNN (single-crop), 2: LampRecognizer (per-lamp).",
+          "oneOf": [
+            {"type": "integer"},
+            {"type": "string", "enum": ["HSVFilter", "CNN_Classifier", "CNN_LampRecognizer"]}
+          ],
+          "description": "Backend producing classification from ROI. Integer values: 0: HSVFilter (rule-based), 1: CNN (single-crop), 2: LampRecognizer (per-lamp). String values: 'HSVFilter', 'CNN_Classifier', 'CNN_LampRecognizer' (self-defined).",
           "default": 1
         },
         "traffic_light_type": {

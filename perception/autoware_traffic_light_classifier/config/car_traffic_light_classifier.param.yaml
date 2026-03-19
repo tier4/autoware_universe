@@ -6,7 +6,7 @@
     std: [58.395, 57.12, 57.375]
     over_exposure_threshold: 0.85
     under_exposure_threshold: -0.83
-    roi_expand_ratio: 1.1  # Expand ROI from center (1.0 = no expand)
+    roi_expand_pixels: 0   # Expand ROI by this many pixels on each side (0 = no expand)
     backlight_threshold: 0.85
     # classifier_type set in launch file (unified with artifact paths)
     traffic_light_type: 0
