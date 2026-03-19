@@ -32,6 +32,11 @@
           "description": "Enable road surface mode for marker detection.",
           "default": false
         },
+        "use_marker_offset_y_from_map": {
+          "type": "boolean",
+          "description": "When true, compute marker Y offset from the nearest map landmark (base_link) each frame instead of using fixed marker_to_vehicle_offset_y. Allows markers at different Y positions. Effective only with road_surface_mode.",
+          "default": false
+        },
         "resolution": {
           "type": "number",
           "description": "Grid size for marker detection algorithm. [m]",

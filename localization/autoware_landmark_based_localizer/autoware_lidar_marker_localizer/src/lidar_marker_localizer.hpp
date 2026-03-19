@@ -82,6 +82,7 @@ protected:
     std::string marker_name;
 
     bool road_surface_mode;
+    bool use_marker_offset_y_from_map;
     double resolution;
     std::vector<int64_t> intensity_pattern;
     int64_t match_intensity_difference_threshold;
@@ -117,7 +118,7 @@ protected:
   const Param & param() const { return param_; }
   template <typename PointType>
   std::vector<landmark_manager::Landmark> detect_landmarks(
-    const PointCloud2::ConstSharedPtr & points_msg_ptr);
+    const PointCloud2::ConstSharedPtr & points_msg_ptr, double effective_marker_offset_y);
 
 private:
   void self_pose_callback(const PoseWithCovarianceStamped::ConstSharedPtr & self_pose_msg_ptr);

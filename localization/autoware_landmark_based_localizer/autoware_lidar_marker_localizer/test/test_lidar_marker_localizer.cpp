@@ -33,9 +33,11 @@ public:
   using LidarMarkerLocalizer::LidarMarkerLocalizer;
 
   template <typename PointT>
-  auto callDetectLandmarks(const sensor_msgs::msg::PointCloud2::ConstSharedPtr & points_msg_ptr)
+  auto callDetectLandmarks(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & points_msg_ptr,
+    double effective_marker_offset_y = 0.0)
   {
-    return this->detect_landmarks<PointT>(points_msg_ptr);
+    return this->detect_landmarks<PointT>(points_msg_ptr, effective_marker_offset_y);
   }
 
   Param & public_mutable_param() { return mutable_param(); }
@@ -56,6 +58,7 @@ protected:
        {"queue_size_for_output_pose", 1},
        {"marker_name", std::string("")},
        {"road_surface_mode", false},
+       {"use_marker_offset_y_from_map", false},
        {"resolution", 1.0},
        {"intensity_pattern", std::vector<int64_t>{}},
        {"match_intensity_difference_threshold", 1},
@@ -145,7 +148,7 @@ TEST_F(LidarMarkerLocalizerTest, DetectLandmarksRoadSurfaceModeSwitch)
   // road_surface_mode OFF
   param.road_surface_mode = false;
   auto result_off = localizer->callDetectLandmarks<autoware::point_types::PointXYZIRC>(
-    std::make_shared<sensor_msgs::msg::PointCloud2>(cloud));
+    std::make_shared<sensor_msgs::msg::PointCloud2>(cloud), param.marker_to_vehicle_offset_y);
   // OFF時はLandmarkのyがreference_ring_y（ダミーなのでmax値）
   if (!result_off.empty()) {
     EXPECT_EQ(result_off[0].pose.position.y, std::numeric_limits<float>::max());
@@ -154,8 +157,8 @@ TEST_F(LidarMarkerLocalizerTest, DetectLandmarksRoadSurfaceModeSwitch)
   // road_surface_mode ON
   param.road_surface_mode = true;
   auto result_on = localizer->callDetectLandmarks<autoware::point_types::PointXYZIRC>(
-    std::make_shared<sensor_msgs::msg::PointCloud2>(cloud));
-  // ON時はLandmarkのyがmarker_to_vehicle_offset_y
+    std::make_shared<sensor_msgs::msg::PointCloud2>(cloud), param.marker_to_vehicle_offset_y);
+  // ON時はLandmarkのyがeffective_marker_offset_y（ここではmarker_to_vehicle_offset_yを渡している）
   if (!result_on.empty()) {
     EXPECT_EQ(result_on[0].pose.position.y, param.marker_to_vehicle_offset_y);
   }

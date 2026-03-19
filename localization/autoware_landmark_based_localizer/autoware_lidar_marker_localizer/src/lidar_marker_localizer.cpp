@@ -55,6 +55,8 @@ LidarMarkerLocalizer::LidarMarkerLocalizer(const rclcpp::NodeOptions & node_opti
 
   param_.marker_name = this->declare_parameter<std::string>("marker_name");
   param_.road_surface_mode = this->declare_parameter<bool>("road_surface_mode");
+  param_.use_marker_offset_y_from_map =
+    this->declare_parameter<bool>("use_marker_offset_y_from_map");
   param_.resolution = this->declare_parameter<double>("resolution");
   param_.intensity_pattern = this->declare_parameter<std::vector<int64_t>>("intensity_pattern");
   param_.match_intensity_difference_threshold =
@@ -262,21 +264,13 @@ void LidarMarkerLocalizer::main_process(const PointCloud2::ConstSharedPtr & poin
   ekf_pose_buffer_->pop_old(sensor_ros_time);
   const Pose self_pose = interpolate_result.value().interpolated_pose.pose.pose;
 
-  // (3) detect marker
-  std::vector<landmark_manager::Landmark> detected_landmarks;
-  if (is_xyziradrt) {
-    detected_landmarks = detect_landmarks<autoware::point_types::PointXYZIRADRT>(points_msg_ptr);
-  } else {
-    detected_landmarks = detect_landmarks<autoware::point_types::PointXYZIRC>(points_msg_ptr);
-  }
-
-  const bool is_detected_marker = !detected_landmarks.empty();
-  diagnostics_interface_->add_key_value("detect_marker_num", detected_landmarks.size());
-
-  // (4) check distance to the nearest marker
+  // (3) get nearest map marker and effective Y offset for detection
   const landmark_manager::Landmark nearest_marker = get_nearest_landmark(self_pose, map_landmarks);
   const Pose nearest_marker_pose_on_base_link =
     autoware_utils::inverse_transform_pose(nearest_marker.pose, self_pose);
+  const double effective_marker_offset_y = param_.use_marker_offset_y_from_map
+                                            ? nearest_marker_pose_on_base_link.position.y
+                                            : param_.marker_to_vehicle_offset_y;
 
   const double distance_from_self_pose_to_nearest_marker =
     std::abs(nearest_marker_pose_on_base_link.position.x);
@@ -284,9 +278,22 @@ void LidarMarkerLocalizer::main_process(const PointCloud2::ConstSharedPtr & poin
     "distance_self_pose_to_nearest_marker", distance_from_self_pose_to_nearest_marker);
 
   const double distance_from_self_pose_to_nearest_marker_y =
-    std::abs(nearest_marker_pose_on_base_link.position.y - param_.marker_to_vehicle_offset_y);
+    std::abs(nearest_marker_pose_on_base_link.position.y - effective_marker_offset_y);
   diagnostics_interface_->add_key_value(
     "distance_from_self_pose_to_nearest_marker_y", distance_from_self_pose_to_nearest_marker_y);
+
+  // (4) detect marker
+  std::vector<landmark_manager::Landmark> detected_landmarks;
+  if (is_xyziradrt) {
+    detected_landmarks = detect_landmarks<autoware::point_types::PointXYZIRADRT>(
+      points_msg_ptr, effective_marker_offset_y);
+  } else {
+    detected_landmarks =
+      detect_landmarks<autoware::point_types::PointXYZIRC>(points_msg_ptr, effective_marker_offset_y);
+  }
+
+  const bool is_detected_marker = !detected_landmarks.empty();
+  diagnostics_interface_->add_key_value("detect_marker_num", detected_landmarks.size());
 
   const bool is_exist_marker_within_self_pose =
     (distance_from_self_pose_to_nearest_marker <
@@ -405,7 +412,7 @@ inline uint16_t get_ring_id(const autoware::point_types::PointXYZIRADRT & point)
 
 template <typename PointT>
 std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
-  const PointCloud2::ConstSharedPtr & points_msg_ptr)
+  const PointCloud2::ConstSharedPtr & points_msg_ptr, double effective_marker_offset_y)
 {
   // TODO(YamatoAndo)
   // Transform sensor_frame to base_link
@@ -512,10 +519,10 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
   center_intensity_grid_msg.info.origin.position.x = min_x;
   if (param_.road_surface_mode) {
     center_intensity_grid_msg.info.origin.position.y =
-      param_.marker_to_vehicle_offset_y -
+      effective_marker_offset_y -
       center_intensity_grid_msg.info.height * center_intensity_grid_msg.info.resolution / 2.0;
     center_intensity_grid_msg.info.origin.position.z = param_.marker_height_from_ground;
-    if (param_.marker_to_vehicle_offset_y >= 0) {
+    if (effective_marker_offset_y >= 0) {
       center_intensity_grid_msg.info.origin.position.y +=
         center_intensity_grid_msg.info.height * center_intensity_grid_msg.info.resolution;
       center_intensity_grid_msg.info.origin.orientation =
@@ -525,7 +532,7 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
         autoware_utils::create_quaternion_from_rpy(0.0, 0.0, 0.0);
     }
   } else {
-    center_intensity_grid_msg.info.origin.position.y = param_.marker_to_vehicle_offset_y;
+    center_intensity_grid_msg.info.origin.position.y = effective_marker_offset_y;
     center_intensity_grid_msg.info.origin.position.z =
       param_.marker_height_from_ground +
       center_intensity_grid_msg.info.height * center_intensity_grid_msg.info.resolution / 2.0;
@@ -670,7 +677,7 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
       Pose marker_pose_on_base_link;
       marker_pose_on_base_link.position.x = bin_position * param_.resolution + min_x;
       if (param_.road_surface_mode) {
-        marker_pose_on_base_link.position.y = param_.marker_to_vehicle_offset_y;
+        marker_pose_on_base_link.position.y = effective_marker_offset_y;
       } else {
         marker_pose_on_base_link.position.y = reference_ring_y[i];
       }
@@ -689,7 +696,7 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
   vote_grid_msg.info.width = bin_num;
   vote_grid_msg.info.height = 1;
   vote_grid_msg.info.origin.position.x = min_x;
-  vote_grid_msg.info.origin.position.y = (param_.marker_to_vehicle_offset_y >= 0.0) ? 1.0 : -1.0;
+  vote_grid_msg.info.origin.position.y = (effective_marker_offset_y >= 0.0) ? 1.0 : -1.0;
   vote_grid_msg.info.origin.position.z = 0.0;
   vote_grid_msg.info.origin.orientation.x = 0.0;
   vote_grid_msg.info.origin.orientation.y = 0.0;
@@ -917,9 +924,9 @@ void LidarMarkerLocalizer::transform_sensor_measurement(
 
 // Explicit instantiation
 template std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks<
-  autoware::point_types::PointXYZIRC>(const PointCloud2::ConstSharedPtr &);
+  autoware::point_types::PointXYZIRC>(const PointCloud2::ConstSharedPtr &, double);
 template std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks<
-  autoware::point_types::PointXYZIRADRT>(const PointCloud2::ConstSharedPtr &);
+  autoware::point_types::PointXYZIRADRT>(const PointCloud2::ConstSharedPtr &, double);
 template void LidarMarkerLocalizer::save_intensity<autoware::point_types::PointXYZIRC>(
   const sensor_msgs::msg::PointCloud2::ConstSharedPtr &, const Pose);
 template void LidarMarkerLocalizer::save_intensity<autoware::point_types::PointXYZIRADRT>(
