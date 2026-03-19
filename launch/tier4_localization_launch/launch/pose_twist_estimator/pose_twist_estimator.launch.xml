@@ -1,9 +1,10 @@
 <?xml version="1.0"?>
 <launch>
   <arg name="use_autoware_pose_covariance_modifier" default="false"/>
-  <!-- only when running with a real vehicle, the pose_initializer judges the stop -->
+  <arg name="system_run_mode" default="" description="online, logging_simulation, or planning_simulation"/>
+  <!-- only when running with a real vehicle (online), the pose_initializer judges the stop. Default false for replay/sim. -->
   <let name="stop_check_enabled" if="$(eval &quot;'$(var system_run_mode)'=='online'&quot;)" value="true"/>
-  <let name="stop_check_enabled" if="$(eval &quot;'$(var system_run_mode)'=='logging_simulation'&quot;)" value="false"/>
+  <let name="stop_check_enabled" unless="$(eval &quot;'$(var system_run_mode)'=='online'&quot;)" value="false"/>
 
   <!-- When gnss_enabled is false, automatic_pose_initializer will not run, only manual initial position estimation is available. -->
   <arg name="gnss_enabled" default="true" description="gnss availability for initial position estimation"/>
@@ -97,25 +98,15 @@
     <push-ros-namespace namespace="pose_estimator"/>
     <!-- TODO multi_localizer_mode -->
     <!-- modify lidar_marker_localizer group values following the lidar system that uses lidar_marker_localizer -->
+    <!-- single instance: left_lower only (publishes to /localization/pose_estimator/pose_with_covariance) -->
     <group>
       <include file="$(find-pkg-share tier4_localization_launch)/launch/pose_twist_estimator/lidar_marker_localizer.launch.xml">
-        <arg name="group_namespace" value="lidar_marker_localizer/top_left"/>
-        <arg name="lidar_container_name" value="/sensing/lidar/top/pointcloud_preprocessor/pointcloud_container"/>
-        <arg name="input_pointcloud" value="/sensing/lidar/top/pointcloud_raw_ex"/>
-        <arg name="crop_box_filter_measurement_range_param_path" value="$(var lidar_marker_localizer/top_left/pointcloud_preprocessor/crop_box_filter_measurement_range_param_path)"/>
-        <arg name="ring_filter_param_path" value="$(var lidar_marker_localizer/top_left/pointcloud_preprocessor/ring_filter_param_path)"/>
-        <arg name="lidar_marker_localizer_param_path" value="$(var lidar_marker_localizer/top_left/lidar_marker_localizer_param_path)"/>
-      </include>
-    </group>
-
-    <group>
-      <include file="$(find-pkg-share tier4_localization_launch)/launch/pose_twist_estimator/lidar_marker_localizer.launch.xml">
-        <arg name="group_namespace" value="lidar_marker_localizer/top_right"/>
-        <arg name="lidar_container_name" value="/sensing/lidar/top/pointcloud_preprocessor/pointcloud_container"/>
-        <arg name="input_pointcloud" value="/sensing/lidar/top/pointcloud_raw_ex"/>
-        <arg name="crop_box_filter_measurement_range_param_path" value="$(var lidar_marker_localizer/top_right/pointcloud_preprocessor/crop_box_filter_measurement_range_param_path)"/>
-        <arg name="ring_filter_param_path" value="$(var lidar_marker_localizer/top_right/pointcloud_preprocessor/ring_filter_param_path)"/>
-        <arg name="lidar_marker_localizer_param_path" value="$(var lidar_marker_localizer/top_right/lidar_marker_localizer_param_path)"/>
+        <arg name="group_namespace" value="lidar_marker_localizer/left_lower"/>
+        <arg name="lidar_container_name" value="/sensing/lidar/left_lower/pointcloud_preprocessor/pointcloud_container"/>
+        <arg name="input_pointcloud" value="/sensing/lidar/left_lower/pointcloud_raw_ex"/>
+        <arg name="crop_box_filter_measurement_range_param_path" value="$(var lidar_marker_localizer/left_lower/pointcloud_preprocessor/crop_box_filter_measurement_range_param_path)"/>
+        <arg name="ring_filter_param_path" value="$(var lidar_marker_localizer/left_lower/pointcloud_preprocessor/ring_filter_param_path)"/>
+        <arg name="lidar_marker_localizer_param_path" value="$(var lidar_marker_localizer/left_lower/lidar_marker_localizer_param_path)"/>
       </include>
     </group>
   </group>
