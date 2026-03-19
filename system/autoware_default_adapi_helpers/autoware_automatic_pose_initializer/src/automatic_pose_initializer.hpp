@@ -17,7 +17,10 @@
 
 #include <autoware/adapi_specs/localization.hpp>
 #include <autoware/component_interface_utils/rclcpp.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
+
+#include <atomic>
 
 namespace autoware::automatic_pose_initializer
 {
@@ -29,13 +32,16 @@ public:
 
 private:
   void on_timer();
+  void on_gnss_pose();
   using Initialize = autoware::adapi_specs::localization::Initialize;
   using State = autoware::adapi_specs::localization::InitializationState;
   rclcpp::CallbackGroup::SharedPtr group_cli_;
   rclcpp::TimerBase::SharedPtr timer_;
   autoware::component_interface_utils::Client<Initialize>::SharedPtr cli_initialize_;
   autoware::component_interface_utils::Subscription<State>::SharedPtr sub_state_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_gnss_pose_;
   State::Message state_;
+  std::atomic<bool> gnss_pose_received_{false};
 };
 
 }  // namespace autoware::automatic_pose_initializer

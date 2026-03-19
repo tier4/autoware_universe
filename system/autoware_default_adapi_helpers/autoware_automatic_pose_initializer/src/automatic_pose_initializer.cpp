@@ -27,6 +27,14 @@ AutomaticPoseInitializer::AutomaticPoseInitializer(const rclcpp::NodeOptions & o
   adaptor.init_cli(cli_initialize_, group_cli_);
   adaptor.init_sub(sub_state_, [this](const State::Message::ConstSharedPtr msg) { state_ = *msg; });
 
+  const auto gnss_pose_topic =
+    declare_parameter<std::string>("gnss_pose_topic", "/sensing/gnss/pose_with_covariance");
+  // Use best_effort so we receive from rosbag replay (player often uses best_effort)
+  const auto qos = rclcpp::QoS(1).best_effort().durability_volatile();
+  sub_gnss_pose_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+    gnss_pose_topic, qos,
+    [this](geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr) { on_gnss_pose(); });
+
   const auto period = rclcpp::Rate(1.0).period();
   timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
 
@@ -34,10 +42,17 @@ AutomaticPoseInitializer::AutomaticPoseInitializer(const rclcpp::NodeOptions & o
   state_.state = State::Message::UNKNOWN;
 }
 
+void AutomaticPoseInitializer::on_gnss_pose()
+{
+  gnss_pose_received_.store(true);
+}
+
 void AutomaticPoseInitializer::on_timer()
 {
   timer_->cancel();
-  if (state_.state == State::Message::UNINITIALIZED) {
+  if (
+    state_.state == State::Message::UNINITIALIZED &&
+    gnss_pose_received_.load()) {
     try {
       const auto req = std::make_shared<Initialize::Service::Request>();
       cli_initialize_->call(req);
