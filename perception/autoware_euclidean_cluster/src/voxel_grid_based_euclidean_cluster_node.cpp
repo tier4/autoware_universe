@@ -66,9 +66,6 @@ void VoxelGridBasedEuclideanClusterNode::onPointCloud(
   // check for empty point cloud and return early
   if (input_msg->data.empty() || input_msg->width == 0 || input_msg->height == 0) {
     RCLCPP_DEBUG(get_logger(), "Empty point cloud received, skipping processing");
-    auto empty_output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(cluster_pub_);
-    empty_output->header = input_msg->header;
-    cluster_pub_->publish(std::move(empty_output));
     return;
   }
   // cluster and build output msg
