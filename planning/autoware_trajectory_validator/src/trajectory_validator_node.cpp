@@ -319,7 +319,6 @@ void TrajectoryValidator::publish_internal_state(
     std::string short_uuid = eval.generator_id.substr(0, 8);  // Just using short UUID as requested
     for (const auto & [category, evaluations] : eval.evaluations) {
       for (const auto & plugin_eval : evaluations) {
-        fmt::print("plugin: {}, {}\n", plugin_eval.plugin_name, plugin_eval.is_feasible);
         if (!plugin_eval.is_feasible) {
           plugin_filtered_paths[plugin_eval.plugin_name].push_back(short_uuid);
         }
