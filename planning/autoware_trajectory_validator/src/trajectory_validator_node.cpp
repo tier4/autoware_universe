@@ -304,7 +304,7 @@ void TrajectoryValidator::publish_processing_time(
       continue;
     }
     pub_processing_time_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      key + "processing_time_ms", value);
+      key + "/processing_time_ms", value);
   }
   // 2. Format the string output
   std::string text_output = "--- Trajectory Validator Processing Time ---\n";
