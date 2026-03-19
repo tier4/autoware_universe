@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<library path="autoware_selection_json_export_rviz_plugin">
+  <class
+    name="Selection JSON Export"
+    type="autoware_selection_json_export_rviz_plugin::SelectionJsonExportPanel"
+    base_class_type="rviz_common::Panel">
+    <description>Export RViz selection (properties + handles) as JSON (copy or save to file).</description>
+  </class>
+</library>
