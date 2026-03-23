@@ -45,17 +45,6 @@ double to_speed(const TrajectoryPoint & point)
 }
 
 /**
- * @brief Convert two TrajectoryPoints to acceleration (m/s^2)
- */
-double to_acceleration(const TrajectoryPoint & prev_point, const TrajectoryPoint & curr_point)
-{
-  double prev_speed = to_speed(prev_point);
-  double curr_speed = to_speed(curr_point);
-  double dt = to_seconds(curr_point.time_from_start) - to_seconds(prev_point.time_from_start);
-  return dt > 0 ? (curr_speed - prev_speed) / dt : 0.0;
-}
-
-/**
  * @brief Convert TrajectoryPoints to steering angle (rad)
  */
 double to_steering_angle(
@@ -239,9 +228,9 @@ bool is_speed_ok(const TrajectoryPoints & traj_points, double max_speed)
 
 bool is_acceleration_ok(const TrajectoryPoints & traj_points, double max_acceleration)
 {
-  for (size_t i = 1; i < traj_points.size(); ++i) {
-    double acc = to_acceleration(traj_points[i - 1], traj_points[i]);
-    if (acc > max_acceleration) {
+  for (const auto & point : traj_points) {
+    const auto acc = static_cast<double>(point.acceleration_mps2);
+    if (acc > 0 && acc > max_acceleration) {
       return false;
     }
   }
@@ -250,8 +239,8 @@ bool is_acceleration_ok(const TrajectoryPoints & traj_points, double max_acceler
 
 bool is_deceleration_ok(const TrajectoryPoints & traj_points, double max_deceleration)
 {
-  for (size_t i = 1; i < traj_points.size(); ++i) {
-    double dec = to_acceleration(traj_points[i - 1], traj_points[i]);
+  for (const auto & point : traj_points) {
+    const auto dec = static_cast<double>(point.acceleration_mps2);
     if (dec < 0 && std::abs(dec) > max_deceleration) {
       return false;
     }
