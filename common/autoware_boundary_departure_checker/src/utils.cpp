@@ -859,7 +859,7 @@ std::optional<ProjectionsToBound> get_closest_projections_for_side(
   if (!min_to_bound.empty() && min_to_bound.back().is_critical_departure()) {
     const double crash_s =
       min_to_bound.back().lon_dist_on_pred_traj - min_to_bound.back().lon_offset;
-    constexpr double longitudinal_buffer_m = 1.0;
+    const auto longitudinal_buffer_m = param.min_braking_distance;
 
     auto earliest_critical_it = min_to_bound.end() - 1;
 

@@ -36,16 +36,15 @@ public:
   tl::expected<void, std::string> is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) final;
 
-  void set_parameters([[maybe_unused]] rclcpp::Node & node) final {}
+  void set_parameters(rclcpp::Node & node) final;
 
-  void update_parameters([[maybe_unused]] const std::vector<rclcpp::Parameter> & parameters) final
-  {
-  }
+  void update_parameters(const std::vector<rclcpp::Parameter> & parameters) final;
 
 private:
   std::unique_ptr<autoware::boundary_departure_checker::UncrossableBoundaryDepartureChecker>
     uncrossable_boundary_departure_checker_ptr_;
   rclcpp::Logger log_ = rclcpp::get_logger(name_);
+  boundary_departure_checker::Param param_;
   std::shared_ptr<rclcpp::Clock> clock_ = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
 
   [[nodiscard]] std::optional<std::string> is_invalid_input(
