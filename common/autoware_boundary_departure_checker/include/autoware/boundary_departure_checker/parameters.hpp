@@ -148,7 +148,7 @@ struct Param
   double critical_departure_off_time_buffer_s{0.15};
   AbnormalitiesConfigs abnormality_configs;
   std::vector<std::string> boundary_types_to_detect{"road_border"};
-  std::vector<FootprintType> footprint_types_to_check;
+  std::vector<FootprintType> footprint_types_to_check{FootprintType::NORMAL};
 
   template <typename ConfigType>
   tl::expected<std::reference_wrapper<const ConfigType>, std::string> get_abnormality_config(
