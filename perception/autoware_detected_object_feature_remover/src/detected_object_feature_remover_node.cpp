@@ -29,8 +29,6 @@ DetectedObjectFeatureRemover::DetectedObjectFeatureRemover(const rclcpp::NodeOpt
       this->objectCallback(input);
     },
     options);
-  convert_params_.run_convex_hull_conversion =
-    this->declare_parameter<bool>("run_convex_hull_conversion", false);
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 }
 
