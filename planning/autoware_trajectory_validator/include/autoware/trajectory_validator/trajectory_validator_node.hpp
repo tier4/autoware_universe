@@ -89,7 +89,8 @@ private:
   void publish_processing_time(const std::unordered_map<std::string, double> & processing_time);
   void publish_internal_state(
     const std::unordered_map<std::string, double> & processing_time,
-    const std::vector<EvaluationTable> & evaluation_tables);
+    const std::vector<EvaluationTable> & evaluation_tables,
+    const geometry_msgs::msg::Pose & ego_pose);
 
   rcl_interfaces::msg::SetParametersResult on_parameter(
     const std::vector<rclcpp::Parameter> & parameters);
@@ -120,6 +121,7 @@ private:
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     pub_processing_time_detail_;
   std::shared_ptr<autoware_utils_debug::DebugPublisher> pub_processing_time_;
+  std::shared_ptr<autoware_utils_debug::DebugPublisher> pub_debug_markers_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
     pub_processing_time_text_;
 
