@@ -133,11 +133,15 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenDecelerationExceedsMax)
 
 TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringAngleExceedsMax)
 {
-  // Create a trajectory that exceeds max steering angle
+  // Create a trajectory that exceeds max steering angle after smoothing
   TrajectoryPoints traj_points = {
     create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
-    create_trajectory_point(1.0, 0.0, 0.0, 5.0, 0.0, 1.0),   // Exceeds max steering angle
-    create_trajectory_point(1.0, 1.0, 0.0, 5.0, 0.0, 2.0)};  // Exceeds max steering angle
+    create_trajectory_point(1.0, 0.0, 0.0, 5.0, 0.0, 1.0),
+    create_trajectory_point(2.0, 0.0, 0.0, 5.0, 0.0, 2.0),
+    create_trajectory_point(2.0, 1.0, 0.0, 5.0, 0.0, 3.0),
+    create_trajectory_point(2.0, 2.0, 0.0, 5.0, 0.0, 4.0),
+    create_trajectory_point(1.0, 2.0, 0.0, 5.0, 0.0, 5.0),
+    create_trajectory_point(0.0, 2.0, 0.0, 5.0, 0.0, 6.0)};  // Exceeds max steering angle
 
   VehicleInfo vehicle_info;
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
@@ -157,12 +161,17 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringAngleExceedsMax)
 
 TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringRateExceedsMax)
 {
-  // Create a trajectory that exceeds max steering rate
+  // Create a trajectory that exceeds max steering rate after smoothing
   TrajectoryPoints traj_points = {
     create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
     create_trajectory_point(1.0, 0.0, 0.0, 5.0, 0.0, 1.0),
     create_trajectory_point(2.0, 0.0, 0.0, 5.0, 0.0, 2.0),
-    create_trajectory_point(2.0, 1.0, 0.0, 5.0, 0.0, 3.0)};  // Exceeds max steering rate
+    create_trajectory_point(3.0, 0.0, 0.0, 5.0, 0.0, 3.0),
+    create_trajectory_point(3.0, 1.0, 0.0, 5.0, 0.0, 4.0),
+    create_trajectory_point(3.0, 2.0, 0.0, 5.0, 0.0, 5.0),
+    create_trajectory_point(3.0, 3.0, 0.0, 5.0, 0.0, 6.0),
+    create_trajectory_point(2.0, 3.0, 0.0, 5.0, 0.0, 7.0),
+    create_trajectory_point(1.0, 3.0, 0.0, 5.0, 0.0, 8.0)};  // Exceeds max steering rate
 
   VehicleInfo vehicle_info;
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
@@ -271,7 +280,11 @@ TEST(IsSteeringAngleOkTest, FalseWhenAnySteeringAngleAboveMax)
   TrajectoryPoints traj_points = {
     create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
     create_trajectory_point(1.0, 0.0, 0.0, 5.0, 0.0, 1.0),
-    create_trajectory_point(1.0, 1.0, 0.0, 5.0, 0.0, 2.0)};
+    create_trajectory_point(2.0, 0.0, 0.0, 5.0, 0.0, 2.0),
+    create_trajectory_point(2.0, 1.0, 0.0, 5.0, 0.0, 3.0),
+    create_trajectory_point(2.0, 2.0, 0.0, 5.0, 0.0, 4.0),
+    create_trajectory_point(1.0, 2.0, 0.0, 5.0, 0.0, 5.0),
+    create_trajectory_point(0.0, 2.0, 0.0, 5.0, 0.0, 6.0)};
   VehicleInfo vehicle_info;         // Fill in with appropriate values
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
   double max_steering_angle = 0.5;  // rad
@@ -301,7 +314,12 @@ TEST(IsSteeringRateOkTest, FalseWhenAnySteeringRateAboveMax)
     create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
     create_trajectory_point(1.0, 0.0, 0.0, 5.0, 0.0, 1.0),
     create_trajectory_point(2.0, 0.0, 0.0, 5.0, 0.0, 2.0),
-    create_trajectory_point(2.0, 1.0, 0.0, 5.0, 0.0, 3.0)};
+    create_trajectory_point(3.0, 0.0, 0.0, 5.0, 0.0, 3.0),
+    create_trajectory_point(3.0, 1.0, 0.0, 5.0, 0.0, 4.0),
+    create_trajectory_point(3.0, 2.0, 0.0, 5.0, 0.0, 5.0),
+    create_trajectory_point(3.0, 3.0, 0.0, 5.0, 0.0, 6.0),
+    create_trajectory_point(2.0, 3.0, 0.0, 5.0, 0.0, 7.0),
+    create_trajectory_point(1.0, 3.0, 0.0, 5.0, 0.0, 8.0)};
   VehicleInfo vehicle_info;         // Fill in with appropriate values
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
   double max_steering_rate = 0.1;   // rad/s

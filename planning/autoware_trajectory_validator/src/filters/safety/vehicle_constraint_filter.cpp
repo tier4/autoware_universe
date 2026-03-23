@@ -17,6 +17,8 @@
 #include <autoware_utils_geometry/geometry.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
 
+#include <algorithm>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -73,19 +75,44 @@ double to_steering_angle(
 }
 
 /**
- * @brief Convert four TrajectoryPoints to steering rate (rad/s)
+ * @brief Convert TrajectoryPoints to a vector of steering angles (rad), with optional smoothing.
  */
-double to_steering_rate(
-  const TrajectoryPoint & prev_prev_point, const TrajectoryPoint & prev_point,
-  const TrajectoryPoint & curr_point, const TrajectoryPoint & next_point,
-  const VehicleInfo & vehicle_info)
+std::vector<std::optional<double>> to_steering_angles(
+  const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info, int smoothing_window_size)
 {
-  const double prev_steering_angle =
-    to_steering_angle(prev_prev_point, prev_point, curr_point, vehicle_info);
-  const double curr_steering_angle =
-    to_steering_angle(prev_point, curr_point, next_point, vehicle_info);
-  const double dt = to_seconds(curr_point.time_from_start) - to_seconds(prev_point.time_from_start);
-  return dt > 0 ? std::abs(curr_steering_angle - prev_steering_angle) / dt : 0.0;
+  std::vector<std::optional<double>> steering_angles(traj_points.size(), std::nullopt);
+  if (traj_points.size() < 3) {
+    return steering_angles;
+  }
+
+  for (size_t i = 1; i + 1 < traj_points.size(); ++i) {
+    steering_angles[i] =
+      to_steering_angle(traj_points[i - 1], traj_points[i], traj_points[i + 1], vehicle_info);
+  }
+
+  if (smoothing_window_size < 1) {
+    return steering_angles;
+  }
+
+  const size_t radius = static_cast<size_t>(std::max(1, smoothing_window_size) / 2);
+  std::vector<std::optional<double>> smoothed_angles(traj_points.size(), std::nullopt);
+  for (size_t i = radius; i < traj_points.size() - radius; ++i) {
+    double sum = 0.0;
+    size_t count = 0;
+    const size_t start_index = (i > radius) ? i - radius : 1;
+    const size_t end_index = std::min(traj_points.size() - 2, i + radius);
+    for (size_t sample_index = start_index; sample_index <= end_index; ++sample_index) {
+      if (!steering_angles[sample_index].has_value()) {
+        continue;
+      }
+      sum += steering_angles[sample_index].value();
+      ++count;
+    }
+    if (count > 0) {
+      smoothed_angles[i] = sum / static_cast<double>(count);
+    }
+  }
+  return smoothed_angles;
 }
 }  // namespace
 
@@ -235,12 +262,13 @@ bool is_deceleration_ok(const TrajectoryPoints & traj_points, double max_deceler
 bool is_steering_angle_ok(
   const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info, double max_steering_angle)
 {
-  for (size_t i = 1; i < traj_points.size() - 1; ++i) {
-    const auto & prev_point = traj_points[i - 1];
-    const auto & curr_point = traj_points[i];
-    const auto & next_point = traj_points[i + 1];
-    double steering_angle = to_steering_angle(prev_point, curr_point, next_point, vehicle_info);
-    if (std::abs(steering_angle) > max_steering_angle) {
+  constexpr int smoothing_window_size = 5;
+  const auto steering_angles = to_steering_angles(traj_points, vehicle_info, smoothing_window_size);
+  for (size_t i = 1; i + 1 < traj_points.size(); ++i) {
+    if (!steering_angles[i].has_value()) {
+      continue;
+    }
+    if (std::abs(steering_angles[i].value()) > max_steering_angle) {
       return false;
     }
   }
@@ -250,9 +278,16 @@ bool is_steering_angle_ok(
 bool is_steering_rate_ok(
   const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info, double max_steering_rate)
 {
+  constexpr int smoothing_window_size = 5;
+  const auto steering_angles = to_steering_angles(traj_points, vehicle_info, smoothing_window_size);
   for (size_t i = 2; i + 1 < traj_points.size(); ++i) {
-    double steering_rate = to_steering_rate(
-      traj_points[i - 2], traj_points[i - 1], traj_points[i], traj_points[i + 1], vehicle_info);
+    if (!steering_angles[i].has_value() || !steering_angles[i - 1].has_value()) {
+      continue;
+    }
+    const double dt =
+      to_seconds(traj_points[i].time_from_start) - to_seconds(traj_points[i - 1].time_from_start);
+    const auto steering_rate =
+      dt > 0.0 ? std::abs(steering_angles[i].value() - steering_angles[i - 1].value()) / dt : 0.0;
     if (steering_rate > max_steering_rate) {
       return false;
     }
