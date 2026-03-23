@@ -15,6 +15,8 @@
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/stop_point_fixer.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp"
 
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <autoware_test_utils/autoware_test_utils.hpp>
 #include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -34,7 +36,14 @@ protected:
   void SetUp() override
   {
     rclcpp::init(0, nullptr);
-    node_ = std::make_shared<rclcpp::Node>("test_node");
+
+    auto node_options = rclcpp::NodeOptions{};
+    const auto autoware_test_utils_dir =
+      ament_index_cpp::get_package_share_directory("autoware_test_utils");
+    autoware::test_utils::updateNodeOptions(
+      node_options, {autoware_test_utils_dir + "/config/test_vehicle_info.param.yaml"});
+    node_ = std::make_shared<rclcpp::Node>("test_node", node_options);
+
     time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>();
     data_ = std::make_shared<TrajectoryModifierData>(node_.get());
     params_.use_stop_point_fixer = true;
@@ -383,8 +392,8 @@ TEST_F(StopPointFixerIntegrationTest, ForceCloseStopFlag_False_CloseStopConditio
 
 TEST_F(StopPointFixerIntegrationTest, ForceCloseStopFlag_True_CloseStopConditionTriggers)
 {
-  params_.stop_point_fixer.force_stop_long_stopped_trajectories = true;
-  params_.stop_point_fixer.force_stop_close_stopped_trajectories = false;
+  params_.stop_point_fixer.force_stop_long_stopped_trajectories = false;
+  params_.stop_point_fixer.force_stop_close_stopped_trajectories = true;
   params_.use_stop_point_fixer = true;
   plugin_->update_params(params_);
 
