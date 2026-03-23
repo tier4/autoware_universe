@@ -54,9 +54,6 @@ private:
   double strict_iou_fusion_distance_;
   std::string rough_iou_match_mode_{"iou_x"};
 
-  // Pedestrian size validation parameters
-  PedestrianSizeValidationParams pedestrian_size_params_;
-
   AUTOWARE_PUBLISHER_PTR(ClusterMsgType) agnocast_pub_ptr_;
   AUTOWARE_SUBSCRIPTION_PTR(ClusterMsgType) agnocast_msg3d_sub_;
 
