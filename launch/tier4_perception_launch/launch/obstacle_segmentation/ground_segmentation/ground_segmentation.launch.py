@@ -616,9 +616,9 @@ def launch_setup(context, *args, **kwargs):
             ),
             launch_arguments={
                 "input/pointcloud": LaunchConfiguration("input/pointcloud"),
-                "segmented/pointcloud": LaunchConfiguration("ptv3_output/segmented/pointcloud"),
-                "ground_segmented/pointcloud": LaunchConfiguration("ptv3_output/ground_segmented/pointcloud"),
-                "probs/pointcloud": LaunchConfiguration("ptv3_output/probs/pointcloud"),
+                "output/pointcloud/segmentation": LaunchConfiguration("ptv3_output/segmented/pointcloud"),
+                "output/pointcloud/visualization": LaunchConfiguration("ptv3_output/ground_segmented/pointcloud"),
+                "output/pointcloud/filtered": LaunchConfiguration("ptv3_output/probs/pointcloud"),
                 "pointcloud_container_name": LaunchConfiguration("pointcloud_container_name"),
                 "use_pointcloud_container": LaunchConfiguration("ptv3_use_pointcloud_container"),
                 "data_path": LaunchConfiguration("data_path"),
