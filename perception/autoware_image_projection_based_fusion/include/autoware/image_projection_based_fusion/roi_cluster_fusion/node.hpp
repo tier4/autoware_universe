@@ -60,7 +60,6 @@ private:
   AUTOWARE_PUBLISHER_PTR(ClusterMsgType) agnocast_pub_ptr_;
   AUTOWARE_SUBSCRIPTION_PTR(ClusterMsgType) agnocast_msg3d_sub_;
 
-
   bool is_far_enough(const ClusterObjType & obj, const double distance_threshold);
   bool out_of_scope(const ClusterObjType & obj);
   double cal_iou_by_mode(

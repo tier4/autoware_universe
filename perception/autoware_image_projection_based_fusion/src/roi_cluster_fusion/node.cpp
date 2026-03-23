@@ -82,7 +82,6 @@ RoiClusterFusionNode::RoiClusterFusionNode(const rclcpp::NodeOptions & options)
     },
     AUTOWARE_SUBSCRIPTION_OPTIONS{});
 
-
   // publisher
   // TODO(Koichi98): replace pub_ptr_ in FusionNode with agnocast_wrapper
   agnocast_pub_ptr_ = AUTOWARE_CREATE_PUBLISHER2(ClusterMsgType, "output", rclcpp::QoS{1});
@@ -352,7 +351,6 @@ void RoiClusterFusionNode::publish(const ClusterMsgType & output_msg)
   *agnocast_output_msg = output_msg;
   agnocast_pub_ptr_->publish(std::move(agnocast_output_msg));
 }
-
 
 }  // namespace autoware::image_projection_based_fusion
 
