@@ -183,6 +183,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   processing_time_ms["Total"] = stop_watch.toc("Total");
 
   publish_processing_time(processing_time_ms);
+  publish_internal_state(processing_time_ms, evaluation_tables_);
   update_diagnostic(*msg, *filtered_msg);
   pub_trajectories_->publish(*filtered_msg);
 }
@@ -304,63 +305,68 @@ void TrajectoryValidator::publish_processing_time(
       continue;
     }
     pub_processing_time_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      key + "processing_time_ms", value);
+      key + "/processing_time_ms", value);
   }
-  // 2. Format the string output
-  std::string text_output = "--- Trajectory Validator Processing Time ---\n";
+}
 
-  // Extract Total first so we can put it at the top
-  auto total_it = processing_time.find("Total");
-  if (total_it != processing_time.end()) {
-    text_output += fmt::format("Total: {:.3f} ms\n", total_it->second);
-  }
-
-  // Extract and sort the remaining plugin keys for stable output
-  std::vector<std::string> sorted_keys;
-  for (const auto & [key, _] : processing_time) {
-    if (key != "Total") {
-      sorted_keys.push_back(key);
-    }
-    // 2. Format the string output
-    std::string text_output = "--- Trajectory Validator Processing Time ---\n";
-
-    // Extract Total first so we can put it at the top
-    auto total_it = processing_time.find("Total");
-    if (total_it != processing_time.end()) {
-      text_output += fmt::format("Total: {:.3f} ms\n", total_it->second);
-    }
-
-    // Extract and sort the remaining plugin keys for stable output
-    std::vector<std::string> sorted_keys;
-    for (const auto & [key, _] : processing_time) {
-      if (key != "Total") {
-        sorted_keys.push_back(key);
+void TrajectoryValidator::publish_internal_state(
+  const std::unordered_map<std::string, double> & processing_time,
+  const std::vector<EvaluationTable> & evaluation_tables)
+{
+  std::unordered_map<std::string, std::vector<std::string>> plugin_filtered_paths;
+  // 1. Group the filtered paths by plugin
+  for (const auto & eval : evaluation_tables) {
+    std::string short_uuid = eval.generator_id.substr(0, 8);  // Just using short UUID as requested
+    for (const auto & [category, evaluations] : eval.evaluations) {
+      for (const auto & plugin_eval : evaluations) {
+        if (!plugin_eval.is_feasible) {
+          plugin_filtered_paths[plugin_eval.plugin_name].push_back(short_uuid);
+        }
       }
     }
-    std::sort(sorted_keys.begin(), sorted_keys.end());
+  }
 
-    // Append each plugin's time
-    for (const auto & key : sorted_keys) {
-      text_output += fmt::format("- {}: {:.3f} ms\n", key, processing_time.at(key));
+  // 2. Extract and sort the plugin names alphabetically
+  std::vector<std::string> sorted_plugins;
+  for (const auto & [plugin_name, _] : processing_time) {
+    if (plugin_name != "Total") {
+      sorted_plugins.push_back(plugin_name);
+    }
+  }
+  std::sort(sorted_plugins.begin(), sorted_plugins.end());
+
+  std::string report = "\n--- Trajectory Validator Report ---\n";
+  report += "[Timing]\n";
+  double total_time_ms = processing_time.count("Total") ? processing_time.at("Total") : 0.0;
+  report += fmt::format("Total: {:.2f} ms\n", total_time_ms);
+
+  for (const auto & plugin_name : sorted_plugins) {
+    double time = processing_time.at(plugin_name);
+    report += fmt::format("- {}: {:.2f} ms\n", plugin_name, time);
+  }
+
+  // --- Filtering Results Section ---
+  report += "\n[Filtering Results]\n";
+  for (const auto & plugin_name : sorted_plugins) {
+    size_t count = 0;
+    auto it = plugin_filtered_paths.find(plugin_name);
+    if (it != plugin_filtered_paths.end()) {
+      count = it->second.size();
     }
 
-    // 3. Publish the StringStamped message
-    autoware_internal_debug_msgs::msg::StringStamped text_msg;
-    text_msg.stamp = this->now();
-    text_msg.data = text_output;
-    pub_processing_time_text_->publish(text_msg);
-  }
-  std::sort(sorted_keys.begin(), sorted_keys.end());
+    report += fmt::format("- {}: {} path(s) filtered\n", plugin_name, count);
 
-  // Append each plugin's time
-  for (const auto & key : sorted_keys) {
-    text_output += fmt::format("- {}: {:.3f} ms\n", key, processing_time.at(key));
+    // Print the list of UUIDs beneath it, indented
+    if (count > 0) {
+      report += fmt::format("    -> [{}]\n", fmt::join(it->second, ", "));
+    }
   }
+  report += "-----------------------------------";
 
-  // 3. Publish the StringStamped message
+  // Print to terminal
   autoware_internal_debug_msgs::msg::StringStamped text_msg;
   text_msg.stamp = this->now();
-  text_msg.data = text_output;
+  text_msg.data = report;
   pub_processing_time_text_->publish(text_msg);
 }
 }  // namespace autoware::trajectory_validator

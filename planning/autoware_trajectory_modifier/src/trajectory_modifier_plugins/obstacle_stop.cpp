@@ -80,21 +80,36 @@ bool ObstacleStop::is_trajectory_modification_required(const TrajectoryPoints & 
 {
   debug_data_ = DebugData();
   debug_data_.trajectory_polygon = get_trajectory_polygon(
-    traj_points, data_->current_odometry->pose.pose, data_->vehicle_info, params_.lateral_margin_m);
-  const auto collision_point_pcd = check_pointcloud(traj_points, debug_data_.trajectory_polygon);
+    traj_points, data_->current_odometry->pose.pose, data_->vehicle_info, params_.lateral_margin);
   const auto collision_point_objects =
     check_predicted_objects(traj_points, debug_data_.trajectory_polygon);
-  if (!collision_point_pcd && !collision_point_objects) return false;
+  const auto collision_point_pcd = check_pointcloud(traj_points, debug_data_.trajectory_polygon);
 
-  if (!collision_point_pcd) {
-    nearest_collision_point_ = collision_point_objects;
-  } else if (!collision_point_objects) {
-    nearest_collision_point_ = collision_point_pcd;
-  } else {
-    nearest_collision_point_ = collision_point_pcd->arc_length < collision_point_objects->arc_length
-                                 ? collision_point_pcd
-                                 : collision_point_objects;
+  if (collision_point_objects) {
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_clock(), 1000,
+      "[TM ObstacleStop] Detected collision with object at arc length %f m",
+      collision_point_objects->arc_length);
   }
+
+  if (collision_point_pcd) {
+    RCLCPP_WARN_THROTTLE(
+      get_node_ptr()->get_logger(), *get_clock(), 1000,
+      "[TM ObstacleStop] Detected collision with pointcloud at arc length %f m",
+      collision_point_pcd->arc_length);
+  }
+
+  nearest_collision_point_ = std::invoke([&]() -> std::optional<CollisionPoint> {
+    const auto is_collision_point_pcd = params_.enable_stop_for_pointcloud && collision_point_pcd;
+    const auto is_collision_point_objects =
+      params_.enable_stop_for_objects && collision_point_objects;
+    if (!is_collision_point_pcd && !is_collision_point_objects) return std::nullopt;
+    if (!is_collision_point_pcd) return collision_point_objects.value();
+    if (!is_collision_point_objects) return collision_point_pcd.value();
+    return collision_point_pcd->arc_length < collision_point_objects->arc_length
+             ? collision_point_pcd.value()
+             : collision_point_objects.value();
+  });
 
   debug_data_.active_collision_point =
     nearest_collision_point_ ? nearest_collision_point_->point : geometry_msgs::msg::Point();
@@ -108,19 +123,12 @@ bool ObstacleStop::modify_trajectory(TrajectoryPoints & traj_points)
 
   if (!nearest_collision_point_) return false;
 
-  RCLCPP_WARN_THROTTLE(
-    get_node_ptr()->get_logger(), *get_clock(), 500,
-    "[TM ObstacleStop] Detected collision point at arc length %f m",
-    nearest_collision_point_->arc_length);
-
-  if (!params_.enable_stop) return false;
-
   return set_stop_point(traj_points);
 }
 
 bool ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
 {
-  const auto stop_margin = params_.stop_margin_m + data_->vehicle_info.max_longitudinal_offset_m;
+  const auto stop_margin = params_.stop_margin + data_->vehicle_info.max_longitudinal_offset_m;
   const auto target_stop_point_arc_length =
     std::max(nearest_collision_point_->arc_length - stop_margin, 0.0);
 
@@ -133,7 +141,7 @@ bool ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
 
   constexpr double stop_velocity_threshold = 0.01;
 
-  if (params_.duplicate_check_threshold_m > std::numeric_limits<double>::epsilon()) {
+  if (params_.duplicate_check_threshold > std::numeric_limits<double>::epsilon()) {
     auto checked_distance = 0.0;
     for (size_t i = 1; i < traj_points.size(); ++i) {
       const auto & curr = traj_points.at(i);
@@ -144,17 +152,16 @@ bool ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
         return skip("Preceding stop point exists");
       }
       if (
-        abs(target_stop_point_arc_length - checked_distance) <
-        params_.duplicate_check_threshold_m) {
+        abs(target_stop_point_arc_length - checked_distance) < params_.duplicate_check_threshold) {
         return skip("Duplicate stop point detected near target stop point");
       }
-      if (checked_distance > target_stop_point_arc_length + params_.duplicate_check_threshold_m)
+      if (checked_distance > target_stop_point_arc_length + params_.duplicate_check_threshold)
         break;
     }
   }
 
   if (
-    target_stop_point_arc_length < params_.arrived_distance_threshold_m ||
+    target_stop_point_arc_length < params_.arrived_distance_threshold ||
     !apply_stopping(traj_points, target_stop_point_arc_length)) {
     traj_points = std::invoke([&]() {
       TrajectoryPoints stop_points;
@@ -237,7 +244,8 @@ bool ObstacleStop::apply_stopping(
   const auto required_decel = std::abs(v_ref * v_ref / (2.0 * target_stop_point_arc_length));
   const auto jerk = std::abs(params_.stopping_jerk);
   const auto decel = std::clamp(
-    required_decel, std::abs(params_.nom_stopping_decel), std::abs(params_.max_stopping_decel));
+    required_decel, std::abs(params_.nominal_stopping_decel),
+    std::abs(params_.maximum_stopping_decel));
 
   const auto vel_update_start_index = update_velocities(trajectory, jerk, decel);
   auto interpolate_start_index = vel_update_start_index > 0 ? vel_update_start_index - 1 : 0;
@@ -245,7 +253,8 @@ bool ObstacleStop::apply_stopping(
   auto trajectory_interpolation_util =
     InterpolationTrajectory::Builder{}
       .set_xy_interpolator<AkimaSpline>()  // Set interpolator for x-y plane
-      .build(traj_points);
+      .set_longitudinal_velocity_interpolator<AkimaSpline>()
+      .build(trajectory);
   if (!trajectory_interpolation_util) {
     RCLCPP_WARN_THROTTLE(
       get_node_ptr()->get_logger(), *get_clock(), 1000,
@@ -253,43 +262,14 @@ bool ObstacleStop::apply_stopping(
     return false;
   }
 
-  std::vector<double> s_seeds, v_seeds;
-  {
-    double s_curr{0.0};
-    s_seeds.push_back(s_curr);
-    v_seeds.push_back(trajectory.front().longitudinal_velocity_mps);
-    const size_t required_size = std::max(trajectory.size(), 5ul);
-    for (size_t i = 1; i < required_size; ++i) {
-      if (i >= trajectory.size()) {
-        s_curr += 0.01;
-        s_seeds.push_back(s_curr);
-        v_seeds.push_back(v_seeds.back());
-        continue;
-      }
-      s_curr += autoware_utils::calc_distance2d(
-        trajectory.at(i - 1).pose.position, trajectory.at(i).pose.position);
-      s_seeds.push_back(s_curr);
-      v_seeds.push_back(trajectory.at(i).longitudinal_velocity_mps);
-    }
-  }
-  auto velocity_spline = AkimaSpline::Builder().set_bases(s_seeds).set_values(v_seeds).build();
-  if (!velocity_spline) {
-    RCLCPP_WARN_THROTTLE(
-      get_node_ptr()->get_logger(), *get_clock(), 1000,
-      "[TM ObstacleStop] Failed to build velocity spline: %s",
-      velocity_spline.error().what.c_str());
-    return false;
-  }
-
   const auto dt = trajectory_time_step_;
-
-  const auto s_max = std::min(s_seeds.back(), trajectory_interpolation_util->length());
-
-  const auto interpolate_start_arc_length = s_seeds.at(interpolate_start_index);
+  const auto s_max = trajectory_interpolation_util->length();
+  const auto interpolate_start_arc_length =
+    trajectory_interpolation_util->get_underlying_bases().at(interpolate_start_index);
   trajectory_interpolation_util->align_orientation_with_trajectory_direction();
   traj_points.erase(traj_points.begin() + interpolate_start_index + 1, traj_points.end());
   double s_curr{interpolate_start_arc_length};
-  while (s_curr < s_max) {
+  while (s_curr <= s_max) {
     const auto v_curr = traj_points.back().longitudinal_velocity_mps;
     const auto a_curr = traj_points.back().acceleration_mps2;
     const auto t_curr = rclcpp::Duration(traj_points.back().time_from_start);
@@ -300,12 +280,9 @@ bool ObstacleStop::apply_stopping(
 
     s_curr += ds;
     const auto s_clamped = std::min(s_curr, s_max);
-    double v_next = velocity_spline->compute(s_clamped);
-    double dv_ds = velocity_spline->compute_first_derivative(s_clamped);
 
     auto p = trajectory_interpolation_util->compute(s_clamped);
-    p.longitudinal_velocity_mps = static_cast<float>(v_next);
-    p.acceleration_mps2 = static_cast<float>(v_next * dv_ds);
+    p.acceleration_mps2 = (p.longitudinal_velocity_mps - v_curr) / static_cast<float>(dt);
     p.time_from_start = t_curr + rclcpp::Duration::from_seconds(dt);
     traj_points.push_back(p);
   }

@@ -60,7 +60,7 @@ public:
   struct PluginEvaluation
   {
     std::string plugin_name;
-    bool is_feasible;
+    bool is_feasible{true};
     std::string reason;
   };
 
@@ -87,6 +87,9 @@ private:
     const CandidateTrajectories & input_trajectories,
     const CandidateTrajectories & filtered_trajectories);
   void publish_processing_time(const std::unordered_map<std::string, double> & processing_time);
+  void publish_internal_state(
+    const std::unordered_map<std::string, double> & processing_time,
+    const std::vector<EvaluationTable> & evaluation_tables);
 
   rcl_interfaces::msg::SetParametersResult on_parameter(
     const std::vector<rclcpp::Parameter> & parameters);
