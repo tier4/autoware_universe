@@ -3,7 +3,10 @@ project(autoware_cuda_pointcloud_preprocessor)
 
 find_package(ament_cmake_auto REQUIRED)
 find_package(CUDA)
+find_package(CUDAToolkit)
 find_package(agnocastlib)
+find_package(agnocast_cuda)
+find_package(agnocast_components)
 
 if(NOT ${CUDA_FOUND})
   message(WARNING "cuda was not found, so the autoware_cuda_pointcloud_preprocessor package will not be built.")
@@ -15,6 +18,9 @@ endif()
 
 if("$ENV{ENABLE_AGNOCAST}" AND NOT agnocastlib_FOUND)
   message(FATAL_ERROR "agnocastlib is required when Agnocast is enabled")
+endif()
+if("$ENV{ENABLE_AGNOCAST}" AND NOT agnocast_cuda_FOUND)
+  message(FATAL_ERROR "agnocast_cuda is required when Agnocast is enabled")
 endif()
 
 ament_auto_find_build_dependencies()
@@ -104,11 +110,12 @@ target_include_directories(cuda_pointcloud_preprocessor_lib SYSTEM PRIVATE
 
 if("$ENV{ENABLE_AGNOCAST}")
     target_include_directories(cuda_pointcloud_preprocessor_lib SYSTEM PRIVATE
-        ${autoware_agnocast_wrapper_INCLUDE_DIRS}
         ${agnocastlib_INCLUDE_DIRS}
+        ${agnocast_cuda_INCLUDE_DIRS}
     )
     target_link_libraries(cuda_pointcloud_preprocessor_lib
         ${agnocastlib_LIBRARIES}
+        ${agnocast_cuda_LIBRARIES}
     )
 endif()
 
@@ -127,28 +134,59 @@ target_link_libraries(cuda_pointcloud_preprocessor
   cuda_pointcloud_preprocessor_lib
 )
 
-# ========== Concatenate and Sync data ==========
-rclcpp_components_register_node(cuda_pointcloud_preprocessor
-  PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPointCloudConcatenateDataSynchronizerComponent"
-  EXECUTABLE cuda_concatenate_and_time_sync_node)
+if("$ENV{ENABLE_AGNOCAST}")
+  target_link_libraries(cuda_pointcloud_preprocessor
+    ${agnocast_cuda_LIBRARIES}
+  )
+endif()
 
-# ========== Pointcloud preprocessor ==========
-rclcpp_components_register_node(cuda_pointcloud_preprocessor
-  PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPointcloudPreprocessorNode"
-  EXECUTABLE cuda_pointcloud_preprocessor_node
-)
+if("$ENV{ENABLE_AGNOCAST}")
+  # ========== Concatenate and Sync data ==========
+  # Uses CallbackIsolatedAgnocastExecutor (not AgnocastOnly) because the template
+  # base class inherits from rclcpp::Node, requiring rclcpp::init().
+  agnocast_components_register_node(cuda_pointcloud_preprocessor
+    PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPointCloudConcatenateDataSynchronizerComponent"
+    EXECUTABLE agnocast_cuda_concatenate_and_time_sync_node
+    EXECUTOR CallbackIsolatedAgnocastExecutor)
 
-# ========== VoxelGrid downsample filter ==========
-rclcpp_components_register_node(cuda_pointcloud_preprocessor
-  PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaVoxelGridDownsampleFilterNode"
-  EXECUTABLE cuda_voxel_grid_downsample_filter_node
-)
+  # ========== Pointcloud preprocessor ==========
+  agnocast_components_register_node(cuda_pointcloud_preprocessor
+    PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPointcloudPreprocessorNode"
+    EXECUTABLE agnocast_cuda_pointcloud_preprocessor_node
+    EXECUTOR AgnocastOnlyCallbackIsolatedExecutor)
 
-# ========== PolarVoxel outlier filter ==========
-rclcpp_components_register_node(cuda_pointcloud_preprocessor
-  PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPolarVoxelOutlierFilterNode"
-  EXECUTABLE cuda_polar_voxel_outlier_filter_node
-)
+  # ========== VoxelGrid downsample filter ==========
+  agnocast_components_register_node(cuda_pointcloud_preprocessor
+    PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaVoxelGridDownsampleFilterNode"
+    EXECUTABLE agnocast_cuda_voxel_grid_downsample_filter_node
+    EXECUTOR AgnocastOnlyCallbackIsolatedExecutor)
+
+  # ========== PolarVoxel outlier filter ==========
+  agnocast_components_register_node(cuda_pointcloud_preprocessor
+    PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPolarVoxelOutlierFilterNode"
+    EXECUTABLE agnocast_cuda_polar_voxel_outlier_filter_node
+    EXECUTOR AgnocastOnlyCallbackIsolatedExecutor)
+else()
+  # ========== Concatenate and Sync data ==========
+  rclcpp_components_register_node(cuda_pointcloud_preprocessor
+    PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPointCloudConcatenateDataSynchronizerComponent"
+    EXECUTABLE cuda_concatenate_and_time_sync_node)
+
+  # ========== Pointcloud preprocessor ==========
+  rclcpp_components_register_node(cuda_pointcloud_preprocessor
+    PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPointcloudPreprocessorNode"
+    EXECUTABLE cuda_pointcloud_preprocessor_node)
+
+  # ========== VoxelGrid downsample filter ==========
+  rclcpp_components_register_node(cuda_pointcloud_preprocessor
+    PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaVoxelGridDownsampleFilterNode"
+    EXECUTABLE cuda_voxel_grid_downsample_filter_node)
+
+  # ========== PolarVoxel outlier filter ==========
+  rclcpp_components_register_node(cuda_pointcloud_preprocessor
+    PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPolarVoxelOutlierFilterNode"
+    EXECUTABLE cuda_polar_voxel_outlier_filter_node)
+endif()
 
 ################################################################################
 # Install

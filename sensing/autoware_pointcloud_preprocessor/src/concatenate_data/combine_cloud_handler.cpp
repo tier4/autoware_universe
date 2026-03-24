@@ -34,8 +34,8 @@ namespace autoware::pointcloud_preprocessor
 {
 
 void CombineCloudHandler<PointCloud2Traits>::convert_to_xyzirc_cloud(
-  const typename PointCloud2Traits::PointCloudMessage::ConstSharedPtr & input_cloud,
-  typename PointCloud2Traits::PointCloudMessage::UniquePtr & xyzirc_cloud)
+  const typename PointCloud2Traits::ConstSharedPtr & input_cloud,
+  typename PointCloud2Traits::UniquePtr & xyzirc_cloud)
 {
   xyzirc_cloud->header = input_cloud->header;
 
@@ -117,7 +117,7 @@ void CombineCloudHandler<PointCloud2Traits>::correct_pointcloud_motion(
 // TODO(vividf): refactor this function for readability
 ConcatenatedCloudResult<PointCloud2Traits>
 CombineCloudHandler<PointCloud2Traits>::combine_pointclouds(
-  std::unordered_map<std::string, PointCloud2Traits::PointCloudMessage::ConstSharedPtr> &
+  std::unordered_map<std::string, PointCloud2Traits::ConstSharedPtr> &
     topic_to_cloud_map,
   const std::shared_ptr<CollectorInfoBase> & collector_info)
 {

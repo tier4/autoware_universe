@@ -20,7 +20,7 @@
 #include <cub/cub.cuh>
 #include <cuda/functional>    // for cuda::proclaim_return_type
 #include <cuda/std/optional>  // for cuda::std::optional
-#include <cuda_blackboard/cuda_pointcloud2.hpp>
+#include <agnocast/cuda/types.hpp>
 #include <rclcpp/exceptions/exceptions.hpp>
 
 #include <cstdint>
@@ -536,35 +536,34 @@ CudaPolarVoxelOutlierFilter::CudaPolarVoxelOutlierFilter() : primary_return_type
 }
 
 CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
+  const agnocast::cuda::PointCloud2 & input_cloud, const void * input_gpu_data,
+  agnocast::cuda::PointCloud2 & filtered_output, agnocast::cuda::PointCloud2 & noise_output,
   const CudaPolarVoxelOutlierFilterParameters & params, const PolarDataType polar_type)
 {
   if (!primary_return_type_dev_) {
-    return FilterReturn{nullptr, nullptr, 0., 0.};
+    return FilterReturn{0., 0.};
   }
 
-  size_t num_points = input_cloud->width * input_cloud->height;
+  size_t num_points = input_cloud.width * input_cloud.height;
   if (num_points == 0) {
     // sometimes topic might contain zero point even the pointer is valid
     // For such cases, this filter returns empty results
-    auto empty_filtered_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-    auto empty_noise_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-    return FilterReturn{std::move(empty_filtered_cloud), std::move(empty_noise_cloud), 0., 0.};
+    return FilterReturn{0., 0.};
   }
 
   FieldDataComposer<size_t> offsets{};
   switch (polar_type) {
     case PolarDataType::PreComputed:
-      offsets.radius = get_offset(input_cloud->fields, "distance");
-      offsets.azimuth = get_offset(input_cloud->fields, "azimuth");
-      offsets.elevation = get_offset(input_cloud->fields, "elevation");
+      offsets.radius = get_offset(input_cloud.fields, "distance");
+      offsets.azimuth = get_offset(input_cloud.fields, "azimuth");
+      offsets.elevation = get_offset(input_cloud.fields, "elevation");
       break;
     case PolarDataType::DeriveFromCartesian:
       // Though struct member names assume polar coordinates one,
       // fill offset for cartesian coordinates to compute polar coordinates
-      offsets.radius = get_offset(input_cloud->fields, "x");
-      offsets.azimuth = get_offset(input_cloud->fields, "y");
-      offsets.elevation = get_offset(input_cloud->fields, "z");
+      offsets.radius = get_offset(input_cloud.fields, "x");
+      offsets.azimuth = get_offset(input_cloud.fields, "y");
+      offsets.elevation = get_offset(input_cloud.fields, "z");
       break;
     default:
       throw std::runtime_error("undefined polar_data_type is specified");
@@ -599,12 +598,13 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
     switch (polar_type) {
       case PolarDataType::PreComputed:
         polar_to_polar_voxel_kernel<float><<<grid_dim, block_dim, 0, stream_>>>(
-          input_cloud->data.get(), num_points, input_cloud->point_step, offsets, resolutions,
-          params.min_radius_m, params.max_radius_m, polar_voxel_indices);
+          static_cast<const uint8_t *>(input_gpu_data), num_points, input_cloud.point_step, offsets,
+          resolutions, params.min_radius_m, params.max_radius_m, polar_voxel_indices);
         break;
       case PolarDataType::DeriveFromCartesian:
         cartesian_to_polar_voxel_kernel<float, float><<<grid_dim, block_dim, 0, stream_>>>(
-          input_cloud->data.get(), num_points, input_cloud->point_step, offsets, resolutions,
+          static_cast<const uint8_t *>(input_gpu_data), num_points, input_cloud.point_step, offsets,
+          resolutions,
           params.min_radius_m, params.max_radius_m, polar_voxel_indices);
         break;
       default:
@@ -626,12 +626,13 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
     is_secondary_returns = autoware::cuda_utils::make_unique<bool>(num_points, stream_, mem_pool_);
 
     // Add points to appropriate vector based on return type
-    size_t return_type_offset = get_offset(input_cloud->fields, "return_type");
-    size_t intensity_offset = get_offset(input_cloud->fields, "intensity");
+    size_t return_type_offset = get_offset(input_cloud.fields, "return_type");
+    size_t intensity_offset = get_offset(input_cloud.fields, "intensity");
     grid_dim = dim3((num_points + block_dim.x - 1) / block_dim.x);
     classify_point_by_return_type_and_intensity_kernel<uint8_t, uint8_t>
       <<<grid_dim, block_dim, 0, stream_>>>(
-        input_cloud->data.get(), num_points, num_total_voxels, input_cloud->point_step,
+        static_cast<const uint8_t *>(input_gpu_data), num_points, num_total_voxels,
+        input_cloud.point_step,
         return_type_offset, intensity_offset, primary_return_type_dev_.value(),
         static_cast<uint8_t>(params.intensity_threshold), point_indices.get(), voxel_indices.get(),
         radius_idx.get(), resolutions.radius, params.visibility_estimation_max_range_m,
@@ -667,11 +668,10 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
 
   // Create filtered output
   size_t valid_count = 0;
-  auto filtered_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-  valid_count = create_output(input_cloud, valid_points_mask, num_points, filtered_cloud);
+  valid_count =
+    create_output(input_cloud, input_gpu_data, valid_points_mask, num_points, filtered_output);
 
   // Create noise cloud with filtered-out points
-  auto noise_cloud = std::make_unique<cuda_blackboard::CudaPointCloud2>();
   if (!params.visibility_estimation_only && params.publish_noise_cloud) {
     // Flip valid flag to get filtered-out (= noise) points
     dim3 block_dim(512);
@@ -679,7 +679,8 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
 
     bool_flip_kernel<<<grid_dim, block_dim, 0, stream_>>>(valid_points_mask.get(), num_points);
 
-    std::ignore = create_output(input_cloud, valid_points_mask, num_points, noise_cloud);
+    std::ignore =
+      create_output(input_cloud, input_gpu_data, valid_points_mask, num_points, noise_output);
   }
 
   // Calculate filter ratio and visibility (only when return type classification is enabled)
@@ -711,7 +712,7 @@ CudaPolarVoxelOutlierFilter::FilterReturn CudaPolarVoxelOutlierFilter::filter(
                    static_cast<double>(params.visibility_estimation_max_secondary_voxel_count));
   }
 
-  return {std::move(filtered_cloud), std::move(noise_cloud), filter_ratio, visibility};
+  return {filter_ratio, visibility};
 }
 
 void CudaPolarVoxelOutlierFilter::set_return_types(
@@ -911,28 +912,28 @@ void CudaPolarVoxelOutlierFilter::reduce_and_copy_to_host(
 }
 
 size_t CudaPolarVoxelOutlierFilter::create_output(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
+  const agnocast::cuda::PointCloud2 & input_cloud, const void * input_gpu_data,
   const CudaPooledUniquePtr<bool> & points_mask, const size_t & num_points,
-  std::unique_ptr<cuda_blackboard::CudaPointCloud2> & output_cloud)
+  agnocast::cuda::PointCloud2 & output_cloud)
 {
   auto [filtered_indices, count] = calculate_filtered_point_indices(points_mask, num_points);
 
-  output_cloud->header = input_cloud->header;
-  output_cloud->fields = input_cloud->fields;
-  output_cloud->is_bigendian = input_cloud->is_bigendian;
-  output_cloud->point_step = input_cloud->point_step;
-  output_cloud->is_dense = input_cloud->is_dense;
-  output_cloud->height = point_cloud_height_organized;
-  output_cloud->width = count;
-  output_cloud->row_step = output_cloud->width * output_cloud->point_step;
-  output_cloud->data = cuda_blackboard::make_unique<std::uint8_t[]>(output_cloud->row_step);
+  output_cloud.header = input_cloud.header;
+  output_cloud.fields = input_cloud.fields;
+  output_cloud.is_bigendian = input_cloud.is_bigendian;
+  output_cloud.point_step = input_cloud.point_step;
+  output_cloud.is_dense = input_cloud.is_dense;
+  output_cloud.height = point_cloud_height_organized;
+  output_cloud.width = count;
+  output_cloud.row_step = output_cloud.width * output_cloud.point_step;
+  CHECK_CUDA_ERROR(cudaMalloc(&output_cloud.data, output_cloud.row_step));
 
   dim3 block_dim(512);
   dim3 grid_dim((num_points + block_dim.x - 1) / block_dim.x);
 
   copy_valid_points_kernel<<<grid_dim, block_dim, 0, stream_>>>(
-    input_cloud->data.get(), points_mask.get(), filtered_indices.get(), num_points,
-    output_cloud->point_step, output_cloud->data.get());
+    static_cast<const uint8_t *>(input_gpu_data), points_mask.get(), filtered_indices.get(),
+    num_points, output_cloud.point_step, static_cast<uint8_t *>(output_cloud.data));
 
   return count;
 }

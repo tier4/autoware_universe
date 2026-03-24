@@ -51,7 +51,7 @@ public:
   virtual ~CombineCloudHandler() = default;
 
   ConcatenatedCloudResult<PointCloud2Traits> combine_pointclouds(
-    std::unordered_map<std::string, typename PointCloud2Traits::PointCloudMessage::ConstSharedPtr> &
+    std::unordered_map<std::string, typename PointCloud2Traits::ConstSharedPtr> &
       topic_to_cloud_map,
     const std::shared_ptr<CollectorInfoBase> & collector_info);
 
@@ -69,8 +69,8 @@ protected:
   };
 
   static void convert_to_xyzirc_cloud(
-    const typename PointCloud2Traits::PointCloudMessage::ConstSharedPtr & input_cloud,
-    typename PointCloud2Traits::PointCloudMessage::UniquePtr & xyzirc_cloud);
+    const typename PointCloud2Traits::ConstSharedPtr & input_cloud,
+    typename PointCloud2Traits::UniquePtr & xyzirc_cloud);
 
   void correct_pointcloud_motion(
     const std::unique_ptr<PointCloud2Traits::PointCloudMessage> & transformed_cloud_ptr,

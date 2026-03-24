@@ -15,18 +15,19 @@
 #ifndef AUTOWARE__CUDA_POINTCLOUD_PREPROCESSOR__CUDA_CONCATENATE_DATA__CUDA_TRAITS_HPP_
 #define AUTOWARE__CUDA_POINTCLOUD_PREPROCESSOR__CUDA_CONCATENATE_DATA__CUDA_TRAITS_HPP_
 
-#include <cuda_blackboard/cuda_blackboard_publisher.hpp>
-#include <cuda_blackboard/cuda_blackboard_subscriber.hpp>
-#include <cuda_blackboard/cuda_pointcloud2.hpp>
+#include <agnocast/agnocast.hpp>
+#include <agnocast/cuda/types.hpp>
 
 namespace autoware::pointcloud_preprocessor
 {
 
 struct CudaPointCloud2Traits
 {
-  using PointCloudMessage = cuda_blackboard::CudaPointCloud2;
-  using PublisherType = cuda_blackboard::CudaBlackboardPublisher<PointCloudMessage>;
-  using SubscriberType = cuda_blackboard::CudaBlackboardSubscriber<PointCloudMessage>;
+  using PointCloudMessage = agnocast::cuda::PointCloud2;
+  using UniquePtr = std::unique_ptr<PointCloudMessage>;
+  using ConstSharedPtr = agnocast::ipc_shared_ptr<const PointCloudMessage>;
+  using PublisherType = agnocast::Publisher<PointCloudMessage>;
+  using SubscriberType = agnocast::Subscription<PointCloudMessage>;
 };
 
 }  // namespace autoware::pointcloud_preprocessor

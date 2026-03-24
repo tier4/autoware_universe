@@ -71,7 +71,7 @@ bool CloudCollector<MsgTraits>::topic_exists(const std::string & topic_name)
 
 template <typename MsgTraits>
 void CloudCollector<MsgTraits>::process_pointcloud(
-  const std::string & topic_name, typename MsgTraits::PointCloudMessage::ConstSharedPtr cloud)
+  const std::string & topic_name, typename MsgTraits::ConstSharedPtr cloud)
 {
   if (status_ == CollectorStatus::Idle) {
     // Add first pointcloud to the collector, restart the timer
@@ -125,14 +125,14 @@ void CloudCollector<MsgTraits>::concatenate_callback()
 
 template <typename MsgTraits>
 ConcatenatedCloudResult<MsgTraits> CloudCollector<MsgTraits>::concatenate_pointclouds(
-  std::unordered_map<std::string, typename MsgTraits::PointCloudMessage::ConstSharedPtr>
+  std::unordered_map<std::string, typename MsgTraits::ConstSharedPtr>
     topic_to_cloud_map)
 {
   return combine_cloud_handler_->combine_pointclouds(topic_to_cloud_map, collector_info_);
 }
 
 template <typename MsgTraits>
-std::unordered_map<std::string, typename MsgTraits::PointCloudMessage::ConstSharedPtr>
+std::unordered_map<std::string, typename MsgTraits::ConstSharedPtr>
 CloudCollector<MsgTraits>::get_topic_to_cloud_map()
 {
   return topic_to_cloud_map_;

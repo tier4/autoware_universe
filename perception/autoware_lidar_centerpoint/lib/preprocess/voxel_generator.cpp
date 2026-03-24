@@ -47,7 +47,7 @@ VoxelGeneratorTemplate::VoxelGeneratorTemplate(
 }
 
 bool VoxelGeneratorTemplate::enqueuePointCloud(
-  const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
+  const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & input_pointcloud_msg_ptr,
   const tf2_ros::Buffer & tf_buffer)
 {
   return pd_ptr_->enqueuePointCloud(input_pointcloud_msg_ptr, tf_buffer);
@@ -84,8 +84,8 @@ std::size_t VoxelGenerator::generateSweepPoints(float * points_d)
     CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
     pre_ptr_->generateSweepPoints_launch(
-      reinterpret_cast<InputPointType *>(input_pointcloud_msg_ptr->data.get()), sweep_num_points,
-      time_lag, affine_past2current_d_.get(), points_d + output_offset);
+      reinterpret_cast<const InputPointType *>(input_pointcloud_msg_ptr.gpu_data()),
+      sweep_num_points, time_lag, affine_past2current_d_.get(), points_d + output_offset);
 
     point_counter += sweep_num_points;
   }

@@ -14,6 +14,7 @@
 
 #include "autoware/cuda_pointcloud_preprocessor/cuda_concatenate_data/cuda_cloud_collector.hpp"
 
+#include "autoware/cuda_pointcloud_preprocessor/cuda_concatenate_data/cuda_concatenate_and_time_sync_node.hpp"
 #include "autoware/cuda_pointcloud_preprocessor/cuda_concatenate_data/cuda_traits.hpp"
 
 template class autoware::pointcloud_preprocessor::CloudCollector<

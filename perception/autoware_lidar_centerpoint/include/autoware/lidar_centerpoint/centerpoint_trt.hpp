@@ -20,8 +20,9 @@
 #include "autoware/lidar_centerpoint/preprocess/preprocess_kernel.hpp"
 #include "autoware/lidar_centerpoint/preprocess/voxel_generator.hpp"
 
+#include <agnocast/agnocast.hpp>
+#include <agnocast/cuda/types.hpp>
 #include <autoware/tensorrt_common/tensorrt_common.hpp>
-#include <cuda_blackboard/cuda_pointcloud2.hpp>
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -46,7 +47,7 @@ public:
   virtual ~CenterPointTRT();
 
   bool detect(
-    const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
+    const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & input_pointcloud_msg_ptr,
     const tf2_ros::Buffer & tf_buffer, std::vector<Box3D> & det_boxes3d,
     bool & is_num_pillars_within_range);
 
@@ -55,7 +56,7 @@ protected:
   void initTrt(const TrtCommonConfig & encoder_param, const TrtCommonConfig & head_param);
 
   virtual bool preprocess(
-    const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
+    const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & input_pointcloud_msg_ptr,
     const tf2_ros::Buffer & tf_buffer);
 
   void inference();

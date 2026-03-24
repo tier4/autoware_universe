@@ -36,7 +36,7 @@ inline double adjust_resolution_to_circle(double requested_resolution)
 
 CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
   const rclcpp::NodeOptions & node_options)
-: Node("cuda_polar_voxel_outlier_filter", node_options), updater_(this)
+: Node("cuda_polar_voxel_outlier_filter", node_options)
 {
   // set initial parameters
   {
@@ -82,42 +82,29 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
   cuda_polar_voxel_outlier_filter_ = std::make_unique<CudaPolarVoxelOutlierFilter>();
   cuda_polar_voxel_outlier_filter_->set_primary_return_types(primary_return_types_);
 
-  std::string diagnostics_hardware_id =
-    declare_parameter<std::string>("hardware_id", "cuda_polar_voxel_outlier_filter");
-
-  // Initialize diagnostics
-  updater_.setHardwareID(diagnostics_hardware_id);
-  updater_.add(
-    std::string(this->get_namespace()) + ": visibility_validation", this,
-    &CudaPolarVoxelOutlierFilterNode::on_visibility_check);
-  updater_.add(
-    std::string(this->get_namespace()) + ": filter_ratio_validation", this,
-    &CudaPolarVoxelOutlierFilterNode::on_filter_ratio_check);
-  updater_.setPeriod(diagnostics_update_period_sec);
+  // diagnostic_updater commented out — agnocast::Node incompatible
+  // updater_.setHardwareID(...);
+  // updater_.add(...);
 
   // Create visibility publisher
-  visibility_pub_ = create_publisher<autoware_internal_debug_msgs::msg::Float32Stamped>(
+  visibility_pub_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float32Stamped>(
     "~/debug/visibility", rclcpp::SensorDataQoS());
 
   // Create ratio publisher
-  ratio_pub_ = create_publisher<autoware_internal_debug_msgs::msg::Float32Stamped>(
+  ratio_pub_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float32Stamped>(
     "~/debug/filter_ratio", rclcpp::SensorDataQoS());
 
-  pointcloud_sub_ =
-    std::make_shared<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
-      *this, "~/input/pointcloud",
-      std::bind(
-        &CudaPolarVoxelOutlierFilterNode::pointcloud_callback, this, std::placeholders::_1));
+  pointcloud_sub_ = this->create_subscription<agnocast::cuda::PointCloud2>(
+    "~/input/pointcloud", rclcpp::SensorDataQoS{}.keep_last(1),
+    std::bind(
+      &CudaPolarVoxelOutlierFilterNode::pointcloud_callback, this, std::placeholders::_1));
 
   filtered_cloud_pub_ =
-    std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
-      *this, "~/output/pointcloud");
+    this->create_publisher<agnocast::cuda::PointCloud2>("~/output/pointcloud", 1);
 
-  // Create noise cloud publisher if enabled
   if (filter_params_.publish_noise_cloud) {
     noise_cloud_pub_ =
-      std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
-        *this, "~/debug/pointcloud_noise");
+      this->create_publisher<agnocast::cuda::PointCloud2>("~/debug/pointcloud_noise", 1);
     RCLCPP_INFO(get_logger(), "Noise cloud publishing enabled");
   } else {
     RCLCPP_INFO(get_logger(), "Noise cloud publishing disabled for performance optimization");
@@ -137,60 +124,57 @@ CudaPolarVoxelOutlierFilterNode::CudaPolarVoxelOutlierFilterNode(
 }
 
 void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr msg)
+  agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> msg)
 {
-  // Take mutex so that node configuration will not be
-  // overwritten during one frame processing
   std::scoped_lock lock(param_mutex_);
 
-  if (!msg) {
-    RCLCPP_ERROR(this->get_logger(), "Input point cloud is null");
-    throw std::invalid_argument("Input point cloud is null");
-  }
+  validate_filter_inputs(*msg);
 
-  validate_filter_inputs(msg);
-
-  // Check if the input point cloud has PointXYZIRCAEDT layout (with pre-computed polar coordinates)
   bool has_polar_coords =
     autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzircaedt(*msg);
   bool has_return_type =
     autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzirc(*msg);
 
-  std::unique_ptr<cuda_blackboard::CudaPointCloud2> filtered_cloud;
-  std::unique_ptr<cuda_blackboard::CudaPointCloud2> noise_cloud;
+  // Borrow output messages from publishers
+  auto filtered_output = filtered_cloud_pub_->borrow_loaned_message();
+  agnocast::ipc_shared_ptr<agnocast::cuda::PointCloud2> noise_output;
+  if (filter_params_.publish_noise_cloud && noise_cloud_pub_) {
+    noise_output = noise_cloud_pub_->borrow_loaned_message();
+  }
+
   CudaPolarVoxelOutlierFilter::FilterReturn filter_return{};
   if (has_polar_coords) {
     RCLCPP_DEBUG_ONCE(
       get_logger(), "Processing PointXYZIRCAEDT format with pre-computed polar coordinates");
+    agnocast::cuda::PointCloud2 dummy_noise;
     filter_return = cuda_polar_voxel_outlier_filter_->filter(
-      msg, filter_params_, CudaPolarVoxelOutlierFilter::PolarDataType::PreComputed);
+      *msg, msg.gpu_data(), *filtered_output,
+      noise_output ? *noise_output : dummy_noise,
+      filter_params_, CudaPolarVoxelOutlierFilter::PolarDataType::PreComputed);
   } else if (has_return_type) {
     RCLCPP_DEBUG_ONCE(
       get_logger(), "Processing PointXYZIRC format, computing azimuth and elevation");
+    agnocast::cuda::PointCloud2 dummy_noise;
     filter_return = cuda_polar_voxel_outlier_filter_->filter(
-      msg, filter_params_, CudaPolarVoxelOutlierFilter::PolarDataType::DeriveFromCartesian);
+      *msg, msg.gpu_data(), *filtered_output,
+      noise_output ? *noise_output : dummy_noise,
+      filter_params_, CudaPolarVoxelOutlierFilter::PolarDataType::DeriveFromCartesian);
   } else {
     RCLCPP_ERROR(
       get_logger(),
       "PointXYZ format has not been supported by "
       "autoware_cuda_pointcloud_preprocessor::cuda_polar_voxel_outlier_filter yet.");
-  }
-
-  filtered_cloud = std::move(filter_return.filtered_cloud);
-  noise_cloud = std::move(filter_return.noise_cloud);
-  filter_ratio_ = filter_return.filter_ratio;
-  visibility_ = filter_return.visibility;
-
-  if (!filtered_cloud) {
-    // filtered_cloud contains nullptr
     return;
   }
 
+  filter_ratio_ = filter_return.filter_ratio;
+  visibility_ = filter_return.visibility;
+
   // Publish results (skip if visibility estimation only)
   if (!filter_params_.visibility_estimation_only) {
-    filtered_cloud_pub_->publish(std::move(filtered_cloud));
-    if (filter_params_.publish_noise_cloud && noise_cloud_pub_) {
-      noise_cloud_pub_->publish(std::move(noise_cloud));
+    filtered_cloud_pub_->publish(std::move(filtered_output));
+    if (filter_params_.publish_noise_cloud && noise_cloud_pub_ && noise_output) {
+      noise_cloud_pub_->publish(std::move(noise_output));
     }
   } else {
     RCLCPP_DEBUG_THROTTLE(
@@ -199,17 +183,17 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
   }
 
   if (ratio_pub_) {
-    autoware_internal_debug_msgs::msg::Float32Stamped ratio_msg;
-    ratio_msg.data = static_cast<float>(filter_ratio_.value_or(0.0));
-    ratio_msg.stamp = this->now();
-    ratio_pub_->publish(ratio_msg);
+    auto ratio_msg = ratio_pub_->borrow_loaned_message();
+    ratio_msg->data = static_cast<float>(filter_ratio_.value_or(0.0));
+    ratio_msg->stamp = this->now();
+    ratio_pub_->publish(std::move(ratio_msg));
   }
 
   if (visibility_pub_ && visibility_.has_value()) {
-    autoware_internal_debug_msgs::msg::Float32Stamped visibility_msg;
-    visibility_msg.data = static_cast<float>(visibility_.value());
-    visibility_msg.stamp = this->now();
-    visibility_pub_->publish(visibility_msg);
+    auto visibility_msg = visibility_pub_->borrow_loaned_message();
+    visibility_msg->data = static_cast<float>(visibility_.value());
+    visibility_msg->stamp = this->now();
+    visibility_pub_->publish(std::move(visibility_msg));
   }
 }
 
@@ -409,81 +393,15 @@ rcl_interfaces::msg::SetParametersResult CudaPolarVoxelOutlierFilterNode::param_
   return result;
 }
 
-void CudaPolarVoxelOutlierFilterNode::on_visibility_check(
-  diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  // Take mutex so that node configuration will not be
-  // overwritten during one frame processing
-  std::scoped_lock lock(param_mutex_);
-
-  if (!visibility_.has_value()) {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No visibility data available");
-    return;
-  }
-
-  double visibility_value = visibility_.value();
-
-  if (visibility_value < filter_params_.visibility_error_threshold) {
-    stat.summary(
-      diagnostic_msgs::msg::DiagnosticStatus::ERROR,
-      "Low visibility detected - potential adverse weather conditions");
-  } else if (visibility_value < filter_params_.visibility_warn_threshold) {
-    stat.summary(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN,
-      "Reduced visibility detected - monitor environmental conditions");
-  } else {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Visibility within normal range");
-  }
-
-  stat.add("Visibility", visibility_value);
-  stat.add("Error Threshold", filter_params_.visibility_error_threshold);
-  stat.add("Warning Threshold", filter_params_.visibility_warn_threshold);
-  stat.add("Estimation Range (m)", filter_params_.visibility_estimation_max_range_m);
-  stat.add("Max Secondary Voxels", filter_params_.visibility_estimation_max_secondary_voxel_count);
-}
-
-void CudaPolarVoxelOutlierFilterNode::on_filter_ratio_check(
-  diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  // Take mutex so that node configuration will not be
-  // overwritten during one frame processing
-  std::scoped_lock lock(param_mutex_);
-
-  if (!filter_ratio_.has_value()) {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No filter ratio data available");
-    return;
-  }
-
-  double ratio_value = filter_ratio_.value();
-
-  if (ratio_value < filter_params_.filter_ratio_error_threshold) {
-    stat.summary(
-      diagnostic_msgs::msg::DiagnosticStatus::ERROR,
-      "Very low filter ratio - excessive noise or sensor malfunction");
-  } else if (ratio_value < filter_params_.filter_ratio_warn_threshold) {
-    stat.summary(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN,
-      "Low filter ratio - increased noise levels detected");
-  } else {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Filter ratio within normal range");
-  }
-
-  stat.add("Filter Ratio", ratio_value);
-  stat.add("Error Threshold", filter_params_.filter_ratio_error_threshold);
-  stat.add("Warning Threshold", filter_params_.filter_ratio_warn_threshold);
-  stat.add("Filtering Mode", filter_params_.use_return_type_classification ? "Advanced" : "Simple");
-  stat.add("Visibility Only", filter_params_.visibility_estimation_only ? "Yes" : "No");
-}
-
 void CudaPolarVoxelOutlierFilterNode::validate_filter_inputs(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud)
+  const agnocast::cuda::PointCloud2 & input_cloud)
 {
   validate_return_type_field(input_cloud);
   validate_intensity_field(input_cloud);
 }
 
 void CudaPolarVoxelOutlierFilterNode::validate_return_type_field(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud)
+  const agnocast::cuda::PointCloud2 & input_cloud)
 {
   if (!filter_params_.use_return_type_classification) {
     return;
@@ -500,7 +418,7 @@ void CudaPolarVoxelOutlierFilterNode::validate_return_type_field(
 }
 
 void CudaPolarVoxelOutlierFilterNode::validate_intensity_field(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud)
+  const agnocast::cuda::PointCloud2 & input_cloud)
 {
   if (!has_field(input_cloud, "intensity")) {
     RCLCPP_ERROR(get_logger(), "Input point cloud must have 'intensity' field");
@@ -509,9 +427,9 @@ void CudaPolarVoxelOutlierFilterNode::validate_intensity_field(
 }
 
 bool CudaPolarVoxelOutlierFilterNode::has_field(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input, const std::string & field_name)
+  const agnocast::cuda::PointCloud2 & input, const std::string & field_name)
 {
-  for (const auto & field : input->fields) {
+  for (const auto & field : input.fields) {
     if (field.name == field_name) {
       return true;
     }

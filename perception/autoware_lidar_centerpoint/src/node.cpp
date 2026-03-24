@@ -120,10 +120,15 @@ LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_opti
   max_acceptable_consecutive_delay_ms_ =
     declare_parameter<double>("diagnostics.max_acceptable_consecutive_delay_ms");
 
-  pointcloud_sub_ =
-    std::make_unique<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
-      *this, "~/input/pointcloud",
-      std::bind(&LidarCenterPointNode::pointCloudCallback, this, std::placeholders::_1));
+  // Agnocast subscription must be in its own MutuallyExclusive callback group
+  // (separate from ROS 2 callbacks) to work with MultiThreadedAgnocastExecutor.
+  auto agnocast_cb_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  agnocast::SubscriptionOptions sub_options;
+  sub_options.callback_group = agnocast_cb_group;
+  pointcloud_sub_ = agnocast::create_subscription<agnocast::cuda::PointCloud2>(
+    this, "~/input/pointcloud/cuda", rclcpp::SensorDataQoS{}.keep_last(1),
+    std::bind(&LidarCenterPointNode::pointCloudCallback, this, std::placeholders::_1),
+    sub_options);
   objects_pub_ = this->create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
     "~/output/objects", rclcpp::QoS{1});
 
@@ -157,7 +162,7 @@ LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_opti
 }
 
 void LidarCenterPointNode::pointCloudCallback(
-  const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg)
+  agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> input_pointcloud_msg)
 {
   const auto objects_sub_count =
     objects_pub_->get_subscription_count() + objects_pub_->get_intra_process_subscription_count();

@@ -165,7 +165,7 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::initial
 
 template <typename MsgTraits>
 void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::cloud_callback(
-  const typename MsgTraits::PointCloudMessage::ConstSharedPtr & input_ptr,
+  const typename MsgTraits::ConstSharedPtr & input_ptr,
   const std::string & topic_name)
 {
   stop_watch_ptr_->toc("processing_time", true);

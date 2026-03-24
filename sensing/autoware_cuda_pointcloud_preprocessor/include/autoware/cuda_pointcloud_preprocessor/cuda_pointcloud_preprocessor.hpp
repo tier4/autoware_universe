@@ -20,8 +20,8 @@
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <agnocast/cuda/types.hpp>
 #include <autoware/cuda_utils/thrust_utils.hpp>
-#include <cuda_blackboard/cuda_pointcloud2.hpp>
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
@@ -51,16 +51,26 @@ public:
   enum class UndistortionType { Invalid, Undistortion2D, Undistortion3D };
 
   CudaPointcloudPreprocessor();
+  ~CudaPointcloudPreprocessor();
+
+  CudaPointcloudPreprocessor(const CudaPointcloudPreprocessor &) = delete;
+  CudaPointcloudPreprocessor & operator=(const CudaPointcloudPreprocessor &) = delete;
+  CudaPointcloudPreprocessor(CudaPointcloudPreprocessor &&) = delete;
+  CudaPointcloudPreprocessor & operator=(CudaPointcloudPreprocessor &&) = delete;
 
   void setCropBoxParameters(const std::vector<CropBoxParameters> & crop_box_parameters);
   void setRingOutlierFilterParameters(const RingOutlierFilterParameters & ring_outlier_parameters);
   void setRingOutlierFilterActive(const bool enable_filter);
   void setUndistortionType(const UndistortionType & undistortion_type);
 
-  void preallocateOutput();
   [[nodiscard]] ProcessingStats getProcessingStats() const { return stats_; }
 
-  std::unique_ptr<cuda_blackboard::CudaPointCloud2> process(
+  /// @brief Process input pointcloud and write result to output.
+  /// The output.data GPU buffer is allocated by this method (via cudaMalloc).
+  /// Caller takes ownership of output.data and must ensure it is eventually freed
+  /// (agnocast handles this on publish).
+  void process(
+    agnocast::cuda::PointCloud2 & output,
     const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg,
     const geometry_msgs::msg::TransformStamped & transform_msg,
     const std::deque<geometry_msgs::msg::TwistWithCovarianceStamped> & twist_queue,
@@ -83,8 +93,15 @@ private:
   size_t num_raw_points_{};
   size_t num_organized_points_{};
 
+  void preallocateOutput();
+  void freeOutputBuffer();
+
   std::vector<sensor_msgs::msg::PointField> point_fields_;
-  std::unique_ptr<cuda_blackboard::CudaPointCloud2> output_pointcloud_ptr_;
+
+  /// @brief Pre-allocated GPU buffer for output pointcloud data.
+  /// Ownership is transferred to the caller via process().
+  uint8_t * gpu_output_buffer_{nullptr};
+  size_t gpu_output_buffer_capacity_{0};
 
   cudaStream_t stream_{};
   int max_blocks_per_grid_{};

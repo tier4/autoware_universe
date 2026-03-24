@@ -140,11 +140,28 @@ void CudaPointcloudPreprocessor::setUndistortionType(const UndistortionType & un
   undistortion_type_ = undistortion_type;
 }
 
+CudaPointcloudPreprocessor::~CudaPointcloudPreprocessor()
+{
+  freeOutputBuffer();
+}
+
+void CudaPointcloudPreprocessor::freeOutputBuffer()
+{
+  if (gpu_output_buffer_) {
+    cudaFree(gpu_output_buffer_);
+    gpu_output_buffer_ = nullptr;
+    gpu_output_buffer_capacity_ = 0;
+  }
+}
+
 void CudaPointcloudPreprocessor::preallocateOutput()
 {
-  output_pointcloud_ptr_ = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-  output_pointcloud_ptr_->data = cuda_blackboard::make_unique<std::uint8_t[]>(
-    num_rings_ * max_points_per_ring_ * sizeof(OutputPointType));
+  const size_t needed = num_rings_ * max_points_per_ring_ * sizeof(OutputPointType);
+  if (gpu_output_buffer_capacity_ < needed) {
+    freeOutputBuffer();
+    CHECK_CUDA_ERROR(cudaMalloc(&gpu_output_buffer_, needed));
+    gpu_output_buffer_capacity_ = needed;
+  }
 }
 
 void CudaPointcloudPreprocessor::organizePointcloud()
@@ -155,7 +172,6 @@ void CudaPointcloudPreprocessor::organizePointcloud()
     stream_);
 
   if (num_raw_points_ == 0) {
-    output_pointcloud_ptr_->data.reset();
     return;
   }
 
@@ -271,7 +287,8 @@ void CudaPointcloudPreprocessor::organizePointcloud()
     organized_points_blocks_per_grid, stream_);
 }
 
-std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::process(
+void CudaPointcloudPreprocessor::process(
+  agnocast::cuda::PointCloud2 & output,
   const sensor_msgs::msg::PointCloud2 & input_pointcloud_msg,
   const geometry_msgs::msg::TransformStamped & transform_msg,
   const std::deque<geometry_msgs::msg::TwistWithCovarianceStamped> & twist_queue,
@@ -283,17 +300,18 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
   num_organized_points_ = num_rings_ * max_points_per_ring_;
 
   if (num_raw_points_ == 0) {
-    output_pointcloud_ptr_->row_step = 0;
-    output_pointcloud_ptr_->width = 0;
-    output_pointcloud_ptr_->height = 1;
+    output.data = nullptr;
+    output.row_step = 0;
+    output.width = 0;
+    output.height = 1;
 
-    output_pointcloud_ptr_->fields = point_fields_;
-    output_pointcloud_ptr_->is_dense = true;
-    output_pointcloud_ptr_->is_bigendian = input_pointcloud_msg.is_bigendian;
-    output_pointcloud_ptr_->point_step = sizeof(OutputPointType);
-    output_pointcloud_ptr_->header.stamp = input_pointcloud_msg.header.stamp;
+    output.fields = point_fields_;
+    output.is_dense = true;
+    output.is_bigendian = input_pointcloud_msg.is_bigendian;
+    output.point_step = sizeof(OutputPointType);
+    output.header.stamp = input_pointcloud_msg.header.stamp;
 
-    return std::move(output_pointcloud_ptr_);
+    return;
   }
 
   if (num_raw_points_ > device_input_points_.size()) {
@@ -451,24 +469,30 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessor::pr
   if (num_output_points > 0) {
     extractPointsLaunch(
       device_transformed_points, device_ring_outlier_mask, device_indices, num_organized_points_,
-      reinterpret_cast<OutputPointType *>(output_pointcloud_ptr_->data.get()), threads_per_block_,
+      reinterpret_cast<OutputPointType *>(gpu_output_buffer_), threads_per_block_,
       blocks_per_grid, stream_);
   }
 
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
-  // Copy the transformed points back
-  output_pointcloud_ptr_->row_step = num_output_points * sizeof(OutputPointType);
-  output_pointcloud_ptr_->width = num_output_points;
-  output_pointcloud_ptr_->height = 1;
+  // Transfer GPU buffer ownership to the output message.
+  // Agnocast will cudaFree this pointer on message reclaim.
+  output.data = gpu_output_buffer_;
+  gpu_output_buffer_ = nullptr;
+  gpu_output_buffer_capacity_ = 0;
 
-  output_pointcloud_ptr_->fields = point_fields_;
-  output_pointcloud_ptr_->is_dense = true;
-  output_pointcloud_ptr_->is_bigendian = input_pointcloud_msg.is_bigendian;
-  output_pointcloud_ptr_->point_step = sizeof(OutputPointType);
-  output_pointcloud_ptr_->header.stamp = input_pointcloud_msg.header.stamp;
+  output.row_step = num_output_points * sizeof(OutputPointType);
+  output.width = num_output_points;
+  output.height = 1;
 
-  return std::move(output_pointcloud_ptr_);
+  output.fields = point_fields_;
+  output.is_dense = true;
+  output.is_bigendian = input_pointcloud_msg.is_bigendian;
+  output.point_step = sizeof(OutputPointType);
+  output.header.stamp = input_pointcloud_msg.header.stamp;
+
+  // Pre-allocate GPU buffer for next cycle
+  preallocateOutput();
 }
 
 }  // namespace autoware::cuda_pointcloud_preprocessor

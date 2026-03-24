@@ -18,12 +18,16 @@
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
+#include <memory>
+
 namespace autoware::pointcloud_preprocessor
 {
 
 struct PointCloud2Traits
 {
   using PointCloudMessage = sensor_msgs::msg::PointCloud2;
+  using UniquePtr = std::unique_ptr<PointCloudMessage>;
+  using ConstSharedPtr = std::shared_ptr<const PointCloudMessage>;
   using PublisherType = rclcpp::Publisher<PointCloudMessage>;
   using SubscriberType = rclcpp::Subscription<PointCloudMessage>;
 };

@@ -42,14 +42,14 @@ public:
     double timeout_sec, bool debug_mode);
   bool topic_exists(const std::string & topic_name);
   void process_pointcloud(
-    const std::string & topic_name, typename MsgTraits::PointCloudMessage::ConstSharedPtr cloud);
+    const std::string & topic_name, typename MsgTraits::ConstSharedPtr cloud);
   void concatenate_callback();
 
   ConcatenatedCloudResult<MsgTraits> concatenate_pointclouds(
-    std::unordered_map<std::string, typename MsgTraits::PointCloudMessage::ConstSharedPtr>
+    std::unordered_map<std::string, typename MsgTraits::ConstSharedPtr>
       topic_to_cloud_map);
 
-  std::unordered_map<std::string, typename MsgTraits::PointCloudMessage::ConstSharedPtr>
+  std::unordered_map<std::string, typename MsgTraits::ConstSharedPtr>
   get_topic_to_cloud_map();
 
   [[nodiscard]] CollectorStatus get_status() const;
@@ -64,7 +64,7 @@ private:
     ros2_parent_node_;
   std::shared_ptr<CombineCloudHandler<MsgTraits>> combine_cloud_handler_;
   rclcpp::TimerBase::SharedPtr timer_;
-  std::unordered_map<std::string, typename MsgTraits::PointCloudMessage::ConstSharedPtr>
+  std::unordered_map<std::string, typename MsgTraits::ConstSharedPtr>
     topic_to_cloud_map_;
   uint64_t num_of_clouds_;
   double timeout_sec_;

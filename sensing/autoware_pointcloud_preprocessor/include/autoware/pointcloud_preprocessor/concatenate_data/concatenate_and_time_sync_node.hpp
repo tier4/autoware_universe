@@ -146,7 +146,7 @@ private:
   void initialize_pub_sub();
 
   void cloud_callback(
-    const typename PointCloudMessage::ConstSharedPtr & input_ptr, const std::string & topic_name);
+    const typename MsgTraits::ConstSharedPtr & input_ptr, const std::string & topic_name);
 
   void twist_callback(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input);
   void odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr input);
