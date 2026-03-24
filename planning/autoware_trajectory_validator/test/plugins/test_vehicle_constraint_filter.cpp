@@ -52,12 +52,13 @@ TEST(VehicleConstraintFilterTest, FeasibleWhenAllConstraintsSatisfied)
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
 
   VehicleConstraintFilter filter;
-  filter.update_parameters(
-    {rclcpp::Parameter("vehicle_constraint.max_speed", 10.0),
-     rclcpp::Parameter("vehicle_constraint.max_acceleration", 2.0),
-     rclcpp::Parameter("vehicle_constraint.max_deceleration", 2.0),
-     rclcpp::Parameter("vehicle_constraint.max_steering_angle", 0.5),
-     rclcpp::Parameter("vehicle_constraint.max_steering_rate", 0.1)});
+  validator::Params params;
+  params.vehicle_constraint.max_speed = 10.0;
+  params.vehicle_constraint.max_acceleration = 2.0;
+  params.vehicle_constraint.max_deceleration = 2.0;
+  params.vehicle_constraint.max_steering_angle = 0.5;
+  params.vehicle_constraint.max_steering_rate = 0.1;
+  filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
   FilterContext context;  // Empty context for now
@@ -79,7 +80,10 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSpeedExceedsMax)
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
 
   VehicleConstraintFilter filter;
-  filter.update_parameters({rclcpp::Parameter("vehicle_constraint.max_speed", 10.0)});
+
+  validator::Params params;
+  params.vehicle_constraint.max_speed = 10.0;
+  filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
   FilterContext context;  // Empty context for now
@@ -102,9 +106,9 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenAccelerationExceedsMax)
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
 
   VehicleConstraintFilter filter;
-  filter.update_parameters({
-    rclcpp::Parameter("vehicle_constraint.max_acceleration", 2.0),
-  });
+  validator::Params params;
+  params.vehicle_constraint.max_acceleration = 2.0;
+  filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
   FilterContext context;  // Empty context for now
@@ -127,9 +131,10 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenDecelerationExceedsMax)
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
 
   VehicleConstraintFilter filter;
-  filter.update_parameters({
-    rclcpp::Parameter("vehicle_constraint.max_deceleration", 2.0),
-  });
+
+  validator::Params params;
+  params.vehicle_constraint.max_deceleration = 2.0;
+  filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
   FilterContext context;  // Empty context for now
@@ -156,9 +161,9 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringAngleExceedsMax)
 
   VehicleConstraintFilter filter;
 
-  filter.update_parameters({
-    rclcpp::Parameter("vehicle_constraint.max_steering_angle", 0.5),
-  });
+  validator::Params params;
+  params.vehicle_constraint.max_steering_angle = 0.5;
+  filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
   FilterContext context;  // Empty context for now
@@ -186,9 +191,10 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringRateExceedsMax)
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
 
   VehicleConstraintFilter filter;
-  filter.update_parameters({
-    rclcpp::Parameter("vehicle_constraint.max_steering_rate", 0.1),
-  });
+
+  validator::Params params;
+  params.vehicle_constraint.max_steering_rate = 0.1;
+  filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
   FilterContext context;  // Empty context for now

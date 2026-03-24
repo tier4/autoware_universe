@@ -55,3 +55,96 @@ validator:
       default_value: 0.3
       description: Maximum allowed steering rate (rad/s)
       read_only: false
+
+  collision_check:
+    pet_collision:
+      ego_braking_delay:
+        type: double
+        default_value: 0.4
+        description: N/A
+        read_only: false
+      ego_assumed_acceleration:
+        type: double
+        default_value: -4.0
+        description: Used for code test, not used in actual collision check
+        read_only: false
+      collision_time_threshold:
+        type: double
+        default_value: 1.0
+        description: time threshold for PET collision check
+        read_only: false
+    rss:
+      ego_deceleration_threshold:
+        type: double
+        default_value: 4.0
+        description: threshold to determine RSS collision
+        read_only: false
+      ego_reaction_time:
+        type: double
+        default_value: 0.4
+        description: reaction time of the ego vehicle
+        read_only: false
+      object_acceleration:
+        type: double
+        default_value: -1.0
+        description: assumed acceleration of the object for RSS calculation
+        read_only: false
+
+  traffic_light:
+    deceleration_limit:
+      type: double
+      default_value: 2.8
+      description: Trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit (m/s^2)
+      read_only: false
+    jerk_limit:
+      type: double
+      default_value: 5.0
+      description: Trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit (m/s^3)
+      read_only: false
+    delay_response_time:
+      type: double
+      default_value: 0.5
+      description: Delay response time used to estimate the minimum ego stopping distance (s)
+      read_only: false
+    crossing_time_limit:
+      type: double
+      default_value: 2.75
+      description: Trajectories crossing an amber light are rejected if they cannot cross before this time (s)
+      read_only: false
+    treat_amber_light_as_red_light:
+      type: bool
+      default_value: false
+      description: When true, amber lights are handled like red lights
+      read_only: false
+
+  boundary_departure:
+    lateral_gap_to_boundary_m:
+      type: double
+      default_value: 0.01
+      description: N/A
+      read_only: false
+    longitudinal_gap_to_boundary_m:
+      type: double
+      default_value: 1.0
+      description: N/A
+      read_only: false
+    max_deceleration_mps2:
+      type: double
+      default_value: -4.0
+      description: N/A
+      read_only: false
+    max_jerk_mps3:
+      type: double
+      default_value: -5.0
+      description: N/A
+      read_only: false
+    brake_delay_s:
+      type: double
+      default_value: 1.0
+      description: N/A
+      read_only: false
+    cutoff_time_s:
+      type: double
+      default_value: 2.0
+      description: N/A
+      read_only: false

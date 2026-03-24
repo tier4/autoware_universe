@@ -24,20 +24,6 @@
 
 namespace autoware::trajectory_validator::plugin::traffic_rule
 {
-
-struct Params
-{
-  double deceleration_limit;  // trajectories crossing an amber light are rejected if ego can stop
-                              // at the stop line without breaking this limit
-  double jerk_limit;  // trajectories crossing an amber light are rejected if ego can stop at the
-                      // stop line without breaking this limit
-  double
-    delay_response_time;  // delay response time used to estimate the minimum ego stopping distance
-  double crossing_time_limit;  // trajectories crossing an amber light are rejected if they cannot
-                               // cross before this time
-  bool treat_amber_light_as_red_light;  // when true, amber lights are handled like red lights
-};
-
 class TrafficLightFilter : public ValidatorInterface
 {
 public:
@@ -45,9 +31,7 @@ public:
 
   result_t is_feasible(const TrajectoryPoints & traj_points, const FilterContext & context) final;
 
-  void set_parameters(rclcpp::Node & node) final;
-
-  void update_parameters(const std::vector<rclcpp::Parameter> & parameters) final;
+  void update_parameters(const validator::Params & params) final;
 
   /// @brief return true if ego can safely pass an amber traffic light
   /// @note made public for testing purposes
@@ -63,7 +47,7 @@ private:
     const lanelet::Lanelets & lanelets,
     const autoware_perception_msgs::msg::TrafficLightGroupArray & traffic_lights) const;
 
-  Params params_{};
+  validator::Params::TrafficLight params_;
 };
 
 }  // namespace autoware::trajectory_validator::plugin::traffic_rule

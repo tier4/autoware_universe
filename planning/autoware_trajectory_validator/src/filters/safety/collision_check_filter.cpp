@@ -450,54 +450,10 @@ std::optional<double> calc_dist_to_collide(
   return std::nullopt;
 }
 
-void CollisionCheckFilter::set_parameters(rclcpp::Node & node)
+void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
-  using autoware_utils_rclcpp::get_or_declare_parameter;
-  std::string filter_name = "collision_check";
-
-  {
-    std::string ns = filter_name + ".pet_collision";
-    pet_collision_params_.ego_braking_delay =
-      get_or_declare_parameter<double>(node, ns + ".ego_braking_delay");
-    pet_collision_params_.ego_assumed_acceleration =
-      get_or_declare_parameter<double>(node, ns + ".ego_assumed_acceleration");
-    pet_collision_params_.collision_time_threshold =
-      get_or_declare_parameter<double>(node, ns + ".collision_time_threshold");
-  }
-
-  // todo(takagi): should be check the parameter's sign.
-  {
-    std::string ns = filter_name + ".rss";
-    rss_params_.ego_deceleration_threshold =
-      get_or_declare_parameter<double>(node, ns + ".ego_deceleration_threshold");
-    rss_params_.ego_reaction_time =
-      get_or_declare_parameter<double>(node, ns + ".ego_reaction_time");
-    rss_params_.object_acceleration =
-      get_or_declare_parameter<double>(node, ns + ".object_acceleration");
-  }
-}
-
-void CollisionCheckFilter::update_parameters(const std::vector<rclcpp::Parameter> & parameters)
-{
-  using autoware_utils_rclcpp::update_param;
-  std::string filter_name = "collision_check";
-
-  {
-    std::string ns = filter_name + ".pet_collision";
-    update_param(parameters, ns + ".ego_braking_delay", pet_collision_params_.ego_braking_delay);
-    update_param(
-      parameters, ns + ".ego_assumed_acceleration", pet_collision_params_.ego_assumed_acceleration);
-    update_param(
-      parameters, ns + ".collision_time_threshold", pet_collision_params_.collision_time_threshold);
-  }
-
-  {
-    std::string ns = filter_name + ".rss";
-    update_param(
-      parameters, ns + ".ego_deceleration_threshold", rss_params_.ego_deceleration_threshold);
-    update_param(parameters, ns + ".ego_reaction_time", rss_params_.ego_reaction_time);
-    update_param(parameters, ns + ".object_acceleration", rss_params_.object_acceleration);
-  }
+  pet_collision_params_ = params.collision_check.pet_collision;
+  rss_params_ = params.collision_check.rss;
 }
 
 double CollisionCheckFilter::compute_rss_deceleration(

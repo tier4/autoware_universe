@@ -17,9 +17,8 @@
 
 #include "autoware/trajectory_validator/filter_context.hpp"
 
-#include <autoware_utils_rclcpp/parameter.hpp>
+#include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
-#include <rclcpp/node.hpp>
 #include <tl_expected/expected.hpp>
 
 #include <autoware_internal_planning_msgs/msg/trajectory_metric_status.hpp>
@@ -56,9 +55,7 @@ public:
   virtual result_t is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) = 0;
 
-  virtual void set_parameters(rclcpp::Node & node) = 0;
-
-  virtual void update_parameters(const std::vector<rclcpp::Parameter> & parameters) = 0;
+  virtual void update_parameters(const validator::Params & params) = 0;
 
   // Set vehicle info
   virtual void set_vehicle_info(const VehicleInfo & vehicle_info)

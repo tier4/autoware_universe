@@ -18,7 +18,7 @@
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
-#include <autoware_trajectory_validator_param.hpp>
+#include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
@@ -100,10 +100,8 @@ private:
     const std::vector<EvaluationTable> & evaluation_tables,
     const geometry_msgs::msg::Pose & ego_pose);
 
-  rcl_interfaces::msg::SetParametersResult on_parameter(
-    const std::vector<rclcpp::Parameter> & parameters);
-
-  std::unique_ptr<validator::ParamListener> listener_;
+  validator::ParamListener listener_;
+  validator::Params params_;
 
   // Plugin infrastructure
   pluginlib::ClassLoader<plugin::ValidatorInterface> plugin_loader_;
@@ -136,7 +134,6 @@ private:
 
   // Internal State
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
-  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
 
   // Tools

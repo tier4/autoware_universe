@@ -43,9 +43,7 @@ public:
 
   result_t is_feasible(const TrajectoryPoints & traj_points, const FilterContext & context) final;
 
-  void set_parameters(rclcpp::Node & node) final;
-
-  void update_parameters(const std::vector<rclcpp::Parameter> & parameters) final;
+  void update_parameters(const validator::Params & params) final;
 
 private:
   CollisionParams params_;
