@@ -23,6 +23,8 @@
   <depend>autoware_utils</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
+  <depend>agnocastlib</depend>
+  <depend>agnocast_components</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>std_msgs</depend>

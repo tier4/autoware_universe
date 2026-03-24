@@ -73,7 +73,8 @@ bool hasZeroVelocity(const TrajectoryPoint & traj_point)
 }  // namespace
 
 ElasticBandSmoother::ElasticBandSmoother(const rclcpp::NodeOptions & node_options)
-: Node("autoware_path_smoother", node_options), time_keeper_ptr_(std::make_shared<TimeKeeper>())
+: agnocast::Node("autoware_path_smoother", node_options),
+  time_keeper_ptr_(std::make_shared<TimeKeeper>())
 {
   // interface publisher
   traj_pub_ = create_publisher<Trajectory>("~/output/traj", 1);
@@ -82,6 +83,7 @@ ElasticBandSmoother::ElasticBandSmoother(const rclcpp::NodeOptions & node_option
   // interface subscriber
   path_sub_ = create_subscription<Path>(
     "~/input/path", 1, std::bind(&ElasticBandSmoother::onPath, this, std::placeholders::_1));
+  odom_sub_ = std::make_shared<agnocast::PollingSubscriber<Odometry>>(this, "~/input/odometry");
 
   // debug publisher
   debug_extended_traj_pub_ = create_publisher<Trajectory>("~/debug/extended_traj", 1);
@@ -107,9 +109,6 @@ ElasticBandSmoother::ElasticBandSmoother(const rclcpp::NodeOptions & node_option
   // set parameter callback
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&ElasticBandSmoother::onParam, this, std::placeholders::_1));
-
-  logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 }
 
 rcl_interfaces::msg::SetParametersResult ElasticBandSmoother::onParam(
@@ -151,13 +150,13 @@ void ElasticBandSmoother::resetPreviousData()
   prev_optimized_traj_points_ptr_ = nullptr;
 }
 
-void ElasticBandSmoother::onPath(const Path::ConstSharedPtr path_ptr)
+void ElasticBandSmoother::onPath(const agnocast::ipc_shared_ptr<const Path> & path_ptr)
 {
   time_keeper_ptr_->init();
   time_keeper_ptr_->tic(__func__);
 
   // check if data is ready and valid
-  const auto ego_state_ptr = odom_sub_.take_data();
+  const auto ego_state_ptr = odom_sub_->take_data();
   if (!isDataReady(*path_ptr, ego_state_ptr, *get_clock())) {
     return;
   }
@@ -171,11 +170,16 @@ void ElasticBandSmoother::onPath(const Path::ConstSharedPtr path_ptr)
       "Backward path is NOT supported. Just converting path to trajectory");
 
     const auto traj_points = trajectory_utils::convertToTrajectoryPoints(path_ptr->points);
-    const auto output_traj_msg =
-      autoware::motion_utils::convertToTrajectory(traj_points, path_ptr->header);
-    traj_pub_->publish(output_traj_msg);
-    path_pub_->publish(*path_ptr);
-    published_time_publisher_->publish_if_subscribed(path_pub_, path_ptr->header.stamp);
+    {
+      auto traj_msg = traj_pub_->borrow_loaned_message();
+      *traj_msg = autoware::motion_utils::convertToTrajectory(traj_points, path_ptr->header);
+      traj_pub_->publish(std::move(traj_msg));
+    }
+    {
+      auto path_msg = path_pub_->borrow_loaned_message();
+      *path_msg = *path_ptr;
+      path_pub_->publish(std::move(path_msg));
+    }
     return;
   }
 
@@ -220,21 +224,32 @@ void ElasticBandSmoother::onPath(const Path::ConstSharedPtr path_ptr)
 
   // publish calculation_time
   // NOTE: This function must be called after measuring onPath calculation time
-  const auto calculation_time_msg = createStringStamped(now(), time_keeper_ptr_->getLog());
-  debug_calculation_time_str_pub_->publish(calculation_time_msg);
-  debug_calculation_time_float_pub_->publish(
-    createFloat64Stamped(now(), time_keeper_ptr_->getAccumulatedTime()));
+  {
+    auto msg = debug_calculation_time_str_pub_->borrow_loaned_message();
+    *msg = createStringStamped(now(), time_keeper_ptr_->getLog());
+    debug_calculation_time_str_pub_->publish(std::move(msg));
+  }
+  {
+    auto msg = debug_calculation_time_float_pub_->borrow_loaned_message();
+    *msg = createFloat64Stamped(now(), time_keeper_ptr_->getAccumulatedTime());
+    debug_calculation_time_float_pub_->publish(std::move(msg));
+  }
 
-  const auto output_traj_msg =
-    autoware::motion_utils::convertToTrajectory(full_traj_points, path_ptr->header);
-  traj_pub_->publish(output_traj_msg);
-  const auto output_path_msg = trajectory_utils::create_path(*path_ptr, full_traj_points);
-  path_pub_->publish(output_path_msg);
-  published_time_publisher_->publish_if_subscribed(path_pub_, path_ptr->header.stamp);
+  {
+    auto traj_msg = traj_pub_->borrow_loaned_message();
+    *traj_msg = autoware::motion_utils::convertToTrajectory(full_traj_points, path_ptr->header);
+    traj_pub_->publish(std::move(traj_msg));
+  }
+  {
+    auto path_msg = path_pub_->borrow_loaned_message();
+    *path_msg = trajectory_utils::create_path(*path_ptr, full_traj_points);
+    path_pub_->publish(std::move(path_msg));
+  }
 }
 
 bool ElasticBandSmoother::isDataReady(
-  const Path & path, const Odometry::ConstSharedPtr ego_state_ptr, rclcpp::Clock clock) const
+  const Path & path, const agnocast::ipc_shared_ptr<const Odometry> & ego_state_ptr,
+  rclcpp::Clock clock) const
 {
   if (!ego_state_ptr) {
     RCLCPP_INFO_SKIPFIRST_THROTTLE(get_logger(), clock, 5000, "Waiting for ego pose and twist.");

@@ -18,6 +18,7 @@
 #include "autoware/path_smoother/common_structs.hpp"
 #include "autoware/path_smoother/type_alias.hpp"
 
+#include <agnocast/node/agnocast_node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -28,7 +29,7 @@ namespace autoware::path_smoother
 class ReplanChecker
 {
 public:
-  explicit ReplanChecker(rclcpp::Node * node, const EgoNearestParam & ego_nearest_param);
+  explicit ReplanChecker(agnocast::Node * node, const EgoNearestParam & ego_nearest_param);
   void onParam(const std::vector<rclcpp::Parameter> & parameters);
 
   bool isResetRequired(const PlannerData & planner_data) const;

@@ -24,7 +24,7 @@
 
 namespace autoware::path_smoother
 {
-ReplanChecker::ReplanChecker(rclcpp::Node * node, const EgoNearestParam & ego_nearest_param)
+ReplanChecker::ReplanChecker(agnocast::Node * node, const EgoNearestParam & ego_nearest_param)
 : ego_nearest_param_(ego_nearest_param), logger_(node->get_logger().get_child("replan_checker"))
 {
   enable_ = node->declare_parameter<bool>("replan.enable");

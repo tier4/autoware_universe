@@ -19,6 +19,8 @@
 #include "autoware/path_smoother/common_structs.hpp"
 #include "autoware/path_smoother/type_alias.hpp"
 
+#include <agnocast/node/agnocast_node.hpp>
+
 #include <Eigen/Core>
 
 #include <memory>
@@ -33,7 +35,7 @@ class EBPathSmoother
 {
 public:
   EBPathSmoother(
-    rclcpp::Node * node, const bool enable_debug_info, const EgoNearestParam ego_nearest_param,
+    agnocast::Node * node, const bool enable_debug_info, const EgoNearestParam ego_nearest_param,
     const CommonParam & common_param, const std::shared_ptr<TimeKeeper> time_keeper_ptr);
 
   std::vector<TrajectoryPoint> smoothTrajectory(
@@ -55,7 +57,7 @@ private:
     };
 
     EBParam() = default;
-    explicit EBParam(rclcpp::Node * node);
+    explicit EBParam(agnocast::Node * node);
     void onParam(const std::vector<rclcpp::Parameter> & parameters);
 
     // option
@@ -106,8 +108,8 @@ private:
   rclcpp::Clock clock_;
 
   // publisher
-  rclcpp::Publisher<Trajectory>::SharedPtr debug_eb_traj_pub_;
-  rclcpp::Publisher<Trajectory>::SharedPtr debug_eb_fixed_traj_pub_;
+  agnocast::Publisher<Trajectory>::SharedPtr debug_eb_traj_pub_;
+  agnocast::Publisher<Trajectory>::SharedPtr debug_eb_fixed_traj_pub_;
 
   std::unique_ptr<autoware::osqp_interface::OSQPInterface> osqp_solver_ptr_;
   std::shared_ptr<std::vector<TrajectoryPoint>> prev_eb_traj_points_ptr_{nullptr};

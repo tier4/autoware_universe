@@ -20,11 +20,8 @@
 #include "autoware/path_smoother/elastic_band.hpp"
 #include "autoware/path_smoother/replan_checker.hpp"
 #include "autoware/path_smoother/type_alias.hpp"
-#include "autoware_utils/ros/logger_level_configure.hpp"
-#include "autoware_utils/ros/polling_subscriber.hpp"
-#include "rclcpp/rclcpp.hpp"
 
-#include <autoware_utils/ros/published_time_publisher.hpp>
+#include <agnocast/node/agnocast_node.hpp>
 
 #include <algorithm>
 #include <memory>
@@ -34,7 +31,7 @@
 
 namespace autoware::path_smoother
 {
-class ElasticBandSmoother : public rclcpp::Node
+class ElasticBandSmoother : public agnocast::Node
 {
 public:
   explicit ElasticBandSmoother(const rclcpp::NodeOptions & node_options);
@@ -77,25 +74,25 @@ private:
   std::shared_ptr<std::vector<TrajectoryPoint>> prev_optimized_traj_points_ptr_;
 
   // interface publisher
-  rclcpp::Publisher<Trajectory>::SharedPtr traj_pub_;
-  rclcpp::Publisher<Path>::SharedPtr path_pub_;
+  agnocast::Publisher<Trajectory>::SharedPtr traj_pub_;
+  agnocast::Publisher<Path>::SharedPtr path_pub_;
 
   // interface subscriber
-  rclcpp::Subscription<Path>::SharedPtr path_sub_;
-  autoware_utils::InterProcessPollingSubscriber<Odometry> odom_sub_{this, "~/input/odometry"};
+  agnocast::Subscription<Path>::SharedPtr path_sub_;
+  agnocast::PollingSubscriber<Odometry>::SharedPtr odom_sub_;
 
   // debug publisher
-  rclcpp::Publisher<Trajectory>::SharedPtr debug_extended_traj_pub_;
-  rclcpp::Publisher<StringStamped>::SharedPtr debug_calculation_time_str_pub_;
-  rclcpp::Publisher<Float64Stamped>::SharedPtr debug_calculation_time_float_pub_;
+  agnocast::Publisher<Trajectory>::SharedPtr debug_extended_traj_pub_;
+  agnocast::Publisher<StringStamped>::SharedPtr debug_calculation_time_str_pub_;
+  agnocast::Publisher<Float64Stamped>::SharedPtr debug_calculation_time_float_pub_;
 
   // parameter callback
   rcl_interfaces::msg::SetParametersResult onParam(
     const std::vector<rclcpp::Parameter> & parameters);
-  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   // subscriber callback function
-  void onPath(const Path::ConstSharedPtr path_ptr);
+  void onPath(const agnocast::ipc_shared_ptr<const Path> & path_ptr);
 
   // reset functions
   void initializePlanning();
@@ -103,7 +100,8 @@ private:
 
   // main functions
   bool isDataReady(
-    const Path & path, const Odometry::ConstSharedPtr ego_state_ptr, rclcpp::Clock clock) const;
+    const Path & path, const agnocast::ipc_shared_ptr<const Odometry> & ego_state_ptr,
+    rclcpp::Clock clock) const;
   void applyInputVelocity(
     std::vector<TrajectoryPoint> & output_traj_points,
     const std::vector<TrajectoryPoint> & input_traj_points,
@@ -112,9 +110,6 @@ private:
     const std::vector<TrajectoryPoint> & traj_points,
     const std::vector<TrajectoryPoint> & optimized_points) const;
 
-  std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
-
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
 };
 }  // namespace autoware::path_smoother
 

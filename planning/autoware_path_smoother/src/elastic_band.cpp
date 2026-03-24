@@ -87,7 +87,7 @@ std_msgs::msg::Header createHeader(const rclcpp::Time & now)
 
 namespace autoware::path_smoother
 {
-EBPathSmoother::EBParam::EBParam(rclcpp::Node * node)
+EBPathSmoother::EBParam::EBParam(agnocast::Node * node)
 {
   {  // option
     enable_warm_start = node->declare_parameter<bool>("elastic_band.option.enable_warm_start");
@@ -162,7 +162,7 @@ void EBPathSmoother::EBParam::onParam(const std::vector<rclcpp::Parameter> & par
 }
 
 EBPathSmoother::EBPathSmoother(
-  rclcpp::Node * node, const bool enable_debug_info, const EgoNearestParam ego_nearest_param,
+  agnocast::Node * node, const bool enable_debug_info, const EgoNearestParam ego_nearest_param,
   const CommonParam & common_param, const std::shared_ptr<TimeKeeper> time_keeper_ptr)
 : enable_debug_info_(enable_debug_info),
   ego_nearest_param_(ego_nearest_param),
@@ -263,9 +263,12 @@ std::vector<TrajectoryPoint> EBPathSmoother::smoothTrajectory(
   prev_eb_traj_points_ptr_ = std::make_shared<std::vector<TrajectoryPoint>>(*eb_traj_points);
 
   // 8. publish eb trajectory
-  const auto eb_traj =
-    autoware::motion_utils::convertToTrajectory(*eb_traj_points, createHeader(clock_.now()));
-  debug_eb_traj_pub_->publish(eb_traj);
+  {
+    auto eb_traj_msg = debug_eb_traj_pub_->borrow_loaned_message();
+    *eb_traj_msg =
+      autoware::motion_utils::convertToTrajectory(*eb_traj_points, createHeader(clock_.now()));
+    debug_eb_traj_pub_->publish(std::move(eb_traj_msg));
+  }
 
   time_keeper_ptr_->toc(__func__, "      ");
   return *eb_traj_points;
@@ -390,9 +393,12 @@ void EBPathSmoother::updateConstraint(
   }
 
   // publish fixed trajectory
-  const auto eb_fixed_traj = autoware::motion_utils::convertToTrajectory(
-    debug_fixed_traj_points, createHeader(clock_.now()));
-  debug_eb_fixed_traj_pub_->publish(eb_fixed_traj);
+  {
+    auto eb_fixed_traj_msg = debug_eb_fixed_traj_pub_->borrow_loaned_message();
+    *eb_fixed_traj_msg = autoware::motion_utils::convertToTrajectory(
+      debug_fixed_traj_points, createHeader(clock_.now()));
+    debug_eb_fixed_traj_pub_->publish(std::move(eb_fixed_traj_msg));
+  }
 
   time_keeper_ptr_->toc(__func__, "        ");
 }

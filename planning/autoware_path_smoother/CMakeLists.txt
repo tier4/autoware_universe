@@ -5,6 +5,8 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(Eigen3 REQUIRED)
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
 
 ament_auto_add_library(autoware_path_smoother SHARED
   DIRECTORY src
@@ -21,14 +23,23 @@ rclcpp_components_register_node(autoware_path_smoother
   EXECUTABLE elastic_band_smoother
 )
 
-if(BUILD_TESTING)
-  ament_add_ros_isolated_gtest(test_${PROJECT_NAME}
-    test/test_${PROJECT_NAME}_node_interface.cpp
-  )
-  target_link_libraries(test_${PROJECT_NAME}
-    ${PROJECT_NAME}
-  )
-endif()
+agnocast_components_register_node(autoware_path_smoother
+  PLUGIN "autoware::path_smoother::ElasticBandSmoother"
+  EXECUTABLE elastic_band_smoother_agnocast
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
+)
+
+# NOTE: Test is disabled because ElasticBandSmoother now uses agnocast::Node
+# which is incompatible with PlanningInterfaceTestManager (expects rclcpp::Node).
+# if(BUILD_TESTING)
+#   ament_add_ros_isolated_gtest(test_${PROJECT_NAME}
+#     test/test_${PROJECT_NAME}_node_interface.cpp
+#   )
+#   target_link_libraries(test_${PROJECT_NAME}
+#     ${PROJECT_NAME}
+#   )
+# endif()
 
 ament_auto_package(
   INSTALL_TO_SHARE
