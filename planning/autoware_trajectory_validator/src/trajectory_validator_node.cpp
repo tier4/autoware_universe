@@ -223,6 +223,7 @@ void TrajectoryValidator::load_metric(const std::string & name)
 
     plugin->set_vehicle_info(vehicle_info_);
     plugin->update_parameters(params_);
+    plugin->make_debug_publisher(*this);
 
     plugins_.push_back(plugin);
 

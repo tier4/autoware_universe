@@ -57,6 +57,8 @@ public:
     vehicle_info_ptr_ = std::make_shared<VehicleInfo>(vehicle_info);
   }
 
+  virtual void make_debug_publisher(rclcpp::Node & node) {}
+
   void set_category(const std::string & category) { category_ = category; }
 
   [[nodiscard]] std::string category() const { return category_; }
