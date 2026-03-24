@@ -314,8 +314,9 @@ void SideShiftModule::replaceShiftLine()
 
   return;
 }
-
-bool should_regenerate_shifted_path = false;
+BehaviorModuleOutput SideShiftModule::plan()
+{
+  bool should_regenerate_shifted_path = false;
 
   // Replace shift line
   if (
@@ -335,13 +336,14 @@ bool should_regenerate_shifted_path = false;
     if (should_regenerate_shifted_path) {
       replaceShiftLine();
     }
-    
+
     // Generate shifted path
     const bool generate_success = path_shifter_.generate(&shifted_path);
 
     // Handle generation failure by reusing previous output if available
     if (!generate_success && !prev_output_.path.points.empty()) {
-      RCLCPP_ERROR(getLogger(), "SideShift: failed to generate shifted path. Reusing previous path");
+      RCLCPP_ERROR(
+        getLogger(), "SideShift: failed to generate shifted path. Reusing previous path");
       shifted_path = prev_output_;
     }
   } else {
@@ -459,8 +461,8 @@ ShiftLine SideShiftModule::calcShiftLine() const
       getLogger(),
       "min_distance_to_start_shifting = %f, dist_to_start = %f, dist_to_end = %f, "
       "current_shift = %f, final_shift = %f",
-      parameters_->min_distance_to_start_shifting, dist_to_start, dist_to_end,
-      current_shift_length, final_shift_length);
+      parameters_->min_distance_to_start_shifting, dist_to_start, dist_to_end, current_shift_length,
+      final_shift_length);
     return dist_to_end;
   }();
 
