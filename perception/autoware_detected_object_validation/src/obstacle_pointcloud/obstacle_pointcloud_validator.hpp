@@ -17,19 +17,18 @@
 // NOLINTNEXTLINE(whitespace/line_length)
 #define OBSTACLE_POINTCLOUD__OBSTACLE_POINTCLOUD_VALIDATOR_HPP_
 
-#include "autoware_utils/ros/debug_publisher.hpp"
-#include "autoware_utils/ros/published_time_publisher.hpp"
+#include "autoware_utils_debug/debug_publisher.hpp"
+#include "autoware_utils_debug/published_time_publisher.hpp"
 #include "autoware_utils/system/stop_watch.hpp"
 #include "debugger.hpp"
 
-#include <rclcpp/rclcpp.hpp>
+#include <autoware/agnocast_wrapper/message_filters.hpp>
+#include <autoware/agnocast_wrapper/node.hpp>
+#include <autoware/agnocast_wrapper/transform_listener.hpp>
 
 #include "autoware_perception_msgs/msg/detected_objects.hpp"
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
-#include <message_filters/subscriber.h>
-#include <message_filters/sync_policies/approximate_time.h>
-#include <message_filters/synchronizer.h>
 #include <pcl/filters/crop_hull.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/point_cloud.h>
@@ -37,8 +36,6 @@
 #include <pcl/search/kdtree.h>
 #include <pcl/search/pcl_search.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <optional>
@@ -134,36 +131,40 @@ public:
     const pcl::PointCloud<pcl::PointXYZ>::Ptr neighbor_pointcloud);
 };
 
-class ObstaclePointCloudBasedValidator : public rclcpp::Node
+class ObstaclePointCloudBasedValidator : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit ObstaclePointCloudBasedValidator(const rclcpp::NodeOptions & node_options);
 
 private:
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr objects_pub_;
-  message_filters::Subscriber<autoware_perception_msgs::msg::DetectedObjects> objects_sub_;
-  message_filters::Subscriber<sensor_msgs::msg::PointCloud2> obstacle_pointcloud_sub_;
-  std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_{nullptr};
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  AUTOWARE_PUBLISHER_PTR(autoware_perception_msgs::msg::DetectedObjects) objects_pub_;
+  autoware::agnocast_wrapper::message_filters::Subscriber<
+    autoware_perception_msgs::msg::DetectedObjects>
+    objects_sub_;
+  autoware::agnocast_wrapper::message_filters::Subscriber<sensor_msgs::msg::PointCloud2>
+    obstacle_pointcloud_sub_;
+  std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<autoware::agnocast_wrapper::Node>>
+    debug_publisher_{nullptr};
+  std::shared_ptr<autoware_utils_tf::TransformListener> tf_listener_;
 
-  typedef message_filters::sync_policies::ApproximateTime<
-    autoware_perception_msgs::msg::DetectedObjects, sensor_msgs::msg::PointCloud2>
-    SyncPolicy;
-  typedef message_filters::Synchronizer<SyncPolicy> Sync;
-  Sync sync_;
+  std::unique_ptr<autoware::agnocast_wrapper::message_filters::ApproximateTimeSynchronizer<
+    autoware_perception_msgs::msg::DetectedObjects, sensor_msgs::msg::PointCloud2>>
+    sync_;
   PointsNumThresholdParam points_num_threshold_param_;
   double validate_max_distance_sq_;  // maximum object distance to validate, squared [m^2]
 
   std::shared_ptr<Debugger> debugger_;
   bool using_2d_validator_;
   std::unique_ptr<Validator> validator_;
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<
+    autoware_utils_debug::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>
+    published_time_publisher_;
 
 private:
   void onObjectsAndObstaclePointCloud(
-    const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr & input_objects,
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_obstacle_pointcloud);
+    AUTOWARE_MESSAGE_SHARED_PTR(const autoware_perception_msgs::msg::DetectedObjects) input_objects,
+    AUTOWARE_MESSAGE_SHARED_PTR(const sensor_msgs::msg::PointCloud2)
+      input_obstacle_pointcloud);
 };
 
 }  // namespace obstacle_pointcloud

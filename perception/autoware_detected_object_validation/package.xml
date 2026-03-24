@@ -32,6 +32,7 @@
   <depend>tf2_ros</depend>
   <depend>agnocastlib</depend>
   <depend>agnocast_components</depend>
+  <depend>autoware_agnocast_wrapper</depend>
 
   <exec_depend>autoware_probabilistic_occupancy_grid_map</exec_depend>
 

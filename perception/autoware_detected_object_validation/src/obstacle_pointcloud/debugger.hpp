@@ -15,7 +15,7 @@
 #ifndef OBSTACLE_POINTCLOUD__DEBUGGER_HPP_
 #define OBSTACLE_POINTCLOUD__DEBUGGER_HPP_
 
-#include <rclcpp/rclcpp.hpp>
+#include <autoware/agnocast_wrapper/node.hpp>
 
 #include "autoware_perception_msgs/msg/detected_objects.hpp"
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -31,12 +31,13 @@ namespace obstacle_pointcloud
 class Debugger
 {
 public:
-  explicit Debugger(rclcpp::Node * node)
+  explicit Debugger(autoware::agnocast_wrapper::Node * node)
   : neighbor_pointcloud_(new pcl::PointCloud<pcl::PointXYZ>),
     pointcloud_within_polygon_(new pcl::PointCloud<pcl::PointXYZ>)
   {
-    removed_objects_pub_ = node->create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
-      "~/debug/removed_objects", 1);
+    removed_objects_pub_ =
+      node->create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
+        "~/debug/removed_objects", 1);
     neighbor_pointcloud_pub_ =
       node->create_publisher<sensor_msgs::msg::PointCloud2>("~/debug/neighbor_pointcloud", 1);
     pointcloud_within_polygon_pub_ =
@@ -46,23 +47,25 @@ public:
   ~Debugger() {}
   void publishRemovedObjects(const autoware_perception_msgs::msg::DetectedObjects & input)
   {
-    removed_objects_pub_->publish(input);
+    auto msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(removed_objects_pub_);
+    *msg = input;
+    removed_objects_pub_->publish(std::move(msg));
   }
   void publishNeighborPointcloud(const std_msgs::msg::Header & header)
   {
-    sensor_msgs::msg::PointCloud2 output;
-    pcl::toROSMsg(*neighbor_pointcloud_, output);
-    output.header = header;
-    neighbor_pointcloud_pub_->publish(output);
+    auto msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(neighbor_pointcloud_pub_);
+    pcl::toROSMsg(*neighbor_pointcloud_, *msg);
+    msg->header = header;
+    neighbor_pointcloud_pub_->publish(std::move(msg));
     neighbor_pointcloud_->clear();
   }
 
   void publishPointcloudWithinPolygon(const std_msgs::msg::Header & header)
   {
-    sensor_msgs::msg::PointCloud2 output;
-    pcl::toROSMsg(*pointcloud_within_polygon_, output);
-    output.header = header;
-    pointcloud_within_polygon_pub_->publish(output);
+    auto msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pointcloud_within_polygon_pub_);
+    pcl::toROSMsg(*pointcloud_within_polygon_, *msg);
+    msg->header = header;
+    pointcloud_within_polygon_pub_->publish(std::move(msg));
     pointcloud_within_polygon_->clear();
   }
 
@@ -91,9 +94,9 @@ public:
   }
 
 private:
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr removed_objects_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr neighbor_pointcloud_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_within_polygon_pub_;
+  AUTOWARE_PUBLISHER_PTR(autoware_perception_msgs::msg::DetectedObjects) removed_objects_pub_;
+  AUTOWARE_PUBLISHER_PTR(sensor_msgs::msg::PointCloud2) neighbor_pointcloud_pub_;
+  AUTOWARE_PUBLISHER_PTR(sensor_msgs::msg::PointCloud2) pointcloud_within_polygon_pub_;
   pcl::PointCloud<pcl::PointXYZ>::Ptr neighbor_pointcloud_;
   pcl::PointCloud<pcl::PointXYZ>::Ptr pointcloud_within_polygon_;
 

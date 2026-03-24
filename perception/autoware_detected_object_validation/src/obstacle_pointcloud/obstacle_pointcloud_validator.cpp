@@ -280,15 +280,14 @@ bool Validator3D::validate_object(
 
 ObstaclePointCloudBasedValidator::ObstaclePointCloudBasedValidator(
   const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("obstacle_pointcloud_based_validator", node_options),
+: autoware::agnocast_wrapper::Node("obstacle_pointcloud_based_validator", node_options),
   objects_sub_(this, "~/input/detected_objects", rclcpp::QoS{1}.get_rmw_qos_profile()),
   obstacle_pointcloud_sub_(
     this, "~/input/obstacle_pointcloud",
-    rclcpp::SensorDataQoS{}.keep_last(1).get_rmw_qos_profile()),
-  tf_buffer_(get_clock()),
-  tf_listener_(tf_buffer_),
-  sync_(SyncPolicy(10), objects_sub_, obstacle_pointcloud_sub_)
+    rclcpp::SensorDataQoS{}.keep_last(1).get_rmw_qos_profile())
 {
+  tf_listener_ = autoware::agnocast_wrapper::make_transform_listener(this);
+
   points_num_threshold_param_.min_points_num =
     declare_parameter<std::vector<int64_t>>("min_points_num");
   points_num_threshold_param_.max_points_num =
@@ -300,11 +299,17 @@ ObstaclePointCloudBasedValidator::ObstaclePointCloudBasedValidator(
 
   using_2d_validator_ = declare_parameter<bool>("using_2d_validator");
 
-  using std::placeholders::_1;
-  using std::placeholders::_2;
+  sync_ = std::make_unique<autoware::agnocast_wrapper::message_filters::ApproximateTimeSynchronizer<
+    autoware_perception_msgs::msg::DetectedObjects, sensor_msgs::msg::PointCloud2>>(
+    10, objects_sub_, obstacle_pointcloud_sub_);
 
-  sync_.registerCallback(
-    std::bind(&ObstaclePointCloudBasedValidator::onObjectsAndObstaclePointCloud, this, _1, _2));
+  sync_->registerCallback(
+    [this](
+      AUTOWARE_MESSAGE_SHARED_PTR(const autoware_perception_msgs::msg::DetectedObjects) && objects,
+      AUTOWARE_MESSAGE_SHARED_PTR(const sensor_msgs::msg::PointCloud2) && pointcloud) {
+      this->onObjectsAndObstaclePointCloud(objects, pointcloud);
+    });
+
   if (using_2d_validator_) {
     validator_ = std::make_unique<Validator2D>(points_num_threshold_param_);
   } else {
@@ -314,31 +319,41 @@ ObstaclePointCloudBasedValidator::ObstaclePointCloudBasedValidator(
   objects_pub_ = create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
     "~/output/objects", rclcpp::QoS{1});
   debug_publisher_ =
-    std::make_unique<autoware_utils::DebugPublisher>(this, "obstacle_pointcloud_based_validator");
+    std::make_unique<autoware_utils_debug::BasicDebugPublisher<autoware::agnocast_wrapper::Node>>(
+      this, "obstacle_pointcloud_based_validator");
 
   const bool enable_debugger = declare_parameter<bool>("enable_debugger");
   if (enable_debugger) debugger_ = std::make_shared<Debugger>(this);
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  published_time_publisher_ = std::make_unique<
+    autoware_utils_debug::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>(this);
 }
 void ObstaclePointCloudBasedValidator::onObjectsAndObstaclePointCloud(
-  const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr & input_objects,
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input_obstacle_pointcloud)
+  AUTOWARE_MESSAGE_SHARED_PTR(const autoware_perception_msgs::msg::DetectedObjects) input_objects,
+  AUTOWARE_MESSAGE_SHARED_PTR(const sensor_msgs::msg::PointCloud2) input_obstacle_pointcloud)
 {
   autoware_utils::StopWatch<std::chrono::milliseconds> stopwatch;
-  autoware_perception_msgs::msg::DetectedObjects output, removed_objects;
-  output.header = input_objects->header;
+
+  // Allocate output message in agnocast shared memory from the start
+  auto output_msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(objects_pub_);
+  output_msg->header = input_objects->header;
+  autoware_perception_msgs::msg::DetectedObjects removed_objects;
   removed_objects.header = input_objects->header;
+
+  // Create non-owning shared_ptrs for internal APIs that expect ConstSharedPtr
+  const auto input_objects_ptr = autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr(
+    input_objects.get(), [](const autoware_perception_msgs::msg::DetectedObjects *) {});
+  const auto input_pointcloud_ptr = sensor_msgs::msg::PointCloud2::ConstSharedPtr(
+    input_obstacle_pointcloud.get(), [](const sensor_msgs::msg::PointCloud2 *) {});
 
   // Transform to pointcloud frame
   autoware_perception_msgs::msg::DetectedObjects transformed_objects;
-  if (!autoware::object_recognition_utils::transformObjects(
-        *input_objects, input_obstacle_pointcloud->header.frame_id, tf_buffer_,
+  if (!autoware::agnocast_wrapper::transformObjects(
+        *input_objects, input_pointcloud_ptr->header.frame_id, *tf_listener_,
         transformed_objects)) {
-    // objects_pub_->publish(*input_objects);
     return;
   }
   bool validation_is_ready = true;
-  if (!validator_->setKdtreeInputCloud(input_obstacle_pointcloud)) {
+  if (!validator_->setKdtreeInputCloud(input_pointcloud_ptr)) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), 5,
       "obstacle pointcloud is empty! Can not validate objects.");
@@ -356,7 +371,7 @@ void ObstaclePointCloudBasedValidator::onObjectsAndObstaclePointCloud(
         transformed_object.kinematics.pose_with_covariance.pose.position.y;
     if (distance_sq > validate_max_distance_sq_) {
       // pass to output
-      output.objects.push_back(object);
+      output_msg->objects.push_back(object);
       continue;
     }
 
@@ -367,14 +382,15 @@ void ObstaclePointCloudBasedValidator::onObjectsAndObstaclePointCloud(
       debugger_->addPointcloudWithinPolygon(validator_->getDebugPointCloudWithinObject());
     }
     if (validated) {
-      output.objects.push_back(object);
+      output_msg->objects.push_back(object);
     } else {
       removed_objects.objects.push_back(object);
     }
   }
 
-  objects_pub_->publish(output);
-  published_time_publisher_->publish_if_subscribed(objects_pub_, output.header.stamp);
+  const auto stamp = output_msg->header.stamp;
+  objects_pub_->publish(std::move(output_msg));
+  published_time_publisher_->publish_if_subscribed(objects_pub_, stamp);
   if (debugger_) {
     debugger_->publishRemovedObjects(removed_objects);
     debugger_->publishNeighborPointcloud(input_obstacle_pointcloud->header);
@@ -384,7 +400,7 @@ void ObstaclePointCloudBasedValidator::onObjectsAndObstaclePointCloud(
   // Publish processing time info
   const double pipeline_latency =
     std::chrono::duration<double, std::milli>(
-      std::chrono::nanoseconds((this->get_clock()->now() - output.header.stamp).nanoseconds()))
+      std::chrono::nanoseconds((this->get_clock()->now() - stamp).nanoseconds()))
       .count();
   debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "debug/pipeline_latency_ms", pipeline_latency);
