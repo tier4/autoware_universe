@@ -22,7 +22,6 @@
 #include "autoware/behavior_path_side_shift_module/utils.hpp"
 
 #include <autoware/motion_utils/trajectory/path_shift.hpp>
-#include <autoware_lanelet2_extension/utility/utilities.hpp>
 
 #include <algorithm>
 #include <memory>
@@ -316,24 +315,36 @@ void SideShiftModule::replaceShiftLine()
   return;
 }
 
-BehaviorModuleOutput SideShiftModule::plan()
-{
-  // Replace shift line if conditions are met
-  const bool can_replace_shift =
-    lateral_offset_change_request_ && (shift_status_ == SideShiftStatus::BEFORE_SHIFT ||
-                                       shift_status_ == SideShiftStatus::AFTER_SHIFT);
+bool should_regenerate_shifted_path = false;
 
-  if (can_replace_shift) {
-    replaceShiftLine();
+  // Replace shift line
+  if (
+    lateral_offset_change_request_ && (shift_status_ == SideShiftStatus::BEFORE_SHIFT ||
+                                       shift_status_ == SideShiftStatus::AFTER_SHIFT)) {
+    should_regenerate_shifted_path = true;
+  } else if (shift_status_ != SideShiftStatus::BEFORE_SHIFT) {
+    RCLCPP_DEBUG(getLogger(), "ego is shifting");
+  } else {
+    RCLCPP_DEBUG(getLogger(), "change is not requested");
   }
 
-  // Generate shifted path
+  // Preserve the shape during shifting by reusing the last generated path unless re-generation
+  // is explicitly required.
   ShiftedPath shifted_path;
-  const bool generate_success = path_shifter_.generate(&shifted_path);
+  if (should_regenerate_shifted_path || prev_output_.path.points.empty()) {
+    if (should_regenerate_shifted_path) {
+      replaceShiftLine();
+    }
+    
+    // Generate shifted path
+    const bool generate_success = path_shifter_.generate(&shifted_path);
 
-  // Handle generation failure by reusing previous output if available
-  if (!generate_success && !prev_output_.path.points.empty()) {
-    RCLCPP_ERROR(getLogger(), "SideShift: failed to generate shifted path. Reusing previous path");
+    // Handle generation failure by reusing previous output if available
+    if (!generate_success && !prev_output_.path.points.empty()) {
+      RCLCPP_ERROR(getLogger(), "SideShift: failed to generate shifted path. Reusing previous path");
+      shifted_path = prev_output_;
+    }
+  } else {
     shifted_path = prev_output_;
   }
 
