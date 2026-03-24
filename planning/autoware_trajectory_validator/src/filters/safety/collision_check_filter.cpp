@@ -378,7 +378,7 @@ bool check_pet_collision(
 
 std::pair<std::optional<double>, std::optional<double>> compute_pet_and_ttc(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
-  double pet_threshold)
+  double pet_threshold, DebugData * debug_out = nullptr)
 {
   if (!polygon::check_path_polygon_convex_collision(
         ref_trajectory.getFootprints(), test_trajectory.getFootprintsInTimeRange(
@@ -415,6 +415,16 @@ std::pair<std::optional<double>, std::optional<double>> compute_pet_and_ttc(
         check_slice_collision(test_start_time_after, test_end_time_after)) {
         candidate_pet = pet_range;
         candidate_ttc = ref_start_time;
+
+        if (debug_out != nullptr) {
+          debug_out->pet = pet_range;
+          debug_out->ego_polygons = polygon::compute_overall_convex_hull(
+            ref_trajectory.getFootprintsInTimeRange(ref_start_time, ref_end_time));
+          debug_out->object_polygons = polygon::compute_overall_convex_hull(
+            test_trajectory.getFootprintsInTimeRange(test_start_time_before, test_end_time_after));
+          debug_out->object_id = test_trajectory.getId();
+        }
+
         break;
       }
     }
@@ -479,6 +489,9 @@ void CollisionCheckFilter::set_parameters(rclcpp::Node & node)
     rss_params_.object_acceleration =
       get_or_declare_parameter<double>(node, ns + ".object_acceleration");
   }
+
+  debug_marker_pub_ = node.create_publisher<visualization_msgs::msg::MarkerArray>(
+    "~/debug/collision_check/pet_polygons", 1);
 }
 
 void CollisionCheckFilter::update_parameters(const std::vector<rclcpp::Parameter> & parameters)
@@ -502,6 +515,69 @@ void CollisionCheckFilter::update_parameters(const std::vector<rclcpp::Parameter
     update_param(parameters, ns + ".ego_reaction_time", rss_params_.ego_reaction_time);
     update_param(parameters, ns + ".object_acceleration", rss_params_.object_acceleration);
   }
+}
+
+void CollisionCheckFilter::publish_debug_markers(
+  const std::vector<DebugData> & debug_data_vec, const rclcpp::Time & stamp) const
+{
+  visualization_msgs::msg::MarkerArray msg;
+
+  // 最初に DELETEALL を入れておくと、古いマーカーのゴミ（ゴースト）が消えて綺麗に描画されます
+  visualization_msgs::msg::Marker clear_marker;
+  clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+  msg.markers.push_back(clear_marker);
+
+  if (debug_data_vec.empty()) {
+    debug_marker_pub_->publish(msg);
+    return;  // 衝突がなければ DELETEALL だけ送って終了
+  }
+
+  int id = 0;  // 全マーカーを通したユニークID
+
+  // 単一の Polygon2d を Marker に変換するラムダ式
+  auto add_poly_marker =
+    [&](const Polygon2d & poly, const std::string & ns, float r, float g, float b) {
+      if (poly.outer().empty()) return;
+
+      visualization_msgs::msg::Marker m;
+      m.header.frame_id = "map";
+      m.header.stamp = stamp;
+      m.ns = ns;
+      m.id = id++;
+      m.type = visualization_msgs::msg::Marker::LINE_STRIP;
+      m.action = visualization_msgs::msg::Marker::ADD;
+      m.scale.x = 0.05;  // 線の太さ
+      m.color.r = r;
+      m.color.g = g;
+      m.color.b = b;
+      m.color.a = 0.9;
+
+      // 頂点を追加
+      for (const auto & p : poly.outer()) {
+        geometry_msgs::msg::Point pt;
+        pt.x = p.x();
+        pt.y = p.y();
+        pt.z = 0.0;
+        m.points.push_back(pt);
+      }
+      // LINE_STRIP を閉じるため、始点を最後にもう一度追加
+      geometry_msgs::msg::Point pt_first;
+      pt_first.x = poly.outer().front().x();
+      pt_first.y = poly.outer().front().y();
+      pt_first.z = 0.0;
+      m.points.push_back(pt_first);
+
+      msg.markers.push_back(m);
+    };
+
+  // ベクター内の全オブジェクトについて描画
+  for (const auto & data : debug_data_vec) {
+    // Egoは青、Objectは赤で描画 (必要なら ns に data.object_id を含めても良いです)
+    add_poly_marker(data.ego_polygons, "ego_worst_pet_" + data.object_id, 0.0, 0.0, 1.0);
+    add_poly_marker(data.object_polygons, "obj_worst_pet_" + data.object_id, 1.0, 0.0, 0.0);
+  }
+
+  debug_marker_pub_->publish(msg);
 }
 
 double CollisionCheckFilter::compute_rss_deceleration(
@@ -555,6 +631,8 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
     return {};  // No trajectory to check
   }
 
+  std::vector<DebugData> debug_data_vec;
+
   std::string error_msg{};
 
   // todo takagi: refactor to separate functions and add more detailed collision information in the
@@ -581,13 +659,22 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   }
 
   for (const auto & object_trajectory_data : object_trajectory_data_list) {
+    DebugData obj_debug_data;
     auto [pet, ttc] = compute_pet_and_ttc(
-      ego_trajectory_data, object_trajectory_data, pet_collision_params_.collision_time_threshold);
+      ego_trajectory_data, object_trajectory_data, pet_collision_params_.collision_time_threshold,
+      &obj_debug_data);
     if (pet.has_value()) {
-      error_msg += std::string("PET collision, ID: ") + object_trajectory_data.getId() +
-                   std::string(", PET: ") + std::to_string(pet.value()) + std::string(", TTC: ") +
-                   (ttc.has_value() ? std::to_string(ttc.value()) : "N/A") + std::string("; ");
+      error_msg +=
+        std::string("PET collision, ID: ") + object_trajectory_data.getId() +
+        std::string(", PET: ") + std::to_string(pet.value()) + std::string(", TTC: ") +
+        (ttc.has_value() ? std::to_string(ttc.value()) : "N/A") + std::string(", stamp: ") +
+        std::to_string(context.predicted_objects->header.stamp.sec) + "." +
+        std::to_string(context.predicted_objects->header.stamp.nanosec) + std::string("; ");
+      debug_data_vec.push_back(obj_debug_data);
     }
+  }
+  if (debug_marker_pub_) {
+    publish_debug_markers(debug_data_vec, context.odometry->header.stamp);
   }
 
   // calc RSS metrics
