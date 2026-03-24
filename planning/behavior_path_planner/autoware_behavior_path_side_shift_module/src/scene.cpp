@@ -428,26 +428,30 @@ ShiftLine SideShiftModule::calcShiftLine() const
   const double dist_to_start =
     std::max(p->min_distance_to_start_shifting, ego_speed * p->time_to_start_shifting);
 
-  const double dist_to_end = [&]() {
-    const double shift_length =
-      requested_lateral_offset_ - getClosestShiftLength(prev_output_, getEgoPose().position);
-    const double jerk_shifting_distance = autoware::motion_utils::calc_longitudinal_dist_from_jerk(
-      shift_length, p->shifting_lateral_jerk, std::max(ego_speed, p->min_shifting_speed));
-    const double shifting_distance = std::max(jerk_shifting_distance, p->min_shifting_distance);
-    const double dist_to_end = dist_to_start + shifting_distance;
-    RCLCPP_DEBUG(
-      getLogger(), "min_distance_to_start_shifting = %f, dist_to_start = %f, dist_to_end = %f",
-      parameters_->min_distance_to_start_shifting, dist_to_start, dist_to_end);
-    return dist_to_end;
-  }();
-
-  // Apply boundary check if enabled (mode 1 or 2)
+  // Apply boundary check before computing the shift span so that the longitudinal distance
+  // matches the actual shift that will be inserted into the path.
   double final_shift_length = requested_lateral_offset_;
   if (parameters_->drivable_area_check_mode > 0) {
     final_shift_length = calcMaxLateralOffset(requested_lateral_offset_);
     final_shift_length = guardAgainstSnapBack(
       requested_lateral_offset_, final_shift_length, path_shifter_.getBaseOffset());
   }
+
+  const double current_shift_length = path_shifter_.getBaseOffset();
+  const double dist_to_end = [&]() {
+    const double shift_length = final_shift_length - current_shift_length;
+    const double jerk_shifting_distance = autoware::motion_utils::calc_longitudinal_dist_from_jerk(
+      shift_length, p->shifting_lateral_jerk, std::max(ego_speed, p->min_shifting_speed));
+    const double shifting_distance = std::max(jerk_shifting_distance, p->min_shifting_distance);
+    const double dist_to_end = dist_to_start + shifting_distance;
+    RCLCPP_DEBUG(
+      getLogger(),
+      "min_distance_to_start_shifting = %f, dist_to_start = %f, dist_to_end = %f, "
+      "current_shift = %f, final_shift = %f",
+      parameters_->min_distance_to_start_shifting, dist_to_start, dist_to_end,
+      current_shift_length, final_shift_length);
+    return dist_to_end;
+  }();
 
   const size_t nearest_idx = planner_data_->findEgoIndex(reference_path_.points);
   ShiftLine shift_line;
@@ -561,9 +565,9 @@ double SideShiftModule::calcMaxLateralOffset(const double requested_offset) cons
   const double shifting_distance =
     std::max(jerk_shifting_distance, parameters_->min_shifting_distance);
 
-  // Check up to end of shift + buffer (e.g. 20m or 2s) to avoid restricting the shift based on
-  // far-future road conditions
-  const double check_distance = dist_to_start + shifting_distance + std::max(20.0, ego_speed * 2.0);
+  // Check only the section where the vehicle is actually shifting. Looking further ahead makes the
+  // limit depend on lane topology changes that happen after the side shift is already complete.
+  const double check_distance = dist_to_start + shifting_distance;
 
   const size_t start_idx = utils::getIdxByArclength(reference_path_, nearest_idx, dist_to_start);
   const size_t end_idx = utils::getIdxByArclength(reference_path_, nearest_idx, check_distance);
@@ -588,7 +592,12 @@ double SideShiftModule::calcMaxLateralOffset(const double requested_offset) cons
     const LaneCheckContext ctx{lane_pos, adj_info, vehicle_half_width, margin};
 
     if (lane_pos.is_outside_all) {
-      updateLaneLimitsForOutsidePoint(target_point, ctx, limits);
+      // The reference path should stay inside the route corridor. If this point cannot be matched
+      // to the current/adjacent lanes, treat it as a lane-association artifact instead of forcing
+      // one side limit to zero for the whole maneuver.
+      RCLCPP_DEBUG_THROTTLE(
+        getLogger(), *clock_, 1000,
+        "SideShift: skipping unmatched reference point in drivable-area limit check.");
       continue;
     }
 
