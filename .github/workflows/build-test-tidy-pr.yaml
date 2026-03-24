@@ -45,7 +45,7 @@ jobs:
           - rosdistro: humble
             container: ghcr.io/autowarefoundation/autoware:universe-devel
           - rosdistro: jazzy
-            container: ghcr.io/autowarefoundation/autoware:universe-devel-jazzy-amd64
+            container: ghcr.io/autowarefoundation/autoware:universe-devel-jazzy
     uses: ./.github/workflows/build-and-test-differential.yaml
     with:
       rosdistro: ${{ matrix.rosdistro }}
@@ -65,7 +65,7 @@ jobs:
           - rosdistro: humble
             container: ghcr.io/autowarefoundation/autoware:universe-devel
           - rosdistro: jazzy
-            container: ghcr.io/autowarefoundation/autoware:universe-devel-jazzy-amd64
+            container: ghcr.io/autowarefoundation/autoware:universe-devel-jazzy
     uses: ./.github/workflows/build-and-test-packages-above-differential.yaml
     with:
       rosdistro: ${{ matrix.rosdistro }}
@@ -85,7 +85,7 @@ jobs:
           - rosdistro: humble
             container: ghcr.io/autowarefoundation/autoware:universe-devel
           - rosdistro: jazzy
-            container: ghcr.io/autowarefoundation/autoware:universe-devel-jazzy-amd64
+            container: ghcr.io/autowarefoundation/autoware:universe-devel-jazzy
     uses: ./.github/workflows/build-and-test-differential.yaml
     with:
       rosdistro: ${{ matrix.rosdistro }}
@@ -108,7 +108,7 @@ jobs:
           - rosdistro: humble
             container: ghcr.io/autowarefoundation/autoware:universe-devel
           - rosdistro: jazzy
-            container: ghcr.io/autowarefoundation/autoware:universe-devel-jazzy-amd64
+            container: ghcr.io/autowarefoundation/autoware:universe-devel-jazzy
     uses: ./.github/workflows/clang-tidy-differential.yaml
     with:
       rosdistro: ${{ matrix.rosdistro }}
@@ -127,7 +127,7 @@ jobs:
           - rosdistro: humble
             container: ghcr.io/autowarefoundation/autoware:universe-devel
           - rosdistro: jazzy
-            container: ghcr.io/autowarefoundation/autoware:universe-devel-jazzy-amd64
+            container: ghcr.io/autowarefoundation/autoware:universe-devel-jazzy
     uses: ./.github/workflows/clang-tidy-differential.yaml
     with:
       rosdistro: ${{ matrix.rosdistro }}
