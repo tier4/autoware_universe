@@ -35,15 +35,16 @@ target_link_libraries(${PROJECT_NAME}
   ${EIGEN3_LIBRARIES}
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+autoware_agnocast_wrapper_setup(${PROJECT_NAME})
+
+autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::image_projection_based_fusion::RoiDetectedObjectFusionNode"
   EXECUTABLE roi_detected_object_fusion_node
 )
 
-agnocast_components_register_node(${PROJECT_NAME}
+autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::image_projection_based_fusion::RoiClusterFusionNode"
   EXECUTABLE roi_cluster_fusion_node
-  RESOURCE_INDEX agnocast_components
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}
@@ -51,10 +52,9 @@ rclcpp_components_register_node(${PROJECT_NAME}
   EXECUTABLE segmentation_pointcloud_fusion_node
 )
 
-agnocast_components_register_node(${PROJECT_NAME}
+autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::image_projection_based_fusion::RoiPointCloudFusionNode"
   EXECUTABLE roi_pointcloud_fusion_node
-  RESOURCE_INDEX agnocast_components
 )
 
 set(CUDA_VERBOSE OFF)

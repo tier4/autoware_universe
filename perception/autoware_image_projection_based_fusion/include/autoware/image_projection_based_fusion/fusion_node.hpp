@@ -18,12 +18,14 @@
 #include "autoware/image_projection_based_fusion/fusion_matching_strategy.hpp"
 #include "autoware/image_projection_based_fusion/fusion_types.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
+#include <autoware/agnocast_wrapper/transform_listener.hpp>
 #include <autoware/image_projection_based_fusion/camera_projection.hpp>
 #include <autoware/image_projection_based_fusion/debugger.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
+// #include <diagnostic_updater/diagnostic_updater.hpp>  // commented out for agnocast_wrapper
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
@@ -40,8 +42,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
+#include <autoware_utils_tf/transform_listener.hpp>
 
 #include <cstddef>
 #include <list>
@@ -55,7 +56,8 @@ namespace autoware::image_projection_based_fusion
 {
 
 template <class Msg3D, class Msg2D, class ExportObj>
-class FusionNode : public rclcpp::Node
+class FusionNode : public autoware::agnocast_wrapper::Node,
+                   public std::enable_shared_from_this<FusionNode<Msg3D, Msg2D, ExportObj>>
 {
 public:
   /** \brief constructor. */
@@ -92,7 +94,7 @@ private:
   void manage_concatenated_status_map(double current_timestamp);
 
   static std::string format_timestamp(double timestamp);
-  void check_fusion_status(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  // void check_fusion_status(diagnostic_updater::DiagnosticStatusWrapper & stat);  // commented out for agnocast_wrapper
 
   // camera projection
   float approx_grid_cell_w_size_;
@@ -106,8 +108,9 @@ private:
   double msg3d_timeout_sec_{};
   double rois_timeout_sec_{};
 
-  std::vector<typename rclcpp::Subscription<Msg2D>::SharedPtr> rois_subs_;
-  std::vector<rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr> camera_info_subs_;
+  std::vector<typename autoware::agnocast_wrapper::Subscription<Msg2D>::SharedPtr> rois_subs_;
+  std::vector<autoware::agnocast_wrapper::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr>
+    camera_info_subs_;
 
   std::unique_ptr<FusionMatchingStrategy<Msg3D, Msg2D, ExportObj>> fusion_matching_strategy_;
   std::mutex fusion_collectors_mutex_;
@@ -119,7 +122,7 @@ private:
   std::unordered_map<double, autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo::SharedPtr>
     concatenated_info_map_;
 
-  diagnostic_updater::Updater diagnostic_updater_{this};
+  // diagnostic_updater::Updater diagnostic_updater_{this};  // commented out for agnocast_wrapper
   std::shared_ptr<FusionCollectorInfoBase> diagnostic_collector_info_;
   std::unordered_map<std::size_t, double> diagnostic_id_to_stamp_map_;
 
@@ -149,16 +152,15 @@ protected:
   virtual void publish(const ExportObj & output_msg);
 
   // Members
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  std::shared_ptr<autoware_utils_tf::TransformListener> tf_listener_;
 
   // 2d detection management
   std::vector<Det2dStatus<Msg2D>> det2d_status_list_;
 
   // 3d detection subscription
-  typename rclcpp::Subscription<Msg3D>::SharedPtr msg3d_sub_;
-  rclcpp::Subscription<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo>::SharedPtr
-    sub_concatenation_info_;
+  typename autoware::agnocast_wrapper::Subscription<Msg3D>::SharedPtr msg3d_sub_;
+  autoware::agnocast_wrapper::Subscription<
+    autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo>::SharedPtr sub_concatenation_info_;
 
   // parameters for out_of_scope filter
   float filter_scope_min_x_;
@@ -171,19 +173,19 @@ protected:
   std::string matching_strategy_;
 
   // output publisher
-  typename rclcpp::Publisher<ExportObj>::SharedPtr pub_ptr_;
+  typename autoware::agnocast_wrapper::Publisher<ExportObj>::SharedPtr pub_ptr_;
 
   // debugger
   std::shared_ptr<Debugger> debugger_;
-  std::unique_ptr<autoware_utils::DebugPublisher> debug_internal_pub_;
+  using WrapperDebugPublisher =
+    autoware_utils_debug::BasicDebugPublisher<autoware::agnocast_wrapper::Node>;
+  std::unique_ptr<WrapperDebugPublisher> debug_internal_pub_;
 
   /** \brief processing time publisher. **/
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
-  std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_;
+  std::unique_ptr<WrapperDebugPublisher> debug_publisher_;
 
   // timekeeper
-  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
-    detailed_processing_time_publisher_;
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
 };
 

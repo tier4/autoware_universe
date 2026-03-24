@@ -166,10 +166,14 @@ PointPaintingFusionNode::PointPaintingFusionNode(const rclcpp::NodeOptions & opt
     declare_parameter<double>("diagnostics.max_acceptable_consecutive_delay_ms");
 
   // subscriber
-  std::function<void(const PointCloudMsgType::ConstSharedPtr msg)> sub_callback =
-    std::bind(&PointPaintingFusionNode::sub_callback, this, std::placeholders::_1);
   msg3d_sub_ = this->create_subscription<PointCloudMsgType>(
-    "~/input/pointcloud", rclcpp::SensorDataQoS().keep_last(3), sub_callback);
+    "~/input/pointcloud", rclcpp::SensorDataQoS().keep_last(3),
+    [this](AUTOWARE_MESSAGE_SHARED_PTR(PointCloudMsgType) && msg) {
+      auto wrapper =
+        std::make_shared<AUTOWARE_MESSAGE_SHARED_PTR(PointCloudMsgType)>(std::move(msg));
+      auto ptr = std::shared_ptr<const PointCloudMsgType>(wrapper, wrapper->get());
+      this->sub_callback(ptr);
+    });
 
   // publisher
   pub_ptr_ = this->create_publisher<DetectedObjects>("~/output/objects", rclcpp::QoS{1});
@@ -202,20 +206,20 @@ PointPaintingFusionNode::PointPaintingFusionNode(const rclcpp::NodeOptions & opt
   detector_ptr_ = std::make_unique<image_projection_based_fusion::PointPaintingTRT>(
     encoder_param, head_param, densification_param, config);
   diagnostics_interface_ptr_ =
-    std::make_unique<autoware_utils::DiagnosticsInterface>(this, "pointpainting_trt");
+    std::make_unique<autoware_utils::DiagnosticsInterface>(get_rclcpp_node().get(), "pointpainting_trt");
 
   // setup diagnostics
   {
     stop_watch_ptr_->tic("pointpainting_processing_time");
 
-    const double validation_callback_interval_ms =
+    [[maybe_unused]] const double validation_callback_interval_ms =
       declare_parameter<double>("diagnostics.pointpainting_validation_callback_interval_ms");
-    diagnostic_processing_time_updater_.setHardwareID(this->get_name());
-    diagnostic_processing_time_updater_.add(
-      "pointpainting_processing_time_status", this,
-      &PointPaintingFusionNode::diagnosePointPaintingProcessingTime);
-    // msec -> sec
-    diagnostic_processing_time_updater_.setPeriod(validation_callback_interval_ms / 1e3);
+    // diagnostic_processing_time_updater_.setHardwareID(this->get_name());  // commented out for agnocast_wrapper
+    // diagnostic_processing_time_updater_.add(
+    //   "pointpainting_processing_time_status", this,
+    //   &PointPaintingFusionNode::diagnosePointPaintingProcessingTime);
+    // // msec -> sec
+    // diagnostic_processing_time_updater_.setPeriod(validation_callback_interval_ms / 1e3);
   }
 
   if (this->declare_parameter("build_only", false)) {
@@ -364,7 +368,7 @@ void PointPaintingFusionNode::fuse_on_single_image(
   Eigen::Affine3f lidar2cam_affine;
   {
     const auto transform_stamped_optional = getTransformStamped(
-      tf_buffer_, /*target*/ input_rois_msg.header.frame_id,
+      *tf_listener_->get_tf2_buffer(), /*target*/ input_rois_msg.header.frame_id,
       /*source*/ painted_pointcloud_msg.header.frame_id, input_rois_msg.header.stamp);
     if (!transform_stamped_optional) {
       return;
@@ -495,7 +499,7 @@ void PointPaintingFusionNode::postprocess(
   std::vector<autoware::lidar_centerpoint::Box3D> det_boxes3d;
   bool is_num_pillars_within_range = true;
   bool is_success = detector_ptr_->detect(
-    painted_pointcloud_msg, tf_buffer_, det_boxes3d, is_num_pillars_within_range);
+    painted_pointcloud_msg, *tf_listener_->get_tf2_buffer(), det_boxes3d, is_num_pillars_within_range);
   if (!is_success) {
     return;
   }
@@ -528,7 +532,9 @@ void PointPaintingFusionNode::postprocess(
 
   // publish debug message: painted pointcloud
   if (debugger_ && painted_point_pub_ptr_->get_subscription_count() > 0) {
-    painted_point_pub_ptr_->publish(painted_pointcloud_msg);
+    auto debug_msg = painted_point_pub_ptr_->allocate_output_message_unique();
+    *debug_msg = painted_pointcloud_msg;
+    painted_point_pub_ptr_->publish(std::move(debug_msg));
   }
   diagnostics_interface_ptr_->publish(painted_pointcloud_msg.header.stamp);
 }

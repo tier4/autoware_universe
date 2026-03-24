@@ -21,6 +21,7 @@
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <autoware/agnocast_wrapper/time_keeper.hpp>
 #include <autoware/image_projection_based_fusion/utils/utils.hpp>
 
 #include <tier4_perception_msgs/msg/detected_object_with_feature.hpp>
@@ -53,7 +54,8 @@ using autoware_utils::ScopedTimeTrack;
 template <class Msg3D, class Msg2D, class ExportObj>
 FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
   const std::string & node_name, const rclcpp::NodeOptions & options)
-: Node(node_name, options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
+: autoware::agnocast_wrapper::Node(node_name, options),
+  tf_listener_(autoware::agnocast_wrapper::make_transform_listener(this))
 {
   // set rois_number
   rois_number_ = static_cast<std::size_t>(declare_parameter<int32_t>("rois_number"));
@@ -106,8 +108,13 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
     auto qos = rclcpp::QoS{1}.best_effort();
 
     camera_info_subs_[rois_id] = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-      topic, qos, [this, rois_id](const sensor_msgs::msg::CameraInfo::ConstSharedPtr msg) {
-        this->camera_info_callback(msg, rois_id);
+      topic, qos,
+      [this, rois_id](AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::CameraInfo) && msg) {
+        auto wrapper = std::make_shared<AUTOWARE_MESSAGE_SHARED_PTR(sensor_msgs::msg::CameraInfo)>(
+          std::move(msg));
+        auto ptr =
+          std::shared_ptr<const sensor_msgs::msg::CameraInfo>(wrapper, wrapper->get());
+        this->camera_info_callback(ptr, rois_id);
       });
   }
 
@@ -119,15 +126,23 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
     auto qos = rclcpp::QoS{1}.best_effort();
 
     rois_subs_[rois_id] = this->create_subscription<Msg2D>(
-      topic, qos, [this, rois_id](const typename Msg2D::ConstSharedPtr msg) {
-        this->rois_callback(msg, rois_id);
+      topic, qos, [this, rois_id](AUTOWARE_MESSAGE_SHARED_PTR(Msg2D) && msg) {
+        auto wrapper =
+          std::make_shared<AUTOWARE_MESSAGE_SHARED_PTR(Msg2D)>(std::move(msg));
+        auto ptr = std::shared_ptr<const Msg2D>(wrapper, wrapper->get());
+        this->rois_callback(ptr, rois_id);
       });
   }
 
   // Subscribe 3D input msg
   msg3d_sub_ = this->create_subscription<Msg3D>(
     "input", rclcpp::QoS(1).best_effort(),
-    [this](const typename Msg3D::ConstSharedPtr msg) { this->sub_callback(msg); });
+    [this](AUTOWARE_MESSAGE_SHARED_PTR(Msg3D) && msg) {
+      auto wrapper =
+        std::make_shared<AUTOWARE_MESSAGE_SHARED_PTR(Msg3D)>(std::move(msg));
+      auto ptr = std::shared_ptr<const Msg3D>(wrapper, wrapper->get());
+      this->sub_callback(ptr);
+    });
 
   // initialization on each 2d detections
   initialize_det2d_status(rois_number_);
@@ -161,35 +176,34 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
     }
     auto image_buffer_size =
       static_cast<std::size_t>(declare_parameter<int32_t>("image_buffer_size"));
-    debugger_ =
-      std::make_shared<Debugger>(this, rois_number_, image_buffer_size, input_camera_topics);
+    if (get_rclcpp_node()) {
+      debugger_ = std::make_shared<Debugger>(
+        get_rclcpp_node().get(), rois_number_, image_buffer_size, input_camera_topics);
+    }
 
     // input topic timing publisher
-    debug_internal_pub_ = std::make_unique<autoware_utils::DebugPublisher>(this, get_name());
+    debug_internal_pub_ = std::make_unique<WrapperDebugPublisher>(this, get_name());
   }
   collector_debug_mode_ = declare_parameter<bool>("collector_debug_mode");
 
   // time keeper
   bool use_time_keeper = declare_parameter<bool>("publish_processing_time_detail");
   if (use_time_keeper) {
-    detailed_processing_time_publisher_ =
-      this->create_publisher<autoware_utils::ProcessingTimeDetail>(
-        "~/debug/processing_time_detail_ms", 1);
-    auto time_keeper = autoware_utils::TimeKeeper(detailed_processing_time_publisher_);
-    time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(time_keeper);
+    time_keeper_ = autoware::agnocast_wrapper::create_time_keeper(
+      *this, "~/debug/processing_time_detail_ms", rclcpp::QoS{1});
   }
 
   // initialize debug tool
   {
     stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
-    debug_publisher_ = std::make_unique<autoware_utils::DebugPublisher>(this, get_name());
+    debug_publisher_ = std::make_unique<WrapperDebugPublisher>(this, get_name());
     stop_watch_ptr_->tic("cyclic_time");
     stop_watch_ptr_->tic("processing_time");
   }
 
-  // Diagnostic Updater
-  diagnostic_updater_.setHardwareID(node_name + "_checker");
-  diagnostic_updater_.add(node_name + "_status", this, &FusionNode::check_fusion_status);
+  // Diagnostic Updater (commented out for agnocast_wrapper)
+  // diagnostic_updater_.setHardwareID(node_name + "_checker");
+  // diagnostic_updater_.add(node_name + "_status", this, &FusionNode::check_fusion_status);
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -197,15 +211,23 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::initialize_strategy()
 {
   if (matching_strategy_ == "naive") {
     fusion_matching_strategy_ = std::make_unique<NaiveMatchingStrategy<Msg3D, Msg2D, ExportObj>>(
-      std::dynamic_pointer_cast<FusionNode>(shared_from_this()), id_to_offset_map_);
+      std::dynamic_pointer_cast<FusionNode>(this->shared_from_this()), id_to_offset_map_);
   } else if (matching_strategy_ == "advanced") {
     fusion_matching_strategy_ = std::make_unique<AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>>(
-      std::dynamic_pointer_cast<FusionNode>(shared_from_this()), id_to_offset_map_);
+      std::dynamic_pointer_cast<FusionNode>(this->shared_from_this()), id_to_offset_map_);
     // subscribe concatenation_info
     sub_concatenation_info_ =
       this->create_subscription<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo>(
         "input/concatenation_info", rclcpp::SensorDataQoS().keep_last(10),
-        std::bind(&FusionNode::concatenation_info_callback, this, std::placeholders::_1));
+        [this](AUTOWARE_MESSAGE_SHARED_PTR(
+          autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo) && msg) {
+          auto wrapper = std::make_shared<AUTOWARE_MESSAGE_SHARED_PTR(
+            autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo)>(std::move(msg));
+          auto ptr =
+            std::shared_ptr<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo>(
+              wrapper, wrapper->get());
+          this->concatenation_info_callback(ptr);
+        });
   } else {
     throw std::runtime_error("Matching strategy must be 'advanced' or 'naive'");
   }
@@ -217,7 +239,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::initialize_collector_list()
   // Initialize collector list
   for (size_t i = 0; i < num_of_collectors; ++i) {
     fusion_collectors_.emplace_back(std::make_shared<FusionCollector<Msg3D, Msg2D, ExportObj>>(
-      std::dynamic_pointer_cast<FusionNode>(shared_from_this()), rois_number_, det2d_status_list_,
+      std::dynamic_pointer_cast<FusionNode>(this->shared_from_this()), rois_number_, det2d_status_list_,
       collector_debug_mode_));
   }
   init_collector_list_ = true;
@@ -319,7 +341,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::export_process(
   // Move collected diagnostics info
   diagnostic_collector_info_ = std::move(collector_info);
   diagnostic_id_to_stamp_map_ = std::move(id_to_stamp_map);
-  diagnostic_updater_.force_update();
+  // diagnostic_updater_.force_update();  // commented out for agnocast_wrapper
 
   // Add processing time for debugging
   if (debug_publisher_) {
@@ -558,7 +580,9 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::publish(const ExportObj & output_msg)
     return;
   }
 
-  pub_ptr_->publish(output_msg);
+  auto msg = pub_ptr_->allocate_output_message_unique();
+  *msg = output_msg;
+  pub_ptr_->publish(std::move(msg));
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -641,83 +665,14 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::show_diagnostic_message(
   msg3d_fused_ = false;
   diagnostic_collector_info_ = std::move(collector_info);
   diagnostic_id_to_stamp_map_ = std::move(id_to_stamp_map);
-  diagnostic_updater_.force_update();
+  // diagnostic_updater_.force_update();  // commented out for agnocast_wrapper
 }
 
-template <class Msg3D, class Msg2D, class ExportObj>
-void FusionNode<Msg3D, Msg2D, ExportObj>::check_fusion_status(
-  diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  if (publish_output_msg_ || drop_previous_but_late_output_msg_ || !msg3d_fused_) {
-    stat.add("msg3d/is_fused", msg3d_fused_);
-
-    if (msg3d_fused_) {
-      stat.add("fused_timestamp", format_timestamp(current_output_msg_timestamp_));
-    }
-
-    if (
-      auto naive_info = std::dynamic_pointer_cast<NaiveCollectorInfo>(diagnostic_collector_info_)) {
-      stat.add("first_input_arrival_timestamp", format_timestamp(naive_info->timestamp));
-    } else if (
-      auto advanced_info =
-        std::dynamic_pointer_cast<AdvancedCollectorInfo>(diagnostic_collector_info_)) {
-      stat.add(
-        "reference_timestamp_min",
-        format_timestamp(advanced_info->timestamp - advanced_info->noise_window));
-      stat.add(
-        "reference_timestamp_max",
-        format_timestamp(advanced_info->timestamp + advanced_info->noise_window));
-    }
-
-    bool rois_miss = false;
-    bool fusion_success = msg3d_fused_;
-
-    for (std::size_t id = 0; id < rois_number_; ++id) {
-      std::string rois_prefix = "rois" + std::to_string(id);
-      bool input_rois_fused = true;
-
-      auto it = diagnostic_id_to_stamp_map_.find(id);
-      if (it != diagnostic_id_to_stamp_map_.end()) {
-        stat.add(rois_prefix + "/timestamp", format_timestamp(it->second));
-      } else {
-        rois_miss = true;
-        fusion_success = false;
-        input_rois_fused = false;
-      }
-      stat.add(rois_prefix + "/is_fused", input_rois_fused);
-    }
-
-    stat.add("fusion_success", fusion_success);
-
-    int8_t level = diagnostic_msgs::msg::DiagnosticStatus::OK;
-    std::string message = "Fused output is published and include all rois and msg3d";
-
-    if (drop_previous_but_late_output_msg_) {
-      level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-      message =
-        rois_miss
-          ? "Fused output msg misses some ROIs and is not published because it arrived too late"
-          : "Fused output msg is not published as it is too late";
-    } else if (rois_miss) {
-      level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-      message = "Fused output msg is published but misses some ROIs";
-    } else if (!msg3d_fused_) {
-      level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-      message = "Fused output msg is not published as msg3d is missed";
-    }
-
-    stat.summary(level, message);
-
-    // Reset status flags
-    publish_output_msg_ = false;
-    drop_previous_but_late_output_msg_ = false;
-    msg3d_fused_ = true;
-  } else {
-    stat.summary(
-      diagnostic_msgs::msg::DiagnosticStatus::OK,
-      "Fusion node launched successfully, but waiting for input pointcloud");
-  }
-}
+// check_fusion_status commented out for agnocast_wrapper (diagnostic_updater not supported)
+// template <class Msg3D, class Msg2D, class ExportObj>
+// void FusionNode<Msg3D, Msg2D, ExportObj>::check_fusion_status(
+//   diagnostic_updater::DiagnosticStatusWrapper & stat)
+// { ... }
 
 // Explicit instantiation for the supported types
 

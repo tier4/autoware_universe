@@ -43,12 +43,11 @@ FusionCollector<Msg3D, Msg2D, ExportObj>::FusionCollector(
   const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
     std::chrono::duration<double>(init_timeout_sec));
 
-  timer_ =
-    rclcpp::create_timer(ros2_parent_node_, ros2_parent_node_->get_clock(), period_ns, [this]() {
-      std::lock_guard<std::mutex> fusion_lock(fusion_mutex_);
-      if (status_ == CollectorStatus::Finished) return;
-      fusion_callback();
-    });
+  timer_ = ros2_parent_node_->create_timer(period_ns, [this]() {
+    std::lock_guard<std::mutex> fusion_lock(fusion_mutex_);
+    if (status_ == CollectorStatus::Finished) return;
+    fusion_callback();
+  });
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -210,24 +209,10 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::add_camera_projection(
 template <class Msg3D, class Msg2D, class ExportObj>
 void FusionCollector<Msg3D, Msg2D, ExportObj>::set_period(const std::chrono::nanoseconds period)
 {
-  try {
-    const auto new_period = period.count();
-    if (!timer_) {
-      return;
-    }
-    int64_t old_period = 0;
-    rcl_ret_t ret = rcl_timer_get_period(timer_->get_timer_handle().get(), &old_period);
-    if (ret != RCL_RET_OK) {
-      rclcpp::exceptions::throw_from_rcl_error(ret, "Couldn't get old period");
-    }
-    ret = rcl_timer_exchange_period(timer_->get_timer_handle().get(), new_period, &old_period);
-    if (ret != RCL_RET_OK) {
-      rclcpp::exceptions::throw_from_rcl_error(ret, "Couldn't exchange_period");
-    }
-  } catch (rclcpp::exceptions::RCLError & ex) {
-    RCLCPP_WARN_THROTTLE(
-      ros2_parent_node_->get_logger(), *ros2_parent_node_->get_clock(), 5000, "%s", ex.what());
+  if (!timer_) {
+    return;
   }
+  timer_->set_period(period);
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -249,7 +234,7 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::reset()
 template <class Msg3D, class Msg2D, class ExportObj>
 void FusionCollector<Msg3D, Msg2D, ExportObj>::show_debug_message()
 {
-  auto time_until_trigger = timer_->time_until_trigger();
+  auto time_until_trigger = timer_->time_until_trigger();  // wrapper Timer API
   std::stringstream log_stream;
   log_stream << std::fixed << std::setprecision(6);
   log_stream << "Collector's fusion callback time: "

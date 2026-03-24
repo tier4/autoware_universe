@@ -17,8 +17,6 @@
 
 #include "autoware/image_projection_based_fusion/fusion_node.hpp"
 
-#include <agnocast/agnocast.hpp>
-
 #include <map>
 #include <memory>
 #include <string>
@@ -62,8 +60,6 @@ private:
     const sensor_msgs::msg::RegionOfInterest & roi_1,
     const sensor_msgs::msg::RegionOfInterest & roi_2, const std::string iou_mode);
 
-  agnocast::Publisher<ClusterMsgType>::SharedPtr agnocast_pub_ptr_;
-  agnocast::Subscription<ClusterMsgType>::SharedPtr agnocast_msg3d_sub_;
 };
 
 }  // namespace autoware::image_projection_based_fusion

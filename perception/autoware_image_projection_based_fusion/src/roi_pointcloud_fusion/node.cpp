@@ -48,21 +48,8 @@ RoiPointCloudFusionNode::RoiPointCloudFusionNode(const rclcpp::NodeOptions & opt
   override_class_with_unknown_ = declare_parameter<bool>("override_class_with_unknown");
   max_object_size_ = declare_parameter<double>("max_object_size");
 
-  // Replace rclcpp subscription with agnocast subscription for zero-copy IPC
-  msg3d_sub_.reset();
-  agnocast_msg3d_sub_ = agnocast::create_subscription<PointCloudMsgType>(
-    this, "input", rclcpp::QoS(1).best_effort(),
-    [this](agnocast::ipc_shared_ptr<PointCloudMsgType> msg) {
-      auto captured_msg =
-        std::make_shared<agnocast::ipc_shared_ptr<PointCloudMsgType>>(std::move(msg));
-      auto input_ptr = std::shared_ptr<const PointCloudMsgType>(
-        captured_msg->get(), [captured_msg](const PointCloudMsgType *) {});
-      this->sub_callback(input_ptr);
-    });
-
-  // Replace rclcpp publisher with agnocast publisher
-  agnocast_pub_ptr_ =
-    agnocast::create_publisher<ClusterMsgType>(this, "output", rclcpp::QoS{1});
+  // publisher (via agnocast_wrapper)
+  pub_ptr_ = this->create_publisher<ClusterMsgType>("output", rclcpp::QoS{1});
   cluster_debug_pub_ = this->create_publisher<PointCloudMsgType>("debug/clusters", 1);
 }
 
@@ -117,7 +104,7 @@ void RoiPointCloudFusionNode::fuse_on_single_image(
   geometry_msgs::msg::TransformStamped transform_stamped;
   {
     const auto transform_stamped_optional = getTransformStamped(
-      tf_buffer_, input_rois_msg.header.frame_id, input_pointcloud_msg.header.frame_id,
+      *tf_listener_, input_rois_msg.header.frame_id, input_pointcloud_msg.header.frame_id,
       input_rois_msg.header.stamp);
     if (!transform_stamped_optional) {
       return;
@@ -182,7 +169,7 @@ void RoiPointCloudFusionNode::fuse_on_single_image(
 
   // refine and update output_fused_objects_
   updateOutputFusedObjects(
-    output_objs, clusters, input_pointcloud_msg, input_rois_msg.header, tf_buffer_,
+    output_objs, clusters, input_pointcloud_msg, input_rois_msg.header, *tf_listener_,
     min_cluster_size_, max_cluster_size_, cluster_2d_tolerance_, max_object_size_,
     output_fused_objects_);
 
@@ -209,22 +196,24 @@ void RoiPointCloudFusionNode::postprocess(
   if (cluster_debug_pub_->get_subscription_count() > 0) {
     PointCloudMsgType debug_cluster_msg;
     autoware::euclidean_cluster::convertObjectMsg2SensorMsg(output_msg, debug_cluster_msg);
-    cluster_debug_pub_->publish(debug_cluster_msg);
+    auto debug_msg = cluster_debug_pub_->allocate_output_message_unique();
+    *debug_msg = debug_cluster_msg;
+    cluster_debug_pub_->publish(std::move(debug_msg));
   }
 }
 
 void RoiPointCloudFusionNode::publish(const ClusterMsgType & output_msg)
 {
-  if (!agnocast_pub_ptr_) {
+  if (!pub_ptr_) {
     return;
   }
 
-  if (agnocast_pub_ptr_->get_subscription_count() < 1) {
+  if (pub_ptr_->get_subscription_count() < 1) {
     return;
   }
-  auto loaned_msg = agnocast_pub_ptr_->borrow_loaned_message();
-  *loaned_msg = output_msg;
-  agnocast_pub_ptr_->publish(std::move(loaned_msg));
+  auto msg = pub_ptr_->allocate_output_message_unique();
+  *msg = output_msg;
+  pub_ptr_->publish(std::move(msg));
 }
 }  // namespace autoware::image_projection_based_fusion
 

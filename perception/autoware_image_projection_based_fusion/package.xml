@@ -17,6 +17,7 @@
 
   <depend>agnocastlib</depend>
   <depend>agnocast_components</depend>
+  <depend>autoware_agnocast_wrapper</depend>
   <depend>autoware_cuda_dependency_meta</depend>
   <depend>autoware_euclidean_cluster</depend>
   <depend>autoware_internal_debug_msgs</depend>
@@ -27,6 +28,7 @@
   <depend>autoware_pointcloud_preprocessor</depend>
   <depend>autoware_sensing_msgs</depend>
   <depend>autoware_utils</depend>
+  <depend>autoware_utils_tf</depend>
   <depend>cv_bridge</depend>
   <depend>diagnostic_msgs</depend>
   <depend>diagnostic_updater</depend>

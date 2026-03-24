@@ -59,6 +59,27 @@ std::optional<geometry_msgs::msg::TransformStamped> getTransformStamped(
   }
 }
 
+std::optional<geometry_msgs::msg::TransformStamped> getTransformStamped(
+  autoware_utils_tf::TransformListener & tf_listener, const std::string & target_frame_id,
+  const std::string & source_frame_id, const rclcpp::Time & time)
+{
+  if (auto * buf = tf_listener.get_tf2_buffer()) {
+    return getTransformStamped(*buf, target_frame_id, source_frame_id, time);
+  }
+  if (auto * buf = tf_listener.get_agnocast_buffer()) {
+    try {
+      geometry_msgs::msg::TransformStamped transform_stamped;
+      transform_stamped = buf->lookupTransform(
+        target_frame_id, source_frame_id, time, rclcpp::Duration::from_seconds(0.01));
+      return transform_stamped;
+    } catch (tf2::TransformException & ex) {
+      RCLCPP_WARN_STREAM(rclcpp::get_logger("image_projection_based_fusion"), ex.what());
+      return std::nullopt;
+    }
+  }
+  return std::nullopt;
+}
+
 Eigen::Affine3d transformToEigen(const geometry_msgs::msg::Transform & t)
 {
   Eigen::Affine3d a;
@@ -132,8 +153,8 @@ void closest_cluster(
 void updateOutputFusedObjects(
   std::vector<DetectedObjectWithFeature> & output_objs, std::vector<PointCloudMsgType> & clusters,
   const PointCloudMsgType & in_cloud, const std_msgs::msg::Header & in_roi_header,
-  const tf2_ros::Buffer & tf_buffer, const int min_cluster_size, const int max_cluster_size,
-  const float cluster_2d_tolerance, const double max_object_size,
+  autoware_utils_tf::TransformListener & tf_listener, const int min_cluster_size,
+  const int max_cluster_size, const float cluster_2d_tolerance, const double max_object_size,
   std::vector<DetectedObjectWithFeature> & output_fused_objects)
 {
   if (output_objs.size() != clusters.size()) {
@@ -145,7 +166,7 @@ void updateOutputFusedObjects(
   const std_msgs::msg::Header & in_cloud_header = in_cloud.header;
   {
     const auto transform_stamped_optional = getTransformStamped(
-      tf_buffer, in_cloud_header.frame_id, in_roi_header.frame_id, in_roi_header.stamp);
+      tf_listener, in_cloud_header.frame_id, in_roi_header.frame_id, in_roi_header.stamp);
     if (!transform_stamped_optional) {
       return;
     }

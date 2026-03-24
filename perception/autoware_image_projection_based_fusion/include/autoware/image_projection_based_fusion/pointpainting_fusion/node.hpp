@@ -60,7 +60,7 @@ private:
 
   void diagnosePointPaintingProcessingTime(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
-  rclcpp::Publisher<PointCloudMsgType>::SharedPtr painted_point_pub_ptr_;
+  autoware::agnocast_wrapper::Publisher<PointCloudMsgType>::SharedPtr painted_point_pub_ptr_;
   std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_ptr_;
 
   int omp_num_threads_{1};
@@ -82,7 +82,7 @@ private:
   // set as optional to avoid sending error diagnostics before the node starts processing
   std::optional<double> last_processing_time_ms_;
   std::optional<rclcpp::Time> last_in_time_processing_timestamp_;
-  diagnostic_updater::Updater diagnostic_processing_time_updater_{this};
+  // diagnostic_updater::Updater diagnostic_processing_time_updater_{this};  // commented out for agnocast_wrapper
 };
 }  // namespace autoware::image_projection_based_fusion
 #endif  // AUTOWARE__IMAGE_PROJECTION_BASED_FUSION__POINTPAINTING_FUSION__NODE_HPP_

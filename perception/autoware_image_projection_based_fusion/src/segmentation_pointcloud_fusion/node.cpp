@@ -47,7 +47,8 @@ SegmentPointCloudFusionNode::SegmentPointCloudFusionNode(const rclcpp::NodeOptio
       this->get_logger(), "filter_semantic_label_target: %s %d", item.first.c_str(), item.second);
   }
   is_publish_debug_mask_ = declare_parameter<bool>("is_publish_debug_mask");
-  pub_debug_mask_ptr_ = image_transport::create_publisher(this, "~/debug/mask");
+  pub_debug_mask_ptr_ =
+    image_transport::create_publisher(get_rclcpp_node().get(), "~/debug/mask");
 
   // publisher
   pub_ptr_ = this->create_publisher<PointCloudMsgType>("output", rclcpp::QoS{1});
@@ -98,7 +99,7 @@ void SegmentPointCloudFusionNode::fuse_on_single_image(
   // transform pointcloud from frame id to camera optical frame id
   {
     const auto transform_stamped_optional = getTransformStamped(
-      tf_buffer_, input_mask.header.frame_id, input_pointcloud_msg.header.frame_id,
+      *tf_listener_, input_mask.header.frame_id, input_pointcloud_msg.header.frame_id,
       input_pointcloud_msg.header.stamp);
     if (!transform_stamped_optional) {
       return;

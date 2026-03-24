@@ -17,7 +17,6 @@
 
 #include "autoware/image_projection_based_fusion/fusion_node.hpp"
 
-#include <agnocast/agnocast.hpp>
 #include <autoware/image_projection_based_fusion/utils/utils.hpp>
 
 #include <memory>
@@ -32,8 +31,8 @@ public:
   explicit RoiPointCloudFusionNode(const rclcpp::NodeOptions & options);
 
 private:
-  rclcpp::Publisher<PointCloudMsgType>::SharedPtr point_pub_ptr_;
-  rclcpp::Publisher<PointCloudMsgType>::SharedPtr cluster_debug_pub_;
+  autoware::agnocast_wrapper::Publisher<PointCloudMsgType>::SharedPtr point_pub_ptr_;
+  autoware::agnocast_wrapper::Publisher<PointCloudMsgType>::SharedPtr cluster_debug_pub_;
 
   void fuse_on_single_image(
     const PointCloudMsgType & input_pointcloud_msg, const Det2dStatus<RoiMsgType> & det2d_status,
@@ -53,8 +52,6 @@ private:
 
   std::vector<ClusterObjType> output_fused_objects_;
 
-  agnocast::Publisher<ClusterMsgType>::SharedPtr agnocast_pub_ptr_;
-  agnocast::Subscription<PointCloudMsgType>::SharedPtr agnocast_msg3d_sub_;
 };
 
 }  // namespace autoware::image_projection_based_fusion

@@ -16,6 +16,7 @@
 
 #include "autoware/image_projection_based_fusion/camera_projection.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <cstddef>
@@ -100,7 +101,7 @@ public:
 
 private:
   std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> ros2_parent_node_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  autoware::agnocast_wrapper::Timer::SharedPtr timer_;
   std::size_t rois_number_;
   typename Msg3D::ConstSharedPtr msg3d_{nullptr};
   std::vector<Det2dStatus<Msg2D>> det2d_status_list_;
