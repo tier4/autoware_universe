@@ -45,6 +45,8 @@ target_link_libraries(${PROJECT_NAME}_plugins
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  find_package(ament_index_cpp REQUIRED)
+  find_package(autoware_test_utils REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
   file(GLOB_RECURSE TEST_SOURCES tests/*.cpp)
@@ -55,6 +57,10 @@ if(BUILD_TESTING)
     ${PROJECT_NAME}
     ${PROJECT_NAME}_plugins
     ${PROJECT_NAME}_utils
+  )
+  ament_target_dependencies(test_autoware_trajectory_modifier
+    ament_index_cpp
+    autoware_test_utils
   )
 endif()
 

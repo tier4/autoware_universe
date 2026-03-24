@@ -20,8 +20,10 @@
 
 #include <autoware_utils_system/stop_watch.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
+#include <autoware_utils_visualization/marker_helper.hpp>
 
 #include <autoware_internal_planning_msgs/msg/detail/candidate_trajectory__struct.hpp>
+#include <visualization_msgs/msg/detail/marker_array__struct.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/LaneletMap.h>
@@ -83,6 +85,7 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
     "~/debug/processing_time_text", rclcpp::QoS(1));
 
   pub_processing_time_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
+  pub_debug_markers_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
 }
 
 void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr msg)
@@ -197,6 +200,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   processing_time_ms["Total"] = stop_watch.toc("Total");
 
   publish_processing_time(processing_time_ms);
+  publish_internal_state(processing_time_ms, evaluation_tables_, context.odometry->pose.pose);
   update_diagnostic(*msg, *filtered_msg);
   pub_trajectories_->publish(*filtered_msg);
 
@@ -317,64 +321,77 @@ void TrajectoryValidator::publish_processing_time(
       continue;
     }
     pub_processing_time_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      key + "processing_time_ms", value);
+      key + "/processing_time_ms", value);
   }
-  // 2. Format the string output
-  std::string text_output = "--- Trajectory Validator Processing Time ---\n";
+}
 
-  // Extract Total first so we can put it at the top
-  auto total_it = processing_time.find("Total");
-  if (total_it != processing_time.end()) {
-    text_output += fmt::format("Total: {:.3f} ms\n", total_it->second);
-  }
-
-  // Extract and sort the remaining plugin keys for stable output
-  std::vector<std::string> sorted_keys;
-  for (const auto & [key, _] : processing_time) {
-    if (key != "Total") {
-      sorted_keys.push_back(key);
-    }
-    // 2. Format the string output
-    std::string text_output = "--- Trajectory Validator Processing Time ---\n";
-
-    // Extract Total first so we can put it at the top
-    auto total_it = processing_time.find("Total");
-    if (total_it != processing_time.end()) {
-      text_output += fmt::format("Total: {:.3f} ms\n", total_it->second);
-    }
-
-    // Extract and sort the remaining plugin keys for stable output
-    std::vector<std::string> sorted_keys;
-    for (const auto & [key, _] : processing_time) {
-      if (key != "Total") {
-        sorted_keys.push_back(key);
+void TrajectoryValidator::publish_internal_state(
+  const std::unordered_map<std::string, double> & processing_time,
+  const std::vector<EvaluationTable> & evaluation_tables, const geometry_msgs::msg::Pose & ego_pose)
+{
+  std::unordered_map<std::string, std::vector<std::string>> plugin_filtered_paths;
+  // 1. Group the filtered paths by plugin
+  for (const auto & eval : evaluation_tables) {
+    std::string short_uuid = eval.generator_id.substr(0, 8);  // Just using short UUID as requested
+    for (const auto & [category, evaluations] : eval.evaluations) {
+      for (const auto & plugin_eval : evaluations) {
+        if (!plugin_eval.is_feasible) {
+          plugin_filtered_paths[plugin_eval.plugin_name].push_back(short_uuid);
+        }
       }
     }
-    std::sort(sorted_keys.begin(), sorted_keys.end());
+  }
 
-    // Append each plugin's time
-    for (const auto & key : sorted_keys) {
-      text_output += fmt::format("- {}: {:.3f} ms\n", key, processing_time.at(key));
+  // 2. Extract and sort the plugin names alphabetically
+  std::vector<std::string> sorted_plugins;
+  for (const auto & [plugin_name, _] : processing_time) {
+    if (plugin_name != "Total") {
+      sorted_plugins.push_back(plugin_name);
     }
-
-    // 3. Publish the StringStamped message
-    autoware_internal_debug_msgs::msg::StringStamped text_msg;
-    text_msg.stamp = this->now();
-    text_msg.data = text_output;
-    pub_processing_time_text_->publish(text_msg);
   }
-  std::sort(sorted_keys.begin(), sorted_keys.end());
+  std::sort(sorted_plugins.begin(), sorted_plugins.end());
 
-  // Append each plugin's time
-  for (const auto & key : sorted_keys) {
-    text_output += fmt::format("- {}: {:.3f} ms\n", key, processing_time.at(key));
+  std::string report = "\n--- Trajectory Validator Processing Time Report ---\n";
+  double total_time_ms = processing_time.count("Total") ? processing_time.at("Total") : 0.0;
+  report += fmt::format("Total: {:.2f} ms\n", total_time_ms);
+
+  for (const auto & plugin_name : sorted_plugins) {
+    double time = processing_time.at(plugin_name);
+    report += fmt::format("- {}: {:.2f} ms\n", plugin_name, time);
   }
 
-  // 3. Publish the StringStamped message
   autoware_internal_debug_msgs::msg::StringStamped text_msg;
   text_msg.stamp = this->now();
-  text_msg.data = text_output;
+  text_msg.data = report;
   pub_processing_time_text_->publish(text_msg);
+
+  // --- Filtering Results Section ---
+  fmt::memory_buffer out;
+  fmt::format_to(std::back_inserter(out), "--- Trajectory Validator Filtering Result ---\n");
+
+  for (const auto & plugin_name : sorted_plugins) {
+    auto it = plugin_filtered_paths.find(plugin_name);
+    if (it != plugin_filtered_paths.end() && !it->second.empty()) {
+      fmt::format_to(
+        std::back_inserter(out), "- {}: {} path(s) filtered\n", plugin_name, it->second.size());
+    }
+  }
+
+  fmt::format_to(std::back_inserter(out), "-----------------------------------");
+
+  constexpr int32_t id{0};
+  auto text_marker = autoware_utils_visualization::create_default_marker(
+    "map", get_clock()->now(), "plugin_report", id,
+    visualization_msgs::msg::Marker::TEXT_VIEW_FACING,
+    autoware_utils_visualization::create_marker_scale(0.0, 0.0, 0.9),
+    autoware_utils_visualization::create_marker_color(1., 1., 1., 0.999));
+  text_marker.pose = ego_pose;
+  text_marker.pose.position.z += vehicle_info_.vehicle_height_m + 2.0;
+  text_marker.text = fmt::to_string(out);
+
+  visualization_msgs::msg::MarkerArray marker_array;
+  marker_array.markers.push_back(text_marker);
+  pub_debug_markers_->publish<visualization_msgs::msg::MarkerArray>("markers", marker_array);
 }
 }  // namespace autoware::trajectory_validator
 

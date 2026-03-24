@@ -99,6 +99,8 @@ void ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
 std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
   const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon)
 {
+  if (!params_.use_objects) return std::nullopt;
+
   if (!data_->predicted_objects_ptr || data_->predicted_objects_ptr->objects.empty())
     return std::nullopt;
   auto predicted_objects = *data_->predicted_objects_ptr;
@@ -106,12 +108,15 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
   filter_objects_by_type(predicted_objects, params_.objects.object_types);
   filter_objects_by_velocity(predicted_objects, params_.objects.max_velocity_th);
 
-  return get_nearest_object_collision(traj_points, trajectory_polygon, predicted_objects);
+  return get_nearest_object_collision(
+    traj_points, trajectory_polygon, predicted_objects, debug_data_.target_polygons);
 }
 
 std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
   const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon)
 {
+  if (!params_.use_pointcloud) return std::nullopt;
+
   if (!data_->obstacle_pointcloud_ptr || data_->obstacle_pointcloud_ptr->data.empty())
     return std::nullopt;
 
@@ -164,7 +169,8 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(
     debug_data_.cluster_points = cluster_pointcloud;
   }
 
-  return get_nearest_pcd_collision(traj_points, trajectory_polygon, clustered_points);
+  return get_nearest_pcd_collision(
+    traj_points, trajectory_polygon, clustered_points, debug_data_.target_pcd_points);
 }
 
 void ObstacleStop::update_collision_points_buffer(

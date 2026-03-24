@@ -58,6 +58,55 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
     .metrics(std::move(metrics));
 }
 
+void UncrossableBoundaryDepartureFilter::set_parameters([[maybe_unused]] rclcpp::Node & node)
+{
+  using autoware_utils_rclcpp::get_or_declare_parameter;
+
+  const auto dist_to_boundary =
+    get_or_declare_parameter<double>(node, "boundary_departure.lateral_gap_to_boundary_m");
+  param_.th_trigger.th_dist_to_boundary_m.left.min = dist_to_boundary;
+  param_.th_trigger.th_dist_to_boundary_m.right.min = dist_to_boundary;
+  param_.th_trigger.th_acc_mps2.max =
+    get_or_declare_parameter<double>(node, "boundary_departure.max_deceleration_mps2");
+  param_.th_trigger.th_jerk_mps3.max =
+    get_or_declare_parameter<double>(node, "boundary_departure.max_jerk_mps3");
+  param_.th_cutoff_time_departure_s =
+    get_or_declare_parameter<double>(node, "boundary_departure.cutoff_time_s");
+  param_.th_trigger.brake_delay_s =
+    get_or_declare_parameter<double>(node, "boundary_departure.brake_delay_s");
+  param_.min_braking_distance =
+    get_or_declare_parameter<double>(node, "boundary_departure.longitudinal_gap_to_boundary_m");
+
+  if (uncrossable_boundary_departure_checker_ptr_) {
+    uncrossable_boundary_departure_checker_ptr_->set_param(param_);
+  }
+}
+
+void UncrossableBoundaryDepartureFilter::update_parameters(
+  const std::vector<rclcpp::Parameter> & parameters)
+{
+  auto dist_to_boundary = param_.th_trigger.th_dist_to_boundary_m.left.min;
+  autoware_utils_rclcpp::update_param(
+    parameters, "boundary_departure.lateral_gap_to_boundary_m", dist_to_boundary);
+  param_.th_trigger.th_dist_to_boundary_m.left.min = dist_to_boundary;
+  param_.th_trigger.th_dist_to_boundary_m.right.min = dist_to_boundary;
+
+  autoware_utils_rclcpp::update_param(
+    parameters, "boundary_departure.max_deceleration_mps2", param_.th_trigger.th_acc_mps2.max);
+  autoware_utils_rclcpp::update_param(
+    parameters, "boundary_departure.max_jerk_mps3", param_.th_trigger.th_jerk_mps3.max);
+  autoware_utils_rclcpp::update_param(
+    parameters, "boundary_departure.cutoff_time_s", param_.th_cutoff_time_departure_s);
+  autoware_utils_rclcpp::update_param(
+    parameters, "boundary_departure.brake_delay_s", param_.th_trigger.brake_delay_s);
+  autoware_utils_rclcpp::update_param(
+    parameters, "boundary_departure.longitudinal_gap_to_boundary_m", param_.min_braking_distance);
+
+  if (uncrossable_boundary_departure_checker_ptr_) {
+    uncrossable_boundary_departure_checker_ptr_->set_param(param_);
+  }
+}
+
 std::optional<std::string> UncrossableBoundaryDepartureFilter::is_invalid_input(
   const TrajectoryPoints & traj_points, const FilterContext & context) const
 {

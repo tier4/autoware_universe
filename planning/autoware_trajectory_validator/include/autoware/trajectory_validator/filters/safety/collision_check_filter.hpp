@@ -131,6 +131,10 @@ class CollisionCheckFilter : public plugin::ValidatorInterface
 public:
   CollisionCheckFilter() : ValidatorInterface("collision_check_filter") {}
 
+  double compute_rss_deceleration(
+    const TrajectoryData & ego_trajectory, const geometry_msgs::msg::Twist & ego_twist,
+    const autoware_perception_msgs::msg::PredictedObject & object) const;
+
   result_t is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) override;
 
@@ -145,6 +149,13 @@ private:
     double ego_assumed_acceleration{0.0};  // used for code test, not used in actual collision check
     double collision_time_threshold{1.0};  // time threshold for PET collision check
   } pet_collision_params_;
+
+  struct RssParams
+  {
+    double ego_deceleration_threshold{0.0};  // threshold to determine RSS collision
+    double ego_reaction_time{0.0};           // reaction time of the ego vehicle
+    double object_acceleration{0.0};  // assumed acceleration of the object for RSS calculation
+  } rss_params_;
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety

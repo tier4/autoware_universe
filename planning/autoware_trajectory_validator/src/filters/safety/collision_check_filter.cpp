@@ -267,6 +267,20 @@ PoseTrajectory compute_pose_trajectory(
   return pose_trajectory;
 }
 
+template <typename Points, typename Object>
+double calc_longitudinal_velocity(const Points & points, const Object & object)
+{
+  const auto & obj_pose = object.kinematics.initial_pose_with_covariance.pose;
+  const Eigen::Rotation2Dd object_orientation_on_points(
+    autoware::motion_utils::calcYawDeviation(points, obj_pose, true));
+
+  const auto & obj_twist = object.kinematics.initial_twist_with_covariance.twist;
+  const Eigen::Vector2d object_velocity_on_obstacle(obj_twist.linear.x, obj_twist.linear.y);
+
+  const auto object_velocity_on_points = object_orientation_on_points * object_velocity_on_obstacle;
+  return object_velocity_on_points.x();
+}
+
 TrajectoryData generate_ego_trajectory(
   const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
   double max_time, const TrajectoryPoints & traj_points, VehicleInfo & vehicle_info)
@@ -408,6 +422,34 @@ std::pair<std::optional<double>, std::optional<double>> compute_pet_and_ttc(
   return std::make_pair(candidate_pet, candidate_ttc);
 }
 
+std::optional<double> calc_dist_to_collide(
+  const TrajectoryData & ego_trajectory,
+  const autoware_perception_msgs::msg::PredictedObject & object)
+{
+  const auto obj_footprint = autoware_utils_geometry::to_polygon2d(
+    object.kinematics.initial_pose_with_covariance.pose, object.shape);
+  const auto obj_foot_print_as_range =
+    boost::make_iterator_range(&obj_footprint, &obj_footprint + 1);
+
+  if (!polygon::check_path_polygon_convex_collision(
+        ego_trajectory.getFootprints(), obj_foot_print_as_range)) {
+    return std::nullopt;
+  }
+
+  for (size_t i = 0; i < ego_trajectory.size(); ++i) {
+    const auto ego_footprint = ego_trajectory.getFootprints().at(i);
+    const auto ego_foot_print_as_range =
+      boost::make_iterator_range(&ego_footprint, &ego_footprint + 1);
+    if (polygon::check_path_polygon_convex_collision(
+          ego_foot_print_as_range, obj_foot_print_as_range)) {
+      // todo(takagi): for precise calculation, intersection length should be considered.
+      return ego_trajectory.getDistances().at(i);
+    }
+  }
+
+  return std::nullopt;
+}
+
 void CollisionCheckFilter::set_parameters(rclcpp::Node & node)
 {
   using autoware_utils_rclcpp::get_or_declare_parameter;
@@ -421,6 +463,17 @@ void CollisionCheckFilter::set_parameters(rclcpp::Node & node)
       get_or_declare_parameter<double>(node, ns + ".ego_assumed_acceleration");
     pet_collision_params_.collision_time_threshold =
       get_or_declare_parameter<double>(node, ns + ".collision_time_threshold");
+  }
+
+  // todo(takagi): should be check the parameter's sign.
+  {
+    std::string ns = filter_name + ".rss";
+    rss_params_.ego_deceleration_threshold =
+      get_or_declare_parameter<double>(node, ns + ".ego_deceleration_threshold");
+    rss_params_.ego_reaction_time =
+      get_or_declare_parameter<double>(node, ns + ".ego_reaction_time");
+    rss_params_.object_acceleration =
+      get_or_declare_parameter<double>(node, ns + ".object_acceleration");
   }
 }
 
@@ -437,6 +490,43 @@ void CollisionCheckFilter::update_parameters(const std::vector<rclcpp::Parameter
     update_param(
       parameters, ns + ".collision_time_threshold", pet_collision_params_.collision_time_threshold);
   }
+
+  {
+    std::string ns = filter_name + ".rss";
+    update_param(
+      parameters, ns + ".ego_deceleration_threshold", rss_params_.ego_deceleration_threshold);
+    update_param(parameters, ns + ".ego_reaction_time", rss_params_.ego_reaction_time);
+    update_param(parameters, ns + ".object_acceleration", rss_params_.object_acceleration);
+  }
+}
+
+double CollisionCheckFilter::compute_rss_deceleration(
+  const TrajectoryData & ego_trajectory, const geometry_msgs::msg::Twist & ego_twist,
+  const autoware_perception_msgs::msg::PredictedObject & object) const
+{
+  const auto ego_long_vel = ego_twist.linear.x;
+  if (ego_long_vel <= 0.0) {
+    return 0.0;
+  }
+
+  // calc current distance
+  const auto dist_to_collide = calc_dist_to_collide(ego_trajectory, object);
+  if (!dist_to_collide.has_value()) {
+    return 0.0;
+  }
+
+  // calc safe distance
+  const double obj_long_vel =
+    std::clamp(calc_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
+  const double safe_distance =
+    dist_to_collide.value() + obj_long_vel * obj_long_vel * 0.5 / -rss_params_.object_acceleration -
+    ego_long_vel * rss_params_.ego_reaction_time;
+
+  // calc required deceleration
+  if (safe_distance <= 0.0) {
+    return std::numeric_limits<double>::infinity();
+  }
+  return ego_long_vel * ego_long_vel * 0.5 / safe_distance;
 }
 
 // todo(takagi): separate the core logic which returns detailed collision information.
@@ -467,6 +557,10 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
       .metrics({});  // No trajectory to check
   }
 
+  std::string error_msg{};
+
+  // todo takagi: refactor to separate functions and add more detailed collision information in the
+  // error message. calc PET and TTC metrics
   rclcpp::Duration objects_reference_time = rclcpp::Time(context.predicted_objects->header.stamp) -
                                             rclcpp::Time(context.odometry->header.stamp);
 
@@ -510,6 +604,30 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
         .name("check_TTC_collision_" + object_trajectory_data.getId())
         .level(is_ttc_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
         .score(ttc.value_or(0.0)));
+  }
+
+  // calc RSS metrics
+  {
+    const double ego_consider_time_for_rss =
+      rclcpp::Duration(traj_points.back().time_from_start).seconds();
+    const auto ego_trajectory_data = generate_ego_trajectory(
+      context.odometry->twist.twist, 0.0, 0.0, ego_consider_time_for_rss, traj_points,
+      *vehicle_info_ptr_);
+
+    for (const auto & object : context.predicted_objects->objects) {
+      const auto required_deceleration =
+        compute_rss_deceleration(ego_trajectory_data, context.odometry->twist.twist, object);
+
+      const auto is_rss_ok = required_deceleration <= rss_params_.ego_deceleration_threshold;
+
+      is_overall_ok = is_overall_ok && is_rss_ok;
+
+      metrics.push_back(
+        autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
+          .name("check_RSS_collision_" + autoware_utils_uuid::to_hex_string(object.object_id))
+          .level(is_rss_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
+          .score(required_deceleration));
+    }
   }
 
   return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
