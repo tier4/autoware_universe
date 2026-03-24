@@ -4,6 +4,9 @@ project(yabloc_pose_initializer)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 # ===================================================
 # Eigen3
 find_package(Eigen3 REQUIRED)
@@ -35,6 +38,13 @@ rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN "yabloc::CameraPoseInitializer"
   EXECUTABLE ${PROJECT_NAME}_node
   EXECUTOR MultiThreadedExecutor
+)
+
+agnocast_components_register_node(${PROJECT_NAME}
+  PLUGIN "yabloc::CameraPoseInitializer"
+  EXECUTABLE agnocast_${PROJECT_NAME}_node
+  EXECUTOR CallbackIsolatedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 # ===================================================

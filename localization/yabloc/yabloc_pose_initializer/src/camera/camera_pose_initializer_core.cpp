@@ -54,7 +54,8 @@ CameraPoseInitializer::CameraPoseInitializer(const rclcpp::NodeOptions & options
 
   // Server
   auto on_service = std::bind(&CameraPoseInitializer::on_service, this, _1, _2);
-  align_server_ = create_service<RequestPoseAlignment>("~/yabloc_align_srv", on_service);
+  align_server_ =
+    agnocast::create_service<RequestPoseAlignment>(this, "~/yabloc_align_srv", on_service);
 
   const std::string model_path = declare_parameter<std::string>("model_path");
   RCLCPP_INFO_STREAM(get_logger(), "segmentation model path: " + model_path);
@@ -186,8 +187,8 @@ void CameraPoseInitializer::on_map(const LaneletMapBin & msg)
 }
 
 void CameraPoseInitializer::on_service(
-  const RequestPoseAlignment::Request::SharedPtr request,
-  RequestPoseAlignment::Response::SharedPtr response)
+  const agnocast::ipc_shared_ptr<AgnocastPoseAlignService::RequestT> & request,
+  agnocast::ipc_shared_ptr<AgnocastPoseAlignService::ResponseT> & response)
 {
   RCLCPP_INFO_STREAM(get_logger(), "CameraPoseInitializer on_service");
 

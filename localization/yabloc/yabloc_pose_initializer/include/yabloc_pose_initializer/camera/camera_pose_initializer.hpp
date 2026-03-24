@@ -20,6 +20,7 @@
 #include "yabloc_pose_initializer/camera/projector_module.hpp"
 #include "yabloc_pose_initializer/camera/semantic_segmentation.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <opencv2/core.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -55,7 +56,8 @@ private:
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
   rclcpp::Subscription<Image>::SharedPtr sub_image_;
 
-  rclcpp::Service<RequestPoseAlignment>::SharedPtr align_server_;
+  using AgnocastPoseAlignService = agnocast::Service<RequestPoseAlignment>;
+  AgnocastPoseAlignService::SharedPtr align_server_;
   rclcpp::CallbackGroup::SharedPtr service_callback_group_;
 
   std::optional<Image::ConstSharedPtr> latest_image_msg_{std::nullopt};
@@ -65,8 +67,8 @@ private:
 
   void on_map(const LaneletMapBin & msg);
   void on_service(
-    const RequestPoseAlignment::Request::SharedPtr request,
-    RequestPoseAlignment::Response::SharedPtr response);
+    const agnocast::ipc_shared_ptr<AgnocastPoseAlignService::RequestT> & request,
+    agnocast::ipc_shared_ptr<AgnocastPoseAlignService::ResponseT> & response);
   static PoseCovStamped create_rectified_initial_pose(
     const Eigen::Vector3f & pos, double yaw_angle_rad, const PoseCovStamped & src_msg);
 
