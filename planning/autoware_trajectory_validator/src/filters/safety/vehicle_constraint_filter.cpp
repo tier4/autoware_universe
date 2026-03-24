@@ -111,11 +111,7 @@ VehicleConstraintFilter::VehicleConstraintFilter() : ValidatorInterface("vehicle
 
 void VehicleConstraintFilter::update_parameters(const validator::Params & params)
 {
-  params_.max_speed = params.vehicle_constraint.max_speed;
-  params_.max_acceleration = params.vehicle_constraint.max_acceleration;
-  params_.max_deceleration = params.vehicle_constraint.max_deceleration;
-  params_.max_steering_angle = params.vehicle_constraint.max_steering_angle;
-  params_.max_steering_rate = params.vehicle_constraint.max_steering_rate;
+  params_ = params.vehicle_constraint;
 }
 
 VehicleConstraintFilter::result_t VehicleConstraintFilter::is_feasible(
