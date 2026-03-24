@@ -152,11 +152,11 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
       evaluation.plugin_name = plugin->get_name();
       stop_watch.tic(evaluation.plugin_name);
 
-      const auto result = plugin->is_feasible(trajectory.points, context);
-      if (!result) {
+      if (const auto result = plugin->is_feasible(trajectory.points, context); !result) {
         // NOTE: Filter out the trajectory when exception occurred while validation
         RCLCPP_ERROR_THROTTLE(
-          get_logger(), *get_clock(), 1000, "Got unexpected behavior: %s", result.error().c_str());
+          get_logger(), *get_clock(), 1000, "Got unexpected behavior in %s: %s",
+          plugin->get_name().c_str(), result.error().c_str());
 
         diagnostics_interface_.add_key_value(plugin->get_name(), std::string("NG"));
 
@@ -178,13 +178,16 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
         if (!plugin->is_debug_mode()) {
           table.is_overall_feasible = false;
         }
+
+        validation_statuses[plugin->category()].push_back(result.value());
       } else {
         diagnostics_interface_.add_key_value(plugin->get_name(), std::string("OK"));
+
+        validation_statuses[plugin->category()].push_back(result.value());
       }
       processing_time_ms[evaluation.plugin_name] += stop_watch.toc(evaluation.plugin_name);
 
       table.evaluations[plugin->category()].push_back(evaluation);
-      validation_statuses[plugin->category()].push_back(result.value());
     }
 
     evaluation_tables_.push_back(table);
