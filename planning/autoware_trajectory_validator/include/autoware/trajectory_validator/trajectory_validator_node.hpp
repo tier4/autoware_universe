@@ -130,7 +130,7 @@ private:
   std::shared_ptr<autoware_utils_debug::DebugPublisher> pub_debug_markers_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
     pub_processing_time_text_;
-  rclcpp::Publisher<TrajectoryStatusArray>::SharedPtr debug_status_publisher_;
+  rclcpp::Publisher<TrajectoryStatusArray>::SharedPtr pub_debug_statuses_;
 
   // Internal State
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;

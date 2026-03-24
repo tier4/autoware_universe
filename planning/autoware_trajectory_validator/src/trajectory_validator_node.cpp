@@ -75,7 +75,6 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
 
   pub_trajectories_ = create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
 
-  debug_status_publisher_ = create_publisher<TrajectoryStatusArray>("~/debug/status", 1);
   pub_processing_time_detail_ = create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
     "~/debug/processing_time_detail_ms/feasible_trajectory_filter", 1);
   time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>(pub_processing_time_detail_);
@@ -85,6 +84,7 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
 
   pub_processing_time_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
   pub_debug_markers_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
+  pub_debug_statuses_ = create_publisher<TrajectoryStatusArray>("~/debug/status", 1);
 }
 
 void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr msg)
@@ -214,9 +214,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   publish_internal_state(processing_time_ms, evaluation_tables_, context.odometry->pose.pose);
   update_diagnostic(*msg, *filtered_msg);
   pub_trajectories_->publish(*filtered_msg);
-
-  debug_status_publisher_->publish(
-    to_trajectory_status_array(get_clock()->now(), trajectory_statuses));
+  pub_debug_statuses_->publish(to_trajectory_status_array(get_clock()->now(), trajectory_statuses));
 }
 
 void TrajectoryValidator::map_callback(const LaneletMapBin::ConstSharedPtr msg)
