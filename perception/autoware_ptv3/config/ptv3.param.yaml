@@ -10,4 +10,4 @@
     filter:
       class_probability_threshold: 0.05
       classes: ["drivable_surface"]
-      output_format: ""
+      output_format: "xyzirc"
