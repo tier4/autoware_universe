@@ -21,7 +21,6 @@
   <depend>generate_parameter_library</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
-  <depend>rclcpp_lifecycle</depend>
   <depend>agnocastlib</depend>
   <depend>agnocast_components</depend>
 

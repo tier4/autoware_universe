@@ -25,7 +25,6 @@ target_include_directories(external_velocity_limit_selector_node PRIVATE
 
 ament_target_dependencies(external_velocity_limit_selector_node
   agnocastlib
-  rclcpp_lifecycle
 )
 
 agnocast_components_register_node(external_velocity_limit_selector_node
