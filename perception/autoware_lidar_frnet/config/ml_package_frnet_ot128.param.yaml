@@ -1,5 +1,11 @@
 /**:
   ros__parameters:
+    fov_up_deg: 15.0
+    fov_down_deg: -25.0
+    frustum_width: 1024
+    frustum_height: 128
+    interpolation_width: 4096
+    interpolation_height: 128
     class_names: [
         "drivable_surface",
         "other_flat_surface",
@@ -26,7 +32,8 @@
         "debris",
         "stroller",
         "other_stuff",
-        "noise+ghost_point"
+        "noise+ghost_point",
+        "unknown",
       ]
     palette: [
       255, 0, 255,    # Magenta - drivable_surface
@@ -55,7 +62,7 @@
       210, 180, 140,  # Tan - debris
       188, 143, 143,  # Rosy Brown - other_stuff
       64, 224, 208,   # Turquoise - noise+ghost_point
+      0, 0, 0,        # Black - unknown
     ]
-    voxels_num: [32000, 192000, 320000] # [min, opt, max]
-    point_cloud_range: [-102.4, -102.4, -2.8, 102.4, 102.4, 10.0] # [x_min, y_min, z_min, x_max, y_max, z_max]
-    voxel_size: [0.1, 0.1, 0.1] # [x, y, z]
+    num_points: [5000, 60000, 160000] # [min, opt, max]
+    num_unique_coors: [3000, 30000, 60000] # [min, opt, max]
