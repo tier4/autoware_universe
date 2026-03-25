@@ -23,9 +23,9 @@
 #include <autoware_internal_planning_msgs/msg/trajectory_status_array.hpp>
 #include <autoware_internal_planning_msgs/msg/trajectory_validation_status.hpp>
 
+#include <algorithm>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator
@@ -78,14 +78,11 @@ inline bool check_validation_status(const TrajectoryValidationStatus & validatio
  * @param validations An array of validation statuses.
  * @return true if all validation statuses are OK, false otherwise.
  */
-inline bool check_validation_statues(const std::vector<TrajectoryValidationStatus> & validations)
+inline bool check_validation_statuses(const std::vector<TrajectoryValidationStatus> & validations)
 {
-  for (const auto & validation : validations) {
-    if (!check_validation_status(validation)) {
-      return false;
-    }
-  }
-  return true;
+  return std::all_of(validations.begin(), validations.end(), [](const auto & validation) {
+    return check_validation_status(validation);
+  });
 }
 }  // namespace autoware::trajectory_validator
 #endif  // AUTOWARE__TRAJECTORY_VALIDATOR__STATUS_HPP_

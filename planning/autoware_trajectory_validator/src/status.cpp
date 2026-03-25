@@ -18,7 +18,6 @@
 
 #include <std_msgs/msg/header.hpp>
 
-#include <algorithm>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -42,7 +41,7 @@ std::pair<std::vector<TrajectoryCategoryStatus>, bool> to_category_statuses(
   std::vector<TrajectoryCategoryStatus> categories;
   bool is_category_ok = true;
   for (const auto & [category, statuses] : validations) {
-    const bool is_validation_ok = check_validation_statues(statuses);
+    const bool is_validation_ok = check_validation_statuses(statuses);
 
     // Once an error occurred category level will be ERROR
     is_category_ok = is_category_ok && is_validation_ok;
