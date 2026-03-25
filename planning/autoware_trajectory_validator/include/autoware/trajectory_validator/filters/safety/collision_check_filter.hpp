@@ -154,7 +154,7 @@ private:
   validator::Params::CollisionCheck::PetCollision pet_collision_params_;
   validator::Params::CollisionCheck::Rss rss_params_;
 
-  void add_debug_markers(const DebugData & debug_data_vec, const rclcpp::Time & stamp);
+  void add_debug_markers(const DebugData & debug_data, const rclcpp::Time & stamp);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety

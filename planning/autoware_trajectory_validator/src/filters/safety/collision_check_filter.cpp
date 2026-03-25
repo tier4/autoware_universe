@@ -514,7 +514,7 @@ void CollisionCheckFilter::add_debug_markers(
       pt_first.z = 0.0;
       m.points.push_back(pt_first);
 
-      debug_markers_.markers.push_back(m);
+      debug_markers_.markers.push_back(std::move(m));
     };
 
   add_poly_marker(debug_data.ego_polygons, "ego_worst_pet_" + debug_data.object_id, 0.0, 0.0, 1.0);
