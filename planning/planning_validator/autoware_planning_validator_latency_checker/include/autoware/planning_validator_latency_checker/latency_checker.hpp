@@ -15,8 +15,8 @@
 #ifndef AUTOWARE__PLANNING_VALIDATOR_LATENCY_CHECKER__LATENCY_CHECKER_HPP_
 #define AUTOWARE__PLANNING_VALIDATOR_LATENCY_CHECKER__LATENCY_CHECKER_HPP_
 
+#include <agnocast/node/agnocast_node.hpp>
 #include <autoware/planning_validator/plugin_interface.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <memory>
 #include <string>
@@ -28,7 +28,7 @@ class LatencyChecker : public PluginInterface
 {
 public:
   void init(
-    rclcpp::Node & node, const std::string & name,
+    agnocast::Node & node, const std::string & name,
     const std::shared_ptr<PlanningValidatorContext> & context) override;
   void validate() override;
   void setup_diag() override;

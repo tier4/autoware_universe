@@ -54,7 +54,7 @@ using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using autoware_utils::get_or_declare_parameter;
 
 void RearCollisionChecker::init(
-  rclcpp::Node & node, const std::string & name,
+  agnocast::Node & node, const std::string & name,
   const std::shared_ptr<PlanningValidatorContext> & context)
 {
   module_name_ = name;
@@ -86,7 +86,7 @@ void RearCollisionChecker::init(
   time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(pub_debug_processing_time_detail_);
 
   planning_factor_interface_ =
-    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>>(
       &node, "rear_collision_checker");
 
   setup_diag();
@@ -843,11 +843,15 @@ void RearCollisionChecker::publish_marker(const DebugData & debug) const
   }
 
   if (debug.cluster_points) {
-    pub_cluster_pointcloud_->publish(*debug.cluster_points);
+    auto loaned = pub_cluster_pointcloud_->borrow_loaned_message();
+    *loaned = *debug.cluster_points;
+    pub_cluster_pointcloud_->publish(std::move(loaned));
   }
 
   if (debug.voxel_points) {
-    pub_voxel_pointcloud_->publish(*debug.voxel_points);
+    auto loaned = pub_voxel_pointcloud_->borrow_loaned_message();
+    *loaned = *debug.voxel_points;
+    pub_voxel_pointcloud_->publish(std::move(loaned));
   }
 
   {
@@ -866,10 +870,10 @@ void RearCollisionChecker::publish_marker(const DebugData & debug) const
     ss << "\n";
     ss << "PROCESSING TIME:" << debug.processing_time_detail_ms << "[ms]\n";
 
-    StringStamped string_stamp;
-    string_stamp.stamp = clock_->now();
-    string_stamp.data = ss.str();
-    pub_string_->publish(string_stamp);
+    auto loaned_str = pub_string_->borrow_loaned_message();
+    loaned_str->stamp = clock_->now();
+    loaned_str->data = ss.str();
+    pub_string_->publish(std::move(loaned_str));
   }
 }
 

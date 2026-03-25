@@ -19,6 +19,8 @@
 #include "autoware/planning_validator/utils.hpp"
 #include "autoware_planning_validator/msg/planning_validator_status.hpp"
 
+#include <agnocast/node/agnocast_node.hpp>
+#include <agnocast/node/tf2/tf2.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
@@ -30,9 +32,6 @@
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <string>
@@ -170,16 +169,19 @@ struct PlanningValidatorData
 
 struct PlanningValidatorContext
 {
-  explicit PlanningValidatorContext(rclcpp::Node * node)
-  : vehicle_info(autoware::vehicle_info_utils::VehicleInfoUtils(*node).getVehicleInfo()),
+  explicit PlanningValidatorContext(agnocast::Node * node)
+  : vehicle_info(
+      autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(*node)
+        .getVehicleInfo()),
     tf_buffer{node->get_clock()},
-    tf_listener{tf_buffer},
+    tf_listener(std::make_unique<agnocast::TransformListener>(tf_buffer, *node)),
     clock{node->get_clock()}
   {
     debug_pose_publisher = std::make_shared<PlanningValidatorDebugMarkerPublisher>(node);
     data = std::make_shared<PlanningValidatorData>();
     validation_status = std::make_shared<PlanningValidatorStatus>();
-    diag_updater = std::make_shared<Updater>(node);
+    // NOTE: diagnostic_updater is not supported with agnocast::Node
+    // diag_updater = std::make_shared<diagnostic_updater::Updater>(node);
     init_validation_status();
   }
 
@@ -188,12 +190,13 @@ struct PlanningValidatorContext
   PlanningValidatorParams params;
 
   std::shared_ptr<PlanningValidatorDebugMarkerPublisher> debug_pose_publisher = nullptr;
+  // NOTE: diagnostic_updater is not supported with agnocast::Node (kept as nullptr for plugin compat)
   std::shared_ptr<Updater> diag_updater = nullptr;
   std::shared_ptr<PlanningValidatorData> data = nullptr;
   std::shared_ptr<PlanningValidatorStatus> validation_status = nullptr;
 
-  tf2_ros::Buffer tf_buffer;
-  tf2_ros::TransformListener tf_listener;
+  agnocast::Buffer tf_buffer;
+  std::unique_ptr<agnocast::TransformListener> tf_listener;
   rclcpp::Clock::SharedPtr clock{};
 
   auto get_traffic_signal(const int64_t group_id) -> std::optional<std::vector<TrafficLightElement>>

@@ -17,9 +17,9 @@
 
 #include "structs.hpp"
 
+#include <agnocast/node/agnocast_node.hpp>
 #include <autoware/planning_validator/plugin_interface.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <map>
 #include <memory>
@@ -32,7 +32,7 @@ class RearCollisionChecker : public PluginInterface
 {
 public:
   void init(
-    rclcpp::Node & node, const std::string & name,
+    agnocast::Node & node, const std::string & name,
     const std::shared_ptr<PlanningValidatorContext> & context) override;
   void validate() override;
   void setup_diag() override;
@@ -78,13 +78,13 @@ private:
   void set_diag_status(
     DiagnosticStatusWrapper & stat, const bool & is_ok, const std::string & msg) const;
 
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_voxel_pointcloud_;
+  agnocast::Publisher<PointCloud2>::SharedPtr pub_voxel_pointcloud_;
 
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_cluster_pointcloud_;
+  agnocast::Publisher<PointCloud2>::SharedPtr pub_cluster_pointcloud_;
 
-  rclcpp::Publisher<StringStamped>::SharedPtr pub_string_;
+  agnocast::Publisher<StringStamped>::SharedPtr pub_string_;
 
-  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
+  agnocast::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
     pub_debug_processing_time_detail_;
 
   rclcpp::Time last_safe_time_;

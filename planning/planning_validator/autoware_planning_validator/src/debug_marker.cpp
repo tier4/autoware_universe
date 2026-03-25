@@ -44,7 +44,8 @@ std_msgs::msg::ColorRGBA getColorFromId(int id)
 }
 }  // namespace
 
-PlanningValidatorDebugMarkerPublisher::PlanningValidatorDebugMarkerPublisher(rclcpp::Node * node)
+PlanningValidatorDebugMarkerPublisher::PlanningValidatorDebugMarkerPublisher(
+  agnocast::Node * node)
 : node_(node)
 {
   debug_viz_pub_ =
@@ -113,8 +114,16 @@ void PlanningValidatorDebugMarkerPublisher::pushMarkers(
 
 void PlanningValidatorDebugMarkerPublisher::publish()
 {
-  debug_viz_pub_->publish(marker_array_);
-  virtual_wall_pub_->publish(marker_array_virtual_wall_);
+  {
+    auto loaned = debug_viz_pub_->borrow_loaned_message();
+    *loaned = marker_array_;
+    debug_viz_pub_->publish(std::move(loaned));
+  }
+  {
+    auto loaned = virtual_wall_pub_->borrow_loaned_message();
+    *loaned = marker_array_virtual_wall_;
+    virtual_wall_pub_->publish(std::move(loaned));
+  }
 }
 
 }  // namespace autoware::planning_validator

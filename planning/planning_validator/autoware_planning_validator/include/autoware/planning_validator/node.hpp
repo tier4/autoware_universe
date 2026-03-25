@@ -21,14 +21,12 @@
 #include "autoware_planning_validator/msg/planning_validator_status.hpp"
 
 #include <agnocast/agnocast.hpp>
+#include <agnocast/node/agnocast_node.hpp>
 #include <autoware_utils/ros/logger_level_configure.hpp>
 #include <autoware_utils/ros/parameter.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
@@ -53,21 +51,19 @@ using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using autoware_planning_validator::msg::PlanningValidatorStatus;
 using autoware_utils::StopWatch;
-using diagnostic_updater::DiagnosticStatusWrapper;
-using diagnostic_updater::Updater;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 using sensor_msgs::msg::PointCloud2;
 
-class PlanningValidatorNode : public rclcpp::Node
+class PlanningValidatorNode : public agnocast::Node
 {
 public:
   explicit PlanningValidatorNode(const rclcpp::NodeOptions & options);
 
 private:
-  void onTrajectory(const Trajectory::ConstSharedPtr & traj_msg);
+  void onTrajectory(const agnocast::ipc_shared_ptr<const Trajectory> & traj_msg);
   void setupParameters();
-  void setData(const Trajectory::ConstSharedPtr & traj_msg);
+  void setData(const agnocast::ipc_shared_ptr<const Trajectory> & traj_msg);
   bool isDataReady();
 
   void validate(const std::shared_ptr<const PlanningValidatorData> & data);
@@ -78,28 +74,20 @@ private:
   void displayStatus();
 
   // subscriber
-  rclcpp::Subscription<Trajectory>::SharedPtr sub_trajectory_;
-  autoware_utils::InterProcessPollingSubscriber<
-    LaneletRoute, autoware_utils::polling_policy::Newest>
-    sub_route_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
-  autoware_utils::InterProcessPollingSubscriber<
-    LaneletMapBin, autoware_utils::polling_policy::Newest>
-    sub_lanelet_map_bin_{this, "~/input/lanelet_map_bin", rclcpp::QoS{1}.transient_local()};
+  agnocast::Subscription<Trajectory>::SharedPtr sub_trajectory_;
+  agnocast::PollingSubscriber<LaneletRoute>::SharedPtr sub_route_;
+  agnocast::PollingSubscriber<LaneletMapBin>::SharedPtr sub_lanelet_map_bin_;
   agnocast::PollingSubscriber<PointCloud2>::SharedPtr sub_pointcloud_;
-  autoware_utils::InterProcessPollingSubscriber<Odometry> sub_kinematics_{
-    this, "~/input/kinematics"};
-  autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped> sub_acceleration_{
-    this, "~/input/acceleration"};
-  autoware_utils::InterProcessPollingSubscriber<OperationModeState> sub_operational_state_{
-    this, "~/input/operational_mode_state", rclcpp::QoS{1}.transient_local()};
-  autoware_utils::InterProcessPollingSubscriber<TrafficLightGroupArray> sub_traffic_signals_{
-    this, "~/input/traffic_signals"};
+  agnocast::PollingSubscriber<Odometry>::SharedPtr sub_kinematics_;
+  agnocast::PollingSubscriber<AccelWithCovarianceStamped>::SharedPtr sub_acceleration_;
+  agnocast::PollingSubscriber<OperationModeState>::SharedPtr sub_operational_state_;
+  agnocast::PollingSubscriber<TrafficLightGroupArray>::SharedPtr sub_traffic_signals_;
 
   // publisher
-  rclcpp::Publisher<Trajectory>::SharedPtr pub_traj_;
-  rclcpp::Publisher<PlanningValidatorStatus>::SharedPtr pub_status_;
-  rclcpp::Publisher<Float64Stamped>::SharedPtr pub_processing_time_ms_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
+  agnocast::Publisher<Trajectory>::SharedPtr pub_traj_;
+  agnocast::Publisher<PlanningValidatorStatus>::SharedPtr pub_status_;
+  agnocast::Publisher<Float64Stamped>::SharedPtr pub_processing_time_ms_;
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
 
   PlanningValidatorManager manager_;
 
@@ -113,9 +101,10 @@ private:
 
   Trajectory::ConstSharedPtr soft_stop_trajectory_;
 
-  std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
+  std::unique_ptr<autoware_utils::BasicLoggerLevelConfigure<agnocast::Node>> logger_configure_;
 
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<autoware_utils::BasicPublishedTimePublisher<agnocast::Node>>
+    published_time_publisher_;
 
   StopWatch<std::chrono::milliseconds> stop_watch_;
 };

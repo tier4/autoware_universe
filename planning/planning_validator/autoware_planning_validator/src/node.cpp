@@ -17,6 +17,7 @@
 #include "autoware/planning_validator/utils.hpp"
 
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
+#include <autoware_utils/ros/polling_subscriber.hpp>
 
 #include <angles/angles/angles.h>
 
@@ -25,10 +26,9 @@
 
 namespace autoware::planning_validator
 {
-using diagnostic_msgs::msg::DiagnosticStatus;
 
 PlanningValidatorNode::PlanningValidatorNode(const rclcpp::NodeOptions & options)
-: Node("planning_validator_node", options)
+: agnocast::Node("planning_validator_node", options)
 {
   // trajectory subscriber
   sub_trajectory_ = create_subscription<Trajectory>(
@@ -55,12 +55,26 @@ PlanningValidatorNode::PlanningValidatorNode(const rclcpp::NodeOptions & options
     manager_.load_plugin(*this, name, context_);
   }
 
-  // Agnocast polling subscriber
+  // Agnocast polling subscribers
+  sub_route_ = std::make_shared<agnocast::PollingSubscriber<LaneletRoute>>(
+    this, "~/input/route", rclcpp::QoS{1}.transient_local());
+  sub_lanelet_map_bin_ = std::make_shared<agnocast::PollingSubscriber<LaneletMapBin>>(
+    this, "~/input/lanelet_map_bin", rclcpp::QoS{1}.transient_local());
   sub_pointcloud_ = std::make_shared<agnocast::PollingSubscriber<PointCloud2>>(
     this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos());
+  sub_kinematics_ =
+    std::make_shared<agnocast::PollingSubscriber<Odometry>>(this, "~/input/kinematics");
+  sub_acceleration_ = std::make_shared<agnocast::PollingSubscriber<AccelWithCovarianceStamped>>(
+    this, "~/input/acceleration");
+  sub_operational_state_ = std::make_shared<agnocast::PollingSubscriber<OperationModeState>>(
+    this, "~/input/operational_mode_state", rclcpp::QoS{1}.transient_local());
+  sub_traffic_signals_ = std::make_shared<agnocast::PollingSubscriber<TrafficLightGroupArray>>(
+    this, "~/input/traffic_signals");
 
-  logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  logger_configure_ =
+    std::make_unique<autoware_utils::BasicLoggerLevelConfigure<agnocast::Node>>(this);
+  published_time_publisher_ =
+    std::make_unique<autoware_utils::BasicPublishedTimePublisher<agnocast::Node>>(this);
 }
 
 void PlanningValidatorNode::setupParameters()
@@ -97,29 +111,37 @@ bool PlanningValidatorNode::isDataReady()
   return true;
 }
 
-void PlanningValidatorNode::setData(const Trajectory::ConstSharedPtr & traj_msg)
+void PlanningValidatorNode::setData(
+  const agnocast::ipc_shared_ptr<const Trajectory> & traj_msg)
 {
+  // Helper to convert agnocast::ipc_shared_ptr to std shared_ptr
+  auto to_std = [](auto ipc_ptr) -> typename decltype(ipc_ptr)::element_type::ConstSharedPtr {
+    using MsgT = std::remove_const_t<typename decltype(ipc_ptr)::element_type>;
+    if (!ipc_ptr) return nullptr;
+    auto holder = std::make_shared<std::decay_t<decltype(ipc_ptr)>>(std::move(ipc_ptr));
+    return typename MsgT::ConstSharedPtr(holder->get(), [holder](const MsgT *) {});
+  };
+
   auto & data = context_->data;
-  data->current_kinematics = sub_kinematics_.take_data();
-  data->current_acceleration = sub_acceleration_.take_data();
+  data->current_kinematics = to_std(sub_kinematics_->take_data());
+  data->current_acceleration = to_std(sub_acceleration_->take_data());
+  data->obstacle_pointcloud = to_std(sub_pointcloud_->take_data());
+  data->traffic_signals = to_std(sub_traffic_signals_->take_data());
+
+  // Convert ipc_shared_ptr to ConstSharedPtr for trajectory via shared holder
   {
-    auto agnocast_pc = sub_pointcloud_->take_data();
-    if (agnocast_pc) {
-      auto holder =
-        std::make_shared<agnocast::ipc_shared_ptr<const PointCloud2>>(std::move(agnocast_pc));
-      data->obstacle_pointcloud =
-        PointCloud2::ConstSharedPtr(holder->get(), [holder](const PointCloud2 *) {});
-    } else {
-      data->obstacle_pointcloud = nullptr;
-    }
+    auto holder =
+      std::make_shared<agnocast::ipc_shared_ptr<const Trajectory>>(traj_msg);
+    auto traj_std = Trajectory::ConstSharedPtr(holder->get(), [holder](const Trajectory *) {});
+    data->set_current_trajectory(traj_std);
   }
-  data->traffic_signals = sub_traffic_signals_.take_data();
-  data->set_current_trajectory(traj_msg);
-  data->set_route(sub_route_.take_data());
-  data->set_map(sub_lanelet_map_bin_.take_data());
+
+  data->set_route(to_std(sub_route_->take_data()));
+  data->set_map(to_std(sub_lanelet_map_bin_->take_data()));
 }
 
-void PlanningValidatorNode::onTrajectory(const Trajectory::ConstSharedPtr & traj_msg)
+void PlanningValidatorNode::onTrajectory(
+  const agnocast::ipc_shared_ptr<const Trajectory> & traj_msg)
 {
   stop_watch_.tic(__func__);
 
@@ -128,8 +150,12 @@ void PlanningValidatorNode::onTrajectory(const Trajectory::ConstSharedPtr & traj
   if (!isDataReady()) return;
 
   // Check operational mode state
-  OperationModeState::ConstSharedPtr operation_mode_msg = sub_operational_state_.take_data();
-  if (operation_mode_msg) {
+  auto operation_mode_ipc = sub_operational_state_->take_data();
+  if (operation_mode_ipc) {
+    auto holder = std::make_shared<agnocast::ipc_shared_ptr<const OperationModeState>>(
+      operation_mode_ipc);
+    auto operation_mode_msg =
+      OperationModeState::ConstSharedPtr(holder->get(), [holder](const OperationModeState *) {});
     flag_autonomous_control_enabled_ = infer_autonomous_control_state(operation_mode_msg);
   }
 
@@ -181,11 +207,16 @@ void PlanningValidatorNode::publishTrajectory()
 {
   const auto & status = *context_->validation_status;
   const auto & data = context_->data;
+  auto publish_trajectory = [&](const Trajectory & traj) {
+    auto loaned = pub_traj_->borrow_loaned_message();
+    *loaned = traj;
+    pub_traj_->publish(std::move(loaned));
+    published_time_publisher_->publish_if_subscribed(pub_traj_, traj.header.stamp);
+  };
+
   // Validation check is all green. Publish the trajectory.
   if (isAllValid(status)) {
-    pub_traj_->publish(*data->current_trajectory);
-    published_time_publisher_->publish_if_subscribed(
-      pub_traj_, data->current_trajectory->header.stamp);
+    publish_trajectory(*data->current_trajectory);
     data->last_valid_trajectory = data->current_trajectory;
     soft_stop_trajectory_ = nullptr;
     return;
@@ -198,9 +229,7 @@ void PlanningValidatorNode::publishTrajectory()
   const auto handling_type = context_->get_handling();
 
   if (handling_type == InvalidTrajectoryHandlingType::PUBLISH_AS_IT_IS) {
-    pub_traj_->publish(*data->current_trajectory);
-    published_time_publisher_->publish_if_subscribed(
-      pub_traj_, data->current_trajectory->header.stamp);
+    publish_trajectory(*data->current_trajectory);
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 3000, "Caution! Invalid Trajectory published.");
     return;
@@ -216,9 +245,7 @@ void PlanningValidatorNode::publishTrajectory()
   }
 
   if (handling_type == InvalidTrajectoryHandlingType::USE_PREVIOUS_RESULT) {
-    const auto & pub_trajectory = *data->last_valid_trajectory;
-    pub_traj_->publish(pub_trajectory);
-    published_time_publisher_->publish_if_subscribed(pub_traj_, pub_trajectory.header.stamp);
+    publish_trajectory(*data->last_valid_trajectory);
     RCLCPP_ERROR(get_logger(), "Invalid Trajectory detected. Use previous trajectory.");
     return;
   }
@@ -232,26 +259,28 @@ void PlanningValidatorNode::publishTrajectory()
         data->current_acceleration->accel.accel.linear.x, params.soft_stop_deceleration,
         params.soft_stop_jerk_lim));
     }
-    const auto & pub_trajectory = *soft_stop_trajectory_;
-    pub_traj_->publish(pub_trajectory);
-    published_time_publisher_->publish_if_subscribed(pub_traj_, pub_trajectory.header.stamp);
+    publish_trajectory(*soft_stop_trajectory_);
     RCLCPP_ERROR(get_logger(), "Invalid Trajectory detected. Use soft stop trajectory.");
   }
 }
 
 void PlanningValidatorNode::publishProcessingTime(const double processing_time_ms)
 {
-  Float64Stamped msg{};
-  msg.stamp = this->now();
-  msg.data = processing_time_ms;
-  pub_processing_time_ms_->publish(msg);
+  auto loaned = pub_processing_time_ms_->borrow_loaned_message();
+  loaned->stamp = this->now();
+  loaned->data = processing_time_ms;
+  pub_processing_time_ms_->publish(std::move(loaned));
 }
 
 void PlanningValidatorNode::publishDebugInfo()
 {
   const auto & status = context_->validation_status;
   status->stamp = get_clock()->now();
-  pub_status_->publish(*status);
+  {
+    auto loaned = pub_status_->borrow_loaned_message();
+    *loaned = *status;
+    pub_status_->publish(std::move(loaned));
+  }
 
   const auto & data = context_->data;
 

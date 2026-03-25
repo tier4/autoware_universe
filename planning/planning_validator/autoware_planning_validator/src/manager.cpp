@@ -29,7 +29,7 @@ PlanningValidatorManager::PlanningValidatorManager()
 }
 
 void PlanningValidatorManager::load_plugin(
-  rclcpp::Node & node, const std::string & name,
+  agnocast::Node & node, const std::string & name,
   const std::shared_ptr<PlanningValidatorContext> & context)
 {
   // Check if the plugin is already loaded.
@@ -49,7 +49,7 @@ void PlanningValidatorManager::load_plugin(
   }
 }
 
-void PlanningValidatorManager::unload_plugin(rclcpp::Node & node, const std::string & name)
+void PlanningValidatorManager::unload_plugin(agnocast::Node & node, const std::string & name)
 {
   auto it = std::remove_if(loaded_plugins_.begin(), loaded_plugins_.end(), [&](const auto plugin) {
     return plugin->get_module_name() == name;

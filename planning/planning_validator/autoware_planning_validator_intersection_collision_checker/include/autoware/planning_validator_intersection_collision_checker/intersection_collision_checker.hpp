@@ -17,8 +17,8 @@
 
 #include "autoware/planning_validator_intersection_collision_checker/types.hpp"
 
+#include <agnocast/node/agnocast_node.hpp>
 #include <autoware/planning_validator/plugin_interface.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/safety_factor_array.hpp>
 
@@ -40,7 +40,7 @@ class IntersectionCollisionChecker : public PluginInterface
 {
 public:
   void init(
-    rclcpp::Node & node, const std::string & name,
+    agnocast::Node & node, const std::string & name,
     const std::shared_ptr<PlanningValidatorContext> & context) override;
   void validate() override;
   void setup_diag() override;
@@ -99,9 +99,9 @@ private:
 
   std::unique_ptr<intersection_collision_checker_node::ParamListener> param_listener_;
 
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_voxel_pointcloud_;
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_cluster_pointcloud_;
-  rclcpp::Publisher<StringStamped>::SharedPtr pub_string_;
+  agnocast::Publisher<PointCloud2>::SharedPtr pub_voxel_pointcloud_;
+  agnocast::Publisher<PointCloud2>::SharedPtr pub_cluster_pointcloud_;
+  agnocast::Publisher<StringStamped>::SharedPtr pub_string_;
 
   intersection_collision_checker_node::Params params_;
 

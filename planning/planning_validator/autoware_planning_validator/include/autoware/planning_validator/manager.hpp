@@ -18,8 +18,8 @@
 #include "autoware/planning_validator/plugin_interface.hpp"
 #include "autoware/planning_validator/types.hpp"
 
+#include <agnocast/node/agnocast_node.hpp>
 #include <pluginlib/class_loader.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 
@@ -34,9 +34,9 @@ class PlanningValidatorManager
 public:
   PlanningValidatorManager();
   void load_plugin(
-    rclcpp::Node & node, const std::string & name,
+    agnocast::Node & node, const std::string & name,
     const std::shared_ptr<PlanningValidatorContext> & context);
-  void unload_plugin(rclcpp::Node & node, const std::string & name);
+  void unload_plugin(agnocast::Node & node, const std::string & name);
   void validate();
 
 private:

@@ -17,8 +17,8 @@
 
 #include "autoware/planning_validator_trajectory_checker/parameters.hpp"
 
+#include <agnocast/node/agnocast_node.hpp>
 #include <autoware/planning_validator/plugin_interface.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <memory>
 #include <string>
@@ -30,7 +30,7 @@ class TrajectoryChecker : public PluginInterface
 {
 public:
   void init(
-    rclcpp::Node & node, const std::string & name,
+    agnocast::Node & node, const std::string & name,
     const std::shared_ptr<PlanningValidatorContext> & context) override;
   void validate() override;
   void setup_diag() override;
@@ -55,7 +55,7 @@ public:
   bool check_trajectory_shift();
 
 private:
-  void setup_parameters(rclcpp::Node & node);
+  void setup_parameters(agnocast::Node & node);
 
   void set_diag_status(
     DiagnosticStatusWrapper & stat, const bool & is_ok, const std::string & msg) const;

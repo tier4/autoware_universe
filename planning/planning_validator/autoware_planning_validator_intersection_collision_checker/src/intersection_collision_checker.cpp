@@ -49,7 +49,7 @@ using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using autoware_utils::get_or_declare_parameter;
 
 void IntersectionCollisionChecker::init(
-  rclcpp::Node & node, const std::string & name,
+  agnocast::Node & node, const std::string & name,
   const std::shared_ptr<PlanningValidatorContext> & context)
 {
   module_name_ = name;
@@ -74,7 +74,7 @@ void IntersectionCollisionChecker::init(
     node.create_publisher<StringStamped>("~/intersection_collision_checker/debug/state", 1);
 
   planning_factor_interface_ =
-    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>>(
       &node, "intersection_collision_checker");
 
   setup_diag();
@@ -591,10 +591,10 @@ void IntersectionCollisionChecker::publish_markers(const DebugData & debug_data)
     ss << "TRACKING OBJECTS: " << debug_data.pcd_objects.size() << "\n";
     ss << "PROCESSING TIME: " << debug_data.processing_time_detail_ms << "[ms]\n";
 
-    StringStamped string_stamp;
-    string_stamp.stamp = clock_->now();
-    string_stamp.data = ss.str();
-    pub_string_->publish(string_stamp);
+    auto loaned_str = pub_string_->borrow_loaned_message();
+    loaned_str->stamp = clock_->now();
+    loaned_str->data = ss.str();
+    pub_string_->publish(std::move(loaned_str));
   }
 
   context_->debug_pose_publisher->pushMarkers(
@@ -606,11 +606,15 @@ void IntersectionCollisionChecker::publish_markers(const DebugData & debug_data)
     collision_checker_utils::get_objects_marker_array(debug_data));
 
   if (debug_data.voxel_points) {
-    pub_voxel_pointcloud_->publish(*debug_data.voxel_points);
+    auto loaned = pub_voxel_pointcloud_->borrow_loaned_message();
+    *loaned = *debug_data.voxel_points;
+    pub_voxel_pointcloud_->publish(std::move(loaned));
   }
 
   if (debug_data.cluster_points) {
-    pub_cluster_pointcloud_->publish(*debug_data.cluster_points);
+    auto loaned = pub_cluster_pointcloud_->borrow_loaned_message();
+    *loaned = *debug_data.cluster_points;
+    pub_cluster_pointcloud_->publish(std::move(loaned));
   }
 }
 

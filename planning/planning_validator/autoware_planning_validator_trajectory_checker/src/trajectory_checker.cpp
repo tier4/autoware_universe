@@ -33,7 +33,7 @@ namespace autoware::planning_validator
 using autoware_utils::get_or_declare_parameter;
 
 void TrajectoryChecker::init(
-  rclcpp::Node & node, const std::string & name,
+  agnocast::Node & node, const std::string & name,
   const std::shared_ptr<PlanningValidatorContext> & context)
 {
   module_name_ = name;
@@ -48,7 +48,7 @@ void TrajectoryChecker::init(
   setup_diag();
 }
 
-void TrajectoryChecker::setup_parameters(rclcpp::Node & node)
+void TrajectoryChecker::setup_parameters(agnocast::Node & node)
 {
   const int default_handling_value = get_or_declare_parameter<int>(node, "default_handling_type");
 
