@@ -15,9 +15,9 @@
 #ifndef DEBUG_MARKER_HPP_
 #define DEBUG_MARKER_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
 #include <geometry_msgs/msg/polygon_stamped.hpp>
@@ -56,7 +56,7 @@ public:
     const std::string & object_label, const double & surround_check_front_distance,
     const double & surround_check_side_distance, const double & surround_check_back_distance,
     const double & surround_check_hysteresis_distance, const geometry_msgs::msg::Pose & self_pose,
-    const rclcpp::Clock::SharedPtr clock, rclcpp::Node & node);
+    const rclcpp::Clock::SharedPtr clock, agnocast::Node & node);
 
   bool pushPose(const geometry_msgs::msg::Pose & pose, const PoseType & type);
   bool pushObstaclePoint(const geometry_msgs::msg::Point & obstacle_point, const PointType & type);
@@ -64,13 +64,13 @@ public:
   void publishFootprints();
 
 private:
-  rclcpp::Publisher<MarkerArray>::SharedPtr debug_viz_pub_;
+  agnocast::Publisher<MarkerArray>::SharedPtr debug_viz_pub_;
 
-  rclcpp::Publisher<PolygonStamped>::SharedPtr vehicle_footprint_pub_;
-  rclcpp::Publisher<PolygonStamped>::SharedPtr vehicle_footprint_offset_pub_;
-  rclcpp::Publisher<PolygonStamped>::SharedPtr vehicle_footprint_recover_offset_pub_;
+  agnocast::Publisher<PolygonStamped>::SharedPtr vehicle_footprint_pub_;
+  agnocast::Publisher<PolygonStamped>::SharedPtr vehicle_footprint_offset_pub_;
+  agnocast::Publisher<PolygonStamped>::SharedPtr vehicle_footprint_recover_offset_pub_;
 
-  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>>
     planning_factor_interface_;
 
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;

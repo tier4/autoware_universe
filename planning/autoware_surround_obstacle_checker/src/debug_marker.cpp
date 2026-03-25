@@ -66,10 +66,10 @@ SurroundObstacleCheckerDebugNode::SurroundObstacleCheckerDebugNode(
   const double & surround_check_front_distance, const double & surround_check_side_distance,
   const double & surround_check_back_distance, const double & surround_check_hysteresis_distance,
   const geometry_msgs::msg::Pose & self_pose, const rclcpp::Clock::SharedPtr clock,
-  rclcpp::Node & node)
-: planning_factor_interface_{std::make_unique<
-    autoware::planning_factor_interface::PlanningFactorInterface>(
-    &node, "surround_obstacle_checker")},
+  agnocast::Node & node)
+: planning_factor_interface_{
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>>(
+      &node, "surround_obstacle_checker")},
   vehicle_info_(vehicle_info),
   object_label_(object_label),
   surround_check_front_distance_(surround_check_front_distance),
@@ -116,32 +116,48 @@ void SurroundObstacleCheckerDebugNode::publishFootprints()
   const auto ego_polygon = createSelfPolygon(vehicle_info_);
 
   /* publish vehicle footprint polygon */
-  const auto footprint = boostPolygonToPolygonStamped(ego_polygon, self_pose_.position.z);
-  vehicle_footprint_pub_->publish(footprint);
+  {
+    const auto footprint = boostPolygonToPolygonStamped(ego_polygon, self_pose_.position.z);
+    auto msg = vehicle_footprint_pub_->borrow_loaned_message();
+    *msg = footprint;
+    vehicle_footprint_pub_->publish(std::move(msg));
+  }
 
   /* publish vehicle footprint polygon with offset */
-  const auto polygon_with_offset = createSelfPolygon(
-    vehicle_info_, surround_check_front_distance_, surround_check_side_distance_,
-    surround_check_back_distance_);
-  const auto footprint_with_offset =
-    boostPolygonToPolygonStamped(polygon_with_offset, self_pose_.position.z);
-  vehicle_footprint_offset_pub_->publish(footprint_with_offset);
+  {
+    const auto polygon_with_offset = createSelfPolygon(
+      vehicle_info_, surround_check_front_distance_, surround_check_side_distance_,
+      surround_check_back_distance_);
+    const auto footprint_with_offset =
+      boostPolygonToPolygonStamped(polygon_with_offset, self_pose_.position.z);
+    auto msg = vehicle_footprint_offset_pub_->borrow_loaned_message();
+    *msg = footprint_with_offset;
+    vehicle_footprint_offset_pub_->publish(std::move(msg));
+  }
 
   /* publish vehicle footprint polygon with recover offset */
-  const auto polygon_with_recover_offset = createSelfPolygon(
-    vehicle_info_, surround_check_front_distance_ + surround_check_hysteresis_distance_,
-    surround_check_side_distance_ + surround_check_hysteresis_distance_,
-    surround_check_back_distance_ + surround_check_hysteresis_distance_);
-  const auto footprint_with_recover_offset =
-    boostPolygonToPolygonStamped(polygon_with_recover_offset, self_pose_.position.z);
-  vehicle_footprint_recover_offset_pub_->publish(footprint_with_recover_offset);
+  {
+    const auto polygon_with_recover_offset = createSelfPolygon(
+      vehicle_info_, surround_check_front_distance_ + surround_check_hysteresis_distance_,
+      surround_check_side_distance_ + surround_check_hysteresis_distance_,
+      surround_check_back_distance_ + surround_check_hysteresis_distance_);
+    const auto footprint_with_recover_offset =
+      boostPolygonToPolygonStamped(polygon_with_recover_offset, self_pose_.position.z);
+    auto msg = vehicle_footprint_recover_offset_pub_->borrow_loaned_message();
+    *msg = footprint_with_recover_offset;
+    vehicle_footprint_recover_offset_pub_->publish(std::move(msg));
+  }
 }
 
 void SurroundObstacleCheckerDebugNode::publish()
 {
   /* publish debug marker for rviz */
-  const auto visualization_msg = makeVisualizationMarker();
-  debug_viz_pub_->publish(visualization_msg);
+  {
+    const auto visualization_msg = makeVisualizationMarker();
+    auto msg = debug_viz_pub_->borrow_loaned_message();
+    *msg = visualization_msg;
+    debug_viz_pub_->publish(std::move(msg));
+  }
 
   /* publish stop reason for autoware api */
   if (stop_pose_ptr_ != nullptr) {

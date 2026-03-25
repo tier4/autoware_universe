@@ -59,7 +59,8 @@ using autoware_utils::create_point;
 using autoware_utils::pose2transform;
 
 SurroundObstacleCheckerNode::SurroundObstacleCheckerNode(const rclcpp::NodeOptions & node_options)
-: Node("surround_obstacle_checker_node", node_options)
+: agnocast::Node("surround_obstacle_checker_node", node_options),
+  tf_buffer_(this->get_clock())
 {
   label_map_ = {
     {ObjectClassification::UNKNOWN, "unknown"}, {ObjectClassification::CAR, "car"},
@@ -71,12 +72,19 @@ SurroundObstacleCheckerNode::SurroundObstacleCheckerNode(const rclcpp::NodeOptio
     param_listener_ = std::make_shared<surround_obstacle_checker_node::ParamListener>(
       this->get_node_parameters_interface());
 
-    logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
+    logger_configure_ =
+      std::make_unique<autoware_utils::BasicLoggerLevelConfigure<agnocast::Node>>(this);
   }
 
-  vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
+  vehicle_info_ =
+    autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(*this).getVehicleInfo();
+
+  // TF
+  tf_listener_ = std::make_unique<agnocast::TransformListener>(tf_buffer_, *this);
 
   // Agnocast polling subscribers
+  sub_odometry_ = std::make_shared<agnocast::PollingSubscriber<nav_msgs::msg::Odometry>>(
+    this, "~/input/odometry");
   sub_pointcloud_ = std::make_shared<agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>>(
     this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos());
   sub_dynamic_objects_ = std::make_shared<agnocast::PollingSubscriber<PredictedObjects>>(
@@ -85,26 +93,27 @@ SurroundObstacleCheckerNode::SurroundObstacleCheckerNode(const rclcpp::NodeOptio
   // Publishers
   pub_clear_velocity_limit_ = this->create_publisher<VelocityLimitClearCommand>(
     "~/output/velocity_limit_clear_command", rclcpp::QoS{1}.transient_local());
-  pub_velocity_limit_ = this->create_publisher<VelocityLimit>(
-    "~/output/max_velocity", rclcpp::QoS{1}.transient_local());
+  pub_velocity_limit_ =
+    this->create_publisher<VelocityLimit>("~/output/max_velocity", rclcpp::QoS{1}.transient_local());
   pub_processing_time_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
 
   using std::chrono_literals::operator""ms;
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), 100ms, std::bind(&SurroundObstacleCheckerNode::onTimer, this));
+  timer_ = this->create_timer(100ms, std::bind(&SurroundObstacleCheckerNode::onTimer, this));
 
   // Stop Checker
-  vehicle_stop_checker_ = std::make_unique<VehicleStopChecker>(this);
+  vehicle_stop_checker_ =
+    std::make_unique<VehicleStopCheckerTemplate<agnocast::Node>>(this);
 
   // Debug
-  odometry_ptr_ = std::make_shared<nav_msgs::msg::Odometry>();
   {
+    // Initialize with a default odometry pose
+    geometry_msgs::msg::Pose default_pose;
     const auto param = param_listener_->get_params();
     const auto check_distances = getCheckDistances(param.debug_footprint_label);
     debug_ptr_ = std::make_shared<SurroundObstacleCheckerDebugNode>(
       vehicle_info_, param.debug_footprint_label, check_distances.at(0), check_distances.at(1),
-      check_distances.at(2), param.surround_check_hysteresis_distance, odometry_ptr_->pose.pose,
+      check_distances.at(2), param.surround_check_hysteresis_distance, default_pose,
       this->get_clock(), *this);
   }
 }
@@ -134,7 +143,7 @@ void SurroundObstacleCheckerNode::onTimer()
   autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch;
   stop_watch.tic();
 
-  odometry_ptr_ = sub_odometry_.take_data();
+  odometry_ptr_ = sub_odometry_->take_data();
   pointcloud_ptr_ = sub_pointcloud_->take_data();
   object_ptr_ = sub_dynamic_objects_->take_data();
   if (!odometry_ptr_) {
@@ -185,13 +194,14 @@ void SurroundObstacleCheckerNode::onTimer()
 
       state_ = State::STOP;
 
-      auto velocity_limit = std::make_shared<VelocityLimit>();
-      velocity_limit->stamp = this->now();
-      velocity_limit->max_velocity = 0.0;
-      velocity_limit->use_constraints = false;
-      velocity_limit->sender = "surround_obstacle_checker";
-
-      pub_velocity_limit_->publish(*velocity_limit);
+      {
+        auto velocity_limit = pub_velocity_limit_->borrow_loaned_message();
+        velocity_limit->stamp = this->now();
+        velocity_limit->max_velocity = 0.0;
+        velocity_limit->use_constraints = false;
+        velocity_limit->sender = "surround_obstacle_checker";
+        pub_velocity_limit_->publish(std::move(velocity_limit));
+      }
 
       // do not start when there is a obstacle near the ego vehicle.
       RCLCPP_WARN(get_logger(), "do not start because there is obstacle near the ego vehicle.");
@@ -214,12 +224,13 @@ void SurroundObstacleCheckerNode::onTimer()
 
       state_ = State::PASS;
 
-      auto velocity_limit_clear_command = std::make_shared<VelocityLimitClearCommand>();
-      velocity_limit_clear_command->stamp = this->now();
-      velocity_limit_clear_command->command = true;
-      velocity_limit_clear_command->sender = "surround_obstacle_checker";
-
-      pub_clear_velocity_limit_->publish(*velocity_limit_clear_command);
+      {
+        auto velocity_limit_clear_command = pub_clear_velocity_limit_->borrow_loaned_message();
+        velocity_limit_clear_command->stamp = this->now();
+        velocity_limit_clear_command->command = true;
+        velocity_limit_clear_command->sender = "surround_obstacle_checker";
+        pub_clear_velocity_limit_->publish(std::move(velocity_limit_clear_command));
+      }
 
       break;
     }
@@ -236,10 +247,12 @@ void SurroundObstacleCheckerNode::onTimer()
     debug_ptr_->pushPose(odometry_ptr_->pose.pose, PoseType::NoStart);
   }
 
-  autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
-  processing_time_msg.stamp = get_clock()->now();
-  processing_time_msg.data = stop_watch.toc();
-  pub_processing_time_->publish(processing_time_msg);
+  {
+    auto processing_time_msg = pub_processing_time_->borrow_loaned_message();
+    processing_time_msg->stamp = get_clock()->now();
+    processing_time_msg->data = stop_watch.toc();
+    pub_processing_time_->publish(std::move(processing_time_msg));
+  }
 
   debug_ptr_->publish();
 }
@@ -372,8 +385,8 @@ std::optional<geometry_msgs::msg::TransformStamped> SurroundObstacleCheckerNode:
   geometry_msgs::msg::TransformStamped transform_stamped;
 
   try {
-    transform_stamped =
-      tf_buffer_.lookupTransform(source, target, stamp, tf2::durationFromSec(duration_sec));
+    transform_stamped = tf_buffer_.lookupTransform(
+      source, target, stamp, rclcpp::Duration::from_seconds(duration_sec));
   } catch (const tf2::TransformException & ex) {
     return {};
   }

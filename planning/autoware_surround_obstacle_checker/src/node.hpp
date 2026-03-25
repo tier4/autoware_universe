@@ -20,11 +20,10 @@
 #include "debug_marker.hpp"
 #include "surround_obstacle_checker_node_parameters.hpp"
 
+#include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/tf2.hpp>
 #include <autoware/motion_utils/vehicle/vehicle_state_checker.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
-#include <rclcpp/rclcpp.hpp>
-
-#include <agnocast/agnocast.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
@@ -37,8 +36,6 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <tf2/utils.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <optional>
@@ -50,7 +47,7 @@
 namespace autoware::surround_obstacle_checker
 {
 
-using autoware::motion_utils::VehicleStopChecker;
+using autoware::motion_utils::VehicleStopCheckerTemplate;
 using autoware::vehicle_info_utils::VehicleInfo;
 using autoware_internal_planning_msgs::msg::VelocityLimit;
 using autoware_internal_planning_msgs::msg::VelocityLimitClearCommand;
@@ -61,7 +58,7 @@ using Obstacle = std::pair<double /* distance */, geometry_msgs::msg::Point>;
 
 enum class State { PASS, STOP };
 
-class SurroundObstacleCheckerNode : public rclcpp::Node
+class SurroundObstacleCheckerNode : public agnocast::Node
 {
 public:
   explicit SurroundObstacleCheckerNode(const rclcpp::NodeOptions & node_options);
@@ -72,12 +69,6 @@ private:
   bool getUseDynamicObject() const;
 
   void onTimer();
-
-  void onPointCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg);
-
-  void onDynamicObjects(const PredictedObjects::ConstSharedPtr msg);
-
-  void onOdometry(const nav_msgs::msg::Odometry::ConstSharedPtr msg);
 
   std::optional<Obstacle> getNearestObstacle() const;
 
@@ -95,25 +86,21 @@ private:
     -> std::pair<bool, std::optional<rclcpp::Time>>;
 
   // ros
-  mutable tf2_ros::Buffer tf_buffer_{get_clock()};
-  mutable tf2_ros::TransformListener tf_listener_{tf_buffer_};
-  rclcpp::TimerBase::SharedPtr timer_;
+  mutable agnocast::Buffer tf_buffer_;
+  std::unique_ptr<agnocast::TransformListener> tf_listener_;
+  agnocast::TimerBase::SharedPtr timer_;
 
   // publisher and subscriber
-  autoware_utils::InterProcessPollingSubscriber<nav_msgs::msg::Odometry> sub_odometry_{
-    this, "~/input/odometry"};
+  agnocast::PollingSubscriber<nav_msgs::msg::Odometry>::SharedPtr sub_odometry_;
   agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pointcloud_;
   agnocast::PollingSubscriber<PredictedObjects>::SharedPtr sub_dynamic_objects_;
-  rclcpp::Publisher<VelocityLimitClearCommand>::SharedPtr pub_clear_velocity_limit_;
-  rclcpp::Publisher<VelocityLimit>::SharedPtr pub_velocity_limit_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+  agnocast::Publisher<VelocityLimitClearCommand>::SharedPtr pub_clear_velocity_limit_;
+  agnocast::Publisher<VelocityLimit>::SharedPtr pub_velocity_limit_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pub_processing_time_;
 
-  // parameter callback result
-  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
-
   // stop checker
-  std::unique_ptr<VehicleStopChecker> vehicle_stop_checker_;
+  std::unique_ptr<VehicleStopCheckerTemplate<agnocast::Node>> vehicle_stop_checker_;
 
   // debug
   std::shared_ptr<SurroundObstacleCheckerDebugNode> debug_ptr_;
@@ -123,7 +110,7 @@ private:
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
 
   // data
-  nav_msgs::msg::Odometry::ConstSharedPtr odometry_ptr_;
+  agnocast::ipc_shared_ptr<const nav_msgs::msg::Odometry> odometry_ptr_;
   agnocast::ipc_shared_ptr<const sensor_msgs::msg::PointCloud2> pointcloud_ptr_;
   agnocast::ipc_shared_ptr<const PredictedObjects> object_ptr_;
 
@@ -131,7 +118,7 @@ private:
   State state_ = State::PASS;
   std::optional<rclcpp::Time> last_obstacle_found_time_;
 
-  std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
+  std::unique_ptr<autoware_utils::BasicLoggerLevelConfigure<agnocast::Node>> logger_configure_;
 
   std::unordered_map<int, std::string> label_map_;
 
