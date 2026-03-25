@@ -67,15 +67,14 @@ private:
 
   DebugData debug_data_;
 
+  std::unique_ptr<utils::obstacle_stop::PointCloudFilter> pointcloud_filter_;
+
   MarkerArray marker_array_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_voxel_pointcloud_;
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_cluster_pointcloud_;
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_clustered_pointcloud_;
 
-  std::optional<CollisionPoint> check_predicted_objects(
-    const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon);
-  std::optional<CollisionPoint> check_pointcloud(
-    const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon);
+  std::optional<CollisionPoint> check_predicted_objects(const TrajectoryPoints & traj_points);
+  std::optional<CollisionPoint> check_pointcloud(const TrajectoryPoints & traj_points);
 
   bool set_stop_point(TrajectoryPoints & traj_points);
 
