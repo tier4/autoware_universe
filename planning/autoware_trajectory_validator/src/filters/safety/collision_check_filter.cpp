@@ -22,6 +22,8 @@
 
 #include <boost/geometry.hpp>
 
+#include <fmt/core.h>
+
 #include <algorithm>
 #include <any>
 #include <cmath>
@@ -480,7 +482,7 @@ void CollisionCheckFilter::add_debug_markers(
   const std::vector<DebugData> & debug_data_vec, const rclcpp::Time & stamp)
 {
   int id = debug_markers_.markers.empty() ? 0 : debug_markers_.markers.back().id + 1;
-  // 単一の Polygon2d を Marker に変換するラムダ式
+
   auto add_poly_marker =
     [&](const Polygon2d & poly, const std::string & ns, float r, float g, float b) {
       if (poly.outer().empty()) return;
@@ -498,7 +500,6 @@ void CollisionCheckFilter::add_debug_markers(
       m.color.b = b;
       m.color.a = 0.9;
 
-      // 頂点を追加
       for (const auto & p : poly.outer()) {
         geometry_msgs::msg::Point pt;
         pt.x = p.x();
@@ -516,9 +517,7 @@ void CollisionCheckFilter::add_debug_markers(
       debug_markers_.markers.push_back(m);
     };
 
-  // ベクター内の全オブジェクトについて描画
   for (const auto & data : debug_data_vec) {
-    // Egoは青、Objectは赤で描画 (必要なら ns に data.object_id を含めても良いです)
     add_poly_marker(data.ego_polygons, "ego_worst_pet_" + data.object_id, 0.0, 0.0, 1.0);
     add_poly_marker(data.object_polygons, "obj_worst_pet_" + data.object_id, 1.0, 0.0, 0.0);
   }
@@ -561,17 +560,10 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   // stopwatch.tic();
 
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
-    // const auto total_time_us = stopwatch.toc();
-    // std::cerr
-    //   << "CollisionCheckFilter: No predicted objects, skipping collision check. Time taken: "
-    //   << total_time_us / 1000.0 << " ms" << std::endl;
     return {};  // No objects to check collision with
   }
 
   if (traj_points.empty()) {
-    // const auto total_time_us = stopwatch.toc();
-    // std::cerr << "CollisionCheckFilter: Empty trajectory, skipping collision check. Time taken: "
-    //           << total_time_us / 1000.0 << " ms" << std::endl;
     return {};  // No trajectory to check
   }
 
@@ -608,6 +600,7 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
     auto pet = collision_result.pet;
     auto ttc = collision_result.ttc;
     if (pet.has_value()) {
+      // todo(takagi): should be refactored for optional access.
       error_msg += fmt::format(
         "PET collision, ID: {}, PET: {}, TTC: {}, stamp: {}.{}; ", object_trajectory_data.getId(),
         pet.value(), ttc.has_value() ? std::to_string(ttc.value()) : "N/A",
@@ -640,17 +633,10 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   }
 
   if (!error_msg.empty()) {
-    // const auto total_time_us = stopwatch.toc();
-    // std::cerr << "CollisionCheckFilter: " << error_msg << " Time taken: " << total_time_us /
-    // 1000.0
-    //           << " ms" << std::endl;
     RCLCPP_WARN(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", error_msg.c_str());
     return tl::make_unexpected(error_msg);
   }
 
-  // const auto total_time_us = stopwatch.toc();
-  // std::cerr << "CollisionCheckFilter: No collisions detected. Time taken: "
-  //           << total_time_us / 1000.0 << " ms" << std::endl;
   return {};
 }
 
