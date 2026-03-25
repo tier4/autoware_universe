@@ -149,15 +149,12 @@ public:
     const TrajectoryPoints & traj_points, const FilterContext & context) override;
 
   void update_parameters(const validator::Params & params) final;
-  void make_debug_publisher(rclcpp::Node & node) final;
 
 private:
   validator::Params::CollisionCheck::PetCollision pet_collision_params_;
   validator::Params::CollisionCheck::Rss rss_params_;
 
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
-  void publish_debug_markers(
-    const std::vector<DebugData> & debug_data_vec, const rclcpp::Time & stamp) const;
+  void add_debug_markers(const std::vector<DebugData> & debug_data_vec, const rclcpp::Time & stamp);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety

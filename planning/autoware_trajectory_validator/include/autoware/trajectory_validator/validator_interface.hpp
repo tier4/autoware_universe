@@ -22,6 +22,7 @@
 #include <tl_expected/expected.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <memory>
 #include <string>
@@ -57,8 +58,6 @@ public:
     vehicle_info_ptr_ = std::make_shared<VehicleInfo>(vehicle_info);
   }
 
-  virtual void make_debug_publisher(rclcpp::Node & node) {}
-
   void set_category(const std::string & category) { category_ = category; }
 
   [[nodiscard]] std::string category() const { return category_; }
@@ -67,10 +66,16 @@ public:
 
   [[nodiscard]] virtual bool is_debug_mode() const { return true; }
 
+  [[nodiscard]] visualization_msgs::msg::MarkerArray take_debug_marker_array()
+  {
+    return std::exchange(debug_markers_, visualization_msgs::msg::MarkerArray{});
+  }
+
 protected:
   std::string name_;
   std::string category_;
   std::shared_ptr<VehicleInfo> vehicle_info_ptr_;
+  visualization_msgs::msg::MarkerArray debug_markers_;
 };
 }  // namespace autoware::trajectory_validator::plugin
 

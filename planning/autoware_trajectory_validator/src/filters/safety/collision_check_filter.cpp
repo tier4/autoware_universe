@@ -470,29 +470,10 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
   rss_params_ = params.collision_check.rss;
 }
 
-void CollisionCheckFilter::make_debug_publisher(rclcpp::Node & node)
+void CollisionCheckFilter::add_debug_markers(
+  const std::vector<DebugData> & debug_data_vec, const rclcpp::Time & stamp)
 {
-  debug_marker_pub_ = node.create_publisher<visualization_msgs::msg::MarkerArray>(
-    "~/debug/collision_check/pet_polygons", 1);
-}
-
-void CollisionCheckFilter::publish_debug_markers(
-  const std::vector<DebugData> & debug_data_vec, const rclcpp::Time & stamp) const
-{
-  visualization_msgs::msg::MarkerArray msg;
-
-  // 最初に DELETEALL を入れておくと、古いマーカーのゴミ（ゴースト）が消えて綺麗に描画されます
-  visualization_msgs::msg::Marker clear_marker;
-  clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
-  msg.markers.push_back(clear_marker);
-
-  if (debug_data_vec.empty()) {
-    debug_marker_pub_->publish(msg);
-    return;  // 衝突がなければ DELETEALL だけ送って終了
-  }
-
   int id = 0;  // 全マーカーを通したユニークID
-
   // 単一の Polygon2d を Marker に変換するラムダ式
   auto add_poly_marker =
     [&](const Polygon2d & poly, const std::string & ns, float r, float g, float b) {
@@ -526,7 +507,7 @@ void CollisionCheckFilter::publish_debug_markers(
       pt_first.z = 0.0;
       m.points.push_back(pt_first);
 
-      msg.markers.push_back(m);
+      debug_markers_.markers.push_back(m);
     };
 
   // ベクター内の全オブジェクトについて描画
@@ -535,8 +516,6 @@ void CollisionCheckFilter::publish_debug_markers(
     add_poly_marker(data.ego_polygons, "ego_worst_pet_" + data.object_id, 0.0, 0.0, 1.0);
     add_poly_marker(data.object_polygons, "obj_worst_pet_" + data.object_id, 1.0, 0.0, 0.0);
   }
-
-  debug_marker_pub_->publish(msg);
 }
 
 double CollisionCheckFilter::compute_rss_deceleration(
@@ -632,9 +611,7 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
       debug_data_vec.push_back(obj_debug_data);
     }
   }
-  if (debug_marker_pub_) {
-    publish_debug_markers(debug_data_vec, context.odometry->header.stamp);
-  }
+  add_debug_markers(debug_data_vec, context.odometry->header.stamp);
 
   // calc RSS metrics
   {

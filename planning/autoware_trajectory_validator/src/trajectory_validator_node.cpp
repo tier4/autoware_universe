@@ -193,6 +193,10 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
 
   processing_time_ms["Total"] = stop_watch.toc("Total");
 
+  for (const auto & plugin : plugins_) {
+    pub_debug_markers_->publish<visualization_msgs::msg::MarkerArray>(
+      plugin->get_name(), plugin->take_debug_marker_array());
+  }
   publish_processing_time(processing_time_ms);
   publish_internal_state(processing_time_ms, evaluation_tables_, context.odometry->pose.pose);
   update_diagnostic(*msg, *filtered_msg);
@@ -223,7 +227,6 @@ void TrajectoryValidator::load_metric(const std::string & name)
 
     plugin->set_vehicle_info(vehicle_info_);
     plugin->update_parameters(params_);
-    plugin->make_debug_publisher(*this);
 
     plugins_.push_back(plugin);
 
