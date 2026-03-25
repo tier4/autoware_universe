@@ -27,6 +27,8 @@
 #include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
 #include "gtest/gtest.h"
 
+#include <agnocast/node/agnocast_node.hpp>
+
 #include <Eigen/Core>
 #include <Eigen/Sparse>
 
@@ -173,7 +175,7 @@ class MPTOptimizer
 {
 public:
   MPTOptimizer(
-    rclcpp::Node * node, const bool enable_debug_info, const EgoNearestParam ego_nearest_param,
+    agnocast::Node * node, const bool enable_debug_info, const EgoNearestParam ego_nearest_param,
     const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
     const TrajectoryParam & traj_param, const std::shared_ptr<DebugData> debug_data_ptr,
     const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_);
@@ -240,7 +242,7 @@ private:
   struct MPTParam
   {
     explicit MPTParam(
-      rclcpp::Node * node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info);
+      agnocast::Node * node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info);
     MPTParam() = default;
     void onParam(const std::vector<rclcpp::Parameter> & parameters);
 
@@ -309,9 +311,9 @@ private:
   };
 
   // publisher
-  rclcpp::Publisher<Trajectory>::SharedPtr debug_fixed_traj_pub_;
-  rclcpp::Publisher<Trajectory>::SharedPtr debug_ref_traj_pub_;
-  rclcpp::Publisher<Trajectory>::SharedPtr debug_mpt_traj_pub_;
+  agnocast::Publisher<Trajectory>::SharedPtr debug_fixed_traj_pub_;
+  agnocast::Publisher<Trajectory>::SharedPtr debug_ref_traj_pub_;
+  agnocast::Publisher<Trajectory>::SharedPtr debug_mpt_traj_pub_;
 
   // argument
   bool enable_debug_info_;

@@ -24,7 +24,7 @@
 
 namespace autoware::path_optimizer
 {
-ReplanChecker::ReplanChecker(rclcpp::Node * node, const EgoNearestParam & ego_nearest_param)
+ReplanChecker::ReplanChecker(agnocast::Node * node, const EgoNearestParam & ego_nearest_param)
 : ego_nearest_param_(ego_nearest_param), logger_(node->get_logger().get_child("replan_checker"))
 {
   max_path_shape_around_ego_lat_dist_ =

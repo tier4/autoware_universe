@@ -175,7 +175,7 @@ double calcLateralDistToBounds(
 }  // namespace
 
 MPTOptimizer::MPTParam::MPTParam(
-  rclcpp::Node * node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info)
+  agnocast::Node * node, const autoware::vehicle_info_utils::VehicleInfo & vehicle_info)
 {
   {  // option
     steer_limit_constraint = node->declare_parameter<bool>("mpt.option.steer_limit_constraint");
@@ -398,7 +398,7 @@ void MPTOptimizer::MPTParam::onParam(const std::vector<rclcpp::Parameter> & para
 }
 
 MPTOptimizer::MPTOptimizer(
-  rclcpp::Node * node, const bool enable_debug_info, const EgoNearestParam ego_nearest_param,
+  agnocast::Node * node, const bool enable_debug_info, const EgoNearestParam ego_nearest_param,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
   const TrajectoryParam & traj_param, const std::shared_ptr<DebugData> debug_data_ptr,
   const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper)
@@ -1688,18 +1688,27 @@ void MPTOptimizer::publishDebugTrajectories(
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
   // reference points
-  const auto ref_traj = autoware::motion_utils::convertToTrajectory(
-    trajectory_utils::convertToTrajectoryPoints(ref_points), header);
-  debug_ref_traj_pub_->publish(ref_traj);
+  {
+    auto ref_traj_msg = debug_ref_traj_pub_->borrow_loaned_message();
+    *ref_traj_msg = autoware::motion_utils::convertToTrajectory(
+      trajectory_utils::convertToTrajectoryPoints(ref_points), header);
+    debug_ref_traj_pub_->publish(std::move(ref_traj_msg));
+  }
 
   // fixed reference points
-  const auto fixed_traj_points = extractFixedPoints(ref_points);
-  const auto fixed_traj = autoware::motion_utils::convertToTrajectory(fixed_traj_points, header);
-  debug_fixed_traj_pub_->publish(fixed_traj);
+  {
+    const auto fixed_traj_points = extractFixedPoints(ref_points);
+    auto fixed_traj_msg = debug_fixed_traj_pub_->borrow_loaned_message();
+    *fixed_traj_msg = autoware::motion_utils::convertToTrajectory(fixed_traj_points, header);
+    debug_fixed_traj_pub_->publish(std::move(fixed_traj_msg));
+  }
 
   // mpt points
-  const auto mpt_traj = autoware::motion_utils::convertToTrajectory(mpt_traj_points, header);
-  debug_mpt_traj_pub_->publish(mpt_traj);
+  {
+    auto mpt_traj_msg = debug_mpt_traj_pub_->borrow_loaned_message();
+    *mpt_traj_msg = autoware::motion_utils::convertToTrajectory(mpt_traj_points, header);
+    debug_mpt_traj_pub_->publish(std::move(mpt_traj_msg));
+  }
 }
 
 std::vector<TrajectoryPoint> MPTOptimizer::extractFixedPoints(

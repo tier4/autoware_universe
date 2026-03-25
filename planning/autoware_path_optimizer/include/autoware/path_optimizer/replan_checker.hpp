@@ -19,6 +19,7 @@
 #include "autoware/path_optimizer/mpt_optimizer.hpp"
 #include "autoware/path_optimizer/type_alias.hpp"
 
+#include <agnocast/node/agnocast_node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -29,7 +30,7 @@ namespace autoware::path_optimizer
 class ReplanChecker
 {
 public:
-  explicit ReplanChecker(rclcpp::Node * node, const EgoNearestParam & ego_nearest_param);
+  explicit ReplanChecker(agnocast::Node * node, const EgoNearestParam & ego_nearest_param);
   void onParam(const std::vector<rclcpp::Parameter> & parameters);
 
   bool isResetRequired(const PlannerData & planner_data) const;

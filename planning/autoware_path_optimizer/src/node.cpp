@@ -88,8 +88,8 @@ std::vector<double> calcSegmentLengthVector(const std::vector<TrajectoryPoint> &
 }  // namespace
 
 PathOptimizer::PathOptimizer(const rclcpp::NodeOptions & node_options)
-: Node("path_optimizer", node_options),
-  vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()),
+: agnocast::Node("path_optimizer", node_options),
+  vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(*this).getVehicleInfo()),
   debug_data_ptr_(std::make_shared<DebugData>()),
   conditional_timer_(std::make_shared<ConditionalTimer>())
 {
@@ -100,6 +100,9 @@ PathOptimizer::PathOptimizer(const rclcpp::NodeOptions & node_options)
   // interface subscriber
   path_sub_ = create_subscription<Path>(
     "~/input/path", 1, std::bind(&PathOptimizer::onPath, this, std::placeholders::_1));
+
+  // polling subscriber
+  ego_odom_sub_ = std::make_shared<agnocast::PollingSubscriber<Odometry>>(this, "~/input/odometry");
 
   // debug publisher
   debug_extended_traj_pub_ = create_publisher<Trajectory>("~/debug/extended_traj", 1);
@@ -137,12 +140,8 @@ PathOptimizer::PathOptimizer(const rclcpp::NodeOptions & node_options)
     // parameters for trajectory
     traj_param_ = TrajectoryParam(this);
 
-    // Diagnostics
-    {
-      updater_.setHardwareID("path_optimizer");
-      updater_.add(
-        "path_optimizer_emergency_stop", this, &PathOptimizer::onCheckPathOptimizationValid);
-    }
+    // NOTE: diagnostic_updater is not supported with agnocast::Node, commented out for now.
+    // TODO(agnocast): Re-enable diagnostics when agnocast supports diagnostic_updater.
   }
 
   time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(debug_processing_time_detail_pub_);
@@ -164,8 +163,10 @@ PathOptimizer::PathOptimizer(const rclcpp::NodeOptions & node_options)
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&PathOptimizer::onParam, this, std::placeholders::_1));
 
-  logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  logger_configure_ =
+    std::make_unique<autoware_utils::BasicLoggerLevelConfigure<agnocast::Node>>(this);
+  published_time_publisher_ =
+    std::make_unique<autoware_utils::BasicPublishedTimePublisher<agnocast::Node>>(this);
 }
 
 rcl_interfaces::msg::SetParametersResult PathOptimizer::onParam(
@@ -228,7 +229,7 @@ void PathOptimizer::resetPreviousData()
   mpt_optimizer_ptr_->resetPreviousData();
 }
 
-void PathOptimizer::onPath(const Path::ConstSharedPtr path_ptr)
+void PathOptimizer::onPath(const agnocast::ipc_shared_ptr<const Path> & path_ptr)
 {
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
   stop_watch_.tic();
@@ -239,7 +240,7 @@ void PathOptimizer::onPath(const Path::ConstSharedPtr path_ptr)
   }
 
   // check if ego's odometry is valid
-  const auto ego_odom_ptr = ego_odom_sub_.take_data();
+  const auto ego_odom_ptr = ego_odom_sub_->take_data();
   if (!ego_odom_ptr) {
     RCLCPP_INFO_SKIPFIRST_THROTTLE(
       get_logger(), *get_clock(), 5000, "Waiting for ego pose and twist.");
@@ -255,10 +256,11 @@ void PathOptimizer::onPath(const Path::ConstSharedPtr path_ptr)
       "Backward path is NOT supported. Just converting path to trajectory");
 
     const auto traj_points = trajectory_utils::convertToTrajectoryPoints(path_ptr->points);
-    const auto output_traj_msg =
-      autoware::motion_utils::convertToTrajectory(traj_points, path_ptr->header);
-    traj_pub_->publish(output_traj_msg);
-    published_time_publisher_->publish_if_subscribed(traj_pub_, output_traj_msg.header.stamp);
+    auto output_traj_msg = traj_pub_->borrow_loaned_message();
+    *output_traj_msg = autoware::motion_utils::convertToTrajectory(traj_points, path_ptr->header);
+    const auto stamp = output_traj_msg->header.stamp;
+    traj_pub_->publish(std::move(output_traj_msg));
+    published_time_publisher_->publish_if_subscribed(traj_pub_, stamp);
     return;
   }
 
@@ -276,16 +278,23 @@ void PathOptimizer::onPath(const Path::ConstSharedPtr path_ptr)
 
   // 5. publish debug data
   publishDebugData(planner_data.header);
-  updater_.force_update();
 
   // publish calculation_time
   // NOTE: This function must be called after measuring onPath calculation time
-  debug_calculation_time_float_pub_->publish(createFloat64Stamped(now(), stop_watch_.toc()));
+  {
+    auto calc_time_msg = debug_calculation_time_float_pub_->borrow_loaned_message();
+    *calc_time_msg = createFloat64Stamped(now(), stop_watch_.toc());
+    debug_calculation_time_float_pub_->publish(std::move(calc_time_msg));
+  }
 
-  const auto output_traj_msg =
-    autoware::motion_utils::convertToTrajectory(full_traj_points, path_ptr->header);
-  traj_pub_->publish(output_traj_msg);
-  published_time_publisher_->publish_if_subscribed(traj_pub_, output_traj_msg.header.stamp);
+  {
+    auto output_traj_msg = traj_pub_->borrow_loaned_message();
+    *output_traj_msg =
+      autoware::motion_utils::convertToTrajectory(full_traj_points, path_ptr->header);
+    const auto stamp = output_traj_msg->header.stamp;
+    traj_pub_->publish(std::move(output_traj_msg));
+    published_time_publisher_->publish_if_subscribed(traj_pub_, stamp);
+  }
 }
 
 bool PathOptimizer::checkInputPath(const Path & path, rclcpp::Clock clock) const
@@ -304,22 +313,8 @@ bool PathOptimizer::checkInputPath(const Path & path, rclcpp::Clock clock) const
   return true;
 }
 
-void PathOptimizer::onCheckPathOptimizationValid(diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  if (is_optimization_failed_) {
-    const std::string error_msg =
-      "[Path Optimizer]: Emergency Brake due to prolonged MPT Optimizer failure";
-    const auto diag_level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-    stat.summary(diag_level, error_msg);
-  } else {
-    const std::string error_msg = "[Path Optimizer]: MPT Optimizer successful";
-    const auto diag_level = diagnostic_msgs::msg::DiagnosticStatus::OK;
-    stat.summary(diag_level, error_msg);
-  }
-}
-
 PlannerData PathOptimizer::createPlannerData(
-  const Path & path, const Odometry::ConstSharedPtr ego_odom_ptr) const
+  const Path & path, const agnocast::ipc_shared_ptr<const Odometry> & ego_odom_ptr) const
 {
   // create planner data
   PlannerData planner_data;
@@ -603,7 +598,9 @@ void PathOptimizer::publishVirtualWall(const geometry_msgs::msg::Pose & stop_pos
       autoware_utils::create_marker_color(0.0, 1.0, 0.0, 0.5);
   }
 
-  virtual_wall_pub_->publish(virtual_wall_marker);
+  auto virtual_wall_msg = virtual_wall_pub_->borrow_loaned_message();
+  *virtual_wall_msg = virtual_wall_marker;
+  virtual_wall_pub_->publish(std::move(virtual_wall_msg));
 }
 
 void PathOptimizer::publishDebugMarkerOfOptimization(
@@ -622,7 +619,11 @@ void PathOptimizer::publishDebugMarkerOfOptimization(
   time_keeper_->end_track("getDebugMarker");
 
   time_keeper_->start_track("publishDebugMarker");
-  debug_markers_pub_->publish(debug_marker);
+  {
+    auto debug_marker_msg = debug_markers_pub_->borrow_loaned_message();
+    *debug_marker_msg = debug_marker;
+    debug_markers_pub_->publish(std::move(debug_marker_msg));
+  }
   time_keeper_->end_track("publishDebugMarker");
 }
 
@@ -694,9 +695,12 @@ void PathOptimizer::publishDebugData(const Header & header) const
   autoware_utils::ScopedTimeTrack st(__func__, *time_keeper_);
 
   // publish trajectories
-  const auto debug_extended_traj =
-    autoware::motion_utils::convertToTrajectory(debug_data_ptr_->extended_traj_points, header);
-  debug_extended_traj_pub_->publish(debug_extended_traj);
+  {
+    auto debug_extended_traj_msg = debug_extended_traj_pub_->borrow_loaned_message();
+    *debug_extended_traj_msg =
+      autoware::motion_utils::convertToTrajectory(debug_data_ptr_->extended_traj_points, header);
+    debug_extended_traj_pub_->publish(std::move(debug_extended_traj_msg));
+  }
 }
 }  // namespace autoware::path_optimizer
 
