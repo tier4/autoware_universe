@@ -89,7 +89,7 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & options)
   gyro_scale_sub_ = create_subscription<Vector3Stamped>(
     "gyro_scale_input", rclcpp::SensorDataQoS(),
     std::bind(&ImuCorrector::callback_scale, this, std::placeholders::_1));
-  imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("output", rclcpp::QoS{10});
+  imu_pub_ = agnocast::create_publisher<sensor_msgs::msg::Imu>(this, "output", rclcpp::QoS{10});
   gyro_scale_.vector.x = 1.0;
   gyro_scale_.vector.y = 1.0;
   gyro_scale_.vector.z = 1.0;
@@ -178,7 +178,9 @@ void ImuCorrector::callback_imu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_
   imu_msg_base_link.angular_velocity_covariance =
     transform_covariance(imu_msg.angular_velocity_covariance);
 
-  imu_pub_->publish(imu_msg_base_link);
+  auto loaned_msg = imu_pub_->borrow_loaned_message();
+  *loaned_msg = imu_msg_base_link;
+  imu_pub_->publish(std::move(loaned_msg));
 }
 
 void ImuCorrector::callback_bias(const Vector3Stamped::ConstSharedPtr bias_msg_ptr)

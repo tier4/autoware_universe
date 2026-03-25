@@ -211,6 +211,13 @@ rclcpp_components_register_node(pointcloud_preprocessor_filter
   PLUGIN "autoware::pointcloud_preprocessor::PolarVoxelOutlierFilterComponent"
   EXECUTABLE polar_voxel_outlier_filter_node)
 
+agnocast_components_register_node(pointcloud_preprocessor_filter
+  PLUGIN "autoware::pointcloud_preprocessor::AgnocastPolarVoxelOutlierFilterComponent"
+  EXECUTABLE agnocast_polar_voxel_outlier_filter_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
+)
+
 # -- Radius Search 2D Outlier Filter --
 rclcpp_components_register_node(pointcloud_preprocessor_filter
   PLUGIN "autoware::pointcloud_preprocessor::RadiusSearch2DOutlierFilterComponent"
@@ -251,6 +258,13 @@ rclcpp_components_register_node(pointcloud_preprocessor_filter
 rclcpp_components_register_node(pointcloud_preprocessor_filter
   PLUGIN "autoware::pointcloud_preprocessor::BlockageDiagComponent"
   EXECUTABLE blockage_diag_node)
+
+agnocast_components_register_node(pointcloud_preprocessor_filter
+  PLUGIN "autoware::pointcloud_preprocessor::AgnocastBlockageDiagComponent"
+  EXECUTABLE agnocast_blockage_diag_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
+)
 
 # ========== PolygonRemover ==========
 rclcpp_components_register_node(pointcloud_preprocessor_filter

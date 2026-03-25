@@ -14,6 +14,7 @@
 #ifndef AUTOWARE__IMU_CORRECTOR__IMU_CORRECTOR_CORE_HPP_
 #define AUTOWARE__IMU_CORRECTOR__IMU_CORRECTOR_CORE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils/ros/msg_covariance.hpp>
 #include <autoware_utils/ros/transform_listener.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -46,7 +47,7 @@ private:
   rclcpp::Subscription<Vector3Stamped>::SharedPtr gyro_bias_sub_;
   rclcpp::Subscription<Vector3Stamped>::SharedPtr gyro_scale_sub_;
 
-  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
+  agnocast::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
 
   double angular_velocity_offset_x_imu_link_;
   double angular_velocity_offset_y_imu_link_;

@@ -18,6 +18,7 @@
 #include "autoware/pointcloud_preprocessor/diagnostics/hysteresis_state_machine.hpp"
 #include "autoware/pointcloud_preprocessor/filter.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -62,7 +63,7 @@ struct PolarVoxelIndexHash
 {
   std::size_t operator()(const PolarVoxelIndex & idx) const
   {
-    // Fowler–Noll–Vo style hash combine for better distribution
+    // Fowler-Noll-Vo style hash combine for better distribution
     auto hash = std::hash<int32_t>{}(idx.radius_idx);
     hash ^= static_cast<std::size_t>(std::hash<int32_t>{}(idx.azimuth_idx)) + 0x9e3779b9u +
             (static_cast<std::size_t>(hash) << 6u) + (static_cast<std::size_t>(hash) >> 2u);
@@ -108,10 +109,15 @@ struct VoxelPointCounts
   }
 };
 
-class PolarVoxelOutlierFilterComponent : public autoware::pointcloud_preprocessor::Filter
+template <typename NodeT>
+class PolarVoxelOutlierFilterComponentBase : public autoware::pointcloud_preprocessor::FilterBase<NodeT>
 {
+  using PointCloud2 = typename FilterBase<NodeT>::PointCloud2;
+  using PointCloud2ConstPtr = typename FilterBase<NodeT>::PointCloud2ConstPtr;
+  using IndicesPtr = typename FilterBase<NodeT>::IndicesPtr;
+
 public:
-  explicit PolarVoxelOutlierFilterComponent(const rclcpp::NodeOptions & options);
+  explicit PolarVoxelOutlierFilterComponentBase(const rclcpp::NodeOptions & options);
 
   // Custom coordinate types for type safety and self-documenting code
   struct CartesianCoordinate
@@ -141,9 +147,6 @@ protected:
   void update_publish_noise_cloud(const rclcpp::Parameter & param);
 
   // Type aliases to eliminate long type name duplication
-  using PointCloud2 = sensor_msgs::msg::PointCloud2;
-  using PointCloud2ConstPtr = sensor_msgs::msg::PointCloud2::ConstSharedPtr;
-  using IndicesPtr = pcl::IndicesPtr;
   using VoxelPointCountMap =
     std::unordered_map<PolarVoxelIndex, VoxelPointCounts, PolarVoxelIndexHash>;
   using VoxelIndexSet = std::unordered_set<PolarVoxelIndex, PolarVoxelIndexHash>;
@@ -248,13 +251,32 @@ protected:
   std::mutex mutex_;
   std::shared_ptr<custom_diagnostic_tasks::HysteresisStateMachine> hysteresis_state_machine_;
 
-  // Publishers and diagnostics
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr visibility_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr ratio_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr noise_cloud_pub_;
-  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr area_marker_pub_;
-  diagnostic_updater::Updater updater_;
-  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+  // Publishers (conditional on node type)
+  std::conditional_t<
+    is_rclcpp_node_v<NodeT>,
+    typename rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr,
+    typename agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr>
+    visibility_pub_;
+  std::conditional_t<
+    is_rclcpp_node_v<NodeT>,
+    typename rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr,
+    typename agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr>
+    ratio_pub_;
+  std::conditional_t<
+    is_rclcpp_node_v<NodeT>,
+    typename rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr,
+    typename agnocast::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr>
+    noise_cloud_pub_;
+  std::conditional_t<
+    is_rclcpp_node_v<NodeT>,
+    typename rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr,
+    typename agnocast::Publisher<visualization_msgs::msg::Marker>::SharedPtr>
+    area_marker_pub_;
+
+  // Diagnostic updater (only for rclcpp::Node)
+  std::unique_ptr<diagnostic_updater::Updater> updater_;
+
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   // Diagnostic helper methods
   void calculate_visibility_metric(const VoxelPointCountMap & voxel_point_counts);
@@ -288,8 +310,6 @@ private:
   void validate_intensity_field(const PointCloud2 & input);
   bool has_field(const PointCloud2 & input, const std::string & field_name);
 
-  agnocast::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr agnocast_sub_input_;
-
   // Parameter validation helpers (static, private)
   static bool validate_positive_double(const rclcpp::Parameter & param, std::string & reason);
   static bool validate_non_negative_double(const rclcpp::Parameter & param, std::string & reason);
@@ -302,6 +322,32 @@ private:
   static bool validate_negative_half_pi_to_half_pi(
     const rclcpp::Parameter & param, std::string & reason);
 };
+
+// rclcpp::Node version (backward compatible)
+class PolarVoxelOutlierFilterComponent
+: public PolarVoxelOutlierFilterComponentBase<rclcpp::Node>
+{
+public:
+  explicit PolarVoxelOutlierFilterComponent(const rclcpp::NodeOptions & options)
+  : PolarVoxelOutlierFilterComponentBase<rclcpp::Node>(options)
+  {
+  }
+};
+
+// agnocast::Node version
+class AgnocastPolarVoxelOutlierFilterComponent
+: public PolarVoxelOutlierFilterComponentBase<agnocast::Node>
+{
+public:
+  explicit AgnocastPolarVoxelOutlierFilterComponent(const rclcpp::NodeOptions & options)
+  : PolarVoxelOutlierFilterComponentBase<agnocast::Node>(options)
+  {
+  }
+};
+
+// Extern template declarations
+extern template class PolarVoxelOutlierFilterComponentBase<rclcpp::Node>;
+extern template class PolarVoxelOutlierFilterComponentBase<agnocast::Node>;
 
 }  // namespace autoware::pointcloud_preprocessor
 
