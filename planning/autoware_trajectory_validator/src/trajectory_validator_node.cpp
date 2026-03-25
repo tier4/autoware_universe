@@ -194,8 +194,19 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   processing_time_ms["Total"] = stop_watch.toc("Total");
 
   for (const auto & plugin : plugins_) {
+    auto marker_array = plugin->take_debug_marker_array();
+
+    visualization_msgs::msg::Marker delete_all_marker;
+    delete_all_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+
+    visualization_msgs::msg::MarkerArray msg_to_publish;
+    msg_to_publish.markers.push_back(delete_all_marker);
+    msg_to_publish.markers.insert(
+      msg_to_publish.markers.end(), std::make_move_iterator(marker_array.markers.begin()),
+      std::make_move_iterator(marker_array.markers.end()));
+
     pub_debug_markers_->publish<visualization_msgs::msg::MarkerArray>(
-      plugin->get_name(), plugin->take_debug_marker_array());
+      plugin->get_name(), msg_to_publish);
   }
   publish_processing_time(processing_time_ms);
   publish_internal_state(processing_time_ms, evaluation_tables_, context.odometry->pose.pose);
