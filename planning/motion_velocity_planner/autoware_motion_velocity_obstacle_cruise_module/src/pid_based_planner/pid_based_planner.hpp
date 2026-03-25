@@ -19,6 +19,8 @@
 #include "../type_alias.hpp"
 #include "../types.hpp"
 #include "autoware/signal_processing/lowpass_filter_1d.hpp"
+
+#include <agnocast/agnocast.hpp>
 #include "cruise_planning_debug_info.hpp"
 #include "pid_controller.hpp"
 
@@ -55,14 +57,14 @@ public:
   };
 
   PIDBasedPlanner(
-    rclcpp::Node & node, const CommonParam & common_param,
+    agnocast::Node & node, const CommonParam & common_param,
     const CruisePlanningParam & cruise_planning_param);
 
   std::vector<TrajectoryPoint> plan_cruise(
     const std::shared_ptr<const PlannerData> planner_data,
     const std::vector<TrajectoryPoint> & stop_traj_points,
     const std::vector<CruiseObstacle> & obstacles, std::shared_ptr<DebugData> debug_data_ptr,
-    std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface> &
+    std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>> &
       planning_factor_interface,
     std::optional<VelocityLimit> & velocity_limit) override;
 
@@ -84,7 +86,7 @@ private:
     const std::shared_ptr<const PlannerData> planner_data,
     const std::vector<TrajectoryPoint> & stop_traj_points,
     std::shared_ptr<DebugData> debug_data_ptr,
-    std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface> &
+    std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>> &
       planning_factor_interface,
     std::optional<VelocityLimit> & velocity_limit,
     const std::optional<CruiseObstacleInfo> & cruise_obstacle_info);

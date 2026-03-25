@@ -24,12 +24,14 @@
   <depend>autoware_perception_msgs</depend>
   <depend>autoware_planning_msgs</depend>
   <depend>autoware_universe_utils</depend>
+  <depend>autoware_utils</depend>
   <depend>autoware_velocity_smoother</depend>
   <depend>diagnostic_updater</depend>
   <depend>eigen</depend>
   <depend>geometry_msgs</depend>
   <depend>libboost-dev</depend>
   <depend>pluginlib</depend>
+  <depend>agnocastlib</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>visualization_msgs</depend>

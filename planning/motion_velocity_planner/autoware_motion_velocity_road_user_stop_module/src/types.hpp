@@ -51,7 +51,8 @@ struct CommonParam
   double limit_min_jerk{};
 
   CommonParam() = default;
-  explicit CommonParam(rclcpp::Node & node)
+  template <typename NodeT>
+  explicit CommonParam(NodeT & node)
   {
     max_accel = get_or_declare_parameter<double>(node, "normal.max_acc");
     min_accel = get_or_declare_parameter<double>(node, "normal.min_acc");

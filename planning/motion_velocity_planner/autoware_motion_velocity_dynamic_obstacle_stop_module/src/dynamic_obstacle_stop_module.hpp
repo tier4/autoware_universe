@@ -18,9 +18,11 @@
 #include "object_stop_decision.hpp"
 #include "types.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/motion_utils/marker/virtual_wall_marker_creator.hpp>
 #include <autoware/motion_velocity_planner_common/plugin_module_interface.hpp>
 #include <autoware/motion_velocity_planner_common/velocity_planning_result.hpp>
+#include <autoware_utils/ros/processing_time_publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -32,7 +34,7 @@ namespace autoware::motion_velocity_planner
 class DynamicObstacleStopModule : public PluginModuleInterface
 {
 public:
-  void init(rclcpp::Node & node, const std::string & module_name) override;
+  void init(agnocast::Node & node, const std::string & module_name) override;
   void publish_planning_factor() override { planning_factor_interface_->publish(); };
   void update_parameters(const std::vector<rclcpp::Parameter> & parameters) override;
   VelocityPlanningResult plan(
@@ -58,6 +60,9 @@ private:
 
   dynamic_obstacle_stop::PlannerParam params_;
   dynamic_obstacle_stop::ObjectStopDecisionMap object_map_;
+
+  std::shared_ptr<autoware_utils::ProcessingTimePublisherTemplate<agnocast::Node>>
+    processing_diag_publisher_;
 
   // Debug
   mutable dynamic_obstacle_stop::DebugData debug_data_;

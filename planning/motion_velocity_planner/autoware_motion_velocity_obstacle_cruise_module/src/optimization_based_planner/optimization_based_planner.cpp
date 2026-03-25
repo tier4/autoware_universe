@@ -14,6 +14,8 @@
 
 #include "optimization_based_planner.hpp"
 
+#include <agnocast/agnocast.hpp>
+
 #include "autoware/interpolation/linear_interpolation.hpp"
 #include "autoware/interpolation/spline_interpolation.hpp"
 #include "autoware/interpolation/zero_order_hold.hpp"
@@ -46,13 +48,15 @@ constexpr double ZERO_VEL_THRESHOLD = 0.01;
 constexpr double CLOSE_S_DIST_THRESHOLD = 1e-3;
 
 OptimizationBasedPlanner::OptimizationBasedPlanner(
-  rclcpp::Node & node, const CommonParam & common_param,
+  agnocast::Node & node, const CommonParam & common_param,
   const CruisePlanningParam & cruise_planning_param)
 : CruisePlannerInterface(node, common_param, cruise_planning_param)
 {
   smoothed_traj_sub_ = node.create_subscription<Trajectory>(
     "/planning/trajectory", rclcpp::QoS{1},
-    [this](const Trajectory::ConstSharedPtr msg) { smoothed_trajectory_ptr_ = msg; });
+    [this](const agnocast::ipc_shared_ptr<const Trajectory> & msg) {
+      smoothed_trajectory_ptr_ = msg;
+    });
 
   // parameter
   dense_resampling_time_interval_ = node.declare_parameter<double>(
@@ -104,7 +108,8 @@ OptimizationBasedPlanner::OptimizationBasedPlanner(
   optimized_sv_pub_ = node.create_publisher<Trajectory>("~/optimized_sv_trajectory", 1);
   optimized_st_graph_pub_ = node.create_publisher<Trajectory>("~/optimized_st_graph", 1);
   boundary_pub_ = node.create_publisher<Trajectory>("~/boundary", 1);
-  debug_wall_marker_pub_ = node.create_publisher<MarkerArray>("~/debug/wall_marker", 1);
+  debug_wall_marker_pub_ =
+    node.create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/wall_marker", 1);
 }
 
 std::vector<TrajectoryPoint> OptimizationBasedPlanner::plan_cruise(
@@ -112,7 +117,7 @@ std::vector<TrajectoryPoint> OptimizationBasedPlanner::plan_cruise(
   const std::vector<TrajectoryPoint> & stop_traj_points,
   const std::vector<CruiseObstacle> & obstacles,
   [[maybe_unused]] std::shared_ptr<DebugData> debug_data_ptr,
-  [[maybe_unused]] std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface> &
+  [[maybe_unused]] std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>> &
     planning_factor_interface,
   [[maybe_unused]] std::optional<VelocityLimit> & velocity_limit)
 {
@@ -483,7 +488,9 @@ std::optional<SBoundaries> OptimizationBasedPlanner::getSBoundaries(
       autoware_utils::append_marker_array(markers, &wall_msg);
 
       // publish rviz marker
-      debug_wall_marker_pub_->publish(wall_msg);
+      auto loaned_wall_msg = debug_wall_marker_pub_->borrow_loaned_message();
+      *loaned_wall_msg = wall_msg;
+      debug_wall_marker_pub_->publish(std::move(loaned_wall_msg));
     }
   }
 
@@ -716,39 +723,45 @@ void OptimizationBasedPlanner::publishDebugTrajectory(
 {
   const auto & current_time = clock_->now();
   // Publish optimized result and boundary
-  Trajectory boundary_traj;
-  boundary_traj.header.stamp = current_time;
-  boundary_traj.points.resize(s_boundaries.size());
-  double boundary_s_max = 0.0;
-  for (size_t i = 0; i < s_boundaries.size(); ++i) {
-    const double bound_s = s_boundaries.at(i).max_s;
-    const double bound_t = time_vec.at(i);
-    boundary_traj.points.at(i).pose.position.x = bound_s;
-    boundary_traj.points.at(i).pose.position.y = bound_t;
-    boundary_s_max = std::max(bound_s, boundary_s_max);
+  {
+    auto loaned_boundary_traj = boundary_pub_->borrow_loaned_message();
+    loaned_boundary_traj->header.stamp = current_time;
+    loaned_boundary_traj->points.resize(s_boundaries.size());
+    double boundary_s_max = 0.0;
+    for (size_t i = 0; i < s_boundaries.size(); ++i) {
+      const double bound_s = s_boundaries.at(i).max_s;
+      const double bound_t = time_vec.at(i);
+      loaned_boundary_traj->points.at(i).pose.position.x = bound_s;
+      loaned_boundary_traj->points.at(i).pose.position.y = bound_t;
+      boundary_s_max = std::max(bound_s, boundary_s_max);
+    }
+    boundary_pub_->publish(std::move(loaned_boundary_traj));
   }
-  boundary_pub_->publish(boundary_traj);
 
-  Trajectory optimized_sv_traj;
-  optimized_sv_traj.header.stamp = current_time;
-  optimized_sv_traj.points.resize(opt_result.s.size());
-  for (size_t i = 0; i < opt_result.s.size(); ++i) {
-    const double s = opt_result.s.at(i);
-    const double v = opt_result.v.at(i);
-    optimized_sv_traj.points.at(i).pose.position.x = s + offset;
-    optimized_sv_traj.points.at(i).pose.position.y = v;
+  {
+    auto loaned_optimized_sv_traj = optimized_sv_pub_->borrow_loaned_message();
+    loaned_optimized_sv_traj->header.stamp = current_time;
+    loaned_optimized_sv_traj->points.resize(opt_result.s.size());
+    for (size_t i = 0; i < opt_result.s.size(); ++i) {
+      const double s = opt_result.s.at(i);
+      const double v = opt_result.v.at(i);
+      loaned_optimized_sv_traj->points.at(i).pose.position.x = s + offset;
+      loaned_optimized_sv_traj->points.at(i).pose.position.y = v;
+    }
+    optimized_sv_pub_->publish(std::move(loaned_optimized_sv_traj));
   }
-  optimized_sv_pub_->publish(optimized_sv_traj);
 
-  Trajectory optimized_st_graph;
-  optimized_st_graph.header.stamp = current_time;
-  optimized_st_graph.points.resize(opt_result.s.size());
-  for (size_t i = 0; i < opt_result.s.size(); ++i) {
-    const double bound_s = opt_result.s.at(i);
-    const double bound_t = opt_result.t.at(i);
-    optimized_st_graph.points.at(i).pose.position.x = bound_s;
-    optimized_st_graph.points.at(i).pose.position.y = bound_t;
+  {
+    auto loaned_optimized_st_graph = optimized_st_graph_pub_->borrow_loaned_message();
+    loaned_optimized_st_graph->header.stamp = current_time;
+    loaned_optimized_st_graph->points.resize(opt_result.s.size());
+    for (size_t i = 0; i < opt_result.s.size(); ++i) {
+      const double bound_s = opt_result.s.at(i);
+      const double bound_t = opt_result.t.at(i);
+      loaned_optimized_st_graph->points.at(i).pose.position.x = bound_s;
+      loaned_optimized_st_graph->points.at(i).pose.position.y = bound_t;
+    }
+    optimized_st_graph_pub_->publish(std::move(loaned_optimized_st_graph));
   }
-  optimized_st_graph_pub_->publish(optimized_st_graph);
 }
 }  // namespace autoware::motion_velocity_planner

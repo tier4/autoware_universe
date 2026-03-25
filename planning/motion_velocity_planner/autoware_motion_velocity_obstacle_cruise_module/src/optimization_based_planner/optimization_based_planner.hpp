@@ -23,6 +23,7 @@
 
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -36,14 +37,14 @@ class OptimizationBasedPlanner : public CruisePlannerInterface
 {
 public:
   OptimizationBasedPlanner(
-    rclcpp::Node & node, const CommonParam & common_param,
+    agnocast::Node & node, const CommonParam & common_param,
     const CruisePlanningParam & cruise_planning_param);
 
   std::vector<TrajectoryPoint> plan_cruise(
     const std::shared_ptr<const PlannerData> planner_data,
     const std::vector<TrajectoryPoint> & stop_traj_points,
     const std::vector<CruiseObstacle> & obstacles, std::shared_ptr<DebugData> debug_data_ptr,
-    std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface> &
+    std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>> &
       planning_factor_interface,
     std::optional<VelocityLimit> & velocity_limit) override;
 
@@ -110,15 +111,15 @@ private:
   std::shared_ptr<VelocityOptimizer> velocity_optimizer_ptr_;
 
   // Publisher
-  rclcpp::Publisher<Trajectory>::SharedPtr boundary_pub_;
-  rclcpp::Publisher<Trajectory>::SharedPtr optimized_sv_pub_;
-  rclcpp::Publisher<Trajectory>::SharedPtr optimized_st_graph_pub_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_wall_marker_pub_;
+  agnocast::Publisher<Trajectory>::SharedPtr boundary_pub_;
+  agnocast::Publisher<Trajectory>::SharedPtr optimized_sv_pub_;
+  agnocast::Publisher<Trajectory>::SharedPtr optimized_st_graph_pub_;
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_wall_marker_pub_;
 
   // Subscriber
-  rclcpp::Subscription<Trajectory>::SharedPtr smoothed_traj_sub_;
+  agnocast::Subscription<Trajectory>::SharedPtr smoothed_traj_sub_;
 
-  Trajectory::ConstSharedPtr smoothed_trajectory_ptr_{nullptr};
+  agnocast::ipc_shared_ptr<const Trajectory> smoothed_trajectory_ptr_{};
 
   // Resampling Parameter
   double dense_resampling_time_interval_;

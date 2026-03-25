@@ -24,6 +24,7 @@
 #include "slowdown.hpp"
 #include "types.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/interpolation/linear_interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/objects_of_interest_marker_interface/marker_data.hpp>
@@ -48,7 +49,7 @@ namespace autoware::motion_velocity_planner
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
 
-void RunOutModule::init_parameters(rclcpp::Node & node)
+void RunOutModule::init_parameters(agnocast::Node & node)
 {
   params_.initialize(node, ns_);
 }
@@ -58,9 +59,12 @@ void RunOutModule::update_parameters(const std::vector<rclcpp::Parameter> & para
   params_.update(parameters, ns_);
 }
 
-void RunOutModule::init(rclcpp::Node & node, const std::string & module_name)
+void RunOutModule::init(agnocast::Node & node, const std::string & module_name)
 {
-  diagnostic_updater_.emplace(&node);
+  // TODO(agnocast): diagnostic_updater::Updater requires rclcpp::Node* and is incompatible with
+  // agnocast::Node. Skipping diagnostic_updater initialization until an agnocast-compatible
+  // diagnostic_updater is available.
+  // diagnostic_updater_.emplace(&node);
   module_name_ = module_name;
   logger_ = node.get_logger();
   clock_ = node.get_clock();
@@ -69,26 +73,28 @@ void RunOutModule::init(rclcpp::Node & node, const std::string & module_name)
     node.create_publisher<visualization_msgs::msg::MarkerArray>("~/" + ns_ + "/debug_markers", 1);
   virtual_wall_publisher_ =
     node.create_publisher<visualization_msgs::msg::MarkerArray>("~/" + ns_ + "/virtual_walls", 1);
-  processing_diag_publisher_ = std::make_shared<autoware_utils::ProcessingTimePublisher>(
-    &node, "~/debug/" + ns_ + "/processing_time_ms_diag");
+  processing_diag_publisher_ =
+    std::make_shared<autoware_utils::ProcessingTimePublisherTemplate<agnocast::Node>>(
+      &node, "~/debug/" + ns_ + "/processing_time_ms_diag");
   processing_time_publisher_ =
     node.create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "~/debug/" + ns_ + "/processing_time_ms", 1);
   debug_trajectory_publisher_ = node.create_publisher<autoware_planning_msgs::msg::Trajectory>(
     "~/debug/" + ns_ + "/trajectory", 1);
-  timekeeper_publisher_ = node.create_publisher<autoware::universe_utils::ProcessingTimeDetail>(
+  timekeeper_publisher_ = node.create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
     "~/" + ns_ + "/processing_time_detail_ms", 1);
-  time_keeper_ = std::make_shared<autoware::universe_utils::TimeKeeper>(timekeeper_publisher_);
+  time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>(timekeeper_publisher_);
 
   init_parameters(node);
-  diagnostic_updater_->setHardwareID("run_out");
-  diagnostic_updater_->add(
-    "unavoidable_run_out_collision", this, &RunOutModule::update_unfeasible_stop_status);
+  // TODO(agnocast): diagnostic_updater_ is not initialized (requires rclcpp::Node*).
+  // diagnostic_updater_->setHardwareID("run_out");
+  // diagnostic_updater_->add(
+  //   "unavoidable_run_out_collision", this, &RunOutModule::update_unfeasible_stop_status);
 
   objects_of_interest_marker_interface_ = std::make_unique<
-    autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>(&node, ns_);
+    autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterfaceTemplate<agnocast::Node>>(&node, ns_);
   planning_factor_interface_ =
-    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>>(
       &node, "run_out");
 }
 
@@ -159,7 +165,11 @@ void RunOutModule::publish_debug_trajectory(
       }
     }
   }
-  debug_trajectory_publisher_->publish(debug_trajectory);
+  {
+    auto loaned = debug_trajectory_publisher_->borrow_loaned_message();
+    *loaned = debug_trajectory;
+    debug_trajectory_publisher_->publish(std::move(loaned));
+  }
 }
 
 void RunOutModule::add_planning_factors(
@@ -250,21 +260,32 @@ VelocityPlanningResult RunOutModule::plan(
   const auto result = run_out::calculate_slowdowns(
     decisions_tracker_, smoothed_trajectory_points,
     planner_data->current_odometry.twist.twist.linear.x, unfeasible_stop_deceleration_, params_);
-  diagnostic_updater_->force_update();
+  // TODO(agnocast): diagnostic_updater_ is not initialized (requires rclcpp::Node*).
+  if (diagnostic_updater_) {
+    diagnostic_updater_->force_update();
+  }
   time_keeper_->end_track("calc_slowdowns()");
 
   time_keeper_->start_track("publish_debug()");
   virtual_wall_marker_creator.add_virtual_walls(run_out::create_virtual_walls(
     result.velocity_planning_result, smoothed_trajectory_points,
     planner_data->vehicle_info_.max_longitudinal_offset_m));
-  virtual_wall_publisher_->publish(virtual_wall_marker_creator.create_markers(now));
+  {
+    auto loaned = virtual_wall_publisher_->borrow_loaned_message();
+    *loaned = virtual_wall_marker_creator.create_markers(now);
+    virtual_wall_publisher_->publish(std::move(loaned));
+  }
   add_planning_factors(smoothed_trajectory_points, result, safety_factor_per_object);
   if (debug_publisher_->get_subscription_count() > 0) {
     const auto & filtering_data_to_publish =
       filtering_data[run_out::Parameters::string_to_label(params_.debug.object_label)];
-    debug_publisher_->publish(run_out::make_debug_markers(
-      ego_footprint, filtered_objects, decisions_tracker_, smoothed_trajectory_points,
-      filtering_data_to_publish, params_));
+    {
+      auto loaned = debug_publisher_->borrow_loaned_message();
+      *loaned = run_out::make_debug_markers(
+        ego_footprint, filtered_objects, decisions_tracker_, smoothed_trajectory_points,
+        filtering_data_to_publish, params_);
+      debug_publisher_->publish(std::move(loaned));
+    }
   }
   publish_debug_trajectory(smoothed_trajectory_points, result.velocity_planning_result);
   objects_of_interest_marker_interface_->publishMarkerArray();

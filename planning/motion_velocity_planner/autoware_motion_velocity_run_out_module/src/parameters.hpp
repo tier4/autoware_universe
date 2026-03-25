@@ -18,6 +18,7 @@
 
 #include <autoware/universe_utils/ros/parameter.hpp>
 #include <autoware/universe_utils/ros/update_param.hpp>
+#include <autoware_utils_rclcpp/parameter.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/parameter.hpp>
 
@@ -148,72 +149,73 @@ struct Parameters
 
   /// @brief Get the parameter defined for a specific object label, or the default value if it was
   /// not specified
-  template <class T>
+  template <class T, class NodeT>
   auto get_object_parameter(
-    rclcpp::Node & node, const std::string & ns, const uint8_t object_label,
+    NodeT & node, const std::string & ns, const uint8_t object_label,
     const std::string & param)
   {
-    using universe_utils::getOrDeclareParameter;
+    using autoware_utils_rclcpp::get_or_declare_parameter;
     const auto label_str = ".objects." + label_to_string(object_label);
     try {
-      return getOrDeclareParameter<T>(node, ns + label_str + param);
+      return get_or_declare_parameter<T>(node, ns + label_str + param);
     } catch (const std::exception &) {
-      return getOrDeclareParameter<T>(node, ns + ".objects.DEFAULT" + param);
+      return get_or_declare_parameter<T>(node, ns + ".objects.DEFAULT" + param);
     }
   }
   /// @brief Initialize the parameters
-  void initialize(rclcpp::Node & node, const std::string & ns)
+  template <class NodeT>
+  void initialize(NodeT & node, const std::string & ns)
   {
-    using universe_utils::getOrDeclareParameter;
+    using autoware_utils_rclcpp::get_or_declare_parameter;
     const auto ignore_collisions_ns = ns + ".collision.ignore_conditions";
     ignore_collision_conditions.if_ego_arrives_first.enable =
-      getOrDeclareParameter<bool>(node, ignore_collisions_ns + ".if_ego_arrives_first.enable");
+      get_or_declare_parameter<bool>(node, ignore_collisions_ns + ".if_ego_arrives_first.enable");
     ignore_collision_conditions.if_ego_arrives_first.margin.ego_enter_times =
-      getOrDeclareParameter<std::vector<double>>(
+      get_or_declare_parameter<std::vector<double>>(
         node, ignore_collisions_ns + ".if_ego_arrives_first.margin.ego_enter_times");
     ignore_collision_conditions.if_ego_arrives_first.margin.time_margins =
-      getOrDeclareParameter<std::vector<double>>(
+      get_or_declare_parameter<std::vector<double>>(
         node, ignore_collisions_ns + ".if_ego_arrives_first.margin.time_margins");
     ignore_collision_conditions.if_ego_arrives_first.max_overlap_duration =
-      getOrDeclareParameter<double>(
+      get_or_declare_parameter<double>(
         node, ignore_collisions_ns + ".if_ego_arrives_first.max_overlap_duration");
     ignore_collision_conditions.if_ego_arrives_first_and_cannot_stop.enable =
-      getOrDeclareParameter<bool>(
+      get_or_declare_parameter<bool>(
         node, ignore_collisions_ns + ".if_ego_arrives_first_and_cannot_stop.enable");
     ignore_collision_conditions.if_ego_arrives_first_and_cannot_stop.deceleration_limit =
-      getOrDeclareParameter<double>(
+      get_or_declare_parameter<double>(
         node, ignore_collisions_ns + ".if_ego_arrives_first_and_cannot_stop.deceleration_limit");
-    stop_off_time_buffer = getOrDeclareParameter<double>(node, ns + ".stop.off_time_buffer");
-    stop_on_time_buffer = getOrDeclareParameter<double>(node, ns + ".stop.on_time_buffer");
-    stop_distance_buffer = getOrDeclareParameter<double>(node, ns + ".stop.distance_buffer");
-    stop_deceleration_limit = getOrDeclareParameter<double>(node, ns + ".stop.deceleration_limit");
+    stop_off_time_buffer = get_or_declare_parameter<double>(node, ns + ".stop.off_time_buffer");
+    stop_on_time_buffer = get_or_declare_parameter<double>(node, ns + ".stop.on_time_buffer");
+    stop_distance_buffer = get_or_declare_parameter<double>(node, ns + ".stop.distance_buffer");
+    stop_deceleration_limit = get_or_declare_parameter<double>(node, ns + ".stop.deceleration_limit");
     keep_stop_condition_time =
-      getOrDeclareParameter<double>(node, ns + ".stop.keep_condition.time");
+      get_or_declare_parameter<double>(node, ns + ".stop.keep_condition.time");
     keep_stop_condition_distance =
-      getOrDeclareParameter<double>(node, ns + ".stop.keep_condition.distance");
-    stop_reuse_margin = getOrDeclareParameter<double>(node, ns + ".stop.reuse_margin");
+      get_or_declare_parameter<double>(node, ns + ".stop.keep_condition.distance");
+    stop_reuse_margin = get_or_declare_parameter<double>(node, ns + ".stop.reuse_margin");
     slowdown_off_time_buffer =
-      getOrDeclareParameter<double>(node, ns + ".slowdown.off_time_buffer");
-    slowdown_on_time_buffer = getOrDeclareParameter<double>(node, ns + ".slowdown.on_time_buffer");
+      get_or_declare_parameter<double>(node, ns + ".slowdown.off_time_buffer");
+    slowdown_on_time_buffer = get_or_declare_parameter<double>(node, ns + ".slowdown.on_time_buffer");
     slowdown_distance_buffer =
-      getOrDeclareParameter<double>(node, ns + ".slowdown.distance_buffer");
+      get_or_declare_parameter<double>(node, ns + ".slowdown.distance_buffer");
     slowdown_deceleration_limit =
-      getOrDeclareParameter<double>(node, ns + ".slowdown.deceleration_limit");
-    ego_lateral_margin = getOrDeclareParameter<double>(node, ns + ".ego.lateral_margin");
-    ego_longitudinal_margin = getOrDeclareParameter<double>(node, ns + ".ego.longitudinal_margin");
-    collision_time_margin = getOrDeclareParameter<double>(node, ns + ".collision.time_margin");
+      get_or_declare_parameter<double>(node, ns + ".slowdown.deceleration_limit");
+    ego_lateral_margin = get_or_declare_parameter<double>(node, ns + ".ego.lateral_margin");
+    ego_longitudinal_margin = get_or_declare_parameter<double>(node, ns + ".ego.longitudinal_margin");
+    collision_time_margin = get_or_declare_parameter<double>(node, ns + ".collision.time_margin");
     collision_time_overlap_tolerance =
-      getOrDeclareParameter<double>(node, ns + ".collision.time_overlap_tolerance");
+      get_or_declare_parameter<double>(node, ns + ".collision.time_overlap_tolerance");
     collision_same_direction_angle_threshold =
-      getOrDeclareParameter<double>(node, ns + ".collision.same_direction_angle_threshold");
+      get_or_declare_parameter<double>(node, ns + ".collision.same_direction_angle_threshold");
     collision_opposite_direction_angle_threshold =
-      getOrDeclareParameter<double>(node, ns + ".collision.opposite_direction_angle_threshold");
+      get_or_declare_parameter<double>(node, ns + ".collision.opposite_direction_angle_threshold");
 
     const auto all_object_labels = all_labels();
     object_parameters_per_label.resize(
       *std::max_element(all_object_labels.begin(), all_object_labels.end()) + 1);
     objects_target_labels =
-      getOrDeclareParameter<std::vector<std::string>>(node, ns + ".objects.target_labels");
+      get_or_declare_parameter<std::vector<std::string>>(node, ns + ".objects.target_labels");
     for (const auto label : all_object_labels) {
       object_parameters_per_label[label].ignore_if_on_ego_trajectory =
         get_object_parameter<bool>(node, ns, label, ".ignore.if_on_ego_trajectory");
@@ -269,17 +271,17 @@ struct Parameters
       object_parameters_per_label[label].standstill_duration_after_cut =
         get_object_parameter<double>(node, ns, label, ".standstill_duration_after_cut");
     }
-    debug.object_label = getOrDeclareParameter<std::string>(node, ns + ".debug.object_label");
+    debug.object_label = get_or_declare_parameter<std::string>(node, ns + ".debug.object_label");
     debug.enabled_markers.ego_footprint =
-      getOrDeclareParameter<bool>(node, ns + ".debug.enabled_markers.ego_footprint");
+      get_or_declare_parameter<bool>(node, ns + ".debug.enabled_markers.ego_footprint");
     debug.enabled_markers.objects =
-      getOrDeclareParameter<bool>(node, ns + ".debug.enabled_markers.objects");
+      get_or_declare_parameter<bool>(node, ns + ".debug.enabled_markers.objects");
     debug.enabled_markers.collisions =
-      getOrDeclareParameter<bool>(node, ns + ".debug.enabled_markers.collisions");
+      get_or_declare_parameter<bool>(node, ns + ".debug.enabled_markers.collisions");
     debug.enabled_markers.decisions =
-      getOrDeclareParameter<bool>(node, ns + ".debug.enabled_markers.decisions");
+      get_or_declare_parameter<bool>(node, ns + ".debug.enabled_markers.decisions");
     debug.enabled_markers.filtering_data =
-      getOrDeclareParameter<bool>(node, ns + ".debug.enabled_markers.filtering_data");
+      get_or_declare_parameter<bool>(node, ns + ".debug.enabled_markers.filtering_data");
 
     max_history_duration = std::max(stop_off_time_buffer, stop_on_time_buffer);
   }

@@ -18,12 +18,15 @@
 #include "parameters.hpp"
 #include "types.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/motion_utils/marker/virtual_wall_marker_creator.hpp>
 #include <autoware/motion_velocity_planner_common/planner_data.hpp>
 #include <autoware/motion_velocity_planner_common/plugin_module_interface.hpp>
 #include <autoware/motion_velocity_planner_common/velocity_planning_result.hpp>
 #include <autoware/objects_of_interest_marker_interface/objects_of_interest_marker_interface.hpp>
 #include <autoware/universe_utils/system/time_keeper.hpp>
+#include <autoware_utils_debug/time_keeper.hpp>
+#include <autoware_utils/ros/processing_time_publisher.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/publisher.hpp>
@@ -47,9 +50,9 @@ class RunOutModule : public PluginModuleInterface
 public:
   RunOutModule() = default;
   /// @brief initialize the module
-  void init(rclcpp::Node & node, const std::string & module_name) override;
+  void init(agnocast::Node & node, const std::string & module_name) override;
   /// @brief initialize the parameters
-  void init_parameters(rclcpp::Node & node);
+  void init_parameters(agnocast::Node & node);
   /// @brief update the parameters
   void update_parameters(const std::vector<rclcpp::Parameter> & parameters) override;
   /// @brief plan change of velocity based on detected collisions with objects running out on the
@@ -73,11 +76,13 @@ private:
   std::string module_name_{"uninitialized"};
   rclcpp::Clock::SharedPtr clock_{nullptr};
   // TODO(Maxime): move to the module interface
-  rclcpp::Publisher<universe_utils::ProcessingTimeDetail>::SharedPtr timekeeper_publisher_;
-  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr debug_trajectory_publisher_;
-  std::shared_ptr<autoware::universe_utils::TimeKeeper> time_keeper_;
+  agnocast::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr timekeeper_publisher_;
+  agnocast::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr debug_trajectory_publisher_;
+  std::shared_ptr<autoware_utils::ProcessingTimePublisherTemplate<agnocast::Node>>
+    processing_diag_publisher_;
+  std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
   std::optional<diagnostic_updater::Updater> diagnostic_updater_ = std::nullopt;
-  std::unique_ptr<autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>
+  std::unique_ptr<autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterfaceTemplate<agnocast::Node>>
     objects_of_interest_marker_interface_;
   std::optional<double> unfeasible_stop_deceleration_;
 

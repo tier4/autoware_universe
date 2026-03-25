@@ -54,21 +54,22 @@ struct ObstacleParameters
   size_t rtree_min_segments{};
 
   ObstacleParameters() = default;
-  explicit ObstacleParameters(rclcpp::Node & node)
+  template <typename NodeT>
+  explicit ObstacleParameters(NodeT & node)
   {
-    updateType(node.get_logger(), node.declare_parameter<std::string>(DYN_SOURCE_PARAM));
+    updateType(node.get_logger(), node.template declare_parameter<std::string>(DYN_SOURCE_PARAM));
     occupancy_grid_threshold =
-      static_cast<int8_t>(node.declare_parameter<int>(OCC_GRID_THRESH_PARAM));
-    dynamic_obstacles_buffer = static_cast<double>(node.declare_parameter<double>(BUFFER_PARAM));
-    dynamic_obstacles_min_vel = static_cast<double>(node.declare_parameter<double>(MIN_VEL_PARAM));
-    static_map_tags = node.declare_parameter<std::vector<std::string>>(MAP_TAGS_PARAM);
-    filter_envelope = node.declare_parameter<bool>(FILTERING_PARAM);
-    ignore_on_path = node.declare_parameter<bool>(IGNORE_ON_PATH_PARAM);
-    ignore_extra_distance = static_cast<double>(node.declare_parameter<double>(IGNORE_DIST_PARAM));
+      static_cast<int8_t>(node.template declare_parameter<int>(OCC_GRID_THRESH_PARAM));
+    dynamic_obstacles_buffer = static_cast<double>(node.template declare_parameter<double>(BUFFER_PARAM));
+    dynamic_obstacles_min_vel = static_cast<double>(node.template declare_parameter<double>(MIN_VEL_PARAM));
+    static_map_tags = node.template declare_parameter<std::vector<std::string>>(MAP_TAGS_PARAM);
+    filter_envelope = node.template declare_parameter<bool>(FILTERING_PARAM);
+    ignore_on_path = node.template declare_parameter<bool>(IGNORE_ON_PATH_PARAM);
+    ignore_extra_distance = static_cast<double>(node.template declare_parameter<double>(IGNORE_DIST_PARAM));
     updateRtreeMinPoints(
-      node.get_logger(), static_cast<int>(node.declare_parameter<int>(RTREE_POINTS_PARAM)));
+      node.get_logger(), static_cast<int>(node.template declare_parameter<int>(RTREE_POINTS_PARAM)));
     updateRtreeMinSegments(
-      node.get_logger(), static_cast<int>(node.declare_parameter<int>(RTREE_SEGMENTS_PARAM)));
+      node.get_logger(), static_cast<int>(node.template declare_parameter<int>(RTREE_SEGMENTS_PARAM)));
   }
 
   // cppcheck-suppress functionStatic
@@ -132,14 +133,15 @@ struct ProjectionParameters
   double steering_angle_offset{};
 
   ProjectionParameters() = default;
-  explicit ProjectionParameters(rclcpp::Node & node)
+  template <typename NodeT>
+  explicit ProjectionParameters(NodeT & node)
   {
     const auto & logger = node.get_logger();
-    updateModel(logger, node.declare_parameter<std::string>(MODEL_PARAM));
-    updateDistanceMethod(logger, node.declare_parameter<std::string>(DISTANCE_METHOD_PARAM));
-    updateNbPoints(logger, node.declare_parameter<int>(NB_POINTS_PARAM));
-    steering_angle_offset = node.declare_parameter<double>(STEER_OFFSET_PARAM);
-    duration = node.declare_parameter<double>(DURATION_PARAM);
+    updateModel(logger, node.template declare_parameter<std::string>(MODEL_PARAM));
+    updateDistanceMethod(logger, node.template declare_parameter<std::string>(DISTANCE_METHOD_PARAM));
+    updateNbPoints(logger, node.template declare_parameter<int>(NB_POINTS_PARAM));
+    steering_angle_offset = node.template declare_parameter<double>(STEER_OFFSET_PARAM);
+    duration = node.template declare_parameter<double>(DURATION_PARAM);
   }
 
   // cppcheck-suppress functionStatic
@@ -203,10 +205,11 @@ struct VelocityParameters
   double current_ego_velocity{};
 
   VelocityParameters() = default;
-  explicit VelocityParameters(rclcpp::Node & node)
+  template <typename NodeT>
+  explicit VelocityParameters(NodeT & node)
   {
-    min_velocity = static_cast<double>(node.declare_parameter<double>(MIN_VEL_PARAM));
-    max_deceleration = static_cast<double>(node.declare_parameter<double>(MAX_DECEL_PARAM));
+    min_velocity = static_cast<double>(node.template declare_parameter<double>(MIN_VEL_PARAM));
+    max_deceleration = static_cast<double>(node.template declare_parameter<double>(MAX_DECEL_PARAM));
   }
 };
 
@@ -225,13 +228,14 @@ struct PreprocessingParameters
   double max_duration{};
 
   PreprocessingParameters() = default;
-  explicit PreprocessingParameters(rclcpp::Node & node)
+  template <typename NodeT>
+  explicit PreprocessingParameters(NodeT & node)
   {
-    downsample_factor = node.declare_parameter<int>(DOWNSAMPLING_PARAM);
-    start_distance = static_cast<double>(node.declare_parameter<double>(START_DIST_PARAM));
-    calculate_steering_angles = node.declare_parameter<bool>(CALC_STEER_PARAM);
-    max_length = node.declare_parameter<double>(MAX_LENGTH_PARAM);
-    max_duration = node.declare_parameter<double>(MAX_DURATION_PARAM);
+    downsample_factor = node.template declare_parameter<int>(DOWNSAMPLING_PARAM);
+    start_distance = static_cast<double>(node.template declare_parameter<double>(START_DIST_PARAM));
+    calculate_steering_angles = node.template declare_parameter<bool>(CALC_STEER_PARAM);
+    max_length = node.template declare_parameter<double>(MAX_LENGTH_PARAM);
+    max_duration = node.template declare_parameter<double>(MAX_DURATION_PARAM);
   }
   bool updateDownsampleFactor(const int64_t new_downsample_factor)
   {

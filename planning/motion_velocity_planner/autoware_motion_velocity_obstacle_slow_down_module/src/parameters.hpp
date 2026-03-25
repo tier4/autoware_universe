@@ -42,7 +42,8 @@ struct CommonParam
   double limit_min_jerk{};
 
   CommonParam() = default;
-  explicit CommonParam(rclcpp::Node & node)
+  template <typename NodeT>
+  explicit CommonParam(NodeT & node)
   {
     max_accel = get_or_declare_parameter<double>(node, "normal.max_acc");
     min_accel = get_or_declare_parameter<double>(node, "normal.min_acc");
@@ -71,7 +72,8 @@ struct ObstacleFilteringParam
   int successive_num_to_exit_slow_down_condition{};
 
   ObstacleFilteringParam() = default;
-  explicit ObstacleFilteringParam(rclcpp::Node & node)
+  template <typename NodeT>
+  explicit ObstacleFilteringParam(NodeT & node)
   {
     use_pointcloud = get_or_declare_parameter<bool>(
       node, "obstacle_slow_down.obstacle_filtering.object_type.pointcloud");
@@ -94,9 +96,9 @@ struct ObstacleFilteringParam
 
 /// @brief Get the parameter defined for a specific object label, or the default value if it was
 /// not specified
-template <class T>
+template <class T, typename NodeT>
 auto get_object_parameter(
-  rclcpp::Node & node, const std::string & ns, const std::string & object_label,
+  NodeT & node, const std::string & ns, const std::string & object_label,
   const std::string & param)
 {
   using autoware_utils::get_or_declare_parameter;
@@ -163,7 +165,8 @@ struct SlowDownPlanningParam
     object_type_specific_param_per_object_type;
 
   SlowDownPlanningParam() = default;
-  explicit SlowDownPlanningParam(rclcpp::Node & node)
+  template <typename NodeT>
+  explicit SlowDownPlanningParam(NodeT & node)
   {
     slow_down_min_acc = get_or_declare_parameter<double>(
       node, "obstacle_slow_down.slow_down_planning.slow_down_min_acc");
