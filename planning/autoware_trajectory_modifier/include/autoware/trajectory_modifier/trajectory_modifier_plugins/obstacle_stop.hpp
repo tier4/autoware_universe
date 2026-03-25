@@ -30,6 +30,8 @@
 
 namespace autoware::trajectory_modifier::plugin
 {
+using autoware_internal_planning_msgs::msg::SafetyFactor;
+using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using autoware_utils_geometry::MultiPolygon2d;
 using autoware_utils_geometry::Polygon2d;
 using utils::obstacle_stop::CollisionPoint;
@@ -68,6 +70,8 @@ private:
   DebugData debug_data_;
 
   std::unique_ptr<utils::obstacle_stop::PointCloudFilter> pointcloud_filter_;
+
+  SafetyFactorArray safety_factors_;
 
   MarkerArray marker_array_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;

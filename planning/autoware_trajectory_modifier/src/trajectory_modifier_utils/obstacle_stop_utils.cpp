@@ -174,7 +174,8 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
 std::optional<CollisionPoint> get_nearest_object_collision(
   const TrajectoryPoints & trajectory_points,
   const autoware_utils_geometry::MultiPolygon2d & trajectory_polygon,
-  const PredictedObjects & objects, MultiPolygon2d & target_polygons)
+  const PredictedObjects & objects, MultiPolygon2d & target_polygons,
+  PredictedObject & colliding_object)
 {
   if (objects.objects.empty()) return std::nullopt;
 
@@ -194,6 +195,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
       if (arc_length < min_arc_length) {
         min_arc_length = arc_length;
         nearest_collision_point = p;
+        colliding_object = object;
       }
     }
     target_polygons.emplace_back(object_polygon);

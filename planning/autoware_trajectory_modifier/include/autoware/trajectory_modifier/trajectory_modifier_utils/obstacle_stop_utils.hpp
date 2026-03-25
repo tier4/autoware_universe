@@ -45,6 +45,7 @@ namespace autoware::trajectory_modifier::utils::obstacle_stop
 using sensor_msgs::msg::PointCloud2;
 using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
 using autoware_perception_msgs::msg::ObjectClassification;
+using autoware_perception_msgs::msg::PredictedObject;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using TrajectoryPoints = std::vector<TrajectoryPoint>;
@@ -113,6 +114,7 @@ struct DebugData
   TrajectoryShape trajectory_shape;
   std::vector<geometry_msgs::msg::Point> target_pcd_points;
   geometry_msgs::msg::Point active_collision_point;
+  std::optional<PredictedObject> colliding_object;
 };
 
 TrajectoryShape get_trajectory_shape(
@@ -131,7 +133,8 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
 
 std::optional<CollisionPoint> get_nearest_object_collision(
   const TrajectoryPoints & trajectory_points, const MultiPolygon2d & trajectory_polygon,
-  const PredictedObjects & objects, MultiPolygon2d & target_polygons);
+  const PredictedObjects & objects, MultiPolygon2d & target_polygons,
+  PredictedObject & colliding_object);
 
 struct PointCloudFilter
 {

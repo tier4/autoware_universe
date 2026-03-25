@@ -37,7 +37,7 @@ void ObstacleStop::on_initialize([[maybe_unused]] const MinimumRuleBasedPlannerP
 {
   planning_factor_interface_ =
     std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
-      get_node_ptr(), "obstacle_stop");
+      get_node_ptr(), "planner_obstacle_stop");
 
   pointcloud_filter_ =
     std::make_unique<trajectory_modifier::utils::obstacle_stop::PointCloudFilter>(
@@ -111,9 +111,12 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
   filter_objects_by_type(predicted_objects, params_.objects.object_types);
   filter_objects_by_velocity(predicted_objects, params_.objects.max_velocity_th);
 
-  return get_nearest_object_collision(
+  autoware_perception_msgs::msg::PredictedObject colliding_object;
+  auto collision_point = get_nearest_object_collision(
     traj_points, debug_data_.trajectory_shape.polygon, predicted_objects,
-    debug_data_.target_polygons);
+    debug_data_.target_polygons, colliding_object);
+  if (collision_point) debug_data_.colliding_object = colliding_object;
+  return collision_point;
 }
 
 std::optional<CollisionPoint> ObstacleStop::check_pointcloud(const TrajectoryPoints & traj_points)
