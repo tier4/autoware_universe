@@ -17,7 +17,10 @@
 #include "autoware/cuda_pointcloud_preprocessor/cuda_concatenate_data/cuda_traits.hpp"
 #include "autoware/pointcloud_preprocessor/concatenate_data/combine_cloud_handler.hpp"
 
+#include <cuda_runtime.h>
+
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -48,9 +51,7 @@ public:
     bool keep_input_frame_in_synchronized_pointcloud);
 
   ConcatenatedCloudResult<CudaPointCloud2Traits> combine_pointclouds(
-    std::unordered_map<
-      std::string, typename CudaPointCloud2Traits::PointCloudMessage::ConstSharedPtr> &
-      topic_to_cloud_map,
+    std::unordered_map<std::string, CudaPointCloud2Traits::ConstSharedPtr> & topic_to_cloud_map,
     const std::shared_ptr<CollectorInfoBase> & collector_info);
 
   void allocate_pointclouds() override;

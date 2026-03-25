@@ -63,7 +63,7 @@ PointCloudDensification::PointCloudDensification(const DensificationParam & para
 }
 
 bool PointCloudDensification::enqueuePointCloud(
-  const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & pointcloud_msg_ptr,
+  const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & pointcloud_msg_ptr,
   const tf2_ros::Buffer & tf_buffer)
 {
   const auto header = pointcloud_msg_ptr->header;
@@ -87,7 +87,7 @@ bool PointCloudDensification::enqueuePointCloud(
 }
 
 void PointCloudDensification::enqueue(
-  const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & msg_ptr,
+  const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & msg_ptr,
   const Eigen::Affine3f & affine_world2current)
 {
   affine_world2current_ = affine_world2current;

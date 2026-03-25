@@ -172,7 +172,7 @@ void CenterPointTRT::initTrt(
 }
 
 bool CenterPointTRT::detect(
-  const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
+  const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & input_pointcloud_msg_ptr,
   const tf2_ros::Buffer & tf_buffer, std::vector<Box3D> & det_boxes3d,
   bool & is_num_pillars_within_range)
 {
@@ -212,7 +212,7 @@ bool CenterPointTRT::detect(
 }
 
 bool CenterPointTRT::preprocess(
-  const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
+  const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & input_pointcloud_msg_ptr,
   const tf2_ros::Buffer & tf_buffer)
 {
   using autoware::cuda_utils::clear_async;

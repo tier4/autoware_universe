@@ -18,8 +18,6 @@
 #include "autoware/cuda_pointcloud_preprocessor/cuda_concatenate_data/cuda_traits.hpp"
 
 #include <autoware/pointcloud_preprocessor/concatenate_data/concatenation_info_manager.hpp>
-#include <cuda_blackboard/cuda_pointcloud2.hpp>
-
 #include <cuda_runtime.h>
 
 #include <memory>
@@ -75,21 +73,29 @@ void CombineCloudHandler<CudaPointCloud2Traits>::allocate_pointclouds()
 
   for (const auto & topic : input_topics_) {
     auto & concat_struct = cuda_concat_struct_map_[topic];
-    concat_struct.cloud_ptr = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-    concat_struct.cloud_ptr->data =
-      cuda_blackboard::make_unique<std::uint8_t[]>(concat_struct.max_pointcloud_size);
+    concat_struct.cloud_ptr = std::make_unique<agnocast::cuda::PointCloud2>();
+    if (concat_struct.cloud_ptr->data) {
+      cudaFree(concat_struct.cloud_ptr->data);
+      concat_struct.cloud_ptr->data = nullptr;
+    }
+    cudaMalloc(
+      reinterpret_cast<void **>(&concat_struct.cloud_ptr->data),
+      concat_struct.max_pointcloud_size);
   }
 
-  concatenated_cloud_ptr_ = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-  concatenated_cloud_ptr_->data = cuda_blackboard::make_unique<std::uint8_t[]>(
+  concatenated_cloud_ptr_ = std::make_unique<agnocast::cuda::PointCloud2>();
+  if (concatenated_cloud_ptr_->data) {
+    cudaFree(concatenated_cloud_ptr_->data);
+    concatenated_cloud_ptr_->data = nullptr;
+  }
+  cudaMalloc(
+    reinterpret_cast<void **>(&concatenated_cloud_ptr_->data),
     max_concat_pointcloud_size_ * input_topics_.size());
 }
 
 ConcatenatedCloudResult<CudaPointCloud2Traits>
 CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
-  std::unordered_map<
-    std::string, typename CudaPointCloud2Traits::PointCloudMessage::ConstSharedPtr> &
-    topic_to_cloud_map,
+  std::unordered_map<std::string, CudaPointCloud2Traits::ConstSharedPtr> & topic_to_cloud_map,
   const std::shared_ptr<CollectorInfoBase> & collector_info)
 {
   ConcatenatedCloudResult<CudaPointCloud2Traits> concatenate_cloud_result;
@@ -111,7 +117,7 @@ CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
 
   // Before combining the pointclouds, initialize and reserve space for the concatenated pointcloud
   concatenate_cloud_result.concatenate_cloud_ptr =
-    std::make_unique<cuda_blackboard::CudaPointCloud2>();
+    std::make_unique<agnocast::cuda::PointCloud2>();
   concatenate_cloud_result.concatenation_info_ptr =
     std::make_unique<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo>(
       concatenation_info_manager_.reset_and_get_base_info());
@@ -130,15 +136,19 @@ CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
   // reallocations
   if (total_data_size > max_concat_pointcloud_size_ || !concatenated_cloud_ptr_) {
     max_concat_pointcloud_size_ = CHUNK_SIZE * (1 + total_data_size / CHUNK_SIZE);
-    concatenated_cloud_ptr_ = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-    concatenated_cloud_ptr_->data = cuda_blackboard::make_unique<std::uint8_t[]>(
+    if (concatenated_cloud_ptr_ && concatenated_cloud_ptr_->data) {
+      cudaFree(concatenated_cloud_ptr_->data);
+    }
+    concatenated_cloud_ptr_ = std::make_unique<agnocast::cuda::PointCloud2>();
+    cudaMalloc(
+      reinterpret_cast<void **>(&concatenated_cloud_ptr_->data),
       max_concat_pointcloud_size_ * input_topics_.size());
   }
 
   concatenate_cloud_result.concatenate_cloud_ptr = std::move(concatenated_cloud_ptr_);
 
   auto * output_points =
-    reinterpret_cast<PointTypeStruct *>(concatenate_cloud_result.concatenate_cloud_ptr->data.get());
+    reinterpret_cast<PointTypeStruct *>(concatenate_cloud_result.concatenate_cloud_ptr->data);
   std::size_t concatenated_start_index = 0;
 
   for (const auto & [topic, cloud] : topic_to_cloud_map) {
@@ -179,7 +189,7 @@ CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
 
     auto & stream = cuda_concat_struct_map_[topic].stream;
     transform_launch(
-      reinterpret_cast<PointTypeStruct *>(cloud->data.get()), num_points, transform_struct,
+      reinterpret_cast<PointTypeStruct *>(cloud.gpu_data()), num_points, transform_struct,
       output_points + concatenated_start_index, stream);
     concatenated_start_index += num_points;
     concatenation_info_manager_.update_source_from_point_cloud(
@@ -202,7 +212,7 @@ CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
     if (!concatenate_cloud_result.topic_to_transformed_cloud_map) {
       // Initialize the map if it is not present
       concatenate_cloud_result.topic_to_transformed_cloud_map =
-        std::unordered_map<std::string, cuda_blackboard::CudaPointCloud2::UniquePtr>();
+        std::unordered_map<std::string, CudaPointCloud2Traits::UniquePtr>();
     }
 
     concatenated_start_index = 0;
@@ -215,8 +225,11 @@ CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
 
       if (data_size > concat_struct.max_pointcloud_size || !concat_struct.cloud_ptr) {
         concat_struct.max_pointcloud_size = (data_size + 1024) / 1024 * 1024;
-        concat_struct.cloud_ptr = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-        concat_struct.cloud_ptr->data = cuda_blackboard::make_unique<std::uint8_t[]>(data_size);
+        if (concat_struct.cloud_ptr && concat_struct.cloud_ptr->data) {
+          cudaFree(concat_struct.cloud_ptr->data);
+        }
+        concat_struct.cloud_ptr = std::make_unique<agnocast::cuda::PointCloud2>();
+        cudaMalloc(reinterpret_cast<void **>(&concat_struct.cloud_ptr->data), data_size);
       }
       // convert to original sensor frame if necessary
 
@@ -253,11 +266,11 @@ CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
 
         transform_launch(
           output_points + concatenated_start_index, num_points, transform_struct,
-          reinterpret_cast<PointTypeStruct *>(output_cloud->data.get()), stream);
+          reinterpret_cast<PointTypeStruct *>(output_cloud->data), stream);
         output_cloud->header.frame_id = cloud->header.frame_id;
       } else {
         cudaMemcpyAsync(
-          output_cloud->data.get(), output_points + concatenated_start_index, data_size,
+          output_cloud->data, output_points + concatenated_start_index, data_size,
           cudaMemcpyDeviceToDevice, stream);
         output_cloud->header.frame_id = output_frame_;
       }

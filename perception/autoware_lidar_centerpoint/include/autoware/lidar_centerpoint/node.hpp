@@ -19,14 +19,12 @@
 #include "autoware/lidar_centerpoint/detection_class_remapper.hpp"
 #include "autoware/lidar_centerpoint/postprocess/non_maximum_suppression.hpp"
 
+#include <agnocast/agnocast.hpp>
+#include <agnocast/cuda/types.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
-#include <cuda_blackboard/cuda_adaptation.hpp>
-#include <cuda_blackboard/cuda_blackboard_subscriber.hpp>
-#include <cuda_blackboard/cuda_pointcloud2.hpp>
-#include <cuda_blackboard/negotiated_types.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -51,14 +49,13 @@ public:
 
 private:
   void pointCloudCallback(
-    const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg);
+    agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> input_pointcloud_msg);
   void diagnoseProcessingTime(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_{tf_buffer_};
 
-  std::unique_ptr<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>
-    pointcloud_sub_;
+  agnocast::Subscription<agnocast::cuda::PointCloud2>::SharedPtr pointcloud_sub_;
   rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr objects_pub_;
 
   std::vector<std::string> class_names_;

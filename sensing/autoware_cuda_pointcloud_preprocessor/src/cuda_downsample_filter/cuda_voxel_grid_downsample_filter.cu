@@ -205,16 +205,17 @@ CudaVoxelGridDownsampleFilter::CudaVoxelGridDownsampleFilter(
   thrust_custom_allocator_ = std::make_unique<ThrustCustomAllocator>(stream_, mem_pool_);
 }
 
-std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaVoxelGridDownsampleFilter::filter(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points)
+void CudaVoxelGridDownsampleFilter::filter(
+  const agnocast::cuda::PointCloud2 & input, const void * input_gpu_data,
+  agnocast::cuda::PointCloud2 & output)
 {
-  voxel_info_.num_input_points = input_points->width * input_points->height;
-  voxel_info_.input_point_step = input_points->point_step;
+  voxel_info_.num_input_points = input.width * input.height;
+  voxel_info_.input_point_step = input.point_step;
 
   auto get_offset = [&](const std::string & field_name) -> size_t {
     int index = -1;
-    for (size_t i = 0; i < input_points->fields.size(); ++i) {
-      if (input_points->fields[i].name == field_name) {
+    for (size_t i = 0; i < input.fields.size(); ++i) {
+      if (input.fields[i].name == field_name) {
         index = static_cast<int>(i);
       }
     }
@@ -223,7 +224,7 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaVoxelGridDownsampleFilter:
       ss << "input cloud does not contain filed named '" << field_name << "'";
       throw std::runtime_error(ss.str());
     }
-    return input_points->fields[index].offset;
+    return input.fields[index].offset;
   };
 
   voxel_info_.input_xyzi_offset[0] = get_offset("x");
@@ -253,25 +254,23 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaVoxelGridDownsampleFilter:
   auto channel_field_dev = allocateBufferFromPool<decltype(OutputPointType::channel)>(1);
 
   // Get min/max value for x, y, z in input_points to determine computation target range
-  getVoxelMinMaxCoordinate(input_points, coord_buffer_dev);
+  getVoxelMinMaxCoordinate(input_gpu_data, coord_buffer_dev);
 
   // Calculate unique voxel indices that all points in input_points belong to
   // Create lookup table to show correspondence between spatial voxel grid position
   // and memory index
   auto num_valid_voxel = searchValidVoxel(
-    input_points, voxel_index_buffer_dev, point_index_buffer_dev, return_type_field_dev,
+    input_gpu_data, voxel_index_buffer_dev, point_index_buffer_dev, return_type_field_dev,
     channel_field_dev);
 
   // Allocate region actually result filtered pointcloud requires and fill them
-  auto filtered_output = std::make_unique<cuda_blackboard::CudaPointCloud2>();
-  filtered_output->data =
-    cuda_blackboard::make_unique<std::uint8_t[]>(num_valid_voxel * sizeof(OutputPointType));
+  CHECK_CUDA_ERROR(cudaMalloc(&output.data, num_valid_voxel * sizeof(OutputPointType)));
 
   // Calculate actual voxel-filtered points
   auto centroid_buffer_dev = allocateBufferFromPool<Centroid>(num_valid_voxel * sizeof(Centroid));
   getCentroid(
-    input_points, num_valid_voxel, voxel_index_buffer_dev, point_index_buffer_dev, index_map_dev,
-    centroid_buffer_dev, filtered_output, return_type_field_dev, channel_field_dev);
+    input, input_gpu_data, num_valid_voxel, voxel_index_buffer_dev, point_index_buffer_dev,
+    index_map_dev, centroid_buffer_dev, output, return_type_field_dev, channel_field_dev);
 
   // Fill topic fields
   {
@@ -286,25 +285,25 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaVoxelGridDownsampleFilter:
       field.count = count;
       return field;
     };
-    filtered_output->header = input_points->header;
-    filtered_output->height = input_points->height;
-    filtered_output->width = num_valid_voxel;
-    filtered_output->fields.push_back(generate_point_field(
+    output.header = input.header;
+    output.height = input.height;
+    output.width = num_valid_voxel;
+    output.fields.push_back(generate_point_field(
       "x", voxel_info_.output_offsets[0], sensor_msgs::msg::PointField::FLOAT32, 1));
-    filtered_output->fields.push_back(generate_point_field(
+    output.fields.push_back(generate_point_field(
       "y", voxel_info_.output_offsets[1], sensor_msgs::msg::PointField::FLOAT32, 1));
-    filtered_output->fields.push_back(generate_point_field(
+    output.fields.push_back(generate_point_field(
       "z", voxel_info_.output_offsets[2], sensor_msgs::msg::PointField::FLOAT32, 1));
-    filtered_output->fields.push_back(generate_point_field(
+    output.fields.push_back(generate_point_field(
       "intensity", voxel_info_.output_offsets[3], sensor_msgs::msg::PointField::UINT8, 1));
-    filtered_output->fields.push_back(generate_point_field(
+    output.fields.push_back(generate_point_field(
       "return_type", voxel_info_.output_offsets[4], sensor_msgs::msg::PointField::UINT8, 1));
-    filtered_output->fields.push_back(generate_point_field(
+    output.fields.push_back(generate_point_field(
       "channel", voxel_info_.output_offsets[5], sensor_msgs::msg::PointField::UINT16, 1));
-    filtered_output->is_bigendian = input_points->is_bigendian;
-    filtered_output->point_step = sizeof(OutputPointType);
-    filtered_output->row_step = sizeof(OutputPointType) * num_valid_voxel;
-    filtered_output->is_dense = input_points->is_dense;
+    output.is_bigendian = input.is_bigendian;
+    output.point_step = sizeof(OutputPointType);
+    output.row_step = sizeof(OutputPointType) * num_valid_voxel;
+    output.is_dense = input.is_dense;
   }
 
   // Return (but not actual releasing) working buffer to the pool
@@ -317,8 +316,6 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaVoxelGridDownsampleFilter:
   returnBufferToPool(channel_field_dev);
 
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
-
-  return filtered_output;
 }
 
 template <typename T>
@@ -339,7 +336,7 @@ void CudaVoxelGridDownsampleFilter::returnBufferToPool(T * buffer)
 }
 
 void CudaVoxelGridDownsampleFilter::getVoxelMinMaxCoordinate(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & points, float * buffer_dev)
+  const void * input_gpu_data, float * buffer_dev)
 {
   // Define GPU kernel configuration
   dim3 block_dim(512);
@@ -348,7 +345,7 @@ void CudaVoxelGridDownsampleFilter::getVoxelMinMaxCoordinate(
   auto find_min_max = [&](const size_t offset_index, float & min_field, float & max_field) -> void {
     // extract coordinate value
     extractCoordKernel<<<grid_dim, block_dim, 0, stream_>>>(
-      points->data.get(), voxel_info_.num_input_points, voxel_info_.input_point_step,
+      static_cast<const uint8_t *>(input_gpu_data), voxel_info_.num_input_points, voxel_info_.input_point_step,
       voxel_info_.input_xyzi_offset[offset_index], buffer_dev);
 
     // get min and max coordinate
@@ -387,7 +384,7 @@ void CudaVoxelGridDownsampleFilter::getVoxelMinMaxCoordinate(
 }
 
 size_t CudaVoxelGridDownsampleFilter::searchValidVoxel(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & points, size_t * voxel_index_buffer_dev,
+  const void * input_gpu_data, size_t * voxel_index_buffer_dev,
   size_t * point_index_buffer_dev, decltype(OutputPointType::return_type) * return_type_field_dev,
   decltype(OutputPointType::channel) * channel_field_dev)
 {
@@ -408,7 +405,7 @@ size_t CudaVoxelGridDownsampleFilter::searchValidVoxel(
 
   // calculate voxel index that each input point belong to
   calculateVoxelIndexKernel<<<grid_dim, block_dim, 0, stream_>>>(
-    points->data.get(), num_voxels, voxel_index_buffer_dev, point_index_buffer_dev,
+    static_cast<const uint8_t *>(input_gpu_data), num_voxels, voxel_index_buffer_dev, point_index_buffer_dev,
     return_type_field_dev, channel_field_dev);
 
   // get number of valid voxels
@@ -470,10 +467,9 @@ size_t CudaVoxelGridDownsampleFilter::searchValidVoxel(
 }
 
 void CudaVoxelGridDownsampleFilter::getCentroid(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
+  const agnocast::cuda::PointCloud2 & input, const void * input_gpu_data,
   const size_t num_valid_voxel, const size_t * voxel_index_dev, const size_t * point_index_dev,
-  size_t * index_map_dev, Centroid * buffer_dev,
-  std::unique_ptr<cuda_blackboard::CudaPointCloud2> & output_points,
+  size_t * index_map_dev, Centroid * buffer_dev, agnocast::cuda::PointCloud2 & output,
   decltype(OutputPointType::return_type) * return_type_field_dev,
   decltype(OutputPointType::channel) * channel_field_dev)
 {
@@ -505,11 +501,11 @@ void CudaVoxelGridDownsampleFilter::getCentroid(
   dim3 grid_dim_point((voxel_info_.num_input_points + block_dim.x - 1) / block_dim.x);
 
   // get data type for intensity field
-  auto get_intensity_type = [](const auto & points) -> const uint8_t {
+  auto get_intensity_type = [](const agnocast::cuda::PointCloud2 & points) -> const uint8_t {
     std::optional<uint8_t> intensity_index = std::nullopt;
-    for (size_t i = 0; i < points->fields.size(); i++) {
+    for (size_t i = 0; i < points.fields.size(); i++) {
       // Here assumes input points surely has "intensity" field
-      if (points->fields[i].name == "intensity") {
+      if (points.fields[i].name == "intensity") {
         intensity_index = i;
         break;
       }
@@ -517,42 +513,42 @@ void CudaVoxelGridDownsampleFilter::getCentroid(
     if (!intensity_index) {
       throw std::runtime_error("intensity field is not found in input");
     }
-    return points->fields[intensity_index.value()].datatype;
+    return points.fields[intensity_index.value()].datatype;
   };
 
   // calculate voxel index that each input point belong to
-  switch (get_intensity_type(input_points)) {
+  switch (get_intensity_type(input)) {
     case sensor_msgs::msg::PointField::INT8:
       accumulatePointsKernel<int8_t><<<grid_dim_point, block_dim, 0, stream_>>>(
-        input_points->data.get(), index_map_dev, point_index_dev, buffer_dev);
+        static_cast<const uint8_t *>(input_gpu_data), index_map_dev, point_index_dev, buffer_dev);
       break;
     case sensor_msgs::msg::PointField::UINT8:
       accumulatePointsKernel<uint8_t><<<grid_dim_point, block_dim, 0, stream_>>>(
-        input_points->data.get(), index_map_dev, point_index_dev, buffer_dev);
+        static_cast<const uint8_t *>(input_gpu_data), index_map_dev, point_index_dev, buffer_dev);
       break;
     case sensor_msgs::msg::PointField::INT16:
       accumulatePointsKernel<int16_t><<<grid_dim_point, block_dim, 0, stream_>>>(
-        input_points->data.get(), index_map_dev, point_index_dev, buffer_dev);
+        static_cast<const uint8_t *>(input_gpu_data), index_map_dev, point_index_dev, buffer_dev);
       break;
     case sensor_msgs::msg::PointField::UINT16:
       accumulatePointsKernel<uint16_t><<<grid_dim_point, block_dim, 0, stream_>>>(
-        input_points->data.get(), index_map_dev, point_index_dev, buffer_dev);
+        static_cast<const uint8_t *>(input_gpu_data), index_map_dev, point_index_dev, buffer_dev);
       break;
     case sensor_msgs::msg::PointField::INT32:
       accumulatePointsKernel<int32_t><<<grid_dim_point, block_dim, 0, stream_>>>(
-        input_points->data.get(), index_map_dev, point_index_dev, buffer_dev);
+        static_cast<const uint8_t *>(input_gpu_data), index_map_dev, point_index_dev, buffer_dev);
       break;
     case sensor_msgs::msg::PointField::UINT32:
       accumulatePointsKernel<uint32_t><<<grid_dim_point, block_dim, 0, stream_>>>(
-        input_points->data.get(), index_map_dev, point_index_dev, buffer_dev);
+        static_cast<const uint8_t *>(input_gpu_data), index_map_dev, point_index_dev, buffer_dev);
       break;
     case sensor_msgs::msg::PointField::FLOAT32:
       accumulatePointsKernel<float><<<grid_dim_point, block_dim, 0, stream_>>>(
-        input_points->data.get(), index_map_dev, point_index_dev, buffer_dev);
+        static_cast<const uint8_t *>(input_gpu_data), index_map_dev, point_index_dev, buffer_dev);
       break;
     case sensor_msgs::msg::PointField::FLOAT64:
       accumulatePointsKernel<double><<<grid_dim_point, block_dim, 0, stream_>>>(
-        input_points->data.get(), index_map_dev, point_index_dev, buffer_dev);
+        static_cast<const uint8_t *>(input_gpu_data), index_map_dev, point_index_dev, buffer_dev);
       break;
     default:
       throw std::runtime_error("unsupported intensity data type is detected.");
@@ -560,7 +556,7 @@ void CudaVoxelGridDownsampleFilter::getCentroid(
 
   dim3 grid_dim_voxel((num_valid_voxel + block_dim.x - 1) / block_dim.x);
   packCentroidKernel<<<grid_dim_voxel, block_dim, 0, stream_>>>(
-    buffer_dev, num_valid_voxel, sizeof(OutputPointType), output_points->data.get(),
+    buffer_dev, num_valid_voxel, sizeof(OutputPointType), static_cast<uint8_t *>(output.data),
     return_type_field_dev, channel_field_dev);
 }
 }  // namespace autoware::cuda_pointcloud_preprocessor

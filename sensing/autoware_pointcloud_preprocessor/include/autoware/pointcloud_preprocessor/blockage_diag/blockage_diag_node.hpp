@@ -18,6 +18,7 @@
 #include "autoware/point_types/types.hpp"
 #include "autoware/pointcloud_preprocessor/filter.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <image_transport/image_transport.hpp>
 #include <opencv2/core/mat.hpp>
@@ -26,6 +27,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float32_stamped.hpp>
+#include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
@@ -40,6 +42,7 @@
 
 #include <boost/circular_buffer.hpp>
 
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -50,28 +53,50 @@ using diagnostic_updater::DiagnosticStatusWrapper;
 using diagnostic_updater::Updater;
 using PCLCloudXYZIRCAEDT = pcl::PointCloud<PointXYZIRCAEDT>;
 
-class BlockageDiagComponent : public autoware::pointcloud_preprocessor::Filter
+template <typename NodeT>
+class BlockageDiagComponentBase : public autoware::pointcloud_preprocessor::FilterBase<NodeT>
 {
+  using PointCloud2 = typename FilterBase<NodeT>::PointCloud2;
+  using PointCloud2ConstPtr = typename FilterBase<NodeT>::PointCloud2ConstPtr;
+  using IndicesPtr = typename FilterBase<NodeT>::IndicesPtr;
+
 protected:
   void filter(
     const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output) override;
   /** \brief Parameter service callback result : needed to be hold */
-  OnSetParametersCallbackHandle::SharedPtr set_param_res_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
 
   /** \brief Parameter service callback */
   rcl_interfaces::msg::SetParametersResult param_callback(const std::vector<rclcpp::Parameter> & p);
-  image_transport::Publisher lidar_depth_map_pub_;
-  image_transport::Publisher blockage_mask_pub_;
-  image_transport::Publisher single_frame_dust_mask_pub;
-  image_transport::Publisher multi_frame_dust_mask_pub;
-  image_transport::Publisher blockage_dust_merged_pub;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
+
+  // image_transport publishers (only for rclcpp::Node)
+  std::unique_ptr<image_transport::Publisher> lidar_depth_map_pub_;
+  std::unique_ptr<image_transport::Publisher> blockage_mask_pub_;
+  std::unique_ptr<image_transport::Publisher> single_frame_dust_mask_pub;
+  std::unique_ptr<image_transport::Publisher> multi_frame_dust_mask_pub;
+  std::unique_ptr<image_transport::Publisher> blockage_dust_merged_pub;
+
+  // Conditional publishers
+  std::conditional_t<
+    is_rclcpp_node_v<NodeT>,
+    typename rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr,
+    typename agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr>
     ground_blockage_ratio_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
+  std::conditional_t<
+    is_rclcpp_node_v<NodeT>,
+    typename rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr,
+    typename agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr>
     sky_blockage_ratio_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr
+  std::conditional_t<
+    is_rclcpp_node_v<NodeT>,
+    typename rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr,
+    typename agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32Stamped>::SharedPtr>
     ground_dust_ratio_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr blockage_type_pub_;
+  std::conditional_t<
+    is_rclcpp_node_v<NodeT>,
+    typename rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr,
+    typename agnocast::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr>
+    blockage_type_pub_;
 
 private:
   struct DebugInfo
@@ -210,9 +235,8 @@ private:
    */
   void publish_debug_info(const DebugInfo & debug_info) const;
 
-  agnocast::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr agnocast_sub_input_;
-
-  Updater updater_{this};
+  // Diagnostic updater (only for rclcpp::Node)
+  std::unique_ptr<diagnostic_updater::Updater> updater_;
 
   // Debug parameters
   bool publish_debug_image_;
@@ -266,8 +290,32 @@ private:
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW
-  explicit BlockageDiagComponent(const rclcpp::NodeOptions & options);
+  explicit BlockageDiagComponentBase(const rclcpp::NodeOptions & options);
 };
+
+// rclcpp::Node version (backward compatible)
+class BlockageDiagComponent : public BlockageDiagComponentBase<rclcpp::Node>
+{
+public:
+  explicit BlockageDiagComponent(const rclcpp::NodeOptions & options)
+  : BlockageDiagComponentBase<rclcpp::Node>(options)
+  {
+  }
+};
+
+// agnocast::Node version
+class AgnocastBlockageDiagComponent : public BlockageDiagComponentBase<agnocast::Node>
+{
+public:
+  explicit AgnocastBlockageDiagComponent(const rclcpp::NodeOptions & options)
+  : BlockageDiagComponentBase<agnocast::Node>(options)
+  {
+  }
+};
+
+// Extern template declarations
+extern template class BlockageDiagComponentBase<rclcpp::Node>;
+extern template class BlockageDiagComponentBase<agnocast::Node>;
 
 }  // namespace autoware::pointcloud_preprocessor
 

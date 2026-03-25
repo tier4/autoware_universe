@@ -18,10 +18,9 @@
 
 #include "autoware/cuda_pointcloud_preprocessor/cuda_outlier_filter/cub_executor.hpp"
 
+#include <agnocast/cuda/types.hpp>
 #include <autoware/cuda_utils/cuda_unique_ptr.hpp>
 #include <cuda/std/optional>
-#include <cuda_blackboard/cuda_pointcloud2.hpp>
-#include <cuda_blackboard/cuda_unique_ptr.hpp>
 
 #include <cuda_runtime.h>
 
@@ -155,8 +154,6 @@ class CudaPolarVoxelOutlierFilter
 public:
   struct FilterReturn
   {
-    std::unique_ptr<cuda_blackboard::CudaPointCloud2> filtered_cloud;
-    std::unique_ptr<cuda_blackboard::CudaPointCloud2> noise_cloud;
     double filter_ratio;
     double visibility;
   };
@@ -179,7 +176,8 @@ public:
    * visibility.
    */
   FilterReturn filter(
-    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
+    const agnocast::cuda::PointCloud2 & input_cloud, const void * input_gpu_data,
+    agnocast::cuda::PointCloud2 & filtered_output, agnocast::cuda::PointCloud2 & noise_output,
     const CudaPolarVoxelOutlierFilterParameters & params, const PolarDataType polar_type);
 
   /**
@@ -267,9 +265,9 @@ protected:
    * \return The number of points in the output point cloud.
    */
   size_t create_output(
-    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_cloud,
+    const agnocast::cuda::PointCloud2 & input_cloud, const void * input_gpu_data,
     const CudaPooledUniquePtr<bool> & points_mask, const size_t & num_points,
-    std::unique_ptr<cuda_blackboard::CudaPointCloud2> & output_cloud);
+    agnocast::cuda::PointCloud2 & output_cloud);
 
 private:
   cudaStream_t stream_{};

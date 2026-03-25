@@ -71,7 +71,13 @@ endif()
 
 if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
   find_package(ament_cmake_auto REQUIRED)
+  find_package(agnocastlib)
+  find_package(agnocast_cuda)
   ament_auto_find_build_dependencies()
+
+  if("$ENV{ENABLE_AGNOCAST}")
+    add_definitions(-DUSE_AGNOCAST_ENABLED)
+  endif()
 
   include_directories(
     include
@@ -115,6 +121,17 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     ${CUDNN_LIBRARY}
     ${PROJECT_NAME}_cuda_lib
   )
+
+  if("$ENV{ENABLE_AGNOCAST}")
+    target_link_libraries(${PROJECT_NAME}_lib
+      ${agnocastlib_LIBRARIES}
+      ${agnocast_cuda_LIBRARIES}
+    )
+    target_include_directories(${PROJECT_NAME}_lib SYSTEM PUBLIC
+      ${agnocastlib_INCLUDE_DIRS}
+      ${agnocast_cuda_INCLUDE_DIRS}
+    )
+  endif()
 
   target_include_directories(${PROJECT_NAME}_lib
     PUBLIC

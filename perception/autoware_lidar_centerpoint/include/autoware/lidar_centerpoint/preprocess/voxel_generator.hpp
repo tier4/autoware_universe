@@ -20,7 +20,8 @@
 #include "autoware/lidar_centerpoint/preprocess/pointcloud_densification.hpp"
 #include "autoware/lidar_centerpoint/preprocess/preprocess_kernel.hpp"
 
-#include <cuda_blackboard/cuda_pointcloud2.hpp>
+#include <agnocast/agnocast.hpp>
+#include <agnocast/cuda/types.hpp>
 
 #include <memory>
 #include <vector>
@@ -38,7 +39,7 @@ public:
   virtual std::size_t generateSweepPoints(float * points_d) = 0;
 
   bool enqueuePointCloud(
-    const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
+    const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & input_pointcloud_msg_ptr,
     const tf2_ros::Buffer & tf_buffer);
 
 protected:

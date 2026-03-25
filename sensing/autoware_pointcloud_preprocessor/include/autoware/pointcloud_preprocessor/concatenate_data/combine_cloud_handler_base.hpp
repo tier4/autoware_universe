@@ -38,9 +38,9 @@ namespace autoware::pointcloud_preprocessor
 template <typename MsgTraits>
 struct ConcatenatedCloudResult
 {
-  typename MsgTraits::PointCloudMessage::UniquePtr concatenate_cloud_ptr{nullptr};
+  typename MsgTraits::UniquePtr concatenate_cloud_ptr{nullptr};
   autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo::UniquePtr concatenation_info_ptr;
-  std::optional<std::unordered_map<std::string, typename MsgTraits::PointCloudMessage::UniquePtr>>
+  std::optional<std::unordered_map<std::string, typename MsgTraits::UniquePtr>>
     topic_to_transformed_cloud_map;
   std::unordered_map<std::string, double> topic_to_original_stamp_map;
 };

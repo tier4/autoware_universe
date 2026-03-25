@@ -15,7 +15,8 @@
 #ifndef AUTOWARE__LIDAR_CENTERPOINT__PREPROCESS__POINTCLOUD_DENSIFICATION_HPP_
 #define AUTOWARE__LIDAR_CENTERPOINT__PREPROCESS__POINTCLOUD_DENSIFICATION_HPP_
 
-#include <cuda_blackboard/cuda_pointcloud2.hpp>
+#include <agnocast/agnocast.hpp>
+#include <agnocast/cuda/types.hpp>
 
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -57,7 +58,7 @@ private:
 
 struct PointCloudWithTransform
 {
-  std::shared_ptr<const cuda_blackboard::CudaPointCloud2> input_pointcloud_msg_ptr;
+  agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> input_pointcloud_msg_ptr;
   Eigen::Affine3f affine_past2world;
 };
 
@@ -67,7 +68,7 @@ public:
   explicit PointCloudDensification(const DensificationParam & param);
 
   bool enqueuePointCloud(
-    const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
+    const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & input_pointcloud_msg_ptr,
     const tf2_ros::Buffer & tf_buffer);
 
   double getCurrentTimestamp() const { return current_timestamp_; }
@@ -84,7 +85,7 @@ public:
 
 private:
   void enqueue(
-    const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
+    const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & input_pointcloud_msg_ptr,
     const Eigen::Affine3f & affine);
   void dequeue();
 

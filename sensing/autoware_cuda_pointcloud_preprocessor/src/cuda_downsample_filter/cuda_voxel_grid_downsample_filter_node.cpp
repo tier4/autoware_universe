@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -35,37 +35,31 @@ CudaVoxelGridDownsampleFilterNode::CudaVoxelGridDownsampleFilterNode(
     return;
   }
 
-  sub_ =
-    std::make_shared<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
-      *this, "~/input/pointcloud",
-      std::bind(
-        &CudaVoxelGridDownsampleFilterNode::cudaPointcloudCallback, this, std::placeholders::_1));
+  sub_ = this->create_subscription<agnocast::cuda::PointCloud2>(
+    "~/input/pointcloud", rclcpp::SensorDataQoS{}.keep_last(1),
+    std::bind(
+      &CudaVoxelGridDownsampleFilterNode::cudaPointcloudCallback, this, std::placeholders::_1));
 
-  pub_ =
-    std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(
-      *this, "~/output/pointcloud");
+  pub_ = this->create_publisher<agnocast::cuda::PointCloud2>("~/output/pointcloud", 1);
 
   cuda_voxel_grid_downsample_filter_ = std::make_unique<CudaVoxelGridDownsampleFilter>(
     voxel_size_x, voxel_size_y, voxel_size_z, max_mem_pool_size_in_byte);
 }
 
 void CudaVoxelGridDownsampleFilterNode::cudaPointcloudCallback(
-  const cuda_blackboard::CudaPointCloud2::ConstSharedPtr msg)
+  agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> msg)
 {
   // The following only checks compatibility with xyzi
-  // (i.e., just check the first four elements of the point field are x, y, z, and intensity
-  // and don't care the rest of the fields)
   if (!pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzi(msg->fields)) {
-    // This filter assumes float for intensity data type, though the filter supports
-    // other data types for the intensity field, so here just outputs a WARN message.
     RCLCPP_WARN(
       this->get_logger(),
       "Input pointcloud data layout is not compatible with PointXYZI. "
       "The output result may not be correct");
   }
 
-  auto output_pointcloud_ptr = cuda_voxel_grid_downsample_filter_->filter(msg);
-  pub_->publish(std::move(output_pointcloud_ptr));
+  auto output = pub_->borrow_loaned_message();
+  cuda_voxel_grid_downsample_filter_->filter(*msg, msg.gpu_data(), *output);
+  pub_->publish(std::move(output));
 }
 }  // namespace autoware::cuda_pointcloud_preprocessor
 

@@ -19,8 +19,7 @@
 #include "autoware/cuda_pointcloud_preprocessor/point_types.hpp"
 #include "autoware/cuda_utils/cuda_check_error.hpp"
 
-#include <cuda_blackboard/cuda_pointcloud2.hpp>
-#include <cuda_blackboard/cuda_unique_ptr.hpp>
+#include <agnocast/cuda/types.hpp>
 
 #include <cuda_runtime.h>
 
@@ -88,8 +87,9 @@ public:
     const int64_t max_mem_pool_size_in_byte);
   ~CudaVoxelGridDownsampleFilter() = default;
 
-  std::unique_ptr<cuda_blackboard::CudaPointCloud2> filter(
-    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points);
+  void filter(
+    const agnocast::cuda::PointCloud2 & input, const void * input_gpu_data,
+    agnocast::cuda::PointCloud2 & output);
 
 private:
   template <typename T>
@@ -98,18 +98,16 @@ private:
   template <typename T>
   void returnBufferToPool(T * buffer);
 
-  void getVoxelMinMaxCoordinate(
-    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & points, float * buffer_dev);
+  void getVoxelMinMaxCoordinate(const void * input_gpu_data, float * buffer_dev);
   size_t searchValidVoxel(
-    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & points,
-    size_t * voxel_index_buffer_dev, size_t * point_index_buffer_dev,
+    const void * input_gpu_data, size_t * voxel_index_buffer_dev,
+    size_t * point_index_buffer_dev,
     decltype(OutputPointType::return_type) * return_type_field_dev,
     decltype(OutputPointType::channel) * channel_field_dev);
   void getCentroid(
-    const cuda_blackboard::CudaPointCloud2::ConstSharedPtr & input_points,
+    const agnocast::cuda::PointCloud2 & input, const void * input_gpu_data,
     const size_t num_valid_voxel, const size_t * voxel_index_dev, const size_t * point_index_dev,
-    size_t * index_map_dev, Centroid * buffer_dev,
-    std::unique_ptr<cuda_blackboard::CudaPointCloud2> & output_points,
+    size_t * index_map_dev, Centroid * buffer_dev, agnocast::cuda::PointCloud2 & output,
     decltype(OutputPointType::return_type) * return_type_field_dev,
     decltype(OutputPointType::channel) * channel_field_dev);
 

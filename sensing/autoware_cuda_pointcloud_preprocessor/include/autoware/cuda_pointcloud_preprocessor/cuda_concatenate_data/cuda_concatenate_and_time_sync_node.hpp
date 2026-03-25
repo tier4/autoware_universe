@@ -18,10 +18,21 @@
 #include "autoware/cuda_pointcloud_preprocessor/cuda_concatenate_data/cuda_traits.hpp"
 #include "autoware/pointcloud_preprocessor/concatenate_data/concatenate_and_time_sync_node.hpp"
 
-#include <cuda_blackboard/cuda_blackboard_publisher.hpp>
-#include <cuda_blackboard/cuda_blackboard_subscriber.hpp>
-#include <cuda_blackboard/cuda_pointcloud2.hpp>
 #include <rclcpp/rclcpp.hpp>
+
+// Declare explicit specializations to prevent the generic template from being instantiated
+// for CudaPointCloud2Traits. Definitions are in cuda_concatenate_and_time_sync_node.cpp.
+namespace autoware::pointcloud_preprocessor
+{
+template <>
+void PointCloudConcatenateDataSynchronizerComponentTemplated<
+  CudaPointCloud2Traits>::initialize_pub_sub();
+
+template <>
+void PointCloudConcatenateDataSynchronizerComponentTemplated<CudaPointCloud2Traits>::publish_clouds(
+  ConcatenatedCloudResult<CudaPointCloud2Traits> && concatenated_cloud_result,
+  std::shared_ptr<CollectorInfoBase> collector_info);
+}  // namespace autoware::pointcloud_preprocessor
 
 namespace autoware::cuda_pointcloud_preprocessor
 {

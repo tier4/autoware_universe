@@ -73,124 +73,149 @@ static inline bool within_circular_range(
   return within_range;
 }
 
-PolarVoxelOutlierFilterComponent::PolarVoxelOutlierFilterComponent(
+template <typename NodeT>
+PolarVoxelOutlierFilterComponentBase<NodeT>::PolarVoxelOutlierFilterComponentBase(
   const rclcpp::NodeOptions & options)
-: Filter("PolarVoxelOutlierFilter", options),
+: FilterBase<NodeT>("PolarVoxelOutlierFilter", options),
   azimuth_domain_min(0.0),
   azimuth_domain_max(TWO_PI),
   elevation_domain_min(-M_PI / 2.0),
-  elevation_domain_max(M_PI / 2.0),
-  updater_(this)
+  elevation_domain_max(M_PI / 2.0)
 {
-  radial_resolution_m_ = declare_parameter<double>("radial_resolution_m");
+  radial_resolution_m_ = this->template declare_parameter<double>("radial_resolution_m");
   azimuth_resolution_rad_ =
-    adjust_resolution_to_circle(declare_parameter<double>("azimuth_resolution_rad"));
-  elevation_resolution_rad_ =
-    adjust_resolution_to_circle(declare_parameter<double>("elevation_resolution_rad"));
-  voxel_points_threshold_ = static_cast<int>(declare_parameter<int64_t>("voxel_points_threshold"));
-  min_radius_m_ = declare_parameter<double>("min_radius_m");
-  max_radius_m_ = declare_parameter<double>("max_radius_m");
+    adjust_resolution_to_circle(this->template declare_parameter<double>("azimuth_resolution_rad"));
+  elevation_resolution_rad_ = adjust_resolution_to_circle(
+    this->template declare_parameter<double>("elevation_resolution_rad"));
+  voxel_points_threshold_ =
+    static_cast<int>(this->template declare_parameter<int64_t>("voxel_points_threshold"));
+  min_radius_m_ = this->template declare_parameter<double>("min_radius_m");
+  max_radius_m_ = this->template declare_parameter<double>("max_radius_m");
   visibility_estimation_max_range_m_ =
-    declare_parameter<double>("visibility_estimation_max_range_m");
+    this->template declare_parameter<double>("visibility_estimation_max_range_m");
   visibility_estimation_min_azimuth_rad_ =
-    declare_parameter<double>("visibility_estimation_min_azimuth_rad");
+    this->template declare_parameter<double>("visibility_estimation_min_azimuth_rad");
   visibility_estimation_max_azimuth_rad_ =
-    declare_parameter<double>("visibility_estimation_max_azimuth_rad");
+    this->template declare_parameter<double>("visibility_estimation_max_azimuth_rad");
   visibility_estimation_min_elevation_rad_ =
-    declare_parameter<double>("visibility_estimation_min_elevation_rad");
+    this->template declare_parameter<double>("visibility_estimation_min_elevation_rad");
   visibility_estimation_max_elevation_rad_ =
-    declare_parameter<double>("visibility_estimation_max_elevation_rad");
-  use_return_type_classification_ = declare_parameter<bool>("use_return_type_classification");
-  enable_secondary_return_filtering_ = declare_parameter<bool>("filter_secondary_returns");
+    this->template declare_parameter<double>("visibility_estimation_max_elevation_rad");
+  use_return_type_classification_ =
+    this->template declare_parameter<bool>("use_return_type_classification");
+  enable_secondary_return_filtering_ =
+    this->template declare_parameter<bool>("filter_secondary_returns");
   secondary_noise_threshold_ =
-    static_cast<int>(declare_parameter<int64_t>("secondary_noise_threshold"));
-  visibility_estimation_max_secondary_voxel_count_ =
-    static_cast<int>(declare_parameter<int64_t>("visibility_estimation_max_secondary_voxel_count"));
-  visibility_estimation_only_ = declare_parameter<bool>("visibility_estimation_only");
-  publish_noise_cloud_ = declare_parameter<bool>("publish_noise_cloud");
-  bool publish_area_marker = declare_parameter<bool>("publish_area_marker");
-  int num_frames_hysteresis_transition = declare_parameter<int>("num_frames_hysteresis_transition");
-  bool immediate_report_error = declare_parameter<bool>("immediate_report_error");
-  bool immediate_relax_state = declare_parameter<bool>("immediate_relax_state");
+    static_cast<int>(this->template declare_parameter<int64_t>("secondary_noise_threshold"));
+  visibility_estimation_max_secondary_voxel_count_ = static_cast<int>(
+    this->template declare_parameter<int64_t>("visibility_estimation_max_secondary_voxel_count"));
+  visibility_estimation_only_ = this->template declare_parameter<bool>("visibility_estimation_only");
+  publish_noise_cloud_ = this->template declare_parameter<bool>("publish_noise_cloud");
+  bool publish_area_marker = this->template declare_parameter<bool>("publish_area_marker");
+  int num_frames_hysteresis_transition =
+    this->template declare_parameter<int>("num_frames_hysteresis_transition");
+  bool immediate_report_error = this->template declare_parameter<bool>("immediate_report_error");
+  bool immediate_relax_state = this->template declare_parameter<bool>("immediate_relax_state");
 
-  auto primary_return_types_param = declare_parameter<std::vector<int64_t>>("primary_return_types");
+  auto primary_return_types_param =
+    this->template declare_parameter<std::vector<int64_t>>("primary_return_types");
   primary_return_types_.clear();
   primary_return_types_.reserve(primary_return_types_param.size());
   for (const auto & val : primary_return_types_param) {
     primary_return_types_.push_back(static_cast<int>(val));
-    RCLCPP_DEBUG(get_logger(), "primary_return_types_ value: %d", static_cast<int>(val));
+    RCLCPP_DEBUG(this->get_logger(), "primary_return_types_ value: %d", static_cast<int>(val));
   }
 
-  visibility_error_threshold_ = declare_parameter<double>("visibility_error_threshold");
-  visibility_warn_threshold_ = declare_parameter<double>("visibility_warn_threshold");
-  filter_ratio_error_threshold_ = declare_parameter<double>("filter_ratio_error_threshold");
-  filter_ratio_warn_threshold_ = declare_parameter<double>("filter_ratio_warn_threshold");
-  intensity_threshold_ = declare_parameter<uint8_t>("intensity_threshold");
+  visibility_error_threshold_ =
+    this->template declare_parameter<double>("visibility_error_threshold");
+  visibility_warn_threshold_ =
+    this->template declare_parameter<double>("visibility_warn_threshold");
+  filter_ratio_error_threshold_ =
+    this->template declare_parameter<double>("filter_ratio_error_threshold");
+  filter_ratio_warn_threshold_ =
+    this->template declare_parameter<double>("filter_ratio_warn_threshold");
+  intensity_threshold_ = this->template declare_parameter<uint8_t>("intensity_threshold");
 
   // Initialize diagnostics
   hysteresis_state_machine_ = std::make_shared<custom_diagnostic_tasks::HysteresisStateMachine>(
     num_frames_hysteresis_transition, immediate_report_error, immediate_relax_state);
-  updater_.setHardwareID("polar_voxel_outlier_filter");
-  updater_.add(
-    std::string(this->get_namespace()) + ": visibility_validation", this,
-    &PolarVoxelOutlierFilterComponent::on_visibility_check);
-  updater_.add(
-    std::string(this->get_namespace()) + ": filter_ratio_validation", this,
-    &PolarVoxelOutlierFilterComponent::on_filter_ratio_check);
-  updater_.setPeriod(diagnostics_update_period_sec);
+
+  if constexpr (is_rclcpp_node_v<NodeT>) {
+    updater_ = std::make_unique<diagnostic_updater::Updater>(this);
+    updater_->setHardwareID("polar_voxel_outlier_filter");
+    updater_->add(
+      std::string(this->get_namespace()) + ": visibility_validation", this,
+      &PolarVoxelOutlierFilterComponentBase::on_visibility_check);
+    updater_->add(
+      std::string(this->get_namespace()) + ": filter_ratio_validation", this,
+      &PolarVoxelOutlierFilterComponentBase::on_filter_ratio_check);
+    updater_->setPeriod(diagnostics_update_period_sec);
+  }
 
   // Create publishers
-  visibility_pub_ = create_publisher<autoware_internal_debug_msgs::msg::Float32Stamped>(
-    "polar_voxel_outlier_filter/debug/visibility", rclcpp::SensorDataQoS());
-  ratio_pub_ = create_publisher<autoware_internal_debug_msgs::msg::Float32Stamped>(
-    "polar_voxel_outlier_filter/debug/filter_ratio", rclcpp::SensorDataQoS());
+  if constexpr (is_rclcpp_node_v<NodeT>) {
+    visibility_pub_ =
+      this->template create_publisher<autoware_internal_debug_msgs::msg::Float32Stamped>(
+        "polar_voxel_outlier_filter/debug/visibility", rclcpp::SensorDataQoS());
+    ratio_pub_ =
+      this->template create_publisher<autoware_internal_debug_msgs::msg::Float32Stamped>(
+        "polar_voxel_outlier_filter/debug/filter_ratio", rclcpp::SensorDataQoS());
+  } else {
+    visibility_pub_ =
+      this->template create_publisher<autoware_internal_debug_msgs::msg::Float32Stamped>(
+        "polar_voxel_outlier_filter/debug/visibility", rclcpp::SensorDataQoS());
+    ratio_pub_ =
+      this->template create_publisher<autoware_internal_debug_msgs::msg::Float32Stamped>(
+        "polar_voxel_outlier_filter/debug/filter_ratio", rclcpp::SensorDataQoS());
+  }
 
   // Create noise cloud publisher if enabled
   if (publish_noise_cloud_) {
-    rclcpp::PublisherOptions pub_options;
-    pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
-    noise_cloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
-      "polar_voxel_outlier_filter/debug/pointcloud_noise", rclcpp::SensorDataQoS(), pub_options);
-    RCLCPP_INFO(get_logger(), "Noise cloud publishing enabled");
+    if constexpr (is_rclcpp_node_v<NodeT>) {
+      rclcpp::PublisherOptions pub_options;
+      pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
+      noise_cloud_pub_ = this->template create_publisher<sensor_msgs::msg::PointCloud2>(
+        "polar_voxel_outlier_filter/debug/pointcloud_noise", rclcpp::SensorDataQoS(), pub_options);
+    } else {
+      noise_cloud_pub_ = this->template create_publisher<sensor_msgs::msg::PointCloud2>(
+        "polar_voxel_outlier_filter/debug/pointcloud_noise", rclcpp::SensorDataQoS());
+    }
+    RCLCPP_INFO(this->get_logger(), "Noise cloud publishing enabled");
   } else {
-    RCLCPP_INFO(get_logger(), "Noise cloud publishing disabled for performance optimization");
+    RCLCPP_INFO(this->get_logger(), "Noise cloud publishing disabled for performance optimization");
   }
 
   // Create area marker publisher if enabled
   if (publish_area_marker) {
-    area_marker_pub_ = create_publisher<visualization_msgs::msg::Marker>(
-      "polar_voxel_outlier_filter/debug/visibility_estimation_area", 10);
+    if constexpr (is_rclcpp_node_v<NodeT>) {
+      area_marker_pub_ = this->template create_publisher<visualization_msgs::msg::Marker>(
+        "polar_voxel_outlier_filter/debug/visibility_estimation_area", 10);
+    } else {
+      area_marker_pub_ = this->template create_publisher<visualization_msgs::msg::Marker>(
+        "polar_voxel_outlier_filter/debug/visibility_estimation_area", 10);
+    }
   }
 
   using std::placeholders::_1;
-  set_param_res_ = this->add_on_set_parameters_callback(
-    [this](const std::vector<rclcpp::Parameter> & p) { return param_callback(p); });
-
-  // Replace rclcpp subscription with agnocast subscription for zero-copy IPC
-  sub_input_.reset();
-  agnocast_sub_input_ = agnocast::create_subscription<sensor_msgs::msg::PointCloud2>(
-    this, "input", rclcpp::SensorDataQoS().keep_last(max_queue_size_),
-    [this](agnocast::ipc_shared_ptr<sensor_msgs::msg::PointCloud2> msg) {
-      auto input_ptr =
-        std::shared_ptr<const sensor_msgs::msg::PointCloud2>(msg.get(), [](const sensor_msgs::msg::PointCloud2 *) {});
-      this->input_indices_callback(input_ptr, PointIndicesConstPtr());
-    });
+  this->set_param_res_ = this->add_on_set_parameters_callback(
+    [this](const std::vector<rclcpp::Parameter> & p) { return this->param_callback(p); });
 
   RCLCPP_INFO(
-    get_logger(),
+    this->get_logger(),
     "Polar Voxel Outlier Filter initialized - supports PointXYZIRC and PointXYZIRCAEDT with %s "
     "filtering%s",
     use_return_type_classification_ ? "advanced two-criteria" : "simple occupancy",
     visibility_estimation_only_ ? " (visibility estimation only - no point cloud output)" : "");
 }
 
-void PolarVoxelOutlierFilterComponent::filter(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::filter(
   const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output)
 {
   std::scoped_lock lock(mutex_);
 
   if (!input) {
-    RCLCPP_ERROR(get_logger(), "Input point cloud is null");
+    RCLCPP_ERROR(this->get_logger(), "Input point cloud is null");
     throw std::invalid_argument("Input point cloud is null");
   }
 
@@ -202,10 +227,10 @@ void PolarVoxelOutlierFilterComponent::filter(
 
   if (has_polar_coords) {
     RCLCPP_DEBUG_ONCE(
-      get_logger(), "Processing PointXYZIRCAEDT format with pre-computed polar coordinates");
+      this->get_logger(), "Processing PointXYZIRCAEDT format with pre-computed polar coordinates");
   } else {
     RCLCPP_DEBUG_ONCE(
-      get_logger(), "Processing PointXYZIRC format, computing azimuth and elevation");
+      this->get_logger(), "Processing PointXYZIRC format, computing azimuth and elevation");
   }
 
   // Phase 2: Collect voxel information (unified for both formats)
@@ -235,8 +260,9 @@ void PolarVoxelOutlierFilterComponent::filter(
   }
 }
 
-PolarVoxelOutlierFilterComponent::PointVoxelInfoVector
-PolarVoxelOutlierFilterComponent::collect_voxel_info(const PointCloud2 & input)
+template <typename NodeT>
+typename PolarVoxelOutlierFilterComponentBase<NodeT>::PointVoxelInfoVector
+PolarVoxelOutlierFilterComponentBase<NodeT>::collect_voxel_info(const PointCloud2 & input)
 {
   PointVoxelInfoVector point_voxel_info;
   point_voxel_info.reserve(input.width * input.height);
@@ -252,7 +278,8 @@ PolarVoxelOutlierFilterComponent::collect_voxel_info(const PointCloud2 & input)
   return point_voxel_info;
 }
 
-void PolarVoxelOutlierFilterComponent::process_polar_points(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::process_polar_points(
   const PointCloud2 & input, PointVoxelInfoVector & point_voxel_info)
 {
   // Create iterators for polar coordinates (always exist for polar format)
@@ -269,7 +296,8 @@ void PolarVoxelOutlierFilterComponent::process_polar_points(
   }
 }
 
-void PolarVoxelOutlierFilterComponent::process_cartesian_points(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::process_cartesian_points(
   const PointCloud2 & input, PointVoxelInfoVector & point_voxel_info)
 {
   // Create iterators for cartesian coordinates (always exist for cartesian format)
@@ -286,7 +314,9 @@ void PolarVoxelOutlierFilterComponent::process_cartesian_points(
   }
 }
 
-std::optional<PointVoxelInfo> PolarVoxelOutlierFilterComponent::process_polar_point(
+template <typename NodeT>
+std::optional<PointVoxelInfo>
+PolarVoxelOutlierFilterComponentBase<NodeT>::process_polar_point(
   float distance, float azimuth, float elevation, uint8_t intensity, uint8_t return_type) const
 {
   // Step 1: Extract polar coordinates and determine point classification
@@ -305,7 +335,9 @@ std::optional<PointVoxelInfo> PolarVoxelOutlierFilterComponent::process_polar_po
   return PointVoxelInfo{voxel_idx, is_primary, passes_intensity};
 }
 
-std::optional<PointVoxelInfo> PolarVoxelOutlierFilterComponent::process_cartesian_point(
+template <typename NodeT>
+std::optional<PointVoxelInfo>
+PolarVoxelOutlierFilterComponentBase<NodeT>::process_cartesian_point(
   float x, float y, float z, uint8_t intensity, uint8_t return_type) const
 {
   auto polar_opt = extract_polar_from_xyz(x, y, z);
@@ -318,9 +350,10 @@ std::optional<PointVoxelInfo> PolarVoxelOutlierFilterComponent::process_cartesia
     polar_opt->radius, polar_opt->azimuth, polar_opt->elevation, intensity, return_type);
 }
 
+template <typename NodeT>
 template <typename Predicate>
-PolarVoxelOutlierFilterComponent::VoxelIndexSet
-PolarVoxelOutlierFilterComponent::determine_valid_voxels_generic(
+typename PolarVoxelOutlierFilterComponentBase<NodeT>::VoxelIndexSet
+PolarVoxelOutlierFilterComponentBase<NodeT>::determine_valid_voxels_generic(
   const VoxelPointCountMap & voxel_point_counts, Predicate predicate) const
 {
   VoxelIndexSet valid_voxels;
@@ -332,7 +365,8 @@ PolarVoxelOutlierFilterComponent::determine_valid_voxels_generic(
   return valid_voxels;
 }
 
-bool PolarVoxelOutlierFilterComponent::is_point_primary(uint8_t return_type) const
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::is_point_primary(uint8_t return_type) const
 {
   if (!use_return_type_classification_) {
     return true;  // Treat all as primary in simple mode
@@ -342,13 +376,16 @@ bool PolarVoxelOutlierFilterComponent::is_point_primary(uint8_t return_type) con
   return it != primary_return_types_.end();
 }
 
-bool PolarVoxelOutlierFilterComponent::meets_intensity_threshold(uint8_t intensity) const
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::meets_intensity_threshold(
+  uint8_t intensity) const
 {
   return intensity <= intensity_threshold_;
 }
 
-PolarVoxelOutlierFilterComponent::ValidPointsMask
-PolarVoxelOutlierFilterComponent::create_valid_points_mask(
+template <typename NodeT>
+typename PolarVoxelOutlierFilterComponentBase<NodeT>::ValidPointsMask
+PolarVoxelOutlierFilterComponentBase<NodeT>::create_valid_points_mask(
   const PointVoxelInfoVector & point_voxel_info, const VoxelIndexSet & valid_voxels) const
 {
   ValidPointsMask valid_points_mask(point_voxel_info.size(), false);
@@ -362,7 +399,8 @@ PolarVoxelOutlierFilterComponent::create_valid_points_mask(
   return valid_points_mask;
 }
 
-bool PolarVoxelOutlierFilterComponent::is_point_valid_for_mask(
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::is_point_valid_for_mask(
   const std::optional<PointVoxelInfo> & optional_info, const VoxelIndexSet & valid_voxels) const
 {
   if (!optional_info.has_value()) {
@@ -378,7 +416,9 @@ bool PolarVoxelOutlierFilterComponent::is_point_valid_for_mask(
   return passes_secondary_return_filter(info.is_primary);
 }
 
-bool PolarVoxelOutlierFilterComponent::passes_secondary_return_filter(bool is_primary) const
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::passes_secondary_return_filter(
+  bool is_primary) const
 {
   if (!enable_secondary_return_filtering_) {
     return true;  // All points pass when filtering is disabled
@@ -387,7 +427,8 @@ bool PolarVoxelOutlierFilterComponent::passes_secondary_return_filter(bool is_pr
   return is_primary;  // Only primary returns pass when filtering is enabled
 }
 
-void PolarVoxelOutlierFilterComponent::create_filtered_output(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::create_filtered_output(
   const PointCloud2 & input, const ValidPointsMask & valid_points_mask, PointCloud2 & output)
 {
   setup_output_header(
@@ -404,7 +445,8 @@ void PolarVoxelOutlierFilterComponent::create_filtered_output(
   }
 }
 
-void PolarVoxelOutlierFilterComponent::publish_noise_cloud(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::publish_noise_cloud(
   const PointCloud2 & input, const ValidPointsMask & valid_points_mask) const
 {
   if (!publish_noise_cloud_ || !noise_cloud_pub_) {
@@ -425,10 +467,17 @@ void PolarVoxelOutlierFilterComponent::publish_noise_cloud(
     }
   }
 
-  noise_cloud_pub_->publish(noise_cloud);
+  if constexpr (is_rclcpp_node_v<NodeT>) {
+    noise_cloud_pub_->publish(noise_cloud);
+  } else {
+    auto loaned_msg = noise_cloud_pub_->borrow_loaned_message();
+    *loaned_msg = noise_cloud;
+    noise_cloud_pub_->publish(std::move(loaned_msg));
+  }
 }
 
-void PolarVoxelOutlierFilterComponent::publish_diagnostics(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::publish_diagnostics(
   const VoxelPointCountMap & voxel_point_counts, const ValidPointsMask & valid_points_mask)
 {
   // Calculate metrics
@@ -439,11 +488,16 @@ void PolarVoxelOutlierFilterComponent::publish_diagnostics(
   publish_visibility_metric();
   publish_filter_ratio_metric();
 
-  // Update diagnostics
-  updater_.force_update();
+  // Update diagnostics (only for rclcpp::Node)
+  if constexpr (is_rclcpp_node_v<NodeT>) {
+    if (updater_) {
+      updater_->force_update();
+    }
+  }
 }
 
-void PolarVoxelOutlierFilterComponent::calculate_visibility_metric(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::calculate_visibility_metric(
   const VoxelPointCountMap & voxel_point_counts)
 {
   if (!use_return_type_classification_) {
@@ -467,7 +521,8 @@ void PolarVoxelOutlierFilterComponent::calculate_visibility_metric(
                  static_cast<double>(visibility_estimation_max_secondary_voxel_count_));
 }
 
-void PolarVoxelOutlierFilterComponent::calculate_filter_ratio_metric(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::calculate_filter_ratio_metric(
   const ValidPointsMask & valid_points_mask)
 {
   filter_ratio_ =
@@ -477,7 +532,8 @@ void PolarVoxelOutlierFilterComponent::calculate_filter_ratio_metric(
       : 0.0;
 }
 
-void PolarVoxelOutlierFilterComponent::publish_visibility_metric()
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::publish_visibility_metric()
 {
   if (!visibility_pub_ || !visibility_.has_value()) {
     return;
@@ -486,10 +542,18 @@ void PolarVoxelOutlierFilterComponent::publish_visibility_metric()
   autoware_internal_debug_msgs::msg::Float32Stamped visibility_msg;
   visibility_msg.stamp = this->now();
   visibility_msg.data = static_cast<float>(visibility_.value());
-  visibility_pub_->publish(visibility_msg);
+
+  if constexpr (is_rclcpp_node_v<NodeT>) {
+    visibility_pub_->publish(visibility_msg);
+  } else {
+    auto loaned_msg = visibility_pub_->borrow_loaned_message();
+    *loaned_msg = visibility_msg;
+    visibility_pub_->publish(std::move(loaned_msg));
+  }
 }
 
-void PolarVoxelOutlierFilterComponent::publish_filter_ratio_metric()
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::publish_filter_ratio_metric()
 {
   if (!ratio_pub_) {
     return;
@@ -498,17 +562,27 @@ void PolarVoxelOutlierFilterComponent::publish_filter_ratio_metric()
   autoware_internal_debug_msgs::msg::Float32Stamped ratio_msg;
   ratio_msg.stamp = this->now();
   ratio_msg.data = static_cast<float>(filter_ratio_.value_or(0.0));
-  ratio_pub_->publish(ratio_msg);
+
+  if constexpr (is_rclcpp_node_v<NodeT>) {
+    ratio_pub_->publish(ratio_msg);
+  } else {
+    auto loaned_msg = ratio_pub_->borrow_loaned_message();
+    *loaned_msg = ratio_msg;
+    ratio_pub_->publish(std::move(loaned_msg));
+  }
 }
 
-bool PolarVoxelOutlierFilterComponent::has_polar_coordinates(const PointCloud2 & input)
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::has_polar_coordinates(const PointCloud2 & input)
 {
   return autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzircaedt(
     input);
 }
 
-PolarVoxelOutlierFilterComponent::PolarCoordinate
-PolarVoxelOutlierFilterComponent::cartesian_to_polar(const CartesianCoordinate & cartesian)
+template <typename NodeT>
+typename PolarVoxelOutlierFilterComponentBase<NodeT>::PolarCoordinate
+PolarVoxelOutlierFilterComponentBase<NodeT>::cartesian_to_polar(
+  const CartesianCoordinate & cartesian)
 {
   double radius =
     std::sqrt(cartesian.x * cartesian.x + cartesian.y * cartesian.y + cartesian.z * cartesian.z);
@@ -518,7 +592,8 @@ PolarVoxelOutlierFilterComponent::cartesian_to_polar(const CartesianCoordinate &
   return {radius, azimuth, elevation};
 }
 
-PolarVoxelIndex PolarVoxelOutlierFilterComponent::polar_to_polar_voxel(
+template <typename NodeT>
+PolarVoxelIndex PolarVoxelOutlierFilterComponentBase<NodeT>::polar_to_polar_voxel(
   const PolarCoordinate & polar) const
 {
   PolarVoxelIndex voxel_idx{};
@@ -529,7 +604,9 @@ PolarVoxelIndex PolarVoxelOutlierFilterComponent::polar_to_polar_voxel(
   return voxel_idx;
 }
 
-bool PolarVoxelOutlierFilterComponent::is_valid_polar_point(const PolarCoordinate & polar) const
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::is_valid_polar_point(
+  const PolarCoordinate & polar) const
 {
   if (!has_finite_coordinates(polar)) {
     return false;
@@ -546,7 +623,9 @@ bool PolarVoxelOutlierFilterComponent::is_valid_polar_point(const PolarCoordinat
   return true;
 }
 
-bool PolarVoxelOutlierFilterComponent::has_finite_coordinates(const PolarCoordinate & polar) const
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::has_finite_coordinates(
+  const PolarCoordinate & polar) const
 {
   if (!std::isfinite(polar.radius)) return false;
   if (!std::isfinite(polar.azimuth)) return false;
@@ -554,18 +633,23 @@ bool PolarVoxelOutlierFilterComponent::has_finite_coordinates(const PolarCoordin
   return true;
 }
 
-bool PolarVoxelOutlierFilterComponent::is_within_radius_range(const PolarCoordinate & polar) const
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::is_within_radius_range(
+  const PolarCoordinate & polar) const
 {
   return polar.radius >= min_radius_m_ && polar.radius <= max_radius_m_;
 }
 
-bool PolarVoxelOutlierFilterComponent::has_sufficient_radius(const PolarCoordinate & polar) const
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::has_sufficient_radius(
+  const PolarCoordinate & polar) const
 {
   return std::abs(polar.radius) >= std::numeric_limits<double>::epsilon();
 }
 
-PolarVoxelOutlierFilterComponent::VoxelPointCountMap
-PolarVoxelOutlierFilterComponent::count_voxel_points(
+template <typename NodeT>
+typename PolarVoxelOutlierFilterComponentBase<NodeT>::VoxelPointCountMap
+PolarVoxelOutlierFilterComponentBase<NodeT>::count_voxel_points(
   const PointVoxelInfoVector & point_voxel_info) const
 {
   VoxelPointCountMap voxel_point_counts;
@@ -614,7 +698,8 @@ PolarVoxelOutlierFilterComponent::count_voxel_points(
   return voxel_point_counts;
 }
 
-void PolarVoxelOutlierFilterComponent::update_parameter(const rclcpp::Parameter & param)
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::update_parameter(const rclcpp::Parameter & param)
 {
   using ParameterUpdater = std::function<void(const rclcpp::Parameter &)>;
 
@@ -680,7 +765,9 @@ void PolarVoxelOutlierFilterComponent::update_parameter(const rclcpp::Parameter 
   it->second(param);
 }
 
-void PolarVoxelOutlierFilterComponent::update_primary_return_types(const rclcpp::Parameter & param)
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::update_primary_return_types(
+  const rclcpp::Parameter & param)
 {
   auto values = param.as_integer_array();
   primary_return_types_.clear();
@@ -690,7 +777,9 @@ void PolarVoxelOutlierFilterComponent::update_primary_return_types(const rclcpp:
   }
 }
 
-void PolarVoxelOutlierFilterComponent::update_publish_noise_cloud(const rclcpp::Parameter & param)
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::update_publish_noise_cloud(
+  const rclcpp::Parameter & param)
 {
   bool new_value = param.as_bool();
   if (new_value == publish_noise_cloud_) {
@@ -701,15 +790,21 @@ void PolarVoxelOutlierFilterComponent::update_publish_noise_cloud(const rclcpp::
 
   // Recreate publisher if needed
   if (publish_noise_cloud_ && !noise_cloud_pub_) {
-    rclcpp::PublisherOptions pub_options;
-    pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
-    noise_cloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
-      "polar_voxel_outlier_filter/debug/pointcloud_noise", rclcpp::SensorDataQoS(), pub_options);
+    if constexpr (is_rclcpp_node_v<NodeT>) {
+      rclcpp::PublisherOptions pub_options;
+      pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
+      noise_cloud_pub_ = this->template create_publisher<sensor_msgs::msg::PointCloud2>(
+        "polar_voxel_outlier_filter/debug/pointcloud_noise", rclcpp::SensorDataQoS(), pub_options);
+    } else {
+      noise_cloud_pub_ = this->template create_publisher<sensor_msgs::msg::PointCloud2>(
+        "polar_voxel_outlier_filter/debug/pointcloud_noise", rclcpp::SensorDataQoS());
+    }
   }
 }
 
-PolarVoxelOutlierFilterComponent::VoxelIndexSet
-PolarVoxelOutlierFilterComponent::determine_valid_voxels(
+template <typename NodeT>
+typename PolarVoxelOutlierFilterComponentBase<NodeT>::VoxelIndexSet
+PolarVoxelOutlierFilterComponentBase<NodeT>::determine_valid_voxels(
   const VoxelPointCountMap & voxel_point_counts) const
 {
   if (use_return_type_classification_) {
@@ -719,8 +814,9 @@ PolarVoxelOutlierFilterComponent::determine_valid_voxels(
   }
 }
 
-PolarVoxelOutlierFilterComponent::VoxelIndexSet
-PolarVoxelOutlierFilterComponent::determine_valid_voxels_simple(
+template <typename NodeT>
+typename PolarVoxelOutlierFilterComponentBase<NodeT>::VoxelIndexSet
+PolarVoxelOutlierFilterComponentBase<NodeT>::determine_valid_voxels_simple(
   const VoxelPointCountMap & voxel_point_counts) const
 {
   return determine_valid_voxels_generic(
@@ -730,8 +826,9 @@ PolarVoxelOutlierFilterComponent::determine_valid_voxels_simple(
     });
 }
 
-PolarVoxelOutlierFilterComponent::VoxelIndexSet
-PolarVoxelOutlierFilterComponent::determine_valid_voxels_with_return_types(
+template <typename NodeT>
+typename PolarVoxelOutlierFilterComponentBase<NodeT>::VoxelIndexSet
+PolarVoxelOutlierFilterComponentBase<NodeT>::determine_valid_voxels_with_return_types(
   const VoxelPointCountMap & voxel_point_counts) const
 {
   return determine_valid_voxels_generic(
@@ -741,7 +838,8 @@ PolarVoxelOutlierFilterComponent::determine_valid_voxels_with_return_types(
     });
 }
 
-void PolarVoxelOutlierFilterComponent::setup_output_header(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::setup_output_header(
   PointCloud2 & output, const PointCloud2 & input, size_t valid_count)
 {
   output.header = input.header;
@@ -755,7 +853,8 @@ void PolarVoxelOutlierFilterComponent::setup_output_header(
   output.data.resize(output.row_step * output.height);
 }
 
-bool PolarVoxelOutlierFilterComponent::validate_positive_double(
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::validate_positive_double(
   const rclcpp::Parameter & param, std::string & reason)
 {
   if (param.as_double() <= 0.0) {
@@ -765,7 +864,8 @@ bool PolarVoxelOutlierFilterComponent::validate_positive_double(
   return true;
 }
 
-bool PolarVoxelOutlierFilterComponent::validate_non_negative_double(
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::validate_non_negative_double(
   const rclcpp::Parameter & param, std::string & reason)
 {
   if (param.as_double() < 0.0) {
@@ -775,7 +875,8 @@ bool PolarVoxelOutlierFilterComponent::validate_non_negative_double(
   return true;
 }
 
-bool PolarVoxelOutlierFilterComponent::validate_positive_int(
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::validate_positive_int(
   const rclcpp::Parameter & param, std::string & reason)
 {
   if (param.as_int() < 1) {
@@ -785,7 +886,8 @@ bool PolarVoxelOutlierFilterComponent::validate_positive_int(
   return true;
 }
 
-bool PolarVoxelOutlierFilterComponent::validate_non_negative_int(
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::validate_non_negative_int(
   const rclcpp::Parameter & param, std::string & reason)
 {
   if (param.as_int() < 0) {
@@ -795,7 +897,8 @@ bool PolarVoxelOutlierFilterComponent::validate_non_negative_int(
   return true;
 }
 
-bool PolarVoxelOutlierFilterComponent::validate_intensity_threshold(
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::validate_intensity_threshold(
   const rclcpp::Parameter & param, std::string & reason)
 {
   int val = param.as_int();
@@ -806,7 +909,8 @@ bool PolarVoxelOutlierFilterComponent::validate_intensity_threshold(
   return true;
 }
 
-bool PolarVoxelOutlierFilterComponent::validate_primary_return_types(
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::validate_primary_return_types(
   const rclcpp::Parameter & param, std::string & reason)
 {
   for (const auto & type : param.as_integer_array()) {
@@ -818,7 +922,8 @@ bool PolarVoxelOutlierFilterComponent::validate_primary_return_types(
   return true;
 }
 
-bool PolarVoxelOutlierFilterComponent::validate_normalized(
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::validate_normalized(
   const rclcpp::Parameter & param, std::string & reason)
 {
   double val = param.as_double();
@@ -829,7 +934,8 @@ bool PolarVoxelOutlierFilterComponent::validate_normalized(
   return true;
 }
 
-bool PolarVoxelOutlierFilterComponent::validate_zero_to_two_pi(
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::validate_zero_to_two_pi(
   const rclcpp::Parameter & param, std::string & reason)
 {
   double val = param.as_double();
@@ -840,7 +946,8 @@ bool PolarVoxelOutlierFilterComponent::validate_zero_to_two_pi(
   return true;
 }
 
-bool PolarVoxelOutlierFilterComponent::validate_negative_half_pi_to_half_pi(
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::validate_negative_half_pi_to_half_pi(
   const rclcpp::Parameter & param, std::string & reason)
 {
   double val = param.as_double();
@@ -851,7 +958,9 @@ bool PolarVoxelOutlierFilterComponent::validate_negative_half_pi_to_half_pi(
   return true;
 }
 
-rcl_interfaces::msg::SetParametersResult PolarVoxelOutlierFilterComponent::param_callback(
+template <typename NodeT>
+rcl_interfaces::msg::SetParametersResult
+PolarVoxelOutlierFilterComponentBase<NodeT>::param_callback(
   const std::vector<rclcpp::Parameter> & params)
 {
   rcl_interfaces::msg::SetParametersResult result;
@@ -968,7 +1077,8 @@ rcl_interfaces::msg::SetParametersResult PolarVoxelOutlierFilterComponent::param
   return result;
 }
 
-void PolarVoxelOutlierFilterComponent::on_visibility_check(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::on_visibility_check(
   diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   if (!visibility_.has_value()) {
@@ -1021,7 +1131,8 @@ void PolarVoxelOutlierFilterComponent::on_visibility_check(
     hysteresis_state_machine_->get_immediate_relax_state_param() ? "true" : "false");
 }
 
-void PolarVoxelOutlierFilterComponent::on_filter_ratio_check(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::on_filter_ratio_check(
   diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   if (!filter_ratio_.has_value()) {
@@ -1050,27 +1161,33 @@ void PolarVoxelOutlierFilterComponent::on_filter_ratio_check(
   stat.add("Visibility Only", visibility_estimation_only_ ? "Yes" : "No");
 }
 
-void PolarVoxelOutlierFilterComponent::validate_filter_inputs(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::validate_filter_inputs(
   const PointCloud2 & input, const IndicesPtr & indices)
 {
   validate_indices(indices);
   validate_required_fields(input);
 }
 
-void PolarVoxelOutlierFilterComponent::validate_indices(const IndicesPtr & indices)
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::validate_indices(const IndicesPtr & indices)
 {
   if (indices) {
-    RCLCPP_WARN_ONCE(get_logger(), "Indices are not supported and will be ignored");
+    RCLCPP_WARN_ONCE(this->get_logger(), "Indices are not supported and will be ignored");
   }
 }
 
-void PolarVoxelOutlierFilterComponent::validate_required_fields(const PointCloud2 & input)
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::validate_required_fields(
+  const PointCloud2 & input)
 {
   validate_return_type_field(input);
   validate_intensity_field(input);
 }
 
-void PolarVoxelOutlierFilterComponent::validate_return_type_field(const PointCloud2 & input)
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::validate_return_type_field(
+  const PointCloud2 & input)
 {
   if (!use_return_type_classification_) {
     return;
@@ -1078,7 +1195,7 @@ void PolarVoxelOutlierFilterComponent::validate_return_type_field(const PointClo
 
   if (!has_field(input, "return_type")) {
     RCLCPP_ERROR(
-      get_logger(),
+      this->get_logger(),
       "Advanced mode (use_return_type_classification=true) requires 'return_type' field. "
       "Set use_return_type_classification=false for simple mode or ensure input has return_type "
       "field.");
@@ -1086,15 +1203,18 @@ void PolarVoxelOutlierFilterComponent::validate_return_type_field(const PointClo
   }
 }
 
-void PolarVoxelOutlierFilterComponent::validate_intensity_field(const PointCloud2 & input)
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::validate_intensity_field(
+  const PointCloud2 & input)
 {
   if (!has_field(input, "intensity")) {
-    RCLCPP_ERROR(get_logger(), "Input point cloud must have 'intensity' field");
+    RCLCPP_ERROR(this->get_logger(), "Input point cloud must have 'intensity' field");
     throw std::invalid_argument("Input point cloud must have intensity field");
   }
 }
 
-bool PolarVoxelOutlierFilterComponent::has_field(
+template <typename NodeT>
+bool PolarVoxelOutlierFilterComponentBase<NodeT>::has_field(
   const PointCloud2 & input, const std::string & field_name)
 {
   for (const auto & field : input.fields) {
@@ -1105,7 +1225,8 @@ bool PolarVoxelOutlierFilterComponent::has_field(
   return false;
 }
 
-void PolarVoxelOutlierFilterComponent::create_output(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::create_output(
   const PointCloud2 & input, const ValidPointsMask & valid_points_mask, PointCloud2 & output)
 {
   if (visibility_estimation_only_) {
@@ -1115,14 +1236,16 @@ void PolarVoxelOutlierFilterComponent::create_output(
   }
 }
 
-void PolarVoxelOutlierFilterComponent::create_empty_output(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::create_empty_output(
   const PointCloud2 & input, PointCloud2 & output)
 {
   setup_output_header(output, input, 0);
 }
 
-std::optional<PolarVoxelOutlierFilterComponent::PolarCoordinate>
-PolarVoxelOutlierFilterComponent::extract_polar_from_dae(
+template <typename NodeT>
+std::optional<typename PolarVoxelOutlierFilterComponentBase<NodeT>::PolarCoordinate>
+PolarVoxelOutlierFilterComponentBase<NodeT>::extract_polar_from_dae(
   float distance, float azimuth, float elevation) const
 {
   if (!all_finite(distance, azimuth, elevation)) {
@@ -1138,8 +1261,10 @@ PolarVoxelOutlierFilterComponent::extract_polar_from_dae(
   return polar;
 }
 
-std::optional<PolarVoxelOutlierFilterComponent::PolarCoordinate>
-PolarVoxelOutlierFilterComponent::extract_polar_from_xyz(float x, float y, float z) const
+template <typename NodeT>
+std::optional<typename PolarVoxelOutlierFilterComponentBase<NodeT>::PolarCoordinate>
+PolarVoxelOutlierFilterComponentBase<NodeT>::extract_polar_from_xyz(
+  float x, float y, float z) const
 {
   CartesianCoordinate cartesian(x, y, z);
   PolarCoordinate polar = cartesian_to_polar(cartesian);
@@ -1151,7 +1276,8 @@ PolarVoxelOutlierFilterComponent::extract_polar_from_xyz(float x, float y, float
   return polar;
 }
 
-void PolarVoxelOutlierFilterComponent::publish_area_marker(
+template <typename NodeT>
+void PolarVoxelOutlierFilterComponentBase<NodeT>::publish_area_marker(
   const std_msgs::msg::Header & input_header)
 {
   auto marker = visualization_msgs::msg::Marker();
@@ -1211,7 +1337,8 @@ void PolarVoxelOutlierFilterComponent::publish_area_marker(
       // el1 and el2 can take [pi/2, 3pi/2], which is out of value domain.
       // Skip creating surface if  either el1 or el2 is in that case
       if (
-        (M_PI / 2.0 < el1 && el1 < 3 * M_PI / 2.0) || (M_PI / 2.0 < el2 && el2 < 3 * M_PI / 2.0)) {
+        (M_PI / 2.0 < el1 && el1 < 3 * M_PI / 2.0) ||
+        (M_PI / 2.0 < el2 && el2 < 3 * M_PI / 2.0)) {
         continue;
       }
 
@@ -1268,9 +1395,22 @@ void PolarVoxelOutlierFilterComponent::publish_area_marker(
     }
   }
 
-  area_marker_pub_->publish(marker);
+  if constexpr (is_rclcpp_node_v<NodeT>) {
+    area_marker_pub_->publish(marker);
+  } else {
+    auto loaned_msg = area_marker_pub_->borrow_loaned_message();
+    *loaned_msg = marker;
+    area_marker_pub_->publish(std::move(loaned_msg));
+  }
 }
+
+// Explicit template instantiation for rclcpp::Node and agnocast::Node versions
+template class PolarVoxelOutlierFilterComponentBase<rclcpp::Node>;
+template class PolarVoxelOutlierFilterComponentBase<agnocast::Node>;
+
 }  // namespace autoware::pointcloud_preprocessor
 
 #include <rclcpp_components/register_node_macro.hpp>
 RCLCPP_COMPONENTS_REGISTER_NODE(autoware::pointcloud_preprocessor::PolarVoxelOutlierFilterComponent)
+RCLCPP_COMPONENTS_REGISTER_NODE(
+  autoware::pointcloud_preprocessor::AgnocastPolarVoxelOutlierFilterComponent)

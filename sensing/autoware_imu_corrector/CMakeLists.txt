@@ -4,9 +4,13 @@ project(autoware_imu_corrector)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 ament_auto_add_library(imu_corrector SHARED
   src/imu_corrector_core.cpp
 )
+ament_target_dependencies(imu_corrector agnocastlib)
 
 ament_auto_add_library(gyro_bias_estimator SHARED
   src/gyro_bias_estimator.cpp
@@ -17,10 +21,10 @@ target_include_directories(gyro_bias_estimator
   PUBLIC include
 )
 
-rclcpp_components_register_node(imu_corrector
+agnocast_components_register_node(imu_corrector
   PLUGIN "autoware::imu_corrector::ImuCorrector"
   EXECUTABLE imu_corrector_node
-  EXECUTOR SingleThreadedExecutor
+  EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
 rclcpp_components_register_node(gyro_bias_estimator
