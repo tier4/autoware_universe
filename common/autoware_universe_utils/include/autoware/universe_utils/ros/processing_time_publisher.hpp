@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__UNIVERSE_UTILS__ROS__PROCESSING_TIME_PUBLISHER_HPP_
 #define AUTOWARE__UNIVERSE_UTILS__ROS__PROCESSING_TIME_PUBLISHER_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
@@ -25,15 +26,35 @@
 
 namespace autoware::universe_utils
 {
-class ProcessingTimePublisher
+
+// Publisher traits for node type dispatch
+template <typename NodeT>
+struct ProcessingTimePublisherTraits
 {
+  using PublisherPtr = typename rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticStatus>::SharedPtr;
+  static constexpr bool is_agnocast = false;
+};
+
+template <>
+struct ProcessingTimePublisherTraits<agnocast::Node>
+{
+  using PublisherPtr =
+    typename agnocast::Publisher<diagnostic_msgs::msg::DiagnosticStatus>::SharedPtr;
+  static constexpr bool is_agnocast = true;
+};
+
+template <typename NodeT = rclcpp::Node>
+class ProcessingTimePublisherTemplate
+{
+  using Traits = ProcessingTimePublisherTraits<NodeT>;
+
 public:
-  explicit ProcessingTimePublisher(
-    rclcpp::Node * node, const std::string & name = "~/debug/processing_time_ms",
+  explicit ProcessingTimePublisherTemplate(
+    NodeT * node, const std::string & name = "~/debug/processing_time_ms",
     const rclcpp::QoS & qos = rclcpp::QoS(1))
   {
     pub_processing_time_ =
-      node->create_publisher<diagnostic_msgs::msg::DiagnosticStatus>(name, qos);
+      node->template create_publisher<diagnostic_msgs::msg::DiagnosticStatus>(name, qos);
   }
 
   void publish(const std::map<std::string, double> & processing_time_map)
@@ -47,11 +68,17 @@ public:
       status.values.push_back(key_value);
     }
 
-    pub_processing_time_->publish(status);
+    if constexpr (Traits::is_agnocast) {
+      auto loaned = pub_processing_time_->borrow_loaned_message();
+      *loaned = status;
+      pub_processing_time_->publish(std::move(loaned));
+    } else {
+      pub_processing_time_->publish(status);
+    }
   }
 
 private:
-  rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticStatus>::SharedPtr pub_processing_time_;
+  typename Traits::PublisherPtr pub_processing_time_;
 
   template <class T>
   std::string to_string_with_precision(const T & value, const int precision)
@@ -62,6 +89,10 @@ private:
     return oss.str();
   }
 };
+
+// Backward compatibility alias
+using ProcessingTimePublisher = ProcessingTimePublisherTemplate<rclcpp::Node>;
+
 }  // namespace autoware::universe_utils
 
 #endif  // AUTOWARE__UNIVERSE_UTILS__ROS__PROCESSING_TIME_PUBLISHER_HPP_
