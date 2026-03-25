@@ -33,9 +33,10 @@
 
 #include "autoware_utils/ros/logger_level_configure.hpp"
 
+#include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/tf2.hpp>
 #include <autoware/freespace_planning_algorithms/astar_search.hpp>
 #include <autoware/freespace_planning_algorithms/rrtstar.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -55,9 +56,6 @@
 #endif
 
 #include <autoware/route_handler/route_handler.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <deque>
 #include <iostream>
@@ -101,32 +99,32 @@ struct NodeParam
   bool replan_when_course_out;
 };
 
-class FreespacePlannerNode : public rclcpp::Node
+class FreespacePlannerNode : public agnocast::Node
 {
 public:
   explicit FreespacePlannerNode(const rclcpp::NodeOptions & node_options);
 
 private:
   // ros
-  rclcpp::Publisher<Trajectory>::SharedPtr trajectory_pub_;
-  rclcpp::Publisher<PoseArray>::SharedPtr debug_pose_array_pub_;
-  rclcpp::Publisher<PoseArray>::SharedPtr debug_partial_pose_array_pub_;
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr parking_state_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+  agnocast::Publisher<Trajectory>::SharedPtr trajectory_pub_;
+  agnocast::Publisher<PoseArray>::SharedPtr debug_pose_array_pub_;
+  agnocast::Publisher<PoseArray>::SharedPtr debug_partial_pose_array_pub_;
+  agnocast::Publisher<std_msgs::msg::Bool>::SharedPtr parking_state_pub_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     processing_time_pub_;
 
-  rclcpp::Subscription<LaneletRoute>::SharedPtr route_sub_;
+  agnocast::Subscription<LaneletRoute>::SharedPtr route_sub_;
 
-  autoware_utils::InterProcessPollingSubscriber<OccupancyGrid> occupancy_grid_sub_{
-    this, "~/input/occupancy_grid"};
-  autoware_utils::InterProcessPollingSubscriber<Scenario> scenario_sub_{this, "~/input/scenario"};
-  autoware_utils::InterProcessPollingSubscriber<Odometry, autoware_utils::polling_policy::All>
-    odom_sub_{this, "~/input/odometry", rclcpp::QoS{100}};
+  agnocast::PollingSubscriber<OccupancyGrid>::SharedPtr occupancy_grid_sub_;
+  agnocast::PollingSubscriber<Scenario>::SharedPtr scenario_sub_;
+  agnocast::Subscription<Odometry>::SharedPtr odom_sub_;
+  std::mutex odom_buffer_mutex_;
+  std::deque<agnocast::ipc_shared_ptr<const Odometry>> agnocast_odom_buffer_;
 
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
 
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  agnocast::Buffer tf_buffer_;
+  agnocast::TransformListener tf_listener_;
 
   // params
   NodeParam node_param_;
@@ -159,7 +157,7 @@ private:
   PlannerCommonParam getPlannerCommonParam();
 
   // functions, callback
-  void onRoute(const LaneletRoute::ConstSharedPtr msg);
+  void onRoute(const agnocast::ipc_shared_ptr<LaneletRoute> & msg);
   void onOdometry(const Odometry::ConstSharedPtr msg);
 
   void onTimer();
@@ -203,7 +201,8 @@ private:
 
   TransformStamped getTransform(const std::string & from, const std::string & to);
 
-  std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
+  std::unique_ptr<autoware_utils_logging::BasicLoggerLevelConfigure<agnocast::Node>>
+    logger_configure_;
 
   friend class ::TestFreespacePlanner;
 };

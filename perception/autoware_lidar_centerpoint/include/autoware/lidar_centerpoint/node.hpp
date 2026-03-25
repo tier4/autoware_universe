@@ -21,11 +21,11 @@
 
 #include <agnocast/agnocast.hpp>
 #include <agnocast/cuda/types.hpp>
+#include <agnocast/node/tf2/tf2.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/detected_object_kinematics.hpp>
@@ -42,7 +42,7 @@
 namespace autoware::lidar_centerpoint
 {
 
-class LidarCenterPointNode : public rclcpp::Node
+class LidarCenterPointNode : public agnocast::Node
 {
 public:
   explicit LidarCenterPointNode(const rclcpp::NodeOptions & node_options);
@@ -50,37 +50,37 @@ public:
 private:
   void pointCloudCallback(
     agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> input_pointcloud_msg);
-  void diagnoseProcessingTime(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_{tf_buffer_};
+  agnocast::Buffer tf_buffer_;
+  std::unique_ptr<agnocast::TransformListener> tf_listener_;
 
   agnocast::Subscription<agnocast::cuda::PointCloud2>::SharedPtr pointcloud_sub_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr objects_pub_;
+  agnocast::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr objects_pub_;
 
   std::vector<std::string> class_names_;
   bool has_variance_{false};
   bool has_twist_{false};
 
-  // for diagnostics
-  double max_allowed_processing_time_ms_;
-  double max_acceptable_consecutive_delay_ms_;
-  // set as optional to avoid sending error diagnostics before the node starts processing
-  std::optional<double> last_processing_time_ms_;
-  std::optional<rclcpp::Time> last_in_time_processing_timestamp_;
-  diagnostic_updater::Updater diagnostic_processing_time_updater_{this};
+  // for diagnostics (diagnostic_updater::Updater is incompatible with agnocast::Node)
+  // double max_allowed_processing_time_ms_;
+  // double max_acceptable_consecutive_delay_ms_;
+  // std::optional<double> last_processing_time_ms_;
+  // std::optional<rclcpp::Time> last_in_time_processing_timestamp_;
 
   NonMaximumSuppression iou_bev_nms_;
   DetectionClassRemapper detection_class_remapper_;
 
   std::unique_ptr<CenterPointTRT> detector_ptr_{nullptr};
-  std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_centerpoint_trt_;
+  std::unique_ptr<autoware_utils::BasicDiagnosticsInterface<agnocast::Node>>
+    diagnostics_centerpoint_trt_;
 
   // debugger
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{nullptr};
-  std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_ptr_{nullptr};
+  std::unique_ptr<autoware_utils::BasicDebugPublisher<agnocast::Node>> debug_publisher_ptr_{
+    nullptr};
 
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<autoware_utils::BasicPublishedTimePublisher<agnocast::Node>>
+    published_time_publisher_;
   std::string logger_name_{"lidar_centerpoint"};
 };
 

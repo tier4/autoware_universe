@@ -65,171 +65,131 @@
 
   <let name="motion_velocity_planner_launch_modules" value="$(eval &quot;'$(var motion_velocity_planner_launch_modules)' + '$(var launch_module_list_end)'&quot;)"/>
 
-  <node_container pkg="agnocastlib" exec="agnocast_component_container_mt" name="motion_planning_container" namespace="" args="" output="screen">
-    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
-    <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component" namespace=""/>
-  </node_container>
-
   <!-- path smoothing -->
   <group>
+    <!-- elastic_band_smoother (standalone agnocast node) -->
     <group if="$(eval &quot;'$(var motion_path_smoother_type)' == 'elastic_band'&quot;)">
-      <load_composable_node target="/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container">
-        <composable_node pkg="autoware_path_smoother" plugin="autoware::path_smoother::ElasticBandSmoother" name="elastic_band_smoother" namespace="">
-          <!-- topic remap -->
-          <remap from="~/input/path" to="$(var interface_input_topic)"/>
-          <remap from="~/input/odometry" to="/localization/kinematic_state"/>
-          <remap from="~/output/path" to="path_smoother/path"/>
-          <!-- params -->
-          <param from="$(var common_param_path)"/>
-          <param from="$(var vehicle_param_file)"/>
-          <param from="$(var nearest_search_param_path)"/>
-          <param from="$(var elastic_band_smoother_param_path)"/>
-          <!-- composable node config -->
-          <extra_arg name="use_intra_process_comms" value="false"/>
-        </composable_node>
-      </load_composable_node>
+      <node pkg="autoware_path_smoother" exec="elastic_band_smoother_agnocast" name="elastic_band_smoother" namespace="" output="screen">
+        <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+        <remap from="~/input/path" to="$(var interface_input_topic)"/>
+        <remap from="~/input/odometry" to="/localization/kinematic_state"/>
+        <remap from="~/output/path" to="path_smoother/path"/>
+        <param from="$(var common_param_path)"/>
+        <param from="$(var vehicle_param_file)"/>
+        <param from="$(var nearest_search_param_path)"/>
+        <param from="$(var elastic_band_smoother_param_path)"/>
+      </node>
     </group>
 
+    <!-- path_smoother relay (standalone, no smoother mode) -->
     <group if="$(eval &quot;'$(var motion_path_smoother_type)' == 'none'&quot;)">
-      <load_composable_node target="/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container">
-        <composable_node pkg="topic_tools" plugin="topic_tools::RelayNode" name="path_smoother_relay" namespace="">
-          <!-- params -->
-          <param name="input_topic" value="$(var interface_input_topic)"/>
-          <param name="output_topic" value="path_smoother/path"/>
-          <!-- composable node config -->
-          <extra_arg name="use_intra_process_comms" value="false"/>
-        </composable_node>
-      </load_composable_node>
+      <node pkg="topic_tools" exec="relay" name="path_smoother_relay" namespace="" output="screen">
+        <param name="input_topic" value="$(var interface_input_topic)"/>
+        <param name="output_topic" value="path_smoother/path"/>
+      </node>
     </group>
   </group>
 
   <!-- generate kinematic-feasible path -->
   <group>
+    <!-- path_optimizer (standalone agnocast node) -->
     <group if="$(eval &quot;'$(var motion_path_planner_type)' == 'path_optimizer'&quot;)">
-      <load_composable_node target="/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container">
-        <composable_node pkg="autoware_path_optimizer" plugin="autoware::path_optimizer::PathOptimizer" name="path_optimizer" namespace="">
-          <!-- topic remap -->
-          <remap from="~/input/path" to="path_smoother/path"/>
-          <remap from="~/input/odometry" to="/localization/kinematic_state"/>
-          <remap from="~/output/path" to="path_optimizer/trajectory"/>
-          <!-- params -->
-          <param from="$(var common_param_path)"/>
-          <param from="$(var vehicle_param_file)"/>
-          <param from="$(var nearest_search_param_path)"/>
-          <param from="$(var path_optimizer_param_path)"/>
-          <!-- composable node config -->
-          <extra_arg name="use_intra_process_comms" value="false"/>
-        </composable_node>
-      </load_composable_node>
-    </group>
-
-    <group if="$(eval &quot;'$(var motion_path_planner_type)' == 'path_sampler'&quot;)">
-      <load_composable_node target="/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container">
-        <composable_node pkg="autoware_path_sampler" plugin="autoware::path_sampler::PathSampler" name="path_sampler" namespace="">
-          <!-- topic remap -->
-          <remap from="~/input/path" to="path_smoother/path"/>
-          <remap from="~/input/odometry" to="/localization/kinematic_state"/>
-          <remap from="~/input/objects" to="$(var input_objects_topic_name)"/>
-          <remap from="~/output/path" to="path_optimizer/trajectory"/>
-          <!-- params -->
-          <param from="$(var common_param_path)"/>
-          <param from="$(var vehicle_param_file)"/>
-          <param from="$(var nearest_search_param_path)"/>
-          <param from="$(var path_sampler_param_path)"/>
-          <!-- composable node config -->
-          <extra_arg name="use_intra_process_comms" value="false"/>
-        </composable_node>
-      </load_composable_node>
-    </group>
-
-    <group if="$(eval &quot;'$(var motion_path_planner_type)' == 'none' and '$(var motion_path_smoother_type)' != 'none'&quot;)">
-      <load_composable_node target="/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container">
-        <composable_node pkg="autoware_planning_topic_converter" plugin="autoware::planning_topic_converter::PathToTrajectory" name="smoothed_path_to_trajectory_converter" namespace="">
-          <!-- params -->
-          <param name="input_topic" value="path_smoother/path"/>
-          <param name="output_topic" value="path_optimizer/trajectory"/>
-          <!-- composable node config -->
-          <extra_arg name="use_intra_process_comms" value="false"/>
-        </composable_node>
-      </load_composable_node>
-    </group>
-
-    <group if="$(eval &quot;'$(var motion_path_planner_type)' == 'none' and '$(var motion_path_smoother_type)' == 'none'&quot;)">
-      <load_composable_node target="/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container">
-        <composable_node pkg="autoware_planning_topic_converter" plugin="autoware::planning_topic_converter::PathToTrajectory" name="path_to_trajectory_converter" namespace="">
-          <!-- params -->
-          <param name="input_topic" value="$(var interface_input_topic)"/>
-          <param name="output_topic" value="path_optimizer/trajectory"/>
-          <!-- composable node config -->
-          <extra_arg name="use_intra_process_comms" value="false"/>
-        </composable_node>
-      </load_composable_node>
-    </group>
-  </group>
-
-  <!-- plan slowdown or stops on the final trajectory -->
-  <group>
-    <load_composable_node target="/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container">
-      <composable_node pkg="autoware_motion_velocity_planner" plugin="autoware::motion_velocity_planner::MotionVelocityPlannerNode" name="motion_velocity_planner" namespace="">
-        <!-- topic remap -->
-        <remap from="~/input/trajectory" to="path_optimizer/trajectory"/>
-        <remap from="~/input/vector_map" to="/map/vector_map"/>
-        <remap from="~/input/vehicle_odometry" to="/localization/kinematic_state"/>
-        <remap from="~/input/accel" to="/localization/acceleration"/>
-        <remap from="~/input/dynamic_objects" to="$(var input_objects_topic_name)"/>
-        <remap from="~/input/no_ground_pointcloud" to="$(var input_pointcloud_topic_name)"/>
-        <remap from="~/input/traffic_signals" to="/perception/traffic_light_recognition/traffic_signals"/>
-        <remap from="~/input/virtual_traffic_light_states" to="/perception/virtual_traffic_light_states"/>
-        <remap from="~/input/occupancy_grid" to="/perception/occupancy_grid_map/map"/>
-        <remap from="~/output/trajectory" to="$(var interface_output_topic)"/>
-        <remap from="~/output/velocity_limit" to="/planning/scenario_planning/max_velocity_candidates"/>
-        <remap from="~/output/clear_velocity_limit" to="/planning/scenario_planning/clear_velocity_limit"/>
-        <remap from="~/output/stop_reasons" to="/planning/scenario_planning/status/stop_reasons"/>
-        <remap from="~/output/velocity_factors" to="/planning/velocity_factors/motion_velocity_planner"/>
-        <!-- params -->
-        <param name="launch_modules" value="$(var motion_velocity_planner_launch_modules)"/>
+      <node pkg="autoware_path_optimizer" exec="path_optimizer_node_agnocast" name="path_optimizer" namespace="" output="screen">
+        <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+        <remap from="~/input/path" to="path_smoother/path"/>
+        <remap from="~/input/odometry" to="/localization/kinematic_state"/>
+        <remap from="~/output/path" to="path_optimizer/trajectory"/>
         <param from="$(var common_param_path)"/>
         <param from="$(var vehicle_param_file)"/>
         <param from="$(var nearest_search_param_path)"/>
-        <param from="$(var velocity_smoother_param_path)"/>
-        <param from="$(var motion_velocity_planner_velocity_smoother_type_param_path)"/>
-        <param from="$(var motion_velocity_planner_param_path)"/>
-        <param from="$(var motion_velocity_planner_obstacle_stop_module_param_path)"/>
-        <param from="$(var motion_velocity_planner_obstacle_slow_down_module_param_path)"/>
-        <param from="$(var motion_velocity_planner_obstacle_cruise_module_param_path)"/>
-        <param from="$(var motion_velocity_planner_dynamic_obstacle_stop_module_param_path)"/>
-        <param from="$(var motion_velocity_planner_out_of_lane_module_param_path)"/>
-        <param from="$(var motion_velocity_planner_obstacle_velocity_limiter_param_path)"/>
-        <param from="$(var motion_velocity_planner_run_out_param_path)"/>
-        <param from="$(var motion_velocity_planner_boundary_departure_prevention_module_param_path)"/>
-        <param from="$(var motion_velocity_planner_road_user_stop_module_param_path)"/>
-        <!-- <param from="$(var motion_velocity_planner_template_param_path)"/> -->
-        <!-- composable node config -->
-        <extra_arg name="use_intra_process_comms" value="false"/>
-      </composable_node>
-    </load_composable_node>
-  </group>
+        <param from="$(var path_optimizer_param_path)"/>
+      </node>
+    </group>
 
-  <!-- surround obstacle check -->
-  <group if="$(var launch_surround_obstacle_checker)">
-    <load_composable_node target="/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container">
-      <composable_node pkg="autoware_surround_obstacle_checker" plugin="autoware::surround_obstacle_checker::SurroundObstacleCheckerNode" name="surround_obstacle_checker" namespace="">
-        <!-- topic remap -->
+    <!-- path_sampler (standalone) -->
+    <group if="$(eval &quot;'$(var motion_path_planner_type)' == 'path_sampler'&quot;)">
+      <node pkg="autoware_path_sampler" exec="path_sampler_exe" name="path_sampler" namespace="" output="screen">
+        <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+        <remap from="~/input/path" to="path_smoother/path"/>
         <remap from="~/input/odometry" to="/localization/kinematic_state"/>
         <remap from="~/input/objects" to="$(var input_objects_topic_name)"/>
-        <remap from="~/input/pointcloud" to="$(var input_pointcloud_topic_name)"/>
-        <remap from="~/output/max_velocity" to="/planning/scenario_planning/max_velocity_candidates"/>
-        <remap from="~/output/velocity_limit_clear_command" to="/planning/scenario_planning/clear_velocity_limit"/>
-        <remap from="~/output/stop_reasons" to="/planning/scenario_planning/status/stop_reasons"/>
-        <remap from="~/output/no_start_reason" to="/planning/scenario_planning/status/no_start_reason"/>
-        <!-- params -->
+        <remap from="~/output/path" to="path_optimizer/trajectory"/>
         <param from="$(var common_param_path)"/>
         <param from="$(var vehicle_param_file)"/>
         <param from="$(var nearest_search_param_path)"/>
-        <param from="$(var surround_obstacle_checker_param_path)"/>
-        <!-- composable node config -->
-        <extra_arg name="use_intra_process_comms" value="false"/>
-      </composable_node>
-    </load_composable_node>
+        <param from="$(var path_sampler_param_path)"/>
+      </node>
+    </group>
+
+    <!-- path_to_trajectory converter (standalone, no planner + has smoother) -->
+    <group if="$(eval &quot;'$(var motion_path_planner_type)' == 'none' and '$(var motion_path_smoother_type)' != 'none'&quot;)">
+      <node pkg="autoware_planning_topic_converter" exec="path_to_trajectory_converter" name="smoothed_path_to_trajectory_converter" namespace="" output="screen">
+        <param name="input_topic" value="path_smoother/path"/>
+        <param name="output_topic" value="path_optimizer/trajectory"/>
+      </node>
+    </group>
+
+    <!-- path_to_trajectory converter (standalone, no planner + no smoother) -->
+    <group if="$(eval &quot;'$(var motion_path_planner_type)' == 'none' and '$(var motion_path_smoother_type)' == 'none'&quot;)">
+      <node pkg="autoware_planning_topic_converter" exec="path_to_trajectory_converter" name="path_to_trajectory_converter" namespace="" output="screen">
+        <param name="input_topic" value="$(var interface_input_topic)"/>
+        <param name="output_topic" value="path_optimizer/trajectory"/>
+      </node>
+    </group>
+  </group>
+
+  <!-- motion_velocity_planner (standalone) -->
+  <group>
+    <node pkg="autoware_motion_velocity_planner" exec="autoware_motion_velocity_planner_node" name="motion_velocity_planner" namespace="" output="screen">
+      <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+      <remap from="~/input/trajectory" to="path_optimizer/trajectory"/>
+      <remap from="~/input/vector_map" to="/map/vector_map"/>
+      <remap from="~/input/vehicle_odometry" to="/localization/kinematic_state"/>
+      <remap from="~/input/accel" to="/localization/acceleration"/>
+      <remap from="~/input/dynamic_objects" to="$(var input_objects_topic_name)"/>
+      <remap from="~/input/no_ground_pointcloud" to="$(var input_pointcloud_topic_name)"/>
+      <remap from="~/input/traffic_signals" to="/perception/traffic_light_recognition/traffic_signals"/>
+      <remap from="~/input/virtual_traffic_light_states" to="/perception/virtual_traffic_light_states"/>
+      <remap from="~/input/occupancy_grid" to="/perception/occupancy_grid_map/map"/>
+      <remap from="~/output/trajectory" to="$(var interface_output_topic)"/>
+      <remap from="~/output/velocity_limit" to="/planning/scenario_planning/max_velocity_candidates"/>
+      <remap from="~/output/clear_velocity_limit" to="/planning/scenario_planning/clear_velocity_limit"/>
+      <remap from="~/output/stop_reasons" to="/planning/scenario_planning/status/stop_reasons"/>
+      <remap from="~/output/velocity_factors" to="/planning/velocity_factors/motion_velocity_planner"/>
+      <param name="launch_modules" value="$(var motion_velocity_planner_launch_modules)"/>
+      <param from="$(var common_param_path)"/>
+      <param from="$(var vehicle_param_file)"/>
+      <param from="$(var nearest_search_param_path)"/>
+      <param from="$(var velocity_smoother_param_path)"/>
+      <param from="$(var motion_velocity_planner_velocity_smoother_type_param_path)"/>
+      <param from="$(var motion_velocity_planner_param_path)"/>
+      <param from="$(var motion_velocity_planner_obstacle_stop_module_param_path)"/>
+      <param from="$(var motion_velocity_planner_obstacle_slow_down_module_param_path)"/>
+      <param from="$(var motion_velocity_planner_obstacle_cruise_module_param_path)"/>
+      <param from="$(var motion_velocity_planner_dynamic_obstacle_stop_module_param_path)"/>
+      <param from="$(var motion_velocity_planner_out_of_lane_module_param_path)"/>
+      <param from="$(var motion_velocity_planner_obstacle_velocity_limiter_param_path)"/>
+      <param from="$(var motion_velocity_planner_run_out_param_path)"/>
+      <param from="$(var motion_velocity_planner_boundary_departure_prevention_module_param_path)"/>
+      <param from="$(var motion_velocity_planner_road_user_stop_module_param_path)"/>
+    </node>
+  </group>
+
+  <!-- surround obstacle checker (standalone agnocast node) -->
+  <group if="$(var launch_surround_obstacle_checker)">
+    <node pkg="autoware_surround_obstacle_checker" exec="autoware_surround_obstacle_checker_node_agnocast" name="surround_obstacle_checker" namespace="" output="screen">
+      <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+      <remap from="~/input/odometry" to="/localization/kinematic_state"/>
+      <remap from="~/input/objects" to="$(var input_objects_topic_name)"/>
+      <remap from="~/input/pointcloud" to="$(var input_pointcloud_topic_name)"/>
+      <remap from="~/output/max_velocity" to="/planning/scenario_planning/max_velocity_candidates"/>
+      <remap from="~/output/velocity_limit_clear_command" to="/planning/scenario_planning/clear_velocity_limit"/>
+      <remap from="~/output/stop_reasons" to="/planning/scenario_planning/status/stop_reasons"/>
+      <remap from="~/output/no_start_reason" to="/planning/scenario_planning/status/no_start_reason"/>
+      <param from="$(var common_param_path)"/>
+      <param from="$(var vehicle_param_file)"/>
+      <param from="$(var nearest_search_param_path)"/>
+      <param from="$(var surround_obstacle_checker_param_path)"/>
+    </node>
   </group>
 </launch>

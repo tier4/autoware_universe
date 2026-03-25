@@ -17,11 +17,8 @@
 
 #include "autoware/boundary_departure_checker/boundary_departure_checker.hpp"
 #include "autoware/lane_departure_checker/parameters.hpp"
-#include "autoware_utils/ros/polling_subscriber.hpp"
 
-#include <autoware_utils/ros/debug_publisher.hpp>
-#include <autoware_utils/ros/processing_time_publisher.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
@@ -49,52 +46,44 @@ namespace autoware::lane_departure_checker
 using autoware_map_msgs::msg::LaneletMapBin;
 using namespace boundary_departure_checker;  // NOLINT;
 
-class LaneDepartureCheckerNode : public rclcpp::Node
+class LaneDepartureCheckerNode : public agnocast::Node
 {
 public:
   explicit LaneDepartureCheckerNode(const rclcpp::NodeOptions & options);
 
 private:
-  // Subscriber
-  autoware_utils::InterProcessPollingSubscriber<nav_msgs::msg::Odometry> sub_odom_{
-    this, "~/input/odometry"};
-  autoware_utils::InterProcessPollingSubscriber<
-    LaneletMapBin, autoware_utils::polling_policy::Newest>
-    sub_lanelet_map_bin_{this, "~/input/lanelet_map_bin", rclcpp::QoS{1}.transient_local()};
-  autoware_utils::InterProcessPollingSubscriber<LaneletRoute> sub_route_{this, "~/input/route"};
-  autoware_utils::InterProcessPollingSubscriber<Trajectory> sub_reference_trajectory_{
-    this, "~/input/reference_trajectory"};
-  autoware_utils::InterProcessPollingSubscriber<Trajectory> sub_predicted_trajectory_{
-    this, "~/input/predicted_trajectory"};
-  autoware_utils::InterProcessPollingSubscriber<autoware_adapi_v1_msgs::msg::OperationModeState>
-    sub_operation_mode_{this, "/api/operation_mode/state"};
-  autoware_utils::InterProcessPollingSubscriber<autoware_vehicle_msgs::msg::ControlModeReport>
-    sub_control_mode_{this, "/vehicle/status/control_mode"};
+  // Subscriber (agnocast PollingSubscriber for agnocast topics)
+  agnocast::PollingSubscriber<nav_msgs::msg::Odometry>::SharedPtr sub_odom_;
+  agnocast::PollingSubscriber<LaneletMapBin>::SharedPtr sub_lanelet_map_bin_;
+  agnocast::PollingSubscriber<Trajectory>::SharedPtr sub_reference_trajectory_;
+  agnocast::PollingSubscriber<Trajectory>::SharedPtr sub_predicted_trajectory_;
+  agnocast::PollingSubscriber<LaneletRoute>::SharedPtr sub_route_;
+  agnocast::PollingSubscriber<autoware_adapi_v1_msgs::msg::OperationModeState>::SharedPtr
+    sub_operation_mode_;
+  agnocast::PollingSubscriber<autoware_vehicle_msgs::msg::ControlModeReport>::SharedPtr
+    sub_control_mode_;
 
   // Data Buffer
-  nav_msgs::msg::Odometry::ConstSharedPtr current_odom_;
+  agnocast::ipc_shared_ptr<const nav_msgs::msg::Odometry> current_odom_;
   lanelet::LaneletMapPtr lanelet_map_;
   lanelet::ConstLanelets shoulder_lanelets_;
   lanelet::traffic_rules::TrafficRulesPtr traffic_rules_;
   lanelet::routing::RoutingGraphPtr routing_graph_;
-  LaneletRoute::ConstSharedPtr route_;
+  agnocast::ipc_shared_ptr<const LaneletRoute> route_;
   geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr cov_;
-  LaneletRoute::ConstSharedPtr last_route_;
+  agnocast::ipc_shared_ptr<const LaneletRoute> last_route_;
   lanelet::ConstLanelets route_lanelets_;
-  Trajectory::ConstSharedPtr reference_trajectory_;
-  Trajectory::ConstSharedPtr predicted_trajectory_;
-  autoware_adapi_v1_msgs::msg::OperationModeState::ConstSharedPtr operation_mode_;
-  autoware_vehicle_msgs::msg::ControlModeReport::ConstSharedPtr control_mode_;
+  agnocast::ipc_shared_ptr<const Trajectory> reference_trajectory_;
+  agnocast::ipc_shared_ptr<const Trajectory> predicted_trajectory_;
+  agnocast::ipc_shared_ptr<const autoware_adapi_v1_msgs::msg::OperationModeState> operation_mode_;
+  agnocast::ipc_shared_ptr<const autoware_vehicle_msgs::msg::ControlModeReport> control_mode_;
 
   // Publisher
-  autoware_utils::DebugPublisher debug_publisher_{this, "~/debug"};
-  autoware_utils::ProcessingTimePublisher processing_diag_publisher_{
-    this, "~/debug/processing_time_ms_diag"};
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     processing_time_publisher_;
 
   // Timer
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
 
   bool isDataReady();
   bool isDataTimeout();
@@ -116,10 +105,9 @@ private:
   Output output_{};
   std::unique_ptr<BoundaryDepartureChecker> boundary_departure_checker_;
 
-  // Diagnostic Updater
-  diagnostic_updater::Updater updater_{this};
-
-  void checkLaneDeparture(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  // Diagnostic Updater (disabled for agnocast migration)
+  // diagnostic_updater::Updater updater_{this};
+  // void checkLaneDeparture(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
   // Visualization
   visualization_msgs::msg::MarkerArray createMarkerArray() const;

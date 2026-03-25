@@ -40,30 +40,27 @@
   <arg name="input_vector_map_topic_name" default="/map/vector_map"/>
   <arg name="output_trajectory" default="/planning/trajectory"/>
 
+  <!-- planning_validator (standalone agnocast node) -->
   <group>
-    <node_container pkg="agnocastlib" exec="agnocast_component_container_mt" name="planning_validator_container" namespace="" args="" output="both">
+    <node pkg="autoware_planning_validator" exec="autoware_planning_validator_node_agnocast" name="planning_validator" namespace="" output="both">
       <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
-      <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component" namespace=""/>
-      <composable_node pkg="autoware_planning_validator" plugin="autoware::planning_validator::PlanningValidatorNode" name="planning_validator" namespace="">
-        <remap from="~/input/objects" to="$(var input_objects_topic_name)"/>
-        <remap from="~/input/pointcloud" to="$(var input_pointcloud_topic_name)"/>
-        <remap from="~/input/trajectory" to="$(var input_trajectory_topic_name)"/>
-        <remap from="~/input/traffic_signals" to="$(var input_traffic_light_topic_name)"/>
-        <remap from="~/input/lanelet_map_bin" to="$(var input_vector_map_topic_name)"/>
-        <remap from="~/input/route" to="$(var input_route_topic_name)"/>
-        <remap from="~/input/kinematics" to="/localization/kinematic_state"/>
-        <remap from="~/input/acceleration" to="/localization/acceleration"/>
-        <remap from="~/input/operational_mode_state" to="/system/operation_mode/state"/>
-        <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
-        <remap from="~/output/validation_status" to="~/validation_status"/>
-        <param name="launch_modules" value="$(var planning_validator_launch_modules)"/>
-        <param from="$(var planning_validator_param_path)"/>
-        <param from="$(var planning_validator_latency_checker_param_path)"/>
-        <param from="$(var planning_validator_trajectory_checker_param_path)"/>
-        <param from="$(var planning_validator_intersection_collision_checker_param_path)"/>
-        <param from="$(var planning_validator_rear_collision_checker_param_path)"/>
-        <extra_arg name="use_intra_process_comms" value="false"/>
-      </composable_node>
-    </node_container>
+      <remap from="~/input/objects" to="$(var input_objects_topic_name)"/>
+      <remap from="~/input/pointcloud" to="$(var input_pointcloud_topic_name)"/>
+      <remap from="~/input/trajectory" to="$(var input_trajectory_topic_name)"/>
+      <remap from="~/input/traffic_signals" to="$(var input_traffic_light_topic_name)"/>
+      <remap from="~/input/lanelet_map_bin" to="$(var input_vector_map_topic_name)"/>
+      <remap from="~/input/route" to="$(var input_route_topic_name)"/>
+      <remap from="~/input/kinematics" to="/localization/kinematic_state"/>
+      <remap from="~/input/acceleration" to="/localization/acceleration"/>
+      <remap from="~/input/operational_mode_state" to="/system/operation_mode/state"/>
+      <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
+      <remap from="~/output/validation_status" to="~/validation_status"/>
+      <param name="launch_modules" value="$(var planning_validator_launch_modules)"/>
+      <param from="$(var planning_validator_param_path)"/>
+      <param from="$(var planning_validator_latency_checker_param_path)"/>
+      <param from="$(var planning_validator_trajectory_checker_param_path)"/>
+      <param from="$(var planning_validator_intersection_collision_checker_param_path)"/>
+      <param from="$(var planning_validator_rear_collision_checker_param_path)"/>
+    </node>
   </group>
 </launch>

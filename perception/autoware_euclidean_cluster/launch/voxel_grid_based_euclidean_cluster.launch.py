@@ -20,8 +20,8 @@ from launch.actions import OpaqueFunction
 from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import ComposableNodeContainer
 from launch_ros.actions import LoadComposableNodes
+from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
 from launch_ros.substitutions import FindPackageShare
 import yaml
@@ -36,48 +36,17 @@ def launch_setup(context, *args, **kwargs):
     ns = ""
     pkg = "autoware_euclidean_cluster"
 
-    low_height_cropbox_filter_component = ComposableNode(
-        package="autoware_pointcloud_preprocessor",
-        namespace=ns,
-        plugin="autoware::pointcloud_preprocessor::CropBoxFilterComponent",
-        name="low_height_crop_box_filter",
-        remappings=[
-            ("input", LaunchConfiguration("input_pointcloud")),
-            ("output", "low_height/pointcloud"),
-        ],
-        parameters=[load_composable_node_param("voxel_grid_based_euclidean_param_path")],
-    )
-
-    use_low_height_euclidean_component = ComposableNode(
+    # Standalone euclidean_cluster node (agnocast)
+    standalone_node = Node(
         package=pkg,
-        namespace=ns,
-        plugin="autoware::euclidean_cluster::VoxelGridBasedEuclideanClusterNode",
+        executable="voxel_grid_based_euclidean_cluster_node",
         name="euclidean_cluster",
-        remappings=[
-            ("input", "low_height/pointcloud"),
-            ("output", LaunchConfiguration("output_clusters")),
-        ],
-        parameters=[load_composable_node_param("voxel_grid_based_euclidean_param_path")],
-    )
-
-    disuse_low_height_euclidean_component = ComposableNode(
-        package=pkg,
         namespace=ns,
-        plugin="autoware::euclidean_cluster::VoxelGridBasedEuclideanClusterNode",
-        name="euclidean_cluster",
         remappings=[
             ("input", LaunchConfiguration("input_pointcloud")),
             ("output", LaunchConfiguration("output_clusters")),
         ],
         parameters=[load_composable_node_param("voxel_grid_based_euclidean_param_path")],
-    )
-
-    container = ComposableNodeContainer(
-        name="euclidean_cluster_container",
-        package="agnocastlib",
-        namespace=ns,
-        executable="agnocast_component_container",
-        composable_node_descriptions=[],
         output="screen",
         condition=UnlessCondition(LaunchConfiguration("use_pointcloud_container")),
         additional_env={
@@ -87,28 +56,60 @@ def launch_setup(context, *args, **kwargs):
         },
     )
 
-    target_container = (
-        LaunchConfiguration("pointcloud_container_name")
-        if IfCondition(LaunchConfiguration("use_pointcloud_container")).evaluate(context)
-        else container
-    )
-
+    # When using pointcloud_container, load as composable node into it
     use_low_height_pointcloud_loader = LoadComposableNodes(
         composable_node_descriptions=[
-            low_height_cropbox_filter_component,
-            use_low_height_euclidean_component,
+            ComposableNode(
+                package="autoware_pointcloud_preprocessor",
+                namespace=ns,
+                plugin="autoware::pointcloud_preprocessor::CropBoxFilterComponent",
+                name="low_height_crop_box_filter",
+                remappings=[
+                    ("input", LaunchConfiguration("input_pointcloud")),
+                    ("output", "low_height/pointcloud"),
+                ],
+                parameters=[load_composable_node_param("voxel_grid_based_euclidean_param_path")],
+            ),
+            ComposableNode(
+                package=pkg,
+                namespace=ns,
+                plugin="autoware::euclidean_cluster::VoxelGridBasedEuclideanClusterNode",
+                name="euclidean_cluster",
+                remappings=[
+                    ("input", "low_height/pointcloud"),
+                    ("output", LaunchConfiguration("output_clusters")),
+                ],
+                parameters=[
+                    load_composable_node_param("voxel_grid_based_euclidean_param_path")
+                ],
+            ),
         ],
-        target_container=target_container,
-        condition=IfCondition(LaunchConfiguration("use_low_height_cropbox")),
+        target_container=LaunchConfiguration("pointcloud_container_name"),
+        condition=IfCondition(LaunchConfiguration("use_pointcloud_container")),
     )
 
     disuse_low_height_pointcloud_loader = LoadComposableNodes(
-        composable_node_descriptions=[disuse_low_height_euclidean_component],
-        target_container=target_container,
-        condition=UnlessCondition(LaunchConfiguration("use_low_height_cropbox")),
+        composable_node_descriptions=[
+            ComposableNode(
+                package=pkg,
+                namespace=ns,
+                plugin="autoware::euclidean_cluster::VoxelGridBasedEuclideanClusterNode",
+                name="euclidean_cluster",
+                remappings=[
+                    ("input", LaunchConfiguration("input_pointcloud")),
+                    ("output", LaunchConfiguration("output_clusters")),
+                ],
+                parameters=[
+                    load_composable_node_param("voxel_grid_based_euclidean_param_path")
+                ],
+            ),
+        ],
+        target_container=LaunchConfiguration("pointcloud_container_name"),
+        condition=IfCondition(LaunchConfiguration("use_pointcloud_container")),
     )
+
     return [
-        container,
+        standalone_node,
         use_low_height_pointcloud_loader,
         disuse_low_height_pointcloud_loader,
     ]

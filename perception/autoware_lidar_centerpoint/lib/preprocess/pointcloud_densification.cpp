@@ -33,7 +33,7 @@
 namespace
 {
 boost::optional<geometry_msgs::msg::Transform> getTransform(
-  const tf2_ros::Buffer & tf_buffer, const std::string & target_frame_id,
+  const agnocast::Buffer & tf_buffer, const std::string & target_frame_id,
   const std::string & source_frame_id, const rclcpp::Time & time, const std::string & logger_name)
 {
   try {
@@ -64,7 +64,7 @@ PointCloudDensification::PointCloudDensification(const DensificationParam & para
 
 bool PointCloudDensification::enqueuePointCloud(
   const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & pointcloud_msg_ptr,
-  const tf2_ros::Buffer & tf_buffer)
+  const agnocast::Buffer & tf_buffer)
 {
   const auto header = pointcloud_msg_ptr->header;
 

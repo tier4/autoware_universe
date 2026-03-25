@@ -48,7 +48,7 @@ VoxelGeneratorTemplate::VoxelGeneratorTemplate(
 
 bool VoxelGeneratorTemplate::enqueuePointCloud(
   const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & input_pointcloud_msg_ptr,
-  const tf2_ros::Buffer & tf_buffer)
+  const agnocast::Buffer & tf_buffer)
 {
   return pd_ptr_->enqueuePointCloud(input_pointcloud_msg_ptr, tf_buffer);
 }

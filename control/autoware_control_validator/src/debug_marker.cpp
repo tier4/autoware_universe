@@ -21,7 +21,7 @@
 
 using visualization_msgs::msg::Marker;
 
-ControlValidatorDebugMarkerPublisher::ControlValidatorDebugMarkerPublisher(rclcpp::Node * node)
+ControlValidatorDebugMarkerPublisher::ControlValidatorDebugMarkerPublisher(agnocast::Node * node)
 : node_(node)
 {
   debug_viz_pub_ =
@@ -49,6 +49,14 @@ void ControlValidatorDebugMarkerPublisher::push_virtual_wall(
 
 void ControlValidatorDebugMarkerPublisher::publish()
 {
-  debug_viz_pub_->publish(marker_array_);
-  virtual_wall_pub_->publish(marker_array_virtual_wall_);
+  {
+    auto loaned = debug_viz_pub_->borrow_loaned_message();
+    *loaned = marker_array_;
+    debug_viz_pub_->publish(std::move(loaned));
+  }
+  {
+    auto loaned = virtual_wall_pub_->borrow_loaned_message();
+    *loaned = marker_array_virtual_wall_;
+    virtual_wall_pub_->publish(std::move(loaned));
+  }
 }

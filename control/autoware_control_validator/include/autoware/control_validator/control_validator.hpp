@@ -16,10 +16,9 @@
 #define AUTOWARE__CONTROL_VALIDATOR__CONTROL_VALIDATOR_HPP_
 
 #include "autoware/control_validator/debug_marker.hpp"
-#include "autoware_utils/ros/polling_subscriber.hpp"
 #include "autoware_vehicle_info_utils/vehicle_info.hpp"
-#include "diagnostic_updater/diagnostic_updater.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/signal_processing/lowpass_filter_1d.hpp>
 #include <autoware_control_validator/msg/control_validator_status.hpp>
 #include <autoware_utils/ros/parameter.hpp>
@@ -30,7 +29,6 @@
 #include <autoware_control_msgs/msg/control.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
-#include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
@@ -49,8 +47,6 @@ using autoware_control_validator::msg::ControlValidatorStatus;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using autoware_utils::get_or_declare_parameter;
-using diagnostic_updater::DiagnosticStatusWrapper;
-using diagnostic_updater::Updater;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 
@@ -61,12 +57,12 @@ using nav_msgs::msg::Odometry;
 class LatencyValidator
 {
 public:
-  explicit LatencyValidator(rclcpp::Node & node)
+  explicit LatencyValidator(agnocast::Node & node)
   : nominal_latency_threshold{
       get_or_declare_parameter<double>(node, "thresholds.nominal_latency")} {};
 
   void validate(
-    ControlValidatorStatus & res, const Control & control_cmd, rclcpp::Node & node) const;
+    ControlValidatorStatus & res, const Control & control_cmd, agnocast::Node & node) const;
 
 private:
   const double nominal_latency_threshold;
@@ -80,7 +76,7 @@ private:
 class TrajectoryValidator
 {
 public:
-  explicit TrajectoryValidator(rclcpp::Node & node)
+  explicit TrajectoryValidator(agnocast::Node & node)
   : max_distance_deviation_threshold{
       get_or_declare_parameter<double>(node, "thresholds.max_distance_deviation")} {};
 
@@ -100,7 +96,7 @@ private:
 class LateralJerkValidator
 {
 public:
-  explicit LateralJerkValidator(rclcpp::Node & node)
+  explicit LateralJerkValidator(agnocast::Node & node)
   : lateral_jerk_threshold_{get_or_declare_parameter<double>(node, "thresholds.lateral_jerk")},
     logger_{node.get_logger()},
     measured_vel_lpf{get_or_declare_parameter<double>(node, "vel_lpf_gain")} {};
@@ -124,7 +120,7 @@ class AccelerationValidator
 {
 public:
   friend class AccelerationValidatorTest;
-  explicit AccelerationValidator(rclcpp::Node & node)
+  explicit AccelerationValidator(agnocast::Node & node)
   : e_offset{get_or_declare_parameter<double>(node, "thresholds.acc_error_offset")},
     e_scale{get_or_declare_parameter<double>(node, "thresholds.acc_error_scale")},
     desired_acc_lpf{get_or_declare_parameter<double>(node, "acc_lpf_gain")},
@@ -149,7 +145,7 @@ private:
 class VelocityValidator
 {
 public:
-  explicit VelocityValidator(rclcpp::Node & node)
+  explicit VelocityValidator(agnocast::Node & node)
   : rolling_back_velocity_th{get_or_declare_parameter<double>(
       node, "thresholds.rolling_back_velocity")},
     over_velocity_ratio_th{
@@ -187,7 +183,7 @@ private:
 class OverrunValidator
 {
 public:
-  explicit OverrunValidator(rclcpp::Node & node)
+  explicit OverrunValidator(agnocast::Node & node)
   : overrun_stop_point_dist_th{get_or_declare_parameter<double>(
       node, "thresholds.overrun_stop_point_dist")},
     will_overrun_stop_point_dist_th{
@@ -215,7 +211,7 @@ private:
 class YawValidator
 {
 public:
-  explicit YawValidator(rclcpp::Node & node)
+  explicit YawValidator(agnocast::Node & node)
   : yaw_deviation_error_th_{get_or_declare_parameter<double>(
       node, "thresholds.yaw_deviation_error")},
     yaw_deviation_warn_th_{
@@ -235,7 +231,7 @@ private:
  * @brief Validates control commands by comparing predicted trajectories against reference
  * trajectories.
  */
-class ControlValidator : public rclcpp::Node
+class ControlValidator : public agnocast::Node
 {
 public:
   /**
@@ -248,14 +244,9 @@ public:
    * @brief Callback function for the control component output.
    * @param msg Control message
    */
-  void on_control_cmd(const Control::ConstSharedPtr msg);
+  void on_control_cmd(const agnocast::ipc_shared_ptr<Control> & msg);
 
 private:
-  /**
-   * @brief Setup diagnostic updater
-   */
-  void setup_diag();
-
   /**
    * @brief Setup parameters from the parameter server
    */
@@ -277,42 +268,32 @@ private:
   void display_status();
 
   /**
-   * @brief Set the diagnostic status
-   * @param stat Diagnostic status wrapper
-   * @param is_ok Boolean indicating if the status is okay
-   * @param msg Status message
-   */
-  void set_status(
-    DiagnosticStatusWrapper & stat, const bool & is_ok, const std::string & msg) const;
-
-  /**
    * @brief Infer autonomous control state
    */
-  bool infer_autonomous_control_state(const OperationModeState::ConstSharedPtr);
+  bool infer_autonomous_control_state(
+    const agnocast::ipc_shared_ptr<const OperationModeState> & msg);
 
   /**
    * @brief Postprocessing while keeping debug values
    */
   void validation_filtering(ControlValidatorStatus & res);
 
-  // Subscribers and publishers
-  rclcpp::Subscription<Control>::SharedPtr sub_control_cmd_;
-  autoware_utils::InterProcessPollingSubscriber<OperationModeState>::SharedPtr
-    sub_operational_state_;
-  autoware_utils::InterProcessPollingSubscriber<Odometry>::SharedPtr sub_kinematics_;
-  autoware_utils::InterProcessPollingSubscriber<Trajectory>::SharedPtr sub_reference_traj_;
-  autoware_utils::InterProcessPollingSubscriber<Trajectory>::SharedPtr sub_predicted_traj_;
-  autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>::SharedPtr
-    sub_measured_acc_;
-  rclcpp::Publisher<ControlValidatorStatus>::SharedPtr pub_status_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+  // Subscribers (agnocast)
+  agnocast::Subscription<Control>::SharedPtr sub_control_cmd_;
+  agnocast::PollingSubscriber<OperationModeState>::SharedPtr sub_operational_state_;
+  agnocast::PollingSubscriber<Odometry>::SharedPtr sub_kinematics_;
+  agnocast::PollingSubscriber<Trajectory>::SharedPtr sub_reference_traj_;
+  agnocast::PollingSubscriber<Trajectory>::SharedPtr sub_predicted_traj_;
+  agnocast::PollingSubscriber<AccelWithCovarianceStamped>::SharedPtr sub_measured_acc_;
+  // Publishers
+  agnocast::Publisher<ControlValidatorStatus>::SharedPtr pub_status_;
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pub_processing_time_;
 
   // system parameters
   int64_t diag_error_count_threshold_ = 0;
   bool display_on_terminal_ = true;
-  Updater diag_updater_{this};
   ControlValidatorStatus validation_status_;
   vehicle_info_utils::VehicleInfo vehicle_info_;
   bool flag_autonomous_control_enabled_ = false;

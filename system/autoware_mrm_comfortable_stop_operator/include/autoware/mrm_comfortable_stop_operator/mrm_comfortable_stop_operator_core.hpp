@@ -20,6 +20,8 @@
 #include <vector>
 
 // Autoware
+#include <agnocast/agnocast.hpp>
+
 #include <autoware_internal_planning_msgs/msg/velocity_limit.hpp>
 #include <autoware_internal_planning_msgs/msg/velocity_limit_clear_command.hpp>
 #include <autoware_internal_planning_msgs/msg/velocity_limit_constraints.hpp>
@@ -40,7 +42,7 @@ struct Parameters
   double min_jerk;          // [m/s^3]
 };
 
-class MrmComfortableStopOperator : public rclcpp::Node
+class MrmComfortableStopOperator : public agnocast::Node
 {
 public:
   explicit MrmComfortableStopOperator(const rclcpp::NodeOptions & node_options);
@@ -50,20 +52,22 @@ private:
   Parameters params_;
 
   // Server
-  rclcpp::Service<tier4_system_msgs::srv::OperateMrm>::SharedPtr service_operation_;
+  agnocast::Service<tier4_system_msgs::srv::OperateMrm>::SharedPtr service_operation_;
 
   void operateComfortableStop(
-    const tier4_system_msgs::srv::OperateMrm::Request::SharedPtr request,
-    const tier4_system_msgs::srv::OperateMrm::Response::SharedPtr response);
+    const agnocast::ipc_shared_ptr<
+      const agnocast::Service<tier4_system_msgs::srv::OperateMrm>::RequestT> & request,
+    agnocast::ipc_shared_ptr<
+      agnocast::Service<tier4_system_msgs::srv::OperateMrm>::ResponseT> & response);
 
   rcl_interfaces::msg::SetParametersResult onParameter(
     const std::vector<rclcpp::Parameter> & parameters);
 
   // Publisher
-  rclcpp::Publisher<tier4_system_msgs::msg::MrmBehaviorStatus>::SharedPtr pub_status_;
-  rclcpp::Publisher<autoware_internal_planning_msgs::msg::VelocityLimit>::SharedPtr
+  agnocast::Publisher<tier4_system_msgs::msg::MrmBehaviorStatus>::SharedPtr pub_status_;
+  agnocast::Publisher<autoware_internal_planning_msgs::msg::VelocityLimit>::SharedPtr
     pub_velocity_limit_;
-  rclcpp::Publisher<autoware_internal_planning_msgs::msg::VelocityLimitClearCommand>::SharedPtr
+  agnocast::Publisher<autoware_internal_planning_msgs::msg::VelocityLimitClearCommand>::SharedPtr
     pub_velocity_limit_clear_command_;
 
   void publishStatus() const;
@@ -71,7 +75,7 @@ private:
   void publishVelocityLimitClearCommand() const;
 
   // Timer
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
 
   void onTimer() const;
 

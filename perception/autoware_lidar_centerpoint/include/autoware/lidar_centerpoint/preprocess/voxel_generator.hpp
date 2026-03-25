@@ -40,7 +40,7 @@ public:
 
   bool enqueuePointCloud(
     const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & input_pointcloud_msg_ptr,
-    const tf2_ros::Buffer & tf_buffer);
+    const agnocast::Buffer & tf_buffer);
 
 protected:
   std::unique_ptr<PointCloudDensification> pd_ptr_{nullptr};

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/static_transform_broadcaster.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -20,7 +22,6 @@
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/Point.h>
 #include <tf2/LinearMath/Quaternion.h>
-#include <tf2_ros/static_transform_broadcaster.h>
 
 #include <memory>
 #include <string>
@@ -28,7 +29,7 @@
 
 namespace autoware::map_tf_generator
 {
-class VectorMapTFGeneratorNode : public rclcpp::Node
+class VectorMapTFGeneratorNode : public agnocast::Node
 {
 public:
   explicit VectorMapTFGeneratorNode(const rclcpp::NodeOptions & options)
@@ -36,22 +37,22 @@ public:
     map_frame_(declare_parameter<std::string>("map_frame")),
     viewer_frame_(declare_parameter<std::string>("viewer_frame"))
   {
-    sub_ = create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
+    sub_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
       "vector_map", rclcpp::QoS{1}.transient_local(),
       std::bind(&VectorMapTFGeneratorNode::on_vector_map, this, std::placeholders::_1));
 
-    static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
+    static_broadcaster_ = std::make_shared<agnocast::StaticTransformBroadcaster>(*this);
   }
 
 private:
   std::string map_frame_;
   std::string viewer_frame_;
-  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_;
+  agnocast::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_;
 
-  std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster_;
+  std::shared_ptr<agnocast::StaticTransformBroadcaster> static_broadcaster_;
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
 
-  void on_vector_map(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg)
+  void on_vector_map(const agnocast::ipc_shared_ptr<autoware_map_msgs::msg::LaneletMapBin> & msg)
   {
     lanelet_map_ptr_ = std::make_shared<lanelet::LaneletMap>();
     lanelet::utils::conversion::fromBinMsg(*msg, lanelet_map_ptr_);

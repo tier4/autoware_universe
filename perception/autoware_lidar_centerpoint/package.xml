@@ -23,6 +23,7 @@
   <depend>autoware_tensorrt_common</depend>
   <depend>autoware_utils</depend>
   <depend>agnocastlib</depend>
+  <depend>agnocast_components</depend>
   <depend>agnocast_cuda</depend>
   <depend>pcl_ros</depend>
   <depend>rclcpp</depend>

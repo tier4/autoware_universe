@@ -20,6 +20,8 @@
 #include <memory>
 
 // Autoware
+#include <agnocast/agnocast.hpp>
+
 #include <autoware_control_msgs/msg/control.hpp>
 #include <tier4_system_msgs/msg/mrm_behavior_status.hpp>
 #include <tier4_system_msgs/srv/operate_mrm.hpp>
@@ -41,7 +43,7 @@ struct Parameters
   double target_jerk;          // [m/s^3]
 };
 
-class MrmEmergencyStopOperator : public rclcpp::Node
+class MrmEmergencyStopOperator : public agnocast::Node
 {
 public:
   explicit MrmEmergencyStopOperator(const rclcpp::NodeOptions & node_options);
@@ -55,25 +57,26 @@ private:
     const std::vector<rclcpp::Parameter> & parameters);
 
   // Subscriber
-  rclcpp::Subscription<Control>::SharedPtr sub_control_cmd_;
+  agnocast::Subscription<Control>::SharedPtr sub_control_cmd_;
 
-  void onControlCommand(Control::ConstSharedPtr msg);
+  void onControlCommand(const agnocast::ipc_shared_ptr<const Control> & msg);
 
   // Server
-  rclcpp::Service<OperateMrm>::SharedPtr service_operation_;
+  agnocast::Service<OperateMrm>::SharedPtr service_operation_;
 
   void operateEmergencyStop(
-    const OperateMrm::Request::SharedPtr request, const OperateMrm::Response::SharedPtr response);
+    const agnocast::ipc_shared_ptr<const agnocast::Service<OperateMrm>::RequestT> & request,
+    agnocast::ipc_shared_ptr<agnocast::Service<OperateMrm>::ResponseT> & response);
 
   // Publisher
-  rclcpp::Publisher<MrmBehaviorStatus>::SharedPtr pub_status_;
-  rclcpp::Publisher<Control>::SharedPtr pub_control_cmd_;
+  agnocast::Publisher<MrmBehaviorStatus>::SharedPtr pub_status_;
+  agnocast::Publisher<Control>::SharedPtr pub_control_cmd_;
 
   void publishStatus() const;
   void publishControlCommand(const Control & command) const;
 
   // Timer
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
 
   void onTimer();
 

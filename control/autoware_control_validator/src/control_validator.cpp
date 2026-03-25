@@ -30,10 +30,9 @@
 
 namespace autoware::control_validator
 {
-using diagnostic_msgs::msg::DiagnosticStatus;
 
 void LatencyValidator::validate(
-  ControlValidatorStatus & res, const Control & control_cmd, rclcpp::Node & node) const
+  ControlValidatorStatus & res, const Control & control_cmd, agnocast::Node & node) const
 {
   res.latency = (node.now() - control_cmd.stamp).seconds();
   res.is_valid_latency = res.latency < nominal_latency_threshold;
@@ -234,42 +233,38 @@ void YawValidator::validate(
 }
 
 ControlValidator::ControlValidator(const rclcpp::NodeOptions & options)
-: Node("control_validator", options), vehicle_info_()
+: agnocast::Node("control_validator", options), vehicle_info_()
 {
   using std::placeholders::_1;
 
-  sub_control_cmd_ = create_subscription<Control>(
+  sub_control_cmd_ = this->create_subscription<Control>(
     "~/input/control_cmd", 1, std::bind(&ControlValidator::on_control_cmd, this, _1));
-  sub_operational_state_ =
-    autoware_utils::InterProcessPollingSubscriber<OperationModeState>::create_subscription(
-      this, "~/input/operational_mode_state", 1);
+  sub_operational_state_ = std::make_shared<agnocast::PollingSubscriber<OperationModeState>>(
+    this, "~/input/operational_mode_state");
   sub_kinematics_ =
-    autoware_utils::InterProcessPollingSubscriber<nav_msgs::msg::Odometry>::create_subscription(
-      this, "~/input/kinematics", 1);
+    std::make_shared<agnocast::PollingSubscriber<Odometry>>(this, "~/input/kinematics");
   sub_reference_traj_ =
-    autoware_utils::InterProcessPollingSubscriber<Trajectory>::create_subscription(
-      this, "~/input/reference_trajectory", 1);
+    std::make_shared<agnocast::PollingSubscriber<Trajectory>>(this, "~/input/reference_trajectory");
   sub_predicted_traj_ =
-    autoware_utils::InterProcessPollingSubscriber<Trajectory>::create_subscription(
-      this, "~/input/predicted_trajectory", 1);
-  sub_measured_acc_ =
-    autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>::create_subscription(
-      this, "~/input/measured_acceleration", 1);
+    std::make_shared<agnocast::PollingSubscriber<Trajectory>>(this, "~/input/predicted_trajectory");
+  sub_measured_acc_ = std::make_shared<agnocast::PollingSubscriber<AccelWithCovarianceStamped>>(
+    this, "~/input/measured_acceleration");
 
-  pub_status_ = create_publisher<ControlValidatorStatus>("~/output/validation_status", 1);
+  pub_status_ =
+    this->create_publisher<ControlValidatorStatus>("~/output/validation_status", 1);
 
-  pub_markers_ = create_publisher<visualization_msgs::msg::MarkerArray>("~/output/markers", 1);
+  pub_markers_ =
+    this->create_publisher<visualization_msgs::msg::MarkerArray>("~/output/markers", 1);
 
-  pub_processing_time_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "~/debug/processing_time_ms", 1);
+  pub_processing_time_ =
+    this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "~/debug/processing_time_ms", 1);
 
   debug_pose_publisher_ = std::make_shared<ControlValidatorDebugMarkerPublisher>(this);
 
   setup_parameters();
 
   validation_filtering(validation_status_);
-
-  setup_diag();
 }
 
 void ControlValidator::setup_parameters()
@@ -278,7 +273,8 @@ void ControlValidator::setup_parameters()
   display_on_terminal_ = declare_parameter<bool>("display_on_terminal");
 
   try {
-    vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
+    vehicle_info_ =
+      autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(*this).getVehicleInfo();
   } catch (...) {
     vehicle_info_.front_overhang_m = 0.5;
     vehicle_info_.wheel_base_m = 4.0;
@@ -290,81 +286,8 @@ void ControlValidator::setup_parameters()
   }
 }
 
-void ControlValidator::set_status(
-  DiagnosticStatusWrapper & stat, const bool & is_ok, const std::string & msg) const
-{
-  if (is_ok) {
-    stat.summary(DiagnosticStatus::OK, "validated.");
-  } else if (validation_status_.invalid_count < diag_error_count_threshold_) {
-    const auto warn_msg = msg + " (invalid count is less than error threshold: " +
-                          std::to_string(validation_status_.invalid_count) + " < " +
-                          std::to_string(diag_error_count_threshold_) + ")";
-    stat.summary(DiagnosticStatus::WARN, warn_msg);
-  } else {
-    stat.summary(DiagnosticStatus::ERROR, msg);
-  }
-}
-
-void ControlValidator::setup_diag()
-{
-  auto & d = diag_updater_;
-  d.setHardwareID("control_validator");
-
-  std::string ns = "control_validation_";
-  d.add(ns + "max_distance_deviation", [&](auto & stat) {
-    set_status(
-      stat, validation_status_.is_valid_max_distance_deviation,
-      "control output is deviated from trajectory");
-  });
-  d.add(ns + "acceleration_error", [&](auto & stat) {
-    set_status(
-      stat, validation_status_.is_valid_acc,
-      "Measured acceleration and desired acceleration is deviated");
-  });
-  d.add(ns + "rolling_back", [&](auto & stat) {
-    set_status(
-      stat, !validation_status_.is_rolling_back,
-      "The vehicle is rolling back. The velocity has the opposite sign to the target.");
-  });
-  d.add(ns + "over_velocity", [&](auto & stat) {
-    set_status(
-      stat, !validation_status_.is_over_velocity,
-      "The vehicle is over-speeding against the target.");
-  });
-  d.add(ns + "overrun_stop_point", [&](auto & stat) {
-    set_status(
-      stat, !validation_status_.has_overrun_stop_point,
-      "The vehicle has overrun the front stop point on the trajectory.");
-  });
-  d.add(ns + "will_overrun_stop_point", [&](auto & stat) {
-    set_status(
-      stat, !validation_status_.will_overrun_stop_point,
-      "In a few seconds ago, the vehicle will overrun the front stop point on the trajectory.");
-  });
-
-  d.add(ns + "latency", [&](auto & stat) {
-    set_status(
-      stat, validation_status_.is_valid_latency, "The latency is larger than expected value.");
-  });
-
-  d.add(ns + "steering_rate", [&](auto & stat) {
-    set_status(
-      stat, validation_status_.is_valid_lateral_jerk,
-      "The lateral jerk is larger than expected value.");
-  });
-
-  d.add(ns + "yaw_deviation", [&](auto & stat) {
-    set_status(
-      stat, validation_status_.is_valid_yaw, "The vehicle yaw has deviated from the trajectory.");
-    // TODO(someone): implement the dual thresholds for WARN/ERROR for the other metrics
-    if (validation_status_.is_valid_yaw && validation_status_.is_warn_yaw) {
-      stat.summary(
-        DiagnosticStatus::WARN, "The vehicle yaw is deviating but is still under the error value.");
-    }
-  });
-}
-
-bool ControlValidator::infer_autonomous_control_state(const OperationModeState::ConstSharedPtr msg)
+bool ControlValidator::infer_autonomous_control_state(
+  const agnocast::ipc_shared_ptr<const OperationModeState> & msg)
 {
   return (msg->mode == OperationModeState::AUTONOMOUS) && (msg->is_autoware_control_enabled);
 }
@@ -384,7 +307,7 @@ void ControlValidator::validation_filtering(ControlValidatorStatus & res)
   res.is_warn_yaw = false;
 }
 
-void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
+void ControlValidator::on_control_cmd(const agnocast::ipc_shared_ptr<Control> & msg)
 {
   stop_watch.tic();
 
@@ -394,17 +317,17 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
     return;
   };
 
-  Control::ConstSharedPtr control_cmd_msg = msg;
+  const auto & control_cmd_msg = msg;
   if (!control_cmd_msg) {
-    return waiting(sub_control_cmd_->get_topic_name());
+    return waiting("~/input/control_cmd");
   }
-  Trajectory::ConstSharedPtr predicted_trajectory_msg = sub_predicted_traj_->take_data();
+  auto predicted_trajectory_msg = sub_predicted_traj_->take_data();
   if (!predicted_trajectory_msg) {
-    return waiting(sub_reference_traj_->subscriber()->get_topic_name());
+    return waiting("~/input/predicted_trajectory");
   }
-  Trajectory::ConstSharedPtr reference_trajectory_msg = sub_reference_traj_->take_data();
+  auto reference_trajectory_msg = sub_reference_traj_->take_data();
   if (!reference_trajectory_msg) {
-    return waiting(sub_reference_traj_->subscriber()->get_topic_name());
+    return waiting("~/input/reference_trajectory");
   }
   if (reference_trajectory_msg->points.size() < 2) {
     // TODO(takagi): This check should be moved into each of the individual validate() functions.
@@ -414,17 +337,17 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
       "reference_trajectory size is less than 2. Cannot validate.");
     return;
   }
-  OperationModeState::ConstSharedPtr operation_mode_msg = sub_operational_state_->take_data();
+  auto operation_mode_msg = sub_operational_state_->take_data();
   if (operation_mode_msg) {
     flag_autonomous_control_enabled_ = infer_autonomous_control_state(operation_mode_msg);
   }
-  Odometry::ConstSharedPtr kinematics_msg = sub_kinematics_->take_data();
+  auto kinematics_msg = sub_kinematics_->take_data();
   if (!kinematics_msg) {
-    return waiting(sub_kinematics_->subscriber()->get_topic_name());
+    return waiting("~/input/kinematics");
   }
-  AccelWithCovarianceStamped::ConstSharedPtr acceleration_msg = sub_measured_acc_->take_data();
+  auto acceleration_msg = sub_measured_acc_->take_data();
   if (!acceleration_msg) {
-    return waiting(sub_measured_acc_->subscriber()->get_topic_name());
+    return waiting("~/input/measured_acceleration");
   }
 
   // pre process
@@ -464,15 +387,17 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
   validation_status_.invalid_count =
     is_all_valid(validation_status_) ? 0 : validation_status_.invalid_count + 1;
 
-  diag_updater_.force_update();
-
   publish_debug_info(kinematics_msg->pose.pose);
   display_status();
 }
 
 void ControlValidator::publish_debug_info(const geometry_msgs::msg::Pose & ego_pose)
 {
-  pub_status_->publish(validation_status_);
+  {
+    auto status_msg = pub_status_->borrow_loaned_message();
+    *status_msg = validation_status_;
+    pub_status_->publish(std::move(status_msg));
+  }
 
   if (!is_all_valid(validation_status_)) {
     geometry_msgs::msg::Pose front_pose = ego_pose;
@@ -483,10 +408,12 @@ void ControlValidator::publish_debug_info(const geometry_msgs::msg::Pose & ego_p
   debug_pose_publisher_->publish();
 
   // Publish ProcessingTime
-  autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
-  processing_time_msg.stamp = get_clock()->now();
-  processing_time_msg.data = stop_watch.toc();
-  pub_processing_time_->publish(processing_time_msg);
+  {
+    auto processing_time_msg = pub_processing_time_->borrow_loaned_message();
+    processing_time_msg->stamp = get_clock()->now();
+    processing_time_msg->data = stop_watch.toc();
+    pub_processing_time_->publish(std::move(processing_time_msg));
+  }
 }
 
 bool ControlValidator::is_all_valid(const ControlValidatorStatus & s)

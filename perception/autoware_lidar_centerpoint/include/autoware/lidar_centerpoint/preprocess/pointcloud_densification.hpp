@@ -17,6 +17,7 @@
 
 #include <agnocast/agnocast.hpp>
 #include <agnocast/cuda/types.hpp>
+#include <agnocast/node/tf2/buffer.hpp>
 
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -69,7 +70,7 @@ public:
 
   bool enqueuePointCloud(
     const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & input_pointcloud_msg_ptr,
-    const tf2_ros::Buffer & tf_buffer);
+    const agnocast::Buffer & tf_buffer);
 
   double getCurrentTimestamp() const { return current_timestamp_; }
   Eigen::Affine3f getAffineWorldToCurrent() const { return affine_world2current_; }

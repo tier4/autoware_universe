@@ -21,7 +21,7 @@
 namespace autoware::mrm_handler
 {
 
-MrmHandler::MrmHandler(const rclcpp::NodeOptions & options) : Node("mrm_handler", options)
+MrmHandler::MrmHandler(const rclcpp::NodeOptions & options) : agnocast::Node("mrm_handler", options)
 {
   // Parameter
   param_.update_rate = declare_parameter<int>("update_rate", 10);
@@ -43,36 +43,55 @@ MrmHandler::MrmHandler(const rclcpp::NodeOptions & options) : Node("mrm_handler"
 
   // Subscribers with callback
   sub_operation_mode_availability_ =
-    create_subscription<tier4_system_msgs::msg::OperationModeAvailability>(
+    this->create_subscription<tier4_system_msgs::msg::OperationModeAvailability>(
       "~/input/operation_mode_availability", rclcpp::QoS{1},
       std::bind(&MrmHandler::onOperationModeAvailability, this, _1));
 
+  // Subscribers without callback (polling)
+  sub_odom_ = this->create_subscription<nav_msgs::msg::Odometry>("~/input/odometry", 1);
+  sub_control_mode_ = this->create_subscription<autoware_vehicle_msgs::msg::ControlModeReport>(
+    "~/input/control_mode", 1);
+  sub_mrm_pull_over_status_ =
+    this->create_subscription<tier4_system_msgs::msg::MrmBehaviorStatus>(
+      "~/input/mrm/pull_over/status", 1);
+  sub_mrm_comfortable_stop_status_ =
+    this->create_subscription<tier4_system_msgs::msg::MrmBehaviorStatus>(
+      "~/input/mrm/comfortable_stop/status", 1);
+  sub_mrm_emergency_stop_status_ =
+    this->create_subscription<tier4_system_msgs::msg::MrmBehaviorStatus>(
+      "~/input/mrm/emergency_stop/status", 1);
+  sub_operation_mode_state_ =
+    this->create_subscription<autoware_adapi_v1_msgs::msg::OperationModeState>(
+      "~/input/api/operation_mode/state", 1);
+  sub_gear_cmd_ =
+    this->create_subscription<autoware_vehicle_msgs::msg::GearCommand>("~/input/gear", 1);
+
   // Publisher
-  pub_turn_indicator_cmd_ = create_publisher<autoware_vehicle_msgs::msg::TurnIndicatorsCommand>(
-    "~/output/turn_indicators", rclcpp::QoS{1});
-  pub_hazard_cmd_ = create_publisher<autoware_vehicle_msgs::msg::HazardLightsCommand>(
+  pub_turn_indicator_cmd_ =
+    this->create_publisher<autoware_vehicle_msgs::msg::TurnIndicatorsCommand>(
+      "~/output/turn_indicators", rclcpp::QoS{1});
+  pub_hazard_cmd_ = this->create_publisher<autoware_vehicle_msgs::msg::HazardLightsCommand>(
     "~/output/hazard", rclcpp::QoS{1});
   pub_gear_cmd_ =
-    create_publisher<autoware_vehicle_msgs::msg::GearCommand>("~/output/gear", rclcpp::QoS{1});
-  pub_mrm_state_ =
-    create_publisher<autoware_adapi_v1_msgs::msg::MrmState>("~/output/mrm/state", rclcpp::QoS{1});
-  pub_emergency_holding_ = create_publisher<tier4_system_msgs::msg::EmergencyHoldingState>(
+    this->create_publisher<autoware_vehicle_msgs::msg::GearCommand>("~/output/gear", rclcpp::QoS{1});
+  pub_mrm_state_ = this->create_publisher<autoware_adapi_v1_msgs::msg::MrmState>(
+    "~/output/mrm/state", rclcpp::QoS{1});
+  pub_emergency_holding_ = this->create_publisher<tier4_system_msgs::msg::EmergencyHoldingState>(
     "~/output/emergency_holding", rclcpp::QoS{1});
 
   // Clients
   client_mrm_pull_over_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  client_mrm_pull_over_ = create_client<tier4_system_msgs::srv::OperateMrm>(
-    "~/output/mrm/pull_over/operate", rmw_qos_profile_services_default,
-    client_mrm_pull_over_group_);
+  client_mrm_pull_over_ = this->create_client<tier4_system_msgs::srv::OperateMrm>(
+    "~/output/mrm/pull_over/operate", rclcpp::ServicesQoS(), client_mrm_pull_over_group_);
   client_mrm_comfortable_stop_group_ =
     create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  client_mrm_comfortable_stop_ = create_client<tier4_system_msgs::srv::OperateMrm>(
-    "~/output/mrm/comfortable_stop/operate", rmw_qos_profile_services_default,
+  client_mrm_comfortable_stop_ = this->create_client<tier4_system_msgs::srv::OperateMrm>(
+    "~/output/mrm/comfortable_stop/operate", rclcpp::ServicesQoS(),
     client_mrm_comfortable_stop_group_);
   client_mrm_emergency_stop_group_ =
     create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  client_mrm_emergency_stop_ = create_client<tier4_system_msgs::srv::OperateMrm>(
-    "~/output/mrm/emergency_stop/operate", rmw_qos_profile_services_default,
+  client_mrm_emergency_stop_ = this->create_client<tier4_system_msgs::srv::OperateMrm>(
+    "~/output/mrm/emergency_stop/operate", rclcpp::ServicesQoS(),
     client_mrm_emergency_stop_group_);
 
   // Initialize
@@ -83,15 +102,14 @@ MrmHandler::MrmHandler(const rclcpp::NodeOptions & options) : Node("mrm_handler"
 
   // Timer
   const auto update_period_ns = rclcpp::Rate(param_.update_rate).period();
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), update_period_ns, std::bind(&MrmHandler::onTimer, this));
+  timer_ = this->create_timer(update_period_ns, std::bind(&MrmHandler::onTimer, this));
 }
 
 void MrmHandler::onOperationModeAvailability(
-  const tier4_system_msgs::msg::OperationModeAvailability::ConstSharedPtr msg)
+  const agnocast::ipc_shared_ptr<const tier4_system_msgs::msg::OperationModeAvailability> & msg)
 {
   stamp_operation_mode_availability_ = this->now();
-  operation_mode_availability_ = msg;
+  operation_mode_availability_ = *msg;
   const bool skip_emergency_holding_check =
     !param_.use_emergency_holding || is_emergency_holding_ || !isOperationModeAutonomous();
 
@@ -119,65 +137,67 @@ void MrmHandler::onOperationModeAvailability(
 void MrmHandler::publishTurnIndicatorCmd()
 {
   using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
-  TurnIndicatorsCommand msg;
+  auto msg = pub_turn_indicator_cmd_->borrow_loaned_message();
 
-  msg.stamp = this->now();
+  msg->stamp = this->now();
   if (param_.turning_indicator_on.emergency && isEmergency()) {
-    msg.command = TurnIndicatorsCommand::DISABLE;
+    msg->command = TurnIndicatorsCommand::DISABLE;
   } else {
-    msg.command = TurnIndicatorsCommand::NO_COMMAND;
+    msg->command = TurnIndicatorsCommand::NO_COMMAND;
   }
 
-  pub_turn_indicator_cmd_->publish(msg);
+  pub_turn_indicator_cmd_->publish(std::move(msg));
 }
 
 void MrmHandler::publishHazardCmd()
 {
   using autoware_vehicle_msgs::msg::HazardLightsCommand;
-  HazardLightsCommand msg;
+  auto msg = pub_hazard_cmd_->borrow_loaned_message();
 
-  msg.stamp = this->now();
+  msg->stamp = this->now();
   if (param_.turning_hazard_on.emergency && isEmergency()) {
-    msg.command = HazardLightsCommand::ENABLE;
+    msg->command = HazardLightsCommand::ENABLE;
   } else {
-    msg.command = HazardLightsCommand::NO_COMMAND;
+    msg->command = HazardLightsCommand::NO_COMMAND;
   }
 
-  pub_hazard_cmd_->publish(msg);
+  pub_hazard_cmd_->publish(std::move(msg));
 }
 
 void MrmHandler::publishGearCmd()
 {
   using autoware_vehicle_msgs::msg::GearCommand;
-  GearCommand msg;
-  msg.stamp = this->now();
+  auto msg = pub_gear_cmd_->borrow_loaned_message();
+  msg->stamp = this->now();
 
   if (isEmergency()) {
     // gear command is created within mrm_handler
-    msg.command =
+    msg->command =
       (param_.use_parking_after_stopped && isStopped()) ? GearCommand::PARK : last_gear_command_;
   } else {
     // use the same gear as the input gear
-    auto gear = sub_gear_cmd_.take_data();
-    msg.command = (gear == nullptr) ? last_gear_command_ : gear->command;
-    last_gear_command_ = msg.command;
+    auto gear = sub_gear_cmd_->take_data();
+    msg->command = (!gear) ? last_gear_command_ : gear->command;
+    last_gear_command_ = msg->command;
   }
 
-  pub_gear_cmd_->publish(msg);
+  pub_gear_cmd_->publish(std::move(msg));
 }
 
 void MrmHandler::publishMrmState()
 {
+  auto msg = pub_mrm_state_->borrow_loaned_message();
   mrm_state_.stamp = this->now();
-  pub_mrm_state_->publish(mrm_state_);
+  *msg = mrm_state_;
+  pub_mrm_state_->publish(std::move(msg));
 }
 
 void MrmHandler::publishEmergencyHolding()
 {
-  tier4_system_msgs::msg::EmergencyHoldingState msg;
-  msg.stamp = this->now();
-  msg.is_holding = is_emergency_holding_;
-  pub_emergency_holding_->publish(msg);
+  auto msg = pub_emergency_holding_->borrow_loaned_message();
+  msg->stamp = this->now();
+  msg->is_holding = is_emergency_holding_;
+  pub_emergency_holding_->publish(std::move(msg));
 }
 
 void MrmHandler::operateMrm()
@@ -241,18 +261,15 @@ bool MrmHandler::requestMrmBehavior(
 {
   using autoware_adapi_v1_msgs::msg::MrmState;
 
-  auto request = std::make_shared<tier4_system_msgs::srv::OperateMrm::Request>();
-  if (request_type == RequestType::CALL) {
-    request->operate = true;
-  } else if (request_type == RequestType::CANCEL) {
-    request->operate = false;
-  } else {
+  const bool is_call = (request_type == RequestType::CALL);
+  const bool is_cancel = (request_type == RequestType::CANCEL);
+  if (!is_call && !is_cancel) {
     RCLCPP_ERROR(this->get_logger(), "invalid request type: %d", request_type);
     return false;
   }
+
   const auto duration = std::chrono::duration<double, std::ratio<1>>(
-    request->operate ? param_.timeout_call_mrm_behavior : param_.timeout_cancel_mrm_behavior);
-  std::shared_future<std::shared_ptr<tier4_system_msgs::srv::OperateMrm::Response>> future;
+    is_call ? param_.timeout_call_mrm_behavior : param_.timeout_cancel_mrm_behavior);
 
   const auto behavior2string = [](const int behavior) {
     if (behavior == MrmState::NONE) {
@@ -271,20 +288,35 @@ bool MrmHandler::requestMrmBehavior(
     throw std::runtime_error(msg);
   };
 
+  // Helper lambda to send request via agnocast client
+  const auto send_request =
+    [&](const auto & client)
+    -> std::future<agnocast::ipc_shared_ptr<
+      typename agnocast::Client<tier4_system_msgs::srv::OperateMrm>::ResponseT>> {
+    auto request = client->borrow_loaned_request();
+    request->operate = is_call;
+    return client->async_send_request(std::move(request)).future;
+  };
+
+  std::future<
+    agnocast::ipc_shared_ptr<
+      typename agnocast::Client<tier4_system_msgs::srv::OperateMrm>::ResponseT>>
+    future;
+
   switch (mrm_behavior) {
     case MrmState::NONE:
       RCLCPP_DEBUG(this->get_logger(), "MRM behavior is None. Do nothing.");
       return true;
     case MrmState::PULL_OVER: {
-      future = client_mrm_pull_over_->async_send_request(request).future.share();
+      future = send_request(client_mrm_pull_over_);
       break;
     }
     case MrmState::COMFORTABLE_STOP: {
-      future = client_mrm_comfortable_stop_->async_send_request(request).future.share();
+      future = send_request(client_mrm_comfortable_stop_);
       break;
     }
     case MrmState::EMERGENCY_STOP: {
-      future = client_mrm_emergency_stop_->async_send_request(request).future.share();
+      future = send_request(client_mrm_emergency_stop_);
       break;
     }
     default:
@@ -296,18 +328,18 @@ bool MrmHandler::requestMrmBehavior(
     const auto result = future.get();
     if (result->response.success == true) {
       RCLCPP_WARN(
-        this->get_logger(), request->operate ? "%s is operated." : "%s is canceled.",
+        this->get_logger(), is_call ? "%s is operated." : "%s is canceled.",
         behavior2string(mrm_behavior));
       return true;
     } else {
       RCLCPP_ERROR(
-        this->get_logger(), request->operate ? "%s failed to operate." : "%s failed to cancel.",
+        this->get_logger(), is_call ? "%s failed to operate." : "%s failed to cancel.",
         behavior2string(mrm_behavior));
       return false;
     }
   } else {
     RCLCPP_ERROR(
-      this->get_logger(), request->operate ? "%s call timed out." : "%s cancel timed out.",
+      this->get_logger(), is_call ? "%s call timed out." : "%s cancel timed out.",
       behavior2string(mrm_behavior));
     return false;
   }
@@ -315,7 +347,7 @@ bool MrmHandler::requestMrmBehavior(
 
 bool MrmHandler::isDataReady()
 {
-  if (!operation_mode_availability_) {
+  if (!operation_mode_availability_.has_value()) {
     RCLCPP_INFO_THROTTLE(
       this->get_logger(), *this->get_clock(), std::chrono::milliseconds(5000).count(),
       "waiting for operation_mode_availability msg...");
@@ -549,8 +581,8 @@ autoware_adapi_v1_msgs::msg::MrmState::_behavior_type MrmHandler::getCurrentMrmB
 
 bool MrmHandler::isStopped()
 {
-  auto odom = sub_odom_.take_data();
-  if (odom == nullptr) return false;
+  auto odom = sub_odom_->take_data();
+  if (!odom) return false;
   constexpr auto th_stopped_velocity = 0.001;
   return (std::abs(odom->twist.twist.linear.x) < th_stopped_velocity);
 }
@@ -564,45 +596,45 @@ bool MrmHandler::isEmergency() const
 bool MrmHandler::isControlModeAutonomous()
 {
   using autoware_vehicle_msgs::msg::ControlModeReport;
-  auto mode = sub_control_mode_.take_data();
-  if (mode == nullptr) return false;
+  auto mode = sub_control_mode_->take_data();
+  if (!mode) return false;
   return mode->mode == ControlModeReport::AUTONOMOUS;
 }
 
 bool MrmHandler::isOperationModeAutonomous()
 {
   using autoware_adapi_v1_msgs::msg::OperationModeState;
-  auto state = sub_operation_mode_state_.take_data();
-  if (state == nullptr) return false;
+  auto state = sub_operation_mode_state_->take_data();
+  if (!state) return false;
   return state->mode == OperationModeState::AUTONOMOUS;
 }
 
 bool MrmHandler::isPullOverStatusAvailable()
 {
-  auto status = sub_mrm_pull_over_status_.take_data();
-  if (status == nullptr) return false;
+  auto status = sub_mrm_pull_over_status_->take_data();
+  if (!status) return false;
   return status->state != tier4_system_msgs::msg::MrmBehaviorStatus::NOT_AVAILABLE;
 }
 
 bool MrmHandler::isComfortableStopStatusAvailable()
 {
-  auto status = sub_mrm_comfortable_stop_status_.take_data();
-  if (status == nullptr) return false;
+  auto status = sub_mrm_comfortable_stop_status_->take_data();
+  if (!status) return false;
   return status->state != tier4_system_msgs::msg::MrmBehaviorStatus::NOT_AVAILABLE;
 }
 
 bool MrmHandler::isEmergencyStopStatusAvailable()
 {
-  auto status = sub_mrm_emergency_stop_status_.take_data();
-  if (status == nullptr) return false;
+  auto status = sub_mrm_emergency_stop_status_->take_data();
+  if (!status) return false;
   return status->state != tier4_system_msgs::msg::MrmBehaviorStatus::NOT_AVAILABLE;
 }
 
 bool MrmHandler::isArrivedAtGoal()
 {
   using autoware_adapi_v1_msgs::msg::OperationModeState;
-  auto state = sub_operation_mode_state_.take_data();
-  if (state == nullptr) return false;
+  auto state = sub_operation_mode_state_->take_data();
+  if (!state) return false;
   return state->mode == OperationModeState::STOP;
 }
 

@@ -22,6 +22,7 @@
 
 #include <agnocast/agnocast.hpp>
 #include <agnocast/cuda/types.hpp>
+#include <agnocast/node/tf2/tf2.hpp>
 #include <autoware/tensorrt_common/tensorrt_common.hpp>
 
 #include <pcl/point_cloud.h>
@@ -48,7 +49,7 @@ public:
 
   bool detect(
     const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & input_pointcloud_msg_ptr,
-    const tf2_ros::Buffer & tf_buffer, std::vector<Box3D> & det_boxes3d,
+    const agnocast::Buffer & tf_buffer, std::vector<Box3D> & det_boxes3d,
     bool & is_num_pillars_within_range);
 
 protected:
@@ -57,7 +58,7 @@ protected:
 
   virtual bool preprocess(
     const agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> & input_pointcloud_msg_ptr,
-    const tf2_ros::Buffer & tf_buffer);
+    const agnocast::Buffer & tf_buffer);
 
   void inference();
 

@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__LANE_DEPARTURE_CHECKER__PARAMETERS_HPP_
 #define AUTOWARE__LANE_DEPARTURE_CHECKER__PARAMETERS_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/boundary_departure_checker/parameters.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
 #include <autoware_utils/geometry/pose_deviation.hpp>
@@ -42,7 +43,7 @@ using boundary_departure_checker::Param;
 
 struct NodeParam
 {
-  static NodeParam init(rclcpp::Node & node);
+  static NodeParam init(agnocast::Node & node);
   bool will_out_of_lane_checker{};
   bool out_of_lane_checker{};
   bool boundary_departure_checker{};
@@ -56,7 +57,7 @@ struct NodeParam
   std::vector<std::string> boundary_types_to_detect;
 };
 
-Param init(rclcpp::Node & node);
+Param init(agnocast::Node & node);
 }  // namespace autoware::lane_departure_checker
 
 #endif  // AUTOWARE__LANE_DEPARTURE_CHECKER__PARAMETERS_HPP_

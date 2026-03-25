@@ -48,7 +48,9 @@
 namespace autoware::freespace_planner
 {
 FreespacePlannerNode::FreespacePlannerNode(const rclcpp::NodeOptions & node_options)
-: Node("freespace_planner", node_options)
+: Node("freespace_planner", node_options),
+  tf_buffer_(this->get_clock()),
+  tf_listener_(tf_buffer_, *this)
 {
   using std::placeholders::_1;
 
@@ -71,7 +73,7 @@ FreespacePlannerNode::FreespacePlannerNode(const rclcpp::NodeOptions & node_opti
   // set vehicle_info
   {
     const auto vehicle_info =
-      autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
+      autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(*this).getVehicleInfo();
     vehicle_shape_.length = vehicle_info.vehicle_length_m;
     vehicle_shape_.width = vehicle_info.vehicle_width_m;
     vehicle_shape_.base_length = vehicle_info.wheel_base_m;
@@ -83,36 +85,39 @@ FreespacePlannerNode::FreespacePlannerNode(const rclcpp::NodeOptions & node_opti
   initializePlanningAlgorithm();
 
   // Subscribers
-  route_sub_ = create_subscription<LaneletRoute>(
+  route_sub_ = this->create_subscription<LaneletRoute>(
     "~/input/route", rclcpp::QoS{1}.transient_local(),
     std::bind(&FreespacePlannerNode::onRoute, this, _1));
+  odom_sub_ = this->create_subscription<Odometry>(
+    "~/input/odometry", rclcpp::QoS{100},
+    [this](const agnocast::ipc_shared_ptr<Odometry> & msg) {
+      std::lock_guard<std::mutex> lock(odom_buffer_mutex_);
+      agnocast_odom_buffer_.push_back(msg);
+    });
+  occupancy_grid_sub_ = this->create_subscription<OccupancyGrid>("~/input/occupancy_grid", 1);
+  scenario_sub_ = this->create_subscription<Scenario>("~/input/scenario", 1);
 
   // Publishers
   {
     rclcpp::QoS qos{1};
     qos.transient_local();  // latch
-    trajectory_pub_ = create_publisher<Trajectory>("~/output/trajectory", qos);
-    debug_pose_array_pub_ = create_publisher<PoseArray>("~/debug/pose_array", qos);
-    debug_partial_pose_array_pub_ = create_publisher<PoseArray>("~/debug/partial_pose_array", qos);
-    parking_state_pub_ = create_publisher<std_msgs::msg::Bool>("is_completed", qos);
-    processing_time_pub_ = create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    trajectory_pub_ = this->create_publisher<Trajectory>("~/output/trajectory", qos);
+    debug_pose_array_pub_ = this->create_publisher<PoseArray>("~/debug/pose_array", qos);
+    debug_partial_pose_array_pub_ =
+      this->create_publisher<PoseArray>("~/debug/partial_pose_array", qos);
+    parking_state_pub_ = this->create_publisher<std_msgs::msg::Bool>("is_completed", qos);
+    processing_time_pub_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "~/debug/processing_time_ms", 1);
-  }
-
-  // TF
-  {
-    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
-    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   }
 
   // Timer
   {
     const auto period_ns = rclcpp::Rate(node_param_.update_rate).period();
-    timer_ = rclcpp::create_timer(
-      this, get_clock(), period_ns, std::bind(&FreespacePlannerNode::onTimer, this));
+    timer_ = this->create_timer(period_ns, std::bind(&FreespacePlannerNode::onTimer, this));
   }
 
-  logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
+  logger_configure_ =
+    std::make_unique<autoware_utils_logging::BasicLoggerLevelConfigure<agnocast::Node>>(this);
 }
 
 PlannerCommonParam FreespacePlannerNode::getPlannerCommonParam()
@@ -203,9 +208,9 @@ void FreespacePlannerNode::updateTargetIndex()
     // Finished publishing all partial trajectories
     is_completed_ = true;
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "Freespace planning completed");
-    std_msgs::msg::Bool is_completed_msg;
-    is_completed_msg.data = is_completed_;
-    parking_state_pub_->publish(is_completed_msg);
+    auto is_completed_msg = parking_state_pub_->borrow_loaned_message();
+    is_completed_msg->data = is_completed_;
+    parking_state_pub_->publish(std::move(is_completed_msg));
   } else {
     // Switch to next partial trajectory
     prev_target_index_ = target_index_;
@@ -213,9 +218,9 @@ void FreespacePlannerNode::updateTargetIndex()
   }
 }
 
-void FreespacePlannerNode::onRoute(const LaneletRoute::ConstSharedPtr msg)
+void FreespacePlannerNode::onRoute(const agnocast::ipc_shared_ptr<LaneletRoute> & msg)
 {
-  route_ = msg;
+  route_ = std::make_shared<LaneletRoute>(*msg);
 
   goal_pose_.header = msg->header;
   goal_pose_.pose = msg->goal_pose;
@@ -246,13 +251,19 @@ void FreespacePlannerNode::onOdometry(const Odometry::ConstSharedPtr msg)
 
 void FreespacePlannerNode::updateData()
 {
-  occupancy_grid_ = occupancy_grid_sub_.take_data();
+  auto occupancy_grid_ipc = occupancy_grid_sub_->take_data();
+  if (occupancy_grid_ipc) {
+    occupancy_grid_ = std::make_shared<OccupancyGrid>(*occupancy_grid_ipc);
+  }
 
+  // Process buffered agnocast odometry messages
   {
-    auto msgs = odom_sub_.take_data();
-    for (const auto & msg : msgs) {
-      onOdometry(msg);
+    std::lock_guard<std::mutex> lock(odom_buffer_mutex_);
+    for (const auto & msg : agnocast_odom_buffer_) {
+      auto odom_copy = std::make_shared<Odometry>(*msg);
+      onOdometry(odom_copy);
     }
+    agnocast_odom_buffer_.clear();
   }
 }
 
@@ -282,7 +293,10 @@ void FreespacePlannerNode::onTimer()
 {
   autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch;
 
-  scenario_ = scenario_sub_.take_data();
+  auto scenario_ipc = scenario_sub_->take_data();
+  if (scenario_ipc) {
+    scenario_ = std::make_shared<Scenario>(*scenario_ipc);
+  }
   if (!utils::is_active(scenario_)) {
     reset();
     return;
@@ -297,7 +311,9 @@ void FreespacePlannerNode::onTimer()
   if (is_completed_) {
     partial_trajectory_.header = odom_->header;
     const auto stop_trajectory = utils::create_stop_trajectory(partial_trajectory_);
-    trajectory_pub_->publish(stop_trajectory);
+    auto traj_msg = trajectory_pub_->borrow_loaned_message();
+    *traj_msg = stop_trajectory;
+    trajectory_pub_->publish(std::move(traj_msg));
     return;
   }
 
@@ -318,9 +334,21 @@ void FreespacePlannerNode::onTimer()
       const auto stop_trajectory = partial_trajectory_.points.empty()
                                      ? utils::create_stop_trajectory(current_pose_, get_clock())
                                      : utils::create_stop_trajectory(partial_trajectory_);
-      trajectory_pub_->publish(stop_trajectory);
-      debug_pose_array_pub_->publish(utils::trajectory_to_pose_array(stop_trajectory));
-      debug_partial_pose_array_pub_->publish(utils::trajectory_to_pose_array(stop_trajectory));
+      {
+        auto traj_msg = trajectory_pub_->borrow_loaned_message();
+        *traj_msg = stop_trajectory;
+        trajectory_pub_->publish(std::move(traj_msg));
+      }
+      {
+        auto debug_msg = debug_pose_array_pub_->borrow_loaned_message();
+        *debug_msg = utils::trajectory_to_pose_array(stop_trajectory);
+        debug_pose_array_pub_->publish(std::move(debug_msg));
+      }
+      {
+        auto debug_partial_msg = debug_partial_pose_array_pub_->borrow_loaned_message();
+        *debug_partial_msg = utils::trajectory_to_pose_array(stop_trajectory);
+        debug_partial_pose_array_pub_->publish(std::move(debug_partial_msg));
+      }
     }
 
     reset();
@@ -355,17 +383,31 @@ void FreespacePlannerNode::onTimer()
     utils::get_partial_trajectory(trajectory_, prev_target_index_, target_index_, get_clock());
 
   // Publish messages
-  trajectory_pub_->publish(partial_trajectory_);
-  debug_pose_array_pub_->publish(utils::trajectory_to_pose_array(trajectory_));
-  debug_partial_pose_array_pub_->publish(utils::trajectory_to_pose_array(partial_trajectory_));
+  {
+    auto traj_msg = trajectory_pub_->borrow_loaned_message();
+    *traj_msg = partial_trajectory_;
+    trajectory_pub_->publish(std::move(traj_msg));
+  }
+  {
+    auto debug_msg = debug_pose_array_pub_->borrow_loaned_message();
+    *debug_msg = utils::trajectory_to_pose_array(trajectory_);
+    debug_pose_array_pub_->publish(std::move(debug_msg));
+  }
+  {
+    auto debug_partial_msg = debug_partial_pose_array_pub_->borrow_loaned_message();
+    *debug_partial_msg = utils::trajectory_to_pose_array(partial_trajectory_);
+    debug_partial_pose_array_pub_->publish(std::move(debug_partial_msg));
+  }
 
   is_new_parking_cycle_ = false;
 
   // Publish ProcessingTime
-  autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
-  processing_time_msg.stamp = get_clock()->now();
-  processing_time_msg.data = stop_watch.toc();
-  processing_time_pub_->publish(processing_time_msg);
+  {
+    auto processing_time_msg = processing_time_pub_->borrow_loaned_message();
+    processing_time_msg->stamp = get_clock()->now();
+    processing_time_msg->data = stop_watch.toc();
+    processing_time_pub_->publish(std::move(processing_time_msg));
+  }
 }
 
 void FreespacePlannerNode::planTrajectory()
@@ -417,9 +459,9 @@ void FreespacePlannerNode::reset()
   trajectory_ = Trajectory();
   partial_trajectory_ = Trajectory();
   is_completed_ = false;
-  std_msgs::msg::Bool is_completed_msg;
-  is_completed_msg.data = is_completed_;
-  parking_state_pub_->publish(is_completed_msg);
+  auto is_completed_msg = parking_state_pub_->borrow_loaned_message();
+  is_completed_msg->data = is_completed_;
+  parking_state_pub_->publish(std::move(is_completed_msg));
   obs_found_time_ = {};
 }
 
@@ -429,7 +471,7 @@ TransformStamped FreespacePlannerNode::getTransform(
   TransformStamped tf;
   try {
     tf =
-      tf_buffer_->lookupTransform(from, to, rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
+      tf_buffer_.lookupTransform(from, to, rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0));
   } catch (const tf2::TransformException & ex) {
     RCLCPP_ERROR(get_logger(), "%s", ex.what());
   }
@@ -452,9 +494,30 @@ void FreespacePlannerNode::initializePlanningAlgorithm()
 
   // initialize specified algorithm
   if (algo_name == "astar") {
-    algo_ = std::make_unique<AstarSearch>(planner_common_param, extended_vehicle_shape, *this);
+    using autoware::freespace_planning_algorithms::AstarParam;
+    AstarParam astar_param{
+      declare_parameter<std::string>("astar.search_method"),
+      declare_parameter<bool>("astar.only_behind_solutions"),
+      declare_parameter<bool>("astar.use_back"),
+      declare_parameter<bool>("astar.adapt_expansion_distance"),
+      declare_parameter<double>("astar.expansion_distance"),
+      declare_parameter<double>("astar.near_goal_distance"),
+      declare_parameter<double>("astar.distance_heuristic_weight"),
+      declare_parameter<double>("astar.smoothness_weight"),
+      declare_parameter<double>("astar.obstacle_distance_weight"),
+      declare_parameter<double>("astar.goal_lat_distance_weight")};
+    algo_ = std::make_unique<AstarSearch>(
+      planner_common_param, extended_vehicle_shape, astar_param, get_clock());
   } else if (algo_name == "rrtstar") {
-    algo_ = std::make_unique<RRTStar>(planner_common_param, extended_vehicle_shape, *this);
+    using autoware::freespace_planning_algorithms::RRTStarParam;
+    RRTStarParam rrtstar_param{
+      declare_parameter<bool>("rrtstar.enable_update"),
+      declare_parameter<bool>("rrtstar.use_informed_sampling"),
+      declare_parameter<double>("rrtstar.max_planning_time"),
+      declare_parameter<double>("rrtstar.neighbor_radius"),
+      declare_parameter<double>("rrtstar.margin")};
+    algo_ = std::make_unique<RRTStar>(
+      planner_common_param, extended_vehicle_shape, rrtstar_param, get_clock());
   } else {
     throw std::runtime_error("No such algorithm named " + algo_name + " exists.");
   }

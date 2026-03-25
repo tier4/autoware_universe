@@ -16,8 +16,7 @@ import launch
 from launch.actions import DeclareLaunchArgument
 from launch.actions import OpaqueFunction
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import ComposableNodeContainer
-from launch_ros.descriptions import ComposableNode
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 import yaml
 
@@ -27,10 +26,11 @@ def launch_setup(context, *args, **kwargs):
     with open(config_file_path, "r") as f:
         params = yaml.safe_load(f)["/**"]["ros__parameters"]
 
-    component = ComposableNode(
+    node = Node(
         package="autoware_mrm_emergency_stop_operator",
-        plugin="autoware::mrm_emergency_stop_operator::MrmEmergencyStopOperator",
+        executable="autoware_mrm_emergency_stop_operator_agnocast_node",
         name="mrm_emergency_stop_operator",
+        namespace="mrm_emergency_stop_operator",
         parameters=[
             params,
         ],
@@ -40,20 +40,13 @@ def launch_setup(context, *args, **kwargs):
             ("~/output/mrm/emergency_stop/status", "/system/mrm/emergency_stop/status"),
             ("~/output/mrm/emergency_stop/control_cmd", "/system/emergency/control_cmd"),
         ],
-    )
-
-    container = ComposableNodeContainer(
-        name="mrm_emergency_stop_operator_container",
-        namespace="mrm_emergency_stop_operator",
-        package="rclcpp_components",
-        executable="component_container",
-        composable_node_descriptions=[
-            component,
-        ],
         output="screen",
+        additional_env={
+            "LD_PRELOAD": "/opt/ros/humble/lib/libagnocast_heaphook.so",
+        },
     )
 
-    return [container]
+    return [node]
 
 
 def generate_launch_description():

@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__CONTROL_VALIDATOR__DEBUG_MARKER_HPP_
 #define AUTOWARE__CONTROL_VALIDATOR__DEBUG_MARKER_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -33,7 +34,7 @@ public:
   /**
    * @brief Constructor
    */
-  explicit ControlValidatorDebugMarkerPublisher(rclcpp::Node * node);
+  explicit ControlValidatorDebugMarkerPublisher(agnocast::Node * node);
 
   /**
    * @brief Push a virtual wall
@@ -53,11 +54,11 @@ public:
   void clear_markers();
 
 private:
-  rclcpp::Node * node_;
+  agnocast::Node * node_;
   visualization_msgs::msg::MarkerArray marker_array_;
   visualization_msgs::msg::MarkerArray marker_array_virtual_wall_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr virtual_wall_pub_;
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr virtual_wall_pub_;
   std::map<std::string, int> marker_id_;
 };
 

@@ -36,7 +36,9 @@
 namespace autoware::lidar_centerpoint
 {
 LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_options)
-: Node("lidar_center_point", node_options), tf_buffer_(this->get_clock())
+: agnocast::Node("lidar_center_point", node_options),
+  tf_buffer_(this->get_clock()),
+  tf_listener_(std::make_unique<agnocast::TransformListener>(tf_buffer_, *this))
 {
   const std::vector<double> score_thresholds_double =
     this->declare_parameter<std::vector<double>>("post_process_params.score_thresholds");
@@ -112,64 +114,53 @@ LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_opti
   detector_ptr_ =
     std::make_unique<CenterPointTRT>(encoder_param, head_param, densification_param, config);
   diagnostics_centerpoint_trt_ =
-    std::make_unique<autoware_utils::DiagnosticsInterface>(this, "centerpoint_trt");
+    std::make_unique<autoware_utils::BasicDiagnosticsInterface<agnocast::Node>>(
+      this, "centerpoint_trt");
 
-  // diagnostics parameters
-  max_allowed_processing_time_ms_ =
-    declare_parameter<double>("diagnostics.max_allowed_processing_time_ms");
-  max_acceptable_consecutive_delay_ms_ =
-    declare_parameter<double>("diagnostics.max_acceptable_consecutive_delay_ms");
+  // diagnostics parameters (diagnostic_updater::Updater is incompatible with agnocast::Node)
+  // max_allowed_processing_time_ms_ =
+  //   declare_parameter<double>("diagnostics.max_allowed_processing_time_ms");
+  // max_acceptable_consecutive_delay_ms_ =
+  //   declare_parameter<double>("diagnostics.max_acceptable_consecutive_delay_ms");
 
-  // Agnocast subscription must be in its own MutuallyExclusive callback group
-  // (separate from ROS 2 callbacks) to work with MultiThreadedAgnocastExecutor.
-  auto agnocast_cb_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  agnocast::SubscriptionOptions sub_options;
-  sub_options.callback_group = agnocast_cb_group;
-  pointcloud_sub_ = agnocast::create_subscription<agnocast::cuda::PointCloud2>(
-    this, "~/input/pointcloud/cuda", rclcpp::SensorDataQoS{}.keep_last(1),
-    std::bind(&LidarCenterPointNode::pointCloudCallback, this, std::placeholders::_1),
-    sub_options);
+  pointcloud_sub_ = this->create_subscription<agnocast::cuda::PointCloud2>(
+    "~/input/pointcloud/cuda", rclcpp::SensorDataQoS{}.keep_last(1),
+    std::bind(&LidarCenterPointNode::pointCloudCallback, this, std::placeholders::_1));
   objects_pub_ = this->create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
     "~/output/objects", rclcpp::QoS{1});
 
   // initialize debug tool
   {
-    using autoware_utils::DebugPublisher;
+    using autoware_utils::BasicDebugPublisher;
     using autoware_utils::StopWatch;
     stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
-    debug_publisher_ptr_ = std::make_unique<DebugPublisher>(this, this->logger_name_.c_str());
+    debug_publisher_ptr_ =
+      std::make_unique<BasicDebugPublisher<agnocast::Node>>(this, this->logger_name_.c_str());
     stop_watch_ptr_->tic("cyclic_time");
     stop_watch_ptr_->tic("processing_time");
   }
 
-  if (stop_watch_ptr_) {
-    // processing time diagnostics
-    const double validation_callback_interval_ms =
-      declare_parameter<double>("diagnostics.validation_callback_interval_ms");
-
-    diagnostic_processing_time_updater_.setHardwareID(this->get_name());
-    diagnostic_processing_time_updater_.add(
-      "processing_time_status", this, &LidarCenterPointNode::diagnoseProcessingTime);
-    // msec -> sec
-    diagnostic_processing_time_updater_.setPeriod(validation_callback_interval_ms / 1e3);
-  }
+  // diagnostic_updater::Updater is incompatible with agnocast::Node — disabled
+  // if (stop_watch_ptr_) {
+  //   const double validation_callback_interval_ms =
+  //     declare_parameter<double>("diagnostics.validation_callback_interval_ms");
+  //   diagnostic_processing_time_updater_.setHardwareID(this->get_name());
+  //   diagnostic_processing_time_updater_.add(
+  //     "processing_time_status", this, &LidarCenterPointNode::diagnoseProcessingTime);
+  //   diagnostic_processing_time_updater_.setPeriod(validation_callback_interval_ms / 1e3);
+  // }
 
   if (this->declare_parameter("build_only", false)) {
     RCLCPP_INFO(this->get_logger(), "TensorRT engine is built and shutdown node.");
     rclcpp::shutdown();
   }
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  published_time_publisher_ =
+    std::make_unique<autoware_utils::BasicPublishedTimePublisher<agnocast::Node>>(this);
 }
 
 void LidarCenterPointNode::pointCloudCallback(
   agnocast::ipc_shared_ptr<const agnocast::cuda::PointCloud2> input_pointcloud_msg)
 {
-  const auto objects_sub_count =
-    objects_pub_->get_subscription_count() + objects_pub_->get_intra_process_subscription_count();
-  if (objects_sub_count < 1) {
-    return;
-  }
-
   if (stop_watch_ptr_) {
     stop_watch_ptr_->toc("processing_time", true);
   }
@@ -200,16 +191,15 @@ void LidarCenterPointNode::pointCloudCallback(
     raw_objects.emplace_back(obj);
   }
 
-  autoware_perception_msgs::msg::DetectedObjects output_msg;
-  output_msg.header = input_pointcloud_msg->header;
-  output_msg.objects = iou_bev_nms_.apply(raw_objects);
+  auto output_msg = objects_pub_->borrow_loaned_message();
+  output_msg->header = input_pointcloud_msg->header;
+  output_msg->objects = iou_bev_nms_.apply(raw_objects);
 
-  detection_class_remapper_.mapClasses(output_msg);
+  detection_class_remapper_.mapClasses(*output_msg);
 
-  if (objects_sub_count > 0) {
-    objects_pub_->publish(output_msg);
-    published_time_publisher_->publish_if_subscribed(objects_pub_, output_msg.header.stamp);
-  }
+  const auto stamp = output_msg->header.stamp;
+  objects_pub_->publish(std::move(output_msg));
+  published_time_publisher_->publish_if_subscribed(objects_pub_, stamp);
   diagnostics_centerpoint_trt_->publish(input_pointcloud_msg->header.stamp);
 
   // add processing time for debug
@@ -218,8 +208,7 @@ void LidarCenterPointNode::pointCloudCallback(
     const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
     const double pipeline_latency_ms =
       std::chrono::duration<double, std::milli>(
-        std::chrono::nanoseconds(
-          (this->get_clock()->now() - output_msg.header.stamp).nanoseconds()))
+        std::chrono::nanoseconds((this->get_clock()->now() - stamp).nanoseconds()))
         .count();
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/cyclic_time_ms", cyclic_time_ms);
@@ -227,71 +216,7 @@ void LidarCenterPointNode::pointCloudCallback(
       "debug/processing_time_ms", processing_time_ms);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/pipeline_latency_ms", pipeline_latency_ms);
-
-    last_processing_time_ms_ = processing_time_ms;
   }
-}
-
-// Check the processing time and delayed timestamp
-// If the node is consistently delayed, publish an error diagnostic message
-void LidarCenterPointNode::diagnoseProcessingTime(
-  diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  const rclcpp::Time timestamp_now = this->get_clock()->now();
-  diagnostic_msgs::msg::DiagnosticStatus::_level_type diag_level =
-    diagnostic_msgs::msg::DiagnosticStatus::OK;
-  std::stringstream message{"OK"};
-
-  // Check if the node has performed inference
-  if (last_processing_time_ms_) {
-    // check processing time is acceptable
-    if (last_processing_time_ms_ > max_allowed_processing_time_ms_) {
-      stat.add("is_processing_time_ms_in_expected_range", false);
-
-      message.clear();
-      message << "Processing time exceeds the acceptable limit of "
-              << max_allowed_processing_time_ms_ << " ms by "
-              << (last_processing_time_ms_.value() - max_allowed_processing_time_ms_) << " ms.";
-
-      // in case the processing starts with a delayed inference
-      if (!last_in_time_processing_timestamp_) {
-        last_in_time_processing_timestamp_ = timestamp_now;
-      }
-
-      diag_level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-    } else {
-      stat.add("is_processing_time_ms_in_expected_range", true);
-      last_in_time_processing_timestamp_ = timestamp_now;
-    }
-    stat.add("processing_time_ms", last_processing_time_ms_.value());
-
-    const double delayed_state_duration =
-      std::chrono::duration<double, std::milli>(
-        std::chrono::nanoseconds(
-          (timestamp_now - last_in_time_processing_timestamp_.value()).nanoseconds()))
-        .count();
-
-    // check consecutive delays
-    if (delayed_state_duration > max_acceptable_consecutive_delay_ms_) {
-      stat.add("is_consecutive_processing_delay_in_range", false);
-
-      message << " Processing delay has consecutively exceeded the acceptable limit continuously.";
-
-      diag_level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-    } else {
-      stat.add("is_consecutive_processing_delay_in_range", true);
-    }
-    stat.add("consecutive_processing_delay_ms", delayed_state_duration);
-  } else {
-    stat.add("is_processing_time_ms_in_expected_range", true);
-    stat.add("processing_time_ms", 0.0);
-    stat.add("is_consecutive_processing_delay_in_range", true);
-    stat.add("consecutive_processing_delay_ms", 0.0);
-
-    message << "Waiting for the node to perform inference.";
-  }
-
-  stat.summary(diag_level, message.str());
 }
 
 }  // namespace autoware::lidar_centerpoint

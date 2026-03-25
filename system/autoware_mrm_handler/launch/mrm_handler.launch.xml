@@ -20,8 +20,9 @@
 
   <arg name="config_file" default="$(find-pkg-share autoware_mrm_handler)/config/mrm_handler.param.yaml"/>
 
-  <!-- mrm_handler -->
-  <node pkg="autoware_mrm_handler" exec="autoware_mrm_handler_node" name="mrm_handler" output="screen">
+  <!-- mrm_handler (agnocast) -->
+  <node pkg="autoware_mrm_handler" exec="autoware_mrm_handler_agnocast_node" name="mrm_handler" output="screen">
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
     <remap from="~/input/operation_mode_availability" to="$(var input_operation_mode_availability)"/>
     <remap from="~/input/odometry" to="$(var input_odometry)"/>
     <remap from="~/input/control_mode" to="$(var input_control_mode)"/>

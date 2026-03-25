@@ -46,6 +46,8 @@
 
 #include "autoware/costmap_generator/utils/object_map_utils.hpp"
 
+#include <autoware_utils/ros/polling_subscriber.hpp>
+
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
@@ -69,7 +71,7 @@ namespace
 
 // Copied from scenario selector
 geometry_msgs::msg::PoseStamped::ConstSharedPtr getCurrentPose(
-  const tf2_ros::Buffer & tf_buffer, const rclcpp::Logger & logger,
+  const agnocast::Buffer & tf_buffer, const rclcpp::Logger & logger,
   const rclcpp::Clock::SharedPtr clock)
 {
   geometry_msgs::msg::TransformStamped tf_current_pose;
@@ -157,23 +159,33 @@ std::vector<geometry_msgs::msg::Polygon> getTransformedPrimitives(
 namespace autoware::costmap_generator
 {
 CostmapGenerator::CostmapGenerator(const rclcpp::NodeOptions & node_options)
-: Node("costmap_generator", node_options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
+: agnocast::Node("costmap_generator", node_options), tf_buffer_(this->get_clock())
 {
+  // TF
+  tf_listener_ = std::make_unique<agnocast::TransformListener>(tf_buffer_, *this);
+
   param_listener_ = std::make_shared<::costmap_generator_node::ParamListener>(
     this->get_node_parameters_interface());
   param_ = std::make_shared<::costmap_generator_node::Params>(param_listener_->get_params());
 
-  // Lanelet map subscriber
+  // Agnocast subscribers
   sub_lanelet_bin_map_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
     "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&CostmapGenerator::onLaneletMapBin, this, std::placeholders::_1));
+  sub_points_ = std::make_shared<agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>>(
+    this, "~/input/points_no_ground", autoware_utils::single_depth_sensor_qos());
+  sub_objects_ =
+    std::make_shared<agnocast::PollingSubscriber<PredictedObjects>>(this, "~/input/objects");
+  sub_scenario_ =
+    std::make_shared<agnocast::PollingSubscriber<autoware_internal_planning_msgs::msg::Scenario>>(
+      this, "~/input/scenario");
 
   // Publishers
   pub_costmap_ = this->create_publisher<grid_map_msgs::msg::GridMap>("~/output/grid_map", 1);
   pub_occupancy_grid_ =
     this->create_publisher<nav_msgs::msg::OccupancyGrid>("~/output/occupancy_grid", 1);
   pub_processing_time_ =
-    create_publisher<autoware_utils::ProcessingTimeDetail>("processing_time", 1);
+    this->create_publisher<autoware_utils::ProcessingTimeDetail>("processing_time", 1);
   time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(pub_processing_time_);
   pub_processing_time_ms_ =
     this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
@@ -181,8 +193,7 @@ CostmapGenerator::CostmapGenerator(const rclcpp::NodeOptions & node_options)
 
   // Timer
   const auto period_ns = rclcpp::Rate(param_->update_rate).period();
-  timer_ =
-    rclcpp::create_timer(this, get_clock(), period_ns, std::bind(&CostmapGenerator::onTimer, this));
+  timer_ = this->create_timer(period_ns, std::bind(&CostmapGenerator::onTimer, this));
 
   // Initialize
   initGridmap();
@@ -233,7 +244,7 @@ void CostmapGenerator::loadParkingAreasFromLaneletMap(
 }
 
 void CostmapGenerator::onLaneletMapBin(
-  const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg)
+  const agnocast::ipc_shared_ptr<autoware_map_msgs::msg::LaneletMapBin> & msg)
 {
   lanelet_map_ = std::make_shared<lanelet::LaneletMap>();
   lanelet::utils::conversion::fromBinMsg(*msg, lanelet_map_);
@@ -249,9 +260,9 @@ void CostmapGenerator::onLaneletMapBin(
 
 void CostmapGenerator::update_data()
 {
-  objects_ = sub_objects_.take_data();
-  points_ = sub_points_.take_data();
-  scenario_ = sub_scenario_.take_data();
+  objects_ = sub_objects_->take_data();
+  points_ = sub_points_->take_data();
+  scenario_ = sub_scenario_->take_data();
 }
 
 void CostmapGenerator::set_current_pose()
@@ -270,10 +281,10 @@ void CostmapGenerator::onTimer()
 
   if (!isActive()) {
     // Publish ProcessingTime
-    autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
-    processing_time_msg.stamp = get_clock()->now();
-    processing_time_msg.data = stop_watch.toc();
-    pub_processing_time_ms_->publish(processing_time_msg);
+    auto processing_time_msg = pub_processing_time_ms_->borrow_loaned_message();
+    processing_time_msg->stamp = get_clock()->now();
+    processing_time_msg->data = stop_watch.toc();
+    pub_processing_time_ms_->publish(std::move(processing_time_msg));
     return;
   }
 
@@ -298,12 +309,14 @@ void CostmapGenerator::onTimer()
 
   if (param_->use_objects && objects_) {
     autoware_utils::ScopedTimeTrack st("generateObjectsCostmap()", *time_keeper_);
-    costmap_[LayerName::objects] = generateObjectsCostmap(objects_);
+    costmap_[LayerName::objects] =
+      generateObjectsCostmap(std::make_shared<PredictedObjects>(*objects_));
   }
 
   if (param_->use_points && points_) {
     autoware_utils::ScopedTimeTrack st("generatePointsCostmap()", *time_keeper_);
-    costmap_[LayerName::points] = generatePointsCostmap(points_, tf.transform.translation.z);
+    costmap_[LayerName::points] = generatePointsCostmap(
+      std::make_shared<sensor_msgs::msg::PointCloud2>(*points_), tf.transform.translation.z);
   }
 
   {
@@ -380,7 +393,7 @@ grid_map::Matrix CostmapGenerator::generatePointsCostmap(
 }
 
 PredictedObjects::ConstSharedPtr transformObjects(
-  const tf2_ros::Buffer & tf_buffer, const PredictedObjects::ConstSharedPtr in_objects,
+  const agnocast::Buffer & tf_buffer, const PredictedObjects::ConstSharedPtr in_objects,
   const std::string & target_frame_id, const std::string & src_frame_id)
 {
   auto objects = std::make_shared<PredictedObjects>();
@@ -471,25 +484,33 @@ void CostmapGenerator::publishCostmap(
   header.stamp = this->now();
 
   // Publish OccupancyGrid
-  nav_msgs::msg::OccupancyGrid out_occupancy_grid;
-  grid_map::GridMapRosConverter::toOccupancyGrid(
-    costmap, LayerName::combined, param_->grid_min_value, param_->grid_max_value,
-    out_occupancy_grid);
-  out_occupancy_grid.header = header;
-  out_occupancy_grid.info.origin.position.z = tf.transform.translation.z;
-  pub_occupancy_grid_->publish(out_occupancy_grid);
+  {
+    auto out_occupancy_grid = pub_occupancy_grid_->borrow_loaned_message();
+    grid_map::GridMapRosConverter::toOccupancyGrid(
+      costmap, LayerName::combined, param_->grid_min_value, param_->grid_max_value,
+      *out_occupancy_grid);
+    out_occupancy_grid->header = header;
+    out_occupancy_grid->info.origin.position.z = tf.transform.translation.z;
+    pub_occupancy_grid_->publish(std::move(out_occupancy_grid));
+  }
 
   // Publish GridMap
-  auto out_gridmap_msg = grid_map::GridMapRosConverter::toMessage(costmap);
-  out_gridmap_msg->header = header;
-  out_gridmap_msg->info.pose.position.z = tf.transform.translation.z;
-  pub_costmap_->publish(*out_gridmap_msg);
+  {
+    auto out_gridmap_msg = pub_costmap_->borrow_loaned_message();
+    auto tmp_msg = grid_map::GridMapRosConverter::toMessage(costmap);
+    *out_gridmap_msg = *tmp_msg;
+    out_gridmap_msg->header = header;
+    out_gridmap_msg->info.pose.position.z = tf.transform.translation.z;
+    pub_costmap_->publish(std::move(out_gridmap_msg));
+  }
 
   // Publish ProcessingTime
-  autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
-  processing_time_msg.stamp = get_clock()->now();
-  processing_time_msg.data = stop_watch.toc();
-  pub_processing_time_ms_->publish(processing_time_msg);
+  {
+    auto processing_time_msg = pub_processing_time_ms_->borrow_loaned_message();
+    processing_time_msg->stamp = get_clock()->now();
+    processing_time_msg->data = stop_watch.toc();
+    pub_processing_time_ms_->publish(std::move(processing_time_msg));
+  }
 }
 }  // namespace autoware::costmap_generator
 

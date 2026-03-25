@@ -49,8 +49,9 @@
 #include "autoware/costmap_generator/utils/points_to_costmap.hpp"
 #include "costmap_generator_node_parameters.hpp"
 
+#include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/tf2.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/ros/processing_time_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
@@ -67,8 +68,6 @@
 #include <grid_map_msgs/msg/grid_map.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <memory>
 #include <vector>
@@ -79,7 +78,7 @@ namespace autoware::costmap_generator
 {
 using autoware_perception_msgs::msg::PredictedObjects;
 
-class CostmapGenerator : public rclcpp::Node
+class CostmapGenerator : public agnocast::Node
 {
 public:
   explicit CostmapGenerator(const rclcpp::NodeOptions & node_options);
@@ -90,37 +89,35 @@ private:
   geometry_msgs::msg::PoseStamped::ConstSharedPtr current_pose_;
 
   lanelet::LaneletMapPtr lanelet_map_;
-  PredictedObjects::ConstSharedPtr objects_;
-  sensor_msgs::msg::PointCloud2::ConstSharedPtr points_;
+  agnocast::ipc_shared_ptr<const PredictedObjects> objects_;
+  agnocast::ipc_shared_ptr<const sensor_msgs::msg::PointCloud2> points_;
 
   grid_map::GridMap costmap_;
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
 
-  rclcpp::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr pub_costmap_;
-  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr pub_occupancy_grid_;
-  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr pub_processing_time_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+  agnocast::Publisher<grid_map_msgs::msg::GridMap>::SharedPtr pub_costmap_;
+  agnocast::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr pub_occupancy_grid_;
+  agnocast::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr pub_processing_time_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pub_processing_time_ms_;
 
-  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_lanelet_bin_map_;
-  autoware_utils::InterProcessPollingSubscriber<sensor_msgs::msg::PointCloud2> sub_points_{
-    this, "~/input/points_no_ground", autoware_utils::single_depth_sensor_qos()};
-  autoware_utils::InterProcessPollingSubscriber<PredictedObjects> sub_objects_{
-    this, "~/input/objects"};
-  autoware_utils::InterProcessPollingSubscriber<autoware_internal_planning_msgs::msg::Scenario>
-    sub_scenario_{this, "~/input/scenario"};
+  agnocast::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr sub_lanelet_bin_map_;
+  agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>::SharedPtr sub_points_;
+  agnocast::PollingSubscriber<PredictedObjects>::SharedPtr sub_objects_;
+  agnocast::PollingSubscriber<autoware_internal_planning_msgs::msg::Scenario>::SharedPtr
+    sub_scenario_;
 
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  mutable agnocast::Buffer tf_buffer_;
+  std::unique_ptr<agnocast::TransformListener> tf_listener_;
 
   std::vector<geometry_msgs::msg::Polygon> primitives_polygons_;
 
   PointsToCostmap points2costmap_{};
   ObjectsToCostmap objects2costmap_;
 
-  autoware_internal_planning_msgs::msg::Scenario::ConstSharedPtr scenario_;
+  agnocast::ipc_shared_ptr<const autoware_internal_planning_msgs::msg::Scenario> scenario_;
 
   struct LayerName
   {
@@ -134,7 +131,8 @@ private:
   void initLaneletMap();
 
   /// \brief callback for loading lanelet2 map
-  void onLaneletMapBin(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg);
+  void onLaneletMapBin(
+    const agnocast::ipc_shared_ptr<autoware_map_msgs::msg::LaneletMapBin> & msg);
 
   void update_data();
 

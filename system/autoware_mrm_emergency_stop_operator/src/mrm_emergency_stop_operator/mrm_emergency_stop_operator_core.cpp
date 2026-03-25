@@ -22,7 +22,7 @@ namespace autoware::mrm_emergency_stop_operator
 {
 
 MrmEmergencyStopOperator::MrmEmergencyStopOperator(const rclcpp::NodeOptions & node_options)
-: Node("mrm_emergency_stop_operator", node_options)
+: agnocast::Node("mrm_emergency_stop_operator", node_options)
 {
   // Parameter
   params_.update_rate = declare_parameter<int>("update_rate");
@@ -30,24 +30,26 @@ MrmEmergencyStopOperator::MrmEmergencyStopOperator(const rclcpp::NodeOptions & n
   params_.target_jerk = declare_parameter<double>("target_jerk");
 
   // Subscriber
-  sub_control_cmd_ = create_subscription<Control>(
-    "~/input/control/control_cmd", 1,
+  sub_control_cmd_ = this->create_subscription<Control>(
+    "~/input/control/control_cmd", rclcpp::QoS{1},
     std::bind(&MrmEmergencyStopOperator::onControlCommand, this, std::placeholders::_1));
 
   // Server
-  service_operation_ = create_service<OperateMrm>(
+  service_operation_ = this->create_service<OperateMrm>(
     "~/input/mrm/emergency_stop/operate", std::bind(
                                             &MrmEmergencyStopOperator::operateEmergencyStop, this,
                                             std::placeholders::_1, std::placeholders::_2));
 
   // Publisher
-  pub_status_ = create_publisher<MrmBehaviorStatus>("~/output/mrm/emergency_stop/status", 1);
-  pub_control_cmd_ = create_publisher<Control>("~/output/mrm/emergency_stop/control_cmd", 1);
+  pub_status_ =
+    this->create_publisher<MrmBehaviorStatus>("~/output/mrm/emergency_stop/status", 1);
+  pub_control_cmd_ =
+    this->create_publisher<Control>("~/output/mrm/emergency_stop/control_cmd", 1);
 
   // Timer
   const auto update_period_ns = rclcpp::Rate(params_.update_rate).period();
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), update_period_ns, std::bind(&MrmEmergencyStopOperator::onTimer, this));
+  timer_ =
+    this->create_timer(update_period_ns, std::bind(&MrmEmergencyStopOperator::onTimer, this));
 
   // Initialize
   status_.state = MrmBehaviorStatus::AVAILABLE;
@@ -71,7 +73,8 @@ rcl_interfaces::msg::SetParametersResult MrmEmergencyStopOperator::onParameter(
   return result;
 }
 
-void MrmEmergencyStopOperator::onControlCommand(Control::ConstSharedPtr msg)
+void MrmEmergencyStopOperator::onControlCommand(
+  const agnocast::ipc_shared_ptr<const Control> & msg)
 {
   if (status_.state != MrmBehaviorStatus::OPERATING) {
     prev_control_cmd_ = *msg;
@@ -80,7 +83,8 @@ void MrmEmergencyStopOperator::onControlCommand(Control::ConstSharedPtr msg)
 }
 
 void MrmEmergencyStopOperator::operateEmergencyStop(
-  const OperateMrm::Request::SharedPtr request, const OperateMrm::Response::SharedPtr response)
+  const agnocast::ipc_shared_ptr<const agnocast::Service<OperateMrm>::RequestT> & request,
+  agnocast::ipc_shared_ptr<agnocast::Service<OperateMrm>::ResponseT> & response)
 {
   if (request->operate == true) {
     status_.state = MrmBehaviorStatus::OPERATING;
@@ -93,14 +97,17 @@ void MrmEmergencyStopOperator::operateEmergencyStop(
 
 void MrmEmergencyStopOperator::publishStatus() const
 {
-  auto status = status_;
-  status.stamp = this->now();
-  pub_status_->publish(status);
+  auto msg = pub_status_->borrow_loaned_message();
+  *msg = status_;
+  msg->stamp = this->now();
+  pub_status_->publish(std::move(msg));
 }
 
 void MrmEmergencyStopOperator::publishControlCommand(const Control & command) const
 {
-  pub_control_cmd_->publish(command);
+  auto msg = pub_control_cmd_->borrow_loaned_message();
+  *msg = command;
+  pub_control_cmd_->publish(std::move(msg));
 }
 
 void MrmEmergencyStopOperator::onTimer()

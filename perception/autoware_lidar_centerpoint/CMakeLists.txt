@@ -160,6 +160,14 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     EXECUTABLE ${PROJECT_NAME}_node
   )
 
+  find_package(agnocast_components REQUIRED)
+  agnocast_components_register_node(${PROJECT_NAME}_component
+    PLUGIN "autoware::lidar_centerpoint::LidarCenterPointNode"
+    EXECUTABLE ${PROJECT_NAME}_node_agnocast
+    EXECUTOR AgnocastOnlyMultiThreadedExecutor
+    RESOURCE_INDEX agnocast_components
+  )
+
   ament_export_dependencies(ament_cmake_python)
 
   ament_auto_package(
