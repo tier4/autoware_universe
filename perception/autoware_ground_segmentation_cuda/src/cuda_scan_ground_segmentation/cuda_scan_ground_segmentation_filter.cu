@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cfloat>
 #include <memory>
 #include <optional>
 
