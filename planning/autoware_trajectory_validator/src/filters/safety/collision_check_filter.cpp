@@ -382,7 +382,7 @@ struct PetCollisionResult
 {
   std::optional<double> pet;
   std::optional<double> ttc;
-  std::optional<DebugData> debug_data;  // デバッグ情報（必要なら値が入る）
+  std::optional<DebugData> debug_data;
 };
 
 PetCollisionResult compute_pet_and_ttc(
@@ -479,7 +479,7 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
 }
 
 void CollisionCheckFilter::add_debug_markers(
-  const std::vector<DebugData> & debug_data_vec, const rclcpp::Time & stamp)
+  const DebugData & debug_data, const rclcpp::Time & stamp)
 {
   int id = debug_markers_.markers.empty() ? 0 : debug_markers_.markers.back().id + 1;
 
@@ -517,10 +517,9 @@ void CollisionCheckFilter::add_debug_markers(
       debug_markers_.markers.push_back(m);
     };
 
-  for (const auto & data : debug_data_vec) {
-    add_poly_marker(data.ego_polygons, "ego_worst_pet_" + data.object_id, 0.0, 0.0, 1.0);
-    add_poly_marker(data.object_polygons, "obj_worst_pet_" + data.object_id, 1.0, 0.0, 0.0);
-  }
+  add_poly_marker(debug_data.ego_polygons, "ego_worst_pet_" + debug_data.object_id, 0.0, 0.0, 1.0);
+  add_poly_marker(
+    debug_data.object_polygons, "obj_worst_pet_" + debug_data.object_id, 1.0, 0.0, 0.0);
 }
 
 double CollisionCheckFilter::compute_rss_deceleration(
@@ -567,8 +566,6 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
     return {};  // No trajectory to check
   }
 
-  std::vector<DebugData> debug_data_vec;
-
   std::string error_msg{};
 
   // todo takagi: refactor to separate functions and add more detailed collision information in the
@@ -606,10 +603,9 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
         pet.value(), ttc.has_value() ? std::to_string(ttc.value()) : "N/A",
         context.predicted_objects->header.stamp.sec,
         context.predicted_objects->header.stamp.nanosec);
-      debug_data_vec.push_back(collision_result.debug_data.value());
+      add_debug_markers(collision_result.debug_data.value(), context.odometry->header.stamp);
     }
   }
-  add_debug_markers(debug_data_vec, context.odometry->header.stamp);
 
   // calc RSS metrics
   {
