@@ -23,7 +23,6 @@
 #include "type_alias.hpp"
 #include "types.hpp"
 
-#include <agnocast/agnocast.hpp>
 #include <autoware/motion_velocity_planner_common/plugin_module_interface.hpp>
 #include <autoware/motion_velocity_planner_common/velocity_planning_result.hpp>
 #include <autoware/objects_of_interest_marker_interface/objects_of_interest_marker_interface.hpp>
@@ -52,7 +51,7 @@ namespace autoware::motion_velocity_planner
 class ObstacleSlowDownModule : public PluginModuleInterface
 {
 public:
-  void init(agnocast::Node & node, const std::string & module_name) override;
+  void init(rclcpp::Node & node, const std::string & module_name) override;
   void publish_planning_factor() override { planning_factor_interface_->publish(); };
   void update_parameters(const std::vector<rclcpp::Parameter> & parameters) override;
   VelocityPlanningResult plan(
@@ -79,11 +78,11 @@ private:
   ObstacleFilteringParam obstacle_filtering_param_;
 
   // module publisher
-  agnocast::Publisher<Float32MultiArrayStamped>::SharedPtr debug_slow_down_planning_info_pub_;
-  agnocast::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr processing_time_detail_pub_;
+  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr debug_slow_down_planning_info_pub_;
+  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr processing_time_detail_pub_;
 
   // interface publisher
-  std::unique_ptr<autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterfaceTemplate<agnocast::Node>>
+  std::unique_ptr<autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>
     objects_of_interest_marker_interface_;
 
   // internal variables

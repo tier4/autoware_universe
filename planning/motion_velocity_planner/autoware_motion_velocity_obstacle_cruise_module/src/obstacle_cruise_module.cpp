@@ -16,8 +16,6 @@
 
 #include "autoware_utils/ros/uuid_helper.hpp"
 
-#include <agnocast/agnocast.hpp>
-
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/marker/virtual_wall_marker_creator.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
@@ -83,7 +81,7 @@ VelocityLimitClearCommand create_velocity_limit_clear_command(
 }
 }  // namespace
 
-void ObstacleCruiseModule::init(agnocast::Node & node, const std::string & module_name)
+void ObstacleCruiseModule::init(rclcpp::Node & node, const std::string & module_name)
 {
   module_name_ = module_name;
   clock_ = node.get_clock();
@@ -109,10 +107,10 @@ void ObstacleCruiseModule::init(agnocast::Node & node, const std::string & modul
 
   // interface
   objects_of_interest_marker_interface_ = std::make_unique<
-    autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterfaceTemplate<agnocast::Node>>(
+    autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>(
     &node, "obstacle_cruise");
   planning_factor_interface_ =
-    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>>(
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
       &node, "obstacle_cruise");
 
   // time keeper
@@ -174,7 +172,7 @@ std::string ObstacleCruiseModule::get_module_name() const
 }
 
 std::unique_ptr<CruisePlannerInterface> ObstacleCruiseModule::create_cruise_planner(
-  agnocast::Node & node) const
+  rclcpp::Node & node) const
 {
   if (planning_algorithm_ == "pid_base") {
     return std::make_unique<PIDBasedPlanner>(node, common_param_, cruise_planning_param_);
@@ -319,26 +317,14 @@ void ObstacleCruiseModule::publish_debug_info()
   }
   debug_marker.markers.push_back(decimated_traj_polys_marker);
 
-  {
-    auto loaned = debug_publisher_->borrow_loaned_message();
-    *loaned = debug_marker;
-    debug_publisher_->publish(std::move(loaned));
-  }
+  debug_publisher_->publish(debug_marker);
 
   // 2. virtual wall
-  {
-    auto loaned = virtual_wall_publisher_->borrow_loaned_message();
-    *loaned = debug_data_ptr_->cruise_wall_marker;
-    virtual_wall_publisher_->publish(std::move(loaned));
-  }
+  virtual_wall_publisher_->publish(debug_data_ptr_->cruise_wall_marker);
 
   // 3. cruise planning info
   const auto cruise_debug_msg = cruise_planner_->get_cruise_planning_debug_message(clock_->now());
-  {
-    auto loaned = debug_cruise_planning_info_pub_->borrow_loaned_message();
-    *loaned = cruise_debug_msg;
-    debug_cruise_planning_info_pub_->publish(std::move(loaned));
-  }
+  debug_cruise_planning_info_pub_->publish(cruise_debug_msg);
 
   // 4. objects of interest
   objects_of_interest_marker_interface_->publishMarkerArray();

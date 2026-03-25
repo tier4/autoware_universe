@@ -22,7 +22,6 @@
 #include "out_of_lane_collisions.hpp"
 #include "types.hpp"
 
-#include <agnocast/agnocast.hpp>
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/motion_velocity_planner_common/planner_data.hpp>
@@ -30,6 +29,7 @@
 #include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
 #include <autoware_utils/ros/parameter.hpp>
+#include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/ros/update_param.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
@@ -62,7 +62,7 @@ namespace autoware::motion_velocity_planner
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
 
-void OutOfLaneModule::init(agnocast::Node & node, const std::string & module_name)
+void OutOfLaneModule::init(rclcpp::Node & node, const std::string & module_name)
 {
   module_name_ = module_name;
   logger_ = node.get_logger().get_child(module_name_);
@@ -70,18 +70,17 @@ void OutOfLaneModule::init(agnocast::Node & node, const std::string & module_nam
   init_parameters(node);
 
   planning_factor_interface_ =
-    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>>(
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
       &node, "out_of_lane");
 
   debug_publisher_ =
     node.create_publisher<visualization_msgs::msg::MarkerArray>("~/" + ns_ + "/debug_markers", 1);
   virtual_wall_publisher_ =
     node.create_publisher<visualization_msgs::msg::MarkerArray>("~/" + ns_ + "/virtual_walls", 1);
-  processing_diag_publisher_ =
-    std::make_shared<autoware_utils::ProcessingTimePublisherTemplate<agnocast::Node>>(
-      &node, "~/debug/" + ns_ + "/processing_time_ms_diag");
+  processing_diag_publisher_ = std::make_shared<autoware_utils::ProcessingTimePublisher>(
+    &node, "~/debug/" + ns_ + "/processing_time_ms_diag");
 }
-void OutOfLaneModule::init_parameters(agnocast::Node & node)
+void OutOfLaneModule::init_parameters(rclcpp::Node & node)
 {
   using autoware_utils::get_or_declare_parameter;
   auto & pp = params_;
@@ -124,8 +123,7 @@ void OutOfLaneModule::init_parameters(agnocast::Node & node)
   pp.extra_rear_offset = get_or_declare_parameter<double>(node, ns_ + ".ego.extra_rear_offset");
   pp.extra_left_offset = get_or_declare_parameter<double>(node, ns_ + ".ego.extra_left_offset");
   pp.extra_right_offset = get_or_declare_parameter<double>(node, ns_ + ".ego.extra_right_offset");
-  const auto vehicle_info =
-    vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo();
+  const auto vehicle_info = vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo();
   pp.front_offset = vehicle_info.max_longitudinal_offset_m;
   pp.rear_offset = vehicle_info.min_longitudinal_offset_m;
   pp.left_offset = vehicle_info.max_lateral_offset_m;
@@ -375,11 +373,7 @@ void OutOfLaneModule::update_result(
   }
   virtual_wall_marker_creator.add_virtual_walls(
     out_of_lane::debug::create_virtual_walls(*slowdown_pose, slowdown_velocity == 0.0, params_));
-  {
-    auto loaned = virtual_wall_publisher_->borrow_loaned_message();
-    *loaned = virtual_wall_marker_creator.create_markers(clock_->now());
-    virtual_wall_publisher_->publish(std::move(loaned));
-  }
+  virtual_wall_publisher_->publish(virtual_wall_marker_creator.create_markers(clock_->now()));
 
   SafetyFactorArray safety_factors;
   safety_factors.header.stamp = clock_->now();
@@ -480,12 +474,8 @@ VelocityPlanningResult OutOfLaneModule::plan(
   if (is_already_overlapping) {
     RCLCPP_WARN_THROTTLE(
       logger_, *clock_, 1000, "Ego is already out of lane, skipping the module\n");
-    {
-      auto loaned = debug_publisher_->borrow_loaned_message();
-      *loaned = out_of_lane::debug::create_debug_marker_array(
-        ego_data, out_of_lane_data, objects, debug_data_);
-      debug_publisher_->publish(std::move(loaned));
-    }
+    debug_publisher_->publish(out_of_lane::debug::create_debug_marker_array(
+      ego_data, out_of_lane_data, objects, debug_data_));
     return result;
   }
 
@@ -499,11 +489,7 @@ VelocityPlanningResult OutOfLaneModule::plan(
     out_of_lane::debug::create_debug_marker_array(ego_data, out_of_lane_data, objects, debug_data_);
   const auto markers_us = stopwatch.toc("gen_debug");
   stopwatch.tic("pub");
-  {
-    auto loaned = debug_publisher_->borrow_loaned_message();
-    *loaned = markers;
-    debug_publisher_->publish(std::move(loaned));
-  }
+  debug_publisher_->publish(markers);
   const auto pub_markers_us = stopwatch.toc("pub");
   const auto total_time_us = stopwatch.toc();
   std::map<std::string, double> processing_times;

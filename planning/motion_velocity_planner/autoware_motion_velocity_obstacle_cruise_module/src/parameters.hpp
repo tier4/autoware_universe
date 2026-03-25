@@ -47,8 +47,7 @@ struct CommonParam
   double limit_min_jerk{};
 
   CommonParam() = default;
-  template <typename NodeT>
-  explicit CommonParam(NodeT & node)
+  explicit CommonParam(rclcpp::Node & node)
   {
     max_accel = get_or_declare_parameter<double>(node, "normal.max_acc");
     min_accel = get_or_declare_parameter<double>(node, "normal.min_acc");
@@ -89,8 +88,7 @@ struct ObstacleFilteringParam
   double obstacle_velocity_threshold_to_cruise{};
 
   ObstacleFilteringParam() = default;
-  template <typename NodeT>
-  explicit ObstacleFilteringParam(NodeT & node)
+  explicit ObstacleFilteringParam(rclcpp::Node & node)
   {
     inside_object_types =
       utils::get_target_object_type(node, "obstacle_cruise.obstacle_filtering.object_type.inside.");
@@ -147,8 +145,7 @@ struct CruisePlanningParam
   double safe_distance_margin{};
 
   CruisePlanningParam() = default;
-  template <typename NodeT>
-  explicit CruisePlanningParam(NodeT & node)
+  explicit CruisePlanningParam(rclcpp::Node & node)
   {
     idling_time =
       get_or_declare_parameter<double>(node, "obstacle_cruise.cruise_planning.idling_time");

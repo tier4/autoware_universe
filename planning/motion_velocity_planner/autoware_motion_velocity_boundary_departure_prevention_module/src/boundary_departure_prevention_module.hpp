@@ -18,7 +18,6 @@
 #include "parameters.hpp"
 #include "slow_down_interpolator.hpp"
 
-#include <agnocast/agnocast.hpp>
 #include <autoware/motion_velocity_planner_common/plugin_module_interface.hpp>
 #include <tl_expected/expected.hpp>
 
@@ -35,7 +34,7 @@ namespace autoware::motion_velocity_planner::experimental
 class BoundaryDeparturePreventionModule : public PluginModuleInterface
 {
 public:
-  void init(agnocast::Node & node, const std::string & module_name) override;
+  void init(rclcpp::Node & node, const std::string & module_name) override;
   void update_parameters(const std::vector<rclcpp::Parameter> & parameters) override;
   VelocityPlanningResult plan(
     const TrajectoryPoints & raw_trajectory_points,
@@ -51,8 +50,8 @@ public:
 
 private:
   // === Interface and inputs validation ====
-  void subscribe_topics(agnocast::Node & node);
-  void publish_topics(agnocast::Node & node);
+  void subscribe_topics(rclcpp::Node & node);
+  void publish_topics(rclcpp::Node & node);
   void take_data();
   std::optional<std::string> is_data_invalid(const TrajectoryPoints & raw_trajectory_points) const;
   std::optional<std::string> is_data_timeout(const Odometry & odom) const;
@@ -146,11 +145,11 @@ private:
   std::unique_ptr<LaneletRoute> prev_route_ptr_;
   static constexpr auto throttle_duration_ms{5000};
 
-  agnocast::ipc_shared_ptr<const Trajectory> ego_pred_traj_ptr_;
-  agnocast::ipc_shared_ptr<const Control> control_cmd_ptr_;
-  agnocast::ipc_shared_ptr<const SteeringReport> steering_angle_ptr_;
-  agnocast::ipc_shared_ptr<const OperationModeState> op_mode_state_ptr_;
-  agnocast::ipc_shared_ptr<const LaneletRoute> route_ptr_;
+  Trajectory::ConstSharedPtr ego_pred_traj_ptr_;
+  Control::ConstSharedPtr control_cmd_ptr_;
+  SteeringReport::ConstSharedPtr steering_angle_ptr_;
+  OperationModeState::ConstSharedPtr op_mode_state_ptr_;
+  LaneletRoute::ConstSharedPtr route_ptr_;
   std::unordered_map<std::string, double> processing_times_ms_;
 
   double last_abnormality_fp_overlap_bound_time_{0.0};
@@ -158,13 +157,16 @@ private:
   double last_no_critical_dpt_time_{0.0};
   double last_found_critical_dpt_time_{0.0};
 
-  agnocast::PollingSubscriber<Trajectory>::SharedPtr ego_pred_traj_polling_sub_;
-  agnocast::PollingSubscriber<Control>::SharedPtr control_cmd_polling_sub_;
-  agnocast::PollingSubscriber<SteeringReport>::SharedPtr steering_angle_polling_sub_;
-  agnocast::PollingSubscriber<OperationModeState>::SharedPtr op_mode_state_polling_sub_;
-  agnocast::PollingSubscriber<LaneletRoute>::SharedPtr route_polling_sub_;
+  autoware_utils::InterProcessPollingSubscriber<Trajectory>::SharedPtr ego_pred_traj_polling_sub_;
+  autoware_utils::InterProcessPollingSubscriber<Control>::SharedPtr control_cmd_polling_sub_;
+  autoware_utils::InterProcessPollingSubscriber<SteeringReport>::SharedPtr
+    steering_angle_polling_sub_;
+  autoware_utils::InterProcessPollingSubscriber<OperationModeState>::SharedPtr
+    op_mode_state_polling_sub_;
+  autoware_utils::InterProcessPollingSubscriber<
+    LaneletRoute, autoware_utils::polling_policy::Newest>::SharedPtr route_polling_sub_;
 
-  agnocast::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr processing_time_detail_pub_;
+  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr processing_time_detail_pub_;
 
   std::unique_ptr<BoundaryDepartureChecker> boundary_departure_checker_ptr_;
   std::unique_ptr<diagnostic_updater::Updater> updater_ptr_;

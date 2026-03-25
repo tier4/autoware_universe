@@ -17,11 +17,9 @@
 
 #include "types.hpp"
 
-#include <agnocast/agnocast.hpp>
 #include <autoware/motion_utils/marker/virtual_wall_marker_creator.hpp>
 #include <autoware/motion_velocity_planner_common/plugin_module_interface.hpp>
 #include <autoware/motion_velocity_planner_common/velocity_planning_result.hpp>
-#include <autoware_utils/ros/processing_time_publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -39,7 +37,7 @@ namespace autoware::motion_velocity_planner
 class OutOfLaneModule : public PluginModuleInterface
 {
 public:
-  void init(agnocast::Node & node, const std::string & module_name) override;
+  void init(rclcpp::Node & node, const std::string & module_name) override;
   void publish_planning_factor() override { planning_factor_interface_->publish(); };
   void update_parameters(const std::vector<rclcpp::Parameter> & parameters) override;
   VelocityPlanningResult plan(
@@ -56,7 +54,7 @@ public:
   }
 
 private:
-  void init_parameters(agnocast::Node & node);
+  void init_parameters(rclcpp::Node & node);
   /// @brief resize the trajectory to start from the segment closest to ego and to have at most the
   /// given length
   static void limit_trajectory_size(
@@ -79,8 +77,6 @@ private:
   inline static const std::string ns_ = "out_of_lane";
   std::string module_name_{"uninitialized"};
   rclcpp::Clock::SharedPtr clock_{nullptr};
-  std::shared_ptr<autoware_utils::ProcessingTimePublisherTemplate<agnocast::Node>>
-    processing_diag_publisher_;
   std::optional<geometry_msgs::msg::Pose> previous_slowdown_pose_{std::nullopt};
   std::vector<out_of_lane::SlowdownPose> slowdown_pose_buffer_;
 

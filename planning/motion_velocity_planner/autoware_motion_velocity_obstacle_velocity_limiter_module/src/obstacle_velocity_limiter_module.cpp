@@ -20,7 +20,6 @@
 #include "parameters.hpp"
 #include "trajectory_preprocessing.hpp"
 
-#include <agnocast/agnocast.hpp>
 #include <autoware/motion_utils/marker/virtual_wall_marker_creator.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
@@ -33,13 +32,14 @@
 #include <boost/geometry.hpp>
 
 #include <chrono>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace autoware::motion_velocity_planner
 {
-void ObstacleVelocityLimiterModule::init(agnocast::Node & node, const std::string & module_name)
+void ObstacleVelocityLimiterModule::init(rclcpp::Node & node, const std::string & module_name)
 {
   module_name_ = module_name;
   logger_ = node.get_logger().get_child("obstacle_velocity_limiter");
@@ -53,15 +53,13 @@ void ObstacleVelocityLimiterModule::init(agnocast::Node & node, const std::strin
     node.create_publisher<visualization_msgs::msg::MarkerArray>("~/" + ns_ + "/debug_markers", 1);
   virtual_wall_publisher_ =
     node.create_publisher<visualization_msgs::msg::MarkerArray>("~/" + ns_ + "/virtual_walls", 1);
-  const auto vehicle_info =
-    vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo();
+  processing_diag_publisher_ = std::make_shared<autoware_utils::ProcessingTimePublisher>(
+    &node, "~/debug/" + ns_ + "/processing_time_ms_diag");
+
+  const auto vehicle_info = vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo();
   vehicle_lateral_offset_ = static_cast<double>(vehicle_info.max_lateral_offset_m);
   vehicle_front_offset_ = static_cast<double>(vehicle_info.max_longitudinal_offset_m);
   distance_buffer_ = node.declare_parameter<double>("distance_buffer");
-
-  processing_diag_publisher_ =
-    std::make_shared<autoware_utils::ProcessingTimePublisherTemplate<agnocast::Node>>(
-      &node, "~/debug/" + ns_ + "/processing_time_ms_diag");
 
   projection_params_.wheel_base = vehicle_info.wheel_base_m;
   projection_params_.extra_length = vehicle_front_offset_ + distance_buffer_;
@@ -208,11 +206,7 @@ VelocityPlanningResult ObstacleVelocityLimiterModule::plan(
     wall.style = autoware::motion_utils::VirtualWallType::slowdown;
   }
   virtual_wall_marker_creator.add_virtual_walls(virtual_walls);
-  {
-    auto loaned = virtual_wall_publisher_->borrow_loaned_message();
-    *loaned = virtual_wall_marker_creator.create_markers(clock_->now());
-    virtual_wall_publisher_->publish(std::move(loaned));
-  }
+  virtual_wall_publisher_->publish(virtual_wall_marker_creator.create_markers(clock_->now()));
   if (!result.slowdown_intervals.empty()) {
     prev_inserted_point_ = result.slowdown_intervals.front().from;
   }
@@ -230,15 +224,17 @@ VelocityPlanningResult ObstacleVelocityLimiterModule::plan(
       obstacle_velocity_limiter::createProjectedLines(downsampled_traj_points, projection_params_);
     const auto safe_footprint_polygons = obstacle_velocity_limiter::createFootprintPolygons(
       safe_projected_linestrings, vehicle_lateral_offset_);
-    {
-      auto loaned = debug_publisher_->borrow_loaned_message();
-      *loaned = makeDebugMarkers(
-        obstacles, projected_linestrings, safe_projected_linestrings, footprint_polygons,
-        safe_footprint_polygons, obstacle_masks,
-        planner_data->current_odometry.pose.pose.position.z);
-      debug_publisher_->publish(std::move(loaned));
-    }
+    debug_publisher_->publish(makeDebugMarkers(
+      obstacles, projected_linestrings, safe_projected_linestrings, footprint_polygons,
+      safe_footprint_polygons, obstacle_masks,
+      planner_data->current_odometry.pose.pose.position.z));
   }
+  std::map<std::string, double> processing_times;
+  processing_times["preprocessing"] = preprocessing_us / 1000;
+  processing_times["obstacles"] = obstacles_us / 1000;
+  processing_times["slowdowns"] = slowdowns_us / 1000;
+  processing_times["Total"] = total_us / 1000;
+  processing_diag_publisher_->publish(processing_times);
   return result;
 }
 }  // namespace autoware::motion_velocity_planner
