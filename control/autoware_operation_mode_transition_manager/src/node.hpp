@@ -20,6 +20,7 @@
 
 #include <autoware/component_interface_specs_universe/system.hpp>
 #include <autoware/component_interface_utils/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -55,11 +56,10 @@ private:
     const ChangeOperationModeAPI::Service::Response::SharedPtr response);
 
   using ControlModeCommandType = ControlModeCommand::Request::_mode_type;
-  autoware_utils::InterProcessPollingSubscriber<Odometry> sub_kinematics_{this, "kinematics"};
+  agnocast::PollingSubscriber<Odometry>::SharedPtr sub_kinematics_;
   autoware_utils::InterProcessPollingSubscriber<Trajectory> sub_trajectory_{this, "trajectory"};
-  autoware_utils::InterProcessPollingSubscriber<Control> sub_trajectory_follower_control_cmd_{
-    this, "trajectory_follower_control_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<Control> sub_control_cmd_{this, "control_cmd"};
+  agnocast::PollingSubscriber<Control>::SharedPtr sub_trajectory_follower_control_cmd_;
+  agnocast::PollingSubscriber<Control>::SharedPtr sub_control_cmd_;
   autoware_utils::InterProcessPollingSubscriber<OperationModeState> sub_gate_operation_mode_{
     this, "gate_operation_mode"};
   autoware_utils::InterProcessPollingSubscriber<ControlModeReport> sub_control_mode_report_{

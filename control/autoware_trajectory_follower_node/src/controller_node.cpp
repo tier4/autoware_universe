@@ -94,8 +94,13 @@ Controller::Controller(const rclcpp::NodeOptions & node_options) : Node("control
       throw std::domain_error("[LongitudinalController] invalid algorithm");
   }
 
-  control_cmd_pub_ = create_publisher<autoware_control_msgs::msg::Control>(
-    "~/output/control_cmd", rclcpp::QoS{1}.transient_local());
+  control_cmd_pub_ = agnocast::create_publisher<autoware_control_msgs::msg::Control>(
+    this, "~/output/control_cmd", rclcpp::QoS{1}.transient_local());
+
+  sub_odometry_ = agnocast::create_subscription<nav_msgs::msg::Odometry>(
+    this, "~/input/current_odometry", 1);
+  sub_accel_ = agnocast::create_subscription<geometry_msgs::msg::AccelWithCovarianceStamped>(
+    this, "~/input/current_accel", 1);
   pub_processing_time_lat_ms_ =
     create_publisher<Float64Stamped>("~/lateral/debug/processing_time_ms", 1);
   pub_processing_time_lon_ms_ =
@@ -157,10 +162,10 @@ bool Controller::processData(rclcpp::Clock & clock)
     return false;
   };
 
-  is_ready &= getData(current_accel_ptr_, sub_accel_, "acceleration");
+  is_ready &= getData(current_accel_ptr_, *sub_accel_, "acceleration");
   is_ready &= getData(current_steering_ptr_, sub_steering_, "steering");
   is_ready &= getData(current_trajectory_ptr_, sub_ref_path_, "trajectory");
-  is_ready &= getData(current_odometry_ptr_, sub_odometry_, "odometry");
+  is_ready &= getData(current_odometry_ptr_, *sub_odometry_, "odometry");
   is_ready &= getData(current_operation_mode_ptr_, sub_operation_mode_, "operation mode");
 
   return is_ready;
@@ -244,7 +249,11 @@ void Controller::callbackTimerControl()
   // 5. publish control command
   out.lateral = lat_out.control_cmd;
   out.longitudinal = lon_out.control_cmd;
-  control_cmd_pub_->publish(out);
+  {
+    auto loaned_msg = control_cmd_pub_->borrow_loaned_message();
+    *loaned_msg = out;
+    control_cmd_pub_->publish(std::move(loaned_msg));
+  }
 
   // 6. publish debug
   published_time_publisher_->publish_if_subscribed(control_cmd_pub_, out.stamp);

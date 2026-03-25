@@ -24,6 +24,7 @@
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
+#include <agnocast/agnocast.hpp>
 #include <autoware_vehicle_cmd_gate/msg/is_filter_activated.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -105,7 +106,7 @@ public:
 private:
   // Publisher
   rclcpp::Publisher<VehicleEmergencyStamped>::SharedPtr vehicle_cmd_emergency_pub_;
-  rclcpp::Publisher<Control>::SharedPtr control_cmd_pub_;
+  agnocast::Publisher<Control>::SharedPtr control_cmd_pub_;
   rclcpp::Publisher<GearCommand>::SharedPtr gear_cmd_pub_;
   rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr turn_indicator_cmd_pub_;
   rclcpp::Publisher<HazardLightsCommand>::SharedPtr hazard_light_cmd_pub_;
@@ -158,14 +159,13 @@ private:
 
   // Subscriber for auto
   Commands auto_commands_;
-  rclcpp::Subscription<Control>::SharedPtr auto_control_cmd_sub_;
+  agnocast::Subscription<Control>::SharedPtr auto_control_cmd_sub_;
   autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsCommand> auto_turn_indicator_cmd_sub_{
     this, "input/auto/turn_indicators_cmd"};
   autoware_utils::InterProcessPollingSubscriber<HazardLightsCommand> auto_hazard_light_cmd_sub_{
     this, "input/auto/hazard_lights_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<GearCommand> auto_gear_cmd_sub_{
-    this, "input/auto/gear_cmd"};
-  void onAutoCtrlCmd(Control::ConstSharedPtr msg);
+  agnocast::PollingSubscriber<GearCommand>::SharedPtr auto_gear_cmd_sub_;
+  void onAutoCtrlCmd(const agnocast::ipc_shared_ptr<Control> & msg);
 
   // Subscription for external
   Commands remote_commands_;

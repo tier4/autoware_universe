@@ -6,6 +6,9 @@ autoware_package()
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 ament_auto_add_library(autoware_operation_mode_transition_manager_node SHARED
   src/compatibility.cpp
   src/data.cpp
@@ -19,9 +22,23 @@ rclcpp_components_register_node(autoware_operation_mode_transition_manager_node
   EXECUTABLE autoware_operation_mode_transition_manager_exe
 )
 
+agnocast_components_register_node(autoware_operation_mode_transition_manager_node
+  PLUGIN "autoware::operation_mode_transition_manager::OperationModeTransitionManager"
+  EXECUTABLE autoware_operation_mode_transition_manager_agnocast_exe
+  EXECUTOR CallbackIsolatedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
+)
+
 rclcpp_components_register_node(autoware_operation_mode_transition_manager_node
   PLUGIN "autoware::operation_mode_transition_manager::AutonomousModeTransitionFlagNode"
   EXECUTABLE autonomous_mode_transition_flag_node
+)
+
+agnocast_components_register_node(autoware_operation_mode_transition_manager_node
+  PLUGIN "autoware::operation_mode_transition_manager::AutonomousModeTransitionFlagNode"
+  EXECUTABLE autonomous_mode_transition_flag_node_agnocast
+  EXECUTOR CallbackIsolatedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 rosidl_generate_interfaces(

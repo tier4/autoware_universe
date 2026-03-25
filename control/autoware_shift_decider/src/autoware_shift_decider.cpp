@@ -14,42 +14,45 @@
 
 #include "autoware/shift_decider/autoware_shift_decider.hpp"
 
-#include <rclcpp/timer.hpp>
-
-#include <cstddef>
 #include <functional>
 
 namespace autoware::shift_decider
 {
 
 ShiftDecider::ShiftDecider(const rclcpp::NodeOptions & node_options)
-: Node("shift_decider", node_options)
+: agnocast::Node("shift_decider", node_options)
 {
-  using std::placeholders::_1;
-
-  static constexpr std::size_t queue_size = 1;
-  rclcpp::QoS durable_qos(queue_size);
-  durable_qos.transient_local();
-
   park_on_goal_ = declare_parameter<bool>("park_on_goal");
 
-  pub_shift_cmd_ =
-    create_publisher<autoware_vehicle_msgs::msg::GearCommand>("output/gear_cmd", durable_qos);
+  pub_shift_cmd_ = this->create_publisher<autoware_vehicle_msgs::msg::GearCommand>(
+    "output/gear_cmd", rclcpp::QoS{1}.transient_local());
 
-  initTimer(0.1);
+  sub_control_cmd_ =
+    this->create_subscription<autoware_control_msgs::msg::Control>("input/control_cmd", 1);
+  sub_autoware_state_ =
+    this->create_subscription<autoware_system_msgs::msg::AutowareState>("input/state", 1);
+  sub_current_gear_ =
+    this->create_subscription<autoware_vehicle_msgs::msg::GearReport>("input/current_gear", 1);
+
+  const auto period_ns =
+    std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::duration<double>(0.1));
+  timer_ = this->create_wall_timer(period_ns, std::bind(&ShiftDecider::onTimer, this));
 }
 
 void ShiftDecider::onTimer()
 {
-  control_cmd_ = sub_control_cmd_.take_data();
-  autoware_state_ = sub_autoware_state_.take_data();
-  current_gear_ptr_ = sub_current_gear_.take_data();
+  control_cmd_ = sub_control_cmd_->take_data();
+  autoware_state_ = sub_autoware_state_->take_data();
+  current_gear_ptr_ = sub_current_gear_->take_data();
   if (!autoware_state_ || !control_cmd_ || !current_gear_ptr_) {
     return;
   }
 
   updateCurrentShiftCmd();
-  pub_shift_cmd_->publish(shift_cmd_);
+
+  auto loaned_msg = pub_shift_cmd_->borrow_loaned_message();
+  *loaned_msg = shift_cmd_;
+  pub_shift_cmd_->publish(std::move(loaned_msg));
 }
 
 void ShiftDecider::updateCurrentShiftCmd()
@@ -78,14 +81,6 @@ void ShiftDecider::updateCurrentShiftCmd()
     }
   }
   prev_shift_command = shift_cmd_.command;
-}
-
-void ShiftDecider::initTimer(double period_s)
-{
-  const auto period_ns =
-    std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::duration<double>(period_s));
-  timer_ =
-    rclcpp::create_timer(this, get_clock(), period_ns, std::bind(&ShiftDecider::onTimer, this));
 }
 }  // namespace autoware::shift_decider
 

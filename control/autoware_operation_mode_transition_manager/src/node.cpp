@@ -24,6 +24,11 @@ namespace autoware::operation_mode_transition_manager
 OperationModeTransitionManager::OperationModeTransitionManager(const rclcpp::NodeOptions & options)
 : Node("autoware_operation_mode_transition_manager", options), compatibility_(this)
 {
+  sub_kinematics_ = agnocast::create_subscription<Odometry>(this, "kinematics", 1);
+  sub_trajectory_follower_control_cmd_ =
+    agnocast::create_subscription<Control>(this, "trajectory_follower_control_cmd", 1);
+  sub_control_cmd_ = agnocast::create_subscription<Control>(this, "control_cmd", 1);
+
   cli_control_mode_ = create_client<ControlModeCommand>("control_mode_request");
   pub_debug_info_ = create_publisher<ModeChangeBase::DebugInfo>("~/debug_info", 1);
 
@@ -253,7 +258,7 @@ InputData OperationModeTransitionManager::subscribeData()
 {
   InputData input_data;
 
-  const auto kinematics_ptr = sub_kinematics_.take_data();
+  const auto kinematics_ptr = sub_kinematics_->take_data();
   if (kinematics_ptr) {
     if (input_timeout_ < (now() - kinematics_ptr->header.stamp).seconds()) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 3000, "Subscribed kinematics is timed out.");
@@ -271,7 +276,7 @@ InputData OperationModeTransitionManager::subscribeData()
     }
   }
 
-  const auto trajectory_follower_control_cmd_ptr = sub_trajectory_follower_control_cmd_.take_data();
+  const auto trajectory_follower_control_cmd_ptr = sub_trajectory_follower_control_cmd_->take_data();
   if (trajectory_follower_control_cmd_ptr) {
     if (input_timeout_ < (now() - trajectory_follower_control_cmd_ptr->stamp).seconds()) {
       RCLCPP_WARN_THROTTLE(
@@ -282,7 +287,7 @@ InputData OperationModeTransitionManager::subscribeData()
     }
   }
 
-  const auto control_cmd_ptr = sub_control_cmd_.take_data();
+  const auto control_cmd_ptr = sub_control_cmd_->take_data();
   if (control_cmd_ptr) {
     if (input_timeout_ < (now() - control_cmd_ptr->stamp).seconds()) {
       RCLCPP_WARN_THROTTLE(

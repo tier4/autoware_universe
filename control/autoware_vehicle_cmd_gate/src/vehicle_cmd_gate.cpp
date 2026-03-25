@@ -66,7 +66,7 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
   // Publisher
   vehicle_cmd_emergency_pub_ =
     create_publisher<VehicleEmergencyStamped>("output/vehicle_cmd_emergency", durable_qos);
-  control_cmd_pub_ = create_publisher<Control>("output/control_cmd", durable_qos);
+  control_cmd_pub_ = agnocast::create_publisher<Control>(this, "output/control_cmd", durable_qos);
   gear_cmd_pub_ = create_publisher<GearCommand>("output/gear_cmd", durable_qos);
   turn_indicator_cmd_pub_ =
     create_publisher<TurnIndicatorsCommand>("output/turn_indicators_cmd", durable_qos);
@@ -114,8 +114,10 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
     "input/mrm_state", 1, std::bind(&VehicleCmdGate::onMrmState, this, _1));
 
   // Subscriber for auto
-  auto_control_cmd_sub_ = create_subscription<Control>(
-    "input/auto/control_cmd", 1, std::bind(&VehicleCmdGate::onAutoCtrlCmd, this, _1));
+  auto_control_cmd_sub_ = agnocast::create_subscription<Control>(
+    this, "input/auto/control_cmd", 1, std::bind(&VehicleCmdGate::onAutoCtrlCmd, this, _1));
+  auto_gear_cmd_sub_ = agnocast::create_subscription<GearCommand>(
+    this, "input/auto/gear_cmd", 1);
 
   // Subscriber for external
   remote_control_cmd_sub_ = create_subscription<Control>(
@@ -358,7 +360,7 @@ bool VehicleCmdGate::isDataReady()
 }
 
 // for auto
-void VehicleCmdGate::onAutoCtrlCmd(Control::ConstSharedPtr msg)
+void VehicleCmdGate::onAutoCtrlCmd(const agnocast::ipc_shared_ptr<Control> & msg)
 {
   auto_commands_.control = *msg;
 
@@ -416,7 +418,7 @@ void VehicleCmdGate::onTimer()
   const auto msg_auto_command_hazard_light = auto_hazard_light_cmd_sub_.take_data();
   if (msg_auto_command_hazard_light) auto_commands_.hazard_light = *msg_auto_command_hazard_light;
 
-  const auto msg_auto_command_gear = auto_gear_cmd_sub_.take_data();
+  const auto msg_auto_command_gear = auto_gear_cmd_sub_->take_data();
   if (msg_auto_command_gear) auto_commands_.gear = *msg_auto_command_gear;
 
   // Subscribe for external
@@ -622,7 +624,11 @@ void VehicleCmdGate::publishControlCommands(const Commands & commands)
 
   // Publish commands
   vehicle_cmd_emergency_pub_->publish(vehicle_cmd_emergency);
-  control_cmd_pub_->publish(filtered_control);
+  {
+    auto loaned_msg = control_cmd_pub_->borrow_loaned_message();
+    *loaned_msg = filtered_control;
+    control_cmd_pub_->publish(std::move(loaned_msg));
+  }
   published_time_publisher_->publish_if_subscribed(control_cmd_pub_, filtered_control.stamp);
   adapi_pause_->publish();
   moderate_stop_interface_->publish();
@@ -665,7 +671,11 @@ void VehicleCmdGate::publishEmergencyStopControlCommands()
 
   // Publish topics
   vehicle_cmd_emergency_pub_->publish(vehicle_cmd_emergency);
-  control_cmd_pub_->publish(control_cmd);
+  {
+    auto loaned_msg = control_cmd_pub_->borrow_loaned_message();
+    *loaned_msg = control_cmd;
+    control_cmd_pub_->publish(std::move(loaned_msg));
+  }
   turn_indicator_cmd_pub_->publish(turn_indicator);
   hazard_light_cmd_pub_->publish(hazard_light);
   gear_cmd_pub_->publish(gear);

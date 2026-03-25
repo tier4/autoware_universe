@@ -4,6 +4,9 @@ project(autoware_trajectory_follower_node)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 set(CONTROLLER_NODE controller_node)
 ament_auto_add_library(${CONTROLLER_NODE} SHARED
   include/autoware/trajectory_follower_node/controller_node.hpp
@@ -13,6 +16,13 @@ ament_auto_add_library(${CONTROLLER_NODE} SHARED
 rclcpp_components_register_node(${CONTROLLER_NODE}
   PLUGIN "autoware::motion::control::trajectory_follower_node::Controller"
   EXECUTABLE ${CONTROLLER_NODE}_exe
+)
+
+agnocast_components_register_node(${CONTROLLER_NODE}
+  PLUGIN "autoware::motion::control::trajectory_follower_node::Controller"
+  EXECUTABLE ${CONTROLLER_NODE}_agnocast_exe
+  EXECUTOR CallbackIsolatedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 # simple trajectory follower

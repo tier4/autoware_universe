@@ -17,6 +17,7 @@
 
 #include "state.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -43,12 +44,11 @@ private:
   rclcpp::Publisher<ModeChangeBase::DebugInfo>::SharedPtr pub_debug_;
 
   template <class T>
-  using PollingSubscriber = autoware_utils_rclcpp::InterProcessPollingSubscriber<T>;
-  PollingSubscriber<Odometry> sub_kinematics_{this, "kinematics"};
-  PollingSubscriber<Trajectory> sub_trajectory_{this, "trajectory"};
-  PollingSubscriber<Control> sub_control_cmd_{this, "control_cmd"};
-  PollingSubscriber<Control> sub_trajectory_follower_control_cmd_{
-    this, "trajectory_follower_control_cmd"};
+  using RclcppPollingSubscriber = autoware_utils_rclcpp::InterProcessPollingSubscriber<T>;
+  agnocast::PollingSubscriber<Odometry>::SharedPtr sub_kinematics_;
+  RclcppPollingSubscriber<Trajectory> sub_trajectory_{this, "trajectory"};
+  agnocast::PollingSubscriber<Control>::SharedPtr sub_control_cmd_;
+  agnocast::PollingSubscriber<Control>::SharedPtr sub_trajectory_follower_control_cmd_;
 
   std::unique_ptr<ModeChangeBase> autonomous_mode_;
 };

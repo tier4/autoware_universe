@@ -24,15 +24,21 @@
 namespace autoware::external_cmd_converter
 {
 ExternalCmdConverterNode::ExternalCmdConverterNode(const rclcpp::NodeOptions & node_options)
-: Node("external_cmd_converter", node_options)
+: agnocast::Node("external_cmd_converter", node_options)
 {
   using std::placeholders::_1;
 
-  cmd_pub_ = create_publisher<Control>("out/control_cmd", rclcpp::QoS{1});
-  pedals_cmd_sub_ = create_subscription<PedalsCommand>(
+  cmd_pub_ = this->create_publisher<Control>("out/control_cmd", rclcpp::QoS{1});
+  pedals_cmd_sub_ = this->create_subscription<PedalsCommand>(
     "in/pedals_cmd", 1, std::bind(&ExternalCmdConverterNode::on_pedals_cmd, this, _1));
-  heartbeat_sub_ = create_subscription<ManualOperatorHeartbeat>(
+  heartbeat_sub_ = this->create_subscription<ManualOperatorHeartbeat>(
     "in/heartbeat", 1, std::bind(&ExternalCmdConverterNode::on_heartbeat, this, _1));
+
+  // Polling Subscribers
+  steering_cmd_sub_ = this->create_subscription<SteeringCommand>("in/steering_cmd", 1);
+  velocity_sub_ = this->create_subscription<Odometry>("in/odometry", 1);
+  gear_cmd_sub_ = this->create_subscription<GearCommand>("in/gear_cmd", 1);
+  gate_mode_sub_ = this->create_subscription<GateMode>("in/current_gate_mode", 1);
 
   // Parameter
   ref_vel_gain_ = declare_parameter<double>("ref_vel_gain");
@@ -44,8 +50,8 @@ ExternalCmdConverterNode::ExternalCmdConverterNode(const rclcpp::NodeOptions & n
   emergency_stop_timeout_ = declare_parameter<double>("emergency_stop_timeout");
 
   const auto period_ns = rclcpp::Rate(timer_rate).period();
-  rate_check_timer_ = rclcpp::create_timer(
-    this, get_clock(), period_ns, std::bind(&ExternalCmdConverterNode::on_timer, this));
+  rate_check_timer_ =
+    this->create_wall_timer(period_ns, std::bind(&ExternalCmdConverterNode::on_timer, this));
 
   // Parameter for accel/brake map
   const std::string csv_path_accel_map = declare_parameter<std::string>("csv_path_accel_map");
@@ -64,36 +70,30 @@ ExternalCmdConverterNode::ExternalCmdConverterNode(const rclcpp::NodeOptions & n
     acc_map_initialized_ = false;
   }
 
-  // Diagnostics
-  updater_.setHardwareID("external_cmd_converter");
-  updater_.add("remote_control_topic_status", this, &ExternalCmdConverterNode::check_topic_status);
-
-  // Set default values
-  current_gear_cmd_ = std::make_shared<GearCommand>();
 }
 
 void ExternalCmdConverterNode::on_timer()
 {
-  updater_.force_update();
 }
 
-void ExternalCmdConverterNode::on_heartbeat(const ManualOperatorHeartbeat::ConstSharedPtr msg)
+void ExternalCmdConverterNode::on_heartbeat(
+  const agnocast::ipc_shared_ptr<ManualOperatorHeartbeat> & msg)
 {
   if (msg->ready) {
     latest_heartbeat_received_time_ = std::make_shared<rclcpp::Time>(this->now());
   }
-  updater_.force_update();
 }
 
-void ExternalCmdConverterNode::on_pedals_cmd(const PedalsCommand::ConstSharedPtr pedals)
+void ExternalCmdConverterNode::on_pedals_cmd(
+  const agnocast::ipc_shared_ptr<PedalsCommand> & pedals)
 {
   // Save received time for rate check
   latest_cmd_received_time_ = std::make_shared<rclcpp::Time>(this->now());
 
   // take data from subscribers
-  current_velocity_ptr_ = velocity_sub_.take_data();
-  current_gear_cmd_ = gear_cmd_sub_.take_data();
-  const auto steering = steering_cmd_sub_.take_data();
+  current_velocity_ptr_ = velocity_sub_->take_data();
+  current_gear_cmd_ = gear_cmd_sub_->take_data();
+  const auto steering = steering_cmd_sub_->take_data();
 
   // Wait for input data
   if (!acc_map_initialized_ || !current_velocity_ptr_ || !current_gear_cmd_ || !steering) {
@@ -126,14 +126,14 @@ void ExternalCmdConverterNode::on_pedals_cmd(const PedalsCommand::ConstSharedPtr
   }
 
   // Publish ControlCommand
-  autoware_control_msgs::msg::Control output;
-  output.stamp = pedals->stamp;
-  output.lateral.steering_tire_angle = steering->steering_tire_angle;
-  output.lateral.steering_tire_rotation_rate = steering->steering_tire_velocity;
-  output.longitudinal.velocity = static_cast<float>(ref_velocity);
-  output.longitudinal.acceleration = static_cast<float>(ref_acceleration);
+  auto loaned_msg = cmd_pub_->borrow_loaned_message();
+  loaned_msg->stamp = pedals->stamp;
+  loaned_msg->lateral.steering_tire_angle = steering->steering_tire_angle;
+  loaned_msg->lateral.steering_tire_rotation_rate = steering->steering_tire_velocity;
+  loaned_msg->longitudinal.velocity = static_cast<float>(ref_velocity);
+  loaned_msg->longitudinal.acceleration = static_cast<float>(ref_acceleration);
 
-  cmd_pub_->publish(output);
+  cmd_pub_->publish(std::move(loaned_msg));
 }
 
 double ExternalCmdConverterNode::calculate_acc(const PedalsCommand & cmd, const double vel)
@@ -175,67 +175,6 @@ double ExternalCmdConverterNode::get_gear_velocity_sign(const GearCommand & cmd)
   return 0.0;
 }
 
-void ExternalCmdConverterNode::check_topic_status(
-  diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  using diagnostic_msgs::msg::DiagnosticStatus;
-  DiagnosticStatus status;
-
-  current_gate_mode_ = gate_mode_sub_.take_data();
-
-  if (!check_emergency_stop_topic_timeout()) {
-    status.level = DiagnosticStatus::ERROR;
-    status.message = "emergency stop topic is timeout";
-  } else if (!check_remote_topic_rate()) {
-    status.level = DiagnosticStatus::ERROR;
-    status.message = "low topic rate for remote vehicle_cmd";
-  } else {
-    status.level = DiagnosticStatus::OK;
-    status.message = "OK";
-  }
-
-  stat.summary(status.level, status.message);
-}
-
-bool ExternalCmdConverterNode::check_emergency_stop_topic_timeout()
-{
-  if (!current_gate_mode_) {
-    return true;
-  }
-
-  if (current_gate_mode_->data == tier4_control_msgs::msg::GateMode::AUTO) {
-    latest_heartbeat_received_time_ = nullptr;
-  }
-
-  if (!latest_heartbeat_received_time_) {
-    return wait_for_first_topic_;
-  }
-
-  const auto duration = (this->now() - *latest_heartbeat_received_time_);
-  return duration.seconds() <= emergency_stop_timeout_;
-}
-
-bool ExternalCmdConverterNode::check_remote_topic_rate()
-{
-  if (!current_gate_mode_) {
-    return true;
-  }
-
-  if (!latest_cmd_received_time_) {
-    return wait_for_first_topic_;
-  }
-
-  if (current_gate_mode_->data == tier4_control_msgs::msg::GateMode::EXTERNAL) {
-    const auto duration = (this->now() - *latest_cmd_received_time_);
-    if (duration.seconds() > control_command_timeout_) {
-      return false;
-    }
-  } else {
-    latest_cmd_received_time_ = nullptr;  // reset;
-  }
-
-  return true;
-}
 }  // namespace autoware::external_cmd_converter
 
 #include <rclcpp_components/register_node_macro.hpp>

@@ -4,6 +4,9 @@ project(autoware_vehicle_cmd_gate)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 ament_auto_add_library(vehicle_cmd_gate_node SHARED
   src/vehicle_cmd_gate.cpp
   src/vehicle_cmd_filter.cpp
@@ -14,6 +17,13 @@ ament_auto_add_library(vehicle_cmd_gate_node SHARED
 rclcpp_components_register_node(vehicle_cmd_gate_node
   PLUGIN "autoware::vehicle_cmd_gate::VehicleCmdGate"
   EXECUTABLE vehicle_cmd_gate_exe
+)
+
+agnocast_components_register_node(vehicle_cmd_gate_node
+  PLUGIN "autoware::vehicle_cmd_gate::VehicleCmdGate"
+  EXECUTABLE vehicle_cmd_gate_agnocast_exe
+  EXECUTOR CallbackIsolatedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 rosidl_generate_interfaces(

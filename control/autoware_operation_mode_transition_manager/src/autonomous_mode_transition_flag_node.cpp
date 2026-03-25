@@ -23,6 +23,11 @@ AutonomousModeTransitionFlagNode::AutonomousModeTransitionFlagNode(
   const rclcpp::NodeOptions & options)
 : Node("autonomous_mode_transition_flag_node", options)
 {
+  sub_kinematics_ = agnocast::create_subscription<Odometry>(this, "kinematics", 1);
+  sub_control_cmd_ = agnocast::create_subscription<Control>(this, "control_cmd", 1);
+  sub_trajectory_follower_control_cmd_ =
+    agnocast::create_subscription<Control>(this, "trajectory_follower_control_cmd", 1);
+
   declare_parameter<double>("stable_check.duration");
   autonomous_mode_ = std::make_unique<AutonomousMode>(this);
 
@@ -63,7 +68,7 @@ InputData AutonomousModeTransitionFlagNode::take_data()
 {
   InputData data;
 
-  const auto kinematics = sub_kinematics_.take_data();
+  const auto kinematics = sub_kinematics_->take_data();
   if (kinematics) {
     data.kinematics = *kinematics;
   }
@@ -73,12 +78,12 @@ InputData AutonomousModeTransitionFlagNode::take_data()
     data.trajectory = *trajectory;
   }
 
-  const auto control_cmd = sub_control_cmd_.take_data();
+  const auto control_cmd = sub_control_cmd_->take_data();
   if (control_cmd) {
     data.control_cmd = *control_cmd;
   }
 
-  const auto trajectory_follower_control_cmd = sub_trajectory_follower_control_cmd_.take_data();
+  const auto trajectory_follower_control_cmd = sub_trajectory_follower_control_cmd_->take_data();
   if (trajectory_follower_control_cmd) {
     data.trajectory_follower_control_cmd = *trajectory_follower_control_cmd;
   }

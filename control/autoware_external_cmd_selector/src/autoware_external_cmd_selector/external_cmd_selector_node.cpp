@@ -23,7 +23,7 @@ namespace autoware::external_cmd_selector
 {
 
 ExternalCmdSelector::ExternalCmdSelector(const rclcpp::NodeOptions & node_options)
-: Node("external_cmd_selector", node_options)
+: agnocast::Node("external_cmd_selector", node_options)
 {
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -43,75 +43,53 @@ ExternalCmdSelector::ExternalCmdSelector(const rclcpp::NodeOptions & node_option
     create_publisher<TurnIndicatorsCommand>("~/output/turn_indicators_cmd", 1);
   pub_hazard_lights_cmd_ = create_publisher<HazardLightsCommand>("~/output/hazard_lights_cmd", 1);
 
-  // Callback Groups
-  callback_group_subscribers_ =
-    this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  callback_group_services_ =
-    this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-
-  auto subscriber_option = rclcpp::SubscriptionOptions();
-  subscriber_option.callback_group = callback_group_subscribers_;
-
   // Subscriber
   sub_local_pedals_cmd_ = create_subscription<PedalsCommand>(
     "~/input/local/pedals_cmd", 1,
-    bind_on_cmd<PedalsCommand>(&ExternalCmdSelector::on_pedals_cmd, CommandSourceMode::LOCAL),
-    subscriber_option);
+    bind_on_cmd<PedalsCommand>(&ExternalCmdSelector::on_pedals_cmd, CommandSourceMode::LOCAL));
   sub_local_steering_cmd_ = create_subscription<SteeringCommand>(
     "~/input/local/steering_cmd", 1,
-    bind_on_cmd<SteeringCommand>(&ExternalCmdSelector::on_steering_cmd, CommandSourceMode::LOCAL),
-    subscriber_option);
+    bind_on_cmd<SteeringCommand>(&ExternalCmdSelector::on_steering_cmd, CommandSourceMode::LOCAL));
   sub_local_heartbeat_ = create_subscription<OperatorHeartbeat>(
     "~/input/local/heartbeat", 1,
-    bind_on_cmd<OperatorHeartbeat>(&ExternalCmdSelector::on_heartbeat, CommandSourceMode::LOCAL),
-    subscriber_option);
+    bind_on_cmd<OperatorHeartbeat>(&ExternalCmdSelector::on_heartbeat, CommandSourceMode::LOCAL));
   sub_local_gear_cmd_ = create_subscription<GearCommand>(
     "~/input/local/gear_cmd", 1,
-    bind_on_cmd<GearCommand>(&ExternalCmdSelector::on_gear_cmd, CommandSourceMode::LOCAL),
-    subscriber_option);
+    bind_on_cmd<GearCommand>(&ExternalCmdSelector::on_gear_cmd, CommandSourceMode::LOCAL));
   sub_local_turn_indicators_cmd_ = create_subscription<TurnIndicatorsCommand>(
     "~/input/local/turn_indicators_cmd", 1,
     bind_on_cmd<TurnIndicatorsCommand>(
-      &ExternalCmdSelector::on_turn_indicators_cmd, CommandSourceMode::LOCAL),
-    subscriber_option);
+      &ExternalCmdSelector::on_turn_indicators_cmd, CommandSourceMode::LOCAL));
   sub_local_hazard_lights_cmd_ = create_subscription<HazardLightsCommand>(
     "~/input/local/hazard_lights_cmd", 1,
     bind_on_cmd<HazardLightsCommand>(
-      &ExternalCmdSelector::on_hazard_lights_cmd, CommandSourceMode::LOCAL),
-    subscriber_option);
+      &ExternalCmdSelector::on_hazard_lights_cmd, CommandSourceMode::LOCAL));
 
   sub_remote_pedals_cmd_ = create_subscription<PedalsCommand>(
     "~/input/remote/pedals_cmd", 1,
-    bind_on_cmd<PedalsCommand>(&ExternalCmdSelector::on_pedals_cmd, CommandSourceMode::REMOTE),
-    subscriber_option);
+    bind_on_cmd<PedalsCommand>(&ExternalCmdSelector::on_pedals_cmd, CommandSourceMode::REMOTE));
   sub_remote_steering_cmd_ = create_subscription<SteeringCommand>(
     "~/input/remote/steering_cmd", 1,
-    bind_on_cmd<SteeringCommand>(&ExternalCmdSelector::on_steering_cmd, CommandSourceMode::REMOTE),
-    subscriber_option);
+    bind_on_cmd<SteeringCommand>(&ExternalCmdSelector::on_steering_cmd, CommandSourceMode::REMOTE));
   sub_remote_heartbeat_ = create_subscription<OperatorHeartbeat>(
     "~/input/remote/heartbeat", 1,
-    bind_on_cmd<OperatorHeartbeat>(&ExternalCmdSelector::on_heartbeat, CommandSourceMode::REMOTE),
-    subscriber_option);
+    bind_on_cmd<OperatorHeartbeat>(&ExternalCmdSelector::on_heartbeat, CommandSourceMode::REMOTE));
   sub_remote_gear_cmd_ = create_subscription<GearCommand>(
     "~/input/remote/gear_cmd", 1,
-    bind_on_cmd<GearCommand>(&ExternalCmdSelector::on_gear_cmd, CommandSourceMode::REMOTE),
-    subscriber_option);
+    bind_on_cmd<GearCommand>(&ExternalCmdSelector::on_gear_cmd, CommandSourceMode::REMOTE));
   sub_remote_turn_indicators_cmd_ = create_subscription<TurnIndicatorsCommand>(
     "~/input/remote/turn_indicators_cmd", 1,
     bind_on_cmd<TurnIndicatorsCommand>(
-      &ExternalCmdSelector::on_turn_indicators_cmd, CommandSourceMode::REMOTE),
-    subscriber_option);
+      &ExternalCmdSelector::on_turn_indicators_cmd, CommandSourceMode::REMOTE));
   sub_remote_hazard_lights_cmd_ = create_subscription<HazardLightsCommand>(
     "~/input/remote/hazard_lights_cmd", 1,
     bind_on_cmd<HazardLightsCommand>(
-      &ExternalCmdSelector::on_hazard_lights_cmd, CommandSourceMode::REMOTE),
-    subscriber_option);
+      &ExternalCmdSelector::on_hazard_lights_cmd, CommandSourceMode::REMOTE));
 
   // Service
   srv_select_external_command_ = create_service<CommandSourceSelect>(
     "~/service/select_external_command",
-    std::bind(&ExternalCmdSelector::on_select_external_command, this, _1, _2),
-    rmw_qos_profile_services_default, callback_group_services_);
+    std::bind(&ExternalCmdSelector::on_select_external_command, this, _1, _2));
 
   // Initialize mode
   auto convert_selector_mode = [](const std::string & mode_text) {
@@ -125,69 +103,73 @@ ExternalCmdSelector::ExternalCmdSelector(const rclcpp::NodeOptions & node_option
   };
   current_selector_mode_.data = convert_selector_mode(initial_selector_mode);
 
-  // Diagnostics Updater
-  updater_.setHardwareID("external_cmd_selector");
-  updater_.add("heartbeat", [](auto & stat) {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Alive");
-  });
-
   // Timer
   const auto period_ns = rclcpp::Rate(update_rate).period();
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), period_ns, std::bind(&ExternalCmdSelector::on_timer, this),
-    callback_group_subscribers_);
+  timer_ = this->create_wall_timer(period_ns, std::bind(&ExternalCmdSelector::on_timer, this));
 }
 
 void ExternalCmdSelector::on_pedals_cmd(const PedalsCommand & msg, uint8_t mode)
 {
   if (current_selector_mode_.data != mode) return;
-  pub_pedals_cmd_->publish(msg);
+  auto loaned_msg = pub_pedals_cmd_->borrow_loaned_message();
+  *loaned_msg = msg;
+  pub_pedals_cmd_->publish(std::move(loaned_msg));
 }
 
 void ExternalCmdSelector::on_steering_cmd(const SteeringCommand & msg, uint8_t mode)
 {
   if (current_selector_mode_.data != mode) return;
-  pub_steering_cmd_->publish(msg);
+  auto loaned_msg = pub_steering_cmd_->borrow_loaned_message();
+  *loaned_msg = msg;
+  pub_steering_cmd_->publish(std::move(loaned_msg));
 }
 
 void ExternalCmdSelector::on_heartbeat(const OperatorHeartbeat & msg, uint8_t mode)
 {
   if (current_selector_mode_.data != mode) return;
-  pub_heartbeat_->publish(msg);
+  auto loaned_msg = pub_heartbeat_->borrow_loaned_message();
+  *loaned_msg = msg;
+  pub_heartbeat_->publish(std::move(loaned_msg));
 }
 
 void ExternalCmdSelector::on_gear_cmd(const GearCommand & msg, uint8_t mode)
 {
   if (current_selector_mode_.data != mode) return;
-  pub_gear_cmd_->publish(msg);
+  auto loaned_msg = pub_gear_cmd_->borrow_loaned_message();
+  *loaned_msg = msg;
+  pub_gear_cmd_->publish(std::move(loaned_msg));
 }
 
 void ExternalCmdSelector::on_turn_indicators_cmd(const TurnIndicatorsCommand & msg, uint8_t mode)
 {
   if (current_selector_mode_.data != mode) return;
-  pub_turn_indicators_cmd_->publish(msg);
+  auto loaned_msg = pub_turn_indicators_cmd_->borrow_loaned_message();
+  *loaned_msg = msg;
+  pub_turn_indicators_cmd_->publish(std::move(loaned_msg));
 }
 
 void ExternalCmdSelector::on_hazard_lights_cmd(const HazardLightsCommand & msg, uint8_t mode)
 {
   if (current_selector_mode_.data != mode) return;
-  pub_hazard_lights_cmd_->publish(msg);
+  auto loaned_msg = pub_hazard_lights_cmd_->borrow_loaned_message();
+  *loaned_msg = msg;
+  pub_hazard_lights_cmd_->publish(std::move(loaned_msg));
 }
 
-bool ExternalCmdSelector::on_select_external_command(
-  const CommandSourceSelect::Request::SharedPtr req,
-  const CommandSourceSelect::Response::SharedPtr res)
+void ExternalCmdSelector::on_select_external_command(
+  const agnocast::ipc_shared_ptr<agnocast::Service<CommandSourceSelect>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<CommandSourceSelect>::ResponseT> & res)
 {
   current_selector_mode_.data = req->mode.data;
   res->success = true;
   res->message = "Success.";
-  return true;
 }
 
 void ExternalCmdSelector::on_timer()
 {
-  pub_current_selector_mode_->publish(current_selector_mode_);
-  updater_.force_update();
+  auto loaned_msg = pub_current_selector_mode_->borrow_loaned_message();
+  *loaned_msg = current_selector_mode_;
+  pub_current_selector_mode_->publish(std::move(loaned_msg));
 }
 
 }  // namespace autoware::external_cmd_selector

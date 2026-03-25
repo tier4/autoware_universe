@@ -15,12 +15,9 @@
 #ifndef AUTOWARE_EXTERNAL_CMD_CONVERTER__NODE_HPP_
 #define AUTOWARE_EXTERNAL_CMD_CONVERTER__NODE_HPP_
 
-#include "autoware_utils/ros/polling_subscriber.hpp"
-
+#include <agnocast/node/agnocast_node.hpp>
 #include <autoware_raw_vehicle_cmd_converter/accel_map.hpp>
 #include <autoware_raw_vehicle_cmd_converter/brake_map.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/manual_operator_heartbeat.hpp>
 #include <autoware_adapi_v1_msgs/msg/pedals_command.hpp>
@@ -32,8 +29,6 @@
 
 #include <memory>
 #include <string>
-
-class TestExternalCmdConverter;
 
 namespace autoware::external_cmd_converter
 {
@@ -48,54 +43,44 @@ using autoware_vehicle_msgs::msg::GearCommand;
 using nav_msgs::msg::Odometry;
 using tier4_control_msgs::msg::GateMode;
 
-class ExternalCmdConverterNode : public rclcpp::Node
+class ExternalCmdConverterNode : public agnocast::Node
 {
 public:
   explicit ExternalCmdConverterNode(const rclcpp::NodeOptions & node_options);
 
 private:
   // Publisher
-  rclcpp::Publisher<Control>::SharedPtr cmd_pub_;
+  agnocast::Publisher<Control>::SharedPtr cmd_pub_;
 
   // Subscriber
-  rclcpp::Subscription<PedalsCommand>::SharedPtr pedals_cmd_sub_;
-  rclcpp::Subscription<ManualOperatorHeartbeat>::SharedPtr heartbeat_sub_;
+  agnocast::Subscription<PedalsCommand>::SharedPtr pedals_cmd_sub_;
+  agnocast::Subscription<ManualOperatorHeartbeat>::SharedPtr heartbeat_sub_;
 
   // Polling Subscriber
-  template <typename T>
-  using PollingSubscriber = autoware_utils::InterProcessPollingSubscriber<T>;
-  PollingSubscriber<SteeringCommand> steering_cmd_sub_{this, "in/steering_cmd"};
-  PollingSubscriber<Odometry> velocity_sub_{this, "in/odometry"};
-  PollingSubscriber<GearCommand> gear_cmd_sub_{this, "in/gear_cmd"};
-  PollingSubscriber<GateMode> gate_mode_sub_{this, "in/current_gate_mode"};
+  agnocast::PollingSubscriber<SteeringCommand>::SharedPtr steering_cmd_sub_;
+  agnocast::PollingSubscriber<Odometry>::SharedPtr velocity_sub_;
+  agnocast::PollingSubscriber<GearCommand>::SharedPtr gear_cmd_sub_;
+  agnocast::PollingSubscriber<GateMode>::SharedPtr gate_mode_sub_;
 
-  void on_pedals_cmd(const PedalsCommand::ConstSharedPtr cmd_ptr);
-  void on_heartbeat(const ManualOperatorHeartbeat::ConstSharedPtr msg);
+  void on_pedals_cmd(const agnocast::ipc_shared_ptr<PedalsCommand> & cmd_ptr);
+  void on_heartbeat(const agnocast::ipc_shared_ptr<ManualOperatorHeartbeat> & msg);
 
-  Odometry::ConstSharedPtr current_velocity_ptr_{nullptr};  // [m/s]
-  GearCommand::ConstSharedPtr current_gear_cmd_{nullptr};
-  GateMode::ConstSharedPtr current_gate_mode_{nullptr};
+  agnocast::ipc_shared_ptr<const Odometry> current_velocity_ptr_;  // [m/s]
+  agnocast::ipc_shared_ptr<const GearCommand> current_gear_cmd_;
+  agnocast::ipc_shared_ptr<const GateMode> current_gate_mode_;
 
   std::shared_ptr<rclcpp::Time> latest_heartbeat_received_time_;
   std::shared_ptr<rclcpp::Time> latest_cmd_received_time_;
 
   // Timer
   void on_timer();
-  rclcpp::TimerBase::SharedPtr rate_check_timer_;
+  agnocast::TimerBase::SharedPtr rate_check_timer_;
 
   // Parameter
   double ref_vel_gain_;  // reference velocity = current velocity + desired acceleration * gain
   bool wait_for_first_topic_;
   double control_command_timeout_;
   double emergency_stop_timeout_;
-
-  // Diagnostics
-  diagnostic_updater::Updater updater_{this};
-
-  void check_topic_status(diagnostic_updater::DiagnosticStatusWrapper & stat);
-  void check_emergency_stop(diagnostic_updater::DiagnosticStatusWrapper & stat);
-  bool check_emergency_stop_topic_timeout();
-  bool check_remote_topic_rate();
 
   // Algorithm
   AccelMap accel_map_;
@@ -104,8 +89,6 @@ private:
 
   double calculate_acc(const PedalsCommand & cmd, const double vel);
   double get_gear_velocity_sign(const GearCommand & cmd);
-
-  friend class ::TestExternalCmdConverter;
 };
 
 }  // namespace autoware::external_cmd_converter

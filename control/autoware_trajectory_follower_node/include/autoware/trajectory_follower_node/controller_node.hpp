@@ -24,6 +24,8 @@
 #include "autoware_utils/system/stop_watch.hpp"
 #include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
 #include "rclcpp/rclcpp.hpp"
+
+#include <agnocast/agnocast.hpp>
 #include "tf2/utils.h"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
@@ -92,29 +94,27 @@ private:
   autoware_utils::InterProcessPollingSubscriber<autoware_planning_msgs::msg::Trajectory>
     sub_ref_path_{this, "~/input/reference_trajectory"};
 
-  autoware_utils::InterProcessPollingSubscriber<nav_msgs::msg::Odometry> sub_odometry_{
-    this, "~/input/current_odometry"};
+  agnocast::PollingSubscriber<nav_msgs::msg::Odometry>::SharedPtr sub_odometry_;
 
   autoware_utils::InterProcessPollingSubscriber<autoware_vehicle_msgs::msg::SteeringReport>
     sub_steering_{this, "~/input/current_steering"};
 
-  autoware_utils::InterProcessPollingSubscriber<geometry_msgs::msg::AccelWithCovarianceStamped>
-    sub_accel_{this, "~/input/current_accel"};
+  agnocast::PollingSubscriber<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr sub_accel_;
 
   autoware_utils::InterProcessPollingSubscriber<OperationModeState> sub_operation_mode_{
     this, "~/input/current_operation_mode", rclcpp::QoS{1}.transient_local()};
 
   // Publishers
-  rclcpp::Publisher<autoware_control_msgs::msg::Control>::SharedPtr control_cmd_pub_;
+  agnocast::Publisher<autoware_control_msgs::msg::Control>::SharedPtr control_cmd_pub_;
   rclcpp::Publisher<Float64Stamped>::SharedPtr pub_processing_time_lat_ms_;
   rclcpp::Publisher<Float64Stamped>::SharedPtr pub_processing_time_lon_ms_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
   rclcpp::Publisher<autoware_control_msgs::msg::ControlHorizon>::SharedPtr control_cmd_horizon_pub_;
 
   autoware_planning_msgs::msg::Trajectory::ConstSharedPtr current_trajectory_ptr_;
-  nav_msgs::msg::Odometry::ConstSharedPtr current_odometry_ptr_;
+  agnocast::ipc_shared_ptr<const nav_msgs::msg::Odometry> current_odometry_ptr_;
   autoware_vehicle_msgs::msg::SteeringReport::ConstSharedPtr current_steering_ptr_;
-  geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr current_accel_ptr_;
+  agnocast::ipc_shared_ptr<const geometry_msgs::msg::AccelWithCovarianceStamped> current_accel_ptr_;
   OperationModeState::ConstSharedPtr current_operation_mode_ptr_;
 
   enum class LateralControllerMode {

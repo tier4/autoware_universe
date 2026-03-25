@@ -4,13 +4,18 @@ project(autoware_shift_decider)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 ament_auto_add_library(${PROJECT_NAME}_node SHARED
   src/${PROJECT_NAME}.cpp
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}_node
+agnocast_components_register_node(${PROJECT_NAME}_node
   PLUGIN "autoware::shift_decider::ShiftDecider"
-  EXECUTABLE ${PROJECT_NAME}
+  EXECUTABLE ${PROJECT_NAME}_node_exe
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 ament_auto_package(

@@ -15,9 +15,7 @@
 #ifndef AUTOWARE__SHIFT_DECIDER__AUTOWARE_SHIFT_DECIDER_HPP_
 #define AUTOWARE__SHIFT_DECIDER__AUTOWARE_SHIFT_DECIDER_HPP_
 
-#include "autoware_utils/ros/polling_subscriber.hpp"
-
-#include <rclcpp/rclcpp.hpp>
+#include <agnocast/node/agnocast_node.hpp>
 
 #include <autoware_control_msgs/msg/control.hpp>
 #include <autoware_system_msgs/msg/autoware_state.hpp>
@@ -29,33 +27,27 @@
 namespace autoware::shift_decider
 {
 
-class ShiftDecider : public rclcpp::Node
+class ShiftDecider : public agnocast::Node
 {
 public:
   explicit ShiftDecider(const rclcpp::NodeOptions & node_options);
 
 private:
   void onTimer();
-  void onControlCmd(autoware_control_msgs::msg::Control::SharedPtr msg);
-  void onAutowareState(autoware_system_msgs::msg::AutowareState::SharedPtr msg);
-  void onCurrentGear(autoware_vehicle_msgs::msg::GearReport::SharedPtr msg);
   void updateCurrentShiftCmd();
-  void initTimer(double period_s);
 
-  rclcpp::Publisher<autoware_vehicle_msgs::msg::GearCommand>::SharedPtr pub_shift_cmd_;
-  autoware_utils::InterProcessPollingSubscriber<autoware_control_msgs::msg::Control>
-    sub_control_cmd_{this, "input/control_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<autoware_system_msgs::msg::AutowareState>
-    sub_autoware_state_{this, "input/state"};
-  autoware_utils::InterProcessPollingSubscriber<autoware_vehicle_msgs::msg::GearReport>
-    sub_current_gear_{this, "input/current_gear"};
+  agnocast::Publisher<autoware_vehicle_msgs::msg::GearCommand>::SharedPtr pub_shift_cmd_;
+  agnocast::PollingSubscriber<autoware_control_msgs::msg::Control>::SharedPtr sub_control_cmd_;
+  agnocast::PollingSubscriber<autoware_system_msgs::msg::AutowareState>::SharedPtr
+    sub_autoware_state_;
+  agnocast::PollingSubscriber<autoware_vehicle_msgs::msg::GearReport>::SharedPtr sub_current_gear_;
 
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
 
-  autoware_control_msgs::msg::Control::ConstSharedPtr control_cmd_;
-  autoware_system_msgs::msg::AutowareState::ConstSharedPtr autoware_state_;
+  agnocast::ipc_shared_ptr<const autoware_control_msgs::msg::Control> control_cmd_;
+  agnocast::ipc_shared_ptr<const autoware_system_msgs::msg::AutowareState> autoware_state_;
   autoware_vehicle_msgs::msg::GearCommand shift_cmd_;
-  autoware_vehicle_msgs::msg::GearReport::ConstSharedPtr current_gear_ptr_;
+  agnocast::ipc_shared_ptr<const autoware_vehicle_msgs::msg::GearReport> current_gear_ptr_;
   uint8_t prev_shift_command = autoware_vehicle_msgs::msg::GearCommand::PARK;
 
   bool park_on_goal_;
