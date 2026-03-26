@@ -15,11 +15,13 @@
 #ifndef PIPELINE_LATENCY_MONITOR_NODE_HPP_
 #define PIPELINE_LATENCY_MONITOR_NODE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/universe_utils/ros/debug_publisher.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
+#include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
 #include <deque>
@@ -71,20 +73,15 @@ private:
   // Current total latency
   double total_latency_ms_{};
 
-  // Subscribers to the input topics
   std::vector<rclcpp::GenericSubscription::SharedPtr> generic_subscribers_;
 
-  // Publishers
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     total_latency_pub_;
 
-  // Debug publisher
   std::unique_ptr<autoware::universe_utils::DebugPublisher> debug_publisher_;
 
-  // Diagnostic updater
   diagnostic_updater::Updater diagnostic_updater_;
 
-  // Timer
   rclcpp::TimerBase::SharedPtr timer_;
 
   // Callback functions

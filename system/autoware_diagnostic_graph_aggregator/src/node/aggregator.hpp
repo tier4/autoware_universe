@@ -18,6 +18,7 @@
 #include "command_mode_mapping.hpp"
 #include "graph/graph.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <std_srvs/srv/set_bool.hpp>
@@ -41,20 +42,21 @@ private:
 
   using SetBool = std_srvs::srv::SetBool;
   rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Subscription<DiagnosticArray>::SharedPtr sub_input_;
-  rclcpp::Publisher<DiagGraphStruct>::SharedPtr pub_struct_;
-  rclcpp::Publisher<DiagGraphStatus>::SharedPtr pub_status_;
-  rclcpp::Publisher<DiagnosticArray>::SharedPtr pub_unknown_;
-  rclcpp::Service<ResetDiagGraph>::SharedPtr srv_reset_;
-  rclcpp::Service<SetBool>::SharedPtr srv_set_initializing_;
+  agnocast::Subscription<DiagnosticArray>::SharedPtr sub_input_;
+  agnocast::Publisher<DiagGraphStruct>::SharedPtr pub_struct_;
+  agnocast::Publisher<DiagGraphStatus>::SharedPtr pub_status_;
+  agnocast::Publisher<DiagnosticArray>::SharedPtr pub_unknown_;
+  agnocast::Service<ResetDiagGraph>::SharedPtr srv_reset_;
+  agnocast::Service<SetBool>::SharedPtr srv_set_initializing_;
 
   void on_timer();
-  void on_diag(const DiagnosticArray & msg);
+  void on_diag(const agnocast::ipc_shared_ptr<const DiagnosticArray> & msg);
   void on_reset(
-    const ResetDiagGraph::Request::SharedPtr request,
-    const ResetDiagGraph::Response::SharedPtr response);
+    const agnocast::ipc_shared_ptr<agnocast::Service<ResetDiagGraph>::RequestT> & request,
+    agnocast::ipc_shared_ptr<agnocast::Service<ResetDiagGraph>::ResponseT> & response);
   void on_set_initializing(
-    const SetBool::Request::SharedPtr request, const SetBool::Response::SharedPtr response);
+    const agnocast::ipc_shared_ptr<agnocast::Service<SetBool>::RequestT> & request,
+    agnocast::ipc_shared_ptr<agnocast::Service<SetBool>::ResponseT> & response);
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator

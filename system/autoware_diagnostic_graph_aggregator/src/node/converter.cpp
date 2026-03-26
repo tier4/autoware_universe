@@ -19,7 +19,7 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-ConverterNode::ConverterNode(const rclcpp::NodeOptions & options) : Node("converter", options)
+ConverterNode::ConverterNode(const rclcpp::NodeOptions & options) : agnocast::Node("converter", options)
 {
   // Get command mode id from parameter because they are depends on system configuration.
   stop_ = declare_parameter<uint16_t>("stop");
@@ -30,17 +30,17 @@ ConverterNode::ConverterNode(const rclcpp::NodeOptions & options) : Node("conver
   comfortable_stop_ = declare_parameter<uint16_t>("comfortable_stop");
   pull_over_ = declare_parameter<uint16_t>("pull_over");
 
-  sub_command_mode_ = create_subscription<CommandModeAvailability>(
+  sub_command_mode_ = this->create_subscription<CommandModeAvailability>(
     "~/command_mode/availability", 1,
     std::bind(&ConverterNode::on_availability, this, std::placeholders::_1));
   pub_operation_mode_ =
-    create_publisher<OperationModeAvailability>("~/operation_mode/availability", rclcpp::QoS(1));
+    this->create_publisher<OperationModeAvailability>("~/operation_mode/availability", rclcpp::QoS(1));
 }
 
-void ConverterNode::on_availability(const CommandModeAvailability & in)
+void ConverterNode::on_availability(const agnocast::ipc_shared_ptr<const CommandModeAvailability> & in)
 {
   std::unordered_map<uint16_t, bool> availability;
-  for (const auto & item : in.items) {
+  for (const auto & item : in->items) {
     availability[item.mode] = item.available;
   }
 
@@ -49,7 +49,7 @@ void ConverterNode::on_availability(const CommandModeAvailability & in)
     return iter != availability.end() ? iter->second : current;
   };
 
-  out_.stamp = in.stamp;
+  out_.stamp = in->stamp;
   out_.stop = is_available(stop_, out_.stop);
   out_.autonomous = is_available(autonomous_, out_.autonomous);
   out_.local = is_available(local_, out_.local);
@@ -57,7 +57,11 @@ void ConverterNode::on_availability(const CommandModeAvailability & in)
   out_.emergency_stop = is_available(emergency_stop_, out_.emergency_stop);
   out_.comfortable_stop = is_available(comfortable_stop_, out_.comfortable_stop);
   out_.pull_over = is_available(pull_over_, out_.pull_over);
-  pub_operation_mode_->publish(out_);
+  {
+    auto msg = pub_operation_mode_->borrow_loaned_message();
+    *msg = out_;
+    pub_operation_mode_->publish(std::move(msg));
+  }
 }
 
 }  // namespace autoware::diagnostic_graph_aggregator

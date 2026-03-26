@@ -17,6 +17,7 @@
 
 #include "topic_state_monitor.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -63,7 +64,7 @@ private:
 
   // Subscriber
   rclcpp::GenericSubscription::SharedPtr sub_topic_;
-  rclcpp::Subscription<tf2_msgs::msg::TFMessage>::SharedPtr sub_transform_;
+  agnocast::Subscription<tf2_msgs::msg::TFMessage>::SharedPtr sub_transform_;
 
   // Timer
   void onTimer();

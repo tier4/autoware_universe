@@ -118,21 +118,19 @@ PipelineLatencyMonitorNode::PipelineLatencyMonitorNode(const rclcpp::NodeOptions
   }
   latency_offsets_ = declare_parameter<std::vector<double>>("latency_offsets_ms");
 
-  // Create publishers
-  total_latency_pub_ = create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "~/output/total_latency_ms", 10);
+  total_latency_pub_ = agnocast::create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    this, "~/output/total_latency_ms", 10);
 
-  // Create debug publisher
   debug_publisher_ =
     std::make_unique<autoware::universe_utils::DebugPublisher>(this, "pipeline_latency_monitor");
 
-  // Setup diagnostic updater
   diagnostic_updater_.setHardwareID("pipeline_latency_monitor");
-  diagnostic_updater_.add("Total Latency", this, &PipelineLatencyMonitorNode::check_total_latency);
+  diagnostic_updater_.add(
+    "Total Latency", this, &PipelineLatencyMonitorNode::check_total_latency);
 
-  // Create timer
+  const auto period = std::chrono::milliseconds(static_cast<int>(1000.0 / update_rate_));
   timer_ = rclcpp::create_timer(
-    this, this->get_clock(), std::chrono::milliseconds(static_cast<int>(1000.0 / update_rate_)),
+    this, get_clock(), period,
     std::bind(&PipelineLatencyMonitorNode::on_timer, this));
 
   RCLCPP_INFO(get_logger(), "PipelineLatencyMonitorNode initialized");
@@ -144,7 +142,6 @@ void PipelineLatencyMonitorNode::on_timer()
 
   publish_total_latency();
 
-  // Update diagnostics
   diagnostic_updater_.force_update();
 }
 
@@ -223,8 +220,7 @@ void PipelineLatencyMonitorNode::calculate_total_latency()
 
 void PipelineLatencyMonitorNode::publish_total_latency()
 {
-  // Publish total latency
-  auto total_latency_msg = std::make_unique<autoware_internal_debug_msgs::msg::Float64Stamped>();
+  auto total_latency_msg = total_latency_pub_->borrow_loaned_message();
   total_latency_msg->stamp = now();
   total_latency_msg->data = total_latency_ms_;
   total_latency_pub_->publish(std::move(total_latency_msg));

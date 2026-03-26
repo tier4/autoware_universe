@@ -24,7 +24,9 @@ namespace autoware::hazard_status_converter
 Converter::Converter(const rclcpp::NodeOptions & options) : Node("converter", options)
 {
   using std::placeholders::_1;
-  pub_hazard_ = create_publisher<HazardStatusStamped>("~/hazard_status", rclcpp::QoS(1));
+  pub_hazard_ = agnocast::create_publisher<HazardStatusStamped>(this, "~/hazard_status", rclcpp::QoS(1));
+  sub_emergency_holding_ = agnocast::create_subscription<tier4_system_msgs::msg::EmergencyHoldingState>(
+    this, "~/input/emergency_holding", 1);
   sub_graph_.register_create_callback(std::bind(&Converter::on_create, this, _1));
   sub_graph_.register_update_callback(std::bind(&Converter::on_update, this, _1));
   sub_graph_.subscribe(*this, 1);
@@ -105,24 +107,24 @@ void Converter::on_update(DiagGraph::ConstSharedPtr graph)
   }
 
   // Calculate hazard level from unit level and root level.
-  HazardStatusStamped hazard;
+  auto hazard = pub_hazard_->borrow_loaned_message();
   for (const auto & unit : graph->units()) {
     if (unit->path_or_name().empty()) continue;
     const bool is_auto_tree = auto_mode_tree_.count(unit);
     const auto root_level = is_auto_tree ? auto_mode_root_->level() : DiagnosticStatus::OK;
     const auto unit_level = unit->level();
-    if (auto diags = get_hazards_vector(hazard.status, get_hazard_level(unit_level, root_level))) {
+    if (auto diags = get_hazards_vector(hazard->status, get_hazard_level(unit_level, root_level))) {
       diags->push_back(unit->create_diagnostic_status());
     }
   }
-  hazard.stamp = graph->updated_stamp();
-  hazard.status.level = get_system_level(hazard.status);
-  hazard.status.emergency = hazard.status.level == HazardStatus::SINGLE_POINT_FAULT;
+  hazard->stamp = graph->updated_stamp();
+  hazard->status.level = get_system_level(hazard->status);
+  hazard->status.emergency = hazard->status.level == HazardStatus::SINGLE_POINT_FAULT;
 
-  const auto is_emergency_holding = sub_emergency_holding_.take_data();
-  hazard.status.emergency_holding =
-    is_emergency_holding == nullptr ? false : is_emergency_holding->is_holding;
-  pub_hazard_->publish(hazard);
+  const auto is_emergency_holding = sub_emergency_holding_->take_data();
+  hazard->status.emergency_holding =
+    !is_emergency_holding ? false : is_emergency_holding->is_holding;
+  pub_hazard_->publish(std::move(hazard));
 }
 
 }  // namespace autoware::hazard_status_converter

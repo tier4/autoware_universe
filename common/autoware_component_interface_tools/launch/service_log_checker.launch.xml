@@ -1,3 +1,5 @@
 <launch>
-  <node pkg="autoware_component_interface_tools" exec="service_log_checker_node"/>
+  <node pkg="autoware_component_interface_tools" exec="service_log_checker_node_agnocast">
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+  </node>
 </launch>

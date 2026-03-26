@@ -4,6 +4,9 @@ project(autoware_diagnostic_graph_aggregator)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 ament_auto_add_library(${PROJECT_NAME} SHARED
   "src/common/config/entity.cpp"
   "src/common/config/errors.cpp"
@@ -33,6 +36,8 @@ ament_auto_add_library(converter SHARED
 )
 target_include_directories(${PROJECT_NAME} PRIVATE "src/common")
 target_include_directories(aggregator PRIVATE "src/common")
+ament_target_dependencies(aggregator agnocastlib)
+ament_target_dependencies(converter agnocastlib)
 
 ament_auto_add_executable(tree "src/tool/tree.cpp")
 target_include_directories(tree PRIVATE "src/common")
@@ -50,6 +55,20 @@ rclcpp_components_register_node(aggregator
 rclcpp_components_register_node(converter
   PLUGIN "autoware::diagnostic_graph_aggregator::ConverterNode"
   EXECUTABLE "converter_node"
+)
+
+agnocast_components_register_node(aggregator
+  PLUGIN "autoware::diagnostic_graph_aggregator::AggregatorNode"
+  EXECUTABLE "agnocast_aggregator_node"
+  EXECUTOR SingleThreadedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
+)
+
+agnocast_components_register_node(converter
+  PLUGIN "autoware::diagnostic_graph_aggregator::ConverterNode"
+  EXECUTABLE "agnocast_converter_node"
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 if(BUILD_TESTING)

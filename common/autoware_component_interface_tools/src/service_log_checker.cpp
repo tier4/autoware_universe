@@ -25,16 +25,31 @@
 namespace autoware::component_interface_tools
 {
 ServiceLogChecker::ServiceLogChecker(const rclcpp::NodeOptions & options)
-: Node("service_log_checker", options), diagnostics_(this)
+: agnocast::Node("service_log_checker", options)
 {
   sub_ = create_subscription<ServiceLog>(
     "/service_log", 50, std::bind(&ServiceLogChecker::on_service_log, this, std::placeholders::_1));
 
-  diagnostics_.setHardwareID(get_name());
-  diagnostics_.add("response_status", this, &ServiceLogChecker::update_diagnostics);
+  pub_diagnostics_ = this->create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
+    "/diagnostics", rclcpp::QoS{1});
+
+  diagnostics_timer_ = this->create_timer(
+    std::chrono::milliseconds(1000), std::bind(&ServiceLogChecker::publish_diagnostics, this));
 }
 
-void ServiceLogChecker::on_service_log(const ServiceLog::ConstSharedPtr msg)
+void ServiceLogChecker::publish_diagnostics()
+{
+  diagnostic_updater::DiagnosticStatusWrapper stat;
+  stat.name = "service_log_checker: response_status";
+  stat.hardware_id = "service_log_checker";
+  update_diagnostics(stat);
+  auto msg = pub_diagnostics_->borrow_loaned_message();
+  msg->header.stamp = this->now();
+  msg->status.push_back(stat);
+  pub_diagnostics_->publish(std::move(msg));
+}
+
+void ServiceLogChecker::on_service_log(const agnocast::ipc_shared_ptr<const ServiceLog> & msg)
 {
   try {
     // Ignore service request.

@@ -15,8 +15,8 @@
 #ifndef CONVERTER_HPP_
 #define CONVERTER_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/diagnostic_graph_utils/subscription.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_system_msgs/msg/hazard_status_stamped.hpp>
@@ -40,9 +40,9 @@ private:
   void on_create(DiagGraph::ConstSharedPtr graph);
   void on_update(DiagGraph::ConstSharedPtr graph);
   autoware::diagnostic_graph_utils::DiagGraphSubscription sub_graph_;
-  rclcpp::Publisher<HazardStatusStamped>::SharedPtr pub_hazard_;
-  autoware_utils::InterProcessPollingSubscriber<tier4_system_msgs::msg::EmergencyHoldingState>
-    sub_emergency_holding_{this, "~/input/emergency_holding"};
+  agnocast::Publisher<HazardStatusStamped>::SharedPtr pub_hazard_;
+  agnocast::PollingSubscriber<tier4_system_msgs::msg::EmergencyHoldingState>::SharedPtr
+    sub_emergency_holding_;
 
   DiagNode * auto_mode_root_;
   std::unordered_set<DiagUnit *> auto_mode_tree_;

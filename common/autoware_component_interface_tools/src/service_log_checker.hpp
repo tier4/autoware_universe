@@ -15,9 +15,11 @@
 #ifndef SERVICE_LOG_CHECKER_HPP_
 #define SERVICE_LOG_CHECKER_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <tier4_system_msgs/msg/service_log.hpp>
 
 #include <string>
@@ -25,19 +27,21 @@
 
 namespace autoware::component_interface_tools
 {
-class ServiceLogChecker : public rclcpp::Node
+class ServiceLogChecker : public agnocast::Node
 {
 public:
   explicit ServiceLogChecker(const rclcpp::NodeOptions & options);
 
 private:
   using ServiceLog = tier4_system_msgs::msg::ServiceLog;
-  rclcpp::Subscription<ServiceLog>::SharedPtr sub_;
-  diagnostic_updater::Updater diagnostics_;
-  void on_service_log(const ServiceLog::ConstSharedPtr msg);
+  agnocast::Subscription<ServiceLog>::SharedPtr sub_;
+  agnocast::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr pub_diagnostics_;
+  agnocast::TimerBase::SharedPtr diagnostics_timer_;
+  void on_service_log(const agnocast::ipc_shared_ptr<const ServiceLog> & msg);
   void set_success(const ServiceLog & msg);
   void set_error(const ServiceLog & msg, const std::string & log);
   void update_diagnostics(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  void publish_diagnostics();
   std::unordered_map<std::string, std::string> errors_;
 };
 }  // namespace autoware::component_interface_tools

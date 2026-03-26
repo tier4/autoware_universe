@@ -57,7 +57,7 @@ const std::unordered_map<Module, std::string> module_names = {
 
 // clang-format on
 
-StateMonitor::StateMonitor(const rclcpp::NodeOptions & options) : Node("state", options)
+StateMonitor::StateMonitor(const rclcpp::NodeOptions & options) : agnocast::Node("state", options)
 {
   for (const auto & type : types) {
     for (const auto & module : modules) {
@@ -86,16 +86,16 @@ StateMonitor::StateMonitor(const rclcpp::NodeOptions & options) : Node("state", 
     "/diagnostics", 100, std::bind(&StateMonitor::on_diag, this, std::placeholders::_1));
 
   const auto rate = rclcpp::Rate(10.0);
-  timer_ = rclcpp::create_timer(this, get_clock(), rate.period(), [this] { on_timer(); });
+  timer_ = this->create_timer(rate.period(), [this] { on_timer(); });
 }
 
 void StateMonitor::update_state(const StateType & type, const Module & module, bool state)
 {
   if (states_[type].count(module) == 0 || states_[type][module] != state) {
-    ModeChangeAvailable msg;
-    msg.stamp = now();
-    msg.available = state;
-    pubs_[type][module]->publish(msg);
+    auto msg = pubs_[type][module]->borrow_loaned_message();
+    msg->stamp = now();
+    msg->available = state;
+    pubs_[type][module]->publish(std::move(msg));
   }
   states_[type][module] = state;
 }
@@ -118,7 +118,7 @@ void StateMonitor::on_timer()
   }
 }
 
-void StateMonitor::on_diag(const DiagnosticArray::ConstSharedPtr msg)
+void StateMonitor::on_diag(const agnocast::ipc_shared_ptr<const DiagnosticArray> & msg)
 {
   for (const auto & status : msg->status) {
     if (status.hardware_id == "topic_state_monitor") {

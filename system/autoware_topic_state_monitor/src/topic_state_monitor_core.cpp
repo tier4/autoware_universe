@@ -78,8 +78,9 @@ TopicStateMonitorNode::TopicStateMonitorNode(const rclcpp::NodeOptions & node_op
   }
 
   if (node_param_.is_transform) {
-    sub_transform_ = this->create_subscription<tf2_msgs::msg::TFMessage>(
-      node_param_.topic, qos, [this](tf2_msgs::msg::TFMessage::ConstSharedPtr msg) {
+    sub_transform_ = agnocast::create_subscription<tf2_msgs::msg::TFMessage>(
+      this, node_param_.topic, qos,
+      [this](const agnocast::ipc_shared_ptr<const tf2_msgs::msg::TFMessage> & msg) {
         for (const auto & transform : msg->transforms) {
           if (
             transform.header.frame_id == node_param_.frame_id &&

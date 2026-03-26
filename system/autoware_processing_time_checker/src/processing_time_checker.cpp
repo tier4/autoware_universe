@@ -41,7 +41,7 @@ std::string get_last_name(const std::string & str)
 }  // namespace
 
 ProcessingTimeChecker::ProcessingTimeChecker(const rclcpp::NodeOptions & node_options)
-: Node("processing_time_checker", node_options)
+: agnocast::Node("processing_time_checker", node_options)
 {
   output_metrics_ = declare_parameter<bool>("output_metrics");
   const double update_rate = declare_parameter<double>("update_rate");
@@ -83,21 +83,20 @@ ProcessingTimeChecker::ProcessingTimeChecker(const rclcpp::NodeOptions & node_op
 
     // clang-format off
     processing_time_subscribers_.push_back(
-      create_subscription<Float64Stamped>(
+      this->create_subscription<Float64Stamped>(
         processing_time_topic_name, 1,
-        [this, &module_name]([[maybe_unused]] const Float64Stamped & msg) {
-          processing_time_map_.insert_or_assign(module_name, msg.data);
-          processing_time_accumulator_map_.at(module_name).add(msg.data);
-          processing_time_tdigest_map_.at(module_name).insert(msg.data);
+        [this, &module_name](const agnocast::ipc_shared_ptr<const Float64Stamped> & msg) {
+          processing_time_map_.insert_or_assign(module_name, msg->data);
+          processing_time_accumulator_map_.at(module_name).add(msg->data);
+          processing_time_tdigest_map_.at(module_name).insert(msg->data);
         }));
     // clang-format on
   }
 
-  metrics_pub_ = create_publisher<MetricArrayMsg>("~/metrics", 1);
+  metrics_pub_ = this->create_publisher<MetricArrayMsg>("~/metrics", 1);
 
   const auto period_ns = rclcpp::Rate(update_rate).period();
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), period_ns, std::bind(&ProcessingTimeChecker::on_timer, this));
+  timer_ = this->create_timer(period_ns, std::bind(&ProcessingTimeChecker::on_timer, this));
 }
 
 ProcessingTimeChecker::~ProcessingTimeChecker()
@@ -160,23 +159,20 @@ ProcessingTimeChecker::~ProcessingTimeChecker()
 
 void ProcessingTimeChecker::on_timer()
 {
-  // create MetricArrayMsg
-  MetricArrayMsg metrics_msg;
+  auto metrics_msg = metrics_pub_->borrow_loaned_message();
   for (const auto & processing_time_iterator : processing_time_map_) {
     const auto processing_time_topic_name = processing_time_iterator.first;
     const double processing_time = processing_time_iterator.second;
 
-    // generate MetricMsg
     MetricMsg metric;
     metric.name = "processing_time/" + processing_time_topic_name;
     metric.value = std::to_string(processing_time);
     metric.unit = "millisecond";
-    metrics_msg.metric_array.push_back(metric);
+    metrics_msg->metric_array.push_back(metric);
   }
 
-  // publish
-  metrics_msg.stamp = now();
-  metrics_pub_->publish(metrics_msg);
+  metrics_msg->stamp = now();
+  metrics_pub_->publish(std::move(metrics_msg));
 }
 }  // namespace autoware::processing_time_checker
 
