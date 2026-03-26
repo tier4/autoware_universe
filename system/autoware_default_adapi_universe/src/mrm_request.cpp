@@ -18,30 +18,13 @@ namespace autoware::default_adapi
 {
 
 MrmRequestNode::MrmRequestNode(const rclcpp::NodeOptions & options)
-: Node("mrm_request", options), diagnostics_(this)
+: Node("mrm_request", options)
 {
-  diagnostics_.setHardwareID("none");
-  diagnostics_.add("delegate", this, &MrmRequestNode::diagnose_delegate);
-
   const auto adaptor = autoware::component_interface_utils::NodeAdaptor(this);
   adaptor.init_pub(pub_mrm_request_list_);
   adaptor.init_srv(srv_send_mrm_request_, this, &MrmRequestNode::on_send_mrm_request);
 
   publish_mrm_request_list();
-}
-
-void MrmRequestNode::diagnose_delegate(diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  using diagnostic_msgs::msg::DiagnosticStatus;
-  bool requested = false;
-
-  for (const auto & [sender, request] : mrm_requests_) {
-    if (request.strategy == MrmRequestItem::DELEGATE) {
-      requested = true;
-      stat.add(sender, "");
-    }
-  }
-  stat.summary(requested ? DiagnosticStatus::ERROR : DiagnosticStatus::OK, "");
 }
 
 void MrmRequestNode::publish_mrm_request_list()
@@ -72,7 +55,6 @@ void MrmRequestNode::on_send_mrm_request(
   }
 
   res->status.success = true;
-  diagnostics_.force_update();
   publish_mrm_request_list();
 }
 

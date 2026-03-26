@@ -65,15 +65,17 @@ void concat(std::vector<T> & v1, const std::vector<T> & v2)
 }
 
 template <class T>
-std::vector<typename rclcpp::Subscription<T>::SharedPtr> init_factors(
-  rclcpp::Node * node, std::vector<typename T::ConstSharedPtr> & factors,
+std::vector<typename agnocast::Subscription<T>::SharedPtr> init_factors(
+  agnocast::Node * node, std::vector<typename T::ConstSharedPtr> & factors,
   const std::vector<std::string> & topics)
 {
   const auto callback = [&factors](const int index) {
-    return [&factors, index](const typename T::ConstSharedPtr msg) { factors[index] = msg; };
+    return [&factors, index](const agnocast::ipc_shared_ptr<const T> & msg) {
+      factors[index] = std::make_shared<const T>(*msg);
+    };
   };
 
-  std::vector<typename rclcpp::Subscription<T>::SharedPtr> subs;
+  std::vector<typename agnocast::Subscription<T>::SharedPtr> subs;
   for (size_t index = 0; index < topics.size(); ++index) {
     subs.push_back(node->create_subscription<T>(topics[index], rclcpp::QoS(1), callback(index)));
   }
@@ -248,7 +250,7 @@ PlanningNode::PlanningNode(const rclcpp::NodeOptions & options) : Node("planning
   adaptor.init_sub(sub_trajectory_, this, &PlanningNode::on_trajectory);
 
   const auto rate = rclcpp::Rate(5);
-  timer_ = rclcpp::create_timer(this, get_clock(), rate.period(), [this]() { on_timer(); });
+  timer_ = this->create_timer(rate.period(), [this]() { on_timer(); });
 }
 
 void PlanningNode::on_trajectory(const Trajectory::ConstSharedPtr msg)

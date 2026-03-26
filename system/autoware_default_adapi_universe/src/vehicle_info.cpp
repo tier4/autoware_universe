@@ -41,7 +41,8 @@ VehicleInfoNode::VehicleInfoNode(const rclcpp::NodeOptions & options)
     res->dimensions = dimensions_;
   };
 
-  const auto vehicle = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
+  const auto vehicle =
+    autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(*this).getVehicleInfo();
   dimensions_.wheel_radius = vehicle.wheel_radius_m;
   dimensions_.wheel_width = vehicle.wheel_width_m;
   dimensions_.wheel_base = vehicle.wheel_base_m;

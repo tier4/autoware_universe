@@ -15,6 +15,7 @@
 #ifndef COMPATIBILITY__AUTOWARE_STATE_HPP_
 #define COMPATIBILITY__AUTOWARE_STATE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/adapi_specs/localization.hpp>
 #include <autoware/adapi_specs/operation_mode.hpp>
 #include <autoware/adapi_specs/routing.hpp>
@@ -31,14 +32,14 @@
 namespace autoware::default_adapi
 {
 
-class AutowareStateNode : public rclcpp::Node
+class AutowareStateNode : public agnocast::Node
 {
 public:
   explicit AutowareStateNode(const rclcpp::NodeOptions & options);
 
 private:
   using ModeChangeAvailable = tier4_system_msgs::msg::ModeChangeAvailable;
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
   // emergency
   Sub<autoware::adapi_specs::localization::InitializationState> sub_localization_;
   Sub<autoware::adapi_specs::routing::RouteState> sub_routing_;
@@ -50,9 +51,9 @@ private:
   using OperationModeState = autoware::adapi_specs::operation_mode::OperationModeState::Message;
   using Trigger = std_srvs::srv::Trigger;
   std::vector<bool> component_states_;
-  std::vector<rclcpp::Subscription<ModeChangeAvailable>::SharedPtr> sub_component_states_;
-  rclcpp::Publisher<AutowareState>::SharedPtr pub_autoware_state_;
-  rclcpp::Service<Trigger>::SharedPtr srv_autoware_shutdown_;
+  std::vector<agnocast::Subscription<ModeChangeAvailable>::SharedPtr> sub_component_states_;
+  agnocast::Publisher<AutowareState>::SharedPtr pub_autoware_state_;
+  agnocast::Service<Trigger>::SharedPtr srv_autoware_shutdown_;
 
   enum class LaunchState { Initializing, Running, Finalizing };
   LaunchState launch_state_;
@@ -65,7 +66,9 @@ private:
   void on_localization(const LocalizationState::ConstSharedPtr msg);
   void on_routing(const RoutingState::ConstSharedPtr msg);
   void on_operation_mode(const OperationModeState::ConstSharedPtr msg);
-  void on_shutdown(const Trigger::Request::SharedPtr, const Trigger::Response::SharedPtr);
+  void on_shutdown(
+    const agnocast::ipc_shared_ptr<typename agnocast::Service<Trigger>::RequestT> &,
+    agnocast::ipc_shared_ptr<typename agnocast::Service<Trigger>::ResponseT> &);
 };
 
 }  // namespace autoware::default_adapi

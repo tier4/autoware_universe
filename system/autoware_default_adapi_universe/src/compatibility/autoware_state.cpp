@@ -30,14 +30,14 @@ AutowareStateNode::AutowareStateNode(const rclcpp::NodeOptions & options)
   for (size_t i = 0; i < module_names.size(); ++i) {
     const auto name = "/system/component_state_monitor/component/launch/" + module_names[i];
     const auto qos = rclcpp::QoS(1).transient_local();
-    const auto callback = [this, i](const ModeChangeAvailable::ConstSharedPtr msg) {
+    const auto callback = [this, i](const agnocast::ipc_shared_ptr<const ModeChangeAvailable> & msg) {
       component_states_[i] = msg->available;
     };
-    sub_component_states_.push_back(create_subscription<ModeChangeAvailable>(name, qos, callback));
+    sub_component_states_.push_back(this->create_subscription<ModeChangeAvailable>(name, qos, callback));
   }
 
-  pub_autoware_state_ = create_publisher<AutowareState>("/autoware/state", 1);
-  srv_autoware_shutdown_ = create_service<std_srvs::srv::Trigger>(
+  pub_autoware_state_ = this->create_publisher<AutowareState>("/autoware/state", 1);
+  srv_autoware_shutdown_ = this->create_service<std_srvs::srv::Trigger>(
     "/autoware/shutdown",
     std::bind(&AutowareStateNode::on_shutdown, this, std::placeholders::_1, std::placeholders::_2));
 
@@ -47,7 +47,7 @@ AutowareStateNode::AutowareStateNode(const rclcpp::NodeOptions & options)
   adaptor.init_sub(sub_operation_mode_, this, &AutowareStateNode::on_operation_mode);
 
   const auto rate = rclcpp::Rate(declare_parameter<double>("update_rate"));
-  timer_ = rclcpp::create_timer(this, get_clock(), rate.period(), [this]() { on_timer(); });
+  timer_ = this->create_timer(rate.period(), [this]() { on_timer(); });
 
   component_states_.resize(module_names.size());
   launch_state_ = LaunchState::Initializing;
@@ -71,7 +71,8 @@ void AutowareStateNode::on_operation_mode(const OperationModeState::ConstSharedP
 }
 
 void AutowareStateNode::on_shutdown(
-  const Trigger::Request::SharedPtr, const Trigger::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<typename agnocast::Service<Trigger>::RequestT> &,
+  agnocast::ipc_shared_ptr<typename agnocast::Service<Trigger>::ResponseT> & res)
 {
   launch_state_ = LaunchState::Finalizing;
   res->success = true;
@@ -158,10 +159,10 @@ void AutowareStateNode::on_timer()
     RCLCPP_INFO_STREAM(get_logger(), "AutowareState: " << prev_name << " => " << curr_name);
   }
 
-  AutowareState msg;
-  msg.stamp = now();
-  msg.state = state;
-  pub_autoware_state_->publish(msg);
+  auto msg = pub_autoware_state_->borrow_loaned_message();
+  msg->stamp = now();
+  msg->state = state;
+  pub_autoware_state_->publish(std::move(msg));
 }
 
 }  // namespace autoware::default_adapi

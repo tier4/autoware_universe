@@ -15,6 +15,7 @@
 #ifndef VEHICLE_INFO_HPP_
 #define VEHICLE_INFO_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/adapi_specs/vehicle.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -24,7 +25,7 @@
 namespace autoware::default_adapi
 {
 
-class VehicleInfoNode : public rclcpp::Node
+class VehicleInfoNode : public agnocast::Node
 {
 public:
   explicit VehicleInfoNode(const rclcpp::NodeOptions & options);

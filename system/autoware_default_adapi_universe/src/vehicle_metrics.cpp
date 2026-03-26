@@ -25,10 +25,13 @@ VehicleMetricsNode::VehicleMetricsNode(const rclcpp::NodeOptions & options)
   const auto adaptor = autoware::component_interface_utils::NodeAdaptor(this);
   adaptor.init_pub(pub_metrics_);
   adaptor.init_sub(
-    sub_energy_, [this](const EnergyStatus::Message::ConstSharedPtr msg) { energy_ = msg; });
+    sub_energy_,
+    [this](const agnocast::ipc_shared_ptr<const EnergyStatus::Message> & msg) {
+      energy_ = std::make_shared<const EnergyStatus::Message>(*msg);
+    });
 
   const auto period = rclcpp::Rate(declare_parameter<double>("update_rate")).period();
-  timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
+  timer_ = this->create_timer(period, [this]() { on_timer(); });
 }
 
 void VehicleMetricsNode::on_timer()

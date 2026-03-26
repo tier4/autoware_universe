@@ -15,6 +15,7 @@
 #ifndef DIAGNOSTICS_HPP_
 #define DIAGNOSTICS_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/diag_graph_status.hpp>
@@ -28,7 +29,7 @@
 namespace autoware::default_adapi
 {
 
-class DiagnosticsNode : public rclcpp::Node
+class DiagnosticsNode : public agnocast::Node
 {
 public:
   explicit DiagnosticsNode(const rclcpp::NodeOptions & options);
@@ -53,19 +54,20 @@ private:
   using ExternalReset = autoware_adapi_v1_msgs::srv::ResetDiagGraph;
   using ExternalMrmState = autoware_adapi_v1_msgs::msg::MrmState;
 
-  void on_struct(const InternalGraphStruct & internal);
-  void on_status(const InternalGraphStatus & internal);
+  void on_struct(const agnocast::ipc_shared_ptr<const InternalGraphStruct> & internal);
+  void on_status(const agnocast::ipc_shared_ptr<const InternalGraphStatus> & internal);
   void on_reset(
-    const ExternalReset::Request::SharedPtr req, const ExternalReset::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<typename agnocast::Service<ExternalReset>::RequestT> & req,
+    agnocast::ipc_shared_ptr<typename agnocast::Service<ExternalReset>::ResponseT> & res);
 
   rclcpp::CallbackGroup::SharedPtr group_cli_;
-  rclcpp::Publisher<ExternalGraphStruct>::SharedPtr pub_struct_;
-  rclcpp::Publisher<ExternalGraphStatus>::SharedPtr pub_status_;
-  rclcpp::Subscription<InternalGraphStruct>::SharedPtr sub_struct_;
-  rclcpp::Subscription<InternalGraphStatus>::SharedPtr sub_status_;
-  rclcpp::Service<ExternalReset>::SharedPtr srv_reset_;
-  rclcpp::Client<InternalReset>::SharedPtr cli_reset_;
-  rclcpp::Subscription<ExternalMrmState>::SharedPtr sub_mrm_state_;
+  agnocast::Publisher<ExternalGraphStruct>::SharedPtr pub_struct_;
+  agnocast::Publisher<ExternalGraphStatus>::SharedPtr pub_status_;
+  agnocast::Subscription<InternalGraphStruct>::SharedPtr sub_struct_;
+  agnocast::Subscription<InternalGraphStatus>::SharedPtr sub_status_;
+  agnocast::Service<ExternalReset>::SharedPtr srv_reset_;
+  agnocast::Client<InternalReset>::SharedPtr cli_reset_;
+  agnocast::Subscription<ExternalMrmState>::SharedPtr sub_mrm_state_;
 
   ExternalMrmState mrm_state_;
 };

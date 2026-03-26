@@ -80,7 +80,7 @@ VehicleStatusNode::VehicleStatusNode(const rclcpp::NodeOptions & options)
   adaptor.init_sub(sub_energy_level_, this, &VehicleStatusNode::energy_status);
 
   const auto rate = rclcpp::Rate(10);
-  timer_ = rclcpp::create_timer(this, get_clock(), rate.period(), [this]() { on_timer(); });
+  timer_ = this->create_timer(rate.period(), [this]() { on_timer(); });
 }
 
 uint8_t VehicleStatusNode::mapping(

@@ -13,6 +13,7 @@
 
   <build_depend>tier4_system_msgs</build_depend>
 
+  <depend>agnocastlib</depend>
   <depend>autoware_adapi_v1_msgs</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>

@@ -25,7 +25,9 @@ AutomaticPoseInitializer::AutomaticPoseInitializer(const rclcpp::NodeOptions & o
   const auto adaptor = autoware::component_interface_utils::NodeAdaptor(this);
   group_cli_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   adaptor.init_cli(cli_initialize_, group_cli_);
-  adaptor.init_sub(sub_state_, [this](const State::Message::ConstSharedPtr msg) { state_ = *msg; });
+  adaptor.init_sub(
+    sub_state_,
+    [this](const agnocast::ipc_shared_ptr<const State::Message> & msg) { state_ = *msg; });
 
   const auto period = rclcpp::Rate(1.0).period();
   timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
@@ -40,7 +42,7 @@ void AutomaticPoseInitializer::on_timer()
   if (state_.state == State::Message::UNINITIALIZED) {
     try {
       const auto req = std::make_shared<Initialize::Service::Request>();
-      cli_initialize_->call(req);
+      cli_initialize_->call(req, 10.0);
     } catch (const autoware::component_interface_utils::ServiceException & error) {
     }
   }

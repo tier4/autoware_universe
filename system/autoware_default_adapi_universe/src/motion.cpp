@@ -36,7 +36,7 @@ MotionNode::MotionNode(const rclcpp::NodeOptions & options)
   adaptor.init_sub(sub_is_start_requested_, this, &MotionNode::on_is_start_requested);
 
   rclcpp::Rate rate(10);
-  timer_ = rclcpp::create_timer(this, get_clock(), rate.period(), [this]() { on_timer(); });
+  timer_ = this->create_timer(rate.period(), [this]() { on_timer(); });
   state_ = State::Unknown;
 }
 

@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__COMPONENT_INTERFACE_UTILS__RCLCPP__SERVICE_SERVER_HPP_
 #define AUTOWARE__COMPONENT_INTERFACE_UTILS__RCLCPP__SERVICE_SERVER_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/component_interface_utils/rclcpp/exceptions.hpp>
 #include <autoware/component_interface_utils/rclcpp/interface.hpp>
 #include <rclcpp/node.hpp>
@@ -26,7 +27,7 @@
 namespace autoware::component_interface_utils
 {
 
-/// The wrapper class of rclcpp::Service for logging.
+/// The wrapper class of agnocast::Service for logging.
 template <class SpecT>
 class Service
 {
@@ -48,7 +49,9 @@ private:
 public:
   RCLCPP_SMART_PTR_DEFINITIONS(Service)
   using SpecType = SpecT;
-  using WrapType = rclcpp::Service<typename SpecT::Service>;
+  using WrapType = agnocast::Service<typename SpecT::Service>;
+  using RequestT = typename WrapType::RequestT;
+  using ResponseT = typename WrapType::ResponseT;
   using ServiceLog = tier4_system_msgs::msg::ServiceLog;
 
   /// Constructor.
@@ -58,17 +61,23 @@ public:
     rclcpp::CallbackGroup::SharedPtr group)
   : interface_(interface)
   {
-    service_ = interface_->node->create_service<typename SpecT::Service>(
-      SpecT::name, wrap(callback), rmw_qos_profile_services_default, group);
+    auto wrapped = wrap(callback);
+    std::visit(
+      [this, &wrapped, &group](auto * n) {
+        service_ = std::make_shared<agnocast::Service<typename SpecT::Service>>(
+          n, SpecT::name, std::move(wrapped), rclcpp::ServicesQoS(), group);
+      },
+      interface_->node_variant);
   }
 
   /// Create a service callback with logging added.
   template <class CallbackT>
-  typename WrapType::CallbackType wrap(CallbackT && callback)
+  std::function<void(const agnocast::ipc_shared_ptr<RequestT> &, agnocast::ipc_shared_ptr<ResponseT> &)>
+  wrap(CallbackT && callback)
   {
     auto wrapped = [this, callback](
-                     typename SpecT::Service::Request::SharedPtr request,
-                     typename SpecT::Service::Response::SharedPtr response) {
+                     const agnocast::ipc_shared_ptr<RequestT> & request,
+                     agnocast::ipc_shared_ptr<ResponseT> & response) {
 #ifdef ROS_DISTRO_GALACTIC
       using rosidl_generator_traits::to_yaml;
 #endif

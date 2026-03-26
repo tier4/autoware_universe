@@ -15,7 +15,7 @@
 #ifndef MANUAL_CONTROL_HPP_
 #define MANUAL_CONTROL_HPP_
 
-#include <autoware_utils_rclcpp/polling_subscriber.hpp>
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/acceleration_command.hpp>
@@ -40,27 +40,30 @@
 namespace autoware::default_adapi
 {
 
-class ManualControlNode : public rclcpp::Node
+class ManualControlNode : public agnocast::Node
 {
 public:
   explicit ManualControlNode(const rclcpp::NodeOptions & options);
 
 private:
-  template <class T>
-  using PollingSubscription = autoware_utils_rclcpp::InterProcessPollingSubscriber<T>;
   using OperationModeState = autoware_adapi_v1_msgs::msg::OperationModeState;
-  PollingSubscription<OperationModeState>::SharedPtr sub_operation_mode_;
+  agnocast::Subscription<OperationModeState>::SharedPtr sub_operation_mode_;
+  std::shared_ptr<const OperationModeState> latest_operation_mode_;
 
   using ManualControlModeStatus = autoware_adapi_v1_msgs::msg::ManualControlModeStatus;
   using ManualControlMode = autoware_adapi_v1_msgs::msg::ManualControlMode;
   using ListMode = autoware_adapi_v1_msgs::srv::ListManualControlMode;
   using SelectMode = autoware_adapi_v1_msgs::srv::SelectManualControlMode;
   void update_mode_status(uint8_t mode);
-  void on_list_mode(ListMode::Request::SharedPtr req, ListMode::Response::SharedPtr res);
-  void on_select_mode(SelectMode::Request::SharedPtr req, SelectMode::Response::SharedPtr res);
-  rclcpp::Service<ListMode>::SharedPtr srv_list_mode_;
-  rclcpp::Service<SelectMode>::SharedPtr srv_select_mode_;
-  rclcpp::Publisher<ManualControlModeStatus>::SharedPtr pub_mode_status_;
+  void on_list_mode(
+    const agnocast::ipc_shared_ptr<typename agnocast::Service<ListMode>::RequestT> & req,
+    agnocast::ipc_shared_ptr<typename agnocast::Service<ListMode>::ResponseT> & res);
+  void on_select_mode(
+    const agnocast::ipc_shared_ptr<typename agnocast::Service<SelectMode>::RequestT> & req,
+    agnocast::ipc_shared_ptr<typename agnocast::Service<SelectMode>::ResponseT> & res);
+  agnocast::Service<ListMode>::SharedPtr srv_list_mode_;
+  agnocast::Service<SelectMode>::SharedPtr srv_select_mode_;
+  agnocast::Publisher<ManualControlModeStatus>::SharedPtr pub_mode_status_;
 
   using PedalsCommand = autoware_adapi_v1_msgs::msg::PedalsCommand;
   using AccelerationCommand = autoware_adapi_v1_msgs::msg::AccelerationCommand;
@@ -75,24 +78,24 @@ private:
   void enable_pedals_commands();
   void enable_acceleration_commands();
   void enable_velocity_commands();
-  rclcpp::Subscription<OperatorHeartbeat>::SharedPtr sub_heartbeat_;
-  rclcpp::Subscription<PedalsCommand>::SharedPtr sub_pedals_;
-  rclcpp::Subscription<AccelerationCommand>::SharedPtr sub_acceleration_;
-  rclcpp::Subscription<VelocityCommand>::SharedPtr sub_velocity_;
-  rclcpp::Subscription<SteeringCommand>::SharedPtr sub_steering_;
-  rclcpp::Subscription<GearCommand>::SharedPtr sub_gear_;
-  rclcpp::Subscription<TurnIndicatorsCommand>::SharedPtr sub_turn_indicators_;
-  rclcpp::Subscription<HazardLightsCommand>::SharedPtr sub_hazard_lights_;
+  agnocast::Subscription<OperatorHeartbeat>::SharedPtr sub_heartbeat_;
+  agnocast::Subscription<PedalsCommand>::SharedPtr sub_pedals_;
+  agnocast::Subscription<AccelerationCommand>::SharedPtr sub_acceleration_;
+  agnocast::Subscription<VelocityCommand>::SharedPtr sub_velocity_;
+  agnocast::Subscription<SteeringCommand>::SharedPtr sub_steering_;
+  agnocast::Subscription<GearCommand>::SharedPtr sub_gear_;
+  agnocast::Subscription<TurnIndicatorsCommand>::SharedPtr sub_turn_indicators_;
+  agnocast::Subscription<HazardLightsCommand>::SharedPtr sub_hazard_lights_;
 
   using InternalGear = autoware_vehicle_msgs::msg::GearCommand;
   using InternalTurnIndicators = autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
   using InternalHazardLights = autoware_vehicle_msgs::msg::HazardLightsCommand;
-  rclcpp::Publisher<OperatorHeartbeat>::SharedPtr pub_heartbeat_;
-  rclcpp::Publisher<PedalsCommand>::SharedPtr pub_pedals_;
-  rclcpp::Publisher<SteeringCommand>::SharedPtr pub_steering_;
-  rclcpp::Publisher<InternalGear>::SharedPtr pub_gear_;
-  rclcpp::Publisher<InternalTurnIndicators>::SharedPtr pub_turn_indicators_;
-  rclcpp::Publisher<InternalHazardLights>::SharedPtr pub_hazard_lights_;
+  agnocast::Publisher<OperatorHeartbeat>::SharedPtr pub_heartbeat_;
+  agnocast::Publisher<PedalsCommand>::SharedPtr pub_pedals_;
+  agnocast::Publisher<SteeringCommand>::SharedPtr pub_steering_;
+  agnocast::Publisher<InternalGear>::SharedPtr pub_gear_;
+  agnocast::Publisher<InternalTurnIndicators>::SharedPtr pub_turn_indicators_;
+  agnocast::Publisher<InternalHazardLights>::SharedPtr pub_hazard_lights_;
 
   uint8_t target_operation_mode_;
   std::string ns_;

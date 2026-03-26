@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__COMPONENT_INTERFACE_UTILS__RCLCPP__INTERFACE_HPP_
 #define AUTOWARE__COMPONENT_INTERFACE_UTILS__RCLCPP__INTERFACE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <tier4_system_msgs/msg/service_log.hpp>
@@ -22,6 +23,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <variant>
 
 namespace autoware::component_interface_utils
 {
@@ -32,9 +34,23 @@ struct NodeInterface
   using ServiceLog = tier4_system_msgs::msg::ServiceLog;
 
   explicit NodeInterface(rclcpp::Node * node)
+  : node_variant(node), rclcpp_logger(node->get_logger())
   {
     this->node = node;
-    this->logger = node->create_publisher<ServiceLog>("/service_log", 10);
+    this->logger = agnocast::create_publisher<ServiceLog>(node, "/service_log", rclcpp::QoS(10));
+
+    node_name = node->get_namespace();
+    if (node_name.empty() || node_name.back() != '/') {
+      node_name += "/";
+    }
+    node_name += node->get_name();
+  }
+
+  explicit NodeInterface(agnocast::Node * node)
+  : node_variant(node), rclcpp_logger(node->get_logger())
+  {
+    this->node = nullptr;
+    this->logger = agnocast::create_publisher<ServiceLog>(node, "/service_log", rclcpp::QoS(10));
 
     node_name = node->get_namespace();
     if (node_name.empty() || node_name.back() != '/') {
@@ -52,19 +68,27 @@ struct NodeInterface
        {ServiceLog::CLIENT_RESPONSE, "client exit"},
        {ServiceLog::ERROR_UNREADY, "client unready"},
        {ServiceLog::ERROR_TIMEOUT, "client timeout"}});
-    RCLCPP_DEBUG_STREAM(node->get_logger(), type_text.at(type) << ": " << name);
+    RCLCPP_DEBUG_STREAM(rclcpp_logger, type_text.at(type) << ": " << name);
 
-    ServiceLog msg;
-    msg.stamp = node->now();
-    msg.type = type;
-    msg.name = name;
-    msg.node = node_name;
-    msg.yaml = yaml;
-    logger->publish(msg);
+    auto loaned_msg = logger->borrow_loaned_message();
+    loaned_msg->stamp = get_now();
+    loaned_msg->type = type;
+    loaned_msg->name = name;
+    loaned_msg->node = node_name;
+    loaned_msg->yaml = yaml;
+    logger->publish(std::move(loaned_msg));
   }
 
-  rclcpp::Node * node;
-  rclcpp::Publisher<ServiceLog>::SharedPtr logger;
+  rclcpp::Time get_now() const
+  {
+    return std::visit(
+      [](auto * n) -> rclcpp::Time { return n->now(); }, node_variant);
+  }
+
+  rclcpp::Node * node;  // kept for backward compatibility with code that uses interface_->node
+  std::variant<rclcpp::Node *, agnocast::Node *> node_variant;
+  rclcpp::Logger rclcpp_logger;
+  agnocast::Publisher<ServiceLog>::SharedPtr logger;
   std::string node_name;
 };
 

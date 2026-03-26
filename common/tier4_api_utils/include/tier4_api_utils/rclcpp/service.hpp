@@ -15,7 +15,7 @@
 #ifndef TIER4_API_UTILS__RCLCPP__SERVICE_HPP_
 #define TIER4_API_UTILS__RCLCPP__SERVICE_HPP_
 
-#include "rclcpp/service.hpp"
+#include "agnocast/agnocast.hpp"
 
 namespace tier4_api_utils
 {
@@ -25,16 +25,25 @@ class Service
 public:
   RCLCPP_SMART_PTR_DEFINITIONS(Service)
 
-  explicit Service(typename rclcpp::Service<ServiceT>::SharedPtr service) : service_(service) {}
+  explicit Service(typename agnocast::Service<ServiceT>::SharedPtr service) : service_(service) {}
 
   template <typename CallbackT>
   static auto wrap(CallbackT && callback, const rclcpp::Logger & logger)
   {
+    using RequestT = typename agnocast::Service<ServiceT>::RequestT;
+    using ResponseT = typename agnocast::Service<ServiceT>::ResponseT;
+
     auto wrapped_callback = [logger, callback](
-                              typename ServiceT::Request::SharedPtr request,
-                              typename ServiceT::Response::SharedPtr response) {
+                              const agnocast::ipc_shared_ptr<RequestT> & request,
+                              agnocast::ipc_shared_ptr<ResponseT> & response) {
       RCLCPP_DEBUG(logger, "service request");
-      callback(request, response);
+      // Convert agnocast types to standard ROS types for the user callback
+      auto std_request = std::make_shared<typename ServiceT::Request>(
+        static_cast<const typename ServiceT::Request &>(*request));
+      auto std_response = std::make_shared<typename ServiceT::Response>();
+      callback(std_request, std_response);
+      // Copy response back to agnocast response
+      static_cast<typename ServiceT::Response &>(*response) = *std_response;
       RCLCPP_DEBUG(logger, "service response");
     };
     return wrapped_callback;
@@ -43,7 +52,7 @@ public:
 private:
   RCLCPP_DISABLE_COPY(Service)
 
-  typename rclcpp::Service<ServiceT>::SharedPtr service_;
+  typename agnocast::Service<ServiceT>::SharedPtr service_;
 };
 
 }  // namespace tier4_api_utils

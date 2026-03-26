@@ -15,6 +15,7 @@
 #ifndef HEARTBEAT_HPP_
 #define HEARTBEAT_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/adapi_specs/system.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -24,13 +25,13 @@
 namespace autoware::default_adapi
 {
 
-class HeartbeatNode : public rclcpp::Node
+class HeartbeatNode : public agnocast::Node
 {
 public:
   explicit HeartbeatNode(const rclcpp::NodeOptions & options);
 
 private:
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
   Pub<autoware::adapi_specs::system::Heartbeat> pub_;
   uint16_t sequence_ = 0;
 };

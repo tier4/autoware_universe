@@ -41,16 +41,16 @@ OperationModeNode::OperationModeNode(const rclcpp::NodeOptions & options)
 
   const auto name = "/system/operation_mode/availability";
   const auto qos = rclcpp::QoS(1);
-  const auto callback = [this](const OperationModeAvailability::ConstSharedPtr msg) {
+  const auto callback = [this](const agnocast::ipc_shared_ptr<const OperationModeAvailability> & msg) {
     mode_available_[OperationModeState::Message::STOP] = msg->stop;
     mode_available_[OperationModeState::Message::AUTONOMOUS] = msg->autonomous;
     mode_available_[OperationModeState::Message::LOCAL] = msg->local;
     mode_available_[OperationModeState::Message::REMOTE] = msg->remote;
   };
-  sub_availability_ = create_subscription<OperationModeAvailability>(name, qos, callback);
+  sub_availability_ = this->create_subscription<OperationModeAvailability>(name, qos, callback);
 
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), rclcpp::Rate(5.0).period(), std::bind(&OperationModeNode::on_timer, this));
+  timer_ = this->create_timer(
+    rclcpp::Rate(5.0).period(), std::bind(&OperationModeNode::on_timer, this));
 
   curr_state_.mode = OperationModeState::Message::UNKNOWN;
   prev_state_.mode = OperationModeState::Message::UNKNOWN;

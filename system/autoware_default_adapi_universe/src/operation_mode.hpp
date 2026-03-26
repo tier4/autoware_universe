@@ -15,6 +15,7 @@
 #ifndef OPERATION_MODE_HPP_
 #define OPERATION_MODE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/adapi_specs/operation_mode.hpp>
 #include <autoware/component_interface_specs_universe/system.hpp>
 #include <autoware/component_interface_utils/status.hpp>
@@ -32,7 +33,7 @@
 
 namespace autoware::default_adapi
 {
-class OperationModeNode : public rclcpp::Node
+class OperationModeNode : public agnocast::Node
 {
 public:
   explicit OperationModeNode(const rclcpp::NodeOptions & options);
@@ -56,7 +57,7 @@ private:
   std::unordered_map<OperationModeState::Message::_mode_type, bool> mode_available_;
 
   rclcpp::CallbackGroup::SharedPtr group_cli_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
   Pub<autoware::adapi_specs::operation_mode::OperationModeState> pub_state_;
   Srv<autoware::adapi_specs::operation_mode::ChangeToStop> srv_stop_mode_;
   Srv<autoware::adapi_specs::operation_mode::ChangeToAutonomous> srv_autonomous_mode_;
@@ -67,7 +68,7 @@ private:
   Sub<autoware::component_interface_specs_universe::system::OperationModeState> sub_state_;
   Cli<autoware::component_interface_specs_universe::system::ChangeOperationMode> cli_mode_;
   Cli<autoware::component_interface_specs_universe::system::ChangeAutowareControl> cli_control_;
-  rclcpp::Subscription<OperationModeAvailability>::SharedPtr sub_availability_;
+  agnocast::Subscription<OperationModeAvailability>::SharedPtr sub_availability_;
 
   void on_change_to_stop(
     const ChangeToStop::Service::Request::SharedPtr req,

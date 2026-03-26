@@ -15,15 +15,32 @@
 #ifndef TIER4_API_UTILS__RCLCPP__PROXY_HPP_
 #define TIER4_API_UTILS__RCLCPP__PROXY_HPP_
 
+#include "agnocast/agnocast.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "tier4_api_utils/rclcpp/client.hpp"
 #include "tier4_api_utils/rclcpp/service.hpp"
 
 #include <string>
+#include <type_traits>
 #include <utility>
 
 namespace tier4_api_utils
 {
+
+namespace detail
+{
+/// Return a pointer to the agnocast-compatible base type (rclcpp::Node* or agnocast::Node*).
+template <typename NodeT>
+auto * to_agnocast_node(NodeT * node)
+{
+  if constexpr (std::is_base_of_v<agnocast::Node, NodeT>) {
+    return static_cast<agnocast::Node *>(node);
+  } else {
+    return static_cast<rclcpp::Node *>(node);
+  }
+}
+}  // namespace detail
+
 template <class NodeT>
 class ServiceProxyNodeInterface
 {
@@ -39,8 +56,10 @@ public:
   {
     auto wrapped_callback = Service<ServiceT>::template wrap<CallbackT>(
       std::forward<CallbackT>(callback), node_->get_logger());
-    return Service<ServiceT>::make_shared(node_->template create_service<ServiceT>(
-      service_name, std::move(wrapped_callback), qos_profile, group));
+    (void)qos_profile;
+    auto * base_node = detail::to_agnocast_node(node_);
+    return Service<ServiceT>::make_shared(std::make_shared<agnocast::Service<ServiceT>>(
+      base_node, service_name, std::move(wrapped_callback), rclcpp::ServicesQoS(), group));
   }
 
   template <typename ServiceT>
@@ -49,8 +68,11 @@ public:
     const rmw_qos_profile_t & qos_profile = rmw_qos_profile_services_default,
     rclcpp::CallbackGroup::SharedPtr group = nullptr)
   {
+    (void)qos_profile;
+    auto * base_node = detail::to_agnocast_node(node_);
     return Client<ServiceT>::make_shared(
-      node_->template create_client<ServiceT>(service_name, qos_profile, group),
+      std::make_shared<agnocast::Client<ServiceT>>(
+        base_node, service_name, rclcpp::ServicesQoS(), group),
       node_->get_logger());
   }
 

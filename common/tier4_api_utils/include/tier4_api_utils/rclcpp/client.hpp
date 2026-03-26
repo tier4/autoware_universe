@@ -15,10 +15,11 @@
 #ifndef TIER4_API_UTILS__RCLCPP__CLIENT_HPP_
 #define TIER4_API_UTILS__RCLCPP__CLIENT_HPP_
 
-#include "rclcpp/client.hpp"
+#include "agnocast/agnocast.hpp"
 #include "tier4_api_utils/types/response.hpp"
 
 #include <chrono>
+#include <memory>
 #include <utility>
 
 namespace tier4_api_utils
@@ -32,7 +33,7 @@ public:
   using ResponseStatus = tier4_external_api_msgs::msg::ResponseStatus;
   using AutowareServiceResult = std::pair<ResponseStatus, typename ServiceT::Response::SharedPtr>;
 
-  Client(typename rclcpp::Client<ServiceT>::SharedPtr client, const rclcpp::Logger & logger)
+  Client(typename agnocast::Client<ServiceT>::SharedPtr client, const rclcpp::Logger & logger)
   : client_(client), logger_(logger)
   {
   }
@@ -48,20 +49,26 @@ public:
       return {response_error("Internal service is not available."), nullptr};
     }
 
-    auto future = client_->async_send_request(request);
-    if (future.wait_for(timeout) != std::future_status::ready) {
+    auto loaned_request = client_->borrow_loaned_request();
+    *static_cast<typename ServiceT::Request *>(loaned_request.get()) = *request;
+
+    auto future_and_id = client_->async_send_request(std::move(loaned_request));
+    if (future_and_id.future.wait_for(timeout) != std::future_status::ready) {
       RCLCPP_DEBUG(logger_, "client timeout");
       return {response_error("Internal service has timed out."), nullptr};
     }
 
     RCLCPP_DEBUG(logger_, "client response");
-    return {response_success(), future.get()};
+    auto agnocast_response = future_and_id.future.get();
+    auto ros_response = std::make_shared<typename ServiceT::Response>(
+      *static_cast<const typename ServiceT::Response *>(agnocast_response.get()));
+    return {response_success(), ros_response};
   }
 
 private:
   RCLCPP_DISABLE_COPY(Client)
 
-  typename rclcpp::Client<ServiceT>::SharedPtr client_;
+  typename agnocast::Client<ServiceT>::SharedPtr client_;
   rclcpp::Logger logger_;
 };
 

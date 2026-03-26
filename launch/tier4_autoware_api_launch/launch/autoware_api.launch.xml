@@ -19,7 +19,7 @@
 
   <!-- AD API -->
   <group>
-    <include file="$(find-pkg-share autoware_default_adapi_universe)/launch/default_adapi.launch.py" if="$(var launch_default_adapi)">
+    <include file="$(find-pkg-share autoware_default_adapi_universe)/launch/default_adapi.launch.xml" if="$(var launch_default_adapi)">
       <arg name="config" value="$(var default_adapi_param_path)"/>
     </include>
     <include file="$(find-pkg-share autoware_adapi_adaptors)/launch/rviz_adaptors.launch.xml" if="$(var launch_rviz_adaptors)"/>
@@ -28,9 +28,9 @@
   <!-- RTC controller -->
   <group>
     <push-ros-namespace namespace="autoware_api/external/rtc_controller"/>
-    <node_container pkg="rclcpp_components" exec="component_container_mt" name="container" namespace="" ros_args="--log-level autoware_api.external.rtc_controller.container:=warn">
-      <composable_node pkg="autoware_iv_external_api_adaptor" plugin="external_api::RTCController" name="node"/>
-    </node_container>
+    <node pkg="autoware_iv_external_api_adaptor" exec="rtc_controller_node" name="node" namespace="" ros_args="--log-level autoware_api.external.rtc_controller.node:=warn">
+      <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    </node>
   </group>
 
   <!-- rosbridge -->

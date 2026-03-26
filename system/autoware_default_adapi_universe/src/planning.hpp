@@ -15,6 +15,7 @@
 #ifndef PLANNING_HPP_
 #define PLANNING_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/adapi_specs/planning.hpp>
 #include <autoware/component_interface_specs_universe/localization.hpp>
 #include <autoware/component_interface_specs_universe/planning.hpp>
@@ -42,7 +43,7 @@ using autoware_adapi_v1_msgs::msg::VelocityFactorArray;
 using autoware_internal_planning_msgs::msg::PlanningFactor;
 using autoware_internal_planning_msgs::msg::PlanningFactorArray;
 
-class PlanningNode : public rclcpp::Node
+class PlanningNode : public agnocast::Node
 {
 public:
   explicit PlanningNode(const rclcpp::NodeOptions & options);
@@ -53,9 +54,9 @@ private:
   Sub<autoware::component_interface_specs_universe::planning::Trajectory> sub_trajectory_;
   Sub<autoware::component_interface_specs_universe::localization::KinematicState>
     sub_kinematic_state_;
-  std::vector<rclcpp::Subscription<PlanningFactorArray>::SharedPtr> sub_factors_;
+  std::vector<agnocast::Subscription<PlanningFactorArray>::SharedPtr> sub_factors_;
   std::vector<PlanningFactorArray::ConstSharedPtr> factors_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
 
   using VehicleStopChecker = autoware::motion_utils::VehicleStopCheckerBase;
   using Trajectory = autoware::component_interface_specs_universe::planning::Trajectory::Message;

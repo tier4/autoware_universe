@@ -1,6 +1,8 @@
 <launch>
   <group>
     <push-ros-namespace namespace="default_adapi/helpers"/>
-    <node pkg="autoware_automatic_pose_initializer" exec="autoware_automatic_pose_initializer_node"/>
+    <node pkg="autoware_automatic_pose_initializer" exec="autoware_automatic_pose_initializer_node">
+      <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    </node>
   </group>
 </launch>

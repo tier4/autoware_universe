@@ -15,6 +15,7 @@
 #ifndef AUTOMATIC_POSE_INITIALIZER_HPP_
 #define AUTOMATIC_POSE_INITIALIZER_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/adapi_specs/localization.hpp>
 #include <autoware/component_interface_utils/rclcpp.hpp>
 #include <rclcpp/rclcpp.hpp>

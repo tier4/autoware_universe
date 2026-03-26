@@ -15,6 +15,7 @@
 #ifndef MOTION_HPP_
 #define MOTION_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/adapi_specs/motion.hpp>
 #include <autoware/component_interface_specs_universe/control.hpp>
 #include <autoware/component_interface_utils/rclcpp.hpp>
@@ -28,14 +29,14 @@
 namespace autoware::default_adapi
 {
 
-class MotionNode : public rclcpp::Node
+class MotionNode : public agnocast::Node
 {
 public:
   explicit MotionNode(const rclcpp::NodeOptions & options);
 
 private:
-  autoware::motion_utils::VehicleStopChecker vehicle_stop_checker_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  autoware::motion_utils::VehicleStopCheckerTemplate<agnocast::Node> vehicle_stop_checker_;
+  agnocast::TimerBase::SharedPtr timer_;
   rclcpp::CallbackGroup::SharedPtr group_cli_;
   Srv<autoware::adapi_specs::motion::AcceptStart> srv_accept_;
   Pub<autoware::adapi_specs::motion::State> pub_state_;

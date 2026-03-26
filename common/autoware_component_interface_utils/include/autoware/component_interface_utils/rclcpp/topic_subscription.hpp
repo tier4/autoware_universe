@@ -15,19 +15,21 @@
 #ifndef AUTOWARE__COMPONENT_INTERFACE_UTILS__RCLCPP__TOPIC_SUBSCRIPTION_HPP_
 #define AUTOWARE__COMPONENT_INTERFACE_UTILS__RCLCPP__TOPIC_SUBSCRIPTION_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/subscription.hpp>
 
 namespace autoware::component_interface_utils
 {
 
-/// The wrapper class of rclcpp::Subscription. This is for future use and no functionality now.
+/// The wrapper class of agnocast::Subscription for Agnocast pub/sub migration.
 template <class SpecT>
 class Subscription
 {
 public:
   RCLCPP_SMART_PTR_DEFINITIONS(Subscription)
   using SpecType = SpecT;
-  using WrapType = rclcpp::Subscription<typename SpecT::Message>;
+  using Message = typename SpecT::Message;
+  using WrapType = agnocast::Subscription<Message>;
 
   /// Constructor.
   explicit Subscription(typename WrapType::SharedPtr subscription)

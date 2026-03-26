@@ -1,0 +1,100 @@
+<launch>
+  <arg name="config" default="$(find-pkg-share autoware_default_adapi_universe)/config/default_adapi.param.yaml"/>
+
+  <!-- Core ADAPI nodes (from autoware_default_adapi) -->
+  <node pkg="autoware_default_adapi" exec="interface_node" name="interface" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi" exec="localization_node" name="localization" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi" exec="routing_node" name="routing" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <!-- Universe ADAPI nodes -->
+  <node pkg="autoware_default_adapi_universe" exec="autoware_state_node" name="autoware_state" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="diagnostics_node" name="diagnostics" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="fail_safe_node" name="fail_safe" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="heartbeat_node" name="heartbeat" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="manual_control_node" name="local" namespace="adapi/node/manual">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="manual_control_node" name="remote" namespace="adapi/node/manual">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="motion_node" name="motion" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="mrm_request_node" name="mrm_request" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="operation_mode_node" name="operation_mode" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="perception_node" name="perception" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="planning_node" name="planning" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="vehicle_status_node" name="vehicle_status" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="vehicle_command_node" name="vehicle_command" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="vehicle_metrics_node" name="vehicle_metrics" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="vehicle_info_node" name="vehicle_info" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+
+  <node pkg="autoware_default_adapi_universe" exec="vehicle_door_node" name="vehicle_door" namespace="adapi/node">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
+    <param from="$(var config)"/>
+  </node>
+</launch>

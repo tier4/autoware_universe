@@ -27,28 +27,28 @@ DiagnosticsNode::DiagnosticsNode(const rclcpp::NodeOptions & options) : Node("di
   const auto qos_struct = rclcpp::QoS(1).transient_local();
   const auto qos_status = rclcpp::QoS(1).best_effort();
 
-  pub_struct_ = create_publisher<ExternalGraphStruct>("/api/system/diagnostics/struct", qos_struct);
-  pub_status_ = create_publisher<ExternalGraphStatus>("/api/system/diagnostics/status", qos_status);
+  pub_struct_ = this->create_publisher<ExternalGraphStruct>("/api/system/diagnostics/struct", qos_struct);
+  pub_status_ = this->create_publisher<ExternalGraphStatus>("/api/system/diagnostics/status", qos_status);
 
-  sub_struct_ = create_subscription<InternalGraphStruct>(
+  sub_struct_ = this->create_subscription<InternalGraphStruct>(
     "/diagnostics_graph/struct", qos_struct, std::bind(&DiagnosticsNode::on_struct, this, _1));
-  sub_status_ = create_subscription<InternalGraphStatus>(
+  sub_status_ = this->create_subscription<InternalGraphStatus>(
     "/diagnostics_graph/status", qos_status, std::bind(&DiagnosticsNode::on_status, this, _1));
 
   group_cli_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  cli_reset_ = create_client<InternalReset>(
-    "/diagnostics_graph/reset", rmw_qos_profile_services_default, group_cli_);
-  srv_reset_ = create_service<ExternalReset>(
+  cli_reset_ = this->create_client<InternalReset>(
+    "/diagnostics_graph/reset", rclcpp::ServicesQoS(), group_cli_);
+  srv_reset_ = this->create_service<ExternalReset>(
     "/api/system/diagnostics/reset", std::bind(&DiagnosticsNode::on_reset, this, _1, _2));
 
-  sub_mrm_state_ = create_subscription<ExternalMrmState>(
+  sub_mrm_state_ = this->create_subscription<ExternalMrmState>(
     "/api/fail_safe/mrm_state", rclcpp::QoS(1).transient_local(),
-    [this](const ExternalMrmState & state) { mrm_state_.state = state.state; });
+    [this](const agnocast::ipc_shared_ptr<const ExternalMrmState> & state) { mrm_state_.state = state->state; });
 
   mrm_state_.state = ExternalMrmState::UNKNOWN;
 }
 
-void DiagnosticsNode::on_struct(const InternalGraphStruct & internal)
+void DiagnosticsNode::on_struct(const agnocast::ipc_shared_ptr<const InternalGraphStruct> & internal_ptr)
 {
   const auto convert_node = [](const InternalNodeStruct & internal) {
     ExternalNodeStruct external;
@@ -68,19 +68,20 @@ void DiagnosticsNode::on_struct(const InternalGraphStruct & internal)
     return external;
   };
 
-  ExternalGraphStruct external;
-  external.nodes.reserve(internal.nodes.size());
-  external.diags.reserve(internal.diags.size());
-  external.links.reserve(internal.links.size());
-  external.stamp = internal.stamp;
-  external.id = internal.id;
-  for (const auto & node : internal.nodes) external.nodes.push_back(convert_node(node));
-  for (const auto & diag : internal.diags) external.diags.push_back(convert_diag(diag));
-  for (const auto & link : internal.links) external.links.push_back(convert_link(link));
-  pub_struct_->publish(external);
+  const auto & internal = *internal_ptr;
+  auto external = pub_struct_->borrow_loaned_message();
+  external->nodes.reserve(internal.nodes.size());
+  external->diags.reserve(internal.diags.size());
+  external->links.reserve(internal.links.size());
+  external->stamp = internal.stamp;
+  external->id = internal.id;
+  for (const auto & node : internal.nodes) external->nodes.push_back(convert_node(node));
+  for (const auto & diag : internal.diags) external->diags.push_back(convert_diag(diag));
+  for (const auto & link : internal.links) external->links.push_back(convert_link(link));
+  pub_struct_->publish(std::move(external));
 }
 
-void DiagnosticsNode::on_status(const InternalGraphStatus & internal)
+void DiagnosticsNode::on_status(const agnocast::ipc_shared_ptr<const InternalGraphStatus> & internal_ptr)
 {
   const auto convert_node = [](const InternalNodeStatus & internal) {
     ExternalNodeStatus external;
@@ -105,18 +106,20 @@ void DiagnosticsNode::on_status(const InternalGraphStatus & internal)
     return external;
   };
 
-  ExternalGraphStatus external;
-  external.nodes.reserve(internal.nodes.size());
-  external.diags.reserve(internal.diags.size());
-  external.stamp = internal.stamp;
-  external.id = internal.id;
-  for (const auto & node : internal.nodes) external.nodes.push_back(convert_node(node));
-  for (const auto & diag : internal.diags) external.diags.push_back(convert_diag(diag));
-  pub_status_->publish(external);
+  const auto & internal = *internal_ptr;
+  auto external = pub_status_->borrow_loaned_message();
+  external->nodes.reserve(internal.nodes.size());
+  external->diags.reserve(internal.diags.size());
+  external->stamp = internal.stamp;
+  external->id = internal.id;
+  for (const auto & node : internal.nodes) external->nodes.push_back(convert_node(node));
+  for (const auto & diag : internal.diags) external->diags.push_back(convert_diag(diag));
+  pub_status_->publish(std::move(external));
 }
 
 void DiagnosticsNode::on_reset(
-  const ExternalReset::Request::SharedPtr, const ExternalReset::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<typename agnocast::Service<ExternalReset>::RequestT> &,
+  agnocast::ipc_shared_ptr<typename agnocast::Service<ExternalReset>::ResponseT> & res)
 {
   using autoware_adapi_v1_msgs::msg::ResponseStatus;
 
@@ -135,8 +138,8 @@ void DiagnosticsNode::on_reset(
     return;
   }
 
-  auto internal_req = std::make_shared<InternalReset::Request>();
-  auto future = cli_reset_->async_send_request(internal_req);
+  auto internal_req = cli_reset_->borrow_loaned_request();
+  auto future = cli_reset_->async_send_request(std::move(internal_req));
   if (future.wait_for(std::chrono::seconds(1)) != std::future_status::ready) {
     res->status.success = false;
     res->status.code = ResponseStatus::SERVICE_TIMEOUT;

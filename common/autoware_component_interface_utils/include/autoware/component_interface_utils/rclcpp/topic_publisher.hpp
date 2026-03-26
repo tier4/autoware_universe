@@ -15,19 +15,21 @@
 #ifndef AUTOWARE__COMPONENT_INTERFACE_UTILS__RCLCPP__TOPIC_PUBLISHER_HPP_
 #define AUTOWARE__COMPONENT_INTERFACE_UTILS__RCLCPP__TOPIC_PUBLISHER_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/publisher.hpp>
 
 namespace autoware::component_interface_utils
 {
 
-/// The wrapper class of rclcpp::Publisher. This is for future use and no functionality now.
+/// The wrapper class of agnocast::Publisher for Agnocast pub/sub migration.
 template <class SpecT>
 class Publisher
 {
 public:
   RCLCPP_SMART_PTR_DEFINITIONS(Publisher)
   using SpecType = SpecT;
-  using WrapType = rclcpp::Publisher<typename SpecT::Message>;
+  using Message = typename SpecT::Message;
+  using WrapType = agnocast::Publisher<Message>;
 
   /// Constructor.
   explicit Publisher(typename WrapType::SharedPtr publisher)
@@ -35,8 +37,13 @@ public:
     publisher_ = publisher;  // to keep the reference count
   }
 
-  /// Publish a message.
-  void publish(const typename SpecT::Message & msg) { publisher_->publish(msg); }
+  /// Publish a message using the loaned message pattern.
+  void publish(const Message & msg)
+  {
+    auto loaned_msg = publisher_->borrow_loaned_message();
+    *loaned_msg = msg;
+    publisher_->publish(std::move(loaned_msg));
+  }
 
 private:
   RCLCPP_DISABLE_COPY(Publisher)

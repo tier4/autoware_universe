@@ -33,7 +33,7 @@ HeartbeatNode::HeartbeatNode(const rclcpp::NodeOptions & options) : Node("heartb
   adaptor.init_pub(pub_);
 
   const auto period = rclcpp::Rate(10.0).period();
-  timer_ = rclcpp::create_timer(this, get_clock(), period, std::move(on_timer));
+  timer_ = this->create_timer(period, std::move(on_timer));
 }
 
 }  // namespace autoware::default_adapi

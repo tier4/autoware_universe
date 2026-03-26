@@ -3,6 +3,7 @@ project(autoware_component_interface_utils)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
+find_package(agnocastlib REQUIRED)
 
 include_directories(
   include

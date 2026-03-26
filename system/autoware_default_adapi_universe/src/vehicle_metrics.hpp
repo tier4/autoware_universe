@@ -15,6 +15,7 @@
 #ifndef VEHICLE_METRICS_HPP_
 #define VEHICLE_METRICS_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/adapi_specs/vehicle.hpp>
 #include <autoware/component_interface_specs_universe/vehicle.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -25,7 +26,7 @@
 namespace autoware::default_adapi
 {
 
-class VehicleMetricsNode : public rclcpp::Node
+class VehicleMetricsNode : public agnocast::Node
 {
 public:
   explicit VehicleMetricsNode(const rclcpp::NodeOptions & options);
@@ -35,7 +36,7 @@ private:
   using EnergyStatus = autoware::component_interface_specs_universe::vehicle::EnergyStatus;
   void on_timer();
 
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
   Pub<VehicleMetrics> pub_metrics_;
   Sub<EnergyStatus> sub_energy_;
   EnergyStatus::Message::ConstSharedPtr energy_;

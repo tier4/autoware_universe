@@ -15,8 +15,8 @@
 #ifndef PATH_DISTANCE_CALCULATOR_HPP_
 #define PATH_DISTANCE_CALCULATOR_HPP_
 
-#include <autoware_utils/ros/polling_subscriber.hpp>
-#include <autoware_utils/ros/self_pose_listener.hpp>
+#include <agnocast/agnocast.hpp>
+#include <autoware_utils_tf/self_pose_listener.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
@@ -25,17 +25,16 @@
 namespace autoware::path_distance_calculator
 {
 
-class PathDistanceCalculator : public rclcpp::Node
+class PathDistanceCalculator : public agnocast::Node
 {
 public:
   explicit PathDistanceCalculator(const rclcpp::NodeOptions & options);
 
 private:
-  autoware_utils::InterProcessPollingSubscriber<autoware_planning_msgs::msg::Path> sub_path_{
-    this, "~/input/path"};
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr pub_dist_;
-  rclcpp::TimerBase::SharedPtr timer_;
-  autoware_utils::SelfPoseListener self_pose_listener_;
+  agnocast::PollingSubscriber<autoware_planning_msgs::msg::Path>::SharedPtr sub_path_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr pub_dist_;
+  agnocast::TimerBase::SharedPtr timer_;
+  autoware_utils_tf::SelfPoseListener self_pose_listener_;
 };
 
 }  // namespace autoware::path_distance_calculator

@@ -27,12 +27,14 @@ namespace autoware::path_distance_calculator
 PathDistanceCalculator::PathDistanceCalculator(const rclcpp::NodeOptions & options)
 : Node("path_distance_calculator", options), self_pose_listener_(this)
 {
-  pub_dist_ = create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+  pub_dist_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/output/distance", rclcpp::QoS(1));
+  sub_path_ = this->create_subscription<autoware_planning_msgs::msg::Path>(
+    "~/input/path", rclcpp::QoS(1));
 
   using std::chrono_literals::operator""s;
-  timer_ = rclcpp::create_timer(this, get_clock(), 1s, [this]() {
-    const auto path = sub_path_.take_data();
+  timer_ = this->create_timer(1s, [this]() {
+    const auto path = sub_path_->take_data();
     const auto pose = self_pose_listener_.get_current_pose();
     if (!pose) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "no pose");
@@ -50,10 +52,10 @@ PathDistanceCalculator::PathDistanceCalculator(const rclcpp::NodeOptions & optio
     const double distance = autoware::motion_utils::calcSignedArcLength(
       path->points, pose->pose.position, path->points.size() - 1);
 
-    autoware_internal_debug_msgs::msg::Float64Stamped msg;
-    msg.stamp = pose->header.stamp;
-    msg.data = distance;
-    pub_dist_->publish(msg);
+    auto msg = pub_dist_->borrow_loaned_message();
+    msg->stamp = pose->header.stamp;
+    msg->data = distance;
+    pub_dist_->publish(std::move(msg));
   });
 }
 }  // namespace autoware::path_distance_calculator
