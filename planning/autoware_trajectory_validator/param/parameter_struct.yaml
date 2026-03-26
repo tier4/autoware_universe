@@ -116,6 +116,17 @@ validator:
       default_value: false
       description: When true, amber lights are handled like red lights
       read_only: false
+    checked_trajectory_length:
+      deceleration_limit:
+        type: double
+        default_value: 2.0
+        description: deceleration limit to calculate the stop distance used as trajectory length limit
+        read_only: false
+      jerk_limit:
+        type: double
+        default_value: 4.0
+        description: jerk limit to calculate the stop distance used as trajectory length limit
+        read_only: false
 
   boundary_departure:
     lateral_gap_to_boundary_m:
