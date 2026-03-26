@@ -25,6 +25,7 @@ agnocast_components_register_node(imu_corrector
   PLUGIN "autoware::imu_corrector::ImuCorrector"
   EXECUTABLE imu_corrector_node
   EXECUTOR CallbackIsolatedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 rclcpp_components_register_node(gyro_bias_estimator
