@@ -51,6 +51,13 @@ include_directories(
     ${CUDA_INCLUDE_DIRS}
 )
 
+if("$ENV{ENABLE_AGNOCAST}")
+    include_directories(SYSTEM
+        ${agnocastlib_INCLUDE_DIRS}
+        ${agnocast_cuda_INCLUDE_DIRS}
+    )
+endif()
+
 # cSpell: ignore expt gencode
 list(APPEND CUDA_NVCC_FLAGS "--expt-relaxed-constexpr -diag-suppress 20012")
 list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_75,code=sm_75")
