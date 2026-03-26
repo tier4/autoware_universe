@@ -18,11 +18,11 @@
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <agnocast/node/tf2/tf2.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware_lanelet2_extension/visualization/visualization.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <lanelet2_core/Exceptions.h>
 #include <lanelet2_core/geometry/Point.h>
@@ -37,14 +37,37 @@
 #include <utility>
 #include <vector>
 
+// PrimeSynchronizerTraits specialization for agnocast::Node
+namespace perception_utils
+{
+template <>
+struct PrimeSynchronizerTraits<agnocast::Node>
+{
+  template <typename MsgT>
+  using SubscriptionSharedPtr = typename agnocast::Subscription<MsgT>::SharedPtr;
+
+  template <typename MsgT>
+  using ConstSharedPtr = agnocast::ipc_shared_ptr<const MsgT>;
+
+  using TimerSharedPtr = agnocast::TimerBase::SharedPtr;
+
+  template <typename CallbackT>
+  static TimerSharedPtr create_timer(
+    agnocast::Node * node_ptr, std::chrono::nanoseconds period, CallbackT && callback)
+  {
+    return node_ptr->create_wall_timer(period, std::forward<CallbackT>(callback));
+  }
+};
+}  // namespace perception_utils
+
 namespace autoware::traffic_light
 {
 
 TrafficLightOcclusionPredictorNode::TrafficLightOcclusionPredictorNode(
   const rclcpp::NodeOptions & node_options)
-: Node("traffic_light_occlusion_predictor_node", node_options),
+: agnocast::Node("traffic_light_occlusion_predictor_node", node_options),
   tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_)
+  tf_listener_(tf_buffer_, *this)
 {
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -71,7 +94,7 @@ TrafficLightOcclusionPredictorNode::TrafficLightOcclusionPredictorNode(
   config_.max_occlusion_ratio = declare_parameter<int>("max_occlusion_ratio");
 
   cloud_occlusion_predictor_ = std::make_shared<CloudOcclusionPredictor>(
-    this, config_.max_valid_pt_dist, config_.azimuth_occlusion_resolution_deg,
+    this->get_logger(), config_.max_valid_pt_dist, config_.azimuth_occlusion_resolution_deg,
     config_.elevation_occlusion_resolution_deg);
 
   const std::vector<std::string> topics{
@@ -98,12 +121,12 @@ TrafficLightOcclusionPredictorNode::TrafficLightOcclusionPredictorNode(
 }
 
 void TrafficLightOcclusionPredictorNode::mapCallback(
-  const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr input_msg)
+  const agnocast::ipc_shared_ptr<const autoware_map_msgs::msg::LaneletMapBin> msg)
 {
   traffic_light_position_map_.clear();
   auto lanelet_map_ptr = std::make_shared<lanelet::LaneletMap>();
 
-  lanelet::utils::conversion::fromBinMsg(*input_msg, lanelet_map_ptr);
+  lanelet::utils::conversion::fromBinMsg(*msg, lanelet_map_ptr);
   lanelet::ConstLanelets all_lanelets = lanelet::utils::query::laneletLayer(lanelet_map_ptr);
   std::vector<lanelet::AutowareTrafficLightConstPtr> all_lanelet_traffic_lights =
     lanelet::utils::query::autowareTrafficLights(all_lanelets);
@@ -124,14 +147,26 @@ void TrafficLightOcclusionPredictorNode::mapCallback(
 }
 
 void TrafficLightOcclusionPredictorNode::syncCallback(
-  const tier4_perception_msgs::msg::TrafficLightArray::ConstSharedPtr in_signal_msg,
-  const tier4_perception_msgs::msg::TrafficLightRoiArray::ConstSharedPtr in_roi_msg,
-  const sensor_msgs::msg::CameraInfo::ConstSharedPtr in_cam_info_msg,
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr in_cloud_msg,
+  const agnocast::ipc_shared_ptr<const tier4_perception_msgs::msg::TrafficLightArray> in_signal_msg,
+  const agnocast::ipc_shared_ptr<const tier4_perception_msgs::msg::TrafficLightRoiArray>
+    in_roi_msg,
+  const agnocast::ipc_shared_ptr<const sensor_msgs::msg::CameraInfo> in_cam_info_msg,
+  const agnocast::ipc_shared_ptr<const sensor_msgs::msg::PointCloud2> in_cloud_msg,
   const uint8_t traffic_light_type)
 {
+  // Convert ipc_shared_ptr to ConstSharedPtr for CloudOcclusionPredictor
+  auto cloud_msg_copy =
+    in_cloud_msg ? std::make_shared<const sensor_msgs::msg::PointCloud2>(*in_cloud_msg) : nullptr;
+  auto cam_info_msg_copy =
+    in_cam_info_msg ? std::make_shared<const sensor_msgs::msg::CameraInfo>(*in_cam_info_msg)
+                    : nullptr;
+  auto roi_msg_copy =
+    in_roi_msg
+      ? std::make_shared<const tier4_perception_msgs::msg::TrafficLightRoiArray>(*in_roi_msg)
+      : nullptr;
+
   std::vector<int> occlusion_ratios;
-  if (in_cloud_msg == nullptr || in_cam_info_msg == nullptr || in_roi_msg == nullptr) {
+  if (!in_cloud_msg || !in_cam_info_msg || !in_roi_msg) {
     occlusion_ratios.resize(in_signal_msg->signals.size(), 0);
   } else {
     size_t not_detected_roi = 0;
@@ -156,7 +191,7 @@ void TrafficLightOcclusionPredictorNode::syncCallback(
       auto selected_roi_msg_ptr =
         std::make_shared<const tier4_perception_msgs::msg::TrafficLightRoiArray>(selected_roi_msg);
       cloud_occlusion_predictor_->predict(
-        in_cam_info_msg, selected_roi_msg_ptr, in_cloud_msg, tf_buffer_,
+        cam_info_msg_copy, selected_roi_msg_ptr, cloud_msg_copy, tf_buffer_,
         traffic_light_position_map_, occlusion_ratios);
     }
   }
@@ -179,7 +214,8 @@ void TrafficLightOcclusionPredictorNode::syncCallback(
   subscribed_.at(traffic_light_type) = true;
 
   if (std::all_of(subscribed_.begin(), subscribed_.end(), [](bool v) { return v; })) {
-    auto pub_msg = std::make_unique<tier4_perception_msgs::msg::TrafficLightArray>(out_msg_);
+    auto pub_msg = signal_pub_->borrow_loaned_message();
+    *pub_msg = out_msg_;
     pub_msg->header = in_signal_msg->header;
     signal_pub_->publish(std::move(pub_msg));
     out_msg_.signals.clear();

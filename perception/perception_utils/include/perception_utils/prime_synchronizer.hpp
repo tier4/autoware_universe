@@ -23,11 +23,38 @@
 #include <memory>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 namespace perception_utils
 {
+
+/// @brief Type traits for PrimeSynchronizer to abstract over rclcpp::Node and agnocast::Node.
+/// The primary template is intentionally left undefined; only specializations are used.
+template <typename NodeT, typename = void>
+struct PrimeSynchronizerTraits;
+
+/// Specialization for rclcpp::Node.
+template <>
+struct PrimeSynchronizerTraits<rclcpp::Node>
+{
+  template <typename MsgT>
+  using SubscriptionSharedPtr = typename rclcpp::Subscription<MsgT>::SharedPtr;
+
+  template <typename MsgT>
+  using ConstSharedPtr = typename MsgT::ConstSharedPtr;
+
+  using TimerSharedPtr = rclcpp::TimerBase::SharedPtr;
+
+  template <typename CallbackT>
+  static TimerSharedPtr create_timer(
+    rclcpp::Node * node_ptr, std::chrono::nanoseconds period, CallbackT && callback)
+  {
+    return rclcpp::create_timer(
+      node_ptr, node_ptr->get_clock(), period, std::forward<CallbackT>(callback));
+  }
+};
 
 /**
  * @brief  This class implemented a multi-topic approximate time synchronizer.
@@ -47,13 +74,18 @@ namespace perception_utils
  * compile-time. It should be noted that the registered callback function is too slow, it would
  * block the thread and the primary message couldn't be received.
  *
+ * @tparam NodeT          Node type (rclcpp::Node or agnocast::Node)
  * @tparam PrimeMsgT      Primary topic message type
  * @tparam SecondaryMsgT  Secondary topic message types
  */
-template <typename PrimeMsgT, typename... SecondaryMsgT>
+template <typename NodeT, typename PrimeMsgT, typename... SecondaryMsgT>
 class PrimeSynchronizer
 {
   typedef double StampT;
+  using Traits = PrimeSynchronizerTraits<NodeT>;
+
+  template <typename MsgT>
+  using ConstSharedPtr = typename Traits::template ConstSharedPtr<MsgT>;
 
 public:
   /**
@@ -70,25 +102,23 @@ public:
    * @param max_wait_t    maximum wait time (seconds) before the messages are synchronized
    */
   PrimeSynchronizer(
-    rclcpp::Node * node_ptr, const std::vector<std::string> & topics,
+    NodeT * node_ptr, const std::vector<std::string> & topics,
     const std::vector<rclcpp::QoS> & qos,
-    std::function<void(
-      const typename PrimeMsgT::ConstSharedPtr, const typename SecondaryMsgT::ConstSharedPtr...)>
+    std::function<void(const ConstSharedPtr<PrimeMsgT>, const ConstSharedPtr<SecondaryMsgT>...)>
       callback,
     StampT max_delay_t = 0.2, StampT max_wait_t = 0.1)
   : node_ptr_(node_ptr), callback_(callback), max_wait_t_(max_wait_t), max_delay_t_(max_delay_t)
   {
     assert((topics.size() == sizeof...(SecondaryMsgT) + 1) && "Incorrect topic number");
     assert(topics.size() == qos.size() && "topic size not equal to qos size!");
-    prime_subscriber_ = node_ptr_->create_subscription<PrimeMsgT>(
+    prime_subscriber_ = node_ptr_->template create_subscription<PrimeMsgT>(
       topics[0], qos[0], std::bind(&PrimeSynchronizer::primeCallback, this, std::placeholders::_1));
     initSecondaryListener(
       std::vector<std::string>(topics.begin() + 1, topics.end()),
       std::vector<rclcpp::QoS>(qos.begin() + 1, qos.end()));
     std::chrono::nanoseconds wait_duration(static_cast<int>(1e9 * max_wait_t));
-    timer_ = rclcpp::create_timer(
-      node_ptr_, node_ptr_->get_clock(), wait_duration,
-      std::bind(&PrimeSynchronizer::timerCallback, this));
+    timer_ = Traits::create_timer(
+      node_ptr_, wait_duration, std::bind(&PrimeSynchronizer::timerCallback, this));
     timer_->cancel();
   }
 
@@ -107,7 +137,7 @@ private:
   {
     if constexpr (Idx < sizeof...(SecondaryMsgT)) {
       typedef std::tuple_element_t<Idx, std::tuple<SecondaryMsgT...>> type;
-      std::get<Idx>(sec_subscriber_) = node_ptr_->create_subscription<type>(
+      std::get<Idx>(sec_subscriber_) = node_ptr_->template create_subscription<type>(
         topics[Idx], qos[Idx],
         std::bind(&PrimeSynchronizer::secondaryCallback<type, Idx>, this, std::placeholders::_1));
       initSecondaryListener<Idx + 1>(topics, qos);
@@ -123,15 +153,14 @@ private:
    */
   template <std::size_t Idx = 0>
   void collectSecondaryMsg(
-    std::tuple<typename PrimeMsgT::ConstSharedPtr, typename SecondaryMsgT::ConstSharedPtr...> &
-      argv)
+    std::tuple<ConstSharedPtr<PrimeMsgT>, ConstSharedPtr<SecondaryMsgT>...> & argv)
   {
     if constexpr (Idx < sizeof...(SecondaryMsgT)) {
       /*
       if can't find any message for this topic, write nullptr
       */
       if (std::get<Idx>(sec_messages_).empty()) {
-        std::get<Idx + 1>(argv) = nullptr;
+        std::get<Idx + 1>(argv) = ConstSharedPtr<std::tuple_element_t<Idx, std::tuple<SecondaryMsgT...>>>{};
       } else {
         StampT prime_stamp = convertStampFormat(std::get<0>(argv)->header.stamp);
         StampT min_delay = std::numeric_limits<StampT>::max();
@@ -146,7 +175,11 @@ private:
             best_sec_msg = sec_msg_p.second;
           }
         }
-        std::get<Idx + 1>(argv) = min_delay < max_delay_t_ ? best_sec_msg : nullptr;
+        if (min_delay < max_delay_t_) {
+          std::get<Idx + 1>(argv) = best_sec_msg;
+        } else {
+          std::get<Idx + 1>(argv) = ConstSharedPtr<std::tuple_element_t<Idx, std::tuple<SecondaryMsgT...>>>{};
+        }
       }
       collectSecondaryMsg<Idx + 1>(argv);
     }
@@ -162,11 +195,10 @@ private:
    */
   template <std::size_t Idx = 0>
   bool isArgvValid(
-    const std::tuple<
-      typename PrimeMsgT::ConstSharedPtr, typename SecondaryMsgT::ConstSharedPtr...> & argv)
+    const std::tuple<ConstSharedPtr<PrimeMsgT>, ConstSharedPtr<SecondaryMsgT>...> & argv)
   {
     if constexpr (Idx < sizeof...(SecondaryMsgT) + 1) {
-      return (std::get<Idx>(argv) != nullptr) && isArgvValid<Idx + 1>(argv);
+      return static_cast<bool>(std::get<Idx>(argv)) && isArgvValid<Idx + 1>(argv);
     }
     return true;
   }
@@ -181,7 +213,7 @@ private:
    *
    * @param msg
    */
-  void primeCallback(const typename PrimeMsgT::ConstSharedPtr msg)
+  void primeCallback(const ConstSharedPtr<PrimeMsgT> msg)
   {
     prime_cnt++;
     timer_->cancel();
@@ -220,7 +252,7 @@ private:
    * @param msg
    */
   template <typename M, std::size_t Idx>
-  void secondaryCallback(const typename M::ConstSharedPtr msg)
+  void secondaryCallback(const ConstSharedPtr<M> msg)
   {
     /*
     insert the new secondary message
@@ -295,7 +327,7 @@ private:
     if (prime_messages_.count(stamp) == 0) {
       return true;
     }
-    std::tuple<typename PrimeMsgT::ConstSharedPtr, typename SecondaryMsgT::ConstSharedPtr...> argv;
+    std::tuple<ConstSharedPtr<PrimeMsgT>, ConstSharedPtr<SecondaryMsgT>...> argv;
     std::get<0>(argv) = prime_messages_[stamp];
     collectSecondaryMsg(argv);
     if (ignoreInvalidSecMsg || isArgvValid(argv)) {
@@ -308,36 +340,35 @@ private:
    * @brief node pointer
    *
    */
-  rclcpp::Node * node_ptr_;
+  NodeT * node_ptr_;
   /**
    * @brief The registered callback function that would be called when the prime message and sub
    * messages are synchronized or timeout
    *
    */
-  std::function<void(
-    const typename PrimeMsgT::ConstSharedPtr, const typename SecondaryMsgT::ConstSharedPtr...)>
+  std::function<void(const ConstSharedPtr<PrimeMsgT>, const ConstSharedPtr<SecondaryMsgT>...)>
     callback_;
   /**
    * @brief the prime message subscriber
    *
    */
-  typename rclcpp::Subscription<PrimeMsgT>::SharedPtr prime_subscriber_;
+  typename Traits::template SubscriptionSharedPtr<PrimeMsgT> prime_subscriber_;
   /**
    * @brief the secondary message subscriber tuple
    *
    */
-  std::tuple<typename rclcpp::Subscription<SecondaryMsgT>::SharedPtr...> sec_subscriber_;
+  std::tuple<typename Traits::template SubscriptionSharedPtr<SecondaryMsgT>...> sec_subscriber_;
   /**
    * @brief map to store the prime messages using timestamp of the messages as key.
    *
    */
-  std::map<StampT, typename PrimeMsgT::ConstSharedPtr> prime_messages_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  std::map<StampT, ConstSharedPtr<PrimeMsgT>> prime_messages_;
+  typename Traits::TimerSharedPtr timer_;
   /**
    * @brief tuple of maps to store the secondary messages using timestamp of the messages as key
    *
    */
-  std::tuple<typename std::map<StampT, typename SecondaryMsgT::ConstSharedPtr>...> sec_messages_;
+  std::tuple<typename std::map<StampT, ConstSharedPtr<SecondaryMsgT>>...> sec_messages_;
   /*
   maximum wait time (seconds) before the secondary messages are collected
   */

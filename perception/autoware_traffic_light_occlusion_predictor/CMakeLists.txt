@@ -6,6 +6,8 @@ autoware_package()
 
 find_package(Eigen3 REQUIRED)
 find_package(PCL 1.8 REQUIRED)
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
 
 include_directories(
   SYSTEM
@@ -18,9 +20,18 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   src/occlusion_predictor.cpp
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+)
+
+ament_target_dependencies(${PROJECT_NAME}
+  agnocastlib
+)
+
+agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::traffic_light::TrafficLightOcclusionPredictorNode"
   EXECUTABLE traffic_light_occlusion_predictor_node
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 link_directories(${PCL_LIBRARY_DIRS})
