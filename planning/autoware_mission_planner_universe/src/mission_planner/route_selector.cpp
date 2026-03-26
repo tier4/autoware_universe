@@ -94,26 +94,27 @@ RouteSelector::RouteSelector(const rclcpp::NodeOptions & options)
   const auto durable_qos = rclcpp::QoS(1).transient_local();
 
   // Init main route interface.
-  main_.srv_clear_route = create_service<ClearRoute>(
-    "~/main/clear_route",
+  main_.srv_clear_route = agnocast::create_service<ClearRoute>(
+    this, "~/main/clear_route",
     service_utils::handle_exception(&RouteSelector::on_clear_route_main, this));
-  main_.srv_set_waypoint_route = create_service<SetWaypointRoute>(
-    "~/main/set_waypoint_route",
+  main_.srv_set_waypoint_route = agnocast::create_service<SetWaypointRoute>(
+    this, "~/main/set_waypoint_route",
     service_utils::handle_exception(&RouteSelector::on_set_waypoint_route_main, this));
-  main_.srv_set_lanelet_route = create_service<SetLaneletRoute>(
-    "~/main/set_lanelet_route",
+  main_.srv_set_lanelet_route = agnocast::create_service<SetLaneletRoute>(
+    this, "~/main/set_lanelet_route",
     service_utils::handle_exception(&RouteSelector::on_set_lanelet_route_main, this));
   main_.pub_state_ = create_publisher<RouteState>("~/main/state", durable_qos);
   main_.pub_route_ = create_publisher<LaneletRoute>("~/main/route", durable_qos);
 
   // Init mrm route interface.
-  mrm_.srv_clear_route = create_service<ClearRoute>(
-    "~/mrm/clear_route", service_utils::handle_exception(&RouteSelector::on_clear_route_mrm, this));
-  mrm_.srv_set_waypoint_route = create_service<SetWaypointRoute>(
-    "~/mrm/set_waypoint_route",
+  mrm_.srv_clear_route = agnocast::create_service<ClearRoute>(
+    this, "~/mrm/clear_route",
+    service_utils::handle_exception(&RouteSelector::on_clear_route_mrm, this));
+  mrm_.srv_set_waypoint_route = agnocast::create_service<SetWaypointRoute>(
+    this, "~/mrm/set_waypoint_route",
     service_utils::handle_exception(&RouteSelector::on_set_waypoint_route_mrm, this));
-  mrm_.srv_set_lanelet_route = create_service<SetLaneletRoute>(
-    "~/mrm/set_lanelet_route",
+  mrm_.srv_set_lanelet_route = agnocast::create_service<SetLaneletRoute>(
+    this, "~/mrm/set_lanelet_route",
     service_utils::handle_exception(&RouteSelector::on_set_lanelet_route_mrm, this));
   mrm_.pub_state_ = create_publisher<RouteState>("~/mrm/state", durable_qos);
   mrm_.pub_route_ = create_publisher<LaneletRoute>("~/mrm/route", durable_qos);
@@ -168,7 +169,8 @@ void RouteSelector::on_route(const LaneletRoute::ConstSharedPtr msg)
 }
 
 void RouteSelector::on_clear_route_main(
-  ClearRoute::Request::SharedPtr req, ClearRoute::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::ResponseT> & res)
 {
   // Save the request and clear old route to resume from MRM.
   main_request_ = std::monostate{};
@@ -182,15 +184,18 @@ void RouteSelector::on_clear_route_main(
   }
 
   // Forward the request if not in MRM.
-  res->status = service_utils::sync_call(cli_clear_route_, req);
+  auto rclcpp_req = std::make_shared<ClearRoute::Request>(*req);
+  res->status = service_utils::sync_call(cli_clear_route_, rclcpp_req);
 }
 
 void RouteSelector::on_set_waypoint_route_main(
-  SetWaypointRoute::Request::SharedPtr req, SetWaypointRoute::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::ResponseT> & res)
 {
   // Save the request and clear old route to resume from MRM.
-  req->uuid = uuid::generate_if_empty(req->uuid);
-  main_request_ = req;
+  auto rclcpp_req = std::make_shared<SetWaypointRoute::Request>(*req);
+  rclcpp_req->uuid = uuid::generate_if_empty(rclcpp_req->uuid);
+  main_request_ = rclcpp_req;
   main_.change_route();
 
   // During MRM, only change the state.
@@ -201,15 +206,17 @@ void RouteSelector::on_set_waypoint_route_main(
   }
 
   // Forward the request if not in MRM.
-  res->status = service_utils::sync_call(cli_set_waypoint_route_, req);
+  res->status = service_utils::sync_call(cli_set_waypoint_route_, rclcpp_req);
 }
 
 void RouteSelector::on_set_lanelet_route_main(
-  SetLaneletRoute::Request::SharedPtr req, SetLaneletRoute::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::ResponseT> & res)
 {
   // Save the request and clear old route to resume from MRM.
-  req->uuid = uuid::generate_if_empty(req->uuid);
-  main_request_ = req;
+  auto rclcpp_req = std::make_shared<SetLaneletRoute::Request>(*req);
+  rclcpp_req->uuid = uuid::generate_if_empty(rclcpp_req->uuid);
+  main_request_ = rclcpp_req;
   main_.change_route();
 
   // During MRM, only change the state.
@@ -220,13 +227,15 @@ void RouteSelector::on_set_lanelet_route_main(
   }
 
   // Forward the request if not in MRM.
-  res->status = service_utils::sync_call(cli_set_lanelet_route_, req);
+  res->status = service_utils::sync_call(cli_set_lanelet_route_, rclcpp_req);
 }
 
 void RouteSelector::on_clear_route_mrm(
-  ClearRoute::Request::SharedPtr req, ClearRoute::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::ResponseT> & res)
 {
-  res->status = resume_main_route(req);
+  auto rclcpp_req = std::make_shared<ClearRoute::Request>(*req);
+  res->status = resume_main_route(rclcpp_req);
 
   if (res->status.success) {
     mrm_operating_ = false;
@@ -235,10 +244,12 @@ void RouteSelector::on_clear_route_mrm(
 }
 
 void RouteSelector::on_set_waypoint_route_mrm(
-  SetWaypointRoute::Request::SharedPtr req, SetWaypointRoute::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::ResponseT> & res)
 {
-  req->uuid = uuid::generate_if_empty(req->uuid);
-  res->status = service_utils::sync_call(cli_set_waypoint_route_, req);
+  auto rclcpp_req = std::make_shared<SetWaypointRoute::Request>(*req);
+  rclcpp_req->uuid = uuid::generate_if_empty(rclcpp_req->uuid);
+  res->status = service_utils::sync_call(cli_set_waypoint_route_, rclcpp_req);
 
   if (res->status.success) {
     mrm_operating_ = true;
@@ -249,10 +260,12 @@ void RouteSelector::on_set_waypoint_route_mrm(
 }
 
 void RouteSelector::on_set_lanelet_route_mrm(
-  SetLaneletRoute::Request::SharedPtr req, SetLaneletRoute::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::ResponseT> & res)
 {
-  req->uuid = uuid::generate_if_empty(req->uuid);
-  res->status = service_utils::sync_call(cli_set_lanelet_route_, req);
+  auto rclcpp_req = std::make_shared<SetLaneletRoute::Request>(*req);
+  rclcpp_req->uuid = uuid::generate_if_empty(rclcpp_req->uuid);
+  res->status = service_utils::sync_call(cli_set_lanelet_route_, rclcpp_req);
 
   if (res->status.success) {
     mrm_operating_ = true;

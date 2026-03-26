@@ -15,6 +15,7 @@
 #ifndef MISSION_PLANNER__ROUTE_SELECTOR_HPP_
 #define MISSION_PLANNER__ROUTE_SELECTOR_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -50,9 +51,9 @@ public:
   void update_state(const RouteState & state);
   void update_route(const LaneletRoute & route);
 
-  rclcpp::Service<ClearRoute>::SharedPtr srv_clear_route;
-  rclcpp::Service<SetLaneletRoute>::SharedPtr srv_set_lanelet_route;
-  rclcpp::Service<SetWaypointRoute>::SharedPtr srv_set_waypoint_route;
+  agnocast::Service<ClearRoute>::SharedPtr srv_clear_route;
+  agnocast::Service<SetLaneletRoute>::SharedPtr srv_set_lanelet_route;
+  agnocast::Service<SetWaypointRoute>::SharedPtr srv_set_waypoint_route;
   rclcpp::Publisher<RouteState>::SharedPtr pub_state_;
   rclcpp::Publisher<LaneletRoute>::SharedPtr pub_route_;
 
@@ -91,17 +92,25 @@ private:
   void on_state(const RouteState::ConstSharedPtr msg);
   void on_route(const LaneletRoute::ConstSharedPtr msg);
 
-  void on_clear_route_main(ClearRoute::Request::SharedPtr req, ClearRoute::Response::SharedPtr res);
+  void on_clear_route_main(
+    const agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::ResponseT> & res);
   void on_set_waypoint_route_main(
-    SetWaypointRoute::Request::SharedPtr req, SetWaypointRoute::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::ResponseT> & res);
   void on_set_lanelet_route_main(
-    SetLaneletRoute::Request::SharedPtr req, SetLaneletRoute::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::ResponseT> & res);
 
-  void on_clear_route_mrm(ClearRoute::Request::SharedPtr req, ClearRoute::Response::SharedPtr res);
+  void on_clear_route_mrm(
+    const agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::ResponseT> & res);
   void on_set_waypoint_route_mrm(
-    SetWaypointRoute::Request::SharedPtr req, SetWaypointRoute::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::ResponseT> & res);
   void on_set_lanelet_route_mrm(
-    SetLaneletRoute::Request::SharedPtr req, SetLaneletRoute::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::ResponseT> & res);
 
   ResponseStatus resume_main_route(ClearRoute::Request::SharedPtr req);
 };

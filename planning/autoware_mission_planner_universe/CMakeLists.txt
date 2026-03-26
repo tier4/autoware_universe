@@ -4,6 +4,9 @@ project(autoware_mission_planner_universe)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
+
 ament_auto_add_library(goal_pose_visualizer_component SHARED
   src/goal_pose_visualizer/goal_pose_visualizer.cpp
 )
@@ -20,6 +23,13 @@ ament_auto_add_library(${PROJECT_NAME}_component SHARED
   src/mission_planner/route_selector.cpp
 )
 
+target_link_libraries(${PROJECT_NAME}_component
+  ${agnocastlib_LIBRARIES}
+)
+target_include_directories(${PROJECT_NAME}_component SYSTEM PUBLIC
+  ${agnocastlib_INCLUDE_DIRS}
+)
+
 rclcpp_components_register_node(${PROJECT_NAME}_component
   PLUGIN "autoware::mission_planner_universe::MissionPlanner"
   EXECUTABLE mission_planner
@@ -28,6 +38,13 @@ rclcpp_components_register_node(${PROJECT_NAME}_component
 rclcpp_components_register_node(${PROJECT_NAME}_component
   PLUGIN "autoware::mission_planner_universe::RouteSelector"
   EXECUTABLE route_selector
+)
+
+agnocast_components_register_node(${PROJECT_NAME}_component
+  PLUGIN "autoware::mission_planner_universe::RouteSelector"
+  EXECUTABLE route_selector_agnocast
+  EXECUTOR CallbackIsolatedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 ament_auto_add_library(${PROJECT_NAME}_lanelet2_plugins SHARED
