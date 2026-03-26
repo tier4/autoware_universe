@@ -155,6 +155,15 @@ if(TRT_AVAIL AND CUDA_AVAIL AND CUDNN_AVAIL)
     ${PROJECT_NAME}_lib
   )
 
+  if("$ENV{ENABLE_AGNOCAST}")
+    target_link_libraries(${PROJECT_NAME}_component
+      ${agnocast_cuda_LIBRARIES}
+    )
+    target_include_directories(${PROJECT_NAME}_component SYSTEM PUBLIC
+      ${agnocast_cuda_INCLUDE_DIRS}
+    )
+  endif()
+
   rclcpp_components_register_node(${PROJECT_NAME}_component
     PLUGIN "autoware::lidar_centerpoint::LidarCenterPointNode"
     EXECUTABLE ${PROJECT_NAME}_node
