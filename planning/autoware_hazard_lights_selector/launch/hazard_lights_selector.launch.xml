@@ -12,6 +12,6 @@
     <remap from="input/system/hazard_lights_command" to="$(var input_hazard_lights_cmd_from_mrm_operator)"/>
     <remap from="output/hazard_lights_command" to="$(var output_hazard_lights_cmd)"/>
 
-    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so"/>
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
   </node>
 </launch>

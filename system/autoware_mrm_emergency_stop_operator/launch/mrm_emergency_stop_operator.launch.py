@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import launch
 from launch.actions import DeclareLaunchArgument
 from launch.actions import OpaqueFunction
@@ -42,7 +44,8 @@ def launch_setup(context, *args, **kwargs):
         ],
         output="screen",
         additional_env={
-            "LD_PRELOAD": "/opt/ros/humble/lib/libagnocast_heaphook.so",
+            "LD_PRELOAD": "/opt/ros/humble/lib/libagnocast_heaphook.so:"
+            + os.environ.get("LD_PRELOAD", ""),
         },
     )
 

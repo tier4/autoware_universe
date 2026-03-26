@@ -31,7 +31,7 @@ DoorPanel::DoorPanel(QWidget * parent) : rviz_common::Panel(parent)
 
 void DoorPanel::onInitialize()
 {
-  const auto on_layout = [this](const rclcpp::Client<DoorLayout::Service>::SharedFuture future) {
+  const auto on_layout = [this](const agnocast::Client<DoorLayout::Service>::SharedFuture future) {
     const auto res = future.get();
     if (!res->status.success) {
       status_->setText(QString::fromStdString("failed to get layout: " + res->status.message));
@@ -61,7 +61,7 @@ void DoorPanel::onInitialize()
     status_->hide();
   };
 
-  const auto on_status = [this](const DoorStatus::Message::ConstSharedPtr msg) {
+  const auto on_status = [this](const agnocast::ipc_shared_ptr<const DoorStatus::Message> & msg) {
     using Status = autoware_adapi_v1_msgs::msg::DoorStatus;
     if (doors_.size() != msg->doors.size()) {
       return;

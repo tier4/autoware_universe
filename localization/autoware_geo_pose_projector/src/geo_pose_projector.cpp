@@ -36,7 +36,9 @@ GeoPoseProjector::GeoPoseProjector(const rclcpp::NodeOptions & options)
   const auto adaptor = autoware::component_interface_utils::NodeAdaptor(this);
   adaptor.init_sub(
     sub_map_projector_info_,
-    [this](const MapProjectorInfo::Message::ConstSharedPtr msg) { projector_info_ = *msg; });
+    [this](const agnocast::ipc_shared_ptr<const MapProjectorInfo::Message> & msg) {
+      projector_info_ = *msg;
+    });
 
   // Subscribe to geo_pose topic
   geo_pose_sub_ = create_subscription<GeoPoseWithCovariance>(

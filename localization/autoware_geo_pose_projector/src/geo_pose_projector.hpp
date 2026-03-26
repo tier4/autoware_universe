@@ -15,6 +15,7 @@
 #ifndef GEO_POSE_PROJECTOR_HPP_
 #define GEO_POSE_PROJECTOR_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/component_interface_specs_universe/map.hpp>
 #include <autoware/component_interface_utils/rclcpp.hpp>
 #include <rclcpp/rclcpp.hpp>

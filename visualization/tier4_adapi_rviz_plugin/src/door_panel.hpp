@@ -18,6 +18,7 @@
 #include <QGridLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <agnocast/agnocast.hpp>
 #include <autoware/adapi_specs/vehicle.hpp>
 #include <autoware/component_interface_utils/rclcpp.hpp>
 #include <rclcpp/rclcpp.hpp>

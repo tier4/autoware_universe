@@ -10,6 +10,6 @@
     <remap from="~/input/odometry" to="$(var input_odometry)"/>
     <remap from="~/input/twist" to="$(var input_twist)"/>
     <param from="$(var param_file)"/>
-    <env name="LD_PRELOAD" value="$(env LD_PRELOAD '')/opt/ros/humble/lib/libagnocast_heaphook.so"/>
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
   </node>
 </launch>

@@ -11,7 +11,7 @@
 
   <node pkg="autoware_surround_obstacle_checker" exec="surround_obstacle_checker_node_agnocast" name="surround_obstacle_checker" output="screen">
     <param from="$(var param_path)"/>
-    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so"/>
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
     <remap from="~/output/no_start_reason" to="/planning/scenario_planning/status/no_start_reason"/>
     <remap from="~/output/max_velocity" to="$(var output_velocity_limit)"/>
     <remap from="~/output/velocity_limit_clear_command" to="$(var output_velocity_limit_clear_command)"/>

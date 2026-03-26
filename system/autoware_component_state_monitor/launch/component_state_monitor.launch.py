@@ -13,6 +13,7 @@
 # limitations under the License.
 
 
+import os
 from collections import defaultdict
 from pathlib import Path
 
@@ -64,7 +65,8 @@ def create_topic_monitor_node(row):
         parameters=[params],
         output="screen",
         additional_env={
-            "LD_PRELOAD": "/opt/ros/humble/lib/libagnocast_heaphook.so",
+            "LD_PRELOAD": "/opt/ros/humble/lib/libagnocast_heaphook.so:"
+            + os.environ.get("LD_PRELOAD", ""),
         },
     )
 
@@ -90,7 +92,8 @@ def launch_setup(context, *args, **kwargs):
         parameters=[{"topic_monitor_names": topic_monitor_names}, topic_monitor_param],
         output="screen",
         additional_env={
-            "LD_PRELOAD": "/opt/ros/humble/lib/libagnocast_heaphook.so",
+            "LD_PRELOAD": "/opt/ros/humble/lib/libagnocast_heaphook.so:"
+            + os.environ.get("LD_PRELOAD", ""),
         },
     )
 
