@@ -22,6 +22,8 @@
 
 #include <boost/geometry.hpp>
 
+#include <fmt/core.h>
+
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -372,14 +374,22 @@ bool check_pet_collision(
   return false;
 }
 
-std::pair<std::optional<double>, std::optional<double>> compute_pet_and_ttc(
+struct PetCollisionResult
+{
+  std::optional<double> pet;
+  std::optional<double> ttc;
+  std::optional<DebugData> debug_data;
+};
+
+PetCollisionResult compute_pet_and_ttc(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
   double pet_threshold)
 {
+  DebugData debug_data;
   if (!polygon::check_path_polygon_convex_collision(
         ref_trajectory.getFootprints(), test_trajectory.getFootprintsInTimeRange(
                                           0.0, ref_trajectory.getTimes().back() + pet_threshold))) {
-    return std::make_pair(std::nullopt, std::nullopt);
+    return PetCollisionResult{std::nullopt, std::nullopt, std::nullopt};
   }
 
   std::optional<double> candidate_pet{};
@@ -411,15 +421,23 @@ std::pair<std::optional<double>, std::optional<double>> compute_pet_and_ttc(
         check_slice_collision(test_start_time_after, test_end_time_after)) {
         candidate_pet = pet_range;
         candidate_ttc = ref_start_time;
+
+        debug_data.pet = pet_range;
+        debug_data.ego_polygons = polygon::compute_overall_convex_hull(
+          ref_trajectory.getFootprintsInTimeRange(ref_start_time, ref_end_time));
+        debug_data.object_polygons = polygon::compute_overall_convex_hull(
+          test_trajectory.getFootprintsInTimeRange(test_start_time_before, test_end_time_after));
+        debug_data.object_id = test_trajectory.getId();
+
         break;
       }
     }
     if (candidate_pet.has_value() && candidate_pet.value() == 0.0) {
-      return std::make_pair(candidate_pet, candidate_ttc);
+      return PetCollisionResult{candidate_pet, candidate_ttc, debug_data};
     }
   }
 
-  return std::make_pair(candidate_pet, candidate_ttc);
+  return PetCollisionResult{candidate_pet, candidate_ttc, debug_data};
 }
 
 std::optional<double> calc_dist_to_collide(
@@ -454,6 +472,50 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
   pet_collision_params_ = params.collision_check.pet_collision;
   rss_params_ = params.collision_check.rss;
+}
+
+void CollisionCheckFilter::add_debug_markers(
+  const DebugData & debug_data, const rclcpp::Time & stamp)
+{
+  int id = debug_markers_.markers.empty() ? 0 : debug_markers_.markers.back().id + 1;
+
+  auto add_poly_marker =
+    [&](const Polygon2d & poly, const std::string & ns, float r, float g, float b) {
+      if (poly.outer().empty()) return;
+
+      visualization_msgs::msg::Marker m;
+      m.header.frame_id = "map";
+      m.header.stamp = stamp;
+      m.ns = ns;
+      m.id = id++;
+      m.type = visualization_msgs::msg::Marker::LINE_STRIP;
+      m.action = visualization_msgs::msg::Marker::ADD;
+      m.scale.x = 0.05;  // line width
+      m.color.r = r;
+      m.color.g = g;
+      m.color.b = b;
+      m.color.a = 0.9;
+
+      for (const auto & p : poly.outer()) {
+        geometry_msgs::msg::Point pt;
+        pt.x = p.x();
+        pt.y = p.y();
+        pt.z = 0.0;
+        m.points.push_back(pt);
+      }
+      // close the polygon by adding the first point at the end
+      geometry_msgs::msg::Point pt_first;
+      pt_first.x = poly.outer().front().x();
+      pt_first.y = poly.outer().front().y();
+      pt_first.z = 0.0;
+      m.points.push_back(pt_first);
+
+      debug_markers_.markers.push_back(std::move(m));
+    };
+
+  add_poly_marker(debug_data.ego_polygons, "ego_worst_pet_" + debug_data.object_id, 0.0, 0.0, 1.0);
+  add_poly_marker(
+    debug_data.object_polygons, "obj_worst_pet_" + debug_data.object_id, 1.0, 0.0, 0.0);
 }
 
 double CollisionCheckFilter::compute_rss_deceleration(
@@ -493,10 +555,6 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   // stopwatch.tic();
 
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
-    // const auto total_time_us = stopwatch.toc();
-    // std::cerr
-    //   << "CollisionCheckFilter: No predicted objects, skipping collision check. Time taken: "
-    //   << total_time_us / 1000.0 << " ms" << std::endl;
     return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
       .name(get_name())
       .level(TrajectoryValidationStatus::OK)
@@ -504,9 +562,6 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   }
 
   if (traj_points.empty()) {
-    // const auto total_time_us = stopwatch.toc();
-    // std::cerr << "CollisionCheckFilter: Empty trajectory, skipping collision check. Time taken: "
-    //           << total_time_us / 1000.0 << " ms" << std::endl;
     return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
       .name(get_name())
       .level(TrajectoryValidationStatus::OK)
@@ -541,8 +596,11 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   std::vector<TrajectoryMetricStatus> metrics;
   bool is_overall_ok = true;
   for (const auto & object_trajectory_data : object_trajectory_data_list) {
-    const auto [pet, ttc] = compute_pet_and_ttc(
+    const auto collision_result = compute_pet_and_ttc(
       ego_trajectory_data, object_trajectory_data, pet_collision_params_.collision_time_threshold);
+
+    const auto & pet = collision_result.pet;
+    const auto & ttc = collision_result.ttc;
 
     const auto is_pet_ok = !pet.has_value();
     const auto is_ttc_ok = !ttc.has_value();
@@ -560,6 +618,10 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
         .name("check_TTC_collision_" + object_trajectory_data.getId())
         .level(is_ttc_ok ? TrajectoryMetricStatus::OK : TrajectoryMetricStatus::ERROR)
         .score(ttc.value_or(0.0)));
+
+    if (!is_pet_ok) {
+      add_debug_markers(collision_result.debug_data.value(), context.odometry->header.stamp);
+    }
   }
 
   // calc RSS metrics
