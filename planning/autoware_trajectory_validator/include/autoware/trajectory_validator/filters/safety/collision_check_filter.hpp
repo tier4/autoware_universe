@@ -26,6 +26,7 @@
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <boost/range/iterator_range.hpp>
 
@@ -127,6 +128,14 @@ private:
   }
 };
 
+struct DebugData
+{
+  double pet{std::numeric_limits<double>::max()};
+  Polygon2d ego_polygons;
+  Polygon2d object_polygons;
+  std::string object_id;
+};
+
 class CollisionCheckFilter : public plugin::ValidatorInterface
 {
 public:
@@ -144,6 +153,8 @@ public:
 private:
   validator::Params::CollisionCheck::PetCollision pet_collision_params_;
   validator::Params::CollisionCheck::Rss rss_params_;
+
+  void add_debug_markers(const DebugData & debug_data, const rclcpp::Time & stamp);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety
