@@ -178,7 +178,22 @@ struct ObstacleTracker
   {
   }
 
+  /**
+   * @brief Update tracked objects
+   * @details Use input objects to update the tracked objects history and remove obsolete objects,
+   * based on the on_time_buffer and off_time_buffer.
+   * @param objects Input predicted objects after filtering
+   * @param persistent_objects Output persistent objects
+   */
   void update_objects(const PredictedObjects & objects, PredictedObjects & persistent_objects);
+
+  /**
+   * @brief Update tracked points
+   * @details Use input pointcloud to update the tracked points history and remove obsolete points,
+   * based on the on_time_buffer and off_time_buffer.
+   * @param points Input pointcloud
+   * @param persistent_points Output persistent points
+   */
   void update_points(const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points);
 
 private:
