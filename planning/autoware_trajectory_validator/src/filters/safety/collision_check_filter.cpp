@@ -282,7 +282,7 @@ double calc_longitudinal_velocity(const PosePoints & points, const Object & obje
     throw std::invalid_argument("points must not be empty");
   }
 
-  constexpr double min_path_end_to_end_distance = 1e3;
+  constexpr double min_path_end_to_end_distance = 1e-3;
 
   const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
   const bool use_path_yaw =
