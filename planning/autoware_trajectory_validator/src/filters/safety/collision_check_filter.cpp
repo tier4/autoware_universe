@@ -39,7 +39,9 @@
 namespace autoware::trajectory_validator::plugin::safety
 {
 
-namespace motion
+namespace trajectory
+{
+namespace time_distance
 {
 std::pair<TimeTrajectory, TravelDistanceTrajectory> compute_motion_profile_1d(
   const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
@@ -91,9 +93,10 @@ std::pair<TimeTrajectory, TravelDistanceTrajectory> compute_motion_profile_1d(
 
   return {return_times, return_distances};
 }
+}  // namespace time_distance
 
-}  // namespace motion
-
+namespace pose
+{
 namespace constant_curvature_predictor
 {
 struct TwistPerDistance
@@ -181,7 +184,22 @@ PoseTrajectory compute(
 
 }  // namespace constant_curvature_predictor
 
-namespace polygon
+template <class T>
+PoseTrajectory compute_pose_trajectory(
+  const T & traj_points, const TravelDistanceTrajectory & distance_trajectory)
+{
+  PoseTrajectory pose_trajectory;
+  pose_trajectory.reserve(distance_trajectory.size());
+  for (const auto & distance : distance_trajectory) {
+    const auto pose = autoware::motion_utils::calcInterpolatedPose(traj_points, distance, false);
+    pose_trajectory.push_back(pose);
+  }
+  return pose_trajectory;
+}
+
+}  // namespace pose
+
+namespace footprint
 {
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const autoware_perception_msgs::msg::Shape & object_shape)
@@ -208,99 +226,7 @@ FootprintTrajectory compute_footprint_trajectory(
   }
   return footprint_trajectory;
 }
-
-template <typename Range>
-Box2d compute_overall_envelope(const Range & polygons)
-{
-  Box2d overall_box;
-  boost::geometry::assign_inverse(overall_box);
-
-  for (const auto & poly : polygons) {
-    for (const auto & p : poly.outer()) {
-      boost::geometry::expand(overall_box, p);
-    }
-  }
-
-  return overall_box;
-}
-
-template <typename Range>
-Polygon2d compute_overall_convex_hull(const Range & polygons)
-{
-  MultiPoint2d all_points;
-
-  for (const auto & poly : polygons) {
-    for (const auto & pt : poly.outer()) {
-      all_points.push_back(pt);
-    }
-  }
-
-  Polygon2d hull;
-  boost::geometry::convex_hull(all_points, hull);
-
-  return hull;
-}
-
-template <typename Range1, typename Range2>
-bool check_path_polygon_convex_collision(const Range1 & footprints1, const Range2 & footprints2)
-{
-  const auto overall_box1 = compute_overall_envelope(footprints1);
-  const auto overall_box2 = compute_overall_envelope(footprints2);
-
-  if (!boost::geometry::intersects(overall_box1, overall_box2)) {
-    return false;
-  }
-
-  const auto overall_convex1 = compute_overall_convex_hull(footprints1);
-  const auto overall_convex2 = compute_overall_convex_hull(footprints2);
-  if (!boost::geometry::intersects(overall_convex1, overall_convex2)) {
-    return false;
-  }
-
-  return true;
-}
-
-}  // namespace polygon
-
-template <class T>
-PoseTrajectory compute_pose_trajectory(
-  const T & traj_points, const TravelDistanceTrajectory & distance_trajectory)
-{
-  PoseTrajectory pose_trajectory;
-  pose_trajectory.reserve(distance_trajectory.size());
-  for (const auto & distance : distance_trajectory) {
-    const auto pose = autoware::motion_utils::calcInterpolatedPose(traj_points, distance, false);
-    pose_trajectory.push_back(pose);
-  }
-  return pose_trajectory;
-}
-
-template <typename PosePoints, typename Object>
-double calc_longitudinal_velocity(const PosePoints & points, const Object & object)
-{
-  if (points.empty()) {
-    throw std::invalid_argument("points must not be empty");
-  }
-
-  constexpr double min_path_end_to_end_distance = 1e-3;
-
-  const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
-  const bool use_path_yaw =
-    points.size() >= 2 && autoware_utils_geometry::calc_distance2d(points.front(), points.back()) >=
-                            min_path_end_to_end_distance;
-  const double object_yaw_relative_to_points =
-    use_path_yaw ? autoware::motion_utils::calcYawDeviation(points, object_pose, true)
-                 : autoware::universe_utils::calcYawDeviation(points.front(), object_pose);
-  const Eigen::Rotation2Dd object_to_points_rotation(object_yaw_relative_to_points);
-
-  const auto & object_twist = object.kinematics.initial_twist_with_covariance.twist;
-  const Eigen::Vector2d object_velocity_in_object_frame(
-    object_twist.linear.x, object_twist.linear.y);
-  const Eigen::Vector2d object_velocity_in_points_frame =
-    object_to_points_rotation * object_velocity_in_object_frame;
-
-  return object_velocity_in_points_frame.x();
-}
+}  // namespace footprint
 
 TrajectoryData generate_ego_trajectory(
   const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
@@ -364,6 +290,70 @@ TrajectoryData generate_constant_curvature_path_trajectory(
     autoware_utils_uuid::to_hex_string(predicted_object.object_id) + "_constant_curvature_path",
     std::move(times), std::move(distances), std::move(poses), std::move(footprints));
 }
+}  // namespace trajectory
+
+namespace geometry
+{
+template <typename Range>
+Box2d compute_overall_envelope(const Range & polygons)
+{
+  Box2d overall_box;
+  boost::geometry::assign_inverse(overall_box);
+
+  for (const auto & poly : polygons) {
+    for (const auto & p : poly.outer()) {
+      boost::geometry::expand(overall_box, p);
+    }
+  }
+
+  return overall_box;
+}
+
+template <typename Range>
+Polygon2d compute_overall_convex_hull(const Range & polygons)
+{
+  MultiPoint2d all_points;
+
+  for (const auto & poly : polygons) {
+    for (const auto & pt : poly.outer()) {
+      all_points.push_back(pt);
+    }
+  }
+
+  Polygon2d hull;
+  boost::geometry::convex_hull(all_points, hull);
+
+  return hull;
+}
+
+template <typename Range1, typename Range2>
+bool check_path_polygon_convex_collision(const Range1 & footprints1, const Range2 & footprints2)
+{
+  const auto overall_box1 = compute_overall_envelope(footprints1);
+  const auto overall_box2 = compute_overall_envelope(footprints2);
+
+  if (!boost::geometry::intersects(overall_box1, overall_box2)) {
+    return false;
+  }
+
+  const auto overall_convex1 = compute_overall_convex_hull(footprints1);
+  const auto overall_convex2 = compute_overall_convex_hull(footprints2);
+  if (!boost::geometry::intersects(overall_convex1, overall_convex2)) {
+    return false;
+  }
+
+  return true;
+}
+}  // namespace geometry
+
+namespace pet
+{
+struct PetCollisionResult
+{
+  std::optional<double> pet;
+  std::optional<double> ttc;
+  std::optional<DebugData> debug_data;
+};
 
 bool check_pet_collision(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
@@ -392,13 +382,6 @@ bool check_pet_collision(
 
   return false;
 }
-
-struct PetCollisionResult
-{
-  std::optional<double> pet;
-  std::optional<double> ttc;
-  std::optional<DebugData> debug_data;
-};
 
 PetCollisionResult compute_pet_and_ttc(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
@@ -458,6 +441,36 @@ PetCollisionResult compute_pet_and_ttc(
 
   return PetCollisionResult{candidate_pet, candidate_ttc, debug_data};
 }
+}  // namespace pet
+
+namespace rss
+{
+template <typename PosePoints, typename Object>
+double calc_longitudinal_velocity(const PosePoints & points, const Object & object)
+{
+  if (points.empty()) {
+    throw std::invalid_argument("points must not be empty");
+  }
+
+  constexpr double min_path_end_to_end_distance = 1e-3;
+
+  const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
+  const bool use_path_yaw =
+    points.size() >= 2 && autoware_utils_geometry::calc_distance2d(points.front(), points.back()) >=
+                            min_path_end_to_end_distance;
+  const double object_yaw_relative_to_points =
+    use_path_yaw ? autoware::motion_utils::calcYawDeviation(points, object_pose, true)
+                 : autoware::universe_utils::calcYawDeviation(points.front(), object_pose);
+  const Eigen::Rotation2Dd object_to_points_rotation(object_yaw_relative_to_points);
+
+  const auto & object_twist = object.kinematics.initial_twist_with_covariance.twist;
+  const Eigen::Vector2d object_velocity_in_object_frame(
+    object_twist.linear.x, object_twist.linear.y);
+  const Eigen::Vector2d object_velocity_in_points_frame =
+    object_to_points_rotation * object_velocity_in_object_frame;
+
+  return object_velocity_in_points_frame.x();
+}
 
 std::optional<double> calc_dist_to_collide(
   const TrajectoryData & ego_trajectory,
@@ -486,6 +499,8 @@ std::optional<double> calc_dist_to_collide(
 
   return std::nullopt;
 }
+
+}  // namespace rss
 
 void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
