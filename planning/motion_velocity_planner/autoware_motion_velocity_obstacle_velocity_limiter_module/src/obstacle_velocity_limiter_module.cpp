@@ -39,7 +39,7 @@
 
 namespace autoware::motion_velocity_planner
 {
-void ObstacleVelocityLimiterModule::init(rclcpp::Node & node, const std::string & module_name)
+void ObstacleVelocityLimiterModule::init(agnocast::Node & node, const std::string & module_name)
 {
   module_name_ = module_name;
   logger_ = node.get_logger().get_child("obstacle_velocity_limiter");
@@ -53,10 +53,12 @@ void ObstacleVelocityLimiterModule::init(rclcpp::Node & node, const std::string 
     node.create_publisher<visualization_msgs::msg::MarkerArray>("~/" + ns_ + "/debug_markers", 1);
   virtual_wall_publisher_ =
     node.create_publisher<visualization_msgs::msg::MarkerArray>("~/" + ns_ + "/virtual_walls", 1);
-  processing_diag_publisher_ = std::make_shared<autoware_utils::ProcessingTimePublisher>(
-    &node, "~/debug/" + ns_ + "/processing_time_ms_diag");
+  processing_diag_publisher_ =
+    std::make_shared<autoware_utils::ProcessingTimePublisherTemplate<agnocast::Node>>(
+      &node, "~/debug/" + ns_ + "/processing_time_ms_diag");
 
-  const auto vehicle_info = vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo();
+  const auto vehicle_info =
+    vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo();
   vehicle_lateral_offset_ = static_cast<double>(vehicle_info.max_lateral_offset_m);
   vehicle_front_offset_ = static_cast<double>(vehicle_info.max_longitudinal_offset_m);
   distance_buffer_ = node.declare_parameter<double>("distance_buffer");
@@ -206,7 +208,11 @@ VelocityPlanningResult ObstacleVelocityLimiterModule::plan(
     wall.style = autoware::motion_utils::VirtualWallType::slowdown;
   }
   virtual_wall_marker_creator.add_virtual_walls(virtual_walls);
-  virtual_wall_publisher_->publish(virtual_wall_marker_creator.create_markers(clock_->now()));
+  {
+    auto loaned = virtual_wall_publisher_->borrow_loaned_message();
+    *loaned = virtual_wall_marker_creator.create_markers(clock_->now());
+    virtual_wall_publisher_->publish(std::move(loaned));
+  }
   if (!result.slowdown_intervals.empty()) {
     prev_inserted_point_ = result.slowdown_intervals.front().from;
   }
@@ -224,10 +230,14 @@ VelocityPlanningResult ObstacleVelocityLimiterModule::plan(
       obstacle_velocity_limiter::createProjectedLines(downsampled_traj_points, projection_params_);
     const auto safe_footprint_polygons = obstacle_velocity_limiter::createFootprintPolygons(
       safe_projected_linestrings, vehicle_lateral_offset_);
-    debug_publisher_->publish(makeDebugMarkers(
-      obstacles, projected_linestrings, safe_projected_linestrings, footprint_polygons,
-      safe_footprint_polygons, obstacle_masks,
-      planner_data->current_odometry.pose.pose.position.z));
+    {
+      auto loaned = debug_publisher_->borrow_loaned_message();
+      *loaned = makeDebugMarkers(
+        obstacles, projected_linestrings, safe_projected_linestrings, footprint_polygons,
+        safe_footprint_polygons, obstacle_masks,
+        planner_data->current_odometry.pose.pose.position.z);
+      debug_publisher_->publish(std::move(loaned));
+    }
   }
   std::map<std::string, double> processing_times;
   processing_times["preprocessing"] = preprocessing_us / 1000;

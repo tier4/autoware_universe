@@ -14,6 +14,7 @@
 
 #include "type_alias.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/boundary_departure_checker/parameters.hpp>
 #include <autoware_utils_math/unit_conversion.hpp>
 
@@ -71,7 +72,7 @@ struct NodeParam
   std::unordered_map<DepartureType, int8_t> diagnostic_level;
 
   NodeParam() = default;
-  explicit NodeParam(rclcpp::Node & node)
+  explicit NodeParam(agnocast::Node & node)
   {
     const std::string module_name{"boundary_departure_prevention."};
     bdc_param.boundary_types_to_detect = get_or_declare_parameter<std::vector<std::string>>(

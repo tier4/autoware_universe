@@ -26,6 +26,8 @@
 #include "type_alias.hpp"
 #include "types.hpp"
 
+#include <agnocast/agnocast.hpp>
+
 #include <algorithm>
 #include <string>
 #include <unordered_map>
@@ -47,7 +49,7 @@ struct CommonParam
   double limit_min_jerk{};
 
   CommonParam() = default;
-  explicit CommonParam(rclcpp::Node & node)
+  explicit CommonParam(agnocast::Node & node)
   {
     max_accel = get_or_declare_parameter<double>(node, "normal.max_acc");
     min_accel = get_or_declare_parameter<double>(node, "normal.min_acc");
@@ -88,7 +90,7 @@ struct ObstacleFilteringParam
   double obstacle_velocity_threshold_to_cruise{};
 
   ObstacleFilteringParam() = default;
-  explicit ObstacleFilteringParam(rclcpp::Node & node)
+  explicit ObstacleFilteringParam(agnocast::Node & node)
   {
     inside_object_types =
       utils::get_target_object_type(node, "obstacle_cruise.obstacle_filtering.object_type.inside.");
@@ -145,7 +147,7 @@ struct CruisePlanningParam
   double safe_distance_margin{};
 
   CruisePlanningParam() = default;
-  explicit CruisePlanningParam(rclcpp::Node & node)
+  explicit CruisePlanningParam(agnocast::Node & node)
   {
     idling_time =
       get_or_declare_parameter<double>(node, "obstacle_cruise.cruise_planning.idling_time");

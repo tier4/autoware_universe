@@ -20,6 +20,7 @@
 #include <autoware/motion_utils/marker/virtual_wall_marker_creator.hpp>
 #include <autoware/motion_velocity_planner_common/plugin_module_interface.hpp>
 #include <autoware/motion_velocity_planner_common/velocity_planning_result.hpp>
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -37,7 +38,7 @@ namespace autoware::motion_velocity_planner
 class OutOfLaneModule : public PluginModuleInterface
 {
 public:
-  void init(rclcpp::Node & node, const std::string & module_name) override;
+  void init(agnocast::Node & node, const std::string & module_name) override;
   void publish_planning_factor() override { planning_factor_interface_->publish(); };
   void update_parameters(const std::vector<rclcpp::Parameter> & parameters) override;
   VelocityPlanningResult plan(
@@ -54,7 +55,7 @@ public:
   }
 
 private:
-  void init_parameters(rclcpp::Node & node);
+  void init_parameters(agnocast::Node & node);
   /// @brief resize the trajectory to start from the segment closest to ego and to have at most the
   /// given length
   static void limit_trajectory_size(

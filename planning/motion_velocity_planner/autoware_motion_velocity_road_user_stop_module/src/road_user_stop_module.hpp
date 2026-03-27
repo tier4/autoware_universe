@@ -25,6 +25,7 @@
 #include <autoware/motion_velocity_planner_common/velocity_planning_result.hpp>
 #include <autoware_motion_velocity_road_user_stop_module/road_user_stop_module_parameters.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
@@ -45,7 +46,7 @@ class RoadUserStopModule : public PluginModuleInterface
 {
 public:
   RoadUserStopModule() = default;
-  void init(rclcpp::Node & node, const std::string & module_name) override;
+  void init(agnocast::Node & node, const std::string & module_name) override;
   void update_parameters(const std::vector<rclcpp::Parameter> & parameters) override;
   VelocityPlanningResult plan(
     const std::vector<TrajectoryPoint> & raw_trajectory_points,
@@ -68,7 +69,7 @@ private:
   rclcpp::Clock::SharedPtr clock_{};
 
   std::string module_name_;
-  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
+  agnocast::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     processing_time_detail_pub_{};
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{};
 

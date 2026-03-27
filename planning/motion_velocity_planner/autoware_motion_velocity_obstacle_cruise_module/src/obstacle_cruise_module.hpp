@@ -29,6 +29,7 @@
 #include <autoware/motion_velocity_planner_common/plugin_module_interface.hpp>
 #include <autoware/motion_velocity_planner_common/velocity_planning_result.hpp>
 #include <autoware/objects_of_interest_marker_interface/objects_of_interest_marker_interface.hpp>
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <algorithm>
@@ -42,7 +43,7 @@ namespace autoware::motion_velocity_planner
 class ObstacleCruiseModule : public PluginModuleInterface
 {
 public:
-  void init(rclcpp::Node & node, const std::string & module_name) override;
+  void init(agnocast::Node & node, const std::string & module_name) override;
   void publish_planning_factor() override { planning_factor_interface_->publish(); };
   void update_parameters(const std::vector<rclcpp::Parameter> & parameters) override;
   VelocityPlanningResult plan(
@@ -69,12 +70,12 @@ private:
   ObstacleFilteringParam obstacle_filtering_param_;
 
   // common publisher
-  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr debug_cruise_planning_info_pub_;
+  agnocast::Publisher<Float32MultiArrayStamped>::SharedPtr debug_cruise_planning_info_pub_;
 
   // module publisher
-  std::unique_ptr<autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>
+  std::unique_ptr<autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterfaceTemplate<agnocast::Node>>
     objects_of_interest_marker_interface_;
-  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr processing_time_detail_pub_;
+  agnocast::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr processing_time_detail_pub_;
 
   // cruise planner
   std::unique_ptr<CruisePlannerInterface> cruise_planner_;
@@ -85,7 +86,7 @@ private:
   bool need_to_clear_velocity_limit_{false};
   mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
 
-  std::unique_ptr<CruisePlannerInterface> create_cruise_planner(rclcpp::Node & node) const;
+  std::unique_ptr<CruisePlannerInterface> create_cruise_planner(agnocast::Node & node) const;
   std::vector<CruiseObstacle> filter_cruise_obstacle_for_predicted_object(
     const Odometry & odometry, const double ego_nearest_dist_threshold,
     const double ego_nearest_yaw_threshold, const std::vector<TrajectoryPoint> & traj_points,

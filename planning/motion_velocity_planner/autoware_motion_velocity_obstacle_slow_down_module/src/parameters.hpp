@@ -19,6 +19,7 @@
 #include "type_alias.hpp"
 #include "types.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils/ros/parameter.hpp>
 #include <autoware_utils_rclcpp/parameter.hpp>
 
@@ -42,7 +43,7 @@ struct CommonParam
   double limit_min_jerk{};
 
   CommonParam() = default;
-  explicit CommonParam(rclcpp::Node & node)
+  explicit CommonParam(agnocast::Node & node)
   {
     max_accel = get_or_declare_parameter<double>(node, "normal.max_acc");
     min_accel = get_or_declare_parameter<double>(node, "normal.min_acc");
@@ -71,7 +72,7 @@ struct ObstacleFilteringParam
   int successive_num_to_exit_slow_down_condition{};
 
   ObstacleFilteringParam() = default;
-  explicit ObstacleFilteringParam(rclcpp::Node & node)
+  explicit ObstacleFilteringParam(agnocast::Node & node)
   {
     use_pointcloud = get_or_declare_parameter<bool>(
       node, "obstacle_slow_down.obstacle_filtering.object_type.pointcloud");
@@ -96,7 +97,7 @@ struct ObstacleFilteringParam
 /// not specified
 template <class T>
 auto get_object_parameter(
-  rclcpp::Node & node, const std::string & ns, const std::string & object_label,
+  agnocast::Node & node, const std::string & ns, const std::string & object_label,
   const std::string & param)
 {
   using autoware_utils::get_or_declare_parameter;
@@ -163,7 +164,7 @@ struct SlowDownPlanningParam
     object_type_specific_param_per_object_type;
 
   SlowDownPlanningParam() = default;
-  explicit SlowDownPlanningParam(rclcpp::Node & node)
+  explicit SlowDownPlanningParam(agnocast::Node & node)
   {
     slow_down_min_acc = get_or_declare_parameter<double>(
       node, "obstacle_slow_down.slow_down_planning.slow_down_min_acc");

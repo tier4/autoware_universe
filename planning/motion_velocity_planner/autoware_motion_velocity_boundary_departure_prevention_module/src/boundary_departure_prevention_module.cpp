@@ -54,7 +54,7 @@ namespace autoware::motion_velocity_planner::experimental
 {
 
 void BoundaryDeparturePreventionModule::init(
-  rclcpp::Node & node, [[maybe_unused]] const std::string & module_name)
+  agnocast::Node & node, [[maybe_unused]] const std::string & module_name)
 {
   module_name_ = module_name;
   clock_ptr_ = node.get_clock();
@@ -65,13 +65,13 @@ void BoundaryDeparturePreventionModule::init(
   publish_topics(node);
   time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(processing_time_detail_pub_);
 
-  updater_ptr_ = std::make_unique<diagnostic_updater::Updater>(&node);
-  updater_ptr_->setHardwareID("motion_velocity_boundary_departure_prevention");
-  updater_ptr_->add(
-    "boundary_departure", [this](diagnostic_updater::DiagnosticStatusWrapper & stat) {
-      const auto [lvl, msg] = output_.diag_status;
-      stat.summary(lvl, msg);
-    });
+  // updater_ptr_ = std::make_unique<diagnostic_updater::Updater>(&node);  // not compatible with agnocast::Node
+  // updater_ptr_->setHardwareID("motion_velocity_boundary_departure_prevention");
+  // updater_ptr_->add(
+  //   "boundary_departure", [this](diagnostic_updater::DiagnosticStatusWrapper & stat) {
+  //     const auto [lvl, msg] = output_.diag_status;
+  //     stat.summary(lvl, msg);
+  //   });
 
   last_abnormality_fp_no_overlap_bound_time_ = clock_ptr_->now().seconds();
   last_abnormality_fp_overlap_bound_time_ = clock_ptr_->now().seconds();
@@ -290,27 +290,26 @@ void BoundaryDeparturePreventionModule::update_parameters(
   }
 }
 
-void BoundaryDeparturePreventionModule::subscribe_topics(rclcpp::Node & node)
+void BoundaryDeparturePreventionModule::subscribe_topics(agnocast::Node & node)
 {
   ego_pred_traj_polling_sub_ =
-    autoware_utils::InterProcessPollingSubscriber<Trajectory>::create_subscription(
-      &node, "/control/trajectory_follower/lateral/predicted_trajectory", 1);
+    std::make_shared<agnocast::PollingSubscriber<Trajectory>>(
+      &node, "/control/trajectory_follower/lateral/predicted_trajectory");
   control_cmd_polling_sub_ =
-    autoware_utils::InterProcessPollingSubscriber<Control>::create_subscription(
-      &node, "/control/command/control_cmd", 1);
+    std::make_shared<agnocast::PollingSubscriber<Control>>(
+      &node, "/control/command/control_cmd");
   steering_angle_polling_sub_ =
-    autoware_utils::InterProcessPollingSubscriber<SteeringReport>::create_subscription(
-      &node, "/vehicle/status/steering_status", 1);
+    std::make_shared<agnocast::PollingSubscriber<SteeringReport>>(
+      &node, "/vehicle/status/steering_status");
   op_mode_state_polling_sub_ =
-    autoware_utils::InterProcessPollingSubscriber<OperationModeState>::create_subscription(
-      &node, "/api/operation_mode/state", 1);
-  route_polling_sub_ = autoware_utils::InterProcessPollingSubscriber<
-    LaneletRoute, autoware_utils::polling_policy::Newest>::
-    create_subscription(
+    std::make_shared<agnocast::PollingSubscriber<OperationModeState>>(
+      &node, "/api/operation_mode/state");
+  route_polling_sub_ =
+    std::make_shared<agnocast::PollingSubscriber<LaneletRoute>>(
       &node, "/planning/mission_planning/route", rclcpp::QoS(1).transient_local());
 }
 
-void BoundaryDeparturePreventionModule::publish_topics(rclcpp::Node & node)
+void BoundaryDeparturePreventionModule::publish_topics(agnocast::Node & node)
 {
   const std::string ns = "boundary_departure_prevention";
 
@@ -704,7 +703,9 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
   toc_curr_watch("create_slow_down_interval_marker");
 
   if (virtual_wall_publisher_) {
-    virtual_wall_publisher_->publish(slow_down_wall_marker_);
+    auto loaned = virtual_wall_publisher_->borrow_loaned_message();
+    *loaned = slow_down_wall_marker_;
+    virtual_wall_publisher_->publish(std::move(loaned));
   }
 
   if (debug_publisher_) {
@@ -713,7 +714,9 @@ BoundaryDeparturePreventionModule::plan_slow_down_intervals(
       debug::create_debug_marker_array(
         output_, *ego_pred_traj_ptr_, clock_ptr_, curr_pose.pose.position.z, node_param_),
       &debug_marker_);
-    debug_publisher_->publish(debug_marker_);
+    auto loaned = debug_publisher_->borrow_loaned_message();
+    *loaned = debug_marker_;
+    debug_publisher_->publish(std::move(loaned));
   }
 
   toc_curr_watch("check_stopping_dist");

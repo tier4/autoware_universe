@@ -90,7 +90,7 @@ double calc_minimum_distance_to_stop(
 }
 }  // namespace
 
-void RoadUserStopModule::init(rclcpp::Node & node, const std::string & module_name)
+void RoadUserStopModule::init(agnocast::Node & node, const std::string & module_name)
 {
   using std::placeholders::_1;
 
@@ -106,7 +106,7 @@ void RoadUserStopModule::init(rclcpp::Node & node, const std::string & module_na
 
   virtual_wall_publisher_ = node.create_publisher<MarkerArray>("~/road_user_stop/virtual_walls", 1);
   planning_factor_interface_ =
-    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>>(
       &node, "road_user_stop");
 
   debug_publisher_ = node.create_publisher<MarkerArray>("~/road_user_stop/debug_markers", 1);
@@ -1382,9 +1382,17 @@ void RoadUserStopModule::publish_debug_info()
 {
   autoware_utils_debug::ScopedTimeTrack st_debug(__func__, *time_keeper_);
   const auto debug_markers = create_debug_marker_array();
-  debug_publisher_->publish(debug_markers);
+  {
+    auto loaned = debug_publisher_->borrow_loaned_message();
+    *loaned = debug_markers;
+    debug_publisher_->publish(std::move(loaned));
+  }
 
-  virtual_wall_publisher_->publish(debug_data_.stop_wall_marker);
+  {
+    auto loaned = virtual_wall_publisher_->borrow_loaned_message();
+    *loaned = debug_data_.stop_wall_marker;
+    virtual_wall_publisher_->publish(std::move(loaned));
+  }
 }
 
 }  // namespace autoware::motion_velocity_planner

@@ -167,7 +167,7 @@ VelocityLimitClearCommand create_velocity_limit_clear_command(
 }
 }  // namespace
 
-void ObstacleSlowDownModule::init(rclcpp::Node & node, const std::string & module_name)
+void ObstacleSlowDownModule::init(agnocast::Node & node, const std::string & module_name)
 {
   module_name_ = module_name;
   clock_ = node.get_clock();
@@ -179,7 +179,7 @@ void ObstacleSlowDownModule::init(rclcpp::Node & node, const std::string & modul
   obstacle_filtering_param_ = ObstacleFilteringParam(node);
 
   objects_of_interest_marker_interface_ = std::make_unique<
-    autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>(
+    autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterfaceTemplate<agnocast::Node>>(
     &node, "motion_velocity_planner_common");
 
   // common publisher
@@ -195,10 +195,10 @@ void ObstacleSlowDownModule::init(rclcpp::Node & node, const std::string & modul
 
   // interface publisher
   objects_of_interest_marker_interface_ = std::make_unique<
-    autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface>(
+    autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterfaceTemplate<agnocast::Node>>(
     &node, "obstacle_slow_down");
   planning_factor_interface_ =
-    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>>(
       &node, "obstacle_slow_down");
 
   // time keeper
@@ -914,14 +914,26 @@ void ObstacleSlowDownModule::publish_debug_info()
   }
   debug_marker.markers.push_back(decimated_traj_polys_marker);
 
-  debug_publisher_->publish(debug_marker);
+  {
+    auto loaned = debug_publisher_->borrow_loaned_message();
+    *loaned = debug_marker;
+    debug_publisher_->publish(std::move(loaned));
+  }
 
   // 2. virtual wall
-  virtual_wall_publisher_->publish(debug_data_ptr_->slow_down_wall_marker);
+  {
+    auto loaned = virtual_wall_publisher_->borrow_loaned_message();
+    *loaned = debug_data_ptr_->slow_down_wall_marker;
+    virtual_wall_publisher_->publish(std::move(loaned));
+  }
 
   // 3. slow down planning info
   const auto slow_down_debug_msg = get_slow_down_planning_debug_message(clock_->now());
-  debug_slow_down_planning_info_pub_->publish(slow_down_debug_msg);
+  {
+    auto loaned = debug_slow_down_planning_info_pub_->borrow_loaned_message();
+    *loaned = slow_down_debug_msg;
+    debug_slow_down_planning_info_pub_->publish(std::move(loaned));
+  }
 
   // 4. objects of interest
   objects_of_interest_marker_interface_->publishMarkerArray();

@@ -17,6 +17,7 @@
 
 #include "type_alias.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils_rclcpp/parameter.hpp>
 #include <rclcpp/time.hpp>
 
@@ -51,7 +52,7 @@ struct CommonParam
   double limit_min_jerk{};
 
   CommonParam() = default;
-  explicit CommonParam(rclcpp::Node & node)
+  explicit CommonParam(agnocast::Node & node)
   {
     max_accel = get_or_declare_parameter<double>(node, "normal.max_acc");
     min_accel = get_or_declare_parameter<double>(node, "normal.min_acc");

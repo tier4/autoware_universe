@@ -17,6 +17,8 @@
 
 #include "types.hpp"
 
+#include <agnocast/agnocast.hpp>
+
 #include <rclcpp/logger.hpp>
 #include <rclcpp/node.hpp>
 
@@ -54,7 +56,7 @@ struct ObstacleParameters
   size_t rtree_min_segments{};
 
   ObstacleParameters() = default;
-  explicit ObstacleParameters(rclcpp::Node & node)
+  explicit ObstacleParameters(agnocast::Node & node)
   {
     updateType(node.get_logger(), node.declare_parameter<std::string>(DYN_SOURCE_PARAM));
     occupancy_grid_threshold =
@@ -132,7 +134,7 @@ struct ProjectionParameters
   double steering_angle_offset{};
 
   ProjectionParameters() = default;
-  explicit ProjectionParameters(rclcpp::Node & node)
+  explicit ProjectionParameters(agnocast::Node & node)
   {
     const auto & logger = node.get_logger();
     updateModel(logger, node.declare_parameter<std::string>(MODEL_PARAM));
@@ -203,7 +205,7 @@ struct VelocityParameters
   double current_ego_velocity{};
 
   VelocityParameters() = default;
-  explicit VelocityParameters(rclcpp::Node & node)
+  explicit VelocityParameters(agnocast::Node & node)
   {
     min_velocity = static_cast<double>(node.declare_parameter<double>(MIN_VEL_PARAM));
     max_deceleration = static_cast<double>(node.declare_parameter<double>(MAX_DECEL_PARAM));
@@ -225,7 +227,7 @@ struct PreprocessingParameters
   double max_duration{};
 
   PreprocessingParameters() = default;
-  explicit PreprocessingParameters(rclcpp::Node & node)
+  explicit PreprocessingParameters(agnocast::Node & node)
   {
     downsample_factor = node.declare_parameter<int>(DOWNSAMPLING_PARAM);
     start_distance = static_cast<double>(node.declare_parameter<double>(START_DIST_PARAM));
