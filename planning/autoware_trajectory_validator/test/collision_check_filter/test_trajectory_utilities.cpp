@@ -222,6 +222,19 @@ TEST(TrajectoryUtilitiesTest, GeneratePredictedPathTrajectoryUsesHighestConfiden
   EXPECT_DOUBLE_EQ(trajectory_data.getPoses().at(0).position.y, 0.0);
 }
 
+TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityUsesPathYawForPathLongerThanEpsilon)
+{
+  // The path length is intentionally between 1e-3 and 1e3 to catch threshold typos.
+  const PoseTrajectory points = {create_pose(0.0, 0.0, M_PI_2), create_pose(1.0, 0.0, M_PI_2)};
+  const auto object = create_predicted_object(
+    create_pose(0.5, 0.0, 0.0), create_twist(2.0), create_bounding_box_shape(), {});
+
+  const auto longitudinal_velocity =
+    collision_assessment::calc_longitudinal_velocity(points, object);
+
+  EXPECT_NEAR(longitudinal_velocity, 2.0, 1e-6);
+}
+
 TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityFallsBackToFrontPoseYawForDegeneratePath)
 {
   const PoseTrajectory points = {
