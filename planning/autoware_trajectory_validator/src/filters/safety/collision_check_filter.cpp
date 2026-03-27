@@ -14,6 +14,7 @@
 
 #include "autoware/trajectory_validator/filters/safety/collision_check_filter.hpp"
 
+#include <autoware/universe_utils/geometry/pose_deviation.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
@@ -29,6 +30,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -273,18 +275,31 @@ PoseTrajectory compute_pose_trajectory(
   return pose_trajectory;
 }
 
-template <typename Points, typename Object>
-double calc_longitudinal_velocity(const Points & points, const Object & object)
+template <typename PosePoints, typename Object>
+double calc_longitudinal_velocity(const PosePoints & points, const Object & object)
 {
-  const auto & obj_pose = object.kinematics.initial_pose_with_covariance.pose;
-  const Eigen::Rotation2Dd object_orientation_on_points(
-    autoware::motion_utils::calcYawDeviation(points, obj_pose, true));
+  if (points.empty()) {
+    throw std::invalid_argument("points must not be empty");
+  }
 
-  const auto & obj_twist = object.kinematics.initial_twist_with_covariance.twist;
-  const Eigen::Vector2d object_velocity_on_obstacle(obj_twist.linear.x, obj_twist.linear.y);
+  constexpr double min_path_end_to_end_distance = 1e3;
 
-  const auto object_velocity_on_points = object_orientation_on_points * object_velocity_on_obstacle;
-  return object_velocity_on_points.x();
+  const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
+  const bool use_path_yaw =
+    points.size() >= 2 && autoware_utils_geometry::calc_distance2d(points.front(), points.back()) >=
+                            min_path_end_to_end_distance;
+  const double object_yaw_relative_to_points =
+    use_path_yaw ? autoware::motion_utils::calcYawDeviation(points, object_pose, true)
+                 : autoware::universe_utils::calcYawDeviation(points.front(), object_pose);
+  const Eigen::Rotation2Dd object_to_points_rotation(object_yaw_relative_to_points);
+
+  const auto & object_twist = object.kinematics.initial_twist_with_covariance.twist;
+  const Eigen::Vector2d object_velocity_in_object_frame(
+    object_twist.linear.x, object_twist.linear.y);
+  const Eigen::Vector2d object_velocity_in_points_frame =
+    object_to_points_rotation * object_velocity_in_object_frame;
+
+  return object_velocity_in_points_frame.x();
 }
 
 TrajectoryData generate_ego_trajectory(
