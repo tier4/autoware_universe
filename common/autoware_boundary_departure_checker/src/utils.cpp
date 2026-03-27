@@ -1014,11 +1014,6 @@ DepartureType assign_departure_type(
     // - Long time, but dist less than braking: Creeping forward in a parking lot at 2 km/h, and it
     // takes it will 4 seconds to reach it, however, the boundary less than minimum braking
     // distance.
-    fmt::print(
-      "lat dist {} dist to departure pt {}, minimum braking distance {}, time from start {}, "
-      "cutoff time {}\n",
-      lat_dist, dist_to_departure_point_with_offset, minimum_braking_distance, time_from_start,
-      cutoff_time);
     return DepartureType::CRITICAL_DEPARTURE;
   }
 
