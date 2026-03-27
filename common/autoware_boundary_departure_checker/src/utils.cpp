@@ -28,6 +28,7 @@
 #include <range/v3/view.hpp>
 #include <tl_expected/expected.hpp>
 
+#include <fmt/format.h>
 #include <lanelet2_core/geometry/LaneletMap.h>
 
 #include <algorithm>
@@ -567,11 +568,14 @@ Side<ProjectionsToBound> get_closest_boundary_segments_from_side(
   const EgoSides & ego_sides_from_footprints)
 {
   Side<ProjectionsToBound> side;
+  std::unordered_map<SideKey, bool> has_passed_border;
   for (const auto & side_key : g_side_keys) {
     side[side_key].reserve(ego_sides_from_footprints.size());
+    has_passed_border[side_key] = false;
   }
 
   auto s = 0.0;
+
   for (size_t i = 0; i < ego_pred_traj.size(); ++i) {
     if (i > 0) {
       s += autoware_utils_geometry::calc_distance2d(ego_pred_traj[i - 1], ego_pred_traj[i]);
@@ -590,7 +594,8 @@ Side<ProjectionsToBound> get_closest_boundary_segments_from_side(
       // Assign negative sign if the boundary has been crossed
       if (
         closest_bound.lat_dist > 0.0 &&
-        closest_bound.lat_dist < std::numeric_limits<double>::max()) {
+        closest_bound.lat_dist < std::numeric_limits<double>::max() &&
+        has_passed_border[side_key]) {
         const auto & ego_front = fp[side_key].first;
         const auto & ego_rear = fp[side_key].second;
 
@@ -616,6 +621,9 @@ Side<ProjectionsToBound> get_closest_boundary_segments_from_side(
       closest_bound.time_from_start = rclcpp::Duration(ego_pred_traj[i].time_from_start).seconds();
       closest_bound.lon_dist_on_pred_traj = s - closest_bound.lon_offset;
       side[side_key].push_back(closest_bound);
+      if (closest_bound.lat_dist < 0.01 && !has_passed_border[side_key]) {
+        has_passed_border[side_key] = true;
+      }
     }
   }
 
@@ -1006,6 +1014,11 @@ DepartureType assign_departure_type(
     // - Long time, but dist less than braking: Creeping forward in a parking lot at 2 km/h, and it
     // takes it will 4 seconds to reach it, however, the boundary less than minimum braking
     // distance.
+    fmt::print(
+      "lat dist {} dist to departure pt {}, minimum braking distance {}, time from start {}, "
+      "cutoff time {}\n",
+      lat_dist, dist_to_departure_point_with_offset, minimum_braking_distance, time_from_start,
+      cutoff_time);
     return DepartureType::CRITICAL_DEPARTURE;
   }
 

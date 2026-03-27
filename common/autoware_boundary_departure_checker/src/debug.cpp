@@ -87,8 +87,8 @@ Marker create_projections_to_bound_marker(
 }
 
 MarkerArray create_projections_type_wall_marker(
-  const ProjectionsToBound & projections_to_bound, [[maybe_unused]] const Trajectory & ego_traj,
-  const rclcpp::Time & curr_time, const std::string & side_key_str, const double base_link_z)
+  const ProjectionsToBound & projections_to_bound, const rclcpp::Time & curr_time,
+  const std::string & side_key_str, const double base_link_z)
 {
   int32_t id{0};
   auto marker_near_bound = autoware_utils_visualization::create_default_marker(
@@ -244,8 +244,15 @@ Marker create_boundary_segments_marker(
 }
 
 MarkerArray create_debug_marker_array(
-  const DepartureData & departure_data, const Trajectory & ego_traj, const rclcpp::Time & curr_time,
-  const double base_link_z, const Param & bdc_param)
+  const DepartureData & departure_data, [[maybe_unused]] const Trajectory & ego_traj,
+  const rclcpp::Time & curr_time, const double base_link_z, const Param & bdc_param)
+{
+  return create_debug_markers(departure_data, curr_time, base_link_z, bdc_param);
+}
+
+MarkerArray create_debug_markers(
+  const DepartureData & departure_data, const rclcpp::Time & curr_time, const double base_link_z,
+  const Param & bdc_param)
 {
   const auto line_list = visualization_msgs::msg::Marker::LINE_LIST;
   const auto color = color::green();
@@ -302,7 +309,7 @@ MarkerArray create_debug_marker_array(
       base_link_z));
     autoware_utils_visualization::append_marker_array(
       create_projections_type_wall_marker(
-        departure_data.closest_projections_to_bound[side_key], ego_traj, curr_time, side_key_str,
+        departure_data.closest_projections_to_bound[side_key], curr_time, side_key_str,
         base_link_z),
       &marker_array);
     autoware_utils_visualization::append_marker_array(
@@ -313,5 +320,4 @@ MarkerArray create_debug_marker_array(
   }
   return marker_array;
 }
-
 }  // namespace autoware::boundary_departure_checker::debug
