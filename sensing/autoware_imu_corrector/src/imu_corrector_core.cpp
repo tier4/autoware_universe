@@ -57,7 +57,7 @@ geometry_msgs::msg::Vector3 transform_vector3(
 namespace autoware::imu_corrector
 {
 ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & options)
-: rclcpp::Node("imu_corrector", options),
+: agnocast::Node("imu_corrector", options),
   output_frame_(declare_parameter<std::string>("base_link", "base_link"))
 {
   transform_listener_ = std::make_shared<autoware_utils::TransformListener>(this);
@@ -89,7 +89,7 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & options)
   gyro_scale_sub_ = create_subscription<Vector3Stamped>(
     "gyro_scale_input", rclcpp::SensorDataQoS(),
     std::bind(&ImuCorrector::callback_scale, this, std::placeholders::_1));
-  imu_pub_ = agnocast::create_publisher<sensor_msgs::msg::Imu>(this, "output", rclcpp::QoS{10});
+  imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("output", rclcpp::QoS{10});
   gyro_scale_.vector.x = 1.0;
   gyro_scale_.vector.y = 1.0;
   gyro_scale_.vector.z = 1.0;
@@ -110,7 +110,7 @@ ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & options)
   }
 }
 
-void ImuCorrector::callback_imu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg_ptr)
+void ImuCorrector::callback_imu(const agnocast::ipc_shared_ptr<const sensor_msgs::msg::Imu> & imu_msg_ptr)
 {
   sensor_msgs::msg::Imu imu_msg;
   imu_msg = *imu_msg_ptr;
@@ -183,13 +183,13 @@ void ImuCorrector::callback_imu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_
   imu_pub_->publish(std::move(loaned_msg));
 }
 
-void ImuCorrector::callback_bias(const Vector3Stamped::ConstSharedPtr bias_msg_ptr)
+void ImuCorrector::callback_bias(const agnocast::ipc_shared_ptr<const Vector3Stamped> & bias_msg_ptr)
 {
   // update gyro bias
   gyro_bias_ = *bias_msg_ptr;
 }
 
-void ImuCorrector::callback_scale(const Vector3Stamped::ConstSharedPtr scale_msg_ptr)
+void ImuCorrector::callback_scale(const agnocast::ipc_shared_ptr<const Vector3Stamped> & scale_msg_ptr)
 {
   // update gyro scale
   gyro_scale_ = *scale_msg_ptr;

@@ -24,7 +24,7 @@ target_include_directories(gyro_bias_estimator
 agnocast_components_register_node(imu_corrector
   PLUGIN "autoware::imu_corrector::ImuCorrector"
   EXECUTABLE imu_corrector_node
-  EXECUTOR CallbackIsolatedAgnocastExecutor
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
   RESOURCE_INDEX agnocast_components
 )
 

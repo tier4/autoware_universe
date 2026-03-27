@@ -30,7 +30,7 @@
 
 namespace autoware::imu_corrector
 {
-class ImuCorrector : public rclcpp::Node
+class ImuCorrector : public agnocast::Node
 {
   using COV_IDX = autoware_utils::xyz_covariance_index::XYZ_COV_IDX;
   using Vector3Stamped = geometry_msgs::msg::Vector3Stamped;
@@ -39,13 +39,13 @@ public:
   explicit ImuCorrector(const rclcpp::NodeOptions & options);
 
 private:
-  void callback_imu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg_ptr);
-  void callback_bias(const Vector3Stamped::ConstSharedPtr bias_msg_ptr);
-  void callback_scale(const Vector3Stamped::ConstSharedPtr scale_msg_ptr);
+  void callback_imu(const agnocast::ipc_shared_ptr<const sensor_msgs::msg::Imu> & imu_msg_ptr);
+  void callback_bias(const agnocast::ipc_shared_ptr<const Vector3Stamped> & bias_msg_ptr);
+  void callback_scale(const agnocast::ipc_shared_ptr<const Vector3Stamped> & scale_msg_ptr);
 
-  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
-  rclcpp::Subscription<Vector3Stamped>::SharedPtr gyro_bias_sub_;
-  rclcpp::Subscription<Vector3Stamped>::SharedPtr gyro_scale_sub_;
+  agnocast::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  agnocast::Subscription<Vector3Stamped>::SharedPtr gyro_bias_sub_;
+  agnocast::Subscription<Vector3Stamped>::SharedPtr gyro_scale_sub_;
 
   agnocast::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
 
