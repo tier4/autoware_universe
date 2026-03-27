@@ -346,7 +346,7 @@ bool check_path_polygon_convex_collision(const Range1 & footprints1, const Range
 }
 }  // namespace geometry
 
-namespace pet
+namespace collision_assessment
 {
 struct PetCollisionResult
 {
@@ -441,10 +441,7 @@ PetCollisionResult compute_pet_and_ttc(
 
   return PetCollisionResult{candidate_pet, candidate_ttc, debug_data};
 }
-}  // namespace pet
 
-namespace rss
-{
 template <typename PosePoints, typename Object>
 double calc_longitudinal_velocity(const PosePoints & points, const Object & object)
 {
@@ -500,7 +497,7 @@ std::optional<double> calc_dist_to_collide(
   return std::nullopt;
 }
 
-}  // namespace rss
+}  // namespace collision_assessment
 
 void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
@@ -562,14 +559,14 @@ double CollisionCheckFilter::compute_rss_deceleration(
   }
 
   // calc current distance
-  const auto dist_to_collide = rss::calc_dist_to_collide(ego_trajectory, object);
+  const auto dist_to_collide = collision_assessment::calc_dist_to_collide(ego_trajectory, object);
   if (!dist_to_collide.has_value()) {
     return 0.0;
   }
 
   // calc safe distance
-  const double obj_long_vel =
-    std::clamp(rss::calc_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
+  const double obj_long_vel = std::clamp(
+    collision_assessment::calc_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
   const double safe_distance =
     dist_to_collide.value() + obj_long_vel * obj_long_vel * 0.5 / -rss_params_.object_acceleration -
     ego_long_vel * rss_params_.ego_reaction_time;
@@ -622,7 +619,7 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   }
 
   for (const auto & object_trajectory_data : object_trajectory_data_list) {
-    auto collision_result = pet::compute_pet_and_ttc(
+    auto collision_result = collision_assessment::compute_pet_and_ttc(
       ego_trajectory_data, object_trajectory_data, pet_collision_params_.collision_time_threshold);
     auto pet = collision_result.pet;
     auto ttc = collision_result.ttc;
