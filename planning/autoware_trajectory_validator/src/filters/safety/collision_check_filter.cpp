@@ -254,7 +254,7 @@ TrajectoryData generate_predicted_path_trajectory(
   double assumed_acceleration, rclcpp::Duration start_time, double max_time)
 {
   // todo(takagi): use all or appropriate predicted paths
-  const auto & max_confidence_path = std::max_element(
+  const auto most_confident_path_it = std::max_element(
     predicted_object.kinematics.predicted_paths.begin(),
     predicted_object.kinematics.predicted_paths.end(),
     [](const auto & a, const auto & b) { return a.confidence < b.confidence; });
@@ -262,10 +262,10 @@ TrajectoryData generate_predicted_path_trajectory(
     predicted_object.kinematics.initial_twist_with_covariance.twist, braking_lag,
     assumed_acceleration, start_time.seconds(),
     std::min(
-      max_time, max_confidence_path->path.size() *
-                  rclcpp::Duration(max_confidence_path->time_step).seconds()));
+      max_time, most_confident_path_it->path.size() *
+                  rclcpp::Duration(most_confident_path_it->time_step).seconds()));
 
-  auto poses = pose::compute_pose_trajectory(max_confidence_path->path, distances);
+  auto poses = pose::compute_pose_trajectory(most_confident_path_it->path, distances);
   auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(
@@ -327,7 +327,7 @@ Polygon2d compute_overall_convex_hull(const Range & polygons)
 }
 
 template <typename Range1, typename Range2>
-bool check_path_polygon_convex_collision(const Range1 & footprints1, const Range2 & footprints2)
+bool has_overall_convex_hull_overlap(const Range1 & footprints1, const Range2 & footprints2)
 {
   const auto overall_box1 = compute_overall_envelope(footprints1);
   const auto overall_box2 = compute_overall_envelope(footprints2);
@@ -346,8 +346,21 @@ bool check_path_polygon_convex_collision(const Range1 & footprints1, const Range
 }
 }  // namespace geometry
 
-namespace collision_assessment
+namespace rss_collision
 {
+struct Assessment
+{
+  std::string object_id;
+  double required_deceleration;
+  bool is_violated;
+};
+
+struct Result
+{
+  std::optional<Assessment> worst_assessment;
+  bool has_violation{false};
+  std::vector<Assessment> violations;
+};
 
 template <typename PosePoints, typename Object>
 double calc_longitudinal_velocity(const PosePoints & points, const Object & object)
@@ -376,26 +389,26 @@ double calc_longitudinal_velocity(const PosePoints & points, const Object & obje
   return object_velocity_in_points_frame.x();
 }
 
-std::optional<double> calc_dist_to_collide(
+std::optional<double> calc_distance_to_collision(
   const TrajectoryData & ego_trajectory,
   const autoware_perception_msgs::msg::PredictedObject & object)
 {
-  const auto obj_footprint = autoware_utils_geometry::to_polygon2d(
+  const auto object_footprint = autoware_utils_geometry::to_polygon2d(
     object.kinematics.initial_pose_with_covariance.pose, object.shape);
-  const auto obj_foot_print_as_range =
-    boost::make_iterator_range(&obj_footprint, &obj_footprint + 1);
+  const auto object_footprint_range =
+    boost::make_iterator_range(&object_footprint, &object_footprint + 1);
 
-  if (!geometry::check_path_polygon_convex_collision(
-        ego_trajectory.getFootprints(), obj_foot_print_as_range)) {
+  if (!geometry::has_overall_convex_hull_overlap(
+        ego_trajectory.getFootprints(), object_footprint_range)) {
     return std::nullopt;
   }
 
   for (size_t i = 0; i < ego_trajectory.size(); ++i) {
     const auto ego_footprint = ego_trajectory.getFootprints().at(i);
-    const auto ego_foot_print_as_range =
+    const auto ego_footprint_range =
       boost::make_iterator_range(&ego_footprint, &ego_footprint + 1);
-    if (geometry::check_path_polygon_convex_collision(
-          ego_foot_print_as_range, obj_foot_print_as_range)) {
+    if (geometry::has_overall_convex_hull_overlap(
+          ego_footprint_range, object_footprint_range)) {
       // todo(takagi): for precise calculation, intersection length should be considered.
       return ego_trajectory.getDistances().at(i);
     }
@@ -404,37 +417,85 @@ std::optional<double> calc_dist_to_collide(
   return std::nullopt;
 }
 
-double compute_rss_deceleration(
+TrajectoryData generate_rss_ego_trajectory(
+  const TrajectoryPoints & traj_points, const FilterContext & context, VehicleInfo & vehicle_info)
+{
+  const double ego_time_horizon_for_rss =
+    rclcpp::Duration(traj_points.back().time_from_start).seconds();
+
+  return trajectory::generate_ego_trajectory(
+    context.odometry->twist.twist, 0.0, 0.0, ego_time_horizon_for_rss, traj_points, vehicle_info);
+}
+
+Assessment assess_required_deceleration(
   const TrajectoryData & ego_trajectory, const geometry_msgs::msg::Twist & ego_twist,
   const autoware_perception_msgs::msg::PredictedObject & object,
   const validator::Params::CollisionCheck::Rss & rss_params)
 {
   const auto ego_long_vel = ego_twist.linear.x;
   if (ego_long_vel <= 0.0) {
-    return 0.0;
+    return Assessment{
+      autoware_utils_uuid::to_hex_string(object.object_id),
+      0.0,
+      false};
   }
 
   // calc current distance
-  const auto dist_to_collide = collision_assessment::calc_dist_to_collide(ego_trajectory, object);
-  if (!dist_to_collide.has_value()) {
-    return 0.0;
+  const auto distance_to_collision = rss_collision::calc_distance_to_collision(ego_trajectory, object);
+  if (!distance_to_collision.has_value()) {
+    return Assessment{
+      autoware_utils_uuid::to_hex_string(object.object_id),
+      0.0,
+      false};
   }
 
   // calc safe distance
   const double obj_long_vel = std::clamp(
-    collision_assessment::calc_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
-  const double safe_distance = dist_to_collide.value() +
+    rss_collision::calc_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
+  const double safe_distance = distance_to_collision.value() +
                                obj_long_vel * obj_long_vel * 0.5 / -rss_params.object_acceleration -
                                ego_long_vel * rss_params.ego_reaction_time;
 
   // calc required deceleration
-  if (safe_distance <= 0.0) {
-    return std::numeric_limits<double>::infinity();
-  }
-  return ego_long_vel * ego_long_vel * 0.5 / safe_distance;
+  const double required_deceleration =
+    safe_distance <= 0.0 ? std::numeric_limits<double>::infinity()
+                         : ego_long_vel * ego_long_vel * 0.5 / safe_distance;
+
+  return Assessment{
+    autoware_utils_uuid::to_hex_string(object.object_id),
+    required_deceleration,
+    required_deceleration > rss_params.ego_deceleration_threshold};
 }
 
-}  // namespace collision_assessment
+Result assess(
+  const TrajectoryPoints & traj_points, const FilterContext & context,
+  const validator::Params::CollisionCheck::Rss & rss_params, VehicleInfo & vehicle_info)
+{
+  const auto ego_trajectory = generate_rss_ego_trajectory(traj_points, context, vehicle_info);
+
+  Result result{};
+  result.violations.reserve(context.predicted_objects->objects.size());
+
+  for (const auto & object : context.predicted_objects->objects) {
+    const auto assessment =
+      assess_required_deceleration(ego_trajectory, context.odometry->twist.twist, object, rss_params);
+
+    if (
+      !result.worst_assessment.has_value() ||
+      assessment.required_deceleration > result.worst_assessment->required_deceleration) {
+      result.worst_assessment = assessment;
+    }
+
+    if (assessment.is_violated) {
+      result.has_violation = true;
+      result.violations.push_back(assessment);
+    }
+  }
+
+  return result;
+}
+
+}  // namespace rss_collision
 
 namespace planned_speed_collision
 {
@@ -462,25 +523,25 @@ Trajectories generate_trajectories(
     rclcpp::Time(context.predicted_objects->header.stamp) -
     rclcpp::Time(context.odometry->header.stamp);
 
-  const double ego_consider_time_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
-                                             -pet_collision_params.ego_assumed_acceleration +
-                                           pet_collision_params.ego_braking_delay;
+  const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
+                                            -pet_collision_params.ego_assumed_acceleration +
+                                          pet_collision_params.ego_braking_delay;
 
   // todo(takagi): use planned trajectory instead of constant speed assumption for more precise
   // assessment.
   auto ego_trajectory = trajectory::generate_ego_trajectory(
-    context.odometry->twist.twist, 0.0, 0.0, ego_consider_time_for_pet, traj_points, vehicle_info);
+    context.odometry->twist.twist, 0.0, 0.0, ego_time_horizon_for_pet, traj_points, vehicle_info);
 
   std::vector<TrajectoryData> object_trajectories{};
   object_trajectories.reserve(context.predicted_objects->objects.size() * 2);
   for (const auto & object : context.predicted_objects->objects) {
     object_trajectories.push_back(trajectory::generate_predicted_path_trajectory(
       object, 0.0, 0.0, objects_reference_time,
-      ego_consider_time_for_pet + pet_collision_params.collision_time_threshold));
+      ego_time_horizon_for_pet + pet_collision_params.collision_time_threshold));
 
     object_trajectories.push_back(trajectory::generate_constant_curvature_path_trajectory(
       object, 0.0, 0.0, objects_reference_time,
-      ego_consider_time_for_pet + pet_collision_params.collision_time_threshold));
+      ego_time_horizon_for_pet + pet_collision_params.collision_time_threshold));
   }
 
   return {std::move(ego_trajectory), std::move(object_trajectories)};
@@ -490,7 +551,7 @@ std::optional<Finding> assess_collision_at_planned_speed(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
   double pet_threshold)
 {
-  if (!geometry::check_path_polygon_convex_collision(
+  if (!geometry::has_overall_convex_hull_overlap(
         ref_trajectory.getFootprints(), test_trajectory.getFootprintsInTimeRange(
                                           0.0, ref_trajectory.getTimes().back() + pet_threshold))) {
     return std::nullopt;
@@ -503,7 +564,7 @@ std::optional<Finding> assess_collision_at_planned_speed(
     const auto ref_poly = ref_trajectory.getFootprintsInTimeRange(ref_start_time, ref_end_time);
     auto check_slice_collision = [&](double start, double end) {
       const auto slice_poly = test_trajectory.getFootprintsInTimeRange(start, end);
-      return geometry::check_path_polygon_convex_collision(ref_poly, slice_poly);
+      return geometry::has_overall_convex_hull_overlap(ref_poly, slice_poly);
     };
 
     const double current_pet_limit =
@@ -646,25 +707,11 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
       finding.ego_hull, finding.object_hull, finding.trajectory_id, context.odometry->header.stamp);
   }
 
-  // calc RSS metrics
-  {
-    const double ego_consider_time_for_rss =
-      rclcpp::Duration(traj_points.back().time_from_start).seconds();
-    const auto ego_trajectory_data = trajectory::generate_ego_trajectory(
-      context.odometry->twist.twist, 0.0, 0.0, ego_consider_time_for_rss, traj_points,
-      *vehicle_info_ptr_);
-
-    for (const auto & object : context.predicted_objects->objects) {
-      const auto required_deceleration = collision_assessment::compute_rss_deceleration(
-        ego_trajectory_data, context.odometry->twist.twist, object, rss_params_);
-
-      if (required_deceleration > rss_params_.ego_deceleration_threshold) {
-        error_msg += std::string("RSS collision, ID: ") +
-                     autoware_utils_uuid::to_hex_string(object.object_id) +
-                     std::string(", required deceleration: ") +
-                     std::to_string(required_deceleration);
-      }
-    }
+  const auto rss_result = rss_collision::assess(traj_points, context, rss_params_, *vehicle_info_ptr_);
+  for (const auto & violation : rss_result.violations) {
+    error_msg += fmt::format(
+      "RSS collision, ID: {}, required deceleration: {}", violation.object_id,
+      violation.required_deceleration);
   }
 
   if (!error_msg.empty()) {

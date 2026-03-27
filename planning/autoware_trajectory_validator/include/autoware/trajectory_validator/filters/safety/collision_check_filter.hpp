@@ -101,8 +101,8 @@ public:
       return boost::make_iterator_range(footprints_.end(), footprints_.end());
     }
 
-    const size_t start_index = getIndex(start_time);
-    const size_t end_index = getIndex(end_time);
+    const size_t start_index = getClosestTimeIndex(start_time);
+    const size_t end_index = getClosestTimeIndex(end_time);
 
     if (start_index > end_index) {
       return boost::make_iterator_range(footprints_.end(), footprints_.end());
@@ -115,7 +115,7 @@ public:
   }
 
 private:
-  size_t getIndex(const double t) const
+  size_t getClosestTimeIndex(const double t) const
   {
     const auto it = std::lower_bound(times_.begin(), times_.end(), t);
 
