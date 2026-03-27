@@ -222,7 +222,7 @@ TEST(TrajectoryUtilitiesTest, GeneratePredictedPathTrajectoryUsesHighestConfiden
   EXPECT_DOUBLE_EQ(trajectory_data.getPoses().at(0).position.y, 0.0);
 }
 
-TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityUsesPathYawForPathLongerThanEpsilon)
+TEST(TrajectoryUtilitiesTest, ComputeLongitudinalVelocityUsesPathYawForPathLongerThanEpsilon)
 {
   // The path length is intentionally between 1e-3 and 1e3 to catch threshold typos.
   const PoseTrajectory points = {create_pose(0.0, 0.0, M_PI_2), create_pose(1.0, 0.0, M_PI_2)};
@@ -230,12 +230,12 @@ TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityUsesPathYawForPathLongerTh
     create_pose(0.5, 0.0, 0.0), create_twist(2.0), create_bounding_box_shape(), {});
 
   const auto longitudinal_velocity =
-    rss_deceleration::calc_longitudinal_velocity(points, object);
+    rss_deceleration::compute_longitudinal_velocity(points, object);
 
   EXPECT_NEAR(longitudinal_velocity, 2.0, 1e-6);
 }
 
-TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityFallsBackToFrontPoseYawForDegeneratePath)
+TEST(TrajectoryUtilitiesTest, ComputeLongitudinalVelocityFallsBackToFrontPoseYawForDegeneratePath)
 {
   const PoseTrajectory points = {
     create_pose(1.0, 2.0, M_PI / 3.0), create_pose(1.0, 2.0, -M_PI / 2.0)};
@@ -243,19 +243,19 @@ TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityFallsBackToFrontPoseYawFor
     create_pose(1.0, 2.0, M_PI / 6.0), create_twist(2.0), create_bounding_box_shape(), {});
 
   const auto longitudinal_velocity =
-    rss_deceleration::calc_longitudinal_velocity(points, object);
+    rss_deceleration::compute_longitudinal_velocity(points, object);
 
   EXPECT_NEAR(longitudinal_velocity, 2.0 * std::cos(M_PI / 6.0), 1e-6);
 }
 
-TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityThrowsOnEmptyPoints)
+TEST(TrajectoryUtilitiesTest, ComputeLongitudinalVelocityThrowsOnEmptyPoints)
 {
   const PoseTrajectory points;
   const auto object = create_predicted_object(
     create_pose(0.0, 0.0, 0.0), create_twist(2.0), create_bounding_box_shape(), {});
 
   EXPECT_THROW(
-    rss_deceleration::calc_longitudinal_velocity(points, object), std::invalid_argument);
+    rss_deceleration::compute_longitudinal_velocity(points, object), std::invalid_argument);
 }
 
 TEST(TrajectoryUtilitiesTest, GenerateConstantCurvaturePathTrajectoryMatchesPredictor)
