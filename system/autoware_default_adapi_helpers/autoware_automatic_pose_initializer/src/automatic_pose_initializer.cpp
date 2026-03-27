@@ -30,7 +30,7 @@ AutomaticPoseInitializer::AutomaticPoseInitializer(const rclcpp::NodeOptions & o
     [this](const agnocast::ipc_shared_ptr<const State::Message> & msg) { state_ = *msg; });
 
   const auto period = rclcpp::Rate(1.0).period();
-  timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
+  timer_ = create_timer(period, [this]() { on_timer(); });
 
   state_.stamp = now();
   state_.state = State::Message::UNKNOWN;

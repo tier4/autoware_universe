@@ -18,12 +18,11 @@
 #include <agnocast/agnocast.hpp>
 #include <autoware/adapi_specs/localization.hpp>
 #include <autoware/component_interface_utils/rclcpp.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 namespace autoware::automatic_pose_initializer
 {
 
-class AutomaticPoseInitializer : public rclcpp::Node
+class AutomaticPoseInitializer : public agnocast::Node
 {
 public:
   explicit AutomaticPoseInitializer(const rclcpp::NodeOptions & options);
@@ -33,7 +32,7 @@ private:
   using Initialize = autoware::adapi_specs::localization::Initialize;
   using State = autoware::adapi_specs::localization::InitializationState;
   rclcpp::CallbackGroup::SharedPtr group_cli_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
   autoware::component_interface_utils::Client<Initialize>::SharedPtr cli_initialize_;
   autoware::component_interface_utils::Subscription<State>::SharedPtr sub_state_;
   State::Message state_;
