@@ -20,6 +20,7 @@ ament_auto_add_library(gyro_bias_estimator SHARED
 target_include_directories(gyro_bias_estimator
   PUBLIC include
 )
+ament_target_dependencies(gyro_bias_estimator agnocastlib)
 
 agnocast_components_register_node(imu_corrector
   PLUGIN "autoware::imu_corrector::ImuCorrector"
@@ -28,10 +29,11 @@ agnocast_components_register_node(imu_corrector
   RESOURCE_INDEX agnocast_components
 )
 
-rclcpp_components_register_node(gyro_bias_estimator
+agnocast_components_register_node(gyro_bias_estimator
   PLUGIN "autoware::imu_corrector::GyroBiasEstimator"
   EXECUTABLE gyro_bias_estimator_node
-  EXECUTOR SingleThreadedExecutor
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 function(add_testcase filepath)

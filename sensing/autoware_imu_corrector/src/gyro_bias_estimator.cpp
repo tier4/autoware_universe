@@ -28,7 +28,7 @@
 namespace autoware::imu_corrector
 {
 GyroBiasEstimator::GyroBiasEstimator(const rclcpp::NodeOptions & options)
-: rclcpp::Node("gyro_bias_scale_validator", options),
+: agnocast::Node("gyro_bias_scale_validator", options),
   gyro_bias_threshold_(declare_parameter<double>("gyro_bias_threshold")),
   angular_velocity_offset_x_(declare_parameter<double>("angular_velocity_offset_x")),
   angular_velocity_offset_y_(declare_parameter<double>("angular_velocity_offset_y")),
@@ -55,39 +55,44 @@ GyroBiasEstimator::GyroBiasEstimator(const rclcpp::NodeOptions & options)
   ndt_yaw_angle_(0.0),
   avg_rate_pose_(0.0),
   avg_rate_gyro_(0.0),
-  updater_(this),
+  // NOTE: diagnostic_updater is disabled during agnocast migration
+  // updater_(this),
   gyro_bias_(std::nullopt)
 {
-  updater_.setHardwareID(get_name());
-  updater_.add("gyro_bias_scale_validator", this, &GyroBiasEstimator::update_diagnostics);
-  updater_.setPeriod(diagnostics_updater_interval_sec_);
+  // NOTE: diagnostic_updater is disabled during agnocast migration
+  // updater_.setHardwareID(get_name());
+  // updater_.add("gyro_bias_scale_validator", this, &GyroBiasEstimator::update_diagnostics);
+  // updater_.setPeriod(diagnostics_updater_interval_sec_);
 
   gyro_bias_estimation_module_ = std::make_unique<GyroBiasEstimationModule>();
 
   imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
     "~/input/imu_raw", rclcpp::SensorDataQoS(),
-    [this](const sensor_msgs::msg::Imu::ConstSharedPtr msg) { callback_imu(msg); });
+    [this](const agnocast::ipc_shared_ptr<const sensor_msgs::msg::Imu> & msg) {
+      callback_imu(msg);
+    });
   odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
     "~/input/odom", rclcpp::SensorDataQoS(),
-    [this](const nav_msgs::msg::Odometry::ConstSharedPtr msg) { callback_odom(msg); });
+    [this](const agnocast::ipc_shared_ptr<const nav_msgs::msg::Odometry> & msg) {
+      callback_odom(msg);
+    });
   gyro_bias_pub_ = create_publisher<geometry_msgs::msg::Vector3Stamped>(
     "~/output/gyro_bias", rclcpp::SensorDataQoS());
   pose_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
     "~/input/pose_ndt", rclcpp::SensorDataQoS(),
-    [this](const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg) {
+    [this](const agnocast::ipc_shared_ptr<
+           const geometry_msgs::msg::PoseWithCovarianceStamped> & msg) {
       callback_pose_msg(msg);
     });
   gyro_scale_pub_ = create_publisher<geometry_msgs::msg::Vector3Stamped>(
     "~/output/gyro_scale", rclcpp::SensorDataQoS());
-  imu_scaled_pub_ = create_publisher<sensor_msgs::msg::Imu>("~/output/imu_scaled", rclcpp::QoS{1});
+  imu_scaled_pub_ =
+    create_publisher<sensor_msgs::msg::Imu>("~/output/imu_scaled", rclcpp::QoS{1});
 
-  auto bound_timer_callback = std::bind(&GyroBiasEstimator::timer_callback, this);
   auto period_control = std::chrono::duration_cast<std::chrono::nanoseconds>(
     std::chrono::duration<double>(timer_callback_interval_sec_));
-  timer_ = std::make_shared<rclcpp::GenericTimer<decltype(bound_timer_callback)>>(
-    this->get_clock(), period_control, std::move(bound_timer_callback),
-    this->get_node_base_interface()->get_context());
-  this->get_node_timers_interface()->add_timer(timer_, nullptr);
+  timer_ = create_wall_timer(
+    period_control, std::bind(&GyroBiasEstimator::timer_callback, this));
 
   transform_listener_ = std::make_shared<autoware_utils::TransformListener>(this);
 
@@ -178,7 +183,8 @@ sensor_msgs::msg::Imu GyroBiasEstimator::modify_imu(
   return imu_mod;
 }
 
-void GyroBiasEstimator::callback_imu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg_ptr)
+void GyroBiasEstimator::callback_imu(
+  const agnocast::ipc_shared_ptr<const sensor_msgs::msg::Imu> & imu_msg_ptr)
 {
   rclcpp::Time msg_time = imu_msg_ptr->header.stamp;
 
@@ -206,7 +212,9 @@ void GyroBiasEstimator::callback_imu(const sensor_msgs::msg::Imu::ConstSharedPtr
     rclcpp::Time now_time = this->now();
     auto imu_msg_mod = modify_imu(imu_msg, scale_imu_, now_time);
     // Publish modified IMU
-    imu_scaled_pub_->publish(imu_msg_mod);
+    auto imu_borrowed = imu_scaled_pub_->borrow_loaned_message();
+    *imu_borrowed = imu_msg_mod;
+    imu_scaled_pub_->publish(std::move(imu_borrowed));
     // Transform gyro from modified IMU
     gyro.vector = transform_vector3(imu_msg_mod.angular_velocity, *tf_imu2base_ptr);
   } else {
@@ -278,14 +286,15 @@ void GyroBiasEstimator::callback_imu(const sensor_msgs::msg::Imu::ConstSharedPtr
     } else if (gyro_yaw_angle_ > M_PI) {
       gyro_yaw_angle_ -= 2.0 * M_PI;
     }
-    geometry_msgs::msg::Vector3Stamped gyro_bias_msg;
-    gyro_bias_msg.header.stamp = this->now();
-    gyro_bias_msg.vector = gyro_bias_.value();
-    gyro_bias_pub_->publish(gyro_bias_msg);
+    auto gyro_bias_msg = gyro_bias_pub_->borrow_loaned_message();
+    gyro_bias_msg->header.stamp = this->now();
+    gyro_bias_msg->vector = gyro_bias_.value();
+    gyro_bias_pub_->publish(std::move(gyro_bias_msg));
   }
 }
 
-void GyroBiasEstimator::callback_odom(const nav_msgs::msg::Odometry::ConstSharedPtr odom_msg_ptr)
+void GyroBiasEstimator::callback_odom(
+  const agnocast::ipc_shared_ptr<const nav_msgs::msg::Odometry> & odom_msg_ptr)
 {
   geometry_msgs::msg::PoseStamped pose;
   pose.header = odom_msg_ptr->header;
@@ -294,7 +303,8 @@ void GyroBiasEstimator::callback_odom(const nav_msgs::msg::Odometry::ConstShared
 }
 
 void GyroBiasEstimator::callback_pose_msg(
-  const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr pose_msg_ptr)
+  const agnocast::ipc_shared_ptr<const geometry_msgs::msg::PoseWithCovarianceStamped> &
+    pose_msg_ptr)
 {
   estimate_scale_gyro(pose_msg_ptr);
 }
@@ -349,7 +359,8 @@ void GyroBiasEstimator::update_angle_ekf(
 }
 
 void GyroBiasEstimator::update_rate_ekf(
-  const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr & pose_msg_ptr,
+  const agnocast::ipc_shared_ptr<const geometry_msgs::msg::PoseWithCovarianceStamped> &
+    pose_msg_ptr,
   EKFEstimateScaleRateVars & ekf_rate_state)
 {
   // EKF update
@@ -459,19 +470,19 @@ void GyroBiasEstimator::update_rate_ekf(
       }
     }
 
-    geometry_msgs::msg::Vector3Stamped vector_scale;
+    auto vector_scale = gyro_scale_pub_->borrow_loaned_message();
 
-    vector_scale.header.stamp = this->now();
+    vector_scale->header.stamp = this->now();
 
     // Scale on x , y axis is not estimated, but set to 1.0 for consistency
-    vector_scale.vector.x = 1.0;
-    vector_scale.vector.y = 1.0;
+    vector_scale->vector.x = 1.0;
+    vector_scale->vector.y = 1.0;
     if (std::abs(ekf_angle_.filtered_scale_angle_) <= std::numeric_limits<double>::epsilon()) {
-      vector_scale.vector.z = 1.0;
+      vector_scale->vector.z = 1.0;
     } else {
-      vector_scale.vector.z = 1 / ekf_angle_.filtered_scale_angle_;
+      vector_scale->vector.z = 1 / ekf_angle_.filtered_scale_angle_;
     }
-    gyro_scale_pub_->publish(vector_scale);
+    gyro_scale_pub_->publish(std::move(vector_scale));
 
     diagnostics_info_.estimated_gyro_scale_z = 1 / ekf_angle_.estimated_scale_angle_;
   }
@@ -486,16 +497,16 @@ bool GyroBiasEstimator::should_skip_update(double gyro_yaw_rate)
       gyro_info_.scale_summary_message = "Skipped scale update (yaw rate too small)";
     }
 
-    geometry_msgs::msg::Vector3Stamped msg;
-    msg.header.stamp = this->now();
-    msg.vector.x = 1.0;
-    msg.vector.y = 1.0;
+    auto msg = gyro_scale_pub_->borrow_loaned_message();
+    msg->header.stamp = this->now();
+    msg->vector.x = 1.0;
+    msg->vector.y = 1.0;
     if (std::abs(ekf_angle_.filtered_scale_angle_) <= std::numeric_limits<double>::epsilon()) {
-      msg.vector.z = 1.0;
+      msg->vector.z = 1.0;
     } else {
-      msg.vector.z = 1 / ekf_angle_.filtered_scale_angle_;
+      msg->vector.z = 1 / ekf_angle_.filtered_scale_angle_;
     }
-    gyro_scale_pub_->publish(msg);
+    gyro_scale_pub_->publish(std::move(msg));
 
     ekf_rate_.n_big_changes_detected_ = 0;
     rate_pose_buff_.clear();
@@ -505,7 +516,8 @@ bool GyroBiasEstimator::should_skip_update(double gyro_yaw_rate)
 }
 
 void GyroBiasEstimator::estimate_scale_gyro(
-  const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr pose_msg_ptr)
+  const agnocast::ipc_shared_ptr<const geometry_msgs::msg::PoseWithCovarianceStamped> &
+    pose_msg_ptr)
 {
   const rclcpp::Time msg_time = pose_msg_ptr->header.stamp;
   const double dt_pose = (msg_time - last_time_rx_pose_).seconds();
