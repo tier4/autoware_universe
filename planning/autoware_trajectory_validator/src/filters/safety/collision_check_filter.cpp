@@ -708,7 +708,7 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
     rss_deceleration::assess(traj_points, context, rss_params_, *vehicle_info_ptr_);
   for (const auto & violation : rss_result.violations) {
     error_msg += fmt::format(
-      "RSS collision, ID: {}, required deceleration: {}", violation.object_id,
+      "RSS collision, ID: {}, required deceleration: {}; ", violation.object_id,
       violation.required_deceleration);
   }
 
