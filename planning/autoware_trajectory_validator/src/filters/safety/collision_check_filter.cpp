@@ -497,6 +497,36 @@ std::optional<double> calc_dist_to_collide(
   return std::nullopt;
 }
 
+double compute_rss_deceleration(
+  const TrajectoryData & ego_trajectory, const geometry_msgs::msg::Twist & ego_twist,
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const validator::Params::CollisionCheck::Rss & rss_params)
+{
+  const auto ego_long_vel = ego_twist.linear.x;
+  if (ego_long_vel <= 0.0) {
+    return 0.0;
+  }
+
+  // calc current distance
+  const auto dist_to_collide = collision_assessment::calc_dist_to_collide(ego_trajectory, object);
+  if (!dist_to_collide.has_value()) {
+    return 0.0;
+  }
+
+  // calc safe distance
+  const double obj_long_vel = std::clamp(
+    collision_assessment::calc_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
+  const double safe_distance =
+    dist_to_collide.value() + obj_long_vel * obj_long_vel * 0.5 / -rss_params.object_acceleration -
+    ego_long_vel * rss_params.ego_reaction_time;
+
+  // calc required deceleration
+  if (safe_distance <= 0.0) {
+    return std::numeric_limits<double>::infinity();
+  }
+  return ego_long_vel * ego_long_vel * 0.5 / safe_distance;
+}
+
 }  // namespace collision_assessment
 
 void CollisionCheckFilter::update_parameters(const validator::Params & params)
@@ -547,35 +577,6 @@ void CollisionCheckFilter::add_debug_markers(
   add_poly_marker(debug_data.ego_polygons, "ego_worst_pet_" + debug_data.object_id, 0.0, 0.0, 1.0);
   add_poly_marker(
     debug_data.object_polygons, "obj_worst_pet_" + debug_data.object_id, 1.0, 0.0, 0.0);
-}
-
-double CollisionCheckFilter::compute_rss_deceleration(
-  const TrajectoryData & ego_trajectory, const geometry_msgs::msg::Twist & ego_twist,
-  const autoware_perception_msgs::msg::PredictedObject & object) const
-{
-  const auto ego_long_vel = ego_twist.linear.x;
-  if (ego_long_vel <= 0.0) {
-    return 0.0;
-  }
-
-  // calc current distance
-  const auto dist_to_collide = collision_assessment::calc_dist_to_collide(ego_trajectory, object);
-  if (!dist_to_collide.has_value()) {
-    return 0.0;
-  }
-
-  // calc safe distance
-  const double obj_long_vel = std::clamp(
-    collision_assessment::calc_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
-  const double safe_distance =
-    dist_to_collide.value() + obj_long_vel * obj_long_vel * 0.5 / -rss_params_.object_acceleration -
-    ego_long_vel * rss_params_.ego_reaction_time;
-
-  // calc required deceleration
-  if (safe_distance <= 0.0) {
-    return std::numeric_limits<double>::infinity();
-  }
-  return ego_long_vel * ego_long_vel * 0.5 / safe_distance;
 }
 
 // todo(takagi): separate the core logic which returns detailed collision information.
@@ -644,7 +645,8 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
 
     for (const auto & object : context.predicted_objects->objects) {
       const auto required_deceleration =
-        compute_rss_deceleration(ego_trajectory_data, context.odometry->twist.twist, object);
+        collision_assessment::compute_rss_deceleration(
+          ego_trajectory_data, context.odometry->twist.twist, object, rss_params_);
 
       if (required_deceleration > rss_params_.ego_deceleration_threshold) {
         error_msg += std::string("RSS collision, ID: ") +

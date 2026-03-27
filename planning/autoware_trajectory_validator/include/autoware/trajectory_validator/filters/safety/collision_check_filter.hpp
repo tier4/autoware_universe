@@ -141,10 +141,6 @@ class CollisionCheckFilter : public plugin::ValidatorInterface
 public:
   CollisionCheckFilter() : ValidatorInterface("collision_check_filter") {}
 
-  double compute_rss_deceleration(
-    const TrajectoryData & ego_trajectory, const geometry_msgs::msg::Twist & ego_twist,
-    const autoware_perception_msgs::msg::PredictedObject & object) const;
-
   tl::expected<void, std::string> is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) override;
 

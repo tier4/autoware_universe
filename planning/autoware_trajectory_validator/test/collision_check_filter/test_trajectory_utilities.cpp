@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 #include <tf2/utils.h>
 
+#include <cmath>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -131,6 +132,25 @@ TEST(TrajectoryUtilitiesTest, ComputePoseTrajectoryInterpolatesAndClamps)
   EXPECT_DOUBLE_EQ(poses.at(3).position.y, 0.0);
 }
 
+TEST(TrajectoryUtilitiesTest, ComputePoseTrajectoryInterpolatesOrientationSpherically)
+{
+  TrajectoryPoint start_point;
+  start_point.pose = create_pose(0.0, 0.0, 0.0);
+
+  TrajectoryPoint end_point;
+  end_point.pose = create_pose(10.0, 0.0, M_PI / 3.0);
+
+  const TrajectoryPoints traj_points = {start_point, end_point};
+  const TravelDistanceTrajectory distances = {5.0};
+
+  const auto poses = trajectory::pose::compute_pose_trajectory(traj_points, distances);
+
+  ASSERT_EQ(poses.size(), 1u);
+  EXPECT_DOUBLE_EQ(poses.at(0).position.x, 5.0);
+  EXPECT_DOUBLE_EQ(poses.at(0).position.y, 0.0);
+  EXPECT_NEAR(tf2::getYaw(poses.at(0).orientation), M_PI / 6.0, 1e-6);
+}
+
 TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryForObjectShapeMatchesUtility)
 {
   const PoseTrajectory poses = {create_pose(1.0, 2.0, 0.0)};
@@ -201,6 +221,38 @@ TEST(TrajectoryUtilitiesTest, GeneratePredictedPathTrajectoryUsesHighestConfiden
   EXPECT_NEAR(trajectory_data.getPoses().at(1).position.x, 0.2, 1e-6);
   EXPECT_NEAR(trajectory_data.getPoses().at(2).position.x, 0.3, 1e-6);
   EXPECT_DOUBLE_EQ(trajectory_data.getPoses().at(0).position.y, 0.0);
+}
+
+TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityUsesPathYawForNonDegeneratePath)
+{
+  const PoseTrajectory points = {create_pose(0.0, 0.0, 0.0), create_pose(0.0, 10.0, 0.0)};
+  const auto object = create_predicted_object(
+    create_pose(0.0, 5.0, M_PI_2), create_twist(2.0), create_bounding_box_shape(), {});
+
+  const auto longitudinal_velocity = collision_assessment::calc_longitudinal_velocity(points, object);
+
+  EXPECT_NEAR(longitudinal_velocity, 2.0, 1e-6);
+}
+
+TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityFallsBackToFrontPoseYawForDegeneratePath)
+{
+  const PoseTrajectory points = {
+    create_pose(1.0, 2.0, M_PI / 3.0), create_pose(1.0, 2.0, -M_PI / 2.0)};
+  const auto object = create_predicted_object(
+    create_pose(1.0, 2.0, M_PI / 6.0), create_twist(2.0), create_bounding_box_shape(), {});
+
+  const auto longitudinal_velocity = collision_assessment::calc_longitudinal_velocity(points, object);
+
+  EXPECT_NEAR(longitudinal_velocity, 2.0 * std::cos(M_PI / 6.0), 1e-6);
+}
+
+TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityThrowsOnEmptyPoints)
+{
+  const PoseTrajectory points;
+  const auto object = create_predicted_object(
+    create_pose(0.0, 0.0, 0.0), create_twist(2.0), create_bounding_box_shape(), {});
+
+  EXPECT_THROW(collision_assessment::calc_longitudinal_velocity(points, object), std::invalid_argument);
 }
 
 TEST(TrajectoryUtilitiesTest, GenerateConstantCurvaturePathTrajectoryMatchesPredictor)
