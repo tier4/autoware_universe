@@ -340,14 +340,23 @@ void TrajectoryValidator::publish_internal_state(
 
   // --- Filtering Results Section ---
   fmt::memory_buffer out;
-  fmt::format_to(std::back_inserter(out), "--- Trajectory Validator Filtering Result ---\n");
+  fmt::format_to(
+    std::back_inserter(out), "{:^50}\n", "--- Trajectory Validator Filtering Result ---");
 
+  int skip_counter = 0;
   for (const auto & plugin_name : sorted_plugins) {
     auto it = plugin_filtered_paths.find(plugin_name);
     if (it != plugin_filtered_paths.end() && !it->second.empty()) {
       fmt::format_to(
         std::back_inserter(out), "- {}: {} path(s) filtered\n", plugin_name, it->second.size());
+      continue;
     }
+
+    ++skip_counter;
+  }
+
+  for (int idx = 0; idx < skip_counter; ++idx) {
+    fmt::format_to(std::back_inserter(out), "\n");
   }
 
   fmt::format_to(std::back_inserter(out), "-----------------------------------");
@@ -356,7 +365,7 @@ void TrajectoryValidator::publish_internal_state(
   auto text_marker = autoware_utils_visualization::create_default_marker(
     "map", get_clock()->now(), "plugin_report", id,
     visualization_msgs::msg::Marker::TEXT_VIEW_FACING,
-    autoware_utils_visualization::create_marker_scale(0.0, 0.0, 0.9),
+    autoware_utils_visualization::create_marker_scale(0.0, 0.0, 0.4),
     autoware_utils_visualization::create_marker_color(1., 1., 1., 0.999));
   text_marker.pose = ego_pose;
   text_marker.pose.position.z += vehicle_info_.vehicle_height_m + 2.0;
