@@ -15,7 +15,9 @@
 #ifndef RADAR_OBJECTS_ADAPTER_HPP_
 #define RADAR_OBJECTS_ADAPTER_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
@@ -31,7 +33,7 @@
 
 namespace autoware
 {
-class RadarObjectsAdapter : public rclcpp::Node
+class RadarObjectsAdapter : public agnocast::Node
 {
 public:
   explicit RadarObjectsAdapter(const rclcpp::NodeOptions & options);
@@ -58,16 +60,18 @@ private:
     const std::vector<autoware_sensing_msgs::msg::RadarClassification> & input_classifications,
     std::vector<autoware_perception_msgs::msg::ObjectClassification> & output_classifications);
 
-  void objects_callback(const autoware_sensing_msgs::msg::RadarObjects & objects_msg);
+  void objects_callback(
+    const agnocast::ipc_shared_ptr<const autoware_sensing_msgs::msg::RadarObjects> & objects_msg);
   void parse_as_detections(const autoware_sensing_msgs::msg::RadarObjects & input_msg);
   void parse_as_tracks(const autoware_sensing_msgs::msg::RadarObjects & input_msg);
 
-  void radar_info_callback(const autoware_sensing_msgs::msg::RadarInfo & radar_info_msg);
+  void radar_info_callback(
+    const agnocast::ipc_shared_ptr<const autoware_sensing_msgs::msg::RadarInfo> & radar_info_msg);
 
-  rclcpp::Subscription<autoware_sensing_msgs::msg::RadarObjects>::SharedPtr radar_objects_sub_;
-  rclcpp::Subscription<autoware_sensing_msgs::msg::RadarInfo>::SharedPtr radar_info_sub_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr detections_pub_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr tracks_pub_;
+  agnocast::Subscription<autoware_sensing_msgs::msg::RadarObjects>::SharedPtr radar_objects_sub_;
+  agnocast::Subscription<autoware_sensing_msgs::msg::RadarInfo>::SharedPtr radar_info_sub_;
+  agnocast::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr detections_pub_;
+  agnocast::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr tracks_pub_;
 
   std::unordered_map<std::string, autoware_sensing_msgs::msg::RadarFieldInfo> field_info_map_;
 

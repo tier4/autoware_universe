@@ -7,6 +7,7 @@
   <arg name="param_path" default="$(find-pkg-share autoware_radar_objects_adapter)/config/radar_objects_adapter.param.yaml"/>
 
   <node pkg="autoware_radar_objects_adapter" exec="radar_objects_adapter_node" name="radar_objects_adapter" output="screen">
+    <env name="LD_PRELOAD" value="$(var ld_preload_value)"/>
     <remap from="~/input/objects" to="$(var input_radar_objects)"/>
     <remap from="~/input/radar_info" to="$(var input_radar_info)"/>
     <remap from="~/output/detections" to="$(var output_detections)"/>

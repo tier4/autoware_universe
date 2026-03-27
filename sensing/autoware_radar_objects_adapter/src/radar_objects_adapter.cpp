@@ -46,15 +46,19 @@ float mask_cov_value(double value)
 }
 
 RadarObjectsAdapter::RadarObjectsAdapter(const rclcpp::NodeOptions & options)
-: Node("radar_objects_adapter", options)
+: agnocast::Node("radar_objects_adapter", options)
 {
-  radar_objects_sub_ = this->create_subscription<autoware_sensing_msgs::msg::RadarObjects>(
+  radar_objects_sub_ = create_subscription<autoware_sensing_msgs::msg::RadarObjects>(
     "~/input/objects", rclcpp::SensorDataQoS(),
-    std::bind(&RadarObjectsAdapter::objects_callback, this, std::placeholders::_1));
+    [this](const agnocast::ipc_shared_ptr<const autoware_sensing_msgs::msg::RadarObjects> & msg) {
+      objects_callback(msg);
+    });
 
-  radar_info_sub_ = this->create_subscription<autoware_sensing_msgs::msg::RadarInfo>(
+  radar_info_sub_ = create_subscription<autoware_sensing_msgs::msg::RadarInfo>(
     "~/input/radar_info", rclcpp::SensorDataQoS(),
-    std::bind(&RadarObjectsAdapter::radar_info_callback, this, std::placeholders::_1));
+    [this](const agnocast::ipc_shared_ptr<const autoware_sensing_msgs::msg::RadarInfo> & msg) {
+      radar_info_callback(msg);
+    });
 
   detections_pub_ = create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
     "~/output/detections", rclcpp::QoS(10).reliable().transient_local());
@@ -74,7 +78,9 @@ RadarObjectsAdapter::RadarObjectsAdapter(const rclcpp::NodeOptions & options)
     "existence_probability", "position_x",     "position_y", "velocity_x", "velocity_y",
     "acceleration_x",        "acceleration_y", "orientation"};
 
-  std::size_t hash_code = std::hash<std::string>{}(radar_objects_sub_->get_topic_name());
+  // Use the resolved topic name for hash (agnocast subscription doesn't expose get_topic_name)
+  std::string resolved_topic = get_node_topics_interface()->resolve_topic_name("~/input/objects");
+  std::size_t hash_code = std::hash<std::string>{}(resolved_topic);
 
   for (std::size_t i = 0; i < sizeof(std::size_t); ++i) {
     topic_hash_code_[i] = static_cast<std::uint8_t>((hash_code >> (i * 8)) & 0xFF);
@@ -199,7 +205,7 @@ void RadarObjectsAdapter::radar_cov_to_detection_acceleration_cov(
 }
 
 void RadarObjectsAdapter::objects_callback(
-  const autoware_sensing_msgs::msg::RadarObjects & objects_msg)
+  const agnocast::ipc_shared_ptr<const autoware_sensing_msgs::msg::RadarObjects> & objects_msg)
 {
   if (!valid_radar_info_) {
     RCLCPP_WARN_THROTTLE(
@@ -209,8 +215,8 @@ void RadarObjectsAdapter::objects_callback(
   }
 
   // publish both detections and tracks
-  this->parse_as_detections(objects_msg);
-  this->parse_as_tracks(objects_msg);
+  this->parse_as_detections(*objects_msg);
+  this->parse_as_tracks(*objects_msg);
 }
 
 template <typename ObjectType>
@@ -290,11 +296,11 @@ void RadarObjectsAdapter::populate_classifications(
 void RadarObjectsAdapter::parse_as_detections(
   const autoware_sensing_msgs::msg::RadarObjects & input_msg)
 {
-  auto output_msg_ptr = std::make_unique<autoware_perception_msgs::msg::DetectedObjects>();
-  auto & output_msg = *output_msg_ptr;
+  // NOTE: borrow FIRST so heaphook allocates vectors in shared memory
+  auto loaned = detections_pub_->borrow_loaned_message();
 
-  output_msg.header = input_msg.header;
-  output_msg.objects.reserve(input_msg.objects.size());
+  loaned->header = input_msg.header;
+  loaned->objects.reserve(input_msg.objects.size());
 
   for (const auto & input_object : input_msg.objects) {
     autoware_perception_msgs::msg::DetectedObject output_object;
@@ -303,20 +309,20 @@ void RadarObjectsAdapter::parse_as_detections(
     populate_common_fields(input_object, output_object, yaw);
     populate_classifications(input_object.classifications, output_object.classification);
 
-    output_msg.objects.push_back(output_object);
+    loaned->objects.push_back(output_object);
   }
 
-  detections_pub_->publish(std::move(output_msg_ptr));
+  detections_pub_->publish(std::move(loaned));
 }
 
 void RadarObjectsAdapter::parse_as_tracks(
   const autoware_sensing_msgs::msg::RadarObjects & input_msg)
 {
-  auto output_msg_ptr = std::make_unique<autoware_perception_msgs::msg::TrackedObjects>();
-  auto & output_msg = *output_msg_ptr;
+  // NOTE: borrow FIRST so heaphook allocates vectors in shared memory
+  auto loaned = tracks_pub_->borrow_loaned_message();
 
-  output_msg.header = input_msg.header;
-  output_msg.objects.reserve(input_msg.objects.size());
+  loaned->header = input_msg.header;
+  loaned->objects.reserve(input_msg.objects.size());
 
   for (const auto & input_object : input_msg.objects) {
     autoware_perception_msgs::msg::TrackedObject output_object;
@@ -338,16 +344,16 @@ void RadarObjectsAdapter::parse_as_tracks(
     populate_common_fields(input_object, output_object, yaw);
     populate_classifications(input_object.classifications, output_object.classification);
 
-    output_msg.objects.push_back(output_object);
+    loaned->objects.push_back(output_object);
   }
 
-  tracks_pub_->publish(std::move(output_msg_ptr));
+  tracks_pub_->publish(std::move(loaned));
 }
 
 void RadarObjectsAdapter::radar_info_callback(
-  const autoware_sensing_msgs::msg::RadarInfo & radar_info_msg)
+  const agnocast::ipc_shared_ptr<const autoware_sensing_msgs::msg::RadarInfo> & radar_info_msg)
 {
-  for (const auto & field_info : radar_info_msg.object_fields_info) {
+  for (const auto & field_info : radar_info_msg->object_fields_info) {
     field_info_map_[field_info.field_name.data] = field_info;
   }
 
