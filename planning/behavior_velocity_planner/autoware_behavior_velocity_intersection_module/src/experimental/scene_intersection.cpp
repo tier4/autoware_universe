@@ -229,13 +229,12 @@ bool IntersectionModule::modifyPathVelocity(
   Trajectory & path, const std::vector<geometry_msgs::msg::Point> & left_bound,
   const std::vector<geometry_msgs::msg::Point> & right_bound, const PlannerData & planner_data)
 {
-  auto path_msg = planning_utils::fromTrajectory(path, left_bound, right_bound);
-
   debug_data_ = DebugData();
 
   initializeRTCStatus();
 
-  const auto decision_result = modifyPathVelocityDetail(&path_msg, planner_data);
+  const auto decision_result =
+    modifyPathVelocityDetail(path, left_bound, right_bound, planner_data);
   prev_decision_result_ = decision_result;
 
   {
@@ -245,11 +244,10 @@ bool IntersectionModule::modifyPathVelocity(
     internal_debug_data_.decision_type = decision_type;
   }
 
-  prepareRTCStatus(decision_result, path_msg);
+  prepareRTCStatus(decision_result, path);
 
-  reactRTCApproval(decision_result, &path_msg, planner_data);
+  reactRTCApproval(decision_result, path, planner_data);
 
-  planning_utils::toTrajectory(path_msg, path);
   return true;
 }
 
@@ -284,9 +282,12 @@ static std::string formatOcclusionType(const IntersectionModule::OcclusionType &
 }
 
 DecisionResult IntersectionModule::modifyPathVelocityDetail(
-  PathWithLaneId * path, const PlannerData & planner_data)
+  Trajectory & path, const std::vector<geometry_msgs::msg::Point> & left_bound,
+  const std::vector<geometry_msgs::msg::Point> & right_bound, const PlannerData & planner_data)
 {
-  const auto prepare_data = prepareIntersectionData(path, planner_data);
+  auto path_msg = planning_utils::fromTrajectory(path, left_bound, right_bound);
+
+  const auto prepare_data = prepareIntersectionData(&path_msg, planner_data);
   if (!prepare_data) {
     return prepare_data.err();
   }
@@ -306,10 +307,10 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(
   // so this needs to be checked before attention area validation
   // ==========================================================================================
   const auto is_stuck_status =
-    isStuckStatus(*path, intersection_stoplines, path_lanelets, planner_data);
+    isStuckStatus(path_msg, intersection_stoplines, path_lanelets, planner_data);
   if (is_stuck_status) {
     if (can_smoothly_stop_at(
-          *path, closest_idx, is_stuck_status->stuck_stopline_idx, planner_data)) {
+          path_msg, closest_idx, is_stuck_status->stuck_stopline_idx, planner_data)) {
       return is_stuck_status.value();
     }
     RCLCPP_ERROR_THROTTLE(
@@ -373,7 +374,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(
     getOcclusionStatus(traffic_prioritized_level, interpolated_path_info, planner_data);
 
   const auto [is_over_pass_judge_line, safely_passed_judge_line] =
-    isOverPassJudgeLinesStatus(*path, is_occlusion_state, intersection_stoplines, planner_data);
+    isOverPassJudgeLinesStatus(path_msg, is_occlusion_state, intersection_stoplines, planner_data);
 
   // ==========================================================================================
   // calculate the expected vehicle speed and obtain the spatiotemporal profile of ego to the
@@ -381,7 +382,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(
   // ==========================================================================================
   autoware_internal_debug_msgs::msg::Float64MultiArrayStamped ego_ttc_time_array;
   const auto time_distance_array = calcIntersectionPassingTime(
-    *path, is_prioritized, intersection_stoplines, &ego_ttc_time_array, planner_data);
+    path_msg, is_prioritized, intersection_stoplines, &ego_ttc_time_array, planner_data);
 
   // ==========================================================================================
   // run collision checking for each objects considering traffic light level. Also if ego just
@@ -450,7 +451,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(
       has_collision_with_margin && !has_traffic_light_ && enable_conservative_yield_merging &&
       intersection_stoplines.maximum_footprint_overshoot_line) {
       if (can_smoothly_stop_at(
-            *path, closest_idx, intersection_stoplines.maximum_footprint_overshoot_line.value(),
+            path_msg, closest_idx, intersection_stoplines.maximum_footprint_overshoot_line.value(),
             planner_data)) {
         // NOTE(soblin): intersection_stoplines.maximum_footprint_overshoot_line.value() is not used
         // as stop line. in this case, ego tries to stop at current position
@@ -461,9 +462,9 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(
     }
     if (has_collision) {
       const std::string evasive_diag = generateEgoRiskEvasiveDiagnosis(
-        *path, closest_idx, time_distance_array, too_late_detect_objects, misjudge_objects,
+        path_msg, closest_idx, time_distance_array, too_late_detect_objects, misjudge_objects,
         planner_data);
-      debug_data_.too_late_stop_wall_pose = path->points.at(closest_idx).point.pose;
+      debug_data_.too_late_stop_wall_pose = path_msg.points.at(closest_idx).point.pose;
       return OverPassJudge{safety_diag, evasive_diag};
     }
     return OverPassJudge{
@@ -476,7 +477,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(
   const auto is_green_pseudo_collision_status =
     isGreenPseudoCollisionStatus(closest_idx, collision_stopline_idx, intersection_stoplines);
   if (is_green_pseudo_collision_status) {
-    if (can_smoothly_stop_at(*path, closest_idx, collision_stopline_idx, planner_data)) {
+    if (can_smoothly_stop_at(path_msg, closest_idx, collision_stopline_idx, planner_data)) {
       return is_green_pseudo_collision_status.value();
     }
     RCLCPP_WARN_THROTTLE(
@@ -487,10 +488,10 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(
   // yield stuck detection
   // ==========================================================================================
   const auto yield_stuck_status =
-    isYieldStuckStatus(*path, interpolated_path_info, intersection_stoplines, planner_data);
+    isYieldStuckStatus(path_msg, interpolated_path_info, intersection_stoplines, planner_data);
   if (yield_stuck_status) {
     if (can_smoothly_stop_at(
-          *path, closest_idx, yield_stuck_status->stuck_stopline_idx, planner_data)) {
+          path_msg, closest_idx, yield_stuck_status->stuck_stopline_idx, planner_data)) {
       return yield_stuck_status.value();
     }
     RCLCPP_WARN_THROTTLE(
@@ -509,7 +510,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(
   }
 
   const bool collision_stop_feasible =
-    can_smoothly_stop_at(*path, closest_idx, collision_stopline_idx, planner_data);
+    can_smoothly_stop_at(path_msg, closest_idx, collision_stopline_idx, planner_data);
   const bool collision_stop_tolerable =
     collision_stop_feasible || previous_stop_pose_.collision_stopline_pose;
 
@@ -534,7 +535,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(
   // Occluded
   // utility functions
   auto fromEgoDist = [&](const size_t index) {
-    return autoware::motion_utils::calcSignedArcLength(path->points, closest_idx, index);
+    return autoware::motion_utils::calcSignedArcLength(path_msg.points, closest_idx, index);
   };
   auto stoppedForDurationOrPassed = [&](const size_t pos, StateMachine & state_machine) {
     static constexpr double approached_dist_threshold = 1.0;
@@ -561,7 +562,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(
     stoppedForDurationOrPassed(default_stopline_idx, before_creep_state_machine_);
 
   if (!stopped_at_default_line_or_passed) {
-    if (can_smoothly_stop_at(*path, closest_idx, default_stopline_idx, planner_data)) {
+    if (can_smoothly_stop_at(path_msg, closest_idx, default_stopline_idx, planner_data)) {
       return FirstWaitBeforeOcclusion{
         is_occlusion_cleared_with_margin, closest_idx, default_stopline_idx, occlusion_stopline_idx,
         occlusion_diag};
@@ -574,7 +575,7 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(
   // ego stop at occlusion_stopline before entering attention area if there is no traffic light
   // ==========================================================================================
   const bool occlusion_stop_feasible =
-    can_smoothly_stop_at(*path, closest_idx, occlusion_stopline_idx, planner_data);
+    can_smoothly_stop_at(path_msg, closest_idx, occlusion_stopline_idx, planner_data);
   const bool occlusion_stop_tolerable =
     occlusion_stop_feasible || previous_stop_pose_.occlusion_peeking_stopline_pose;
 
@@ -674,7 +675,7 @@ VisitorSwitch(Ts...) -> VisitorSwitch<Ts...>;
 template <typename T>
 void prepareRTCByDecisionResult(
   [[maybe_unused]] const T & result,
-  [[maybe_unused]] const autoware_internal_planning_msgs::msg::PathWithLaneId & path,
+  [[maybe_unused]] const std::vector<PathPointWithLaneId> & path_points,
   [[maybe_unused]] bool * default_safety, [[maybe_unused]] double * default_distance,
   [[maybe_unused]] bool * occlusion_safety, [[maybe_unused]] double * occlusion_distance)
 {
@@ -684,7 +685,7 @@ void prepareRTCByDecisionResult(
 template <>
 void prepareRTCByDecisionResult(
   [[maybe_unused]] const InternalError & result,
-  [[maybe_unused]] const autoware_internal_planning_msgs::msg::PathWithLaneId & path,
+  [[maybe_unused]] const std::vector<PathPointWithLaneId> & path_points,
   [[maybe_unused]] bool * default_safety, [[maybe_unused]] double * default_distance,
   [[maybe_unused]] bool * occlusion_safety, [[maybe_unused]] double * occlusion_distance)
 {
@@ -693,7 +694,7 @@ void prepareRTCByDecisionResult(
 template <>
 void prepareRTCByDecisionResult(
   [[maybe_unused]] const OverPassJudge & result,
-  [[maybe_unused]] const autoware_internal_planning_msgs::msg::PathWithLaneId & path,
+  [[maybe_unused]] const std::vector<PathPointWithLaneId> & path_points,
   [[maybe_unused]] bool * default_safety, [[maybe_unused]] double * default_distance,
   [[maybe_unused]] bool * occlusion_safety, [[maybe_unused]] double * occlusion_distance)
 {
@@ -701,7 +702,7 @@ void prepareRTCByDecisionResult(
 
 template <>
 void prepareRTCByDecisionResult(
-  const StuckStop & result, const autoware_internal_planning_msgs::msg::PathWithLaneId & path,
+  const StuckStop & result, const std::vector<PathPointWithLaneId> & path_points,
   bool * default_safety, double * default_distance, bool * occlusion_safety,
   [[maybe_unused]] double * occlusion_distance)
 {
@@ -710,13 +711,13 @@ void prepareRTCByDecisionResult(
   const auto stopline_idx = result.stuck_stopline_idx;
   *default_safety = false;
   *default_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, stopline_idx);
   *occlusion_safety = true;
 }
 
 template <>
 void prepareRTCByDecisionResult(
-  const YieldStuckStop & result, const autoware_internal_planning_msgs::msg::PathWithLaneId & path,
+  const YieldStuckStop & result, const std::vector<PathPointWithLaneId> & path_points,
   bool * default_safety, double * default_distance, bool * occlusion_safety,
   [[maybe_unused]] double * occlusion_distance)
 {
@@ -725,34 +726,34 @@ void prepareRTCByDecisionResult(
   const auto stopline_idx = result.stuck_stopline_idx;
   *default_safety = false;
   *default_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, stopline_idx);
   *occlusion_safety = true;
 }
 
 template <>
 void prepareRTCByDecisionResult(
-  const NonOccludedCollisionStop & result,
-  const autoware_internal_planning_msgs::msg::PathWithLaneId & path, bool * default_safety,
-  double * default_distance, bool * occlusion_safety, double * occlusion_distance)
+  const NonOccludedCollisionStop & result, const std::vector<PathPointWithLaneId> & path_points,
+  bool * default_safety, double * default_distance, bool * occlusion_safety,
+  double * occlusion_distance)
 {
   RCLCPP_DEBUG(rclcpp::get_logger("prepareRTCByDecisionResult"), "NonOccludedCollisionStop");
   const auto closest_idx = result.closest_idx;
   const auto collision_stopline_idx = result.collision_stopline_idx;
   *default_safety = false;
   *default_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, collision_stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, collision_stopline_idx);
   const auto occlusion_stopline = result.occlusion_stopline_idx;
   *occlusion_safety = true;
   *occlusion_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, occlusion_stopline);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, occlusion_stopline);
   return;
 }
 
 template <>
 void prepareRTCByDecisionResult(
-  const FirstWaitBeforeOcclusion & result,
-  const autoware_internal_planning_msgs::msg::PathWithLaneId & path, bool * default_safety,
-  double * default_distance, bool * occlusion_safety, double * occlusion_distance)
+  const FirstWaitBeforeOcclusion & result, const std::vector<PathPointWithLaneId> & path_points,
+  bool * default_safety, double * default_distance, bool * occlusion_safety,
+  double * occlusion_distance)
 {
   RCLCPP_DEBUG(rclcpp::get_logger("prepareRTCByDecisionResult"), "FirstWaitBeforeOcclusion");
   const auto closest_idx = result.closest_idx;
@@ -760,18 +761,18 @@ void prepareRTCByDecisionResult(
   const auto occlusion_stopline_idx = result.occlusion_stopline_idx;
   *default_safety = false;
   *default_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, first_stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, first_stopline_idx);
   *occlusion_safety = result.is_actually_occlusion_cleared;
   *occlusion_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, occlusion_stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, occlusion_stopline_idx);
   return;
 }
 
 template <>
 void prepareRTCByDecisionResult(
-  const PeekingTowardOcclusion & result,
-  const autoware_internal_planning_msgs::msg::PathWithLaneId & path, bool * default_safety,
-  double * default_distance, bool * occlusion_safety, double * occlusion_distance)
+  const PeekingTowardOcclusion & result, const std::vector<PathPointWithLaneId> & path_points,
+  bool * default_safety, double * default_distance, bool * occlusion_safety,
+  double * occlusion_distance)
 {
   RCLCPP_DEBUG(rclcpp::get_logger("prepareRTCByDecisionResult"), "PeekingTowardOcclusion");
   const auto closest_idx = result.closest_idx;
@@ -779,25 +780,25 @@ void prepareRTCByDecisionResult(
   const auto occlusion_stopline_idx = result.occlusion_stopline_idx;
   *default_safety = true;
   *default_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, collision_stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, collision_stopline_idx);
   *occlusion_safety = result.is_actually_occlusion_cleared;
   *occlusion_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, occlusion_stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, occlusion_stopline_idx);
   return;
 }
 
 template <>
 void prepareRTCByDecisionResult(
-  const OccludedAbsenceTrafficLight & result,
-  const autoware_internal_planning_msgs::msg::PathWithLaneId & path, bool * default_safety,
-  double * default_distance, bool * occlusion_safety, double * occlusion_distance)
+  const OccludedAbsenceTrafficLight & result, const std::vector<PathPointWithLaneId> & path_points,
+  bool * default_safety, double * default_distance, bool * occlusion_safety,
+  double * occlusion_distance)
 {
   RCLCPP_DEBUG(rclcpp::get_logger("prepareRTCByDecisionResult"), "OccludedAbsenceTrafficLight");
   const auto closest_idx = result.closest_idx;
   const auto collision_stopline_idx = result.closest_idx;
   *default_safety = !result.collision_detected;
   *default_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, collision_stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, collision_stopline_idx);
   *occlusion_safety = result.is_actually_occlusion_cleared;
   *occlusion_distance = 0;
   return;
@@ -805,9 +806,9 @@ void prepareRTCByDecisionResult(
 
 template <>
 void prepareRTCByDecisionResult(
-  const OccludedCollisionStop & result,
-  const autoware_internal_planning_msgs::msg::PathWithLaneId & path, bool * default_safety,
-  double * default_distance, bool * occlusion_safety, double * occlusion_distance)
+  const OccludedCollisionStop & result, const std::vector<PathPointWithLaneId> & path_points,
+  bool * default_safety, double * default_distance, bool * occlusion_safety,
+  double * occlusion_distance)
 {
   RCLCPP_DEBUG(rclcpp::get_logger("prepareRTCByDecisionResult"), "OccludedCollisionStop");
   const auto closest_idx = result.closest_idx;
@@ -815,18 +816,17 @@ void prepareRTCByDecisionResult(
   const auto occlusion_stopline_idx = result.occlusion_stopline_idx;
   *default_safety = false;
   *default_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, collision_stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, collision_stopline_idx);
   *occlusion_safety = result.is_actually_occlusion_cleared;
   *occlusion_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, occlusion_stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, occlusion_stopline_idx);
   return;
 }
 
 template <>
 void prepareRTCByDecisionResult(
-  const Safe & result, const autoware_internal_planning_msgs::msg::PathWithLaneId & path,
-  bool * default_safety, double * default_distance, bool * occlusion_safety,
-  double * occlusion_distance)
+  const Safe & result, const std::vector<PathPointWithLaneId> & path_points, bool * default_safety,
+  double * default_distance, bool * occlusion_safety, double * occlusion_distance)
 {
   RCLCPP_DEBUG(rclcpp::get_logger("prepareRTCByDecisionResult"), "Safe");
   const auto closest_idx = result.closest_idx;
@@ -834,18 +834,18 @@ void prepareRTCByDecisionResult(
   const auto occlusion_stopline_idx = result.occlusion_stopline_idx;
   *default_safety = true;
   *default_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, collision_stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, collision_stopline_idx);
   *occlusion_safety = true;
   *occlusion_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, occlusion_stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, occlusion_stopline_idx);
   return;
 }
 
 template <>
 void prepareRTCByDecisionResult(
-  const FullyPrioritized & result,
-  const autoware_internal_planning_msgs::msg::PathWithLaneId & path, bool * default_safety,
-  double * default_distance, bool * occlusion_safety, double * occlusion_distance)
+  const FullyPrioritized & result, const std::vector<PathPointWithLaneId> & path_points,
+  bool * default_safety, double * default_distance, bool * occlusion_safety,
+  double * occlusion_distance)
 {
   RCLCPP_DEBUG(rclcpp::get_logger("prepareRTCByDecisionResult"), "FullyPrioritized");
   const auto closest_idx = result.closest_idx;
@@ -853,22 +853,22 @@ void prepareRTCByDecisionResult(
   const auto occlusion_stopline_idx = result.occlusion_stopline_idx;
   *default_safety = !result.collision_detected;
   *default_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, collision_stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, collision_stopline_idx);
   *occlusion_safety = true;
   *occlusion_distance =
-    autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, occlusion_stopline_idx);
+    autoware::motion_utils::calcSignedArcLength(path_points, closest_idx, occlusion_stopline_idx);
 }
 
 void IntersectionModule::prepareRTCStatus(
-  const DecisionResult & decision_result,
-  const autoware_internal_planning_msgs::msg::PathWithLaneId & path)
+  const DecisionResult & decision_result, const Trajectory & path)
 {
+  const auto path_points = path.restore();
   bool default_safety = true;
   double default_distance = std::numeric_limits<double>::lowest();
   std::visit(
     VisitorSwitch{[&](const auto & decision) {
       prepareRTCByDecisionResult(
-        decision, path, &default_safety, &default_distance, &occlusion_safety_,
+        decision, path_points, &default_safety, &default_distance, &occlusion_safety_,
         &occlusion_stop_distance_);
     }},
     decision_result);
@@ -1357,9 +1357,10 @@ void reactRTCApprovalByDecisionResult(
 }
 
 void IntersectionModule::reactRTCApproval(
-  const DecisionResult & decision_result,
-  autoware_internal_planning_msgs::msg::PathWithLaneId * path, const PlannerData & planner_data)
+  const DecisionResult & decision_result, Trajectory & path, const PlannerData & planner_data)
 {
+  auto path_msg = planning_utils::fromTrajectory(path, {}, {});
+
   const double baselink2front = planner_data.vehicle_info_.max_longitudinal_offset_m;
 
   IntersectionStopLines::PreviousStopPose current_stop_pose{};
@@ -1367,7 +1368,7 @@ void IntersectionModule::reactRTCApproval(
   std::visit(
     VisitorSwitch{[&](const auto & decision) {
       reactRTCApprovalByDecisionResult(
-        activated_, occlusion_activated_, decision, planner_param_, baselink2front, path,
+        activated_, occlusion_activated_, decision, planner_param_, baselink2front, &path_msg,
         safety_factor_array_, planning_factor_interface_.get(),
         planning_factor_interface_for_occlusion_.get(), &debug_data_, &current_stop_pose);
     }},
@@ -1375,6 +1376,8 @@ void IntersectionModule::reactRTCApproval(
 
   // NOTE(soblin): this is to refresh `previous_stop_pose_`
   previous_stop_pose_ = current_stop_pose;
+
+  planning_utils::toTrajectory(path_msg, path);
 }
 
 bool IntersectionModule::isGreenSolidOn() const
