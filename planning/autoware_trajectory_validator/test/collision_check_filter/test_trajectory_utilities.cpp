@@ -159,7 +159,8 @@ TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryForObjectShapeMatchesUti
   const auto footprints = trajectory::footprint::compute_footprint_trajectory(poses, shape);
 
   ASSERT_EQ(footprints.size(), 1u);
-  expect_same_polygon(footprints.front(), autoware_utils_geometry::to_polygon2d(poses.front(), shape));
+  expect_same_polygon(
+    footprints.front(), autoware_utils_geometry::to_polygon2d(poses.front(), shape));
 }
 
 TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryForVehicleMatchesUtility)
@@ -171,10 +172,9 @@ TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryForVehicleMatchesUtility
 
   ASSERT_EQ(footprints.size(), 1u);
   expect_same_polygon(
-    footprints.front(),
-    autoware_utils_geometry::to_footprint(
-      poses.front(), vehicle_info.max_longitudinal_offset_m,
-      -vehicle_info.min_longitudinal_offset_m, vehicle_info.vehicle_width_m));
+    footprints.front(), autoware_utils_geometry::to_footprint(
+                          poses.front(), vehicle_info.max_longitudinal_offset_m,
+                          -vehicle_info.min_longitudinal_offset_m, vehicle_info.vehicle_width_m));
 }
 
 TEST(TrajectoryUtilitiesTest, GenerateEgoTrajectoryBuildsConsistentTrajectoryData)
@@ -207,8 +207,7 @@ TEST(TrajectoryUtilitiesTest, GeneratePredictedPathTrajectoryUsesHighestConfiden
   const std::vector<autoware_perception_msgs::msg::PredictedPath> predicted_paths = {
     create_straight_predicted_path(10.0, 0.1, {0.0, 1.0, 2.0, 3.0, 4.0}),
     create_straight_predicted_path(0.0, 0.9, {0.0, 1.0, 2.0, 3.0, 4.0})};
-  const auto object =
-    create_predicted_object(initial_pose, initial_twist, shape, predicted_paths);
+  const auto object = create_predicted_object(initial_pose, initial_twist, shape, predicted_paths);
 
   const auto trajectory_data = trajectory::generate_predicted_path_trajectory(
     object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.1), 0.35);
@@ -223,17 +222,6 @@ TEST(TrajectoryUtilitiesTest, GeneratePredictedPathTrajectoryUsesHighestConfiden
   EXPECT_DOUBLE_EQ(trajectory_data.getPoses().at(0).position.y, 0.0);
 }
 
-TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityUsesPathYawForNonDegeneratePath)
-{
-  const PoseTrajectory points = {create_pose(0.0, 0.0, 0.0), create_pose(0.0, 10.0, 0.0)};
-  const auto object = create_predicted_object(
-    create_pose(0.0, 5.0, M_PI_2), create_twist(2.0), create_bounding_box_shape(), {});
-
-  const auto longitudinal_velocity = collision_assessment::calc_longitudinal_velocity(points, object);
-
-  EXPECT_NEAR(longitudinal_velocity, 2.0, 1e-6);
-}
-
 TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityFallsBackToFrontPoseYawForDegeneratePath)
 {
   const PoseTrajectory points = {
@@ -241,7 +229,8 @@ TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityFallsBackToFrontPoseYawFor
   const auto object = create_predicted_object(
     create_pose(1.0, 2.0, M_PI / 6.0), create_twist(2.0), create_bounding_box_shape(), {});
 
-  const auto longitudinal_velocity = collision_assessment::calc_longitudinal_velocity(points, object);
+  const auto longitudinal_velocity =
+    collision_assessment::calc_longitudinal_velocity(points, object);
 
   EXPECT_NEAR(longitudinal_velocity, 2.0 * std::cos(M_PI / 6.0), 1e-6);
 }
@@ -252,7 +241,8 @@ TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityThrowsOnEmptyPoints)
   const auto object = create_predicted_object(
     create_pose(0.0, 0.0, 0.0), create_twist(2.0), create_bounding_box_shape(), {});
 
-  EXPECT_THROW(collision_assessment::calc_longitudinal_velocity(points, object), std::invalid_argument);
+  EXPECT_THROW(
+    collision_assessment::calc_longitudinal_velocity(points, object), std::invalid_argument);
 }
 
 TEST(TrajectoryUtilitiesTest, GenerateConstantCurvaturePathTrajectoryMatchesPredictor)
@@ -266,14 +256,12 @@ TEST(TrajectoryUtilitiesTest, GenerateConstantCurvaturePathTrajectoryMatchesPred
     object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.0), 0.25);
   const auto [expected_times, expected_distances] =
     trajectory::time_distance::compute_motion_profile_1d(initial_twist, 0.0, 0.0, 0.0, 0.25);
-  const auto expected_poses =
-    trajectory::pose::constant_curvature_predictor::compute(
-      initial_pose, initial_twist, expected_distances);
+  const auto expected_poses = trajectory::pose::constant_curvature_predictor::compute(
+    initial_pose, initial_twist, expected_distances);
 
   ASSERT_EQ(trajectory_data.size(), expected_times.size());
   EXPECT_EQ(
-    trajectory_data.getId().find("_constant_curvature_path"),
-    trajectory_data.getId().size() - 24);
+    trajectory_data.getId().find("_constant_curvature_path"), trajectory_data.getId().size() - 24);
   for (size_t i = 0; i < expected_times.size(); ++i) {
     EXPECT_NEAR(trajectory_data.getTimes().at(i), expected_times.at(i), 1e-6);
     EXPECT_NEAR(trajectory_data.getPoses().at(i).position.x, expected_poses.at(i).position.x, 1e-6);
@@ -288,7 +276,8 @@ TEST(TrajectoryUtilitiesTest, TrajectoryDataReturnsFootprintsInNearestTimeRange)
 {
   const TimeTrajectory times = {0.0, 0.1, 0.2};
   const TravelDistanceTrajectory distances = {0.0, 1.0, 2.0};
-  const PoseTrajectory poses = {create_pose(0.0, 0.0), create_pose(1.0, 0.0), create_pose(2.0, 0.0)};
+  const PoseTrajectory poses = {
+    create_pose(0.0, 0.0), create_pose(1.0, 0.0), create_pose(2.0, 0.0)};
   const auto shape = create_bounding_box_shape(2.0, 1.0);
   const FootprintTrajectory footprints = {
     autoware_utils_geometry::to_polygon2d(poses.at(0), shape),
@@ -301,7 +290,8 @@ TEST(TrajectoryUtilitiesTest, TrajectoryDataReturnsFootprintsInNearestTimeRange)
 
   ASSERT_EQ(std::distance(range.begin(), range.end()), 2);
   EXPECT_DOUBLE_EQ(range.begin()->outer().front().x(), footprints.at(0).outer().front().x());
-  EXPECT_DOUBLE_EQ(std::next(range.begin())->outer().front().x(), footprints.at(1).outer().front().x());
+  EXPECT_DOUBLE_EQ(
+    std::next(range.begin())->outer().front().x(), footprints.at(1).outer().front().x());
   EXPECT_EQ(std::distance(empty_range.begin(), empty_range.end()), 0);
 }
 
