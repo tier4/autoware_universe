@@ -128,14 +128,6 @@ private:
   }
 };
 
-struct DebugData
-{
-  double pet{std::numeric_limits<double>::max()};
-  Polygon2d ego_polygons;
-  Polygon2d object_polygons;
-  std::string object_id;
-};
-
 class CollisionCheckFilter : public plugin::ValidatorInterface
 {
 public:
@@ -150,7 +142,9 @@ private:
   validator::Params::CollisionCheck::PetCollision pet_collision_params_;
   validator::Params::CollisionCheck::Rss rss_params_;
 
-  void add_debug_markers(const DebugData & debug_data, const rclcpp::Time & stamp);
+  void add_debug_markers(
+    const Polygon2d & ego_hull, const Polygon2d & object_hull, const std::string & trajectory_id,
+    const rclcpp::Time & stamp);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety

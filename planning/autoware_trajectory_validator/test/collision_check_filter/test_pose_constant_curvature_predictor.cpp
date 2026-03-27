@@ -35,7 +35,7 @@ TEST(PoseConstantCurvaturePredictorTest, PoseToIsometry)
   q.setRPY(0.0, 0.0, M_PI_2);
   pose.orientation = tf2::toMsg(q);
 
-  const auto iso = pose_to_isometry(pose);
+  const auto iso = detail::pose_to_isometry(pose);
 
   EXPECT_DOUBLE_EQ(iso.translation().x(), 1.0);
   EXPECT_DOUBLE_EQ(iso.translation().y(), 2.0);
@@ -52,7 +52,7 @@ TEST(PoseConstantCurvaturePredictorTest, ComputeTwistPerDistance)
   twist_normal.linear.y = 4.0;
   twist_normal.angular.z = 10.0;
 
-  const auto res_normal = compute_twist_per_distance(twist_normal);
+  const auto res_normal = detail::compute_twist_per_distance(twist_normal);
 
   EXPECT_DOUBLE_EQ(res_normal.linear.x(), 3.0 / 5.0);
   EXPECT_DOUBLE_EQ(res_normal.linear.y(), 4.0 / 5.0);
@@ -63,7 +63,7 @@ TEST(PoseConstantCurvaturePredictorTest, ComputeTwistPerDistance)
   twist_stop.linear.y = 0.0;
   twist_stop.angular.z = 5.0;
 
-  const auto res_stop = compute_twist_per_distance(twist_stop);
+  const auto res_stop = detail::compute_twist_per_distance(twist_stop);
 
   EXPECT_NEAR(res_stop.linear.x(), 0.0, 1e-6);
   EXPECT_NEAR(res_stop.linear.y(), 0.0, 1e-6);
@@ -77,7 +77,7 @@ TEST(PoseConstantCurvaturePredictorTest, ComputeDeltaIsometry)
     tpd_straight.linear = Eigen::Vector2d(1.0, 0.0);
     tpd_straight.angular = 0.0;
 
-    const auto iso_straight = compute_delta_isometry(tpd_straight, 2.0);
+    const auto iso_straight = detail::compute_delta_isometry(tpd_straight, 2.0);
     EXPECT_NEAR(iso_straight.translation().x(), 2.0, 1e-6);
     EXPECT_NEAR(iso_straight.translation().y(), 0.0, 1e-6);
     EXPECT_NEAR(Eigen::Rotation2Dd(iso_straight.linear()).angle(), 0.0, 1e-6);
@@ -88,7 +88,7 @@ TEST(PoseConstantCurvaturePredictorTest, ComputeDeltaIsometry)
     tpd_curve.linear = Eigen::Vector2d(1.0, 0.0);
     tpd_curve.angular = M_PI_2;
 
-    const auto iso_curve = compute_delta_isometry(tpd_curve, 1.0);
+    const auto iso_curve = detail::compute_delta_isometry(tpd_curve, 1.0);
     EXPECT_NEAR(iso_curve.translation().x(), 1.0 / M_PI_2, 1e-3);
     EXPECT_NEAR(iso_curve.translation().y(), 1.0 / M_PI_2, 1e-3);
     EXPECT_NEAR(Eigen::Rotation2Dd(iso_curve.linear()).angle(), M_PI_2, 1e-3);
@@ -102,7 +102,7 @@ TEST(PoseConstantCurvaturePredictorTest, IsometryToPose)
   iso.linear() = Eigen::Rotation2Dd(M_PI).toRotationMatrix();
 
   const double initial_z = 5.0;
-  const auto pose = isometry_to_pose(iso, initial_z);
+  const auto pose = detail::isometry_to_pose(iso, initial_z);
 
   EXPECT_DOUBLE_EQ(pose.position.x, 3.0);
   EXPECT_DOUBLE_EQ(pose.position.y, 4.0);
