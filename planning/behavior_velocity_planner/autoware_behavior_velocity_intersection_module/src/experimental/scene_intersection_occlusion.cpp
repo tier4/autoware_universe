@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/behavior_velocity_intersection_module/util.hpp"
+#include "autoware/behavior_velocity_intersection_module/experimental/util.hpp"
 #include "scene_intersection.hpp"
 
 #include <autoware_utils/geometry/boost_polygon_utils.hpp>  // for toPolygon2d

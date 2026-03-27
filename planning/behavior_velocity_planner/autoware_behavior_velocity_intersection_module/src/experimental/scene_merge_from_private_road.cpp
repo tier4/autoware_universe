@@ -14,7 +14,7 @@
 
 #include "scene_merge_from_private_road.hpp"
 
-#include "autoware/behavior_velocity_intersection_module/util.hpp"
+#include "autoware/behavior_velocity_intersection_module/experimental/util.hpp"
 
 #include <autoware/lanelet2_utils/topology.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
