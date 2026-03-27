@@ -230,7 +230,7 @@ TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityUsesPathYawForPathLongerTh
     create_pose(0.5, 0.0, 0.0), create_twist(2.0), create_bounding_box_shape(), {});
 
   const auto longitudinal_velocity =
-    rss_collision::calc_longitudinal_velocity(points, object);
+    rss_deceleration::calc_longitudinal_velocity(points, object);
 
   EXPECT_NEAR(longitudinal_velocity, 2.0, 1e-6);
 }
@@ -243,7 +243,7 @@ TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityFallsBackToFrontPoseYawFor
     create_pose(1.0, 2.0, M_PI / 6.0), create_twist(2.0), create_bounding_box_shape(), {});
 
   const auto longitudinal_velocity =
-    rss_collision::calc_longitudinal_velocity(points, object);
+    rss_deceleration::calc_longitudinal_velocity(points, object);
 
   EXPECT_NEAR(longitudinal_velocity, 2.0 * std::cos(M_PI / 6.0), 1e-6);
 }
@@ -255,7 +255,7 @@ TEST(TrajectoryUtilitiesTest, CalcLongitudinalVelocityThrowsOnEmptyPoints)
     create_pose(0.0, 0.0, 0.0), create_twist(2.0), create_bounding_box_shape(), {});
 
   EXPECT_THROW(
-    rss_collision::calc_longitudinal_velocity(points, object), std::invalid_argument);
+    rss_deceleration::calc_longitudinal_velocity(points, object), std::invalid_argument);
 }
 
 TEST(TrajectoryUtilitiesTest, GenerateConstantCurvaturePathTrajectoryMatchesPredictor)

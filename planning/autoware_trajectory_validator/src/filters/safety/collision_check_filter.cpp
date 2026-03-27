@@ -346,7 +346,7 @@ bool has_overall_convex_hull_overlap(const Range1 & footprints1, const Range2 & 
 }
 }  // namespace geometry
 
-namespace rss_collision
+namespace rss_deceleration
 {
 struct Assessment
 {
@@ -441,7 +441,8 @@ Assessment assess_required_deceleration(
   }
 
   // calc current distance
-  const auto distance_to_collision = rss_collision::calc_distance_to_collision(ego_trajectory, object);
+  const auto distance_to_collision =
+    rss_deceleration::calc_distance_to_collision(ego_trajectory, object);
   if (!distance_to_collision.has_value()) {
     return Assessment{
       autoware_utils_uuid::to_hex_string(object.object_id),
@@ -451,7 +452,7 @@ Assessment assess_required_deceleration(
 
   // calc safe distance
   const double obj_long_vel = std::clamp(
-    rss_collision::calc_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
+    rss_deceleration::calc_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
   const double safe_distance = distance_to_collision.value() +
                                obj_long_vel * obj_long_vel * 0.5 / -rss_params.object_acceleration -
                                ego_long_vel * rss_params.ego_reaction_time;
@@ -495,9 +496,9 @@ Result assess(
   return result;
 }
 
-}  // namespace rss_collision
+}  // namespace rss_deceleration
 
-namespace planned_speed_collision
+namespace planned_speed_collision_timing
 {
 struct Trajectories
 {
@@ -627,7 +628,7 @@ std::vector<Finding> assess(
 
   return findings;
 }
-}  // namespace planned_speed_collision
+}  // namespace planned_speed_collision_timing
 
 void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
@@ -696,9 +697,9 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
 
   std::string error_msg{};
 
-  const auto planned_speed_findings = planned_speed_collision::assess(
+  const auto planned_speed_timing_findings = planned_speed_collision_timing::assess(
     traj_points, context, pet_collision_params_, *vehicle_info_ptr_);
-  for (const auto & finding : planned_speed_findings) {
+  for (const auto & finding : planned_speed_timing_findings) {
     error_msg += fmt::format(
       "PET collision, ID: {}, PET: {}, TTC: {}, stamp: {}.{}; ", finding.trajectory_id, finding.pet,
       finding.ttc.has_value() ? std::to_string(finding.ttc.value()) : "N/A",
@@ -707,7 +708,8 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
       finding.ego_hull, finding.object_hull, finding.trajectory_id, context.odometry->header.stamp);
   }
 
-  const auto rss_result = rss_collision::assess(traj_points, context, rss_params_, *vehicle_info_ptr_);
+  const auto rss_result = rss_deceleration::assess(
+    traj_points, context, rss_params_, *vehicle_info_ptr_);
   for (const auto & violation : rss_result.violations) {
     error_msg += fmt::format(
       "RSS collision, ID: {}, required deceleration: {}", violation.object_id,
