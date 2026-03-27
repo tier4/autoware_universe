@@ -267,7 +267,7 @@ PoseTrajectory compute_pose_trajectory(
   PoseTrajectory pose_trajectory;
   pose_trajectory.reserve(distance_trajectory.size());
   for (const auto & distance : distance_trajectory) {
-    const auto pose = autoware::motion_utils::calcInterpolatedPose(traj_points, distance);
+    const auto pose = autoware::motion_utils::calcInterpolatedPose(traj_points, distance, false);
     pose_trajectory.push_back(pose);
   }
   return pose_trajectory;
