@@ -78,6 +78,11 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_collision_check_filter gtest_main ${PROJECT_NAME})
 
+  ament_add_ros_isolated_gtest(test_trajectory_utilities
+    test/collision_check_filter/test_trajectory_utilities.cpp
+  )
+  target_link_libraries(test_trajectory_utilities gtest_main ${PROJECT_NAME})
+
   ament_add_gtest(test_traffic_light_filter
     test/plugins/test_traffic_light_filter.cpp
   )
