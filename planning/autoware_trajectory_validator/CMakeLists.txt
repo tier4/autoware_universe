@@ -58,23 +58,23 @@ if(BUILD_TESTING)
     autoware_trajectory_validator_plugins
   )
 
-  ament_add_ros_isolated_gtest(test_constant_curvature
-    test/collision_check_filter/test_constant_curvature_predictor.cpp
+  ament_add_ros_isolated_gtest(test_pose_constant_curvature_predictor
+    test/collision_check_filter/test_pose_constant_curvature_predictor.cpp
   )
-  target_link_libraries(test_constant_curvature gtest_main ${PROJECT_NAME})
+  target_link_libraries(test_pose_constant_curvature_predictor gtest_main ${PROJECT_NAME})
 
-  ament_add_ros_isolated_gtest(test_motion
-    test/collision_check_filter/test_motion.cpp
+  ament_add_ros_isolated_gtest(test_time_distance
+    test/collision_check_filter/test_time_distance.cpp
   )
-  target_link_libraries(test_motion gtest_main ${PROJECT_NAME})
+  target_link_libraries(test_time_distance gtest_main ${PROJECT_NAME})
 
-  ament_add_ros_isolated_gtest(test_polygon
-    test/collision_check_filter/test_polygon.cpp
+  ament_add_ros_isolated_gtest(test_geometry
+    test/collision_check_filter/test_geometry.cpp
   )
-  target_link_libraries(test_polygon gtest_main ${PROJECT_NAME})
+  target_link_libraries(test_geometry gtest_main ${PROJECT_NAME})
 
   ament_add_ros_isolated_gtest(test_collision_check_filter
-    test/collision_check_filter/test_collision.cpp
+    test/collision_check_filter/test_collision_check_filter.cpp
   )
   target_link_libraries(test_collision_check_filter gtest_main ${PROJECT_NAME})
 

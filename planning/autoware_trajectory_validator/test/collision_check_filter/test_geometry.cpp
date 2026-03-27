@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// #include "autoware/trajectory_validator/filters/safety/collision_check_filter.hpp"
 #include "../../src/filters/safety/collision_check_filter.cpp"
 
 #include <gtest/gtest.h>
@@ -20,10 +19,10 @@
 #include <cmath>
 #include <vector>
 
-namespace autoware::trajectory_validator::plugin::safety::polygon
+namespace autoware::trajectory_validator::plugin::safety::geometry
 {
 
-class PolygonCollisionTest : public ::testing::Test
+class GeometryTest : public ::testing::Test
 {
 protected:
   Polygon2d create_rect_poly(double min_x, double min_y, double max_x, double max_y)
@@ -39,7 +38,7 @@ protected:
   }
 };
 
-TEST_F(PolygonCollisionTest, ComputeOverallEnvelope)
+TEST_F(GeometryTest, ComputeOverallEnvelope)
 {
   FootprintTrajectory trajectory;
   trajectory.push_back(create_rect_poly(0.0, 0.0, 1.0, 1.0));
@@ -53,7 +52,7 @@ TEST_F(PolygonCollisionTest, ComputeOverallEnvelope)
   EXPECT_DOUBLE_EQ(envelope.max_corner().y(), 3.0);
 }
 
-TEST_F(PolygonCollisionTest, ComputeOverallConvexHull)
+TEST_F(GeometryTest, ComputeOverallConvexHull)
 {
   FootprintTrajectory trajectory;
   trajectory.push_back(create_rect_poly(0.0, 0.0, 1.0, 1.0));
@@ -65,7 +64,7 @@ TEST_F(PolygonCollisionTest, ComputeOverallConvexHull)
   EXPECT_DOUBLE_EQ(area, 5.0);
 }
 
-TEST_F(PolygonCollisionTest, CheckPathPolygonConvexCollision)
+TEST_F(GeometryTest, CheckPathPolygonConvexCollision)
 {
   FootprintTrajectory traj1_disjoint;
   traj1_disjoint.push_back(create_rect_poly(0.0, 0.0, 1.0, 1.0));
@@ -95,4 +94,4 @@ TEST_F(PolygonCollisionTest, CheckPathPolygonConvexCollision)
   EXPECT_TRUE(check_path_polygon_convex_collision(traj1_collide, traj2_collide));
 }
 
-}  // namespace autoware::trajectory_validator::plugin::safety::polygon
+}  // namespace autoware::trajectory_validator::plugin::safety::geometry
