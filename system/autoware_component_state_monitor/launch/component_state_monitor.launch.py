@@ -57,10 +57,13 @@ def create_topic_monitor_node(row):
     else:
         params["topic_type"] = str(args["topic_type"])
 
+    # TF monitors use TransformStateMonitorNode (agnocast::Node, typed TFMessage sub).
+    # Non-TF monitors use TypedTopicStateMonitorNode (agnocast::Node, compile-time type registry).
+    # Both avoid rclcpp::GenericSubscription which has no agnocast equivalent.
     executable = (
         "transform_state_monitor_agnocast_node"
         if is_tf
-        else "autoware_topic_state_monitor_agnocast_node"
+        else "typed_topic_state_monitor_agnocast_node"
     )
 
     return Node(
