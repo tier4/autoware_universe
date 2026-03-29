@@ -11,9 +11,23 @@ ament_auto_add_library(goal_pose_visualizer_component SHARED
   src/goal_pose_visualizer/goal_pose_visualizer.cpp
 )
 
+target_link_libraries(goal_pose_visualizer_component
+  ${agnocastlib_LIBRARIES}
+)
+target_include_directories(goal_pose_visualizer_component SYSTEM PUBLIC
+  ${agnocastlib_INCLUDE_DIRS}
+)
+
 rclcpp_components_register_node(goal_pose_visualizer_component
   PLUGIN "autoware::mission_planner_universe::GoalPoseVisualizer"
   EXECUTABLE goal_pose_visualizer
+)
+
+agnocast_components_register_node(goal_pose_visualizer_component
+  PLUGIN "autoware::mission_planner_universe::GoalPoseVisualizer"
+  EXECUTABLE goal_pose_visualizer_agnocast
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 ament_auto_add_library(${PROJECT_NAME}_component SHARED

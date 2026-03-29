@@ -15,6 +15,7 @@
 #ifndef TRAFFIC_LIGHT_MAP_VISUALIZER__NODE_HPP_
 #define TRAFFIC_LIGHT_MAP_VISUALIZER__NODE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/autoware_traffic_light.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -28,21 +29,22 @@
 
 namespace autoware::traffic_light
 {
-class TrafficLightMapVisualizerNode : public rclcpp::Node
+class TrafficLightMapVisualizerNode : public agnocast::Node
 {
 public:
   explicit TrafficLightMapVisualizerNode(const rclcpp::NodeOptions & node_options);
   ~TrafficLightMapVisualizerNode() = default;
   void trafficSignalsCallback(
-    const autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr
+    const agnocast::ipc_shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray> &
       input_traffic_signals);
-  void binMapCallback(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr input_map_msg);
+  void binMapCallback(
+    const agnocast::ipc_shared_ptr<const autoware_map_msgs::msg::LaneletMapBin> & input_map_msg);
 
 private:
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr light_marker_pub_;
-  rclcpp::Subscription<autoware_perception_msgs::msg::TrafficLightGroupArray>::SharedPtr
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr light_marker_pub_;
+  agnocast::Subscription<autoware_perception_msgs::msg::TrafficLightGroupArray>::SharedPtr
     tl_state_sub_;
-  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr vector_map_sub_;
+  agnocast::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr vector_map_sub_;
 
   std::vector<lanelet::AutowareTrafficLightConstPtr> aw_tl_reg_elems_;
 };

@@ -107,23 +107,25 @@ namespace autoware::traffic_light
 {
 TrafficLightMapVisualizerNode::TrafficLightMapVisualizerNode(
   const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("traffic_light_map_visualizer_node", node_options)
+: agnocast::Node("traffic_light_map_visualizer_node", node_options)
 {
   using std::placeholders::_1;
 
   light_marker_pub_ =
     create_publisher<visualization_msgs::msg::MarkerArray>("~/output/traffic_light", 1);
   tl_state_sub_ = create_subscription<autoware_perception_msgs::msg::TrafficLightGroupArray>(
-    "~/input/tl_state", 1,
+    "~/input/tl_state", rclcpp::QoS{1},
     std::bind(&TrafficLightMapVisualizerNode::trafficSignalsCallback, this, _1));
   vector_map_sub_ = create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
     "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&TrafficLightMapVisualizerNode::binMapCallback, this, _1));
 }
 void TrafficLightMapVisualizerNode::trafficSignalsCallback(
-  const autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr input_traffic_signals)
+  const agnocast::ipc_shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray> &
+    input_traffic_signals)
 {
-  visualization_msgs::msg::MarkerArray output_msg;
+  auto loaned = light_marker_pub_->borrow_loaned_message();
+  auto & output_msg = *loaned;
   const auto current_time = now();
 
 #if 0
@@ -193,11 +195,11 @@ void TrafficLightMapVisualizerNode::trafficSignalsCallback(
     }
   }
 
-  light_marker_pub_->publish(output_msg);
+  light_marker_pub_->publish(std::move(loaned));
 }
 
 void TrafficLightMapVisualizerNode::binMapCallback(
-  const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr input_map_msg)
+  const agnocast::ipc_shared_ptr<const autoware_map_msgs::msg::LaneletMapBin> & input_map_msg)
 {
   lanelet::LaneletMapPtr viz_lanelet_map(new lanelet::LaneletMap);
 

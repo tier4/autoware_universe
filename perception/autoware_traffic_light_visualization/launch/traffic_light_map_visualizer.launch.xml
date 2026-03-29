@@ -3,7 +3,8 @@
   <arg name="input/vector_map" default="/map/vector_map"/>
   <arg name="output/traffic_light" default="traffic_signals/markers"/>
 
-  <node pkg="autoware_traffic_light_visualization" exec="traffic_light_map_visualizer_node" name="traffic_light_map_visualizer">
+  <node pkg="autoware_traffic_light_visualization" exec="traffic_light_map_visualizer_agnocast_node" name="traffic_light_map_visualizer">
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
     <remap from="~/input/tl_state" to="$(var input/tl_state)"/>
     <remap from="~/input/vector_map" to="$(var input/vector_map)"/>
     <remap from="~/output/traffic_light" to="$(var output/traffic_light)"/>

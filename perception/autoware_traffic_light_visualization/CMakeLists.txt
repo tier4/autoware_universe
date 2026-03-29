@@ -5,6 +5,8 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(OpenCV REQUIRED)
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
 
 ament_auto_add_library(traffic_light_roi_visualizer SHARED
   src/traffic_light_roi_visualizer/node.cpp
@@ -28,9 +30,23 @@ ament_auto_add_library(traffic_light_map_visualizer SHARED
   src/traffic_light_map_visualizer/node.cpp
 )
 
+target_link_libraries(traffic_light_map_visualizer
+  ${agnocastlib_LIBRARIES}
+)
+target_include_directories(traffic_light_map_visualizer SYSTEM PUBLIC
+  ${agnocastlib_INCLUDE_DIRS}
+)
+
 rclcpp_components_register_node(traffic_light_map_visualizer
   PLUGIN "autoware::traffic_light::TrafficLightMapVisualizerNode"
   EXECUTABLE traffic_light_map_visualizer_node
+)
+
+agnocast_components_register_node(traffic_light_map_visualizer
+  PLUGIN "autoware::traffic_light::TrafficLightMapVisualizerNode"
+  EXECUTABLE traffic_light_map_visualizer_agnocast_node
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 # Copy the assets directory to the installation directory
