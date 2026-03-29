@@ -253,7 +253,7 @@
 
       <!-- collision detector (standalone) -->
       <group if="$(var launch_collision_detector)">
-        <node pkg="autoware_collision_detector" exec="autoware_collision_detector_node" name="collision_detector">
+        <node pkg="autoware_collision_detector" exec="autoware_collision_detector_agnocast_node" name="collision_detector">
           <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
           <remap from="~/input/odometry" to="/localization/kinematic_state"/>
           <remap from="~/input/pointcloud" to="$(var input_pointcloud_topic_name)"/>

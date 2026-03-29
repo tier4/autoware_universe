@@ -131,7 +131,7 @@ autoware_utils_geometry::Polygon2d createSelfPolygon(
 }  // namespace
 
 CollisionDetectorNode::CollisionDetectorNode(const rclcpp::NodeOptions & node_options)
-: Node("collision_detector_node", node_options), updater_(this)
+: agnocast::Node("collision_detector_node", node_options)
 {
   // Parameters
   {
@@ -164,20 +164,32 @@ CollisionDetectorNode::CollisionDetectorNode(const rclcpp::NodeOptions & node_op
       this->declare_parameter<double>("time_buffer.off_distance_hysteresis");
   }
 
-  vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
+  vehicle_info_ =
+    autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(*this).getVehicleInfo();
 
-  // Diagnostics Updater
-  updater_.setHardwareID("collision_detector");
-  updater_.add("collision_detect", this, &CollisionDetectorNode::checkCollision);
-  updater_.setPeriod(0.1);
+  // Publisher
+  pub_debug_ =
+    this->create_publisher<visualization_msgs::msg::MarkerArray>("~/debug_markers", 1);
 
   // Agnocast polling subscribers
-  sub_pointcloud_ = std::make_shared<agnocast::PollingSubscriber<sensor_msgs::msg::PointCloud2>>(
-    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos());
-  sub_dynamic_objects_ = std::make_shared<agnocast::PollingSubscriber<PredictedObjects>>(
-    this, "~/input/objects");
+  sub_odometry_ = this->create_subscription<nav_msgs::msg::Odometry>("~/input/odometry", 1);
+  {
+    rclcpp::SensorDataQoS sensor_qos;
+    sensor_qos.get_rmw_qos_profile().depth = 1;
+    sub_pointcloud_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+      "~/input/pointcloud", sensor_qos);
+  }
+  sub_dynamic_objects_ =
+    this->create_subscription<PredictedObjects>("~/input/objects", 1);
+  sub_operation_mode_ = this->create_subscription<OperationModeState>(
+    "/api/operation_mode/state", rclcpp::QoS{1}.transient_local());
 
-  vehicle_stop_checker_ = std::make_unique<autoware::motion_utils::VehicleStopChecker>(this);
+  vehicle_stop_checker_ =
+    std::make_unique<autoware::motion_utils::VehicleStopCheckerTemplate<agnocast::Node>>(this);
+
+  // Timer (replaces diagnostic_updater period of 0.1s)
+  timer_ = this->create_timer(
+    std::chrono::milliseconds(100), std::bind(&CollisionDetectorNode::checkCollision, this));
 }
 
 PredictedObjects CollisionDetectorNode::filterObjects(const PredictedObjects & input_objects)
@@ -329,9 +341,9 @@ bool CollisionDetectorNode::shouldBeExcluded(
   }
 }
 
-void CollisionDetectorNode::checkCollision(diagnostic_updater::DiagnosticStatusWrapper & stat)
+void CollisionDetectorNode::checkCollision()
 {
-  odometry_ptr_ = sub_odometry_.take_data();
+  odometry_ptr_ = sub_odometry_->take_data();
 
   if (!odometry_ptr_) {
     RCLCPP_INFO_THROTTLE(
@@ -341,13 +353,12 @@ void CollisionDetectorNode::checkCollision(diagnostic_updater::DiagnosticStatusW
 
   if (vehicle_stop_checker_->isVehicleStopped()) {
     is_error_diag_ = false;
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "vehicle is stopping");
     return;
   }
 
   pointcloud_ptr_ = sub_pointcloud_->take_data();
   object_ptr_ = sub_dynamic_objects_->take_data();
-  operation_mode_ptr_ = sub_operation_mode_.take_data();
+  operation_mode_ptr_ = sub_operation_mode_->take_data();
   if (node_param_.use_pointcloud && !pointcloud_ptr_) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), 5000 /* ms */, "waiting for pointcloud info...");
@@ -375,9 +386,6 @@ void CollisionDetectorNode::checkCollision(diagnostic_updater::DiagnosticStatusW
   const auto is_collision_found =
     !nearest_obstacle ? false : nearest_obstacle->first < node_param_.collision_distance;
 
-  // When a collision is detected, update timestamps to track collision duration
-  // - start_of_consecutive_collision_stamp_: marks when a continuous collision began
-  // - most_recent_collision_stamp_: records the latest collision detection time
   if (is_collision_found) {
     if (!start_of_consecutive_collision_stamp_.has_value()) {
       start_of_consecutive_collision_stamp_ = this->now();
@@ -387,13 +395,6 @@ void CollisionDetectorNode::checkCollision(diagnostic_updater::DiagnosticStatusW
     start_of_consecutive_collision_stamp_.reset();
   }
 
-  // Define condition to determine error state based on diagnostic mode
-  // 1. When already in error state (is_error_diag_ == true):
-  //    - Stay in error if time since last collision is less than off_buffer time
-  //    - This creates hysteresis to prevent rapid switching between states
-  // 2. When in normal state (is_error_diag_ == false):
-  //    - Enter error if collision has been continuous for longer than on_buffer time
-  //    - This prevents triggering on brief/momentary collisions
   const auto condition_to_trigger_error = [&]() {
     if (is_error_diag_) {
       return (this->now() - *most_recent_collision_stamp_).seconds() < node_param_.time_buffer.off;
@@ -403,26 +404,17 @@ void CollisionDetectorNode::checkCollision(diagnostic_updater::DiagnosticStatusW
              node_param_.time_buffer.on;
   };
 
-  diagnostic_msgs::msg::DiagnosticStatus status;
   if (operation_mode_ptr_->mode == OperationModeState::AUTONOMOUS && condition_to_trigger_error()) {
     is_error_diag_ = true;
-    status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-    status.message = "collision detected";
-    if (nearest_obstacle) {
-      stat.addf("Distance to nearest neighbor object", "%lf", nearest_obstacle->first);
-    } else {
-      stat.addf(
-        "Time since last detection", "%lf",
-        (this->now() - *most_recent_collision_stamp_).seconds() < node_param_.time_buffer.off);
-    }
   } else {
     is_error_diag_ = false;
-    status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
   }
 
-  stat.summary(status.level, status.message);
-
-  pub_debug_->publish(generate_debug_markers(ego_polygon, nearest_obstacle, is_error_diag_));
+  {
+    auto loaned_msg = pub_debug_->borrow_loaned_message();
+    *loaned_msg = generate_debug_markers(ego_polygon, nearest_obstacle, is_error_diag_);
+    pub_debug_->publish(std::move(loaned_msg));
+  }
 }
 
 std::optional<Obstacle> CollisionDetectorNode::getNearestObstacle(

@@ -3,6 +3,7 @@ project(autoware_collision_detector)
 
 find_package(autoware_cmake REQUIRED)
 find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
 autoware_package()
 
 find_package(eigen3_cmake_module REQUIRED)
@@ -25,6 +26,12 @@ target_link_libraries(${PROJECT_NAME}
 rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::collision_detector::CollisionDetectorNode"
   EXECUTABLE ${PROJECT_NAME}_node
+)
+agnocast_components_register_node(${PROJECT_NAME}
+  PLUGIN "autoware::collision_detector::CollisionDetectorNode"
+  EXECUTABLE ${PROJECT_NAME}_agnocast_node
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 ament_auto_package(
