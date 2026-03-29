@@ -60,7 +60,7 @@ rclcpp_components_register_node(converter
 agnocast_components_register_node(aggregator
   PLUGIN "autoware::diagnostic_graph_aggregator::AggregatorNode"
   EXECUTABLE "agnocast_aggregator_node"
-  EXECUTOR SingleThreadedAgnocastExecutor
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
   RESOURCE_INDEX agnocast_components
 )
 

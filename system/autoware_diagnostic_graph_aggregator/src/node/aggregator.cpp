@@ -21,7 +21,8 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-AggregatorNode::AggregatorNode(const rclcpp::NodeOptions & options) : Node("aggregator", options)
+AggregatorNode::AggregatorNode(const rclcpp::NodeOptions & options)
+: agnocast::Node("aggregator", options)
 {
   const auto stamp = now();
 
@@ -45,19 +46,19 @@ AggregatorNode::AggregatorNode(const rclcpp::NodeOptions & options) : Node("aggr
     const auto qos_struct = rclcpp::QoS(1).transient_local();
     const auto qos_status = rclcpp::QoS(declare_parameter<int64_t>("graph_qos_depth"));
     const auto callback = std::bind(&AggregatorNode::on_diag, this, std::placeholders::_1);
-    sub_input_ = agnocast::create_subscription<DiagnosticArray>(this, "/diagnostics", qos_input, callback);
-    pub_struct_ = agnocast::create_publisher<DiagGraphStruct>(this, "~/struct", qos_struct);
-    pub_status_ = agnocast::create_publisher<DiagGraphStatus>(this, "~/status", qos_status);
-    pub_unknown_ = agnocast::create_publisher<DiagnosticArray>(this, "~/unknowns", qos_unknown);
-    srv_reset_ = agnocast::create_service<ResetDiagGraph>(
-      this, "~/reset",
+    sub_input_ = create_subscription<DiagnosticArray>("/diagnostics", qos_input, callback);
+    pub_struct_ = create_publisher<DiagGraphStruct>("~/struct", qos_struct);
+    pub_status_ = create_publisher<DiagGraphStatus>("~/status", qos_status);
+    pub_unknown_ = create_publisher<DiagnosticArray>("~/unknowns", qos_unknown);
+    srv_reset_ = create_service<ResetDiagGraph>(
+      "~/reset",
       [this](
         const agnocast::ipc_shared_ptr<agnocast::Service<ResetDiagGraph>::RequestT> & req,
         agnocast::ipc_shared_ptr<agnocast::Service<ResetDiagGraph>::ResponseT> & res) {
         on_reset(req, res);
       });
-    srv_set_initializing_ = agnocast::create_service<SetBool>(
-      this, "~/set_initializing",
+    srv_set_initializing_ = create_service<SetBool>(
+      "~/set_initializing",
       [this](
         const agnocast::ipc_shared_ptr<agnocast::Service<SetBool>::RequestT> & req,
         agnocast::ipc_shared_ptr<agnocast::Service<SetBool>::ResponseT> & res) {
@@ -65,7 +66,7 @@ AggregatorNode::AggregatorNode(const rclcpp::NodeOptions & options) : Node("aggr
       });
 
     const auto rate = rclcpp::Rate(declare_parameter<double>("rate"));
-    timer_ = rclcpp::create_timer(this, get_clock(), rate.period(), [this]() { on_timer(); });
+    timer_ = create_timer(rate.period(), [this]() { on_timer(); });
   }
 
   // Send structure topic once.

@@ -57,12 +57,11 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<
 
   // Subscribers
   for (const std::string & topic : params_.input_topics) {
-    auto callback = [&](const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
-      this->cloud_callback(msg, topic);
-    };
-
     auto pointcloud_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-      topic, rclcpp::SensorDataQoS().keep_last(params_.maximum_queue_size), callback);
+      topic, rclcpp::SensorDataQoS().keep_last(params_.maximum_queue_size),
+      [this, topic](agnocast::ipc_shared_ptr<const sensor_msgs::msg::PointCloud2> msg) {
+        this->cloud_callback(msg, topic);
+      });
     pointcloud_subs_.push_back(pointcloud_sub);
   }
 

@@ -25,7 +25,10 @@
 #include <vector>
 
 // ROS includes
-#include <managed_transform_buffer/managed_transform_buffer.hpp>
+#include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/buffer.hpp>
+#include <agnocast/node/tf2/transform_listener.hpp>
+#include <pcl_ros/transforms.hpp>
 
 #include <autoware_sensing_msgs/msg/concatenated_point_cloud_info.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
@@ -49,7 +52,7 @@ class CombineCloudHandlerBase
 {
 public:
   CombineCloudHandlerBase(
-    rclcpp::Node & node, const std::vector<std::string> & input_topics, std::string output_frame,
+    agnocast::Node & node, const std::vector<std::string> & input_topics, std::string output_frame,
     bool is_motion_compensated, bool publish_synchronized_pointcloud,
     bool keep_input_frame_in_synchronized_pointcloud)
   : node_(node),
@@ -58,16 +61,56 @@ public:
     is_motion_compensated_(is_motion_compensated),
     publish_synchronized_pointcloud_(publish_synchronized_pointcloud),
     keep_input_frame_in_synchronized_pointcloud_(keep_input_frame_in_synchronized_pointcloud),
-    managed_tf_buffer_(std::make_unique<managed_transform_buffer::ManagedTransformBuffer>()),
+    tf_buffer_(std::make_shared<agnocast::Buffer>(node.get_clock())),
+    tf_listener_(std::make_shared<agnocast::TransformListener>(*tf_buffer_, node)),
     concatenation_info_manager_(
       node.get_parameter("matching_strategy.type").as_string(), input_topics)
   {
   }
 
-  void process_twist(
-    const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & twist_msg);
+  std::optional<Eigen::Matrix4f> getTransformMatrix(
+    const std::string & target_frame, const std::string & source_frame,
+    const rclcpp::Time & time, const rclcpp::Duration & timeout,
+    const rclcpp::Logger & logger)
+  {
+    try {
+      auto tf = tf_buffer_->lookupTransform(target_frame, source_frame, time, timeout);
+      Eigen::Matrix4f mat = Eigen::Matrix4f::Identity();
+      auto & t = tf.transform.translation;
+      auto & r = tf.transform.rotation;
+      Eigen::Quaternionf q(r.w, r.x, r.y, r.z);
+      mat.block<3, 3>(0, 0) = q.toRotationMatrix();
+      mat(0, 3) = static_cast<float>(t.x);
+      mat(1, 3) = static_cast<float>(t.y);
+      mat(2, 3) = static_cast<float>(t.z);
+      return mat;
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN_STREAM_THROTTLE(logger, *node_.get_clock(), 1000, ex.what());
+      return std::nullopt;
+    }
+  }
 
-  void process_odometry(const nav_msgs::msg::Odometry::ConstSharedPtr & input);
+  bool transformPointcloud(
+    const std::string & target_frame, const sensor_msgs::msg::PointCloud2 & cloud_in,
+    sensor_msgs::msg::PointCloud2 & cloud_out, const rclcpp::Time & time,
+    const rclcpp::Duration & timeout, const rclcpp::Logger & logger)
+  {
+    if (cloud_in.data.empty() || target_frame == cloud_in.header.frame_id) {
+      cloud_out = cloud_in;
+      cloud_out.header.frame_id = target_frame;
+      return true;
+    }
+    auto mat = getTransformMatrix(target_frame, cloud_in.header.frame_id, time, timeout, logger);
+    if (!mat) return false;
+    pcl_ros::transformPointCloud(*mat, cloud_in, cloud_out);
+    cloud_out.header.frame_id = target_frame;
+    return true;
+  }
+
+  void process_twist(
+    const geometry_msgs::msg::TwistWithCovarianceStamped & twist_msg);
+
+  void process_odometry(const nav_msgs::msg::Odometry & input);
 
   std::deque<geometry_msgs::msg::TwistStamped> get_twist_queue();
 
@@ -77,13 +120,14 @@ public:
   virtual void allocate_pointclouds() = 0;
 
 protected:
-  rclcpp::Node & node_;
+  agnocast::Node & node_;
   std::vector<std::string> input_topics_;
   std::string output_frame_;
   bool is_motion_compensated_;
   bool publish_synchronized_pointcloud_;
   bool keep_input_frame_in_synchronized_pointcloud_;
-  std::unique_ptr<managed_transform_buffer::ManagedTransformBuffer> managed_tf_buffer_{nullptr};
+  std::shared_ptr<agnocast::Buffer> tf_buffer_;
+  std::shared_ptr<agnocast::TransformListener> tf_listener_;
   ConcatenationInfoManager concatenation_info_manager_;
 
   std::deque<geometry_msgs::msg::TwistStamped> twist_queue_;

@@ -35,13 +35,14 @@ namespace autoware::pointcloud_preprocessor
 template <typename MsgTraits>
 PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::
   PointCloudConcatenateDataSynchronizerComponentTemplated(const rclcpp::NodeOptions & node_options)
-: Node("point_cloud_concatenator_component", node_options)
+: agnocast::Node("point_cloud_concatenator_component", node_options)
 {
   // initialize debug tool
-  using autoware_utils::DebugPublisher;
   using autoware_utils::StopWatch;
   stop_watch_ptr_ = std::make_unique<StopWatch<std::chrono::milliseconds>>();
-  debug_publisher_ = std::make_unique<DebugPublisher>(this, "concatenate_data_synchronizer");
+  debug_publisher_ =
+    std::make_unique<autoware_utils::BasicDebugPublisher<agnocast::Node>>(
+      this, "concatenate_data_synchronizer");
   stop_watch_ptr_->tic("cyclic_time");
   stop_watch_ptr_->tic("processing_time");
 
@@ -112,7 +113,8 @@ PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::
 
   // Diagnostic Updater
   diagnostics_interface_ =
-    std::make_unique<autoware_utils::DiagnosticsInterface>(this, this->get_fully_qualified_name());
+    std::make_unique<autoware_utils::BasicDiagnosticsInterface<agnocast::Node>>(
+      this, this->get_fully_qualified_name());
 
   initialize_pub_sub();
 }
@@ -155,9 +157,7 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::initial
   // Initialize collector list
   for (size_t i = 0; i < num_of_collectors; ++i) {
     cloud_collectors_.emplace_back(std::make_shared<CloudCollector<MsgTraits>>(
-      std::dynamic_pointer_cast<PointCloudConcatenateDataSynchronizerComponentTemplated>(
-        shared_from_this()),
-      combine_cloud_handler_, params_.input_topics.size(), params_.timeout_sec,
+      this, combine_cloud_handler_, params_.input_topics.size(), params_.timeout_sec,
       params_.debug_mode));
   }
   init_collector_list_ = true;
@@ -251,16 +251,16 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::cloud_c
 
 template <typename MsgTraits>
 void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::twist_callback(
-  const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input)
+  const agnocast::ipc_shared_ptr<const geometry_msgs::msg::TwistWithCovarianceStamped> input)
 {
-  combine_cloud_handler_->process_twist(input);
+  combine_cloud_handler_->process_twist(*input);
 }
 
 template <typename MsgTraits>
 void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::odom_callback(
-  const nav_msgs::msg::Odometry::ConstSharedPtr input)
+  const agnocast::ipc_shared_ptr<const nav_msgs::msg::Odometry> input)
 {
-  combine_cloud_handler_->process_odometry(input);
+  combine_cloud_handler_->process_odometry(*input);
 }
 
 template <typename MsgTraits>
@@ -311,8 +311,11 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::publish
     if (agnocast_pre_publish_callback_) {
       agnocast_pre_publish_callback_(*concatenated_cloud_result.concatenate_cloud_ptr);
     }
-    concatenated_cloud_publisher_->publish(
-      std::move(concatenated_cloud_result.concatenate_cloud_ptr));
+    {
+      auto msg = concatenated_cloud_publisher_->borrow_loaned_message();
+      *msg = *concatenated_cloud_result.concatenate_cloud_ptr;  // copy (heaphook allocates in shm)
+      concatenated_cloud_publisher_->publish(std::move(msg));
+    }
     // publish transformed raw pointclouds
     if (
       params_.publish_synchronized_pointcloud &&
@@ -322,8 +325,14 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::publish
         if (
           (*concatenated_cloud_result.topic_to_transformed_cloud_map).find(topic) !=
           (*concatenated_cloud_result.topic_to_transformed_cloud_map).end()) {
-          topic_to_transformed_cloud_publisher_map_[topic]->publish(std::move(
-            (*concatenated_cloud_result.topic_to_transformed_cloud_map).extract(topic).mapped()));
+          auto cloud =
+            std::move((*concatenated_cloud_result.topic_to_transformed_cloud_map)
+                        .extract(topic)
+                        .mapped());
+          auto topic_msg =
+            topic_to_transformed_cloud_publisher_map_[topic]->borrow_loaned_message();
+          *topic_msg = *cloud;  // copy (heaphook allocates in shm)
+          topic_to_transformed_cloud_publisher_map_[topic]->publish(std::move(topic_msg));
         } else {
           RCLCPP_WARN(
             this->get_logger(),
@@ -332,8 +341,11 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::publish
       }
     }
   }
-  concatenation_info_publisher_->publish(
-    std::move(concatenated_cloud_result.concatenation_info_ptr));
+  {
+    auto info_msg = concatenation_info_publisher_->borrow_loaned_message();
+    *info_msg = *concatenated_cloud_result.concatenation_info_ptr;  // copy (heaphook allocates in shm)
+    concatenation_info_publisher_->publish(std::move(info_msg));
+  }
 
   const double processing_time = stop_watch_ptr_->toc("processing_time", true);
   std::unordered_map<std::string, double> topic_to_pipeline_latency_map;

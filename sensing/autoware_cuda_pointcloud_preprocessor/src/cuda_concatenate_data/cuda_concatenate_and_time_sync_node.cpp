@@ -193,8 +193,11 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<
       }
     }
   }
-  concatenation_info_publisher_->publish(
-    std::move(concatenated_cloud_result.concatenation_info_ptr));
+  {
+    auto info_msg = concatenation_info_publisher_->borrow_loaned_message();
+    *info_msg = *concatenated_cloud_result.concatenation_info_ptr;  // copy (heaphook allocates in shm)
+    concatenation_info_publisher_->publish(std::move(info_msg));
+  }
 
   const double processing_time = stop_watch_ptr_->toc("processing_time", true);
   std::unordered_map<std::string, double> topic_to_pipeline_latency_map;

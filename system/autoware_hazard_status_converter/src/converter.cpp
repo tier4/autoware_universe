@@ -24,15 +24,38 @@ namespace autoware::hazard_status_converter
 Converter::Converter(const rclcpp::NodeOptions & options) : Node("converter", options)
 {
   using std::placeholders::_1;
-  pub_hazard_ = agnocast::create_publisher<HazardStatusStamped>(this, "~/hazard_status", rclcpp::QoS(1));
-  sub_emergency_holding_ = agnocast::create_subscription<tier4_system_msgs::msg::EmergencyHoldingState>(
-    this, "~/input/emergency_holding", 1);
-  sub_graph_.register_create_callback(std::bind(&Converter::on_create, this, _1));
-  sub_graph_.register_update_callback(std::bind(&Converter::on_update, this, _1));
-  sub_graph_.subscribe(*this, 1);
+  pub_hazard_ = create_publisher<HazardStatusStamped>("~/hazard_status", rclcpp::QoS(1));
+  sub_emergency_holding_ =
+    create_subscription<tier4_system_msgs::msg::EmergencyHoldingState>(
+      "~/input/emergency_holding", 1);
+
+  graph_ = std::make_shared<DiagGraph>();
+
+  sub_struct_ = create_subscription<tier4_system_msgs::msg::DiagGraphStruct>(
+    "/diagnostics_graph/struct", rclcpp::QoS(1).transient_local(),
+    std::bind(&Converter::on_struct, this, _1));
+  sub_status_ = create_subscription<tier4_system_msgs::msg::DiagGraphStatus>(
+    "/diagnostics_graph/status", rclcpp::QoS(1),
+    std::bind(&Converter::on_status, this, _1));
 }
 
-void Converter::on_create(DiagGraph::ConstSharedPtr graph)
+void Converter::on_struct(
+  const agnocast::ipc_shared_ptr<const tier4_system_msgs::msg::DiagGraphStruct> & msg)
+{
+  if (graph_->create(*msg)) {
+    on_create(graph_);
+  }
+}
+
+void Converter::on_status(
+  const agnocast::ipc_shared_ptr<const tier4_system_msgs::msg::DiagGraphStatus> & msg)
+{
+  if (graph_->update(*msg)) {
+    on_update(graph_);
+  }
+}
+
+void Converter::on_create(DiagGraph::SharedPtr graph)
 {
   const auto find_auto_mode_root = [](const DiagGraph & graph) {
     for (const auto & node : graph.nodes()) {
@@ -60,7 +83,7 @@ void Converter::on_create(DiagGraph::ConstSharedPtr graph)
   auto_mode_tree_ = make_auto_mode_tree(auto_mode_root_);
 }
 
-void Converter::on_update(DiagGraph::ConstSharedPtr graph)
+void Converter::on_update(DiagGraph::SharedPtr graph)
 {
   using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
   using DiagnosticLevel = DiagnosticStatus::_level_type;

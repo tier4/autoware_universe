@@ -73,9 +73,8 @@ protected:
       *concatenate_node_, input_topics, "base_link", true, true, true);
 
     collector_ = std::make_shared<CloudCollector<PointCloud2Traits>>(
-      std::dynamic_pointer_cast<PointCloudConcatenateDataSynchronizerComponent>(
-        concatenate_node_->shared_from_this()),
-      combine_cloud_handler_, number_of_pointcloud, timeout_sec, collector_debug_mode);
+      concatenate_node_.get(), combine_cloud_handler_, number_of_pointcloud, timeout_sec,
+      collector_debug_mode);
 
     // Setup TF
     tf_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(concatenate_node_);

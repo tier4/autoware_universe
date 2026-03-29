@@ -53,7 +53,7 @@ namespace autoware::pointcloud_preprocessor
 {
 
 CombineCloudHandler<CudaPointCloud2Traits>::CombineCloudHandler(
-  rclcpp::Node & node, const std::vector<std::string> & input_topics, std::string output_frame,
+  agnocast::Node & node, const std::vector<std::string> & input_topics, std::string output_frame,
   bool is_motion_compensated, bool publish_synchronized_pointcloud,
   bool keep_input_frame_in_synchronized_pointcloud)
 : CombineCloudHandlerBase(
@@ -158,7 +158,7 @@ CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
     Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
 
     // Transform if needed
-    auto transform_opt = managed_tf_buffer_->getTransform<Eigen::Matrix4f>(
+    auto transform_opt = getTransformMatrix(
       output_frame_, cloud->header.frame_id, node_.now(), rclcpp::Duration::from_seconds(1.0),
       node_.get_logger());
 
@@ -242,7 +242,7 @@ CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
 
       if (keep_input_frame_in_synchronized_pointcloud_ && need_transform_to_sensor_frame) {
         Eigen::Matrix4f transform;
-        auto transform_opt = managed_tf_buffer_->getTransform<Eigen::Matrix4f>(
+        auto transform_opt = getTransformMatrix(
           cloud->header.frame_id, output_frame_, node_.now(), rclcpp::Duration::from_seconds(1.0),
           node_.get_logger());
 

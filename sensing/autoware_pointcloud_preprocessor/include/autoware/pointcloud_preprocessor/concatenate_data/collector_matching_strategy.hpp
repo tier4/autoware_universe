@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/node.hpp>
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -58,7 +59,7 @@ template <typename MsgTraits>
 class NaiveMatchingStrategy : public CollectorMatchingStrategy<MsgTraits>
 {
 public:
-  explicit NaiveMatchingStrategy(rclcpp::Node & node);
+  explicit NaiveMatchingStrategy(agnocast::Node & node);
   [[nodiscard]] std::optional<std::shared_ptr<CloudCollector<MsgTraits>>> match_cloud_to_collector(
     const std::list<std::shared_ptr<CloudCollector<MsgTraits>>> & cloud_collectors,
     const MatchingParams & params) const override;
@@ -71,7 +72,7 @@ template <typename MsgTraits>
 class AdvancedMatchingStrategy : public CollectorMatchingStrategy<MsgTraits>
 {
 public:
-  explicit AdvancedMatchingStrategy(rclcpp::Node & node, std::vector<std::string> input_topics);
+  explicit AdvancedMatchingStrategy(agnocast::Node & node, std::vector<std::string> input_topics);
 
   [[nodiscard]] std::optional<std::shared_ptr<CloudCollector<MsgTraits>>> match_cloud_to_collector(
     const std::list<std::shared_ptr<CloudCollector<MsgTraits>>> & cloud_collectors,

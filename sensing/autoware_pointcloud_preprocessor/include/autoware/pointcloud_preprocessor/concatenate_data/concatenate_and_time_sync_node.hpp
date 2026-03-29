@@ -27,6 +27,7 @@
 #include "combine_cloud_handler.hpp"
 #include "traits.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
@@ -52,7 +53,7 @@ namespace autoware::pointcloud_preprocessor
 {
 
 template <typename MsgTraits>
-class PointCloudConcatenateDataSynchronizerComponentTemplated : public rclcpp::Node
+class PointCloudConcatenateDataSynchronizerComponentTemplated : public agnocast::Node
 {
 public:
   using PointCloudMessage = typename MsgTraits::PointCloudMessage;
@@ -61,7 +62,7 @@ public:
 
   explicit PointCloudConcatenateDataSynchronizerComponentTemplated(
     const rclcpp::NodeOptions & node_options);
-  ~PointCloudConcatenateDataSynchronizerComponentTemplated() override = default;
+  ~PointCloudConcatenateDataSynchronizerComponentTemplated() = default;
 
   void publish_clouds(
     ConcatenatedCloudResult<MsgTraits> && concatenated_cloud_result,
@@ -120,20 +121,20 @@ private:
 
   // subscribers
   std::vector<std::shared_ptr<SubscriberType>> pointcloud_subs_;
-  rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_sub_;
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+  agnocast::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_sub_;
+  agnocast::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
 
   // publishers
   std::shared_ptr<PublisherType> concatenated_cloud_publisher_;
-  rclcpp::Publisher<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo>::SharedPtr
+  agnocast::Publisher<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo>::SharedPtr
     concatenation_info_publisher_;
   std::unordered_map<std::string, std::shared_ptr<PublisherType>>
     topic_to_transformed_cloud_publisher_map_;
-  std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_;
+  std::unique_ptr<autoware_utils::BasicDebugPublisher<agnocast::Node>> debug_publisher_;
 
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
 
-  std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_;
+  std::unique_ptr<autoware_utils::DiagnosticsInterfaceBase> diagnostics_interface_;
 
   // Optional callback for publishing via agnocast (set by CUDA specialization)
   std::function<void(const PointCloudMessage &)> agnocast_pre_publish_callback_;
@@ -148,8 +149,9 @@ private:
   void cloud_callback(
     const typename MsgTraits::ConstSharedPtr & input_ptr, const std::string & topic_name);
 
-  void twist_callback(const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr input);
-  void odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr input);
+  void twist_callback(
+    const agnocast::ipc_shared_ptr<const geometry_msgs::msg::TwistWithCovarianceStamped> input);
+  void odom_callback(const agnocast::ipc_shared_ptr<const nav_msgs::msg::Odometry> input);
 
   std::string replace_sync_topic_name_postfix(
     const std::string & original_topic_name, const std::string & postfix);
@@ -166,7 +168,7 @@ public:
   : PointCloudConcatenateDataSynchronizerComponentTemplated<PointCloud2Traits>(node_options)
   {
   }
-  ~PointCloudConcatenateDataSynchronizerComponent() override = default;
+  ~PointCloudConcatenateDataSynchronizerComponent() = default;
 };
 
 }  // namespace autoware::pointcloud_preprocessor

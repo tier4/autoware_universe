@@ -20,11 +20,11 @@ namespace autoware::pointcloud_preprocessor
 {
 
 void CombineCloudHandlerBase::process_twist(
-  const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr & twist_msg)
+  const geometry_msgs::msg::TwistWithCovarianceStamped & twist_msg)
 {
   geometry_msgs::msg::TwistStamped msg;
-  msg.header = twist_msg->header;
-  msg.twist = twist_msg->twist.twist;
+  msg.header = twist_msg.header;
+  msg.twist = twist_msg.twist.twist;
 
   // If time jumps backwards (e.g. when a rosbag restarts), clear buffer
   if (!twist_queue_.empty()) {
@@ -47,11 +47,11 @@ void CombineCloudHandlerBase::process_twist(
 }
 
 void CombineCloudHandlerBase::process_odometry(
-  const nav_msgs::msg::Odometry::ConstSharedPtr & odometry_msg)
+  const nav_msgs::msg::Odometry & odometry_msg)
 {
   geometry_msgs::msg::TwistStamped msg;
-  msg.header = odometry_msg->header;
-  msg.twist = odometry_msg->twist.twist;
+  msg.header = odometry_msg.header;
+  msg.twist = odometry_msg.twist.twist;
 
   // If time jumps backwards (e.g. when a rosbag restarts), clear buffer
   if (!twist_queue_.empty()) {

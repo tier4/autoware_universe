@@ -171,7 +171,7 @@ CombineCloudHandler<PointCloud2Traits>::combine_pointclouds(
     convert_to_xyzirc_cloud(cloud, xyzirc_cloud);
 
     auto transformed_cloud_ptr = std::make_unique<sensor_msgs::msg::PointCloud2>();
-    managed_tf_buffer_->transformPointcloud(
+    transformPointcloud(
       output_frame_, *xyzirc_cloud, *transformed_cloud_ptr, xyzirc_cloud->header.stamp,
       rclcpp::Duration::from_seconds(1.0), node_.get_logger());
 
@@ -209,7 +209,7 @@ CombineCloudHandler<PointCloud2Traits>::combine_pointclouds(
       if (keep_input_frame_in_synchronized_pointcloud_ && need_transform_to_sensor_frame) {
         auto transformed_cloud_ptr_in_sensor_frame =
           std::make_unique<sensor_msgs::msg::PointCloud2>();
-        managed_tf_buffer_->transformPointcloud(
+        transformPointcloud(
           cloud->header.frame_id, *transformed_delay_compensated_cloud_ptr,
           *transformed_cloud_ptr_in_sensor_frame,
           transformed_cloud_ptr_in_sensor_frame->header.stamp, rclcpp::Duration::from_seconds(1.0),

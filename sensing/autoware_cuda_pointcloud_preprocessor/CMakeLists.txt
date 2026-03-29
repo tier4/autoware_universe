@@ -149,12 +149,10 @@ endif()
 
 if("$ENV{ENABLE_AGNOCAST}")
   # ========== Concatenate and Sync data ==========
-  # Uses CallbackIsolatedAgnocastExecutor (not AgnocastOnly) because the template
-  # base class inherits from rclcpp::Node, requiring rclcpp::init().
   agnocast_components_register_node(cuda_pointcloud_preprocessor
     PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPointCloudConcatenateDataSynchronizerComponent"
     EXECUTABLE agnocast_cuda_concatenate_and_time_sync_node
-    EXECUTOR CallbackIsolatedAgnocastExecutor)
+    EXECUTOR AgnocastOnlyCallbackIsolatedExecutor)
 
   # ========== Pointcloud preprocessor ==========
   agnocast_components_register_node(cuda_pointcloud_preprocessor

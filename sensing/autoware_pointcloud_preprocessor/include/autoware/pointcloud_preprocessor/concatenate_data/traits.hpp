@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -27,9 +28,9 @@ struct PointCloud2Traits
 {
   using PointCloudMessage = sensor_msgs::msg::PointCloud2;
   using UniquePtr = std::unique_ptr<PointCloudMessage>;
-  using ConstSharedPtr = std::shared_ptr<const PointCloudMessage>;
-  using PublisherType = rclcpp::Publisher<PointCloudMessage>;
-  using SubscriberType = rclcpp::Subscription<PointCloudMessage>;
+  using ConstSharedPtr = agnocast::ipc_shared_ptr<const PointCloudMessage>;
+  using PublisherType = agnocast::Publisher<PointCloudMessage>;
+  using SubscriberType = agnocast::Subscription<PointCloudMessage>;
 };
 
 }  // namespace autoware::pointcloud_preprocessor

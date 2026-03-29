@@ -19,7 +19,6 @@
 #include "graph/graph.hpp"
 
 #include <agnocast/agnocast.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <std_srvs/srv/set_bool.hpp>
 
@@ -30,7 +29,7 @@
 namespace autoware::diagnostic_graph_aggregator
 {
 
-class AggregatorNode : public rclcpp::Node
+class AggregatorNode : public agnocast::Node
 {
 public:
   explicit AggregatorNode(const rclcpp::NodeOptions & options);
@@ -41,7 +40,7 @@ private:
   std::unique_ptr<CommandModeMapping> availability_;
 
   using SetBool = std_srvs::srv::SetBool;
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
   agnocast::Subscription<DiagnosticArray>::SharedPtr sub_input_;
   agnocast::Publisher<DiagGraphStruct>::SharedPtr pub_struct_;
   agnocast::Publisher<DiagGraphStatus>::SharedPtr pub_status_;

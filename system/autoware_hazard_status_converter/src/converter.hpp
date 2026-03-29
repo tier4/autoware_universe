@@ -15,11 +15,13 @@
 #ifndef CONVERTER_HPP_
 #define CONVERTER_HPP_
 
+#include "autoware/diagnostic_graph_utils/graph.hpp"
+
 #include <agnocast/agnocast.hpp>
-#include <autoware/diagnostic_graph_utils/subscription.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_system_msgs/msg/hazard_status_stamped.hpp>
+#include <tier4_system_msgs/msg/diag_graph_status.hpp>
+#include <tier4_system_msgs/msg/diag_graph_struct.hpp>
 #include <tier4_system_msgs/msg/emergency_holding_state.hpp>
 
 #include <unordered_set>
@@ -27,7 +29,7 @@
 namespace autoware::hazard_status_converter
 {
 
-class Converter : public rclcpp::Node
+class Converter : public agnocast::Node
 {
 public:
   explicit Converter(const rclcpp::NodeOptions & options);
@@ -37,9 +39,15 @@ private:
   using DiagGraph = autoware::diagnostic_graph_utils::DiagGraph;
   using DiagUnit = autoware::diagnostic_graph_utils::DiagUnit;
   using DiagNode = autoware::diagnostic_graph_utils::DiagNode;
-  void on_create(DiagGraph::ConstSharedPtr graph);
-  void on_update(DiagGraph::ConstSharedPtr graph);
-  autoware::diagnostic_graph_utils::DiagGraphSubscription sub_graph_;
+  void on_create(DiagGraph::SharedPtr graph);
+  void on_update(DiagGraph::SharedPtr graph);
+  void on_struct(
+    const agnocast::ipc_shared_ptr<const tier4_system_msgs::msg::DiagGraphStruct> & msg);
+  void on_status(
+    const agnocast::ipc_shared_ptr<const tier4_system_msgs::msg::DiagGraphStatus> & msg);
+  agnocast::Subscription<tier4_system_msgs::msg::DiagGraphStruct>::SharedPtr sub_struct_;
+  agnocast::Subscription<tier4_system_msgs::msg::DiagGraphStatus>::SharedPtr sub_status_;
+  DiagGraph::SharedPtr graph_;
   agnocast::Publisher<HazardStatusStamped>::SharedPtr pub_hazard_;
   agnocast::PollingSubscriber<tier4_system_msgs::msg::EmergencyHoldingState>::SharedPtr
     sub_emergency_holding_;

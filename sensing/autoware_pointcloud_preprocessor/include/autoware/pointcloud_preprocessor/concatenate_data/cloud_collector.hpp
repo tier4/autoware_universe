@@ -36,8 +36,7 @@ class CloudCollector
 {
 public:
   CloudCollector(
-    std::shared_ptr<PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>> &&
-      ros2_parent_node,
+    PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits> * parent_node,
     std::shared_ptr<CombineCloudHandler<MsgTraits>> & combine_cloud_handler, int num_of_clouds,
     double timeout_sec, bool debug_mode);
   bool topic_exists(const std::string & topic_name);
@@ -60,10 +59,9 @@ public:
   void reset();
 
 private:
-  std::shared_ptr<PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>>
-    ros2_parent_node_;
+  PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits> * parent_node_;
   std::shared_ptr<CombineCloudHandler<MsgTraits>> combine_cloud_handler_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
   std::unordered_map<std::string, typename MsgTraits::ConstSharedPtr>
     topic_to_cloud_map_;
   uint64_t num_of_clouds_;

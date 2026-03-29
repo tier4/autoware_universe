@@ -48,7 +48,7 @@ public:
       autoware::pointcloud_preprocessor::CudaPointCloud2Traits>(node_options)
   {
   }
-  ~CudaPointCloudConcatenateDataSynchronizerComponent() override = default;
+  ~CudaPointCloudConcatenateDataSynchronizerComponent() = default;
 };
 
 }  // namespace autoware::cuda_pointcloud_preprocessor

@@ -21,7 +21,7 @@ rclcpp_components_register_node(${PROJECT_NAME}
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::hazard_status_converter::Converter"
   EXECUTABLE ${PROJECT_NAME}_agnocast_node
-  EXECUTOR SingleThreadedAgnocastExecutor
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
   RESOURCE_INDEX agnocast_components
 )
 

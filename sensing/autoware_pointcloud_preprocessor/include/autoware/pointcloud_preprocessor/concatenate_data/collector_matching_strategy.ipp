@@ -27,7 +27,7 @@ namespace autoware::pointcloud_preprocessor
 {
 
 template <typename MsgTraits>
-NaiveMatchingStrategy<MsgTraits>::NaiveMatchingStrategy(rclcpp::Node & node)
+NaiveMatchingStrategy<MsgTraits>::NaiveMatchingStrategy(agnocast::Node & node)
 {
   RCLCPP_INFO(node.get_logger(), "Utilize naive matching strategy");
 }
@@ -70,7 +70,7 @@ void NaiveMatchingStrategy<MsgTraits>::set_collector_info(
 
 template <typename PointCloudMessage>
 AdvancedMatchingStrategy<PointCloudMessage>::AdvancedMatchingStrategy(
-  rclcpp::Node & node, std::vector<std::string> input_topics)
+  agnocast::Node & node, std::vector<std::string> input_topics)
 {
   auto lidar_timestamp_offsets =
     node.declare_parameter<std::vector<double>>("matching_strategy.lidar_timestamp_offsets");
