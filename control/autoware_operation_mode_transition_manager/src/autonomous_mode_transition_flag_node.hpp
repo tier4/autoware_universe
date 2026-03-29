@@ -18,7 +18,6 @@
 #include "state.hpp"
 
 #include <agnocast/agnocast.hpp>
-#include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <tier4_system_msgs/msg/mode_change_available.hpp>
@@ -28,7 +27,7 @@
 namespace autoware::operation_mode_transition_manager
 {
 
-class AutonomousModeTransitionFlagNode : public rclcpp::Node
+class AutonomousModeTransitionFlagNode : public agnocast::Node
 {
 public:
   explicit AutonomousModeTransitionFlagNode(const rclcpp::NodeOptions & options);
@@ -38,15 +37,13 @@ private:
   void on_timer();
   InputData take_data();
 
-  rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Publisher<ModeChangeAvailable>::SharedPtr pub_transition_available_;
-  rclcpp::Publisher<ModeChangeAvailable>::SharedPtr pub_transition_completed_;
-  rclcpp::Publisher<ModeChangeBase::DebugInfo>::SharedPtr pub_debug_;
+  agnocast::TimerBase::SharedPtr timer_;
+  agnocast::Publisher<ModeChangeAvailable>::SharedPtr pub_transition_available_;
+  agnocast::Publisher<ModeChangeAvailable>::SharedPtr pub_transition_completed_;
+  agnocast::Publisher<ModeChangeBase::DebugInfo>::SharedPtr pub_debug_;
 
-  template <class T>
-  using RclcppPollingSubscriber = autoware_utils_rclcpp::InterProcessPollingSubscriber<T>;
   agnocast::PollingSubscriber<Odometry>::SharedPtr sub_kinematics_;
-  RclcppPollingSubscriber<Trajectory> sub_trajectory_{this, "trajectory"};
+  agnocast::PollingSubscriber<Trajectory>::SharedPtr sub_trajectory_;
   agnocast::PollingSubscriber<Control>::SharedPtr sub_control_cmd_;
   agnocast::PollingSubscriber<Control>::SharedPtr sub_trajectory_follower_control_cmd_;
 

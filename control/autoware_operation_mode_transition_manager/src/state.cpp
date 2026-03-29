@@ -32,10 +32,11 @@ using autoware::motion_utils::findNearestIndex;
 using autoware_utils::calc_distance2d;
 using autoware_utils::calc_yaw_deviation;
 
-AutonomousMode::AutonomousMode(rclcpp::Node * node)
+AutonomousMode::AutonomousMode(agnocast::Node * node)
 : logger_(node->get_logger()), clock_(node->get_clock())
 {
-  vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*node).getVehicleInfo();
+  vehicle_info_ =
+    autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(*node).getVehicleInfo();
 
   check_engage_condition_ = node->declare_parameter<bool>("check_engage_condition");
   enable_engage_on_driving_ = node->declare_parameter<bool>("enable_engage_on_driving");

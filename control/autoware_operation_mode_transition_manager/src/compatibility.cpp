@@ -19,7 +19,7 @@
 namespace autoware::operation_mode_transition_manager
 {
 
-Compatibility::Compatibility(rclcpp::Node * node) : node_(node)
+Compatibility::Compatibility(agnocast::Node * node) : node_(node)
 {
   sub_autoware_engage_ = node->create_subscription<AutowareEngage>(
     "/api/autoware/get/engage", 1,
@@ -37,17 +37,18 @@ Compatibility::Compatibility(rclcpp::Node * node) : node_(node)
     node->create_client<SelectorModeSrv>("/control/external_cmd_selector/select_external_command");
 }
 
-void Compatibility::on_autoware_engage(const AutowareEngage::ConstSharedPtr msg)
+void Compatibility::on_autoware_engage(
+  const agnocast::ipc_shared_ptr<const AutowareEngage> & msg)
 {
   autoware_engage_ = msg;
 }
 
-void Compatibility::on_gate_mode(const GateMode::ConstSharedPtr msg)
+void Compatibility::on_gate_mode(const agnocast::ipc_shared_ptr<const GateMode> & msg)
 {
   gate_mode_ = msg;
 }
 
-void Compatibility::on_selector_mode(const SelectorModeMsg::ConstSharedPtr msg)
+void Compatibility::on_selector_mode(const agnocast::ipc_shared_ptr<const SelectorModeMsg> & msg)
 {
   selector_mode_ = msg;
 }
@@ -113,29 +114,29 @@ void Compatibility::set_mode(const OperationMode mode)
   // Set selector mode.
   if (selector_mode != SelectorModeMsg::NONE && selector_mode_->data != selector_mode) {
     if (!is_calling_service_) {
-      auto req = std::make_shared<SelectorModeSrv::Request>();
+      auto req = cli_selector_mode_->borrow_loaned_request();
       req->mode.data = selector_mode;
       is_calling_service_ = true;
       cli_selector_mode_->async_send_request(
-        req,
-        [this](rclcpp::Client<SelectorModeSrv>::SharedFuture) { is_calling_service_ = false; });
+        std::move(req),
+        [this](agnocast::Client<SelectorModeSrv>::SharedFuture) { is_calling_service_ = false; });
     }
   }
 
   // Set gate mode.
   if (gate_mode_->data != gate_mode) {
-    GateMode msg;
-    msg.data = gate_mode;
-    pub_gate_mode_->publish(msg);
+    auto msg = pub_gate_mode_->borrow_loaned_message();
+    msg->data = gate_mode;
+    pub_gate_mode_->publish(std::move(msg));
     return;
   }
 
   // Set autoware engage.
   if (autoware_engage_->engage != autoware_engage) {
-    AutowareEngage msg;
-    msg.stamp = node_->now();
-    msg.engage = autoware_engage;
-    pub_autoware_engage_->publish(msg);
+    auto msg = pub_autoware_engage_->borrow_loaned_message();
+    msg->stamp = node_->now();
+    msg->engage = autoware_engage;
+    pub_autoware_engage_->publish(std::move(msg));
     return;
   }
 }

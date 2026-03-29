@@ -25,7 +25,7 @@ rclcpp_components_register_node(autoware_operation_mode_transition_manager_node
 agnocast_components_register_node(autoware_operation_mode_transition_manager_node
   PLUGIN "autoware::operation_mode_transition_manager::OperationModeTransitionManager"
   EXECUTABLE autoware_operation_mode_transition_manager_agnocast_exe
-  EXECUTOR CallbackIsolatedAgnocastExecutor
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
   RESOURCE_INDEX agnocast_components
 )
 
@@ -37,7 +37,7 @@ rclcpp_components_register_node(autoware_operation_mode_transition_manager_node
 agnocast_components_register_node(autoware_operation_mode_transition_manager_node
   PLUGIN "autoware::operation_mode_transition_manager::AutonomousModeTransitionFlagNode"
   EXECUTABLE autonomous_mode_transition_flag_node_agnocast
-  EXECUTOR CallbackIsolatedAgnocastExecutor
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
   RESOURCE_INDEX agnocast_components
 )
 

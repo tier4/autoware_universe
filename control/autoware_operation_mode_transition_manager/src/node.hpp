@@ -21,7 +21,6 @@
 #include <autoware/component_interface_specs_universe/system.hpp>
 #include <autoware/component_interface_utils/rclcpp.hpp>
 #include <agnocast/agnocast.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -30,7 +29,7 @@
 namespace autoware::operation_mode_transition_manager
 {
 
-class OperationModeTransitionManager : public rclcpp::Node
+class OperationModeTransitionManager : public agnocast::Node
 {
 public:
   explicit OperationModeTransitionManager(const rclcpp::NodeOptions & options);
@@ -57,17 +56,15 @@ private:
 
   using ControlModeCommandType = ControlModeCommand::Request::_mode_type;
   agnocast::PollingSubscriber<Odometry>::SharedPtr sub_kinematics_;
-  autoware_utils::InterProcessPollingSubscriber<Trajectory> sub_trajectory_{this, "trajectory"};
+  agnocast::PollingSubscriber<Trajectory>::SharedPtr sub_trajectory_;
   agnocast::PollingSubscriber<Control>::SharedPtr sub_trajectory_follower_control_cmd_;
   agnocast::PollingSubscriber<Control>::SharedPtr sub_control_cmd_;
-  autoware_utils::InterProcessPollingSubscriber<OperationModeState> sub_gate_operation_mode_{
-    this, "gate_operation_mode"};
-  autoware_utils::InterProcessPollingSubscriber<ControlModeReport> sub_control_mode_report_{
-    this, "control_mode_report"};
+  agnocast::PollingSubscriber<OperationModeState>::SharedPtr sub_gate_operation_mode_;
+  agnocast::PollingSubscriber<ControlModeReport>::SharedPtr sub_control_mode_report_;
 
-  rclcpp::Client<ControlModeCommand>::SharedPtr cli_control_mode_;
-  rclcpp::Publisher<ModeChangeBase::DebugInfo>::SharedPtr pub_debug_info_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::Client<ControlModeCommand>::SharedPtr cli_control_mode_;
+  agnocast::Publisher<ModeChangeBase::DebugInfo>::SharedPtr pub_debug_info_;
+  agnocast::TimerBase::SharedPtr timer_;
   void onTimer();
   InputData subscribeData();
   void publishData();

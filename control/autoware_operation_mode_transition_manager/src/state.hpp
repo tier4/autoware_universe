@@ -18,6 +18,7 @@
 #include "autoware_operation_mode_transition_manager/msg/operation_mode_transition_manager_debug.hpp"
 #include "data.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -67,7 +68,7 @@ public:
 class AutonomousMode : public ModeChangeBase
 {
 public:
-  explicit AutonomousMode(rclcpp::Node * node);
+  explicit AutonomousMode(agnocast::Node * node);
   void update(bool transition) override;
   bool isModeChangeCompleted(const InputData & input_data) override;
   bool isModeChangeAvailable(const InputData & input_data) override;

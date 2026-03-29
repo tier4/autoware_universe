@@ -21,47 +21,56 @@ namespace autoware::operation_mode_transition_manager
 
 AutonomousModeTransitionFlagNode::AutonomousModeTransitionFlagNode(
   const rclcpp::NodeOptions & options)
-: Node("autonomous_mode_transition_flag_node", options)
+: agnocast::Node("autonomous_mode_transition_flag_node", options)
 {
-  sub_kinematics_ = agnocast::create_subscription<Odometry>(this, "kinematics", 1);
-  sub_control_cmd_ = agnocast::create_subscription<Control>(this, "control_cmd", 1);
+  sub_kinematics_ = this->create_subscription<Odometry>("kinematics", 1);
+  sub_control_cmd_ = this->create_subscription<Control>("control_cmd", 1);
   sub_trajectory_follower_control_cmd_ =
-    agnocast::create_subscription<Control>(this, "trajectory_follower_control_cmd", 1);
+    this->create_subscription<Control>("trajectory_follower_control_cmd", 1);
+  sub_trajectory_ = this->create_subscription<Trajectory>("trajectory", 1);
 
   declare_parameter<double>("stable_check.duration");
   autonomous_mode_ = std::make_unique<AutonomousMode>(this);
 
   pub_transition_available_ =
-    create_publisher<ModeChangeAvailable>("/system/command_mode/transition/available", 1);
+    this->create_publisher<ModeChangeAvailable>("/system/command_mode/transition/available", 1);
   pub_transition_completed_ =
-    create_publisher<ModeChangeAvailable>("/system/command_mode/transition/completed", 1);
+    this->create_publisher<ModeChangeAvailable>("/system/command_mode/transition/completed", 1);
 
-  pub_debug_ = create_publisher<ModeChangeBase::DebugInfo>("~/debug_info", 1);
+  pub_debug_ = this->create_publisher<ModeChangeBase::DebugInfo>("~/debug_info", 1);
 
   const auto period = rclcpp::Rate(declare_parameter<double>("frequency_hz")).period();
-  timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
+  timer_ = this->create_timer(period, [this]() { on_timer(); });
 }
 
 void AutonomousModeTransitionFlagNode::on_timer()
 {
-  const auto publish = [](auto pub, rclcpp::Time stamp, bool value) {
-    ModeChangeAvailable msg;
-    msg.stamp = stamp;
-    msg.available = value;
-    pub->publish(msg);
-  };
-
   const auto input = take_data();
   const bool is_available = autonomous_mode_->isModeChangeAvailable(input);
   const bool is_completed = autonomous_mode_->isModeChangeCompleted(input);
 
   const auto stamp = get_clock()->now();
-  publish(pub_transition_available_, stamp, is_available);
-  publish(pub_transition_completed_, stamp, is_completed);
 
-  ModeChangeBase::DebugInfo debug = autonomous_mode_->getDebugInfo();
-  debug.stamp = stamp;
-  pub_debug_->publish(debug);
+  {
+    auto msg = pub_transition_available_->borrow_loaned_message();
+    msg->stamp = stamp;
+    msg->available = is_available;
+    pub_transition_available_->publish(std::move(msg));
+  }
+
+  {
+    auto msg = pub_transition_completed_->borrow_loaned_message();
+    msg->stamp = stamp;
+    msg->available = is_completed;
+    pub_transition_completed_->publish(std::move(msg));
+  }
+
+  {
+    auto msg = pub_debug_->borrow_loaned_message();
+    *msg = autonomous_mode_->getDebugInfo();
+    msg->stamp = stamp;
+    pub_debug_->publish(std::move(msg));
+  }
 }
 
 InputData AutonomousModeTransitionFlagNode::take_data()
@@ -73,7 +82,7 @@ InputData AutonomousModeTransitionFlagNode::take_data()
     data.kinematics = *kinematics;
   }
 
-  const auto trajectory = sub_trajectory_.take_data();
+  const auto trajectory = sub_trajectory_->take_data();
   if (trajectory) {
     data.trajectory = *trajectory;
   }

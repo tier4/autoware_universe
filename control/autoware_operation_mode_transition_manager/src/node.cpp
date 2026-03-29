@@ -22,15 +22,20 @@ namespace autoware::operation_mode_transition_manager
 {
 
 OperationModeTransitionManager::OperationModeTransitionManager(const rclcpp::NodeOptions & options)
-: Node("autoware_operation_mode_transition_manager", options), compatibility_(this)
+: agnocast::Node("autoware_operation_mode_transition_manager", options), compatibility_(this)
 {
-  sub_kinematics_ = agnocast::create_subscription<Odometry>(this, "kinematics", 1);
+  sub_kinematics_ = this->create_subscription<Odometry>("kinematics", 1);
+  sub_trajectory_ = this->create_subscription<Trajectory>("trajectory", 1);
   sub_trajectory_follower_control_cmd_ =
-    agnocast::create_subscription<Control>(this, "trajectory_follower_control_cmd", 1);
-  sub_control_cmd_ = agnocast::create_subscription<Control>(this, "control_cmd", 1);
+    this->create_subscription<Control>("trajectory_follower_control_cmd", 1);
+  sub_control_cmd_ = this->create_subscription<Control>("control_cmd", 1);
+  sub_gate_operation_mode_ =
+    this->create_subscription<OperationModeState>("gate_operation_mode", 1);
+  sub_control_mode_report_ =
+    this->create_subscription<ControlModeReport>("control_mode_report", 1);
 
-  cli_control_mode_ = create_client<ControlModeCommand>("control_mode_request");
-  pub_debug_info_ = create_publisher<ModeChangeBase::DebugInfo>("~/debug_info", 1);
+  cli_control_mode_ = this->create_client<ControlModeCommand>("control_mode_request");
+  pub_debug_info_ = this->create_publisher<ModeChangeBase::DebugInfo>("~/debug_info", 1);
 
   // component interface
   {
@@ -45,8 +50,8 @@ OperationModeTransitionManager::OperationModeTransitionManager(const rclcpp::Nod
   // timer
   {
     const auto period_ns = rclcpp::Rate(declare_parameter<double>("frequency_hz")).period();
-    timer_ = rclcpp::create_timer(
-      this, get_clock(), period_ns, std::bind(&OperationModeTransitionManager::onTimer, this));
+    timer_ = this->create_timer(
+      period_ns, std::bind(&OperationModeTransitionManager::onTimer, this));
   }
 
   // initialize state
@@ -106,7 +111,7 @@ void OperationModeTransitionManager::onChangeOperationMode(
 
 void OperationModeTransitionManager::changeControlMode(ControlModeCommandType mode)
 {
-  const auto callback = [this](rclcpp::Client<ControlModeCommand>::SharedFuture future) {
+  const auto callback = [this](agnocast::Client<ControlModeCommand>::SharedFuture future) {
     if (!future.get()->success) {
       RCLCPP_WARN(get_logger(), "Autonomous mode change was rejected.");
       if (transition_) {
@@ -115,10 +120,10 @@ void OperationModeTransitionManager::changeControlMode(ControlModeCommandType mo
     }
   };
 
-  const auto request = std::make_shared<ControlModeCommand::Request>();
+  auto request = cli_control_mode_->borrow_loaned_request();
   request->stamp = now();
   request->mode = mode;
-  cli_control_mode_->async_send_request(request, callback);
+  cli_control_mode_->async_send_request(std::move(request), callback);
 }
 
 void OperationModeTransitionManager::changeOperationMode(std::optional<OperationMode> request_mode)
@@ -267,7 +272,7 @@ InputData OperationModeTransitionManager::subscribeData()
     }
   }
 
-  const auto trajectory_ptr = sub_trajectory_.take_data();
+  const auto trajectory_ptr = sub_trajectory_->take_data();
   if (trajectory_ptr) {
     if (input_timeout_ < (now() - trajectory_ptr->header.stamp).seconds()) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 3000, "Subscribed trajectory is timed out.");
@@ -299,7 +304,7 @@ InputData OperationModeTransitionManager::subscribeData()
 
   // NOTE: Do not check the timeout of gate_operation_mode since the timestamp of this node's output
   // is used in the vehicle_cmd_gate node, which is updated only when the state changes.
-  const auto gate_operation_mode_ptr = sub_gate_operation_mode_.take_data();
+  const auto gate_operation_mode_ptr = sub_gate_operation_mode_->take_data();
   if (gate_operation_mode_ptr) {
     input_data.gate_operation_mode = *gate_operation_mode_ptr;
   } else {
@@ -309,7 +314,7 @@ InputData OperationModeTransitionManager::subscribeData()
     input_data.gate_operation_mode.is_in_transition = false;
   }
 
-  const auto control_mode_report_ptr = sub_control_mode_report_.take_data();
+  const auto control_mode_report_ptr = sub_control_mode_report_->take_data();
   if (control_mode_report_ptr) {
     // NOTE: This will be used outside the onTimer function. Therefore, it
     // has to be a member variable
@@ -347,12 +352,13 @@ void OperationModeTransitionManager::publishData()
     return toString(current_mode_);
   }();
 
-  ModeChangeBase::DebugInfo debug_info = modes_.at(OperationMode::AUTONOMOUS)->getDebugInfo();
-  debug_info.stamp = time;
-  debug_info.status = status_str;
-  debug_info.in_autoware_control = current_control;
-  debug_info.in_transition = transition_ ? true : false;
-  pub_debug_info_->publish(debug_info);
+  auto debug_info = pub_debug_info_->borrow_loaned_message();
+  *debug_info = modes_.at(OperationMode::AUTONOMOUS)->getDebugInfo();
+  debug_info->stamp = time;
+  debug_info->status = status_str;
+  debug_info->in_autoware_control = current_control;
+  debug_info->in_transition = transition_ ? true : false;
+  pub_debug_info_->publish(std::move(debug_info));
 }
 
 bool OperationModeTransitionManager::getCurrentControlMode() const

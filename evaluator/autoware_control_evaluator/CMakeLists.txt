@@ -20,7 +20,7 @@ rclcpp_components_register_node(control_evaluator_node
 agnocast_components_register_node(control_evaluator_node
   PLUGIN "control_diagnostics::ControlEvaluatorNode"
   EXECUTABLE agnocast_control_evaluator
-  EXECUTOR SingleThreadedAgnocastExecutor
+  EXECUTOR AgnocastOnlySingleThreadedExecutor
   RESOURCE_INDEX agnocast_components
 )
 
