@@ -16,6 +16,7 @@
 #define AUTOWARE__BEHAVIOR_PATH_GOAL_PLANNER_MODULE__PULL_OVER_PLANNER__SHIFT_PULL_OVER_HPP_
 
 #include "autoware/behavior_path_goal_planner_module/pull_over_planner/pull_over_planner_base.hpp"
+#include <agnocast/agnocast.hpp>
 
 #include <autoware/boundary_departure_checker/boundary_departure_checker.hpp>
 
@@ -31,7 +32,7 @@ using autoware::boundary_departure_checker::BoundaryDepartureChecker;
 class ShiftPullOver : public PullOverPlannerBase
 {
 public:
-  ShiftPullOver(rclcpp::Node & node, const GoalPlannerParameters & parameters);
+  ShiftPullOver(agnocast::Node & node, const GoalPlannerParameters & parameters);
   PullOverPlannerType getPlannerType() const override { return PullOverPlannerType::SHIFT; };
   std::optional<PullOverPath> plan(
     const GoalCandidate & modified_goal_pose, const size_t id,

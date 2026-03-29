@@ -35,6 +35,7 @@
 #include <vector>
 
 // Debug
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -55,7 +56,7 @@ public:
   explicit SceneModuleInterfaceWithRTC(
     const int64_t module_id, rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock,
     const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
-    const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+    const std::shared_ptr<PlanningFactorInterface>
       planning_factor_interface);
   virtual ~SceneModuleInterfaceWithRTC() = default;
 
@@ -87,7 +88,7 @@ class SceneModuleManagerInterfaceWithRTC
 {
 public:
   SceneModuleManagerInterfaceWithRTC(
-    rclcpp::Node & node, const char * module_name, const bool enable_rtc = true);
+    agnocast::Node & node, const char * module_name, const bool enable_rtc = true);
 
   void plan(autoware_internal_planning_msgs::msg::PathWithLaneId * path) override;
 
@@ -128,7 +129,7 @@ protected:
   void deleteExpiredModules(
     const autoware_internal_planning_msgs::msg::PathWithLaneId & path) override;
 
-  static bool getEnableRTC(rclcpp::Node & node, const std::string & param_name)
+  static bool getEnableRTC(agnocast::Node & node, const std::string & param_name)
   {
     bool enable_rtc = true;
 

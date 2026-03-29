@@ -31,7 +31,7 @@
 #include <vector>
 namespace autoware::behavior_path_planner
 {
-BezierPullOver::BezierPullOver(rclcpp::Node & node, const GoalPlannerParameters & parameters)
+BezierPullOver::BezierPullOver(agnocast::Node & node, const GoalPlannerParameters & parameters)
 : PullOverPlannerBase(node, parameters),
   boundary_departure_checker_{[&]() {
     auto boundary_departure_checker_params = boundary_departure_checker::Param{};

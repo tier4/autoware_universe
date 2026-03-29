@@ -25,6 +25,8 @@
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <type_traits>
+
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
@@ -368,7 +370,8 @@ private:
 class PlannerManager
 {
 public:
-  explicit PlannerManager(rclcpp::Node & node);
+  template <typename NodeT>
+  explicit PlannerManager(NodeT & node);
 
   /**
    * @brief run all candidate and approved modules.
@@ -381,7 +384,8 @@ public:
    * @param node.
    * @param plugin name.
    */
-  void launchScenePlugin(rclcpp::Node & node, const std::string & name);
+  template <typename NodeT>
+  void launchScenePlugin(NodeT & node, const std::string & name);
 
   void configureModuleSlot(const std::vector<std::vector<std::string>> & slot_configuration);
 
@@ -579,6 +583,45 @@ private:
 
   mutable std::optional<BehaviorModuleOutput> last_valid_reference_path_;
 };
+template <typename NodeT>
+PlannerManager::PlannerManager(NodeT & node)
+: plugin_loader_(
+    "autoware_behavior_path_planner",
+    "autoware::behavior_path_planner::SceneModuleManagerInterface"),
+  logger_(node.get_logger().get_child("planner_manager")),
+  clock_(*node.get_clock()),
+  last_valid_reference_path_(std::nullopt)
+{
+  current_route_lanelet_ = std::make_shared<std::optional<lanelet::ConstLanelet>>(std::nullopt);
+  processing_time_.emplace("total_time", 0.0);
+  if constexpr (std::is_same_v<NodeT, rclcpp::Node>) {
+    debug_publisher_ptr_ = std::make_unique<DebugPublisher>(&node, "~/debug");
+    state_publisher_ptr_ = std::make_unique<DebugPublisher>(&node, "~/debug");
+  }
+}
+
+template <typename NodeT>
+void PlannerManager::launchScenePlugin(NodeT & node, const std::string & name)
+{
+  if (plugin_loader_.isClassAvailable(name)) {
+    const auto plugin = plugin_loader_.createSharedInstance(name);
+    plugin->init(&node);
+
+    for (const auto & running_plugin : manager_ptrs_) {
+      if (plugin->name() == running_plugin->name()) {
+        RCLCPP_WARN_STREAM(node.get_logger(), "The plugin '" << name << "' is already loaded.");
+        return;
+      }
+    }
+
+    manager_ptrs_.push_back(plugin);
+    processing_time_.emplace(plugin->name(), 0.0);
+    RCLCPP_DEBUG_STREAM(node.get_logger(), "The scene plugin '" << name << "' is loaded.");
+  } else {
+    RCLCPP_ERROR_STREAM(node.get_logger(), "The scene plugin '" << name << "' is not available.");
+  }
+}
+
 }  // namespace autoware::behavior_path_planner
 
 #endif  // AUTOWARE__BEHAVIOR_PATH_PLANNER__PLANNER_MANAGER_HPP_

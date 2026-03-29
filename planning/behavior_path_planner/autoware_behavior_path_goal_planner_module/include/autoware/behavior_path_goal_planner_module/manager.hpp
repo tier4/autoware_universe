@@ -18,6 +18,7 @@
 #include "autoware/behavior_path_goal_planner_module/goal_planner_parameters.hpp"
 #include "autoware/behavior_path_planner_common/interface/scene_module_manager_interface.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -31,12 +32,12 @@ class GoalPlannerModuleManager : public SceneModuleManagerInterface
 {
 public:
   static GoalPlannerParameters initGoalPlannerParameters(
-    rclcpp::Node * node, const std::string & base_ns);
+    agnocast::Node * node, const std::string & base_ns);
 
 public:
   GoalPlannerModuleManager() : SceneModuleManagerInterface{"goal_planner"} {}
 
-  void init(rclcpp::Node * node) override;
+  void init(agnocast::Node * node) override;
 
   std::unique_ptr<SceneModuleInterface> createNewSceneModuleInstance() override;
 

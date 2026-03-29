@@ -34,6 +34,7 @@
 #include <autoware_utils/system/time_keeper.hpp>
 #include <magic_enum.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <tier4_planning_msgs/msg/avoidance_debug_msg_array.hpp>
@@ -53,8 +54,11 @@
 namespace autoware::behavior_path_planner
 {
 using autoware::objects_of_interest_marker_interface::ColorName;
-using autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface;
-using autoware::planning_factor_interface::PlanningFactorInterface;
+using ObjectsOfInterestMarkerInterface =
+  autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterfaceTemplate<
+    agnocast::Node>;
+using PlanningFactorInterface =
+  autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>;
 using autoware::rtc_interface::RTCInterface;
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
 using autoware_internal_planning_msgs::msg::PlanningFactor;
@@ -79,7 +83,7 @@ class SceneModuleInterface
 {
 public:
   SceneModuleInterface(
-    const std::string & name, rclcpp::Node & node,
+    const std::string & name, agnocast::Node & node,
     std::unordered_map<std::string, std::shared_ptr<RTCInterface>> rtc_interface_ptr_map,
     std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>>
       objects_of_interest_marker_interface_ptr_map,

@@ -90,7 +90,7 @@ autoware_perception_msgs::msg::PredictedObjects remove_objects_in_bus_stop_area(
 namespace autoware::behavior_path_planner
 {
 GoalPlannerModule::GoalPlannerModule(
-  const std::string & name, rclcpp::Node & node,
+  const std::string & name, agnocast::Node & node,
   const std::shared_ptr<GoalPlannerParameters> & parameters,
   const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
   std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
@@ -98,7 +98,7 @@ GoalPlannerModule::GoalPlannerModule(
   const std::shared_ptr<PlanningFactorInterface> planning_factor_interface)
 : SceneModuleInterface{name, node, rtc_interface_ptr_map, objects_of_interest_marker_interface_ptr_map, planning_factor_interface},  // NOLINT
   parameters_{*parameters},
-  vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo()},
+  vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo()},
   vehicle_footprint_{vehicle_info_.createFootprint()},
   left_side_parking_{parameters_.parking_policy == ParkingPolicy::LEFT_SIDE},
   is_lane_parking_cb_running_{false},
@@ -113,7 +113,7 @@ GoalPlannerModule::GoalPlannerModule(
   const auto lane_parking_period_ns = rclcpp::Rate(1.0).period();
   lane_parking_timer_cb_group_ =
     node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  lane_parking_timer_ = rclcpp::create_timer(
+  lane_parking_timer_ = agnocast::create_timer(
     &node, clock_, lane_parking_period_ns,
     [lane_parking_executor = std::make_unique<LaneParkingPlanner>(
        node, lane_parking_mutex_, lane_parking_request_, lane_parking_response_,
@@ -128,7 +128,7 @@ GoalPlannerModule::GoalPlannerModule(
     const auto freespace_parking_period_ns = rclcpp::Rate(1.0).period();
     freespace_parking_timer_cb_group_ =
       node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    freespace_parking_timer_ = rclcpp::create_timer(
+    freespace_parking_timer_ = agnocast::create_timer(
       &node, clock_, freespace_parking_period_ns,
       [freespace_parking_executor = std::make_unique<FreespaceParkingPlanner>(
          freespace_parking_mutex_, freespace_parking_request_, freespace_parking_response_,
@@ -218,7 +218,7 @@ bool isStopped(
 }
 
 LaneParkingPlanner::LaneParkingPlanner(
-  rclcpp::Node & node, std::mutex & lane_parking_mutex,
+  agnocast::Node & node, std::mutex & lane_parking_mutex,
   const std::optional<LaneParkingRequest> & request, LaneParkingResponse & response,
   std::atomic<bool> & is_lane_parking_cb_running, const rclcpp::Logger & logger,
   const GoalPlannerParameters & parameters)

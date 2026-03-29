@@ -20,6 +20,7 @@
 #include "autoware/behavior_path_bidirectional_traffic_module/oncoming_car.hpp"
 #include "autoware/behavior_path_bidirectional_traffic_module/parameter.hpp"
 #include "autoware/behavior_path_planner_common/interface/scene_module_interface.hpp"
+#include <agnocast/agnocast.hpp>
 
 #include <autoware/universe_utils/geometry/boost_geometry.hpp>
 
@@ -39,7 +40,7 @@ class BidirectionalTrafficModule : public SceneModuleInterface
 {
 public:
   BidirectionalTrafficModule(
-    std::string_view name, rclcpp::Node & node,
+    std::string_view name, agnocast::Node & node,
     const std::shared_ptr<BidirectionalTrafficModuleParameters> & parameters,
     const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
     std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &

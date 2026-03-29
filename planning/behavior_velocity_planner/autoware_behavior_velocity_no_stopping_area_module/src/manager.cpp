@@ -28,13 +28,14 @@ namespace autoware::behavior_velocity_planner
 using autoware_utils::get_or_declare_parameter;
 using lanelet::autoware::NoStoppingArea;
 
-NoStoppingAreaModuleManager::NoStoppingAreaModuleManager(rclcpp::Node & node)
+NoStoppingAreaModuleManager::NoStoppingAreaModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterfaceWithRTC(
     node, getModuleName(), getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc"))
 {
   const std::string ns(NoStoppingAreaModuleManager::getModuleName());
   auto & pp = planner_param_;
-  const auto & vi = autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo();
+  const auto & vi =
+    autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo();
   pp.state_clear_time = get_or_declare_parameter<double>(node, ns + ".state_clear_time");
   pp.stuck_vehicle_vel_thr = get_or_declare_parameter<double>(node, ns + ".stuck_vehicle_vel_thr");
   pp.stop_margin = get_or_declare_parameter<double>(node, ns + ".stop_margin");

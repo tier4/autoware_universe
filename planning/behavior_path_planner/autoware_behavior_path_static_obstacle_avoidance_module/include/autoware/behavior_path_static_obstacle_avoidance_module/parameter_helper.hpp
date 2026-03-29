@@ -29,7 +29,8 @@ namespace autoware::behavior_path_planner
 using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_utils::get_or_declare_parameter;
 
-AvoidanceParameters getParameter(rclcpp::Node * node)
+template <typename NodeT>
+AvoidanceParameters getParameter(NodeT * node)
 {
   AvoidanceParameters p{};
   // general params

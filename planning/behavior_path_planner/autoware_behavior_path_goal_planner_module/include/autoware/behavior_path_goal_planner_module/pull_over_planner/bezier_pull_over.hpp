@@ -16,6 +16,7 @@
 #define AUTOWARE__BEHAVIOR_PATH_GOAL_PLANNER_MODULE__PULL_OVER_PLANNER__BEZIER_PULL_OVER_HPP_
 
 #include "autoware/behavior_path_goal_planner_module/pull_over_planner/pull_over_planner_base.hpp"
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 
@@ -29,7 +30,7 @@ using autoware::boundary_departure_checker::BoundaryDepartureChecker;
 class BezierPullOver : public PullOverPlannerBase
 {
 public:
-  BezierPullOver(rclcpp::Node & node, const GoalPlannerParameters & parameters);
+  BezierPullOver(agnocast::Node & node, const GoalPlannerParameters & parameters);
   PullOverPlannerType getPlannerType() const override { return PullOverPlannerType::BEZIER; }
   std::optional<PullOverPath> plan(
     const GoalCandidate & modified_goal_pose, const size_t id,

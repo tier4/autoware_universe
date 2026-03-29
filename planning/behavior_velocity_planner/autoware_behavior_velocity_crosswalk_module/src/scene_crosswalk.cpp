@@ -184,12 +184,12 @@ autoware_internal_debug_msgs::msg::StringStamped createStringStampedMessage(
 }  // namespace
 
 CrosswalkModule::CrosswalkModule(
-  rclcpp::Node & node, const int64_t lane_id, const int64_t module_id,
+  agnocast::Node & node, const int64_t lane_id, const int64_t module_id,
   const std::optional<int64_t> & reg_elem_id, const lanelet::LaneletMapPtr & lanelet_map_ptr,
   const PlannerParam & planner_param, const rclcpp::Logger & logger,
   const rclcpp::Clock::SharedPtr clock,
   const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
-  const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+  const std::shared_ptr<PlanningFactorInterface>
     planning_factor_interface)
 : SceneModuleInterfaceWithRTC(module_id, logger, clock, time_keeper, planning_factor_interface),
   module_id_(module_id),
@@ -299,7 +299,11 @@ bool CrosswalkModule::modifyPathVelocity(PathWithLaneId * path)
 
   const auto collision_info_msg =
     createStringStampedMessage(clock_->now(), module_id_, debug_data_.collision_points);
-  collision_info_pub_->publish(collision_info_msg);
+  {
+    auto loaned = collision_info_pub_->borrow_loaned_message();
+    *loaned = collision_info_msg;
+    collision_info_pub_->publish(std::move(loaned));
+  }
 
   return true;
 }

@@ -102,7 +102,7 @@ lanelet::ConstLineString2d get_farthest_lane_bound(
 namespace autoware::behavior_path_planner
 {
 StartPlannerModule::StartPlannerModule(
-  const std::string & name, rclcpp::Node & node,
+  const std::string & name, agnocast::Node & node,
   const std::shared_ptr<StartPlannerParameters> & parameters,
   const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
   std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
@@ -110,7 +110,7 @@ StartPlannerModule::StartPlannerModule(
   const std::shared_ptr<PlanningFactorInterface> planning_factor_interface)
 : SceneModuleInterface{name, node, rtc_interface_ptr_map, objects_of_interest_marker_interface_ptr_map, planning_factor_interface},  // NOLINT
   parameters_{parameters},
-  vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo()},
+  vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo()},
   is_freespace_planner_cb_running_{false}
 {
   // set enabled planner based on search_priority list
@@ -150,7 +150,7 @@ StartPlannerModule::StartPlannerModule(
     const auto freespace_planner_period_ns = rclcpp::Rate(1.0).period();
     freespace_planner_timer_cb_group_ =
       node.create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    freespace_planner_timer_ = rclcpp::create_timer(
+    freespace_planner_timer_ = agnocast::create_timer(
       &node, clock_, freespace_planner_period_ns,
       std::bind(&StartPlannerModule::onFreespacePlannerTimer, this),
       freespace_planner_timer_cb_group_);

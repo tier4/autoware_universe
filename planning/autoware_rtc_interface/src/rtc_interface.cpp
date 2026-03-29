@@ -116,7 +116,7 @@ Module getModuleType(const std::string & module_name)
 
 namespace autoware::rtc_interface
 {
-RTCInterface::RTCInterface(rclcpp::Node * node, const std::string & name, const bool enable_rtc)
+RTCInterface::RTCInterface(agnocast::Node * node, const std::string & name, const bool enable_rtc)
 : clock_{node->get_clock()},
   logger_{node->get_logger().get_child("RTCInterface[" + name + "]")},
   is_auto_mode_enabled_{!enable_rtc},
@@ -127,8 +127,7 @@ RTCInterface::RTCInterface(rclcpp::Node * node, const std::string & name, const 
 
   constexpr double update_rate = 10.0;
   const auto period_ns = rclcpp::Rate(update_rate).period();
-  timer_ = rclcpp::create_timer(
-    node, node->get_clock(), period_ns, std::bind(&RTCInterface::onTimer, this));
+  timer_ = node->create_timer(period_ns, std::bind(&RTCInterface::onTimer, this));
 
   // Publisher
   pub_statuses_ =
@@ -142,13 +141,47 @@ RTCInterface::RTCInterface(rclcpp::Node * node, const std::string & name, const 
   srv_commands_ = node->create_service<CooperateCommands>(
     cooperate_commands_namespace_ + "/" + name,
     std::bind(&RTCInterface::onCooperateCommandService, this, _1, _2),
-    rmw_qos_profile_services_default, callback_group_);
+    rclcpp::ServicesQoS(), callback_group_);
   srv_auto_mode_ = node->create_service<AutoMode>(
     enable_auto_mode_namespace_ + "/" + name,
-    std::bind(&RTCInterface::onAutoModeService, this, _1, _2), rmw_qos_profile_services_default,
+    std::bind(&RTCInterface::onAutoModeService, this, _1, _2), rclcpp::ServicesQoS(),
     callback_group_);
 
   // Module
+  module_ = getModuleType(name);
+}
+
+RTCInterface::RTCInterface(rclcpp::Node * node, const std::string & name, const bool enable_rtc)
+: clock_{node->get_clock()},
+  logger_{node->get_logger().get_child("RTCInterface[" + name + "]")},
+  is_auto_mode_enabled_{!enable_rtc},
+  is_locked_{false}
+{
+  using std::placeholders::_1;
+  using std::placeholders::_2;
+
+  constexpr double update_rate = 10.0;
+  const auto period_ns = rclcpp::Rate(update_rate).period();
+  timer_ = agnocast::create_timer(
+    node, node->get_clock(), period_ns, std::bind(&RTCInterface::onTimer, this));
+
+  pub_statuses_ =
+    agnocast::create_publisher<CooperateStatusArray>(
+      node, cooperate_status_namespace_ + "/" + name, 1);
+  pub_auto_mode_status_ =
+    agnocast::create_publisher<AutoModeStatus>(
+      node, auto_mode_status_namespace_ + "/" + name, 1);
+
+  callback_group_ = node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  srv_commands_ = agnocast::create_service<CooperateCommands>(
+    node, cooperate_commands_namespace_ + "/" + name,
+    std::bind(&RTCInterface::onCooperateCommandService, this, _1, _2),
+    rclcpp::ServicesQoS(), callback_group_);
+  srv_auto_mode_ = agnocast::create_service<AutoMode>(
+    node, enable_auto_mode_namespace_ + "/" + name,
+    std::bind(&RTCInterface::onAutoModeService, this, _1, _2), rclcpp::ServicesQoS(),
+    callback_group_);
+
   module_ = getModuleType(name);
 }
 
@@ -156,12 +189,16 @@ void RTCInterface::publishCooperateStatus(const rclcpp::Time & stamp)
 {
   std::lock_guard<std::mutex> lock(mutex_);
   registered_status_.stamp = stamp;
-  pub_statuses_->publish(registered_status_);
+  {
+    auto loaned = pub_statuses_->borrow_loaned_message();
+    *loaned = registered_status_;
+    pub_statuses_->publish(std::move(loaned));
+  }
 }
 
 void RTCInterface::onCooperateCommandService(
-  const CooperateCommands::Request::SharedPtr request,
-  const CooperateCommands::Response::SharedPtr responses)
+  const agnocast::ipc_shared_ptr<agnocast::Service<CooperateCommands>::RequestT> & request,
+  agnocast::ipc_shared_ptr<agnocast::Service<CooperateCommands>::ResponseT> & responses)
 {
   std::lock_guard<std::mutex> lock(mutex_);
 
@@ -229,7 +266,8 @@ void RTCInterface::updateCooperateCommandStatus(const std::vector<CooperateComma
 }
 
 void RTCInterface::onAutoModeService(
-  const AutoMode::Request::SharedPtr request, const AutoMode::Response::SharedPtr response)
+  const agnocast::ipc_shared_ptr<agnocast::Service<AutoMode>::RequestT> & request,
+  agnocast::ipc_shared_ptr<agnocast::Service<AutoMode>::ResponseT> & response)
 {
   std::lock_guard<std::mutex> lock(mutex_);
   is_auto_mode_enabled_ = request->enable;
@@ -241,11 +279,10 @@ void RTCInterface::onAutoModeService(
 
 void RTCInterface::onTimer()
 {
-  AutoModeStatus auto_mode_status;
-  auto_mode_status.module = module_;
-  auto_mode_status.is_auto_mode = is_auto_mode_enabled_;
-
-  pub_auto_mode_status_->publish(auto_mode_status);
+  auto loaned = pub_auto_mode_status_->borrow_loaned_message();
+  loaned->module = module_;
+  loaned->is_auto_mode = is_auto_mode_enabled_;
+  pub_auto_mode_status_->publish(std::move(loaned));
 }
 
 void RTCInterface::updateCooperateStatus(

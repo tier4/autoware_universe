@@ -46,12 +46,12 @@ IntersectionModule::IntersectionModule(
   const int64_t module_id, const int64_t lane_id,
   [[maybe_unused]] std::shared_ptr<const PlannerData> planner_data,
   const PlannerParam & planner_param, const std::set<lanelet::Id> & associative_ids,
-  const std::string & turn_direction, const bool has_traffic_light, rclcpp::Node & node,
+  const std::string & turn_direction, const bool has_traffic_light, agnocast::Node & node,
   const rclcpp::Logger logger, const rclcpp::Clock::SharedPtr clock,
   const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
-  const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+  const std::shared_ptr<PlanningFactorInterface>
     planning_factor_interface,
-  const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+  const std::shared_ptr<PlanningFactorInterface>
     planning_factor_interface_for_occlusion)
 : SceneModuleInterfaceWithRTC(module_id, logger, clock, time_keeper, planning_factor_interface),
   planning_factor_interface_for_occlusion_(planning_factor_interface_for_occlusion),
@@ -271,8 +271,16 @@ DecisionResult IntersectionModule::modifyPathVelocityDetail(PathWithLaneId * pat
     if (
       std::find(debug.begin(), debug.end(), lane_id_) != debug.end() ||
       std::find(debug.begin(), debug.end(), -1) != debug.end()) {
-      ego_ttc_pub_->publish(ego_ttc_time_array);
-      object_ttc_pub_->publish(object_ttc_time_array);
+      {
+        auto loaned = ego_ttc_pub_->borrow_loaned_message();
+        *loaned = ego_ttc_time_array;
+        ego_ttc_pub_->publish(std::move(loaned));
+      }
+      {
+        auto loaned = object_ttc_pub_->borrow_loaned_message();
+        *loaned = object_ttc_time_array;
+        object_ttc_pub_->publish(std::move(loaned));
+      }
     }
   }
 
@@ -756,8 +764,8 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const double baselink2front,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
-  [[maybe_unused]] planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
-  [[maybe_unused]] planning_factor_interface::PlanningFactorInterface *
+  [[maybe_unused]] PlanningFactorInterface * planning_factor_interface,
+  [[maybe_unused]] PlanningFactorInterface *
     planning_factor_interface_for_occlusion,
   [[maybe_unused]] IntersectionModule::DebugData * debug_data,
   [[maybe_unused]] IntersectionStopLines::PreviousStopPose * previous_stop_pose)
@@ -774,8 +782,8 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const double baselink2front,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
-  [[maybe_unused]] planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
-  [[maybe_unused]] planning_factor_interface::PlanningFactorInterface *
+  [[maybe_unused]] PlanningFactorInterface * planning_factor_interface,
+  [[maybe_unused]] PlanningFactorInterface *
     planning_factor_interface_for_occlusion,
   [[maybe_unused]] IntersectionModule::DebugData * debug_data,
   [[maybe_unused]] IntersectionStopLines::PreviousStopPose * previous_stop_pose)
@@ -791,8 +799,8 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const double baselink2front,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
-  [[maybe_unused]] planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
-  [[maybe_unused]] planning_factor_interface::PlanningFactorInterface *
+  [[maybe_unused]] PlanningFactorInterface * planning_factor_interface,
+  [[maybe_unused]] PlanningFactorInterface *
     planning_factor_interface_for_occlusion,
   [[maybe_unused]] IntersectionModule::DebugData * debug_data,
   [[maybe_unused]] IntersectionStopLines::PreviousStopPose * previous_stop_pose)
@@ -806,8 +814,8 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
-  planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
-  [[maybe_unused]] planning_factor_interface::PlanningFactorInterface *
+  PlanningFactorInterface * planning_factor_interface,
+  [[maybe_unused]] PlanningFactorInterface *
     planning_factor_interface_for_occlusion,
   IntersectionModule::DebugData * debug_data,
   [[maybe_unused]] IntersectionStopLines::PreviousStopPose * previous_stop_pose)
@@ -844,8 +852,8 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
-  planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
-  [[maybe_unused]] planning_factor_interface::PlanningFactorInterface *
+  PlanningFactorInterface * planning_factor_interface,
+  [[maybe_unused]] PlanningFactorInterface *
     planning_factor_interface_for_occlusion,
   IntersectionModule::DebugData * debug_data,
   [[maybe_unused]] IntersectionStopLines::PreviousStopPose * previous_stop_pose)
@@ -882,8 +890,8 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
-  planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
-  planning_factor_interface::PlanningFactorInterface * planning_factor_interface_for_occlusion,
+  PlanningFactorInterface * planning_factor_interface,
+  PlanningFactorInterface * planning_factor_interface_for_occlusion,
   IntersectionModule::DebugData * debug_data,
   IntersectionStopLines::PreviousStopPose * previous_stop_pose)
 {
@@ -933,8 +941,8 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
-  planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
-  planning_factor_interface::PlanningFactorInterface * planning_factor_interface_for_occlusion,
+  PlanningFactorInterface * planning_factor_interface,
+  PlanningFactorInterface * planning_factor_interface_for_occlusion,
   IntersectionModule::DebugData * debug_data,
   IntersectionStopLines::PreviousStopPose * previous_stop_pose)
 {
@@ -987,8 +995,8 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   [[maybe_unused]] autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
-  [[maybe_unused]] planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
-  planning_factor_interface::PlanningFactorInterface * planning_factor_interface_for_occlusion,
+  [[maybe_unused]] PlanningFactorInterface * planning_factor_interface,
+  PlanningFactorInterface * planning_factor_interface_for_occlusion,
   IntersectionModule::DebugData * debug_data,
   IntersectionStopLines::PreviousStopPose * previous_stop_pose)
 {
@@ -1025,8 +1033,8 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
-  planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
-  planning_factor_interface::PlanningFactorInterface * planning_factor_interface_for_occlusion,
+  PlanningFactorInterface * planning_factor_interface,
+  PlanningFactorInterface * planning_factor_interface_for_occlusion,
   IntersectionModule::DebugData * debug_data,
   IntersectionStopLines::PreviousStopPose * previous_stop_pose)
 {
@@ -1078,8 +1086,8 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
-  planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
-  [[maybe_unused]] planning_factor_interface::PlanningFactorInterface *
+  PlanningFactorInterface * planning_factor_interface,
+  [[maybe_unused]] PlanningFactorInterface *
     planning_factor_interface_for_occlusion,
   IntersectionModule::DebugData * debug_data,
   IntersectionStopLines::PreviousStopPose * previous_stop_pose)
@@ -1151,8 +1159,8 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
-  planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
-  planning_factor_interface::PlanningFactorInterface * planning_factor_interface_for_occlusion,
+  PlanningFactorInterface * planning_factor_interface,
+  PlanningFactorInterface * planning_factor_interface_for_occlusion,
   IntersectionModule::DebugData * debug_data,
   IntersectionStopLines::PreviousStopPose * previous_stop_pose)
 {
@@ -1201,8 +1209,8 @@ void reactRTCApprovalByDecisionResult(
   [[maybe_unused]] const IntersectionModule::PlannerParam & planner_param,
   const double baselink2front, autoware_internal_planning_msgs::msg::PathWithLaneId * path,
   autoware_internal_planning_msgs::msg::SafetyFactorArray & safety_factor_array,
-  planning_factor_interface::PlanningFactorInterface * planning_factor_interface,
-  [[maybe_unused]] planning_factor_interface::PlanningFactorInterface *
+  PlanningFactorInterface * planning_factor_interface,
+  [[maybe_unused]] PlanningFactorInterface *
     planning_factor_interface_for_occlusion,
   IntersectionModule::DebugData * debug_data,
   [[maybe_unused]] IntersectionStopLines::PreviousStopPose * previous_stop_pose)

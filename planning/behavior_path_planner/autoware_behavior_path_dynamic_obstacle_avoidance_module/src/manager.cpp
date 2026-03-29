@@ -37,7 +37,7 @@ PolygonGenerationMethod convertToPolygonGenerationMethod(const std::string & str
 }
 }  // namespace
 
-void DynamicObstacleAvoidanceModuleManager::init(rclcpp::Node * node)
+void DynamicObstacleAvoidanceModuleManager::init(agnocast::Node * node)
 {
   // init manager interface
   initInterface(node, {""});

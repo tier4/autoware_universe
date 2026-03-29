@@ -40,7 +40,25 @@ struct BidirectionalTrafficModuleParameters
   double max_lateral_jerk = 3.0;
   double min_lateral_jerk = 2.0;
 
-  void init_from_node(rclcpp::Node * node, std::string_view ns = "bidirectional_traffic");
+  template <typename NodeT>
+  void init_from_node(NodeT * node, std::string_view ns = "bidirectional_traffic")
+  {
+    time_to_prepare_pull_over =
+      node->template declare_parameter<double>(std::string(ns) + ".time_to_prepare_pull_over");
+    min_distance_from_roadside =
+      node->template declare_parameter<double>(std::string(ns) + ".min_distance_from_roadside");
+    keep_left_distance_from_center_line =
+      node->template declare_parameter<double>(
+        std::string(ns) + ".keep_left_distance_from_center_line");
+    shift_distance_to_pull_over_from_center_line = node->template declare_parameter<double>(
+      std::string(ns) + ".shift_distance_to_pull_over_from_center_line");
+    wait_time_for_oncoming_car =
+      node->template declare_parameter<double>(std::string(ns) + ".wait_time_for_oncoming_car");
+    max_lateral_jerk =
+      node->template declare_parameter<double>(std::string(ns) + ".max_lateral_jerk");
+    min_lateral_jerk =
+      node->template declare_parameter<double>(std::string(ns) + ".min_lateral_jerk");
+  }
 };
 
 struct EgoParameters

@@ -16,6 +16,7 @@
 #define AUTOWARE__BEHAVIOR_PATH_GOAL_PLANNER_MODULE__PULL_OVER_PLANNER__FREESPACE_PULL_OVER_HPP_
 
 #include "autoware/behavior_path_goal_planner_module/pull_over_planner/pull_over_planner_base.hpp"
+#include <agnocast/agnocast.hpp>
 
 #include <autoware/freespace_planning_algorithms/abstract_algorithm.hpp>
 
@@ -30,7 +31,7 @@ using autoware::freespace_planning_algorithms::AbstractPlanningAlgorithm;
 class FreespacePullOver : public PullOverPlannerBase
 {
 public:
-  FreespacePullOver(rclcpp::Node & node, const GoalPlannerParameters & parameters);
+  FreespacePullOver(agnocast::Node & node, const GoalPlannerParameters & parameters);
 
   PullOverPlannerType getPlannerType() const override { return PullOverPlannerType::FREESPACE; }
 

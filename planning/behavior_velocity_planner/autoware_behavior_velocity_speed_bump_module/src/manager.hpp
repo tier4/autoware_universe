@@ -32,7 +32,7 @@ namespace autoware::behavior_velocity_planner
 class SpeedBumpModuleManager : public SceneModuleManagerInterface<>
 {
 public:
-  explicit SpeedBumpModuleManager(rclcpp::Node & node);
+  explicit SpeedBumpModuleManager(agnocast::Node & node);
 
   const char * getModuleName() override { return "speed_bump"; }
 

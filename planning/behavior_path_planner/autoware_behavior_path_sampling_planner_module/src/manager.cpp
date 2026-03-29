@@ -25,7 +25,7 @@
 namespace autoware::behavior_path_planner
 {
 
-void SamplingPlannerModuleManager::init(rclcpp::Node * node)
+void SamplingPlannerModuleManager::init(agnocast::Node * node)
 {
   // init manager interface
   initInterface(node, {""});

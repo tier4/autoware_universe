@@ -18,6 +18,7 @@
 #include "autoware/behavior_path_planner_common/interface/scene_module_manager_interface.hpp"
 #include "autoware/behavior_path_start_planner_module/start_planner_module.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -32,7 +33,7 @@ class StartPlannerModuleManager : public SceneModuleManagerInterface
 public:
   StartPlannerModuleManager() : SceneModuleManagerInterface{"start_planner"} {}
 
-  void init(rclcpp::Node * node) override;
+  void init(agnocast::Node * node) override;
 
   std::unique_ptr<SceneModuleInterface> createNewSceneModuleInstance() override
   {

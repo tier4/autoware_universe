@@ -22,6 +22,7 @@
 #include "autoware/behavior_path_static_obstacle_avoidance_module/helper.hpp"
 #include "autoware/behavior_path_static_obstacle_avoidance_module/shift_line_generator.hpp"
 #include "autoware/behavior_path_static_obstacle_avoidance_module/type_alias.hpp"
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_utils_geometry/geometry.hpp>
 #include <rclcpp/logging.hpp>
@@ -46,7 +47,7 @@ class StaticObstacleAvoidanceModule : public SceneModuleInterface
 {
 public:
   StaticObstacleAvoidanceModule(
-    const std::string & name, rclcpp::Node & node, std::shared_ptr<AvoidanceParameters> parameters,
+    const std::string & name, agnocast::Node & node, std::shared_ptr<AvoidanceParameters> parameters,
     const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
     std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
       objects_of_interest_marker_interface_ptr_map,

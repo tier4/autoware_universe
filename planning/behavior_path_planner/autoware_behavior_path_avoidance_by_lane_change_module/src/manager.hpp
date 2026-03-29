@@ -19,6 +19,7 @@
 #include "data_structs.hpp"
 #include "interface.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -44,7 +45,7 @@ public:
   {
   }
 
-  void init(rclcpp::Node * node) override;
+  void init(agnocast::Node * node) override;
 
   SMIPtr createNewSceneModuleInstance() override;
 

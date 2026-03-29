@@ -29,7 +29,7 @@ class BidirectionalTrafficModuleManager : public SceneModuleManagerInterface
 public:
   BidirectionalTrafficModuleManager() : SceneModuleManagerInterface{"bidirectional_traffic"} {}
 
-  void init(rclcpp::Node * node) override;
+  void init(agnocast::Node * node) override;
 
   std::unique_ptr<SceneModuleInterface> createNewSceneModuleInstance() override;
 

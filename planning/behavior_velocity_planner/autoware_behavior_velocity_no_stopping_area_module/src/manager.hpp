@@ -32,7 +32,7 @@ namespace autoware::behavior_velocity_planner
 class NoStoppingAreaModuleManager : public SceneModuleManagerInterfaceWithRTC
 {
 public:
-  explicit NoStoppingAreaModuleManager(rclcpp::Node & node);
+  explicit NoStoppingAreaModuleManager(agnocast::Node & node);
 
   const char * getModuleName() override { return "no_stopping_area"; }
 

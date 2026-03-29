@@ -33,7 +33,7 @@ namespace autoware::behavior_velocity_planner
 {
 using autoware_utils::get_or_declare_parameter;
 
-IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
+IntersectionModuleManager::IntersectionModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterfaceWithRTC(
     node, getModuleName(),
     getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc.intersection")),
@@ -309,7 +309,7 @@ IntersectionModuleManager::IntersectionModuleManager(rclcpp::Node & node)
     get_or_declare_parameter<int>(node, "planning_factor_console_output.duration");
 
   planning_factor_interface_for_occlusion_ =
-    std::make_shared<planning_factor_interface::PlanningFactorInterface>(
+    std::make_shared<PlanningFactorInterface>(
       &node, "intersection_occlusion", enable_console_output, throttle_duration_ms);
 }
 
@@ -457,9 +457,15 @@ void IntersectionModuleManager::sendRTC(const Time & stamp)
   // ==========================================================================================
   // publish module debug data
   // ==========================================================================================
-  decision_state_pub_->publish(decision_type);
+  {
+    auto loaned = decision_state_pub_->borrow_loaned_message();
+    *loaned = decision_type;
+    decision_state_pub_->publish(std::move(loaned));
+  }
   if (nearest_tl_observation) {
-    tl_observation_pub_->publish(nearest_tl_observation.value().signal);
+    auto loaned = tl_observation_pub_->borrow_loaned_message();
+    *loaned = nearest_tl_observation.value().signal;
+    tl_observation_pub_->publish(std::move(loaned));
   }
 }
 
@@ -505,7 +511,7 @@ void IntersectionModuleManager::deleteExpiredModules(
   }
 }
 
-MergeFromPrivateModuleManager::MergeFromPrivateModuleManager(rclcpp::Node & node)
+MergeFromPrivateModuleManager::MergeFromPrivateModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterface(node, getModuleName())
 {
   const std::string ns(MergeFromPrivateModuleManager::getModuleName());

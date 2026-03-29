@@ -19,6 +19,7 @@
 #include "autoware/behavior_path_sampling_planner_module/sampling_planner_module.hpp"
 #include "autoware/behavior_path_sampling_planner_module/sampling_planner_parameters.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -32,7 +33,7 @@ class SamplingPlannerModuleManager : public SceneModuleManagerInterface
 {
 public:
   SamplingPlannerModuleManager() : SceneModuleManagerInterface{"sampling_planner"} {}
-  void init(rclcpp::Node * node) override;
+  void init(agnocast::Node * node) override;
 
   std::unique_ptr<SceneModuleInterface> createNewSceneModuleInstance() override
   {

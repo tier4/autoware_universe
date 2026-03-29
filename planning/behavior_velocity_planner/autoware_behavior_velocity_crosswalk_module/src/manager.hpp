@@ -39,7 +39,7 @@ using autoware_internal_planning_msgs::msg::PathWithLaneId;
 class CrosswalkModuleManager : public SceneModuleManagerInterfaceWithRTC
 {
 public:
-  explicit CrosswalkModuleManager(rclcpp::Node & node);
+  explicit CrosswalkModuleManager(agnocast::Node & node);
 
   const char * getModuleName() override { return "crosswalk"; }
 

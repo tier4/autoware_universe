@@ -25,6 +25,7 @@
 
 #include <autoware_utils/system/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <geometry_msgs/msg/pose.hpp>
@@ -40,7 +41,6 @@
 namespace autoware::behavior_path_planner
 {
 using autoware::objects_of_interest_marker_interface::ColorName;
-using autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterface;
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
 using geometry_msgs::msg::Pose;
 using geometry_msgs::msg::Twist;
@@ -49,7 +49,7 @@ class LaneChangeInterface : public SceneModuleInterface
 {
 public:
   LaneChangeInterface(
-    const std::string & name, rclcpp::Node & node, std::shared_ptr<LaneChangeParameters> parameters,
+    const std::string & name, agnocast::Node & node, std::shared_ptr<LaneChangeParameters> parameters,
     const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
     std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
       objects_of_interest_marker_interface_ptr_map,

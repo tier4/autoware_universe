@@ -33,7 +33,7 @@ namespace autoware::behavior_velocity_planner
 using autoware_utils::get_or_declare_parameter;
 using lanelet::autoware::DetectionArea;
 
-DetectionAreaModuleManager::DetectionAreaModuleManager(rclcpp::Node & node)
+DetectionAreaModuleManager::DetectionAreaModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterfaceWithRTC(
     node, getModuleName(), getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc"))
 {

@@ -23,6 +23,8 @@
 #include <autoware/lanelet2_utils/intersection.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <agnocast/agnocast.hpp>
+
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 
 #include <lanelet2_routing/RoutingGraph.h>
@@ -86,9 +88,9 @@ public:
     const std::shared_ptr<const PlannerData> planner_data, const PlannerParam & planner_param,
     const rclcpp::Logger logger, const rclcpp::Clock::SharedPtr clock,
     const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
-    const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+    const std::shared_ptr<PlanningFactorInterface>
       planning_factor_interface,
-    const rclcpp::Publisher<std_msgs::msg::String>::SharedPtr decision_state_pub);
+    const agnocast::Publisher<std_msgs::msg::String>::SharedPtr decision_state_pub);
 
   /**
    * @brief plan go-stop velocity at traffic crossing with collision check between reference path
@@ -168,7 +170,7 @@ private:
   // Debug
   mutable DebugData debug_data_;
 
-  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr decision_state_pub_;
+  agnocast::Publisher<std_msgs::msg::String>::SharedPtr decision_state_pub_;
 };
 }  // namespace autoware::behavior_velocity_planner
 

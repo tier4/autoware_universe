@@ -32,7 +32,7 @@ namespace autoware::behavior_velocity_planner
 class NoDrivableLaneModuleManager : public SceneModuleManagerInterface<>
 {
 public:
-  explicit NoDrivableLaneModuleManager(rclcpp::Node & node);
+  explicit NoDrivableLaneModuleManager(agnocast::Node & node);
 
   const char * getModuleName() override { return "no_drivable_lane"; }
 

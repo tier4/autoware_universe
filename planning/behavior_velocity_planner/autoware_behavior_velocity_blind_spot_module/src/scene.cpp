@@ -70,9 +70,9 @@ BlindSpotModule::BlindSpotModule(
   const PlannerParam & planner_param, const rclcpp::Logger logger,
   const rclcpp::Clock::SharedPtr clock,
   const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
-  const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+  const std::shared_ptr<PlanningFactorInterface>
     planning_factor_interface,
-  const rclcpp::Publisher<std_msgs::msg::String>::SharedPtr decision_state_pub)
+  const agnocast::Publisher<std_msgs::msg::String>::SharedPtr decision_state_pub)
 : SceneModuleInterfaceWithRTC(module_id, logger, clock, time_keeper, planning_factor_interface),
   lane_id_(lane_id),
   planner_param_{planner_param},
@@ -352,7 +352,9 @@ bool BlindSpotModule::modifyPathVelocity(PathWithLaneId * path)
   {
     std_msgs::msg::String msg;
     msg.data = format_blind_spot_decision(decision, lane_id_);
-    decision_state_pub_->publish(msg);
+    auto loaned = decision_state_pub_->borrow_loaned_message();
+    *loaned = msg;
+    decision_state_pub_->publish(std::move(loaned));
   }
 
   const auto & input_path = *path;

@@ -18,14 +18,11 @@
 #include "autoware/behavior_path_planner_common/data_manager.hpp"
 #include "autoware/behavior_path_planner_common/interface/scene_module_interface.hpp"
 #include "autoware_utils/ros/debug_publisher.hpp"
-#include "autoware_utils/ros/logger_level_configure.hpp"
 #include "planner_manager.hpp"
 
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
 
 #include <agnocast/agnocast.hpp>
-#include <autoware_utils/ros/published_time_publisher.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
@@ -54,7 +51,7 @@
 
 namespace autoware::behavior_path_planner
 {
-using autoware::planning_factor_interface::PlanningFactorInterface;
+using autoware::planning_factor_interface::PlanningFactorInterfaceTemplate;
 using autoware_adapi_v1_msgs::msg::OperationModeState;
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
 using autoware_internal_planning_msgs::msg::Scenario;
@@ -75,9 +72,9 @@ using tier4_planning_msgs::msg::LateralOffset;
 using tier4_planning_msgs::msg::RerouteAvailability;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
-using DebugPublisher = autoware_utils::DebugPublisher;
+using AgnocastDebugPublisher = autoware_utils::BasicDebugPublisher<agnocast::Node>;
 
-class BehaviorPathPlannerNode : public rclcpp::Node
+class BehaviorPathPlannerNode : public agnocast::Node
 {
 public:
   explicit BehaviorPathPlannerNode(const rclcpp::NodeOptions & node_options);
@@ -90,42 +87,31 @@ public:
 
 private:
   // subscriber
-  autoware_utils::InterProcessPollingSubscriber<
-    LaneletRoute, autoware_utils::polling_policy::Newest>
-    route_subscriber_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
-  autoware_utils::InterProcessPollingSubscriber<
-    LaneletMapBin, autoware_utils::polling_policy::Newest>
-    vector_map_subscriber_{this, "~/input/vector_map", rclcpp::QoS{1}.transient_local()};
-  autoware_utils::InterProcessPollingSubscriber<Odometry> velocity_subscriber_{
-    this, "~/input/odometry"};
-  autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
-    acceleration_subscriber_{this, "~/input/accel"};
-  autoware_utils::InterProcessPollingSubscriber<Scenario> scenario_subscriber_{
-    this, "~/input/scenario"};
+  agnocast::PollingSubscriber<LaneletRoute>::SharedPtr route_subscriber_;
+  agnocast::PollingSubscriber<LaneletMapBin>::SharedPtr vector_map_subscriber_;
+  agnocast::PollingSubscriber<Odometry>::SharedPtr velocity_subscriber_;
+  agnocast::PollingSubscriber<AccelWithCovarianceStamped>::SharedPtr acceleration_subscriber_;
+  agnocast::PollingSubscriber<Scenario>::SharedPtr scenario_subscriber_;
   agnocast::PollingSubscriber<PredictedObjects>::SharedPtr perception_subscriber_;
   agnocast::PollingSubscriber<OccupancyGrid>::SharedPtr occupancy_grid_subscriber_;
-  autoware_utils::InterProcessPollingSubscriber<OccupancyGrid> costmap_subscriber_{
-    this, "~/input/costmap"};
-  autoware_utils::InterProcessPollingSubscriber<TrafficLightGroupArray> traffic_signals_subscriber_{
-    this, "~/input/traffic_signals"};
-  autoware_utils::InterProcessPollingSubscriber<LateralOffset> lateral_offset_subscriber_{
-    this, "~/input/lateral_offset"};
-  autoware_utils::InterProcessPollingSubscriber<OperationModeState> operation_mode_subscriber_{
-    this, "/system/operation_mode/state", rclcpp::QoS{1}.transient_local()};
-  autoware_utils::InterProcessPollingSubscriber<autoware_internal_planning_msgs::msg::VelocityLimit>
-    external_limit_max_velocity_subscriber_{this, "/planning/scenario_planning/max_velocity"};
+  agnocast::PollingSubscriber<OccupancyGrid>::SharedPtr costmap_subscriber_;
+  agnocast::PollingSubscriber<TrafficLightGroupArray>::SharedPtr traffic_signals_subscriber_;
+  agnocast::PollingSubscriber<LateralOffset>::SharedPtr lateral_offset_subscriber_;
+  agnocast::PollingSubscriber<OperationModeState>::SharedPtr operation_mode_subscriber_;
+  agnocast::PollingSubscriber<autoware_internal_planning_msgs::msg::VelocityLimit>::SharedPtr
+    external_limit_max_velocity_subscriber_;
 
   // publisher
-  rclcpp::Publisher<PathWithLaneId>::SharedPtr path_publisher_;
-  rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr turn_signal_publisher_;
-  rclcpp::Publisher<HazardLightsCommand>::SharedPtr hazard_signal_publisher_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr bound_publisher_;
-  rclcpp::Publisher<PoseWithUuidStamped>::SharedPtr modified_goal_publisher_;
-  rclcpp::Publisher<RerouteAvailability>::SharedPtr reroute_availability_publisher_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::Publisher<PathWithLaneId>::SharedPtr path_publisher_;
+  agnocast::Publisher<TurnIndicatorsCommand>::SharedPtr turn_signal_publisher_;
+  agnocast::Publisher<HazardLightsCommand>::SharedPtr hazard_signal_publisher_;
+  agnocast::Publisher<MarkerArray>::SharedPtr bound_publisher_;
+  agnocast::Publisher<PoseWithUuidStamped>::SharedPtr modified_goal_publisher_;
+  agnocast::Publisher<RerouteAvailability>::SharedPtr reroute_availability_publisher_;
+  agnocast::TimerBase::SharedPtr timer_;
 
-  std::map<std::string, rclcpp::Publisher<Path>::SharedPtr> path_candidate_publishers_;
-  std::map<std::string, rclcpp::Publisher<Path>::SharedPtr> path_reference_publishers_;
+  std::map<std::string, agnocast::Publisher<Path>::SharedPtr> path_candidate_publishers_;
+  std::map<std::string, agnocast::Publisher<Path>::SharedPtr> path_reference_publishers_;
 
   std::shared_ptr<PlannerData> planner_data_;
   Scenario::ConstSharedPtr current_scenario_{nullptr};
@@ -136,7 +122,7 @@ private:
 
   std::shared_ptr<PlannerManager> planner_manager_;
 
-  std::unique_ptr<PlanningFactorInterface> planning_factor_interface_;
+  std::unique_ptr<PlanningFactorInterfaceTemplate<agnocast::Node>> planning_factor_interface_;
 
   std::mutex mutex_pd_;       // mutex for planner_data_
   std::mutex mutex_manager_;  // mutex for bt_manager_ or planner_manager_
@@ -185,9 +171,9 @@ private:
     const BehaviorModuleOutput & output);
 
   // debug
-  rclcpp::Publisher<AvoidanceDebugMsgArray>::SharedPtr debug_avoidance_msg_array_publisher_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr debug_turn_signal_info_publisher_;
-  std::unique_ptr<DebugPublisher> debug_start_planner_evaluation_table_publisher_ptr_;
+  agnocast::Publisher<AvoidanceDebugMsgArray>::SharedPtr debug_avoidance_msg_array_publisher_;
+  agnocast::Publisher<MarkerArray>::SharedPtr debug_turn_signal_info_publisher_;
+  std::unique_ptr<AgnocastDebugPublisher> debug_start_planner_evaluation_table_publisher_ptr_;
 
   /**
    * @brief publish reroute availability
@@ -234,9 +220,6 @@ private:
     const std::shared_ptr<PathWithLaneId> & path_candidate_ptr, const bool is_ready,
     const std::shared_ptr<PlannerData> & planner_data);
 
-  std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
-
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
 };
 }  // namespace autoware::behavior_path_planner
 

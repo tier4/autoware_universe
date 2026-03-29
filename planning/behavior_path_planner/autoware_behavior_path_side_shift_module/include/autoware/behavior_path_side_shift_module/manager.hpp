@@ -18,6 +18,7 @@
 #include "autoware/behavior_path_planner_common/interface/scene_module_manager_interface.hpp"
 #include "autoware/behavior_path_side_shift_module/scene.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -33,7 +34,7 @@ class SideShiftModuleManager : public SceneModuleManagerInterface
 public:
   SideShiftModuleManager() : SceneModuleManagerInterface{"side_shift"} {}
 
-  void init(rclcpp::Node * node) override;
+  void init(agnocast::Node * node) override;
 
   std::unique_ptr<SceneModuleInterface> createNewSceneModuleInstance() override
   {

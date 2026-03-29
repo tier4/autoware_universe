@@ -20,6 +20,7 @@
 #include "autoware/behavior_path_side_shift_module/data_structs.hpp"
 
 #include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <tier4_planning_msgs/msg/lateral_offset.hpp>
@@ -41,7 +42,7 @@ class SideShiftModule : public SceneModuleInterface
 {
 public:
   SideShiftModule(
-    const std::string & name, rclcpp::Node & node,
+    const std::string & name, agnocast::Node & node,
     const std::shared_ptr<SideShiftParameters> & parameters,
     const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
     std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &

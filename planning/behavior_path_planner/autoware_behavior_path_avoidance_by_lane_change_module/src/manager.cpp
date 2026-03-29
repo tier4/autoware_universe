@@ -30,7 +30,7 @@ namespace autoware::behavior_path_planner
 using autoware::behavior_path_planner::getParameter;
 using autoware::behavior_path_planner::ObjectParameter;
 
-void AvoidanceByLaneChangeModuleManager::init(rclcpp::Node * node)
+void AvoidanceByLaneChangeModuleManager::init(agnocast::Node * node)
 {
   using autoware_perception_msgs::msg::ObjectClassification;
   using autoware_utils::get_or_declare_parameter;

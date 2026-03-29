@@ -19,6 +19,7 @@
 #include "autoware/behavior_path_planner_common/interface/scene_module_manager_interface.hpp"
 #include "autoware/route_handler/route_handler.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -39,16 +40,16 @@ public:
   {
   }
 
-  void init(rclcpp::Node * node) override;
+  void init(agnocast::Node * node) override;
 
   std::unique_ptr<SceneModuleInterface> createNewSceneModuleInstance() override;
 
   void updateModuleParams(const std::vector<rclcpp::Parameter> & parameters) override;
 
-  static LCParamPtr set_params(rclcpp::Node * node, const std::string & node_name);
+  static LCParamPtr set_params(agnocast::Node * node, const std::string & node_name);
 
 protected:
-  void initParams(rclcpp::Node * node);
+  void initParams(agnocast::Node * node);
 
   std::shared_ptr<LaneChangeParameters> parameters_;
 

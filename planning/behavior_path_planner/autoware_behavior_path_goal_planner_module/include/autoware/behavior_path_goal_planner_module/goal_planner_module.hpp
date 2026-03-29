@@ -24,6 +24,7 @@
 #include "autoware/behavior_path_goal_planner_module/thread_data.hpp"
 #include "autoware/behavior_path_planner_common/utils/parking_departure/common_module_data.hpp"
 #include "autoware/behavior_path_planner_common/utils/path_safety_checker/path_safety_checker_parameters.hpp"
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <autoware_vehicle_msgs/msg/hazard_lights_command.hpp>
@@ -161,7 +162,7 @@ class LaneParkingPlanner
 {
 public:
   LaneParkingPlanner(
-    rclcpp::Node & node, std::mutex & lane_parking_mutex,
+    agnocast::Node & node, std::mutex & lane_parking_mutex,
     const std::optional<LaneParkingRequest> & request, LaneParkingResponse & response,
     std::atomic<bool> & is_lane_parking_cb_running, const rclcpp::Logger & logger,
     const GoalPlannerParameters & parameters);
@@ -238,7 +239,7 @@ class GoalPlannerModule : public SceneModuleInterface
 {
 public:
   GoalPlannerModule(
-    const std::string & name, rclcpp::Node & node,
+    const std::string & name, agnocast::Node & node,
     const std::shared_ptr<GoalPlannerParameters> & parameters,
     const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
     std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
@@ -307,7 +308,7 @@ private:
   LaneChangeContext lane_change_ctx_{};
 
   // pre-generate lane parking paths in a separate thread
-  rclcpp::TimerBase::SharedPtr lane_parking_timer_;
+  agnocast::TimerBase::SharedPtr lane_parking_timer_;
   rclcpp::CallbackGroup::SharedPtr lane_parking_timer_cb_group_;
   std::atomic<bool> is_lane_parking_cb_running_;
   // NOTE: never access to following variables except in updateData()!!!
@@ -315,7 +316,7 @@ private:
   std::optional<LaneParkingRequest> lane_parking_request_;
   LaneParkingResponse lane_parking_response_;
   // generate freespace parking paths in a separate thread
-  rclcpp::TimerBase::SharedPtr freespace_parking_timer_;
+  agnocast::TimerBase::SharedPtr freespace_parking_timer_;
   rclcpp::CallbackGroup::SharedPtr freespace_parking_timer_cb_group_;
   std::atomic<bool> is_freespace_parking_cb_running_;
   std::mutex freespace_parking_mutex_;

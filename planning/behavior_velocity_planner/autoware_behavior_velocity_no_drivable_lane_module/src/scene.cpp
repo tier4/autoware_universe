@@ -31,7 +31,7 @@ NoDrivableLaneModule::NoDrivableLaneModule(
   const int64_t module_id, const int64_t lane_id, const PlannerParam & planner_param,
   const rclcpp::Logger logger, const rclcpp::Clock::SharedPtr clock,
   const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
-  const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+  const std::shared_ptr<PlanningFactorInterface>
     planning_factor_interface)
 : SceneModuleInterface(module_id, logger, clock, time_keeper, planning_factor_interface),
   lane_id_(lane_id),

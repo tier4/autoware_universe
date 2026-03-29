@@ -29,7 +29,7 @@ namespace autoware::behavior_velocity_planner
 using autoware_utils::get_or_declare_parameter;
 using lanelet::autoware::Crosswalk;
 
-WalkwayModuleManager::WalkwayModuleManager(rclcpp::Node & node)
+WalkwayModuleManager::WalkwayModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterface(node, getModuleName())
 {
   const std::string ns(WalkwayModuleManager::getModuleName());

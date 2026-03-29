@@ -32,7 +32,7 @@ namespace autoware::behavior_path_planner
 using autoware::freespace_planning_algorithms::AstarSearch;
 using autoware::freespace_planning_algorithms::RRTStar;
 
-FreespacePullOver::FreespacePullOver(rclcpp::Node & node, const GoalPlannerParameters & parameters)
+FreespacePullOver::FreespacePullOver(agnocast::Node & node, const GoalPlannerParameters & parameters)
 : PullOverPlannerBase{node, parameters},
   velocity_{parameters.freespace_parking_velocity},
   left_side_parking_{parameters.parking_policy == ParkingPolicy::LEFT_SIDE},

@@ -33,7 +33,7 @@ namespace autoware::behavior_velocity_planner
 using autoware_utils::get_or_declare_parameter;
 using lanelet::autoware::SpeedBump;
 
-SpeedBumpModuleManager::SpeedBumpModuleManager(rclcpp::Node & node)
+SpeedBumpModuleManager::SpeedBumpModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterface(node, getModuleName())
 {
   std::string ns(SpeedBumpModuleManager::getModuleName());

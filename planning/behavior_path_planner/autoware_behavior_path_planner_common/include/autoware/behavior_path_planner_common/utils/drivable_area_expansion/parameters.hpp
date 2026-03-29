@@ -100,41 +100,51 @@ struct DrivableAreaExpansionParameters
   autoware::vehicle_info_utils::VehicleInfo vehicle_info;
 
   DrivableAreaExpansionParameters() = default;
-  explicit DrivableAreaExpansionParameters(rclcpp::Node & node) { init(node); }
 
-  void init(rclcpp::Node & node)
+  template <typename NodeT>
+  explicit DrivableAreaExpansionParameters(NodeT & node)
+  {
+    init(node);
+  }
+
+  template <typename NodeT>
+  void init(NodeT & node)
   {
     drivable_area_right_bound_offset =
-      node.declare_parameter<double>(DRIVABLE_AREA_RIGHT_BOUND_OFFSET_PARAM);
+      node.template declare_parameter<double>(DRIVABLE_AREA_RIGHT_BOUND_OFFSET_PARAM);
     drivable_area_left_bound_offset =
-      node.declare_parameter<double>(DRIVABLE_AREA_LEFT_BOUND_OFFSET_PARAM);
+      node.template declare_parameter<double>(DRIVABLE_AREA_LEFT_BOUND_OFFSET_PARAM);
     drivable_area_types_to_skip =
-      node.declare_parameter<std::vector<std::string>>(DRIVABLE_AREA_TYPES_TO_SKIP_PARAM);
-    enabled = node.declare_parameter<bool>(ENABLED_PARAM);
-    max_expansion_distance = node.declare_parameter<double>(MAX_EXP_DIST_PARAM);
-    extra_front_overhang = node.declare_parameter<double>(EGO_EXTRA_FRONT_OVERHANG);
-    extra_wheelbase = node.declare_parameter<double>(EGO_EXTRA_WHEELBASE);
-    extra_width = node.declare_parameter<double>(EGO_EXTRA_WIDTH);
-    curvature_average_window = node.declare_parameter<int>(SMOOTHING_CURVATURE_WINDOW_PARAM);
-    max_bound_rate = node.declare_parameter<double>(SMOOTHING_MAX_BOUND_RATE_PARAM);
-    arc_length_range = node.declare_parameter<double>(SMOOTHING_ARC_LENGTH_RANGE_PARAM);
-    max_path_arc_length = node.declare_parameter<double>(MAX_PATH_ARC_LENGTH_PARAM);
-    resample_interval = node.declare_parameter<double>(RESAMPLE_INTERVAL_PARAM);
-    max_reuse_deviation = node.declare_parameter<double>(MAX_REUSE_DEVIATION_PARAM);
-    object_exclusion.exclude_static = node.declare_parameter<bool>(AVOID_STA_OBJECTS_PARAM);
-    object_exclusion.exclude_dynamic = node.declare_parameter<bool>(AVOID_DYN_OBJECTS_PARAM);
-    object_exclusion.stopped_obj_vel_th = node.declare_parameter<double>(STOPPED_OBJ_VEL_THRESH);
-    object_exclusion.front_offset = node.declare_parameter<double>(OBJECTS_SAFE_MARGIN_FRONT);
-    object_exclusion.rear_offset = node.declare_parameter<double>(OBJECTS_SAFE_MARGIN_REAR);
-    object_exclusion.left_offset = node.declare_parameter<double>(OBJECTS_SAFE_MARGIN_LEFT);
-    object_exclusion.right_offset = node.declare_parameter<double>(OBJECTS_SAFE_MARGIN_RIGHT);
+      node.template declare_parameter<std::vector<std::string>>(DRIVABLE_AREA_TYPES_TO_SKIP_PARAM);
+    enabled = node.template declare_parameter<bool>(ENABLED_PARAM);
+    max_expansion_distance = node.template declare_parameter<double>(MAX_EXP_DIST_PARAM);
+    extra_front_overhang = node.template declare_parameter<double>(EGO_EXTRA_FRONT_OVERHANG);
+    extra_wheelbase = node.template declare_parameter<double>(EGO_EXTRA_WHEELBASE);
+    extra_width = node.template declare_parameter<double>(EGO_EXTRA_WIDTH);
+    curvature_average_window = node.template declare_parameter<int>(SMOOTHING_CURVATURE_WINDOW_PARAM);
+    max_bound_rate = node.template declare_parameter<double>(SMOOTHING_MAX_BOUND_RATE_PARAM);
+    arc_length_range = node.template declare_parameter<double>(SMOOTHING_ARC_LENGTH_RANGE_PARAM);
+    max_path_arc_length = node.template declare_parameter<double>(MAX_PATH_ARC_LENGTH_PARAM);
+    resample_interval = node.template declare_parameter<double>(RESAMPLE_INTERVAL_PARAM);
+    max_reuse_deviation = node.template declare_parameter<double>(MAX_REUSE_DEVIATION_PARAM);
+    object_exclusion.exclude_static = node.template declare_parameter<bool>(AVOID_STA_OBJECTS_PARAM);
+    object_exclusion.exclude_dynamic = node.template declare_parameter<bool>(AVOID_DYN_OBJECTS_PARAM);
+    object_exclusion.stopped_obj_vel_th =
+      node.template declare_parameter<double>(STOPPED_OBJ_VEL_THRESH);
+    object_exclusion.front_offset =
+      node.template declare_parameter<double>(OBJECTS_SAFE_MARGIN_FRONT);
+    object_exclusion.rear_offset = node.template declare_parameter<double>(OBJECTS_SAFE_MARGIN_REAR);
+    object_exclusion.left_offset = node.template declare_parameter<double>(OBJECTS_SAFE_MARGIN_LEFT);
+    object_exclusion.right_offset =
+      node.template declare_parameter<double>(OBJECTS_SAFE_MARGIN_RIGHT);
     avoid_linestring_types =
-      node.declare_parameter<std::vector<std::string>>(AVOID_LINESTRING_TYPES_PARAM);
-    avoid_linestring_dist = node.declare_parameter<double>(AVOID_LINESTRING_DIST_PARAM);
-    min_bound_interval = node.declare_parameter<double>(MIN_BOUND_INTERVAL);
-    print_runtime = node.declare_parameter<bool>(PRINT_RUNTIME_PARAM);
+      node.template declare_parameter<std::vector<std::string>>(AVOID_LINESTRING_TYPES_PARAM);
+    avoid_linestring_dist = node.template declare_parameter<double>(AVOID_LINESTRING_DIST_PARAM);
+    min_bound_interval = node.template declare_parameter<double>(MIN_BOUND_INTERVAL);
+    print_runtime = node.template declare_parameter<bool>(PRINT_RUNTIME_PARAM);
 
-    vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo();
+    vehicle_info =
+      autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<NodeT>(node).getVehicleInfo();
   }
 };
 

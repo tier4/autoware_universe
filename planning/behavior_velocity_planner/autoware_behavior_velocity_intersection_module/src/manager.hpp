@@ -24,6 +24,8 @@
 #include <autoware/behavior_velocity_rtc_interface/scene_module_interface_with_rtc.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <agnocast/agnocast.hpp>
+
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <std_msgs/msg/string.hpp>
 
@@ -37,7 +39,7 @@ namespace autoware::behavior_velocity_planner
 class IntersectionModuleManager : public SceneModuleManagerInterfaceWithRTC
 {
 public:
-  explicit IntersectionModuleManager(rclcpp::Node & node);
+  explicit IntersectionModuleManager(agnocast::Node & node);
 
   const char * getModuleName() override { return "intersection"; }
 
@@ -71,18 +73,18 @@ private:
   void deleteExpiredModules(
     const autoware_internal_planning_msgs::msg::PathWithLaneId & path) override;
 
-  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr decision_state_pub_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::TrafficLightGroup>::SharedPtr
+  agnocast::Publisher<std_msgs::msg::String>::SharedPtr decision_state_pub_;
+  agnocast::Publisher<autoware_perception_msgs::msg::TrafficLightGroup>::SharedPtr
     tl_observation_pub_;
 
-  std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+  std::shared_ptr<PlanningFactorInterface>
     planning_factor_interface_for_occlusion_;
 };
 
 class MergeFromPrivateModuleManager : public SceneModuleManagerInterface<>
 {
 public:
-  explicit MergeFromPrivateModuleManager(rclcpp::Node & node);
+  explicit MergeFromPrivateModuleManager(agnocast::Node & node);
 
   const char * getModuleName() override { return "merge_from_private"; }
 

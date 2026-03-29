@@ -34,9 +34,9 @@ using tier4_planning_msgs::msg::PathChangeModuleId;
 using DebugStringMsg = autoware_internal_debug_msgs::msg::StringStamped;
 
 BehaviorPathPlannerNode::BehaviorPathPlannerNode(const rclcpp::NodeOptions & node_options)
-: Node("behavior_path_planner", node_options),
+: agnocast::Node("behavior_path_planner", node_options),
   planning_factor_interface_{
-    std::make_unique<PlanningFactorInterface>(this, "behavior_path_planner")}
+    std::make_unique<PlanningFactorInterfaceTemplate<agnocast::Node>>(this, "behavior_path_planner")}
 {
   using std::placeholders::_1;
   using std::chrono_literals::operator""ms;
@@ -62,7 +62,7 @@ BehaviorPathPlannerNode::BehaviorPathPlannerNode(const rclcpp::NodeOptions & nod
     create_publisher<AvoidanceDebugMsgArray>("~/debug/avoidance_debug_message_array", 1);
 
   debug_start_planner_evaluation_table_publisher_ptr_ =
-    std::make_unique<DebugPublisher>(this, "~/debug/start_planner_evaluation_table");
+    std::make_unique<AgnocastDebugPublisher>(this, "~/debug/start_planner_evaluation_table");
 
   debug_turn_signal_info_publisher_ = create_publisher<MarkerArray>("~/debug/turn_signal_info", 1);
 
@@ -122,22 +122,36 @@ BehaviorPathPlannerNode::BehaviorPathPlannerNode(const rclcpp::NodeOptions & nod
   }
 
   // Agnocast polling subscribers
+  route_subscriber_ =
+    this->create_subscription<LaneletRoute>("~/input/route", rclcpp::QoS{1}.transient_local());
+  vector_map_subscriber_ =
+    this->create_subscription<LaneletMapBin>("~/input/vector_map", rclcpp::QoS{1}.transient_local());
+  velocity_subscriber_ = this->create_subscription<Odometry>("~/input/odometry", rclcpp::QoS{1});
+  acceleration_subscriber_ =
+    this->create_subscription<AccelWithCovarianceStamped>("~/input/accel", rclcpp::QoS{1});
+  scenario_subscriber_ = this->create_subscription<Scenario>("~/input/scenario", rclcpp::QoS{1});
   perception_subscriber_ =
-    std::make_shared<agnocast::PollingSubscriber<PredictedObjects>>(this, "~/input/perception");
+    this->create_subscription<PredictedObjects>("~/input/perception", rclcpp::QoS{1});
   occupancy_grid_subscriber_ =
-    std::make_shared<agnocast::PollingSubscriber<OccupancyGrid>>(
-      this, "~/input/occupancy_grid_map");
+    this->create_subscription<OccupancyGrid>("~/input/occupancy_grid_map", rclcpp::QoS{1});
+  costmap_subscriber_ = this->create_subscription<OccupancyGrid>("~/input/costmap", rclcpp::QoS{1});
+  traffic_signals_subscriber_ =
+    this->create_subscription<TrafficLightGroupArray>("~/input/traffic_signals", rclcpp::QoS{1});
+  lateral_offset_subscriber_ =
+    this->create_subscription<LateralOffset>("~/input/lateral_offset", rclcpp::QoS{1});
+  operation_mode_subscriber_ = this->create_subscription<OperationModeState>(
+    "/system/operation_mode/state", rclcpp::QoS{1}.transient_local());
+  external_limit_max_velocity_subscriber_ =
+    this->create_subscription<autoware_internal_planning_msgs::msg::VelocityLimit>(
+      "/planning/scenario_planning/max_velocity", rclcpp::QoS{1});
 
   // Start timer
   {
     const auto planning_hz = declare_parameter<double>("planning_hz");
     const auto period_ns = rclcpp::Rate(planning_hz).period();
-    timer_ = rclcpp::create_timer(
-      this, get_clock(), period_ns, std::bind(&BehaviorPathPlannerNode::run, this));
+    timer_ =
+      this->create_timer(period_ns, std::bind(&BehaviorPathPlannerNode::run, this));
   }
-
-  logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 }
 
 std::vector<std::string> BehaviorPathPlannerNode::getWaitingApprovalModules()
@@ -168,43 +182,43 @@ void BehaviorPathPlannerNode::takeData()
 {
   // route
   {
-    const auto msg = route_subscriber_.take_data();
+    const auto msg = route_subscriber_->take_data();
     if (msg) {
       if (msg->segments.empty()) {
         RCLCPP_ERROR(get_logger(), "input route is empty. ignored");
       } else {
-        route_ptr_ = msg;
+        route_ptr_ = std::make_shared<LaneletRoute>(*msg);
         has_received_route_ = true;
       }
     }
   }
   // map
   {
-    const auto msg = vector_map_subscriber_.take_data();
+    const auto msg = vector_map_subscriber_->take_data();
     if (msg) {
-      map_ptr_ = msg;
+      map_ptr_ = std::make_shared<LaneletMapBin>(*msg);
       has_received_map_ = true;
     }
   }
   // velocity
   {
-    const auto msg = velocity_subscriber_.take_data();
+    const auto msg = velocity_subscriber_->take_data();
     if (msg) {
-      planner_data_->self_odometry = msg;
+      planner_data_->self_odometry = std::make_shared<Odometry>(*msg);
     }
   }
   // acceleration
   {
-    const auto msg = acceleration_subscriber_.take_data();
+    const auto msg = acceleration_subscriber_->take_data();
     if (msg) {
-      planner_data_->self_acceleration = msg;
+      planner_data_->self_acceleration = std::make_shared<AccelWithCovarianceStamped>(*msg);
     }
   }
   // scenario
   {
-    const auto msg = scenario_subscriber_.take_data();
+    const auto msg = scenario_subscriber_->take_data();
     if (msg) {
-      current_scenario_ = msg;
+      current_scenario_ = std::make_shared<Scenario>(*msg);
     }
   }
   // perception
@@ -223,37 +237,38 @@ void BehaviorPathPlannerNode::takeData()
   }
   // costmap
   {
-    const auto msg = costmap_subscriber_.take_data();
+    const auto msg = costmap_subscriber_->take_data();
     if (msg) {
-      planner_data_->costmap = msg;
+      planner_data_->costmap = std::make_shared<OccupancyGrid>(*msg);
     }
   }
   // traffic_signal
   {
-    const auto msg = traffic_signals_subscriber_.take_data();
+    const auto msg = traffic_signals_subscriber_->take_data();
     if (msg) {
-      onTrafficSignals(msg);
+      onTrafficSignals(std::make_shared<TrafficLightGroupArray>(*msg));
     }
   }
   // lateral_offset
   {
-    const auto msg = lateral_offset_subscriber_.take_data();
+    const auto msg = lateral_offset_subscriber_->take_data();
     if (msg) {
-      onLateralOffset(msg);
+      onLateralOffset(std::make_shared<LateralOffset>(*msg));
     }
   }
   // operation_mode
   {
-    const auto msg = operation_mode_subscriber_.take_data();
+    const auto msg = operation_mode_subscriber_->take_data();
     if (msg) {
-      planner_data_->operation_mode = msg;
+      planner_data_->operation_mode = std::make_shared<OperationModeState>(*msg);
     }
   }
   // external_velocity_limiter
   {
-    const auto msg = external_limit_max_velocity_subscriber_.take_data();
+    const auto msg = external_limit_max_velocity_subscriber_->take_data();
     if (msg) {
-      planner_data_->external_limit_max_velocity = msg;
+      planner_data_->external_limit_max_velocity =
+        std::make_shared<autoware_internal_planning_msgs::msg::VelocityLimit>(*msg);
     }
   }
 }
@@ -406,8 +421,9 @@ void BehaviorPathPlannerNode::run()
         planner_data_->parameters.input_path_interval);
 
     if (!path->points.empty()) {
-      path_publisher_->publish(*path);
-      published_time_publisher_->publish_if_subscribed(path_publisher_, path->header.stamp);
+      auto loaned_path = path_publisher_->borrow_loaned_message();
+      *loaned_path = *path;
+      path_publisher_->publish(std::move(loaned_path));
     } else {
       RCLCPP_ERROR_THROTTLE(
         get_logger(), *get_clock(), 5000, "behavior path output is empty! Stop publish.");
@@ -431,7 +447,9 @@ void BehaviorPathPlannerNode::run()
     PoseWithUuidStamped modified_goal = *(output.modified_goal);
     modified_goal.header.stamp = path->header.stamp;
     planner_data_->prev_modified_goal = modified_goal;
-    modified_goal_publisher_->publish(modified_goal);
+    auto loaned_modified_goal = modified_goal_publisher_->borrow_loaned_message();
+    *loaned_modified_goal = modified_goal;
+    modified_goal_publisher_->publish(std::move(loaned_modified_goal));
   }
 
   planner_data_->prev_route_id = planner_data_->route_handler->getRouteUuid();
@@ -463,8 +481,12 @@ void BehaviorPathPlannerNode::computeTurnSignal(
   }
   turn_signal.stamp = get_clock()->now();
   hazard_signal.stamp = get_clock()->now();
-  turn_signal_publisher_->publish(turn_signal);
-  hazard_signal_publisher_->publish(hazard_signal);
+  auto loaned_turn_signal = turn_signal_publisher_->borrow_loaned_message();
+  *loaned_turn_signal = turn_signal;
+  turn_signal_publisher_->publish(std::move(loaned_turn_signal));
+  auto loaned_hazard_signal = hazard_signal_publisher_->borrow_loaned_message();
+  *loaned_hazard_signal = hazard_signal;
+  hazard_signal_publisher_->publish(std::move(loaned_hazard_signal));
 
   publish_turn_signal_debug_data(debug_data);
   publish_steering_factor(planner_data, turn_signal);
@@ -507,7 +529,9 @@ void BehaviorPathPlannerNode::publish_reroute_availability() const
     is_reroute_available.availability = true;
   }
 
-  reroute_availability_publisher_->publish(is_reroute_available);
+  auto loaned_reroute = reroute_availability_publisher_->borrow_loaned_message();
+  *loaned_reroute = is_reroute_available;
+  reroute_availability_publisher_->publish(std::move(loaned_reroute));
 }
 
 void BehaviorPathPlannerNode::publish_turn_signal_debug_data(const TurnSignalDebugData & debug_data)
@@ -578,7 +602,9 @@ void BehaviorPathPlannerNode::publish_turn_signal_debug_data(const TurnSignalDeb
     marker_array.markers.push_back(required_end_marker);
   }
 
-  debug_turn_signal_info_publisher_->publish(marker_array);
+  auto loaned_debug_markers = debug_turn_signal_info_publisher_->borrow_loaned_message();
+  *loaned_debug_markers = marker_array;
+  debug_turn_signal_info_publisher_->publish(std::move(loaned_debug_markers));
 }
 
 void BehaviorPathPlannerNode::publish_bounds(const PathWithLaneId & path)
@@ -608,10 +634,10 @@ void BehaviorPathPlannerNode::publish_bounds(const PathWithLaneId & path)
     right_marker.points.push_back(rb);
   }
 
-  MarkerArray msg;
-  msg.markers.push_back(left_marker);
-  msg.markers.push_back(right_marker);
-  bound_publisher_->publish(msg);
+  auto loaned_bound_msg = bound_publisher_->borrow_loaned_message();
+  loaned_bound_msg->markers.push_back(left_marker);
+  loaned_bound_msg->markers.push_back(right_marker);
+  bound_publisher_->publish(std::move(loaned_bound_msg));
 }
 
 void BehaviorPathPlannerNode::publishSceneModuleDebugMsg(
@@ -619,7 +645,9 @@ void BehaviorPathPlannerNode::publishSceneModuleDebugMsg(
 {
   const auto avoidance_debug_message = debug_messages_data_ptr->getAvoidanceModuleDebugMsg();
   if (avoidance_debug_message) {
-    debug_avoidance_msg_array_publisher_->publish(*avoidance_debug_message);
+    auto loaned_avoidance = debug_avoidance_msg_array_publisher_->borrow_loaned_message();
+    *loaned_avoidance = *avoidance_debug_message;
+    debug_avoidance_msg_array_publisher_->publish(std::move(loaned_avoidance));
   }
   const auto start_planner_debug_message = debug_messages_data_ptr->getStartPlannerModuleDebugMsg();
   if (start_planner_debug_message) {
@@ -638,8 +666,10 @@ void BehaviorPathPlannerNode::publishPathCandidate(
     }
 
     if (manager->getSceneModuleObservers().empty()) {
-      path_candidate_publishers_.at(manager->name())
-        ->publish(convertToPath(nullptr, false, planner_data));
+      auto & pub = path_candidate_publishers_.at(manager->name());
+      auto loaned = pub->borrow_loaned_message();
+      *loaned = convertToPath(nullptr, false, planner_data);
+      pub->publish(std::move(loaned));
       continue;
     }
 
@@ -657,7 +687,10 @@ void BehaviorPathPlannerNode::publishPathCandidate(
           observer.lock()->getPathCandidate(), observer.lock()->isExecutionReady(), planner_data);
       });
 
-      path_candidate_publishers_.at(observer.lock()->name())->publish(candidate_path);
+      auto & pub = path_candidate_publishers_.at(observer.lock()->name());
+      auto loaned = pub->borrow_loaned_message();
+      *loaned = candidate_path;
+      pub->publish(std::move(loaned));
     }
   }
 }
@@ -672,8 +705,10 @@ void BehaviorPathPlannerNode::publishPathReference(
     }
 
     if (manager->getSceneModuleObservers().empty()) {
-      path_reference_publishers_.at(manager->name())
-        ->publish(convertToPath(nullptr, false, planner_data));
+      auto & pub = path_reference_publishers_.at(manager->name());
+      auto loaned = pub->borrow_loaned_message();
+      *loaned = convertToPath(nullptr, false, planner_data);
+      pub->publish(std::move(loaned));
       continue;
     }
 
@@ -681,8 +716,10 @@ void BehaviorPathPlannerNode::publishPathReference(
       if (observer.expired()) {
         continue;
       }
-      path_reference_publishers_.at(observer.lock()->name())
-        ->publish(convertToPath(observer.lock()->getPathReference(), true, planner_data));
+      auto & pub = path_reference_publishers_.at(observer.lock()->name());
+      auto loaned = pub->borrow_loaned_message();
+      *loaned = convertToPath(observer.lock()->getPathReference(), true, planner_data);
+      pub->publish(std::move(loaned));
     }
   }
 }

@@ -27,7 +27,7 @@
 namespace autoware::behavior_path_planner
 {
 GeometricPullOver::GeometricPullOver(
-  rclcpp::Node & node, const GoalPlannerParameters & parameters, const bool is_forward)
+  agnocast::Node & node, const GoalPlannerParameters & parameters, const bool is_forward)
 : PullOverPlannerBase{node, parameters},
   parallel_parking_parameters_{parameters.parallel_parking_parameters},
   boundary_departure_checker_{[&]() {

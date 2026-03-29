@@ -33,7 +33,7 @@ namespace autoware::behavior_velocity_planner
 class TrafficLightModuleManager : public SceneModuleManagerInterfaceWithRTC
 {
 public:
-  explicit TrafficLightModuleManager(rclcpp::Node & node);
+  explicit TrafficLightModuleManager(agnocast::Node & node);
 
   const char * getModuleName() override { return "traffic_light"; }
 
@@ -69,7 +69,7 @@ private:
     const lanelet::TrafficLightConstPtr registered_element) const;
 
   // Debug
-  rclcpp::Publisher<autoware_perception_msgs::msg::TrafficLightGroup>::SharedPtr pub_tl_state_;
+  agnocast::Publisher<autoware_perception_msgs::msg::TrafficLightGroup>::SharedPtr pub_tl_state_;
 
   std::optional<int> nearest_ref_stop_path_point_index_;
 };

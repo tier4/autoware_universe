@@ -19,6 +19,7 @@
 #include "autoware/behavior_path_start_planner_module/pull_out_planner_base.hpp"
 #include "autoware/behavior_path_start_planner_module/util.hpp"
 #include "autoware_utils/system/time_keeper.hpp"
+#include <agnocast/agnocast.hpp>
 
 #include <autoware/boundary_departure_checker/boundary_departure_checker.hpp>
 #include <autoware/route_handler/route_handler.hpp>
@@ -200,7 +201,7 @@ class ClothoidPullOut : public PullOutPlannerBase
 {
 public:
   explicit ClothoidPullOut(
-    rclcpp::Node & node, const StartPlannerParameters & parameters,
+    agnocast::Node & node, const StartPlannerParameters & parameters,
     std::shared_ptr<autoware_utils::TimeKeeper> time_keeper =
       std::make_shared<autoware_utils::TimeKeeper>());
 

@@ -19,6 +19,7 @@
 #include "autoware/behavior_path_start_planner_module/pull_out_path.hpp"
 #include "autoware/behavior_path_start_planner_module/pull_out_planner_base.hpp"
 #include "autoware_utils/system/time_keeper.hpp"
+#include <agnocast/agnocast.hpp>
 
 #include <autoware/boundary_departure_checker/boundary_departure_checker.hpp>
 
@@ -32,7 +33,7 @@ class GeometricPullOut : public PullOutPlannerBase
 {
 public:
   explicit GeometricPullOut(
-    rclcpp::Node & node, const StartPlannerParameters & parameters,
+    agnocast::Node & node, const StartPlannerParameters & parameters,
     std::shared_ptr<autoware_utils::TimeKeeper> time_keeper =
       std::make_shared<autoware_utils::TimeKeeper>());
 

@@ -29,7 +29,7 @@
 namespace autoware::behavior_velocity_planner
 {
 
-BlindSpotModuleManager::BlindSpotModuleManager(rclcpp::Node & node)
+BlindSpotModuleManager::BlindSpotModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterfaceWithRTC(
     node, getModuleName(), getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc"))
 {

@@ -17,6 +17,7 @@
 #include "autoware/behavior_path_goal_planner_module/goal_candidate.hpp"
 #include "autoware/behavior_path_goal_planner_module/goal_planner_parameters.hpp"
 #include "autoware/behavior_path_planner_common/data_manager.hpp"
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -125,8 +126,8 @@ private:
 class PullOverPlannerBase
 {
 public:
-  PullOverPlannerBase(rclcpp::Node & node, const GoalPlannerParameters & parameters)
-  : vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo()},
+  PullOverPlannerBase(agnocast::Node & node, const GoalPlannerParameters & parameters)
+  : vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo()},
     vehicle_footprint_{vehicle_info_.createFootprint()},
     parameters_{parameters}
   {

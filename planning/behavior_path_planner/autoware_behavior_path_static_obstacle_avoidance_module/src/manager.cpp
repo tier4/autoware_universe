@@ -26,7 +26,7 @@
 
 namespace autoware::behavior_path_planner
 {
-void StaticObstacleAvoidanceModuleManager::init(rclcpp::Node * node)
+void StaticObstacleAvoidanceModuleManager::init(agnocast::Node * node)
 {
   using autoware_perception_msgs::msg::ObjectClassification;
   using autoware_utils::get_or_declare_parameter;

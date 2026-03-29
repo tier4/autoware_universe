@@ -76,7 +76,7 @@ lanelet::BasicLineString3d toLineString3d(const std::vector<Point> & bound)
 }  // namespace
 
 StaticObstacleAvoidanceModule::StaticObstacleAvoidanceModule(
-  const std::string & name, rclcpp::Node & node, std::shared_ptr<AvoidanceParameters> parameters,
+  const std::string & name, agnocast::Node & node, std::shared_ptr<AvoidanceParameters> parameters,
   const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
   std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
     objects_of_interest_marker_interface_ptr_map,

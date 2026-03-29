@@ -17,13 +17,15 @@
 
 #include <rclcpp/node.hpp>
 
+#include <agnocast/agnocast.hpp>
+
 #include <string>
 
 namespace autoware::behavior_velocity_planner
 {
 struct PlannerParam
 {
-  static PlannerParam init(rclcpp::Node & node, const std::string & ns);
+  static PlannerParam init(agnocast::Node & node, const std::string & ns);
   double backward_attention_length{};
   double ttc_start_margin{};
   double ttc_end_margin{};

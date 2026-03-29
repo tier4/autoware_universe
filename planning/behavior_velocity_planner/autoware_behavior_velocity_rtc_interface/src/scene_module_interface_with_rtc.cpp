@@ -29,7 +29,7 @@ namespace autoware::behavior_velocity_planner
 SceneModuleInterfaceWithRTC::SceneModuleInterfaceWithRTC(
   const int64_t module_id, rclcpp::Logger logger, rclcpp::Clock::SharedPtr clock,
   const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
-  const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+  const std::shared_ptr<PlanningFactorInterface>
     planning_factor_interface)
 : SceneModuleInterface(module_id, logger, clock, time_keeper, planning_factor_interface),
   activated_(false),
@@ -39,7 +39,7 @@ SceneModuleInterfaceWithRTC::SceneModuleInterfaceWithRTC(
 }
 
 SceneModuleManagerInterfaceWithRTC::SceneModuleManagerInterfaceWithRTC(
-  rclcpp::Node & node, const char * module_name, const bool enable_rtc)
+  agnocast::Node & node, const char * module_name, const bool enable_rtc)
 : SceneModuleManagerInterface<SceneModuleInterfaceWithRTC>(node, module_name),
   rtc_interface_(&node, module_name, enable_rtc),
   objects_of_interest_marker_interface_(&node, module_name)

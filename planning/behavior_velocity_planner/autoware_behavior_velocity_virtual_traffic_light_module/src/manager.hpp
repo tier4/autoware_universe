@@ -20,8 +20,9 @@
 #include <autoware/behavior_velocity_planner_common/plugin_interface.hpp>
 #include <autoware/behavior_velocity_planner_common/plugin_wrapper.hpp>
 #include <autoware/behavior_velocity_planner_common/scene_module_interface.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
+
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <tier4_v2x_msgs/msg/infrastructure_command_array.hpp>
@@ -36,7 +37,7 @@ class VirtualTrafficLightModuleManager
 : public SceneModuleManagerInterface<VirtualTrafficLightModule>
 {
 public:
-  explicit VirtualTrafficLightModuleManager(rclcpp::Node & node);
+  explicit VirtualTrafficLightModuleManager(agnocast::Node & node);
 
   const char * getModuleName() override { return "virtual_traffic_light"; }
 
@@ -55,11 +56,10 @@ private:
   std::function<bool(const std::shared_ptr<VirtualTrafficLightModule> &)> getModuleExpiredFunction(
     const autoware_internal_planning_msgs::msg::PathWithLaneId & path) override;
 
-  autoware_utils::InterProcessPollingSubscriber<
-    tier4_v2x_msgs::msg::VirtualTrafficLightStateArray>::SharedPtr
+  agnocast::PollingSubscriber<tier4_v2x_msgs::msg::VirtualTrafficLightStateArray>::SharedPtr
     sub_virtual_traffic_light_states_;
 
-  rclcpp::Publisher<tier4_v2x_msgs::msg::InfrastructureCommandArray>::SharedPtr
+  agnocast::Publisher<tier4_v2x_msgs::msg::InfrastructureCommandArray>::SharedPtr
     pub_infrastructure_commands_;
 };
 

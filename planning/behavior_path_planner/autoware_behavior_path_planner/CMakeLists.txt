@@ -5,13 +5,13 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(magic_enum CONFIG REQUIRED)
 
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/planner_manager.cpp
   src/behavior_path_planner_node.cpp
-  src/test_utils.cpp
 )
 
 target_include_directories(${PROJECT_NAME}_lib SYSTEM PUBLIC
@@ -25,6 +25,12 @@ target_link_libraries(${PROJECT_NAME}_lib
 rclcpp_components_register_node(${PROJECT_NAME}_lib
   PLUGIN "autoware::behavior_path_planner::BehaviorPathPlannerNode"
   EXECUTABLE ${PROJECT_NAME}_node
+)
+
+agnocast_components_register_node(${PROJECT_NAME}_lib
+  PLUGIN "autoware::behavior_path_planner::BehaviorPathPlannerNode"
+  EXECUTABLE ${PROJECT_NAME}_agnocast_node
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 if(BUILD_TESTING)

@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__RTC_INTERFACE__RTC_INTERFACE_HPP_
 #define AUTOWARE__RTC_INTERFACE__RTC_INTERFACE_HPP_
 
+#include <agnocast/agnocast.hpp>
+
 #include "rclcpp/rclcpp.hpp"
 
 #include "tier4_rtc_msgs/msg/auto_mode_status.hpp"
@@ -50,6 +52,7 @@ using unique_identifier_msgs::msg::UUID;
 class RTCInterface
 {
 public:
+  RTCInterface(agnocast::Node * node, const std::string & name, const bool enable_rtc = true);
   RTCInterface(rclcpp::Node * node, const std::string & name, const bool enable_rtc = true);
   void publishCooperateStatus(const rclcpp::Time & stamp);
   /// @brief update the cooperate status of the module identified by the given UUID
@@ -81,10 +84,11 @@ public:
 
 private:
   void onCooperateCommandService(
-    const CooperateCommands::Request::SharedPtr request,
-    const CooperateCommands::Response::SharedPtr responses);
+    const agnocast::ipc_shared_ptr<agnocast::Service<CooperateCommands>::RequestT> & request,
+    agnocast::ipc_shared_ptr<agnocast::Service<CooperateCommands>::ResponseT> & responses);
   void onAutoModeService(
-    const AutoMode::Request::SharedPtr request, const AutoMode::Response::SharedPtr response);
+    const agnocast::ipc_shared_ptr<agnocast::Service<AutoMode>::RequestT> & request,
+    agnocast::ipc_shared_ptr<agnocast::Service<AutoMode>::ResponseT> & response);
   void onTimer();
   std::vector<CooperateResponse> validateCooperateCommands(
     const std::vector<CooperateCommand> & commands);
@@ -93,12 +97,12 @@ private:
   rclcpp::Logger getLogger() const;
   bool isLocked() const;
 
-  rclcpp::Publisher<CooperateStatusArray>::SharedPtr pub_statuses_;
-  rclcpp::Publisher<AutoModeStatus>::SharedPtr pub_auto_mode_status_;
-  rclcpp::Service<CooperateCommands>::SharedPtr srv_commands_;
-  rclcpp::Service<AutoMode>::SharedPtr srv_auto_mode_;
+  agnocast::Publisher<CooperateStatusArray>::SharedPtr pub_statuses_;
+  agnocast::Publisher<AutoModeStatus>::SharedPtr pub_auto_mode_status_;
+  agnocast::Service<CooperateCommands>::SharedPtr srv_commands_;
+  agnocast::Service<AutoMode>::SharedPtr srv_auto_mode_;
   rclcpp::CallbackGroup::SharedPtr callback_group_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
   rclcpp::Clock::SharedPtr clock_;
   rclcpp::Logger logger_;
 

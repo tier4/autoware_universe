@@ -40,7 +40,7 @@ namespace autoware::behavior_path_planner
 using start_planner_utils::getPullOutLanes;
 
 ShiftPullOut::ShiftPullOut(
-  rclcpp::Node & node, const StartPlannerParameters & parameters,
+  agnocast::Node & node, const StartPlannerParameters & parameters,
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper)
 : PullOutPlannerBase{node, parameters, time_keeper}
 {

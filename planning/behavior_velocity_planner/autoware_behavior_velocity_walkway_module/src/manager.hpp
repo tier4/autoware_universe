@@ -38,7 +38,7 @@ using autoware_internal_planning_msgs::msg::PathWithLaneId;
 class WalkwayModuleManager : public SceneModuleManagerInterface<>
 {
 public:
-  explicit WalkwayModuleManager(rclcpp::Node & node);
+  explicit WalkwayModuleManager(agnocast::Node & node);
 
   const char * getModuleName() override { return "walkway"; }
 

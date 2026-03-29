@@ -41,7 +41,7 @@ class TemplateModuleManager
 : public autoware::behavior_velocity_planner::SceneModuleManagerInterface<>
 {
 public:
-  explicit TemplateModuleManager(rclcpp::Node & node);
+  explicit TemplateModuleManager(agnocast::Node & node);
 
   /**
    * @brief Get the name of the module.

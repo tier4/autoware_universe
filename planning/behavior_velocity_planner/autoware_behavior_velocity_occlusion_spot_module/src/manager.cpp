@@ -31,7 +31,7 @@ using autoware_utils::get_or_declare_parameter;
 using occlusion_spot_utils::DETECTION_METHOD;
 using occlusion_spot_utils::PASS_JUDGE;
 
-OcclusionSpotModuleManager::OcclusionSpotModuleManager(rclcpp::Node & node)
+OcclusionSpotModuleManager::OcclusionSpotModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterface(node, getModuleName())
 {
   const std::string ns(OcclusionSpotModuleManager::getModuleName());
@@ -114,7 +114,8 @@ OcclusionSpotModuleManager::OcclusionSpotModuleManager(rclcpp::Node & node)
   pp.grid.free_space_max = get_or_declare_parameter<int>(node, ns + ".grid.free_space_max");
   pp.grid.occupied_min = get_or_declare_parameter<int>(node, ns + ".grid.occupied_min");
 
-  const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo();
+  const auto vehicle_info =
+    autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo();
   pp.baselink_to_front = vehicle_info.max_longitudinal_offset_m;
   pp.wheel_tread = vehicle_info.wheel_tread_m;
   pp.right_overhang = vehicle_info.right_overhang_m;

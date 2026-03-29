@@ -38,7 +38,7 @@ namespace autoware::behavior_velocity_planner
 using autoware_utils::get_or_declare_parameter;
 using lanelet::autoware::VirtualTrafficLight;
 
-VirtualTrafficLightModuleManager::VirtualTrafficLightModuleManager(rclcpp::Node & node)
+VirtualTrafficLightModuleManager::VirtualTrafficLightModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterface(node, getModuleName())
 {
   const std::string ns(VirtualTrafficLightModuleManager::getModuleName());
@@ -56,9 +56,9 @@ VirtualTrafficLightModuleManager::VirtualTrafficLightModuleManager(rclcpp::Node 
       get_or_declare_parameter<bool>(node, ns + ".check_timeout_after_stop_line");
   }
 
-  sub_virtual_traffic_light_states_ = autoware_utils::InterProcessPollingSubscriber<
-    tier4_v2x_msgs::msg::VirtualTrafficLightStateArray>::
-    create_subscription(&node, "~/input/virtual_traffic_light_states");
+  sub_virtual_traffic_light_states_ =
+    std::make_shared<agnocast::PollingSubscriber<tier4_v2x_msgs::msg::VirtualTrafficLightStateArray>>(
+      &node, "~/input/virtual_traffic_light_states");
 
   pub_infrastructure_commands_ =
     node.create_publisher<tier4_v2x_msgs::msg::InfrastructureCommandArray>(
@@ -134,7 +134,11 @@ void VirtualTrafficLightModuleManager::modifyPathVelocity(
       infrastructure_command_array.commands.push_back(*command);
     }
   }
-  pub_infrastructure_commands_->publish(infrastructure_command_array);
+  {
+    auto loaned = pub_infrastructure_commands_->borrow_loaned_message();
+    *loaned = infrastructure_command_array;
+    pub_infrastructure_commands_->publish(std::move(loaned));
+  }
 }
 }  // namespace autoware::behavior_velocity_planner
 

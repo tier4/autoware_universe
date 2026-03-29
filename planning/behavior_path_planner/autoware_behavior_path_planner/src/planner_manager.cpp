@@ -35,42 +35,7 @@
 
 namespace autoware::behavior_path_planner
 {
-PlannerManager::PlannerManager(rclcpp::Node & node)
-: plugin_loader_(
-    "autoware_behavior_path_planner",
-    "autoware::behavior_path_planner::SceneModuleManagerInterface"),
-  logger_(node.get_logger().get_child("planner_manager")),
-  clock_(*node.get_clock()),
-  last_valid_reference_path_(std::nullopt)
-{
-  current_route_lanelet_ = std::make_shared<std::optional<lanelet::ConstLanelet>>(std::nullopt);
-  processing_time_.emplace("total_time", 0.0);
-  debug_publisher_ptr_ = std::make_unique<DebugPublisher>(&node, "~/debug");
-  state_publisher_ptr_ = std::make_unique<DebugPublisher>(&node, "~/debug");
-}
-
-void PlannerManager::launchScenePlugin(rclcpp::Node & node, const std::string & name)
-{
-  if (plugin_loader_.isClassAvailable(name)) {
-    const auto plugin = plugin_loader_.createSharedInstance(name);
-    plugin->init(&node);
-
-    // Check if the plugin is already registered.
-    for (const auto & running_plugin : manager_ptrs_) {
-      if (plugin->name() == running_plugin->name()) {
-        RCLCPP_WARN_STREAM(node.get_logger(), "The plugin '" << name << "' is already loaded.");
-        return;
-      }
-    }
-
-    // register
-    manager_ptrs_.push_back(plugin);
-    processing_time_.emplace(plugin->name(), 0.0);
-    RCLCPP_DEBUG_STREAM(node.get_logger(), "The scene plugin '" << name << "' is loaded.");
-  } else {
-    RCLCPP_ERROR_STREAM(node.get_logger(), "The scene plugin '" << name << "' is not available.");
-  }
-}
+// launchScenePlugin is now a template method defined in planner_manager.hpp
 
 void PlannerManager::configureModuleSlot(
   const std::vector<std::vector<std::string>> & slot_configuration)
@@ -297,6 +262,8 @@ BehaviorModuleOutput PlannerManager::getReferencePath(
 void PlannerManager::publishDebugRootReferencePath(
   const BehaviorModuleOutput & reference_path) const
 {
+  if (!debug_publisher_ptr_) return;
+
   using visualization_msgs::msg::Marker;
   MarkerArray array;
   Marker m = autoware_utils::create_default_marker(
@@ -406,13 +373,17 @@ void PlannerManager::print() const
                   << std::setw(21);
   }
 
-  state_publisher_ptr_->publish<DebugStringMsg>("internal_state", string_stream.str());
+  if (state_publisher_ptr_) {
+    state_publisher_ptr_->publish<DebugStringMsg>("internal_state", string_stream.str());
+  }
 
   RCLCPP_DEBUG_STREAM(logger_, string_stream.str());
 }
 
 void PlannerManager::publishProcessingTime() const
 {
+  if (!debug_publisher_ptr_) return;
+
   for (const auto & t : processing_time_) {
     std::string name = t.first + std::string("/processing_time_ms");
     debug_publisher_ptr_->publish<DebugDoubleMsg>(name, t.second);

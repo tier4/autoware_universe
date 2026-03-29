@@ -30,7 +30,7 @@
 
 namespace autoware::behavior_path_planner
 {
-ShiftPullOver::ShiftPullOver(rclcpp::Node & node, const GoalPlannerParameters & parameters)
+ShiftPullOver::ShiftPullOver(agnocast::Node & node, const GoalPlannerParameters & parameters)
 : PullOverPlannerBase{node, parameters},
   boundary_departure_checker_{[&]() {
     auto boundary_departure_checker_params = boundary_departure_checker::Param{};

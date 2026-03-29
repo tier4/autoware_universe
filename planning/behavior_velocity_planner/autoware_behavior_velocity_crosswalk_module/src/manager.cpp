@@ -30,7 +30,7 @@ namespace autoware::behavior_velocity_planner
 using autoware_utils::get_or_declare_parameter;
 using lanelet::autoware::Crosswalk;
 
-CrosswalkModuleManager::CrosswalkModuleManager(rclcpp::Node & node)
+CrosswalkModuleManager::CrosswalkModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterfaceWithRTC(
     node, getModuleName(), getEnableRTC(node, std::string(getModuleName()) + ".common.enable_rtc"))
 {

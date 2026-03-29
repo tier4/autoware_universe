@@ -20,6 +20,7 @@
 #include "autoware/behavior_path_planner_common/interface/scene_module_interface.hpp"
 #include "autoware_utils/ros/parameter.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/node.hpp>
 #include <rclcpp/parameter.hpp>
 #include <rclcpp/publisher.hpp>
@@ -55,7 +56,7 @@ public:
 
   virtual ~SceneModuleManagerInterface() = default;
 
-  virtual void init(rclcpp::Node * node) = 0;
+  virtual void init(agnocast::Node * node) = 0;
 
   void updateIdleModuleInstance();
 
@@ -143,7 +144,9 @@ public:
       m.lock()->resetWallPoses();
     }
 
-    pub_virtual_wall_->publish(markers);
+    auto loaned_virtual_wall = pub_virtual_wall_->borrow_loaned_message();
+    *loaned_virtual_wall = markers;
+    pub_virtual_wall_->publish(std::move(loaned_virtual_wall));
   }
 
   void publishMarker() const
@@ -186,9 +189,21 @@ public:
       append_marker_array(idle_module_ptr_->getDrivableLanesMarkers(), &drivable_lanes_markers);
     }
 
-    pub_info_marker_->publish(info_markers);
-    pub_debug_marker_->publish(debug_markers);
-    pub_drivable_lanes_->publish(drivable_lanes_markers);
+    {
+      auto loaned_info = pub_info_marker_->borrow_loaned_message();
+      *loaned_info = info_markers;
+      pub_info_marker_->publish(std::move(loaned_info));
+    }
+    {
+      auto loaned_debug = pub_debug_marker_->borrow_loaned_message();
+      *loaned_debug = debug_markers;
+      pub_debug_marker_->publish(std::move(loaned_debug));
+    }
+    {
+      auto loaned_drivable = pub_drivable_lanes_->borrow_loaned_message();
+      *loaned_drivable = drivable_lanes_markers;
+      pub_drivable_lanes_->publish(std::move(loaned_drivable));
+    }
   }
 
   bool exist(const SceneModulePtr & module_ptr) const
@@ -236,7 +251,10 @@ public:
       idle_module_ptr_.reset();
     }
 
-    pub_debug_marker_->publish(MarkerArray{});
+    {
+      auto loaned_debug = pub_debug_marker_->borrow_loaned_message();
+      pub_debug_marker_->publish(std::move(loaned_debug));
+    }
   }
 
   std::string name() const { return name_; }
@@ -247,22 +265,22 @@ public:
 
   virtual void updateModuleParams(const std::vector<rclcpp::Parameter> & parameters) = 0;
 
-  void initInterface(rclcpp::Node * node, const std::vector<std::string> & rtc_types);
+  void initInterface(agnocast::Node * node, const std::vector<std::string> & rtc_types);
 
 protected:
   virtual std::unique_ptr<SceneModuleInterface> createNewSceneModuleInstance() = 0;
 
-  rclcpp::Node * node_ = nullptr;
+  agnocast::Node * node_ = nullptr;
 
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_info_marker_;
+  agnocast::Publisher<MarkerArray>::SharedPtr pub_info_marker_;
 
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_debug_marker_;
+  agnocast::Publisher<MarkerArray>::SharedPtr pub_debug_marker_;
 
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_virtual_wall_;
+  agnocast::Publisher<MarkerArray>::SharedPtr pub_virtual_wall_;
 
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_drivable_lanes_;
+  agnocast::Publisher<MarkerArray>::SharedPtr pub_drivable_lanes_;
 
-  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr pub_processing_time_;
+  agnocast::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr pub_processing_time_;
 
   std::string name_;
 
@@ -272,11 +290,16 @@ protected:
 
   std::unique_ptr<SceneModuleInterface> idle_module_ptr_;
 
-  std::shared_ptr<PlanningFactorInterface> planning_factor_interface_;
+  std::shared_ptr<autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>>
+    planning_factor_interface_;
 
   std::unordered_map<std::string, std::shared_ptr<RTCInterface>> rtc_interface_ptr_map_;
 
-  std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>>
+  std::unordered_map<
+    std::string,
+    std::shared_ptr<
+      autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterfaceTemplate<
+        agnocast::Node>>>
     objects_of_interest_marker_interface_ptr_map_;
 
   ModuleConfigParameters config_;

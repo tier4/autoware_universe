@@ -173,7 +173,7 @@
   <let name="behavior_velocity_planner_launch_modules" value="$(eval &quot;'$(var behavior_velocity_planner_launch_modules)' + '$(var launch_module_list_end)'&quot;)"/>
 
   <!-- behavior_velocity_planner (standalone) -->
-  <node pkg="autoware_behavior_velocity_planner" exec="autoware_behavior_velocity_planner_node" name="behavior_velocity_planner" namespace="" output="both">
+  <node pkg="autoware_behavior_velocity_planner" exec="autoware_behavior_velocity_planner_agnocast_node" name="behavior_velocity_planner" namespace="" output="both">
     <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
     <remap from="~/input/path_with_lane_id" to="path_with_lane_id"/>
     <remap from="~/input/vector_map" to="$(var input_vector_map_topic_name)"/>
@@ -218,7 +218,7 @@
 
   <!-- behavior_path_planner (standalone) -->
   <group if="$(eval &quot;'$(var behavior_path_planner_type)' == 'behavior_path_planner'&quot;)">
-    <node pkg="autoware_behavior_path_planner" exec="autoware_behavior_path_planner_node" name="behavior_path_planner" namespace="" output="both">
+    <node pkg="autoware_behavior_path_planner" exec="autoware_behavior_path_planner_agnocast_node" name="behavior_path_planner" namespace="" output="both">
       <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
       <remap from="~/input/route" to="$(var input_route_topic_name)"/>
       <remap from="~/input/vector_map" to="$(var input_vector_map_topic_name)"/>

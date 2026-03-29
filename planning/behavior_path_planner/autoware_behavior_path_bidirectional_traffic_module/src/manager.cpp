@@ -23,7 +23,7 @@
 namespace autoware::behavior_path_planner
 {
 
-void BidirectionalTrafficModuleManager::init(rclcpp::Node * node)
+void BidirectionalTrafficModuleManager::init(agnocast::Node * node)
 {
   initInterface(node, {});
   parameters_ = std::make_shared<BidirectionalTrafficModuleParameters>();

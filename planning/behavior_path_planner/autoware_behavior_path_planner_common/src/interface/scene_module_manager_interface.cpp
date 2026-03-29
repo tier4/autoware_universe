@@ -21,7 +21,7 @@
 namespace autoware::behavior_path_planner
 {
 void SceneModuleManagerInterface::initInterface(
-  rclcpp::Node * node, const std::vector<std::string> & rtc_types)
+  agnocast::Node * node, const std::vector<std::string> & rtc_types)
 {
   using autoware_utils::get_or_declare_parameter;
 
@@ -50,7 +50,10 @@ void SceneModuleManagerInterface::initInterface(
     rtc_interface_ptr_map_.emplace(
       rtc_type, std::make_shared<RTCInterface>(node, rtc_interface_name, config_.enable_rtc));
     objects_of_interest_marker_interface_ptr_map_.emplace(
-      rtc_type, std::make_shared<ObjectsOfInterestMarkerInterface>(node, rtc_interface_name));
+      rtc_type,
+      std::make_shared<
+        autoware::objects_of_interest_marker_interface::ObjectsOfInterestMarkerInterfaceTemplate<
+          agnocast::Node>>(node, rtc_interface_name));
   }
 
   // init publisher
@@ -65,7 +68,9 @@ void SceneModuleManagerInterface::initInterface(
 
   // planning factor
   {
-    planning_factor_interface_ = std::make_shared<PlanningFactorInterface>(node, name_);
+    planning_factor_interface_ = std::make_shared<
+      autoware::planning_factor_interface::PlanningFactorInterfaceTemplate<agnocast::Node>>(
+      node, name_);
   }
 
   // misc

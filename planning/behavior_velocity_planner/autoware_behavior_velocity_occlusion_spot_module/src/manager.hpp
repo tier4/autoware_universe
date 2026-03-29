@@ -42,7 +42,7 @@ namespace autoware::behavior_velocity_planner
 class OcclusionSpotModuleManager : public SceneModuleManagerInterface<>
 {
 public:
-  explicit OcclusionSpotModuleManager(rclcpp::Node & node);
+  explicit OcclusionSpotModuleManager(agnocast::Node & node);
 
   const char * getModuleName() override { return "occlusion_spot"; }
 

@@ -27,6 +27,8 @@
 #include <autoware/motion_utils/marker/virtual_wall_marker_creator.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <agnocast/agnocast.hpp>
+
 #include <autoware_internal_debug_msgs/msg/float64_multi_array_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 
@@ -294,12 +296,12 @@ public:
   IntersectionModule(
     const int64_t module_id, const int64_t lane_id, std::shared_ptr<const PlannerData> planner_data,
     const PlannerParam & planner_param, const std::set<lanelet::Id> & associative_ids,
-    const std::string & turn_direction, const bool has_traffic_light, rclcpp::Node & node,
+    const std::string & turn_direction, const bool has_traffic_light, agnocast::Node & node,
     const rclcpp::Logger logger, const rclcpp::Clock::SharedPtr clock,
     const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
-    const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+    const std::shared_ptr<PlanningFactorInterface>
       planning_factor_interface,
-    const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+    const std::shared_ptr<PlanningFactorInterface>
       planning_factor_interface_for_occlusion);
 
   /**
@@ -344,7 +346,7 @@ private:
 
   autoware_internal_planning_msgs::msg::SafetyFactorArray safety_factor_array_;
 
-  const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+  const std::shared_ptr<PlanningFactorInterface>
     planning_factor_interface_for_occlusion_;
   /** @}*/
 
@@ -828,9 +830,9 @@ private:
 
   mutable DebugData debug_data_;
   mutable InternalDebugData internal_debug_data_{};
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64MultiArrayStamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64MultiArrayStamped>::SharedPtr
     ego_ttc_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64MultiArrayStamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64MultiArrayStamped>::SharedPtr
     object_ttc_pub_;
 };
 

@@ -23,6 +23,8 @@
 #include <autoware/behavior_velocity_rtc_interface/scene_module_interface_with_rtc.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <agnocast/agnocast.hpp>
+
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 
 #include <functional>
@@ -34,7 +36,7 @@ namespace autoware::behavior_velocity_planner
 class BlindSpotModuleManager : public SceneModuleManagerInterfaceWithRTC
 {
 public:
-  explicit BlindSpotModuleManager(rclcpp::Node & node);
+  explicit BlindSpotModuleManager(agnocast::Node & node);
 
   const char * getModuleName() override { return "blind_spot"; }
 
@@ -54,7 +56,7 @@ private:
   getModuleExpiredFunction(
     const autoware_internal_planning_msgs::msg::PathWithLaneId & path) override;
 
-  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr decision_state_pub_;
+  agnocast::Publisher<std_msgs::msg::String>::SharedPtr decision_state_pub_;
 };
 
 class BlindSpotModulePlugin : public PluginWrapper<BlindSpotModuleManager>

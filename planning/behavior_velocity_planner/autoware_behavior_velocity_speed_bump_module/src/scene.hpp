@@ -58,7 +58,7 @@ public:
     const lanelet::autoware::SpeedBump & speed_bump_reg_elem, const PlannerParam & planner_param,
     const rclcpp::Logger & logger, const rclcpp::Clock::SharedPtr clock,
     const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
-    const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+    const std::shared_ptr<PlanningFactorInterface>
       planning_factor_interface);
 
   bool modifyPathVelocity(PathWithLaneId * path) override;

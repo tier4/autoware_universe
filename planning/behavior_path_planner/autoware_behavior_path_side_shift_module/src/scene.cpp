@@ -38,7 +38,7 @@ using autoware_utils::get_point;
 using geometry_msgs::msg::Point;
 
 SideShiftModule::SideShiftModule(
-  const std::string & name, rclcpp::Node & node,
+  const std::string & name, agnocast::Node & node,
   const std::shared_ptr<SideShiftParameters> & parameters,
   const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
   std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &

@@ -21,7 +21,7 @@
 namespace autoware::behavior_velocity_planner
 {
 
-PlannerParam PlannerParam::init(rclcpp::Node & node, const std::string & ns)
+PlannerParam PlannerParam::init(agnocast::Node & node, const std::string & ns)
 {
   using autoware_utils::get_or_declare_parameter;
   PlannerParam param;

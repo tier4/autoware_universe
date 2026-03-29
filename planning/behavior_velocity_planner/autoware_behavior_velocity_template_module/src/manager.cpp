@@ -30,7 +30,7 @@ namespace autoware::behavior_velocity_planner
 {
 using autoware_utils::get_or_declare_parameter;
 
-TemplateModuleManager::TemplateModuleManager(rclcpp::Node & node)
+TemplateModuleManager::TemplateModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterface(node, getModuleName())
 {
   std::string ns(TemplateModuleManager::getModuleName());

@@ -18,6 +18,7 @@
 #include "autoware/behavior_path_dynamic_obstacle_avoidance_module/scene.hpp"
 #include "autoware/behavior_path_planner_common/interface/scene_module_manager_interface.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -36,7 +37,7 @@ public:
   {
   }
 
-  void init(rclcpp::Node * node) override;
+  void init(agnocast::Node * node) override;
 
   std::unique_ptr<SceneModuleInterface> createNewSceneModuleInstance() override
   {

@@ -25,6 +25,8 @@
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <agnocast/agnocast.hpp>
+
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <autoware_perception_msgs/msg/detail/predicted_object__struct.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
@@ -377,12 +379,12 @@ public:
   };
 
   CrosswalkModule(
-    rclcpp::Node & node, const int64_t lane_id, const int64_t module_id,
+    agnocast::Node & node, const int64_t lane_id, const int64_t module_id,
     const std::optional<int64_t> & reg_elem_id, const lanelet::LaneletMapPtr & lanelet_map_ptr,
     const PlannerParam & planner_param, const rclcpp::Logger & logger,
     const rclcpp::Clock::SharedPtr clock,
     const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
-    const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+    const std::shared_ptr<PlanningFactorInterface>
       planning_factor_interface);
 
   bool modifyPathVelocity(PathWithLaneId * path) override;
@@ -529,7 +531,7 @@ private:
 
   const int64_t module_id_;
 
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
     collision_info_pub_;
 
   lanelet::ConstLanelet crosswalk_;

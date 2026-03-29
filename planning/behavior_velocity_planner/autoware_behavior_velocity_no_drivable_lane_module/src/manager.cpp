@@ -24,7 +24,7 @@ namespace autoware::behavior_velocity_planner
 {
 using autoware_utils::get_or_declare_parameter;
 
-NoDrivableLaneModuleManager::NoDrivableLaneModuleManager(rclcpp::Node & node)
+NoDrivableLaneModuleManager::NoDrivableLaneModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterface(node, getModuleName())
 {
   const std::string ns(NoDrivableLaneModuleManager::getModuleName());

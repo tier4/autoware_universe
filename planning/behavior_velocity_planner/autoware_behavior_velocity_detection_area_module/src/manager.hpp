@@ -32,7 +32,7 @@ namespace autoware::behavior_velocity_planner
 class DetectionAreaModuleManager : public SceneModuleManagerInterfaceWithRTC
 {
 public:
-  explicit DetectionAreaModuleManager(rclcpp::Node & node);
+  explicit DetectionAreaModuleManager(agnocast::Node & node);
 
   const char * getModuleName() override { return "detection_area"; }
 

@@ -41,7 +41,7 @@ VirtualTrafficLightModule::VirtualTrafficLightModule(
   const PlannerParam & planner_param, const rclcpp::Logger logger,
   const rclcpp::Clock::SharedPtr clock,
   const std::shared_ptr<autoware_utils::TimeKeeper> time_keeper,
-  const std::shared_ptr<planning_factor_interface::PlanningFactorInterface>
+  const std::shared_ptr<PlanningFactorInterface>
     planning_factor_interface)
 : SceneModuleInterface(module_id, logger, clock, time_keeper, planning_factor_interface),
   lane_id_(lane_id),
@@ -569,7 +569,7 @@ void VirtualTrafficLightModule::setInfrastructureCommand(
 }
 
 void VirtualTrafficLightModule::setCorrespondingVirtualTrafficLightState(
-  const tier4_v2x_msgs::msg::VirtualTrafficLightStateArray::ConstSharedPtr
+  const agnocast::ipc_shared_ptr<const tier4_v2x_msgs::msg::VirtualTrafficLightStateArray>
     virtual_traffic_light_states)
 {
   if (!virtual_traffic_light_states) {

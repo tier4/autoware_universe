@@ -321,7 +321,7 @@ size_t getNearestIndexFromSegmentIndex(
 }  // namespace
 
 DynamicObstacleAvoidanceModule::DynamicObstacleAvoidanceModule(
-  const std::string & name, rclcpp::Node & node,
+  const std::string & name, agnocast::Node & node,
   std::shared_ptr<DynamicAvoidanceParameters> parameters,
   const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
   std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &

@@ -17,6 +17,7 @@
 
 #include "autoware/behavior_path_goal_planner_module/pull_over_planner/pull_over_planner_base.hpp"
 #include "autoware/behavior_path_planner_common/utils/parking_departure/geometric_parallel_parking.hpp"
+#include <agnocast/agnocast.hpp>
 
 #include <autoware/boundary_departure_checker/boundary_departure_checker.hpp>
 
@@ -32,7 +33,7 @@ class GeometricPullOver : public PullOverPlannerBase
 {
 public:
   GeometricPullOver(
-    rclcpp::Node & node, const GoalPlannerParameters & parameters, const bool is_forward);
+    agnocast::Node & node, const GoalPlannerParameters & parameters, const bool is_forward);
 
   PullOverPlannerType getPlannerType() const override
   {

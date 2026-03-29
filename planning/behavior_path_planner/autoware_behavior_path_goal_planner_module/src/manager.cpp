@@ -35,7 +35,7 @@ std::unique_ptr<SceneModuleInterface> GoalPlannerModuleManager::createNewSceneMo
 }
 
 GoalPlannerParameters GoalPlannerModuleManager::initGoalPlannerParameters(
-  rclcpp::Node * node, const std::string & base_ns)
+  agnocast::Node * node, const std::string & base_ns)
 {
   GoalPlannerParameters p;
   // general params
@@ -450,7 +450,7 @@ GoalPlannerParameters GoalPlannerModuleManager::initGoalPlannerParameters(
   return p;
 }
 
-void GoalPlannerModuleManager::init(rclcpp::Node * node)
+void GoalPlannerModuleManager::init(agnocast::Node * node)
 {
   // init manager interface
   initInterface(node, {""});

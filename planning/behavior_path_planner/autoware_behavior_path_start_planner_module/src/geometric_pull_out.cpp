@@ -35,7 +35,7 @@ namespace autoware::behavior_path_planner
 using start_planner_utils::getPullOutLanes;
 
 GeometricPullOut::GeometricPullOut(
-  rclcpp::Node & node, const StartPlannerParameters & parameters,
+  agnocast::Node & node, const StartPlannerParameters & parameters,
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper)
 : PullOutPlannerBase{node, parameters, time_keeper},
   parallel_parking_parameters_{parameters.parallel_parking_parameters}

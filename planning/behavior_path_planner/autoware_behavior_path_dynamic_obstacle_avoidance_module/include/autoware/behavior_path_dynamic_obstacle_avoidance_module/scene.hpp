@@ -19,6 +19,7 @@
 
 #include <autoware_utils/geometry/boost_geometry.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
@@ -347,7 +348,7 @@ public:
   };
 
   DynamicObstacleAvoidanceModule(
-    const std::string & name, rclcpp::Node & node,
+    const std::string & name, agnocast::Node & node,
     std::shared_ptr<DynamicAvoidanceParameters> parameters,
     const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
     std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &

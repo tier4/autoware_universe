@@ -28,14 +28,14 @@
 namespace autoware::behavior_path_planner
 {
 
-void LaneChangeModuleManager::init(rclcpp::Node * node)
+void LaneChangeModuleManager::init(agnocast::Node * node)
 {
   // init manager interface
   initInterface(node, {""});
   initParams(node);
 }
 
-LCParamPtr LaneChangeModuleManager::set_params(rclcpp::Node * node, const std::string & node_name)
+LCParamPtr LaneChangeModuleManager::set_params(agnocast::Node * node, const std::string & node_name)
 {
   using autoware_utils::get_or_declare_parameter;
 
@@ -307,7 +307,7 @@ LCParamPtr LaneChangeModuleManager::set_params(rclcpp::Node * node, const std::s
   return std::make_shared<lane_change::Parameters>(p);
 }
 
-void LaneChangeModuleManager::initParams(rclcpp::Node * node)
+void LaneChangeModuleManager::initParams(agnocast::Node * node)
 {
   parameters_ = set_params(node, name());
 }

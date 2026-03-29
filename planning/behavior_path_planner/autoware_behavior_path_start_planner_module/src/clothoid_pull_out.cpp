@@ -1086,7 +1086,7 @@ std::optional<CompositeArcPath> calc_circular_path(
 }
 
 ClothoidPullOut::ClothoidPullOut(
-  rclcpp::Node & node, const StartPlannerParameters & parameters,
+  agnocast::Node & node, const StartPlannerParameters & parameters,
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper)
 : PullOutPlannerBase{node, parameters, time_keeper}
 {

@@ -28,6 +28,7 @@
 #include "autoware/behavior_path_start_planner_module/pull_out_path.hpp"
 #include "autoware/behavior_path_start_planner_module/shift_pull_out.hpp"
 #include "data_structs.hpp"
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
@@ -87,7 +88,7 @@ class StartPlannerModule : public SceneModuleInterface
 {
 public:
   StartPlannerModule(
-    const std::string & name, rclcpp::Node & node,
+    const std::string & name, agnocast::Node & node,
     const std::shared_ptr<StartPlannerParameters> & parameters,
     const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
     std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
@@ -326,7 +327,7 @@ ego pose.
 
   // generate freespace pull out paths in a separate thread
   std::unique_ptr<PullOutPlannerBase> freespace_planner_;
-  rclcpp::TimerBase::SharedPtr freespace_planner_timer_;
+  agnocast::TimerBase::SharedPtr freespace_planner_timer_;
   rclcpp::CallbackGroup::SharedPtr freespace_planner_timer_cb_group_;
   std::atomic<bool> is_freespace_planner_cb_running_;
 

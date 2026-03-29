@@ -30,7 +30,7 @@ namespace autoware::behavior_velocity_planner
 using autoware_utils::get_or_declare_parameter;
 using lanelet::TrafficLight;
 
-TrafficLightModuleManager::TrafficLightModuleManager(rclcpp::Node & node)
+TrafficLightModuleManager::TrafficLightModuleManager(agnocast::Node & node)
 : SceneModuleManagerInterfaceWithRTC(
     node, getModuleName(), getEnableRTC(node, std::string(getModuleName()) + ".enable_rtc"))
 {
@@ -95,9 +95,21 @@ void TrafficLightModuleManager::modifyPathVelocity(
       traffic_light_scene_module->createVirtualWalls());
   }
   planning_factor_interface_->publish();
-  pub_debug_->publish(debug_marker_array);
-  pub_virtual_wall_->publish(virtual_wall_marker_creator_.create_markers(clock_->now()));
-  pub_tl_state_->publish(tl_state);
+  {
+    auto loaned = pub_debug_->borrow_loaned_message();
+    *loaned = debug_marker_array;
+    pub_debug_->publish(std::move(loaned));
+  }
+  {
+    auto loaned = pub_virtual_wall_->borrow_loaned_message();
+    *loaned = virtual_wall_marker_creator_.create_markers(clock_->now());
+    pub_virtual_wall_->publish(std::move(loaned));
+  }
+  {
+    auto loaned = pub_tl_state_->borrow_loaned_message();
+    *loaned = tl_state;
+    pub_tl_state_->publish(std::move(loaned));
+  }
 }
 
 void TrafficLightModuleManager::launchNewModules(
