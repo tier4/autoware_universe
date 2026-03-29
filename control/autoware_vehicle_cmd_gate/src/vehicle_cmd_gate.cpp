@@ -47,11 +47,10 @@ const char * getGateModeName(const GateMode::_data_type & gate_mode)
 }  // namespace
 
 VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
-: Node("vehicle_cmd_gate", node_options), is_engaged_(false), updater_(this)
+: agnocast::Node("vehicle_cmd_gate", node_options), is_engaged_(false)
 {
   using std::placeholders::_1;
   using std::placeholders::_2;
-  using std::placeholders::_3;
 
   prev_turn_indicator_ = nullptr;
   prev_hazard_light_ = nullptr;
@@ -65,66 +64,92 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
 
   // Publisher
   vehicle_cmd_emergency_pub_ =
-    create_publisher<VehicleEmergencyStamped>("output/vehicle_cmd_emergency", durable_qos);
-  control_cmd_pub_ = agnocast::create_publisher<Control>(this, "output/control_cmd", durable_qos);
-  gear_cmd_pub_ = create_publisher<GearCommand>("output/gear_cmd", durable_qos);
+    this->create_publisher<VehicleEmergencyStamped>("output/vehicle_cmd_emergency", durable_qos);
+  control_cmd_pub_ =
+    this->create_publisher<Control>("output/control_cmd", durable_qos);
+  gear_cmd_pub_ = this->create_publisher<GearCommand>("output/gear_cmd", durable_qos);
   turn_indicator_cmd_pub_ =
-    create_publisher<TurnIndicatorsCommand>("output/turn_indicators_cmd", durable_qos);
+    this->create_publisher<TurnIndicatorsCommand>("output/turn_indicators_cmd", durable_qos);
   hazard_light_cmd_pub_ =
-    create_publisher<HazardLightsCommand>("output/hazard_lights_cmd", durable_qos);
+    this->create_publisher<HazardLightsCommand>("output/hazard_lights_cmd", durable_qos);
 
-  gate_mode_pub_ = create_publisher<GateMode>("output/gate_mode", durable_qos);
-  engage_pub_ = create_publisher<EngageMsg>("output/engage", durable_qos);
-  pub_external_emergency_ = create_publisher<Emergency>("output/external_emergency", durable_qos);
-  operation_mode_pub_ = create_publisher<OperationModeState>("output/operation_mode", durable_qos);
+  gate_mode_pub_ = this->create_publisher<GateMode>("output/gate_mode", durable_qos);
+  engage_pub_ = this->create_publisher<EngageMsg>("output/engage", durable_qos);
+  pub_external_emergency_ =
+    this->create_publisher<Emergency>("output/external_emergency", durable_qos);
+  operation_mode_pub_ =
+    this->create_publisher<OperationModeState>("output/operation_mode", durable_qos);
   processing_time_pub_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
 
   is_filter_activated_pub_ =
-    create_publisher<IsFilterActivated>("~/is_filter_activated", durable_qos);
+    this->create_publisher<IsFilterActivated>("~/is_filter_activated", durable_qos);
   filter_activated_marker_pub_ =
-    create_publisher<MarkerArray>("~/is_filter_activated/marker", durable_qos);
+    this->create_publisher<MarkerArray>("~/is_filter_activated/marker", durable_qos);
   filter_activated_marker_raw_pub_ =
-    create_publisher<MarkerArray>("~/is_filter_activated/marker_raw", durable_qos);
+    this->create_publisher<MarkerArray>("~/is_filter_activated/marker_raw", durable_qos);
   filter_activated_flag_pub_ =
-    create_publisher<BoolStamped>("~/is_filter_activated/flag", durable_qos);
+    this->create_publisher<BoolStamped>("~/is_filter_activated/flag", durable_qos);
 
   // Subscriber
-  external_emergency_stop_heartbeat_sub_ = create_subscription<Heartbeat>(
+  external_emergency_stop_heartbeat_sub_ = this->create_subscription<Heartbeat>(
     "input/external_emergency_stop_heartbeat", 1,
     std::bind(&VehicleCmdGate::onExternalEmergencyStopHeartbeat, this, _1));
-  gate_mode_sub_ = create_subscription<GateMode>(
+  gate_mode_sub_ = this->create_subscription<GateMode>(
     "input/gate_mode", 1, std::bind(&VehicleCmdGate::onGateMode, this, _1));
-  engage_sub_ = create_subscription<EngageMsg>(
+  engage_sub_ = this->create_subscription<EngageMsg>(
     "input/engage", 1, std::bind(&VehicleCmdGate::onEngage, this, _1));
-  kinematics_sub_ = create_subscription<Odometry>(
+  kinematics_sub_ = this->create_subscription<Odometry>(
     "/localization/kinematic_state", 1,
-    [this](Odometry::SharedPtr msg) { current_kinematics_ = *msg; });
-  acc_sub_ = create_subscription<AccelWithCovarianceStamped>(
-    "input/acceleration", 1, [this](AccelWithCovarianceStamped::SharedPtr msg) {
+    [this](const agnocast::ipc_shared_ptr<const Odometry> & msg) { current_kinematics_ = *msg; });
+  acc_sub_ = this->create_subscription<AccelWithCovarianceStamped>(
+    "input/acceleration", 1,
+    [this](const agnocast::ipc_shared_ptr<const AccelWithCovarianceStamped> & msg) {
       current_acceleration_ = msg->accel.accel.linear.x;
     });
-  steer_sub_ = create_subscription<SteeringReport>(
+  steer_sub_ = this->create_subscription<SteeringReport>(
     "input/steering", 1,
-    [this](SteeringReport::SharedPtr msg) { current_steer_ = msg->steering_tire_angle; });
-  operation_mode_sub_ = create_subscription<OperationModeState>(
+    [this](const agnocast::ipc_shared_ptr<const SteeringReport> & msg) {
+      current_steer_ = msg->steering_tire_angle;
+    });
+  operation_mode_sub_ = this->create_subscription<OperationModeState>(
     "input/operation_mode", rclcpp::QoS(1).transient_local(),
-    [this](const OperationModeState::SharedPtr msg) { current_operation_mode_ = *msg; });
-  mrm_state_sub_ = create_subscription<MrmState>(
+    [this](const agnocast::ipc_shared_ptr<const OperationModeState> & msg) {
+      current_operation_mode_ = *msg;
+    });
+  mrm_state_sub_ = this->create_subscription<MrmState>(
     "input/mrm_state", 1, std::bind(&VehicleCmdGate::onMrmState, this, _1));
 
   // Subscriber for auto
-  auto_control_cmd_sub_ = agnocast::create_subscription<Control>(
-    this, "input/auto/control_cmd", 1, std::bind(&VehicleCmdGate::onAutoCtrlCmd, this, _1));
-  auto_gear_cmd_sub_ = agnocast::create_subscription<GearCommand>(
-    this, "input/auto/gear_cmd", 1);
+  auto_control_cmd_sub_ = this->create_subscription<Control>(
+    "input/auto/control_cmd", 1, std::bind(&VehicleCmdGate::onAutoCtrlCmd, this, _1));
+  auto_gear_cmd_sub_ = this->create_subscription<GearCommand>(
+    "input/auto/gear_cmd", 1);
+
+  // Initialize polling subscribers
+  auto_turn_indicator_cmd_sub_ =
+    this->create_subscription<TurnIndicatorsCommand>("input/auto/turn_indicators_cmd", 1);
+  auto_hazard_light_cmd_sub_ =
+    this->create_subscription<HazardLightsCommand>("input/auto/hazard_lights_cmd", 1);
+  remote_turn_indicator_cmd_sub_ =
+    this->create_subscription<TurnIndicatorsCommand>("input/external/turn_indicators_cmd", 1);
+  remote_hazard_light_cmd_sub_ =
+    this->create_subscription<HazardLightsCommand>("input/external/hazard_lights_cmd", 1);
+  remote_gear_cmd_sub_ =
+    this->create_subscription<GearCommand>("input/external/gear_cmd", 1);
+  emergency_turn_indicator_cmd_sub_ =
+    this->create_subscription<TurnIndicatorsCommand>("input/emergency/turn_indicators_cmd", 1);
+  emergency_hazard_light_cmd_sub_ =
+    this->create_subscription<HazardLightsCommand>("input/emergency/hazard_lights_cmd", 1);
+  emergency_gear_cmd_sub_ =
+    this->create_subscription<GearCommand>("input/emergency/gear_cmd", 1);
 
   // Subscriber for external
-  remote_control_cmd_sub_ = create_subscription<Control>(
+  remote_control_cmd_sub_ = this->create_subscription<Control>(
     "input/external/control_cmd", 1, std::bind(&VehicleCmdGate::onRemoteCtrlCmd, this, _1));
 
   // Subscriber for emergency
-  emergency_control_cmd_sub_ = create_subscription<Control>(
+  emergency_control_cmd_sub_ = this->create_subscription<Control>(
     "input/emergency/control_cmd", 1, std::bind(&VehicleCmdGate::onEmergencyCtrlCmd, this, _1));
 
   // Parameter
@@ -146,7 +171,7 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
     declare_parameter<double>("filter_activated_velocity_threshold");
 
   // Vehicle Parameter
-  const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
+  const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(*this).getVehicleInfo();
   {
     VehicleCmdFilterParam p;
     p.wheel_base = vehicle_info.wheel_base_m;
@@ -200,24 +225,17 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
   current_operation_mode_.mode = OperationModeState::STOP;
 
   // Service
-  srv_engage_ = create_service<EngageSrv>(
+  srv_engage_ = this->create_service<EngageSrv>(
     "~/service/engage", std::bind(&VehicleCmdGate::onEngageService, this, _1, _2));
-  srv_external_emergency_ = create_service<SetEmergency>(
+  srv_external_emergency_ = this->create_service<SetEmergency>(
     "~/service/external_emergency",
-    std::bind(&VehicleCmdGate::onExternalEmergencyStopService, this, _1, _2, _3));
-  srv_external_emergency_stop_ = create_service<Trigger>(
+    std::bind(&VehicleCmdGate::onExternalEmergencyStopService, this, _1, _2));
+  srv_external_emergency_stop_ = this->create_service<Trigger>(
     "~/service/external_emergency_stop",
-    std::bind(&VehicleCmdGate::onSetExternalEmergencyStopService, this, _1, _2, _3));
-  srv_clear_external_emergency_stop_ = create_service<Trigger>(
+    std::bind(&VehicleCmdGate::onSetExternalEmergencyStopService, this, _1, _2));
+  srv_clear_external_emergency_stop_ = this->create_service<Trigger>(
     "~/service/clear_external_emergency_stop",
-    std::bind(&VehicleCmdGate::onClearExternalEmergencyStopService, this, _1, _2, _3));
-
-  // Diagnostics Updater
-  updater_.setHardwareID("vehicle_cmd_gate");
-  updater_.add("heartbeat", [](auto & stat) {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Alive");
-  });
-  updater_.add("emergency_stop_operation", this, &VehicleCmdGate::checkExternalEmergencyStop);
+    std::bind(&VehicleCmdGate::onClearExternalEmergencyStopService, this, _1, _2));
 
   // Pause interface
   adapi_pause_ = std::make_unique<AdapiPauseInterface>(this);
@@ -227,14 +245,9 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
   const auto update_period = 1.0 / declare_parameter<double>("update_rate");
   const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
     std::chrono::duration<double>(update_period));
-  timer_ =
-    rclcpp::create_timer(this, get_clock(), period_ns, std::bind(&VehicleCmdGate::onTimer, this));
-  timer_pub_status_ = rclcpp::create_timer(
-    this, get_clock(), period_ns, std::bind(&VehicleCmdGate::publishStatus, this));
-
-  logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
-
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  timer_ = this->create_timer(period_ns, std::bind(&VehicleCmdGate::onTimer, this));
+  timer_pub_status_ =
+    this->create_timer(period_ns, std::bind(&VehicleCmdGate::publishStatus, this));
 
   // Parameter Callback
   set_param_res_ =
@@ -266,7 +279,7 @@ rcl_interfaces::msg::SetParametersResult VehicleCmdGate::onParameter(
     parameters, "filter_activated_velocity_threshold", filter_activated_velocity_threshold_);
 
   // Vehicle Parameter
-  const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
+  const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(*this).getVehicleInfo();
   {
     VehicleCmdFilterParam p = filter_.getParam();
     p.wheel_base = vehicle_info.wheel_base_m;
@@ -370,7 +383,7 @@ void VehicleCmdGate::onAutoCtrlCmd(const agnocast::ipc_shared_ptr<Control> & msg
 }
 
 // for remote
-void VehicleCmdGate::onRemoteCtrlCmd(Control::ConstSharedPtr msg)
+void VehicleCmdGate::onRemoteCtrlCmd(const agnocast::ipc_shared_ptr<const Control> & msg)
 {
   remote_commands_.control = *msg;
 
@@ -380,7 +393,7 @@ void VehicleCmdGate::onRemoteCtrlCmd(Control::ConstSharedPtr msg)
 }
 
 // for emergency
-void VehicleCmdGate::onEmergencyCtrlCmd(Control::ConstSharedPtr msg)
+void VehicleCmdGate::onEmergencyCtrlCmd(const agnocast::ipc_shared_ptr<const Control> & msg)
 {
   emergency_commands_.control = *msg;
 
@@ -411,41 +424,39 @@ void VehicleCmdGate::onTimer()
   autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch;
 
   // Subscriber for auto
-  const auto msg_auto_command_turn_indicator = auto_turn_indicator_cmd_sub_.take_data();
+  const auto msg_auto_command_turn_indicator = auto_turn_indicator_cmd_sub_->take_data();
   if (msg_auto_command_turn_indicator)
     auto_commands_.turn_indicator = *msg_auto_command_turn_indicator;
 
-  const auto msg_auto_command_hazard_light = auto_hazard_light_cmd_sub_.take_data();
+  const auto msg_auto_command_hazard_light = auto_hazard_light_cmd_sub_->take_data();
   if (msg_auto_command_hazard_light) auto_commands_.hazard_light = *msg_auto_command_hazard_light;
 
   const auto msg_auto_command_gear = auto_gear_cmd_sub_->take_data();
   if (msg_auto_command_gear) auto_commands_.gear = *msg_auto_command_gear;
 
   // Subscribe for external
-  const auto msg_remote_command_turn_indicator = remote_turn_indicator_cmd_sub_.take_data();
+  const auto msg_remote_command_turn_indicator = remote_turn_indicator_cmd_sub_->take_data();
   if (msg_remote_command_turn_indicator)
     remote_commands_.turn_indicator = *msg_remote_command_turn_indicator;
 
-  const auto msg_remote_command_hazard_light = remote_hazard_light_cmd_sub_.take_data();
+  const auto msg_remote_command_hazard_light = remote_hazard_light_cmd_sub_->take_data();
   if (msg_remote_command_hazard_light)
     remote_commands_.hazard_light = *msg_remote_command_hazard_light;
 
-  const auto msg_remote_command_gear = remote_gear_cmd_sub_.take_data();
+  const auto msg_remote_command_gear = remote_gear_cmd_sub_->take_data();
   if (msg_remote_command_gear) remote_commands_.gear = *msg_remote_command_gear;
 
   // Subscribe for emergency
-  const auto msg_emergency_command_hazard_light = emergency_hazard_light_cmd_sub_.take_data();
+  const auto msg_emergency_command_hazard_light = emergency_hazard_light_cmd_sub_->take_data();
   if (msg_emergency_command_hazard_light)
     emergency_commands_.hazard_light = *msg_emergency_command_hazard_light;
 
-  const auto msg_emergency_command_turn_indicator = emergency_turn_indicator_cmd_sub_.take_data();
+  const auto msg_emergency_command_turn_indicator = emergency_turn_indicator_cmd_sub_->take_data();
   if (msg_emergency_command_turn_indicator)
     emergency_commands_.turn_indicator = *msg_emergency_command_turn_indicator;
 
-  const auto msg_emergency_command_gear = emergency_gear_cmd_sub_.take_data();
+  const auto msg_emergency_command_gear = emergency_gear_cmd_sub_->take_data();
   if (msg_emergency_command_gear) emergency_commands_.gear = *msg_emergency_command_gear;
-
-  updater_.force_update();
 
   if (!isDataReady()) {
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000, "waiting topics...");
@@ -523,44 +534,72 @@ void VehicleCmdGate::onTimer()
   if (prev_turn_indicator_ != nullptr) {
     *prev_turn_indicator_ =
       getContinuousTopic(prev_turn_indicator_, turn_indicator, "TurnIndicatorsCommand");
-    turn_indicator_cmd_pub_->publish(*prev_turn_indicator_);
+    {
+      auto loaned = turn_indicator_cmd_pub_->borrow_loaned_message();
+      *loaned = *prev_turn_indicator_;
+      turn_indicator_cmd_pub_->publish(std::move(loaned));
+    }
   } else {
     if (
       msg_auto_command_turn_indicator || msg_remote_command_turn_indicator ||
       msg_emergency_command_turn_indicator) {
       prev_turn_indicator_ = std::make_shared<TurnIndicatorsCommand>(turn_indicator);
     }
-    turn_indicator_cmd_pub_->publish(turn_indicator);
+    {
+      auto loaned = turn_indicator_cmd_pub_->borrow_loaned_message();
+      *loaned = turn_indicator;
+      turn_indicator_cmd_pub_->publish(std::move(loaned));
+    }
   }
 
   if (prev_hazard_light_ != nullptr) {
     *prev_hazard_light_ =
       getContinuousTopic(prev_hazard_light_, hazard_light, "HazardLightsCommand");
-    hazard_light_cmd_pub_->publish(*prev_hazard_light_);
+    {
+      auto loaned = hazard_light_cmd_pub_->borrow_loaned_message();
+      *loaned = *prev_hazard_light_;
+      hazard_light_cmd_pub_->publish(std::move(loaned));
+    }
   } else {
     if (
       msg_auto_command_hazard_light || msg_remote_command_hazard_light ||
       msg_emergency_command_hazard_light) {
       prev_hazard_light_ = std::make_shared<HazardLightsCommand>(hazard_light);
     }
-    hazard_light_cmd_pub_->publish(hazard_light);
+    {
+      auto loaned = hazard_light_cmd_pub_->borrow_loaned_message();
+      *loaned = hazard_light;
+      hazard_light_cmd_pub_->publish(std::move(loaned));
+    }
   }
 
   if (prev_gear_ != nullptr) {
     *prev_gear_ = getContinuousTopic(prev_gear_, gear, "GearCommand");
-    gear_cmd_pub_->publish(*prev_gear_);
+    {
+      auto loaned = gear_cmd_pub_->borrow_loaned_message();
+      *loaned = *prev_gear_;
+      gear_cmd_pub_->publish(std::move(loaned));
+    }
   } else {
     if (msg_auto_command_gear || msg_remote_command_gear || msg_emergency_command_gear) {
       prev_gear_ = std::make_shared<GearCommand>(gear);
     }
-    gear_cmd_pub_->publish(gear);
+    {
+      auto loaned = gear_cmd_pub_->borrow_loaned_message();
+      *loaned = gear;
+      gear_cmd_pub_->publish(std::move(loaned));
+    }
   }
 
   // ProcessingTime
   autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
   processing_time_msg.stamp = get_clock()->now();
   processing_time_msg.data = stop_watch.toc();
-  processing_time_pub_->publish(processing_time_msg);
+  {
+    auto loaned = processing_time_pub_->borrow_loaned_message();
+    *loaned = processing_time_msg;
+    processing_time_pub_->publish(std::move(loaned));
+  }
 }
 
 void VehicleCmdGate::publishControlCommands(const Commands & commands)
@@ -623,13 +662,16 @@ void VehicleCmdGate::publishControlCommands(const Commands & commands)
   vehicle_cmd_emergency.stamp = filtered_control.stamp;
 
   // Publish commands
-  vehicle_cmd_emergency_pub_->publish(vehicle_cmd_emergency);
+  {
+    auto loaned = vehicle_cmd_emergency_pub_->borrow_loaned_message();
+    *loaned = vehicle_cmd_emergency;
+    vehicle_cmd_emergency_pub_->publish(std::move(loaned));
+  }
   {
     auto loaned_msg = control_cmd_pub_->borrow_loaned_message();
     *loaned_msg = filtered_control;
     control_cmd_pub_->publish(std::move(loaned_msg));
   }
-  published_time_publisher_->publish_if_subscribed(control_cmd_pub_, filtered_control.stamp);
   adapi_pause_->publish();
   moderate_stop_interface_->publish();
 
@@ -670,15 +712,31 @@ void VehicleCmdGate::publishEmergencyStopControlCommands()
   vehicle_cmd_emergency.emergency = true;
 
   // Publish topics
-  vehicle_cmd_emergency_pub_->publish(vehicle_cmd_emergency);
+  {
+    auto loaned = vehicle_cmd_emergency_pub_->borrow_loaned_message();
+    *loaned = vehicle_cmd_emergency;
+    vehicle_cmd_emergency_pub_->publish(std::move(loaned));
+  }
   {
     auto loaned_msg = control_cmd_pub_->borrow_loaned_message();
     *loaned_msg = control_cmd;
     control_cmd_pub_->publish(std::move(loaned_msg));
   }
-  turn_indicator_cmd_pub_->publish(turn_indicator);
-  hazard_light_cmd_pub_->publish(hazard_light);
-  gear_cmd_pub_->publish(gear);
+  {
+    auto loaned = turn_indicator_cmd_pub_->borrow_loaned_message();
+    *loaned = turn_indicator;
+    turn_indicator_cmd_pub_->publish(std::move(loaned));
+  }
+  {
+    auto loaned = hazard_light_cmd_pub_->borrow_loaned_message();
+    *loaned = hazard_light;
+    hazard_light_cmd_pub_->publish(std::move(loaned));
+  }
+  {
+    auto loaned = gear_cmd_pub_->borrow_loaned_message();
+    *loaned = gear;
+    gear_cmd_pub_->publish(std::move(loaned));
+  }
 }
 
 void VehicleCmdGate::publishStatus()
@@ -695,10 +753,26 @@ void VehicleCmdGate::publishStatus()
   external_emergency.stamp = stamp;
   external_emergency.emergency = is_external_emergency_stop_;
 
-  gate_mode_pub_->publish(current_gate_mode_);
-  engage_pub_->publish(autoware_engage);
-  pub_external_emergency_->publish(external_emergency);
-  operation_mode_pub_->publish(current_operation_mode_);
+  {
+    auto loaned = gate_mode_pub_->borrow_loaned_message();
+    *loaned = current_gate_mode_;
+    gate_mode_pub_->publish(std::move(loaned));
+  }
+  {
+    auto loaned = engage_pub_->borrow_loaned_message();
+    *loaned = autoware_engage;
+    engage_pub_->publish(std::move(loaned));
+  }
+  {
+    auto loaned = pub_external_emergency_->borrow_loaned_message();
+    *loaned = external_emergency;
+    pub_external_emergency_->publish(std::move(loaned));
+  }
+  {
+    auto loaned = operation_mode_pub_->borrow_loaned_message();
+    *loaned = current_operation_mode_;
+    operation_mode_pub_->publish(std::move(loaned));
+  }
   adapi_pause_->publish();
   moderate_stop_interface_->publish();
 }
@@ -742,7 +816,11 @@ Control VehicleCmdGate::filterControlCommand(const Control & in)
   filter_on_transition_.setPrevCmd(prev_values);
 
   is_filter_activated.stamp = now();
-  is_filter_activated_pub_->publish(is_filter_activated);
+  {
+    auto loaned = is_filter_activated_pub_->borrow_loaned_message();
+    *loaned = is_filter_activated;
+    is_filter_activated_pub_->publish(std::move(loaned));
+  }
   publishMarkers(is_filter_activated);
 
   return out;
@@ -789,14 +867,15 @@ Control VehicleCmdGate::createEmergencyStopControlCmd() const
   return cmd;
 }
 
-void VehicleCmdGate::onExternalEmergencyStopHeartbeat(Heartbeat::ConstSharedPtr msg)
+void VehicleCmdGate::onExternalEmergencyStopHeartbeat(
+  const agnocast::ipc_shared_ptr<const Heartbeat> & msg)
 {
   if (msg->ready) {
     external_emergency_stop_heartbeat_received_time_ = std::make_shared<rclcpp::Time>(this->now());
   }
 }
 
-void VehicleCmdGate::onGateMode(GateMode::ConstSharedPtr msg)
+void VehicleCmdGate::onGateMode(const agnocast::ipc_shared_ptr<const GateMode> & msg)
 {
   const auto prev_gate_mode = current_gate_mode_;
   current_gate_mode_ = *msg;
@@ -808,19 +887,20 @@ void VehicleCmdGate::onGateMode(GateMode::ConstSharedPtr msg)
   }
 }
 
-void VehicleCmdGate::onEngage(EngageMsg::ConstSharedPtr msg)
+void VehicleCmdGate::onEngage(const agnocast::ipc_shared_ptr<const EngageMsg> & msg)
 {
   is_engaged_ = msg->engage;
 }
 
 void VehicleCmdGate::onEngageService(
-  const EngageSrv::Request::SharedPtr request, const EngageSrv::Response::SharedPtr response)
+  const agnocast::ipc_shared_ptr<agnocast::Service<EngageSrv>::RequestT> & request,
+  agnocast::ipc_shared_ptr<agnocast::Service<EngageSrv>::ResponseT> & response)
 {
   is_engaged_ = request->engage;
   response->status = tier4_api_utils::response_success();
 }
 
-void VehicleCmdGate::onMrmState(MrmState::ConstSharedPtr msg)
+void VehicleCmdGate::onMrmState(const agnocast::ipc_shared_ptr<const MrmState> & msg)
 {
   is_system_emergency_ =
     (msg->state == MrmState::MRM_OPERATING || msg->state == MrmState::MRM_SUCCEEDED ||
@@ -855,73 +935,59 @@ Control VehicleCmdGate::getActualStatusAsCommand()
 }
 
 void VehicleCmdGate::onExternalEmergencyStopService(
-  const std::shared_ptr<rmw_request_id_t> request_header,
-  const SetEmergency::Request::SharedPtr request, const SetEmergency::Response::SharedPtr response)
+  const agnocast::ipc_shared_ptr<agnocast::Service<SetEmergency>::RequestT> & request,
+  agnocast::ipc_shared_ptr<agnocast::Service<SetEmergency>::ResponseT> & response)
 {
-  auto req = std::make_shared<Trigger::Request>();
-  auto res = std::make_shared<Trigger::Response>();
+  Trigger::Response res;
   if (request->emergency) {
-    onSetExternalEmergencyStopService(request_header, req, res);
+    setExternalEmergencyStop(res);
   } else {
-    onClearExternalEmergencyStopService(request_header, req, res);
+    clearExternalEmergencyStop(res);
   }
 
-  if (res->success) {
-    response->status = tier4_api_utils::response_success(res->message);
+  if (res.success) {
+    response->status = tier4_api_utils::response_success(res.message);
   } else {
-    response->status = tier4_api_utils::response_error(res->message);
+    response->status = tier4_api_utils::response_error(res.message);
   }
 }
 
-bool VehicleCmdGate::onSetExternalEmergencyStopService(
-  [[maybe_unused]] const std::shared_ptr<rmw_request_id_t> req_header,
-  [[maybe_unused]] const Trigger::Request::SharedPtr req, const Trigger::Response::SharedPtr res)
+void VehicleCmdGate::onSetExternalEmergencyStopService(
+  [[maybe_unused]] const agnocast::ipc_shared_ptr<agnocast::Service<Trigger>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<Trigger>::ResponseT> & res)
+{
+  setExternalEmergencyStop(*res);
+}
+
+void VehicleCmdGate::onClearExternalEmergencyStopService(
+  [[maybe_unused]] const agnocast::ipc_shared_ptr<agnocast::Service<Trigger>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<Trigger>::ResponseT> & res)
+{
+  clearExternalEmergencyStop(*res);
+}
+
+void VehicleCmdGate::setExternalEmergencyStop(Trigger::Response & res)
 {
   is_external_emergency_stop_ = true;
-  res->success = true;
-  res->message = "external_emergency_stop requested was accepted.";
-
-  return true;
+  res.success = true;
+  res.message = "external_emergency_stop requested was accepted.";
 }
 
-bool VehicleCmdGate::onClearExternalEmergencyStopService(
-  [[maybe_unused]] const std::shared_ptr<rmw_request_id_t> req_header,
-  [[maybe_unused]] const Trigger::Request::SharedPtr req, const Trigger::Response::SharedPtr res)
+void VehicleCmdGate::clearExternalEmergencyStop(Trigger::Response & res)
 {
   if (is_external_emergency_stop_) {
     if (!is_external_emergency_stop_heartbeat_timeout_) {
       is_external_emergency_stop_ = false;
-      res->success = true;
-      res->message = "external_emergency_stop state was cleared.";
+      res.success = true;
+      res.message = "external_emergency_stop state was cleared.";
     } else {
-      res->success = false;
-      res->message = "Couldn't clear external_emergency_stop state because heartbeat is timeout.";
+      res.success = false;
+      res.message = "Couldn't clear external_emergency_stop state because heartbeat is timeout.";
     }
   } else {
-    res->success = false;
-    res->message = "Not in external_emergency_stop state.";
+    res.success = false;
+    res.message = "Not in external_emergency_stop state.";
   }
-
-  return true;
-}
-
-void VehicleCmdGate::checkExternalEmergencyStop(diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  DiagnosticStatus status;
-  if (is_external_emergency_stop_heartbeat_timeout_) {
-    status.level = DiagnosticStatus::ERROR;
-    status.message = "external_emergency_stop heartbeat is timeout.";
-  } else if (is_external_emergency_stop_) {
-    status.level = DiagnosticStatus::ERROR;
-    status.message =
-      "external_emergency_stop is required. Please call `clear_external_emergency_stop` service "
-      "to "
-      "clear state.";
-  } else {
-    status.level = DiagnosticStatus::OK;
-  }
-
-  stat.summary(status.level, status.message);
 }
 
 MarkerArray VehicleCmdGate::createMarkerArray(const IsFilterActivated & filter_activated)
@@ -982,17 +1048,29 @@ void VehicleCmdGate::publishMarkers(const IsFilterActivated & filter_activated)
     filter_activated_count_ >= filter_activated_count_threshold_ &&
     std::fabs(current_kinematics_.twist.twist.linear.x) >= filter_activated_velocity_threshold_ &&
     current_operation_mode_.mode == OperationModeState::AUTONOMOUS) {
-    filter_activated_marker_pub_->publish(createMarkerArray(filter_activated));
+    {
+      auto loaned = filter_activated_marker_pub_->borrow_loaned_message();
+      *loaned = createMarkerArray(filter_activated);
+      filter_activated_marker_pub_->publish(std::move(loaned));
+    }
     filter_activated_flag.data = true;
   } else {
     filter_activated_flag.data = false;
   }
 
   filter_activated_flag.stamp = now();
-  filter_activated_flag_pub_->publish(filter_activated_flag);
-  filter_activated_marker_raw_pub_->publish(createMarkerArray(filter_activated));
+  {
+    auto loaned = filter_activated_flag_pub_->borrow_loaned_message();
+    *loaned = filter_activated_flag;
+    filter_activated_flag_pub_->publish(std::move(loaned));
+  }
+  {
+    auto loaned = filter_activated_marker_raw_pub_->borrow_loaned_message();
+    *loaned = createMarkerArray(filter_activated);
+    filter_activated_marker_raw_pub_->publish(std::move(loaned));
+  }
 }
 }  // namespace autoware::vehicle_cmd_gate
 
-#include <rclcpp_components/register_node_macro.hpp>
+#include "rclcpp_components/register_node_macro.hpp"
 RCLCPP_COMPONENTS_REGISTER_NODE(autoware::vehicle_cmd_gate::VehicleCmdGate)

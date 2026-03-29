@@ -16,18 +16,14 @@
 #define VEHICLE_CMD_GATE_HPP_
 
 #include "adapi_pause_interface.hpp"
-#include "autoware_utils/ros/logger_level_configure.hpp"
 #include "moderate_stop_interface.hpp"
 #include "vehicle_cmd_filter.hpp"
 
 #include <autoware/motion_utils/vehicle/vehicle_state_checker.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
-#include <autoware_utils/ros/published_time_publisher.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <agnocast/agnocast.hpp>
 #include <autoware_vehicle_cmd_gate/msg/is_filter_activated.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_adapi_v1_msgs/msg/manual_operator_heartbeat.hpp>
@@ -78,14 +74,13 @@ using tier4_system_msgs::msg::MrmBehaviorStatus;
 using tier4_vehicle_msgs::msg::VehicleEmergencyStamped;
 using visualization_msgs::msg::MarkerArray;
 
-using diagnostic_msgs::msg::DiagnosticStatus;
 using nav_msgs::msg::Odometry;
 
 using Heartbeat = autoware_adapi_v1_msgs::msg::ManualOperatorHeartbeat;
 using EngageMsg = autoware_vehicle_msgs::msg::Engage;
 using EngageSrv = tier4_external_api_msgs::srv::Engage;
 
-using autoware::motion_utils::VehicleStopChecker;
+using VehicleStopChecker = autoware::motion_utils::VehicleStopCheckerTemplate<agnocast::Node>;
 struct Commands
 {
   Control control;
@@ -98,43 +93,43 @@ struct Commands
   }
 };
 
-class VehicleCmdGate : public rclcpp::Node
+class VehicleCmdGate : public agnocast::Node
 {
 public:
   explicit VehicleCmdGate(const rclcpp::NodeOptions & node_options);
 
 private:
   // Publisher
-  rclcpp::Publisher<VehicleEmergencyStamped>::SharedPtr vehicle_cmd_emergency_pub_;
+  agnocast::Publisher<VehicleEmergencyStamped>::SharedPtr vehicle_cmd_emergency_pub_;
   agnocast::Publisher<Control>::SharedPtr control_cmd_pub_;
-  rclcpp::Publisher<GearCommand>::SharedPtr gear_cmd_pub_;
-  rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr turn_indicator_cmd_pub_;
-  rclcpp::Publisher<HazardLightsCommand>::SharedPtr hazard_light_cmd_pub_;
-  rclcpp::Publisher<GateMode>::SharedPtr gate_mode_pub_;
-  rclcpp::Publisher<EngageMsg>::SharedPtr engage_pub_;
-  rclcpp::Publisher<OperationModeState>::SharedPtr operation_mode_pub_;
-  rclcpp::Publisher<IsFilterActivated>::SharedPtr is_filter_activated_pub_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr filter_activated_marker_pub_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr filter_activated_marker_raw_pub_;
-  rclcpp::Publisher<BoolStamped>::SharedPtr filter_activated_flag_pub_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+  agnocast::Publisher<GearCommand>::SharedPtr gear_cmd_pub_;
+  agnocast::Publisher<TurnIndicatorsCommand>::SharedPtr turn_indicator_cmd_pub_;
+  agnocast::Publisher<HazardLightsCommand>::SharedPtr hazard_light_cmd_pub_;
+  agnocast::Publisher<GateMode>::SharedPtr gate_mode_pub_;
+  agnocast::Publisher<EngageMsg>::SharedPtr engage_pub_;
+  agnocast::Publisher<OperationModeState>::SharedPtr operation_mode_pub_;
+  agnocast::Publisher<IsFilterActivated>::SharedPtr is_filter_activated_pub_;
+  agnocast::Publisher<MarkerArray>::SharedPtr filter_activated_marker_pub_;
+  agnocast::Publisher<MarkerArray>::SharedPtr filter_activated_marker_raw_pub_;
+  agnocast::Publisher<BoolStamped>::SharedPtr filter_activated_flag_pub_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     processing_time_pub_;
   // Parameter callback
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;
   rcl_interfaces::msg::SetParametersResult onParameter(
     const std::vector<rclcpp::Parameter> & parameters);
   // Subscription
-  rclcpp::Subscription<Heartbeat>::SharedPtr external_emergency_stop_heartbeat_sub_;
-  rclcpp::Subscription<GateMode>::SharedPtr gate_mode_sub_;
-  rclcpp::Subscription<OperationModeState>::SharedPtr operation_mode_sub_;
-  rclcpp::Subscription<MrmState>::SharedPtr mrm_state_sub_;
-  rclcpp::Subscription<Odometry>::SharedPtr kinematics_sub_;             // for filter
-  rclcpp::Subscription<AccelWithCovarianceStamped>::SharedPtr acc_sub_;  // for filter
-  rclcpp::Subscription<SteeringReport>::SharedPtr steer_sub_;            // for filter
+  agnocast::Subscription<Heartbeat>::SharedPtr external_emergency_stop_heartbeat_sub_;
+  agnocast::Subscription<GateMode>::SharedPtr gate_mode_sub_;
+  agnocast::Subscription<OperationModeState>::SharedPtr operation_mode_sub_;
+  agnocast::Subscription<MrmState>::SharedPtr mrm_state_sub_;
+  agnocast::Subscription<Odometry>::SharedPtr kinematics_sub_;             // for filter
+  agnocast::Subscription<AccelWithCovarianceStamped>::SharedPtr acc_sub_;  // for filter
+  agnocast::Subscription<SteeringReport>::SharedPtr steer_sub_;            // for filter
 
-  void onGateMode(GateMode::ConstSharedPtr msg);
-  void onExternalEmergencyStopHeartbeat(Heartbeat::ConstSharedPtr msg);
-  void onMrmState(MrmState::ConstSharedPtr msg);
+  void onGateMode(const agnocast::ipc_shared_ptr<const GateMode> & msg);
+  void onExternalEmergencyStopHeartbeat(const agnocast::ipc_shared_ptr<const Heartbeat> & msg);
+  void onMrmState(const agnocast::ipc_shared_ptr<const MrmState> & msg);
 
   bool is_engaged_;
   bool is_system_emergency_ = false;
@@ -160,34 +155,26 @@ private:
   // Subscriber for auto
   Commands auto_commands_;
   agnocast::Subscription<Control>::SharedPtr auto_control_cmd_sub_;
-  autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsCommand> auto_turn_indicator_cmd_sub_{
-    this, "input/auto/turn_indicators_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<HazardLightsCommand> auto_hazard_light_cmd_sub_{
-    this, "input/auto/hazard_lights_cmd"};
+  agnocast::PollingSubscriber<TurnIndicatorsCommand>::SharedPtr auto_turn_indicator_cmd_sub_;
+  agnocast::PollingSubscriber<HazardLightsCommand>::SharedPtr auto_hazard_light_cmd_sub_;
   agnocast::PollingSubscriber<GearCommand>::SharedPtr auto_gear_cmd_sub_;
   void onAutoCtrlCmd(const agnocast::ipc_shared_ptr<Control> & msg);
 
   // Subscription for external
   Commands remote_commands_;
-  rclcpp::Subscription<Control>::SharedPtr remote_control_cmd_sub_;
-  autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsCommand>
-    remote_turn_indicator_cmd_sub_{this, "input/external/turn_indicators_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<HazardLightsCommand> remote_hazard_light_cmd_sub_{
-    this, "input/external/hazard_lights_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<GearCommand> remote_gear_cmd_sub_{
-    this, "input/external/gear_cmd"};
-  void onRemoteCtrlCmd(Control::ConstSharedPtr msg);
+  agnocast::Subscription<Control>::SharedPtr remote_control_cmd_sub_;
+  agnocast::PollingSubscriber<TurnIndicatorsCommand>::SharedPtr remote_turn_indicator_cmd_sub_;
+  agnocast::PollingSubscriber<HazardLightsCommand>::SharedPtr remote_hazard_light_cmd_sub_;
+  agnocast::PollingSubscriber<GearCommand>::SharedPtr remote_gear_cmd_sub_;
+  void onRemoteCtrlCmd(const agnocast::ipc_shared_ptr<const Control> & msg);
 
   // Subscription for emergency
   Commands emergency_commands_;
-  rclcpp::Subscription<Control>::SharedPtr emergency_control_cmd_sub_;
-  autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsCommand>
-    emergency_turn_indicator_cmd_sub_{this, "input/emergency/turn_indicators_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<HazardLightsCommand>
-    emergency_hazard_light_cmd_sub_{this, "input/emergency/hazard_lights_cmd"};
-  autoware_utils::InterProcessPollingSubscriber<GearCommand> emergency_gear_cmd_sub_{
-    this, "input/emergency/gear_cmd"};
-  void onEmergencyCtrlCmd(Control::ConstSharedPtr msg);
+  agnocast::Subscription<Control>::SharedPtr emergency_control_cmd_sub_;
+  agnocast::PollingSubscriber<TurnIndicatorsCommand>::SharedPtr emergency_turn_indicator_cmd_sub_;
+  agnocast::PollingSubscriber<HazardLightsCommand>::SharedPtr emergency_hazard_light_cmd_sub_;
+  agnocast::PollingSubscriber<GearCommand>::SharedPtr emergency_gear_cmd_sub_;
+  void onEmergencyCtrlCmd(const agnocast::ipc_shared_ptr<const Control> & msg);
 
   // Previous Turn Indicators, Hazard Lights and Gear
   TurnIndicatorsCommand::SharedPtr prev_turn_indicator_;
@@ -207,41 +194,40 @@ private:
   double filter_activated_velocity_threshold_;
 
   // Service
-  rclcpp::Service<EngageSrv>::SharedPtr srv_engage_;
-  rclcpp::Service<SetEmergency>::SharedPtr srv_external_emergency_;
-  rclcpp::Publisher<Emergency>::SharedPtr pub_external_emergency_;
+  agnocast::Service<EngageSrv>::SharedPtr srv_engage_;
+  agnocast::Service<SetEmergency>::SharedPtr srv_external_emergency_;
+  agnocast::Publisher<Emergency>::SharedPtr pub_external_emergency_;
   void onEngageService(
-    const EngageSrv::Request::SharedPtr request, const EngageSrv::Response::SharedPtr response);
+    const agnocast::ipc_shared_ptr<agnocast::Service<EngageSrv>::RequestT> & request,
+    agnocast::ipc_shared_ptr<agnocast::Service<EngageSrv>::ResponseT> & response);
   void onExternalEmergencyStopService(
-    const std::shared_ptr<rmw_request_id_t> request_header,
-    const SetEmergency::Request::SharedPtr request,
-    const SetEmergency::Response::SharedPtr response);
+    const agnocast::ipc_shared_ptr<agnocast::Service<SetEmergency>::RequestT> & request,
+    agnocast::ipc_shared_ptr<agnocast::Service<SetEmergency>::ResponseT> & response);
 
   // TODO(Takagi, Isamu): deprecated
-  rclcpp::Subscription<EngageMsg>::SharedPtr engage_sub_;
-  rclcpp::Service<Trigger>::SharedPtr srv_external_emergency_stop_;
-  rclcpp::Service<Trigger>::SharedPtr srv_clear_external_emergency_stop_;
-  void onEngage(EngageMsg::ConstSharedPtr msg);
-  bool onSetExternalEmergencyStopService(
-    const std::shared_ptr<rmw_request_id_t> req_header, const Trigger::Request::SharedPtr req,
-    const Trigger::Response::SharedPtr res);
-  bool onClearExternalEmergencyStopService(
-    const std::shared_ptr<rmw_request_id_t> req_header, const Trigger::Request::SharedPtr req,
-    const Trigger::Response::SharedPtr res);
+  agnocast::Subscription<EngageMsg>::SharedPtr engage_sub_;
+  agnocast::Service<Trigger>::SharedPtr srv_external_emergency_stop_;
+  agnocast::Service<Trigger>::SharedPtr srv_clear_external_emergency_stop_;
+  void onEngage(const agnocast::ipc_shared_ptr<const EngageMsg> & msg);
+  void onSetExternalEmergencyStopService(
+    const agnocast::ipc_shared_ptr<agnocast::Service<Trigger>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<Trigger>::ResponseT> & res);
+  void onClearExternalEmergencyStopService(
+    const agnocast::ipc_shared_ptr<agnocast::Service<Trigger>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<Trigger>::ResponseT> & res);
+  void setExternalEmergencyStop(Trigger::Response & res);
+  void clearExternalEmergencyStop(Trigger::Response & res);
 
   // Timer / Event
-  rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::TimerBase::SharedPtr timer_pub_status_;
+  agnocast::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_pub_status_;
 
   void onTimer();
   void publishControlCommands(const Commands & commands);
   void publishEmergencyStopControlCommands();
   void publishStatus();
 
-  // Diagnostics Updater
-  diagnostic_updater::Updater updater_;
-
-  void checkExternalEmergencyStop(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  // diagnostic_updater disabled for agnocast::Node
 
   template <typename T>
   T getContinuousTopic(
@@ -277,9 +263,6 @@ private:
   MarkerArray createMarkerArray(const IsFilterActivated & filter_activated);
   void publishMarkers(const IsFilterActivated & filter_activated);
 
-  std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
-
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
 };
 
 }  // namespace autoware::vehicle_cmd_gate

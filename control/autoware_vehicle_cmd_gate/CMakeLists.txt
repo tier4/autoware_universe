@@ -22,7 +22,7 @@ rclcpp_components_register_node(vehicle_cmd_gate_node
 agnocast_components_register_node(vehicle_cmd_gate_node
   PLUGIN "autoware::vehicle_cmd_gate::VehicleCmdGate"
   EXECUTABLE vehicle_cmd_gate_agnocast_exe
-  EXECUTOR CallbackIsolatedAgnocastExecutor
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
   RESOURCE_INDEX agnocast_components
 )
 

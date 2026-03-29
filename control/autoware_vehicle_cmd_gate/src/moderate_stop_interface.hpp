@@ -15,9 +15,9 @@
 #ifndef MODERATE_STOP_INTERFACE_HPP_
 #define MODERATE_STOP_INTERFACE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/component_interface_specs_universe/control.hpp>
 #include <autoware/component_interface_utils/rclcpp.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <string>
 #include <unordered_map>
@@ -33,7 +33,7 @@ private:
   using IsStartRequested = autoware::component_interface_specs_universe::control::IsStartRequested;
 
 public:
-  explicit ModerateStopInterface(rclcpp::Node * node);
+  explicit ModerateStopInterface(agnocast::Node * node);
   bool is_stop_requested() const;
   void publish();
 
@@ -42,7 +42,7 @@ private:
   std::unordered_map<std::string, bool> stop_map_;
   std::optional<std::unordered_map<std::string, bool>> prev_stop_map_;
 
-  rclcpp::Node * node_;
+  agnocast::Node * node_;
   autoware::component_interface_utils::Service<SetStop>::SharedPtr srv_set_stop_;
   autoware::component_interface_utils::Publisher<IsStopped>::SharedPtr pub_is_stopped_;
 

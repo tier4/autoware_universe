@@ -15,9 +15,9 @@
 #ifndef ADAPI_PAUSE_INTERFACE_HPP_
 #define ADAPI_PAUSE_INTERFACE_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/component_interface_specs_universe/control.hpp>
 #include <autoware/component_interface_utils/rclcpp.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_control_msgs/msg/control.hpp>
 
@@ -34,7 +34,7 @@ private:
   using IsStartRequested = autoware::component_interface_specs_universe::control::IsStartRequested;
 
 public:
-  explicit AdapiPauseInterface(rclcpp::Node * node);
+  explicit AdapiPauseInterface(agnocast::Node * node);
   bool is_paused() const;
   void publish();
   void update(const Control & control);
@@ -45,7 +45,7 @@ private:
   std::optional<bool> prev_is_paused_;
   std::optional<bool> prev_is_start_requested_;
 
-  rclcpp::Node * node_;
+  agnocast::Node * node_;
   autoware::component_interface_utils::Service<SetPause>::SharedPtr srv_set_pause_;
   autoware::component_interface_utils::Publisher<IsPaused>::SharedPtr pub_is_paused_;
   autoware::component_interface_utils::Publisher<IsStartRequested>::SharedPtr
