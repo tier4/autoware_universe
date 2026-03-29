@@ -50,26 +50,22 @@ std::vector<T> resampleHorizonByZeroOrderHold(
 
 namespace autoware::motion::control::trajectory_follower_node
 {
-Controller::Controller(const rclcpp::NodeOptions & node_options) : Node("controller", node_options)
+Controller::Controller(const rclcpp::NodeOptions & node_options)
+: agnocast::Node("controller", node_options)
 {
   using std::placeholders::_1;
 
   const double ctrl_period = declare_parameter<double>("ctrl_period");
   timeout_thr_sec_ = declare_parameter<double>("timeout_thr_sec");
-  // NOTE: It is possible that using control_horizon could be expected to enhance performance,
-  // but it is not a formal interface topic, only an experimental one.
-  // So it is disabled by default.
   enable_control_cmd_horizon_pub_ =
     declare_parameter<bool>("enable_control_cmd_horizon_pub", false);
-
-  diag_updater_->setHardwareID("trajectory_follower_node");
 
   const auto lateral_controller_mode =
     getLateralControllerMode(declare_parameter<std::string>("lateral_controller_mode"));
   switch (lateral_controller_mode) {
     case LateralControllerMode::MPC: {
       lateral_controller_ =
-        std::make_shared<mpc_lateral_controller::MpcLateralController>(*this, diag_updater_);
+        std::make_shared<mpc_lateral_controller::MpcLateralController>(*this);
       break;
     }
     case LateralControllerMode::PURE_PURSUIT: {
@@ -86,30 +82,35 @@ Controller::Controller(const rclcpp::NodeOptions & node_options) : Node("control
   switch (longitudinal_controller_mode) {
     case LongitudinalControllerMode::PID: {
       longitudinal_controller_ =
-        std::make_shared<pid_longitudinal_controller::PidLongitudinalController>(
-          *this, diag_updater_);
+        std::make_shared<pid_longitudinal_controller::PidLongitudinalController>(*this);
       break;
     }
     default:
       throw std::domain_error("[LongitudinalController] invalid algorithm");
   }
 
-  control_cmd_pub_ = agnocast::create_publisher<autoware_control_msgs::msg::Control>(
-    this, "~/output/control_cmd", rclcpp::QoS{1}.transient_local());
+  control_cmd_pub_ = this->create_publisher<autoware_control_msgs::msg::Control>(
+    "~/output/control_cmd", rclcpp::QoS{1}.transient_local());
 
-  sub_odometry_ = agnocast::create_subscription<nav_msgs::msg::Odometry>(
-    this, "~/input/current_odometry", 1);
-  sub_accel_ = agnocast::create_subscription<geometry_msgs::msg::AccelWithCovarianceStamped>(
-    this, "~/input/current_accel", 1);
+  sub_ref_path_ = this->create_subscription<autoware_planning_msgs::msg::Trajectory>(
+    "~/input/reference_trajectory", 1);
+  sub_odometry_ = this->create_subscription<nav_msgs::msg::Odometry>(
+    "~/input/current_odometry", 1);
+  sub_steering_ = this->create_subscription<autoware_vehicle_msgs::msg::SteeringReport>(
+    "~/input/current_steering", 1);
+  sub_accel_ = this->create_subscription<geometry_msgs::msg::AccelWithCovarianceStamped>(
+    "~/input/current_accel", 1);
+  sub_operation_mode_ = this->create_subscription<OperationModeState>(
+    "~/input/current_operation_mode", rclcpp::QoS{1}.transient_local());
   pub_processing_time_lat_ms_ =
-    create_publisher<Float64Stamped>("~/lateral/debug/processing_time_ms", 1);
+    this->create_publisher<Float64Stamped>("~/lateral/debug/processing_time_ms", 1);
   pub_processing_time_lon_ms_ =
-    create_publisher<Float64Stamped>("~/longitudinal/debug/processing_time_ms", 1);
+    this->create_publisher<Float64Stamped>("~/longitudinal/debug/processing_time_ms", 1);
   debug_marker_pub_ =
-    create_publisher<visualization_msgs::msg::MarkerArray>("~/output/debug_marker", rclcpp::QoS{1});
+    this->create_publisher<visualization_msgs::msg::MarkerArray>("~/output/debug_marker", rclcpp::QoS{1});
 
   if (enable_control_cmd_horizon_pub_) {
-    control_cmd_horizon_pub_ = create_publisher<autoware_control_msgs::msg::ControlHorizon>(
+    control_cmd_horizon_pub_ = this->create_publisher<autoware_control_msgs::msg::ControlHorizon>(
       "~/debug/control_cmd_horizon", 1);
   }
 
@@ -117,13 +118,9 @@ Controller::Controller(const rclcpp::NodeOptions & node_options) : Node("control
   {
     const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::duration<double>(ctrl_period));
-    timer_control_ = rclcpp::create_timer(
-      this, get_clock(), period_ns, std::bind(&Controller::callbackTimerControl, this));
+    timer_control_ =
+      this->create_timer(period_ns, std::bind(&Controller::callbackTimerControl, this));
   }
-
-  logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
-
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 }
 
 Controller::LateralControllerMode Controller::getLateralControllerMode(
@@ -163,10 +160,10 @@ bool Controller::processData(rclcpp::Clock & clock)
   };
 
   is_ready &= getData(current_accel_ptr_, *sub_accel_, "acceleration");
-  is_ready &= getData(current_steering_ptr_, sub_steering_, "steering");
-  is_ready &= getData(current_trajectory_ptr_, sub_ref_path_, "trajectory");
+  is_ready &= getData(current_steering_ptr_, *sub_steering_, "steering");
+  is_ready &= getData(current_trajectory_ptr_, *sub_ref_path_, "trajectory");
   is_ready &= getData(current_odometry_ptr_, *sub_odometry_, "odometry");
-  is_ready &= getData(current_operation_mode_ptr_, sub_operation_mode_, "operation mode");
+  is_ready &= getData(current_operation_mode_ptr_, *sub_operation_mode_, "operation mode");
 
   return is_ready;
 }
@@ -256,7 +253,6 @@ void Controller::callbackTimerControl()
   }
 
   // 6. publish debug
-  published_time_publisher_->publish_if_subscribed(control_cmd_pub_, out.stamp);
   publishDebugMarker(*input_data, lat_out);
 
   // 7. publish experimental topic
@@ -264,7 +260,9 @@ void Controller::callbackTimerControl()
     const auto control_horizon =
       mergeLatLonHorizon(lat_out.control_cmd_horizon, lon_out.control_cmd_horizon, this->now());
     if (control_horizon.has_value()) {
-      control_cmd_horizon_pub_->publish(control_horizon.value());
+      auto loaned_horizon = control_cmd_horizon_pub_->borrow_loaned_message();
+      *loaned_horizon = control_horizon.value();
+      control_cmd_horizon_pub_->publish(std::move(loaned_horizon));
     }
   }
 }
@@ -294,16 +292,20 @@ void Controller::publishDebugMarker(
     debug_marker_array.markers.push_back(marker);
   }
 
-  debug_marker_pub_->publish(debug_marker_array);
+  {
+    auto loaned_msg = debug_marker_pub_->borrow_loaned_message();
+    *loaned_msg = debug_marker_array;
+    debug_marker_pub_->publish(std::move(loaned_msg));
+  }
 }
 
 void Controller::publishProcessingTime(
-  const double t_ms, const rclcpp::Publisher<Float64Stamped>::SharedPtr pub)
+  const double t_ms, const agnocast::Publisher<Float64Stamped>::SharedPtr & pub)
 {
-  Float64Stamped msg{};
-  msg.stamp = this->now();
-  msg.data = t_ms;
-  pub->publish(msg);
+  auto loaned_msg = pub->borrow_loaned_message();
+  loaned_msg->stamp = this->now();
+  loaned_msg->data = t_ms;
+  pub->publish(std::move(loaned_msg));
 }
 
 std::optional<ControlHorizon> Controller::mergeLatLonHorizon(

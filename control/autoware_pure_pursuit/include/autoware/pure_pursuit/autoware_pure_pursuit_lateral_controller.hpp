@@ -34,8 +34,10 @@
 #include "autoware/pure_pursuit/autoware_pure_pursuit_viz.hpp"
 #include "autoware/trajectory_follower_base/lateral_controller_base.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "tf2_ros/buffer.h"
-#include "tf2_ros/transform_listener.h"
+
+#include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/buffer.hpp>
+#include <agnocast/node/tf2/transform_listener.hpp>
 
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/conversion.hpp>
@@ -101,7 +103,7 @@ class PurePursuitLateralController : public LateralControllerBase
 {
 public:
   /// \param node Reference to the node used only for the component and parameter initialization.
-  explicit PurePursuitLateralController(rclcpp::Node & node);
+  explicit PurePursuitLateralController(agnocast::Node & node);
 
 private:
   rclcpp::Clock::SharedPtr clock_;
@@ -114,11 +116,11 @@ private:
   boost::optional<Lateral> prev_cmd_;
 
   // Debug Publisher
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_marker_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_marker_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
     pub_debug_values_;
   // Predicted Trajectory publish
-  rclcpp::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr pub_predicted_trajectory_;
+  agnocast::Publisher<autoware_planning_msgs::msg::Trajectory>::SharedPtr pub_predicted_trajectory_;
 
   void onTrajectory(const autoware_planning_msgs::msg::Trajectory::ConstSharedPtr msg);
 
@@ -127,8 +129,8 @@ private:
   void setResampledTrajectory();
 
   // TF
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  agnocast::Buffer tf_buffer_;
+  std::unique_ptr<agnocast::TransformListener> tf_listener_;
   geometry_msgs::msg::Pose current_pose_;
 
   void publishDebugMarker() const;

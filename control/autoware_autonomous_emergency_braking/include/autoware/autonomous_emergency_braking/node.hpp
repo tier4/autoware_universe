@@ -20,7 +20,6 @@
 #include <agnocast/agnocast.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
-#include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <pcl_ros/transforms.hpp>
@@ -47,8 +46,9 @@
 #include <pcl/point_types.h>
 #include <pcl/surface/convex_hull.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <agnocast/node/tf2/buffer.hpp>
+#include <agnocast/node/tf2/transform_listener.hpp>
 #include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <deque>
 #include <limits>
@@ -322,7 +322,7 @@ private:
 /**
  * @brief Autonomous Emergency Braking (AEB) node
  */
-class AEB : public rclcpp::Node
+class AEB : public agnocast::Node
 {
 public:
   /**
@@ -333,24 +333,21 @@ public:
 
   // subscriber
   agnocast::PollingSubscriber<PointCloud2>::SharedPtr sub_point_cloud_;
-  autoware_utils::InterProcessPollingSubscriber<VelocityReport> sub_velocity_{
-    this, "~/input/velocity"};
-  autoware_utils::InterProcessPollingSubscriber<Imu> sub_imu_{this, "~/input/imu"};
-  autoware_utils::InterProcessPollingSubscriber<Trajectory> sub_predicted_traj_{
-    this, "~/input/predicted_trajectory"};
+  agnocast::PollingSubscriber<VelocityReport>::SharedPtr sub_velocity_;
+  agnocast::PollingSubscriber<Imu>::SharedPtr sub_imu_;
+  agnocast::PollingSubscriber<Trajectory>::SharedPtr sub_predicted_traj_;
   agnocast::PollingSubscriber<PredictedObjects>::SharedPtr predicted_objects_sub_;
-  autoware_utils::InterProcessPollingSubscriber<AutowareState> sub_autoware_state_{
-    this, "/autoware/state"};
+  agnocast::PollingSubscriber<AutowareState>::SharedPtr sub_autoware_state_;
   // publisher
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_obstacle_pointcloud_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr debug_marker_publisher_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr virtual_wall_publisher_;
-  rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
+  agnocast::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_obstacle_pointcloud_;
+  agnocast::Publisher<MarkerArray>::SharedPtr debug_marker_publisher_;
+  agnocast::Publisher<MarkerArray>::SharedPtr virtual_wall_publisher_;
+  agnocast::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
-  rclcpp::Publisher<tier4_debug_msgs::msg::Float32Stamped>::SharedPtr debug_rss_distance_publisher_;
-  rclcpp::Publisher<MetricArray>::SharedPtr metrics_pub_;
+  agnocast::Publisher<tier4_debug_msgs::msg::Float32Stamped>::SharedPtr debug_rss_distance_publisher_;
+  agnocast::Publisher<MetricArray>::SharedPtr metrics_pub_;
   // timer
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
   mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};
 
   // callback
@@ -364,7 +361,7 @@ public:
    * @brief Callback for IMU messages
    * @param input_msg Shared pointer to the IMU message
    */
-  void onImu(const Imu::ConstSharedPtr input_msg);
+  void onImu(const agnocast::ipc_shared_ptr<const Imu> & input_msg);
 
   /**
    * @brief Timer callback function
@@ -389,7 +386,7 @@ public:
    * @brief Diagnostic check for collisions
    * @param stat Diagnostic status wrapper
    */
-  void onCheckCollision(DiagnosticStatusWrapper & stat);
+  void onCheckCollision();
 
   /**
    * @brief Check for collisions
@@ -534,20 +531,19 @@ public:
 
   // Member variables
   PointCloud2::SharedPtr obstacle_ros_pointcloud_ptr_{nullptr};
-  VelocityReport::ConstSharedPtr current_velocity_ptr_{nullptr};
+  agnocast::ipc_shared_ptr<const VelocityReport> current_velocity_ptr_;
   Vector3::SharedPtr angular_velocity_ptr_{nullptr};
-  Trajectory::ConstSharedPtr predicted_traj_ptr_{nullptr};
+  agnocast::ipc_shared_ptr<const Trajectory> predicted_traj_ptr_;
   agnocast::ipc_shared_ptr<const PredictedObjects> predicted_objects_ptr_;
-  AutowareState::ConstSharedPtr autoware_state_{nullptr};
+  agnocast::ipc_shared_ptr<const AutowareState> autoware_state_;
 
-  tf2_ros::Buffer tf_buffer_{get_clock()};
-  tf2_ros::TransformListener tf_listener_{tf_buffer_};
+  agnocast::Buffer tf_buffer_{get_clock()};
+  agnocast::TransformListener tf_listener_{tf_buffer_, *this};
 
   // vehicle info
   VehicleInfo vehicle_info_;
 
-  // diag
-  Updater updater_{this};
+  // diag (disabled for agnocast::Node)
 
   // Member variables
   bool publish_debug_pointcloud_;

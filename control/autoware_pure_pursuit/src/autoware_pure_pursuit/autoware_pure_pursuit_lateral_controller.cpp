@@ -58,16 +58,17 @@ enum TYPE {
 
 namespace autoware::pure_pursuit
 {
-PurePursuitLateralController::PurePursuitLateralController(rclcpp::Node & node)
+PurePursuitLateralController::PurePursuitLateralController(agnocast::Node & node)
 : clock_(node.get_clock()),
   logger_(node.get_logger().get_child("lateral_controller")),
-  tf_buffer_(clock_),
-  tf_listener_(tf_buffer_)
+  tf_buffer_(clock_)
 {
+  tf_listener_ = std::make_unique<agnocast::TransformListener>(tf_buffer_, node);
   pure_pursuit_ = std::make_unique<PurePursuit>();
 
   // Vehicle Parameters
-  const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo();
+  const auto vehicle_info =
+    autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo();
   param_.wheel_base = vehicle_info.wheel_base_m;
   param_.max_steering_angle = vehicle_info.max_steer_angle_rad;
 
@@ -120,17 +121,17 @@ double PurePursuitLateralController::calcLookaheadDistance(
     std::clamp(vel_ld + curvature_ld + lateral_error_ld, min_ld, param_.max_lookahead_distance);
 
   auto pubDebugValues = [&]() {
-    autoware_internal_debug_msgs::msg::Float32MultiArrayStamped debug_msg{};
-    debug_msg.data.resize(TYPE::SIZE);
-    debug_msg.data.at(TYPE::VEL_LD) = static_cast<float>(vel_ld);
-    debug_msg.data.at(TYPE::CURVATURE_LD) = static_cast<float>(curvature_ld);
-    debug_msg.data.at(TYPE::LATERAL_ERROR_LD) = static_cast<float>(lateral_error_ld);
-    debug_msg.data.at(TYPE::TOTAL_LD) = static_cast<float>(total_ld);
-    debug_msg.data.at(TYPE::VELOCITY) = static_cast<float>(velocity);
-    debug_msg.data.at(TYPE::CURVATURE) = static_cast<float>(curvature);
-    debug_msg.data.at(TYPE::LATERAL_ERROR) = static_cast<float>(lateral_error);
-    debug_msg.stamp = clock_->now();
-    pub_debug_values_->publish(debug_msg);
+    auto loaned_msg = pub_debug_values_->borrow_loaned_message();
+    loaned_msg->data.resize(TYPE::SIZE);
+    loaned_msg->data.at(TYPE::VEL_LD) = static_cast<float>(vel_ld);
+    loaned_msg->data.at(TYPE::CURVATURE_LD) = static_cast<float>(curvature_ld);
+    loaned_msg->data.at(TYPE::LATERAL_ERROR_LD) = static_cast<float>(lateral_error_ld);
+    loaned_msg->data.at(TYPE::TOTAL_LD) = static_cast<float>(total_ld);
+    loaned_msg->data.at(TYPE::VELOCITY) = static_cast<float>(velocity);
+    loaned_msg->data.at(TYPE::CURVATURE) = static_cast<float>(curvature);
+    loaned_msg->data.at(TYPE::LATERAL_ERROR) = static_cast<float>(lateral_error);
+    loaned_msg->stamp = clock_->now();
+    pub_debug_values_->publish(std::move(loaned_msg));
   };
 
   if (is_control_cmd) {
@@ -362,7 +363,11 @@ LateralOutput PurePursuitLateralController::run(const InputData & input_data)
   if (!predicted_trajectory) {
     RCLCPP_ERROR(logger_, "Failed to generate predicted trajectory.");
   } else {
-    pub_predicted_trajectory_->publish(*predicted_trajectory);
+    {
+      auto loaned_msg = pub_predicted_trajectory_->borrow_loaned_message();
+      *loaned_msg = *predicted_trajectory;
+      pub_predicted_trajectory_->publish(std::move(loaned_msg));
+    }
   }
 
   return output;

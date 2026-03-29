@@ -5,6 +5,7 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(fmt REQUIRED)
+find_package(agnocastlib REQUIRED)
 
 set(PID_LON_CON_LIB ${PROJECT_NAME}_lib)
 ament_auto_add_library(${PID_LON_CON_LIB} SHARED

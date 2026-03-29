@@ -35,15 +35,12 @@
 namespace autoware::motion::control::mpc_lateral_controller
 {
 
-MpcLateralController::MpcLateralController(
-  rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater)
+MpcLateralController::MpcLateralController(agnocast::Node & node)
 : clock_(node.get_clock()), logger_(node.get_logger().get_child("lateral_controller"))
 {
   const auto dp_int = [&](const std::string & s) { return node.declare_parameter<int>(s); };
   const auto dp_bool = [&](const std::string & s) { return node.declare_parameter<bool>(s); };
   const auto dp_double = [&](const std::string & s) { return node.declare_parameter<double>(s); };
-
-  diag_updater_ = diag_updater;
 
   m_mpc = std::make_unique<MPC>(node);
 
@@ -70,7 +67,8 @@ MpcLateralController::MpcLateralController(
   m_mpc_converged_threshold_rps = dp_double("mpc_converged_threshold_rps");  // [rad/s]
 
   /* mpc parameters */
-  const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo();
+  const auto vehicle_info =
+    autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo();
   const double wheelbase = vehicle_info.wheel_base_m;
   constexpr double deg2rad = static_cast<double>(M_PI) / 180.0;
   m_mpc->m_steer_lim = vehicle_info.max_steer_angle_rad;
@@ -154,8 +152,6 @@ MpcLateralController::MpcLateralController(
 
   m_mpc->setLogger(logger_);
   m_mpc->setClock(clock_);
-
-  setupDiag();
 }
 
 MpcLateralController::~MpcLateralController()
@@ -163,7 +159,7 @@ MpcLateralController::~MpcLateralController()
 }
 
 std::shared_ptr<VehicleModelInterface> MpcLateralController::createVehicleModel(
-  const double wheelbase, const double steer_lim, const double steer_tau, rclcpp::Node & node)
+  const double wheelbase, const double steer_lim, const double steer_tau, agnocast::Node & node)
 {
   std::shared_ptr<VehicleModelInterface> vehicle_model_ptr;
 
@@ -198,7 +194,7 @@ std::shared_ptr<VehicleModelInterface> MpcLateralController::createVehicleModel(
 }
 
 std::shared_ptr<QPSolverInterface> MpcLateralController::createQPSolverInterface(
-  rclcpp::Node & node)
+  agnocast::Node & node)
 {
   std::shared_ptr<QPSolverInterface> qpsolver_ptr;
 
@@ -219,7 +215,7 @@ std::shared_ptr<QPSolverInterface> MpcLateralController::createQPSolverInterface
 }
 
 std::shared_ptr<SteeringOffsetEstimator> MpcLateralController::createSteerOffsetEstimator(
-  const double wheelbase, rclcpp::Node & node)
+  const double wheelbase, agnocast::Node & node)
 {
   const std::string ns = "steering_offset.";
   const auto vel_thres = node.declare_parameter<double>(ns + "update_vel_threshold");
@@ -229,21 +225,6 @@ std::shared_ptr<SteeringOffsetEstimator> MpcLateralController::createSteerOffset
   steering_offset_ =
     std::make_shared<SteeringOffsetEstimator>(wheelbase, num, vel_thres, steer_thres, limit);
   return steering_offset_;
-}
-
-void MpcLateralController::setStatus(diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  if (m_mpc_solved_status.result) {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "MPC succeeded.");
-  } else {
-    const std::string error_msg = "MPC failed due to " + m_mpc_solved_status.reason;
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, error_msg);
-  }
-}
-
-void MpcLateralController::setupDiag()
-{
-  diag_updater_->add("MPC_solve_checker", [&](auto & stat) { setStatus(stat); });
 }
 
 trajectory_follower::LateralOutput MpcLateralController::run(
@@ -281,9 +262,7 @@ trajectory_follower::LateralOutput MpcLateralController::run(
     (!mpc_solved_status.result && mpc_solved_status.reason != m_mpc_solved_status.reason)) {
     RCLCPP_ERROR(logger_, "MPC failed due to %s", mpc_solved_status.reason.c_str());
   }
-  m_mpc_solved_status = mpc_solved_status;  // for diagnostic updater
-
-  diag_updater_->force_update();
+  m_mpc_solved_status = mpc_solved_status;
 
   // reset previous MPC result
   // Note: When a large deviation from the trajectory occurs, the optimization stops and
@@ -497,18 +476,28 @@ void MpcLateralController::publishPredictedTraj(Trajectory & predicted_traj) con
 {
   predicted_traj.header.stamp = clock_->now();
   predicted_traj.header.frame_id = m_current_trajectory.header.frame_id;
-  m_pub_predicted_traj->publish(predicted_traj);
+  {
+    auto loaned_msg = m_pub_predicted_traj->borrow_loaned_message();
+    *loaned_msg = predicted_traj;
+    m_pub_predicted_traj->publish(std::move(loaned_msg));
+  }
 }
 
 void MpcLateralController::publishDebugValues(Float32MultiArrayStamped & debug_values) const
 {
   debug_values.stamp = clock_->now();
-  m_pub_debug_values->publish(debug_values);
+  {
+    auto loaned_msg = m_pub_debug_values->borrow_loaned_message();
+    *loaned_msg = debug_values;
+    m_pub_debug_values->publish(std::move(loaned_msg));
+  }
 
-  Float32Stamped offset;
-  offset.stamp = clock_->now();
-  offset.data = steering_offset_->getOffset();
-  m_pub_steer_offset->publish(offset);
+  {
+    auto loaned_msg = m_pub_steer_offset->borrow_loaned_message();
+    loaned_msg->stamp = clock_->now();
+    loaned_msg->data = steering_offset_->getOffset();
+    m_pub_steer_offset->publish(std::move(loaned_msg));
+  }
 }
 
 void MpcLateralController::setSteeringToHistory(const Lateral & steering)
@@ -565,7 +554,7 @@ bool MpcLateralController::isMpcConverged()
   return (max_steering_value - min_steering_value) < m_mpc_converged_threshold_rps;
 }
 
-void MpcLateralController::declareMPCparameters(rclcpp::Node & node)
+void MpcLateralController::declareMPCparameters(agnocast::Node & node)
 {
   m_mpc->m_param.prediction_horizon = node.declare_parameter<int>("mpc_prediction_horizon");
   m_mpc->m_param.prediction_dt = node.declare_parameter<double>("mpc_prediction_dt");

@@ -21,7 +21,7 @@ rclcpp_components_register_node(${CONTROLLER_NODE}
 agnocast_components_register_node(${CONTROLLER_NODE}
   PLUGIN "autoware::motion::control::trajectory_follower_node::Controller"
   EXECUTABLE ${CONTROLLER_NODE}_agnocast_exe
-  EXECUTOR CallbackIsolatedAgnocastExecutor
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
   RESOURCE_INDEX agnocast_components
 )
 

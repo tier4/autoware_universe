@@ -20,7 +20,6 @@
 #include "autoware/trajectory_follower_base/longitudinal_controller_base.hpp"
 #include "autoware/trajectory_follower_node/visibility_control.hpp"
 #include "autoware_utils/ros/logger_level_configure.hpp"
-#include "autoware_utils/ros/polling_subscriber.hpp"
 #include "autoware_utils/system/stop_watch.hpp"
 #include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -71,51 +70,46 @@ namespace trajectory_follower = ::autoware::motion::control::trajectory_follower
 
 /// \classController
 /// \brief The node class used for generating longitudinal control commands (velocity/acceleration)
-class TRAJECTORY_FOLLOWER_PUBLIC Controller : public rclcpp::Node
+class TRAJECTORY_FOLLOWER_PUBLIC Controller : public agnocast::Node
 {
 public:
   explicit Controller(const rclcpp::NodeOptions & node_options);
   virtual ~Controller() {}
 
 private:
-  rclcpp::TimerBase::SharedPtr timer_control_;
+  agnocast::TimerBase::SharedPtr timer_control_;
   double timeout_thr_sec_;
   bool enable_control_cmd_horizon_pub_{false};
   boost::optional<LongitudinalOutput> longitudinal_output_{boost::none};
 
-  std::shared_ptr<diagnostic_updater::Updater> diag_updater_ =
-    std::make_shared<diagnostic_updater::Updater>(
-      this);  // Diagnostic updater for publishing diagnostic data.
+  // diagnostic_updater disabled for agnocast::Node
 
   std::shared_ptr<trajectory_follower::LongitudinalControllerBase> longitudinal_controller_;
   std::shared_ptr<trajectory_follower::LateralControllerBase> lateral_controller_;
 
   // Subscribers
-  autoware_utils::InterProcessPollingSubscriber<autoware_planning_msgs::msg::Trajectory>
-    sub_ref_path_{this, "~/input/reference_trajectory"};
+  agnocast::PollingSubscriber<autoware_planning_msgs::msg::Trajectory>::SharedPtr sub_ref_path_;
 
   agnocast::PollingSubscriber<nav_msgs::msg::Odometry>::SharedPtr sub_odometry_;
 
-  autoware_utils::InterProcessPollingSubscriber<autoware_vehicle_msgs::msg::SteeringReport>
-    sub_steering_{this, "~/input/current_steering"};
+  agnocast::PollingSubscriber<autoware_vehicle_msgs::msg::SteeringReport>::SharedPtr sub_steering_;
 
   agnocast::PollingSubscriber<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr sub_accel_;
 
-  autoware_utils::InterProcessPollingSubscriber<OperationModeState> sub_operation_mode_{
-    this, "~/input/current_operation_mode", rclcpp::QoS{1}.transient_local()};
+  agnocast::PollingSubscriber<OperationModeState>::SharedPtr sub_operation_mode_;
 
   // Publishers
   agnocast::Publisher<autoware_control_msgs::msg::Control>::SharedPtr control_cmd_pub_;
-  rclcpp::Publisher<Float64Stamped>::SharedPtr pub_processing_time_lat_ms_;
-  rclcpp::Publisher<Float64Stamped>::SharedPtr pub_processing_time_lon_ms_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
-  rclcpp::Publisher<autoware_control_msgs::msg::ControlHorizon>::SharedPtr control_cmd_horizon_pub_;
+  agnocast::Publisher<Float64Stamped>::SharedPtr pub_processing_time_lat_ms_;
+  agnocast::Publisher<Float64Stamped>::SharedPtr pub_processing_time_lon_ms_;
+  agnocast::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_marker_pub_;
+  agnocast::Publisher<autoware_control_msgs::msg::ControlHorizon>::SharedPtr control_cmd_horizon_pub_;
 
-  autoware_planning_msgs::msg::Trajectory::ConstSharedPtr current_trajectory_ptr_;
+  agnocast::ipc_shared_ptr<const autoware_planning_msgs::msg::Trajectory> current_trajectory_ptr_;
   agnocast::ipc_shared_ptr<const nav_msgs::msg::Odometry> current_odometry_ptr_;
-  autoware_vehicle_msgs::msg::SteeringReport::ConstSharedPtr current_steering_ptr_;
+  agnocast::ipc_shared_ptr<const autoware_vehicle_msgs::msg::SteeringReport> current_steering_ptr_;
   agnocast::ipc_shared_ptr<const geometry_msgs::msg::AccelWithCovarianceStamped> current_accel_ptr_;
-  OperationModeState::ConstSharedPtr current_operation_mode_ptr_;
+  agnocast::ipc_shared_ptr<const OperationModeState> current_operation_mode_ptr_;
 
   enum class LateralControllerMode {
     INVALID = 0,
@@ -154,12 +148,10 @@ private:
     const LateralHorizon & lateral_horizon, const LongitudinalHorizon & longitudinal_horizon,
     const rclcpp::Time & stamp);
 
-  std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
-
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  // LoggerLevelConfigure and PublishedTimePublisher disabled for agnocast::Node
 
   void publishProcessingTime(
-    const double t_ms, const rclcpp::Publisher<Float64Stamped>::SharedPtr pub);
+    const double t_ms, const agnocast::Publisher<Float64Stamped>::SharedPtr & pub);
   StopWatch<std::chrono::milliseconds> stop_watch_;
 
   static constexpr double logger_throttle_interval = 5000;

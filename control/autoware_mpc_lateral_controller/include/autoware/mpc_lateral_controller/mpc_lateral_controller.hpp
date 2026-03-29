@@ -22,8 +22,8 @@
 #include "autoware/trajectory_follower_base/lateral_controller_base.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/trajectory_follower_base/control_horizon.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
 
 #include "autoware_control_msgs/msg/lateral.hpp"
 #include "autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp"
@@ -56,20 +56,18 @@ class MpcLateralController : public trajectory_follower::LateralControllerBase
 {
 public:
   /// \param node Reference to the node used only for the component and parameter initialization.
-  explicit MpcLateralController(
-    rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater);
+  explicit MpcLateralController(agnocast::Node & node);
   virtual ~MpcLateralController();
 
 private:
   rclcpp::Clock::SharedPtr clock_;
   rclcpp::Logger logger_;
 
-  rclcpp::Publisher<Trajectory>::SharedPtr m_pub_predicted_traj;
-  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr m_pub_debug_values;
-  rclcpp::Publisher<Float32Stamped>::SharedPtr m_pub_steer_offset;
+  agnocast::Publisher<Trajectory>::SharedPtr m_pub_predicted_traj;
+  agnocast::Publisher<Float32MultiArrayStamped>::SharedPtr m_pub_debug_values;
+  agnocast::Publisher<Float32Stamped>::SharedPtr m_pub_steer_offset;
 
-  std::shared_ptr<diagnostic_updater::Updater>
-    diag_updater_{};  // Diagnostic updater for publishing diagnostic data.
+  // diagnostic_updater is disabled for agnocast
 
   //!< @brief parameters for path smoothing
   TrajectoryFilteringParam m_trajectory_filtering_param;
@@ -100,10 +98,6 @@ private:
 
   // trajectory buffer for detecting new trajectory
   std::deque<Trajectory> m_trajectory_buffer;
-
-  void setStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
-
-  void setupDiag();
 
   std::unique_ptr<MPC> m_mpc;  // MPC object for trajectory following.
 
@@ -164,14 +158,14 @@ private:
    * @return Pointer to the created vehicle model.
    */
   std::shared_ptr<VehicleModelInterface> createVehicleModel(
-    const double wheelbase, const double steer_lim, const double steer_tau, rclcpp::Node & node);
+    const double wheelbase, const double steer_lim, const double steer_tau, agnocast::Node & node);
 
   /**
    * @brief Create the quadratic problem solver interface.
    * @param node Reference to the node.
    * @return Pointer to the created QP solver interface.
    */
-  std::shared_ptr<QPSolverInterface> createQPSolverInterface(rclcpp::Node & node);
+  std::shared_ptr<QPSolverInterface> createQPSolverInterface(agnocast::Node & node);
 
   /**
    * @brief Create the steering offset estimator for offset compensation.
@@ -180,7 +174,7 @@ private:
    * @return Pointer to the created steering offset estimator.
    */
   std::shared_ptr<SteeringOffsetEstimator> createSteerOffsetEstimator(
-    const double wheelbase, rclcpp::Node & node);
+    const double wheelbase, agnocast::Node & node);
 
   /**
    * @brief Check if all necessary data is received and ready to run the control.
@@ -280,7 +274,7 @@ private:
    * @brief Declare MPC parameters as ROS parameters to allow tuning on the fly.
    * @param node Reference to the node.
    */
-  void declareMPCparameters(rclcpp::Node & node);
+  void declareMPCparameters(agnocast::Node & node);
 
   /**
    * @brief Callback function called when parameters are changed outside of the node.

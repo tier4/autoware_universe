@@ -137,8 +137,9 @@ Polygon2d createPolygon(
 }
 
 AEB::AEB(const rclcpp::NodeOptions & node_options)
-: Node("AEB", node_options),
-  vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()),
+: agnocast::Node("AEB", node_options),
+  vehicle_info_(
+    autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(*this).getVehicleInfo()),
   collision_data_keeper_(this->get_clock())
 {
   // Publisher
@@ -150,11 +151,6 @@ AEB::AEB(const rclcpp::NodeOptions & node_options)
     debug_rss_distance_publisher_ =
       this->create_publisher<tier4_debug_msgs::msg::Float32Stamped>("~/debug/rss_distance", 1);
     metrics_pub_ = this->create_publisher<MetricArray>("~/metrics", 1);
-  }
-  // Diagnostics
-  {
-    updater_.setHardwareID("autonomous_emergency_braking");
-    updater_.add("aeb_emergency_stop", this, &AEB::onCheckCollision);
   }
   // parameter
   publish_debug_pointcloud_ = declare_parameter<bool>("publish_debug_pointcloud");
@@ -209,16 +205,22 @@ AEB::AEB(const rclcpp::NodeOptions & node_options)
   // start time
   const double aeb_hz = declare_parameter<double>("aeb_hz");
   const auto period_ns = rclcpp::Rate(aeb_hz).period();
-  timer_ = rclcpp::create_timer(this, this->get_clock(), period_ns, std::bind(&AEB::onTimer, this));
+  timer_ = this->create_timer(period_ns, std::bind(&AEB::onTimer, this));
 
   // Agnocast polling subscribers
-  sub_point_cloud_ = std::make_shared<agnocast::PollingSubscriber<PointCloud2>>(
-    this, "~/input/pointcloud", autoware_utils::single_depth_sensor_qos());
-  predicted_objects_sub_ = std::make_shared<agnocast::PollingSubscriber<PredictedObjects>>(
-    this, "~/input/objects");
+  sub_point_cloud_ =
+    this->create_subscription<PointCloud2>("~/input/pointcloud", autoware_utils::single_depth_sensor_qos());
+  sub_velocity_ = this->create_subscription<VelocityReport>("~/input/velocity", 1);
+  sub_imu_ = this->create_subscription<Imu>("~/input/imu", 1);
+  sub_predicted_traj_ =
+    this->create_subscription<Trajectory>("~/input/predicted_trajectory", 1);
+  predicted_objects_sub_ =
+    this->create_subscription<PredictedObjects>("~/input/objects", 1);
+  sub_autoware_state_ =
+    this->create_subscription<AutowareState>("/autoware/state", 1);
 
   debug_processing_time_detail_pub_ =
-    create_publisher<autoware_utils::ProcessingTimeDetail>("~/debug/processing_time_detail_ms", 1);
+    this->create_publisher<autoware_utils::ProcessingTimeDetail>("~/debug/processing_time_detail_ms", 1);
   time_keeper_ = std::make_shared<autoware_utils::TimeKeeper>(debug_processing_time_detail_pub_);
 }
 
@@ -280,10 +282,10 @@ rcl_interfaces::msg::SetParametersResult AEB::onParameter(
 
 void AEB::onTimer()
 {
-  updater_.force_update();
+  onCheckCollision();
 }
 
-void AEB::onImu(const Imu::ConstSharedPtr input_msg)
+void AEB::onImu(const agnocast::ipc_shared_ptr<const Imu> & input_msg)
 {
   // transform imu
   const auto logger = get_logger();
@@ -348,7 +350,7 @@ bool AEB::fetchLatestData()
     return false;
   };
 
-  current_velocity_ptr_ = sub_velocity_.take_data();
+  current_velocity_ptr_ = sub_velocity_->take_data();
   if (!current_velocity_ptr_) {
     return missing("ego velocity");
   }
@@ -382,7 +384,7 @@ bool AEB::fetchLatestData()
 
   const bool has_imu_path = std::invoke([&]() {
     if (!use_imu_path_) return false;
-    const auto imu_ptr = sub_imu_.take_data();
+    const auto imu_ptr = sub_imu_->take_data();
     if (!imu_ptr) {
       return missing("imu message");
     }
@@ -395,7 +397,7 @@ bool AEB::fetchLatestData()
     if (!use_predicted_trajectory_) {
       return false;
     }
-    predicted_traj_ptr_ = sub_predicted_traj_.take_data();
+    predicted_traj_ptr_ = sub_predicted_traj_->take_data();
     return (!predicted_traj_ptr_) ? missing("control predicted trajectory") : true;
   });
 
@@ -406,7 +408,7 @@ bool AEB::fetchLatestData()
     return false;
   }
 
-  autoware_state_ = sub_autoware_state_.take_data();
+  autoware_state_ = sub_autoware_state_->take_data();
   if (check_autoware_state_ && !autoware_state_) {
     return missing("autoware_state");
   }
@@ -414,7 +416,7 @@ bool AEB::fetchLatestData()
   return true;
 }
 
-void AEB::onCheckCollision(DiagnosticStatusWrapper & stat)
+void AEB::onCheckCollision()
 {
   MarkerArray debug_markers;
   MarkerArray virtual_wall_marker;
@@ -422,14 +424,8 @@ void AEB::onCheckCollision(DiagnosticStatusWrapper & stat)
   checkCollision(debug_markers);
 
   if (!collision_data_keeper_.checkCollisionExpired()) {
-    const std::string error_msg = "[AEB]: Emergency Brake";
-    const auto diag_level = DiagnosticStatus::ERROR;
-    stat.summary(diag_level, error_msg);
     const auto & data = collision_data_keeper_.get();
     if (data.has_value()) {
-      stat.addf("RSS", "%.2f", data.value().rss);
-      stat.addf("Distance", "%.2f", data.value().distance_to_object);
-      stat.addf("Object Speed", "%.2f", data.value().velocity);
       if (publish_debug_markers_) {
         addCollisionMarker(data.value(), debug_markers);
       }
@@ -442,19 +438,26 @@ void AEB::onCheckCollision(DiagnosticStatusWrapper & stat)
       metric.value = "brake";
       metrics.metric_array.push_back(metric);
     }
-
-  } else {
-    const std::string error_msg = "[AEB]: No Collision";
-    const auto diag_level = DiagnosticStatus::OK;
-    stat.summary(diag_level, error_msg);
   }
 
   // publish debug markers
-  debug_marker_publisher_->publish(debug_markers);
-  virtual_wall_publisher_->publish(virtual_wall_marker);
+  {
+    auto loaned_msg = debug_marker_publisher_->borrow_loaned_message();
+    *loaned_msg = debug_markers;
+    debug_marker_publisher_->publish(std::move(loaned_msg));
+  }
+  {
+    auto loaned_msg = virtual_wall_publisher_->borrow_loaned_message();
+    *loaned_msg = virtual_wall_marker;
+    virtual_wall_publisher_->publish(std::move(loaned_msg));
+  }
   // publish metrics
-  metrics.stamp = get_clock()->now();
-  metrics_pub_->publish(metrics);
+  {
+    metrics.stamp = get_clock()->now();
+    auto loaned_msg = metrics_pub_->borrow_loaned_message();
+    *loaned_msg = metrics;
+    metrics_pub_->publish(std::move(loaned_msg));
+  }
 }
 
 bool AEB::checkCollision(MarkerArray & debug_markers)
@@ -622,9 +625,9 @@ bool AEB::checkCollision(MarkerArray & debug_markers)
 
   // Debug print
   if (!filtered_objects->empty() && publish_debug_pointcloud_) {
-    const auto filtered_objects_ros_pointcloud_ptr = std::make_shared<PointCloud2>();
-    pcl::toROSMsg(*filtered_objects, *filtered_objects_ros_pointcloud_ptr);
-    pub_obstacle_pointcloud_->publish(*filtered_objects_ros_pointcloud_ptr);
+    auto loaned_msg = pub_obstacle_pointcloud_->borrow_loaned_message();
+    pcl::toROSMsg(*filtered_objects, *loaned_msg);
+    pub_obstacle_pointcloud_->publish(std::move(loaned_msg));
   }
   return has_collision;
 }
@@ -644,10 +647,12 @@ bool AEB::hasCollision(const double current_v, const ObjectData & closest_object
     return ego_stopping_distance + obj_braking_distance + longitudinal_offset_margin_;
   });
 
-  tier4_debug_msgs::msg::Float32Stamped rss_distance_msg;
-  rss_distance_msg.stamp = get_clock()->now();
-  rss_distance_msg.data = rss_dist;
-  debug_rss_distance_publisher_->publish(rss_distance_msg);
+  {
+    auto loaned_msg = debug_rss_distance_publisher_->borrow_loaned_message();
+    loaned_msg->stamp = get_clock()->now();
+    loaned_msg->data = rss_dist;
+    debug_rss_distance_publisher_->publish(std::move(loaned_msg));
+  }
 
   if (closest_object.distance_to_object > rss_dist) return false;
 

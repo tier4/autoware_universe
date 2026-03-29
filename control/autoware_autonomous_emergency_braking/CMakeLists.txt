@@ -3,6 +3,7 @@ project(autoware_autonomous_emergency_braking)
 
 find_package(autoware_cmake REQUIRED)
 find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
 autoware_package()
 
 find_package(PCL REQUIRED)
@@ -28,6 +29,12 @@ target_link_libraries(${AEB_NODE} autoware_autonomous_emergency_braking_helpers)
 rclcpp_components_register_node(${AEB_NODE}
   PLUGIN "autoware::motion::control::autonomous_emergency_braking::AEB"
   EXECUTABLE ${PROJECT_NAME}
+)
+agnocast_components_register_node(${AEB_NODE}
+  PLUGIN "autoware::motion::control::autonomous_emergency_braking::AEB"
+  EXECUTABLE ${PROJECT_NAME}_agnocast
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 if(BUILD_TESTING)

@@ -35,12 +35,12 @@ using autoware_utils::calc_distance2d;
 using autoware_utils::normalize_radian;
 using autoware_utils::rad2deg;
 
-MPC::MPC(rclcpp::Node & node)
+MPC::MPC(agnocast::Node & node)
 {
   m_debug_frenet_predicted_trajectory_pub = node.create_publisher<Trajectory>(
-    "~/debug/predicted_trajectory_in_frenet_coordinate", rclcpp::QoS(1));
+    "~/debug/predicted_trajectory_in_frenet_coordinate", 1);
   m_debug_resampled_reference_trajectory_pub =
-    node.create_publisher<Trajectory>("~/debug/resampled_reference_trajectory", rclcpp::QoS(1));
+    node.create_publisher<Trajectory>("~/debug/resampled_reference_trajectory", 1);
 }
 
 ResultWithReason MPC::calculateMPC(
@@ -125,7 +125,11 @@ ResultWithReason MPC::calculateMPC(
       mpc_matrix, initial_state, Uex, mpc_resampled_ref_trajectory, prediction_dt, "frenet");
     predicted_trajectory_frenet.header.stamp = m_clock->now();
     predicted_trajectory_frenet.header.frame_id = "map";
-    m_debug_frenet_predicted_trajectory_pub->publish(predicted_trajectory_frenet);
+    {
+      auto loaned_msg = m_debug_frenet_predicted_trajectory_pub->borrow_loaned_message();
+      *loaned_msg = predicted_trajectory_frenet;
+      m_debug_frenet_predicted_trajectory_pub->publish(std::move(loaned_msg));
+    }
   }
 
   // prepare diagnostic message
@@ -333,7 +337,11 @@ std::pair<ResultWithReason, MPCTrajectory> MPC::resampleMPCTrajectoryByTime(
     auto converted_output = MPCUtils::convertToAutowareTrajectory(output);
     converted_output.header.stamp = m_clock->now();
     converted_output.header.frame_id = "map";
-    m_debug_resampled_reference_trajectory_pub->publish(converted_output);
+    {
+      auto loaned_msg = m_debug_resampled_reference_trajectory_pub->borrow_loaned_message();
+      *loaned_msg = converted_output;
+      m_debug_resampled_reference_trajectory_pub->publish(std::move(loaned_msg));
+    }
   }
   return {ResultWithReason{true}, output};
 }

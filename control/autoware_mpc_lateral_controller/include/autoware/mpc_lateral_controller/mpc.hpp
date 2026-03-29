@@ -23,6 +23,8 @@
 #include "autoware/trajectory_follower_base/control_horizon.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include <agnocast/agnocast.hpp>
+
 #include "autoware_control_msgs/msg/lateral.hpp"
 #include "autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp"
 #include "autoware_planning_msgs/msg/trajectory.hpp"
@@ -227,8 +229,8 @@ private:
 
   bool m_is_forward_shift = true;  // Flag indicating if the shift is in the forward direction.
 
-  rclcpp::Publisher<Trajectory>::SharedPtr m_debug_frenet_predicted_trajectory_pub;
-  rclcpp::Publisher<Trajectory>::SharedPtr m_debug_resampled_reference_trajectory_pub;
+  agnocast::Publisher<Trajectory>::SharedPtr m_debug_frenet_predicted_trajectory_pub;
+  agnocast::Publisher<Trajectory>::SharedPtr m_debug_resampled_reference_trajectory_pub;
   /**
    * @brief Get variables for MPC calculation.
    * @param trajectory The reference trajectory.
@@ -441,7 +443,7 @@ public:
                                               // resampled reference trajectory for debug purpose
 
   //!< Constructor.
-  explicit MPC(rclcpp::Node & node);
+  explicit MPC(agnocast::Node & node);
 
   /**
    * @brief Calculate control command using the MPC algorithm.

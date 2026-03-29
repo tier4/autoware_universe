@@ -5,6 +5,7 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(fmt REQUIRED)
+find_package(agnocastlib REQUIRED)
 
 ament_auto_add_library(steering_offset_lib SHARED
   src/steering_offset/steering_offset.cpp

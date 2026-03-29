@@ -30,24 +30,21 @@
 
 namespace autoware::motion::control::pid_longitudinal_controller
 {
-PidLongitudinalController::PidLongitudinalController(
-  rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater)
+PidLongitudinalController::PidLongitudinalController(agnocast::Node & node)
 : node_parameters_(node.get_node_parameters_interface()),
   clock_(node.get_clock()),
   logger_(node.get_logger().get_child("longitudinal_controller"))
 {
   using std::placeholders::_1;
 
-  diag_updater_ = diag_updater;
-
   // parameters timer
   m_longitudinal_ctrl_period = node.get_parameter("ctrl_period").as_double();
 
-  m_wheel_base = autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo().wheel_base_m;
+  m_wheel_base = autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo().wheel_base_m;
   m_vehicle_width =
-    autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo().vehicle_width_m;
+    autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo().vehicle_width_m;
   m_front_overhang =
-    autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo().front_overhang_m;
+    autoware::vehicle_info_utils::VehicleInfoUtilsTemplate<agnocast::Node>(node).getVehicleInfo().front_overhang_m;
 
   // parameters for delay compensation
   m_delay_compensation_time = node.declare_parameter<double>("delay_compensation_time");  // [s]
@@ -223,9 +220,6 @@ PidLongitudinalController::PidLongitudinalController(
   // set parameter callback
   m_set_param_res = node.add_on_set_parameters_callback(
     std::bind(&PidLongitudinalController::paramCallback, this, _1));
-
-  // diagnostic
-  setupDiagnosticUpdater();
 }
 
 void PidLongitudinalController::setKinematicState(const nav_msgs::msg::Odometry & msg)
@@ -438,9 +432,6 @@ trajectory_follower::LongitudinalOutput PidLongitudinalController::run(
   // publish debug data
   publishDebugData(ctrl_cmd, control_data);
 
-  // diagnostic
-  diag_updater_->force_update();
-
   return output;
 }
 
@@ -591,7 +582,11 @@ PidLongitudinalController::Motion PidLongitudinalController::calcEmergencyCtrlCm
   const auto virtual_wall_marker = autoware::motion_utils::createStopVirtualWallMarker(
     m_current_kinematic_state.pose.pose, "velocity control\n (emergency)", clock_->now(), 0,
     m_wheel_base + m_front_overhang);
-  m_pub_virtual_wall_marker->publish(virtual_wall_marker);
+  {
+    auto loaned_msg = m_pub_virtual_wall_marker->borrow_loaned_message();
+    *loaned_msg = virtual_wall_marker;
+    m_pub_virtual_wall_marker->publish(std::move(loaned_msg));
+  }
 
   return raw_ctrl_cmd;
 }
@@ -761,7 +756,11 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
           const auto virtual_wall_marker = autoware::motion_utils::createStopVirtualWallMarker(
             m_current_kinematic_state.pose.pose, "velocity control\n(steering not converged)",
             clock_->now(), 0, m_wheel_base + m_front_overhang);
-          m_pub_virtual_wall_marker->publish(virtual_wall_marker);
+          {
+            auto loaned_msg = m_pub_virtual_wall_marker->borrow_loaned_message();
+            *loaned_msg = virtual_wall_marker;
+            m_pub_virtual_wall_marker->publish(std::move(loaned_msg));
+          }
         }
 
         // keep STOPPED
@@ -934,19 +933,26 @@ void PidLongitudinalController::publishDebugData(
   m_debug_values.setValues(DebugValues::TYPE::ACC_CMD_PUBLISHED, ctrl_cmd.acc);
 
   // publish debug values
-  autoware_internal_debug_msgs::msg::Float32MultiArrayStamped debug_msg{};
-  debug_msg.stamp = clock_->now();
-  for (const auto & v : m_debug_values.getValues()) {
-    debug_msg.data.push_back(static_cast<decltype(debug_msg.data)::value_type>(v));
+  {
+    auto loaned_msg = m_pub_debug->borrow_loaned_message();
+    loaned_msg->stamp = clock_->now();
+    for (const auto & v : m_debug_values.getValues()) {
+      loaned_msg->data.push_back(
+        static_cast<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped::_data_type::
+                      value_type>(v));
+    }
+    m_pub_debug->publish(std::move(loaned_msg));
   }
-  m_pub_debug->publish(debug_msg);
 
   // slope angle
-  autoware_internal_debug_msgs::msg::Float32MultiArrayStamped slope_msg{};
-  slope_msg.stamp = clock_->now();
-  slope_msg.data.push_back(
-    static_cast<decltype(slope_msg.data)::value_type>(control_data.slope_angle));
-  m_pub_slope->publish(slope_msg);
+  {
+    auto loaned_msg = m_pub_slope->borrow_loaned_message();
+    loaned_msg->stamp = clock_->now();
+    loaned_msg->data.push_back(
+      static_cast<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped::_data_type::
+                    value_type>(control_data.slope_angle));
+    m_pub_slope->publish(std::move(loaned_msg));
+  }
 }
 
 double PidLongitudinalController::getDt()
@@ -1207,28 +1213,6 @@ void PidLongitudinalController::updateDebugVelAcc(const ControlData & control_da
     DebugValues::TYPE::ERROR_VEL,
     control_data.interpolated_traj.points.at(control_data.nearest_idx).longitudinal_velocity_mps -
       control_data.current_motion.vel);
-}
-
-void PidLongitudinalController::setupDiagnosticUpdater()
-{
-  diag_updater_->add("control_state", this, &PidLongitudinalController::checkControlState);
-}
-
-void PidLongitudinalController::checkControlState(
-  diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  using diagnostic_msgs::msg::DiagnosticStatus;
-
-  auto level = DiagnosticStatus::OK;
-  std::string msg = "OK";
-
-  if (m_control_state == ControlState::EMERGENCY) {
-    level = DiagnosticStatus::ERROR;
-    msg = "emergency occurred due to ";
-  }
-
-  stat.add<int32_t>("control_state", static_cast<int32_t>(m_control_state));
-  stat.summary(level, msg);
 }
 
 double PidLongitudinalController::getTimeUnderControl()

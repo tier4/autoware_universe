@@ -239,7 +239,7 @@
 
       <!-- autonomous emergency braking (standalone) -->
       <group if="$(var launch_autonomous_emergency_braking)">
-        <node pkg="autoware_autonomous_emergency_braking" exec="autoware_autonomous_emergency_braking" name="autonomous_emergency_braking">
+        <node pkg="autoware_autonomous_emergency_braking" exec="autoware_autonomous_emergency_braking_agnocast" name="autonomous_emergency_braking">
           <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
           <remap from="~/input/pointcloud" to="$(var input_pointcloud_topic_name)"/>
           <remap from="~/input/velocity" to="/vehicle/status/velocity_status"/>

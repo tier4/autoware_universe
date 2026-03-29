@@ -23,8 +23,9 @@
 #include "autoware/trajectory_follower_base/longitudinal_controller_base.hpp"
 #include "autoware_utils/ros/marker_helper.hpp"
 #include "autoware_vehicle_info_utils/vehicle_info_utils.hpp"
-#include "diagnostic_updater/diagnostic_updater.hpp"
 #include "rclcpp/rclcpp.hpp"
+
+#include <agnocast/agnocast.hpp>
 #include "tf2/utils.h"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
@@ -61,8 +62,7 @@ class PidLongitudinalController : public trajectory_follower::LongitudinalContro
 {
 public:
   /// \param node Reference to the node used only for the component and parameter initialization.
-  explicit PidLongitudinalController(
-    rclcpp::Node & node, std::shared_ptr<diagnostic_updater::Updater> diag_updater);
+  explicit PidLongitudinalController(agnocast::Node & node);
 
 private:
   struct Motion
@@ -98,11 +98,11 @@ private:
   rclcpp::Clock::SharedPtr clock_;
   rclcpp::Logger logger_;
   // ros variables
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
     m_pub_slope;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float32MultiArrayStamped>::SharedPtr
     m_pub_debug;
-  rclcpp::Publisher<MarkerArray>::SharedPtr m_pub_virtual_wall_marker;
+  agnocast::Publisher<MarkerArray>::SharedPtr m_pub_virtual_wall_marker;
 
   rclcpp::Node::OnSetParametersCallbackHandle::SharedPtr m_set_param_res;
   rcl_interfaces::msg::SetParametersResult paramCallback(
@@ -244,11 +244,10 @@ private:
 
   std::shared_ptr<rclcpp::Time> m_last_running_time{std::make_shared<rclcpp::Time>(clock_->now())};
 
-  // Diagnostic
-  std::shared_ptr<diagnostic_updater::Updater>
-    diag_updater_{};  // Diagnostic updater for publishing diagnostic data.
-  void setupDiagnosticUpdater();
-  void checkControlState(diagnostic_updater::DiagnosticStatusWrapper & stat);
+  // Diagnostic (disabled for agnocast)
+  // std::shared_ptr<diagnostic_updater::Updater> diag_updater_{};
+  // void setupDiagnosticUpdater();
+  // void checkControlState(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
   struct ResultWithReason
   {

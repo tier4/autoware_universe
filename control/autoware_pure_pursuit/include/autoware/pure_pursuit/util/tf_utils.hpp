@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__PURE_PURSUIT__UTIL__TF_UTILS_HPP_
 #define AUTOWARE__PURE_PURSUIT__UTIL__TF_UTILS_HPP_
 
+#include <agnocast/node/tf2/buffer.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <boost/optional.hpp>  // To be replaced by std::optional in C++17
@@ -24,8 +25,6 @@
 #else
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #endif
-
-#include <tf2_ros/transform_listener.h>
 
 #include <string>
 
@@ -37,7 +36,7 @@ namespace tf_utils
 {
 rclcpp::Logger logger = rclcpp::get_logger(TF_UTILS_LOGGER);
 inline boost::optional<geometry_msgs::msg::TransformStamped> getTransform(
-  const tf2_ros::Buffer & tf_buffer, const std::string & from, const std::string & to,
+  const agnocast::Buffer & tf_buffer, const std::string & from, const std::string & to,
   const rclcpp::Time & time, const rclcpp::Duration & duration)
 {
   try {
@@ -48,7 +47,7 @@ inline boost::optional<geometry_msgs::msg::TransformStamped> getTransform(
 }
 
 inline geometry_msgs::msg::TransformStamped waitForTransform(
-  const tf2_ros::Buffer & tf_buffer, const std::string & from, const std::string & to)
+  const agnocast::Buffer & tf_buffer, const std::string & from, const std::string & to)
 {
   while (rclcpp::ok()) {
     try {
@@ -75,7 +74,7 @@ inline geometry_msgs::msg::PoseStamped transform2pose(
 }
 
 inline boost::optional<geometry_msgs::msg::PoseStamped> getCurrentPose(
-  const tf2_ros::Buffer & tf_buffer, const double timeout = 1.0)
+  const agnocast::Buffer & tf_buffer, const double timeout = 1.0)
 {
   const auto tf_current_pose = getTransform(
     tf_buffer, "map", "base_link", rclcpp::Time(0), rclcpp::Duration::from_seconds(0.0));
