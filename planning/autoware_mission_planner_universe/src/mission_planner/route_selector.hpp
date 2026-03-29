@@ -76,12 +76,11 @@ private:
   RouteInterface main_;
   RouteInterface mrm_;
 
-  rclcpp::CallbackGroup::SharedPtr group_;
-  rclcpp::Client<ClearRoute>::SharedPtr cli_clear_route_;
-  rclcpp::Client<SetWaypointRoute>::SharedPtr cli_set_waypoint_route_;
-  rclcpp::Client<SetLaneletRoute>::SharedPtr cli_set_lanelet_route_;
-  rclcpp::Subscription<RouteState>::SharedPtr sub_state_;
-  rclcpp::Subscription<LaneletRoute>::SharedPtr sub_route_;
+  agnocast::Client<ClearRoute>::SharedPtr cli_clear_route_;
+  agnocast::Client<SetWaypointRoute>::SharedPtr cli_set_waypoint_route_;
+  agnocast::Client<SetLaneletRoute>::SharedPtr cli_set_lanelet_route_;
+  agnocast::Subscription<RouteState>::SharedPtr sub_state_;
+  agnocast::Subscription<LaneletRoute>::SharedPtr sub_route_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pub_processing_time_;
 
@@ -89,8 +88,8 @@ private:
   bool mrm_operating_;
   std::variant<std::monostate, WaypointRequest, LaneletRequest> main_request_;
 
-  void on_state(const RouteState::ConstSharedPtr msg);
-  void on_route(const LaneletRoute::ConstSharedPtr msg);
+  void on_state(const agnocast::ipc_shared_ptr<const RouteState> & msg);
+  void on_route(const agnocast::ipc_shared_ptr<const LaneletRoute> & msg);
 
   void on_clear_route_main(
     const agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::RequestT> & req,
@@ -112,7 +111,7 @@ private:
     const agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::RequestT> & req,
     agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::ResponseT> & res);
 
-  ResponseStatus resume_main_route(ClearRoute::Request::SharedPtr req);
+  ResponseStatus resume_main_route();
 };
 
 }  // namespace autoware::mission_planner_universe

@@ -35,6 +35,13 @@ rclcpp_components_register_node(${PROJECT_NAME}_component
   EXECUTABLE mission_planner
 )
 
+agnocast_components_register_node(${PROJECT_NAME}_component
+  PLUGIN "autoware::mission_planner_universe::MissionPlanner"
+  EXECUTABLE mission_planner_agnocast
+  EXECUTOR CallbackIsolatedAgnocastExecutor
+  RESOURCE_INDEX agnocast_components
+)
+
 rclcpp_components_register_node(${PROJECT_NAME}_component
   PLUGIN "autoware::mission_planner_universe::RouteSelector"
   EXECUTABLE route_selector

@@ -16,8 +16,8 @@
 #define MISSION_PLANNER__MISSION_PLANNER_HPP_
 
 #include "arrival_checker.hpp"
-#include "autoware_utils/ros/polling_subscriber.hpp"
 
+#include <agnocast/agnocast.hpp>
 #include <autoware/mission_planner_universe/mission_planner_plugin.hpp>
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_utils/ros/logger_level_configure.hpp>
@@ -84,45 +84,45 @@ private:
   tf2_ros::TransformListener tf_listener_;
   Pose transform_pose(const Pose & pose, const Header & header);
 
-  rclcpp::Service<ClearRoute>::SharedPtr srv_clear_route;
-  rclcpp::Service<SetLaneletRoute>::SharedPtr srv_set_lanelet_route;
-  rclcpp::Service<SetPreferredPrimitive>::SharedPtr srv_set_preferred_primitive;
-  rclcpp::Service<SetWaypointRoute>::SharedPtr srv_set_waypoint_route;
-  rclcpp::Publisher<RouteState>::SharedPtr pub_state_;
-  rclcpp::Publisher<LaneletRoute>::SharedPtr pub_route_;
+  agnocast::Service<ClearRoute>::SharedPtr srv_clear_route;
+  agnocast::Service<SetLaneletRoute>::SharedPtr srv_set_lanelet_route;
+  agnocast::Service<SetPreferredPrimitive>::SharedPtr srv_set_preferred_primitive;
+  agnocast::Service<SetWaypointRoute>::SharedPtr srv_set_waypoint_route;
+  agnocast::Publisher<RouteState>::SharedPtr pub_state_;
+  agnocast::Publisher<LaneletRoute>::SharedPtr pub_route_;
 
-  rclcpp::Subscription<PoseWithUuidStamped>::SharedPtr sub_modified_goal_;
-  rclcpp::Subscription<Odometry>::SharedPtr sub_odometry_;
-  rclcpp::Subscription<OperationModeState>::SharedPtr sub_operation_mode_state_;
-  autoware_utils::InterProcessPollingSubscriber<RerouteAvailability> sub_reroute_availability_{
-    this, "~/input/reroute_availability"};
+  agnocast::Subscription<PoseWithUuidStamped>::SharedPtr sub_modified_goal_;
+  agnocast::Subscription<Odometry>::SharedPtr sub_odometry_;
+  agnocast::Subscription<OperationModeState>::SharedPtr sub_operation_mode_state_;
+  agnocast::PollingSubscriber<RerouteAvailability>::SharedPtr sub_reroute_availability_;
 
-  rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_vector_map_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_marker_;
-  Odometry::ConstSharedPtr odometry_;
-  OperationModeState::ConstSharedPtr operation_mode_state_;
-  LaneletMapBin::ConstSharedPtr map_ptr_;
+  agnocast::Subscription<LaneletMapBin>::SharedPtr sub_vector_map_;
+  agnocast::Publisher<MarkerArray>::SharedPtr pub_marker_;
+  agnocast::ipc_shared_ptr<const Odometry> odometry_;
+  agnocast::ipc_shared_ptr<const OperationModeState> operation_mode_state_;
+  agnocast::ipc_shared_ptr<const LaneletMapBin> map_ptr_;
   RouteState state_;
   std::optional<LaneletRoute::SharedPtr> original_route_;
   LaneletRoute::ConstSharedPtr current_route_;
   lanelet::LaneletMapPtr lanelet_map_ptr_{nullptr};
 
-  void on_odometry(const Odometry::ConstSharedPtr msg);
-  void on_operation_mode_state(const OperationModeState::ConstSharedPtr msg);
-  void on_map(const LaneletMapBin::ConstSharedPtr msg);
-  void on_reroute_availability(const RerouteAvailability::ConstSharedPtr msg);
-  void on_modified_goal(const PoseWithUuidStamped::ConstSharedPtr msg);
+  void on_odometry(const agnocast::ipc_shared_ptr<const Odometry> & msg);
+  void on_operation_mode_state(const agnocast::ipc_shared_ptr<const OperationModeState> & msg);
+  void on_map(const agnocast::ipc_shared_ptr<const LaneletMapBin> & msg);
+  void on_modified_goal(const agnocast::ipc_shared_ptr<const PoseWithUuidStamped> & msg);
 
   void on_clear_route(
-    const ClearRoute::Request::SharedPtr req, const ClearRoute::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::ResponseT> & res);
   void on_set_lanelet_route(
-    const SetLaneletRoute::Request::SharedPtr req, const SetLaneletRoute::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::ResponseT> & res);
   void on_set_preferred_primitive(
-    const SetPreferredPrimitive::Request::SharedPtr req,
-    const SetPreferredPrimitive::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<agnocast::Service<SetPreferredPrimitive>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<SetPreferredPrimitive>::ResponseT> & res);
   void on_set_waypoint_route(
-    const SetWaypointRoute::Request::SharedPtr req,
-    const SetWaypointRoute::Response::SharedPtr res);
+    const agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::RequestT> & req,
+    agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::ResponseT> & res);
 
   void change_state(RouteState::_state_type state);
   void change_route();
@@ -153,7 +153,7 @@ private:
   bool check_reroute_safety(const LaneletRoute & original_route, const LaneletRoute & target_route);
 
   std::unique_ptr<autoware_utils::LoggerLevelConfigure> logger_configure_;
-  rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pub_processing_time_;
 };
 

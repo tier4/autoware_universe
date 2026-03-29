@@ -9,7 +9,8 @@
   <arg name="visualization_topic_name" default="/planning/mission_planning/route_marker"/>
   <arg name="mission_planner_param_path" default="$(find-pkg-share autoware_mission_planner_universe)/config/mission_planner.param.yaml"/>
 
-  <node pkg="autoware_mission_planner_universe" exec="mission_planner" name="mission_planner" namespace="">
+  <node pkg="autoware_mission_planner_universe" exec="mission_planner_agnocast" name="mission_planner" namespace="">
+    <env name="LD_PRELOAD" value="/opt/ros/humble/lib/libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
     <param from="$(var mission_planner_param_path)"/>
     <remap from="~/input/modified_goal" to="$(var modified_goal_topic_name)"/>
     <remap from="~/input/vector_map" to="$(var map_topic_name)"/>

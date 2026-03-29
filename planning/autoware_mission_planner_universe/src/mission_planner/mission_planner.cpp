@@ -61,9 +61,7 @@ MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options)
   plugin_loader_(
     "autoware_mission_planner_universe", "autoware::mission_planner_universe::PlannerPlugin"),
   tf_buffer_(get_clock()),
-  tf_listener_(tf_buffer_),
-  odometry_(nullptr),
-  map_ptr_(nullptr)
+  tf_listener_(tf_buffer_)
 {
   using std::placeholders::_1;
   using std::placeholders::_2;
@@ -78,31 +76,35 @@ MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options)
   planner_->initialize(this);
 
   const auto durable_qos = rclcpp::QoS(1).transient_local();
-  sub_odometry_ = create_subscription<Odometry>(
-    "~/input/odometry", rclcpp::QoS(1), std::bind(&MissionPlanner::on_odometry, this, _1));
-  sub_operation_mode_state_ = create_subscription<OperationModeState>(
-    "~/input/operation_mode_state", rclcpp::QoS{1}.transient_local(),
+  sub_odometry_ = agnocast::create_subscription<Odometry>(
+    this, "~/input/odometry", rclcpp::QoS(1), std::bind(&MissionPlanner::on_odometry, this, _1));
+  sub_operation_mode_state_ = agnocast::create_subscription<OperationModeState>(
+    this, "~/input/operation_mode_state", rclcpp::QoS{1}.transient_local(),
     std::bind(&MissionPlanner::on_operation_mode_state, this, _1));
-  sub_vector_map_ = create_subscription<LaneletMapBin>(
-    "~/input/vector_map", durable_qos, std::bind(&MissionPlanner::on_map, this, _1));
-  pub_marker_ = create_publisher<MarkerArray>("~/debug/route_marker", durable_qos);
+  sub_vector_map_ = agnocast::create_subscription<LaneletMapBin>(
+    this, "~/input/vector_map", durable_qos, std::bind(&MissionPlanner::on_map, this, _1));
+  sub_reroute_availability_ =
+    agnocast::create_subscription<RerouteAvailability>(this, "~/input/reroute_availability", 1);
+  pub_marker_ = agnocast::create_publisher<MarkerArray>(this, "~/debug/route_marker", durable_qos);
 
   // NOTE: The route interface should be mutually exclusive by callback group.
-  sub_modified_goal_ = create_subscription<PoseWithUuidStamped>(
-    "~/input/modified_goal", durable_qos, std::bind(&MissionPlanner::on_modified_goal, this, _1));
-  srv_clear_route = create_service<ClearRoute>(
-    "~/clear_route", service_utils::handle_exception(&MissionPlanner::on_clear_route, this));
-  srv_set_lanelet_route = create_service<SetLaneletRoute>(
-    "~/set_lanelet_route",
+  sub_modified_goal_ = agnocast::create_subscription<PoseWithUuidStamped>(
+    this, "~/input/modified_goal", durable_qos,
+    std::bind(&MissionPlanner::on_modified_goal, this, _1));
+  srv_clear_route = agnocast::create_service<ClearRoute>(
+    this, "~/clear_route",
+    service_utils::handle_exception(&MissionPlanner::on_clear_route, this));
+  srv_set_lanelet_route = agnocast::create_service<SetLaneletRoute>(
+    this, "~/set_lanelet_route",
     service_utils::handle_exception(&MissionPlanner::on_set_lanelet_route, this));
-  srv_set_preferred_primitive = create_service<autoware_planning_msgs::srv::SetPreferredPrimitive>(
-    "~/set_preferred_primitive",
+  srv_set_preferred_primitive = agnocast::create_service<SetPreferredPrimitive>(
+    this, "~/set_preferred_primitive",
     service_utils::handle_exception(&MissionPlanner::on_set_preferred_primitive, this));
-  srv_set_waypoint_route = create_service<SetWaypointRoute>(
-    "~/set_waypoint_route",
+  srv_set_waypoint_route = agnocast::create_service<SetWaypointRoute>(
+    this, "~/set_waypoint_route",
     service_utils::handle_exception(&MissionPlanner::on_set_waypoint_route, this));
-  pub_route_ = create_publisher<LaneletRoute>("~/route", durable_qos);
-  pub_state_ = create_publisher<RouteState>("~/state", durable_qos);
+  pub_route_ = agnocast::create_publisher<LaneletRoute>(this, "~/route", durable_qos);
+  pub_state_ = agnocast::create_publisher<RouteState>(this, "~/state", durable_qos);
 
   // Route state will be published when the node gets ready for route api after initialization,
   // otherwise the mission planner rejects the request for the API.
@@ -111,17 +113,18 @@ MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options)
   is_mission_planner_ready_ = false;
 
   logger_configure_ = std::make_unique<autoware_utils::LoggerLevelConfigure>(this);
-  pub_processing_time_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "~/debug/processing_time_ms", 1);
+  pub_processing_time_ =
+    agnocast::create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      this, "~/debug/processing_time_ms", 1);
 }
 
 void MissionPlanner::publish_processing_time(
   autoware_utils::StopWatch<std::chrono::milliseconds> stop_watch)
 {
-  autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
-  processing_time_msg.stamp = get_clock()->now();
-  processing_time_msg.data = stop_watch.toc();
-  pub_processing_time_->publish(processing_time_msg);
+  auto msg = pub_processing_time_->borrow_loaned_message();
+  msg->stamp = get_clock()->now();
+  msg->data = stop_watch.toc();
+  pub_processing_time_->publish(std::move(msg));
 }
 
 void MissionPlanner::publish_pose_log(const Pose & pose, const std::string & pose_type)
@@ -159,7 +162,7 @@ void MissionPlanner::check_initialization()
   data_check_timer_ = nullptr;
 }
 
-void MissionPlanner::on_odometry(const Odometry::ConstSharedPtr msg)
+void MissionPlanner::on_odometry(const agnocast::ipc_shared_ptr<const Odometry> & msg)
 {
   odometry_ = msg;
 
@@ -174,12 +177,13 @@ void MissionPlanner::on_odometry(const Odometry::ConstSharedPtr msg)
   }
 }
 
-void MissionPlanner::on_operation_mode_state(const OperationModeState::ConstSharedPtr msg)
+void MissionPlanner::on_operation_mode_state(
+  const agnocast::ipc_shared_ptr<const OperationModeState> & msg)
 {
   operation_mode_state_ = msg;
 }
 
-void MissionPlanner::on_map(const LaneletMapBin::ConstSharedPtr msg)
+void MissionPlanner::on_map(const agnocast::ipc_shared_ptr<const LaneletMapBin> & msg)
 {
   map_ptr_ = msg;
   lanelet_map_ptr_ = std::make_shared<lanelet::LaneletMap>();
@@ -203,10 +207,12 @@ void MissionPlanner::change_state(RouteState::_state_type state)
 {
   state_.stamp = now();
   state_.state = state;
-  pub_state_->publish(state_);
+  auto msg = pub_state_->borrow_loaned_message();
+  *msg = state_;
+  pub_state_->publish(std::move(msg));
 }
 
-void MissionPlanner::on_modified_goal(const PoseWithUuidStamped::ConstSharedPtr msg)
+void MissionPlanner::on_modified_goal(const agnocast::ipc_shared_ptr<const PoseWithUuidStamped> & msg)
 {
   RCLCPP_INFO(get_logger(), "Received modified goal.");
 
@@ -245,7 +251,8 @@ void MissionPlanner::on_modified_goal(const PoseWithUuidStamped::ConstSharedPtr 
 }
 
 void MissionPlanner::on_clear_route(
-  const ClearRoute::Request::SharedPtr, const ClearRoute::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::RequestT> &,
+  agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::ResponseT> & res)
 {
   if (!is_mission_planner_ready_) {
     using ResponseCode = autoware_adapi_v1_msgs::msg::ResponseStatus;
@@ -261,7 +268,8 @@ void MissionPlanner::on_clear_route(
 }
 
 void MissionPlanner::on_set_lanelet_route(
-  const SetLaneletRoute::Request::SharedPtr req, const SetLaneletRoute::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::ResponseT> & res)
 {
   using ResponseCode = autoware_adapi_v1_msgs::srv::SetRoute::Response;
   const auto is_reroute = state_.state == RouteState::SET;
@@ -293,7 +301,7 @@ void MissionPlanner::on_set_lanelet_route(
   }
 
   if (is_reroute && is_autonomous_driving) {
-    const auto reroute_availability = sub_reroute_availability_.take_data();
+    const auto reroute_availability = sub_reroute_availability_->take_data();
     if (!reroute_availability || !reroute_availability->availability) {
       throw service_utils::ServiceException(
         ResponseCode::ERROR_INVALID_STATE,
@@ -329,8 +337,8 @@ void MissionPlanner::on_set_lanelet_route(
 }
 
 void MissionPlanner::on_set_preferred_primitive(
-  const autoware_planning_msgs::srv::SetPreferredPrimitive::Request::SharedPtr req,
-  const autoware_planning_msgs::srv::SetPreferredPrimitive::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<agnocast::Service<SetPreferredPrimitive>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<SetPreferredPrimitive>::ResponseT> & res)
 {
   using ResponseCode = autoware_adapi_v1_msgs::msg::ResponseStatus;
 
@@ -405,7 +413,8 @@ void MissionPlanner::on_set_preferred_primitive(
 }
 
 void MissionPlanner::on_set_waypoint_route(
-  const SetWaypointRoute::Request::SharedPtr req, const SetWaypointRoute::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::ResponseT> & res)
 {
   using ResponseCode = autoware_adapi_v1_msgs::srv::SetRoutePoints::Response;
   const auto is_reroute = state_.state == RouteState::SET;
@@ -432,7 +441,7 @@ void MissionPlanner::on_set_waypoint_route(
                           : false;
 
   if (is_reroute && is_autonomous_driving) {
-    const auto reroute_availability = sub_reroute_availability_.take_data();
+    const auto reroute_availability = sub_reroute_availability_->take_data();
     if (!reroute_availability || !reroute_availability->availability) {
       throw service_utils::ServiceException(
         ResponseCode::ERROR_INVALID_STATE,
@@ -489,8 +498,13 @@ void MissionPlanner::change_route(const LaneletRoute & route)
   planner_->updateRoute(route);
   arrival_checker_.set_goal(goal);
 
-  pub_route_->publish(route);
-  pub_marker_->publish(planner_->visualize(route, goal_lanelet_transparency_));
+  auto route_msg = pub_route_->borrow_loaned_message();
+  *route_msg = route;
+  pub_route_->publish(std::move(route_msg));
+
+  auto marker_msg = pub_marker_->borrow_loaned_message();
+  *marker_msg = planner_->visualize(route, goal_lanelet_transparency_);
+  pub_marker_->publish(std::move(marker_msg));
 }
 
 void MissionPlanner::cancel_route()

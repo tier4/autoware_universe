@@ -15,6 +15,7 @@
 #ifndef AUTOWARE__MISSION_PLANNER_UNIVERSE__SERVICE_UTILS_HPP_
 #define AUTOWARE__MISSION_PLANNER_UNIVERSE__SERVICE_UTILS_HPP_
 
+#include <agnocast/agnocast.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 
 #include <autoware_common_msgs/msg/response_status.hpp>
@@ -78,6 +79,20 @@ ResponseStatus sync_call(T & client, Req req)
   }
   auto future = client->async_send_request(req);
   return future.get()->status;
+}
+
+template <class ServiceT>
+ResponseStatus agnocast_sync_call(
+  typename agnocast::Client<ServiceT>::SharedPtr & client,
+  const typename ServiceT::Request & req_data)
+{
+  if (!client->service_is_ready()) {
+    throw ServiceUnready(client->get_service_name());
+  }
+  auto req = client->borrow_loaned_request();
+  static_cast<typename ServiceT::Request &>(*req) = req_data;
+  auto future_and_id = client->async_send_request(std::move(req));
+  return future_and_id.future.get()->status;
 }
 
 }  // namespace service_utils
