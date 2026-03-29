@@ -16,13 +16,8 @@
 #define PIPELINE_LATENCY_MONITOR_NODE_HPP_
 
 #include <agnocast/agnocast.hpp>
-#include <autoware/universe_utils/ros/debug_publisher.hpp>
-#include <diagnostic_updater/diagnostic_updater.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
-#include <diagnostic_msgs/msg/diagnostic_array.hpp>
-#include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
 #include <deque>
 #include <memory>
@@ -55,7 +50,7 @@ struct ProcessInput
   std::deque<ProcessData> latency_history;
 };
 
-class PipelineLatencyMonitorNode : public rclcpp::Node
+class PipelineLatencyMonitorNode : public agnocast::Node
 {
 public:
   explicit PipelineLatencyMonitorNode(const rclcpp::NodeOptions & options);
@@ -73,22 +68,25 @@ private:
   // Current total latency
   double total_latency_ms_{};
 
-  std::vector<rclcpp::GenericSubscription::SharedPtr> generic_subscribers_;
+  // WORKAROUND: agnocast has no GenericSubscription. Only 2 types used.
+  // TODO(agnocast): remove workaround when agnocast adds GenericSubscription
+  std::vector<std::shared_ptr<void>> typed_subscribers_;
 
   agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     total_latency_pub_;
 
-  std::unique_ptr<autoware::universe_utils::DebugPublisher> debug_publisher_;
+  // Debug publishers for each processing step + total
+  std::vector<agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr>
+    debug_step_pubs_;
+  agnocast::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
+    debug_total_pub_;
 
-  diagnostic_updater::Updater diagnostic_updater_;
-
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::TimerBase::SharedPtr timer_;
 
   // Callback functions
   void on_timer();
   void calculate_total_latency();
   void publish_total_latency();
-  void check_total_latency(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
   // Helper functions
   void update_history(

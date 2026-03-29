@@ -15,8 +15,6 @@
 #include "pipeline_latency_monitor_node.hpp"
 
 #include <autoware_planning_validator/msg/planning_validator_status.hpp>
-#include <rclcpp/create_timer.hpp>
-#include <rclcpp/serialization.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
@@ -60,7 +58,7 @@ rclcpp::Time get_latest_timestamp(const std::deque<ProcessData> & history)
 };  // namespace
 
 PipelineLatencyMonitorNode::PipelineLatencyMonitorNode(const rclcpp::NodeOptions & options)
-: Node("pipeline_latency_monitor", options), diagnostic_updater_(this)
+: agnocast::Node("pipeline_latency_monitor", options)
 {
   update_rate_ = declare_parameter<double>("update_rate");
   latency_threshold_ms_ = declare_parameter<double>("latency_threshold_ms");
@@ -85,53 +83,59 @@ PipelineLatencyMonitorNode::PipelineLatencyMonitorNode(const rclcpp::NodeOptions
       timestamp_meaning == "start" ? TimestampMeaning::start : TimestampMeaning::end;
     input.latency_multiplier = latency_multiplier;
 
-    // generic callback
-    const auto callback = [this, index](
-                            const std::shared_ptr<rclcpp::SerializedMessage> & serialized_msg) {
-      auto & input = this->input_sequence_[index];
-      if (input.topic_type == "autoware_internal_debug_msgs/msg/Float64Stamped") {
-        static const rclcpp::Serialization<autoware_internal_debug_msgs::msg::Float64Stamped>
-          serialization;
-        autoware_internal_debug_msgs::msg::Float64Stamped msg;
-        serialization.deserialize_message(serialized_msg.get(), &msg);
-        this->update_history(input.latency_history, msg.stamp, msg.data * input.latency_multiplier);
-        RCLCPP_DEBUG(
-          get_logger(), "Received %s: %.2f", input.name.c_str(),
-          msg.data * input.latency_multiplier);
-      } else if (input.topic_type == "autoware_planning_validator/msg/PlanningValidatorStatus") {
-        static const rclcpp::Serialization<
-          autoware_planning_validator::msg::PlanningValidatorStatus>
-          serialization;
-        autoware_planning_validator::msg::PlanningValidatorStatus msg;
-        serialization.deserialize_message(serialized_msg.get(), &msg);
-        this->update_history(
-          input.latency_history, msg.stamp, msg.latency * input.latency_multiplier);
-        RCLCPP_DEBUG(
-          get_logger(), "Received %s: %.2f", input.name.c_str(),
-          msg.latency * input.latency_multiplier);
-      } else {
-        throw std::runtime_error("unsupported message type " + input.topic_type);
-      }
-    };
-    generic_subscribers_.push_back(
-      create_generic_subscription(topic, topic_type, rclcpp::QoS(1), callback));
+    // WORKAROUND: agnocast has no GenericSubscription. Only 2 types used.
+    // TODO(agnocast): remove workaround when agnocast adds GenericSubscription
+    if (topic_type == "autoware_internal_debug_msgs/msg/Float64Stamped") {
+      auto sub =
+        create_subscription<autoware_internal_debug_msgs::msg::Float64Stamped>(
+          topic, rclcpp::QoS(1),
+          [this, index](
+            const agnocast::ipc_shared_ptr<
+              const autoware_internal_debug_msgs::msg::Float64Stamped> & msg) {
+            auto & input = this->input_sequence_[index];
+            this->update_history(
+              input.latency_history, msg->stamp, msg->data * input.latency_multiplier);
+            RCLCPP_DEBUG(
+              get_logger(), "Received %s: %.2f", input.name.c_str(),
+              msg->data * input.latency_multiplier);
+          });
+      typed_subscribers_.push_back(sub);
+    } else if (topic_type == "autoware_planning_validator/msg/PlanningValidatorStatus") {
+      auto sub =
+        create_subscription<autoware_planning_validator::msg::PlanningValidatorStatus>(
+          topic, rclcpp::QoS(1),
+          [this, index](
+            const agnocast::ipc_shared_ptr<
+              const autoware_planning_validator::msg::PlanningValidatorStatus> & msg) {
+            auto & input = this->input_sequence_[index];
+            this->update_history(
+              input.latency_history, msg->stamp, msg->latency * input.latency_multiplier);
+            RCLCPP_DEBUG(
+              get_logger(), "Received %s: %.2f", input.name.c_str(),
+              msg->latency * input.latency_multiplier);
+          });
+      typed_subscribers_.push_back(sub);
+    } else {
+      throw std::runtime_error("unsupported message type " + topic_type);
+    }
+
+    // Create debug publisher for this step
+    debug_step_pubs_.push_back(
+      create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+        "~/debug/" + step + "_latency_ms", 10));
   }
   latency_offsets_ = declare_parameter<std::vector<double>>("latency_offsets_ms");
 
-  total_latency_pub_ = agnocast::create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    this, "~/output/total_latency_ms", 10);
+  total_latency_pub_ =
+    create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "~/output/total_latency_ms", 10);
 
-  debug_publisher_ =
-    std::make_unique<autoware::universe_utils::DebugPublisher>(this, "pipeline_latency_monitor");
-
-  diagnostic_updater_.setHardwareID("pipeline_latency_monitor");
-  diagnostic_updater_.add(
-    "Total Latency", this, &PipelineLatencyMonitorNode::check_total_latency);
+  debug_total_pub_ =
+    create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "~/debug/pipeline_total_latency_ms", 10);
 
   const auto period = std::chrono::milliseconds(static_cast<int>(1000.0 / update_rate_));
-  timer_ = rclcpp::create_timer(
-    this, get_clock(), period,
-    std::bind(&PipelineLatencyMonitorNode::on_timer, this));
+  timer_ = create_wall_timer(period, std::bind(&PipelineLatencyMonitorNode::on_timer, this));
 
   RCLCPP_INFO(get_logger(), "PipelineLatencyMonitorNode initialized");
 }
@@ -141,8 +145,6 @@ void PipelineLatencyMonitorNode::on_timer()
   calculate_total_latency();
 
   publish_total_latency();
-
-  diagnostic_updater_.force_update();
 }
 
 void PipelineLatencyMonitorNode::calculate_total_latency()
@@ -226,48 +228,24 @@ void PipelineLatencyMonitorNode::publish_total_latency()
   total_latency_pub_->publish(std::move(total_latency_msg));
 
   // Publish latest latency values from each topic as debug information
-  for (const auto & input : input_sequence_) {
-    const auto latest_latency = get_latest_value(input.latency_history);
-    debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/" + input.name + "_latency_ms", latest_latency);
+  for (size_t i = 0; i < input_sequence_.size(); ++i) {
+    const auto latest_latency = get_latest_value(input_sequence_[i].latency_history);
+    auto debug_msg = debug_step_pubs_[i]->borrow_loaned_message();
+    debug_msg->stamp = now();
+    debug_msg->data = latest_latency;
+    debug_step_pubs_[i]->publish(std::move(debug_msg));
   }
-  debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-    "debug/pipeline_total_latency_ms", total_latency_ms_);
+
+  {
+    auto debug_total_msg = debug_total_pub_->borrow_loaned_message();
+    debug_total_msg->stamp = now();
+    debug_total_msg->data = total_latency_ms_;
+    debug_total_pub_->publish(std::move(debug_total_msg));
+  }
 
   RCLCPP_DEBUG_THROTTLE(
     get_logger(), *get_clock(), 1000, "Total latency: %.2f ms (threshold: %.2f ms)",
     total_latency_ms_, latency_threshold_ms_);
-}
-
-void PipelineLatencyMonitorNode::check_total_latency(
-  diagnostic_updater::DiagnosticStatusWrapper & stat)
-{
-  stat.add("Total Latency (ms)", total_latency_ms_);
-  stat.add("Threshold (ms)", latency_threshold_ms_);
-
-  std::string uninitialized_inputs;
-  for (const auto & input : input_sequence_) {
-    if (!has_valid_data(input.latency_history)) {
-      if (!uninitialized_inputs.empty()) {
-        uninitialized_inputs += ", ";
-      }
-      uninitialized_inputs += input.name;
-    } else {
-      const auto latest_latency = get_latest_value(input.latency_history);
-      stat.add(input.name, latest_latency);
-    }
-  }
-  if (!uninitialized_inputs.empty()) {
-    stat.add("uninitialized_inputs", uninitialized_inputs);
-    stat.summary(
-      diagnostic_msgs::msg::DiagnosticStatus::OK,
-      "Some latency inputs not yet received: " + uninitialized_inputs);
-  } else if (total_latency_ms_ > latency_threshold_ms_) {
-    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "Total latency exceeds threshold");
-  } else {
-    stat.summary(
-      diagnostic_msgs::msg::DiagnosticStatus::OK, "Total latency within acceptable range");
-  }
 }
 
 void PipelineLatencyMonitorNode::update_history(
