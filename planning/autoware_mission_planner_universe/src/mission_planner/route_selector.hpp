@@ -26,6 +26,7 @@
 #include <autoware_planning_msgs/srv/set_lanelet_route.hpp>
 #include <autoware_planning_msgs/srv/set_waypoint_route.hpp>
 
+#include <mutex>
 #include <optional>
 #include <variant>
 
@@ -54,8 +55,8 @@ public:
   agnocast::Service<ClearRoute>::SharedPtr srv_clear_route;
   agnocast::Service<SetLaneletRoute>::SharedPtr srv_set_lanelet_route;
   agnocast::Service<SetWaypointRoute>::SharedPtr srv_set_waypoint_route;
-  rclcpp::Publisher<RouteState>::SharedPtr pub_state_;
-  rclcpp::Publisher<LaneletRoute>::SharedPtr pub_route_;
+  agnocast::Publisher<RouteState>::SharedPtr pub_state_;
+  agnocast::Publisher<LaneletRoute>::SharedPtr pub_route_;
 
 private:
   RouteState state_;
@@ -84,6 +85,7 @@ private:
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     pub_processing_time_;
 
+  std::mutex mutex_;
   bool initialized_;
   bool mrm_operating_;
   std::variant<std::monostate, WaypointRequest, LaneletRequest> main_request_;

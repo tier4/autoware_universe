@@ -70,19 +70,25 @@ void RouteInterface::change_state(RouteState::_state_type state)
 {
   state_.stamp = clock_->now();
   state_.state = state;
-  pub_state_->publish(state_);
+  auto msg = pub_state_->borrow_loaned_message();
+  *msg = state_;
+  pub_state_->publish(std::move(msg));
 }
 
 void RouteInterface::update_state(const RouteState & state)
 {
   state_ = state;
-  pub_state_->publish(state_);
+  auto msg = pub_state_->borrow_loaned_message();
+  *msg = state_;
+  pub_state_->publish(std::move(msg));
 }
 
 void RouteInterface::update_route(const LaneletRoute & route)
 {
   route_ = route;
-  pub_route_->publish(route);
+  auto msg = pub_route_->borrow_loaned_message();
+  *msg = route;
+  pub_route_->publish(std::move(msg));
 }
 
 RouteSelector::RouteSelector(const rclcpp::NodeOptions & options)
@@ -102,8 +108,8 @@ RouteSelector::RouteSelector(const rclcpp::NodeOptions & options)
   main_.srv_set_lanelet_route = agnocast::create_service<SetLaneletRoute>(
     this, "~/main/set_lanelet_route",
     service_utils::handle_exception(&RouteSelector::on_set_lanelet_route_main, this));
-  main_.pub_state_ = create_publisher<RouteState>("~/main/state", durable_qos);
-  main_.pub_route_ = create_publisher<LaneletRoute>("~/main/route", durable_qos);
+  main_.pub_state_ = agnocast::create_publisher<RouteState>(this, "~/main/state", durable_qos);
+  main_.pub_route_ = agnocast::create_publisher<LaneletRoute>(this, "~/main/route", durable_qos);
 
   // Init mrm route interface.
   mrm_.srv_clear_route = agnocast::create_service<ClearRoute>(
@@ -115,19 +121,39 @@ RouteSelector::RouteSelector(const rclcpp::NodeOptions & options)
   mrm_.srv_set_lanelet_route = agnocast::create_service<SetLaneletRoute>(
     this, "~/mrm/set_lanelet_route",
     service_utils::handle_exception(&RouteSelector::on_set_lanelet_route_mrm, this));
-  mrm_.pub_state_ = create_publisher<RouteState>("~/mrm/state", durable_qos);
-  mrm_.pub_route_ = create_publisher<LaneletRoute>("~/mrm/route", durable_qos);
+  mrm_.pub_state_ = agnocast::create_publisher<RouteState>(this, "~/mrm/state", durable_qos);
+  mrm_.pub_route_ = agnocast::create_publisher<LaneletRoute>(this, "~/mrm/route", durable_qos);
 
   // Init mission planner interface.
-  cli_clear_route_ = agnocast::create_client<ClearRoute>(this, "~/planner/clear_route");
-  cli_set_lanelet_route_ =
-    agnocast::create_client<SetLaneletRoute>(this, "~/planner/set_lanelet_route");
-  cli_set_waypoint_route_ =
-    agnocast::create_client<SetWaypointRoute>(this, "~/planner/set_waypoint_route");
+  // Callback group design (CallbackIsolatedAgnocastExecutor assigns a thread per group):
+  //   - client_group: agnocast::Client response subscriptions. Must be separate from the default
+  //     group where service callbacks run, otherwise future.get() in agnocast_sync_call deadlocks
+  //     (service callback blocks the thread, preventing the response callback from firing).
+  //   - state_sub_group / route_sub_group: planner state/route subscriptions. Must be separate
+  //     from the service group so on_state/on_route can forward mission_planner's publishes to
+  //     downstream (ADAPI) while the service callback is still blocked in agnocast_sync_call.
+  // Shared state between these groups is protected by mutex_.
+  auto client_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  cli_clear_route_ = agnocast::create_client<ClearRoute>(
+    this, "~/planner/clear_route", rclcpp::ServicesQoS(), client_group);
+  cli_set_lanelet_route_ = agnocast::create_client<SetLaneletRoute>(
+    this, "~/planner/set_lanelet_route", rclcpp::ServicesQoS(), client_group);
+  cli_set_waypoint_route_ = agnocast::create_client<SetWaypointRoute>(
+    this, "~/planner/set_waypoint_route", rclcpp::ServicesQoS(), client_group);
+  auto state_sub_group =
+    create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  auto route_sub_group =
+    create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  agnocast::SubscriptionOptions state_sub_options;
+  state_sub_options.callback_group = state_sub_group;
+  agnocast::SubscriptionOptions route_sub_options;
+  route_sub_options.callback_group = route_sub_group;
   sub_state_ = agnocast::create_subscription<RouteState>(
-    this, "~/planner/state", durable_qos, std::bind(&RouteSelector::on_state, this, _1));
+    this, "~/planner/state", durable_qos, std::bind(&RouteSelector::on_state, this, _1),
+    state_sub_options);
   sub_route_ = agnocast::create_subscription<LaneletRoute>(
-    this, "~/planner/route", durable_qos, std::bind(&RouteSelector::on_route, this, _1));
+    this, "~/planner/route", durable_qos, std::bind(&RouteSelector::on_route, this, _1),
+    route_sub_options);
 
   // Set initial state.
   main_.change_state(RouteState::INITIALIZING);
@@ -152,6 +178,7 @@ void RouteSelector::publish_processing_time(
 
 void RouteSelector::on_state(const agnocast::ipc_shared_ptr<const RouteState> & msg)
 {
+  std::lock_guard<std::mutex> lock(mutex_);
   if (msg->state == RouteState::UNSET && !initialized_) {
     main_.change_state(RouteState::UNSET);
     mrm_.change_state(RouteState::UNSET);
@@ -163,6 +190,7 @@ void RouteSelector::on_state(const agnocast::ipc_shared_ptr<const RouteState> & 
 
 void RouteSelector::on_route(const agnocast::ipc_shared_ptr<const LaneletRoute> & msg)
 {
+  std::lock_guard<std::mutex> lock(mutex_);
   (mrm_operating_ ? mrm_ : main_).update_route(*msg);
 }
 
@@ -170,64 +198,72 @@ void RouteSelector::on_clear_route_main(
   const agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::RequestT> & req,
   agnocast::ipc_shared_ptr<agnocast::Service<ClearRoute>::ResponseT> & res)
 {
-  // Save the request and clear old route to resume from MRM.
-  main_request_ = std::monostate{};
-  main_.change_route();
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    main_request_ = std::monostate{};
+    main_.change_route();
 
-  // During MRM, only change the state.
-  if (mrm_operating_) {
-    main_.change_state(RouteState::UNSET);
-    res->status.success = true;
-    return;
+    if (mrm_operating_) {
+      main_.change_state(RouteState::UNSET);
+      res->status.success = true;
+      return;
+    }
   }
 
-  // Forward the request if not in MRM.
+
   ClearRoute::Request req_data = *req;
   res->status = service_utils::agnocast_sync_call<ClearRoute>(cli_clear_route_, req_data);
+
 }
 
 void RouteSelector::on_set_waypoint_route_main(
   const agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::RequestT> & req,
   agnocast::ipc_shared_ptr<agnocast::Service<SetWaypointRoute>::ResponseT> & res)
 {
-  // Save the request and clear old route to resume from MRM.
   auto saved_req = std::make_shared<SetWaypointRoute::Request>(*req);
   saved_req->uuid = uuid::generate_if_empty(saved_req->uuid);
-  main_request_ = saved_req;
-  main_.change_route();
 
-  // During MRM, only change the state.
-  if (mrm_operating_) {
-    main_.change_state(RouteState::INTERRUPTED);
-    res->status.success = true;
-    return;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    main_request_ = saved_req;
+    main_.change_route();
+
+    if (mrm_operating_) {
+      main_.change_state(RouteState::INTERRUPTED);
+      res->status.success = true;
+      return;
+    }
   }
 
-  // Forward the request if not in MRM.
+
   res->status = service_utils::agnocast_sync_call<SetWaypointRoute>(
     cli_set_waypoint_route_, *saved_req);
+
 }
 
 void RouteSelector::on_set_lanelet_route_main(
   const agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::RequestT> & req,
   agnocast::ipc_shared_ptr<agnocast::Service<SetLaneletRoute>::ResponseT> & res)
 {
-  // Save the request and clear old route to resume from MRM.
   auto saved_req = std::make_shared<SetLaneletRoute::Request>(*req);
   saved_req->uuid = uuid::generate_if_empty(saved_req->uuid);
-  main_request_ = saved_req;
-  main_.change_route();
 
-  // During MRM, only change the state.
-  if (mrm_operating_) {
-    main_.change_state(RouteState::INTERRUPTED);
-    res->status.success = true;
-    return;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    main_request_ = saved_req;
+    main_.change_route();
+
+    if (mrm_operating_) {
+      main_.change_state(RouteState::INTERRUPTED);
+      res->status.success = true;
+      return;
+    }
   }
 
-  // Forward the request if not in MRM.
+
   res->status = service_utils::agnocast_sync_call<SetLaneletRoute>(
     cli_set_lanelet_route_, *saved_req);
+
 }
 
 void RouteSelector::on_clear_route_mrm(
@@ -236,9 +272,12 @@ void RouteSelector::on_clear_route_mrm(
 {
   res->status = resume_main_route();
 
-  if (res->status.success) {
-    mrm_operating_ = false;
-    mrm_.change_state(RouteState::UNSET);
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (res->status.success) {
+      mrm_operating_ = false;
+      mrm_.change_state(RouteState::UNSET);
+    }
   }
 }
 
@@ -251,10 +290,13 @@ void RouteSelector::on_set_waypoint_route_mrm(
   res->status = service_utils::agnocast_sync_call<SetWaypointRoute>(
     cli_set_waypoint_route_, req_data);
 
-  if (res->status.success) {
-    mrm_operating_ = true;
-    if (main_.get_state() != RouteState::UNSET) {
-      main_.change_state(RouteState::INTERRUPTED);
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (res->status.success) {
+      mrm_operating_ = true;
+      if (main_.get_state() != RouteState::UNSET) {
+        main_.change_state(RouteState::INTERRUPTED);
+      }
     }
   }
 }
@@ -268,10 +310,13 @@ void RouteSelector::on_set_lanelet_route_mrm(
   res->status = service_utils::agnocast_sync_call<SetLaneletRoute>(
     cli_set_lanelet_route_, req_data);
 
-  if (res->status.success) {
-    mrm_operating_ = true;
-    if (main_.get_state() != RouteState::UNSET) {
-      main_.change_state(RouteState::INTERRUPTED);
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (res->status.success) {
+      mrm_operating_ = true;
+      if (main_.get_state() != RouteState::UNSET) {
+        main_.change_state(RouteState::INTERRUPTED);
+      }
     }
   }
 }
@@ -279,7 +324,6 @@ void RouteSelector::on_set_lanelet_route_mrm(
 ResponseStatus RouteSelector::resume_main_route()
 {
   const auto create_lanelet_request = [](const LaneletRoute & route) {
-    // NOTE: The start_pose.is not included in the request.
     SetLaneletRoute::Request r;
     r.header = route.header;
     r.goal_pose = route.goal_pose;
@@ -298,15 +342,24 @@ ResponseStatus RouteSelector::resume_main_route()
     return r;
   };
 
+  // Snapshot shared state under lock.
+  std::optional<LaneletRoute> saved_route;
+  std::variant<std::monostate, WaypointRequest, LaneletRequest> saved_request;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    saved_request = main_request_;
+    saved_route = main_.get_route();
+  }
+
   // Clear the route if there is no request for the main route.
-  if (std::holds_alternative<std::monostate>(main_request_)) {
+  if (std::holds_alternative<std::monostate>(saved_request)) {
     ClearRoute::Request req_data;
     return service_utils::agnocast_sync_call<ClearRoute>(cli_clear_route_, req_data);
   }
 
   // Attempt to resume the main route if there is a planned route.
-  if (const auto route = main_.get_route()) {
-    const auto r = create_lanelet_request(route.value());
+  if (saved_route) {
+    const auto r = create_lanelet_request(saved_route.value());
     const auto status =
       service_utils::agnocast_sync_call<SetLaneletRoute>(cli_set_lanelet_route_, r);
     if (status.success) return status;
@@ -314,11 +367,11 @@ ResponseStatus RouteSelector::resume_main_route()
 
   // If resuming fails, replan main route using the goal.
   // NOTE: Clear the waypoints to avoid returning. Remove this once resuming is supported.
-  if (const auto request = std::get_if<WaypointRequest>(&main_request_)) {
+  if (const auto request = std::get_if<WaypointRequest>(&saved_request)) {
     const auto r = create_goal_request(*request);
     return service_utils::agnocast_sync_call<SetWaypointRoute>(cli_set_waypoint_route_, r);
   }
-  if (const auto request = std::get_if<LaneletRequest>(&main_request_)) {
+  if (const auto request = std::get_if<LaneletRequest>(&saved_request)) {
     const auto r = create_goal_request(*request);
     return service_utils::agnocast_sync_call<SetWaypointRoute>(cli_set_waypoint_route_, r);
   }
