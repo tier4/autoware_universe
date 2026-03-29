@@ -60,34 +60,36 @@ PerceptionAnalyticsPublisherNode::PerceptionAnalyticsPublisherNode(
   const auto latency_topic_prediction =
     this->get_parameter("prediction_latency_topic_name").as_string();
   meas_to_tracked_latency_sub_ = create_subscription<Float64Stamped>(
-    latency_topic_meas_to_tracked, 1, [this](const Float64Stamped::ConstSharedPtr msg) {
+    latency_topic_meas_to_tracked, 1,
+    [this](const agnocast::ipc_shared_ptr<const Float64Stamped> & msg) {
       latencies_[LATENCY_TOPIC_ID_MEAS_TO_TRACKED] = msg->data;
     });
   prediction_latency_sub_ = create_subscription<Float64Stamped>(
-    latency_topic_prediction, 1, [this](const Float64Stamped::ConstSharedPtr msg) {
+    latency_topic_prediction, 1,
+    [this](const agnocast::ipc_shared_ptr<const Float64Stamped> & msg) {
       latencies_[LATENCY_TOPIC_ID_PREDICTION] = msg->data;
     });
 
-  tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
-  transform_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+  tf_buffer_ = std::make_shared<agnocast::Buffer>(this->get_clock());
+  transform_listener_ = std::make_shared<agnocast::TransformListener>(*tf_buffer_, *this);
 }
 
 void PerceptionAnalyticsPublisherNode::publishPerceptionAnalytics()
 {
   auto metrics = perception_analytics_calculator_.calculate(*tf_buffer_);
 
-  // DiagnosticArray metrics_msg;
-  tier4_metric_msgs::msg::MetricArray metrics_msg;
+  auto metrics_msg = perception_analytics_pub_->borrow_loaned_message();
 
   // all object count
-  metrics_msg.metric_array.emplace_back(tier4_metric_msgs::build<tier4_metric_msgs::msg::Metric>()
-                                          .name("all_object_count")
-                                          .unit("count")
-                                          .value(std::to_string(metrics.all_object_count)));
+  metrics_msg->metric_array.emplace_back(
+    tier4_metric_msgs::build<tier4_metric_msgs::msg::Metric>()
+      .name("all_object_count")
+      .unit("count")
+      .value(std::to_string(metrics.all_object_count)));
 
   // object count per label
   for (auto & label : label_list_) {
-    metrics_msg.metric_array.emplace_back(
+    metrics_msg->metric_array.emplace_back(
       tier4_metric_msgs::build<tier4_metric_msgs::msg::Metric>()
         .name("object_count_" + convertLabelToString(label))
         .unit("count")
@@ -96,7 +98,7 @@ void PerceptionAnalyticsPublisherNode::publishPerceptionAnalytics()
 
   // max distance per label (value 0 for no object)
   for (auto & label : label_list_) {
-    metrics_msg.metric_array.emplace_back(
+    metrics_msg->metric_array.emplace_back(
       tier4_metric_msgs::build<tier4_metric_msgs::msg::Metric>()
         .name("max_distance_" + convertLabelToString(label))
         .unit("m")
@@ -104,30 +106,32 @@ void PerceptionAnalyticsPublisherNode::publishPerceptionAnalytics()
   }
 
   // latency by topic
-  metrics_msg.metric_array.emplace_back(
+  metrics_msg->metric_array.emplace_back(
     tier4_metric_msgs::build<tier4_metric_msgs::msg::Metric>()
       .name("meas_to_tracked_latency")
       .unit("ms")
       .value(std::to_string(metrics.latency_by_topic_id[LATENCY_TOPIC_ID_MEAS_TO_TRACKED])));
-  metrics_msg.metric_array.emplace_back(
+  metrics_msg->metric_array.emplace_back(
     tier4_metric_msgs::build<tier4_metric_msgs::msg::Metric>()
       .name("prediction_latency")
       .unit("ms")
       .value(std::to_string(metrics.latency_by_topic_id[LATENCY_TOPIC_ID_PREDICTION])));
 
   // total latency
-  metrics_msg.metric_array.emplace_back(tier4_metric_msgs::build<tier4_metric_msgs::msg::Metric>()
-                                          .name("total_latency")
-                                          .unit("ms")
-                                          .value(std::to_string(metrics.total_latency)));
+  metrics_msg->metric_array.emplace_back(
+    tier4_metric_msgs::build<tier4_metric_msgs::msg::Metric>()
+      .name("total_latency")
+      .unit("ms")
+      .value(std::to_string(metrics.total_latency)));
 
-  if (!metrics_msg.metric_array.empty()) {
-    metrics_msg.stamp = now();
-    perception_analytics_pub_->publish(metrics_msg);
+  if (!metrics_msg->metric_array.empty()) {
+    metrics_msg->stamp = now();
+    perception_analytics_pub_->publish(std::move(metrics_msg));
   }
 }
 
-void PerceptionAnalyticsPublisherNode::onObjects(const PredictedObjects::ConstSharedPtr objects_msg)
+void PerceptionAnalyticsPublisherNode::onObjects(
+  const agnocast::ipc_shared_ptr<const PredictedObjects> & objects_msg)
 {
   perception_analytics_calculator_.setPredictedObjects(objects_msg);
   perception_analytics_calculator_.setLatencies(latencies_);

@@ -17,9 +17,10 @@
 
 #include "autoware/perception_online_evaluator/parameters.hpp"
 #include "autoware/perception_online_evaluator/perception_analytics_calculator.hpp"
-#include "rclcpp/rclcpp.hpp"
-#include "tf2_ros/buffer.h"
-#include "tf2_ros/transform_listener.h"
+
+#include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/buffer.hpp>
+#include <agnocast/node/tf2/transform_listener.hpp>
 
 #include "autoware_perception_msgs/msg/object_classification.hpp"
 #include "autoware_perception_msgs/msg/predicted_objects.hpp"
@@ -46,7 +47,7 @@ using TFMessage = tf2_msgs::msg::TFMessage;
 /**
  * @brief Node for publishing perception analytics
  */
-class PerceptionAnalyticsPublisherNode : public rclcpp::Node
+class PerceptionAnalyticsPublisherNode : public agnocast::Node
 {
 public:
   explicit PerceptionAnalyticsPublisherNode(const rclcpp::NodeOptions & node_options);
@@ -56,7 +57,7 @@ public:
    * @brief callback on receiving a dynamic objects array
    * @param [in] objects_msg received dynamic object array message
    */
-  void onObjects(const PredictedObjects::ConstSharedPtr objects_msg);
+  void onObjects(const agnocast::ipc_shared_ptr<const PredictedObjects> & objects_msg);
 
 private:
   // Label list
@@ -68,17 +69,17 @@ private:
   };
 
   // Subscribers and publishers
-  rclcpp::Subscription<PredictedObjects>::SharedPtr objects_sub_;
-  rclcpp::Subscription<Float64Stamped>::SharedPtr meas_to_tracked_latency_sub_;
-  rclcpp::Subscription<Float64Stamped>::SharedPtr prediction_latency_sub_;
-  rclcpp::Publisher<tier4_metric_msgs::msg::MetricArray>::SharedPtr perception_analytics_pub_;
+  agnocast::Subscription<PredictedObjects>::SharedPtr objects_sub_;
+  agnocast::Subscription<Float64Stamped>::SharedPtr meas_to_tracked_latency_sub_;
+  agnocast::Subscription<Float64Stamped>::SharedPtr prediction_latency_sub_;
+  agnocast::Publisher<tier4_metric_msgs::msg::MetricArray>::SharedPtr perception_analytics_pub_;
 
   // Latency cache (by topic id)
   std::array<double, autoware::perception_diagnostics::LATENCY_TOPIC_NUM> latencies_;
 
   // TF
-  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener> transform_listener_{nullptr};
+  std::shared_ptr<agnocast::Buffer> tf_buffer_;
+  std::shared_ptr<agnocast::TransformListener> transform_listener_{nullptr};
 
   // Parameters
   std::shared_ptr<AnalyticsParameters> parameters_;

@@ -15,7 +15,8 @@
 #ifndef AUTOWARE__PERCEPTION_ONLINE_EVALUATOR__PERCEPTION_ANALYTICS_CALCULATOR_HPP_
 #define AUTOWARE__PERCEPTION_ONLINE_EVALUATOR__PERCEPTION_ANALYTICS_CALCULATOR_HPP_
 
-#include "tf2_ros/buffer.h"
+#include <agnocast/agnocast.hpp>
+#include <agnocast/node/tf2/buffer.hpp>
 
 #include "autoware_perception_msgs/msg/predicted_objects.hpp"
 
@@ -65,7 +66,7 @@ public:
    * @brief Store the latest objects for computation
    * @param objects     PredictedObjects for this frame
    */
-  void setPredictedObjects(PredictedObjects::ConstSharedPtr objects);
+  void setPredictedObjects(const agnocast::ipc_shared_ptr<const PredictedObjects> & objects);
 
   /**
    * @brief Store the latest node latencies for computation
@@ -78,11 +79,11 @@ public:
    * @param tf_buffer   TF buffer used for transforms
    * @return FrameMetrics
    */
-  FrameMetrics calculate(const tf2_ros::Buffer & tf_buffer) const;
+  FrameMetrics calculate(const agnocast::Buffer & tf_buffer) const;
 
 private:
   mutable std::mutex predicted_objects_mutex_;
-  PredictedObjects::ConstSharedPtr predicted_objects_ptr_;
+  agnocast::ipc_shared_ptr<const PredictedObjects> predicted_objects_ptr_;
   std::array<double, LATENCY_TOPIC_NUM> latencies_{};
 };
 

@@ -5,7 +5,8 @@
   <arg name="enable_terminal_log" default="false"/>
   <arg name="ignore_dependent_error" default="false"/>
 
-  <node pkg="autoware_diagnostic_graph_utils" exec="logging_node" name="logging_diag_graph" output="both">
+  <node pkg="autoware_diagnostic_graph_utils" exec="logging_agnocast_node" name="logging_diag_graph" output="both">
+    <env name="LD_PRELOAD" value="libagnocast_heaphook.so:$(env LD_PRELOAD '')"/>
     <param name="root_path" value="$(var root_path)"/>
     <param name="max_depth" value="$(var max_depth)"/>
     <param name="show_rate" value="$(var show_rate)"/>

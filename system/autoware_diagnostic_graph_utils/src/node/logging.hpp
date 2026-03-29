@@ -15,11 +15,13 @@
 #ifndef NODE__LOGGING_HPP_
 #define NODE__LOGGING_HPP_
 
-#include "autoware/diagnostic_graph_utils/subscription.hpp"
+#include "autoware/diagnostic_graph_utils/graph.hpp"
 
-#include <rclcpp/rclcpp.hpp>
+#include <agnocast/agnocast.hpp>
 
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
+#include <tier4_system_msgs/msg/diag_graph_status.hpp>
+#include <tier4_system_msgs/msg/diag_graph_struct.hpp>
 
 #include <sstream>
 #include <string>
@@ -27,7 +29,7 @@
 namespace autoware::diagnostic_graph_utils
 {
 
-class LoggingNode : public rclcpp::Node
+class LoggingNode : public agnocast::Node
 {
 public:
   explicit LoggingNode(const rclcpp::NodeOptions & options);
@@ -35,13 +37,19 @@ public:
 private:
   using StringStamped = autoware_internal_debug_msgs::msg::StringStamped;
 
-  void on_create(DiagGraph::ConstSharedPtr graph);
+  void on_create(DiagGraph::SharedPtr graph);
+  void on_struct(
+    const agnocast::ipc_shared_ptr<const tier4_system_msgs::msg::DiagGraphStruct> & msg);
+  void on_status(
+    const agnocast::ipc_shared_ptr<const tier4_system_msgs::msg::DiagGraphStatus> & msg);
   void on_timer();
   void dump_unit(DiagNode * node, int depth, const std::string & indent);
 
-  DiagGraphSubscription sub_graph_;
-  rclcpp::Publisher<StringStamped>::SharedPtr pub_error_graph_text_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  agnocast::Subscription<tier4_system_msgs::msg::DiagGraphStruct>::SharedPtr sub_struct_;
+  agnocast::Subscription<tier4_system_msgs::msg::DiagGraphStatus>::SharedPtr sub_status_;
+  DiagGraph::SharedPtr graph_;
+  agnocast::Publisher<StringStamped>::SharedPtr pub_error_graph_text_;
+  agnocast::TimerBase::SharedPtr timer_;
 
   std::string root_path_;
   int max_depth_;

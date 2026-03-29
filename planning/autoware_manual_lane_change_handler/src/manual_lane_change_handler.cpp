@@ -23,35 +23,42 @@ namespace autoware::manual_lane_change_handler
 {
 
 ManualLaneChangeHandler::ManualLaneChangeHandler(const rclcpp::NodeOptions & options)
-: Node("manual_lane_change_handler", options),
-  plugin_loader_(
-    "autoware_mission_planner_universe", "autoware::mission_planner_universe::PlannerPlugin"),
-  current_route_(nullptr),
-  logger_(rclcpp::get_logger("ManualLaneChangeHandler"))
+: agnocast::Node("manual_lane_change_handler", options), current_route_(nullptr)
 {
-  planner_ = plugin_loader_.createSharedInstance(
-    "autoware::mission_planner_universe::lanelet2::DefaultPlanner");
-  planner_->initialize(this);
-
   sub_odometry_ = create_subscription<nav_msgs::msg::Odometry>(
     "~/input/odometry", rclcpp::QoS(1),
-    [this](const nav_msgs::msg::Odometry::ConstSharedPtr msg) { odometry_ = msg; });
+    [this](const agnocast::ipc_shared_ptr<const nav_msgs::msg::Odometry> & msg) {
+      odometry_ = msg;
+    });
 
   sub_route_ = create_subscription<LaneletRoute>(
     "/planning/mission_planning/route", rclcpp::QoS(1).transient_local(),
     std::bind(&ManualLaneChangeHandler::route_callback, this, std::placeholders::_1));
 
+  sub_vector_map_ = create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
+    "~/input/vector_map", rclcpp::QoS{10}.transient_local(),
+    std::bind(&ManualLaneChangeHandler::map_callback, this, std::placeholders::_1));
+
   srv_set_preferred_lane = create_service<SetPreferredLane>(
     "~/set_preferred_lane",
-    service_utils::handle_exception(&ManualLaneChangeHandler::set_preferred_lane, this));
+    std::bind(
+      &ManualLaneChangeHandler::set_preferred_lane, this, std::placeholders::_1,
+      std::placeholders::_2));
 
-  client_ = this->create_client<SetPreferredPrimitive>(
+  client_ = create_client<SetPreferredPrimitive>(
     "/planning/mission_planning/mission_planner/set_preferred_primitive");
 
-  pub_processing_time_ = this->create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+  pub_processing_time_ = create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "~/debug/processing_time_ms", 1);
-  pub_shift_number_ = this->create_publisher<autoware_internal_debug_msgs::msg::Int32Stamped>(
-    "~/debug/shift_number", 1);
+  pub_shift_number_ =
+    create_publisher<autoware_internal_debug_msgs::msg::Int32Stamped>("~/debug/shift_number", 1);
+}
+
+void ManualLaneChangeHandler::map_callback(
+  const agnocast::ipc_shared_ptr<const autoware_map_msgs::msg::LaneletMapBin> & msg)
+{
+  route_handler_.setMap(*msg);
+  is_map_ready_ = true;
 }
 
 std::vector<autoware_planning_msgs::msg::LaneletPrimitive>
@@ -96,47 +103,46 @@ ManualLaneChangeHandler::sort_primitives_left_to_right(
   return result;
 }
 
-void ManualLaneChangeHandler::route_callback(const LaneletRoute::ConstSharedPtr msg)
+void ManualLaneChangeHandler::route_callback(
+  const agnocast::ipc_shared_ptr<const LaneletRoute> & msg)
 {
-  RCLCPP_INFO(logger_, "Received new route with %zu segments", msg->segments.size());
+  RCLCPP_INFO(get_logger(), "Received new route with %zu segments", msg->segments.size());
   auto route = *msg;
-  planner_->updateRoute(*msg);
+  route_handler_.setRoute(*msg);
 
-  const auto & route_handler = planner_->getRouteHandler();
   std::for_each(route.segments.begin(), route.segments.end(), [&](auto & segment) {
     segment.primitives =
-      sort_primitives_left_to_right(route_handler, segment.preferred_primitive, segment.primitives);
+      sort_primitives_left_to_right(route_handler_, segment.preferred_primitive, segment.primitives);
   });
 
   if (!current_route_) {
     shift_number_ = 0;
-    autoware_internal_debug_msgs::msg::Int32Stamped shift_msg;
-    shift_msg.stamp = get_clock()->now();
-    shift_msg.data = shift_number_;
-
-    pub_shift_number_->publish(shift_msg);
+    auto shift_msg = pub_shift_number_->borrow_loaned_message();
+    shift_msg->stamp = get_clock()->now();
+    shift_msg->data = shift_number_;
+    pub_shift_number_->publish(std::move(shift_msg));
   }
 
   if (current_route_ && msg->uuid != current_route_->uuid) {
-    RCLCPP_INFO(logger_, "Resetting shift number due to route UUID change.");
+    RCLCPP_INFO(get_logger(), "Resetting shift number due to route UUID change.");
     shift_number_ = 0;
-    autoware_internal_debug_msgs::msg::Int32Stamped shift_msg;
-    shift_msg.stamp = get_clock()->now();
-    shift_msg.data = shift_number_;
-
-    pub_shift_number_->publish(shift_msg);
+    auto shift_msg = pub_shift_number_->borrow_loaned_message();
+    shift_msg->stamp = get_clock()->now();
+    shift_msg->data = shift_number_;
+    pub_shift_number_->publish(std::move(shift_msg));
   }
 
   current_route_ = std::make_shared<LaneletRoute>(route);
-  planner_->updateRoute(*current_route_);
+  route_handler_.setRoute(*current_route_);
 }
 
 void ManualLaneChangeHandler::set_preferred_lane(
-  const SetPreferredLane::Request::SharedPtr req, const SetPreferredLane::Response::SharedPtr res)
+  const agnocast::ipc_shared_ptr<agnocast::Service<SetPreferredLane>::RequestT> & req,
+  agnocast::ipc_shared_ptr<agnocast::Service<SetPreferredLane>::ResponseT> & res)
 {
   // Wait for the service to be available
   if (!client_->wait_for_service(std::chrono::seconds(5))) {
-    RCLCPP_ERROR(logger_, "Service /planning/set_preferred_primitive not available.");
+    RCLCPP_ERROR(get_logger(), "Service /planning/set_preferred_primitive not available.");
     res->status.success = false;
     res->status.message = "Service /planning/set_preferred_primitive not available.";
     return;
@@ -150,8 +156,8 @@ void ManualLaneChangeHandler::set_preferred_lane(
 
   lanelet::ConstLanelet closest_lanelet =
     get_lanelet_by_id(current_route_->segments.front().preferred_primitive.id);
-  const bool found_closest_lane = planner_->getRouteHandler().getClosestLaneletWithinRoute(
-    odometry_->pose.pose, &closest_lanelet);
+  const bool found_closest_lane =
+    route_handler_.getClosestLaneletWithinRoute(odometry_->pose.pose, &closest_lanelet);
 
   if (!found_closest_lane) {
     res->status.success = false;
@@ -160,10 +166,10 @@ void ManualLaneChangeHandler::set_preferred_lane(
     return;
   }
 
-  RCLCPP_INFO_STREAM(logger_, "Closest lanelet ID to ego: " << closest_lanelet.id());
+  RCLCPP_INFO_STREAM(get_logger(), "Closest lanelet ID to ego: " << closest_lanelet.id());
 
   LaneChangeRequestResult lane_change_request_result =
-    this->process_lane_change_request(closest_lanelet.id(), req);
+    this->process_lane_change_request(closest_lanelet.id(), req->lane_change_direction);
 
   if (!lane_change_request_result.success) {
     res->status.success = false;
@@ -171,8 +177,7 @@ void ManualLaneChangeHandler::set_preferred_lane(
     return;
   }
 
-  std::shared_ptr<SetPreferredPrimitive::Request> set_preferred_primitive_req =
-    std::make_shared<SetPreferredPrimitive::Request>();
+  auto set_preferred_primitive_req = client_->borrow_loaned_request();
   set_preferred_primitive_req->preferred_primitives =
     lane_change_request_result.preferred_primitives;
   set_preferred_primitive_req->reset =
@@ -180,8 +185,8 @@ void ManualLaneChangeHandler::set_preferred_lane(
   set_preferred_primitive_req->uuid = current_route_->uuid;
 
   auto future = client_->async_send_request(
-    set_preferred_primitive_req,
-    [this](rclcpp::Client<SetPreferredPrimitive>::SharedFuture future) {
+    std::move(set_preferred_primitive_req),
+    [this](agnocast::Client<SetPreferredPrimitive>::SharedFuture future) {
       auto response = future.get();
       if (response->status.success) {
         RCLCPP_INFO(
@@ -199,21 +204,20 @@ void ManualLaneChangeHandler::set_preferred_lane(
 }
 
 LaneChangeRequestResult ManualLaneChangeHandler::process_lane_change_request(
-  const int64_t ego_lanelet_id, const SetPreferredLane::Request::SharedPtr req)
+  const int64_t ego_lanelet_id, uint8_t lane_change_direction)
 {
   const DIRECTION override_direction =
-    req->lane_change_direction == SetPreferredLane::Request::LEFT    ? DIRECTION::MANUAL_LEFT
-    : req->lane_change_direction == SetPreferredLane::Request::RIGHT ? DIRECTION::MANUAL_RIGHT
-                                                                     : DIRECTION::AUTO;
+    lane_change_direction == SetPreferredLane::Request::LEFT    ? DIRECTION::MANUAL_LEFT
+    : lane_change_direction == SetPreferredLane::Request::RIGHT ? DIRECTION::MANUAL_RIGHT
+                                                                : DIRECTION::AUTO;
   if (override_direction == DIRECTION::AUTO) {
     std::vector<autoware_planning_msgs::msg::LaneletPrimitive> preferred_primitives;
     shift_number_ = 0;
 
-    autoware_internal_debug_msgs::msg::Int32Stamped shift_msg;
-    shift_msg.stamp = get_clock()->now();
-    shift_msg.data = shift_number_;
-
-    pub_shift_number_->publish(shift_msg);
+    auto shift_msg = pub_shift_number_->borrow_loaned_message();
+    shift_msg->stamp = get_clock()->now();
+    shift_msg->data = shift_number_;
+    pub_shift_number_->publish(std::move(shift_msg));
 
     return {{}, true, "Manual lane selection to AUTO is commanded and executed successfully."};
   }
@@ -255,7 +259,7 @@ LaneChangeRequestResult ManualLaneChangeHandler::process_lane_change_request(
     auto & current_segment = *iter;
 
     RCLCPP_INFO_STREAM(
-      logger_,
+      get_logger(),
       "Current segment preferred primitive ID: " << current_segment.preferred_primitive.id);
 
     // Safely get next_segment iterator
@@ -312,8 +316,8 @@ LaneChangeRequestResult ManualLaneChangeHandler::process_lane_change_request(
         : next_segment_is_left_turn ? "next segment is left turn"
                                     : "next segment is right turn";
       RCLCPP_INFO_STREAM(
-        logger_, "Cannot shift on the current segment (ID: "
-                   << current_segment.preferred_primitive.id << ")");
+        get_logger(), "Cannot shift on the current segment (ID: "
+                        << current_segment.preferred_primitive.id << ")");
       break;
     }
 
@@ -322,9 +326,9 @@ LaneChangeRequestResult ManualLaneChangeHandler::process_lane_change_request(
       route_updated = true;
       current_segment.preferred_primitive = current_segment.primitives.at(current_index - 1);
       RCLCPP_INFO_STREAM(
-        logger_, "Shifted left from "
-                   << current_segment.primitives.at(current_index).id
-                   << " to primitive ID: " << current_segment.preferred_primitive.id);
+        get_logger(), "Shifted left from "
+                        << current_segment.primitives.at(current_index).id
+                        << " to primitive ID: " << current_segment.preferred_primitive.id);
     } else if (
       override_direction == DIRECTION::MANUAL_RIGHT &&
       current_index + 1 < current_segment.primitives.size()) {
@@ -332,9 +336,9 @@ LaneChangeRequestResult ManualLaneChangeHandler::process_lane_change_request(
       route_updated = true;
       current_segment.preferred_primitive = current_segment.primitives.at(current_index + 1);
       RCLCPP_INFO_STREAM(
-        logger_, "Shifted right from "
-                   << current_segment.primitives.at(current_index).id
-                   << " to primitive ID: " << current_segment.preferred_primitive.id);
+        get_logger(), "Shifted right from "
+                        << current_segment.primitives.at(current_index).id
+                        << " to primitive ID: " << current_segment.preferred_primitive.id);
     }
   }
 
@@ -352,19 +356,17 @@ LaneChangeRequestResult ManualLaneChangeHandler::process_lane_change_request(
   if (override_direction == DIRECTION::MANUAL_LEFT) {
     shift_number_ -= 1;
 
-    autoware_internal_debug_msgs::msg::Int32Stamped shift_msg;
-    shift_msg.stamp = get_clock()->now();
-    shift_msg.data = shift_number_;
-
-    pub_shift_number_->publish(shift_msg);
+    auto shift_msg = pub_shift_number_->borrow_loaned_message();
+    shift_msg->stamp = get_clock()->now();
+    shift_msg->data = shift_number_;
+    pub_shift_number_->publish(std::move(shift_msg));
   } else {
     shift_number_ += 1;
 
-    autoware_internal_debug_msgs::msg::Int32Stamped shift_msg;
-    shift_msg.stamp = get_clock()->now();
-    shift_msg.data = shift_number_;
-
-    pub_shift_number_->publish(shift_msg);
+    auto shift_msg = pub_shift_number_->borrow_loaned_message();
+    shift_msg->stamp = get_clock()->now();
+    shift_msg->data = shift_number_;
+    pub_shift_number_->publish(std::move(shift_msg));
   }
 
   std::vector<LaneletPrimitive> preferred_primitives;

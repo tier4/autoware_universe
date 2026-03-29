@@ -32,18 +32,38 @@ LoggingNode::LoggingNode(const rclcpp::NodeOptions & options) : Node("logging", 
   enable_terminal_log_ = declare_parameter<bool>("enable_terminal_log");
   ignore_dependent_error_ = declare_parameter<bool>("ignore_dependent_error");
 
+  graph_ = std::make_shared<DiagGraph>();
+
   using std::placeholders::_1;
-  sub_graph_.register_create_callback(std::bind(&LoggingNode::on_create, this, _1));
-  sub_graph_.subscribe(*this, 1);
+  sub_struct_ = create_subscription<tier4_system_msgs::msg::DiagGraphStruct>(
+    "/diagnostics_graph/struct", rclcpp::QoS(1).transient_local(),
+    std::bind(&LoggingNode::on_struct, this, _1));
+  sub_status_ = create_subscription<tier4_system_msgs::msg::DiagGraphStatus>(
+    "/diagnostics_graph/status", rclcpp::QoS(1),
+    std::bind(&LoggingNode::on_status, this, _1));
 
   pub_error_graph_text_ =
     create_publisher<StringStamped>("~/debug/error_graph_text", rclcpp::QoS(1));
 
   const auto period = rclcpp::Rate(declare_parameter<double>("show_rate")).period();
-  timer_ = rclcpp::create_timer(this, get_clock(), period, [this]() { on_timer(); });
+  timer_ = create_timer(period, [this]() { on_timer(); });
 }
 
-void LoggingNode::on_create(DiagGraph::ConstSharedPtr graph)
+void LoggingNode::on_struct(
+  const agnocast::ipc_shared_ptr<const tier4_system_msgs::msg::DiagGraphStruct> & msg)
+{
+  if (graph_->create(*msg)) {
+    on_create(graph_);
+  }
+}
+
+void LoggingNode::on_status(
+  const agnocast::ipc_shared_ptr<const tier4_system_msgs::msg::DiagGraphStatus> & msg)
+{
+  graph_->update(*msg);
+}
+
+void LoggingNode::on_create(DiagGraph::SharedPtr graph)
 {
   // Search root node.
   root_node_ = nullptr;
@@ -74,10 +94,10 @@ void LoggingNode::on_timer()
     }
 
     // publish debug topic
-    StringStamped error_graph_message;
-    error_graph_message.stamp = now();
-    error_graph_message.data = error_graph_text;
-    pub_error_graph_text_->publish(error_graph_message);
+    auto error_graph_message = pub_error_graph_text_->borrow_loaned_message();
+    error_graph_message->stamp = now();
+    error_graph_message->data = error_graph_text;
+    pub_error_graph_text_->publish(std::move(error_graph_message));
 
     // update previous value
     prev_error_graph_text_ = error_graph_text;
@@ -85,9 +105,9 @@ void LoggingNode::on_timer()
     const std::string error_graph_text{""};
 
     // publish debug topic
-    StringStamped error_graph_message;
-    error_graph_message.stamp = now();
-    pub_error_graph_text_->publish(error_graph_message);
+    auto error_graph_message = pub_error_graph_text_->borrow_loaned_message();
+    error_graph_message->stamp = now();
+    pub_error_graph_text_->publish(std::move(error_graph_message));
 
     // show on terminal
     if (enable_terminal_log_ && error_graph_text != prev_error_graph_text_) {

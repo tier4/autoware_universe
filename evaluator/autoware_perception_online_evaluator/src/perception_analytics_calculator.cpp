@@ -27,10 +27,11 @@
 namespace autoware::perception_diagnostics
 {
 
-void PerceptionAnalyticsCalculator::setPredictedObjects(PredictedObjects::ConstSharedPtr objects)
+void PerceptionAnalyticsCalculator::setPredictedObjects(
+  const agnocast::ipc_shared_ptr<const PredictedObjects> & objects)
 {
   std::lock_guard<std::mutex> lock(predicted_objects_mutex_);
-  predicted_objects_ptr_ = std::move(objects);
+  predicted_objects_ptr_ = objects;
 }
 
 void PerceptionAnalyticsCalculator::setLatencies(
@@ -39,9 +40,9 @@ void PerceptionAnalyticsCalculator::setLatencies(
   latencies_ = latencies;
 }
 
-FrameMetrics PerceptionAnalyticsCalculator::calculate(const tf2_ros::Buffer & tf_buffer) const
+FrameMetrics PerceptionAnalyticsCalculator::calculate(const agnocast::Buffer & tf_buffer) const
 {
-  PredictedObjects::ConstSharedPtr ptr;
+  agnocast::ipc_shared_ptr<const PredictedObjects> ptr;
   {
     std::lock_guard<std::mutex> lock(predicted_objects_mutex_);
     ptr = predicted_objects_ptr_;

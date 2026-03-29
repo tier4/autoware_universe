@@ -5,6 +5,8 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(pluginlib REQUIRED)
+find_package(agnocastlib REQUIRED)
+find_package(agnocast_components REQUIRED)
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/metrics_calculator.cpp
@@ -27,7 +29,20 @@ rclcpp_components_register_node(${PROJECT_NAME}
   EXECUTABLE autoware_perception_analytics_publisher_node
 )
 
-target_link_libraries(${PROJECT_NAME} glog::glog)
+agnocast_components_register_node(${PROJECT_NAME}
+  PLUGIN "autoware::perception_diagnostics::PerceptionAnalyticsPublisherNode"
+  EXECUTABLE autoware_perception_analytics_publisher_agnocast_node
+  EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
+)
+
+target_link_libraries(${PROJECT_NAME}
+  glog::glog
+  ${agnocastlib_LIBRARIES}
+)
+target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC
+  ${agnocastlib_INCLUDE_DIRS}
+)
 
 if(BUILD_TESTING)
   ament_add_ros_isolated_gtest(test_perception_online_evaluator_node
