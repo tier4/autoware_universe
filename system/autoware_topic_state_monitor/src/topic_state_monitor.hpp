@@ -42,6 +42,7 @@ class TopicStateMonitor
 {
 public:
   explicit TopicStateMonitor(rclcpp::Node & node, const Param & param);
+  explicit TopicStateMonitor(rclcpp::Clock::SharedPtr clock, const Param & param);
 
   void setParam(const Param & param) { param_ = param; }
 

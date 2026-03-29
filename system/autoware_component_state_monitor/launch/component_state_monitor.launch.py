@@ -57,9 +57,15 @@ def create_topic_monitor_node(row):
     else:
         params["topic_type"] = str(args["topic_type"])
 
+    executable = (
+        "transform_state_monitor_agnocast_node"
+        if is_tf
+        else "autoware_topic_state_monitor_agnocast_node"
+    )
+
     return Node(
         package="autoware_topic_state_monitor",
-        executable="autoware_topic_state_monitor_agnocast_node",
+        executable=executable,
         name=node_name,
         namespace="",
         parameters=[params],

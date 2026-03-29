@@ -22,6 +22,12 @@ TopicStateMonitor::TopicStateMonitor(rclcpp::Node & node, const Param & param)
   param_ = param;
 }
 
+TopicStateMonitor::TopicStateMonitor(rclcpp::Clock::SharedPtr clock, const Param & param)
+: clock_(clock)
+{
+  param_ = param;
+}
+
 void TopicStateMonitor::update()
 {
   // Add data
