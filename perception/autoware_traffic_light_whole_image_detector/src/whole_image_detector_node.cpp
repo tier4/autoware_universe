@@ -33,8 +33,9 @@ public:
   : Node("traffic_light_whole_image_detector_node", options)
   {
     // remove default set values in declare_parameter to avoid confusion
-    std::string onnx_path = this->declare_parameter<std::string>("onnx_path");
-    std::string names_path = this->declare_parameter<std::string>("names_file");
+    std::string onnx_path = this->declare_parameter<std::string>("model_path");
+    std::string names_path = this->declare_parameter<std::string>("label_path");
+    
     std::string precision = this->declare_parameter<std::string>("precision");
     std::string calibration_images =  this->declare_parameter<std::string>("calibration_images");
     std::string calib = this->declare_parameter<std::string>("calib");
@@ -66,9 +67,9 @@ public:
     for (size_t i = 0; i < anchors_param.size(); i += 2) {
       if (i + 1 < anchors_param.size()) {
         RCLCPP_INFO(
-          get_logger(), "    - [%d, %d]", anchors_param[i], anchors_param[i + 1]);
+          get_logger(), "    - [%ld, %ld]", anchors_param[i], anchors_param[i + 1]);
       } else {
-        RCLCPP_INFO(get_logger(), "    - [%d]", anchors_param[i]);
+        RCLCPP_INFO(get_logger(), "    - [%ld]", anchors_param[i]);
       }
     }
 
@@ -132,11 +133,11 @@ public:
 #endif
 
     image_sub_ = create_subscription<sensor_msgs::msg::Image>(
-      "~/input/image", rclcpp::SensorDataQoS(),
+      "~/in/image", rclcpp::SensorDataQoS(),
       std::bind(&WholeImageDetectorNode::onImage, this, std::placeholders::_1));
     objects_pub_ = create_publisher<tier4_perception_msgs::msg::DetectedObjectsWithFeature>(
-      "~/output/rois", 1);
-    debug_image_pub_ = create_publisher<sensor_msgs::msg::Image>("~/output/debug/image", 1);
+      "~/out/objects", 1);
+    debug_image_pub_ = create_publisher<sensor_msgs::msg::Image>("~/out/image", 1);
   }
 
 private:
