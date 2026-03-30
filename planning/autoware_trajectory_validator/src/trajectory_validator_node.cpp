@@ -62,6 +62,49 @@ bool has_trajectory_from_generator(
              generator_name_it->second.rfind(generator_name_prefix, 0) == 0;
     });
 }
+
+visualization_msgs::msg::MarkerArray create_internal_state_text(
+  const std::unordered_map<std::string, std::vector<std::string>> & plugin_filtered_paths,
+  const std::vector<std::string> & sorted_plugins, const geometry_msgs::msg::Pose & marker_pose,
+  const rclcpp::Time & now, const double height_offset)
+{
+  fmt::memory_buffer out;
+  auto out_it = std::back_inserter(out);
+
+  fmt::format_to(out_it, "{:^50}\n", "--- Trajectory Validator Filtering Result ---");
+
+  int skip_counter = 0;
+  for (const auto & plugin_name : sorted_plugins) {
+    auto it = plugin_filtered_paths.find(plugin_name);
+
+    bool has_filtered_paths = (it != plugin_filtered_paths.end() && !it->second.empty());
+
+    if (has_filtered_paths) {
+      fmt::format_to(out_it, "- {}: {} path(s) filtered\n", plugin_name, it->second.size());
+    } else {
+      ++skip_counter;
+    }
+  }
+
+  if (skip_counter > 0) {
+    fmt::format_to(out_it, "{}", std::string(skip_counter, '\n'));
+  }
+
+  fmt::format_to(out_it, "-----------------------------------");
+
+  constexpr int32_t id{0};
+  auto text_marker = autoware_utils_visualization::create_default_marker(
+    "map", now, "plugin_report", id, visualization_msgs::msg::Marker::TEXT_VIEW_FACING,
+    autoware_utils_visualization::create_marker_scale(0.0, 0.0, 0.4),
+    autoware_utils_visualization::create_marker_color(1., 1., 1., 0.999));
+  text_marker.pose = marker_pose;
+  text_marker.pose.position.z += height_offset;
+  text_marker.text = fmt::to_string(out);
+
+  visualization_msgs::msg::MarkerArray marker_array;
+  marker_array.markers.push_back(text_marker);
+  return marker_array;
+}
 }  // namespace
 
 namespace autoware::trajectory_validator
@@ -338,33 +381,11 @@ void TrajectoryValidator::publish_internal_state(
   text_msg.data = report;
   pub_processing_time_text_->publish(text_msg);
 
-  // --- Filtering Results Section ---
-  fmt::memory_buffer out;
-  fmt::format_to(std::back_inserter(out), "--- Trajectory Validator Filtering Result ---\n");
-
-  for (const auto & plugin_name : sorted_plugins) {
-    auto it = plugin_filtered_paths.find(plugin_name);
-    if (it != plugin_filtered_paths.end() && !it->second.empty()) {
-      fmt::format_to(
-        std::back_inserter(out), "- {}: {} path(s) filtered\n", plugin_name, it->second.size());
-    }
-  }
-
-  fmt::format_to(std::back_inserter(out), "-----------------------------------");
-
-  constexpr int32_t id{0};
-  auto text_marker = autoware_utils_visualization::create_default_marker(
-    "map", get_clock()->now(), "plugin_report", id,
-    visualization_msgs::msg::Marker::TEXT_VIEW_FACING,
-    autoware_utils_visualization::create_marker_scale(0.0, 0.0, 0.9),
-    autoware_utils_visualization::create_marker_color(1., 1., 1., 0.999));
-  text_marker.pose = ego_pose;
-  text_marker.pose.position.z += vehicle_info_.vehicle_height_m + 2.0;
-  text_marker.text = fmt::to_string(out);
-
-  visualization_msgs::msg::MarkerArray marker_array;
-  marker_array.markers.push_back(text_marker);
-  pub_debug_markers_->publish<visualization_msgs::msg::MarkerArray>("markers", marker_array);
+  constexpr double offset = 1.0;
+  auto internal_state_text = create_internal_state_text(
+    plugin_filtered_paths, sorted_plugins, ego_pose, get_clock()->now(),
+    vehicle_info_.vehicle_height_m + offset);
+  pub_debug_markers_->publish<visualization_msgs::msg::MarkerArray>("markers", internal_state_text);
 }
 }  // namespace autoware::trajectory_validator
 
