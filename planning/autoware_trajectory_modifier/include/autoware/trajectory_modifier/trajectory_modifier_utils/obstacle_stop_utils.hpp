@@ -215,7 +215,9 @@ struct ObstacleTracker
    * @param objects Input predicted objects after filtering
    * @param persistent_objects Output persistent objects
    */
-  void update_objects(const PredictedObjects & objects, PredictedObjects & persistent_objects);
+  void update_objects(
+    const PredictedObjects & objects, PredictedObjects & persistent_objects,
+    const rclcpp::Time & now);
 
   /**
    * @brief Update tracked points
@@ -224,7 +226,8 @@ struct ObstacleTracker
    * @param points Input pointcloud
    * @param persistent_points Output persistent points
    */
-  void update_points(const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points);
+  void update_points(
+    const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points, const rclcpp::Time & now);
 
 private:
   double on_time_buffer_;
@@ -236,12 +239,12 @@ private:
 
   struct PersistentObstacle
   {
-    using TimePoint = std::chrono::system_clock::time_point;
-    TimePoint first_seen_time;
-    TimePoint last_seen_time;
+    rclcpp::Time first_seen_time;
+    rclcpp::Time last_seen_time;
     bool is_active{false};
 
-    explicit PersistentObstacle(const TimePoint & now) : first_seen_time(now), last_seen_time(now)
+    explicit PersistentObstacle(const rclcpp::Time & now)
+    : first_seen_time(now), last_seen_time(now)
     {
     }
   };
@@ -250,7 +253,7 @@ private:
   {
     PredictedObject object;
 
-    explicit PersistentObject(const PredictedObject & object, const TimePoint & now)
+    explicit PersistentObject(const PredictedObject & object, const rclcpp::Time & now)
     : PersistentObstacle(now), object(object)
     {
     }
@@ -261,7 +264,7 @@ private:
   struct PersistentPoint : public PersistentObstacle
   {
     geometry_msgs::msg::Point position;
-    explicit PersistentPoint(const geometry_msgs::msg::Point & position, const TimePoint & now)
+    explicit PersistentPoint(const geometry_msgs::msg::Point & position, const rclcpp::Time & now)
     : PersistentObstacle(now), position(position)
     {
     }

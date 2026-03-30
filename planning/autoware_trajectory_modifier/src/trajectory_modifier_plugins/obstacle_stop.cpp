@@ -388,7 +388,7 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
   filter_objects_by_velocity(predicted_objects, params_.objects.max_velocity_th);
 
   PredictedObjects active_objects;
-  obstacle_tracker_->update_objects(predicted_objects, active_objects);
+  obstacle_tracker_->update_objects(predicted_objects, active_objects, get_clock()->now());
 
   autoware_perception_msgs::msg::PredictedObject colliding_object;
   auto collision_point = get_nearest_object_collision(
@@ -462,7 +462,7 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(const TrajectoryPoi
   }
 
   PointCloud::Ptr active_points(new PointCloud);
-  obstacle_tracker_->update_points(clustered_points, active_points);
+  obstacle_tracker_->update_points(clustered_points, active_points, get_clock()->now());
 
   std::optional<CollisionPoint> collision_point;
   {

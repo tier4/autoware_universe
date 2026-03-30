@@ -290,14 +290,10 @@ void PointCloudFilter::filter_pointcloud_by_object(
 }
 
 void ObstacleTracker::update_objects(
-  const PredictedObjects & objects, PredictedObjects & persistent_objects)
+  const PredictedObjects & objects, PredictedObjects & persistent_objects, const rclcpp::Time & now)
 {
-  auto now = std::chrono::system_clock::now();
-  using Seconds = std::chrono::duration<double>;
-
   for (auto it = persistent_objects_map_.begin(); it != persistent_objects_map_.end();) {
-    const auto idle_time =
-      std::chrono::duration_cast<Seconds>(now - it->second.last_seen_time).count();
+    const auto idle_time = (now - it->second.last_seen_time).seconds();
     const bool is_erase =
       !it->second.is_active ? idle_time > grace_period_ : idle_time > off_time_buffer_;
     if (is_erase)
@@ -342,8 +338,8 @@ void ObstacleTracker::update_objects(
     auto & closest_object = persistent_objects_map_.at(closest_uuid.value());
     closest_object.last_seen_time = now;
     closest_object.object = object;
-    const auto duration = std::chrono::duration_cast<Seconds>(now - closest_object.first_seen_time);
-    closest_object.is_active = duration.count() >= on_time_buffer_;
+    const auto duration = (now - closest_object.first_seen_time).seconds();
+    closest_object.is_active = duration >= on_time_buffer_;
   }
 
   for (const auto & [uuid, entry] : persistent_objects_map_) {
@@ -354,14 +350,10 @@ void ObstacleTracker::update_objects(
 }
 
 void ObstacleTracker::update_points(
-  const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points)
+  const PointCloud::Ptr & points, PointCloud::Ptr & persistent_points, const rclcpp::Time & now)
 {
-  auto now = std::chrono::system_clock::now();
-  using Seconds = std::chrono::duration<double>;
-
   for (auto it = persistent_point_map_.begin(); it != persistent_point_map_.end();) {
-    const auto idle_time =
-      std::chrono::duration_cast<Seconds>(now - it->second.last_seen_time).count();
+    const auto idle_time = (now - it->second.last_seen_time).seconds();
     const bool is_erase =
       !it->second.is_active ? idle_time > grace_period_ : idle_time > off_time_buffer_;
     if (is_erase)
@@ -398,8 +390,8 @@ void ObstacleTracker::update_points(
     auto & closest_point = persistent_point_map_.at(closest_uuid.value());
     closest_point.last_seen_time = now;
     closest_point.position = point_msg;
-    const auto duration = std::chrono::duration_cast<Seconds>(now - closest_point.first_seen_time);
-    closest_point.is_active = duration.count() >= on_time_buffer_;
+    const auto duration = (now - closest_point.first_seen_time).seconds();
+    closest_point.is_active = duration >= on_time_buffer_;
   }
 
   for (const auto & [uuid, entry] : persistent_point_map_) {
