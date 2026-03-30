@@ -352,10 +352,11 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
     }
 
     if (i == 0) {
-      // Use the first trajectory as the main output trajectory
       output.trajectory = trajectory;
     }
 
+    // candidate_trajectory uses the same source as output.trajectory for batch 0;
+    // will be overwritten with control_trajectory below if use_control_trajectory is set.
     const auto candidate_trajectory = autoware_internal_planning_msgs::build<
                                         autoware_internal_planning_msgs::msg::CandidateTrajectory>()
                                         .header(trajectory.header)
@@ -392,14 +393,33 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
   output.turn_indicator_command =
     turn_indicator_manager_.evaluate(first_turn_indicator_logit, timestamp, prev_report);
 
-  // Ego control from network output (batch 0)
+  // Ego control: parse network output (batch 0) and build control-based trajectory
   constexpr int64_t control_batch_idx = 0;
   const int64_t control_offset = control_batch_idx * OUTPUT_T * EGO_CONTROL_DIM;
-  output.ego_control.resize(OUTPUT_T);
+  std::vector<std::pair<float, float>> control_pairs(OUTPUT_T);
   for (int64_t t = 0; t < OUTPUT_T; ++t) {
     const auto base = static_cast<size_t>(control_offset + t * EGO_CONTROL_DIM);
-    output.ego_control[static_cast<size_t>(t)].acceleration = ego_control[base + 0];
-    output.ego_control[static_cast<size_t>(t)].curvature = ego_control[base + 1];
+    control_pairs[static_cast<size_t>(t)] = {ego_control[base + 0], ego_control[base + 1]};
+  }
+
+  const double initial_velocity = frame_context.ego_kinematic_state.twist.twist.linear.x;
+  output.control_trajectory = postprocess::create_trajectory_from_control(
+    control_pairs, initial_velocity,
+    frame_context.ego_kinematic_state.pose.pose, timestamp);
+
+  // Ego control message (first timestep)
+  output.ego_control_msg.stamp = timestamp;
+  output.ego_control_msg.longitudinal.acceleration = control_pairs[0].first;
+  output.ego_control_msg.longitudinal.is_defined_acceleration = true;
+  output.ego_control_msg.lateral.steering_tire_angle =
+    std::atan(static_cast<double>(control_pairs[0].second) * vehicle_spec_.wheel_base);
+
+  // When use_control_trajectory is set, replace candidate_trajectories batch 0
+  // with the control-based trajectory so downstream uses the control representation.
+  if (params_.use_control_trajectory) {
+    auto & batch0 = output.candidate_trajectories.candidate_trajectories[0];
+    batch0.header = output.control_trajectory.header;
+    batch0.points = output.control_trajectory.points;
   }
 
   return output;

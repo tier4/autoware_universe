@@ -33,7 +33,6 @@
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
-#include <autoware_control_msgs/msg/control.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -173,7 +172,7 @@ private:
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_linestring_marker_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_route_marker_{nullptr};
   rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr pub_turn_indicators_{nullptr};
-  rclcpp::Publisher<autoware_control_msgs::msg::Control>::SharedPtr pub_ego_control_{nullptr};
+  rclcpp::Publisher<Control>::SharedPtr pub_ego_control_{nullptr};
   rclcpp::Publisher<Trajectory>::SharedPtr pub_control_trajectory_{nullptr};
   rclcpp::Publisher<autoware_perception_msgs::msg::TrafficLightGroup>::SharedPtr
     pub_traffic_signal_{nullptr};

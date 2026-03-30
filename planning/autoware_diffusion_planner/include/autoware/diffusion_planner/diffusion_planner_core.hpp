@@ -31,6 +31,7 @@
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
+#include <autoware_control_msgs/msg/control.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -57,6 +58,7 @@ using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
+using autoware_control_msgs::msg::Control;
 using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using autoware_vehicle_msgs::msg::TurnIndicatorsReport;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
@@ -92,10 +94,11 @@ struct EgoControl
 struct PlannerOutput
 {
   Trajectory trajectory;
+  Trajectory control_trajectory;  // trajectory reconstructed from control via unicycle model
   CandidateTrajectories candidate_trajectories;
   PredictedObjects predicted_objects;
   TurnIndicatorsCommand turn_indicator_command;
-  std::vector<EgoControl> ego_control;  // per-timestep control from network (batch 0)
+  Control ego_control_msg;
 };
 
 struct FrameContext
@@ -127,6 +130,7 @@ struct DiffusionPlannerParams
   int64_t delay_step;
   double line_string_max_step_m;
   bool use_time_interpolation;
+  bool use_control_trajectory;
 };
 
 /**

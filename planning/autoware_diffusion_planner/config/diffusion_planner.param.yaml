@@ -17,6 +17,7 @@
     delay_step: 0
     line_string_max_step_m: 5.0
     use_time_interpolation: false
+    use_control_trajectory: true
     debug_params:
       publish_debug_route: true
       publish_debug_map: false

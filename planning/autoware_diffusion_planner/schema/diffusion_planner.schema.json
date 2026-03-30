@@ -111,6 +111,11 @@
           "default": false,
           "description": "Whether to interpolate ego past trajectory at regular time intervals"
         },
+        "use_control_trajectory": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, the main output trajectory uses control-based reconstruction (unicycle model from acceleration/curvature) instead of position-based trajectory. The other representation is published on the debug topic."
+        },
         "debug_params": {
           "type": "object",
           "properties": {
