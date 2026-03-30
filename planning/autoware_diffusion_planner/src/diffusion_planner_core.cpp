@@ -336,43 +336,68 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
 
   const bool enable_force_stop =
     frame_context.ego_kinematic_state.twist.twist.linear.x > std::numeric_limits<double>::epsilon();
+  const double initial_velocity = frame_context.ego_kinematic_state.twist.twist.linear.x;
+  const auto & ego_pose = frame_context.ego_kinematic_state.pose.pose;
 
   PlannerOutput output;
 
-  // Trajectory and CandidateTrajectories
+  // Build per-batch trajectories (position-based and control-based)
   for (int i = 0; i < params_.batch_size; i++) {
-    auto trajectory = postprocess::create_ego_trajectory(
-      agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose.position, i,
-      params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
-
+    auto pos_trajectory = postprocess::create_ego_trajectory(
+      agent_poses, timestamp, ego_pose.position, i, params_.velocity_smoothing_window,
+      enable_force_stop, params_.stopping_threshold);
     if (params_.shift_x) {
-      for (auto & point : trajectory.points) {
+      for (auto & point : pos_trajectory.points) {
+        point.pose = utils::shift_x(point.pose, -vehicle_spec_.base_link_to_center);
+      }
+    }
+
+    const auto control_steps = postprocess::parse_ego_control(ego_control, i);
+    auto ctrl_trajectory = postprocess::create_trajectory_from_control(
+      control_steps, initial_velocity, ego_pose, timestamp);
+    if (params_.shift_x) {
+      for (auto & point : ctrl_trajectory.points) {
         point.pose = utils::shift_x(point.pose, -vehicle_spec_.base_link_to_center);
       }
     }
 
     if (i == 0) {
-      output.trajectory = trajectory;
+      output.trajectory = pos_trajectory;
+      output.control_trajectory = ctrl_trajectory;
+
+      // Ego control message (first timestep of batch 0)
+      output.ego_control_msg.stamp = timestamp;
+      output.ego_control_msg.longitudinal.acceleration = control_steps[0].acceleration;
+      output.ego_control_msg.longitudinal.is_defined_acceleration = true;
+      output.ego_control_msg.lateral.steering_tire_angle =
+        std::atan(static_cast<double>(control_steps[0].curvature) * vehicle_spec_.wheel_base);
     }
 
-    // candidate_trajectory uses the same source as output.trajectory for batch 0;
-    // will be overwritten with control_trajectory below if use_control_trajectory is set.
-    const auto candidate_trajectory = autoware_internal_planning_msgs::build<
-                                        autoware_internal_planning_msgs::msg::CandidateTrajectory>()
-                                        .header(trajectory.header)
-                                        .generator_id(generator_uuid)
-                                        .points(trajectory.points);
+    // CandidateTrajectories: use_control_trajectory controls the order (ctrl first or traj first)
+    const auto add_candidate = [&](const Trajectory & traj, const std::string & name) {
+      std_msgs::msg::String name_msg;
+      name_msg.data = name;
+      output.candidate_trajectories.candidate_trajectories.push_back(
+        autoware_internal_planning_msgs::build<
+          autoware_internal_planning_msgs::msg::CandidateTrajectory>()
+          .header(traj.header)
+          .generator_id(generator_uuid)
+          .points(traj.points));
+      output.candidate_trajectories.generator_info.push_back(
+        autoware_internal_planning_msgs::build<
+          autoware_internal_planning_msgs::msg::GeneratorInfo>()
+          .generator_id(generator_uuid)
+          .generator_name(name_msg));
+    };
 
-    std_msgs::msg::String generator_name_msg;
-    generator_name_msg.data = std::string("DiffusionPlanner_batch_") + std::to_string(i);
-
-    const auto generator_info =
-      autoware_internal_planning_msgs::build<autoware_internal_planning_msgs::msg::GeneratorInfo>()
-        .generator_id(generator_uuid)
-        .generator_name(generator_name_msg);
-
-    output.candidate_trajectories.candidate_trajectories.push_back(candidate_trajectory);
-    output.candidate_trajectories.generator_info.push_back(generator_info);
+    const std::string batch_str = std::to_string(i);
+    if (params_.use_control_trajectory) {
+      add_candidate(ctrl_trajectory, "DiffusionPlanner_ctrl_batch_" + batch_str);
+      add_candidate(pos_trajectory, "DiffusionPlanner_traj_batch_" + batch_str);
+    } else {
+      add_candidate(pos_trajectory, "DiffusionPlanner_traj_batch_" + batch_str);
+      add_candidate(ctrl_trajectory, "DiffusionPlanner_ctrl_batch_" + batch_str);
+    }
   }
 
   // PredictedObjects
@@ -392,35 +417,6 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
                                 : turn_indicators_history_.back().report;
   output.turn_indicator_command =
     turn_indicator_manager_.evaluate(first_turn_indicator_logit, timestamp, prev_report);
-
-  // Ego control: parse network output (batch 0) and build control-based trajectory
-  constexpr int64_t control_batch_idx = 0;
-  const int64_t control_offset = control_batch_idx * OUTPUT_T * EGO_CONTROL_DIM;
-  std::vector<std::pair<float, float>> control_pairs(OUTPUT_T);
-  for (int64_t t = 0; t < OUTPUT_T; ++t) {
-    const auto base = static_cast<size_t>(control_offset + t * EGO_CONTROL_DIM);
-    control_pairs[static_cast<size_t>(t)] = {ego_control[base + 0], ego_control[base + 1]};
-  }
-
-  const double initial_velocity = frame_context.ego_kinematic_state.twist.twist.linear.x;
-  output.control_trajectory = postprocess::create_trajectory_from_control(
-    control_pairs, initial_velocity,
-    frame_context.ego_kinematic_state.pose.pose, timestamp);
-
-  // Ego control message (first timestep)
-  output.ego_control_msg.stamp = timestamp;
-  output.ego_control_msg.longitudinal.acceleration = control_pairs[0].first;
-  output.ego_control_msg.longitudinal.is_defined_acceleration = true;
-  output.ego_control_msg.lateral.steering_tire_angle =
-    std::atan(static_cast<double>(control_pairs[0].second) * vehicle_spec_.wheel_base);
-
-  // When use_control_trajectory is set, replace candidate_trajectories batch 0
-  // with the control-based trajectory so downstream uses the control representation.
-  if (params_.use_control_trajectory) {
-    auto & batch0 = output.candidate_trajectories.candidate_trajectories[0];
-    batch0.header = output.control_trajectory.header;
-    batch0.points = output.control_trajectory.points;
-  }
 
   return output;
 }

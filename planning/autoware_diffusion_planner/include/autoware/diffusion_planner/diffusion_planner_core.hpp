@@ -85,12 +85,6 @@ struct VehicleSpec
   }
 };
 
-struct EgoControl
-{
-  float acceleration;  // [m/s²]
-  float curvature;     // [1/m]
-};
-
 struct PlannerOutput
 {
   Trajectory trajectory;

@@ -343,8 +343,21 @@ Trajectory get_trajectory_from_poses(
 
 }  // namespace
 
+std::vector<EgoControlStep> parse_ego_control(
+  const std::vector<float> & ego_control, const int64_t batch_index)
+{
+  const int64_t offset = batch_index * OUTPUT_T * EGO_CONTROL_DIM;
+  std::vector<EgoControlStep> steps(OUTPUT_T);
+  for (int64_t t = 0; t < OUTPUT_T; ++t) {
+    const auto base = static_cast<size_t>(offset + t * EGO_CONTROL_DIM);
+    steps[static_cast<size_t>(t)].acceleration = ego_control[base + 0];
+    steps[static_cast<size_t>(t)].curvature = ego_control[base + 1];
+  }
+  return steps;
+}
+
 Trajectory create_trajectory_from_control(
-  const std::vector<std::pair<float, float>> & ego_control, const double initial_velocity,
+  const std::vector<EgoControlStep> & ego_control, const double initial_velocity,
   const geometry_msgs::msg::Pose & ego_pose, const rclcpp::Time & stamp)
 {
   Trajectory trajectory;
@@ -365,8 +378,8 @@ Trajectory create_trajectory_from_control(
   double v = initial_velocity;
 
   for (size_t t = 0; t < ego_control.size(); ++t) {
-    const double accel = static_cast<double>(ego_control[t].first);
-    const double curvature = static_cast<double>(ego_control[t].second);
+    const double accel = static_cast<double>(ego_control[t].acceleration);
+    const double curvature = static_cast<double>(ego_control[t].curvature);
 
     // Unicycle model integration
     x += v * std::cos(heading) * dt;

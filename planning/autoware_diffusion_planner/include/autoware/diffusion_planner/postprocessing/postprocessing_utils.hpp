@@ -98,17 +98,23 @@ Trajectory create_ego_trajectory(
 int64_t count_valid_elements(
   const std::vector<float> & data, int64_t len, int64_t dim2, int64_t dim3, int64_t batch_idx);
 
+struct EgoControlStep
+{
+  float acceleration;  // [m/s²]
+  float curvature;     // [1/m]
+};
+
+/**
+ * @brief Parse one batch of ego_control from the flat network output [B, T, 2].
+ */
+std::vector<EgoControlStep> parse_ego_control(
+  const std::vector<float> & ego_control, int64_t batch_index);
+
 /**
  * @brief Reconstruct ego trajectory from control signals via unicycle model integration.
- *
- * @param ego_control Per-timestep (acceleration, curvature) pairs from network output.
- * @param initial_velocity Initial ego velocity [m/s].
- * @param ego_pose Current ego pose in map frame (provides initial position and heading).
- * @param stamp Timestamp for the trajectory header.
- * @return Trajectory message reconstructed from control signals.
  */
 Trajectory create_trajectory_from_control(
-  const std::vector<std::pair<float, float>> & ego_control, double initial_velocity,
+  const std::vector<EgoControlStep> & ego_control, double initial_velocity,
   const geometry_msgs::msg::Pose & ego_pose, const rclcpp::Time & stamp);
 
 }  // namespace autoware::diffusion_planner::postprocess
