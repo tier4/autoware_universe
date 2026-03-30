@@ -21,6 +21,7 @@
 #include <autoware/cuda_utils/cuda_utils.hpp>
 #include <autoware_utils/math/constants.hpp>
 #include <autoware_utils/ros/diagnostics_interface.hpp>
+#include <autoware_utils/system/stop_watch.hpp>
 
 #include <algorithm>
 #include <cstdlib>
@@ -174,9 +175,13 @@ void CenterPointTRT::initTrt(
 bool CenterPointTRT::detect(
   const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg_ptr,
   const tf2_ros::Buffer & tf_buffer, std::vector<Box3D> & det_boxes3d,
-  bool & is_num_pillars_within_range)
+  bool & is_num_pillars_within_range,
+  std::unordered_map<std::string, double> & proc_timing)
 {
   is_num_pillars_within_range = true;
+
+  autoware_utils::StopWatch<std::chrono::milliseconds> sw;
+  sw.tic("inner");
 
   CHECK_CUDA_ERROR(cudaMemsetAsync(
     encoder_in_features_d_.get(), 0, encoder_in_feature_size_ * sizeof(float), stream_));
@@ -188,10 +193,13 @@ bool CenterPointTRT::detect(
       rclcpp::get_logger(config_.logger_name_.c_str()), "Fail to preprocess and skip to detect.");
     return false;
   }
+  proc_timing.emplace("debug/processing_time/preprocess_ms", sw.toc("inner", true));
 
   inference();
+  proc_timing.emplace("debug/processing_time/inference_ms", sw.toc("inner", true));
 
   postProcess(det_boxes3d);
+  proc_timing.emplace("debug/processing_time/postprocess_ms", sw.toc("inner", true));
 
   // Check the actual number of pillars after inference to avoid unnecessary synchronization.
   unsigned int num_pillars = 0;

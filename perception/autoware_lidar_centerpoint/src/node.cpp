@@ -25,6 +25,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #ifdef ROS_DISTRO_GALACTIC
@@ -172,8 +173,9 @@ void LidarCenterPointNode::pointCloudCallback(
 
   std::vector<Box3D> det_boxes3d;
   bool is_num_pillars_within_range = true;
+  std::unordered_map<std::string, double> proc_timing;
   bool is_success = detector_ptr_->detect(
-    input_pointcloud_msg, tf_buffer_, det_boxes3d, is_num_pillars_within_range);
+    input_pointcloud_msg, tf_buffer_, det_boxes3d, is_num_pillars_within_range, proc_timing);
   if (!is_success) {
     return;
   }
@@ -222,6 +224,10 @@ void LidarCenterPointNode::pointCloudCallback(
       "debug/processing_time_ms", processing_time_ms);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/pipeline_latency_ms", pipeline_latency_ms);
+    for (const auto & [topic, time_ms] : proc_timing) {
+      debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+        topic, time_ms);
+    }
 
     last_processing_time_ms_ = processing_time_ms;
   }
