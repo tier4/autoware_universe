@@ -174,6 +174,7 @@ private:
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_route_marker_{nullptr};
   rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr pub_turn_indicators_{nullptr};
   rclcpp::Publisher<autoware_control_msgs::msg::Control>::SharedPtr pub_ego_control_{nullptr};
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_control_trajectory_{nullptr};
   rclcpp::Publisher<autoware_perception_msgs::msg::TrafficLightGroup>::SharedPtr
     pub_traffic_signal_{nullptr};
   mutable std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_{nullptr};

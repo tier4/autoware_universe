@@ -343,4 +343,54 @@ Trajectory get_trajectory_from_poses(
 
 }  // namespace
 
+Trajectory create_trajectory_from_control(
+  const std::vector<std::pair<float, float>> & ego_control, const double initial_velocity,
+  const geometry_msgs::msg::Pose & ego_pose, const rclcpp::Time & stamp)
+{
+  Trajectory trajectory;
+  trajectory.header.stamp = stamp;
+  trajectory.header.frame_id = "map";
+  constexpr double dt = 0.1;
+
+  // Extract initial state from ego pose
+  const double x0 = ego_pose.position.x;
+  const double y0 = ego_pose.position.y;
+  const double z0 = ego_pose.position.z;
+  const auto & q = ego_pose.orientation;
+  const double yaw0 = std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+
+  double x = x0;
+  double y = y0;
+  double heading = yaw0;
+  double v = initial_velocity;
+
+  for (size_t t = 0; t < ego_control.size(); ++t) {
+    const double accel = static_cast<double>(ego_control[t].first);
+    const double curvature = static_cast<double>(ego_control[t].second);
+
+    // Unicycle model integration
+    x += v * std::cos(heading) * dt;
+    y += v * std::sin(heading) * dt;
+    heading += v * curvature * dt;
+    v += accel * dt;
+    if (v < 0.0) {
+      v = 0.0;
+    }
+
+    const double curr_time = dt * static_cast<double>(t + 1);
+    TrajectoryPoint p;
+    p.time_from_start.sec = static_cast<int>(curr_time);
+    p.time_from_start.nanosec = static_cast<uint32_t>((curr_time - p.time_from_start.sec) * 1e9);
+    p.pose.position.x = x;
+    p.pose.position.y = y;
+    p.pose.position.z = z0;
+    p.pose.orientation = autoware_utils::create_quaternion_from_yaw(heading);
+    p.longitudinal_velocity_mps = static_cast<float>(v);
+    p.acceleration_mps2 = static_cast<float>(accel);
+    trajectory.points.push_back(p);
+  }
+
+  return trajectory;
+}
+
 }  // namespace autoware::diffusion_planner::postprocess

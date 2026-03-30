@@ -29,6 +29,7 @@
 
 #include <cassert>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::diffusion_planner::postprocess
@@ -96,6 +97,19 @@ Trajectory create_ego_trajectory(
  */
 int64_t count_valid_elements(
   const std::vector<float> & data, int64_t len, int64_t dim2, int64_t dim3, int64_t batch_idx);
+
+/**
+ * @brief Reconstruct ego trajectory from control signals via unicycle model integration.
+ *
+ * @param ego_control Per-timestep (acceleration, curvature) pairs from network output.
+ * @param initial_velocity Initial ego velocity [m/s].
+ * @param ego_pose Current ego pose in map frame (provides initial position and heading).
+ * @param stamp Timestamp for the trajectory header.
+ * @return Trajectory message reconstructed from control signals.
+ */
+Trajectory create_trajectory_from_control(
+  const std::vector<std::pair<float, float>> & ego_control, double initial_velocity,
+  const geometry_msgs::msg::Pose & ego_pose, const rclcpp::Time & stamp);
 
 }  // namespace autoware::diffusion_planner::postprocess
 #endif  // AUTOWARE__DIFFUSION_PLANNER__POSTPROCESSING__POSTPROCESSING_UTILS_HPP_

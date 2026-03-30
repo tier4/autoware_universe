@@ -14,6 +14,8 @@
 
 #include "autoware/diffusion_planner/diffusion_planner_node.hpp"
 
+#include "autoware/diffusion_planner/postprocessing/postprocessing_utils.hpp"
+
 #include "autoware/diffusion_planner/constants.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
@@ -49,6 +51,8 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
     this->create_publisher<TurnIndicatorsCommand>("~/output/turn_indicators", 1);
   pub_ego_control_ =
     this->create_publisher<autoware_control_msgs::msg::Control>("~/output/ego_control", 1);
+  pub_control_trajectory_ =
+    this->create_publisher<Trajectory>("~/output/control_trajectory", 1);
   pub_traffic_signal_ = this->create_publisher<autoware_perception_msgs::msg::TrafficLightGroup>(
     "~/output/debug/traffic_signal", 1);
   debug_processing_time_detail_pub_ = this->create_publisher<autoware_utils::ProcessingTimeDetail>(
@@ -375,16 +379,29 @@ void DiffusionPlanner::on_timer()
   pub_objects_->publish(planner_output.predicted_objects);
   pub_turn_indicators_->publish(planner_output.turn_indicator_command);
 
-  // Publish network-predicted ego control (first timestep)
+  // Publish network-predicted ego control
   if (!planner_output.ego_control.empty()) {
+    // Control message (first timestep)
     autoware_control_msgs::msg::Control control_msg;
     control_msg.stamp = frame_time;
     control_msg.longitudinal.acceleration = planner_output.ego_control[0].acceleration;
     control_msg.longitudinal.is_defined_acceleration = true;
-    // curvature → steering_tire_angle: tan(angle) = curvature * wheelbase
     control_msg.lateral.steering_tire_angle =
       std::atan(planner_output.ego_control[0].curvature * vehicle_info_.wheel_base_m);
     pub_ego_control_->publish(control_msg);
+
+    // Reconstruct trajectory from control via unicycle model
+    std::vector<std::pair<float, float>> control_pairs;
+    control_pairs.reserve(planner_output.ego_control.size());
+    for (const auto & ctrl : planner_output.ego_control) {
+      control_pairs.emplace_back(ctrl.acceleration, ctrl.curvature);
+    }
+    const double initial_velocity =
+      frame_context->ego_kinematic_state.twist.twist.linear.x;
+    const auto control_trajectory = postprocess::create_trajectory_from_control(
+      control_pairs, initial_velocity,
+      frame_context->ego_kinematic_state.pose.pose, frame_time);
+    pub_control_trajectory_->publish(control_trajectory);
   }
 
   // Publish diagnostics
