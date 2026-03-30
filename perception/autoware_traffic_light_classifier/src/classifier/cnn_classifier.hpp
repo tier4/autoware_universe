@@ -49,6 +49,8 @@ using autoware::cuda_utils::CudaUniquePtrHost;
 using autoware::cuda_utils::makeCudaStream;
 using autoware::cuda_utils::StreamUniquePtr;
 
+using MsgTE = tier4_perception_msgs::msg::TrafficLightElement;
+
 class CNNClassifier : public ClassifierInterface
 {
 public:
@@ -64,7 +66,8 @@ private:
     int class_index, float prob, tier4_perception_msgs::msg::TrafficLight & traffic_signal) const;
   bool readLabelfile(std::string filepath, std::vector<std::string> & labels);
   void outputDebugImage(
-    cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal);
+    cv::Mat debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
+    std::vector<cv::Mat> & debug_images);
 
 private:
   rclcpp::Node * node_ptr_;

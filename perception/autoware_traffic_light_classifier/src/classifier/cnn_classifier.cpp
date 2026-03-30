@@ -66,6 +66,7 @@ bool CNNClassifier::getTrafficSignals(
     return false;
   }
   std::vector<cv::Mat> image_batch;
+  std::vector<cv::Mat> debug_images;
   int signal_i = 0;
 
   for (size_t image_i = 0; image_i < images.size(); image_i++) {
@@ -89,21 +90,46 @@ bool CNNClassifier::getTrafficSignals(
         postProcess(classes[i], probabilities[i], traffic_signals.signals[signal_i]);
         /* debug */
         if (0 < image_pub_.getNumSubscribers()) {
-          outputDebugImage(image_batch[i], traffic_signals.signals[signal_i]);
+          outputDebugImage(image_batch[i], traffic_signals.signals[signal_i], debug_images);
         }
         signal_i++;
       }
       image_batch.clear();
     }
   }
+
+  // Publish concatenated debug image if there are subscribers
+  if (image_pub_.getNumSubscribers() > 0 && !debug_images.empty()) {
+    const int strip_width = 200;
+    const int strip_height = 130;
+    cv::Mat combined_debug_img;
+    for (size_t i = 0; i < debug_images.size(); i++) {
+      cv::Mat resized_img = debug_images[i].clone();
+      cv::resize(resized_img, resized_img, cv::Size(strip_width, strip_height));
+      if (i == 0) {
+        combined_debug_img = resized_img;
+      } else {
+        cv::vconcat(combined_debug_img, resized_img, combined_debug_img);
+      }
+    }
+    const auto debug_image_msg =
+      cv_bridge::CvImage(std_msgs::msg::Header(), "rgb8", combined_debug_img).toImageMsg();
+    image_pub_.publish(debug_image_msg);
+  }
+
   return true;
 }
 
 void CNNClassifier::outputDebugImage(
-  cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal)
+  cv::Mat debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
+  std::vector<cv::Mat> & debug_images)
 {
+  // Note: debug_image is passed by value to avoid modifying the original
   float probability = 0.0f;
   std::string label;
+  std::string first_line_txt;
+  std::string second_line_txt;
+  std::size_t first_line_element_num = 2;  // max number of elements to show in the first line of the label
   for (std::size_t i = 0; i < traffic_signal.elements.size(); i++) {
     auto light = traffic_signal.elements.at(i);
     const auto light_label =
@@ -111,9 +137,13 @@ void CNNClassifier::outputDebugImage(
     label += light_label;
     // all lamp confidence are the same
     probability = light.confidence;
-    if (i < traffic_signal.elements.size() - 1) {
-      label += ",";
+    if (i < traffic_signal.elements.size() - 1 && i < first_line_element_num) {
+      first_line_txt += light_label + ",";
     }
+    else {
+      second_line_txt += light_label + ",";
+    }
+
   }
 
   const int expand_w = 200;
@@ -121,15 +151,24 @@ void CNNClassifier::outputDebugImage(
     std::max(static_cast<int>((expand_w * debug_image.rows) / debug_image.cols), 1);
 
   cv::resize(debug_image, debug_image, cv::Size(expand_w, expand_h));
-  cv::Mat text_img(cv::Size(expand_w, 50), CV_8UC3, cv::Scalar(0, 0, 0));
-  std::string text = label + " " + std::to_string(probability);
+  
+  // Format probability with 2 decimal places
+  char prob_buffer[16];
+  snprintf(prob_buffer, sizeof(prob_buffer), "%.2f", probability);
+  second_line_txt += std::string(prob_buffer);
+
+  
+  // Determine text image height based on label length
+  int text_img_height = 60;
+  cv::Mat text_img(cv::Size(expand_w, text_img_height), CV_8UC3, cv::Scalar(0, 0, 0));
+  
   cv::putText(
-    text_img, text, cv::Point(5, 25), cv::FONT_HERSHEY_COMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+    text_img, first_line_txt, cv::Point(5, 15), cv::FONT_HERSHEY_COMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+  cv::putText(
+    text_img, second_line_txt, cv::Point(5, 35), cv::FONT_HERSHEY_COMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
   cv::vconcat(debug_image, text_img, debug_image);
 
-  const auto debug_image_msg =
-    cv_bridge::CvImage(std_msgs::msg::Header(), "rgb8", debug_image).toImageMsg();
-  image_pub_.publish(debug_image_msg);
+  debug_images.push_back(debug_image);
 }
 
 void CNNClassifier::postProcess(
