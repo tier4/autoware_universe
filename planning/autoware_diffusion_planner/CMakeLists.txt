@@ -44,6 +44,8 @@ else()
 endif()
 
 if(TRT_AVAIL AND CUDA_AVAIL)
+  find_package(autoware_tensorrt_common REQUIRED)
+
   # Add compile option to suppress deprecation warnings (optional)
   add_compile_options(-Wno-deprecated-declarations)
 
@@ -72,6 +74,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${autoware_cuda_utils_INCLUDE_DIRS}
   )
   target_link_libraries(autoware_diffusion_planner_component
+    ${autoware_tensorrt_common_LIBRARIES}
     ${NVINFER}
     ${NVONNXPARSER}
     ${CUDA_LIBRARIES}
