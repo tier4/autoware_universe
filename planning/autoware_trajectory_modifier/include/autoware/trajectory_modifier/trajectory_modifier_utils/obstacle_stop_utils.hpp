@@ -124,8 +124,8 @@ struct DebugData
 
 TrajectoryShape get_trajectory_shape(
   const TrajectoryPoints & trajectory_points, const geometry_msgs::msg::Pose & ego_pose,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double lateral_margin = 0.0,
-  const double longitudinal_margin = 0.0);
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, double trim_length,
+  const double lateral_margin = 0.0, const double longitudinal_margin = 0.0);
 
 void filter_objects_by_type(
   PredictedObjects & objects, const std::vector<std::string> & object_type_strings);

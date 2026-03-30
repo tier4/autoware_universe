@@ -79,6 +79,7 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
   rclcpp::Publisher<PointCloud2>::SharedPtr pub_clustered_pointcloud_;
 
+  void check_obstacles(const TrajectoryPoints & traj_points);
   std::optional<CollisionPoint> check_predicted_objects(const TrajectoryPoints & traj_points);
   std::optional<CollisionPoint> check_pointcloud(const TrajectoryPoints & traj_points);
 
