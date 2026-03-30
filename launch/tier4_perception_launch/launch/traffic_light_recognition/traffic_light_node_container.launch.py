@@ -114,6 +114,7 @@ def create_traffic_light_node_container(namespace, context, *args, **kwargs):
                     car_traffic_light_classifier_param,
                     {
                         "build_only": False,
+                        "classifier_type": LaunchConfiguration("car_classifier_type"),
                         "label_path": LaunchConfiguration("classification/car/label_path"),
                         "model_path": LaunchConfiguration("classification/car/model_path"),
                     },
@@ -136,6 +137,7 @@ def create_traffic_light_node_container(namespace, context, *args, **kwargs):
                     pedestrian_traffic_light_classifier_param,
                     {
                         "build_only": False,
+                        "classifier_type": LaunchConfiguration("pedestrian_classifier_type"),
                         "label_path": LaunchConfiguration("classification/pedestrian/label_path"),
                         "model_path": LaunchConfiguration("classification/pedestrian/model_path"),
                     },
@@ -342,6 +344,8 @@ def generate_launch_description():
     # whole image detector by yolox
     add_launch_arg("whole_image_detection/model_path")
     add_launch_arg("whole_image_detection/label_path")
+    add_launch_arg("car_classifier_type")
+    add_launch_arg("pedestrian_classifier_type")
     add_launch_arg(
         "traffic_light_whole_image_detector_param_path",
         [
