@@ -14,6 +14,8 @@
 
 #include "cnn_lamp_recognizer.hpp"
 
+#include "../traffic_light_classifier_process.hpp"
+
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 
 #include <std_msgs/msg/header.hpp>
@@ -369,55 +371,47 @@ void CnnLampRecognizer::outputDebugImage(
       cv::rectangle(debug_image, cv::Point(x1, y1), cv::Point(x2, y2), colors[color_idx], 2);
     }
   }
-
-  std::string label;
-  bool is_pedestrian = traffic_signal.traffic_light_type == 1;
   float probability = 0.0f;
-  const auto colorStr = [](uint8_t c) -> std::string {
-    if (c == MsgTE::GREEN) return "green";
-    if (c == MsgTE::AMBER) return "yellow";
-    if (c == MsgTE::RED) return "red";
-    return "unknown";
-  };
-  const auto shapeStr = [](uint8_t s) -> std::string {
-    if (s == MsgTE::UP_ARROW) return "straight";
-    if (s == MsgTE::DOWN_ARROW) return "down";
-    if (s == MsgTE::LEFT_ARROW) return "left";
-    if (s == MsgTE::RIGHT_ARROW) return "right";
-    if (s == MsgTE::UP_LEFT_ARROW) return "up_left";
-    if (s == MsgTE::UP_RIGHT_ARROW) return "up_right";
-    if (s == MsgTE::DOWN_LEFT_ARROW) return "down_left";
-    if (s == MsgTE::DOWN_RIGHT_ARROW) return "down_right";
-    return "unknown";
-  };
-
+  std::string first_line_txt;
+  std::string second_line_txt;
+  std::size_t first_line_element_num = 2;  // max number of elements to show in the first line of the label
   for (std::size_t i = 0; i < traffic_signal.elements.size(); i++) {
-    const auto & light = traffic_signal.elements.at(i);
+    auto light = traffic_signal.elements.at(i);
+    const auto light_label =
+      utils::convertColorT4toString(light.color) + "-" + utils::convertShapeT4toString(light.shape);
+    // all lamp confidence are the same
     probability = light.confidence;
-    if (i > 0) label += ",";
-    const std::string c = colorStr(light.color);
-    const std::string sh = shapeStr(light.shape);
-    bool is_arrow =
-      (light.shape != MsgTE::CIRCLE && light.shape != MsgTE::CROSS &&
-       light.shape != MsgTE::UNKNOWN);
-    if (is_arrow) {
-      label += sh;
-    } else if (is_pedestrian) {
-      label += "ped_" + c;
-    } else {
-      label += c;
+    if (i < traffic_signal.elements.size() - 1 && i < first_line_element_num) {
+      first_line_txt += light_label + ",";
     }
-    char prob_buf[32];
-    std::snprintf(prob_buf, sizeof(prob_buf), "%.1f", probability);
-    label += " " + std::string(prob_buf);
+    else {
+      second_line_txt += light_label + ",";
+    }
+
   }
+
+  const int expand_w = 200;
   const int expand_h =
-    std::max(static_cast<int>((kDebugImageWidth * debug_image.rows) / debug_image.cols), 1);
-  cv::resize(debug_image, debug_image, cv::Size(kDebugImageWidth, expand_h));
-  cv::Mat text_img(cv::Size(kDebugImageWidth, kDebugTextHeight), CV_8UC3, cv::Scalar(0, 0, 0));
+    std::max(static_cast<int>((expand_w * debug_image.rows) / debug_image.cols), 1);
+
+  cv::resize(debug_image, debug_image, cv::Size(expand_w, expand_h));
+  
+  // Format probability with 2 decimal places
+  char prob_buffer[16];
+  snprintf(prob_buffer, sizeof(prob_buffer), "%.2f", probability);
+  second_line_txt += std::string(prob_buffer);
+
+  
+  // Determine text image height based on label length
+  int text_img_height = 60;
+  cv::Mat text_img(cv::Size(expand_w, text_img_height), CV_8UC3, cv::Scalar(0, 0, 0));
+  
   cv::putText(
-    text_img, label, cv::Point(5, 25), cv::FONT_HERSHEY_COMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+    text_img, first_line_txt, cv::Point(5, 15), cv::FONT_HERSHEY_COMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+  cv::putText(
+    text_img, second_line_txt, cv::Point(5, 35), cv::FONT_HERSHEY_COMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
   cv::vconcat(debug_image, text_img, debug_image);
+
 }
 
 static void cvtBBoxInfo2TrafficLightElement(const BBoxInfo & d, TrafficLightElement & element)
