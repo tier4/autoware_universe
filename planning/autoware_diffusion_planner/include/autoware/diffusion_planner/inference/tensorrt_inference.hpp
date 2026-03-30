@@ -42,12 +42,19 @@ public:
    * @struct InferenceResult
    * @brief Output container with optional tensors and error message.
    */
+  struct InferenceOutputs
+  {
+    std::vector<float> predictions;
+    std::vector<float> turn_indicator_logit;
+    std::vector<float> ego_control;  // [B, T, 2] (acceleration [m/s²], curvature [1/m])
+  };
+
   struct InferenceResult
   {
     /**
      * @brief Output tensors when inference succeeds.
      */
-    std::optional<std::pair<std::vector<float>, std::vector<float>>> outputs;
+    std::optional<InferenceOutputs> outputs;
     /**
      * @brief Error message for diagnostics when inference fails.
      */
@@ -103,12 +110,15 @@ private:
   autoware::cuda_utils::CudaUniquePtr<float[]> delay_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> output_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> turn_indicator_logit_d_;
+  autoware::cuda_utils::CudaUniquePtr<float[]> ego_control_d_;
 
   // Pinned host buffers for fast D2H transfers
   autoware::cuda_utils::CudaUniquePtrHost<float[]> output_pinned_;
   autoware::cuda_utils::CudaUniquePtrHost<float[]> logit_pinned_;
+  autoware::cuda_utils::CudaUniquePtrHost<float[]> ego_control_pinned_;
   size_t output_num_elements_{0};
   size_t logit_num_elements_{0};
+  size_t ego_control_num_elements_{0};
 
   cudaStream_t stream_{nullptr};
 

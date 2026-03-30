@@ -327,7 +327,8 @@ TensorrtInference::InferenceResult DiffusionPlannerCore::run_inference(
 
 PlannerOutput DiffusionPlannerCore::create_planner_output(
   const std::vector<float> & predictions, const std::vector<float> & turn_indicator_logit,
-  const FrameContext & frame_context, const rclcpp::Time & timestamp, const UUID & generator_uuid)
+  const std::vector<float> & ego_control, const FrameContext & frame_context,
+  const rclcpp::Time & timestamp, const UUID & generator_uuid)
 {
   const auto agent_poses =
     postprocess::parse_predictions(predictions, frame_context.ego_to_map_transform);
@@ -390,6 +391,16 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
                                 : turn_indicators_history_.back().report;
   output.turn_indicator_command =
     turn_indicator_manager_.evaluate(first_turn_indicator_logit, timestamp, prev_report);
+
+  // Ego control from network output (batch 0)
+  constexpr int64_t control_batch_idx = 0;
+  const int64_t control_offset = control_batch_idx * OUTPUT_T * EGO_CONTROL_DIM;
+  output.ego_control.resize(OUTPUT_T);
+  for (int64_t t = 0; t < OUTPUT_T; ++t) {
+    const auto base = static_cast<size_t>(control_offset + t * EGO_CONTROL_DIM);
+    output.ego_control[static_cast<size_t>(t)].acceleration = ego_control[base + 0];
+    output.ego_control[static_cast<size_t>(t)].curvature = ego_control[base + 1];
+  }
 
   return output;
 }

@@ -64,7 +64,9 @@ inline constexpr int64_t INPUT_T = 30;
 inline constexpr int64_t INPUT_T_WITH_CURRENT = INPUT_T + 1;  // Including current time step
 inline constexpr int64_t OUTPUT_T = 80;                       // Output timestamp number
 inline constexpr int64_t POSE_DIM = 4;                        // x, y, cos(yaw), sin(yaw)
+inline constexpr int64_t EGO_CONTROL_DIM = 2;                 // acceleration [m/s²], curvature [1/m]
 inline constexpr std::array<int64_t, 4> OUTPUT_SHAPE = {1, MAX_NUM_AGENTS, OUTPUT_T, POSE_DIM};
+inline constexpr std::array<int64_t, 3> EGO_CONTROL_SHAPE = {1, OUTPUT_T, EGO_CONTROL_DIM};
 
 inline constexpr int64_t TURN_INDICATOR_OUTPUT_NONE = 0;
 inline constexpr int64_t TURN_INDICATOR_OUTPUT_DISABLE = 1;

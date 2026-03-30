@@ -20,6 +20,7 @@
 #include "autoware/diffusion_planner/utils/marker_utils.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 
+#include <autoware_control_msgs/msg/control.hpp>
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
 
@@ -46,6 +47,8 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
   pub_linestring_marker_ = this->create_publisher<MarkerArray>("~/debug/linestring_marker", 10);
   pub_turn_indicators_ =
     this->create_publisher<TurnIndicatorsCommand>("~/output/turn_indicators", 1);
+  pub_ego_control_ =
+    this->create_publisher<autoware_control_msgs::msg::Control>("~/output/ego_control", 1);
   pub_traffic_signal_ = this->create_publisher<autoware_perception_msgs::msg::TrafficLightGroup>(
     "~/output/debug/traffic_signal", 1);
   debug_processing_time_detail_pub_ = this->create_publisher<autoware_utils::ProcessingTimeDetail>(
@@ -353,12 +356,13 @@ void DiffusionPlanner::on_timer()
     diagnostics_inference_->publish(frame_time);
     return;
   }
-  const auto & [predictions, turn_indicator_logit] = inference_result.outputs.value();
+  const auto & inference_outputs = inference_result.outputs.value();
 
   PlannerOutput planner_output;
   try {
     planner_output = core_->create_planner_output(
-      predictions, turn_indicator_logit, *frame_context, frame_time, generator_uuid_);
+      inference_outputs.predictions, inference_outputs.turn_indicator_logit,
+      inference_outputs.ego_control, *frame_context, frame_time, generator_uuid_);
   } catch (const std::exception & e) {
     RCLCPP_ERROR_STREAM(get_logger(), "Postprocessing failed: " << e.what());
     diagnostics_inference_->update_level_and_message(DiagnosticStatus::ERROR, e.what());
@@ -370,6 +374,18 @@ void DiffusionPlanner::on_timer()
   pub_trajectories_->publish(planner_output.candidate_trajectories);
   pub_objects_->publish(planner_output.predicted_objects);
   pub_turn_indicators_->publish(planner_output.turn_indicator_command);
+
+  // Publish network-predicted ego control (first timestep)
+  if (!planner_output.ego_control.empty()) {
+    autoware_control_msgs::msg::Control control_msg;
+    control_msg.stamp = frame_time;
+    control_msg.longitudinal.acceleration = planner_output.ego_control[0].acceleration;
+    control_msg.longitudinal.is_defined_acceleration = true;
+    // curvature → steering_tire_angle: tan(angle) = curvature * wheelbase
+    control_msg.lateral.steering_tire_angle =
+      std::atan(planner_output.ego_control[0].curvature * vehicle_info_.wheel_base_m);
+    pub_ego_control_->publish(control_msg);
+  }
 
   // Publish diagnostics
   diagnostics_inference_->publish(frame_time);

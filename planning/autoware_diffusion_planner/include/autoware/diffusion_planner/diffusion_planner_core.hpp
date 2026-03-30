@@ -83,12 +83,19 @@ struct VehicleSpec
   }
 };
 
+struct EgoControl
+{
+  float acceleration;  // [m/s²]
+  float curvature;     // [1/m]
+};
+
 struct PlannerOutput
 {
   Trajectory trajectory;
   CandidateTrajectories candidate_trajectories;
   PredictedObjects predicted_objects;
   TurnIndicatorsCommand turn_indicator_command;
+  std::vector<EgoControl> ego_control;  // per-timestep control from network (batch 0)
 };
 
 struct FrameContext
@@ -240,8 +247,8 @@ public:
    */
   PlannerOutput create_planner_output(
     const std::vector<float> & predictions, const std::vector<float> & turn_indicator_logit,
-    const FrameContext & frame_context, const rclcpp::Time & timestamp,
-    const UUID & generator_uuid);
+    const std::vector<float> & ego_control, const FrameContext & frame_context,
+    const rclcpp::Time & timestamp, const UUID & generator_uuid);
 
   /**
    * @brief Get the first traffic light on the route for debugging.

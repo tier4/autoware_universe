@@ -72,6 +72,7 @@ TensorrtInference::TensorrtInference(
   const size_t delay_size = batch_size_ * num_elements(DELAY_SHAPE);
   const size_t output_size = batch_size_ * num_elements(OUTPUT_SHAPE);
   const size_t turn_indicator_logit_size = batch_size_ * num_elements(TURN_INDICATOR_LOGIT_SHAPE);
+  const size_t ego_control_size = batch_size_ * num_elements(EGO_CONTROL_SHAPE);
 
   sampled_trajectories_d_ = autoware::cuda_utils::make_unique<float[]>(sampled_trajectories_size);
   ego_history_d_ = autoware::cuda_utils::make_unique<float[]>(ego_history_size);
@@ -95,14 +96,18 @@ TensorrtInference::TensorrtInference(
 
   output_d_ = autoware::cuda_utils::make_unique<float[]>(output_size);
   turn_indicator_logit_d_ = autoware::cuda_utils::make_unique<float[]>(turn_indicator_logit_size);
+  ego_control_d_ = autoware::cuda_utils::make_unique<float[]>(ego_control_size);
 
   // Pre-allocate pinned host buffers for fast async D2H transfers
   output_num_elements_ = output_size;
   logit_num_elements_ = turn_indicator_logit_size;
+  ego_control_num_elements_ = ego_control_size;
   output_pinned_ =
     autoware::cuda_utils::make_unique_host<float[]>(output_num_elements_, cudaHostAllocDefault);
   logit_pinned_ =
     autoware::cuda_utils::make_unique_host<float[]>(logit_num_elements_, cudaHostAllocDefault);
+  ego_control_pinned_ =
+    autoware::cuda_utils::make_unique_host<float[]>(ego_control_num_elements_, cudaHostAllocDefault);
 
   load_engine(model_path);
   CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
@@ -199,6 +204,7 @@ void TensorrtInference::load_engine(const std::string & model_path)
   network_io.emplace_back("delay", to_dynamic_dims(DELAY_SHAPE));
   network_io.emplace_back("prediction", to_dynamic_dims(OUTPUT_SHAPE));
   network_io.emplace_back("turn_indicator_logit", to_dynamic_dims(TURN_INDICATOR_LOGIT_SHAPE));
+  network_io.emplace_back("ego_control", to_dynamic_dims(EGO_CONTROL_SHAPE));
 
   auto network_io_ptr = std::make_unique<std::vector<NetworkIO>>(network_io);
   auto profile_dims_ptr = std::make_unique<std::vector<ProfileDims>>(profile_dims);
@@ -276,6 +282,7 @@ void TensorrtInference::bindBuffers()
   network_trt_ptr_->setTensorAddress("delay", delay_d_.get());
   network_trt_ptr_->setTensorAddress("prediction", output_d_.get());
   network_trt_ptr_->setTensorAddress("turn_indicator_logit", turn_indicator_logit_d_.get());
+  network_trt_ptr_->setTensorAddress("ego_control", ego_control_d_.get());
 }
 
 void TensorrtInference::transferInputsToDevice(const preprocess::InputDataMap & input_data_map)
@@ -344,13 +351,19 @@ TensorrtInference::InferenceResult TensorrtInference::infer(
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     logit_pinned_.get(), turn_indicator_logit_d_.get(), logit_num_elements_ * sizeof(float),
     cudaMemcpyDeviceToHost, stream_));
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    ego_control_pinned_.get(), ego_control_d_.get(), ego_control_num_elements_ * sizeof(float),
+    cudaMemcpyDeviceToHost, stream_));
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
-  std::vector<float> output_host(output_pinned_.get(), output_pinned_.get() + output_num_elements_);
-  std::vector<float> logit_host(logit_pinned_.get(), logit_pinned_.get() + logit_num_elements_);
+  InferenceOutputs outputs;
+  outputs.predictions.assign(output_pinned_.get(), output_pinned_.get() + output_num_elements_);
+  outputs.turn_indicator_logit.assign(logit_pinned_.get(), logit_pinned_.get() + logit_num_elements_);
+  outputs.ego_control.assign(
+    ego_control_pinned_.get(), ego_control_pinned_.get() + ego_control_num_elements_);
 
   InferenceResult result;
-  result.outputs = std::make_pair(std::move(output_host), std::move(logit_host));
+  result.outputs = std::move(outputs);
   return result;
 }
 
