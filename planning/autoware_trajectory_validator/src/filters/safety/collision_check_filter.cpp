@@ -237,6 +237,8 @@ TrajectoryData generate_ego_trajectory(
   auto [times, distances] = time_distance::compute_motion_profile_1d(
     initial_twist, braking_lag, assumed_acceleration, 0.0, max_time);
 
+  // todo(takagi): use initial pose from context instead of traj_points.front()
+  // check https://star4.slack.com/archives/C03QW0GU6P7/p1773898469086129
   double distance_offset =
     autoware::motion_utils::calcSignedArcLength(traj_points, traj_points.front().pose.position, 0);
   for (double & val : distances) {
@@ -275,7 +277,7 @@ TrajectoryData generate_predicted_path_trajectory(
     std::move(times), std::move(distances), std::move(poses), std::move(footprints));
 }
 
-TrajectoryData generate_constant_curvature_path_trajectory(
+TrajectoryData generate_constant_curvature_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
   double assumed_acceleration, rclcpp::Duration start_time, double max_time)
 {
@@ -357,7 +359,6 @@ struct Assessment
 {
   std::string object_id;
   double required_deceleration;
-  bool is_violated;
 };
 
 struct Result
@@ -410,6 +411,7 @@ std::optional<double> compute_distance_to_collision(
 
   for (size_t i = 0; i < ego_trajectory.size(); ++i) {
     const auto & ego_footprint = ego_trajectory.getFootprints().at(i);
+    // todo(takagi): should be check in range of &ego_footprint-1, &ego_footprint+1.
     const auto ego_footprint_range = boost::make_iterator_range(&ego_footprint, &ego_footprint + 1);
     if (geometry::has_overall_convex_hull_overlap(ego_footprint_range, object_footprint_range)) {
       // todo(takagi): for precise calculation, intersection length should be considered.
@@ -437,14 +439,14 @@ Assessment assess_required_deceleration(
 {
   const auto ego_long_vel = ego_twist.linear.x;
   if (ego_long_vel <= 0.0) {
-    return Assessment{autoware_utils_uuid::to_hex_string(object.object_id), 0.0, false};
+    return Assessment{autoware_utils_uuid::to_hex_string(object.object_id), 0.0};
   }
 
   // compute current distance
   const auto distance_to_collision =
     rss_deceleration::compute_distance_to_collision(ego_trajectory, object);
   if (!distance_to_collision.has_value()) {
-    return Assessment{autoware_utils_uuid::to_hex_string(object.object_id), 0.0, false};
+    return Assessment{autoware_utils_uuid::to_hex_string(object.object_id), 0.0};
   }
 
   // compute safe distance
@@ -459,9 +461,7 @@ Assessment assess_required_deceleration(
                                          ? std::numeric_limits<double>::infinity()
                                          : ego_long_vel * ego_long_vel * 0.5 / safe_distance;
 
-  return Assessment{
-    autoware_utils_uuid::to_hex_string(object.object_id), required_deceleration,
-    required_deceleration > rss_params.ego_deceleration_threshold};
+  return Assessment{autoware_utils_uuid::to_hex_string(object.object_id), required_deceleration};
 }
 
 Result assess(
@@ -483,7 +483,7 @@ Result assess(
       result.worst_assessment = assessment;
     }
 
-    if (assessment.is_violated) {
+    if (assessment.required_deceleration > rss_params.ego_deceleration_threshold) {
       result.has_violation = true;
       result.violations.push_back(assessment);
     }
@@ -536,7 +536,7 @@ Trajectories generate_trajectories(
       object, 0.0, 0.0, objects_reference_time,
       ego_time_horizon_for_pet + pet_collision_params.collision_time_threshold));
 
-    object_trajectories.push_back(trajectory::generate_constant_curvature_path_trajectory(
+    object_trajectories.push_back(trajectory::generate_constant_curvature_trajectory(
       object, 0.0, 0.0, objects_reference_time,
       ego_time_horizon_for_pet + pet_collision_params.collision_time_threshold));
   }
@@ -544,6 +544,8 @@ Trajectories generate_trajectories(
   return {std::move(ego_trajectory), std::move(object_trajectories)};
 }
 
+// todo(takagi): should be designed to TTC definition condition, currently minimum PET detected time
+// is returned as ttc.
 std::optional<Finding> find_collision_timing(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
   double pet_threshold)
@@ -676,7 +678,6 @@ void CollisionCheckFilter::add_debug_markers(
   add_poly_marker(object_hull, "obj_worst_pet_" + trajectory_id, 1.0, 0.0, 0.0);
 }
 
-// todo(takagi): separate the core logic which returns detailed collision information.
 tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {

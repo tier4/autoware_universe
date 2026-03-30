@@ -265,7 +265,7 @@ TEST(TrajectoryUtilitiesTest, GenerateConstantCurvaturePathTrajectoryMatchesPred
   const auto initial_twist = create_twist(1.0, 1.0);
   const auto object = create_predicted_object(initial_pose, initial_twist, shape, {});
 
-  const auto trajectory_data = trajectory::generate_constant_curvature_path_trajectory(
+  const auto trajectory_data = trajectory::generate_constant_curvature_trajectory(
     object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.0), 0.25);
   const auto [expected_times, expected_distances] =
     trajectory::time_distance::compute_motion_profile_1d(initial_twist, 0.0, 0.0, 0.0, 0.25);
