@@ -68,14 +68,42 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
   enabled_ = params.use_obstacle_stop;
   trajectory_time_step_ = params.trajectory_time_step;
 
-  pointcloud_filter_ = std::make_unique<utils::obstacle_stop::PointCloudFilter>(
-    params_.pointcloud.voxel_grid_filter.x, params_.pointcloud.voxel_grid_filter.y,
-    params_.pointcloud.voxel_grid_filter.z, params_.pointcloud.voxel_grid_filter.min_size,
-    params_.pointcloud.clustering.tolerance, params_.pointcloud.clustering.min_size,
-    params_.pointcloud.clustering.max_size);
+  {
+    const auto & p = params_.pointcloud;
+    pointcloud_filter_ = std::make_unique<utils::obstacle_stop::PointCloudFilter>(
+      p.voxel_grid_filter.x, p.voxel_grid_filter.y, p.voxel_grid_filter.z,
+      p.voxel_grid_filter.min_size, p.clustering.tolerance, p.clustering.min_size,
+      p.clustering.max_size);
+  }
 
-  obstacle_tracker_ = std::make_unique<utils::obstacle_stop::ObstacleTracker>(
-    params_.on_time_buffer, params_.off_time_buffer);
+  {
+    const auto & p = params_.obstacle_tracking;
+    obstacle_tracker_ = std::make_unique<utils::obstacle_stop::ObstacleTracker>(
+      p.on_time_buffer, p.off_time_buffer, p.object_distance_th, p.object_yaw_th, p.pcd_distance_th,
+      p.grace_period);
+  }
+}
+
+void ObstacleStop::update_params(const TrajectoryModifierParams & params)
+{
+  params_ = params.obstacle_stop;
+  enabled_ = params.use_obstacle_stop;
+  trajectory_time_step_ = params.trajectory_time_step;
+
+  {
+    const auto & p = params_.pointcloud;
+    pointcloud_filter_->set_params(
+      p.voxel_grid_filter.x, p.voxel_grid_filter.y, p.voxel_grid_filter.z,
+      p.voxel_grid_filter.min_size, p.clustering.tolerance, p.clustering.min_size,
+      p.clustering.max_size);
+  }
+
+  {
+    const auto & p = params_.obstacle_tracking;
+    obstacle_tracker_->set_params(
+      p.on_time_buffer, p.off_time_buffer, p.object_distance_th, p.object_yaw_th, p.pcd_distance_th,
+      p.grace_period);
+  }
 }
 
 bool ObstacleStop::is_trajectory_modification_required(const TrajectoryPoints & traj_points)
@@ -93,8 +121,8 @@ bool ObstacleStop::is_trajectory_modification_required(const TrajectoryPoints & 
         params_.stopping_jerk, 0.0);
       if (nominal_stopping_distance) {
         constexpr double buffer_length = 1.0;
-        const auto min_length = params_.stop_margin + buffer_length;
-        return std::max<double>(nominal_stopping_distance.value(), min_length);
+        const auto margin = params_.stop_margin + buffer_length;
+        return nominal_stopping_distance.value() + margin;
       }
       return std::numeric_limits<double>::max();
     });

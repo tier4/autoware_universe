@@ -49,12 +49,8 @@ public:
   [[nodiscard]] bool is_trajectory_modification_required(
     const TrajectoryPoints & traj_points) override;
 
-  void update_params(const TrajectoryModifierParams & params) override
-  {
-    params_ = params.obstacle_stop;
-    enabled_ = params.use_obstacle_stop;
-    trajectory_time_step_ = params.trajectory_time_step;
-  }
+  void update_params(const TrajectoryModifierParams & params) override;
+
   const TrajectoryModifierParams::ObstacleStop & get_params() const { return params_; }
 
   void publish_debug_data([[maybe_unused]] const std::string & ns) const override;

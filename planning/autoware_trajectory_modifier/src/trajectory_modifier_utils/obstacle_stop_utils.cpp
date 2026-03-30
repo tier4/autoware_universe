@@ -295,14 +295,11 @@ void ObstacleTracker::update_objects(
   auto now = std::chrono::system_clock::now();
   using Seconds = std::chrono::duration<double>;
 
-  constexpr double distance_threshold = 1.0;
-  constexpr double grace_period = 0.2;  // allow grace period for flickering objects
-
   for (auto it = persistent_objects_map_.begin(); it != persistent_objects_map_.end();) {
     const auto idle_time =
       std::chrono::duration_cast<Seconds>(now - it->second.last_seen_time).count();
     const bool is_erase =
-      !it->second.is_active ? idle_time > grace_period : idle_time > off_time_buffer_;
+      !it->second.is_active ? idle_time > grace_period_ : idle_time > off_time_buffer_;
     if (is_erase)
       it = persistent_objects_map_.erase(it);
     else
@@ -314,6 +311,7 @@ void ObstacleTracker::update_objects(
     std::optional<boost::uuids::uuid> closest_uuid = std::nullopt;
     if (persistent_objects_map_.empty()) return std::nullopt;
     double min_distance = std::numeric_limits<double>::max();
+    double yaw_diff = std::numeric_limits<double>::max();
     for (const auto & [uuid, existing_object] : persistent_objects_map_) {
       if (
         existing_object.object.classification.front().label != object.classification.front().label)
@@ -324,9 +322,12 @@ void ObstacleTracker::update_objects(
       if (distance < min_distance) {
         min_distance = distance;
         closest_uuid = uuid;
+        yaw_diff = std::abs(autoware_utils_geometry::calc_yaw_deviation(
+          object.kinematics.initial_pose_with_covariance.pose,
+          existing_object.object.kinematics.initial_pose_with_covariance.pose));
       }
     }
-    if (closest_uuid && min_distance > distance_threshold) {
+    if (closest_uuid && (min_distance > object_distance_th_ || yaw_diff > object_yaw_th_)) {
       closest_uuid = std::nullopt;
     }
     return closest_uuid;
@@ -358,14 +359,11 @@ void ObstacleTracker::update_points(
   auto now = std::chrono::system_clock::now();
   using Seconds = std::chrono::duration<double>;
 
-  constexpr double distance_threshold = 0.5;
-  constexpr double grace_period = 0.2;  // allow grace period for flickering points
-
   for (auto it = persistent_point_map_.begin(); it != persistent_point_map_.end();) {
     const auto idle_time =
       std::chrono::duration_cast<Seconds>(now - it->second.last_seen_time).count();
     const bool is_erase =
-      !it->second.is_active ? idle_time > grace_period : idle_time > off_time_buffer_;
+      !it->second.is_active ? idle_time > grace_period_ : idle_time > off_time_buffer_;
     if (is_erase)
       it = persistent_point_map_.erase(it);
     else
@@ -384,7 +382,7 @@ void ObstacleTracker::update_points(
         closest_uuid = uuid;
       }
     }
-    if (closest_uuid && min_distance > distance_threshold) {
+    if (closest_uuid && min_distance > pcd_distance_th_) {
       closest_uuid = std::nullopt;
     }
     return closest_uuid;

@@ -156,6 +156,17 @@ struct PointCloudFilter
     convex_hull_.setDimension(2);
   };
 
+  void set_params(
+    double voxel_size_x, double voxel_size_y, double voxel_size_z, int voxel_min_size,
+    double cluster_tolerance, int cluster_min_size, int cluster_max_size)
+  {
+    voxel_grid_.setLeafSize(voxel_size_x, voxel_size_y, voxel_size_z);
+    voxel_grid_.setMinimumPointsNumberPerVoxel(voxel_min_size);
+    ec_.setClusterTolerance(cluster_tolerance);
+    ec_.setMinClusterSize(cluster_min_size);
+    ec_.setMaxClusterSize(cluster_max_size);
+  }
+
   void filter_pointcloud(
     PointCloud::Ptr & pointcloud, const double min_x, const double max_x, const double min_y,
     const double max_y, const double min_z, const double max_z);
@@ -173,9 +184,28 @@ private:
 
 struct ObstacleTracker
 {
-  ObstacleTracker(const double on_time_buffer, const double off_time_buffer)
-  : on_time_buffer_(on_time_buffer), off_time_buffer_(off_time_buffer)
+  ObstacleTracker(
+    const double on_time_buffer, const double off_time_buffer, const double object_distance_th,
+    const double object_yaw_th, const double pcd_distance_th, const double grace_period)
+  : on_time_buffer_(on_time_buffer),
+    off_time_buffer_(off_time_buffer),
+    object_distance_th_(object_distance_th),
+    object_yaw_th_(object_yaw_th),
+    pcd_distance_th_(pcd_distance_th),
+    grace_period_(grace_period)
   {
+  }
+
+  void set_params(
+    const double on_time_buffer, const double off_time_buffer, const double object_distance_th,
+    const double object_yaw_th, const double pcd_distance_th, const double grace_period)
+  {
+    on_time_buffer_ = on_time_buffer;
+    off_time_buffer_ = off_time_buffer;
+    object_distance_th_ = object_distance_th;
+    object_yaw_th_ = object_yaw_th;
+    pcd_distance_th_ = pcd_distance_th;
+    grace_period_ = grace_period;
   }
 
   /**
@@ -199,6 +229,10 @@ struct ObstacleTracker
 private:
   double on_time_buffer_;
   double off_time_buffer_;
+  double object_distance_th_;
+  double object_yaw_th_;
+  double pcd_distance_th_;
+  double grace_period_;
 
   struct PersistentObstacle
   {
