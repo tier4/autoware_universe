@@ -14,8 +14,6 @@
 
 #include "autoware/trajectory_validator/status.hpp"
 
-#include <autoware_utils_uuid/uuid_helper.hpp>
-
 #include <std_msgs/msg/header.hpp>
 
 #include <string>
@@ -68,15 +66,11 @@ TrajectoryStatusArray to_trajectory_status_array(
 
 TrajectoryStatus to_trajectory_status(
   const CandidateTrajectory & trajectory,
-  const std::unordered_map<std::string, std::vector<TrajectoryValidationStatus>> & validations,
-  const std::unordered_map<std::string, std::string> & uuid_to_name)
+  const std::unordered_map<std::string, std::vector<TrajectoryValidationStatus>> & validations)
 {
   auto [categories, is_ok] = to_category_statuses(validations);
 
-  auto trajectory_id = uuid_to_name.at(autoware_utils_uuid::to_hex_string(trajectory.generator_id));
-
   return autoware_internal_planning_msgs::build<TrajectoryStatus>()
-    .trajectory_id(std::move(trajectory_id))
     .generator_id(trajectory.generator_id)
     .stamp(trajectory.header.stamp)
     .level(is_ok ? TrajectoryStatus::OK : TrajectoryStatus::ERROR)

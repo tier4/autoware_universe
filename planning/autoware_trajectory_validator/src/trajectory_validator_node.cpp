@@ -28,7 +28,9 @@
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/LaneletMap.h>
 
+#include <algorithm>
 #include <cmath>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -37,18 +39,6 @@ namespace autoware::trajectory_validator
 {
 namespace
 {
-// for error diagnostic. Will be removed once node is combined.
-std::unordered_map<std::string, std::string> get_generator_uuid_to_name_map(
-  const autoware_internal_planning_msgs::msg::CandidateTrajectories & candidate_trajectories)
-{
-  std::unordered_map<std::string, std::string> uuid_to_name;
-  uuid_to_name.reserve(candidate_trajectories.generator_info.size());
-  for (const auto & info : candidate_trajectories.generator_info) {
-    uuid_to_name[autoware_utils_uuid::to_hex_string(info.generator_id)] = info.generator_name.data;
-  }
-  return uuid_to_name;
-}
-
 visualization_msgs::msg::MarkerArray create_internal_state_text(
   const std::unordered_map<std::string, std::vector<std::string>> & plugin_filtered_paths,
   const std::vector<std::string> & sorted_plugins, const geometry_msgs::msg::Pose & marker_pose,
@@ -175,8 +165,6 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
 
   auto filtered_msg = std::make_unique<CandidateTrajectories>();
 
-  const auto uuid_to_name = get_generator_uuid_to_name_map(*msg);
-
   // Process and filter trajectories
   std::vector<TrajectoryStatus> trajectory_statuses;
   diagnostics_interface_.clear();
@@ -234,8 +222,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
     evaluation_tables_.push_back(table);
 
     if (table.is_overall_feasible) filtered_msg->candidate_trajectories.push_back(trajectory);
-    trajectory_statuses.push_back(
-      to_trajectory_status(trajectory, validation_statuses, uuid_to_name));
+    trajectory_statuses.push_back(to_trajectory_status(trajectory, validation_statuses));
   }
 
   // Also filter generator_info to match kept trajectories
