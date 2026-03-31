@@ -42,6 +42,31 @@
           "description": "If the intensity get lesser than this overwrite with UNKNOWN in corresponding RoI. Note that, if the value is much lesser, the node only overwrites in the under exposure situations. Therefore, If you wouldn't like to use this feature set this value to `-1.0`. The confidence of overwritten signal is set to `0.0`.",
           "default": -0.83
         },
+        "score_threshold": {
+          "type": "number",
+          "description": "Minimum detection score for LampRecognizer/CNN outputs (objectness * class probability where applicable).",
+          "default": 0.2
+        },
+        "nms_threshold": {
+          "type": "number",
+          "description": "IoU threshold for non-maximum suppression after decoding detections (LampRecognizer).",
+          "default": 0.2
+        },
+        "max_batch_size": {
+          "type": "integer",
+          "description": "Maximum batch size for TensorRT inference (CNN / LampRecognizer).",
+          "default": 64
+        },
+        "input_height": {
+          "type": "integer",
+          "description": "Input image height for the model when not overridden by the engine binding dimensions.",
+          "default": 256
+        },
+        "input_width": {
+          "type": "integer",
+          "description": "Input image width for the model when not overridden by the engine binding dimensions.",
+          "default": 256
+        },
         "classifier_type": {
           "type": "integer",
           "description": "Type of classifier used. {0: hsv_filter (rule-based), 1: cnn (single-crop), 2: LampRecognizer (cnn per lamp).",
@@ -60,7 +85,11 @@
         "std",
         "over_exposure_threshold",
         "under_exposure_threshold",
-        "classifier_type",
+        "score_threshold",
+        "nms_threshold",
+        "max_batch_size",
+        "input_height",
+        "input_width",
         "traffic_light_type"
       ],
       "additionalProperties": false
