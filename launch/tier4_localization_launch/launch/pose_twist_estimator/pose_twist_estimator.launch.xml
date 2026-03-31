@@ -65,7 +65,7 @@
   </group>
 
   <!-- Eagleye Launch -->
-  <group if="$(eval &quot;$(var use_eagleye_pose) or $(var use_eagleye_twist)&quot;)">
+  <!-- <group if="$(eval &quot;$(var use_eagleye_pose) or $(var use_eagleye_twist)&quot;)">
     <let name="eagleye_name_space" value="pose_twist_estimator"/>
     <let name="eagleye_name_space" value="twist_estimator" unless="$(var use_eagleye_pose)"/>
     <let name="eagleye_name_space" value="pose_estimator" unless="$(var use_eagleye_twist)"/>
@@ -79,6 +79,11 @@
       <arg name="use_eagleye_pose" value="$(var use_eagleye_pose)"/>
       <arg name="use_eagleye_twist" value="$(var use_eagleye_twist)"/>
     </include>
+  </group> -->
+
+  <group if="$(eval &quot;$(var use_eagleye_pose) or $(var use_eagleye_twist)&quot;)">
+    <node pkg="topic_tools" exec="relay" name="eagleye_output_pose_relay" args="/sensing/gnss/pose_wi
+th_covariance /localization/pose_estimator/eagleye/pose_with_covariance/to_relay"/>
   </group>
 
   <!-- AR Tag Based Localizer (as pose estimator) -->

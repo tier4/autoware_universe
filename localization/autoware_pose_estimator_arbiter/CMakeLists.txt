@@ -15,6 +15,10 @@ include_directories(
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/pose_estimator_arbiter_core.cpp
   src/switch_rule/enable_all_rule.cpp
+  src/switch_rule/pcd_map_based_rule.cpp
+  src/switch_rule/vector_map_based_rule.cpp
+  src/rule_helper/pcd_occupancy.cpp
+  src/rule_helper/pose_estimator_area.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC src)
 
