@@ -51,7 +51,7 @@ struct BBox
 struct BBoxInfo
 {
   BBox box;
-  int classId{0};  // type: circle=0, arrow=1, uturn=2, ped=3, number=4, cross=5
+  int classId{0};  // type: circle=0, arrow=1, u-turn=2, ped=3, number=4, cross=5
   float prob{0.f};
   int subClassId{0};  // color: green=0, amber=1, red=2
   float sin{0.f};

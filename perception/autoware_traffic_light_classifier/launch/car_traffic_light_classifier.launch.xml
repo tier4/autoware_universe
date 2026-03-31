@@ -1,4 +1,5 @@
 <launch>
+  <!-- cspell: ignore comlops -->
   <arg name="data_path" default="$(env HOME)/autoware_data" description="packages data and artifacts directory path"/>
 
   <arg name="input/image" default="~/image_raw"/>
