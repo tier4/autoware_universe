@@ -14,6 +14,8 @@
 
 #include "autoware/trajectory_validator/filters/safety/uncrossable_boundary_departure_filter.hpp"
 
+#include <autoware/boundary_departure_checker/debug.hpp>
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -43,18 +45,24 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
     return tl::make_unexpected(departure_data.error());
   }
 
-  bool found_critical_depature = !departure_data->critical_departure_points.empty();
+  bool found_critical_departure = !departure_data->critical_departure_points.empty();
+  if (found_critical_departure) {
+    debug_markers_ = boundary_departure_checker::debug::create_debug_markers(
+      *departure_data, context.odometry->header.stamp, context.odometry->pose.pose.position.z,
+      params_);
+    return tl::make_unexpected("Found critical departure");
+  }
 
   std::vector<TrajectoryMetricStatus> metrics{
     autoware_internal_planning_msgs::build<TrajectoryMetricStatus>()
       .name("check_critical_departure")
-      .level(found_critical_depature ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
+      .level(found_critical_departure ? TrajectoryMetricStatus::ERROR : TrajectoryMetricStatus::OK)
       .score(0.0)};  // To be updated
 
   return autoware_internal_planning_msgs::build<TrajectoryValidationStatus>()
     .name(get_name())
     .level(
-      found_critical_depature ? TrajectoryValidationStatus::ERROR : TrajectoryValidationStatus::OK)
+      found_critical_departure ? TrajectoryValidationStatus::ERROR : TrajectoryValidationStatus::OK)
     .metrics(std::move(metrics));
 }
 
