@@ -14,13 +14,14 @@
 
 #include "cnn_lamp_recognizer.hpp"
 
+#include "../traffic_light_classifier_process.hpp"
+
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 
 #include <std_msgs/msg/header.hpp>
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -368,53 +369,26 @@ void CnnLampRecognizer::outputDebugImage(
     }
   }
 
-  std::string label;
-  bool is_pedestrian = traffic_signal.traffic_light_type == 1;
   float probability = 0.0f;
-  const auto colorStr = [](uint8_t c) -> std::string {
-    if (c == MsgTE::GREEN) return "green";
-    if (c == MsgTE::AMBER) return "yellow";
-    if (c == MsgTE::RED) return "red";
-    return "unknown";
-  };
-  const auto shapeStr = [](uint8_t s) -> std::string {
-    if (s == MsgTE::UP_ARROW) return "straight";
-    if (s == MsgTE::DOWN_ARROW) return "down";
-    if (s == MsgTE::LEFT_ARROW) return "left";
-    if (s == MsgTE::RIGHT_ARROW) return "right";
-    if (s == MsgTE::UP_LEFT_ARROW) return "up_left";
-    if (s == MsgTE::UP_RIGHT_ARROW) return "up_right";
-    if (s == MsgTE::DOWN_LEFT_ARROW) return "down_left";
-    if (s == MsgTE::DOWN_RIGHT_ARROW) return "down_right";
-    return "unknown";
-  };
-
+  std::string label;
   for (std::size_t i = 0; i < traffic_signal.elements.size(); i++) {
-    const auto & light = traffic_signal.elements.at(i);
+    auto light = traffic_signal.elements.at(i);
+    const auto light_label =
+      utils::convertColorT4toString(light.color) + "-" + utils::convertShapeT4toString(light.shape);
+    label += light_label;
+    // all lamp confidence are the same
     probability = light.confidence;
-    if (i > 0) label += ",";
-    const std::string c = colorStr(light.color);
-    const std::string sh = shapeStr(light.shape);
-    bool is_arrow =
-      (light.shape != MsgTE::CIRCLE && light.shape != MsgTE::CROSS &&
-       light.shape != MsgTE::UNKNOWN);
-    if (is_arrow) {
-      label += sh;
-    } else if (is_pedestrian) {
-      label += "ped_" + c;
-    } else {
-      label += c;
+    if (i < traffic_signal.elements.size() - 1) {
+      label += ",";
     }
-    char prob_buf[32];
-    std::snprintf(prob_buf, sizeof(prob_buf), "%.1f", probability);
-    label += " " + std::string(prob_buf);
   }
+  const std::string text = label + " " + std::to_string(probability);
   const int expand_h =
     std::max(static_cast<int>((kDebugImageWidth * debug_image.rows) / debug_image.cols), 1);
   cv::resize(debug_image, debug_image, cv::Size(kDebugImageWidth, expand_h));
   cv::Mat text_img(cv::Size(kDebugImageWidth, kDebugTextHeight), CV_8UC3, cv::Scalar(0, 0, 0));
   cv::putText(
-    text_img, label, cv::Point(5, 25), cv::FONT_HERSHEY_COMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+    text_img, text, cv::Point(5, 25), cv::FONT_HERSHEY_COMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
   cv::vconcat(debug_image, text_img, debug_image);
 }
 
@@ -530,7 +504,7 @@ bool CnnLampRecognizer::getTrafficSignals(
 
   size_t signal_i = 0;
   std::vector<cv::Mat> batch;
-  std::vector<std::vector<LampElement>> unique_traffic_light_elements_per_image;
+  std::vector<std::vector<LampElement>> unique_lamps_per_image;
 
   for (size_t image_i = 0; image_i < images.size(); image_i++) {
     batch.push_back(images[image_i]);
@@ -553,29 +527,29 @@ bool CnnLampRecognizer::getTrafficSignals(
       const size_t sig_idx = signal_i + i;
       total_detections += detections_per_roi[i].size();
 
-      std::vector<LampElement> traffic_light_elements;
+      std::vector<LampElement> traffic_lamps;
       for (const auto & d : detections_per_roi[i]) {
         LampElement element;
         cvtBBoxInfo2LampElement(d, element);
-        traffic_light_elements.push_back(element);
+        traffic_lamps.push_back(element);
       }
-
-      std::vector<LampElement> unique_traffic_light_elements;
-      for (const auto & el : traffic_light_elements) {
-        auto it = std::find_if(
-          unique_traffic_light_elements.begin(), unique_traffic_light_elements.end(),
-          [&](const LampElement & e) {
-            return e.shape == el.shape && e.arrow_direction == el.arrow_direction;
+      // if multiple detections have the same shape and arrow direction
+      // keep the one with highest confidence
+      std::vector<LampElement> unique_lamps;
+      for (const auto & lamp : traffic_lamps) {
+        auto it =
+          std::find_if(unique_lamps.begin(), unique_lamps.end(), [&](const LampElement & e) {
+            return e.shape == lamp.shape && e.arrow_direction == lamp.arrow_direction;
           });
-        if (it == unique_traffic_light_elements.end()) {
-          unique_traffic_light_elements.push_back(el);
+        if (it == unique_lamps.end()) {
+          unique_lamps.push_back(lamp);
         } else {
-          it->confidence = std::max(it->confidence, el.confidence);
+          it->confidence = std::max(it->confidence, lamp.confidence);
         }
       }
 
-      updateTrafficSignals(unique_traffic_light_elements, traffic_signals.signals[sig_idx]);
-      unique_traffic_light_elements_per_image.push_back(unique_traffic_light_elements);
+      updateTrafficSignals(unique_lamps, traffic_signals.signals[sig_idx]);
+      unique_lamps_per_image.push_back(unique_lamps);
     }
     signal_i += current_batch_size;
     batch.clear();
@@ -587,8 +561,7 @@ bool CnnLampRecognizer::getTrafficSignals(
     cv::Mat debug_img;
     for (size_t i = 0; i < images.size(); i++) {
       cv::Mat debug_img_i = images[i].clone();
-      outputDebugImage(
-        debug_img_i, traffic_signals.signals[i], &unique_traffic_light_elements_per_image[i]);
+      outputDebugImage(debug_img_i, traffic_signals.signals[i], &unique_lamps_per_image[i]);
       cv::resize(debug_img_i, debug_img_i, cv::Size(strip_width, strip_height));
       if (i == 0) {
         debug_img = debug_img_i;
