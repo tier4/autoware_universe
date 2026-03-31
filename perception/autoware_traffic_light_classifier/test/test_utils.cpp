@@ -182,8 +182,7 @@ TEST(convertColorT4toString, normal)
   EXPECT_EQ(
     autoware::traffic_light::utils::convertColorT4toString(TrafficLightElement::WHITE), "white");
   EXPECT_EQ(  // return "unknown" for unknown enum value
-    autoware::traffic_light::utils::convertColorT4toString(99),
-    "unknown");
+    autoware::traffic_light::utils::convertColorT4toString(99), "unknown");
 }
 
 TEST(convertShapeT4toString, normal)
@@ -218,8 +217,7 @@ TEST(convertShapeT4toString, normal)
   EXPECT_EQ(
     autoware::traffic_light::utils::convertShapeT4toString(TrafficLightElement::CROSS), "cross");
   EXPECT_EQ(  // return "unknown" for unknown enum value
-    autoware::traffic_light::utils::convertShapeT4toString(99),
-    "unknown");
+    autoware::traffic_light::utils::convertShapeT4toString(99), "unknown");
 }
 
 TEST(isColorLabel, normal)
