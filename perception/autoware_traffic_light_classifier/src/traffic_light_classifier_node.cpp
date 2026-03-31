@@ -37,7 +37,6 @@ TrafficLightClassifierNodelet::TrafficLightClassifierNodelet(const rclcpp::NodeO
   is_approximate_sync_ = this->declare_parameter<bool>("approximate_sync");
   over_exposure_threshold_ = this->declare_parameter<double>("over_exposure_threshold");
   under_exposure_threshold_ = this->declare_parameter<double>("under_exposure_threshold");
-  roi_expand_ratio_ = this->declare_parameter<double>("roi_expand_ratio", 1.1);
 
   if (is_approximate_sync_) {
     approximate_sync_.reset(new ApproximateSync(ApproximateSyncPolicy(10), image_sub_, roi_sub_));
@@ -143,23 +142,7 @@ void TrafficLightClassifierNodelet::imageRoiCallback(
     output_msg.signals[idx_valid_roi].traffic_light_type = input_roi.traffic_light_type;
 
     const sensor_msgs::msg::RegionOfInterest & roi = input_roi.roi;
-    // Expand ROI from center by ratio (e.g. 1.1 = 10% larger), clamped to image bounds
-    const int img_w = cv_ptr->image.cols;
-    const int img_h = cv_ptr->image.rows;
-    const double ratio = roi_expand_ratio_;
-    int exp_w = static_cast<int>(std::round(roi.width * ratio));
-    int exp_h = static_cast<int>(std::round(roi.height * ratio));
-    const int cx = roi.x_offset + roi.width / 2;
-    const int cy = roi.y_offset + roi.height / 2;
-    int exp_x = cx - exp_w / 2;
-    int exp_y = cy - exp_h / 2;
-    exp_w = std::min(exp_w, img_w);
-    exp_h = std::min(exp_h, img_h);
-    exp_x = std::max(0, std::min(exp_x, img_w - exp_w));
-    exp_y = std::max(0, std::min(exp_y, img_h - exp_h));
-    if (exp_w < 1) exp_w = 1;
-    if (exp_h < 1) exp_h = 1;
-    auto roi_img = cv_ptr->image(cv::Rect(exp_x, exp_y, exp_w, exp_h));
+    auto roi_img = cv_ptr->image(cv::Rect(roi.x_offset, roi.y_offset, roi.width, roi.height));
     const double brightness = utils::compute_brightness(roi_img);
     if (brightness >= over_exposure_threshold_) {
       exposure_out_of_range_indices.emplace_back(idx_valid_roi);

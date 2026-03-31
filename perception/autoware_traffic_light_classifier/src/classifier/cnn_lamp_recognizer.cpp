@@ -333,11 +333,9 @@ void CnnLampRecognizer::decodeTlrOutput(
           info.box.y2 = y2;
           info.classId = type_idx;
           info.prob = score;
-          info.isHierarchical = true;
           info.subClassId = color_idx;
           info.sin = sin_val;
           info.cos = cos_val;
-          info.keypoint.clear();
           raw.push_back(info);
         }
       }
@@ -349,7 +347,7 @@ void CnnLampRecognizer::decodeTlrOutput(
 
 void CnnLampRecognizer::outputDebugImage(
   cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
-  const std::vector<TrafficLightElement> * unique_elements)
+  const std::vector<LampElement> * unique_elements)
 {
   const int img_w = debug_image.cols;
   const int img_h = debug_image.rows;
@@ -420,7 +418,7 @@ void CnnLampRecognizer::outputDebugImage(
   cv::vconcat(debug_image, text_img, debug_image);
 }
 
-static void cvtBBoxInfo2TrafficLightElement(const BBoxInfo & d, TrafficLightElement & element)
+static void cvtBBoxInfo2LampElement(const BBoxInfo & d, LampElement & element)
 {
   element.color = static_cast<Color>(std::min(2, std::max(0, d.subClassId)));
   element.confidence = d.prob;
@@ -432,7 +430,7 @@ static void cvtBBoxInfo2TrafficLightElement(const BBoxInfo & d, TrafficLightElem
 }
 
 void CnnLampRecognizer::updateTrafficSignals(
-  const std::vector<TrafficLightElement> & unique_elements,
+  const std::vector<LampElement> & unique_elements,
   tier4_perception_msgs::msg::TrafficLight & traffic_signal)
 {
   traffic_signal.elements.clear();
@@ -532,7 +530,7 @@ bool CnnLampRecognizer::getTrafficSignals(
 
   size_t signal_i = 0;
   std::vector<cv::Mat> batch;
-  std::vector<std::vector<TrafficLightElement>> unique_traffic_light_elements_per_image;
+  std::vector<std::vector<LampElement>> unique_traffic_light_elements_per_image;
 
   for (size_t image_i = 0; image_i < images.size(); image_i++) {
     batch.push_back(images[image_i]);
@@ -555,18 +553,18 @@ bool CnnLampRecognizer::getTrafficSignals(
       const size_t sig_idx = signal_i + i;
       total_detections += detections_per_roi[i].size();
 
-      std::vector<TrafficLightElement> traffic_light_elements;
+      std::vector<LampElement> traffic_light_elements;
       for (const auto & d : detections_per_roi[i]) {
-        TrafficLightElement element;
-        cvtBBoxInfo2TrafficLightElement(d, element);
+        LampElement element;
+        cvtBBoxInfo2LampElement(d, element);
         traffic_light_elements.push_back(element);
       }
 
-      std::vector<TrafficLightElement> unique_traffic_light_elements;
+      std::vector<LampElement> unique_traffic_light_elements;
       for (const auto & el : traffic_light_elements) {
         auto it = std::find_if(
           unique_traffic_light_elements.begin(), unique_traffic_light_elements.end(),
-          [&](const TrafficLightElement & e) {
+          [&](const LampElement & e) {
             return e.shape == el.shape && e.arrow_direction == el.arrow_direction;
           });
         if (it == unique_traffic_light_elements.end()) {

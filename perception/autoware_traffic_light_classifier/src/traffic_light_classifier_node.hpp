@@ -68,7 +68,7 @@ public:
   enum ClassifierType {
     HSVFilter = 0,       // Rule-based: HSV color filter
     CNN = 1,             // CNN: single-crop classifier
-    LampRecognizer = 2,  // Per-lamp recognizer: bbox + color + type + angle
+    LampRecognizer = 2,  // Per-lamp recognizer based classifier: bbox + color + type + angle
   };
 
   uint8_t classify_traffic_light_type_;
@@ -99,7 +99,6 @@ private:
 
   double over_exposure_threshold_;
   double under_exposure_threshold_;
-  double roi_expand_ratio_;
 };
 
 }  // namespace autoware::traffic_light

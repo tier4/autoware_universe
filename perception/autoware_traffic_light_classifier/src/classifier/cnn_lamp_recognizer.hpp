@@ -48,24 +48,16 @@ struct BBox
   float x2{0.f}, y2{0.f};
 };
 
-struct KeypointInfo
-{
-  float x{0.f}, y{0.f};
-};
-
 struct BBoxInfo
 {
   BBox box;
   int classId{0};  // type: circle=0, arrow=1, uturn=2, ped=3, number=4, cross=5
   float prob{0.f};
-  bool isHierarchical{false};
   int subClassId{0};  // color: green=0, amber=1, red=2
   float sin{0.f};
   float cos{1.f};
-  std::vector<KeypointInfo> keypoint;
 };
 
-// --- Internal element representation (before mapping to ROS message) ---
 enum class Color { GREEN = 0, AMBER = 1, RED = 2, UNKNOWN = 3 };
 
 enum class ArrowDirection {
@@ -90,19 +82,11 @@ enum class Shape {
   UNKNOWN = 6,
 };
 
-struct TrafficLightElement
+struct LampElement
 {
   Color color;
   Shape shape;
   ArrowDirection arrow_direction;
-  BBox box;
-  float confidence{0.f};
-};
-
-struct UniqueTrafficLightElement
-{
-  Color color;
-  Shape shape;
   BBox box;
   float confidence{0.f};
 };
@@ -131,11 +115,11 @@ private:
   bool doInference(size_t batch_size);
   void decodeTlrOutput(size_t batch_size, std::vector<std::vector<BBoxInfo>> & detections_per_roi);
   void updateTrafficSignals(
-    const std::vector<TrafficLightElement> & elements,
+    const std::vector<LampElement> & elements,
     tier4_perception_msgs::msg::TrafficLight & traffic_signal);
   void outputDebugImage(
     cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
-    const std::vector<TrafficLightElement> * elements = nullptr);
+    const std::vector<LampElement> * elements = nullptr);
 
   rclcpp::Node * node_ptr_;
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> trt_common_;
