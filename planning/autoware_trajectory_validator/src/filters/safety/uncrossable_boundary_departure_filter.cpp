@@ -14,6 +14,8 @@
 
 #include "autoware/trajectory_validator/filters/safety/uncrossable_boundary_departure_filter.hpp"
 
+#include <autoware/boundary_departure_checker/debug.hpp>
+
 #include <memory>
 #include <string>
 
@@ -42,6 +44,9 @@ tl::expected<void, std::string> UncrossableBoundaryDepartureFilter::is_feasible(
   }
 
   if (!departure_data->critical_departure_points.empty()) {
+    debug_markers_ = boundary_departure_checker::debug::create_debug_markers(
+      *departure_data, context.odometry->header.stamp, context.odometry->pose.pose.position.z,
+      params_);
     return tl::make_unexpected("Found critical departure");
   }
 
