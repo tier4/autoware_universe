@@ -6,13 +6,9 @@
     std: [58.395, 57.12, 57.375]
     over_exposure_threshold: 0.85
     under_exposure_threshold: -0.83
-    roi_expand_ratio: 1.0  # Expand ROI from center (1.0 = no expand)
-    backlight_threshold: 0.85
-    # classifier_type set in launch file (unified with artifact paths)
     traffic_light_type: 1
-    # LampRecognizer (classifier_type: 2) optional parameters
     score_threshold: 0.2
-    nms_threshold: 0.2  # IoU threshold for NMS; lower = merge more overlapping same-class boxes (e.g. arrows)
+    nms_threshold: 0.2
     max_batch_size: 64
-    input_height: 256   # LampRecognizer input H (fallback if ONNX dims dynamic)
-    input_width: 256    # LampRecognizer input W (fallback if ONNX dims dynamic)
+    input_height: 256
+    input_width: 256
