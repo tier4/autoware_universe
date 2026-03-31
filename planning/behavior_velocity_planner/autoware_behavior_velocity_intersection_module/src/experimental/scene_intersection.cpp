@@ -223,20 +223,6 @@ bool IntersectionModule::can_smoothly_stop_at(
   return stop_s - ego_s + planner_param_.common.stopline_overshoot_margin > braking_distance;
 }
 
-bool IntersectionModule::can_smoothly_stop_at(
-  const PathWithLaneId & path, const size_t closest_idx, const size_t target_stop_idx,
-  const PlannerData & planner_data) const
-{
-  const double braking_distance = planning_utils::calcJudgeLineDistWithJerkLimit(
-    planner_data.current_velocity->twist.linear.x,
-    planner_data.current_acceleration->accel.accel.linear.x, planner_param_.common.max_accel,
-    planner_param_.common.max_jerk, planner_param_.common.delay_response_time);
-
-  return autoware::motion_utils::calcSignedArcLength(path.points, closest_idx, target_stop_idx) +
-           planner_param_.common.stopline_overshoot_margin >
-         braking_distance;
-}
-
 bool IntersectionModule::modifyPathVelocity(
   Trajectory & path, const std::vector<geometry_msgs::msg::Point> & left_bound,
   const std::vector<geometry_msgs::msg::Point> & right_bound, const PlannerData & planner_data)

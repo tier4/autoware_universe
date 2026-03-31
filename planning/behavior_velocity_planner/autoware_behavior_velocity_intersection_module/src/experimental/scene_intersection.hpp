@@ -435,9 +435,6 @@ private:
    */
   bool can_smoothly_stop_at(
     const double ego_s, const double stop_s, const PlannerData & planner_data) const;
-  bool can_smoothly_stop_at(
-    const PathWithLaneId & path, const size_t closest_idx, const size_t target_stop_idx,
-    const PlannerData & planner_data) const;
 
   /** @}*/
 
