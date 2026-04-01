@@ -18,7 +18,6 @@
 #include <Eigen/Dense>
 #include <rclcpp/logging.hpp>
 
-#include <algorithm>
 #include <vector>
 
 namespace autoware::trajectory::interpolator::detail
@@ -99,17 +98,16 @@ protected:
    * @param end_inclusive Whether to include the end value in the last interval. Defaults to true.
    * @return The index of the interval containing the input value.
    *
+   * @throw std::out_of_range if the input value is outside the range of the bases array.
    */
   [[nodiscard]] int32_t get_index(const double & s, bool end_inclusive = true) const
   {
-    const int32_t max_index = static_cast<int32_t>(bases_.size()) - 2;
     if (end_inclusive && s == end()) {
-      return max_index;
+      return static_cast<int32_t>(bases_.size()) - 2;
     }
     auto comp = [](const double & a, const double & b) { return a <= b; };
-    const int32_t raw_index = 
-      static_cast<int32_t>(std::distance(bases_.begin(), std::lower_bound(bases_.begin(), bases_.end(), s, comp))) - 1;
-    return std::clamp(raw_index, 0, max_index);
+    return std::distance(bases_.begin(), std::lower_bound(bases_.begin(), bases_.end(), s, comp)) -
+           1;
   }
 
 public:
