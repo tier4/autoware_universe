@@ -433,7 +433,6 @@ void ObstacleMetricsCalculator::ProcessObstaclesTrajectory()
 
       for (size_t i = 1; i < obstacle_trajectory_points_.size(); ++i) {
         const auto & obstacle_trajectory_point = obstacle_trajectory_points_[i];
-        const auto & ego_trajectory_point = ego_trajectory_points_[i];
         if (!obstacle_trajectory_point.is_collision_with_ego_trajectory) continue;
 
         const size_t ego_first_overlap_idx =
