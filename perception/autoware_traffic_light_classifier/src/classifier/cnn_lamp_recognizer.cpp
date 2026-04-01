@@ -522,10 +522,8 @@ bool CnnLampRecognizer::getTrafficSignals(
 
     std::vector<std::vector<BBoxInfo>> detections_per_roi;
     decodeTlrOutput(current_batch_size, detections_per_roi);
-    size_t total_detections = 0;
     for (size_t i = 0; i < current_batch_size; ++i) {
       const size_t sig_idx = signal_i + i;
-      total_detections += detections_per_roi[i].size();
 
       std::vector<LampElement> traffic_lamps;
       for (const auto & d : detections_per_roi[i]) {
