@@ -160,6 +160,13 @@ LidarCenterPointNode::LidarCenterPointNode(const rclcpp::NodeOptions & node_opti
 void LidarCenterPointNode::pointCloudCallback(
   const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & input_pointcloud_msg)
 {
+  const auto callback_received_time = this->get_clock()->now();
+  const double subscribe_latency_ms =
+    std::chrono::duration<double, std::milli>(
+      std::chrono::nanoseconds(
+        (callback_received_time - input_pointcloud_msg->header.stamp).nanoseconds()))
+      .count();
+
   const auto objects_sub_count =
     objects_pub_->get_subscription_count() + objects_pub_->get_intra_process_subscription_count();
   if (objects_sub_count < 1) {
@@ -224,6 +231,8 @@ void LidarCenterPointNode::pointCloudCallback(
       "debug/processing_time_ms", processing_time_ms);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/pipeline_latency_ms", pipeline_latency_ms);
+    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/subscribe_latency_ms", subscribe_latency_ms);
     for (const auto & [topic, time_ms] : proc_timing) {
       debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
         topic, time_ms);
