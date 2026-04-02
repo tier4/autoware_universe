@@ -53,18 +53,24 @@ protected:
     filter_->set_vehicle_info(vehicle_info);
 
     // Initialize default parameters
-    validator::Params params;
-    params.traffic_light.deceleration_limit = 2.8;
-    params.traffic_light.jerk_limit = 5.0;
-    params.traffic_light.delay_response_time = 0.5;
-    params.traffic_light.crossing_time_limit = 2.75;
-    params.traffic_light.treat_amber_light_as_red_light = false;
-    params.traffic_light.stop_distance_margin = 0.0;
-    filter_->update_parameters(params);
+    default_params_.traffic_light.deceleration_limit = 2.8;
+    default_params_.traffic_light.jerk_limit = 5.0;
+    default_params_.traffic_light.delay_response_time = 0.5;
+    default_params_.traffic_light.crossing_time_limit = 2.75;
+    default_params_.traffic_light.treat_amber_light_as_red_light = false;
+    default_params_.traffic_light.stop_distance_margin = 0.0;
+    // set very low limits to ensure the full trajectory is checked by default
+    default_params_.traffic_light.checked_trajectory_length.deceleration_limit = 0.01;
+    default_params_.traffic_light.checked_trajectory_length.jerk_limit = 0.01;
+    filter_->update_parameters(default_params_);
 
     context_.traffic_light_signals = std::make_shared<TrafficLightGroupArray>();
-    context_.acceleration = std::make_shared<geometry_msgs::msg::AccelWithCovarianceStamped>();
-    context_.odometry = std::make_shared<nav_msgs::msg::Odometry>();
+    auto acceleration = std::make_shared<geometry_msgs::msg::AccelWithCovarianceStamped>();
+    acceleration->accel.accel.linear.x = 0.0f;
+    context_.acceleration = acceleration;
+    auto odometry = std::make_shared<nav_msgs::msg::Odometry>();
+    odometry->twist.twist.linear.x = 5.0f;
+    context_.odometry = odometry;
   }
 
   // Helper to create a simple straight lanelet map with a traffic light
@@ -145,6 +151,7 @@ protected:
   std::shared_ptr<TrafficLightFilter> filter_;
   std::shared_ptr<rclcpp::Node> node_;
   FilterContext context_;
+  validator::Params default_params_;
 };
 
 TEST_F(TrafficLightFilterTest, IsFeasibleEmptyInput)
@@ -152,7 +159,7 @@ TEST_F(TrafficLightFilterTest, IsFeasibleEmptyInput)
   std::vector<TrajectoryPoint> points;
   create_and_set_map(0, 0);
   set_traffic_light_signal(0, TrafficLightElement::RED);
-  EXPECT_TRUE(filter_->is_feasible(points, context_))
+  EXPECT_TRUE(filter_->is_feasible(points, context_).has_value())
     << "Empty trajectory should always be feasible (cannot cross a traffic light if empty)";
 }
 
@@ -161,7 +168,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithoutMapAndSignals)
   const auto points = create_trajectory(0.0, 1.0);
   context_.lanelet_map = nullptr;
   context_.traffic_light_signals = nullptr;
-  EXPECT_FALSE(filter_->is_feasible(points, context_))
+  EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
     << "Should not be feasible without a map or traffic light signals";
 }
 TEST_F(TrafficLightFilterTest, IsInfeasibleWithoutMap)
@@ -171,7 +178,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithoutMap)
   context_.lanelet_map = nullptr;
   // dummy map and light signal
   set_traffic_light_signal(0, TrafficLightElement::RED);
-  EXPECT_FALSE(filter_->is_feasible(points, context_))
+  EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
     << "Should not be feasible without a map (cannot verify whether a trajectory crosses a traffic "
        "light)";
 }
@@ -180,7 +187,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithoutSignals)
   auto points = create_trajectory(0.0, 1.0);
   create_and_set_map(0, 0);
   context_.traffic_light_signals = nullptr;
-  EXPECT_FALSE(filter_->is_feasible(points, context_))
+  EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
     << "Should not be feasible without traffic light signals (cannot verify whether a trajectory "
        "crosses a traffic "
        "light)";
@@ -197,7 +204,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithRedLightIntersection)
   // Trajectory crossing stop line (0 -> 10)
   auto points = create_trajectory(0.0, 10.0);
 
-  EXPECT_FALSE(filter_->is_feasible(points, context_))
+  EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
     << "Should return false when crossing red light stop line";
 }
 
@@ -212,7 +219,8 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithGreenLight)
   // Trajectory crossing stop line (0 -> 10)
   auto points = create_trajectory(0.0, 10.0);
 
-  EXPECT_TRUE(filter_->is_feasible(points, context_)) << "Should return true for green light";
+  EXPECT_TRUE(filter_->is_feasible(points, context_).has_value())
+    << "Should return true for green light";
 }
 
 TEST_F(TrafficLightFilterTest, IsFeasibleWithRedLightNoIntersection)
@@ -226,7 +234,7 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithRedLightNoIntersection)
   // Trajectory stops before stop line (0 -> 4)
   auto points = create_trajectory(0.0, 4.0);
 
-  EXPECT_TRUE(filter_->is_feasible(points, context_))
+  EXPECT_TRUE(filter_->is_feasible(points, context_).has_value())
     << "Should return true if red light is not crossed";
 }
 
@@ -245,7 +253,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithFrontOverhang)
   vehicle_info.max_longitudinal_offset_m = 2.0;
   filter_->set_vehicle_info(vehicle_info);
 
-  EXPECT_FALSE(filter_->is_feasible(points, context_))
+  EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
     << "Should return false when crossing red light stop line";
 }
 
@@ -265,7 +273,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStop)
 
   auto points = create_trajectory(0.0, 30.0, 5.0);
 
-  EXPECT_FALSE(filter_->is_feasible(points, context_))
+  EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
     << "Should return false if amber light can be stopped";
 }
 
@@ -288,7 +296,7 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithAmberLightCannotStop)
 
   auto points = create_trajectory(0.0, 10.0, 10.0);
 
-  EXPECT_TRUE(filter_->is_feasible(points, context_))
+  EXPECT_TRUE(filter_->is_feasible(points, context_).has_value())
     << "Should return true if amber light cannot be stopped but is reachable";
 }
 
@@ -307,13 +315,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStopAndCannotPass)
   // stop_x > 10 -> NOT reachable.
   // This is a scenario where ego can stop and cannot pass.
 
-  // Let's adjust params to create the desired scenario.
-  node_->set_parameter(
-    rclcpp::Parameter("traffic_light.deceleration_limit", -0.5));  // Very weak braking
-  node_->set_parameter(rclcpp::Parameter("traffic_light.delay_response_time", 1.0));
-  node_->set_parameter(rclcpp::Parameter("traffic_light.crossing_time_limit", 1.0));  // Short amber
-  node_->set_parameter(rclcpp::Parameter("traffic_light.treat_amber_light_as_red_light", false));
-  validator::Params params;
+  validator::Params params = default_params_;
   params.traffic_light.deceleration_limit = -0.5;
   params.traffic_light.delay_response_time = 1.0;
   params.traffic_light.crossing_time_limit = 1.0;
@@ -322,7 +324,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStopAndCannotPass)
 
   auto points = create_trajectory(0.0, 200.0, 10.0);
 
-  EXPECT_FALSE(filter_->is_feasible(points, context_))
+  EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
     << "Should return false if ego can stop but cannot pass";
 }
 
@@ -334,7 +336,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightAsRedLight)
   create_and_set_map(light_id, stop_x);
   set_traffic_light_signal(light_id, TrafficLightElement::AMBER);
 
-  validator::Params params;
+  validator::Params params = default_params_;
   params.traffic_light.deceleration_limit = 2.8;
   params.traffic_light.delay_response_time = 0.5;
   params.traffic_light.crossing_time_limit = 2.75;
@@ -345,7 +347,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightAsRedLight)
   // it should be rejected because it's treated as red.
   auto points = create_trajectory(0.0, 10.0, 10.0);
 
-  EXPECT_FALSE(filter_->is_feasible(points, context_))
+  EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
     << "Should return false for amber light when treat_amber_light_as_red_light is true";
 }
 
@@ -358,7 +360,7 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithStopDistanceMargin)
   create_and_set_map(light_id, stop_x);
   set_traffic_light_signal(light_id, TrafficLightElement::RED);
 
-  validator::Params params;
+  validator::Params params = default_params_;
   params.traffic_light.stop_distance_margin = margin;
   filter_->update_parameters(params);
 
@@ -371,13 +373,18 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithStopDistanceMargin)
     tp1.longitudinal_velocity_mps = 5.0;
     tp1.time_from_start = rclcpp::Duration::from_seconds(0.0);
     TrajectoryPoint tp2;
-    tp2.pose.position.x = 10.5;
-    tp2.longitudinal_velocity_mps = 0.0;
-    tp2.time_from_start = rclcpp::Duration::from_seconds(2.1);
+    tp2.pose.position.x = 5.0;
+    tp2.longitudinal_velocity_mps = 5.0;
+    tp2.time_from_start = rclcpp::Duration::from_seconds(1.0);
+    TrajectoryPoint tp3;
+    tp3.pose.position.x = 10.5;
+    tp3.longitudinal_velocity_mps = 0.0;
+    tp3.time_from_start = rclcpp::Duration::from_seconds(2.1);
     points.push_back(tp1);
     points.push_back(tp2);
+    points.push_back(tp3);
 
-    EXPECT_TRUE(filter_->is_feasible(points, context_))
+    EXPECT_TRUE(filter_->is_feasible(points, context_).has_value())
       << "Should return true if stopped within margin beyond stop line";
   }
 
@@ -389,20 +396,25 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithStopDistanceMargin)
     tp1.longitudinal_velocity_mps = 5.0;
     tp1.time_from_start = rclcpp::Duration::from_seconds(0.0);
     TrajectoryPoint tp2;
-    tp2.pose.position.x = 11.5;
-    tp2.longitudinal_velocity_mps = 0.0;
-    tp2.time_from_start = rclcpp::Duration::from_seconds(2.3);
+    tp2.pose.position.x = 5.0;
+    tp2.longitudinal_velocity_mps = 5.0;
+    tp2.time_from_start = rclcpp::Duration::from_seconds(1.0);
+    TrajectoryPoint tp3;
+    tp3.pose.position.x = 11.5;
+    tp3.longitudinal_velocity_mps = 0.0;
+    tp3.time_from_start = rclcpp::Duration::from_seconds(2.3);
     points.push_back(tp1);
     points.push_back(tp2);
+    points.push_back(tp3);
 
-    EXPECT_FALSE(filter_->is_feasible(points, context_))
+    EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
       << "Should return false if stopped beyond margin";
   }
 
   {
     // Case 3: Crosses stop line without stopping.
     auto points = create_trajectory(0.0, 20.0, 5.0);
-    EXPECT_FALSE(filter_->is_feasible(points, context_))
+    EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
       << "Should return false if crossing without stopping";
   }
 }
