@@ -136,6 +136,7 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
     params_.checked_trajectory_length.jerk_limit, delay_response_time);
   const auto max_trajectory_length = distance_for_ego_to_stop.value_or(0.0);
   auto length = 0.0;
+  std::optional<TrajectoryPoint> stop_point;
   for (const auto & p : traj_points) {
     // skip points behind ego
     if (rclcpp::Duration(p.time_from_start).seconds() < 0.0) {
@@ -146,7 +147,11 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
       length += lanelet::geometry::distance2d(trajectory_ls.back(), lanelet_p);
     }
     // skip points beyond the first stop, or skip once we reach the maximum length
-    if (p.longitudinal_velocity_mps <= 0.0 || length > max_trajectory_length) {
+    const auto is_stop_point = p.longitudinal_velocity_mps <= 0.0;
+    if (is_stop_point || length > max_trajectory_length) {
+      if (is_stop_point) {
+        stop_point = p;
+      }
       break;
     }
     trajectory.push_back(p);
@@ -176,6 +181,13 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
     get_stop_lines(candidate_lanelets, *context.traffic_light_signals);
   for (const auto & red_stop_line : red_stop_lines) {
     if (boost::geometry::intersects(trajectory_ls, red_stop_line)) {
+      if (stop_point) {
+        const lanelet::BasicPoint2d stop_p(
+          stop_point->pose.position.x, stop_point->pose.position.y);
+        if (boost::geometry::distance(stop_p, red_stop_line) <= params_.stop_distance_margin) {
+          continue;
+        }
+      }
       return tl::make_unexpected("crosses red light");  // Reject trajectory (cross red light)
     }
   }
@@ -201,11 +213,19 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
     }
     const auto current_velocity = trajectory.front().longitudinal_velocity_mps;
     const auto current_acceleration = trajectory.front().acceleration_mps2;
-    if (
-      amber_stop_line_crossing_time && !can_pass_amber_light(
-                                         distance_to_stop_line, current_velocity,
-                                         current_acceleration, *amber_stop_line_crossing_time)) {
-      return tl::make_unexpected("crosses amber light");  // Reject trajectory (cross amber light)
+    if (amber_stop_line_crossing_time) {
+      if (stop_point) {
+        const lanelet::BasicPoint2d stop_p(
+          stop_point->pose.position.x, stop_point->pose.position.y);
+        if (boost::geometry::distance(stop_p, amber_stop_line) <= params_.stop_distance_margin) {
+          continue;
+        }
+      }
+      if (!can_pass_amber_light(
+            distance_to_stop_line, current_velocity, current_acceleration,
+            *amber_stop_line_crossing_time)) {
+        return tl::make_unexpected("crosses amber light");  // Reject trajectory (cross amber light)
+      }
     }
   }
   return {};  // Allow trajectory

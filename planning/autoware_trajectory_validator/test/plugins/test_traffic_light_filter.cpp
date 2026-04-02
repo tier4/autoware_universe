@@ -16,6 +16,8 @@
 
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 
+#include <nav_msgs/msg/detail/odometry__struct.hpp>
+
 #include <gtest/gtest.h>
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/LineString.h>
@@ -57,9 +59,12 @@ protected:
     params.traffic_light.delay_response_time = 0.5;
     params.traffic_light.crossing_time_limit = 2.75;
     params.traffic_light.treat_amber_light_as_red_light = false;
+    params.traffic_light.stop_distance_margin = 0.0;
     filter_->update_parameters(params);
 
     context_.traffic_light_signals = std::make_shared<TrafficLightGroupArray>();
+    context_.acceleration = std::make_shared<geometry_msgs::msg::AccelWithCovarianceStamped>();
+    context_.odometry = std::make_shared<nav_msgs::msg::Odometry>();
   }
 
   // Helper to create a simple straight lanelet map with a traffic light
@@ -342,6 +347,64 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightAsRedLight)
 
   EXPECT_FALSE(filter_->is_feasible(points, context_))
     << "Should return false for amber light when treat_amber_light_as_red_light is true";
+}
+
+TEST_F(TrafficLightFilterTest, IsFeasibleWithStopDistanceMargin)
+{
+  const lanelet::Id light_id = 400;
+  const double stop_x = 10.0;
+  const double margin = 1.0;
+
+  create_and_set_map(light_id, stop_x);
+  set_traffic_light_signal(light_id, TrafficLightElement::RED);
+
+  validator::Params params;
+  params.traffic_light.stop_distance_margin = margin;
+  filter_->update_parameters(params);
+
+  {
+    // Case 1: Stops 0.5m beyond stop line (at 10.5m). Within margin (1.0m).
+    // Trajectory: (0, 5m/s) -> (10.5, 0m/s)
+    std::vector<TrajectoryPoint> points;
+    TrajectoryPoint tp1;
+    tp1.pose.position.x = 0.0;
+    tp1.longitudinal_velocity_mps = 5.0;
+    tp1.time_from_start = rclcpp::Duration::from_seconds(0.0);
+    TrajectoryPoint tp2;
+    tp2.pose.position.x = 10.5;
+    tp2.longitudinal_velocity_mps = 0.0;
+    tp2.time_from_start = rclcpp::Duration::from_seconds(2.1);
+    points.push_back(tp1);
+    points.push_back(tp2);
+
+    EXPECT_TRUE(filter_->is_feasible(points, context_))
+      << "Should return true if stopped within margin beyond stop line";
+  }
+
+  {
+    // Case 2: Stops 1.5m beyond stop line (at 11.5m). Beyond margin (1.0m).
+    std::vector<TrajectoryPoint> points;
+    TrajectoryPoint tp1;
+    tp1.pose.position.x = 0.0;
+    tp1.longitudinal_velocity_mps = 5.0;
+    tp1.time_from_start = rclcpp::Duration::from_seconds(0.0);
+    TrajectoryPoint tp2;
+    tp2.pose.position.x = 11.5;
+    tp2.longitudinal_velocity_mps = 0.0;
+    tp2.time_from_start = rclcpp::Duration::from_seconds(2.3);
+    points.push_back(tp1);
+    points.push_back(tp2);
+
+    EXPECT_FALSE(filter_->is_feasible(points, context_))
+      << "Should return false if stopped beyond margin";
+  }
+
+  {
+    // Case 3: Crosses stop line without stopping.
+    auto points = create_trajectory(0.0, 20.0, 5.0);
+    EXPECT_FALSE(filter_->is_feasible(points, context_))
+      << "Should return false if crossing without stopping";
+  }
 }
 
 int main(int argc, char ** argv)
