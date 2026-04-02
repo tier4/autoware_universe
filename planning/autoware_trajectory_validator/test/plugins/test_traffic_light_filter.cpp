@@ -16,7 +16,7 @@
 
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 
-#include <nav_msgs/msg/detail/odometry__struct.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 
 #include <gtest/gtest.h>
 #include <lanelet2_core/LaneletMap.h>
