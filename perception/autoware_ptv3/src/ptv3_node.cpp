@@ -137,6 +137,12 @@ void PTv3Node::publishFilteredPointcloud(
 void PTv3Node::cloudCallback(
   const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & msg_ptr)
 {
+  const auto callback_received_time = this->get_clock()->now();
+  const double subscribe_latency_ms =
+    std::chrono::duration<double, std::milli>(
+      std::chrono::nanoseconds((callback_received_time - msg_ptr->header.stamp).nanoseconds()))
+      .count();
+
   const auto segmented_sub_count =
     segmented_pointcloud_pub_->get_subscription_count() +
     segmented_pointcloud_pub_->get_intra_process_subscription_count();
@@ -174,6 +180,8 @@ void PTv3Node::cloudCallback(
       "debug/cyclic_time_ms", cyclic_time_ms);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/pipeline_latency_ms", pipeline_latency_ms);
+    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/subscribe_latency_ms", subscribe_latency_ms);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/processing_time/total_ms", processing_time_ms);
     for (const auto & [topic, time_ms] : proc_timing) {
