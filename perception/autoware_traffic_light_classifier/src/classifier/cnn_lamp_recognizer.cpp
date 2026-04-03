@@ -41,19 +41,6 @@ constexpr float kPi = 3.14159265358979f;
 constexpr int kDebugImageWidth = 200;
 constexpr int kDebugTextHeight = 50;
 
-// TLR output layout per anchor (bbox(4) + obj(1) + color(3) + type(6) + angle(2) = 16)
-// Anchors (e.g. 7,7,14,14,42,42) must match the model so decoded box sizes are correct.
-constexpr int TLR_NUM_ANCHORS = 3;
-constexpr int TLR_CHANS_PER_ANCHOR = 16;
-constexpr int TLR_X_INDEX = 0, TLR_Y_INDEX = 1, TLR_W_INDEX = 2, TLR_H_INDEX = 3;
-constexpr int TLR_OBJ_INDEX = 4;
-constexpr int TLR_COLOR_START = 5, TLR_TYPE_START = 8;
-constexpr int TLR_NUM_TYPES = 6, TLR_NUM_COLORS = 3;
-constexpr int TLR_COS_INDEX = 14, TLR_SIN_INDEX = 15;
-constexpr float TLR_SCALE_X_Y = 2.0f;
-constexpr float TLR_BBOX_OFFSET = 0.5f * (TLR_SCALE_X_Y - 1.0f);
-constexpr float TLR_ANCHORS[TLR_NUM_ANCHORS * 2] = {7.0f, 7.0f, 14.0f, 14.0f, 42.0f, 42.0f};
-
 ArrowDirection angleToArrowDirection(float angle_rad)
 {
   if (angle_rad >= -kPi / 8.0f && angle_rad < kPi / 8.0f) return ArrowDirection::UP_ARROW;
@@ -126,6 +113,41 @@ CnnLampRecognizer::CnnLampRecognizer(rclcpp::Node * node_ptr) : node_ptr_(node_p
   max_batch_size_ = node_ptr_->declare_parameter<int>("max_batch_size");
   const int default_input_h = node_ptr_->declare_parameter<int>("input_height");
   const int default_input_w = node_ptr_->declare_parameter<int>("input_width");
+
+  regression_arch_.num_anchors =
+    node_ptr_->declare_parameter<int>("regression_arch.num_anchors", 3);
+  regression_arch_.chans_per_anchor =
+    node_ptr_->declare_parameter<int>("regression_arch.chans_per_anchor", 16);
+  regression_arch_.x_index = node_ptr_->declare_parameter<int>("regression_arch.x_index", 0);
+  regression_arch_.y_index = node_ptr_->declare_parameter<int>("regression_arch.y_index", 1);
+  regression_arch_.w_index = node_ptr_->declare_parameter<int>("regression_arch.w_index", 2);
+  regression_arch_.h_index = node_ptr_->declare_parameter<int>("regression_arch.h_index", 3);
+  regression_arch_.obj_index = node_ptr_->declare_parameter<int>("regression_arch.obj_index", 4);
+  regression_arch_.color_start =
+    node_ptr_->declare_parameter<int>("regression_arch.color_start", 5);
+  regression_arch_.type_start = node_ptr_->declare_parameter<int>("regression_arch.type_start", 8);
+  regression_arch_.num_types = node_ptr_->declare_parameter<int>("regression_arch.num_types", 6);
+  regression_arch_.num_colors = node_ptr_->declare_parameter<int>("regression_arch.num_colors", 3);
+  regression_arch_.cos_index = node_ptr_->declare_parameter<int>("regression_arch.cos_index", 14);
+  regression_arch_.sin_index = node_ptr_->declare_parameter<int>("regression_arch.sin_index", 15);
+  regression_arch_.scale_x_y =
+    static_cast<float>(node_ptr_->declare_parameter<double>("regression_arch.scale_x_y", 2.0));
+  regression_arch_.bbox_offset = 0.5f * (regression_arch_.scale_x_y - 1.0f);
+  {
+    const auto default_anchors = std::vector<double>{7.0, 7.0, 14.0, 14.0, 42.0, 42.0};
+    const auto anchors_param =
+      node_ptr_->declare_parameter<std::vector<double>>("regression_arch.anchors", default_anchors);
+    regression_arch_.anchors.clear();
+    regression_arch_.anchors.reserve(anchors_param.size());
+    for (double v : anchors_param) {
+      regression_arch_.anchors.push_back(static_cast<float>(v));
+    }
+    if (static_cast<int>(regression_arch_.anchors.size()) != 2 * regression_arch_.num_anchors) {
+      throw std::runtime_error(
+        "CnnLampRecognizer: regression_arch.anchors must contain 2 * regression_arch.num_anchors "
+        "values (w,h per anchor)");
+    }
+  }
 
   autoware::tensorrt_common::TrtCommonConfig config(
     model_path, precision, "", (1ULL << 30U), -1, false);
@@ -253,6 +275,7 @@ bool CnnLampRecognizer::doInference(size_t batch_size)
 void CnnLampRecognizer::decodeTlrOutput(
   size_t batch_size, std::vector<std::vector<BBoxInfo>> & detections_per_roi)
 {
+  const auto & arch = regression_arch_;
   detections_per_roi.resize(batch_size);
 
   const int grid_size = output_grid_h_ * output_grid_w_;
@@ -270,27 +293,27 @@ void CnnLampRecognizer::decodeTlrOutput(
     for (int y = 0; y < output_grid_h_; ++y) {
       for (int x = 0; x < output_grid_w_; ++x) {
         const int cell = y * output_grid_w_ + x;
-        for (int a = 0; a < TLR_NUM_ANCHORS; ++a) {
-          const int base = (a * TLR_CHANS_PER_ANCHOR) * grid_size + cell;
+        for (int a = 0; a < arch.num_anchors; ++a) {
+          const int base = (a * arch.chans_per_anchor) * grid_size + cell;
 
-          const float objectness = out[base + TLR_OBJ_INDEX * grid_size];
+          const float objectness = out[base + arch.obj_index * grid_size];
           if (objectness < score_threshold_) continue;
 
-          const float pw = TLR_ANCHORS[a * 2];
-          const float ph = TLR_ANCHORS[a * 2 + 1];
-          const float tx = out[base + TLR_X_INDEX * grid_size];
-          const float ty = out[base + TLR_Y_INDEX * grid_size];
-          const float tw = out[base + TLR_W_INDEX * grid_size];
-          const float th = out[base + TLR_H_INDEX * grid_size];
-          const float bx = x + TLR_SCALE_X_Y * tx - TLR_BBOX_OFFSET;
-          const float by = y + TLR_SCALE_X_Y * ty - TLR_BBOX_OFFSET;
+          const float pw = arch.anchors[static_cast<size_t>(a * 2)];
+          const float ph = arch.anchors[static_cast<size_t>(a * 2 + 1)];
+          const float tx = out[base + arch.x_index * grid_size];
+          const float ty = out[base + arch.y_index * grid_size];
+          const float tw = out[base + arch.w_index * grid_size];
+          const float th = out[base + arch.h_index * grid_size];
+          const float bx = x + arch.scale_x_y * tx - arch.bbox_offset;
+          const float by = y + arch.scale_x_y * ty - arch.bbox_offset;
           const float bw = pw * std::pow(tw * 2.0f, 2.0f);
           const float bh = ph * std::pow(th * 2.0f, 2.0f);
 
           float max_type_prob = 0.0f;
           int type_idx = 0;
-          for (int t = 0; t < TLR_NUM_TYPES; ++t) {
-            const float p = out[base + (TLR_TYPE_START + t) * grid_size];
+          for (int t = 0; t < arch.num_types; ++t) {
+            const float p = out[base + (arch.type_start + t) * grid_size];
             if (p > max_type_prob) {
               max_type_prob = p;
               type_idx = t;
@@ -298,8 +321,8 @@ void CnnLampRecognizer::decodeTlrOutput(
           }
           float max_color_prob = 0.0f;
           int color_idx = 0;
-          for (int c = 0; c < TLR_NUM_COLORS; ++c) {
-            const float p = out[base + (TLR_COLOR_START + c) * grid_size];
+          for (int c = 0; c < arch.num_colors; ++c) {
+            const float p = out[base + (arch.color_start + c) * grid_size];
             if (p > max_color_prob) {
               max_color_prob = p;
               color_idx = c;
@@ -309,8 +332,8 @@ void CnnLampRecognizer::decodeTlrOutput(
           const float score = objectness * max_type_prob;
           if (score < score_threshold_) continue;
 
-          const float cos_val = out[base + TLR_COS_INDEX * grid_size];
-          const float sin_val = out[base + TLR_SIN_INDEX * grid_size];
+          const float cos_val = out[base + arch.cos_index * grid_size];
+          const float sin_val = out[base + arch.sin_index * grid_size];
 
           const float cx = bx / grid_w_f;
           const float cy = by / grid_h_f;
