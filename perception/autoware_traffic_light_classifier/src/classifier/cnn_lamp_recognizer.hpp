@@ -28,6 +28,7 @@
 
 #include <tier4_perception_msgs/msg/traffic_light_element.hpp>
 
+// cppcheck-suppress preprocessorErrorDirective
 #if __has_include(<cv_bridge/cv_bridge.hpp>)
 #include <cv_bridge/cv_bridge.hpp>
 #else
@@ -98,6 +99,31 @@ using autoware::cuda_utils::makeCudaStream;
 using autoware::cuda_utils::StreamUniquePtr;
 
 /**
+ * @brief Channel layout and anchors for the lamp regression (YOLO-style) head.
+ * Must match the ONNX/TensorRT output tensor; loaded from the regression_arch.* node parameters.
+ */
+struct LampRegressionArchitecture
+{
+  int num_anchors{3};
+  int chans_per_anchor{16};
+  int x_index{0};
+  int y_index{1};
+  int w_index{2};
+  int h_index{3};
+  int obj_index{4};
+  int color_start{5};
+  int type_start{8};
+  int num_types{6};
+  int num_colors{3};
+  int cos_index{14};
+  int sin_index{15};
+  float scale_x_y{2.0f};
+  /// YOLO center decode: 0.5f * (scale_x_y - 1.0f), set when loading parameters.
+  float bbox_offset{0.5f};
+  std::vector<float> anchors;
+};
+
+/**
  * @brief Lamp recognizer: per-lamp bbox + color + type + angle (ONNX/TensorRT).
  */
 class CnnLampRecognizer : public ClassifierInterface
@@ -139,6 +165,8 @@ private:
   int output_grid_w_;
   float score_threshold_;
   float nms_threshold_;
+
+  LampRegressionArchitecture regression_arch_;
 
   image_transport::Publisher image_pub_;
 };

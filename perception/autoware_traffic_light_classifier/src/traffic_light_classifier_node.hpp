@@ -30,6 +30,7 @@
 #include <tier4_perception_msgs/msg/traffic_light_element.hpp>
 #include <tier4_perception_msgs/msg/traffic_light_roi_array.hpp>
 
+// cppcheck-suppress preprocessorErrorDirective
 #if __has_include(<cv_bridge/cv_bridge.hpp>)
 #include <cv_bridge/cv_bridge.hpp>
 #else
