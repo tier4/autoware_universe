@@ -2,7 +2,7 @@
 
 ## Purpose/Role
 
-This filter rejects trajectories if they are found to run through a red or amber traffic light. It ensures that the planned motion adheres to traffic signals by validating that the vehicle does not cross stop lines when the signal is prohibitive, while accounting for the "dilemma zone" during amber lights.
+This filter rejects trajectories if they are found to run through a red or amber traffic light. It ensures that the planned motion adheres to traffic signals by validating that the vehicle does not cross stop lines when the signal is prohibitive, while accounting for the "dilemma zone" during amber lights and allowing for a configurable stopping margin.
 
 ## Algorithm Overview
 
@@ -10,28 +10,37 @@ The filter decides whether to reject a trajectory based on the following steps:
 
 1. **Trajectory Pre-processing**:
    - Filters out points behind the ego vehicle.
-   - Trims the trajectory at the first point where velocity is zero or negative.
+   - Trims the trajectory at the first point where velocity is zero or negative (stop point).
+   - Captures this stop point if it exists within the checked range.
    - Extends the trajectory's visual representation by the vehicle's longitudinal offset (front of the vehicle) to ensure the front bumper is checked against stop lines.
 2. **Stop Line Identification**:
    - Searches for lanelets intersecting the trajectory's bounding box.
    - Retrieves red and amber stop lines associated with these lanelets based on the current traffic light signals.
    - If `treat_amber_light_as_red_light` is enabled, all amber stop lines are treated as red stop lines.
 3. **Red Light Validation**:
-   - If any part of the trajectory intersects a red stop line, the trajectory is rejected immediately.
+   - If the trajectory intersects a red stop line:
+     - If a stop point exists and its distance to the stop line is within `stop_overshoot_margin`, the trajectory is accepted (considered as "stopped at the line").
+     - Otherwise, the trajectory is rejected.
 4. **Amber Light Validation**:
-   - If the trajectory crosses an amber stop line, the filter calculates the distance to the intersection and the time at which the ego vehicle is expected to cross it.
-   - It then applies the [Amber Light Logic](#amber-light-logic) to determine if the crossing is permissible.
+   - If the trajectory crosses an amber stop line:
+     - If a stop point exists and its distance to the stop line is within `stop_overshoot_margin`, the trajectory is accepted.
+     - Otherwise, the filter calculates the distance to the intersection and the time at which the ego vehicle is expected to cross it.
+     - It then applies the [Amber Light Logic](#amber-light-logic) to determine if the crossing is permissible.
 
 ### Decision Flow
 
 ```mermaid
 graph TD
-    A[Start: Trajectory Validation] --> B[Pre-process Trajectory]
+    A[Start: Trajectory Validation] --> B[Pre-process Trajectory & Capture Stop Point]
     B --> C{Intersects Red Stop Line?}
-    C -- Yes --> D[Reject: crosses red light]
-    C -- No --> E{Intersects Amber Stop Line?}
+    C -- Yes --> C1{Stopped within margin?}
+    C1 -- No --> D[Reject: crosses red light]
+    C1 -- Yes --> E{Intersects Amber Stop Line?}
+    C -- No --> E
     E -- No --> F[Accept Trajectory]
-    E -- Yes --> G{Treat Amber as Red?}
+    E -- Yes --> E1{Stopped within margin?}
+    E1 -- Yes --> F
+    E1 -- No --> G{Treat Amber as Red?}
     G -- Yes --> D
     G -- No --> H[Calculate Distance and Time to Stop Line]
     H --> I{Can safely stop before line?}
@@ -62,10 +71,13 @@ The filter utilizes the following data from the `FilterContext`:
 
 ### Parameters
 
-| Parameter name                                 | Type   | Default | Description                                                                                                       |
-| ---------------------------------------------- | ------ | ------- | ----------------------------------------------------------------------------------------------------------------- |
-| `traffic_light.deceleration_limit`             | double | 2.8     | [m/s²] Deceleration limit used to estimate the minimum stopping distance at an amber light.                       |
-| `traffic_light.jerk_limit`                     | double | 5.0     | [m/s³] Jerk limit used to estimate the minimum stopping distance at an amber light.                               |
-| `traffic_light.delay_response_time`            | double | 0.5     | [s] Delay response time added to the stopping distance calculation.                                               |
-| `traffic_light.crossing_time_limit`            | double | 2.75    | [s] Maximum time allowed for the ego vehicle to cross the stop line after an amber light appears.                 |
-| `traffic_light.treat_amber_light_as_red_light` | bool   | true    | When true, amber lights are treated identically to red lights (rejection on intersection regardless of distance). |
+| Parameter name                                               | Type   | Default | Description                                                                                                       |
+| ------------------------------------------------------------ | ------ | ------- | ----------------------------------------------------------------------------------------------------------------- |
+| `traffic_light.deceleration_limit`                           | double | 2.8     | [m/s²] Deceleration limit used to estimate the minimum stopping distance at an amber light.                       |
+| `traffic_light.jerk_limit`                                   | double | 5.0     | [m/s³] Jerk limit used to estimate the minimum stopping distance at an amber light.                               |
+| `traffic_light.delay_response_time`                          | double | 0.5     | [s] Delay response time added to the stopping distance calculation.                                               |
+| `traffic_light.crossing_time_limit`                          | double | 2.75    | [s] Maximum time allowed for the ego vehicle to cross the stop line after an amber light appears.                 |
+| `traffic_light.treat_amber_light_as_red_light`               | bool   | true    | When true, amber lights are treated identically to red lights (rejection on intersection regardless of distance). |
+| `traffic_light.stop_overshoot_margin`                        | double | 0.5     | [m] Maximum distance between the stop line and the trajectory stop point to consider the trajectory feasible.     |
+| `traffic_light.checked_trajectory_length.deceleration_limit` | double | 2.0     | [m/s²] Deceleration limit used to calculate the maximum trajectory length to check for traffic lights.            |
+| `traffic_light.checked_trajectory_length.jerk_limit`         | double | 4.0     | [m/s³] Jerk limit used to calculate the maximum trajectory length to check for traffic lights.                    |
