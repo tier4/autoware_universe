@@ -12,6 +12,11 @@ ament_auto_add_library(external_velocity_limit_selector_node SHARED
   src/external_velocity_limit_selector_node.cpp
 )
 
+target_compile_options(external_velocity_limit_selector_node PRIVATE
+  "-Wno-error=cpp"
+  "-Wno-error=deprecated-declarations"
+)
+
 target_link_libraries(external_velocity_limit_selector_node
   external_velocity_limit_selector_parameters
 )

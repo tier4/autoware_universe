@@ -4,6 +4,11 @@ project(autoware_remaining_distance_time_calculator)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  add_compile_options("-Wno-error")
+  add_compile_options("-Wno-cpp")
+endif()
+
 generate_parameter_library(remaining_distance_time_calculator_parameters
   param/remaining_distance_time_calculator_parameters.yaml
 )

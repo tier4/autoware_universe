@@ -4,6 +4,11 @@ project(autoware_motion_velocity_road_user_stop_module)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  add_compile_options("-Wno-error")
+  add_compile_options("-Wno-cpp")
+endif()
+
 # Generate parameter library
 generate_parameter_library(road_user_stop_module_parameters
   param/road_user_stop_module_parameters.yaml

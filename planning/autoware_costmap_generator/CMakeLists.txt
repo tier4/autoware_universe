@@ -4,6 +4,11 @@ project(autoware_costmap_generator)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  add_compile_options("-Wno-error")
+  add_compile_options("-Wno-cpp")
+endif()
+
 find_package(PCL REQUIRED COMPONENTS common io)
 find_package(FLANN REQUIRED)
 
