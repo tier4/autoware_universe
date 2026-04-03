@@ -150,8 +150,9 @@ bool ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
       data_->current_acceleration->accel.accel.linear.x, params_.maximum_stopping_decel,
       params_.stopping_jerk, 0.0);
     if (!min_stopping_distance) min_stopping_distance = 0.0;
-    return std::max<double>(
-      nearest_collision_point_->arc_length - stop_margin, min_stopping_distance.value());
+    return std::clamp(
+      nearest_collision_point_->arc_length - stop_margin, min_stopping_distance.value(),
+      debug_data_.trajectory_shape.trajectory_length);
   });
 
   auto skip = [&](const std::string & msg) {
@@ -240,6 +241,32 @@ size_t update_velocities(TrajectoryPoints & trajectory, const double jerk, const
   return vel_update_start_index;
 }
 
+size_t insert_stop_point(
+  TrajectoryPoints & trajectory, const double target_stop_point_arc_length,
+  const double traj_length)
+{
+  const auto index = motion_utils::insertStopPoint(target_stop_point_arc_length, trajectory);
+  if (index) return index.value();
+
+  if (target_stop_point_arc_length < traj_length) {
+    auto dist = 0.0;
+    auto it = std::adjacent_find(
+      trajectory.begin(), trajectory.end(), [&](const auto & p, const auto & next) {
+        dist += autoware_utils::calc_distance2d(p.pose.position, next.pose.position);
+        return dist >= target_stop_point_arc_length - 1e-3;
+      });
+    if (it != trajectory.end()) {
+      it->longitudinal_velocity_mps = 0.0;
+      it->acceleration_mps2 = 0.0;
+      return std::distance(trajectory.begin(), it);
+    }
+  }
+
+  trajectory.back().longitudinal_velocity_mps = 0.0;
+  trajectory.back().acceleration_mps2 = 0.0;
+  return trajectory.size() - 1;
+}
+
 bool ObstacleStop::apply_stopping(
   TrajectoryPoints & traj_points, const double target_stop_point_arc_length) const
 {
@@ -247,10 +274,10 @@ bool ObstacleStop::apply_stopping(
 
   auto trajectory = traj_points;
 
-  const auto stop_index = motion_utils::insertStopPoint(target_stop_point_arc_length, trajectory);
-  if (!stop_index) return false;
+  const auto stop_index = insert_stop_point(
+    trajectory, target_stop_point_arc_length, debug_data_.trajectory_shape.trajectory_length);
 
-  trajectory.erase(trajectory.begin() + stop_index.value() + 1, trajectory.end());
+  trajectory.erase(trajectory.begin() + stop_index + 1, trajectory.end());
   trajectory.back().longitudinal_velocity_mps = 0.0;
   trajectory.back().acceleration_mps2 = 0.0;
 
