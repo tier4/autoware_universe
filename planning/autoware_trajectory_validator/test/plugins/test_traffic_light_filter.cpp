@@ -58,7 +58,7 @@ protected:
     default_params_.traffic_light.delay_response_time = 0.5;
     default_params_.traffic_light.crossing_time_limit = 2.75;
     default_params_.traffic_light.treat_amber_light_as_red_light = false;
-    default_params_.traffic_light.stop_distance_margin = 0.0;
+    default_params_.traffic_light.stop_overshoot_margin = 0.0;
     // set very low limits to ensure the full trajectory is checked by default
     default_params_.traffic_light.checked_trajectory_length.deceleration_limit = 0.01;
     default_params_.traffic_light.checked_trajectory_length.jerk_limit = 0.01;
@@ -361,7 +361,7 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithStopDistanceMargin)
   set_traffic_light_signal(light_id, TrafficLightElement::RED);
 
   validator::Params params = default_params_;
-  params.traffic_light.stop_distance_margin = margin;
+  params.traffic_light.stop_overshoot_margin = margin;
   filter_->update_parameters(params);
 
   {

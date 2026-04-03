@@ -121,13 +121,13 @@ TrafficLightFilter::get_stop_lines(
   return {red_stop_lines, amber_stop_lines};
 }
 
-bool TrafficLightFilter::stop_point_within_margin_from_stop_line(
+bool TrafficLightFilter::is_stop_point_within_margin_from_stop_line(
   const std::optional<TrajectoryPoint> & stop_point,
   const lanelet::BasicLineString2d & stop_line) const
 {
   if (stop_point.has_value()) {
     const lanelet::BasicPoint2d stop_p(stop_point->pose.position.x, stop_point->pose.position.y);
-    if (boost::geometry::distance(stop_p, stop_line) <= params_.stop_distance_margin) {
+    if (boost::geometry::distance(stop_p, stop_line) <= params_.stop_overshoot_margin) {
       return true;
     }
   }
@@ -198,7 +198,7 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
     get_stop_lines(candidate_lanelets, *context.traffic_light_signals);
   for (const auto & red_stop_line : red_stop_lines) {
     if (boost::geometry::intersects(trajectory_ls, red_stop_line)) {
-      if (stop_point_within_margin_from_stop_line(stop_point, red_stop_line)) {
+      if (is_stop_point_within_margin_from_stop_line(stop_point, red_stop_line)) {
         continue;
       }
       return tl::make_unexpected("crosses red light");  // Reject trajectory (cross red light)
@@ -228,7 +228,7 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
     const auto current_velocity = trajectory.front().longitudinal_velocity_mps;
     const auto current_acceleration = trajectory.front().acceleration_mps2;
     if (amber_stop_line_crossing_time) {
-      if (stop_point_within_margin_from_stop_line(stop_point, amber_stop_line)) {
+      if (is_stop_point_within_margin_from_stop_line(stop_point, amber_stop_line)) {
         continue;
       }
       if (!can_pass_amber_light(

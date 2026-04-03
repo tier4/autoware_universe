@@ -19,11 +19,11 @@ The filter decides whether to reject a trajectory based on the following steps:
    - If `treat_amber_light_as_red_light` is enabled, all amber stop lines are treated as red stop lines.
 3. **Red Light Validation**:
    - If the trajectory intersects a red stop line:
-     - If a stop point exists and its distance to the stop line is within `stop_distance_margin`, the trajectory is accepted (considered as "stopped at the line").
+     - If a stop point exists and its distance to the stop line is within `stop_overshoot_margin`, the trajectory is accepted (considered as "stopped at the line").
      - Otherwise, the trajectory is rejected.
 4. **Amber Light Validation**:
    - If the trajectory crosses an amber stop line:
-     - If a stop point exists and its distance to the stop line is within `stop_distance_margin`, the trajectory is accepted.
+     - If a stop point exists and its distance to the stop line is within `stop_overshoot_margin`, the trajectory is accepted.
      - Otherwise, the filter calculates the distance to the intersection and the time at which the ego vehicle is expected to cross it.
      - It then applies the [Amber Light Logic](#amber-light-logic) to determine if the crossing is permissible.
 
@@ -78,6 +78,6 @@ The filter utilizes the following data from the `FilterContext`:
 | `traffic_light.delay_response_time`                          | double | 0.5     | [s] Delay response time added to the stopping distance calculation.                                               |
 | `traffic_light.crossing_time_limit`                          | double | 2.75    | [s] Maximum time allowed for the ego vehicle to cross the stop line after an amber light appears.                 |
 | `traffic_light.treat_amber_light_as_red_light`               | bool   | true    | When true, amber lights are treated identically to red lights (rejection on intersection regardless of distance). |
-| `traffic_light.stop_distance_margin`                         | double | 0.5     | [m] Maximum distance between the stop line and the trajectory stop point to consider the trajectory feasible.     |
+| `traffic_light.stop_overshoot_margin`                        | double | 0.5     | [m] Maximum distance between the stop line and the trajectory stop point to consider the trajectory feasible.     |
 | `traffic_light.checked_trajectory_length.deceleration_limit` | double | 2.0     | [m/s²] Deceleration limit used to calculate the maximum trajectory length to check for traffic lights.            |
 | `traffic_light.checked_trajectory_length.jerk_limit`         | double | 4.0     | [m/s³] Jerk limit used to calculate the maximum trajectory length to check for traffic lights.                    |
