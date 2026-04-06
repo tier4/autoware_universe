@@ -48,6 +48,7 @@ double get_detection_length(
   const double forward_traj_length, const double current_vel, const double current_accel,
   const double decel, const double jerk, const double stop_margin)
 {
+  // add a buffer length to account for the reaction time of the vehicle
   constexpr double buffer_length = 1.0;
   const auto margin = stop_margin + buffer_length;
   auto nominal_stopping_distance =

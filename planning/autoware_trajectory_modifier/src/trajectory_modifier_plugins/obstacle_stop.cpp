@@ -257,6 +257,8 @@ size_t insert_stop_point(
   const auto index = motion_utils::insertStopPoint(target_stop_point_arc_length, trajectory);
   if (index) return index.value();
 
+  // TODO (Quda): this is a temporary fix, need to check why insertStopPoint fails when target
+  // distance is equal to trajectory length
   if (target_stop_point_arc_length < traj_length) {
     auto dist = 0.0;
     auto it = std::adjacent_find(
