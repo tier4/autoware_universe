@@ -36,6 +36,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_modifier::plugin
@@ -133,9 +134,17 @@ bool ObstacleStop::modify_trajectory(TrajectoryPoints & traj_points)
 {
   autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::modify_trajectory", *get_time_keeper());
 
-  if (!enabled_ || !is_trajectory_modification_required(traj_points)) return false;
+  if (!enabled_) return false;
+
+  auto trajectory = traj_points;
+  utils::obstacle_stop::trim_trajectory_and_remove_duplicates(trajectory);
+  if (trajectory.empty()) return false;
+
+  if (!is_trajectory_modification_required(trajectory)) return false;
 
   if (!nearest_collision_point_) return false;
+
+  traj_points = std::move(trajectory);
 
   return set_stop_point(traj_points);
 }

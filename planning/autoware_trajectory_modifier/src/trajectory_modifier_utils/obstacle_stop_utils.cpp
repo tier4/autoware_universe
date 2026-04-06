@@ -32,6 +32,18 @@
 namespace autoware::trajectory_modifier::utils::obstacle_stop
 {
 
+void trim_trajectory_and_remove_duplicates(TrajectoryPoints & trajectory_points)
+{
+  if (trajectory_points.empty()) return;
+  const auto zero_velocity_index =
+    autoware::motion_utils::searchZeroVelocityIndex(trajectory_points);
+  if (zero_velocity_index && zero_velocity_index.value() < trajectory_points.size() - 1) {
+    trajectory_points.erase(
+      trajectory_points.begin() + zero_velocity_index.value() + 1, trajectory_points.end());
+  }
+  trajectory_points = autoware::motion_utils::removeOverlapPoints(trajectory_points);
+}
+
 double get_detection_length(
   const double forward_traj_length, const double current_vel, const double current_accel,
   const double decel, const double jerk, const double stop_margin)
@@ -196,18 +208,13 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
 
   if (pointcloud_in_polygon->empty()) return std::nullopt;
 
-  const auto traj_length = trajectory_shape.trajectory_length;
   auto min_arc_length = std::numeric_limits<double>::max();
   geometry_msgs::msg::Point nearest_collision_point;
   for (const auto & point : *pointcloud_in_polygon) {
     geometry_msgs::msg::Point p;
     p.x = point.x;
     p.y = point.y;
-    auto arc_length =
-      std::min(traj_length, motion_utils::calcSignedArcLength(trajectory_points, 0, p));
-    if (arc_length >= traj_length)
-      arc_length +=
-        autoware_utils_geometry::calc_longitudinal_deviation(trajectory_points.back().pose, p);
+    auto arc_length = motion_utils::calcSignedArcLength(trajectory_points, 0, p);
     if (arc_length < min_arc_length) {
       min_arc_length = arc_length;
       nearest_collision_point = p;
@@ -225,7 +232,6 @@ std::optional<CollisionPoint> get_nearest_object_collision(
 {
   if (objects.objects.empty()) return std::nullopt;
 
-  const auto traj_length = trajectory_shape.trajectory_length;
   auto min_arc_length = std::numeric_limits<double>::max();
   geometry_msgs::msg::Point nearest_collision_point;
   bool found_collision = false;
@@ -238,11 +244,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
     found_collision = true;
     for (const auto & point : object_polygon.outer()) {
       geometry_msgs::msg::Point p = geometry_msgs::msg::Point().set__x(point.x()).set__y(point.y());
-      auto arc_length =
-        std::min(traj_length, motion_utils::calcSignedArcLength(trajectory_points, 0, p));
-      if (arc_length >= traj_length)
-        arc_length +=
-          autoware_utils_geometry::calc_longitudinal_deviation(trajectory_points.back().pose, p);
+      auto arc_length = motion_utils::calcSignedArcLength(trajectory_points, 0, p);
       if (arc_length < min_arc_length) {
         min_arc_length = arc_length;
         nearest_collision_point = p;

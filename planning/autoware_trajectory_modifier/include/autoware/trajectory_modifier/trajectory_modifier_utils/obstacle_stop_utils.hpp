@@ -124,6 +124,8 @@ struct DebugData
   std::optional<PredictedObject> colliding_object;
 };
 
+void trim_trajectory_and_remove_duplicates(TrajectoryPoints & trajectory_points);
+
 TrajectoryShape get_trajectory_shape(
   const TrajectoryPoints & trajectory_points, const geometry_msgs::msg::Pose & ego_pose,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const double ego_vel,
