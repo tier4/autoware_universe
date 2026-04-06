@@ -15,6 +15,7 @@ agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::automatic_pose_initializer::AutomaticPoseInitializer"
   EXECUTABLE ${PROJECT_NAME}_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 ament_auto_package(INSTALL_TO_SHARE launch)

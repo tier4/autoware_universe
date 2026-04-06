@@ -31,6 +31,7 @@ agnocast_components_register_node(${PROJECT_NAME}_lib
   PLUGIN "autoware::behavior_path_planner::BehaviorPathPlannerNode"
   EXECUTABLE ${PROJECT_NAME}_agnocast_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 if(BUILD_TESTING)

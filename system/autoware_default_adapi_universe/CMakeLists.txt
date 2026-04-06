@@ -30,90 +30,105 @@ agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::AutowareStateNode"
   EXECUTABLE autoware_state_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::DiagnosticsNode"
   EXECUTABLE diagnostics_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::FailSafeNode"
   EXECUTABLE fail_safe_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::HeartbeatNode"
   EXECUTABLE heartbeat_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::ManualControlNode"
   EXECUTABLE manual_control_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::MotionNode"
   EXECUTABLE motion_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::MrmRequestNode"
   EXECUTABLE mrm_request_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::OperationModeNode"
   EXECUTABLE operation_mode_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::PerceptionNode"
   EXECUTABLE perception_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::PlanningNode"
   EXECUTABLE planning_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::VehicleStatusNode"
   EXECUTABLE vehicle_status_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::VehicleCommandNode"
   EXECUTABLE vehicle_command_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::VehicleMetricsNode"
   EXECUTABLE vehicle_metrics_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::VehicleInfoNode"
   EXECUTABLE vehicle_info_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::default_adapi::VehicleDoorNode"
   EXECUTABLE vehicle_door_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 if(BUILD_TESTING)

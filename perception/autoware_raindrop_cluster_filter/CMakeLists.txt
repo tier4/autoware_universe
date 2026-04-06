@@ -28,6 +28,7 @@ agnocast_components_register_node(low_intensity_cluster_filter
   PLUGIN "autoware::low_intensity_cluster_filter::LowIntensityClusterFilter"
   EXECUTABLE low_intensity_cluster_filter_node
   EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 # Tests are disabled because the node now uses agnocast::Node which is not compatible

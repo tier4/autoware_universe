@@ -31,6 +31,7 @@ agnocast_components_register_node(external_velocity_limit_selector_node
   PLUGIN "autoware::external_velocity_limit_selector::ExternalVelocityLimitSelectorNode"
   EXECUTABLE external_velocity_limit_selector
   EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 if(BUILD_TESTING)

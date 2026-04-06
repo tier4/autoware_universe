@@ -43,6 +43,7 @@ agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::object_merger::ObjectAssociationMergerNode"
   EXECUTABLE object_association_merger_node
   EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 ament_auto_package(INSTALL_TO_SHARE

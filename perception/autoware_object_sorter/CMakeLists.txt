@@ -27,12 +27,14 @@ agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::object_sorter::DetectedObjectSorterNode"
   EXECUTABLE detected_object_sorter_node
   EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::object_sorter::TrackedObjectSorterNode"
   EXECUTABLE tracked_object_sorter_node
   EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 # Tests

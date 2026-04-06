@@ -152,25 +152,29 @@ if("$ENV{ENABLE_AGNOCAST}")
   agnocast_components_register_node(cuda_pointcloud_preprocessor
     PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPointCloudConcatenateDataSynchronizerComponent"
     EXECUTABLE agnocast_cuda_concatenate_and_time_sync_node
-    EXECUTOR AgnocastOnlyCallbackIsolatedExecutor)
+    EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+    RESOURCE_INDEX agnocast_components)
 
   # ========== Pointcloud preprocessor ==========
   agnocast_components_register_node(cuda_pointcloud_preprocessor
     PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPointcloudPreprocessorNode"
     EXECUTABLE agnocast_cuda_pointcloud_preprocessor_node
-    EXECUTOR AgnocastOnlyCallbackIsolatedExecutor)
+    EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+    RESOURCE_INDEX agnocast_components)
 
   # ========== VoxelGrid downsample filter ==========
   agnocast_components_register_node(cuda_pointcloud_preprocessor
     PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaVoxelGridDownsampleFilterNode"
     EXECUTABLE agnocast_cuda_voxel_grid_downsample_filter_node
-    EXECUTOR AgnocastOnlyCallbackIsolatedExecutor)
+    EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+    RESOURCE_INDEX agnocast_components)
 
   # ========== PolarVoxel outlier filter ==========
   agnocast_components_register_node(cuda_pointcloud_preprocessor
     PLUGIN "autoware::cuda_pointcloud_preprocessor::CudaPolarVoxelOutlierFilterNode"
     EXECUTABLE agnocast_cuda_polar_voxel_outlier_filter_node
-    EXECUTOR AgnocastOnlyCallbackIsolatedExecutor)
+    EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+    RESOURCE_INDEX agnocast_components)
 else()
   # ========== Concatenate and Sync data ==========
   rclcpp_components_register_node(cuda_pointcloud_preprocessor

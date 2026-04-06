@@ -27,6 +27,7 @@ agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::traffic_light::MultiCameraFusion"
   EXECUTABLE traffic_light_multi_camera_fusion_node
   EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 ament_auto_package(INSTALL_TO_SHARE

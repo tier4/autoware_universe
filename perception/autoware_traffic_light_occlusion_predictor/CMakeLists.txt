@@ -32,6 +32,7 @@ agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::traffic_light::TrafficLightOcclusionPredictorNode"
   EXECUTABLE traffic_light_occlusion_predictor_node
   EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 link_directories(${PCL_LIBRARY_DIRS})

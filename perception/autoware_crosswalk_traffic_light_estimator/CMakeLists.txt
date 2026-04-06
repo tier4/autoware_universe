@@ -18,6 +18,7 @@ agnocast_components_register_node(autoware_crosswalk_traffic_light_estimator
   PLUGIN "autoware::crosswalk_traffic_light_estimator::CrosswalkTrafficLightEstimatorNode"
   EXECUTABLE crosswalk_traffic_light_estimator_node
   EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 if(BUILD_TESTING)

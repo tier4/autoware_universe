@@ -48,6 +48,7 @@ agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::detection_by_tracker::DetectionByTracker"
   EXECUTABLE detection_by_tracker_node
   EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 ament_auto_package(INSTALL_TO_SHARE

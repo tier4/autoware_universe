@@ -42,6 +42,7 @@ agnocast_components_register_node(map_based_prediction_node
   PLUGIN "autoware::map_based_prediction::MapBasedPredictionNode"
   EXECUTABLE map_based_prediction
   EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 ## Tests

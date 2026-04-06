@@ -49,6 +49,7 @@ agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::tracking_object_merger::DecorativeTrackerMergerNode"
   EXECUTABLE decorative_tracker_merger_node
   EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 ament_auto_package(INSTALL_TO_SHARE

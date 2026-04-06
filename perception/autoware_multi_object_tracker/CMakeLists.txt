@@ -82,6 +82,7 @@ agnocast_components_register_node(${PROJECT_NAME}
   PLUGIN "autoware::multi_object_tracker::MultiObjectTracker"
   EXECUTABLE multi_object_tracker_node
   EXECUTOR AgnocastOnlySingleThreadedExecutor
+  RESOURCE_INDEX agnocast_components
 )
 
 ## Tests
