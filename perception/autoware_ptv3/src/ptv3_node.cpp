@@ -143,6 +143,15 @@ void PTv3Node::cloudCallback(
       std::chrono::nanoseconds((callback_received_time - msg_ptr->header.stamp).nanoseconds()))
       .count();
 
+  double cyclic_time_ros_ms = 0.0;
+  if (last_exec_time_) {
+    cyclic_time_ros_ms =
+      std::chrono::duration<double, std::milli>(
+        std::chrono::nanoseconds((callback_received_time - *last_exec_time_).nanoseconds()))
+        .count();
+  }
+  last_exec_time_ = std::make_unique<rclcpp::Time>(callback_received_time);
+
   const auto segmented_sub_count =
     segmented_pointcloud_pub_->get_subscription_count() +
     segmented_pointcloud_pub_->get_intra_process_subscription_count();
@@ -178,6 +187,8 @@ void PTv3Node::cloudCallback(
         .count();
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/cyclic_time_ms", cyclic_time_ms);
+    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/cyclic_time_ros_ms", cyclic_time_ros_ms);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/pipeline_latency_ms", pipeline_latency_ms);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(

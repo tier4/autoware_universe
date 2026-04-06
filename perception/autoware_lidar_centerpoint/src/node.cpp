@@ -167,6 +167,15 @@ void LidarCenterPointNode::pointCloudCallback(
         (callback_received_time - input_pointcloud_msg->header.stamp).nanoseconds()))
       .count();
 
+  double cyclic_time_ros_ms = 0.0;
+  if (last_exec_time_) {
+    cyclic_time_ros_ms =
+      std::chrono::duration<double, std::milli>(
+        std::chrono::nanoseconds((callback_received_time - *last_exec_time_).nanoseconds()))
+        .count();
+  }
+  last_exec_time_ = std::make_unique<rclcpp::Time>(callback_received_time);
+
   const auto objects_sub_count =
     objects_pub_->get_subscription_count() + objects_pub_->get_intra_process_subscription_count();
   if (objects_sub_count < 1) {
@@ -227,6 +236,8 @@ void LidarCenterPointNode::pointCloudCallback(
         .count();
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/cyclic_time_ms", cyclic_time_ms);
+    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
+      "debug/cyclic_time_ros_ms", cyclic_time_ros_ms);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/processing_time_ms", processing_time_ms);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(

@@ -68,6 +68,8 @@ private:
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{nullptr};
   std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_ptr_{nullptr};
   std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_pub_{nullptr};
+
+  std::unique_ptr<rclcpp::Time> last_exec_time_{nullptr};
 };
 }  // namespace autoware::ptv3
 
