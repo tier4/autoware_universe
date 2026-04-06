@@ -242,8 +242,10 @@ void LidarCenterPointNode::pointCloudCallback(
       "debug/processing_time_ms", processing_time_ms);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/pipeline_latency_ms", pipeline_latency_ms);
-    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/subscribe_latency_ms", subscribe_latency_ms);
+    autoware_internal_debug_msgs::msg::Float64Stamped sub_lat_msg;
+    sub_lat_msg.stamp = input_pointcloud_msg->header.stamp;
+    sub_lat_msg.data  = subscribe_latency_ms;
+    debug_publisher_ptr_->publish("debug/subscribe_latency_ms", sub_lat_msg);
     for (const auto & [topic, time_ms] : proc_timing) {
       debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
         topic, time_ms);

@@ -191,8 +191,10 @@ void PTv3Node::cloudCallback(
       "debug/cyclic_time_ros_ms", cyclic_time_ros_ms);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/pipeline_latency_ms", pipeline_latency_ms);
-    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/subscribe_latency_ms", subscribe_latency_ms);
+    autoware_internal_debug_msgs::msg::Float64Stamped sub_lat_msg;
+    sub_lat_msg.stamp = msg_ptr->header.stamp;
+    sub_lat_msg.data  = subscribe_latency_ms;
+    debug_publisher_ptr_->publish("debug/subscribe_latency_ms", sub_lat_msg);
     debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
       "debug/processing_time/total_ms", processing_time_ms);
     for (const auto & [topic, time_ms] : proc_timing) {
