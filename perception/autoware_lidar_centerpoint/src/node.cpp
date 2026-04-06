@@ -234,21 +234,21 @@ void LidarCenterPointNode::pointCloudCallback(
         std::chrono::nanoseconds(
           (this->get_clock()->now() - output_msg.header.stamp).nanoseconds()))
         .count();
-    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/cyclic_time_ms", cyclic_time_ms);
-    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/cyclic_time_ros_ms", cyclic_time_ros_ms);
-    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/processing_time_ms", processing_time_ms);
-    debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-      "debug/pipeline_latency_ms", pipeline_latency_ms);
-    autoware_internal_debug_msgs::msg::Float64Stamped sub_lat_msg;
-    sub_lat_msg.stamp = input_pointcloud_msg->header.stamp;
-    sub_lat_msg.data  = subscribe_latency_ms;
-    debug_publisher_ptr_->publish("debug/subscribe_latency_ms", sub_lat_msg);
+    // All debug topics carry input pointcloud header.stamp so that metrics
+    // from different models can be aligned on the same time base.
+    auto publish_debug = [&](const std::string & name, double value) {
+      autoware_internal_debug_msgs::msg::Float64Stamped msg;
+      msg.stamp = input_pointcloud_msg->header.stamp;
+      msg.data  = value;
+      debug_publisher_ptr_->publish(name, msg);
+    };
+    publish_debug("debug/cyclic_time_ms", cyclic_time_ms);
+    publish_debug("debug/cyclic_time_ros_ms", cyclic_time_ros_ms);
+    publish_debug("debug/processing_time_ms", processing_time_ms);
+    publish_debug("debug/pipeline_latency_ms", pipeline_latency_ms);
+    publish_debug("debug/subscribe_latency_ms", subscribe_latency_ms);
     for (const auto & [topic, time_ms] : proc_timing) {
-      debug_publisher_ptr_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
-        topic, time_ms);
+      publish_debug(topic, time_ms);
     }
 
     last_processing_time_ms_ = processing_time_ms;
