@@ -100,7 +100,6 @@ using autoware::cuda_utils::StreamUniquePtr;
 
 /**
  * @brief Channel layout and anchors for the lamp regression (YOLO-style) head.
- * Must match the ONNX/TensorRT output tensor; loaded from the regression_arch.* node parameters.
  */
 struct LampRegressionArchitecture
 {
