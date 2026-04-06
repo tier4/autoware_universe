@@ -114,29 +114,26 @@ CnnLampRecognizer::CnnLampRecognizer(rclcpp::Node * node_ptr) : node_ptr_(node_p
   const int default_input_h = node_ptr_->declare_parameter<int>("input_height");
   const int default_input_w = node_ptr_->declare_parameter<int>("input_width");
 
-  regression_arch_.num_anchors =
-    node_ptr_->declare_parameter<int>("regression_arch.num_anchors", 3);
+  regression_arch_.num_anchors = node_ptr_->declare_parameter<int>("regression_arch.num_anchors");
   regression_arch_.chans_per_anchor =
-    node_ptr_->declare_parameter<int>("regression_arch.chans_per_anchor", 16);
-  regression_arch_.x_index = node_ptr_->declare_parameter<int>("regression_arch.x_index", 0);
-  regression_arch_.y_index = node_ptr_->declare_parameter<int>("regression_arch.y_index", 1);
-  regression_arch_.w_index = node_ptr_->declare_parameter<int>("regression_arch.w_index", 2);
-  regression_arch_.h_index = node_ptr_->declare_parameter<int>("regression_arch.h_index", 3);
-  regression_arch_.obj_index = node_ptr_->declare_parameter<int>("regression_arch.obj_index", 4);
-  regression_arch_.color_start =
-    node_ptr_->declare_parameter<int>("regression_arch.color_start", 5);
-  regression_arch_.type_start = node_ptr_->declare_parameter<int>("regression_arch.type_start", 8);
-  regression_arch_.num_types = node_ptr_->declare_parameter<int>("regression_arch.num_types", 6);
-  regression_arch_.num_colors = node_ptr_->declare_parameter<int>("regression_arch.num_colors", 3);
-  regression_arch_.cos_index = node_ptr_->declare_parameter<int>("regression_arch.cos_index", 14);
-  regression_arch_.sin_index = node_ptr_->declare_parameter<int>("regression_arch.sin_index", 15);
+    node_ptr_->declare_parameter<int>("regression_arch.chans_per_anchor");
+  regression_arch_.x_index = node_ptr_->declare_parameter<int>("regression_arch.x_index");
+  regression_arch_.y_index = node_ptr_->declare_parameter<int>("regression_arch.y_index");
+  regression_arch_.w_index = node_ptr_->declare_parameter<int>("regression_arch.w_index");
+  regression_arch_.h_index = node_ptr_->declare_parameter<int>("regression_arch.h_index");
+  regression_arch_.obj_index = node_ptr_->declare_parameter<int>("regression_arch.obj_index");
+  regression_arch_.color_start = node_ptr_->declare_parameter<int>("regression_arch.color_start");
+  regression_arch_.type_start = node_ptr_->declare_parameter<int>("regression_arch.type_start");
+  regression_arch_.num_types = node_ptr_->declare_parameter<int>("regression_arch.num_types");
+  regression_arch_.num_colors = node_ptr_->declare_parameter<int>("regression_arch.num_colors");
+  regression_arch_.cos_index = node_ptr_->declare_parameter<int>("regression_arch.cos_index");
+  regression_arch_.sin_index = node_ptr_->declare_parameter<int>("regression_arch.sin_index");
   regression_arch_.scale_x_y =
-    static_cast<float>(node_ptr_->declare_parameter<double>("regression_arch.scale_x_y", 2.0));
+    static_cast<float>(node_ptr_->declare_parameter<double>("regression_arch.scale_x_y"));
   regression_arch_.bbox_offset = 0.5f * (regression_arch_.scale_x_y - 1.0f);
   {
-    const auto default_anchors = std::vector<double>{7.0, 7.0, 14.0, 14.0, 42.0, 42.0};
     const auto anchors_param =
-      node_ptr_->declare_parameter<std::vector<double>>("regression_arch.anchors", default_anchors);
+      node_ptr_->declare_parameter<std::vector<double>>("regression_arch.anchors");
     regression_arch_.anchors.clear();
     regression_arch_.anchors.reserve(anchors_param.size());
     for (double v : anchors_param) {
