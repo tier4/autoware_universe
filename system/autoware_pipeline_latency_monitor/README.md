@@ -19,13 +19,12 @@ The calculated total latency is published continuously and also used to report d
 ### Input
 
 Subscribes to topics containing latency information for each processing step. The topic names and types are configured via parameters.
-3 message types are currently supported.
+Only 2 message types are currently supported.
 
-| Message Type                                              | Timestamp field | Latency value field                    | Supported timestamp meanings |
-| --------------------------------------------------------- | --------------- | -------------------------------------- | ---------------------------- |
-| `autoware_internal_debug_msgs/msg/Float64Stamped`         | `stamp`         | `data`                                 | `start` or `end`             |
-| `autoware_planning_validator/msg/PlanningValidatorStatus` | `stamp`         | `latency`                              | `start` or `end`             |
-| `autoware_planning_msgs/msg/Trajectory`                   | `header.stamp`  | calculated from `now() - header.stamp` | `start`                      |
+| Message Type                                              | Timestamp field | Latency value field |
+| --------------------------------------------------------- | --------------- | ------------------- |
+| `autoware_internal_debug_msgs/msg/Float64Stamped`         | `stamp`         | `data`              |
+| `autoware_planning_validator/msg/PlanningValidatorStatus` | `stamp`         | `latency`           |
 
 ### Output
 

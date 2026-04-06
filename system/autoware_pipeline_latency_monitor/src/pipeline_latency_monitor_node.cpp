@@ -20,7 +20,6 @@
 #include <rclcpp_components/register_node_macro.hpp>
 
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
-#include <autoware_planning_msgs/msg/trajectory.hpp>
 
 #include <deque>
 #include <memory>
@@ -110,21 +109,6 @@ PipelineLatencyMonitorNode::PipelineLatencyMonitorNode(const rclcpp::NodeOptions
         RCLCPP_DEBUG(
           get_logger(), "Received %s: %.2f", input.name.c_str(),
           msg.latency * input.latency_multiplier);
-      } else if (input.topic_type == "autoware_planning_msgs/msg/Trajectory") {
-        if (input.timestamp_meaning != TimestampMeaning::start) {
-          RCLCPP_ERROR(
-            get_logger(), "%s only supports timestamps for the start of the step",
-            input.topic_type.c_str());
-          throw std::runtime_error(
-            input.topic_type + " only supports timestamps for the start of the step");
-        }
-        static const rclcpp::Serialization<autoware_planning_msgs::msg::Trajectory> serialization;
-        autoware_planning_msgs::msg::Trajectory msg;
-        serialization.deserialize_message(serialized_msg.get(), &msg);
-        const auto latency = now() - rclcpp::Time(msg.header.stamp);
-        this->update_history(input.latency_history, msg.header.stamp, latency.seconds() * 1e3);
-        RCLCPP_DEBUG(
-          get_logger(), "Received %s: %.2f", input.name.c_str(), latency.seconds() * 1e3);
       } else {
         throw std::runtime_error("unsupported message type " + input.topic_type);
       }
