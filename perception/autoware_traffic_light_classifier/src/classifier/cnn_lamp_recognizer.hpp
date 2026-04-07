@@ -165,7 +165,7 @@ private:
   float score_threshold_;
   float nms_threshold_;
 
-  LampRegressionArchitecture regression_arch_;
+  LampRegressionArchitecture model_params_;
 
   image_transport::Publisher image_pub_;
 };

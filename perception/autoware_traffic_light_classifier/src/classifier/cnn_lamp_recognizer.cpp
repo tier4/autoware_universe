@@ -114,34 +114,34 @@ CnnLampRecognizer::CnnLampRecognizer(rclcpp::Node * node_ptr) : node_ptr_(node_p
   const int default_input_h = node_ptr_->declare_parameter<int>("input_height");
   const int default_input_w = node_ptr_->declare_parameter<int>("input_width");
 
-  regression_arch_.num_anchors = node_ptr_->declare_parameter<int>("regression_arch.num_anchors");
-  regression_arch_.chans_per_anchor =
-    node_ptr_->declare_parameter<int>("regression_arch.chans_per_anchor");
-  regression_arch_.x_index = node_ptr_->declare_parameter<int>("regression_arch.x_index");
-  regression_arch_.y_index = node_ptr_->declare_parameter<int>("regression_arch.y_index");
-  regression_arch_.w_index = node_ptr_->declare_parameter<int>("regression_arch.w_index");
-  regression_arch_.h_index = node_ptr_->declare_parameter<int>("regression_arch.h_index");
-  regression_arch_.obj_index = node_ptr_->declare_parameter<int>("regression_arch.obj_index");
-  regression_arch_.color_start = node_ptr_->declare_parameter<int>("regression_arch.color_start");
-  regression_arch_.type_start = node_ptr_->declare_parameter<int>("regression_arch.type_start");
-  regression_arch_.num_types = node_ptr_->declare_parameter<int>("regression_arch.num_types");
-  regression_arch_.num_colors = node_ptr_->declare_parameter<int>("regression_arch.num_colors");
-  regression_arch_.cos_index = node_ptr_->declare_parameter<int>("regression_arch.cos_index");
-  regression_arch_.sin_index = node_ptr_->declare_parameter<int>("regression_arch.sin_index");
-  regression_arch_.scale_x_y =
-    static_cast<float>(node_ptr_->declare_parameter<double>("regression_arch.scale_x_y"));
-  regression_arch_.bbox_offset = 0.5f * (regression_arch_.scale_x_y - 1.0f);
+  model_params_.num_anchors = node_ptr_->declare_parameter<int>("model_params.num_anchors");
+  model_params_.chans_per_anchor =
+    node_ptr_->declare_parameter<int>("model_params.chans_per_anchor");
+  model_params_.x_index = node_ptr_->declare_parameter<int>("model_params.x_index");
+  model_params_.y_index = node_ptr_->declare_parameter<int>("model_params.y_index");
+  model_params_.w_index = node_ptr_->declare_parameter<int>("model_params.w_index");
+  model_params_.h_index = node_ptr_->declare_parameter<int>("model_params.h_index");
+  model_params_.obj_index = node_ptr_->declare_parameter<int>("model_params.obj_index");
+  model_params_.color_start = node_ptr_->declare_parameter<int>("model_params.color_start");
+  model_params_.type_start = node_ptr_->declare_parameter<int>("model_params.type_start");
+  model_params_.num_types = node_ptr_->declare_parameter<int>("model_params.num_types");
+  model_params_.num_colors = node_ptr_->declare_parameter<int>("model_params.num_colors");
+  model_params_.cos_index = node_ptr_->declare_parameter<int>("model_params.cos_index");
+  model_params_.sin_index = node_ptr_->declare_parameter<int>("model_params.sin_index");
+  model_params_.scale_x_y =
+    static_cast<float>(node_ptr_->declare_parameter<double>("model_params.scale_x_y"));
+  model_params_.bbox_offset = 0.5f * (model_params_.scale_x_y - 1.0f);
   {
     const auto anchors_param =
-      node_ptr_->declare_parameter<std::vector<double>>("regression_arch.anchors");
-    regression_arch_.anchors.clear();
-    regression_arch_.anchors.reserve(anchors_param.size());
+      node_ptr_->declare_parameter<std::vector<double>>("model_params.anchors");
+    model_params_.anchors.clear();
+    model_params_.anchors.reserve(anchors_param.size());
     for (double v : anchors_param) {
-      regression_arch_.anchors.push_back(static_cast<float>(v));
+      model_params_.anchors.push_back(static_cast<float>(v));
     }
-    if (static_cast<int>(regression_arch_.anchors.size()) != 2 * regression_arch_.num_anchors) {
+    if (static_cast<int>(model_params_.anchors.size()) != 2 * model_params_.num_anchors) {
       throw std::runtime_error(
-        "CnnLampRecognizer: regression_arch.anchors must contain 2 * regression_arch.num_anchors "
+        "CnnLampRecognizer: model_params.anchors must contain 2 * model_params.num_anchors "
         "values (w,h per anchor)");
     }
   }
@@ -272,7 +272,7 @@ bool CnnLampRecognizer::doInference(size_t batch_size)
 void CnnLampRecognizer::decodeTlrOutput(
   size_t batch_size, std::vector<std::vector<BBoxInfo>> & detections_per_roi)
 {
-  const auto & arch = regression_arch_;
+  const auto & ml_params = model_params_;
   detections_per_roi.resize(batch_size);
 
   const int grid_size = output_grid_h_ * output_grid_w_;
@@ -290,27 +290,27 @@ void CnnLampRecognizer::decodeTlrOutput(
     for (int y = 0; y < output_grid_h_; ++y) {
       for (int x = 0; x < output_grid_w_; ++x) {
         const int cell = y * output_grid_w_ + x;
-        for (int a = 0; a < arch.num_anchors; ++a) {
-          const int base = (a * arch.chans_per_anchor) * grid_size + cell;
+        for (int a = 0; a < ml_params.num_anchors; ++a) {
+          const int base = (a * ml_params.chans_per_anchor) * grid_size + cell;
 
-          const float objectness = out[base + arch.obj_index * grid_size];
+          const float objectness = out[base + ml_params.obj_index * grid_size];
           if (objectness < score_threshold_) continue;
 
-          const float pw = arch.anchors[static_cast<size_t>(a * 2)];
-          const float ph = arch.anchors[static_cast<size_t>(a * 2 + 1)];
-          const float tx = out[base + arch.x_index * grid_size];
-          const float ty = out[base + arch.y_index * grid_size];
-          const float tw = out[base + arch.w_index * grid_size];
-          const float th = out[base + arch.h_index * grid_size];
-          const float bx = x + arch.scale_x_y * tx - arch.bbox_offset;
-          const float by = y + arch.scale_x_y * ty - arch.bbox_offset;
+          const float pw = ml_params.anchors[static_cast<size_t>(a * 2)];
+          const float ph = ml_params.anchors[static_cast<size_t>(a * 2 + 1)];
+          const float tx = out[base + ml_params.x_index * grid_size];
+          const float ty = out[base + ml_params.y_index * grid_size];
+          const float tw = out[base + ml_params.w_index * grid_size];
+          const float th = out[base + ml_params.h_index * grid_size];
+          const float bx = x + ml_params.scale_x_y * tx - ml_params.bbox_offset;
+          const float by = y + ml_params.scale_x_y * ty - ml_params.bbox_offset;
           const float bw = pw * std::pow(tw * 2.0f, 2.0f);
           const float bh = ph * std::pow(th * 2.0f, 2.0f);
 
           float max_type_prob = 0.0f;
           int type_idx = 0;
-          for (int t = 0; t < arch.num_types; ++t) {
-            const float p = out[base + (arch.type_start + t) * grid_size];
+          for (int t = 0; t < ml_params.num_types; ++t) {
+            const float p = out[base + (ml_params.type_start + t) * grid_size];
             if (p > max_type_prob) {
               max_type_prob = p;
               type_idx = t;
@@ -318,8 +318,8 @@ void CnnLampRecognizer::decodeTlrOutput(
           }
           float max_color_prob = 0.0f;
           int color_idx = 0;
-          for (int c = 0; c < arch.num_colors; ++c) {
-            const float p = out[base + (arch.color_start + c) * grid_size];
+          for (int c = 0; c < ml_params.num_colors; ++c) {
+            const float p = out[base + (ml_params.color_start + c) * grid_size];
             if (p > max_color_prob) {
               max_color_prob = p;
               color_idx = c;
@@ -329,8 +329,8 @@ void CnnLampRecognizer::decodeTlrOutput(
           const float score = objectness * max_type_prob;
           if (score < score_threshold_) continue;
 
-          const float cos_val = out[base + arch.cos_index * grid_size];
-          const float sin_val = out[base + arch.sin_index * grid_size];
+          const float cos_val = out[base + ml_params.cos_index * grid_size];
+          const float sin_val = out[base + ml_params.sin_index * grid_size];
 
           const float cx = bx / grid_w_f;
           const float cy = by / grid_h_f;
