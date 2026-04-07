@@ -57,16 +57,6 @@
           "description": "Maximum batch size for TensorRT inference (CNN / LampRecognizer).",
           "default": 64
         },
-        "input_height": {
-          "type": "integer",
-          "description": "Input image height for the model when not overridden by the engine binding dimensions.",
-          "default": 256
-        },
-        "input_width": {
-          "type": "integer",
-          "description": "Input image width for the model when not overridden by the engine binding dimensions.",
-          "default": 256
-        },
         "classifier_type": {
           "type": "integer",
           "description": "Type of classifier used. {0: hsv_filter (rule-based), 1: cnn (single-crop), 2: LampRecognizer (cnn per lamp).",
@@ -164,8 +154,6 @@
         "score_threshold",
         "nms_threshold",
         "max_batch_size",
-        "input_height",
-        "input_width",
         "traffic_light_type"
       ],
       "additionalProperties": false
