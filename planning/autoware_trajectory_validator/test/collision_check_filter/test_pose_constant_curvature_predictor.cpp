@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// #include "autoware/trajectory_validator/filters/safety/collision_check_filter.cpp"
-#include "../..//src/filters/safety/collision_check_filter.cpp"
+#include "../../src/filters/safety/collision_check_filter.cpp"
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
@@ -23,10 +22,10 @@
 
 #include <cmath>
 
-namespace autoware::trajectory_validator::plugin::safety::constant_curvature_predictor
+namespace autoware::trajectory_validator::plugin::safety::trajectory::pose::constant_curvature_predictor
 {
 
-TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, PoseToIsometry)
+TEST(PoseConstantCurvaturePredictorTest, PoseToIsometry)
 {
   geometry_msgs::msg::Pose pose;
   pose.position.x = 1.0;
@@ -36,7 +35,7 @@ TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, PoseToIsometry)
   q.setRPY(0.0, 0.0, M_PI_2);
   pose.orientation = tf2::toMsg(q);
 
-  const auto iso = pose_to_isometry(pose);
+  const auto iso = detail::pose_to_isometry(pose);
 
   EXPECT_DOUBLE_EQ(iso.translation().x(), 1.0);
   EXPECT_DOUBLE_EQ(iso.translation().y(), 2.0);
@@ -46,14 +45,14 @@ TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, PoseToIsometry)
   EXPECT_NEAR(iso.linear()(1, 1), 0.0, 1e-6);
 }
 
-TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, ComputeTwistPerDistance)
+TEST(PoseConstantCurvaturePredictorTest, ComputeTwistPerDistance)
 {
   geometry_msgs::msg::Twist twist_normal;
   twist_normal.linear.x = 3.0;
   twist_normal.linear.y = 4.0;
   twist_normal.angular.z = 10.0;
 
-  const auto res_normal = compute_twist_per_distance(twist_normal);
+  const auto res_normal = detail::compute_twist_per_distance(twist_normal);
 
   EXPECT_DOUBLE_EQ(res_normal.linear.x(), 3.0 / 5.0);
   EXPECT_DOUBLE_EQ(res_normal.linear.y(), 4.0 / 5.0);
@@ -64,21 +63,21 @@ TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, ComputeTwistPerDistance)
   twist_stop.linear.y = 0.0;
   twist_stop.angular.z = 5.0;
 
-  const auto res_stop = compute_twist_per_distance(twist_stop);
+  const auto res_stop = detail::compute_twist_per_distance(twist_stop);
 
   EXPECT_NEAR(res_stop.linear.x(), 0.0, 1e-6);
   EXPECT_NEAR(res_stop.linear.y(), 0.0, 1e-6);
   EXPECT_NEAR(res_stop.angular, 0.0, 1e-6);
 }
 
-TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, ComputeDeltaIsometry)
+TEST(PoseConstantCurvaturePredictorTest, ComputeDeltaIsometry)
 {
   {
     TwistPerDistance tpd_straight;
     tpd_straight.linear = Eigen::Vector2d(1.0, 0.0);
     tpd_straight.angular = 0.0;
 
-    const auto iso_straight = compute_delta_isometry(tpd_straight, 2.0);
+    const auto iso_straight = detail::compute_delta_isometry(tpd_straight, 2.0);
     EXPECT_NEAR(iso_straight.translation().x(), 2.0, 1e-6);
     EXPECT_NEAR(iso_straight.translation().y(), 0.0, 1e-6);
     EXPECT_NEAR(Eigen::Rotation2Dd(iso_straight.linear()).angle(), 0.0, 1e-6);
@@ -89,21 +88,21 @@ TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, ComputeDeltaIsometry)
     tpd_curve.linear = Eigen::Vector2d(1.0, 0.0);
     tpd_curve.angular = M_PI_2;
 
-    const auto iso_curve = compute_delta_isometry(tpd_curve, 1.0);
+    const auto iso_curve = detail::compute_delta_isometry(tpd_curve, 1.0);
     EXPECT_NEAR(iso_curve.translation().x(), 1.0 / M_PI_2, 1e-3);
     EXPECT_NEAR(iso_curve.translation().y(), 1.0 / M_PI_2, 1e-3);
     EXPECT_NEAR(Eigen::Rotation2Dd(iso_curve.linear()).angle(), M_PI_2, 1e-3);
   }
 }
 
-TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, IsometryToPose)
+TEST(PoseConstantCurvaturePredictorTest, IsometryToPose)
 {
   Eigen::Isometry2d iso = Eigen::Isometry2d::Identity();
   iso.translation() << 3.0, 4.0;
   iso.linear() = Eigen::Rotation2Dd(M_PI).toRotationMatrix();
 
   const double initial_z = 5.0;
-  const auto pose = isometry_to_pose(iso, initial_z);
+  const auto pose = detail::isometry_to_pose(iso, initial_z);
 
   EXPECT_DOUBLE_EQ(pose.position.x, 3.0);
   EXPECT_DOUBLE_EQ(pose.position.y, 4.0);
@@ -113,7 +112,7 @@ TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, IsometryToPose)
   EXPECT_NEAR(yaw, M_PI, 1e-5);
 }
 
-TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, ComputeTrajectory)
+TEST(PoseConstantCurvaturePredictorTest, ComputeTrajectory)
 {
   geometry_msgs::msg::Pose initial_pose;
   initial_pose.position.x = 1000.0;
@@ -216,4 +215,4 @@ TEST(ConstantCurvaturePoseTrajectoryCalculatorTest, ComputeTrajectory)
   }
 }
 
-}  // namespace autoware::trajectory_validator::plugin::safety::constant_curvature_predictor
+}  // namespace autoware::trajectory_validator::plugin::safety::trajectory::pose::constant_curvature_predictor

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// #include "autoware/trajectory_validator/filters/safety/collision_check_filter.hpp"
 #include "../../src/filters/safety/collision_check_filter.cpp"
 
 #include <gtest/gtest.h>
@@ -20,9 +19,9 @@
 #include <cmath>
 #include <vector>
 
-namespace autoware::trajectory_validator::plugin::safety::motion
+namespace autoware::trajectory_validator::plugin::safety::trajectory::time_distance
 {
-class ComputeMotionProfile1dTest : public ::testing::Test
+class TimeDistanceTest : public ::testing::Test
 {
 protected:
   geometry_msgs::msg::Twist create_twist(double vx, double vy)
@@ -34,7 +33,7 @@ protected:
   }
 };
 
-TEST_F(ComputeMotionProfile1dTest, ZeroInitialVelocity)
+TEST_F(TimeDistanceTest, ZeroInitialVelocity)
 {
   auto twist = create_twist(0.0, 0.0);
   auto [times, distances] = compute_motion_profile_1d(twist, 1.0, 1.0, 0.0, 5.0);
@@ -45,7 +44,7 @@ TEST_F(ComputeMotionProfile1dTest, ZeroInitialVelocity)
   EXPECT_DOUBLE_EQ(distances[0], 0.0);
 }
 
-TEST_F(ComputeMotionProfile1dTest, ConstantVelocity)
+TEST_F(TimeDistanceTest, ConstantVelocity)
 {
   auto twist = create_twist(10.0, 0.0);  // 合成初速: 10.0
   double lag = 1.0;
@@ -65,7 +64,7 @@ TEST_F(ComputeMotionProfile1dTest, ConstantVelocity)
   }
 }
 
-TEST_F(ComputeMotionProfile1dTest, Acceleration)
+TEST_F(TimeDistanceTest, Acceleration)
 {
   auto twist = create_twist(3.0, 4.0);
   double lag = 1.0;
@@ -89,7 +88,7 @@ TEST_F(ComputeMotionProfile1dTest, Acceleration)
   }
 }
 
-TEST_F(ComputeMotionProfile1dTest, DecelerationAndStop)
+TEST_F(TimeDistanceTest, DecelerationAndStop)
 {
   auto twist = create_twist(10.0, 0.0);
   double lag = 1.0;
@@ -112,7 +111,7 @@ TEST_F(ComputeMotionProfile1dTest, DecelerationAndStop)
   EXPECT_NEAR(distances.back(), expected_stop_distance, 1e-6);
 }
 
-TEST_F(ComputeMotionProfile1dTest, LagLongerThanMaxTime)
+TEST_F(TimeDistanceTest, LagLongerThanMaxTime)
 {
   auto twist = create_twist(5.0, 0.0);
   double lag = 5.0;
@@ -127,4 +126,4 @@ TEST_F(ComputeMotionProfile1dTest, LagLongerThanMaxTime)
   }
 }
 
-}  // namespace autoware::trajectory_validator::plugin::safety::motion
+}  // namespace autoware::trajectory_validator::plugin::safety::trajectory::time_distance
