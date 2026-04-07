@@ -111,8 +111,6 @@ CnnLampRecognizer::CnnLampRecognizer(rclcpp::Node * node_ptr) : node_ptr_(node_p
   score_threshold_ = static_cast<float>(node_ptr_->declare_parameter<double>("score_threshold"));
   nms_threshold_ = static_cast<float>(node_ptr_->declare_parameter<double>("nms_threshold"));
   max_batch_size_ = node_ptr_->declare_parameter<int>("max_batch_size");
-  const int default_input_h = node_ptr_->declare_parameter<int>("input_height");
-  const int default_input_w = node_ptr_->declare_parameter<int>("input_width");
 
   model_params_.num_anchors = node_ptr_->declare_parameter<int>("model_params.num_anchors");
   model_params_.chans_per_anchor =
@@ -152,8 +150,8 @@ CnnLampRecognizer::CnnLampRecognizer(rclcpp::Node * node_ptr) : node_ptr_(node_p
 
   nvinfer1::Dims input_dims = trt_common_->getInputDims(0);
   input_c_ = input_dims.d[1] > 0 ? input_dims.d[1] : 3;
-  input_height_ = input_dims.d[2] > 0 ? input_dims.d[2] : default_input_h;
-  input_width_ = input_dims.d[3] > 0 ? input_dims.d[3] : default_input_w;
+  input_height_ = input_dims.d[2];
+  input_width_ = input_dims.d[3];
 
   const int min_batch = 1;
   const int opt_batch = std::min(32, max_batch_size_);

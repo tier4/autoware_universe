@@ -10,5 +10,3 @@
     score_threshold: 0.2
     nms_threshold: 0.2
     max_batch_size: 64
-    input_height: 256
-    input_width: 256
