@@ -15,10 +15,14 @@
   <arg name="input_vector_map" default="~/input/vector_map"/>
   <arg name="input_turn_indicators" default="~/input/turn_indicators"/>
   <arg name="build_only" default="false" description="shutdown node after TensorRT engine file is built"/>
+  <arg name="onnx_model_path" default="/opt/autoware/mlmodels/diffusion_planner_for_x2_exp/diffusion_planner.onnx"/>
+  <arg name="args_path" default="/opt/autoware/mlmodels/diffusion_planner_for_x2_exp/args.json"/>
 
   <node pkg="autoware_diffusion_planner" exec="autoware_diffusion_planner_node" name="diffusion_planner_node" output="both">
     <param from="$(var diffusion_planner_param_path)" allow_substs="true"/>
     <param from="$(var vehicle_info_param_path)" allow_substs="true"/>
+    <param name="onnx_model_path" value="$(var onnx_model_path)"/>
+    <param name="args_path" value="$(var args_path)"/>
     <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
     <remap from="~/output/trajectories" to="$(var output_trajectories)"/>
     <remap from="~/output/predicted_objects" to="$(var output_predicted_objects)"/>
