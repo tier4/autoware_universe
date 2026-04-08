@@ -139,12 +139,6 @@ private:
   void preprocess(const std::vector<cv::Mat> & images);
   bool doInference(size_t batch_size);
   void decodeTlrOutput(size_t batch_size, std::vector<std::vector<BBoxInfo>> & detections_per_roi);
-  void updateTrafficSignals(
-    const std::vector<LampElement> & elements,
-    tier4_perception_msgs::msg::TrafficLight & traffic_signal);
-  void outputDebugImage(
-    cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
-    const std::vector<LampElement> * elements = nullptr);
 
   rclcpp::Node * node_ptr_;
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> trt_common_;

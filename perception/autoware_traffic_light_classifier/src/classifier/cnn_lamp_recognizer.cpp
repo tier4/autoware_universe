@@ -49,14 +49,10 @@ ArrowDirection angleToArrowDirection(float angle_rad)
     return ArrowDirection::DOWN_RIGHT_ARROW;
   if (angle_rad >= 7.0f * PI / 8.0f || angle_rad < -7.0f * PI / 8.0f)
     return ArrowDirection::DOWN_ARROW;
-  if (angle_rad >= -7.0f * PI / 8.0f && angle_rad < -5.0f * PI / 8.0f)
-    return ArrowDirection::DOWN_LEFT_ARROW;
-  if (angle_rad >= -5.0f * PI / 8.0f && angle_rad < -3.0f * PI / 8.0f)
-    return ArrowDirection::LEFT_ARROW;
+  if (angle_rad < -5.0f * PI / 8.0f) return ArrowDirection::DOWN_LEFT_ARROW;
+  if (angle_rad < -3.0f * PI / 8.0f) return ArrowDirection::LEFT_ARROW;
   return ArrowDirection::UP_LEFT_ARROW;
 }
-
-}  // namespace
 
 static float get2DIoU(const BBox & bbox1, const BBox & bbox2)
 {
@@ -97,6 +93,153 @@ static void runNms(
     if (keep) out.push_back(i);
   }
 }
+
+static void cvtBBoxInfoToLampElement(const BBoxInfo & box_info, LampElement & element)
+{
+  element.color = static_cast<Color>(std::min(2, std::max(0, box_info.subClassId)));
+  element.confidence = box_info.prob;
+  element.box = box_info.box;
+  element.shape = static_cast<Shape>(box_info.classId);
+  if (element.shape == Shape::ARROW) {
+    element.arrow_direction = angleToArrowDirection(std::atan2(box_info.sin, box_info.cos));
+  }
+}
+
+static void updateTrafficSignals(
+  const std::vector<LampElement> & unique_elements,
+  tier4_perception_msgs::msg::TrafficLight & traffic_signal)
+{
+  traffic_signal.elements.clear();
+  bool is_pedestrian = traffic_signal.traffic_light_type == 1;
+  if (unique_elements.empty()) {
+    MsgTE unknown_elem;
+    unknown_elem.color = MsgTE::UNKNOWN;
+    unknown_elem.shape = MsgTE::UNKNOWN;
+    unknown_elem.confidence = 0.0;
+    traffic_signal.elements.push_back(unknown_elem);
+    return;
+  }
+  for (const auto & e : unique_elements) {
+    MsgTE element;
+    element.confidence = e.confidence;
+    switch (e.color) {
+      case Color::GREEN:
+        element.color = MsgTE::GREEN;
+        break;
+      case Color::AMBER:
+        element.color = MsgTE::AMBER;
+        break;
+      case Color::RED:
+        element.color = MsgTE::RED;
+        break;
+      default:
+        element.color = MsgTE::UNKNOWN;
+        break;
+    }
+    if (is_pedestrian || e.shape == Shape::PED) {
+      element.shape = MsgTE::CIRCLE;
+      traffic_signal.elements.push_back(element);
+      continue;
+    }
+    switch (e.shape) {
+      case Shape::CIRCLE:
+        element.shape = MsgTE::CIRCLE;
+        break;
+      case Shape::ARROW:
+        switch (e.arrow_direction) {
+          case ArrowDirection::UP_ARROW:
+            element.shape = MsgTE::UP_ARROW;
+            break;
+          case ArrowDirection::DOWN_ARROW:
+            element.shape = MsgTE::DOWN_ARROW;
+            break;
+          case ArrowDirection::LEFT_ARROW:
+            element.shape = MsgTE::LEFT_ARROW;
+            break;
+          case ArrowDirection::RIGHT_ARROW:
+            element.shape = MsgTE::RIGHT_ARROW;
+            break;
+          case ArrowDirection::UP_LEFT_ARROW:
+            element.shape = MsgTE::UP_LEFT_ARROW;
+            break;
+          case ArrowDirection::UP_RIGHT_ARROW:
+            element.shape = MsgTE::UP_RIGHT_ARROW;
+            break;
+          case ArrowDirection::DOWN_LEFT_ARROW:
+            element.shape = MsgTE::DOWN_LEFT_ARROW;
+            break;
+          case ArrowDirection::DOWN_RIGHT_ARROW:
+            element.shape = MsgTE::DOWN_RIGHT_ARROW;
+            break;
+          default:
+            element.shape = MsgTE::UNKNOWN;
+            element.confidence = 0.0;
+            break;
+        }
+        break;
+      case Shape::PED:
+        element.shape = MsgTE::CIRCLE;
+        break;
+      case Shape::CROSS:
+        element.shape = MsgTE::CROSS;
+        break;
+      // TODO(badai-nguyen): update u-turn, number when msgs are updated
+      default:
+        element.shape = MsgTE::UNKNOWN;
+        element.confidence = 0.0;
+        break;
+    }
+    traffic_signal.elements.push_back(element);
+  }
+}
+
+static void outputDebugImage(
+  cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
+  const std::vector<LampElement> * elements)
+{
+  const int img_w = debug_image.cols;
+  const int img_h = debug_image.rows;
+
+  if (elements && !elements->empty()) {
+    static const cv::Scalar colors[] = {
+      cv::Scalar(0, 255, 0),    // green  (R, G, B)
+      cv::Scalar(255, 255, 0),  // yellow/amber
+      cv::Scalar(255, 0, 0),    // red
+    };
+    for (const auto & d : *elements) {
+      const int x1 = static_cast<int>(d.box.x1 * img_w);
+      const int y1 = static_cast<int>(d.box.y1 * img_h);
+      const int x2 = static_cast<int>(d.box.x2 * img_w);
+      const int y2 = static_cast<int>(d.box.y2 * img_h);
+      const int color_idx = std::min(2, std::max(0, static_cast<int>(d.color)));
+      cv::rectangle(debug_image, cv::Point(x1, y1), cv::Point(x2, y2), colors[color_idx], 2);
+    }
+  }
+
+  float probability = 0.0f;
+  std::string label;
+  for (std::size_t i = 0; i < traffic_signal.elements.size(); i++) {
+    auto light = traffic_signal.elements.at(i);
+    const auto light_label =
+      utils::convertColorT4toString(light.color) + "-" + utils::convertShapeT4toString(light.shape);
+    label += light_label;
+    // all lamp confidence are the same
+    probability = light.confidence;
+    if (i < traffic_signal.elements.size() - 1) {
+      label += ",";
+    }
+  }
+  const std::string text = label + " " + std::to_string(probability);
+  const int expand_h =
+    std::max(static_cast<int>((kDebugImageWidth * debug_image.rows) / debug_image.cols), 1);
+  cv::resize(debug_image, debug_image, cv::Size(kDebugImageWidth, expand_h));
+  cv::Mat text_img(cv::Size(kDebugImageWidth, kDebugTextHeight), CV_8UC3, cv::Scalar(0, 0, 0));
+  cv::putText(
+    text_img, text, cv::Point(5, 25), cv::FONT_HERSHEY_COMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+  cv::vconcat(debug_image, text_img, debug_image);
+}
+
+}  // namespace
 
 CnnLampRecognizer::CnnLampRecognizer(rclcpp::Node * node_ptr) : node_ptr_(node_ptr)
 {
@@ -357,151 +500,6 @@ void CnnLampRecognizer::decodeTlrOutput(
     }
 
     runNms(raw, nms_threshold_, detections_per_roi[b]);
-  }
-}
-
-void CnnLampRecognizer::outputDebugImage(
-  cv::Mat & debug_image, const tier4_perception_msgs::msg::TrafficLight & traffic_signal,
-  const std::vector<LampElement> * unique_elements)
-{
-  const int img_w = debug_image.cols;
-  const int img_h = debug_image.rows;
-
-  if (unique_elements && !unique_elements->empty()) {
-    static const cv::Scalar colors[] = {
-      cv::Scalar(0, 255, 0),    // green  (R, G, B)
-      cv::Scalar(255, 255, 0),  // yellow/amber
-      cv::Scalar(255, 0, 0),    // red
-    };
-    for (const auto & d : *unique_elements) {
-      const int x1 = static_cast<int>(d.box.x1 * img_w);
-      const int y1 = static_cast<int>(d.box.y1 * img_h);
-      const int x2 = static_cast<int>(d.box.x2 * img_w);
-      const int y2 = static_cast<int>(d.box.y2 * img_h);
-      const int color_idx = std::min(2, std::max(0, static_cast<int>(d.color)));
-      cv::rectangle(debug_image, cv::Point(x1, y1), cv::Point(x2, y2), colors[color_idx], 2);
-    }
-  }
-
-  float probability = 0.0f;
-  std::string label;
-  for (std::size_t i = 0; i < traffic_signal.elements.size(); i++) {
-    auto light = traffic_signal.elements.at(i);
-    const auto light_label =
-      utils::convertColorT4toString(light.color) + "-" + utils::convertShapeT4toString(light.shape);
-    label += light_label;
-    // all lamp confidence are the same
-    probability = light.confidence;
-    if (i < traffic_signal.elements.size() - 1) {
-      label += ",";
-    }
-  }
-  const std::string text = label + " " + std::to_string(probability);
-  const int expand_h =
-    std::max(static_cast<int>((kDebugImageWidth * debug_image.rows) / debug_image.cols), 1);
-  cv::resize(debug_image, debug_image, cv::Size(kDebugImageWidth, expand_h));
-  cv::Mat text_img(cv::Size(kDebugImageWidth, kDebugTextHeight), CV_8UC3, cv::Scalar(0, 0, 0));
-  cv::putText(
-    text_img, text, cv::Point(5, 25), cv::FONT_HERSHEY_COMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
-  cv::vconcat(debug_image, text_img, debug_image);
-}
-
-static void cvtBBoxInfoToLampElement(const BBoxInfo & box_info, LampElement & element)
-{
-  element.color = static_cast<Color>(std::min(2, std::max(0, box_info.subClassId)));
-  element.confidence = box_info.prob;
-  element.box = box_info.box;
-  element.shape = static_cast<Shape>(box_info.classId);
-  if (element.shape == Shape::ARROW) {
-    element.arrow_direction = angleToArrowDirection(std::atan2(box_info.sin, box_info.cos));
-  }
-}
-
-void CnnLampRecognizer::updateTrafficSignals(
-  const std::vector<LampElement> & unique_elements,
-  tier4_perception_msgs::msg::TrafficLight & traffic_signal)
-{
-  traffic_signal.elements.clear();
-  bool is_pedestrian = traffic_signal.traffic_light_type == 1;
-  if (unique_elements.empty()) {
-    MsgTE unknown_elem;
-    unknown_elem.color = MsgTE::UNKNOWN;
-    unknown_elem.shape = MsgTE::UNKNOWN;
-    unknown_elem.confidence = 0.0;
-    traffic_signal.elements.push_back(unknown_elem);
-    return;
-  }
-  for (const auto & e : unique_elements) {
-    MsgTE element;
-    element.confidence = e.confidence;
-    switch (e.color) {
-      case Color::GREEN:
-        element.color = MsgTE::GREEN;
-        break;
-      case Color::AMBER:
-        element.color = MsgTE::AMBER;
-        break;
-      case Color::RED:
-        element.color = MsgTE::RED;
-        break;
-      default:
-        element.color = MsgTE::UNKNOWN;
-        break;
-    }
-    if (is_pedestrian || e.shape == Shape::PED) {
-      element.shape = MsgTE::CIRCLE;
-      traffic_signal.elements.push_back(element);
-      continue;
-    }
-    switch (e.shape) {
-      case Shape::CIRCLE:
-        element.shape = MsgTE::CIRCLE;
-        break;
-      case Shape::ARROW:
-        switch (e.arrow_direction) {
-          case ArrowDirection::UP_ARROW:
-            element.shape = MsgTE::UP_ARROW;
-            break;
-          case ArrowDirection::DOWN_ARROW:
-            element.shape = MsgTE::DOWN_ARROW;
-            break;
-          case ArrowDirection::LEFT_ARROW:
-            element.shape = MsgTE::LEFT_ARROW;
-            break;
-          case ArrowDirection::RIGHT_ARROW:
-            element.shape = MsgTE::RIGHT_ARROW;
-            break;
-          case ArrowDirection::UP_LEFT_ARROW:
-            element.shape = MsgTE::UP_LEFT_ARROW;
-            break;
-          case ArrowDirection::UP_RIGHT_ARROW:
-            element.shape = MsgTE::UP_RIGHT_ARROW;
-            break;
-          case ArrowDirection::DOWN_LEFT_ARROW:
-            element.shape = MsgTE::DOWN_LEFT_ARROW;
-            break;
-          case ArrowDirection::DOWN_RIGHT_ARROW:
-            element.shape = MsgTE::DOWN_RIGHT_ARROW;
-            break;
-          default:
-            element.shape = MsgTE::UNKNOWN;
-            element.confidence = 0.0;
-            break;
-        }
-        break;
-      case Shape::PED:
-        element.shape = MsgTE::CIRCLE;
-        break;
-      case Shape::CROSS:
-        element.shape = MsgTE::CROSS;
-        break;
-      // TODO(badai-nguyen): update u-turn, number when msgs are updated
-      default:
-        element.shape = MsgTE::UNKNOWN;
-        element.confidence = 0.0;
-        break;
-    }
-    traffic_signal.elements.push_back(element);
   }
 }
 
