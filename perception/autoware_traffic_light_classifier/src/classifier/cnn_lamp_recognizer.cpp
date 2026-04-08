@@ -94,7 +94,7 @@ static void runNms(
   }
 }
 
-static void cvtBBoxInfoToLampElement(const BBoxInfo & box_info, LampElement & element)
+static void convertBBoxInfoToLampElement(const BBoxInfo & box_info, LampElement & element)
 {
   element.color = static_cast<Color>(std::min(2, std::max(0, box_info.subClassId)));
   element.confidence = box_info.prob;
@@ -540,7 +540,7 @@ bool CnnLampRecognizer::getTrafficSignals(
       std::vector<LampElement> traffic_lamps;
       for (const auto & d : detections_per_roi[i]) {
         LampElement element;
-        cvtBBoxInfoToLampElement(d, element);
+        convertBBoxInfoToLampElement(d, element);
         traffic_lamps.push_back(element);
       }
       // if multiple detections have the same shape and arrow direction
