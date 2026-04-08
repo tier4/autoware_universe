@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "../..//src/filters/safety/collision_check_filter.cpp"
+#include "../../src/filters/safety/collision_check_filter.cpp"
 
 #include <gtest/gtest.h>
 
@@ -77,9 +77,10 @@ protected:
     const double assumed_acceleration = 0.0;
     const double max_time = 10.0;
 
-    auto [times, distances] =
-      motion::compute_motion_profile_1d(twist, assumed_lag, assumed_acceleration, 0.0, max_time);
-    auto pose_trajectory = constant_curvature_predictor::compute(initial_pose, twist, distances);
+    auto [times, distances] = trajectory::time_distance::compute_motion_profile_1d(
+      twist, assumed_lag, assumed_acceleration, 0.0, max_time);
+    auto pose_trajectory =
+      trajectory::pose::constant_curvature_predictor::compute(initial_pose, twist, distances);
 
     autoware_perception_msgs::msg::PredictedPath predicted_path;
     predicted_path.confidence = 1.0;

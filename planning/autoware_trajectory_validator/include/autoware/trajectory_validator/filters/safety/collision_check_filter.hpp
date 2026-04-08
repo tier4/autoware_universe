@@ -101,8 +101,8 @@ public:
       return boost::make_iterator_range(footprints_.end(), footprints_.end());
     }
 
-    const size_t start_index = getIndex(start_time);
-    const size_t end_index = getIndex(end_time);
+    const size_t start_index = getClosestTimeIndex(start_time);
+    const size_t end_index = getClosestTimeIndex(end_time);
 
     if (start_index > end_index) {
       return boost::make_iterator_range(footprints_.end(), footprints_.end());
@@ -115,7 +115,7 @@ public:
   }
 
 private:
-  size_t getIndex(const double t) const
+  size_t getClosestTimeIndex(const double t) const
   {
     const auto it = std::lower_bound(times_.begin(), times_.end(), t);
 
@@ -128,22 +128,10 @@ private:
   }
 };
 
-struct DebugData
-{
-  double pet{std::numeric_limits<double>::max()};
-  Polygon2d ego_polygons;
-  Polygon2d object_polygons;
-  std::string object_id;
-};
-
 class CollisionCheckFilter : public plugin::ValidatorInterface
 {
 public:
   CollisionCheckFilter() : ValidatorInterface("collision_check_filter") {}
-
-  double compute_rss_deceleration(
-    const TrajectoryData & ego_trajectory, const geometry_msgs::msg::Twist & ego_twist,
-    const autoware_perception_msgs::msg::PredictedObject & object) const;
 
   tl::expected<void, std::string> is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) override;
@@ -154,7 +142,9 @@ private:
   validator::Params::CollisionCheck::PetCollision pet_collision_params_;
   validator::Params::CollisionCheck::Rss rss_params_;
 
-  void add_debug_markers(const DebugData & debug_data, const rclcpp::Time & stamp);
+  void add_debug_markers(
+    const Polygon2d & ego_hull, const Polygon2d & object_hull, const std::string & trajectory_id,
+    const rclcpp::Time & stamp);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety
