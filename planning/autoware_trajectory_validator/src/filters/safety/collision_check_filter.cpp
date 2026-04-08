@@ -28,8 +28,10 @@
 #include <algorithm>
 #include <any>
 #include <cmath>
+#include <iomanip>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -38,6 +40,53 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+namespace
+{
+std::string make_terminal_bar_plot(
+  const double value, const double threshold, const std::size_t width = 40U)
+{
+  std::string bar(width, '.');
+  if (width == 0U || threshold <= 0.0) {
+    return bar;
+  }
+
+  const double plot_max = threshold * 2.0;
+  const double finite_value = std::isfinite(value) ? value : plot_max;
+  const double clamped_value = std::clamp(finite_value, 0.0, plot_max);
+  const auto filled = static_cast<std::size_t>(std::round((clamped_value / plot_max) * width));
+  std::fill_n(bar.begin(), std::min(filled, width), '#');
+
+  const auto threshold_index = static_cast<std::size_t>(std::round((threshold / plot_max) * width));
+  if (threshold_index < width) {
+    bar.at(threshold_index) = '|';
+  } else if (!bar.empty()) {
+    bar.back() = '|';
+  }
+
+  if (!std::isfinite(value) && !bar.empty()) {
+    bar.back() = '!';
+  }
+
+  return bar;
+}
+
+std::string format_required_deceleration_plot(
+  const double max_required_deceleration, const double threshold, const double stop_margin,
+  const std::string & object_id)
+{
+  std::ostringstream oss;
+  oss << "RSS required decel max [" << make_terminal_bar_plot(max_required_deceleration, threshold)
+      << "] value=";
+  if (std::isfinite(max_required_deceleration)) {
+    oss << std::fixed << std::setprecision(2) << max_required_deceleration;
+  } else {
+    oss << "inf";
+  }
+  oss << " m/s^2 threshold=" << std::fixed << std::setprecision(2) << threshold
+      << " margin=" << std::fixed << std::setprecision(2) << stop_margin << " object=" << object_id;
+  return oss.str();
+}
+}  // namespace
 
 // Trajectory generation helpers.
 namespace trajectory::time_distance
@@ -711,6 +760,15 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
     error_msg += fmt::format(
       "RSS collision, ID: {}, required deceleration: {}; ", violation.object_id,
       violation.required_deceleration);
+  }
+
+  if (rss_result.worst_assessment.has_value()) {
+    RCLCPP_INFO(
+      rclcpp::get_logger("CollisionCheckFilter"), "%s",
+      format_required_deceleration_plot(
+        rss_result.worst_assessment->required_deceleration, rss_params_.ego_deceleration_threshold,
+        rss_params_.stop_margin, rss_result.worst_assessment->object_id)
+        .c_str());
   }
 
   if (!error_msg.empty()) {
