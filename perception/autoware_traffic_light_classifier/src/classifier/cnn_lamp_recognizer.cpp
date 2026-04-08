@@ -15,6 +15,7 @@
 #include "cnn_lamp_recognizer.hpp"
 
 #include "../traffic_light_classifier_process.hpp"
+#include "autoware_utils/math/constants.hpp"
 
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 
@@ -33,28 +34,24 @@ namespace autoware::traffic_light
 {
 
 using MsgTE = tier4_perception_msgs::msg::TrafficLightElement;
-
 namespace
 {
-
-constexpr float kPi = 3.14159265358979f;
 constexpr int kDebugImageWidth = 200;
 constexpr int kDebugTextHeight = 50;
-
+constexpr double PI = autoware_utils::pi;
 ArrowDirection angleToArrowDirection(float angle_rad)
 {
-  if (angle_rad >= -kPi / 8.0f && angle_rad < kPi / 8.0f) return ArrowDirection::UP_ARROW;
-  if (angle_rad >= kPi / 8.0f && angle_rad < 3.0f * kPi / 8.0f)
-    return ArrowDirection::UP_RIGHT_ARROW;
-  if (angle_rad >= 3.0f * kPi / 8.0f && angle_rad < 5.0f * kPi / 8.0f)
+  if (angle_rad >= -PI / 8.0f && angle_rad < PI / 8.0f) return ArrowDirection::UP_ARROW;
+  if (angle_rad >= PI / 8.0f && angle_rad < 3.0f * PI / 8.0f) return ArrowDirection::UP_RIGHT_ARROW;
+  if (angle_rad >= 3.0f * PI / 8.0f && angle_rad < 5.0f * PI / 8.0f)
     return ArrowDirection::RIGHT_ARROW;
-  if (angle_rad >= 5.0f * kPi / 8.0f && angle_rad < 7.0f * kPi / 8.0f)
+  if (angle_rad >= 5.0f * PI / 8.0f && angle_rad < 7.0f * PI / 8.0f)
     return ArrowDirection::DOWN_RIGHT_ARROW;
-  if (angle_rad >= 7.0f * kPi / 8.0f || angle_rad < -7.0f * kPi / 8.0f)
+  if (angle_rad >= 7.0f * PI / 8.0f || angle_rad < -7.0f * PI / 8.0f)
     return ArrowDirection::DOWN_ARROW;
-  if (angle_rad >= -7.0f * kPi / 8.0f && angle_rad < -5.0f * kPi / 8.0f)
+  if (angle_rad >= -7.0f * PI / 8.0f && angle_rad < -5.0f * PI / 8.0f)
     return ArrowDirection::DOWN_LEFT_ARROW;
-  if (angle_rad >= -5.0f * kPi / 8.0f && angle_rad < -3.0f * kPi / 8.0f)
+  if (angle_rad >= -5.0f * PI / 8.0f && angle_rad < -3.0f * PI / 8.0f)
     return ArrowDirection::LEFT_ARROW;
   return ArrowDirection::UP_LEFT_ARROW;
 }
