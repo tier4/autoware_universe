@@ -15,6 +15,8 @@
 #include "autoware/trajectory_validator/filters/safety/collision_check_filter.hpp"
 
 #include <autoware/universe_utils/geometry/pose_deviation.hpp>
+#include <autoware/object_recognition_utils/object_classification.hpp>
+#include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
@@ -38,6 +40,8 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+using autoware::object_recognition_utils::convertLabelToString;
+using autoware::object_recognition_utils::getHighestProbLabel;
 
 // Trajectory generation helpers.
 namespace trajectory::time_distance
@@ -358,6 +362,7 @@ namespace rss_deceleration
 struct Assessment
 {
   std::string object_id;
+  std::string classification;
   double required_deceleration;
 };
 
@@ -439,14 +444,18 @@ Assessment assess_required_deceleration(
 {
   const auto ego_long_vel = ego_twist.linear.x;
   if (ego_long_vel <= 0.0) {
-    return Assessment{autoware_utils_uuid::to_hex_string(object.object_id), 0.0};
+    return Assessment{
+      autoware_utils_uuid::to_hex_string(object.object_id),
+      convertLabelToString(getHighestProbLabel(object.classification)), 0.0};
   }
 
   // compute current distance
   const auto distance_to_collision =
     rss_deceleration::compute_distance_to_collision(ego_trajectory, object);
   if (!distance_to_collision.has_value()) {
-    return Assessment{autoware_utils_uuid::to_hex_string(object.object_id), 0.0};
+    return Assessment{
+      autoware_utils_uuid::to_hex_string(object.object_id),
+      convertLabelToString(getHighestProbLabel(object.classification)), 0.0};
   }
 
   // compute safe distance
@@ -461,7 +470,9 @@ Assessment assess_required_deceleration(
                                          ? std::numeric_limits<double>::infinity()
                                          : ego_long_vel * ego_long_vel * 0.5 / safe_distance;
 
-  return Assessment{autoware_utils_uuid::to_hex_string(object.object_id), required_deceleration};
+  return Assessment{
+    autoware_utils_uuid::to_hex_string(object.object_id),
+    convertLabelToString(getHighestProbLabel(object.classification)), required_deceleration};
 }
 
 Result assess(
@@ -709,8 +720,8 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
     rss_deceleration::assess(traj_points, context, rss_params_, *vehicle_info_ptr_);
   for (const auto & violation : rss_result.violations) {
     error_msg += fmt::format(
-      "RSS collision, ID: {}, required deceleration: {}; ", violation.object_id,
-      violation.required_deceleration);
+      "RSS collision, ID: {}, classification: {}, required deceleration: {}; ",
+      violation.object_id, violation.classification, violation.required_deceleration);
   }
 
   if (!error_msg.empty()) {
