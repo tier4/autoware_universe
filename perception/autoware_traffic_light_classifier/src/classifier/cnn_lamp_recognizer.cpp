@@ -61,7 +61,7 @@ ArrowDirection angleToArrowDirection(float angle_rad)
 
 }  // namespace
 
-static float boxIou(const BBox & bbox1, const BBox & bbox2)
+static float get2DIoU(const BBox & bbox1, const BBox & bbox2)
 {
   auto overlap1D = [](float x1min, float x1max, float x2min, float x2max) -> float {
     if (x1min > x2min) {
@@ -91,7 +91,7 @@ static void runNms(
     bool keep = true;
     for (const auto & j : out) {
       if (keep) {
-        const float overlap = boxIou(i.box, j.box);
+        const float overlap = get2DIoU(i.box, j.box);
         keep = (overlap <= iou_threshold);
       } else {
         break;
