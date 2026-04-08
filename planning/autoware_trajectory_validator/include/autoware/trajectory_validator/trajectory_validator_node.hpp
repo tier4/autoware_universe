@@ -15,8 +15,10 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__TRAJECTORY_VALIDATOR_NODE_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__TRAJECTORY_VALIDATOR_NODE_HPP_
 
+#include "autoware/trajectory_validator/filter_context.hpp"
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
+#include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
@@ -39,6 +41,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -130,6 +133,24 @@ private:
   // Tools
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};
   DiagnosticsInterface diagnostics_interface_{this, "trajectory_validator"};
+
+  // Emergency-stop fallback (evaluation use only).
+  void handle_pseudo_emergency_stop(
+    const CandidateTrajectories & input_trajectories, CandidateTrajectories & filtered_trajectories,
+    const FilterContext & context);
+  bool has_infeasible_evaluation(const EvaluationTable & table) const;
+  bool is_pseudo_emergency_stop_triggered(
+    const std::vector<EvaluationTable> & evaluation_tables) const;
+  void update_pseudo_emergency_stop_state(bool triggered, double ego_velocity_mps);
+  void cache_fallback_trajectory(
+    const CandidateTrajectories & input_trajectories,
+    const std::vector<EvaluationTable> & evaluation_tables);
+  void apply_pseudo_emergency_stop_fallback(
+    CandidateTrajectories & filtered_trajectories, const FilterContext & context);
+  bool pseudo_emergency_stop_active_{false};
+  std::optional<CandidateTrajectory> cached_fallback_trajectory_{std::nullopt};
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    pseudo_emergency_stop_planning_factor_interface_;
 };
 
 }  // namespace autoware::trajectory_validator

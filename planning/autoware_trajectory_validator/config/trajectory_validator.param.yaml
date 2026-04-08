@@ -52,3 +52,11 @@
       checked_trajectory_length:  # maximum length of the planned trajectory that is scanned for traffic light stop lines.
         deceleration_limit: 2.0  # [m/s^2] deceleration limit to calculate the stop distance used as trajectory length limit
         jerk_limit: 2.0  # [m/s^3] jerk limit to calculate the stop distance used as trajectory length limit
+
+    # NOTE: pseudo_emergency_stop emulates the MRM stop behaviors. This is for evaluation only.
+    pseudo_emergency_stop:
+      enable: false  # when true, the emergency-stop fallback is active; when false, all emergency-stop handling is skipped
+      deceleration_mps2: -6.0  # [m/s^2] target longitudinal deceleration (reference to InLaneEmergencyStop deceleration)
+      jerk_mps3: -20.0  # [m/s^3] longitudinal jerk to ramp the deceleration (reference to InLaneEmergencyStop jerk)
+      recovery_policy: "until_stopped"  # "until_stopped": keep decelerating until ego is stopped, "immediate": release as soon as the trigger disappears
+      recovery_velocity_threshold_mps: 0.1  # [m/s] ego velocity threshold under which the latched emergency-stop state is released when recovery_policy is "until_stopped"
