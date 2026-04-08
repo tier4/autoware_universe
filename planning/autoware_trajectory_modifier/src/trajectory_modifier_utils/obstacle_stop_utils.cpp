@@ -92,8 +92,8 @@ TrajectoryShape get_trajectory_shape(
       motion_utils::cropForwardPoints(
         trajectory_points, ego_pose.position, start_idx, detection_length);
     }
-    const auto diff = detection_length - forward_traj_length;
-    return extend_trajectory(trajectory_points, diff);
+    const auto extend_length = std::min(detection_length - forward_traj_length, stop_margin);
+    return extend_trajectory(trajectory_points, extend_length);
   });
 
   autoware_utils_geometry::LineString2d ls_front_right;
@@ -253,6 +253,102 @@ std::optional<CollisionPoint> get_nearest_object_collision(
       }
     }
     target_polygons.emplace_back(object_polygon);
+  }
+
+  if (!found_collision) return std::nullopt;
+  return CollisionPoint(nearest_collision_point, min_arc_length);
+}
+
+double get_safe_distance(
+  const double ego_vel, const double object_vel, const double ego_decel, const double object_decel,
+  const double reaction_time, const double safety_margin)
+{
+  constexpr double eps = 1e-3;
+  const auto ego_decel_mag = std::max(std::abs(ego_decel), eps);
+  const auto object_decel_mag = std::max(std::abs(object_decel), eps);
+  const auto reaction_distance = ego_vel * reaction_time;
+  const auto ego_stopping_distance = ego_vel * ego_vel / (2 * ego_decel_mag);
+  const auto object_stopping_distance = object_vel * object_vel / (2 * object_decel_mag);
+  const auto safe_distance =
+    reaction_distance + ego_stopping_distance - object_stopping_distance + safety_margin;
+  return std::max(safe_distance, safety_margin);
+}
+
+std::optional<CollisionPoint> get_nearest_object_collision(
+  const TrajectoryPoints & trajectory_points, const TrajectoryShape & trajectory_shape,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const PredictedObjects & objects,
+  const ObjectDecelMap & object_decel_map, const double ego_vel, const double ego_decel,
+  const double reaction_time, const double safety_margin, const double min_vel_th,
+  MultiPolygon2d & target_polygons, PredictedObject & colliding_object)
+{
+  if (objects.objects.empty()) return std::nullopt;
+
+  auto lon_vel = [&](const auto & object) -> std::optional<double> {
+    const auto nearest_seg = motion_utils::findNearestSegmentIndex(
+      trajectory_points, object.kinematics.initial_pose_with_covariance.pose.position);
+    if (!nearest_seg) return std::nullopt;
+    const auto traj_yaw = tf2::getYaw(trajectory_points.at(nearest_seg).pose.orientation);
+    const auto traj_direction = Eigen::Vector2d(std::cos(traj_yaw), std::sin(traj_yaw));
+    const auto obj_vel = object.kinematics.initial_twist_with_covariance.twist.linear;
+    const auto obj_vel_vector = Eigen::Vector2d(obj_vel.x, obj_vel.y);
+    return std::max(0.0, obj_vel_vector.dot(traj_direction));
+  };
+
+  auto safe_distance = [&](const auto & object) -> std::optional<double> {
+    if (object.classification.empty()) return std::nullopt;
+    const auto obj_type = classification_to_object_type.at(object.classification.front().label);
+    if (!object_decel_map.count(obj_type)) return std::nullopt;
+    const auto obj_decel = object_decel_map.at(obj_type);
+    const auto obj_vel = lon_vel(object);
+    if (!obj_vel || obj_vel.value() < min_vel_th) return std::nullopt;
+    return get_safe_distance(
+      ego_vel, obj_vel.value(), ego_decel, obj_decel, reaction_time, safety_margin);
+  };
+
+  const auto ego_front_arc_length =
+    std::max(0.0, trajectory_shape.trajectory_length - trajectory_shape.forward_traj_length) +
+    vehicle_info.max_longitudinal_offset_m;
+
+  auto min_arc_length = std::numeric_limits<double>::max();
+  geometry_msgs::msg::Point nearest_collision_point;
+  bool found_collision = false;
+  for (const auto & object : objects.objects) {
+    const auto object_pose = object.kinematics.initial_pose_with_covariance.pose;
+    const auto object_polygon = autoware_utils::to_polygon2d(object_pose, object.shape);
+    if (boost::geometry::disjoint(object_polygon, trajectory_shape.polygon)) {
+      continue;
+    }
+
+    target_polygons.emplace_back(object_polygon);
+
+    const auto [obj_arc_length, obj_nearest_p] =
+      std::invoke([&]() -> std::pair<double, geometry_msgs::msg::Point> {
+        double arc_length = std::numeric_limits<double>::max();
+        geometry_msgs::msg::Point nearest_p;
+        for (const auto & point : object_polygon.outer()) {
+          const geometry_msgs::msg::Point p =
+            geometry_msgs::msg::Point().set__x(point.x()).set__y(point.y());
+          const auto l = motion_utils::calcSignedArcLength(trajectory_points, 0, p);
+          if (l < arc_length) {
+            arc_length = l;
+            nearest_p = p;
+          }
+        }
+        return {arc_length, nearest_p};
+      });
+
+    const auto safe_dist = safe_distance(object);
+    const auto relative_arc_length = std::max(0.0, obj_arc_length - ego_front_arc_length);
+    if (safe_dist && relative_arc_length - safe_dist.value() > 1e-3) {
+      continue;
+    }
+
+    found_collision = true;
+    if (obj_arc_length < min_arc_length) {
+      min_arc_length = obj_arc_length;
+      nearest_collision_point = obj_nearest_p;
+      colliding_object = object;
+    }
   }
 
   if (!found_collision) return std::nullopt;

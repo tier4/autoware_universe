@@ -83,6 +83,16 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
       p.on_time_buffer, p.off_time_buffer, p.object_distance_th, p.object_yaw_th, p.pcd_distance_th,
       p.grace_period);
   }
+
+  {
+    const auto & p = params_.rss_params;
+    object_decel_map_ = {
+      {utils::obstacle_stop::ObjectType::CAR, p.object_decel.car},
+      {utils::obstacle_stop::ObjectType::TRUCK, p.object_decel.truck},
+      {utils::obstacle_stop::ObjectType::BUS, p.object_decel.bus},
+      {utils::obstacle_stop::ObjectType::BICYCLE, p.object_decel.bicycle},
+      {utils::obstacle_stop::ObjectType::PEDESTRIAN, p.object_decel.pedestrian}};
+  }
 }
 
 void ObstacleStop::update_params(const TrajectoryModifierParams & params)
@@ -104,6 +114,16 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
     obstacle_tracker_->set_params(
       p.on_time_buffer, p.off_time_buffer, p.object_distance_th, p.object_yaw_th, p.pcd_distance_th,
       p.grace_period);
+  }
+
+  {
+    const auto & p = params_.rss_params;
+    object_decel_map_ = {
+      {utils::obstacle_stop::ObjectType::CAR, p.object_decel.car},
+      {utils::obstacle_stop::ObjectType::TRUCK, p.object_decel.truck},
+      {utils::obstacle_stop::ObjectType::BUS, p.object_decel.bus},
+      {utils::obstacle_stop::ObjectType::BICYCLE, p.object_decel.bicycle},
+      {utils::obstacle_stop::ObjectType::PEDESTRIAN, p.object_decel.pedestrian}};
   }
 }
 
@@ -412,9 +432,20 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
   obstacle_tracker_->update_objects(predicted_objects, active_objects, get_clock()->now());
 
   autoware_perception_msgs::msg::PredictedObject colliding_object;
-  auto collision_point = get_nearest_object_collision(
-    traj_points, debug_data_.trajectory_shape, active_objects, debug_data_.target_polygons,
-    colliding_object);
+  auto collision_point = std::invoke([&]() -> std::optional<CollisionPoint> {
+    if (!params_.rss_params.enable) {
+      return get_nearest_object_collision(
+        traj_points, debug_data_.trajectory_shape, active_objects, debug_data_.target_polygons,
+        colliding_object);
+    }
+    return get_nearest_object_collision(
+      traj_points, debug_data_.trajectory_shape, data_->vehicle_info, active_objects,
+      object_decel_map_, data_->current_odometry->twist.twist.linear.x,
+      params_.nominal_stopping_decel, params_.rss_params.reaction_time,
+      params_.rss_params.safety_margin, params_.rss_params.min_vel_th, debug_data_.target_polygons,
+      colliding_object);
+  });
+
   if (collision_point) debug_data_.colliding_object = colliding_object;
 
   return collision_point;
