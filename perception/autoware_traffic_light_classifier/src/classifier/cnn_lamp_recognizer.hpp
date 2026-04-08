@@ -150,7 +150,6 @@ private:
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> trt_common_;
   StreamUniquePtr stream_{makeCudaStream()};
 
-  std::vector<float> input_h_;
   CudaUniquePtr<float[]> input_d_;
   std::vector<CudaUniquePtr<float[]>> output_d_;
   std::vector<CudaUniquePtrHost<float[]>> output_h_;
