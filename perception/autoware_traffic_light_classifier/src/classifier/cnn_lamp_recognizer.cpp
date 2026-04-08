@@ -222,10 +222,9 @@ void CnnLampRecognizer::preprocess(const std::vector<cv::Mat> & images)
   if (!blob.isContinuous()) {
     blob = blob.clone();
   }
-  input_h_.assign(blob.ptr<float>(), blob.ptr<float>() + blob.total());
-  const size_t copy_size = input_h_.size() * sizeof(float);
-  CHECK_CUDA_ERROR(
-    cudaMemcpyAsync(input_d_.get(), input_h_.data(), copy_size, cudaMemcpyHostToDevice, *stream_));
+  const size_t copy_size = blob.total() * sizeof(float);
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    input_d_.get(), blob.ptr<float>(), copy_size, cudaMemcpyHostToDevice, *stream_));
 }
 
 bool CnnLampRecognizer::doInference(size_t batch_size)
