@@ -38,7 +38,7 @@ namespace
 {
 constexpr int kDebugImageWidth = 200;
 constexpr int kDebugTextHeight = 50;
-constexpr double PI = autoware_utils::pi;
+constexpr float PI = static_cast<float>(autoware_utils::pi);
 ArrowDirection angleToArrowDirection(float angle_rad)
 {
   if (angle_rad >= -PI / 8.0f && angle_rad < PI / 8.0f) return ArrowDirection::UP_ARROW;
