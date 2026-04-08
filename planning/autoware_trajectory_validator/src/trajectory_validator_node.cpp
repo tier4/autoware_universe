@@ -170,6 +170,8 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
     table.generator_id = autoware_utils_uuid::to_hex_string(trajectory.generator_id);
     table.is_overall_feasible = true;
 
+    // NOTE: this is used to determine diagnostic status, and doesn't affect whether filtering is
+    // applied
     bool is_overall_feasible = true;
     for (const auto & plugin : plugins_) {
       PluginEvaluation evaluation;
@@ -196,6 +198,8 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
 
     evaluation_tables_.push_back(table);
 
+    // NOTE: table.is_overall_feasible considers debug mode,
+    // so in debug mode, all trajectories are kept
     if (table.is_overall_feasible) filtered_msg->candidate_trajectories.push_back(trajectory);
     if (is_overall_feasible) ++num_feasible_trajectories;
   }
