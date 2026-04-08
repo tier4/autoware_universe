@@ -410,14 +410,14 @@ void CnnLampRecognizer::outputDebugImage(
   cv::vconcat(debug_image, text_img, debug_image);
 }
 
-static void cvtBBoxInfo2LampElement(const BBoxInfo & d, LampElement & element)
+static void cvtBBoxInfoToLampElement(const BBoxInfo & box_info, LampElement & element)
 {
-  element.color = static_cast<Color>(std::min(2, std::max(0, d.subClassId)));
-  element.confidence = d.prob;
-  element.box = d.box;
-  element.shape = static_cast<Shape>(d.classId);
+  element.color = static_cast<Color>(std::min(2, std::max(0, box_info.subClassId)));
+  element.confidence = box_info.prob;
+  element.box = box_info.box;
+  element.shape = static_cast<Shape>(box_info.classId);
   if (element.shape == Shape::ARROW) {
-    element.arrow_direction = angleToArrowDirection(std::atan2(d.sin, d.cos));
+    element.arrow_direction = angleToArrowDirection(std::atan2(box_info.sin, box_info.cos));
   }
 }
 
@@ -546,7 +546,7 @@ bool CnnLampRecognizer::getTrafficSignals(
       std::vector<LampElement> traffic_lamps;
       for (const auto & d : detections_per_roi[i]) {
         LampElement element;
-        cvtBBoxInfo2LampElement(d, element);
+        cvtBBoxInfoToLampElement(d, element);
         traffic_lamps.push_back(element);
       }
       // if multiple detections have the same shape and arrow direction
