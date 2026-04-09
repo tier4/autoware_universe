@@ -793,16 +793,10 @@ IntersectionModule::TimeDistanceArray IntersectionModule::calcIntersectionPassin
       path, last_intersection_stopline_candidate_s, lane_id_interval.end);
 
   // apply smoother to reference velocity
-  const auto smoothed_reference_path = [&]() {
-    PathWithLaneId reference_path_msg;
-    reference_path_msg.points = reference_path.restore();
-    PathWithLaneId smoothed_reference_path_msg;
-    if (!smoothPath(reference_path_msg, smoothed_reference_path_msg, planner_data)) {
-      return reference_path;
-    }
-    return autoware::experimental::trajectory::pretty_build(smoothed_reference_path_msg.points)
-      .value_or(reference_path);
-  }();
+  Trajectory smoothed_reference_path{};
+  if (!smoothPath(reference_path, smoothed_reference_path, planner_data)) {
+    smoothed_reference_path = reference_path;
+  }
 
   // calculate when ego is going to reach each (interpolated) points on the path
   TimeDistanceArray time_distance_array{};
