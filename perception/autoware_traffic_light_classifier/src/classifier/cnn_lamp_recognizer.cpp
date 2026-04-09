@@ -101,7 +101,15 @@ static void convertBBoxInfoToLampElement(const BBoxInfo & box_info, LampElement 
   element.box = box_info.box;
   element.shape = static_cast<Shape>(box_info.classId);
   if (element.shape == Shape::ARROW) {
-    element.arrow_direction = angleToArrowDirection(std::atan2(box_info.sin, box_info.cos));
+    // If the network outputs a near-zero direction vector (sin, cos) ~= (0, 0), the direction is
+    // considered uncertain. Prefer UNKNOWN rather than biasing inputs to atan2().
+    constexpr float kDirectionVecNormSqThreshold = 1.0e-12f;  // (1e-6)^2
+    const float norm_sq = box_info.sin * box_info.sin + box_info.cos * box_info.cos;
+    if (norm_sq < kDirectionVecNormSqThreshold) {
+      element.arrow_direction = ArrowDirection::UNKNOWN;
+    } else {
+      element.arrow_direction = angleToArrowDirection(std::atan2(box_info.sin, box_info.cos));
+    }
   }
 }
 
