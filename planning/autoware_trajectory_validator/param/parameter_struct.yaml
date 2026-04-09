@@ -79,6 +79,11 @@ validator:
         default_value: 4.0
         description: threshold to determine RSS collision
         read_only: false
+      stop_margin:
+        type: double
+        default_value: 2.0
+        description: required remaining distance to the object when ego stops
+        read_only: false
       ego_reaction_time:
         type: double
         default_value: 0.4

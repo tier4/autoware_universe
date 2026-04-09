@@ -452,7 +452,7 @@ Assessment assess_required_deceleration(
   // compute safe distance
   const double obj_long_vel = std::clamp(
     rss_deceleration::compute_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
-  const double safe_distance = distance_to_collision.value() +
+  const double safe_distance = distance_to_collision.value() - rss_params.stop_margin +
                                obj_long_vel * obj_long_vel * 0.5 / -rss_params.object_acceleration -
                                ego_long_vel * rss_params.ego_reaction_time;
 
