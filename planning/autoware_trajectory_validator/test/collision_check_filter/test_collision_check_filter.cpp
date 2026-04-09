@@ -175,6 +175,8 @@ TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)
     << "Error string did not contain 'predicted_path'. Actual: " << error_msg;
   EXPECT_NE(error_msg.find("constant_curvature_path"), std::string::npos)
     << "Error string did not contain 'constant_curvature_path'. Actual: " << error_msg;
+  EXPECT_NE(error_msg.find("duration:"), std::string::npos)
+    << "Error string did not contain 'duration:'. Actual: " << error_msg;
 }
 
 TEST_F(CollisionCheckFilterTest, ObjectWillDepartFromPath)
@@ -226,6 +228,8 @@ TEST_F(CollisionCheckFilterTest, ObjectWillEnterPath)
     << "Error string did not contain 'predicted_path'. Actual: " << error_msg;
   EXPECT_NE(error_msg.find("constant_curvature_path"), std::string::npos)
     << "Error string did not contain 'constant_curvature_path'. Actual: " << error_msg;
+  EXPECT_NE(error_msg.find("duration:"), std::string::npos)
+    << "Error string did not contain 'duration:'. Actual: " << error_msg;
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety
