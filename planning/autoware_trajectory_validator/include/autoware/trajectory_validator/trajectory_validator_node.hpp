@@ -54,6 +54,8 @@ using autoware_utils_diagnostics::DiagnosticsInterface;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 
+class PseudoEmergencyStopHandler;
+
 class TrajectoryValidator : public rclcpp::Node
 {
 public:
@@ -72,6 +74,7 @@ public:
   };
 
   explicit TrajectoryValidator(const rclcpp::NodeOptions & node_options);
+  ~TrajectoryValidator();
 
 private:
   // Methods
@@ -130,6 +133,9 @@ private:
   // Tools
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};
   DiagnosticsInterface diagnostics_interface_{this, "trajectory_validator"};
+
+  // Emergency-stop fallback (evaluation use only).
+  std::unique_ptr<PseudoEmergencyStopHandler> pseudo_emergency_stop_handler_;
 };
 
 }  // namespace autoware::trajectory_validator

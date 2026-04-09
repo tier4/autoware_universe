@@ -15,6 +15,7 @@
 #include "autoware/trajectory_validator/trajectory_validator_node.hpp"
 
 #include "autoware/trajectory_validator/filter_context.hpp"
+#include "autoware/trajectory_validator/pseudo_emergency_stop_handler.hpp"
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <autoware_utils_system/stop_watch.hpp>
@@ -142,7 +143,11 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
 
   pub_processing_time_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
   pub_debug_markers_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
+
+  pseudo_emergency_stop_handler_ = std::make_unique<PseudoEmergencyStopHandler>(*this);
 }
+
+TrajectoryValidator::~TrajectoryValidator() = default;
 
 void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr msg)
 {
@@ -221,6 +226,15 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
     evaluation_tables_.push_back(table);
 
     if (table.is_overall_feasible) filtered_msg->candidate_trajectories.push_back(trajectory);
+  }
+
+  if (params_.pseudo_emergency_stop.enable) {
+    // NOTE(odashima): this fallback is ad-hoc and for evaluation only.
+    stop_watch.tic("handle_pseudo_emergency_stop");
+    pseudo_emergency_stop_handler_->handle(
+      *msg, *filtered_msg, evaluation_tables_, context, params_);
+    processing_time_ms["handle_pseudo_emergency_stop"] =
+      stop_watch.toc("handle_pseudo_emergency_stop");
   }
 
   // Also filter generator_info to match kept trajectories
