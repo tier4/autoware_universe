@@ -37,6 +37,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -89,6 +90,30 @@ std::string format_required_deceleration_plot(
   oss << " m/s^2 threshold=" << std::fixed << std::setprecision(2) << threshold
       << " margin=" << std::fixed << std::setprecision(2) << stop_margin << " object=" << object_id;
   return oss.str();
+}
+
+double update_detection_duration(
+  const std::string & key, const rclcpp::Time & current_time,
+  std::unordered_map<std::string, rclcpp::Time> & collision_start_times)
+{
+  auto [it, inserted] = collision_start_times.try_emplace(key, current_time);
+  if (inserted) {
+    return 0.0;
+  }
+  return (current_time - it->second).seconds();
+}
+
+void reset_inactive_detections(
+  const std::unordered_set<std::string> & active_keys,
+  std::unordered_map<std::string, rclcpp::Time> & collision_start_times)
+{
+  for (auto it = collision_start_times.begin(); it != collision_start_times.end();) {
+    if (!active_keys.count(it->first)) {
+      it = collision_start_times.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 }  // namespace
 
@@ -745,33 +770,50 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   // stopwatch.tic();
 
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
+    pet_collision_start_times_.clear();
+    rss_collision_start_times_.clear();
     return {};  // No objects to check collision with
   }
 
   if (traj_points.empty()) {
+    pet_collision_start_times_.clear();
+    rss_collision_start_times_.clear();
     return {};  // No trajectory to check
   }
 
   std::string error_msg{};
+  const rclcpp::Time current_time = context.odometry->header.stamp;
+  std::unordered_set<std::string> active_pet_collision_keys{};
+  std::unordered_set<std::string> active_rss_collision_keys{};
 
   const auto planned_speed_timing_findings = planned_speed_collision_timing::assess(
     traj_points, context, pet_collision_params_, *vehicle_info_ptr_);
   for (const auto & finding : planned_speed_timing_findings) {
+    active_pet_collision_keys.insert(finding.trajectory_id);
+    const double detection_duration =
+      update_detection_duration(finding.trajectory_id, current_time, pet_collision_start_times_);
     error_msg += fmt::format(
-      "PET collision, ID: {}, PET: {}, TTC: {}, stamp: {}.{}; ", finding.trajectory_id, finding.pet,
+      "PET collision, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{}; ",
+      finding.trajectory_id, finding.pet,
       finding.ttc.has_value() ? std::to_string(finding.ttc.value()) : "N/A",
+      detection_duration,
       context.predicted_objects->header.stamp.sec, context.predicted_objects->header.stamp.nanosec);
     add_debug_markers(
       finding.ego_hull, finding.object_hull, finding.trajectory_id, context.odometry->header.stamp);
   }
+  reset_inactive_detections(active_pet_collision_keys, pet_collision_start_times_);
 
   const auto rss_result =
     rss_deceleration::assess(traj_points, context, rss_params_, *vehicle_info_ptr_);
   for (const auto & violation : rss_result.violations) {
+    active_rss_collision_keys.insert(violation.object_id);
+    const double detection_duration =
+      update_detection_duration(violation.object_id, current_time, rss_collision_start_times_);
     error_msg += fmt::format(
-      "RSS collision, ID: {}, classification: {}, required deceleration: {}; ",
-      violation.object_id, violation.classification, violation.required_deceleration);
+      "RSS collision, ID: {}, classification: {}, duration: {}, required deceleration: {}; ",
+      violation.object_id, violation.classification, detection_duration, violation.required_deceleration);
   }
+  reset_inactive_detections(active_rss_collision_keys, rss_collision_start_times_);
 
   if (rss_result.worst_assessment.has_value()) {
     RCLCPP_INFO(
