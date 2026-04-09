@@ -17,12 +17,12 @@
 
 #include "autoware/trajectory_validator/filter_context.hpp"
 
-#include <autoware_utils_rclcpp/parameter.hpp>
+#include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
-#include <rclcpp/node.hpp>
 #include <tl_expected/expected.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <memory>
 #include <string>
@@ -50,9 +50,7 @@ public:
   virtual tl::expected<void, std::string> is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) = 0;
 
-  virtual void set_parameters(rclcpp::Node & node) = 0;
-
-  virtual void update_parameters(const std::vector<rclcpp::Parameter> & parameters) = 0;
+  virtual void update_parameters(const validator::Params & params) = 0;
 
   // Set vehicle info
   virtual void set_vehicle_info(const VehicleInfo & vehicle_info)
@@ -68,10 +66,29 @@ public:
 
   [[nodiscard]] virtual bool is_debug_mode() const { return true; }
 
+  [[nodiscard]] visualization_msgs::msg::MarkerArray take_debug_markers()
+  {
+    visualization_msgs::msg::MarkerArray output_markers;
+    output_markers.markers.reserve(debug_markers_.markers.size() + 1);
+
+    visualization_msgs::msg::Marker delete_all_marker;
+    delete_all_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    output_markers.markers.push_back(delete_all_marker);
+
+    std::move(
+      debug_markers_.markers.begin(), debug_markers_.markers.end(),
+      std::back_inserter(output_markers.markers));
+
+    debug_markers_.markers.clear();
+
+    return output_markers;
+  }
+
 protected:
   std::string name_;
   std::string category_;
   std::shared_ptr<VehicleInfo> vehicle_info_ptr_;
+  visualization_msgs::msg::MarkerArray debug_markers_;
 };
 }  // namespace autoware::trajectory_validator::plugin
 

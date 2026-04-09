@@ -14,6 +14,8 @@
 
 #include "autoware/trajectory_validator/filters/safety/uncrossable_boundary_departure_filter.hpp"
 
+#include <autoware/boundary_departure_checker/debug.hpp>
+
 #include <memory>
 #include <string>
 
@@ -42,11 +44,32 @@ tl::expected<void, std::string> UncrossableBoundaryDepartureFilter::is_feasible(
   }
 
   if (!departure_data->critical_departure_points.empty()) {
+    debug_markers_ = boundary_departure_checker::debug::create_debug_markers(
+      *departure_data, context.odometry->header.stamp, context.odometry->pose.pose.position.z,
+      params_);
     return tl::make_unexpected("Found critical departure");
   }
 
   return {};
 }
+
+void UncrossableBoundaryDepartureFilter::update_parameters(const validator::Params & params)
+{
+  params_.th_trigger.th_dist_to_boundary_m.left.min =
+    params.boundary_departure.lateral_gap_to_boundary_m;
+  params_.th_trigger.th_dist_to_boundary_m.right.min =
+    params.boundary_departure.lateral_gap_to_boundary_m;
+  params_.min_braking_distance = params.boundary_departure.longitudinal_gap_to_boundary_m;
+  params_.th_trigger.th_acc_mps2.max = params.boundary_departure.max_deceleration_mps2;
+  params_.th_trigger.th_jerk_mps3.max = params.boundary_departure.max_jerk_mps3;
+  params_.th_trigger.brake_delay_s = params.boundary_departure.brake_delay_s;
+  params_.th_cutoff_time_departure_s = params.boundary_departure.cutoff_time_s;
+
+  if (uncrossable_boundary_departure_checker_ptr_) {
+    uncrossable_boundary_departure_checker_ptr_->set_param(params_);
+  }
+}
+
 std::optional<std::string> UncrossableBoundaryDepartureFilter::is_invalid_input(
   const TrajectoryPoints & traj_points, const FilterContext & context) const
 {

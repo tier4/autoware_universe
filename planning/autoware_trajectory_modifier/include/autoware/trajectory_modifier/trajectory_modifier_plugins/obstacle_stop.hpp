@@ -30,6 +30,8 @@
 
 namespace autoware::trajectory_modifier::plugin
 {
+using autoware_internal_planning_msgs::msg::SafetyFactor;
+using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using autoware_utils_geometry::MultiPolygon2d;
 using autoware_utils_geometry::Polygon2d;
 using utils::obstacle_stop::CollisionPoint;
@@ -47,12 +49,8 @@ public:
   [[nodiscard]] bool is_trajectory_modification_required(
     const TrajectoryPoints & traj_points) override;
 
-  void update_params(const TrajectoryModifierParams & params) override
-  {
-    params_ = params.obstacle_stop;
-    enabled_ = params.use_obstacle_stop;
-    trajectory_time_step_ = params.trajectory_time_step;
-  }
+  void update_params(const TrajectoryModifierParams & params) override;
+
   const TrajectoryModifierParams::ObstacleStop & get_params() const { return params_; }
 
   void publish_debug_data([[maybe_unused]] const std::string & ns) const override;
@@ -67,16 +65,19 @@ private:
 
   DebugData debug_data_;
 
+  std::unique_ptr<utils::obstacle_stop::PointCloudFilter> pointcloud_filter_;
+
+  std::unique_ptr<utils::obstacle_stop::ObstacleTracker> obstacle_tracker_;
+
+  SafetyFactorArray safety_factors_;
+
   MarkerArray marker_array_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_voxel_pointcloud_;
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_cluster_pointcloud_;
-  rclcpp::Publisher<PointCloud2>::SharedPtr pub_target_pcd_pointcloud_;
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_clustered_pointcloud_;
 
-  std::optional<CollisionPoint> check_predicted_objects(
-    const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon);
-  std::optional<CollisionPoint> check_pointcloud(
-    const TrajectoryPoints & traj_points, const MultiPolygon2d & trajectory_polygon);
+  void check_obstacles(const TrajectoryPoints & traj_points);
+  std::optional<CollisionPoint> check_predicted_objects(const TrajectoryPoints & traj_points);
+  std::optional<CollisionPoint> check_pointcloud(const TrajectoryPoints & traj_points);
 
   bool set_stop_point(TrajectoryPoints & traj_points);
 

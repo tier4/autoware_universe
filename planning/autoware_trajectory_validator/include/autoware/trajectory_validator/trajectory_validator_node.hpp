@@ -18,7 +18,7 @@
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
-#include <autoware_trajectory_validator_param.hpp>
+#include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
@@ -89,12 +89,11 @@ private:
   void publish_processing_time(const std::unordered_map<std::string, double> & processing_time);
   void publish_internal_state(
     const std::unordered_map<std::string, double> & processing_time,
-    const std::vector<EvaluationTable> & evaluation_tables);
+    const std::vector<EvaluationTable> & evaluation_tables,
+    const geometry_msgs::msg::Pose & ego_pose);
 
-  rcl_interfaces::msg::SetParametersResult on_parameter(
-    const std::vector<rclcpp::Parameter> & parameters);
-
-  std::unique_ptr<validator::ParamListener> listener_;
+  validator::ParamListener listener_;
+  validator::Params params_;
 
   // Plugin infrastructure
   pluginlib::ClassLoader<plugin::ValidatorInterface> plugin_loader_;
@@ -120,12 +119,12 @@ private:
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     pub_processing_time_detail_;
   std::shared_ptr<autoware_utils_debug::DebugPublisher> pub_processing_time_;
+  std::shared_ptr<autoware_utils_debug::DebugPublisher> pub_debug_markers_;
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
     pub_processing_time_text_;
 
   // Internal State
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
-  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
 
   // Tools

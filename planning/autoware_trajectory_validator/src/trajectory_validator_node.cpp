@@ -19,8 +19,10 @@
 
 #include <autoware_utils_system/stop_watch.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
+#include <autoware_utils_visualization/marker_helper.hpp>
 
 #include <autoware_internal_planning_msgs/msg/detail/candidate_trajectory__struct.hpp>
+#include <visualization_msgs/msg/detail/marker_array__struct.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/LaneletMap.h>
@@ -60,6 +62,49 @@ bool has_trajectory_from_generator(
              generator_name_it->second.rfind(generator_name_prefix, 0) == 0;
     });
 }
+
+visualization_msgs::msg::MarkerArray create_internal_state_text(
+  const std::unordered_map<std::string, std::vector<std::string>> & plugin_filtered_paths,
+  const std::vector<std::string> & sorted_plugins, const geometry_msgs::msg::Pose & marker_pose,
+  const rclcpp::Time & now, const double height_offset)
+{
+  fmt::memory_buffer out;
+  auto out_it = std::back_inserter(out);
+
+  fmt::format_to(out_it, "{:^50}\n", "--- Trajectory Validator Filtering Result ---");
+
+  int skip_counter = 0;
+  for (const auto & plugin_name : sorted_plugins) {
+    auto it = plugin_filtered_paths.find(plugin_name);
+
+    bool has_filtered_paths = (it != plugin_filtered_paths.end() && !it->second.empty());
+
+    if (has_filtered_paths) {
+      fmt::format_to(out_it, "- {}: {} path(s) filtered\n", plugin_name, it->second.size());
+    } else {
+      ++skip_counter;
+    }
+  }
+
+  if (skip_counter > 0) {
+    fmt::format_to(out_it, "{}", std::string(skip_counter, '\n'));
+  }
+
+  fmt::format_to(out_it, "-----------------------------------");
+
+  constexpr int32_t id{0};
+  auto text_marker = autoware_utils_visualization::create_default_marker(
+    "map", now, "plugin_report", id, visualization_msgs::msg::Marker::TEXT_VIEW_FACING,
+    autoware_utils_visualization::create_marker_scale(0.0, 0.0, 0.4),
+    autoware_utils_visualization::create_marker_color(1., 1., 1., 0.999));
+  text_marker.pose = marker_pose;
+  text_marker.pose.position.z += height_offset;
+  text_marker.text = fmt::to_string(out);
+
+  visualization_msgs::msg::MarkerArray marker_array;
+  marker_array.markers.push_back(text_marker);
+  return marker_array;
+}
 }  // namespace
 
 namespace autoware::trajectory_validator
@@ -67,12 +112,13 @@ namespace autoware::trajectory_validator
 
 TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
 : Node{"trajectory_validator_node", options},
-  listener_{std::make_unique<validator::ParamListener>(get_node_parameters_interface())},
+  listener_{get_node_parameters_interface()},
+  params_(listener_.get_params()),
   plugin_loader_(
     "autoware_trajectory_validator", "autoware::trajectory_validator::plugin::ValidatorInterface"),
   vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo())
 {
-  const auto filters = listener_->get_params().filter_names;
+  const auto filters = params_.filter_names;
   for (const auto & filter : filters) {
     load_metric(filter);
   }
@@ -91,12 +137,11 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
     "~/debug/processing_time_detail_ms/feasible_trajectory_filter", 1);
   time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>(pub_processing_time_detail_);
 
-  set_param_res_ = this->add_on_set_parameters_callback(
-    std::bind(&TrajectoryValidator::on_parameter, this, std::placeholders::_1));
   pub_processing_time_text_ = create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
     "~/debug/processing_time_text", rclcpp::QoS(1));
 
   pub_processing_time_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
+  pub_debug_markers_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
 }
 
 void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr msg)
@@ -130,6 +175,15 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   context.lanelet_map = lanelet_map_ptr_;
   if (!context.lanelet_map) {
     return;
+  }
+
+  if (listener_.is_old(params_)) {
+    params_ = listener_.get_params();
+
+    for (const auto & plugin : plugins_) {
+      plugin->update_parameters(params_);
+    }
+    RCLCPP_INFO(get_logger(), "Dynamic parameters updated successfully.");
   }
 
   diagnostics_interface_.clear();
@@ -182,8 +236,13 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
 
   processing_time_ms["Total"] = stop_watch.toc("Total");
 
+  for (const auto & plugin : plugins_) {
+    auto msg_to_publish = plugin->take_debug_markers();
+    pub_debug_markers_->publish<visualization_msgs::msg::MarkerArray>(
+      plugin->get_name(), msg_to_publish);
+  }
   publish_processing_time(processing_time_ms);
-  publish_internal_state(processing_time_ms, evaluation_tables_);
+  publish_internal_state(processing_time_ms, evaluation_tables_, context.odometry->pose.pose);
   update_diagnostic(*msg, *filtered_msg);
   pub_trajectories_->publish(*filtered_msg);
 }
@@ -211,13 +270,7 @@ void TrajectoryValidator::load_metric(const std::string & name)
     }
 
     plugin->set_vehicle_info(vehicle_info_);
-    plugin->set_parameters(*this);
-    std::string category;
-    size_t pos = name.find("::");
-    if (pos != std::string::npos) {
-      category = name.substr(0, pos);
-    }
-    plugin->set_category(category);
+    plugin->update_parameters(params_);
 
     plugins_.push_back(plugin);
 
@@ -274,27 +327,6 @@ void TrajectoryValidator::update_diagnostic(
   diagnostics_interface_.publish(this->get_clock()->now());
 }
 
-rcl_interfaces::msg::SetParametersResult TrajectoryValidator::on_parameter(
-  const std::vector<rclcpp::Parameter> & parameters)
-{
-  rcl_interfaces::msg::SetParametersResult result;
-  result.successful = true;
-  result.reason = "success";
-
-  try {
-    // Broadcast the changed parameters to all loaded plugins
-    for (const auto & plugin : plugins_) {
-      plugin->update_parameters(parameters);
-    }
-  } catch (const rclcpp::exceptions::InvalidParameterTypeException & e) {
-    // Cleanly reject the parameter change if any plugin detects a type mismatch
-    result.successful = false;
-    result.reason = e.what();
-  }
-
-  return result;
-}
-
 void TrajectoryValidator::publish_processing_time(
   const std::unordered_map<std::string, double> & processing_time)
 {
@@ -311,7 +343,7 @@ void TrajectoryValidator::publish_processing_time(
 
 void TrajectoryValidator::publish_internal_state(
   const std::unordered_map<std::string, double> & processing_time,
-  const std::vector<EvaluationTable> & evaluation_tables)
+  const std::vector<EvaluationTable> & evaluation_tables, const geometry_msgs::msg::Pose & ego_pose)
 {
   std::unordered_map<std::string, std::vector<std::string>> plugin_filtered_paths;
   // 1. Group the filtered paths by plugin
@@ -335,8 +367,7 @@ void TrajectoryValidator::publish_internal_state(
   }
   std::sort(sorted_plugins.begin(), sorted_plugins.end());
 
-  std::string report = "\n--- Trajectory Validator Report ---\n";
-  report += "[Timing]\n";
+  std::string report = "\n--- Trajectory Validator Processing Time Report ---\n";
   double total_time_ms = processing_time.count("Total") ? processing_time.at("Total") : 0.0;
   report += fmt::format("Total: {:.2f} ms\n", total_time_ms);
 
@@ -345,29 +376,16 @@ void TrajectoryValidator::publish_internal_state(
     report += fmt::format("- {}: {:.2f} ms\n", plugin_name, time);
   }
 
-  // --- Filtering Results Section ---
-  report += "\n[Filtering Results]\n";
-  for (const auto & plugin_name : sorted_plugins) {
-    size_t count = 0;
-    auto it = plugin_filtered_paths.find(plugin_name);
-    if (it != plugin_filtered_paths.end()) {
-      count = it->second.size();
-    }
-
-    report += fmt::format("- {}: {} path(s) filtered\n", plugin_name, count);
-
-    // Print the list of UUIDs beneath it, indented
-    if (count > 0) {
-      report += fmt::format("    -> [{}]\n", fmt::join(it->second, ", "));
-    }
-  }
-  report += "-----------------------------------";
-
-  // Print to terminal
   autoware_internal_debug_msgs::msg::StringStamped text_msg;
   text_msg.stamp = this->now();
   text_msg.data = report;
   pub_processing_time_text_->publish(text_msg);
+
+  constexpr double offset = 1.0;
+  auto internal_state_text = create_internal_state_text(
+    plugin_filtered_paths, sorted_plugins, ego_pose, get_clock()->now(),
+    vehicle_info_.vehicle_height_m + offset);
+  pub_debug_markers_->publish<visualization_msgs::msg::MarkerArray>("markers", internal_state_text);
 }
 }  // namespace autoware::trajectory_validator
 

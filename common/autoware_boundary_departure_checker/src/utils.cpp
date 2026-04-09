@@ -28,6 +28,7 @@
 #include <range/v3/view.hpp>
 #include <tl_expected/expected.hpp>
 
+#include <fmt/format.h>
 #include <lanelet2_core/geometry/LaneletMap.h>
 
 #include <algorithm>
@@ -567,11 +568,14 @@ Side<ProjectionsToBound> get_closest_boundary_segments_from_side(
   const EgoSides & ego_sides_from_footprints)
 {
   Side<ProjectionsToBound> side;
+  std::unordered_map<SideKey, bool> has_passed_border;
   for (const auto & side_key : g_side_keys) {
     side[side_key].reserve(ego_sides_from_footprints.size());
+    has_passed_border[side_key] = false;
   }
 
   auto s = 0.0;
+
   for (size_t i = 0; i < ego_pred_traj.size(); ++i) {
     if (i > 0) {
       s += autoware_utils_geometry::calc_distance2d(ego_pred_traj[i - 1], ego_pred_traj[i]);
@@ -590,7 +594,8 @@ Side<ProjectionsToBound> get_closest_boundary_segments_from_side(
       // Assign negative sign if the boundary has been crossed
       if (
         closest_bound.lat_dist > 0.0 &&
-        closest_bound.lat_dist < std::numeric_limits<double>::max()) {
+        closest_bound.lat_dist < std::numeric_limits<double>::max() &&
+        has_passed_border[side_key]) {
         const auto & ego_front = fp[side_key].first;
         const auto & ego_rear = fp[side_key].second;
 
@@ -616,6 +621,9 @@ Side<ProjectionsToBound> get_closest_boundary_segments_from_side(
       closest_bound.time_from_start = rclcpp::Duration(ego_pred_traj[i].time_from_start).seconds();
       closest_bound.lon_dist_on_pred_traj = s - closest_bound.lon_offset;
       side[side_key].push_back(closest_bound);
+      if (closest_bound.lat_dist < 0.01 && !has_passed_border[side_key]) {
+        has_passed_border[side_key] = true;
+      }
     }
   }
 
@@ -859,7 +867,7 @@ std::optional<ProjectionsToBound> get_closest_projections_for_side(
   if (!min_to_bound.empty() && min_to_bound.back().is_critical_departure()) {
     const double crash_s =
       min_to_bound.back().lon_dist_on_pred_traj - min_to_bound.back().lon_offset;
-    constexpr double longitudinal_buffer_m = 1.0;
+    const auto longitudinal_buffer_m = param.min_braking_distance;
 
     auto earliest_critical_it = min_to_bound.end() - 1;
 

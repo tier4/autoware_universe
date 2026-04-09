@@ -20,10 +20,8 @@
 #include <autoware/boundary_departure_checker/uncrossable_boundary_departure_checker.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <any>
 #include <memory>
 #include <string>
-#include <unordered_map>
 namespace autoware::trajectory_validator::plugin::safety
 {
 class UncrossableBoundaryDepartureFilter : public plugin::ValidatorInterface
@@ -36,16 +34,13 @@ public:
   tl::expected<void, std::string> is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) final;
 
-  void set_parameters([[maybe_unused]] rclcpp::Node & node) final {}
-
-  void update_parameters([[maybe_unused]] const std::vector<rclcpp::Parameter> & parameters) final
-  {
-  }
+  void update_parameters(const validator::Params & params) final;
 
 private:
   std::unique_ptr<autoware::boundary_departure_checker::UncrossableBoundaryDepartureChecker>
     uncrossable_boundary_departure_checker_ptr_;
   rclcpp::Logger log_ = rclcpp::get_logger(name_);
+  boundary_departure_checker::Param params_;
   std::shared_ptr<rclcpp::Clock> clock_ = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
 
   [[nodiscard]] std::optional<std::string> is_invalid_input(
