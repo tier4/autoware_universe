@@ -349,6 +349,12 @@ CnnLampRecognizer::CnnLampRecognizer(rclcpp::Node * node_ptr) : node_ptr_(node_p
       dims.d[1] = out_c_;
       dims.d[2] = output_grid_h_;
       dims.d[3] = output_grid_w_;
+      const int expected_channels = model_params_.num_anchors * model_params_.chans_per_anchor;
+      if (out_c_ != expected_channels) {
+        throw std::runtime_error(
+          "CnnLampRecognizer: Model output channels (" + std::to_string(out_c_) +
+          ") do not match YAML configuration (" + std::to_string(expected_channels) + ").");
+      }
     }
     for (int32_t j = 1; j < dims.nbDims; ++j) {
       if (dims.d[j] <= 0) dims.d[j] = 1;
