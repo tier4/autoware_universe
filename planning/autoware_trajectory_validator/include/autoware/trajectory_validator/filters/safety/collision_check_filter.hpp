@@ -22,6 +22,7 @@
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <rclcpp/duration.hpp>
+#include <rclcpp/time.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <geometry_msgs/msg/point.hpp>
@@ -34,6 +35,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -141,6 +143,8 @@ public:
 private:
   validator::Params::CollisionCheck::PetCollision pet_collision_params_;
   validator::Params::CollisionCheck::Rss rss_params_;
+  std::unordered_map<std::string, rclcpp::Time> pet_collision_start_times_;
+  std::unordered_map<std::string, rclcpp::Time> rss_collision_start_times_;
 
   void add_debug_markers(
     const Polygon2d & ego_hull, const Polygon2d & object_hull, const std::string & trajectory_id,
