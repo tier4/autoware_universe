@@ -553,8 +553,8 @@ bool CnnLampRecognizer::getTrafficSignals(
           });
         if (it == unique_lamps.end()) {
           unique_lamps.push_back(lamp);
-        } else {
-          it->confidence = std::max(it->confidence, lamp.confidence);
+        } else if (lamp.confidence > it->confidence) {
+          *it = lamp;  // Overwrite the whole object to keep the better bounding box
         }
       }
 
