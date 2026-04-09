@@ -55,7 +55,7 @@ on:
         required: false
     secrets:
       codecov-token:
-        required: true
+        required: false
 
 concurrency:
   group: ${{ inputs.concurrency-group }}
