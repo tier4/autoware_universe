@@ -87,8 +87,7 @@ private:
    */
   void unload_metric(const std::string & name);
   void update_diagnostic(
-    const CandidateTrajectories & input_trajectories,
-    const CandidateTrajectories & filtered_trajectories);
+    const CandidateTrajectories & input_trajectories, const size_t num_feasible_trajectories);
   void publish_processing_time(const std::unordered_map<std::string, double> & processing_time);
   void publish_internal_state(
     const std::unordered_map<std::string, double> & processing_time,
