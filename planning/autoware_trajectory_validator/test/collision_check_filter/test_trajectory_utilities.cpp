@@ -186,7 +186,8 @@ TEST(TrajectoryUtilitiesTest, GenerateEgoTrajectoryBuildsConsistentTrajectoryDat
   const auto trajectory_data =
     trajectory::generate_ego_trajectory(initial_twist, 0.0, 0.0, 1.05, traj_points, vehicle_info);
 
-  ASSERT_EQ(trajectory_data.getId(), "ego");
+  ASSERT_EQ(trajectory_data.getObjectIdentification().classification, "EGO");
+  ASSERT_TRUE(trajectory_data.getObjectIdentification().id.empty());
   ASSERT_EQ(trajectory_data.size(), 11u);
   EXPECT_DOUBLE_EQ(trajectory_data.getTimes().front(), 0.0);
   EXPECT_NEAR(trajectory_data.getTimes().back(), 1.0, 1e-6);
@@ -213,7 +214,9 @@ TEST(TrajectoryUtilitiesTest, GeneratePredictedPathTrajectoryUsesHighestConfiden
     object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.1), 0.35);
 
   ASSERT_EQ(trajectory_data.size(), 3u);
-  EXPECT_EQ(trajectory_data.getId().find("_predicted_path"), trajectory_data.getId().size() - 15);
+  EXPECT_EQ(
+    trajectory_data.getObjectIdentification().id.find("_predicted_path"),
+    trajectory_data.getObjectIdentification().id.size() - 15);
   EXPECT_NEAR(trajectory_data.getTimes().front(), 0.1, 1e-6);
   EXPECT_NEAR(trajectory_data.getTimes().back(), 0.3, 1e-6);
   EXPECT_NEAR(trajectory_data.getPoses().at(0).position.x, 0.1, 1e-6);
@@ -274,7 +277,8 @@ TEST(TrajectoryUtilitiesTest, GenerateConstantCurvaturePathTrajectoryMatchesPred
 
   ASSERT_EQ(trajectory_data.size(), expected_times.size());
   EXPECT_EQ(
-    trajectory_data.getId().find("_constant_curvature_path"), trajectory_data.getId().size() - 24);
+    trajectory_data.getObjectIdentification().id.find("_constant_curvature_path"),
+    trajectory_data.getObjectIdentification().id.size() - 24);
   for (size_t i = 0; i < expected_times.size(); ++i) {
     EXPECT_NEAR(trajectory_data.getTimes().at(i), expected_times.at(i), 1e-6);
     EXPECT_NEAR(trajectory_data.getPoses().at(i).position.x, expected_poses.at(i).position.x, 1e-6);
@@ -296,7 +300,8 @@ TEST(TrajectoryUtilitiesTest, TrajectoryDataReturnsFootprintsInNearestTimeRange)
     autoware_utils_geometry::to_polygon2d(poses.at(0), shape),
     autoware_utils_geometry::to_polygon2d(poses.at(1), shape),
     autoware_utils_geometry::to_polygon2d(poses.at(2), shape)};
-  const TrajectoryData trajectory_data("sample", times, distances, poses, footprints);
+  const TrajectoryData trajectory_data(
+    ObjectIdentification{"", "sample"}, times, distances, poses, footprints);
 
   const auto range = trajectory_data.getFootprintsInTimeRange(0.05, 0.15);
   const auto empty_range = trajectory_data.getFootprintsInTimeRange(0.3, 0.2);

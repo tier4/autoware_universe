@@ -22,6 +22,7 @@
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <rclcpp/duration.hpp>
+#include <rclcpp/time.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <geometry_msgs/msg/point.hpp>
@@ -32,8 +33,10 @@
 
 #include <any>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -51,10 +54,16 @@ using StepPolygonTrajectory = std::vector<Polygon2d>;
 
 static constexpr double TIME_RESOLUTION = 0.1;  // 100ms intervals
 
+struct ObjectIdentification
+{
+  std::string classification;
+  std::string id;
+};
+
 class TrajectoryData
 {
 private:
-  std::string id_;
+  ObjectIdentification object_identification_;
   TimeTrajectory times_;
   TravelDistanceTrajectory distances_;
   PoseTrajectory poses_;
@@ -62,31 +71,39 @@ private:
 
 public:
   TrajectoryData(
-    std::string id, TimeTrajectory times, TravelDistanceTrajectory distances, PoseTrajectory poses,
-    FootprintTrajectory footprints)
-  : id_(std::move(id)),
+    ObjectIdentification object_identification, TimeTrajectory times,
+    TravelDistanceTrajectory distances, PoseTrajectory poses, FootprintTrajectory footprints)
+  : object_identification_(std::move(object_identification)),
     times_(std::move(times)),
     distances_(std::move(distances)),
     poses_(std::move(poses)),
     footprints_(std::move(footprints))
   {
     if (times_.empty()) {
-      throw std::invalid_argument("Trajectory must not be empty " + id_);
+      throw std::invalid_argument(
+        "Trajectory must not be empty classification: " + object_identification_.classification +
+        ", ID: " + object_identification_.id);
     }
     if (times_.size() != distances_.size()) {
-      throw std::invalid_argument("Trajectory sizes mismatch (times vs distances) " + id_);
+      throw std::invalid_argument(
+        "Trajectory sizes mismatch (times vs distances) classification: " +
+        object_identification_.classification + ", ID: " + object_identification_.id);
     }
     if (times_.size() != poses_.size()) {
-      throw std::invalid_argument("Trajectory sizes mismatch (times vs poses) " + id_);
+      throw std::invalid_argument(
+        "Trajectory sizes mismatch (times vs poses) classification: " +
+        object_identification_.classification + ", ID: " + object_identification_.id);
     }
     if (times_.size() != footprints_.size()) {
-      throw std::invalid_argument("Trajectory sizes mismatch (times vs footprints) " + id_);
+      throw std::invalid_argument(
+        "Trajectory sizes mismatch (times vs footprints) classification: " +
+        object_identification_.classification + ", ID: " + object_identification_.id);
     }
   }
 
   TrajectoryData() = delete;
 
-  const std::string & getId() const { return id_; }
+  const ObjectIdentification & getObjectIdentification() const { return object_identification_; }
   const TimeTrajectory & getTimes() const { return times_; }
   const TravelDistanceTrajectory & getDistances() const { return distances_; }
   const PoseTrajectory & getPoses() const { return poses_; }
@@ -128,6 +145,55 @@ private:
   }
 };
 
+class ContinuousDetectionTimes
+{
+public:
+  void clear()
+  {
+    current_time_.reset();
+    detection_start_times_.clear();
+  }
+
+  template <typename Detections, typename KeyFunc>
+  void update(const rclcpp::Time & current_time, const Detections & detections, KeyFunc key_func)
+  {
+    current_time_ = current_time;
+
+    std::unordered_set<std::string> active_keys{};
+    for (const auto & detection : detections) {
+      const auto key = key_func(detection);
+      active_keys.insert(key);
+      detection_start_times_.try_emplace(key, current_time);
+    }
+
+    for (auto it = detection_start_times_.begin(); it != detection_start_times_.end();) {
+      if (!active_keys.count(it->first)) {
+        it = detection_start_times_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  double get_time(const std::string & key) const
+  {
+    if (!current_time_) {
+      return 0.0;
+    }
+
+    const auto it = detection_start_times_.find(key);
+    if (it == detection_start_times_.end()) {
+      return 0.0;
+    }
+
+    return (*current_time_ - it->second).seconds();
+  }
+
+private:
+  std::optional<rclcpp::Time> current_time_;
+  std::unordered_map<std::string, rclcpp::Time> detection_start_times_;
+};
+
 class CollisionCheckFilter : public plugin::ValidatorInterface
 {
 public:
@@ -141,6 +207,8 @@ public:
 private:
   validator::Params::CollisionCheck::PetCollision pet_collision_params_;
   validator::Params::CollisionCheck::Rss rss_params_;
+  ContinuousDetectionTimes pet_continuous_times_;
+  ContinuousDetectionTimes rss_continuous_times_;
 
   void add_debug_markers(
     const Polygon2d & ego_hull, const Polygon2d & object_hull, const std::string & trajectory_id,
