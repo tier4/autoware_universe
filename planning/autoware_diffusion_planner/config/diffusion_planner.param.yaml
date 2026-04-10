@@ -17,6 +17,8 @@
     delay_step: 0
     line_string_max_step_m: 5.0
     use_time_interpolation: true
+    ego_snap_to_trajectory_threshold: 0.25   # [m] snap ego to previous trajectory if within this distance. 0.0 disables snapping.
+    ego_snap_to_trajectory_yaw_threshold: 0.5  # [rad] reset to current kinematic_state if yaw difference exceeds this threshold.
     planning_factor:
       enable_stop: true
       enable_slowdown: false

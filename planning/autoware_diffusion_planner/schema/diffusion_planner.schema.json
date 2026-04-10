@@ -111,6 +111,18 @@
           "default": false,
           "description": "Whether to interpolate ego past trajectory at regular time intervals"
         },
+        "ego_snap_to_trajectory_threshold": {
+          "type": "number",
+          "default": 0.0,
+          "minimum": 0,
+          "description": "Distance threshold [m] for snapping ego position to the closest point on the previous trajectory. 0.0 disables snapping."
+        },
+        "ego_snap_to_trajectory_yaw_threshold": {
+          "type": "number",
+          "default": 3.14159,
+          "minimum": 0,
+          "description": "Yaw difference threshold [rad] for snapping. If yaw difference between ego and closest trajectory point exceeds this, snapping is skipped and current kinematic_state is used."
+        },
         "planning_factor": {
           "type": "object",
           "properties": {
