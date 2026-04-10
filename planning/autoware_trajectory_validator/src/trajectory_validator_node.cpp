@@ -37,6 +37,17 @@
 
 namespace
 {
+std::unordered_map<std::string, std::string> get_generator_uuid_to_name_map(
+  const autoware_internal_planning_msgs::msg::CandidateTrajectories & candidate_trajectories)
+{
+  std::unordered_map<std::string, std::string> uuid_to_name;
+  uuid_to_name.reserve(candidate_trajectories.generator_info.size());
+  for (const auto & info : candidate_trajectories.generator_info) {
+    uuid_to_name[autoware_utils_uuid::to_hex_string(info.generator_id)] = info.generator_name.data;
+  }
+  return uuid_to_name;
+}
+
 visualization_msgs::msg::MarkerArray create_internal_state_text(
   const std::unordered_map<std::string, std::vector<std::string>> & plugin_filtered_paths,
   const std::vector<std::string> & sorted_plugins, const geometry_msgs::msg::Pose & marker_pose,
@@ -116,6 +127,7 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
 
   pub_processing_time_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
   pub_debug_markers_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
+  pub_validation_reports_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
 
   pseudo_emergency_stop_handler_ = std::make_unique<PseudoEmergencyStopHandler>(*this);
 }
@@ -167,9 +179,12 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   diagnostics_interface_.clear();
   evaluation_tables_.clear();
 
+  const auto uuid_to_name = get_generator_uuid_to_name_map(*msg);
+
   auto filtered_msg = std::make_unique<CandidateTrajectories>();
   diagnostics_interface_.clear();
   size_t num_feasible_trajectories = 0;
+  std::vector<ValidationReport> reports;
   for (const auto & trajectory : msg->candidate_trajectories) {
     EvaluationTable table;
     table.generator_id = autoware_utils_uuid::to_hex_string(trajectory.generator_id);
@@ -178,23 +193,41 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
     // NOTE: this is used to determine diagnostic status, and doesn't affect whether filtering is
     // applied
     bool is_overall_feasible = true;
+    std::vector<MetricReport> metrics;
     for (const auto & plugin : plugins_) {
       PluginEvaluation evaluation;
       evaluation.plugin_name = plugin->get_name();
       stop_watch.tic(evaluation.plugin_name);
 
       if (const auto res = plugin->is_feasible(trajectory.points, context); !res) {
-        RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 1000, "Not feasible: %s", res.error().c_str());
-        diagnostics_interface_.add_key_value(plugin->get_name(), res.error());
+        RCLCPP_ERROR_THROTTLE(
+          get_logger(), *get_clock(), 1000, "Got exception in %s: %s", plugin->get_name().c_str(),
+          res.error().c_str());
+        diagnostics_interface_.add_key_value(plugin->get_name(), std::string("NG"));
 
         evaluation.is_feasible = false;
         evaluation.reason = res.error();
-
         if (!plugin->is_debug_mode()) {
           table.is_overall_feasible = false;
         }
         is_overall_feasible = false;
+      } else if (const auto & val = res.value(); !val.is_feasible) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000, "Not feasible: %s", plugin->get_name().c_str());
+        diagnostics_interface_.add_key_value(plugin->get_name(), std::string("NG"));
+
+        evaluation.is_feasible = false;
+        evaluation.reason = "Found failed metrics";
+        if (!plugin->is_debug_mode()) {
+          table.is_overall_feasible = false;
+        }
+        is_overall_feasible = false;
+
+        metrics.insert(metrics.end(), val.metrics.begin(), val.metrics.end());
+      } else {
+        diagnostics_interface_.add_key_value(plugin->get_name(), std::string("OK"));
+
+        metrics.insert(metrics.end(), val.metrics.begin(), val.metrics.end());
       }
       processing_time_ms[evaluation.plugin_name] += stop_watch.toc(evaluation.plugin_name);
 
@@ -207,6 +240,14 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
     // so in debug mode, all trajectories are kept
     if (table.is_overall_feasible) filtered_msg->candidate_trajectories.push_back(trajectory);
     if (is_overall_feasible) ++num_feasible_trajectories;
+
+    reports.push_back(autoware_trajectory_validator::build<ValidationReport>()
+                        .trajectory_stamp(trajectory.header.stamp)
+                        .generator_id(trajectory.generator_id)
+                        .generator_name(uuid_to_name.at(
+                          autoware_utils_uuid::to_hex_string(trajectory.generator_id)))
+                        .level(is_overall_feasible ? ValidationReport::OK : ValidationReport::ERROR)
+                        .metrics(std::move(metrics)));
   }
 
   if (params_.pseudo_emergency_stop.enable) {
@@ -239,6 +280,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   publish_processing_time(processing_time_ms);
   publish_internal_state(processing_time_ms, evaluation_tables_, context.odometry->pose.pose);
   update_diagnostic(*msg, num_feasible_trajectories);
+  publish_validation_reports(reports);
   pub_trajectories_->publish(*filtered_msg);
 }
 
@@ -375,6 +417,12 @@ void TrajectoryValidator::publish_internal_state(
     plugin_filtered_paths, sorted_plugins, ego_pose, get_clock()->now(),
     vehicle_info_.vehicle_height_m + offset);
   pub_debug_markers_->publish<visualization_msgs::msg::MarkerArray>("markers", internal_state_text);
+}
+
+void TrajectoryValidator::publish_validation_reports(const std::vector<ValidationReport> & reports)
+{
+  auto msg = autoware_trajectory_validator::build<ValidationReportArray>().reports(reports);
+  pub_validation_reports_->publish<ValidationReportArray>("validation_reports", msg);
 }
 }  // namespace autoware::trajectory_validator
 
