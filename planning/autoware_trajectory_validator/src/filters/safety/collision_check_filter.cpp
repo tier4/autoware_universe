@@ -722,6 +722,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   bool is_feasible = true;
   std::vector<MetricReport> metrics;
 
+  const rclcpp::Time current_time = context.odometry->header.stamp;
+
   const auto planned_speed_timing_findings = planned_speed_collision_timing::assess(
     traj_points, context, pet_collision_params_, *vehicle_info_ptr_);
   pet_continuous_times_.update(
@@ -735,13 +737,17 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
                         .validator_name(get_name())
                         .validator_category(category())
-                        .metric_name(fmt::format("check_PET_{}", finding.trajectory_id))
+                        .metric_name(fmt::format(
+                          "check_PET_{}_{}_{}", finding.trajectory_id,
+                          finding.object.classification, finding.object.id))
                         .metric_value(finding.pet)
                         .level(MetricReport::ERROR));
     metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
                         .validator_name(get_name())
                         .validator_category(category())
-                        .metric_name(fmt::format("check_TTC_{}", finding.trajectory_id))
+                        .metric_name(fmt::format(
+                          "check_TTC_{}_{}_{}", finding.trajectory_id,
+                          finding.object.classification, finding.object.id))
                         .metric_value(finding.ttc.value_or(0.0))
                         .level(MetricReport::ERROR));
 
@@ -762,7 +768,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
                         .validator_name(get_name())
                         .validator_category(category())
-                        .metric_name(fmt::format("check_RSS_{}", violation.object_id))
+                        .metric_name(fmt::format(
+                          "check_RSS_{}_{}", violation.object.classification, violation.object.id))
                         .metric_value(violation.required_deceleration)
                         .level(MetricReport::ERROR));
   }
