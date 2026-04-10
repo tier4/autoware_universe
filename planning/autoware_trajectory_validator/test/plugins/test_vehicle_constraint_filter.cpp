@@ -63,7 +63,8 @@ TEST(VehicleConstraintFilterTest, FeasibleWhenAllConstraintsSatisfied)
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
 
-  EXPECT_TRUE(result.has_value());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible);
 }
 
 TEST(VehicleConstraintFilterTest, InfeasibleWhenSpeedExceedsMax)
@@ -87,7 +88,8 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSpeedExceedsMax)
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
 
-  EXPECT_FALSE(result.has_value());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible);
 }
 
 TEST(VehicleConstraintFilterTest, InfeasibleWhenAccelerationExceedsMax)
@@ -111,7 +113,8 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenAccelerationExceedsMax)
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
 
-  EXPECT_FALSE(result.has_value());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible);
 }
 
 TEST(VehicleConstraintFilterTest, InfeasibleWhenDecelerationExceedsMax)
@@ -136,7 +139,8 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenDecelerationExceedsMax)
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
 
-  EXPECT_FALSE(result.has_value());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible);
 }
 
 TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringAngleExceedsMax)
@@ -164,7 +168,8 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringAngleExceedsMax)
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
 
-  EXPECT_FALSE(result.has_value());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible);
 }
 
 TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringRateExceedsMax)
@@ -194,7 +199,8 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringRateExceedsMax)
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
 
-  EXPECT_FALSE(result.has_value());
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible);
 }
 
 // --- is_speed_ok(...) tests ---
