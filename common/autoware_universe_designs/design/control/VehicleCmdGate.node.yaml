@@ -44,7 +44,7 @@ subscribers:
     message_type: autoware_vehicle_msgs/msg/GearCommand
     remap_target: input/external/gear_cmd
   - name: external_emergency_stop_heartbeat
-    message_type: tier4_external_api_msgs/msg/Heartbeat
+    message_type: autoware_adapi_v1_msgs/msg/ManualOperatorHeartbeat
     remap_target: input/external_emergency_stop_heartbeat
   - name: emergency_control_cmd
     message_type: autoware_control_msgs/msg/Control
