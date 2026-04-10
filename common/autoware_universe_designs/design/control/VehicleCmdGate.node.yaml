@@ -72,7 +72,7 @@ subscribers:
     remap_target: input/acceleration
 
 publishers:
-  - name: control_cmd
+  - name: command/control_cmd
     message_type: autoware_control_msgs/msg/Control
     remap_target: output/control_cmd
   - name: gear_cmd
@@ -110,4 +110,4 @@ processes:
     trigger_conditions:
       - periodic: 10.0
     outcomes:
-      - to_output: control_cmd
+      - to_output: command/control_cmd
