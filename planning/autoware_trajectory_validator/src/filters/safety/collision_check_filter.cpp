@@ -749,7 +749,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
                           "check_TTC_{}_{}_{}", finding.trajectory_id,
                           finding.object.classification, finding.object.id))
                         .metric_value(finding.ttc.value_or(0.0))
-                        .level(MetricReport::ERROR));
+                        .level(finding.ttc.has_value() ? MetricReport::ERROR : MetricReport::OK));
 
     add_debug_markers(
       finding.ego_hull, finding.object_hull, finding.trajectory_id, context.odometry->header.stamp);

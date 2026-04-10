@@ -48,10 +48,11 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
   bool is_feasible = true;
   const auto found_critical_departure = !departure_data->critical_departure_points.empty();
   if (found_critical_departure) {
+    is_feasible = false;
+
     debug_markers_ = boundary_departure_checker::debug::create_debug_markers(
       *departure_data, context.odometry->header.stamp, context.odometry->pose.pose.position.z,
       params_);
-    is_feasible = false;
   }
 
   std::vector<MetricReport> metrics{
