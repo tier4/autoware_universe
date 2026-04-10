@@ -33,6 +33,7 @@
 
 #include <any>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -130,6 +131,55 @@ private:
   }
 };
 
+class ContinuousDetectionTimes
+{
+public:
+  void clear()
+  {
+    current_time_.reset();
+    detection_start_times_.clear();
+  }
+
+  template <typename Detections, typename KeyFunc>
+  void update(const rclcpp::Time & current_time, const Detections & detections, KeyFunc key_func)
+  {
+    current_time_ = current_time;
+
+    std::unordered_set<std::string> active_keys{};
+    for (const auto & detection : detections) {
+      const auto key = key_func(detection);
+      active_keys.insert(key);
+      detection_start_times_.try_emplace(key, current_time);
+    }
+
+    for (auto it = detection_start_times_.begin(); it != detection_start_times_.end();) {
+      if (!active_keys.count(it->first)) {
+        it = detection_start_times_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  double get_time(const std::string & key) const
+  {
+    if (!current_time_) {
+      return 0.0;
+    }
+
+    const auto it = detection_start_times_.find(key);
+    if (it == detection_start_times_.end()) {
+      return 0.0;
+    }
+
+    return (*current_time_ - it->second).seconds();
+  }
+
+private:
+  std::optional<rclcpp::Time> current_time_;
+  std::unordered_map<std::string, rclcpp::Time> detection_start_times_;
+};
+
 class CollisionCheckFilter : public plugin::ValidatorInterface
 {
 public:
@@ -143,8 +193,8 @@ public:
 private:
   validator::Params::CollisionCheck::PetCollision pet_collision_params_;
   validator::Params::CollisionCheck::Rss rss_params_;
-  std::unordered_map<std::string, rclcpp::Time> pet_collision_start_times_;
-  std::unordered_map<std::string, rclcpp::Time> rss_collision_start_times_;
+  ContinuousDetectionTimes pet_continuous_times_;
+  ContinuousDetectionTimes rss_continuous_times_;
 
   void add_debug_markers(
     const Polygon2d & ego_hull, const Polygon2d & object_hull, const std::string & trajectory_id,
