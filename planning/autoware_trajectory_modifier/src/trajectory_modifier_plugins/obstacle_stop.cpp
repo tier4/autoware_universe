@@ -248,7 +248,7 @@ size_t update_velocities(TrajectoryPoints & trajectory, const double jerk, const
     const auto da = jerk * (ds / std::max<double>(v_ref, 0.1));
     const auto a_curr = backward ? std::min(a_ref + da, decel) : a_ref - da;
     const auto a_avg = (a_ref + a_curr) / 2.0;
-    const auto v_curr = std::sqrt(v_ref * v_ref + 2.0 * a_avg * ds);
+    const auto v_curr = std::sqrt(std::max(0.0, v_ref * v_ref + 2.0 * a_avg * ds));
     return {v_curr, a_curr};
   };
 
@@ -295,7 +295,7 @@ size_t insert_stop_point(
   const auto index = motion_utils::insertStopPoint(target_stop_point_arc_length, trajectory);
   if (index) return index.value();
 
-  // TODO (Quda): this is a temporary fix, need to check why insertStopPoint fails when target
+  // TODO(Quda): this is a temporary fix, need to check why insertStopPoint fails when target
   // distance is equal to trajectory length
   if (target_stop_point_arc_length < traj_length) {
     auto dist = 0.0;

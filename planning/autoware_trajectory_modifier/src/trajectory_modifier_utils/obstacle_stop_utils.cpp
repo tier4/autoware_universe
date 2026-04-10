@@ -27,6 +27,7 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_modifier::utils::obstacle_stop
@@ -92,8 +93,7 @@ TrajectoryShape get_trajectory_shape(
       motion_utils::cropForwardPoints(
         trajectory_points, ego_pose.position, start_idx, detection_length);
     }
-    const auto extend_length = std::min(detection_length - forward_traj_length, stop_margin);
-    return extend_trajectory(trajectory_points, extend_length);
+    return extend_trajectory(trajectory_points, stop_margin);
   });
 
   autoware_utils_geometry::LineString2d ls_front_right;
@@ -137,6 +137,8 @@ TrajectoryShape get_trajectory_shape(
     ls_rear_left.emplace_back(
       base_link.x() + rear_left_offset.x(), base_link.y() + rear_left_offset.y());
   }
+  ls_rear_left.emplace_back(ls_front_left.back());
+  ls_rear_right.emplace_back(ls_front_right.back());
 
   boost::geometry::reverse(ls_front_right);
   boost::geometry::reverse(ls_rear_right);

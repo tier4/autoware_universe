@@ -26,6 +26,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace autoware::trajectory_modifier::plugin
