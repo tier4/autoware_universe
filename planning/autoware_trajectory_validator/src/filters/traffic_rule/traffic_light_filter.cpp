@@ -30,6 +30,7 @@
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 #include <lanelet2_core/primitives/LineString.h>
 
+#include <algorithm>
 #include <ctime>
 #include <memory>
 #include <string>
@@ -137,7 +138,7 @@ bool TrafficLightFilter::is_stop_point_within_margin_from_stop_line(
   return false;
 }
 
-tl::expected<void, std::string> TrafficLightFilter::is_feasible(
+TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   if (const auto has_invalid_input = is_invalid_input(context, vehicle_info_ptr_)) {
@@ -197,14 +198,31 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
 
   const auto [red_stop_lines, amber_stop_lines] =
     get_stop_lines(*context.lanelet_map, *context.traffic_light_signals);
+
+  bool is_feasible = true;
+  std::vector<MetricReport> metrics;
+
+  // Check for red light crossings
+  bool is_crossing_red = false;
   for (const auto & red_stop_line : red_stop_lines) {
     if (boost::geometry::intersects(trajectory_ls, red_stop_line)) {
       if (is_stop_point_within_margin_from_stop_line(stop_point, red_stop_line)) {
         continue;
       }
-      return tl::make_unexpected("crosses red light");  // Reject trajectory (cross red light)
+      is_crossing_red = true;  // Reject trajectory (cross red light)
+      break;
     }
   }
+  metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                      .validator_name(get_name())
+                      .validator_category(category())
+                      .metric_name("check_crossing_red_light")
+                      .metric_value(0.0)
+                      .level(is_crossing_red ? MetricReport::ERROR : MetricReport::OK));
+  is_feasible = is_feasible && !is_crossing_red;
+
+  // Check for amber light crossings
+  bool is_crossing_amber = false;
   for (const auto & amber_stop_line : amber_stop_lines) {
     auto distance_to_stop_line = 0.0;
     std::optional<double> amber_stop_line_crossing_time;
@@ -235,11 +253,20 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
       if (!can_pass_amber_light(
             distance_to_stop_line, current_velocity, current_acceleration,
             *amber_stop_line_crossing_time)) {
-        return tl::make_unexpected("crosses amber light");  // Reject trajectory (cross amber light)
+        is_crossing_amber = true;  // Reject trajectory (cross amber light)
+        break;
       }
     }
   }
-  return {};  // Allow trajectory
+  metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                      .validator_name(get_name())
+                      .validator_category(category())
+                      .metric_name("check_crossing_amber_light")
+                      .metric_value(0.0)
+                      .level(is_crossing_amber ? MetricReport::ERROR : MetricReport::OK));
+  is_feasible = is_feasible && !is_crossing_amber;
+
+  return ValidationResult{is_feasible, std::move(metrics)};
 }
 
 bool TrafficLightFilter::can_pass_amber_light(

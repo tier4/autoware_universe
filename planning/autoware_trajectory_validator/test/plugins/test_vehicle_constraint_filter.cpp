@@ -207,7 +207,9 @@ TEST(IsSpeedOkTest, TrueWhenAllSpeedsBelowMax)
     create_trajectory_point(2.0, 2.0, 0.0, 7.0, 0.0, 2.0)};
   double max_speed = 10.0;  // m/s
 
-  EXPECT_TRUE(is_speed_ok(traj_points, max_speed));
+  const auto [_, is_ok] = is_speed_ok(traj_points, max_speed);
+
+  EXPECT_TRUE(is_ok);
 }
 
 TEST(IsSpeedOkTest, FalseWhenAnySpeedAboveMax)
@@ -218,7 +220,9 @@ TEST(IsSpeedOkTest, FalseWhenAnySpeedAboveMax)
     create_trajectory_point(2.0, 2.0, 0.0, 11.0, 0.0, 2.0)};
   double max_speed = 10.0;  // m/s
 
-  EXPECT_FALSE(is_speed_ok(traj_points, max_speed));
+  const auto [_, is_ok] = is_speed_ok(traj_points, max_speed);
+
+  EXPECT_FALSE(is_ok);
 }
 
 // --- is_acceleration_ok(...) tests ---
@@ -231,7 +235,9 @@ TEST(IsAccelerationOkTest, TrueWhenAllAccelerationsBelowMax)
     create_trajectory_point(2.0, 2.0, 0.0, 2.0, 0.0, 2.0, 0.0, 2.0)};
   double max_acceleration = 2.0;  // m/s^2
 
-  EXPECT_TRUE(is_acceleration_ok(traj_points, max_acceleration));
+  const auto [_, is_ok] = is_acceleration_ok(traj_points, max_acceleration);
+
+  EXPECT_TRUE(is_ok);
 }
 
 TEST(IsAccelerationOkTest, FalseWhenAnyAccelerationAboveMax)
@@ -242,7 +248,9 @@ TEST(IsAccelerationOkTest, FalseWhenAnyAccelerationAboveMax)
     create_trajectory_point(2.0, 2.0, 0.0, 3.5, 0.0, 2.0, 0.0, 3.5)};
   double max_acceleration = 2.0;  // m/s^2
 
-  EXPECT_FALSE(is_acceleration_ok(traj_points, max_acceleration));
+  const auto [_, is_ok] = is_acceleration_ok(traj_points, max_acceleration);
+
+  EXPECT_FALSE(is_ok);
 }
 
 // --- is_deceleration_ok(...) tests ---
@@ -255,7 +263,9 @@ TEST(IsDecelerationOkTest, TrueWhenAllDecelerationsBelowMax)
     create_trajectory_point(2.0, 2.0, 0.0, 1.0, 0.0, 2.0, 0.0, -2.0)};
   double max_deceleration = 2.0;  // m/s^2
 
-  EXPECT_TRUE(is_deceleration_ok(traj_points, max_deceleration));
+  const auto [_, is_ok] = is_deceleration_ok(traj_points, max_deceleration);
+
+  EXPECT_TRUE(is_ok);
 }
 
 TEST(IsDecelerationOkTest, FalseWhenAnyDecelerationAboveMax)
@@ -266,7 +276,9 @@ TEST(IsDecelerationOkTest, FalseWhenAnyDecelerationAboveMax)
     create_trajectory_point(2.0, 2.0, 0.0, 0.0, 0.0, 2.0, 0.0, -3.0)};
   double max_deceleration = 2.0;  // m/s^2
 
-  EXPECT_FALSE(is_deceleration_ok(traj_points, max_deceleration));
+  const auto [_, is_ok] = is_deceleration_ok(traj_points, max_deceleration);
+
+  EXPECT_FALSE(is_ok);
 }
 
 // --- is_steering_angle_ok(...) tests ---
@@ -281,7 +293,9 @@ TEST(IsSteeringAngleOkTest, TrueWhenAllSteeringAnglesBelowMax)
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
   double max_steering_angle = 0.5;  // rad
 
-  EXPECT_TRUE(is_steering_angle_ok(traj_points, vehicle_info, max_steering_angle));
+  const auto [_, is_ok] = is_steering_angle_ok(traj_points, vehicle_info, max_steering_angle);
+
+  EXPECT_TRUE(is_ok);
 }
 
 TEST(IsSteeringAngleOkTest, FalseWhenAnySteeringAngleAboveMax)
@@ -298,7 +312,9 @@ TEST(IsSteeringAngleOkTest, FalseWhenAnySteeringAngleAboveMax)
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
   double max_steering_angle = 0.5;  // rad
 
-  EXPECT_FALSE(is_steering_angle_ok(traj_points, vehicle_info, max_steering_angle));
+  const auto [_, is_ok] = is_steering_angle_ok(traj_points, vehicle_info, max_steering_angle);
+
+  EXPECT_FALSE(is_ok);
 }
 
 // --- is_steering_rate_ok(...) tests ---
@@ -314,7 +330,9 @@ TEST(IsSteeringRateOkTest, TrueWhenAllSteeringRatesBelowMax)
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
   double max_steering_rate = 0.1;   // rad/s
 
-  EXPECT_TRUE(is_steering_rate_ok(traj_points, vehicle_info, max_steering_rate));
+  const auto [_, is_ok] = is_steering_rate_ok(traj_points, vehicle_info, max_steering_rate);
+
+  EXPECT_TRUE(is_ok);
 }
 
 TEST(IsSteeringRateOkTest, FalseWhenAnySteeringRateAboveMax)
@@ -333,6 +351,8 @@ TEST(IsSteeringRateOkTest, FalseWhenAnySteeringRateAboveMax)
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
   double max_steering_rate = 0.1;   // rad/s
 
-  EXPECT_FALSE(is_steering_rate_ok(traj_points, vehicle_info, max_steering_rate));
+  const auto [_, is_ok] = is_steering_rate_ok(traj_points, vehicle_info, max_steering_rate);
+
+  EXPECT_FALSE(is_ok);
 }
 }  // namespace autoware::trajectory_validator::plugin::safety::testing

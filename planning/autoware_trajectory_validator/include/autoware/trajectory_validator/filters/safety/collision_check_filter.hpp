@@ -199,7 +199,7 @@ class CollisionCheckFilter : public plugin::ValidatorInterface
 public:
   CollisionCheckFilter() : ValidatorInterface("collision_check_filter") {}
 
-  tl::expected<void, std::string> is_feasible(
+  result_t is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) override;
 
   void update_parameters(const validator::Params & params) final;
