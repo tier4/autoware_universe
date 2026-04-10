@@ -58,8 +58,11 @@ if(BUILD_TESTING)
     test/plugins/test_vehicle_constraint_filter.cpp
   )
 
+  set(RUNNER "RUNNER" "${ament_cmake_ros_DIR}/run_test_isolated.py")
+
   ament_auto_add_gtest(test_${PROJECT_NAME}
     ${test_sources}
+    RUNNER "${RUNNER}"
   )
 
 endif()
