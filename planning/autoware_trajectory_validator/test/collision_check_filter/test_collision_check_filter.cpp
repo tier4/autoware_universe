@@ -171,6 +171,8 @@ TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)
 
   ASSERT_FALSE(result.has_value());
   const std::string & error_msg = result.error();
+  EXPECT_NE(error_msg.find("classification: CAR"), std::string::npos)
+    << "Error string did not contain 'classification: CAR'. Actual: " << error_msg;
   EXPECT_NE(error_msg.find("predicted_path"), std::string::npos)
     << "Error string did not contain 'predicted_path'. Actual: " << error_msg;
   EXPECT_NE(error_msg.find("constant_curvature_path"), std::string::npos)
@@ -222,6 +224,8 @@ TEST_F(CollisionCheckFilterTest, ObjectWillEnterPath)
 
   ASSERT_FALSE(result.has_value());
   const std::string & error_msg = result.error();
+  EXPECT_NE(error_msg.find("classification: CAR"), std::string::npos)
+    << "Error string did not contain 'classification: CAR'. Actual: " << error_msg;
   EXPECT_NE(error_msg.find("predicted_path"), std::string::npos)
     << "Error string did not contain 'predicted_path'. Actual: " << error_msg;
   EXPECT_NE(error_msg.find("constant_curvature_path"), std::string::npos)

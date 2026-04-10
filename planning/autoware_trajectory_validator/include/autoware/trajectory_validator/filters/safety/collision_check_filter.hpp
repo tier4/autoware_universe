@@ -54,10 +54,16 @@ using StepPolygonTrajectory = std::vector<Polygon2d>;
 
 static constexpr double TIME_RESOLUTION = 0.1;  // 100ms intervals
 
+struct ObjectIdentification
+{
+  std::string classification;
+  std::string id;
+};
+
 class TrajectoryData
 {
 private:
-  std::string id_;
+  ObjectIdentification object_identification_;
   TimeTrajectory times_;
   TravelDistanceTrajectory distances_;
   PoseTrajectory poses_;
@@ -65,31 +71,39 @@ private:
 
 public:
   TrajectoryData(
-    std::string id, TimeTrajectory times, TravelDistanceTrajectory distances, PoseTrajectory poses,
-    FootprintTrajectory footprints)
-  : id_(std::move(id)),
+    ObjectIdentification object_identification, TimeTrajectory times,
+    TravelDistanceTrajectory distances, PoseTrajectory poses, FootprintTrajectory footprints)
+  : object_identification_(std::move(object_identification)),
     times_(std::move(times)),
     distances_(std::move(distances)),
     poses_(std::move(poses)),
     footprints_(std::move(footprints))
   {
     if (times_.empty()) {
-      throw std::invalid_argument("Trajectory must not be empty " + id_);
+      throw std::invalid_argument(
+        "Trajectory must not be empty classification: " + object_identification_.classification +
+        ", ID: " + object_identification_.id);
     }
     if (times_.size() != distances_.size()) {
-      throw std::invalid_argument("Trajectory sizes mismatch (times vs distances) " + id_);
+      throw std::invalid_argument(
+        "Trajectory sizes mismatch (times vs distances) classification: " +
+        object_identification_.classification + ", ID: " + object_identification_.id);
     }
     if (times_.size() != poses_.size()) {
-      throw std::invalid_argument("Trajectory sizes mismatch (times vs poses) " + id_);
+      throw std::invalid_argument(
+        "Trajectory sizes mismatch (times vs poses) classification: " +
+        object_identification_.classification + ", ID: " + object_identification_.id);
     }
     if (times_.size() != footprints_.size()) {
-      throw std::invalid_argument("Trajectory sizes mismatch (times vs footprints) " + id_);
+      throw std::invalid_argument(
+        "Trajectory sizes mismatch (times vs footprints) classification: " +
+        object_identification_.classification + ", ID: " + object_identification_.id);
     }
   }
 
   TrajectoryData() = delete;
 
-  const std::string & getId() const { return id_; }
+  const ObjectIdentification & getObjectIdentification() const { return object_identification_; }
   const TimeTrajectory & getTimes() const { return times_; }
   const TravelDistanceTrajectory & getDistances() const { return distances_; }
   const PoseTrajectory & getPoses() const { return poses_; }

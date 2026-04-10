@@ -44,6 +44,22 @@ namespace autoware::trajectory_validator::plugin::safety
 using autoware::object_recognition_utils::convertLabelToString;
 using autoware::object_recognition_utils::getHighestProbLabel;
 
+ObjectIdentification make_object_identification(
+  const autoware_perception_msgs::msg::PredictedObject & object)
+{
+  return {
+    convertLabelToString(getHighestProbLabel(object.classification)),
+    autoware_utils_uuid::to_hex_string(object.object_id)};
+}
+
+ObjectIdentification make_trajectory_identification(
+  const autoware_perception_msgs::msg::PredictedObject & object, const std::string & suffix)
+{
+  return {
+    convertLabelToString(getHighestProbLabel(object.classification)),
+    autoware_utils_uuid::to_hex_string(object.object_id) + suffix};
+}
+
 // Trajectory generation helpers.
 namespace trajectory::time_distance
 {
@@ -254,7 +270,7 @@ TrajectoryData generate_ego_trajectory(
   auto footprints = footprint::compute_footprint_trajectory(poses, vehicle_info);
 
   return TrajectoryData(
-    std::string("ego"), std::move(times), std::move(distances), std::move(poses),
+    ObjectIdentification{"EGO", ""}, std::move(times), std::move(distances), std::move(poses),
     std::move(footprints));
 }
 
@@ -278,8 +294,8 @@ TrajectoryData generate_predicted_path_trajectory(
   auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(
-    autoware_utils_uuid::to_hex_string(predicted_object.object_id) + "_predicted_path",
-    std::move(times), std::move(distances), std::move(poses), std::move(footprints));
+    make_trajectory_identification(predicted_object, "_predicted_path"), std::move(times),
+    std::move(distances), std::move(poses), std::move(footprints));
 }
 
 TrajectoryData generate_constant_curvature_trajectory(
@@ -296,8 +312,8 @@ TrajectoryData generate_constant_curvature_trajectory(
   auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(
-    autoware_utils_uuid::to_hex_string(predicted_object.object_id) + "_constant_curvature_path",
-    std::move(times), std::move(distances), std::move(poses), std::move(footprints));
+    make_trajectory_identification(predicted_object, "_constant_curvature_path"), std::move(times),
+    std::move(distances), std::move(poses), std::move(footprints));
 }
 }  // namespace trajectory
 
@@ -362,8 +378,7 @@ namespace rss_deceleration
 {
 struct Assessment
 {
-  std::string object_id;
-  std::string classification;
+  ObjectIdentification object;
   double required_deceleration;
 };
 
@@ -445,18 +460,14 @@ Assessment assess_required_deceleration(
 {
   const auto ego_long_vel = ego_twist.linear.x;
   if (ego_long_vel <= 0.0) {
-    return Assessment{
-      autoware_utils_uuid::to_hex_string(object.object_id),
-      convertLabelToString(getHighestProbLabel(object.classification)), 0.0};
+    return Assessment{make_object_identification(object), 0.0};
   }
 
   // compute current distance
   const auto distance_to_collision =
     rss_deceleration::compute_distance_to_collision(ego_trajectory, object);
   if (!distance_to_collision.has_value()) {
-    return Assessment{
-      autoware_utils_uuid::to_hex_string(object.object_id),
-      convertLabelToString(getHighestProbLabel(object.classification)), 0.0};
+    return Assessment{make_object_identification(object), 0.0};
   }
 
   // compute safe distance
@@ -471,9 +482,7 @@ Assessment assess_required_deceleration(
                                          ? std::numeric_limits<double>::infinity()
                                          : ego_long_vel * ego_long_vel * 0.5 / safe_distance;
 
-  return Assessment{
-    autoware_utils_uuid::to_hex_string(object.object_id),
-    convertLabelToString(getHighestProbLabel(object.classification)), required_deceleration};
+  return Assessment{make_object_identification(object), required_deceleration};
 }
 
 Result assess(
@@ -518,6 +527,7 @@ struct Trajectories
 struct Finding
 {
   std::string trajectory_id;
+  ObjectIdentification object;
   double pet;
   std::optional<double> ttc;
   Polygon2d ego_hull;
@@ -560,7 +570,7 @@ Trajectories generate_trajectories(
 // is returned as ttc.
 std::optional<Finding> find_collision_timing(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
-  double pet_threshold)
+  const ObjectIdentification & object, double pet_threshold)
 {
   if (!geometry::has_overall_convex_hull_overlap(
         ref_trajectory.getFootprints(), test_trajectory.getFootprintsInTimeRange(
@@ -596,7 +606,8 @@ std::optional<Finding> find_collision_timing(
         check_slice_collision(test_start_time_before, test_end_time_before) ||
         check_slice_collision(test_start_time_after, test_end_time_after)) {
         Finding finding;
-        finding.trajectory_id = test_trajectory.getId();
+        finding.trajectory_id = test_trajectory.getObjectIdentification().id;
+        finding.object = object;
         finding.pet = pet_range;
         finding.ttc = ref_start_time;
         finding.ego_hull = geometry::compute_overall_convex_hull(
@@ -629,7 +640,7 @@ std::vector<Finding> assess(
 
   for (const auto & object_trajectory : trajectories.object_trajectories) {
     auto finding = find_collision_timing(
-      trajectories.ego_trajectory, object_trajectory,
+      trajectories.ego_trajectory, object_trajectory, object_trajectory.getObjectIdentification(),
       pet_collision_params.collision_time_threshold);
     if (finding.has_value()) {
       findings.push_back(std::move(finding.value()));
@@ -719,8 +730,8 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   for (const auto & finding : planned_speed_timing_findings) {
     const double detection_duration = pet_continuous_times_.get_time(finding.trajectory_id);
     error_msg += fmt::format(
-      "PET collision, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{}; ",
-      finding.trajectory_id, finding.pet,
+      "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{}; ",
+      finding.object.classification, finding.trajectory_id, finding.pet,
       finding.ttc.has_value() ? std::to_string(finding.ttc.value()) : "N/A", detection_duration,
       context.predicted_objects->header.stamp.sec, context.predicted_objects->header.stamp.nanosec);
     add_debug_markers(
@@ -730,13 +741,13 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   const auto rss_result =
     rss_deceleration::assess(traj_points, context, rss_params_, *vehicle_info_ptr_);
   rss_continuous_times_.update(current_time, rss_result.violations, [](const auto & violation) {
-    return violation.object_id;
+    return violation.object.id;
   });
   for (const auto & violation : rss_result.violations) {
-    const double detection_duration = rss_continuous_times_.get_time(violation.object_id);
+    const double detection_duration = rss_continuous_times_.get_time(violation.object.id);
     error_msg += fmt::format(
-      "RSS collision, ID: {}, classification: {}, duration: {}, required deceleration: {}; ",
-      violation.object_id, violation.classification, detection_duration,
+      "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}; ",
+      violation.object.classification, violation.object.id, detection_duration,
       violation.required_deceleration);
   }
 
