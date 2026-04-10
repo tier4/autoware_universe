@@ -44,6 +44,25 @@ target_link_libraries(autoware_trajectory_validator_plugins
   ${PROJECT_NAME}
 )
 
+rosidl_generate_interfaces(${PROJECT_NAME}_msgs
+  "msg/MetricReport.msg"
+  "msg/ValidationReport.msg"
+  "msg/ValidationReportArray.msg"
+  DEPENDENCIES
+  builtin_interfaces
+  unique_identifier_msgs
+)
+
+# to use messages defined in the same package from C++
+if(${rosidl_cmake_VERSION} VERSION_LESS 2.5.0)
+  rosidl_target_interfaces(${PROJECT_NAME}
+    ${PROJECT_NAME}_msgs "rosidl_typesupport_cpp")
+else()
+  rosidl_get_typesupport_target(
+    cpp_typesupport_target ${PROJECT_NAME}_msgs "rosidl_typesupport_cpp")
+  target_link_libraries(${PROJECT_NAME} "${cpp_typesupport_target}")
+endif()
+
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
