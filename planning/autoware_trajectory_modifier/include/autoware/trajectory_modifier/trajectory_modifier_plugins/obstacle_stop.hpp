@@ -68,6 +68,8 @@ private:
 
   std::unique_ptr<utils::obstacle_stop::PointCloudFilter> pointcloud_filter_;
 
+  std::unique_ptr<utils::obstacle_stop::ObjectFilter> object_filter_;
+
   std::unique_ptr<utils::obstacle_stop::ObstacleTracker> obstacle_tracker_;
 
   SafetyFactorArray safety_factors_;

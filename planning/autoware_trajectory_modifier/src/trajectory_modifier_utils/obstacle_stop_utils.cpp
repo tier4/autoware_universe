@@ -160,41 +160,6 @@ TrajectoryShape get_trajectory_shape(
   return TrajectoryShape{trajectory_polygon, envelope, traj_length, forward_traj_length};
 }
 
-void filter_objects_by_type(
-  PredictedObjects & objects, const std::vector<std::string> & object_type_strings)
-{
-  const std::vector<ObjectType> object_types = std::invoke([&]() {
-    std::vector<ObjectType> object_types;
-    object_types.reserve(object_type_strings.size());
-    for (const auto & object_type_string : object_type_strings) {
-      object_types.push_back(string_to_object_type.at(object_type_string));
-    }
-    return object_types;
-  });
-
-  objects.objects.erase(
-    std::remove_if(
-      objects.objects.begin(), objects.objects.end(),
-      [&](const auto & object) {
-        return std::find(
-                 object_types.begin(), object_types.end(),
-                 classification_to_object_type.at(object.classification.front().label)) ==
-               object_types.end();
-      }),
-    objects.objects.end());
-}
-
-void filter_objects_by_velocity(PredictedObjects & objects, const double max_velocity)
-{
-  objects.objects.erase(
-    std::remove_if(
-      objects.objects.begin(), objects.objects.end(),
-      [&](const auto & object) {
-        return object.kinematics.initial_twist_with_covariance.twist.linear.x > max_velocity;
-      }),
-    objects.objects.end());
-}
-
 std::optional<CollisionPoint> get_nearest_pcd_collision(
   const TrajectoryPoints & trajectory_points, const TrajectoryShape & trajectory_shape,
   const PointCloud::Ptr & pointcloud, std::vector<geometry_msgs::msg::Point> & target_pcd_points)

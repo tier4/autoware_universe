@@ -78,6 +78,12 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
   }
 
   {
+    const auto & p = params_.objects;
+    object_filter_ =
+      std::make_unique<utils::obstacle_stop::ObjectFilter>(p.object_types, p.max_velocity_th);
+  }
+
+  {
     const auto & p = params_.obstacle_tracking;
     obstacle_tracker_ = std::make_unique<utils::obstacle_stop::ObstacleTracker>(
       p.on_time_buffer, p.off_time_buffer, p.object_distance_th, p.object_yaw_th, p.pcd_distance_th,
@@ -107,6 +113,11 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
       p.voxel_grid_filter.x, p.voxel_grid_filter.y, p.voxel_grid_filter.z,
       p.voxel_grid_filter.min_size, p.clustering.tolerance, p.clustering.min_size,
       p.clustering.max_size);
+  }
+
+  {
+    const auto & p = params_.objects;
+    object_filter_->set_params(p.object_types, p.max_velocity_th);
   }
 
   {
@@ -443,8 +454,7 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
     return std::nullopt;
   auto predicted_objects = *data_->predicted_objects;
 
-  filter_objects_by_type(predicted_objects, params_.objects.object_types);
-  filter_objects_by_velocity(predicted_objects, params_.objects.max_velocity_th);
+  object_filter_->filter_objects(predicted_objects);
 
   PredictedObjects active_objects;
   obstacle_tracker_->update_objects(predicted_objects, active_objects, get_clock()->now());
