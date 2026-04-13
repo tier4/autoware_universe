@@ -41,8 +41,6 @@
 
 namespace autoware::trajectory_modifier::plugin
 {
-using utils::obstacle_stop::filter_objects_by_type;
-using utils::obstacle_stop::filter_objects_by_velocity;
 using utils::obstacle_stop::get_nearest_object_collision;
 using utils::obstacle_stop::get_nearest_pcd_collision;
 using utils::obstacle_stop::get_trajectory_shape;

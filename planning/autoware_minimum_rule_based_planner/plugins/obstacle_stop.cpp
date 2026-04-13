@@ -26,8 +26,6 @@
 
 namespace autoware::minimum_rule_based_planner::plugin
 {
-using autoware::trajectory_modifier::utils::obstacle_stop::filter_objects_by_type;
-using autoware::trajectory_modifier::utils::obstacle_stop::filter_objects_by_velocity;
 using autoware::trajectory_modifier::utils::obstacle_stop::get_nearest_object_collision;
 using autoware::trajectory_modifier::utils::obstacle_stop::get_nearest_pcd_collision;
 using autoware::trajectory_modifier::utils::obstacle_stop::get_trajectory_shape;

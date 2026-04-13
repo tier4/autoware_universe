@@ -90,7 +90,7 @@ TrajectoryShape get_trajectory_shape(
 
   const auto detection_traj = std::invoke([&]() -> TrajectoryPoints {
     if (detection_length < forward_traj_length) {
-      motion_utils::cropForwardPoints(
+      return motion_utils::cropForwardPoints(
         trajectory_points, ego_pose.position, start_idx, detection_length);
     }
     return extend_trajectory(trajectory_points, stop_margin);
@@ -139,6 +139,8 @@ TrajectoryShape get_trajectory_shape(
   }
   ls_rear_left.emplace_back(ls_front_left.back());
   ls_rear_right.emplace_back(ls_front_right.back());
+  ls_front_left.insert(ls_front_left.begin(), ls_rear_left.front());
+  ls_front_right.insert(ls_front_right.begin(), ls_rear_right.front());
 
   boost::geometry::reverse(ls_front_right);
   boost::geometry::reverse(ls_rear_right);
