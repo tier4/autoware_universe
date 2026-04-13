@@ -753,7 +753,7 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
 
 void CollisionCheckFilter::add_debug_markers(
   const rclcpp::Time & stamp, const std::string & ns, const Polygon2d & ego_hull,
-  const Polygon2d & object_hull, const std::string & trajectory_id)
+  const Polygon2d & object_hull)
 {
   int id = debug_markers_.markers.empty() ? 0 : debug_markers_.markers.back().id + 1;
 
@@ -833,7 +833,7 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
       context.predicted_objects->header.stamp.nanosec);
     add_debug_markers(
       context.odometry->header.stamp, "planned_speed_collision", finding.ego_hull,
-      finding.object_hull, finding.trajectory_id);
+      finding.object_hull);
   }
 
   drac_continuous_times_.update(
@@ -852,8 +852,7 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
         context.predicted_objects->header.stamp.sec,
         context.predicted_objects->header.stamp.nanosec);
       add_debug_markers(
-        context.odometry->header.stamp, "drac_collision", finding.ego_hull, finding.object_hull,
-        finding.trajectory_id);
+        context.odometry->header.stamp, "drac_collision", finding.ego_hull, finding.object_hull);
     }
   }
 
