@@ -29,6 +29,7 @@ subscribers:
   - name: vehicle/engage
     message_type: autoware_vehicle_msgs/msg/Engage
     remap_target: input/engage
+    global: /autoware/engage
   - name: vehicle/command/manual_control_cmd
     message_type: autoware_control_msgs/msg/Control
     remap_target: input/manual_ackermann_control_command

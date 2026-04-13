@@ -70,6 +70,10 @@ subscribers:
   - name: acceleration
     message_type: geometry_msgs/msg/AccelWithCovarianceStamped
     remap_target: input/acceleration
+  - name: engage
+    global: /autoware/engage
+    message_type: autoware_vehicle_msgs/msg/Engage
+    remap_target: input/engage
 
 publishers:
   - name: command/control_cmd
@@ -90,6 +94,7 @@ publishers:
   - name: engage
     message_type: autoware_vehicle_msgs/msg/Engage
     remap_target: output/engage
+    global: /api/autoware/get/engage
   - name: operation_mode
     message_type: autoware_adapi_v1_msgs/msg/OperationModeState
     remap_target: output/operation_mode
