@@ -736,8 +736,9 @@ Result assess(
     assess_planned_speed_collision_timing(traj_points, context, pet_collision_params, vehicle_info);
   // const auto drac_assessment =
   //   assess_drac(traj_points, context, pet_collision_params, vehicle_info);
-  // result.drac = drac_assessment.drac;
-  // result.drac_findings = drac_assessment.findings;
+  DracAssessment drac_assessment{0.0, {}};  // dummy
+  result.drac_findings = drac_assessment.findings;
+  result.drac = drac_assessment.drac;
 
   return result;
 }
