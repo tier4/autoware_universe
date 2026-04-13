@@ -313,12 +313,12 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryAllowsExtrapolationBefor
   const auto odometry = create_odometry(create_pose(-5.0, 0.0, 0.0));
   const auto context = create_filter_context(odometry);
 
-  const auto projected =
+  const double projected_time =
     trajectory::detail::project_current_pose_on_trajectory(traj_points, odometry->pose.pose);
   const auto trajectory_data =
     trajectory::generate_ego_trajectory(traj_points, context, 0.25, vehicle_info);
 
-  EXPECT_NEAR(projected.time, -0.5, 1e-6);
+  EXPECT_NEAR(projected_time, -0.5, 1e-6);
   ASSERT_EQ(trajectory_data.size(), 3u);
   EXPECT_DOUBLE_EQ(trajectory_data.getTimes().front(), 0.0);
   EXPECT_NEAR(trajectory_data.getPoses().front().position.x, -5.0, 1e-6);
@@ -335,14 +335,12 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryWithSinglePointReturnsSi
   const auto odometry = create_odometry(create_pose(8.0, 1.0, 0.0));
   const auto context = create_filter_context(odometry);
 
-  const auto projected =
+  const double projected_time =
     trajectory::detail::project_current_pose_on_trajectory(traj_points, odometry->pose.pose);
   const auto trajectory_data =
     trajectory::generate_ego_trajectory(traj_points, context, 1.0, vehicle_info);
 
-  EXPECT_NEAR(projected.time, 1.0, 1e-6);
-  EXPECT_DOUBLE_EQ(projected.pose.position.x, 3.0);
-  EXPECT_DOUBLE_EQ(projected.pose.position.y, 0.0);
+  EXPECT_NEAR(projected_time, 1.0, 1e-6);
   ASSERT_EQ(trajectory_data.size(), 1u);
   EXPECT_DOUBLE_EQ(trajectory_data.getTimes().front(), 0.0);
   EXPECT_DOUBLE_EQ(trajectory_data.getDistances().front(), 0.0);
@@ -358,14 +356,12 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryHandlesNonUniformTimeAnd
   const auto odometry = create_odometry(create_pose(6.0, 0.5, 0.0));
   const auto context = create_filter_context(odometry);
 
-  const auto projected =
+  const double projected_time =
     trajectory::detail::project_current_pose_on_trajectory(traj_points, odometry->pose.pose);
   const auto trajectory_data =
     trajectory::generate_ego_trajectory(traj_points, context, 0.25, vehicle_info);
 
-  EXPECT_NEAR(projected.time, 0.9, 1e-6);
-  EXPECT_NEAR(projected.pose.position.x, 6.0, 1e-6);
-  EXPECT_NEAR(projected.pose.position.y, 0.0, 1e-6);
+  EXPECT_NEAR(projected_time, 0.9, 1e-6);
 
   ASSERT_EQ(trajectory_data.size(), 3u);
   EXPECT_DOUBLE_EQ(trajectory_data.getTimes().front(), 0.0);
