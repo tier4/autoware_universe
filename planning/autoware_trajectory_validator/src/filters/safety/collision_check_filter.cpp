@@ -260,7 +260,7 @@ PoseTrajectory compute_pose_trajectory_from_time(
   const TrajectoryPoints & traj_points, const TimeTrajectory & time_trajectory)
 {
   if (traj_points.empty()) {
-    throw std::invalid_argument("traj_points must not be empty");
+    throw std::invalid_argument("points must not be empty");
   }
 
   std::vector<double> point_times;
@@ -347,7 +347,7 @@ double project_current_pose_on_trajectory(
   const TrajectoryPoints & traj_points, const geometry_msgs::msg::Pose & current_pose)
 {
   if (traj_points.empty()) {
-    throw std::invalid_argument("traj_points must not be empty");
+    throw std::invalid_argument("points must not be empty");
   }
 
   if (traj_points.size() == 1) {
@@ -427,7 +427,7 @@ TrajectoryData generate_ego_trajectory(
   VehicleInfo & vehicle_info)
 {
   if (traj_points.empty()) {
-    throw std::invalid_argument("traj_points must not be empty");
+    throw std::invalid_argument("points must not be empty");
   }
 
   const double start_time =
@@ -435,9 +435,9 @@ TrajectoryData generate_ego_trajectory(
   const double end_time =
     std::min(detail::to_seconds(traj_points.back().time_from_start), start_time + max_time);
 
-  TimeTrajectory relative_times{};
-  TimeTrajectory absolute_times{};
-  for (double sample_time = 0.0; start_time + sample_time < end_time;
+  TimeTrajectory relative_times{0.0};
+  TimeTrajectory absolute_times{start_time};
+  for (double sample_time = TIME_RESOLUTION; start_time + sample_time < end_time;
        sample_time =
          std::floor((sample_time + TIME_RESOLUTION + 1e-6) / TIME_RESOLUTION) * TIME_RESOLUTION) {
     relative_times.push_back(sample_time);
