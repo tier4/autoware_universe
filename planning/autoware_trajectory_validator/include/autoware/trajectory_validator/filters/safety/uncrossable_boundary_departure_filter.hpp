@@ -17,7 +17,7 @@
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
-#include <autoware/boundary_departure_checker/uncrossable_boundary_departure_checker.hpp>
+#include <autoware/deprecated/boundary_departure_checker/uncrossable_boundary_checker.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
