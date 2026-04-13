@@ -14,6 +14,7 @@
 
 #include "autoware/trajectory_validator/filters/safety/collision_check_filter.hpp"
 
+#include <autoware/interpolation/linear_interpolation.hpp>
 #include <autoware/object_recognition_utils/object_classification.hpp>
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware/universe_utils/geometry/pose_deviation.hpp>
@@ -134,6 +135,27 @@ std::pair<TimeTrajectory, TravelDistanceTrajectory> compute_motion_profile_1d(
 
 namespace trajectory::pose
 {
+geometry_msgs::msg::Pose interpolate_pose(
+  const geometry_msgs::msg::Pose & start_pose, const geometry_msgs::msg::Pose & end_pose,
+  const double ratio)
+{
+  geometry_msgs::msg::Pose interpolated_pose;
+  interpolated_pose.position.x =
+    interpolation::lerp(start_pose.position.x, end_pose.position.x, ratio);
+  interpolated_pose.position.y =
+    interpolation::lerp(start_pose.position.y, end_pose.position.y, ratio);
+  interpolated_pose.position.z =
+    interpolation::lerp(start_pose.position.z, end_pose.position.z, ratio);
+
+  tf2::Quaternion start_q;
+  tf2::Quaternion end_q;
+  tf2::fromMsg(start_pose.orientation, start_q);
+  tf2::fromMsg(end_pose.orientation, end_q);
+  interpolated_pose.orientation = tf2::toMsg(start_q.slerp(end_q, ratio));
+
+  return interpolated_pose;
+}
+
 namespace constant_curvature_predictor
 {
 struct TwistPerDistance
@@ -234,6 +256,52 @@ PoseTrajectory compute_pose_trajectory(
   return pose_trajectory;
 }
 
+PoseTrajectory compute_pose_trajectory_from_time(
+  const TrajectoryPoints & traj_points, const TimeTrajectory & time_trajectory)
+{
+  if (traj_points.empty()) {
+    throw std::invalid_argument("traj_points must not be empty");
+  }
+
+  std::vector<double> point_times;
+  point_times.reserve(traj_points.size());
+  for (const auto & point : traj_points) {
+    point_times.push_back(rclcpp::Duration(point.time_from_start).seconds());
+  }
+
+  PoseTrajectory pose_trajectory;
+  pose_trajectory.reserve(time_trajectory.size());
+
+  for (const auto target_time : time_trajectory) {
+    size_t lower_idx = 0;
+    size_t upper_idx = 0;
+    if (traj_points.size() == 1) {
+      pose_trajectory.push_back(traj_points.front().pose);
+      continue;
+    } else if (target_time <= point_times.front()) {
+      lower_idx = 0;
+      upper_idx = 1;
+    } else if (target_time >= point_times.back()) {
+      lower_idx = traj_points.size() - 2;
+      upper_idx = traj_points.size() - 1;
+    } else {
+      const auto upper_it = std::lower_bound(point_times.begin(), point_times.end(), target_time);
+      upper_idx = static_cast<size_t>(std::distance(point_times.begin(), upper_it));
+      lower_idx = upper_idx - 1;
+    }
+
+    const double lower_time = point_times.at(lower_idx);
+    const double upper_time = point_times.at(upper_idx);
+    const double denom = upper_time - lower_time;
+    const double ratio = denom > 1e-6 ? (target_time - lower_time) / denom : 0.0;
+
+    pose_trajectory.push_back(
+      interpolate_pose(traj_points.at(lower_idx).pose, traj_points.at(upper_idx).pose, ratio));
+  }
+
+  return pose_trajectory;
+}
+
 }  // namespace trajectory::pose
 
 namespace trajectory::footprint
@@ -268,6 +336,69 @@ FootprintTrajectory compute_footprint_trajectory(
 namespace trajectory
 {
 
+namespace detail
+{
+double to_seconds(const builtin_interfaces::msg::Duration & duration)
+{
+  return rclcpp::Duration(duration).seconds();
+}
+
+double project_current_pose_on_trajectory(
+  const TrajectoryPoints & traj_points, const geometry_msgs::msg::Pose & current_pose)
+{
+  if (traj_points.empty()) {
+    throw std::invalid_argument("traj_points must not be empty");
+  }
+
+  if (traj_points.size() == 1) {
+    return to_seconds(traj_points.front().time_from_start);
+  }
+
+  const auto project_on_segment = [&](const size_t start_idx, const size_t end_idx) {
+    const auto & start_pose = traj_points.at(start_idx).pose;
+    const auto & end_pose = traj_points.at(end_idx).pose;
+    const double current_x = current_pose.position.x;
+    const double current_y = current_pose.position.y;
+
+    const double dx = end_pose.position.x - start_pose.position.x;
+    const double dy = end_pose.position.y - start_pose.position.y;
+    const double segment_length_sq = dx * dx + dy * dy;
+
+    double ratio = 0.0;
+    if (segment_length_sq > 1e-6) {
+      ratio =
+        ((current_x - start_pose.position.x) * dx + (current_y - start_pose.position.y) * dy) /
+        segment_length_sq;
+    }
+
+    return interpolation::lerp(
+      to_seconds(traj_points.at(start_idx).time_from_start),
+      to_seconds(traj_points.at(end_idx).time_from_start), ratio);
+  };
+
+  const size_t nearest_segment_idx =
+    autoware::motion_utils::findNearestSegmentIndex(traj_points, current_pose.position);
+  return project_on_segment(nearest_segment_idx, nearest_segment_idx + 1);
+}
+
+TravelDistanceTrajectory compute_cumulative_distances(const PoseTrajectory & pose_trajectory)
+{
+  TravelDistanceTrajectory distances;
+  distances.reserve(pose_trajectory.size());
+
+  double cumulative_distance = 0.0;
+  for (size_t i = 0; i < pose_trajectory.size(); ++i) {
+    if (i > 0) {
+      cumulative_distance += autoware_utils_geometry::calc_distance2d(
+        pose_trajectory.at(i - 1).position, pose_trajectory.at(i).position);
+    }
+    distances.push_back(cumulative_distance);
+  }
+
+  return distances;
+}
+}  // namespace detail
+
 TrajectoryData generate_ego_trajectory(
   const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
   double max_time, const TrajectoryPoints & traj_points, VehicleInfo & vehicle_info)
@@ -289,6 +420,37 @@ TrajectoryData generate_ego_trajectory(
   return TrajectoryData(
     ObjectIdentification{"EGO", ""}, std::move(times), std::move(distances), std::move(poses),
     std::move(footprints));
+}
+
+TrajectoryData generate_ego_trajectory(
+  const TrajectoryPoints & traj_points, const FilterContext & context, double max_time,
+  VehicleInfo & vehicle_info)
+{
+  if (traj_points.empty()) {
+    throw std::invalid_argument("traj_points must not be empty");
+  }
+
+  const double start_time =
+    detail::project_current_pose_on_trajectory(traj_points, context.odometry->pose.pose);
+  const double end_time =
+    std::min(detail::to_seconds(traj_points.back().time_from_start), start_time + max_time);
+
+  TimeTrajectory relative_times{};
+  TimeTrajectory absolute_times{};
+  for (double sample_time = 0.0; start_time + sample_time < end_time;
+       sample_time =
+         std::floor((sample_time + TIME_RESOLUTION + 1e-6) / TIME_RESOLUTION) * TIME_RESOLUTION) {
+    relative_times.push_back(sample_time);
+    absolute_times.push_back(start_time + sample_time);
+  }
+
+  auto poses = pose::compute_pose_trajectory_from_time(traj_points, absolute_times);
+  auto distances = detail::compute_cumulative_distances(poses);
+  auto footprints = footprint::compute_footprint_trajectory(poses, vehicle_info);
+
+  return TrajectoryData(
+    ObjectIdentification{"EGO", ""}, std::move(relative_times), std::move(distances),
+    std::move(poses), std::move(footprints));
 }
 
 TrajectoryData generate_predicted_path_trajectory(
@@ -467,7 +629,7 @@ TrajectoryData generate_rss_ego_trajectory(
     rclcpp::Duration(traj_points.back().time_from_start).seconds();
 
   return trajectory::generate_ego_trajectory(
-    context.odometry->twist.twist, 0.0, 0.0, ego_time_horizon_for_rss, traj_points, vehicle_info);
+    traj_points, context, ego_time_horizon_for_rss, vehicle_info);
 }
 
 Assessment assess_required_deceleration(
@@ -565,7 +727,6 @@ std::vector<TrajectoryData> generate_object_trajectories(
   const rclcpp::Duration objects_reference_time =
     rclcpp::Time(context.predicted_objects->header.stamp) -
     rclcpp::Time(context.odometry->header.stamp);
-
   std::vector<TrajectoryData> object_trajectories{};
   object_trajectories.reserve(context.predicted_objects->objects.size() * 2);
   for (const auto & object : context.predicted_objects->objects) {
