@@ -209,6 +209,7 @@ private:
   validator::Params::CollisionCheck::Rss rss_params_;
   ContinuousDetectionTimes pet_continuous_times_;
   ContinuousDetectionTimes rss_continuous_times_;
+  ContinuousDetectionTimes drac_continuous_times_;
 
   void add_debug_markers(
     const rclcpp::Time & stamp, const std::string & ns,

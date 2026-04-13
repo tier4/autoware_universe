@@ -30,8 +30,6 @@
 #include <algorithm>
 #include <any>
 #include <cmath>
-#include <cstdint>
-#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -658,7 +656,7 @@ std::vector<Finding> assess_collision_timing(
     auto finding = find_collision_timing(
       ego_trajectory, object_trajectory, pet_collision_params.collision_time_threshold);
     if (finding.has_value()) {
-      findings.push_back(std::move(*finding));
+      findings.push_back(std::move(finding.value()));
     }
   }
 
@@ -706,7 +704,7 @@ DracAssessment assess_drac(
     const auto ego_deceleration_trajectory = [&]() {
       if (ego_dec == 0.0) {
         // todo(takagi): return planned_trajectory();
-      } else if (ego_dec > DEFAULT_MAX_EGO_DECELERATION - DEFAULT_EGO_DECELERATION_STEP) {
+      } else if (ego_dec > DEFAULT_MAX_EGO_DECELERATION - 1e-3) {
         return trajectory::generate_ego_trajectory(
           context.odometry->twist.twist, 0.0, -ego_dec, ego_time_horizon, traj_points,
           vehicle_info);
@@ -718,7 +716,6 @@ DracAssessment assess_drac(
 
     auto findings = assess_collision_timing(
       ego_deceleration_trajectory, constant_speed_objects_trajectory, pet_collision_params);
-
     if (findings.empty()) {
       return DracAssessment{ego_dec, std::move(last_findings)};
     }
@@ -806,12 +803,14 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
     pet_continuous_times_.clear();
     rss_continuous_times_.clear();
+    drac_continuous_times_.clear();
     return {};  // No objects to check collision with
   }
 
   if (traj_points.empty()) {
     pet_continuous_times_.clear();
     rss_continuous_times_.clear();
+    drac_continuous_times_.clear();
     return {};  // No trajectory to check
   }
 
@@ -820,6 +819,7 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
 
   const auto collision_timing_result = collision_timing_assessment::assess(
     traj_points, context, pet_collision_params_, *vehicle_info_ptr_);
+
   pet_continuous_times_.update(
     current_time, collision_timing_result.planned_speed_findings,
     [](const auto & finding) { return finding.trajectory_id; });
@@ -834,6 +834,10 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
       context.odometry->header.stamp, "planned_speed_collision", finding.ego_hull,
       finding.object_hull, finding.trajectory_id);
   }
+
+  drac_continuous_times_.update(
+    current_time, collision_timing_result.drac_findings,
+    [](const auto & finding) { return finding.trajectory_id; });
   if (
     collision_timing_result.drac == std::nullopt ||
     collision_timing_result.drac.value() >= -pet_collision_params_.ego_assumed_acceleration) {
