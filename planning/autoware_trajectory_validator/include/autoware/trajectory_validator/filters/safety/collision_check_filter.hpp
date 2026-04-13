@@ -212,9 +212,8 @@ private:
   ContinuousDetectionTimes drac_continuous_times_;
 
   void add_debug_markers(
-    const rclcpp::Time & stamp, const std::string & ns,
-    const Polygon2d & ego_hull, const Polygon2d & object_hull, const std::string & trajectory_id
-    );
+    const rclcpp::Time & stamp, const std::string & ns, const Polygon2d & ego_hull,
+    const Polygon2d & object_hull);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety
