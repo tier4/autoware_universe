@@ -22,7 +22,6 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
-
 class CollisionCheckFilterTest : public ::testing::Test
 {
 protected:

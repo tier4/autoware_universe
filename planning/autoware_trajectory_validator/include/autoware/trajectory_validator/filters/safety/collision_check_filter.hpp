@@ -211,8 +211,9 @@ private:
   ContinuousDetectionTimes rss_continuous_times_;
 
   void add_debug_markers(
-    const Polygon2d & ego_hull, const Polygon2d & object_hull, const std::string & trajectory_id,
-    const rclcpp::Time & stamp);
+    const rclcpp::Time & stamp, const std::string & ns,
+    const Polygon2d & ego_hull, const Polygon2d & object_hull, const std::string & trajectory_id
+    );
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety
