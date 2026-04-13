@@ -70,6 +70,19 @@ autoware_perception_msgs::msg::Shape create_bounding_box_shape(
   return shape;
 }
 
+autoware_perception_msgs::msg::PredictedPath create_straight_predicted_path(
+  const double y, const double confidence, const std::vector<double> & xs)
+{
+  autoware_perception_msgs::msg::PredictedPath predicted_path;
+  predicted_path.confidence = confidence;
+  predicted_path.time_step = rclcpp::Duration::from_seconds(TIME_RESOLUTION);
+  predicted_path.path.reserve(xs.size());
+  for (const auto x : xs) {
+    predicted_path.path.push_back(create_pose(x, y, 0.0));
+  }
+  return predicted_path;
+}
+
 autoware_perception_msgs::msg::PredictedObject create_predicted_object(
   const geometry_msgs::msg::Pose & initial_pose, const geometry_msgs::msg::Twist & initial_twist,
   const autoware_perception_msgs::msg::Shape & shape,

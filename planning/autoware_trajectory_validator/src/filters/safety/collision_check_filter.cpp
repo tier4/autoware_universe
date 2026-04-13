@@ -737,10 +737,10 @@ Result assess(
   Result result{};
   result.planned_speed_findings =
     assess_planned_speed_collision_timing(traj_points, context, pet_collision_params, vehicle_info);
-  const auto drac_assessment =
-    assess_drac(traj_points, context, pet_collision_params, vehicle_info);
-  result.drac = drac_assessment.drac;
-  result.drac_findings = drac_assessment.findings;
+  // const auto drac_assessment =
+  //   assess_drac(traj_points, context, pet_collision_params, vehicle_info);
+  // result.drac = drac_assessment.drac;
+  // result.drac_findings = drac_assessment.findings;
 
   return result;
 }
@@ -821,15 +821,15 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
   const auto collision_timing_result = collision_timing_assessment::assess(
     traj_points, context, pet_collision_params_, *vehicle_info_ptr_);
   pet_continuous_times_.update(
-    current_time, planned_speed_timing_findings,
+    current_time, collision_timing_result.planned_speed_findings,
     [](const auto & finding) { return finding.trajectory_id; });
-  for (const auto & finding : planned_speed_timing_findings) {
+  for (const auto & finding : collision_timing_result.planned_speed_findings) {
     const double detection_duration = pet_continuous_times_.get_time(finding.trajectory_id);
     error_msg += fmt::format(
       "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{}; ",
-      finding.object.classification, finding.trajectory_id, finding.pet,
-      finding.ttc.has_value() ? std::to_string(finding.ttc.value()) : "N/A", detection_duration,
-      context.predicted_objects->header.stamp.sec, context.predicted_objects->header.stamp.nanosec);
+      finding.object.classification, finding.trajectory_id, finding.pet, finding.ttc,
+      detection_duration, context.predicted_objects->header.stamp.sec,
+      context.predicted_objects->header.stamp.nanosec);
     add_debug_markers(
       context.odometry->header.stamp, "planned_speed_collision", finding.ego_hull,
       finding.object_hull, finding.trajectory_id);
