@@ -18,7 +18,7 @@
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <autoware/lanelet2_utils/conversion.hpp>
-#include <autoware_trajectory_validator_param.hpp>
+#include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
@@ -30,6 +30,7 @@
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -67,12 +68,12 @@ private:
    * @param name Metric plugin name to unload
    */
   void unload_metric(const std::string & name);
-  void update_diagnostic(const CandidateTrajectories & filtered_trajectories);
+  void update_diagnostic(
+    const CandidateTrajectories & input_trajectories,
+    const CandidateTrajectories & filtered_trajectories);
 
-  rcl_interfaces::msg::SetParametersResult on_parameter(
-    const std::vector<rclcpp::Parameter> & parameters);
-
-  std::unique_ptr<validator::ParamListener> listener_;
+  validator::ParamListener listener_;
+  validator::Params params_;
 
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     debug_processing_time_detail_pub_;
@@ -85,6 +86,9 @@ private:
     this, "~/input/objects"};
   autoware_utils_rclcpp::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
     sub_acceleration_{this, "~/input/acceleration"};
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<
+    autoware_perception_msgs::msg::TrafficLightGroupArray>
+    sub_traffic_lights_{this, "~/input/traffic_signals"};
 
   rclcpp::Subscription<CandidateTrajectories>::SharedPtr sub_trajectories_;
 
@@ -92,10 +96,7 @@ private:
 
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
 
-  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr set_param_res_;
-
   pluginlib::ClassLoader<plugin::ValidatorInterface> plugin_loader_;
-
   std::vector<std::shared_ptr<plugin::ValidatorInterface>> plugins_;
 
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;

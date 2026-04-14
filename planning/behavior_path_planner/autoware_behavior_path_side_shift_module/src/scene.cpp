@@ -344,8 +344,6 @@ ShiftedPath SideShiftModule::computeShiftedPath(const bool should_regenerate)
 
 BehaviorModuleOutput SideShiftModule::plan()
 {
-  bool should_regenerate_shifted_path = false;
-
   // Replace shift line
   if (
     lateral_offset_change_request_ && (shift_status_ == SideShiftStatus::BEFORE_SHIFT ||
@@ -407,9 +405,14 @@ CandidateOutput SideShiftModule::planCandidate() const
 
 BehaviorModuleOutput SideShiftModule::planWaitingApproval()
 {
-  // Refine path
   ShiftedPath shifted_path;
-  if (!path_shifter_.generate(&shifted_path)) {
+
+  // While SHIFTING, reuse the previous output to keep the path stable.
+  if (
+    shift_status_ == SideShiftStatus::SHIFTING && !lateral_offset_change_request_ &&
+    !prev_output_.path.points.empty()) {
+    shifted_path = prev_output_;
+  } else if (!path_shifter_.generate(&shifted_path)) {
     RCLCPP_ERROR(getLogger(), "SideShift: failed to generate shifted path while waiting approval");
     if (!prev_output_.path.points.empty()) {
       shifted_path = prev_output_;

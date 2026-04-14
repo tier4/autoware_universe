@@ -54,6 +54,8 @@ protected:
       "/trajectory_validator_node/input/acceleration", 1);
     obj_pub_ = test_node_->create_publisher<autoware_perception_msgs::msg::PredictedObjects>(
       "/trajectory_validator_node/input/objects", 1);
+    tl_pub_ = test_node_->create_publisher<autoware_perception_msgs::msg::TrafficLightGroupArray>(
+      "/trajectory_validator_node/input/traffic_signals", 1);
 
     traj_pub_ =
       test_node_->create_publisher<autoware_internal_planning_msgs::msg::CandidateTrajectories>(
@@ -105,6 +107,9 @@ protected:
     objects.header.stamp = now;
     objects.header.frame_id = "map";
     obj_pub_->publish(objects);
+
+    autoware_perception_msgs::msg::TrafficLightGroupArray tl_signals;
+    tl_pub_->publish(tl_signals);
   }
 
   static void add_trajectory(CandidateTrajectories & msg, std::string name, double start_vel)
@@ -132,6 +137,7 @@ protected:
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   rclcpp::Publisher<geometry_msgs::msg::AccelWithCovarianceStamped>::SharedPtr accel_pub_;
   rclcpp::Publisher<autoware_perception_msgs::msg::PredictedObjects>::SharedPtr obj_pub_;
+  rclcpp::Publisher<autoware_perception_msgs::msg::TrafficLightGroupArray>::SharedPtr tl_pub_;
   rclcpp::Publisher<autoware_internal_planning_msgs::msg::CandidateTrajectories>::SharedPtr
     traj_pub_;
 
@@ -158,29 +164,6 @@ TEST_F(TrajectoryValidatorNodeTest, FiltersTrajectoriesViaPlugin)
   EXPECT_EQ(last_output_->candidate_trajectories.size(), 1u);
   ASSERT_EQ(last_output_->generator_info.size(), 1u);
   EXPECT_EQ(last_output_->generator_info.front().generator_name.data, "SafePlanner");
-}
-
-TEST_F(TrajectoryValidatorNodeTest, UpdateParametersDynamically)
-{
-  publish_context();
-  spin_until([] { return false; }, std::chrono::milliseconds(100));
-
-  autoware_internal_planning_msgs::msg::CandidateTrajectories msg;
-  add_trajectory(msg, "InitialTest", 5.0);
-
-  traj_pub_->publish(msg);
-  ASSERT_TRUE(spin_until([this] { return last_output_ != nullptr; }));
-  EXPECT_EQ(last_output_->candidate_trajectories.size(), 1u);
-
-  last_output_ = nullptr;
-
-  auto result = node_under_test_->set_parameters({rclcpp::Parameter("dummy.dummy_param", 1.0)});
-  ASSERT_TRUE(result[0].successful);
-
-  traj_pub_->publish(msg);
-  ASSERT_TRUE(spin_until([this] { return last_output_ != nullptr; }));
-
-  EXPECT_EQ(last_output_->candidate_trajectories.size(), 1u);
 }
 
 TEST_F(TrajectoryValidatorNodeTest, HandlesPluginRejection)
