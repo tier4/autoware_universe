@@ -31,8 +31,11 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace rosbag_parser
 {

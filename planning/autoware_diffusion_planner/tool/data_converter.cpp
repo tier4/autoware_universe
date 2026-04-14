@@ -42,21 +42,48 @@
 #include <lanelet2_traffic_rules/TrafficRulesFactory.h>
 
 #include <algorithm>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
-using namespace autoware::diffusion_planner;
-using namespace autoware_perception_msgs::msg;
-using namespace autoware_planning_msgs::msg;
-using namespace autoware_vehicle_msgs::msg;
-using namespace geometry_msgs::msg;
-using namespace nav_msgs::msg;
+using autoware::diffusion_planner::AGENT_STATE_DIM;
+using autoware::diffusion_planner::EGO_CURRENT_STATE_SHAPE;
+using autoware::diffusion_planner::EGO_HISTORY_SHAPE;
+using autoware::diffusion_planner::EGO_SHAPE_SHAPE;
+using autoware::diffusion_planner::INPUT_T;
+using autoware::diffusion_planner::INPUT_T_WITH_CURRENT;
+using autoware::diffusion_planner::LINE_STRING_TYPE_NUM;
+using autoware::diffusion_planner::MAX_NUM_NEIGHBORS;
+using autoware::diffusion_planner::NEIGHBOR_SHAPE;
+using autoware::diffusion_planner::NUM_LINE_STRINGS;
+using autoware::diffusion_planner::NUM_POLYGONS;
+using autoware::diffusion_planner::NUM_SEGMENTS_IN_LANE;
+using autoware::diffusion_planner::NUM_SEGMENTS_IN_ROUTE;
+using autoware::diffusion_planner::OUTPUT_T;
+using autoware::diffusion_planner::POINTS_PER_LINE_STRING;
+using autoware::diffusion_planner::POINTS_PER_POLYGON;
+using autoware::diffusion_planner::POINTS_PER_SEGMENT;
+using autoware::diffusion_planner::POLYGON_TYPE_NUM;
+using autoware::diffusion_planner::SEGMENT_POINT_DIM;
+using autoware::diffusion_planner::STATIC_OBJECTS_SHAPE;
+using autoware::diffusion_planner::TRAFFIC_LIGHT_RED;
+using autoware::diffusion_planner::TRAFFIC_LIGHT_YELLOW;
+using autoware_perception_msgs::msg::TrackedObjects;
+using autoware_perception_msgs::msg::TrafficLightGroupArray;
+using autoware_planning_msgs::msg::LaneletRoute;
+using autoware_vehicle_msgs::msg::TurnIndicatorsReport;
+using geometry_msgs::msg::AccelWithCovarianceStamped;
+using nav_msgs::msg::Odometry;
 
 // Using constants from dimensions.hpp
 constexpr int64_t NEIGHBOR_PAST_DIM = NEIGHBOR_SHAPE[3];
@@ -146,9 +173,11 @@ std::vector<T> check_and_update_msg(
       std::is_same_v<T, Odometry> || std::is_same_v<T, TrackedObjects> ||
       std::is_same_v<T, AccelWithCovarianceStamped>) {
       msg_stamp = msg.header.stamp;
-    } else if constexpr (
-      std::is_same_v<T, TurnIndicatorsReport> || std::is_same_v<T, TrafficLightGroupArray>) {
-      msg_stamp = msg.stamp;
+    } else {
+      if constexpr (
+        std::is_same_v<T, TurnIndicatorsReport> || std::is_same_v<T, TrafficLightGroupArray>) {
+        msg_stamp = msg.stamp;
+      }
     }
 
     const int64_t msg_time = parse_timestamp(msg_stamp);
@@ -842,8 +871,9 @@ int main(int argc, char ** argv)
       // const int64_t turn_indicator = seq.data_list[i].turn_indicator.report;
       std::vector<int32_t> turn_indicators(INPUT_T_WITH_CURRENT);
       for (int64_t t = 0; t < INPUT_T_WITH_CURRENT; ++t) {
-        turn_indicators[t] = seq.data_list[std::max(int64_t(0), i - INPUT_T_WITH_CURRENT + 1 + t)]
-                               .turn_indicator.report;
+        const int64_t turn_indicator_index =
+          std::max(static_cast<int64_t>(0), i - INPUT_T_WITH_CURRENT + 1 + t);
+        turn_indicators[t] = seq.data_list[turn_indicator_index].turn_indicator.report;
       }
 
       // Save data

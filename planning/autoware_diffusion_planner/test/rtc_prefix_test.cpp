@@ -20,7 +20,9 @@
 #include <random>
 #include <vector>
 
-using namespace autoware::diffusion_planner;
+using autoware::diffusion_planner::MAX_NUM_AGENTS;
+using autoware::diffusion_planner::OUTPUT_T;
+using autoware::diffusion_planner::POSE_DIM;
 
 namespace
 {
