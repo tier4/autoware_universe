@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "../../src/filters/safety/collision_check_filter.cpp"
+#include "../../src/filters/safety/collision_check_filter.cpp"  // NOLINT(build/include)
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 

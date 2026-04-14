@@ -22,6 +22,7 @@
 
 #include <memory>
 #include <string>
+
 namespace autoware::trajectory_validator::plugin::safety
 {
 class UncrossableBoundaryDepartureFilter : public plugin::ValidatorInterface
@@ -62,4 +63,6 @@ private:
 };
 }  // namespace autoware::trajectory_validator::plugin::safety
 
-#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_
+// clang-format off
+#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_  // NOLINT
+// clang-format on

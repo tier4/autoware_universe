@@ -31,12 +31,14 @@
 
 #include <boost/range/iterator_range.hpp>
 
+#include <algorithm>
 #include <any>
 #include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
