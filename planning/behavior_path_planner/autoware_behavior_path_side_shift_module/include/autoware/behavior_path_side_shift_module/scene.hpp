@@ -96,6 +96,12 @@ private:
   void restoreVelocityFromOriginal(
     PathWithLaneId & resampled_path, const PathWithLaneId & original_path) const;
 
+  // Generate or reuse the shifted path depending on whether regeneration is needed.
+  ShiftedPath computeShiftedPath(bool should_regenerate);
+
+  // Update shift_status_ based on the ego's arc-length position relative to the shift line.
+  void refreshShiftStatus();
+
   // const methods
   void publishPath(const PathWithLaneId & path) const;
 

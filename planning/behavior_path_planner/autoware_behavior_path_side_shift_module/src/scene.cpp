@@ -165,16 +165,21 @@ bool SideShiftModule::canTransitSuccessState()
     return true;
   }
 
+  refreshShiftStatus();
+  return false;
+}
+
+void SideShiftModule::refreshShiftStatus()
+{
   const auto & current_lanes = utils::getCurrentLanes(planner_data_);
   const auto & current_pose = planner_data_->self_odometry->pose.pose;
-  const auto & inserted_shift_line_start_pose = inserted_shift_line_.start;
-  const auto & inserted_shift_line_end_pose = inserted_shift_line_.end;
   const double self_to_shift_line_start_arc_length =
     autoware::behavior_path_planner::utils::getSignedDistance(
-      current_pose, inserted_shift_line_start_pose, current_lanes);
+      current_pose, inserted_shift_line_.start, current_lanes);
   const double self_to_shift_line_end_arc_length =
     autoware::behavior_path_planner::utils::getSignedDistance(
-      current_pose, inserted_shift_line_end_pose, current_lanes);
+      current_pose, inserted_shift_line_.end, current_lanes);
+
   if (self_to_shift_line_start_arc_length >= 0) {
     shift_status_ = SideShiftStatus::BEFORE_SHIFT;
   } else if (self_to_shift_line_start_arc_length < 0 && self_to_shift_line_end_arc_length > 0) {
@@ -182,7 +187,6 @@ bool SideShiftModule::canTransitSuccessState()
   } else {
     shift_status_ = SideShiftStatus::AFTER_SHIFT;
   }
-  return false;
 }
 
 void SideShiftModule::processLateralOffsetRequest()
@@ -314,6 +318,30 @@ void SideShiftModule::replaceShiftLine()
 
   return;
 }
+
+ShiftedPath SideShiftModule::computeShiftedPath(const bool should_regenerate)
+{
+  ShiftedPath shifted_path;
+  // During active shifting, regenerate from the current reference path to prevent the output
+  // from becoming stale as the vehicle advances, while still preserving the shift line itself.
+  const bool needs_regeneration =
+    should_regenerate || shift_status_ == SideShiftStatus::SHIFTING;
+  if (needs_regeneration || prev_output_.path.points.empty()) {
+    if (should_regenerate) {
+      replaceShiftLine();
+    }
+    const bool generate_success = path_shifter_.generate(&shifted_path);
+    if (!generate_success && !prev_output_.path.points.empty()) {
+      RCLCPP_ERROR(
+        getLogger(), "SideShift: failed to generate shifted path. Reusing previous path");
+      shifted_path = prev_output_;
+    }
+  } else {
+    shifted_path = prev_output_;
+  }
+  return shifted_path;
+}
+
 BehaviorModuleOutput SideShiftModule::plan()
 {
   bool should_regenerate_shifted_path = false;
@@ -331,24 +359,7 @@ BehaviorModuleOutput SideShiftModule::plan()
 
   // Preserve the shape during shifting by reusing the last generated path unless re-generation
   // is explicitly required.
-  ShiftedPath shifted_path;
-  if (should_regenerate_shifted_path || prev_output_.path.points.empty()) {
-    if (should_regenerate_shifted_path) {
-      replaceShiftLine();
-    }
-
-    // Generate shifted path
-    const bool generate_success = path_shifter_.generate(&shifted_path);
-
-    // Handle generation failure by reusing previous output if available
-    if (!generate_success && !prev_output_.path.points.empty()) {
-      RCLCPP_ERROR(
-        getLogger(), "SideShift: failed to generate shifted path. Reusing previous path");
-      shifted_path = prev_output_;
-    }
-  } else {
-    shifted_path = prev_output_;
-  }
+  ShiftedPath shifted_path = computeShiftedPath(should_regenerate_shifted_path);
 
   // Handle empty path
   if (shifted_path.path.points.empty()) {
