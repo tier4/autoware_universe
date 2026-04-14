@@ -169,6 +169,22 @@ validator:
       default_value: 2.0
       description: N/A
       read_only: false
+    on_time_buffer_s:
+      type: double
+      default_value: 0.15
+      description: N/A
+      read_only: false
+    off_time_buffer_s:
+      type: double
+      default_value: 2.0
+      description: N/A
+      read_only: false
+    boundary_types:
+      type: string_array
+      default_value: ["road_border"]
+      description: metrics.
+      read_only: true
+
   pseudo_emergency_stop:
     enable:
       type: bool
