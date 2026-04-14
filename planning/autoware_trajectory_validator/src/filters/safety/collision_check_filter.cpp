@@ -47,19 +47,21 @@ using autoware::object_recognition_utils::convertLabelToString;
 using autoware::object_recognition_utils::getHighestProbLabel;
 
 ObjectIdentification make_object_identification(
-  const autoware_perception_msgs::msg::PredictedObject & object)
+  const autoware_perception_msgs::msg::PredictedObject & object,
+  const builtin_interfaces::msg::Time & stamp)
 {
   return {
     convertLabelToString(getHighestProbLabel(object.classification)),
-    autoware_utils_uuid::to_hex_string(object.object_id)};
+    autoware_utils_uuid::to_hex_string(object.object_id), stamp};
 }
 
 ObjectIdentification make_trajectory_identification(
-  const autoware_perception_msgs::msg::PredictedObject & object, const std::string & suffix)
+  const autoware_perception_msgs::msg::PredictedObject & object, const std::string & suffix,
+  const builtin_interfaces::msg::Time & stamp)
 {
   return {
     convertLabelToString(getHighestProbLabel(object.classification)),
-    autoware_utils_uuid::to_hex_string(object.object_id) + suffix};
+    autoware_utils_uuid::to_hex_string(object.object_id) + suffix, stamp};
 }
 
 // Trajectory generation helpers.
@@ -455,7 +457,8 @@ TrajectoryData generate_ego_trajectory(
 
 TrajectoryData generate_predicted_path_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
-  double assumed_acceleration, rclcpp::Duration start_time, double max_time)
+  double assumed_acceleration, rclcpp::Duration start_time, double max_time,
+  const builtin_interfaces::msg::Time & stamp)
 {
   // todo(takagi): use all or appropriate predicted paths
   const auto most_confident_path_it = std::max_element(
@@ -473,13 +476,13 @@ TrajectoryData generate_predicted_path_trajectory(
   auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(
-    make_trajectory_identification(predicted_object, "_predicted_path"), std::move(times),
+    make_trajectory_identification(predicted_object, "_predicted_path", stamp), std::move(times),
     std::move(distances), std::move(poses), std::move(footprints));
 }
-
 TrajectoryData generate_constant_curvature_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
-  double assumed_acceleration, rclcpp::Duration start_time, double max_time)
+  double assumed_acceleration, rclcpp::Duration start_time, double max_time,
+  const builtin_interfaces::msg::Time & stamp)
 {
   auto [times, distances] = time_distance::compute_motion_profile_1d(
     predicted_object.kinematics.initial_twist_with_covariance.twist, braking_lag,
@@ -491,8 +494,8 @@ TrajectoryData generate_constant_curvature_trajectory(
   auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(
-    make_trajectory_identification(predicted_object, "_constant_curvature_path"), std::move(times),
-    std::move(distances), std::move(poses), std::move(footprints));
+    make_trajectory_identification(predicted_object, "_constant_curvature_path", stamp),
+    std::move(times), std::move(distances), std::move(poses), std::move(footprints));
 }
 }  // namespace trajectory
 
@@ -635,18 +638,19 @@ TrajectoryData generate_rss_ego_trajectory(
 Assessment assess_required_deceleration(
   const TrajectoryData & ego_trajectory, const geometry_msgs::msg::Twist & ego_twist,
   const autoware_perception_msgs::msg::PredictedObject & object,
-  const validator::Params::CollisionCheck::Rss & rss_params)
+  const validator::Params::CollisionCheck::Rss & rss_params,
+  const builtin_interfaces::msg::Time & stamp)
 {
   const auto ego_long_vel = ego_twist.linear.x;
   if (ego_long_vel <= 0.0) {
-    return Assessment{make_object_identification(object), 0.0};
+    return Assessment{make_object_identification(object, stamp), 0.0};
   }
 
   // compute current distance
   const auto distance_to_collision =
     rss_deceleration::compute_distance_to_collision(ego_trajectory, object);
   if (!distance_to_collision.has_value()) {
-    return Assessment{make_object_identification(object), 0.0};
+    return Assessment{make_object_identification(object, stamp), 0.0};
   }
 
   // compute safe distance
@@ -661,7 +665,7 @@ Assessment assess_required_deceleration(
                                          ? std::numeric_limits<double>::infinity()
                                          : ego_long_vel * ego_long_vel * 0.5 / safe_distance;
 
-  return Assessment{make_object_identification(object), required_deceleration};
+  return Assessment{make_object_identification(object, stamp), required_deceleration};
 }
 
 Result assess(
@@ -675,7 +679,8 @@ Result assess(
 
   for (const auto & object : context.predicted_objects->objects) {
     const auto assessment = assess_required_deceleration(
-      ego_trajectory, context.odometry->twist.twist, object, rss_params);
+      ego_trajectory, context.odometry->twist.twist, object, rss_params,
+      context.predicted_objects->header.stamp);
 
     if (
       !result.worst_assessment.has_value() ||
@@ -731,12 +736,13 @@ std::vector<TrajectoryData> generate_object_trajectories(
   object_trajectories.reserve(context.predicted_objects->objects.size() * 2);
   for (const auto & object : context.predicted_objects->objects) {
     object_trajectories.push_back(trajectory::generate_predicted_path_trajectory(
-      object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon));
+      object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
+      context.predicted_objects->header.stamp));
 
     object_trajectories.push_back(trajectory::generate_constant_curvature_trajectory(
-      object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon));
+      object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
+      context.predicted_objects->header.stamp));
   }
-
   return object_trajectories;
 }
 
@@ -961,6 +967,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
 {
   // autoware_utils::StopWatch<std::chrono::microseconds> stopwatch;
   // stopwatch.tic();
+  std::string error_msg{};
 
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
     pet_continuous_times_.clear();
@@ -1009,6 +1016,11 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
                         .metric_value(finding.ttc)
                         .level(MetricReport::ERROR));
 
+    const double detection_duration = pet_continuous_times_.get_time(finding.trajectory_id);
+    error_msg += fmt::format(
+      "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{}; ",
+      finding.object.classification, finding.trajectory_id, finding.pet, finding.ttc,
+      detection_duration, finding.object.stamp.sec, finding.object.stamp.nanosec);
     add_debug_markers(
       context.odometry->header.stamp, "planned_speed_collision", finding.ego_hull,
       finding.object_hull);
@@ -1022,15 +1034,22 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     collision_timing_result.drac.value() >= -pet_collision_params_.ego_assumed_acceleration) {
     for (const auto & finding : collision_timing_result.drac_findings) {
       is_feasible = false;
-  
+
       metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
                           .validator_name(get_name())
                           .validator_category(category())
                           .metric_name(fmt::format(
-                            "check_DRAC_{}_{}_{}", finding.trajectory_id, finding.object.classification,
-                            finding.object.id))
+                            "check_DRAC_{}_{}_{}", finding.trajectory_id,
+                            finding.object.classification, finding.object.id))
                           .metric_value(collision_timing_result.drac.value_or(0.0))
                           .level(MetricReport::ERROR));
+      error_msg += fmt::format(
+        "DRAC collision, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{}; ", finding.trajectory_id,
+        finding.pet, finding.ttc,
+        collision_timing_result.drac.has_value()
+          ? std::to_string(collision_timing_result.drac.value())
+          : "Cant be avoided",
+        finding.object.stamp.sec, finding.object.stamp.nanosec);
       add_debug_markers(
         context.odometry->header.stamp, "drac_collision", finding.ego_hull, finding.object_hull);
     }
@@ -1053,6 +1072,16 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
                           "check_RSS_{}_{}", violation.object.classification, violation.object.id))
                         .metric_value(violation.required_deceleration)
                         .level(MetricReport::ERROR));
+    const double detection_duration = rss_continuous_times_.get_time(violation.object.id);
+    error_msg += fmt::format(
+      "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}, stamp: "
+      "{}.{}; ",
+      violation.object.classification, violation.object.id, detection_duration,
+      violation.required_deceleration, violation.object.stamp.sec, violation.object.stamp.nanosec);
+  }
+
+  if (!error_msg.empty()) {
+    RCLCPP_WARN(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", error_msg.c_str());
   }
 
   return ValidationResult{is_feasible, std::move(metrics)};

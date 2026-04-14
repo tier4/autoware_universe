@@ -386,7 +386,7 @@ TEST(TrajectoryUtilitiesTest, GeneratePredictedPathTrajectoryUsesHighestConfiden
   const auto object = create_predicted_object(initial_pose, initial_twist, shape, predicted_paths);
 
   const auto trajectory_data = trajectory::generate_predicted_path_trajectory(
-    object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.1), 0.35);
+    object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.1), 0.35, builtin_interfaces::msg::Time{});
 
   EXPECT_EQ(
     trajectory_data.getObjectIdentification().id.find("_predicted_path"),
@@ -443,7 +443,7 @@ TEST(TrajectoryUtilitiesTest, GenerateConstantCurvaturePathTrajectoryMatchesPred
   const auto object = create_predicted_object(initial_pose, initial_twist, shape, {});
 
   const auto trajectory_data = trajectory::generate_constant_curvature_trajectory(
-    object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.0), 0.25);
+    object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.0), 0.25, builtin_interfaces::msg::Time{});
   const auto [expected_times, expected_distances] =
     trajectory::time_distance::compute_motion_profile_1d(initial_twist, 0.0, 0.0, 0.0, 0.25);
   const auto expected_poses = trajectory::pose::constant_curvature_predictor::compute(
@@ -462,7 +462,6 @@ TEST(TrajectoryUtilitiesTest, GenerateConstantCurvaturePathTrajectoryMatchesPred
       tf2::getYaw(expected_poses.at(i).orientation), 1e-6);
   }
 }
-
 TEST(TrajectoryUtilitiesTest, TrajectoryDataReturnsFootprintsInNearestTimeRange)
 {
   const TimeTrajectory times = {0.0, 0.1, 0.2};
