@@ -44,6 +44,10 @@ target_link_libraries(autoware_trajectory_validator_plugins
   ${PROJECT_NAME}
 )
 
+# Clear stale Python interpreter state so rosidl can resolve it correctly.
+unset(PYTHON_EXECUTABLE CACHE)
+unset(PYTHON_EXECUTABLE)
+
 rosidl_generate_interfaces(${PROJECT_NAME}_msgs
   "msg/MetricReport.msg"
   "msg/ValidationReport.msg"
