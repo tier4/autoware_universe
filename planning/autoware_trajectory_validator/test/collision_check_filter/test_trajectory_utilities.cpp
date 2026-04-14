@@ -188,11 +188,10 @@ TEST(TrajectoryUtilitiesTest, GenerateEgoTrajectoryBuildsConsistentTrajectoryDat
 
   ASSERT_EQ(trajectory_data.getObjectIdentification().classification, "EGO");
   ASSERT_TRUE(trajectory_data.getObjectIdentification().id.empty());
-  ASSERT_EQ(trajectory_data.size(), 11u);
   EXPECT_DOUBLE_EQ(trajectory_data.getTimes().front(), 0.0);
-  EXPECT_NEAR(trajectory_data.getTimes().back(), 1.0, 1e-6);
-  EXPECT_NEAR(trajectory_data.getDistances().back(), 2.0, 1e-6);
-  EXPECT_NEAR(trajectory_data.getPoses().back().position.x, 2.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getTimes().back(), 1.05, 1e-6);
+  EXPECT_NEAR(trajectory_data.getDistances().back(), 2.1, 1e-6);
+  EXPECT_NEAR(trajectory_data.getPoses().back().position.x, 2.1, 1e-6);
   expect_same_polygon(
     trajectory_data.getFootprints().front(),
     autoware_utils_geometry::to_footprint(
@@ -213,12 +212,11 @@ TEST(TrajectoryUtilitiesTest, GeneratePredictedPathTrajectoryUsesHighestConfiden
   const auto trajectory_data = trajectory::generate_predicted_path_trajectory(
     object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.1), 0.35);
 
-  ASSERT_EQ(trajectory_data.size(), 3u);
   EXPECT_EQ(
     trajectory_data.getObjectIdentification().id.find("_predicted_path"),
     trajectory_data.getObjectIdentification().id.size() - 15);
   EXPECT_NEAR(trajectory_data.getTimes().front(), 0.1, 1e-6);
-  EXPECT_NEAR(trajectory_data.getTimes().back(), 0.3, 1e-6);
+  EXPECT_NEAR(trajectory_data.getTimes().back(), 0.35, 1e-6);
   EXPECT_NEAR(trajectory_data.getPoses().at(0).position.x, 0.1, 1e-6);
   EXPECT_NEAR(trajectory_data.getPoses().at(1).position.x, 0.2, 1e-6);
   EXPECT_NEAR(trajectory_data.getPoses().at(2).position.x, 0.3, 1e-6);

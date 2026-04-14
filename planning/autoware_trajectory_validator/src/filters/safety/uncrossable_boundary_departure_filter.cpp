@@ -14,7 +14,7 @@
 
 #include "autoware/trajectory_validator/filters/safety/uncrossable_boundary_departure_filter.hpp"
 
-#include <autoware/boundary_departure_checker/debug.hpp>
+#include <autoware/deprecated/boundary_departure_checker/debug.hpp>
 
 #include <algorithm>
 #include <memory>
