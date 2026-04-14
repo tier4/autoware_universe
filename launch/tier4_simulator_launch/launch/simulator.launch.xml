@@ -251,7 +251,7 @@
   </group>
 
   <!-- Simulator model -->
-  <group if="$(var launch_dummy_vehicle)">
+  <group if="$(eval &quot;'$(var simulator_type)'=='simple_planning_simulator'&quot;)">
     <arg name="simulator_model" default="$(var vehicle_model_pkg)/config/simulator_model.param.yaml" description="path to the file of simulator model"/>
     <!-- 'pose_only' mode publishes the pose topic as an alternative to ndt_localizer. 'full_motion' mode publishes the odometry and acceleration topics as an alternative to localization modules. -->
     <let name="motion_publish_mode" value="pose_only" if="$(eval '&quot;$(var localization_sim_mode)&quot;==&quot;pose_twist_estimator&quot;')"/>
@@ -262,6 +262,12 @@
       <arg name="initial_engage_state" value="$(var initial_engage_state)"/>
       <arg name="raw_vehicle_cmd_converter_param_path" value="$(var raw_vehicle_cmd_converter_param_path)"/>
       <arg name="motion_publish_mode" value="$(var motion_publish_mode)"/>
+    </include>
+  </group>
+
+  <group if="$(eval &quot;'$(var simulator_type)'=='perfect_tracker'&quot;)">
+    <include file="$(find-pkg-share autoware_perfect_tracker)/launch/perfect_tracker.launch.xml">
+      <arg name="n_delay_steps" value="$(var n_delay_steps)"/>
     </include>
   </group>
 </launch>
