@@ -22,10 +22,7 @@
 
 #include <std_msgs/msg/detail/color_rgba__struct.hpp>
 
-#include <algorithm>
-#include <optional>
 #include <string>
-#include <vector>
 
 namespace color
 {
@@ -46,6 +43,11 @@ inline ColorRGBA green(float a = 0.99)
   return autoware_utils_visualization::create_marker_color(0., 1., 0., a);
 }
 
+inline ColorRGBA red(float a = 0.99)
+{
+  return autoware_utils_visualization::create_marker_color(1., 0., 0., a);
+}
+
 inline ColorRGBA aqua(float a = 0.99)
 {
   return autoware_utils_visualization::create_marker_color(0., 1., 1., a);
@@ -61,10 +63,6 @@ inline ColorRGBA medium_orchid(float a = 0.99)
   return autoware_utils_visualization::create_marker_color(0.729, 0.333, 0.827, a);
 }
 
-inline ColorRGBA white(float a = 0.99)
-{
-  return autoware_utils_visualization::create_marker_color(1., 1., 1., a);
-}
 }  // namespace color
 
 namespace autoware::boundary_departure_checker::debug
@@ -128,13 +126,23 @@ MarkerArray create_evaluated_projection_markers(
   const auto color = color::green();
   const auto m_scale = autoware_utils_visualization::create_marker_scale(0.05, 0, 0);
   int32_t id{0};
-  auto marker = autoware_utils_visualization::create_default_marker(
+  auto marker_connection = autoware_utils_visualization::create_default_marker(
     "map", curr_time, "", 0, line_list, m_scale, color);
-  marker.ns = "critical_" + side_key_str + "_pair";
-  marker.id = ++id;
-  marker.color = color::aqua();
-  add_projection_to_marker(marker, result_pair.physical_departure_point, base_link_z);
-  add_projection_to_marker(marker, result_pair.safety_buffer_start, base_link_z);
+  marker_connection.ns = "critical_" + side_key_str + "_pair";
+  marker_connection.id = ++id;
+  marker_connection.color = color::blue();
+  add_projection_to_marker(marker_connection, result_pair.physical_departure_point, base_link_z);
+  add_projection_to_marker(marker_connection, result_pair.safety_buffer_start, base_link_z);
+
+  auto marker_crossed = autoware_utils_visualization::create_default_marker(
+    "map", curr_time, "critical_" + side_key_str + "_points", 0,
+    visualization_msgs::msg::Marker::POINTS,
+    autoware_utils_visualization::create_marker_scale(0.25, 0.25, 1.0), color::red());
+
+  marker_crossed.points.push_back(autoware_utils_geometry::to_msg(
+    result_pair.physical_departure_point.pt_on_ego.to_3d(base_link_z)));
+  marker_array.markers.push_back(marker_connection);
+  marker_array.markers.push_back(marker_crossed);
   return marker_array;
 }
 
@@ -197,7 +205,7 @@ MarkerArray create_departure_footprint_marker(
     if (pt.is_none_departure()) {
       continue;
     }
-    if  (pt.is_critical()) {
+    if (pt.is_critical()) {
       marker_array.markers.push_back(add_marker(color::yellow(), pt, "critical"));
     }
   }
