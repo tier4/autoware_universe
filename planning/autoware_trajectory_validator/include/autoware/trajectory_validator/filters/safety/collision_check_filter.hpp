@@ -29,14 +29,21 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <boost/geometry/algorithms/convex_hull.hpp>
+#include <boost/geometry/algorithms/expand.hpp>
 #include <boost/range/iterator_range.hpp>
 
+#include <algorithm>
 #include <any>
+#include <cassert>
+#include <cmath>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -51,8 +58,11 @@ using TravelDistanceTrajectory = std::vector<double>;
 using PoseTrajectory = std::vector<geometry_msgs::msg::Pose>;
 using FootprintTrajectory = std::vector<Polygon2d>;
 using StepPolygonTrajectory = std::vector<Polygon2d>;
+using IndexRange = std::pair<size_t, size_t>;
+using TimeRange = std::pair<double, double>;
 
 static constexpr double TIME_RESOLUTION = 0.1;  // 100ms intervals
+static constexpr double TIME_INDEX_EPSILON = 1e-3;
 
 struct ObjectIdentification
 {
@@ -63,11 +73,83 @@ struct ObjectIdentification
 class TrajectoryData
 {
 private:
-  ObjectIdentification object_identification_;
-  TimeTrajectory times_;
-  TravelDistanceTrajectory distances_;
-  PoseTrajectory poses_;
-  FootprintTrajectory footprints_;
+  const ObjectIdentification object_identification_;
+  const TimeTrajectory times_;
+  const TravelDistanceTrajectory distances_;
+  const PoseTrajectory poses_;
+  const FootprintTrajectory footprints_;
+  mutable std::map<IndexRange, Box2d> envelope_cache_;
+  mutable std::map<IndexRange, Polygon2d> convex_cache_;
+
+  // obsolete
+  size_t getClosestTimeIndex(const double t) const
+  {
+    const auto it = std::lower_bound(times_.begin(), times_.end(), t);
+
+    if (it == times_.begin()) return 0;
+    if (it == times_.end()) return times_.size() - 1;
+
+    const auto prev_it = it - 1;
+    const auto closest_it = (std::abs(*it - t) < std::abs(*prev_it - t)) ? it : prev_it;
+    return std::distance(times_.begin(), closest_it);
+  }
+
+  size_t get_same_or_earlier_time_index(const double t) const
+  {
+    const auto it = std::upper_bound(times_.begin(), times_.end(), t + TIME_INDEX_EPSILON);
+    if (it == times_.begin()) return 0;
+    return std::distance(times_.begin(), it - 1);
+  }
+
+  size_t get_same_or_later_time_index(const double t) const
+  {
+    const auto it = std::lower_bound(times_.begin(), times_.end(), t - TIME_INDEX_EPSILON);
+    if (it == times_.end()) return times_.size() - 1;
+    return std::distance(times_.begin(), it);
+  }
+
+  IndexRange resolve_covering_index_range(const TimeRange & key_time) const
+  {
+    assert(key_time.first <= key_time.second);
+
+    auto start_index = get_same_or_earlier_time_index(key_time.first);
+    auto end_index = get_same_or_later_time_index(key_time.second);
+    return {start_index, end_index};
+  }
+
+  Box2d compute_envelope(const IndexRange & key) const
+  {
+    assert(key.first <= key.second);
+
+    Box2d box;
+    boost::geometry::assign_inverse(box);
+    for (size_t i = key.first; i <= key.second; ++i) {
+      for (const auto & pt : footprints_[i].outer()) {
+        boost::geometry::expand(box, pt);
+      }
+    }
+    return box;
+  }
+
+  Polygon2d compute_convex(const IndexRange & key) const
+  {
+    assert(key.first <= key.second);
+
+    MultiPoint2d all_points;
+
+    all_points.reserve((key.second - key.first + 1) * 4);  // heuristic reserve
+    for (size_t i = key.first; i <= key.second; ++i) {
+      const auto & poly = footprints_[i];
+      for (const auto & pt : poly.outer()) {
+        all_points.push_back(pt);
+      }
+    }
+
+    Polygon2d hull;
+    hull.outer().reserve(all_points.size());
+    boost::geometry::convex_hull(all_points, hull);
+    return hull;
+  }
 
 public:
   TrajectoryData(
@@ -111,6 +193,7 @@ public:
 
   size_t size() const { return times_.size(); }
 
+  // obsolete
   boost::iterator_range<FootprintTrajectory::const_iterator> getFootprintsInTimeRange(
     double start_time, double end_time) const
   {
@@ -131,17 +214,41 @@ public:
     return boost::make_iterator_range(start_iter, end_iter);
   }
 
-private:
-  size_t getClosestTimeIndex(const double t) const
+  const Box2d & get_or_compute_envelope(const IndexRange & key) const
   {
-    const auto it = std::lower_bound(times_.begin(), times_.end(), t);
+    assert(key.first <= key.second);
 
-    if (it == times_.begin()) return 0;
-    if (it == times_.end()) return times_.size() - 1;
+    auto [it, inserted] = envelope_cache_.try_emplace(key);
+    if (inserted) {
+      it->second = compute_envelope(key);
+    }
+    return it->second;
+  }
 
-    const auto prev_it = it - 1;
-    const auto closest_it = (std::abs(*it - t) < std::abs(*prev_it - t)) ? it : prev_it;
-    return std::distance(times_.begin(), closest_it);
+  const Box2d & get_or_compute_envelope(const TimeRange & key_time) const
+  {
+    return get_or_compute_envelope(resolve_covering_index_range(key_time));
+  }
+
+  Box2d get_or_compute_overall_envelope(void) const
+  {
+    return get_or_compute_envelope(IndexRange{0U, footprints_.size() - 1});
+  }
+
+  const Polygon2d & get_or_compute_convex(const IndexRange & key) const
+  {
+    assert(key.first <= key.second);
+
+    auto [it, inserted] = convex_cache_.try_emplace(key);
+    if (inserted) {
+      it->second = compute_convex(key);
+    }
+    return it->second;
+  }
+
+  const Polygon2d & get_or_compute_convex(const TimeRange & key_time) const
+  {
+    return get_or_compute_convex(resolve_covering_index_range(key_time));
   }
 };
 
