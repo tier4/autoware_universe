@@ -41,6 +41,8 @@
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
+#include <algorithm>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -69,14 +71,41 @@ public:
   {
     std::string plugin_name;
     bool is_feasible{true};
+    bool is_shadow_mode{false};
     std::string reason;
   };
 
   struct EvaluationTable
   {
     std::string generator_id;
-    bool is_overall_feasible;
     std::unordered_map<std::string, std::vector<PluginEvaluation>> evaluations;
+
+    /**
+     * @brief Returns true if any evaluation is feasible or in shadow mode.
+     */
+    bool all_acceptable() const
+    {
+      return all_evaluations([](const auto & e) { return e.is_feasible || e.is_shadow_mode; });
+    }
+
+    /**
+     * @brief Returns true if all evaluations are feasible.
+     */
+    bool all_feasible() const
+    {
+      return all_evaluations([](const auto & e) { return e.is_feasible; });
+    }
+
+  private:
+    /**
+     * @brief Returns true if all evaluations satisfy the given predicate.
+     */
+    bool all_evaluations(const std::function<bool(const PluginEvaluation &)> & pred) const
+    {
+      return std::all_of(evaluations.begin(), evaluations.end(), [&](const auto & pair) {
+        return std::all_of(pair.second.begin(), pair.second.end(), pred);
+      });
+    }
   };
 
   explicit TrajectoryValidator(const rclcpp::NodeOptions & node_options);

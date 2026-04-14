@@ -185,68 +185,57 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   diagnostics_interface_.clear();
   size_t num_feasible_trajectories = 0;
   std::vector<ValidationReport> reports;
+
   for (const auto & trajectory : msg->candidate_trajectories) {
     EvaluationTable table;
-    table.generator_id = autoware_utils_uuid::to_hex_string(trajectory.generator_id);
-    table.is_overall_feasible = true;
+    const auto hex_generator_id = autoware_utils_uuid::to_hex_string(trajectory.generator_id);
+    table.generator_id = hex_generator_id;
 
-    // NOTE: this is used to determine diagnostic status, and doesn't affect whether filtering is
-    // applied
-    bool is_overall_feasible = true;
     std::vector<MetricReport> metrics;
     for (const auto & plugin : plugins_) {
       PluginEvaluation evaluation;
       evaluation.plugin_name = plugin->get_name();
+      evaluation.is_shadow_mode = plugin->is_shadow_mode();
+
       stop_watch.tic(evaluation.plugin_name);
 
-      if (const auto res = plugin->is_feasible(trajectory.points, context); !res) {
-        RCLCPP_ERROR_THROTTLE(
-          get_logger(), *get_clock(), 1000, "Got exception in %s: %s", plugin->get_name().c_str(),
-          res.error().c_str());
-        diagnostics_interface_.add_key_value(plugin->get_name(), std::string("NG"));
-
+      const auto res = plugin->is_feasible(trajectory.points, context);
+      if (!res) {
         evaluation.is_feasible = false;
         evaluation.reason = res.error();
-        if (!plugin->is_debug_mode()) {
-          table.is_overall_feasible = false;
-        }
-        is_overall_feasible = false;
-      } else if (const auto & val = res.value(); !val.is_feasible) {
-        RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 1000, "Not feasible: %s", plugin->get_name().c_str());
-        diagnostics_interface_.add_key_value(plugin->get_name(), std::string("NG"));
-
-        evaluation.is_feasible = false;
-        evaluation.reason = "Found failed metrics";
-        if (!plugin->is_debug_mode()) {
-          table.is_overall_feasible = false;
-        }
-        is_overall_feasible = false;
-
-        metrics.insert(metrics.end(), val.metrics.begin(), val.metrics.end());
       } else {
-        diagnostics_interface_.add_key_value(plugin->get_name(), std::string("OK"));
-
+        const auto & val = res.value();
+        evaluation.is_feasible = evaluation.is_feasible && val.is_feasible;
+        if (!val.is_feasible) {
+          evaluation.reason = "Found failed metrics";
+        }
         metrics.insert(metrics.end(), val.metrics.begin(), val.metrics.end());
       }
-      processing_time_ms[evaluation.plugin_name] += stop_watch.toc(evaluation.plugin_name);
 
+      if (!evaluation.is_feasible) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000, "[%s] %s", plugin->get_name().c_str(),
+          evaluation.reason.c_str());
+      }
+
+      diagnostics_interface_.add_key_value(
+        plugin->get_name(), evaluation.is_feasible ? std::string("OK") : std::string("NG"));
+      processing_time_ms[evaluation.plugin_name] += stop_watch.toc(evaluation.plugin_name);
       table.evaluations[plugin->category()].push_back(evaluation);
     }
 
     evaluation_tables_.push_back(table);
 
-    // NOTE: table.is_overall_feasible considers debug mode,
-    // so in debug mode, all trajectories are kept
-    if (table.is_overall_feasible) filtered_msg->candidate_trajectories.push_back(trajectory);
-    if (is_overall_feasible) ++num_feasible_trajectories;
+    if (table.all_acceptable()) filtered_msg->candidate_trajectories.push_back(trajectory);
+
+    const auto all_feasible = table.all_feasible();
+    if (all_feasible) ++num_feasible_trajectories;
 
     reports.push_back(autoware_trajectory_validator::build<ValidationReport>()
                         .trajectory_stamp(trajectory.header.stamp)
                         .generator_id(trajectory.generator_id)
-                        .generator_name(uuid_to_name.at(
-                          autoware_utils_uuid::to_hex_string(trajectory.generator_id)))
-                        .level(is_overall_feasible ? ValidationReport::OK : ValidationReport::ERROR)
+                        .generator_name(uuid_to_name.at(hex_generator_id))
+                        .level(all_feasible ? ValidationReport::OK : ValidationReport::ERROR)
                         .metrics(std::move(metrics)));
   }
 

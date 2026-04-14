@@ -78,7 +78,7 @@ public:
 
   [[nodiscard]] std::string get_name() const { return name_; }
 
-  [[nodiscard]] virtual bool is_debug_mode() const { return true; }
+  [[nodiscard]] virtual bool is_shadow_mode() const { return true; }
 
   [[nodiscard]] visualization_msgs::msg::MarkerArray take_debug_markers()
   {
