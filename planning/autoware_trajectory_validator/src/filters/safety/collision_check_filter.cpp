@@ -795,7 +795,7 @@ void CollisionCheckFilter::add_debug_markers(
   add_poly_marker(object_hull, "obj_worst_pet", 1.0, 0.0, 0.0);
 }
 
-tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
+CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   // autoware_utils::StopWatch<std::chrono::microseconds> stopwatch;
@@ -815,7 +815,9 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
     return {};  // No trajectory to check
   }
 
-  std::string error_msg{};
+  bool is_feasible = true;
+  std::vector<MetricReport> metrics;
+
   const rclcpp::Time current_time = context.odometry->header.stamp;
 
   const auto collision_timing_result = collision_timing_assessment::assess(
@@ -825,12 +827,27 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
     current_time, collision_timing_result.planned_speed_findings,
     [](const auto & finding) { return finding.trajectory_id; });
   for (const auto & finding : collision_timing_result.planned_speed_findings) {
-    const double detection_duration = pet_continuous_times_.get_time(finding.trajectory_id);
-    error_msg += fmt::format(
-      "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{}; ",
-      finding.object.classification, finding.trajectory_id, finding.pet, finding.ttc,
-      detection_duration, context.predicted_objects->header.stamp.sec,
-      context.predicted_objects->header.stamp.nanosec);
+    // Mark as infeasible if any finding exists
+    is_feasible = false;
+
+    // Record metrics for PET and TTC for each finding
+    metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                        .validator_name(get_name())
+                        .validator_category(category())
+                        .metric_name(fmt::format(
+                          "check_PET_{}_{}_{}", finding.trajectory_id,
+                          finding.object.classification, finding.object.id))
+                        .metric_value(finding.pet)
+                        .level(MetricReport::ERROR));
+    metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                        .validator_name(get_name())
+                        .validator_category(category())
+                        .metric_name(fmt::format(
+                          "check_TTC_{}_{}_{}", finding.trajectory_id,
+                          finding.object.classification, finding.object.id))
+                        .metric_value(finding.ttc)
+                        .level(MetricReport::ERROR));
+
     add_debug_markers(
       context.odometry->header.stamp, "planned_speed_collision", finding.ego_hull,
       finding.object_hull);
@@ -843,14 +860,16 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
     collision_timing_result.drac == std::nullopt ||
     collision_timing_result.drac.value() >= -pet_collision_params_.ego_assumed_acceleration) {
     for (const auto & finding : collision_timing_result.drac_findings) {
-      error_msg += fmt::format(
-        "DRAC collision, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{}; ", finding.trajectory_id,
-        finding.pet, finding.ttc,
-        collision_timing_result.drac.has_value()
-          ? std::to_string(collision_timing_result.drac.value())
-          : "Cant be avoided",
-        context.predicted_objects->header.stamp.sec,
-        context.predicted_objects->header.stamp.nanosec);
+      is_feasible = false;
+  
+      metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                          .validator_name(get_name())
+                          .validator_category(category())
+                          .metric_name(fmt::format(
+                            "check_DRAC_{}_{}_{}", finding.trajectory_id, finding.object.classification,
+                            finding.object.id))
+                          .metric_value(collision_timing_result.drac.value_or(0.0))
+                          .level(MetricReport::ERROR));
       add_debug_markers(
         context.odometry->header.stamp, "drac_collision", finding.ego_hull, finding.object_hull);
     }
@@ -862,19 +881,20 @@ tl::expected<void, std::string> CollisionCheckFilter::is_feasible(
     return violation.object.id;
   });
   for (const auto & violation : rss_result.violations) {
-    const double detection_duration = rss_continuous_times_.get_time(violation.object.id);
-    error_msg += fmt::format(
-      "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}; ",
-      violation.object.classification, violation.object.id, detection_duration,
-      violation.required_deceleration);
+    // Mark as infeasible if any RSS violation exists
+    is_feasible = false;
+
+    // Record metrics for each RSS violation
+    metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                        .validator_name(get_name())
+                        .validator_category(category())
+                        .metric_name(fmt::format(
+                          "check_RSS_{}_{}", violation.object.classification, violation.object.id))
+                        .metric_value(violation.required_deceleration)
+                        .level(MetricReport::ERROR));
   }
 
-  if (!error_msg.empty()) {
-    RCLCPP_WARN(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", error_msg.c_str());
-    return tl::make_unexpected(error_msg);
-  }
-
-  return {};
+  return ValidationResult{is_feasible, std::move(metrics)};
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety

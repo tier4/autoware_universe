@@ -31,8 +31,7 @@ public:
   {
   }
 
-  tl::expected<void, std::string> is_feasible(
-    const TrajectoryPoints & traj_points, const FilterContext & context) final;
+  result_t is_feasible(const TrajectoryPoints & traj_points, const FilterContext & context) final;
 
   void update_parameters(const validator::Params & params) final;
 
@@ -45,8 +44,6 @@ private:
 
   [[nodiscard]] std::optional<std::string> is_invalid_input(
     const TrajectoryPoints & traj_points, const FilterContext & context) const;
-
-  [[nodiscard]] bool is_debug_mode() const final { return true; }
 
   template <typename... Args>
   void warn_throttle(const char * fmt)
