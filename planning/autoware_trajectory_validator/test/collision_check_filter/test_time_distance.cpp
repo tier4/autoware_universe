@@ -147,9 +147,8 @@ TEST_F(TimeDistanceTest, SamplesStayWithinRangeAndMonotonicWhenStopTimeExceedsEn
     }
   }
 
-  const auto stop_time_it = std::find_if(times.begin(), times.end(), [&](double t) {
-    return std::abs(t - expected_stop_time) < 1e-6;
-  });
+  const auto stop_time_it = std::find_if(
+    times.begin(), times.end(), [&](double t) { return std::abs(t - expected_stop_time) < 1e-6; });
   EXPECT_EQ(stop_time_it, times.end());
 }
 
