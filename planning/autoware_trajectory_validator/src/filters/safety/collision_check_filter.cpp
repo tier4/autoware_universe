@@ -18,7 +18,6 @@
 #include <autoware/object_recognition_utils/object_classification.hpp>
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware/universe_utils/geometry/pose_deviation.hpp>
-#include <autoware_utils/system/stop_watch.hpp>
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 
@@ -640,6 +639,7 @@ bool has_overall_convex_hull_overlap(const Range1 & footprints1, const Range2 & 
 
   return true;
 }
+
 }  // namespace geometry
 
 // RSS-based required deceleration assessment.
@@ -820,6 +820,8 @@ struct DracAssessment
 std::vector<TrajectoryData> generate_object_trajectories(
   const FilterContext & context, double required_time_horizon, double object_assumed_acceleration)
 {
+  const rclcpp::Duration objects_reference_time = compute_objects_reference_time(context);
+
   std::vector<TrajectoryData> object_trajectories{};
 
   if (context.predicted_objects) {
@@ -856,63 +858,73 @@ std::vector<TrajectoryData> generate_object_trajectories(
   return object_trajectories;
 }
 
-// todo(takagi): should be designed to TTC definition condition, currently minimum PET detected time
-// is returned as ttc.
 std::optional<Finding> find_collision_timing(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
   double pet_threshold)
 {
-  if (!geometry::has_overall_convex_hull_overlap(
-        ref_trajectory.getFootprints(), test_trajectory.getFootprintsInTimeRange(
-                                          0.0, ref_trajectory.getTimes().back() + pet_threshold))) {
+  if (!boost::geometry::intersects(
+        ref_trajectory.get_or_compute_overall_envelope(),
+        test_trajectory.get_or_compute_envelope(TimeRange{
+          ref_trajectory.getTimes().front(), ref_trajectory.getTimes().back() + pet_threshold}))) {
     return std::nullopt;
   }
 
   std::optional<Finding> candidate_finding{};
   for (size_t i = 0; i < ref_trajectory.size(); ++i) {
-    const double ref_start_time = ref_trajectory.getTimes().at(i);
-    const double ref_end_time = ref_start_time + TIME_RESOLUTION;
-    const auto ref_poly = ref_trajectory.getFootprintsInTimeRange(ref_start_time, ref_end_time);
-    auto check_slice_collision = [&](double start, double end) {
-      const auto slice_poly = test_trajectory.getFootprintsInTimeRange(start, end);
-      return geometry::has_overall_convex_hull_overlap(ref_poly, slice_poly);
-    };
+    size_t prev_i = (i == 0) ? 0 : i - 1;
+    const double ref_start_time = ref_trajectory.getTimes().at(prev_i);
+    const double ref_end_time = ref_trajectory.getTimes().at(i);
+
+    const IndexRange ref_index_range{prev_i, i};
+    const Box2d & ref_envelope = ref_trajectory.get_or_compute_envelope(ref_index_range);
+    const Polygon2d & ref_convex = ref_trajectory.get_or_compute_convex(ref_index_range);
 
     const double current_pet_limit =
-      candidate_finding.has_value() ? candidate_finding->pet : pet_threshold;
-    const double test_start_time = ref_start_time - current_pet_limit;
-    const double test_end_time = ref_end_time + current_pet_limit;
-    if (!check_slice_collision(test_start_time, test_end_time)) {
+      candidate_finding.has_value() ? std::abs(candidate_finding->pet) : pet_threshold;
+
+    if (!boost::geometry::intersects(
+          ref_envelope, test_trajectory.get_or_compute_envelope(TimeRange{
+                          ref_start_time - current_pet_limit,
+                          ref_trajectory.getTimes().back() + current_pet_limit}))) {
       continue;
     }
 
-    // todo(takagi): If we only want to know if the value is below the threshold, not the exact
-    // value, we can skip this for loop.
-
-    // todo(takagi): return signed PET instead of absolute value.
     for (double pet_range = 0.0; pet_range <= current_pet_limit; pet_range += TIME_RESOLUTION) {
-      const double test_start_time_before = ref_start_time - pet_range;
-      const double test_end_time_before = test_start_time_before + TIME_RESOLUTION;
+      const TimeRange test_time_range_before{ref_start_time - pet_range, ref_end_time - pet_range};
+      bool has_intersects_before =
+        boost::geometry::intersects(
+          ref_envelope, test_trajectory.get_or_compute_envelope(test_time_range_before)) &&
+        boost::geometry::intersects(
+          ref_convex, test_trajectory.get_or_compute_convex(test_time_range_before));
 
-      const double test_start_time_after = ref_end_time + pet_range - TIME_RESOLUTION;
-      const double test_end_time_after = ref_end_time + pet_range;
+      const TimeRange test_time_range_after{ref_start_time + pet_range, ref_end_time + pet_range};
+      bool has_intersects_after =
+        boost::geometry::intersects(
+          ref_envelope, test_trajectory.get_or_compute_envelope(test_time_range_after)) &&
+        boost::geometry::intersects(
+          ref_convex, test_trajectory.get_or_compute_convex(test_time_range_after));
 
-      if (
-        check_slice_collision(test_start_time_before, test_end_time_before) ||
-        check_slice_collision(test_start_time_after, test_end_time_after)) {
-        Finding finding;
-        finding.trajectory_id = test_trajectory.getObjectIdentification().id;
-        finding.object = test_trajectory.getObjectIdentification();
-        finding.pet = pet_range;
-        finding.ttc = ref_start_time;
-        finding.ego_hull = geometry::compute_overall_convex_hull(
-          ref_trajectory.getFootprintsInTimeRange(ref_start_time, ref_end_time));
-        finding.object_hull = geometry::compute_overall_convex_hull(
-          test_trajectory.getFootprintsInTimeRange(test_start_time_before, test_end_time_after));
-        candidate_finding = std::move(finding);
-
-        break;
+      if (!has_intersects_before && !has_intersects_after) {
+        continue;
       }
+
+      Finding finding;
+      if (has_intersects_before) {
+        finding.pet = -pet_range;
+        finding.object_hull = test_trajectory.get_or_compute_convex(test_time_range_before);
+      } else if (has_intersects_after) {
+        finding.pet = pet_range;
+        finding.object_hull = test_trajectory.get_or_compute_convex(test_time_range_after);
+      }
+
+      // todo(takagi): restrict the copy until return.
+      finding.trajectory_id = test_trajectory.getObjectIdentification().id;
+      finding.object = test_trajectory.getObjectIdentification();
+      finding.ttc = ref_start_time;
+      finding.ego_hull = ref_convex;
+
+      candidate_finding = std::move(finding);
+      break;
     }
     if (candidate_finding.has_value() && candidate_finding->pet == 0.0) {
       return candidate_finding;
@@ -943,7 +955,7 @@ std::vector<Finding> assess_collision_timing(
 std::vector<Finding> assess_planned_speed_collision_timing(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const validator::Params::CollisionCheck::PetCollision & pet_collision_params,
-  VehicleInfo & vehicle_info)
+  VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories)
 {
   const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
                                             -pet_collision_params.ego_assumed_acceleration +
@@ -953,24 +965,15 @@ std::vector<Finding> assess_planned_speed_collision_timing(
   auto ego_trajectory = trajectory::generate_ego_trajectory(
     context.odometry->twist.twist, 0.0, 0.0, ego_time_horizon_for_pet, traj_points, vehicle_info);
 
-  auto object_trajectories = generate_object_trajectories(
-    context, ego_time_horizon_for_pet + pet_collision_params.collision_time_threshold, 0.0);
   return assess_collision_timing(ego_trajectory, object_trajectories, pet_collision_params);
 }
 
 DracAssessment assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const validator::Params::CollisionCheck::PetCollision & pet_collision_params,
-  VehicleInfo & vehicle_info)
+  VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & constant_speed_objects_trajectory)
 {
   const double ego_time_horizon = rclcpp::Duration(traj_points.back().time_from_start).seconds();
-
-  // todo(takagi): reuse the object trajectories for pet assessment for computational efficiency.
-
-  // Currently, the memory allocation in `generate_object_trajectories()` accounts for about half of
-  // the total computation time of `is_feasible()`.
-  const auto constant_speed_objects_trajectory = generate_object_trajectories(
-    context, ego_time_horizon + pet_collision_params.collision_time_threshold, 0.0);
 
   constexpr double DEFAULT_EGO_DECELERATION_STEP = 1.0;
   constexpr double DEFAULT_MAX_EGO_DECELERATION = 6.0;
@@ -990,9 +993,9 @@ DracAssessment assess_drac(
         context.odometry->twist.twist, pet_collision_params.ego_braking_delay, -ego_dec,
         ego_time_horizon, traj_points, vehicle_info);
     }();
-
     auto findings = assess_collision_timing(
       ego_deceleration_trajectory, constant_speed_objects_trajectory, pet_collision_params);
+
     if (findings.empty()) {
       return DracAssessment{ego_dec, std::move(last_findings)};
     }
@@ -1008,12 +1011,23 @@ Result assess(
   const validator::Params::CollisionCheck::PetCollision & pet_collision_params,
   VehicleInfo & vehicle_info)
 {
+  const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
+                                            -pet_collision_params.ego_assumed_acceleration +
+                                          pet_collision_params.ego_braking_delay;
+  const double ego_time_horizon_for_drac =
+    rclcpp::Duration(traj_points.back().time_from_start).seconds();
+  const double required_object_time_horizon =
+    std::max(ego_time_horizon_for_pet, ego_time_horizon_for_drac) +
+    pet_collision_params.collision_time_threshold;
+
+  auto constant_speed_object_trajectories =
+    generate_object_trajectories(context, required_object_time_horizon, 0.0);
+
   Result result{};
-  result.planned_speed_findings =
-    assess_planned_speed_collision_timing(traj_points, context, pet_collision_params, vehicle_info);
-  // const auto drac_assessment =
-  //   assess_drac(traj_points, context, pet_collision_params, vehicle_info);
-  DracAssessment drac_assessment{0.0, {}};  // dummy
+  result.planned_speed_findings = assess_planned_speed_collision_timing(
+    traj_points, context, pet_collision_params, vehicle_info, constant_speed_object_trajectories);
+  const auto drac_assessment = assess_drac(
+    traj_points, context, pet_collision_params, vehicle_info, constant_speed_object_trajectories);
   result.drac_findings = drac_assessment.findings;
   result.drac = drac_assessment.drac;
 
@@ -1075,8 +1089,6 @@ void CollisionCheckFilter::add_debug_markers(
 CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
-  // autoware_utils::StopWatch<std::chrono::microseconds> stopwatch;
-  // stopwatch.tic();
   std::string error_msg{};
 
   if (
@@ -1100,7 +1112,6 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   std::vector<MetricReport> metrics;
 
   const rclcpp::Time current_time = context.odometry->header.stamp;
-
   const auto collision_timing_result = collision_timing_assessment::assess(
     traj_points, context, pet_collision_params_, *vehicle_info_ptr_);
 
