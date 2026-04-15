@@ -276,9 +276,9 @@ bool OcclusionSpotModule::modifyPathVelocity(
   if (show_time) stop_watch_.tic("processing_time");
 
   if (param_.pass_judge == occlusion_spot_utils::PASS_JUDGE::SMOOTH_VELOCITY) {
-    Trajectory smoothed_path;
-    if (smoothPath(new_path, smoothed_path, planner_data)) {
-      new_path = smoothed_path;
+    const auto smoothed_path = smoothPath(new_path, planner_data);
+    if (smoothed_path) {
+      new_path = smoothed_path.value();
     } else {
       utils::applyVelocityToPath(new_path, param_.v.v_ego);
     }
