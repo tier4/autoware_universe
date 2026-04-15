@@ -123,8 +123,8 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   // Update neighbor agent data
   agent_data_.update_histories(*effective_objects, params_.ignore_unknown_neighbors);
   const auto processed_neighbor_histories = agent_data_.transformed_and_trimmed_histories(
-    map_to_ego_transform, MAX_NUM_NEIGHBORS, params_.max_num_vehicle,
-    params_.max_num_pedestrian, params_.max_num_bicycle);
+    map_to_ego_transform, MAX_NUM_NEIGHBORS, params_.max_num_vehicle, params_.max_num_pedestrian,
+    params_.max_num_bicycle);
 
   // Update traffic light map
   const auto & traffic_light_msg_timeout_s = params_.traffic_light_group_msg_timeout_seconds;
