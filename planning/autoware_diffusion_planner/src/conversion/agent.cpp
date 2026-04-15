@@ -119,8 +119,8 @@ void AgentData::update_histories(const TrackedObjects & objects, const bool igno
 }
 
 std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
-  const Eigen::Matrix4d & transform, size_t max_num_agent, size_t max_num_vehicle,
-  size_t max_num_pedestrian, size_t max_num_bicycle) const
+  const Eigen::Matrix4d & transform, int64_t max_num_agent, int64_t max_num_vehicle,
+  int64_t max_num_pedestrian, int64_t max_num_bicycle) const
 {
   std::vector<AgentHistory> histories;
   histories.reserve(histories_map_.size());
@@ -140,12 +140,12 @@ std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
   });
 
   std::vector<AgentHistory> filtered;
-  filtered.reserve(std::min(histories.size(), max_num_agent));
-  size_t num_vehicle = 0;
-  size_t num_pedestrian = 0;
-  size_t num_bicycle = 0;
+  filtered.reserve(std::min<size_t>(histories.size(), std::max<int64_t>(0, max_num_agent)));
+  int64_t num_vehicle = 0;
+  int64_t num_pedestrian = 0;
+  int64_t num_bicycle = 0;
   for (auto & history : histories) {
-    if (filtered.size() >= max_num_agent) {
+    if (static_cast<int64_t>(filtered.size()) >= max_num_agent) {
       break;
     }
     const AgentLabel label = history.get_latest_state().label;

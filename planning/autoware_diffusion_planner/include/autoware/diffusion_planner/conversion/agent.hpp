@@ -140,10 +140,11 @@ struct AgentData
 
   // Transform histories, trim to max_num_agent (with per-class caps), and return the result.
   // Histories are sorted by distance from ego (nearest first); for each class, once the
-  // per-class cap is reached, subsequent agents of that class are skipped.
+  // per-class cap is reached, subsequent agents of that class are skipped. A non-positive
+  // per-class cap excludes that class entirely.
   std::vector<AgentHistory> transformed_and_trimmed_histories(
-    const Eigen::Matrix4d & transform, size_t max_num_agent, size_t max_num_vehicle,
-    size_t max_num_pedestrian, size_t max_num_bicycle) const;
+    const Eigen::Matrix4d & transform, int64_t max_num_agent, int64_t max_num_vehicle,
+    int64_t max_num_pedestrian, int64_t max_num_bicycle) const;
 
 private:
   std::unordered_map<std::string, AgentHistory> histories_map_;
