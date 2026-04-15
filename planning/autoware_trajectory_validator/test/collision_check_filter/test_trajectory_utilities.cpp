@@ -375,6 +375,38 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryHandlesNonUniformTimeAnd
   EXPECT_NEAR(trajectory_data.getDistances().at(2), 1.0, 1e-6);
 }
 
+TEST(TrajectoryUtilitiesTest, ComputeSampleTimesStartsAtStartTimeAndIncludesEndTime)
+{
+  const auto times = trajectory::detail::compute_sample_times(-0.1, 0.4);
+
+  ASSERT_EQ(times.size(), 6u);
+  EXPECT_NEAR(times.at(0), -0.1, 1e-6);
+  EXPECT_NEAR(times.at(1), 0.0, 1e-6);
+  EXPECT_NEAR(times.at(2), 0.1, 1e-6);
+  EXPECT_NEAR(times.at(3), 0.2, 1e-6);
+  EXPECT_NEAR(times.at(4), 0.3, 1e-6);
+  EXPECT_NEAR(times.at(5), 0.4, 1e-6);
+}
+
+TEST(TrajectoryUtilitiesTest, ComputeDiffusionBasedPoseTrajectoryUsesArbitraryTimeStep)
+{
+  const std::vector<autoware_perception_msgs::msg::PredictedPath> predicted_paths = {
+    create_straight_predicted_path(0.0, 1.0, {0.0, 2.0, 4.0})};
+  auto predicted_path = predicted_paths.front();
+  predicted_path.time_step = rclcpp::Duration::from_seconds(0.2);
+  const auto times = trajectory::detail::compute_sample_times(0.0, 0.4);
+
+  const auto poses =
+    trajectory::detail::compute_diffusion_based_pose_trajectory(predicted_path, times, -0.1);
+
+  ASSERT_EQ(poses.size(), 5u);
+  EXPECT_NEAR(poses.at(0).position.x, 1.0, 1e-6);
+  EXPECT_NEAR(poses.at(1).position.x, 2.0, 1e-6);
+  EXPECT_NEAR(poses.at(2).position.x, 3.0, 1e-6);
+  EXPECT_NEAR(poses.at(3).position.x, 4.0, 1e-6);
+  EXPECT_NEAR(poses.at(4).position.x, 4.0, 1e-6);
+}
+
 TEST(TrajectoryUtilitiesTest, GeneratePredictedPathTrajectoryUsesHighestConfidencePath)
 {
   const auto shape = create_bounding_box_shape(4.0, 2.0);
@@ -461,6 +493,34 @@ TEST(TrajectoryUtilitiesTest, GenerateConstantCurvaturePathTrajectoryMatchesPred
       tf2::getYaw(trajectory_data.getPoses().at(i).orientation),
       tf2::getYaw(expected_poses.at(i).orientation), 1e-6);
   }
+}
+TEST(TrajectoryUtilitiesTest, GenerateTimeInterpolatedPredictedPathTrajectoryUsesTimeStep)
+{
+  const auto shape = create_bounding_box_shape(4.0, 2.0);
+  const auto initial_pose = create_pose(0.0, 0.0, 0.0);
+  const auto initial_twist = create_twist(0.0);
+  const std::vector<autoware_perception_msgs::msg::PredictedPath> predicted_paths = {
+    create_straight_predicted_path(0.0, 1.0, {0.0, 2.0, 4.0})};
+  auto object = create_predicted_object(initial_pose, initial_twist, shape, predicted_paths);
+
+  object.kinematics.predicted_paths.front().time_step = rclcpp::Duration::from_seconds(0.2);
+
+  const auto trajectory_data = trajectory::generate_diffusion_based_trajectory(
+    object, rclcpp::Duration::from_seconds(-0.1), 0.4, builtin_interfaces::msg::Time{});
+
+  ASSERT_EQ(trajectory_data.size(), 5u);
+  EXPECT_EQ(
+    trajectory_data.getObjectIdentification().id.find("_diffusion_based_trajectory"),
+    trajectory_data.getObjectIdentification().id.size() - 27);
+  EXPECT_NEAR(trajectory_data.getTimes().at(0), 0.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getTimes().at(1), 0.1, 1e-6);
+  EXPECT_NEAR(trajectory_data.getTimes().at(4), 0.4, 1e-6);
+  EXPECT_NEAR(trajectory_data.getDistances().at(0), 0.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getDistances().at(1), 1.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getDistances().at(2), 2.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getDistances().at(3), 3.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getDistances().at(4), 3.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getPoses().at(0).position.x, 1.0, 1e-6);
 }
 TEST(TrajectoryUtilitiesTest, TrajectoryDataReturnsFootprintsInNearestTimeRange)
 {

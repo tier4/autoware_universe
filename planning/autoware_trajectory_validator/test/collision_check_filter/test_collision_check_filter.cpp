@@ -150,6 +150,46 @@ TEST_F(CollisionCheckFilterTest, EmptyObjects)
   EXPECT_TRUE(result.value().is_feasible);
 }
 
+TEST_F(CollisionCheckFilterTest, NeuralNetworkPredictedObjectsAreAlsoChecked)
+{
+  const auto ego_path = create_ego_path();
+
+  FilterContext context;
+
+  auto odom_msg = std::make_shared<nav_msgs::msg::Odometry>();
+  odom_msg->header.stamp = rclcpp::Time(1, 0, RCL_ROS_TIME);
+  odom_msg->pose.pose = create_pose(0.0, 0.0, 0.0);
+  odom_msg->twist.twist = create_twist(10.0, 0.0);
+  context.odometry = odom_msg;
+
+  auto predicted_objects_msg = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
+  predicted_objects_msg->header.stamp = odom_msg->header.stamp;
+  predicted_objects_msg->objects.push_back(create_dummy_object(
+    create_pose(100.0, 100.0, 0.0), create_twist(0.0, 0.0),
+    create_predicted_path(create_pose(100.0, 100.0, 0.0), create_twist(0.0, 0.0)),
+    create_object_shape(5.0, 1.0)));
+  context.predicted_objects = predicted_objects_msg;
+
+  auto neural_network_objects_msg =
+    std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
+  neural_network_objects_msg->header.stamp = odom_msg->header.stamp;
+  auto pose = create_pose(20.0, -10.0, M_PI_2);
+  auto twist = create_twist(10.0, 0.0);
+  neural_network_objects_msg->objects.push_back(create_dummy_object(
+    pose, twist, create_predicted_path(pose, twist), create_object_shape(5.0, 1.0)));
+  context.neural_network_predicted_objects = neural_network_objects_msg;
+
+  const auto result = filter_->is_feasible(ego_path, context);
+  EXPECT_TRUE(!result.has_value());
+
+  ASSERT_FALSE(result.has_value());
+  const std::string & error_msg = result.error();
+  EXPECT_NE(error_msg.find("classification: CAR"), std::string::npos)
+    << "Error string did not contain 'classification: CAR'. Actual: " << error_msg;
+  EXPECT_NE(error_msg.find("diffusion_based_trajectory"), std::string::npos)
+    << "Error string did not contain 'diffusion_based_trajectory'. Actual: " << error_msg;
+}
+
 TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)
 {
   const auto ego_path = create_ego_path();

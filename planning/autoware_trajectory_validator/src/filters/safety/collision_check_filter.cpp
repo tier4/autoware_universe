@@ -399,6 +399,66 @@ TravelDistanceTrajectory compute_cumulative_distances(const PoseTrajectory & pos
 
   return distances;
 }
+
+TimeTrajectory compute_sample_times(double start_time, double end_time)
+{
+  TimeTrajectory times;
+  times.reserve(static_cast<size_t>((end_time - start_time) / TIME_RESOLUTION) + 2U);
+
+  constexpr double epsilon = 1e-3;
+  auto append_sample = [&](const double t) {
+    if (t < start_time || t > end_time) return;
+    if (!times.empty() && t < times.back() + epsilon) return;
+    times.push_back(t);
+  };
+
+  append_sample(start_time);
+  for (int64_t tick = static_cast<int64_t>(std::floor(start_time / TIME_RESOLUTION)) + 1;; ++tick) {
+    const double tick_time = static_cast<double>(tick) * TIME_RESOLUTION;
+    if (tick_time >= end_time) {
+      break;
+    }
+    append_sample(tick_time);
+  }
+  append_sample(end_time);
+
+  return times;
+}
+
+geometry_msgs::msg::Pose interpolate_predicted_path_pose(
+  const autoware_perception_msgs::msg::PredictedPath & predicted_path, double query_time)
+{
+  if (predicted_path.path.empty()) {
+    throw std::invalid_argument("predicted path must not be empty");
+  }
+
+  const double path_time_step = rclcpp::Duration(predicted_path.time_step).seconds();
+  if (predicted_path.path.size() == 1 || path_time_step <= 0.0) {
+    return predicted_path.path.front();
+  }
+
+  const double clamped_query_time = std::clamp(
+    query_time, 0.0, path_time_step * static_cast<double>(predicted_path.path.size() - 1));
+  const size_t index = static_cast<size_t>(std::floor(clamped_query_time / path_time_step));
+  const size_t next_index = std::min(index + 1, predicted_path.path.size() - 1);
+  const double ratio =
+    (clamped_query_time - static_cast<double>(index) * path_time_step) / path_time_step;
+  return autoware::universe_utils::calcInterpolatedPose(
+    predicted_path.path.at(index), predicted_path.path.at(next_index), ratio, false);
+}
+
+PoseTrajectory compute_diffusion_based_pose_trajectory(
+  const autoware_perception_msgs::msg::PredictedPath & predicted_path, const TimeTrajectory & times,
+  double objects_reference_time)
+{
+  PoseTrajectory poses;
+  poses.reserve(times.size());
+  for (const auto & time : times) {
+    poses.push_back(
+      interpolate_predicted_path_pose(predicted_path, time - objects_reference_time));
+  }
+  return poses;
+}
 }  // namespace detail
 
 TrajectoryData generate_ego_trajectory(
@@ -478,6 +538,36 @@ TrajectoryData generate_predicted_path_trajectory(
   return TrajectoryData(
     make_trajectory_identification(predicted_object, "_predicted_path", stamp), std::move(times),
     std::move(distances), std::move(poses), std::move(footprints));
+}
+
+TrajectoryData generate_diffusion_based_trajectory(
+  const autoware_perception_msgs::msg::PredictedObject & predicted_object,
+  rclcpp::Duration start_time, double max_time,
+  const builtin_interfaces::msg::Time & stamp)
+{
+  const auto most_confident_path_it = std::max_element(
+    predicted_object.kinematics.predicted_paths.begin(),
+    predicted_object.kinematics.predicted_paths.end(),
+    [](const auto & a, const auto & b) { return a.confidence < b.confidence; });
+  const auto & predicted_path = *most_confident_path_it;
+  auto times = detail::compute_sample_times(0.0, max_time);
+  auto poses = detail::compute_diffusion_based_pose_trajectory(
+    predicted_path, times, start_time.seconds());
+
+  TravelDistanceTrajectory distances;
+  distances.reserve(poses.size());
+  distances.push_back(0.0);
+  for (size_t i = 1; i < poses.size(); ++i) {
+    distances.push_back(
+      distances.back() +
+      autoware_utils_geometry::calc_distance2d(poses.at(i - 1).position, poses.at(i).position));
+  }
+
+  auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
+
+  return TrajectoryData(
+    make_trajectory_identification(predicted_object, "_diffusion_based_trajectory", stamp),
+    std::move(times), std::move(distances), std::move(poses), std::move(footprints));
 }
 TrajectoryData generate_constant_curvature_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
@@ -672,6 +762,10 @@ Result assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const validator::Params::CollisionCheck::Rss & rss_params, VehicleInfo & vehicle_info)
 {
+  if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
+    return {};
+  }
+
   const auto ego_trajectory = generate_rss_ego_trajectory(traj_points, context, vehicle_info);
 
   Result result{};
@@ -732,16 +826,33 @@ std::vector<TrajectoryData> generate_object_trajectories(
   const rclcpp::Duration objects_reference_time =
     rclcpp::Time(context.predicted_objects->header.stamp) -
     rclcpp::Time(context.odometry->header.stamp);
+
   std::vector<TrajectoryData> object_trajectories{};
-  object_trajectories.reserve(context.predicted_objects->objects.size() * 2);
+  object_trajectories.reserve(context.predicted_objects->objects.size() * 3);
   for (const auto & object : context.predicted_objects->objects) {
-    object_trajectories.push_back(trajectory::generate_predicted_path_trajectory(
-      object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
-      context.predicted_objects->header.stamp));
+    if (!object.kinematics.predicted_paths.empty()) {
+      object_trajectories.push_back(trajectory::generate_predicted_path_trajectory(
+        object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
+        context.predicted_objects->header.stamp));
+    }
 
     object_trajectories.push_back(trajectory::generate_constant_curvature_trajectory(
       object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
       context.predicted_objects->header.stamp));
+  }
+
+  if (context.neural_network_predicted_objects) {
+    const rclcpp::Duration neural_network_objects_reference_time =
+      rclcpp::Time(context.neural_network_predicted_objects->header.stamp) -
+      rclcpp::Time(context.odometry->header.stamp);
+    for (const auto & object : context.neural_network_predicted_objects->objects) {
+      if (object.kinematics.predicted_paths.empty()) {
+        continue;
+      }
+      object_trajectories.push_back(trajectory::generate_diffusion_based_trajectory(
+        object, neural_network_objects_reference_time, required_time_horizon,
+        context.neural_network_predicted_objects->header.stamp));
+    }
   }
   return object_trajectories;
 }
@@ -969,7 +1080,10 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   // stopwatch.tic();
   std::string error_msg{};
 
-  if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
+  if (
+    (!context.predicted_objects || context.predicted_objects->objects.empty()) &&
+    (!context.neural_network_predicted_objects ||
+     context.neural_network_predicted_objects->objects.empty())) {
     pet_continuous_times_.clear();
     rss_continuous_times_.clear();
     drac_continuous_times_.clear();
