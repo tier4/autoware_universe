@@ -109,6 +109,9 @@ struct DiffusionPlannerParams
   double planning_frequency_hz;
   bool ignore_neighbors;
   bool ignore_unknown_neighbors;
+  int64_t max_num_vehicle;
+  int64_t max_num_pedestrian;
+  int64_t max_num_bicycle;
   double traffic_light_group_msg_timeout_seconds;
   int batch_size;
   std::vector<double> temperature_list;

@@ -42,6 +42,24 @@
           "default": true,
           "description": "Ignore neighbor agents with unknown class"
         },
+        "max_num_vehicle": {
+          "type": "integer",
+          "default": 32,
+          "minimum": 0,
+          "description": "Maximum number of VEHICLE neighbors to include in the model input. Nearest agents are kept; once the cap is reached, additional vehicles are skipped."
+        },
+        "max_num_pedestrian": {
+          "type": "integer",
+          "default": 32,
+          "minimum": 0,
+          "description": "Maximum number of PEDESTRIAN neighbors to include in the model input. Nearest agents are kept; once the cap is reached, additional pedestrians are skipped."
+        },
+        "max_num_bicycle": {
+          "type": "integer",
+          "default": 32,
+          "minimum": 0,
+          "description": "Maximum number of BICYCLE neighbors to include in the model input. Nearest agents are kept; once the cap is reached, additional bicycles are skipped."
+        },
         "traffic_light_group_msg_timeout_seconds": {
           "type": "number",
           "default": 0.2,

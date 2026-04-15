@@ -107,6 +107,9 @@ void DiffusionPlanner::set_up_params()
   params_.ignore_neighbors = this->declare_parameter<bool>("ignore_neighbors", false);
   params_.ignore_unknown_neighbors =
     this->declare_parameter<bool>("ignore_unknown_neighbors", false);
+  params_.max_num_vehicle = this->declare_parameter<int64_t>("max_num_vehicle", 32);
+  params_.max_num_pedestrian = this->declare_parameter<int64_t>("max_num_pedestrian", 32);
+  params_.max_num_bicycle = this->declare_parameter<int64_t>("max_num_bicycle", 32);
   params_.traffic_light_group_msg_timeout_seconds =
     this->declare_parameter<double>("traffic_light_group_msg_timeout_seconds", 0.2);
   params_.batch_size = this->declare_parameter<int>("batch_size", 1);
@@ -168,6 +171,9 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<bool>(
       parameters, "ignore_unknown_neighbors", temp_params.ignore_unknown_neighbors);
     update_param<bool>(parameters, "ignore_neighbors", temp_params.ignore_neighbors);
+    update_param<int64_t>(parameters, "max_num_vehicle", temp_params.max_num_vehicle);
+    update_param<int64_t>(parameters, "max_num_pedestrian", temp_params.max_num_pedestrian);
+    update_param<int64_t>(parameters, "max_num_bicycle", temp_params.max_num_bicycle);
     update_param<double>(
       parameters, "traffic_light_group_msg_timeout_seconds",
       temp_params.traffic_light_group_msg_timeout_seconds);

@@ -119,7 +119,8 @@ void AgentData::update_histories(const TrackedObjects & objects, const bool igno
 }
 
 std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
-  const Eigen::Matrix4d & transform, size_t max_num_agent) const
+  const Eigen::Matrix4d & transform, size_t max_num_agent, size_t max_num_vehicle,
+  size_t max_num_pedestrian, size_t max_num_bicycle) const
 {
   std::vector<AgentHistory> histories;
   histories.reserve(histories_map_.size());
@@ -137,11 +138,36 @@ std::vector<AgentHistory> AgentData::transformed_and_trimmed_histories(
       std::hypot(b.get_latest_state().pose(0, 3), b.get_latest_state().pose(1, 3));
     return a_dist < b_dist;
   });
-  if (histories.size() > max_num_agent) {
-    histories.erase(
-      histories.begin() + static_cast<std::ptrdiff_t>(max_num_agent), histories.end());
+
+  std::vector<AgentHistory> filtered;
+  filtered.reserve(std::min(histories.size(), max_num_agent));
+  size_t num_vehicle = 0;
+  size_t num_pedestrian = 0;
+  size_t num_bicycle = 0;
+  for (auto & history : histories) {
+    if (filtered.size() >= max_num_agent) {
+      break;
+    }
+    const AgentLabel label = history.get_latest_state().label;
+    if (label == AgentLabel::VEHICLE) {
+      if (num_vehicle >= max_num_vehicle) {
+        continue;
+      }
+      ++num_vehicle;
+    } else if (label == AgentLabel::PEDESTRIAN) {
+      if (num_pedestrian >= max_num_pedestrian) {
+        continue;
+      }
+      ++num_pedestrian;
+    } else if (label == AgentLabel::BICYCLE) {
+      if (num_bicycle >= max_num_bicycle) {
+        continue;
+      }
+      ++num_bicycle;
+    }
+    filtered.push_back(std::move(history));
   }
-  return histories;
+  return filtered;
 }
 
 }  // namespace autoware::diffusion_planner

@@ -138,9 +138,12 @@ struct AgentData
 {
   void update_histories(const TrackedObjects & objects, const bool ignore_unknown_agents);
 
-  // Transform histories, trim to max_num_agent, and return the processed vector.
+  // Transform histories, trim to max_num_agent (with per-class caps), and return the result.
+  // Histories are sorted by distance from ego (nearest first); for each class, once the
+  // per-class cap is reached, subsequent agents of that class are skipped.
   std::vector<AgentHistory> transformed_and_trimmed_histories(
-    const Eigen::Matrix4d & transform, size_t max_num_agent) const;
+    const Eigen::Matrix4d & transform, size_t max_num_agent, size_t max_num_vehicle,
+    size_t max_num_pedestrian, size_t max_num_bicycle) const;
 
 private:
   std::unordered_map<std::string, AgentHistory> histories_map_;
