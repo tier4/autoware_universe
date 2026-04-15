@@ -800,6 +800,8 @@ struct Finding
   ObjectIdentification object;
   double pet;
   double ttc;
+  PoseTrajectory ego_trajectory;
+  PoseTrajectory object_trajectory;
   Polygon2d ego_hull;
   Polygon2d object_hull;
 };
@@ -905,6 +907,8 @@ std::optional<Finding> find_collision_timing(
         finding.object = test_trajectory.getObjectIdentification();
         finding.pet = pet_range;
         finding.ttc = ref_start_time;
+        finding.ego_trajectory = ref_trajectory.getPoses();
+        finding.object_trajectory = test_trajectory.getPoses();
         finding.ego_hull = geometry::compute_overall_convex_hull(
           ref_trajectory.getFootprintsInTimeRange(ref_start_time, ref_end_time));
         finding.object_hull = geometry::compute_overall_convex_hull(
@@ -1029,10 +1033,29 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
 }
 
 void CollisionCheckFilter::add_debug_markers(
-  const rclcpp::Time & stamp, const std::string & ns, const Polygon2d & ego_hull,
+  const rclcpp::Time & stamp, const std::string & ns, const std::string & collision_type,
+  const std::string & trajectory_id, const PoseTrajectory & ego_trajectory,
+  const PoseTrajectory & object_trajectory, const Polygon2d & ego_hull,
   const Polygon2d & object_hull)
 {
   int id = debug_markers_.markers.empty() ? 0 : debug_markers_.markers.back().id + 1;
+
+  struct Color
+  {
+    float r;
+    float g;
+    float b;
+  };
+  const auto resolve_trajectory_color = [&](const std::string & id_str) {
+    if (id_str.find("_diffusion_based_trajectory") != std::string::npos) {
+      return Color{1.0F, 0.55F, 0.0F};
+    }
+    if (id_str.find("_constant_curvature_path") != std::string::npos) {
+      return Color{0.0F, 0.75F, 1.0F};
+    }
+    return Color{0.2F, 1.0F, 0.2F};
+  };
+  const auto trajectory_color = resolve_trajectory_color(trajectory_id);
 
   auto add_poly_marker =
     [&](const Polygon2d & poly, const std::string & local_namespace, float r, float g, float b) {
@@ -1068,8 +1091,66 @@ void CollisionCheckFilter::add_debug_markers(
       debug_markers_.markers.push_back(std::move(m));
     };
 
+  auto add_trajectory_marker = [&](
+                                 const PoseTrajectory & trajectory,
+                                 const std::string & local_namespace, float r, float g, float b,
+                                 float alpha) {
+    if (trajectory.empty()) return;
+
+    visualization_msgs::msg::Marker m;
+    m.header.frame_id = "map";
+    m.header.stamp = stamp;
+    m.ns = ns + "/" + local_namespace;
+    m.id = id++;
+    m.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    m.action = visualization_msgs::msg::Marker::ADD;
+    m.scale.x = 0.12;
+    m.color.r = r;
+    m.color.g = g;
+    m.color.b = b;
+    m.color.a = alpha;
+
+    for (const auto & pose : trajectory) {
+      geometry_msgs::msg::Point pt;
+      pt.x = pose.position.x;
+      pt.y = pose.position.y;
+      pt.z = pose.position.z + 0.2;
+      m.points.push_back(pt);
+    }
+    debug_markers_.markers.push_back(std::move(m));
+  };
+
+  auto add_text_marker = [&](const Polygon2d & poly) {
+    if (poly.outer().empty()) return;
+
+    visualization_msgs::msg::Marker m;
+    m.header.frame_id = "map";
+    m.header.stamp = stamp;
+    m.ns = ns + "/label";
+    m.id = id++;
+    m.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    m.action = visualization_msgs::msg::Marker::ADD;
+    m.scale.z = 0.6;
+    m.color.r = 1.0;
+    m.color.g = 1.0;
+    m.color.b = 1.0;
+    m.color.a = 0.95;
+    m.pose.position.x = poly.outer().front().x();
+    m.pose.position.y = poly.outer().front().y();
+    m.pose.position.z = 1.2;
+    m.text = collision_type;
+    debug_markers_.markers.push_back(std::move(m));
+  };
+
   add_poly_marker(ego_hull, "ego_worst_pet", 0.0, 0.0, 1.0);
   add_poly_marker(object_hull, "obj_worst_pet", 1.0, 0.0, 0.0);
+  add_trajectory_marker(
+    ego_trajectory, "ego_trajectory", trajectory_color.r, trajectory_color.g, trajectory_color.b,
+    0.45F);
+  add_trajectory_marker(
+    object_trajectory, "object_trajectory", trajectory_color.r, trajectory_color.g,
+    trajectory_color.b, 0.95F);
+  add_text_marker(object_hull);
 }
 
 CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
@@ -1135,8 +1216,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
       finding.object.classification, finding.trajectory_id, finding.pet, finding.ttc,
       detection_duration, finding.object.stamp.sec, finding.object.stamp.nanosec);
     add_debug_markers(
-      context.odometry->header.stamp, "planned_speed_collision", finding.ego_hull,
-      finding.object_hull);
+      context.odometry->header.stamp, "planned_speed_collision", "PET", finding.trajectory_id,
+      finding.ego_trajectory, finding.object_trajectory, finding.ego_hull, finding.object_hull);
   }
 
   drac_continuous_times_.update(
@@ -1164,7 +1245,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
           : "Cant be avoided",
         finding.object.stamp.sec, finding.object.stamp.nanosec);
       add_debug_markers(
-        context.odometry->header.stamp, "drac_collision", finding.ego_hull, finding.object_hull);
+        context.odometry->header.stamp, "drac_collision", "DRAC", finding.trajectory_id,
+        finding.ego_trajectory, finding.object_trajectory, finding.ego_hull, finding.object_hull);
     }
   }
 

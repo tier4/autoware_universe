@@ -214,7 +214,9 @@ private:
   ContinuousDetectionTimes drac_continuous_times_;
 
   void add_debug_markers(
-    const rclcpp::Time & stamp, const std::string & ns, const Polygon2d & ego_hull,
+    const rclcpp::Time & stamp, const std::string & ns, const std::string & collision_type,
+    const std::string & trajectory_id, const PoseTrajectory & ego_trajectory,
+    const PoseTrajectory & object_trajectory, const Polygon2d & ego_hull,
     const Polygon2d & object_hull);
 };
 
