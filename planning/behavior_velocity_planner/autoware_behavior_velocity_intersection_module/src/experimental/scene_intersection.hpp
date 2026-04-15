@@ -518,20 +518,20 @@ private:
   /**
    * @brief analyze traffic_light/occupancy/objects context and return DecisionResult
    */
-  DecisionResult modifyPathVelocityDetail(PathWithLaneId * path, const PlannerData & planner_data);
+  DecisionResult modifyPathVelocityDetail(
+    Trajectory & path, const std::vector<geometry_msgs::msg::Point> & left_bound,
+    const std::vector<geometry_msgs::msg::Point> & right_bound, const PlannerData & planner_data);
 
   /**
    * @brief set RTC value according to calculated DecisionResult
    */
-  void prepareRTCStatus(
-    const DecisionResult &, const autoware_internal_planning_msgs::msg::PathWithLaneId & path);
+  void prepareRTCStatus(const DecisionResult & decision_result, const Trajectory & path);
 
   /**
    * @brief act based on current RTC approval
    */
   void reactRTCApproval(
-    const DecisionResult & decision_result,
-    autoware_internal_planning_msgs::msg::PathWithLaneId * path, const PlannerData & planner_data);
+    const DecisionResult & decision_result, Trajectory & path, const PlannerData & planner_data);
   /** @}*/
 
 private:
