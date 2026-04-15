@@ -14,14 +14,16 @@
 
 #include "autoware/trajectory_validator/filters/safety/uncrossable_boundary_departure_filter.hpp"
 
-#include <autoware/boundary_departure_checker/debug.hpp>
+#include <autoware/deprecated/boundary_departure_checker/debug.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
 {
-tl::expected<void, std::string> UncrossableBoundaryDepartureFilter::is_feasible(
+UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   if (const auto has_invalid_input = is_invalid_input(traj_points, context)) {
@@ -43,14 +45,25 @@ tl::expected<void, std::string> UncrossableBoundaryDepartureFilter::is_feasible(
     return tl::make_unexpected(departure_data.error());
   }
 
-  if (!departure_data->critical_departure_points.empty()) {
+  bool is_feasible = true;
+  const auto found_critical_departure = !departure_data->critical_departure_points.empty();
+  if (found_critical_departure) {
+    is_feasible = false;
+
     debug_markers_ = boundary_departure_checker::debug::create_debug_markers(
       *departure_data, context.odometry->header.stamp, context.odometry->pose.pose.position.z,
       params_);
-    return tl::make_unexpected("Found critical departure");
   }
 
-  return {};
+  std::vector<MetricReport> metrics{
+    autoware_trajectory_validator::build<MetricReport>()
+      .validator_name(get_name())
+      .validator_category(category())
+      .metric_name("check_critical_departure")
+      .metric_value(0.0)
+      .level(found_critical_departure ? MetricReport::ERROR : MetricReport::OK)};
+
+  return ValidationResult{is_feasible, std::move(metrics)};
 }
 
 void UncrossableBoundaryDepartureFilter::update_parameters(const validator::Params & params)

@@ -9,23 +9,26 @@ generate_parameter_library(${PROJECT_NAME}_param
   param/parameter_struct.yaml
 )
 
+set(trajectory_validator_lib_target ${PROJECT_NAME}_lib)
+
 include_directories(
   SYSTEM
 )
 
-ament_auto_add_library(${PROJECT_NAME} SHARED
+ament_auto_add_library(${trajectory_validator_lib_target} SHARED
   src/trajectory_validator_node.cpp
+  src/pseudo_emergency_stop_handler.cpp
 )
 
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(${trajectory_validator_lib_target}
   ${PROJECT_NAME}_param
 )
 
-target_compile_options(${PROJECT_NAME} PUBLIC
+target_compile_options(${trajectory_validator_lib_target} PUBLIC
   -Wno-error=deprecated-declarations
 )
 
-rclcpp_components_register_node(${PROJECT_NAME}
+rclcpp_components_register_node(${trajectory_validator_lib_target}
   PLUGIN "autoware::trajectory_validator::TrajectoryValidator"
   EXECUTABLE ${PROJECT_NAME}_node
 )
@@ -40,8 +43,31 @@ ament_auto_add_library(autoware_trajectory_validator_plugins SHARED
 )
 
 target_link_libraries(autoware_trajectory_validator_plugins
-  ${PROJECT_NAME}
+  ${trajectory_validator_lib_target}
 )
+
+# Clear stale Python interpreter state so rosidl can resolve it correctly.
+unset(PYTHON_EXECUTABLE CACHE)
+unset(PYTHON_EXECUTABLE)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/MetricReport.msg"
+  "msg/ValidationReport.msg"
+  "msg/ValidationReportArray.msg"
+  DEPENDENCIES
+  builtin_interfaces
+  unique_identifier_msgs
+)
+
+# to use messages defined in the same package from C++
+if(${rosidl_cmake_VERSION} VERSION_LESS 2.5.0)
+  rosidl_target_interfaces(${trajectory_validator_lib_target}
+    ${PROJECT_NAME} "rosidl_typesupport_cpp")
+else()
+  rosidl_get_typesupport_target(
+    cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+  target_link_libraries(${trajectory_validator_lib_target} "${cpp_typesupport_target}")
+endif()
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
@@ -61,27 +87,27 @@ if(BUILD_TESTING)
   ament_add_ros_isolated_gtest(test_pose_constant_curvature_predictor
     test/collision_check_filter/test_pose_constant_curvature_predictor.cpp
   )
-  target_link_libraries(test_pose_constant_curvature_predictor gtest_main ${PROJECT_NAME})
+  target_link_libraries(test_pose_constant_curvature_predictor gtest_main ${trajectory_validator_lib_target})
 
   ament_add_ros_isolated_gtest(test_time_distance
     test/collision_check_filter/test_time_distance.cpp
   )
-  target_link_libraries(test_time_distance gtest_main ${PROJECT_NAME})
+  target_link_libraries(test_time_distance gtest_main ${trajectory_validator_lib_target})
 
   ament_add_ros_isolated_gtest(test_geometry
     test/collision_check_filter/test_geometry.cpp
   )
-  target_link_libraries(test_geometry gtest_main ${PROJECT_NAME})
+  target_link_libraries(test_geometry gtest_main ${trajectory_validator_lib_target})
 
   ament_add_ros_isolated_gtest(test_collision_check_filter
     test/collision_check_filter/test_collision_check_filter.cpp
   )
-  target_link_libraries(test_collision_check_filter gtest_main ${PROJECT_NAME})
+  target_link_libraries(test_collision_check_filter gtest_main ${trajectory_validator_lib_target})
 
   ament_add_ros_isolated_gtest(test_trajectory_utilities
     test/collision_check_filter/test_trajectory_utilities.cpp
   )
-  target_link_libraries(test_trajectory_utilities gtest_main ${PROJECT_NAME})
+  target_link_libraries(test_trajectory_utilities gtest_main ${trajectory_validator_lib_target})
 
   ament_add_gtest(test_traffic_light_filter
     test/plugins/test_traffic_light_filter.cpp
@@ -102,7 +128,7 @@ if(BUILD_TESTING)
   )
 
   target_link_libraries(dummy_validator_plugin
-    ${PROJECT_NAME}
+    ${trajectory_validator_lib_target}
   )
 
   # ==========================================
@@ -113,7 +139,7 @@ if(BUILD_TESTING)
   )
 
   target_link_libraries(test_trajectory_validator_node
-    ${PROJECT_NAME}
+    ${trajectory_validator_lib_target}
     dummy_validator_plugin
   )
 
