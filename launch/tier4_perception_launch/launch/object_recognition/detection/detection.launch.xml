@@ -183,6 +183,8 @@
     <let name="switch/detector/camera_vru_detector" value="false"/>
   </group>
 
+  <let name="switch/detector/lidar_dnn" value="false"/>
+
   <!-- Detector -->
   <group if="$(var switch/detector/camera_lidar)">
     <!-- Camera-Lidar detectors -->

@@ -615,6 +615,7 @@ def launch_setup(context, *args, **kwargs):
                 )
             ),
             launch_arguments={
+                # "input/pointcloud": "range_cropped/pointcloud",
                 "input/pointcloud": LaunchConfiguration("input/pointcloud"),
                 "output/pointcloud/segmentation": LaunchConfiguration("ptv3_output/segmented/pointcloud"),
                 "output/pointcloud/visualization": LaunchConfiguration("ptv3_output/probs/pointcloud"),

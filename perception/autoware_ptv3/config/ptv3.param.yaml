@@ -9,5 +9,5 @@
     engine_path: "$(var model_path)/ptv3.engine"
     filter:
       class_probability_threshold: 0.05
-      classes: ["drivable_surface"]
+      classes: ["drivable_surface", "other_flat_surface", "sidewalk"]
       output_format: "xyzirc"
