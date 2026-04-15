@@ -15,7 +15,7 @@
 #ifndef EXPERIMENTAL__SCENE_INTERSECTION_HPP_
 #define EXPERIMENTAL__SCENE_INTERSECTION_HPP_
 
-#include "autoware/behavior_velocity_intersection_module/decision_result.hpp"
+#include "autoware/behavior_velocity_intersection_module/experimental/decision_result.hpp"
 #include "autoware/behavior_velocity_intersection_module/interpolated_path_info.hpp"
 #include "autoware/behavior_velocity_intersection_module/intersection_lanelets.hpp"
 #include "autoware/behavior_velocity_intersection_module/intersection_stoplines.hpp"
@@ -422,6 +422,8 @@ private:
    * @brief this function is used to check if target stop position is feasible
    */
   bool can_smoothly_stop_at(
+    const double ego_s, const double stop_s, const PlannerData & planner_data) const;
+  bool can_smoothly_stop_at(
     const PathWithLaneId & path, const size_t closest_idx, const size_t target_stop_idx,
     const PlannerData & planner_data) const;
 
@@ -525,7 +527,7 @@ private:
   /**
    * @brief set RTC value according to calculated DecisionResult
    */
-  void prepareRTCStatus(const DecisionResult & decision_result, const Trajectory & path);
+  void prepareRTCStatus(const DecisionResult & decision_result);
 
   /**
    * @brief act based on current RTC approval
@@ -651,7 +653,7 @@ private:
    * intersection_lanelets.first_conflicting_lane(). They are ensured in prepareIntersectionData()
    */
   std::optional<StuckStop> isStuckStatus(
-    const autoware_internal_planning_msgs::msg::PathWithLaneId & path,
+    const Trajectory & path, const std::vector<PathPointWithLaneId> & path_points,
     const IntersectionStopLines & intersection_stoplines, const PathLanelets & path_lanelets,
     const PlannerData & planner_data) const;
 
@@ -682,15 +684,16 @@ private:
    * intersection_stoplines.default_stopline, intersection_stoplines.first_attention_stopline
    */
   std::optional<YieldStuckStop> isYieldStuckStatus(
-    const autoware_internal_planning_msgs::msg::PathWithLaneId & path,
-    const InterpolatedPathInfo & interpolated_path_info,
+    const Trajectory & path, const std::vector<PathPointWithLaneId> & path_points,
+    const std::pair<size_t, size_t> & lane_id_interval,
     const IntersectionStopLines & intersection_stoplines, const PlannerData & planner_data) const;
 
   /**
    * @brief check yield stuck
    */
   bool checkYieldStuckVehicleInIntersection(
-    const InterpolatedPathInfo & interpolated_path_info,
+    const Trajectory & path, const std::vector<PathPointWithLaneId> & path_points,
+    const std::pair<size_t, size_t> & lane_id_interval,
     const lanelet::ConstLanelets & attention_lanelets, const PlannerData & planner_data) const;
   /** @} */
 
@@ -785,8 +788,8 @@ private:
    * intersection_stoplines.occlusion_peeking_stopline
    */
   std::optional<NonOccludedCollisionStop> isGreenPseudoCollisionStatus(
-    const size_t closest_idx, const size_t collision_stopline_idx,
-    const IntersectionStopLines & intersection_stoplines) const;
+    const double closest_s, const double collision_stopline_s,
+    const double occlusion_stopline_s) const;
 
   /**
    * @brief generate the message explaining why too_late_detect_objects/misjudge_objects exist and
