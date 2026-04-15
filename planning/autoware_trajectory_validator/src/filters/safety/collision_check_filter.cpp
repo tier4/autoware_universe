@@ -454,8 +454,7 @@ PoseTrajectory compute_diffusion_based_pose_trajectory(
   PoseTrajectory poses;
   poses.reserve(times.size());
   for (const auto & time : times) {
-    poses.push_back(
-      interpolate_predicted_path_pose(predicted_path, time - objects_reference_time));
+    poses.push_back(interpolate_predicted_path_pose(predicted_path, time - objects_reference_time));
   }
   return poses;
 }
@@ -542,8 +541,7 @@ TrajectoryData generate_predicted_path_trajectory(
 
 TrajectoryData generate_diffusion_based_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object,
-  rclcpp::Duration start_time, double max_time,
-  const builtin_interfaces::msg::Time & stamp)
+  rclcpp::Duration start_time, double max_time, const builtin_interfaces::msg::Time & stamp)
 {
   const auto most_confident_path_it = std::max_element(
     predicted_object.kinematics.predicted_paths.begin(),
@@ -551,8 +549,8 @@ TrajectoryData generate_diffusion_based_trajectory(
     [](const auto & a, const auto & b) { return a.confidence < b.confidence; });
   const auto & predicted_path = *most_confident_path_it;
   auto times = detail::compute_sample_times(0.0, max_time);
-  auto poses = detail::compute_diffusion_based_pose_trajectory(
-    predicted_path, times, start_time.seconds());
+  auto poses =
+    detail::compute_diffusion_based_pose_trajectory(predicted_path, times, start_time.seconds());
 
   TravelDistanceTrajectory distances;
   distances.reserve(poses.size());
@@ -823,22 +821,24 @@ struct DracAssessment
 std::vector<TrajectoryData> generate_object_trajectories(
   const FilterContext & context, double required_time_horizon, double object_assumed_acceleration)
 {
-  const rclcpp::Duration objects_reference_time =
-    rclcpp::Time(context.predicted_objects->header.stamp) -
-    rclcpp::Time(context.odometry->header.stamp);
-
   std::vector<TrajectoryData> object_trajectories{};
-  object_trajectories.reserve(context.predicted_objects->objects.size() * 3);
-  for (const auto & object : context.predicted_objects->objects) {
-    if (!object.kinematics.predicted_paths.empty()) {
-      object_trajectories.push_back(trajectory::generate_predicted_path_trajectory(
+
+  if (context.predicted_objects) {
+    object_trajectories.reserve(context.predicted_objects->objects.size() * 3);
+    const rclcpp::Duration objects_reference_time =
+      rclcpp::Time(context.predicted_objects->header.stamp) -
+      rclcpp::Time(context.odometry->header.stamp);
+    for (const auto & object : context.predicted_objects->objects) {
+      if (!object.kinematics.predicted_paths.empty()) {
+        object_trajectories.push_back(trajectory::generate_predicted_path_trajectory(
+          object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
+          context.predicted_objects->header.stamp));
+      }
+
+      object_trajectories.push_back(trajectory::generate_constant_curvature_trajectory(
         object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
         context.predicted_objects->header.stamp));
     }
-
-    object_trajectories.push_back(trajectory::generate_constant_curvature_trajectory(
-      object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
-      context.predicted_objects->header.stamp));
   }
 
   if (context.neural_network_predicted_objects) {
