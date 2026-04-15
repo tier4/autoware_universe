@@ -151,6 +151,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   }
 
   context.predicted_objects = sub_objects_.take_data();
+  context.neural_network_predicted_objects = sub_neural_network_objects_.take_data();
   if (!context.predicted_objects) {
     return;
   }

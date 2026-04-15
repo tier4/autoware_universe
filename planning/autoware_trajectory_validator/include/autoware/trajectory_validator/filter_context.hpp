@@ -36,6 +36,7 @@ struct FilterContext
   geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr acceleration;
   std::shared_ptr<lanelet::LaneletMap> lanelet_map;
   autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr predicted_objects;
+  autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr neural_network_predicted_objects;
   autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr traffic_light_signals;
 };
 }  // namespace autoware::trajectory_validator
