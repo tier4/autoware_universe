@@ -65,47 +65,47 @@ validator:
         read_only: false
       ego_assumed_acceleration:
         base: &pet_eaa { type: double, default_value: -4.0, description: N/A, read_only: false }
-        UNKNOWN: *pet_eaa
-        CAR: *pet_eaa
-        TRUCK: *pet_eaa
-        BUS: *pet_eaa
-        TRAILER: *pet_eaa
-        MOTORCYCLE: *pet_eaa
-        BICYCLE: *pet_eaa
-        PEDESTRIAN: *pet_eaa
-        ANIMAL: *pet_eaa
-        HAZARD: *pet_eaa
-        OVER_DRIVABLE: *pet_eaa
-        UNDER_DRIVABLE: *pet_eaa
+        unknown: *pet_eaa
+        car: *pet_eaa
+        truck: *pet_eaa
+        bus: *pet_eaa
+        trailer: *pet_eaa
+        motorcycle: *pet_eaa
+        bicycle: *pet_eaa
+        pedestrian: *pet_eaa
+        animal: *pet_eaa
+        hazard: *pet_eaa
+        over_drivable: *pet_eaa
+        under_drivable: *pet_eaa
       collision_time_threshold:
         base: &pet_ctt { type: double, default_value: 1.0, description: N/A, read_only: false }
-        UNKNOWN: *pet_ctt
-        CAR: *pet_ctt
-        TRUCK: *pet_ctt
-        BUS: *pet_ctt
-        TRAILER: *pet_ctt
-        MOTORCYCLE: *pet_ctt
-        BICYCLE: *pet_ctt
-        PEDESTRIAN: *pet_ctt
-        ANIMAL: *pet_ctt
-        HAZARD: *pet_ctt
-        OVER_DRIVABLE: *pet_ctt
-        UNDER_DRIVABLE: *pet_ctt
+        unknown: *pet_ctt
+        car: *pet_ctt
+        truck: *pet_ctt
+        bus: *pet_ctt
+        trailer: *pet_ctt
+        motorcycle: *pet_ctt
+        bicycle: *pet_ctt
+        pedestrian: *pet_ctt
+        animal: *pet_ctt
+        hazard: *pet_ctt
+        over_drivable: *pet_ctt
+        under_drivable: *pet_ctt
     rss:
       ego_deceleration_threshold:
         base: &rss_edt { type: double, default_value: 4.0, description: N/A, read_only: false }
-        UNKNOWN: *rss_edt
-        CAR: *rss_edt
-        TRUCK: *rss_edt
-        BUS: *rss_edt
-        TRAILER: *rss_edt
-        MOTORCYCLE: *rss_edt
-        BICYCLE: *rss_edt
-        PEDESTRIAN: *rss_edt
-        ANIMAL: *rss_edt
-        HAZARD: *rss_edt
-        OVER_DRIVABLE: *rss_edt
-        UNDER_DRIVABLE: *rss_edt
+        unknown: *rss_edt
+        car: *rss_edt
+        truck: *rss_edt
+        bus: *rss_edt
+        trailer: *rss_edt
+        motorcycle: *rss_edt
+        bicycle: *rss_edt
+        pedestrian: *rss_edt
+        animal: *rss_edt
+        hazard: *rss_edt
+        over_drivable: *rss_edt
+        under_drivable: *rss_edt
       stop_margin:
         type: double
         default_value: 2.0
@@ -113,31 +113,31 @@ validator:
         read_only: false
       ego_reaction_time:
         base: &rss_ert { type: double, default_value: 0.4, description: N/A, read_only: false }
-        UNKNOWN: *rss_ert
-        CAR: *rss_ert
-        TRUCK: *rss_ert
-        BUS: *rss_ert
-        TRAILER: *rss_ert
-        MOTORCYCLE: *rss_ert
-        BICYCLE: *rss_ert
-        PEDESTRIAN: *rss_ert
-        ANIMAL: *rss_ert
-        HAZARD: *rss_ert
-        OVER_DRIVABLE: *rss_ert
-        UNDER_DRIVABLE: *rss_ert
+        unknown: *rss_ert
+        car: *rss_ert
+        truck: *rss_ert
+        bus: *rss_ert
+        trailer: *rss_ert
+        motorcycle: *rss_ert
+        bicycle: *rss_ert
+        pedestrian: *rss_ert
+        animal: *rss_ert
+        hazard: *rss_ert
+        over_drivable: *rss_ert
+        under_drivable: *rss_ert
       object_acceleration:
         base: &rss_oa { type: double, default_value: -1.0, description: N/A, read_only: false }
-        CAR: *rss_oa
-        TRUCK: *rss_oa
-        BUS: *rss_oa
-        TRAILER: *rss_oa
-        MOTORCYCLE: *rss_oa
-        BICYCLE: *rss_oa
-        PEDESTRIAN: *rss_oa
-        ANIMAL: *rss_oa
-        HAZARD: *rss_oa
-        OVER_DRIVABLE: *rss_oa
-        UNDER_DRIVABLE: *rss_oa
+        car: *rss_oa
+        truck: *rss_oa
+        bus: *rss_oa
+        trailer: *rss_oa
+        motorcycle: *rss_oa
+        bicycle: *rss_oa
+        pedestrian: *rss_oa
+        animal: *rss_oa
+        hazard: *rss_oa
+        over_drivable: *rss_oa
+        under_drivable: *rss_oa
 
   traffic_light:
     deceleration_limit:
