@@ -180,14 +180,18 @@ TEST_F(CollisionCheckFilterTest, NeuralNetworkPredictedObjectsAreAlsoChecked)
   context.neural_network_predicted_objects = neural_network_objects_msg;
 
   const auto result = filter_->is_feasible(ego_path, context);
-  EXPECT_TRUE(!result.has_value());
 
-  ASSERT_FALSE(result.has_value());
-  const std::string & error_msg = result.error();
-  EXPECT_NE(error_msg.find("classification: CAR"), std::string::npos)
-    << "Error string did not contain 'classification: CAR'. Actual: " << error_msg;
-  EXPECT_NE(error_msg.find("diffusion_based_trajectory"), std::string::npos)
-    << "Error string did not contain 'diffusion_based_trajectory'. Actual: " << error_msg;
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible);
+
+  bool found_diffusion_metric = false;
+  for (const auto & metric : result.value().metrics) {
+    if (metric.metric_name.find("diffusion_based_trajectory") != std::string::npos) {
+      found_diffusion_metric = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found_diffusion_metric);
 }
 
 TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)

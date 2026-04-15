@@ -394,10 +394,13 @@ TEST(TrajectoryUtilitiesTest, ComputeDiffusionBasedPoseTrajectoryUsesArbitraryTi
     create_straight_predicted_path(0.0, 1.0, {0.0, 2.0, 4.0})};
   auto predicted_path = predicted_paths.front();
   predicted_path.time_step = rclcpp::Duration::from_seconds(0.2);
-  const auto times = trajectory::detail::compute_sample_times(0.0, 0.4);
+  auto times = trajectory::detail::compute_sample_times(0.0, 0.4);
+  for (auto & time : times) {
+    time += 0.1;
+  }
 
   const auto poses =
-    trajectory::detail::compute_diffusion_based_pose_trajectory(predicted_path, times, -0.1);
+    trajectory::detail::compute_diffusion_based_pose_trajectory(predicted_path, times);
 
   ASSERT_EQ(poses.size(), 5u);
   EXPECT_NEAR(poses.at(0).position.x, 1.0, 1e-6);
@@ -508,19 +511,25 @@ TEST(TrajectoryUtilitiesTest, GenerateTimeInterpolatedPredictedPathTrajectoryUse
   const auto trajectory_data = trajectory::generate_diffusion_based_trajectory(
     object, rclcpp::Duration::from_seconds(-0.1), 0.4, builtin_interfaces::msg::Time{});
 
-  ASSERT_EQ(trajectory_data.size(), 5u);
+  ASSERT_EQ(trajectory_data.size(), 6u);
   EXPECT_EQ(
     trajectory_data.getObjectIdentification().id.find("_diffusion_based_trajectory"),
     trajectory_data.getObjectIdentification().id.size() - 27);
-  EXPECT_NEAR(trajectory_data.getTimes().at(0), 0.0, 1e-6);
-  EXPECT_NEAR(trajectory_data.getTimes().at(1), 0.1, 1e-6);
-  EXPECT_NEAR(trajectory_data.getTimes().at(4), 0.4, 1e-6);
+  EXPECT_NEAR(trajectory_data.getTimes().at(0), -0.1, 1e-6);
+  EXPECT_NEAR(trajectory_data.getTimes().at(1), 0.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getTimes().at(5), 0.4, 1e-6);
   EXPECT_NEAR(trajectory_data.getDistances().at(0), 0.0, 1e-6);
-  EXPECT_NEAR(trajectory_data.getDistances().at(1), 1.0, 1e-6);
-  EXPECT_NEAR(trajectory_data.getDistances().at(2), 2.0, 1e-6);
-  EXPECT_NEAR(trajectory_data.getDistances().at(3), 3.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getDistances().at(1), 0.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getDistances().at(2), 1.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getDistances().at(3), 2.0, 1e-6);
   EXPECT_NEAR(trajectory_data.getDistances().at(4), 3.0, 1e-6);
-  EXPECT_NEAR(trajectory_data.getPoses().at(0).position.x, 1.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getDistances().at(5), 4.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getPoses().at(0).position.x, 0.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getPoses().at(1).position.x, 0.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getPoses().at(2).position.x, 1.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getPoses().at(3).position.x, 2.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getPoses().at(4).position.x, 3.0, 1e-6);
+  EXPECT_NEAR(trajectory_data.getPoses().at(5).position.x, 4.0, 1e-6);
 }
 TEST(TrajectoryUtilitiesTest, TrajectoryDataReturnsFootprintsInNearestTimeRange)
 {

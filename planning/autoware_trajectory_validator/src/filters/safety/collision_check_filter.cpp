@@ -448,13 +448,12 @@ geometry_msgs::msg::Pose interpolate_predicted_path_pose(
 }
 
 PoseTrajectory compute_diffusion_based_pose_trajectory(
-  const autoware_perception_msgs::msg::PredictedPath & predicted_path, const TimeTrajectory & times,
-  double objects_reference_time)
+  const autoware_perception_msgs::msg::PredictedPath & predicted_path, const TimeTrajectory & times)
 {
   PoseTrajectory poses;
   poses.reserve(times.size());
   for (const auto & time : times) {
-    poses.push_back(interpolate_predicted_path_pose(predicted_path, time - objects_reference_time));
+    poses.push_back(interpolate_predicted_path_pose(predicted_path, time));
   }
   return poses;
 }
@@ -548,9 +547,8 @@ TrajectoryData generate_diffusion_based_trajectory(
     predicted_object.kinematics.predicted_paths.end(),
     [](const auto & a, const auto & b) { return a.confidence < b.confidence; });
   const auto & predicted_path = *most_confident_path_it;
-  auto times = detail::compute_sample_times(0.0, max_time);
-  auto poses =
-    detail::compute_diffusion_based_pose_trajectory(predicted_path, times, start_time.seconds());
+  auto times = detail::compute_sample_times(start_time.seconds(), max_time);
+  auto poses = detail::compute_diffusion_based_pose_trajectory(predicted_path, times);
 
   TravelDistanceTrajectory distances;
   distances.reserve(poses.size());
