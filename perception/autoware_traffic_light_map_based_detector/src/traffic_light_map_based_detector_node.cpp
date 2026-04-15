@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -38,7 +39,7 @@ MapBasedDetector::MapBasedDetector(const rclcpp::NodeOptions & node_options)
   using std::placeholders::_1;
 
   // detector config
-  TrafficLightMapBasedDetectorConfig config{
+  detector_config_ = {
     this->declare_parameter<double>("max_vibration_pitch"),
     this->declare_parameter<double>("max_vibration_yaw"),
     this->declare_parameter<double>("max_vibration_height"),
@@ -50,33 +51,14 @@ MapBasedDetector::MapBasedDetector(const rclcpp::NodeOptions & node_options)
   // transform sampling config
   transform_sampling_config_ = {
     this->declare_parameter<double>("min_timestamp_offset"),
-    this->declare_parameter<double>("max_timestamp_offset"),
-    this->declare_parameter<double>("timestamp_sample_len")};
+    this->declare_parameter<double>("max_timestamp_offset")};
 
-  if (config.max_detection_range <= 0) {
-    RCLCPP_ERROR_STREAM(
-      get_logger(), "Invalid param max_detection_range = " << config.max_detection_range
-                                                           << ", set to default value = 200");
-    config.max_detection_range = 200.0;
-  }
-  if (transform_sampling_config_.timestamp_sample_len <= 0) {
-    RCLCPP_ERROR_STREAM(
-      get_logger(),
-      "Invalid param timestamp_sample_len = " << transform_sampling_config_.timestamp_sample_len
-                                              << ", set to default value = 0.01");
-    transform_sampling_config_.timestamp_sample_len = 200.0;
-  }
   if (
-    transform_sampling_config_.max_timestamp_offset <=
+    transform_sampling_config_.max_timestamp_offset <
     transform_sampling_config_.min_timestamp_offset) {
-    RCLCPP_ERROR_STREAM(
-      get_logger(), "max_timestamp_offset <= min_timestamp_offset. Set both to 0");
-    transform_sampling_config_.max_timestamp_offset = 0.0;
-    transform_sampling_config_.min_timestamp_offset = 0.0;
+    throw std::invalid_argument(
+      "max_timestamp_offset must be greater than or equal to min_timestamp_offset");
   }
-
-  // create detector
-  detector_ = std::make_unique<TrafficLightMapBasedDetector>(config);
 
   // subscribers
   map_sub_ = create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
@@ -113,7 +95,7 @@ bool MapBasedDetector::getTransform(
 void MapBasedDetector::cameraInfoCallback(
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr input_msg)
 {
-  if (!detector_->hasTrafficLights()) {
+  if (!detector_) {
     return;
   }
 
@@ -135,7 +117,7 @@ void MapBasedDetector::cameraInfoCallback(
   if (!getTransform(
         rclcpp::Time(input_msg->header.stamp), input_msg->header.frame_id, tf_map2camera)) {
     RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 5000, "cannot get transform from map frame to camera frame");
+      get_logger(), *get_clock(), 5000, "failed to get transform from map frame to camera frame");
     return;
   }
   if (tf_map2camera_vec.empty()) {
@@ -152,27 +134,19 @@ void MapBasedDetector::cameraInfoCallback(
 void MapBasedDetector::mapCallback(
   const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr input_msg)
 {
-  detector_->setMap(*input_msg);
+  detector_ = std::make_unique<TrafficLightMapBasedDetector>(detector_config_, *input_msg);
 }
 
 void MapBasedDetector::routeCallback(
   const autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr input_msg)
 {
-  auto result = detector_->setRoute(*input_msg);
-  logMessages(result.logs);
-}
-
-void MapBasedDetector::logMessages(const std::vector<LogMessage> & logs)
-{
-  for (const auto & log : logs) {
-    switch (log.level) {
-      case LogLevel::Warn:
-        RCLCPP_WARN(get_logger(), "%s", log.text.c_str());
-        break;
-      case LogLevel::Error:
-        RCLCPP_ERROR(get_logger(), "%s", log.text.c_str());
-        break;
-    }
+  if (!detector_) {
+    RCLCPP_WARN(get_logger(), "failed to set traffic lights in route: map not received");
+    return;
+  }
+  auto error = detector_->setRoute(*input_msg);
+  if (error) {
+    RCLCPP_ERROR(get_logger(), "%s", error->message.c_str());
   }
 }
 }  // namespace autoware::traffic_light
