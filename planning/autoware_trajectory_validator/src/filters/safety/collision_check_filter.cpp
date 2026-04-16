@@ -932,38 +932,44 @@ void CollisionCheckFilter::create_collision_check_params_map(const validator::Pa
 
   CollisionCheckParams base_entry{};
   base_entry.pet_collision_params.ego_braking_delay =
-    try_to_get_param_value(pet.ego_braking_delay, k_base);
-  base_entry.pet_collision_params.ego_assumed_acceleration =
-    try_to_get_param_value(pet.ego_assumed_acceleration, k_base);
-  base_entry.pet_collision_params.collision_time_threshold =
-    try_to_get_param_value(pet.collision_time_threshold, k_base);
+    try_labeled_double_param(pet.ego_braking_delay, k_base);
+  base_entry.pet_collision_params.ego_assumed_acceleration = try_labeled_double_param(
+    pet.ego_assumed_acceleration.base, pet.ego_assumed_acceleration.ego_assumed_acceleration_labels_map,
+    k_base);
+  base_entry.pet_collision_params.collision_time_threshold = try_labeled_double_param(
+    pet.collision_time_threshold.base, pet.collision_time_threshold.collision_time_threshold_labels_map,
+    k_base);
 
-  base_entry.rss_params.ego_reaction_time =
-    try_to_get_param_value(rss.ego_reaction_time, k_base);
-  base_entry.rss_params.ego_deceleration_threshold =
-    try_to_get_param_value(rss.ego_deceleration_threshold, k_base);
-  base_entry.rss_params.object_acceleration =
-    try_to_get_param_value(rss.object_acceleration, k_base);
-  base_entry.rss_params.stop_margin = try_to_get_param_value(rss.stop_margin, k_base);
+  base_entry.rss_params.ego_reaction_time = try_labeled_double_param(
+    rss.ego_reaction_time.base, rss.ego_reaction_time.ego_reaction_time_labels_map, k_base);
+  base_entry.rss_params.ego_deceleration_threshold = try_labeled_double_param(
+    rss.ego_deceleration_threshold.base,
+    rss.ego_deceleration_threshold.ego_deceleration_threshold_labels_map, k_base);
+  base_entry.rss_params.object_acceleration = try_labeled_double_param(
+    rss.object_acceleration.base, rss.object_acceleration.object_acceleration_labels_map, k_base);
+  base_entry.rss_params.stop_margin = try_labeled_double_param(rss.stop_margin, k_base);
 
   collision_check_params_map_[k_base] = base_entry;
 
   for (const auto & key : k_collision_check_class_keys) {
     CollisionCheckParams entry{};
     entry.pet_collision_params.ego_braking_delay =
-      try_to_get_param_value(pet.ego_braking_delay, key);
-    entry.pet_collision_params.ego_assumed_acceleration =
-      try_to_get_param_value(pet.ego_assumed_acceleration, key);
-    entry.pet_collision_params.collision_time_threshold =
-      try_to_get_param_value(pet.collision_time_threshold, key);
+      try_labeled_double_param(pet.ego_braking_delay, key);
+    entry.pet_collision_params.ego_assumed_acceleration = try_labeled_double_param(
+      pet.ego_assumed_acceleration.base, pet.ego_assumed_acceleration.ego_assumed_acceleration_labels_map,
+      key);
+    entry.pet_collision_params.collision_time_threshold = try_labeled_double_param(
+      pet.collision_time_threshold.base, pet.collision_time_threshold.collision_time_threshold_labels_map,
+      key);
 
-    entry.rss_params.ego_reaction_time =
-      try_to_get_param_value(rss.ego_reaction_time, key);
-    entry.rss_params.ego_deceleration_threshold =
-      try_to_get_param_value(rss.ego_deceleration_threshold, key);
-    entry.rss_params.object_acceleration =
-      try_to_get_param_value(rss.object_acceleration, key);
-    entry.rss_params.stop_margin = try_to_get_param_value(rss.stop_margin, key);
+    entry.rss_params.ego_reaction_time = try_labeled_double_param(
+      rss.ego_reaction_time.base, rss.ego_reaction_time.ego_reaction_time_labels_map, key);
+    entry.rss_params.ego_deceleration_threshold = try_labeled_double_param(
+      rss.ego_deceleration_threshold.base,
+      rss.ego_deceleration_threshold.ego_deceleration_threshold_labels_map, key);
+    entry.rss_params.object_acceleration = try_labeled_double_param(
+      rss.object_acceleration.base, rss.object_acceleration.object_acceleration_labels_map, key);
+    entry.rss_params.stop_margin = try_labeled_double_param(rss.stop_margin, key);
 
     collision_check_params_map_[key] = entry;
   }
@@ -985,61 +991,7 @@ double CollisionCheckFilter::try_labeled_double_param(
   return std::isnan(v) ? base : v;
 }
 
-using MapEgoAssumedAccelerationLabels =
-  validator::Params::CollisionCheck::PetCollision::EgoAssumedAcceleration::MapEgoAssumedAccelerationLabels;
-using MapCollisionTimeThresholdLabels =
-  validator::Params::CollisionCheck::PetCollision::CollisionTimeThreshold::MapCollisionTimeThresholdLabels;
-using MapEgoDecelerationThresholdLabels =
-  validator::Params::CollisionCheck::Rss::EgoDecelerationThreshold::MapEgoDecelerationThresholdLabels;
-using MapEgoReactionTimeLabels =
-  validator::Params::CollisionCheck::Rss::EgoReactionTime::MapEgoReactionTimeLabels;
-using MapObjectAccelerationLabels =
-  validator::Params::CollisionCheck::Rss::ObjectAcceleration::MapObjectAccelerationLabels;
-
-template double CollisionCheckFilter::try_labeled_double_param<MapEgoAssumedAccelerationLabels>(
-  const double, const std::map<std::string, MapEgoAssumedAccelerationLabels> &, const std::string &);
-template double CollisionCheckFilter::try_labeled_double_param<MapCollisionTimeThresholdLabels>(
-  const double, const std::map<std::string, MapCollisionTimeThresholdLabels> &, const std::string &);
-template double CollisionCheckFilter::try_labeled_double_param<MapEgoDecelerationThresholdLabels>(
-  const double, const std::map<std::string, MapEgoDecelerationThresholdLabels> &, const std::string &);
-template double CollisionCheckFilter::try_labeled_double_param<MapEgoReactionTimeLabels>(
-  const double, const std::map<std::string, MapEgoReactionTimeLabels> &, const std::string &);
-template double CollisionCheckFilter::try_labeled_double_param<MapObjectAccelerationLabels>(
-  const double, const std::map<std::string, MapObjectAccelerationLabels> &, const std::string &);
-
-double CollisionCheckFilter::try_to_get_param_value(
-  const validator::Params::CollisionCheck::PetCollision::EgoAssumedAcceleration & p,
-  const std::string & key)
-{
-  return try_labeled_double_param(p.base, p.ego_assumed_acceleration_labels_map, key);
-}
-
-double CollisionCheckFilter::try_to_get_param_value(
-  const validator::Params::CollisionCheck::PetCollision::CollisionTimeThreshold & p,
-  const std::string & key)
-{
-  return try_labeled_double_param(p.base, p.collision_time_threshold_labels_map, key);
-}
-
-double CollisionCheckFilter::try_to_get_param_value(
-  const validator::Params::CollisionCheck::Rss::EgoDecelerationThreshold & p, const std::string & key)
-{
-  return try_labeled_double_param(p.base, p.ego_deceleration_threshold_labels_map, key);
-}
-
-double CollisionCheckFilter::try_to_get_param_value(
-  const validator::Params::CollisionCheck::Rss::EgoReactionTime & p, const std::string & key)
-{
-  return try_labeled_double_param(p.base, p.ego_reaction_time_labels_map, key);
-}
-
-double CollisionCheckFilter::try_to_get_param_value(
-  const validator::Params::CollisionCheck::Rss::ObjectAcceleration & p, const std::string & key)
-{
-  return try_labeled_double_param(p.base, p.object_acceleration_labels_map, key);
-}
-
-double CollisionCheckFilter::try_to_get_param_value(double shared_value, const std::string & /*key*/)
+double CollisionCheckFilter::try_labeled_double_param(double shared_value, const std::string & /*key*/)
 {
   // Scalar parameters are not split per label; key is ignored.
   return shared_value;

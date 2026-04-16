@@ -248,21 +248,7 @@ private:
   static double try_labeled_double_param(
     const double base, const std::map<std::string, MapValue> & labels_map, const std::string & key);
 
-  static double try_to_get_param_value(
-    const validator::Params::CollisionCheck::PetCollision::EgoAssumedAcceleration & p,
-    const std::string & key);
-  static double try_to_get_param_value(
-    const validator::Params::CollisionCheck::PetCollision::CollisionTimeThreshold & p,
-    const std::string & key);
-  static double try_to_get_param_value(
-    const validator::Params::CollisionCheck::Rss::EgoDecelerationThreshold & p,
-    const std::string & key);
-  static double try_to_get_param_value(
-    const validator::Params::CollisionCheck::Rss::EgoReactionTime & p, const std::string & key);
-  static double try_to_get_param_value(
-    const validator::Params::CollisionCheck::Rss::ObjectAcceleration & p, const std::string & key);
-
-  static double try_to_get_param_value(double value, const std::string & key);
+  static double try_labeled_double_param(double value, const std::string & key);
 
 };
 
