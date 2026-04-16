@@ -590,20 +590,19 @@ TrajectoryData generate_constant_curvature_trajectory(
 namespace geometry
 {
 
-// 投影関数：Boost.GeometryのRing型を受け取る
+// todo(takagi): review by myself and consider moving to a more common place if necessary. see
+// https://en.wikipedia.org/wiki/Hyperplane_separation_theorem.
 template <typename Ring>
 inline void project_ring(
   const Ring & ring, float axisX, float axisY, float & minOut, float & maxOut)
 {
   if (ring.empty()) return;
 
-  // 最初の頂点で初期化
   auto it = ring.begin();
   float firstX = boost::geometry::get<0>(*it);
   float firstY = boost::geometry::get<1>(*it);
   minOut = maxOut = firstX * axisX + firstY * axisY;
 
-  // ringのままループを回す
   for (const auto & p : ring) {
     float projection = boost::geometry::get<0>(p) * axisX + boost::geometry::get<1>(p) * axisY;
     if (projection < minOut) {
@@ -670,6 +669,8 @@ bool intersects_sat(const Polygon & polyA, const Polygon & polyB)
   return true;
 }
 
+// todo(takagi): relace autoware_utils_geometry::to_polygon2d with this function. autoware_utils' s
+// version takes more malloc cost.
 Polygon2d to_polygon2d(
   const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape)
 {
@@ -702,8 +703,7 @@ Polygon2d to_polygon2d(
     polygon.outer().reserve(circle_discrete_num + 1);
     for (int i = 0; i < circle_discrete_num; ++i) {
       const double theta =
-        (static_cast<double>(i) / static_cast<double>(circle_discrete_num)) * 2.0 * M_PI +
-        M_PI / static_cast<double>(circle_discrete_num);
+        (static_cast<double>(i) / static_cast<double>(circle_discrete_num)) * 2.0 * M_PI;
       append_transformed_point(transform, std::cos(theta) * radius, std::sin(theta) * radius);
     }
     polygon.outer().push_back(polygon.outer().front());
@@ -967,7 +967,7 @@ std::optional<Finding> find_collision_timing(
       continue;
     }
 
-    for (double pet_range = 0.0; pet_range <= current_pet_limit; pet_range += TIME_RESOLUTION) {
+    for (double pet_range = 0.0; pet_range < current_pet_limit; pet_range += TIME_RESOLUTION) {
       const TimeRange test_time_range_before{ref_start_time - pet_range, ref_end_time - pet_range};
       bool has_intersects_before =
         boost::geometry::intersects(
@@ -986,6 +986,7 @@ std::optional<Finding> find_collision_timing(
         continue;
       }
 
+      // todo(takagi): restrict the copy until return.
       Finding finding;
       if (has_intersects_before) {
         finding.pet = -pet_range;
@@ -995,7 +996,6 @@ std::optional<Finding> find_collision_timing(
         finding.object_hull = test_trajectory.get_or_compute_convex(test_time_range_after);
       }
 
-      // todo(takagi): restrict the copy until return.
       finding.trajectory_id = test_trajectory.getObjectIdentification().id;
       finding.object = test_trajectory.getObjectIdentification();
       finding.ttc = ref_start_time;
@@ -1039,9 +1039,8 @@ std::vector<Finding> assess_planned_speed_collision_timing(
                                             -pet_collision_params.ego_assumed_acceleration +
                                           pet_collision_params.ego_braking_delay;
 
-  // todo: use planned trajectory instead of constant speed assumption to fit the requirements.
   auto ego_trajectory = trajectory::generate_ego_trajectory(
-    context.odometry->twist.twist, 0.0, 0.0, ego_time_horizon_for_pet, traj_points, vehicle_info);
+    traj_points, context, ego_time_horizon_for_pet, vehicle_info);
 
   return assess_collision_timing(ego_trajectory, object_trajectories, pet_collision_params);
 }
@@ -1049,7 +1048,7 @@ std::vector<Finding> assess_planned_speed_collision_timing(
 DracAssessment assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const validator::Params::CollisionCheck::PetCollision & pet_collision_params,
-  VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & constant_speed_objects_trajectory)
+  VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories)
 {
   const double ego_time_horizon = rclcpp::Duration(traj_points.back().time_from_start).seconds();
 
@@ -1061,7 +1060,8 @@ DracAssessment assess_drac(
        ego_dec += DEFAULT_EGO_DECELERATION_STEP) {
     const auto ego_deceleration_trajectory = [&]() {
       if (ego_dec == 0.0) {
-        // todo(takagi): return planned_trajectory();
+        return trajectory::generate_ego_trajectory(
+          traj_points, context, ego_time_horizon, vehicle_info);
       } else if (ego_dec > DEFAULT_MAX_EGO_DECELERATION - 1e-3) {
         return trajectory::generate_ego_trajectory(
           context.odometry->twist.twist, 0.0, -ego_dec, ego_time_horizon, traj_points,
@@ -1071,9 +1071,9 @@ DracAssessment assess_drac(
         context.odometry->twist.twist, pet_collision_params.ego_braking_delay, -ego_dec,
         ego_time_horizon, traj_points, vehicle_info);
     }();
-    auto findings = assess_collision_timing(
-      ego_deceleration_trajectory, constant_speed_objects_trajectory, pet_collision_params);
 
+    auto findings = assess_collision_timing(
+      ego_deceleration_trajectory, object_trajectories, pet_collision_params);
     if (findings.empty()) {
       return DracAssessment{ego_dec, std::move(last_findings)};
     }
