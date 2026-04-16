@@ -53,7 +53,6 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
   if (!is_feasible) {
     debug_markers_ = boundary_departure_checker::debug::create_debug_markers(
       *departure_data, context.odometry->header.stamp, context.odometry->pose.pose.position.z);
-    return tl::make_unexpected("Found critical departure");
   }
 
   std::vector<MetricReport> metrics{
@@ -62,7 +61,7 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
       .validator_category(category())
       .metric_name("check_critical_departure")
       .metric_value(0.0)
-      .level(found_critical_departure ? MetricReport::ERROR : MetricReport::OK)};
+      .level(!is_feasible ? MetricReport::ERROR : MetricReport::OK)};
 
   return ValidationResult{is_feasible, std::move(metrics)};
 }

@@ -206,7 +206,7 @@ MarkerArray create_departure_footprint_marker(
       continue;
     }
     if (pt.is_critical()) {
-      marker_array.markers.push_back(add_marker(color::yellow(), pt, "critical"));
+      marker_array.markers.push_back(add_marker(color::red(), pt, "critical"));
     }
   }
   return marker_array;
