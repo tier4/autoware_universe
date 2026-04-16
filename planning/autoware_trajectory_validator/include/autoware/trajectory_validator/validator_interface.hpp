@@ -17,9 +17,11 @@
 
 #include "autoware/trajectory_validator/filter_context.hpp"
 
+#include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_trajectory_validator/msg/metric_report.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <tl_expected/expected.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
@@ -66,6 +68,12 @@ public:
 
   virtual void update_parameters(const validator::Params & params) = 0;
 
+  virtual void set_node(rclcpp::Node * node)
+  {
+    planning_factor_interface_ =
+      std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(node, name_);
+  }
+
   // Set vehicle info
   virtual void set_vehicle_info(const VehicleInfo & vehicle_info)
   {
@@ -103,6 +111,8 @@ protected:
   std::string category_;
   std::shared_ptr<VehicleInfo> vehicle_info_ptr_;
   visualization_msgs::msg::MarkerArray debug_markers_;
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    planning_factor_interface_;
 };
 }  // namespace autoware::trajectory_validator::plugin
 

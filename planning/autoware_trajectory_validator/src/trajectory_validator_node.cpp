@@ -296,6 +296,7 @@ void TrajectoryValidator::load_metric(const std::string & name)
       }
     }
 
+    plugin->set_node(this);
     plugin->set_vehicle_info(vehicle_info_);
     plugin->update_parameters(params_);
 
