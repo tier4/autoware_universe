@@ -426,7 +426,8 @@ TimeTrajectory compute_sample_times(double start_time, double end_time)
 }
 
 geometry_msgs::msg::Pose interpolate_predicted_path_pose(
-  const autoware_perception_msgs::msg::PredictedPath & predicted_path, double query_time)
+  const autoware_perception_msgs::msg::PredictedPath & predicted_path, double query_time,
+  double path_start_time)
 {
   if (predicted_path.path.empty()) {
     throw std::invalid_argument("predicted path must not be empty");
@@ -438,24 +439,15 @@ geometry_msgs::msg::Pose interpolate_predicted_path_pose(
   }
 
   const double clamped_query_time = std::clamp(
-    query_time, 0.0, path_time_step * static_cast<double>(predicted_path.path.size() - 1));
-  const size_t index = static_cast<size_t>(std::floor(clamped_query_time / path_time_step));
+    query_time, path_start_time,
+    path_start_time + path_time_step * static_cast<double>(predicted_path.path.size() - 1));
+  const double shifted_query_time = clamped_query_time - path_start_time;
+  const size_t index = static_cast<size_t>(std::floor(shifted_query_time / path_time_step));
   const size_t next_index = std::min(index + 1, predicted_path.path.size() - 1);
   const double ratio =
-    (clamped_query_time - static_cast<double>(index) * path_time_step) / path_time_step;
+    (shifted_query_time - static_cast<double>(index) * path_time_step) / path_time_step;
   return autoware::universe_utils::calcInterpolatedPose(
     predicted_path.path.at(index), predicted_path.path.at(next_index), ratio, false);
-}
-
-PoseTrajectory compute_diffusion_based_pose_trajectory(
-  const autoware_perception_msgs::msg::PredictedPath & predicted_path, const TimeTrajectory & times)
-{
-  PoseTrajectory poses;
-  poses.reserve(times.size());
-  for (const auto & time : times) {
-    poses.push_back(interpolate_predicted_path_pose(predicted_path, time));
-  }
-  return poses;
 }
 }  // namespace detail
 
@@ -547,8 +539,17 @@ TrajectoryData generate_diffusion_based_trajectory(
     predicted_object.kinematics.predicted_paths.end(),
     [](const auto & a, const auto & b) { return a.confidence < b.confidence; });
   const auto & predicted_path = *most_confident_path_it;
-  auto times = detail::compute_sample_times(start_time.seconds(), max_time);
-  auto poses = detail::compute_diffusion_based_pose_trajectory(predicted_path, times);
+  const double prediction_horizon =
+    start_time.seconds() + static_cast<double>(predicted_path.path.size() - 1) *
+                             rclcpp::Duration(predicted_path.time_step).seconds();
+  auto times =
+    detail::compute_sample_times(start_time.seconds(), std::min(max_time, prediction_horizon));
+  PoseTrajectory poses;
+  poses.reserve(times.size());
+  for (const auto & time : times) {
+    poses.push_back(
+      detail::interpolate_predicted_path_pose(predicted_path, time, start_time.seconds()));
+  }
 
   TravelDistanceTrajectory distances;
   distances.reserve(poses.size());
