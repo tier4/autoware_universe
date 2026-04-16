@@ -22,6 +22,9 @@
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 
+#include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
+#include <autoware_internal_planning_msgs/msg/safety_factor.hpp>
+#include <autoware_internal_planning_msgs/msg/safety_factor_array.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <boost/geometry.hpp>
@@ -51,8 +54,7 @@ ObjectIdentification make_object_identification(
   const builtin_interfaces::msg::Time & stamp)
 {
   return {
-    convertLabelToString(getHighestProbLabel(object.classification)),
-    autoware_utils_uuid::to_hex_string(object.object_id), stamp};
+    convertLabelToString(getHighestProbLabel(object.classification)), stamp, object.object_id};
 }
 
 ObjectIdentification make_trajectory_identification(
@@ -60,8 +62,18 @@ ObjectIdentification make_trajectory_identification(
   const builtin_interfaces::msg::Time & stamp)
 {
   return {
-    convertLabelToString(getHighestProbLabel(object.classification)),
-    autoware_utils_uuid::to_hex_string(object.object_id) + suffix, stamp};
+    convertLabelToString(getHighestProbLabel(object.classification)), stamp, object.object_id,
+    suffix};
+}
+
+std::string to_object_id_string(const ObjectIdentification & object)
+{
+  return autoware_utils_uuid::to_hex_string(object.uuid);
+}
+
+std::string to_trajectory_id_string(const ObjectIdentification & object)
+{
+  return to_object_id_string(object) + object.trajectory_suffix;
 }
 
 // Trajectory generation helpers.
@@ -470,7 +482,7 @@ TrajectoryData generate_ego_trajectory(
   auto footprints = footprint::compute_footprint_trajectory(poses, vehicle_info);
 
   return TrajectoryData(
-    ObjectIdentification{"EGO", ""}, std::move(times), std::move(distances), std::move(poses),
+    ObjectIdentification{"EGO"}, std::move(times), std::move(distances), std::move(poses),
     std::move(footprints));
 }
 
@@ -501,8 +513,8 @@ TrajectoryData generate_ego_trajectory(
   auto footprints = footprint::compute_footprint_trajectory(poses, vehicle_info);
 
   return TrajectoryData(
-    ObjectIdentification{"EGO", ""}, std::move(relative_times), std::move(distances),
-    std::move(poses), std::move(footprints));
+    ObjectIdentification{"EGO"}, std::move(relative_times), std::move(distances), std::move(poses),
+    std::move(footprints));
 }
 
 TrajectoryData generate_predicted_path_trajectory(
@@ -903,8 +915,8 @@ std::optional<Finding> find_collision_timing(
         check_slice_collision(test_start_time_before, test_end_time_before) ||
         check_slice_collision(test_start_time_after, test_end_time_after)) {
         Finding finding;
-        finding.trajectory_id = test_trajectory.getObjectIdentification().id;
         finding.object = test_trajectory.getObjectIdentification();
+        finding.trajectory_id = to_trajectory_id_string(finding.object);
         finding.pet = pet_range;
         finding.ttc = ref_start_time;
         finding.ego_trajectory = ref_trajectory.getPoses();
@@ -1032,6 +1044,32 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
   rss_params_ = params.collision_check.rss;
 }
 
+autoware_internal_planning_msgs::msg::SafetyFactorArray make_safety_factor_array(
+  const builtin_interfaces::msg::Time & stamp, const collision_timing_assessment::Finding & finding,
+  const std::string & collision_type)
+{
+  using autoware_internal_planning_msgs::msg::SafetyFactor;
+  using autoware_internal_planning_msgs::msg::SafetyFactorArray;
+
+  SafetyFactor safety_factor;
+  safety_factor.type = SafetyFactor::OBJECT;
+  safety_factor.object_id = finding.object.uuid;
+  safety_factor.ttc_begin = static_cast<float>(finding.ttc);
+  safety_factor.ttc_end = static_cast<float>(finding.ttc + TIME_RESOLUTION);
+  safety_factor.is_safe = false;
+  if (!finding.object_trajectory.empty()) {
+    safety_factor.points.push_back(finding.object_trajectory.front().position);
+  }
+
+  SafetyFactorArray safety_factors;
+  safety_factors.header.stamp = stamp;
+  safety_factors.header.frame_id = "map";
+  safety_factors.factors.push_back(std::move(safety_factor));
+  safety_factors.is_safe = false;
+  safety_factors.detail = collision_type;
+  return safety_factors;
+}
+
 void CollisionCheckFilter::add_debug_markers(
   const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
   const PoseTrajectory & ego_trajectory, const PoseTrajectory & object_trajectory,
@@ -1154,6 +1192,11 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   // autoware_utils::StopWatch<std::chrono::microseconds> stopwatch;
   // stopwatch.tic();
   std::string error_msg{};
+  auto publish_planning_factors = [&]() {
+    if (planning_factor_interface_) {
+      planning_factor_interface_->publish();
+    }
+  };
 
   if (
     (!context.predicted_objects || context.predicted_objects->objects.empty()) &&
@@ -1162,6 +1205,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     pet_continuous_times_.clear();
     rss_continuous_times_.clear();
     drac_continuous_times_.clear();
+    publish_planning_factors();
     return {};  // No objects to check collision with
   }
 
@@ -1169,6 +1213,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     pet_continuous_times_.clear();
     rss_continuous_times_.clear();
     drac_continuous_times_.clear();
+    publish_planning_factors();
     return {};  // No trajectory to check
   }
 
@@ -1176,6 +1221,18 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   std::vector<MetricReport> metrics;
 
   const rclcpp::Time current_time = context.odometry->header.stamp;
+  const auto add_collision_planning_factor =
+    [&](const collision_timing_assessment::Finding & finding, const std::string & collision_type) {
+      if (!planning_factor_interface_) {
+        return;
+      }
+      const auto safety_factors =
+        make_safety_factor_array(context.odometry->header.stamp, finding, collision_type);
+      planning_factor_interface_->add(
+        traj_points, context.odometry->pose.pose, context.odometry->pose.pose,
+        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factors, true, 0.0, 0.0,
+        collision_type);
+    };
 
   const auto collision_timing_result = collision_timing_assessment::assess(
     traj_points, context, pet_collision_params_, *vehicle_info_ptr_);
@@ -1184,26 +1241,27 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     current_time, collision_timing_result.planned_speed_findings,
     [](const auto & finding) { return finding.trajectory_id; });
   for (const auto & finding : collision_timing_result.planned_speed_findings) {
+    const auto object_id = to_object_id_string(finding.object);
     // Mark as infeasible if any finding exists
     is_feasible = false;
 
     // Record metrics for PET and TTC for each finding
-    metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
-                        .validator_name(get_name())
-                        .validator_category(category())
-                        .metric_name(fmt::format(
-                          "check_PET_{}_{}_{}", finding.trajectory_id,
-                          finding.object.classification, finding.object.id))
-                        .metric_value(finding.pet)
-                        .level(MetricReport::ERROR));
-    metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
-                        .validator_name(get_name())
-                        .validator_category(category())
-                        .metric_name(fmt::format(
-                          "check_TTC_{}_{}_{}", finding.trajectory_id,
-                          finding.object.classification, finding.object.id))
-                        .metric_value(finding.ttc)
-                        .level(MetricReport::ERROR));
+    metrics.push_back(
+      autoware_trajectory_validator::build<MetricReport>()
+        .validator_name(get_name())
+        .validator_category(category())
+        .metric_name(fmt::format(
+          "check_PET_{}_{}_{}", finding.trajectory_id, finding.object.classification, object_id))
+        .metric_value(finding.pet)
+        .level(MetricReport::ERROR));
+    metrics.push_back(
+      autoware_trajectory_validator::build<MetricReport>()
+        .validator_name(get_name())
+        .validator_category(category())
+        .metric_name(fmt::format(
+          "check_TTC_{}_{}_{}", finding.trajectory_id, finding.object.classification, object_id))
+        .metric_value(finding.ttc)
+        .level(MetricReport::ERROR));
 
     const double detection_duration = pet_continuous_times_.get_time(finding.trajectory_id);
     error_msg += fmt::format(
@@ -1213,6 +1271,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     add_debug_markers(
       context.odometry->header.stamp, "planned_speed_collision", finding.trajectory_id,
       finding.ego_trajectory, finding.object_trajectory, finding.ego_hull, finding.object_hull);
+    add_collision_planning_factor(finding, "PET");
   }
 
   drac_continuous_times_.update(
@@ -1222,16 +1281,17 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     collision_timing_result.drac == std::nullopt ||
     collision_timing_result.drac.value() >= -pet_collision_params_.ego_assumed_acceleration) {
     for (const auto & finding : collision_timing_result.drac_findings) {
+      const auto object_id = to_object_id_string(finding.object);
       is_feasible = false;
 
-      metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
-                          .validator_name(get_name())
-                          .validator_category(category())
-                          .metric_name(fmt::format(
-                            "check_DRAC_{}_{}_{}", finding.trajectory_id,
-                            finding.object.classification, finding.object.id))
-                          .metric_value(collision_timing_result.drac.value_or(0.0))
-                          .level(MetricReport::ERROR));
+      metrics.push_back(
+        autoware_trajectory_validator::build<MetricReport>()
+          .validator_name(get_name())
+          .validator_category(category())
+          .metric_name(fmt::format(
+            "check_DRAC_{}_{}_{}", finding.trajectory_id, finding.object.classification, object_id))
+          .metric_value(collision_timing_result.drac.value_or(0.0))
+          .level(MetricReport::ERROR));
       error_msg += fmt::format(
         "DRAC collision, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{}; \n",
         finding.trajectory_id, finding.pet, finding.ttc,
@@ -1242,31 +1302,33 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
       add_debug_markers(
         context.odometry->header.stamp, "drac_collision", finding.trajectory_id,
         finding.ego_trajectory, finding.object_trajectory, finding.ego_hull, finding.object_hull);
+      add_collision_planning_factor(finding, "DRAC");
     }
   }
 
   const auto rss_result =
     rss_deceleration::assess(traj_points, context, rss_params_, *vehicle_info_ptr_);
   rss_continuous_times_.update(current_time, rss_result.violations, [](const auto & violation) {
-    return violation.object.id;
+    return to_object_id_string(violation.object);
   });
   for (const auto & violation : rss_result.violations) {
+    const auto object_id = to_object_id_string(violation.object);
     // Mark as infeasible if any RSS violation exists
     is_feasible = false;
 
     // Record metrics for each RSS violation
-    metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
-                        .validator_name(get_name())
-                        .validator_category(category())
-                        .metric_name(fmt::format(
-                          "check_RSS_{}_{}", violation.object.classification, violation.object.id))
-                        .metric_value(violation.required_deceleration)
-                        .level(MetricReport::ERROR));
-    const double detection_duration = rss_continuous_times_.get_time(violation.object.id);
+    metrics.push_back(
+      autoware_trajectory_validator::build<MetricReport>()
+        .validator_name(get_name())
+        .validator_category(category())
+        .metric_name(fmt::format("check_RSS_{}_{}", violation.object.classification, object_id))
+        .metric_value(violation.required_deceleration)
+        .level(MetricReport::ERROR));
+    const double detection_duration = rss_continuous_times_.get_time(object_id);
     error_msg += fmt::format(
       "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}, stamp: "
       "{}.{}; \n",
-      violation.object.classification, violation.object.id, detection_duration,
+      violation.object.classification, object_id, detection_duration,
       violation.required_deceleration, violation.object.stamp.sec, violation.object.stamp.nanosec);
   }
 
@@ -1274,6 +1336,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     RCLCPP_WARN(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", error_msg.c_str());
     add_error_text_marker(context.odometry->header.stamp, context.odometry->pose.pose, error_msg);
   }
+  publish_planning_factors();
 
   return ValidationResult{is_feasible, std::move(metrics)};
 }
