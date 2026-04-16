@@ -115,11 +115,10 @@ std::optional<CriticalPointPair> apply_backward_buffer_and_filter(
     const double dist_between_proj =
       bg::distance(result.physical_departure_point.pt_on_ego, it->pt_on_ego);
 
-    if (dist_between_proj <= param.longitudinal_margin_m) {
+    if (dist_between_proj >= param.longitudinal_margin_m) {
+      // dist_to_crash strictly increases, so we can stop searching.
       result.safety_buffer_start = *it;
       result.safety_buffer_start.departure_type = DepartureType::CRITICAL;
-    } else {
-      // dist_to_crash strictly increases, so we can stop searching.
       break;
     }
   }
