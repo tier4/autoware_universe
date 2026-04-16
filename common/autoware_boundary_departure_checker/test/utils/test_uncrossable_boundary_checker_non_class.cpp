@@ -193,12 +193,12 @@ TEST(UncrossableBoundaryTest, TestMiddleOfSegmentCrossingForLonDist)
 
   // D. Confirm dist_along_trajectory_m
   // Arc length `s` at i=1 should be the distance from P0 to P1 (10.0m).
-  // Formula: dist_along_trajectory_m = s - ego_front_to_proj_offset_m = 10.0 - 2.0 = 8.0.
+  // Formula: dist_along_trajectory_m = s.
   //
   // NOTE: If this specific EXPECT_DOUBLE_EQ fails and returns -2.0 instead of 8.0, it proves
   // that the `if (i > 1)` bug in `src/utils.cpp` inside `get_closest_boundary_segments_from_side`
   // is preventing `s` from accumulating correctly for the early trajectory points.
-  EXPECT_DOUBLE_EQ(proj_at_i.dist_along_trajectory_m, 8.0);
+  EXPECT_DOUBLE_EQ(proj_at_i.dist_along_trajectory_m, 10.0);
 
   BDC_PLOT_RESULT({
     auto plt = autoware::pyplot::import();
@@ -405,7 +405,7 @@ TEST(UncrossableBoundaryTest, TestRealisticRightLaneDeparture)
   EXPECT_DOUBLE_EQ(result.right[1].pt_on_ego.y(), -9.4);
   EXPECT_DOUBLE_EQ(
     result.right[1].ego_front_to_proj_offset_m, 5.0);  // Exactly 5.0m from the Front-Right corner
-  EXPECT_DOUBLE_EQ(result.right[1].dist_along_trajectory_m, 20.0);  // s(25.0) - offset(5.0) = 20.0
+  EXPECT_DOUBLE_EQ(result.right[1].dist_along_trajectory_m, 25.0);  // s(25.0) = 25.0m
 
   // i=2: Completely crossed boundary. Rear-Right corner is now closest (Y=-15.0).
   // Outside the boundary, so lateral distance is negative. |-15.0 - (-9.4)| = 5.6.

@@ -49,7 +49,8 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
     return tl::make_unexpected(departure_data.error());
   }
 
-  const bool is_feasible = departure_data->status != boundary_departure_checker::DepartureType::CRITICAL;
+  const bool is_feasible =
+    departure_data->status != boundary_departure_checker::DepartureType::CRITICAL;
   if (!is_feasible) {
     debug_markers_ = boundary_departure_checker::debug::create_debug_markers(
       *departure_data, context.odometry->header.stamp, context.odometry->pose.pose.position.z);
