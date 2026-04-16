@@ -214,10 +214,12 @@ private:
   ContinuousDetectionTimes drac_continuous_times_;
 
   void add_debug_markers(
-    const rclcpp::Time & stamp, const std::string & ns, const std::string & collision_type,
-    const std::string & trajectory_id, const PoseTrajectory & ego_trajectory,
-    const PoseTrajectory & object_trajectory, const Polygon2d & ego_hull,
-    const Polygon2d & object_hull);
+    const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
+    const PoseTrajectory & ego_trajectory, const PoseTrajectory & object_trajectory,
+    const Polygon2d & ego_hull, const Polygon2d & object_hull);
+  void add_error_text_marker(
+    const rclcpp::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
+    const std::string & error_msg);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety

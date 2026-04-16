@@ -1033,10 +1033,9 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
 }
 
 void CollisionCheckFilter::add_debug_markers(
-  const rclcpp::Time & stamp, const std::string & ns, const std::string & collision_type,
-  const std::string & trajectory_id, const PoseTrajectory & ego_trajectory,
-  const PoseTrajectory & object_trajectory, const Polygon2d & ego_hull,
-  const Polygon2d & object_hull)
+  const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
+  const PoseTrajectory & ego_trajectory, const PoseTrajectory & object_trajectory,
+  const Polygon2d & ego_hull, const Polygon2d & object_hull)
 {
   int id = debug_markers_.markers.empty() ? 0 : debug_markers_.markers.back().id + 1;
 
@@ -1097,60 +1096,56 @@ void CollisionCheckFilter::add_debug_markers(
                                  float alpha) {
     if (trajectory.empty()) return;
 
-    visualization_msgs::msg::Marker m;
-    m.header.frame_id = "map";
-    m.header.stamp = stamp;
-    m.ns = ns + "/" + local_namespace;
-    m.id = id++;
-    m.type = visualization_msgs::msg::Marker::LINE_STRIP;
-    m.action = visualization_msgs::msg::Marker::ADD;
-    m.scale.x = 0.12;
-    m.color.r = r;
-    m.color.g = g;
-    m.color.b = b;
-    m.color.a = alpha;
-
     for (const auto & pose : trajectory) {
-      geometry_msgs::msg::Point pt;
-      pt.x = pose.position.x;
-      pt.y = pose.position.y;
-      pt.z = pose.position.z + 0.2;
-      m.points.push_back(pt);
+      visualization_msgs::msg::Marker m;
+      m.header.frame_id = "map";
+      m.header.stamp = stamp;
+      m.ns = ns + "/" + local_namespace;
+      m.id = id++;
+      m.type = visualization_msgs::msg::Marker::ARROW;
+      m.action = visualization_msgs::msg::Marker::ADD;
+      m.pose = pose;
+      m.scale.x = 0.3;
+      m.scale.y = 0.18;
+      m.scale.z = 0.18;
+      m.color.r = r;
+      m.color.g = g;
+      m.color.b = b;
+      m.color.a = alpha;
+      debug_markers_.markers.push_back(std::move(m));
     }
-    debug_markers_.markers.push_back(std::move(m));
-  };
-
-  auto add_text_marker = [&](const Polygon2d & poly) {
-    if (poly.outer().empty()) return;
-
-    visualization_msgs::msg::Marker m;
-    m.header.frame_id = "map";
-    m.header.stamp = stamp;
-    m.ns = ns + "/label";
-    m.id = id++;
-    m.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-    m.action = visualization_msgs::msg::Marker::ADD;
-    m.scale.z = 0.6;
-    m.color.r = 1.0;
-    m.color.g = 1.0;
-    m.color.b = 1.0;
-    m.color.a = 0.95;
-    m.pose.position.x = poly.outer().front().x();
-    m.pose.position.y = poly.outer().front().y();
-    m.pose.position.z = 1.2;
-    m.text = collision_type;
-    debug_markers_.markers.push_back(std::move(m));
   };
 
   add_poly_marker(ego_hull, "ego_worst_pet", 0.0, 0.0, 1.0);
   add_poly_marker(object_hull, "obj_worst_pet", 1.0, 0.0, 0.0);
-  add_trajectory_marker(
-    ego_trajectory, "ego_trajectory", trajectory_color.r, trajectory_color.g, trajectory_color.b,
-    0.45F);
+  add_trajectory_marker(ego_trajectory, "ego_trajectory", 1.0F, 1.0F, 1.0F, 0.9F);
   add_trajectory_marker(
     object_trajectory, "object_trajectory", trajectory_color.r, trajectory_color.g,
     trajectory_color.b, 0.95F);
-  add_text_marker(object_hull);
+}
+
+void CollisionCheckFilter::add_error_text_marker(
+  const rclcpp::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
+  const std::string & error_msg)
+{
+  int id = debug_markers_.markers.empty() ? 0 : debug_markers_.markers.back().id + 1;
+
+  visualization_msgs::msg::Marker m;
+  m.header.frame_id = "map";
+  m.header.stamp = stamp;
+  m.ns = "collision_check_error";
+  m.id = id++;
+  m.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+  m.action = visualization_msgs::msg::Marker::ADD;
+  m.scale.z = 0.6;
+  m.color.r = 1.0;
+  m.color.g = 1.0;
+  m.color.b = 1.0;
+  m.color.a = 0.95;
+  m.pose = ego_pose;
+  m.pose.position.z += 1.0;
+  m.text = error_msg;
+  debug_markers_.markers.push_back(std::move(m));
 }
 
 CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
@@ -1212,11 +1207,11 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
 
     const double detection_duration = pet_continuous_times_.get_time(finding.trajectory_id);
     error_msg += fmt::format(
-      "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{}; ",
+      "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{}; \n",
       finding.object.classification, finding.trajectory_id, finding.pet, finding.ttc,
       detection_duration, finding.object.stamp.sec, finding.object.stamp.nanosec);
     add_debug_markers(
-      context.odometry->header.stamp, "planned_speed_collision", "PET", finding.trajectory_id,
+      context.odometry->header.stamp, "planned_speed_collision", finding.trajectory_id,
       finding.ego_trajectory, finding.object_trajectory, finding.ego_hull, finding.object_hull);
   }
 
@@ -1238,14 +1233,14 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
                           .metric_value(collision_timing_result.drac.value_or(0.0))
                           .level(MetricReport::ERROR));
       error_msg += fmt::format(
-        "DRAC collision, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{}; ", finding.trajectory_id,
-        finding.pet, finding.ttc,
+        "DRAC collision, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{}; \n",
+        finding.trajectory_id, finding.pet, finding.ttc,
         collision_timing_result.drac.has_value()
           ? std::to_string(collision_timing_result.drac.value())
           : "Cant be avoided",
         finding.object.stamp.sec, finding.object.stamp.nanosec);
       add_debug_markers(
-        context.odometry->header.stamp, "drac_collision", "DRAC", finding.trajectory_id,
+        context.odometry->header.stamp, "drac_collision", finding.trajectory_id,
         finding.ego_trajectory, finding.object_trajectory, finding.ego_hull, finding.object_hull);
     }
   }
@@ -1270,13 +1265,14 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     const double detection_duration = rss_continuous_times_.get_time(violation.object.id);
     error_msg += fmt::format(
       "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}, stamp: "
-      "{}.{}; ",
+      "{}.{}; \n",
       violation.object.classification, violation.object.id, detection_duration,
       violation.required_deceleration, violation.object.stamp.sec, violation.object.stamp.nanosec);
   }
 
   if (!error_msg.empty()) {
     RCLCPP_WARN(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", error_msg.c_str());
+    add_error_text_marker(context.odometry->header.stamp, context.odometry->pose.pose, error_msg);
   }
 
   return ValidationResult{is_feasible, std::move(metrics)};
