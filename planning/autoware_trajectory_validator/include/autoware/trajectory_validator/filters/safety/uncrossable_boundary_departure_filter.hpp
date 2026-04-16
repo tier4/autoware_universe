@@ -17,7 +17,7 @@
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
-#include <autoware/deprecated/boundary_departure_checker/uncrossable_boundary_checker.hpp>
+#include <autoware/boundary_departure_checker/uncrossable_boundary_checker.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <memory>
@@ -36,26 +36,12 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
-  std::unique_ptr<autoware::boundary_departure_checker::UncrossableBoundaryDepartureChecker>
-    uncrossable_boundary_departure_checker_ptr_;
-  rclcpp::Logger log_ = rclcpp::get_logger(name_);
-  boundary_departure_checker::Param params_;
-  std::shared_ptr<rclcpp::Clock> clock_ = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
+  boundary_departure_checker::UncrossableBoundaryChecker uncrossable_boundary_checker_;
+  boundary_departure_checker::UncrossableBoundaryDepartureParam params_;
 
-  [[nodiscard]] std::optional<std::string> is_invalid_input(
-    const TrajectoryPoints & traj_points, const FilterContext & context) const;
+  [[nodiscard]] std::optional<std::string> is_invalid_input(const FilterContext & context) const;
 
-  template <typename... Args>
-  void warn_throttle(const char * fmt)
-  {
-    RCLCPP_WARN_THROTTLE(log_, *clock_, 5000, fmt);
-  }
-
-  template <typename... Args>
-  void warn_throttle(const char * fmt, Args... args)
-  {
-    RCLCPP_WARN_THROTTLE(log_, *clock_, 5000, fmt, args...);
-  }
+  bool is_initialized_ = false;
 };
 }  // namespace autoware::trajectory_validator::plugin::safety
 
