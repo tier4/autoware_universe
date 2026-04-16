@@ -510,28 +510,5 @@ TEST(TrajectoryUtilitiesTest, GenerateTimeInterpolatedPredictedPathTrajectoryUse
   EXPECT_NEAR(trajectory_data.getPoses().at(4).position.x, 3.5, 1e-6);
   EXPECT_NEAR(trajectory_data.getPoses().at(5).position.x, 4.0, 1e-6);
 }
-TEST(TrajectoryUtilitiesTest, TrajectoryDataReturnsFootprintsInNearestTimeRange)
-{
-  const TimeTrajectory times = {0.0, 0.1, 0.2};
-  const TravelDistanceTrajectory distances = {0.0, 1.0, 2.0};
-  const PoseTrajectory poses = {
-    create_pose(0.0, 0.0), create_pose(1.0, 0.0), create_pose(2.0, 0.0)};
-  const auto shape = create_bounding_box_shape(2.0, 1.0);
-  const FootprintTrajectory footprints = {
-    autoware_utils_geometry::to_polygon2d(poses.at(0), shape),
-    autoware_utils_geometry::to_polygon2d(poses.at(1), shape),
-    autoware_utils_geometry::to_polygon2d(poses.at(2), shape)};
-  const TrajectoryData trajectory_data(
-    ObjectIdentification{"", "sample"}, times, distances, poses, footprints);
-
-  const auto range = trajectory_data.getFootprintsInTimeRange(0.05, 0.15);
-  const auto empty_range = trajectory_data.getFootprintsInTimeRange(0.3, 0.2);
-
-  ASSERT_EQ(std::distance(range.begin(), range.end()), 2);
-  EXPECT_DOUBLE_EQ(range.begin()->outer().front().x(), footprints.at(0).outer().front().x());
-  EXPECT_DOUBLE_EQ(
-    std::next(range.begin())->outer().front().x(), footprints.at(1).outer().front().x());
-  EXPECT_EQ(std::distance(empty_range.begin(), empty_range.end()), 0);
-}
 
 }  // namespace autoware::trajectory_validator::plugin::safety

@@ -121,6 +121,7 @@ std::pair<TimeTrajectory, TravelDistanceTrajectory> compute_motion_profile_1d(
       tick_time > stop_profile.value().stop_time) {
       // todo(takagi): Investigate if it's necessary to add the stop time to `times`.
       append_sample(stop_profile.value().stop_time);
+      break;
     }
 
     if (tick_time >= end_time) {
@@ -314,7 +315,7 @@ FootprintTrajectory compute_footprint_trajectory(
   footprint_trajectory.reserve(pose_trajectory.size());
 
   for (const auto & pose : pose_trajectory) {
-    footprint_trajectory.push_back(autoware_utils_geometry::to_polygon2d(pose, object_shape));
+    footprint_trajectory.push_back(geometry::to_polygon2d(pose, object_shape));
   }
   return footprint_trajectory;
 }
@@ -588,56 +589,137 @@ TrajectoryData generate_constant_curvature_trajectory(
 // Geometry helpers for overlap checks.
 namespace geometry
 {
-template <typename Range>
-Box2d compute_overall_envelope(const Range & polygons)
-{
-  Box2d overall_box;
-  boost::geometry::assign_inverse(overall_box);
 
-  for (const auto & poly : polygons) {
-    for (const auto & p : poly.outer()) {
-      boost::geometry::expand(overall_box, p);
+// 投影関数：Boost.GeometryのRing型を受け取る
+template <typename Ring>
+inline void project_ring(
+  const Ring & ring, float axisX, float axisY, float & minOut, float & maxOut)
+{
+  if (ring.empty()) return;
+
+  // 最初の頂点で初期化
+  auto it = ring.begin();
+  float firstX = boost::geometry::get<0>(*it);
+  float firstY = boost::geometry::get<1>(*it);
+  minOut = maxOut = firstX * axisX + firstY * axisY;
+
+  // ringのままループを回す
+  for (const auto & p : ring) {
+    float projection = boost::geometry::get<0>(p) * axisX + boost::geometry::get<1>(p) * axisY;
+    if (projection < minOut) {
+      minOut = projection;
+    } else if (projection > maxOut) {
+      maxOut = projection;
+    }
+  }
+}
+
+// SATによる凸ポリゴン交差判定（boost::geometry::model::polygon用）
+template <typename Polygon>
+bool intersects_sat(const Polygon & polyA, const Polygon & polyB)
+{
+  // 外周のリング（頂点の配列）を取得
+  const auto & ringA = polyA.outer();
+  const auto & ringB = polyB.outer();
+
+  // 少なくとも三角形 [A, B, C, A] の4点が必要
+  if (ringA.size() < 4 || ringB.size() < 4) return false;
+
+  // ポリゴンAとBの両方のリングをループで処理
+  for (const auto * ringPtr : {&ringA, &ringB}) {
+    const auto & ring = *ringPtr;
+
+    bool isFirst = true;
+    float prevX = 0.0f;
+    float prevY = 0.0f;
+
+    for (const auto & curr : ring) {
+      float currX = boost::geometry::get<0>(curr);
+      float currY = boost::geometry::get<1>(curr);
+
+      if (isFirst) {
+        prevX = currX;
+        prevY = currY;
+        isFirst = false;
+        continue;
+      }
+
+      // 辺ベクトル
+      float edgeX = currX - prevX;
+      float edgeY = currY - prevY;
+
+      // 法線ベクトル（分離軸）
+      float axisX = -edgeY;
+      float axisY = edgeX;
+
+      float minA = 0.0f, maxA = 0.0f, minB = 0.0f, maxB = 0.0f;
+      project_ring(ringA, axisX, axisY, minA, maxA);
+      project_ring(ringB, axisX, axisY, minB, maxB);
+
+      // 分離軸が見つかったら交差していない
+      if (maxA < minB || maxB < minA) {
+        return false;
+      }
+
+      prevX = currX;
+      prevY = currY;
     }
   }
 
-  return overall_box;
-}
-
-template <typename Range>
-Polygon2d compute_overall_convex_hull(const Range & polygons)
-{
-  MultiPoint2d all_points;
-
-  all_points.reserve(std::distance(polygons.begin(), polygons.end()) * 4);  // heuristic reserve
-  for (const auto & poly : polygons) {
-    for (const auto & pt : poly.outer()) {
-      all_points.push_back(pt);
-    }
-  }
-
-  Polygon2d hull;
-  boost::geometry::convex_hull(all_points, hull);
-
-  return hull;
-}
-
-template <typename Range1, typename Range2>
-bool has_overall_convex_hull_overlap(const Range1 & footprints1, const Range2 & footprints2)
-{
-  const auto overall_box1 = compute_overall_envelope(footprints1);
-  const auto overall_box2 = compute_overall_envelope(footprints2);
-
-  if (!boost::geometry::intersects(overall_box1, overall_box2)) {
-    return false;
-  }
-
-  const auto overall_convex1 = compute_overall_convex_hull(footprints1);
-  const auto overall_convex2 = compute_overall_convex_hull(footprints2);
-  if (!boost::geometry::intersects(overall_convex1, overall_convex2)) {
-    return false;
-  }
-
+  // すべての軸で分離できなかったため交差している
   return true;
+}
+
+Polygon2d to_polygon2d(
+  const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape)
+{
+  Polygon2d polygon;
+
+  Eigen::Isometry2d transform = Eigen::Isometry2d::Identity();
+  transform.linear() = Eigen::Rotation2Dd(tf2::getYaw(pose.orientation)).toRotationMatrix();
+  transform.translation() = Eigen::Vector2d{pose.position.x, pose.position.y};
+
+  auto append_transformed_point =
+    [&](const Eigen::Isometry2d & transform, const double x, const double y) {
+      const Eigen::Vector2d transformed = transform * Eigen::Vector2d{x, y};
+      polygon.outer().push_back(Point2d{transformed.x(), transformed.y()});
+    };
+
+  if (shape.type == autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
+    const double half_x = shape.dimensions.x / 2.0;
+    const double half_y = shape.dimensions.y / 2.0;
+
+    polygon.outer().reserve(5);
+    append_transformed_point(transform, half_x, half_y);
+    append_transformed_point(transform, half_x, -half_y);
+    append_transformed_point(transform, -half_x, -half_y);
+    append_transformed_point(transform, -half_x, half_y);
+    polygon.outer().push_back(polygon.outer().front());
+  } else if (shape.type == autoware_perception_msgs::msg::Shape::CYLINDER) {
+    const double radius = shape.dimensions.x / 2.0;
+    constexpr int circle_discrete_num = 6;
+
+    polygon.outer().reserve(circle_discrete_num + 1);
+    for (int i = 0; i < circle_discrete_num; ++i) {
+      const double theta =
+        (static_cast<double>(i) / static_cast<double>(circle_discrete_num)) * 2.0 * M_PI +
+        M_PI / static_cast<double>(circle_discrete_num);
+      append_transformed_point(transform, std::cos(theta) * radius, std::sin(theta) * radius);
+    }
+    polygon.outer().push_back(polygon.outer().front());
+  } else if (shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
+    polygon.outer().reserve(shape.footprint.points.size() + 1);
+    for (const auto & point : shape.footprint.points) {
+      append_transformed_point(transform, point.x, point.y);
+    }
+    if (!polygon.outer().empty()) {
+      polygon.outer().push_back(polygon.outer().front());
+    }
+  } else {
+    throw std::logic_error("The shape type is not supported in autoware_utils.");
+  }
+
+  return polygon;
 }
 
 }  // namespace geometry
@@ -689,21 +771,19 @@ std::optional<double> compute_distance_to_collision(
   const TrajectoryData & ego_trajectory,
   const autoware_perception_msgs::msg::PredictedObject & object)
 {
-  const auto object_footprint = autoware_utils_geometry::to_polygon2d(
-    object.kinematics.initial_pose_with_covariance.pose, object.shape);
-  const auto object_footprint_range =
-    boost::make_iterator_range(&object_footprint, &object_footprint + 1);
+  const auto object_footprint =
+    geometry::to_polygon2d(object.kinematics.initial_pose_with_covariance.pose, object.shape);
+  const auto object_envelope = boost::geometry::return_envelope<Box2d>(object_footprint);
 
-  if (!geometry::has_overall_convex_hull_overlap(
-        ego_trajectory.getFootprints(), object_footprint_range)) {
+  if (!boost::geometry::intersects(
+        ego_trajectory.get_or_compute_overall_envelope(), object_envelope)) {
     return std::nullopt;
   }
 
   for (size_t i = 0; i < ego_trajectory.size(); ++i) {
-    const auto & ego_footprint = ego_trajectory.getFootprints().at(i);
-    // todo(takagi): should be check in range of &ego_footprint-1, &ego_footprint+1.
-    const auto ego_footprint_range = boost::make_iterator_range(&ego_footprint, &ego_footprint + 1);
-    if (geometry::has_overall_convex_hull_overlap(ego_footprint_range, object_footprint_range)) {
+    const auto prev_i = (i == 0) ? 0 : (i - 1);
+    auto & ego_footprint = ego_trajectory.get_or_compute_convex(IndexRange{prev_i, i});
+    if (geometry::intersects_sat(ego_footprint, object_footprint)) {
       // todo(takagi): for precise calculation, intersection length should be considered.
       return ego_trajectory.getDistances().at(i);
     }
@@ -820,8 +900,6 @@ struct DracAssessment
 std::vector<TrajectoryData> generate_object_trajectories(
   const FilterContext & context, double required_time_horizon, double object_assumed_acceleration)
 {
-  const rclcpp::Duration objects_reference_time = compute_objects_reference_time(context);
-
   std::vector<TrajectoryData> object_trajectories{};
 
   if (context.predicted_objects) {
@@ -894,14 +972,14 @@ std::optional<Finding> find_collision_timing(
       bool has_intersects_before =
         boost::geometry::intersects(
           ref_envelope, test_trajectory.get_or_compute_envelope(test_time_range_before)) &&
-        boost::geometry::intersects(
+        geometry::intersects_sat(
           ref_convex, test_trajectory.get_or_compute_convex(test_time_range_before));
 
       const TimeRange test_time_range_after{ref_start_time + pet_range, ref_end_time + pet_range};
       bool has_intersects_after =
         boost::geometry::intersects(
           ref_envelope, test_trajectory.get_or_compute_envelope(test_time_range_after)) &&
-        boost::geometry::intersects(
+        geometry::intersects_sat(
           ref_convex, test_trajectory.get_or_compute_convex(test_time_range_after));
 
       if (!has_intersects_before && !has_intersects_after) {
@@ -1021,7 +1099,7 @@ Result assess(
     pet_collision_params.collision_time_threshold;
 
   auto constant_speed_object_trajectories =
-    generate_object_trajectories(context, required_object_time_horizon, 0.0);
+    generate_object_trajectories(context, required_object_time_horizon, -1.0);
 
   Result result{};
   result.planned_speed_findings = assess_planned_speed_collision_timing(
