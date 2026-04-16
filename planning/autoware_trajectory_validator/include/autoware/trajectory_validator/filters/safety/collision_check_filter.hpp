@@ -32,6 +32,7 @@
 #include <boost/range/iterator_range.hpp>
 
 #include <any>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -59,6 +60,27 @@ struct ObjectIdentification
   std::string classification;
   std::string id;
 };
+
+struct PetCollisionParams
+{
+  double ego_braking_delay;
+  double ego_assumed_acceleration;
+  double collision_time_threshold;
+};
+
+struct RssParams
+{
+  double ego_deceleration_threshold;
+  double stop_margin;
+  double ego_reaction_time;
+  double object_acceleration;
+};
+
+struct CollisionCheckParams{
+  PetCollisionParams pet_collision_params;
+  RssParams rss_params;
+};
+
 
 class TrajectoryData
 {
@@ -210,10 +232,38 @@ private:
   ContinuousDetectionTimes pet_continuous_times_;
   ContinuousDetectionTimes rss_continuous_times_;
   ContinuousDetectionTimes drac_continuous_times_;
+  std::map<std::string, CollisionCheckParams> collision_check_params_map_;
+
+  static inline const std::vector<std::string> k_collision_check_class_keys{
+    "unknown",     "car",      "truck",    "bus",        "trailer", "motorcycle", "bicycle",
+    "pedestrian",  "animal",   "hazard",   "over_drivable", "under_drivable"};
 
   void add_debug_markers(
     const rclcpp::Time & stamp, const std::string & ns, const Polygon2d & ego_hull,
     const Polygon2d & object_hull);
+
+  void create_collision_check_params_map(const validator::Params & params);
+
+  template <typename MapValue>
+  static double try_labeled_double_param(
+    const double base, const std::map<std::string, MapValue> & labels_map, const std::string & key);
+
+  static double try_to_get_param_value(
+    const validator::Params::CollisionCheck::PetCollision::EgoAssumedAcceleration & p,
+    const std::string & key);
+  static double try_to_get_param_value(
+    const validator::Params::CollisionCheck::PetCollision::CollisionTimeThreshold & p,
+    const std::string & key);
+  static double try_to_get_param_value(
+    const validator::Params::CollisionCheck::Rss::EgoDecelerationThreshold & p,
+    const std::string & key);
+  static double try_to_get_param_value(
+    const validator::Params::CollisionCheck::Rss::EgoReactionTime & p, const std::string & key);
+  static double try_to_get_param_value(
+    const validator::Params::CollisionCheck::Rss::ObjectAcceleration & p, const std::string & key);
+
+  static double try_to_get_param_value(double value, const std::string & key);
+
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety

@@ -30,41 +30,45 @@
        
         ego_assumed_acceleration:
           base: -3.0
-          pedestrian: -3.0
-          car: -6.0
-
-
-        ego_assumed_acceleration:
-          base: -4.0
-          pedestrian: -3.0
-          car: -6.0
+          pedestrian:
+            value: -6.0
+          car:
+            value: -1.0
 
         collision_time_threshold:
           base: 1.0
-          truck: 0.0
-          bus: 0.0
+          truck:
+            value: 0.0
+          bus:
+            value: 0.0
 
       rss:
         ego_deceleration_threshold:
           base: 4.0
-          over_drivable: 7.0
-          under_drivable: 6.0
+          over_drivable:
+            value: 7.0
+          under_drivable:
+            value: 6.0
         
         stop_margin: 2.0
         
         ego_reaction_time:
           base: 0.4
-          unknown: 0.5
-          car: 0.5
-          truck: 0.5
-          bus: 0.5
-
+          unknown:
+            value: 0.5
+          car:
+            value: 0.5
+          truck:
+            value: 0.5
+          bus:
+            value: 0.5
 
         object_acceleration:
           base: -1.0
-          over_drivable: -2.0
-          under_drivable: -2.0
-
+          over_drivable:
+            value: -2.0
+          under_drivable:
+            value: -2.0
 
 
     vehicle_constraint:

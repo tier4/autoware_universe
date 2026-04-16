@@ -30,8 +30,10 @@
 
 #include <algorithm>
 #include <any>
+#include <array>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -653,8 +655,8 @@ Assessment assess_required_deceleration(
   const double obj_long_vel = std::clamp(
     rss_deceleration::compute_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
   const double safe_distance = distance_to_collision.value() - rss_params.stop_margin +
-                               obj_long_vel * obj_long_vel * 0.5 / -rss_params.object_acceleration -
-                               ego_long_vel * rss_params.ego_reaction_time;
+                               obj_long_vel * obj_long_vel * 0.5 / -rss_params.object_acceleration.base -
+                               ego_long_vel * rss_params.ego_reaction_time.base;
 
   // compute required deceleration
   const double required_deceleration = safe_distance <= 0.0
@@ -683,7 +685,7 @@ Result assess(
       result.worst_assessment = assessment;
     }
 
-    if (assessment.required_deceleration > rss_params.ego_deceleration_threshold) {
+    if (assessment.required_deceleration > rss_params.ego_deceleration_threshold.base) {
       result.has_violation = true;
       result.violations.push_back(assessment);
     }
@@ -815,7 +817,7 @@ std::vector<Finding> assess_collision_timing(
 
   for (const auto & object_trajectory : object_trajectories) {
     auto finding = find_collision_timing(
-      ego_trajectory, object_trajectory, pet_collision_params.collision_time_threshold);
+      ego_trajectory, object_trajectory, pet_collision_params.collision_time_threshold.base);
     if (finding.has_value()) {
       findings.push_back(std::move(finding.value()));
     }
@@ -830,7 +832,7 @@ std::vector<Finding> assess_planned_speed_collision_timing(
   VehicleInfo & vehicle_info)
 {
   const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
-                                            -pet_collision_params.ego_assumed_acceleration +
+                                            -pet_collision_params.ego_assumed_acceleration.base +
                                           pet_collision_params.ego_braking_delay;
 
   // todo: use planned trajectory instead of constant speed assumption to fit the requirements.
@@ -838,7 +840,8 @@ std::vector<Finding> assess_planned_speed_collision_timing(
     context.odometry->twist.twist, 0.0, 0.0, ego_time_horizon_for_pet, traj_points, vehicle_info);
 
   auto object_trajectories = generate_object_trajectories(
-    context, ego_time_horizon_for_pet + pet_collision_params.collision_time_threshold, 0.0);
+    context,
+    ego_time_horizon_for_pet + pet_collision_params.collision_time_threshold.base, 0.0);
   return assess_collision_timing(ego_trajectory, object_trajectories, pet_collision_params);
 }
 
@@ -854,7 +857,7 @@ DracAssessment assess_drac(
   // Currently, the memory allocation in `generate_object_trajectories()` accounts for about half of
   // the total computation time of `is_feasible()`.
   const auto constant_speed_objects_trajectory = generate_object_trajectories(
-    context, ego_time_horizon + pet_collision_params.collision_time_threshold, 0.0);
+    context, ego_time_horizon + pet_collision_params.collision_time_threshold.base, 0.0);
 
   constexpr double DEFAULT_EGO_DECELERATION_STEP = 1.0;
   constexpr double DEFAULT_MAX_EGO_DECELERATION = 6.0;
@@ -906,10 +909,140 @@ Result assess(
 
 }  // namespace collision_timing_assessment
 
+
 void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
   pet_collision_params_ = params.collision_check.pet_collision;
   rss_params_ = params.collision_check.rss;
+  try {
+    create_collision_check_params_map(params);
+  } catch (const std::exception &) {
+    collision_check_params_map_.clear();
+    throw;
+  }
+}
+
+void CollisionCheckFilter::create_collision_check_params_map(const validator::Params & params)
+{
+  collision_check_params_map_.clear();
+
+  const auto & pet = params.collision_check.pet_collision;
+  const auto & rss = params.collision_check.rss;
+  static constexpr const char * k_base = "base";
+
+  CollisionCheckParams base_entry{};
+  base_entry.pet_collision_params.ego_braking_delay =
+    try_to_get_param_value(pet.ego_braking_delay, k_base);
+  base_entry.pet_collision_params.ego_assumed_acceleration =
+    try_to_get_param_value(pet.ego_assumed_acceleration, k_base);
+  base_entry.pet_collision_params.collision_time_threshold =
+    try_to_get_param_value(pet.collision_time_threshold, k_base);
+
+  base_entry.rss_params.ego_reaction_time =
+    try_to_get_param_value(rss.ego_reaction_time, k_base);
+  base_entry.rss_params.ego_deceleration_threshold =
+    try_to_get_param_value(rss.ego_deceleration_threshold, k_base);
+  base_entry.rss_params.object_acceleration =
+    try_to_get_param_value(rss.object_acceleration, k_base);
+  base_entry.rss_params.stop_margin = try_to_get_param_value(rss.stop_margin, k_base);
+
+  collision_check_params_map_[k_base] = base_entry;
+
+  for (const auto & key : k_collision_check_class_keys) {
+    CollisionCheckParams entry{};
+    entry.pet_collision_params.ego_braking_delay =
+      try_to_get_param_value(pet.ego_braking_delay, key);
+    entry.pet_collision_params.ego_assumed_acceleration =
+      try_to_get_param_value(pet.ego_assumed_acceleration, key);
+    entry.pet_collision_params.collision_time_threshold =
+      try_to_get_param_value(pet.collision_time_threshold, key);
+
+    entry.rss_params.ego_reaction_time =
+      try_to_get_param_value(rss.ego_reaction_time, key);
+    entry.rss_params.ego_deceleration_threshold =
+      try_to_get_param_value(rss.ego_deceleration_threshold, key);
+    entry.rss_params.object_acceleration =
+      try_to_get_param_value(rss.object_acceleration, key);
+    entry.rss_params.stop_margin = try_to_get_param_value(rss.stop_margin, key);
+
+    collision_check_params_map_[key] = entry;
+  }
+}
+
+template <typename MapValue>
+double CollisionCheckFilter::try_labeled_double_param(
+  const double base, const std::map<std::string, MapValue> & labels_map, const std::string & key)
+{
+  static constexpr const char k_base_key[] = "base";
+  if (key == k_base_key) {
+    return base;
+  }
+  const auto it = labels_map.find(key);
+  if (it == labels_map.end()) {
+    throw std::invalid_argument(fmt::format("Undefined collision_check parameter label '{}'.", key));
+  }
+  const double v = it->second.value;
+  return std::isnan(v) ? base : v;
+}
+
+using MapEgoAssumedAccelerationLabels =
+  validator::Params::CollisionCheck::PetCollision::EgoAssumedAcceleration::MapEgoAssumedAccelerationLabels;
+using MapCollisionTimeThresholdLabels =
+  validator::Params::CollisionCheck::PetCollision::CollisionTimeThreshold::MapCollisionTimeThresholdLabels;
+using MapEgoDecelerationThresholdLabels =
+  validator::Params::CollisionCheck::Rss::EgoDecelerationThreshold::MapEgoDecelerationThresholdLabels;
+using MapEgoReactionTimeLabels =
+  validator::Params::CollisionCheck::Rss::EgoReactionTime::MapEgoReactionTimeLabels;
+using MapObjectAccelerationLabels =
+  validator::Params::CollisionCheck::Rss::ObjectAcceleration::MapObjectAccelerationLabels;
+
+template double CollisionCheckFilter::try_labeled_double_param<MapEgoAssumedAccelerationLabels>(
+  const double, const std::map<std::string, MapEgoAssumedAccelerationLabels> &, const std::string &);
+template double CollisionCheckFilter::try_labeled_double_param<MapCollisionTimeThresholdLabels>(
+  const double, const std::map<std::string, MapCollisionTimeThresholdLabels> &, const std::string &);
+template double CollisionCheckFilter::try_labeled_double_param<MapEgoDecelerationThresholdLabels>(
+  const double, const std::map<std::string, MapEgoDecelerationThresholdLabels> &, const std::string &);
+template double CollisionCheckFilter::try_labeled_double_param<MapEgoReactionTimeLabels>(
+  const double, const std::map<std::string, MapEgoReactionTimeLabels> &, const std::string &);
+template double CollisionCheckFilter::try_labeled_double_param<MapObjectAccelerationLabels>(
+  const double, const std::map<std::string, MapObjectAccelerationLabels> &, const std::string &);
+
+double CollisionCheckFilter::try_to_get_param_value(
+  const validator::Params::CollisionCheck::PetCollision::EgoAssumedAcceleration & p,
+  const std::string & key)
+{
+  return try_labeled_double_param(p.base, p.ego_assumed_acceleration_labels_map, key);
+}
+
+double CollisionCheckFilter::try_to_get_param_value(
+  const validator::Params::CollisionCheck::PetCollision::CollisionTimeThreshold & p,
+  const std::string & key)
+{
+  return try_labeled_double_param(p.base, p.collision_time_threshold_labels_map, key);
+}
+
+double CollisionCheckFilter::try_to_get_param_value(
+  const validator::Params::CollisionCheck::Rss::EgoDecelerationThreshold & p, const std::string & key)
+{
+  return try_labeled_double_param(p.base, p.ego_deceleration_threshold_labels_map, key);
+}
+
+double CollisionCheckFilter::try_to_get_param_value(
+  const validator::Params::CollisionCheck::Rss::EgoReactionTime & p, const std::string & key)
+{
+  return try_labeled_double_param(p.base, p.ego_reaction_time_labels_map, key);
+}
+
+double CollisionCheckFilter::try_to_get_param_value(
+  const validator::Params::CollisionCheck::Rss::ObjectAcceleration & p, const std::string & key)
+{
+  return try_labeled_double_param(p.base, p.object_acceleration_labels_map, key);
+}
+
+double CollisionCheckFilter::try_to_get_param_value(double shared_value, const std::string & /*key*/)
+{
+  // Scalar parameters are not split per label; key is ignored.
+  return shared_value;
 }
 
 void CollisionCheckFilter::add_debug_markers(
@@ -1019,7 +1152,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     [](const auto & finding) { return finding.trajectory_id; });
   if (
     collision_timing_result.drac == std::nullopt ||
-    collision_timing_result.drac.value() >= -pet_collision_params_.ego_assumed_acceleration) {
+    collision_timing_result.drac.value() >=
+    -pet_collision_params_.ego_assumed_acceleration.base) {
     for (const auto & finding : collision_timing_result.drac_findings) {
       is_feasible = false;
   
