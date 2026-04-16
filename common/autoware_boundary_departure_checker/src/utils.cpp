@@ -112,10 +112,10 @@ std::optional<CriticalPointPair> apply_backward_buffer_and_filter(
 
   // Search backwards for the earliest point within the longitudinal buffer
   for (auto it = std::next(side_value.rbegin()); it != side_value.rend(); ++it) {
-    const double dist_between_proj =
-      bg::distance(result.physical_departure_point.pt_on_ego, it->pt_on_ego);
+    const double dist_between_footprint =
+      (result.physical_departure_point.dist_along_trajectory_m - it->dist_along_trajectory_m);
 
-    if (dist_between_proj >= param.longitudinal_margin_m) {
+    if (dist_between_footprint >= param.longitudinal_margin_m) {
       // dist_to_crash strictly increases, so we can stop searching.
       result.safety_buffer_start = *it;
       result.safety_buffer_start.departure_type = DepartureType::CRITICAL;
