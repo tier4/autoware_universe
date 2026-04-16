@@ -21,6 +21,7 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/duration.hpp>
 #include <rclcpp/time.hpp>
 
@@ -58,6 +59,7 @@ struct ObjectIdentification
 {
   std::string classification;
   std::string id;
+  builtin_interfaces::msg::Time stamp{};
 };
 
 class TrajectoryData
