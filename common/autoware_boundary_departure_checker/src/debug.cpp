@@ -105,6 +105,10 @@ MarkerArray create_evaluated_projection_markers(
       "map", curr_time, "critical_" + side_key_str + type, 0, line_list,
       autoware_utils_visualization::create_marker_scale(0.05, 0, 0), color);
 
+    if (footprints.size() <= projection_to_bound.pose_index) {
+      return marker;
+    }
+
     const auto & footprint = footprints.at(projection_to_bound.pose_index);
     for (size_t i = 0; i + 1 < footprint.size(); ++i) {
       const auto & p1 = footprint.at(i);
@@ -184,6 +188,10 @@ MarkerArray create_departure_footprint_marker(
       autoware_utils_visualization::create_marker_scale(0.05, 0, 0), color);
 
     if (projection_to_bound.is_none_departure()) {
+      return marker_ll;
+    }
+
+    if (footprints.size() <= projection_to_bound.pose_index) {
       return marker_ll;
     }
 
