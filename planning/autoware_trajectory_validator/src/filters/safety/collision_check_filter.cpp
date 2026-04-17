@@ -932,27 +932,28 @@ void CollisionCheckFilter::create_collision_check_params_map(const validator::Pa
   const std::function<CollisionCheckParams(const std::string &)> fill_entry =
     [&](const std::string & key) {
       CollisionCheckParams entry{};
-      entry.pet_collision_params.ego_braking_delay = try_labeled_double_param(pet.ego_braking_delay, key);
-      entry.pet_collision_params.ego_assumed_acceleration = try_labeled_double_param(
-        pet.ego_assumed_acceleration.base,
-        pet.ego_assumed_acceleration.ego_assumed_acceleration_labels_map, key);
-      entry.pet_collision_params.collision_time_threshold = try_labeled_double_param(
-        pet.collision_time_threshold.base,
-        pet.collision_time_threshold.collision_time_threshold_labels_map, key);
+      entry.pet_collision_params.ego_braking_delay = 
+        try_labeled_double_param(pet.ego_braking_delay, key);
+      entry.pet_collision_params.ego_assumed_acceleration = 
+        try_labeled_double_param(pet.ego_assumed_acceleration, key);
+      entry.pet_collision_params.collision_time_threshold =
+        try_labeled_double_param(pet.collision_time_threshold, key);
 
-      entry.rss_params.ego_reaction_time = try_labeled_double_param(
-        rss.ego_reaction_time.base, rss.ego_reaction_time.ego_reaction_time_labels_map, key);
-      entry.rss_params.ego_deceleration_threshold = try_labeled_double_param(
-        rss.ego_deceleration_threshold.base,
-        rss.ego_deceleration_threshold.ego_deceleration_threshold_labels_map, key);
-      entry.rss_params.object_acceleration = try_labeled_double_param(
-        rss.object_acceleration.base, rss.object_acceleration.object_acceleration_labels_map, key);
-      entry.rss_params.stop_margin = try_labeled_double_param(rss.stop_margin, key);
+      entry.rss_params.ego_reaction_time = 
+        try_labeled_double_param(rss.ego_reaction_time, key);
+      entry.rss_params.ego_deceleration_threshold = 
+        try_labeled_double_param(rss.ego_deceleration_threshold, key);
+      entry.rss_params.object_acceleration = 
+        try_labeled_double_param(rss.object_acceleration, key);
+      entry.rss_params.stop_margin = 
+        try_labeled_double_param(rss.stop_margin, key);
       return entry;
     };
 
-  static std::vector<std::string> all_class_keys =
-    pet.ego_assumed_acceleration.ego_assumed_acceleration_labels;
+  static std::vector<std::string> all_class_keys = {
+    "car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "animal",
+    "hazard", "over_drivable", "under_drivable", "unknown"
+  };
 
   static constexpr const char * k_base = "base";
   collision_check_params_map_[k_base] = fill_entry(k_base);
@@ -962,20 +963,45 @@ void CollisionCheckFilter::create_collision_check_params_map(const validator::Pa
   }
 }
 
-template <typename MapValue>
-double CollisionCheckFilter::try_labeled_double_param(
-  const double base, const std::map<std::string, MapValue> & labels_map, const std::string & key)
+template <typename ParamStruct>
+double CollisionCheckFilter::try_labeled_double_param(const ParamStruct & params_struct, const std::string & key)
 {
   static constexpr const char k_base_key[] = "base";
   if (key == k_base_key) {
-    return base;
+    return params_struct.base;
   }
-  const typename std::map<std::string, MapValue>::const_iterator it = labels_map.find(key);
-  if (it == labels_map.end()) {
-    throw std::invalid_argument(fmt::format("Undefined collision_check parameter label '{}'.", key));
+
+  double target_params = std::numeric_limits<double>::quiet_NaN();
+
+  if (key == "car") {
+    target_params =  params_struct.car;  // fallback to base if "car" specific value is not set
+  } else if (key == "truck") {
+    target_params =  params_struct.truck;  // fallback to base if "truck" specific value is not set
+  } else if (key == "bus") {
+    target_params =  params_struct.bus;  // fallback to base if "bus" specific value is not set
+  } else if (key == "trailer") {
+    target_params =  params_struct.trailer;  // fallback to base if "trailer" specific value is not set
+  } else if (key == "motorcycle") {
+    target_params =  params_struct.motorcycle;  // fallback to base if "motorcycle" specific value is not set
+  } else if (key == "bicycle") {
+    target_params =  params_struct.bicycle;  // fallback to base if "bicycle" specific value is not set
+  } else if (key == "pedestrian") {
+    target_params =  params_struct.pedestrian;
+  } else if (key == "animal") {
+    target_params =  params_struct.animal;
+  } else if (key == "hazard") {
+    target_params =  params_struct.hazard;
+  } else if (key == "over_drivable") {
+    target_params =  params_struct.over_drivable;
+  } else if (key == "under_drivable") {
+    target_params =  params_struct.under_drivable;
+  } else if (key == "unknown") {
+    target_params =  params_struct.unknown;
+  } else {
+    throw std::invalid_argument("Unknown label key: " + key);
   }
-  const double v = it->second.value;
-  return std::isnan(v) ? base : v;
+
+  return std::isnan(target_params) ? params_struct.base : target_params;
 }
 
 double CollisionCheckFilter::try_labeled_double_param(double shared_value, const std::string & /*key*/)

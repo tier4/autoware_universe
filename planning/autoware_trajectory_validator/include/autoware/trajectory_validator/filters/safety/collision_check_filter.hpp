@@ -240,9 +240,9 @@ private:
 
   void create_collision_check_params_map(const validator::Params & params);
 
-  template <typename MapValue>
+  template <typename ParamStruct>
   static double try_labeled_double_param(
-    const double base, const std::map<std::string, MapValue> & labels_map, const std::string & key);
+    const ParamStruct & params_struct, const std::string & key);
 
   static double try_labeled_double_param(double value, const std::string & key);
 
