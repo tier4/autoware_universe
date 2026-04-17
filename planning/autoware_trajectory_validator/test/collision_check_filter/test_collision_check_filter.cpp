@@ -64,6 +64,7 @@ protected:
     for (size_t i = 0; i <= 100; ++i) {
       TrajectoryPoint pt;
       pt.pose = create_pose(i * 1.0, 0.0, 0.0);
+      pt.time_from_start = rclcpp::Duration::from_seconds(i * 0.1);
       // do not initialize pt.twist
       traj.push_back(pt);
     }
@@ -230,10 +231,10 @@ TEST_F(CollisionCheckFilterTest, ObjectWillDepartFromPath)
   context.odometry = odom_msg;
 
   auto predicted_objects_msg = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
-  auto pose = create_pose(20.0, 0.0, M_PI_2);
+  auto pose = create_pose(25.0, 0.0, M_PI_2);
   auto twist = create_twist(10.0, 0.0);
   predicted_objects_msg->objects.push_back(create_dummy_object(
-    pose, twist, create_predicted_path(pose, twist), create_object_shape(5.0, 1.0)));
+    pose, twist, create_predicted_path(pose, twist), create_object_shape(1.0, 1.0)));
   context.predicted_objects = predicted_objects_msg;
 
   const auto result = filter_->is_feasible(ego_path, context);
