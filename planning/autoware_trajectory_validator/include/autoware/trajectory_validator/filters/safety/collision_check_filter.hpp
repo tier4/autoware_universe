@@ -234,10 +234,6 @@ private:
   ContinuousDetectionTimes drac_continuous_times_;
   std::map<std::string, CollisionCheckParams> collision_check_params_map_;
 
-  static inline const std::vector<std::string> k_collision_check_class_keys{
-    "unknown",     "car",      "truck",    "bus",        "trailer", "motorcycle", "bicycle",
-    "pedestrian",  "animal",   "hazard",   "over_drivable", "under_drivable"};
-
   void add_debug_markers(
     const rclcpp::Time & stamp, const std::string & ns, const Polygon2d & ego_hull,
     const Polygon2d & object_hull);
