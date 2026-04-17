@@ -133,6 +133,7 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
       yaw_diff <= params_.ego_snap_to_trajectory_yaw_threshold) {
       kinematic_state.pose.pose.position.x = snap_pose_mat(0, 3);
       kinematic_state.pose.pose.position.y = snap_pose_mat(1, 3);
+      kinematic_state.pose.pose.position.z = snap_pose_mat(2, 3);
       const Eigen::Quaterniond q(snap_pose_mat.block<3, 3>(0, 0));
       kinematic_state.pose.pose.orientation.x = q.x();
       kinematic_state.pose.pose.orientation.y = q.y();
