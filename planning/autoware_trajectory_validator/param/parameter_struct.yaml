@@ -69,62 +69,36 @@ validator:
           default_value: -4.0
           description: N/A
           read_only: false
-        ego_assumed_acceleration_labels:
-          type: string_array
-          default_value:
-            [
-              "unknown",
-              "car",
-              "truck",
-              "bus",
-              "trailer",
-              "motorcycle",
-              "bicycle",
-              "pedestrian",
-              "animal",
-              "hazard",
-              "over_drivable",
-              "under_drivable",
-            ]
-          description: Per-class overrides; NaN means use base.
-          read_only: false
-        __map_ego_assumed_acceleration_labels:
-          value:
-            type: double
-            default_value: .NAN
-            description: N/A
-            read_only: false
+        unknown: &pet_eaa { type: double, default_value: .NAN, description: N/A, read_only: false }
+        car: *pet_eaa
+        truck: *pet_eaa
+        bus: *pet_eaa
+        trailer: *pet_eaa
+        motorcycle: *pet_eaa
+        bicycle: *pet_eaa
+        pedestrian: *pet_eaa
+        animal: *pet_eaa
+        hazard: *pet_eaa
+        over_drivable: *pet_eaa
+        under_drivable: *pet_eaa
       collision_time_threshold:
         base:
           type: double
           default_value: 1.0
           description: N/A
           read_only: false
-        collision_time_threshold_labels:
-          type: string_array
-          default_value:
-            [
-              "unknown",
-              "car",
-              "truck",
-              "bus",
-              "trailer",
-              "motorcycle",
-              "bicycle",
-              "pedestrian",
-              "animal",
-              "hazard",
-              "over_drivable",
-              "under_drivable",
-            ]
-          description: Per-class overrides; NaN means use base.
-          read_only: false
-        __map_collision_time_threshold_labels:
-          value:
-            type: double
-            default_value: .NAN
-            description: N/A
-            read_only: false
+        unknown: &pet_ctt { type: double, default_value: .NAN, description: N/A, read_only: false }
+        car: *pet_ctt
+        truck: *pet_ctt
+        bus: *pet_ctt
+        trailer: *pet_ctt
+        motorcycle: *pet_ctt
+        bicycle: *pet_ctt
+        pedestrian: *pet_ctt
+        animal: *pet_ctt
+        hazard: *pet_ctt
+        over_drivable: *pet_ctt
+        under_drivable: *pet_ctt
     rss:
       ego_deceleration_threshold:
         base:
@@ -132,31 +106,18 @@ validator:
           default_value: 4.0
           description: N/A
           read_only: false
-        ego_deceleration_threshold_labels:
-          type: string_array
-          default_value:
-            [
-              "unknown",
-              "car",
-              "truck",
-              "bus",
-              "trailer",
-              "motorcycle",
-              "bicycle",
-              "pedestrian",
-              "animal",
-              "hazard",
-              "over_drivable",
-              "under_drivable",
-            ]
-          description: Per-class overrides; NaN means use base.
-          read_only: false
-        __map_ego_deceleration_threshold_labels:
-          value:
-            type: double
-            default_value: .NAN
-            description: N/A
-            read_only: false
+        unknown:  &rss_edt { type: double, default_value: .NAN, description: N/A, read_only: false }
+        car: *rss_edt
+        truck: *rss_edt
+        bus: *rss_edt
+        trailer: *rss_edt
+        motorcycle: *rss_edt
+        bicycle: *rss_edt
+        pedestrian: *rss_edt
+        animal: *rss_edt
+        hazard: *rss_edt
+        over_drivable: *rss_edt
+        under_drivable: *rss_edt
       stop_margin:
         type: double
         default_value: 2.0
@@ -168,62 +129,36 @@ validator:
           default_value: 0.4
           description: N/A
           read_only: false
-        ego_reaction_time_labels:
-          type: string_array
-          default_value:
-            [
-              "unknown",
-              "car",
-              "truck",
-              "bus",
-              "trailer",
-              "motorcycle",
-              "bicycle",
-              "pedestrian",
-              "animal",
-              "hazard",
-              "over_drivable",
-              "under_drivable",
-            ]
-          description: Per-class overrides; NaN means use base.
-          read_only: false
-        __map_ego_reaction_time_labels:
-          value:
-            type: double
-            default_value: .NAN
-            description: N/A
-            read_only: false
+        unknown: &rss_ert { type: double, default_value: .NAN, description: N/A, read_only: false }
+        car: *rss_ert
+        truck: *rss_ert
+        bus: *rss_ert
+        trailer: *rss_ert
+        motorcycle: *rss_ert
+        bicycle: *rss_ert
+        pedestrian: *rss_ert
+        animal: *rss_ert
+        hazard: *rss_ert
+        over_drivable: *rss_ert
+        under_drivable: *rss_ert
       object_acceleration:
         base:
           type: double
           default_value: -1.0
           description: N/A
           read_only: false
-        object_acceleration_labels:
-          type: string_array
-          default_value:
-            [
-              "unknown",
-              "car",
-              "truck",
-              "bus",
-              "trailer",
-              "motorcycle",
-              "bicycle",
-              "pedestrian",
-              "animal",
-              "hazard",
-              "over_drivable",
-              "under_drivable",
-            ]
-          description: Per-class overrides; NaN means use base.
-          read_only: false
-        __map_object_acceleration_labels:
-          value:
-            type: double
-            default_value: .NAN
-            description: N/A
-            read_only: false
+        unknown:  &rss_oa { type: double, default_value: .NAN, description: N/A, read_only: false }
+        car: *rss_oa
+        truck: *rss_oa
+        bus: *rss_oa
+        trailer: *rss_oa
+        motorcycle: *rss_oa
+        bicycle: *rss_oa
+        pedestrian: *rss_oa
+        animal: *rss_oa
+        hazard: *rss_oa
+        over_drivable: *rss_oa
+        under_drivable: *rss_oa
 
   traffic_light:
     deceleration_limit:
