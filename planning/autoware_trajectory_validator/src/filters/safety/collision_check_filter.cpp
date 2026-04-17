@@ -995,18 +995,21 @@ std::optional<Finding> find_collision_timing(
         continue;
       }
 
-      // todo(takagi): restrict the copy until return.
+      // todo: restrict the copy until return.
       const auto & object_identification = test_trajectory.getObjectIdentification();
       const double pet = has_intersects_before ? -pet_range : pet_range;
       const auto & object_poly = test_trajectory.get_or_compute_convex(
         has_intersects_before ? test_time_range_before : test_time_range_after);
 
-      candidate_finding = Finding{object_identification.id,
-                                  object_identification,
-                                  pet,
-                                  ref_start_time,
-                                  ref_convex,
-                                  object_poly};
+      candidate_finding = Finding{
+        to_trajectory_id_string(object_identification),
+        object_identification,
+        pet,
+        ref_start_time,
+        ref_trajectory.getPoses(),
+        test_trajectory.getPoses(),
+        ref_convex,
+        object_poly};
       break;
     }
     if (candidate_finding.has_value() && candidate_finding->pet == 0.0) {
