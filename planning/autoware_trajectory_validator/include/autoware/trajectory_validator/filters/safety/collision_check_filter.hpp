@@ -28,6 +28,7 @@
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <unique_identifier_msgs/msg/uuid.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <boost/range/iterator_range.hpp>
@@ -58,8 +59,9 @@ static constexpr double TIME_RESOLUTION = 0.1;  // 100ms intervals
 struct ObjectIdentification
 {
   std::string classification;
-  std::string id;
   builtin_interfaces::msg::Time stamp{};
+  unique_identifier_msgs::msg::UUID uuid{};
+  std::string trajectory_suffix{};
 };
 
 class TrajectoryData
@@ -83,23 +85,22 @@ public:
   {
     if (times_.empty()) {
       throw std::invalid_argument(
-        "Trajectory must not be empty classification: " + object_identification_.classification +
-        ", ID: " + object_identification_.id);
+        "Trajectory must not be empty classification: " + object_identification_.classification);
     }
     if (times_.size() != distances_.size()) {
       throw std::invalid_argument(
         "Trajectory sizes mismatch (times vs distances) classification: " +
-        object_identification_.classification + ", ID: " + object_identification_.id);
+        object_identification_.classification);
     }
     if (times_.size() != poses_.size()) {
       throw std::invalid_argument(
         "Trajectory sizes mismatch (times vs poses) classification: " +
-        object_identification_.classification + ", ID: " + object_identification_.id);
+        object_identification_.classification);
     }
     if (times_.size() != footprints_.size()) {
       throw std::invalid_argument(
         "Trajectory sizes mismatch (times vs footprints) classification: " +
-        object_identification_.classification + ", ID: " + object_identification_.id);
+        object_identification_.classification);
     }
   }
 
@@ -214,8 +215,12 @@ private:
   ContinuousDetectionTimes drac_continuous_times_;
 
   void add_debug_markers(
-    const rclcpp::Time & stamp, const std::string & ns, const Polygon2d & ego_hull,
-    const Polygon2d & object_hull);
+    const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
+    const PoseTrajectory & ego_trajectory, const PoseTrajectory & object_trajectory,
+    const Polygon2d & ego_hull, const Polygon2d & object_hull);
+  void add_error_text_marker(
+    const rclcpp::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
+    const std::string & error_msg);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety

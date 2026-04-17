@@ -17,6 +17,7 @@
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
+#include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_trajectory_validator/msg/metric_report.hpp>
@@ -134,6 +135,8 @@ private:
    * @param reports Validation reports to publish
    */
   void publish_validation_reports(const std::vector<ValidationReport> & reports);
+  void add_planning_factors(
+    const autoware_internal_planning_msgs::msg::PlanningFactorArray & planning_factors);
 
   validator::ParamListener listener_;
   validator::Params params_;
@@ -176,6 +179,8 @@ private:
   // Tools
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};
   DiagnosticsInterface diagnostics_interface_{this, "trajectory_validator"};
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    planning_factor_interface_;
 
   // Emergency-stop fallback (evaluation use only).
   std::unique_ptr<PseudoEmergencyStopHandler> pseudo_emergency_stop_handler_;
