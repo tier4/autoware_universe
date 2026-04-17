@@ -48,6 +48,8 @@ public:
 
   void update_parameters([[maybe_unused]] const validator::Params & params) final {}
 
+  [[nodiscard]] bool is_shadow_mode() const final { return false; }
+
 private:
   DummyFilterParam params_;
 };

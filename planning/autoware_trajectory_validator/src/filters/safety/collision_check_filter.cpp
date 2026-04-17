@@ -22,6 +22,7 @@
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 
+#include <autoware_internal_planning_msgs/msg/control_point.hpp>
 #include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
 #include <autoware_internal_planning_msgs/msg/safety_factor.hpp>
 #include <autoware_internal_planning_msgs/msg/safety_factor_array.hpp>
@@ -1192,11 +1193,6 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   // autoware_utils::StopWatch<std::chrono::microseconds> stopwatch;
   // stopwatch.tic();
   std::string error_msg{};
-  auto publish_planning_factors = [&]() {
-    if (planning_factor_interface_) {
-      planning_factor_interface_->publish();
-    }
-  };
 
   if (
     (!context.predicted_objects || context.predicted_objects->objects.empty()) &&
@@ -1205,7 +1201,6 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     pet_continuous_times_.clear();
     rss_continuous_times_.clear();
     drac_continuous_times_.clear();
-    publish_planning_factors();
     return {};  // No objects to check collision with
   }
 
@@ -1213,26 +1208,35 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     pet_continuous_times_.clear();
     rss_continuous_times_.clear();
     drac_continuous_times_.clear();
-    publish_planning_factors();
     return {};  // No trajectory to check
   }
 
   bool is_feasible = true;
   std::vector<MetricReport> metrics;
+  autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors;
 
   const rclcpp::Time current_time = context.odometry->header.stamp;
-  const auto add_collision_planning_factor =
-    [&](const collision_timing_assessment::Finding & finding, const std::string & collision_type) {
-      if (!planning_factor_interface_) {
-        return;
-      }
-      const auto safety_factors =
-        make_safety_factor_array(context.odometry->header.stamp, finding, collision_type);
-      planning_factor_interface_->add(
-        traj_points, context.odometry->pose.pose, context.odometry->pose.pose,
-        autoware_internal_planning_msgs::msg::PlanningFactor::STOP, safety_factors, true, 0.0, 0.0,
-        collision_type);
-    };
+  const auto add_collision_planning_factor = [&](
+                                               const collision_timing_assessment::Finding & finding,
+                                               const std::string & collision_type) {
+    const auto safety_factors =
+      make_safety_factor_array(context.odometry->header.stamp, finding, collision_type);
+    const auto control_point =
+      autoware_internal_planning_msgs::build<autoware_internal_planning_msgs::msg::ControlPoint>()
+        .pose(context.odometry->pose.pose)
+        .velocity(0.0)
+        .shift_length(0.0)
+        .distance(0.0);
+    auto factor =
+      autoware_internal_planning_msgs::build<autoware_internal_planning_msgs::msg::PlanningFactor>()
+        .module("")
+        .is_driving_forward(true)
+        .control_points({control_point})
+        .behavior(autoware_internal_planning_msgs::msg::PlanningFactor::STOP)
+        .detail(collision_type)
+        .safety_factors(safety_factors);
+    planning_factors.factors.push_back(std::move(factor));
+  };
 
   const auto collision_timing_result = collision_timing_assessment::assess(
     traj_points, context, pet_collision_params_, *vehicle_info_ptr_);
@@ -1336,9 +1340,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     RCLCPP_WARN(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", error_msg.c_str());
     add_error_text_marker(context.odometry->header.stamp, context.odometry->pose.pose, error_msg);
   }
-  publish_planning_factors();
 
-  return ValidationResult{is_feasible, std::move(metrics)};
+  return ValidationResult{is_feasible, std::move(metrics), std::move(planning_factors)};
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety
