@@ -1079,6 +1079,11 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
 
   const rclcpp::Time current_time = context.odometry->header.stamp;
 
+
+  // please get params like this way .
+  //  CollisionCheckParams base_params = collision_check_params_map_["base"];  // default parameters
+
+
   const auto collision_timing_result = collision_timing_assessment::assess(
     traj_points, context, pet_collision_params_, *vehicle_info_ptr_);
 
