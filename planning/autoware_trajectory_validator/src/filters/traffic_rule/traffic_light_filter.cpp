@@ -142,7 +142,13 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   if (const auto has_invalid_input = is_invalid_input(context, vehicle_info_ptr_)) {
-    return tl::make_unexpected(*has_invalid_input);
+    std::vector<MetricReport> metrics{autoware_trajectory_validator::build<MetricReport>()
+                                        .validator_name(get_name())
+                                        .validator_category(category())
+                                        .metric_name("insufficient_input")
+                                        .metric_value(0.0)
+                                        .level(MetricReport::ERROR)};
+    return ValidationResult{false, std::move(metrics)};
   }
   TrajectoryPoints trajectory;
   lanelet::BasicLineString2d trajectory_ls;

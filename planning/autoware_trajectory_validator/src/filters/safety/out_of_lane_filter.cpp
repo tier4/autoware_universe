@@ -78,7 +78,13 @@ OutOfLaneFilter::result_t OutOfLaneFilter::is_feasible(
   if (
     !context.lanelet_map || !context.odometry || traj_points.empty() ||
     !boundary_departure_checker_) {
-    return tl::make_unexpected("Insufficient context data");
+    std::vector<MetricReport> metrics{autoware_trajectory_validator::build<MetricReport>()
+                                        .validator_name(get_name())
+                                        .validator_category(category())
+                                        .metric_name("insufficient_input")
+                                        .metric_value(0.0)
+                                        .level(MetricReport::ERROR)};
+    return ValidationResult{false, std::move(metrics)};
   }
 
   const auto path = convert_to_path_with_lane_id(traj_points, params_.max_check_time);

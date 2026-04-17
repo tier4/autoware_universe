@@ -147,8 +147,7 @@ TEST_F(CollisionCheckFilterTest, EmptyObjects)
 
   const auto result = filter_->is_feasible(ego_path, context);
 
-  ASSERT_TRUE(result.has_value());
-  EXPECT_TRUE(result.value().is_feasible);
+  EXPECT_TRUE(result.is_feasible);
 }
 
 TEST_F(CollisionCheckFilterTest, NeuralNetworkPredictedObjectsAreAlsoChecked)
@@ -182,11 +181,10 @@ TEST_F(CollisionCheckFilterTest, NeuralNetworkPredictedObjectsAreAlsoChecked)
 
   const auto result = filter_->is_feasible(ego_path, context);
 
-  ASSERT_TRUE(result.has_value());
-  EXPECT_FALSE(result.value().is_feasible);
+  EXPECT_FALSE(result.is_feasible);
 
   bool found_diffusion_metric = false;
-  for (const auto & metric : result.value().metrics) {
+  for (const auto & metric : result.metrics) {
     if (metric.metric_name.find("diffusion_based_trajectory") != std::string::npos) {
       found_diffusion_metric = true;
       break;
@@ -215,8 +213,7 @@ TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)
 
   const auto result = filter_->is_feasible(ego_path, context);
 
-  ASSERT_TRUE(result.has_value());
-  EXPECT_FALSE(result.value().is_feasible);
+  EXPECT_FALSE(result.is_feasible);
 }
 
 TEST_F(CollisionCheckFilterTest, ObjectWillDepartFromPath)
@@ -239,8 +236,7 @@ TEST_F(CollisionCheckFilterTest, ObjectWillDepartFromPath)
 
   const auto result = filter_->is_feasible(ego_path, context);
 
-  ASSERT_TRUE(result.has_value());
-  EXPECT_TRUE(result.value().is_feasible);
+  EXPECT_TRUE(result.is_feasible);
 }
 
 TEST_F(CollisionCheckFilterTest, ObjectWillEnterPath)
@@ -263,8 +259,7 @@ TEST_F(CollisionCheckFilterTest, ObjectWillEnterPath)
 
   const auto result = filter_->is_feasible(ego_path, context);
 
-  ASSERT_TRUE(result.has_value());
-  EXPECT_FALSE(result.value().is_feasible);
+  EXPECT_FALSE(result.is_feasible);
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety

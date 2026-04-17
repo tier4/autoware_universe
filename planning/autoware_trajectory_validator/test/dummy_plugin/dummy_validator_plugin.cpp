@@ -35,15 +35,26 @@ public:
     const TrajectoryPoints & traj_points, const FilterContext & /*context*/) final
   {
     if (traj_points.empty()) {
-      return tl::make_unexpected("Empty trajectory");
+      std::vector<MetricReport> metrics{autoware_trajectory_validator::build<MetricReport>()
+                                          .validator_name(get_name())
+                                          .validator_category(category())
+                                          .metric_name("empty_trajectory")
+                                          .metric_value(0.0)
+                                          .level(MetricReport::ERROR)};
+      return ValidationResult{false, std::move(metrics)};
     }
 
     // Magic trigger: If we set velocity to -999.0 in our test, simulate a plugin rejection
-    if (traj_points.front().longitudinal_velocity_mps == -999.0) {
-      return tl::make_unexpected("Dummy filter explicitly rejected this trajectory");
-    }
+    const auto is_feasible = traj_points.front().longitudinal_velocity_mps != -999.0;
 
-    return {};  // All other trajectories are feasible
+    std::vector<MetricReport> metrics{
+      autoware_trajectory_validator::build<MetricReport>()
+        .validator_name(get_name())
+        .validator_category(category())
+        .metric_name("explicit_rejection")
+        .metric_value(0.0)
+        .level(is_feasible ? MetricReport::OK : MetricReport::ERROR)};
+    return ValidationResult{is_feasible, std::move(metrics)};
   }
 
   void update_parameters([[maybe_unused]] const validator::Params & params) final {}

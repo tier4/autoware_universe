@@ -204,20 +204,12 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
       stop_watch.tic(evaluation.plugin_name);
 
       const auto res = plugin->is_feasible(trajectory.points, context);
-      if (!res) {
-        evaluation.is_feasible = false;
-        evaluation.reason = res.error();
-      } else {
-        const auto & val = res.value();
-        evaluation.is_feasible = evaluation.is_feasible && val.is_feasible;
-        if (!val.is_feasible) {
-          evaluation.reason = "Found failed metrics";
-        }
-        metrics.insert(metrics.end(), val.metrics.begin(), val.metrics.end());
-        add_planning_factors(val.planning_factors);
-      }
+      evaluation.is_feasible = res.is_feasible;
+      metrics.insert(metrics.end(), res.metrics.begin(), res.metrics.end());
+      add_planning_factors(res.planning_factors);
 
       if (!evaluation.is_feasible) {
+        evaluation.reason = "Found failed metrics";
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000, "[%s] %s", plugin->get_name().c_str(),
           evaluation.reason.c_str());

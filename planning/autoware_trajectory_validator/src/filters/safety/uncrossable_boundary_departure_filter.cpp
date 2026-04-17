@@ -25,13 +25,25 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   if (const auto has_invalid_input = is_invalid_input(context)) {
-    return tl::make_unexpected(*has_invalid_input);
+    std::vector<MetricReport> metrics{autoware_trajectory_validator::build<MetricReport>()
+                                        .validator_name(get_name())
+                                        .validator_category(category())
+                                        .metric_name("insufficient_input")
+                                        .metric_value(0.0)
+                                        .level(MetricReport::ERROR)};
+    return ValidationResult{false, std::move(metrics)};
   }
 
   if (!is_initialized_) {
     uncrossable_boundary_checker_.set_lanelet_map(context.lanelet_map);
     if (const auto init = uncrossable_boundary_checker_.initialize(); !init) {
-      return tl::make_unexpected(init.error());
+      std::vector<MetricReport> metrics{autoware_trajectory_validator::build<MetricReport>()
+                                          .validator_name(get_name())
+                                          .validator_category(category())
+                                          .metric_name("boundary_initialization_failure")
+                                          .metric_value(0.0)
+                                          .level(MetricReport::ERROR)};
+      return ValidationResult{false, std::move(metrics)};
     }
     is_initialized_ = true;
   }
@@ -46,7 +58,13 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
     uncrossable_boundary_checker_.check_departure(traj_points, *vehicle_info_ptr_, ego_state);
 
   if (!departure_data) {
-    return tl::make_unexpected(departure_data.error());
+    std::vector<MetricReport> metrics{autoware_trajectory_validator::build<MetricReport>()
+                                        .validator_name(get_name())
+                                        .validator_category(category())
+                                        .metric_name("no_departure_data")
+                                        .metric_value(0.0)
+                                        .level(MetricReport::ERROR)};
+    return ValidationResult{false, std::move(metrics)};
   }
 
   const bool is_feasible =
