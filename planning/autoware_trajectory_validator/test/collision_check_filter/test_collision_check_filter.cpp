@@ -146,8 +146,7 @@ TEST_F(CollisionCheckFilterTest, EmptyObjects)
 
   const auto result = filter_->is_feasible(ego_path, context);
 
-  ASSERT_TRUE(result.has_value());
-  EXPECT_TRUE(result.value().is_feasible);
+  EXPECT_TRUE(result.is_feasible);
 }
 
 TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)
@@ -170,8 +169,7 @@ TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)
 
   const auto result = filter_->is_feasible(ego_path, context);
 
-  ASSERT_TRUE(result.has_value());
-  EXPECT_FALSE(result.value().is_feasible);
+  EXPECT_FALSE(result.is_feasible);
 }
 
 TEST_F(CollisionCheckFilterTest, ObjectWillDepartFromPath)
@@ -194,8 +192,7 @@ TEST_F(CollisionCheckFilterTest, ObjectWillDepartFromPath)
 
   const auto result = filter_->is_feasible(ego_path, context);
 
-  ASSERT_TRUE(result.has_value());
-  EXPECT_TRUE(result.value().is_feasible);
+  EXPECT_TRUE(result.is_feasible);
 }
 
 TEST_F(CollisionCheckFilterTest, ObjectWillEnterPath)
@@ -218,8 +215,7 @@ TEST_F(CollisionCheckFilterTest, ObjectWillEnterPath)
 
   const auto result = filter_->is_feasible(ego_path, context);
 
-  ASSERT_TRUE(result.has_value());
-  EXPECT_FALSE(result.value().is_feasible);
+  EXPECT_FALSE(result.is_feasible);
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety

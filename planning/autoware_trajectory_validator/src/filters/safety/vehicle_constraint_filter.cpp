@@ -119,7 +119,13 @@ VehicleConstraintFilter::result_t VehicleConstraintFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext &)
 {
   if (!vehicle_info_ptr_) {
-    return tl::make_unexpected("Vehicle info not set");
+    std::vector<MetricReport> metrics{autoware_trajectory_validator::build<MetricReport>()
+                                        .validator_name(get_name())
+                                        .validator_category(category())
+                                        .metric_name("insufficient_input")
+                                        .metric_value(0.0)
+                                        .level(MetricReport::ERROR)};
+    return {false, std::move(metrics)};
   }
 
   // NOTE: Feasibility decision logic might be more complex in the future, but for now we just

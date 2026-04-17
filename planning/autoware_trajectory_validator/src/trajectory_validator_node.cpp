@@ -200,16 +200,9 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
       stop_watch.tic(evaluation.plugin_name);
 
       const auto res = plugin->is_feasible(trajectory.points, context);
-      if (!res) {
-        evaluation.is_feasible = false;
-        evaluation.reason = res.error();
-      } else {
-        const auto & val = res.value();
-        evaluation.is_feasible = evaluation.is_feasible && val.is_feasible;
-        if (!val.is_feasible) {
-          evaluation.reason = "Found failed metrics";
-        }
-        metrics.insert(metrics.end(), val.metrics.begin(), val.metrics.end());
+      evaluation.is_feasible = res.is_feasible;
+      if (!res.is_feasible) {
+        evaluation.reason = "Found failed metrics";
       }
 
       if (!evaluation.is_feasible) {

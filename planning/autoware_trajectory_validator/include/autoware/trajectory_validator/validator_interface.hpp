@@ -50,7 +50,7 @@ struct ValidationResult
 class ValidatorInterface
 {
 public:
-  using result_t = tl::expected<ValidationResult, std::string>;
+  using result_t = ValidationResult;
 
   explicit ValidatorInterface(std::string name) : name_(std::move(name)) {}
 
