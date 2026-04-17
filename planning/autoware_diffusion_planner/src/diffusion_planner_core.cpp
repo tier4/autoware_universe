@@ -102,48 +102,38 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
       utils::shift_x(kinematic_state.pose.pose, vehicle_spec_.base_link_to_center);
   }
 
-  // Snap ego position to closest point on previous trajectory
+  // Snap ego pose to the previous prediction's 0.1s-ahead point
+  // (= index 0, which corresponds to the current time given 10Hz planning)
   if (
     params_.ego_snap_to_trajectory_threshold > 0.0 && !last_agent_poses_map_.empty() &&
     !last_agent_poses_map_[0].empty() && !last_agent_poses_map_[0][0].empty()) {
     constexpr int64_t batch_idx = 0;
     constexpr int64_t agent_idx = 0;
+    constexpr size_t snap_idx = 0;
     const auto & prev_poses = last_agent_poses_map_[batch_idx][agent_idx];
-
-    double min_dist_sq = std::numeric_limits<double>::max();
-    size_t closest_idx = 0;
+    const Eigen::Matrix4d & snap_pose_mat = prev_poses[snap_idx];
 
     const double ego_x = kinematic_state.pose.pose.position.x;
     const double ego_y = kinematic_state.pose.pose.position.y;
+    const double dx = snap_pose_mat(0, 3) - ego_x;
+    const double dy = snap_pose_mat(1, 3) - ego_y;
+    const double dist = std::sqrt(dx * dx + dy * dy);
 
-    for (size_t i = 0; i < prev_poses.size(); ++i) {
-      const double dx = prev_poses[i](0, 3) - ego_x;
-      const double dy = prev_poses[i](1, 3) - ego_y;
-      const double dist_sq = dx * dx + dy * dy;
-      if (dist_sq < min_dist_sq) {
-        min_dist_sq = dist_sq;
-        closest_idx = i;
-      }
-    }
-
-    const double min_dist = std::sqrt(min_dist_sq);
     const double ego_yaw = std::atan2(
       2.0 * (kinematic_state.pose.pose.orientation.w * kinematic_state.pose.pose.orientation.z +
              kinematic_state.pose.pose.orientation.x * kinematic_state.pose.pose.orientation.y),
       1.0 -
         2.0 * (kinematic_state.pose.pose.orientation.y * kinematic_state.pose.pose.orientation.y +
                 kinematic_state.pose.pose.orientation.z * kinematic_state.pose.pose.orientation.z));
-    const double snap_yaw =
-      std::atan2(prev_poses[closest_idx](1, 0), prev_poses[closest_idx](0, 0));
+    const double snap_yaw = std::atan2(snap_pose_mat(1, 0), snap_pose_mat(0, 0));
     const double yaw_diff = std::abs(std::remainder(snap_yaw - ego_yaw, 2.0 * M_PI));
 
     if (
-      min_dist <= params_.ego_snap_to_trajectory_threshold &&
+      dist <= params_.ego_snap_to_trajectory_threshold &&
       yaw_diff <= params_.ego_snap_to_trajectory_yaw_threshold) {
-      const Eigen::Matrix4d & closest_pose_mat = prev_poses[closest_idx];
-      kinematic_state.pose.pose.position.x = closest_pose_mat(0, 3);
-      kinematic_state.pose.pose.position.y = closest_pose_mat(1, 3);
-      const Eigen::Quaterniond q(closest_pose_mat.block<3, 3>(0, 0));
+      kinematic_state.pose.pose.position.x = snap_pose_mat(0, 3);
+      kinematic_state.pose.pose.position.y = snap_pose_mat(1, 3);
+      const Eigen::Quaterniond q(snap_pose_mat.block<3, 3>(0, 0));
       kinematic_state.pose.pose.orientation.x = q.x();
       kinematic_state.pose.pose.orientation.y = q.y();
       kinematic_state.pose.pose.orientation.z = q.z();
