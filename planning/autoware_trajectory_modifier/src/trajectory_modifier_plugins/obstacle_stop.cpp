@@ -94,6 +94,8 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
       {utils::obstacle_stop::ObjectType::CAR, p.object_decel.car},
       {utils::obstacle_stop::ObjectType::TRUCK, p.object_decel.truck},
       {utils::obstacle_stop::ObjectType::BUS, p.object_decel.bus},
+      {utils::obstacle_stop::ObjectType::TRAILER, p.object_decel.trailer},
+      {utils::obstacle_stop::ObjectType::MOTORCYCLE, p.object_decel.motorcycle},
       {utils::obstacle_stop::ObjectType::BICYCLE, p.object_decel.bicycle},
       {utils::obstacle_stop::ObjectType::PEDESTRIAN, p.object_decel.pedestrian}};
   }
@@ -247,52 +249,29 @@ size_t update_velocities(TrajectoryPoints & trajectory, const double jerk, const
   if (trajectory.size() < 2) return 0;
 
   auto get_vel_accel = [&](
-                         const auto & point, const auto & ref_point,
-                         const bool backward) -> std::pair<double, double> {
+                         const auto & point, const auto & ref_point) -> std::pair<double, double> {
     const auto v_ref = ref_point.longitudinal_velocity_mps;
-    const auto a_ref =
-      backward ? std::abs(ref_point.acceleration_mps2) : ref_point.acceleration_mps2;
+    const auto a_ref = std::abs(ref_point.acceleration_mps2);
 
     const auto ds = autoware_utils::calc_distance2d(point.pose.position, ref_point.pose.position);
     const auto da = jerk * (ds / std::max<double>(v_ref, 0.1));
-    const auto a_curr = backward ? std::min(a_ref + da, decel) : a_ref - da;
+    const auto a_curr = std::min(a_ref + da, decel);
     const auto a_avg = (a_ref + a_curr) / 2.0;
     const auto v_curr = std::sqrt(std::max(0.0, v_ref * v_ref + 2.0 * a_avg * ds));
-    return {v_curr, a_curr};
+    return {v_curr, -1.0 * a_curr};
   };
 
   const auto stop_index = trajectory.size() - 1;
   auto vel_update_start_index = stop_index;
   for (int i = static_cast<int>(stop_index) - 1; i > 0; --i) {
     auto & curr = trajectory.at(i);
-    const auto & next = trajectory.at(i + 1);
-    const auto [v_curr, a_curr] = get_vel_accel(curr, next, true);
+    auto & next = trajectory.at(i + 1);
+    const auto [v_curr, a_curr] = get_vel_accel(curr, next);
 
     if (v_curr >= curr.longitudinal_velocity_mps) break;
     curr.longitudinal_velocity_mps = static_cast<float>(v_curr);
-    curr.acceleration_mps2 = static_cast<float>(a_curr) * -1.0f;
+    curr.acceleration_mps2 = static_cast<float>(a_curr);
     vel_update_start_index = i;
-  }
-
-  const auto start_idx = std::max<int>(static_cast<int>(vel_update_start_index), 1);
-  for (int i = start_idx; i <= static_cast<int>(stop_index); ++i) {
-    auto & curr = trajectory.at(i);
-    const auto & prev = trajectory.at(i - 1);
-    const auto [v_curr, a_curr] = get_vel_accel(curr, prev, false);
-
-    if (v_curr <= curr.longitudinal_velocity_mps) {
-      auto j = std::max(i - 3, 1);
-      auto stop = std::min(i + 3, static_cast<int>(stop_index));
-      for (; j < stop; ++j) {
-        auto v_sum = trajectory.at(j - 1).longitudinal_velocity_mps +
-                     trajectory.at(j).longitudinal_velocity_mps +
-                     trajectory.at(j + 1).longitudinal_velocity_mps;
-        trajectory.at(j).longitudinal_velocity_mps = v_sum / 3.0f;
-      }
-      break;
-    }
-    curr.longitudinal_velocity_mps = v_curr;
-    curr.acceleration_mps2 = a_curr;
   }
   return vel_update_start_index;
 }
@@ -348,7 +327,7 @@ bool ObstacleStop::apply_stopping(
     std::abs(params_.maximum_stopping_decel));
 
   const auto vel_update_start_index = update_velocities(trajectory, jerk, decel);
-  auto interpolate_start_index = vel_update_start_index > 0 ? vel_update_start_index - 1 : 0;
+  const auto interpolate_start_index = vel_update_start_index > 0 ? vel_update_start_index - 1 : 0;
 
   auto trajectory_interpolation_util =
     InterpolationTrajectory::Builder{}
@@ -492,15 +471,17 @@ std::optional<CollisionPoint> ObstacleStop::check_pointcloud(const TrajectoryPoi
   {
     autoware_utils_debug::ScopedTimeTrack st("ObstacleStop::filter_pointcloud", *get_time_keeper());
     const auto & bounding_box = debug_data_.trajectory_shape.bounding_box;
-    const auto rel_min_point = autoware_utils::inverse_transform_point(
+    const auto rel_min_corner = autoware_utils::inverse_transform_point(
       bounding_box.min_corner().to_3d(), data_->current_odometry->pose.pose);
-    const auto rel_max_point = autoware_utils::inverse_transform_point(
+    const auto rel_max_corner = autoware_utils::inverse_transform_point(
       bounding_box.max_corner().to_3d(), data_->current_odometry->pose.pose);
+    constexpr double buffer = 1.0;
+    const auto [min_x, max_x] = std::minmax(rel_min_corner.x(), rel_max_corner.x());
+    const auto [min_y, max_y] = std::minmax(rel_min_corner.y(), rel_max_corner.y());
     const auto min_z = params_.pointcloud.min_height;
     const auto max_z = data_->vehicle_info.vehicle_height_m + params_.pointcloud.height_buffer;
     pointcloud_filter_->filter_pointcloud(
-      filtered_pointcloud, rel_min_point.x(), rel_max_point.x(), rel_min_point.y(),
-      rel_max_point.y(), min_z, max_z);
+      filtered_pointcloud, min_x - buffer, max_x + buffer, min_y - buffer, max_y + buffer, min_z, max_z);
   }
 
   PointCloud::Ptr clustered_points(new PointCloud);
@@ -561,6 +542,7 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
   const auto ego_z = data_->current_odometry->pose.pose.position.z;
   const auto white = autoware_utils::create_marker_color(1.0, 1.0, 1.0, 1.0);
   const auto yellow = autoware_utils::create_marker_color(1.0, 1.0, 0.0, 1.0);
+  const auto magenta = autoware_utils::create_marker_color(1.0, 0.0, 1.0, 1.0);
 
   auto add_point_marker = [&](
                             const geometry_msgs::msg::Point & point, const std::string & ns,
@@ -594,7 +576,7 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
 
   int id = 0;
   for (const auto & traj_polygon : debug_data_.trajectory_shape.polygon) {
-    add_polygon_marker(traj_polygon, ns + "/traj_polygon", id, white);
+    add_polygon_marker(traj_polygon, ns + "/traj_polygon", id, yellow);
     id++;
   }
 
@@ -610,12 +592,12 @@ void ObstacleStop::publish_debug_data(const std::string & ns) const
   }
 
   for (const auto & target_polygon : debug_data_.target_polygons) {
-    add_polygon_marker(target_polygon, ns + "/target_objects", id, yellow);
+    add_polygon_marker(target_polygon, ns + "/target_objects", id, magenta);
     id++;
   }
 
   for (const auto & target_pcd_point : debug_data_.target_pcd_points) {
-    add_point_marker(target_pcd_point, ns + "/target_pcd", id, yellow, 0.25);
+    add_point_marker(target_pcd_point, ns + "/target_pcd", id, magenta, 0.25);
     id++;
   }
 
