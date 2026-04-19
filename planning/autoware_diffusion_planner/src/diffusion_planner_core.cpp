@@ -20,8 +20,15 @@
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
+
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
 #include <autoware_internal_planning_msgs/msg/generator_info.hpp>
+
+#include <lanelet2_core/geometry/LaneletMap.h>
+#include <tf2/utils.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -35,6 +42,166 @@
 
 namespace autoware::diffusion_planner
 {
+
+namespace
+{
+
+// Mimic of autoware_perfect_tracker's Z interpolation along the followed trajectory.
+double interpolate_z_from_trajectory(
+  const Trajectory & trajectory, const double x, const double y, const double fallback_z)
+{
+  if (trajectory.points.size() < 2) {
+    return fallback_z;
+  }
+
+  double min_dist_sq = std::numeric_limits<double>::max();
+  size_t closest_idx = 0;
+  for (size_t i = 0; i < trajectory.points.size(); ++i) {
+    const auto & p = trajectory.points[i];
+    const double dx = p.pose.position.x - x;
+    const double dy = p.pose.position.y - y;
+    const double d2 = dx * dx + dy * dy;
+    if (d2 < min_dist_sq) {
+      min_dist_sq = d2;
+      closest_idx = i;
+    }
+  }
+
+  size_t prev_idx = closest_idx;
+  size_t next_idx = closest_idx + 1;
+  if (next_idx >= trajectory.points.size()) {
+    next_idx = closest_idx;
+    prev_idx = (closest_idx > 0) ? closest_idx - 1 : 0;
+  } else if (closest_idx > 0) {
+    const auto & p_curr = trajectory.points[closest_idx];
+    const auto & p_next = trajectory.points[next_idx];
+    const double dx = p_next.pose.position.x - p_curr.pose.position.x;
+    const double dy = p_next.pose.position.y - p_curr.pose.position.y;
+    const double vx = x - p_curr.pose.position.x;
+    const double vy = y - p_curr.pose.position.y;
+    if ((dx * vx + dy * vy) < 0.0) {
+      next_idx = closest_idx;
+      prev_idx = closest_idx - 1;
+    }
+  }
+
+  const auto & p1 = trajectory.points[prev_idx];
+  const auto & p2 = trajectory.points[next_idx];
+  const double dx = p2.pose.position.x - p1.pose.position.x;
+  const double dy = p2.pose.position.y - p1.pose.position.y;
+  const double dz = p2.pose.position.z - p1.pose.position.z;
+  const double len_sq = dx * dx + dy * dy;
+  if (len_sq < 1e-6) {
+    return p1.pose.position.z;
+  }
+  const double vx = x - p1.pose.position.x;
+  const double vy = y - p1.pose.position.y;
+  double t = (vx * dx + vy * dy) / len_sq;
+  t = std::clamp(t, 0.0, 1.0);
+  return p1.pose.position.z + t * dz;
+}
+
+// Mimic of autoware_perfect_tracker's pitch lookup from the nearest lanelet centerline.
+double calculate_pitch_from_map(
+  const lanelet::LaneletMap & lanelet_map, const geometry_msgs::msg::Pose & pose)
+{
+  const lanelet::BasicPoint2d search_point(pose.position.x, pose.position.y);
+  const auto nearest_lanelets =
+    lanelet::geometry::findNearest(lanelet_map.laneletLayer, search_point, 1);
+  if (nearest_lanelets.empty()) {
+    return 0.0;
+  }
+
+  const lanelet::ConstLanelet ego_lanelet = nearest_lanelets[0].second;
+  std::vector<geometry_msgs::msg::Point> centerline_points;
+  for (const auto & point : ego_lanelet.centerline()) {
+    geometry_msgs::msg::Point cp;
+    cp.x = point.basicPoint().x();
+    cp.y = point.basicPoint().y();
+    cp.z = point.basicPoint().z();
+    centerline_points.push_back(cp);
+  }
+  if (centerline_points.size() < 2) {
+    return 0.0;
+  }
+
+  const size_t seg_idx =
+    autoware::motion_utils::findNearestSegmentIndex(centerline_points, pose.position);
+  const auto & prev_point = centerline_points.at(seg_idx);
+  const auto & next_point = centerline_points.at(seg_idx + 1);
+
+  const double road_yaw =
+    std::atan2(next_point.y - prev_point.y, next_point.x - prev_point.x);
+  const double car_yaw = tf2::getYaw(pose.orientation);
+  const double yaw_diff = car_yaw - road_yaw;
+  const double diff_z = next_point.z - prev_point.z;
+  const double diff_xy = std::hypot(next_point.x - prev_point.x, next_point.y - prev_point.y);
+  const double projected_run = diff_xy / std::cos(yaw_diff);
+  const bool reverse_sign = std::cos(yaw_diff) < 0.0;
+  return reverse_sign ? -std::atan2(-diff_z, -projected_run)
+                      : -std::atan2(diff_z, projected_run);
+}
+
+// One tick of autoware_perfect_tracker's update algorithm applied to `odom` in place.
+// Snaps to the closest trajectory point, Euler-integrates X/Y with the current yaw,
+// snaps yaw to the trajectory, then updates Z and pitch from the trajectory and map.
+void apply_perfect_tracker_step(
+  nav_msgs::msg::Odometry & odom, geometry_msgs::msg::AccelWithCovarianceStamped & accel,
+  const Trajectory & trajectory, const lanelet::LaneletMap * lanelet_map_ptr, const double dt)
+{
+  if (trajectory.points.empty()) {
+    return;
+  }
+
+  const double cx = odom.pose.pose.position.x;
+  const double cy = odom.pose.pose.position.y;
+
+  double min_dist_sq = std::numeric_limits<double>::max();
+  size_t closest_idx = 0;
+  for (size_t i = 0; i < trajectory.points.size(); ++i) {
+    const auto & p = trajectory.points[i];
+    const double dx = cx - p.pose.position.x;
+    const double dy = cy - p.pose.position.y;
+    const double d2 = dx * dx + dy * dy;
+    if (d2 < min_dist_sq) {
+      min_dist_sq = d2;
+      closest_idx = i;
+    }
+  }
+  const auto & target_pt = trajectory.points[closest_idx];
+
+  // Set dynamics targets from the trajectory point (same as perfect_tracker).
+  odom.twist.twist.linear.x = target_pt.longitudinal_velocity_mps;
+  odom.twist.twist.angular.z = target_pt.heading_rate_rps;
+  accel.accel.accel.linear.x = target_pt.acceleration_mps2;
+
+  // Euler integration on X/Y using the OLD yaw and the target longitudinal velocity.
+  const double current_yaw = tf2::getYaw(odom.pose.pose.orientation);
+  const double v_target = target_pt.longitudinal_velocity_mps;
+  odom.pose.pose.position.x = cx + v_target * std::cos(current_yaw) * dt;
+  odom.pose.pose.position.y = cy + v_target * std::sin(current_yaw) * dt;
+
+  // Snap yaw to the trajectory point yaw.
+  const double next_yaw = tf2::getYaw(target_pt.pose.orientation);
+
+  // Z from trajectory interpolation at the NEW (x, y).
+  odom.pose.pose.position.z = interpolate_z_from_trajectory(
+    trajectory, odom.pose.pose.position.x, odom.pose.pose.position.y,
+    odom.pose.pose.position.z);
+
+  // Pitch from map at the NEW (x, y); roll is forced to zero like perfect_tracker.
+  // Perfect_tracker evaluates pitch before applying next_yaw, so the pose here still
+  // carries the pre-update yaw — match that behavior.
+  double pitch = 0.0;
+  if (lanelet_map_ptr != nullptr) {
+    pitch = calculate_pitch_from_map(*lanelet_map_ptr, odom.pose.pose);
+  }
+
+  odom.pose.pose.orientation =
+    autoware_utils_geometry::create_quaternion_from_rpy(0.0, pitch, next_yaw);
+}
+
+}  // namespace
 
 DiffusionPlannerCore::DiffusionPlannerCore(
   const DiffusionPlannerParams & params, const VehicleInfo & vehicle_info)
@@ -66,6 +233,7 @@ void DiffusionPlannerCore::update_params(const DiffusionPlannerParams & params)
 void DiffusionPlannerCore::set_map(
   const std::shared_ptr<const lanelet::LaneletMap> & lanelet_map_ptr)
 {
+  lanelet_map_ptr_ = lanelet_map_ptr;
   lane_segment_context_ = std::make_unique<preprocess::LaneSegmentContext>(
     lanelet_map_ptr, params_.line_string_max_step_m);
 }
@@ -96,7 +264,47 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
     return std::nullopt;
   }
 
-  Odometry kinematic_state = *ego_kinematic_state;
+  // --- Internal "perfect tracker" -----------------------------------------------------------
+  // Drive a virtual ego state forward using the previous output trajectory, and use that
+  // virtual state in place of the observed kinematic state. This mirrors what
+  // autoware_perfect_tracker would do externally, but keeps everything self-contained so that
+  // inference is conditioned on a world in which control is assumed to follow perfectly.
+  if (!virtual_ego_state_) {
+    virtual_ego_state_ = *ego_kinematic_state;
+    virtual_ego_acceleration_ = *ego_acceleration;
+  } else if (last_output_trajectory_ && !last_output_trajectory_->points.empty()) {
+    const double dt = (params_.planning_frequency_hz > 0.0)
+                        ? 1.0 / params_.planning_frequency_hz
+                        : 0.1;
+    apply_perfect_tracker_step(
+      *virtual_ego_state_, *virtual_ego_acceleration_, *last_output_trajectory_,
+      lanelet_map_ptr_.get(), dt);
+  }
+
+  // Safety fallback: if the virtual state has drifted more than 1 m from the real EKF
+  // position, snap it back to the real state so the model never sees a grossly stale pose.
+  constexpr double kVirtualStateMaxDriftM = 1.0;
+  const double drift_dx =
+    virtual_ego_state_->pose.pose.position.x - ego_kinematic_state->pose.pose.position.x;
+  const double drift_dy =
+    virtual_ego_state_->pose.pose.position.y - ego_kinematic_state->pose.pose.position.y;
+  const double drift_dz =
+    virtual_ego_state_->pose.pose.position.z - ego_kinematic_state->pose.pose.position.z;
+  if (
+    (drift_dx * drift_dx + drift_dy * drift_dy + drift_dz * drift_dz) >
+    (kVirtualStateMaxDriftM * kVirtualStateMaxDriftM)) {
+    virtual_ego_state_ = *ego_kinematic_state;
+    virtual_ego_acceleration_ = *ego_acceleration;
+  }
+  // Preserve incoming header/frame ids but swap in the virtual pose, twist, and acceleration.
+  auto effective_ego_kinematic_state = std::make_shared<Odometry>(*ego_kinematic_state);
+  effective_ego_kinematic_state->pose.pose = virtual_ego_state_->pose.pose;
+  effective_ego_kinematic_state->twist.twist = virtual_ego_state_->twist.twist;
+  auto effective_ego_acceleration =
+    std::make_shared<AccelWithCovarianceStamped>(*ego_acceleration);
+  effective_ego_acceleration->accel.accel = virtual_ego_acceleration_->accel.accel;
+
+  Odometry kinematic_state = *effective_ego_kinematic_state;
   if (params_.shift_x) {
     kinematic_state.pose.pose =
       utils::shift_x(kinematic_state.pose.pose, vehicle_spec_.base_link_to_center);
@@ -129,11 +337,13 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   preprocess::process_traffic_signals(
     traffic_signals, traffic_light_id_map_, current_time, traffic_light_msg_timeout_s);
 
-  // Create frame context
+  // Create frame context — note we use the virtual (perfect-tracker-driven) ego state here
+  // so that downstream consumers (base position for trajectory, twist checks, etc.) see the
+  // same state the model was conditioned on.
   const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
   const FrameContext frame_context{
-    *ego_kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
-    frame_time};
+    *effective_ego_kinematic_state, *effective_ego_acceleration, ego_to_map_transform,
+    processed_neighbor_histories, frame_time};
 
   return frame_context;
 }
@@ -389,6 +599,10 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
                                 : turn_indicators_history_.back().report;
   output.turn_indicator_command =
     turn_indicator_manager_.evaluate(first_turn_indicator_logit, timestamp, prev_report);
+
+  // Cache the published trajectory so the next create_frame_context() call can advance the
+  // virtual ego state along it, exactly as autoware_perfect_tracker would do externally.
+  last_output_trajectory_ = output.trajectory;
 
   return output;
 }

@@ -291,6 +291,14 @@ private:
   // Lanelet map
   LaneletRoute::ConstSharedPtr route_ptr_;
   std::unique_ptr<preprocess::LaneSegmentContext> lane_segment_context_;
+  std::shared_ptr<const lanelet::LaneletMap> lanelet_map_ptr_;
+
+  // Internal "perfect tracker" virtual ego state driven by this planner's own output.
+  // The virtual state replaces the observed kinematic state on the next tick so that
+  // the model sees a world in which control perfectly follows the planner's output.
+  std::optional<nav_msgs::msg::Odometry> virtual_ego_state_;
+  std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> virtual_ego_acceleration_;
+  std::optional<Trajectory> last_output_trajectory_;
 };
 
 }  // namespace autoware::diffusion_planner
