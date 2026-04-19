@@ -106,6 +106,13 @@ struct CollisionPoint
   }
 };
 
+struct ObjectState
+{
+  double arc_length;
+  double lon_vel;
+  geometry_msgs::msg::Point nearest_point;
+};
+
 struct TrajectoryShape
 {
   MultiPolygon2d polygon;
@@ -117,7 +124,8 @@ struct TrajectoryShape
 struct DebugData
 {
   PointCloud2::SharedPtr cluster_points;
-  PointCloud2::SharedPtr voxel_points;
+  PointCloud2::SharedPtr filtered_points;
+  PredictedObjects filtered_objects;
   MultiPolygon2d target_polygons;
   TrajectoryShape trajectory_shape;
   std::vector<geometry_msgs::msg::Point> target_pcd_points;
