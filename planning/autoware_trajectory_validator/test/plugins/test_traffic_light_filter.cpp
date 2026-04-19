@@ -159,7 +159,11 @@ TEST_F(TrafficLightFilterTest, IsFeasibleEmptyInput)
   std::vector<TrajectoryPoint> points;
   create_and_set_map(0, 0);
   set_traffic_light_signal(0, TrafficLightElement::RED);
-  EXPECT_TRUE(filter_->is_feasible(points, context_).has_value())
+
+  const auto result = filter_->is_feasible(points, context_);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible)
     << "Empty trajectory should always be feasible (cannot cross a traffic light if empty)";
 }
 
@@ -204,7 +208,10 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithRedLightIntersection)
   // Trajectory crossing stop line (0 -> 10)
   auto points = create_trajectory(0.0, 10.0);
 
-  EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
+  const auto result = filter_->is_feasible(points, context_);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible)
     << "Should return false when crossing red light stop line";
 }
 
@@ -219,8 +226,10 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithGreenLight)
   // Trajectory crossing stop line (0 -> 10)
   auto points = create_trajectory(0.0, 10.0);
 
-  EXPECT_TRUE(filter_->is_feasible(points, context_).has_value())
-    << "Should return true for green light";
+  const auto result = filter_->is_feasible(points, context_);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible) << "Should return true for green light";
 }
 
 TEST_F(TrafficLightFilterTest, IsFeasibleWithRedLightNoIntersection)
@@ -234,8 +243,10 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithRedLightNoIntersection)
   // Trajectory stops before stop line (0 -> 4)
   auto points = create_trajectory(0.0, 4.0);
 
-  EXPECT_TRUE(filter_->is_feasible(points, context_).has_value())
-    << "Should return true if red light is not crossed";
+  const auto result = filter_->is_feasible(points, context_);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible) << "Should return true if red light is not crossed";
 }
 
 TEST_F(TrafficLightFilterTest, IsInfeasibleWithFrontOverhang)
@@ -253,7 +264,10 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithFrontOverhang)
   vehicle_info.max_longitudinal_offset_m = 2.0;
   filter_->set_vehicle_info(vehicle_info);
 
-  EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
+  const auto result = filter_->is_feasible(points, context_);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible)
     << "Should return false when crossing red light stop line";
 }
 
@@ -273,8 +287,10 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStop)
 
   auto points = create_trajectory(0.0, 30.0, 5.0);
 
-  EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
-    << "Should return false if amber light can be stopped";
+  const auto result = filter_->is_feasible(points, context_);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible) << "Should return false if amber light can be stopped";
 }
 
 TEST_F(TrafficLightFilterTest, IsFeasibleWithAmberLightCannotStop)
@@ -296,7 +312,10 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithAmberLightCannotStop)
 
   auto points = create_trajectory(0.0, 10.0, 10.0);
 
-  EXPECT_TRUE(filter_->is_feasible(points, context_).has_value())
+  const auto result = filter_->is_feasible(points, context_);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible)
     << "Should return true if amber light cannot be stopped but is reachable";
 }
 
@@ -324,8 +343,10 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStopAndCannotPass)
 
   auto points = create_trajectory(0.0, 200.0, 10.0);
 
-  EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
-    << "Should return false if ego can stop but cannot pass";
+  const auto result = filter_->is_feasible(points, context_);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible) << "Should return false if ego can stop but cannot pass";
 }
 
 TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightAsRedLight)
@@ -347,7 +368,10 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightAsRedLight)
   // it should be rejected because it's treated as red.
   auto points = create_trajectory(0.0, 10.0, 10.0);
 
-  EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
+  const auto result = filter_->is_feasible(points, context_);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible)
     << "Should return false for amber light when treat_amber_light_as_red_light is true";
 }
 
@@ -384,7 +408,10 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithStopDistanceMargin)
     points.push_back(tp2);
     points.push_back(tp3);
 
-    EXPECT_TRUE(filter_->is_feasible(points, context_).has_value())
+    const auto result = filter_->is_feasible(points, context_);
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result.value().is_feasible)
       << "Should return true if stopped within margin beyond stop line";
   }
 
@@ -407,15 +434,20 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithStopDistanceMargin)
     points.push_back(tp2);
     points.push_back(tp3);
 
-    EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
-      << "Should return false if stopped beyond margin";
+    const auto result = filter_->is_feasible(points, context_);
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result.value().is_feasible) << "Should return false if stopped beyond margin";
   }
 
   {
     // Case 3: Crosses stop line without stopping.
     auto points = create_trajectory(0.0, 20.0, 5.0);
-    EXPECT_FALSE(filter_->is_feasible(points, context_).has_value())
-      << "Should return false if crossing without stopping";
+
+    const auto result = filter_->is_feasible(points, context_);
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result.value().is_feasible) << "Should return false if crossing without stopping";
   }
 }
 

@@ -19,6 +19,7 @@
 
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
+#include <autoware_utils/geometry/geometry.hpp>
 #include <nlohmann/json.hpp>
 
 #include <diagnostic_msgs/msg/detail/diagnostic_status__struct.hpp>
@@ -129,8 +130,12 @@ PlanningEvaluatorNode::~PlanningEvaluatorNode()
     json output_json;
     for (OutputMetric metric : metrics_for_output_) {
       const json j = metrics_accumulator_.getOutputJson(metric);
-      if (!j.empty()) {
-        output_json[output_metric_to_str.at(metric)] = j;
+      if (j.empty()) {
+        continue;
+      }
+      const std::string base_name = output_metric_to_str.at(metric) + "/";
+      for (const auto & item : j.items()) {
+        output_json[base_name + item.key()] = item.value();
       }
     }
 
@@ -163,9 +168,9 @@ PlanningEvaluatorNode::~PlanningEvaluatorNode()
       RCLCPP_ERROR(this->get_logger(), "Failed to open file: %s", output_file_str.c_str());
     }
   } catch (const std::exception & e) {
-    std::cerr << "Exception in MotionEvaluatorNode destructor: " << e.what() << std::endl;
+    std::cerr << "Exception in PlanningEvaluatorNode destructor: " << e.what() << std::endl;
   } catch (...) {
-    std::cerr << "Unknown exception in MotionEvaluatorNode destructor" << std::endl;
+    std::cerr << "Unknown exception in PlanningEvaluatorNode destructor" << std::endl;
   }
 }
 
@@ -380,6 +385,10 @@ void PlanningEvaluatorNode::onModifiedGoal(
     return;
   }
   auto start = now();
+  const auto is_ego_stopped_near_goal =
+    std::abs(ego_state_ptr->twist.twist.linear.x) < 0.001 &&
+    autoware_utils::calc_distance2d(
+      ego_state_ptr->pose.pose.position, modified_goal_msg->pose.position) < 3.0;
 
   for (Metric metric : metrics_for_publish_) {
     const auto metric_stat = metrics_calculator_.calculate(
@@ -388,9 +397,8 @@ void PlanningEvaluatorNode::onModifiedGoal(
       continue;
     }
     AddMetricMsg(metric, *metric_stat);
-    if (
-      output_metrics_ && std::abs(ego_state_ptr->twist.twist.linear.x) < 0.001 &&
-      metric_stat->mean() < 3.0) {  // only record when ego stop close to the target in 3m
+    if (output_metrics_ && is_ego_stopped_near_goal) {  // only record when ego stop close to the
+                                                        // target in 3m
       const OutputMetric output_metric = str_to_output_metric.at(metric_to_str.at(metric));
       metrics_accumulator_.accumulate(output_metric, *metric_stat);
     }

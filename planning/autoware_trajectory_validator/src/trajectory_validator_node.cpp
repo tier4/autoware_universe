@@ -15,6 +15,7 @@
 #include "autoware/trajectory_validator/trajectory_validator_node.hpp"
 
 #include "autoware/trajectory_validator/filter_context.hpp"
+#include "autoware/trajectory_validator/pseudo_emergency_stop_handler.hpp"
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <autoware_utils_system/stop_watch.hpp>
@@ -36,7 +37,6 @@
 
 namespace
 {
-// for error diagnostic. Will be removed once node is combined.
 std::unordered_map<std::string, std::string> get_generator_uuid_to_name_map(
   const autoware_internal_planning_msgs::msg::CandidateTrajectories & candidate_trajectories)
 {
@@ -46,21 +46,6 @@ std::unordered_map<std::string, std::string> get_generator_uuid_to_name_map(
     uuid_to_name[autoware_utils_uuid::to_hex_string(info.generator_id)] = info.generator_name.data;
   }
   return uuid_to_name;
-}
-
-bool has_trajectory_from_generator(
-  const std::unordered_map<std::string, std::string> & uuid_to_generator_name_map,
-  const autoware_internal_planning_msgs::msg::CandidateTrajectories & trajectories,
-  const std::string & generator_name_prefix)
-{
-  return std::any_of(
-    trajectories.candidate_trajectories.cbegin(), trajectories.candidate_trajectories.cend(),
-    [&](const autoware_internal_planning_msgs::msg::CandidateTrajectory & trajectory) {
-      const auto generator_id_str = autoware_utils_uuid::to_hex_string(trajectory.generator_id);
-      const auto generator_name_it = uuid_to_generator_name_map.find(generator_id_str);
-      return generator_name_it != uuid_to_generator_name_map.end() &&
-             generator_name_it->second.rfind(generator_name_prefix, 0) == 0;
-    });
 }
 
 visualization_msgs::msg::MarkerArray create_internal_state_text(
@@ -142,7 +127,15 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
 
   pub_processing_time_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
   pub_debug_markers_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
+  pub_validation_reports_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
+  planning_factor_interface_ =
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+      this, "trajectory_validator");
+
+  pseudo_emergency_stop_handler_ = std::make_unique<PseudoEmergencyStopHandler>(*this);
 }
+
+TrajectoryValidator::~TrajectoryValidator() = default;
 
 void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr msg)
 {
@@ -161,6 +154,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   }
 
   context.predicted_objects = sub_objects_.take_data();
+  context.neural_network_predicted_objects = sub_neural_network_objects_.take_data();
   if (!context.predicted_objects) {
     return;
   }
@@ -189,38 +183,74 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   diagnostics_interface_.clear();
   evaluation_tables_.clear();
 
+  const auto uuid_to_name = get_generator_uuid_to_name_map(*msg);
+
   auto filtered_msg = std::make_unique<CandidateTrajectories>();
   diagnostics_interface_.clear();
+  size_t num_feasible_trajectories = 0;
+  std::vector<ValidationReport> reports;
+
   for (const auto & trajectory : msg->candidate_trajectories) {
     EvaluationTable table;
-    table.generator_id = autoware_utils_uuid::to_hex_string(trajectory.generator_id);
-    table.is_overall_feasible = true;
+    const auto hex_generator_id = autoware_utils_uuid::to_hex_string(trajectory.generator_id);
+    table.generator_id = hex_generator_id;
 
+    std::vector<MetricReport> metrics;
     for (const auto & plugin : plugins_) {
       PluginEvaluation evaluation;
       evaluation.plugin_name = plugin->get_name();
+      evaluation.is_shadow_mode = plugin->is_shadow_mode();
+
       stop_watch.tic(evaluation.plugin_name);
 
-      if (const auto res = plugin->is_feasible(trajectory.points, context); !res) {
-        RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 1000, "Not feasible: %s", res.error().c_str());
-        diagnostics_interface_.add_key_value(plugin->get_name(), res.error());
-
+      const auto res = plugin->is_feasible(trajectory.points, context);
+      if (!res) {
         evaluation.is_feasible = false;
         evaluation.reason = res.error();
-
-        if (!plugin->is_debug_mode()) {
-          table.is_overall_feasible = false;
+      } else {
+        const auto & val = res.value();
+        evaluation.is_feasible = evaluation.is_feasible && val.is_feasible;
+        if (!val.is_feasible) {
+          evaluation.reason = "Found failed metrics";
         }
+        metrics.insert(metrics.end(), val.metrics.begin(), val.metrics.end());
+        add_planning_factors(val.planning_factors);
       }
-      processing_time_ms[evaluation.plugin_name] += stop_watch.toc(evaluation.plugin_name);
 
+      if (!evaluation.is_feasible) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000, "[%s] %s", plugin->get_name().c_str(),
+          evaluation.reason.c_str());
+      }
+
+      diagnostics_interface_.add_key_value(
+        plugin->get_name(), evaluation.is_feasible ? std::string("OK") : std::string("NG"));
+      processing_time_ms[evaluation.plugin_name] += stop_watch.toc(evaluation.plugin_name);
       table.evaluations[plugin->category()].push_back(evaluation);
     }
 
     evaluation_tables_.push_back(table);
 
-    if (table.is_overall_feasible) filtered_msg->candidate_trajectories.push_back(trajectory);
+    if (table.all_acceptable()) filtered_msg->candidate_trajectories.push_back(trajectory);
+
+    const auto all_feasible = table.all_feasible();
+    if (all_feasible) ++num_feasible_trajectories;
+
+    reports.push_back(autoware_trajectory_validator::build<ValidationReport>()
+                        .trajectory_stamp(trajectory.header.stamp)
+                        .generator_id(trajectory.generator_id)
+                        .generator_name(uuid_to_name.at(hex_generator_id))
+                        .level(all_feasible ? ValidationReport::OK : ValidationReport::ERROR)
+                        .metrics(std::move(metrics)));
+  }
+
+  if (params_.pseudo_emergency_stop.enable) {
+    // NOTE(odashima): this fallback is ad-hoc and for evaluation only.
+    stop_watch.tic("handle_pseudo_emergency_stop");
+    pseudo_emergency_stop_handler_->handle(
+      *msg, *filtered_msg, evaluation_tables_, context, params_);
+    processing_time_ms["handle_pseudo_emergency_stop"] =
+      stop_watch.toc("handle_pseudo_emergency_stop");
   }
 
   // Also filter generator_info to match kept trajectories
@@ -243,7 +273,9 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   }
   publish_processing_time(processing_time_ms);
   publish_internal_state(processing_time_ms, evaluation_tables_, context.odometry->pose.pose);
-  update_diagnostic(*msg, *filtered_msg);
+  update_diagnostic(*msg, num_feasible_trajectories);
+  publish_validation_reports(reports);
+  planning_factor_interface_->publish();
   pub_trajectories_->publish(*filtered_msg);
 }
 
@@ -303,25 +335,19 @@ void TrajectoryValidator::unload_metric(const std::string & name)
 }
 
 void TrajectoryValidator::update_diagnostic(
-  const CandidateTrajectories & input_trajectories,
-  const CandidateTrajectories & filtered_trajectories)
+  const CandidateTrajectories & input_trajectories, const size_t num_feasible_trajectories)
 {
-  const auto uuid_to_name_map = get_generator_uuid_to_name_map(input_trajectories);
-  const auto input_has_diffusion_trajectories =
-    has_trajectory_from_generator(uuid_to_name_map, input_trajectories, "Diffusion");
-  const auto filtered_has_diffusion_trajectories =
-    has_trajectory_from_generator(uuid_to_name_map, filtered_trajectories, "Diffusion");
-  if (
-    !input_trajectories.candidate_trajectories.empty() &&
-    filtered_trajectories.candidate_trajectories.empty()) {
+  if (input_trajectories.candidate_trajectories.size() == num_feasible_trajectories) {
+    // All trajectories are feasible
+    diagnostics_interface_.update_level_and_message(diagnostic_msgs::msg::DiagnosticStatus::OK, "");
+  } else if (num_feasible_trajectories == 0) {
+    // No feasible trajectories found
     diagnostics_interface_.update_level_and_message(
       diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No feasible trajectories found");
-  } else if (input_has_diffusion_trajectories && !filtered_has_diffusion_trajectories) {
-    diagnostics_interface_.update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN,
-      "All diffusion planner trajectories are infeasible");
   } else {
-    diagnostics_interface_.update_level_and_message(diagnostic_msgs::msg::DiagnosticStatus::OK, "");
+    // At least one trajectory is infeasible
+    diagnostics_interface_.update_level_and_message(
+      diagnostic_msgs::msg::DiagnosticStatus::WARN, "At least one trajectory is infeasible");
   }
 
   diagnostics_interface_.publish(this->get_clock()->now());
@@ -386,6 +412,38 @@ void TrajectoryValidator::publish_internal_state(
     plugin_filtered_paths, sorted_plugins, ego_pose, get_clock()->now(),
     vehicle_info_.vehicle_height_m + offset);
   pub_debug_markers_->publish<visualization_msgs::msg::MarkerArray>("markers", internal_state_text);
+}
+
+void TrajectoryValidator::publish_validation_reports(const std::vector<ValidationReport> & reports)
+{
+  auto msg = autoware_trajectory_validator::build<ValidationReportArray>().reports(reports);
+  pub_validation_reports_->publish<ValidationReportArray>("validation_reports", msg);
+}
+
+void TrajectoryValidator::add_planning_factors(
+  const autoware_internal_planning_msgs::msg::PlanningFactorArray & planning_factors)
+{
+  for (const auto & factor : planning_factors.factors) {
+    if (factor.control_points.empty()) {
+      continue;
+    }
+
+    const auto & control_point = factor.control_points.front();
+    if (factor.control_points.size() == 1) {
+      planning_factor_interface_->add(
+        control_point.distance, control_point.pose, factor.behavior, factor.safety_factors,
+        factor.is_driving_forward, control_point.velocity, control_point.shift_length,
+        factor.detail);
+      continue;
+    }
+
+    const auto & end_control_point = factor.control_points.back();
+    planning_factor_interface_->add(
+      control_point.distance, end_control_point.distance, control_point.pose,
+      end_control_point.pose, factor.behavior, factor.safety_factors, factor.is_driving_forward,
+      control_point.velocity, end_control_point.velocity, control_point.shift_length,
+      end_control_point.shift_length, factor.detail);
+  }
 }
 }  // namespace autoware::trajectory_validator
 

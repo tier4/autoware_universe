@@ -31,7 +31,7 @@ class DummyFilter : public ValidatorInterface
 public:
   DummyFilter() : ValidatorInterface("DummyFilter") {}
 
-  tl::expected<void, std::string> is_feasible(
+  result_t is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & /*context*/) final
   {
     if (traj_points.empty()) {
@@ -47,6 +47,8 @@ public:
   }
 
   void update_parameters([[maybe_unused]] const validator::Params & params) final {}
+
+  [[nodiscard]] bool is_shadow_mode() const final { return false; }
 
 private:
   DummyFilterParam params_;

@@ -16,68 +16,78 @@
 
 #include <autoware/boundary_departure_checker/debug.hpp>
 
-#include <memory>
 #include <string>
+#include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
 {
-tl::expected<void, std::string> UncrossableBoundaryDepartureFilter::is_feasible(
+UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
-  if (const auto has_invalid_input = is_invalid_input(traj_points, context)) {
+  if (const auto has_invalid_input = is_invalid_input(context)) {
     return tl::make_unexpected(*has_invalid_input);
   }
 
-  if (!uncrossable_boundary_departure_checker_ptr_) {
-    uncrossable_boundary_departure_checker_ptr_ =
-      std::make_unique<boundary_departure_checker::UncrossableBoundaryDepartureChecker>(
-        clock_, context.lanelet_map, *vehicle_info_ptr_);
+  if (!is_initialized_) {
+    uncrossable_boundary_checker_.set_lanelet_map(context.lanelet_map);
+    if (const auto init = uncrossable_boundary_checker_.initialize(); !init) {
+      return tl::make_unexpected(init.error());
+    }
+    is_initialized_ = true;
   }
 
-  auto departure_data = uncrossable_boundary_departure_checker_ptr_->get_departure_data(
-    traj_points, traj_points, context.odometry->pose, context.odometry->twist.twist.linear.x,
-    context.acceleration->accel.accel.linear.x);
+  boundary_departure_checker::EgoDynamicState ego_state;
+  ego_state.pose_with_cov = context.odometry->pose;
+  ego_state.velocity = context.odometry->twist.twist.linear.x;
+  ego_state.acceleration = context.acceleration->accel.accel.linear.x;
+  ego_state.current_time_s = rclcpp::Time(context.odometry->header.stamp).seconds();
+
+  const auto departure_data =
+    uncrossable_boundary_checker_.check_departure(traj_points, *vehicle_info_ptr_, ego_state);
 
   if (!departure_data) {
-    warn_throttle("%s", departure_data.error().c_str());
     return tl::make_unexpected(departure_data.error());
   }
 
-  if (!departure_data->critical_departure_points.empty()) {
-    debug_markers_ = boundary_departure_checker::debug::create_debug_markers(
-      *departure_data, context.odometry->header.stamp, context.odometry->pose.pose.position.z,
-      params_);
-    return tl::make_unexpected("Found critical departure");
+  const bool is_feasible =
+    departure_data->status != boundary_departure_checker::DepartureType::CRITICAL;
+  if (!is_feasible) {
+    auto markers = boundary_departure_checker::debug::create_debug_markers(
+      *departure_data, context.odometry->header.stamp, context.odometry->pose.pose.position.z);
+    std::move(
+      markers.markers.begin(), markers.markers.end(), std::back_inserter(debug_markers_.markers));
   }
 
-  return {};
+  std::vector<MetricReport> metrics{
+    autoware_trajectory_validator::build<MetricReport>()
+      .validator_name(get_name())
+      .validator_category(category())
+      .metric_name("check_critical_departure")
+      .metric_value(0.0)
+      .level(!is_feasible ? MetricReport::ERROR : MetricReport::OK)};
+
+  return ValidationResult{is_feasible, std::move(metrics)};
 }
 
 void UncrossableBoundaryDepartureFilter::update_parameters(const validator::Params & params)
 {
-  params_.th_trigger.th_dist_to_boundary_m.left.min =
-    params.boundary_departure.lateral_gap_to_boundary_m;
-  params_.th_trigger.th_dist_to_boundary_m.right.min =
-    params.boundary_departure.lateral_gap_to_boundary_m;
-  params_.min_braking_distance = params.boundary_departure.longitudinal_gap_to_boundary_m;
-  params_.th_trigger.th_acc_mps2.max = params.boundary_departure.max_deceleration_mps2;
-  params_.th_trigger.th_jerk_mps3.max = params.boundary_departure.max_jerk_mps3;
-  params_.th_trigger.brake_delay_s = params.boundary_departure.brake_delay_s;
-  params_.th_cutoff_time_departure_s = params.boundary_departure.cutoff_time_s;
+  params_.lateral_margin_m = params.boundary_departure.lateral_gap_to_boundary_m;
+  params_.longitudinal_margin_m = params.boundary_departure.longitudinal_gap_to_boundary_m;
+  params_.max_deceleration_mps2 = params.boundary_departure.max_deceleration_mps2;
+  params_.max_jerk_mps3 = params.boundary_departure.max_jerk_mps3;
+  params_.brake_delay_s = params.boundary_departure.brake_delay_s;
+  params_.time_to_departure_cutoff_s = params.boundary_departure.cutoff_time_s;
+  params_.on_time_buffer_s = params.boundary_departure.on_time_buffer_s;
+  params_.off_time_buffer_s = params.boundary_departure.off_time_buffer_s;
+  params_.boundary_types_to_detect = params.boundary_departure.boundary_types;
 
-  if (uncrossable_boundary_departure_checker_ptr_) {
-    uncrossable_boundary_departure_checker_ptr_->set_param(params_);
-  }
+  uncrossable_boundary_checker_.set_param(params_);
 }
 
 std::optional<std::string> UncrossableBoundaryDepartureFilter::is_invalid_input(
-  const TrajectoryPoints & traj_points, const FilterContext & context) const
+  const FilterContext & context) const
 {
-  if (traj_points.empty()) {
-    return "Trajectory points are empty.";
-  }
-
-  if (!context.lanelet_map) {
+  if (!context.lanelet_map || context.lanelet_map->lineStringLayer.empty()) {
     return "Lanelet map is not available in the context.";
   }
 

@@ -35,7 +35,7 @@ protected:
     node_options_.append_parameter_override(
       "filter_names",
       std::vector<std::string>{"autoware::trajectory_validator::plugin::DummyFilter"});
-    node_options_.append_parameter_override("dummy.dummy_param", 0.0);
+    node_options_.append_parameter_override("vehicle_constraint.max_speed", 16.7);
 
     const auto test_pkg_share = ament_index_cpp::get_package_share_directory("autoware_test_utils");
     const auto vehicle_info_param_path = autoware::test_utils::get_absolute_path_to_config(
@@ -174,7 +174,8 @@ TEST_F(TrajectoryValidatorNodeTest, UpdateParametersDynamically)
 
   last_output_ = nullptr;
 
-  auto result = node_under_test_->set_parameters({rclcpp::Parameter("dummy.dummy_param", 1.0)});
+  auto result =
+    node_under_test_->set_parameters({rclcpp::Parameter("vehicle_constraint.max_speed", 1.0)});
   ASSERT_TRUE(result[0].successful);
 
   traj_pub_->publish(msg);

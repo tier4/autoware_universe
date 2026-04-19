@@ -4,32 +4,19 @@ project(autoware_boundary_departure_checker)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
-ament_auto_add_library(boundary_departure_checker_utils SHARED
+ament_auto_add_library(utils SHARED
   src/conversion.cpp
-  src/steering_abnormality_utils.cpp
   src/utils.cpp
   src/debug.cpp
-  src/footprint_generator/normal_footprint.cpp
-  src/footprint_generator/localization_footprint.cpp
-  src/footprint_generator/longitudinal_footprint.cpp
-  src/footprint_generator/steering_footprint.cpp
-  src/footprint_generator/footprint_manager.cpp
+  src/footprints_generator.cpp
 )
 
-ament_auto_add_library(uncrossable_boundary_departure_checker SHARED
-  src/uncrossable_boundary_departure_checker.cpp
+ament_auto_add_library(uncrossable_boundary_checker SHARED
+  src/uncrossable_boundary_checker.cpp
 )
 
-target_link_libraries(uncrossable_boundary_departure_checker
-  boundary_departure_checker_utils
-)
-
-ament_auto_add_library(boundary_departure_checker SHARED
-  src/boundary_departure_checker.cpp
-)
-
-target_link_libraries(boundary_departure_checker
-  boundary_departure_checker_utils
+target_link_libraries(uncrossable_boundary_checker
+  utils
 )
 
 if(BUILD_TESTING)
@@ -39,15 +26,14 @@ if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
   find_package(pybind11_vendor REQUIRED)
   find_package(pybind11 REQUIRED)
-  option(EXPORT_TEST_PLOT_FIGURE "Enable plotting in tests" OFF)
+  option(EXPORT_TEST_PLOT_FIGURE "Enable plotting in tests" ON)
   file(GLOB_RECURSE TEST_SOURCES test/*.cpp)
   ament_add_gtest(test_${PROJECT_NAME}
     ${TEST_SOURCES}
   )
   target_link_libraries(test_${PROJECT_NAME}
-    boundary_departure_checker_utils
-    boundary_departure_checker
-    uncrossable_boundary_departure_checker
+    utils
+    uncrossable_boundary_checker
     Python3::Python
     pybind11::embed
   )

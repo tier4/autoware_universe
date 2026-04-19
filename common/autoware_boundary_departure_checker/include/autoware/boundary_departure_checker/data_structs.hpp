@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__DATA_STRUCTS_HPP_
 #define AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__DATA_STRUCTS_HPP_
 
+#include "autoware/boundary_departure_checker/footprints_generator.hpp"
+#include "autoware/boundary_departure_checker/side_struct.hpp"
 #include "autoware/boundary_departure_checker/type_alias.hpp"
 
 #include <autoware_utils_geometry/boost_geometry.hpp>
@@ -32,112 +34,57 @@
 #include <lanelet2_core/LaneletMap.h>
 
 #include <limits>
-#include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace autoware::boundary_departure_checker
 {
+
 enum class DepartureType {
   NONE = 0,
-  NEAR_BOUNDARY,
-  APPROACHING_DEPARTURE,
-  CRITICAL_DEPARTURE,
-};
-
-enum class FootprintType {
-  NORMAL = 0,
-  LOCALIZATION,
-  LONGITUDINAL,
-  STEERING_STUCK,
-  STEERING_ACCELERATED,
-  STEERING_SUDDEN_LEFT,
-  STEERING_SUDDEN_RIGHT
-};
-
-enum class SideKey { LEFT, RIGHT };
-constexpr std::array<SideKey, 2> g_side_keys = {SideKey::LEFT, SideKey::RIGHT};
-
-template <typename T>
-struct FootprintMap
-{
-  std::unordered_map<FootprintType, T> data;
-  T & operator[](const FootprintType key) { return data[key]; }
-
-  const T & operator[](const FootprintType key) const
-  {
-    const auto it = data.find(key);
-    if (it != data.end()) {
-      return it->second;
-    }
-    throw std::invalid_argument("Invalid key: " + std::string(magic_enum::enum_name(key)));
-  }
-};
-
-template <typename T>
-struct Side
-{
-  T right;
-  T left;
-  T & operator[](const SideKey key)
-  {
-    if (key == SideKey::LEFT) return left;
-    if (key == SideKey::RIGHT) return right;
-    throw std::invalid_argument("Invalid key: " + std::string(magic_enum::enum_name(key)));
-  }
-
-  const T & operator[](const SideKey key) const
-  {
-    if (key == SideKey::LEFT) return left;
-    if (key == SideKey::RIGHT) return right;
-    throw std::invalid_argument("Invalid key: " + std::string(magic_enum::enum_name(key)));
-  }
+  APPROACHING,
+  CRITICAL,
 };
 
 struct ProjectionToBound
 {
-  std::optional<DepartureType> departure_type_opt;
-  std::optional<FootprintType> footprint_type_opt;
+  DepartureType departure_type{DepartureType::NONE};
 
   Point2d pt_on_ego;    // orig
   Point2d pt_on_bound;  // proj
-  double lon_dist_on_pred_traj{std::numeric_limits<double>::max()};
+  double dist_along_trajectory_m{std::numeric_limits<double>::max()};
   Segment2d nearest_bound_seg;
   double lat_dist{std::numeric_limits<double>::max()};
-  double lon_offset{};  // offset between the pt_on_ego and the front of the ego segment
-  size_t ego_sides_idx{0};
+  double
+    ego_front_to_proj_offset_m{};  // offset between the pt_on_ego and the front of the ego segment
+  size_t pose_index{0};
   double time_from_start{std::numeric_limits<double>::max()};
   ProjectionToBound() = default;
-  explicit ProjectionToBound(size_t idx) : ego_sides_idx(idx) {}
+  explicit ProjectionToBound(size_t idx) : pose_index(idx) {}
   ProjectionToBound(
-    Point2d pt_on_ego, Point2d pt_on_bound, Segment2d seg, double lat_dist, double lon_offset,
-    size_t idx)
+    Point2d pt_on_ego, Point2d pt_on_bound, Segment2d seg, double lat_dist,
+    double ego_front_to_proj_offset_m, size_t idx)
   : pt_on_ego(std::move(pt_on_ego)),
     pt_on_bound(std::move(pt_on_bound)),
     nearest_bound_seg(std::move(seg)),
     lat_dist(lat_dist),
-    lon_offset(lon_offset),
-    ego_sides_idx(idx)
+    ego_front_to_proj_offset_m(ego_front_to_proj_offset_m),
+    pose_index(idx)
   {
   }
 
-  [[nodiscard]] bool is_near_boundary() const
-  {
-    return departure_type_opt && departure_type_opt.value() == DepartureType::NEAR_BOUNDARY;
-  }
+  [[nodiscard]] bool is_none_departure() const { return departure_type == DepartureType::NONE; }
 
-  [[nodiscard]] bool is_approaching_departure() const
-  {
-    return footprint_type_opt && footprint_type_opt.value() == FootprintType::NORMAL &&
-           departure_type_opt && departure_type_opt.value() == DepartureType::APPROACHING_DEPARTURE;
-  }
+  [[nodiscard]] bool is_approaching() const { return departure_type == DepartureType::APPROACHING; }
 
-  [[nodiscard]] bool is_critical_departure() const
-  {
-    return footprint_type_opt && footprint_type_opt.value() == FootprintType::NORMAL &&
-           departure_type_opt && departure_type_opt.value() == DepartureType::CRITICAL_DEPARTURE;
-  }
+  [[nodiscard]] bool is_critical() const { return departure_type == DepartureType::CRITICAL; }
+};
+using ProjectionsToBound = std::vector<ProjectionToBound>;
+
+struct CriticalPointPair
+{
+  ProjectionToBound physical_departure_point;
+  ProjectionToBound safety_buffer_start;
 };
 
 using BoundarySide = Side<std::vector<Segment2d>>;
@@ -182,52 +129,45 @@ struct IdxForRTreeSegmentHash
 };
 
 using SegmentWithIdx = std::pair<Segment2d, IdxForRTreeSegment>;
-using UncrossableBoundRTree = boost::geometry::index::rtree<SegmentWithIdx, bgi::rstar<16>>;
-using BoundarySideWithIdx = Side<std::vector<SegmentWithIdx>>;
-using EgoSide = Side<Segment2d>;
-using EgoSides = std::vector<EgoSide>;
-
-struct DeparturePoint
-{
-  DepartureType departure_type{DepartureType::NONE};
-  FootprintType footprint_type{FootprintType::NORMAL};
-  Point2d point;
-  double th_point_merge_distance_m{2.0};
-  double lat_dist_to_bound{1000.0};
-  double ego_dist_on_ref_traj{1000.0};  // [m] distance along the reference trajectory of the
-                                        // corresponding predicted trajectory point
-  double velocity{0.0};
-  size_t idx_from_ego_traj{};
-  bool can_be_removed{false};
-  geometry_msgs::msg::Pose pose_on_current_ref_traj;
-
-  [[nodiscard]] Point to_geom_pt(const double z = 0.0) const
-  {
-    return autoware_utils_geometry::to_msg(point.to_3d(z));
-  }
-
-  bool operator<(const DeparturePoint & other) const
-  {
-    return ego_dist_on_ref_traj < other.ego_dist_on_ref_traj;
-  }
-};
-using DeparturePoints = std::vector<DeparturePoint>;
-
-using Footprint = LinearRing2d;
-using Footprints = std::vector<Footprint>;
+using UncrossableBoundsRTree = boost::geometry::index::rtree<SegmentWithIdx, bgi::rstar<16>>;
+using BoundarySegmentsBySide = Side<std::vector<SegmentWithIdx>>;
+using FootprintSideSegments = Side<Segment2d>;
+using FootprintSideSegmentsArray = std::vector<FootprintSideSegments>;
 
 using ProjectionsToBound = std::vector<ProjectionToBound>;
 
 struct DepartureData
 {
-  FootprintMap<Footprints> footprints;
-  FootprintMap<EgoSides> footprints_sides;
-  FootprintMap<Side<ProjectionsToBound>> projections_to_bound;
+  footprints::Footprints footprints;
+  FootprintSideSegmentsArray footprints_sides;
+  BoundarySegmentsBySide boundary_segments;
 
-  BoundarySideWithIdx boundary_segments;
-  Side<ProjectionsToBound> closest_projections_to_bound;
-  Side<DeparturePoints> departure_points;
-  DeparturePoints critical_departure_points;
+  Side<ProjectionsToBound> projections_to_bound;
+  Side<ProjectionsToBound> critical_departure_history;
+  Side<std::optional<CriticalPointPair>> evaluated_projections;
+  DepartureType status{DepartureType::NONE};
+};
+
+struct EgoDynamicState
+{
+  geometry_msgs::msg::PoseWithCovariance pose_with_cov;
+  double velocity{0.0};
+  double acceleration{0.0};
+  double current_time_s{0.0};
+};
+
+struct DepartureCheckThresholds
+{
+  double min_braking_distance{0.0};
+  double cutoff_time{0.0};
+  double th_lat_critical{0.0};
+};
+
+struct ProjectionEvaluationMetrics
+{
+  double lon_dist_to_departure{0.0};
+  double time_from_start{0.0};
+  double lat_dist{0.0};
 };
 }  // namespace autoware::boundary_departure_checker
 

@@ -15,7 +15,6 @@
 #include "test_plot_utils.hpp"
 
 #include "autoware/boundary_departure_checker/type_alias.hpp"
-#include "autoware/boundary_departure_checker/utils.hpp"
 
 #include <gtest/gtest.h>
 
