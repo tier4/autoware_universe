@@ -28,9 +28,9 @@
 #include <lanelet2_core/geometry/Lanelet.h>
 #include <lanelet2_core/geometry/Point.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
-#include <lanelet2_core/primitives/BoundingBox.h>
 #include <lanelet2_core/primitives/LineString.h>
 
+#include <algorithm>
 #include <ctime>
 #include <memory>
 #include <string>
@@ -39,27 +39,33 @@
 
 namespace
 {
-/// @brief get stop lines where ego need to stop, and corresponding signal matching the given
-/// lanelet
+/// @brief get stop lines where ego need to stop, and their corresponding signals from the given
+/// traffic light groups
 std::vector<std::pair<lanelet::BasicLineString2d, autoware_perception_msgs::msg::TrafficLightGroup>>
-get_matching_stop_lines(
-  const lanelet::Lanelet & lanelet,
+collect_stop_lines(
+  const lanelet::LaneletMap & lanelet_map,
   const std::vector<autoware_perception_msgs::msg::TrafficLightGroup> & traffic_light_groups)
 {
   std::vector<
     std::pair<lanelet::BasicLineString2d, autoware_perception_msgs::msg::TrafficLightGroup>>
-    matching_stop_lines;
-  for (const auto & element : lanelet.regulatoryElementsAs<lanelet::TrafficLight>()) {
-    for (const auto & signal : traffic_light_groups) {
-      const auto is_matching =
-        signal.traffic_light_group_id == element->id() && element->stopLine().has_value();
-      if (is_matching && autoware::traffic_light_utils::isTrafficSignalStop(lanelet, signal)) {
-        matching_stop_lines.emplace_back(
-          lanelet::utils::to2D(element->stopLine()->basicLineString()), signal);
-      }
+    stop_lines;
+
+  for (const auto & signal : traffic_light_groups) {
+    const auto traffic_light_it =
+      lanelet_map.regulatoryElementLayer.find(signal.traffic_light_group_id);
+    if (traffic_light_it == lanelet_map.regulatoryElementLayer.end()) {
+      continue;
     }
+
+    const auto traffic_light =
+      std::dynamic_pointer_cast<const lanelet::TrafficLight>(*traffic_light_it);
+    if (!traffic_light || !traffic_light->stopLine().has_value()) {
+      continue;
+    }
+    stop_lines.emplace_back(
+      lanelet::utils::to2D(traffic_light->stopLine()->basicLineString()), signal);
   }
-  return matching_stop_lines;
+  return stop_lines;
 }
 
 std::optional<std::string> is_invalid_input(
@@ -96,22 +102,20 @@ void TrafficLightFilter::update_parameters(const validator::Params & params)
 
 std::pair<std::vector<lanelet::BasicLineString2d>, std::vector<lanelet::BasicLineString2d>>
 TrafficLightFilter::get_stop_lines(
-  const lanelet::Lanelets & lanelets,
+  const lanelet::LaneletMap & lanelet_map,
   const autoware_perception_msgs::msg::TrafficLightGroupArray & traffic_lights) const
 {
   std::vector<lanelet::BasicLineString2d> red_stop_lines;
   std::vector<lanelet::BasicLineString2d> amber_stop_lines;
-  for (const auto & lanelet : lanelets) {
-    for (const auto & [stop_line, signal] :
-         get_matching_stop_lines(lanelet, traffic_lights.traffic_light_groups)) {
-      if (traffic_light_utils::hasTrafficLightCircleColor(
-            signal.elements, tier4_perception_msgs::msg::TrafficLightElement::RED)) {
-        red_stop_lines.push_back(stop_line);
-      }
-      if (traffic_light_utils::hasTrafficLightCircleColor(
-            signal.elements, tier4_perception_msgs::msg::TrafficLightElement::AMBER)) {
-        amber_stop_lines.push_back(stop_line);
-      }
+  for (const auto & [stop_line, signal] :
+       collect_stop_lines(lanelet_map, traffic_lights.traffic_light_groups)) {
+    if (traffic_light_utils::hasTrafficLightCircleColor(
+          signal.elements, tier4_perception_msgs::msg::TrafficLightElement::RED)) {
+      red_stop_lines.push_back(stop_line);
+    }
+    if (traffic_light_utils::hasTrafficLightCircleColor(
+          signal.elements, tier4_perception_msgs::msg::TrafficLightElement::AMBER)) {
+      amber_stop_lines.push_back(stop_line);
     }
   }
   if (params_.treat_amber_light_as_red_light) {
@@ -134,7 +138,7 @@ bool TrafficLightFilter::is_stop_point_within_margin_from_stop_line(
   return false;
 }
 
-tl::expected<void, std::string> TrafficLightFilter::is_feasible(
+TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
   if (const auto has_invalid_input = is_invalid_input(context, vehicle_info_ptr_)) {
@@ -192,18 +196,33 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
     }
   }
 
-  const auto bbox = boost::geometry::return_envelope<lanelet::BoundingBox2d>(trajectory_ls);
-  const lanelet::Lanelets candidate_lanelets = context.lanelet_map->laneletLayer.search(bbox);
   const auto [red_stop_lines, amber_stop_lines] =
-    get_stop_lines(candidate_lanelets, *context.traffic_light_signals);
+    get_stop_lines(*context.lanelet_map, *context.traffic_light_signals);
+
+  bool is_feasible = true;
+  std::vector<MetricReport> metrics;
+
+  // Check for red light crossings
+  bool is_crossing_red = false;
   for (const auto & red_stop_line : red_stop_lines) {
     if (boost::geometry::intersects(trajectory_ls, red_stop_line)) {
       if (is_stop_point_within_margin_from_stop_line(stop_point, red_stop_line)) {
         continue;
       }
-      return tl::make_unexpected("crosses red light");  // Reject trajectory (cross red light)
+      is_crossing_red = true;  // Reject trajectory (cross red light)
+      break;
     }
   }
+  metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                      .validator_name(get_name())
+                      .validator_category(category())
+                      .metric_name("check_crossing_red_light")
+                      .metric_value(0.0)
+                      .level(is_crossing_red ? MetricReport::ERROR : MetricReport::OK));
+  is_feasible = is_feasible && !is_crossing_red;
+
+  // Check for amber light crossings
+  bool is_crossing_amber = false;
   for (const auto & amber_stop_line : amber_stop_lines) {
     auto distance_to_stop_line = 0.0;
     std::optional<double> amber_stop_line_crossing_time;
@@ -234,11 +253,20 @@ tl::expected<void, std::string> TrafficLightFilter::is_feasible(
       if (!can_pass_amber_light(
             distance_to_stop_line, current_velocity, current_acceleration,
             *amber_stop_line_crossing_time)) {
-        return tl::make_unexpected("crosses amber light");  // Reject trajectory (cross amber light)
+        is_crossing_amber = true;  // Reject trajectory (cross amber light)
+        break;
       }
     }
   }
-  return {};  // Allow trajectory
+  metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                      .validator_name(get_name())
+                      .validator_category(category())
+                      .metric_name("check_crossing_amber_light")
+                      .metric_value(0.0)
+                      .level(is_crossing_amber ? MetricReport::ERROR : MetricReport::OK));
+  is_feasible = is_feasible && !is_crossing_amber;
+
+  return ValidationResult{is_feasible, std::move(metrics)};
 }
 
 bool TrafficLightFilter::can_pass_amber_light(

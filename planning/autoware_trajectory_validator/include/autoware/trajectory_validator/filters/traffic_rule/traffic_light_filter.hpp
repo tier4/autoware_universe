@@ -30,8 +30,7 @@ class TrafficLightFilter : public ValidatorInterface
 public:
   TrafficLightFilter();
 
-  tl::expected<void, std::string> is_feasible(
-    const TrajectoryPoints & traj_points, const FilterContext & context) final;
+  result_t is_feasible(const TrajectoryPoints & traj_points, const FilterContext & context) final;
 
   void update_parameters(const validator::Params & params) final;
 
@@ -42,11 +41,11 @@ public:
     const double current_acceleration, const double time_to_cross_stop_line) const;
 
 private:
-  /// @brief return the red and amber stop lines related to the given lanelets
+  /// @brief return the red and amber stop lines related to the given traffic light groups
   [[nodiscard]] std::pair<
     std::vector<lanelet::BasicLineString2d>, std::vector<lanelet::BasicLineString2d>>
   get_stop_lines(
-    const lanelet::Lanelets & lanelets,
+    const lanelet::LaneletMap & lanelet_map,
     const autoware_perception_msgs::msg::TrafficLightGroupArray & traffic_lights) const;
   /// @brief return true if there is a stop point and it is within margin distance of the stop line
   [[nodiscard]] bool is_stop_point_within_margin_from_stop_line(

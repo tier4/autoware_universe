@@ -15,7 +15,9 @@
 #ifndef AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__UTILS_HPP_
 #define AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__UTILS_HPP_
 
+#include "autoware/boundary_departure_checker/data_structs.hpp"
 #include "autoware/boundary_departure_checker/parameters.hpp"
+#include "autoware/boundary_departure_checker/side_struct.hpp"
 
 #include <geometry_msgs/msg/pose_with_covariance.hpp>
 
@@ -28,191 +30,20 @@
 
 namespace autoware::boundary_departure_checker::utils
 {
-/**
- * @brief cut trajectory by length
- * @param trajectory input trajectory
- * @param length cut length
- * @return cut trajectory
- */
-TrajectoryPoints cutTrajectory(const TrajectoryPoints & trajectory, const double length);
+ProjectionsToBound filter_and_assign_departure_types(
+  const ProjectionsToBound & side_value, const UncrossableBoundaryDepartureParam & param,
+  const double min_braking_dist);
 
-/**
- * @brief resample the input trajectory with the given interval
- * @param trajectory input trajectory
- * @param interval resampling interval
- * @return resampled trajectory
- * @note this function assumes the input trajectory is sampled dense enough
- */
-TrajectoryPoints resampleTrajectory(const Trajectory & trajectory, const double interval);
+std::optional<CriticalPointPair> apply_backward_buffer_and_filter(
+  const ProjectionsToBound & side_value, const UncrossableBoundaryDepartureParam & param);
 
-/**
- * @brief create vehicle footprints along the trajectory with the given covariance and margin
- * @param covariance vehicle pose with covariance
- * @param trajectory trajectory along which the vehicle footprints are created
- * @param vehicle_info vehicle information
- * @param footprint_margin_scale scale of the footprint margin
- * @return vehicle footprints along the trajectory
- */
-std::vector<LinearRing2d> createVehicleFootprints(
-  const geometry_msgs::msg::PoseWithCovariance & covariance, const TrajectoryPoints & trajectory,
-  const VehicleInfo & vehicle_info, const double footprint_margin_scale);
+Side<std::optional<CriticalPointPair>> evaluate_projections_severity(
+  const Side<ProjectionsToBound> & projections_to_bound,
+  const UncrossableBoundaryDepartureParam & param, const EgoDynamicState & ego_state,
+  const vehicle_info_utils::VehicleInfo & vehicle_info);
 
-/**
- * @brief create vehicle footprints along the path with the given margin
- * @param path path along which the vehicle footprints are created
- * @param vehicle_info vehicle information
- * @param footprint_extra_margin extra margin for the footprint
- * @return vehicle footprints along the path
- */
-std::vector<LinearRing2d> createVehicleFootprints(
-  const PathWithLaneId & path, const VehicleInfo & vehicle_info,
-  const double footprint_extra_margin);
-
-/**
- * @brief find lanelets that potentially intersect with the vehicle's trajectory
- * @param route_lanelets lanelets along the planned route
- * @param vehicle_footprints series of vehicle footprint polygons along the trajectory
- * @return lanelets that are not disjoint from the convex hull of vehicle footprints
- */
-lanelet::ConstLanelets getCandidateLanelets(
-  const lanelet::ConstLanelets & route_lanelets,
-  const std::vector<LinearRing2d> & vehicle_footprints);
-
-/**
- * @brief create a convex hull from multiple footprint polygons
- * @param footprints collection of footprint polygons represented as LinearRing2d
- * @return a single LinearRing2d representing the convex hull containing all input footprints
- */
-LinearRing2d createHullFromFootprints(const std::vector<LinearRing2d> & footprints);
-
-/**
- * @brief create passing areas of the vehicle from vehicle footprints
- * @param vehicle_footprints vehicle footprints along trajectory
- * @return passing areas of the vehicle that are created from adjacent vehicle footprints
- *         If vehicle_footprints is empty, returns empty vector
- *         If vehicle_footprints size is 1, returns vector with that footprint
- */
-std::vector<LinearRing2d> createVehiclePassingAreas(
-  const std::vector<LinearRing2d> & vehicle_footprints);
-
-/**
- * @brief calculate the maximum search length for boundaries considering the vehicle dimensions
- * @param trajectory target trajectory
- * @param vehicle_info vehicle information
- * @return maximum search length for boundaries
- */
-double calcMaxSearchLengthForBoundaries(
-  const Trajectory & trajectory, const VehicleInfo & vehicle_info);
-
-/**
- * @brief Calculate footprint margins based on pose covariance and a scaling factor.
- *
- * This function estimates the amount of uncertainty in the vehicle's position and translates
- * it into longitudinal and lateral margins to be applied to the vehicle footprint. The pose
- * covariance is rotated into the vehicle's local coordinate frame so that the resulting margins
- * correctly represent forward and sideways uncertainty.
- *
- * The computed margins can be used to expand the footprint in a direction-sensitive way, based
- * on localization reliability.
- *
- * @param covariance  Pose with covariance, typically from a localization system.
- * @param scale       Scaling factor to apply to the raw variance values.
- * @return A `FootprintMargin` containing longitudinal and lateral margins derived from the
- * covariance.
- */
-FootprintMargin calc_margin_from_covariance(
-  const geometry_msgs::msg::PoseWithCovariance & covariance, const double scale);
-
-/**
- * @brief Generate vehicle footprints along the predicted trajectory with dynamic longitudinal
- * expansion.
- *
- * This function adjusts the vehicle's longitudinal margin based on its velocity at each point
- * in the predicted trajectory. The faster the vehicle is moving, the longer the footprint becomes
- * in the forward direction. This helps account for forward uncertainty during high-speed motion.
- * The lateral margin is applied uniformly using the provided uncertainty margin.
- *
- * @param trajectory             Ego predicted trajectory.
- * @param vehicle_info           Vehicle geometric parameters (size, overhangs, wheelbase).
- * @param uncertainty_fp_margin  Base lateral/longitudinal margin.
- * @param longitudinal_config    Velocity scaling and buffer configuration.
- * @return Transformed vehicle footprints at each trajectory pose.
- */
-std::vector<LinearRing2d> create_vehicle_footprints(
-  const TrajectoryPoints & trajectory, const VehicleInfo & vehicle_info,
-  const FootprintMargin & uncertainty_fp_margin, const LongitudinalConfig & longitudinal_config);
-
-/**
- * @brief Generate ego vehicle footprints with a fixed lateral and longitudinal margin.
- *
- * A single expanded footprint is created using `FootprintMargin`, and applied uniformly to each
- * pose in the input trajectory.
- *
- * @param trajectory    Ego predicted trajectory.
- * @param vehicle_info  Vehicle shape and dimensions.
- * @param margin        Lateral and longitudinal expansion values.
- * @return Footprints in map frame at each trajectory pose.
- */
-std::vector<LinearRing2d> create_vehicle_footprints(
-  const TrajectoryPoints & trajectory, const VehicleInfo & vehicle_info,
-  const FootprintMargin & margin = {0.0, 0.0});
-
-/**
- * @brief Extract left and right side segments from a 2D vehicle footprint polygon.
- *
- * This function returns the left and right side edges of a given vehicle footprint polygon.
- * The footprint is assumed to be a closed 2D polygon with a consistent point ordering.
- *
- * Optionally, the rear point of each side can be taken from the center rather than the corner
- * by enabling the `use_center_right` or `use_center_left` flags. This is useful when you want
- * the side segments to align with the center of the vehicle's body rather than the base link.
- *
- * Index reference (example footprint with 7+ points):
- * - Point 1: Right front
- * - Point 2 or 3: Right back (depending on `use_center_right`)
- * - Point 6: Left front
- * - Point 4 or 5: Left back (depending on `use_center_left`)
- *
- * @param footprint         A 2D polygon representing the vehicle's footprint (must be indexed
- * correctly).
- * @param use_center_right  If true, use center-rear point for the right side; otherwise use
- * base-link corner.
- * @param use_center_left   If true, use center-rear point for the left side; otherwise use
- * base-link corner.
- * @return Left and right side segments as a `Side<Segment2d>` structure.
- */
-Side<Segment2d> get_footprint_sides(
-  const LinearRing2d & footprint, const bool use_center_right, const bool use_center_left);
-
-/**
- * @brief Extracts left and right side segments from a single vehicle footprint polygon.
- *
- * @param footprint         A polygon representing the vehicle footprint.
- * @param use_center_right  If true, uses the center of the rear for the right side segment.
- * @param use_center_left   If true, uses the center of the rear for the left side segment.
- * @return Struct containing left and right side segments extracted from the footprint.
- */
-EgoSide get_ego_side_from_footprint(
-  const Footprint & footprint, const bool use_center_right = true,
-  const bool use_center_left = true);
-
-/**
- * @brief Extracts left and right side segments from a sequence of vehicle footprint polygons.
- *
- * For each footprint in the sequence, this function generates corresponding `EgoSide` data.
- * It is typically used to build a list of ego-side geometry segments for proximity or boundary
- * checking along the predicted trajectory.
- *
- * The choice of using center vs. corner for the rear points can be controlled with the flags.
- *
- * @param footprints         A list of footprint polygons along the trajectory.
- * @param use_center_right   If true, use the rear center for right-side segments.
- * @param use_center_left    If true, use the rear center for left-side segments.
- * @return A list of `EgoSide` structures representing left and right edges for each footprint.
- */
-EgoSides get_sides_from_footprints(
-  const Footprints & footprints, const bool use_center_right = false,
-  const bool use_center_left = false);
+DepartureType assign_departure_type(
+  const ProjectionEvaluationMetrics & metrics, const DepartureCheckThresholds & thresholds);
 
 /**
  * @brief Check if a line string matches one of the uncrossable boundary types.
@@ -246,7 +77,7 @@ bool is_uncrossable_type(
  * @param boundary_types_to_detect  List of boundary type names to consider as uncrossable.
  * @return R-tree of uncrossable segments, ready for spatial lookup operations.
  */
-UncrossableBoundRTree build_uncrossable_boundaries_rtree(
+UncrossableBoundsRTree build_uncrossable_boundaries_rtree(
   const lanelet::LaneletMap & lanelet_map,
   const std::vector<std::string> & boundary_types_to_detect);
 
@@ -277,11 +108,11 @@ tl::expected<std::pair<Point2d, double>, std::string> point_to_segment_projectio
  *
  * @param ego_seg        One side of the ego vehicle's footprint segment.
  * @param lane_seg       A road boundary segment.
- * @param ego_sides_idx  Index of the footprint point corresponding to the ego segment.
+ * @param pose_index  Index of the footprint point corresponding to the ego segment.
  * @return Closest projection data or an error message if no valid projection was found.
  */
-tl::expected<ProjectionToBound, std::string> segment_to_segment_nearest_projection(
-  const Segment2d & ego_seg, const Segment2d & lane_seg, const size_t ego_sides_idx);
+tl::expected<ProjectionToBound, std::string> calc_nearest_projection(
+  const Segment2d & ego_seg, const Segment2d & lane_seg, const size_t pose_index);
 
 /**
  * @brief Finds the nearest boundary segment to an ego side segment.
@@ -313,145 +144,63 @@ ProjectionToBound find_closest_segment(
  *
  * @param ego_pred_traj           Predicted trajectory of the ego vehicle.
  * @param boundaries                 Preprocessed R-tree indexed boundary segments.
- * @param ego_sides_from_footprints List of left/right segments derived from ego footprint polygons.
+ * @param footprints_sides List of left/right segments derived from ego footprint polygons.
  * @return Closest projections to boundaries, separated by side.
  */
 Side<ProjectionsToBound> get_closest_boundary_segments_from_side(
-  const TrajectoryPoints & ego_pred_traj, const BoundarySideWithIdx & boundaries,
-  const EgoSides & ego_sides_from_footprints);
-
-/**
- * @brief Estimate braking distance using jerk, acceleration, and braking delay constraints.
- *
- * This function calculates how far a vehicle will travel while slowing down from an initial
- * velocity to a target velocity, considering:
- * - A first phase where deceleration increases gradually (jerk-limited).
- * - A second phase of constant deceleration.
- * - An initial delay before braking begins.
- *
- * The output is useful in planning safe stopping behavior under motion constraints.
- *
- * @param v_init            Initial velocity (m/s).
- * @param v_end             Target (final) velocity after braking (m/s).
- * @param acc               Constant deceleration value (must be positive).
- * @param jerk              Jerk value (rate of change of acceleration), assumed positive.
- * @param t_braking_delay   Delay before braking begins (s).
- * @return Total braking distance (meters).
- */
-double compute_braking_distance(
-  const double v_init, const double v_end, const double acc, const double jerk,
-  double t_braking_delay);
-
-/**
- * @brief Generate filtered and sorted departure points from lateral projections to road
- * boundaries.
- *
- * This function creates `DeparturePoint` instances from a list of `ProjectionToBound`
- * by adjusting their longitudinal position with `lon_offset_m`, and applying hysteresis
- * threshold.
- *
- * Internally:
- * - Filters out projections that are either not meaningful (e.g., type is NONE) or behind the ego
- * vehicle.
- * - Sorts all valid points based on longitudinal trajectory distance.
- * - Retains only points up to and including the first CRITICAL_DEPARTURE point (if any).
- *
- * @param projections_to_bound  List of lateral projections to road boundaries.
- * @param pred_traj_idx_to_ref_traj_lon_dist mapping from an index of the predicted trajectory to
- * the corresponding arc length on the reference trajectory
- * @param th_point_merge_distance_m  Threshold distance used for hysteresis logic in departure
- * classification.
- * @return Filtered, sorted `DeparturePoints` with only relevant departure markers.
- */
-DeparturePoints get_departure_points(
-  const ProjectionsToBound & projections_to_bound,
-  const std::vector<double> & pred_traj_idx_to_ref_traj_lon_dist,
-  const double th_point_merge_distance_m);
-
-/**
- * @brief Find nearby uncrossable linestrings around the given pose.
- *
- * Searches for linestrings within a square area centered at the ego pose.
- * Filters results to include only those tagged with uncrossable boundary types.
- *
- * @param lanelet_map_ptr Shared pointer to the lanelet map.
- * @param ego_pose Center of the search area.
- * @param search_distance Distance from the pose to define the square search area (in meters).
- * @param uncrossable_boundary_types List of boundary type tags considered uncrossable.
- * @return List of uncrossable linestrings near the given pose, or an error string if none found.
- */
-tl::expected<std::vector<lanelet::LineString3d>, std::string> get_uncrossable_linestrings_near_pose(
-  const lanelet::LaneletMapPtr & lanelet_map_ptr, const Pose & ego_pose,
-  const double search_distance,
-  const std::vector<std::string> & uncrossable_boundary_types = {"road_border"});
-
-/**
- * @brief Trim predicted trajectory by cutoff time.
- *
- * @param ego_pred_traj Predicted trajectory from the ego vehicle.
- * @param cutoff_time_s Maximum allowed time from start (in seconds).
- * @return Trimmed trajectory containing only early predicted points.
- */
-TrajectoryPoints trim_pred_path(const TrajectoryPoints & ego_pred_traj, const double cutoff_time_s);
+  const TrajectoryPoints & ego_pred_traj, const BoundarySegmentsBySide & boundaries,
+  const FootprintSideSegmentsArray & footprints_sides);
 
 std::optional<double> calc_signed_lateral_distance_to_boundary(
   const lanelet::ConstLineString3d & boundary, const Pose & reference_pose);
 
-std::optional<std::pair<double, double>> is_point_shifted(
-  const autoware::boundary_departure_checker::Pose & prev_iter_pt,
-  const autoware::boundary_departure_checker::Pose & curr_iter_pt, const double th_shift_m,
-  const double th_yaw_diff_rad);
+/**
+ * @brief Retrieves a 3D line segment from the Lanelet2 map.
+ *
+ * @param lanelet_map_ptr A pointer to the Lanelet2 map from which to retrieve the data.
+ * @param seg_id An identifier struct containing the ID of the parent LineString and the start/end
+ * indices of the specific segment within it.
+ * @return The corresponding Segment3d defined by the start and end points.
+ */
+autoware_utils_geometry::Segment3d get_segment_3d_from_id(
+  const lanelet::LaneletMapPtr & lanelet_map_ptr,
+  const autoware::boundary_departure_checker::IdxForRTreeSegment & seg_id);
 
 /**
- * @brief Evaluates all footprint projections for a specific side and selects the most
- * critical/closest ones.
+ * @brief Checks if a given boundary segment is closer to the reference ego side than the opposite
+ * side.
  *
- * Evaluates multiple abnormality-aware projections (e.g., NORMAL, LOCALIZATION) for each
- * trajectory index, and selects the best candidate based on lateral distance and classification
- * logic (CRITICAL/NEAR).
- *
- * @param projections_to_bound Footprint sides' projections to boundaries.
- * @param param Checker parameters.
- * @param min_braking_dist Minimum braking distance.
- * @param max_braking_dist Maximum braking distance.
- * @param side_key Side to process (left or right).
- * @return Vector of closest projections with departure classification, or std::nullopt on failure.
+ * @param boundary_segment The boundary segment to check.
+ * @param ego_side_ref_segment The reference side of the ego vehicle (e.g., the left side).
+ * @param ego_side_opposite_ref_segment The opposite side of the ego vehicle (e.g., the right side).
+ * @return True if the boundary is closer to or equidistant to the reference side; false otherwise.
  */
-std::optional<ProjectionsToBound> get_closest_projections_for_side(
-  const FootprintMap<Side<ProjectionsToBound>> & projections_to_bound, const Param & param,
-  const double min_braking_dist, const double max_braking_dist, const SideKey side_key);
+bool is_closest_to_boundary_segment(
+  const autoware_utils_geometry::Segment2d & boundary_segment,
+  const autoware_utils_geometry::Segment2d & ego_side_ref_segment,
+  const autoware_utils_geometry::Segment2d & ego_side_opposite_ref_segment);
 
 /**
- * @brief Evaluates multiple footprint candidates and selects the projection with the highest
- * departure priority.
+ * @brief Checks if a 3D boundary segment is vertically within the height range of the ego vehicle.
  *
- * This function determines the worst-case boundary departure scenario for a specific point in time
- * by applying a strict safety hierarchy:
- * 1. Higher severity states (CRITICAL > APPROACHING > NEAR) always override lower ones.
- * 2. If candidates share the exact same departure type, the one with the shortest lateral distance
- * to the boundary is selected.
+ * This helps filter out irrelevant boundaries like overpasses (too high) or underpass (too low).
  *
- * @param candidate_projections List of projections from various footprint types
- * @param param Configuration parameters containing safety thresholds
- * @param min_braking_dist Minimum longitudinal distance required to physically stop the vehicle.
- * @param max_braking_dist Maximum longitudinal distance threshold to consider a boundary relevant.
- * @param side_key The lateral side of the ego vehicle being evaluated (LEFT or RIGHT).
- * @param previous_longitudinal_distance The longitudinal distance of the last recorded projection,
- * used to safely downsample redundant non-critical points.
- * @return The projection representing the most severe departure threat, or std::nullopt if no
- * departure exists or it was filtered out.
+ * @param boundary_segment The 3D boundary segment to check.
+ * @param ego_z_position The reference vertical (Z-axis) position of the ego vehicle (e.g., at its
+ * base).
+ * @param ego_height The total height of the ego vehicle.
+ * @return True if the segment's closest vertical point is within the vehicle's height; false
+ * otherwise.
  */
-std::optional<ProjectionToBound> get_closest_projection_by_departure_severity(
-  const std::vector<ProjectionToBound> & candidate_projections, const Param & param,
-  const double min_braking_dist, const double max_braking_dist, const SideKey side_key,
-  const std::optional<double> previous_longitudinal_distance);
+bool is_segment_within_ego_height(
+  const autoware_utils_geometry::Segment3d & boundary_segment, const double ego_z_position,
+  const double ego_height);
 
-DepartureType assign_departure_type(
-  const double longitudinal_distance_to_departure_point,
-  const double longitudinal_offset_to_departure_point, const double minimum_braking_distance,
-  const double maximum_braking_distance, const double cutoff_time, const double time_from_start,
-  const double lat_dist, const double th_lat_near, const double th_lat_critical,
-  const FootprintType footprint_type);
+bool is_critical(const Side<std::optional<CriticalPointPair>> & evaluated_projections);
+
+double calc_minimum_braking_distance(
+  const EgoDynamicState & ego_state, const UncrossableBoundaryDepartureParam & param,
+  const vehicle_info_utils::VehicleInfo & vehicle_info);
 }  // namespace autoware::boundary_departure_checker::utils
 
 #endif  // AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__UTILS_HPP_
