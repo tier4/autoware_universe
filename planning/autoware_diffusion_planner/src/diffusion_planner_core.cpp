@@ -269,20 +269,38 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   // virtual state in place of the observed kinematic state. This mirrors what
   // autoware_perfect_tracker would do externally, but keeps everything self-contained so that
   // inference is conditioned on a world in which control is assumed to follow perfectly.
+  const double dt = (params_.planning_frequency_hz > 0.0)
+                      ? 1.0 / params_.planning_frequency_hz
+                      : 0.1;
+
   if (!virtual_ego_state_) {
     virtual_ego_state_ = *ego_kinematic_state;
     virtual_ego_acceleration_ = *ego_acceleration;
-  } else if (last_output_trajectory_ && !last_output_trajectory_->points.empty()) {
-    const double dt = (params_.planning_frequency_hz > 0.0)
-                        ? 1.0 / params_.planning_frequency_hz
-                        : 0.1;
-    apply_perfect_tracker_step(
-      *virtual_ego_state_, *virtual_ego_acceleration_, *last_output_trajectory_,
-      lanelet_map_ptr_.get(), dt);
+  } else if (!trajectory_history_.empty()) {
+    // Pick the trajectory `perfect_tracker_delay` ticks ago so that control latency is
+    // simulated exactly as autoware_perfect_tracker's n_delay_steps_ does. This delay is
+    // deliberately separate from params_.delay_step, which is a model-input hint only.
+    const size_t delay_idx =
+      std::max<int64_t>(params_.perfect_tracker_delay, 0);
+    const auto & followed_trajectory = (delay_idx < trajectory_history_.size())
+                                         ? trajectory_history_[delay_idx]
+                                         : trajectory_history_.back();
+    if (!followed_trajectory.points.empty()) {
+      apply_perfect_tracker_step(
+        *virtual_ego_state_, *virtual_ego_acceleration_, followed_trajectory,
+        lanelet_map_ptr_.get(), dt);
+      // Advance the virtual timestamp by dt so downstream sees the time the virtual pose
+      // actually corresponds to, not the observation time.
+      const rclcpp::Time advanced =
+        rclcpp::Time(virtual_ego_state_->header.stamp) + rclcpp::Duration::from_seconds(dt);
+      virtual_ego_state_->header.stamp = advanced;
+      virtual_ego_acceleration_->header.stamp = advanced;
+    }
   }
 
   // Safety fallback: if the virtual state has drifted more than 1 m from the real EKF
-  // position, snap it back to the real state so the model never sees a grossly stale pose.
+  // position, snap it back to the real state (pose + stamp) so the model never sees a
+  // grossly stale pose.
   constexpr double kVirtualStateMaxDriftM = 1.0;
   const double drift_dx =
     virtual_ego_state_->pose.pose.position.x - ego_kinematic_state->pose.pose.position.x;
@@ -296,12 +314,16 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
     virtual_ego_state_ = *ego_kinematic_state;
     virtual_ego_acceleration_ = *ego_acceleration;
   }
-  // Preserve incoming header/frame ids but swap in the virtual pose, twist, and acceleration.
+  // Preserve incoming frame ids but swap in the virtual pose, twist, acceleration, AND the
+  // virtual timestamp (real stamp on first call / after drift reset, advanced stamp while
+  // the virtual state is being integrated).
   auto effective_ego_kinematic_state = std::make_shared<Odometry>(*ego_kinematic_state);
+  effective_ego_kinematic_state->header.stamp = virtual_ego_state_->header.stamp;
   effective_ego_kinematic_state->pose.pose = virtual_ego_state_->pose.pose;
   effective_ego_kinematic_state->twist.twist = virtual_ego_state_->twist.twist;
   auto effective_ego_acceleration =
     std::make_shared<AccelWithCovarianceStamped>(*ego_acceleration);
+  effective_ego_acceleration->header.stamp = virtual_ego_acceleration_->header.stamp;
   effective_ego_acceleration->accel.accel = virtual_ego_acceleration_->accel.accel;
 
   Odometry kinematic_state = *effective_ego_kinematic_state;
@@ -339,8 +361,9 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
 
   // Create frame context — note we use the virtual (perfect-tracker-driven) ego state here
   // so that downstream consumers (base position for trajectory, twist checks, etc.) see the
-  // same state the model was conditioned on.
-  const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
+  // same state the model was conditioned on. frame_time also follows the virtual clock so
+  // that time-interpolated history stays consistent.
+  const rclcpp::Time frame_time(effective_ego_kinematic_state->header.stamp);
   const FrameContext frame_context{
     *effective_ego_kinematic_state, *effective_ego_acceleration, ego_to_map_transform,
     processed_neighbor_histories, frame_time};
@@ -600,9 +623,14 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
   output.turn_indicator_command =
     turn_indicator_manager_.evaluate(first_turn_indicator_logit, timestamp, prev_report);
 
-  // Cache the published trajectory so the next create_frame_context() call can advance the
-  // virtual ego state along it, exactly as autoware_perfect_tracker would do externally.
-  last_output_trajectory_ = output.trajectory;
+  // Push the newest output to the front of trajectory_history_, matching
+  // autoware_perfect_tracker's push_front scheme. The virtual state advances along
+  // trajectory_history_[perfect_tracker_delay] on the next tick.
+  trajectory_history_.push_front(output.trajectory);
+  constexpr size_t kMaxTrajectoryHistorySize = 20;
+  while (trajectory_history_.size() > kMaxTrajectoryHistorySize) {
+    trajectory_history_.pop_back();
+  }
 
   return output;
 }

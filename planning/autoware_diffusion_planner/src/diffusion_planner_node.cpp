@@ -122,6 +122,8 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<double>("turn_indicator_hold_duration", 0.0);
   params_.shift_x = this->declare_parameter<bool>("shift_x", false);
   params_.delay_step = this->declare_parameter<int64_t>("delay_step", 0);
+  params_.perfect_tracker_delay =
+    this->declare_parameter<int64_t>("perfect_tracker_delay", 0);
   params_.line_string_max_step_m = this->declare_parameter<double>("line_string_max_step_m", 5.0);
   params_.use_time_interpolation = this->declare_parameter<bool>("use_time_interpolation", false);
 

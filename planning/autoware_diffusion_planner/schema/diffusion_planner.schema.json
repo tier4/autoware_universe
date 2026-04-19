@@ -100,6 +100,12 @@
           "minimum": 0,
           "description": "Input delay step for inference"
         },
+        "perfect_tracker_delay": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "description": "Number of planning ticks to lag the internal perfect-tracker-style virtual ego state behind the planner's own output (simulates control latency). Independent of delay_step, which is only a model-input hint."
+        },
         "line_string_max_step_m": {
           "type": "number",
           "default": 5.0,

@@ -15,6 +15,7 @@
     turn_indicator_hold_duration: 1.0
     shift_x: false
     delay_step: 0
+    perfect_tracker_delay: 0
     line_string_max_step_m: 5.0
     use_time_interpolation: true
     planning_factor:

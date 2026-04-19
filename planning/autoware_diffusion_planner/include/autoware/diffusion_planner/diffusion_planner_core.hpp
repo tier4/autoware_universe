@@ -118,6 +118,7 @@ struct DiffusionPlannerParams
   double turn_indicator_hold_duration;
   bool shift_x;
   int64_t delay_step;
+  int64_t perfect_tracker_delay;
   double line_string_max_step_m;
   bool use_time_interpolation;
 };
@@ -296,9 +297,10 @@ private:
   // Internal "perfect tracker" virtual ego state driven by this planner's own output.
   // The virtual state replaces the observed kinematic state on the next tick so that
   // the model sees a world in which control perfectly follows the planner's output.
+  // trajectory_history_ is newest-first (push_front) to mirror autoware_perfect_tracker.
   std::optional<nav_msgs::msg::Odometry> virtual_ego_state_;
   std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> virtual_ego_acceleration_;
-  std::optional<Trajectory> last_output_trajectory_;
+  std::deque<Trajectory> trajectory_history_;
 };
 
 }  // namespace autoware::diffusion_planner
