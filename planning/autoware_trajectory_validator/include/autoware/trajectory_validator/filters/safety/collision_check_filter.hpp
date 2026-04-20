@@ -240,6 +240,10 @@ private:
 
   void create_collision_check_params_map(const validator::Params & params);
 
+  CollisionCheckParams fill_collision_check_entry(
+    const validator::Params::CollisionCheck::PetCollision & pet,
+    const validator::Params::CollisionCheck::Rss & rss, const std::string & key) const;
+
   template <typename ParamStruct>
   static double try_labeled_double_param(
     const ParamStruct & params_struct, const std::string & key);

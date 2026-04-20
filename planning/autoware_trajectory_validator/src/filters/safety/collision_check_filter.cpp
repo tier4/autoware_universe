@@ -22,6 +22,7 @@
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 
+#include <rclcpp/logger.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <boost/geometry.hpp>
@@ -909,17 +910,29 @@ Result assess(
 
 }  // namespace collision_timing_assessment
 
-
 void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
   pet_collision_params_ = params.collision_check.pet_collision;
   rss_params_ = params.collision_check.rss;
   try {
     create_collision_check_params_map(params);
+      // for debug print params in created map
+  for (const auto & [key, value] : collision_check_params_map_) {
+    RCLCPP_INFO(rclcpp::get_logger("collision_check_filter"), "Collision check params for label '%s': PET braking delay=%.2f, "
+                              "PET assumed acceleration=%.2f, PET time threshold=%.2f, "
+                              "RSS ego reaction time=%.2f, RSS ego deceleration threshold=%.2f, "
+                              "RSS object acceleration=%.2f, RSS stop margin=%.2f",
+                 key.c_str(), value.pet_collision_params.ego_braking_delay,
+                 value.pet_collision_params.ego_assumed_acceleration,
+                 value.pet_collision_params.collision_time_threshold,
+                 value.rss_params.ego_reaction_time, value.rss_params.ego_deceleration_threshold,
+                 value.rss_params.object_acceleration, value.rss_params.stop_margin);
+  }
   } catch (const std::exception &) {
     collision_check_params_map_.clear();
     throw;
   }
+
 }
 
 void CollisionCheckFilter::create_collision_check_params_map(const validator::Params & params)
@@ -929,85 +942,87 @@ void CollisionCheckFilter::create_collision_check_params_map(const validator::Pa
   const validator::Params::CollisionCheck::PetCollision & pet = params.collision_check.pet_collision;
   const validator::Params::CollisionCheck::Rss & rss = params.collision_check.rss;
 
-  const std::function<CollisionCheckParams(const std::string &)> fill_entry =
-    [&](const std::string & key) {
-      CollisionCheckParams entry{};
-      entry.pet_collision_params.ego_braking_delay = 
-        try_labeled_double_param(pet.ego_braking_delay, key);
-      entry.pet_collision_params.ego_assumed_acceleration = 
-        try_labeled_double_param(pet.ego_assumed_acceleration, key);
-      entry.pet_collision_params.collision_time_threshold =
-        try_labeled_double_param(pet.collision_time_threshold, key);
-
-      entry.rss_params.ego_reaction_time = 
-        try_labeled_double_param(rss.ego_reaction_time, key);
-      entry.rss_params.ego_deceleration_threshold = 
-        try_labeled_double_param(rss.ego_deceleration_threshold, key);
-      entry.rss_params.object_acceleration = 
-        try_labeled_double_param(rss.object_acceleration, key);
-      entry.rss_params.stop_margin = 
-        try_labeled_double_param(rss.stop_margin, key);
-      return entry;
-    };
-
-  static std::vector<std::string> all_class_keys = {
+  static constexpr const char * k_base = "base";
+  // Class labels: keep in sync with parameter_struct.yaml and try_labeled_double_param().
+  static constexpr std::array<const char *, 12> k_object_class_keys{
     "car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "animal",
-    "hazard", "over_drivable", "under_drivable", "unknown"
+    "hazard", "over_drivable", "under_drivable", "unknown",
   };
 
-  static constexpr const char * k_base = "base";
-  collision_check_params_map_[k_base] = fill_entry(k_base);
+  collision_check_params_map_[k_base] = fill_collision_check_entry(pet, rss, k_base);
 
-  for (const std::string & key : all_class_keys) {
-    collision_check_params_map_[key] = fill_entry(key);
+  for (const char * class_key : k_object_class_keys) {
+    collision_check_params_map_[class_key] = fill_collision_check_entry(pet, rss, class_key);
   }
 }
+
+
+CollisionCheckParams CollisionCheckFilter::fill_collision_check_entry(
+  const validator::Params::CollisionCheck::PetCollision & pet,
+  const validator::Params::CollisionCheck::Rss & rss, const std::string & key) const
+{
+  CollisionCheckParams entry{};
+  entry.pet_collision_params.ego_braking_delay =
+    try_labeled_double_param(pet.ego_braking_delay, key);
+  entry.pet_collision_params.ego_assumed_acceleration =
+    try_labeled_double_param(pet.ego_assumed_acceleration, key);
+  entry.pet_collision_params.collision_time_threshold =
+    try_labeled_double_param(pet.collision_time_threshold, key);
+
+  entry.rss_params.ego_reaction_time = try_labeled_double_param(rss.ego_reaction_time, key);
+  entry.rss_params.ego_deceleration_threshold =
+    try_labeled_double_param(rss.ego_deceleration_threshold, key);
+  entry.rss_params.object_acceleration = try_labeled_double_param(rss.object_acceleration, key);
+  entry.rss_params.stop_margin = try_labeled_double_param(rss.stop_margin, key);
+  return entry;
+}
+
+
+
+double CollisionCheckFilter::try_labeled_double_param(double shared_value, const std::string & /*key*/)
+{
+  return shared_value;
+}
+
 
 template <typename ParamStruct>
 double CollisionCheckFilter::try_labeled_double_param(const ParamStruct & params_struct, const std::string & key)
 {
-  static constexpr const char k_base_key[] = "base";
-  if (key == k_base_key) {
+
+  if (key == "base") {
     return params_struct.base;
   }
 
-  double target_params = std::numeric_limits<double>::quiet_NaN();
-
+  double label_value = std::numeric_limits<double>::quiet_NaN();
   if (key == "car") {
-    target_params =  params_struct.car;  // fallback to base if "car" specific value is not set
+    label_value = params_struct.car;
   } else if (key == "truck") {
-    target_params =  params_struct.truck;  // fallback to base if "truck" specific value is not set
+    label_value = params_struct.truck;
   } else if (key == "bus") {
-    target_params =  params_struct.bus;  // fallback to base if "bus" specific value is not set
+    label_value = params_struct.bus;
   } else if (key == "trailer") {
-    target_params =  params_struct.trailer;  // fallback to base if "trailer" specific value is not set
+    label_value = params_struct.trailer;
   } else if (key == "motorcycle") {
-    target_params =  params_struct.motorcycle;  // fallback to base if "motorcycle" specific value is not set
+    label_value = params_struct.motorcycle;
   } else if (key == "bicycle") {
-    target_params =  params_struct.bicycle;  // fallback to base if "bicycle" specific value is not set
+    label_value = params_struct.bicycle;
   } else if (key == "pedestrian") {
-    target_params =  params_struct.pedestrian;
+    label_value = params_struct.pedestrian;
   } else if (key == "animal") {
-    target_params =  params_struct.animal;
+    label_value = params_struct.animal;
   } else if (key == "hazard") {
-    target_params =  params_struct.hazard;
+    label_value = params_struct.hazard;
   } else if (key == "over_drivable") {
-    target_params =  params_struct.over_drivable;
+    label_value = params_struct.over_drivable;
   } else if (key == "under_drivable") {
-    target_params =  params_struct.under_drivable;
+    label_value = params_struct.under_drivable;
   } else if (key == "unknown") {
-    target_params =  params_struct.unknown;
+    label_value = params_struct.unknown;
   } else {
     throw std::invalid_argument("Unknown label key: " + key);
   }
 
-  return std::isnan(target_params) ? params_struct.base : target_params;
-}
-
-double CollisionCheckFilter::try_labeled_double_param(double shared_value, const std::string & /*key*/)
-{
-  // Scalar parameters are not split per label; key is ignored.
-  return shared_value;
+  return std::isnan(label_value) ? params_struct.base : label_value;
 }
 
 void CollisionCheckFilter::add_debug_markers(
