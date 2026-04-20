@@ -21,6 +21,12 @@
 
 namespace autoware::trajectory_validator::plugin::safety::trajectory::time_distance
 {
+namespace
+{
+constexpr double kDefaultTimeResolution =
+  validator::Params::CollisionCheck::GlobalSetting{}.time_resolution;
+}  // namespace
+
 class TimeDistanceTest : public ::testing::Test
 {
 protected:
@@ -36,7 +42,8 @@ protected:
 TEST_F(TimeDistanceTest, ZeroInitialVelocity)
 {
   auto twist = create_twist(0.0, 0.0);
-  auto [times, distances] = compute_motion_profile_1d(twist, 1.0, 1.0, 0.0, 5.0);
+  auto [times, distances] =
+    compute_motion_profile_1d(twist, 1.0, 1.0, 0.0, 5.0, kDefaultTimeResolution);
 
   ASSERT_EQ(times.size(), 1u);
   ASSERT_EQ(distances.size(), 1u);
@@ -51,13 +58,14 @@ TEST_F(TimeDistanceTest, ConstantVelocity)
   double accel = 0.0;
   double end_time = 3.05;
 
-  auto [times, distances] = compute_motion_profile_1d(twist, lag, accel, 0.0, end_time);
+  auto [times, distances] =
+    compute_motion_profile_1d(twist, lag, accel, 0.0, end_time, kDefaultTimeResolution);
 
   EXPECT_EQ(times.front(), 0.0);
   EXPECT_NEAR(times.back(), end_time, 1e-6);
   for (size_t i = 1; i < times.size() - 1; ++i) {
     double t = times[i];
-    EXPECT_NEAR(t, i * TIME_RESOLUTION, 1e-6);
+    EXPECT_NEAR(t, i * kDefaultTimeResolution, 1e-6);
     EXPECT_NEAR(distances[i], 10.0 * t, 1e-6);
   }
 }
@@ -69,7 +77,8 @@ TEST_F(TimeDistanceTest, Acceleration)
   double accel = 2.0;
   double end_time = 2.05;
 
-  auto [times, distances] = compute_motion_profile_1d(twist, lag, accel, 0.0, end_time);
+  auto [times, distances] =
+    compute_motion_profile_1d(twist, lag, accel, 0.0, end_time, kDefaultTimeResolution);
 
   ASSERT_FALSE(times.empty());
 
@@ -93,7 +102,8 @@ TEST_F(TimeDistanceTest, DecelerationAndStop)
   double accel = -5.0;
   double end_time = 5.0;
 
-  auto [times, distances] = compute_motion_profile_1d(twist, lag, accel, 0.0, end_time);
+  auto [times, distances] =
+    compute_motion_profile_1d(twist, lag, accel, 0.0, end_time, kDefaultTimeResolution);
 
   double expected_stop_time = 3.0;
 
@@ -116,7 +126,8 @@ TEST_F(TimeDistanceTest, LagLongerThanMaxTime)
   double accel = -10.0;
   double end_time = 2.05;
 
-  auto [times, distances] = compute_motion_profile_1d(twist, lag, accel, 0.0, end_time);
+  auto [times, distances] =
+    compute_motion_profile_1d(twist, lag, accel, 0.0, end_time, kDefaultTimeResolution);
 
   for (size_t i = 0; i < times.size(); ++i) {
     double t = times[i];
@@ -132,7 +143,8 @@ TEST_F(TimeDistanceTest, SamplesStayWithinRangeAndMonotonicWhenStopTimeExceedsEn
   const double end_time = 2.95;
   const double expected_stop_time = 2.97;
 
-  auto [times, distances] = compute_motion_profile_1d(twist, lag, accel, 0.0, end_time);
+  auto [times, distances] =
+    compute_motion_profile_1d(twist, lag, accel, 0.0, end_time, kDefaultTimeResolution);
 
   ASSERT_FALSE(times.empty());
   ASSERT_EQ(times.size(), distances.size());

@@ -27,6 +27,8 @@ namespace autoware::trajectory_validator::plugin::safety
 {
 namespace
 {
+constexpr double kDefaultTimeResolution =
+  validator::Params::CollisionCheck::GlobalSetting{}.time_resolution;
 
 geometry_msgs::msg::Pose create_pose(const double x, const double y, const double yaw = 0.0)
 {
@@ -112,7 +114,7 @@ autoware_perception_msgs::msg::PredictedPath create_straight_predicted_path(
 {
   autoware_perception_msgs::msg::PredictedPath predicted_path;
   predicted_path.confidence = confidence;
-  predicted_path.time_step = rclcpp::Duration::from_seconds(TIME_RESOLUTION);
+  predicted_path.time_step = rclcpp::Duration::from_seconds(kDefaultTimeResolution);
   predicted_path.path.reserve(xs.size());
   for (const auto x : xs) {
     predicted_path.path.push_back(create_pose(x, y, 0.0));
@@ -264,8 +266,8 @@ TEST(TrajectoryUtilitiesTest, GenerateEgoTrajectoryBuildsConsistentTrajectoryDat
   const auto traj_points = create_straight_trajectory_points({0.0, 10.0, 20.0});
   const auto initial_twist = create_twist(2.0);
 
-  const auto trajectory_data =
-    trajectory::generate_ego_trajectory(initial_twist, 0.0, 0.0, 1.05, traj_points, vehicle_info);
+  const auto trajectory_data = trajectory::generate_ego_trajectory(
+    initial_twist, 0.0, 0.0, 1.05, kDefaultTimeResolution, traj_points, vehicle_info);
 
   ASSERT_EQ(trajectory_data.getObjectIdentification().classification, "EGO");
   ASSERT_TRUE(trajectory_data.getObjectIdentification().trajectory_suffix.empty());
@@ -288,8 +290,8 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryProjectsCurrentPoseOntoT
   const auto odometry = create_odometry(create_pose(5.0, 1.0, 0.0));
   const auto context = create_filter_context(odometry);
 
-  const auto trajectory_data =
-    trajectory::generate_ego_trajectory(traj_points, context, 0.25, vehicle_info);
+  const auto trajectory_data = trajectory::generate_ego_trajectory(
+    traj_points, context, 0.25, kDefaultTimeResolution, vehicle_info);
 
   ASSERT_EQ(trajectory_data.getObjectIdentification().classification, "EGO");
   ASSERT_EQ(trajectory_data.size(), 3u);
@@ -315,8 +317,8 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryAllowsExtrapolationBefor
 
   const double projected_time =
     trajectory::detail::project_current_pose_on_trajectory(traj_points, odometry->pose.pose);
-  const auto trajectory_data =
-    trajectory::generate_ego_trajectory(traj_points, context, 0.25, vehicle_info);
+  const auto trajectory_data = trajectory::generate_ego_trajectory(
+    traj_points, context, 0.25, kDefaultTimeResolution, vehicle_info);
 
   EXPECT_NEAR(projected_time, -0.5, 1e-6);
   ASSERT_EQ(trajectory_data.size(), 3u);
@@ -337,8 +339,8 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryWithSinglePointReturnsSi
 
   const double projected_time =
     trajectory::detail::project_current_pose_on_trajectory(traj_points, odometry->pose.pose);
-  const auto trajectory_data =
-    trajectory::generate_ego_trajectory(traj_points, context, 1.0, vehicle_info);
+  const auto trajectory_data = trajectory::generate_ego_trajectory(
+    traj_points, context, 1.0, kDefaultTimeResolution, vehicle_info);
 
   EXPECT_NEAR(projected_time, 1.0, 1e-6);
   ASSERT_EQ(trajectory_data.size(), 1u);
@@ -358,8 +360,8 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryHandlesNonUniformTimeAnd
 
   const double projected_time =
     trajectory::detail::project_current_pose_on_trajectory(traj_points, odometry->pose.pose);
-  const auto trajectory_data =
-    trajectory::generate_ego_trajectory(traj_points, context, 0.25, vehicle_info);
+  const auto trajectory_data = trajectory::generate_ego_trajectory(
+    traj_points, context, 0.25, kDefaultTimeResolution, vehicle_info);
 
   EXPECT_NEAR(projected_time, 0.9, 1e-6);
 
@@ -377,7 +379,7 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryHandlesNonUniformTimeAnd
 
 TEST(TrajectoryUtilitiesTest, ComputeSampleTimesStartsAtStartTimeAndIncludesEndTime)
 {
-  const auto times = trajectory::detail::compute_sample_times(-0.1, 0.4);
+  const auto times = trajectory::detail::compute_sample_times(-0.1, 0.4, kDefaultTimeResolution);
 
   ASSERT_EQ(times.size(), 6u);
   EXPECT_NEAR(times.at(0), -0.1, 1e-6);
@@ -399,7 +401,8 @@ TEST(TrajectoryUtilitiesTest, GeneratePredictedPathTrajectoryUsesHighestConfiden
   const auto object = create_predicted_object(initial_pose, initial_twist, shape, predicted_paths);
 
   const auto trajectory_data = trajectory::generate_predicted_path_trajectory(
-    object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.1), 0.35, builtin_interfaces::msg::Time{});
+    object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.1), 0.35, builtin_interfaces::msg::Time{},
+    kDefaultTimeResolution);
 
   EXPECT_EQ(trajectory_data.getObjectIdentification().trajectory_suffix, "_predicted_path");
   EXPECT_NEAR(trajectory_data.getTimes().front(), 0.1, 1e-6);
@@ -454,9 +457,11 @@ TEST(TrajectoryUtilitiesTest, GenerateConstantCurvaturePathTrajectoryMatchesPred
   const auto object = create_predicted_object(initial_pose, initial_twist, shape, {});
 
   const auto trajectory_data = trajectory::generate_constant_curvature_trajectory(
-    object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.0), 0.25, builtin_interfaces::msg::Time{});
+    object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.0), 0.25, builtin_interfaces::msg::Time{},
+    kDefaultTimeResolution);
   const auto [expected_times, expected_distances] =
-    trajectory::time_distance::compute_motion_profile_1d(initial_twist, 0.0, 0.0, 0.0, 0.25);
+    trajectory::time_distance::compute_motion_profile_1d(
+      initial_twist, 0.0, 0.0, 0.0, 0.25, kDefaultTimeResolution);
   const auto expected_poses = trajectory::pose::constant_curvature_predictor::compute(
     initial_pose, initial_twist, expected_distances);
 
@@ -484,7 +489,8 @@ TEST(TrajectoryUtilitiesTest, GenerateTimeInterpolatedPredictedPathTrajectoryUse
   object.kinematics.predicted_paths.front().time_step = rclcpp::Duration::from_seconds(0.2);
 
   const auto trajectory_data = trajectory::generate_diffusion_based_trajectory(
-    object, rclcpp::Duration::from_seconds(-0.15), 0.4, builtin_interfaces::msg::Time{});
+    object, rclcpp::Duration::from_seconds(-0.15), 0.4, builtin_interfaces::msg::Time{},
+    kDefaultTimeResolution);
 
   ASSERT_EQ(trajectory_data.size(), 6u);
   EXPECT_EQ(

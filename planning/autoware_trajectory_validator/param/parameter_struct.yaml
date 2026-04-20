@@ -57,6 +57,14 @@ validator:
       read_only: false
 
   collision_check:
+    global_setting:
+      time_resolution:
+        type: double
+        default_value: 0.1
+        description: sampling interval used in collision check trajectory generation
+        validation:
+          gt<>: [0.0]
+        read_only: false
     drac:
       enable_assessment:
         type: bool

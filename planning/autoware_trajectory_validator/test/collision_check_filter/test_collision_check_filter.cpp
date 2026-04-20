@@ -22,6 +22,11 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+namespace
+{
+constexpr double kDefaultTimeResolution =
+  validator::Params::CollisionCheck::GlobalSetting{}.time_resolution;
+}  // namespace
 
 class CollisionCheckFilterTest : public ::testing::Test
 {
@@ -79,14 +84,14 @@ protected:
     const double max_time = 10.0;
 
     auto [times, distances] = trajectory::time_distance::compute_motion_profile_1d(
-      twist, assumed_lag, assumed_acceleration, 0.0, max_time);
+      twist, assumed_lag, assumed_acceleration, 0.0, max_time, kDefaultTimeResolution);
     auto pose_trajectory =
       trajectory::pose::constant_curvature_predictor::compute(initial_pose, twist, distances);
 
     autoware_perception_msgs::msg::PredictedPath predicted_path;
     predicted_path.confidence = 1.0;
 
-    predicted_path.time_step = rclcpp::Duration::from_seconds(TIME_RESOLUTION);
+    predicted_path.time_step = rclcpp::Duration::from_seconds(kDefaultTimeResolution);
 
     for (const auto & pose : pose_trajectory) {
       predicted_path.path.push_back(pose);
