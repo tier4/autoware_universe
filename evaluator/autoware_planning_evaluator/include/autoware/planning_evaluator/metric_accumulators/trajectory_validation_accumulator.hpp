@@ -18,10 +18,10 @@
 #include "autoware/planning_evaluator/metrics/metric.hpp"
 #include "autoware/planning_evaluator/metrics/output_metric.hpp"
 
+#include <autoware_trajectory_validator/msg/validation_report_array.hpp>
 #include <autoware_utils/math/accumulator.hpp>
 #include <nlohmann/json.hpp>
 
-#include <autoware_trajectory_validator/msg/validation_report_array.hpp>
 #include <tier4_metric_msgs/msg/metric.hpp>
 #include <tier4_metric_msgs/msg/metric_array.hpp>
 
@@ -31,8 +31,8 @@
 
 namespace planning_diagnostics
 {
-using autoware_utils::Accumulator;
 using autoware_trajectory_validator::msg::ValidationReportArray;
+using autoware_utils::Accumulator;
 using MetricMsg = tier4_metric_msgs::msg::Metric;
 using MetricArrayMsg = tier4_metric_msgs::msg::MetricArray;
 using json = nlohmann::json;
@@ -51,8 +51,9 @@ using json = nlohmann::json;
  *
  * `count_warn_as_error`: if false, only ERROR(2); if true, WARN(1) also counts as error.
  *
- * Metric rows whose `metric_name` matches `check_*_<32-hex UUID>` (optional `_<suffix>`) are skipped
- * (object-id-specific checks); see `shouldCollectMetricRow` in trajectory_validation_accumulator.cpp.
+ * Metric rows whose `metric_name` matches `check_*_<32-hex UUID>` (optional `_<suffix>`) are
+ * skipped (object-id-specific checks); see `shouldCollectMetricRow` in
+ * trajectory_validation_accumulator.cpp.
  */
 class TrajectoryValidationAccumulator
 {
