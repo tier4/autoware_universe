@@ -28,7 +28,6 @@
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <chrono>
-#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -191,7 +190,6 @@ void TrajectoryOptimizer::on_traj([[maybe_unused]] const CandidateTrajectories::
     data.current_acceleration = *current_acceleration_ptr_;
     // Apply optimizations - plugins execute in order from plugin_names parameter
     for (auto & plugin : plugins_) {
-      std::cout << "Optimizing trajectory with plugin: " << plugin->get_name() << std::endl;
       plugin->optimize_trajectory(trajectory.points, params_, data);
     }
 

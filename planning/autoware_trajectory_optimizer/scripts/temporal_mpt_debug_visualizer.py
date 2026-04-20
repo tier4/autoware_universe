@@ -534,13 +534,7 @@ class TemporalMptDebugVisualizer(Node):
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    # Must match the trajectory_optimizer_node namespace from diffusion_planner.launch.xml:
-    # /planning/trajectory_generator/neural_network_based_planner/trajectory_optimizer_node
-    # Debug I/O is ~/debug/temporal_mpt/... on that node (see trajectory_temporal_mpt_optimizer.cpp).
-    default_prefix = (
-        "/planning/trajectory_generator/neural_network_based_planner/"
-        "trajectory_optimizer_node/debug/temporal_mpt"
-    )
+    default_prefix = "/planning/trajectory_generator/trajectory_optimizer_node/debug/temporal_mpt"
     parser = argparse.ArgumentParser(
         description="Plot temporal MPT debug: path, state (v, δ), and MPC controls.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -548,10 +542,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--topic-prefix",
         default=default_prefix,
-        help=(
-            "Absolute prefix for debug topics (input/reference_trajectory, output/trajectory, ...). "
-            "Default matches neural_net planner launch; override if your node is namespaced differently."
-        ),
+        help="Topic prefix (same as TrajectoryTemporalMPTOptimizer ~/debug/temporal_mpt/...)",
     )
     parser.add_argument(
         "--update-hz",

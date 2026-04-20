@@ -128,6 +128,8 @@ void TrajectoryTemporalMPTOptimizer::set_up_params()
     *node_ptr, "trajectory_temporal_mpt_optimizer.replay_fixture_directory");
   mpt_params_.log_replay_fixture_to_console = get_or_declare_parameter<bool>(
     *node_ptr, "trajectory_temporal_mpt_optimizer.log_replay_fixture_to_console");
+  mpt_params_.reroute_output = get_or_declare_parameter<bool>(
+    *node_ptr, "trajectory_temporal_mpt_optimizer.reroute_output");
 
   if (mpt_params_.write_replay_fixture && !mpt_params_.replay_fixture_directory.empty()) {
     RCLCPP_INFO(
@@ -166,6 +168,9 @@ rcl_interfaces::msg::SetParametersResult TrajectoryTemporalMPTOptimizer::on_para
   update_param(
     parameters, "trajectory_temporal_mpt_optimizer.log_replay_fixture_to_console",
     mpt_params_.log_replay_fixture_to_console);
+  update_param(
+    parameters, "trajectory_temporal_mpt_optimizer.reroute_output",
+    mpt_params_.reroute_output);
 
   if (solver_reinit_required) {
     create_or_reset_solver();
@@ -332,9 +337,18 @@ void TrajectoryTemporalMPTOptimizer::optimize_trajectory(
     }
   }
 
-  const size_t n_apply = std::min(traj_points.size(), static_cast<size_t>(temporal_mpt::N + 1));
+  // When reroute_output is true, write the optimized state to a copy only (debug topics) and
+  // leave traj_points unchanged for downstream plugins.
+  TrajectoryPoints rerouted_output;
+  TrajectoryPoints * apply_traj = &traj_points;
+  if (mpt_params_.reroute_output) {
+    rerouted_output = traj_points;
+    apply_traj = &rerouted_output;
+  }
+
+  const size_t n_apply = std::min(apply_traj->size(), static_cast<size_t>(temporal_mpt::N + 1));
   for (size_t i = 0; i < n_apply; ++i) {
-    auto & p = traj_points.at(i);
+    auto & p = apply_traj->at(i);
     p.pose.position.x = solution.xtraj[i][0];
     p.pose.position.y = solution.xtraj[i][1];
     tf2::Quaternion q;
@@ -357,7 +371,7 @@ void TrajectoryTemporalMPTOptimizer::optimize_trajectory(
 
   if (mpt_params_.publish_debug_topics) {
     publish_temporal_mpt_debug_io(
-      reference_snapshot, data.current_odometry, traj_points, traj_points.size(), 0, &solution);
+      reference_snapshot, data.current_odometry, *apply_traj, apply_traj->size(), 0, &solution);
   }
 }
 

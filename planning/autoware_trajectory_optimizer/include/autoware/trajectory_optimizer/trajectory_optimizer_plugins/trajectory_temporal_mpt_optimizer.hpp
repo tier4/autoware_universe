@@ -46,6 +46,8 @@ struct TemporalMPTParams
   bool write_replay_fixture{true};
   std::string replay_fixture_directory;
   bool log_replay_fixture_to_console{false};
+  /// If true, MPC updates are applied to a copy for debug I/O only; \c traj_points is unchanged.
+  bool reroute_output{false};
 };
 
 class TrajectoryTemporalMPTOptimizer : public TrajectoryOptimizerPluginBase
