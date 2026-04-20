@@ -28,7 +28,8 @@ bool levelIndicatesError(const uint8_t level, const bool count_warn_as_error)
   return count_warn_as_error && level == 1;
 }
 
-/// Skip one-off object-id rows: metric_name like check_<prefix>_<32-hex> or check_<...>_<32-hex>_<suffix>.
+/// Skip one-off object-id rows: metric_name like check_<prefix>_<32-hex> or
+/// check_<...>_<32-hex>_<suffix>.
 bool shouldCollectMetricRow(
   [[maybe_unused]] const std::string & validator_name, const std::string & metric_name)
 {
