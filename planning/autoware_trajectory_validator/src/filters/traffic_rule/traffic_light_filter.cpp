@@ -34,6 +34,7 @@
 #include <ctime>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -43,17 +44,33 @@ namespace
 /// traffic light groups
 std::vector<std::pair<lanelet::BasicLineString2d, autoware_perception_msgs::msg::TrafficLightGroup>>
 collect_stop_lines(
-  const lanelet::LaneletMap & lanelet_map,
+  const lanelet::LaneletMap & lanelet_map, const autoware_planning_msgs::msg::LaneletRoute & route,
   const std::vector<autoware_perception_msgs::msg::TrafficLightGroup> & traffic_light_groups)
 {
   std::vector<
     std::pair<lanelet::BasicLineString2d, autoware_perception_msgs::msg::TrafficLightGroup>>
     stop_lines;
+  std::unordered_map<lanelet::Id, lanelet::Id> route_lanelet_id_per_traffic_light_id;
+  for (const auto & segment : route.segments) {
+    for (const auto & tl : lanelet_map.laneletLayer.get(segment.preferred_primitive.id)
+                             .regulatoryElementsAs<lanelet::TrafficLight>()) {
+      route_lanelet_id_per_traffic_light_id.emplace(tl->id(), segment.preferred_primitive.id);
+    }
+  }
 
   for (const auto & signal : traffic_light_groups) {
+    const auto hit = route_lanelet_id_per_traffic_light_id.find(signal.traffic_light_group_id);
+    if (hit == route_lanelet_id_per_traffic_light_id.end()) {
+      continue;
+    }
     const auto traffic_light_it =
       lanelet_map.regulatoryElementLayer.find(signal.traffic_light_group_id);
     if (traffic_light_it == lanelet_map.regulatoryElementLayer.end()) {
+      continue;
+    }
+
+    if (!autoware::traffic_light_utils::isTrafficSignalStop(
+          lanelet_map.laneletLayer.get(hit->second), signal)) {
       continue;
     }
 
@@ -74,6 +91,10 @@ std::optional<std::string> is_invalid_input(
 {
   if (!context.lanelet_map) {
     return "Lanelet map is not available in the context.";
+  }
+
+  if (!context.route) {
+    return "Route is not available in the context.";
   }
 
   if (!vehicle_info) {
@@ -102,13 +123,13 @@ void TrafficLightFilter::update_parameters(const validator::Params & params)
 
 std::pair<std::vector<lanelet::BasicLineString2d>, std::vector<lanelet::BasicLineString2d>>
 TrafficLightFilter::get_stop_lines(
-  const lanelet::LaneletMap & lanelet_map,
+  const lanelet::LaneletMap & lanelet_map, const autoware_planning_msgs::msg::LaneletRoute & route,
   const autoware_perception_msgs::msg::TrafficLightGroupArray & traffic_lights) const
 {
   std::vector<lanelet::BasicLineString2d> red_stop_lines;
   std::vector<lanelet::BasicLineString2d> amber_stop_lines;
   for (const auto & [stop_line, signal] :
-       collect_stop_lines(lanelet_map, traffic_lights.traffic_light_groups)) {
+       collect_stop_lines(lanelet_map, route, traffic_lights.traffic_light_groups)) {
     if (traffic_light_utils::hasTrafficLightCircleColor(
           signal.elements, tier4_perception_msgs::msg::TrafficLightElement::RED)) {
       red_stop_lines.push_back(stop_line);
@@ -126,12 +147,11 @@ TrafficLightFilter::get_stop_lines(
 }
 
 bool TrafficLightFilter::is_stop_point_within_margin_from_stop_line(
-  const std::optional<TrajectoryPoint> & stop_point,
+  const std::optional<lanelet::BasicPoint2d> & stop_p,
   const lanelet::BasicLineString2d & stop_line) const
 {
-  if (stop_point.has_value()) {
-    const lanelet::BasicPoint2d stop_p(stop_point->pose.position.x, stop_point->pose.position.y);
-    if (boost::geometry::distance(stop_p, stop_line) <= params_.stop_overshoot_margin) {
+  if (stop_p.has_value()) {
+    if (boost::geometry::distance(*stop_p, stop_line) <= params_.stop_overshoot_margin) {
       return true;
     }
   }
@@ -153,7 +173,7 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
     params_.checked_trajectory_length.jerk_limit, delay_response_time);
   const auto max_trajectory_length = distance_for_ego_to_stop.value_or(0.0);
   auto length = 0.0;
-  std::optional<TrajectoryPoint> stop_point;
+  bool is_stopping_trajectory = false;
   for (const auto & p : traj_points) {
     // skip points behind ego
     if (rclcpp::Duration(p.time_from_start).seconds() < 0.0) {
@@ -168,13 +188,8 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
     trajectory_ls.emplace_back(lanelet_p);
 
     // skip points beyond the first stop, or skip once we reach the maximum length
-    const auto is_stop_point = p.longitudinal_velocity_mps <= 0.0;
-    if (is_stop_point) {
-      stop_point = p;
-      break;
-    }
-
-    if (length > max_trajectory_length) {
+    is_stopping_trajectory = p.longitudinal_velocity_mps <= 0.0;
+    if (is_stopping_trajectory || length > max_trajectory_length) {
       break;
     }
   }
@@ -195,9 +210,13 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
       trajectory_ls.emplace_back(front_vehicle_point);
     }
   }
+  std::optional<lanelet::BasicPoint2d> stop_point;
+  if (is_stopping_trajectory) {
+    stop_point = trajectory_ls.back();
+  }
 
   const auto [red_stop_lines, amber_stop_lines] =
-    get_stop_lines(*context.lanelet_map, *context.traffic_light_signals);
+    get_stop_lines(*context.lanelet_map, *context.route, *context.traffic_light_signals);
 
   bool is_feasible = true;
   std::vector<MetricReport> metrics;

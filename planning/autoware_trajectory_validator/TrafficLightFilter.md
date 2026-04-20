@@ -14,8 +14,9 @@ The filter decides whether to reject a trajectory based on the following steps:
    - Captures this stop point if it exists within the checked range.
    - Extends the trajectory's visual representation by the vehicle's longitudinal offset (front of the vehicle) to ensure the front bumper is checked against stop lines.
 2. **Stop Line Identification**:
-   - Searches for lanelets intersecting the trajectory's bounding box.
-   - Retrieves red and amber stop lines associated with these lanelets based on the current traffic light signals.
+   - Uses the **Route** to map traffic light signals to lanelets and filters out signals that do not apply to the current route.
+   - For each relevant traffic light, it verifies if the signal is a stop signal for the associated lanelet.
+   - Retrieves red and amber stop lines for these relevant signals.
    - If `treat_amber_light_as_red_light` is enabled, all amber stop lines are treated as red stop lines.
 3. **Red Light Validation**:
    - If the trajectory intersects a red stop line:
@@ -67,6 +68,7 @@ The filter utilizes the following data from the `FilterContext`:
 
 - **Lanelet Map**: Used to find regulatory elements (traffic lights) and their associated stop lines.
 - **Traffic Light Signals**: Provides the current state (color) of traffic light groups.
+- **Route**: Used to map traffic light signals to lanelets and filter those that are relevant to the vehicle's path.
 - **Vehicle Info**: Used to account for the vehicle's dimensions (longitudinal offset) when checking for stop line intersections.
 
 ### Parameters

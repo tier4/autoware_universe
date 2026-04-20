@@ -57,7 +57,24 @@ validator:
       read_only: false
 
   collision_check:
+    global_setting:
+      time_resolution:
+        type: double
+        default_value: 0.1
+        description: sampling interval used in collision check trajectory generation
+        read_only: false
+    drac:
+      enable_assessment:
+        type: bool
+        default_value: true
+        description: When true, DRAC assessment is performed
+        read_only: false
     pet_collision:
+      enable_assessment:
+        type: bool
+        default_value: true
+        description: When true, planned speed assessment is performed
+        read_only: false
       ego_braking_delay:
         type: double
         default_value: 0.4
@@ -74,6 +91,11 @@ validator:
         description: time threshold for PET collision check
         read_only: false
     rss:
+      enable_assessment:
+        type: bool
+        default_value: true
+        description: When true, RSS assessment is performed
+        read_only: false
       ego_deceleration_threshold:
         type: double
         default_value: 4.0

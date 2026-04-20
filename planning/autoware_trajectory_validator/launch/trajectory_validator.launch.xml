@@ -9,6 +9,7 @@
   <arg name="input_diffusion_objects" default="/planning/trajectory_generator/neural_network_based_planner/diffusion_planner_node/output/predicted_objects"/>
   <arg name="input_acceleration" default="~/input/acceleration"/>
   <arg name="input_traffic_signals" default="~/input/traffic_signals"/>
+  <arg name="input_route" default="/planning/mission_planning/route"/>
 
   <arg name="enable_pseudo_emergency_stop" default="false"/>
 
@@ -23,5 +24,6 @@
     <remap from="~/input/diffusion/objects" to="$(var input_diffusion_objects)"/>
     <remap from="~/input/acceleration" to="$(var input_acceleration)"/>
     <remap from="~/input/traffic_signals" to="$(var input_traffic_signals)"/>
+    <remap from="~/input/route" to="$(var input_route)"/>
   </node>
 </launch>
