@@ -275,7 +275,7 @@ Metrics are calculated and published only when the node receives a message on `~
 - **`trajectory_validation`**: Error span statistics for each candidate trajectory and for each metric row reported by validators.
   - **Scopes** (prefixed by `trajectory_validation/` in published names):
     - `/{generator_name}`: whole-trajectory result from `ValidationReport.level`.
-    - `/{generator_name}/{validator_name}/{metric_name}`: per-row result from each `MetricReport`.
+    - `/{generator_name}/{validator_name}/{metric_name}`: per-row result from each `MetricReport` (names matching `check_*_<object-uuid>` patterns may be excluded; see implementation).
   - Parameters:
     - `trajectory_validation.count_warn_as_error`: if `true`, both WARN and ERROR count as error; if `false`, only ERROR.
   - Sub-metrics to publish (value-based):
