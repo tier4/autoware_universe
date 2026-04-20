@@ -465,8 +465,7 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
     }
     return get_nearest_object_collision(
       traj_points, debug_data_.trajectory_shape, data_->vehicle_info, active_objects,
-      object_decel_map_, data_->current_odometry->twist.twist.linear.x,
-      params_.rss_params.ego_decel, params_.rss_params.reaction_time,
+      object_decel_map_, params_.rss_params.ego_decel, params_.rss_params.reaction_time,
       params_.rss_params.safety_margin, params_.objects.stopped_velocity_th,
       params_.rss_params.lookahead_horizon, debug_data_.target_polygons, colliding_object);
   });

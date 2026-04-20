@@ -159,10 +159,9 @@ using ObjectDecelMap = std::unordered_map<ObjectType, double>;
 std::optional<CollisionPoint> get_nearest_object_collision(
   const TrajectoryPoints & trajectory_points, const TrajectoryShape & trajectory_shape,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const PredictedObjects & objects,
-  const ObjectDecelMap & object_decel_map, const double ego_vel, const double ego_decel,
-  const double reaction_time, const double safety_margin, const double stopped_vel_th,
-  const double lookahead_horizon, MultiPolygon2d & target_polygons,
-  PredictedObject & colliding_object);
+  const ObjectDecelMap & object_decel_map, const double ego_decel, const double reaction_time,
+  const double safety_margin, const double stopped_vel_th, const double lookahead_horizon,
+  MultiPolygon2d & target_polygons, PredictedObject & colliding_object);
 
 struct ObjectFilter
 {

@@ -323,10 +323,9 @@ double get_safe_distance(
 std::optional<CollisionPoint> get_nearest_object_collision(
   const TrajectoryPoints & trajectory_points, const TrajectoryShape & trajectory_shape,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const PredictedObjects & objects,
-  const ObjectDecelMap & object_decel_map, const double ego_vel, const double ego_decel,
-  const double reaction_time, const double safety_margin, const double stopped_vel_th,
-  const double lookahead_horizon, MultiPolygon2d & target_polygons,
-  PredictedObject & colliding_object)
+  const ObjectDecelMap & object_decel_map, const double ego_decel, const double reaction_time,
+  const double safety_margin, const double stopped_vel_th, const double lookahead_horizon,
+  MultiPolygon2d & target_polygons, PredictedObject & colliding_object)
 {
   if (objects.objects.empty()) return std::nullopt;
 
@@ -334,7 +333,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
 
   auto is_safe = [&](
                    const auto & object, const double obj_arc_length, const double obj_lon_vel,
-                   const double ego_arc_length) -> bool {
+                   const double ego_arc_length, const double ego_vel) -> bool {
     if (object.classification.empty()) return false;
     const auto obj_type = classification_to_object_type.at(object.classification.front().label);
     if (!object_decel_map.count(obj_type)) return false;
@@ -368,9 +367,11 @@ std::optional<CollisionPoint> get_nearest_object_collision(
     const auto t = rclcpp::Duration(traj_p.time_from_start).seconds();
     if (t > lookahead_horizon) break;
     curr_arc_length += autoware_utils::calc_distance2d(last_p, traj_p.pose.position);
+    const auto target_ego_vel = traj_p.longitudinal_velocity_mps;
     for (const auto & object : target_objects.objects) {
       const auto obj_state = get_object_state_at_time(trajectory_points, object, t);
-      if (is_safe(object, obj_state.arc_length, obj_state.lon_vel, curr_arc_length)) continue;
+      if (is_safe(object, obj_state.arc_length, obj_state.lon_vel, curr_arc_length, target_ego_vel))
+        continue;
       found_collision = true;
       if (obj_state.arc_length < min_obj_arc_length) {
         min_obj_arc_length = obj_state.arc_length;
