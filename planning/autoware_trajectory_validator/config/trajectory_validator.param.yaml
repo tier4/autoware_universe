@@ -29,6 +29,9 @@
         time_resolution: 0.1
       drac:
         enable_assessment: false
+      predicted_path_trajectory: true
+      constant_curvature_trajectory: true
+      diffusion_based_trajectory: true
       pet_collision:
         enable_assessment: true
         ego_braking_delay: 0.4
