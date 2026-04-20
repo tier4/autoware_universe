@@ -17,6 +17,8 @@
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
+
 #include <lanelet2_core/Forward.h>
 
 #include <string>
@@ -46,10 +48,11 @@ private:
     std::vector<lanelet::BasicLineString2d>, std::vector<lanelet::BasicLineString2d>>
   get_stop_lines(
     const lanelet::LaneletMap & lanelet_map,
+    const autoware_planning_msgs::msg::LaneletRoute & route,
     const autoware_perception_msgs::msg::TrafficLightGroupArray & traffic_lights) const;
   /// @brief return true if there is a stop point and it is within margin distance of the stop line
   [[nodiscard]] bool is_stop_point_within_margin_from_stop_line(
-    const std::optional<TrajectoryPoint> & stop_point,
+    const std::optional<lanelet::BasicPoint2d> & stop_p,
     const lanelet::BasicLineString2d & stop_line) const;
 
   validator::Params::TrafficLight params_;

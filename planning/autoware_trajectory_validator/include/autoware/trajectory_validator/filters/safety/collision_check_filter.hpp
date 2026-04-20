@@ -63,7 +63,6 @@ using StepPolygonTrajectory = std::vector<Polygon2d>;
 using IndexRange = std::pair<size_t, size_t>;
 using TimeRange = std::pair<double, double>;
 
-static constexpr double TIME_RESOLUTION = 0.1;
 static constexpr double TIME_INDEX_EPSILON = 1e-3;
 
 struct ObjectIdentification
@@ -288,6 +287,8 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
+  validator::Params::CollisionCheck::GlobalSetting global_setting_;
+  validator::Params::CollisionCheck::Drac drac_params_;
   validator::Params::CollisionCheck::PetCollision pet_collision_params_;
   validator::Params::CollisionCheck::Rss rss_params_;
   ContinuousDetectionTimes pet_continuous_times_;
