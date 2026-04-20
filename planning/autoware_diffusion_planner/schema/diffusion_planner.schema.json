@@ -106,6 +106,12 @@
           "minimum": 0,
           "description": "Number of planning ticks to lag the internal perfect-tracker-style virtual ego state behind the planner's own output (simulates control latency). Independent of delay_step, which is only a model-input hint."
         },
+        "perfect_tracker_max_drift": {
+          "type": "number",
+          "default": 1.0,
+          "exclusiveMinimum": 0.0,
+          "description": "Max allowed 3D distance [m] between the virtual ego state and the real EKF pose; when exceeded, the virtual state is snapped back to the EKF as a safety fallback."
+        },
         "line_string_max_step_m": {
           "type": "number",
           "default": 5.0,

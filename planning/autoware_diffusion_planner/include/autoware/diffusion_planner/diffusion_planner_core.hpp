@@ -119,6 +119,7 @@ struct DiffusionPlannerParams
   bool shift_x;
   int64_t delay_step;
   int64_t perfect_tracker_delay;
+  double perfect_tracker_max_drift;
   double line_string_max_step_m;
   bool use_time_interpolation;
 };

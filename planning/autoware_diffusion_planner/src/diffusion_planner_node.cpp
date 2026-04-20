@@ -124,6 +124,8 @@ void DiffusionPlanner::set_up_params()
   params_.delay_step = this->declare_parameter<int64_t>("delay_step", 0);
   params_.perfect_tracker_delay =
     this->declare_parameter<int64_t>("perfect_tracker_delay", 0);
+  params_.perfect_tracker_max_drift =
+    this->declare_parameter<double>("perfect_tracker_max_drift", 1.0);
   params_.line_string_max_step_m = this->declare_parameter<double>("line_string_max_step_m", 5.0);
   params_.use_time_interpolation = this->declare_parameter<bool>("use_time_interpolation", false);
 

@@ -298,19 +298,17 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
     }
   }
 
-  // Safety fallback: if the virtual state has drifted more than 1 m from the real EKF
-  // position, snap it back to the real state (pose + stamp) so the model never sees a
-  // grossly stale pose.
-  constexpr double kVirtualStateMaxDriftM = 1.0;
+  // Safety fallback: if the virtual state has drifted more than perfect_tracker_max_drift
+  // metres from the real EKF position, snap it back to the real state (pose + stamp) so
+  // the model never sees a grossly stale pose.
+  const double max_drift = params_.perfect_tracker_max_drift;
   const double drift_dx =
     virtual_ego_state_->pose.pose.position.x - ego_kinematic_state->pose.pose.position.x;
   const double drift_dy =
     virtual_ego_state_->pose.pose.position.y - ego_kinematic_state->pose.pose.position.y;
   const double drift_dz =
     virtual_ego_state_->pose.pose.position.z - ego_kinematic_state->pose.pose.position.z;
-  if (
-    (drift_dx * drift_dx + drift_dy * drift_dy + drift_dz * drift_dz) >
-    (kVirtualStateMaxDriftM * kVirtualStateMaxDriftM)) {
+  if ((drift_dx * drift_dx + drift_dy * drift_dy + drift_dz * drift_dz) > (max_drift * max_drift)) {
     virtual_ego_state_ = *ego_kinematic_state;
     virtual_ego_acceleration_ = *ego_acceleration;
   }
