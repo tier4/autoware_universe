@@ -1327,15 +1327,10 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   pet_continuous_times_.update(
     current_time, collision_timing_result.planned_speed_findings,
     [](const auto & finding) { return finding.trajectory_id; });
-  double worst_pet = std::numeric_limits<double>::infinity();
-  double worst_ttc = std::numeric_limits<double>::infinity();
   for (const auto & finding : collision_timing_result.planned_speed_findings) {
     const auto object_id = to_object_id_string(finding.object);
     // Mark as infeasible if any finding exists
     is_feasible = false;
-
-    worst_pet = std::min(worst_pet, finding.pet);
-    worst_ttc = std::min(worst_ttc, finding.ttc);
 
     // Record metrics for PET and TTC for each finding
     metrics.push_back(
@@ -1366,36 +1361,15 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     add_collision_planning_factor(finding, "PET");
   }
 
-  if (worst_pet < std::numeric_limits<double>::infinity()) {
-    metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
-                        .validator_name(get_name())
-                        .validator_category(category())
-                        .metric_name("worst_PET")
-                        .metric_value(worst_pet)
-                        .level(MetricReport::ERROR));
-  }
-  if (worst_ttc < std::numeric_limits<double>::infinity()) {
-    metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
-                        .validator_name(get_name())
-                        .validator_category(category())
-                        .metric_name("worst_TTC")
-                        .metric_value(worst_ttc)
-                        .level(MetricReport::ERROR));
-  }
-
   drac_continuous_times_.update(
     current_time, collision_timing_result.drac_findings,
     [](const auto & finding) { return finding.trajectory_id; });
   if (
     collision_timing_result.drac == std::nullopt ||
     collision_timing_result.drac.value() >= -pet_collision_params_.ego_assumed_acceleration) {
-    double worst_drac = -std::numeric_limits<double>::infinity();
     for (const auto & finding : collision_timing_result.drac_findings) {
       const auto object_id = to_object_id_string(finding.object);
       is_feasible = false;
-
-      const double drac_metric = collision_timing_result.drac.value_or(0.0);
-      worst_drac = std::max(worst_drac, drac_metric);
 
       metrics.push_back(
         autoware_trajectory_validator::build<MetricReport>()
@@ -1403,7 +1377,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
           .validator_category(category())
           .metric_name(fmt::format(
             "check_DRAC_{}_{}_{}", finding.trajectory_id, finding.object.classification, object_id))
-          .metric_value(drac_metric)
+          .metric_value(collision_timing_result.drac.value_or(0.0))
           .level(MetricReport::ERROR));
       error_msg += fmt::format(
         "DRAC collision, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{}; \n",
@@ -1417,14 +1391,6 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
         finding.ego_trajectory, finding.object_trajectory, finding.ego_hull, finding.object_hull);
       add_collision_planning_factor(finding, "DRAC");
     }
-    if (worst_drac > -std::numeric_limits<double>::infinity()) {
-      metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
-                          .validator_name(get_name())
-                          .validator_category(category())
-                          .metric_name("worst_DRAC")
-                          .metric_value(worst_drac)
-                          .level(MetricReport::ERROR));
-    }
   }
 
   const auto rss_result =
@@ -1432,14 +1398,10 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   rss_continuous_times_.update(current_time, rss_result.violations, [](const auto & violation) {
     return to_object_id_string(violation.object);
   });
-  double worst_rss = -std::numeric_limits<double>::infinity();
   for (const auto & violation : rss_result.violations) {
     const auto object_id = to_object_id_string(violation.object);
     // Mark as infeasible if any RSS violation exists
     is_feasible = false;
-
-    const double required_deceleration = violation.required_deceleration;
-    worst_rss = std::max(worst_rss, required_deceleration);
 
     // Record metrics for each RSS violation
     metrics.push_back(
@@ -1447,23 +1409,14 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
         .validator_name(get_name())
         .validator_category(category())
         .metric_name(fmt::format("check_RSS_{}_{}", violation.object.classification, object_id))
-        .metric_value(required_deceleration)
+        .metric_value(violation.required_deceleration)
         .level(MetricReport::ERROR));
     const double detection_duration = rss_continuous_times_.get_time(object_id);
     error_msg += fmt::format(
       "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}, stamp: "
       "{}.{}; \n",
-      violation.object.classification, object_id, detection_duration, required_deceleration,
-      violation.object.stamp.sec, violation.object.stamp.nanosec);
-  }
-
-  if (worst_rss > -std::numeric_limits<double>::infinity()) {
-    metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
-                        .validator_name(get_name())
-                        .validator_category(category())
-                        .metric_name("worst_RSS")
-                        .metric_value(worst_rss)
-                        .level(MetricReport::ERROR));
+      violation.object.classification, object_id, detection_duration,
+      violation.required_deceleration, violation.object.stamp.sec, violation.object.stamp.nanosec);
   }
 
   if (!error_msg.empty()) {
