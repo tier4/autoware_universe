@@ -28,6 +28,8 @@
 
   <arg name="launch_dummy_perception"/>
   <arg name="launch_dummy_vehicle"/>
+  <arg name="simulator_type" default="simple_planning_simulator" if="$(var launch_dummy_vehicle)" description="simulator model type"/>
+  <arg name="simulator_type" default="none" unless="$(var launch_dummy_vehicle)" description="simulator model type"/>
   <arg
     name="localization_sim_mode"
     description="Select localization mode. Options are 'none', 'api' or 'pose_twist_estimator'. 'pose_twist_estimator' starts most of the localization modules except for the ndt_scan_matcher. 'api' starts an external API for initial position estimation. 'none' does not start any localization-related process."
