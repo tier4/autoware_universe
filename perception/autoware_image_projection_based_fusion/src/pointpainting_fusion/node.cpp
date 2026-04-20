@@ -373,13 +373,13 @@ void PointPaintingFusionNode::fuse_on_single_image(
   }
 
   const auto x_offset = painted_pointcloud_msg.fields
-                          .at(static_cast<size_t>(autoware::point_types::PointXYZIRCIndex::X))
+                          .at(static_cast<size_t>(autoware::point_types::PointXYZIRCTIndex::X))
                           .offset;
   const auto y_offset = painted_pointcloud_msg.fields
-                          .at(static_cast<size_t>(autoware::point_types::PointXYZIRCIndex::Y))
+                          .at(static_cast<size_t>(autoware::point_types::PointXYZIRCTIndex::Y))
                           .offset;
   const auto z_offset = painted_pointcloud_msg.fields
-                          .at(static_cast<size_t>(autoware::point_types::PointXYZIRCIndex::Z))
+                          .at(static_cast<size_t>(autoware::point_types::PointXYZIRCTIndex::Z))
                           .offset;
   const auto class_offset = painted_pointcloud_msg.fields.at(4).offset;
   const auto p_step = painted_pointcloud_msg.point_step;

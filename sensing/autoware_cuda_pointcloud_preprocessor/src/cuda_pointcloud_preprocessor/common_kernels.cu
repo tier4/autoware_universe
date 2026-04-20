@@ -98,6 +98,7 @@ __global__ void extractPointsKernel(
     output_point.intensity = input_point.intensity;
     output_point.return_type = input_point.return_type;
     output_point.channel = input_point.channel;
+    output_point.time_stamp = input_point.time_stamp;
   }
 }
 

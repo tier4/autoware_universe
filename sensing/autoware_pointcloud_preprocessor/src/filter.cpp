@@ -368,10 +368,12 @@ void autoware::pointcloud_preprocessor::Filter::faster_input_indices_callback(
 {
   if (
     !utils::is_data_layout_compatible_with_point_xyzircaedt(*cloud) &&
+    !utils::is_data_layout_compatible_with_point_xyzirct(*cloud) &&
     !utils::is_data_layout_compatible_with_point_xyzirc(*cloud)) {
     RCLCPP_ERROR(
       get_logger(),
-      "The pointcloud layout is not compatible with PointXYZIRCAEDT or PointXYZIRC. Aborting");
+      "The pointcloud layout is not compatible with PointXYZIRCAEDT, PointXYZIRCT or PointXYZIRC. "
+      "Aborting");
 
     if (utils::is_data_layout_compatible_with_point_xyziradrt(*cloud)) {
       RCLCPP_ERROR(

@@ -87,7 +87,7 @@
 
 namespace autoware::pointcloud_preprocessor
 {
-using autoware::point_types::PointXYZIRC;
+using autoware::point_types::PointXYZIRCT;
 using point_cloud_msg_wrapper::PointCloud2Modifier;
 /** \brief @b PointCloudConcatenationComponent is a special form of data
  * synchronizer: it listens for a set of input PointCloud messages on the same topic,
@@ -161,7 +161,7 @@ private:
     autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo::SharedPtr & concatenation_info_ptr);
   void publish();
 
-  void convertToXYZIRCCloud(
+  void convertToXYZIRCTCloud(
     const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr,
     sensor_msgs::msg::PointCloud2::SharedPtr & output_ptr);
   void setPeriod(const int64_t new_period);

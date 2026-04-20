@@ -46,11 +46,11 @@ namespace autoware::bevfusion
 {
 using sensor_msgs::msg::PointField;
 
-CHECK_FIELD(InputPointType, autoware::point_types::PointXYZIRC, x);
-CHECK_FIELD(InputPointType, autoware::point_types::PointXYZIRC, y);
-CHECK_FIELD(InputPointType, autoware::point_types::PointXYZIRC, z);
-CHECK_FIELD(InputPointType, autoware::point_types::PointXYZIRC, intensity);
-static_assert(sizeof(InputPointType) == sizeof(autoware::point_types::PointXYZIRC));
+CHECK_FIELD(InputPointType, autoware::point_types::PointXYZIRCT, x);
+CHECK_FIELD(InputPointType, autoware::point_types::PointXYZIRCT, y);
+CHECK_FIELD(InputPointType, autoware::point_types::PointXYZIRCT, z);
+CHECK_FIELD(InputPointType, autoware::point_types::PointXYZIRCT, intensity);
+static_assert(sizeof(InputPointType) == sizeof(autoware::point_types::PointXYZIRCT));
 
 void box3DToDetectedObject(
   const Box3D & box3d, const std::vector<std::string> & class_names,

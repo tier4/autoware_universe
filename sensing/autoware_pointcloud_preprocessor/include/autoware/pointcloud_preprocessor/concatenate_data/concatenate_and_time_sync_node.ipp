@@ -177,9 +177,12 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::cloud_c
   double cloud_arrival_time = this->get_clock()->now().seconds();
   manage_collector_list();
 
-  if (!utils::is_data_layout_compatible_with_point_xyzirc(*input_ptr)) {
+  if (
+    !utils::is_data_layout_compatible_with_point_xyzirct(*input_ptr) &&
+    !utils::is_data_layout_compatible_with_point_xyzircaedt(*input_ptr)) {
     RCLCPP_ERROR(
-      get_logger(), "The pointcloud layout is not compatible with PointXYZIRC. Aborting");
+      get_logger(),
+      "The pointcloud layout is not compatible with PointXYZIRCT or PointXYZIRCAEDT. Aborting");
 
     if (utils::is_data_layout_compatible_with_point_xyzi(*input_ptr)) {
       RCLCPP_ERROR(

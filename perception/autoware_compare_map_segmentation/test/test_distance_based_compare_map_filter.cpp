@@ -27,8 +27,8 @@
 #include <string>
 
 using autoware::compare_map_segmentation::DistanceBasedCompareMapFilterComponent;
-using autoware::point_types::PointXYZIRC;
-using autoware::point_types::PointXYZIRCGenerator;
+using autoware::point_types::PointXYZIRCT;
+using autoware::point_types::PointXYZIRCTGenerator;
 using point_cloud_msg_wrapper::PointCloud2Modifier;
 using sensor_msgs::msg::PointCloud2;
 
@@ -57,7 +57,7 @@ std::shared_ptr<DistanceBasedCompareMapFilterComponent> generateNode(
 PointCloud2 create_pointcloud(const int number_of_point)
 {
   PointCloud2 pointcloud;
-  PointCloud2Modifier<PointXYZIRC, PointXYZIRCGenerator> modifier(pointcloud, "map");
+  PointCloud2Modifier<PointXYZIRCT, PointXYZIRCTGenerator> modifier(pointcloud, "map");
   modifier.resize(number_of_point);
   for (int i = 0; i < number_of_point; ++i) {
     modifier[i].x = static_cast<float>(i) / 10.0F;

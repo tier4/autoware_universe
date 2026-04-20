@@ -66,6 +66,7 @@ CudaPointcloudPreprocessor::CudaPointcloudPreprocessor() : stream_(initialize_st
     make_point_field("intensity", 12, PointField::UINT8, 1),
     make_point_field("return_type", 13, PointField::UINT8, 1),
     make_point_field("channel", 14, PointField::UINT16, 1),
+    make_point_field("time_stamp", 16, PointField::UINT32, 1),
   };
 
   int num_sm{};

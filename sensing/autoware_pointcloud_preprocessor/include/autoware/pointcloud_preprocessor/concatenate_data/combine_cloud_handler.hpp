@@ -28,7 +28,7 @@
 
 namespace autoware::pointcloud_preprocessor
 {
-using autoware::point_types::PointXYZIRC;
+using autoware::point_types::PointXYZIRCT;
 using point_cloud_msg_wrapper::PointCloud2Modifier;
 
 template <typename MsgTraits>
@@ -68,9 +68,9 @@ protected:
     }
   };
 
-  static void convert_to_xyzirc_cloud(
+  static void convert_to_xyzirct_cloud(
     const typename PointCloud2Traits::PointCloudMessage::ConstSharedPtr & input_cloud,
-    typename PointCloud2Traits::PointCloudMessage::UniquePtr & xyzirc_cloud);
+    typename PointCloud2Traits::PointCloudMessage::UniquePtr & xyzirct_cloud);
 
   void correct_pointcloud_motion(
     const std::unique_ptr<PointCloud2Traits::PointCloudMessage> & transformed_cloud_ptr,

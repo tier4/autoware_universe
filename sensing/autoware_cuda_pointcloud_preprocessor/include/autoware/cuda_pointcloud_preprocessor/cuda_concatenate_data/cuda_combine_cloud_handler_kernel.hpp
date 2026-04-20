@@ -46,6 +46,7 @@ struct PointTypeStruct
   std::uint8_t intensity;
   std::uint8_t return_type;
   std::uint16_t channel;
+  std::uint32_t time_stamp;
 };
 
 void transform_launch(

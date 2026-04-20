@@ -33,14 +33,14 @@
 namespace autoware::pointcloud_preprocessor
 {
 
-void CombineCloudHandler<PointCloud2Traits>::convert_to_xyzirc_cloud(
+void CombineCloudHandler<PointCloud2Traits>::convert_to_xyzirct_cloud(
   const typename PointCloud2Traits::PointCloudMessage::ConstSharedPtr & input_cloud,
-  typename PointCloud2Traits::PointCloudMessage::UniquePtr & xyzirc_cloud)
+  typename PointCloud2Traits::PointCloudMessage::UniquePtr & xyzirct_cloud)
 {
-  xyzirc_cloud->header = input_cloud->header;
+  xyzirct_cloud->header = input_cloud->header;
 
-  PointCloud2Modifier<PointXYZIRC, autoware::point_types::PointXYZIRCGenerator> output_modifier{
-    *xyzirc_cloud, input_cloud->header.frame_id};
+  PointCloud2Modifier<PointXYZIRCT, autoware::point_types::PointXYZIRCTGenerator> output_modifier{
+    *xyzirct_cloud, input_cloud->header.frame_id};
   output_modifier.reserve(input_cloud->width);
 
   bool has_valid_intensity =
@@ -58,6 +58,11 @@ void CombineCloudHandler<PointCloud2Traits>::convert_to_xyzirc_cloud(
       return field.name == "channel" && field.datatype == sensor_msgs::msg::PointField::UINT16;
     });
 
+  bool has_valid_time_stamp =
+    std::any_of(input_cloud->fields.begin(), input_cloud->fields.end(), [](const auto & field) {
+      return field.name == "time_stamp" && field.datatype == sensor_msgs::msg::PointField::UINT32;
+    });
+
   sensor_msgs::PointCloud2ConstIterator<float> it_x(*input_cloud, "x");
   sensor_msgs::PointCloud2ConstIterator<float> it_y(*input_cloud, "y");
   sensor_msgs::PointCloud2ConstIterator<float> it_z(*input_cloud, "z");
@@ -67,19 +72,34 @@ void CombineCloudHandler<PointCloud2Traits>::convert_to_xyzirc_cloud(
     sensor_msgs::PointCloud2ConstIterator<std::uint8_t> it_r(*input_cloud, "return_type");
     sensor_msgs::PointCloud2ConstIterator<std::uint16_t> it_c(*input_cloud, "channel");
 
-    for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_i, ++it_r, ++it_c) {
-      PointXYZIRC point;
-      point.x = *it_x;
-      point.y = *it_y;
-      point.z = *it_z;
-      point.intensity = *it_i;
-      point.return_type = *it_r;
-      point.channel = *it_c;
-      output_modifier.push_back(std::move(point));
+    if (has_valid_time_stamp) {
+      sensor_msgs::PointCloud2ConstIterator<std::uint32_t> it_ts(*input_cloud, "time_stamp");
+      for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_i, ++it_r, ++it_c, ++it_ts) {
+        PointXYZIRCT point;
+        point.x = *it_x;
+        point.y = *it_y;
+        point.z = *it_z;
+        point.intensity = *it_i;
+        point.return_type = *it_r;
+        point.channel = *it_c;
+        point.time_stamp = *it_ts;
+        output_modifier.push_back(std::move(point));
+      }
+    } else {
+      for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_i, ++it_r, ++it_c) {
+        PointXYZIRCT point;
+        point.x = *it_x;
+        point.y = *it_y;
+        point.z = *it_z;
+        point.intensity = *it_i;
+        point.return_type = *it_r;
+        point.channel = *it_c;
+        output_modifier.push_back(std::move(point));
+      }
     }
   } else {
     for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z) {
-      PointXYZIRC point;
+      PointXYZIRCT point;
       point.x = *it_x;
       point.y = *it_y;
       point.z = *it_z;
@@ -153,7 +173,7 @@ CombineCloudHandler<PointCloud2Traits>::combine_pointclouds(
     // resulting in concatenate_cloud_ptr not being compatible with the XYZIRC format.
     //
     // To avoid this, we explicitly set the fields of concatenate_cloud_ptr to XYZIRC here.
-    PointCloud2Modifier<PointXYZIRC, autoware::point_types::PointXYZIRCGenerator>
+    PointCloud2Modifier<PointXYZIRCT, autoware::point_types::PointXYZIRCTGenerator>
       concatenate_cloud_modifier{*concatenate_cloud_result.concatenate_cloud_ptr, output_frame_};
   }
 
@@ -167,12 +187,12 @@ CombineCloudHandler<PointCloud2Traits>::combine_pointclouds(
 
   for (const auto & [topic, cloud] : topic_to_cloud_map) {
     // convert to XYZIRC pointcloud if pointcloud is not empty
-    auto xyzirc_cloud = std::make_unique<sensor_msgs::msg::PointCloud2>();
-    convert_to_xyzirc_cloud(cloud, xyzirc_cloud);
+    auto xyzirct_cloud = std::make_unique<sensor_msgs::msg::PointCloud2>();
+    convert_to_xyzirct_cloud(cloud, xyzirct_cloud);
 
     auto transformed_cloud_ptr = std::make_unique<sensor_msgs::msg::PointCloud2>();
     managed_tf_buffer_->transformPointcloud(
-      output_frame_, *xyzirc_cloud, *transformed_cloud_ptr, xyzirc_cloud->header.stamp,
+      output_frame_, *xyzirct_cloud, *transformed_cloud_ptr, xyzirct_cloud->header.stamp,
       rclcpp::Duration::from_seconds(1.0), node_.get_logger());
 
     // compensate pointcloud

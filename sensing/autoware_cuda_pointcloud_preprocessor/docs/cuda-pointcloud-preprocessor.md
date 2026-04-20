@@ -42,4 +42,4 @@ In addition to the individual algorithms previously mentioned, this node uses th
 ## Assumptions / Known limits
 
 - The CUDA implementations, while following the original CPU ones, will not offer the same numerical results, and small approximations were needed to maximize GPU usage.
-- This node expects that the input pointcloud follows the `autoware::point_types::PointXYZIRCAEDT` layout and the output pointcloud will use the `autoware::point_types::PointXYZIRC` layout defined in the `autoware_point_types` package.
+- This node expects that the input pointcloud follows the `autoware::point_types::PointXYZIRCAEDT` layout and the output pointcloud will use the `autoware::point_types::PointXYZIRCT` layout defined in the `autoware_point_types` package.
