@@ -149,7 +149,7 @@
                 "pcd_distance_th": {
                   "type": "number",
                   "description": "Distance threshold for pointcloud tracking [m]",
-                  "default": 0.5,
+                  "default": 1.0,
                   "minimum": 0.0
                 },
                 "grace_period": {
@@ -185,7 +185,7 @@
                 "max_velocity_th": {
                   "type": "number",
                   "description": "Maximum velocity threshold for target object [m/s]",
-                  "default": 1.0,
+                  "default": 5.0,
                   "minimum": 0.0
                 },
                 "stopped_velocity_th": {
@@ -363,7 +363,7 @@
                 "lookahead_horizon": {
                   "type": "number",
                   "description": "Lookahead horizon for RSS calculation [s]",
-                  "default": 5.0,
+                  "default": 1.5,
                   "minimum": 0.0
                 }
               },
