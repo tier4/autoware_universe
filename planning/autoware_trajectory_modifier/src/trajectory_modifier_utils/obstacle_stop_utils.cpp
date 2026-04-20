@@ -324,7 +324,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
   const TrajectoryPoints & trajectory_points, const TrajectoryShape & trajectory_shape,
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const PredictedObjects & objects,
   const ObjectDecelMap & object_decel_map, const double ego_vel, const double ego_decel,
-  const double reaction_time, const double safety_margin, const double min_vel_th,
+  const double reaction_time, const double safety_margin, const double stopped_vel_th, const double lookahead_horizon,
   MultiPolygon2d & target_polygons, PredictedObject & colliding_object)
 {
   if (objects.objects.empty()) return std::nullopt;
@@ -338,15 +338,13 @@ std::optional<CollisionPoint> get_nearest_object_collision(
     const auto obj_type = classification_to_object_type.at(object.classification.front().label);
     if (!object_decel_map.count(obj_type)) return false;
     const auto obj_decel = object_decel_map.at(obj_type);
-    if (obj_lon_vel < min_vel_th) return false;
+    if (obj_lon_vel < stopped_vel_th) return false;
     const auto safe_dist =
       get_safe_distance(ego_vel, obj_lon_vel, ego_decel, obj_decel, reaction_time, safety_margin);
     const auto ego_front_arc_length = ego_arc_length + ego_front_offset;
     const auto relative_arc_length = std::max(0.0, obj_arc_length - ego_front_arc_length);
     return relative_arc_length - safe_dist > 1e-3;
   };
-
-  constexpr double detection_horizon = 5.0;  // [s]
 
   PredictedObjects target_objects;
   for (const auto & object : objects.objects) {
@@ -367,7 +365,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
   auto last_p = trajectory_points.front().pose.position;
   for (const auto & traj_p : trajectory_points) {
     const auto t = rclcpp::Duration(traj_p.time_from_start).seconds();
-    if (t > detection_horizon) break;
+    if (t > lookahead_horizon) break;
     curr_arc_length += autoware_utils::calc_distance2d(last_p, traj_p.pose.position);
     for (const auto & object : target_objects.objects) {
       const auto obj_state = get_object_state_at_time(trajectory_points, object, t);
@@ -379,6 +377,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
         nearest_collision_point = obj_state.nearest_point;
       }
     }
+    last_p = traj_p.pose.position;
   }
 
   if (!found_collision) return std::nullopt;
