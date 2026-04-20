@@ -14,6 +14,8 @@
 
 #include "autoware/planning_evaluator/metric_accumulators/trajectory_validation_accumulator.hpp"
 
+#include <regex>
+
 namespace planning_diagnostics
 {
 namespace
@@ -24,6 +26,16 @@ bool levelIndicatesError(const uint8_t level, const bool count_warn_as_error)
     return true;
   }
   return count_warn_as_error && level == 1;
+}
+
+/// Skip one-off object-id rows: metric_name like check_<prefix>_<32-hex> or check_<...>_<32-hex>_<suffix>.
+bool shouldCollectMetricRow(
+  [[maybe_unused]] const std::string & validator_name, const std::string & metric_name)
+{
+  if (std::regex_match(metric_name, std::regex{R"(^check_.*_[0-9a-fA-F]{32}(?:_.*)?$)"})) {
+    return false;
+  }
+  return true;
 }
 
 bool isMetricScopeUnderGenerator(const std::string & scope, const std::string & gen)
@@ -92,6 +104,9 @@ void TrajectoryValidationAccumulator::update(const ValidationReportArray & msg)
     // Rows in this report (last row wins if the same scope appears more than once).
     std::unordered_map<std::string, bool> present_error_by_scope;
     for (const auto & row : report.metrics) {
+      if (!shouldCollectMetricRow(row.validator_name, row.metric_name)) {
+        continue;
+      }
       const std::string scope = gen + "/" + row.validator_name + "/" + row.metric_name;
       present_error_by_scope[scope] = levelIndicatesError(row.level, warn_as_err);
     }

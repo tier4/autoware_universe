@@ -50,6 +50,9 @@ using json = nlohmann::json;
  *    stats_by_scope_) are updated every report; missing rows are treated as OK for that step.
  *
  * `count_warn_as_error`: if false, only ERROR(2); if true, WARN(1) also counts as error.
+ *
+ * Metric rows whose `metric_name` matches `check_*_<32-hex UUID>` (optional `_<suffix>`) are skipped
+ * (object-id-specific checks); see `shouldCollectMetricRow` in trajectory_validation_accumulator.cpp.
  */
 class TrajectoryValidationAccumulator
 {
