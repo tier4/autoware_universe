@@ -547,7 +547,7 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
     };
 
   const auto all_enabled = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0,
+    context, 0.2, 0.0, 0.1,
     collision_timing_assessment::ObjectTrajectoryGenerationOptions{true, true, true});
   EXPECT_EQ(all_enabled.size(), 3u);
   EXPECT_EQ(count_suffix(all_enabled, "_predicted_path"), 1);
@@ -555,7 +555,7 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
   EXPECT_EQ(count_suffix(all_enabled, "_diffusion_based_trajectory"), 1);
 
   const auto constant_curvature_only = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0,
+    context, 0.2, 0.0, 0.1,
     collision_timing_assessment::ObjectTrajectoryGenerationOptions{false, true, false});
   ASSERT_EQ(constant_curvature_only.size(), 1u);
   EXPECT_EQ(
@@ -564,7 +564,7 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
 
   const auto predicted_path_and_diffusion =
     collision_timing_assessment::generate_object_trajectories(
-      context, 0.2, 0.0,
+      context, 0.2, 0.0, 0.1,
       collision_timing_assessment::ObjectTrajectoryGenerationOptions{true, false, true});
   EXPECT_EQ(predicted_path_and_diffusion.size(), 2u);
   EXPECT_EQ(count_suffix(predicted_path_and_diffusion, "_predicted_path"), 1);
