@@ -29,7 +29,6 @@ class UncrossableBoundaryDepartureFilter : public plugin::ValidatorInterface
 public:
   UncrossableBoundaryDepartureFilter() : ValidatorInterface("uncrossable_boundary_departure_filter")
   {
-    set_category("safety");
   }
 
   result_t is_feasible(const TrajectoryPoints & traj_points, const FilterContext & context) final;
