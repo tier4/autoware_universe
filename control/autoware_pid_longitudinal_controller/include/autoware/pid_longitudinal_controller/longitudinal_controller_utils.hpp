@@ -19,8 +19,8 @@
 #include "autoware/interpolation/spherical_linear_interpolation.hpp"
 #include "autoware/motion_utils/trajectory/conversion.hpp"
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
-#include "tf2/utils.h"
 #include "rclcpp/duration.hpp"
+#include "tf2/utils.h"
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
