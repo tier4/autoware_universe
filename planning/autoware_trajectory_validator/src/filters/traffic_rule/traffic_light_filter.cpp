@@ -147,12 +147,11 @@ TrafficLightFilter::get_stop_lines(
 }
 
 bool TrafficLightFilter::is_stop_point_within_margin_from_stop_line(
-  const std::optional<TrajectoryPoint> & stop_point,
+  const std::optional<lanelet::BasicPoint2d> & stop_p,
   const lanelet::BasicLineString2d & stop_line) const
 {
-  if (stop_point.has_value()) {
-    const lanelet::BasicPoint2d stop_p(stop_point->pose.position.x, stop_point->pose.position.y);
-    if (boost::geometry::distance(stop_p, stop_line) <= params_.stop_overshoot_margin) {
+  if (stop_p.has_value()) {
+    if (boost::geometry::distance(*stop_p, stop_line) <= params_.stop_overshoot_margin) {
       return true;
     }
   }
@@ -174,7 +173,7 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
     params_.checked_trajectory_length.jerk_limit, delay_response_time);
   const auto max_trajectory_length = distance_for_ego_to_stop.value_or(0.0);
   auto length = 0.0;
-  std::optional<TrajectoryPoint> stop_point;
+  bool is_stopping_trajectory = false;
   for (const auto & p : traj_points) {
     // skip points behind ego
     if (rclcpp::Duration(p.time_from_start).seconds() < 0.0) {
@@ -189,13 +188,8 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
     trajectory_ls.emplace_back(lanelet_p);
 
     // skip points beyond the first stop, or skip once we reach the maximum length
-    const auto is_stop_point = p.longitudinal_velocity_mps <= 0.0;
-    if (is_stop_point) {
-      stop_point = p;
-      break;
-    }
-
-    if (length > max_trajectory_length) {
+    is_stopping_trajectory = p.longitudinal_velocity_mps <= 0.0;
+    if (is_stopping_trajectory || length > max_trajectory_length) {
       break;
     }
   }
@@ -215,6 +209,10 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
       lanelet::BasicPoint2d front_vehicle_point = last_segment.first + last_vector * ratio;
       trajectory_ls.emplace_back(front_vehicle_point);
     }
+  }
+  std::optional<lanelet::BasicPoint2d> stop_point;
+  if (is_stopping_trajectory) {
+    stop_point = trajectory_ls.back();
   }
 
   const auto [red_stop_lines, amber_stop_lines] =
