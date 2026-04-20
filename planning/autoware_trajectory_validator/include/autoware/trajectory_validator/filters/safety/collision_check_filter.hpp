@@ -92,7 +92,7 @@ private:
   mutable std::map<IndexRange, Box2d> envelope_cache_;
   mutable std::map<IndexRange, Polygon2d> convex_cache_;
 
-  //todo: use for loop search with hint, instead of binary search.
+  // todo: use for loop search with hint, instead of binary search.
   size_t get_same_or_earlier_time_index(const double t) const
   {
     const auto it = std::upper_bound(times_.begin(), times_.end(), t + TIME_INDEX_EPSILON);
@@ -280,10 +280,7 @@ private:
 class CollisionCheckFilter : public plugin::ValidatorInterface
 {
 public:
-  CollisionCheckFilter() : ValidatorInterface("collision_check_filter")
-  {
-    set_category("safety");
-  }
+  CollisionCheckFilter() : ValidatorInterface("collision_check_filter") { set_category("safety"); }
 
   result_t is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & context) override;

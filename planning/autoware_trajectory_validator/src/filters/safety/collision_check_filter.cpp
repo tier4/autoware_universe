@@ -1367,22 +1367,20 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   }
 
   if (worst_pet < std::numeric_limits<double>::infinity()) {
-    metrics.push_back(
-      autoware_trajectory_validator::build<MetricReport>()
-        .validator_name(get_name())
-        .validator_category(category())
-        .metric_name("worst_PET")
-        .metric_value(worst_pet)
-        .level(MetricReport::ERROR));
-    }
+    metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                        .validator_name(get_name())
+                        .validator_category(category())
+                        .metric_name("worst_PET")
+                        .metric_value(worst_pet)
+                        .level(MetricReport::ERROR));
+  }
   if (worst_ttc < std::numeric_limits<double>::infinity()) {
-    metrics.push_back(
-      autoware_trajectory_validator::build<MetricReport>()
-        .validator_name(get_name())
-        .validator_category(category())
-        .metric_name("worst_TTC")
-        .metric_value(worst_ttc)
-        .level(MetricReport::ERROR));
+    metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                        .validator_name(get_name())
+                        .validator_category(category())
+                        .metric_name("worst_TTC")
+                        .metric_value(worst_ttc)
+                        .level(MetricReport::ERROR));
   }
 
   drac_continuous_times_.update(
@@ -1420,13 +1418,12 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
       add_collision_planning_factor(finding, "DRAC");
     }
     if (worst_drac > -std::numeric_limits<double>::infinity()) {
-      metrics.push_back(
-        autoware_trajectory_validator::build<MetricReport>()
-          .validator_name(get_name())
-          .validator_category(category())
-          .metric_name("worst_DRAC")
-          .metric_value(worst_drac)
-          .level(MetricReport::ERROR));
+      metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                          .validator_name(get_name())
+                          .validator_category(category())
+                          .metric_name("worst_DRAC")
+                          .metric_value(worst_drac)
+                          .level(MetricReport::ERROR));
     }
   }
 
@@ -1456,18 +1453,17 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     error_msg += fmt::format(
       "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}, stamp: "
       "{}.{}; \n",
-      violation.object.classification, object_id, detection_duration,
-      required_deceleration, violation.object.stamp.sec, violation.object.stamp.nanosec);
+      violation.object.classification, object_id, detection_duration, required_deceleration,
+      violation.object.stamp.sec, violation.object.stamp.nanosec);
   }
 
   if (worst_rss > -std::numeric_limits<double>::infinity()) {
-    metrics.push_back(
-      autoware_trajectory_validator::build<MetricReport>()
-        .validator_name(get_name())
-        .validator_category(category())
-        .metric_name("worst_RSS")
-        .metric_value(worst_rss)
-        .level(MetricReport::ERROR));
+    metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                        .validator_name(get_name())
+                        .validator_category(category())
+                        .metric_name("worst_RSS")
+                        .metric_value(worst_rss)
+                        .level(MetricReport::ERROR));
   }
 
   if (!error_msg.empty()) {
