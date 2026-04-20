@@ -304,6 +304,14 @@ void TrajectoryValidator::load_metric(const std::string & name)
     }
 
     plugin->set_vehicle_info(vehicle_info_);
+
+    std::string category;
+    size_t pos = name.find("::");
+    if (pos != std::string::npos) {
+      category = name.substr(0, pos);
+    }
+    plugin->set_category(category);
+
     plugin->update_parameters(params_);
 
     plugins_.push_back(plugin);
