@@ -29,7 +29,10 @@ class DummyFilter : public ValidatorInterface
   };
 
 public:
-  DummyFilter() : ValidatorInterface("DummyFilter") {}
+  DummyFilter() : ValidatorInterface("DummyFilter")
+  {
+    set_category("test");
+  }
 
   result_t is_feasible(
     const TrajectoryPoints & traj_points, const FilterContext & /*context*/) final

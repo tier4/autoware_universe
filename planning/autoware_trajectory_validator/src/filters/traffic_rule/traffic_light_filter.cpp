@@ -93,6 +93,7 @@ namespace autoware::trajectory_validator::plugin::traffic_rule
 
 TrafficLightFilter::TrafficLightFilter() : ValidatorInterface("traffic_light_filter")
 {
+  set_category("traffic_rule");
 }
 
 void TrafficLightFilter::update_parameters(const validator::Params & params)

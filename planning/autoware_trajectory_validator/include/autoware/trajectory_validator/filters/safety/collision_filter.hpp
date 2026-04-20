@@ -39,7 +39,7 @@ struct CollisionParams
 class CollisionFilter : public plugin::ValidatorInterface
 {
 public:
-  CollisionFilter() : ValidatorInterface("collision_filter") {}
+  CollisionFilter() : ValidatorInterface("collision_filter") { set_category("safety"); }
 
   result_t is_feasible(const TrajectoryPoints & traj_points, const FilterContext & context) final;
 

@@ -108,6 +108,7 @@ std::vector<std::optional<double>> to_steering_angles(
 
 VehicleConstraintFilter::VehicleConstraintFilter() : ValidatorInterface("vehicle_constraint_filter")
 {
+  set_category("safety");
 }
 
 void VehicleConstraintFilter::update_parameters(const validator::Params & params)
