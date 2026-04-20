@@ -1112,7 +1112,7 @@ DracAssessment assess_drac(
 Result assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const validator::Params::CollisionCheck::PetCollision & pet_collision_params,
-  VehicleInfo & vehicle_info)
+  const validator::Params::CollisionCheck::Drac & drac_params, VehicleInfo & vehicle_info)
 {
   const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
                                             -pet_collision_params.ego_assumed_acceleration +
@@ -1127,15 +1127,23 @@ Result assess(
     generate_object_trajectories(context, required_object_time_horizon, -1.0);
 
   Result result{};
-  result.planned_speed_findings = assess_planned_speed_collision_timing(
-    traj_points, context, pet_collision_params, vehicle_info, constant_speed_object_trajectories);
-  // const auto drac_assessment = assess_drac(
-  //   traj_points, context, pet_collision_params, vehicle_info,
-  //   constant_speed_object_trajectories);
-  DracAssessment drac_assessment{0.0, {}};  // dummy
-  result.drac_findings = drac_assessment.findings;
-  result.drac = drac_assessment.drac;
+  if (!pet_collision_params.enable_assessment) {
+    result.planned_speed_findings = {};
+  } else {
+    result.planned_speed_findings = assess_planned_speed_collision_timing(
+      traj_points, context, pet_collision_params, vehicle_info, constant_speed_object_trajectories);
+  }
 
+  if (!drac_params.enable_assessment) {
+    DracAssessment drac_assessment{0.0, {}};  // dummy
+    result.drac_findings = drac_assessment.findings;
+    result.drac = drac_assessment.drac;
+  } else {
+    const auto drac_assessment = assess_drac(
+      traj_points, context, pet_collision_params, vehicle_info, constant_speed_object_trajectories);
+    result.drac_findings = drac_assessment.findings;
+    result.drac = drac_assessment.drac;
+  }
   return result;
 }
 
@@ -1143,6 +1151,8 @@ Result assess(
 
 void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
+  global_setting_ = params.collision_check.global_setting;
+  drac_params_ = params.collision_check.drac;
   pet_collision_params_ = params.collision_check.pet_collision;
   rss_params_ = params.collision_check.rss;
 }
@@ -1289,6 +1299,8 @@ void CollisionCheckFilter::add_error_text_marker(
   debug_markers_.markers.push_back(std::move(m));
 }
 
+// todo: refactor to each metric, including debug marker generation
+
 CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
@@ -1339,7 +1351,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   };
 
   const auto collision_timing_result = collision_timing_assessment::assess(
-    traj_points, context, pet_collision_params_, *vehicle_info_ptr_);
+    traj_points, context, pet_collision_params_, drac_params_, *vehicle_info_ptr_);
 
   pet_continuous_times_.update(
     current_time, collision_timing_result.planned_speed_findings,
@@ -1410,30 +1422,34 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     }
   }
 
-  const auto rss_result =
-    rss_deceleration::assess(traj_points, context, rss_params_, *vehicle_info_ptr_);
-  rss_continuous_times_.update(current_time, rss_result.violations, [](const auto & violation) {
-    return to_object_id_string(violation.object);
-  });
-  for (const auto & violation : rss_result.violations) {
-    const auto object_id = to_object_id_string(violation.object);
-    // Mark as infeasible if any RSS violation exists
-    is_feasible = false;
+  if (rss_params_.enable_assessment) {
+    const auto rss_result =
+      rss_deceleration::assess(traj_points, context, rss_params_, *vehicle_info_ptr_);
+    rss_continuous_times_.update(current_time, rss_result.violations, [](const auto & violation) {
+      return to_object_id_string(violation.object);
+    });
+    for (const auto & violation : rss_result.violations) {
+      const auto object_id = to_object_id_string(violation.object);
+      // Mark as infeasible if any RSS violation exists
+      is_feasible = false;
 
-    // Record metrics for each RSS violation
-    metrics.push_back(
-      autoware_trajectory_validator::build<MetricReport>()
-        .validator_name(get_name())
-        .validator_category(category())
-        .metric_name(fmt::format("check_RSS_{}_{}", violation.object.classification, object_id))
-        .metric_value(violation.required_deceleration)
-        .level(MetricReport::ERROR));
-    const double detection_duration = rss_continuous_times_.get_time(object_id);
-    error_msg += fmt::format(
-      "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}, stamp: "
-      "{}.{}; \n",
-      violation.object.classification, object_id, detection_duration,
-      violation.required_deceleration, violation.object.stamp.sec, violation.object.stamp.nanosec);
+      // Record metrics for each RSS violation
+      metrics.push_back(
+        autoware_trajectory_validator::build<MetricReport>()
+          .validator_name(get_name())
+          .validator_category(category())
+          .metric_name(fmt::format("check_RSS_{}_{}", violation.object.classification, object_id))
+          .metric_value(violation.required_deceleration)
+          .level(MetricReport::ERROR));
+      const double detection_duration = rss_continuous_times_.get_time(object_id);
+      error_msg += fmt::format(
+        "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}, "
+        "stamp: "
+        "{}.{}; \n",
+        violation.object.classification, object_id, detection_duration,
+        violation.required_deceleration, violation.object.stamp.sec,
+        violation.object.stamp.nanosec);
+    }
   }
 
   if (!error_msg.empty()) {
