@@ -380,7 +380,9 @@ bool BEVFusionTRT::preProcess(
 
   is_num_voxels_within_range = true;
 
-  if (!autoware::point_types::is_data_layout_compatible_with_point_xyzirc(pc_msg_ptr->fields)) {
+  if (
+    !autoware::point_types::is_data_layout_compatible_with_point_xyzirct(pc_msg_ptr->fields) &&
+    !autoware::point_types::is_data_layout_compatible_with_point_xyzirc(pc_msg_ptr->fields)) {
     RCLCPP_ERROR(rclcpp::get_logger("bevfusion"), "Invalid point type. Skipping detection.");
     return false;
   }

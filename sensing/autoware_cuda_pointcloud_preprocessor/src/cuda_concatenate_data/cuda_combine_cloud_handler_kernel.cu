@@ -38,6 +38,7 @@ __global__ void transform_kernel(
     output_points[idx].intensity = input_points[idx].intensity;
     output_points[idx].return_type = input_points[idx].return_type;
     output_points[idx].channel = input_points[idx].channel;
+    output_points[idx].time_stamp = input_points[idx].time_stamp;
   }
 }
 

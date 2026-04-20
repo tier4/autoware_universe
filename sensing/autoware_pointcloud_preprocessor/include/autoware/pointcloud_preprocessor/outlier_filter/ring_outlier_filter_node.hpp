@@ -44,7 +44,7 @@ class RingOutlierFilterComponent : public autoware::pointcloud_preprocessor::Fil
 protected:
   using InputPointIndex = autoware::point_types::PointXYZIRCAEDTIndex;
   using InputPointType = autoware::point_types::PointXYZIRCAEDT;
-  using OutputPointType = autoware::point_types::PointXYZIRC;
+  using OutputPointType = autoware::point_types::PointXYZIRCT;
 
   void filter(
     const PointCloud2ConstPtr & input, const IndicesPtr & indices, PointCloud2 & output) override;

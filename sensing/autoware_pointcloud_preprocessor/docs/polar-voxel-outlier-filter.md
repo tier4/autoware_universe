@@ -7,7 +7,7 @@ The Polar Voxel Outlier Filter is a point cloud outlier filtering algorithm that
 **Key Features**:
 
 - **Flexible filtering modes** with configurable return type classification
-- **Automatic format detection** between PointXYZIRC and PointXYZIRCAEDT
+- **Automatic format detection** between PointXYZIRCT, PointXYZIRC, and PointXYZIRCAEDT
 - **Two-criteria filtering** using primary and secondary return analysis (when enabled)
 - **Range-aware visibility estimation** for improved diagnostic accuracy
 - **Comprehensive diagnostics** with filter ratio and visibility metrics
@@ -45,12 +45,13 @@ The advanced mode concept is that when two returns exist, the first return is mo
 
 This filter supports point clouds with return type information (required for advanced mode) and automatically detects between two formats:
 
-### PointXYZIRC Format
+### PointXYZIRCT / PointXYZIRC Format
 
-- **Usage**: Point format with (x, y, z, intensity, return_type, channel) fields
+- **Usage**: Point format with (x, y, z, intensity, return_type, channel[, time_stamp]) fields
 - **Processing**: Computes polar coordinates (radius, azimuth, elevation) from Cartesian coordinates
 - **Return Type**: Uses return_type field for classification (when enabled)
 - **Performance**: Good performance with coordinate conversion overhead
+- **Note**: PointXYZIRCT (20 bytes, 7 fields) is the standard post-preprocessing format. PointXYZIRC (16 bytes, 6 fields) is also supported for backward compatibility.
 
 ### PointXYZIRCAEDT Format
 
@@ -61,11 +62,14 @@ This filter supports point clouds with return type information (required for adv
 - **Performance**: Faster processing as it avoids trigonometric calculations
 
 ```yaml
-# PointXYZIRC: Computes polar coordinates from Cartesian
+# PointXYZIRCT: Computes polar coordinates from Cartesian (standard post-preprocessing format)
 # - x, y, z       (float32): Cartesian coordinates
-# - intensity     (float32): Point intensity
+# - intensity     (uint8):   Point intensity
 # - return_type   (uint8):   Return type classification
 # - channel       (uint16):  Channel information
+# - time_stamp    (uint32):  Point timestamp
+#
+# PointXYZIRC: Same as above without time_stamp (backward compatible)
 
 # PointXYZIRCAEDT: Uses pre-computed polar coordinates
 # - x, y, z       (float32): Cartesian coordinates
@@ -84,7 +88,7 @@ This filter supports point clouds with return type information (required for adv
 
 ### Coordinate Conversion
 
-**For PointXYZIRC format:**
+**For PointXYZIRCT / PointXYZIRC format:**
 Each point (x, y, z) is converted to polar coordinates:
 
 - **Radius**: `r = sqrt(x² + y² + z²)`
@@ -129,7 +133,7 @@ The filter uses different algorithms based on the `use_return_type_classificatio
 
 #### Normal Mode (`visibility_estimation_only=false`)
 
-1. **Format Detection**: Automatically detects PointXYZIRC vs PointXYZIRCAEDT
+1. **Format Detection**: Automatically detects PointXYZIRCT / PointXYZIRC vs PointXYZIRCAEDT
 2. **Coordinate Processing**: Uses appropriate coordinate source
 3. **Voxel Processing**: Groups points into polar voxels
 4. **Filtering Logic**: Applies simple or advanced filtering
@@ -139,7 +143,7 @@ The filter uses different algorithms based on the `use_return_type_classificatio
 
 #### Visibility Estimation Only Mode (`visibility_estimation_only=true`)
 
-1. **Format Detection**: Same as normal mode
+1. **Format Detection**: Same as normal mode (PointXYZIRCT / PointXYZIRC / PointXYZIRCAEDT)
 2. **Coordinate Processing**: Same as normal mode
 3. **Voxel Processing**: Same as normal mode
 4. **Filtering Logic**: Same as normal mode (for accurate diagnostics)
@@ -156,9 +160,9 @@ The filter uses different algorithms based on the `use_return_type_classificatio
 
 #### Simple Mode (`use_return_type_classification=false`)
 
-1. **Format Detection**: Automatically detects PointXYZIRC vs PointXYZIRCAEDT
+1. **Format Detection**: Automatically detects PointXYZIRCT / PointXYZIRC vs PointXYZIRCAEDT
 2. **Coordinate Processing**:
-   - PointXYZIRC: Computes polar coordinates from Cartesian
+   - PointXYZIRCT / PointXYZIRC: Computes polar coordinates from Cartesian
    - PointXYZIRCAEDT: Uses pre-computed polar coordinates
 3. **Voxel Binning**: Points are grouped into polar voxels
 4. **Simple Thresholding**: Voxels with ≥ `voxel_points_threshold` points (any return type) are kept
@@ -166,10 +170,10 @@ The filter uses different algorithms based on the `use_return_type_classificatio
 
 #### Advanced Mode (`use_return_type_classification=true`)
 
-1. **Format Detection**: Automatically detects PointXYZIRC vs PointXYZIRCAEDT
+1. **Format Detection**: Automatically detects PointXYZIRCT / PointXYZIRC vs PointXYZIRCAEDT
 2. **Return Type Validation**: Ensures return_type field is present
 3. **Coordinate Processing**:
-   - PointXYZIRC: Computes polar coordinates from Cartesian
+   - PointXYZIRCT / PointXYZIRC: Computes polar coordinates from Cartesian
    - PointXYZIRCAEDT: Uses pre-computed polar coordinates
 4. **Return Type Classification**: Points are classified as primary or secondary returns
 5. **Two-Criteria Filtering**:
@@ -211,7 +215,7 @@ This implementation inherits `autoware::pointcloud_preprocessor::Filter` class, 
 
 ### Input Requirements
 
-- **Supported Formats**: PointXYZIRC or PointXYZIRCAEDT
+- **Supported Formats**: PointXYZIRCT, PointXYZIRC, or PointXYZIRCAEDT
 - **Return Type Field**: Required only when `use_return_type_classification=true`
 - **Invalid Inputs**: Point clouds without return_type field will be rejected in advanced mode
 
@@ -353,7 +357,7 @@ visibility_estimation_only: true # Diagnostics only
 - **Simple mode**: Works with any point cloud format, basic occupancy filtering only
 - **Advanced mode**: Requires return_type field for enhanced filtering
 - **Visibility-only mode**: Runs full filtering algorithm but produces no point cloud output
-- **Supported formats**: PointXYZIRC and PointXYZIRCAEDT only
+- **Supported formats**: PointXYZIRCT, PointXYZIRC, and PointXYZIRCAEDT
 - **Finite coordinates required**: Automatically filters out NaN/Inf points
 - **Return type dependency**: Advanced filtering effectiveness depends on accurate return type classification
 - **Visibility range dependency**: Visibility accuracy depends on appropriate `visibility_estimation_max_range_m`, `visibility_estimation_(min|max)_azimuth_rad`, and `visibility_estimation_(min|max)_elevation_rad` settings. Besides, for azimuth and elevation range, the following definitions are assumed
@@ -442,7 +446,7 @@ auto node = std::make_shared<autoware::pointcloud_preprocessor::PolarVoxelOutlie
 // - Simple mode (use_return_type_classification=false): Basic occupancy filtering
 // - Advanced mode (use_return_type_classification=true): Two-criteria filtering with return type analysis
 // - Visibility-only mode (visibility_estimation_only=true): Diagnostics without point cloud output
-// - Both modes support PointXYZIRC and PointXYZIRCAEDT formats
+// - Both modes support PointXYZIRCT, PointXYZIRC, and PointXYZIRCAEDT formats
 // - Advanced mode uses range-limited visibility estimation with configurable secondary voxel limiting
 ```
 
@@ -465,19 +469,19 @@ auto node = std::make_shared<autoware::pointcloud_preprocessor::PolarVoxelOutlie
 #### **Normal Mode**
 
 - **PointXYZIRCAEDT**: Optimal performance with pre-computed coordinates
-- **PointXYZIRC**: Good performance with coordinate conversion overhead
+- **PointXYZIRCT / PointXYZIRC**: Good performance with coordinate conversion overhead
 - **Output Processing**: Full point cloud generation and optional noise cloud
 
 #### **Simple Mode**
 
 - **PointXYZIRCAEDT**: Fast processing with pre-computed coordinates
-- **PointXYZIRC**: Good performance with coordinate conversion overhead
+- **PointXYZIRCT / PointXYZIRC**: Good performance with coordinate conversion overhead
 - **No return type analysis**: Reduced computational overhead
 
 #### **Advanced Mode**
 
 - **PointXYZIRCAEDT**: Optimal performance with pre-computed coordinates and return type analysis
-- **PointXYZIRC**: Good performance with coordinate conversion and return type analysis
+- **PointXYZIRCT / PointXYZIRC**: Good performance with coordinate conversion and return type analysis
 - **Enhanced filtering**: Additional return type classification and range-aware visibility processing
 
 ### Memory Usage

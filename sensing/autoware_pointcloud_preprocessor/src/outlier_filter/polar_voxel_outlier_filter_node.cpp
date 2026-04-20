@@ -168,8 +168,8 @@ PolarVoxelOutlierFilterComponent::PolarVoxelOutlierFilterComponent(
 
   RCLCPP_INFO(
     get_logger(),
-    "Polar Voxel Outlier Filter initialized - supports PointXYZIRC and PointXYZIRCAEDT with %s "
-    "filtering%s",
+    "Polar Voxel Outlier Filter initialized - supports PointXYZIRCT, PointXYZIRC, and "
+    "PointXYZIRCAEDT with %s filtering%s",
     use_return_type_classification_ ? "advanced two-criteria" : "simple occupancy",
     visibility_estimation_only_ ? " (visibility estimation only - no point cloud output)" : "");
 }
@@ -195,7 +195,7 @@ void PolarVoxelOutlierFilterComponent::filter(
       get_logger(), "Processing PointXYZIRCAEDT format with pre-computed polar coordinates");
   } else {
     RCLCPP_DEBUG_ONCE(
-      get_logger(), "Processing PointXYZIRC format, computing azimuth and elevation");
+      get_logger(), "Processing PointXYZIRCT/PointXYZIRC format, computing azimuth and elevation");
   }
 
   // Phase 2: Collect voxel information (unified for both formats)

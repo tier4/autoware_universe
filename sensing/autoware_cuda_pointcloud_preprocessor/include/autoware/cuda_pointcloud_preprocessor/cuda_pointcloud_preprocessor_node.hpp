@@ -53,7 +53,7 @@ namespace autoware::cuda_pointcloud_preprocessor
 {
 
 static_assert(sizeof(InputPointType) == sizeof(autoware::point_types::PointXYZIRCAEDT));
-static_assert(sizeof(OutputPointType) == sizeof(autoware::point_types::PointXYZIRC));
+static_assert(sizeof(OutputPointType) == sizeof(autoware::point_types::PointXYZIRCT));
 
 CHECK_OFFSET(InputPointType, autoware::point_types::PointXYZIRCAEDT, x);
 CHECK_OFFSET(InputPointType, autoware::point_types::PointXYZIRCAEDT, y);
@@ -66,12 +66,13 @@ CHECK_OFFSET(InputPointType, autoware::point_types::PointXYZIRCAEDT, elevation);
 CHECK_OFFSET(InputPointType, autoware::point_types::PointXYZIRCAEDT, distance);
 CHECK_OFFSET(InputPointType, autoware::point_types::PointXYZIRCAEDT, time_stamp);
 
-CHECK_OFFSET(OutputPointType, autoware::point_types::PointXYZIRCAEDT, x);
-CHECK_OFFSET(OutputPointType, autoware::point_types::PointXYZIRCAEDT, y);
-CHECK_OFFSET(OutputPointType, autoware::point_types::PointXYZIRCAEDT, z);
-CHECK_OFFSET(OutputPointType, autoware::point_types::PointXYZIRCAEDT, intensity);
-CHECK_OFFSET(OutputPointType, autoware::point_types::PointXYZIRCAEDT, return_type);
-CHECK_OFFSET(OutputPointType, autoware::point_types::PointXYZIRCAEDT, channel);
+CHECK_OFFSET(OutputPointType, autoware::point_types::PointXYZIRCT, x);
+CHECK_OFFSET(OutputPointType, autoware::point_types::PointXYZIRCT, y);
+CHECK_OFFSET(OutputPointType, autoware::point_types::PointXYZIRCT, z);
+CHECK_OFFSET(OutputPointType, autoware::point_types::PointXYZIRCT, intensity);
+CHECK_OFFSET(OutputPointType, autoware::point_types::PointXYZIRCT, return_type);
+CHECK_OFFSET(OutputPointType, autoware::point_types::PointXYZIRCT, channel);
+CHECK_OFFSET(OutputPointType, autoware::point_types::PointXYZIRCT, time_stamp);
 
 class CudaPointcloudPreprocessorNode : public rclcpp::Node
 {

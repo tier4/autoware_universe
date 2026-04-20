@@ -107,6 +107,8 @@ void RingOutlierFilterComponent::faster_filter(
     input->fields.at(static_cast<size_t>(InputPointIndex::Intensity)).offset;
   const auto input_return_type_offset =
     input->fields.at(static_cast<size_t>(InputPointIndex::ReturnType)).offset;
+  const auto input_time_stamp_offset =
+    input->fields.at(static_cast<size_t>(InputPointIndex::TimeStamp)).offset;
 
   std::vector<std::vector<size_t>> ring2indices;
   ring2indices.reserve(max_rings_num_);
@@ -186,6 +188,10 @@ void RingOutlierFilterComponent::faster_filter(
             &input->data[indices[i] + input_channel_offset]);
           output_ptr->channel = channel;
 
+          const std::uint32_t & time_stamp = *reinterpret_cast<const std::uint32_t *>(
+            &input->data[indices[i] + input_time_stamp_offset]);
+          output_ptr->time_stamp = time_stamp;
+
           output_size += output.point_step;
         }
       } else if (publish_outlier_pointcloud_) {
@@ -238,6 +244,10 @@ void RingOutlierFilterComponent::faster_filter(
         const std::uint8_t & channel =
           *reinterpret_cast<const std::uint8_t *>(&input->data[indices[i] + input_channel_offset]);
         output_ptr->channel = channel;
+
+        const std::uint32_t & time_stamp = *reinterpret_cast<const std::uint32_t *>(
+          &input->data[indices[i] + input_time_stamp_offset]);
+        output_ptr->time_stamp = time_stamp;
 
         output_size += output.point_step;
       }

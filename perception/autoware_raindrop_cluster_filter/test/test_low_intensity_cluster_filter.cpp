@@ -30,8 +30,8 @@
 #include <vector>
 
 using autoware::low_intensity_cluster_filter::LowIntensityClusterFilter;
-using autoware::point_types::PointXYZIRC;
-using autoware::point_types::PointXYZIRCGenerator;
+using autoware::point_types::PointXYZIRCT;
+using autoware::point_types::PointXYZIRCTGenerator;
 using autoware_perception_msgs::msg::ObjectClassification;
 using point_cloud_msg_wrapper::PointCloud2Modifier;
 using tier4_perception_msgs::msg::DetectedObjectsWithFeature;
@@ -67,10 +67,10 @@ DetectedObjectsWithFeature create_cluster(
   feature_obj.object.classification.resize(1);
   feature_obj.object.classification[0].label = label;
   sensor_msgs::msg::PointCloud2 cluster;
-  PointCloud2Modifier<PointXYZIRC, autoware::point_types::PointXYZIRCGenerator> modifier(
+  PointCloud2Modifier<PointXYZIRCT, autoware::point_types::PointXYZIRCTGenerator> modifier(
     cluster, "base_link");
   for (int i = 0; i < cluster_size; i++) {
-    PointXYZIRC point;
+    PointXYZIRCT point;
     point.x = x;
     point.y = y;
     point.z = z;

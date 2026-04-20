@@ -410,13 +410,13 @@ void PointCloudDataSynchronizerComponent::publish()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void PointCloudDataSynchronizerComponent::convertToXYZIRCCloud(
+void PointCloudDataSynchronizerComponent::convertToXYZIRCTCloud(
   const sensor_msgs::msg::PointCloud2::SharedPtr & input_ptr,
   sensor_msgs::msg::PointCloud2::SharedPtr & output_ptr)
 {
   output_ptr->header = input_ptr->header;
 
-  PointCloud2Modifier<PointXYZIRC, autoware::point_types::PointXYZIRCGenerator> output_modifier{
+  PointCloud2Modifier<PointXYZIRCT, autoware::point_types::PointXYZIRCTGenerator> output_modifier{
     *output_ptr, input_ptr->header.frame_id};
   output_modifier.reserve(input_ptr->width);
 
@@ -435,6 +435,11 @@ void PointCloudDataSynchronizerComponent::convertToXYZIRCCloud(
       return field.name == "channel" && field.datatype == sensor_msgs::msg::PointField::UINT16;
     });
 
+  bool has_valid_time_stamp =
+    std::any_of(input_ptr->fields.begin(), input_ptr->fields.end(), [](const auto & field) {
+      return field.name == "time_stamp" && field.datatype == sensor_msgs::msg::PointField::UINT32;
+    });
+
   sensor_msgs::PointCloud2Iterator<float> it_x(*input_ptr, "x");
   sensor_msgs::PointCloud2Iterator<float> it_y(*input_ptr, "y");
   sensor_msgs::PointCloud2Iterator<float> it_z(*input_ptr, "z");
@@ -444,19 +449,34 @@ void PointCloudDataSynchronizerComponent::convertToXYZIRCCloud(
     sensor_msgs::PointCloud2Iterator<std::uint8_t> it_r(*input_ptr, "return_type");
     sensor_msgs::PointCloud2Iterator<std::uint16_t> it_c(*input_ptr, "channel");
 
-    for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_i, ++it_r, ++it_c) {
-      PointXYZIRC point;
-      point.x = *it_x;
-      point.y = *it_y;
-      point.z = *it_z;
-      point.intensity = *it_i;
-      point.return_type = *it_r;
-      point.channel = *it_c;
-      output_modifier.push_back(std::move(point));
+    if (has_valid_time_stamp) {
+      sensor_msgs::PointCloud2Iterator<std::uint32_t> it_ts(*input_ptr, "time_stamp");
+      for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_i, ++it_r, ++it_c, ++it_ts) {
+        PointXYZIRCT point;
+        point.x = *it_x;
+        point.y = *it_y;
+        point.z = *it_z;
+        point.intensity = *it_i;
+        point.return_type = *it_r;
+        point.channel = *it_c;
+        point.time_stamp = *it_ts;
+        output_modifier.push_back(std::move(point));
+      }
+    } else {
+      for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z, ++it_i, ++it_r, ++it_c) {
+        PointXYZIRCT point;
+        point.x = *it_x;
+        point.y = *it_y;
+        point.z = *it_z;
+        point.intensity = *it_i;
+        point.return_type = *it_r;
+        point.channel = *it_c;
+        output_modifier.push_back(std::move(point));
+      }
     }
   } else {
     for (; it_x != it_x.end(); ++it_x, ++it_y, ++it_z) {
-      PointXYZIRC point;
+      PointXYZIRCT point;
       point.x = *it_x;
       point.y = *it_y;
       point.z = *it_z;
@@ -486,9 +506,9 @@ void PointCloudDataSynchronizerComponent::cloud_callback(
 {
   std::lock_guard<std::mutex> lock(mutex_);
   auto input = std::make_shared<sensor_msgs::msg::PointCloud2>(*input_ptr);
-  sensor_msgs::msg::PointCloud2::SharedPtr xyzirc_input_ptr(new sensor_msgs::msg::PointCloud2());
+  sensor_msgs::msg::PointCloud2::SharedPtr xyzirct_input_ptr(new sensor_msgs::msg::PointCloud2());
   if (input->data.size() > 0) {
-    convertToXYZIRCCloud(input, xyzirc_input_ptr);
+    convertToXYZIRCTCloud(input, xyzirct_input_ptr);
   }
 
   const bool is_already_subscribed_this = (cloud_stdmap_[topic_name] != nullptr);
@@ -497,7 +517,7 @@ void PointCloudDataSynchronizerComponent::cloud_callback(
     [](const auto & e) { return e.second != nullptr; });
 
   if (is_already_subscribed_this) {
-    cloud_stdmap_tmp_[topic_name] = xyzirc_input_ptr;
+    cloud_stdmap_tmp_[topic_name] = xyzirct_input_ptr;
 
     if (!is_already_subscribed_tmp) {
       auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -510,7 +530,7 @@ void PointCloudDataSynchronizerComponent::cloud_callback(
       timer_->reset();
     }
   } else {
-    cloud_stdmap_[topic_name] = xyzirc_input_ptr;
+    cloud_stdmap_[topic_name] = xyzirct_input_ptr;
 
     const bool is_subscribed_all = std::all_of(
       std::begin(cloud_stdmap_), std::end(cloud_stdmap_),

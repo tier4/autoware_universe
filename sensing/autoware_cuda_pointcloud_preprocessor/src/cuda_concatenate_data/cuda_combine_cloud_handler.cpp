@@ -34,22 +34,25 @@
 
 static_assert(
   sizeof(autoware::pointcloud_preprocessor::PointTypeStruct) ==
-  sizeof(autoware::point_types::PointXYZIRC));
+  sizeof(autoware::point_types::PointXYZIRCT));
 
 CHECK_OFFSET(
-  autoware::pointcloud_preprocessor::PointTypeStruct, autoware::point_types::PointXYZIRC, x);
+  autoware::pointcloud_preprocessor::PointTypeStruct, autoware::point_types::PointXYZIRCT, x);
 CHECK_OFFSET(
-  autoware::pointcloud_preprocessor::PointTypeStruct, autoware::point_types::PointXYZIRC, y);
+  autoware::pointcloud_preprocessor::PointTypeStruct, autoware::point_types::PointXYZIRCT, y);
 CHECK_OFFSET(
-  autoware::pointcloud_preprocessor::PointTypeStruct, autoware::point_types::PointXYZIRC, z);
+  autoware::pointcloud_preprocessor::PointTypeStruct, autoware::point_types::PointXYZIRCT, z);
 CHECK_OFFSET(
-  autoware::pointcloud_preprocessor::PointTypeStruct, autoware::point_types::PointXYZIRC,
+  autoware::pointcloud_preprocessor::PointTypeStruct, autoware::point_types::PointXYZIRCT,
   intensity);
 CHECK_OFFSET(
-  autoware::pointcloud_preprocessor::PointTypeStruct, autoware::point_types::PointXYZIRC,
+  autoware::pointcloud_preprocessor::PointTypeStruct, autoware::point_types::PointXYZIRCT,
   return_type);
 CHECK_OFFSET(
-  autoware::pointcloud_preprocessor::PointTypeStruct, autoware::point_types::PointXYZIRC, channel);
+  autoware::pointcloud_preprocessor::PointTypeStruct, autoware::point_types::PointXYZIRCT, channel);
+CHECK_OFFSET(
+  autoware::pointcloud_preprocessor::PointTypeStruct, autoware::point_types::PointXYZIRCT,
+  time_stamp);
 
 namespace autoware::pointcloud_preprocessor
 {

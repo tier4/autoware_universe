@@ -339,8 +339,8 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
   // TODO(YamatoAndo)
   // Transform sensor_frame to base_link
 
-  pcl::PointCloud<autoware::point_types::PointXYZIRC>::Ptr points_ptr(
-    new pcl::PointCloud<autoware::point_types::PointXYZIRC>);
+  pcl::PointCloud<autoware::point_types::PointXYZIRCT>::Ptr points_ptr(
+    new pcl::PointCloud<autoware::point_types::PointXYZIRCT>);
   pcl::fromROSMsg(*points_msg_ptr, *points_ptr);
 
   if (points_ptr->empty()) {
@@ -348,11 +348,11 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
     return std::vector<landmark_manager::Landmark>{};
   }
 
-  std::vector<pcl::PointCloud<autoware::point_types::PointXYZIRC>> ring_points(128);
+  std::vector<pcl::PointCloud<autoware::point_types::PointXYZIRCT>> ring_points(128);
 
   float min_x = std::numeric_limits<float>::max();
   float max_x = std::numeric_limits<float>::lowest();
-  for (const autoware::point_types::PointXYZIRC & point : points_ptr->points) {
+  for (const autoware::point_types::PointXYZIRCT & point : points_ptr->points) {
     ring_points[point.channel].push_back(point);
     min_x = std::min(min_x, point.x);
     max_x = std::max(max_x, point.x);
@@ -372,12 +372,12 @@ std::vector<landmark_manager::Landmark> LidarMarkerLocalizer::detect_landmarks(
   std::vector<float> min_y(bin_num, std::numeric_limits<float>::max());
 
   // for each channel
-  for (const pcl::PointCloud<autoware::point_types::PointXYZIRC> & one_ring : ring_points) {
+  for (const pcl::PointCloud<autoware::point_types::PointXYZIRCT> & one_ring : ring_points) {
     std::vector<double> intensity_sum(bin_num, 0.0);
     std::vector<int> intensity_num(bin_num, 0);
     std::vector<double> average_intensity(bin_num, 0.0);
 
-    for (const autoware::point_types::PointXYZIRC & point : one_ring.points) {
+    for (const autoware::point_types::PointXYZIRCT & point : one_ring.points) {
       const int bin_index = static_cast<int>((point.x - min_x) / param_.resolution);
       intensity_sum[bin_index] += point.intensity;
       intensity_num[bin_index]++;
@@ -514,15 +514,15 @@ sensor_msgs::msg::PointCloud2::SharedPtr LidarMarkerLocalizer::extract_marker_po
   const geometry_msgs::msg::Pose marker_pose) const
 {
   // convert from ROSMsg to PCL
-  pcl::shared_ptr<pcl::PointCloud<autoware::point_types::PointXYZIRC>> points_ptr(
-    new pcl::PointCloud<autoware::point_types::PointXYZIRC>);
+  pcl::shared_ptr<pcl::PointCloud<autoware::point_types::PointXYZIRCT>> points_ptr(
+    new pcl::PointCloud<autoware::point_types::PointXYZIRCT>);
   pcl::fromROSMsg(*points_msg_ptr, *points_ptr);
 
-  pcl::shared_ptr<pcl::PointCloud<autoware::point_types::PointXYZIRC>> marker_points_ptr(
-    new pcl::PointCloud<autoware::point_types::PointXYZIRC>);
+  pcl::shared_ptr<pcl::PointCloud<autoware::point_types::PointXYZIRCT>> marker_points_ptr(
+    new pcl::PointCloud<autoware::point_types::PointXYZIRCT>);
 
   // extract marker pointcloud
-  for (const autoware::point_types::PointXYZIRC & point : points_ptr->points) {
+  for (const autoware::point_types::PointXYZIRCT & point : points_ptr->points) {
     const double xy_distance = std::sqrt(
       std::pow(point.x - marker_pose.position.x, 2.0) +
       std::pow(point.y - marker_pose.position.y, 2.0));
@@ -553,8 +553,8 @@ void LidarMarkerLocalizer::save_detected_marker_log(
     marker_points_msg_sensor_frame_ptr);
 
   // convert from ROSMsg to PCL
-  pcl::shared_ptr<pcl::PointCloud<autoware::point_types::PointXYZIRC>>
-    marker_points_sensor_frame_ptr(new pcl::PointCloud<autoware::point_types::PointXYZIRC>);
+  pcl::shared_ptr<pcl::PointCloud<autoware::point_types::PointXYZIRCT>>
+    marker_points_sensor_frame_ptr(new pcl::PointCloud<autoware::point_types::PointXYZIRCT>);
   pcl::fromROSMsg(*marker_points_msg_sensor_frame_ptr, *marker_points_sensor_frame_ptr);
 
   // to csv format

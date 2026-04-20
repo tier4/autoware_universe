@@ -154,6 +154,7 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
   bool has_polar_coords =
     autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzircaedt(*msg);
   bool has_return_type =
+    autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzirct(*msg) ||
     autoware::pointcloud_preprocessor::utils::is_data_layout_compatible_with_point_xyzirc(*msg);
 
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> filtered_cloud;

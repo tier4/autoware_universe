@@ -64,7 +64,7 @@ ros2 launch autoware_bevfusion bevfusion.launch.xml log_level:=debug
 
 ## Assumptions / Known limits
 
-This node assumes that the input pointcloud follows the `PointXYZIRC` layout defined in `autoware_point_types`.
+This node assumes that the input pointcloud follows the `PointXYZIRCT` layout defined in `autoware_point_types`.
 
 ## Trained Models
 

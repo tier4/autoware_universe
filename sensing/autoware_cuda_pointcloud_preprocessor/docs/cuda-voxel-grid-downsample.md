@@ -19,10 +19,10 @@ This node reimplements of the function of `autoware::pointcloud_preprocessor::Fa
 
 ### Output
 
-| Name                       | Type                                             | Description                                             |
-| -------------------------- | ------------------------------------------------ | ------------------------------------------------------- |
-| `~/output/pointcloud`      | `sensor_msgs::msg::PointCloud2`                  | Processed pointcloud's topic (in `PointXYZIRC` fashion) |
-| `~/output/pointcloud/cuda` | `negotiated_interfaces/msg/NegotiatedTopicsInfo` | Processed pointcloud's negotiation topic                |
+| Name                       | Type                                             | Description                                              |
+| -------------------------- | ------------------------------------------------ | -------------------------------------------------------- |
+| `~/output/pointcloud`      | `sensor_msgs::msg::PointCloud2`                  | Processed pointcloud's topic (in `PointXYZIRCT` fashion) |
+| `~/output/pointcloud/cuda` | `negotiated_interfaces/msg/NegotiatedTopicsInfo` | Processed pointcloud's negotiation topic                 |
 
 ## Parameters
 
