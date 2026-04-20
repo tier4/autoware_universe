@@ -954,7 +954,30 @@ std::optional<Finding> find_collision_timing(
     return std::nullopt;
   }
 
-  std::optional<Finding> candidate_finding{};
+  struct CandidateFinding
+  {
+    double ttc;
+    double pet;
+    IndexRange ref_index_range;
+    TimeRange test_time_range;
+  };
+
+  // todo: return only trajectory identification and index/time ranges from here,
+  // and move add_debug_markers() generation to assessment to avoid carrying debug-only copies.
+  const auto make_finding = [&](const CandidateFinding & candidate) -> Finding {
+    const auto & object_identification = test_trajectory.getObjectIdentification();
+    return Finding{
+      to_trajectory_id_string(object_identification),
+      object_identification,
+      candidate.pet,
+      candidate.ttc,
+      ref_trajectory.getPoses(),
+      test_trajectory.getPoses(),
+      ref_trajectory.get_or_compute_convex(candidate.ref_index_range),
+      test_trajectory.get_or_compute_convex(candidate.test_time_range)};
+  };
+
+  std::optional<CandidateFinding> candidate_finding{};
   for (size_t i = 0; i < ref_trajectory.size(); ++i) {
     size_t prev_i = (i == 0) ? 0 : i - 1;
     const double ref_start_time = ref_trajectory.getTimes().at(prev_i);
@@ -995,29 +1018,23 @@ std::optional<Finding> find_collision_timing(
         continue;
       }
 
-      // todo: restrict the copy until return.
-      const auto & object_identification = test_trajectory.getObjectIdentification();
       const double pet = has_intersects_before ? -pet_range : pet_range;
-      const auto & object_poly = test_trajectory.get_or_compute_convex(
-        has_intersects_before ? test_time_range_before : test_time_range_after);
+      const TimeRange test_time_range =
+        has_intersects_before ? test_time_range_before : test_time_range_after;
 
-      candidate_finding = Finding{
-        to_trajectory_id_string(object_identification),
-        object_identification,
-        pet,
-        ref_start_time,
-        ref_trajectory.getPoses(),
-        test_trajectory.getPoses(),
-        ref_convex,
-        object_poly};
+      candidate_finding = CandidateFinding{ref_start_time, pet, ref_index_range, test_time_range};
       break;
     }
     if (candidate_finding.has_value() && candidate_finding->pet == 0.0) {
-      return candidate_finding;
+      return make_finding(candidate_finding.value());
     }
   }
 
-  return candidate_finding;
+  if (!candidate_finding.has_value()) {
+    return std::nullopt;
+  }
+
+  return make_finding(candidate_finding.value());
 }
 
 std::vector<Finding> assess_collision_timing(
