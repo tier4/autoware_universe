@@ -39,6 +39,7 @@
 #include <tier4_metric_msgs/msg/metric.hpp>
 #include <tier4_metric_msgs/msg/metric_array.hpp>
 
+#include <cstdint>
 #include <deque>
 #include <optional>
 #include <string>
@@ -174,6 +175,12 @@ private:
   // for output_metrics_only_moving
   float ego_speed_{0.0};
   std::array<bool, static_cast<size_t>(Metric::SIZE)> is_output_metrics_only_moving{};
+
+  // Uncrossable boundary: count edge events (distance <= 0), re-arm only after distance > 0
+  bool uncrossable_left_nonpositive_armed_{true};
+  bool uncrossable_right_nonpositive_armed_{true};
+  std::uint64_t uncrossable_left_nonpositive_event_count_{0};
+  std::uint64_t uncrossable_right_nonpositive_event_count_{0};
 };
 }  // namespace control_diagnostics
 

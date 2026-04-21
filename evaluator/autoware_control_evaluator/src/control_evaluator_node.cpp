@@ -27,6 +27,7 @@
 #include <boost/geometry.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -311,14 +312,11 @@ void ControlEvaluatorNode::AddUncrossableBoundaryDistanceMetricMsg(const Pose & 
 
     auto is_overlapping{false};
     for (const auto & nearby_ls : nearby_uncrossable_lines) {
-      LineString2d boundary;
       const auto & basic_ls = nearby_ls.basicLineString();
-      boundary.reserve(basic_ls.size());
       for (size_t idx = 0; idx + 1 < basic_ls.size(); ++idx) {
         const auto segment = bdc_utils::to_segment_2d(basic_ls[idx], basic_ls[idx + 1]);
 
         is_overlapping = !boost::geometry::disjoint(current_fp, segment);
-
         if (is_overlapping) {
           nearest_left = 0.0;
           nearest_right = 0.0;
@@ -338,11 +336,31 @@ void ControlEvaluatorNode::AddUncrossableBoundaryDistanceMetricMsg(const Pose & 
       }
     }
   }
+
+  const auto update_nonpositive_event_count =
+    [](const double distance, bool & armed, std::uint64_t & event_count) {
+      if (distance > 0.0) {
+        armed = true;
+      } else if (armed) {
+        ++event_count;
+        armed = false;
+      }
+    };
+  update_nonpositive_event_count(
+    nearest_left, uncrossable_left_nonpositive_armed_, uncrossable_left_nonpositive_event_count_);
+  update_nonpositive_event_count(
+    nearest_right, uncrossable_right_nonpositive_armed_,
+    uncrossable_right_nonpositive_event_count_);
+
   const Metric metric_left = Metric::left_uncrossable_boundary_distance;
+  const Metric metric_left_count = Metric::left_uncrossable_boundary_distance_count;
   AddMetricMsg(metric_left, nearest_left);
+  AddMetricMsg(metric_left_count, static_cast<double>(uncrossable_left_nonpositive_event_count_), false);
 
   const Metric metric_right = Metric::right_uncrossable_boundary_distance;
+  const Metric metric_right_count = Metric::right_uncrossable_boundary_distance_count;
   AddMetricMsg(metric_right, nearest_right);
+  AddMetricMsg(metric_right_count, static_cast<double>(uncrossable_right_nonpositive_event_count_), false);
 }
 
 void ControlEvaluatorNode::AddKinematicStateMetricMsg(
