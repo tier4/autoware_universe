@@ -63,6 +63,10 @@ struct ObjectIdentification
 
 struct PetCollisionParams
 {
+  PetCollisionParams() = default;
+  PetCollisionParams(
+    const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key);
+
   double ego_braking_delay;
   double ego_assumed_acceleration;
   double collision_time_threshold;
@@ -70,16 +74,20 @@ struct PetCollisionParams
 
 struct RssParams
 {
+  RssParams() = default;
+  RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key);
+
   double ego_deceleration_threshold;
   double stop_margin;
   double ego_reaction_time;
   double object_acceleration;
 };
+  
+template <typename ParamStruct>
+  static double try_labeled_double_param(
+    const ParamStruct & params_struct, const std::string & key);
 
-struct CollisionCheckParams{
-  PetCollisionParams pet_collision_params;
-  RssParams rss_params;
-};
+  static double try_labeled_double_param(double value, const std::string & key);
 
 
 class TrajectoryData
@@ -232,23 +240,16 @@ private:
   ContinuousDetectionTimes pet_continuous_times_;
   ContinuousDetectionTimes rss_continuous_times_;
   ContinuousDetectionTimes drac_continuous_times_;
-  std::map<std::string, CollisionCheckParams> collision_check_params_map_;
+  std::map<std::string, PetCollisionParams> pet_collision_param_map_;
+  std::map<std::string, RssParams> rss_param_map_;
 
   void add_debug_markers(
     const rclcpp::Time & stamp, const std::string & ns, const Polygon2d & ego_hull,
     const Polygon2d & object_hull);
 
-  void create_collision_check_params_map(const validator::Params & params);
+  void create_param_maps(const validator::Params & params);
 
-  CollisionCheckParams fill_collision_check_entry(
-    const validator::Params::CollisionCheck::PetCollision & pet,
-    const validator::Params::CollisionCheck::Rss & rss, const std::string & key) const;
 
-  template <typename ParamStruct>
-  static double try_labeled_double_param(
-    const ParamStruct & params_struct, const std::string & key);
-
-  static double try_labeled_double_param(double value, const std::string & key);
 
 };
 
