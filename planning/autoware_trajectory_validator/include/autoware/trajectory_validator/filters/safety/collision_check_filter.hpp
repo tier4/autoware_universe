@@ -235,8 +235,8 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
-  validator::Params::CollisionCheck::PetCollision pet_collision_params_;
-  validator::Params::CollisionCheck::Rss rss_params_;
+  PetCollisionParams pet_collision_params_;
+  RssParams rss_params_;
   ContinuousDetectionTimes pet_continuous_times_;
   ContinuousDetectionTimes rss_continuous_times_;
   ContinuousDetectionTimes drac_continuous_times_;
