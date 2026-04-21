@@ -68,64 +68,20 @@ ObjectIdentification make_trajectory_identification(
 PetCollisionParams::PetCollisionParams(
   const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key)
 {
-  ego_braking_delay = try_labeled_double_param(pet.ego_braking_delay, key);
+  ego_braking_delay = extract_labeled_param(pet.ego_braking_delay, key);
   ego_assumed_acceleration =
-    try_labeled_double_param(pet.ego_assumed_acceleration, key);
+    extract_labeled_param(pet.ego_assumed_acceleration, key);
   collision_time_threshold =
-    try_labeled_double_param(pet.collision_time_threshold, key);
+    extract_labeled_param(pet.collision_time_threshold, key);
 }
 
 RssParams::RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key)
 {
-  ego_reaction_time = try_labeled_double_param(rss.ego_reaction_time, key);
+  ego_reaction_time = extract_labeled_param(rss.ego_reaction_time, key);
   ego_deceleration_threshold =
-    try_labeled_double_param(rss.ego_deceleration_threshold, key);
-  object_acceleration =try_labeled_double_param(rss.object_acceleration, key);
-  stop_margin = try_labeled_double_param(rss.stop_margin, key);
-}
-
-double try_labeled_double_param(double shared_value, const std::string & /*key*/)
-{
-  return shared_value;
-}
-
-template <typename ParamStruct>
-double try_labeled_double_param(const ParamStruct & params_struct, const std::string & key)
-{
-  if (key == "base") {
-    return params_struct.base;
-  }
-
-  double label_value = std::numeric_limits<double>::quiet_NaN();
-  if (key == "car") {
-    label_value = params_struct.car;
-  } else if (key == "truck") {
-    label_value = params_struct.truck;
-  } else if (key == "bus") {
-    label_value = params_struct.bus;
-  } else if (key == "trailer") {
-    label_value = params_struct.trailer;
-  } else if (key == "motorcycle") {
-    label_value = params_struct.motorcycle;
-  } else if (key == "bicycle") {
-    label_value = params_struct.bicycle;
-  } else if (key == "pedestrian") {
-    label_value = params_struct.pedestrian;
-  } else if (key == "animal") {
-    label_value = params_struct.animal;
-  } else if (key == "hazard") {
-    label_value = params_struct.hazard;
-  } else if (key == "over_drivable") {
-    label_value = params_struct.over_drivable;
-  } else if (key == "under_drivable") {
-    label_value = params_struct.under_drivable;
-  } else if (key == "unknown") {
-    label_value = params_struct.unknown;
-  } else {
-    throw std::invalid_argument("Unknown label key: " + key);
-  }
-
-  return std::isnan(label_value) ? params_struct.base : label_value;
+    extract_labeled_param(rss.ego_deceleration_threshold, key);
+  object_acceleration =extract_labeled_param(rss.object_acceleration, key);
+  stop_margin = extract_labeled_param(rss.stop_margin, key);
 }
 
 
@@ -1008,7 +964,7 @@ void CollisionCheckFilter::create_param_maps(const validator::Params & params)
   const validator::Params::CollisionCheck::Rss & rss = params.collision_check.rss;
 
   static constexpr const char * k_base = "base";
-  // Class labels: keep in sync with parameter_struct.yaml and try_labeled_double_param().
+  // Class labels: keep in sync with parameter_struct.yaml and extract_labeled_param().
   static constexpr std::array<const char *, 12> k_object_class_keys{
     "car",         "truck",          "bus",            "trailer", "motorcycle", "bicycle",
     "pedestrian",  "animal",         "hazard",         "over_drivable",
