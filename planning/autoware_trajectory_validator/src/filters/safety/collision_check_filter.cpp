@@ -928,26 +928,7 @@ Result assess(
 void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
 
-  try {
     create_param_maps(params);
-    // for debug print params in created 
-    for (const auto & [key, value] : rss_param_map_) {
-      const auto & pet_value = pet_collision_param_map_.at(key);
-      RCLCPP_INFO(
-        rclcpp::get_logger("collision_check_filter"),
-        "Collision check params for label '%s': PET braking delay=%.2f, "
-        "PET assumed acceleration=%.2f, PET time threshold=%.2f, "
-        "RSS ego reaction time=%.2f, RSS ego deceleration threshold=%.2f, "
-        "RSS object acceleration=%.2f, RSS stop margin=%.2f",
-        key.c_str(), pet_value.ego_braking_delay, pet_value.ego_assumed_acceleration,
-        pet_value.collision_time_threshold, value.ego_reaction_time,
-        value.ego_deceleration_threshold, value.object_acceleration, value.stop_margin);
-    }
-  } catch (const std::exception &) {
-    pet_collision_param_map_.clear();
-    rss_param_map_.clear();
-    throw;
-  }
 
   // temporarily set the params
   pet_collision_params_ = pet_collision_param_map_.at("base");
