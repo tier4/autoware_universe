@@ -291,9 +291,6 @@ private:
   validator::Params::CollisionCheck::Drac drac_params_;
   validator::Params::CollisionCheck::PetCollision pet_collision_params_;
   validator::Params::CollisionCheck::Rss rss_params_;
-  bool use_predicted_path_trajectory_{true};
-  bool use_constant_curvature_trajectory_{true};
-  bool use_diffusion_based_trajectory_{true};
   ContinuousDetectionTimes pet_continuous_times_;
   ContinuousDetectionTimes rss_continuous_times_;
   ContinuousDetectionTimes drac_continuous_times_;
