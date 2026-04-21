@@ -90,8 +90,7 @@ validator:
         type: double
         default_value: 1.0
         description: time threshold for PET collision check
-        read_onl
-        under_drivable: *pet_ctt
+        read_only: false
     rss:
       ego_deceleration_threshold:
         type: double
