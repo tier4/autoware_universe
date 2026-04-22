@@ -101,19 +101,6 @@ RssParams::RssParams(const validator::Params::CollisionCheck::Rss & rss, const s
   ego_reaction_time = extract_labeled_param<double>(rss.ego_reaction_time, key);
 }
 
-template <typename T>
-struct is_vector : std::false_type
-{
-};
-
-template <typename T, typename Alloc>
-struct is_vector<std::vector<T, Alloc>> : std::true_type
-{
-};
-
-template <typename T>
-inline constexpr bool is_vector_v = is_vector<T>::value;
-
 template <typename OutT, typename ParamStruct>
 OutT extract_labeled_param(const ParamStruct & params_struct, const std::string & key)
 {
@@ -147,15 +134,13 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string 
     return static_cast<OutT>(std::isnan(label_value) ? params_struct.base : label_value);
 
   } else if constexpr (std::is_same_v<ParamStruct, double>) {
-    return static_cast<OutT>(params_struct);
+    return params_struct;
   } else if constexpr (std::is_same_v<ParamStruct, int>) {
-    return static_cast<OutT>(params_struct);
+    return params_struct;
   } else if constexpr (std::is_same_v<ParamStruct, std::string>) {
-    return static_cast<OutT>(params_struct);
+    return params_struct;
   } else if constexpr (std::is_same_v<ParamStruct, bool>) {
-    return static_cast<OutT>(params_struct);
-  } else if constexpr (is_vector_v<ParamStruct>) {
-    return static_cast<OutT>(params_struct);
+    return params_struct;
   } else {
     throw std::invalid_argument("Unsupported parameter type passed to extract_labeled_param");
   }
@@ -1277,6 +1262,23 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
   rss_params_ = rss_param_map_.at("base");
   global_setting_ = params.collision_check.global_setting;
   drac_params_ = params.collision_check.drac;
+<<<<<<< HEAD
+=======
+
+  // for debug print params in created map
+  for (const auto & [key, value] : rss_param_map_) {
+    const auto & pet_value = pet_collision_param_map_.at(key);
+    RCLCPP_INFO(
+      rclcpp::get_logger("collision_check_filter"),
+      "Collision check params for label '%s': PET braking delay=%.2f, "
+      "PET assumed acceleration=%.2f, PET time threshold=%.2f, "
+      "RSS ego reaction time=%.2f, RSS ego deceleration threshold=%.2f, "
+      "RSS object acceleration=%.2f, RSS stop margin=%.2f",
+      key.c_str(), pet_value.ego_braking_delay, pet_value.ego_assumed_acceleration,
+      pet_value.collision_time_threshold, value.ego_reaction_time,
+      value.ego_deceleration_threshold, value.object_acceleration, value.stop_margin);
+  }
+>>>>>>> 48a6024eb1 (remove vector template)
 }
 
 autoware_internal_planning_msgs::msg::SafetyFactorArray make_safety_factor_array(
