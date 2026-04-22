@@ -284,19 +284,18 @@ std::int32_t GetIndicesPairsPlugin::enqueue(
     num_act_in);
 
   if (is_subm) {
-    cudaMemcpyAsync(
+    cudaError_t const status = cudaMemcpyAsync(
       outputs[0], inputs[0], num_act_in * 4 * sizeof(std::int32_t), cudaMemcpyDeviceToDevice,
       stream);
+    if (status != cudaSuccess) {
+      return status;
+    }
   }
 
-  std::int32_t * num_act_out_data = static_cast<std::int32_t *>(outputs[3]);
-
-  cudaError_t const status = cudaMemcpyAsync(
-    num_act_out_data, &num_act_out_real, sizeof(std::int32_t), cudaMemcpyHostToDevice, stream);
-
-  cudaStreamSynchronize(stream);
-
-  return status;
+  const std::int32_t num_act_out_value = is_subm ? num_act_in : num_act_out_real;
+  return cudaMemcpyAsync(
+    static_cast<std::int32_t *>(outputs[3]), &num_act_out_value, sizeof(std::int32_t),
+    cudaMemcpyHostToDevice, stream);
 }
 
 std::int32_t GetIndicesPairsPlugin::onShapeChange(
