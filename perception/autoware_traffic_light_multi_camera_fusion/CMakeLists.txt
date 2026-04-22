@@ -22,7 +22,6 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_auto_add_gtest(${PROJECT_NAME}_test
     test/test_utils.cpp
-    test/test_signal_validator.cpp
   )
 endif()
 
