@@ -1142,9 +1142,15 @@ Result assess(
   const validator::Params::CollisionCheck::PetCollision & pet_collision_params,
   const validator::Params::CollisionCheck::Drac & drac_params,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting,
-  VehicleInfo & vehicle_info, const ObjectTrajectoryGenerationOptions & pet_trajectory_options,
-  const ObjectTrajectoryGenerationOptions & drac_trajectory_options)
+  VehicleInfo & vehicle_info)
 {
+  const auto pet_trajectory_options = ObjectTrajectoryGenerationOptions{
+    pet_collision_params.predicted_path_trajectory,
+    pet_collision_params.constant_curvature_trajectory,
+    pet_collision_params.diffusion_based_trajectory};
+  const auto drac_trajectory_options = ObjectTrajectoryGenerationOptions{
+    drac_params.predicted_path_trajectory, drac_params.constant_curvature_trajectory,
+    drac_params.diffusion_based_trajectory};
   const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
                                             -pet_collision_params.ego_assumed_acceleration +
                                           pet_collision_params.ego_braking_delay;
@@ -1383,18 +1389,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     planning_factors.factors.push_back(std::move(factor));
   };
 
-  const auto pet_trajectory_options =
-    collision_timing_assessment::ObjectTrajectoryGenerationOptions{
-      pet_collision_params_.predicted_path_trajectory,
-      pet_collision_params_.constant_curvature_trajectory,
-      pet_collision_params_.diffusion_based_trajectory};
-  const auto drac_trajectory_options =
-    collision_timing_assessment::ObjectTrajectoryGenerationOptions{
-      drac_params_.predicted_path_trajectory, drac_params_.constant_curvature_trajectory,
-      drac_params_.diffusion_based_trajectory};
   const auto collision_timing_result = collision_timing_assessment::assess(
-    traj_points, context, pet_collision_params_, drac_params_, global_setting_, *vehicle_info_ptr_,
-    pet_trajectory_options, drac_trajectory_options);
+    traj_points, context, pet_collision_params_, drac_params_, global_setting_, *vehicle_info_ptr_);
 
   pet_continuous_times_.update(
     current_time, collision_timing_result.planned_speed_findings,

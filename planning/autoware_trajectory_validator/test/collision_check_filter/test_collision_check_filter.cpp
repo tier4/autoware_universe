@@ -234,12 +234,18 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
   vehicle_info.min_longitudinal_offset_m = -1.0;
   vehicle_info.vehicle_width_m = 2.0;
 
+  validator::Params::CollisionCheck::PetCollision pet_collision_params;
+  pet_collision_params.predicted_path_trajectory = false;
+  pet_collision_params.constant_curvature_trajectory = false;
+  pet_collision_params.diffusion_based_trajectory = false;
+  validator::Params::CollisionCheck::Drac drac_params;
+  drac_params.predicted_path_trajectory = false;
+  drac_params.constant_curvature_trajectory = false;
+  drac_params.diffusion_based_trajectory = true;
+
   const auto result = collision_timing_assessment::assess(
-    ego_path, context, validator::Params::CollisionCheck::PetCollision{},
-    validator::Params::CollisionCheck::Drac{}, validator::Params::CollisionCheck::GlobalSetting{},
-    vehicle_info,
-    collision_timing_assessment::ObjectTrajectoryGenerationOptions{false, false, false},
-    collision_timing_assessment::ObjectTrajectoryGenerationOptions{false, false, true});
+    ego_path, context, pet_collision_params, drac_params,
+    validator::Params::CollisionCheck::GlobalSetting{}, vehicle_info);
 
   EXPECT_TRUE(result.planned_speed_findings.empty());
   ASSERT_FALSE(result.drac_findings.empty());
