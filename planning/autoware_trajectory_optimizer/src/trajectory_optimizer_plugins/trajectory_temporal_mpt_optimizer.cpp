@@ -128,8 +128,8 @@ void TrajectoryTemporalMPTOptimizer::set_up_params()
     *node_ptr, "trajectory_temporal_mpt_optimizer.replay_fixture_directory");
   mpt_params_.log_replay_fixture_to_console = get_or_declare_parameter<bool>(
     *node_ptr, "trajectory_temporal_mpt_optimizer.log_replay_fixture_to_console");
-  mpt_params_.reroute_output = get_or_declare_parameter<bool>(
-    *node_ptr, "trajectory_temporal_mpt_optimizer.reroute_output");
+  mpt_params_.reroute_output =
+    get_or_declare_parameter<bool>(*node_ptr, "trajectory_temporal_mpt_optimizer.reroute_output");
 
   if (mpt_params_.write_replay_fixture && !mpt_params_.replay_fixture_directory.empty()) {
     RCLCPP_INFO(
@@ -169,8 +169,7 @@ rcl_interfaces::msg::SetParametersResult TrajectoryTemporalMPTOptimizer::on_para
     parameters, "trajectory_temporal_mpt_optimizer.log_replay_fixture_to_console",
     mpt_params_.log_replay_fixture_to_console);
   update_param(
-    parameters, "trajectory_temporal_mpt_optimizer.reroute_output",
-    mpt_params_.reroute_output);
+    parameters, "trajectory_temporal_mpt_optimizer.reroute_output", mpt_params_.reroute_output);
 
   if (solver_reinit_required) {
     create_or_reset_solver();
