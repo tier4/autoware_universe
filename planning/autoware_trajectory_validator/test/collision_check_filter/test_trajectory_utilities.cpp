@@ -99,6 +99,18 @@ FilterContext create_filter_context(const nav_msgs::msg::Odometry::ConstSharedPt
   return context;
 }
 
+collision_timing_assessment::ObjectTrajectoryGenerationOptions
+make_object_trajectory_generation_options(
+  const bool predicted_path_trajectory, const bool constant_curvature_trajectory,
+  const bool diffusion_based_trajectory)
+{
+  auto options = collision_timing_assessment::ObjectTrajectoryGenerationOptions{};
+  options.predicted_path_trajectory = predicted_path_trajectory;
+  options.constant_curvature_trajectory = constant_curvature_trajectory;
+  options.diffusion_based_trajectory = diffusion_based_trajectory;
+  return options;
+}
+
 autoware_perception_msgs::msg::Shape create_bounding_box_shape(
   const double length = 4.0, const double width = 2.0)
 {
@@ -547,16 +559,14 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
     };
 
   const auto all_enabled = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0, 0.1,
-    collision_timing_assessment::ObjectTrajectoryGenerationOptions{true, true, true});
+    context, 0.2, 0.0, 0.1, make_object_trajectory_generation_options(true, true, true));
   EXPECT_EQ(all_enabled.size(), 3u);
   EXPECT_EQ(count_suffix(all_enabled, "_predicted_path"), 1);
   EXPECT_EQ(count_suffix(all_enabled, "_constant_curvature_path"), 1);
   EXPECT_EQ(count_suffix(all_enabled, "_diffusion_based_trajectory"), 1);
 
   const auto constant_curvature_only = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0, 0.1,
-    collision_timing_assessment::ObjectTrajectoryGenerationOptions{false, true, false});
+    context, 0.2, 0.0, 0.1, make_object_trajectory_generation_options(false, true, false));
   ASSERT_EQ(constant_curvature_only.size(), 1u);
   EXPECT_EQ(
     constant_curvature_only.front().getObjectIdentification().trajectory_suffix,
@@ -564,11 +574,46 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
 
   const auto predicted_path_and_diffusion =
     collision_timing_assessment::generate_object_trajectories(
-      context, 0.2, 0.0, 0.1,
-      collision_timing_assessment::ObjectTrajectoryGenerationOptions{true, false, true});
+      context, 0.2, 0.0, 0.1, make_object_trajectory_generation_options(true, false, true));
   EXPECT_EQ(predicted_path_and_diffusion.size(), 2u);
   EXPECT_EQ(count_suffix(predicted_path_and_diffusion, "_predicted_path"), 1);
   EXPECT_EQ(count_suffix(predicted_path_and_diffusion, "_diffusion_based_trajectory"), 1);
+}
+
+TEST(TrajectoryUtilitiesTest, ObjectTrajectoryGenerationOptionsMergeWithCombinesEnabledTypes)
+{
+  auto merged = make_object_trajectory_generation_options(true, false, false);
+  merged.merge_with(make_object_trajectory_generation_options(false, true, true));
+
+  EXPECT_TRUE(merged.predicted_path_trajectory);
+  EXPECT_TRUE(merged.constant_curvature_trajectory);
+  EXPECT_TRUE(merged.diffusion_based_trajectory);
+}
+
+TEST(TrajectoryUtilitiesTest, ObjectTrajectoryGenerationOptionsCanBeConstructedFromParams)
+{
+  validator::Params::CollisionCheck::PetCollision pet_params{};
+  pet_params.predicted_path_trajectory = true;
+  pet_params.constant_curvature_trajectory = false;
+  pet_params.diffusion_based_trajectory = true;
+
+  validator::Params::CollisionCheck::Drac drac_params{};
+  drac_params.predicted_path_trajectory = false;
+  drac_params.constant_curvature_trajectory = true;
+  drac_params.diffusion_based_trajectory = false;
+
+  const auto pet_options =
+    collision_timing_assessment::ObjectTrajectoryGenerationOptions{pet_params};
+  const auto drac_options =
+    collision_timing_assessment::ObjectTrajectoryGenerationOptions{drac_params};
+
+  EXPECT_TRUE(pet_options.predicted_path_trajectory);
+  EXPECT_FALSE(pet_options.constant_curvature_trajectory);
+  EXPECT_TRUE(pet_options.diffusion_based_trajectory);
+
+  EXPECT_FALSE(drac_options.predicted_path_trajectory);
+  EXPECT_TRUE(drac_options.constant_curvature_trajectory);
+  EXPECT_FALSE(drac_options.diffusion_based_trajectory);
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety
