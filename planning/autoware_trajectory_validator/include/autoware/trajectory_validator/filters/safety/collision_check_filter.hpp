@@ -82,60 +82,10 @@ struct RssParams
   double ego_reaction_time;
   double object_acceleration;
 };
-  
-
-template <typename T>
-struct is_vector : std::false_type {};
-
-template <typename T, typename Alloc>
-struct is_vector<std::vector<T, Alloc>> : std::true_type {};
-
-template <typename T>
-inline constexpr bool is_vector_v = is_vector<T>::value;
 
 
-template <typename ParamStruct>
-auto extract_labeled_param(const ParamStruct & params_struct, const std::string & key)
-{
-
-if constexpr (std::is_aggregate_v<ParamStruct>){
-    if (key == "base") {
-      return params_struct.base;
-    }
-
-        using MemberPtr = double ParamStruct::*;
-        
-        static const std::unordered_map<std::string, MemberPtr> mappings = {
-            {"car", &ParamStruct::car}, {"truck", &ParamStruct::truck},
-            {"bus", &ParamStruct::bus}, {"trailer", &ParamStruct::trailer},
-            {"motorcycle", &ParamStruct::motorcycle}, {"bicycle", &ParamStruct::bicycle},
-            {"pedestrian", &ParamStruct::pedestrian}, {"animal", &ParamStruct::animal},
-            {"hazard", &ParamStruct::hazard}, {"over_drivable", &ParamStruct::over_drivable},
-            {"under_drivable", &ParamStruct::under_drivable}, {"unknown", &ParamStruct::unknown}
-        };
-
-        
-        auto it = mappings.find(key);
-        if (it == mappings.end()) {
-            throw std::invalid_argument("Unknown label key: " + key);
-        }
-
-        double label_value = params_struct.*(it->second);
-        return std::isnan(label_value) ? params_struct.base : label_value;
-    
-  }else if constexpr (std::is_same_v<ParamStruct, double>) {
-        return params_struct; 
-  }else if constexpr (std::is_same_v<ParamStruct, std::string>) {
-        return params_struct; 
-  }else if constexpr (std::is_same_v<ParamStruct, bool>) {
-        return params_struct; 
-  }else if constexpr (is_vector_v<ParamStruct>){
-        return params_struct; 
-  }else {
-        throw std::invalid_argument("Unsupported parameter type passed to try_labeled_double_param");
-    }
-}
-  // static double try_labeled_double_param(double value, const std::string & key);
+template <typename OutT, typename ParamStruct>
+OutT extract_labeled_param(const ParamStruct & params_struct, const std::string & key);
 
 
 class TrajectoryData
