@@ -32,20 +32,21 @@
         predicted_path_trajectory: true
         constant_curvature_trajectory: true
         diffusion_based_trajectory: true
+        ego_deceleration_threshold: -5.0
       pet_collision:
         enable_assessment: true
         predicted_path_trajectory: true
         constant_curvature_trajectory: true
         diffusion_based_trajectory: true
-        ego_braking_delay: 0.4
-        ego_assumed_acceleration: -5.0
+        ego_reaction_time: 0.4
+        ego_assumed_deceleration: -5.0
         collision_time_threshold: 0.0
       rss:
         enable_assessment: true
-        ego_deceleration_threshold: 4.0
+        ego_deceleration_threshold: -4.0
         stop_margin: 2.0
         ego_reaction_time: 0.4
-        object_acceleration: -1.0
+        object_assumed_deceleration: -1.0
 
     vehicle_constraint:
       max_speed: 16.7 # m/s

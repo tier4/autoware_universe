@@ -84,6 +84,11 @@ validator:
         default_value: true
         description: Use diffusion based trajectories for DRAC assessment
         read_only: false
+      ego_deceleration_threshold:
+        type: double
+        default_value: -5.0
+        description: Ego deceleration threshold for DRAC assessment (m/s^2, negative)
+        read_only: false
     pet_collision:
       enable_assessment:
         type: bool
@@ -105,15 +110,15 @@ validator:
         default_value: true
         description: Use diffusion based trajectories for PET assessment
         read_only: false
-      ego_braking_delay:
+      ego_reaction_time:
         type: double
         default_value: 0.4
-        description: N/A
+        description: Ego reaction time for PET assessment
         read_only: false
-      ego_assumed_acceleration:
+      ego_assumed_deceleration:
         type: double
-        default_value: -4.0
-        description: Used for code test, not used in actual collision check
+        default_value: -5.0
+        description: Assumed ego deceleration for PET assessment (m/s^2, negative)
         read_only: false
       collision_time_threshold:
         type: double
@@ -128,8 +133,8 @@ validator:
         read_only: false
       ego_deceleration_threshold:
         type: double
-        default_value: 4.0
-        description: threshold to determine RSS collision
+        default_value: -4.0
+        description: Ego deceleration threshold to determine RSS collision (m/s^2, negative)
         read_only: false
       stop_margin:
         type: double
@@ -141,10 +146,10 @@ validator:
         default_value: 0.4
         description: reaction time of the ego vehicle
         read_only: false
-      object_acceleration:
+      object_assumed_deceleration:
         type: double
         default_value: -1.0
-        description: assumed acceleration of the object for RSS calculation
+        description: Assumed object deceleration for RSS calculation (m/s^2, negative)
         read_only: false
 
   traffic_light:
