@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <any>
 #include <cmath>
+#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -1033,12 +1034,17 @@ std::vector<TrajectoryData> generate_object_trajectories(
 
 std::optional<Finding> find_collision_timing(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
-  double pet_threshold, double time_resolution)
+  double positive_pet_threshold, double negative_pet_threshold, double time_resolution)
 {
+  const double before_pet_threshold = std::abs(negative_pet_threshold);
+  const double after_pet_threshold = std::max(0.0, positive_pet_threshold);
+  const double max_pet_threshold = std::max(before_pet_threshold, after_pet_threshold);
+
   if (!boost::geometry::intersects(
         ref_trajectory.get_or_compute_overall_envelope(),
         test_trajectory.get_or_compute_envelope(TimeRange{
-          ref_trajectory.getTimes().front(), ref_trajectory.getTimes().back() + pet_threshold}))) {
+          ref_trajectory.getTimes().front() - before_pet_threshold,
+          ref_trajectory.getTimes().back() + after_pet_threshold}))) {
     return std::nullopt;
   }
 
@@ -1075,7 +1081,7 @@ std::optional<Finding> find_collision_timing(
     const Polygon2d & ref_convex = ref_trajectory.get_or_compute_convex(ref_index_range);
 
     const double current_pet_limit =
-      candidate_finding.has_value() ? std::abs(candidate_finding->pet) : pet_threshold;
+      candidate_finding.has_value() ? std::abs(candidate_finding->pet) : max_pet_threshold;
 
     if (!boost::geometry::intersects(
           ref_envelope, test_trajectory.get_or_compute_envelope(TimeRange{
@@ -1096,10 +1102,12 @@ std::optional<Finding> find_collision_timing(
 
     for (double pet_range = 0.0; pet_range < current_pet_limit; pet_range += time_resolution) {
       const TimeRange test_time_range_before{ref_start_time - pet_range, ref_end_time - pet_range};
-      const bool has_intersects_before = has_intersects(test_time_range_before);
+      const bool has_intersects_before =
+        pet_range <= before_pet_threshold && has_intersects(test_time_range_before);
 
       const TimeRange test_time_range_after{ref_start_time + pet_range, ref_end_time + pet_range};
-      const bool has_intersects_after = has_intersects(test_time_range_after);
+      const bool has_intersects_after =
+        pet_range <= after_pet_threshold && has_intersects(test_time_range_after);
 
       if (!has_intersects_before && !has_intersects_after) {
         continue;
@@ -1147,8 +1155,9 @@ std::vector<Finding> assess_planned_speed_collision_timing(
     }
 
     auto finding = find_collision_timing(
-      ego_trajectory, object_trajectory, pet_collision_params.collision_time_threshold,
-      time_resolution);
+      ego_trajectory, object_trajectory,
+      pet_collision_params.warn.collision_time_threshold_positive,
+      pet_collision_params.warn.collision_time_threshold_negative, time_resolution);
     if (finding.has_value()) {
       findings.push_back(std::move(finding.value()));
     }
@@ -1249,7 +1258,7 @@ Result assess(
   // drac_params.collision_time_threshold)
   const double required_time_horizon =
     rclcpp::Duration(traj_points.back().time_from_start).seconds() +
-    pet_collision_params.collision_time_threshold;
+    std::max(0.0, pet_collision_params.warn.collision_time_threshold_positive);
   const auto nominal_speed_object_trajectories = generate_object_trajectories(
     context, required_time_horizon, -1.0, global_setting.time_resolution,
     required_trajectory_types);
@@ -1479,17 +1488,39 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
         .safety_factors(safety_factors);
     planning_factors.factors.push_back(std::move(factor));
   };
+  const auto log_collision_messages = [&](const uint8_t level, const std::string & messages) {
+    if (messages.empty()) {
+      return;
+    }
+    if (level == MetricReport::ERROR) {
+      RCLCPP_ERROR(
+        rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", messages.c_str());
+      return;
+    }
+    RCLCPP_WARN(rclcpp::get_logger("CollisionCheckFilter"), "Warning: %s", messages.c_str());
+  };
 
   const auto collision_timing_result = collision_timing_assessment::assess(
     traj_points, context, pet_collision_params_, drac_params_, global_setting_, *vehicle_info_ptr_);
 
+  const auto is_pet_error = [this](const collision_timing_assessment::Finding & finding) {
+    return finding.pet <= pet_collision_params_.error.collision_time_threshold_positive &&
+           finding.pet >= pet_collision_params_.error.collision_time_threshold_negative;
+  };
+
   pet_continuous_times_.update(
     current_time, collision_timing_result.planned_speed_findings,
     [](const auto & finding) { return finding.object_identification.trajectory_id_string(); });
+  std::string pet_error_msg{};
+  uint8_t pet_log_level = MetricReport::WARN;
   for (const auto & finding : collision_timing_result.planned_speed_findings) {
-    // Mark as infeasible if any finding exists
-    is_feasible = false;
     const auto & obj_id = finding.object_identification;
+    const bool pet_error = is_pet_error(finding);
+    const uint8_t pet_level = pet_error ? MetricReport::ERROR : MetricReport::WARN;
+    if (pet_error) {
+      is_feasible = false;
+      pet_log_level = MetricReport::ERROR;
+    }
 
     // Record metrics for PET and TTC for each finding
     metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
@@ -1498,35 +1529,47 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
                         .metric_name(fmt::format(
                           "check_PET_{}_{}", obj_id.trajectory_id_string(), obj_id.classification))
                         .metric_value(finding.pet)
-                        .level(MetricReport::ERROR));
+                        .level(pet_level));
     metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
                         .validator_name(get_name())
                         .validator_category(category())
                         .metric_name(fmt::format(
                           "check_TTC_{}_{}", obj_id.trajectory_id_string(), obj_id.classification))
                         .metric_value(finding.ttc)
-                        .level(MetricReport::ERROR));
+                        .level(pet_level));
 
     const double detection_duration = pet_continuous_times_.get_time(obj_id.trajectory_id_string());
-    error_msg += fmt::format(
-      "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{}; \n",
+    pet_error_msg += fmt::format(
+      "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{};",
       obj_id.classification, obj_id.trajectory_id_string(), finding.pet, finding.ttc,
       detection_duration, obj_id.stamp.sec, obj_id.stamp.nanosec);
     add_debug_markers(
       context.odometry->header.stamp, "planned_speed_collision", obj_id.trajectory_id_string(),
       finding.ego_trajectory, finding.object_trajectory, finding.ego_hull, finding.object_hull);
-    add_collision_planning_factor(finding, "PET");
+    if (pet_error) {
+      add_collision_planning_factor(finding, "PET");
+    }
   }
+  error_msg += pet_error_msg;
+  log_collision_messages(pet_log_level, pet_error_msg);
 
   drac_continuous_times_.update(
     current_time, collision_timing_result.drac_findings,
     [](const auto & finding) { return finding.object_identification.trajectory_id_string(); });
-  if (
+  const bool drac_warn =
     collision_timing_result.drac == std::nullopt ||
-    collision_timing_result.drac.value() >= -drac_params_.ego_deceleration_threshold) {
+    collision_timing_result.drac.value() >= -drac_params_.warn.ego_deceleration_threshold;
+  const bool drac_error =
+    collision_timing_result.drac == std::nullopt ||
+    collision_timing_result.drac.value() >= -drac_params_.error.ego_deceleration_threshold;
+  std::string drac_error_msg{};
+  if (drac_warn) {
+    const uint8_t drac_level = drac_error ? MetricReport::ERROR : MetricReport::WARN;
     for (const auto & finding : collision_timing_result.drac_findings) {
       const auto & obj_id = finding.object_identification;
-      is_feasible = false;
+      if (drac_error) {
+        is_feasible = false;
+      }
 
       metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
                           .validator_name(get_name())
@@ -1535,9 +1578,9 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
                             "check_DRAC_{}_{}_{}", obj_id.trajectory_id_string(),
                             obj_id.classification, obj_id.trajectory_type))
                           .metric_value(collision_timing_result.drac.value_or(0.0))
-                          .level(MetricReport::ERROR));
-      error_msg += fmt::format(
-        "DRAC collision, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{}; \n",
+                          .level(drac_level));
+      drac_error_msg += fmt::format(
+        "DRAC collision, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{};",
         obj_id.trajectory_id_string(), finding.pet, finding.ttc,
         collision_timing_result.drac.has_value()
           ? std::to_string(collision_timing_result.drac.value())
@@ -1546,9 +1589,13 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
       add_debug_markers(
         context.odometry->header.stamp, "drac_collision", obj_id.trajectory_id_string(),
         finding.ego_trajectory, finding.object_trajectory, finding.ego_hull, finding.object_hull);
-      add_collision_planning_factor(finding, "DRAC");
+      if (drac_error) {
+        add_collision_planning_factor(finding, "DRAC");
+      }
     }
   }
+  error_msg += drac_error_msg;
+  log_collision_messages(drac_error ? MetricReport::ERROR : MetricReport::WARN, drac_error_msg);
 
   if (rss_params_.enable_assessment) {
     const auto rss_result = rss_deceleration::assess(
@@ -1556,6 +1603,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     rss_continuous_times_.update(current_time, rss_result.violations, [](const auto & violation) {
       return violation.object.object_id_string();
     });
+    std::string rss_error_msg{};
     for (const auto & violation : rss_result.violations) {
       const auto object_id = violation.object.object_id_string();
       // Mark as infeasible if any RSS violation exists
@@ -1570,18 +1618,19 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
           .metric_value(violation.required_deceleration)
           .level(MetricReport::ERROR));
       const double detection_duration = rss_continuous_times_.get_time(object_id);
-      error_msg += fmt::format(
+      rss_error_msg += fmt::format(
         "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}, "
         "stamp: "
-        "{}.{}; \n",
+        "{}.{};",
         violation.object.classification, object_id, detection_duration,
         violation.required_deceleration, violation.object.stamp.sec,
         violation.object.stamp.nanosec);
     }
+    error_msg += rss_error_msg;
+    log_collision_messages(MetricReport::ERROR, rss_error_msg);
   }
 
   if (!error_msg.empty()) {
-    RCLCPP_WARN(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", error_msg.c_str());
     add_error_text_marker(context.odometry->header.stamp, context.odometry->pose.pose, error_msg);
   }
 

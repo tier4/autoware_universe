@@ -84,11 +84,18 @@ validator:
         default_value: true
         description: Use diffusion based trajectories for DRAC assessment
         read_only: false
-      ego_deceleration_threshold:
-        type: double
-        default_value: -5.0
-        description: Ego deceleration threshold for DRAC assessment (m/s^2, negative)
-        read_only: false
+      warn:
+        ego_deceleration_threshold:
+          type: double
+          default_value: -3.0
+          description: Ego deceleration threshold for DRAC warning (m/s^2, negative)
+          read_only: false
+      error:
+        ego_deceleration_threshold:
+          type: double
+          default_value: -5.0
+          description: Ego deceleration threshold for DRAC error (m/s^2, negative)
+          read_only: false
     pet_collision:
       enable_assessment:
         type: bool
@@ -120,11 +127,28 @@ validator:
         default_value: -5.0
         description: Assumed ego deceleration for PET assessment (m/s^2, negative)
         read_only: false
-      collision_time_threshold:
-        type: double
-        default_value: 1.0
-        description: time threshold for PET collision check
-        read_only: false
+      warn:
+        collision_time_threshold_positive:
+          type: double
+          default_value: 1.0
+          description: Positive PET threshold for warning
+          read_only: false
+        collision_time_threshold_negative:
+          type: double
+          default_value: -1.0
+          description: Negative PET threshold for warning
+          read_only: false
+      error:
+        collision_time_threshold_positive:
+          type: double
+          default_value: 0.6
+          description: Positive PET threshold for error
+          read_only: false
+        collision_time_threshold_negative:
+          type: double
+          default_value: -0.3
+          description: Negative PET threshold for error
+          read_only: false
     rss:
       enable_assessment:
         type: bool

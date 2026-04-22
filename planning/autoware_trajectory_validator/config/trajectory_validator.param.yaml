@@ -32,7 +32,10 @@
         predicted_path_trajectory: true
         constant_curvature_trajectory: true
         diffusion_based_trajectory: true
-        ego_deceleration_threshold: -5.0
+        warn:
+          ego_deceleration_threshold: -3.0
+        error:
+          ego_deceleration_threshold: -5.0
       pet_collision:
         enable_assessment: true
         predicted_path_trajectory: true
@@ -40,7 +43,12 @@
         diffusion_based_trajectory: true
         ego_reaction_time: 0.4
         ego_assumed_deceleration: -5.0
-        collision_time_threshold: 0.0
+        warn:
+          collision_time_threshold_positive: 1.0
+          collision_time_threshold_negative: -1.0
+        error:
+          collision_time_threshold_positive: 0.6
+          collision_time_threshold_negative: -0.3
       rss:
         enable_assessment: true
         ego_deceleration_threshold: -4.0
