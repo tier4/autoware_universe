@@ -225,6 +225,13 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
           evaluation.reason.c_str());
       }
 
+      metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                          .validator_name(plugin->get_name())
+                          .validator_category(plugin->category())
+                          .metric_name("trajectory_feasibility")
+                          .metric_value(evaluation.is_feasible ? 1.0 : 0.0)
+                          .level(evaluation.is_feasible ? MetricReport::OK : MetricReport::ERROR));
+
       diagnostics_interface_.add_key_value(
         plugin->get_name(), evaluation.is_feasible ? std::string("OK") : std::string("NG"));
       processing_time_ms[evaluation.plugin_name] += stop_watch.toc(evaluation.plugin_name);
@@ -304,6 +311,14 @@ void TrajectoryValidator::load_metric(const std::string & name)
     }
 
     plugin->set_vehicle_info(vehicle_info_);
+
+    std::string category;
+    size_t pos = name.find("::");
+    if (pos != std::string::npos) {
+      category = name.substr(0, pos);
+    }
+    plugin->set_category(category);
+
     plugin->update_parameters(params_);
 
     plugins_.push_back(plugin);
