@@ -22,6 +22,7 @@
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <tl_expected/expected.hpp>
 
+#include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -45,6 +46,7 @@ struct ValidationResult
 {
   bool is_feasible{true};
   std::vector<MetricReport> metrics{};
+  autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors{};
 };
 
 class ValidatorInterface

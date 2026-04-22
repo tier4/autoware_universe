@@ -22,6 +22,11 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+namespace
+{
+constexpr double kDefaultTimeResolution =
+  validator::Params::CollisionCheck::GlobalSetting{}.time_resolution;
+}  // namespace
 
 class CollisionCheckFilterTest : public ::testing::Test
 {
@@ -64,6 +69,7 @@ protected:
     for (size_t i = 0; i <= 100; ++i) {
       TrajectoryPoint pt;
       pt.pose = create_pose(i * 1.0, 0.0, 0.0);
+      pt.time_from_start = rclcpp::Duration::from_seconds(i * 0.1);
       // do not initialize pt.twist
       traj.push_back(pt);
     }
@@ -78,14 +84,14 @@ protected:
     const double max_time = 10.0;
 
     auto [times, distances] = trajectory::time_distance::compute_motion_profile_1d(
-      twist, assumed_lag, assumed_acceleration, 0.0, max_time);
+      twist, assumed_lag, assumed_acceleration, 0.0, max_time, kDefaultTimeResolution);
     auto pose_trajectory =
       trajectory::pose::constant_curvature_predictor::compute(initial_pose, twist, distances);
 
     autoware_perception_msgs::msg::PredictedPath predicted_path;
     predicted_path.confidence = 1.0;
 
-    predicted_path.time_step = rclcpp::Duration::from_seconds(TIME_RESOLUTION);
+    predicted_path.time_step = rclcpp::Duration::from_seconds(kDefaultTimeResolution);
 
     for (const auto & pose : pose_trajectory) {
       predicted_path.path.push_back(pose);
@@ -150,6 +156,102 @@ TEST_F(CollisionCheckFilterTest, EmptyObjects)
   EXPECT_TRUE(result.value().is_feasible);
 }
 
+TEST_F(CollisionCheckFilterTest, NeuralNetworkPredictedObjectsAreAlsoChecked)
+{
+  const auto ego_path = create_ego_path();
+
+  FilterContext context;
+
+  auto odom_msg = std::make_shared<nav_msgs::msg::Odometry>();
+  odom_msg->header.stamp = rclcpp::Time(1, 0, RCL_ROS_TIME);
+  odom_msg->pose.pose = create_pose(0.0, 0.0, 0.0);
+  odom_msg->twist.twist = create_twist(10.0, 0.0);
+  context.odometry = odom_msg;
+
+  auto predicted_objects_msg = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
+  predicted_objects_msg->header.stamp = odom_msg->header.stamp;
+  predicted_objects_msg->objects.push_back(create_dummy_object(
+    create_pose(100.0, 100.0, 0.0), create_twist(0.0, 0.0),
+    create_predicted_path(create_pose(100.0, 100.0, 0.0), create_twist(0.0, 0.0)),
+    create_object_shape(5.0, 1.0)));
+  context.predicted_objects = predicted_objects_msg;
+
+  auto neural_network_objects_msg =
+    std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
+  neural_network_objects_msg->header.stamp = odom_msg->header.stamp;
+  auto pose = create_pose(20.0, -10.0, M_PI_2);
+  auto twist = create_twist(10.0, 0.0);
+  neural_network_objects_msg->objects.push_back(create_dummy_object(
+    pose, twist, create_predicted_path(pose, twist), create_object_shape(5.0, 1.0)));
+  context.neural_network_predicted_objects = neural_network_objects_msg;
+
+  const auto result = filter_->is_feasible(ego_path, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible);
+
+  bool found_diffusion_metric = false;
+  for (const auto & metric : result.value().metrics) {
+    if (metric.metric_name.find("diffusion_based_trajectory") != std::string::npos) {
+      found_diffusion_metric = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found_diffusion_metric);
+}
+
+TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependentlyForPetAndDrac)
+{
+  const auto ego_path = create_ego_path();
+
+  FilterContext context;
+
+  auto odom_msg = std::make_shared<nav_msgs::msg::Odometry>();
+  odom_msg->header.stamp = rclcpp::Time(1, 0, RCL_ROS_TIME);
+  odom_msg->pose.pose = create_pose(0.0, 0.0, 0.0);
+  odom_msg->twist.twist = create_twist(10.0, 0.0);
+  context.odometry = odom_msg;
+
+  auto predicted_objects_msg = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
+  predicted_objects_msg->header.stamp = odom_msg->header.stamp;
+  predicted_objects_msg->objects.push_back(create_dummy_object(
+    create_pose(100.0, 100.0, 0.0), create_twist(0.0, 0.0),
+    create_predicted_path(create_pose(100.0, 100.0, 0.0), create_twist(0.0, 0.0)),
+    create_object_shape(5.0, 1.0)));
+  context.predicted_objects = predicted_objects_msg;
+
+  auto neural_network_objects_msg =
+    std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
+  neural_network_objects_msg->header.stamp = odom_msg->header.stamp;
+  const auto pose = create_pose(20.0, -10.0, M_PI_2);
+  const auto twist = create_twist(10.0, 0.0);
+  neural_network_objects_msg->objects.push_back(create_dummy_object(
+    pose, twist, create_predicted_path(pose, twist), create_object_shape(5.0, 1.0)));
+  context.neural_network_predicted_objects = neural_network_objects_msg;
+
+  autoware::vehicle_info_utils::VehicleInfo vehicle_info;
+  vehicle_info.max_longitudinal_offset_m = 4.0;
+  vehicle_info.min_longitudinal_offset_m = -1.0;
+  vehicle_info.vehicle_width_m = 2.0;
+
+  validator::Params::CollisionCheck::PetCollision pet_collision_params;
+  pet_collision_params.predicted_path_trajectory = false;
+  pet_collision_params.constant_curvature_trajectory = false;
+  pet_collision_params.diffusion_based_trajectory = false;
+  validator::Params::CollisionCheck::Drac drac_params;
+  drac_params.predicted_path_trajectory = false;
+  drac_params.constant_curvature_trajectory = false;
+  drac_params.diffusion_based_trajectory = true;
+
+  const auto result = collision_timing_assessment::assess(
+    ego_path, context, pet_collision_params, drac_params,
+    validator::Params::CollisionCheck::GlobalSetting{}, vehicle_info);
+
+  EXPECT_TRUE(result.planned_speed_findings.empty());
+  ASSERT_FALSE(result.drac_findings.empty());
+  EXPECT_EQ(result.drac_findings.front().object.trajectory_suffix, "_diffusion_based_trajectory");
+}
+
 TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)
 {
   const auto ego_path = create_ego_path();
@@ -186,10 +288,10 @@ TEST_F(CollisionCheckFilterTest, ObjectWillDepartFromPath)
   context.odometry = odom_msg;
 
   auto predicted_objects_msg = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
-  auto pose = create_pose(20.0, 0.0, M_PI_2);
+  auto pose = create_pose(25.0, 0.0, M_PI_2);
   auto twist = create_twist(10.0, 0.0);
   predicted_objects_msg->objects.push_back(create_dummy_object(
-    pose, twist, create_predicted_path(pose, twist), create_object_shape(5.0, 1.0)));
+    pose, twist, create_predicted_path(pose, twist), create_object_shape(1.0, 1.0)));
   context.predicted_objects = predicted_objects_msg;
 
   const auto result = filter_->is_feasible(ego_path, context);

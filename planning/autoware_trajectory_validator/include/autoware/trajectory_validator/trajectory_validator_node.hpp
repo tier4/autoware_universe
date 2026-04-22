@@ -17,6 +17,7 @@
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
+#include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_trajectory_validator/msg/metric_report.hpp>
@@ -54,6 +55,7 @@ using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_internal_planning_msgs::msg::CandidateTrajectory;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
+using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using autoware_trajectory_validator::msg::MetricReport;
 using autoware_trajectory_validator::msg::ValidationReport;
@@ -134,6 +136,8 @@ private:
    * @param reports Validation reports to publish
    */
   void publish_validation_reports(const std::vector<ValidationReport> & reports);
+  void add_planning_factors(
+    const autoware_internal_planning_msgs::msg::PlanningFactorArray & planning_factors);
 
   validator::ParamListener listener_;
   validator::Params params_;
@@ -148,6 +152,8 @@ private:
     this, "~/input/odometry"};
   autoware_utils_rclcpp::InterProcessPollingSubscriber<PredictedObjects> sub_objects_{
     this, "~/input/objects"};
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<PredictedObjects>
+    sub_neural_network_objects_{this, "~/input/diffusion/objects"};
   autoware_utils_rclcpp::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
     sub_acceleration_{this, "~/input/acceleration"};
   autoware_utils_rclcpp::InterProcessPollingSubscriber<
@@ -156,6 +162,9 @@ private:
 
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
   rclcpp::Subscription<CandidateTrajectories>::SharedPtr sub_trajectories_;
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<
+    LaneletRoute, autoware_utils_rclcpp::polling_policy::Latest>
+    sub_route_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
 
   // Publishers
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
@@ -174,6 +183,8 @@ private:
   // Tools
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};
   DiagnosticsInterface diagnostics_interface_{this, "trajectory_validator"};
+  std::unique_ptr<autoware::planning_factor_interface::PlanningFactorInterface>
+    planning_factor_interface_;
 
   // Emergency-stop fallback (evaluation use only).
   std::unique_ptr<PseudoEmergencyStopHandler> pseudo_emergency_stop_handler_;

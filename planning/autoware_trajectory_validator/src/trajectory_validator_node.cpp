@@ -33,6 +33,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace
@@ -128,6 +129,9 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
   pub_processing_time_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
   pub_debug_markers_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
   pub_validation_reports_ = std::make_shared<autoware_utils_debug::DebugPublisher>(this, "~/debug");
+  planning_factor_interface_ =
+    std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
+      this, "trajectory_validator");
 
   pseudo_emergency_stop_handler_ = std::make_unique<PseudoEmergencyStopHandler>(*this);
 }
@@ -151,6 +155,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   }
 
   context.predicted_objects = sub_objects_.take_data();
+  context.neural_network_predicted_objects = sub_neural_network_objects_.take_data();
   if (!context.predicted_objects) {
     return;
   }
@@ -161,6 +166,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   }
 
   context.traffic_light_signals = sub_traffic_lights_.take_data();
+  context.route = sub_route_.take_data();
 
   context.lanelet_map = lanelet_map_ptr_;
   if (!context.lanelet_map) {
@@ -210,6 +216,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
           evaluation.reason = "Found failed metrics";
         }
         metrics.insert(metrics.end(), val.metrics.begin(), val.metrics.end());
+        add_planning_factors(val.planning_factors);
       }
 
       if (!evaluation.is_feasible) {
@@ -217,6 +224,13 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
           get_logger(), *get_clock(), 1000, "[%s] %s", plugin->get_name().c_str(),
           evaluation.reason.c_str());
       }
+
+      metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                          .validator_name(plugin->get_name())
+                          .validator_category(plugin->category())
+                          .metric_name("trajectory_feasibility")
+                          .metric_value(evaluation.is_feasible ? 1.0 : 0.0)
+                          .level(evaluation.is_feasible ? MetricReport::OK : MetricReport::ERROR));
 
       diagnostics_interface_.add_key_value(
         plugin->get_name(), evaluation.is_feasible ? std::string("OK") : std::string("NG"));
@@ -270,6 +284,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   publish_internal_state(processing_time_ms, evaluation_tables_, context.odometry->pose.pose);
   update_diagnostic(*msg, num_feasible_trajectories);
   publish_validation_reports(reports);
+  planning_factor_interface_->publish();
   pub_trajectories_->publish(*filtered_msg);
 }
 
@@ -296,6 +311,14 @@ void TrajectoryValidator::load_metric(const std::string & name)
     }
 
     plugin->set_vehicle_info(vehicle_info_);
+
+    std::string category;
+    size_t pos = name.find("::");
+    if (pos != std::string::npos) {
+      category = name.substr(0, pos);
+    }
+    plugin->set_category(category);
+
     plugin->update_parameters(params_);
 
     plugins_.push_back(plugin);
@@ -412,6 +435,32 @@ void TrajectoryValidator::publish_validation_reports(const std::vector<Validatio
 {
   auto msg = autoware_trajectory_validator::build<ValidationReportArray>().reports(reports);
   pub_validation_reports_->publish<ValidationReportArray>("validation_reports", msg);
+}
+
+void TrajectoryValidator::add_planning_factors(
+  const autoware_internal_planning_msgs::msg::PlanningFactorArray & planning_factors)
+{
+  for (const auto & factor : planning_factors.factors) {
+    if (factor.control_points.empty()) {
+      continue;
+    }
+
+    const auto & control_point = factor.control_points.front();
+    if (factor.control_points.size() == 1) {
+      planning_factor_interface_->add(
+        control_point.distance, control_point.pose, factor.behavior, factor.safety_factors,
+        factor.is_driving_forward, control_point.velocity, control_point.shift_length,
+        factor.detail);
+      continue;
+    }
+
+    const auto & end_control_point = factor.control_points.back();
+    planning_factor_interface_->add(
+      control_point.distance, end_control_point.distance, control_point.pose,
+      end_control_point.pose, factor.behavior, factor.safety_factors, factor.is_driving_forward,
+      control_point.velocity, end_control_point.velocity, control_point.shift_length,
+      end_control_point.shift_length, factor.detail);
+  }
 }
 }  // namespace autoware::trajectory_validator
 

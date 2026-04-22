@@ -57,7 +57,54 @@ validator:
       read_only: false
 
   collision_check:
+    global_setting:
+      time_resolution:
+        type: double
+        default_value: 0.1
+        description: sampling interval used in collision check trajectory generation
+        read_only: false
+    drac:
+      enable_assessment:
+        type: bool
+        default_value: true
+        description: When true, DRAC assessment is performed
+        read_only: false
+      predicted_path_trajectory:
+        type: bool
+        default_value: true
+        description: Use predicted path trajectories for DRAC assessment
+        read_only: false
+      constant_curvature_trajectory:
+        type: bool
+        default_value: true
+        description: Use constant curvature trajectories for DRAC assessment
+        read_only: false
+      diffusion_based_trajectory:
+        type: bool
+        default_value: true
+        description: Use diffusion based trajectories for DRAC assessment
+        read_only: false
     pet_collision:
+      enable_assessment:
+        type: bool
+        default_value: true
+        description: When true, planned speed assessment is performed
+        read_only: false
+      predicted_path_trajectory:
+        type: bool
+        default_value: true
+        description: Use predicted path trajectories for PET assessment
+        read_only: false
+      constant_curvature_trajectory:
+        type: bool
+        default_value: true
+        description: Use constant curvature trajectories for PET assessment
+        read_only: false
+      diffusion_based_trajectory:
+        type: bool
+        default_value: true
+        description: Use diffusion based trajectories for PET assessment
+        read_only: false
       ego_braking_delay:
         type: double
         default_value: 0.4
@@ -92,6 +139,11 @@ validator:
         description: time threshold for PET collision check
         read_only: false
     rss:
+      enable_assessment:
+        type: bool
+        default_value: true
+        description: When true, RSS assessment is performed
+        read_only: false
       ego_deceleration_threshold:
         type: double
         default_value: 4.0
@@ -187,6 +239,22 @@ validator:
       default_value: 2.0
       description: N/A
       read_only: false
+    on_time_buffer_s:
+      type: double
+      default_value: 0.15
+      description: N/A
+      read_only: false
+    off_time_buffer_s:
+      type: double
+      default_value: 2.0
+      description: N/A
+      read_only: false
+    boundary_types:
+      type: string_array
+      default_value: [road_border]
+      description: metrics.
+      read_only: true
+
   pseudo_emergency_stop:
     enable:
       type: bool
