@@ -1275,8 +1275,8 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
       "RSS ego reaction time=%.2f, RSS ego deceleration threshold=%.2f, "
       "RSS object acceleration=%.2f, RSS stop margin=%.2f",
       key.c_str(), pet_value.ego_braking_delay, pet_value.ego_assumed_acceleration,
-      pet_value.collision_time_threshold, value.ego_reaction_time,
-      value.ego_deceleration_threshold, value.object_acceleration, value.stop_margin);
+      pet_value.collision_time_threshold, value.ego_reaction_time, value.ego_deceleration_threshold,
+      value.object_acceleration, value.stop_margin);
   }
 >>>>>>> 48a6024eb1 (remove vector template)
 }
