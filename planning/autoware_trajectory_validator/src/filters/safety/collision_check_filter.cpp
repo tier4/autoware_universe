@@ -101,7 +101,8 @@ RssParams::RssParams(const validator::Params::CollisionCheck::Rss & rss, const s
   ego_reaction_time = extract_labeled_param<double>(rss.ego_reaction_time, key);
 }
 
-DracParams::DracParams(const validator::Params::CollisionCheck::Drac & drac, const std::string & key)
+DracParams::DracParams(
+  const validator::Params::CollisionCheck::Drac & drac, const std::string & key)
 {
   enable_assessment = extract_labeled_param<bool>(drac.enable_assessment, key);
   predicted_path_trajectory = extract_labeled_param<bool>(drac.predicted_path_trajectory, key);
@@ -1284,8 +1285,8 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
       "RSS object acceleration=%.2f, RSS stop margin=%.2f, "
       "DRAC enabled=%s",
       key.c_str(), pet_value.ego_braking_delay, pet_value.ego_assumed_acceleration,
-      pet_value.collision_time_threshold, value.ego_reaction_time,
-      value.ego_deceleration_threshold, value.object_acceleration, value.stop_margin,
+      pet_value.collision_time_threshold, value.ego_reaction_time, value.ego_deceleration_threshold,
+      value.object_acceleration, value.stop_margin,
       drac_value.enable_assessment ? "true" : "false");
   }
 }
@@ -1322,7 +1323,8 @@ void CollisionCheckFilter::create_param_maps(const validator::Params & params)
   rss_param_map_.clear();
   drac_param_map_.clear();
 
-  const validator::Params::CollisionCheck::PetCollision & pet = params.collision_check.pet_collision;
+  const validator::Params::CollisionCheck::PetCollision & pet =
+    params.collision_check.pet_collision;
   const validator::Params::CollisionCheck::Rss & rss = params.collision_check.rss;
   const validator::Params::CollisionCheck::Drac & drac = params.collision_check.drac;
 
