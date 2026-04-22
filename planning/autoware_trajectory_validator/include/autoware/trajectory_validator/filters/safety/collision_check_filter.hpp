@@ -79,6 +79,10 @@ struct PetCollisionParams
   PetCollisionParams(
     const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key);
 
+  bool enable_assessment;
+  bool predicted_path_trajectory;
+  bool constant_curvature_trajectory;
+  bool diffusion_based_trajectory;
   double ego_braking_delay;
   double ego_assumed_acceleration;
   double collision_time_threshold;
@@ -89,6 +93,7 @@ struct RssParams
   RssParams() = default;
   RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key);
 
+  bool enable_assessment;
   double ego_deceleration_threshold;
   double stop_margin;
   double ego_reaction_time;
@@ -317,8 +322,6 @@ private:
   RssParams rss_params_;
   validator::Params::CollisionCheck::GlobalSetting global_setting_;
   validator::Params::CollisionCheck::Drac drac_params_;
-  validator::Params::CollisionCheck::PetCollision pet_collision_params_;
-  validator::Params::CollisionCheck::Rss rss_params_;
   ContinuousDetectionTimes pet_continuous_times_;
   ContinuousDetectionTimes rss_continuous_times_;
   ContinuousDetectionTimes drac_continuous_times_;

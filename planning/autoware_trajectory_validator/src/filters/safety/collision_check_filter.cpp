@@ -83,20 +83,23 @@ std::string to_trajectory_id_string(const ObjectIdentification & object)
 PetCollisionParams::PetCollisionParams(
   const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key)
 {
+  enable_assessment = extract_labeled_param<bool>(pet.enable_assessment, key);
+  predicted_path_trajectory = extract_labeled_param<bool>(pet.predicted_path_trajectory, key);
+  constant_curvature_trajectory =
+    extract_labeled_param<bool>(pet.constant_curvature_trajectory, key);
+  diffusion_based_trajectory = extract_labeled_param<bool>(pet.diffusion_based_trajectory, key);
   ego_braking_delay = extract_labeled_param<double>(pet.ego_braking_delay, key);
-  ego_assumed_acceleration =
-    extract_labeled_param<double>(pet.ego_assumed_acceleration, key);
-  collision_time_threshold =
-    extract_labeled_param<double>(pet.collision_time_threshold, key);
+  ego_assumed_acceleration = extract_labeled_param<double>(pet.ego_assumed_acceleration, key);
+  collision_time_threshold = extract_labeled_param<double>(pet.collision_time_threshold, key);
 }
 
 RssParams::RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key)
 {
-  ego_reaction_time = extract_labeled_param<double>(rss.ego_reaction_time, key);
-  ego_deceleration_threshold =
-    extract_labeled_param<double>(rss.ego_deceleration_threshold, key);
+  enable_assessment = extract_labeled_param<bool>(rss.enable_assessment, key);
+  ego_deceleration_threshold = extract_labeled_param<double>(rss.ego_deceleration_threshold, key);
   object_acceleration = extract_labeled_param<double>(rss.object_acceleration, key);
   stop_margin = extract_labeled_param<double>(rss.stop_margin, key);
+  ego_reaction_time = extract_labeled_param<double>(rss.ego_reaction_time, key);
 }
 
 template <typename T>
@@ -929,8 +932,9 @@ Assessment assess_required_deceleration(
 
 Result assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-   const RssParams & rss_params,, double time_resolution,
+  const RssParams & rss_params, double time_resolution,
   VehicleInfo & vehicle_info)
+
 {
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
     return {};
@@ -1274,15 +1278,13 @@ Result assess(
 
 void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
-
   create_param_maps(params);
 
-  // temporarily set the params
   pet_collision_params_ = pet_collision_param_map_.at("base");
   rss_params_ = rss_param_map_.at("base");
-
   global_setting_ = params.collision_check.global_setting;
   drac_params_ = params.collision_check.drac;
+
 }
 
 autoware_internal_planning_msgs::msg::SafetyFactorArray make_safety_factor_array(
