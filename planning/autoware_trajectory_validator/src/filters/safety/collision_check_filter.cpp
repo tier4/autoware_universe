@@ -79,7 +79,6 @@ std::string to_trajectory_id_string(const ObjectIdentification & object)
   return to_object_id_string(object) + object.trajectory_suffix;
 }
 
-
 PetCollisionParams::PetCollisionParams(
   const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key)
 {
@@ -149,7 +148,7 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string 
 
   } else if constexpr (std::is_same_v<ParamStruct, double>) {
     return static_cast<OutT>(params_struct);
-    } else if constexpr (std::is_same_v<ParamStruct, int>) {
+  } else if constexpr (std::is_same_v<ParamStruct, int>) {
     return static_cast<OutT>(params_struct);
   } else if constexpr (std::is_same_v<ParamStruct, std::string>) {
     return static_cast<OutT>(params_struct);
@@ -161,7 +160,6 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string 
     throw std::invalid_argument("Unsupported parameter type passed to extract_labeled_param");
   }
 }
-
 
 // Trajectory generation helpers.
 namespace trajectory::time_distance
@@ -899,8 +897,7 @@ TrajectoryData generate_rss_ego_trajectory(
 
 Assessment assess_required_deceleration(
   const TrajectoryData & ego_trajectory, const geometry_msgs::msg::Twist & ego_twist,
-  const autoware_perception_msgs::msg::PredictedObject & object,
-  const RssParams & rss_params,
+  const autoware_perception_msgs::msg::PredictedObject & object, const RssParams & rss_params,
   const builtin_interfaces::msg::Time & stamp)
 {
   const auto ego_long_vel = ego_twist.linear.x;
@@ -931,9 +928,8 @@ Assessment assess_required_deceleration(
 }
 
 Result assess(
-  const TrajectoryPoints & traj_points, const FilterContext & context,
-  const RssParams & rss_params, double time_resolution,
-  VehicleInfo & vehicle_info)
+  const TrajectoryPoints & traj_points, const FilterContext & context, const RssParams & rss_params,
+  double time_resolution, VehicleInfo & vehicle_info)
 
 {
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
@@ -1150,8 +1146,7 @@ std::optional<Finding> find_collision_timing(
 std::vector<Finding> assess_collision_timing(
   const TrajectoryData & ego_trajectory, const std::vector<TrajectoryData> & object_trajectories,
 
-  const PetCollisionParams & pet_collision_params,
-  double time_resolution)
+  const PetCollisionParams & pet_collision_params, double time_resolution)
 {
   std::vector<Finding> findings{};
   findings.reserve(object_trajectories.size());
@@ -1170,9 +1165,8 @@ std::vector<Finding> assess_collision_timing(
 
 std::vector<Finding> assess_planned_speed_collision_timing(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const PetCollisionParams & pet_collision_params,
-  double time_resolution, VehicleInfo & vehicle_info,
-  const std::vector<TrajectoryData> & object_trajectories)
+  const PetCollisionParams & pet_collision_params, double time_resolution,
+  VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories)
 {
   const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
                                             -pet_collision_params.ego_assumed_acceleration +
@@ -1187,9 +1181,8 @@ std::vector<Finding> assess_planned_speed_collision_timing(
 
 DracAssessment assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const PetCollisionParams & pet_collision_params,
-  double time_resolution, VehicleInfo & vehicle_info,
-  const std::vector<TrajectoryData> & object_trajectories)
+  const PetCollisionParams & pet_collision_params, double time_resolution,
+  VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories)
 {
   const double ego_time_horizon = rclcpp::Duration(traj_points.back().time_from_start).seconds();
 
@@ -1284,7 +1277,6 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
   rss_params_ = rss_param_map_.at("base");
   global_setting_ = params.collision_check.global_setting;
   drac_params_ = params.collision_check.drac;
-
 }
 
 autoware_internal_planning_msgs::msg::SafetyFactorArray make_safety_factor_array(
@@ -1313,21 +1305,20 @@ autoware_internal_planning_msgs::msg::SafetyFactorArray make_safety_factor_array
   return safety_factors;
 }
 
-
 void CollisionCheckFilter::create_param_maps(const validator::Params & params)
 {
   pet_collision_param_map_.clear();
   rss_param_map_.clear();
 
-  const validator::Params::CollisionCheck::PetCollision & pet = params.collision_check.pet_collision;
+  const validator::Params::CollisionCheck::PetCollision & pet =
+    params.collision_check.pet_collision;
   const validator::Params::CollisionCheck::Rss & rss = params.collision_check.rss;
 
   static constexpr const char * k_base = "base";
   // Class labels: keep in sync with parameter_struct.yaml and extract_labeled_param().
   static constexpr std::array<const char *, 12> k_object_class_keys{
-    "car",         "truck",          "bus",            "trailer", "motorcycle", "bicycle",
-    "pedestrian",  "animal",         "hazard",         "over_drivable",
-    "under_drivable", "unknown",
+    "car",        "truck",  "bus",    "trailer",       "motorcycle",     "bicycle",
+    "pedestrian", "animal", "hazard", "over_drivable", "under_drivable", "unknown",
   };
 
   pet_collision_param_map_[k_base] = PetCollisionParams(pet, k_base);
@@ -1506,11 +1497,9 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     planning_factors.factors.push_back(std::move(factor));
   };
 
-
   // please get params like this way .
   //  RssParams base_rss_params = rss_param_map_["base"];  // default parameters
   //  PetCollisionParams base_pet_params = pet_collision_param_map_["base"];  // default parameters
-
 
   const auto collision_timing_result = collision_timing_assessment::assess(
     traj_points, context, pet_collision_params_, drac_params_, global_setting_, *vehicle_info_ptr_);
@@ -1558,7 +1547,6 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   if (
     collision_timing_result.drac == std::nullopt ||
     collision_timing_result.drac.value() >= -pet_collision_params_.ego_assumed_acceleration) {
-
     for (const auto & finding : collision_timing_result.drac_findings) {
       const auto object_id = to_object_id_string(finding.object);
       is_feasible = false;

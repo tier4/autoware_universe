@@ -115,7 +115,7 @@ validator:
         default_value: -4.0
         description: Used for code test, not used in actual collision check
         read_only: false
-      # ego_assumed_acceleration: example 
+      # ego_assumed_acceleration: example
       #   base:
       #     type: double
       #     default_value: -4.0

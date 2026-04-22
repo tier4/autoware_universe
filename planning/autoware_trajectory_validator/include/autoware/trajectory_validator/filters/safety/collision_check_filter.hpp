@@ -100,7 +100,6 @@ struct RssParams
   double object_acceleration;
 };
 
-
 template <typename OutT, typename ParamStruct>
 OutT extract_labeled_param(const ParamStruct & params_struct, const std::string & key);
 
@@ -327,7 +326,7 @@ private:
   ContinuousDetectionTimes drac_continuous_times_;
   std::map<std::string, PetCollisionParams> pet_collision_param_map_;
   std::map<std::string, RssParams> rss_param_map_;
-  
+
   void create_param_maps(const validator::Params & params);
   void add_debug_markers(
     const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
