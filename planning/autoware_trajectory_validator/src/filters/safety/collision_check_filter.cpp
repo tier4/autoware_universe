@@ -1102,12 +1102,10 @@ std::optional<Finding> find_collision_timing(
 
     for (double pet_range = 0.0; pet_range < current_pet_limit; pet_range += time_resolution) {
       const TimeRange test_time_range_before{ref_start_time - pet_range, ref_end_time - pet_range};
-      const bool has_intersects_before =
-        pet_range <= before_pet_threshold && has_intersects(test_time_range_before);
+      const bool has_intersects_before = has_intersects(test_time_range_before);
 
       const TimeRange test_time_range_after{ref_start_time + pet_range, ref_end_time + pet_range};
-      const bool has_intersects_after =
-        pet_range <= after_pet_threshold && has_intersects(test_time_range_after);
+      const bool has_intersects_after = has_intersects(test_time_range_after);
 
       if (!has_intersects_before && !has_intersects_after) {
         continue;
@@ -1258,7 +1256,9 @@ Result assess(
   // drac_params.collision_time_threshold)
   const double required_time_horizon =
     rclcpp::Duration(traj_points.back().time_from_start).seconds() +
-    std::max(0.0, pet_collision_params.warn.collision_time_threshold_positive);
+    std::max(
+      std::abs(pet_collision_params.warn.collision_time_threshold_negative),
+      std::max(0.0, pet_collision_params.warn.collision_time_threshold_positive));
   const auto nominal_speed_object_trajectories = generate_object_trajectories(
     context, required_time_horizon, -1.0, global_setting.time_resolution,
     required_trajectory_types);
