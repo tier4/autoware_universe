@@ -27,36 +27,13 @@
     collision_check:
       pet_collision:
         ego_braking_delay: 0.4
-       
-        ego_assumed_acceleration:
-          base: -3.0
-          pedestrian: -6.0
-          car: -1.0
-
-        collision_time_threshold:
-          base: 1.0
-          truck: 0.0
-          bus: 0.0
-
+        ego_assumed_acceleration: -5.0
+        collision_time_threshold: 0.0
       rss:
-        ego_deceleration_threshold:
-          base: 4.0
-          over_drivable: 7.0
-          under_drivable: 6.0
-        
-        stop_margin: 2.0
-        
-        ego_reaction_time:
-          base: 0.4
-          unknown: 0.5
-          car: 0.5
-          truck: 0.5
-          bus: 0.5
-
-        object_acceleration:
-          base: -1.0
-          over_drivable: -2.0
-          under_drivable: -2.0
+        ego_deceleration_threshold: 4.0
+        stop_margin: 2.0        
+        ego_reaction_time: 0.4
+        object_acceleration: -1.0
 
 
     vehicle_constraint:
