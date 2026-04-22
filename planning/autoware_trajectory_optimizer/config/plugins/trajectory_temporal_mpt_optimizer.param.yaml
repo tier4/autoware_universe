@@ -4,7 +4,7 @@
       min_points_for_optimization: 2
       enable_debug_info: true
       publish_debug_topics: true
-      write_replay_fixture: true
+      write_replay_fixture: false
       replay_fixture_directory: "~/.ros/autoware_temporal_mpt_replay"
-      log_replay_fixture_to_console: false
+      log_replay_fixture_to_console: true
       reroute_output: true
