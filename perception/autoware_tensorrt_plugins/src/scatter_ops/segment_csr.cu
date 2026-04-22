@@ -117,6 +117,33 @@ __global__ void segment_csr_broadcast_kernel(
     Reducer<scalar_t, REDUCE>::write(
       out + thread_idx, val, arg_out + thread_idx, arg, row_end - row_start);
   else
+      Reducer<scalar_t, REDUCE>::write(out + thread_idx, val, row_end - row_start);
+}
+
+template <typename scalar_t, ReductionType REDUCE>
+__global__ void segment_csr_1d_broadcast_kernel(
+  const scalar_t * src, const int64_t * indptr, scalar_t * out, int64_t * arg_out, size_t N,
+  size_t K)
+{
+  int thread_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int row_idx = thread_idx / K;
+  int lane_idx = thread_idx % K;
+  if (thread_idx >= N * K) return;
+
+  int64_t row_start = __ldg(indptr + row_idx);
+  int64_t row_end = __ldg(indptr + row_idx + 1);
+
+  scalar_t val = Reducer<scalar_t, REDUCE>::init();
+  int64_t arg = 0;
+
+  for (int64_t src_idx = row_start; src_idx < row_end; src_idx++) {
+    Reducer<scalar_t, REDUCE>::update(&val, src[K * src_idx + lane_idx], &arg, src_idx);
+  }
+
+  if (arg_out != nullptr)
+    Reducer<scalar_t, REDUCE>::write(
+      out + thread_idx, val, arg_out + thread_idx, arg, row_end - row_start);
+  else
     Reducer<scalar_t, REDUCE>::write(out + thread_idx, val, row_end - row_start);
 }
 
@@ -139,8 +166,12 @@ int32_t segment_csr_launch(
   auto indptr_numel = std::accumulate(indptr_size.begin(), indptr_size.end(), 1, _mul);
   auto out_numel = src_numel / src_size[dim] * std::max<int32_t>(indptr_size[dim] - 1, 0);
 
-  cudaMemcpyAsync(
-    std::get<0>(out), base, sizeof(scalar_t) * out_numel, cudaMemcpyDeviceToDevice, stream);
+  if (out_numel == 0) return 0;
+
+  if (base != nullptr) {
+    cudaMemcpyAsync(
+      std::get<0>(out), base, sizeof(scalar_t) * out_numel, cudaMemcpyDeviceToDevice, stream);
+  }
 
   if ((REDUCE == ReductionType::MIN || REDUCE == ReductionType::MAX) && std::get<1>(out) != nullptr)
     fill_kernel<int64_t>
@@ -176,19 +207,35 @@ int32_t segment_csr_launch(
   cudaStream_t stream)
 {
   auto dim = indptr_size.size() - 1;
+  if (src_size[dim] == 0) return 0;
   auto src_numel =
     std::accumulate(src_size.begin(), src_size.end(), 1, [](int a, int b) { return a * b; });
   auto out_numel = src_numel / src_size[dim] * std::max<int32_t>(indptr_size[dim] - 1, 0);
+  if (out_numel == 0) return 0;
 
-  scalar_t * base;
-  cudaMallocAsync(&base, sizeof(scalar_t) * out_numel, stream);
-  fill_kernel<scalar_t><<<BLOCKS(1, out_numel), THREADS, 0, stream>>>(base, out_numel, (scalar_t)0);
+  if ((REDUCE == ReductionType::MIN || REDUCE == ReductionType::MAX) && std::get<1>(out) != nullptr)
+    fill_kernel<int64_t>
+      <<<BLOCKS(1, out_numel), THREADS, 0, stream>>>(std::get<1>(out), out_numel, src_size[dim]);
+
+  if (src_numel == 0) return 0;
+
+  auto indptr_numel =
+    std::accumulate(indptr_size.begin(), indptr_size.end(), 1, [](int a, int b) { return a * b; });
+  auto N = max(indptr_size[dim] - 1, 0) * (indptr_numel / indptr_size[dim]);
+  if (N == 0) return 0;
+  auto K = out_numel / N;
+  if (K == 0) return 0;
+
+  if (indptr_size.size() == 1) {
+    segment_csr_1d_broadcast_kernel<scalar_t, REDUCE><<<BLOCKS(1, N * K), THREADS, 0, stream>>>(
+      src, indptr, std::get<0>(out), std::get<1>(out), N, K);
+    return 0;
+  }
 
   auto status =
-    segment_csr_launch<scalar_t, REDUCE>(src, src_size, indptr, indptr_size, base, out, stream);
+    segment_csr_launch<scalar_t, REDUCE>(src, src_size, indptr, indptr_size, nullptr, out, stream);
   if (status != 0) return status;
 
-  cudaFreeAsync(base, stream);
   return 0;
 }
 
