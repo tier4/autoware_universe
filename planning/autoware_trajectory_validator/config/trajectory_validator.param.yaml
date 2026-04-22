@@ -31,7 +31,7 @@
         collision_time_threshold: 0.0
       rss:
         ego_deceleration_threshold: 4.0
-        stop_margin: 2.0        
+        stop_margin: 2.0
         ego_reaction_time: 0.4
         object_acceleration: -1.0
 
