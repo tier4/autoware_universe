@@ -14,6 +14,7 @@
 
 #include "obstacle_stop.hpp"
 
+#include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_stop_utils.hpp>
 #include <autoware_utils/transform/transforms.hpp>
@@ -46,6 +47,8 @@ void ObstacleStop::on_initialize([[maybe_unused]] const MinimumRuleBasedPlannerP
 
   object_filter_ = std::make_unique<trajectory_modifier::utils::obstacle_stop::ObjectFilter>(
     params_.objects.object_types, params_.objects.max_velocity_th);
+
+  update_object_decel_map();
 }
 
 void ObstacleStop::run(TrajectoryPoints & traj_points)
@@ -69,7 +72,7 @@ bool ObstacleStop::is_obstacle_detected(const TrajectoryPoints & traj_points)
     traj_points, data_->odometry_ptr->pose.pose, vehicle_info_,
     data_->odometry_ptr->twist.twist.linear.x, data_->acceleration_ptr->accel.accel.linear.x,
     params_.nominal_stopping_decel, params_.stopping_jerk, params_.stop_margin,
-    params_.lateral_margin);
+    params_.lateral_margin, params_.detection_range);
   const auto collision_point_pcd = check_pointcloud(traj_points);
   update_collision_points_buffer(collision_points_buffer_.pcd, traj_points, collision_point_pcd);
   const auto collision_point_objects = check_predicted_objects(traj_points);
@@ -86,8 +89,13 @@ bool ObstacleStop::is_obstacle_detected(const TrajectoryPoints & traj_points)
 void ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
 {
   const auto stop_margin = params_.stop_margin + vehicle_info_.max_longitudinal_offset_m;
-  const auto target_stop_point_arc_length =
-    std::max(nearest_collision_point_->arc_length - stop_margin, 0.0);
+  auto min_stopping_distance = motion_utils::calculate_stop_distance(
+    data_->odometry_ptr->twist.twist.linear.x, data_->acceleration_ptr->accel.accel.linear.x,
+    params_.maximum_stopping_decel, params_.stopping_jerk, 0.0);
+  if (!min_stopping_distance) min_stopping_distance = 0.0;
+  const auto target_stop_point_arc_length = std::clamp(
+    nearest_collision_point_->arc_length - stop_margin, min_stopping_distance.value(),
+    debug_data_.trajectory_shape.trajectory_length);
 
   const auto stop_index = motion_utils::insertStopPoint(target_stop_point_arc_length, traj_points);
   if (!stop_index) return;
@@ -115,9 +123,18 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
   object_filter_->filter_objects(predicted_objects);
 
   autoware_perception_msgs::msg::PredictedObject colliding_object;
-  auto collision_point = get_nearest_object_collision(
-    traj_points, debug_data_.trajectory_shape, predicted_objects, debug_data_.target_polygons,
-    colliding_object);
+  auto collision_point = std::invoke([&]() -> std::optional<CollisionPoint> {
+    if (!params_.rss_params.enable) {
+      return get_nearest_object_collision(
+        traj_points, debug_data_.trajectory_shape, predicted_objects, debug_data_.target_polygons,
+        colliding_object);
+    }
+    return get_nearest_object_collision(
+      traj_points, debug_data_.trajectory_shape, vehicle_info_, predicted_objects,
+      object_decel_map_, params_.rss_params.ego_decel, params_.rss_params.reaction_time,
+      params_.rss_params.safety_margin, params_.objects.stopped_velocity_th,
+      params_.rss_params.lookahead_horizon, debug_data_.target_polygons, colliding_object);
+  });
   if (collision_point) debug_data_.colliding_object = colliding_object;
   return collision_point;
 }

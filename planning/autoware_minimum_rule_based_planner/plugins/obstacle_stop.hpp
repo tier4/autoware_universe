@@ -34,6 +34,8 @@ using autoware_utils_geometry::MultiPolygon2d;
 using autoware_utils_geometry::Polygon2d;
 using trajectory_modifier::utils::obstacle_stop::CollisionPoint;
 using trajectory_modifier::utils::obstacle_stop::DebugData;
+using trajectory_modifier::utils::obstacle_stop::ObjectDecelMap;
+using trajectory_modifier::utils::obstacle_stop::ObjectType;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
 using TrajectoryPoints = std::vector<TrajectoryPoint>;
@@ -62,6 +64,8 @@ public:
         p.voxel_grid_filter.min_size, p.clustering.tolerance, p.clustering.min_size,
         p.clustering.max_size);
     }
+
+    update_object_decel_map();
   }
   const MinimumRuleBasedPlannerParams::ObstacleStop & get_params() const { return params_; }
 
@@ -86,6 +90,21 @@ private:
   std::unique_ptr<trajectory_modifier::utils::obstacle_stop::PointCloudFilter> pointcloud_filter_;
 
   std::unique_ptr<trajectory_modifier::utils::obstacle_stop::ObjectFilter> object_filter_;
+
+  ObjectDecelMap object_decel_map_;
+
+  void update_object_decel_map()
+  {
+    const auto & p = params_.rss_params;
+    object_decel_map_ = {
+      {ObjectType::CAR, p.object_decel.car},
+      {ObjectType::TRUCK, p.object_decel.truck},
+      {ObjectType::BUS, p.object_decel.bus},
+      {ObjectType::TRAILER, p.object_decel.trailer},
+      {ObjectType::MOTORCYCLE, p.object_decel.motorcycle},
+      {ObjectType::BICYCLE, p.object_decel.bicycle},
+      {ObjectType::PEDESTRIAN, p.object_decel.pedestrian}};
+  }
 
   bool is_obstacle_detected(const TrajectoryPoints & traj_points);
 
