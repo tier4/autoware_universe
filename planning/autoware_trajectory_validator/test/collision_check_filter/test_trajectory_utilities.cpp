@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 #include <tf2/utils.h>
 
+#include <algorithm>
 #include <cmath>
 #include <iterator>
 #include <memory>
@@ -511,6 +512,63 @@ TEST(TrajectoryUtilitiesTest, GenerateTimeInterpolatedPredictedPathTrajectoryUse
   EXPECT_NEAR(trajectory_data.getPoses().at(3).position.x, 2.5, 1e-6);
   EXPECT_NEAR(trajectory_data.getPoses().at(4).position.x, 3.5, 1e-6);
   EXPECT_NEAR(trajectory_data.getPoses().at(5).position.x, 4.0, 1e-6);
+}
+
+TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
+{
+  const auto shape = create_bounding_box_shape(4.0, 2.0);
+  const auto object = create_predicted_object(
+    create_pose(0.0, 0.0, 0.0), create_twist(1.0), shape,
+    {create_straight_predicted_path(0.0, 1.0, {0.0, 1.0, 2.0})});
+
+  auto odometry = std::make_shared<nav_msgs::msg::Odometry>();
+  odometry->header.stamp = rclcpp::Time(1, 0, RCL_ROS_TIME);
+  odometry->pose.pose = create_pose(0.0, 0.0, 0.0);
+
+  auto predicted_objects = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
+  predicted_objects->header.stamp = odometry->header.stamp;
+  predicted_objects->objects.push_back(object);
+
+  auto neural_network_predicted_objects =
+    std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
+  neural_network_predicted_objects->header.stamp = odometry->header.stamp;
+  neural_network_predicted_objects->objects.push_back(object);
+
+  FilterContext context;
+  context.odometry = odometry;
+  context.predicted_objects = predicted_objects;
+  context.neural_network_predicted_objects = neural_network_predicted_objects;
+
+  const auto count_suffix =
+    [](const std::vector<TrajectoryData> & trajectories, const std::string & suffix) {
+      return std::count_if(trajectories.begin(), trajectories.end(), [&](const auto & trajectory) {
+        return trajectory.getObjectIdentification().trajectory_suffix == suffix;
+      });
+    };
+
+  const auto all_enabled = collision_timing_assessment::generate_object_trajectories(
+    context, 0.2, 0.0, 0.1,
+    collision_timing_assessment::ObjectTrajectoryGenerationOptions{true, true, true});
+  EXPECT_EQ(all_enabled.size(), 3u);
+  EXPECT_EQ(count_suffix(all_enabled, "_predicted_path"), 1);
+  EXPECT_EQ(count_suffix(all_enabled, "_constant_curvature_path"), 1);
+  EXPECT_EQ(count_suffix(all_enabled, "_diffusion_based_trajectory"), 1);
+
+  const auto constant_curvature_only = collision_timing_assessment::generate_object_trajectories(
+    context, 0.2, 0.0, 0.1,
+    collision_timing_assessment::ObjectTrajectoryGenerationOptions{false, true, false});
+  ASSERT_EQ(constant_curvature_only.size(), 1u);
+  EXPECT_EQ(
+    constant_curvature_only.front().getObjectIdentification().trajectory_suffix,
+    "_constant_curvature_path");
+
+  const auto predicted_path_and_diffusion =
+    collision_timing_assessment::generate_object_trajectories(
+      context, 0.2, 0.0, 0.1,
+      collision_timing_assessment::ObjectTrajectoryGenerationOptions{true, false, true});
+  EXPECT_EQ(predicted_path_and_diffusion.size(), 2u);
+  EXPECT_EQ(count_suffix(predicted_path_and_diffusion, "_predicted_path"), 1);
+  EXPECT_EQ(count_suffix(predicted_path_and_diffusion, "_diffusion_based_trajectory"), 1);
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety

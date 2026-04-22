@@ -904,6 +904,13 @@ struct Result
   std::vector<Finding> drac_findings;  // Last evaluated PET findings during DRAC search.
 };
 
+struct ObjectTrajectoryGenerationOptions
+{
+  bool predicted_path_trajectory{true};
+  bool constant_curvature_trajectory{true};
+  bool diffusion_based_trajectory{true};
+};
+
 struct DracAssessment
 {
   std::optional<double> drac{0.0};
@@ -912,29 +919,38 @@ struct DracAssessment
 
 std::vector<TrajectoryData> generate_object_trajectories(
   const FilterContext & context, double required_time_horizon, double object_assumed_acceleration,
-  double time_resolution)
+  double time_resolution, const ObjectTrajectoryGenerationOptions & options)
 {
   std::vector<TrajectoryData> object_trajectories{};
 
   if (context.predicted_objects) {
-    object_trajectories.reserve(context.predicted_objects->objects.size() * 3);
+    const auto trajectory_num_per_object =
+      static_cast<size_t>(options.predicted_path_trajectory) +
+      static_cast<size_t>(options.constant_curvature_trajectory);
+    object_trajectories.reserve(
+      object_trajectories.size() +
+      context.predicted_objects->objects.size() * trajectory_num_per_object);
     const rclcpp::Duration objects_reference_time =
       rclcpp::Time(context.predicted_objects->header.stamp) -
       rclcpp::Time(context.odometry->header.stamp);
     for (const auto & object : context.predicted_objects->objects) {
-      if (!object.kinematics.predicted_paths.empty()) {
+      if (options.predicted_path_trajectory && !object.kinematics.predicted_paths.empty()) {
         object_trajectories.push_back(trajectory::generate_predicted_path_trajectory(
           object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
           context.predicted_objects->header.stamp, time_resolution));
       }
 
-      object_trajectories.push_back(trajectory::generate_constant_curvature_trajectory(
-        object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
-        context.predicted_objects->header.stamp, time_resolution));
+      if (options.constant_curvature_trajectory) {
+        object_trajectories.push_back(trajectory::generate_constant_curvature_trajectory(
+          object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
+          context.predicted_objects->header.stamp, time_resolution));
+      }
     }
   }
 
-  if (context.neural_network_predicted_objects) {
+  if (options.diffusion_based_trajectory && context.neural_network_predicted_objects) {
+    object_trajectories.reserve(
+      object_trajectories.size() + context.neural_network_predicted_objects->objects.size());
     const rclcpp::Duration neural_network_objects_reference_time =
       rclcpp::Time(context.neural_network_predicted_objects->header.stamp) -
       rclcpp::Time(context.odometry->header.stamp);
@@ -1128,25 +1144,29 @@ Result assess(
   const validator::Params::CollisionCheck::GlobalSetting & global_setting,
   VehicleInfo & vehicle_info)
 {
+  const auto pet_trajectory_options = ObjectTrajectoryGenerationOptions{
+    pet_collision_params.predicted_path_trajectory,
+    pet_collision_params.constant_curvature_trajectory,
+    pet_collision_params.diffusion_based_trajectory};
+  const auto drac_trajectory_options = ObjectTrajectoryGenerationOptions{
+    drac_params.predicted_path_trajectory, drac_params.constant_curvature_trajectory,
+    drac_params.diffusion_based_trajectory};
   const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
                                             -pet_collision_params.ego_assumed_acceleration +
                                           pet_collision_params.ego_braking_delay;
   const double ego_time_horizon_for_drac =
     rclcpp::Duration(traj_points.back().time_from_start).seconds();
-  const double required_object_time_horizon =
-    std::max(ego_time_horizon_for_pet, ego_time_horizon_for_drac) +
-    pet_collision_params.collision_time_threshold;
-
-  auto constant_speed_object_trajectories = generate_object_trajectories(
-    context, required_object_time_horizon, -1.0, global_setting.time_resolution);
 
   Result result{};
   if (!pet_collision_params.enable_assessment) {
     result.planned_speed_findings = {};
   } else {
+    const auto pet_object_trajectories = generate_object_trajectories(
+      context, ego_time_horizon_for_pet + pet_collision_params.collision_time_threshold, -1.0,
+      global_setting.time_resolution, pet_trajectory_options);
     result.planned_speed_findings = assess_planned_speed_collision_timing(
       traj_points, context, pet_collision_params, global_setting.time_resolution, vehicle_info,
-      constant_speed_object_trajectories);
+      pet_object_trajectories);
   }
 
   if (!drac_params.enable_assessment) {
@@ -1154,9 +1174,12 @@ Result assess(
     result.drac_findings = drac_assessment.findings;
     result.drac = drac_assessment.drac;
   } else {
+    const auto drac_object_trajectories = generate_object_trajectories(
+      context, ego_time_horizon_for_drac + pet_collision_params.collision_time_threshold, -1.0,
+      global_setting.time_resolution, drac_trajectory_options);
     const auto drac_assessment = assess_drac(
       traj_points, context, pet_collision_params, global_setting.time_resolution, vehicle_info,
-      constant_speed_object_trajectories);
+      drac_object_trajectories);
     result.drac_findings = drac_assessment.findings;
     result.drac = drac_assessment.drac;
   }
