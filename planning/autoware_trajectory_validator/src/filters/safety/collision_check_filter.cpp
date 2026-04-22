@@ -101,6 +101,15 @@ RssParams::RssParams(const validator::Params::CollisionCheck::Rss & rss, const s
   ego_reaction_time = extract_labeled_param<double>(rss.ego_reaction_time, key);
 }
 
+DracParams::DracParams(const validator::Params::CollisionCheck::Drac & drac, const std::string & key)
+{
+  enable_assessment = extract_labeled_param<bool>(drac.enable_assessment, key);
+  predicted_path_trajectory = extract_labeled_param<bool>(drac.predicted_path_trajectory, key);
+  constant_curvature_trajectory =
+    extract_labeled_param<bool>(drac.constant_curvature_trajectory, key);
+  diffusion_based_trajectory = extract_labeled_param<bool>(drac.diffusion_based_trajectory, key);
+}
+
 template <typename OutT, typename ParamStruct>
 OutT extract_labeled_param(const ParamStruct & params_struct, const std::string & key)
 {
@@ -1205,8 +1214,7 @@ DracAssessment assess_drac(
 
 Result assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const PetCollisionParams & pet_collision_params,
-  const validator::Params::CollisionCheck::Drac & drac_params,
+  const PetCollisionParams & pet_collision_params, const DracParams & drac_params,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting,
   VehicleInfo & vehicle_info)
 {
@@ -1260,25 +1268,26 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
 
   pet_collision_params_ = pet_collision_param_map_.at("base");
   rss_params_ = rss_param_map_.at("base");
+  drac_params_ = DracParams(params.collision_check.drac, "base");
+
   global_setting_ = params.collision_check.global_setting;
-  drac_params_ = params.collision_check.drac;
-<<<<<<< HEAD
-=======
 
   // for debug print params in created map
   for (const auto & [key, value] : rss_param_map_) {
     const auto & pet_value = pet_collision_param_map_.at(key);
+    const auto & drac_value = drac_param_map_.at(key);
     RCLCPP_INFO(
       rclcpp::get_logger("collision_check_filter"),
       "Collision check params for label '%s': PET braking delay=%.2f, "
       "PET assumed acceleration=%.2f, PET time threshold=%.2f, "
       "RSS ego reaction time=%.2f, RSS ego deceleration threshold=%.2f, "
-      "RSS object acceleration=%.2f, RSS stop margin=%.2f",
+      "RSS object acceleration=%.2f, RSS stop margin=%.2f, "
+      "DRAC enabled=%s",
       key.c_str(), pet_value.ego_braking_delay, pet_value.ego_assumed_acceleration,
-      pet_value.collision_time_threshold, value.ego_reaction_time, value.ego_deceleration_threshold,
-      value.object_acceleration, value.stop_margin);
+      pet_value.collision_time_threshold, value.ego_reaction_time,
+      value.ego_deceleration_threshold, value.object_acceleration, value.stop_margin,
+      drac_value.enable_assessment ? "true" : "false");
   }
->>>>>>> 48a6024eb1 (remove vector template)
 }
 
 autoware_internal_planning_msgs::msg::SafetyFactorArray make_safety_factor_array(
@@ -1311,10 +1320,11 @@ void CollisionCheckFilter::create_param_maps(const validator::Params & params)
 {
   pet_collision_param_map_.clear();
   rss_param_map_.clear();
+  drac_param_map_.clear();
 
-  const validator::Params::CollisionCheck::PetCollision & pet =
-    params.collision_check.pet_collision;
+  const validator::Params::CollisionCheck::PetCollision & pet = params.collision_check.pet_collision;
   const validator::Params::CollisionCheck::Rss & rss = params.collision_check.rss;
+  const validator::Params::CollisionCheck::Drac & drac = params.collision_check.drac;
 
   static constexpr const char * k_base = "base";
   // Class labels: keep in sync with parameter_struct.yaml and extract_labeled_param().
@@ -1325,10 +1335,12 @@ void CollisionCheckFilter::create_param_maps(const validator::Params & params)
 
   pet_collision_param_map_[k_base] = PetCollisionParams(pet, k_base);
   rss_param_map_[k_base] = RssParams(rss, k_base);
+  drac_param_map_[k_base] = DracParams(drac, k_base);
 
   for (const char * class_key : k_object_class_keys) {
     pet_collision_param_map_[class_key] = PetCollisionParams(pet, class_key);
     rss_param_map_[class_key] = RssParams(rss, class_key);
+    drac_param_map_[class_key] = DracParams(drac, class_key);
   }
 }
 

@@ -100,6 +100,17 @@ struct RssParams
   double object_acceleration;
 };
 
+struct DracParams
+{
+  DracParams() = default;
+  DracParams(const validator::Params::CollisionCheck::Drac & drac, const std::string & key);
+
+  bool enable_assessment;
+  bool predicted_path_trajectory;
+  bool constant_curvature_trajectory;
+  bool diffusion_based_trajectory;
+};
+
 template <typename OutT, typename ParamStruct>
 OutT extract_labeled_param(const ParamStruct & params_struct, const std::string & key);
 
@@ -319,13 +330,14 @@ public:
 private:
   PetCollisionParams pet_collision_params_;
   RssParams rss_params_;
+  DracParams drac_params_;
   validator::Params::CollisionCheck::GlobalSetting global_setting_;
-  validator::Params::CollisionCheck::Drac drac_params_;
   ContinuousDetectionTimes pet_continuous_times_;
   ContinuousDetectionTimes rss_continuous_times_;
   ContinuousDetectionTimes drac_continuous_times_;
   std::map<std::string, PetCollisionParams> pet_collision_param_map_;
   std::map<std::string, RssParams> rss_param_map_;
+  std::map<std::string, DracParams> drac_param_map_;
 
   void create_param_maps(const validator::Params & params);
   void add_debug_markers(
