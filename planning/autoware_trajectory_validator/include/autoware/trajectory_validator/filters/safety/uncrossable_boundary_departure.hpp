@@ -36,12 +36,10 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
-  boundary_departure_checker::UncrossableBoundaryChecker uncrossable_boundary_checker_;
+  std::unique_ptr<boundary_departure_checker::UncrossableBoundaryChecker> checker_;
   boundary_departure_checker::UncrossableBoundaryDepartureParam params_;
 
   [[nodiscard]] std::optional<std::string> is_invalid_input(const FilterContext & context) const;
-
-  bool is_initialized_ = false;
 };
 }  // namespace autoware::trajectory_validator::plugin::safety
 
