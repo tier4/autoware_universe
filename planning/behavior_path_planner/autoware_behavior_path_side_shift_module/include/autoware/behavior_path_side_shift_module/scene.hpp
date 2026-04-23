@@ -87,7 +87,7 @@ private:
 
   double calcMaxLateralOffset(const double requested_offset) const;
 
-  std::pair<double, double> calcOffsetLimitsFromLanelets() const;
+  std::pair<double, double> calcOffsetLimitsFromLanelets(const double requested_offset) const;
 
   // const methods
   void publishPath(const PathWithLaneId & path) const;
