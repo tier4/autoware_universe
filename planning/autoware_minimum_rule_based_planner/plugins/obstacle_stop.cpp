@@ -14,7 +14,6 @@
 
 #include "obstacle_stop.hpp"
 
-#include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware/trajectory_modifier/trajectory_modifier_utils/obstacle_stop_utils.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
@@ -125,13 +124,8 @@ bool ObstacleStop::is_obstacle_detected(const TrajectoryPoints & traj_points)
 void ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
 {
   const auto stop_margin = params_.stop_margin + vehicle_info_.max_longitudinal_offset_m;
-  auto min_stopping_distance = motion_utils::calculate_stop_distance(
-    data_->odometry_ptr->twist.twist.linear.x, data_->acceleration_ptr->accel.accel.linear.x,
-    params_.maximum_stopping_decel, params_.stopping_jerk, 0.0);
-  if (!min_stopping_distance) min_stopping_distance = 0.0;
-  const auto target_stop_point_arc_length = std::clamp(
-    nearest_collision_point_->arc_length - stop_margin, min_stopping_distance.value(),
-    debug_data_.trajectory_shape.trajectory_length);
+  const auto target_stop_point_arc_length =
+    std::max(nearest_collision_point_->arc_length - stop_margin, 0.0);
 
   const auto stop_index = motion_utils::insertStopPoint(target_stop_point_arc_length, traj_points);
   if (!stop_index) return;
