@@ -53,10 +53,23 @@ void SideShiftModuleManager::updateModuleParams(
 {
   using autoware_utils::update_param;
 
-  [[maybe_unused]] auto p = parameters_;
+  auto p = parameters_;
 
-  [[maybe_unused]] const std::string ns = "side_shift.";
-  // update_param<bool>(parameters, ns + ..., ...);
+  const std::string ns = "side_shift.";
+  int drivable_area_check_mode = static_cast<int>(p->drivable_area_check_mode);
+  if (update_param<int>(parameters, ns + "drivable_area_check_mode", drivable_area_check_mode)) {
+    p->drivable_area_check_mode =
+      static_cast<DrivableAreaCheckMode>(drivable_area_check_mode);
+  }
+  update_param<double>(parameters, ns + "min_drivable_area_margin", p->min_drivable_area_margin);
+  update_param<double>(
+    parameters, ns + "min_distance_to_start_shifting", p->min_distance_to_start_shifting);
+  update_param<double>(parameters, ns + "time_to_start_shifting", p->time_to_start_shifting);
+  update_param<double>(parameters, ns + "shifting_lateral_jerk", p->shifting_lateral_jerk);
+  update_param<double>(parameters, ns + "min_shifting_distance", p->min_shifting_distance);
+  update_param<double>(parameters, ns + "min_shifting_speed", p->min_shifting_speed);
+  update_param<double>(parameters, ns + "shift_request_time_limit", p->shift_request_time_limit);
+  update_param<bool>(parameters, ns + "publish_debug_marker", p->publish_debug_marker);
 
   std::for_each(observers_.begin(), observers_.end(), [&p](const auto & observer) {
     if (!observer.expired()) observer.lock()->updateModuleParams(p);
