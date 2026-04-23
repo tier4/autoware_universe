@@ -11,6 +11,7 @@ option(CUDA_VERBOSE "Verbose output of CUDA modules" OFF)
 # set flags for CUDA availability
 option(CUDA_AVAIL "CUDA available" OFF)
 find_package(CUDA)
+find_package(CUDAToolkit REQUIRED)
 if(CUDA_FOUND)
   find_library(CUBLAS_LIBRARIES cublas HINTS
     ${CUDA_TOOLKIT_ROOT_DIR}/lib64
