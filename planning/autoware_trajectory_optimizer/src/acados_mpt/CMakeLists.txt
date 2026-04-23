@@ -1,9 +1,6 @@
 # --- acados_mpt - temporal kinematic bicycle MPC (acados) ---
 
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
-message(STATUS "autoware_trajectory_optimizer: acados temporal MPC codegen Python: ${Python3_EXECUTABLE}")
-
-# 1. Environment and path setup
+# 1. Environment and Path Setup
 set(ACADOS_SOURCE_DIR "$ENV{ACADOS_SOURCE_DIR}")
 if(NOT ACADOS_SOURCE_DIR)
   set(ACADOS_SOURCE_DIR "/opt/acados")
@@ -25,8 +22,9 @@ set(GENERATED_TEMPORAL_MPC_FILES
   ${GEN_DIR}/${TEMPORAL_MODEL}_constraints/${TEMPORAL_MODEL}_constr_h_fun_jac_uxt_zt.c
 )
 
+# CRITICAL: Mark files as generated so CMake knows to wait for them
 set_source_files_properties(${GENERATED_TEMPORAL_MPC_FILES} PROPERTIES GENERATED TRUE)
-
+# acados_mpt on PYTHONPATH so 'from generators...' works
 get_filename_component(PACKAGE_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
 set(_template_path "${ACADOS_SOURCE_DIR}/interfaces/acados_template")
 set(_env_vars
@@ -34,29 +32,32 @@ set(_env_vars
   "PYTHONPATH=${_template_path}:${PACKAGE_ROOT_DIR}:$ENV{PYTHONPATH}"
 )
 
-# 3. Generation step (runs whenever generator inputs change or outputs are missing).
-# Writes ${CMAKE_CURRENT_BINARY_DIR}/c_generated_code/ (not the source tree).
+# 3. Define the Generation Target (generator writes to CWD/c_generated_code → binary dir)
 add_custom_command(
   OUTPUT ${GENERATED_TEMPORAL_MPC_FILES}
   COMMAND ${CMAKE_COMMAND} -E env ${_env_vars}
-    ${Python3_EXECUTABLE}
+    ${ACADOS_SOURCE_DIR}/.venv/bin/python3
     ${CMAKE_CURRENT_SOURCE_DIR}/generators/path_tracking_mpc_temporal.py
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/generators/path_tracking_mpc_temporal.py
     ${CMAKE_CURRENT_SOURCE_DIR}/generators/bicycle_model_temporal.py
-  COMMENT "Generating acados temporal MPC solver code (path_tracking_mpc_temporal.py)"
+  COMMENT "Generating acados MPC solver code"
 )
 
+# Create a logical target for the generation to ensure proper dependency tracking
 add_custom_target(generate_acados_code_temporal DEPENDS ${GENERATED_TEMPORAL_MPC_FILES})
 
+# 4. acados_interface_temporal library
 add_library(acados_interface_temporal SHARED
   ${CMAKE_CURRENT_SOURCE_DIR}/src/acados_interface.cpp
   ${GENERATED_TEMPORAL_MPC_FILES}
 )
 
+# Ensure the library waits for the generator to finish
 add_dependencies(acados_interface_temporal generate_acados_code_temporal)
 
+# Binary dir first so real generated header shadows stub; source dir for clang-tidy/IDE when no build.
 target_include_directories(acados_interface_temporal PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
@@ -71,6 +72,7 @@ target_include_directories(acados_interface_temporal PUBLIC
 
 target_link_libraries(acados_interface_temporal PUBLIC acados)
 
+# 5. Suppress warnings on generated C code
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
   set_source_files_properties(${GENERATED_TEMPORAL_MPC_FILES} PROPERTIES
     COMPILE_OPTIONS "-Wno-unused-variable;-Wno-unused-parameter;-Wno-unused-function")
