@@ -44,3 +44,8 @@ if(BUILD_TESTING)
 endif()
 
 ament_auto_package(INSTALL_TO_SHARE param data launch test)
+
+install(PROGRAMS
+  script/diffusion_planner_roll_out.py
+  DESTINATION lib/${PROJECT_NAME}
+)
