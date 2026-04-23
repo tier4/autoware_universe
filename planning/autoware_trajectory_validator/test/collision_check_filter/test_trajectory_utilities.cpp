@@ -298,8 +298,7 @@ TEST(TrajectoryUtilitiesTest, ObjectIdentificationObjectConstructorBuildsIdsFrom
   stamp.sec = 12;
   stamp.nanosec = 34;
 
-  const auto identification =
-    TrajectoryIdentification{object, stamp, "map_based_predicted_path"};
+  const auto identification = TrajectoryIdentification{object, stamp, "map_based_predicted_path"};
 
   EXPECT_EQ(
     identification.classification,
@@ -307,7 +306,8 @@ TEST(TrajectoryUtilitiesTest, ObjectIdentificationObjectConstructorBuildsIdsFrom
       autoware::object_recognition_utils::getHighestProbLabel(object.classification)));
   EXPECT_EQ(identification.stamp.sec, stamp.sec);
   EXPECT_EQ(identification.stamp.nanosec, stamp.nanosec);
-  EXPECT_EQ(identification.object_id_string(), autoware_utils_uuid::to_hex_string(object.object_id));
+  EXPECT_EQ(
+    identification.object_id_string(), autoware_utils_uuid::to_hex_string(object.object_id));
   EXPECT_EQ(
     identification.trajectory_id_string(),
     autoware_utils_uuid::to_hex_string(object.object_id) + "_map_based_predicted_path");
@@ -519,8 +519,7 @@ TEST(TrajectoryUtilitiesTest, GenerateConstantCurvaturePathTrajectoryMatchesPred
     initial_pose, initial_twist, expected_distances);
 
   ASSERT_EQ(trajectory_data.size(), expected_times.size());
-  EXPECT_EQ(
-    trajectory_data.getObjectIdentification().trajectory_type, "constant_curvature_path");
+  EXPECT_EQ(trajectory_data.getObjectIdentification().trajectory_type, "constant_curvature_path");
   for (size_t i = 0; i < expected_times.size(); ++i) {
     EXPECT_NEAR(trajectory_data.getTimes().at(i), expected_times.at(i), 1e-6);
     EXPECT_NEAR(trajectory_data.getPoses().at(i).position.x, expected_poses.at(i).position.x, 1e-6);
