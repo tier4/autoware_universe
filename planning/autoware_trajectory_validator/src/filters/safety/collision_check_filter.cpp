@@ -140,20 +140,12 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string 
       throw std::invalid_argument("Unknown label key: " + key);
     }
 
-    double label_value = params_struct.*(it->second);
+    auto label_value = params_struct.*(it->second);
     return static_cast<OutT>(std::isnan(label_value) ? params_struct.base : label_value);
 
-  } else if constexpr (std::is_same_v<ParamStruct, double>) {
-    return params_struct;
-  } else if constexpr (std::is_same_v<ParamStruct, int>) {
-    return params_struct;
-  } else if constexpr (std::is_same_v<ParamStruct, std::string>) {
-    return params_struct;
-  } else if constexpr (std::is_same_v<ParamStruct, bool>) {
-    return params_struct;
   } else {
-    throw std::invalid_argument("Unsupported parameter type passed to extract_labeled_param");
-  }
+    return static_cast<OutT>(params_struct);
+}
 }
 
 // Trajectory generation helpers.
@@ -1269,26 +1261,10 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
 
   pet_collision_params_ = pet_collision_param_map_.at("base");
   rss_params_ = rss_param_map_.at("base");
-  drac_params_ = DracParams(params.collision_check.drac, "base");
+  drac_params_ = drac_param_map_.at("base");
 
   global_setting_ = params.collision_check.global_setting;
 
-  // for debug print params in created map
-  for (const auto & [key, value] : rss_param_map_) {
-    const auto & pet_value = pet_collision_param_map_.at(key);
-    const auto & drac_value = drac_param_map_.at(key);
-    RCLCPP_INFO(
-      rclcpp::get_logger("collision_check_filter"),
-      "Collision check params for label '%s': PET braking delay=%.2f, "
-      "PET assumed acceleration=%.2f, PET time threshold=%.2f, "
-      "RSS ego reaction time=%.2f, RSS ego deceleration threshold=%.2f, "
-      "RSS object acceleration=%.2f, RSS stop margin=%.2f, "
-      "DRAC enabled=%s",
-      key.c_str(), pet_value.ego_braking_delay, pet_value.ego_assumed_acceleration,
-      pet_value.collision_time_threshold, value.ego_reaction_time, value.ego_deceleration_threshold,
-      value.object_acceleration, value.stop_margin,
-      drac_value.enable_assessment ? "true" : "false");
-  }
 }
 
 autoware_internal_planning_msgs::msg::SafetyFactorArray make_safety_factor_array(
