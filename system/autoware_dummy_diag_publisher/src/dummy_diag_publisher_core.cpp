@@ -88,7 +88,7 @@ void DummyDiagPublisher::loadRequiredDiags()
   };
 
   for (const auto & param_name : param_names) {
-    if (param_name.rfind(required_diags_prefix, 0) != 0) {
+    if (param_name.find(required_diags_prefix, 0) != 0) {
       continue;
     }
 
