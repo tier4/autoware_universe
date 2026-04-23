@@ -152,7 +152,6 @@ private:
   void onMap(const LaneletMapBin::ConstSharedPtr map_msg);
   void onRoute(const LaneletRoute::ConstSharedPtr route_msg);
   void onOperationMode(const OperationModeState::ConstSharedPtr msg);
-  void onLateralOffset(const LateralOffset::ConstSharedPtr msg);
   void on_external_velocity_limiter(
     const autoware_internal_planning_msgs::msg::VelocityLimit::ConstSharedPtr msg);
 
