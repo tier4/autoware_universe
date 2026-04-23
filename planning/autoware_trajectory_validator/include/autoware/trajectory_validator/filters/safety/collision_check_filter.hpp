@@ -19,8 +19,11 @@
 
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware/object_recognition_utils/object_classification.hpp>
+#include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_utils_uuid/uuid_helper.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/duration.hpp>
 #include <rclcpp/time.hpp>
@@ -65,12 +68,32 @@ using TimeRange = std::pair<double, double>;
 
 static constexpr double TIME_INDEX_EPSILON = 1e-3;
 
-struct ObjectIdentification
+struct TrajectoryIdentification
 {
   std::string classification;
   builtin_interfaces::msg::Time stamp{};
   unique_identifier_msgs::msg::UUID uuid{};
-  std::string trajectory_suffix{};
+  std::string trajectory_type{};
+
+  TrajectoryIdentification() = default;
+  explicit TrajectoryIdentification(std::string classification)
+  : classification(std::move(classification))
+  {
+  }
+
+  TrajectoryIdentification(
+    const autoware_perception_msgs::msg::PredictedObject & object,
+    const builtin_interfaces::msg::Time stamp, std::string trajectory_type = {})
+  : classification(autoware::object_recognition_utils::convertLabelToString(
+      autoware::object_recognition_utils::getHighestProbLabel(object.classification))),
+    stamp(stamp),
+    uuid(object.object_id),
+    trajectory_type(std::move(trajectory_type))
+  {
+  }
+
+  std::string object_id_string() const { return autoware_utils_uuid::to_hex_string(uuid); }
+  std::string trajectory_id_string() const { return object_id_string() + "_" + trajectory_type; }
 };
 
 namespace geometry
@@ -83,7 +106,7 @@ Polygon2d to_polygon2d(
 class TrajectoryData
 {
 private:
-  ObjectIdentification object_identification_;
+  TrajectoryIdentification object_identification_;
   TimeTrajectory times_;
   TravelDistanceTrajectory distances_;
   PoseTrajectory poses_;
@@ -150,7 +173,7 @@ private:
 
 public:
   TrajectoryData(
-    ObjectIdentification object_identification, TimeTrajectory times,
+    TrajectoryIdentification object_identification, TimeTrajectory times,
     TravelDistanceTrajectory distances, PoseTrajectory poses, FootprintTrajectory footprints)
   : object_identification_(std::move(object_identification)),
     times_(std::move(times)),
@@ -181,7 +204,10 @@ public:
 
   TrajectoryData() = delete;
 
-  const ObjectIdentification & getObjectIdentification() const { return object_identification_; }
+  const TrajectoryIdentification & getObjectIdentification() const
+  {
+    return object_identification_;
+  }
   const TimeTrajectory & getTimes() const { return times_; }
   const TravelDistanceTrajectory & getDistances() const { return distances_; }
   const PoseTrajectory & getPoses() const { return poses_; }
