@@ -145,7 +145,7 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string 
 
   } else {
     return static_cast<OutT>(params_struct);
-}
+  }
 }
 
 // Trajectory generation helpers.
@@ -1264,7 +1264,6 @@ void CollisionCheckFilter::update_parameters(const validator::Params & params)
   drac_params_ = drac_param_map_.at("base");
 
   global_setting_ = params.collision_check.global_setting;
-
 }
 
 autoware_internal_planning_msgs::msg::SafetyFactorArray make_safety_factor_array(
