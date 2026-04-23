@@ -1116,7 +1116,7 @@ DracAssessment assess_drac(
           context.odometry->twist.twist, 0.0, -ego_dec, ego_time_horizon,
           global_setting.time_resolution, traj_points, vehicle_info);
       }
-      //todo: prepare parameter
+      // todo: prepare parameter
       constexpr double drac_params_ego_braking_delay = 0.4;
       return trajectory::generate_ego_trajectory(
         context.odometry->twist.twist, drac_params_ego_braking_delay, -ego_dec, ego_time_horizon,
@@ -1131,7 +1131,7 @@ DracAssessment assess_drac(
             object_trajectory.getObjectIdentification().trajectory_type)) {
         continue;
       }
-      //todo: prepare parameter
+      // todo: prepare parameter
       constexpr double drac_params_collision_time_threshold = 1.0;
       auto finding_nominal_object_motion = find_collision_timing(
         ego_deceleration_trajectory, object_trajectory, drac_params_collision_time_threshold,
