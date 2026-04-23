@@ -1116,6 +1116,7 @@ DracAssessment assess_drac(
           context.odometry->twist.twist, 0.0, -ego_dec, ego_time_horizon,
           global_setting.time_resolution, traj_points, vehicle_info);
       }
+      //todo: prepare parameter
       constexpr double drac_params_ego_braking_delay = 0.4;
       return trajectory::generate_ego_trajectory(
         context.odometry->twist.twist, drac_params_ego_braking_delay, -ego_dec, ego_time_horizon,
@@ -1130,7 +1131,8 @@ DracAssessment assess_drac(
             object_trajectory.getObjectIdentification().trajectory_type)) {
         continue;
       }
-      const double drac_params_collision_time_threshold = 1.0;
+      //todo: prepare parameter
+      constexpr double drac_params_collision_time_threshold = 1.0;
       auto finding_nominal_object_motion = find_collision_timing(
         ego_deceleration_trajectory, object_trajectory, drac_params_collision_time_threshold,
         global_setting.time_resolution);
@@ -1183,7 +1185,7 @@ DracAssessment assess_drac(
             const rclcpp::Duration objects_reference_time =
               rclcpp::Time(context.neural_network_predicted_objects->header.stamp) -
               rclcpp::Time(context.odometry->header.stamp);
-            // ここでのgenerate_predicted_path_trajectoryの呼び出しは意図したもの
+            // ここでのgenerate_predicted_path_trajectoryの呼び出しは意図したもの。pathとして解釈して、速度プロファイルは上書きしたい。
             return trajectory::generate_predicted_path_trajectory(
               predicted_object, 0.0, -ego_dec, objects_reference_time, ego_time_horizon,
               context.neural_network_predicted_objects->header.stamp,
