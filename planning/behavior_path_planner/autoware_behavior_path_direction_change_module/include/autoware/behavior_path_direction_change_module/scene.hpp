@@ -99,7 +99,8 @@ private:
   std::vector<size_t> cusp_point_indices_{};
 
   // Path segment state tracking for separate forward/backward publishing (multi-cusp)
-  PathSegmentState current_segment_state_{PathSegmentState::FORWARD_FOLLOWING};
+  PathSegmentState previous_segment_state_{PathSegmentState::FORWARD_FOLLOWING};  // State before this plan()
+  PathSegmentState current_segment_state_{PathSegmentState::FORWARD_FOLLOWING};   // State after this plan() update
   size_t current_segment_index_{0};  // Segment index (0 = first forward, 1 = first reverse, ...)
   geometry_msgs::msg::Point
     first_cusp_position_;  // Position of current segment end (cusp) for debug/log
