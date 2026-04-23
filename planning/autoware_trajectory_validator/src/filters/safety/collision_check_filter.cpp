@@ -1499,6 +1499,12 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     }
     RCLCPP_WARN(rclcpp::get_logger("CollisionCheckFilter"), "Warning: %s", messages.c_str());
   };
+  const auto append_text_marker_message = [](std::string & text, const std::string & message) {
+    if (message.empty()) {
+      return;
+    }
+    text += message + "\n";
+  };
 
   const auto collision_timing_result = collision_timing_assessment::assess(
     traj_points, context, pet_collision_params_, drac_params_, global_setting_, *vehicle_info_ptr_);
@@ -1512,6 +1518,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     current_time, collision_timing_result.planned_speed_findings,
     [](const auto & finding) { return finding.object_identification.trajectory_id_string(); });
   std::string pet_error_msg{};
+  std::string pet_marker_msg{};
   uint8_t pet_log_level = MetricReport::WARN;
   for (const auto & finding : collision_timing_result.planned_speed_findings) {
     const auto & obj_id = finding.object_identification;
@@ -1539,10 +1546,12 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
                         .level(pet_level));
 
     const double detection_duration = pet_continuous_times_.get_time(obj_id.trajectory_id_string());
-    pet_error_msg += fmt::format(
+    const auto finding_msg = fmt::format(
       "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{};",
       obj_id.classification, obj_id.trajectory_id_string(), finding.pet, finding.ttc,
       detection_duration, obj_id.stamp.sec, obj_id.stamp.nanosec);
+    pet_error_msg += finding_msg;
+    append_text_marker_message(pet_marker_msg, finding_msg);
     add_debug_markers(
       context.odometry->header.stamp, "planned_speed_collision", obj_id.trajectory_id_string(),
       finding.ego_trajectory, finding.object_trajectory, finding.ego_hull, finding.object_hull);
@@ -1550,7 +1559,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
       add_collision_planning_factor(finding, "PET");
     }
   }
-  error_msg += pet_error_msg;
+  error_msg += pet_marker_msg;
   log_collision_messages(pet_log_level, pet_error_msg);
 
   drac_continuous_times_.update(
@@ -1563,6 +1572,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     collision_timing_result.drac == std::nullopt ||
     collision_timing_result.drac.value() >= -drac_params_.error.ego_deceleration_threshold;
   std::string drac_error_msg{};
+  std::string drac_marker_msg{};
   if (drac_warn) {
     const uint8_t drac_level = drac_error ? MetricReport::ERROR : MetricReport::WARN;
     for (const auto & finding : collision_timing_result.drac_findings) {
@@ -1579,13 +1589,15 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
                             obj_id.classification, obj_id.trajectory_type))
                           .metric_value(collision_timing_result.drac.value_or(0.0))
                           .level(drac_level));
-      drac_error_msg += fmt::format(
+      const auto finding_msg = fmt::format(
         "DRAC collision, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{};",
         obj_id.trajectory_id_string(), finding.pet, finding.ttc,
         collision_timing_result.drac.has_value()
           ? std::to_string(collision_timing_result.drac.value())
           : "Cant be avoided",
         obj_id.stamp.sec, obj_id.stamp.nanosec);
+      drac_error_msg += finding_msg;
+      append_text_marker_message(drac_marker_msg, finding_msg);
       add_debug_markers(
         context.odometry->header.stamp, "drac_collision", obj_id.trajectory_id_string(),
         finding.ego_trajectory, finding.object_trajectory, finding.ego_hull, finding.object_hull);
@@ -1594,7 +1606,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
       }
     }
   }
-  error_msg += drac_error_msg;
+  error_msg += drac_marker_msg;
   log_collision_messages(drac_error ? MetricReport::ERROR : MetricReport::WARN, drac_error_msg);
 
   if (rss_params_.enable_assessment) {
@@ -1604,6 +1616,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
       return violation.object.object_id_string();
     });
     std::string rss_error_msg{};
+    std::string rss_marker_msg{};
     for (const auto & violation : rss_result.violations) {
       const auto object_id = violation.object.object_id_string();
       // Mark as infeasible if any RSS violation exists
@@ -1618,15 +1631,17 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
           .metric_value(violation.required_deceleration)
           .level(MetricReport::ERROR));
       const double detection_duration = rss_continuous_times_.get_time(object_id);
-      rss_error_msg += fmt::format(
+      const auto finding_msg = fmt::format(
         "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}, "
         "stamp: "
         "{}.{};",
         violation.object.classification, object_id, detection_duration,
         violation.required_deceleration, violation.object.stamp.sec,
         violation.object.stamp.nanosec);
+      rss_error_msg += finding_msg;
+      append_text_marker_message(rss_marker_msg, finding_msg);
     }
-    error_msg += rss_error_msg;
+    error_msg += rss_marker_msg;
     log_collision_messages(MetricReport::ERROR, rss_error_msg);
   }
 
