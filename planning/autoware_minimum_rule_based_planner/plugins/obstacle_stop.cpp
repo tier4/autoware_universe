@@ -83,6 +83,7 @@ void ObstacleStop::run(TrajectoryPoints & traj_points)
 bool ObstacleStop::is_obstacle_detected(const TrajectoryPoints & traj_points)
 {
   debug_data_ = DebugData();
+  safety_factors_ = SafetyFactorArray{};
   debug_data_.trajectory_shape = get_trajectory_shape(
     traj_points, data_->odometry_ptr->pose.pose, vehicle_info_,
     data_->odometry_ptr->twist.twist.linear.x, data_->acceleration_ptr->accel.accel.linear.x,
@@ -93,6 +94,26 @@ bool ObstacleStop::is_obstacle_detected(const TrajectoryPoints & traj_points)
   const auto collision_point_objects = check_predicted_objects(traj_points);
   update_collision_points_buffer(
     collision_points_buffer_.objects, traj_points, collision_point_objects);
+
+  const auto make_safety_factor =
+    [](const geometry_msgs::msg::Point & point, const SafetyFactor::_type_type type) {
+      SafetyFactor factor;
+      factor.type = type;
+      factor.points.emplace_back(point);
+      factor.is_safe = false;
+      return factor;
+    };
+  if (collision_point_objects && debug_data_.colliding_object) {
+    auto factor = make_safety_factor(
+      debug_data_.colliding_object->kinematics.initial_pose_with_covariance.pose.position,
+      SafetyFactor::OBJECT);
+    factor.object_id = debug_data_.colliding_object->object_id;
+    safety_factors_.factors.push_back(factor);
+  }
+  if (collision_point_pcd) {
+    safety_factors_.factors.push_back(
+      make_safety_factor(collision_point_pcd->point, SafetyFactor::POINTCLOUD));
+  }
 
   nearest_collision_point_ = get_nearest_collision_point();
   debug_data_.active_collision_point =
@@ -118,8 +139,7 @@ void ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
   const auto & stop_pose = traj_points.at(*stop_index).pose;
   const auto & ego_pose = data_->odometry_ptr->pose.pose;
   planning_factor_interface_->add(
-    traj_points, ego_pose, stop_pose, PlanningFactor::STOP,
-    autoware_internal_planning_msgs::msg::SafetyFactorArray{});
+    traj_points, ego_pose, stop_pose, PlanningFactor::STOP, safety_factors_);
 
   RCLCPP_WARN_THROTTLE(
     get_node_ptr()->get_logger(), *get_clock(), 500,

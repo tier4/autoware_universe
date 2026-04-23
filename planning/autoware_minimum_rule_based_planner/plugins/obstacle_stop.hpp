@@ -31,6 +31,8 @@
 namespace autoware::minimum_rule_based_planner::plugin
 {
 using autoware_internal_debug_msgs::msg::StringStamped;
+using autoware_internal_planning_msgs::msg::SafetyFactor;
+using autoware_internal_planning_msgs::msg::SafetyFactorArray;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using autoware_utils_geometry::MultiPolygon2d;
 using autoware_utils_geometry::Polygon2d;
@@ -86,6 +88,8 @@ private:
   } collision_points_buffer_;
 
   std::optional<CollisionPoint> nearest_collision_point_;
+
+  SafetyFactorArray safety_factors_;
 
   DebugData debug_data_;
 
