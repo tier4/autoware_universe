@@ -106,7 +106,7 @@ Polygon2d to_polygon2d(
 class TrajectoryData
 {
 private:
-  TrajectoryIdentification object_identification_;
+  TrajectoryIdentification identification_;
   TimeTrajectory times_;
   TravelDistanceTrajectory distances_;
   PoseTrajectory poses_;
@@ -173,9 +173,9 @@ private:
 
 public:
   TrajectoryData(
-    TrajectoryIdentification object_identification, TimeTrajectory times,
+    TrajectoryIdentification trajectory_identification, TimeTrajectory times,
     TravelDistanceTrajectory distances, PoseTrajectory poses, FootprintTrajectory footprints)
-  : object_identification_(std::move(object_identification)),
+  : identification_(std::move(trajectory_identification)),
     times_(std::move(times)),
     distances_(std::move(distances)),
     poses_(std::move(poses)),
@@ -183,22 +183,22 @@ public:
   {
     if (times_.empty()) {
       throw std::invalid_argument(
-        "Trajectory must not be empty classification: " + object_identification_.classification);
+        "Trajectory must not be empty classification: " + identification_.classification);
     }
     if (times_.size() != distances_.size()) {
       throw std::invalid_argument(
         "Trajectory sizes mismatch (times vs distances) classification: " +
-        object_identification_.classification);
+        identification_.classification);
     }
     if (times_.size() != poses_.size()) {
       throw std::invalid_argument(
         "Trajectory sizes mismatch (times vs poses) classification: " +
-        object_identification_.classification);
+        identification_.classification);
     }
     if (times_.size() != footprints_.size()) {
       throw std::invalid_argument(
         "Trajectory sizes mismatch (times vs footprints) classification: " +
-        object_identification_.classification);
+        identification_.classification);
     }
   }
 
@@ -206,7 +206,7 @@ public:
 
   const TrajectoryIdentification & getObjectIdentification() const
   {
-    return object_identification_;
+    return identification_;
   }
   const TimeTrajectory & getTimes() const { return times_; }
   const TravelDistanceTrajectory & getDistances() const { return distances_; }
