@@ -42,6 +42,7 @@
       on_time_buffer: 0.5 # [s]
       off_time_buffer: 1.0 # [s]
       lateral_margin: 0.5     # lateral margin on top of ego width from trajectory to consider for obstacle stop [m]
+      longitudinal_margin: 10.0 # longitudinal margin applied to each trajectory-point footprint [m]
 
       objects:
         object_types: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "unknown"] # object types to consider for obstacle stop

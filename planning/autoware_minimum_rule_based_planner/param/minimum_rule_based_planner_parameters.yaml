@@ -138,10 +138,10 @@ minimum_rule_based_planner:
       type: double
       default_value: 0.5
       description: lateral margin for obstacle stop [m]
-    detection_range:
+    longitudinal_margin:
       type: double
-      default_value: 200.0
-      description: max detection range for obstacle stop [m] (capped by remaining trajectory length)
+      default_value: 10.0
+      description: longitudinal margin applied to each trajectory-point footprint; also acts as a floor on the detection corridor length to prevent chatter as ego decelerates [m]
     objects:
       object_types:
         type: string_array

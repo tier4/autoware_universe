@@ -21,6 +21,7 @@
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <memory>
@@ -29,6 +30,7 @@
 
 namespace autoware::minimum_rule_based_planner::plugin
 {
+using autoware_internal_debug_msgs::msg::StringStamped;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using autoware_utils_geometry::MultiPolygon2d;
 using autoware_utils_geometry::Polygon2d;
@@ -93,6 +95,10 @@ private:
 
   ObjectDecelMap object_decel_map_;
 
+  rclcpp::Publisher<MarkerArray>::SharedPtr debug_viz_pub_;
+  rclcpp::Publisher<PointCloud2>::SharedPtr pub_clustered_pointcloud_;
+  rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
+
   void update_object_decel_map()
   {
     const auto & p = params_.rss_params;
@@ -118,6 +124,9 @@ private:
   std::optional<CollisionPoint> get_nearest_collision_point() const;
 
   void set_stop_point(TrajectoryPoints & traj_points);
+
+  void publish_debug_string(bool is_safe) const;
+  void publish_debug_data(const std::string & ns) const;
 };
 
 }  // namespace autoware::minimum_rule_based_planner::plugin
