@@ -16,7 +16,9 @@
 
 #include <autoware/boundary_departure_checker/debug.hpp>
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
