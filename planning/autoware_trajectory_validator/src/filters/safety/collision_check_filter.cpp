@@ -550,6 +550,7 @@ TrajectoryData generate_diffusion_based_trajectory(
     TrajectoryIdentification{predicted_object, stamp, "diffusion_based_trajectory"},
     std::move(times), std::move(distances), std::move(poses), std::move(footprints));
 }
+
 TrajectoryData generate_constant_curvature_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
   double assumed_acceleration, rclcpp::Duration start_time, double max_time,
@@ -568,6 +569,65 @@ TrajectoryData generate_constant_curvature_trajectory(
     TrajectoryIdentification{predicted_object, stamp, "constant_curvature_path"}, std::move(times),
     std::move(distances), std::move(poses), std::move(footprints));
 }
+
+// todo: refactor with generate_object_trajectories().
+TrajectoryData generate_object_trajectory(
+  const FilterContext & context, const unique_identifier_msgs::msg::UUID object_id,
+  const std::string & traj_type_str, const double acc, const double time_resolution,
+  const double time_horizon)
+{
+  // todo: remove this lamda from generate_object_trajectory()
+  const auto find_predicted_object =
+    [&object_id](
+      const auto & predicted_objects) -> const autoware_perception_msgs::msg::PredictedObject & {
+    auto it = std::find_if(
+      predicted_objects.begin(), predicted_objects.end(),
+      [&object_id](const auto & object) { return object.object_id == object_id; });
+    assert(it != predicted_objects.end());
+    return *it;
+  };
+
+  if (traj_type_str.find("map_based_predicted_path") != std::string::npos) {
+    assert(context.predicted_objects);
+    const auto & predicted_object = find_predicted_object(context.predicted_objects->objects);
+    const rclcpp::Duration objects_reference_time =
+      rclcpp::Time(context.predicted_objects->header.stamp) -
+      rclcpp::Time(context.odometry->header.stamp);
+    return trajectory::generate_predicted_path_trajectory(
+      predicted_object, 0.0, acc, objects_reference_time, time_horizon,
+      context.predicted_objects->header.stamp, time_resolution);
+  }
+
+  if (traj_type_str.find("constant_curvature_path") != std::string::npos) {
+    assert(context.predicted_objects);
+    const auto & predicted_object = find_predicted_object(context.predicted_objects->objects);
+    const rclcpp::Duration objects_reference_time =
+      rclcpp::Time(context.predicted_objects->header.stamp) -
+      rclcpp::Time(context.odometry->header.stamp);
+    return trajectory::generate_constant_curvature_trajectory(
+      predicted_object, 0.0, acc, objects_reference_time, time_horizon,
+      context.predicted_objects->header.stamp, time_resolution);
+  }
+
+  if (traj_type_str.find("diffusion_based") != std::string::npos) {
+    assert(context.neural_network_predicted_objects);
+    const auto & predicted_object =
+      find_predicted_object(context.neural_network_predicted_objects->objects);
+    // todo(takagi):
+    // ここでのobjects_reference_timeの使用は不適当。perceptionから出力された時刻と位置で整形すること
+    const rclcpp::Duration objects_reference_time =
+      rclcpp::Time(context.neural_network_predicted_objects->header.stamp) -
+      rclcpp::Time(context.odometry->header.stamp);
+    // ここでのgenerate_predicted_path_trajectoryの呼び出しは意図したもの。pathとして解釈して、速度プロファイルは上書きしたい。
+    return trajectory::generate_predicted_path_trajectory(
+      predicted_object, 0.0, acc, objects_reference_time, time_horizon,
+      context.neural_network_predicted_objects->header.stamp, time_resolution);
+  }
+
+  assert(false);
+  throw std::logic_error("Unsupported trajectory type in DRAC assessment: " + traj_type_str);
+}
+
 }  // namespace trajectory
 
 // Geometry helpers for overlap checks.
@@ -1137,65 +1197,12 @@ DracAssessment assess_drac(
         ego_deceleration_trajectory, object_trajectory, drac_params_collision_time_threshold,
         global_setting.time_resolution);
       if (finding_nominal_object_motion.has_value()) {
-        // todo(takagi):
-        // object_deceleration_trajectoryを関数として分離して、共通化する。同じような処理がちらばっており、メンテナンスができていない
-        const auto object_deceleration_trajectory = [&]() {
-          const auto & traj_type_str = object_trajectory.getObjectIdentification().trajectory_type;
-          const auto & object_id = object_trajectory.getObjectIdentification().uuid;
+        const auto & traj_type_str = object_trajectory.getObjectIdentification().trajectory_type;
+        const auto & object_id = object_trajectory.getObjectIdentification().uuid;
+        const auto object_deceleration_trajectory = trajectory::generate_object_trajectory(
+          context, object_id, traj_type_str, -ego_dec, global_setting.time_resolution,
+          ego_time_horizon + drac_params_collision_time_threshold);
 
-          const auto find_predicted_object = [&object_id](const auto & predicted_objects)
-            -> const autoware_perception_msgs::msg::PredictedObject & {
-            auto it = std::find_if(
-              predicted_objects.begin(), predicted_objects.end(),
-              [&object_id](const auto & object) { return object.object_id == object_id; });
-            assert(it != predicted_objects.end());
-            return *it;
-          };
-
-          if (traj_type_str.find("map_based_predicted_path") != std::string::npos) {
-            assert(context.predicted_objects);
-            const auto & predicted_object =
-              find_predicted_object(context.predicted_objects->objects);
-            const rclcpp::Duration objects_reference_time =
-              rclcpp::Time(context.predicted_objects->header.stamp) -
-              rclcpp::Time(context.odometry->header.stamp);
-            return trajectory::generate_predicted_path_trajectory(
-              predicted_object, 0.0, -ego_dec, objects_reference_time, ego_time_horizon,
-              context.predicted_objects->header.stamp, global_setting.time_resolution);
-          }
-
-          if (traj_type_str.find("constant_curvature_path") != std::string::npos) {
-            assert(context.predicted_objects);
-            const auto & predicted_object =
-              find_predicted_object(context.predicted_objects->objects);
-            const rclcpp::Duration objects_reference_time =
-              rclcpp::Time(context.predicted_objects->header.stamp) -
-              rclcpp::Time(context.odometry->header.stamp);
-            return trajectory::generate_constant_curvature_trajectory(
-              predicted_object, 0.0, -ego_dec, objects_reference_time, ego_time_horizon,
-              context.predicted_objects->header.stamp, global_setting.time_resolution);
-          }
-
-          if (traj_type_str.find("diffusion_based") != std::string::npos) {
-            assert(context.neural_network_predicted_objects);
-            const auto & predicted_object =
-              find_predicted_object(context.neural_network_predicted_objects->objects);
-            // todo(takagi):
-            // ここでのobjects_reference_timeの使用は不適当。perceptionから出力された時刻と位置で整形すること
-            const rclcpp::Duration objects_reference_time =
-              rclcpp::Time(context.neural_network_predicted_objects->header.stamp) -
-              rclcpp::Time(context.odometry->header.stamp);
-            // ここでのgenerate_predicted_path_trajectoryの呼び出しは意図したもの。pathとして解釈して、速度プロファイルは上書きしたい。
-            return trajectory::generate_predicted_path_trajectory(
-              predicted_object, 0.0, -ego_dec, objects_reference_time, ego_time_horizon,
-              context.neural_network_predicted_objects->header.stamp,
-              global_setting.time_resolution);
-          }
-
-          assert(false);
-          throw std::logic_error(
-            "Unsupported trajectory type in DRAC assessment: " + traj_type_str);
-        }();
         auto finding_dec_object_motion = find_collision_timing(
           ego_deceleration_trajectory, object_deceleration_trajectory,
           drac_params_collision_time_threshold, global_setting.time_resolution);
