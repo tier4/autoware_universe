@@ -109,12 +109,20 @@ struct PetCollisionParams
     const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key);
 
   bool enable_assessment;
-  bool predicted_path_trajectory;
-  bool constant_curvature_trajectory;
-  bool diffusion_based_trajectory;
-  double ego_braking_delay;
+  struct AssessmentTrajectories
+  {
+    bool map_based;
+    bool constant_curvature;
+    bool diffusion_based;
+  } assessment_trajectories;
+  double ego_total_braking_delay;
   double ego_assumed_acceleration;
   double collision_time_threshold;
+  struct Threshold
+  {
+    double ego_first_passing_time_gap;
+    double object_first_passing_time_gap;
+  } warn_threshold, error_threshold;
 };
 
 struct RssParams
@@ -123,10 +131,13 @@ struct RssParams
   RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key);
 
   bool enable_assessment;
-  double ego_deceleration_threshold;
-  double stop_margin;
-  double ego_reaction_time;
-  double object_acceleration;
+  double stop_distance_margin;
+  double ego_total_braking_delay;
+  double object_assumed_acceleration;
+  struct ErrorThreshold
+  {
+    double ego_acceleration;
+  } error_threshold;
 };
 
 struct DracParams
@@ -135,9 +146,17 @@ struct DracParams
   DracParams(const validator::Params::CollisionCheck::Drac & drac, const std::string & key);
 
   bool enable_assessment;
-  bool predicted_path_trajectory;
-  bool constant_curvature_trajectory;
-  bool diffusion_based_trajectory;
+  struct AssessmentTrajectories
+  {
+    bool map_based;
+    bool constant_curvature;
+    bool diffusion_based;
+  } assessment_trajectories;
+  double ego_total_braking_delay;
+  struct Threshold
+  {
+    double ego_acceleration;
+  } warn_threshold, error_threshold;
 };
 
 template <typename OutT, typename ParamStruct>

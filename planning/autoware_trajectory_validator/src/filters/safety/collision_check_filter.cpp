@@ -63,32 +63,52 @@ PetCollisionParams::PetCollisionParams(
   const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key)
 {
   enable_assessment = extract_labeled_param<bool>(pet.enable_assessment, key);
-  predicted_path_trajectory = extract_labeled_param<bool>(pet.predicted_path_trajectory, key);
-  constant_curvature_trajectory =
-    extract_labeled_param<bool>(pet.constant_curvature_trajectory, key);
-  diffusion_based_trajectory = extract_labeled_param<bool>(pet.diffusion_based_trajectory, key);
-  ego_braking_delay = extract_labeled_param<double>(pet.ego_braking_delay, key);
+  assessment_trajectories.map_based =
+    extract_labeled_param<bool>(pet.assessment_trajectories.map_based, key);
+  assessment_trajectories.constant_curvature =
+    extract_labeled_param<bool>(pet.assessment_trajectories.constant_curvature, key);
+  assessment_trajectories.diffusion_based =
+    extract_labeled_param<bool>(pet.assessment_trajectories.diffusion_based, key);
+  ego_total_braking_delay = extract_labeled_param<double>(pet.ego_total_braking_delay, key);
   ego_assumed_acceleration = extract_labeled_param<double>(pet.ego_assumed_acceleration, key);
   collision_time_threshold = extract_labeled_param<double>(pet.collision_time_threshold, key);
+
+  warn_threshold.ego_first_passing_time_gap =
+    extract_labeled_param<double>(pet.warn_threshold.ego_first_passing_time_gap, key);
+  warn_threshold.object_first_passing_time_gap =
+    extract_labeled_param<double>(pet.warn_threshold.object_first_passing_time_gap, key);
+  error_threshold.ego_first_passing_time_gap =
+    extract_labeled_param<double>(pet.error_threshold.ego_first_passing_time_gap, key);
+  error_threshold.object_first_passing_time_gap =
+    extract_labeled_param<double>(pet.error_threshold.object_first_passing_time_gap, key);
 }
 
 RssParams::RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key)
 {
   enable_assessment = extract_labeled_param<bool>(rss.enable_assessment, key);
-  ego_deceleration_threshold = extract_labeled_param<double>(rss.ego_deceleration_threshold, key);
-  object_acceleration = extract_labeled_param<double>(rss.object_acceleration, key);
-  stop_margin = extract_labeled_param<double>(rss.stop_margin, key);
-  ego_reaction_time = extract_labeled_param<double>(rss.ego_reaction_time, key);
+  stop_distance_margin = extract_labeled_param<double>(rss.stop_distance_margin, key);
+  ego_total_braking_delay = extract_labeled_param<double>(rss.ego_total_braking_delay, key);
+  object_assumed_acceleration =
+    extract_labeled_param<double>(rss.object_assumed_acceleration, key);
+  error_threshold.ego_acceleration =
+    extract_labeled_param<double>(rss.error_threshold.ego_acceleration, key);
 }
 
 DracParams::DracParams(
   const validator::Params::CollisionCheck::Drac & drac, const std::string & key)
 {
   enable_assessment = extract_labeled_param<bool>(drac.enable_assessment, key);
-  predicted_path_trajectory = extract_labeled_param<bool>(drac.predicted_path_trajectory, key);
-  constant_curvature_trajectory =
-    extract_labeled_param<bool>(drac.constant_curvature_trajectory, key);
-  diffusion_based_trajectory = extract_labeled_param<bool>(drac.diffusion_based_trajectory, key);
+  assessment_trajectories.map_based =
+    extract_labeled_param<bool>(drac.assessment_trajectories.map_based, key);
+  assessment_trajectories.constant_curvature =
+    extract_labeled_param<bool>(drac.assessment_trajectories.constant_curvature, key);
+  assessment_trajectories.diffusion_based =
+    extract_labeled_param<bool>(drac.assessment_trajectories.diffusion_based, key);
+  ego_total_braking_delay = extract_labeled_param<double>(drac.ego_total_braking_delay, key);
+  warn_threshold.ego_acceleration =
+    extract_labeled_param<double>(drac.warn_threshold.ego_acceleration, key);
+  error_threshold.ego_acceleration =
+    extract_labeled_param<double>(drac.error_threshold.ego_acceleration, key);
 }
 
 template <typename OutT, typename ParamStruct>
@@ -1220,9 +1240,8 @@ std::optional<Finding> find_collision_timing(
 
 std::vector<Finding> assess_planned_speed_collision_timing(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const validator::Params::CollisionCheck::PetCollision & pet_collision_params,
-  double time_resolution, VehicleInfo & vehicle_info,
-  const std::vector<TrajectoryData> & object_trajectories)
+  const PetCollisionParams & pet_collision_params, double time_resolution,
+  VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories)
 {
   const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
                                             -pet_collision_params.ego_assumed_acceleration +
@@ -1254,7 +1273,7 @@ std::vector<Finding> assess_planned_speed_collision_timing(
 
 DracAssessment assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const validator::Params::CollisionCheck::Drac & drac_params, VehicleInfo & vehicle_info,
+  const DracParams & drac_params, VehicleInfo & vehicle_info,
   const std::vector<TrajectoryData> & object_trajectories,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting)
 {
@@ -1617,9 +1636,9 @@ void add_collision_planning_factor(
 
 void process_pet_findings(
   const std::string & validator_name, const std::string & validator_category,
-  const validator::Params::CollisionCheck::PetCollision & pet_collision_params,
-  ContinuousDetectionTimes & pet_continuous_times, const rclcpp::Time & current_time,
-  const builtin_interfaces::msg::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
+  const PetCollisionParams & pet_collision_params, ContinuousDetectionTimes & pet_continuous_times,
+  const rclcpp::Time & current_time, const builtin_interfaces::msg::Time & stamp,
+  const geometry_msgs::msg::Pose & ego_pose,
   const std::vector<collision_timing_assessment::Finding> & findings,
   EvaluationArtifacts & artifacts, const AddDebugMarkers & add_debug_markers,
   const AddPlanningFactor & add_planning_factor)
@@ -1680,9 +1699,9 @@ void process_pet_findings(
 
 void process_drac_findings(
   const std::string & validator_name, const std::string & validator_category,
-  const validator::Params::CollisionCheck::Drac & drac_params,
-  ContinuousDetectionTimes & drac_continuous_times, const rclcpp::Time & current_time,
-  const builtin_interfaces::msg::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
+  const DracParams & drac_params, ContinuousDetectionTimes & drac_continuous_times,
+  const rclcpp::Time & current_time, const builtin_interfaces::msg::Time & stamp,
+  const geometry_msgs::msg::Pose & ego_pose,
   const collision_timing_assessment::Result & collision_timing_result,
   EvaluationArtifacts & artifacts, const AddDebugMarkers & add_debug_markers,
   const AddPlanningFactor & add_planning_factor)
@@ -1743,7 +1762,7 @@ void process_drac_findings(
 void process_rss_violations(
   const std::string & validator_name, const std::string & validator_category,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting,
-  const validator::Params::CollisionCheck::Rss & rss_params, const TrajectoryPoints & traj_points,
+  const RssParams & rss_params, const TrajectoryPoints & traj_points,
   const FilterContext & context, VehicleInfo & vehicle_info,
   ContinuousDetectionTimes & rss_continuous_times, const rclcpp::Time & current_time,
   EvaluationArtifacts & artifacts)
