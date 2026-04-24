@@ -88,8 +88,7 @@ RssParams::RssParams(const validator::Params::CollisionCheck::Rss & rss, const s
   enable_assessment = extract_labeled_param<bool>(rss.enable_assessment, key);
   stop_distance_margin = extract_labeled_param<double>(rss.stop_distance_margin, key);
   ego_total_braking_delay = extract_labeled_param<double>(rss.ego_total_braking_delay, key);
-  object_assumed_acceleration =
-    extract_labeled_param<double>(rss.object_assumed_acceleration, key);
+  object_assumed_acceleration = extract_labeled_param<double>(rss.object_assumed_acceleration, key);
   error_threshold.ego_acceleration =
     extract_labeled_param<double>(rss.error_threshold.ego_acceleration, key);
 }
@@ -1762,10 +1761,9 @@ void process_drac_findings(
 void process_rss_violations(
   const std::string & validator_name, const std::string & validator_category,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting,
-  const RssParams & rss_params, const TrajectoryPoints & traj_points,
-  const FilterContext & context, VehicleInfo & vehicle_info,
-  ContinuousDetectionTimes & rss_continuous_times, const rclcpp::Time & current_time,
-  EvaluationArtifacts & artifacts)
+  const RssParams & rss_params, const TrajectoryPoints & traj_points, const FilterContext & context,
+  VehicleInfo & vehicle_info, ContinuousDetectionTimes & rss_continuous_times,
+  const rclcpp::Time & current_time, EvaluationArtifacts & artifacts)
 {
   if (!rss_params.enable_assessment) {
     return;
