@@ -509,8 +509,9 @@ TrajectoryData generate_predicted_path_trajectory(
   auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(
-    TrajectoryIdentification{predicted_object, stamp, "map_based_predicted_path"}, std::move(times),
-    std::move(distances), std::move(poses), std::move(footprints));
+    TrajectoryIdentification{
+      predicted_object, stamp, "map_based_predicted_path", assumed_acceleration},
+    std::move(times), std::move(distances), std::move(poses), std::move(footprints));
 }
 
 TrajectoryData generate_diffusion_based_trajectory(
@@ -547,7 +548,7 @@ TrajectoryData generate_diffusion_based_trajectory(
   auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(
-    TrajectoryIdentification{predicted_object, stamp, "diffusion_based_trajectory"},
+    TrajectoryIdentification{predicted_object, stamp, "diffusion_based_trajectory", 0.0},
     std::move(times), std::move(distances), std::move(poses), std::move(footprints));
 }
 
@@ -566,8 +567,9 @@ TrajectoryData generate_constant_curvature_trajectory(
   auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(
-    TrajectoryIdentification{predicted_object, stamp, "constant_curvature_path"}, std::move(times),
-    std::move(distances), std::move(poses), std::move(footprints));
+    TrajectoryIdentification{
+      predicted_object, stamp, "constant_curvature_path", assumed_acceleration},
+    std::move(times), std::move(distances), std::move(poses), std::move(footprints));
 }
 
 // todo: refactor with generate_object_trajectories().
@@ -619,6 +621,7 @@ TrajectoryData generate_object_trajectory(
       rclcpp::Time(context.neural_network_predicted_objects->header.stamp) -
       rclcpp::Time(context.odometry->header.stamp);
     // ここでのgenerate_predicted_path_trajectoryの呼び出しは意図したもの。pathとして解釈して、速度プロファイルは上書きしたい。
+    // todo: trajectoryのラベルstringがdiffusionではなく、map_baseadになる課題がある
     return trajectory::generate_predicted_path_trajectory(
       predicted_object, 0.0, acc, objects_reference_time, time_horizon,
       context.neural_network_predicted_objects->header.stamp, time_resolution);
@@ -1196,22 +1199,26 @@ DracAssessment assess_drac(
       auto finding_nominal_object_motion = find_collision_timing(
         ego_deceleration_trajectory, object_trajectory, drac_params_collision_time_threshold,
         global_setting.time_resolution);
-      if (finding_nominal_object_motion.has_value()) {
-        const auto & traj_type_str = object_trajectory.getObjectIdentification().trajectory_type;
-        const auto & object_id = object_trajectory.getObjectIdentification().uuid;
-        const auto object_deceleration_trajectory = trajectory::generate_object_trajectory(
-          context, object_id, traj_type_str, -ego_dec, global_setting.time_resolution,
-          ego_time_horizon + drac_params_collision_time_threshold);
-
-        auto finding_dec_object_motion = find_collision_timing(
-          ego_deceleration_trajectory, object_deceleration_trajectory,
-          drac_params_collision_time_threshold, global_setting.time_resolution);
-        if (!finding_dec_object_motion.has_value()) {
-          continue;
-        }
-        findings.push_back(std::move(finding_nominal_object_motion.value()));
-        findings.push_back(std::move(finding_dec_object_motion.value()));
+      if (!finding_nominal_object_motion.has_value()) {
+        continue;
       }
+
+      const auto & traj_type_str = object_trajectory.getObjectIdentification().trajectory_type;
+      const auto & object_id = object_trajectory.getObjectIdentification().uuid;
+
+      const auto object_deceleration_trajectory = trajectory::generate_object_trajectory(
+        context, object_id, traj_type_str, -ego_dec, global_setting.time_resolution,
+        ego_time_horizon + drac_params_collision_time_threshold);
+
+      auto finding_dec_object_motion = find_collision_timing(
+        ego_deceleration_trajectory, object_deceleration_trajectory,
+        drac_params_collision_time_threshold, global_setting.time_resolution);
+      if (!finding_dec_object_motion.has_value()) {
+        continue;
+      }
+
+      findings.push_back(std::move(finding_nominal_object_motion.value()));
+      findings.push_back(std::move(finding_dec_object_motion.value()));
     }
     if (findings.empty()) {
       return DracAssessment{ego_dec, std::move(last_findings)};

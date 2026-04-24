@@ -74,6 +74,7 @@ struct TrajectoryIdentification
   builtin_interfaces::msg::Time stamp{};
   unique_identifier_msgs::msg::UUID uuid{};
   std::string trajectory_type{};
+  double acceleration{};
 
   TrajectoryIdentification() = default;
   explicit TrajectoryIdentification(std::string classification)
@@ -83,17 +84,18 @@ struct TrajectoryIdentification
 
   TrajectoryIdentification(
     const autoware_perception_msgs::msg::PredictedObject & object,
-    const builtin_interfaces::msg::Time stamp, std::string trajectory_type = {})
+    const builtin_interfaces::msg::Time stamp, std::string trajectory_type = {}, double acceleration = 0.0)
   : classification(autoware::object_recognition_utils::convertLabelToString(
       autoware::object_recognition_utils::getHighestProbLabel(object.classification))),
     stamp(stamp),
     uuid(object.object_id),
-    trajectory_type(std::move(trajectory_type))
+    trajectory_type(std::move(trajectory_type)),
+    acceleration(acceleration)
   {
   }
 
   std::string object_id_string() const { return autoware_utils_uuid::to_hex_string(uuid); }
-  std::string trajectory_id_string() const { return object_id_string() + "_" + trajectory_type; }
+  std::string trajectory_id_string() const { return object_id_string() + "_" + trajectory_type +  " acc: " + std::to_string(acceleration); }
 };
 
 namespace geometry
@@ -204,10 +206,7 @@ public:
 
   TrajectoryData() = delete;
 
-  const TrajectoryIdentification & getObjectIdentification() const
-  {
-    return identification_;
-  }
+  const TrajectoryIdentification & getObjectIdentification() const { return identification_; }
   const TimeTrajectory & getTimes() const { return times_; }
   const TravelDistanceTrajectory & getDistances() const { return distances_; }
   const PoseTrajectory & getPoses() const { return poses_; }

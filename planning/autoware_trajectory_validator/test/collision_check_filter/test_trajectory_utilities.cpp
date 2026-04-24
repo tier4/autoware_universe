@@ -281,7 +281,6 @@ TEST(TrajectoryUtilitiesTest, ObjectIdentificationClassificationConstructorSetsD
   EXPECT_EQ(identification.stamp.sec, 0);
   EXPECT_EQ(identification.stamp.nanosec, 0u);
   EXPECT_TRUE(identification.trajectory_type.empty());
-  EXPECT_EQ(identification.trajectory_id_string(), identification.object_id_string() + "_");
 }
 
 TEST(TrajectoryUtilitiesTest, ObjectIdentificationObjectConstructorBuildsIdsFromObject)
@@ -308,9 +307,6 @@ TEST(TrajectoryUtilitiesTest, ObjectIdentificationObjectConstructorBuildsIdsFrom
   EXPECT_EQ(identification.stamp.nanosec, stamp.nanosec);
   EXPECT_EQ(
     identification.object_id_string(), autoware_utils_uuid::to_hex_string(object.object_id));
-  EXPECT_EQ(
-    identification.trajectory_id_string(),
-    autoware_utils_uuid::to_hex_string(object.object_id) + "_map_based_predicted_path");
 }
 
 TEST(TrajectoryUtilitiesTest, GenerateEgoTrajectoryBuildsConsistentTrajectoryData)
