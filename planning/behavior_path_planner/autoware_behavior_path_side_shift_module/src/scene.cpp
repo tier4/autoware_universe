@@ -238,6 +238,25 @@ void SideShiftModule::updateData()
 
   const size_t nearest_idx = planner_data_->findEgoIndex(path_shifter_.getReferencePath().points);
   path_shifter_.removeBehindShiftLineAndSetBaseOffset(nearest_idx);
+
+  // Continuously clamp offsets against the current drivable boundary so the vehicle
+  // never departs when adjacent lanes disappear (e.g. at intersections, mode 2).
+  if (parameters_->drivable_area_check_mode != DrivableAreaCheckMode::DISABLED) {
+    const double safe_offset = calcMaxLateralOffset(requested_lateral_offset_);
+    // Detect narrowing: safe boundary has moved inward relative to what was planned.
+    const bool boundary_tightened =
+      (requested_lateral_offset_ > 0.0 && safe_offset < requested_lateral_offset_ - 1.0e-4) ||
+      (requested_lateral_offset_ < 0.0 && safe_offset > requested_lateral_offset_ + 1.0e-4);
+    if (boundary_tightened) {
+      RCLCPP_DEBUG(
+        getLogger(),
+        "SideShift: drivable area narrowed, clamping offset %.3f -> %.3f",
+        requested_lateral_offset_, safe_offset);
+      requested_lateral_offset_ = safe_offset;
+      inserted_lateral_offset_ = safe_offset;
+      lateral_offset_change_request_ = true;
+    }
+  }
 }
 
 void SideShiftModule::replaceShiftLine()
@@ -270,11 +289,9 @@ void SideShiftModule::replaceShiftLine()
 BehaviorModuleOutput SideShiftModule::plan()
 {
   // Replace shift line
-  if (
-    lateral_offset_change_request_ && ((shift_status_ == SideShiftStatus::BEFORE_SHIFT) ||
-                                       (shift_status_ == SideShiftStatus::AFTER_SHIFT))) {
+  if (lateral_offset_change_request_) {
     replaceShiftLine();
-  } else if (shift_status_ != SideShiftStatus::BEFORE_SHIFT) {
+  } else if (shift_status_ == SideShiftStatus::SHIFTING) {
     RCLCPP_DEBUG(getLogger(), "ego is shifting");
   } else {
     RCLCPP_DEBUG(getLogger(), "change is not requested");
