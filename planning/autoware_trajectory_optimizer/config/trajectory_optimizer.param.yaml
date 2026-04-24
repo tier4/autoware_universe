@@ -4,14 +4,14 @@
     plugin_names:
       - "autoware::trajectory_optimizer::plugin::TrajectoryTemporalMPTOptimizer"
       - "autoware::trajectory_optimizer::plugin::TrajectoryPointFixer"
-      - "autoware::trajectory_optimizer::plugin::TrajectoryKinematicFeasibilityEnforcer"
-      - "autoware::trajectory_optimizer::plugin::TrajectoryQPSmoother"
-      - "autoware::trajectory_optimizer::plugin::TrajectoryKinematicFeasibilityEnforcer"
-      - "autoware::trajectory_optimizer::plugin::TrajectoryVelocityOptimizer"
-      - "autoware::trajectory_optimizer::plugin::TrajectoryEBSmootherOptimizer"
-      - "autoware::trajectory_optimizer::plugin::TrajectorySplineSmoother"
-      - "autoware::trajectory_optimizer::plugin::TrajectoryMPTOptimizer"
-      - "autoware::trajectory_optimizer::plugin::TrajectoryExtender"
+      # - "autoware::trajectory_optimizer::plugin::TrajectoryKinematicFeasibilityEnforcer"
+      # - "autoware::trajectory_optimizer::plugin::TrajectoryQPSmoother"
+      # - "autoware::trajectory_optimizer::plugin::TrajectoryKinematicFeasibilityEnforcer"
+      # - "autoware::trajectory_optimizer::plugin::TrajectoryVelocityOptimizer"
+      # - "autoware::trajectory_optimizer::plugin::TrajectoryEBSmootherOptimizer"
+      # - "autoware::trajectory_optimizer::plugin::TrajectorySplineSmoother"
+      # - "autoware::trajectory_optimizer::plugin::TrajectoryMPTOptimizer"
+      # - "autoware::trajectory_optimizer::plugin::TrajectoryExtender"
 
     # Plugin activation flags - control runtime enable/disable
     use_akima_spline_interpolation: true
