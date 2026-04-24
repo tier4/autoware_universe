@@ -249,8 +249,7 @@ void SideShiftModule::updateData()
       (requested_lateral_offset_ < 0.0 && safe_offset > requested_lateral_offset_ + 1.0e-4);
     if (boundary_tightened) {
       RCLCPP_DEBUG(
-        getLogger(),
-        "SideShift: drivable area narrowed, clamping offset %.3f -> %.3f",
+        getLogger(), "SideShift: drivable area narrowed, clamping offset %.3f -> %.3f",
         requested_lateral_offset_, safe_offset);
       requested_lateral_offset_ = safe_offset;
       inserted_lateral_offset_ = safe_offset;
@@ -395,8 +394,8 @@ ShiftLine SideShiftModule::calcShiftLine() const
       getLogger(),
       "SideShift: min_distance_to_start_shifting=%f, dist_to_start=%f, dist_to_end=%f, "
       "current_shift=%f, final_shift=%f",
-      parameters_->min_distance_to_start_shifting, dist_to_start, dist_to_end,
-      current_shift_length, final_shift_length);
+      parameters_->min_distance_to_start_shifting, dist_to_start, dist_to_end, current_shift_length,
+      final_shift_length);
     return dist_to_end;
   }();
 
@@ -510,13 +509,15 @@ std::pair<double, double> SideShiftModule::calcOffsetLimitsFromLanelets(
     (parameters_->drivable_area_check_mode == DrivableAreaCheckMode::ADJACENT_LANES);
   const auto ego_idx = planner_data_->findEgoIndex(reference_path_.points);
   const auto ego_speed = std::abs(planner_data_->self_odometry->twist.twist.linear.x);
-  const double dist_to_start =
-    std::max(parameters_->min_distance_to_start_shifting, ego_speed * parameters_->time_to_start_shifting);
+  const double dist_to_start = std::max(
+    parameters_->min_distance_to_start_shifting, ego_speed * parameters_->time_to_start_shifting);
   const double current_shift_length = getClosestShiftLength(prev_output_, getEgoPose().position);
   const double shift_length = requested_offset - current_shift_length;
   const double jerk_shifting_distance = autoware::motion_utils::calc_longitudinal_dist_from_jerk(
-    shift_length, parameters_->shifting_lateral_jerk, std::max(ego_speed, parameters_->min_shifting_speed));
-  const double shifting_distance = std::max(jerk_shifting_distance, parameters_->min_shifting_distance);
+    shift_length, parameters_->shifting_lateral_jerk,
+    std::max(ego_speed, parameters_->min_shifting_speed));
+  const double shifting_distance =
+    std::max(jerk_shifting_distance, parameters_->min_shifting_distance);
   const size_t start_idx = utils::getIdxByArclength(reference_path_, ego_idx, dist_to_start);
   const size_t end_idx =
     utils::getIdxByArclength(reference_path_, ego_idx, dist_to_start + shifting_distance);
@@ -573,8 +574,7 @@ double SideShiftModule::calcMaxLateralOffset(const double requested_offset) cons
 
   const auto [right_limit, left_limit] = calcOffsetLimitsFromLanelets(requested_offset);
 
-  const double result = (requested_offset > 0.0) ? std::min(requested_offset, left_limit)
-                                                 : std::max(requested_offset, right_limit);
+  const double result = std::clamp(requested_offset, right_limit, left_limit);
 
   RCLCPP_DEBUG(
     getLogger(), "SideShift: req=%.2f left_limit=%.2f right_limit=%.2f result=%.2f mode=%d",
