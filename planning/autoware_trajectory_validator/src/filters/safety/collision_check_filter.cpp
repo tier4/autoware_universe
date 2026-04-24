@@ -145,8 +145,7 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string 
       return static_cast<OutT>(std::isnan(label_value) ? params_struct.base : label_value);
     } else if constexpr (std::is_same_v<OutT, std::string>) {
       return static_cast<OutT>(label_value.empty() ? params_struct.base : label_value);
-    }
-    else {
+    } else {
       return static_cast<OutT>(label_value);
     }
 
