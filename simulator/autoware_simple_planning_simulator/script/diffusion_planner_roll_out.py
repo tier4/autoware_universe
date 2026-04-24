@@ -16,6 +16,7 @@
 
 import argparse
 from pathlib import Path
+import signal
 import subprocess
 import time
 
@@ -61,7 +62,7 @@ class RollOut(Node):
             "/planning/trajectory",
             "/localization/acceleration",
             "/localization/kinematic_state",
-            # "/tf"
+            "/tf",
         ]
         cmd = [
             "ros2",
@@ -80,12 +81,12 @@ class RollOut(Node):
         self.remap_before_rollout()
         """
         NOTE
-        /localization/kinematic_stateを/rosbag/localization/kinematic_stateにremapしているのに，lsimでdiffusion_plannerがplanningできるのはなぜ…？
+        /localization/kinematic_stateを/rosbag/localization/kinematic_stateにremapしているのに，lsim(rollout前)でdiffusion_plannerがplanningできるのはなぜ…？
         """
 
     def remap_before_rollout(self):
-        # TODO: /rosbag/tf -> /tf
-        pass
+        proc = subprocess.Popen("ros2 run topic_tools relay /rosbag/tf /tf", shell=True)
+        self.remapping_procs_before_rollout = [proc]
 
     def pause_sim(self, req, res):
         # stop sim
@@ -94,7 +95,13 @@ class RollOut(Node):
         pause_rosbag.call_async(Pause.Request())
 
         # start simple_planning_simulator
-        cmd = f'ros2 launch autoware_simple_planning_simulator simple_planning_simulator.launch.py vehicle_info_param_file:={get_package_share_directory(self.args.vehicle_model + "_description")}/config/vehicle_info.param.yaml simulator_model_param_file:={get_package_share_directory(self.args.vehicle_model + "_description")}/config/simulator_model.param.yaml initial_engage_state:=true raw_vehicle_cmd_converter_param_path:={get_package_share_directory("autoware_launch")}/config/vehicle/raw_vehicle_cmd_converter/raw_vehicle_cmd_converter.param.yaml motion_publish_mode:="pose_only" rollout:=true'
+        cmd = f'ros2 launch autoware_simple_planning_simulator simple_planning_simulator.launch.py \
+        vehicle_info_param_file:={get_package_share_directory(self.args.vehicle_model + "_description")}/config/vehicle_info.param.yaml \
+        simulator_model_param_file:={get_package_share_directory(self.args.vehicle_model + "_description")}/config/simulator_model.param.yaml \
+        initial_engage_state:=true \
+        raw_vehicle_cmd_converter_param_path:={get_package_share_directory("autoware_launch")}/config/vehicle/raw_vehicle_cmd_converter/raw_vehicle_cmd_converter.param.yaml \
+        motion_publish_mode:="pose_only" \
+        rollout:=true'
         self.result = subprocess.Popen(cmd, shell=True)
 
         # wait for simple_planning_simulator to become active
@@ -114,9 +121,12 @@ class RollOut(Node):
         resume_rosbag.call_async(Resume.Request())
 
     def remap_after_rollout(self):
-        # TODO: stop remap /rosbag/tf -> /tf
-        # TODO: remap /simulation/tf -> /tf
-        pass
+        for remapping_proc_before_rollout in self.remapping_procs_before_rollout:
+            remapping_proc_before_rollout.send_signal(signal.SIGKILL)
+            remapping_proc_before_rollout.wait()
+
+        proc = subprocess.Popen("ros2 run topic_tools relay /simulation/tf /tf", shell=True)
+        self.remapping_procs_after_rollout = [proc]
 
     def kinematic_state_cb(self, msg):
         self.kinematic_state = msg
@@ -138,7 +148,10 @@ if __name__ == "__main__":
         "--rollout-start-time", type=float, required=True, help="rollout start time"
     )
     parser.add_argument(
-        "--pause-duration", type=float, default=5.0, help="pause duration until resume"
+        "--pause-duration",
+        type=float,
+        default=5.0,
+        help="pause duration to wait for simple_planning_simulator become active",
     )
     parser.add_argument("--rate", type=float, default=1.0, help="rosbag replay rate")
     parser.add_argument("--rosbag-dir", type=Path, required=True, help="Path to rosbag directory")
