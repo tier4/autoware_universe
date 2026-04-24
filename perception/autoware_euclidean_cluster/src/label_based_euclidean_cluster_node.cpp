@@ -123,6 +123,12 @@ std::optional<std::uint8_t> to_object_label(const std::string & mapped_label)
   if (mapped_label == "pedestrian") {
     return ObjectClassification::PEDESTRIAN;
   }
+  if (mapped_label == "animal") {
+    return ObjectClassification::ANIMAL;
+  }
+  if (mapped_label == "unknown") {
+    return ObjectClassification::UNKNOWN;
+  }
   return std::nullopt;
 }
 
