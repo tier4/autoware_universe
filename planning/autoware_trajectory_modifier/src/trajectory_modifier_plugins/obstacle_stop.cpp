@@ -188,7 +188,7 @@ bool ObstacleStop::modify_trajectory(TrajectoryPoints & traj_points)
 
   auto trajectory = traj_points;
   utils::obstacle_stop::trim_trajectory_and_remove_duplicates(trajectory);
-  if (trajectory.empty()) return false;
+  if (trajectory.size() < 2) return false;
 
   if (!is_trajectory_modification_required(trajectory)) return false;
 

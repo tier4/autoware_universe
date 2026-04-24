@@ -14,10 +14,8 @@
 
 #include "autoware/boundary_departure_checker/type_alias.hpp"
 #include "autoware/boundary_departure_checker/uncrossable_boundary_checker.hpp"
-#include "test_plot_utils.hpp"
 
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <gtest/gtest.h>
 
@@ -28,24 +26,33 @@
 
 namespace autoware::boundary_departure_checker
 {
+namespace
+{
+}  // namespace
 
 class UncrossableBoundaryCheckerTest : public ::testing::Test
 {
 protected:
   void SetUp() override
   {
-    rclcpp::init(0, nullptr);
-
     // 1. Setup Vehicle Info (Standard Sedan Size)
     vehicle_info_ = autoware::vehicle_info_utils::createVehicleInfo(
-      0.383, 0.235, 2.79, 1.64, 1.0, 1.1, 0.128, 0.128, 2.5, 0.70);
+      0.383,  // front_overhang [m]
+      0.235,  // rear_overhang [m]
+      2.79,   // wheel_base [m]
+      1.64,   // wheel_tread [m]
+      1.0,    // left_overhang [m]
+      1.1,    // right_overhang [m]
+      2.5,    // vehicle_height [m]
+      0.128,  // cg_to_rear [m]
+      0.128,  // max_steer_angle [rad]
+      0.70    // min_steer_angle [rad]
+    );
 
-    // 2. Setup Clock and Param
-    clock_ = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
-
-    param_.lateral_margin_m = 0.01;
-    param_.on_time_buffer_s = 0.15;   // Require 150ms of continuous violation to trigger CRITICAL
-    param_.off_time_buffer_s = 0.15;  // Require 150ms of continuous safety to clear CRITICAL
+    // 2. Param
+    param_.lateral_margin_m = 0.01;   // [m]
+    param_.on_time_buffer_s = 0.15;   // 150ms of continuous violation to trigger CRITICAL
+    param_.off_time_buffer_s = 0.15;  // 150ms of continuous safety to clear CRITICAL
     param_.max_deceleration_mps2 = -4.0;
     param_.max_jerk_mps3 = -5.0;
     param_.brake_delay_s = 1.0;
@@ -59,9 +66,8 @@ protected:
     lanelet::LineString3d boundary_ls(lanelet::utils::getId(), {p1, p2});
     boundary_ls.attributes()[lanelet::AttributeName::Type] = "road_border";
     map_->add(boundary_ls);
+    checker_ptr_ = std::make_unique<UncrossableBoundaryChecker>(map_, param_, vehicle_info_);
   }
-
-  void TearDown() override { rclcpp::shutdown(); }
 
   static TrajectoryPoints create_trajectory(
     double start_x, double start_y, double velocity, double yaw = 0.0)
@@ -72,7 +78,9 @@ protected:
       p.pose.position.x = start_x + i * 5.0 * std::cos(yaw);
       p.pose.position.y = start_y + i * 5.0 * std::sin(yaw);
       p.pose.orientation = autoware_utils_geometry::create_quaternion_from_yaw(yaw);
-      p.time_from_start = rclcpp::Duration::from_seconds(i * 0.5);
+      const double time = i * 0.5;
+      p.time_from_start.sec = static_cast<int32_t>(time);
+      p.time_from_start.nanosec = static_cast<uint32_t>((time - p.time_from_start.sec) * 1e9);
       p.longitudinal_velocity_mps = static_cast<float>(velocity);
       traj.push_back(p);
     }
@@ -86,7 +94,6 @@ protected:
     if (!traj.empty()) {
       state.pose_with_cov.pose = traj.front().pose;
     }
-    // Set zero covariance to avoid dynamic margin inflation in tests
     for (auto & c : state.pose_with_cov.covariance) c = 0.0;
     state.velocity = velocity;
     state.acceleration = 0.0;
@@ -94,181 +101,134 @@ protected:
     return state;
   }
 
-  UncrossableBoundaryChecker checker_;
-  std::shared_ptr<rclcpp::Clock> clock_;
+  double time_sec_toc(double time_increment_sec)
+  {
+    double y = time_increment_sec - sim_time_compensation_;
+    double t = sim_time_sec_ + y;
+    sim_time_compensation_ = (t - sim_time_sec_) - y;
+    return sim_time_sec_ = t;
+  }
+
+  std::unique_ptr<UncrossableBoundaryChecker> checker_ptr_;
   UncrossableBoundaryDepartureParam param_;
   std::shared_ptr<lanelet::LaneletMap> map_;
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
+
+  double sim_time_sec_ = 0.0;
+  double sim_time_compensation_ = 0.0;
 };
 
 // ==============================================================================
 // 1. Initialization and Edge Cases
 // ==============================================================================
-
-TEST_F(UncrossableBoundaryCheckerTest, TestInitializationFailure)
-{
-  UncrossableBoundaryChecker bad_checker;
-  bad_checker.set_lanelet_map(nullptr);
-  auto result = bad_checker.initialize();
-  EXPECT_FALSE(result.has_value());
-}
-
 TEST_F(UncrossableBoundaryCheckerTest, TestCheckDepartureEmptyTrajectory)
 {
+  // Arrange:
   TrajectoryPoints empty_traj;
-  auto ego_state = create_ego_state(empty_traj, 0.0, clock_->now().seconds());
+  constexpr double init_time = 0.0;
+  auto ego_state = create_ego_state(empty_traj, 0.0, init_time);
 
-  checker_.set_lanelet_map(map_);
-  checker_.set_param(param_);
-  auto result = checker_.initialize();
-  ASSERT_TRUE(result.has_value());
-  auto check = checker_.check_departure(empty_traj, vehicle_info_, ego_state);
+  // Act:
+  auto result = checker_ptr_->update_departure_status(empty_traj, ego_state);
 
-  // empty trajectory is fine
-  EXPECT_TRUE(check.has_value());
+  // Assert:
+  EXPECT_TRUE(result.status == DepartureType::NONE);
 }
 
 TEST_F(UncrossableBoundaryCheckerTest, TestCheckDepartureZeroVelocity)
 {
-  // If velocity is exactly 0, braking distance math might fail or boundary isn't reachable
-  auto traj = create_trajectory(0.0, 0.0, 0.0);  // 0 velocity
-  auto ego_state = create_ego_state(traj, 0.0, clock_->now().seconds());
+  // Arrange:
+  auto traj = create_trajectory(0.0, 0.0, 0.0);
+  constexpr double init_time = 0.0;
+  auto ego_state = create_ego_state(traj, 0.0, init_time);
 
-  checker_.set_lanelet_map(map_);
-  checker_.set_param(param_);
+  // Act:
+  auto result = checker_ptr_->update_departure_status(traj, ego_state);
 
-  ASSERT_TRUE(checker_.initialize().has_value());
-  auto result = checker_.check_departure(traj, vehicle_info_, ego_state);
-
-  // It shouldn't crash. It should just return DepartureType::NONE.
-  EXPECT_EQ(result->status, DepartureType::NONE);
+  // Assert:
+  EXPECT_TRUE(result.status == DepartureType::NONE);
 }
 
 // ==============================================================================
 // 2. Hysteresis and Time Buffering Tests
 // ==============================================================================
 
+// clang-format off
+/**
+ * TestTimeBufferingHysteresis:
+ *
+ *    Y ^
+ *      |   Boundary (Uncrossable)
+ *  2.0 +-------------------------------------------------
+ *      |          / V_danger (Yaw=0.1, crosses at Y=2.0)
+ *  1.0 |         V
+ *      |        /   >>> Predicted Trajectory
+ *  0.0 +-------V-----------------------------------------> X
+ *              V_safe (Safe Y=0.0)
+ *
+ * Evaluates hysteresis logic: CRITICAL is held during OFF-buffer even if
+ * the vehicle returns to Safe Zone, and delayed during ON-buffer.
+ */
+// clang-format on
 TEST_F(UncrossableBoundaryCheckerTest, TestTimeBufferingHysteresis)
 {
-  checker_.set_lanelet_map(map_);
-  checker_.set_param(param_);
-  ASSERT_TRUE(checker_.initialize().has_value());
+  // 1-line summary: Evaluates the hysteresis logic and time buffering (ON/OFF) for critical
+  // departures.
 
-  // The boundary is at Y = 2.0.
-  double safe_y = 0.0;
-  double danger_y = 1.0;
-  double danger_yaw = 0.1;  // Angled so the left side actively crosses Y=2.0
-  double test_velocity = 10.0;
+  // Arrange:
+  double safe_y = 0.0;          // safe lateral position [m]
+  double danger_y = 1.0;        // danger lateral position [m]
+  double danger_yaw = 0.1;      // yaw [rad] to force boundary crossing at Y=2.0
+  double test_velocity = 10.0;  // velocity [m/s]
 
-  // ----------------------------------------------------------------------------
   // STEP 1: Safe Driving
-  // ----------------------------------------------------------------------------
   auto traj_safe = create_trajectory(0.0, safe_y, test_velocity, 0.0);
-  auto state_safe = create_ego_state(traj_safe, test_velocity, clock_->now().seconds());
+  auto state_safe = create_ego_state(traj_safe, test_velocity, time_sec_toc(0.0));
 
-  auto res1 = checker_.check_departure(traj_safe, vehicle_info_, state_safe);
-  ASSERT_TRUE(res1.has_value());
-  EXPECT_EQ(res1->status, DepartureType::NONE) << "Should be NONE when far from boundary.";
+  // Act:
+  auto res1 = checker_ptr_->update_departure_status(traj_safe, state_safe);
 
-  // ----------------------------------------------------------------------------
-  // STEP 2: Instantly teleport to Danger Zone
-  // ----------------------------------------------------------------------------
+  // Assert:
+  EXPECT_TRUE(res1.status == DepartureType::NONE) << "Should be NONE when far from boundary.";
+
+  // STEP 2: Instantly teleport to Danger Zone. Time increase less than ON buffer.
+  // Arrange:
   auto traj_danger = create_trajectory(0.0, danger_y, test_velocity, danger_yaw);
-  auto state_danger = create_ego_state(traj_danger, test_velocity, clock_->now().seconds());
+  auto state_danger = create_ego_state(traj_danger, test_velocity, time_sec_toc(0.1));
 
-  auto res2 = checker_.check_departure(traj_danger, vehicle_info_, state_danger);
-  ASSERT_TRUE(res2.has_value());
-  // Even though it intersects, the on_time_buffer_s (0.15s) suppresses the CRITICAL state!
-  EXPECT_EQ(res2->status, DepartureType::NONE) << "Should be NONE due to ON time buffer.";
+  // Act:
+  auto res2 = checker_ptr_->update_departure_status(traj_danger, state_danger);
 
-  // ----------------------------------------------------------------------------
-  // STEP 3: Wait for ON buffer to expire (Danger is continuous)
-  // ----------------------------------------------------------------------------
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));  // Sleep > 150ms
+  // Assert:
+  EXPECT_TRUE(res2.status == DepartureType::NONE) << "Should be NONE due to ON time buffer.";
 
-  auto res3 = checker_.check_departure(
-    traj_danger, vehicle_info_,
-    create_ego_state(traj_danger, test_velocity, clock_->now().seconds()));
-  ASSERT_TRUE(res3.has_value());
-  EXPECT_EQ(res3->status, DepartureType::CRITICAL)
+  // STEP 3: Wait for ON buffer to expire. Time increase by 0.2 second (Danger is continuous)
+  // Act:
+  auto res3 = checker_ptr_->update_departure_status(
+    traj_danger, create_ego_state(traj_danger, test_velocity, time_sec_toc(0.2)));
+
+  // Assert:
+  EXPECT_TRUE(res3.status == DepartureType::CRITICAL)
     << "Should trigger CRITICAL after buffer expires.";
 
-  // ----------------------------------------------------------------------------
   // STEP 4: Instantly teleport back to Safe Zone
-  // ----------------------------------------------------------------------------
-  auto res4 = checker_.check_departure(
-    traj_safe, vehicle_info_, create_ego_state(traj_safe, test_velocity, clock_->now().seconds()));
-  ASSERT_TRUE(res4.has_value());
-  // Even though it is physically safe, the off_time_buffer_s (0.15s) holds the CRITICAL state!
-  EXPECT_EQ(res4->status, DepartureType::CRITICAL)
+  // Act:
+  auto res4 = checker_ptr_->update_departure_status(
+    traj_safe, create_ego_state(traj_safe, test_velocity, time_sec_toc(0.0)));
+
+  // Assert:
+  EXPECT_TRUE(res4.status == DepartureType::CRITICAL)
     << "Should hold CRITICAL due to OFF time buffer.";
 
-  // ----------------------------------------------------------------------------
   // STEP 5: Wait for OFF buffer to expire (Safety is continuous)
-  // ----------------------------------------------------------------------------
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));  // Sleep > 150ms
+  // Act:
+  auto res5 = checker_ptr_->update_departure_status(
+    traj_safe, create_ego_state(traj_safe, test_velocity, time_sec_toc(0.2)));
 
-  auto res5 = checker_.check_departure(
-    traj_safe, vehicle_info_, create_ego_state(traj_safe, test_velocity, clock_->now().seconds()));
-  ASSERT_TRUE(res5.has_value());
-  EXPECT_EQ(res5->status, DepartureType::NONE) << "Should return to NONE after OFF buffer expires.";
+  // Assert:
+  EXPECT_TRUE(res5.status == DepartureType::NONE)
+    << "Should return to NONE after OFF buffer expires.";
 
-  // ----------------------------------------------------------------------------
   // STEP 6: Visualization
-  // ----------------------------------------------------------------------------
-  BDC_PLOT_RESULT({
-    auto plt = autoware::pyplot::import();
-
-    // Plot the Boundary (Y = 2.0)
-    std::vector<double> bound_x = {-10.0, 30.0};
-    std::vector<double> bound_y = {2.0, 2.0};
-    plt.plot(
-      Args(bound_x, bound_y),
-      Kwargs("color"_a = "red", "linewidth"_a = 2.0, "label"_a = "Road Boundary"));
-
-    // Plot the Safe Trajectory (Y = 0.0)
-    std::vector<double> safe_x, safe_y;
-    for (const auto & p : traj_safe) {
-      safe_x.push_back(p.pose.position.x);
-      safe_y.push_back(p.pose.position.y);
-    }
-    plt.plot(
-      Args(safe_x, safe_y), Kwargs(
-                              "color"_a = "green", "marker"_a = "o", "linestyle"_a = "--",
-                              "label"_a = "Safe Trajectory (NONE)"));
-
-    // Plot the Danger Trajectory (Angled)
-    std::vector<double> danger_x, danger_y;
-    for (const auto & p : traj_danger) {
-      danger_x.push_back(p.pose.position.x);
-      danger_y.push_back(p.pose.position.y);
-    }
-    plt.plot(
-      Args(danger_x, danger_y), Kwargs(
-                                  "color"_a = "orange", "marker"_a = "x", "linestyle"_a = "--",
-                                  "label"_a = "Danger Trajectory (CRITICAL)"));
-
-    // Draw the actual vehicle footprint on the Danger Trajectory
-    auto local_fp = vehicle_info_.createFootprint(0.0, 0.0);
-    auto transformed_fp = autoware_utils_geometry::transform_vector(
-      local_fp, autoware_utils_geometry::pose2transform(traj_danger.front().pose));
-
-    std::vector<double> box_x, box_y;
-    for (const auto & pt : transformed_fp) {
-      box_x.push_back(pt.x());
-      box_y.push_back(pt.y());
-    }
-    plt.plot(
-      Args(box_x, box_y),
-      Kwargs("color"_a = "gray", "alpha"_a = 0.5, "label"_a = "Ego Vehicle Footprint"));
-
-    plt.title(Args("Hysteresis Test: Top-Down View"));
-    plt.xlabel(Args("X [m]"));
-    plt.ylabel(Args("Y [m]"));
-    plt.axis(Args("equal"));
-    plt.legend(Kwargs("loc"_a = "lower right"));
-
-    save_figure(plt, "test_uncrossable_boundary_checker");
-  });
 }
 }  // namespace autoware::boundary_departure_checker
