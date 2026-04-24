@@ -84,7 +84,8 @@ struct TrajectoryIdentification
 
   TrajectoryIdentification(
     const autoware_perception_msgs::msg::PredictedObject & object,
-    const builtin_interfaces::msg::Time stamp, std::string trajectory_type = {}, double acceleration = 0.0)
+    const builtin_interfaces::msg::Time stamp, std::string trajectory_type = {},
+    double acceleration = 0.0)
   : classification(autoware::object_recognition_utils::convertLabelToString(
       autoware::object_recognition_utils::getHighestProbLabel(object.classification))),
     stamp(stamp),
@@ -95,7 +96,10 @@ struct TrajectoryIdentification
   }
 
   std::string object_id_string() const { return autoware_utils_uuid::to_hex_string(uuid); }
-  std::string trajectory_id_string() const { return object_id_string() + "_" + trajectory_type +  " acc: " + std::to_string(acceleration); }
+  std::string trajectory_id_string() const
+  {
+    return object_id_string() + "_" + trajectory_type + " acc: " + std::to_string(acceleration);
+  }
 };
 
 namespace geometry
