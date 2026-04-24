@@ -1175,6 +1175,7 @@ std::vector<Finding> assess_planned_speed_collision_timing(
 
   return findings;
 }
+
 DracAssessment assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const validator::Params::CollisionCheck::Drac & drac_params, VehicleInfo & vehicle_info,
@@ -1267,9 +1268,7 @@ Result assess(
   // drac_params.collision_time_threshold)
   const double required_time_horizon =
     rclcpp::Duration(traj_points.back().time_from_start).seconds() +
-    std::max(
-      pet_collision_params.warn_threshold.object_first_passing_time_gap,
-      std::max(0.0, pet_collision_params.warn_threshold.ego_first_passing_time_gap));
+    pet_collision_params.warn_threshold.ego_first_passing_time_gap;
   const auto nominal_speed_object_trajectories = generate_object_trajectories(
     context, required_time_horizon, -1.0, global_setting.time_resolution,
     required_trajectory_types);
