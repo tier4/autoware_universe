@@ -21,6 +21,9 @@
 #include <autoware/cuda_utils/cuda_utils.hpp>
 #include <autoware/point_types/memory.hpp>
 #include <autoware/point_types/types.hpp>
+#ifdef AUTOWARE_PTV3_ENABLE_NVTX
+#include <nvToolsExt.h>
+#endif
 #include <rclcpp/rclcpp.hpp>
 
 #include <sensor_msgs/msg/point_field.hpp>
@@ -39,6 +42,12 @@ namespace autoware::ptv3
 
 namespace
 {
+
+constexpr std::uint32_t kNvtxBenchmarkColor = 0xFF5E3C99U;
+constexpr std::uint32_t kNvtxPreprocessColor = 0xFF1B9E77U;
+constexpr std::uint32_t kNvtxInferenceColor = 0xFFD95F02U;
+constexpr std::uint32_t kNvtxPostprocessColor = 0xFF7570B3U;
+constexpr std::uint32_t kNvtxSynchronizeColor = 0xFF666666U;
 
 class CudaEvent
 {
@@ -75,6 +84,44 @@ double duration_ms(const std::chrono::steady_clock::duration duration)
 {
   return std::chrono::duration<double, std::milli>(duration).count();
 }
+
+class ScopedNvtxRange
+{
+public:
+  ScopedNvtxRange(const char * message, const std::uint32_t color, const bool enabled)
+  : enabled_(enabled)
+  {
+#ifdef AUTOWARE_PTV3_ENABLE_NVTX
+    if (!enabled_) {
+      return;
+    }
+
+    nvtxEventAttributes_t attributes{};
+    attributes.version = NVTX_VERSION;
+    attributes.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
+    attributes.colorType = NVTX_COLOR_ARGB;
+    attributes.color = color;
+    attributes.messageType = NVTX_MESSAGE_TYPE_ASCII;
+    attributes.message.ascii = message;
+    nvtxRangePushEx(&attributes);
+#else
+    (void)message;
+    (void)color;
+#endif
+  }
+
+  ~ScopedNvtxRange()
+  {
+#ifdef AUTOWARE_PTV3_ENABLE_NVTX
+    if (enabled_) {
+      nvtxRangePop();
+    }
+#endif
+  }
+
+private:
+  bool enabled_{false};
+};
 
 }  // namespace
 
@@ -317,6 +364,8 @@ bool PTv3TRT::benchmark(
 {
   metrics = {};
   metrics.input_points = static_cast<std::uint32_t>(msg_ptr->height * msg_ptr->width);
+  const ScopedNvtxRange benchmark_range(
+    "ptv3_benchmark", kNvtxBenchmarkColor, options.annotate_nvtx);
 
   const auto cpu_total_start = std::chrono::steady_clock::now();
   CudaEvent total_start;
@@ -329,36 +378,53 @@ bool PTv3TRT::benchmark(
   CudaEvent total_end;
 
   total_start.record(stream_);
-  preprocess_start.record(stream_);
-  const auto cpu_preprocess_start = std::chrono::steady_clock::now();
-  if (!preProcess(msg_ptr)) {
-    return false;
+  {
+    const ScopedNvtxRange preprocess_range(
+      "ptv3_preprocess", kNvtxPreprocessColor, options.annotate_nvtx);
+    preprocess_start.record(stream_);
+    const auto cpu_preprocess_start = std::chrono::steady_clock::now();
+    if (!preProcess(msg_ptr)) {
+      return false;
+    }
+    metrics.cpu_preprocess_ms =
+      duration_ms(std::chrono::steady_clock::now() - cpu_preprocess_start);
+    preprocess_end.record(stream_);
   }
-  metrics.cpu_preprocess_ms = duration_ms(std::chrono::steady_clock::now() - cpu_preprocess_start);
-  preprocess_end.record(stream_);
 
-  inference_start.record(stream_);
-  const auto cpu_inference_start = std::chrono::steady_clock::now();
-  if (!inference(false)) {
-    return false;
+  {
+    const ScopedNvtxRange inference_range(
+      "ptv3_inference", kNvtxInferenceColor, options.annotate_nvtx);
+    inference_start.record(stream_);
+    const auto cpu_inference_start = std::chrono::steady_clock::now();
+    if (!inference(false)) {
+      return false;
+    }
+    metrics.cpu_inference_ms = duration_ms(std::chrono::steady_clock::now() - cpu_inference_start);
+    inference_end.record(stream_);
   }
-  metrics.cpu_inference_ms = duration_ms(std::chrono::steady_clock::now() - cpu_inference_start);
-  inference_end.record(stream_);
 
-  postprocess_start.record(stream_);
-  const auto cpu_postprocess_start = std::chrono::steady_clock::now();
-  if (!postProcess(
-        msg_ptr->header, options.materialize_segmented_pointcloud,
-        options.materialize_visualization_pointcloud, options.materialize_filtered_pointcloud,
-        false, false)) {
-    return false;
+  {
+    const ScopedNvtxRange postprocess_range(
+      "ptv3_postprocess", kNvtxPostprocessColor, options.annotate_nvtx);
+    postprocess_start.record(stream_);
+    const auto cpu_postprocess_start = std::chrono::steady_clock::now();
+    if (!postProcess(
+          msg_ptr->header, options.materialize_segmented_pointcloud,
+          options.materialize_visualization_pointcloud, options.materialize_filtered_pointcloud,
+          false, false)) {
+      return false;
+    }
+    metrics.cpu_postprocess_ms =
+      duration_ms(std::chrono::steady_clock::now() - cpu_postprocess_start);
+    postprocess_end.record(stream_);
   }
-  metrics.cpu_postprocess_ms =
-    duration_ms(std::chrono::steady_clock::now() - cpu_postprocess_start);
-  postprocess_end.record(stream_);
   total_end.record(stream_);
 
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  {
+    const ScopedNvtxRange synchronize_range(
+      "ptv3_synchronize", kNvtxSynchronizeColor, options.annotate_nvtx);
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  }
 
   metrics.cpu_total_ms = duration_ms(std::chrono::steady_clock::now() - cpu_total_start);
   metrics.gpu_total_ms = total_start.elapsedMsTo(total_end);

@@ -16,6 +16,11 @@ if(CUDA_FOUND)
     ${CUDA_TOOLKIT_ROOT_DIR}/lib64
     ${CUDA_TOOLKIT_ROOT_DIR}/lib
   )
+  find_library(NVTOOLSEXT_LIBRARY nvToolsExt HINTS
+    ${CUDA_TOOLKIT_ROOT_DIR}/lib64
+    ${CUDA_TOOLKIT_ROOT_DIR}/targets/x86_64-linux/lib
+    ${CUDA_TOOLKIT_ROOT_DIR}/lib
+  )
   if(CUDA_VERBOSE)
     message("CUDA is available!")
     message("CUDA Libs: ${CUDA_LIBRARIES}")
@@ -93,8 +98,17 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     lib/ptv3_trt.cpp
   )
 
-  target_compile_definitions(${PROJECT_NAME}_lib PRIVATE
+  set(${PROJECT_NAME}_lib_compile_definitions
     TENSORRT_VERSION_MAJOR=${TENSORRT_VERSION_MAJOR}
+  )
+  if(NVTOOLSEXT_LIBRARY)
+    list(APPEND ${PROJECT_NAME}_lib_compile_definitions AUTOWARE_PTV3_ENABLE_NVTX=1)
+  else()
+    message(STATUS "NVTX support disabled for ${PROJECT_NAME}_lib because nvToolsExt was not found.")
+  endif()
+
+  target_compile_definitions(${PROJECT_NAME}_lib PRIVATE
+    ${${PROJECT_NAME}_lib_compile_definitions}
   )
 
   target_link_libraries(${PROJECT_NAME}_lib
@@ -104,6 +118,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${CUBLAS_LIBRARIES}
     ${CUDA_curand_LIBRARY}
     ${PROJECT_NAME}_cuda_lib
+    ${NVTOOLSEXT_LIBRARY}
   )
 
   # To suppress unknown-pragmas error. The root-cause is CUB library in CUDA 11.6.

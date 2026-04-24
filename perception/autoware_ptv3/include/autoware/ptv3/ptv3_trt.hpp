@@ -41,6 +41,7 @@ struct PTv3BenchmarkOptions
   bool materialize_segmented_pointcloud{true};
   bool materialize_visualization_pointcloud{false};
   bool materialize_filtered_pointcloud{false};
+  bool annotate_nvtx{false};
 };
 
 struct PTv3BenchmarkMetrics
