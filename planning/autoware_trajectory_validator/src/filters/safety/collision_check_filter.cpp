@@ -1198,7 +1198,6 @@ DracAssessment assess_drac(
           context.odometry->twist.twist, 0.0, -ego_dec, ego_time_horizon,
           global_setting.time_resolution, traj_points, vehicle_info);
       }
-      // todo: prepare parameter
       return trajectory::generate_ego_trajectory(
         context.odometry->twist.twist, drac_params.ego_total_braking_delay, -ego_dec,
         ego_time_horizon, global_setting.time_resolution, traj_points, vehicle_info);

@@ -50,8 +50,8 @@
           ego_first_passing_time_gap: 1.0
           object_first_passing_time_gap: 1.0
         error_threshold:
-          ego_first_passing_time_gap: 0.3
-          object_first_passing_time_gap: 0.6
+          ego_first_passing_time_gap: 0.6
+          object_first_passing_time_gap: 0.3
       rss:
         enable_assessment: true
         stop_distance_margin: 2.0
