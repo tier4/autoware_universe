@@ -85,6 +85,12 @@ def launch_setup(context, *args, **kwargs):
                 ),
             ]
         )
+    if LaunchConfiguration("rollout").perform(context):
+        remappings.extend(
+            [
+                ("/tf", "/simulation/tf"),
+            ]
+        )
 
     simple_planning_simulator_node = Node(
         package="autoware_simple_planning_simulator",

@@ -195,7 +195,7 @@ SimplePlanningSimulator::SimplePlanningSimulator(const rclcpp::NodeOptions & opt
 
   // set initialize source
   const auto initialize_source = declare_parameter("initialize_source", "INITIAL_POSE_TOPIC");
-  RCLCPP_INFO(this->get_logger(), "initialize_source : %s", initialize_source.c_str());
+  RCLCPP_DEBUG(this->get_logger(), "initialize_source : %s", initialize_source.c_str());
   if (initialize_source == "ORIGIN") {
     Pose p;
     p.orientation.w = 1.0;          // yaw = 0
