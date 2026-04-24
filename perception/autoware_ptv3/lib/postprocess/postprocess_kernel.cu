@@ -213,7 +213,7 @@ PostprocessCuda::PostprocessCuda(const PTv3Config & config, cudaStream_t stream)
 
 void PostprocessCuda::createVisualizationPointcloud(
   const float * input_features, const std::int64_t * labels, float * output_points,
-  std::size_t num_points)
+  std::size_t num_points, const bool synchronize)
 {
   auto num_blocks = divup(num_points, config_.threads_per_block_);
 
@@ -221,12 +221,15 @@ void PostprocessCuda::createVisualizationPointcloud(
     reinterpret_cast<const float4 *>(input_features), color_map_d_.get(), labels,
     reinterpret_cast<float4 *>(output_points), num_points);
 
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  if (synchronize) {
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  }
 }
 
 void PostprocessCuda::createSegmentationPointcloud(
   const float * input_features, const std::int64_t * pred_labels, const float * pred_probs,
-  std::uint8_t * output_points, std::size_t num_classes, std::size_t num_points)
+  std::uint8_t * output_points, std::size_t num_classes, std::size_t num_points,
+  const bool synchronize)
 {
   auto num_blocks = divup(num_points, config_.threads_per_block_);
 
@@ -234,12 +237,15 @@ void PostprocessCuda::createSegmentationPointcloud(
     reinterpret_cast<const float4 *>(input_features), pred_labels, pred_probs,
     reinterpret_cast<OutputSegmentationPointType *>(output_points), num_classes, num_points);
 
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  if (synchronize) {
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  }
 }
 
 std::size_t PostprocessCuda::createFilteredPointcloud(
   const void * compact_input_points, CloudFormat input_format, CloudFormat output_format,
-  const float * pred_probs, void * output_points, std::size_t num_classes, std::size_t num_points)
+  const float * pred_probs, void * output_points, std::size_t num_classes,
+  std::size_t num_points)
 {
   cudaMemsetAsync(filtered_mask_d_.get(), 0, sizeof(std::uint32_t), stream_);
 

@@ -36,6 +36,29 @@ namespace autoware::ptv3
 
 using autoware::cuda_utils::CudaUniquePtr;
 
+struct PTv3BenchmarkOptions
+{
+  bool materialize_segmented_pointcloud{true};
+  bool materialize_visualization_pointcloud{false};
+  bool materialize_filtered_pointcloud{false};
+};
+
+struct PTv3BenchmarkMetrics
+{
+  double cpu_total_ms{0.0};
+  double cpu_preprocess_ms{0.0};
+  double cpu_inference_ms{0.0};
+  double cpu_postprocess_ms{0.0};
+
+  double gpu_total_ms{0.0};
+  double gpu_preprocess_ms{0.0};
+  double gpu_inference_ms{0.0};
+  double gpu_postprocess_ms{0.0};
+
+  std::uint32_t input_points{0};
+  std::uint32_t num_voxels{0};
+};
+
 class PTV3_PUBLIC PTv3TRT
 {
 public:
@@ -49,6 +72,10 @@ public:
     const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & msg_ptr,
     bool should_publish_segmented_pointcloud, bool should_publish_visualization_pointcloud,
     bool should_publish_filtered_pointcloud, std::unordered_map<std::string, double> & proc_timing);
+
+  bool benchmark(
+    const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & msg_ptr,
+    const PTv3BenchmarkOptions & options, PTv3BenchmarkMetrics & metrics);
 
   void setPublishSegmentedPointcloud(
     std::function<void(std::unique_ptr<const cuda_blackboard::CudaPointCloud2>)> func);
@@ -66,11 +93,12 @@ protected:
 
   bool preProcess(const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & msg_ptr);
 
-  bool inference();
+  bool inference(bool synchronize = true);
 
   bool postProcess(
     const std_msgs::msg::Header & header, bool should_publish_segmented_pointcloud,
-    bool should_publish_visualization_pointcloud, bool should_publish_filtered_pointcloud);
+    bool should_publish_visualization_pointcloud, bool should_publish_filtered_pointcloud,
+    bool publish_outputs = true, bool synchronize = true);
 
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> network_trt_ptr_{nullptr};
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_{nullptr};

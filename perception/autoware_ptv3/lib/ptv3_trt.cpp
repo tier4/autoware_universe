@@ -26,6 +26,7 @@
 #include <sensor_msgs/msg/point_field.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -35,6 +36,47 @@
 
 namespace autoware::ptv3
 {
+
+namespace
+{
+
+class CudaEvent
+{
+public:
+  CudaEvent()
+  {
+    CHECK_CUDA_ERROR(cudaEventCreate(&event_));
+  }
+
+  ~CudaEvent()
+  {
+    if (event_ != nullptr) {
+      cudaEventDestroy(event_);
+    }
+  }
+
+  void record(cudaStream_t stream)
+  {
+    CHECK_CUDA_ERROR(cudaEventRecord(event_, stream));
+  }
+
+  [[nodiscard]] double elapsedMsTo(const CudaEvent & end_event) const
+  {
+    float elapsed_ms = 0.0F;
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&elapsed_ms, event_, end_event.event_));
+    return static_cast<double>(elapsed_ms);
+  }
+
+private:
+  cudaEvent_t event_{nullptr};
+};
+
+double duration_ms(const std::chrono::steady_clock::duration duration)
+{
+  return std::chrono::duration<double, std::milli>(duration).count();
+}
+
+}  // namespace
 
 PTv3TRT::PTv3TRT(const tensorrt_common::TrtCommonConfig & trt_config, const PTv3Config & config)
 : config_(config)
@@ -269,6 +311,64 @@ bool PTv3TRT::segment(
   return true;
 }
 
+bool PTv3TRT::benchmark(
+  const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & msg_ptr,
+  const PTv3BenchmarkOptions & options, PTv3BenchmarkMetrics & metrics)
+{
+  metrics = {};
+  metrics.input_points = static_cast<std::uint32_t>(msg_ptr->height * msg_ptr->width);
+
+  const auto cpu_total_start = std::chrono::steady_clock::now();
+  CudaEvent total_start;
+  CudaEvent preprocess_start;
+  CudaEvent preprocess_end;
+  CudaEvent inference_start;
+  CudaEvent inference_end;
+  CudaEvent postprocess_start;
+  CudaEvent postprocess_end;
+  CudaEvent total_end;
+
+  total_start.record(stream_);
+  preprocess_start.record(stream_);
+  const auto cpu_preprocess_start = std::chrono::steady_clock::now();
+  if (!preProcess(msg_ptr)) {
+    return false;
+  }
+  metrics.cpu_preprocess_ms = duration_ms(std::chrono::steady_clock::now() - cpu_preprocess_start);
+  preprocess_end.record(stream_);
+
+  inference_start.record(stream_);
+  const auto cpu_inference_start = std::chrono::steady_clock::now();
+  if (!inference(false)) {
+    return false;
+  }
+  metrics.cpu_inference_ms = duration_ms(std::chrono::steady_clock::now() - cpu_inference_start);
+  inference_end.record(stream_);
+
+  postprocess_start.record(stream_);
+  const auto cpu_postprocess_start = std::chrono::steady_clock::now();
+  if (!postProcess(
+        msg_ptr->header, options.materialize_segmented_pointcloud,
+        options.materialize_visualization_pointcloud, options.materialize_filtered_pointcloud,
+        false, false)) {
+    return false;
+  }
+  metrics.cpu_postprocess_ms =
+    duration_ms(std::chrono::steady_clock::now() - cpu_postprocess_start);
+  postprocess_end.record(stream_);
+  total_end.record(stream_);
+
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+
+  metrics.cpu_total_ms = duration_ms(std::chrono::steady_clock::now() - cpu_total_start);
+  metrics.gpu_total_ms = total_start.elapsedMsTo(total_end);
+  metrics.gpu_preprocess_ms = preprocess_start.elapsedMsTo(preprocess_end);
+  metrics.gpu_inference_ms = inference_start.elapsedMsTo(inference_end);
+  metrics.gpu_postprocess_ms = postprocess_start.elapsedMsTo(postprocess_end);
+  metrics.num_voxels = static_cast<std::uint32_t>(num_voxels_);
+  return true;
+}
+
 bool PTv3TRT::preProcess(const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & msg_ptr)
 {
   using autoware::cuda_utils::clear_async;
@@ -385,10 +485,12 @@ bool PTv3TRT::preProcess(const std::shared_ptr<const cuda_blackboard::CudaPointC
   return true;
 }
 
-bool PTv3TRT::inference()
+bool PTv3TRT::inference(const bool synchronize)
 {
   auto status = network_trt_ptr_->enqueueV3(stream_);
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  if (synchronize) {
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  }
 
   if (!status) {
     RCLCPP_ERROR(rclcpp::get_logger("ptv3"), "Fail to enqueue and skip to detect.");
@@ -400,46 +502,53 @@ bool PTv3TRT::inference()
 
 bool PTv3TRT::postProcess(
   const std_msgs::msg::Header & header, bool should_publish_segmented_pointcloud,
-  bool should_publish_visualization_pointcloud, bool should_publish_filtered_pointcloud)
+  bool should_publish_visualization_pointcloud, bool should_publish_filtered_pointcloud,
+  const bool publish_outputs, const bool synchronize)
 {
   // Segmentation pointcloud
   if (should_publish_segmented_pointcloud) {
     post_ptr_->createSegmentationPointcloud(
       feat_d_.get(), pred_labels_d_.get(), pred_probs_d_.get(),
-      segmented_points_msg_ptr_->data.get(), config_.class_names_.size(), num_voxels_);
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+      segmented_points_msg_ptr_->data.get(), config_.class_names_.size(), num_voxels_, synchronize);
 
     segmented_points_msg_ptr_->header = header;
     segmented_points_msg_ptr_->width = num_voxels_;
-    publish_segmented_pointcloud_(std::move(segmented_points_msg_ptr_));
-    segmented_points_msg_ptr_ = nullptr;
+    if (publish_outputs && publish_segmented_pointcloud_) {
+      publish_segmented_pointcloud_(std::move(segmented_points_msg_ptr_));
+      segmented_points_msg_ptr_ = nullptr;
+    }
   }
 
   // Visualization pointcloud
   if (should_publish_visualization_pointcloud) {
     post_ptr_->createVisualizationPointcloud(
       feat_d_.get(), pred_labels_d_.get(),
-      reinterpret_cast<float *>(visualization_points_msg_ptr_->data.get()), num_voxels_);
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+      reinterpret_cast<float *>(visualization_points_msg_ptr_->data.get()), num_voxels_,
+      synchronize);
     visualization_points_msg_ptr_->header = header;
     visualization_points_msg_ptr_->width = num_voxels_;
-    publish_visualization_pointcloud_(std::move(visualization_points_msg_ptr_));
-    visualization_points_msg_ptr_ = nullptr;
+    if (publish_outputs && publish_visualization_pointcloud_) {
+      publish_visualization_pointcloud_(std::move(visualization_points_msg_ptr_));
+      visualization_points_msg_ptr_ = nullptr;
+    }
   }
 
   if (should_publish_filtered_pointcloud) {
     const auto num_filtered_points = post_ptr_->createFilteredPointcloud(
       compact_points_d_.get(), input_format_, filtered_output_format_, pred_probs_d_.get(),
       filtered_points_msg_ptr_->data.get(), config_.class_names_.size(), num_voxels_);
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
     filtered_points_msg_ptr_->header = header;
     filtered_points_msg_ptr_->width = num_filtered_points;
-    publish_filtered_pointcloud_(std::move(filtered_points_msg_ptr_));
-    filtered_points_msg_ptr_ = nullptr;
+    if (publish_outputs && publish_filtered_pointcloud_) {
+      publish_filtered_pointcloud_(std::move(filtered_points_msg_ptr_));
+      filtered_points_msg_ptr_ = nullptr;
+    }
   }
 
-  allocateMessages();
+  if (publish_outputs) {
+    allocateMessages();
+  }
   return true;
 }
 
