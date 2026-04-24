@@ -173,22 +173,22 @@ DetectedObject create_box_object(
   autoware::shape_estimation::ShapeEstimator & shape_estimator)
 {
   DetectedObject object;
-  object.existence_probability = probability;
-
-  const auto classification =
-    autoware_perception_msgs::build<ObjectClassification>().label(label).probability(probability);
-  object.classification.push_back(classification);
-
   autoware_perception_msgs::msg::Shape shape;
   geometry_msgs::msg::Pose pose;
+  // NOTE: Force to use UNKNOWN label to estimate the shape as polygon for non-pedestrian objects.
+  const std::uint8_t shape_label =
+    (label == ObjectClassification::PEDESTRIAN) ? label : ObjectClassification::UNKNOWN;
   const bool estimated = shape_estimator.estimateShapeAndPose(
-    label, cluster, boost::none, boost::none, boost::none, shape, pose);
+    shape_label, cluster, boost::none, boost::none, boost::none, shape, pose);
 
   if (!estimated) {
     std::tie(shape, pose) = create_fallback_shape_and_pose(cluster, label);
   }
 
   object.shape = shape;
+  object.existence_probability = probability;
+  object.classification.push_back(
+    autoware_perception_msgs::build<ObjectClassification>().label(label).probability(probability));
   object.kinematics.pose_with_covariance.pose = pose;
   object.kinematics.orientation_availability =
     autoware_perception_msgs::msg::DetectedObjectKinematics::UNAVAILABLE;
