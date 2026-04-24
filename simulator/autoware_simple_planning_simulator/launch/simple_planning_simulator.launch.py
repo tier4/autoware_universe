@@ -77,8 +77,8 @@ def launch_setup(context, *args, **kwargs):
     elif LaunchConfiguration("motion_publish_mode").perform(context) == "full_motion":
         remappings.extend(
             [
-                ("output/odometry", "/localization/kinematic_state"),
-                ("output/acceleration", "/localization/acceleration"),
+                ("output/odometry", "/simulation/localization/kinematic_state"),
+                ("output/acceleration", "/simulation/localization/acceleration"),
                 (
                     "output/pose",
                     "/simulation/debug/localization/pose_estimator/pose_with_covariance",
