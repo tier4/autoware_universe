@@ -249,7 +249,9 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
 
   EXPECT_TRUE(result.planned_speed_findings.empty());
   ASSERT_FALSE(result.drac_findings.empty());
-  EXPECT_EQ(result.drac_findings.front().object.trajectory_suffix, "_diffusion_based_trajectory");
+  EXPECT_EQ(
+    result.drac_findings.front().object_identification.trajectory_type,
+    "diffusion_based_trajectory");
 }
 
 TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)
