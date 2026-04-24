@@ -184,15 +184,15 @@ protected:
     validator::Params params;
     params.collision_check.drac.enable_assessment = false;
     params.collision_check.rss.enable_assessment = false;
-    params.collision_check.pet_collision.predicted_path_trajectory = true;
-    params.collision_check.pet_collision.constant_curvature_trajectory = false;
-    params.collision_check.pet_collision.diffusion_based_trajectory = false;
-    params.collision_check.pet_collision.warn.collision_time_threshold_positive = 1.0;
-    params.collision_check.pet_collision.warn.collision_time_threshold_negative = -1.0;
-    params.collision_check.pet_collision.error.collision_time_threshold_positive =
+    params.collision_check.pet_collision.assessment_trajectories.map_based = true;
+    params.collision_check.pet_collision.assessment_trajectories.constant_curvature = false;
+    params.collision_check.pet_collision.assessment_trajectories.diffusion_based = false;
+    params.collision_check.pet_collision.warn_threshold.ego_first_passing_time_gap = 1.0;
+    params.collision_check.pet_collision.warn_threshold.object_first_passing_time_gap = 1.0;
+    params.collision_check.pet_collision.error_threshold.ego_first_passing_time_gap =
       error_threshold_positive;
-    params.collision_check.pet_collision.error.collision_time_threshold_negative =
-      error_threshold_negative;
+    params.collision_check.pet_collision.error_threshold.object_first_passing_time_gap =
+      -error_threshold_negative;
     return params;
   }
 
@@ -201,11 +201,11 @@ protected:
     validator::Params params;
     params.collision_check.pet_collision.enable_assessment = false;
     params.collision_check.rss.enable_assessment = false;
-    params.collision_check.drac.predicted_path_trajectory = true;
-    params.collision_check.drac.constant_curvature_trajectory = false;
-    params.collision_check.drac.diffusion_based_trajectory = false;
-    params.collision_check.drac.warn.ego_deceleration_threshold = -3.0;
-    params.collision_check.drac.error.ego_deceleration_threshold = error_deceleration_threshold;
+    params.collision_check.drac.assessment_trajectories.map_based = true;
+    params.collision_check.drac.assessment_trajectories.constant_curvature = false;
+    params.collision_check.drac.assessment_trajectories.diffusion_based = false;
+    params.collision_check.drac.warn_threshold.ego_acceleration = -3.0;
+    params.collision_check.drac.error_threshold.ego_acceleration = error_deceleration_threshold;
     return params;
   }
 
@@ -322,13 +322,13 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
   vehicle_info.vehicle_width_m = 2.0;
 
   validator::Params::CollisionCheck::PetCollision pet_collision_params;
-  pet_collision_params.predicted_path_trajectory = false;
-  pet_collision_params.constant_curvature_trajectory = false;
-  pet_collision_params.diffusion_based_trajectory = false;
+  pet_collision_params.assessment_trajectories.map_based = false;
+  pet_collision_params.assessment_trajectories.constant_curvature = false;
+  pet_collision_params.assessment_trajectories.diffusion_based = false;
   validator::Params::CollisionCheck::Drac drac_params;
-  drac_params.predicted_path_trajectory = false;
-  drac_params.constant_curvature_trajectory = false;
-  drac_params.diffusion_based_trajectory = true;
+  drac_params.assessment_trajectories.map_based = false;
+  drac_params.assessment_trajectories.constant_curvature = false;
+  drac_params.assessment_trajectories.diffusion_based = true;
 
   const auto result = collision_timing_assessment::assess(
     ego_path, context, pet_collision_params, drac_params,

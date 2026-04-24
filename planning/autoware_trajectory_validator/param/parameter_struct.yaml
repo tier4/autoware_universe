@@ -69,32 +69,38 @@ validator:
         default_value: true
         description: When true, DRAC assessment is performed
         read_only: false
-      predicted_path_trajectory:
-        type: bool
-        default_value: true
-        description: Use predicted path trajectories for DRAC assessment
+      assessment_trajectories:
+        map_based:
+          type: bool
+          default_value: true
+          description: Use map based predicted path trajectories for DRAC assessment
+          read_only: false
+        constant_curvature:
+          type: bool
+          default_value: true
+          description: Use constant curvature trajectories for DRAC assessment
+          read_only: false
+        diffusion_based:
+          type: bool
+          default_value: true
+          description: Use diffusion based trajectories for DRAC assessment
+          read_only: false
+      ego_total_braking_delay:
+        type: double
+        default_value: 0.4
+        description: Total ego braking delay for DRAC assessment
         read_only: false
-      constant_curvature_trajectory:
-        type: bool
-        default_value: true
-        description: Use constant curvature trajectories for DRAC assessment
-        read_only: false
-      diffusion_based_trajectory:
-        type: bool
-        default_value: true
-        description: Use diffusion based trajectories for DRAC assessment
-        read_only: false
-      warn:
-        ego_deceleration_threshold:
+      warn_threshold:
+        ego_acceleration:
           type: double
           default_value: -3.0
-          description: Ego deceleration threshold for DRAC warning (m/s^2, negative)
+          description: Ego acceleration threshold for DRAC warning (m/s^2, negative)
           read_only: false
-      error:
-        ego_deceleration_threshold:
+      error_threshold:
+        ego_acceleration:
           type: double
           default_value: -5.0
-          description: Ego deceleration threshold for DRAC error (m/s^2, negative)
+          description: Ego acceleration threshold for DRAC error (m/s^2, negative)
           read_only: false
     pet_collision:
       enable_assessment:
@@ -102,52 +108,53 @@ validator:
         default_value: true
         description: When true, planned speed assessment is performed
         read_only: false
-      predicted_path_trajectory:
-        type: bool
-        default_value: true
-        description: Use predicted path trajectories for PET assessment
-        read_only: false
-      constant_curvature_trajectory:
-        type: bool
-        default_value: true
-        description: Use constant curvature trajectories for PET assessment
-        read_only: false
-      diffusion_based_trajectory:
-        type: bool
-        default_value: true
-        description: Use diffusion based trajectories for PET assessment
-        read_only: false
-      ego_reaction_time:
+      assessment_trajectories:
+        map_based:
+          type: bool
+          default_value: true
+          description: Use map based predicted path trajectories for PET assessment
+          read_only: false
+        constant_curvature:
+          type: bool
+          default_value: true
+          description: Use constant curvature trajectories for PET assessment
+          read_only: false
+        diffusion_based:
+          type: bool
+          default_value: true
+          description: Use diffusion based trajectories for PET assessment
+          read_only: false
+      ego_total_braking_delay:
         type: double
         default_value: 0.4
-        description: Ego reaction time for PET assessment
+        description: Total ego braking delay for PET assessment
         read_only: false
-      ego_assumed_deceleration:
+      ego_assumed_acceleration:
         type: double
         default_value: -5.0
-        description: Assumed ego deceleration for PET assessment (m/s^2, negative)
+        description: Assumed ego acceleration for PET assessment (m/s^2, negative)
         read_only: false
-      warn:
-        collision_time_threshold_positive:
+      warn_threshold:
+        ego_first_passing_time_gap:
           type: double
           default_value: 1.0
-          description: Positive PET threshold for warning
+          description: Allowed time gap when ego passes first for PET warning
           read_only: false
-        collision_time_threshold_negative:
+        object_first_passing_time_gap:
           type: double
-          default_value: -1.0
-          description: Negative PET threshold for warning
+          default_value: 1.0
+          description: Allowed time gap when object passes first for PET warning
           read_only: false
-      error:
-        collision_time_threshold_positive:
+      error_threshold:
+        ego_first_passing_time_gap:
+          type: double
+          default_value: 0.3
+          description: Allowed time gap when ego passes first for PET error
+          read_only: false
+        object_first_passing_time_gap:
           type: double
           default_value: 0.6
-          description: Positive PET threshold for error
-          read_only: false
-        collision_time_threshold_negative:
-          type: double
-          default_value: -0.3
-          description: Negative PET threshold for error
+          description: Allowed time gap when object passes first for PET error
           read_only: false
     rss:
       enable_assessment:
@@ -155,26 +162,27 @@ validator:
         default_value: true
         description: When true, RSS assessment is performed
         read_only: false
-      ego_deceleration_threshold:
-        type: double
-        default_value: -4.0
-        description: Ego deceleration threshold to determine RSS collision (m/s^2, negative)
-        read_only: false
-      stop_margin:
+      stop_distance_margin:
         type: double
         default_value: 2.0
         description: required remaining distance to the object when ego stops
         read_only: false
-      ego_reaction_time:
+      ego_total_braking_delay:
         type: double
         default_value: 0.4
-        description: reaction time of the ego vehicle
+        description: Total ego braking delay for RSS calculation
         read_only: false
-      object_assumed_deceleration:
+      object_assumed_acceleration:
         type: double
         default_value: -1.0
-        description: Assumed object deceleration for RSS calculation (m/s^2, negative)
+        description: Assumed object acceleration for RSS calculation (m/s^2, negative)
         read_only: false
+      error_threshold:
+        ego_acceleration:
+          type: double
+          default_value: -4.0
+          description: Ego acceleration threshold to determine RSS collision (m/s^2, negative)
+          read_only: false
 
   traffic_light:
     deceleration_limit:

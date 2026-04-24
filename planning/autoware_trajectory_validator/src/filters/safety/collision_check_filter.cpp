@@ -864,9 +864,9 @@ Assessment assess_required_deceleration(
   const double obj_long_vel = std::clamp(
     rss_deceleration::compute_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
   const double safe_distance =
-    distance_to_collision.value() - rss_params.stop_margin +
-    obj_long_vel * obj_long_vel * 0.5 / -rss_params.object_assumed_deceleration -
-    ego_long_vel * rss_params.ego_reaction_time;
+    distance_to_collision.value() - rss_params.stop_distance_margin +
+    obj_long_vel * obj_long_vel * 0.5 / -rss_params.object_assumed_acceleration -
+    ego_long_vel * rss_params.ego_total_braking_delay;
 
   // compute required deceleration
   const double required_deceleration = safe_distance <= 0.0
@@ -902,7 +902,7 @@ Result assess(
       result.worst_assessment = assessment;
     }
 
-    if (assessment.required_deceleration > -rss_params.ego_deceleration_threshold) {
+    if (assessment.required_deceleration > -rss_params.error_threshold.ego_acceleration) {
       result.has_violation = true;
       result.violations.push_back(assessment);
     }
@@ -946,9 +946,9 @@ struct ObjectTrajectoryGenerationOptions
   template <typename ParamsT>
   explicit ObjectTrajectoryGenerationOptions(const ParamsT & params)
   {
-    predicted_path_trajectory = params.predicted_path_trajectory;
-    constant_curvature_trajectory = params.constant_curvature_trajectory;
-    diffusion_based_trajectory = params.diffusion_based_trajectory;
+    predicted_path_trajectory = params.assessment_trajectories.map_based;
+    constant_curvature_trajectory = params.assessment_trajectories.constant_curvature;
+    diffusion_based_trajectory = params.assessment_trajectories.diffusion_based;
   }
 
   void merge_with(const ObjectTrajectoryGenerationOptions & other)
@@ -1137,8 +1137,8 @@ std::vector<Finding> assess_planned_speed_collision_timing(
   const std::vector<TrajectoryData> & object_trajectories)
 {
   const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
-                                            -pet_collision_params.ego_assumed_deceleration +
-                                          pet_collision_params.ego_reaction_time;
+                                            -pet_collision_params.ego_assumed_acceleration +
+                                          pet_collision_params.ego_total_braking_delay;
   auto ego_trajectory = trajectory::generate_ego_trajectory(
     traj_points, context, ego_time_horizon_for_pet, time_resolution, vehicle_info);
 
@@ -1154,8 +1154,8 @@ std::vector<Finding> assess_planned_speed_collision_timing(
 
     auto finding = find_collision_timing(
       ego_trajectory, object_trajectory,
-      pet_collision_params.warn.collision_time_threshold_positive,
-      pet_collision_params.warn.collision_time_threshold_negative, time_resolution);
+      pet_collision_params.warn_threshold.ego_first_passing_time_gap,
+      -pet_collision_params.warn_threshold.object_first_passing_time_gap, time_resolution);
     if (finding.has_value()) {
       findings.push_back(std::move(finding.value()));
     }
@@ -1187,10 +1187,9 @@ DracAssessment assess_drac(
           global_setting.time_resolution, traj_points, vehicle_info);
       }
       // todo: prepare parameter
-      constexpr double drac_params_ego_braking_delay = 0.4;
       return trajectory::generate_ego_trajectory(
-        context.odometry->twist.twist, drac_params_ego_braking_delay, -ego_dec, ego_time_horizon,
-        global_setting.time_resolution, traj_points, vehicle_info);
+        context.odometry->twist.twist, drac_params.ego_total_braking_delay, -ego_dec,
+        ego_time_horizon, global_setting.time_resolution, traj_points, vehicle_info);
     }();
 
     std::vector<Finding> findings{};
@@ -1205,7 +1204,7 @@ DracAssessment assess_drac(
       constexpr double drac_params_collision_time_threshold = 1.0;
       auto finding_nominal_object_motion = find_collision_timing(
         ego_deceleration_trajectory, object_trajectory, drac_params_collision_time_threshold,
-        global_setting.time_resolution);
+        -drac_params_collision_time_threshold, global_setting.time_resolution);
       if (!finding_nominal_object_motion.has_value()) {
         continue;
       }
@@ -1219,7 +1218,8 @@ DracAssessment assess_drac(
 
       auto finding_dec_object_motion = find_collision_timing(
         ego_deceleration_trajectory, object_deceleration_trajectory,
-        drac_params_collision_time_threshold, global_setting.time_resolution);
+        drac_params_collision_time_threshold, -drac_params_collision_time_threshold,
+        global_setting.time_resolution);
       if (!finding_dec_object_motion.has_value()) {
         continue;
       }
@@ -1257,8 +1257,8 @@ Result assess(
   const double required_time_horizon =
     rclcpp::Duration(traj_points.back().time_from_start).seconds() +
     std::max(
-      std::abs(pet_collision_params.warn.collision_time_threshold_negative),
-      std::max(0.0, pet_collision_params.warn.collision_time_threshold_positive));
+      pet_collision_params.warn_threshold.object_first_passing_time_gap,
+      std::max(0.0, pet_collision_params.warn_threshold.ego_first_passing_time_gap));
   const auto nominal_speed_object_trajectories = generate_object_trajectories(
     context, required_time_horizon, -1.0, global_setting.time_resolution,
     required_trajectory_types);
@@ -1510,8 +1510,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     traj_points, context, pet_collision_params_, drac_params_, global_setting_, *vehicle_info_ptr_);
 
   const auto is_pet_error = [this](const collision_timing_assessment::Finding & finding) {
-    return finding.pet <= pet_collision_params_.error.collision_time_threshold_positive &&
-           finding.pet >= pet_collision_params_.error.collision_time_threshold_negative;
+    return finding.pet <= pet_collision_params_.error_threshold.ego_first_passing_time_gap &&
+           finding.pet >= -pet_collision_params_.error_threshold.object_first_passing_time_gap;
   };
 
   pet_continuous_times_.update(
@@ -1567,10 +1567,10 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     [](const auto & finding) { return finding.object_identification.trajectory_id_string(); });
   const bool drac_warn =
     collision_timing_result.drac == std::nullopt ||
-    collision_timing_result.drac.value() >= -drac_params_.warn.ego_deceleration_threshold;
+    collision_timing_result.drac.value() >= -drac_params_.warn_threshold.ego_acceleration;
   const bool drac_error =
     collision_timing_result.drac == std::nullopt ||
-    collision_timing_result.drac.value() >= -drac_params_.error.ego_deceleration_threshold;
+    collision_timing_result.drac.value() >= -drac_params_.error_threshold.ego_acceleration;
   std::string drac_error_msg{};
   std::string drac_marker_msg{};
   if (drac_warn) {
