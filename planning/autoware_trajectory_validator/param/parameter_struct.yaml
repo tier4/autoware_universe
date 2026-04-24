@@ -1,58 +1,48 @@
 validator:
   filter_names:
     type: string_array
-    default_value: []
     description: metrics.
     read_only: false
 
   out_of_lane:
     time:
       type: double
-      default_value: 3.0
       description: The time range to check
       read_only: false
     min_value:
       type: double
-      default_value: 0.0
       description: Minimum distance to lane boundary
       read_only: false
 
   collision:
     time:
       type: double
-      default_value: 3.0
       description: The time range to check
       read_only: false
     min_value:
       type: double
-      default_value: 2.0
       description: Minimum acceptable time to collision
       read_only: false
 
   vehicle_constraint:
     max_speed:
       type: double
-      default_value: 16.7
       description: Maximum allowed speed (m/s)
       read_only: false
     max_acceleration:
       type: double
-      default_value: 5.0
       description: Maximum allowed acceleration (m/s^2)
       read_only: false
     max_deceleration:
       type: double
-      default_value: 5.0
       description: Maximum allowed deceleration (m/s^2, positive but represents deceleration)
       read_only: false
     max_steering_angle:
       type: double
-      default_value: 0.8
       description: Maximum allowed steering angle (rad)
       read_only: false
     max_steering_rate:
       type: double
-      default_value: 0.3
       description: Maximum allowed steering rate (rad/s)
       read_only: false
 
@@ -60,248 +50,202 @@ validator:
     global_setting:
       time_resolution:
         type: double
-        default_value: 0.1
         description: sampling interval used in collision check trajectory generation
         read_only: false
     drac:
       enable_assessment:
         type: bool
-        default_value: true
         description: When true, DRAC assessment is performed
         read_only: false
       assessment_trajectories:
         map_based:
           type: bool
-          default_value: true
           description: Use map based predicted path trajectories for DRAC assessment
           read_only: false
         constant_curvature:
           type: bool
-          default_value: true
           description: Use constant curvature trajectories for DRAC assessment
           read_only: false
         diffusion_based:
           type: bool
-          default_value: true
           description: Use diffusion based trajectories for DRAC assessment
           read_only: false
       ego_total_braking_delay:
         type: double
-        default_value: 0.4
         description: Total ego braking delay for DRAC assessment
         read_only: false
       warn_threshold:
         ego_acceleration:
           type: double
-          default_value: -3.0
           description: Ego acceleration threshold for DRAC warning (m/s^2, negative)
           read_only: false
       error_threshold:
         ego_acceleration:
           type: double
-          default_value: -5.0
           description: Ego acceleration threshold for DRAC error (m/s^2, negative)
           read_only: false
     pet_collision:
       enable_assessment:
         type: bool
-        default_value: true
         description: When true, planned speed assessment is performed
         read_only: false
       assessment_trajectories:
         map_based:
           type: bool
-          default_value: true
           description: Use map based predicted path trajectories for PET assessment
           read_only: false
         constant_curvature:
           type: bool
-          default_value: true
           description: Use constant curvature trajectories for PET assessment
           read_only: false
         diffusion_based:
           type: bool
-          default_value: true
           description: Use diffusion based trajectories for PET assessment
           read_only: false
       ego_total_braking_delay:
         type: double
-        default_value: 0.4
         description: Total ego braking delay for PET assessment
         read_only: false
       ego_assumed_acceleration:
         type: double
-        default_value: -5.0
         description: Assumed ego acceleration for PET assessment (m/s^2, negative)
         read_only: false
       warn_threshold:
         ego_first_passing_time_gap:
           type: double
-          default_value: 1.0
           description: Allowed time gap when ego passes first for PET warning
           read_only: false
         object_first_passing_time_gap:
           type: double
-          default_value: 1.0
           description: Allowed time gap when object passes first for PET warning
           read_only: false
       error_threshold:
         ego_first_passing_time_gap:
           type: double
-          default_value: 0.3
           description: Allowed time gap when ego passes first for PET error
           read_only: false
         object_first_passing_time_gap:
           type: double
-          default_value: 0.6
           description: Allowed time gap when object passes first for PET error
           read_only: false
     rss:
       enable_assessment:
         type: bool
-        default_value: true
         description: When true, RSS assessment is performed
         read_only: false
       stop_distance_margin:
         type: double
-        default_value: 2.0
         description: required remaining distance to the object when ego stops
         read_only: false
       ego_total_braking_delay:
         type: double
-        default_value: 0.4
         description: Total ego braking delay for RSS calculation
         read_only: false
       object_assumed_acceleration:
         type: double
-        default_value: -1.0
         description: Assumed object acceleration for RSS calculation (m/s^2, negative)
         read_only: false
       error_threshold:
         ego_acceleration:
           type: double
-          default_value: -4.0
           description: Ego acceleration threshold to determine RSS collision (m/s^2, negative)
           read_only: false
 
   traffic_light:
     deceleration_limit:
       type: double
-      default_value: 2.8
       description: Trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit (m/s^2)
       read_only: false
     jerk_limit:
       type: double
-      default_value: 5.0
       description: Trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit (m/s^3)
       read_only: false
     delay_response_time:
       type: double
-      default_value: 0.5
       description: Delay response time used to estimate the minimum ego stopping distance (s)
       read_only: false
     crossing_time_limit:
       type: double
-      default_value: 2.75
       description: Trajectories crossing an amber light are rejected if they cannot cross before this time (s)
       read_only: false
     treat_amber_light_as_red_light:
       type: bool
-      default_value: false
       description: When true, amber lights are handled like red lights
       read_only: false
     stop_overshoot_margin:
       type: double
-      default_value: 0.5
       description: Maximum distance between the stop line and the trajectory stop point to consider the trajectory feasible (m)
       read_only: false
     checked_trajectory_length:
       deceleration_limit:
         type: double
-        default_value: 2.0
         description: deceleration limit to calculate the stop distance used as trajectory length limit
         read_only: false
       jerk_limit:
         type: double
-        default_value: 4.0
         description: jerk limit to calculate the stop distance used as trajectory length limit
         read_only: false
 
   boundary_departure:
     lateral_margin_m:
       type: double
-      default_value: 0.01
       description: lateral margin [m]
       read_only: false
     longitudinal_margin_m:
       type: double
-      default_value: 1.0
       description: longitudinal margin [m]
       read_only: false
     max_deceleration_mps2:
       type: double
-      default_value: -4.0
       description: maximum deceleration [m/s^2]
       read_only: false
     max_jerk_mps3:
       type: double
-      default_value: -5.0
       description: maximum jerk [m/s^3]
       read_only: false
     brake_delay_s:
       type: double
-      default_value: 1.0
       description: brake delay [s]
       read_only: false
     time_to_departure_cutoff_s:
       type: double
-      default_value: 2.0
       description: time to departure cutoff [s]
       read_only: false
     on_time_buffer_s:
       type: double
-      default_value: 0.15
       description: buffer for activating departure detection [s]
       read_only: false
     off_time_buffer_s:
       type: double
-      default_value: 0.15
       description: buffer for deactivating departure detection [s]
       read_only: false
     enable_developer_marker:
       type: bool
-      default_value: true
       description: flag marker only for developer
       read_only: false
     boundary_types:
       type: string_array
-      default_value: ["road_border"]
       description: boundary types to detect
       read_only: true
 
   pseudo_emergency_stop:
     enable:
       type: bool
-      default_value: false
       description: When true, the emergency-stop fallback is active. When false, all emergency-stop handling is skipped. Evaluation use only.
       read_only: false
     deceleration_mps2:
       type: double
-      default_value: -6.0
       description: Target longitudinal deceleration (m/s^2, negative) used to build the emergency-stop velocity profile. Evaluation use only.
       read_only: false
     jerk_mps3:
       type: double
-      default_value: -20.0
       description: Longitudinal jerk (m/s^3, negative) used to ramp the deceleration when building the emergency-stop velocity profile. Evaluation use only.
       read_only: false
     recovery_policy:
       type: string
-      default_value: until_stopped
       description: Recovery policy after the emergency-stop is triggered. until_stopped keeps decelerating until the ego velocity falls below recovery_velocity_threshold_mps. immediate releases the deceleration as soon as the trigger condition disappears. Evaluation use only.
       read_only: false
     recovery_velocity_threshold_mps:
       type: double
-      default_value: 0.1
       description: Ego velocity threshold (m/s) under which the latched emergency-stop state is released when recovery_policy is until_stopped. Evaluation use only.
       read_only: false
