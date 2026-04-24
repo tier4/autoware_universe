@@ -119,7 +119,7 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string 
       return static_cast<OutT>(params_struct.base);
     }
 
-    using MemberPtr = double ParamStruct::*;
+    using MemberPtr = OutT ParamStruct::*;
 
     static const std::unordered_map<std::string, MemberPtr> mappings = {
       {"car", &ParamStruct::car},
@@ -141,7 +141,11 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string 
     }
 
     auto label_value = params_struct.*(it->second);
-    return static_cast<OutT>(std::isnan(label_value) ? params_struct.base : label_value);
+    if constexpr (std::is_floating_point_v<OutT>) {
+      return static_cast<OutT>(std::isnan(label_value) ? params_struct.base : label_value);
+    } else {
+      return static_cast<OutT>(label_value);
+    }
 
   } else {
     return static_cast<OutT>(params_struct);
