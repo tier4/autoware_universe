@@ -628,14 +628,14 @@ TEST(TrajectoryUtilitiesTest, ObjectTrajectoryGenerationOptionsMergeWithCombines
 TEST(TrajectoryUtilitiesTest, ObjectTrajectoryGenerationOptionsCanBeConstructedFromParams)
 {
   validator::Params::CollisionCheck::PetCollision pet_params{};
-  pet_params.predicted_path_trajectory = true;
-  pet_params.constant_curvature_trajectory = false;
-  pet_params.diffusion_based_trajectory = true;
+  pet_params.assessment_trajectories.map_based = true;
+  pet_params.assessment_trajectories.constant_curvature = false;
+  pet_params.assessment_trajectories.diffusion_based = true;
 
   validator::Params::CollisionCheck::Drac drac_params{};
-  drac_params.predicted_path_trajectory = false;
-  drac_params.constant_curvature_trajectory = true;
-  drac_params.diffusion_based_trajectory = false;
+  drac_params.assessment_trajectories.map_based = false;
+  drac_params.assessment_trajectories.constant_curvature = true;
+  drac_params.assessment_trajectories.diffusion_based = false;
 
   const auto pet_options =
     collision_timing_assessment::ObjectTrajectoryGenerationOptions{pet_params};
