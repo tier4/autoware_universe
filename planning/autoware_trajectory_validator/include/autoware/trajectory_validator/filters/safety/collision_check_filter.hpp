@@ -324,6 +324,7 @@ private:
   ContinuousDetectionTimes rss_continuous_times_;
   ContinuousDetectionTimes drac_continuous_times_;
 
+  void clear_detection_times();
   void add_debug_markers(
     const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
     const PoseTrajectory & ego_trajectory, const PoseTrajectory & object_trajectory,
