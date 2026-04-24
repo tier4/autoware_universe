@@ -26,17 +26,6 @@
 
 namespace autoware::dummy_diag_publisher
 {
-std::vector<std::string> split(const std::string & str, const char delim)
-{
-  std::vector<std::string> elems;
-  std::stringstream ss(str);
-  std::string item;
-  while (std::getline(ss, item, delim)) {
-    elems.push_back(item);
-  }
-  return elems;
-}
-
 std::optional<DummyDiagPublisher::Status> DummyDiagPublisher::convertStrToStatus(
   const std::string & status_str)
 {
@@ -91,12 +80,27 @@ void DummyDiagPublisher::loadRequiredDiags()
 
   std::set<std::string> diag_names;
 
-  for (const auto & param_name : param_names) {
-    const auto split_names = split(param_name, '.');
-    const auto & param_required_diags = split_names.at(0);
-    const auto & param_diag = split_names.at(1);
+  const std::string required_diags_prefix = param_key + std::string(".");
+  static const std::string is_active_suffix = ".is_active";
+  static const std::string status_suffix = ".status";
+  const auto ends_with = [](const std::string & s, const std::string & suffix) {
+    return s.size() > suffix.size() &&
+           s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+  };
 
-    const auto diag_name_with_prefix = fmt::format("{0}.{1}", param_required_diags, param_diag);
+  for (const auto & param_name : param_names) {
+    if (param_name.find(required_diags_prefix, 0) != 0) {
+      continue;
+    }
+
+    std::string param_diag = param_name.substr(required_diags_prefix.size());
+    if (ends_with(param_diag, is_active_suffix)) {
+      param_diag.resize(param_diag.size() - is_active_suffix.size());
+    } else if (ends_with(param_diag, status_suffix)) {
+      param_diag.resize(param_diag.size() - status_suffix.size());
+    }
+
+    const auto diag_name_with_prefix = required_diags_prefix + param_diag;
 
     if (diag_names.count(diag_name_with_prefix) != 0) {
       continue;
@@ -104,10 +108,10 @@ void DummyDiagPublisher::loadRequiredDiags()
 
     diag_names.insert(diag_name_with_prefix);
 
-    const auto is_active_key = diag_name_with_prefix + std::string(".is_active");
+    const auto is_active_key = diag_name_with_prefix + is_active_suffix;
     std::string is_active_str;
     this->get_parameter_or(is_active_key, is_active_str, std::string("true"));
-    const auto status_key = diag_name_with_prefix + std::string(".status");
+    const auto status_key = diag_name_with_prefix + status_suffix;
     std::string status_str;
     this->get_parameter_or(status_key, status_str, std::string("OK"));
 
