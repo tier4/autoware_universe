@@ -1,13 +1,18 @@
-# This file is automatically synced from:
-# https://github.com/autowarefoundation/sync-file-templates
-# To make changes, update the source repository and follow the guidelines in its README.
+# Originally from https://github.com/autowarefoundation/sync-file-templates
+# Customized: only PRs whose base branch name contains "e2e", and not opened by bots
+# (GitHub user.type Bot, or login/display name containing "bot", case-insensitive).
 
 name: comment-on-pr
 on:
-  pull_request_target:
+  pull_request:
+    types: [opened]
+    branches:
+      # Base branch must contain "e2e" (e.g. tier4-e2e, release/e2e-foo)
+      - "**e2e**"
 
 jobs:
   comment-on-pr:
+    if: github.event.pull_request.user.type != 'Bot' && !contains(toLower(github.event.pull_request.user.login), 'bot') && !contains(toLower(github.event.pull_request.user.name || ''), 'bot')
     runs-on: ubuntu-22.04
     permissions:
       pull-requests: write
