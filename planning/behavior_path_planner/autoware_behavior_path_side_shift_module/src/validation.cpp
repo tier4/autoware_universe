@@ -78,7 +78,8 @@ std::pair<uint16_t, double> validateShiftLeft(
   const double current_inserted_lateral_offset,
   const std::shared_ptr<SideShiftParameters> & parameters)
 {
-  if (current_inserted_lateral_offset >= parameters->max_shift_magnitude) {
+  constexpr double epsilon = 1.0e-4;
+  if (current_inserted_lateral_offset >= parameters->max_shift_magnitude - epsilon) {
     return {SetLateralOffset::Response::ERROR_EXCEEDED_LIMIT, parameters->max_shift_magnitude};
   }
 
@@ -98,7 +99,8 @@ std::pair<uint16_t, double> validateShiftRight(
   const double current_inserted_lateral_offset,
   const std::shared_ptr<SideShiftParameters> & parameters)
 {
-  if (current_inserted_lateral_offset <= -parameters->max_shift_magnitude) {
+  constexpr double epsilon = 1.0e-4;
+  if (current_inserted_lateral_offset <= -parameters->max_shift_magnitude + epsilon) {
     return {SetLateralOffset::Response::ERROR_EXCEEDED_LIMIT, -parameters->max_shift_magnitude};
   }
 
