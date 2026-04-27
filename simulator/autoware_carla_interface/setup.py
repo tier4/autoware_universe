@@ -27,7 +27,6 @@ setup(
     entry_points={
         "console_scripts": [
             "autoware_carla_interface = autoware_carla_interface.carla_autoware:main",
-            "splatsim_bridge = autoware_carla_interface.splatsim.splatsim_bridge_node:main",
             "splatsim_pose_publisher = autoware_carla_interface.splatsim.pose_publisher_node:main",
         ],
     },

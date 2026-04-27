@@ -107,6 +107,7 @@ class InitializeInterface(object):
 
         self.sensor_wrapper = SensorWrapper(self.interface)
         self.sensor_wrapper.setup_sensors(self.ego_actor, False)
+        self.interface.init_splatsim_cameras()
         ##########################################################################################################################################################
         # TRAFFIC MANAGER
         ##########################################################################################################################################################

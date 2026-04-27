@@ -89,6 +89,19 @@ class carla_ros2_interface(object):
             "use_traffic_manager": rclpy.Parameter.Type.BOOL,
             "max_real_delta_seconds": rclpy.Parameter.Type.DOUBLE,
             "render_with_splatsim": rclpy.Parameter.Type.BOOL,
+            "splatsim_tileset_path": rclpy.Parameter.Type.STRING,
+            "splatsim_image": rclpy.Parameter.Type.STRING,
+            "splatsim_grpc_port": rclpy.Parameter.Type.INTEGER,
+            "splatsim_use_sh": rclpy.Parameter.Type.BOOL,
+            "splatsim_frame_rate": rclpy.Parameter.Type.DOUBLE,
+            "splatsim_image_topic": rclpy.Parameter.Type.STRING,
+            "splatsim_camera_info_topic": rclpy.Parameter.Type.STRING,
+            "splatsim_frame_id": rclpy.Parameter.Type.STRING,
+            "splatsim_near_plane": rclpy.Parameter.Type.DOUBLE,
+            "splatsim_far_plane": rclpy.Parameter.Type.DOUBLE,
+            "splatsim_device": rclpy.Parameter.Type.STRING,
+            "splatsim_proj_origin_lat": rclpy.Parameter.Type.DOUBLE,
+            "splatsim_proj_origin_lon": rclpy.Parameter.Type.DOUBLE,
         }
         self.param_values = {}
         for param_name, param_type in self.parameters.items():
@@ -96,6 +109,7 @@ class carla_ros2_interface(object):
             self.param_values[param_name] = self.ros2_node.get_parameter(param_name).value
 
         self.render_with_splatsim = bool(self.param_values.get("render_with_splatsim", False))
+        self._splatsim_cameras = []
 
         # Publish clock
         self.clock_publisher = self.ros2_node.create_publisher(Clock, "/clock", 10)
@@ -138,7 +152,16 @@ class carla_ros2_interface(object):
         )
 
         # Create Publisher for each Physical Sensors
+        self._splatsim_camera_specs = []
         for sensor in self.sensors["sensors"]:
+            # When splatsim is active, skip camera/lidar (not spawned in CARLA)
+            if self.render_with_splatsim and sensor["type"].startswith(
+                ("sensor.camera", "sensor.lidar")
+            ):
+                if sensor["type"] == "sensor.camera.rgb":
+                    self._splatsim_camera_specs.append(sensor)
+                continue
+
             self.id_to_sensor_type_map[sensor["id"]] = sensor["type"]
             if sensor["type"] == "sensor.camera.rgb":
                 self.pub_camera = self.ros2_node.create_publisher(
@@ -459,6 +482,39 @@ class carla_ros2_interface(object):
         self.pub_ctrl_mode.publish(out_ctrl_mode)
         self.pub_gear_state.publish(out_gear_state)
 
+    def init_splatsim_cameras(self):
+        """Create SplatSimRGBCamera instances for each camera sensor spec.
+
+        Must be called after the CARLA world is loaded (ego_actor is set).
+        """
+        if not self.render_with_splatsim or not self._splatsim_camera_specs:
+            return
+
+        from .splatsim.splatsim_camera import SplatSimRGBCamera
+
+        p = self.param_values
+        for spec in self._splatsim_camera_specs:
+            cam = SplatSimRGBCamera(
+                spec,
+                tileset_path=p["splatsim_tileset_path"],
+                splatsim_image=p["splatsim_image"],
+                grpc_port=p["splatsim_grpc_port"],
+                use_sh=p["splatsim_use_sh"],
+                frame_rate=p["splatsim_frame_rate"],
+                image_topic=p["splatsim_image_topic"],
+                camera_info_topic=p["splatsim_camera_info_topic"],
+                frame_id=p["splatsim_frame_id"],
+                near_plane=p["splatsim_near_plane"],
+                far_plane=p["splatsim_far_plane"],
+                device=p["splatsim_device"],
+                proj_origin_lat=p["splatsim_proj_origin_lat"],
+                proj_origin_lon=p["splatsim_proj_origin_lon"],
+            )
+            self._splatsim_cameras.append(cam)
+            self.ros2_node.get_logger().info(
+                f"SplatSimRGBCamera created for sensor '{spec['id']}'"
+            )
+
     def run_step(self, input_data, timestamp):
         self.timestamp = timestamp
         seconds = int(self.timestamp)
@@ -481,9 +537,26 @@ class carla_ros2_interface(object):
             else:
                 self.ros2_node.get_logger().info("No Publisher for [{key}] Sensor")
 
+        # Send ego pose to splatsim cameras
+        if self._splatsim_cameras and self.ego_actor is not None:
+            pos = carla_location_to_ros_point(self.ego_actor.get_transform().location)
+            quat = carla_rotation_to_ros_quaternion(
+                self.ego_actor.get_transform().rotation
+            )
+            for cam in self._splatsim_cameras:
+                cam.update(
+                    ego_position=(pos.x, pos.y, pos.z),
+                    ego_quaternion_xyzw=(quat.x, quat.y, quat.z, quat.w),
+                    stamp_sec=seconds,
+                    stamp_nanosec=nanoseconds,
+                )
+
         # Publish ego vehicle status
         self.ego_status()
         return self.current_control
 
     def shutdown(self):
+        for cam in self._splatsim_cameras:
+            cam.shutdown()
+        self._splatsim_cameras.clear()
         self.ros2_node.destroy_node()
