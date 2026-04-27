@@ -87,8 +87,7 @@ ShapePolicy to_shape_policy(const std::uint8_t value)
     case ShapePolicy::LABEL_DEPEND:
       return ShapePolicy::LABEL_DEPEND;
     default:
-      throw std::runtime_error(
-        "shape_policy must be 0 (ALL_POLYGON) or 1 (LABEL_DEPEND)");
+      throw std::runtime_error("shape_policy must be 0 (ALL_POLYGON) or 1 (LABEL_DEPEND)");
   }
 }
 
@@ -225,7 +224,7 @@ DetectedObject create_detected_object(
 }
 
 /// @brief Split semantic points into buckets keyed by mapped object label.
-std::unordered_map<std::uint8_t, std::vector<SemanticPoint>> split_by_label(
+std::unordered_map<std::uint8_t, std::vector<SemanticPoint>> split_pointcloud(
   const sensor_msgs::msg::PointCloud2 & pointcloud,
   const std::unordered_map<std::uint8_t, std::uint8_t> & class_id_to_object_label,
   const float min_probability)
@@ -235,20 +234,60 @@ std::unordered_map<std::uint8_t, std::vector<SemanticPoint>> split_by_label(
   sensor_msgs::PointCloud2ConstIterator<float> iter_x(pointcloud, "x");
   sensor_msgs::PointCloud2ConstIterator<float> iter_y(pointcloud, "y");
   sensor_msgs::PointCloud2ConstIterator<float> iter_z(pointcloud, "z");
-  sensor_msgs::PointCloud2ConstIterator<std::uint8_t> iter_class(pointcloud, "class_id");
-  sensor_msgs::PointCloud2ConstIterator<float> iter_probability(pointcloud, "probability");
-  for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z, ++iter_class, ++iter_probability) {
-    if (*iter_probability < min_probability) {
-      continue;
-    }
 
-    const auto mapping = class_id_to_object_label.find(*iter_class);
-    if (mapping == class_id_to_object_label.end()) {
-      continue;
-    }
+  const bool has_class_id = has_field(pointcloud, "class_id", sensor_msgs::msg::PointField::UINT8);
+  const bool has_probability =
+    has_field(pointcloud, "probability", sensor_msgs::msg::PointField::FLOAT32);
 
-    buckets[mapping->second].push_back(
-      SemanticPoint{pcl::PointXYZ(*iter_x, *iter_y, *iter_z), *iter_probability});
+  if (has_class_id && has_probability) {
+    sensor_msgs::PointCloud2ConstIterator<std::uint8_t> iter_class(pointcloud, "class_id");
+    sensor_msgs::PointCloud2ConstIterator<float> iter_probability(pointcloud, "probability");
+    for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z, ++iter_class, ++iter_probability) {
+      if (*iter_probability < min_probability) {
+        continue;
+      }
+
+      const auto mapping = class_id_to_object_label.find(*iter_class);
+      if (mapping == class_id_to_object_label.end()) {
+        continue;
+      }
+
+      buckets[mapping->second].push_back(
+        SemanticPoint{pcl::PointXYZ(*iter_x, *iter_y, *iter_z), *iter_probability});
+    }
+    return buckets;
+  }
+
+  if (has_class_id) {
+    sensor_msgs::PointCloud2ConstIterator<std::uint8_t> iter_class(pointcloud, "class_id");
+    for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z, ++iter_class) {
+      const auto mapping = class_id_to_object_label.find(*iter_class);
+      if (mapping == class_id_to_object_label.end()) {
+        continue;
+      }
+
+      buckets[mapping->second].push_back(
+        SemanticPoint{pcl::PointXYZ(*iter_x, *iter_y, *iter_z), 1.0F});
+    }
+    return buckets;
+  }
+
+  if (has_probability) {
+    sensor_msgs::PointCloud2ConstIterator<float> iter_probability(pointcloud, "probability");
+    for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z, ++iter_probability) {
+      if (*iter_probability < min_probability) {
+        continue;
+      }
+
+      buckets[ObjectClassification::UNKNOWN].push_back(
+        SemanticPoint{pcl::PointXYZ(*iter_x, *iter_y, *iter_z), *iter_probability});
+    }
+    return buckets;
+  }
+
+  for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
+    buckets[ObjectClassification::UNKNOWN].push_back(
+      SemanticPoint{pcl::PointXYZ(*iter_x, *iter_y, *iter_z), 1.0F});
   }
 
   return buckets;
@@ -355,17 +394,14 @@ void LabelBasedEuclideanClusterNode::on_pointcloud(
   if (
     !has_field(*input_msg, "x", sensor_msgs::msg::PointField::FLOAT32) ||
     !has_field(*input_msg, "y", sensor_msgs::msg::PointField::FLOAT32) ||
-    !has_field(*input_msg, "z", sensor_msgs::msg::PointField::FLOAT32) ||
-    !has_field(*input_msg, "class_id", sensor_msgs::msg::PointField::UINT8) ||
-    !has_field(*input_msg, "probability", sensor_msgs::msg::PointField::FLOAT32)) {
+    !has_field(*input_msg, "z", sensor_msgs::msg::PointField::FLOAT32)) {
     RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 5000,
-      "Skipping pointcloud without required fields: x, y, z, class_id, probability");
+      get_logger(), *get_clock(), 5000, "Skipping pointcloud without required fields: x, y, z");
     return;
   }
 
   // 1. Split points by label and filter by probability
-  auto split_points = split_by_label(*input_msg, class_id_to_object_label_, min_probability_);
+  auto split_points = split_pointcloud(*input_msg, class_id_to_object_label_, min_probability_);
 
   DetectedObjects output_msg;
   output_msg.header = input_msg->header;
@@ -386,9 +422,8 @@ void LabelBasedEuclideanClusterNode::on_pointcloud(
         continue;
       }
 
-      output_msg.objects.push_back(
-        create_detected_object(
-          cluster, label, label_probability, shape_policy_, *shape_estimator_));
+      output_msg.objects.push_back(create_detected_object(
+        cluster, label, label_probability, shape_policy_, *shape_estimator_));
     }
   }
 

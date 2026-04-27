@@ -49,7 +49,7 @@ public:
 
 private:
   /// @brief Process an input semantic point cloud and publish detected objects.
-  /// @param input_msg Input point cloud containing xyz, class_id, and probability fields.
+  /// @param input_msg Input point cloud containing xyz and optionally class_id / probability.
   void on_pointcloud(sensor_msgs::msg::PointCloud2::ConstSharedPtr input_msg);
 
   /// @brief Build the mapping from semantic class IDs to Autoware object labels.
