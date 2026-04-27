@@ -394,6 +394,9 @@ BoundaryDeparturePreventionModule::plan_velocities(
   }
 
   if (!is_autonomous_mode()) {
+    // Override / manual mode: planning is skipped but diagnostic_updater still runs
+    // (`plan()` calls `force_update()`). Clear stale ERROR so MRM / diagnostics do not latch.
+    output_.diag_status = {DiagStatus::OK, "not in autonomous mode"};
     return tl::make_unexpected("Not in autonomous mode.");
   }
 
