@@ -14,7 +14,6 @@
 
 #include "autoware/object_merger/object_fusion_merger_node.hpp"
 
-#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <autoware_test_utils/autoware_test_utils.hpp>
 
 #include <geometry_msgs/msg/point32.hpp>
@@ -22,6 +21,7 @@
 #include <gtest/gtest.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -43,10 +43,10 @@ std::shared_ptr<autoware::test_utils::AutowareTestManager> generate_test_manager
 std::shared_ptr<ObjectFusionMergerNode> generate_node()
 {
   auto node_options = rclcpp::NodeOptions{};
-  const auto package_dir = ament_index_cpp::get_package_share_directory("autoware_object_merger");
+  const auto package_dir = std::filesystem::path(__FILE__).parent_path().parent_path();
   node_options.arguments(
-    {"--ros-args", "--params-file", package_dir + "/config/object_fusion_merger.param.yaml",
-     "--params-file", package_dir + "/config/data_association_matrix.param.yaml"});
+    {"--ros-args", "--params-file",
+     (package_dir / "config" / "object_fusion_merger.param.yaml").string()});
   return std::make_shared<ObjectFusionMergerNode>(node_options);
 }
 
@@ -161,8 +161,8 @@ TEST(ObjectFusionMergerNodeTest, testMatchedObjectsAreFused)
   sub_objects.header.frame_id = "base_link";
   sub_objects.objects.push_back(make_object(1.5, 1.0, 0.5, 2.0, ObjectClassification::CAR));
 
-  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/main_object", main_objects);
-  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_object", sub_objects);
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/main_objects", main_objects);
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_objects", sub_objects);
 
   ASSERT_EQ(latest_msg.objects.size(), 1U);
   EXPECT_TRUE(unmatched_sub_msg.objects.empty());
@@ -176,7 +176,7 @@ TEST(ObjectFusionMergerNodeTest, testMatchedObjectsAreFused)
   rclcpp::shutdown();
 }
 
-TEST(ObjectFusionMergerNodeTest, testUnmatchedMainIsKeptAndUnmatchedSubIsDiscarded)
+TEST(ObjectFusionMergerNodeTest, testUnmatchedMainIsKeptAndUnmatchedSubIsPublishedSeparately)
 {
   rclcpp::init(0, nullptr);
 
@@ -203,8 +203,8 @@ TEST(ObjectFusionMergerNodeTest, testUnmatchedMainIsKeptAndUnmatchedSubIsDiscard
   sub_objects.objects.push_back(make_object(1.5, 1.0, 0.5, 2.0, ObjectClassification::CAR));
   sub_objects.objects.push_back(make_object(20.0, 1.0, 0.5, 6.0, ObjectClassification::BUS));
 
-  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/main_object", main_objects);
-  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_object", sub_objects);
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/main_objects", main_objects);
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_objects", sub_objects);
 
   ASSERT_EQ(latest_msg.objects.size(), 2U);
   EXPECT_NEAR(latest_msg.objects.at(0).kinematics.pose_with_covariance.pose.position.x, 0.25, 1e-3);
@@ -222,7 +222,76 @@ TEST(ObjectFusionMergerNodeTest, testUnmatchedMainIsKeptAndUnmatchedSubIsDiscard
   rclcpp::shutdown();
 }
 
-TEST(ObjectFusionMergerNodeTest, testUnionCanBeEnclosedWithMainBoundingBox)
+TEST(ObjectFusionMergerNodeTest, testSubObjectOverlappingMultipleMainObjectsIsIgnored)
+{
+  rclcpp::init(0, nullptr);
+
+  auto test_manager = generate_test_manager();
+  auto test_target_node = generate_node();
+  auto tf_node = create_static_tf_broadcaster_node("map", "base_link");
+
+  DetectedObjects latest_msg;
+  DetectedObjects other_msg;
+  test_manager->set_subscriber<DetectedObjects>(
+    "/output/objects",
+    [&latest_msg](const DetectedObjects::ConstSharedPtr msg) { latest_msg = *msg; });
+  test_manager->set_subscriber<DetectedObjects>(
+    "/output/other_objects",
+    [&other_msg](const DetectedObjects::ConstSharedPtr msg) { other_msg = *msg; });
+
+  DetectedObjects main_objects;
+  main_objects.header.frame_id = "base_link";
+  main_objects.objects.push_back(make_object(-1.0, 1.0, 0.6, 3.0, ObjectClassification::CAR));
+  main_objects.objects.push_back(make_object(1.0, 1.0, 0.6, 3.0, ObjectClassification::CAR));
+
+  DetectedObjects sub_objects;
+  sub_objects.header.frame_id = "base_link";
+  sub_objects.objects.push_back(make_object(0.0, 1.0, 0.5, 2.0, ObjectClassification::CAR));
+
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/main_objects", main_objects);
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_objects", sub_objects);
+
+  ASSERT_EQ(latest_msg.objects.size(), 2U);
+  EXPECT_NEAR(latest_msg.objects.at(0).shape.dimensions.x, 3.0, 1e-3);
+  EXPECT_NEAR(latest_msg.objects.at(1).shape.dimensions.x, 3.0, 1e-3);
+  EXPECT_TRUE(other_msg.objects.empty());
+
+  rclcpp::shutdown();
+}
+
+TEST(ObjectFusionMergerNodeTest, testMultipleSubObjectsCanExpandOneMainObject)
+{
+  rclcpp::init(0, nullptr);
+
+  auto test_manager = generate_test_manager();
+  auto test_target_node = generate_node();
+  auto tf_node = create_static_tf_broadcaster_node("map", "base_link");
+
+  DetectedObjects latest_msg;
+  test_manager->set_subscriber<DetectedObjects>(
+    "/output/objects",
+    [&latest_msg](const DetectedObjects::ConstSharedPtr msg) { latest_msg = *msg; });
+
+  DetectedObjects main_objects;
+  main_objects.header.frame_id = "base_link";
+  main_objects.objects.push_back(make_object(0.0, 1.0, 0.6, 2.0, ObjectClassification::CAR));
+
+  DetectedObjects sub_objects;
+  sub_objects.header.frame_id = "base_link";
+  sub_objects.objects.push_back(make_object(-0.9, 1.0, 0.5, 1.4, ObjectClassification::CAR));
+  sub_objects.objects.push_back(make_object(0.9, 1.0, 0.5, 1.4, ObjectClassification::CAR));
+
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/main_objects", main_objects);
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_objects", sub_objects);
+
+  ASSERT_EQ(latest_msg.objects.size(), 1U);
+  EXPECT_NEAR(latest_msg.objects.front().kinematics.pose_with_covariance.pose.position.x, 0.0, 1e-3);
+  EXPECT_NEAR(latest_msg.objects.front().shape.dimensions.x, 3.2, 1e-3);
+
+  rclcpp::shutdown();
+}
+
+TEST(ObjectFusionMergerNodeTest, testPolygonSubCanExpandMainBoundingBox)
 {
   rclcpp::init(0, nullptr);
 
@@ -251,8 +320,8 @@ TEST(ObjectFusionMergerNodeTest, testUnionCanBeEnclosedWithMainBoundingBox)
     },
     ObjectClassification::CAR));
 
-  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/main_object", main_objects);
-  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_object", sub_objects);
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/main_objects", main_objects);
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_objects", sub_objects);
 
   ASSERT_EQ(latest_msg.objects.size(), 1U);
   EXPECT_EQ(latest_msg.objects.front().shape.type, Shape::BOUNDING_BOX);
@@ -293,8 +362,8 @@ TEST(ObjectFusionMergerNodeTest, testUnionCanBeEnclosedWithMainCylinder)
     },
     ObjectClassification::PEDESTRIAN));
 
-  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/main_object", main_objects);
-  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_object", sub_objects);
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/main_objects", main_objects);
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_objects", sub_objects);
 
   ASSERT_EQ(latest_msg.objects.size(), 1U);
   EXPECT_EQ(latest_msg.objects.front().shape.type, Shape::CYLINDER);
@@ -343,8 +412,8 @@ TEST(ObjectFusionMergerNodeTest, testUnionCanBeEnclosedWithMainPolygon)
     },
     ObjectClassification::CAR));
 
-  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/main_object", main_objects);
-  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_object", sub_objects);
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/main_objects", main_objects);
+  test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_objects", sub_objects);
 
   ASSERT_EQ(latest_msg.objects.size(), 1U);
   EXPECT_EQ(latest_msg.objects.front().shape.type, Shape::POLYGON);

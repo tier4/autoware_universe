@@ -15,7 +15,6 @@
 #ifndef AUTOWARE__OBJECT_MERGER__OBJECT_FUSION_MERGER_NODE_HPP_
 #define AUTOWARE__OBJECT_MERGER__OBJECT_FUSION_MERGER_NODE_HPP_
 
-#include "autoware/object_merger/association/data_association.hpp"
 #include "autoware_utils/ros/debug_publisher.hpp"
 #include "autoware_utils/ros/published_time_publisher.hpp"
 #include "autoware_utils/system/stop_watch.hpp"
@@ -36,14 +35,21 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace autoware::object_merger
 {
+/**
+ * @brief Merge two detected-object streams by expanding each main object with uniquely overlapped sub objects.
+ */
 class ObjectFusionMergerNode : public rclcpp::Node
 {
 public:
+  /**
+   * @brief Construct the object fusion merger node.
+   *
+   * @param node_options ROS node options used for component construction.
+   */
   explicit ObjectFusionMergerNode(const rclcpp::NodeOptions & node_options);
 
 private:
@@ -59,10 +65,23 @@ private:
     DetectedObjects other_objects;
   };
 
+  /**
+   * @brief Transform synchronized inputs, perform fusion, and publish both outputs.
+   *
+   * @param main_objects_msg Main detected objects input.
+   * @param sub_objects_msg Sub detected objects input.
+   */
   void callback(
     const DetectedObjects::ConstSharedPtr & main_objects_msg,
     const DetectedObjects::ConstSharedPtr & sub_objects_msg);
 
+  /**
+   * @brief Group sub objects by unique overlap and produce fused and unmatched outputs.
+   *
+   * @param main_objects_msg Main detected objects transformed into the base frame.
+   * @param sub_objects_msg Sub detected objects transformed into the base frame.
+   * @return Fusion result containing the main-based output and unmatched sub objects.
+   */
   FusionResult fuse_objects(
     const DetectedObjects & main_objects_msg, const DetectedObjects & sub_objects_msg);
 
@@ -74,7 +93,6 @@ private:
   message_filters::Subscriber<DetectedObjects> sub_object_sub_{};
   std::shared_ptr<Sync> sync_ptr_;
 
-  std::unique_ptr<DataAssociation> data_association_;
   std::string base_link_frame_id_;
 
   std::unique_ptr<autoware_utils::DebugPublisher> processing_time_publisher_;

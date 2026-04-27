@@ -21,7 +21,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -30,42 +32,64 @@ using Shape = autoware_perception_msgs::msg::Shape;
 using MultiPoint2d = autoware_utils::MultiPoint2d;
 using Point2d = autoware_utils::Point2d;
 using Polygon2d = autoware_utils::Polygon2d;
+using MultiPolygon2d = boost::geometry::model::multi_polygon<Polygon2d>;
 
-void update_shape_height(
-  DetectedObject & output, const DetectedObject & main_object, const DetectedObject & sub_object)
+/**
+ * @brief Compute the combined vertical extent of one main object and its grouped sub objects.
+ *
+ * @param main_object Main object used as the base of the fused output.
+ * @param sub_objects Sub objects uniquely grouped to the main object.
+ * @return Minimum and maximum z values covered by all input objects.
+ */
+std::pair<double, double> get_z_range(
+  const DetectedObject & main_object, const std::vector<DetectedObject> & sub_objects)
 {
-  const double output_center_z = output.kinematics.pose_with_covariance.pose.position.z;
   const double main_half_z = main_object.shape.dimensions.z * 0.5;
-  const double sub_half_z = sub_object.shape.dimensions.z * 0.5;
   const double main_min_z =
     main_object.kinematics.pose_with_covariance.pose.position.z - main_half_z;
   const double main_max_z =
     main_object.kinematics.pose_with_covariance.pose.position.z + main_half_z;
-  const double sub_min_z = sub_object.kinematics.pose_with_covariance.pose.position.z - sub_half_z;
-  const double sub_max_z = sub_object.kinematics.pose_with_covariance.pose.position.z + sub_half_z;
-  const double min_local_z = std::min(main_min_z, sub_min_z) - output_center_z;
-  const double max_local_z = std::max(main_max_z, sub_max_z) - output_center_z;
-  output.shape.dimensions.z = 2.0 * std::max(std::abs(min_local_z), std::abs(max_local_z));
+  double min_z = main_min_z;
+  double max_z = main_max_z;
+
+  for (const auto & sub_object : sub_objects) {
+    const double sub_half_z = sub_object.shape.dimensions.z * 0.5;
+    min_z =
+      std::min(min_z, sub_object.kinematics.pose_with_covariance.pose.position.z - sub_half_z);
+    max_z =
+      std::max(max_z, sub_object.kinematics.pose_with_covariance.pose.position.z + sub_half_z);
+  }
+
+  return {min_z, max_z};
 }
 
+/**
+ * @brief Update the output pose z and shape height to cover the full grouped z range.
+ *
+ * @param output Output object to update in place.
+ * @param main_object Main object used as the base of the fused output.
+ * @param sub_objects Sub objects uniquely grouped to the main object.
+ */
 void fit_shape_height(
-  DetectedObject & output, const DetectedObject & main_object, const DetectedObject & sub_object)
+  DetectedObject & output, const DetectedObject & main_object,
+  const std::vector<DetectedObject> & sub_objects)
 {
-  const double main_half_z = main_object.shape.dimensions.z * 0.5;
-  const double sub_half_z = sub_object.shape.dimensions.z * 0.5;
-  const double main_min_z =
-    main_object.kinematics.pose_with_covariance.pose.position.z - main_half_z;
-  const double main_max_z =
-    main_object.kinematics.pose_with_covariance.pose.position.z + main_half_z;
-  const double sub_min_z = sub_object.kinematics.pose_with_covariance.pose.position.z - sub_half_z;
-  const double sub_max_z = sub_object.kinematics.pose_with_covariance.pose.position.z + sub_half_z;
-  output.kinematics.pose_with_covariance.pose.position.z = 0.5 * (std::min(main_min_z, sub_min_z) + std::max(main_max_z, sub_max_z));
-  output.shape.dimensions.z = std::max(main_max_z, sub_max_z) - std::min(main_min_z, sub_min_z);
+  const auto [min_z, max_z] = get_z_range(main_object, sub_objects);
+  output.kinematics.pose_with_covariance.pose.position.z = 0.5 * (min_z + max_z);
+  output.shape.dimensions.z = max_z - min_z;
 }
 
+/**
+ * @brief Collect the footprint vertices of the main and grouped sub objects in the output frame.
+ *
+ * @param output Current output object that defines the local output frame.
+ * @param main_object Main object used as the base of the fused output.
+ * @param sub_objects Sub objects uniquely grouped to the main object.
+ * @return Combined footprint points expressed in the output local frame.
+ */
 MultiPoint2d collect_union_points_in_output_frame(
   const DetectedObject & output, const DetectedObject & main_object,
-  const DetectedObject & sub_object)
+  const std::vector<DetectedObject> & sub_objects)
 {
   const auto append_local_polygon_points =
     [&output](const Polygon2d & polygon, MultiPoint2d & combined_points) {
@@ -81,20 +105,52 @@ MultiPoint2d collect_union_points_in_output_frame(
     };
 
   const auto main_polygon = autoware_utils::to_polygon2d(main_object);
-  const auto sub_polygon = autoware_utils::to_polygon2d(sub_object);
   MultiPoint2d combined_points;
   append_local_polygon_points(main_polygon, combined_points);
-  append_local_polygon_points(sub_polygon, combined_points);
+  for (const auto & sub_object : sub_objects) {
+    append_local_polygon_points(autoware_utils::to_polygon2d(sub_object), combined_points);
+  }
   return combined_points;
 }
 
+/**
+ * @brief Calculate the 2D footprint intersection area between one main and one sub object.
+ *
+ * @param main_object Main object candidate.
+ * @param sub_object Sub object candidate.
+ * @return Overlapped footprint area in square meters.
+ */
+double get_intersection_area(const DetectedObject & main_object, const DetectedObject & sub_object)
+{
+  MultiPolygon2d intersections;
+  boost::geometry::intersection(
+    autoware_utils::to_polygon2d(main_object), autoware_utils::to_polygon2d(sub_object),
+    intersections);
+
+  double total_area = 0.0;
+  for (const auto & polygon : intersections) {
+    total_area += std::abs(boost::geometry::area(polygon));
+  }
+  return total_area;
+}
+
+/**
+ * @brief Expand a main object so its shape encloses the main and grouped sub objects.
+ *
+ * @param main_object Main object that defines the output shape type and metadata.
+ * @param sub_objects Sub objects uniquely grouped to the main object.
+ * @return Main-based object whose geometry encloses the full grouped union.
+ */
 DetectedObject enclose_union_with_main_shape(
-  const DetectedObject & main_object, const DetectedObject & sub_object)
+  const DetectedObject & main_object, const std::vector<DetectedObject> & sub_objects)
 {
   DetectedObject output = main_object;
   output.shape = main_object.shape;
+  if (sub_objects.empty()) {
+    return output;
+  }
   const auto combined_points =
-    collect_union_points_in_output_frame(output, main_object, sub_object);
+    collect_union_points_in_output_frame(output, main_object, sub_objects);
   if (combined_points.empty()) {
     return output;
   }
@@ -115,7 +171,7 @@ DetectedObject enclose_union_with_main_shape(
       0.0);
     output.shape.dimensions.x = max_x - min_x;
     output.shape.dimensions.y = max_y - min_y;
-    fit_shape_height(output, main_object, sub_object);
+    fit_shape_height(output, main_object, sub_objects);
     return output;
   }
 
@@ -127,7 +183,7 @@ DetectedObject enclose_union_with_main_shape(
     }
     output.shape.dimensions.x = 2.0 * max_radius;
     output.shape.dimensions.y = 2.0 * max_radius;
-    update_shape_height(output, main_object, sub_object);
+    fit_shape_height(output, main_object, sub_objects);
     return output;
   }
 
@@ -142,7 +198,7 @@ DetectedObject enclose_union_with_main_shape(
           .y(static_cast<float>(boost::geometry::get<1>(point)))
           .z(0.0f));
     }
-    update_shape_height(output, main_object, sub_object);
+    fit_shape_height(output, main_object, sub_objects);
   }
   return output;
 }
@@ -151,24 +207,21 @@ DetectedObject enclose_union_with_main_shape(
 
 namespace autoware::object_merger
 {
+/**
+ * @brief Construct the fusion node and initialize subscriptions, publishers, and debug utilities.
+ *
+ * @param node_options ROS node options used for component construction.
+ */
 ObjectFusionMergerNode::ObjectFusionMergerNode(const rclcpp::NodeOptions & node_options)
 : rclcpp::Node("object_fusion_merger_node", node_options),
   tf_buffer_(get_clock()),
   tf_listener_(tf_buffer_),
-  main_object_sub_(this, "input/main_object", rclcpp::QoS{1}.get_rmw_qos_profile()),
-  sub_object_sub_(this, "input/sub_object", rclcpp::QoS{1}.get_rmw_qos_profile())
+  main_object_sub_(this, "input/main_objects", rclcpp::QoS{1}.get_rmw_qos_profile()),
+  sub_object_sub_(this, "input/sub_objects", rclcpp::QoS{1}.get_rmw_qos_profile())
 {
-  // Get parameters for data association
+  // Get parameters
   base_link_frame_id_ = declare_parameter<std::string>("base_link_frame_id");
   const auto sync_queue_size = static_cast<int>(declare_parameter<int64_t>("sync_queue_size"));
-
-  const auto tmp = this->declare_parameter<std::vector<int64_t>>("can_assign_matrix");
-  const std::vector<int> can_assign_matrix(tmp.begin(), tmp.end());
-  const auto max_dist_matrix = this->declare_parameter<std::vector<double>>("max_dist_matrix");
-  const auto max_rad_matrix = this->declare_parameter<std::vector<double>>("max_rad_matrix");
-  const auto min_iou_matrix = this->declare_parameter<std::vector<double>>("min_iou_matrix");
-  data_association_ = std::make_unique<DataAssociation>(
-    can_assign_matrix, max_dist_matrix, max_rad_matrix, min_iou_matrix);
 
   // Set up publishers, subscribers, and synchronizer
   using std::placeholders::_1;
@@ -187,6 +240,12 @@ ObjectFusionMergerNode::ObjectFusionMergerNode(const rclcpp::NodeOptions & node_
   published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
 }
 
+/**
+ * @brief Transform both inputs, fuse overlapping objects, and publish the two output streams.
+ *
+ * @param main_objects_msg Main detected objects input message.
+ * @param sub_objects_msg Sub detected objects input message.
+ */
 void ObjectFusionMergerNode::callback(
   const DetectedObjects::ConstSharedPtr & main_objects_msg,
   const DetectedObjects::ConstSharedPtr & sub_objects_msg)
@@ -225,38 +284,54 @@ void ObjectFusionMergerNode::callback(
     "debug/processing_time_ms", stop_watch_ptr_->toc("processing_time", true));
 }
 
+/**
+ * @brief Group sub objects by unique overlap and build fused and unmatched outputs.
+ *
+ * @param main_objects_msg Main detected objects already transformed into the base frame.
+ * @param sub_objects_msg Sub detected objects already transformed into the base frame.
+ * @return Fused main-based objects and unmatched sub objects for separate publication.
+ */
 ObjectFusionMergerNode::FusionResult ObjectFusionMergerNode::fuse_objects(
   const DetectedObjects & main_objects_msg, const DetectedObjects & sub_objects_msg)
 {
-  // 1. Associate main and sub objects using the data association module
-  std::unordered_map<int, int> direct_assignment;
-  std::unordered_map<int, int> reverse_assignment;
-  Eigen::MatrixXd score_matrix =
-    data_association_->calcScoreMatrix(sub_objects_msg, main_objects_msg);
-  data_association_->assign(score_matrix, direct_assignment, reverse_assignment);
-
   const auto & main_objects = main_objects_msg.objects;
   const auto & sub_objects = sub_objects_msg.objects;
 
+  std::vector<std::vector<DetectedObject>> grouped_sub_objects(main_objects.size());
+  std::vector<DetectedObject> other_objects;
+  other_objects.reserve(sub_objects.size());
+
+  for (const auto & sub_object : sub_objects) {
+    std::vector<std::size_t> overlapped_main_indices;
+    for (std::size_t main_index = 0; main_index < main_objects.size(); ++main_index) {
+      if (get_intersection_area(main_objects.at(main_index), sub_object) > 1e-6) {
+        overlapped_main_indices.push_back(main_index);
+      }
+    }
+
+    // If sub-object does not overlap with any main object, treat it as a matched object
+    if (overlapped_main_indices.empty()) {
+      other_objects.push_back(sub_object);
+      continue;
+    }
+
+    // If sub-object overlaps with a single main object, group it with that main object
+    // If sub-object overlaps with multiple main objects, ignore it for fusion to avoid ambiguity
+    if (overlapped_main_indices.size() == 1U) {
+      grouped_sub_objects.at(overlapped_main_indices.front()).push_back(sub_object);
+    }
+  }
+
   std::vector<DetectedObject> matched_objects;
+  matched_objects.reserve(main_objects.size());
   for (std::size_t main_index = 0; main_index < main_objects.size(); ++main_index) {
     const auto & main_object = main_objects.at(main_index);
-    const auto direct_itr = direct_assignment.find(static_cast<int>(main_index));
-    if (direct_itr == direct_assignment.end()) {
-      // No matched sub object, keep the main object as it is
+    const auto & grouped_subs = grouped_sub_objects.at(main_index);
+    if (grouped_subs.empty()) {
       matched_objects.push_back(main_object);
       continue;
     }
-    matched_objects.push_back(
-      enclose_union_with_main_shape(main_object, sub_objects.at(direct_itr->second)));
-  }
-
-  std::vector<DetectedObject> unmatched_sub_objects;
-  unmatched_sub_objects.reserve(sub_objects.size());
-  for (std::size_t sub_index = 0; sub_index < sub_objects.size(); ++sub_index) {
-    if (reverse_assignment.find(static_cast<int>(sub_index)) == reverse_assignment.end()) {
-      unmatched_sub_objects.push_back(sub_objects.at(sub_index));
-    }
+    matched_objects.push_back(enclose_union_with_main_shape(main_object, grouped_subs));
   }
 
   const auto header = std_msgs::build<std_msgs::msg::Header>()
@@ -265,7 +340,7 @@ ObjectFusionMergerNode::FusionResult ObjectFusionMergerNode::fuse_objects(
 
   return FusionResult{
     autoware_perception_msgs::build<DetectedObjects>().header(header).objects(matched_objects),
-    autoware_perception_msgs::build<DetectedObjects>().header(header).objects(unmatched_sub_objects)};
+    autoware_perception_msgs::build<DetectedObjects>().header(header).objects(other_objects)};
 }
 
 }  // namespace autoware::object_merger
