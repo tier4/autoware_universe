@@ -1,6 +1,6 @@
 # Originally from https://github.com/autowarefoundation/sync-file-templates
 # Customized: only PRs whose base branch name contains "e2e", and not opened by bots
-# (GitHub user.type Bot, or login/display name containing "bot", case-insensitive).
+# (GitHub user.type Bot, or login/display name containing "bot"; contains() is case-insensitive.)
 
 name: comment-on-pr
 on:
@@ -12,7 +12,7 @@ on:
 
 jobs:
   comment-on-pr:
-    if: github.event.pull_request.user.type != 'Bot' && !contains(toLower(github.event.pull_request.user.login), 'bot') && !contains(toLower(github.event.pull_request.user.name || ''), 'bot')
+    if: github.event.pull_request.user.type != 'Bot' && !contains(github.event.pull_request.user.login, 'bot') && !contains(github.event.pull_request.user.name, 'bot')
     runs-on: ubuntu-22.04
     permissions:
       pull-requests: write
