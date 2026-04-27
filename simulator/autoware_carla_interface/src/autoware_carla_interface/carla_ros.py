@@ -88,11 +88,14 @@ class carla_ros2_interface(object):
             "objects_definition_file": rclpy.Parameter.Type.STRING,
             "use_traffic_manager": rclpy.Parameter.Type.BOOL,
             "max_real_delta_seconds": rclpy.Parameter.Type.DOUBLE,
+            "render_with_splatsim": rclpy.Parameter.Type.BOOL,
         }
         self.param_values = {}
         for param_name, param_type in self.parameters.items():
             self.ros2_node.declare_parameter(param_name, param_type)
             self.param_values[param_name] = self.ros2_node.get_parameter(param_name).value
+
+        self.render_with_splatsim = bool(self.param_values.get("render_with_splatsim", False))
 
         # Publish clock
         self.clock_publisher = self.ros2_node.create_publisher(Clock, "/clock", 10)
@@ -468,11 +471,13 @@ class carla_ros2_interface(object):
         for key, data in input_data.items():
             sensor_type = self.id_to_sensor_type_map[key]
             if sensor_type == "sensor.camera.rgb":
-                self.camera(data[1])
+                if not self.render_with_splatsim:
+                    self.camera(data[1])
             elif sensor_type == "sensor.other.gnss":
                 self.pose()
             elif sensor_type == "sensor.lidar.ray_cast":
-                self.lidar(data[1], key)
+                if not self.render_with_splatsim:
+                    self.lidar(data[1], key)
             elif sensor_type == "sensor.other.imu":
                 self.imu(data[1])
             else:
