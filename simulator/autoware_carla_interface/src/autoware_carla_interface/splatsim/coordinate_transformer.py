@@ -119,10 +119,11 @@ def parse_tileset_transform(
 class CoordinateTransformer:
     """Transform poses from ROS map (ENU) to re-centered tile-local.
 
+    The geographic origin (proj_origin) is derived automatically from the
+    tileset's ECEF translation, so no external lat/lon parameter is needed.
+
     Parameters
     ----------
-    proj_origin:
-        ``(latitude, longitude)`` of the CARLA xodr GeoReference origin.
     ecef_rotation:
         3x3 rotation from tile-local to ECEF (from ``tileset.json``).
     ecef_translation:
@@ -134,12 +135,17 @@ class CoordinateTransformer:
 
     def __init__(
         self,
-        proj_origin: tuple[float, float],
         ecef_rotation: NDArray[np.float64],
         ecef_translation: NDArray[np.float64],
         scene_origin: NDArray[np.float64],
     ) -> None:
-        lat_0, lon_0 = proj_origin
+        # Derive geographic origin from ECEF translation
+        ecef_to_lla = Transformer.from_crs(
+            "EPSG:4978", "EPSG:4326", always_xy=True
+        )
+        lon_0, lat_0, _alt = ecef_to_lla.transform(
+            ecef_translation[0], ecef_translation[1], ecef_translation[2],
+        )
 
         # Lanelet2 MGRS projector
         self._projector = MGRSProjector(lanelet2.io.Origin(lat_0, lon_0))

@@ -100,8 +100,6 @@ class carla_ros2_interface(object):
             "splatsim_near_plane": rclpy.Parameter.Type.DOUBLE,
             "splatsim_far_plane": rclpy.Parameter.Type.DOUBLE,
             "splatsim_device": rclpy.Parameter.Type.STRING,
-            "splatsim_proj_origin_lat": rclpy.Parameter.Type.DOUBLE,
-            "splatsim_proj_origin_lon": rclpy.Parameter.Type.DOUBLE,
         }
         self.param_values = {}
         for param_name, param_type in self.parameters.items():
@@ -507,8 +505,6 @@ class carla_ros2_interface(object):
                 near_plane=p["splatsim_near_plane"],
                 far_plane=p["splatsim_far_plane"],
                 device=p["splatsim_device"],
-                proj_origin_lat=p["splatsim_proj_origin_lat"],
-                proj_origin_lon=p["splatsim_proj_origin_lon"],
             )
             self._splatsim_cameras.append(cam)
             self.ros2_node.get_logger().info(

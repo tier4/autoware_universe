@@ -78,8 +78,6 @@ class SplatSimRGBCamera:
         near_plane: float = 0.01,
         far_plane: float = 1000.0,
         device: str = "cuda:0",
-        proj_origin_lat: float = 0.0,
-        proj_origin_lon: float = 0.0,
     ) -> None:
         self._sensor_id = sensor_spec["id"]
 
@@ -135,7 +133,6 @@ class SplatSimRGBCamera:
             dtype=np.float64,
         )
         self._transformer = CoordinateTransformer(
-            proj_origin=(proj_origin_lat, proj_origin_lon),
             ecef_rotation=ecef_rot,
             ecef_translation=ecef_trans,
             scene_origin=scene_origin,
