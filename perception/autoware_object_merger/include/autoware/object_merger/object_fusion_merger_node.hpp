@@ -53,16 +53,23 @@ private:
     message_filters::sync_policies::ApproximateTime<DetectedObjects, DetectedObjects>;
   using Sync = message_filters::Synchronizer<SyncPolicy>;
 
+  struct FusionResult
+  {
+    DetectedObjects fused_objects;
+    DetectedObjects other_objects;
+  };
+
   void callback(
     const DetectedObjects::ConstSharedPtr & main_objects_msg,
     const DetectedObjects::ConstSharedPtr & sub_objects_msg);
 
-  DetectedObjects fuse_objects(
+  FusionResult fuse_objects(
     const DetectedObjects & main_objects_msg, const DetectedObjects & sub_objects_msg);
 
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
-  rclcpp::Publisher<DetectedObjects>::SharedPtr fused_object_pub_;
+  rclcpp::Publisher<DetectedObjects>::SharedPtr fused_objects_pub_;
+  rclcpp::Publisher<DetectedObjects>::SharedPtr other_objects_pub_;
   message_filters::Subscriber<DetectedObjects> main_object_sub_{};
   message_filters::Subscriber<DetectedObjects> sub_object_sub_{};
   std::shared_ptr<Sync> sync_ptr_;

@@ -20,7 +20,8 @@ The node is stateless across frames and reuses the existing association logic fr
 
 | Name            | Type                                             | Description                                                       |
 | --------------- | ------------------------------------------------ | ----------------------------------------------------------------- |
-| `output/object` | `autoware_perception_msgs::msg::DetectedObjects` | Main-based detected objects after association and shape expansion |
+| `output/objects` | `autoware_perception_msgs::msg::DetectedObjects` | Main-based detected objects after association and shape expansion |
+| `output/other_objects` | `autoware_perception_msgs::msg::DetectedObjects` | Sub detected objects that did not match any main object |
 
 ## Processing Flow
 
@@ -30,7 +31,7 @@ The node is stateless across frames and reuses the existing association logic fr
 4. Solve one-to-one assignment with the same GNN solver used by `object_association_merger`.
 5. For each matched pair, copy the main object and expand only its shape so that the main/sub union is enclosed.
 6. Keep unmatched main objects unchanged.
-7. Discard unmatched sub objects.
+7. Publish unmatched sub objects on `output/other_objects`.
 
 ## Shape Update Rule
 
@@ -67,7 +68,7 @@ In practice, this means the pair must satisfy all of the following:
 - the yaw difference is within `max_rad_matrix` when that gate is enabled
 - the 2D IoU is above `min_iou_matrix`
 
-If a pair does not pass those gates, the main object is treated as unmatched and remains unchanged, and the sub object is discarded.
+If a pair does not pass those gates, the main object remains in `output/objects` unchanged, and the sub object is published via `output/other_objects`.
 
 ## Parameter
 
@@ -80,14 +81,14 @@ With the default configuration:
 
 - matched main/sub pairs produce one output object based on the main object
 - unmatched main objects remain in the output
-- unmatched sub objects are not emitted
+- unmatched sub objects are emitted on `output/other_objects`
 
 ## Test Coverage
 
 The current focused test suite covers the following cases:
 
 - matched `BOUNDING_BOX` pair expands the main box while keeping main pose and metadata
-- unmatched main objects remain in the output and unmatched sub objects are dropped
+- unmatched main objects remain in the output and unmatched sub objects are published separately
 - `BOUNDING_BOX` main object can enclose a larger sub `POLYGON`
 - `CYLINDER` main object expands to cover the union footprint
 - `POLYGON` main object rebuilds its footprint from the union convex hull

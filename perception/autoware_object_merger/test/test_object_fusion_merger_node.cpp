@@ -145,9 +145,13 @@ TEST(ObjectFusionMergerNodeTest, testMatchedObjectsAreFused)
   auto tf_node = create_static_tf_broadcaster_node("map", "base_link");
 
   DetectedObjects latest_msg;
+  DetectedObjects unmatched_sub_msg;
   test_manager->set_subscriber<DetectedObjects>(
-    "/output/object",
+    "/output/objects",
     [&latest_msg](const DetectedObjects::ConstSharedPtr msg) { latest_msg = *msg; });
+  test_manager->set_subscriber<DetectedObjects>(
+    "/output/other_objects",
+    [&unmatched_sub_msg](const DetectedObjects::ConstSharedPtr msg) { unmatched_sub_msg = *msg; });
 
   DetectedObjects main_objects;
   main_objects.header.frame_id = "base_link";
@@ -161,6 +165,7 @@ TEST(ObjectFusionMergerNodeTest, testMatchedObjectsAreFused)
   test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_object", sub_objects);
 
   ASSERT_EQ(latest_msg.objects.size(), 1U);
+  EXPECT_TRUE(unmatched_sub_msg.objects.empty());
   EXPECT_NEAR(
     latest_msg.objects.front().kinematics.pose_with_covariance.pose.position.x, 0.0, 1e-3);
   EXPECT_NEAR(latest_msg.objects.front().shape.dimensions.x, 5.0, 1e-3);
@@ -180,9 +185,13 @@ TEST(ObjectFusionMergerNodeTest, testUnmatchedMainIsKeptAndUnmatchedSubIsDiscard
   auto tf_node = create_static_tf_broadcaster_node("map", "base_link");
 
   DetectedObjects latest_msg;
+  DetectedObjects unmatched_sub_msg;
   test_manager->set_subscriber<DetectedObjects>(
-    "/output/object",
+    "/output/objects",
     [&latest_msg](const DetectedObjects::ConstSharedPtr msg) { latest_msg = *msg; });
+  test_manager->set_subscriber<DetectedObjects>(
+    "/output/other_objects",
+    [&unmatched_sub_msg](const DetectedObjects::ConstSharedPtr msg) { unmatched_sub_msg = *msg; });
 
   DetectedObjects main_objects;
   main_objects.header.frame_id = "base_link";
@@ -202,6 +211,12 @@ TEST(ObjectFusionMergerNodeTest, testUnmatchedMainIsKeptAndUnmatchedSubIsDiscard
   EXPECT_NEAR(latest_msg.objects.at(1).kinematics.pose_with_covariance.pose.position.x, 10.0, 1e-3);
   ASSERT_EQ(latest_msg.objects.at(1).classification.size(), 1U);
   EXPECT_EQ(latest_msg.objects.at(1).classification.front().label, ObjectClassification::TRUCK);
+  ASSERT_EQ(unmatched_sub_msg.objects.size(), 1U);
+  EXPECT_NEAR(
+    unmatched_sub_msg.objects.front().kinematics.pose_with_covariance.pose.position.x, 20.0, 1e-3);
+  ASSERT_EQ(unmatched_sub_msg.objects.front().classification.size(), 1U);
+  EXPECT_EQ(
+    unmatched_sub_msg.objects.front().classification.front().label, ObjectClassification::BUS);
 
   rclcpp::shutdown();
 }
@@ -216,7 +231,7 @@ TEST(ObjectFusionMergerNodeTest, testUnionCanBeEnclosedWithMainBoundingBox)
 
   DetectedObjects latest_msg;
   test_manager->set_subscriber<DetectedObjects>(
-    "/output/object",
+    "/output/objects",
     [&latest_msg](const DetectedObjects::ConstSharedPtr msg) { latest_msg = *msg; });
 
   DetectedObjects main_objects;
@@ -256,7 +271,7 @@ TEST(ObjectFusionMergerNodeTest, testUnionCanBeEnclosedWithMainCylinder)
 
   DetectedObjects latest_msg;
   test_manager->set_subscriber<DetectedObjects>(
-    "/output/object",
+    "/output/objects",
     [&latest_msg](const DetectedObjects::ConstSharedPtr msg) { latest_msg = *msg; });
 
   DetectedObjects main_objects;
@@ -299,7 +314,7 @@ TEST(ObjectFusionMergerNodeTest, testUnionCanBeEnclosedWithMainPolygon)
 
   DetectedObjects latest_msg;
   test_manager->set_subscriber<DetectedObjects>(
-    "/output/object",
+    "/output/objects",
     [&latest_msg](const DetectedObjects::ConstSharedPtr msg) { latest_msg = *msg; });
 
   DetectedObjects main_objects;

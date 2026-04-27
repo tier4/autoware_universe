@@ -155,7 +155,8 @@ ObjectFusionMergerNode::ObjectFusionMergerNode(const rclcpp::NodeOptions & node_
     std::make_shared<Sync>(SyncPolicy(sync_queue_size), main_object_sub_, sub_object_sub_);
   sync_ptr_->registerCallback(std::bind(&ObjectFusionMergerNode::callback, this, _1, _2));
 
-  fused_object_pub_ = create_publisher<DetectedObjects>("output/object", rclcpp::QoS{1});
+  fused_objects_pub_ = create_publisher<DetectedObjects>("output/objects", rclcpp::QoS{1});
+  other_objects_pub_ = create_publisher<DetectedObjects>("output/other_objects", rclcpp::QoS{1});
 
   processing_time_publisher_ = std::make_unique<autoware_utils::DebugPublisher>(this, get_name());
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
@@ -170,7 +171,9 @@ void ObjectFusionMergerNode::callback(
 {
   stop_watch_ptr_->toc("processing_time", true);
 
-  if (fused_object_pub_->get_subscription_count() < 1) {
+  if (
+    fused_objects_pub_->get_subscription_count() < 1 &&
+    other_objects_pub_->get_subscription_count() < 1) {
     return;
   }
 
@@ -187,19 +190,20 @@ void ObjectFusionMergerNode::callback(
     return;
   }
 
-  const auto fused_objects_msg = fuse_objects(transformed_main_objects, transformed_sub_objects);
-  fused_object_pub_->publish(fused_objects_msg);
+  const auto result = fuse_objects(transformed_main_objects, transformed_sub_objects);
+  fused_objects_pub_->publish(result.fused_objects);
+  other_objects_pub_->publish(result.other_objects);
 
   // Publish debug info
   published_time_publisher_->publish_if_subscribed(
-    fused_object_pub_, fused_objects_msg.header.stamp);
+    fused_objects_pub_, result.fused_objects.header.stamp);
   processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "debug/cyclic_time_ms", stop_watch_ptr_->toc("cyclic_time", true));
   processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "debug/processing_time_ms", stop_watch_ptr_->toc("processing_time", true));
 }
 
-ObjectFusionMergerNode::DetectedObjects ObjectFusionMergerNode::fuse_objects(
+ObjectFusionMergerNode::FusionResult ObjectFusionMergerNode::fuse_objects(
   const DetectedObjects & main_objects_msg, const DetectedObjects & sub_objects_msg)
 {
   // 1. Associate main and sub objects using the data association module
@@ -212,7 +216,6 @@ ObjectFusionMergerNode::DetectedObjects ObjectFusionMergerNode::fuse_objects(
   const auto & main_objects = main_objects_msg.objects;
   const auto & sub_objects = sub_objects_msg.objects;
 
-  // 2. Fuse matched objects and keep unmatched main objects as they are
   std::vector<DetectedObject> matched_objects;
   for (std::size_t main_index = 0; main_index < main_objects.size(); ++main_index) {
     const auto & main_object = main_objects.at(main_index);
@@ -226,11 +229,21 @@ ObjectFusionMergerNode::DetectedObjects ObjectFusionMergerNode::fuse_objects(
       enclose_union_with_main_shape(main_object, sub_objects.at(direct_itr->second)));
   }
 
-  return autoware_perception_msgs::build<DetectedObjects>()
-    .header(std_msgs::build<std_msgs::msg::Header>()
-              .stamp(main_objects_msg.header.stamp)
-              .frame_id(base_link_frame_id_))
-    .objects(matched_objects);
+  std::vector<DetectedObject> unmatched_sub_objects;
+  unmatched_sub_objects.reserve(sub_objects.size());
+  for (std::size_t sub_index = 0; sub_index < sub_objects.size(); ++sub_index) {
+    if (reverse_assignment.find(static_cast<int>(sub_index)) == reverse_assignment.end()) {
+      unmatched_sub_objects.push_back(sub_objects.at(sub_index));
+    }
+  }
+
+  const auto header = std_msgs::build<std_msgs::msg::Header>()
+                        .stamp(main_objects_msg.header.stamp)
+                        .frame_id(base_link_frame_id_);
+
+  return FusionResult{
+    autoware_perception_msgs::build<DetectedObjects>().header(header).objects(matched_objects),
+    autoware_perception_msgs::build<DetectedObjects>().header(header).objects(unmatched_sub_objects)};
 }
 
 }  // namespace autoware::object_merger
