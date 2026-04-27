@@ -74,6 +74,7 @@ void SideShiftModule::initVariables()
   if (inserted_lateral_offset_state_) {
     inserted_lateral_offset_state_->value.store(0.0);
   }
+  conflicting_approved_module_since_.reset();
 }
 
 void SideShiftModule::processOnEntry()
@@ -109,7 +110,10 @@ bool SideShiftModule::isExecutionRequested() const
 
 bool SideShiftModule::isExecutionReady() const
 {
-  return true;  // TODO(Horibe) is it ok to say "always safe"?
+  if (!planner_data_) {
+    return false;
+  }
+  return !hasConflictingApprovedModules(*planner_data_);
 }
 
 bool SideShiftModule::isReadyForNextRequest(
@@ -131,6 +135,20 @@ bool SideShiftModule::canTransitSuccessState()
   // Never return the FAILURE. When the desired offset is zero and the vehicle is in the original
   // drivable area,this module can stop the computation and return SUCCESS.
   constexpr double ZERO_THRESHOLD = 1.0e-4;
+  constexpr double force_shutdown_conflict_sec = 4.0;
+
+  if (conflicting_approved_module_since_) {
+    const double conflict_elapsed_sec =
+      (clock_->now() - conflicting_approved_module_since_.value()).seconds();
+    if (conflict_elapsed_sec >= force_shutdown_conflict_sec) {
+      RCLCPP_WARN_THROTTLE(
+        getLogger(), *clock_, 3000,
+        "Forcing side_shift to SUCCESS: lane_change/avoidance approved for >= %.1f s while "
+        "shift line could not be cleared (requested_lateral_offset=%.3f)",
+        force_shutdown_conflict_sec, requested_lateral_offset_);
+      return true;
+    }
+  }
 
   const auto isOffsetDiffAlmostZero = [this]() noexcept {
     const auto last_sp = path_shifter_.getLastShiftLine();
@@ -190,10 +208,21 @@ bool SideShiftModule::canTransitSuccessState()
 
 void SideShiftModule::updateData()
 {
+  constexpr double request_threshold = 1.0e-4;
+
+  if (planner_data_) {
+    if (hasConflictingApprovedModules(*planner_data_)) {
+      if (!conflicting_approved_module_since_) {
+        conflicting_approved_module_since_ = clock_->now();
+      }
+    } else {
+      conflicting_approved_module_since_.reset();
+    }
+  }
+
   const double requested = requested_lateral_offset_state_->value.load();
   // Only react when the requested value actually changes meaningfully.
-  constexpr double REQUEST_THRESHOLD = 1.0e-4;
-  if (std::fabs(requested - requested_lateral_offset_) > REQUEST_THRESHOLD) {
+  if (std::fabs(requested - requested_lateral_offset_) > request_threshold) {
     if (isReadyForNextRequest(parameters_->shift_request_time_limit)) {
       lateral_offset_change_request_ = true;
       requested_lateral_offset_ = requested;

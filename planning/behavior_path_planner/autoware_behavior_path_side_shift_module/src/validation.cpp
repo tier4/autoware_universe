@@ -15,6 +15,7 @@
 #include "autoware/behavior_path_side_shift_module/validation.hpp"
 
 #include "autoware/behavior_path_side_shift_module/manager.hpp"
+#include "autoware/behavior_path_side_shift_module/utils.hpp"
 
 #include <autoware_common_msgs/msg/response_status.hpp>
 

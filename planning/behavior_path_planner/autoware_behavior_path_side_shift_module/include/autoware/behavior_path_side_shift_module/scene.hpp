@@ -24,6 +24,7 @@
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -122,6 +123,7 @@ private:
   mutable rclcpp::Time last_requested_shift_change_time_{clock_->now()};
 
   rclcpp::Time latest_lateral_offset_stamp_;
+  std::optional<rclcpp::Time> conflicting_approved_module_since_{std::nullopt};
 
   /** Shared state updated by this scene and read by the manager for publishing. */
   std::shared_ptr<InsertedLateralOffsetState> inserted_lateral_offset_state_;

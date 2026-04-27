@@ -14,6 +14,7 @@
 
 #include "autoware/behavior_path_side_shift_module/manager.hpp"
 
+#include "autoware/behavior_path_side_shift_module/utils.hpp"
 #include "autoware/behavior_path_side_shift_module/validation.hpp"
 #include "autoware_utils/ros/update_param.hpp"
 
@@ -80,6 +81,16 @@ void SideShiftModuleManager::onSetLateralOffset(
 {
   if (!planner_data_ || !planner_data_->route_handler->isHandlerReady()) {
     response->response_code = autoware_common_msgs::msg::ResponseStatus::SERVICE_UNREADY;
+    response->status.success = false;
+    response->status.code = response->response_code;
+    response->status.message = getStatusMessage(response->response_code);
+    return;
+  }
+
+  // Reject all lateral offset service requests while lane change or avoidance modules are
+  // approved or candidate (see PlannerData scene module name lists).
+  if (hasConflictingSceneModules(*planner_data_)) {
+    response->response_code = SetLateralOffset::Response::ERROR_MODULES_CONFLICTING;
     response->status.success = false;
     response->status.code = response->response_code;
     response->status.message = getStatusMessage(response->response_code);

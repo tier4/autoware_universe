@@ -173,6 +173,8 @@ struct PlannerData
   autoware::behavior_path_planner::drivable_area_expansion::DrivableAreaExpansionParameters
     drivable_area_expansion_parameters{};
   VelocityLimit::ConstSharedPtr external_limit_max_velocity{};
+  std::vector<std::string> scene_module_names_approved{};
+  std::vector<std::string> scene_module_names_candidate{};
 
   mutable std::vector<geometry_msgs::msg::Pose> drivable_area_expansion_prev_path_poses{};
   mutable std::vector<double> drivable_area_expansion_prev_curvatures{};
