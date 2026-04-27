@@ -17,6 +17,14 @@
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
   <depend>tier4_vehicle_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>tf2_msgs</depend>
+
+  <exec_depend>python-docker</exec_depend>
+  <exec_depend>python-grpcio</exec_depend>
+  <exec_depend>python-protobuf</exec_depend>
+  <exec_depend>python-pyproj</exec_depend>
+  <build_depend>python-grpc-tools</build_depend>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

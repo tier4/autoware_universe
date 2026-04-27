@@ -46,5 +46,63 @@
     <!-- Awsim configuration frame to CARLA frame -->
     <node pkg="tf2_ros" exec="static_transform_publisher" name="velodyne_top" args="0 0 1 -1.5386 -0.015 0.001 /velodyne_top /velodyne_top_changed "/>
     <node pkg="tf2_ros" exec="static_transform_publisher" name="imu" args="0 0 1 -3.10519265 -0.015 -3.14059265359 /tamagawa/imu_link /tamagawa/imu_link_changed "/>
+
+    <!-- SplatSim integration (optional) -->
+    <arg name="render_with_splatsim" default="false" description="Enable splatsim rendering via Docker + gRPC"/>
+    <arg name="splatsim_tileset_path" default="" description="Host path to tileset.json"/>
+    <arg name="splatsim_image" default="splatsim:latest" description="Docker image for splatsim"/>
+    <arg name="splatsim_grpc_port" default="50051"/>
+    <arg name="splatsim_use_sh" default="true"/>
+    <arg name="splatsim_camera_width" default="1920"/>
+    <arg name="splatsim_camera_height" default="1080"/>
+    <arg name="splatsim_camera_fov" default="90.0"/>
+    <arg name="splatsim_camera_extrinsic_x" default="0.7"/>
+    <arg name="splatsim_camera_extrinsic_y" default="0.0"/>
+    <arg name="splatsim_camera_extrinsic_z" default="1.6"/>
+    <arg name="splatsim_camera_extrinsic_roll" default="0.0"/>
+    <arg name="splatsim_camera_extrinsic_pitch" default="0.0"/>
+    <arg name="splatsim_camera_extrinsic_yaw" default="0.0"/>
+    <arg name="splatsim_frame_rate" default="20.0"/>
+    <arg name="splatsim_image_topic" default="/splatsim/image_raw"/>
+    <arg name="splatsim_camera_info_topic" default="/splatsim/camera_info"/>
+    <arg name="splatsim_frame_id" default="splatsim_camera"/>
+    <arg name="splatsim_near_plane" default="0.01"/>
+    <arg name="splatsim_far_plane" default="1000.0"/>
+    <arg name="splatsim_device" default="cuda:0"/>
+    <arg name="splatsim_proj_origin_lat" default="0.0" description="GeoReference latitude (from CARLA xodr)"/>
+    <arg name="splatsim_proj_origin_lon" default="0.0" description="GeoReference longitude (from CARLA xodr)"/>
+
+    <group scoped="false" if="$(var render_with_splatsim)">
+      <node pkg="autoware_carla_interface" exec="splatsim_bridge" name="splatsim_bridge" output="screen">
+        <param name="tileset_path" value="$(var splatsim_tileset_path)"/>
+        <param name="splatsim_image" value="$(var splatsim_image)"/>
+        <param name="grpc_port" value="$(var splatsim_grpc_port)"/>
+        <param name="use_sh" value="$(var splatsim_use_sh)"/>
+        <param name="camera_width" value="$(var splatsim_camera_width)"/>
+        <param name="camera_height" value="$(var splatsim_camera_height)"/>
+        <param name="camera_fov" value="$(var splatsim_camera_fov)"/>
+        <param name="camera_extrinsic_x" value="$(var splatsim_camera_extrinsic_x)"/>
+        <param name="camera_extrinsic_y" value="$(var splatsim_camera_extrinsic_y)"/>
+        <param name="camera_extrinsic_z" value="$(var splatsim_camera_extrinsic_z)"/>
+        <param name="camera_extrinsic_roll" value="$(var splatsim_camera_extrinsic_roll)"/>
+        <param name="camera_extrinsic_pitch" value="$(var splatsim_camera_extrinsic_pitch)"/>
+        <param name="camera_extrinsic_yaw" value="$(var splatsim_camera_extrinsic_yaw)"/>
+        <param name="frame_rate" value="$(var splatsim_frame_rate)"/>
+        <param name="image_topic" value="$(var splatsim_image_topic)"/>
+        <param name="camera_info_topic" value="$(var splatsim_camera_info_topic)"/>
+        <param name="frame_id" value="$(var splatsim_frame_id)"/>
+        <param name="near_plane" value="$(var splatsim_near_plane)"/>
+        <param name="far_plane" value="$(var splatsim_far_plane)"/>
+        <param name="device" value="$(var splatsim_device)"/>
+        <param name="proj_origin_lat" value="$(var splatsim_proj_origin_lat)"/>
+        <param name="proj_origin_lon" value="$(var splatsim_proj_origin_lon)"/>
+      </node>
+
+      <node pkg="autoware_carla_interface" exec="splatsim_pose_publisher" name="splatsim_pose_publisher" output="screen">
+        <param name="origin_frame_id" value="map"/>
+        <param name="simulated_frame_id" value="base_link"/>
+        <param name="publish_rate" value="50.0"/>
+      </node>
+    </group>
   </group>
 </launch>
