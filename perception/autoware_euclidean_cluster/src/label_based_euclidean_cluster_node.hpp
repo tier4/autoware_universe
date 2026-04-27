@@ -28,12 +28,17 @@
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace autoware::euclidean_cluster
 {
+enum ShapePolicy : uint8_t {
+  ALL_POLYGON = 0,
+  LABEL_DEPEND = 1,
+};
+
 /// @brief ROS 2 node that performs euclidean clustering on semantic point clouds grouped by label.
 class LabelBasedEuclideanClusterNode : public rclcpp::Node
 {
@@ -63,5 +68,7 @@ private:
 
   std::unordered_map<std::uint8_t, std::uint8_t> class_id_to_object_label_;
   float min_probability_;
+
+  ShapePolicy shape_policy_;
 };
 }  // namespace autoware::euclidean_cluster

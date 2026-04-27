@@ -78,6 +78,20 @@ bool is_ignored_mapping(const std::string & mapped_label)
   return mapped_label == "ignore";
 }
 
+/// @brief Convert an integer parameter into a validated shape policy.
+ShapePolicy to_shape_policy(const std::uint8_t value)
+{
+  switch (value) {
+    case ShapePolicy::ALL_POLYGON:
+      return ShapePolicy::ALL_POLYGON;
+    case ShapePolicy::LABEL_DEPEND:
+      return ShapePolicy::LABEL_DEPEND;
+    default:
+      throw std::runtime_error(
+        "shape_policy must be 0 (ALL_POLYGON) or 1 (LABEL_DEPEND)");
+  }
+}
+
 /// @brief Extract ordered class mappings from parameter overrides.
 std::vector<std::pair<std::string, std::string>> extract_class_mappings(
   const rclcpp::NodeOptions & options)
@@ -167,21 +181,35 @@ std::pair<Shape, geometry_msgs::msg::Pose> create_fallback_shape_and_pose(
   return {shape, pose};
 }
 
+/// @brief Return true when the estimator populated a usable shape output.
+bool has_usable_estimated_shape(const Shape & shape)
+{
+  switch (shape.type) {
+    case Shape::BOUNDING_BOX:
+    case Shape::CYLINDER:
+      return shape.dimensions.x > 0.0 && shape.dimensions.y > 0.0 && shape.dimensions.z > 0.0;
+    case Shape::POLYGON:
+      return !shape.footprint.points.empty() && shape.dimensions.z > 0.0;
+    default:
+      return false;
+  }
+}
+
 /// @brief Build a detected object with estimated or fallback shape and pose.
-DetectedObject create_box_object(
+DetectedObject create_detected_object(
   const pcl::PointCloud<pcl::PointXYZ> & cluster, const std::uint8_t label, const float probability,
-  autoware::shape_estimation::ShapeEstimator & shape_estimator)
+  const ShapePolicy shape_policy, autoware::shape_estimation::ShapeEstimator & shape_estimator)
 {
   DetectedObject object;
   autoware_perception_msgs::msg::Shape shape;
   geometry_msgs::msg::Pose pose;
-  // NOTE: Force to use UNKNOWN label to estimate the shape as polygon for non-pedestrian objects.
+  // UNKNOWN uses the convex hull model, which is the polygon path in ShapeEstimator.
   const std::uint8_t shape_label =
-    (label == ObjectClassification::PEDESTRIAN) ? label : ObjectClassification::UNKNOWN;
-  const bool estimated = shape_estimator.estimateShapeAndPose(
+    (shape_policy == ShapePolicy::LABEL_DEPEND) ? label : ObjectClassification::UNKNOWN;
+  shape_estimator.estimateShapeAndPose(
     shape_label, cluster, boost::none, boost::none, boost::none, shape, pose);
 
-  if (!estimated) {
+  if (!has_usable_estimated_shape(shape)) {
     std::tie(shape, pose) = create_fallback_shape_and_pose(cluster, label);
   }
 
@@ -245,6 +273,8 @@ LabelBasedEuclideanClusterNode::LabelBasedEuclideanClusterNode(const rclcpp::Nod
 {
   min_probability_ = static_cast<float>(
     autoware_utils_rclcpp::get_or_declare_parameter<double>(*this, "min_probability"));
+  shape_policy_ = to_shape_policy(
+    autoware_utils_rclcpp::get_or_declare_parameter<uint8_t>(*this, "shape_policy"));
 
   const auto class_mappings = extract_class_mappings(options);
   if (!update_target_label_map(class_mappings)) {
@@ -357,7 +387,8 @@ void LabelBasedEuclideanClusterNode::on_pointcloud(
       }
 
       output_msg.objects.push_back(
-        create_box_object(cluster, label, label_probability, *shape_estimator_));
+        create_detected_object(
+          cluster, label, label_probability, shape_policy_, *shape_estimator_));
     }
   }
 

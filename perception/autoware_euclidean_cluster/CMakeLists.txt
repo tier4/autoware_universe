@@ -77,6 +77,8 @@ ament_target_dependencies(${PROJECT_NAME}_label_based_node_core
 rclcpp_components_register_node(${PROJECT_NAME}_label_based_node_core
   PLUGIN "autoware::euclidean_cluster::LabelBasedEuclideanClusterNode"
   EXECUTABLE label_based_euclidean_cluster_node
+  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+  ROS2_EXECUTOR SingleThreadedExecutor
 )
 
 if(BUILD_TESTING)
