@@ -152,11 +152,6 @@ validator:
       #   hazard: *pet_eaa
       #   over_drivable: *pet_eaa
       #   under_drivable: *pet_eaa
-      collision_time_threshold:
-        type: double
-        default_value: 1.0
-        description: time threshold for PET collision check
-        read_only: false
       warn_threshold:
         ego_first_passing_time_gap:
           type: double
