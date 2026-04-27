@@ -471,13 +471,11 @@ class carla_ros2_interface(object):
         for key, data in input_data.items():
             sensor_type = self.id_to_sensor_type_map[key]
             if sensor_type == "sensor.camera.rgb":
-                if not self.render_with_splatsim:
-                    self.camera(data[1])
+                self.camera(data[1])
             elif sensor_type == "sensor.other.gnss":
                 self.pose()
             elif sensor_type == "sensor.lidar.ray_cast":
-                if not self.render_with_splatsim:
-                    self.lidar(data[1], key)
+                self.lidar(data[1], key)
             elif sensor_type == "sensor.other.imu":
                 self.imu(data[1])
             else:

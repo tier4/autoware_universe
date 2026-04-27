@@ -126,8 +126,18 @@ class SensorWrapper(object):
     def setup_sensors(self, vehicle, debug_mode=False):
         """Create and attach the sensor defined in objects.json."""
         bp_library = CarlaDataProvider.get_world().get_blueprint_library()
+        render_with_splatsim = getattr(self._agent, "render_with_splatsim", False)
 
         for sensor_spec in self._agent.sensors["sensors"]:
+            sensor_type = sensor_spec["type"]
+
+            # When splatsim is active, skip LiDAR and Camera sensors entirely.
+            # LiDAR: NOP (splatsim has no LiDAR simulation).
+            # Camera: replaced by splatsim Docker container rendering via DDS.
+            if render_with_splatsim and (
+                sensor_type.startswith("sensor.lidar") or sensor_type.startswith("sensor.camera")
+            ):
+                continue
             bp = bp_library.find(str(sensor_spec["type"]))
 
             if sensor_spec["type"].startswith("sensor.camera"):
