@@ -33,6 +33,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace
@@ -165,6 +166,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   }
 
   context.traffic_light_signals = sub_traffic_lights_.take_data();
+  context.route = sub_route_.take_data();
 
   context.lanelet_map = lanelet_map_ptr_;
   if (!context.lanelet_map) {
@@ -222,6 +224,13 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
           get_logger(), *get_clock(), 1000, "[%s] %s", plugin->get_name().c_str(),
           evaluation.reason.c_str());
       }
+
+      metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                          .validator_name(plugin->get_name())
+                          .validator_category(plugin->category())
+                          .metric_name("trajectory_feasibility")
+                          .metric_value(evaluation.is_feasible ? 1.0 : 0.0)
+                          .level(evaluation.is_feasible ? MetricReport::OK : MetricReport::ERROR));
 
       diagnostics_interface_.add_key_value(
         plugin->get_name(), evaluation.is_feasible ? std::string("OK") : std::string("NG"));
@@ -302,6 +311,14 @@ void TrajectoryValidator::load_metric(const std::string & name)
     }
 
     plugin->set_vehicle_info(vehicle_info_);
+
+    std::string category;
+    size_t pos = name.find("::");
+    if (pos != std::string::npos) {
+      category = name.substr(0, pos);
+    }
+    plugin->set_category(category);
+
     plugin->update_parameters(params_);
 
     plugins_.push_back(plugin);

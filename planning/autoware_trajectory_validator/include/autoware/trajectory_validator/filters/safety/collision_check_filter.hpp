@@ -19,8 +19,11 @@
 
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware/object_recognition_utils/object_classification.hpp>
+#include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_utils_uuid/uuid_helper.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/duration.hpp>
 #include <rclcpp/time.hpp>
@@ -63,15 +66,40 @@ using StepPolygonTrajectory = std::vector<Polygon2d>;
 using IndexRange = std::pair<size_t, size_t>;
 using TimeRange = std::pair<double, double>;
 
-static constexpr double TIME_RESOLUTION = 0.1;
 static constexpr double TIME_INDEX_EPSILON = 1e-3;
 
-struct ObjectIdentification
+struct TrajectoryIdentification
 {
   std::string classification;
   builtin_interfaces::msg::Time stamp{};
   unique_identifier_msgs::msg::UUID uuid{};
-  std::string trajectory_suffix{};
+  std::string trajectory_type{};
+  double acceleration{};
+
+  TrajectoryIdentification() = default;
+  explicit TrajectoryIdentification(std::string classification)
+  : classification(std::move(classification))
+  {
+  }
+
+  TrajectoryIdentification(
+    const autoware_perception_msgs::msg::PredictedObject & object,
+    const builtin_interfaces::msg::Time stamp, std::string trajectory_type = {},
+    double acceleration = 0.0)
+  : classification(autoware::object_recognition_utils::convertLabelToString(
+      autoware::object_recognition_utils::getHighestProbLabel(object.classification))),
+    stamp(stamp),
+    uuid(object.object_id),
+    trajectory_type(std::move(trajectory_type)),
+    acceleration(acceleration)
+  {
+  }
+
+  std::string object_id_string() const { return autoware_utils_uuid::to_hex_string(uuid); }
+  std::string trajectory_id_string() const
+  {
+    return object_id_string() + "_" + trajectory_type + " acc: " + std::to_string(acceleration);
+  }
 };
 
 namespace geometry
@@ -84,7 +112,7 @@ Polygon2d to_polygon2d(
 class TrajectoryData
 {
 private:
-  ObjectIdentification object_identification_;
+  TrajectoryIdentification identification_;
   TimeTrajectory times_;
   TravelDistanceTrajectory distances_;
   PoseTrajectory poses_;
@@ -92,7 +120,7 @@ private:
   mutable std::map<IndexRange, Box2d> envelope_cache_;
   mutable std::map<IndexRange, Polygon2d> convex_cache_;
 
-  //todo: use for loop search with hint, instead of binary search.
+  // todo: use for loop search with hint, instead of binary search.
   size_t get_same_or_earlier_time_index(const double t) const
   {
     const auto it = std::upper_bound(times_.begin(), times_.end(), t + TIME_INDEX_EPSILON);
@@ -151,9 +179,9 @@ private:
 
 public:
   TrajectoryData(
-    ObjectIdentification object_identification, TimeTrajectory times,
+    TrajectoryIdentification trajectory_identification, TimeTrajectory times,
     TravelDistanceTrajectory distances, PoseTrajectory poses, FootprintTrajectory footprints)
-  : object_identification_(std::move(object_identification)),
+  : identification_(std::move(trajectory_identification)),
     times_(std::move(times)),
     distances_(std::move(distances)),
     poses_(std::move(poses)),
@@ -161,28 +189,28 @@ public:
   {
     if (times_.empty()) {
       throw std::invalid_argument(
-        "Trajectory must not be empty classification: " + object_identification_.classification);
+        "Trajectory must not be empty classification: " + identification_.classification);
     }
     if (times_.size() != distances_.size()) {
       throw std::invalid_argument(
         "Trajectory sizes mismatch (times vs distances) classification: " +
-        object_identification_.classification);
+        identification_.classification);
     }
     if (times_.size() != poses_.size()) {
       throw std::invalid_argument(
         "Trajectory sizes mismatch (times vs poses) classification: " +
-        object_identification_.classification);
+        identification_.classification);
     }
     if (times_.size() != footprints_.size()) {
       throw std::invalid_argument(
         "Trajectory sizes mismatch (times vs footprints) classification: " +
-        object_identification_.classification);
+        identification_.classification);
     }
   }
 
   TrajectoryData() = delete;
 
-  const ObjectIdentification & getObjectIdentification() const { return object_identification_; }
+  const TrajectoryIdentification & getObjectIdentification() const { return identification_; }
   const TimeTrajectory & getTimes() const { return times_; }
   const TravelDistanceTrajectory & getDistances() const { return distances_; }
   const PoseTrajectory & getPoses() const { return poses_; }
@@ -288,12 +316,15 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
+  validator::Params::CollisionCheck::GlobalSetting global_setting_;
+  validator::Params::CollisionCheck::Drac drac_params_;
   validator::Params::CollisionCheck::PetCollision pet_collision_params_;
   validator::Params::CollisionCheck::Rss rss_params_;
   ContinuousDetectionTimes pet_continuous_times_;
   ContinuousDetectionTimes rss_continuous_times_;
   ContinuousDetectionTimes drac_continuous_times_;
 
+  void clear_detection_times();
   void add_debug_markers(
     const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
     const PoseTrajectory & ego_trajectory, const PoseTrajectory & object_trajectory,

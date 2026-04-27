@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_validator/filters/safety/uncrossable_boundary_departure_filter.hpp"
+#include "autoware/trajectory_validator/filters/safety/uncrossable_boundary_departure.hpp"
 
 #include <autoware/boundary_departure_checker/debug.hpp>
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -28,12 +30,9 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
     return tl::make_unexpected(*has_invalid_input);
   }
 
-  if (!is_initialized_) {
-    uncrossable_boundary_checker_.set_lanelet_map(context.lanelet_map);
-    if (const auto init = uncrossable_boundary_checker_.initialize(); !init) {
-      return tl::make_unexpected(init.error());
-    }
-    is_initialized_ = true;
+  if (!checker_) {
+    checker_ = std::make_unique<boundary_departure_checker::UncrossableBoundaryChecker>(
+      context.lanelet_map, params_, *vehicle_info_ptr_);
   }
 
   boundary_departure_checker::EgoDynamicState ego_state;
@@ -42,20 +41,14 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
   ego_state.acceleration = context.acceleration->accel.accel.linear.x;
   ego_state.current_time_s = rclcpp::Time(context.odometry->header.stamp).seconds();
 
-  const auto departure_data =
-    uncrossable_boundary_checker_.check_departure(traj_points, *vehicle_info_ptr_, ego_state);
+  auto status = checker_->update_departure_status(traj_points, ego_state);
 
-  if (!departure_data) {
-    return tl::make_unexpected(departure_data.error());
-  }
+  const bool is_feasible = status.status != boundary_departure_checker::DepartureType::CRITICAL;
 
-  const bool is_feasible =
-    departure_data->status != boundary_departure_checker::DepartureType::CRITICAL;
   if (!is_feasible) {
-    auto markers = boundary_departure_checker::debug::create_debug_markers(
-      *departure_data, context.odometry->header.stamp, context.odometry->pose.pose.position.z);
     std::move(
-      markers.markers.begin(), markers.markers.end(), std::back_inserter(debug_markers_.markers));
+      status.debug_markers.markers.begin(), status.debug_markers.markers.end(),
+      std::back_inserter(debug_markers_.markers));
   }
 
   std::vector<MetricReport> metrics{
@@ -71,17 +64,20 @@ UncrossableBoundaryDepartureFilter::result_t UncrossableBoundaryDepartureFilter:
 
 void UncrossableBoundaryDepartureFilter::update_parameters(const validator::Params & params)
 {
-  params_.lateral_margin_m = params.boundary_departure.lateral_gap_to_boundary_m;
-  params_.longitudinal_margin_m = params.boundary_departure.longitudinal_gap_to_boundary_m;
+  params_.lateral_margin_m = params.boundary_departure.lateral_margin_m;
+  params_.longitudinal_margin_m = params.boundary_departure.longitudinal_margin_m;
   params_.max_deceleration_mps2 = params.boundary_departure.max_deceleration_mps2;
   params_.max_jerk_mps3 = params.boundary_departure.max_jerk_mps3;
   params_.brake_delay_s = params.boundary_departure.brake_delay_s;
-  params_.time_to_departure_cutoff_s = params.boundary_departure.cutoff_time_s;
+  params_.time_to_departure_cutoff_s = params.boundary_departure.time_to_departure_cutoff_s;
   params_.on_time_buffer_s = params.boundary_departure.on_time_buffer_s;
   params_.off_time_buffer_s = params.boundary_departure.off_time_buffer_s;
+  params_.enable_developer_marker = params.boundary_departure.enable_developer_marker;
   params_.boundary_types_to_detect = params.boundary_departure.boundary_types;
 
-  uncrossable_boundary_checker_.set_param(params_);
+  if (checker_) {
+    checker_->update_parameters(params_);
+  }
 }
 
 std::optional<std::string> UncrossableBoundaryDepartureFilter::is_invalid_input(

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_
-#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_
+#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_HPP_
+#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
@@ -36,13 +36,11 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
-  boundary_departure_checker::UncrossableBoundaryChecker uncrossable_boundary_checker_;
+  std::unique_ptr<boundary_departure_checker::UncrossableBoundaryChecker> checker_;
   boundary_departure_checker::UncrossableBoundaryDepartureParam params_;
 
   [[nodiscard]] std::optional<std::string> is_invalid_input(const FilterContext & context) const;
-
-  bool is_initialized_ = false;
 };
 }  // namespace autoware::trajectory_validator::plugin::safety
 
-#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_FILTER_HPP_
+#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_HPP_

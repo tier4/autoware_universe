@@ -57,43 +57,132 @@ validator:
       read_only: false
 
   collision_check:
-    pet_collision:
-      ego_braking_delay:
+    global_setting:
+      time_resolution:
+        type: double
+        default_value: 0.1
+        description: sampling interval used in collision check trajectory generation
+        read_only: false
+    drac:
+      enable_assessment:
+        type: bool
+        default_value: true
+        description: When true, DRAC assessment is performed
+        read_only: false
+      assessment_trajectories:
+        map_based:
+          type: bool
+          default_value: true
+          description: Use map based predicted path trajectories for DRAC assessment
+          read_only: false
+        constant_curvature:
+          type: bool
+          default_value: true
+          description: Use constant curvature trajectories for DRAC assessment
+          read_only: false
+        diffusion_based:
+          type: bool
+          default_value: true
+          description: Use diffusion based trajectories for DRAC assessment
+          read_only: false
+      ego_total_braking_delay:
         type: double
         default_value: 0.4
-        description: N/A
+        description: Total ego braking delay for DRAC assessment
+        read_only: false
+      warn_threshold:
+        ego_acceleration:
+          type: double
+          default_value: -3.0
+          description: Ego acceleration threshold for DRAC warning (m/s^2, negative)
+          read_only: false
+      error_threshold:
+        ego_acceleration:
+          type: double
+          default_value: -5.0
+          description: Ego acceleration threshold for DRAC error (m/s^2, negative)
+          read_only: false
+    pet_collision:
+      enable_assessment:
+        type: bool
+        default_value: true
+        description: When true, planned speed assessment is performed
+        read_only: false
+      assessment_trajectories:
+        map_based:
+          type: bool
+          default_value: true
+          description: Use map based predicted path trajectories for PET assessment
+          read_only: false
+        constant_curvature:
+          type: bool
+          default_value: true
+          description: Use constant curvature trajectories for PET assessment
+          read_only: false
+        diffusion_based:
+          type: bool
+          default_value: true
+          description: Use diffusion based trajectories for PET assessment
+          read_only: false
+      ego_total_braking_delay:
+        type: double
+        default_value: 0.4
+        description: Total ego braking delay for PET assessment
         read_only: false
       ego_assumed_acceleration:
         type: double
-        default_value: -4.0
-        description: Used for code test, not used in actual collision check
+        default_value: -5.0
+        description: Assumed ego acceleration for PET assessment (m/s^2, negative)
         read_only: false
-      collision_time_threshold:
-        type: double
-        default_value: 1.0
-        description: time threshold for PET collision check
-        read_only: false
+      warn_threshold:
+        ego_first_passing_time_gap:
+          type: double
+          default_value: 1.0
+          description: Allowed time gap when ego passes first for PET warning
+          read_only: false
+        object_first_passing_time_gap:
+          type: double
+          default_value: 1.0
+          description: Allowed time gap when object passes first for PET warning
+          read_only: false
+      error_threshold:
+        ego_first_passing_time_gap:
+          type: double
+          default_value: 0.3
+          description: Allowed time gap when ego passes first for PET error
+          read_only: false
+        object_first_passing_time_gap:
+          type: double
+          default_value: 0.6
+          description: Allowed time gap when object passes first for PET error
+          read_only: false
     rss:
-      ego_deceleration_threshold:
-        type: double
-        default_value: 4.0
-        description: threshold to determine RSS collision
+      enable_assessment:
+        type: bool
+        default_value: true
+        description: When true, RSS assessment is performed
         read_only: false
-      stop_margin:
+      stop_distance_margin:
         type: double
         default_value: 2.0
         description: required remaining distance to the object when ego stops
         read_only: false
-      ego_reaction_time:
+      ego_total_braking_delay:
         type: double
         default_value: 0.4
-        description: reaction time of the ego vehicle
+        description: Total ego braking delay for RSS calculation
         read_only: false
-      object_acceleration:
+      object_assumed_acceleration:
         type: double
         default_value: -1.0
-        description: assumed acceleration of the object for RSS calculation
+        description: Assumed object acceleration for RSS calculation (m/s^2, negative)
         read_only: false
+      error_threshold:
+        ego_acceleration:
+          type: double
+          default_value: -4.0
+          description: Ego acceleration threshold to determine RSS collision (m/s^2, negative)
+          read_only: false
 
   traffic_light:
     deceleration_limit:
@@ -139,50 +228,55 @@ validator:
         read_only: false
 
   boundary_departure:
-    lateral_gap_to_boundary_m:
+    lateral_margin_m:
       type: double
       default_value: 0.01
-      description: N/A
+      description: lateral margin [m]
       read_only: false
-    longitudinal_gap_to_boundary_m:
+    longitudinal_margin_m:
       type: double
       default_value: 1.0
-      description: N/A
+      description: longitudinal margin [m]
       read_only: false
     max_deceleration_mps2:
       type: double
       default_value: -4.0
-      description: N/A
+      description: maximum deceleration [m/s^2]
       read_only: false
     max_jerk_mps3:
       type: double
       default_value: -5.0
-      description: N/A
+      description: maximum jerk [m/s^3]
       read_only: false
     brake_delay_s:
       type: double
       default_value: 1.0
-      description: N/A
+      description: brake delay [s]
       read_only: false
-    cutoff_time_s:
+    time_to_departure_cutoff_s:
       type: double
       default_value: 2.0
-      description: N/A
+      description: time to departure cutoff [s]
       read_only: false
     on_time_buffer_s:
       type: double
       default_value: 0.15
-      description: N/A
+      description: buffer for activating departure detection [s]
       read_only: false
     off_time_buffer_s:
       type: double
-      default_value: 2.0
-      description: N/A
+      default_value: 0.15
+      description: buffer for deactivating departure detection [s]
+      read_only: false
+    enable_developer_marker:
+      type: bool
+      default_value: true
+      description: flag marker only for developer
       read_only: false
     boundary_types:
       type: string_array
       default_value: ["road_border"]
-      description: metrics.
+      description: boundary types to detect
       read_only: true
 
   pseudo_emergency_stop:
