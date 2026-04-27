@@ -1,0 +1,13 @@
+<launch>
+  <arg name="node_name" default="object_fusion_merger"/>
+  <arg name="object_fusion_merger_param_path" default="$(find-pkg-share autoware_object_merger)/config/object_fusion_merger.param.yaml"/>
+  <arg name="data_association_matrix_path" default="$(find-pkg-share autoware_object_merger)/config/data_association_matrix.param.yaml"/>
+
+  <node pkg="autoware_object_merger" exec="object_fusion_merger_node" name="$(var node_name)" output="screen">
+    <param from="$(var object_fusion_merger_param_path)"/>
+    <param from="$(var data_association_matrix_path)"/>
+    <remap from="input/main_object" to="input/main_object"/>
+    <remap from="input/sub_object" to="input/sub_object"/>
+    <remap from="output/object" to="output/object"/>
+  </node>
+</launch>
