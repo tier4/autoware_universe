@@ -39,13 +39,14 @@
 #include <boost/range/iterator_range.hpp>
 
 #include <algorithm>
-#include <any>
 #include <cassert>
 #include <cmath>
 #include <map>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -304,6 +305,76 @@ private:
   std::optional<rclcpp::Time> current_time_;
   std::unordered_map<std::string, rclcpp::Time> detection_start_times_;
 };
+
+namespace detail
+{
+template <class T, class = void>
+struct has_object_class_map : std::false_type
+{
+};
+template <class T>
+struct has_object_class_map<T, std::void_t<decltype(std::declval<const T &>().object_class_map)>>
+: std::true_type
+{
+};
+}  // namespace detail
+
+
+
+// Returns the leaf scalar (Entry::value) for a per-class map lookup with
+// "base" fallback. NaN per-class entries are treated as "unset" for
+// floating-point Entry::value. Accepts a per-class wrapper struct or a plain
+// scalar (returned as-is). Always returns a scalar.
+template <class T>
+auto resolve_per_class(const T & s, const std::string & cls)
+{
+  if constexpr (detail::has_object_class_map<T>::value) {
+    const auto & m = s.object_class_map;
+    using Entry = typename std::decay_t<decltype(m)>::mapped_type;
+    using ValueT = decltype(Entry{}.value);
+    auto it = m.find(cls);
+
+    auto format_map_keys = [&m]() {
+      std::string out = "{";
+      bool first = true;
+      for (const auto & kv : m) {
+        if (!first) out += ", ";
+        out += kv.first;
+        first = false;
+      }
+      return out + "}";
+    };
+
+    if constexpr (std::is_floating_point_v<ValueT>) {
+      // double / float: per-class value if explicitly set (non-NaN); otherwise base.
+      if (it != m.end() && !std::isnan(it->second.value)) return it->second.value;
+      if (auto base_it = m.find("base"); base_it != m.end()) return base_it->second.value;
+      const std::string state = (it == m.end()) ? "class key not present in map"
+                                                : "class entry value is NaN (unset)";
+      throw std::runtime_error(
+        "resolve_per_class: cannot resolve floating-point value for class '" + cls + "' (" +
+        state + "), and 'base' is also missing. Map keys: " + format_map_keys());
+    } else if constexpr (std::is_same_v<ValueT, bool>) {
+      // bool: per-class value only; no base fallback.
+      if (it != m.end()) return it->second.value;
+      throw std::runtime_error(
+        "resolve_per_class: no bool entry for class '" + cls +
+        "'; bool maps require an explicit per-class value. Map keys: " + format_map_keys());
+    } else {
+      // int / string / other non-arithmetic-floating types: per-class value as-is.
+      if (it != m.end()) return it->second.value;
+      throw std::runtime_error(
+        "resolve_per_class: no entry for class '" + cls +
+        "'. Map keys: " + format_map_keys());
+    }
+
+  } else {
+    static_assert(
+      std::is_arithmetic_v<T> || std::is_same_v<T, std::string>,
+      "resolve_per_class scalar passthrough requires double/float/int/bool/string.");
+    return s;
+  }
+}
 
 class CollisionCheckFilter : public plugin::ValidatorInterface
 {

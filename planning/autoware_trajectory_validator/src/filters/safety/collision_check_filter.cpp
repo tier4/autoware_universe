@@ -29,7 +29,7 @@
 #include <fmt/core.h>
 
 #include <algorithm>
-#include <any>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -56,6 +56,19 @@ struct EvaluationArtifacts
   std::vector<MetricReport> metrics{};
   autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors{};
 };
+
+std::string get_object_class_label(const autoware_perception_msgs::msg::PredictedObject & object)
+{
+  // convertLabelToString returns UPPERCASE ("CAR", "TRUCK", ...). The YAML
+  // schema's object_class array (and per-class map keys) is lowercase, so
+  // lowercase here to make resolve_per_class lookups match.
+  std::string label = autoware::object_recognition_utils::convertLabelToString(
+    autoware::object_recognition_utils::getHighestProbLabel(object.classification));
+  std::transform(
+    label.begin(), label.end(), label.begin(),
+    [](unsigned char c) { return std::tolower(c); });
+  return label;
+}
 }  // namespace
 
 // Trajectory generation helpers.
@@ -873,11 +886,14 @@ Assessment assess_required_deceleration(
     return Assessment{TrajectoryIdentification{object, stamp}, 0.0};
   }
 
+  const auto cls = get_object_class_label(object);
+  const double stop_distance_margin = resolve_per_class(rss_params.stop_distance_margin, cls);
+
   // compute safe distance
   const double obj_long_vel = std::clamp(
     rss_deceleration::compute_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
   const double safe_distance =
-    distance_to_collision.value() - rss_params.stop_distance_margin +
+    distance_to_collision.value() - stop_distance_margin +
     obj_long_vel * obj_long_vel * 0.5 / -rss_params.object_assumed_acceleration -
     ego_long_vel * rss_params.ego_total_braking_delay;
 
@@ -905,6 +921,11 @@ Result assess(
   result.violations.reserve(context.predicted_objects->objects.size());
 
   for (const auto & object : context.predicted_objects->objects) {
+    const auto cls = get_object_class_label(object);
+    if (!resolve_per_class(rss_params.enable_assessment, cls)) {
+      continue;
+    }
+
     const auto assessment = assess_required_deceleration(
       ego_trajectory, context.odometry->twist.twist, object, rss_params,
       context.predicted_objects->header.stamp);
@@ -1165,10 +1186,14 @@ std::vector<Finding> assess_planned_speed_collision_timing(
       continue;
     }
 
+    const auto & cls = object_trajectory.getObjectIdentification().classification;
+    const double object_first_passing_time_gap =
+      resolve_per_class(pet_collision_params.warn_threshold.object_first_passing_time_gap, cls);
+
     auto finding = find_collision_timing(
       ego_trajectory, object_trajectory,
       pet_collision_params.warn_threshold.ego_first_passing_time_gap,
-      -pet_collision_params.warn_threshold.object_first_passing_time_gap, time_resolution);
+      -object_first_passing_time_gap, time_resolution);
     if (finding.has_value()) {
       findings.push_back(std::move(finding.value()));
     }
@@ -1587,23 +1612,25 @@ void process_drac_findings(
     current_time, collision_timing_result.drac_findings,
     [](const auto & finding) { return finding.object_identification.trajectory_id_string(); });
 
-  const bool is_warn =
-    collision_timing_result.drac == std::nullopt ||
-    collision_timing_result.drac.value() >= -drac_params.warn_threshold.ego_acceleration;
-  const bool is_error =
-    collision_timing_result.drac == std::nullopt ||
-    collision_timing_result.drac.value() >= -drac_params.error_threshold.ego_acceleration;
-  if (!is_warn) {
-    return;
-  }
-
   std::string log_messages{};
   std::string marker_messages{};
-  const uint8_t metric_level = is_error ? MetricReport::ERROR : MetricReport::WARN;
+  uint8_t aggregate_level = MetricReport::WARN;
   for (const auto & finding : collision_timing_result.drac_findings) {
     const auto & obj_id = finding.object_identification;
+    const double warn_threshold =
+      resolve_per_class(drac_params.warn_threshold.ego_acceleration, obj_id.classification);
+    const bool is_warn = collision_timing_result.drac == std::nullopt ||
+                         collision_timing_result.drac.value() >= -warn_threshold;
+    if (!is_warn) {
+      continue;
+    }
+    const bool is_error =
+      collision_timing_result.drac == std::nullopt ||
+      collision_timing_result.drac.value() >= -drac_params.error_threshold.ego_acceleration;
+    const uint8_t metric_level = is_error ? MetricReport::ERROR : MetricReport::WARN;
     if (is_error) {
       artifacts.is_feasible = false;
+      aggregate_level = MetricReport::ERROR;
     }
 
     artifacts.metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
@@ -1633,7 +1660,7 @@ void process_drac_findings(
   }
 
   artifacts.error_msg += marker_messages;
-  log_collision_messages(metric_level, log_messages);
+  log_collision_messages(aggregate_level, log_messages);
 }
 
 void process_rss_violations(
@@ -1644,7 +1671,11 @@ void process_rss_violations(
   ContinuousDetectionTimes & rss_continuous_times, const rclcpp::Time & current_time,
   EvaluationArtifacts & artifacts)
 {
-  if (!rss_params.enable_assessment) {
+  const auto & enable_map = rss_params.enable_assessment.object_class_map;
+  const bool any_class_enabled = std::any_of(
+    enable_map.begin(), enable_map.end(),
+    [](const auto & kv) { return kv.second.value; });
+  if (!any_class_enabled) {
     return;
   }
 

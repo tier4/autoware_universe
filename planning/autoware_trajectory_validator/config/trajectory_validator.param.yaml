@@ -1,5 +1,6 @@
 /**:
   ros__parameters:
+    object_class: [unknown, car, truck, bus, trailer, motorcycle, bicycle, pedestrian, animal, hazard, over_drivable, under_drivable]
     filter_names:
       [
         "safety::OutOfLaneFilter",
@@ -35,7 +36,15 @@
           diffusion_based: true
         ego_total_braking_delay: 0.4
         warn_threshold:
-          ego_acceleration: -3.0
+          ego_acceleration: 
+            base:
+              value: -2.0
+            pedestrian:
+              value: -1.0
+            bicycle:
+              value: -1.5
+            motorcycle:
+              value: -1.5
         error_threshold:
           ego_acceleration: -5.0
       pet_collision:
@@ -48,17 +57,36 @@
         ego_assumed_acceleration: -5.0
         warn_threshold:
           ego_first_passing_time_gap: 1.0
-          object_first_passing_time_gap: 1.0
+          object_first_passing_time_gap:
+            base:
+              value: 1.0
+            car:
+              value: 2.0
+            bus:
+              value: 3.0
         error_threshold:
           ego_first_passing_time_gap: 0.6
           object_first_passing_time_gap: 0.3
       rss:
-        enable_assessment: true
-        stop_distance_margin: 2.0
+        enable_assessment: 
+          base: true
+          over_drivable: false
+          under_drivable: false
+
+        stop_distance_margin:
+          base: 
+            value: 2.0
+          pedestrian:
+            value: 3.0
+          bicycle:
+            value: 2.5
+          motorcycle:
+            value: 2.5
         ego_total_braking_delay: 0.4
         object_assumed_acceleration: -1.0
         error_threshold:
           ego_acceleration: -4.0
+            # Add e.g. `pedestrian: -2.5` here to override RSS deceleration threshold for pedestrians only.
 
     vehicle_constraint:
       max_speed: 16.7 # m/s

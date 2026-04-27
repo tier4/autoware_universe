@@ -5,6 +5,15 @@ validator:
     description: metrics.
     read_only: false
 
+  object_class:
+    type: string_array
+    default_value:
+      [base, unknown, car, truck, bus, trailer, motorcycle, bicycle, pedestrian, animal, hazard,
+       over_drivable, under_drivable]
+    description: Map keys used to expand per-class parameter maps. The key base is reserved
+      as the fallback resolved when the actual class is missing from a given map.
+    read_only: false
+
   out_of_lane:
     time:
       type: double
@@ -92,10 +101,13 @@ validator:
         read_only: false
       warn_threshold:
         ego_acceleration:
-          type: double
-          default_value: -3.0
-          description: Ego acceleration threshold for DRAC warning (m/s^2, negative)
-          read_only: false
+          __map_object_class:
+            value:
+              type: double
+              default_value: .NAN
+              description: Per-class ego acceleration threshold for DRAC warning (m/s^2, negative).
+                NaN means not explicitly set; resolve_per_class falls back to the base entry.
+              read_only: false
       error_threshold:
         ego_acceleration:
           type: double
@@ -134,24 +146,6 @@ validator:
         default_value: -5.0
         description: Assumed ego acceleration for PET assessment (m/s^2, negative)
         read_only: false
-      # ego_assumed_acceleration: example
-      #   base:
-      #     type: double
-      #     default_value: -4.0
-      #     description: N/A
-      #     read_only: false
-      #   unknown: &pet_eaa { type: double, default_value: .NAN, description: N/A, read_only: false }
-      #   car: *pet_eaa
-      #   truck: *pet_eaa
-      #   bus: *pet_eaa
-      #   trailer: *pet_eaa
-      #   motorcycle: *pet_eaa
-      #   bicycle: *pet_eaa
-      #   pedestrian: *pet_eaa
-      #   animal: *pet_eaa
-      #   hazard: *pet_eaa
-      #   over_drivable: *pet_eaa
-      #   under_drivable: *pet_eaa
       collision_time_threshold:
         type: double
         default_value: 1.0
@@ -164,10 +158,13 @@ validator:
           description: Allowed time gap when ego passes first for PET warning
           read_only: false
         object_first_passing_time_gap:
-          type: double
-          default_value: 1.0
-          description: Allowed time gap when object passes first for PET warning
-          read_only: false
+          __map_object_class:
+            value:
+              type: double
+              default_value: .NAN
+              description: Per-class allowed time gap when object passes first for PET warning (s).
+                NaN means not explicitly set; resolve_per_class falls back to the base entry.
+              read_only: false
       error_threshold:
         ego_first_passing_time_gap:
           type: double
@@ -181,15 +178,20 @@ validator:
           read_only: false
     rss:
       enable_assessment:
-        type: bool
-        default_value: true
-        description: When true, RSS assessment is performed
-        read_only: false
+        __map_object_class:
+          value:
+            type: bool
+            default_value: true
+            description: Per-class flag to enable RSS assessment.
+            read_only: false
       stop_distance_margin:
-        type: double
-        default_value: 2.0
-        description: required remaining distance to the object when ego stops
-        read_only: false
+        __map_object_class:
+          value:
+            type: double
+            default_value: .NAN
+            description: Per-class required remaining distance to the object when ego stops (m).
+              NaN means not explicitly set; resolve_per_class falls back to the base entry.
+            read_only: false
       ego_total_braking_delay:
         type: double
         default_value: 0.4
