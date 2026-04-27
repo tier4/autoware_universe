@@ -504,8 +504,7 @@ std::pair<double, double> SideShiftModule::calcOffsetLimitsFromLanelets(
   }
 
   const auto & route_handler = planner_data_->route_handler;
-  const auto & p = planner_data_->parameters;
-  const double vehicle_half_width = p.vehicle_width / 2.0;
+  const double vehicle_half_width = planner_data_->parameters.vehicle_width / 2.0;
   const double margin = parameters_->min_drivable_area_margin;
   const bool use_adjacent =
     (parameters_->drivable_area_check_mode == DrivableAreaCheckMode::ADJACENT_LANES);
