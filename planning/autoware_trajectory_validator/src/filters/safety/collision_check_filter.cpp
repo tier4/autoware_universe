@@ -65,8 +65,7 @@ std::string get_object_class_label(const autoware_perception_msgs::msg::Predicte
   std::string label = autoware::object_recognition_utils::convertLabelToString(
     autoware::object_recognition_utils::getHighestProbLabel(object.classification));
   std::transform(
-    label.begin(), label.end(), label.begin(),
-    [](unsigned char c) { return std::tolower(c); });
+    label.begin(), label.end(), label.begin(), [](unsigned char c) { return std::tolower(c); });
   return label;
 }
 }  // namespace
@@ -906,8 +905,9 @@ Assessment assess_required_deceleration(
 }
 
 Result assess(
-  const TrajectoryPoints & traj_points, const FilterContext & context, const validator::Params::CollisionCheck::Rss & rss_params,
-  double time_resolution, VehicleInfo & vehicle_info)
+  const TrajectoryPoints & traj_points, const FilterContext & context,
+  const validator::Params::CollisionCheck::Rss & rss_params, double time_resolution,
+  VehicleInfo & vehicle_info)
 
 {
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
@@ -1537,9 +1537,8 @@ void add_collision_planning_factor(
 void process_pet_findings(
   const std::string & validator_name, const std::string & validator_category,
   const validator::Params::CollisionCheck::PetCollision & pet_collision_params,
-  ContinuousDetectionTimes & pet_continuous_times,
-  const rclcpp::Time & current_time, const builtin_interfaces::msg::Time & stamp,
-  const geometry_msgs::msg::Pose & ego_pose,
+  ContinuousDetectionTimes & pet_continuous_times, const rclcpp::Time & current_time,
+  const builtin_interfaces::msg::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
   const std::vector<collision_timing_assessment::Finding> & findings,
   EvaluationArtifacts & artifacts, const AddDebugMarkers & add_debug_markers,
   const AddPlanningFactor & add_planning_factor)
@@ -1601,9 +1600,8 @@ void process_pet_findings(
 void process_drac_findings(
   const std::string & validator_name, const std::string & validator_category,
   const validator::Params::CollisionCheck::Drac & drac_params,
-  ContinuousDetectionTimes & drac_continuous_times,
-  const rclcpp::Time & current_time, const builtin_interfaces::msg::Time & stamp,
-  const geometry_msgs::msg::Pose & ego_pose,
+  ContinuousDetectionTimes & drac_continuous_times, const rclcpp::Time & current_time,
+  const builtin_interfaces::msg::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
   const collision_timing_assessment::Result & collision_timing_result,
   EvaluationArtifacts & artifacts, const AddDebugMarkers & add_debug_markers,
   const AddPlanningFactor & add_planning_factor)
@@ -1673,8 +1671,7 @@ void process_rss_violations(
 {
   const auto & enable_map = rss_params.enable_assessment.object_class_map;
   const bool any_class_enabled = std::any_of(
-    enable_map.begin(), enable_map.end(),
-    [](const auto & kv) { return kv.second.value; });
+    enable_map.begin(), enable_map.end(), [](const auto & kv) { return kv.second.value; });
   if (!any_class_enabled) {
     return;
   }

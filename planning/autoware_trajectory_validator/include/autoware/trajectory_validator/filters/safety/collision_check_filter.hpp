@@ -319,8 +319,6 @@ struct has_object_class_map<T, std::void_t<decltype(std::declval<const T &>().ob
 };
 }  // namespace detail
 
-
-
 // Returns the leaf scalar (Entry::value) for a per-class map lookup with
 // "base" fallback. NaN per-class entries are treated as "unset" for
 // floating-point Entry::value. Accepts a per-class wrapper struct or a plain
@@ -349,11 +347,11 @@ auto resolve_per_class(const T & s, const std::string & cls)
       // double / float: per-class value if explicitly set (non-NaN); otherwise base.
       if (it != m.end() && !std::isnan(it->second.value)) return it->second.value;
       if (auto base_it = m.find("base"); base_it != m.end()) return base_it->second.value;
-      const std::string state = (it == m.end()) ? "class key not present in map"
-                                                : "class entry value is NaN (unset)";
+      const std::string state =
+        (it == m.end()) ? "class key not present in map" : "class entry value is NaN (unset)";
       throw std::runtime_error(
-        "resolve_per_class: cannot resolve floating-point value for class '" + cls + "' (" +
-        state + "), and 'base' is also missing. Map keys: " + format_map_keys());
+        "resolve_per_class: cannot resolve floating-point value for class '" + cls + "' (" + state +
+        "), and 'base' is also missing. Map keys: " + format_map_keys());
     } else if constexpr (std::is_same_v<ValueT, bool>) {
       // bool: per-class value only; no base fallback.
       if (it != m.end()) return it->second.value;
@@ -364,8 +362,7 @@ auto resolve_per_class(const T & s, const std::string & cls)
       // int / string / other non-arithmetic-floating types: per-class value as-is.
       if (it != m.end()) return it->second.value;
       throw std::runtime_error(
-        "resolve_per_class: no entry for class '" + cls +
-        "'. Map keys: " + format_map_keys());
+        "resolve_per_class: no entry for class '" + cls + "'. Map keys: " + format_map_keys());
     }
 
   } else {

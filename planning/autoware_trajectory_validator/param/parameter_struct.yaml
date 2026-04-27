@@ -8,8 +8,21 @@ validator:
   object_class:
     type: string_array
     default_value:
-      [base, unknown, car, truck, bus, trailer, motorcycle, bicycle, pedestrian, animal, hazard,
-       over_drivable, under_drivable]
+      [
+        base,
+        unknown,
+        car,
+        truck,
+        bus,
+        trailer,
+        motorcycle,
+        bicycle,
+        pedestrian,
+        animal,
+        hazard,
+        over_drivable,
+        under_drivable,
+      ]
     description: Map keys used to expand per-class parameter maps. The key base is reserved
       as the fallback resolved when the actual class is missing from a given map.
     read_only: false

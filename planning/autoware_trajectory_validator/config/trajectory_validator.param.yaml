@@ -36,7 +36,7 @@
           diffusion_based: true
         ego_total_braking_delay: 0.4
         warn_threshold:
-          ego_acceleration: 
+          ego_acceleration:
             base:
               value: -2.0
             pedestrian:
@@ -68,13 +68,13 @@
           ego_first_passing_time_gap: 0.6
           object_first_passing_time_gap: 0.3
       rss:
-        enable_assessment: 
+        enable_assessment:
           base: true
           over_drivable: false
           under_drivable: false
 
         stop_distance_margin:
-          base: 
+          base:
             value: 2.0
           pedestrian:
             value: 3.0
