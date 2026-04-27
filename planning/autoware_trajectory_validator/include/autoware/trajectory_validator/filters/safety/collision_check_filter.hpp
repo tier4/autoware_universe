@@ -102,66 +102,6 @@ struct TrajectoryIdentification
   }
 };
 
-struct PetCollisionParams
-{
-  PetCollisionParams() = default;
-  PetCollisionParams(
-    const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key);
-
-  bool enable_assessment;
-  struct AssessmentTrajectories
-  {
-    bool map_based;
-    bool constant_curvature;
-    bool diffusion_based;
-  } assessment_trajectories;
-  double ego_total_braking_delay;
-  double ego_assumed_acceleration;
-  double collision_time_threshold;
-  struct Threshold
-  {
-    double ego_first_passing_time_gap;
-    double object_first_passing_time_gap;
-  } warn_threshold, error_threshold;
-};
-
-struct RssParams
-{
-  RssParams() = default;
-  RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key);
-
-  bool enable_assessment;
-  double stop_distance_margin;
-  double ego_total_braking_delay;
-  double object_assumed_acceleration;
-  struct ErrorThreshold
-  {
-    double ego_acceleration;
-  } error_threshold;
-};
-
-struct DracParams
-{
-  DracParams() = default;
-  DracParams(const validator::Params::CollisionCheck::Drac & drac, const std::string & key);
-
-  bool enable_assessment;
-  struct AssessmentTrajectories
-  {
-    bool map_based;
-    bool constant_curvature;
-    bool diffusion_based;
-  } assessment_trajectories;
-  double ego_total_braking_delay;
-  struct Threshold
-  {
-    double ego_acceleration;
-  } warn_threshold, error_threshold;
-};
-
-template <typename OutT, typename ParamStruct>
-OutT extract_labeled_param(const ParamStruct & params_struct, const std::string & key);
-
 namespace geometry
 {
 Polygon2d to_polygon2d(
@@ -376,18 +316,14 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
-  PetCollisionParams pet_collision_params_;
-  RssParams rss_params_;
-  DracParams drac_params_;
+  validator::Params::CollisionCheck::PetCollision pet_collision_params_;
+  validator::Params::CollisionCheck::Rss rss_params_;
+  validator::Params::CollisionCheck::Drac drac_params_;
   validator::Params::CollisionCheck::GlobalSetting global_setting_;
   ContinuousDetectionTimes pet_continuous_times_;
   ContinuousDetectionTimes rss_continuous_times_;
   ContinuousDetectionTimes drac_continuous_times_;
-  std::map<std::string, PetCollisionParams> pet_collision_param_map_;
-  std::map<std::string, RssParams> rss_param_map_;
-  std::map<std::string, DracParams> drac_param_map_;
 
-  void create_param_maps(const validator::Params & params);
   void clear_detection_times();
   void add_debug_markers(
     const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
