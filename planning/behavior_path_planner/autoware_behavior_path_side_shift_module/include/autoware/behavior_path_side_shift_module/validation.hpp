@@ -18,7 +18,6 @@
 #include "autoware/behavior_path_side_shift_module/data_structs.hpp"
 #include "autoware/behavior_path_side_shift_module/manager.hpp"
 
-#include <tier4_planning_msgs/srv/detail/set_lateral_offset__struct.hpp>
 #include <tier4_planning_msgs/srv/set_lateral_offset.hpp>
 
 #include <cstdint>
@@ -81,7 +80,6 @@ std::pair<uint16_t, double> validateShiftRight(
  * @return const char* status message
  */
 const char * getStatusMessage(uint16_t status_code);
-
 }  // namespace autoware::behavior_path_planner
 
 #endif  // AUTOWARE__BEHAVIOR_PATH_SIDE_SHIFT_MODULE__VALIDATION_HPP_

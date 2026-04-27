@@ -169,6 +169,8 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
     RCLCPP_WARN_THROTTLE(
       logger_, clock_, 5000,
       "Ego is out of route, no module is running. Skip running scene modules.");
+    data->scene_module_names_approved.clear();
+    data->scene_module_names_candidate.clear();
     generateCombinedDrivableArea(result_output, data);
     return result_output;
   }
@@ -202,10 +204,23 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
     m->publishRTCStatus();
     m->publish_planning_factors();
   });
+
   // resample the path prior to generating the drivable area
   result_output.valid_output.path = utils::resamplePathWithSpline(
     result_output.valid_output.path, data->parameters.output_path_interval,
     keep_input_points(getSceneModuleStatus()));
+
+  data->scene_module_names_approved.clear();
+  data->scene_module_names_candidate.clear();
+  for (const auto & slot : planner_manager_slots_) {
+    for (const auto & m : slot.approved_modules()) {
+      data->scene_module_names_approved.push_back(m->name());
+    }
+    for (const auto & m : slot.candidate_modules()) {
+      data->scene_module_names_candidate.push_back(m->name());
+    }
+  }
+
   generateCombinedDrivableArea(result_output.valid_output, data);
   return result_output.valid_output;
 }
