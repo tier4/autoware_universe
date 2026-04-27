@@ -48,6 +48,21 @@ void update_shape_height(
   output.shape.dimensions.z = 2.0 * std::max(std::abs(min_local_z), std::abs(max_local_z));
 }
 
+void fit_shape_height(
+  DetectedObject & output, const DetectedObject & main_object, const DetectedObject & sub_object)
+{
+  const double main_half_z = main_object.shape.dimensions.z * 0.5;
+  const double sub_half_z = sub_object.shape.dimensions.z * 0.5;
+  const double main_min_z =
+    main_object.kinematics.pose_with_covariance.pose.position.z - main_half_z;
+  const double main_max_z =
+    main_object.kinematics.pose_with_covariance.pose.position.z + main_half_z;
+  const double sub_min_z = sub_object.kinematics.pose_with_covariance.pose.position.z - sub_half_z;
+  const double sub_max_z = sub_object.kinematics.pose_with_covariance.pose.position.z + sub_half_z;
+  output.kinematics.pose_with_covariance.pose.position.z = 0.5 * (std::min(main_min_z, sub_min_z) + std::max(main_max_z, sub_max_z));
+  output.shape.dimensions.z = std::max(main_max_z, sub_max_z) - std::min(main_min_z, sub_min_z);
+}
+
 MultiPoint2d collect_union_points_in_output_frame(
   const DetectedObject & output, const DetectedObject & main_object,
   const DetectedObject & sub_object)
@@ -85,15 +100,22 @@ DetectedObject enclose_union_with_main_shape(
   }
 
   if (main_object.shape.type == Shape::BOUNDING_BOX) {
-    double max_abs_x = 0.0;
-    double max_abs_y = 0.0;
+    double min_x = std::numeric_limits<double>::max();
+    double max_x = std::numeric_limits<double>::lowest();
+    double min_y = std::numeric_limits<double>::max();
+    double max_y = std::numeric_limits<double>::lowest();
     for (const auto & point : combined_points) {
-      max_abs_x = std::max(max_abs_x, std::abs(boost::geometry::get<0>(point)));
-      max_abs_y = std::max(max_abs_y, std::abs(boost::geometry::get<1>(point)));
+      min_x = std::min(min_x, boost::geometry::get<0>(point));
+      max_x = std::max(max_x, boost::geometry::get<0>(point));
+      min_y = std::min(min_y, boost::geometry::get<1>(point));
+      max_y = std::max(max_y, boost::geometry::get<1>(point));
     }
-    output.shape.dimensions.x = 2.0 * max_abs_x;
-    output.shape.dimensions.y = 2.0 * max_abs_y;
-    update_shape_height(output, main_object, sub_object);
+    output.kinematics.pose_with_covariance.pose = autoware_utils::calc_offset_pose(
+      output.kinematics.pose_with_covariance.pose, 0.5 * (min_x + max_x), 0.5 * (min_y + max_y),
+      0.0);
+    output.shape.dimensions.x = max_x - min_x;
+    output.shape.dimensions.y = max_y - min_y;
+    fit_shape_height(output, main_object, sub_object);
     return output;
   }
 

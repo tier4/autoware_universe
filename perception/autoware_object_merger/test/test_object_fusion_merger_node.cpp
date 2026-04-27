@@ -167,8 +167,8 @@ TEST(ObjectFusionMergerNodeTest, testMatchedObjectsAreFused)
   ASSERT_EQ(latest_msg.objects.size(), 1U);
   EXPECT_TRUE(unmatched_sub_msg.objects.empty());
   EXPECT_NEAR(
-    latest_msg.objects.front().kinematics.pose_with_covariance.pose.position.x, 0.0, 1e-3);
-  EXPECT_NEAR(latest_msg.objects.front().shape.dimensions.x, 5.0, 1e-3);
+    latest_msg.objects.front().kinematics.pose_with_covariance.pose.position.x, 0.25, 1e-3);
+  EXPECT_NEAR(latest_msg.objects.front().shape.dimensions.x, 4.5, 1e-3);
   EXPECT_NEAR(latest_msg.objects.front().existence_probability, 0.6, 1e-3);
   ASSERT_EQ(latest_msg.objects.front().classification.size(), 1U);
   EXPECT_EQ(latest_msg.objects.front().classification.front().label, ObjectClassification::CAR);
@@ -207,7 +207,8 @@ TEST(ObjectFusionMergerNodeTest, testUnmatchedMainIsKeptAndUnmatchedSubIsDiscard
   test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_object", sub_objects);
 
   ASSERT_EQ(latest_msg.objects.size(), 2U);
-  EXPECT_NEAR(latest_msg.objects.at(0).shape.dimensions.x, 5.0, 1e-3);
+  EXPECT_NEAR(latest_msg.objects.at(0).kinematics.pose_with_covariance.pose.position.x, 0.25, 1e-3);
+  EXPECT_NEAR(latest_msg.objects.at(0).shape.dimensions.x, 4.5, 1e-3);
   EXPECT_NEAR(latest_msg.objects.at(1).kinematics.pose_with_covariance.pose.position.x, 10.0, 1e-3);
   ASSERT_EQ(latest_msg.objects.at(1).classification.size(), 1U);
   EXPECT_EQ(latest_msg.objects.at(1).classification.front().label, ObjectClassification::TRUCK);
@@ -255,8 +256,9 @@ TEST(ObjectFusionMergerNodeTest, testUnionCanBeEnclosedWithMainBoundingBox)
 
   ASSERT_EQ(latest_msg.objects.size(), 1U);
   EXPECT_EQ(latest_msg.objects.front().shape.type, Shape::BOUNDING_BOX);
-  EXPECT_GT(latest_msg.objects.front().shape.dimensions.x, 6.5);
-  EXPECT_GT(latest_msg.objects.front().shape.dimensions.y, 2.9);
+  EXPECT_NEAR(latest_msg.objects.front().kinematics.pose_with_covariance.pose.position.x, 1.0, 1e-3);
+  EXPECT_NEAR(latest_msg.objects.front().shape.dimensions.x, 7.0, 1e-3);
+  EXPECT_NEAR(latest_msg.objects.front().shape.dimensions.y, 3.0, 1e-3);
 
   rclcpp::shutdown();
 }
