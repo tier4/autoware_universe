@@ -288,7 +288,9 @@ void SideShiftModule::replaceShiftLine()
 BehaviorModuleOutput SideShiftModule::plan()
 {
   // Replace shift line
-  if (lateral_offset_change_request_) {
+  if (
+    lateral_offset_change_request_ && ((shift_status_ == SideShiftStatus::BEFORE_SHIFT) ||
+                                       (shift_status_ == SideShiftStatus::AFTER_SHIFT))) {
     replaceShiftLine();
   } else if (shift_status_ == SideShiftStatus::SHIFTING) {
     RCLCPP_DEBUG(getLogger(), "ego is shifting");
