@@ -31,19 +31,29 @@ FootprintMargin calc_margin_from_covariance(
 
   const double yaw_vehicle = tf2::getYaw(covariance.pose.orientation);
 
-  // To get a position in a transformed coordinate, rotate the inverse direction
+  // rotate inverse to transform from map frame to vehicle frame
   Eigen::Matrix2d r_map2vehicle;
   r_map2vehicle << std::cos(-yaw_vehicle), -std::sin(-yaw_vehicle), std::sin(-yaw_vehicle),
     std::cos(-yaw_vehicle);
-  // Rotate covariance E((X, Y)^t*(X, Y)) = E(R*(x,y)*(x,y)^t*R^t)
-  // when Rotate point (X, Y)^t= R*(x, y)^t.
+
+  // transform covariance matrix to vehicle frame
   const Eigen::Matrix2d cov_xy_vehicle = r_map2vehicle * cov_xy_map * r_map2vehicle.transpose();
 
-  // The longitudinal/lateral length is represented
-  // in cov_xy_vehicle(0,0), cov_xy_vehicle(1,1) respectively.
   return FootprintMargin{cov_xy_vehicle(0, 0) * scale, cov_xy_vehicle(1, 1) * scale};
 }
-
+// clang-format off
+/**
+ * footprints::generate:
+ *
+ *          [V]--[V]        [V]--[V]
+ *           | Ego |         | Ego |
+ *     >>>  [V]--[V]  --->  [V]--[V]  --->  ...
+ *        (Pose 0)        (Pose 1)        (Trajectory)
+ *
+ * Generates full vehicle footprints at each pose along the trajectory,
+ * accounting for vehicle dimensions (overhangs, wheelbase).
+ */
+// clang-format on
 Footprints generate(
   const std::vector<TrajectoryPoint> & trajectory_points,
   const vehicle_info_utils::VehicleInfo & vehicle_info,
@@ -60,6 +70,23 @@ Footprints generate(
   return footprints;
 }
 
+// clang-format off
+/**
+ * get_sides_from_footprints:
+ *
+ *          V (Front Left)  Left Side Segment   V (Rear Left)
+ *           +---------------------------------+
+ *           |                                 |
+ *   Forward |               Ego               |
+ *     >>>   |             Vehicle             |
+ *           |                                 |
+ *           +---------------------------------+
+ *          V (Front Right) Right Side Segment  V (Rear Right)
+ *
+ * Extracts the longitudinal side segments (Left/Right) from a
+ * 4-point (or more) vehicle footprint.
+ */
+// clang-format on
 std::vector<Side<autoware_utils_geometry::Segment2d>> get_sides_from_footprints(
   const Footprints & footprints)
 {
