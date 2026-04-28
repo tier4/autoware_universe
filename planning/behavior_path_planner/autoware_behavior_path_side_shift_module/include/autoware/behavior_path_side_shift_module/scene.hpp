@@ -72,6 +72,14 @@ public:
   {
   }
 
+  /**
+   * @brief Compute the lateral offset limits derived from the current lanelet boundaries.
+   * @return {right_limit, left_limit} pair in metres, or std::nullopt when the limits cannot
+   * be evaluated (no planner data, empty reference path, or no lanelet found along the planned
+   * shift segment).
+   */
+  std::optional<std::pair<double, double>> calcOffsetLimitsFromLanelets() const;
+
 private:
   bool canTransitSuccessState() override;
 
@@ -87,8 +95,6 @@ private:
   void replaceShiftLine();
 
   double calcMaxLateralOffset(const double requested_offset) const;
-
-  std::pair<double, double> calcOffsetLimitsFromLanelets(const double requested_offset) const;
 
   // const methods
   void publishPath(const PathWithLaneId & path) const;

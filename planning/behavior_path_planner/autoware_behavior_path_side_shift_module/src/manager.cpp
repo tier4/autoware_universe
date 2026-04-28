@@ -27,7 +27,9 @@
 #include <algorithm>
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::behavior_path_planner
@@ -103,8 +105,29 @@ void SideShiftModuleManager::onSetLateralOffset(
   const double current_inserted =
     inserted_lateral_offset_state_ ? inserted_lateral_offset_state_->value.load() : 0.0;
 
+  // Resolve the lanelet-boundary limits and forward them to the validation
+  const auto lanelet_limits = [&]() -> std::optional<std::pair<double, double>> {
+    if (parameters_->drivable_area_check_mode == DrivableAreaCheckMode::DISABLED) {
+      const double m = parameters_->max_shift_magnitude;
+      return std::make_pair(-m, m);
+    }
+    auto * side_shift = findActiveOrIdleSideShiftModule();
+    if (!side_shift) {
+      return std::nullopt;
+    }
+    return side_shift->calcOffsetLimitsFromLanelets();
+  }();
+
+  if (!lanelet_limits) {
+    response->response_code = autoware_common_msgs::msg::ResponseStatus::SERVICE_UNREADY;
+    response->status.success = false;
+    response->status.code = response->response_code;
+    response->status.message = getStatusMessage(response->response_code);
+    return;
+  }
+
   const auto [shift_request_result, lateral_offset] =
-    validateAndComputeLateralOffset(*request, current_inserted, parameters_);
+    validateAndComputeLateralOffset(*request, current_inserted, parameters_, *lanelet_limits);
 
   if (shift_request_result == autoware_common_msgs::msg::ResponseStatus::PARAMETER_ERROR) {
     response->response_code = autoware_common_msgs::msg::ResponseStatus::PARAMETER_ERROR;
@@ -139,12 +162,61 @@ void SideShiftModuleManager::publishInsertedLateralOffsetTimerCallback()
 void SideShiftModuleManager::onLateralOffset(
   const tier4_planning_msgs::msg::LateralOffset::ConstSharedPtr msg)
 {
+  if (!planner_data_ || !planner_data_->route_handler->isHandlerReady()) {
+    return;
+  }
+
+  if (hasConflictingSceneModules(*planner_data_)) {
+    return;
+  }
+
+  const auto lanelet_limits = [&]() -> std::optional<std::pair<double, double>> {
+    if (parameters_->drivable_area_check_mode == DrivableAreaCheckMode::DISABLED) {
+      const double m = parameters_->max_shift_magnitude;
+      return std::make_pair(-m, m);
+    }
+    auto * side_shift = findActiveOrIdleSideShiftModule();
+    if (!side_shift) {
+      return std::nullopt;
+    }
+    return side_shift->calcOffsetLimitsFromLanelets();
+  }();
+
+  if (!lanelet_limits) {
+    return;
+  }
+
   const auto new_offset = static_cast<double>(msg->lateral_offset);
 
-  const auto validation_result =
-    validateRawValue(new_offset, inserted_lateral_offset_state_->value.load(), parameters_);
+  const auto validation_result = validateRawValue(
+    new_offset, inserted_lateral_offset_state_->value.load(), lanelet_limits->first,
+    lanelet_limits->second, parameters_->min_shift_gap);
+
+  if (validation_result.first == SetLateralOffset::Response::ERROR_EXCEEDED_LIMIT) {
+    return;
+  }
+
+  if (validation_result.first == SetLateralOffset::Response::ERROR_SHIFT_GAP_TOO_SMALL) {
+    return;
+  }
 
   requested_lateral_offset_state_->value.store(validation_result.second);
+}
+
+SideShiftModule * SideShiftModuleManager::findActiveOrIdleSideShiftModule() const
+{
+  for (const auto & observer : observers_) {
+    if (observer.expired()) {
+      continue;
+    }
+    if (auto ptr = std::dynamic_pointer_cast<SideShiftModule>(observer.lock())) {
+      return ptr.get();
+    }
+  }
+  if (idle_module_ptr_) {
+    return dynamic_cast<SideShiftModule *>(idle_module_ptr_.get());
+  }
+  return nullptr;
 }
 
 void SideShiftModuleManager::updateModuleParams(
@@ -157,8 +229,7 @@ void SideShiftModuleManager::updateModuleParams(
   const std::string ns = "side_shift.";
   int drivable_area_check_mode = static_cast<int>(p->drivable_area_check_mode);
   if (update_param<int>(parameters, ns + "drivable_area_check_mode", drivable_area_check_mode)) {
-    p->drivable_area_check_mode =
-      static_cast<DrivableAreaCheckMode>(drivable_area_check_mode);
+    p->drivable_area_check_mode = static_cast<DrivableAreaCheckMode>(drivable_area_check_mode);
   }
   update_param<double>(parameters, ns + "min_drivable_area_margin", p->min_drivable_area_margin);
   update_param<double>(
