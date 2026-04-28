@@ -14,16 +14,31 @@
 
 #include "autoware/behavior_path_side_shift_module/utils.hpp"
 
+#include "autoware/behavior_path_planner_common/data_manager.hpp"
 #include "autoware/behavior_path_planner_common/utils/utils.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
 #include <tf2/utils.h>
 
+#include <algorithm>
 #include <cmath>
+#include <string>
+#include <vector>
 
 namespace autoware::behavior_path_planner
 {
+namespace
+{
+bool hasConflictingNameIn(const std::vector<std::string> & names)
+{
+  return std::any_of(names.begin(), names.end(), [](const std::string & name) {
+    return name.find("lane_change") != std::string::npos ||
+           name.find("avoidance") != std::string::npos;
+  });
+}
+}  // namespace
+
 void setOrientation(PathWithLaneId * path)
 {
   // Reset orientation
@@ -57,6 +72,17 @@ double getClosestShiftLength(
   const auto closest =
     autoware::motion_utils::findNearestIndex(shifted_path.path.points, ego_point);
   return shifted_path.shift_length.at(closest);
+}
+
+bool hasConflictingApprovedModules(const PlannerData & data)
+{
+  return hasConflictingNameIn(data.scene_module_names_approved);
+}
+
+bool hasConflictingSceneModules(const PlannerData & data)
+{
+  return hasConflictingApprovedModules(data) ||
+         hasConflictingNameIn(data.scene_module_names_candidate);
 }
 
 }  // namespace autoware::behavior_path_planner
