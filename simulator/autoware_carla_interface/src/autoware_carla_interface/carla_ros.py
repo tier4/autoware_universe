@@ -16,6 +16,7 @@ import json
 import math
 import threading
 
+from autoware_perception_msgs.msg import PredictedObjects
 from autoware_vehicle_msgs.msg import ControlModeReport
 from autoware_vehicle_msgs.msg import GearReport
 from autoware_vehicle_msgs.msg import SteeringReport
@@ -184,6 +185,15 @@ class carla_ros2_interface(object):
             else:
                 self.ros2_node.get_logger().info(f'No Publisher for {sensor["type"]} Sensor')
                 pass
+
+        # When splatsim is active, publish dummy perception data (no LiDAR available)
+        if self.render_with_splatsim:
+            self.pub_empty_objects = self.ros2_node.create_publisher(
+                PredictedObjects, "/perception/object_recognition/objects", 1
+            )
+            self.pub_empty_pointcloud = self.ros2_node.create_publisher(
+                PointCloud2, "/perception/obstacle_segmentation/pointcloud", 1
+            )
 
         self.spin_thread = threading.Thread(target=rclpy.spin, args=(self.ros2_node,))
         self.spin_thread.start()
@@ -546,6 +556,17 @@ class carla_ros2_interface(object):
                     stamp_sec=seconds,
                     stamp_nanosec=nanoseconds,
                 )
+
+        # Publish dummy perception data when splatsim is active
+        if self.render_with_splatsim:
+            header = self.get_msg_header(frame_id="map")
+            empty_objects = PredictedObjects()
+            empty_objects.header = header
+            self.pub_empty_objects.publish(empty_objects)
+
+            empty_pc = PointCloud2()
+            empty_pc.header = self.get_msg_header(frame_id="base_link")
+            self.pub_empty_pointcloud.publish(empty_pc)
 
         # Publish ego vehicle status
         self.ego_status()
