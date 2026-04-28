@@ -20,11 +20,11 @@
   <depend>nav_msgs</depend>
   <depend>tf2_msgs</depend>
 
-  <exec_depend>python-docker</exec_depend>
-  <exec_depend>python-grpcio</exec_depend>
-  <exec_depend>python-protobuf</exec_depend>
-  <exec_depend>python-pyproj</exec_depend>
-  <build_depend>python-grpc-tools</build_depend>
+  <exec_depend>carla-pip</exec_depend>
+  <exec_depend>python3-docker</exec_depend>
+  <exec_depend>python3-grpcio</exec_depend>
+  <exec_depend>python3-protobuf</exec_depend>
+  <exec_depend>python3-pyproj</exec_depend>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
