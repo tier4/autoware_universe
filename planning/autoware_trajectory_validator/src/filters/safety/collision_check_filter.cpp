@@ -72,8 +72,6 @@ std::string get_object_class_label(const autoware_perception_msgs::msg::Predicte
 }
 }  // namespace
 
-
-
 // Trajectory generation helpers.
 namespace trajectory::time_distance
 {
@@ -1541,9 +1539,8 @@ void add_collision_planning_factor(
 void process_pet_findings(
   const std::string & validator_name, const std::string & validator_category,
   const validator::Params::CollisionCheck::PetCollision & pet_collision_params,
-  ContinuousDetectionTimes & pet_continuous_times,
-  const rclcpp::Time & current_time, const builtin_interfaces::msg::Time & stamp,
-  const geometry_msgs::msg::Pose & ego_pose,
+  ContinuousDetectionTimes & pet_continuous_times, const rclcpp::Time & current_time,
+  const builtin_interfaces::msg::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
   const std::vector<collision_timing_assessment::Finding> & findings,
   EvaluationArtifacts & artifacts, const AddDebugMarkers & add_debug_markers,
   const AddPlanningFactor & add_planning_factor)
@@ -1605,9 +1602,8 @@ void process_pet_findings(
 void process_drac_findings(
   const std::string & validator_name, const std::string & validator_category,
   const validator::Params::CollisionCheck::Drac & drac_params,
-  ContinuousDetectionTimes & drac_continuous_times,
-  const rclcpp::Time & current_time, const builtin_interfaces::msg::Time & stamp,
-  const geometry_msgs::msg::Pose & ego_pose,
+  ContinuousDetectionTimes & drac_continuous_times, const rclcpp::Time & current_time,
+  const builtin_interfaces::msg::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
   const collision_timing_assessment::Result & collision_timing_result,
   EvaluationArtifacts & artifacts, const AddDebugMarkers & add_debug_markers,
   const AddPlanningFactor & add_planning_factor)
@@ -1671,9 +1667,9 @@ void process_rss_violations(
   const std::string & validator_name, const std::string & validator_category,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting,
   const validator::Params::CollisionCheck::Rss & rss_params, const TrajectoryPoints & traj_points,
-  const FilterContext & context,
-  VehicleInfo & vehicle_info, ContinuousDetectionTimes & rss_continuous_times,
-  const rclcpp::Time & current_time, EvaluationArtifacts & artifacts)
+  const FilterContext & context, VehicleInfo & vehicle_info,
+  ContinuousDetectionTimes & rss_continuous_times, const rclcpp::Time & current_time,
+  EvaluationArtifacts & artifacts)
 {
   const auto & enable_map = rss_params.enable_assessment.object_class_map;
   const bool any_class_enabled = std::any_of(
