@@ -55,14 +55,14 @@ def launch_setup(context, *args, **kwargs):
         ("input/trajectory", "/planning/trajectory"),
         ("input/engage", "/vehicle/engage"),
         ("input/control_mode_request", "/control/control_mode_request"),
-        ("output/twist", "/vehicle/status/velocity_status"),
+        ("output/twist", "/simulation/vehicle/status/velocity_status"),
         ("output/imu", "/sensing/imu/imu_data"),
-        ("output/steering", "/vehicle/status/steering_status"),
+        ("output/steering", "/simulation/vehicle/status/steering_status"),
         ("output/gear_report", "/vehicle/status/gear_status"),
-        ("output/turn_indicators_report", "/vehicle/status/turn_indicators_status"),
+        ("output/turn_indicators_report", "/simulation/vehicle/status/turn_indicators_status"),
         ("output/hazard_lights_report", "/vehicle/status/hazard_lights_status"),
-        ("output/control_mode_report", "/vehicle/status/control_mode"),
-        ("output/actuation_status", "/vehicle/status/actuation_status"),
+        ("output/control_mode_report", "/simulation/vehicle/status/control_mode"),
+        ("output/actuation_status", "/simulation/vehicle/status/actuation_status"),
     ]
 
     # Additional remappings
@@ -77,12 +77,26 @@ def launch_setup(context, *args, **kwargs):
     elif LaunchConfiguration("motion_publish_mode").perform(context) == "full_motion":
         remappings.extend(
             [
-                ("output/odometry", "/localization/kinematic_state"),
-                ("output/acceleration", "/localization/acceleration"),
+                ("output/odometry", "/simulation/localization/kinematic_state"),
+                ("output/acceleration", "/simulation/localization/acceleration"),
                 (
                     "output/pose",
                     "/simulation/debug/localization/pose_estimator/pose_with_covariance",
                 ),
+            ]
+        )
+    if LaunchConfiguration("rollout").perform(context):
+        remappings.extend(
+            [
+                ("/tf", "/simulation/tf"),
+                ("/vehicle/status/velocity_status", "/simulation/vehicle/status/velocity_status"),
+                ("/vehicle/status/steering_status", "/simulation/vehicle/status/steering_status"),
+                (
+                    "/vehicle/status/turn_indicators_status",
+                    "/simulation/vehicle/status/turn_indicators_status",
+                ),
+                ("/vehicle/status/control_mode", "/simulation/vehicle/status/control_mode"),
+                ("/vehicle/status/actuation_status", "/simulation/vehicle/status/actuation_status"),
             ]
         )
 
