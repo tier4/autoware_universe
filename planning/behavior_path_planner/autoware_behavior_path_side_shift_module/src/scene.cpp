@@ -541,7 +541,7 @@ std::optional<std::pair<double, double>> SideShiftModule::calcOffsetLimitsFromLa
 
   const auto & route_handler = planner_data_->route_handler;
   const double vehicle_half_width = planner_data_->parameters.vehicle_width / 2.0;
-  const double margin = parameters_->min_drivable_area_margin;
+  const double margin = parameters_->min_margin_from_lanelet_border;
   const bool use_adjacent =
     (parameters_->drivable_area_check_mode == DrivableAreaCheckMode::ADJACENT_LANES);
   const auto ego_idx = planner_data_->findEgoIndex(reference_path_.points);

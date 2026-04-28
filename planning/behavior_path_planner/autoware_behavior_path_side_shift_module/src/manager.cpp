@@ -52,7 +52,8 @@ void SideShiftModuleManager::init(rclcpp::Node * node)
   p.shift_request_time_limit = node->declare_parameter<double>(ns + "shift_request_time_limit");
   p.drivable_area_check_mode = static_cast<DrivableAreaCheckMode>(
     node->declare_parameter<int>(ns + "drivable_area_check_mode"));
-  p.min_drivable_area_margin = node->declare_parameter<double>(ns + "min_drivable_area_margin");
+  p.min_margin_from_lanelet_border =
+    node->declare_parameter<double>(ns + "min_margin_from_lanelet_border");
   p.max_shift_magnitude = node->declare_parameter<double>(ns + "max_shift_magnitude");
   p.min_shift_gap = node->declare_parameter<double>(ns + "min_shift_gap");
   p.unit_shift_amount = node->declare_parameter<double>(ns + "unit_shift_amount");
@@ -231,7 +232,8 @@ void SideShiftModuleManager::updateModuleParams(
   if (update_param<int>(parameters, ns + "drivable_area_check_mode", drivable_area_check_mode)) {
     p->drivable_area_check_mode = static_cast<DrivableAreaCheckMode>(drivable_area_check_mode);
   }
-  update_param<double>(parameters, ns + "min_drivable_area_margin", p->min_drivable_area_margin);
+  update_param<double>(
+    parameters, ns + "min_margin_from_lanelet_border", p->min_margin_from_lanelet_border);
   update_param<double>(
     parameters, ns + "min_distance_to_start_shifting", p->min_distance_to_start_shifting);
   update_param<double>(parameters, ns + "time_to_start_shifting", p->time_to_start_shifting);
