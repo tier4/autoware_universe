@@ -29,9 +29,9 @@
 #include <fmt/core.h>
 
 #include <algorithm>
-#include <cctype>
 #include <any>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <functional>
