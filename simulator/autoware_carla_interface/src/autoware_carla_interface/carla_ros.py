@@ -30,6 +30,8 @@ from geometry_msgs.msg import AccelWithCovarianceStamped
 from geometry_msgs.msg import Pose
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from geometry_msgs.msg import Quaternion
+from geometry_msgs.msg import TransformStamped
+from nav_msgs.msg import Odometry
 import numpy
 import rclpy
 from rosgraph_msgs.msg import Clock
@@ -39,6 +41,7 @@ from sensor_msgs.msg import Imu
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs.msg import PointField
 from std_msgs.msg import Header
+from tf2_msgs.msg import TFMessage
 from tier4_vehicle_msgs.msg import ActuationCommandStamped
 from tier4_vehicle_msgs.msg import ActuationStatusStamped
 from transforms3d.euler import euler2quat
@@ -231,8 +234,11 @@ class carla_ros2_interface(object):
             self.pub_empty_pointcloud = self.ros2_node.create_publisher(
                 PointCloud2, "/perception/obstacle_segmentation/pointcloud", 1
             )
-            # Localization publishers — only feed pose into the EKF;
-            # /localization/kinematic_state and /tf are published by the EKF.
+            # Localization publishers
+            self.pub_tf = self.ros2_node.create_publisher(TFMessage, "/tf", 10)
+            self.pub_localization_odom = self.ros2_node.create_publisher(
+                Odometry, "/localization/kinematic_state", 10
+            )
             self.pub_localization_pose = self.ros2_node.create_publisher(
                 PoseWithCovarianceStamped,
                 "/localization/pose_estimator/pose_with_covariance",
@@ -652,7 +658,44 @@ class carla_ros2_interface(object):
         qz = math.sin(yaw / 2.0)
         pose.orientation = Quaternion(x=0.0, y=0.0, z=qz, w=qw)
 
-        # Publish pose to EKF input — the EKF handles /tf and /localization/kinematic_state.
+        # --- Direct /tf publish (map → base_link) ---
+        # Bypasses EKF/NDT — splatsim provides ground-truth localization.
+        tf_stamped = TransformStamped()
+        tf_stamped.header = header
+        tf_stamped.child_frame_id = "base_link"
+        tf_stamped.transform.translation.x = pose.position.x
+        tf_stamped.transform.translation.y = pose.position.y
+        tf_stamped.transform.translation.z = pose.position.z
+        tf_stamped.transform.rotation = pose.orientation
+        tf_msg = TFMessage(transforms=[tf_stamped])
+        self.pub_tf.publish(tf_msg)
+
+        # --- Direct /localization/kinematic_state (Odometry) ---
+        odom = Odometry()
+        odom.header = header
+        odom.child_frame_id = "base_link"
+        odom.pose.pose = pose
+        # Velocity in base_link frame (reuse ego_status logic)
+        trans_mat = numpy.array(
+            self.ego_actor.get_transform().get_matrix()
+        ).reshape(4, 4)
+        rot_mat = trans_mat[0:3, 0:3]
+        inv_rot_mat = rot_mat.T
+        vel_vec = numpy.array([
+            self.ego_actor.get_velocity().x,
+            self.ego_actor.get_velocity().y,
+            self.ego_actor.get_velocity().z,
+        ]).reshape(3, 1)
+        ego_velocity = (inv_rot_mat @ vel_vec).T[0]
+        odom.twist.twist.linear.x = float(ego_velocity[0])
+        odom.twist.twist.linear.y = float(-ego_velocity[1])  # CARLA right+ → ROS left+
+        odom.twist.twist.linear.z = float(ego_velocity[2])
+        odom.twist.twist.angular.z = -math.radians(
+            self.ego_actor.get_angular_velocity().z
+        )
+        self.pub_localization_odom.publish(odom)
+
+        # --- Pose with covariance (for pose_estimator topic) ---
         pose_cov = PoseWithCovarianceStamped()
         pose_cov.header = header
         pose_cov.pose.pose = pose
