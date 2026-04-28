@@ -733,7 +733,11 @@ class carla_ros2_interface(object):
             if sensor_type == "sensor.camera.rgb":
                 self.camera(data[1])
             elif sensor_type == "sensor.other.gnss":
-                self.pose()
+                # Skip GNSS pose when splatsim provides localization directly;
+                # the GNSS pose lacks the MGRS offset and would conflict with
+                # the corrected localization published by _publish_localization.
+                if not self.render_with_splatsim:
+                    self.pose()
             elif sensor_type == "sensor.lidar.ray_cast":
                 self.lidar(data[1], key)
             elif sensor_type == "sensor.other.imu":
