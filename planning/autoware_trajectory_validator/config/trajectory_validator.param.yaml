@@ -35,7 +35,19 @@
           diffusion_based: true
         ego_total_braking_delay: 0.4
         warn_threshold:
-          ego_acceleration: -3.0
+          ego_acceleration: -2.0
+          # sample_params_double demonstrates the __map_object_class override
+          # syntax. Per-class entries fall back to "base" when their value is
+          # NaN (the schema default).
+          sample_params_double:
+            base:
+              value: -2.0
+            pedestrian:
+              value: -1.0
+            bicycle:
+              value: -1.5
+            motorcycle:
+              value: -1.5
         error_threshold:
           ego_acceleration: -5.0
       pet_collision:
@@ -49,12 +61,40 @@
         warn_threshold:
           ego_first_passing_time_gap: 1.0
           object_first_passing_time_gap: 1.0
+          # sample_params_double: per-class double override example.
+          sample_params_double:
+            base:
+              value: 1.0
+            car:
+              value: 2.0
+            bus:
+              value: 3.0
         error_threshold:
           ego_first_passing_time_gap: 0.6
           object_first_passing_time_gap: 0.3
       rss:
         enable_assessment: true
+        # sample_params_bool: per-class bool override example. Note that bool
+        # per-class lookup throws when a class key is missing (no base
+        # fallback), so keep all relevant classes set explicitly.
+        sample_params_bool:
+          base:
+            value: true
+          over_drivable:
+            value: false
+          under_drivable:
+            value: false
         stop_distance_margin: 2.0
+        # sample_params_double: per-class double override example.
+        sample_params_double:
+          base:
+            value: 2.0
+          pedestrian:
+            value: 3.0
+          bicycle:
+            value: 2.5
+          motorcycle:
+            value: 2.5
         ego_total_braking_delay: 0.4
         object_assumed_acceleration: -1.0
         error_threshold:
