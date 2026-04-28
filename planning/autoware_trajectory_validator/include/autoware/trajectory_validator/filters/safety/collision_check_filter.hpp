@@ -103,66 +103,6 @@ struct TrajectoryIdentification
   }
 };
 
-struct PetCollisionParams
-{
-  PetCollisionParams() = default;
-  PetCollisionParams(
-    const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key);
-
-  bool enable_assessment;
-  struct AssessmentTrajectories
-  {
-    bool map_based;
-    bool constant_curvature;
-    bool diffusion_based;
-  } assessment_trajectories;
-  double ego_total_braking_delay;
-  double ego_assumed_acceleration;
-  double collision_time_threshold;
-  struct Threshold
-  {
-    double ego_first_passing_time_gap;
-    double object_first_passing_time_gap;
-  } warn_threshold, error_threshold;
-};
-
-struct RssParams
-{
-  RssParams() = default;
-  RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key);
-
-  bool enable_assessment;
-  double stop_distance_margin;
-  double ego_total_braking_delay;
-  double object_assumed_acceleration;
-  struct ErrorThreshold
-  {
-    double ego_acceleration;
-  } error_threshold;
-};
-
-struct DracParams
-{
-  DracParams() = default;
-  DracParams(const validator::Params::CollisionCheck::Drac & drac, const std::string & key);
-
-  bool enable_assessment;
-  struct AssessmentTrajectories
-  {
-    bool map_based;
-    bool constant_curvature;
-    bool diffusion_based;
-  } assessment_trajectories;
-  double ego_total_braking_delay;
-  struct Threshold
-  {
-    double ego_acceleration;
-  } warn_threshold, error_threshold;
-};
-
-template <typename OutT, typename ParamStruct>
-OutT extract_labeled_param(const ParamStruct & params_struct, const std::string & key);
-
 namespace geometry
 {
 Polygon2d to_polygon2d(
@@ -377,6 +317,45 @@ struct has_object_class_map<T, std::void_t<decltype(std::declval<const T &>().ob
 : std::true_type
 {
 };
+
+template <class Map>
+std::string format_map_keys(const Map & m)
+{
+  std::string out = "{";
+  bool first = true;
+  for (const auto & kv : m) {
+    if (!first) out += ", ";
+    out += kv.first;
+    first = false;
+  }
+  return out + "}";
+}
+
+// Floating-point per-class lookup: NaN entries are treated as "unset" and
+// fall back to "base". Throws when neither yields a usable value.
+template <class Map>
+auto find_with_base_fallback(const Map & m, const std::string & cls)
+{
+  const auto it = m.find(cls);
+  if (it != m.end() && !std::isnan(it->second.value)) return it->second.value;
+  if (const auto base_it = m.find("base"); base_it != m.end()) return base_it->second.value;
+  const std::string state =
+    (it == m.end()) ? "class key not present in map" : "class entry value is NaN (unset)";
+  throw std::runtime_error(
+    "resolve_per_class: cannot resolve floating-point value for class '" + cls + "' (" + state +
+    "), and 'base' is also missing. Map keys: " + format_map_keys(m));
+}
+
+// Non-float per-class lookup (bool/int/string): per-class entry only; no
+// "base" fallback so callers fail loudly when a class is missing.
+template <class Map>
+auto find_required(const Map & m, const std::string & cls)
+{
+  const auto it = m.find(cls);
+  if (it != m.end()) return it->second.value;
+  throw std::runtime_error(
+    "resolve_per_class: no entry for class '" + cls + "'. Map keys: " + format_map_keys(m));
+}
 }  // namespace detail
 
 // Returns the leaf scalar (Entry::value) for a per-class map lookup with
@@ -390,41 +369,12 @@ auto resolve_per_class(const T & s, const std::string & cls)
     const auto & m = s.object_class_map;
     using Entry = typename std::decay_t<decltype(m)>::mapped_type;
     using ValueT = decltype(Entry{}.value);
-    auto it = m.find(cls);
-
-    auto format_map_keys = [&m]() {
-      std::string out = "{";
-      bool first = true;
-      for (const auto & kv : m) {
-        if (!first) out += ", ";
-        out += kv.first;
-        first = false;
-      }
-      return out + "}";
-    };
 
     if constexpr (std::is_floating_point_v<ValueT>) {
-      // double / float: per-class value if explicitly set (non-NaN); otherwise base.
-      if (it != m.end() && !std::isnan(it->second.value)) return it->second.value;
-      if (auto base_it = m.find("base"); base_it != m.end()) return base_it->second.value;
-      const std::string state =
-        (it == m.end()) ? "class key not present in map" : "class entry value is NaN (unset)";
-      throw std::runtime_error(
-        "resolve_per_class: cannot resolve floating-point value for class '" + cls + "' (" + state +
-        "), and 'base' is also missing. Map keys: " + format_map_keys());
-    } else if constexpr (std::is_same_v<ValueT, bool>) {
-      // bool: per-class value only; no base fallback.
-      if (it != m.end()) return it->second.value;
-      throw std::runtime_error(
-        "resolve_per_class: no bool entry for class '" + cls +
-        "'; bool maps require an explicit per-class value. Map keys: " + format_map_keys());
+      return detail::find_with_base_fallback(m, cls);
     } else {
-      // int / string / other non-arithmetic-floating types: per-class value as-is.
-      if (it != m.end()) return it->second.value;
-      throw std::runtime_error(
-        "resolve_per_class: no entry for class '" + cls + "'. Map keys: " + format_map_keys());
+      return detail::find_required(m, cls);
     }
-
   } else {
     static_assert(
       std::is_arithmetic_v<T> || std::is_same_v<T, std::string>,
@@ -451,11 +401,7 @@ private:
   ContinuousDetectionTimes pet_continuous_times_;
   ContinuousDetectionTimes rss_continuous_times_;
   ContinuousDetectionTimes drac_continuous_times_;
-  std::map<std::string, PetCollisionParams> pet_collision_param_map_;
-  std::map<std::string, RssParams> rss_param_map_;
-  std::map<std::string, DracParams> drac_param_map_;
 
-  void create_param_maps(const validator::Params & params);
   void clear_detection_times();
   void add_debug_markers(
     const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
