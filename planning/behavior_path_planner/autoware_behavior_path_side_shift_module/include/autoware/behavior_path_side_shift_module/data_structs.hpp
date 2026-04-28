@@ -47,11 +47,11 @@ struct SideShiftParameters
   double drivable_area_width;
   double drivable_area_height;
   double shift_request_time_limit;
+  DrivableAreaCheckMode drivable_area_check_mode;
+  double min_margin_from_lanelet_border;
   double max_shift_magnitude;
   double min_shift_gap;
   double unit_shift_amount;
-  DrivableAreaCheckMode drivable_area_check_mode;
-  double min_drivable_area_margin;
   bool publish_debug_marker;
 };
 
