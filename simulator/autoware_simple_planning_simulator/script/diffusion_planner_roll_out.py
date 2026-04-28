@@ -67,6 +67,11 @@ def kill_subprocess(proc):
         pass
 
 
+def create_topic_relay_process(src, dst):
+    proc = subprocess.Popen(f"ros2 run topic_tools relay {src} {dst}", shell=True)
+    return proc
+
+
 class RollOut(Node):
     def __init__(self, args):
         super().__init__("rollout")
@@ -128,31 +133,61 @@ class RollOut(Node):
         self.remap_before_rollout()
 
     def remap_before_rollout(self):
-        proc_tf = subprocess.Popen("ros2 run topic_tools relay /rosbag/tf /tf", shell=True)
-        proc_kinematic = subprocess.Popen(
-            "ros2 run topic_tools relay /rosbag/localization/kinematic_state /localization/kinematic_state",
-            shell=True,
-        )
-        proc_acceleration = subprocess.Popen(
-            "ros2 run topic_tools relay /rosbag/localization/acceleration /localization/acceleration",
-            shell=True,
-        )
-        self.remapping_procs_before_rollout = [proc_tf, proc_kinematic, proc_acceleration]
+        self.remapping_procs_before_rollout = [
+            create_topic_relay_process("/rosbag/tf", "/tf"),
+            create_topic_relay_process(
+                "/rosbag/localization/kinematic_state", "/localization/kinematic_state"
+            ),
+            create_topic_relay_process(
+                "/rosbag/localization/acceleration", "/localization/acceleration"
+            ),
+            create_topic_relay_process(
+                "/rosbag/vehicle/status/velocity_status", "/vehicle/status/velocity_status"
+            ),
+            create_topic_relay_process(
+                "/rosbag/vehicle/status/steering_status", "/vehicle/status/steering_status"
+            ),
+            create_topic_relay_process(
+                "/rosbag/vehicle/status/turn_indicators_status",
+                "/vehicle/status/turn_indicators_status",
+            ),
+            create_topic_relay_process(
+                "/rosbag/vehicle/status/control_mode", "/vehicle/status/control_mode"
+            ),
+            create_topic_relay_process(
+                "/rosbag/vehicle/status/actuation_status", "/vehicle/status/actuation_status"
+            ),
+        ]
 
     def remap_after_rollout(self):
         for remapping_proc_before_rollout in self.remapping_procs_before_rollout:
             kill_subprocess(remapping_proc_before_rollout)
 
-        proc_tf = subprocess.Popen("ros2 run topic_tools relay /simulation/tf /tf", shell=True)
-        proc_kinematic = subprocess.Popen(
-            "ros2 run topic_tools relay /simulation/localization/kinematic_state /localization/kinematic_state",
-            shell=True,
-        )
-        proc_acceleration = subprocess.Popen(
-            "ros2 run topic_tools relay /simulation/localization/acceleration /localization/acceleration",
-            shell=True,
-        )
-        self.remapping_procs_after_rollout = [proc_tf, proc_kinematic, proc_acceleration]
+        self.remapping_procs_after_rollout = [
+            create_topic_relay_process("/simulation/tf", "/tf"),
+            create_topic_relay_process(
+                "/simulation/localization/kinematic_state", "/localization/kinematic_state"
+            ),
+            create_topic_relay_process(
+                "/simulation/localization/acceleration", "/localization/acceleration"
+            ),
+            create_topic_relay_process(
+                "/simulation/vehicle/status/velocity_status", "/vehicle/status/velocity_status"
+            ),
+            create_topic_relay_process(
+                "/simulation/vehicle/status/steering_status", "/vehicle/status/steering_status"
+            ),
+            create_topic_relay_process(
+                "/simulation/vehicle/status/turn_indicators_status",
+                "/vehicle/status/turn_indicators_status",
+            ),
+            create_topic_relay_process(
+                "/simulation/vehicle/status/control_mode", "/vehicle/status/control_mode"
+            ),
+            create_topic_relay_process(
+                "/simulation/vehicle/status/actuation_status", "/vehicle/status/actuation_status"
+            ),
+        ]
 
     def pause_sim(self, req, res):
         # stop sim
