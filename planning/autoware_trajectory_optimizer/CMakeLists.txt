@@ -64,6 +64,40 @@ target_link_libraries(
   tf2_geometry_msgs::tf2_geometry_msgs
 )
 
+# libqpOASES_e is normally only a transitive dependency of libacados. The dynamic
+# linker then resolves it using libacados' RPATH (often empty), not this plugin's
+# INSTALL_RPATH below — so dlopen fails without LD_LIBRARY_PATH. Link qpOASES
+# directly so it appears as DT_NEEDED on this DSO; --no-as-needed keeps the link
+# even though we reference no qpOASES symbols here.
+if(TARGET qpOASES_e::qpOASES_e)
+  set(_traj_opt_qpoases_lib qpOASES_e::qpOASES_e)
+elseif(TARGET qpOASES_e)
+  set(_traj_opt_qpoases_lib qpOASES_e)
+else()
+  find_library(_traj_opt_qpoases_lib_path NAMES qpOASES_e
+    PATHS
+      "${_acados_lib_dir}"
+      "$ENV{ACADOS_SOURCE_DIR}/lib"
+      /opt/acados/lib
+    NO_DEFAULT_PATH)
+  if(NOT _traj_opt_qpoases_lib_path)
+    find_library(_traj_opt_qpoases_lib_path NAMES qpOASES_e)
+  endif()
+  if(_traj_opt_qpoases_lib_path)
+    set(_traj_opt_qpoases_lib "${_traj_opt_qpoases_lib_path}")
+  endif()
+endif()
+if(_traj_opt_qpoases_lib)
+  if(UNIX AND NOT APPLE)
+    target_link_options(autoware_trajectory_optimizer_plugins PRIVATE "LINKER:--no-as-needed")
+  endif()
+  target_link_libraries(autoware_trajectory_optimizer_plugins PRIVATE ${_traj_opt_qpoases_lib})
+  if(UNIX AND NOT APPLE)
+    target_link_options(autoware_trajectory_optimizer_plugins PRIVATE "LINKER:--as-needed")
+  endif()
+endif()
+unset(_traj_opt_qpoases_lib_path CACHE)
+
 # Ensure pluginlib/dlopen can resolve acados runtime deps (e.g. libqpOASES_e)
 # in container environments where LD_LIBRARY_PATH is restricted.
 if(_acados_lib_dir AND EXISTS "${_acados_lib_dir}")
