@@ -85,38 +85,6 @@ def _parse_geo_reference(xodr_xml: str):
     return float(lat_match.group(1)), float(lon_match.group(1))
 
 
-def _rotation_matrix_to_quaternion_wxyz(R):
-    """Convert a 3x3 rotation matrix to ``(w, x, y, z)`` quaternion.
-
-    Ported from ``coordinate_transformer._rotation_matrix_to_quaternion_wxyz``.
-    """
-    trace = R[0, 0] + R[1, 1] + R[2, 2]
-    if trace > 0:
-        s = 0.5 / numpy.sqrt(trace + 1.0)
-        w = 0.25 / s
-        x = (R[2, 1] - R[1, 2]) * s
-        y = (R[0, 2] - R[2, 0]) * s
-        z = (R[1, 0] - R[0, 1]) * s
-    elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
-        s = 2.0 * numpy.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
-        w = (R[2, 1] - R[1, 2]) / s
-        x = 0.25 * s
-        y = (R[0, 1] + R[1, 0]) / s
-        z = (R[0, 2] + R[2, 0]) / s
-    elif R[1, 1] > R[2, 2]:
-        s = 2.0 * numpy.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
-        w = (R[0, 2] - R[2, 0]) / s
-        x = (R[0, 1] + R[1, 0]) / s
-        y = 0.25 * s
-        z = (R[1, 2] + R[2, 1]) / s
-    else:
-        s = 2.0 * numpy.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
-        w = (R[1, 0] - R[0, 1]) / s
-        x = (R[0, 2] + R[2, 0]) / s
-        y = (R[1, 2] + R[2, 1]) / s
-        z = 0.25 * s
-    return (float(w), float(x), float(y), float(z))
-
 
 class carla_ros2_interface(object):
     def __init__(self):
@@ -658,17 +626,18 @@ class carla_ros2_interface(object):
     def _publish_localization(self):
         """Publish localization data from CARLA ground truth when splatsim is active.
 
-        Coordinate conversion ported from
-        ``splatsim.carla_integration.geo_transform.GeoTransform``:
+        Uses lanelet2 coordinate system (2D pose) instead of converting
+        CARLA's 3D rotation matrix.  Matches the approach in
+        ``splatsim.carla_integration.autoware_bridge.publish_initialpose``.
 
         Position::
             CARLA (x=East, y=South, z=Up)
               → xodr  (flip y: y_xodr = −y_carla)
               → MGRS  (add MGRS offset from lanelet2 projector)
 
-        Rotation::
-            R_carla → S @ R_carla  (S = diag(1, −1, 1): flip y South → North)
-                    → R_enu (== Autoware map frame rotation)
+        Orientation (2D yaw only, roll=pitch=0)::
+            CARLA yaw (degrees, CW-positive)
+              → ROS yaw (radians, CCW-positive): yaw_ros = −deg2rad(yaw_carla)
         """
         header = self.get_msg_header(frame_id="map")
         carla_tf = self.ego_actor.get_transform()
@@ -679,17 +648,13 @@ class carla_ros2_interface(object):
         pose.position.y = -carla_tf.location.y + self._mgrs_offset_y
         pose.position.z = carla_tf.location.z
 
-        # --- Rotation: matrix-based CARLA → ROS (ported from splatsim) ---
-        T_carla = numpy.array(carla_tf.get_matrix(), dtype=numpy.float64).reshape(4, 4)
-        R_carla = T_carla[:3, :3]
-        # R_carla maps CARLA-local (X=fwd, Y=right, Z=up) → CARLA-world (X=E, Y=S, Z=U)
-        # We need R_ros mapping ROS base_link (X=fwd, Y=left, Z=up) → ENU (X=E, Y=N, Z=U)
-        # Right S: ROS-local Y=left → CARLA-local Y=right
-        # Left S:  CARLA-world Y=South → ENU Y=North
-        S = numpy.diag([1.0, -1.0, 1.0])
-        R_ros = S @ R_carla @ S
-        w, qx, qy, qz = _rotation_matrix_to_quaternion_wxyz(R_ros)
-        pose.orientation = Quaternion(x=qx, y=qy, z=qz, w=w)
+        # --- Orientation: 2D yaw only (same as autoware_bridge.publish_initialpose) ---
+        # CARLA yaw: degrees, 0=East, positive=clockwise (right)
+        # ROS yaw:   radians, 0=East, positive=counter-clockwise (left)
+        yaw = -math.radians(carla_tf.rotation.yaw)
+        qw = math.cos(yaw / 2.0)
+        qz = math.sin(yaw / 2.0)
+        pose.orientation = Quaternion(x=0.0, y=0.0, z=qz, w=qw)
 
         # TF: map -> base_link
         tf = TransformStamped()
@@ -716,31 +681,20 @@ class carla_ros2_interface(object):
         cov[28] = 0.0001
         cov[35] = 0.0001
 
-        # Velocity in ego frame
-        inv_rot_carla = R_carla.T  # CARLA world → CARLA ego-local
-        vel_vec = numpy.array(
-            [
-                self.ego_actor.get_velocity().x,
-                self.ego_actor.get_velocity().y,
-                self.ego_actor.get_velocity().z,
-            ],
-            dtype=numpy.float64,
-        ).reshape(3, 1)
-        ego_velocity = (inv_rot_carla @ vel_vec).T[0]
-        # CARLA ego-local: X=forward, Y=right, Z=up
-        # ROS base_link:   X=forward, Y=left,  Z=up
-        odom.twist.twist.linear.x = float(ego_velocity[0])
-        odom.twist.twist.linear.y = float(-ego_velocity[1])
+        # Velocity: use 2D rotation (yaw only) to transform world velocity to ego frame
+        cos_yaw = math.cos(yaw)
+        sin_yaw = math.sin(yaw)
+        # CARLA velocity in world frame (x=East, y=South, z=Up)
+        vx_world = self.ego_actor.get_velocity().x     # East
+        vy_world = -self.ego_actor.get_velocity().y     # flip to North (ENU)
+        # Rotate ENU world velocity into ego frame (forward, left, up)
+        odom.twist.twist.linear.x = float(cos_yaw * vx_world + sin_yaw * vy_world)
+        odom.twist.twist.linear.y = float(-sin_yaw * vx_world + cos_yaw * vy_world)
 
-        # Angular velocity: transform to ego-local, negate yaw for ROS convention
-        ang_vel = self.ego_actor.get_angular_velocity()
-        ang_vec = numpy.array(
-            [ang_vel.x, ang_vel.y, ang_vel.z], dtype=numpy.float64,
-        ).reshape(3, 1)
-        ego_ang = (inv_rot_carla @ ang_vec).T[0]
-        # CARLA left-handed Z-up: positive yaw = clockwise (right)
-        # ROS right-handed Z-up:  positive yaw = counter-clockwise (left)
-        odom.twist.twist.angular.z = float(-ego_ang[2])
+        # Angular velocity: CARLA Z angular vel (deg/s, CW+) → ROS (rad/s, CCW+)
+        odom.twist.twist.angular.z = float(-math.radians(
+            self.ego_actor.get_angular_velocity().z
+        ))
         self.pub_localization_odom.publish(odom)
 
         # PoseWithCovarianceStamped
