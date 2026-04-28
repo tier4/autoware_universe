@@ -165,8 +165,7 @@ void print_debug_info(const validator::Params::CollisionCheck & cc)
     "pet_collision: enable=%d, ego_braking_delay=%.3f, ego_assumed_accel=%.3f, "
     "warn(ego_first=%.3f, object_first=%.3f), error(ego_first=%.3f, object_first=%.3f)",
     pet.enable_assessment, pet.ego_total_braking_delay, pet.ego_assumed_acceleration,
-    pet.warn_threshold.ego_first_passing_time_gap,
-    pet.warn_threshold.object_first_passing_time_gap,
+    pet.warn_threshold.ego_first_passing_time_gap, pet.warn_threshold.object_first_passing_time_gap,
     pet.error_threshold.ego_first_passing_time_gap,
     pet.error_threshold.object_first_passing_time_gap);
   RCLCPP_INFO(
@@ -174,8 +173,7 @@ void print_debug_info(const validator::Params::CollisionCheck & cc)
     format_class_map(pet.warn_threshold.sample_params_double).c_str());
 
   RCLCPP_INFO(
-    logger,
-    "drac: enable=%d, ego_braking_delay=%.3f, warn.ego_accel=%.3f, error.ego_accel=%.3f",
+    logger, "drac: enable=%d, ego_braking_delay=%.3f, warn.ego_accel=%.3f, error.ego_accel=%.3f",
     drac.enable_assessment, drac.ego_total_braking_delay, drac.warn_threshold.ego_acceleration,
     drac.error_threshold.ego_acceleration);
   RCLCPP_INFO(
@@ -247,8 +245,8 @@ TEST_F(CollisionCheckFilterParamLoadTest, YamlParamsReachCollisionCheckParams)
     cc.drac.warn_threshold.sample_params_double.object_class_map.at("base").value, -2.0);
   EXPECT_DOUBLE_EQ(
     cc.drac.warn_threshold.sample_params_double.object_class_map.at("pedestrian").value, -1.0);
-  EXPECT_TRUE(std::isnan(
-    cc.drac.warn_threshold.sample_params_double.object_class_map.at("car").value));
+  EXPECT_TRUE(
+    std::isnan(cc.drac.warn_threshold.sample_params_double.object_class_map.at("car").value));
 
   EXPECT_EQ(cc.rss.sample_params_bool.object_class_map.size(), 13U);
   EXPECT_TRUE(cc.rss.sample_params_bool.object_class_map.at("base").value);
