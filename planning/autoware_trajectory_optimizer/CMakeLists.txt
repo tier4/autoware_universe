@@ -91,7 +91,7 @@ if(_traj_opt_qpoases_lib)
   if(UNIX AND NOT APPLE)
     target_link_options(autoware_trajectory_optimizer_plugins PRIVATE "LINKER:--no-as-needed")
   endif()
-  target_link_libraries(autoware_trajectory_optimizer_plugins PRIVATE ${_traj_opt_qpoases_lib})
+  target_link_libraries(autoware_trajectory_optimizer_plugins ${_traj_opt_qpoases_lib})
   if(UNIX AND NOT APPLE)
     target_link_options(autoware_trajectory_optimizer_plugins PRIVATE "LINKER:--as-needed")
   endif()
@@ -141,6 +141,7 @@ install(PROGRAMS
 )
 
 ament_auto_package(
+  USE_SCOPED_HEADER_INSTALL_DIR
   INSTALL_TO_SHARE
   config
   launch
