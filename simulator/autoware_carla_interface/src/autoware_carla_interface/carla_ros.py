@@ -14,7 +14,9 @@
 
 import json
 import math
+import re
 import threading
+import xml.etree.ElementTree as ET
 
 from autoware_perception_msgs.msg import PredictedObjects
 from autoware_vehicle_msgs.msg import ControlModeReport
@@ -27,6 +29,7 @@ from cv_bridge import CvBridge
 from geometry_msgs.msg import AccelWithCovarianceStamped
 from geometry_msgs.msg import Pose
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import Quaternion
 from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 import numpy
@@ -43,6 +46,7 @@ from tier4_vehicle_msgs.msg import ActuationCommandStamped
 from tier4_vehicle_msgs.msg import ActuationStatusStamped
 from transforms3d.euler import euler2quat
 
+from .modules.carla_data_provider import CarlaDataProvider
 from .modules.carla_data_provider import GameTime
 from .modules.carla_data_provider import datetime
 from .modules.carla_utils import carla_location_to_ros_point
@@ -50,6 +54,68 @@ from .modules.carla_utils import carla_rotation_to_ros_quaternion
 from .modules.carla_utils import create_cloud
 from .modules.carla_utils import ros_pose_to_carla_transform
 from .modules.carla_wrapper import SensorInterface
+
+
+def _parse_geo_reference(xodr_xml: str):
+    """Extract ``(lat_0, lon_0)`` from the OpenDRIVE ``<geoReference>`` PROJ string.
+
+    Ported from ``splatsim.carla_integration.geo_transform.parse_geo_reference``.
+    """
+    match = re.search(
+        r"<geoReference>\s*<!\[CDATA\[(.*?)\]\]>\s*</geoReference>",
+        xodr_xml,
+        re.DOTALL,
+    )
+    if match:
+        proj_string = match.group(1).strip()
+    else:
+        root = ET.fromstring(xodr_xml)
+        geo_ref = root.find(".//geoReference")
+        if geo_ref is not None and geo_ref.text:
+            proj_string = geo_ref.text.strip()
+        else:
+            raise ValueError("No <geoReference> found in OpenDRIVE XML")
+
+    lat_match = re.search(r"\+lat_0=([0-9eE.+-]+)", proj_string)
+    lon_match = re.search(r"\+lon_0=([0-9eE.+-]+)", proj_string)
+    if lat_match is None or lon_match is None:
+        raise ValueError(
+            f"Cannot extract +lat_0/+lon_0 from GeoReference: {proj_string}"
+        )
+    return float(lat_match.group(1)), float(lon_match.group(1))
+
+
+def _rotation_matrix_to_quaternion_wxyz(R):
+    """Convert a 3x3 rotation matrix to ``(w, x, y, z)`` quaternion.
+
+    Ported from ``coordinate_transformer._rotation_matrix_to_quaternion_wxyz``.
+    """
+    trace = R[0, 0] + R[1, 1] + R[2, 2]
+    if trace > 0:
+        s = 0.5 / numpy.sqrt(trace + 1.0)
+        w = 0.25 / s
+        x = (R[2, 1] - R[1, 2]) * s
+        y = (R[0, 2] - R[2, 0]) * s
+        z = (R[1, 0] - R[0, 1]) * s
+    elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+        s = 2.0 * numpy.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
+        w = (R[2, 1] - R[1, 2]) / s
+        x = 0.25 * s
+        y = (R[0, 1] + R[1, 0]) / s
+        z = (R[0, 2] + R[2, 0]) / s
+    elif R[1, 1] > R[2, 2]:
+        s = 2.0 * numpy.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
+        w = (R[0, 2] - R[2, 0]) / s
+        x = (R[0, 1] + R[1, 0]) / s
+        y = 0.25 * s
+        z = (R[1, 2] + R[2, 1]) / s
+    else:
+        s = 2.0 * numpy.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
+        w = (R[1, 0] - R[0, 1]) / s
+        x = (R[0, 2] + R[2, 0]) / s
+        y = (R[1, 2] + R[2, 1]) / s
+        z = 0.25 * s
+    return (float(w), float(x), float(y), float(z))
 
 
 class carla_ros2_interface(object):
@@ -113,6 +179,8 @@ class carla_ros2_interface(object):
 
         self.render_with_splatsim = bool(self.param_values.get("render_with_splatsim", False))
         self._splatsim_cameras = []
+        self._mgrs_offset_x = 0.0
+        self._mgrs_offset_y = 0.0
 
         # Publish clock
         self.clock_publisher = self.ros2_node.create_publisher(Clock, "/clock", 10)
@@ -516,6 +584,38 @@ class carla_ros2_interface(object):
         self.pub_ctrl_mode.publish(out_ctrl_mode)
         self.pub_gear_state.publish(out_gear_state)
 
+    def _init_geo_transform(self):
+        """Compute MGRS offset from CARLA OpenDRIVE GeoReference.
+
+        The xodr coordinate origin corresponds to the geographic point
+        (lat_0, lon_0) in the GeoReference.  The MGRS offset is the
+        projected coordinate of this origin in the lanelet2 MGRSProjector,
+        so that::
+
+            autoware_map_x = carla_x + mgrs_offset_x
+            autoware_map_y = -carla_y + mgrs_offset_y
+
+        Ported from ``splatsim.carla_integration.geo_transform.GeoTransform``.
+        """
+        import lanelet2.core
+        import lanelet2.io
+        from autoware_lanelet2_extension_python.projection import MGRSProjector
+
+        world = CarlaDataProvider.get_world()
+        xodr_xml = world.get_map().to_opendrive()
+        lat_0, lon_0 = _parse_geo_reference(xodr_xml)
+
+        projector = MGRSProjector(lanelet2.io.Origin(lat_0, lon_0))
+        origin_gps = lanelet2.core.GPSPoint(lat_0, lon_0, 0.0)
+        origin_local = projector.forward(origin_gps)
+        self._mgrs_offset_x = origin_local.x
+        self._mgrs_offset_y = origin_local.y
+
+        self.ros2_node.get_logger().info(
+            f"GeoTransform initialized: lat_0={lat_0:.8f}, lon_0={lon_0:.8f}, "
+            f"mgrs_offset=({self._mgrs_offset_x:.1f}, {self._mgrs_offset_y:.1f})"
+        )
+
     def init_splatsim_cameras(self):
         """Create SplatSimRGBCamera instances for each camera sensor spec.
 
@@ -523,6 +623,14 @@ class carla_ros2_interface(object):
         """
         if not self.render_with_splatsim or not self._splatsim_camera_specs:
             return
+        if not self.param_values.get("splatsim_tileset_path"):
+            self.ros2_node.get_logger().warn(
+                "render_with_splatsim is true but splatsim_tileset_path is empty; "
+                "skipping splatsim camera initialization"
+            )
+            return
+
+        self._init_geo_transform()
 
         from .splatsim.splatsim_camera import SplatSimRGBCamera
 
@@ -548,15 +656,40 @@ class carla_ros2_interface(object):
             )
 
     def _publish_localization(self):
-        """Publish localization data from CARLA ground truth when splatsim is active."""
-        header = self.get_msg_header(frame_id="map")
+        """Publish localization data from CARLA ground truth when splatsim is active.
 
-        # Get ego pose
+        Coordinate conversion ported from
+        ``splatsim.carla_integration.geo_transform.GeoTransform``:
+
+        Position::
+            CARLA (x=East, y=South, z=Up)
+              → xodr  (flip y: y_xodr = −y_carla)
+              → MGRS  (add MGRS offset from lanelet2 projector)
+
+        Rotation::
+            R_carla → S @ R_carla  (S = diag(1, −1, 1): flip y South → North)
+                    → R_enu (== Autoware map frame rotation)
+        """
+        header = self.get_msg_header(frame_id="map")
+        carla_tf = self.ego_actor.get_transform()
+
+        # --- Position: CARLA → xodr (flip y) → MGRS absolute (add offset) ---
         pose = Pose()
-        pose.position = carla_location_to_ros_point(self.ego_actor.get_transform().location)
-        pose.orientation = carla_rotation_to_ros_quaternion(
-            self.ego_actor.get_transform().rotation
-        )
+        pose.position.x = carla_tf.location.x + self._mgrs_offset_x
+        pose.position.y = -carla_tf.location.y + self._mgrs_offset_y
+        pose.position.z = carla_tf.location.z
+
+        # --- Rotation: matrix-based CARLA → ROS (ported from splatsim) ---
+        T_carla = numpy.array(carla_tf.get_matrix(), dtype=numpy.float64).reshape(4, 4)
+        R_carla = T_carla[:3, :3]
+        # R_carla maps CARLA-local (X=fwd, Y=right, Z=up) → CARLA-world (X=E, Y=S, Z=U)
+        # We need R_ros mapping ROS base_link (X=fwd, Y=left, Z=up) → ENU (X=E, Y=N, Z=U)
+        # Right S: ROS-local Y=left → CARLA-local Y=right
+        # Left S:  CARLA-world Y=South → ENU Y=North
+        S = numpy.diag([1.0, -1.0, 1.0])
+        R_ros = S @ R_carla @ S
+        w, qx, qy, qz = _rotation_matrix_to_quaternion_wxyz(R_ros)
+        pose.orientation = Quaternion(x=qx, y=qy, z=qz, w=w)
 
         # TF: map -> base_link
         tf = TransformStamped()
@@ -583,25 +716,31 @@ class carla_ros2_interface(object):
         cov[28] = 0.0001
         cov[35] = 0.0001
 
-        # Velocity in ego frame (same computation as ego_status)
-        trans_mat = numpy.array(self.ego_actor.get_transform().get_matrix()).reshape(4, 4)
-        rot_mat = trans_mat[0:3, 0:3]
-        inv_rot_mat = rot_mat.T
+        # Velocity in ego frame
+        inv_rot_carla = R_carla.T  # CARLA world → CARLA ego-local
         vel_vec = numpy.array(
             [
                 self.ego_actor.get_velocity().x,
                 self.ego_actor.get_velocity().y,
                 self.ego_actor.get_velocity().z,
-            ]
+            ],
+            dtype=numpy.float64,
         ).reshape(3, 1)
-        ego_velocity = (inv_rot_mat @ vel_vec).T[0]
+        ego_velocity = (inv_rot_carla @ vel_vec).T[0]
+        # CARLA ego-local: X=forward, Y=right, Z=up
+        # ROS base_link:   X=forward, Y=left,  Z=up
         odom.twist.twist.linear.x = float(ego_velocity[0])
-        odom.twist.twist.linear.y = float(ego_velocity[1])
-        odom.twist.twist.angular.z = float(
-            self.ego_actor.get_transform().transform_vector(
-                self.ego_actor.get_angular_velocity()
-            ).z
-        )
+        odom.twist.twist.linear.y = float(-ego_velocity[1])
+
+        # Angular velocity: transform to ego-local, negate yaw for ROS convention
+        ang_vel = self.ego_actor.get_angular_velocity()
+        ang_vec = numpy.array(
+            [ang_vel.x, ang_vel.y, ang_vel.z], dtype=numpy.float64,
+        ).reshape(3, 1)
+        ego_ang = (inv_rot_carla @ ang_vec).T[0]
+        # CARLA left-handed Z-up: positive yaw = clockwise (right)
+        # ROS right-handed Z-up:  positive yaw = counter-clockwise (left)
+        odom.twist.twist.angular.z = float(-ego_ang[2])
         self.pub_localization_odom.publish(odom)
 
         # PoseWithCovarianceStamped

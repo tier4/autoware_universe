@@ -22,6 +22,7 @@
 
   <exec_depend>carla-pip</exec_depend>
   <exec_depend>python3-docker</exec_depend>
+  <exec_depend>python3-urllib3</exec_depend>
   <exec_depend>python3-grpcio</exec_depend>
   <exec_depend>python3-protobuf</exec_depend>
   <exec_depend>python3-pyproj</exec_depend>

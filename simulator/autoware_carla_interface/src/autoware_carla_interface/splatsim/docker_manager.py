@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-import logging
+import sys
 import time
+import threading
 from pathlib import Path
 
 import docker
 from docker.types import DeviceRequest
 import grpc
 
-logger = logging.getLogger(__name__)
+
+def _log(msg: str) -> None:
+    """Print to stderr so it always appears in the ROS2 launch terminal."""
+    print(f"[splatsim-docker] {msg}", file=sys.stderr, flush=True)
 
 
 class SplatSimDockerManager:
@@ -30,6 +34,7 @@ class SplatSimDockerManager:
         self._grpc_port = grpc_port
         self._client = docker.from_env()
         self._container = None
+        self._container_dead = False
 
     @property
     def grpc_address(self) -> str:
@@ -46,20 +51,19 @@ class SplatSimDockerManager:
         """
         tileset_dir = str(Path(tileset_host_path).resolve().parent)
 
-        logger.info(
-            "Starting splatsim container (image=%s, mount=%s → /data)",
-            self._image,
-            tileset_dir,
-        )
+        _log(f"Starting container (image={self._image}, mount={tileset_dir} -> /data)")
         self._container = self._client.containers.run(
             self._image,
             detach=True,
             network_mode="host",
             device_requests=[DeviceRequest(count=-1, capabilities=[["gpu"]])],
             volumes={tileset_dir: {"bind": "/data", "mode": "ro"}},
-            auto_remove=True,
         )
-        logger.info("Container started: %s", self._container.short_id)
+        _log(f"Container started: {self._container.short_id}")
+        self._log_thread = threading.Thread(
+            target=self._stream_logs, daemon=True,
+        )
+        self._log_thread.start()
         return self.grpc_address
 
     def wait_for_ready(self, timeout: float = 60.0) -> None:
@@ -67,11 +71,16 @@ class SplatSimDockerManager:
         deadline = time.monotonic() + timeout
         address = self.grpc_address
         while time.monotonic() < deadline:
+            if self._container_dead:
+                raise RuntimeError(
+                    "splatsim container exited before gRPC became ready. "
+                    "Check the [splatsim] log lines above for details."
+                )
             try:
                 channel = grpc.insecure_channel(address)
                 grpc.channel_ready_future(channel).result(timeout=2.0)
                 channel.close()
-                logger.info("splatsim gRPC server is ready at %s", address)
+                _log(f"gRPC server is ready at {address}")
                 return
             except grpc.FutureTimeoutError:
                 pass
@@ -82,12 +91,34 @@ class SplatSimDockerManager:
             f"splatsim gRPC server at {address} not ready within {timeout}s"
         )
 
+    def _stream_logs(self) -> None:
+        """Stream container logs to stderr in a background thread."""
+        try:
+            for chunk in self._container.logs(stream=True, follow=True):
+                for line in chunk.decode("utf-8", errors="replace").splitlines():
+                    _log(line)
+        except Exception as exc:
+            _log(f"Log stream ended: {exc}")
+        # If we reach here, the container has stopped producing logs.
+        try:
+            self._container.reload()
+            status = self._container.status
+        except Exception:
+            status = "removed"
+        if status != "running":
+            _log(f"Container is no longer running (status={status})")
+            self._container_dead = True
+
     def stop(self) -> None:
         """Stop and remove the container (idempotent)."""
         if self._container is not None:
             try:
                 self._container.stop(timeout=10)
-                logger.info("Container stopped: %s", self._container.short_id)
+                _log(f"Container stopped: {self._container.short_id}")
             except Exception as exc:
-                logger.warning("Error stopping container: %s", exc)
+                _log(f"Error stopping container: {exc}")
+            try:
+                self._container.remove(force=True)
+            except Exception:
+                pass
             self._container = None
