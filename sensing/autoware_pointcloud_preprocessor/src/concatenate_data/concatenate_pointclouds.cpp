@@ -269,6 +269,9 @@ void PointCloudConcatenationComponent::combineClouds(
       not_subscribed_topic_names_.insert(e.first);
     }
   }
+  if (concat_cloud_ptr != nullptr) {
+    concat_cloud_ptr->row_step = concat_cloud_ptr->width * concat_cloud_ptr->point_step;
+  }
   if (concatenation_info_ptr != nullptr && concat_cloud_ptr != nullptr) {
     concatenation_info_manager_->set_result(*concat_cloud_ptr, *concatenation_info_ptr);
   }
