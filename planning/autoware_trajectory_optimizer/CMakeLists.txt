@@ -2,17 +2,33 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_trajectory_optimizer)
 
 find_package(autoware_cmake REQUIRED)
-find_package(acados REQUIRED)
-find_package(tf2_geometry_msgs REQUIRED)
 
 autoware_package()
 
+find_package(acados REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+
+add_subdirectory(src/acados_mpt)
+
 find_package(ament_cmake_export_dependencies REQUIRED)
+find_package(ament_cmake_export_link_flags REQUIRED)
 ament_export_dependencies(acados)
 
-# Temporal kinematic-bicycle acados solver: Python codegen at build time (add_custom_command).
-# See src/acados_mpt/CMakeLists.txt — target acados_interface_temporal.
-add_subdirectory(src/acados_mpt)
+get_target_property(_acados_location acados IMPORTED_LOCATION)
+if(NOT _acados_location)
+  get_target_property(_acados_location acados IMPORTED_LOCATION_RELEASE)
+endif()
+if(_acados_location)
+  get_filename_component(_acados_lib_dir "${_acados_location}" DIRECTORY)
+  ament_export_link_flags(-L"${_acados_lib_dir}" -lacados)
+else()
+  # Fallback when acados is not exposed as an imported target (e.g. in-tree)
+  set(_acados_lib_dir "$ENV{ACADOS_SOURCE_DIR}/lib")
+  if(_acados_lib_dir AND EXISTS "${_acados_lib_dir}")
+    ament_export_link_flags(-L"${_acados_lib_dir}" -lacados)
+  endif()
+endif()
+
 pluginlib_export_plugin_description_file(autoware_trajectory_optimizer plugins.xml)
 
 ament_auto_add_library(autoware_trajectory_optimizer_component SHARED
@@ -47,6 +63,15 @@ target_link_libraries(
   acados_interface_temporal
   tf2_geometry_msgs::tf2_geometry_msgs
 )
+
+# Ensure pluginlib/dlopen can resolve acados runtime deps (e.g. libqpOASES_e)
+# in container environments where LD_LIBRARY_PATH is restricted.
+if(_acados_lib_dir AND EXISTS "${_acados_lib_dir}")
+  foreach(_target acados_interface_temporal autoware_trajectory_optimizer_plugins)
+    set_property(TARGET ${_target} APPEND PROPERTY BUILD_RPATH "${_acados_lib_dir}")
+    set_property(TARGET ${_target} APPEND PROPERTY INSTALL_RPATH "${_acados_lib_dir}")
+  endforeach()
+endif()
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
