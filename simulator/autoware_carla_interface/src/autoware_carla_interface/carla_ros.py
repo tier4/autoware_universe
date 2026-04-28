@@ -30,8 +30,6 @@ from geometry_msgs.msg import AccelWithCovarianceStamped
 from geometry_msgs.msg import Pose
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from geometry_msgs.msg import Quaternion
-from geometry_msgs.msg import TransformStamped
-from nav_msgs.msg import Odometry
 import numpy
 import rclpy
 from rosgraph_msgs.msg import Clock
@@ -41,7 +39,6 @@ from sensor_msgs.msg import Imu
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs.msg import PointField
 from std_msgs.msg import Header
-from tf2_msgs.msg import TFMessage
 from tier4_vehicle_msgs.msg import ActuationCommandStamped
 from tier4_vehicle_msgs.msg import ActuationStatusStamped
 from transforms3d.euler import euler2quat
@@ -234,11 +231,8 @@ class carla_ros2_interface(object):
             self.pub_empty_pointcloud = self.ros2_node.create_publisher(
                 PointCloud2, "/perception/obstacle_segmentation/pointcloud", 1
             )
-            # Localization publishers (replaces splatsim_pose_publisher node)
-            self.pub_tf = self.ros2_node.create_publisher(TFMessage, "/tf", 10)
-            self.pub_localization_odom = self.ros2_node.create_publisher(
-                Odometry, "/localization/kinematic_state", 10
-            )
+            # Localization publishers — only feed pose into the EKF;
+            # /localization/kinematic_state and /tf are published by the EKF.
             self.pub_localization_pose = self.ros2_node.create_publisher(
                 PoseWithCovarianceStamped,
                 "/localization/pose_estimator/pose_with_covariance",
@@ -524,9 +518,11 @@ class carla_ros2_interface(object):
 
         out_vel_state.header = self.get_msg_header(frame_id="base_link")
         out_vel_state.longitudinal_velocity = ego_velocity[0]
-        out_vel_state.lateral_velocity = ego_velocity[1]
-        out_vel_state.heading_rate = (
-            self.ego_actor.get_transform().transform_vector(self.ego_actor.get_angular_velocity()).z
+        out_vel_state.lateral_velocity = -ego_velocity[1]  # CARLA right+ → ROS left+
+        # CARLA get_angular_velocity() returns deg/s; Autoware expects rad/s.
+        # Negate for left-handed (CW+) → right-handed (CCW+) convention.
+        out_vel_state.heading_rate = -math.radians(
+            self.ego_actor.get_angular_velocity().z
         )
 
         out_steering_state.stamp = out_vel_state.header.stamp
@@ -656,48 +652,7 @@ class carla_ros2_interface(object):
         qz = math.sin(yaw / 2.0)
         pose.orientation = Quaternion(x=0.0, y=0.0, z=qz, w=qw)
 
-        # TF: map -> base_link
-        tf = TransformStamped()
-        tf.header = header
-        tf.child_frame_id = "base_link"
-        tf.transform.translation.x = pose.position.x
-        tf.transform.translation.y = pose.position.y
-        tf.transform.translation.z = pose.position.z
-        tf.transform.rotation = pose.orientation
-        tf_msg = TFMessage()
-        tf_msg.transforms.append(tf)
-        self.pub_tf.publish(tf_msg)
-
-        # Odometry (/localization/kinematic_state)
-        odom = Odometry()
-        odom.header = header
-        odom.child_frame_id = "base_link"
-        odom.pose.pose = pose
-        cov = odom.pose.covariance
-        cov[0] = 0.0001
-        cov[7] = 0.0001
-        cov[14] = 0.0001
-        cov[21] = 0.0001
-        cov[28] = 0.0001
-        cov[35] = 0.0001
-
-        # Velocity: use 2D rotation (yaw only) to transform world velocity to ego frame
-        cos_yaw = math.cos(yaw)
-        sin_yaw = math.sin(yaw)
-        # CARLA velocity in world frame (x=East, y=South, z=Up)
-        vx_world = self.ego_actor.get_velocity().x     # East
-        vy_world = -self.ego_actor.get_velocity().y     # flip to North (ENU)
-        # Rotate ENU world velocity into ego frame (forward, left, up)
-        odom.twist.twist.linear.x = float(cos_yaw * vx_world + sin_yaw * vy_world)
-        odom.twist.twist.linear.y = float(-sin_yaw * vx_world + cos_yaw * vy_world)
-
-        # Angular velocity: CARLA Z angular vel (deg/s, CW+) → ROS (rad/s, CCW+)
-        odom.twist.twist.angular.z = float(-math.radians(
-            self.ego_actor.get_angular_velocity().z
-        ))
-        self.pub_localization_odom.publish(odom)
-
-        # PoseWithCovarianceStamped
+        # Publish pose to EKF input — the EKF handles /tf and /localization/kinematic_state.
         pose_cov = PoseWithCovarianceStamped()
         pose_cov.header = header
         pose_cov.pose.pose = pose
