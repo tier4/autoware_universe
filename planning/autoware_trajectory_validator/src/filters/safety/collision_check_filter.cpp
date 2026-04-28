@@ -71,7 +71,6 @@ PetCollisionParams::PetCollisionParams(
     extract_labeled_param<bool>(pet.assessment_trajectories.diffusion_based, key);
   ego_total_braking_delay = extract_labeled_param<double>(pet.ego_total_braking_delay, key);
   ego_assumed_acceleration = extract_labeled_param<double>(pet.ego_assumed_acceleration, key);
-  collision_time_threshold = extract_labeled_param<double>(pet.collision_time_threshold, key);
 
   warn_threshold.ego_first_passing_time_gap =
     extract_labeled_param<double>(pet.warn_threshold.ego_first_passing_time_gap, key);
