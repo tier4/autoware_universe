@@ -887,14 +887,11 @@ Assessment assess_required_deceleration(
     return Assessment{TrajectoryIdentification{object, stamp}, 0.0};
   }
 
-  const auto cls = get_object_class_label(object);
-  const double stop_distance_margin = resolve_per_class(rss_params.stop_distance_margin, cls);
-
   // compute safe distance
   const double obj_long_vel = std::clamp(
     rss_deceleration::compute_longitudinal_velocity(ego_trajectory.getPoses(), object), 0.0, 30.0);
   const double safe_distance =
-    distance_to_collision.value() - stop_distance_margin +
+    distance_to_collision.value() - rss_params.stop_distance_margin +
     obj_long_vel * obj_long_vel * 0.5 / -rss_params.object_assumed_acceleration -
     ego_long_vel * rss_params.ego_total_braking_delay;
 
@@ -923,11 +920,6 @@ Result assess(
   result.violations.reserve(context.predicted_objects->objects.size());
 
   for (const auto & object : context.predicted_objects->objects) {
-    const auto cls = get_object_class_label(object);
-    if (!resolve_per_class(rss_params.enable_assessment, cls)) {
-      continue;
-    }
-
     const auto assessment = assess_required_deceleration(
       ego_trajectory, context.odometry->twist.twist, object, rss_params,
       context.predicted_objects->header.stamp);
@@ -1188,14 +1180,10 @@ std::vector<Finding> assess_planned_speed_collision_timing(
       continue;
     }
 
-    const auto & cls = object_trajectory.getObjectIdentification().classification;
-    const double object_first_passing_time_gap =
-      resolve_per_class(pet_collision_params.warn_threshold.object_first_passing_time_gap, cls);
-
     auto finding = find_collision_timing(
       ego_trajectory, object_trajectory,
       pet_collision_params.warn_threshold.ego_first_passing_time_gap,
-      -object_first_passing_time_gap, time_resolution);
+      -pet_collision_params.warn_threshold.object_first_passing_time_gap, time_resolution);
     if (finding.has_value()) {
       findings.push_back(std::move(finding.value()));
     }
@@ -1322,6 +1310,51 @@ Result assess(
     result.drac = drac_assessment.drac;
   }
   return result;
+}
+
+
+// resolve_per_class() usage spec. Not called at runtime; kept here so the
+// three accepted input shapes are documented in compilable code rather than
+// only in the header comment.
+Result example_assess(
+  const FilterContext & context,
+  const validator::Params::CollisionCheck::Rss & rss_params,
+  const validator::Params::CollisionCheck::PetCollision & pet_collision_params,
+  const validator::Params::CollisionCheck::Drac & drac_params)
+{
+  // Production pattern: object list comes from FilterContext. Guard for the
+  // empty / unset case the same way the real assess functions do.
+  if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
+    return Result{};
+  }
+  const auto & object = context.predicted_objects->objects.front();
+
+  // Derive the class key from the PredictedObject. get_object_class_label()
+  // lowercases the result so it matches the YAML object_class entries used
+  // by __map_object_class.
+  const std::string cls = get_object_class_label(object);
+
+  // (1) Per-class wrapper with floating-point Entry::value.
+  //     -> per-class value if non-NaN; else "base"; else throw.
+  //     Sample fields exist on each of the three param groups; pick any.
+  [[maybe_unused]] const double per_class_double_rss =
+    resolve_per_class(rss_params.sample_params_double, cls);
+  [[maybe_unused]] const double per_class_double_pet =
+    resolve_per_class(pet_collision_params.warn_threshold.sample_params_double, cls);
+  [[maybe_unused]] const double per_class_double_drac =
+    resolve_per_class(drac_params.warn_threshold.sample_params_double, cls);
+
+  // (2) Per-class wrapper with bool Entry::value.
+  //     -> per-class only; throws if class key missing (no base fallback).
+  [[maybe_unused]] const bool per_class_bool =
+    resolve_per_class(rss_params.sample_params_bool, cls);
+
+  // (3) Plain scalar (double / bool / int / string).
+  //     -> returned as-is.
+  [[maybe_unused]] const double flat_double =
+    resolve_per_class(pet_collision_params.ego_total_braking_delay, cls);
+
+  return Result{};
 }
 
 }  // namespace collision_timing_assessment
@@ -1617,10 +1650,9 @@ void process_drac_findings(
   uint8_t aggregate_level = MetricReport::WARN;
   for (const auto & finding : collision_timing_result.drac_findings) {
     const auto & obj_id = finding.object_identification;
-    const double warn_threshold =
-      resolve_per_class(drac_params.warn_threshold.ego_acceleration, obj_id.classification);
-    const bool is_warn = collision_timing_result.drac == std::nullopt ||
-                         collision_timing_result.drac.value() >= -warn_threshold;
+    const bool is_warn =
+      collision_timing_result.drac == std::nullopt ||
+      collision_timing_result.drac.value() >= -drac_params.warn_threshold.ego_acceleration;
     if (!is_warn) {
       continue;
     }
@@ -1671,10 +1703,7 @@ void process_rss_violations(
   ContinuousDetectionTimes & rss_continuous_times, const rclcpp::Time & current_time,
   EvaluationArtifacts & artifacts)
 {
-  const auto & enable_map = rss_params.enable_assessment.object_class_map;
-  const bool any_class_enabled = std::any_of(
-    enable_map.begin(), enable_map.end(), [](const auto & kv) { return kv.second.value; });
-  if (!any_class_enabled) {
+  if (!rss_params.enable_assessment) {
     return;
   }
 

@@ -1,6 +1,5 @@
 /**:
   ros__parameters:
-    object_class: [unknown, car, truck, bus, trailer, motorcycle, bicycle, pedestrian, animal, hazard, over_drivable, under_drivable]
     filter_names:
       [
         "safety::OutOfLaneFilter",
@@ -36,7 +35,11 @@
           diffusion_based: true
         ego_total_braking_delay: 0.4
         warn_threshold:
-          ego_acceleration:
+          ego_acceleration: -2.0
+          # sample_params_double demonstrates the __map_object_class override
+          # syntax. Per-class entries fall back to "base" when their value is
+          # NaN (the schema default).
+          sample_params_double:
             base:
               value: -2.0
             pedestrian:
@@ -57,7 +60,9 @@
         ego_assumed_acceleration: -5.0
         warn_threshold:
           ego_first_passing_time_gap: 1.0
-          object_first_passing_time_gap:
+          object_first_passing_time_gap: 1.0
+          # sample_params_double: per-class double override example.
+          sample_params_double:
             base:
               value: 1.0
             car:
@@ -68,12 +73,20 @@
           ego_first_passing_time_gap: 0.6
           object_first_passing_time_gap: 0.3
       rss:
-        enable_assessment:
-          base: true
-          over_drivable: false
-          under_drivable: false
-
-        stop_distance_margin:
+        enable_assessment: true
+        # sample_params_bool: per-class bool override example. Note that bool
+        # per-class lookup throws when a class key is missing (no base
+        # fallback), so keep all relevant classes set explicitly.
+        sample_params_bool:
+          base:
+            value: true
+          over_drivable:
+            value: false
+          under_drivable:
+            value: false
+        stop_distance_margin: 2.0
+        # sample_params_double: per-class double override example.
+        sample_params_double:
           base:
             value: 2.0
           pedestrian:
@@ -86,7 +99,6 @@
         object_assumed_acceleration: -1.0
         error_threshold:
           ego_acceleration: -4.0
-            # Add e.g. `pedestrian: -2.5` here to override RSS deceleration threshold for pedestrians only.
 
     vehicle_constraint:
       max_speed: 16.7 # m/s

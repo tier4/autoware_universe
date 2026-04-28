@@ -114,11 +114,16 @@ validator:
         read_only: false
       warn_threshold:
         ego_acceleration:
+          type: double
+          default_value: -3.0
+          description: Ego acceleration threshold for DRAC warning (m/s^2, negative)
+          read_only: false
+        sample_params_double:
           __map_object_class:
             value:
               type: double
               default_value: .NAN
-              description: Per-class ego acceleration threshold for DRAC warning (m/s^2, negative).
+              description: Per-class double sample parameter for resolve_per_class spec demonstration.
                 NaN means not explicitly set; resolve_per_class falls back to the base entry.
               read_only: false
       error_threshold:
@@ -166,11 +171,16 @@ validator:
           description: Allowed time gap when ego passes first for PET warning
           read_only: false
         object_first_passing_time_gap:
+          type: double
+          default_value: 1.0
+          description: Allowed time gap when object passes first for PET warning
+          read_only: false
+        sample_params_double:
           __map_object_class:
             value:
               type: double
               default_value: .NAN
-              description: Per-class allowed time gap when object passes first for PET warning (s).
+              description: Per-class double sample parameter for resolve_per_class spec demonstration.
                 NaN means not explicitly set; resolve_per_class falls back to the base entry.
               read_only: false
       error_threshold:
@@ -186,18 +196,28 @@ validator:
           read_only: false
     rss:
       enable_assessment:
+        type: bool
+        default_value: true
+        description: When true, RSS assessment is performed
+        read_only: false
+      sample_params_bool:
         __map_object_class:
           value:
             type: bool
             default_value: true
-            description: Per-class flag to enable RSS assessment.
+            description: Per-class bool sample parameter for resolve_per_class spec demonstration.
             read_only: false
       stop_distance_margin:
+        type: double
+        default_value: 2.0
+        description: required remaining distance to the object when ego stops
+        read_only: false
+      sample_params_double:
         __map_object_class:
           value:
             type: double
             default_value: .NAN
-            description: Per-class required remaining distance to the object when ego stops (m).
+            description: Per-class double sample parameter for resolve_per_class spec demonstration.
               NaN means not explicitly set; resolve_per_class falls back to the base entry.
             read_only: false
       ego_total_braking_delay:
