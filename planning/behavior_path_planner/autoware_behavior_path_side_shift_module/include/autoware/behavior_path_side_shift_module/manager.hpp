@@ -59,6 +59,14 @@ private:
 
   void publishInsertedLateralOffsetTimerCallback();
 
+  /**
+   * @brief Locate a SideShiftModule instance via the framework's observers_ list, falling back
+   * to idle_module_ptr_ when no module is currently active. The returned pointer is non-owning
+   * and only valid for the duration of the calling stack frame.
+   * @return raw pointer to a SideShiftModule, or nullptr if neither is reachable.
+   */
+  SideShiftModule * findActiveOrIdleSideShiftModule() const;
+
   std::shared_ptr<SideShiftParameters> parameters_;
   std::shared_ptr<InsertedLateralOffsetState> inserted_lateral_offset_state_;
   std::shared_ptr<RequestedLateralOffsetState> requested_lateral_offset_state_;

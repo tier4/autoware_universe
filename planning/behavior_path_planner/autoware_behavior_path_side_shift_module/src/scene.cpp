@@ -291,7 +291,6 @@ void SideShiftModule::updateData()
         getLogger(), "SideShift: drivable area narrowed, clamping offset %.3f -> %.3f",
         requested_lateral_offset_, safe_offset);
       requested_lateral_offset_ = safe_offset;
-      inserted_lateral_offset_ = safe_offset;
       lateral_offset_change_request_ = true;
     }
   }
@@ -534,11 +533,10 @@ PathWithLaneId SideShiftModule::extendBackwardLength(const PathWithLaneId & orig
   return extended_path;
 }
 
-std::pair<double, double> SideShiftModule::calcOffsetLimitsFromLanelets(
-  const double requested_offset) const
+std::optional<std::pair<double, double>> SideShiftModule::calcOffsetLimitsFromLanelets() const
 {
   if (!planner_data_ || !planner_data_->route_handler || reference_path_.points.empty()) {
-    return {0.0, 0.0};
+    return std::nullopt;
   }
 
   const auto & route_handler = planner_data_->route_handler;
@@ -550,22 +548,13 @@ std::pair<double, double> SideShiftModule::calcOffsetLimitsFromLanelets(
   const auto ego_speed = std::abs(planner_data_->self_odometry->twist.twist.linear.x);
   const double dist_to_start = std::max(
     parameters_->min_distance_to_start_shifting, ego_speed * parameters_->time_to_start_shifting);
-  const double current_shift_length = getClosestShiftLength(prev_output_, getEgoPose().position);
-  const double shift_length = requested_offset - current_shift_length;
-  const double jerk_shifting_distance = autoware::motion_utils::calc_longitudinal_dist_from_jerk(
-    shift_length, parameters_->shifting_lateral_jerk,
-    std::max(ego_speed, parameters_->min_shifting_speed));
-  const double shifting_distance =
-    std::max(jerk_shifting_distance, parameters_->min_shifting_distance);
   const size_t start_idx = utils::getIdxByArclength(reference_path_, ego_idx, dist_to_start);
-  const size_t end_idx =
-    utils::getIdxByArclength(reference_path_, ego_idx, dist_to_start + shifting_distance);
 
   double safe_left = std::numeric_limits<double>::max();
   double safe_right = std::numeric_limits<double>::max();
   bool found = false;
 
-  for (size_t i = start_idx; i < reference_path_.points.size() && i <= end_idx; ++i) {
+  for (size_t i = start_idx; i < reference_path_.points.size(); ++i) {
     const auto & pose = reference_path_.points.at(i).point.pose;
     const lanelet::BasicPoint2d pt(pose.position.x, pose.position.y);
 
@@ -597,12 +586,12 @@ std::pair<double, double> SideShiftModule::calcOffsetLimitsFromLanelets(
   if (!found || !std::isfinite(safe_left) || !std::isfinite(safe_right)) {
     RCLCPP_WARN_THROTTLE(
       getLogger(), *clock_, 1000, "SideShift: no valid lanelet found for boundary check");
-    return {0.0, 0.0};
+    return std::nullopt;
   }
 
   const double left_limit = std::max(0.0, safe_left - vehicle_half_width - margin);
   const double right_limit = std::max(0.0, safe_right - vehicle_half_width - margin);
-  return {-right_limit, left_limit};
+  return std::make_pair(-right_limit, left_limit);
 }
 
 double SideShiftModule::calcMaxLateralOffset(const double requested_offset) const
@@ -611,8 +600,13 @@ double SideShiftModule::calcMaxLateralOffset(const double requested_offset) cons
     return requested_offset;
   }
 
-  const auto [right_limit, left_limit] = calcOffsetLimitsFromLanelets(requested_offset);
+  const auto limits = calcOffsetLimitsFromLanelets();
+  if (!limits) {
+    // unable to compute limits, restrict to zero
+    return 0.0;
+  }
 
+  const auto [right_limit, left_limit] = *limits;
   const double result = std::clamp(requested_offset, right_limit, left_limit);
 
   RCLCPP_DEBUG(
