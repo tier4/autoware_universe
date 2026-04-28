@@ -135,7 +135,7 @@ bool SideShiftModule::canTransitSuccessState()
   // Never return the FAILURE. When the desired offset is zero and the vehicle is in the original
   // drivable area,this module can stop the computation and return SUCCESS.
   constexpr double ZERO_THRESHOLD = 1.0e-4;
-  constexpr double force_shutdown_conflict_sec = 4.0;
+  constexpr double force_shutdown_conflict_sec = 3.0;
 
   if (conflicting_approved_module_since_) {
     const double conflict_elapsed_sec =
