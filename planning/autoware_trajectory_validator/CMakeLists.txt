@@ -109,6 +109,15 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_trajectory_utilities gtest_main ${trajectory_validator_lib_target})
 
+  ament_add_ros_isolated_gtest(test_collision_check_filter_struct_param_load
+    test/collision_check_filter/test_collision_check_filter_struct_param_load.cpp
+  )
+  target_link_libraries(test_collision_check_filter_struct_param_load
+    gtest_main ${trajectory_validator_lib_target})
+  ament_target_dependencies(test_collision_check_filter_struct_param_load
+    autoware_test_utils
+  )
+
   ament_add_gtest(test_traffic_light_filter
     test/plugins/test_traffic_light_filter.cpp
   )

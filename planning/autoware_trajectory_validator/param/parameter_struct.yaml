@@ -206,8 +206,10 @@ validator:
         __map_object_class:
           value:
             type: bool
-            default_value: true
+            default_value: false
             description: Per-class bool sample parameter for resolve_per_class spec demonstration.
+              Default is false so non-overridden classes are explicitly disabled; runtime YAML
+              must opt-in per class.
             read_only: false
       stop_distance_margin:
         type: double
