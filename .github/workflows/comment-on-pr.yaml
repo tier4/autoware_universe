@@ -35,4 +35,4 @@ jobs:
 
             # After merging
             Please check the following points after merging:
-            - [ ] Wait for the automatic hash synchronization, which will automatically create a PR to update the hash, you should check the PR and merge it.
+            - [ ] Wait for the automatic hash synchronization, which will automatically create a PR to update the hash, you should check the [PR](https://github.com/tier4/pilot-auto.x2/pulls) and merge it.
