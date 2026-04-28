@@ -394,6 +394,7 @@ BoundaryDeparturePreventionModule::plan_velocities(
   }
 
   if (!is_autonomous_mode()) {
+    output_.diag_status = {DiagStatus::OK, "not in autonomous mode"};
     return tl::make_unexpected("Not in autonomous mode.");
   }
 
