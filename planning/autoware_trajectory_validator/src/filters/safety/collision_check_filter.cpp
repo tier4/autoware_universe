@@ -1643,24 +1643,23 @@ void process_drac_findings(
     current_time, collision_timing_result.drac_findings,
     [](const auto & finding) { return finding.object_identification.trajectory_id_string(); });
 
+  const bool is_warn =
+    collision_timing_result.drac == std::nullopt ||
+    collision_timing_result.drac.value() >= -drac_params.warn_threshold.ego_acceleration;
+  const bool is_error =
+    collision_timing_result.drac == std::nullopt ||
+    collision_timing_result.drac.value() >= -drac_params.error_threshold.ego_acceleration;
+  if (!is_warn) {
+    return;
+  }
+
   std::string log_messages{};
   std::string marker_messages{};
-  uint8_t aggregate_level = MetricReport::WARN;
+  const uint8_t metric_level = is_error ? MetricReport::ERROR : MetricReport::WARN;
   for (const auto & finding : collision_timing_result.drac_findings) {
     const auto & obj_id = finding.object_identification;
-    const bool is_warn =
-      collision_timing_result.drac == std::nullopt ||
-      collision_timing_result.drac.value() >= -drac_params.warn_threshold.ego_acceleration;
-    if (!is_warn) {
-      continue;
-    }
-    const bool is_error =
-      collision_timing_result.drac == std::nullopt ||
-      collision_timing_result.drac.value() >= -drac_params.error_threshold.ego_acceleration;
-    const uint8_t metric_level = is_error ? MetricReport::ERROR : MetricReport::WARN;
     if (is_error) {
       artifacts.is_feasible = false;
-      aggregate_level = MetricReport::ERROR;
     }
 
     artifacts.metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
@@ -1690,7 +1689,7 @@ void process_drac_findings(
   }
 
   artifacts.error_msg += marker_messages;
-  log_collision_messages(aggregate_level, log_messages);
+  log_collision_messages(metric_level, log_messages);
 }
 
 void process_rss_violations(
