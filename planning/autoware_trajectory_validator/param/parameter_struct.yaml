@@ -134,6 +134,24 @@ validator:
         default_value: -5.0
         description: Assumed ego acceleration for PET assessment (m/s^2, negative)
         read_only: false
+      # ego_assumed_acceleration: example
+      #   base:
+      #     type: double
+      #     default_value: -4.0
+      #     description: N/A
+      #     read_only: false
+      #   unknown: &pet_eaa { type: double, default_value: .NAN, description: N/A, read_only: false }
+      #   car: *pet_eaa
+      #   truck: *pet_eaa
+      #   bus: *pet_eaa
+      #   trailer: *pet_eaa
+      #   motorcycle: *pet_eaa
+      #   bicycle: *pet_eaa
+      #   pedestrian: *pet_eaa
+      #   animal: *pet_eaa
+      #   hazard: *pet_eaa
+      #   over_drivable: *pet_eaa
+      #   under_drivable: *pet_eaa
       warn_threshold:
         ego_first_passing_time_gap:
           type: double
