@@ -73,12 +73,5 @@
     <node pkg="tf2_ros" exec="static_transform_publisher" name="velodyne_top" args="0 0 1 -1.5386 -0.015 0.001 /velodyne_top /velodyne_top_changed "/>
     <node pkg="tf2_ros" exec="static_transform_publisher" name="imu" args="0 0 1 -3.10519265 -0.015 -3.14059265359 /tamagawa/imu_link /tamagawa/imu_link_changed "/>
 
-    <group scoped="false" if="$(var render_with_splatsim)">
-      <node pkg="autoware_carla_interface" exec="splatsim_pose_publisher" name="splatsim_pose_publisher" output="screen">
-        <param name="origin_frame_id" value="map"/>
-        <param name="simulated_frame_id" value="base_link"/>
-        <param name="publish_rate" value="50.0"/>
-      </node>
-    </group>
   </group>
 </launch>

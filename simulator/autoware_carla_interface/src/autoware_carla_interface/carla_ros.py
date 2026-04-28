@@ -24,8 +24,11 @@ from autoware_vehicle_msgs.msg import VelocityReport
 from builtin_interfaces.msg import Time
 import carla
 from cv_bridge import CvBridge
+from geometry_msgs.msg import AccelWithCovarianceStamped
 from geometry_msgs.msg import Pose
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import TransformStamped
+from nav_msgs.msg import Odometry
 import numpy
 import rclpy
 from rosgraph_msgs.msg import Clock
@@ -35,6 +38,7 @@ from sensor_msgs.msg import Imu
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs.msg import PointField
 from std_msgs.msg import Header
+from tf2_msgs.msg import TFMessage
 from tier4_vehicle_msgs.msg import ActuationCommandStamped
 from tier4_vehicle_msgs.msg import ActuationStatusStamped
 from transforms3d.euler import euler2quat
@@ -186,7 +190,7 @@ class carla_ros2_interface(object):
                 self.ros2_node.get_logger().info(f'No Publisher for {sensor["type"]} Sensor')
                 pass
 
-        # When splatsim is active, publish dummy perception data (no LiDAR available)
+        # When splatsim is active, publish dummy perception and localization data
         if self.render_with_splatsim:
             self.pub_empty_objects = self.ros2_node.create_publisher(
                 PredictedObjects, "/perception/object_recognition/objects", 1
@@ -194,6 +198,20 @@ class carla_ros2_interface(object):
             self.pub_empty_pointcloud = self.ros2_node.create_publisher(
                 PointCloud2, "/perception/obstacle_segmentation/pointcloud", 1
             )
+            # Localization publishers (replaces splatsim_pose_publisher node)
+            self.pub_tf = self.ros2_node.create_publisher(TFMessage, "/tf", 10)
+            self.pub_localization_odom = self.ros2_node.create_publisher(
+                Odometry, "/localization/kinematic_state", 10
+            )
+            self.pub_localization_pose = self.ros2_node.create_publisher(
+                PoseWithCovarianceStamped,
+                "/localization/pose_estimator/pose_with_covariance",
+                10,
+            )
+            self.pub_localization_accel = self.ros2_node.create_publisher(
+                AccelWithCovarianceStamped, "/localization/acceleration", 10
+            )
+            self._latest_imu_accel = None
 
         self.spin_thread = threading.Thread(target=rclpy.spin, args=(self.ros2_node,))
         self.spin_thread.start()
@@ -416,6 +434,14 @@ class carla_ros2_interface(object):
 
         self.pub_imu.publish(imu_msg)
 
+        # Cache acceleration for localization publishing
+        if self.render_with_splatsim:
+            self._latest_imu_accel = (
+                imu_msg.linear_acceleration.x,
+                imu_msg.linear_acceleration.y,
+                imu_msg.linear_acceleration.z,
+            )
+
     def control_callback(self, in_cmd):
         """Convert and publish CARLA Ego Vehicle Control to AUTOWARE."""
         out_cmd = carla.VehicleControl()
@@ -521,6 +547,85 @@ class carla_ros2_interface(object):
                 f"SplatSimRGBCamera created for sensor '{spec['id']}'"
             )
 
+    def _publish_localization(self):
+        """Publish localization data from CARLA ground truth when splatsim is active."""
+        header = self.get_msg_header(frame_id="map")
+
+        # Get ego pose
+        pose = Pose()
+        pose.position = carla_location_to_ros_point(self.ego_actor.get_transform().location)
+        pose.orientation = carla_rotation_to_ros_quaternion(
+            self.ego_actor.get_transform().rotation
+        )
+
+        # TF: map -> base_link
+        tf = TransformStamped()
+        tf.header = header
+        tf.child_frame_id = "base_link"
+        tf.transform.translation.x = pose.position.x
+        tf.transform.translation.y = pose.position.y
+        tf.transform.translation.z = pose.position.z
+        tf.transform.rotation = pose.orientation
+        tf_msg = TFMessage()
+        tf_msg.transforms.append(tf)
+        self.pub_tf.publish(tf_msg)
+
+        # Odometry (/localization/kinematic_state)
+        odom = Odometry()
+        odom.header = header
+        odom.child_frame_id = "base_link"
+        odom.pose.pose = pose
+        cov = odom.pose.covariance
+        cov[0] = 0.0001
+        cov[7] = 0.0001
+        cov[14] = 0.0001
+        cov[21] = 0.0001
+        cov[28] = 0.0001
+        cov[35] = 0.0001
+
+        # Velocity in ego frame (same computation as ego_status)
+        trans_mat = numpy.array(self.ego_actor.get_transform().get_matrix()).reshape(4, 4)
+        rot_mat = trans_mat[0:3, 0:3]
+        inv_rot_mat = rot_mat.T
+        vel_vec = numpy.array(
+            [
+                self.ego_actor.get_velocity().x,
+                self.ego_actor.get_velocity().y,
+                self.ego_actor.get_velocity().z,
+            ]
+        ).reshape(3, 1)
+        ego_velocity = (inv_rot_mat @ vel_vec).T[0]
+        odom.twist.twist.linear.x = float(ego_velocity[0])
+        odom.twist.twist.linear.y = float(ego_velocity[1])
+        odom.twist.twist.angular.z = float(
+            self.ego_actor.get_transform().transform_vector(
+                self.ego_actor.get_angular_velocity()
+            ).z
+        )
+        self.pub_localization_odom.publish(odom)
+
+        # PoseWithCovarianceStamped
+        pose_cov = PoseWithCovarianceStamped()
+        pose_cov.header = header
+        pose_cov.pose.pose = pose
+        pcov = pose_cov.pose.covariance
+        pcov[0] = 0.0001
+        pcov[7] = 0.0001
+        pcov[14] = 0.0001
+        pcov[21] = 0.0001
+        pcov[28] = 0.0001
+        pcov[35] = 0.0001
+        self.pub_localization_pose.publish(pose_cov)
+
+        # AccelWithCovarianceStamped
+        accel_msg = AccelWithCovarianceStamped()
+        accel_msg.header = self.get_msg_header(frame_id="base_link")
+        if self._latest_imu_accel is not None:
+            accel_msg.accel.accel.linear.x = self._latest_imu_accel[0]
+            accel_msg.accel.accel.linear.y = self._latest_imu_accel[1]
+            accel_msg.accel.accel.linear.z = self._latest_imu_accel[2]
+        self.pub_localization_accel.publish(accel_msg)
+
     def run_step(self, input_data, timestamp):
         self.timestamp = timestamp
         seconds = int(self.timestamp)
@@ -557,7 +662,7 @@ class carla_ros2_interface(object):
                     stamp_nanosec=nanoseconds,
                 )
 
-        # Publish dummy perception data when splatsim is active
+        # Publish dummy perception and localization data when splatsim is active
         if self.render_with_splatsim:
             header = self.get_msg_header(frame_id="map")
             empty_objects = PredictedObjects()
@@ -567,6 +672,9 @@ class carla_ros2_interface(object):
             empty_pc = PointCloud2()
             empty_pc.header = self.get_msg_header(frame_id="base_link")
             self.pub_empty_pointcloud.publish(empty_pc)
+
+            if self.ego_actor is not None:
+                self._publish_localization()
 
         # Publish ego vehicle status
         self.ego_status()
