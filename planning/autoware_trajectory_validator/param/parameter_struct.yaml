@@ -123,7 +123,8 @@ validator:
             value:
               type: double
               default_value: .NAN
-              description: Per-class double sample parameter for resolve_per_class spec demonstration.
+              description:
+                Per-class double sample parameter for resolve_per_class spec demonstration.
                 NaN means not explicitly set; resolve_per_class falls back to the base entry.
               read_only: false
       error_threshold:
@@ -180,7 +181,8 @@ validator:
             value:
               type: double
               default_value: .NAN
-              description: Per-class double sample parameter for resolve_per_class spec demonstration.
+              description:
+                Per-class double sample parameter for resolve_per_class spec demonstration.
                 NaN means not explicitly set; resolve_per_class falls back to the base entry.
               read_only: false
       error_threshold:

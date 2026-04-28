@@ -1312,13 +1312,11 @@ Result assess(
   return result;
 }
 
-
 // resolve_per_class() usage spec. Not called at runtime; kept here so the
 // three accepted input shapes are documented in compilable code rather than
 // only in the header comment.
 Result example_assess(
-  const FilterContext & context,
-  const validator::Params::CollisionCheck::Rss & rss_params,
+  const FilterContext & context, const validator::Params::CollisionCheck::Rss & rss_params,
   const validator::Params::CollisionCheck::PetCollision & pet_collision_params,
   const validator::Params::CollisionCheck::Drac & drac_params)
 {
