@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 import threading
@@ -88,12 +89,17 @@ class SplatSimDockerManager:
         tileset_dir = str(Path(tileset_host_path).resolve().parent)
 
         _log(f"Starting container (image={self._image}, name={self._container_name}, mount={tileset_dir} -> /data)")
+        env = {}
+        splatsim_log_level = os.environ.get("SPLATSIM_LOG_LEVEL")
+        if splatsim_log_level:
+            env["SPLATSIM_LOG_LEVEL"] = splatsim_log_level
         run_kwargs = dict(
             image=self._image,
             detach=True,
             network_mode="host",
             device_requests=[DeviceRequest(count=-1, capabilities=[["gpu"]])],
             volumes={tileset_dir: {"bind": "/data", "mode": "ro"}},
+            environment=env,
         )
         if self._container_name:
             run_kwargs["name"] = self._container_name
