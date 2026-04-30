@@ -3,7 +3,6 @@
     filter_names:
       [
         "safety::OutOfLaneFilter",
-        "safety::CollisionFilter",
         "safety::CollisionCheckFilter",
         "safety::UncrossableBoundaryDepartureFilter",
         "safety::VehicleConstraintFilter",
@@ -11,7 +10,6 @@
       ]
     # available filters:
     #  "autoware::trajectory_validator::plugin::OutOfLaneFilter"
-    #  "autoware::trajectory_validator::plugin::CollisionFilter"
     #  "autoware::trajectory_validator::plugin::CollisionCheckFilter"
     #  "autoware::trajectory_validator::plugin::UncrossableBoundaryDepartureFilter"
     #  "autoware::trajectory_validator::plugin::VehicleConstraintFilter"
@@ -19,10 +17,6 @@
     out_of_lane:
       time: 2.0
       min_value: 0.0
-
-    collision:
-      time: 3.0
-      min_value: 2.0
 
     collision_check:
       global_setting:
