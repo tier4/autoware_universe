@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_validator/filters/safety/collision_check_filter.hpp"
+#include "collision_check_filter.hpp"
 
 #include <autoware/interpolation/linear_interpolation.hpp>
 #include <autoware/universe_utils/geometry/pose_deviation.hpp>
