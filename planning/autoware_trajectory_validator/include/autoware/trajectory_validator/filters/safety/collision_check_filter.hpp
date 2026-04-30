@@ -117,7 +117,6 @@ struct PetCollisionParams
   } assessment_trajectories;
   double ego_total_braking_delay;
   double ego_assumed_acceleration;
-  double collision_time_threshold;
   struct Threshold
   {
     double ego_first_passing_time_gap;
