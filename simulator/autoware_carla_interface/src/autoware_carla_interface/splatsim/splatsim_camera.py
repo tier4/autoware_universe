@@ -6,6 +6,7 @@ import logging
 import math
 from pathlib import Path
 
+import carla
 import numpy as np
 
 from autoware_carla_interface.splatsim.docker_manager import SplatSimDockerManager
@@ -13,12 +14,14 @@ from autoware_carla_interface.splatsim.grpc_client import SplatSimGrpcClient
 from autoware_carla_interface.splatsim.coordinate_transformer import (
     CoordinateTransformer,
     parse_tileset_transform,
-    _quaternion_xyzw_to_rotation_matrix,
     _rotation_matrix_to_quaternion_wxyz,
 )
 from autoware_carla_interface.splatsim.proto import rendering_service_pb2 as pb2
 
 logger = logging.getLogger(__name__)
+
+# CARLA → ENU: flip y-axis (CARLA South → ENU North)
+_S_CARLA_TO_ENU = np.diag([1.0, -1.0, 1.0])
 
 
 def _fov_to_intrinsics(
@@ -31,28 +34,6 @@ def _fov_to_intrinsics(
     cx = width / 2.0
     cy = height / 2.0
     return fx, fy, cx, cy
-
-
-def _build_extrinsic_matrix(
-    x: float, y: float, z: float,
-    roll: float, pitch: float, yaw: float,
-) -> np.ndarray:
-    """Build a 4x4 homogeneous transform from translation + Euler (radians)."""
-    cr, sr = math.cos(roll), math.sin(roll)
-    cp, sp = math.cos(pitch), math.sin(pitch)
-    cy_, sy = math.cos(yaw), math.sin(yaw)
-    R = np.array(
-        [
-            [cy_ * cp, cy_ * sp * sr - sy * cr, cy_ * sp * cr + sy * sr],
-            [sy * cp, sy * sp * sr + cy_ * cr, sy * sp * cr - cy_ * sr],
-            [-sp, cp * sr, cp * cr],
-        ],
-        dtype=np.float64,
-    )
-    T = np.eye(4, dtype=np.float64)
-    T[:3, :3] = R
-    T[:3, 3] = [x, y, z]
-    return T
 
 
 class SplatSimRGBCamera:
@@ -87,13 +68,11 @@ class SplatSimRGBCamera:
         cam_h = sensor_spec["image_size_y"]
         cam_fov = sensor_spec["fov"]
 
-        # Camera extrinsic (base_link -> camera) from objects.json spawn_point
+        # Camera extrinsic (actor -> camera) as CARLA Transform
         sp = sensor_spec["spawn_point"]
-        self._T_ego_camera = _build_extrinsic_matrix(
-            sp["x"], sp["y"], sp["z"],
-            math.radians(sp["roll"]),
-            math.radians(sp["pitch"]),
-            math.radians(sp["yaw"]),
+        self._sensor_transform = carla.Transform(
+            carla.Location(x=sp["x"], y=sp["y"], z=sp["z"]),
+            carla.Rotation(roll=sp["roll"], pitch=sp["pitch"], yaw=sp["yaw"]),
         )
 
         # ── Docker container ──
@@ -148,25 +127,35 @@ class SplatSimRGBCamera:
 
     def update(
         self,
-        ego_position: tuple[float, float, float],
-        ego_quaternion_xyzw: tuple[float, float, float, float],
+        actor_matrix_4x4: list[list[float]],
         stamp_sec: int,
         stamp_nanosec: int,
     ) -> None:
-        """Compute camera pose in tile-local coordinates and send to splatsim."""
-        R_ego = _quaternion_xyzw_to_rotation_matrix(*ego_quaternion_xyzw)
-        T_enu_ego = np.eye(4, dtype=np.float64)
-        T_enu_ego[:3, :3] = R_ego
-        T_enu_ego[:3, 3] = ego_position
+        """Compute camera pose in tile-local coordinates and send to splatsim.
 
-        T_enu_camera = T_enu_ego @ self._T_ego_camera
-        cam_pos = T_enu_camera[:3, 3]
-        R_cam_enu = T_enu_camera[:3, :3]
-
-        tile_pos = self._transformer.enu_position_to_tile_local(
-            cam_pos[0], cam_pos[1], cam_pos[2],
+        Parameters
+        ----------
+        actor_matrix_4x4 : list[list[float]]
+            Raw 4x4 world-to-actor matrix from ``carla.Transform.get_matrix()``.
+        """
+        T_world_actor = np.array(actor_matrix_4x4, dtype=np.float64)
+        T_actor_camera = np.asarray(
+            self._sensor_transform.get_matrix(), dtype=np.float64,
         )
-        R_tile = self._transformer.enu_rotation_to_tile_local(R_cam_enu)
+        T_carla_cam = T_world_actor @ T_actor_camera
+
+        carla_pos = T_carla_cam[:3, 3]
+        R_carla = T_carla_cam[:3, :3]
+
+        # Position: CARLA → ENU (flip y) → tile-local
+        enu_pos = _S_CARLA_TO_ENU @ carla_pos
+        tile_pos = self._transformer.enu_position_to_tile_local(
+            enu_pos[0], enu_pos[1], enu_pos[2],
+        )
+
+        # Rotation: CARLA → ENU (flip y) → tile-local
+        R_enu = _S_CARLA_TO_ENU @ R_carla
+        R_tile = self._transformer.enu_rotation_to_tile_local(R_enu)
         quat_wxyz = _rotation_matrix_to_quaternion_wxyz(R_tile)
 
         self._grpc.send_camera_data(

@@ -804,16 +804,12 @@ class carla_ros2_interface(object):
             else:
                 self.ros2_node.get_logger().info("No Publisher for [{key}] Sensor")
 
-        # Send ego pose to splatsim cameras
+        # Send ego pose to splatsim cameras (raw CARLA matrix)
         if self._splatsim_cameras and self.ego_actor is not None:
-            pos = carla_location_to_ros_point(self.ego_actor.get_transform().location)
-            quat = carla_rotation_to_ros_quaternion(
-                self.ego_actor.get_transform().rotation
-            )
+            actor_matrix = self.ego_actor.get_transform().get_matrix()
             for cam in self._splatsim_cameras:
                 cam.update(
-                    ego_position=(pos.x, pos.y, pos.z),
-                    ego_quaternion_xyzw=(quat.x, quat.y, quat.z, quat.w),
+                    actor_matrix_4x4=actor_matrix,
                     stamp_sec=seconds,
                     stamp_nanosec=nanoseconds,
                 )
