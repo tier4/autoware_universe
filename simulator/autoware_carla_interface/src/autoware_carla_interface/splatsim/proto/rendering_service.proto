@@ -67,7 +67,9 @@ message InitializeRequest {
 message InitializeResponse {
   bool success = 1;
   string message = 2;
-  Vector3 scene_origin = 3;  // ECEF centroid subtracted for numerical stability
+  Vector3 scene_origin = 3;      // re-centering origin (mean of Gaussian positions)
+  Vector3 ecef_translation = 4;  // tileset root ECEF translation
+  repeated double ecef_rotation = 5;  // tileset root ECEF rotation (9 doubles, row-major 3x3)
 }
 
 // ── Camera data streaming ────────────────────────────────────────────

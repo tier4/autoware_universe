@@ -1,6 +1,7 @@
+from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from typing import ClassVar as _ClassVar, Mapping as _Mapping, Optional as _Optional, Union as _Union
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -89,14 +90,18 @@ class InitializeRequest(_message.Message):
     def __init__(self, tileset_path: _Optional[str] = ..., use_sh: bool = ..., intrinsics: _Optional[_Union[CameraIntrinsics, _Mapping]] = ..., initial_pose: _Optional[_Union[Pose, _Mapping]] = ..., frame_rate: _Optional[float] = ..., clock_initial: _Optional[_Union[Timestamp, _Mapping]] = ..., image_topic: _Optional[str] = ..., camera_info_topic: _Optional[str] = ..., frame_id: _Optional[str] = ..., near_plane: _Optional[float] = ..., far_plane: _Optional[float] = ..., device: _Optional[str] = ..., background_color: _Optional[_Union[Vector3, _Mapping]] = ...) -> None: ...
 
 class InitializeResponse(_message.Message):
-    __slots__ = ("success", "message", "scene_origin")
+    __slots__ = ("success", "message", "scene_origin", "ecef_translation", "ecef_rotation")
     SUCCESS_FIELD_NUMBER: _ClassVar[int]
     MESSAGE_FIELD_NUMBER: _ClassVar[int]
     SCENE_ORIGIN_FIELD_NUMBER: _ClassVar[int]
+    ECEF_TRANSLATION_FIELD_NUMBER: _ClassVar[int]
+    ECEF_ROTATION_FIELD_NUMBER: _ClassVar[int]
     success: bool
     message: str
     scene_origin: Vector3
-    def __init__(self, success: bool = ..., message: _Optional[str] = ..., scene_origin: _Optional[_Union[Vector3, _Mapping]] = ...) -> None: ...
+    ecef_translation: Vector3
+    ecef_rotation: _containers.RepeatedScalarFieldContainer[float]
+    def __init__(self, success: bool = ..., message: _Optional[str] = ..., scene_origin: _Optional[_Union[Vector3, _Mapping]] = ..., ecef_translation: _Optional[_Union[Vector3, _Mapping]] = ..., ecef_rotation: _Optional[_Iterable[float]] = ...) -> None: ...
 
 class CameraData(_message.Message):
     __slots__ = ("stamp", "pose")

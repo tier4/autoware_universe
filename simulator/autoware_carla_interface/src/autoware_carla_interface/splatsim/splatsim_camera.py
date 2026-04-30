@@ -13,7 +13,6 @@ from autoware_carla_interface.splatsim.docker_manager import SplatSimDockerManag
 from autoware_carla_interface.splatsim.grpc_client import SplatSimGrpcClient
 from autoware_carla_interface.splatsim.coordinate_transformer import (
     CoordinateTransformer,
-    parse_tileset_transform,
     _rotation_matrix_to_quaternion_wxyz,
 )
 from autoware_carla_interface.splatsim.proto import rendering_service_pb2 as pb2
@@ -110,10 +109,14 @@ class SplatSimRGBCamera:
         if not resp.success:
             raise RuntimeError(f"splatsim Initialize failed: {resp.message}")
 
-        # ── Coordinate transformer ──
-        ecef_rot, ecef_trans = parse_tileset_transform(tileset_path)
+        # ── Coordinate transformer (values from gRPC server) ──
         scene_origin = np.array(
             [resp.scene_origin.x, resp.scene_origin.y, resp.scene_origin.z],
+            dtype=np.float64,
+        )
+        ecef_rot = np.array(resp.ecef_rotation, dtype=np.float64).reshape(3, 3)
+        ecef_trans = np.array(
+            [resp.ecef_translation.x, resp.ecef_translation.y, resp.ecef_translation.z],
             dtype=np.float64,
         )
         self._transformer = CoordinateTransformer(
