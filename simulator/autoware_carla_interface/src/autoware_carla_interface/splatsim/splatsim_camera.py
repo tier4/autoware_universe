@@ -78,6 +78,7 @@ class SplatSimRGBCamera:
         near_plane: float = 0.01,
         far_plane: float = 1000.0,
         device: str = "cuda:0",
+        restart_container: bool = False,
     ) -> None:
         self._sensor_id = sensor_spec["id"]
 
@@ -96,8 +97,11 @@ class SplatSimRGBCamera:
         )
 
         # ── Docker container ──
+        container_name = f"splatsim_{self._sensor_id}"
         self._docker = SplatSimDockerManager(
             image=splatsim_image, grpc_port=grpc_port,
+            container_name=container_name,
+            force_restart=restart_container,
         )
         self._docker.start(tileset_path)
         self._docker.wait_for_ready(timeout=120.0)

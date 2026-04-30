@@ -19,6 +19,7 @@ import threading
 import xml.etree.ElementTree as ET
 
 from autoware_perception_msgs.msg import PredictedObjects
+from autoware_perception_msgs.msg import TrafficLightGroupArray
 from autoware_vehicle_msgs.msg import ControlModeReport
 from autoware_vehicle_msgs.msg import GearReport
 from autoware_vehicle_msgs.msg import SteeringReport
@@ -28,10 +29,12 @@ import carla
 from cv_bridge import CvBridge
 from geometry_msgs.msg import AccelWithCovarianceStamped
 from geometry_msgs.msg import Pose
+from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from geometry_msgs.msg import Quaternion
 from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
+from nav_msgs.msg import OccupancyGrid
 import numpy
 import rclpy
 from rosgraph_msgs.msg import Clock
@@ -45,6 +48,8 @@ from tf2_msgs.msg import TFMessage
 from tier4_vehicle_msgs.msg import ActuationCommandStamped
 from tier4_vehicle_msgs.msg import ActuationStatusStamped
 from transforms3d.euler import euler2quat
+
+from autoware_adapi_v1_msgs.msg import LocalizationInitializationState
 
 from .modules.carla_data_provider import CarlaDataProvider
 from .modules.carla_data_provider import GameTime
@@ -139,6 +144,7 @@ class carla_ros2_interface(object):
             "splatsim_near_plane": rclpy.Parameter.Type.DOUBLE,
             "splatsim_far_plane": rclpy.Parameter.Type.DOUBLE,
             "splatsim_device": rclpy.Parameter.Type.STRING,
+            "splatsim_restart_container": rclpy.Parameter.Type.BOOL,
         }
         self.param_values = {}
         for param_name, param_type in self.parameters.items():
@@ -169,6 +175,7 @@ class carla_ros2_interface(object):
         )
 
         self.current_control = carla.VehicleControl()
+        self.current_control.hand_brake = True  # hold until first control cmd
 
         # Direct data publishing from CARLA for Autoware
         self.pub_pose_with_cov = self.ros2_node.create_publisher(
@@ -234,6 +241,14 @@ class carla_ros2_interface(object):
             self.pub_empty_pointcloud = self.ros2_node.create_publisher(
                 PointCloud2, "/perception/obstacle_segmentation/pointcloud", 1
             )
+            self.pub_empty_traffic_signals = self.ros2_node.create_publisher(
+                TrafficLightGroupArray,
+                "/perception/traffic_light_recognition/traffic_signals",
+                1,
+            )
+            self.pub_empty_occupancy_grid = self.ros2_node.create_publisher(
+                OccupancyGrid, "/perception/occupancy_grid_map/map", 1
+            )
             # Localization publishers
             self.pub_tf = self.ros2_node.create_publisher(TFMessage, "/tf", 10)
             self.pub_localization_odom = self.ros2_node.create_publisher(
@@ -246,6 +261,23 @@ class carla_ros2_interface(object):
             )
             self.pub_localization_accel = self.ros2_node.create_publisher(
                 AccelWithCovarianceStamped, "/localization/acceleration", 10
+            )
+            from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
+            loc_init_qos = QoSProfile(
+                depth=1,
+                reliability=ReliabilityPolicy.RELIABLE,
+                durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            )
+            self.pub_localization_init_state = self.ros2_node.create_publisher(
+                LocalizationInitializationState,
+                "/localization/initialization_state",
+                loc_init_qos,
+            )
+            self.pub_fusion_pose = self.ros2_node.create_publisher(
+                PoseStamped, "/localization/pose_twist_fusion_filter/pose", 10
+            )
+            self.pub_initialpose3d = self.ros2_node.create_publisher(
+                PoseWithCovarianceStamped, "/initialpose3d", 10
             )
             self._latest_imu_accel = None
 
@@ -481,6 +513,7 @@ class carla_ros2_interface(object):
     def control_callback(self, in_cmd):
         """Convert and publish CARLA Ego Vehicle Control to AUTOWARE."""
         out_cmd = carla.VehicleControl()
+        out_cmd.hand_brake = False
         out_cmd.throttle = in_cmd.actuation.accel_cmd
         # convert base on steer curve of the vehicle
         steer_curve = self.physics_control.steering_curve
@@ -619,6 +652,7 @@ class carla_ros2_interface(object):
                 near_plane=p["splatsim_near_plane"],
                 far_plane=p["splatsim_far_plane"],
                 device=p["splatsim_device"],
+                restart_container=p["splatsim_restart_container"],
             )
             self._splatsim_cameras.append(cam)
             self.ros2_node.get_logger().info(
@@ -649,6 +683,20 @@ class carla_ros2_interface(object):
         pose.position.x = carla_tf.location.x + self._mgrs_offset_x
         pose.position.y = -carla_tf.location.y + self._mgrs_offset_y
         pose.position.z = carla_tf.location.z
+
+        # DEBUG: log every ~2s to check if CARLA vehicle is moving
+        if not hasattr(self, '_loc_debug_count'):
+            self._loc_debug_count = 0
+        self._loc_debug_count += 1
+        if self._loc_debug_count % 100 == 1:
+            import sys
+            v = self.ego_actor.get_velocity()
+            print(
+                f"[LOC_DEBUG] carla=({carla_tf.location.x:.3f},{carla_tf.location.y:.3f},{carla_tf.location.z:.3f}) "
+                f"yaw={carla_tf.rotation.yaw:.2f} vel=({v.x:.4f},{v.y:.4f},{v.z:.4f}) "
+                f"pub=({pose.position.x:.2f},{pose.position.y:.2f},{pose.position.z:.2f})",
+                file=sys.stderr, flush=True,
+            )
 
         # --- Orientation: 2D yaw only (same as autoware_bridge.publish_initialpose) ---
         # CARLA yaw: degrees, 0=East, positive=clockwise (right)
@@ -717,6 +765,19 @@ class carla_ros2_interface(object):
             accel_msg.accel.accel.linear.z = self._latest_imu_accel[2]
         self.pub_localization_accel.publish(accel_msg)
 
+        # Tell Autoware that localization is initialized (bypassing EKF/NDT)
+        init_state = LocalizationInitializationState()
+        init_state.stamp = header.stamp
+        init_state.state = LocalizationInitializationState.INITIALIZED
+        self.pub_localization_init_state.publish(init_state)
+
+        # Satisfy topic_state_monitors that expect these topics
+        pose_stamped = PoseStamped()
+        pose_stamped.header = header
+        pose_stamped.pose = pose
+        self.pub_fusion_pose.publish(pose_stamped)
+        self.pub_initialpose3d.publish(pose_cov)
+
     def run_step(self, input_data, timestamp):
         self.timestamp = timestamp
         seconds = int(self.timestamp)
@@ -767,6 +828,14 @@ class carla_ros2_interface(object):
             empty_pc = PointCloud2()
             empty_pc.header = self.get_msg_header(frame_id="base_link")
             self.pub_empty_pointcloud.publish(empty_pc)
+
+            empty_tl = TrafficLightGroupArray()
+            empty_tl.stamp = header.stamp
+            self.pub_empty_traffic_signals.publish(empty_tl)
+
+            empty_og = OccupancyGrid()
+            empty_og.header = self.get_msg_header(frame_id="map")
+            self.pub_empty_occupancy_grid.publish(empty_og)
 
             if self.ego_actor is not None:
                 self._publish_localization()

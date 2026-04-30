@@ -26,6 +26,7 @@
     <arg name="splatsim_near_plane" default="0.01"/>
     <arg name="splatsim_far_plane" default="1000.0"/>
     <arg name="splatsim_device" default="cuda:0"/>
+    <arg name="splatsim_restart_container" default="false" description="Force restart splatsim container even if already running"/>
 
     <!-- CARLA Interface -->
     <node pkg="autoware_carla_interface" exec="autoware_carla_interface" name="autoware_carla_interface" output="screen">
@@ -53,6 +54,7 @@
       <param name="splatsim_near_plane" value="$(var splatsim_near_plane)"/>
       <param name="splatsim_far_plane" value="$(var splatsim_far_plane)"/>
       <param name="splatsim_device" value="$(var splatsim_device)"/>
+      <param name="splatsim_restart_container" value="$(var splatsim_restart_container)"/>
     </node>
 
     <arg name="input_control_cmd" default="/control/command/control_cmd"/>

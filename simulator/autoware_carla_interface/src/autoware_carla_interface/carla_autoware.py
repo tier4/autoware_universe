@@ -102,6 +102,15 @@ class InitializeInterface(object):
         self.ego_actor = CarlaDataProvider.request_new_actor(
             self.vehicle_type, spawn_point, self.agent_role_name, random_location=randomize
         )
+        # Move spectator camera to follow the ego vehicle
+        spectator = self.world.get_spectator()
+        ego_tf = self.ego_actor.get_transform()
+        spectator.set_transform(
+            carla.Transform(
+                ego_tf.location + carla.Location(z=30),
+                carla.Rotation(pitch=-90),
+            )
+        )
         self.interface.ego_actor = self.ego_actor  # TODO improve design
         self.interface.physics_control = self.ego_actor.get_physics_control()
 
