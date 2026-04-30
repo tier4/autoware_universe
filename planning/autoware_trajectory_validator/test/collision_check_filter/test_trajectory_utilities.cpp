@@ -627,12 +627,12 @@ TEST(TrajectoryUtilitiesTest, ObjectTrajectoryGenerationOptionsMergeWithCombines
 
 TEST(TrajectoryUtilitiesTest, ObjectTrajectoryGenerationOptionsCanBeConstructedFromParams)
 {
-  validator::Params::CollisionCheck::PetCollision pet_params{};
+  PetCollisionParams pet_params{};
   pet_params.assessment_trajectories.map_based = true;
   pet_params.assessment_trajectories.constant_curvature = false;
   pet_params.assessment_trajectories.diffusion_based = true;
 
-  validator::Params::CollisionCheck::Drac drac_params{};
+  DracParams drac_params{};
   drac_params.assessment_trajectories.map_based = false;
   drac_params.assessment_trajectories.constant_curvature = true;
   drac_params.assessment_trajectories.diffusion_based = false;

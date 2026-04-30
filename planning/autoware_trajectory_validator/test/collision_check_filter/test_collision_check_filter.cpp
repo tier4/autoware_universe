@@ -46,6 +46,9 @@ protected:
     vehicle_info.vehicle_width_m = 2.0;
 
     filter_->set_vehicle_info(vehicle_info);
+
+    validator::Params default_params;
+    filter_->update_parameters(default_params);
   }
   geometry_msgs::msg::Twist create_twist(double linear_x, double angular_z)
   {
@@ -321,11 +324,13 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
   vehicle_info.min_longitudinal_offset_m = -1.0;
   vehicle_info.vehicle_width_m = 2.0;
 
-  validator::Params::CollisionCheck::PetCollision pet_collision_params;
+  PetCollisionParams pet_collision_params;
+  pet_collision_params.enable_assessment = true;
   pet_collision_params.assessment_trajectories.map_based = false;
   pet_collision_params.assessment_trajectories.constant_curvature = false;
   pet_collision_params.assessment_trajectories.diffusion_based = false;
-  validator::Params::CollisionCheck::Drac drac_params;
+  DracParams drac_params;
+  drac_params.enable_assessment = true;
   drac_params.assessment_trajectories.map_based = false;
   drac_params.assessment_trajectories.constant_curvature = false;
   drac_params.assessment_trajectories.diffusion_based = true;
