@@ -48,6 +48,7 @@ class SplatSimRGBCamera:
         self,
         sensor_spec: dict,
         *,
+        proj_origin: tuple[float, float],
         tileset_path: str,
         splatsim_image: str = "splatsim:latest",
         grpc_port: int = 50051,
@@ -116,6 +117,7 @@ class SplatSimRGBCamera:
             dtype=np.float64,
         )
         self._transformer = CoordinateTransformer(
+            proj_origin=proj_origin,
             ecef_rotation=ecef_rot,
             ecef_translation=ecef_trans,
             scene_origin=scene_origin,

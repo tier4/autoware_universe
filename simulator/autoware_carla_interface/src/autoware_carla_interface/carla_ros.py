@@ -606,7 +606,8 @@ class carla_ros2_interface(object):
 
         world = CarlaDataProvider.get_world()
         xodr_xml = world.get_map().to_opendrive()
-        lat_0, lon_0 = _parse_geo_reference(xodr_xml)
+        self._proj_origin = _parse_geo_reference(xodr_xml)
+        lat_0, lon_0 = self._proj_origin
 
         projector = MGRSProjector(lanelet2.io.Origin(lat_0, lon_0))
         origin_gps = lanelet2.core.GPSPoint(lat_0, lon_0, 0.0)
@@ -641,6 +642,7 @@ class carla_ros2_interface(object):
         for spec in self._splatsim_camera_specs:
             cam = SplatSimRGBCamera(
                 spec,
+                proj_origin=self._proj_origin,
                 tileset_path=p["splatsim_tileset_path"],
                 splatsim_image=p["splatsim_image"],
                 grpc_port=p["splatsim_grpc_port"],
