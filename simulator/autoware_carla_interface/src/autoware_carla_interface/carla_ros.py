@@ -827,6 +827,19 @@ class carla_ros2_interface(object):
 
             empty_pc = PointCloud2()
             empty_pc.header = self.get_msg_header(frame_id="base_link")
+            empty_pc.fields = [
+                PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
+                PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
+                PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+                PointField(name="intensity", offset=12, datatype=PointField.UINT8, count=1),
+                PointField(name="return_type", offset=13, datatype=PointField.UINT8, count=1),
+                PointField(name="channel", offset=14, datatype=PointField.UINT16, count=1),
+            ]
+            empty_pc.point_step = 16
+            empty_pc.height = 1
+            empty_pc.width = 0
+            empty_pc.row_step = 0
+            empty_pc.is_dense = True
             self.pub_empty_pointcloud.publish(empty_pc)
 
             empty_tl = TrafficLightGroupArray()
@@ -835,6 +848,9 @@ class carla_ros2_interface(object):
 
             empty_og = OccupancyGrid()
             empty_og.header = self.get_msg_header(frame_id="map")
+            empty_og.info.resolution = 0.5
+            empty_og.info.width = 0
+            empty_og.info.height = 0
             self.pub_empty_occupancy_grid.publish(empty_og)
 
             if self.ego_actor is not None:
