@@ -1754,8 +1754,8 @@ void process_drac_findings(
                                   .level(metric_level));
 
     const auto finding_msg = fmt::format(
-      "DRAC collision, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{};",
-      obj_id.trajectory_id_string(), finding.pet, finding.ttc,
+      "DRAC collision, classification: {}, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{};",
+      obj_id.classification, obj_id.trajectory_id_string(), finding.pet, finding.ttc,
       collision_timing_result.drac.has_value()
         ? std::to_string(collision_timing_result.drac.value())
         : "Cant be avoided",
