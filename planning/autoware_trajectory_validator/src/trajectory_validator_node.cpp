@@ -25,6 +25,7 @@
 #include <autoware_internal_planning_msgs/msg/detail/candidate_trajectory__struct.hpp>
 #include <visualization_msgs/msg/detail/marker_array__struct.hpp>
 
+#include <glog/logging.h>
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/LaneletMap.h>
 
@@ -104,6 +105,11 @@ TrajectoryValidator::TrajectoryValidator(const rclcpp::NodeOptions & options)
     "autoware_trajectory_validator", "autoware::trajectory_validator::plugin::ValidatorInterface"),
   vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo())
 {
+  if (!google::IsGoogleLoggingInitialized()) {
+    google::InitGoogleLogging("autoware_trajectory_validator");
+    google::InstallFailureSignalHandler();
+  }
+
   const auto filters = params_.filter_names;
   for (const auto & filter : filters) {
     load_metric(filter);
@@ -149,6 +155,7 @@ void TrajectoryValidator::process(const CandidateTrajectories::ConstSharedPtr ms
   // Prepare context for filters
   FilterContext context;
 
+  assert(!processing_time_ms.empty());
   context.odometry = sub_odometry_.take_data();
   if (!context.odometry) {
     return;

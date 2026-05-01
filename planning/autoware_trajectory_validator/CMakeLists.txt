@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_trajectory_validator)
 
 find_package(autoware_cmake REQUIRED)
+find_package(glog REQUIRED)
+
 autoware_package()
 pluginlib_export_plugin_description_file(autoware_trajectory_validator plugins.xml)
 
@@ -21,8 +23,15 @@ ament_auto_add_library(${trajectory_validator_lib_target} SHARED
 )
 
 target_link_libraries(${trajectory_validator_lib_target}
+  glog::glog
   ${PROJECT_NAME}_param
 )
+
+target_compile_options(${trajectory_validator_lib_target} PUBLIC
+  "-g"                      # Add debug symbols
+  "-fno-omit-frame-pointer" # Ensure accurate stack traces
+)
+target_link_options(${trajectory_validator_lib_target} PUBLIC "-rdynamic")
 
 target_compile_options(${trajectory_validator_lib_target} PUBLIC
   -Wno-error=deprecated-declarations
@@ -42,8 +51,15 @@ ament_auto_add_library(autoware_trajectory_validator_plugins SHARED
 )
 
 target_link_libraries(autoware_trajectory_validator_plugins
+  glog::glog
   ${trajectory_validator_lib_target}
 )
+
+target_compile_options(autoware_trajectory_validator_plugins PUBLIC
+  "-g"                      # Add debug symbols
+  "-fno-omit-frame-pointer" # Ensure accurate stack traces
+)
+target_link_options(autoware_trajectory_validator_plugins PUBLIC "-rdynamic")
 
 # Clear stale Python interpreter state so rosidl can resolve it correctly.
 unset(PYTHON_EXECUTABLE CACHE)

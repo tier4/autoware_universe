@@ -41,6 +41,7 @@
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>pluginlib</depend>
+  <depend>glog</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>tl_expected</depend>

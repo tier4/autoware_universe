@@ -13,7 +13,9 @@
 
   <arg name="enable_pseudo_emergency_stop" default="false"/>
 
-  <node pkg="autoware_trajectory_validator" exec="autoware_trajectory_validator_node" name="trajectory_validator_node" output="screen">
+  <node_container pkg="rclcpp_components" exec="component_container" name="trajectory_modifier_container" namespace="">
+    <composable_node pkg="autoware_glog_component" plugin="autoware::glog_component::GlogComponent" name="glog_component" namespace=""/>
+    <composable_node pkg="autoware_trajectory_validator" plugin="autoware::trajectory_validator::TrajectoryValidator" name="trajectory_validator" namespace="">
     <param from="$(var trajectory_validator_param_path)" allow_substs="true"/>
     <param name="pseudo_emergency_stop.enable" value="$(var enable_pseudo_emergency_stop)"/>
     <remap from="~/input/trajectories" to="$(var input_trajectories)"/>
@@ -25,5 +27,6 @@
     <remap from="~/input/acceleration" to="$(var input_acceleration)"/>
     <remap from="~/input/traffic_signals" to="$(var input_traffic_signals)"/>
     <remap from="~/input/route" to="$(var input_route)"/>
-  </node>
+    </composable_node>
+  </node_container>
 </launch>
