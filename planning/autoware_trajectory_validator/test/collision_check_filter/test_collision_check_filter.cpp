@@ -215,14 +215,14 @@ protected:
   bool has_pet_metric_with_level(const std::vector<MetricReport> & metrics, uint8_t level) const
   {
     return std::any_of(metrics.begin(), metrics.end(), [level](const auto & metric) {
-      return metric.metric_name.find("check_PET_") != std::string::npos && metric.level == level;
+      return metric.metric_name == "pet_worst" && metric.level == level;
     });
   }
 
   bool has_drac_metric_with_level(const std::vector<MetricReport> & metrics, uint8_t level) const
   {
     return std::any_of(metrics.begin(), metrics.end(), [level](const auto & metric) {
-      return metric.metric_name.find("check_DRAC_") != std::string::npos && metric.level == level;
+      return metric.metric_name == "drac_worst" && metric.level == level;
     });
   }
 };
