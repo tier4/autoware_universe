@@ -30,7 +30,6 @@
 
 #include <algorithm>
 #include <any>
-#include <array>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -41,7 +40,6 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -58,99 +56,6 @@ struct EvaluationArtifacts
   autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors{};
 };
 }  // namespace
-
-PetCollisionParams::PetCollisionParams(
-  const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key)
-{
-  enable_assessment = extract_labeled_param<bool>(pet.enable_assessment, key);
-  assessment_trajectories.map_based =
-    extract_labeled_param<bool>(pet.assessment_trajectories.map_based, key);
-  assessment_trajectories.constant_curvature =
-    extract_labeled_param<bool>(pet.assessment_trajectories.constant_curvature, key);
-  assessment_trajectories.diffusion_based =
-    extract_labeled_param<bool>(pet.assessment_trajectories.diffusion_based, key);
-  ego_total_braking_delay = extract_labeled_param<double>(pet.ego_total_braking_delay, key);
-  ego_assumed_acceleration = extract_labeled_param<double>(pet.ego_assumed_acceleration, key);
-
-  warn_threshold.ego_first_passing_time_gap =
-    extract_labeled_param<double>(pet.warn_threshold.ego_first_passing_time_gap, key);
-  warn_threshold.object_first_passing_time_gap =
-    extract_labeled_param<double>(pet.warn_threshold.object_first_passing_time_gap, key);
-  error_threshold.ego_first_passing_time_gap =
-    extract_labeled_param<double>(pet.error_threshold.ego_first_passing_time_gap, key);
-  error_threshold.object_first_passing_time_gap =
-    extract_labeled_param<double>(pet.error_threshold.object_first_passing_time_gap, key);
-}
-
-RssParams::RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key)
-{
-  enable_assessment = extract_labeled_param<bool>(rss.enable_assessment, key);
-  stop_distance_margin = extract_labeled_param<double>(rss.stop_distance_margin, key);
-  ego_total_braking_delay = extract_labeled_param<double>(rss.ego_total_braking_delay, key);
-  object_assumed_acceleration = extract_labeled_param<double>(rss.object_assumed_acceleration, key);
-  error_threshold.ego_acceleration =
-    extract_labeled_param<double>(rss.error_threshold.ego_acceleration, key);
-}
-
-DracParams::DracParams(
-  const validator::Params::CollisionCheck::Drac & drac, const std::string & key)
-{
-  enable_assessment = extract_labeled_param<bool>(drac.enable_assessment, key);
-  assessment_trajectories.map_based =
-    extract_labeled_param<bool>(drac.assessment_trajectories.map_based, key);
-  assessment_trajectories.constant_curvature =
-    extract_labeled_param<bool>(drac.assessment_trajectories.constant_curvature, key);
-  assessment_trajectories.diffusion_based =
-    extract_labeled_param<bool>(drac.assessment_trajectories.diffusion_based, key);
-  ego_total_braking_delay = extract_labeled_param<double>(drac.ego_total_braking_delay, key);
-  warn_threshold.ego_acceleration =
-    extract_labeled_param<double>(drac.warn_threshold.ego_acceleration, key);
-  error_threshold.ego_acceleration =
-    extract_labeled_param<double>(drac.error_threshold.ego_acceleration, key);
-}
-
-template <typename OutT, typename ParamStruct>
-OutT extract_labeled_param(const ParamStruct & params_struct, const std::string & key)
-{
-  if constexpr (std::is_aggregate_v<ParamStruct>) {
-    if (key == "base") {
-      return static_cast<OutT>(params_struct.base);
-    }
-
-    using MemberPtr = OutT ParamStruct::*;
-
-    static const std::unordered_map<std::string, MemberPtr> mappings = {
-      {"car", &ParamStruct::car},
-      {"truck", &ParamStruct::truck},
-      {"bus", &ParamStruct::bus},
-      {"trailer", &ParamStruct::trailer},
-      {"motorcycle", &ParamStruct::motorcycle},
-      {"bicycle", &ParamStruct::bicycle},
-      {"pedestrian", &ParamStruct::pedestrian},
-      {"animal", &ParamStruct::animal},
-      {"hazard", &ParamStruct::hazard},
-      {"over_drivable", &ParamStruct::over_drivable},
-      {"under_drivable", &ParamStruct::under_drivable},
-      {"unknown", &ParamStruct::unknown}};
-
-    auto it = mappings.find(key);
-    if (it == mappings.end()) {
-      throw std::invalid_argument("Unknown label key: " + key);
-    }
-
-    auto label_value = params_struct.*(it->second);
-    if constexpr (std::is_floating_point_v<OutT>) {
-      return static_cast<OutT>(std::isnan(label_value) ? params_struct.base : label_value);
-    } else if constexpr (std::is_same_v<OutT, std::string>) {
-      return static_cast<OutT>(label_value.empty() ? params_struct.base : label_value);
-    } else {
-      return static_cast<OutT>(label_value);
-    }
-
-  } else {
-    return static_cast<OutT>(params_struct);
-  }
-}
 
 // Trajectory generation helpers.
 namespace trajectory::time_distance
@@ -1409,11 +1314,14 @@ Result assess(
 
 void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
-  create_param_maps(params);
+  const auto param_maps = create_collision_check_param_maps(params);
+  pet_collision_param_map_ = param_maps.pet_collision;
+  rss_param_map_ = param_maps.rss;
+  drac_param_map_ = param_maps.drac;
 
-  pet_collision_params_ = pet_collision_param_map_.at("base");
-  rss_params_ = rss_param_map_.at("base");
-  drac_params_ = drac_param_map_.at("base");
+  pet_collision_params_ = pet_collision_param_map_.at(kCollisionCheckParamBaseKey);
+  rss_params_ = rss_param_map_.at(kCollisionCheckParamBaseKey);
+  drac_params_ = drac_param_map_.at(kCollisionCheckParamBaseKey);
 
   global_setting_ = params.collision_check.global_setting;
 }
@@ -1444,175 +1352,11 @@ autoware_internal_planning_msgs::msg::SafetyFactorArray make_safety_factor_array
   return safety_factors;
 }
 
-void CollisionCheckFilter::create_param_maps(const validator::Params & params)
-{
-  pet_collision_param_map_.clear();
-  rss_param_map_.clear();
-  drac_param_map_.clear();
-
-  const validator::Params::CollisionCheck::PetCollision & pet =
-    params.collision_check.pet_collision;
-  const validator::Params::CollisionCheck::Rss & rss = params.collision_check.rss;
-  const validator::Params::CollisionCheck::Drac & drac = params.collision_check.drac;
-
-  static constexpr const char * k_base = "base";
-  // Class labels: keep in sync with parameter_struct.yaml and extract_labeled_param().
-  static constexpr std::array<const char *, 12> k_object_class_keys{
-    "car",        "truck",  "bus",    "trailer",       "motorcycle",     "bicycle",
-    "pedestrian", "animal", "hazard", "over_drivable", "under_drivable", "unknown",
-  };
-
-  pet_collision_param_map_[k_base] = PetCollisionParams(pet, k_base);
-  rss_param_map_[k_base] = RssParams(rss, k_base);
-  drac_param_map_[k_base] = DracParams(drac, k_base);
-
-  for (const char * class_key : k_object_class_keys) {
-    pet_collision_param_map_[class_key] = PetCollisionParams(pet, class_key);
-    rss_param_map_[class_key] = RssParams(rss, class_key);
-    drac_param_map_[class_key] = DracParams(drac, class_key);
-  }
-}
-
-void CollisionCheckFilter::add_debug_markers(
-  const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
-  const PoseTrajectory & ego_trajectory, const PoseTrajectory & object_trajectory,
-  const Polygon2d & ego_hull, const Polygon2d & object_hull)
-{
-  int id = debug_markers_.markers.empty() ? 0 : debug_markers_.markers.back().id + 1;
-
-  struct Color
-  {
-    float r;
-    float g;
-    float b;
-  };
-  const auto resolve_trajectory_color = [&](const std::string & id_str) {
-    if (id_str.find("_diffusion_based_trajectory") != std::string::npos) {
-      return Color{1.0F, 0.55F, 0.0F};
-    }
-    if (id_str.find("_constant_curvature_path") != std::string::npos) {
-      return Color{0.0F, 0.75F, 1.0F};
-    }
-    return Color{0.2F, 1.0F, 0.2F};
-  };
-  const auto trajectory_color = resolve_trajectory_color(trajectory_id);
-
-  auto add_poly_marker =
-    [&](const Polygon2d & poly, const std::string & local_namespace, float r, float g, float b) {
-      if (poly.outer().empty()) return;
-
-      visualization_msgs::msg::Marker m;
-      m.header.frame_id = "map";
-      m.header.stamp = stamp;
-      m.ns = ns + "/" + local_namespace;
-      m.id = id++;
-      m.type = visualization_msgs::msg::Marker::LINE_STRIP;
-      m.action = visualization_msgs::msg::Marker::ADD;
-      m.scale.x = 0.05;  // line width
-      m.color.r = r;
-      m.color.g = g;
-      m.color.b = b;
-      m.color.a = 0.9;
-
-      for (const auto & p : poly.outer()) {
-        geometry_msgs::msg::Point pt;
-        pt.x = p.x();
-        pt.y = p.y();
-        pt.z = 0.0;
-        m.points.push_back(pt);
-      }
-      // close the polygon by adding the first point at the end
-      geometry_msgs::msg::Point pt_first;
-      pt_first.x = poly.outer().front().x();
-      pt_first.y = poly.outer().front().y();
-      pt_first.z = 0.0;
-      m.points.push_back(pt_first);
-
-      debug_markers_.markers.push_back(std::move(m));
-    };
-
-  auto add_trajectory_marker = [&](
-                                 const PoseTrajectory & trajectory,
-                                 const std::string & local_namespace, float r, float g, float b,
-                                 float alpha) {
-    if (trajectory.empty()) return;
-
-    for (const auto & pose : trajectory) {
-      visualization_msgs::msg::Marker m;
-      m.header.frame_id = "map";
-      m.header.stamp = stamp;
-      m.ns = ns + "/" + local_namespace;
-      m.id = id++;
-      m.type = visualization_msgs::msg::Marker::ARROW;
-      m.action = visualization_msgs::msg::Marker::ADD;
-      m.pose = pose;
-      m.scale.x = 0.3;
-      m.scale.y = 0.18;
-      m.scale.z = 0.18;
-      m.color.r = r;
-      m.color.g = g;
-      m.color.b = b;
-      m.color.a = alpha;
-      debug_markers_.markers.push_back(std::move(m));
-    }
-  };
-
-  add_poly_marker(ego_hull, "ego_worst_pet", 0.0, 0.0, 1.0);
-  add_poly_marker(object_hull, "obj_worst_pet", 1.0, 0.0, 0.0);
-  add_trajectory_marker(ego_trajectory, "ego_trajectory", 1.0F, 1.0F, 1.0F, 0.9F);
-  add_trajectory_marker(
-    object_trajectory, "object_trajectory", trajectory_color.r, trajectory_color.g,
-    trajectory_color.b, 0.95F);
-}
-
-void CollisionCheckFilter::add_error_text_marker(
-  const rclcpp::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
-  const std::string & error_msg)
-{
-  int id = debug_markers_.markers.empty() ? 0 : debug_markers_.markers.back().id + 1;
-
-  visualization_msgs::msg::Marker m;
-  m.header.frame_id = "map";
-  m.header.stamp = stamp;
-  m.ns = "collision_check_error";
-  m.id = id++;
-  m.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-  m.action = visualization_msgs::msg::Marker::ADD;
-  m.scale.z = 0.6;
-  m.color.r = 1.0;
-  m.color.g = 1.0;
-  m.color.b = 1.0;
-  m.color.a = 0.95;
-  m.pose = ego_pose;
-  m.pose.position.z += 1.0;
-  m.text = error_msg;
-  debug_markers_.markers.push_back(std::move(m));
-}
-
 void CollisionCheckFilter::clear_detection_times()
 {
   pet_continuous_times_.clear();
   rss_continuous_times_.clear();
   drac_continuous_times_.clear();
-}
-
-void log_collision_messages(const uint8_t level, const std::string & messages)
-{
-  if (messages.empty()) {
-    return;
-  }
-  if (level == MetricReport::ERROR) {
-    RCLCPP_ERROR(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", messages.c_str());
-    return;
-  }
-  RCLCPP_WARN(rclcpp::get_logger("CollisionCheckFilter"), "Warning: %s", messages.c_str());
-}
-
-void append_text_marker_message(std::string & text, const std::string & message)
-{
-  if (!message.empty()) {
-    text += message + "\n";
-  }
 }
 
 using AddDebugMarkers = std::function<void(
@@ -1651,9 +1395,9 @@ void add_collision_planning_factor(
 
 void process_pet_findings(
   const std::string & validator_name, const std::string & validator_category,
-  const PetCollisionParams & pet_collision_params, ContinuousDetectionTimes & pet_continuous_times,
-  const rclcpp::Time & current_time, const builtin_interfaces::msg::Time & stamp,
-  const geometry_msgs::msg::Pose & ego_pose,
+  const PetCollisionParams & pet_collision_params,
+  reporter::ContinuousDetectionTimes & pet_continuous_times, const rclcpp::Time & current_time,
+  const builtin_interfaces::msg::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
   const std::vector<collision_timing_assessment::Finding> & findings,
   EvaluationArtifacts & artifacts, const AddDebugMarkers & add_debug_markers,
   const AddPlanningFactor & add_planning_factor)
@@ -1699,7 +1443,7 @@ void process_pet_findings(
       pet_continuous_times.get_time(obj_id.trajectory_id_string()), obj_id.stamp.sec,
       obj_id.stamp.nanosec);
     log_messages += finding_msg;
-    append_text_marker_message(marker_messages, finding_msg);
+    reporter::append_text_marker_message(marker_messages, finding_msg);
     add_debug_markers(
       stamp, "planned_speed_collision", obj_id.trajectory_id_string(), finding.ego_trajectory,
       finding.object_trajectory, finding.ego_hull, finding.object_hull);
@@ -1709,12 +1453,12 @@ void process_pet_findings(
   }
 
   artifacts.error_msg += marker_messages;
-  log_collision_messages(log_level, log_messages);
+  reporter::log_collision_messages(log_level, log_messages);
 }
 
 void process_drac_findings(
   const std::string & validator_name, const std::string & validator_category,
-  const DracParams & drac_params, ContinuousDetectionTimes & drac_continuous_times,
+  const DracParams & drac_params, reporter::ContinuousDetectionTimes & drac_continuous_times,
   const rclcpp::Time & current_time, const builtin_interfaces::msg::Time & stamp,
   const geometry_msgs::msg::Pose & ego_pose,
   const collision_timing_assessment::Result & collision_timing_result,
@@ -1761,7 +1505,7 @@ void process_drac_findings(
         : "Cant be avoided",
       obj_id.stamp.sec, obj_id.stamp.nanosec);
     log_messages += finding_msg;
-    append_text_marker_message(marker_messages, finding_msg);
+    reporter::append_text_marker_message(marker_messages, finding_msg);
     add_debug_markers(
       stamp, "drac_collision", obj_id.trajectory_id_string(), finding.ego_trajectory,
       finding.object_trajectory, finding.ego_hull, finding.object_hull);
@@ -1771,14 +1515,14 @@ void process_drac_findings(
   }
 
   artifacts.error_msg += marker_messages;
-  log_collision_messages(metric_level, log_messages);
+  reporter::log_collision_messages(metric_level, log_messages);
 }
 
 void process_rss_violations(
   const std::string & validator_name, const std::string & validator_category,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting,
   const RssParams & rss_params, const TrajectoryPoints & traj_points, const FilterContext & context,
-  VehicleInfo & vehicle_info, ContinuousDetectionTimes & rss_continuous_times,
+  VehicleInfo & vehicle_info, reporter::ContinuousDetectionTimes & rss_continuous_times,
   const rclcpp::Time & current_time, EvaluationArtifacts & artifacts)
 {
   if (!rss_params.enable_assessment) {
@@ -1810,11 +1554,11 @@ void process_rss_violations(
       violation.object.classification, object_id, rss_continuous_times.get_time(object_id),
       violation.required_deceleration, violation.object.stamp.sec, violation.object.stamp.nanosec);
     log_messages += finding_msg;
-    append_text_marker_message(marker_messages, finding_msg);
+    reporter::append_text_marker_message(marker_messages, finding_msg);
   }
 
   artifacts.error_msg += marker_messages;
-  log_collision_messages(MetricReport::ERROR, log_messages);
+  reporter::log_collision_messages(MetricReport::ERROR, log_messages);
 }
 
 CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
@@ -1842,8 +1586,9 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
       const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
       const PoseTrajectory & ego_trajectory, const PoseTrajectory & object_trajectory,
       const Polygon2d & ego_hull, const Polygon2d & object_hull) {
-      add_debug_markers(
-        stamp, ns, trajectory_id, ego_trajectory, object_trajectory, ego_hull, object_hull);
+      reporter::add_debug_markers(
+        debug_markers_, stamp, ns, trajectory_id, ego_trajectory, object_trajectory, ego_hull,
+        object_hull);
     };
   const auto add_planning_factor_cb =
     [this](
@@ -1867,8 +1612,9 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     get_name(), category(), global_setting_, rss_params_, traj_points, context, *vehicle_info_ptr_,
     rss_continuous_times_, current_time, artifacts);
   if (!artifacts.error_msg.empty()) {
-    add_error_text_marker(
-      context.odometry->header.stamp, context.odometry->pose.pose, artifacts.error_msg);
+    reporter::add_error_text_marker(
+      debug_markers_, context.odometry->header.stamp, context.odometry->pose.pose,
+      artifacts.error_msg);
   }
 
   return ValidationResult{

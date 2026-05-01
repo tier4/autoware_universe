@@ -16,6 +16,8 @@
 #define FILTERS__SAFETY__COLLISION_CHECK_FILTER__COLLISION_CHECK_FILTER_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
+#include "parameter.hpp"
+#include "reporter.hpp"
 
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
@@ -44,10 +46,7 @@
 #include <cmath>
 #include <map>
 #include <memory>
-#include <optional>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -101,65 +100,6 @@ struct TrajectoryIdentification
     return object_id_string() + "_" + trajectory_type + " acc: " + std::to_string(acceleration);
   }
 };
-
-struct PetCollisionParams
-{
-  PetCollisionParams() = default;
-  PetCollisionParams(
-    const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key);
-
-  bool enable_assessment;
-  struct AssessmentTrajectories
-  {
-    bool map_based;
-    bool constant_curvature;
-    bool diffusion_based;
-  } assessment_trajectories;
-  double ego_total_braking_delay;
-  double ego_assumed_acceleration;
-  struct Threshold
-  {
-    double ego_first_passing_time_gap;
-    double object_first_passing_time_gap;
-  } warn_threshold, error_threshold;
-};
-
-struct RssParams
-{
-  RssParams() = default;
-  RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key);
-
-  bool enable_assessment;
-  double stop_distance_margin;
-  double ego_total_braking_delay;
-  double object_assumed_acceleration;
-  struct ErrorThreshold
-  {
-    double ego_acceleration;
-  } error_threshold;
-};
-
-struct DracParams
-{
-  DracParams() = default;
-  DracParams(const validator::Params::CollisionCheck::Drac & drac, const std::string & key);
-
-  bool enable_assessment;
-  struct AssessmentTrajectories
-  {
-    bool map_based;
-    bool constant_curvature;
-    bool diffusion_based;
-  } assessment_trajectories;
-  double ego_total_braking_delay;
-  struct Threshold
-  {
-    double ego_acceleration;
-  } warn_threshold, error_threshold;
-};
-
-template <typename OutT, typename ParamStruct>
-OutT extract_labeled_param(const ParamStruct & params_struct, const std::string & key);
 
 namespace geometry
 {
@@ -315,55 +255,6 @@ public:
   }
 };
 
-class ContinuousDetectionTimes
-{
-public:
-  void clear()
-  {
-    current_time_.reset();
-    detection_start_times_.clear();
-  }
-
-  template <typename Detections, typename KeyFunc>
-  void update(const rclcpp::Time & current_time, const Detections & detections, KeyFunc key_func)
-  {
-    current_time_ = current_time;
-
-    std::unordered_set<std::string> active_keys{};
-    for (const auto & detection : detections) {
-      const auto key = key_func(detection);
-      active_keys.insert(key);
-      detection_start_times_.try_emplace(key, current_time);
-    }
-
-    for (auto it = detection_start_times_.begin(); it != detection_start_times_.end();) {
-      if (!active_keys.count(it->first)) {
-        it = detection_start_times_.erase(it);
-      } else {
-        ++it;
-      }
-    }
-  }
-
-  double get_time(const std::string & key) const
-  {
-    if (!current_time_) {
-      return 0.0;
-    }
-
-    const auto it = detection_start_times_.find(key);
-    if (it == detection_start_times_.end()) {
-      return 0.0;
-    }
-
-    return (*current_time_ - it->second).seconds();
-  }
-
-private:
-  std::optional<rclcpp::Time> current_time_;
-  std::unordered_map<std::string, rclcpp::Time> detection_start_times_;
-};
-
 class CollisionCheckFilter : public plugin::ValidatorInterface
 {
 public:
@@ -379,22 +270,13 @@ private:
   RssParams rss_params_;
   DracParams drac_params_;
   validator::Params::CollisionCheck::GlobalSetting global_setting_;
-  ContinuousDetectionTimes pet_continuous_times_;
-  ContinuousDetectionTimes rss_continuous_times_;
-  ContinuousDetectionTimes drac_continuous_times_;
-  std::map<std::string, PetCollisionParams> pet_collision_param_map_;
-  std::map<std::string, RssParams> rss_param_map_;
-  std::map<std::string, DracParams> drac_param_map_;
-
-  void create_param_maps(const validator::Params & params);
+  reporter::ContinuousDetectionTimes pet_continuous_times_;
+  reporter::ContinuousDetectionTimes rss_continuous_times_;
+  reporter::ContinuousDetectionTimes drac_continuous_times_;
+  PetCollisionParamMap pet_collision_param_map_;
+  RssParamMap rss_param_map_;
+  DracParamMap drac_param_map_;
   void clear_detection_times();
-  void add_debug_markers(
-    const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
-    const PoseTrajectory & ego_trajectory, const PoseTrajectory & object_trajectory,
-    const Polygon2d & ego_hull, const Polygon2d & object_hull);
-  void add_error_text_marker(
-    const rclcpp::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
-    const std::string & error_msg);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety
