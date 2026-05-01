@@ -998,6 +998,13 @@ Result assess(
   result.violations.reserve(context.predicted_objects->objects.size());
 
   for (const auto & object : context.predicted_objects->objects) {
+    // todo(takagi): Ad hoc implementation for experiment.
+    if (
+      object.classification.front().label ==
+      autoware_perception_msgs::msg::ObjectClassification::UNKNOWN) {
+      continue;
+    }
+
     const auto assessment = assess_required_deceleration(
       ego_trajectory, context.odometry->twist.twist, object, rss_params,
       context.predicted_objects->header.stamp);
@@ -1251,6 +1258,11 @@ std::vector<Finding> assess_planned_speed_collision_timing(
   findings.reserve(object_trajectories.size());
 
   for (const auto & object_trajectory : object_trajectories) {
+    // todo(takagi): Ad hoc implementation for experiment.
+    if (object_trajectory.getObjectIdentification().classification == "UNKNOWN") {
+      continue;
+    }
+
     if (!is_target_trajectory_type(
           ObjectTrajectoryGenerationOptions{pet_collision_params},
           object_trajectory.getObjectIdentification().trajectory_type)) {
@@ -1300,6 +1312,11 @@ DracAssessment assess_drac(
     std::vector<Finding> findings{};
     findings.reserve(object_trajectories.size());
     for (const auto & object_trajectory : object_trajectories) {
+      // todo(takagi): Ad hoc implementation for experiment.
+      if (object_trajectory.getObjectIdentification().classification == "UNKNOWN") {
+        continue;
+      }
+
       if (!is_target_trajectory_type(
             ObjectTrajectoryGenerationOptions{drac_params},
             object_trajectory.getObjectIdentification().trajectory_type)) {
