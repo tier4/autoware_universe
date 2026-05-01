@@ -31,8 +31,9 @@ from pyproj import Transformer
 import lanelet2.core
 import lanelet2.io
 from autoware_lanelet2_extension_python.projection import MGRSProjector
+import rclpy
 
-logger = logging.getLogger(__name__)
+_rlog = rclpy.logging.get_logger("splatsim_coord")
 
 
 def _enu_to_ecef_rotation(lat_deg: float, lon_deg: float) -> NDArray[np.float64]:
@@ -166,12 +167,12 @@ class CoordinateTransformer:
         R_enu_to_ecef = _enu_to_ecef_rotation(lat_0, lon_0)
         self._R_enu_to_tile = self._tile_R_inv @ R_enu_to_ecef
 
-        logger.info(
-            "CoordinateTransformer: origin=(%.6f, %.6f), "
-            "mgrs_offset=(%.1f, %.1f), scene_origin=(%.1f, %.1f, %.1f)",
-            lat_0, lon_0,
-            self._mgrs_offset_x, self._mgrs_offset_y,
-            *scene_origin,
+        self._debug_logged = False
+
+        _rlog.warn(
+            f"CoordinateTransformer: origin=({lat_0:.6f}, {lon_0:.6f}), "
+            f"mgrs_offset=({self._mgrs_offset_x:.1f}, {self._mgrs_offset_y:.1f}), "
+            f"scene_origin=({scene_origin[0]:.1f}, {scene_origin[1]:.1f}, {scene_origin[2]:.1f})"
         )
 
     def enu_position_to_tile_local(
@@ -194,7 +195,22 @@ class CoordinateTransformer:
         tile_local = self._tile_R_inv @ (ecef - self._tile_t)
 
         # 5. Re-center
-        return tile_local - self._scene_origin
+        result = tile_local - self._scene_origin
+
+        if not self._debug_logged:
+            self._debug_logged = True
+            _rlog.warn(
+                f"enu_position_to_tile_local:\n"
+                f"  ENU input:  ({x:.4f}, {y:.4f}, {z:.4f})\n"
+                f"  MGRS abs:   ({mgrs_x:.4f}, {mgrs_y:.4f})\n"
+                f"  LLA:        (lat={gps.lat:.8f}, lon={gps.lon:.8f}, alt={z:.4f})\n"
+                f"  ECEF:       ({ex:.4f}, {ey:.4f}, {ez:.4f})\n"
+                f"  tile_local: ({tile_local[0]:.4f}, {tile_local[1]:.4f}, {tile_local[2]:.4f})\n"
+                f"  scene_orig: ({self._scene_origin[0]:.4f}, {self._scene_origin[1]:.4f}, {self._scene_origin[2]:.4f})\n"
+                f"  result:     ({result[0]:.4f}, {result[1]:.4f}, {result[2]:.4f})"
+            )
+
+        return result
 
     def enu_rotation_to_tile_local(
         self, R_enu: NDArray[np.float64],

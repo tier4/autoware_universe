@@ -16,8 +16,9 @@ from autoware_carla_interface.splatsim.coordinate_transformer import (
     _rotation_matrix_to_quaternion_wxyz,
 )
 from autoware_carla_interface.splatsim.proto import rendering_service_pb2 as pb2
+import rclpy
 
-logger = logging.getLogger(__name__)
+_rlog = rclpy.logging.get_logger("splatsim_camera")
 
 # CARLA → ENU: flip y-axis (CARLA South → ENU North)
 _S_CARLA_TO_ENU = np.diag([1.0, -1.0, 1.0])
@@ -60,6 +61,7 @@ class SplatSimRGBCamera:
         far_plane: float = 1000.0,
         device: str = "cuda:0",
         restart_container: bool = False,
+        compress_format: str = "",
     ) -> None:
         self._sensor_id = sensor_spec["id"]
 
@@ -104,6 +106,7 @@ class SplatSimRGBCamera:
             far_plane=far_plane,
             device=device,
             background_color=pb2.Vector3(x=0.0, y=0.0, z=0.0),
+            compress_format=compress_format,
         )
         resp = self._grpc.initialize(init_request)
         if not resp.success:
@@ -114,10 +117,24 @@ class SplatSimRGBCamera:
             [resp.scene_origin.x, resp.scene_origin.y, resp.scene_origin.z],
             dtype=np.float64,
         )
-        ecef_rot = np.array(resp.ecef_rotation, dtype=np.float64).reshape(3, 3)
-        ecef_trans = np.array(
-            [resp.ecef_translation.x, resp.ecef_translation.y, resp.ecef_translation.z],
-            dtype=np.float64,
+        if resp.ecef_rotation:
+            ecef_rot = np.array(resp.ecef_rotation, dtype=np.float64).reshape(3, 3)
+            ecef_trans = np.array(
+                [resp.ecef_translation.x, resp.ecef_translation.y, resp.ecef_translation.z],
+                dtype=np.float64,
+            )
+            _rlog.warn("Using ECEF transform from gRPC server")
+        else:
+            from autoware_carla_interface.splatsim.coordinate_transformer import (
+                parse_tileset_transform,
+            )
+            ecef_rot, ecef_trans = parse_tileset_transform(tileset_path)
+            _rlog.warn("gRPC server did not return ECEF transform; "
+                       "falling back to parse_tileset_transform")
+        _rlog.warn(
+            f"ECEF rot:\n{ecef_rot}\n"
+            f"ECEF trans: {ecef_trans}\n"
+            f"scene_origin: {scene_origin}"
         )
         self._transformer = CoordinateTransformer(
             proj_origin=proj_origin,
@@ -128,7 +145,8 @@ class SplatSimRGBCamera:
 
         # ── Start streaming ──
         self._grpc.start_stream()
-        logger.info("SplatSimRGBCamera '%s' initialized", self._sensor_id)
+        self._update_count = 0
+        _rlog.warn(f"SplatSimRGBCamera '{self._sensor_id}' initialized")
 
     def update(
         self,
@@ -158,10 +176,26 @@ class SplatSimRGBCamera:
             enu_pos[0], enu_pos[1], enu_pos[2],
         )
 
-        # Rotation: CARLA → ENU (flip y) → tile-local
+        self._update_count += 1
+        if self._update_count <= 10 or self._update_count % 50 == 0:
+            _rlog.warn(
+                f"Pose update #{self._update_count}:\n"
+                f"  CARLA pos: ({carla_pos[0]:.4f}, {carla_pos[1]:.4f}, {carla_pos[2]:.4f})\n"
+                f"  ENU pos:   ({enu_pos[0]:.4f}, {enu_pos[1]:.4f}, {enu_pos[2]:.4f})\n"
+                f"  tile_pos:  ({tile_pos[0]:.4f}, {tile_pos[1]:.4f}, {tile_pos[2]:.4f})"
+            )
+
+        # Rotation: CARLA → ENU (flip y) → tile-local → RDF
         R_enu = _S_CARLA_TO_ENU @ R_carla
         R_tile = self._transformer.enu_rotation_to_tile_local(R_enu)
-        quat_wxyz = _rotation_matrix_to_quaternion_wxyz(R_tile)
+        # R_tile has det=-1 (from the Y-flip).  Apply RDF remapping here
+        # (same as standalone _compute_viewmat) so the result is a proper
+        # rotation (det=+1) that survives the quaternion roundtrip.
+        #   gsplat X=right  ← camera Y = R_tile[:, 1]
+        #   gsplat Y=down   ← camera -Z = -R_tile[:, 2]
+        #   gsplat Z=forward ← camera X = R_tile[:, 0]
+        R_rdf = np.column_stack([R_tile[:, 1], -R_tile[:, 2], R_tile[:, 0]])
+        quat_wxyz = _rotation_matrix_to_quaternion_wxyz(R_rdf)
 
         self._grpc.send_camera_data(
             sec=stamp_sec,
@@ -174,7 +208,7 @@ class SplatSimRGBCamera:
         """Close gRPC stream and stop Docker container."""
         if self._grpc is None:
             return
-        logger.info("Shutting down SplatSimRGBCamera '%s'", self._sensor_id)
+        _rlog.warn(f"Shutting down SplatSimRGBCamera '{self._sensor_id}'")
         self._grpc.close_stream()
         self._grpc.close()
         self._grpc = None

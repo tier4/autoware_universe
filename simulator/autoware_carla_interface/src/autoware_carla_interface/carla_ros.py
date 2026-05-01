@@ -145,6 +145,7 @@ class carla_ros2_interface(object):
             "splatsim_far_plane": rclpy.Parameter.Type.DOUBLE,
             "splatsim_device": rclpy.Parameter.Type.STRING,
             "splatsim_restart_container": rclpy.Parameter.Type.BOOL,
+            "splatsim_compress_format": rclpy.Parameter.Type.STRING,
         }
         self.param_values = {}
         for param_name, param_type in self.parameters.items():
@@ -655,6 +656,7 @@ class carla_ros2_interface(object):
                 far_plane=p["splatsim_far_plane"],
                 device=p["splatsim_device"],
                 restart_container=p["splatsim_restart_container"],
+                compress_format=p.get("splatsim_compress_format", ""),
             )
             self._splatsim_cameras.append(cam)
             self.ros2_node.get_logger().info(
@@ -808,7 +810,19 @@ class carla_ros2_interface(object):
 
         # Send ego pose to splatsim cameras (raw CARLA matrix)
         if self._splatsim_cameras and self.ego_actor is not None:
-            actor_matrix = self.ego_actor.get_transform().get_matrix()
+            ego_tf = self.ego_actor.get_transform()
+            actor_matrix = ego_tf.get_matrix()
+            if not hasattr(self, '_splatsim_tick_count'):
+                self._splatsim_tick_count = 0
+            self._splatsim_tick_count += 1
+            if self._splatsim_tick_count <= 10 or self._splatsim_tick_count % 50 == 0:
+                loc = ego_tf.location
+                self.ros2_node.get_logger().warn(
+                    f"[splatsim_diag] tick#{self._splatsim_tick_count} "
+                    f"ego_loc=({loc.x:.4f}, {loc.y:.4f}, {loc.z:.4f}) "
+                    f"matrix[0][3]={actor_matrix[0][3]:.4f} "
+                    f"matrix[1][3]={actor_matrix[1][3]:.4f}"
+                )
             for cam in self._splatsim_cameras:
                 cam.update(
                     actor_matrix_4x4=actor_matrix,

@@ -60,7 +60,7 @@ class Pose(_message.Message):
     def __init__(self, position: _Optional[_Union[Vector3, _Mapping]] = ..., rotation: _Optional[_Union[Quaternion, _Mapping]] = ...) -> None: ...
 
 class InitializeRequest(_message.Message):
-    __slots__ = ("tileset_path", "use_sh", "intrinsics", "initial_pose", "frame_rate", "clock_initial", "image_topic", "camera_info_topic", "frame_id", "near_plane", "far_plane", "device", "background_color")
+    __slots__ = ("tileset_path", "use_sh", "intrinsics", "initial_pose", "frame_rate", "clock_initial", "image_topic", "camera_info_topic", "frame_id", "near_plane", "far_plane", "device", "background_color", "compress_format")
     TILESET_PATH_FIELD_NUMBER: _ClassVar[int]
     USE_SH_FIELD_NUMBER: _ClassVar[int]
     INTRINSICS_FIELD_NUMBER: _ClassVar[int]
@@ -74,6 +74,7 @@ class InitializeRequest(_message.Message):
     FAR_PLANE_FIELD_NUMBER: _ClassVar[int]
     DEVICE_FIELD_NUMBER: _ClassVar[int]
     BACKGROUND_COLOR_FIELD_NUMBER: _ClassVar[int]
+    COMPRESS_FORMAT_FIELD_NUMBER: _ClassVar[int]
     tileset_path: str
     use_sh: bool
     intrinsics: CameraIntrinsics
@@ -87,7 +88,8 @@ class InitializeRequest(_message.Message):
     far_plane: float
     device: str
     background_color: Vector3
-    def __init__(self, tileset_path: _Optional[str] = ..., use_sh: bool = ..., intrinsics: _Optional[_Union[CameraIntrinsics, _Mapping]] = ..., initial_pose: _Optional[_Union[Pose, _Mapping]] = ..., frame_rate: _Optional[float] = ..., clock_initial: _Optional[_Union[Timestamp, _Mapping]] = ..., image_topic: _Optional[str] = ..., camera_info_topic: _Optional[str] = ..., frame_id: _Optional[str] = ..., near_plane: _Optional[float] = ..., far_plane: _Optional[float] = ..., device: _Optional[str] = ..., background_color: _Optional[_Union[Vector3, _Mapping]] = ...) -> None: ...
+    compress_format: str
+    def __init__(self, tileset_path: _Optional[str] = ..., use_sh: bool = ..., intrinsics: _Optional[_Union[CameraIntrinsics, _Mapping]] = ..., initial_pose: _Optional[_Union[Pose, _Mapping]] = ..., frame_rate: _Optional[float] = ..., clock_initial: _Optional[_Union[Timestamp, _Mapping]] = ..., image_topic: _Optional[str] = ..., camera_info_topic: _Optional[str] = ..., frame_id: _Optional[str] = ..., near_plane: _Optional[float] = ..., far_plane: _Optional[float] = ..., device: _Optional[str] = ..., background_color: _Optional[_Union[Vector3, _Mapping]] = ..., compress_format: _Optional[str] = ...) -> None: ...
 
 class InitializeResponse(_message.Message):
     __slots__ = ("success", "message", "scene_origin", "ecef_translation", "ecef_rotation")

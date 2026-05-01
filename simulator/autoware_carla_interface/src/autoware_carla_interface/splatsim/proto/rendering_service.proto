@@ -62,6 +62,7 @@ message InitializeRequest {
   float far_plane = 11;
   string device = 12;             // "cuda" or "cuda:0" etc.
   Vector3 background_color = 13;  // RGB [0, 1]
+  string compress_format = 14;    // "jpeg", "png", or "" for raw Image
 }
 
 message InitializeResponse {
