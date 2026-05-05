@@ -20,6 +20,34 @@
         use_recheck_ground_cluster: true
         recheck_start_distance: 20.0
         use_lowest_point: true
+        segmentation_class_names: [
+          "drivable_surface",
+          "other_flat_surface",
+          "sidewalk",
+          "manmade",
+          "vegetation",
+          "car",
+          "bus",
+          "emergency_vehicle",
+          "train",
+          "truck",
+          "tractor_unit",
+          "semi_trailer",
+          "construction_vehicle",
+          "forklift",
+          "kart",
+          "motorcycle",
+          "bicycle",
+          "pedestrian",
+          "personal_mobility",
+          "animal",
+          "pushable_pullable",
+          "traffic_cone",
+          "debris",
+          "stroller",
+          "other_stuff",
+          "noise+ghost_point"
+        ]
 
         # debug parameters
         publish_processing_time_detail: false

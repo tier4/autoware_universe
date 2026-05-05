@@ -33,11 +33,15 @@ def launch_setup(context, *args, **kwargs):
     with open(vehicle_info_param_path, "r") as f:
         vehicle_info_param = yaml.safe_load(f)["/**"]["ros__parameters"]
 
-    ground_segmentation_param_path = os.path.join(
-        get_package_share_directory("autoware_ground_segmentation"),
-        "config",
-        "ground_segmentation.param.yaml",
-    )
+    ground_segmentation_param_path = LaunchConfiguration(
+        "ground_segmentation_param_file"
+    ).perform(context)
+    if not ground_segmentation_param_path:
+        ground_segmentation_param_path = os.path.join(
+            get_package_share_directory("autoware_ground_segmentation"),
+            "config",
+            "ground_segmentation.param.yaml",
+        )
 
     with open(ground_segmentation_param_path, "r") as f:
         ground_segmentation_param = yaml.safe_load(f)["/**"]["ros__parameters"]
@@ -50,11 +54,12 @@ def launch_setup(context, *args, **kwargs):
             remappings=[
                 ("input", LaunchConfiguration("input/pointcloud")),
                 ("output", LaunchConfiguration("output/pointcloud")),
+                ("~/output/probs/pointcloud", LaunchConfiguration("output/probs/pointcloud")),
             ],
             parameters=[
                 ground_segmentation_param["common_ground_filter"]["parameters"],
-                {"input_frame": "base_link"},
-                {"output_frame": "base_link"},
+                {"input_frame": LaunchConfiguration("input_frame")},
+                {"output_frame": LaunchConfiguration("output_frame")},
                 vehicle_info_param,
             ],
         ),
@@ -103,9 +108,13 @@ def generate_launch_description():
     return launch.LaunchDescription(
         [
             vehicle_info_param,
+            add_launch_arg("ground_segmentation_param_file", ""),
             add_launch_arg("container", ""),
             add_launch_arg("input/pointcloud", "pointcloud"),
             add_launch_arg("output/pointcloud", "no_ground/pointcloud"),
+            add_launch_arg("output/probs/pointcloud", "probs/pointcloud"),
+            add_launch_arg("input_frame", ""),
+            add_launch_arg("output_frame", ""),
         ]
         + [OpaqueFunction(function=launch_setup)]
     )

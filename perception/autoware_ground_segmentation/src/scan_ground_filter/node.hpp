@@ -39,6 +39,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 class ScanGroundFilterTest;
@@ -241,6 +242,18 @@ private:
   void extractObjectPoints(
     const PointCloud2ConstPtr & in_cloud_ptr, const pcl::PointIndices & in_indices,
     PointCloud2 & out_object_cloud) const;
+
+  void publishGroundSegmentationProbabilities(
+    const PointCloud2ConstPtr & input, const pcl::PointIndices & no_ground_indices);
+
+  std::vector<sensor_msgs::msg::PointField> createProbabilityPointFields() const;
+
+  PointCloud2 createProbabilityPointCloud(
+    const PointCloud2ConstPtr & input, const std::unordered_set<size_t> & no_ground_indices) const;
+
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_segmentation_probabilities_;
+  std::vector<std::string> segmentation_class_names_;
+  std::vector<size_t> ground_probability_class_indices_;
 
   /** \brief Parameter service callback result : needed to be hold */
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;

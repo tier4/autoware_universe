@@ -22,7 +22,9 @@
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
 #include <memory>
+#include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace autoware::ground_segmentation
@@ -34,6 +36,48 @@ using autoware_utils::deg2rad;
 using autoware_utils::normalize_degree;
 using autoware_utils::normalize_radian;
 using autoware_utils::ScopedTimeTrack;
+
+namespace
+{
+constexpr float ground_probability = 1.0f;
+const std::vector<std::string> default_segmentation_class_names{
+  "drivable_surface",
+  "other_flat_surface",
+  "sidewalk",
+  "manmade",
+  "vegetation",
+  "car",
+  "bus",
+  "emergency_vehicle",
+  "train",
+  "truck",
+  "tractor_unit",
+  "semi_trailer",
+  "construction_vehicle",
+  "forklift",
+  "kart",
+  "motorcycle",
+  "bicycle",
+  "pedestrian",
+  "personal_mobility",
+  "animal",
+  "pushable_pullable",
+  "traffic_cone",
+  "debris",
+  "stroller",
+  "other_stuff",
+  "noise+ghost_point"};
+
+size_t findClassIndex(const std::vector<std::string> & class_names, const std::string & class_name)
+{
+  const auto it = std::find(class_names.begin(), class_names.end(), class_name);
+  if (it == class_names.end()) {
+    throw std::runtime_error("Class '" + class_name + "' not found in segmentation class_names");
+  }
+  return static_cast<size_t>(std::distance(class_names.begin(), it));
+}
+
+}  // namespace
 
 ScanGroundFilterComponent::ScanGroundFilterComponent(const rclcpp::NodeOptions & options)
 : autoware::pointcloud_preprocessor::Filter("ScanGroundFilter", options)
@@ -83,6 +127,15 @@ ScanGroundFilterComponent::ScanGroundFilterComponent(const rclcpp::NodeOptions &
     gnd_grid_buffer_size_ = declare_parameter<int>("gnd_grid_buffer_size");
     virtual_lidar_z_ = vehicle_info_.vehicle_height_m;
 
+    // PTV3-style probability pointcloud parameters
+    segmentation_class_names_ = declare_parameter<std::vector<std::string>>(
+      "segmentation_class_names", default_segmentation_class_names);
+    if (segmentation_class_names_.size() <= 1) {
+      throw std::runtime_error("segmentation_class_names must contain more than 1 class");
+    }
+    ground_probability_class_indices_ = {
+      findClassIndex(segmentation_class_names_, "drivable_surface")};
+
     // initialize grid filter
     {
       GridGroundFilterParameter param;
@@ -106,6 +159,9 @@ ScanGroundFilterComponent::ScanGroundFilterComponent(const rclcpp::NodeOptions &
       grid_ground_filter_ptr_ = std::make_unique<GridGroundFilter>(param);
     }
   }
+
+  pub_segmentation_probabilities_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+    "~/output/probs/pointcloud", rclcpp::SensorDataQoS().keep_last(max_queue_size_));
 
   using std::placeholders::_1;
   set_param_res_ = this->add_on_set_parameters_callback(
@@ -333,6 +389,110 @@ void ScanGroundFilterComponent::extractObjectPoints(
   }
 }
 
+std::vector<sensor_msgs::msg::PointField> ScanGroundFilterComponent::createProbabilityPointFields()
+  const
+{
+  std::vector<sensor_msgs::msg::PointField> fields;
+  fields.reserve(3 + segmentation_class_names_.size());
+
+  auto make_point_field = [](const std::string & name, const uint32_t offset) {
+    sensor_msgs::msg::PointField field;
+    field.name = name;
+    field.offset = offset;
+    field.datatype = sensor_msgs::msg::PointField::FLOAT32;
+    field.count = 1;
+    return field;
+  };
+
+  fields.push_back(make_point_field("x", 0));
+  fields.push_back(make_point_field("y", 4));
+  fields.push_back(make_point_field("z", 8));
+
+  for (size_t i = 0; i < segmentation_class_names_.size(); ++i) {
+    fields.push_back(
+      make_point_field(segmentation_class_names_[i], static_cast<uint32_t>(12 + i * 4)));
+  }
+
+  return fields;
+}
+
+sensor_msgs::msg::PointCloud2 ScanGroundFilterComponent::createProbabilityPointCloud(
+  const PointCloud2ConstPtr & input, const std::unordered_set<size_t> & no_ground_indices) const
+{
+  PointCloud2 output;
+  const size_t input_point_count = input->width * input->height;
+  output.header = input->header;
+  output.height = 1;
+  output.width = input_point_count;
+  output.fields = createProbabilityPointFields();
+  output.is_bigendian = input->is_bigendian;
+  output.is_dense = input->is_dense;
+  output.point_step = static_cast<uint32_t>((3 + segmentation_class_names_.size()) * sizeof(float));
+  output.row_step = output.width * output.point_step;
+  output.data.resize(output.row_step);
+
+  pcl::PointXYZ input_point;
+
+  size_t point_index = 0;
+  for (size_t input_data_index = 0; point_index < input_point_count &&
+                                    input_data_index + input->point_step <= input->data.size();
+       input_data_index += input->point_step, ++point_index) {
+    data_accessor_.getPoint(input, input_data_index, input_point);
+
+    const size_t output_data_index = point_index * output.point_step;
+    std::memcpy(&output.data[output_data_index], &input_point.x, sizeof(float));
+    std::memcpy(&output.data[output_data_index + sizeof(float)], &input_point.y, sizeof(float));
+    std::memcpy(&output.data[output_data_index + 2 * sizeof(float)], &input_point.z, sizeof(float));
+
+    const bool is_no_ground = no_ground_indices.find(input_data_index) != no_ground_indices.end() ||
+                              input_point.z > detection_range_z_max_;
+    for (size_t class_index = 0; class_index < segmentation_class_names_.size(); ++class_index) {
+      float probability;
+      if (is_no_ground) {
+        probability = 0.0f;
+      } else {
+        const bool is_ground_class = std::find(
+          ground_probability_class_indices_.begin(), ground_probability_class_indices_.end(),
+          class_index) != ground_probability_class_indices_.end();
+        probability = is_ground_class ? ground_probability : 0.0f;
+      }
+      std::memcpy(
+        &output.data[output_data_index + (3 + class_index) * sizeof(float)], &probability,
+        sizeof(float));
+    }
+  }
+
+  return output;
+}
+
+void ScanGroundFilterComponent::publishGroundSegmentationProbabilities(
+  const PointCloud2ConstPtr & input, const pcl::PointIndices & no_ground_indices)
+{
+  if (!pub_segmentation_probabilities_) {
+    return;
+  }
+
+  const auto subscription_count =
+    pub_segmentation_probabilities_->get_subscription_count() +
+    pub_segmentation_probabilities_->get_intra_process_subscription_count();
+  if (subscription_count == 0) {
+    return;
+  }
+
+  std::unordered_set<size_t> no_ground_index_set;
+  no_ground_index_set.reserve(no_ground_indices.indices.size());
+  for (const auto index : no_ground_indices.indices) {
+    no_ground_index_set.insert(static_cast<size_t>(index));
+  }
+
+  auto output =
+    std::make_unique<PointCloud2>(createProbabilityPointCloud(input, no_ground_index_set));
+  if (!convert_output_costly(output)) {
+    return;
+  }
+  pub_segmentation_probabilities_->publish(std::move(output));
+}
+
 void ScanGroundFilterComponent::faster_filter(
   const PointCloud2ConstPtr & input, [[maybe_unused]] const IndicesPtr & indices,
   PointCloud2 & output,
@@ -369,6 +529,7 @@ void ScanGroundFilterComponent::faster_filter(
   output.header = input->header;
 
   extractObjectPoints(input, no_ground_indices, output);
+  publishGroundSegmentationProbabilities(input, no_ground_indices);
   if (debug_publisher_ptr_ && stop_watch_ptr_) {
     const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);
     const double processing_time_ms = stop_watch_ptr_->toc("processing_time", true);

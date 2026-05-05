@@ -103,6 +103,42 @@
                   "description": "use_lowest_point",
                   "default": "true"
                 },
+                "segmentation_class_names": {
+                  "type": "array",
+                  "description": "Class names used for the PTV3-style probability pointcloud fields. The list must contain drivable_surface, sidewalk, and other_flat_surface.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 4,
+                  "default": [
+                    "drivable_surface",
+                    "other_flat_surface",
+                    "sidewalk",
+                    "manmade",
+                    "vegetation",
+                    "car",
+                    "bus",
+                    "emergency_vehicle",
+                    "train",
+                    "truck",
+                    "tractor_unit",
+                    "semi_trailer",
+                    "construction_vehicle",
+                    "forklift",
+                    "kart",
+                    "motorcycle",
+                    "bicycle",
+                    "pedestrian",
+                    "personal_mobility",
+                    "animal",
+                    "pushable_pullable",
+                    "traffic_cone",
+                    "debris",
+                    "stroller",
+                    "other_stuff",
+                    "noise+ghost_point"
+                  ]
+                },
                 "publish_processing_time_detail": {
                   "type": "boolean",
                   "description": "publish_processing_time_detail (debug parameter)",

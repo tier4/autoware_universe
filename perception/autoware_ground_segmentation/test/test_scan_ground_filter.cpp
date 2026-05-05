@@ -21,6 +21,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 #ifdef ROS_DISTRO_GALACTIC
@@ -182,6 +183,14 @@ public:
     scan_ground_filter_->faster_filter(input_msg_ptr_, nullptr, out_cloud, transform_info);
   }
 
+  sensor_msgs::msg::PointCloud2 createProbabilityPointCloud(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & input,
+    const std::unordered_set<size_t> & no_ground_indices)
+  {
+    scan_ground_filter_->data_accessor_.setField(input);
+    return scan_ground_filter_->createProbabilityPointCloud(input, no_ground_indices);
+  }
+
   void parse_yaml()
   {
     const auto share_dir =
@@ -255,4 +264,45 @@ TEST_F(ScanGroundFilterTest, TestCase1)
   // std::cout << "effect_num=" << effect_num << ",total_num=" << total_num
   //           << ",percentage:" << percent << std::endl;
   EXPECT_GE(percent, 0.9);
+}
+
+TEST_F(ScanGroundFilterTest, TestProbabilityPointCloud)
+{
+  pcl::PointCloud<pcl::PointXYZI> cloud;
+  cloud.emplace_back(1.0f, 0.0f, 0.0f, 0.0f);
+  cloud.emplace_back(1.0f, 0.0f, 1.0f, 0.0f);
+
+  auto input = std::make_shared<sensor_msgs::msg::PointCloud2>();
+  convertPCL2PointCloud2(cloud, *input);
+  input->header.frame_id = "base_link";
+
+  const std::unordered_set<size_t> no_ground_indices{input->point_step};
+  const auto output = createProbabilityPointCloud(input, no_ground_indices);
+
+  EXPECT_EQ(output.height, 1U);
+  EXPECT_EQ(output.width, 2U);
+  EXPECT_EQ(output.fields.size(), 29U);
+  EXPECT_EQ(output.point_step, 116U);
+
+  sensor_msgs::PointCloud2ConstIterator<float> prob_drivable(output, "drivable_surface");
+  sensor_msgs::PointCloud2ConstIterator<float> prob_other_flat(output, "other_flat_surface");
+  sensor_msgs::PointCloud2ConstIterator<float> prob_sidewalk(output, "sidewalk");
+  sensor_msgs::PointCloud2ConstIterator<float> prob_manmade(output, "manmade");
+
+  // ground point: drivable_surface=1.0, all others=0.0
+  EXPECT_FLOAT_EQ(*prob_drivable, 1.0f);
+  EXPECT_FLOAT_EQ(*prob_other_flat, 0.0f);
+  EXPECT_FLOAT_EQ(*prob_sidewalk, 0.0f);
+  EXPECT_FLOAT_EQ(*prob_manmade, 0.0f);
+
+  ++prob_drivable;
+  ++prob_other_flat;
+  ++prob_sidewalk;
+  ++prob_manmade;
+
+  // non-ground point: all classes=0.0
+  EXPECT_FLOAT_EQ(*prob_drivable, 0.0f);
+  EXPECT_FLOAT_EQ(*prob_other_flat, 0.0f);
+  EXPECT_FLOAT_EQ(*prob_sidewalk, 0.0f);
+  EXPECT_FLOAT_EQ(*prob_manmade, 0.0f);
 }
