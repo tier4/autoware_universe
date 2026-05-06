@@ -1658,6 +1658,10 @@ void process_pet_findings(
   EvaluationArtifacts & artifacts, const AddDebugMarkers & add_debug_markers,
   const AddPlanningFactor & add_planning_factor)
 {
+  if (findings.empty()) {
+    return;
+  }
+
   pet_continuous_times.update(current_time, findings, [](const auto & finding) {
     return finding.object_identification.trajectory_id_string();
   });
@@ -1665,33 +1669,18 @@ void process_pet_findings(
   std::string log_messages{};
   std::string marker_messages{};
   uint8_t log_level = MetricReport::WARN;
+  const auto worst_finding_itr = std::min_element(
+    findings.begin(), findings.end(),
+    [](const auto & lhs, const auto & rhs) { return std::abs(lhs.pet) < std::abs(rhs.pet); });
   for (const auto & finding : findings) {
     const auto & obj_id = finding.object_identification;
     const bool is_error =
       finding.pet <= pet_collision_params.error_threshold.ego_first_passing_time_gap &&
       finding.pet >= -pet_collision_params.error_threshold.object_first_passing_time_gap;
-    const uint8_t metric_level = is_error ? MetricReport::ERROR : MetricReport::WARN;
     if (is_error) {
       artifacts.is_feasible = false;
       log_level = MetricReport::ERROR;
     }
-
-    artifacts.metrics.push_back(
-      autoware_trajectory_validator::build<MetricReport>()
-        .validator_name(validator_name)
-        .validator_category(validator_category)
-        .metric_name(
-          fmt::format("check_PET_{}_{}", obj_id.trajectory_id_string(), obj_id.classification))
-        .metric_value(finding.pet)
-        .level(metric_level));
-    artifacts.metrics.push_back(
-      autoware_trajectory_validator::build<MetricReport>()
-        .validator_name(validator_name)
-        .validator_category(validator_category)
-        .metric_name(
-          fmt::format("check_TTC_{}_{}", obj_id.trajectory_id_string(), obj_id.classification))
-        .metric_value(finding.ttc)
-        .level(metric_level));
 
     const auto finding_msg = fmt::format(
       "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{};",
@@ -1707,6 +1696,17 @@ void process_pet_findings(
       add_planning_factor(stamp, ego_pose, finding, "PET", artifacts.planning_factors);
     }
   }
+
+  const auto & worst_finding = *worst_finding_itr;
+  const bool is_worst_error =
+    worst_finding.pet <= pet_collision_params.error_threshold.ego_first_passing_time_gap &&
+    worst_finding.pet >= -pet_collision_params.error_threshold.object_first_passing_time_gap;
+  artifacts.metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                                .validator_name(validator_name)
+                                .validator_category(validator_category)
+                                .metric_name("pet_worst")
+                                .metric_value(worst_finding.pet)
+                                .level(is_worst_error ? MetricReport::ERROR : MetricReport::WARN));
 
   artifacts.error_msg += marker_messages;
   log_collision_messages(log_level, log_messages);
@@ -1734,6 +1734,9 @@ void process_drac_findings(
   if (!is_warn) {
     return;
   }
+  if (collision_timing_result.drac_findings.empty()) {
+    return;
+  }
 
   std::string log_messages{};
   std::string marker_messages{};
@@ -1744,18 +1747,9 @@ void process_drac_findings(
       artifacts.is_feasible = false;
     }
 
-    artifacts.metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
-                                  .validator_name(validator_name)
-                                  .validator_category(validator_category)
-                                  .metric_name(fmt::format(
-                                    "check_DRAC_{}_{}_{}", obj_id.trajectory_id_string(),
-                                    obj_id.classification, obj_id.trajectory_type))
-                                  .metric_value(collision_timing_result.drac.value_or(0.0))
-                                  .level(metric_level));
-
     const auto finding_msg = fmt::format(
-      "DRAC collision, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{};",
-      obj_id.trajectory_id_string(), finding.pet, finding.ttc,
+      "DRAC collision, classification: {}, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{};",
+      obj_id.classification, obj_id.trajectory_id_string(), finding.pet, finding.ttc,
       collision_timing_result.drac.has_value()
         ? std::to_string(collision_timing_result.drac.value())
         : "Cant be avoided",
@@ -1769,6 +1763,13 @@ void process_drac_findings(
       add_planning_factor(stamp, ego_pose, finding, "DRAC", artifacts.planning_factors);
     }
   }
+
+  artifacts.metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                                .validator_name(validator_name)
+                                .validator_category(validator_category)
+                                .metric_name("drac_worst")
+                                .metric_value(collision_timing_result.drac.value_or(0.0))
+                                .level(metric_level));
 
   artifacts.error_msg += marker_messages;
   log_collision_messages(metric_level, log_messages);
@@ -1791,18 +1792,20 @@ void process_rss_violations(
     return violation.object.object_id_string();
   });
 
+  if (rss_result.violations.empty()) {
+    return;
+  }
+
   std::string log_messages{};
   std::string marker_messages{};
+  const auto worst_violation_itr = std::max_element(
+    rss_result.violations.begin(), rss_result.violations.end(),
+    [](const auto & lhs, const auto & rhs) {
+      return lhs.required_deceleration < rhs.required_deceleration;
+    });
   for (const auto & violation : rss_result.violations) {
     const auto object_id = violation.object.object_id_string();
     artifacts.is_feasible = false;
-    artifacts.metrics.push_back(
-      autoware_trajectory_validator::build<MetricReport>()
-        .validator_name(validator_name)
-        .validator_category(validator_category)
-        .metric_name(fmt::format("check_RSS_{}_{}", violation.object.classification, object_id))
-        .metric_value(violation.required_deceleration)
-        .level(MetricReport::ERROR));
 
     const auto finding_msg = fmt::format(
       "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}, "
@@ -1812,6 +1815,14 @@ void process_rss_violations(
     log_messages += finding_msg;
     append_text_marker_message(marker_messages, finding_msg);
   }
+
+  const auto & worst_violation = *worst_violation_itr;
+  artifacts.metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                                .validator_name(validator_name)
+                                .validator_category(validator_category)
+                                .metric_name("rss_worst")
+                                .metric_value(worst_violation.required_deceleration)
+                                .level(MetricReport::ERROR));
 
   artifacts.error_msg += marker_messages;
   log_collision_messages(MetricReport::ERROR, log_messages);
