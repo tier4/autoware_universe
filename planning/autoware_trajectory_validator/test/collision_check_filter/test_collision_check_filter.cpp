@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "../../src/filters/safety/collision_check_filter/collision_check_filter.cpp"
+#include "../../src/filters/safety/collision_check_filter/collision_check_filter.cpp"  // NOLINT(build/include)
 
 #include <gtest/gtest.h>
 
@@ -496,7 +496,6 @@ TEST_F(CollisionCheckFilterTest, DracErrorRejectsTrajectory)
   EXPECT_FALSE(result.value().planning_factors.factors.empty());
 }
 
-// FilterContext exposes predicted_objects as a const shared_ptr; we deep-copy to relabel.
 namespace
 {
 void overwrite_first_object_label(FilterContext & context, std::uint8_t label)

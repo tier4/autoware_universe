@@ -117,19 +117,19 @@ struct PetCollisionParams
   PetCollisionParams(
     const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key);
 
-  bool enable_assessment;
+  bool enable_assessment{false};
   struct AssessmentTrajectories
   {
-    bool map_based;
-    bool constant_curvature;
-    bool diffusion_based;
+    bool map_based{false};
+    bool constant_curvature{false};
+    bool diffusion_based{false};
   } assessment_trajectories;
-  double ego_total_braking_delay;
-  double ego_assumed_acceleration;
+  double ego_total_braking_delay{0.0};
+  double ego_assumed_acceleration{0.0};
   struct Threshold
   {
-    double ego_first_passing_time_gap;
-    double object_first_passing_time_gap;
+    double ego_first_passing_time_gap{0.0};
+    double object_first_passing_time_gap{0.0};
   } warn_threshold, error_threshold;
 };
 
@@ -138,13 +138,13 @@ struct RssParams
   RssParams() = default;
   RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key);
 
-  bool enable_assessment;
-  double stop_distance_margin;
-  double ego_total_braking_delay;
-  double object_assumed_acceleration;
+  bool enable_assessment{false};
+  double stop_distance_margin{0.0};
+  double ego_total_braking_delay{0.0};
+  double object_assumed_acceleration{0.0};
   struct ErrorThreshold
   {
-    double ego_acceleration;
+    double ego_acceleration{0.0};
   } error_threshold;
 };
 
@@ -153,17 +153,17 @@ struct DracParams
   DracParams() = default;
   DracParams(const validator::Params::CollisionCheck::Drac & drac, const std::string & key);
 
-  bool enable_assessment;
+  bool enable_assessment{false};
   struct AssessmentTrajectories
   {
-    bool map_based;
-    bool constant_curvature;
-    bool diffusion_based;
+    bool map_based{false};
+    bool constant_curvature{false};
+    bool diffusion_based{false};
   } assessment_trajectories;
-  double ego_total_braking_delay;
+  double ego_total_braking_delay{0.0};
   struct Threshold
   {
-    double ego_acceleration;
+    double ego_acceleration{0.0};
   } warn_threshold, error_threshold;
 };
 

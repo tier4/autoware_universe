@@ -688,7 +688,7 @@ TrajectoryData generate_object_trajectory(
   const std::string & traj_type_str, const double acc, const double time_resolution,
   const double time_horizon)
 {
-  // todo: remove this lamda from generate_object_trajectory()
+  // todo: remove this lambda from generate_object_trajectory()
   const auto find_predicted_object =
     [&object_id](
       const auto & predicted_objects) -> const autoware_perception_msgs::msg::PredictedObject & {
@@ -731,7 +731,7 @@ TrajectoryData generate_object_trajectory(
       rclcpp::Time(context.neural_network_predicted_objects->header.stamp) -
       rclcpp::Time(context.odometry->header.stamp);
     // ここでのgenerate_predicted_path_trajectoryの呼び出しは意図したもの。pathとして解釈して、速度プロファイルは上書きしたい。
-    // todo: trajectoryのラベルstringがdiffusionではなく、map_baseadになる課題がある
+    // todo: trajectoryのラベルstringがdiffusionではなく、map_basedになる課題がある
     return trajectory::generate_predicted_path_trajectory(
       predicted_object, 0.0, acc, objects_reference_time, time_horizon,
       context.neural_network_predicted_objects->header.stamp, time_resolution);
@@ -817,7 +817,7 @@ bool intersects_sat(const ConvexPolygon & poly_a, const ConvexPolygon & poly_b)
          !detail::has_separating_axis(ring_b, ring_a, ring_b);
 }
 
-// todo(takagi): relace autoware_utils_geometry::to_polygon2d with this function. autoware_utils' s
+// todo(takagi): replace autoware_utils_geometry::to_polygon2d with this function. autoware_utils'
 // version takes more malloc cost.
 Polygon2d to_polygon2d(
   const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape)
