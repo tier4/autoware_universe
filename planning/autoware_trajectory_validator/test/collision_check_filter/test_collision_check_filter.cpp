@@ -335,8 +335,11 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
   drac_params.assessment_trajectories.constant_curvature = false;
   drac_params.assessment_trajectories.diffusion_based = true;
 
-  const std::map<std::string, PetCollisionParams> pet_collision_param_map{};
-  const std::map<std::string, DracParams> drac_param_map{};
+  // The dummy object's classification is CAR; assess() looks up the per-class
+  // params via at(), so the map must contain a "car" entry.
+  const std::map<std::string, PetCollisionParams> pet_collision_param_map{
+    {"car", pet_collision_params}};
+  const std::map<std::string, DracParams> drac_param_map{{"car", drac_params}};
   const auto result = collision_timing_assessment::assess(
     ego_path, context, pet_collision_params, pet_collision_param_map, drac_params, drac_param_map,
     validator::Params::CollisionCheck::GlobalSetting{}, vehicle_info);
