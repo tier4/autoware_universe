@@ -53,7 +53,13 @@ validator:
         read_only: false
     drac:
       enable_assessment:
-        base: &drac_ea { type: bool, default_value: true, description: DRAC enable_assessment per class, read_only: false }
+        base:
+          &drac_ea {
+            type: bool,
+            default_value: true,
+            description: DRAC enable_assessment per class,
+            read_only: false,
+          }
         unknown: *drac_ea
         car: *drac_ea
         truck: *drac_ea
@@ -101,7 +107,13 @@ validator:
           read_only: false
     pet_collision:
       enable_assessment:
-        base: &pet_ea { type: bool, default_value: true, description: PET enable_assessment per class, read_only: false }
+        base:
+          &pet_ea {
+            type: bool,
+            default_value: true,
+            description: PET enable_assessment per class,
+            read_only: false,
+          }
         unknown: *pet_ea
         car: *pet_ea
         truck: *pet_ea
@@ -164,7 +176,13 @@ validator:
           read_only: false
     rss:
       enable_assessment:
-        base: &rss_ea { type: bool, default_value: true, description: RSS enable_assessment per class, read_only: false }
+        base:
+          &rss_ea {
+            type: bool,
+            default_value: true,
+            description: RSS enable_assessment per class,
+            read_only: false,
+          }
         unknown: *rss_ea
         car: *rss_ea
         truck: *rss_ea

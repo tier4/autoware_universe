@@ -495,8 +495,7 @@ void overwrite_first_object_label(FilterContext & context, std::uint8_t label)
 }  // namespace
 
 // Baseline: default per-class params (all true) detect a PET collision against an UNKNOWN object.
-TEST_F(
-  CollisionCheckFilterTest, EnableAssessmentUnknownTrueDetectsUnknownObjectInPetCheck)
+TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownTrueDetectsUnknownObjectInPetCheck)
 {
   const auto ego_path = create_ego_path();
   auto context = create_crossing_pet_context();
@@ -516,8 +515,7 @@ TEST_F(
 }
 
 // Per-class skip: enable_assessment.unknown=false suppresses PET findings for an UNKNOWN object.
-TEST_F(
-  CollisionCheckFilterTest, EnableAssessmentUnknownFalseSkipsUnknownObjectInPetCheck)
+TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownFalseSkipsUnknownObjectInPetCheck)
 {
   const auto ego_path = create_ego_path();
   auto context = create_crossing_pet_context();
@@ -537,8 +535,7 @@ TEST_F(
 }
 
 // Per-class skip is class-specific: unknown=false must not affect CAR-classified objects.
-TEST_F(
-  CollisionCheckFilterTest, EnableAssessmentUnknownFalseDoesNotAffectCarObjectInPetCheck)
+TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownFalseDoesNotAffectCarObjectInPetCheck)
 {
   const auto ego_path = create_ego_path();
   auto context = create_crossing_pet_context();
@@ -558,8 +555,7 @@ TEST_F(
 }
 
 // Same per-class skip behavior on the DRAC path.
-TEST_F(
-  CollisionCheckFilterTest, EnableAssessmentUnknownFalseSkipsUnknownObjectInDracCheck)
+TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownFalseSkipsUnknownObjectInDracCheck)
 {
   const auto ego_path = create_ego_path();
   auto context = create_drac_context();

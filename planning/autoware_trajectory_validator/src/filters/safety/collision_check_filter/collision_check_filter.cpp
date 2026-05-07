@@ -1265,9 +1265,8 @@ std::optional<Finding> find_collision_timing(
 std::vector<Finding> assess_planned_speed_collision_timing(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const PetCollisionParams & pet_collision_params,
-  const std::map<std::string, PetCollisionParams> & pet_collision_param_map,
-  double time_resolution, VehicleInfo & vehicle_info,
-  const std::vector<TrajectoryData> & object_trajectories)
+  const std::map<std::string, PetCollisionParams> & pet_collision_param_map, double time_resolution,
+  VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories)
 {
   const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
                                             -pet_collision_params.ego_assumed_acceleration +
@@ -1304,9 +1303,8 @@ std::vector<Finding> assess_planned_speed_collision_timing(
 
 DracAssessment assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const DracParams & drac_params,
-  const std::map<std::string, DracParams> & drac_param_map, VehicleInfo & vehicle_info,
-  const std::vector<TrajectoryData> & object_trajectories,
+  const DracParams & drac_params, const std::map<std::string, DracParams> & drac_param_map,
+  VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting)
 {
   const double ego_time_horizon = rclcpp::Duration(traj_points.back().time_from_start).seconds();
@@ -1385,8 +1383,7 @@ Result assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const PetCollisionParams & pet_collision_params,
   const std::map<std::string, PetCollisionParams> & pet_collision_param_map,
-  const DracParams & drac_params,
-  const std::map<std::string, DracParams> & drac_param_map,
+  const DracParams & drac_params, const std::map<std::string, DracParams> & drac_param_map,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting,
   VehicleInfo & vehicle_info)
 {

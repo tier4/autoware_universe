@@ -53,7 +53,7 @@
       rss:
         enable_assessment:
           # default value is true.
-          unknown: false        
+          unknown: false
         stop_distance_margin: 2.0
         ego_total_braking_delay: 0.4
         object_assumed_acceleration: -1.0
