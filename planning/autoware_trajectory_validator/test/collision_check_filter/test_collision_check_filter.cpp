@@ -17,8 +17,11 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
+#include <map>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -225,6 +228,17 @@ protected:
       return metric.metric_name.find("check_DRAC_") != std::string::npos && metric.level == level;
     });
   }
+
+  template <typename ParamsT>
+  static std::map<std::string, ParamsT> create_per_class_param_map(const ParamsT & params)
+  {
+    std::map<std::string, ParamsT> param_map;
+    param_map[DEFAULT_PARAM_KEY] = params;
+    for (const char * key : PER_CLASS_PARAM_KEYS) {
+      param_map[key] = params;
+    }
+    return param_map;
+  }
 };
 
 TEST_F(CollisionCheckFilterTest, EmptyObjects)
@@ -335,11 +349,8 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
   drac_params.assessment_trajectories.constant_curvature = false;
   drac_params.assessment_trajectories.diffusion_based = true;
 
-  // The dummy object's classification is CAR; assess() looks up the per-class
-  // params via at(), so the map must contain a "car" entry.
-  const std::map<std::string, PetCollisionParams> pet_collision_param_map{
-    {"car", pet_collision_params}};
-  const std::map<std::string, DracParams> drac_param_map{{"car", drac_params}};
+  const auto pet_collision_param_map = create_per_class_param_map(pet_collision_params);
+  const auto drac_param_map = create_per_class_param_map(drac_params);
   const auto result = collision_timing_assessment::assess(
     ego_path, context, pet_collision_params, pet_collision_param_map, drac_params, drac_param_map,
     validator::Params::CollisionCheck::GlobalSetting{}, vehicle_info);
@@ -575,6 +586,50 @@ TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownFalseSkipsUnknownObjectI
   ASSERT_TRUE(result.has_value());
   EXPECT_TRUE(result.value().is_feasible);
   EXPECT_FALSE(has_drac_metric_with_level(result.value().metrics, MetricReport::ERROR));
+}
+
+TEST_F(CollisionCheckFilterTest, ClassificationToParamKeyMapsAllPerceptionLabels)
+{
+  using autoware_perception_msgs::msg::ObjectClassification;
+  const auto pose = create_pose(0.0, 0.0, 0.0);
+  const auto twist = create_twist(0.0, 0.0);
+  const auto path = create_predicted_path(pose, twist);
+  const auto shape = create_object_shape(1.0, 1.0);
+
+  const std::array<std::pair<std::uint8_t, std::string>, 8> cases = {{
+    {ObjectClassification::UNKNOWN, "unknown"},
+    {ObjectClassification::CAR, "car"},
+    {ObjectClassification::TRUCK, "truck"},
+    {ObjectClassification::BUS, "bus"},
+    {ObjectClassification::TRAILER, "trailer"},
+    {ObjectClassification::MOTORCYCLE, "motorcycle"},
+    {ObjectClassification::BICYCLE, "bicycle"},
+    {ObjectClassification::PEDESTRIAN, "pedestrian"},
+  }};
+
+  for (const auto & [label, expected_key] : cases) {
+    auto object = create_dummy_object(pose, twist, path, shape);
+    object.classification.at(0).label = label;
+    EXPECT_EQ(classification_to_param_key(object), expected_key)
+      << "label=" << static_cast<int>(label);
+  }
+}
+
+TEST_F(CollisionCheckFilterTest, ClassificationToParamKeyAcceptsTrajectoryData)
+{
+  TrajectoryData trajectory_data{
+    TrajectoryIdentification{"PEDESTRIAN"},
+    TimeTrajectory{0.0},
+    TravelDistanceTrajectory{0.0},
+    PoseTrajectory{create_pose(0.0, 0.0, 0.0)},
+    FootprintTrajectory{Polygon2d{}}};
+  EXPECT_EQ(classification_to_param_key(trajectory_data), "pedestrian");
+}
+
+TEST_F(CollisionCheckFilterTest, ClassificationToParamKeyAcceptsString)
+{
+  EXPECT_EQ(classification_to_param_key(std::string{"BICYCLE"}), "bicycle");
+  EXPECT_EQ(classification_to_param_key(std::string{"car"}), "car");
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety

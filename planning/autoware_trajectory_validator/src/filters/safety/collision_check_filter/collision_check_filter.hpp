@@ -40,6 +40,7 @@
 
 #include <algorithm>
 #include <any>
+#include <array>
 #include <cassert>
 #include <cctype>
 #include <cmath>
@@ -69,6 +70,12 @@ using IndexRange = std::pair<size_t, size_t>;
 using TimeRange = std::pair<double, double>;
 
 static constexpr double TIME_INDEX_EPSILON = 1e-3;
+
+inline constexpr const char * DEFAULT_PARAM_KEY = "base";
+inline constexpr std::array<const char *, 12> PER_CLASS_PARAM_KEYS{
+  "car",        "truck",  "bus",    "trailer",       "motorcycle",     "bicycle",
+  "pedestrian", "animal", "hazard", "over_drivable", "under_drivable", "unknown",
+};
 
 struct TrajectoryIdentification
 {

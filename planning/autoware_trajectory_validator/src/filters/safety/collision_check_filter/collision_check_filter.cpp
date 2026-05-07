@@ -1464,18 +1464,11 @@ void CollisionCheckFilter::create_param_maps(const validator::Params & params)
   const validator::Params::CollisionCheck::Rss & rss = params.collision_check.rss;
   const validator::Params::CollisionCheck::Drac & drac = params.collision_check.drac;
 
-  static constexpr const char * k_base = "base";
-  // Class labels: keep in sync with parameter_struct.yaml and extract_labeled_param().
-  static constexpr std::array<const char *, 12> k_object_class_keys{
-    "car",        "truck",  "bus",    "trailer",       "motorcycle",     "bicycle",
-    "pedestrian", "animal", "hazard", "over_drivable", "under_drivable", "unknown",
-  };
+  pet_collision_param_map_[DEFAULT_PARAM_KEY] = PetCollisionParams(pet, DEFAULT_PARAM_KEY);
+  rss_param_map_[DEFAULT_PARAM_KEY] = RssParams(rss, DEFAULT_PARAM_KEY);
+  drac_param_map_[DEFAULT_PARAM_KEY] = DracParams(drac, DEFAULT_PARAM_KEY);
 
-  pet_collision_param_map_[k_base] = PetCollisionParams(pet, k_base);
-  rss_param_map_[k_base] = RssParams(rss, k_base);
-  drac_param_map_[k_base] = DracParams(drac, k_base);
-
-  for (const char * class_key : k_object_class_keys) {
+  for (const char * class_key : PER_CLASS_PARAM_KEYS) {
     pet_collision_param_map_[class_key] = PetCollisionParams(pet, class_key);
     rss_param_map_[class_key] = RssParams(rss, class_key);
     drac_param_map_[class_key] = DracParams(drac, class_key);
