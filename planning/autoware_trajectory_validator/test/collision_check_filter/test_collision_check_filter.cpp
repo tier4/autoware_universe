@@ -618,11 +618,8 @@ TEST_F(CollisionCheckFilterTest, ClassificationToParamKeyMapsAllPerceptionLabels
 TEST_F(CollisionCheckFilterTest, ClassificationToParamKeyAcceptsTrajectoryData)
 {
   TrajectoryData trajectory_data{
-    TrajectoryIdentification{"PEDESTRIAN"},
-    TimeTrajectory{0.0},
-    TravelDistanceTrajectory{0.0},
-    PoseTrajectory{create_pose(0.0, 0.0, 0.0)},
-    FootprintTrajectory{Polygon2d{}}};
+    TrajectoryIdentification{"PEDESTRIAN"}, TimeTrajectory{0.0}, TravelDistanceTrajectory{0.0},
+    PoseTrajectory{create_pose(0.0, 0.0, 0.0)}, FootprintTrajectory{Polygon2d{}}};
   EXPECT_EQ(classification_to_param_key(trajectory_data), "pedestrian");
 }
 

@@ -324,7 +324,6 @@ public:
   }
 };
 
-
 template <typename T>
 std::string classification_to_param_key(const T & input)
 {

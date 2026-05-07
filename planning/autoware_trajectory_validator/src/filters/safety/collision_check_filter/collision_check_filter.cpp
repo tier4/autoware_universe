@@ -1262,7 +1262,8 @@ std::vector<Finding> assess_planned_speed_collision_timing(
 
   for (const auto & object_trajectory : object_trajectories) {
     auto object_class_key = classification_to_param_key(object_trajectory);
-    PetCollisionParams pet_collision_params_per_class = pet_collision_param_map.at(object_class_key);
+    PetCollisionParams pet_collision_params_per_class =
+      pet_collision_param_map.at(object_class_key);
 
     if (!pet_collision_params_per_class.enable_assessment) {
       continue;
