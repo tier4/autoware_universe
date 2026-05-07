@@ -59,24 +59,6 @@ struct EvaluationArtifacts
   autoware_internal_planning_msgs::msg::PlanningFactorArray planning_factors{};
 };
 
-// Convert e.g. "UNKNOWN" / "CAR" -> "unknown" / "car" so it matches the per-class
-// keys declared in parameter_struct.yaml (PetCollisionParams / DracParams / RssParams maps).
-std::string classification_to_param_key(const std::string & classification)
-{
-  std::string key = classification;
-  std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-  return key;
-}
-
-template <typename ParamsT>
-bool is_class_assessment_disabled(
-  const std::map<std::string, ParamsT> & param_map, const std::string & classification)
-{
-  const auto it = param_map.find(classification_to_param_key(classification));
-  return it != param_map.end() && !it->second.enable_assessment;
-}
 }  // namespace
 
 PetCollisionParams::PetCollisionParams(
@@ -1019,9 +1001,8 @@ Result assess(
   result.violations.reserve(context.predicted_objects->objects.size());
 
   for (const auto & object : context.predicted_objects->objects) {
-    const auto class_str = autoware::object_recognition_utils::convertLabelToString(
-      autoware::object_recognition_utils::getHighestProbLabel(object.classification));
-    if (is_class_assessment_disabled(rss_param_map, class_str)) {
+    auto object_key = classification_to_param_key(object);
+    if (!rss_param_map.at(object_key).enable_assessment) {
       continue;
     }
     const auto assessment = assess_required_deceleration(
@@ -1278,8 +1259,8 @@ std::vector<Finding> assess_planned_speed_collision_timing(
   findings.reserve(object_trajectories.size());
 
   for (const auto & object_trajectory : object_trajectories) {
-    if (is_class_assessment_disabled(
-          pet_collision_param_map, object_trajectory.getObjectIdentification().classification)) {
+    auto object_key = classification_to_param_key(object_trajectory);
+    if (!pet_collision_param_map.at(object_key).enable_assessment) {
       continue;
     }
 
@@ -1332,8 +1313,8 @@ DracAssessment assess_drac(
     std::vector<Finding> findings{};
     findings.reserve(object_trajectories.size());
     for (const auto & object_trajectory : object_trajectories) {
-      if (is_class_assessment_disabled(
-            drac_param_map, object_trajectory.getObjectIdentification().classification)) {
+      const auto object_key = classification_to_param_key(object_trajectory);
+      if (!drac_param_map.at(object_key).enable_assessment) {
         continue;
       }
 

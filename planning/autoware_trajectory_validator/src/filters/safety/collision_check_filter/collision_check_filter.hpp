@@ -41,11 +41,13 @@
 #include <algorithm>
 #include <any>
 #include <cassert>
+#include <cctype>
 #include <cmath>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -314,6 +316,28 @@ public:
     return get_or_compute_convex(resolve_covering_index_range(key_time));
   }
 };
+
+
+template <typename T>
+std::string classification_to_param_key(const T & input)
+{
+  if constexpr (std::is_same_v<T, TrajectoryData>) {
+    return classification_to_param_key(input.getObjectIdentification().classification);
+  } else if constexpr (std::is_same_v<T, autoware_perception_msgs::msg::PredictedObject>) {
+    return classification_to_param_key(autoware::object_recognition_utils::convertLabelToString(
+      autoware::object_recognition_utils::getHighestProbLabel(input.classification)));
+  } else {
+    static_assert(
+      std::is_same_v<T, std::string>,
+      "classification_to_param_key: unsupported type "
+      "(supported: std::string, TrajectoryData, PredictedObject)");
+    std::string key = input;
+    std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) {
+      return static_cast<char>(std::tolower(c));
+    });
+    return key;
+  }
+}
 
 class ContinuousDetectionTimes
 {
