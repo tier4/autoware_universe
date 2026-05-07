@@ -185,8 +185,8 @@ protected:
     double error_threshold_positive, double error_threshold_negative)
   {
     validator::Params params;
-    params.collision_check.drac.enable_assessment = false;
-    params.collision_check.rss.enable_assessment = false;
+    params.collision_check.drac.enable_assessment.base = false;
+    params.collision_check.rss.enable_assessment.base = false;
     params.collision_check.pet_collision.assessment_trajectories.map_based = true;
     params.collision_check.pet_collision.assessment_trajectories.constant_curvature = false;
     params.collision_check.pet_collision.assessment_trajectories.diffusion_based = false;
@@ -202,8 +202,8 @@ protected:
   validator::Params create_drac_only_params(double error_deceleration_threshold)
   {
     validator::Params params;
-    params.collision_check.pet_collision.enable_assessment = false;
-    params.collision_check.rss.enable_assessment = false;
+    params.collision_check.pet_collision.enable_assessment.base = false;
+    params.collision_check.rss.enable_assessment.base = false;
     params.collision_check.drac.assessment_trajectories.map_based = true;
     params.collision_check.drac.assessment_trajectories.constant_curvature = false;
     params.collision_check.drac.assessment_trajectories.diffusion_based = false;
@@ -335,8 +335,10 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
   drac_params.assessment_trajectories.constant_curvature = false;
   drac_params.assessment_trajectories.diffusion_based = true;
 
+  const std::map<std::string, PetCollisionParams> pet_collision_param_map{};
+  const std::map<std::string, DracParams> drac_param_map{};
   const auto result = collision_timing_assessment::assess(
-    ego_path, context, pet_collision_params, drac_params,
+    ego_path, context, pet_collision_params, pet_collision_param_map, drac_params, drac_param_map,
     validator::Params::CollisionCheck::GlobalSetting{}, vehicle_info);
 
   EXPECT_TRUE(result.planned_speed_findings.empty());
@@ -478,6 +480,102 @@ TEST_F(CollisionCheckFilterTest, DracErrorRejectsTrajectory)
   EXPECT_FALSE(result.value().is_feasible);
   EXPECT_TRUE(has_drac_metric_with_level(result.value().metrics, MetricReport::ERROR));
   EXPECT_FALSE(result.value().planning_factors.factors.empty());
+}
+
+// FilterContext exposes predicted_objects as a const shared_ptr; we deep-copy to relabel.
+namespace
+{
+void overwrite_first_object_label(FilterContext & context, std::uint8_t label)
+{
+  auto mutable_objects =
+    std::make_shared<autoware_perception_msgs::msg::PredictedObjects>(*context.predicted_objects);
+  mutable_objects->objects.at(0).classification.at(0).label = label;
+  context.predicted_objects = mutable_objects;
+}
+}  // namespace
+
+// Baseline: default per-class params (all true) detect a PET collision against an UNKNOWN object.
+TEST_F(
+  CollisionCheckFilterTest, EnableAssessmentUnknownTrueDetectsUnknownObjectInPetCheck)
+{
+  const auto ego_path = create_ego_path();
+  auto context = create_crossing_pet_context();
+  overwrite_first_object_label(
+    context, autoware_perception_msgs::msg::ObjectClassification::UNKNOWN);
+
+  auto params = create_pet_only_params(0.6, -0.3);
+  params.collision_check.pet_collision.enable_assessment.base = true;
+  params.collision_check.pet_collision.enable_assessment.unknown = true;
+  filter_->update_parameters(params);
+
+  const auto result = filter_->is_feasible(ego_path, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible);
+  EXPECT_TRUE(has_pet_metric_with_level(result.value().metrics, MetricReport::ERROR));
+}
+
+// Per-class skip: enable_assessment.unknown=false suppresses PET findings for an UNKNOWN object.
+TEST_F(
+  CollisionCheckFilterTest, EnableAssessmentUnknownFalseSkipsUnknownObjectInPetCheck)
+{
+  const auto ego_path = create_ego_path();
+  auto context = create_crossing_pet_context();
+  overwrite_first_object_label(
+    context, autoware_perception_msgs::msg::ObjectClassification::UNKNOWN);
+
+  auto params = create_pet_only_params(0.6, -0.3);
+  params.collision_check.pet_collision.enable_assessment.base = true;
+  params.collision_check.pet_collision.enable_assessment.unknown = false;
+  filter_->update_parameters(params);
+
+  const auto result = filter_->is_feasible(ego_path, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible);
+  EXPECT_FALSE(has_pet_metric_with_level(result.value().metrics, MetricReport::ERROR));
+}
+
+// Per-class skip is class-specific: unknown=false must not affect CAR-classified objects.
+TEST_F(
+  CollisionCheckFilterTest, EnableAssessmentUnknownFalseDoesNotAffectCarObjectInPetCheck)
+{
+  const auto ego_path = create_ego_path();
+  auto context = create_crossing_pet_context();
+  // Default classification from create_dummy_object() is CAR.
+
+  auto params = create_pet_only_params(0.6, -0.3);
+  params.collision_check.pet_collision.enable_assessment.base = true;
+  params.collision_check.pet_collision.enable_assessment.car = true;
+  params.collision_check.pet_collision.enable_assessment.unknown = false;
+  filter_->update_parameters(params);
+
+  const auto result = filter_->is_feasible(ego_path, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible);
+  EXPECT_TRUE(has_pet_metric_with_level(result.value().metrics, MetricReport::ERROR));
+}
+
+// Same per-class skip behavior on the DRAC path.
+TEST_F(
+  CollisionCheckFilterTest, EnableAssessmentUnknownFalseSkipsUnknownObjectInDracCheck)
+{
+  const auto ego_path = create_ego_path();
+  auto context = create_drac_context();
+  overwrite_first_object_label(
+    context, autoware_perception_msgs::msg::ObjectClassification::UNKNOWN);
+
+  auto params = create_drac_only_params(-5.0);
+  params.collision_check.drac.enable_assessment.base = true;
+  params.collision_check.drac.enable_assessment.unknown = false;
+  filter_->update_parameters(params);
+
+  const auto result = filter_->is_feasible(ego_path, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible);
+  EXPECT_FALSE(has_drac_metric_with_level(result.value().metrics, MetricReport::ERROR));
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety
