@@ -25,6 +25,22 @@
     <arg name="sensor_kit_name" default="carla_sensor_kit_description" description="Name of the sensor kit package containing calibration"/>
     <arg name="sensor_mapping_file" default="$(find-pkg-share autoware_carla_interface)/config/sensor_mapping.yaml" description="Path to sensor mapping YAML"/>
 
+    <!-- SplatSim integration (optional) -->
+    <arg name="render_with_splatsim" default="false" description="Enable splatsim rendering via Docker + gRPC"/>
+    <arg name="splatsim_tileset_path" default="" description="Host path to tileset.json"/>
+    <arg name="splatsim_image" default="splatsim:latest" description="Docker image for splatsim"/>
+    <arg name="splatsim_grpc_port" default="50051"/>
+    <arg name="splatsim_use_sh" default="true"/>
+    <arg name="splatsim_frame_rate" default="20.0"/>
+    <arg name="splatsim_image_topic" default="/splatsim/image_raw"/>
+    <arg name="splatsim_camera_info_topic" default="/splatsim/camera_info"/>
+    <arg name="splatsim_frame_id" default="splatsim_camera"/>
+    <arg name="splatsim_near_plane" default="0.01"/>
+    <arg name="splatsim_far_plane" default="1000.0"/>
+    <arg name="splatsim_device" default="cuda:0"/>
+    <arg name="splatsim_restart_container" default="false" description="Force restart splatsim container even if already running"/>
+    <arg name="splatsim_compress_format" default="jpeg" description="Image compression format: 'jpeg', 'png', or '' for raw"/>
+
     <!-- CARLA Interface -->
     <node pkg="autoware_carla_interface" exec="autoware_carla_interface" name="autoware_carla_interface" output="screen">
       <param name="host" value="$(var host)"/>
@@ -40,6 +56,20 @@
       <param name="max_real_delta_seconds" value="$(var max_real_delta_seconds)"/>
       <param name="sensor_kit_name" value="$(var sensor_kit_name)"/>
       <param name="sensor_mapping_file" value="$(var sensor_mapping_file)"/>
+      <param name="render_with_splatsim" value="$(var render_with_splatsim)"/>
+      <param name="splatsim_tileset_path" value="$(var splatsim_tileset_path)"/>
+      <param name="splatsim_image" value="$(var splatsim_image)"/>
+      <param name="splatsim_grpc_port" value="$(var splatsim_grpc_port)"/>
+      <param name="splatsim_use_sh" value="$(var splatsim_use_sh)"/>
+      <param name="splatsim_frame_rate" value="$(var splatsim_frame_rate)"/>
+      <param name="splatsim_image_topic" value="$(var splatsim_image_topic)"/>
+      <param name="splatsim_camera_info_topic" value="$(var splatsim_camera_info_topic)"/>
+      <param name="splatsim_frame_id" value="$(var splatsim_frame_id)"/>
+      <param name="splatsim_near_plane" value="$(var splatsim_near_plane)"/>
+      <param name="splatsim_far_plane" value="$(var splatsim_far_plane)"/>
+      <param name="splatsim_device" value="$(var splatsim_device)"/>
+      <param name="splatsim_restart_container" value="$(var splatsim_restart_container)"/>
+      <param name="splatsim_compress_format" value="$(var splatsim_compress_format)"/>
     </node>
 
     <arg name="input_control_cmd" default="/control/command/control_cmd"/>
