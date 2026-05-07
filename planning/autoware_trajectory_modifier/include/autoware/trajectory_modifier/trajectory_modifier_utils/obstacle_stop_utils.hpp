@@ -151,22 +151,23 @@ std::optional<CollisionPoint> get_nearest_pcd_collision(
   const PointCloud::Ptr & pointcloud, std::vector<geometry_msgs::msg::Point> & target_pcd_points);
 
 std::optional<CollisionPoint> get_nearest_object_collision(
-  const TrajectoryPoints & trajectory_points, const TrajectoryShape & trajectory_shape,
-  const PredictedObjects & objects, MultiPolygon2d & target_polygons,
+  const TrajectoryPoints & trajectory_points, const PredictedObjects & target_objects,
   PredictedObject & colliding_object);
 
 using ObjectDecelMap = std::unordered_map<ObjectType, double>;
 std::optional<CollisionPoint> get_nearest_object_collision(
-  const TrajectoryPoints & trajectory_points, const TrajectoryShape & trajectory_shape,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info, const PredictedObjects & objects,
-  const ObjectDecelMap & object_decel_map, const double ego_decel, const double reaction_time,
-  const double safety_margin, const double stopped_vel_th, const double lookahead_horizon,
-  MultiPolygon2d & target_polygons, PredictedObject & colliding_object);
+  const TrajectoryPoints & trajectory_points,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
+  const PredictedObjects & target_objects, const ObjectDecelMap & object_decel_map,
+  const double ego_decel, const double reaction_time, const double safety_margin,
+  const double stopped_vel_th, const double lookahead_horizon, PredictedObject & colliding_object);
 
 struct ObjectFilter
 {
-  ObjectFilter(const std::vector<std::string> & object_type_strings, const double max_velocity_th)
-  : max_velocity_th_(max_velocity_th)
+  ObjectFilter(
+    const std::vector<std::string> & object_type_strings, const double max_velocity_th,
+    const double stopped_velocity_th)
+  : max_velocity_th_(max_velocity_th), stopped_velocity_th_(stopped_velocity_th)
   {
     for (const auto & object_type_string : object_type_strings) {
       if (string_to_object_type.count(object_type_string) == 0) continue;
@@ -190,8 +191,13 @@ struct ObjectFilter
       objects.objects.end());
   }
 
+  void filter_by_target_area(
+    PredictedObjects & objects, const TrajectoryPoints & trajectory_points,
+    const MultiPolygon2d & target_area, MultiPolygon2d & target_polygons);
+
   void set_params(
-    const std::vector<std::string> & object_type_strings, const double max_velocity_th)
+    const std::vector<std::string> & object_type_strings, const double max_velocity_th,
+    const double stopped_velocity_th)
   {
     object_types_.clear();
     for (const auto & object_type_string : object_type_strings) {
@@ -199,11 +205,13 @@ struct ObjectFilter
       object_types_.emplace(string_to_object_type.at(object_type_string));
     }
     max_velocity_th_ = max_velocity_th;
+    stopped_velocity_th_ = stopped_velocity_th;
   }
 
 private:
   std::unordered_set<ObjectType> object_types_;
   double max_velocity_th_;
+  double stopped_velocity_th_;
 };
 
 struct PointCloudFilter
