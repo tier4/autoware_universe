@@ -68,7 +68,7 @@ TrajectoryPoints extend_trajectory(
 
   const auto & last_p = trajectory_points.back();
   const auto yaw_last = tf2::getYaw(last_p.pose.orientation);
-  constexpr double lookback_distance = 1.0;  // [m]
+  constexpr double lookback_distance = 2.0;  // [m]
   const auto lookback_pose = motion_utils::calcLongitudinalOffsetPose(
     trajectory_points, trajectory_points.size() - 1, -1.0 * lookback_distance);
 
@@ -473,7 +473,7 @@ void ObjectFilter::filter_by_target_area(
     const auto obj_rot = Eigen::Rotation2Dd(tf2::getYaw(object_pose.orientation));
     const auto obj_vel = object.kinematics.initial_twist_with_covariance.twist.linear;
     const auto obj_vel_dir = (obj_rot * Eigen::Vector2d(obj_vel.x, obj_vel.y)).normalized();
-    if (obj_vel_dir.dot(traj_dir) > direction_th) return false;
+    if (std::abs(obj_vel_dir.dot(traj_dir)) > direction_th) return false;
     if (object.kinematics.predicted_paths.empty()) return true;
     const auto time_to_obj_current_pos =
       rclcpp::Duration(trajectory_points.at(nearest_seg).time_from_start).seconds() - time_buffer;

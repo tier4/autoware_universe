@@ -110,7 +110,7 @@
             "duplicate_check_threshold": {
               "type": "number",
               "description": "Threshold to check if the stop point is already in the trajectory [m]",
-              "default": 1.0,
+              "default": 0.5,
               "minimum": 0.0
             },
             "arrived_distance_threshold": {

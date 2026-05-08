@@ -117,7 +117,7 @@ trajectory_modifier_params:
       read_only: false
     duplicate_check_threshold:
       type: double
-      default_value: 1.0
+      default_value: 0.5
       description: Threshold to check if the stop point is already in the trajectory [m]
       validation:
         bounds<>: [0.0, 10.0]

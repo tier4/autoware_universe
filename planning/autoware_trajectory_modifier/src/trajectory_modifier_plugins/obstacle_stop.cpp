@@ -222,17 +222,14 @@ bool ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
   };
 
   constexpr double stop_velocity_threshold = 0.01;
-
-  if (params_.duplicate_check_threshold > std::numeric_limits<double>::epsilon()) {
-    auto checked_distance = 0.0;
-    for (size_t i = 1; i < traj_points.size(); ++i) {
-      const auto & curr = traj_points.at(i);
-      const auto & prev = traj_points.at(i - 1);
-      checked_distance += autoware_utils::calc_distance2d(curr.pose.position, prev.pose.position);
-      if (curr.longitudinal_velocity_mps > stop_velocity_threshold) continue;
-      if (checked_distance < target_stop_point_arc_length) {
-        return skip("Preceding stop point exists");
-      }
+  auto checked_distance = 0.0;
+  for (size_t i = 1; i < traj_points.size(); ++i) {
+    const auto & curr = traj_points.at(i);
+    const auto & prev = traj_points.at(i - 1);
+    checked_distance += autoware_utils::calc_distance2d(curr.pose.position, prev.pose.position);
+    if (checked_distance > target_stop_point_arc_length + params_.duplicate_check_threshold) break;
+    if (curr.longitudinal_velocity_mps < stop_velocity_threshold) {
+      return skip("Preceding (or duplicate) stop point exists");
     }
   }
 
