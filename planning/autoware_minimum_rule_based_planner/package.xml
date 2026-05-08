@@ -29,7 +29,6 @@
   <depend>autoware_qp_interface</depend>
   <depend>autoware_trajectory</depend>
   <depend>autoware_trajectory_modifier</depend>
-  <depend>autoware_trajectory_optimizer</depend>
   <depend>autoware_utils</depend>
   <depend>autoware_utils_debug</depend>
   <depend>autoware_utils_uuid</depend>

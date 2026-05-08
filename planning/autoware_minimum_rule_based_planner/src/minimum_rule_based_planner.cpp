@@ -14,8 +14,6 @@
 
 #include "minimum_rule_based_planner.hpp"
 
-#include "trajectory_min_rule_based_path_optimizer.hpp"
-
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
@@ -35,15 +33,31 @@ namespace autoware::minimum_rule_based_planner
 
 namespace
 {
-trajectory_optimizer::TrajectoryOptimizerData make_optimizer_data(
-  const MinimumRuleBasedPlannerNode::InputData & input_data)
+visualization_msgs::msg::Marker make_line_strip_marker(
+  const lanelet::ConstLineString3d & line_string, const std_msgs::msg::Header & header,
+  const std::string & ns, int id, float r, float g, float b)
 {
-  trajectory_optimizer::TrajectoryOptimizerData data;
-  data.current_odometry = *input_data.odometry_ptr;
-  if (input_data.acceleration_ptr) {
-    data.current_acceleration = *input_data.acceleration_ptr;
+  visualization_msgs::msg::Marker m;
+  m.header = header;
+  m.ns = ns;
+  m.id = id;
+  m.type = visualization_msgs::msg::Marker::LINE_STRIP;
+  m.action = visualization_msgs::msg::Marker::ADD;
+  m.scale.x = 0.1;
+  m.color.r = r;
+  m.color.g = g;
+  m.color.b = b;
+  m.color.a = 0.8f;
+  m.pose.orientation.w = 1.0;
+  m.points.reserve(line_string.size());
+  for (const auto & p : line_string) {
+    geometry_msgs::msg::Point pt;
+    pt.x = p.x();
+    pt.y = p.y();
+    pt.z = p.z();
+    m.points.push_back(pt);
   }
-  return data;
+  return m;
 }
 }  // namespace
 
@@ -65,6 +79,10 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   pub_debug_trajectory_ = this->create_publisher<Trajectory>("~/debug/trajectory", 1);
   pub_debug_shifted_trajectory_ =
     this->create_publisher<Trajectory>("~/debug/shifted_trajectory", 1);
+  pub_debug_lane_boundaries_ =
+    this->create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/lane_boundaries", 1);
+  pub_debug_uncrossable_boundaries_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+    "~/debug/uncrossable_boundaries", 1);
   debug_processing_time_detail_pub_ =
     this->create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
       "~/debug/processing_time_detail_ms", 1);
@@ -87,20 +105,13 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
 
 void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
 {
-  // The path optimizer (TrajectoryMinRuleBasedPathOptimizer) used to be loaded
-  // through pluginlib because it lived in autoware_trajectory_optimizer. Now
-  // that the plugin source is part of this package, we instantiate it directly
-  // — no class loader, no symbol lookup at runtime.
   {
     const std::string name = "min_rule_based_path_optimizer";
-    auto plugin = std::make_shared<
-      autoware::trajectory_optimizer::plugin::TrajectoryMinRuleBasedPathOptimizer>();
-    plugin->initialize(name, this, time_keeper_);
-    pub_debug_optimizer_module_trajectories_[plugin->get_name()] =
+    path_smoother_ = std::make_unique<PathOptimizer>(name, this);
+    pub_debug_optimizer_module_trajectories_[path_smoother_->get_name()] =
       this->create_publisher<Trajectory>(
-        "~/debug/optimizer/" + plugin->get_name() + "/trajectory", 1);
-    path_smoother_ = std::move(plugin);
-    RCLCPP_INFO(get_logger(), "Loaded trajectory %s plugin", name.c_str());
+        "~/debug/optimizer/" + path_smoother_->get_name() + "/trajectory", 1);
+    RCLCPP_INFO(get_logger(), "Loaded %s", name.c_str());
   }
 
   // Set up velocity optimizer
@@ -287,17 +298,20 @@ void MinimumRuleBasedPlannerNode::on_timer()
   // 5. Smooth path
   auto smoothed_path = [&]() {
     autoware_utils_debug::ScopedTimeTrack st("smoothing_path", *time_keeper_);
-    auto optimizer_data = make_optimizer_data(input_data);
 
-    // The path_smoother_ plugin (TrajectoryMinRuleBasedPathOptimizer) does not
-    // consult any flag in TrajectoryOptimizerParams; loading the plugin at all
-    // is the gate, so we just hand over a default-constructed params struct.
-    trajectory_optimizer::TrajectoryOptimizerParams optimizer_params;
+    // Layer 1 + 2 of the uncrossable_boundary active-set pipeline: cache hit
+    // (rebuilt on map change) + AABB filter against the trajectory bounding
+    // box. The conservative `uncrossable_boundary_near_path_radius_m` already
+    // covers the per-stage radius applied later in PathOptimizer, so we
+    // reuse the same param for both visualization and optimisation feed.
+    const auto uncrossable_segments = extract_uncrossable_segments_for_optimization(
+      traj_from_path, params_.debug.uncrossable_boundary_near_path_radius_m);
 
     auto trajectory_points = traj_from_path.points;
     if (path_smoother_) {
       autoware_utils_debug::ScopedTimeTrack st(path_smoother_->get_name(), *time_keeper_);
-      path_smoother_->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
+      path_smoother_->optimize_trajectory(
+        trajectory_points, *input_data.odometry_ptr, uncrossable_segments);
       if (params_.debug.enable_optimizer_trajectory) {
         publish_debug_trajectory(
           pub_debug_optimizer_module_trajectories_, path_smoother_, trajectory_points,
@@ -394,6 +408,12 @@ void MinimumRuleBasedPlannerNode::on_timer()
   if (params_.debug.enable_output_trajectory) {
     pub_debug_trajectory_->publish(smoothed_traj);
   }
+  if (params_.debug.enable_lane_boundaries) {
+    publish_lane_boundaries_marker();
+  }
+  if (params_.debug.enable_uncrossable_boundaries) {
+    publish_uncrossable_boundaries_marker(traj_from_path);
+  }
 }
 
 MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()
@@ -479,6 +499,195 @@ void MinimumRuleBasedPlannerNode::update_params()
   for (auto & modifier : modifier_plugins_) {
     modifier->update_params(params_);
   }
+}
+
+void MinimumRuleBasedPlannerNode::publish_lane_boundaries_marker() const
+{
+  const auto & route_context = path_planner_->route_context();
+  if (route_context.route_lanelets.empty()) {
+    return;
+  }
+
+  std_msgs::msg::Header header;
+  header.frame_id =
+    route_context.route_frame_id.empty() ? std::string{"map"} : route_context.route_frame_id;
+  header.stamp = this->now();
+
+  visualization_msgs::msg::MarkerArray msg;
+
+  visualization_msgs::msg::Marker clear_m;
+  clear_m.header = header;
+  clear_m.action = visualization_msgs::msg::Marker::DELETEALL;
+  msg.markers.push_back(clear_m);
+
+  int id = 0;
+  for (const auto & lanelet : route_context.route_lanelets) {
+    msg.markers.push_back(make_line_strip_marker(
+      lanelet.leftBound(), header, "lane_boundary_left", id, 1.0f, 0.4f, 0.4f));
+    msg.markers.push_back(make_line_strip_marker(
+      lanelet.rightBound(), header, "lane_boundary_right", id, 0.4f, 0.4f, 1.0f));
+    ++id;
+  }
+
+  pub_debug_lane_boundaries_->publish(msg);
+}
+
+void MinimumRuleBasedPlannerNode::update_uncrossable_cache_if_needed()
+{
+  const auto & route_context = path_planner_->route_context();
+  const auto & types_to_detect = params_.debug.uncrossable_boundary_types;
+
+  // Cache key: (map bin pointer, type list). Rebuild only when either changes.
+  if (
+    cached_uncrossable_map_bin_ == lanelet_map_bin_ptr_ &&
+    cached_uncrossable_types_ == types_to_detect) {
+    return;
+  }
+
+  cached_uncrossable_lines_.clear();
+  cached_uncrossable_map_bin_ = lanelet_map_bin_ptr_;
+  cached_uncrossable_types_ = types_to_detect;
+
+  if (!route_context.lanelet_map_ptr || types_to_detect.empty()) {
+    return;
+  }
+
+  for (const auto & ls : route_context.lanelet_map_ptr->lineStringLayer) {
+    const auto type = ls.attributeOr(lanelet::AttributeName::Type, std::string{});
+    if (
+      type.empty() ||
+      std::find(types_to_detect.begin(), types_to_detect.end(), type) == types_to_detect.end()) {
+      continue;
+    }
+    const auto basic_ls = ls.basicLineString();
+    if (basic_ls.empty()) {
+      continue;
+    }
+    CachedUncrossableLine entry;
+    entry.line_string = ls;
+    entry.min_x = entry.max_x = basic_ls.front().x();
+    entry.min_y = entry.max_y = basic_ls.front().y();
+    for (const auto & p : basic_ls) {
+      entry.min_x = std::min(entry.min_x, p.x());
+      entry.max_x = std::max(entry.max_x, p.x());
+      entry.min_y = std::min(entry.min_y, p.y());
+      entry.max_y = std::max(entry.max_y, p.y());
+    }
+    cached_uncrossable_lines_.push_back(std::move(entry));
+  }
+}
+
+std::vector<UncrossableSegment>
+MinimumRuleBasedPlannerNode::extract_uncrossable_segments_for_optimization(
+  const Trajectory & ref_trajectory, double radius_m)
+{
+  std::vector<UncrossableSegment> result;
+  if (ref_trajectory.points.empty()) {
+    return result;
+  }
+  update_uncrossable_cache_if_needed();
+  if (cached_uncrossable_lines_.empty()) {
+    return result;
+  }
+
+  // Trajectory AABB expanded by radius_m. Mirrors the publish-side filter so
+  // visualization and optimization consider the same neighbourhood when the
+  // radii match.
+  double tx_min = ref_trajectory.points.front().pose.position.x;
+  double tx_max = tx_min;
+  double ty_min = ref_trajectory.points.front().pose.position.y;
+  double ty_max = ty_min;
+  for (const auto & pt : ref_trajectory.points) {
+    tx_min = std::min(tx_min, pt.pose.position.x);
+    tx_max = std::max(tx_max, pt.pose.position.x);
+    ty_min = std::min(ty_min, pt.pose.position.y);
+    ty_max = std::max(ty_max, pt.pose.position.y);
+  }
+  const double bx_min = tx_min - radius_m;
+  const double bx_max = tx_max + radius_m;
+  const double by_min = ty_min - radius_m;
+  const double by_max = ty_max + radius_m;
+
+  for (const auto & e : cached_uncrossable_lines_) {
+    if (e.max_x < bx_min || e.min_x > bx_max) continue;
+    if (e.max_y < by_min || e.min_y > by_max) continue;
+    const auto & ls = e.line_string;
+    if (ls.size() < 2) continue;
+    for (size_t i = 0; i + 1 < ls.size(); ++i) {
+      UncrossableSegment seg;
+      seg.p_a.x = ls[i].x();
+      seg.p_a.y = ls[i].y();
+      seg.p_a.z = 0.0;
+      seg.p_b.x = ls[i + 1].x();
+      seg.p_b.y = ls[i + 1].y();
+      seg.p_b.z = 0.0;
+      result.push_back(seg);
+    }
+  }
+  return result;
+}
+
+void MinimumRuleBasedPlannerNode::publish_uncrossable_boundaries_marker(
+  const Trajectory & ref_trajectory)
+{
+  // Skip the work entirely when no one is listening — typical for headless runs
+  // and avoids the AABB sweep when rviz isn't even subscribed.
+  if (pub_debug_uncrossable_boundaries_->get_subscription_count() == 0) {
+    return;
+  }
+
+  if (ref_trajectory.points.empty()) {
+    return;
+  }
+
+  update_uncrossable_cache_if_needed();
+  if (cached_uncrossable_lines_.empty()) {
+    return;
+  }
+
+  const auto & route_context = path_planner_->route_context();
+  std_msgs::msg::Header header;
+  header.frame_id =
+    route_context.route_frame_id.empty() ? std::string{"map"} : route_context.route_frame_id;
+  header.stamp = this->now();
+
+  visualization_msgs::msg::MarkerArray msg;
+
+  visualization_msgs::msg::Marker clear_m;
+  clear_m.header = header;
+  clear_m.action = visualization_msgs::msg::Marker::DELETEALL;
+  msg.markers.push_back(clear_m);
+
+  // Expand the path AABB by the configured radius. Any uncrossable boundary
+  // whose AABB intersects this rectangle is guaranteed to include every
+  // boundary within `r` of any path point (the converse — that everything
+  // selected is within `r` — is intentionally not guaranteed; expanded-bbox
+  // is the cheap conservative filter).
+  double traj_min_x = ref_trajectory.points.front().pose.position.x;
+  double traj_max_x = traj_min_x;
+  double traj_min_y = ref_trajectory.points.front().pose.position.y;
+  double traj_max_y = traj_min_y;
+  for (const auto & pt : ref_trajectory.points) {
+    traj_min_x = std::min(traj_min_x, pt.pose.position.x);
+    traj_max_x = std::max(traj_max_x, pt.pose.position.x);
+    traj_min_y = std::min(traj_min_y, pt.pose.position.y);
+    traj_max_y = std::max(traj_max_y, pt.pose.position.y);
+  }
+  const double r = params_.debug.uncrossable_boundary_near_path_radius_m;
+  const double box_min_x = traj_min_x - r;
+  const double box_max_x = traj_max_x + r;
+  const double box_min_y = traj_min_y - r;
+  const double box_max_y = traj_max_y + r;
+
+  int id = 0;
+  for (const auto & e : cached_uncrossable_lines_) {
+    if (e.max_x < box_min_x || e.min_x > box_max_x) continue;
+    if (e.max_y < box_min_y || e.min_y > box_max_y) continue;
+    msg.markers.push_back(make_line_strip_marker(
+      e.line_string, header, "uncrossable_boundary", id++, 1.0f, 0.6f, 0.0f));
+  }
+
+  pub_debug_uncrossable_boundaries_->publish(msg);
 }
 
 }  // namespace autoware::minimum_rule_based_planner

@@ -15,7 +15,7 @@
 #ifndef MINIMUM_RULE_BASED_PLANNER_HPP_
 #define MINIMUM_RULE_BASED_PLANNER_HPP_
 
-#include "autoware/trajectory_optimizer/trajectory_optimizer_structs.hpp"
+#include "path_optimizer.hpp"
 #include "path_planner.hpp"
 #include "velocity_smoother.hpp"
 
@@ -26,6 +26,8 @@
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
+
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <map>
 #include <memory>
@@ -98,7 +100,7 @@ private:
    */
   void load_optimizer_plugins();
 
-  std::shared_ptr<OptimizerPluginInterface> path_smoother_;
+  std::unique_ptr<PathOptimizer> path_smoother_;
   std::unique_ptr<VelocitySmoother> velocity_smoother_;
   std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
     pub_debug_optimizer_module_trajectories_;
@@ -168,6 +170,48 @@ private:
   rclcpp::Publisher<PathWithLaneId>::SharedPtr pub_debug_path_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_lane_boundaries_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+    pub_debug_uncrossable_boundaries_;
+
+  // Publishes route lanelets' left/right bounds as LINE_STRIP markers for
+  // visual confirmation in rviz. Marker namespace: "lane_boundary_left" /
+  // "lane_boundary_right". Skips silently if route_context has no lanelets.
+  void publish_lane_boundaries_marker() const;
+
+  // Publishes linestrings whose type-attribute matches
+  // params_.debug.uncrossable_boundary_types (e.g. "road_border", "curbstone")
+  // as LINE_STRIP markers, restricted to linestrings whose AABB intersects
+  // the AABB of `ref_trajectory` expanded by
+  // params_.debug.uncrossable_boundary_near_path_radius_m. This guarantees
+  // all uncrossable boundaries within that radius of any path point are
+  // included (and possibly some slightly beyond — the conservative
+  // expanded-bbox filter is intentional). The matching + bbox precomputation
+  // is cached and rebuilt only when the map pointer or type list changes;
+  // per-cycle work is the cheap AABB filter.
+  void publish_uncrossable_boundaries_marker(const Trajectory & ref_trajectory);
+
+  struct CachedUncrossableLine
+  {
+    lanelet::ConstLineString3d line_string;
+    double min_x{0.0};
+    double max_x{0.0};
+    double min_y{0.0};
+    double max_y{0.0};
+  };
+  void update_uncrossable_cache_if_needed();
+
+  // Extract uncrossable_boundary 2D segments for the optimizer (Layer 1+2 of
+  // the active-set pipeline: cache-hit + AABB filter against the trajectory
+  // bounding box expanded by `radius_m`). Each polyline that survives the
+  // AABB test is broken into its constituent segments. Caller owns the
+  // resulting vector; PathOptimizer runs Layers 3-6 on it.
+  std::vector<UncrossableSegment> extract_uncrossable_segments_for_optimization(
+    const Trajectory & ref_trajectory, double radius_m);
+
+  LaneletMapBin::ConstSharedPtr cached_uncrossable_map_bin_;
+  std::vector<std::string> cached_uncrossable_types_;
+  std::vector<CachedUncrossableLine> cached_uncrossable_lines_;
   /** @} */
 };
 

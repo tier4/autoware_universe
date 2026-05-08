@@ -90,3 +90,7 @@
       enable_optimizer_trajectory: true
       enable_modifier_trajectory: true
       enable_output_trajectory: true
+      enable_lane_boundaries: true
+      enable_uncrossable_boundaries: true
+      uncrossable_boundary_types: [road_border]
+      uncrossable_boundary_near_path_radius_m: 10.0

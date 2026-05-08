@@ -46,4 +46,3 @@ A minimum rule-based trajectory planner that generates safe and feasible traject
 Parameters can be set via YAML configuration files in the `config/` directory.
 
 Jerk-filtered smoother parameters are defined in `config/velocity_smoother/jerk_filtered_smoother.param.yaml`.
-EB smoother parameters are defined in `config/trajectory_optimizer_plugins/elastic_band_smoother.param.yaml`.

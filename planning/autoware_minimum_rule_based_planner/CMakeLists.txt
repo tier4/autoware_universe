@@ -20,7 +20,7 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/minimum_rule_based_planner.cpp
   src/path_planner.cpp
   src/velocity_smoother.cpp
-  src/trajectory_min_rule_based_path_optimizer.cpp
+  src/path_optimizer.cpp
 )
 
 target_include_directories(${PROJECT_NAME}_lib PUBLIC

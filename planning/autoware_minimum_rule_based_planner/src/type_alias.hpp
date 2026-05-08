@@ -15,7 +15,6 @@
 #ifndef TYPE_ALIAS_HPP_
 #define TYPE_ALIAS_HPP_
 
-#include "autoware/trajectory_optimizer/trajectory_optimizer_plugins/trajectory_optimizer_plugin_base.hpp"
 #include "plugin_interface.hpp"
 
 #include <autoware/trajectory/path_point_with_lane_id.hpp>
@@ -58,9 +57,6 @@ using PathPointTrajectory = autoware::experimental::trajectory::Trajectory<PathP
 using TrajectoryPointTrajectory = autoware::experimental::trajectory::Trajectory<TrajectoryPoint>;
 
 using TrajectoryClass = PathPointTrajectory;
-
-using OptimizerPluginInterface =
-  autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase;
 
 using ModifierPluginLoader =
   pluginlib::ClassLoader<minimum_rule_based_planner::plugin::PluginInterface>;

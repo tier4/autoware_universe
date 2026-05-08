@@ -221,6 +221,26 @@ minimum_rule_based_planner:
       default_value: true
       description: publish debug modifier module trajectories
 
+    enable_lane_boundaries:
+      type: bool
+      default_value: true
+      description: publish route lane boundaries as LINE_STRIP markers
+
+    enable_uncrossable_boundaries:
+      type: bool
+      default_value: true
+      description: publish uncrossable boundaries (curbs, road borders, etc.) as LINE_STRIP markers
+
+    uncrossable_boundary_types:
+      type: string_array
+      default_value: [road_border]
+      description: linestring type-attribute values to treat as uncrossable boundaries
+
+    uncrossable_boundary_near_path_radius_m:
+      type: double
+      default_value: 10.0
+      description: include uncrossable boundary linestrings whose AABB intersects the path AABB expanded by this radius [m]
+
   # Post-optimization resample parameters
   post_resample:
     max_trajectory_length:

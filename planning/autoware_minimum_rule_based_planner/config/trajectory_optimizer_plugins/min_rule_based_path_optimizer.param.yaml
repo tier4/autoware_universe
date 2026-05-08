@@ -53,3 +53,20 @@
         elapsed_time_warn_threshold_ms: 30.0
         publish_replay_fixture_on_failure: false
         enable_debug_topics: true
+
+      uncrossable_boundary:
+        # uncrossable_boundary（縁石・道路境界・壁など）に対する衝突回避制約の active-set
+        # 選択パラメータ。現状は per-stage の半空間制約候補を選んでデバッグ可視化するのみで、
+        # acados OCP には未接続。詳細は
+        # my_docs/min_rule_based_path_optimizer_uncrossable_boundary_constraints.md を参照。
+        enable: true
+        # 「3 円のうち最近接円」までの perpendicular distance がこの値より遠い segment は
+        # drop（SQP step を超えて active になりえないので不要）[m]。これが segment 採用の
+        # 唯一の retention radius。
+        clearance_drop_threshold_m: 2.0
+        # stage 中心からの azimuth で M = K_max_per_stage 個の角度ビンに分割し、各ビンで
+        # 最近接 1 segment を採用。1 stage あたりの最大 segment 数 = K_max_per_stage。
+        K_max_per_stage: 4
+        # 円半径に追加する安全マージン [m]。可視化される半空間ラインも segment から
+        # この距離だけ内側にオフセットされる。
+        margin_m: 0.10
