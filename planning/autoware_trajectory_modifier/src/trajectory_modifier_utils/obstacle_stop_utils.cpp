@@ -462,18 +462,19 @@ void ObjectFilter::filter_by_target_area(
   const MultiPolygon2d & target_area, MultiPolygon2d & target_polygons)
 {
   constexpr double time_buffer = 1.0;
-  constexpr double direction_th = 0.707;
+  constexpr double lat_vel_th = 1.0;
   auto is_exiting = [&](const auto & object) -> bool {
     const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
     const auto nearest_seg =
       motion_utils::findNearestSegmentIndex(trajectory_points, object_pose.position);
     const auto p1 = trajectory_points.at(nearest_seg).pose.position;
     const auto p2 = trajectory_points.at(nearest_seg + 1).pose.position;
-    const auto traj_dir = Eigen::Vector2d(p2.x - p1.x, p2.y - p1.y).normalized();
+    const auto traj_lat_dir = Eigen::Vector2d(p2.y - p1.y, p1.x - p2.x).normalized();
     const auto obj_rot = Eigen::Rotation2Dd(tf2::getYaw(object_pose.orientation));
     const auto obj_vel = object.kinematics.initial_twist_with_covariance.twist.linear;
-    const auto obj_vel_dir = (obj_rot * Eigen::Vector2d(obj_vel.x, obj_vel.y)).normalized();
-    if (std::abs(obj_vel_dir.dot(traj_dir)) > direction_th) return false;
+    const auto obj_vel_vector = (obj_rot * Eigen::Vector2d(obj_vel.x, obj_vel.y));
+    const auto obj_lat_vel = obj_vel_vector.dot(traj_lat_dir);
+    if (std::abs(obj_lat_vel) < lat_vel_th) return false;
     if (object.kinematics.predicted_paths.empty()) return true;
     const auto time_to_obj_current_pos =
       rclcpp::Duration(trajectory_points.at(nearest_seg).time_from_start).seconds() - time_buffer;
