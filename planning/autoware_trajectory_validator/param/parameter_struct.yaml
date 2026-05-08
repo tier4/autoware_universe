@@ -308,7 +308,7 @@ validator:
       read_only: false
     boundary_types:
       type: string_array
-      default_value: ["road_border"]
+      default_value: [road_border]
       description: boundary types to detect
       read_only: true
 
