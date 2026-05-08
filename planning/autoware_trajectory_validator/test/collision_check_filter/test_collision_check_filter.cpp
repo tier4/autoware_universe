@@ -352,7 +352,7 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
   const auto pet_collision_param_map = create_per_class_param_map(pet_collision_params);
   const auto drac_param_map = create_per_class_param_map(drac_params);
   const auto result = collision_timing_assessment::assess(
-    ego_path, context, pet_collision_params, pet_collision_param_map, drac_params, drac_param_map,
+    ego_path, context, pet_collision_param_map, drac_param_map,
     validator::Params::CollisionCheck::GlobalSetting{}, vehicle_info);
 
   EXPECT_TRUE(result.planned_speed_findings.empty());

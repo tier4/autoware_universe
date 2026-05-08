@@ -115,7 +115,7 @@ template <typename OutT, typename ParamStruct>
 OutT extract_labeled_param(const ParamStruct & params_struct, const std::string & key)
 {
   if constexpr (std::is_aggregate_v<ParamStruct>) {
-    if (key == "base") {
+    if (key == DEFAULT_PARAM_KEY) {
       return static_cast<OutT>(params_struct.base);
     }
 
@@ -985,7 +985,7 @@ Assessment assess_required_deceleration(
 }
 
 Result assess(
-  const TrajectoryPoints & traj_points, const FilterContext & context, const RssParams & rss_params,
+  const TrajectoryPoints & traj_points, const FilterContext & context,
   const std::map<std::string, RssParams> & rss_param_map, double time_resolution,
   VehicleInfo & vehicle_info)
 
@@ -993,6 +993,8 @@ Result assess(
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
     return {};
   }
+
+  const auto rss_params_default = rss_param_map.at(DEFAULT_PARAM_KEY);
 
   const auto ego_trajectory =
     generate_rss_ego_trajectory(traj_points, context, time_resolution, vehicle_info);
@@ -1008,7 +1010,7 @@ Result assess(
       continue;
     }
     const auto assessment = assess_required_deceleration(
-      ego_trajectory, context.odometry->twist.twist, object, rss_params,
+      ego_trajectory, context.odometry->twist.twist, object, rss_params_default,
       context.predicted_objects->header.stamp);
 
     if (
@@ -1017,7 +1019,7 @@ Result assess(
       result.worst_assessment = assessment;
     }
 
-    if (assessment.required_deceleration > -rss_params.error_threshold.ego_acceleration) {
+    if (assessment.required_deceleration > -rss_params_default.error_threshold.ego_acceleration) {
       result.has_violation = true;
       result.violations.push_back(assessment);
     }
@@ -1247,13 +1249,14 @@ std::optional<Finding> find_collision_timing(
 
 std::vector<Finding> assess_planned_speed_collision_timing(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const PetCollisionParams & pet_collision_params,
   const std::map<std::string, PetCollisionParams> & pet_collision_param_map, double time_resolution,
   VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories)
 {
+  const auto pet_collision_params_default = pet_collision_param_map.at(DEFAULT_PARAM_KEY);
+
   const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
-                                            -pet_collision_params.ego_assumed_acceleration +
-                                          pet_collision_params.ego_total_braking_delay;
+                                            -pet_collision_params_default.ego_assumed_acceleration +
+                                          pet_collision_params_default.ego_total_braking_delay;
   auto ego_trajectory = trajectory::generate_ego_trajectory(
     traj_points, context, ego_time_horizon_for_pet, time_resolution, vehicle_info);
 
@@ -1270,15 +1273,15 @@ std::vector<Finding> assess_planned_speed_collision_timing(
     }
 
     if (!is_target_trajectory_type(
-          ObjectTrajectoryGenerationOptions{pet_collision_params},
+          ObjectTrajectoryGenerationOptions{pet_collision_params_default},
           object_trajectory.getObjectIdentification().trajectory_type)) {
       continue;
     }
 
     auto finding = find_collision_timing(
       ego_trajectory, object_trajectory,
-      pet_collision_params.warn_threshold.ego_first_passing_time_gap,
-      -pet_collision_params.warn_threshold.object_first_passing_time_gap, time_resolution);
+      pet_collision_params_default.warn_threshold.ego_first_passing_time_gap,
+      -pet_collision_params_default.warn_threshold.object_first_passing_time_gap, time_resolution);
     if (finding.has_value()) {
       findings.push_back(std::move(finding.value()));
     }
@@ -1289,10 +1292,12 @@ std::vector<Finding> assess_planned_speed_collision_timing(
 
 DracAssessment assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const DracParams & drac_params, const std::map<std::string, DracParams> & drac_param_map,
-  VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories,
+  const std::map<std::string, DracParams> & drac_param_map, VehicleInfo & vehicle_info,
+  const std::vector<TrajectoryData> & object_trajectories,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting)
 {
+  const auto drac_params_default = drac_param_map.at(DEFAULT_PARAM_KEY);
+
   const double ego_time_horizon = rclcpp::Duration(traj_points.back().time_from_start).seconds();
 
   constexpr double DEFAULT_EGO_DECELERATION_STEP = 1.0;
@@ -1311,7 +1316,7 @@ DracAssessment assess_drac(
           global_setting.time_resolution, traj_points, vehicle_info);
       }
       return trajectory::generate_ego_trajectory(
-        context.odometry->twist.twist, drac_params.ego_total_braking_delay, -ego_dec,
+        context.odometry->twist.twist, drac_params_default.ego_total_braking_delay, -ego_dec,
         ego_time_horizon, global_setting.time_resolution, traj_points, vehicle_info);
     }();
 
@@ -1326,7 +1331,7 @@ DracAssessment assess_drac(
       }
 
       if (!is_target_trajectory_type(
-            ObjectTrajectoryGenerationOptions{drac_params},
+            ObjectTrajectoryGenerationOptions{drac_params_default},
             object_trajectory.getObjectIdentification().trajectory_type)) {
         continue;
       }
@@ -1369,46 +1374,49 @@ DracAssessment assess_drac(
 
 Result assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const PetCollisionParams & pet_collision_params,
   const std::map<std::string, PetCollisionParams> & pet_collision_param_map,
-  const DracParams & drac_params, const std::map<std::string, DracParams> & drac_param_map,
+  const std::map<std::string, DracParams> & drac_param_map,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting,
   VehicleInfo & vehicle_info)
 {
+  const auto pet_collision_params_default = pet_collision_param_map.at(DEFAULT_PARAM_KEY);
+  const auto drac_params_default = drac_param_map.at(DEFAULT_PARAM_KEY);
+
   ObjectTrajectoryGenerationOptions required_trajectory_types;
-  if (pet_collision_params.enable_assessment) {
-    required_trajectory_types.merge_with(ObjectTrajectoryGenerationOptions{pet_collision_params});
+  if (pet_collision_params_default.enable_assessment) {
+    required_trajectory_types.merge_with(
+      ObjectTrajectoryGenerationOptions{pet_collision_params_default});
   }
-  if (drac_params.enable_assessment) {
-    required_trajectory_types.merge_with(ObjectTrajectoryGenerationOptions{drac_params});
+  if (drac_params_default.enable_assessment) {
+    required_trajectory_types.merge_with(ObjectTrajectoryGenerationOptions{drac_params_default});
   }
 
   // todo: std::max(pet_collision_params.collision_time_threshold,
   // drac_params.collision_time_threshold)
   const double required_time_horizon =
     rclcpp::Duration(traj_points.back().time_from_start).seconds() +
-    pet_collision_params.warn_threshold.ego_first_passing_time_gap;
+    pet_collision_params_default.warn_threshold.ego_first_passing_time_gap;
   const auto nominal_speed_object_trajectories = generate_object_trajectories(
     context, required_time_horizon, -1.0, global_setting.time_resolution,
     required_trajectory_types);
 
   Result result{};
-  if (!pet_collision_params.enable_assessment) {
+  if (!pet_collision_params_default.enable_assessment) {
     result.planned_speed_findings = {};
   } else {
     result.planned_speed_findings = assess_planned_speed_collision_timing(
-      traj_points, context, pet_collision_params, pet_collision_param_map,
-      global_setting.time_resolution, vehicle_info, nominal_speed_object_trajectories);
+      traj_points, context, pet_collision_param_map, global_setting.time_resolution, vehicle_info,
+      nominal_speed_object_trajectories);
   }
 
-  if (!drac_params.enable_assessment) {
+  if (!drac_params_default.enable_assessment) {
     DracAssessment drac_assessment{0.0, {}};  // dummy
     result.drac_findings = drac_assessment.findings;
     result.drac = drac_assessment.drac;
   } else {
     const auto drac_assessment = assess_drac(
-      traj_points, context, drac_params, drac_param_map, vehicle_info,
-      nominal_speed_object_trajectories, global_setting);
+      traj_points, context, drac_param_map, vehicle_info, nominal_speed_object_trajectories,
+      global_setting);
     result.drac_findings = drac_assessment.findings;
     result.drac = drac_assessment.drac;
   }
@@ -1420,10 +1428,6 @@ Result assess(
 void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
   create_param_maps(params);
-
-  pet_collision_params_ = pet_collision_param_map_.at("base");
-  rss_params_ = rss_param_map_.at("base");
-  drac_params_ = drac_param_map_.at("base");
 
   global_setting_ = params.collision_check.global_setting;
 }
@@ -1654,13 +1658,15 @@ void add_collision_planning_factor(
 
 void process_pet_findings(
   const std::string & validator_name, const std::string & validator_category,
-  const PetCollisionParams & pet_collision_params, ContinuousDetectionTimes & pet_continuous_times,
-  const rclcpp::Time & current_time, const builtin_interfaces::msg::Time & stamp,
-  const geometry_msgs::msg::Pose & ego_pose,
+  const std::map<std::string, PetCollisionParams> & pet_collision_param_map,
+  ContinuousDetectionTimes & pet_continuous_times, const rclcpp::Time & current_time,
+  const builtin_interfaces::msg::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
   const std::vector<collision_timing_assessment::Finding> & findings,
   EvaluationArtifacts & artifacts, const AddDebugMarkers & add_debug_markers,
   const AddPlanningFactor & add_planning_factor)
 {
+  const auto pet_collision_params_default = pet_collision_param_map.at(DEFAULT_PARAM_KEY);
+
   pet_continuous_times.update(current_time, findings, [](const auto & finding) {
     return finding.object_identification.trajectory_id_string();
   });
@@ -1671,8 +1677,8 @@ void process_pet_findings(
   for (const auto & finding : findings) {
     const auto & obj_id = finding.object_identification;
     const bool is_error =
-      finding.pet <= pet_collision_params.error_threshold.ego_first_passing_time_gap &&
-      finding.pet >= -pet_collision_params.error_threshold.object_first_passing_time_gap;
+      finding.pet <= pet_collision_params_default.error_threshold.ego_first_passing_time_gap &&
+      finding.pet >= -pet_collision_params_default.error_threshold.object_first_passing_time_gap;
     const uint8_t metric_level = is_error ? MetricReport::ERROR : MetricReport::WARN;
     if (is_error) {
       artifacts.is_feasible = false;
@@ -1717,23 +1723,25 @@ void process_pet_findings(
 
 void process_drac_findings(
   const std::string & validator_name, const std::string & validator_category,
-  const DracParams & drac_params, ContinuousDetectionTimes & drac_continuous_times,
-  const rclcpp::Time & current_time, const builtin_interfaces::msg::Time & stamp,
-  const geometry_msgs::msg::Pose & ego_pose,
+  const std::map<std::string, DracParams> & drac_param_map,
+  ContinuousDetectionTimes & drac_continuous_times, const rclcpp::Time & current_time,
+  const builtin_interfaces::msg::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
   const collision_timing_assessment::Result & collision_timing_result,
   EvaluationArtifacts & artifacts, const AddDebugMarkers & add_debug_markers,
   const AddPlanningFactor & add_planning_factor)
 {
+  const auto drac_params_default = drac_param_map.at(DEFAULT_PARAM_KEY);
+
   drac_continuous_times.update(
     current_time, collision_timing_result.drac_findings,
     [](const auto & finding) { return finding.object_identification.trajectory_id_string(); });
 
   const bool is_warn =
     collision_timing_result.drac == std::nullopt ||
-    collision_timing_result.drac.value() >= -drac_params.warn_threshold.ego_acceleration;
+    collision_timing_result.drac.value() >= -drac_params_default.warn_threshold.ego_acceleration;
   const bool is_error =
     collision_timing_result.drac == std::nullopt ||
-    collision_timing_result.drac.value() >= -drac_params.error_threshold.ego_acceleration;
+    collision_timing_result.drac.value() >= -drac_params_default.error_threshold.ego_acceleration;
   if (!is_warn) {
     return;
   }
@@ -1780,17 +1788,19 @@ void process_drac_findings(
 void process_rss_violations(
   const std::string & validator_name, const std::string & validator_category,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting,
-  const RssParams & rss_params, const std::map<std::string, RssParams> & rss_param_map,
-  const TrajectoryPoints & traj_points, const FilterContext & context, VehicleInfo & vehicle_info,
+  const std::map<std::string, RssParams> & rss_param_map, const TrajectoryPoints & traj_points,
+  const FilterContext & context, VehicleInfo & vehicle_info,
   ContinuousDetectionTimes & rss_continuous_times, const rclcpp::Time & current_time,
   EvaluationArtifacts & artifacts)
 {
-  if (!rss_params.enable_assessment) {
+  const auto rss_params_default = rss_param_map.at(DEFAULT_PARAM_KEY);
+
+  if (!rss_params_default.enable_assessment) {
     return;
   }
 
   const auto rss_result = rss_deceleration::assess(
-    traj_points, context, rss_params, rss_param_map, global_setting.time_resolution, vehicle_info);
+    traj_points, context, rss_param_map, global_setting.time_resolution, vehicle_info);
   rss_continuous_times.update(current_time, rss_result.violations, [](const auto & violation) {
     return violation.object.object_id_string();
   });
@@ -1840,8 +1850,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   EvaluationArtifacts artifacts{};
   const rclcpp::Time current_time = context.odometry->header.stamp;
   const auto collision_timing_result = collision_timing_assessment::assess(
-    traj_points, context, pet_collision_params_, pet_collision_param_map_, drac_params_,
-    drac_param_map_, global_setting_, *vehicle_info_ptr_);
+    traj_points, context, pet_collision_param_map_, drac_param_map_, global_setting_,
+    *vehicle_info_ptr_);
   const auto add_debug_markers_cb =
     [this](
       const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
@@ -1860,16 +1870,16 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
         planning_factors);
     };
   process_pet_findings(
-    get_name(), category(), pet_collision_params_, pet_continuous_times_, current_time,
+    get_name(), category(), pet_collision_param_map_, pet_continuous_times_, current_time,
     context.odometry->header.stamp, context.odometry->pose.pose,
     collision_timing_result.planned_speed_findings, artifacts, add_debug_markers_cb,
     add_planning_factor_cb);
   process_drac_findings(
-    get_name(), category(), drac_params_, drac_continuous_times_, current_time,
+    get_name(), category(), drac_param_map_, drac_continuous_times_, current_time,
     context.odometry->header.stamp, context.odometry->pose.pose, collision_timing_result, artifacts,
     add_debug_markers_cb, add_planning_factor_cb);
   process_rss_violations(
-    get_name(), category(), global_setting_, rss_params_, rss_param_map_, traj_points, context,
+    get_name(), category(), global_setting_, rss_param_map_, traj_points, context,
     *vehicle_info_ptr_, rss_continuous_times_, current_time, artifacts);
   if (!artifacts.error_msg.empty()) {
     add_error_text_marker(
