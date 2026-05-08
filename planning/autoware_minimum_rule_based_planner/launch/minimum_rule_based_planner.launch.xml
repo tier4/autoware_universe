@@ -8,8 +8,8 @@
 
   <!-- Trajectory optimizer plugin parameter files -->
   <arg
-    name="minimum_rule_base_planner_elastic_band_smoother_param_path"
-    default="$(find-pkg-share autoware_minimum_rule_based_planner)/config/trajectory_optimizer_plugins/elastic_band_smoother.param.yaml"
+    name="minimum_rule_base_planner_min_rule_based_path_optimizer_param_path"
+    default="$(find-pkg-share autoware_minimum_rule_based_planner)/config/trajectory_optimizer_plugins/min_rule_based_path_optimizer.param.yaml"
   />
 
   <!-- Velocity smoother parameter file -->
@@ -42,7 +42,7 @@
     <!-- Load parameter files -->
     <param from="$(var common_param_path)"/>
     <param from="$(var minimum_rule_base_planner_param_path)" allow_substs="true"/>
-    <param from="$(var minimum_rule_base_planner_elastic_band_smoother_param_path)" allow_substs="true"/>
+    <param from="$(var minimum_rule_base_planner_min_rule_based_path_optimizer_param_path)" allow_substs="true"/>
     <param from="$(var minimum_rule_base_planner_jerk_filtered_smoother_param_path)" allow_substs="true"/>
     <param name="modifier_launch_modules" value="$(var minimum_rule_base_planner_trajectory_modifier_launch_modules)"/>
 

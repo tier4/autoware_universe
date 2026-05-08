@@ -14,6 +14,8 @@
 
 #include "minimum_rule_based_planner.hpp"
 
+#include "trajectory_min_rule_based_path_optimizer.hpp"
+
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
@@ -85,30 +87,21 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
 
 void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
 {
-  // Create plugin loader for autoware_trajectory_optimizer
-  plugin_loader_ = std::make_unique<OptimizerPluginLoader>(
-    "autoware_trajectory_optimizer",
-    "autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase");
-
-  auto try_load_optimizer_plugin = [&](const std::string & plugin_path, const std::string & name)
-    -> std::shared_ptr<OptimizerPluginInterface> {
-    try {
-      auto plugin = plugin_loader_->createSharedInstance(plugin_path);
-      plugin->initialize(name, this, time_keeper_);
-      pub_debug_optimizer_module_trajectories_[plugin->get_name()] =
-        this->create_publisher<Trajectory>(
-          "~/debug/optimizer/" + plugin->get_name() + "/trajectory", 1);
-      RCLCPP_INFO(get_logger(), "Loaded trajectory %s plugin", name.c_str());
-      return plugin;
-    } catch (const pluginlib::PluginlibException & ex) {
-      RCLCPP_ERROR(
-        get_logger(), "Failed to load trajectory %s plugin: %s", name.c_str(), ex.what());
-      return nullptr;
-    }
-  };
-
-  path_smoother_ = try_load_optimizer_plugin(
-    "autoware::trajectory_optimizer::plugin::TrajectoryEBSmootherOptimizer", "eb_smoother");
+  // The path optimizer (TrajectoryMinRuleBasedPathOptimizer) used to be loaded
+  // through pluginlib because it lived in autoware_trajectory_optimizer. Now
+  // that the plugin source is part of this package, we instantiate it directly
+  // — no class loader, no symbol lookup at runtime.
+  {
+    const std::string name = "min_rule_based_path_optimizer";
+    auto plugin = std::make_shared<
+      autoware::trajectory_optimizer::plugin::TrajectoryMinRuleBasedPathOptimizer>();
+    plugin->initialize(name, this, time_keeper_);
+    pub_debug_optimizer_module_trajectories_[plugin->get_name()] =
+      this->create_publisher<Trajectory>(
+        "~/debug/optimizer/" + plugin->get_name() + "/trajectory", 1);
+    path_smoother_ = std::move(plugin);
+    RCLCPP_INFO(get_logger(), "Loaded trajectory %s plugin", name.c_str());
+  }
 
   // Set up velocity optimizer
   // NOTE(odashima):
@@ -224,12 +217,15 @@ void MinimumRuleBasedPlannerNode::on_timer()
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  auto publish_debug_trajectory =
-    [](const auto & publisher_map, const auto & plugin, const TrajectoryPoints & points) {
-      Trajectory traj;
-      traj.points = points;
-      publisher_map.at(plugin->get_name())->publish(traj);
-    };
+  auto publish_debug_trajectory = [](
+                                    const auto & publisher_map, const auto & plugin,
+                                    const TrajectoryPoints & points,
+                                    const std_msgs::msg::Header & header) {
+    Trajectory traj;
+    traj.header = header;
+    traj.points = points;
+    publisher_map.at(plugin->get_name())->publish(traj);
+  };
 
   // 1. Check data availability
   const auto input_data = take_data();
@@ -293,8 +289,10 @@ void MinimumRuleBasedPlannerNode::on_timer()
     autoware_utils_debug::ScopedTimeTrack st("smoothing_path", *time_keeper_);
     auto optimizer_data = make_optimizer_data(input_data);
 
+    // The path_smoother_ plugin (TrajectoryMinRuleBasedPathOptimizer) does not
+    // consult any flag in TrajectoryOptimizerParams; loading the plugin at all
+    // is the gate, so we just hand over a default-constructed params struct.
     trajectory_optimizer::TrajectoryOptimizerParams optimizer_params;
-    optimizer_params.use_eb_smoother = true;
 
     auto trajectory_points = traj_from_path.points;
     if (path_smoother_) {
@@ -302,7 +300,8 @@ void MinimumRuleBasedPlannerNode::on_timer()
       path_smoother_->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
       if (params_.debug.enable_optimizer_trajectory) {
         publish_debug_trajectory(
-          pub_debug_optimizer_module_trajectories_, path_smoother_, trajectory_points);
+          pub_debug_optimizer_module_trajectories_, path_smoother_, trajectory_points,
+          traj_from_path.header);
       }
     }
 
@@ -320,7 +319,8 @@ void MinimumRuleBasedPlannerNode::on_timer()
       modifier->publish_planning_factor();
       if (params_.debug.enable_modifier_trajectory) {
         publish_debug_trajectory(
-          pub_debug_modifier_module_trajectories_, modifier, smoothed_path.points);
+          pub_debug_modifier_module_trajectories_, modifier, smoothed_path.points,
+          smoothed_path.header);
       }
     }
   }

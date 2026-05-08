@@ -2,10 +2,15 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_minimum_rule_based_planner)
 
 find_package(autoware_cmake REQUIRED)
+find_package(acados REQUIRED)
 autoware_package()
 
 find_package(OpenCV REQUIRED)
 find_package(magic_enum CONFIG REQUIRED)
+
+# Time-axis kinematic-feasibility acados solver (private to this package):
+# Python codegen at build time (add_custom_command). See src/acados_mpt/CMakeLists.txt.
+add_subdirectory(src/acados_mpt)
 
 generate_parameter_library(minimum_rule_based_planner_parameters
   param/minimum_rule_based_planner_parameters.yaml
@@ -15,10 +20,15 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/minimum_rule_based_planner.cpp
   src/path_planner.cpp
   src/velocity_smoother.cpp
+  src/trajectory_min_rule_based_path_optimizer.cpp
 )
 
 target_include_directories(${PROJECT_NAME}_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/plugins>
+)
+
+target_include_directories(${PROJECT_NAME}_lib PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 target_include_directories(${PROJECT_NAME}_lib SYSTEM PUBLIC
@@ -28,6 +38,7 @@ target_include_directories(${PROJECT_NAME}_lib SYSTEM PUBLIC
 target_link_libraries(${PROJECT_NAME}_lib
   ${OpenCV_LIBRARIES}
   minimum_rule_based_planner_parameters
+  acados_interface_time
 )
 
 # Suppress deprecated-declarations warning from parameter_traits library

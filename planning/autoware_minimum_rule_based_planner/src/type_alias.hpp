@@ -61,7 +61,6 @@ using TrajectoryClass = PathPointTrajectory;
 
 using OptimizerPluginInterface =
   autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase;
-using OptimizerPluginLoader = pluginlib::ClassLoader<OptimizerPluginInterface>;
 
 using ModifierPluginLoader =
   pluginlib::ClassLoader<minimum_rule_based_planner::plugin::PluginInterface>;

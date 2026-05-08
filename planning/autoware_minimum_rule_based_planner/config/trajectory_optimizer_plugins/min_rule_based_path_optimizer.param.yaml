@@ -1,0 +1,52 @@
+/**:
+  ros__parameters:
+    min_rule_based_path_optimizer:
+      horizon:
+        # 1 stage あたりの最大物理時間 [s]。実行時 dt = min(dt_max_s, s_max / (N * v_ref))。
+        # 入力経路が短い／速度が低いほど dt が縮み、stage N が概ね経路終点に対応する。
+        # 終端重み W_e は「経路終点での追従重み」として効く。
+        dt_max_s: 0.1
+        # v_ref 推定の下限 [m/s]。停止線等で平均速度 0 になっても dt が発散しないように。
+        v_ref_floor_mps: 0.5
+
+      vehicle:
+        # vehicle_info から自動取得：wheel_base_m, max_steer_angle_rad
+        steer_margin_rad: 0.02       # δ_max からのマージン（数値安定化用）
+
+      input:
+        # |dδ/dt|（実行時可変、物理単位 rad/s）
+        u_delta_max_rad_per_s: 1.0
+        # 縦速度 v の入力ボックス [m/s]。下限を 0.0 にすると停止解を許容する。
+        v_min_mps: 0.0
+        v_max_mps: 20.0
+
+      weights:
+        # Out-In-Out 誘発の主軸：terminal を stage より十分大きくすると
+        # solver は経路終点を重視して中間で滑らかなカーブを取りに行く。
+        # （terminal / stage 比 ≒ 100〜200 が目安）
+        stage:
+          position_xy: 0.05          # 中間 (X, Y) 追従重み
+          yaw: 0.01                  # 中間 ψ 追従重み
+          delta: 0.5                 # δ 絶対値の正則化（小さく曲がる方向に効く）
+          steer_rate: 5.0            # u_delta = dδ/dt（時刻あたりステア変化）の正則化、滑らかさを担保
+          velocity: 0.1              # v が入力速度プロファイルから外れすぎないようにする弱い tracking
+        terminal:
+          position_xy: 10.0          # 終点 (X, Y) 追従重み（大）
+          yaw: 2.0                   # 終点 ψ 追従重み（大）
+          delta: 0.1                 # 終点 δ 重み（残ステア量は気にしない）
+
+      warm_start:
+        enable: true
+        reset_pose_threshold_m: 5.0
+        reset_yaw_threshold_rad: 0.785
+
+      validation:
+        # 「曲がりをゆるめる」のが目的なので入力からの逸脱はある程度許容する。
+        # ここを超える場合は SQP_RTI が局所解にハマっているか、入力経路が極端な状態。
+        max_lat_error_from_input_m: 5.0
+        max_yaw_error_from_input_rad: 1.5
+
+      debug:
+        elapsed_time_warn_threshold_ms: 30.0
+        publish_replay_fixture_on_failure: false
+        enable_debug_topics: true

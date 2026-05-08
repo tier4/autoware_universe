@@ -98,7 +98,6 @@ private:
    */
   void load_optimizer_plugins();
 
-  std::unique_ptr<OptimizerPluginLoader> plugin_loader_;
   std::shared_ptr<OptimizerPluginInterface> path_smoother_;
   std::unique_ptr<VelocitySmoother> velocity_smoother_;
   std::map<std::string, rclcpp::Publisher<Trajectory>::SharedPtr>
