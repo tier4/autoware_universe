@@ -8,7 +8,7 @@ validator:
   out_of_lane:
     time:
       type: double
-      default_value: 2.0
+      default_value: 3.0
       description: The time range to check
       read_only: false
     min_value:
@@ -166,12 +166,12 @@ validator:
       error_threshold:
         ego_first_passing_time_gap:
           type: double
-          default_value: 0.6
+          default_value: 0.3
           description: Allowed time gap when ego passes first for PET error
           read_only: false
         object_first_passing_time_gap:
           type: double
-          default_value: 0.3
+          default_value: 0.6
           description: Allowed time gap when object passes first for PET error
           read_only: false
     rss:
@@ -256,7 +256,7 @@ validator:
         read_only: false
       jerk_limit:
         type: double
-        default_value: 2.0
+        default_value: 4.0
         description: jerk limit to calculate the stop distance used as trajectory length limit
         read_only: false
 
@@ -303,7 +303,7 @@ validator:
       read_only: false
     enable_developer_marker:
       type: bool
-      default_value: false
+      default_value: true
       description: flag marker only for developer
       read_only: false
     boundary_types:
