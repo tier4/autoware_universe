@@ -2,10 +2,13 @@
   ros__parameters:
     min_rule_based_path_optimizer:
       horizon:
-        # 1 stage あたりの最大物理時間 [s]。実行時 dt = min(dt_max_s, s_max / (N * v_ref))。
-        # 入力経路が短い／速度が低いほど dt が縮み、stage N が概ね経路終点に対応する。
-        # 終端重み W_e は「経路終点での追従重み」として効く。
-        dt_max_s: 0.1
+        # 二段 dt スケジュール:
+        #   stages [0, near_stage_count) は dt_near_s ずつ進む (近傍密)
+        #   stages [near_stage_count, N) は dt_far_s ずつ進む (遠方疎)
+        # 物理時間 horizon = near_stage_count * dt_near_s + (N - near_stage_count) * dt_far_s
+        dt_near_s: 0.05
+        dt_far_s: 0.4
+        near_stage_count: 20
         # v_ref 推定の下限 [m/s]。停止線等で平均速度 0 になっても dt が発散しないように。
         v_ref_floor_mps: 0.5
 

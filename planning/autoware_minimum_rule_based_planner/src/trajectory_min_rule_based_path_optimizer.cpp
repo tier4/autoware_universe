@@ -50,7 +50,7 @@ constexpr double kAnchorMaxDistFromPrevSol = 1.0;
 // trajectory is left untouched: the per-stage spatial step would otherwise
 // blow up (s/N) and SQP would have to model regions the controller will
 // never reach within one planning cycle.
-constexpr double kMaxForwardHorizonM = 100.0;
+constexpr double kMaxForwardHorizonM = 200.0;
 
 double clamp(double v, double lo, double hi)
 {
@@ -99,7 +99,25 @@ void TrajectoryMinRuleBasedPathOptimizer::optimize_trajectory(
   const double delta_max =
     std::max(0.05, vehicle_info_.max_steer_angle_rad - plugin_params_.steer_margin_rad);
   const double u_delta_max = std::max(1e-3, plugin_params_.u_delta_max_rad_per_s);
-  const double dt_max = plugin_params_.dt_max_s;
+  // Two-stage dt schedule. dt_schedule[k] is the physical time step of stage
+  // k; t_cumulative[k] is the cumulative physical time at stage k (so
+  // t_cumulative[0] = 0 and t_cumulative[N] = total horizon). Used both for
+  // setParameters and for non-uniform reference sampling (s_k below).
+  const int near_count =
+    std::clamp(plugin_params_.near_stage_count, 0, static_cast<int>(time_mpt::N));
+  const double dt_near = std::max(0.001, plugin_params_.dt_near_s);
+  const double dt_far = std::max(0.001, plugin_params_.dt_far_s);
+  std::array<double, time_mpt::N> dt_schedule{};
+  std::array<double, time_mpt::N + 1> t_cumulative{};
+  t_cumulative[0] = 0.0;
+  for (size_t k = 0; k < time_mpt::N; ++k) {
+    dt_schedule[k] = (static_cast<int>(k) < near_count) ? dt_near : dt_far;
+    t_cumulative[k + 1] = t_cumulative[k] + dt_schedule[k];
+  }
+  const double t_total = t_cumulative[time_mpt::N];
+  if (t_total <= 1e-6) {
+    return;
+  }
 
   const double v_floor = std::max(1e-3, plugin_params_.v_ref_floor_mps);
   const double v_min_box = std::min(plugin_params_.v_min_mps, plugin_params_.v_max_mps - 1e-3);
@@ -165,12 +183,6 @@ void TrajectoryMinRuleBasedPathOptimizer::optimize_trajectory(
   // can reach it without bumping into a constraint.
   v_ref_avg = clamp(v_ref_avg, v_min_box + 1e-3, v_max_box - 1e-3);
 
-  // Fixed dt: each stage advances `dt_max_s` of physical time regardless of
-  // input length or speed. The OCP's spatial horizon then becomes a
-  // consequence of v(t) the solver picks (bounded by [v_min, v_max] · N · dt).
-  // v_ref_avg is no longer used for sizing dt and only feeds debug logs.
-  const double dt_runtime = dt_max;
-
   // ---- 2. Initial state ----
   // Anchor pose (X0, Y0, psi0) selection — three-tier policy:
   //   (a) First call / no previous solution → project ego onto the input
@@ -220,7 +232,13 @@ void TrajectoryMinRuleBasedPathOptimizer::optimize_trajectory(
   const std::array<double, time_mpt::NX> x0_local = {0.0, 0.0, psi0, delta0};
 
   // ---- 3. Acados parameters, box constraints, and cost weights ----
-  acados_->setParametersAllStages({L, dt_runtime});
+  // Set L for every stage including the terminal (terminal does not integrate
+  // but the parameter set still has to exist), and set the per-stage dt for
+  // stages 0..N-1. The terminal "dt" is unused but we mirror the last value.
+  for (size_t k = 0; k < time_mpt::N; ++k) {
+    acados_->setParameters(static_cast<int>(k), {L, dt_schedule[k]});
+  }
+  acados_->setParameters(static_cast<int>(time_mpt::N), {L, dt_schedule[time_mpt::N - 1]});
   acados_->setDeltaBoxAllStages(delta_max);
   acados_->setInputBoxAllStages(u_delta_max, v_min_box, v_max_box);
   acados_->setStageCostDiagonalAllStages(
@@ -232,13 +250,16 @@ void TrajectoryMinRuleBasedPathOptimizer::optimize_trajectory(
     plugin_params_.w_terminal_yaw, plugin_params_.w_terminal_delta);
 
   // ---- 4. Reference sampling ----
-  // Each stage k targets s_k = (k/N) * s_horizon_in along the cropped
-  // forward trajectory. v_ref_k is sampled from the input's
-  // longitudinal_velocity at that arc length (clamped to the input box).
-  // With v as a free input, the solver can deviate from v_ref to make the
-  // integrated path land on the terminal pose — this is the extra freedom
-  // the time-axis formulation buys us.
-  const double s_per_stage = s_horizon_in / static_cast<double>(time_mpt::N);
+  // Stage k targets s_k = (t_cumulative[k] / t_total) * s_horizon_in along
+  // the cropped forward trajectory. Because dt_schedule packs the near-field
+  // densely, t_cumulative[k] grows slowly for small k → s_k is concentrated
+  // near s = 0, then opens out. Stage 0 targets s = 0 (= ego projection),
+  // stage N targets s = s_horizon_in (= input end of the cropped slice).
+  // v_ref_k is sampled from the input's longitudinal_velocity at that arc
+  // length (clamped to the input box). With v as a free input, the solver
+  // can deviate from v_ref to make the integrated path land on the terminal
+  // pose — this is the extra freedom the time-axis formulation buys us.
+  auto s_at_stage = [&](size_t k) { return (t_cumulative[k] / t_total) * s_horizon_in; };
   // The orientation interpolator returns a normalised quaternion, so converting
   // back to yaw gives a value in (-pi, pi]. Unwrap stage-by-stage so the cost
   // term sees a continuous psi_ref across the horizon.
@@ -277,7 +298,7 @@ void TrajectoryMinRuleBasedPathOptimizer::optimize_trajectory(
   }
 
   for (size_t k = 0; k <= time_mpt::N; ++k) {
-    const double s_k = static_cast<double>(k) * s_per_stage;
+    const double s_k = s_at_stage(k);
     const auto ref_point = fwd_traj.compute(s_k);
     const double Xref = ref_point.pose.position.x;
     const double Yref = ref_point.pose.position.y;
@@ -340,7 +361,7 @@ void TrajectoryMinRuleBasedPathOptimizer::optimize_trajectory(
     std::array<std::array<double, time_mpt::NU>, time_mpt::N> utraj_init{};
     double psi_init_prev = psi0;
     for (size_t k = 0; k <= time_mpt::N; ++k) {
-      const double s_k = static_cast<double>(k) * s_per_stage;
+      const double s_k = s_at_stage(k);
       const auto p = fwd_traj.compute(s_k);
       xtraj_init[k][0] = p.pose.position.x - X0;
       xtraj_init[k][1] = p.pose.position.y - Y0;
@@ -351,16 +372,17 @@ void TrajectoryMinRuleBasedPathOptimizer::optimize_trajectory(
     xtraj_init[0][3] = delta0;
     const double delta_clamp = delta_max - 1e-3;
     for (size_t k = 1; k <= time_mpt::N; ++k) {
-      const double s_k = static_cast<double>(k) * s_per_stage;
+      const double s_k = s_at_stage(k);
       const double kappa = fwd_traj.curvature(s_k);
       const double d = std::atan(L * kappa);
       xtraj_init[k][3] = clamp(d, -delta_clamp, delta_clamp);
     }
-    // u_delta = ddelta/dt; v from input speed profile clamped to the box.
+    // u_delta = ddelta/dt scaled by the per-stage dt; v from input speed
+    // profile clamped to the box.
     for (size_t k = 0; k < time_mpt::N; ++k) {
-      const double u_phys = (xtraj_init[k + 1][3] - xtraj_init[k][3]) / dt_runtime;
+      const double u_phys = (xtraj_init[k + 1][3] - xtraj_init[k][3]) / dt_schedule[k];
       utraj_init[k][0] = clamp(u_phys, -u_delta_max, u_delta_max);
-      const double s_k = static_cast<double>(k) * s_per_stage;
+      const double s_k = s_at_stage(k);
       double v_init =
         std::abs(static_cast<double>(fwd_traj.compute(s_k).longitudinal_velocity_mps));
       v_init = clamp(v_init, v_min_box, v_max_box);
@@ -455,10 +477,10 @@ void TrajectoryMinRuleBasedPathOptimizer::optimize_trajectory(
       get_node_ptr()->get_logger(), *get_node_ptr()->get_clock(), 2000,
       "[min_rule_based_path_optimizer] solution out of band "
       "(max_lat_err=%.2f m @stage=%zu, max_yaw_err=%.3f rad @stage=%zu, "
-      "sqp_iter=%d, %.2f ms, s_ego=%.1f / s_total=%.1f m, dt=%.3f s, v_ref=%.2f m/s). "
+      "sqp_iter=%d, %.2f ms, s_ego=%.1f / s_total=%.1f m, T_horizon=%.2f s, v_ref=%.2f m/s). "
       "Keeping warm-start.",
       max_lat_err, k_lat, max_yaw_err, k_yaw, solution.sqp_iter, elapsed_ms, s_ego, s_total,
-      dt_runtime, v_ref_avg);
+      t_total, v_ref_avg);
   }
 
   // ---- 8. Write back: replace traj_points with the optimized region only ----
@@ -467,7 +489,7 @@ void TrajectoryMinRuleBasedPathOptimizer::optimize_trajectory(
   //   - any portion past the solution horizon is also dropped.
   // For each kept index, velocity / acceleration / time_from_start are taken
   // from the original input point so only pose is overwritten by the OCP.
-  if (!solution_out_of_band || 1) {
+  if (!solution_out_of_band) {
     const auto in_bases = in_traj.get_underlying_bases();
     const size_t n_in = std::min(in_bases.size(), traj_points.size());
     TrajectoryPoints optimized;
@@ -508,7 +530,7 @@ void TrajectoryMinRuleBasedPathOptimizer::optimize_trajectory(
   last_x0_world_x_ = X0;
   last_x0_world_y_ = Y0;
   last_x0_world_yaw_ = psi0;
-  last_dt_runtime_ = dt_runtime;
+  last_dt_runtime_ = t_total / static_cast<double>(time_mpt::N);  // average dt, log only
 }
 
 void TrajectoryMinRuleBasedPathOptimizer::set_up_params()
@@ -518,8 +540,12 @@ void TrajectoryMinRuleBasedPathOptimizer::set_up_params()
 
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*node_ptr).getVehicleInfo();
 
-  plugin_params_.dt_max_s =
-    get_or_declare_parameter<double>(*node_ptr, "min_rule_based_path_optimizer.horizon.dt_max_s");
+  plugin_params_.dt_near_s =
+    get_or_declare_parameter<double>(*node_ptr, "min_rule_based_path_optimizer.horizon.dt_near_s");
+  plugin_params_.dt_far_s =
+    get_or_declare_parameter<double>(*node_ptr, "min_rule_based_path_optimizer.horizon.dt_far_s");
+  plugin_params_.near_stage_count = static_cast<int>(get_or_declare_parameter<int64_t>(
+    *node_ptr, "min_rule_based_path_optimizer.horizon.near_stage_count"));
   plugin_params_.v_ref_floor_mps = get_or_declare_parameter<double>(
     *node_ptr, "min_rule_based_path_optimizer.horizon.v_ref_floor_mps");
   plugin_params_.u_delta_max_rad_per_s = get_or_declare_parameter<double>(
@@ -571,10 +597,14 @@ void TrajectoryMinRuleBasedPathOptimizer::set_up_params()
   RCLCPP_INFO(
     node_ptr->get_logger(),
     "[min_rule_based_path_optimizer] initialized. L=%.3f m, delta_max=%.3f rad, "
-    "u_delta_max=%.3f rad/s, v=[%.2f, %.2f] m/s, N=%zu, dt=%.3f s (fixed).",
+    "u_delta_max=%.3f rad/s, v=[%.2f, %.2f] m/s, N=%zu, dt schedule = "
+    "%d * %.3f s (near) + %d * %.3f s (far) = %.2f s total.",
     vehicle_info_.wheel_base_m, vehicle_info_.max_steer_angle_rad,
     plugin_params_.u_delta_max_rad_per_s, plugin_params_.v_min_mps, plugin_params_.v_max_mps,
-    time_mpt::N, plugin_params_.dt_max_s);
+    time_mpt::N, plugin_params_.near_stage_count, plugin_params_.dt_near_s,
+    static_cast<int>(time_mpt::N) - plugin_params_.near_stage_count, plugin_params_.dt_far_s,
+    plugin_params_.near_stage_count * plugin_params_.dt_near_s +
+      (static_cast<int>(time_mpt::N) - plugin_params_.near_stage_count) * plugin_params_.dt_far_s);
 }
 
 rcl_interfaces::msg::SetParametersResult TrajectoryMinRuleBasedPathOptimizer::on_parameter(
@@ -582,7 +612,17 @@ rcl_interfaces::msg::SetParametersResult TrajectoryMinRuleBasedPathOptimizer::on
 {
   using autoware_utils_rclcpp::update_param;
   update_param<double>(
-    parameters, "min_rule_based_path_optimizer.horizon.dt_max_s", plugin_params_.dt_max_s);
+    parameters, "min_rule_based_path_optimizer.horizon.dt_near_s", plugin_params_.dt_near_s);
+  update_param<double>(
+    parameters, "min_rule_based_path_optimizer.horizon.dt_far_s", plugin_params_.dt_far_s);
+  {
+    int64_t near_stage_count_64 = plugin_params_.near_stage_count;
+    if (update_param<int64_t>(
+          parameters, "min_rule_based_path_optimizer.horizon.near_stage_count",
+          near_stage_count_64)) {
+      plugin_params_.near_stage_count = static_cast<int>(near_stage_count_64);
+    }
+  }
   update_param<double>(
     parameters, "min_rule_based_path_optimizer.horizon.v_ref_floor_mps",
     plugin_params_.v_ref_floor_mps);

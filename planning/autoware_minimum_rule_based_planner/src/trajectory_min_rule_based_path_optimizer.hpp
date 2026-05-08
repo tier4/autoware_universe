@@ -36,14 +36,17 @@ using TrajectoryPoints = std::vector<TrajectoryPoint>;
 
 struct MinRuleBasedPathOptimizerParams
 {
-  // Maximum physical time per stage [s]. The runtime dt is the smaller of
-  // dt_max_s and (s_max / (N * v_ref)) so that the horizon roughly ends at
-  // the input's last point under the input's nominal speed.
-  double dt_max_s{0.1};
+  // Two-stage time grid: stages [0, near_stage_count) advance dt_near_s
+  // seconds each (dense near-field sampling), stages [near_stage_count, N)
+  // advance dt_far_s seconds each (coarse far-field sampling). Total physical
+  // horizon is `near_stage_count · dt_near_s + (N − near_stage_count) · dt_far_s`.
+  double dt_near_s{0.05};
+  double dt_far_s{0.4};
+  int near_stage_count{20};
 
   // Velocity reference floor [m/s]. Used when the input trajectory's average
   // longitudinal_velocity_mps is below this value (or zero), to avoid
-  // degenerate dt sizing.
+  // degenerate v_ref sampling.
   double v_ref_floor_mps{0.5};
 
   // Input box on |dδ/dt| [rad/s] (steering rate, physical units).
