@@ -194,6 +194,13 @@ trajectory_modifier_params:
         validation:
           bounds<>: [0.0, 10.0]
         read_only: false
+      max_lateral_velocity_th:
+        type: double
+        default_value: 1.0
+        description: Maximum lateral velocity threshold for target object to be considered for obstacle stop [m/s]
+        validation:
+          bounds<>: [0.0, 10.0]
+        read_only: false
 
     pointcloud:
       height_buffer:

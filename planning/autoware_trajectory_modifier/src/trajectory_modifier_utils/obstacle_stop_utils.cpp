@@ -462,7 +462,6 @@ void ObjectFilter::filter_by_target_area(
   const MultiPolygon2d & target_area, MultiPolygon2d & target_polygons)
 {
   constexpr double time_buffer = 1.0;
-  constexpr double lat_vel_th = 1.0;
   auto is_exiting = [&](const auto & object) -> bool {
     const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
     const auto nearest_seg =
@@ -474,7 +473,7 @@ void ObjectFilter::filter_by_target_area(
     const auto obj_vel = object.kinematics.initial_twist_with_covariance.twist.linear;
     const auto obj_vel_vector = (obj_rot * Eigen::Vector2d(obj_vel.x, obj_vel.y));
     const auto obj_lat_vel = obj_vel_vector.dot(traj_lat_dir);
-    if (std::abs(obj_lat_vel) < lat_vel_th) return false;
+    if (std::abs(obj_lat_vel) < max_lateral_velocity_th_) return false;
     if (object.kinematics.predicted_paths.empty()) return true;
     const auto time_to_obj_current_pos =
       rclcpp::Duration(trajectory_points.at(nearest_seg).time_from_start).seconds() - time_buffer;

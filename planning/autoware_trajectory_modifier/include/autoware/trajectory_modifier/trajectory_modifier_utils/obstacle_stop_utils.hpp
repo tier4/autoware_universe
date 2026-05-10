@@ -166,8 +166,10 @@ struct ObjectFilter
 {
   ObjectFilter(
     const std::vector<std::string> & object_type_strings, const double max_velocity_th,
-    const double stopped_velocity_th)
-  : max_velocity_th_(max_velocity_th), stopped_velocity_th_(stopped_velocity_th)
+    const double stopped_velocity_th, const double max_lateral_velocity_th)
+  : max_velocity_th_(max_velocity_th),
+    stopped_velocity_th_(stopped_velocity_th),
+    max_lateral_velocity_th_(max_lateral_velocity_th)
   {
     for (const auto & object_type_string : object_type_strings) {
       if (string_to_object_type.count(object_type_string) == 0) continue;
@@ -197,7 +199,7 @@ struct ObjectFilter
 
   void set_params(
     const std::vector<std::string> & object_type_strings, const double max_velocity_th,
-    const double stopped_velocity_th)
+    const double stopped_velocity_th, const double max_lateral_velocity_th)
   {
     object_types_.clear();
     for (const auto & object_type_string : object_type_strings) {
@@ -206,12 +208,14 @@ struct ObjectFilter
     }
     max_velocity_th_ = max_velocity_th;
     stopped_velocity_th_ = stopped_velocity_th;
+    max_lateral_velocity_th_ = max_lateral_velocity_th;
   }
 
 private:
   std::unordered_set<ObjectType> object_types_;
   double max_velocity_th_;
   double stopped_velocity_th_;
+  double max_lateral_velocity_th_;
 };
 
 struct PointCloudFilter
