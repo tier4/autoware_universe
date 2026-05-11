@@ -46,6 +46,7 @@ ament_auto_add_library(autoware_trajectory_optimizer_plugins SHARED
   src/trajectory_optimizer_plugins/trajectory_extender.cpp
   src/trajectory_optimizer_plugins/trajectory_kinematic_feasibility_enforcer.cpp
   src/trajectory_optimizer_plugins/trajectory_mpt_optimizer.cpp
+  src/trajectory_optimizer_plugins/trajectory_temporal_mpt_optimizer.cpp
   src/trajectory_optimizer_plugins/trajectory_point_fixer.cpp
   src/trajectory_optimizer_plugins/trajectory_qp_smoother.cpp
   src/trajectory_optimizer_plugins/trajectory_spline_smoother.cpp
@@ -56,6 +57,11 @@ ament_auto_add_library(autoware_trajectory_optimizer_plugins SHARED
   src/trajectory_optimizer_plugins/plugin_utils/trajectory_point_fixer_utils.cpp
   src/trajectory_optimizer_plugins/plugin_utils/trajectory_spline_smoother_utils.cpp
   src/trajectory_optimizer_plugins/plugin_utils/trajectory_velocity_optimizer_utils.cpp
+)
+target_link_libraries(
+  autoware_trajectory_optimizer_plugins
+  acados_interface_temporal
+  tf2_geometry_msgs::tf2_geometry_msgs
 )
 
 # Ensure pluginlib/dlopen can resolve acados runtime deps (e.g. libqpOASES_e)
@@ -80,6 +86,25 @@ if(BUILD_TESTING)
     autoware_trajectory_optimizer_plugins
   )
 endif()
+
+install(TARGETS acados_interface_temporal LIBRARY DESTINATION lib)
+install(FILES src/acados_mpt/include/acados_interface.hpp
+  DESTINATION include/autoware/trajectory_optimizer)
+
+set(TEMPORAL_MODEL "kinematic_bicycle_temporal")
+set(TEMPORAL_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/src/acados_mpt/c_generated_code")
+install(FILES
+  ${TEMPORAL_GEN_DIR}/acados_solver_${TEMPORAL_MODEL}.h
+  ${TEMPORAL_GEN_DIR}/${TEMPORAL_MODEL}_model/${TEMPORAL_MODEL}_model.h
+  DESTINATION include/autoware/trajectory_optimizer/c_generated_code
+  OPTIONAL
+)
+
+install(PROGRAMS
+  scripts/temporal_mpt_debug_visualizer.py
+  scripts/temporal_mpt_python_reference.py
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 ament_auto_package(
   INSTALL_TO_SHARE
