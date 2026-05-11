@@ -469,22 +469,36 @@ void ObjectFilter::filter_by_target_area(
   const MultiPolygon2d & target_area, MultiPolygon2d & target_polygons)
 {
   constexpr double time_buffer = 1.0;
+  auto time_to_obj_current_pos =
+    [&](const auto & object_pose, const size_t nearest_seg_idx) -> double {
+    const auto t_to_nearest_seg =
+      rclcpp::Duration(trajectory_points.at(nearest_seg_idx).time_from_start).seconds();
+    if (nearest_seg_idx < trajectory_points.size() - 2) return t_to_nearest_seg - time_buffer;
+    const auto lon_offset_dist =
+      motion_utils::calcSignedArcLength(trajectory_points, nearest_seg_idx, object_pose.position);
+    const auto nearest_seg_vel = trajectory_points.at(nearest_seg_idx).longitudinal_velocity_mps;
+    const auto t_to_obj = t_to_nearest_seg + lon_offset_dist / nearest_seg_vel;
+    return t_to_obj - time_buffer;
+  };
+
   auto is_exiting = [&](const auto & object) -> bool {
     const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
+    const auto obj_rot = Eigen::Rotation2Dd(tf2::getYaw(object_pose.orientation));
+    const auto obj_vel = object.kinematics.initial_twist_with_covariance.twist.linear;
+    const auto obj_vel_vector = (obj_rot * Eigen::Vector2d(obj_vel.x, obj_vel.y));
+    if (obj_vel_vector.norm() < stopped_velocity_th_) return false;  // object is stopped
     const auto nearest_seg =
       motion_utils::findNearestSegmentIndex(trajectory_points, object_pose.position);
     const auto p1 = trajectory_points.at(nearest_seg).pose.position;
     const auto p2 = trajectory_points.at(nearest_seg + 1).pose.position;
-    const auto traj_lat_dir = Eigen::Vector2d(p2.y - p1.y, p1.x - p2.x).normalized();
-    const auto obj_rot = Eigen::Rotation2Dd(tf2::getYaw(object_pose.orientation));
-    const auto obj_vel = object.kinematics.initial_twist_with_covariance.twist.linear;
-    const auto obj_vel_vector = (obj_rot * Eigen::Vector2d(obj_vel.x, obj_vel.y));
-    const auto obj_lat_vel = obj_vel_vector.dot(traj_lat_dir);
-    if (std::abs(obj_lat_vel) < max_lateral_velocity_th_) return false;
+    const auto traj_dir = Eigen::Vector2d(p2.x - p1.x, p2.y - p1.y).normalized();
+    const auto traj_lat_dir = Eigen::Vector2d(traj_dir.y(), -traj_dir.x());
+    const auto obj_lon_vel = std::abs(obj_vel_vector.dot(traj_dir));
+    const auto obj_lat_vel = std::abs(obj_vel_vector.dot(traj_lat_dir));
+    if (obj_lat_vel < max_lateral_velocity_th_ && obj_lat_vel < obj_lon_vel) return false;
     if (object.kinematics.predicted_paths.empty()) return true;
-    const auto time_to_obj_current_pos =
-      rclcpp::Duration(trajectory_points.at(nearest_seg).time_from_start).seconds() - time_buffer;
-    const auto obj_pred_pose = get_predicted_obj_pose_at_time(object, time_to_obj_current_pos);
+    const auto t_to_obj_current_pos = time_to_obj_current_pos(object_pose, nearest_seg);
+    const auto obj_pred_pose = get_predicted_obj_pose_at_time(object, t_to_obj_current_pos);
     const auto obj_pred_polygon = autoware_utils::to_polygon2d(obj_pred_pose, object.shape);
     return boost::geometry::disjoint(obj_pred_polygon, target_area);
   };
@@ -496,9 +510,7 @@ void ObjectFilter::filter_by_target_area(
         const auto object_pose = object.kinematics.initial_pose_with_covariance.pose;
         const auto object_polygon = autoware_utils::to_polygon2d(object_pose, object.shape);
         if (boost::geometry::disjoint(object_polygon, target_area)) return true;
-        const auto is_moving =
-          object.kinematics.initial_twist_with_covariance.twist.linear.x > stopped_velocity_th_;
-        if (is_moving && is_exiting(object)) return true;
+        if (is_exiting(object)) return true;
         target_polygons.emplace_back(object_polygon);
         return false;
       }),
