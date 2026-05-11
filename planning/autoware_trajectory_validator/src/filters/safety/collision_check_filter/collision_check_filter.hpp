@@ -266,16 +266,20 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
+  // ad-hoc
+  DracParams drac_params_;
   PetCollisionParams pet_collision_params_;
   RssParams rss_params_;
-  DracParams drac_params_;
-  validator::Params::CollisionCheck::GlobalSetting global_setting_;
+
+  GlobalParams global_params_;
+  DracParamMap drac_param_map_;
+  PetCollisionParamMap pet_collision_param_map_;
+  RssParamMap rss_param_map_;
+
   reporter::ContinuousDetectionTimes pet_continuous_times_;
   reporter::ContinuousDetectionTimes rss_continuous_times_;
   reporter::ContinuousDetectionTimes drac_continuous_times_;
-  PetCollisionParamMap pet_collision_param_map_;
-  RssParamMap rss_param_map_;
-  DracParamMap drac_param_map_;
+
   void clear_detection_times();
 };
 
