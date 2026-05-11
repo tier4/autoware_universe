@@ -38,11 +38,16 @@ void trim_trajectory_and_remove_duplicates(TrajectoryPoints & trajectory_points)
   if (trajectory_points.empty()) return;
   const auto zero_velocity_index =
     autoware::motion_utils::searchZeroVelocityIndex(trajectory_points);
-  if (zero_velocity_index && zero_velocity_index.value() < trajectory_points.size() - 1) {
+  const bool found_zero_vel =
+    zero_velocity_index && zero_velocity_index.value() < trajectory_points.size() - 1;
+  if (found_zero_vel) {
     trajectory_points.erase(
       trajectory_points.begin() + zero_velocity_index.value() + 1, trajectory_points.end());
   }
   trajectory_points = autoware::motion_utils::removeOverlapPoints(trajectory_points);
+  if (found_zero_vel)
+    trajectory_points.back().longitudinal_velocity_mps =
+      0.0;  // set zero velocity at the end of the trajectory
 }
 
 double get_detection_length(
@@ -266,7 +271,9 @@ geometry_msgs::msg::Pose get_predicted_obj_pose_at_time(
   if (object.kinematics.predicted_paths.empty())
     return object.kinematics.initial_pose_with_covariance.pose;
   const auto & pred_path = object.kinematics.predicted_paths.front();
-  size_t pred_pose_index = t / rclcpp::Duration(pred_path.time_step).seconds();
+  if (pred_path.path.empty()) return object.kinematics.initial_pose_with_covariance.pose;
+  const auto dt = std::max(rclcpp::Duration(pred_path.time_step).seconds(), 1e-3);
+  size_t pred_pose_index = (t + 1e-6) / dt;
   pred_pose_index = std::min(pred_pose_index, pred_path.path.size() - 1);
   return pred_path.path.at(pred_pose_index);
 }
