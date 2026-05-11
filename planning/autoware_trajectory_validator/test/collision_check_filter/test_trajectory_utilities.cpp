@@ -28,8 +28,7 @@ namespace autoware::trajectory_validator::plugin::safety
 {
 namespace
 {
-constexpr double kDefaultTimeResolution =
-  validator::Params::CollisionCheck::GlobalSetting{}.time_resolution;
+constexpr double kDefaultTimeResolution = GlobalParams{}.time_resolution;
 
 geometry_msgs::msg::Pose create_pose(const double x, const double y, const double yaw = 0.0)
 {
