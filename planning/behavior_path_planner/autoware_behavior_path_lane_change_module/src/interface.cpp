@@ -190,8 +190,8 @@ BehaviorModuleOutput LaneChangeInterface::planWaitingApproval()
 
   if (parameters_->l2_overwrite.enable) {
     // When we manually make the vehicle far away from the lane change line,
-    // abort waiting-for-approval: clear candidate, reset module state, and publish RTC FAILED so
-    // the cooperate / approval stack can release the lane change request.
+    // We would like to abort the lane change.
+    // We accomplish this by not updating RTC Status and make it to be inactive.
     if (path_reference_->points.size() > 1) {
       const auto front_point = path_reference_->points.front().point.pose.position;
       const auto back_point = path_reference_->points.back().point.pose.position;
@@ -202,11 +202,9 @@ BehaviorModuleOutput LaneChangeInterface::planWaitingApproval()
         std::pow(front_point.x - back_point.x, 2) + std::pow(front_point.y - back_point.y, 2));
       double over_shoot = dot_product / (normalize_length)-normalize_length;
       if (over_shoot > parameters_->l2_overwrite.rewrite_overshoot_threshold) {
+        RCLCPP_DEBUG(getLogger(), "%s", "overshooting from lane change");
         path_candidate_ = std::make_shared<PathWithLaneId>();
         module_type_->resetParameters();
-        updateRTCStatus(
-          std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest(), false,
-          State::FAILED);
         return out;
       }
     }
