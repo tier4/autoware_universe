@@ -86,8 +86,8 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
 
   {
     const auto & p = params_.objects;
-    object_filter_ =
-      std::make_unique<utils::obstacle_stop::ObjectFilter>(p.object_types, p.max_velocity_th);
+    object_filter_ = std::make_unique<utils::obstacle_stop::ObjectFilter>(
+      p.object_types, p.max_velocity_th, p.stopped_velocity_th, p.max_lateral_velocity_th);
   }
 
   {
@@ -132,7 +132,8 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
 
   {
     const auto & p = params_.objects;
-    object_filter_->set_params(p.object_types, p.max_velocity_th);
+    object_filter_->set_params(
+      p.object_types, p.max_velocity_th, p.stopped_velocity_th, p.max_lateral_velocity_th);
   }
 
   {
@@ -222,17 +223,14 @@ bool ObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
   };
 
   constexpr double stop_velocity_threshold = 0.01;
-
-  if (params_.duplicate_check_threshold > std::numeric_limits<double>::epsilon()) {
-    auto checked_distance = 0.0;
-    for (size_t i = 1; i < traj_points.size(); ++i) {
-      const auto & curr = traj_points.at(i);
-      const auto & prev = traj_points.at(i - 1);
-      checked_distance += autoware_utils::calc_distance2d(curr.pose.position, prev.pose.position);
-      if (curr.longitudinal_velocity_mps > stop_velocity_threshold) continue;
-      if (checked_distance < target_stop_point_arc_length) {
-        return skip("Preceding stop point exists");
-      }
+  auto checked_distance = 0.0;
+  for (size_t i = 1; i < traj_points.size(); ++i) {
+    const auto & curr = traj_points.at(i);
+    const auto & prev = traj_points.at(i - 1);
+    checked_distance += autoware_utils::calc_distance2d(curr.pose.position, prev.pose.position);
+    if (checked_distance > target_stop_point_arc_length + params_.duplicate_check_threshold) break;
+    if (curr.longitudinal_velocity_mps < stop_velocity_threshold) {
+      return skip("Preceding (or duplicate) stop point exists");
     }
   }
 
@@ -456,18 +454,19 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
   obstacle_tracker_->update_objects(
     debug_data_.filtered_objects, active_objects, get_clock()->now());
 
+  object_filter_->filter_by_target_area(
+    active_objects, traj_points, debug_data_.trajectory_shape.polygon, debug_data_.target_polygons);
+
   autoware_perception_msgs::msg::PredictedObject colliding_object;
   auto collision_point = std::invoke([&]() -> std::optional<CollisionPoint> {
     if (!params_.rss_params.enable) {
-      return get_nearest_object_collision(
-        traj_points, debug_data_.trajectory_shape, active_objects, debug_data_.target_polygons,
-        colliding_object);
+      return get_nearest_object_collision(traj_points, active_objects, colliding_object);
     }
     return get_nearest_object_collision(
-      traj_points, debug_data_.trajectory_shape, data_->vehicle_info, active_objects,
-      object_decel_map_, params_.rss_params.ego_decel, params_.rss_params.reaction_time,
+      traj_points, data_->vehicle_info, active_objects, object_decel_map_,
+      params_.rss_params.ego_decel, params_.rss_params.reaction_time,
       params_.rss_params.safety_margin, params_.objects.stopped_velocity_th,
-      params_.rss_params.lookahead_horizon, debug_data_.target_polygons, colliding_object);
+      params_.rss_params.lookahead_horizon, colliding_object);
   });
 
   if (collision_point) debug_data_.colliding_object = colliding_object;
