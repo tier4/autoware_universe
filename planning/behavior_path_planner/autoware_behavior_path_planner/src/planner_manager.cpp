@@ -139,7 +139,42 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
   std::for_each(
     manager_ptrs_.begin(), manager_ptrs_.end(), [&data](const auto & m) { m->setData(data); });
 
-  updateCurrentRouteLanelet(data);
+  const bool is_any_approved_module_running = std::any_of(
+    planner_manager_slots_.begin(), planner_manager_slots_.end(), [&](const auto & slot) {
+      return slot.isAnyApprovedPred([](const auto & m) {
+        const auto status = m->getCurrentStatus();
+        return status == ModuleStatus::RUNNING || status == ModuleStatus::WAITING_APPROVAL;
+      });
+    });
+
+  // IDLE is a state in which an execution has been requested but not yet approved.
+  // once approved, it basically turns to running.
+  const bool is_any_candidate_module_running_or_idle = std::any_of(
+    planner_manager_slots_.begin(), planner_manager_slots_.end(), [](const auto & slot) {
+      return slot.isAnyCandidatePred([](const auto & m) {
+        const auto status = m->getCurrentStatus();
+        return status == ModuleStatus::RUNNING || status == ModuleStatus::WAITING_APPROVAL ||
+               status == ModuleStatus::IDLE;
+      });
+    });
+
+  const bool is_any_module_running =
+    is_any_approved_module_running || is_any_candidate_module_running_or_idle;
+
+  updateCurrentRouteLanelet(data, is_any_approved_module_running);
+
+  const bool is_out_of_route = utils::isEgoOutOfRoute(
+    data->self_odometry->pose.pose, current_route_lanelet_->value(), data->prev_modified_goal,
+    data->route_handler);
+
+  if (!is_any_module_running && is_out_of_route) {
+    BehaviorModuleOutput result_output = utils::createGoalAroundPath(data);
+    RCLCPP_WARN_THROTTLE(
+      logger_, clock_, 5000,
+      "Ego is out of route, no module is running. Skip running scene modules.");
+    generateCombinedDrivableArea(result_output, data);
+    return result_output;
+  }
 
   SlotOutput result_output = SlotOutput{
     getReferencePath(data),
@@ -221,7 +256,8 @@ void PlannerManager::generateCombinedDrivableArea(
   utils::extractObstaclesFromDrivableArea(output.path, di.obstacles);
 }
 
-void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData> & data)
+void PlannerManager::updateCurrentRouteLanelet(
+  const std::shared_ptr<PlannerData> & data, const bool is_any_approved_module_running)
 {
   const auto & route_handler = data->route_handler;
   const auto & pose = data->self_odometry->pose.pose;
@@ -293,10 +329,11 @@ void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData
     return;
   }
 
-  // Ego not in the projected lanelet sequence from current_route_lanelet_. Always snap to the
-  // closest lanelet on the route — even when an approved module is only WAITING_APPROVAL
-  // (e.g. lane_change). Otherwise isEgoOutOfRoute stays true and reference path stays broken.
-  resetCurrentRouteLanelet(data);
+  // Ego not in the projected lanelet sequence from current_route_lanelet_. When no approved
+  // module is running/waiting, snap to the closest lane on the route (legacy behavior).
+  if (!is_any_approved_module_running) {
+    resetCurrentRouteLanelet(data);
+  }
 }
 
 BehaviorModuleOutput PlannerManager::getReferencePath(
