@@ -175,12 +175,14 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
 
   if (!is_any_module_running && is_out_of_route) {
     BehaviorModuleOutput result_output = utils::createGoalAroundPath(data);
-    RCLCPP_WARN_THROTTLE(
-      logger_, clock_, 5000,
-      "Ego is out of route, no module is running. Skip running scene modules.");
     last_run_ego_out_of_route_no_modules_ = true;
     last_cycle_route_uuid_hex_ =
       autoware_utils_uuid::to_hex_string(data->route_handler->getRouteUuid());
+    RCLCPP_WARN_THROTTLE(
+      logger_, clock_, 5000,
+      "Ego is out of route, no module is running. Skip running scene modules. "
+      "route_uuid_hex=%s current_route_lanelet_id=%ld",
+      last_cycle_route_uuid_hex_.c_str(), current_route_lanelet_->value().id());
     generateCombinedDrivableArea(result_output, data);
     return result_output;
   }
@@ -302,6 +304,11 @@ void PlannerManager::updateCurrentRouteLanelet(
              opt_constraint) {
     *current_route_lanelet_ = opt_constraint.value();
   } else if (!is_any_approved_module_running) {
+    RCLCPP_WARN_THROTTLE(
+      logger_, clock_, 2000,
+      "[route_lanelet] resetCurrentRouteLanelet: reason=ego_not_in_lanelet_sequence "
+      "prev_route_lanelet_id=%ld (no approved module running)",
+      current_route_lanelet_->value().id());
     resetCurrentRouteLanelet(data);
   }
 }
@@ -976,11 +983,28 @@ SlotOutput SubPlannerManager::runApprovedModules(
   }();
 
   // if lane change module has succeeded, update current route lanelet.
-  if (std::any_of(approved_module_ptrs_.begin(), approved_module_ptrs_.end(), [](const auto & m) {
-        return m->getCurrentStatus() == ModuleStatus::SUCCESS &&
-               m->isCurrentRouteLaneletToBeReset();
-      }))
+  const bool should_reset_lanelet_from_success = std::any_of(
+    approved_module_ptrs_.begin(), approved_module_ptrs_.end(), [](const auto & m) {
+      return m->getCurrentStatus() == ModuleStatus::SUCCESS &&
+             m->isCurrentRouteLaneletToBeReset();
+    });
+  if (should_reset_lanelet_from_success) {
+    std::string module_names;
+    for (const auto & m : approved_module_ptrs_) {
+      if (m->getCurrentStatus() == ModuleStatus::SUCCESS && m->isCurrentRouteLaneletToBeReset()) {
+        if (!module_names.empty()) {
+          module_names += ',';
+        }
+        module_names += m->name();
+      }
+    }
+    RCLCPP_INFO(
+      rclcpp::get_logger("behavior_path_planner.planner_manager"),
+      "[route_lanelet] resetCurrentRouteLanelet: reason=approved_module_SUCCESS "
+      "(isCurrentRouteLaneletToBeReset) modules=%s",
+      module_names.c_str());
     resetCurrentRouteLanelet(data);
+  }
 
   // remove success module immediately.
   for (auto success_itr = std::find_if(

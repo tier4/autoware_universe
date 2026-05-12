@@ -417,6 +417,13 @@ void BehaviorPathPlannerNode::run()
     }
 
     std::ostringstream pr;
+    const int op_mode = planner_data_->operation_mode
+                          ? static_cast<int>(planner_data_->operation_mode->mode)
+                          : -1;
+    const int autoware_control = planner_data_->operation_mode &&
+            planner_data_->operation_mode->is_autoware_control_enabled
+                          ? 1
+                          : 0;
     pr << "trace_seq=" << trace_seq << " planner_output_empty=" << (planner_empty ? 1 : 0)
        << " getPath_used_prev_output_path_fallback=" << (used_prev_path_fallback ? 1 : 0)
        << " ego_out_of_route_no_modules_short_circuit="
@@ -424,7 +431,8 @@ void BehaviorPathPlannerNode::run()
        << " route_message_processed_this_cycle=" << (route_ptr ? 1 : 0)
        << " route_uuid_changed_module_reset=" << (route_uuid_changed_reset_modules ? 1 : 0)
        << " upstream_slot_approved_failed=" << (upstream_slot_fail ? 1 : 0)
-       << " waiting_approval_revert=" << (waiting_approval_revert ? 1 : 0);
+       << " waiting_approval_revert=" << (waiting_approval_revert ? 1 : 0)
+       << " operation_mode=" << op_mode << " autoware_control_enabled=" << autoware_control;
     trace_debug_publisher_->publish<DebugStringMsg>("path_update_reason", pr.str());
   }
 
