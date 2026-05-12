@@ -20,9 +20,12 @@
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
+#include <autoware_utils_uuid/uuid_helper.hpp>
 #include <tier4_planning_msgs/msg/path_change_module_id.hpp>
 
 #include <memory>
+#include <algorithm>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -62,6 +65,8 @@ BehaviorPathPlannerNode::BehaviorPathPlannerNode(const rclcpp::NodeOptions & nod
 
   debug_start_planner_evaluation_table_publisher_ptr_ =
     std::make_unique<DebugPublisher>(this, "~/debug/start_planner_evaluation_table");
+
+  trace_debug_publisher_ = std::make_unique<DebugPublisher>(this, "~/debug/trace");
 
   debug_turn_signal_info_publisher_ = create_publisher<MarkerArray>("~/debug/turn_signal_info", 1);
 
@@ -359,6 +364,7 @@ void BehaviorPathPlannerNode::run()
   std::unique_lock<std::mutex> lk_manager(mutex_manager_);  // for planner_manager_
 
   // update route
+  bool route_uuid_changed_reset_modules = false;
   const bool is_first_time = !(planner_data_->route_handler->isHandlerReady());
   if (route_ptr) {
     planner_data_->route_handler->setRoute(*route_ptr);
@@ -369,6 +375,7 @@ void BehaviorPathPlannerNode::run()
     // Reset behavior tree when new route is received,
     // so that the each modules do not have to care about the "route jump".
     if (!is_first_time && !has_same_route_id) {
+      route_uuid_changed_reset_modules = true;
       RCLCPP_INFO(get_logger(), "New uuid route is received. Resetting modules.");
       planner_manager_->reset();
       planner_manager_->resetCurrentRouteLanelet(planner_data_);
@@ -384,13 +391,51 @@ void BehaviorPathPlannerNode::run()
     planner_manager_->resetCurrentRouteLanelet(planner_data_);
 
   // run behavior planner
-  const auto output = planner_manager_->run(planner_data_);
+  const uint64_t trace_seq = ++bpp_planning_cycle_trace_seq_;
+  const auto output = planner_manager_->run(planner_data_, trace_seq);
 
   // path handling
+  const bool had_prev_output_path = static_cast<bool>(planner_data_->prev_output_path);
   const auto path = getPath(output, planner_data_);
   path->header.stamp = stamp;
+  const bool planner_empty = output.path.points.empty();
+  const bool used_prev_path_fallback = planner_empty && had_prev_output_path;
   // update planner data
   planner_data_->prev_output_path = path;
+
+  {
+    const auto & dbg = planner_manager_->getLastModuleUpdateInfo();
+    const bool upstream_slot_fail = std::any_of(
+      dbg.slot_status.begin(), dbg.slot_status.end(),
+      [](const SlotStatus s) { return s == UPSTREAM_APPROVED_FAILED; });
+    bool waiting_approval_revert = false;
+    for (const auto & u : dbg.scene_status) {
+      if (u.description == "Back To Waiting Approval") {
+        waiting_approval_revert = true;
+        break;
+      }
+    }
+
+    std::ostringstream pr;
+    pr << "trace_seq=" << trace_seq << " planner_output_empty=" << (planner_empty ? 1 : 0)
+       << " getPath_used_prev_output_path_fallback=" << (used_prev_path_fallback ? 1 : 0)
+       << " ego_out_of_route_no_modules_short_circuit="
+       << (planner_manager_->wasLastRunEgoOutOfRouteNoModules() ? 1 : 0)
+       << " route_message_processed_this_cycle=" << (route_ptr ? 1 : 0)
+       << " route_uuid_changed_module_reset=" << (route_uuid_changed_reset_modules ? 1 : 0)
+       << " upstream_slot_approved_failed=" << (upstream_slot_fail ? 1 : 0)
+       << " waiting_approval_revert=" << (waiting_approval_revert ? 1 : 0);
+    trace_debug_publisher_->publish<DebugStringMsg>("path_update_reason", pr.str());
+  }
+
+  {
+    std::ostringstream hd;
+    hd << "trace_seq=" << trace_seq << " stamp_ns=" << stamp.nanoseconds() << " route_uuid_hex="
+       << autoware_utils_uuid::to_hex_string(planner_data_->route_handler->getRouteUuid())
+       << " new_route_message_received=" << (route_ptr ? 1 : 0)
+       << " route_uuid_changed_module_reset=" << (route_uuid_changed_reset_modules ? 1 : 0);
+    trace_debug_publisher_->publish<DebugStringMsg>("cycle_header", hd.str());
+  }
 
   // compute turn signal
   computeTurnSignal(planner_data_, *path, output);

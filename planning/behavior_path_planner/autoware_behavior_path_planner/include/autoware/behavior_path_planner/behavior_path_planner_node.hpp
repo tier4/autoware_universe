@@ -21,6 +21,7 @@
 #include "planner_manager.hpp"
 
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
+#include <autoware_utils/ros/debug_publisher.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/ros/published_time_publisher.hpp>
 
@@ -184,6 +185,8 @@ private:
   rclcpp::Publisher<AvoidanceDebugMsgArray>::SharedPtr debug_avoidance_msg_array_publisher_;
   rclcpp::Publisher<MarkerArray>::SharedPtr debug_turn_signal_info_publisher_;
   std::unique_ptr<DebugPublisher> debug_start_planner_evaluation_table_publisher_ptr_;
+  std::unique_ptr<DebugPublisher> trace_debug_publisher_;
+  uint64_t bpp_planning_cycle_trace_seq_{0};
 
   /**
    * @brief publish reroute availability

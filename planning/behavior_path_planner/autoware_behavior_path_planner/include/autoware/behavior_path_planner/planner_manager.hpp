@@ -32,7 +32,9 @@
 #include <lanelet2_core/primitives/Lanelet.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -88,10 +90,22 @@ enum SlotStatus {
   UPSTREAM_EXCLUSIVE_CANDIDATE
 };
 
+struct SlotModuleSelectionTrace
+{
+  size_t slot_index{0};
+  size_t iteration{0};
+  std::vector<std::string> requested;
+  std::vector<std::string> executable;
+  std::string selected;
+};
+
 struct ModuleUpdateInfo
 {
   std::vector<SceneModuleUpdateInfo> scene_status;
   std::vector<SlotStatus> slot_status;
+  /** set each slot iteration in PlannerManager::run for SubPlannerManager tracing */
+  size_t trace_slot_index{0};
+  std::vector<SlotModuleSelectionTrace> slot_module_selections;
 };
 
 struct SceneModuleStatus
@@ -318,7 +332,8 @@ private:
    */
   std::pair<SceneModulePtr, BehaviorModuleOutput> runRequestModules(
     const std::vector<SceneModulePtr> & request_modules, const std::shared_ptr<PlannerData> & data,
-    const BehaviorModuleOutput & previous_module_output);
+    const BehaviorModuleOutput & previous_module_output,
+    std::optional<std::pair<size_t, size_t>> trace_slot_iteration = std::nullopt);
 
   /**
    * @brief run all modules in approved_module_ptrs_ and get a planning result as
@@ -373,8 +388,13 @@ public:
   /**
    * @brief run all candidate and approved modules.
    * @param planner data.
+   * @param trace_seq monotonically increasing id from BehaviorPathPlannerNode for one planning cycle.
    */
-  BehaviorModuleOutput run(const std::shared_ptr<PlannerData> & data);
+  BehaviorModuleOutput run(const std::shared_ptr<PlannerData> & data, uint64_t trace_seq = 0);
+
+  bool wasLastRunEgoOutOfRouteNoModules() const { return last_run_ego_out_of_route_no_modules_; }
+
+  const ModuleUpdateInfo & getLastModuleUpdateInfo() const { return debug_info_; }
 
   /**
    * @brief register managers.
@@ -578,6 +598,10 @@ private:
   std::shared_ptr<SceneModuleVisitor> debug_msg_ptr_;
 
   mutable std::optional<BehaviorModuleOutput> last_valid_reference_path_;
+
+  mutable uint64_t last_cycle_trace_seq_{0};
+  mutable bool last_run_ego_out_of_route_no_modules_{false};
+  mutable std::string last_cycle_route_uuid_hex_;
 };
 }  // namespace autoware::behavior_path_planner
 

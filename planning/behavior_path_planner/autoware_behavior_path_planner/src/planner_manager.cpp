@@ -14,6 +14,8 @@
 
 #include "autoware/behavior_path_planner/planner_manager.hpp"
 
+#include <autoware_utils_uuid/uuid_helper.hpp>
+
 #include "autoware/behavior_path_planner_common/utils/drivable_area_expansion/static_drivable_area.hpp"
 #include "autoware/behavior_path_planner_common/utils/path_utils.hpp"
 #include "autoware/behavior_path_planner_common/utils/utils.hpp"
@@ -25,8 +27,10 @@
 #include <boost/scope_exit.hpp>
 
 #include <algorithm>
+#include <iomanip>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -118,8 +122,11 @@ bool keep_input_points(const std::vector<std::shared_ptr<SceneModuleStatus>> & s
   return false;
 }
 
-BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & data)
+BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & data, uint64_t trace_seq)
 {
+  last_cycle_trace_seq_ = trace_seq;
+  last_run_ego_out_of_route_no_modules_ = false;
+
   resetProcessingTime();
   StopWatch<std::chrono::milliseconds> stop_watch;
   stop_watch.tic("total_time");
@@ -131,6 +138,7 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
 
   debug_info_.scene_status.clear();
   debug_info_.slot_status.clear();
+  debug_info_.slot_module_selections.clear();
 
   if (!current_route_lanelet_->has_value()) resetCurrentRouteLanelet(data);
 
@@ -170,6 +178,9 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
     RCLCPP_WARN_THROTTLE(
       logger_, clock_, 5000,
       "Ego is out of route, no module is running. Skip running scene modules.");
+    last_run_ego_out_of_route_no_modules_ = true;
+    last_cycle_route_uuid_hex_ =
+      autoware_utils_uuid::to_hex_string(data->route_handler->getRouteUuid());
     generateCombinedDrivableArea(result_output, data);
     return result_output;
   }
@@ -181,7 +192,9 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
     false,
   };
 
-  for (auto & planner_manager_slot : planner_manager_slots_) {
+  for (size_t slot_i = 0; slot_i < planner_manager_slots_.size(); ++slot_i) {
+    auto & planner_manager_slot = planner_manager_slots_.at(slot_i);
+    debug_info_.trace_slot_index = slot_i;
     if (result_output.is_upstream_failed_approved) {
       // clear all candidate/approved modules of all subsequent slots, and keep result_output as is
       planner_manager_slot.propagateWithFailedApproved();
@@ -208,6 +221,8 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
     result_output.valid_output.path, data->parameters.output_path_interval,
     keep_input_points(getSceneModuleStatus()));
   generateCombinedDrivableArea(result_output.valid_output, data);
+  last_cycle_route_uuid_hex_ =
+    autoware_utils_uuid::to_hex_string(data->route_handler->getRouteUuid());
   return result_output.valid_output;
 }
 
@@ -368,6 +383,16 @@ void PlannerManager::print() const
   string_stream << "***********************************************************\n";
   string_stream << "                  planner manager status\n";
   string_stream << "-----------------------------------------------------------\n";
+  string_stream << "trace_seq         : " << last_cycle_trace_seq_ << "\n";
+  string_stream << "route_uuid_hex    : " << last_cycle_route_uuid_hex_ << "\n";
+  string_stream << "ego_out_route_no_modules_sc: "
+                << (last_run_ego_out_of_route_no_modules_ ? "true" : "false") << "\n";
+  {
+    const bool upstream_failed = std::any_of(
+      debug_info_.slot_status.begin(), debug_info_.slot_status.end(),
+      [](const SlotStatus s) { return s == UPSTREAM_APPROVED_FAILED; });
+    string_stream << "upstream_slot_fail: " << (upstream_failed ? "true" : "false") << "\n";
+  }
   string_stream << "registered modules: ";
   for (const auto & m : manager_ptrs_) {
     string_stream << "[" << m->name() << "]";
@@ -411,6 +436,25 @@ void PlannerManager::print() const
   }
 
   string_stream << "\n";
+  string_stream << "slot_request_trace: ";
+  delimiter = "";
+  for (const auto & sel : debug_info_.slot_module_selections) {
+    string_stream << std::exchange(delimiter, " | ") << "[s" << sel.slot_index << " i" << sel.iteration
+                  << " req:";
+    for (const auto & n : sel.requested) {
+      string_stream << n << ",";
+    }
+    string_stream << " exe:";
+    for (const auto & n : sel.executable) {
+      string_stream << n << ",";
+    }
+    string_stream << " sel:" << (sel.selected.empty() ? "(none)" : sel.selected) << "]";
+  }
+  if (debug_info_.slot_module_selections.empty()) {
+    string_stream << "(none)";
+  }
+
+  string_stream << "\n";
   string_stream << "update module info: ";
   for (const auto & i : debug_info_.scene_status) {
     string_stream << "[Module:" << i.module_name << " Status:" << magic_enum::enum_name(i.status)
@@ -429,6 +473,7 @@ void PlannerManager::print() const
   }
 
   state_publisher_ptr_->publish<DebugStringMsg>("internal_state", string_stream.str());
+  debug_publisher_ptr_->publish<DebugStringMsg>("trace/cycle_detail", string_stream.str());
 
   RCLCPP_DEBUG_STREAM(logger_, string_stream.str());
 }
@@ -649,8 +694,35 @@ void SubPlannerManager::updateCandidateModules(
 
 std::pair<SceneModulePtr, BehaviorModuleOutput> SubPlannerManager::runRequestModules(
   const std::vector<SceneModulePtr> & request_modules, const std::shared_ptr<PlannerData> & data,
-  const BehaviorModuleOutput & previous_module_output)
+  const BehaviorModuleOutput & previous_module_output,
+  std::optional<std::pair<size_t, size_t>> trace_slot_iteration)
 {
+  const auto record_selection_trace = [this, &trace_slot_iteration](
+                                        const std::vector<SceneModulePtr> & sorted_requested,
+                                        const std::vector<SceneModulePtr> & executable_mods,
+                                        const SceneModulePtr & selected_mod) {
+    if (!trace_slot_iteration.has_value()) {
+      return;
+    }
+    SlotModuleSelectionTrace entry;
+    entry.slot_index = trace_slot_iteration->first;
+    entry.iteration = trace_slot_iteration->second;
+    for (const auto & m : sorted_requested) {
+      if (m) {
+        entry.requested.push_back(m->name());
+      }
+    }
+    for (const auto & m : executable_mods) {
+      if (m) {
+        entry.executable.push_back(m->name());
+      }
+    }
+    if (selected_mod) {
+      entry.selected = selected_mod->name();
+    }
+    debug_info_.slot_module_selections.push_back(std::move(entry));
+  };
+
   // modules that are filtered by simultaneous executable condition.
   std::vector<SceneModulePtr> executable_modules;
 
@@ -737,6 +809,7 @@ std::pair<SceneModulePtr, BehaviorModuleOutput> SubPlannerManager::runRequestMod
    * return null data if valid candidate module doesn't exist.
    */
   if (executable_modules.empty()) {
+    record_selection_trace(sorted_request_modules, executable_modules, nullptr);
     clearCandidateModules();
     return std::make_pair(nullptr, BehaviorModuleOutput{});
   }
@@ -767,12 +840,14 @@ std::pair<SceneModulePtr, BehaviorModuleOutput> SubPlannerManager::runRequestMod
     return nullptr;
   }();
   if (module_ptr == nullptr) {
+    record_selection_trace(sorted_request_modules, executable_modules, nullptr);
     return std::make_pair(nullptr, BehaviorModuleOutput{});
   }
 
   /**
    * register candidate modules.
    */
+  record_selection_trace(sorted_request_modules, executable_modules, module_ptr);
   updateCandidateModules(executable_modules, module_ptr);
 
   return std::make_pair(module_ptr, results.at(module_ptr->name()));
@@ -963,7 +1038,9 @@ SlotOutput SubPlannerManager::propagateFull(
     }
 
     const auto [highest_priority_module, candidate_module_output] =
-      runRequestModules(request_modules, data, approved_module_output);
+      runRequestModules(
+        request_modules, data, approved_module_output,
+        std::make_optional(std::make_pair(debug_info_.trace_slot_index, itr_num)));
 
     if (!highest_priority_module) {
       // there is no need to launch new module
