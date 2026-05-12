@@ -345,14 +345,6 @@ void MissionPlanner::on_set_preferred_primitive(
   using ResponseCode = autoware_adapi_v1_msgs::msg::ResponseStatus;
   const auto is_reroute = state_.state == RouteState::SET;
 
-  RCLCPP_INFO(
-    get_logger(),
-    "[set_preferred_primitive] begin: reset=%s preferred_primitives=%zu current_segments=%zu "
-    "has_saved_original_route=%s route_state=%d",
-    req->reset ? "true" : "false", req->preferred_primitives.size(),
-    current_route_ ? current_route_->segments.size() : 0u, original_route_ ? "yes" : "no",
-    static_cast<int>(state_.state));
-
   if (!current_route_) {
     res->status.success = false;
     throw service_utils::ServiceException(
@@ -393,12 +385,6 @@ void MissionPlanner::on_set_preferred_primitive(
   if (is_reroute && is_autonomous_driving) {
     const auto reroute_availability = sub_reroute_availability_.take_data();
     if (!reroute_availability || !reroute_availability->availability) {
-      RCLCPP_WARN(
-        get_logger(),
-        "[set_preferred_primitive] rejected: autonomous reroute blocked "
-        "(no_reroute_msg=%s availability_false=%s)",
-        !reroute_availability ? "true" : "false",
-        (reroute_availability && !reroute_availability->availability) ? "true" : "false");
       throw service_utils::ServiceException(
         autoware_adapi_v1_msgs::srv::SetRoute::Response::ERROR_INVALID_STATE,
         "Cannot reroute as the planner is not in lane following.");
@@ -406,10 +392,7 @@ void MissionPlanner::on_set_preferred_primitive(
   }
 
   if (req->reset) {
-    RCLCPP_INFO(
-      get_logger(),
-      "[set_preferred_primitive] applying reset to saved original route (segments=%zu)",
-      (*original_route_)->segments.size());
+    RCLCPP_INFO(get_logger(), "Cleared the saved original route after reset.");
 
     change_route(**original_route_);
     res->status.message = "Successfully set preferred primitive.";
@@ -440,11 +423,6 @@ void MissionPlanner::on_set_preferred_primitive(
 
     segment.preferred_primitive = preferred_primitive;
   }
-
-  RCLCPP_INFO(
-    get_logger(),
-    "[set_preferred_primitive] updated preferred primitives on current route (segments=%zu)",
-    current_route.segments.size());
 
   change_route(current_route);
   res->status.message = "Successfully set preferred primitive.";

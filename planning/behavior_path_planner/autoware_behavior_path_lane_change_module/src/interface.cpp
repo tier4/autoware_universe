@@ -202,11 +202,6 @@ BehaviorModuleOutput LaneChangeInterface::planWaitingApproval()
         std::pow(front_point.x - back_point.x, 2) + std::pow(front_point.y - back_point.y, 2));
       double over_shoot = dot_product / (normalize_length)-normalize_length;
       if (over_shoot > parameters_->l2_overwrite.rewrite_overshoot_threshold) {
-        RCLCPP_INFO(
-          getLogger(),
-          "[lane_change][l2_overwrite] exit waiting-approval: overshoot=%.3f threshold=%.3f "
-          "(manual steering away from LC reference); RTC->FAILED",
-          over_shoot, parameters_->l2_overwrite.rewrite_overshoot_threshold);
         path_candidate_ = std::make_shared<PathWithLaneId>();
         module_type_->resetParameters();
         updateRTCStatus(
@@ -273,15 +268,13 @@ bool LaneChangeInterface::canTransitSuccessState()
   updateDebugMarker();
 
   if (module_type_->specialExpiredCheck() && isWaitingApproval()) {
-    RCLCPP_INFO(
-      getLogger(),
-      "[lane_change] transit SUCCESS: reason=specialExpiredCheck (waiting approval)");
+    log_debug_throttled("Run specialExpiredCheck.");
     return true;
   }
 
   if (module_type_->hasFinishedLaneChange()) {
     module_type_->resetParameters();
-    RCLCPP_INFO(getLogger(), "[lane_change] transit SUCCESS: reason=finished_lane_change");
+    log_debug_throttled("Lane change process has completed.");
     return true;
   }
 
@@ -289,13 +282,6 @@ bool LaneChangeInterface::canTransitSuccessState()
     planner_data_ && planner_data_->operation_mode &&
     planner_data_->operation_mode->mode != OperationModeState::AUTONOMOUS &&
     module_type_->is_near_terminal_end()) {
-    RCLCPP_INFO(
-      getLogger(),
-      "[lane_change] transit SUCCESS: reason=non_autonomous_near_terminal "
-      "(op_mode=%d autoware_control=%s; driver steering away from BPP lane_change path — "
-      "route_lanelet reset may follow in planner_manager)",
-      static_cast<int>(planner_data_->operation_mode->mode),
-      planner_data_->operation_mode->is_autoware_control_enabled ? "true" : "false");
     return true;
   }
 
@@ -380,10 +366,6 @@ std::pair<LaneChangeStates, std::string_view> LaneChangeInterface::check_transit
     planner_data_ && planner_data_->operation_mode &&
     planner_data_->operation_mode->mode != OperationModeState::AUTONOMOUS &&
     module_type_->is_near_terminal_end()) {
-    RCLCPP_INFO_THROTTLE(
-      getLogger(), *clock_, 1000,
-      "[lane_change] failure_check -> Cancel ManualModeNearTerminal "
-      "(non-autonomous near LC terminal; typical when driver overrides BPP LC path)");
     return {LaneChangeStates::Cancel, "ManualModeNearTerminal"};
   }
   if (module_type_->isAbortState()) {

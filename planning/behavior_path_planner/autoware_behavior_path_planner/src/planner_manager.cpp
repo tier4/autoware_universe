@@ -14,8 +14,6 @@
 
 #include "autoware/behavior_path_planner/planner_manager.hpp"
 
-#include <autoware_utils_uuid/uuid_helper.hpp>
-
 #include "autoware/behavior_path_planner_common/utils/drivable_area_expansion/static_drivable_area.hpp"
 #include "autoware/behavior_path_planner_common/utils/path_utils.hpp"
 #include "autoware/behavior_path_planner_common/utils/utils.hpp"
@@ -122,11 +120,8 @@ bool keep_input_points(const std::vector<std::shared_ptr<SceneModuleStatus>> & s
   return false;
 }
 
-BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & data, uint64_t trace_seq)
+BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & data)
 {
-  last_cycle_trace_seq_ = trace_seq;
-  last_run_ego_out_of_route_no_modules_ = false;
-
   resetProcessingTime();
   StopWatch<std::chrono::milliseconds> stop_watch;
   stop_watch.tic("total_time");
@@ -138,54 +133,13 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
 
   debug_info_.scene_status.clear();
   debug_info_.slot_status.clear();
-  debug_info_.slot_module_selections.clear();
 
   if (!current_route_lanelet_->has_value()) resetCurrentRouteLanelet(data);
 
   std::for_each(
     manager_ptrs_.begin(), manager_ptrs_.end(), [&data](const auto & m) { m->setData(data); });
 
-  const bool is_any_approved_module_running = std::any_of(
-    planner_manager_slots_.begin(), planner_manager_slots_.end(), [&](const auto & slot) {
-      return slot.isAnyApprovedPred([](const auto & m) {
-        const auto status = m->getCurrentStatus();
-        return status == ModuleStatus::RUNNING || status == ModuleStatus::WAITING_APPROVAL;
-      });
-    });
-
-  // IDLE is a state in which an execution has been requested but not yet approved.
-  // once approved, it basically turns to running.
-  const bool is_any_candidate_module_running_or_idle = std::any_of(
-    planner_manager_slots_.begin(), planner_manager_slots_.end(), [](const auto & slot) {
-      return slot.isAnyCandidatePred([](const auto & m) {
-        const auto status = m->getCurrentStatus();
-        return status == ModuleStatus::RUNNING || status == ModuleStatus::WAITING_APPROVAL ||
-               status == ModuleStatus::IDLE;
-      });
-    });
-
-  const bool is_any_module_running =
-    is_any_approved_module_running || is_any_candidate_module_running_or_idle;
-
   updateCurrentRouteLanelet(data);
-
-  const bool is_out_of_route = utils::isEgoOutOfRoute(
-    data->self_odometry->pose.pose, current_route_lanelet_->value(), data->prev_modified_goal,
-    data->route_handler);
-
-  if (is_out_of_route && !is_any_module_running) {
-    last_run_ego_out_of_route_no_modules_ = true;
-  }
-
-  if (is_out_of_route && is_any_module_running) {
-    last_cycle_route_uuid_hex_ =
-      autoware_utils_uuid::to_hex_string(data->route_handler->getRouteUuid());
-    RCLCPP_WARN_THROTTLE(
-      logger_, clock_, 10000,
-      "[planner_manager] ego is out_of_route but scene modules are active (e.g. lane_change "
-      "WAITING_APPROVAL). route_uuid_hex=%s current_route_lanelet_id=%ld",
-      last_cycle_route_uuid_hex_.c_str(), current_route_lanelet_->value().id());
-  }
 
   SlotOutput result_output = SlotOutput{
     getReferencePath(data),
@@ -194,9 +148,7 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
     false,
   };
 
-  for (size_t slot_i = 0; slot_i < planner_manager_slots_.size(); ++slot_i) {
-    auto & planner_manager_slot = planner_manager_slots_.at(slot_i);
-    debug_info_.trace_slot_index = slot_i;
+  for (auto & planner_manager_slot : planner_manager_slots_) {
     if (result_output.is_upstream_failed_approved) {
       // clear all candidate/approved modules of all subsequent slots, and keep result_output as is
       planner_manager_slot.propagateWithFailedApproved();
@@ -223,8 +175,6 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
     result_output.valid_output.path, data->parameters.output_path_interval,
     keep_input_points(getSceneModuleStatus()));
   generateCombinedDrivableArea(result_output.valid_output, data);
-  last_cycle_route_uuid_hex_ =
-    autoware_utils_uuid::to_hex_string(data->route_handler->getRouteUuid());
   return result_output.valid_output;
 }
 
@@ -289,7 +239,7 @@ void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData
   // RouteHandler API and thresholds as the rest of BPP (getClosestLaneletWithConstrainsWithinRoute
   // with ego_nearest_dist_threshold / ego_nearest_yaw_threshold). Only if no route lanelet
   // matches those constraints, fall back to resetCurrentRouteLanelet (unconstrained closest).
-  const auto snap_to_global_route_if_ego_out = [&](const char * const context) {
+  const auto snap_to_global_route_if_ego_out = [&]() {
     if (skip_global_route_snap) {
       return;
     }
@@ -303,31 +253,10 @@ void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData
     lanelet::ConstLanelet constrained{};
     if (route_handler->getClosestLaneletWithConstrainsWithinRoute(
           pose, &constrained, p.ego_nearest_dist_threshold, p.ego_nearest_yaw_threshold)) {
-      const auto prev_id = current_route_lanelet_->value().id();
       *current_route_lanelet_ = constrained;
-      const auto new_id = current_route_lanelet_->value().id();
-      if (prev_id != new_id) {
-        RCLCPP_INFO_THROTTLE(
-          logger_, clock_, 5000,
-          "[route_lanelet] constrained global snap after out_of_route (context=%s): lanelet %ld -> "
-          "%ld",
-          context, prev_id, new_id);
-      }
       return;
     }
-    const auto prev_id = current_route_lanelet_->value().id();
     resetCurrentRouteLanelet(data);
-    if (!current_route_lanelet_->has_value()) {
-      return;
-    }
-    const auto new_id = current_route_lanelet_->value().id();
-    if (prev_id != new_id) {
-      RCLCPP_INFO_THROTTLE(
-        logger_, clock_, 5000,
-        "[route_lanelet] unconstrained global snap after out_of_route (context=%s): lanelet %ld -> "
-        "%ld",
-        context, prev_id, new_id);
-    }
   };
 
   constexpr double extra_margin = 10.0;
@@ -340,7 +269,7 @@ void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData
         pose, current_route_lanelet_->value(), &closest_lane, p.ego_nearest_dist_threshold,
         p.ego_nearest_yaw_threshold)) {
     *current_route_lanelet_ = closest_lane;
-    snap_to_global_route_if_ego_out("getClosestRouteLaneletFromLanelet");
+    snap_to_global_route_if_ego_out();
     return;
   }
 
@@ -352,7 +281,7 @@ void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData
   if (opt.has_value()) {
     closest_lane = *opt;
     *current_route_lanelet_ = closest_lane;
-    snap_to_global_route_if_ego_out("lanelet_sequence_within_constraint");
+    snap_to_global_route_if_ego_out();
     return;
   }
 
@@ -360,18 +289,13 @@ void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData
         experimental::lanelet2_utils::get_closest_lanelet(lanelet_sequence, pose);
       opt_constraint) {
     *current_route_lanelet_ = opt_constraint.value();
-    snap_to_global_route_if_ego_out("lanelet_sequence_closest");
+    snap_to_global_route_if_ego_out();
     return;
   }
 
   // Ego not in the projected lanelet sequence from current_route_lanelet_. Always snap to the
   // closest lanelet on the route — even when an approved module is only WAITING_APPROVAL
   // (e.g. lane_change). Otherwise isEgoOutOfRoute stays true and reference path stays broken.
-  RCLCPP_WARN_THROTTLE(
-    logger_, clock_, 2000,
-    "[route_lanelet] resetCurrentRouteLanelet: reason=ego_not_in_lanelet_sequence "
-    "prev_route_lanelet_id=%ld",
-    current_route_lanelet_->value().id());
   resetCurrentRouteLanelet(data);
 }
 
@@ -452,16 +376,6 @@ void PlannerManager::print() const
   string_stream << "***********************************************************\n";
   string_stream << "                  planner manager status\n";
   string_stream << "-----------------------------------------------------------\n";
-  string_stream << "trace_seq         : " << last_cycle_trace_seq_ << "\n";
-  string_stream << "route_uuid_hex    : " << last_cycle_route_uuid_hex_ << "\n";
-  string_stream << "ego_out_route_no_modules_sc: "
-                << (last_run_ego_out_of_route_no_modules_ ? "true" : "false") << "\n";
-  {
-    const bool upstream_failed = std::any_of(
-      debug_info_.slot_status.begin(), debug_info_.slot_status.end(),
-      [](const SlotStatus s) { return s == UPSTREAM_APPROVED_FAILED; });
-    string_stream << "upstream_slot_fail: " << (upstream_failed ? "true" : "false") << "\n";
-  }
   string_stream << "registered modules: ";
   for (const auto & m : manager_ptrs_) {
     string_stream << "[" << m->name() << "]";
@@ -505,25 +419,6 @@ void PlannerManager::print() const
   }
 
   string_stream << "\n";
-  string_stream << "slot_request_trace: ";
-  delimiter = "";
-  for (const auto & sel : debug_info_.slot_module_selections) {
-    string_stream << std::exchange(delimiter, " | ") << "[s" << sel.slot_index << " i" << sel.iteration
-                  << " req:";
-    for (const auto & n : sel.requested) {
-      string_stream << n << ",";
-    }
-    string_stream << " exe:";
-    for (const auto & n : sel.executable) {
-      string_stream << n << ",";
-    }
-    string_stream << " sel:" << (sel.selected.empty() ? "(none)" : sel.selected) << "]";
-  }
-  if (debug_info_.slot_module_selections.empty()) {
-    string_stream << "(none)";
-  }
-
-  string_stream << "\n";
   string_stream << "update module info: ";
   for (const auto & i : debug_info_.scene_status) {
     string_stream << "[Module:" << i.module_name << " Status:" << magic_enum::enum_name(i.status)
@@ -542,7 +437,6 @@ void PlannerManager::print() const
   }
 
   state_publisher_ptr_->publish<DebugStringMsg>("internal_state", string_stream.str());
-  debug_publisher_ptr_->publish<DebugStringMsg>("trace/cycle_detail", string_stream.str());
 
   RCLCPP_DEBUG_STREAM(logger_, string_stream.str());
 }
@@ -763,35 +657,8 @@ void SubPlannerManager::updateCandidateModules(
 
 std::pair<SceneModulePtr, BehaviorModuleOutput> SubPlannerManager::runRequestModules(
   const std::vector<SceneModulePtr> & request_modules, const std::shared_ptr<PlannerData> & data,
-  const BehaviorModuleOutput & previous_module_output,
-  std::optional<std::pair<size_t, size_t>> trace_slot_iteration)
+  const BehaviorModuleOutput & previous_module_output)
 {
-  const auto record_selection_trace = [this, &trace_slot_iteration](
-                                        const std::vector<SceneModulePtr> & sorted_requested,
-                                        const std::vector<SceneModulePtr> & executable_mods,
-                                        const SceneModulePtr & selected_mod) {
-    if (!trace_slot_iteration.has_value()) {
-      return;
-    }
-    SlotModuleSelectionTrace entry;
-    entry.slot_index = trace_slot_iteration->first;
-    entry.iteration = trace_slot_iteration->second;
-    for (const auto & m : sorted_requested) {
-      if (m) {
-        entry.requested.push_back(m->name());
-      }
-    }
-    for (const auto & m : executable_mods) {
-      if (m) {
-        entry.executable.push_back(m->name());
-      }
-    }
-    if (selected_mod) {
-      entry.selected = selected_mod->name();
-    }
-    debug_info_.slot_module_selections.push_back(std::move(entry));
-  };
-
   // modules that are filtered by simultaneous executable condition.
   std::vector<SceneModulePtr> executable_modules;
 
@@ -878,7 +745,6 @@ std::pair<SceneModulePtr, BehaviorModuleOutput> SubPlannerManager::runRequestMod
    * return null data if valid candidate module doesn't exist.
    */
   if (executable_modules.empty()) {
-    record_selection_trace(sorted_request_modules, executable_modules, nullptr);
     clearCandidateModules();
     return std::make_pair(nullptr, BehaviorModuleOutput{});
   }
@@ -909,14 +775,12 @@ std::pair<SceneModulePtr, BehaviorModuleOutput> SubPlannerManager::runRequestMod
     return nullptr;
   }();
   if (module_ptr == nullptr) {
-    record_selection_trace(sorted_request_modules, executable_modules, nullptr);
     return std::make_pair(nullptr, BehaviorModuleOutput{});
   }
 
   /**
    * register candidate modules.
    */
-  record_selection_trace(sorted_request_modules, executable_modules, module_ptr);
   updateCandidateModules(executable_modules, module_ptr);
 
   return std::make_pair(module_ptr, results.at(module_ptr->name()));
@@ -1045,26 +909,10 @@ SlotOutput SubPlannerManager::runApprovedModules(
   }();
 
   // if lane change module has succeeded, update current route lanelet.
-  const bool should_reset_lanelet_from_success = std::any_of(
-    approved_module_ptrs_.begin(), approved_module_ptrs_.end(), [](const auto & m) {
-      return m->getCurrentStatus() == ModuleStatus::SUCCESS &&
-             m->isCurrentRouteLaneletToBeReset();
-    });
-  if (should_reset_lanelet_from_success) {
-    std::string module_names;
-    for (const auto & m : approved_module_ptrs_) {
-      if (m->getCurrentStatus() == ModuleStatus::SUCCESS && m->isCurrentRouteLaneletToBeReset()) {
-        if (!module_names.empty()) {
-          module_names += ',';
-        }
-        module_names += m->name();
-      }
-    }
-    RCLCPP_INFO(
-      rclcpp::get_logger("behavior_path_planner.planner_manager"),
-      "[route_lanelet] resetCurrentRouteLanelet: reason=approved_module_SUCCESS "
-      "(isCurrentRouteLaneletToBeReset) modules=%s",
-      module_names.c_str());
+  if (std::any_of(approved_module_ptrs_.begin(), approved_module_ptrs_.end(), [](const auto & m) {
+        return m->getCurrentStatus() == ModuleStatus::SUCCESS &&
+               m->isCurrentRouteLaneletToBeReset();
+      })) {
     resetCurrentRouteLanelet(data);
   }
 
@@ -1124,9 +972,7 @@ SlotOutput SubPlannerManager::propagateFull(
     }
 
     const auto [highest_priority_module, candidate_module_output] =
-      runRequestModules(
-        request_modules, data, approved_module_output,
-        std::make_optional(std::make_pair(debug_info_.trace_slot_index, itr_num)));
+      runRequestModules(request_modules, data, approved_module_output);
 
     if (!highest_priority_module) {
       // there is no need to launch new module
