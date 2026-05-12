@@ -318,20 +318,12 @@ void PlannerManager::updateCurrentRouteLanelet(
     closest_lane = *opt;
     *current_route_lanelet_ = closest_lane;
     snap_to_global_route_if_ego_out();
-    return;
-  }
-
-  if (const auto opt_constraint =
-        experimental::lanelet2_utils::get_closest_lanelet(lanelet_sequence, pose);
-      opt_constraint) {
+  } else if (const auto opt_constraint =
+               experimental::lanelet2_utils::get_closest_lanelet(lanelet_sequence, pose);
+             opt_constraint) {
     *current_route_lanelet_ = opt_constraint.value();
     snap_to_global_route_if_ego_out();
-    return;
-  }
-
-  // Ego not in the projected lanelet sequence from current_route_lanelet_. When no approved
-  // module is running/waiting, snap to the closest lane on the route (legacy behavior).
-  if (!is_any_approved_module_running) {
+  } else if (!is_any_approved_module_running) {
     resetCurrentRouteLanelet(data);
   }
 }
