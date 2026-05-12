@@ -542,10 +542,8 @@ private:
   /**
    * @brief find and set the closest lanelet within the route to current route lanelet
    * @param planner data.
-   * @param is any approved module running.
    */
-  void updateCurrentRouteLanelet(
-    const std::shared_ptr<PlannerData> & data, const bool is_any_approved_module_running);
+  void updateCurrentRouteLanelet(const std::shared_ptr<PlannerData> & data);
 
   void generateCombinedDrivableArea(
     BehaviorModuleOutput & output, const std::shared_ptr<PlannerData> & data) const;

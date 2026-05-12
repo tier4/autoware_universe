@@ -167,7 +167,7 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
   const bool is_any_module_running =
     is_any_approved_module_running || is_any_candidate_module_running_or_idle;
 
-  updateCurrentRouteLanelet(data, is_any_approved_module_running);
+  updateCurrentRouteLanelet(data);
 
   const bool is_out_of_route = utils::isEgoOutOfRoute(
     data->self_odometry->pose.pose, current_route_lanelet_->value(), data->prev_modified_goal,
@@ -271,8 +271,7 @@ void PlannerManager::generateCombinedDrivableArea(
   utils::extractObstaclesFromDrivableArea(output.path, di.obstacles);
 }
 
-void PlannerManager::updateCurrentRouteLanelet(
-  const std::shared_ptr<PlannerData> & data, const bool is_any_approved_module_running)
+void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData> & data)
 {
   const auto & route_handler = data->route_handler;
   const auto & pose = data->self_odometry->pose.pose;
@@ -303,11 +302,14 @@ void PlannerManager::updateCurrentRouteLanelet(
                experimental::lanelet2_utils::get_closest_lanelet(lanelet_sequence, pose);
              opt_constraint) {
     *current_route_lanelet_ = opt_constraint.value();
-  } else if (!is_any_approved_module_running) {
+  } else {
+    // Ego not in the projected lanelet sequence from current_route_lanelet_. Always snap to the
+    // closest lanelet on the route — even when an approved module is only WAITING_APPROVAL
+    // (e.g. lane_change). Otherwise isEgoOutOfRoute stays true and reference path stays broken.
     RCLCPP_WARN_THROTTLE(
       logger_, clock_, 2000,
       "[route_lanelet] resetCurrentRouteLanelet: reason=ego_not_in_lanelet_sequence "
-      "prev_route_lanelet_id=%ld (no approved module running)",
+      "prev_route_lanelet_id=%ld",
       current_route_lanelet_->value().id());
     resetCurrentRouteLanelet(data);
   }
