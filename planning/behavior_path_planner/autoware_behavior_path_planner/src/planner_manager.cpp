@@ -25,11 +25,8 @@
 #include <boost/scope_exit.hpp>
 
 #include <algorithm>
-// <iomanip> / <sstream>: used by PlannerManager::print() (explicit includes for IWYU / toolchains).
-#include <iomanip>
 #include <iostream>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -164,7 +161,6 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
 
   updateCurrentRouteLanelet(data, is_any_approved_module_running);
 
-  // Out-of-route uses current_route_lanelet_ as updated by updateCurrentRouteLanelet above.
   const bool is_out_of_route = utils::isEgoOutOfRoute(
     data->self_odometry->pose.pose, current_route_lanelet_->value(), data->prev_modified_goal,
     data->route_handler);
@@ -265,18 +261,10 @@ void PlannerManager::updateCurrentRouteLanelet(
   const auto & pose = data->self_odometry->pose.pose;
   const auto p = data->parameters;
 
-  // During full autonomous tracking, avoid immediate global route-lane snaps when ego briefly
-  // leaves strict lane polygons (e.g. lateral error). Manual / non-autonomous: keep snap for
-  // quicker route-lane recovery.
   const bool skip_global_route_snap =
     data->operation_mode && data->operation_mode->mode == OperationModeState::AUTONOMOUS &&
     data->operation_mode->is_autoware_control_enabled;
 
-  // Local graph-based updates can pick a route lane that passes distance/yaw checks to the
-  // centerline but still fails strict isEgoOutOfRoute (polygon). Reconcile using the same
-  // RouteHandler API and thresholds as the rest of BPP (getClosestLaneletWithConstrainsWithinRoute
-  // with ego_nearest_dist_threshold / ego_nearest_yaw_threshold). Only if no route lanelet
-  // matches those constraints, fall back to resetCurrentRouteLanelet (unconstrained closest).
   const auto snap_to_global_route_if_ego_out = [&]() {
     if (skip_global_route_snap) {
       return;
@@ -314,11 +302,6 @@ void PlannerManager::updateCurrentRouteLanelet(
   const auto lanelet_sequence = route_handler->getLaneletSequence(
     current_route_lanelet_->value(), pose, backward_length, p.forward_path_length);
 
-  // If ego is not in the projected sequence, pick a lane within constraints, else unconstrained
-  // closest, else (legacy) reset only when no approved module is RUNNING/WAITING_APPROVAL.
-  // When an approved module is active but neither branch matches, we intentionally keep the
-  // previous current_route_lanelet_ (e.g. lane change waiting) even if the reference path looks
-  // inconsistent until the module resolves.
   auto opt = autoware::experimental::lanelet2_utils::get_closest_lanelet_within_constraint(
     lanelet_sequence, pose, p.ego_nearest_dist_threshold, p.ego_nearest_yaw_threshold);
   if (opt.has_value()) {
@@ -945,7 +928,6 @@ SlotOutput SubPlannerManager::runApprovedModules(
   }();
 
   // if lane change module has succeeded, update current route lanelet.
-  // NOTE: reset must be inside the if body (any_of only gates this call).
   if (std::any_of(approved_module_ptrs_.begin(), approved_module_ptrs_.end(), [](const auto & m) {
         return m->getCurrentStatus() == ModuleStatus::SUCCESS &&
                m->isCurrentRouteLaneletToBeReset();
