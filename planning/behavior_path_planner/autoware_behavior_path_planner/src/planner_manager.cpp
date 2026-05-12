@@ -277,6 +277,31 @@ void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData
   const auto & pose = data->self_odometry->pose.pose;
   const auto p = data->parameters;
 
+  // Local graph-based updates can pick a route lane that passes distance/yaw checks to the
+  // centerline but still fails strict isEgoOutOfRoute (polygon). Snap to the globally closest
+  // route lanelet when that happens so current_route_lanelet_ and isEgoOutOfRoute stay aligned.
+  const auto snap_to_global_route_if_ego_out = [&](const char * const context) {
+    if (!current_route_lanelet_->has_value()) {
+      return;
+    }
+    if (!utils::isEgoOutOfRoute(
+          pose, current_route_lanelet_->value(), data->prev_modified_goal, route_handler)) {
+      return;
+    }
+    const auto prev_id = current_route_lanelet_->value().id();
+    resetCurrentRouteLanelet(data);
+    if (!current_route_lanelet_->has_value()) {
+      return;
+    }
+    const auto new_id = current_route_lanelet_->value().id();
+    if (prev_id != new_id) {
+      RCLCPP_INFO_THROTTLE(
+        logger_, clock_, 5000,
+        "[route_lanelet] global snap after out_of_route (context=%s): lanelet %ld -> %ld", context,
+        prev_id, new_id);
+    }
+  };
+
   constexpr double extra_margin = 10.0;
   const auto backward_length =
     std::max(p.backward_path_length, p.backward_path_length + extra_margin);
@@ -287,6 +312,7 @@ void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData
         pose, current_route_lanelet_->value(), &closest_lane, p.ego_nearest_dist_threshold,
         p.ego_nearest_yaw_threshold)) {
     *current_route_lanelet_ = closest_lane;
+    snap_to_global_route_if_ego_out("getClosestRouteLaneletFromLanelet");
     return;
   }
 
@@ -298,21 +324,27 @@ void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData
   if (opt.has_value()) {
     closest_lane = *opt;
     *current_route_lanelet_ = closest_lane;
-  } else if (const auto opt_constraint =
-               experimental::lanelet2_utils::get_closest_lanelet(lanelet_sequence, pose);
-             opt_constraint) {
-    *current_route_lanelet_ = opt_constraint.value();
-  } else {
-    // Ego not in the projected lanelet sequence from current_route_lanelet_. Always snap to the
-    // closest lanelet on the route — even when an approved module is only WAITING_APPROVAL
-    // (e.g. lane_change). Otherwise isEgoOutOfRoute stays true and reference path stays broken.
-    RCLCPP_WARN_THROTTLE(
-      logger_, clock_, 2000,
-      "[route_lanelet] resetCurrentRouteLanelet: reason=ego_not_in_lanelet_sequence "
-      "prev_route_lanelet_id=%ld",
-      current_route_lanelet_->value().id());
-    resetCurrentRouteLanelet(data);
+    snap_to_global_route_if_ego_out("lanelet_sequence_within_constraint");
+    return;
   }
+
+  if (const auto opt_constraint =
+        experimental::lanelet2_utils::get_closest_lanelet(lanelet_sequence, pose);
+      opt_constraint) {
+    *current_route_lanelet_ = opt_constraint.value();
+    snap_to_global_route_if_ego_out("lanelet_sequence_closest");
+    return;
+  }
+
+  // Ego not in the projected lanelet sequence from current_route_lanelet_. Always snap to the
+  // closest lanelet on the route — even when an approved module is only WAITING_APPROVAL
+  // (e.g. lane_change). Otherwise isEgoOutOfRoute stays true and reference path stays broken.
+  RCLCPP_WARN_THROTTLE(
+    logger_, clock_, 2000,
+    "[route_lanelet] resetCurrentRouteLanelet: reason=ego_not_in_lanelet_sequence "
+    "prev_route_lanelet_id=%ld",
+    current_route_lanelet_->value().id());
+  resetCurrentRouteLanelet(data);
 }
 
 BehaviorModuleOutput PlannerManager::getReferencePath(

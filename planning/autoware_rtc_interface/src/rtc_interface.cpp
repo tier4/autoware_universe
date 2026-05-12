@@ -299,6 +299,14 @@ void RTCInterface::updateCooperateStatus(
     return;
   }
 
+  // Behavior modules may finish with ModuleStatus::SUCCESS before RTC ever reaches RUNNING
+  // (e.g. manual steering / non-autonomous near terminal). SceneModuleInterface then calls
+  // updateRTCStatusForSuccess() which requests SUCCEEDED; allow that cleanup transition.
+  if (itr->state.type == State::WAITING_FOR_EXECUTION && state == State::SUCCEEDED) {
+    update_status(*itr);
+    return;
+  }
+
   if (itr->state.type == State::RUNNING && state != State::WAITING_FOR_EXECUTION) {
     update_status(*itr);
     return;
