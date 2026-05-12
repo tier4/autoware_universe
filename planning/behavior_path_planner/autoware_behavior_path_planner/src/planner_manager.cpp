@@ -277,12 +277,22 @@ void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData
   const auto & pose = data->self_odometry->pose.pose;
   const auto p = data->parameters;
 
+  // During full autonomous tracking, avoid immediate global route-lane snaps when ego briefly
+  // leaves strict lane polygons (e.g. lateral error). Manual / non-autonomous: keep snap for
+  // quicker route-lane recovery.
+  const bool skip_global_route_snap =
+    data->operation_mode && data->operation_mode->mode == OperationModeState::AUTONOMOUS &&
+    data->operation_mode->is_autoware_control_enabled;
+
   // Local graph-based updates can pick a route lane that passes distance/yaw checks to the
   // centerline but still fails strict isEgoOutOfRoute (polygon). Reconcile using the same
   // RouteHandler API and thresholds as the rest of BPP (getClosestLaneletWithConstrainsWithinRoute
   // with ego_nearest_dist_threshold / ego_nearest_yaw_threshold). Only if no route lanelet
   // matches those constraints, fall back to resetCurrentRouteLanelet (unconstrained closest).
   const auto snap_to_global_route_if_ego_out = [&](const char * const context) {
+    if (skip_global_route_snap) {
+      return;
+    }
     if (!current_route_lanelet_->has_value()) {
       return;
     }
