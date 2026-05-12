@@ -161,12 +161,11 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
   autoware_perception_msgs::msg::PredictedObject colliding_object;
   auto collision_point = std::invoke([&]() -> std::optional<CollisionPoint> {
     if (!params_.rss_params.enable) {
-      return get_nearest_object_collision(
-        traj_points, predicted_objects, colliding_object);
+      return get_nearest_object_collision(traj_points, predicted_objects, colliding_object);
     }
     return get_nearest_object_collision(
-      traj_points, vehicle_info_, predicted_objects,
-      object_decel_map_, params_.rss_params.ego_decel, params_.rss_params.reaction_time,
+      traj_points, vehicle_info_, predicted_objects, object_decel_map_,
+      params_.rss_params.ego_decel, params_.rss_params.reaction_time,
       params_.rss_params.safety_margin, params_.objects.stopped_velocity_th,
       params_.rss_params.lookahead_horizon, colliding_object);
   });
