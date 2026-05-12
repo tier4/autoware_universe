@@ -278,14 +278,31 @@ void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData
   const auto p = data->parameters;
 
   // Local graph-based updates can pick a route lane that passes distance/yaw checks to the
-  // centerline but still fails strict isEgoOutOfRoute (polygon). Snap to the globally closest
-  // route lanelet when that happens so current_route_lanelet_ and isEgoOutOfRoute stay aligned.
+  // centerline but still fails strict isEgoOutOfRoute (polygon). Reconcile using the same
+  // RouteHandler API and thresholds as the rest of BPP (getClosestLaneletWithConstrainsWithinRoute
+  // with ego_nearest_dist_threshold / ego_nearest_yaw_threshold). Only if no route lanelet
+  // matches those constraints, fall back to resetCurrentRouteLanelet (unconstrained closest).
   const auto snap_to_global_route_if_ego_out = [&](const char * const context) {
     if (!current_route_lanelet_->has_value()) {
       return;
     }
     if (!utils::isEgoOutOfRoute(
           pose, current_route_lanelet_->value(), data->prev_modified_goal, route_handler)) {
+      return;
+    }
+    lanelet::ConstLanelet constrained{};
+    if (route_handler->getClosestLaneletWithConstrainsWithinRoute(
+          pose, &constrained, p.ego_nearest_dist_threshold, p.ego_nearest_yaw_threshold)) {
+      const auto prev_id = current_route_lanelet_->value().id();
+      *current_route_lanelet_ = constrained;
+      const auto new_id = current_route_lanelet_->value().id();
+      if (prev_id != new_id) {
+        RCLCPP_INFO_THROTTLE(
+          logger_, clock_, 5000,
+          "[route_lanelet] constrained global snap after out_of_route (context=%s): lanelet %ld -> "
+          "%ld",
+          context, prev_id, new_id);
+      }
       return;
     }
     const auto prev_id = current_route_lanelet_->value().id();
@@ -297,8 +314,9 @@ void PlannerManager::updateCurrentRouteLanelet(const std::shared_ptr<PlannerData
     if (prev_id != new_id) {
       RCLCPP_INFO_THROTTLE(
         logger_, clock_, 5000,
-        "[route_lanelet] global snap after out_of_route (context=%s): lanelet %ld -> %ld", context,
-        prev_id, new_id);
+        "[route_lanelet] unconstrained global snap after out_of_route (context=%s): lanelet %ld -> "
+        "%ld",
+        context, prev_id, new_id);
     }
   };
 
