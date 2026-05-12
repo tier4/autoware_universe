@@ -602,6 +602,13 @@ private:
   mutable uint64_t last_cycle_trace_seq_{0};
   mutable bool last_run_ego_out_of_route_no_modules_{false};
   mutable std::string last_cycle_route_uuid_hex_;
+
+  /**
+   * If false (default): when ego is out of route and no scene module is running, return early with
+   * createGoalAroundPath() only (legacy short circuit).
+   * If true: still run slot propagation so scene modules can recover planning / drivable area.
+   */
+  bool run_scene_modules_when_ego_out_of_route_{false};
 };
 }  // namespace autoware::behavior_path_planner
 

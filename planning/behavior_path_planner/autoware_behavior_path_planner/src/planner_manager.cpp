@@ -44,7 +44,9 @@ PlannerManager::PlannerManager(rclcpp::Node & node)
     "autoware::behavior_path_planner::SceneModuleManagerInterface"),
   logger_(node.get_logger().get_child("planner_manager")),
   clock_(*node.get_clock()),
-  last_valid_reference_path_(std::nullopt)
+  last_valid_reference_path_(std::nullopt),
+  run_scene_modules_when_ego_out_of_route_(node.declare_parameter<bool>(
+    "run_scene_modules_when_ego_out_of_route", false))
 {
   current_route_lanelet_ = std::make_shared<std::optional<lanelet::ConstLanelet>>(std::nullopt);
   processing_time_.emplace("total_time", 0.0);
@@ -173,7 +175,10 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
     data->self_odometry->pose.pose, current_route_lanelet_->value(), data->prev_modified_goal,
     data->route_handler);
 
-  if (!is_any_module_running && is_out_of_route) {
+  const bool use_goal_stub_short_circuit =
+    !run_scene_modules_when_ego_out_of_route_ && !is_any_module_running && is_out_of_route;
+
+  if (use_goal_stub_short_circuit) {
     BehaviorModuleOutput result_output = utils::createGoalAroundPath(data);
     last_run_ego_out_of_route_no_modules_ = true;
     last_cycle_route_uuid_hex_ =
@@ -185,6 +190,17 @@ BehaviorModuleOutput PlannerManager::run(const std::shared_ptr<PlannerData> & da
       last_cycle_route_uuid_hex_.c_str(), current_route_lanelet_->value().id());
     generateCombinedDrivableArea(result_output, data);
     return result_output;
+  }
+
+  if (run_scene_modules_when_ego_out_of_route_ && !is_any_module_running && is_out_of_route) {
+    last_cycle_route_uuid_hex_ =
+      autoware_utils_uuid::to_hex_string(data->route_handler->getRouteUuid());
+    RCLCPP_WARN_THROTTLE(
+      logger_, clock_, 5000,
+      "Ego is out of route and no scene module is running, but running scene module slots anyway "
+      "(run_scene_modules_when_ego_out_of_route=true). route_uuid_hex=%s "
+      "current_route_lanelet_id=%ld",
+      last_cycle_route_uuid_hex_.c_str(), current_route_lanelet_->value().id());
   }
 
   SlotOutput result_output = SlotOutput{
