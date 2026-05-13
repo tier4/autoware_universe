@@ -52,6 +52,10 @@ public:
     std::int64_t * output_labels, float * output_probs, std::size_t num_classes,
     std::size_t num_points, std::size_t num_voxels);
 
+  std::size_t createFilteredSegmentationPointcloud(
+    const float * input_features, const std::int64_t * pred_labels, const float * pred_probs,
+    std::uint8_t * output_points, std::size_t num_classes, std::size_t num_points);
+
   std::size_t createFilteredPointcloud(
     const void * compact_input_points, CloudFormat input_format, CloudFormat output_format,
     const float * pred_probs, void * output_points, std::size_t num_classes,
