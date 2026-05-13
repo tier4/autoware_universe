@@ -86,9 +86,12 @@ struct TrajectoryIdentification
   }
 };
 
+enum RiskLevel { SAFE, WARN, ERROR };
 struct DracArtifacts
 {
+  RiskLevel risk_level;
   TrajectoryIdentification object_identification;
+  double drac;
   double pet;
   double ttc;
   PoseTrajectory ego_trajectory;
@@ -99,6 +102,7 @@ struct DracArtifacts
 
 struct PetArtifacts
 {
+  RiskLevel risk_level;
   TrajectoryIdentification object_identification;
   double pet;
   double ttc;
@@ -110,13 +114,13 @@ struct PetArtifacts
 
 struct RssArtifacts
 {
+  RiskLevel risk_level;
   TrajectoryIdentification object_identification;
-  double pet;
-  double ttc;
-  PoseTrajectory ego_trajectory;
-  PoseTrajectory object_trajectory;
-  Polygon2d ego_hull;
-  Polygon2d object_hull;
+  double rss_acceleration;
+  // PoseTrajectory ego_trajectory;
+  // PoseTrajectory object_trajectory;
+  // Polygon2d ego_hull;
+  // Polygon2d object_hull;
 };
 
 struct BlackboardLogger
