@@ -18,3 +18,4 @@
         "manmade"
       ]
       output_format: ""
+    filter_segmentation: false

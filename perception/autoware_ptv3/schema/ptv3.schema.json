@@ -62,6 +62,11 @@
         },
         "filter": {
           "$ref": "#/definitions/filter"
+        },
+        "filter_segmentation": {
+          "type": "boolean",
+          "description": "When true, the segmentation output drops points matching the configured filter classes and threshold.",
+          "default": false
         }
       },
       "required": [
@@ -70,7 +75,8 @@
         "cloud_capacity",
         "onnx_path",
         "engine_path",
-        "filter"
+        "filter",
+        "filter_segmentation"
       ],
       "additionalProperties": false
     }

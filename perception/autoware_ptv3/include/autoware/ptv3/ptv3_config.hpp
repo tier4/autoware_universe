@@ -36,7 +36,8 @@ public:
     const std::vector<std::int64_t> & voxels_num, const std::vector<float> & point_cloud_range,
     const std::vector<float> & voxel_size, const std::vector<std::string> & class_names,
     const std::vector<std::int64_t> & palette, const float filter_class_probability_threshold,
-    const std::vector<std::string> & filter_classes, const std::string & filter_output_format)
+    const std::vector<std::string> & filter_classes, const std::string & filter_output_format,
+    const bool filter_segmentation)
   {
     plugins_path_ = plugins_path;
 
@@ -91,6 +92,7 @@ public:
     filter_class_probability_threshold_ = filter_class_probability_threshold;
     filter_class_indices_ = make_filter_class_indices(class_names_, filter_classes);
     filter_output_format_ = filter_output_format;
+    filter_segmentation_ = filter_segmentation;
   }
 
   static std::vector<std::uint32_t> make_filter_class_indices(
@@ -155,6 +157,7 @@ public:
   float filter_class_probability_threshold_{};
   std::vector<std::uint32_t> filter_class_indices_;
   std::string filter_output_format_;
+  bool filter_segmentation_{};
 
   // Common network parameters
   std::int64_t cloud_capacity_{};

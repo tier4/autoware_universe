@@ -404,13 +404,18 @@ bool PTv3TRT::postProcess(
 {
   // Segmentation pointcloud
   if (should_publish_segmented_pointcloud) {
-    post_ptr_->createSegmentationPointcloud(
-      feat_d_.get(), pred_labels_d_.get(), pred_probs_d_.get(),
-      segmented_points_msg_ptr_->data.get(), config_.class_names_.size(), num_voxels_);
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+    const auto num_segmented_points =
+      config_.filter_segmentation_
+        ? post_ptr_->createFilteredSegmentationPointcloud(
+            feat_d_.get(), pred_labels_d_.get(), pred_probs_d_.get(),
+            segmented_points_msg_ptr_->data.get(), config_.class_names_.size(), num_voxels_)
+        : (post_ptr_->createSegmentationPointcloud(
+             feat_d_.get(), pred_labels_d_.get(), pred_probs_d_.get(),
+             segmented_points_msg_ptr_->data.get(), config_.class_names_.size(), num_voxels_),
+           num_voxels_);
 
     segmented_points_msg_ptr_->header = header;
-    segmented_points_msg_ptr_->width = num_voxels_;
+    segmented_points_msg_ptr_->width = num_segmented_points;
     publish_segmented_pointcloud_(std::move(segmented_points_msg_ptr_));
     segmented_points_msg_ptr_ = nullptr;
   }
