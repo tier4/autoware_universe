@@ -46,23 +46,15 @@ struct EvaluationArtifacts
 
 void CollisionCheckFilter::update_parameters(const validator::Params & node_params)
 {
-  std::cerr << __LINE__ << std::endl; 
-
   global_params_ = GlobalParams(node_params.collision_check.global_setting);
-
-  std::cerr << __LINE__ << std::endl; 
 
   drac_param_map_ = create_param_map_per_object<DracParams>(node_params);
   pet_collision_param_map_ = create_param_map_per_object<PetCollisionParams>(node_params);
   rss_param_map_ = create_param_map_per_object<RssParams>(node_params);
 
-  std::cerr << __LINE__ << std::endl; 
-
   pet_collision_params_ = pet_collision_param_map_.at(kCollisionCheckParamBaseKey);
   rss_params_ = rss_param_map_.at(kCollisionCheckParamBaseKey);
   drac_params_ = drac_param_map_.at(kCollisionCheckParamBaseKey);
-
-  std::cerr << __LINE__ << std::endl; 
 }
 
 autoware_internal_planning_msgs::msg::SafetyFactorArray make_safety_factor_array(
