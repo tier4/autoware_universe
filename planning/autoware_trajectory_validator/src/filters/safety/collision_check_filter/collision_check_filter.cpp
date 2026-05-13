@@ -68,9 +68,8 @@ namespace
 // scalar `<base_param_name>` that is declared via generate_parameter_library).
 template <typename ValueT, typename ParamStructT, typename Accessor>
 void apply_scalar_per_class_overrides(
-  const std::vector<rclcpp::Parameter> & parameter_overrides,
-  const std::string & base_param_name, Accessor accessor,
-  std::map<std::string, ParamStructT> & param_map)
+  const std::vector<rclcpp::Parameter> & parameter_overrides, const std::string & base_param_name,
+  Accessor accessor, std::map<std::string, ParamStructT> & param_map)
 {
   const std::string map_prefix = base_param_name + "_map.";
   for (const auto & param : parameter_overrides) {
@@ -1189,8 +1188,9 @@ std::optional<Finding> find_collision_timing(
 
 std::vector<Finding> assess_planned_speed_collision_timing(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const std::map<std::string, PetCollisionParamStruct> & pet_collision_param_map, double time_resolution,
-  VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories)
+  const std::map<std::string, PetCollisionParamStruct> & pet_collision_param_map,
+  double time_resolution, VehicleInfo & vehicle_info,
+  const std::vector<TrajectoryData> & object_trajectories)
 {
   const auto pet_collision_params_default = pet_collision_param_map.at(DEFAULT_PARAM_KEY);
 

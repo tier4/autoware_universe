@@ -566,7 +566,8 @@ TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownTrueDetectsUnknownObject
   EXPECT_TRUE(has_pet_metric_with_level(result.value().metrics, MetricReport::ERROR));
 }
 
-// Per-class skip: enable_assessment_map.unknown=false suppresses PET findings for an UNKNOWN object.
+// Per-class skip: enable_assessment_map.unknown=false suppresses PET findings for an UNKNOWN
+// object.
 TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownFalseSkipsUnknownObjectInPetCheck)
 {
   const auto ego_path = create_ego_path();
