@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "../../src/filters/safety/collision_check_filter/collision_check_filter.cpp"
+#include "../../src/filters/safety/collision_check_filter/parameter.hpp"
+#include "../../src/filters/safety/collision_check_filter/trajectory_utils.hpp"
+#include "../../src/filters/safety/collision_check_filter/assessment.hpp"
 
 #include <gtest/gtest.h>
 #include <tf2/utils.h>
