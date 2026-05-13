@@ -39,9 +39,13 @@ ament_auto_add_library(autoware_trajectory_validator_plugins SHARED
   src/filters/safety/vehicle_constraint_filter.cpp
   src/filters/safety/collision_check_filter/collision_check_filter.cpp
   src/filters/safety/collision_check_filter/reporter.cpp
+  src/filters/safety/collision_check_filter/assessment.cpp
+  src/filters/safety/collision_check_filter/trajectory_utils.cpp
   src/filters/traffic_rule/traffic_light_filter.cpp
   src/filters/traffic_rule/traffic_light_compliance_checker.cpp
 )
+
+set_target_properties(autoware_trajectory_validator_plugins PROPERTIES CXX_VISIBILITY_PRESET default)
 
 target_link_libraries(autoware_trajectory_validator_plugins
   ${trajectory_validator_lib_target}
@@ -88,41 +92,46 @@ if(BUILD_TESTING)
   ament_add_ros_isolated_gtest(test_pose_constant_curvature_predictor
     test/collision_check_filter/test_pose_constant_curvature_predictor.cpp
   )
-  target_link_libraries(test_pose_constant_curvature_predictor gtest_main ${trajectory_validator_lib_target})
-  target_sources(test_pose_constant_curvature_predictor PRIVATE
-    src/filters/safety/collision_check_filter/reporter.cpp
+  target_link_libraries(test_pose_constant_curvature_predictor
+    gtest_main
+    ${trajectory_validator_lib_target}
+    autoware_trajectory_validator_plugins
   )
 
   ament_add_ros_isolated_gtest(test_time_distance
     test/collision_check_filter/test_time_distance.cpp
   )
-  target_link_libraries(test_time_distance gtest_main ${trajectory_validator_lib_target})
-  target_sources(test_time_distance PRIVATE
-    src/filters/safety/collision_check_filter/reporter.cpp
+  target_link_libraries(test_time_distance
+    gtest_main
+    ${trajectory_validator_lib_target}
+    autoware_trajectory_validator_plugins
   )
 
   ament_add_ros_isolated_gtest(test_geometry
     test/collision_check_filter/test_geometry.cpp
   )
-  target_link_libraries(test_geometry gtest_main ${trajectory_validator_lib_target})
-  target_sources(test_geometry PRIVATE
-    src/filters/safety/collision_check_filter/reporter.cpp
+  target_link_libraries(test_geometry
+    gtest_main
+    ${trajectory_validator_lib_target}
+    autoware_trajectory_validator_plugins
   )
 
   ament_add_ros_isolated_gtest(test_collision_check_filter
     test/collision_check_filter/test_collision_check_filter.cpp
   )
-  target_link_libraries(test_collision_check_filter gtest_main ${trajectory_validator_lib_target})
-  target_sources(test_collision_check_filter PRIVATE
-    src/filters/safety/collision_check_filter/reporter.cpp
+  target_link_libraries(test_collision_check_filter
+    gtest_main
+    ${trajectory_validator_lib_target}
+    autoware_trajectory_validator_plugins
   )
 
   ament_add_ros_isolated_gtest(test_trajectory_utilities
     test/collision_check_filter/test_trajectory_utilities.cpp
   )
-  target_link_libraries(test_trajectory_utilities gtest_main ${trajectory_validator_lib_target})
-  target_sources(test_trajectory_utilities PRIVATE
-    src/filters/safety/collision_check_filter/reporter.cpp
+  target_link_libraries(test_trajectory_utilities
+    gtest_main
+    ${trajectory_validator_lib_target}
+    autoware_trajectory_validator_plugins
   )
 
   ament_add_gtest(test_traffic_light_filter
