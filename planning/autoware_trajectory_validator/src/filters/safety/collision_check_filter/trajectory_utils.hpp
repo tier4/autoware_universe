@@ -25,6 +25,12 @@
 #include <iterator>
 #include <string>
 
+namespace autoware::trajectory_validator::plugin::safety
+{
+
+using IndexRange = std::pair<size_t, size_t>;
+using TimeRange = std::pair<double, double>;
+
 class TrajectoryData
 {
 private:
@@ -169,6 +175,7 @@ public:
     return get_or_compute_convex(resolve_covering_index_range(key_time));
   }
 };
+}  // namespace autoware::trajectory_validator::plugin::safety
 
 namespace autoware::trajectory_validator::plugin::safety::trajectory::time_distance
 {
