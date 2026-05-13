@@ -21,6 +21,7 @@
     collision_check:
       global_setting:
         time_resolution: 0.1
+        log_per_finding_detail: true
       drac:
         enable_assessment:
           # default value is true.
