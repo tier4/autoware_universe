@@ -1,0 +1,238 @@
+// Copyright 2026 TIER IV, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
+#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
+
+#include <autoware/object_recognition_utils/object_classification.hpp>
+#include <autoware/object_recognition_utils/object_recognition_utils.hpp>
+#include <autoware/universe_utils/geometry/geometry.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_utils_uuid/uuid_helper.hpp>
+#include <builtin_interfaces/msg/time.hpp>
+
+#include <autoware_perception_msgs/msg/predicted_object.hpp>
+#include <geometry_msgs/msg/pose.hpp>
+#include <unique_identifier_msgs/msg/uuid.hpp>
+
+#include <boost/geometry/algorithms/convex_hull.hpp>
+#include <boost/geometry/algorithms/expand.hpp>
+
+#include <algorithm>
+#include <cassert>
+#include <map>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace autoware::trajectory_validator::plugin::safety
+{
+using autoware_utils_geometry::Box2d;
+using autoware_utils_geometry::MultiPoint2d;
+using autoware_utils_geometry::Point2d;
+using autoware_utils_geometry::Polygon2d;
+
+using TimeTrajectory = std::vector<double>;
+using TravelDistanceTrajectory = std::vector<double>;
+using PoseTrajectory = std::vector<geometry_msgs::msg::Pose>;
+using FootprintTrajectory = std::vector<Polygon2d>;
+using StepPolygonTrajectory = std::vector<Polygon2d>;
+using IndexRange = std::pair<size_t, size_t>;
+using TimeRange = std::pair<double, double>;
+
+static constexpr double TIME_INDEX_EPSILON = 1e-3;
+
+struct TrajectoryIdentification
+{
+  std::string classification;
+  builtin_interfaces::msg::Time stamp{};
+  unique_identifier_msgs::msg::UUID uuid{};
+  std::string trajectory_type{};
+  double acceleration{};
+
+  TrajectoryIdentification() = default;
+  explicit TrajectoryIdentification(std::string classification)
+  : classification(std::move(classification))
+  {
+  }
+
+  TrajectoryIdentification(
+    const autoware_perception_msgs::msg::PredictedObject & object,
+    const builtin_interfaces::msg::Time stamp, std::string trajectory_type = {},
+    double acceleration = 0.0)
+  : classification(autoware::object_recognition_utils::convertLabelToString(
+      autoware::object_recognition_utils::getHighestProbLabel(object.classification))),
+    stamp(stamp),
+    uuid(object.object_id),
+    trajectory_type(std::move(trajectory_type)),
+    acceleration(acceleration)
+  {
+  }
+
+  std::string object_id_string() const { return autoware_utils_uuid::to_hex_string(uuid); }
+  std::string trajectory_id_string() const
+  {
+    return object_id_string() + "_" + trajectory_type + " acc: " + std::to_string(acceleration);
+  }
+};
+
+class TrajectoryData
+{
+private:
+  TrajectoryIdentification identification_;
+  TimeTrajectory times_;
+  TravelDistanceTrajectory distances_;
+  PoseTrajectory poses_;
+  FootprintTrajectory footprints_;
+  mutable std::map<IndexRange, Box2d> envelope_cache_;
+  mutable std::map<IndexRange, Polygon2d> convex_cache_;
+
+  size_t get_same_or_earlier_time_index(const double t) const
+  {
+    const auto it = std::upper_bound(times_.begin(), times_.end(), t + TIME_INDEX_EPSILON);
+    if (it == times_.begin()) return 0;
+    return std::distance(times_.begin(), it - 1);
+  }
+
+  size_t get_same_or_later_time_index(const double t) const
+  {
+    const auto it = std::lower_bound(times_.begin(), times_.end(), t - TIME_INDEX_EPSILON);
+    if (it == times_.end()) return times_.size() - 1;
+    return std::distance(times_.begin(), it);
+  }
+
+  IndexRange resolve_covering_index_range(const TimeRange & key_time) const
+  {
+    assert(key_time.first <= key_time.second);
+
+    auto start_index = get_same_or_earlier_time_index(key_time.first);
+    auto end_index = get_same_or_later_time_index(key_time.second);
+    return {start_index, end_index};
+  }
+
+  Box2d compute_envelope(const IndexRange & key) const
+  {
+    assert(key.first <= key.second);
+
+    Box2d box;
+    boost::geometry::assign_inverse(box);
+    for (size_t i = key.first; i <= key.second; ++i) {
+      for (const auto & pt : footprints_[i].outer()) {
+        boost::geometry::expand(box, pt);
+      }
+    }
+    return box;
+  }
+
+  Polygon2d compute_convex(const IndexRange & key) const
+  {
+    assert(key.first <= key.second);
+
+    MultiPoint2d all_points;
+    all_points.reserve((key.second - key.first + 1) * 4);
+    for (size_t i = key.first; i <= key.second; ++i) {
+      for (const auto & pt : footprints_[i].outer()) {
+        all_points.push_back(pt);
+      }
+    }
+
+    Polygon2d hull;
+    hull.outer().reserve(all_points.size());
+    boost::geometry::convex_hull(all_points, hull);
+    return hull;
+  }
+
+public:
+  TrajectoryData(
+    TrajectoryIdentification trajectory_identification, TimeTrajectory times,
+    TravelDistanceTrajectory distances, PoseTrajectory poses, FootprintTrajectory footprints)
+  : identification_(std::move(trajectory_identification)),
+    times_(std::move(times)),
+    distances_(std::move(distances)),
+    poses_(std::move(poses)),
+    footprints_(std::move(footprints))
+  {
+    if (times_.empty()) {
+      throw std::invalid_argument(
+        "Trajectory must not be empty classification: " + identification_.classification);
+    }
+    if (times_.size() != distances_.size()) {
+      throw std::invalid_argument(
+        "Trajectory sizes mismatch (times vs distances) classification: " +
+        identification_.classification);
+    }
+    if (times_.size() != poses_.size()) {
+      throw std::invalid_argument(
+        "Trajectory sizes mismatch (times vs poses) classification: " +
+        identification_.classification);
+    }
+    if (times_.size() != footprints_.size()) {
+      throw std::invalid_argument(
+        "Trajectory sizes mismatch (times vs footprints) classification: " +
+        identification_.classification);
+    }
+  }
+
+  TrajectoryData() = delete;
+
+  const TrajectoryIdentification & getObjectIdentification() const { return identification_; }
+  const TimeTrajectory & getTimes() const { return times_; }
+  const TravelDistanceTrajectory & getDistances() const { return distances_; }
+  const PoseTrajectory & getPoses() const { return poses_; }
+  const FootprintTrajectory & getFootprints() const { return footprints_; }
+
+  size_t size() const { return times_.size(); }
+
+  const Box2d & get_or_compute_envelope(const IndexRange & key) const
+  {
+    assert(key.first <= key.second);
+
+    auto [it, inserted] = envelope_cache_.try_emplace(key);
+    if (inserted) {
+      it->second = compute_envelope(key);
+    }
+    return it->second;
+  }
+
+  const Box2d & get_or_compute_envelope(const TimeRange & key_time) const
+  {
+    return get_or_compute_envelope(resolve_covering_index_range(key_time));
+  }
+
+  const Box2d & get_or_compute_overall_envelope() const
+  {
+    return get_or_compute_envelope(IndexRange{0U, footprints_.size() - 1});
+  }
+
+  const Polygon2d & get_or_compute_convex(const IndexRange & key) const
+  {
+    assert(key.first <= key.second);
+
+    auto [it, inserted] = convex_cache_.try_emplace(key);
+    if (inserted) {
+      it->second = compute_convex(key);
+    }
+    return it->second;
+  }
+
+  const Polygon2d & get_or_compute_convex(const TimeRange & key_time) const
+  {
+    return get_or_compute_convex(resolve_covering_index_range(key_time));
+  }
+};
+
+}  // namespace autoware::trajectory_validator::plugin::safety
+
+#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
