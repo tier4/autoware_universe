@@ -88,149 +88,44 @@ struct TrajectoryIdentification
   }
 };
 
-class TrajectoryData
+struct DracArtifacts
 {
-private:
-  TrajectoryIdentification identification_;
-  TimeTrajectory times_;
-  TravelDistanceTrajectory distances_;
-  PoseTrajectory poses_;
-  FootprintTrajectory footprints_;
-  mutable std::map<IndexRange, Box2d> envelope_cache_;
-  mutable std::map<IndexRange, Polygon2d> convex_cache_;
+  TrajectoryIdentification object_identification;
+  double pet;
+  double ttc;
+  PoseTrajectory ego_trajectory;
+  PoseTrajectory object_trajectory;
+  Polygon2d ego_hull;
+  Polygon2d object_hull;
+};
 
-  size_t get_same_or_earlier_time_index(const double t) const
-  {
-    const auto it = std::upper_bound(times_.begin(), times_.end(), t + TIME_INDEX_EPSILON);
-    if (it == times_.begin()) return 0;
-    return std::distance(times_.begin(), it - 1);
-  }
+struct PetArtifacts
+{
+  TrajectoryIdentification object_identification;
+  double pet;
+  double ttc;
+  PoseTrajectory ego_trajectory;
+  PoseTrajectory object_trajectory;
+  Polygon2d ego_hull;
+  Polygon2d object_hull;
+};
 
-  size_t get_same_or_later_time_index(const double t) const
-  {
-    const auto it = std::lower_bound(times_.begin(), times_.end(), t - TIME_INDEX_EPSILON);
-    if (it == times_.end()) return times_.size() - 1;
-    return std::distance(times_.begin(), it);
-  }
+struct RssArtifacts
+{
+  TrajectoryIdentification object_identification;
+  double pet;
+  double ttc;
+  PoseTrajectory ego_trajectory;
+  PoseTrajectory object_trajectory;
+  Polygon2d ego_hull;
+  Polygon2d object_hull;
+};
 
-  IndexRange resolve_covering_index_range(const TimeRange & key_time) const
-  {
-    assert(key_time.first <= key_time.second);
-
-    auto start_index = get_same_or_earlier_time_index(key_time.first);
-    auto end_index = get_same_or_later_time_index(key_time.second);
-    return {start_index, end_index};
-  }
-
-  Box2d compute_envelope(const IndexRange & key) const
-  {
-    assert(key.first <= key.second);
-
-    Box2d box;
-    boost::geometry::assign_inverse(box);
-    for (size_t i = key.first; i <= key.second; ++i) {
-      for (const auto & pt : footprints_[i].outer()) {
-        boost::geometry::expand(box, pt);
-      }
-    }
-    return box;
-  }
-
-  Polygon2d compute_convex(const IndexRange & key) const
-  {
-    assert(key.first <= key.second);
-
-    MultiPoint2d all_points;
-    all_points.reserve((key.second - key.first + 1) * 4);
-    for (size_t i = key.first; i <= key.second; ++i) {
-      for (const auto & pt : footprints_[i].outer()) {
-        all_points.push_back(pt);
-      }
-    }
-
-    Polygon2d hull;
-    hull.outer().reserve(all_points.size());
-    boost::geometry::convex_hull(all_points, hull);
-    return hull;
-  }
-
-public:
-  TrajectoryData(
-    TrajectoryIdentification trajectory_identification, TimeTrajectory times,
-    TravelDistanceTrajectory distances, PoseTrajectory poses, FootprintTrajectory footprints)
-  : identification_(std::move(trajectory_identification)),
-    times_(std::move(times)),
-    distances_(std::move(distances)),
-    poses_(std::move(poses)),
-    footprints_(std::move(footprints))
-  {
-    if (times_.empty()) {
-      throw std::invalid_argument(
-        "Trajectory must not be empty classification: " + identification_.classification);
-    }
-    if (times_.size() != distances_.size()) {
-      throw std::invalid_argument(
-        "Trajectory sizes mismatch (times vs distances) classification: " +
-        identification_.classification);
-    }
-    if (times_.size() != poses_.size()) {
-      throw std::invalid_argument(
-        "Trajectory sizes mismatch (times vs poses) classification: " +
-        identification_.classification);
-    }
-    if (times_.size() != footprints_.size()) {
-      throw std::invalid_argument(
-        "Trajectory sizes mismatch (times vs footprints) classification: " +
-        identification_.classification);
-    }
-  }
-
-  TrajectoryData() = delete;
-
-  const TrajectoryIdentification & getObjectIdentification() const { return identification_; }
-  const TimeTrajectory & getTimes() const { return times_; }
-  const TravelDistanceTrajectory & getDistances() const { return distances_; }
-  const PoseTrajectory & getPoses() const { return poses_; }
-  const FootprintTrajectory & getFootprints() const { return footprints_; }
-
-  size_t size() const { return times_.size(); }
-
-  const Box2d & get_or_compute_envelope(const IndexRange & key) const
-  {
-    assert(key.first <= key.second);
-
-    auto [it, inserted] = envelope_cache_.try_emplace(key);
-    if (inserted) {
-      it->second = compute_envelope(key);
-    }
-    return it->second;
-  }
-
-  const Box2d & get_or_compute_envelope(const TimeRange & key_time) const
-  {
-    return get_or_compute_envelope(resolve_covering_index_range(key_time));
-  }
-
-  const Box2d & get_or_compute_overall_envelope() const
-  {
-    return get_or_compute_envelope(IndexRange{0U, footprints_.size() - 1});
-  }
-
-  const Polygon2d & get_or_compute_convex(const IndexRange & key) const
-  {
-    assert(key.first <= key.second);
-
-    auto [it, inserted] = convex_cache_.try_emplace(key);
-    if (inserted) {
-      it->second = compute_convex(key);
-    }
-    return it->second;
-  }
-
-  const Polygon2d & get_or_compute_convex(const TimeRange & key_time) const
-  {
-    return get_or_compute_convex(resolve_covering_index_range(key_time));
-  }
+struct BlackboardLogger
+{
+  std::vector<DracArtifacts> drac_artifacts;
+  std::vector<PetArtifacts> pet_artifacts;
+  std::vector<RssArtifacts> rss_artifacts;
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety
