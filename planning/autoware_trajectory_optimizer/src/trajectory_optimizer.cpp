@@ -42,6 +42,8 @@ TrajectoryOptimizer::TrajectoryOptimizer(const rclcpp::NodeOptions & options)
 {
   debug_processing_time_detail_pub_ = create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
     "~/debug/processing_time_detail_ms", 1);
+  debug_processing_time_pub_ = create_publisher<autoware_internal_debug_msgs::msg::Float64Stamped>(
+    "~/debug/processing_time_ms", 1);
   time_keeper_ =
     std::make_shared<autoware_utils_debug::TimeKeeper>(debug_processing_time_detail_pub_);
 
@@ -132,6 +134,14 @@ rcl_interfaces::msg::SetParametersResult TrajectoryOptimizer::on_parameter(
   return result;
 }
 
+void TrajectoryOptimizer::publish_processing_time_ms(const double processing_time_ms)
+{
+  autoware_internal_debug_msgs::msg::Float64Stamped msg;
+  msg.stamp = get_clock()->now();
+  msg.data = processing_time_ms;
+  debug_processing_time_pub_->publish(msg);
+}
+
 void TrajectoryOptimizer::set_up_params()
 {
   using autoware_utils_rclcpp::get_or_declare_parameter;
@@ -166,6 +176,8 @@ void TrajectoryOptimizer::set_up_params()
 void TrajectoryOptimizer::on_traj([[maybe_unused]] const CandidateTrajectories::ConstSharedPtr msg)
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  stop_watch_ptr_ = std::make_unique<autoware_utils_system::StopWatch<std::chrono::milliseconds>>();
+  stop_watch_ptr_->tic("processing_time");
   initialize_optimizers();
 
   current_odometry_ptr_ = sub_current_odometry_.take_data();
@@ -173,6 +185,7 @@ void TrajectoryOptimizer::on_traj([[maybe_unused]] const CandidateTrajectories::
 
   if (!current_odometry_ptr_ || !current_acceleration_ptr_) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "No odometry or acceleration data");
+    publish_processing_time_ms(stop_watch_ptr_->toc("processing_time", true));
     return;
   }
 
@@ -202,6 +215,7 @@ void TrajectoryOptimizer::on_traj([[maybe_unused]] const CandidateTrajectories::
   output_trajectory.points = output_trajectories.candidate_trajectories.front().points;
 
   trajectory_pub_->publish(output_trajectory);
+  publish_processing_time_ms(stop_watch_ptr_->toc("processing_time", true));
 }
 
 }  // namespace autoware::trajectory_optimizer
