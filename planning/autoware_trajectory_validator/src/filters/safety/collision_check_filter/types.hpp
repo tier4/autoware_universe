@@ -49,8 +49,6 @@ using TravelDistanceTrajectory = std::vector<double>;
 using PoseTrajectory = std::vector<geometry_msgs::msg::Pose>;
 using FootprintTrajectory = std::vector<Polygon2d>;
 using StepPolygonTrajectory = std::vector<Polygon2d>;
-using IndexRange = std::pair<size_t, size_t>;
-using TimeRange = std::pair<double, double>;
 
 static constexpr double TIME_INDEX_EPSILON = 1e-3;
 
