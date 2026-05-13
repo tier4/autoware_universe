@@ -23,8 +23,9 @@ namespace autoware::trajectory_validator::plugin::safety::trajectory::time_dista
 {
 namespace
 {
-constexpr double kDefaultTimeResolution =
-  validator::Params::CollisionCheck::GlobalSetting{}.time_resolution;
+// Schema no longer carries default_value for collision_check; mirror the 0.1 s used
+// in config/trajectory_validator.param.yaml.
+constexpr double kDefaultTimeResolution = 0.1;
 }  // namespace
 
 class TimeDistanceTest : public ::testing::Test

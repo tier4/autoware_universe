@@ -71,6 +71,8 @@ using TimeRange = std::pair<double, double>;
 
 static constexpr double TIME_INDEX_EPSILON = 1e-3;
 
+// Sentinel key for the unmodified base struct (mirrors the generate_parameter_library
+// scalar defaults; per-class overrides are not applied to this entry).
 inline constexpr const char * DEFAULT_PARAM_KEY = "base";
 inline constexpr std::array<const char *, 12> PER_CLASS_PARAM_KEYS{
   "car",        "truck",  "bus",    "trailer",       "motorcycle",     "bicycle",
@@ -111,64 +113,12 @@ struct TrajectoryIdentification
   }
 };
 
-struct PetCollisionParams
-{
-  PetCollisionParams() = default;
-  PetCollisionParams(
-    const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key);
-
-  bool enable_assessment{false};
-  struct AssessmentTrajectories
-  {
-    bool map_based{false};
-    bool constant_curvature{false};
-    bool diffusion_based{false};
-  } assessment_trajectories;
-  double ego_total_braking_delay{0.0};
-  double ego_assumed_acceleration{0.0};
-  struct Threshold
-  {
-    double ego_first_passing_time_gap{0.0};
-    double object_first_passing_time_gap{0.0};
-  } warn_threshold, error_threshold;
-};
-
-struct RssParams
-{
-  RssParams() = default;
-  RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key);
-
-  bool enable_assessment{false};
-  double stop_distance_margin{0.0};
-  double ego_total_braking_delay{0.0};
-  double object_assumed_acceleration{0.0};
-  struct ErrorThreshold
-  {
-    double ego_acceleration{0.0};
-  } error_threshold;
-};
-
-struct DracParams
-{
-  DracParams() = default;
-  DracParams(const validator::Params::CollisionCheck::Drac & drac, const std::string & key);
-
-  bool enable_assessment{false};
-  struct AssessmentTrajectories
-  {
-    bool map_based{false};
-    bool constant_curvature{false};
-    bool diffusion_based{false};
-  } assessment_trajectories;
-  double ego_total_braking_delay{0.0};
-  struct Threshold
-  {
-    double ego_acceleration{0.0};
-  } warn_threshold, error_threshold;
-};
-
-template <typename OutT, typename ParamStruct>
-OutT extract_labeled_param(const ParamStruct & params_struct, const std::string & key);
+// Aliases to the generate_parameter_library structs. Per-class values are now held
+// directly in the generated types — the previously hand-rolled mirror structs
+// (PetCollisionParams / RssParams / DracParams) have been removed.
+using PetCollisionParamStruct = validator::Params::CollisionCheck::PetCollision;
+using RssParamStruct = validator::Params::CollisionCheck::Rss;
+using DracParamStruct = validator::Params::CollisionCheck::Drac;
 
 namespace geometry
 {
@@ -409,9 +359,9 @@ private:
   ContinuousDetectionTimes pet_continuous_times_;
   ContinuousDetectionTimes rss_continuous_times_;
   ContinuousDetectionTimes drac_continuous_times_;
-  std::map<std::string, PetCollisionParams> pet_collision_param_map_;
-  std::map<std::string, RssParams> rss_param_map_;
-  std::map<std::string, DracParams> drac_param_map_;
+  std::map<std::string, PetCollisionParamStruct> pet_collision_param_map_;
+  std::map<std::string, RssParamStruct> rss_param_map_;
+  std::map<std::string, DracParamStruct> drac_param_map_;
 
   void create_param_maps(const validator::Params & params);
   void clear_detection_times();

@@ -29,9 +29,47 @@ namespace autoware::trajectory_validator::plugin::safety
 {
 namespace
 {
-constexpr double kDefaultTimeResolution =
-  validator::Params::CollisionCheck::GlobalSetting{}.time_resolution;
+// Time resolution used to build predicted paths in tests. The schema no longer carries
+// a default_value for collision_check, so we hard-code the same 0.1 s that
+// config/trajectory_validator.param.yaml ships with.
+constexpr double kDefaultTimeResolution = 0.1;
 }  // namespace
+
+// Initialise every collision_check field with the same values that
+// `config/trajectory_validator.param.yaml` ships with. The schema no longer
+// carries default_value for collision_check, so a default-constructed
+// `validator::Params` contains uninitialised members.
+inline validator::Params make_default_params()
+{
+  validator::Params p;
+  p.collision_check.global_setting.time_resolution = 0.1;
+
+  p.collision_check.drac.enable_assessment = true;
+  p.collision_check.drac.assessment_trajectories.map_based = true;
+  p.collision_check.drac.assessment_trajectories.constant_curvature = true;
+  p.collision_check.drac.assessment_trajectories.diffusion_based = true;
+  p.collision_check.drac.ego_total_braking_delay = 0.4;
+  p.collision_check.drac.warn_threshold.ego_acceleration = -3.0;
+  p.collision_check.drac.error_threshold.ego_acceleration = -5.0;
+
+  p.collision_check.pet_collision.enable_assessment = true;
+  p.collision_check.pet_collision.assessment_trajectories.map_based = true;
+  p.collision_check.pet_collision.assessment_trajectories.constant_curvature = true;
+  p.collision_check.pet_collision.assessment_trajectories.diffusion_based = true;
+  p.collision_check.pet_collision.ego_total_braking_delay = 0.4;
+  p.collision_check.pet_collision.ego_assumed_acceleration = -5.0;
+  p.collision_check.pet_collision.warn_threshold.ego_first_passing_time_gap = 1.0;
+  p.collision_check.pet_collision.warn_threshold.object_first_passing_time_gap = 1.0;
+  p.collision_check.pet_collision.error_threshold.ego_first_passing_time_gap = 0.6;
+  p.collision_check.pet_collision.error_threshold.object_first_passing_time_gap = 0.3;
+
+  p.collision_check.rss.enable_assessment = true;
+  p.collision_check.rss.stop_distance_margin = 2.0;
+  p.collision_check.rss.ego_total_braking_delay = 0.4;
+  p.collision_check.rss.object_assumed_acceleration = -1.0;
+  p.collision_check.rss.error_threshold.ego_acceleration = -4.0;
+  return p;
+}
 
 class CollisionCheckFilterTest : public ::testing::Test
 {
@@ -50,8 +88,7 @@ protected:
 
     filter_->set_vehicle_info(vehicle_info);
 
-    validator::Params default_params;
-    filter_->update_parameters(default_params);
+    filter_->update_parameters(make_default_params());
   }
   geometry_msgs::msg::Twist create_twist(double linear_x, double angular_z)
   {
@@ -187,9 +224,9 @@ protected:
   validator::Params create_pet_only_params(
     double error_threshold_positive, double error_threshold_negative)
   {
-    validator::Params params;
-    params.collision_check.drac.enable_assessment.base = false;
-    params.collision_check.rss.enable_assessment.base = false;
+    auto params = make_default_params();
+    params.collision_check.drac.enable_assessment = false;
+    params.collision_check.rss.enable_assessment = false;
     params.collision_check.pet_collision.assessment_trajectories.map_based = true;
     params.collision_check.pet_collision.assessment_trajectories.constant_curvature = false;
     params.collision_check.pet_collision.assessment_trajectories.diffusion_based = false;
@@ -204,9 +241,9 @@ protected:
 
   validator::Params create_drac_only_params(double error_deceleration_threshold)
   {
-    validator::Params params;
-    params.collision_check.pet_collision.enable_assessment.base = false;
-    params.collision_check.rss.enable_assessment.base = false;
+    auto params = make_default_params();
+    params.collision_check.pet_collision.enable_assessment = false;
+    params.collision_check.rss.enable_assessment = false;
     params.collision_check.drac.assessment_trajectories.map_based = true;
     params.collision_check.drac.assessment_trajectories.constant_curvature = false;
     params.collision_check.drac.assessment_trajectories.diffusion_based = false;
@@ -338,12 +375,13 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
   vehicle_info.min_longitudinal_offset_m = -1.0;
   vehicle_info.vehicle_width_m = 2.0;
 
-  PetCollisionParams pet_collision_params;
+  const auto defaults = make_default_params().collision_check;
+  PetCollisionParamStruct pet_collision_params = defaults.pet_collision;
   pet_collision_params.enable_assessment = true;
   pet_collision_params.assessment_trajectories.map_based = false;
   pet_collision_params.assessment_trajectories.constant_curvature = false;
   pet_collision_params.assessment_trajectories.diffusion_based = false;
-  DracParams drac_params;
+  DracParamStruct drac_params = defaults.drac;
   drac_params.enable_assessment = true;
   drac_params.assessment_trajectories.map_based = false;
   drac_params.assessment_trajectories.constant_curvature = false;
@@ -352,8 +390,8 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
   const auto pet_collision_param_map = create_per_class_param_map(pet_collision_params);
   const auto drac_param_map = create_per_class_param_map(drac_params);
   const auto result = collision_timing_assessment::assess(
-    ego_path, context, pet_collision_param_map, drac_param_map,
-    validator::Params::CollisionCheck::GlobalSetting{}, vehicle_info);
+    ego_path, context, pet_collision_param_map, drac_param_map, defaults.global_setting,
+    vehicle_info);
 
   EXPECT_TRUE(result.planned_speed_findings.empty());
   ASSERT_FALSE(result.drac_findings.empty());
@@ -516,8 +554,9 @@ TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownTrueDetectsUnknownObject
     context, autoware_perception_msgs::msg::ObjectClassification::UNKNOWN);
 
   auto params = create_pet_only_params(0.6, -0.3);
-  params.collision_check.pet_collision.enable_assessment.base = true;
-  params.collision_check.pet_collision.enable_assessment.unknown = true;
+  params.collision_check.pet_collision.enable_assessment = true;
+  filter_->set_parameter_overrides(
+    {rclcpp::Parameter("collision_check.pet_collision.enable_assessment_map.unknown", true)});
   filter_->update_parameters(params);
 
   const auto result = filter_->is_feasible(ego_path, context);
@@ -527,7 +566,7 @@ TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownTrueDetectsUnknownObject
   EXPECT_TRUE(has_pet_metric_with_level(result.value().metrics, MetricReport::ERROR));
 }
 
-// Per-class skip: enable_assessment.unknown=false suppresses PET findings for an UNKNOWN object.
+// Per-class skip: enable_assessment_map.unknown=false suppresses PET findings for an UNKNOWN object.
 TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownFalseSkipsUnknownObjectInPetCheck)
 {
   const auto ego_path = create_ego_path();
@@ -536,8 +575,9 @@ TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownFalseSkipsUnknownObjectI
     context, autoware_perception_msgs::msg::ObjectClassification::UNKNOWN);
 
   auto params = create_pet_only_params(0.6, -0.3);
-  params.collision_check.pet_collision.enable_assessment.base = true;
-  params.collision_check.pet_collision.enable_assessment.unknown = false;
+  params.collision_check.pet_collision.enable_assessment = true;
+  filter_->set_parameter_overrides(
+    {rclcpp::Parameter("collision_check.pet_collision.enable_assessment_map.unknown", false)});
   filter_->update_parameters(params);
 
   const auto result = filter_->is_feasible(ego_path, context);
@@ -555,9 +595,11 @@ TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownFalseDoesNotAffectCarObj
   // Default classification from create_dummy_object() is CAR.
 
   auto params = create_pet_only_params(0.6, -0.3);
-  params.collision_check.pet_collision.enable_assessment.base = true;
-  params.collision_check.pet_collision.enable_assessment.car = true;
-  params.collision_check.pet_collision.enable_assessment.unknown = false;
+  params.collision_check.pet_collision.enable_assessment = true;
+  filter_->set_parameter_overrides({
+    rclcpp::Parameter("collision_check.pet_collision.enable_assessment_map.car", true),
+    rclcpp::Parameter("collision_check.pet_collision.enable_assessment_map.unknown", false),
+  });
   filter_->update_parameters(params);
 
   const auto result = filter_->is_feasible(ego_path, context);
@@ -576,8 +618,9 @@ TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownFalseSkipsUnknownObjectI
     context, autoware_perception_msgs::msg::ObjectClassification::UNKNOWN);
 
   auto params = create_drac_only_params(-5.0);
-  params.collision_check.drac.enable_assessment.base = true;
-  params.collision_check.drac.enable_assessment.unknown = false;
+  params.collision_check.drac.enable_assessment = true;
+  filter_->set_parameter_overrides(
+    {rclcpp::Parameter("collision_check.drac.enable_assessment_map.unknown", false)});
   filter_->update_parameters(params);
 
   const auto result = filter_->is_feasible(ego_path, context);

@@ -28,8 +28,9 @@ namespace autoware::trajectory_validator::plugin::safety
 {
 namespace
 {
-constexpr double kDefaultTimeResolution =
-  validator::Params::CollisionCheck::GlobalSetting{}.time_resolution;
+// Schema no longer carries default_value for collision_check; mirror the 0.1 s used
+// in config/trajectory_validator.param.yaml.
+constexpr double kDefaultTimeResolution = 0.1;
 
 geometry_msgs::msg::Pose create_pose(const double x, const double y, const double yaw = 0.0)
 {
@@ -627,12 +628,12 @@ TEST(TrajectoryUtilitiesTest, ObjectTrajectoryGenerationOptionsMergeWithCombines
 
 TEST(TrajectoryUtilitiesTest, ObjectTrajectoryGenerationOptionsCanBeConstructedFromParams)
 {
-  PetCollisionParams pet_params{};
+  PetCollisionParamStruct pet_params{};
   pet_params.assessment_trajectories.map_based = true;
   pet_params.assessment_trajectories.constant_curvature = false;
   pet_params.assessment_trajectories.diffusion_based = true;
 
-  DracParams drac_params{};
+  DracParamStruct drac_params{};
   drac_params.assessment_trajectories.map_based = false;
   drac_params.assessment_trajectories.constant_curvature = true;
   drac_params.assessment_trajectories.diffusion_based = false;

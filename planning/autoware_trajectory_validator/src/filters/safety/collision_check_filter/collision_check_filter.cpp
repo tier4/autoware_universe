@@ -61,98 +61,38 @@ struct EvaluationArtifacts
 
 }  // namespace
 
-PetCollisionParams::PetCollisionParams(
-  const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key)
+namespace
 {
-  enable_assessment = extract_labeled_param<bool>(pet.enable_assessment, key);
-  assessment_trajectories.map_based =
-    extract_labeled_param<bool>(pet.assessment_trajectories.map_based, key);
-  assessment_trajectories.constant_curvature =
-    extract_labeled_param<bool>(pet.assessment_trajectories.constant_curvature, key);
-  assessment_trajectories.diffusion_based =
-    extract_labeled_param<bool>(pet.assessment_trajectories.diffusion_based, key);
-  ego_total_braking_delay = extract_labeled_param<double>(pet.ego_total_braking_delay, key);
-  ego_assumed_acceleration = extract_labeled_param<double>(pet.ego_assumed_acceleration, key);
-
-  warn_threshold.ego_first_passing_time_gap =
-    extract_labeled_param<double>(pet.warn_threshold.ego_first_passing_time_gap, key);
-  warn_threshold.object_first_passing_time_gap =
-    extract_labeled_param<double>(pet.warn_threshold.object_first_passing_time_gap, key);
-  error_threshold.ego_first_passing_time_gap =
-    extract_labeled_param<double>(pet.error_threshold.ego_first_passing_time_gap, key);
-  error_threshold.object_first_passing_time_gap =
-    extract_labeled_param<double>(pet.error_threshold.object_first_passing_time_gap, key);
-}
-
-RssParams::RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key)
+// Look up a per-class override of a single bool/double field in parameter_overrides.
+// The expected naming convention is `<base_param_name>_map.<class>` (sibling of the
+// scalar `<base_param_name>` that is declared via generate_parameter_library).
+template <typename ValueT, typename ParamStructT, typename Accessor>
+void apply_scalar_per_class_overrides(
+  const std::vector<rclcpp::Parameter> & parameter_overrides,
+  const std::string & base_param_name, Accessor accessor,
+  std::map<std::string, ParamStructT> & param_map)
 {
-  enable_assessment = extract_labeled_param<bool>(rss.enable_assessment, key);
-  stop_distance_margin = extract_labeled_param<double>(rss.stop_distance_margin, key);
-  ego_total_braking_delay = extract_labeled_param<double>(rss.ego_total_braking_delay, key);
-  object_assumed_acceleration = extract_labeled_param<double>(rss.object_assumed_acceleration, key);
-  error_threshold.ego_acceleration =
-    extract_labeled_param<double>(rss.error_threshold.ego_acceleration, key);
-}
-
-DracParams::DracParams(
-  const validator::Params::CollisionCheck::Drac & drac, const std::string & key)
-{
-  enable_assessment = extract_labeled_param<bool>(drac.enable_assessment, key);
-  assessment_trajectories.map_based =
-    extract_labeled_param<bool>(drac.assessment_trajectories.map_based, key);
-  assessment_trajectories.constant_curvature =
-    extract_labeled_param<bool>(drac.assessment_trajectories.constant_curvature, key);
-  assessment_trajectories.diffusion_based =
-    extract_labeled_param<bool>(drac.assessment_trajectories.diffusion_based, key);
-  ego_total_braking_delay = extract_labeled_param<double>(drac.ego_total_braking_delay, key);
-  warn_threshold.ego_acceleration =
-    extract_labeled_param<double>(drac.warn_threshold.ego_acceleration, key);
-  error_threshold.ego_acceleration =
-    extract_labeled_param<double>(drac.error_threshold.ego_acceleration, key);
-}
-
-template <typename OutT, typename ParamStruct>
-OutT extract_labeled_param(const ParamStruct & params_struct, const std::string & key)
-{
-  if constexpr (std::is_aggregate_v<ParamStruct>) {
-    if (key == DEFAULT_PARAM_KEY) {
-      return static_cast<OutT>(params_struct.base);
+  const std::string map_prefix = base_param_name + "_map.";
+  for (const auto & param : parameter_overrides) {
+    const auto & name = param.get_name();
+    if (name.rfind(map_prefix, 0) != 0) continue;
+    const auto class_key = name.substr(map_prefix.size());
+    auto it = param_map.find(class_key);
+    if (it == param_map.end()) {
+      // Build the list of valid keys for the error message.
+      std::string valid_keys;
+      for (const auto & [key, _] : param_map) {
+        if (!valid_keys.empty()) valid_keys += ", ";
+        valid_keys += key;
+      }
+      throw std::invalid_argument(fmt::format(
+        "parameter_overrides: unknown class key '{}' in '{}' (valid keys: [{}])", class_key, name,
+        valid_keys));
     }
-
-    using MemberPtr = OutT ParamStruct::*;
-
-    static const std::unordered_map<std::string, MemberPtr> mappings = {
-      {"car", &ParamStruct::car},
-      {"truck", &ParamStruct::truck},
-      {"bus", &ParamStruct::bus},
-      {"trailer", &ParamStruct::trailer},
-      {"motorcycle", &ParamStruct::motorcycle},
-      {"bicycle", &ParamStruct::bicycle},
-      {"pedestrian", &ParamStruct::pedestrian},
-      {"animal", &ParamStruct::animal},
-      {"hazard", &ParamStruct::hazard},
-      {"over_drivable", &ParamStruct::over_drivable},
-      {"under_drivable", &ParamStruct::under_drivable},
-      {"unknown", &ParamStruct::unknown}};
-
-    auto it = mappings.find(key);
-    if (it == mappings.end()) {
-      throw std::invalid_argument("Unknown label key: " + key);
-    }
-
-    auto label_value = params_struct.*(it->second);
-    if constexpr (std::is_floating_point_v<OutT>) {
-      return static_cast<OutT>(std::isnan(label_value) ? params_struct.base : label_value);
-    } else if constexpr (std::is_same_v<OutT, std::string>) {
-      return static_cast<OutT>(label_value.empty() ? params_struct.base : label_value);
-    } else {
-      return static_cast<OutT>(label_value);
-    }
-
-  } else {
-    return static_cast<OutT>(params_struct);
+    accessor(it->second) = param.get_value<ValueT>();
   }
 }
+}  // namespace
 
 // Trajectory generation helpers.
 namespace trajectory::time_distance
@@ -953,7 +893,7 @@ TrajectoryData generate_rss_ego_trajectory(
 
 Assessment assess_required_deceleration(
   const TrajectoryData & ego_trajectory, const geometry_msgs::msg::Twist & ego_twist,
-  const autoware_perception_msgs::msg::PredictedObject & object, const RssParams & rss_params,
+  const autoware_perception_msgs::msg::PredictedObject & object, const RssParamStruct & rss_params,
   const builtin_interfaces::msg::Time & stamp)
 {
   const auto ego_long_vel = ego_twist.linear.x;
@@ -986,7 +926,7 @@ Assessment assess_required_deceleration(
 
 Result assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const std::map<std::string, RssParams> & rss_param_map, double time_resolution,
+  const std::map<std::string, RssParamStruct> & rss_param_map, double time_resolution,
   VehicleInfo & vehicle_info)
 
 {
@@ -1004,7 +944,7 @@ Result assess(
 
   for (const auto & object : context.predicted_objects->objects) {
     auto object_class_key = classification_to_param_key(object);
-    RssParams rss_params_per_class = rss_param_map.at(object_class_key);
+    RssParamStruct rss_params_per_class = rss_param_map.at(object_class_key);
 
     if (!rss_params_per_class.enable_assessment) {
       continue;
@@ -1249,7 +1189,7 @@ std::optional<Finding> find_collision_timing(
 
 std::vector<Finding> assess_planned_speed_collision_timing(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const std::map<std::string, PetCollisionParams> & pet_collision_param_map, double time_resolution,
+  const std::map<std::string, PetCollisionParamStruct> & pet_collision_param_map, double time_resolution,
   VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories)
 {
   const auto pet_collision_params_default = pet_collision_param_map.at(DEFAULT_PARAM_KEY);
@@ -1265,7 +1205,7 @@ std::vector<Finding> assess_planned_speed_collision_timing(
 
   for (const auto & object_trajectory : object_trajectories) {
     auto object_class_key = classification_to_param_key(object_trajectory);
-    PetCollisionParams pet_collision_params_per_class =
+    PetCollisionParamStruct pet_collision_params_per_class =
       pet_collision_param_map.at(object_class_key);
 
     if (!pet_collision_params_per_class.enable_assessment) {
@@ -1292,7 +1232,7 @@ std::vector<Finding> assess_planned_speed_collision_timing(
 
 DracAssessment assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const std::map<std::string, DracParams> & drac_param_map, VehicleInfo & vehicle_info,
+  const std::map<std::string, DracParamStruct> & drac_param_map, VehicleInfo & vehicle_info,
   const std::vector<TrajectoryData> & object_trajectories,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting)
 {
@@ -1324,7 +1264,7 @@ DracAssessment assess_drac(
     findings.reserve(object_trajectories.size());
     for (const auto & object_trajectory : object_trajectories) {
       auto object_class_key = classification_to_param_key(object_trajectory);
-      DracParams drac_params_per_class = drac_param_map.at(object_class_key);
+      DracParamStruct drac_params_per_class = drac_param_map.at(object_class_key);
 
       if (!drac_params_per_class.enable_assessment) {
         continue;
@@ -1374,8 +1314,8 @@ DracAssessment assess_drac(
 
 Result assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const std::map<std::string, PetCollisionParams> & pet_collision_param_map,
-  const std::map<std::string, DracParams> & drac_param_map,
+  const std::map<std::string, PetCollisionParamStruct> & pet_collision_param_map,
+  const std::map<std::string, DracParamStruct> & drac_param_map,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting,
   VehicleInfo & vehicle_info)
 {
@@ -1464,20 +1404,34 @@ void CollisionCheckFilter::create_param_maps(const validator::Params & params)
   rss_param_map_.clear();
   drac_param_map_.clear();
 
-  const validator::Params::CollisionCheck::PetCollision & pet =
-    params.collision_check.pet_collision;
-  const validator::Params::CollisionCheck::Rss & rss = params.collision_check.rss;
-  const validator::Params::CollisionCheck::Drac & drac = params.collision_check.drac;
+  const auto & pet = params.collision_check.pet_collision;
+  const auto & rss = params.collision_check.rss;
+  const auto & drac = params.collision_check.drac;
 
-  pet_collision_param_map_[DEFAULT_PARAM_KEY] = PetCollisionParams(pet, DEFAULT_PARAM_KEY);
-  rss_param_map_[DEFAULT_PARAM_KEY] = RssParams(rss, DEFAULT_PARAM_KEY);
-  drac_param_map_[DEFAULT_PARAM_KEY] = DracParams(drac, DEFAULT_PARAM_KEY);
+  // DEFAULT_PARAM_KEY ("base") mirrors the generate_parameter_library scalars; per-class
+  // overrides are never applied to this entry.
+  pet_collision_param_map_[DEFAULT_PARAM_KEY] = pet;
+  rss_param_map_[DEFAULT_PARAM_KEY] = rss;
+  drac_param_map_[DEFAULT_PARAM_KEY] = drac;
 
   for (const char * class_key : PER_CLASS_PARAM_KEYS) {
-    pet_collision_param_map_[class_key] = PetCollisionParams(pet, class_key);
-    rss_param_map_[class_key] = RssParams(rss, class_key);
-    drac_param_map_[class_key] = DracParams(drac, class_key);
+    pet_collision_param_map_[class_key] = pet;
+    rss_param_map_[class_key] = rss;
+    drac_param_map_[class_key] = drac;
   }
+
+  // Per-class overrides come from `<base_name>_map.<class>` entries in
+  // trajectory_validator.param.yaml. They are not declared via generate_parameter_library,
+  // so we read them from the node's parameter_overrides snapshot.
+  apply_scalar_per_class_overrides<bool>(
+    parameter_overrides_, "collision_check.pet_collision.enable_assessment",
+    [](auto & s) -> bool & { return s.enable_assessment; }, pet_collision_param_map_);
+  apply_scalar_per_class_overrides<bool>(
+    parameter_overrides_, "collision_check.rss.enable_assessment",
+    [](auto & s) -> bool & { return s.enable_assessment; }, rss_param_map_);
+  apply_scalar_per_class_overrides<bool>(
+    parameter_overrides_, "collision_check.drac.enable_assessment",
+    [](auto & s) -> bool & { return s.enable_assessment; }, drac_param_map_);
 }
 
 void CollisionCheckFilter::add_debug_markers(
@@ -1658,7 +1612,7 @@ void add_collision_planning_factor(
 
 void process_pet_findings(
   const std::string & validator_name, const std::string & validator_category,
-  const std::map<std::string, PetCollisionParams> & pet_collision_param_map,
+  const std::map<std::string, PetCollisionParamStruct> & pet_collision_param_map,
   ContinuousDetectionTimes & pet_continuous_times, const rclcpp::Time & current_time,
   const builtin_interfaces::msg::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
   const std::vector<collision_timing_assessment::Finding> & findings,
@@ -1723,7 +1677,7 @@ void process_pet_findings(
 
 void process_drac_findings(
   const std::string & validator_name, const std::string & validator_category,
-  const std::map<std::string, DracParams> & drac_param_map,
+  const std::map<std::string, DracParamStruct> & drac_param_map,
   ContinuousDetectionTimes & drac_continuous_times, const rclcpp::Time & current_time,
   const builtin_interfaces::msg::Time & stamp, const geometry_msgs::msg::Pose & ego_pose,
   const collision_timing_assessment::Result & collision_timing_result,
@@ -1788,7 +1742,7 @@ void process_drac_findings(
 void process_rss_violations(
   const std::string & validator_name, const std::string & validator_category,
   const validator::Params::CollisionCheck::GlobalSetting & global_setting,
-  const std::map<std::string, RssParams> & rss_param_map, const TrajectoryPoints & traj_points,
+  const std::map<std::string, RssParamStruct> & rss_param_map, const TrajectoryPoints & traj_points,
   const FilterContext & context, VehicleInfo & vehicle_info,
   ContinuousDetectionTimes & rss_continuous_times, const rclcpp::Time & current_time,
   EvaluationArtifacts & artifacts)

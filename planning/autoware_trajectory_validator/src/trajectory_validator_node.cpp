@@ -319,6 +319,7 @@ void TrajectoryValidator::load_metric(const std::string & name)
     }
     plugin->set_category(category);
 
+    plugin->set_parameter_overrides(get_node_options().parameter_overrides());
     plugin->update_parameters(params_);
 
     plugins_.push_back(plugin);
