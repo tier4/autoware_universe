@@ -100,16 +100,22 @@ FilterContext create_filter_context(const nav_msgs::msg::Odometry::ConstSharedPt
   return context;
 }
 
-collision_timing_assessment::ObjectTrajectoryGenerationOptions
-make_object_trajectory_generation_options(
-  const bool predicted_path_trajectory, const bool constant_curvature_trajectory,
-  const bool diffusion_based_trajectory)
+AssessmentTrajectories make_assessment_trajectories(
+  const bool map_based, const bool constant_curvature, const bool diffusion_based)
 {
-  auto options = collision_timing_assessment::ObjectTrajectoryGenerationOptions{};
-  options.predicted_path_trajectory = predicted_path_trajectory;
-  options.constant_curvature_trajectory = constant_curvature_trajectory;
-  options.diffusion_based_trajectory = diffusion_based_trajectory;
-  return options;
+  return AssessmentTrajectories{map_based, constant_curvature, diffusion_based};
+}
+
+template <typename ParamMap>
+ParamMap make_param_map_with_assessment_trajectories(const AssessmentTrajectories & assessment)
+{
+  ParamMap param_map;
+  for (const auto & [label, class_name] : kObjectClassifications) {
+    (void)label;
+    param_map[class_name].assessment_trajectories = assessment;
+  }
+  param_map[kCollisionCheckParamBaseKey].assessment_trajectories = assessment;
+  return param_map;
 }
 
 autoware_perception_msgs::msg::Shape create_bounding_box_shape(
@@ -147,6 +153,10 @@ autoware_perception_msgs::msg::PredictedObject create_predicted_object(
   object.kinematics.initial_twist_with_covariance.twist = initial_twist;
   object.kinematics.predicted_paths = predicted_paths;
   object.shape = shape;
+  object.classification.resize(1);
+  object.classification.front().label =
+    autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+  object.classification.front().probability = 1.0F;
   return object;
 }
 
@@ -594,62 +604,97 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
       });
     };
 
+  const auto all_enabled_drac_param_map =
+    make_param_map_with_assessment_trajectories<DracParamMap>(
+      make_assessment_trajectories(true, true, true));
+  const auto all_enabled_pet_param_map =
+    make_param_map_with_assessment_trajectories<PetParamMap>(
+      make_assessment_trajectories(true, true, true));
   const auto all_enabled = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0, 0.1, make_object_trajectory_generation_options(true, true, true));
+    context, 0.2, 0.0, 0.1, all_enabled_drac_param_map, all_enabled_pet_param_map);
   EXPECT_EQ(all_enabled.size(), 3u);
   EXPECT_EQ(count_trajectory_type(all_enabled, "map_based_predicted_path"), 1);
   EXPECT_EQ(count_trajectory_type(all_enabled, "constant_curvature_path"), 1);
   EXPECT_EQ(count_trajectory_type(all_enabled, "diffusion_based_trajectory"), 1);
 
+  const auto constant_curvature_drac_param_map =
+    make_param_map_with_assessment_trajectories<DracParamMap>(
+      make_assessment_trajectories(false, true, false));
+  const auto constant_curvature_pet_param_map =
+    make_param_map_with_assessment_trajectories<PetParamMap>(
+      make_assessment_trajectories(false, true, false));
   const auto constant_curvature_only = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0, 0.1, make_object_trajectory_generation_options(false, true, false));
+    context, 0.2, 0.0, 0.1, constant_curvature_drac_param_map,
+    constant_curvature_pet_param_map);
   ASSERT_EQ(constant_curvature_only.size(), 1u);
   EXPECT_EQ(
     constant_curvature_only.front().getObjectIdentification().trajectory_type,
     "constant_curvature_path");
 
+  const auto predicted_path_and_diffusion_drac_param_map =
+    make_param_map_with_assessment_trajectories<DracParamMap>(
+      make_assessment_trajectories(true, false, true));
+  const auto predicted_path_and_diffusion_pet_param_map =
+    make_param_map_with_assessment_trajectories<PetParamMap>(
+      make_assessment_trajectories(true, false, true));
   const auto predicted_path_and_diffusion =
     collision_timing_assessment::generate_object_trajectories(
-      context, 0.2, 0.0, 0.1, make_object_trajectory_generation_options(true, false, true));
+      context, 0.2, 0.0, 0.1, predicted_path_and_diffusion_drac_param_map,
+      predicted_path_and_diffusion_pet_param_map);
   EXPECT_EQ(predicted_path_and_diffusion.size(), 2u);
   EXPECT_EQ(count_trajectory_type(predicted_path_and_diffusion, "map_based_predicted_path"), 1);
   EXPECT_EQ(count_trajectory_type(predicted_path_and_diffusion, "diffusion_based_trajectory"), 1);
 }
 
-TEST(TrajectoryUtilitiesTest, ObjectTrajectoryGenerationOptionsMergeWithCombinesEnabledTypes)
+TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesUsesTrajectoryTypeUnionAcrossParamMaps)
 {
-  auto merged = make_object_trajectory_generation_options(true, false, false);
-  merged.merge_with(make_object_trajectory_generation_options(false, true, true));
+  const auto shape = create_bounding_box_shape(4.0, 2.0);
+  const auto object = create_predicted_object(
+    create_pose(0.0, 0.0, 0.0), create_twist(1.0), shape,
+    {create_straight_predicted_path(0.0, 1.0, {0.0, 1.0, 2.0})});
 
-  EXPECT_TRUE(merged.predicted_path_trajectory);
-  EXPECT_TRUE(merged.constant_curvature_trajectory);
-  EXPECT_TRUE(merged.diffusion_based_trajectory);
-}
+  auto odometry = std::make_shared<nav_msgs::msg::Odometry>();
+  odometry->header.stamp = rclcpp::Time(1, 0, RCL_ROS_TIME);
+  odometry->pose.pose = create_pose(0.0, 0.0, 0.0);
 
-TEST(TrajectoryUtilitiesTest, ObjectTrajectoryGenerationOptionsCanBeConstructedFromParams)
-{
-  PetCollisionParams pet_params{};
-  pet_params.assessment_trajectories.map_based = true;
-  pet_params.assessment_trajectories.constant_curvature = false;
-  pet_params.assessment_trajectories.diffusion_based = true;
+  auto predicted_objects = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
+  predicted_objects->header.stamp = odometry->header.stamp;
+  predicted_objects->objects.push_back(object);
 
-  DracParams drac_params{};
-  drac_params.assessment_trajectories.map_based = false;
-  drac_params.assessment_trajectories.constant_curvature = true;
-  drac_params.assessment_trajectories.diffusion_based = false;
+  auto neural_network_predicted_objects =
+    std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
+  neural_network_predicted_objects->header.stamp = odometry->header.stamp;
+  neural_network_predicted_objects->objects.push_back(object);
 
-  const auto pet_options =
-    collision_timing_assessment::ObjectTrajectoryGenerationOptions{pet_params};
-  const auto drac_options =
-    collision_timing_assessment::ObjectTrajectoryGenerationOptions{drac_params};
+  FilterContext context;
+  context.odometry = odometry;
+  context.predicted_objects = predicted_objects;
+  context.neural_network_predicted_objects = neural_network_predicted_objects;
 
-  EXPECT_TRUE(pet_options.predicted_path_trajectory);
-  EXPECT_FALSE(pet_options.constant_curvature_trajectory);
-  EXPECT_TRUE(pet_options.diffusion_based_trajectory);
+  const auto drac_param_map = make_param_map_with_assessment_trajectories<DracParamMap>(
+    make_assessment_trajectories(false, true, false));
+  const auto pet_param_map = make_param_map_with_assessment_trajectories<PetParamMap>(
+    make_assessment_trajectories(true, false, true));
 
-  EXPECT_FALSE(drac_options.predicted_path_trajectory);
-  EXPECT_TRUE(drac_options.constant_curvature_trajectory);
-  EXPECT_FALSE(drac_options.diffusion_based_trajectory);
+  const auto trajectories = collision_timing_assessment::generate_object_trajectories(
+    context, 0.2, 0.0, 0.1, drac_param_map, pet_param_map);
+
+  EXPECT_EQ(trajectories.size(), 3u);
+  EXPECT_EQ(
+    std::count_if(trajectories.begin(), trajectories.end(), [](const auto & trajectory) {
+      return trajectory.getObjectIdentification().trajectory_type == "map_based_predicted_path";
+    }),
+    1);
+  EXPECT_EQ(
+    std::count_if(trajectories.begin(), trajectories.end(), [](const auto & trajectory) {
+      return trajectory.getObjectIdentification().trajectory_type == "constant_curvature_path";
+    }),
+    1);
+  EXPECT_EQ(
+    std::count_if(trajectories.begin(), trajectories.end(), [](const auto & trajectory) {
+      return trajectory.getObjectIdentification().trajectory_type == "diffusion_based_trajectory";
+    }),
+    1);
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety
