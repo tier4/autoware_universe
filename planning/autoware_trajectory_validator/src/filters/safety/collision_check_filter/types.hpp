@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <cassert>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -86,23 +87,9 @@ struct TrajectoryIdentification
   }
 };
 
-enum RiskLevel { SAFE, WARN, ERROR };
-struct DracArtifacts
+enum class RiskLevel { SAFE, WARN, ERROR };
+struct CollisionDetail
 {
-  RiskLevel risk_level;
-  TrajectoryIdentification object_identification;
-  double drac;
-  double pet;
-  double ttc;
-  PoseTrajectory ego_trajectory;
-  PoseTrajectory object_trajectory;
-  Polygon2d ego_hull;
-  Polygon2d object_hull;
-};
-
-struct PetArtifacts
-{
-  RiskLevel risk_level;
   TrajectoryIdentification object_identification;
   double pet;
   double ttc;
@@ -112,23 +99,78 @@ struct PetArtifacts
   Polygon2d object_hull;
 };
 
-struct RssArtifacts
+struct CollisionEvaluation
 {
-  RiskLevel risk_level;
+  RiskLevel risk;
+  CollisionDetail detail;
+};
+struct RssDetail
+{
   TrajectoryIdentification object_identification;
   double rss_acceleration;
-  // PoseTrajectory ego_trajectory;
-  // PoseTrajectory object_trajectory;
-  // Polygon2d ego_hull;
-  // Polygon2d object_hull;
 };
 
-struct BlackboardLogger
+struct RssEvaluation
 {
-  std::vector<DracArtifacts> drac_artifacts;
-  std::vector<PetArtifacts> pet_artifacts;
-  std::vector<RssArtifacts> rss_artifacts;
+  RiskLevel risk;
+  RssDetail detail;
 };
+
+struct PetArtifact
+{
+  RiskLevel risk{RiskLevel::SAFE};
+  std::vector<CollisionEvaluation> object_evaluations;
+};
+
+struct DracArtifact
+{
+  RiskLevel risk{RiskLevel::SAFE};
+  std::optional<double> required_acceleration;
+  std::vector<CollisionEvaluation> object_evaluations;
+};
+struct RssArtifact
+{
+  RiskLevel risk{RiskLevel::SAFE};
+  std::vector<RssEvaluation> object_evaluations;
+};
+
+template <typename Container>
+RiskLevel calc_worst_risk(const Container & evaluations)
+{
+  RiskLevel worst = RiskLevel::SAFE;
+
+  for (const auto & eval : evaluations) {
+    if (eval.risk > worst) {
+      worst = eval.risk;
+    }
+    if (worst == RiskLevel::ERROR) {
+      break;
+    }
+  }
+  return worst;
+}
+
+inline RiskLevel calc_worst_risk(std::initializer_list<RiskLevel> risks)
+{
+  RiskLevel worst = RiskLevel::SAFE;
+
+  for (const auto & risk : risks) {
+    if (risk > worst) {
+      worst = risk;
+    }
+    if (worst == RiskLevel::ERROR) {
+      break;
+    }
+  }
+  return worst;
+}
+
+// struct BlackboardLogger
+// {
+//   std::optional<DracArtifact> drac_artifact;
+//   std::vector<PetArtifact> pet_artifacts;
+//   std::vector<RssArtifact> rss_artifacts;
+// };
 
 }  // namespace autoware::trajectory_validator::plugin::safety
 

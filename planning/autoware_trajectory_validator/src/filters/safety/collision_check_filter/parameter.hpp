@@ -25,7 +25,6 @@
 #include <type_traits>
 #include <unordered_map>
 
-
 namespace autoware::trajectory_validator::plugin::safety
 {
 inline constexpr const char * kCollisionCheckParamBaseKey = "base";
@@ -89,15 +88,21 @@ struct GlobalParams
   }
 };
 
+struct PetThreshold
+{
+  double ego_first_passing_time_gap{1.0};
+  double object_first_passing_time_gap{1.0};
+};
+
+struct AssessmentTrajectories
+{
+  bool map_based{true};
+  bool constant_curvature{true};
+  bool diffusion_based{true};
+};
+
 struct DracParams
 {
-  struct AssessmentTrajectories
-  {
-    bool map_based{true};
-    bool constant_curvature{true};
-    bool diffusion_based{true};
-  };
-
   struct Threshold
   {
     double ego_acceleration{-4.0};
@@ -130,25 +135,12 @@ struct DracParams
 
 struct PetCollisionParams
 {
-  struct AssessmentTrajectories
-  {
-    bool map_based{true};
-    bool constant_curvature{true};
-    bool diffusion_based{true};
-  };
-
-  struct Threshold
-  {
-    double ego_first_passing_time_gap{1.0};
-    double object_first_passing_time_gap{1.0};
-  };
-
   bool enable_assessment{true};
   AssessmentTrajectories assessment_trajectories{};
   double ego_total_braking_delay{0.4};
   double ego_assumed_acceleration{-5.0};
-  Threshold warn_threshold{};
-  Threshold error_threshold{0.6, 0.3};
+  PetThreshold warn_threshold{};
+  PetThreshold error_threshold{0.6, 0.3};
 
   PetCollisionParams() = default;
   PetCollisionParams(const validator::Params & node_params, const std::string & key)
@@ -189,7 +181,8 @@ struct RssParams
     enable_assessment = extract_labeled_param<bool>(rss.enable_assessment, key);
     stop_distance_margin = extract_labeled_param<double>(rss.stop_distance_margin, key);
     ego_total_braking_delay = extract_labeled_param<double>(rss.ego_total_braking_delay, key);
-    object_assumed_acceleration = extract_labeled_param<double>(rss.object_assumed_acceleration, key);
+    object_assumed_acceleration =
+      extract_labeled_param<double>(rss.object_assumed_acceleration, key);
     error_threshold.ego_acceleration =
       extract_labeled_param<double>(rss.error_threshold.ego_acceleration, key);
   }
