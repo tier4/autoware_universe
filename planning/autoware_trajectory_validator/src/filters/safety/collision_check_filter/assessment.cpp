@@ -12,16 +12,16 @@
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
 bool is_target_trajectory_type(
-  const ObjectTrajectoryGenerationOptions & options, const std::string & trajectory_type)
+  const AssessmentTrajectories & options, const std::string & trajectory_type)
 {
   if (trajectory_type.find("diffusion_based_trajectory") != std::string::npos) {
-    return options.diffusion_based_trajectory;
+    return options.diffusion_based;
   }
   if (trajectory_type.find("constant_curvature_path") != std::string::npos) {
-    return options.constant_curvature_trajectory;
+    return options.constant_curvature;
   }
   if (trajectory_type.find("map_based_predicted_path") != std::string::npos) {
-    return options.predicted_path_trajectory;
+    return options.map_based;
   }
   return false;
 }
@@ -146,31 +146,34 @@ std::optional<CollisionDetail> find_collision_timing(
 
 PetArtifact assess_planned_speed_collision_timing(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const PetCollisionParams & pet_collision_params, double time_resolution,
-  VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories)
+  const PetParamMap & pet_param_map, double time_resolution, VehicleInfo & vehicle_info,
+  const std::vector<TrajectoryData> & object_trajectories)
 {
-  
-  
+  // todo (takagi): ego_trajectory options can not set for each object type because cache structure
+  // is not implemented yet.
+  const auto & ego_pet_params = pet_param_map.at(kCollisionCheckParamBaseKey);
   const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
-                                            -pet_collision_params.ego_assumed_acceleration +
-                                          pet_collision_params.ego_total_braking_delay;
+                                            -ego_pet_params.ego_assumed_acceleration +
+                                          ego_pet_params.ego_total_braking_delay;
   auto ego_trajectory = trajectory::generate_ego_trajectory(
     traj_points, context, ego_time_horizon_for_pet, time_resolution, vehicle_info);
 
   std::vector<CollisionEvaluation> collision_evaluations{};
   for (const auto & object_trajectory : object_trajectories) {
+    const auto & pet_params =
+      pet_param_map.at(object_trajectory.getObjectIdentification().classification);
     if (!is_target_trajectory_type(
-          ObjectTrajectoryGenerationOptions{pet_collision_params},
+          pet_params.assessment_trajectories,
           object_trajectory.getObjectIdentification().trajectory_type)) {
       continue;
     }
 
     auto collision = find_collision_timing(
-      ego_trajectory, object_trajectory, pet_collision_params.warn_threshold, time_resolution);
+      ego_trajectory, object_trajectory, pet_params.warn_threshold, time_resolution);
 
     if (collision.has_value()) {
-      const auto risk_level = to_pet_risk_level(
-        collision->pet, pet_collision_params.error_threshold, pet_collision_params.warn_threshold);
+      const auto risk_level =
+        to_pet_risk_level(collision->pet, pet_params.error_threshold, pet_params.warn_threshold);
       if (risk_level == RiskLevel::SAFE) {
         continue;
       }
@@ -184,11 +187,14 @@ PetArtifact assess_planned_speed_collision_timing(
 
 DracArtifact assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const DracParams & drac_params, VehicleInfo & vehicle_info,
+  const DracParamMap & drac_param_map, VehicleInfo & vehicle_info,
   const std::vector<TrajectoryData> & object_trajectories, const GlobalParams & global_params)
 {
   const double ego_time_horizon = rclcpp::Duration(traj_points.back().time_from_start).seconds();
 
+  // todo (takagi): ego_trajectory options can not set for each object type because cache structure
+  // is not implemented yet.
+  const auto & ego_drac_params = drac_param_map.at(kCollisionCheckParamBaseKey);
   constexpr double default_ego_deceleration_step = 1.0;
   constexpr double default_max_ego_deceleration = 6.0;
   constexpr PetThreshold error_pet_th{0.6, 0.3};
@@ -207,14 +213,16 @@ DracArtifact assess_drac(
           global_params.time_resolution, traj_points, vehicle_info);
       }
       return trajectory::generate_ego_trajectory(
-        context.odometry->twist.twist, drac_params.ego_total_braking_delay, -ego_dec,
+        context.odometry->twist.twist, ego_drac_params.ego_total_braking_delay, -ego_dec,
         ego_time_horizon, global_params.time_resolution, traj_points, vehicle_info);
     }();
 
     std::vector<CollisionEvaluation> collision_evaluations{};
     for (const auto & object_trajectory : object_trajectories) {
+      const auto & drac_params =
+        drac_param_map.at(object_trajectory.getObjectIdentification().classification);
       if (!is_target_trajectory_type(
-            ObjectTrajectoryGenerationOptions{drac_params},
+            drac_params.assessment_trajectories,
             object_trajectory.getObjectIdentification().trajectory_type)) {
         continue;
       }
@@ -259,41 +267,48 @@ DracArtifact assess_drac(
     }
     if (collision_evaluations.empty()) {
       return DracArtifact{
-        to_drac_risk_level(-ego_dec, drac_params), -ego_dec, std::move(last_collision_evaluations)};
+        to_drac_risk_level(-ego_dec, ego_drac_params), -ego_dec,
+        std::move(last_collision_evaluations)};
     }
 
     last_collision_evaluations = std::move(collision_evaluations);
   }
 
   return DracArtifact{
-    to_drac_risk_level(std::nullopt, drac_params), std::nullopt,
+    to_drac_risk_level(std::nullopt, ego_drac_params), std::nullopt,
     std::move(last_collision_evaluations)};
 }
 
 std::vector<TrajectoryData> generate_object_trajectories(
   const FilterContext & context, double required_time_horizon, double object_assumed_acceleration,
-  double time_resolution, const ObjectTrajectoryGenerationOptions & options)
+  double time_resolution, const DracParamMap & drac_param_map, const PetParamMap & pet_param_map)
 {
   std::vector<TrajectoryData> object_trajectories{};
 
   if (context.predicted_objects) {
-    const auto trajectory_num_per_object =
-      static_cast<size_t>(options.predicted_path_trajectory) +
-      static_cast<size_t>(options.constant_curvature_trajectory);
-    object_trajectories.reserve(
-      object_trajectories.size() +
-      context.predicted_objects->objects.size() * trajectory_num_per_object);
+    // const auto trajectory_num_per_object =
+    //   static_cast<size_t>(options.predicted_path_trajectory) +
+    //   static_cast<size_t>(options.constant_curvature_trajectory);
+    // object_trajectories.reserve(
+    //   object_trajectories.size() +
+    //   context.predicted_objects->objects.size() * trajectory_num_per_object);
     const rclcpp::Duration objects_reference_time =
       rclcpp::Time(context.predicted_objects->header.stamp) -
       rclcpp::Time(context.odometry->header.stamp);
     for (const auto & object : context.predicted_objects->objects) {
-      if (options.predicted_path_trajectory && !object.kinematics.predicted_paths.empty()) {
+      const auto & drac_param = drac_param_map.at(to_type_string(object.classification));
+      const auto & pet_param = pet_param_map.at(to_type_string(object.classification));
+      const bool is_require_map_based =
+        drac_param.assessment_trajectories.map_based || pet_param.assessment_trajectories.map_based;
+      if (is_require_map_based && !object.kinematics.predicted_paths.empty()) {
         object_trajectories.push_back(trajectory::generate_predicted_path_trajectory(
           object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
           context.predicted_objects->header.stamp, time_resolution));
       }
 
-      if (options.constant_curvature_trajectory) {
+      if (
+        drac_param.assessment_trajectories.constant_curvature ||
+        pet_param.assessment_trajectories.constant_curvature) {
         object_trajectories.push_back(trajectory::generate_constant_curvature_trajectory(
           object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
           context.predicted_objects->header.stamp, time_resolution));
@@ -301,9 +316,9 @@ std::vector<TrajectoryData> generate_object_trajectories(
     }
   }
 
-  if (options.diffusion_based_trajectory && context.neural_network_predicted_objects) {
-    object_trajectories.reserve(
-      object_trajectories.size() + context.neural_network_predicted_objects->objects.size());
+  if (context.neural_network_predicted_objects) {
+    // object_trajectories.reserve(
+    //   object_trajectories.size() + context.neural_network_predicted_objects->objects.size());
     const rclcpp::Duration neural_network_objects_reference_time =
       rclcpp::Time(context.neural_network_predicted_objects->header.stamp) -
       rclcpp::Time(context.odometry->header.stamp);
@@ -311,9 +326,15 @@ std::vector<TrajectoryData> generate_object_trajectories(
       if (object.kinematics.predicted_paths.empty()) {
         continue;
       }
-      object_trajectories.push_back(trajectory::generate_diffusion_based_trajectory(
-        object, neural_network_objects_reference_time, required_time_horizon,
-        context.neural_network_predicted_objects->header.stamp, time_resolution));
+      const auto & drac_param = drac_param_map.at(to_type_string(object.classification));
+      const auto & pet_param = pet_param_map.at(to_type_string(object.classification));
+      const bool is_require_diffusion_based = drac_param.assessment_trajectories.diffusion_based ||
+                                              pet_param.assessment_trajectories.diffusion_based;
+      if (is_require_diffusion_based) {
+        object_trajectories.push_back(trajectory::generate_diffusion_based_trajectory(
+          object, neural_network_objects_reference_time, required_time_horizon,
+          context.neural_network_predicted_objects->header.stamp, time_resolution));
+      }
     }
   }
   return object_trajectories;
@@ -321,36 +342,24 @@ std::vector<TrajectoryData> generate_object_trajectories(
 
 std::pair<PetArtifact, DracArtifact> assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const PetCollisionParams & pet_collision_params, const DracParams & drac_params,
+  const PetParamMap & pet_param_map, const DracParamMap & drac_param_map,
   const GlobalParams & global_params, VehicleInfo & vehicle_info)
 {
-  ObjectTrajectoryGenerationOptions required_trajectory_types;
-  if (pet_collision_params.enable_assessment) {
-    required_trajectory_types.merge_with(ObjectTrajectoryGenerationOptions{pet_collision_params});
-  }
-  if (drac_params.enable_assessment) {
-    required_trajectory_types.merge_with(ObjectTrajectoryGenerationOptions{drac_params});
-  }
-
   const double required_time_horizon =
-    rclcpp::Duration(traj_points.back().time_from_start).seconds() +
-    pet_collision_params.warn_threshold.ego_first_passing_time_gap;
+    rclcpp::Duration(traj_points.back().time_from_start).seconds();
   const auto nominal_speed_object_trajectories = generate_object_trajectories(
-    context, required_time_horizon, -1.0, global_params.time_resolution, required_trajectory_types);
+    context, required_time_horizon, -1.0, global_params.time_resolution, drac_param_map,
+    pet_param_map);
 
   PetArtifact pet_artifact{};
-  if (pet_collision_params.enable_assessment) {
-    pet_artifact = assess_planned_speed_collision_timing(
-      traj_points, context, pet_collision_params, global_params.time_resolution, vehicle_info,
-      nominal_speed_object_trajectories);
-  }
+  pet_artifact = assess_planned_speed_collision_timing(
+    traj_points, context, pet_param_map, global_params.time_resolution, vehicle_info,
+    nominal_speed_object_trajectories);
 
   DracArtifact drac_artifact{};
-  if (drac_params.enable_assessment) {
-    drac_artifact = assess_drac(
-      traj_points, context, drac_params, vehicle_info, nominal_speed_object_trajectories,
-      global_params);
-  }
+  drac_artifact = assess_drac(
+    traj_points, context, drac_param_map, vehicle_info, nominal_speed_object_trajectories,
+    global_params);
   return {pet_artifact, drac_artifact};
 }
 }  // namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
@@ -422,14 +431,10 @@ RssDetail assess_required_deceleration(
 }
 
 RssArtifact assess(
-  const TrajectoryPoints & traj_points, const FilterContext & context, const RssParams & rss_params,
-  double time_resolution, VehicleInfo & vehicle_info)
+  const TrajectoryPoints & traj_points, const FilterContext & context,
+  const RssParamMap & rss_param_map, double time_resolution, VehicleInfo & vehicle_info)
 {
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
-    return {};
-  }
-
-  if (!rss_params.enable_assessment) {
     return {};
   }
 
@@ -440,6 +445,10 @@ RssArtifact assess(
   rss_evaluations.reserve(context.predicted_objects->objects.size());
 
   for (const auto & object : context.predicted_objects->objects) {
+    const auto & rss_params = rss_param_map.at(to_type_string(object.classification));
+    if (!rss_params.enable_assessment) {
+      continue;
+    }
     const auto rss_detail = assess_required_deceleration(
       ego_trajectory, context.odometry->twist.twist, object, rss_params,
       context.predicted_objects->header.stamp);

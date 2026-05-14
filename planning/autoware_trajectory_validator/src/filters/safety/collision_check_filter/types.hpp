@@ -15,8 +15,9 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
 
+#include "types.hpp"
+
 #include <autoware/object_recognition_utils/object_classification.hpp>
-#include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
@@ -35,6 +36,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -55,11 +57,11 @@ static constexpr double TIME_INDEX_EPSILON = 1e-3;
 
 struct TrajectoryIdentification
 {
-  std::string classification;
-  builtin_interfaces::msg::Time stamp{};
-  unique_identifier_msgs::msg::UUID uuid{};
-  std::string trajectory_type{};
-  double acceleration{};
+  const std::string classification;
+  const builtin_interfaces::msg::Time stamp{};
+  const unique_identifier_msgs::msg::UUID uuid{};
+  const std::string trajectory_type{};
+  const double acceleration{};
 
   TrajectoryIdentification() = default;
   explicit TrajectoryIdentification(std::string classification)
@@ -71,8 +73,7 @@ struct TrajectoryIdentification
     const autoware_perception_msgs::msg::PredictedObject & object,
     const builtin_interfaces::msg::Time stamp, std::string trajectory_type = {},
     double acceleration = 0.0)
-  : classification(autoware::object_recognition_utils::convertLabelToString(
-      autoware::object_recognition_utils::getHighestProbLabel(object.classification))),
+  : classification(to_type_string(object.classification)),
     stamp(stamp),
     uuid(object.object_id),
     trajectory_type(std::move(trajectory_type)),
@@ -164,13 +165,6 @@ inline RiskLevel calc_worst_risk(std::initializer_list<RiskLevel> risks)
   }
   return worst;
 }
-
-// struct BlackboardLogger
-// {
-//   std::optional<DracArtifact> drac_artifact;
-//   std::vector<PetArtifact> pet_artifacts;
-//   std::vector<RssArtifact> rss_artifacts;
-// };
 
 }  // namespace autoware::trajectory_validator::plugin::safety
 

@@ -45,14 +45,9 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
-  // ad-hoc
-  DracParams drac_params_;
-  PetCollisionParams pet_collision_params_;
-  RssParams rss_params_;
-
   GlobalParams global_params_;
   DracParamMap drac_param_map_;
-  PetCollisionParamMap pet_collision_param_map_;
+  PetParamMap pet_param_map_;
   RssParamMap rss_param_map_;
 
   reporter::ContinuousDetectionTimes pet_continuous_times_;

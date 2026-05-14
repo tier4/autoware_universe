@@ -18,38 +18,13 @@
 
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
-struct ObjectTrajectoryGenerationOptions
-{
-  bool predicted_path_trajectory{false};
-  bool constant_curvature_trajectory{false};
-  bool diffusion_based_trajectory{false};
-
-  ObjectTrajectoryGenerationOptions() = default;
-
-  template <typename ParamsT>
-  explicit ObjectTrajectoryGenerationOptions(const ParamsT & params)
-  {
-    predicted_path_trajectory = params.assessment_trajectories.map_based;
-    constant_curvature_trajectory = params.assessment_trajectories.constant_curvature;
-    diffusion_based_trajectory = params.assessment_trajectories.diffusion_based;
-  }
-
-  void merge_with(const ObjectTrajectoryGenerationOptions & other)
-  {
-    predicted_path_trajectory = predicted_path_trajectory || other.predicted_path_trajectory;
-    constant_curvature_trajectory =
-      constant_curvature_trajectory || other.constant_curvature_trajectory;
-    diffusion_based_trajectory = diffusion_based_trajectory || other.diffusion_based_trajectory;
-  }
-};
-
 std::vector<TrajectoryData> generate_object_trajectories(
   const FilterContext & context, double required_time_horizon, double object_assumed_acceleration,
-  double time_resolution, const ObjectTrajectoryGenerationOptions & options);
+  double time_resolution, const DracParamMap & drac_param_map, const PetParamMap & pet_param_map);
 
 std::pair<PetArtifact, DracArtifact> assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const PetCollisionParams & pet_collision_params, const DracParams & drac_params,
+  const PetParamMap & pet_param_map, const DracParamMap & drac_param_map,
   const GlobalParams & global_params, VehicleInfo & vehicle_info);
 }  // namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 
@@ -87,7 +62,7 @@ std::optional<double> compute_distance_to_collision(
   const autoware_perception_msgs::msg::PredictedObject & object);
 
 RssArtifact assess(
-  const TrajectoryPoints & traj_points, const FilterContext & context, const RssParams & rss_params,
+  const TrajectoryPoints & traj_points, const FilterContext & context, const RssParamMap & rss_param_map,
   double time_resolution, VehicleInfo & vehicle_info);
 }  // namespace autoware::trajectory_validator::plugin::safety::rss_deceleration
 

@@ -49,12 +49,8 @@ void CollisionCheckFilter::update_parameters(const validator::Params & node_para
   global_params_ = GlobalParams(node_params.collision_check.global_setting);
 
   drac_param_map_ = create_param_map_per_object<DracParams>(node_params);
-  pet_collision_param_map_ = create_param_map_per_object<PetCollisionParams>(node_params);
+  pet_param_map_ = create_param_map_per_object<PetParams>(node_params);
   rss_param_map_ = create_param_map_per_object<RssParams>(node_params);
-
-  pet_collision_params_ = pet_collision_param_map_.at(kCollisionCheckParamBaseKey);
-  rss_params_ = rss_param_map_.at(kCollisionCheckParamBaseKey);
-  drac_params_ = drac_param_map_.at(kCollisionCheckParamBaseKey);
 }
 
 autoware_internal_planning_msgs::msg::SafetyFactorArray make_safety_factor_array(
@@ -312,9 +308,9 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   }
 
   const auto [pet_artifact, drac_artifact] = collision_timing_assessment::assess(
-    traj_points, context, pet_collision_params_, drac_params_, global_params_, *vehicle_info_ptr_);
+    traj_points, context, pet_param_map_, drac_param_map_, global_params_, *vehicle_info_ptr_);
   const auto rss_artifact = rss_deceleration::assess(
-    traj_points, context, rss_params_, global_params_.time_resolution, *vehicle_info_ptr_);
+    traj_points, context, rss_param_map_, global_params_.time_resolution, *vehicle_info_ptr_);
 
   EvaluationArtifacts artifacts{};
   const rclcpp::Time current_time = context.odometry->header.stamp;
