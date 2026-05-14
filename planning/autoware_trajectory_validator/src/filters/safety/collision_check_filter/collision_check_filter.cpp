@@ -1050,6 +1050,7 @@ struct Result
   std::vector<Finding> planned_speed_findings;
   std::optional<double> drac{0.0};
   std::vector<Finding> drac_findings;  // Last evaluated PET findings during DRAC search.
+  std::map<std::string, std::optional<double>> drac_by_type;
 };
 
 struct ObjectTrajectoryGenerationOptions
@@ -1290,6 +1291,33 @@ std::vector<Finding> assess_planned_speed_collision_timing(
   return findings;
 }
 
+std::optional<std::map<std::string, DracParams>> isolate_drac_params_to_type(
+  const std::map<std::string, DracParams> & drac_param_map, const std::string & type)
+{
+  auto isolated = drac_param_map.at(DEFAULT_PARAM_KEY);
+  auto & at = isolated.assessment_trajectories;
+  at.map_based = at.map_based && type == "map_based_predicted_path";
+  at.constant_curvature = at.constant_curvature && type == "constant_curvature_path";
+  at.diffusion_based = at.diffusion_based && type == "diffusion_based_trajectory";
+  if (!at.map_based && !at.constant_curvature && !at.diffusion_based) {
+    return std::nullopt;
+  }
+  auto isolated_map = drac_param_map;
+  isolated_map[DEFAULT_PARAM_KEY] = isolated;
+  return isolated_map;
+}
+
+std::optional<double> combine_per_type_drac(
+  const std::map<std::string, std::optional<double>> & per_type)
+{
+  std::optional<double> overall{0.0};
+  for (const auto & [_, opt] : per_type) {
+    if (!opt.has_value()) return std::nullopt;
+    overall = std::max(overall.value(), opt.value());
+  }
+  return overall;
+}
+
 DracAssessment assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const std::map<std::string, DracParams> & drac_param_map, VehicleInfo & vehicle_info,
@@ -1409,16 +1437,22 @@ Result assess(
       nominal_speed_object_trajectories);
   }
 
-  if (!drac_params_default.enable_assessment) {
-    DracAssessment drac_assessment{0.0, {}};  // dummy
-    result.drac_findings = drac_assessment.findings;
-    result.drac = drac_assessment.drac;
-  } else {
-    const auto drac_assessment = assess_drac(
-      traj_points, context, drac_param_map, vehicle_info, nominal_speed_object_trajectories,
-      global_setting);
-    result.drac_findings = drac_assessment.findings;
-    result.drac = drac_assessment.drac;
+  if (drac_params_default.enable_assessment) {
+    constexpr std::array<const char *, 3> kCanonicalTypes = {
+      "map_based_predicted_path", "constant_curvature_path", "diffusion_based_trajectory"};
+    for (const auto * type : kCanonicalTypes) {
+      const auto isolated = isolate_drac_params_to_type(drac_param_map, type);
+      if (!isolated.has_value()) {
+        result.drac_by_type[type] = std::optional<double>{0.0};
+        continue;
+      }
+      const auto sub = assess_drac(
+        traj_points, context, *isolated, vehicle_info, nominal_speed_object_trajectories,
+        global_setting);
+      result.drac_by_type[type] = sub.drac;
+      for (auto & f : sub.findings) result.drac_findings.push_back(std::move(f));
+    }
+    result.drac = combine_per_type_drac(result.drac_by_type);
   }
   return result;
 }
@@ -1754,12 +1788,9 @@ std::map<std::string, DracWorst> compute_drac_worst(
 {
   std::map<std::string, DracWorst> worst;
   for (const auto * type : kAggregatedTrajectoryTypes) {
-    worst[type] = DracWorst{};
-  }
-  for (const auto & f : result.drac_findings) {
-    const auto type = canonical_trajectory_type(f.object_identification.trajectory_type);
-    if (type.empty()) continue;
-    worst[type].drac = result.drac;
+    const auto it = result.drac_by_type.find(type);
+    worst[type] =
+      DracWorst{it != result.drac_by_type.end() ? it->second : std::optional<double>{0.0}};
   }
   return worst;
 }
