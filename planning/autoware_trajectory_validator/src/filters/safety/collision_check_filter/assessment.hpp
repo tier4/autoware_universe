@@ -18,24 +18,6 @@
 
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
-struct Finding
-{
-  TrajectoryIdentification object_identification;
-  double pet;
-  double ttc;
-  PoseTrajectory ego_trajectory;
-  PoseTrajectory object_trajectory;
-  Polygon2d ego_hull;
-  Polygon2d object_hull;
-};
-
-struct Result
-{
-  std::vector<Finding> planned_speed_findings;
-  std::optional<double> drac{0.0};
-  std::vector<Finding> drac_findings;
-};
-
 struct ObjectTrajectoryGenerationOptions
 {
   bool predicted_path_trajectory{false};
@@ -65,7 +47,7 @@ std::vector<TrajectoryData> generate_object_trajectories(
   const FilterContext & context, double required_time_horizon, double object_assumed_acceleration,
   double time_resolution, const ObjectTrajectoryGenerationOptions & options);
 
-Result assess(
+std::pair<PetArtifact, DracArtifact> assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const PetCollisionParams & pet_collision_params, const DracParams & drac_params,
   const GlobalParams & global_params, VehicleInfo & vehicle_info);
@@ -73,19 +55,6 @@ Result assess(
 
 namespace autoware::trajectory_validator::plugin::safety::rss_deceleration
 {
-struct Assessment
-{
-  TrajectoryIdentification object;
-  double required_deceleration;
-};
-
-struct Result
-{
-  std::optional<Assessment> worst_assessment;
-  bool has_violation{false};
-  std::vector<Assessment> violations;
-};
-
 template <typename PosePoints, typename Object>
 double compute_longitudinal_velocity(const PosePoints & points, const Object & object)
 {
@@ -117,7 +86,7 @@ std::optional<double> compute_distance_to_collision(
   const TrajectoryData & ego_trajectory,
   const autoware_perception_msgs::msg::PredictedObject & object);
 
-Result assess(
+RssArtifact assess(
   const TrajectoryPoints & traj_points, const FilterContext & context, const RssParams & rss_params,
   double time_resolution, VehicleInfo & vehicle_info);
 }  // namespace autoware::trajectory_validator::plugin::safety::rss_deceleration
