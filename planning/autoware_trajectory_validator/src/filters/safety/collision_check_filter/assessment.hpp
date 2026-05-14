@@ -24,10 +24,8 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/pose_deviation.hpp>
 
-#include <algorithm>
 #include <optional>
 #include <stdexcept>
-#include <string>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment

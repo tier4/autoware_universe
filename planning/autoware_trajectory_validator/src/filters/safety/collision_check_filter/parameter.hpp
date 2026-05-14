@@ -18,7 +18,6 @@
 #include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 
-#include <array>
 #include <cmath>
 #include <map>
 #include <stdexcept>

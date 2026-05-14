@@ -17,10 +17,6 @@
 
 #include "parameter.hpp"
 
-#include "types.hpp"
-
-#include <autoware/object_recognition_utils/object_classification.hpp>
-#include <autoware/universe_utils/geometry/geometry.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <builtin_interfaces/msg/time.hpp>
@@ -29,16 +25,8 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 
-#include <boost/geometry/algorithms/convex_hull.hpp>
-#include <boost/geometry/algorithms/expand.hpp>
-
-#include <algorithm>
-#include <cassert>
-#include <map>
 #include <optional>
-#include <stdexcept>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 

@@ -16,26 +16,19 @@
 #define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TRAJECTORY_UTILS_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
-#include "parameter.hpp"
 #include "types.hpp"
 
-#include <autoware/interpolation/linear_interpolation.hpp>
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
-#include <autoware/universe_utils/geometry/pose_deviation.hpp>
-#include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <rclcpp/duration.hpp>
 
 #include <geometry_msgs/msg/pose.hpp>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <boost/geometry.hpp>
 
-#include <tf2/utils.h>
 
 #include <algorithm>
-#include <cmath>
 #include <iterator>
 #include <string>
 

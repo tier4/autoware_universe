@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "../../src/filters/safety/collision_check_filter/assessment.hpp"
 #include "../../src/filters/safety/collision_check_filter/parameter.hpp"
 #include "../../src/filters/safety/collision_check_filter/trajectory_utils.hpp"
-#include "../../src/filters/safety/collision_check_filter/assessment.hpp"
 
 #include <gtest/gtest.h>
 #include <tf2/utils.h>
@@ -310,10 +310,7 @@ TEST(TrajectoryUtilitiesTest, ObjectIdentificationObjectConstructorBuildsIdsFrom
 
   const auto identification = TrajectoryIdentification{object, stamp, "map_based_predicted_path"};
 
-  EXPECT_EQ(
-    identification.classification,
-    autoware::object_recognition_utils::convertLabelToString(
-      autoware::object_recognition_utils::getHighestProbLabel(object.classification)));
+  EXPECT_EQ(identification.classification, "car");
   EXPECT_EQ(identification.stamp.sec, stamp.sec);
   EXPECT_EQ(identification.stamp.nanosec, stamp.nanosec);
   EXPECT_EQ(
@@ -604,12 +601,10 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
       });
     };
 
-  const auto all_enabled_drac_param_map =
-    make_param_map_with_assessment_trajectories<DracParamMap>(
-      make_assessment_trajectories(true, true, true));
-  const auto all_enabled_pet_param_map =
-    make_param_map_with_assessment_trajectories<PetParamMap>(
-      make_assessment_trajectories(true, true, true));
+  const auto all_enabled_drac_param_map = make_param_map_with_assessment_trajectories<DracParamMap>(
+    make_assessment_trajectories(true, true, true));
+  const auto all_enabled_pet_param_map = make_param_map_with_assessment_trajectories<PetParamMap>(
+    make_assessment_trajectories(true, true, true));
   const auto all_enabled = collision_timing_assessment::generate_object_trajectories(
     context, 0.2, 0.0, 0.1, all_enabled_drac_param_map, all_enabled_pet_param_map);
   EXPECT_EQ(all_enabled.size(), 3u);
@@ -624,8 +619,7 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
     make_param_map_with_assessment_trajectories<PetParamMap>(
       make_assessment_trajectories(false, true, false));
   const auto constant_curvature_only = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0, 0.1, constant_curvature_drac_param_map,
-    constant_curvature_pet_param_map);
+    context, 0.2, 0.0, 0.1, constant_curvature_drac_param_map, constant_curvature_pet_param_map);
   ASSERT_EQ(constant_curvature_only.size(), 1u);
   EXPECT_EQ(
     constant_curvature_only.front().getObjectIdentification().trajectory_type,
@@ -681,19 +675,25 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesUsesTrajectoryTypeUnionA
 
   EXPECT_EQ(trajectories.size(), 3u);
   EXPECT_EQ(
-    std::count_if(trajectories.begin(), trajectories.end(), [](const auto & trajectory) {
-      return trajectory.getObjectIdentification().trajectory_type == "map_based_predicted_path";
-    }),
+    std::count_if(
+      trajectories.begin(), trajectories.end(),
+      [](const auto & trajectory) {
+        return trajectory.getObjectIdentification().trajectory_type == "map_based_predicted_path";
+      }),
     1);
   EXPECT_EQ(
-    std::count_if(trajectories.begin(), trajectories.end(), [](const auto & trajectory) {
-      return trajectory.getObjectIdentification().trajectory_type == "constant_curvature_path";
-    }),
+    std::count_if(
+      trajectories.begin(), trajectories.end(),
+      [](const auto & trajectory) {
+        return trajectory.getObjectIdentification().trajectory_type == "constant_curvature_path";
+      }),
     1);
   EXPECT_EQ(
-    std::count_if(trajectories.begin(), trajectories.end(), [](const auto & trajectory) {
-      return trajectory.getObjectIdentification().trajectory_type == "diffusion_based_trajectory";
-    }),
+    std::count_if(
+      trajectories.begin(), trajectories.end(),
+      [](const auto & trajectory) {
+        return trajectory.getObjectIdentification().trajectory_type == "diffusion_based_trajectory";
+      }),
     1);
 }
 
