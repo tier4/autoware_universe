@@ -40,7 +40,6 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <set>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -1051,10 +1050,6 @@ struct Result
   std::vector<Finding> planned_speed_findings;
   std::optional<double> drac{0.0};
   std::vector<Finding> drac_findings;  // Last evaluated PET findings during DRAC search.
-  // Per-trajectory_type DRAC: computed independently for each prediction type.
-  // Key is the canonical trajectory_type string (map_based_predicted_path /
-  // constant_curvature_path / diffusion_based_trajectory). Value semantics
-  // mirror `drac`: nullopt means avoidance impossible for that type.
   std::map<std::string, std::optional<double>> drac_by_type;
 };
 
@@ -1420,8 +1415,6 @@ Result assess(
     result.drac_findings = drac_assessment.findings;
     result.drac = drac_assessment.drac;
   } else {
-    // Run DRAC assessment 3 times, once per canonical trajectory_type, so each
-    // prediction has an independent worst DRAC value.
     constexpr std::array<const char *, 3> kCanonicalTypes = {
       "map_based_predicted_path",
       "constant_curvature_path",
@@ -1708,135 +1701,20 @@ void add_collision_planning_factor(
   planning_factors.factors.push_back(std::move(factor));
 }
 
-// Canonical trajectory_type keys used as a suffix for the per-prediction worst metrics.
 constexpr std::array<const char *, 3> kAggregatedTrajectoryTypes = {
   "map_based_predicted_path",
   "constant_curvature_path",
   "diffusion_based_trajectory",
 };
 
-// Map a raw trajectory_type (possibly suffixed) to one of the canonical keys.
 std::string canonical_trajectory_type(const std::string & raw)
 {
-  if (raw.find("diffusion_based_trajectory") != std::string::npos) {
-    return "diffusion_based_trajectory";
-  }
-  if (raw.find("constant_curvature_path") != std::string::npos) {
-    return "constant_curvature_path";
-  }
-  if (raw.find("map_based_predicted_path") != std::string::npos) {
-    return "map_based_predicted_path";
+  for (const auto * type : kAggregatedTrajectoryTypes) {
+    if (raw.find(type) != std::string::npos) {
+      return type;
+    }
   }
   return {};
-}
-
-// Per-prediction PET worst aggregation. Always emits exactly 3 metrics
-// (one per canonical trajectory_type); when no finding is present for a type,
-// emits +inf with level=OK so downstream evaluators see a continuous time series.
-void aggregate_pet_worst(
-  const std::string & validator_name, const std::string & validator_category,
-  const std::vector<collision_timing_assessment::Finding> & findings,
-  const PetCollisionParams & pet_params_default, EvaluationArtifacts & artifacts)
-{
-  struct Worst
-  {
-    double pet{std::numeric_limits<double>::infinity()};
-    uint8_t level{MetricReport::OK};
-    bool has_finding{false};
-  };
-  std::map<std::string, Worst> worst_by_type;
-
-  // PET worst = the finding closest to zero (smallest |pet|), since |pet| is the
-  // time gap to collision. The level is the level of that worst finding.
-  for (const auto & finding : findings) {
-    const auto key = canonical_trajectory_type(finding.object_identification.trajectory_type);
-    if (key.empty()) {
-      continue;
-    }
-    const bool is_error =
-      finding.pet <= pet_params_default.error_threshold.ego_first_passing_time_gap &&
-      finding.pet >= -pet_params_default.error_threshold.object_first_passing_time_gap;
-    const uint8_t finding_level = is_error ? MetricReport::ERROR : MetricReport::WARN;
-
-    auto & w = worst_by_type[key];
-    if (!w.has_finding || std::abs(finding.pet) < std::abs(w.pet)) {
-      w.pet = finding.pet;
-      w.level = finding_level;
-    }
-    w.has_finding = true;
-  }
-
-  for (const auto * type : kAggregatedTrajectoryTypes) {
-    const auto it = worst_by_type.find(type);
-    const bool has_findings = it != worst_by_type.end() && it->second.has_finding;
-    const double value = has_findings ? it->second.pet : std::numeric_limits<double>::infinity();
-    const uint8_t level = has_findings ? it->second.level : MetricReport::OK;
-
-    artifacts.metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
-                                  .validator_name(validator_name)
-                                  .validator_category(validator_category)
-                                  .metric_name(fmt::format("check_PET_{}", type))
-                                  .metric_value(value)
-                                  .level(level));
-  }
-}
-
-// Per-prediction DRAC worst aggregation. Each trajectory_type has its own
-// independent DRAC value computed in collision_timing_assessment::assess.
-//   value == 0.0     -> no collision (safe), level=OK
-//   value >  0.0     -> required ego deceleration, level=WARN/ERROR by threshold
-//   value == DBL_MAX -> avoidance impossible (internally nullopt), level=ERROR
-//
-// DBL_MAX is used instead of +inf so downstream tools that cannot serialize inf
-// (some YAML/JSON consumers, pandas with default options, etc.) still see a
-// finite numeric value.
-void aggregate_drac_worst(
-  const std::string & validator_name, const std::string & validator_category,
-  const collision_timing_assessment::Result & collision_timing_result,
-  const DracParams & drac_params_default, EvaluationArtifacts & artifacts)
-{
-  for (const auto * type : kAggregatedTrajectoryTypes) {
-    const auto it = collision_timing_result.drac_by_type.find(type);
-    double value = 0.0;
-    uint8_t level = MetricReport::OK;
-    if (it != collision_timing_result.drac_by_type.end()) {
-      const auto & drac_opt = it->second;
-      const bool avoidance_impossible = !drac_opt.has_value();
-      value = avoidance_impossible ? std::numeric_limits<double>::max() : drac_opt.value();
-      if (avoidance_impossible || value > 0.0) {
-        const bool is_warn =
-          avoidance_impossible || value >= -drac_params_default.warn_threshold.ego_acceleration;
-        const bool is_error =
-          avoidance_impossible || value >= -drac_params_default.error_threshold.ego_acceleration;
-        level = is_error ? MetricReport::ERROR : (is_warn ? MetricReport::WARN : MetricReport::OK);
-      }
-    }
-
-    artifacts.metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
-                                  .validator_name(validator_name)
-                                  .validator_category(validator_category)
-                                  .metric_name(fmt::format("check_DRAC_{}", type))
-                                  .metric_value(value)
-                                  .level(level));
-  }
-}
-
-// RSS worst aggregation. Single metric (no trajectory_type variants).
-void aggregate_rss_worst(
-  const std::string & validator_name, const std::string & validator_category,
-  const rss_deceleration::Result & rss_result, EvaluationArtifacts & artifacts)
-{
-  const double value = rss_result.worst_assessment.has_value()
-                         ? rss_result.worst_assessment->required_deceleration
-                         : 0.0;
-  const uint8_t level = rss_result.has_violation ? MetricReport::ERROR : MetricReport::OK;
-
-  artifacts.metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
-                                .validator_name(validator_name)
-                                .validator_category(validator_category)
-                                .metric_name("check_RSS")
-                                .metric_value(value)
-                                .level(level));
 }
 
 void process_pet_findings(
@@ -1848,13 +1726,18 @@ void process_pet_findings(
   EvaluationArtifacts & artifacts, const AddDebugMarkers & add_debug_markers,
   const AddPlanningFactor & add_planning_factor)
 {
-  (void)validator_name;
-  (void)validator_category;
   const auto pet_collision_params_default = pet_collision_param_map.at(DEFAULT_PARAM_KEY);
 
   pet_continuous_times.update(current_time, findings, [](const auto & finding) {
     return finding.object_identification.trajectory_id_string();
   });
+
+  struct PetWorst
+  {
+    double pet{std::numeric_limits<double>::infinity()};
+    uint8_t level{MetricReport::OK};
+  };
+  std::map<std::string, PetWorst> pet_worst;
 
   std::string log_messages{};
   std::string marker_messages{};
@@ -1864,9 +1747,19 @@ void process_pet_findings(
     const bool is_error =
       finding.pet <= pet_collision_params_default.error_threshold.ego_first_passing_time_gap &&
       finding.pet >= -pet_collision_params_default.error_threshold.object_first_passing_time_gap;
+    const uint8_t metric_level = is_error ? MetricReport::ERROR : MetricReport::WARN;
     if (is_error) {
       artifacts.is_feasible = false;
       log_level = MetricReport::ERROR;
+    }
+
+    const auto type_key = canonical_trajectory_type(obj_id.trajectory_type);
+    if (!type_key.empty()) {
+      auto & w = pet_worst[type_key];
+      if (std::abs(finding.pet) < std::abs(w.pet)) {
+        w.pet = finding.pet;
+        w.level = metric_level;
+      }
     }
 
     const auto finding_msg = fmt::format(
@@ -1882,6 +1775,18 @@ void process_pet_findings(
     if (is_error) {
       add_planning_factor(stamp, ego_pose, finding, "PET", artifacts.planning_factors);
     }
+  }
+
+  for (const auto * type : kAggregatedTrajectoryTypes) {
+    const auto it = pet_worst.find(type);
+    const double value = it != pet_worst.end() ? it->second.pet : std::numeric_limits<double>::infinity();
+    const uint8_t level = it != pet_worst.end() ? it->second.level : MetricReport::OK;
+    artifacts.metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                                  .validator_name(validator_name)
+                                  .validator_category(validator_category)
+                                  .metric_name(fmt::format("check_PET_{}", type))
+                                  .metric_value(value)
+                                  .level(level));
   }
 
   artifacts.error_msg += marker_messages;
@@ -1903,6 +1808,28 @@ void process_drac_findings(
     current_time, collision_timing_result.drac_findings,
     [](const auto & finding) { return finding.object_identification.trajectory_id_string(); });
 
+  for (const auto * type : kAggregatedTrajectoryTypes) {
+    const auto it = collision_timing_result.drac_by_type.find(type);
+    double value = 0.0;
+    uint8_t level = MetricReport::OK;
+    if (it != collision_timing_result.drac_by_type.end()) {
+      const auto & opt = it->second;
+      const bool impossible = !opt.has_value();
+      value = impossible ? std::numeric_limits<double>::max() : opt.value();
+      if (impossible || value > 0.0) {
+        const bool warn = impossible || value >= -drac_params_default.warn_threshold.ego_acceleration;
+        const bool err = impossible || value >= -drac_params_default.error_threshold.ego_acceleration;
+        level = err ? MetricReport::ERROR : (warn ? MetricReport::WARN : MetricReport::OK);
+      }
+    }
+    artifacts.metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                                  .validator_name(validator_name)
+                                  .validator_category(validator_category)
+                                  .metric_name(fmt::format("check_DRAC_{}", type))
+                                  .metric_value(value)
+                                  .level(level));
+  }
+
   const bool is_warn =
     collision_timing_result.drac == std::nullopt ||
     collision_timing_result.drac.value() >= -drac_params_default.warn_threshold.ego_acceleration;
@@ -1913,8 +1840,6 @@ void process_drac_findings(
     return;
   }
 
-  (void)validator_name;
-  (void)validator_category;
   std::string log_messages{};
   std::string marker_messages{};
   const uint8_t metric_level = is_error ? MetricReport::ERROR : MetricReport::WARN;
@@ -1947,24 +1872,44 @@ void process_drac_findings(
 
 void process_rss_violations(
   const std::string & validator_name, const std::string & validator_category,
-  const rss_deceleration::Result & rss_result,
+  const validator::Params::CollisionCheck::GlobalSetting & global_setting,
+  const std::map<std::string, RssParams> & rss_param_map, const TrajectoryPoints & traj_points,
+  const FilterContext & context, VehicleInfo & vehicle_info,
   ContinuousDetectionTimes & rss_continuous_times, const rclcpp::Time & current_time,
   EvaluationArtifacts & artifacts)
 {
+  const auto rss_params_default = rss_param_map.at(DEFAULT_PARAM_KEY);
+
+  const auto push_rss_metric = [&](double value, uint8_t level) {
+    artifacts.metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
+                                  .validator_name(validator_name)
+                                  .validator_category(validator_category)
+                                  .metric_name("check_RSS")
+                                  .metric_value(value)
+                                  .level(level));
+  };
+
+  if (!rss_params_default.enable_assessment) {
+    push_rss_metric(0.0, MetricReport::OK);
+    return;
+  }
+
+  const auto rss_result = rss_deceleration::assess(
+    traj_points, context, rss_param_map, global_setting.time_resolution, vehicle_info);
   rss_continuous_times.update(current_time, rss_result.violations, [](const auto & violation) {
     return violation.object.object_id_string();
   });
 
-  if (rss_result.has_violation) {
-    artifacts.is_feasible = false;
-  }
+  push_rss_metric(
+    rss_result.worst_assessment.has_value() ? rss_result.worst_assessment->required_deceleration
+                                            : 0.0,
+    rss_result.has_violation ? MetricReport::ERROR : MetricReport::OK);
 
-  (void)validator_name;
-  (void)validator_category;
   std::string log_messages{};
   std::string marker_messages{};
   for (const auto & violation : rss_result.violations) {
     const auto object_id = violation.object.object_id_string();
+    artifacts.is_feasible = false;
     const auto finding_msg = fmt::format(
       "RSS collision, classification: {}, ID: {}, duration: {}, required deceleration: {}, "
       "stamp: {}.{};",
@@ -1999,12 +1944,6 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   const auto collision_timing_result = collision_timing_assessment::assess(
     traj_points, context, pet_collision_param_map_, drac_param_map_, global_setting_,
     *vehicle_info_ptr_);
-  const auto rss_params_default = rss_param_map_.at(DEFAULT_PARAM_KEY);
-  const auto rss_result = rss_params_default.enable_assessment
-                            ? rss_deceleration::assess(
-                                traj_points, context, rss_param_map_,
-                                global_setting_.time_resolution, *vehicle_info_ptr_)
-                            : rss_deceleration::Result{};
   const auto add_debug_markers_cb =
     [this](
       const rclcpp::Time & stamp, const std::string & ns, const std::string & trajectory_id,
@@ -2031,21 +1970,9 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     get_name(), category(), drac_param_map_, drac_continuous_times_, current_time,
     context.odometry->header.stamp, context.odometry->pose.pose, collision_timing_result, artifacts,
     add_debug_markers_cb, add_planning_factor_cb);
-  if (rss_params_default.enable_assessment) {
-    process_rss_violations(
-      get_name(), category(), rss_result, rss_continuous_times_, current_time, artifacts);
-  }
-
-  // Always emit the 7 worst metrics (PET x 3 + DRAC x 3 + RSS x 1) so downstream evaluators
-  // can plot per-prediction worst values as a continuous time series.
-  aggregate_pet_worst(
-    get_name(), category(), collision_timing_result.planned_speed_findings,
-    pet_collision_param_map_.at(DEFAULT_PARAM_KEY), artifacts);
-  aggregate_drac_worst(
-    get_name(), category(), collision_timing_result, drac_param_map_.at(DEFAULT_PARAM_KEY),
-    artifacts);
-  aggregate_rss_worst(get_name(), category(), rss_result, artifacts);
-
+  process_rss_violations(
+    get_name(), category(), global_setting_, rss_param_map_, traj_points, context,
+    *vehicle_info_ptr_, rss_continuous_times_, current_time, artifacts);
   if (!artifacts.error_msg.empty()) {
     add_error_text_marker(
       context.odometry->header.stamp, context.odometry->pose.pose, artifacts.error_msg);
