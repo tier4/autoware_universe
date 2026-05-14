@@ -1730,10 +1730,7 @@ struct RssWorst
 
   double metric_value() const { return required_deceleration; }
 
-  uint8_t metric_level() const
-  {
-    return has_violation ? MetricReport::ERROR : MetricReport::OK;
-  }
+  uint8_t metric_level() const { return has_violation ? MetricReport::ERROR : MetricReport::OK; }
 };
 
 std::map<std::string, PetWorst> compute_pet_worst(
@@ -1770,9 +1767,8 @@ std::map<std::string, DracWorst> compute_drac_worst(
 RssWorst compute_rss_worst(const rss_deceleration::Result & rss_result)
 {
   return RssWorst{
-    rss_result.worst_assessment.has_value()
-      ? rss_result.worst_assessment->required_deceleration
-      : 0.0,
+    rss_result.worst_assessment.has_value() ? rss_result.worst_assessment->required_deceleration
+                                            : 0.0,
     rss_result.has_violation};
 }
 
