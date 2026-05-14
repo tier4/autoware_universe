@@ -22,7 +22,9 @@
       global_setting:
         time_resolution: 0.1
       drac:
-        enable_assessment: false
+        enable_assessment:
+          # default value is true.
+          unknown: false
         assessment_trajectories:
           map_based: true
           constant_curvature: true
@@ -33,7 +35,9 @@
         error_threshold:
           ego_acceleration: -5.0
       pet_collision:
-        enable_assessment: true
+        enable_assessment:
+          # default value is true.
+          unknown: false
         assessment_trajectories:
           map_based: true
           constant_curvature: true
@@ -47,7 +51,9 @@
           ego_first_passing_time_gap: 0.6
           object_first_passing_time_gap: 0.3
       rss:
-        enable_assessment: true
+        enable_assessment:
+          # default value is true.
+          unknown: false
         stop_distance_margin: 2.0
         ego_total_braking_delay: 0.4
         object_assumed_acceleration: -1.0
