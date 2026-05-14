@@ -1050,7 +1050,6 @@ struct Result
   std::vector<Finding> planned_speed_findings;
   std::optional<double> drac{0.0};
   std::vector<Finding> drac_findings;  // Last evaluated PET findings during DRAC search.
-  std::map<std::string, std::optional<double>> drac_by_type;
 };
 
 struct ObjectTrajectoryGenerationOptions
@@ -1373,47 +1372,6 @@ DracAssessment assess_drac(
   return DracAssessment{std::nullopt, std::move(last_findings)};
 }
 
-DracAssessment assess_drac_isolating_type(
-  const TrajectoryPoints & traj_points, const FilterContext & context,
-  std::map<std::string, DracParams> drac_param_map, const DracParams & drac_params_default,
-  VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories,
-  const validator::Params::CollisionCheck::GlobalSetting & global_setting,
-  const std::string & canonical_type)
-{
-  DracParams params = drac_params_default;
-  params.assessment_trajectories.map_based =
-    drac_params_default.assessment_trajectories.map_based &&
-    canonical_type == "map_based_predicted_path";
-  params.assessment_trajectories.constant_curvature =
-    drac_params_default.assessment_trajectories.constant_curvature &&
-    canonical_type == "constant_curvature_path";
-  params.assessment_trajectories.diffusion_based =
-    drac_params_default.assessment_trajectories.diffusion_based &&
-    canonical_type == "diffusion_based_trajectory";
-
-  if (
-    !params.assessment_trajectories.map_based &&
-    !params.assessment_trajectories.constant_curvature &&
-    !params.assessment_trajectories.diffusion_based) {
-    return DracAssessment{0.0, {}};
-  }
-
-  drac_param_map[DEFAULT_PARAM_KEY] = params;
-  return assess_drac(
-    traj_points, context, drac_param_map, vehicle_info, object_trajectories, global_setting);
-}
-
-std::optional<double> combine_drac_across_types(
-  const std::map<std::string, std::optional<double>> & drac_by_type)
-{
-  std::optional<double> overall{0.0};
-  for (const auto & [_, opt] : drac_by_type) {
-    if (!opt.has_value()) return std::nullopt;
-    overall = std::max(overall.value(), opt.value());
-  }
-  return overall;
-}
-
 Result assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const std::map<std::string, PetCollisionParams> & pet_collision_param_map,
@@ -1456,21 +1414,11 @@ Result assess(
     result.drac_findings = drac_assessment.findings;
     result.drac = drac_assessment.drac;
   } else {
-    constexpr std::array<const char *, 3> kCanonicalTypes = {
-      "map_based_predicted_path",
-      "constant_curvature_path",
-      "diffusion_based_trajectory",
-    };
-    for (const auto * type : kCanonicalTypes) {
-      auto sub = assess_drac_isolating_type(
-        traj_points, context, drac_param_map, drac_params_default, vehicle_info,
-        nominal_speed_object_trajectories, global_setting, type);
-      result.drac_by_type[type] = sub.drac;
-      for (auto & f : sub.findings) {
-        result.drac_findings.push_back(std::move(f));
-      }
-    }
-    result.drac = combine_drac_across_types(result.drac_by_type);
+    const auto drac_assessment = assess_drac(
+      traj_points, context, drac_param_map, vehicle_info, nominal_speed_object_trajectories,
+      global_setting);
+    result.drac_findings = drac_assessment.findings;
+    result.drac = drac_assessment.drac;
   }
   return result;
 }
@@ -1761,6 +1709,21 @@ std::map<std::string, PetWorst> compute_pet_worst_by_type(
   return worst;
 }
 
+std::map<std::string, std::optional<double>> compute_drac_worst_by_type(
+  const collision_timing_assessment::Result & result)
+{
+  std::map<std::string, std::optional<double>> worst;
+  for (const auto * type : kAggregatedTrajectoryTypes) {
+    worst[type] = std::optional<double>{0.0};
+  }
+  for (const auto & f : result.drac_findings) {
+    const auto type = canonical_trajectory_type(f.object_identification.trajectory_type);
+    if (type.empty()) continue;
+    worst[type] = result.drac;
+  }
+  return worst;
+}
+
 double drac_metric_value(const std::optional<double> & drac_opt)
 {
   return drac_opt.has_value() ? drac_opt.value() : std::numeric_limits<double>::max();
@@ -1846,11 +1809,9 @@ void process_drac_findings(
     current_time, collision_timing_result.drac_findings,
     [](const auto & finding) { return finding.object_identification.trajectory_id_string(); });
 
+  const auto drac_worst = compute_drac_worst_by_type(collision_timing_result);
   for (const auto * type : kAggregatedTrajectoryTypes) {
-    const auto it = collision_timing_result.drac_by_type.find(type);
-    const auto drac_opt = it != collision_timing_result.drac_by_type.end()
-                            ? it->second
-                            : std::optional<double>{0.0};
+    const auto & drac_opt = drac_worst.at(type);
     artifacts.metrics.push_back(make_metric_report(
       validator_name, validator_category, fmt::format("check_DRAC_{}", type),
       drac_metric_value(drac_opt), drac_metric_level(drac_opt, drac_params_default)));
