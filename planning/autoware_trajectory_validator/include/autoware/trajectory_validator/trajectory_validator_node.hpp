@@ -165,6 +165,9 @@ private:
     sub_traffic_lights_{this, "~/input/traffic_signals"};
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
   rclcpp::Subscription<CandidateTrajectories>::SharedPtr sub_trajectories_;
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<
+    autoware_planning_msgs::msg::LaneletRoute, autoware_utils_rclcpp::polling_policy::Latest>
+    sub_route_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
 
   // Publishers
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;

@@ -18,8 +18,8 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__PSEUDO_EMERGENCY_STOP_HANDLER_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__PSEUDO_EMERGENCY_STOP_HANDLER_HPP_
 
-#include "autoware/trajectory_validator/validation_stage_report.hpp"
 #include "autoware/trajectory_validator/filter_context.hpp"
+#include "autoware/trajectory_validator/validation_stage_report.hpp"
 
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
 #include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
@@ -34,8 +34,8 @@
 
 namespace autoware::trajectory_validator
 {
-using autoware_internal_planning_msgs::msg::CandidateTrajectory;
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
+using autoware_internal_planning_msgs::msg::CandidateTrajectory;
 
 class PseudoEmergencyStopHandler
 {

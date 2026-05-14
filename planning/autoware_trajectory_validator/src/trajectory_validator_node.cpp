@@ -120,6 +120,8 @@ tl::expected<FilterContext, std::string> TrajectoryValidator::take_data()
     return tl::make_unexpected("Lanelet map does not contain any lanelets");
   }
 
+  context.route = sub_route_.take_data();
+
   return context;
 }
 
