@@ -1687,56 +1687,96 @@ MetricReport make_metric_report(
 struct PetWorst
 {
   double pet{std::numeric_limits<double>::infinity()};
-  uint8_t level{MetricReport::OK};
+  bool has_finding{false};
 };
 
-std::map<std::string, PetWorst> compute_pet_worst_by_type(
-  const std::vector<collision_timing_assessment::Finding> & findings,
-  const PetCollisionParams & params)
+struct DracWorst
+{
+  std::optional<double> drac{0.0};
+};
+
+struct RssWorst
+{
+  double required_deceleration{0.0};
+  bool has_violation{false};
+};
+
+std::map<std::string, PetWorst> compute_pet_worst(
+  const std::vector<collision_timing_assessment::Finding> & findings)
 {
   std::map<std::string, PetWorst> worst;
   for (const auto & f : findings) {
     const auto type = canonical_trajectory_type(f.object_identification.trajectory_type);
     if (type.empty()) continue;
-    const bool is_error = f.pet <= params.error_threshold.ego_first_passing_time_gap &&
-                          f.pet >= -params.error_threshold.object_first_passing_time_gap;
     auto & w = worst[type];
-    if (std::abs(f.pet) < std::abs(w.pet)) {
+    if (!w.has_finding || std::abs(f.pet) < std::abs(w.pet)) {
       w.pet = f.pet;
-      w.level = is_error ? MetricReport::ERROR : MetricReport::WARN;
+      w.has_finding = true;
     }
   }
   return worst;
 }
 
-std::map<std::string, std::optional<double>> compute_drac_worst_by_type(
+std::map<std::string, DracWorst> compute_drac_worst(
   const collision_timing_assessment::Result & result)
 {
-  std::map<std::string, std::optional<double>> worst;
+  std::map<std::string, DracWorst> worst;
   for (const auto * type : kAggregatedTrajectoryTypes) {
-    worst[type] = std::optional<double>{0.0};
+    worst[type] = DracWorst{};
   }
   for (const auto & f : result.drac_findings) {
     const auto type = canonical_trajectory_type(f.object_identification.trajectory_type);
     if (type.empty()) continue;
-    worst[type] = result.drac;
+    worst[type].drac = result.drac;
   }
   return worst;
 }
 
-double drac_metric_value(const std::optional<double> & drac_opt)
+RssWorst compute_rss_worst(const rss_deceleration::Result & rss_result)
 {
-  return drac_opt.has_value() ? drac_opt.value() : std::numeric_limits<double>::max();
+  return RssWorst{
+    rss_result.worst_assessment.has_value()
+      ? rss_result.worst_assessment->required_deceleration
+      : 0.0,
+    rss_result.has_violation};
 }
 
-uint8_t drac_metric_level(const std::optional<double> & drac_opt, const DracParams & params)
+double pet_metric_value(const PetWorst & w)
 {
-  if (!drac_opt.has_value()) return MetricReport::ERROR;
-  const double v = drac_opt.value();
+  return w.has_finding ? w.pet : std::numeric_limits<double>::infinity();
+}
+
+uint8_t pet_metric_level(const PetWorst & w, const PetCollisionParams & params)
+{
+  if (!w.has_finding) return MetricReport::OK;
+  const bool is_error = w.pet <= params.error_threshold.ego_first_passing_time_gap &&
+                        w.pet >= -params.error_threshold.object_first_passing_time_gap;
+  return is_error ? MetricReport::ERROR : MetricReport::WARN;
+}
+
+double drac_metric_value(const DracWorst & w)
+{
+  return w.drac.has_value() ? w.drac.value() : std::numeric_limits<double>::max();
+}
+
+uint8_t drac_metric_level(const DracWorst & w, const DracParams & params)
+{
+  if (!w.drac.has_value()) return MetricReport::ERROR;
+  const double v = w.drac.value();
   if (v <= 0.0) return MetricReport::OK;
   if (v >= -params.error_threshold.ego_acceleration) return MetricReport::ERROR;
   if (v >= -params.warn_threshold.ego_acceleration) return MetricReport::WARN;
   return MetricReport::OK;
+}
+
+double rss_metric_value(const RssWorst & w)
+{
+  return w.required_deceleration;
+}
+
+uint8_t rss_metric_level(const RssWorst & w)
+{
+  return w.has_violation ? MetricReport::ERROR : MetricReport::OK;
 }
 
 void process_pet_findings(
@@ -1754,12 +1794,13 @@ void process_pet_findings(
     return finding.object_identification.trajectory_id_string();
   });
 
-  const auto pet_worst = compute_pet_worst_by_type(findings, pet_collision_params_default);
+  const auto pet_worst = compute_pet_worst(findings);
   for (const auto * type : kAggregatedTrajectoryTypes) {
     const auto it = pet_worst.find(type);
     const PetWorst w = it != pet_worst.end() ? it->second : PetWorst{};
     artifacts.metrics.push_back(make_metric_report(
-      validator_name, validator_category, fmt::format("check_PET_{}", type), w.pet, w.level));
+      validator_name, validator_category, fmt::format("check_PET_{}", type),
+      pet_metric_value(w), pet_metric_level(w, pet_collision_params_default)));
   }
 
   std::string log_messages{};
@@ -1809,12 +1850,12 @@ void process_drac_findings(
     current_time, collision_timing_result.drac_findings,
     [](const auto & finding) { return finding.object_identification.trajectory_id_string(); });
 
-  const auto drac_worst = compute_drac_worst_by_type(collision_timing_result);
+  const auto drac_worst = compute_drac_worst(collision_timing_result);
   for (const auto * type : kAggregatedTrajectoryTypes) {
-    const auto & drac_opt = drac_worst.at(type);
+    const auto & w = drac_worst.at(type);
     artifacts.metrics.push_back(make_metric_report(
       validator_name, validator_category, fmt::format("check_DRAC_{}", type),
-      drac_metric_value(drac_opt), drac_metric_level(drac_opt, drac_params_default)));
+      drac_metric_value(w), drac_metric_level(w, drac_params_default)));
   }
 
   const bool is_warn =
@@ -1868,8 +1909,9 @@ void process_rss_violations(
   const auto rss_params_default = rss_param_map.at(DEFAULT_PARAM_KEY);
 
   if (!rss_params_default.enable_assessment) {
-    artifacts.metrics.push_back(
-      make_metric_report(validator_name, validator_category, "check_RSS", 0.0, MetricReport::OK));
+    const RssWorst w{};
+    artifacts.metrics.push_back(make_metric_report(
+      validator_name, validator_category, "check_RSS", rss_metric_value(w), rss_metric_level(w)));
     return;
   }
 
@@ -1879,11 +1921,10 @@ void process_rss_violations(
     return violation.object.object_id_string();
   });
 
+  const auto rss_worst = compute_rss_worst(rss_result);
   artifacts.metrics.push_back(make_metric_report(
-    validator_name, validator_category, "check_RSS",
-    rss_result.worst_assessment.has_value() ? rss_result.worst_assessment->required_deceleration
-                                            : 0.0,
-    rss_result.has_violation ? MetricReport::ERROR : MetricReport::OK));
+    validator_name, validator_category, "check_RSS", rss_metric_value(rss_worst),
+    rss_metric_level(rss_worst)));
 
   std::string log_messages{};
   std::string marker_messages{};
