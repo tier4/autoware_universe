@@ -1779,7 +1779,8 @@ void process_pet_findings(
 
   for (const auto * type : kAggregatedTrajectoryTypes) {
     const auto it = pet_worst.find(type);
-    const double value = it != pet_worst.end() ? it->second.pet : std::numeric_limits<double>::infinity();
+    const double value =
+      it != pet_worst.end() ? it->second.pet : std::numeric_limits<double>::infinity();
     const uint8_t level = it != pet_worst.end() ? it->second.level : MetricReport::OK;
     artifacts.metrics.push_back(autoware_trajectory_validator::build<MetricReport>()
                                   .validator_name(validator_name)
@@ -1817,8 +1818,10 @@ void process_drac_findings(
       const bool impossible = !opt.has_value();
       value = impossible ? std::numeric_limits<double>::max() : opt.value();
       if (impossible || value > 0.0) {
-        const bool warn = impossible || value >= -drac_params_default.warn_threshold.ego_acceleration;
-        const bool err = impossible || value >= -drac_params_default.error_threshold.ego_acceleration;
+        const bool warn =
+          impossible || value >= -drac_params_default.warn_threshold.ego_acceleration;
+        const bool err =
+          impossible || value >= -drac_params_default.error_threshold.ego_acceleration;
         level = err ? MetricReport::ERROR : (warn ? MetricReport::WARN : MetricReport::OK);
       }
     }
