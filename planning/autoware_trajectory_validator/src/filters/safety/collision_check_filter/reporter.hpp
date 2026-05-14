@@ -15,8 +15,12 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__REPORTER_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__REPORTER_HPP_
 
+#include "types.hpp"
+
+#include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <geometry_msgs/msg/pose.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/time.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -78,6 +82,13 @@ void add_error_text_marker(
 void append_text_marker_message(std::string & text, const std::string & message);
 
 void log_collision_messages(const uint8_t level, const std::string & messages);
+
+autoware_internal_planning_msgs::msg::PlanningFactorArray process_collision_artifacts(
+  const nav_msgs::msg::Odometry & odometry, const PetArtifact & pet_artifact,
+  ContinuousDetectionTimes & pet_continuous_times, const DracArtifact & drac_artifact,
+  ContinuousDetectionTimes & drac_continuous_times, const RssArtifact & rss_artifact,
+  ContinuousDetectionTimes & rss_continuous_times,
+  visualization_msgs::msg::MarkerArray & debug_markers, double time_resolution);
 }  // namespace autoware::trajectory_validator::plugin::safety::reporter
 
 #endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__REPORTER_HPP_
