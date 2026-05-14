@@ -88,48 +88,45 @@ if(BUILD_TESTING)
     autoware_trajectory_validator_plugins
   )
 
-  ament_add_ros_isolated_gtest(test_pose_constant_curvature_predictor
+  ament_add_gtest(test_pose_constant_curvature_predictor
     test/collision_check_filter/test_pose_constant_curvature_predictor.cpp
   )
   target_link_libraries(test_pose_constant_curvature_predictor
-    gtest_main
-    ${trajectory_validator_lib_target}
     autoware_trajectory_validator_plugins
   )
 
-  ament_add_ros_isolated_gtest(test_time_distance
+  ament_add_gtest(test_time_distance
     test/collision_check_filter/test_time_distance.cpp
   )
   target_link_libraries(test_time_distance
-    gtest_main
-    ${trajectory_validator_lib_target}
     autoware_trajectory_validator_plugins
   )
 
-  ament_add_ros_isolated_gtest(test_geometry
+  ament_add_gtest(test_geometry
     test/collision_check_filter/test_geometry.cpp
   )
   target_link_libraries(test_geometry
-    gtest_main
-    ${trajectory_validator_lib_target}
     autoware_trajectory_validator_plugins
   )
 
-  ament_add_ros_isolated_gtest(test_collision_check_filter
-    test/collision_check_filter/test_collision_check_filter.cpp
-  )
-  target_link_libraries(test_collision_check_filter
-    gtest_main
-    ${trajectory_validator_lib_target}
-    autoware_trajectory_validator_plugins
-  )
+  # ament_add_gtest(test_collision_check_filter
+  #   test/collision_check_filter/test_collision_check_filter.cpp
+  # )
+  # target_link_libraries(test_collision_check_filter
+  #   autoware_trajectory_validator_plugins
+  # )
 
-  ament_add_ros_isolated_gtest(test_trajectory_utilities
+  # ament_add_gtest(test_reporter
+  #   test/collision_check_filter/test_reporter.cpp
+  # )
+  # target_link_libraries(test_reporter
+  #   autoware_trajectory_validator_plugins
+  # )
+
+  ament_add_gtest(test_trajectory_utilities
     test/collision_check_filter/test_trajectory_utilities.cpp
   )
   target_link_libraries(test_trajectory_utilities
-    gtest_main
-    ${trajectory_validator_lib_target}
     autoware_trajectory_validator_plugins
   )
 

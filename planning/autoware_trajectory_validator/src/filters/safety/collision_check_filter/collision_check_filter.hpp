@@ -20,18 +20,6 @@
 #include "reporter.hpp"
 #include "types.hpp"
 
-#include <rclcpp/duration.hpp>
-
-#include <nav_msgs/msg/odometry.hpp>
-#include <visualization_msgs/msg/marker_array.hpp>
-
-#include <boost/range/iterator_range.hpp>
-
-#include <any>
-#include <cmath>
-#include <memory>
-#include <string>
-
 namespace autoware::trajectory_validator::plugin::safety
 {
 class CollisionCheckFilter : public plugin::ValidatorInterface

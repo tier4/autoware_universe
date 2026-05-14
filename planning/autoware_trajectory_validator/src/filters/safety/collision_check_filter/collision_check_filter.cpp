@@ -13,11 +13,8 @@
 // limitations under the License.
 
 #include "collision_check_filter.hpp"
-
 #include "assessment.hpp"
 
-#include <any>
-#include <memory>
 #include <string>
 #include <vector>
 
