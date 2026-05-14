@@ -51,11 +51,6 @@ validator:
         default_value: 0.1
         description: sampling interval used in collision check trajectory generation
         read_only: false
-      log_per_finding_detail:
-        type: bool
-        default_value: true
-        description: When true, emit a per-finding table row (one line per PET/DRAC/RSS finding) in the RCLCPP log and RViz text marker. When false, only the WORST summary line is logged. Does not affect MetricReport output (always 7 worst metrics).
-        read_only: false
     drac:
       enable_assessment:
         base:
