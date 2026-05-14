@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
 
+#include "parameter.hpp"
+
 #include "types.hpp"
 
 #include <autoware/object_recognition_utils/object_classification.hpp>
@@ -117,18 +119,19 @@ struct RssEvaluation
   RssDetail detail;
 };
 
-struct PetArtifact
-{
-  RiskLevel risk{RiskLevel::SAFE};
-  std::vector<CollisionEvaluation> object_evaluations;
-};
-
 struct DracArtifact
 {
   RiskLevel risk{RiskLevel::SAFE};
   std::optional<double> required_acceleration;
   std::vector<CollisionEvaluation> object_evaluations;
 };
+
+struct PetArtifact
+{
+  RiskLevel risk{RiskLevel::SAFE};
+  std::vector<CollisionEvaluation> object_evaluations;
+};
+
 struct RssArtifact
 {
   RiskLevel risk{RiskLevel::SAFE};
