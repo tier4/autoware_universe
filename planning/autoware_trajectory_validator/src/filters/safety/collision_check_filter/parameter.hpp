@@ -16,26 +16,57 @@
 #define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__PARAMETER_HPP_
 
 #include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
+#include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 
 #include <array>
 #include <cmath>
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+using autoware_perception_msgs::msg::ObjectClassification;
+
 inline constexpr const char * kCollisionCheckParamBaseKey = "base";
 // Keep in sync with `parameter_struct.yaml`.
-inline constexpr const char * kCollisionCheckObjectClassKeys[]{
-  "car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "unknown",
-};
+inline constexpr std::pair<uint8_t, std::string_view> kObjectClassifications[] = {
+  {ObjectClassification::CAR, "car"},
+  {ObjectClassification::TRUCK, "truck"},
+  {ObjectClassification::BUS, "bus"},
+  {ObjectClassification::TRAILER, "trailer"},
+  {ObjectClassification::MOTORCYCLE, "motorcycle"},
+  {ObjectClassification::BICYCLE, "bicycle"},
+  {ObjectClassification::PEDESTRIAN, "pedestrian"},
+  {ObjectClassification::UNKNOWN, "unknown"}};
 // DO NOT accept "animal", "hazard", "over_drivable", "under_drivable" class
 
+constexpr std::string_view to_type_string(const uint8_t label)
+{
+  for (const auto & [label_val, class_name] : kObjectClassifications) {
+    if (label_val == label) {
+      return class_name;
+    }
+  }
+  throw std::invalid_argument("Unsupported label: " + std::to_string(label));
+}
+
+constexpr std::string_view to_type_string(const ObjectClassification & obj)
+{
+  return to_type_string(obj.label);
+}
+
+inline std::string_view to_type_string(
+  const std::vector<autoware_perception_msgs::msg::ObjectClassification> & obj)
+{
+  return to_type_string(autoware::object_recognition_utils::getHighestProbLabel(obj));
+}
+
 template <typename OutT, typename ParamStruct>
-OutT extract_labeled_param(const ParamStruct & params_struct, const std::string & key)
+OutT extract_labeled_param(const ParamStruct & params_struct, const std::string_view key)
 {
   if constexpr (std::is_aggregate_v<ParamStruct>) {
     if (key == kCollisionCheckParamBaseKey) {
@@ -44,7 +75,7 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string 
 
     using MemberPtr = OutT ParamStruct::*;
 
-    static const std::unordered_map<std::string, MemberPtr> mappings = {
+    static const std::unordered_map<std::string_view, MemberPtr> mappings = {
       {"car", &ParamStruct::car},
       {"truck", &ParamStruct::truck},
       {"bus", &ParamStruct::bus},
@@ -60,7 +91,7 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string 
 
     auto it = mappings.find(key);
     if (it == mappings.end()) {
-      throw std::invalid_argument("Unknown label key: " + key);
+      throw std::invalid_argument("Unknown label key: " + std::string(key));
     }
 
     auto label_value = params_struct.*(it->second);
@@ -109,15 +140,17 @@ struct DracParams
   };
 
   DracParams() = default;
-  DracParams(const validator::Params & node_params, const std::string & key)
+  DracParams(const validator::Params & node_params, const std::string_view key)
   {
     const auto & drac = node_params.collision_check.drac;
     enable_assessment = extract_labeled_param<bool>(drac.enable_assessment, key);
     assessment_trajectories.map_based =
-      extract_labeled_param<bool>(drac.assessment_trajectories.map_based, key);
+      enable_assessment && extract_labeled_param<bool>(drac.assessment_trajectories.map_based, key);
     assessment_trajectories.constant_curvature =
+      enable_assessment &&
       extract_labeled_param<bool>(drac.assessment_trajectories.constant_curvature, key);
     assessment_trajectories.diffusion_based =
+      enable_assessment &&
       extract_labeled_param<bool>(drac.assessment_trajectories.diffusion_based, key);
     ego_total_braking_delay = extract_labeled_param<double>(drac.ego_total_braking_delay, key);
     warn_threshold.ego_acceleration =
@@ -133,7 +166,7 @@ struct DracParams
   Threshold error_threshold{};
 };
 
-struct PetCollisionParams
+struct PetParams
 {
   bool enable_assessment{true};
   AssessmentTrajectories assessment_trajectories{};
@@ -142,16 +175,18 @@ struct PetCollisionParams
   PetThreshold warn_threshold{};
   PetThreshold error_threshold{0.6, 0.3};
 
-  PetCollisionParams() = default;
-  PetCollisionParams(const validator::Params & node_params, const std::string & key)
+  PetParams() = default;
+  PetParams(const validator::Params & node_params, const std::string_view key)
   {
     const auto & pet = node_params.collision_check.pet_collision;
     enable_assessment = extract_labeled_param<bool>(pet.enable_assessment, key);
     assessment_trajectories.map_based =
-      extract_labeled_param<bool>(pet.assessment_trajectories.map_based, key);
+      enable_assessment && extract_labeled_param<bool>(pet.assessment_trajectories.map_based, key);
     assessment_trajectories.constant_curvature =
+      enable_assessment &&
       extract_labeled_param<bool>(pet.assessment_trajectories.constant_curvature, key);
     assessment_trajectories.diffusion_based =
+      enable_assessment &&
       extract_labeled_param<bool>(pet.assessment_trajectories.diffusion_based, key);
     ego_total_braking_delay = extract_labeled_param<double>(pet.ego_total_braking_delay, key);
     ego_assumed_acceleration = extract_labeled_param<double>(pet.ego_assumed_acceleration, key);
@@ -175,7 +210,7 @@ struct RssParams
   };
 
   RssParams() = default;
-  RssParams(const validator::Params & node_params, const std::string & key)
+  RssParams(const validator::Params & node_params, const std::string_view key)
   {
     const auto & rss = node_params.collision_check.rss;
     enable_assessment = extract_labeled_param<bool>(rss.enable_assessment, key);
@@ -194,20 +229,13 @@ struct RssParams
   ErrorThreshold error_threshold{};
 };
 
-// struct CollisionCheckParameters
-// {
-//   DracParams drac{};
-//   PetCollisionParams pet_collision{};
-//   RssParams rss{};
-// };
-
 template <typename PluginParam>
-std::map<std::string, PluginParam> create_param_map_per_object(
+std::map<std::string_view, PluginParam> create_param_map_per_object(
   const validator::Params & node_params)
 {
-  std::map<std::string, PluginParam> param_map;
-  for (const char * class_key : kCollisionCheckObjectClassKeys) {
-    param_map[class_key] = PluginParam(node_params, class_key);
+  std::map<std::string_view, PluginParam> param_map;
+  for (const auto & [label_val, class_name] : kObjectClassifications) {
+    param_map[class_name] = PluginParam(node_params, class_name);
   }
 
   param_map[kCollisionCheckParamBaseKey] = PluginParam(node_params, kCollisionCheckParamBaseKey);
@@ -215,9 +243,9 @@ std::map<std::string, PluginParam> create_param_map_per_object(
   return param_map;
 }
 
-using DracParamMap = std::map<std::string, DracParams>;
-using PetCollisionParamMap = std::map<std::string, PetCollisionParams>;
-using RssParamMap = std::map<std::string, RssParams>;
+using DracParamMap = std::map<std::string_view, DracParams>;
+using PetParamMap = std::map<std::string_view, PetParams>;
+using RssParamMap = std::map<std::string_view, RssParams>;
 
 }  // namespace autoware::trajectory_validator::plugin::safety
 
