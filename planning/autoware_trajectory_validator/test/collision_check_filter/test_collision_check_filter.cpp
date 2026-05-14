@@ -12,16 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "../../src/filters/safety/collision_check_filter/collision_check_filter.cpp"  // NOLINT(build/include)
+#include "../../src/filters/safety/collision_check_filter/collision_check_filter.cpp"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
-#include <map>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -188,8 +185,8 @@ protected:
     double error_threshold_positive, double error_threshold_negative)
   {
     validator::Params params;
-    params.collision_check.drac.enable_assessment.base = false;
-    params.collision_check.rss.enable_assessment.base = false;
+    params.collision_check.drac.enable_assessment = false;
+    params.collision_check.rss.enable_assessment = false;
     params.collision_check.pet_collision.assessment_trajectories.map_based = true;
     params.collision_check.pet_collision.assessment_trajectories.constant_curvature = false;
     params.collision_check.pet_collision.assessment_trajectories.diffusion_based = false;
@@ -205,8 +202,8 @@ protected:
   validator::Params create_drac_only_params(double error_deceleration_threshold)
   {
     validator::Params params;
-    params.collision_check.pet_collision.enable_assessment.base = false;
-    params.collision_check.rss.enable_assessment.base = false;
+    params.collision_check.pet_collision.enable_assessment = false;
+    params.collision_check.rss.enable_assessment = false;
     params.collision_check.drac.assessment_trajectories.map_based = true;
     params.collision_check.drac.assessment_trajectories.constant_curvature = false;
     params.collision_check.drac.assessment_trajectories.diffusion_based = false;
@@ -227,17 +224,6 @@ protected:
     return std::any_of(metrics.begin(), metrics.end(), [level](const auto & metric) {
       return metric.metric_name.find("check_DRAC_") != std::string::npos && metric.level == level;
     });
-  }
-
-  template <typename ParamsT>
-  static std::map<std::string, ParamsT> create_per_class_param_map(const ParamsT & params)
-  {
-    std::map<std::string, ParamsT> param_map;
-    param_map[DEFAULT_PARAM_KEY] = params;
-    for (const char * key : PER_CLASS_PARAM_KEYS) {
-      param_map[key] = params;
-    }
-    return param_map;
   }
 };
 
@@ -349,10 +335,8 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
   drac_params.assessment_trajectories.constant_curvature = false;
   drac_params.assessment_trajectories.diffusion_based = true;
 
-  const auto pet_collision_param_map = create_per_class_param_map(pet_collision_params);
-  const auto drac_param_map = create_per_class_param_map(drac_params);
   const auto result = collision_timing_assessment::assess(
-    ego_path, context, pet_collision_param_map, drac_param_map,
+    ego_path, context, pet_collision_params, drac_params,
     validator::Params::CollisionCheck::GlobalSetting{}, vehicle_info);
 
   EXPECT_TRUE(result.planned_speed_findings.empty());
@@ -494,138 +478,6 @@ TEST_F(CollisionCheckFilterTest, DracErrorRejectsTrajectory)
   EXPECT_FALSE(result.value().is_feasible);
   EXPECT_TRUE(has_drac_metric_with_level(result.value().metrics, MetricReport::ERROR));
   EXPECT_FALSE(result.value().planning_factors.factors.empty());
-}
-
-namespace
-{
-void overwrite_first_object_label(FilterContext & context, std::uint8_t label)
-{
-  auto mutable_objects =
-    std::make_shared<autoware_perception_msgs::msg::PredictedObjects>(*context.predicted_objects);
-  mutable_objects->objects.at(0).classification.at(0).label = label;
-  context.predicted_objects = mutable_objects;
-}
-}  // namespace
-
-// Baseline: default per-class params (all true) detect a PET collision against an UNKNOWN object.
-TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownTrueDetectsUnknownObjectInPetCheck)
-{
-  const auto ego_path = create_ego_path();
-  auto context = create_crossing_pet_context();
-  overwrite_first_object_label(
-    context, autoware_perception_msgs::msg::ObjectClassification::UNKNOWN);
-
-  auto params = create_pet_only_params(0.6, -0.3);
-  params.collision_check.pet_collision.enable_assessment.base = true;
-  params.collision_check.pet_collision.enable_assessment.unknown = true;
-  filter_->update_parameters(params);
-
-  const auto result = filter_->is_feasible(ego_path, context);
-
-  ASSERT_TRUE(result.has_value());
-  EXPECT_FALSE(result.value().is_feasible);
-  EXPECT_TRUE(has_pet_metric_with_level(result.value().metrics, MetricReport::ERROR));
-}
-
-// Per-class skip: enable_assessment.unknown=false suppresses PET findings for an UNKNOWN object.
-TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownFalseSkipsUnknownObjectInPetCheck)
-{
-  const auto ego_path = create_ego_path();
-  auto context = create_crossing_pet_context();
-  overwrite_first_object_label(
-    context, autoware_perception_msgs::msg::ObjectClassification::UNKNOWN);
-
-  auto params = create_pet_only_params(0.6, -0.3);
-  params.collision_check.pet_collision.enable_assessment.base = true;
-  params.collision_check.pet_collision.enable_assessment.unknown = false;
-  filter_->update_parameters(params);
-
-  const auto result = filter_->is_feasible(ego_path, context);
-
-  ASSERT_TRUE(result.has_value());
-  EXPECT_TRUE(result.value().is_feasible);
-  EXPECT_FALSE(has_pet_metric_with_level(result.value().metrics, MetricReport::ERROR));
-}
-
-// Per-class skip is class-specific: unknown=false must not affect CAR-classified objects.
-TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownFalseDoesNotAffectCarObjectInPetCheck)
-{
-  const auto ego_path = create_ego_path();
-  auto context = create_crossing_pet_context();
-  // Default classification from create_dummy_object() is CAR.
-
-  auto params = create_pet_only_params(0.6, -0.3);
-  params.collision_check.pet_collision.enable_assessment.base = true;
-  params.collision_check.pet_collision.enable_assessment.car = true;
-  params.collision_check.pet_collision.enable_assessment.unknown = false;
-  filter_->update_parameters(params);
-
-  const auto result = filter_->is_feasible(ego_path, context);
-
-  ASSERT_TRUE(result.has_value());
-  EXPECT_FALSE(result.value().is_feasible);
-  EXPECT_TRUE(has_pet_metric_with_level(result.value().metrics, MetricReport::ERROR));
-}
-
-// Same per-class skip behavior on the DRAC path.
-TEST_F(CollisionCheckFilterTest, EnableAssessmentUnknownFalseSkipsUnknownObjectInDracCheck)
-{
-  const auto ego_path = create_ego_path();
-  auto context = create_drac_context();
-  overwrite_first_object_label(
-    context, autoware_perception_msgs::msg::ObjectClassification::UNKNOWN);
-
-  auto params = create_drac_only_params(-5.0);
-  params.collision_check.drac.enable_assessment.base = true;
-  params.collision_check.drac.enable_assessment.unknown = false;
-  filter_->update_parameters(params);
-
-  const auto result = filter_->is_feasible(ego_path, context);
-
-  ASSERT_TRUE(result.has_value());
-  EXPECT_TRUE(result.value().is_feasible);
-  EXPECT_FALSE(has_drac_metric_with_level(result.value().metrics, MetricReport::ERROR));
-}
-
-TEST_F(CollisionCheckFilterTest, ClassificationToParamKeyMapsAllPerceptionLabels)
-{
-  using autoware_perception_msgs::msg::ObjectClassification;
-  const auto pose = create_pose(0.0, 0.0, 0.0);
-  const auto twist = create_twist(0.0, 0.0);
-  const auto path = create_predicted_path(pose, twist);
-  const auto shape = create_object_shape(1.0, 1.0);
-
-  const std::array<std::pair<std::uint8_t, std::string>, 8> cases = {{
-    {ObjectClassification::UNKNOWN, "unknown"},
-    {ObjectClassification::CAR, "car"},
-    {ObjectClassification::TRUCK, "truck"},
-    {ObjectClassification::BUS, "bus"},
-    {ObjectClassification::TRAILER, "trailer"},
-    {ObjectClassification::MOTORCYCLE, "motorcycle"},
-    {ObjectClassification::BICYCLE, "bicycle"},
-    {ObjectClassification::PEDESTRIAN, "pedestrian"},
-  }};
-
-  for (const auto & [label, expected_key] : cases) {
-    auto object = create_dummy_object(pose, twist, path, shape);
-    object.classification.at(0).label = label;
-    EXPECT_EQ(classification_to_param_key(object), expected_key)
-      << "label=" << static_cast<int>(label);
-  }
-}
-
-TEST_F(CollisionCheckFilterTest, ClassificationToParamKeyAcceptsTrajectoryData)
-{
-  TrajectoryData trajectory_data{
-    TrajectoryIdentification{"PEDESTRIAN"}, TimeTrajectory{0.0}, TravelDistanceTrajectory{0.0},
-    PoseTrajectory{create_pose(0.0, 0.0, 0.0)}, FootprintTrajectory{Polygon2d{}}};
-  EXPECT_EQ(classification_to_param_key(trajectory_data), "pedestrian");
-}
-
-TEST_F(CollisionCheckFilterTest, ClassificationToParamKeyAcceptsString)
-{
-  EXPECT_EQ(classification_to_param_key(std::string{"BICYCLE"}), "bicycle");
-  EXPECT_EQ(classification_to_param_key(std::string{"car"}), "car");
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety

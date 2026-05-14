@@ -40,15 +40,12 @@
 
 #include <algorithm>
 #include <any>
-#include <array>
 #include <cassert>
-#include <cctype>
 #include <cmath>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
-#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -70,12 +67,6 @@ using IndexRange = std::pair<size_t, size_t>;
 using TimeRange = std::pair<double, double>;
 
 static constexpr double TIME_INDEX_EPSILON = 1e-3;
-
-inline constexpr const char * DEFAULT_PARAM_KEY = "base";
-inline constexpr std::array<const char *, 12> PER_CLASS_PARAM_KEYS{
-  "car",        "truck",  "bus",    "trailer",       "motorcycle",     "bicycle",
-  "pedestrian", "animal", "hazard", "over_drivable", "under_drivable", "unknown",
-};
 
 struct TrajectoryIdentification
 {
@@ -117,19 +108,19 @@ struct PetCollisionParams
   PetCollisionParams(
     const validator::Params::CollisionCheck::PetCollision & pet, const std::string & key);
 
-  bool enable_assessment{false};
+  bool enable_assessment;
   struct AssessmentTrajectories
   {
-    bool map_based{false};
-    bool constant_curvature{false};
-    bool diffusion_based{false};
+    bool map_based;
+    bool constant_curvature;
+    bool diffusion_based;
   } assessment_trajectories;
-  double ego_total_braking_delay{0.0};
-  double ego_assumed_acceleration{0.0};
+  double ego_total_braking_delay;
+  double ego_assumed_acceleration;
   struct Threshold
   {
-    double ego_first_passing_time_gap{0.0};
-    double object_first_passing_time_gap{0.0};
+    double ego_first_passing_time_gap;
+    double object_first_passing_time_gap;
   } warn_threshold, error_threshold;
 };
 
@@ -138,13 +129,13 @@ struct RssParams
   RssParams() = default;
   RssParams(const validator::Params::CollisionCheck::Rss & rss, const std::string & key);
 
-  bool enable_assessment{false};
-  double stop_distance_margin{0.0};
-  double ego_total_braking_delay{0.0};
-  double object_assumed_acceleration{0.0};
+  bool enable_assessment;
+  double stop_distance_margin;
+  double ego_total_braking_delay;
+  double object_assumed_acceleration;
   struct ErrorThreshold
   {
-    double ego_acceleration{0.0};
+    double ego_acceleration;
   } error_threshold;
 };
 
@@ -153,17 +144,17 @@ struct DracParams
   DracParams() = default;
   DracParams(const validator::Params::CollisionCheck::Drac & drac, const std::string & key);
 
-  bool enable_assessment{false};
+  bool enable_assessment;
   struct AssessmentTrajectories
   {
-    bool map_based{false};
-    bool constant_curvature{false};
-    bool diffusion_based{false};
+    bool map_based;
+    bool constant_curvature;
+    bool diffusion_based;
   } assessment_trajectories;
-  double ego_total_braking_delay{0.0};
+  double ego_total_braking_delay;
   struct Threshold
   {
-    double ego_acceleration{0.0};
+    double ego_acceleration;
   } warn_threshold, error_threshold;
 };
 
@@ -324,27 +315,6 @@ public:
   }
 };
 
-template <typename T>
-std::string classification_to_param_key(const T & input)
-{
-  if constexpr (std::is_same_v<T, TrajectoryData>) {
-    return classification_to_param_key(input.getObjectIdentification().classification);
-  } else if constexpr (std::is_same_v<T, autoware_perception_msgs::msg::PredictedObject>) {
-    return classification_to_param_key(autoware::object_recognition_utils::convertLabelToString(
-      autoware::object_recognition_utils::getHighestProbLabel(input.classification)));
-  } else {
-    static_assert(
-      std::is_same_v<T, std::string>,
-      "classification_to_param_key: unsupported type "
-      "(supported: std::string, TrajectoryData, PredictedObject)");
-    std::string key = input;
-    std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) {
-      return static_cast<char>(std::tolower(c));
-    });
-    return key;
-  }
-}
-
 class ContinuousDetectionTimes
 {
 public:
@@ -405,6 +375,9 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
+  PetCollisionParams pet_collision_params_;
+  RssParams rss_params_;
+  DracParams drac_params_;
   validator::Params::CollisionCheck::GlobalSetting global_setting_;
   ContinuousDetectionTimes pet_continuous_times_;
   ContinuousDetectionTimes rss_continuous_times_;
