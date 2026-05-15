@@ -14,13 +14,13 @@
 
 #include "assessment.hpp"
 
+#include "metric.hpp"
+
 #include <boost/geometry.hpp>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <limits>
-#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -28,41 +28,6 @@
 
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
-namespace
-{
-constexpr std::array<const char *, 3> kCanonicalTrajectoryTypes = {
-  "map_based_predicted_path",
-  "constant_curvature_path",
-  "diffusion_based_trajectory",
-};
-
-// Mask out every assessment_trajectory flag except the target type, for all per-class
-// DracParams entries. Needed because assess_drac stops as soon as findings disappear
-// across all enabled types, so a single call cannot yield per-type DRAC values.
-DracParamMap isolate_drac_param_map(const DracParamMap & m, const std::string & target_type)
-{
-  auto isolated = m;
-  for (auto & [_, p] : isolated) {
-    auto & at = p.assessment_trajectories;
-    at.map_based = at.map_based && target_type == "map_based_predicted_path";
-    at.constant_curvature = at.constant_curvature && target_type == "constant_curvature_path";
-    at.diffusion_based = at.diffusion_based && target_type == "diffusion_based_trajectory";
-  }
-  return isolated;
-}
-
-std::optional<double> combine_per_type_drac(
-  const std::map<std::string, std::optional<double>> & per_type)
-{
-  std::optional<double> overall{0.0};
-  for (const auto & [_, opt] : per_type) {
-    if (!opt.has_value()) return std::nullopt;
-    overall = std::max(overall.value(), opt.value());
-  }
-  return overall;
-}
-}  // namespace
-
 bool is_target_trajectory_type(
   const AssessmentTrajectories & options, const std::string & trajectory_type)
 {
@@ -414,8 +379,8 @@ std::pair<PetArtifact, DracArtifact> assess(
 
   DracArtifact drac_artifact{};
   const auto & ego_drac_params = drac_param_map.at(kCollisionCheckParamBaseKey);
-  for (const auto * type : kCanonicalTrajectoryTypes) {
-    const auto type_isolated_map = isolate_drac_param_map(drac_param_map, type);
+  for (const auto * type : metric::kAggregatedTrajectoryTypes) {
+    const auto type_isolated_map = metric::isolate_drac_param_map(drac_param_map, type);
     const auto & at = type_isolated_map.at(kCollisionCheckParamBaseKey).assessment_trajectories;
     if (!at.map_based && !at.constant_curvature && !at.diffusion_based) {
       drac_artifact.required_acceleration_by_type[type] = std::optional<double>{0.0};
@@ -430,7 +395,7 @@ std::pair<PetArtifact, DracArtifact> assess(
     }
   }
   drac_artifact.required_acceleration =
-    combine_per_type_drac(drac_artifact.required_acceleration_by_type);
+    metric::combine_per_type_drac(drac_artifact.required_acceleration_by_type);
   drac_artifact.risk = to_drac_risk_level(drac_artifact.required_acceleration, ego_drac_params);
 
   return {pet_artifact, drac_artifact};

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef FILTERS__SAFETY__COLLISION_CHECK_FILTER__METRIC_HPP_
-#define FILTERS__SAFETY__COLLISION_CHECK_FILTER__METRIC_HPP_
+#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__METRIC_HPP_
+#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__METRIC_HPP_
 
 #include "parameter.hpp"
 #include "types.hpp"
@@ -42,6 +42,17 @@ inline constexpr std::array<const char *, 3> kAggregatedTrajectoryTypes = {
 // Returns the canonical bucket name for a raw trajectory_type label (which may contain
 // extra suffixes such as object id or acceleration). Empty string if no bucket matches.
 std::string canonical_trajectory_type(const std::string & raw);
+
+// Masks every assessment_trajectory flag except the target type, for all per-class
+// DracParams entries. Needed because assess_drac stops as soon as findings disappear
+// across all enabled types, so callers must run assess_drac once per isolated type to
+// obtain per-trajectory-type DRAC values for metric emission.
+DracParamMap isolate_drac_param_map(const DracParamMap & m, const std::string & target_type);
+
+// Combines per-trajectory-type DRAC into a single overall value. Returns nullopt if
+// any sub-type could not avoid collision; otherwise returns max (least negative).
+std::optional<double> combine_per_type_drac(
+  const std::map<std::string, std::optional<double>> & per_type);
 
 struct PetWorst
 {
@@ -88,4 +99,4 @@ MetricReport make_metric_report(
 
 }  // namespace autoware::trajectory_validator::plugin::safety::metric
 
-#endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__METRIC_HPP_
+#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__METRIC_HPP_

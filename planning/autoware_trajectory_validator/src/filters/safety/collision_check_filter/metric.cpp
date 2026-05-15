@@ -14,9 +14,11 @@
 
 #include "metric.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -30,6 +32,29 @@ std::string canonical_trajectory_type(const std::string & raw)
     }
   }
   return {};
+}
+
+DracParamMap isolate_drac_param_map(const DracParamMap & m, const std::string & target_type)
+{
+  auto isolated = m;
+  for (auto & [_, p] : isolated) {
+    auto & at = p.assessment_trajectories;
+    at.map_based = at.map_based && target_type == "map_based_predicted_path";
+    at.constant_curvature = at.constant_curvature && target_type == "constant_curvature_path";
+    at.diffusion_based = at.diffusion_based && target_type == "diffusion_based_trajectory";
+  }
+  return isolated;
+}
+
+std::optional<double> combine_per_type_drac(
+  const std::map<std::string, std::optional<double>> & per_type)
+{
+  std::optional<double> overall{0.0};
+  for (const auto & [_, opt] : per_type) {
+    if (!opt.has_value()) return std::nullopt;
+    overall = std::max(overall.value(), opt.value());
+  }
+  return overall;
 }
 
 double PetWorst::metric_value() const

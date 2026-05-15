@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
-#define FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
+#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
+#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
 
 #include "parameter.hpp"
 
@@ -163,4 +163,4 @@ inline RiskLevel calc_worst_risk(std::initializer_list<RiskLevel> risks)
 
 }  // namespace autoware::trajectory_validator::plugin::safety
 
-#endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
+#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
