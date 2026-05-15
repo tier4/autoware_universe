@@ -159,6 +159,10 @@ minimum_rule_based_planner:
         type: double
         default_value: 1.0
         description: maximum lateral velocity threshold for target object [m/s]
+      safety_buffer:
+        type: double
+        default_value: 0.0
+        description: safety buffer to expand object shape [m]
     rss_params:
       enable:
         type: bool
