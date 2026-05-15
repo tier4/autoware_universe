@@ -1932,7 +1932,7 @@ void process_rss_violations(
 {
   const auto rss_params_default = rss_param_map.at(DEFAULT_PARAM_KEY);
 
-   if (!rss_params_default.enable_assessment) {
+  if (!rss_params_default.enable_assessment) {
     return;
   }
 
