@@ -48,7 +48,7 @@ RoiDetectedObjectFusionNode::RoiDetectedObjectFusionNode(const rclcpp::NodeOptio
     fusion_params_.can_assign_matrix = can_assign_matrix_tmp.transpose();
   }
 
-  // publisher
+  // publisher (subscription is set up by the FusionNode base via agnocast_wrapper)
   pub_ptr_ = this->create_publisher<DetectedObjects>("output", rclcpp::QoS{1});
 }
 

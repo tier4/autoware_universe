@@ -14,23 +14,26 @@
 
 #include "object_range_splitter_node.hpp"
 
+#include <utility>
+
 namespace autoware::object_range_splitter
 {
 ObjectRangeSplitterNode::ObjectRangeSplitterNode(const rclcpp::NodeOptions & node_options)
 : Node("object_range_splitter_node", node_options)
 {
-  using std::placeholders::_1;
   spilt_range_ = declare_parameter<double>("split_range");
-  sub_ = this->create_subscription<autoware_perception_msgs::msg::DetectedObjects>(
-    "input/object", rclcpp::QoS{1}, std::bind(&ObjectRangeSplitterNode::objectCallback, this, _1));
-  long_range_object_pub_ = this->create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
+  sub_ = create_subscription<autoware_perception_msgs::msg::DetectedObjects>(
+    "input/object", rclcpp::QoS{1},
+    [this](const AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_perception_msgs::msg::DetectedObjects) &
+             msg) { this->objectCallback(msg); });
+  long_range_object_pub_ = create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
     "output/long_range_object", rclcpp::QoS{1});
-  short_range_object_pub_ = this->create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
+  short_range_object_pub_ = create_publisher<autoware_perception_msgs::msg::DetectedObjects>(
     "output/short_range_object", rclcpp::QoS{1});
 }
 
 void ObjectRangeSplitterNode::objectCallback(
-  const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr input_msg)
+  AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_perception_msgs::msg::DetectedObjects) input_msg)
 {
   // Guard
   if (
@@ -39,25 +42,25 @@ void ObjectRangeSplitterNode::objectCallback(
     return;
   }
   // build output msg
-  autoware_perception_msgs::msg::DetectedObjects output_long_range_object_msg,
-    output_short_range_object_msg;
-  output_long_range_object_msg.header = input_msg->header;
-  output_short_range_object_msg.header = input_msg->header;
+  auto output_long_range_object_msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(long_range_object_pub_);
+  auto output_short_range_object_msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(short_range_object_pub_);
+  output_long_range_object_msg->header = input_msg->header;
+  output_short_range_object_msg->header = input_msg->header;
 
   // split
   for (const auto & object : input_msg->objects) {
     const auto & position = object.kinematics.pose_with_covariance.pose.position;
     const auto object_sq_dist = position.x * position.x + position.y * position.y;
     if (object_sq_dist < spilt_range_ * spilt_range_) {  // short range
-      output_short_range_object_msg.objects.push_back(object);
+      output_short_range_object_msg->objects.push_back(object);
     } else {  // long range
-      output_long_range_object_msg.objects.push_back(object);
+      output_long_range_object_msg->objects.push_back(object);
     }
   }
 
   // publish output msg
-  long_range_object_pub_->publish(output_long_range_object_msg);
-  short_range_object_pub_->publish(output_short_range_object_msg);
+  long_range_object_pub_->publish(std::move(output_long_range_object_msg));
+  short_range_object_pub_->publish(std::move(output_short_range_object_msg));
 }
 }  // namespace autoware::object_range_splitter
 

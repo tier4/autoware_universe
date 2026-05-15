@@ -43,8 +43,8 @@ FusionCollector<Msg3D, Msg2D, ExportObj>::FusionCollector(
   const auto period_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
     std::chrono::duration<double>(init_timeout_sec));
 
-  timer_ =
-    rclcpp::create_timer(ros2_parent_node_, ros2_parent_node_->get_clock(), period_ns, [this]() {
+  timer_ = autoware::agnocast_wrapper::create_timer(
+    ros2_parent_node_.get(), period_ns, [this]() {
       std::lock_guard<std::mutex> fusion_lock(fusion_mutex_);
       if (status_ == CollectorStatus::Finished) return;
       fusion_callback();
@@ -211,20 +211,11 @@ template <class Msg3D, class Msg2D, class ExportObj>
 void FusionCollector<Msg3D, Msg2D, ExportObj>::set_period(const std::chrono::nanoseconds period)
 {
   try {
-    const auto new_period = period.count();
     if (!timer_) {
       return;
     }
-    int64_t old_period = 0;
-    rcl_ret_t ret = rcl_timer_get_period(timer_->get_timer_handle().get(), &old_period);
-    if (ret != RCL_RET_OK) {
-      rclcpp::exceptions::throw_from_rcl_error(ret, "Couldn't get old period");
-    }
-    ret = rcl_timer_exchange_period(timer_->get_timer_handle().get(), new_period, &old_period);
-    if (ret != RCL_RET_OK) {
-      rclcpp::exceptions::throw_from_rcl_error(ret, "Couldn't exchange_period");
-    }
-  } catch (rclcpp::exceptions::RCLError & ex) {
+    timer_->set_period(period);
+  } catch (const std::exception & ex) {
     RCLCPP_WARN_THROTTLE(
       ros2_parent_node_->get_logger(), *ros2_parent_node_->get_clock(), 5000, "%s", ex.what());
   }

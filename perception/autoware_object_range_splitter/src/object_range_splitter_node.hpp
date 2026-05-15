@@ -15,6 +15,7 @@
 #ifndef OBJECT_RANGE_SPLITTER_NODE_HPP_
 #define OBJECT_RANGE_SPLITTER_NODE_HPP_
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_perception_msgs/msg/detected_objects.hpp"
@@ -23,20 +24,18 @@
 
 namespace autoware::object_range_splitter
 {
-class ObjectRangeSplitterNode : public rclcpp::Node
+class ObjectRangeSplitterNode : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit ObjectRangeSplitterNode(const rclcpp::NodeOptions & node_options);
 
 private:
   void objectCallback(
-    const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr input_msg);
+    AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_perception_msgs::msg::DetectedObjects) input_msg);
 
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr
-    long_range_object_pub_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr
-    short_range_object_pub_;
-  rclcpp::Subscription<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr sub_;
+  AUTOWARE_PUBLISHER_PTR(autoware_perception_msgs::msg::DetectedObjects) long_range_object_pub_;
+  AUTOWARE_PUBLISHER_PTR(autoware_perception_msgs::msg::DetectedObjects) short_range_object_pub_;
+  AUTOWARE_SUBSCRIPTION_PTR(autoware_perception_msgs::msg::DetectedObjects) sub_;
 
   // ROS Parameters
   float spilt_range_;

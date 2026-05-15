@@ -15,7 +15,8 @@
 #ifndef OBJECT_VELOCITY_SPLITTER_NODE_HPP_
 #define OBJECT_VELOCITY_SPLITTER_NODE_HPP_
 
-#include "rclcpp/rclcpp.hpp"
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "autoware_perception_msgs/msg/detected_objects.hpp"
 
@@ -47,8 +48,8 @@ private:
   void onObjects(const DetectedObjects::ConstSharedPtr msg);
 
   // Publisher
-  rclcpp::Publisher<DetectedObjects>::SharedPtr pub_high_speed_objects_{};
-  rclcpp::Publisher<DetectedObjects>::SharedPtr pub_low_speed_objects_{};
+  AUTOWARE_PUBLISHER_PTR(DetectedObjects) pub_high_speed_objects_{};
+  AUTOWARE_PUBLISHER_PTR(DetectedObjects) pub_low_speed_objects_{};
 
   // Parameter Server
   OnSetParametersCallbackHandle::SharedPtr set_param_res_;

@@ -45,7 +45,7 @@ using Label = autoware_perception_msgs::msg::ObjectClassification;
 using LabelType = autoware_perception_msgs::msg::ObjectClassification::_label_type;
 
 MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("multi_object_tracker", node_options),
+: autoware::agnocast_wrapper::Node("multi_object_tracker", node_options),
   last_published_time_(this->now()),
   last_updated_time_(this->now())
 {
@@ -161,8 +161,8 @@ MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
     publisher_period_ = 1.0 / publish_rate;    // [s]
     constexpr double timer_multiplier = 10.0;  // 10 times frequent for publish timing check
     const auto timer_period = rclcpp::Rate(publish_rate * timer_multiplier).period();
-    publish_timer_ = rclcpp::create_timer(
-      this, get_clock(), timer_period, std::bind(&MultiObjectTracker::onTimer, this));
+    publish_timer_ = autoware::agnocast_wrapper::create_timer(
+      this, timer_period, std::bind(&MultiObjectTracker::onTimer, this));
   }
 
   // Initialize processor
@@ -321,7 +321,8 @@ MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
 
   // Debugger
   debugger_ = std::make_unique<TrackerDebugger>(*this, world_frame_id_, input_channels_config_);
-  published_time_publisher_ = std::make_unique<autoware_utils_debug::PublishedTimePublisher>(this);
+  published_time_publisher_ = std::make_unique<
+    autoware_utils_debug::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>(this);
 
   if (use_time_keeper) {
     detailed_processing_time_publisher_ =

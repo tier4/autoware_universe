@@ -8,12 +8,15 @@
   <arg name="param_path" default="$(find-pkg-share autoware_object_velocity_splitter)/config/object_velocity_splitter.param.yaml"/>
   <arg name="container_name" default="" description="Container name for composable node. If empty, standalone node is launched."/>
 
+  <include file="$(find-pkg-share autoware_agnocast_wrapper)/launch/agnocast_env.launch.xml"/>
+
   <!-- Standalone mode: launch as a regular node when container_name is empty -->
   <node pkg="autoware_object_velocity_splitter" exec="object_velocity_splitter_node" name="object_velocity_splitter" output="screen" if="$(eval &quot;'$(var container_name)'==''&quot;)">
     <remap from="~/input/objects" to="$(var input/objects)"/>
     <remap from="~/output/low_speed_objects" to="$(var output/low_speed_objects)"/>
     <remap from="~/output/high_speed_objects" to="$(var output/high_speed_objects)"/>
     <param from="$(var param_path)"/>
+    <env name="LD_PRELOAD" value="$(var ld_preload_value)"/>
   </node>
 
   <!-- Composable mode: load into existing container when container_name is specified -->

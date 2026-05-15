@@ -54,7 +54,9 @@ using TriangleMesh = std::vector<std::array<Eigen::Vector3d, 3>>;
 template <typename ObjsMsgType, typename ObjMsgType>
 ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::ObjectLaneletFilterBase(
   const std::string & node_name, const rclcpp::NodeOptions & node_options)
-: Node(node_name, node_options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
+: autoware::agnocast_wrapper::Node(node_name, node_options),
+  tf_buffer_(this->get_clock()),
+  tf_listener_(tf_buffer_, *this)
 {
   using std::placeholders::_1;
 
@@ -99,19 +101,22 @@ ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::ObjectLaneletFilterBase(
   }
 
   // Set publisher/subscriber
-  map_sub_ = this->create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
+  map_sub_ = create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
     "input/vector_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&ObjectLaneletFilterBase::mapCallback, this, _1));
-  object_sub_ = this->create_subscription<ObjsMsgType>(
+  object_sub_ = create_subscription<ObjsMsgType>(
     "input/object", rclcpp::QoS{1}, std::bind(&ObjectLaneletFilterBase::objectCallback, this, _1));
-  object_pub_ = this->create_publisher<ObjsMsgType>("output/object", rclcpp::QoS{1});
+  object_pub_ = create_publisher<ObjsMsgType>("output/object", rclcpp::QoS{1});
 
   debug_publisher_ =
-    std::make_unique<autoware_utils::DebugPublisher>(this, "object_lanelet_filter");
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+    std::make_unique<autoware_utils::BasicDebugPublisher<autoware::agnocast_wrapper::Node>>(
+      this, "object_lanelet_filter");
+  published_time_publisher_ =
+    std::make_unique<autoware_utils::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>(
+      this);
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
   if (filter_settings_.debug) {
-    viz_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+    viz_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
       "~/debug/marker", rclcpp::QoS{1});
   }
 }
@@ -319,7 +324,7 @@ bool isPointAboveLaneletMesh(
 
 template <typename ObjsMsgType, typename ObjMsgType>
 void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::mapCallback(
-  const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr map_msg)
+  AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_map_msgs::msg::LaneletMapBin) map_msg)
 {
   lanelet_frame_id_ = map_msg->header.frame_id;
   lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::remove_const(
@@ -328,7 +333,7 @@ void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::mapCallback(
 
 template <typename ObjsMsgType, typename ObjMsgType>
 void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::objectCallback(
-  const typename ObjsMsgType::ConstSharedPtr input_msg)
+  AUTOWARE_MESSAGE_CONST_SHARED_PTR(ObjsMsgType) input_msg)
 {
   stop_watch_ptr_->tic("processing_time");
 

@@ -18,6 +18,7 @@
 #include "data.hpp"
 #include "grid_ground_filter.hpp"
 
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
 #include <autoware/pointcloud_preprocessor/filter.hpp>
 #include <autoware/pointcloud_preprocessor/transform_info.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
@@ -44,6 +45,14 @@ using autoware::vehicle_info_utils::VehicleInfo;
 
 class ScanGroundFilterComponent : public autoware::pointcloud_preprocessor::Filter
 {
+protected:
+  /** \brief Agnocast-wrapped output publisher. Shadows Filter::pub_output_ so
+   * the publish path (see publish_output override) goes through the wrapper,
+   * while the rest of the Filter base class remains untouched. */
+  AUTOWARE_PUBLISHER_PTR(PointCloud2) pub_output_;
+
+  void publish_output(std::unique_ptr<PointCloud2> output, const rclcpp::Time & stamp) override;
+
 private:
   // classified point label
   // (0: not classified, 1: ground, 2: not ground, 3: follow previous point,

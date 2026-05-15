@@ -61,29 +61,31 @@ ObjectVelocitySplitterNode::ObjectVelocitySplitterNode(const rclcpp::NodeOptions
     std::bind(&ObjectVelocitySplitterNode::onObjects, this, std::placeholders::_1));
 
   // Publisher
-  pub_high_speed_objects_ = create_publisher<DetectedObjects>("~/output/high_speed_objects", 1);
-  pub_low_speed_objects_ = create_publisher<DetectedObjects>("~/output/low_speed_objects", 1);
+  pub_high_speed_objects_ =
+    AUTOWARE_CREATE_PUBLISHER2(DetectedObjects, "~/output/high_speed_objects", rclcpp::QoS{1});
+  pub_low_speed_objects_ =
+    AUTOWARE_CREATE_PUBLISHER2(DetectedObjects, "~/output/low_speed_objects", rclcpp::QoS{1});
 }
 
 void ObjectVelocitySplitterNode::onObjects(const DetectedObjects::ConstSharedPtr msg)
 {
-  DetectedObjects high_speed_objects;
-  DetectedObjects low_speed_objects;
-  high_speed_objects.header = msg->header;
-  low_speed_objects.header = msg->header;
+  auto high_speed_objects = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_high_speed_objects_);
+  auto low_speed_objects = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_low_speed_objects_);
+  high_speed_objects->header = msg->header;
+  low_speed_objects->header = msg->header;
 
   for (const auto & object : msg->objects) {
     if (
       std::abs(autoware_utils::calc_norm(object.kinematics.twist_with_covariance.twist.linear)) <
       node_param_.velocity_threshold) {
-      low_speed_objects.objects.emplace_back(object);
+      low_speed_objects->objects.emplace_back(object);
     } else {
-      high_speed_objects.objects.emplace_back(object);
+      high_speed_objects->objects.emplace_back(object);
     }
   }
   // publish
-  pub_high_speed_objects_->publish(high_speed_objects);
-  pub_low_speed_objects_->publish(low_speed_objects);
+  pub_high_speed_objects_->publish(std::move(high_speed_objects));
+  pub_low_speed_objects_->publish(std::move(low_speed_objects));
 }
 
 rcl_interfaces::msg::SetParametersResult ObjectVelocitySplitterNode::onSetParam(

@@ -18,6 +18,7 @@
 #include "autoware_utils/ros/published_time_publisher.hpp"
 
 #include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_perception_msgs/msg/detected_objects.hpp"
@@ -30,15 +31,16 @@ namespace autoware::detected_object_feature_remover
 using autoware_perception_msgs::msg::DetectedObjects;
 using tier4_perception_msgs::msg::DetectedObjectsWithFeature;
 
-class DetectedObjectFeatureRemover : public rclcpp::Node
+class DetectedObjectFeatureRemover : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit DetectedObjectFeatureRemover(const rclcpp::NodeOptions & node_options);
 
 private:
   AUTOWARE_SUBSCRIPTION_PTR(DetectedObjectsWithFeature) sub_;
-  rclcpp::Publisher<DetectedObjects>::SharedPtr pub_;
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  AUTOWARE_PUBLISHER_PTR(DetectedObjects) pub_;
+  std::unique_ptr<autoware_utils::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>
+    published_time_publisher_;
   void objectCallback(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(DetectedObjectsWithFeature) & input);
   void convert(const DetectedObjectsWithFeature & objs_with_feature, DetectedObjects & objs);
 };

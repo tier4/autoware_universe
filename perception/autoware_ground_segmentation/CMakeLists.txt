@@ -10,6 +10,7 @@ find_package(Boost REQUIRED)
 find_package(PCL REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(OpenMP)
+find_package(autoware_agnocast_wrapper REQUIRED)
 
 include_directories(
   include
@@ -33,6 +34,11 @@ target_link_libraries(${PROJECT_NAME}
   ${OpenCV_LIBRARIES}
   ${PCL_LIBRARIES}
 )
+
+ament_target_dependencies(${PROJECT_NAME}
+  autoware_agnocast_wrapper
+)
+autoware_agnocast_wrapper_setup(${PROJECT_NAME})
 
 if(OPENMP_FOUND)
   set_target_properties(${PROJECT_NAME} PROPERTIES

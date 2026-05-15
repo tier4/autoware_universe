@@ -285,7 +285,7 @@ void AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::set_collector_info(
 template <class Msg3D, class Msg2D, class ExportObj>
 double AdvancedMatchingStrategy<Msg3D, Msg2D, ExportObj>::get_concatenation_offset(
   const double & msg3d_timestamp,
-  const std::optional<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo::SharedPtr> &
+  const std::optional<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo::ConstSharedPtr> &
     concatenation_info_msg)
 {
   double offset = 0.0;

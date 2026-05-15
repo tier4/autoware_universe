@@ -103,6 +103,19 @@ ScanGroundFilterComponent::ScanGroundFilterComponent(const rclcpp::NodeOptions &
     }
   }
 
+  // Create the agnocast-wrapped output publisher. Shadows Filter::pub_output_
+  // so the publish path goes through the wrapper without modifying the base class.
+  // The base-class publisher created by Filter's constructor is unused here
+  // (publish_output() is overridden), so release it to avoid leaving an idle
+  // rclcpp publisher on the same topic.
+  {
+    this->Filter::pub_output_.reset();
+    AUTOWARE_PUBLISHER_OPTIONS pub_options;
+    pub_options.qos_overriding_options = rclcpp::QosOverridingOptions::with_default_policies();
+    pub_output_ = AUTOWARE_CREATE_PUBLISHER3(
+      PointCloud2, "output", rclcpp::SensorDataQoS().keep_last(max_queue_size_), pub_options);
+  }
+
   using std::placeholders::_1;
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&ScanGroundFilterComponent::onParameter, this, _1));
@@ -386,6 +399,21 @@ void ScanGroundFilterComponent::filter(
   (void)input;
   (void)indices;
   (void)output;
+}
+
+void ScanGroundFilterComponent::publish_output(
+  std::unique_ptr<PointCloud2> output, const rclcpp::Time & stamp)
+{
+  // Copy (not move) into the agnocast-loaned message so all internal buffers
+  // live inside the publisher's shared-memory pool with a single lifetime
+  // tracked by the ipc_shared_ptr. Move-assignment from a heap-allocated
+  // unique_ptr would splice foreign buffers into the loaned slot, mixing
+  // pool ownership with heaphook allocations and risking premature release
+  // on the subscriber side.
+  auto loaned = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_output_);
+  *loaned = *output;
+  pub_output_->publish(std::move(loaned));
+  published_time_publisher_->publish_if_subscribed(pub_output_, stamp);
 }
 
 rcl_interfaces::msg::SetParametersResult ScanGroundFilterComponent::onParameter(
