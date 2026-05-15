@@ -1302,6 +1302,17 @@ std::optional<double> combine_per_type_drac(
   return overall;
 }
 
+std::map<std::string, DracParams> isolate_drac_param_map(
+  const std::map<std::string, DracParams> & drac_param_map, const std::string & target_type)
+{
+  auto isolated = drac_param_map;
+  auto & at = isolated.at(DEFAULT_PARAM_KEY).assessment_trajectories;
+  at.map_based = at.map_based && target_type == "map_based_predicted_path";
+  at.constant_curvature = at.constant_curvature && target_type == "constant_curvature_path";
+  at.diffusion_based = at.diffusion_based && target_type == "diffusion_based_trajectory";
+  return isolated;
+}
+
 DracAssessment assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const std::map<std::string, DracParams> & drac_param_map, VehicleInfo & vehicle_info,
@@ -1428,12 +1439,8 @@ Result assess(
     // Per-type DRAC: isolate assessment_trajectories to one type per call, because
     // assess_drac's stop condition aggregates findings across all enabled types.
     for (const auto * type : kCanonicalTypes) {
-      auto type_isolated_map = drac_param_map;
-      auto & at = type_isolated_map.at(DEFAULT_PARAM_KEY).assessment_trajectories;
-      const std::string t{type};
-      at.map_based = at.map_based && t == "map_based_predicted_path";
-      at.constant_curvature = at.constant_curvature && t == "constant_curvature_path";
-      at.diffusion_based = at.diffusion_based && t == "diffusion_based_trajectory";
+      const auto type_isolated_map = isolate_drac_param_map(drac_param_map, type);
+      const auto & at = type_isolated_map.at(DEFAULT_PARAM_KEY).assessment_trajectories;
       if (!at.map_based && !at.constant_curvature && !at.diffusion_based) {
         result.drac_by_type[type] = std::optional<double>{0.0};
         continue;
