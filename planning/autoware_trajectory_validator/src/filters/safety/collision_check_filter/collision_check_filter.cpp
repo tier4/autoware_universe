@@ -1432,7 +1432,6 @@ Result assess(
       nominal_speed_object_trajectories);
   }
 
-
   if (drac_params_default.enable_assessment) {
     constexpr std::array<const char *, 3> kCanonicalTypes = {
       "map_based_predicted_path", "constant_curvature_path", "diffusion_based_trajectory"};
