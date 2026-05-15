@@ -1874,10 +1874,16 @@ void process_drac_findings(
     current_time, collision_timing_result.drac_findings,
     [](const auto & finding) { return finding.object_identification.trajectory_id_string(); });
 
+  const bool is_warn =
+    collision_timing_result.drac == std::nullopt ||
+    collision_timing_result.drac.value() >= -drac_params_default.warn_threshold.ego_acceleration;
   const bool is_error =
     collision_timing_result.drac == std::nullopt ||
     collision_timing_result.drac.value() >= -drac_params_default.error_threshold.ego_acceleration;
-
+  if (!is_warn) {
+    return;
+  }
+  
   std::string log_messages{};
   std::string marker_messages{};
   const uint8_t metric_level = is_error ? MetricReport::ERROR : MetricReport::WARN;
@@ -1929,7 +1935,7 @@ void process_rss_violations(
    if (!rss_params_default.enable_assessment) {
     return;
   }
-  
+
   rss_continuous_times.update(current_time, rss_result.violations, [](const auto & violation) {
     return violation.object.object_id_string();
   });
