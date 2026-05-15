@@ -1961,7 +1961,6 @@ void process_rss_violations(
     rss_worst.metric_level()));
 }
 
-
 CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
 {
