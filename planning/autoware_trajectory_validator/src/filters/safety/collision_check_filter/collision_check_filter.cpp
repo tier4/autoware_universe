@@ -1432,7 +1432,6 @@ Result assess(
       nominal_speed_object_trajectories);
   }
 
-
   if (!drac_params_default.enable_assessment) {
     DracAssessment drac_assessment{0.0, {}};  // dummy
     result.drac_findings = drac_assessment.findings;
