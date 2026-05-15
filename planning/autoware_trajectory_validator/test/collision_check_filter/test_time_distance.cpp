@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "../../src/filters/safety/collision_check_filter/collision_check_filter.cpp"
+#include "../../src/filters/safety/collision_check_filter/trajectory_utils.hpp"
 
 #include <gtest/gtest.h>
 
@@ -23,8 +23,7 @@ namespace autoware::trajectory_validator::plugin::safety::trajectory::time_dista
 {
 namespace
 {
-constexpr double kDefaultTimeResolution =
-  validator::Params::CollisionCheck::GlobalSetting{}.time_resolution;
+constexpr double kDefaultTimeResolution = GlobalParams{}.time_resolution;
 }  // namespace
 
 class TimeDistanceTest : public ::testing::Test

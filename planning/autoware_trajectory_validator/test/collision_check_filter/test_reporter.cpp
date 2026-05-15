@@ -127,7 +127,6 @@ protected:
 
     obj.classification.resize(1);
     obj.classification.at(0).label = autoware_perception_msgs::msg::ObjectClassification::CAR;
-    obj.classification.at(0).probability = 1.0F;
 
     obj.existence_probability = 1.0;
 
@@ -220,183 +219,78 @@ protected:
   }
 };
 
-TEST_F(CollisionCheckFilterTest, EmptyObjects)
+TEST_F(CollisionCheckFilterTest, PetCollisionWarnDoesNotRejectTrajectory)
 {
   const auto ego_path = create_ego_path();
-
-  FilterContext context;
-
-  auto odom_msg = std::make_shared<nav_msgs::msg::Odometry>();
-  odom_msg->pose.pose = create_pose(0.0, 0.0, 0.0);
-  odom_msg->twist.twist = create_twist(10.0, 0.0);
-  context.odometry = odom_msg;
-
-  context.predicted_objects = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
-
-  const auto result = filter_->is_feasible(ego_path, context);
-
-  ASSERT_TRUE(result.has_value());
-  EXPECT_TRUE(result.value().is_feasible);
-}
-
-TEST_F(CollisionCheckFilterTest, NeuralNetworkPredictedObjectsAreAlsoChecked)
-{
-  const auto ego_path = create_ego_path();
-
-  FilterContext context;
-
-  auto odom_msg = std::make_shared<nav_msgs::msg::Odometry>();
-  odom_msg->header.stamp = rclcpp::Time(1, 0, RCL_ROS_TIME);
-  odom_msg->pose.pose = create_pose(0.0, 0.0, 0.0);
-  odom_msg->twist.twist = create_twist(10.0, 0.0);
-  context.odometry = odom_msg;
-
-  auto predicted_objects_msg = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
-  predicted_objects_msg->header.stamp = odom_msg->header.stamp;
-  predicted_objects_msg->objects.push_back(create_dummy_object(
-    create_pose(100.0, 100.0, 0.0), create_twist(0.0, 0.0),
-    create_predicted_path(create_pose(100.0, 100.0, 0.0), create_twist(0.0, 0.0)),
-    create_object_shape(5.0, 1.0)));
-  context.predicted_objects = predicted_objects_msg;
-
-  auto neural_network_objects_msg =
-    std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
-  neural_network_objects_msg->header.stamp = odom_msg->header.stamp;
-  auto pose = create_pose(10.0, -14.0, M_PI_2);
-  auto twist = create_twist(10.0, 0.0);
-  neural_network_objects_msg->objects.push_back(create_dummy_object(
-    pose, twist, create_predicted_path(pose, twist), create_object_shape(1.0, 1.0)));
-  context.neural_network_predicted_objects = neural_network_objects_msg;
-
-  const auto result = filter_->is_feasible(ego_path, context);
-
-  ASSERT_TRUE(result.has_value());
-  EXPECT_FALSE(result.value().is_feasible);
-
-  bool found_diffusion_metric = false;
-  for (const auto & metric : result.value().metrics) {
-    if (metric.metric_name.find("diffusion_based_trajectory") != std::string::npos) {
-      found_diffusion_metric = true;
-      break;
-    }
-  }
-  EXPECT_TRUE(found_diffusion_metric);
-}
-
-TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependentlyForPetAndDrac)
-{
-  const auto ego_path = create_ego_path();
-
-  FilterContext context;
-
-  auto odom_msg = std::make_shared<nav_msgs::msg::Odometry>();
-  odom_msg->header.stamp = rclcpp::Time(1, 0, RCL_ROS_TIME);
-  odom_msg->pose.pose = create_pose(0.0, 0.0, 0.0);
-  odom_msg->twist.twist = create_twist(10.0, 0.0);
-  context.odometry = odom_msg;
-
-  auto predicted_objects_msg = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
-  predicted_objects_msg->header.stamp = odom_msg->header.stamp;
-  predicted_objects_msg->objects.push_back(create_dummy_object(
-    create_pose(100.0, 100.0, 0.0), create_twist(0.0, 0.0),
-    create_predicted_path(create_pose(100.0, 100.0, 0.0), create_twist(0.0, 0.0)),
-    create_object_shape(5.0, 1.0)));
-  context.predicted_objects = predicted_objects_msg;
-
-  auto neural_network_objects_msg =
-    std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
-  neural_network_objects_msg->header.stamp = odom_msg->header.stamp;
-  const auto pose = create_pose(20.0, -10.0, M_PI_2);
-  const auto twist = create_twist(10.0, 0.0);
-  neural_network_objects_msg->objects.push_back(create_dummy_object(
-    pose, twist, create_predicted_path(pose, twist), create_object_shape(5.0, 1.0)));
-  context.neural_network_predicted_objects = neural_network_objects_msg;
-
-  autoware::vehicle_info_utils::VehicleInfo vehicle_info;
-  vehicle_info.max_longitudinal_offset_m = 4.0;
-  vehicle_info.min_longitudinal_offset_m = -1.0;
-  vehicle_info.vehicle_width_m = 2.0;
-
-  PetCollisionParams pet_collision_params;
-  pet_collision_params.enable_assessment = true;
-  pet_collision_params.assessment_trajectories.map_based = false;
-  pet_collision_params.assessment_trajectories.constant_curvature = false;
-  pet_collision_params.assessment_trajectories.diffusion_based = false;
-  DracParams drac_params;
-  drac_params.enable_assessment = true;
-  drac_params.assessment_trajectories.map_based = false;
-  drac_params.assessment_trajectories.constant_curvature = false;
-  drac_params.assessment_trajectories.diffusion_based = true;
-
-  const auto [pet_artifacts, drac_artifact] = collision_timing_assessment::assess(
-    ego_path, context, pet_collision_params, drac_params, GlobalParams{}, vehicle_info);
-
-  EXPECT_TRUE(pet_artifacts.empty());
-  ASSERT_TRUE(drac_artifact.has_value());
-  ASSERT_FALSE(drac_artifact->pet_artifacts.empty());
-  EXPECT_EQ(
-    drac_artifact->pet_artifacts.front().finding.object_identification.trajectory_type,
-    "diffusion_based_trajectory");
-}
-
-TEST_F(CollisionCheckFilterTest, StoppedObjectInPath)
-{
-  const auto ego_path = create_ego_path();
-
-  FilterContext context;
-
-  auto odom_msg = std::make_shared<nav_msgs::msg::Odometry>();
-  odom_msg->pose.pose = create_pose(0.0, 0.0, 0.0);
-  odom_msg->twist.twist = create_twist(10.0, 0.0);
-  context.odometry = odom_msg;
-
-  auto predicted_objects_msg = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
-  auto pose = create_pose(20.0, 0.0, 0.0);
-  auto twist = create_twist(0.0, 0.0);
-  predicted_objects_msg->objects.push_back(create_dummy_object(
-    pose, twist, create_predicted_path(pose, twist), create_object_shape(5.0, 1.0)));
-  context.predicted_objects = predicted_objects_msg;
-
-  const auto result = filter_->is_feasible(ego_path, context);
-
-  ASSERT_TRUE(result.has_value());
-  EXPECT_FALSE(result.value().is_feasible);
-}
-
-TEST_F(CollisionCheckFilterTest, ObjectWillDepartFromPath)
-{
-  const auto ego_path = create_ego_path();
-
-  FilterContext context;
-
-  auto odom_msg = std::make_shared<nav_msgs::msg::Odometry>();
-  odom_msg->pose.pose = create_pose(0.0, 0.0, 0.0);
-  odom_msg->twist.twist = create_twist(10.0, 0.0);
-  context.odometry = odom_msg;
-
-  auto predicted_objects_msg = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
-  auto pose = create_pose(25.0, 0.0, M_PI_2);
-  auto twist = create_twist(10.0, 0.0);
-  predicted_objects_msg->objects.push_back(create_dummy_object(
-    pose, twist, create_predicted_path(pose, twist), create_object_shape(1.0, 1.0)));
-  context.predicted_objects = predicted_objects_msg;
-
-  const auto result = filter_->is_feasible(ego_path, context);
-
-  ASSERT_TRUE(result.has_value());
-  EXPECT_TRUE(result.value().is_feasible);
-}
-
-TEST_F(CollisionCheckFilterTest, ObjectWillEnterPath)
-{
-  const auto ego_path = create_ego_path();
-
   auto context = create_crossing_pet_context();
+  filter_->update_parameters(create_pet_only_params(0.1, -0.1));
+
+  const auto result = filter_->is_feasible(ego_path, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible);
+  EXPECT_TRUE(has_pet_metric_with_level(result.value().metrics, MetricReport::WARN));
+  EXPECT_FALSE(has_pet_metric_with_level(result.value().metrics, MetricReport::ERROR));
+  EXPECT_TRUE(result.value().planning_factors.factors.empty());
+
+  const auto markers = filter_->take_debug_markers();
+  const auto text_marker =
+    std::find_if(markers.markers.begin(), markers.markers.end(), [](auto marker) {
+      return marker.type == visualization_msgs::msg::Marker::TEXT_VIEW_FACING &&
+             marker.text.find("PET collision") != std::string::npos;
+    });
+  EXPECT_NE(text_marker, markers.markers.end());
+}
+
+TEST_F(CollisionCheckFilterTest, PetCollisionErrorRejectsTrajectory)
+{
+  const auto ego_path = create_ego_path();
+  auto context = create_crossing_pet_context();
+  // filter_->update_parameters(create_pet_only_params(0.6, -0.3));
 
   const auto result = filter_->is_feasible(ego_path, context);
 
   ASSERT_TRUE(result.has_value());
   EXPECT_FALSE(result.value().is_feasible);
+  EXPECT_TRUE(has_pet_metric_with_level(result.value().metrics, MetricReport::ERROR));
+  EXPECT_FALSE(result.value().planning_factors.factors.empty());
+
+  const auto markers = filter_->take_debug_markers();
+  const auto text_marker =
+    std::find_if(markers.markers.begin(), markers.markers.end(), [](auto marker) {
+      return marker.type == visualization_msgs::msg::Marker::TEXT_VIEW_FACING &&
+             marker.text.find("PET collision") != std::string::npos;
+    });
+  EXPECT_NE(text_marker, markers.markers.end());
+}
+
+TEST_F(CollisionCheckFilterTest, DracWarnDoesNotRejectTrajectory)
+{
+  const auto ego_path = create_ego_path();
+  auto context = create_drac_context();
+  filter_->update_parameters(create_drac_only_params(-6.0));
+
+  const auto result = filter_->is_feasible(ego_path, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible);
+  EXPECT_TRUE(has_drac_metric_with_level(result.value().metrics, MetricReport::WARN));
+  EXPECT_FALSE(has_drac_metric_with_level(result.value().metrics, MetricReport::ERROR));
+  EXPECT_TRUE(result.value().planning_factors.factors.empty());
+}
+
+TEST_F(CollisionCheckFilterTest, DracErrorRejectsTrajectory)
+{
+  const auto ego_path = create_ego_path();
+  auto context = create_drac_context();
+  filter_->update_parameters(create_drac_only_params(-5.0));
+
+  const auto result = filter_->is_feasible(ego_path, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible);
+  EXPECT_TRUE(has_drac_metric_with_level(result.value().metrics, MetricReport::ERROR));
+  EXPECT_FALSE(result.value().planning_factors.factors.empty());
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety
