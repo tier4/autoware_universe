@@ -1291,22 +1291,6 @@ std::vector<Finding> assess_planned_speed_collision_timing(
   return findings;
 }
 
-std::optional<std::map<std::string, DracParams>> isolate_drac_params_to_type(
-  const std::map<std::string, DracParams> & drac_param_map, const std::string & type)
-{
-  auto isolated = drac_param_map.at(DEFAULT_PARAM_KEY);
-  auto & at = isolated.assessment_trajectories;
-  at.map_based = at.map_based && type == "map_based_predicted_path";
-  at.constant_curvature = at.constant_curvature && type == "constant_curvature_path";
-  at.diffusion_based = at.diffusion_based && type == "diffusion_based_trajectory";
-  if (!at.map_based && !at.constant_curvature && !at.diffusion_based) {
-    return std::nullopt;
-  }
-  auto isolated_map = drac_param_map;
-  isolated_map[DEFAULT_PARAM_KEY] = isolated;
-  return isolated_map;
-}
-
 std::optional<double> combine_per_type_drac(
   const std::map<std::string, std::optional<double>> & per_type)
 {
@@ -1322,7 +1306,8 @@ DracAssessment assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const std::map<std::string, DracParams> & drac_param_map, VehicleInfo & vehicle_info,
   const std::vector<TrajectoryData> & object_trajectories,
-  const validator::Params::CollisionCheck::GlobalSetting & global_setting)
+  const validator::Params::CollisionCheck::GlobalSetting & global_setting,
+  const std::string & target_type)
 {
   const auto drac_params_default = drac_param_map.at(DEFAULT_PARAM_KEY);
 
@@ -1358,9 +1343,9 @@ DracAssessment assess_drac(
         continue;
       }
 
-      if (!is_target_trajectory_type(
-            ObjectTrajectoryGenerationOptions{drac_params_default},
-            object_trajectory.getObjectIdentification().trajectory_type)) {
+      if (
+        object_trajectory.getObjectIdentification().trajectory_type.find(target_type) ==
+        std::string::npos) {
         continue;
       }
       // todo: prepare parameter
@@ -1440,15 +1425,21 @@ Result assess(
   if (drac_params_default.enable_assessment) {
     constexpr std::array<const char *, 3> kCanonicalTypes = {
       "map_based_predicted_path", "constant_curvature_path", "diffusion_based_trajectory"};
+    const auto & at = drac_params_default.assessment_trajectories;
+    const auto type_enabled = [&](const std::string & t) {
+      if (t == "map_based_predicted_path") return at.map_based;
+      if (t == "constant_curvature_path") return at.constant_curvature;
+      if (t == "diffusion_based_trajectory") return at.diffusion_based;
+      return false;
+    };
     for (const auto * type : kCanonicalTypes) {
-      const auto isolated = isolate_drac_params_to_type(drac_param_map, type);
-      if (!isolated.has_value()) {
+      if (!type_enabled(type)) {
         result.drac_by_type[type] = std::optional<double>{0.0};
         continue;
       }
       const auto sub = assess_drac(
-        traj_points, context, *isolated, vehicle_info, nominal_speed_object_trajectories,
-        global_setting);
+        traj_points, context, drac_param_map, vehicle_info, nominal_speed_object_trajectories,
+        global_setting, type);
       result.drac_by_type[type] = sub.drac;
       for (auto & f : sub.findings) result.drac_findings.push_back(std::move(f));
     }
@@ -1458,6 +1449,124 @@ Result assess(
 }
 
 }  // namespace collision_timing_assessment
+
+namespace metric
+{
+
+constexpr std::array<const char *, 3> kAggregatedTrajectoryTypes = {
+  "map_based_predicted_path",
+  "constant_curvature_path",
+  "diffusion_based_trajectory",
+};
+
+std::string canonical_trajectory_type(const std::string & raw)
+{
+  for (const auto * type : kAggregatedTrajectoryTypes) {
+    if (raw.find(type) != std::string::npos) {
+      return type;
+    }
+  }
+  return {};
+}
+
+MetricReport make_metric_report(
+  const std::string & validator_name, const std::string & validator_category,
+  const std::string & metric_name, double value, uint8_t level)
+{
+  return autoware_trajectory_validator::build<MetricReport>()
+    .validator_name(validator_name)
+    .validator_category(validator_category)
+    .metric_name(metric_name)
+    .metric_value(value)
+    .level(level);
+}
+
+struct PetWorst
+{
+  double pet{std::numeric_limits<double>::infinity()};
+  bool has_finding{false};
+
+  double metric_value() const
+  {
+    return has_finding ? pet : std::numeric_limits<double>::infinity();
+  }
+
+  uint8_t metric_level(const PetCollisionParams & params) const
+  {
+    if (!has_finding) return MetricReport::OK;
+    const bool is_error = pet <= params.error_threshold.ego_first_passing_time_gap &&
+                          pet >= -params.error_threshold.object_first_passing_time_gap;
+    return is_error ? MetricReport::ERROR : MetricReport::WARN;
+  }
+};
+
+struct DracWorst
+{
+  std::optional<double> drac{0.0};
+
+  double metric_value() const
+  {
+    return drac.has_value() ? drac.value() : std::numeric_limits<double>::max();
+  }
+
+  uint8_t metric_level(const DracParams & params) const
+  {
+    if (!drac.has_value()) return MetricReport::ERROR;
+    const double v = drac.value();
+    if (v <= 0.0) return MetricReport::OK;
+    if (v >= -params.error_threshold.ego_acceleration) return MetricReport::ERROR;
+    if (v >= -params.warn_threshold.ego_acceleration) return MetricReport::WARN;
+    return MetricReport::OK;
+  }
+};
+
+struct RssWorst
+{
+  double required_deceleration{0.0};
+  bool has_violation{false};
+
+  double metric_value() const { return required_deceleration; }
+
+  uint8_t metric_level() const { return has_violation ? MetricReport::ERROR : MetricReport::OK; }
+};
+
+std::map<std::string, PetWorst> compute_pet_worst(
+  const std::vector<collision_timing_assessment::Finding> & findings)
+{
+  std::map<std::string, PetWorst> worst;
+  for (const auto & f : findings) {
+    const auto type = canonical_trajectory_type(f.object_identification.trajectory_type);
+    if (type.empty()) continue;
+    auto & w = worst[type];
+    if (!w.has_finding || std::abs(f.pet) < std::abs(w.pet)) {
+      w.pet = f.pet;
+      w.has_finding = true;
+    }
+  }
+  return worst;
+}
+
+std::map<std::string, DracWorst> compute_drac_worst(
+  const collision_timing_assessment::Result & result)
+{
+  std::map<std::string, DracWorst> worst;
+  for (const auto * type : kAggregatedTrajectoryTypes) {
+    const auto it = result.drac_by_type.find(type);
+    worst[type] =
+      DracWorst{it != result.drac_by_type.end() ? it->second : std::optional<double>{0.0}};
+  }
+  return worst;
+}
+
+RssWorst compute_rss_worst(const rss_deceleration::Result & rss_result)
+{
+  return RssWorst{
+    rss_result.worst_assessment.has_value() ? rss_result.worst_assessment->required_deceleration
+                                            : 0.0,
+    rss_result.has_violation};
+}
+
+}  // namespace metric
 
 void CollisionCheckFilter::update_parameters(const validator::Params & params)
 {
@@ -1690,119 +1799,6 @@ void add_collision_planning_factor(
   planning_factors.factors.push_back(std::move(factor));
 }
 
-constexpr std::array<const char *, 3> kAggregatedTrajectoryTypes = {
-  "map_based_predicted_path",
-  "constant_curvature_path",
-  "diffusion_based_trajectory",
-};
-
-std::string canonical_trajectory_type(const std::string & raw)
-{
-  for (const auto * type : kAggregatedTrajectoryTypes) {
-    if (raw.find(type) != std::string::npos) {
-      return type;
-    }
-  }
-  return {};
-}
-
-MetricReport make_metric_report(
-  const std::string & validator_name, const std::string & validator_category,
-  const std::string & metric_name, double value, uint8_t level)
-{
-  return autoware_trajectory_validator::build<MetricReport>()
-    .validator_name(validator_name)
-    .validator_category(validator_category)
-    .metric_name(metric_name)
-    .metric_value(value)
-    .level(level);
-}
-
-struct PetWorst
-{
-  double pet{std::numeric_limits<double>::infinity()};
-  bool has_finding{false};
-
-  double metric_value() const
-  {
-    return has_finding ? pet : std::numeric_limits<double>::infinity();
-  }
-
-  uint8_t metric_level(const PetCollisionParams & params) const
-  {
-    if (!has_finding) return MetricReport::OK;
-    const bool is_error = pet <= params.error_threshold.ego_first_passing_time_gap &&
-                          pet >= -params.error_threshold.object_first_passing_time_gap;
-    return is_error ? MetricReport::ERROR : MetricReport::WARN;
-  }
-};
-
-struct DracWorst
-{
-  std::optional<double> drac{0.0};
-
-  double metric_value() const
-  {
-    return drac.has_value() ? drac.value() : std::numeric_limits<double>::max();
-  }
-
-  uint8_t metric_level(const DracParams & params) const
-  {
-    if (!drac.has_value()) return MetricReport::ERROR;
-    const double v = drac.value();
-    if (v <= 0.0) return MetricReport::OK;
-    if (v >= -params.error_threshold.ego_acceleration) return MetricReport::ERROR;
-    if (v >= -params.warn_threshold.ego_acceleration) return MetricReport::WARN;
-    return MetricReport::OK;
-  }
-};
-
-struct RssWorst
-{
-  double required_deceleration{0.0};
-  bool has_violation{false};
-
-  double metric_value() const { return required_deceleration; }
-
-  uint8_t metric_level() const { return has_violation ? MetricReport::ERROR : MetricReport::OK; }
-};
-
-std::map<std::string, PetWorst> compute_pet_worst(
-  const std::vector<collision_timing_assessment::Finding> & findings)
-{
-  std::map<std::string, PetWorst> worst;
-  for (const auto & f : findings) {
-    const auto type = canonical_trajectory_type(f.object_identification.trajectory_type);
-    if (type.empty()) continue;
-    auto & w = worst[type];
-    if (!w.has_finding || std::abs(f.pet) < std::abs(w.pet)) {
-      w.pet = f.pet;
-      w.has_finding = true;
-    }
-  }
-  return worst;
-}
-
-std::map<std::string, DracWorst> compute_drac_worst(
-  const collision_timing_assessment::Result & result)
-{
-  std::map<std::string, DracWorst> worst;
-  for (const auto * type : kAggregatedTrajectoryTypes) {
-    const auto it = result.drac_by_type.find(type);
-    worst[type] =
-      DracWorst{it != result.drac_by_type.end() ? it->second : std::optional<double>{0.0}};
-  }
-  return worst;
-}
-
-RssWorst compute_rss_worst(const rss_deceleration::Result & rss_result)
-{
-  return RssWorst{
-    rss_result.worst_assessment.has_value() ? rss_result.worst_assessment->required_deceleration
-                                            : 0.0,
-    rss_result.has_violation};
-}
-
 void process_pet_findings(
   const std::string & validator_name, const std::string & validator_category,
   const std::map<std::string, PetCollisionParams> & pet_collision_param_map,
@@ -1846,11 +1842,11 @@ void process_pet_findings(
     }
   }
 
-  const auto pet_worst = compute_pet_worst(findings);
-  for (const auto * type : kAggregatedTrajectoryTypes) {
+  const auto pet_worst = metric::compute_pet_worst(findings);
+  for (const auto * type : metric::kAggregatedTrajectoryTypes) {
     const auto it = pet_worst.find(type);
-    const PetWorst w = it != pet_worst.end() ? it->second : PetWorst{};
-    artifacts.metrics.push_back(make_metric_report(
+    const auto w = it != pet_worst.end() ? it->second : metric::PetWorst{};
+    artifacts.metrics.push_back(metric::make_metric_report(
       validator_name, validator_category, fmt::format("check_PET_{}", type), w.metric_value(),
       w.metric_level(pet_collision_params_default)));
   }
@@ -1874,6 +1870,14 @@ void process_drac_findings(
     current_time, collision_timing_result.drac_findings,
     [](const auto & finding) { return finding.object_identification.trajectory_id_string(); });
 
+  const auto drac_worst = metric::compute_drac_worst(collision_timing_result);
+  for (const auto * type : metric::kAggregatedTrajectoryTypes) {
+    const auto & w = drac_worst.at(type);
+    artifacts.metrics.push_back(metric::make_metric_report(
+      validator_name, validator_category, fmt::format("check_DRAC_{}", type), w.metric_value(),
+      w.metric_level(drac_params_default)));
+  }
+
   const bool is_warn =
     collision_timing_result.drac == std::nullopt ||
     collision_timing_result.drac.value() >= -drac_params_default.warn_threshold.ego_acceleration;
@@ -1883,7 +1887,7 @@ void process_drac_findings(
   if (!is_warn) {
     return;
   }
-  
+
   std::string log_messages{};
   std::string marker_messages{};
   const uint8_t metric_level = is_error ? MetricReport::ERROR : MetricReport::WARN;
@@ -1912,14 +1916,6 @@ void process_drac_findings(
 
   artifacts.error_msg += marker_messages;
   log_collision_messages(metric_level, log_messages);
-
-  const auto drac_worst = compute_drac_worst(collision_timing_result);
-  for (const auto * type : kAggregatedTrajectoryTypes) {
-    const auto & w = drac_worst.at(type);
-    artifacts.metrics.push_back(make_metric_report(
-      validator_name, validator_category, fmt::format("check_DRAC_{}", type), w.metric_value(),
-      w.metric_level(drac_params_default)));
-  }
 }
 
 void process_rss_violations(
@@ -1936,6 +1932,8 @@ void process_rss_violations(
     return;
   }
 
+  const auto rss_result = rss_deceleration::assess(
+    traj_points, context, rss_param_map, global_setting.time_resolution, vehicle_info);
   rss_continuous_times.update(current_time, rss_result.violations, [](const auto & violation) {
     return violation.object.object_id_string();
   });
@@ -1957,11 +1955,12 @@ void process_rss_violations(
   artifacts.error_msg += marker_messages;
   log_collision_messages(MetricReport::ERROR, log_messages);
 
-  const auto rss_worst = compute_rss_worst(rss_result);
-  artifacts.metrics.push_back(make_metric_report(
+  const auto rss_worst = metric::compute_rss_worst(rss_result);
+  artifacts.metrics.push_back(metric::make_metric_report(
     validator_name, validator_category, "check_RSS", rss_worst.metric_value(),
     rss_worst.metric_level()));
 }
+
 
 CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   const TrajectoryPoints & traj_points, const FilterContext & context)
