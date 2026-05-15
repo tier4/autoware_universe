@@ -1926,15 +1926,10 @@ void process_rss_violations(
 {
   const auto rss_params_default = rss_param_map.at(DEFAULT_PARAM_KEY);
 
-  if (!rss_params_default.enable_assessment) {
-    const RssWorst w{};
-    artifacts.metrics.push_back(make_metric_report(
-      validator_name, validator_category, "check_RSS", w.metric_value(), w.metric_level()));
+   if (!rss_params_default.enable_assessment) {
     return;
   }
-
-  const auto rss_result = rss_deceleration::assess(
-    traj_points, context, rss_param_map, global_setting.time_resolution, vehicle_info);
+  
   rss_continuous_times.update(current_time, rss_result.violations, [](const auto & violation) {
     return violation.object.object_id_string();
   });
