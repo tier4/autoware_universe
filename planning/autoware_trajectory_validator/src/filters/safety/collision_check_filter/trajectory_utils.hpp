@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TRAJECTORY_UTILS_HPP_
-#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TRAJECTORY_UTILS_HPP_
+#ifndef FILTERS__SAFETY__COLLISION_CHECK_FILTER__TRAJECTORY_UTILS_HPP_
+#define FILTERS__SAFETY__COLLISION_CHECK_FILTER__TRAJECTORY_UTILS_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 #include "types.hpp"
@@ -26,7 +26,6 @@
 #include <geometry_msgs/msg/pose.hpp>
 
 #include <boost/geometry.hpp>
-
 
 #include <algorithm>
 #include <iterator>
@@ -363,4 +362,4 @@ TrajectoryData generate_object_trajectory(
   const std::string & traj_type_str, double acc, double time_resolution, double time_horizon);
 }  // namespace autoware::trajectory_validator::plugin::safety::trajectory
 
-#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TRAJECTORY_UTILS_HPP_
+#endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__TRAJECTORY_UTILS_HPP_

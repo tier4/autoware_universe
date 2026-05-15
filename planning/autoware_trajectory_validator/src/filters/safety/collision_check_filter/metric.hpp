@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__METRIC_HPP_
-#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__METRIC_HPP_
+#ifndef FILTERS__SAFETY__COLLISION_CHECK_FILTER__METRIC_HPP_
+#define FILTERS__SAFETY__COLLISION_CHECK_FILTER__METRIC_HPP_
 
 #include "parameter.hpp"
 #include "types.hpp"
@@ -99,4 +99,4 @@ MetricReport make_metric_report(
 
 }  // namespace autoware::trajectory_validator::plugin::safety::metric
 
-#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__METRIC_HPP_
+#endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__METRIC_HPP_
