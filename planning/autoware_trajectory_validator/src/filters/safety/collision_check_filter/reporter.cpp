@@ -14,13 +14,14 @@
 
 #include "reporter.hpp"
 
+#include <autoware_trajectory_validator/msg/metric_report.hpp>
+#include <rclcpp/logging.hpp>
+
 #include <autoware_internal_planning_msgs/msg/control_point.hpp>
 #include <autoware_internal_planning_msgs/msg/planning_factor.hpp>
 #include <autoware_internal_planning_msgs/msg/safety_factor.hpp>
 #include <autoware_internal_planning_msgs/msg/safety_factor_array.hpp>
-#include <autoware_trajectory_validator/msg/metric_report.hpp>
 #include <geometry_msgs/msg/point.hpp>
-#include <rclcpp/logging.hpp>
 
 #include <fmt/core.h>
 
@@ -190,12 +191,14 @@ void process_drac_artifacts(
     const auto & obj_id = timing.object_identification;
 
     const auto finding_msg = fmt::format(
-      "DRAC collision, ID: {}, PET: {}, TTC: {}, DRAC: {}, stamp: {}.{};",
-      obj_id.trajectory_id_string(), timing.pet, timing.ttc,
+      "DRAC collision, classification: {}, ID: {}, PET: {}, TTC: {}, DRAC: {}, duration: {}, "
+      "stamp: {}.{};",
+      obj_id.classification, obj_id.trajectory_id_string(), timing.pet, timing.ttc,
       drac_artifact.required_acceleration.has_value()
         ? std::to_string(drac_artifact.required_acceleration.value())
         : "Cant be avoided",
-      obj_id.stamp.sec, obj_id.stamp.nanosec);
+      drac_continuous_times.get_time(obj_id.trajectory_id_string()), obj_id.stamp.sec,
+      obj_id.stamp.nanosec);
     log_messages += finding_msg;
     reporter::append_text_marker_message(marker_messages, finding_msg);
     reporter::add_debug_markers(
@@ -408,13 +411,12 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray process_collision_arti
   const auto current_time = rclcpp::Time{odometry.header.stamp};
 
   process_pet_artifacts(
-    odometry, pet_continuous_times, current_time, pet_artifact, visualization_data,
-    debug_markers, time_resolution);
+    odometry, pet_continuous_times, current_time, pet_artifact, visualization_data, debug_markers,
+    time_resolution);
   process_drac_artifacts(
-    odometry, drac_continuous_times, current_time, drac_artifact, visualization_data,
-    debug_markers, time_resolution);
-  process_rss_artifacts(
-    rss_artifact, rss_continuous_times, current_time, visualization_data);
+    odometry, drac_continuous_times, current_time, drac_artifact, visualization_data, debug_markers,
+    time_resolution);
+  process_rss_artifacts(rss_artifact, rss_continuous_times, current_time, visualization_data);
 
   if (!visualization_data.error_msg.empty()) {
     add_error_text_marker(
