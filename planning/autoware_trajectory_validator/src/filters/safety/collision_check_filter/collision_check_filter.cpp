@@ -1306,8 +1306,7 @@ DracAssessment assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const std::map<std::string, DracParams> & drac_param_map, VehicleInfo & vehicle_info,
   const std::vector<TrajectoryData> & object_trajectories,
-  const validator::Params::CollisionCheck::GlobalSetting & global_setting,
-  const std::string & target_type)
+  const validator::Params::CollisionCheck::GlobalSetting & global_setting)
 {
   const auto drac_params_default = drac_param_map.at(DEFAULT_PARAM_KEY);
 
@@ -1343,9 +1342,9 @@ DracAssessment assess_drac(
         continue;
       }
 
-      if (
-        object_trajectory.getObjectIdentification().trajectory_type.find(target_type) ==
-        std::string::npos) {
+      if (!is_target_trajectory_type(
+            ObjectTrajectoryGenerationOptions{drac_params_default},
+            object_trajectory.getObjectIdentification().trajectory_type)) {
         continue;
       }
       // todo: prepare parameter
@@ -1425,21 +1424,20 @@ Result assess(
   if (drac_params_default.enable_assessment) {
     constexpr std::array<const char *, 3> kCanonicalTypes = {
       "map_based_predicted_path", "constant_curvature_path", "diffusion_based_trajectory"};
-    const auto & at = drac_params_default.assessment_trajectories;
-    const auto type_enabled = [&](const std::string & t) {
-      if (t == "map_based_predicted_path") return at.map_based;
-      if (t == "constant_curvature_path") return at.constant_curvature;
-      if (t == "diffusion_based_trajectory") return at.diffusion_based;
-      return false;
-    };
     for (const auto * type : kCanonicalTypes) {
-      if (!type_enabled(type)) {
+      auto type_isolated_map = drac_param_map;
+      auto & at = type_isolated_map.at(DEFAULT_PARAM_KEY).assessment_trajectories;
+      const std::string t{type};
+      at.map_based = at.map_based && t == "map_based_predicted_path";
+      at.constant_curvature = at.constant_curvature && t == "constant_curvature_path";
+      at.diffusion_based = at.diffusion_based && t == "diffusion_based_trajectory";
+      if (!at.map_based && !at.constant_curvature && !at.diffusion_based) {
         result.drac_by_type[type] = std::optional<double>{0.0};
         continue;
       }
       const auto sub = assess_drac(
-        traj_points, context, drac_param_map, vehicle_info, nominal_speed_object_trajectories,
-        global_setting, type);
+        traj_points, context, type_isolated_map, vehicle_info, nominal_speed_object_trajectories,
+        global_setting);
       result.drac_by_type[type] = sub.drac;
       for (auto & f : sub.findings) result.drac_findings.push_back(std::move(f));
     }
