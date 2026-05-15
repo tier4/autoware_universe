@@ -13,9 +13,14 @@
 // limitations under the License.
 
 #include "collision_check_filter.hpp"
+
 #include "assessment.hpp"
+#include "metric.hpp"
+
+#include <fmt/core.h>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -41,58 +46,30 @@ std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
   const RssArtifact & rss_artifact) const
 {
   std::vector<MetricReport> reports;
+  reports.reserve(2 * metric::kAggregatedTrajectoryTypes.size() + 1);
 
-  const auto convert_metrics_level = [](const RiskLevel risk_level) {
-    switch (risk_level) {
-      case RiskLevel::SAFE:
-        return MetricReport::OK;
-      case RiskLevel::WARN:
-        return MetricReport::WARN;
-      case RiskLevel::ERROR:
-        return MetricReport::ERROR;
-      default:
-        throw std::runtime_error("invalid argument");
-    }
-  };
+  const auto & pet_params_default = pet_param_map_.at(kCollisionCheckParamBaseKey);
+  const auto & drac_params_default = drac_param_map_.at(kCollisionCheckParamBaseKey);
 
-  const auto add_report =
-    [&](const std::string_view metric_name, double metric_value, RiskLevel risk) {
-      reports.push_back(autoware_trajectory_validator::build<MetricReport>()
-                          .validator_name(get_name())
-                          .validator_category(category())
-                          .metric_name(std::string(metric_name))
-                          .metric_value(metric_value)
-                          .level(convert_metrics_level(risk)));
-    };
+  const auto pet_worst = metric::compute_pet_worst(pet_artifact);
+  for (const auto * type : metric::kAggregatedTrajectoryTypes) {
+    const auto & w = pet_worst.at(type);
+    reports.push_back(metric::make_metric_report(
+      get_name(), category(), fmt::format("check_PET_{}", type), w.metric_value(),
+      w.metric_level(pet_params_default)));
+  }
 
-  const double drac_val = drac_artifact.required_acceleration.has_value()
-                            ? drac_artifact.required_acceleration.value()
-                            : std::numeric_limits<double>::quiet_NaN();
-  add_report("DRAC", drac_val, drac_artifact.risk);
+  const auto drac_worst = metric::compute_drac_worst(drac_artifact.required_acceleration_by_type);
+  for (const auto * type : metric::kAggregatedTrajectoryTypes) {
+    const auto & w = drac_worst.at(type);
+    reports.push_back(metric::make_metric_report(
+      get_name(), category(), fmt::format("check_DRAC_{}", type), w.metric_value(),
+      w.metric_level(drac_params_default)));
+  }
 
-  const auto pet_val = [&pet_artifact]() {
-    double min_abs_pet = std::numeric_limits<double>::quiet_NaN();
-    for (const auto & evaluation : pet_artifact.object_evaluations) {
-      const double pet = evaluation.detail.pet;
-      if (std::isnan(min_abs_pet) || std::abs(pet) < std::abs(min_abs_pet)) {
-        min_abs_pet = pet;
-      }
-    }
-    return min_abs_pet;
-  }();
-  add_report("PET", pet_val, pet_artifact.risk);
-
-  const auto rss_val = [&rss_artifact]() {
-    double min_rss = 0.0;
-    for (const auto & evaluation : rss_artifact.object_evaluations) {
-      const double rss = evaluation.detail.rss_acceleration;
-      if (rss < min_rss) {
-        min_rss = rss;
-      }
-    }
-    return min_rss;
-  }();
-  add_report("RSS", rss_val, rss_artifact.risk);
+  const auto rss_worst = metric::compute_rss_worst(rss_artifact);
+  reports.push_back(metric::make_metric_report(
+    get_name(), category(), "check_RSS", rss_worst.metric_value(), rss_worst.metric_level()));
 
   return reports;
 }
@@ -119,9 +96,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     traj_points, context, rss_param_map_, global_params_.time_resolution, *vehicle_info_ptr_);
 
   auto planning_factors = reporter::process_collision_artifacts(
-    *context.odometry, pet_artifact, pet_continuous_times_, drac_artifact,
-    drac_continuous_times_, rss_artifact, rss_continuous_times_, debug_markers_,
-    global_params_.time_resolution);
+    *context.odometry, pet_artifact, pet_continuous_times_, drac_artifact, drac_continuous_times_,
+    rss_artifact, rss_continuous_times_, debug_markers_, global_params_.time_resolution);
 
   return ValidationResult{
     calc_worst_risk({pet_artifact.risk, drac_artifact.risk, rss_artifact.risk}) != RiskLevel::ERROR,

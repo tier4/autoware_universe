@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
-#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
+#ifndef FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
+#define FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
 
 #include "parameter.hpp"
 
@@ -25,6 +25,7 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -112,6 +113,9 @@ struct DracArtifact
   RiskLevel risk{RiskLevel::SAFE};
   std::optional<double> required_acceleration;
   std::vector<CollisionEvaluation> object_evaluations;
+  // Per-trajectory-type DRAC, used by the metric presentation layer to emit one fixed
+  // check_DRAC_<trajectory_type> report per cycle (UUID-free, time-series stable).
+  std::map<std::string, std::optional<double>> required_acceleration_by_type;
 };
 
 struct PetArtifact
@@ -159,4 +163,4 @@ inline RiskLevel calc_worst_risk(std::initializer_list<RiskLevel> risks)
 
 }  // namespace autoware::trajectory_validator::plugin::safety
 
-#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
+#endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__TYPES_HPP_
