@@ -24,19 +24,12 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/pose_deviation.hpp>
 
-#include <array>
 #include <optional>
 #include <stdexcept>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
-inline constexpr std::array<const char *, 3> kCanonicalTrajectoryTypes = {
-  "map_based_predicted_path",
-  "constant_curvature_path",
-  "diffusion_based_trajectory",
-};
-
 std::vector<TrajectoryData> generate_object_trajectories(
   const FilterContext & context, double required_time_horizon, double object_assumed_acceleration,
   double time_resolution, const DracParamMap & drac_param_map, const PetParamMap & pet_param_map);
