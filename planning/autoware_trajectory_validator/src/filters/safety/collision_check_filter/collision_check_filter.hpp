@@ -43,10 +43,6 @@ private:
   reporter::ContinuousDetectionTimes drac_continuous_times_;
 
   void clear_detection_times();
-
-  std::vector<MetricReport> generate_metric_reports(
-    const DracArtifact & drac_artifact, const PetArtifact & pet_artifact,
-    const RssArtifact & rss_artifact) const;
 };
 
 }  // namespace autoware::trajectory_validator::plugin::safety

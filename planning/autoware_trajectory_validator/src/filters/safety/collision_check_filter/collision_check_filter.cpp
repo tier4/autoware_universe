@@ -14,9 +14,7 @@
 
 #include "collision_check_filter.hpp"
 #include "assessment.hpp"
-
-#include <string>
-#include <vector>
+#include "metric.hpp"
 
 namespace autoware::trajectory_validator::plugin::safety
 {
@@ -34,67 +32,6 @@ void CollisionCheckFilter::clear_detection_times()
   pet_continuous_times_.clear();
   rss_continuous_times_.clear();
   drac_continuous_times_.clear();
-}
-
-std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
-  const DracArtifact & drac_artifact, const PetArtifact & pet_artifact,
-  const RssArtifact & rss_artifact) const
-{
-  std::vector<MetricReport> reports;
-
-  const auto convert_metrics_level = [](const RiskLevel risk_level) {
-    switch (risk_level) {
-      case RiskLevel::SAFE:
-        return MetricReport::OK;
-      case RiskLevel::WARN:
-        return MetricReport::WARN;
-      case RiskLevel::ERROR:
-        return MetricReport::ERROR;
-      default:
-        throw std::runtime_error("invalid argument");
-    }
-  };
-
-  const auto add_report =
-    [&](const std::string_view metric_name, double metric_value, RiskLevel risk) {
-      reports.push_back(autoware_trajectory_validator::build<MetricReport>()
-                          .validator_name(get_name())
-                          .validator_category(category())
-                          .metric_name(std::string(metric_name))
-                          .metric_value(metric_value)
-                          .level(convert_metrics_level(risk)));
-    };
-
-  const double drac_val = drac_artifact.required_acceleration.has_value()
-                            ? drac_artifact.required_acceleration.value()
-                            : std::numeric_limits<double>::quiet_NaN();
-  add_report("DRAC", drac_val, drac_artifact.risk);
-
-  const auto pet_val = [&pet_artifact]() {
-    double min_abs_pet = std::numeric_limits<double>::quiet_NaN();
-    for (const auto & evaluation : pet_artifact.object_evaluations) {
-      const double pet = evaluation.detail.pet;
-      if (std::isnan(min_abs_pet) || std::abs(pet) < std::abs(min_abs_pet)) {
-        min_abs_pet = pet;
-      }
-    }
-    return min_abs_pet;
-  }();
-  add_report("PET", pet_val, pet_artifact.risk);
-
-  const auto rss_val = [&rss_artifact]() {
-    double min_rss = 0.0;
-    for (const auto & evaluation : rss_artifact.object_evaluations) {
-      const double rss = evaluation.detail.rss_acceleration;
-      if (rss < min_rss) {
-        min_rss = rss;
-      }
-    }
-    return min_rss;
-  }();
-  add_report("RSS", rss_val, rss_artifact.risk);
-
-  return reports;
 }
 
 CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
@@ -125,7 +62,9 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
 
   return ValidationResult{
     calc_worst_risk({pet_artifact.risk, drac_artifact.risk, rss_artifact.risk}) != RiskLevel::ERROR,
-    generate_metric_reports(drac_artifact, pet_artifact, rss_artifact),
+    metric::build_metric_reports(
+      get_name(), category(), drac_artifact, pet_artifact, rss_artifact, drac_param_map_,
+      pet_param_map_),
     std::move(planning_factors)};
 }
 
