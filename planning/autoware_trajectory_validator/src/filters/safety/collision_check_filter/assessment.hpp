@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__ASSESSMENT_HPP_
-#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__ASSESSMENT_HPP_
+#ifndef FILTERS__SAFETY__COLLISION_CHECK_FILTER__ASSESSMENT_HPP_
+#define FILTERS__SAFETY__COLLISION_CHECK_FILTER__ASSESSMENT_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 #include "parameter.hpp"
@@ -74,8 +74,8 @@ std::optional<double> compute_distance_to_collision(
   const autoware_perception_msgs::msg::PredictedObject & object);
 
 RssArtifact assess(
-  const TrajectoryPoints & traj_points, const FilterContext & context, const RssParamMap & rss_param_map,
-  double time_resolution, VehicleInfo & vehicle_info);
+  const TrajectoryPoints & traj_points, const FilterContext & context,
+  const RssParamMap & rss_param_map, double time_resolution, VehicleInfo & vehicle_info);
 }  // namespace autoware::trajectory_validator::plugin::safety::rss_deceleration
 
-#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__ASSESSMENT_HPP_
+#endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__ASSESSMENT_HPP_
