@@ -77,12 +77,12 @@ class FusionCollector
 {
 public:
   FusionCollector(
-    std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node,
+    std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && parent_node,
     std::size_t rois_number, const std::vector<Det2dStatus<Msg2D>> & det2d_status_list,
     bool debug_mode);
-  void process_msg3d(const typename Msg3D::ConstSharedPtr msg3d, double msg3d_timeout);
+  void process_msg3d(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(Msg3D) msg3d, double msg3d_timeout);
   void process_rois(
-    const std::size_t & rois_id, const typename Msg2D::ConstSharedPtr rois_msg,
+    const std::size_t & rois_id, const AUTOWARE_MESSAGE_CONST_SHARED_PTR(Msg2D) rois_msg,
     double rois_timeout);
   void fusion_callback();
 
@@ -100,12 +100,12 @@ public:
   void show_debug_message();
 
 private:
-  std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> ros2_parent_node_;
+  std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> parent_node_;
   autoware::agnocast_wrapper::Timer::SharedPtr timer_;
   std::size_t rois_number_;
-  typename Msg3D::ConstSharedPtr msg3d_{nullptr};
+  AUTOWARE_MESSAGE_CONST_SHARED_PTR(Msg3D) msg3d_{};
   std::vector<Det2dStatus<Msg2D>> det2d_status_list_;
-  std::unordered_map<std::size_t, typename Msg2D::ConstSharedPtr> id_to_rois_map_;
+  std::unordered_map<std::size_t, AUTOWARE_MESSAGE_CONST_SHARED_PTR(Msg2D)> id_to_rois_map_;
   bool is_first_msg3d_{false};
   bool debug_mode_;
   std::mutex fusion_mutex_;

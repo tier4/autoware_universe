@@ -216,8 +216,7 @@ PointPaintingFusionNode::PointPaintingFusionNode(const rclcpp::NodeOptions & opt
   msg3d_sub_ = this->create_subscription<PointCloudMsgType>(
     "~/input/pointcloud", rclcpp::SensorDataQoS().keep_last(3),
     [this](AUTOWARE_MESSAGE_CONST_SHARED_PTR(PointCloudMsgType) msg) {
-      auto ros2_msg = std::make_shared<const PointCloudMsgType>(*msg);
-      this->sub_callback(ros2_msg);
+      this->sub_callback(std::move(msg));
     });
 
   // publisher

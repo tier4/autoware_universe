@@ -30,9 +30,9 @@ namespace autoware::image_projection_based_fusion
 
 template <class Msg3D, class Msg2D, class ExportObj>
 FusionCollector<Msg3D, Msg2D, ExportObj>::FusionCollector(
-  std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && ros2_parent_node, std::size_t rois_number,
+  std::shared_ptr<FusionNode<Msg3D, Msg2D, ExportObj>> && parent_node, std::size_t rois_number,
   const std::vector<Det2dStatus<Msg2D>> & det2d_status_list, bool debug_mode)
-: ros2_parent_node_(std::move(ros2_parent_node)),
+: parent_node_(std::move(parent_node)),
   rois_number_(rois_number),
   det2d_status_list_(det2d_status_list),
   debug_mode_(debug_mode)
@@ -44,7 +44,7 @@ FusionCollector<Msg3D, Msg2D, ExportObj>::FusionCollector(
     std::chrono::duration<double>(init_timeout_sec));
 
   timer_ = autoware::agnocast_wrapper::create_timer(
-    ros2_parent_node_.get(), period_ns, [this]() {
+    parent_node_.get(), period_ns, [this]() {
       std::lock_guard<std::mutex> fusion_lock(fusion_mutex_);
       if (status_ == CollectorStatus::Finished) return;
       fusion_callback();
@@ -66,7 +66,7 @@ std::shared_ptr<FusionCollectorInfoBase> FusionCollector<Msg3D, Msg2D, ExportObj
 
 template <class Msg3D, class Msg2D, class ExportObj>
 void FusionCollector<Msg3D, Msg2D, ExportObj>::process_msg3d(
-  const typename Msg3D::ConstSharedPtr msg3d, double msg3d_timeout)
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(Msg3D) msg3d, double msg3d_timeout)
 {
   std::lock_guard<std::mutex> fusion_lock(fusion_mutex_);
 
@@ -79,9 +79,9 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::process_msg3d(
     set_period(period_ns);
     timer_->reset();
   } else if (status_ == CollectorStatus::Processing) {
-    if (msg3d_ != nullptr) {
+    if (msg3d_) {
       RCLCPP_WARN_STREAM_THROTTLE(
-        ros2_parent_node_->get_logger(), *ros2_parent_node_->get_clock(),
+        parent_node_->get_logger(), *parent_node_->get_clock(),
         std::chrono::milliseconds(10000).count(),
         "Msg3d already exists in the collector. Check the timestamp of the msg3d.");
     }
@@ -102,7 +102,8 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::process_msg3d(
 
 template <class Msg3D, class Msg2D, class ExportObj>
 void FusionCollector<Msg3D, Msg2D, ExportObj>::process_rois(
-  const std::size_t & rois_id, const typename Msg2D::ConstSharedPtr rois_msg, double rois_timeout)
+  const std::size_t & rois_id, const AUTOWARE_MESSAGE_CONST_SHARED_PTR(Msg2D) rois_msg,
+  double rois_timeout)
 {
   std::lock_guard<std::mutex> fusion_lock(fusion_mutex_);
 
@@ -117,7 +118,7 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::process_rois(
   } else if (status_ == CollectorStatus::Processing) {
     if (id_to_rois_map_.find(rois_id) != id_to_rois_map_.end()) {
       RCLCPP_WARN_STREAM_THROTTLE(
-        ros2_parent_node_->get_logger(), *ros2_parent_node_->get_clock(),
+        parent_node_->get_logger(), *parent_node_->get_clock(),
         std::chrono::milliseconds(10000).count(),
         "ROIs '" << rois_id
                  << "' already exists in the collector. Check the timestamp of the rois.");
@@ -133,7 +134,7 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::process_rois(
 template <class Msg3D, class Msg2D, class ExportObj>
 bool FusionCollector<Msg3D, Msg2D, ExportObj>::ready_to_fuse()
 {
-  return id_to_rois_map_.size() == rois_number_ && msg3d_ != nullptr;
+  return id_to_rois_map_.size() == rois_number_ && static_cast<bool>(msg3d_);
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -161,29 +162,29 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::fusion_callback()
 
   if (!msg3d_) {
     RCLCPP_DEBUG(
-      ros2_parent_node_->get_logger(),
+      parent_node_->get_logger(),
       "The input 3D message is not in the fusion collector, so the fusion process will be "
       "skipped.");
     status_ = CollectorStatus::Finished;
-    ros2_parent_node_->show_diagnostic_message(id_to_stamp_map, fusion_collector_info_);
+    parent_node_->show_diagnostic_message(id_to_stamp_map, fusion_collector_info_);
     return;
   }
 
   typename Msg3D::SharedPtr output_det3d_msg = std::make_shared<Msg3D>(*msg3d_);
-  ros2_parent_node_->preprocess(*output_det3d_msg);
+  parent_node_->preprocess(*output_det3d_msg);
 
   for (const auto & [rois_id, rois_msg] : id_to_rois_map_) {
     if (det2d_status_list_[rois_id].camera_projector_ptr == nullptr) {
       RCLCPP_WARN_THROTTLE(
-        ros2_parent_node_->get_logger(), *ros2_parent_node_->get_clock(), 5000,
+        parent_node_->get_logger(), *parent_node_->get_clock(), 5000,
         "no camera info. id is %zu", rois_id);
       continue;
     }
-    ros2_parent_node_->fuse_on_single_image(
+    parent_node_->fuse_on_single_image(
       *msg3d_, det2d_status_list_[rois_id], *rois_msg, *output_det3d_msg);
   }
 
-  ros2_parent_node_->export_process(output_det3d_msg, id_to_stamp_map, fusion_collector_info_);
+  parent_node_->export_process(output_det3d_msg, id_to_stamp_map, fusion_collector_info_);
   status_ = CollectorStatus::Finished;
 }
 
@@ -196,7 +197,7 @@ bool FusionCollector<Msg3D, Msg2D, ExportObj>::rois_exists(const std::size_t & r
 template <class Msg3D, class Msg2D, class ExportObj>
 bool FusionCollector<Msg3D, Msg2D, ExportObj>::msg3d_exists()
 {
-  return msg3d_ != nullptr;
+  return static_cast<bool>(msg3d_);
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -217,7 +218,7 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::set_period(const std::chrono::nan
     timer_->set_period(period);
   } catch (const std::exception & ex) {
     RCLCPP_WARN_THROTTLE(
-      ros2_parent_node_->get_logger(), *ros2_parent_node_->get_clock(), 5000, "%s", ex.what());
+      parent_node_->get_logger(), *parent_node_->get_clock(), 5000, "%s", ex.what());
   }
 }
 
@@ -228,7 +229,7 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::reset()
 
   status_ = CollectorStatus::Idle;  // Reset status to Idle
   id_to_rois_map_.clear();
-  msg3d_ = nullptr;
+  msg3d_ = {};
   fusion_collector_info_ = nullptr;
   is_first_msg3d_ = false;
 
@@ -244,7 +245,7 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::show_debug_message()
   std::stringstream log_stream;
   log_stream << std::fixed << std::setprecision(6);
   log_stream << "Collector's fusion callback time: "
-             << ros2_parent_node_->get_clock()->now().seconds() << " seconds\n";
+             << parent_node_->get_clock()->now().seconds() << " seconds\n";
 
   if (
     auto advanced_info = std::dynamic_pointer_cast<AdvancedCollectorInfo>(fusion_collector_info_)) {
@@ -275,7 +276,7 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::show_debug_message()
   log_stream << "]\n";
 
   const std::string & str = log_stream.str();
-  RCLCPP_INFO(ros2_parent_node_->get_logger(), "%s", str.c_str());
+  RCLCPP_INFO(parent_node_->get_logger(), "%s", str.c_str());
 }
 
 // Explicit instantiation for the supported types

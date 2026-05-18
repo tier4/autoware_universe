@@ -104,8 +104,7 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
     camera_info_subs_[rois_id] = this->create_subscription<sensor_msgs::msg::CameraInfo>(
       topic, qos,
       [this, rois_id](AUTOWARE_MESSAGE_CONST_SHARED_PTR(sensor_msgs::msg::CameraInfo) msg) {
-        auto ros2_msg = std::make_shared<const sensor_msgs::msg::CameraInfo>(*msg);
-        this->camera_info_callback(ros2_msg, rois_id);
+        this->camera_info_callback(std::move(msg), rois_id);
       });
   }
 
@@ -118,18 +117,14 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
 
     rois_subs_[rois_id] = this->create_subscription<Msg2D>(
       topic, qos, [this, rois_id](AUTOWARE_MESSAGE_CONST_SHARED_PTR(Msg2D) msg) {
-        auto ros2_msg = std::make_shared<const Msg2D>(*msg);
-        this->rois_callback(ros2_msg, rois_id);
+        this->rois_callback(std::move(msg), rois_id);
       });
   }
 
   // Subscribe 3D input msg
   msg3d_sub_ = this->create_subscription<Msg3D>(
     "input", rclcpp::QoS(1).best_effort(),
-    [this](AUTOWARE_MESSAGE_CONST_SHARED_PTR(Msg3D) msg) {
-      auto ros2_msg = std::make_shared<const Msg3D>(*msg);
-      this->sub_callback(ros2_msg);
-    });
+    [this](AUTOWARE_MESSAGE_CONST_SHARED_PTR(Msg3D) msg) { this->sub_callback(std::move(msg)); });
 
   // initialization on each 2d detections
   initialize_det2d_status(rois_number_);
@@ -230,11 +225,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::initialize_strategy()
       autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo>(
       "input/concatenation_info", rclcpp::SensorDataQoS().keep_last(10),
       [this](AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo)
-               msg) {
-        auto ros2_msg =
-          std::make_shared<const autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo>(*msg);
-        this->concatenation_info_callback(ros2_msg);
-      });
+               msg) { this->concatenation_info_callback(std::move(msg)); });
   } else {
     throw std::runtime_error("Matching strategy must be 'advanced' or 'naive'");
   }
@@ -288,7 +279,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::initialize_det2d_status(std::size_t ro
 
 template <class Msg3D, class Msg2D, class ExportObj>
 void FusionNode<Msg3D, Msg2D, ExportObj>::camera_info_callback(
-  const sensor_msgs::msg::CameraInfo::ConstSharedPtr input_camera_info_msg,
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(sensor_msgs::msg::CameraInfo) input_camera_info_msg,
   const std::size_t rois_id)
 {
   if (rois_id >= det2d_status_list_.size()) {
@@ -399,7 +390,8 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::export_process(
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
-void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(const typename Msg3D::ConstSharedPtr msg3d)
+void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(Msg3D) msg3d)
 {
   if (!fusion_matching_strategy_) {
     initialize_strategy();
@@ -476,7 +468,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::sub_callback(const typename Msg3D::Con
 
 template <class Msg3D, class Msg2D, class ExportObj>
 void FusionNode<Msg3D, Msg2D, ExportObj>::rois_callback(
-  const typename Msg2D::ConstSharedPtr rois_msg, const std::size_t rois_id)
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(Msg2D) rois_msg, const std::size_t rois_id)
 {
   if (!fusion_matching_strategy_) {
     initialize_strategy();
@@ -547,7 +539,7 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::rois_callback(
 
 template <class Msg3D, class Msg2D, class ExportObj>
 void FusionNode<Msg3D, Msg2D, ExportObj>::concatenation_info_callback(
-  const autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo::ConstSharedPtr
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo)
     concatenation_info_msg)
 {
   if (
@@ -662,7 +654,8 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::manage_collector_list()
 }
 
 template <class Msg3D, class Msg2D, class ExportObj>
-std::optional<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo::ConstSharedPtr>
+std::optional<
+  AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo)>
 FusionNode<Msg3D, Msg2D, ExportObj>::find_concatenation_info(double timestamp)
 {
   auto it = concatenated_info_map_.find(timestamp);

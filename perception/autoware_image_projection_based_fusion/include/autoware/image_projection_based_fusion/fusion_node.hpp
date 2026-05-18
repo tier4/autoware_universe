@@ -78,7 +78,8 @@ public:
     typename Msg3D::SharedPtr & output_det3d_msg,
     std::unordered_map<std::size_t, double> id_to_stamp_map,
     std::shared_ptr<FusionCollectorInfoBase> collector_info);
-  std::optional<autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo::ConstSharedPtr>
+  std::optional<
+    AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo)>
   find_concatenation_info(double timestamp);
   void show_diagnostic_message(
     std::unordered_map<std::size_t, double> id_to_stamp_map,
@@ -87,7 +88,7 @@ public:
 private:
   // Common process methods
   void camera_info_callback(
-    const sensor_msgs::msg::CameraInfo::ConstSharedPtr input_camera_info_msg,
+    const AUTOWARE_MESSAGE_CONST_SHARED_PTR(sensor_msgs::msg::CameraInfo) input_camera_info_msg,
     const std::size_t rois_id);
 
   void initialize_strategy();
@@ -120,7 +121,9 @@ private:
   std::unordered_map<std::size_t, double> id_to_offset_map_;
 
   // timestamp: (key, value)
-  std::unordered_map<double, autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo::ConstSharedPtr>
+  std::unordered_map<
+    double,
+    AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo)>
     concatenated_info_map_;
 
   autoware::agnocast_wrapper::Updater diagnostic_updater_{this};
@@ -141,12 +144,13 @@ protected:
   void initialize_det2d_status(std::size_t rois_number);
 
   // callback for main subscription
-  void sub_callback(const typename Msg3D::ConstSharedPtr msg3d);
+  void sub_callback(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(Msg3D) msg3d);
   // callback for rois subscription
-  void rois_callback(const typename Msg2D::ConstSharedPtr rois_msg, const std::size_t rois_id);
+  void rois_callback(
+    const AUTOWARE_MESSAGE_CONST_SHARED_PTR(Msg2D) rois_msg, const std::size_t rois_id);
 
   void concatenation_info_callback(
-    const autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo::ConstSharedPtr
+    const AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo)
       concatenation_info_msg);
 
   // Custom process methods
