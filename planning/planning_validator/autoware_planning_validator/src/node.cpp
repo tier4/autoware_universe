@@ -141,6 +141,7 @@ void PlanningValidatorNode::onTrajectory(const Trajectory::ConstSharedPtr & traj
 
   s->invalid_count = isAllValid(*s) ? 0 : s->invalid_count + 1;
 
+  context_->prepare_diag_update();
   context_->update_diag();
 
   publishTrajectory();
