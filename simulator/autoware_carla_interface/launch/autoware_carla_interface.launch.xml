@@ -92,56 +92,59 @@
     <!-- <node pkg="tf2_ros" exec="static_transform_publisher" name="carla_velodyne_top" args="0 0 1 -1.5386 -0.015 0.001 velodyne_top velodyne_top_changed"/> -->
     <!-- <node pkg="tf2_ros" exec="static_transform_publisher" name="carla_imu" args="0 0 1 -3.10519265 -0.015 -3.14059265359 tamagawa/imu_link tamagawa/imu_link_changed"/> -->
 
-    <!-- Relay CAM_FRONT to traffic_light namespace for traffic light recognition -->
-    <node pkg="topic_tools" exec="relay" name="traffic_light_image_relay" args="/sensing/camera/CAM_FRONT/image_raw /sensing/camera/traffic_light/image_raw"/>
-    <node pkg="topic_tools" exec="relay" name="traffic_light_camera_info_relay" args="/sensing/camera/CAM_FRONT/camera_info /sensing/camera/traffic_light/camera_info"/>
+    <!-- CARLA-only nodes: republish raw→compressed, relay, combiner (not needed in splatsim mode) -->
+    <group unless="$(var render_with_splatsim)">
+      <!-- Relay CAM_FRONT to traffic_light namespace for traffic light recognition -->
+      <node pkg="topic_tools" exec="relay" name="traffic_light_image_relay" args="/sensing/camera/CAM_FRONT/image_raw /sensing/camera/traffic_light/image_raw"/>
+      <node pkg="topic_tools" exec="relay" name="traffic_light_camera_info_relay" args="/sensing/camera/CAM_FRONT/camera_info /sensing/camera/traffic_light/camera_info"/>
 
-    <!-- Image transport nodes to create compressed versions for all cameras -->
-    <node
-      pkg="image_transport"
-      exec="republish"
-      name="cam_front_republish"
-      args="raw compressed --ros-args -r in:=/sensing/camera/CAM_FRONT/image_raw -r out/compressed:=/sensing/camera/CAM_FRONT/image_raw/compressed"
-    />
-    <node
-      pkg="image_transport"
-      exec="republish"
-      name="cam_front_left_republish"
-      args="raw compressed --ros-args -r in:=/sensing/camera/CAM_FRONT_LEFT/image_raw -r out/compressed:=/sensing/camera/CAM_FRONT_LEFT/image_raw/compressed"
-    />
-    <node
-      pkg="image_transport"
-      exec="republish"
-      name="cam_front_right_republish"
-      args="raw compressed --ros-args -r in:=/sensing/camera/CAM_FRONT_RIGHT/image_raw -r out/compressed:=/sensing/camera/CAM_FRONT_RIGHT/image_raw/compressed"
-    />
-    <node
-      pkg="image_transport"
-      exec="republish"
-      name="cam_back_republish"
-      args="raw compressed --ros-args -r in:=/sensing/camera/CAM_BACK/image_raw -r out/compressed:=/sensing/camera/CAM_BACK/image_raw/compressed"
-    />
-    <node
-      pkg="image_transport"
-      exec="republish"
-      name="cam_back_left_republish"
-      args="raw compressed --ros-args -r in:=/sensing/camera/CAM_BACK_LEFT/image_raw -r out/compressed:=/sensing/camera/CAM_BACK_LEFT/image_raw/compressed"
-    />
-    <node
-      pkg="image_transport"
-      exec="republish"
-      name="cam_back_right_republish"
-      args="raw compressed --ros-args -r in:=/sensing/camera/CAM_BACK_RIGHT/image_raw -r out/compressed:=/sensing/camera/CAM_BACK_RIGHT/image_raw/compressed"
-    />
-    <node
-      pkg="image_transport"
-      exec="republish"
-      name="traffic_light_republish"
-      args="raw compressed --ros-args -r in:=/sensing/camera/traffic_light/image_raw -r out/compressed:=/sensing/camera/traffic_light/image_raw/compressed"
-    />
+      <!-- Image transport nodes to create compressed versions for all cameras -->
+      <node
+        pkg="image_transport"
+        exec="republish"
+        name="cam_front_republish"
+        args="raw compressed --ros-args -r in:=/sensing/camera/CAM_FRONT/image_raw -r out/compressed:=/sensing/camera/CAM_FRONT/image_raw/compressed"
+      />
+      <node
+        pkg="image_transport"
+        exec="republish"
+        name="cam_front_left_republish"
+        args="raw compressed --ros-args -r in:=/sensing/camera/CAM_FRONT_LEFT/image_raw -r out/compressed:=/sensing/camera/CAM_FRONT_LEFT/image_raw/compressed"
+      />
+      <node
+        pkg="image_transport"
+        exec="republish"
+        name="cam_front_right_republish"
+        args="raw compressed --ros-args -r in:=/sensing/camera/CAM_FRONT_RIGHT/image_raw -r out/compressed:=/sensing/camera/CAM_FRONT_RIGHT/image_raw/compressed"
+      />
+      <node
+        pkg="image_transport"
+        exec="republish"
+        name="cam_back_republish"
+        args="raw compressed --ros-args -r in:=/sensing/camera/CAM_BACK/image_raw -r out/compressed:=/sensing/camera/CAM_BACK/image_raw/compressed"
+      />
+      <node
+        pkg="image_transport"
+        exec="republish"
+        name="cam_back_left_republish"
+        args="raw compressed --ros-args -r in:=/sensing/camera/CAM_BACK_LEFT/image_raw -r out/compressed:=/sensing/camera/CAM_BACK_LEFT/image_raw/compressed"
+      />
+      <node
+        pkg="image_transport"
+        exec="republish"
+        name="cam_back_right_republish"
+        args="raw compressed --ros-args -r in:=/sensing/camera/CAM_BACK_RIGHT/image_raw -r out/compressed:=/sensing/camera/CAM_BACK_RIGHT/image_raw/compressed"
+      />
+      <node
+        pkg="image_transport"
+        exec="republish"
+        name="traffic_light_republish"
+        args="raw compressed --ros-args -r in:=/sensing/camera/traffic_light/image_raw -r out/compressed:=/sensing/camera/traffic_light/image_raw/compressed"
+      />
 
-    <!-- Multi-camera combiner for RViz visualization -->
-    <node pkg="autoware_carla_interface" exec="multi_camera_combiner" output="screen"/>
+      <!-- Multi-camera combiner for RViz visualization -->
+      <node pkg="autoware_carla_interface" exec="multi_camera_combiner" output="screen"/>
+    </group>
 
     <!-- E2E Planning Infrastructure -->
     <group if="$(var use_e2e_planning)">
