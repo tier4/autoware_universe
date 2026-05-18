@@ -19,7 +19,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -201,32 +200,6 @@ PetArtifact assess_planned_speed_collision_timing(
   return {calc_worst_risk(collision_evaluations), std::move(collision_evaluations)};
 }
 
-DracParamMap isolate_drac_param_map(
-  const DracParamMap & drac_param_map, const std::string & target_type)
-{
-  auto isolated = drac_param_map;
-  for (auto & [_, params] : isolated) {
-    auto & at = params.assessment_trajectories;
-    at.map_based = at.map_based && target_type == "map_based_predicted_path";
-    at.constant_curvature = at.constant_curvature && target_type == "constant_curvature_path";
-    at.diffusion_based = at.diffusion_based && target_type == "diffusion_based_trajectory";
-  }
-  return isolated;
-}
-
-std::optional<double> combine_per_type_drac(
-  const std::map<std::string, std::optional<double>> & per_type)
-{
-  std::optional<double> overall{0.0};
-  for (const auto & [_, opt] : per_type) {
-    if (!opt.has_value()) {
-      return std::nullopt;
-    }
-    overall = std::min(overall.value(), opt.value());
-  }
-  return overall;
-}
-
 DracArtifact assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const DracParamMap & drac_param_map, VehicleInfo & vehicle_info,
@@ -310,7 +283,7 @@ DracArtifact assess_drac(
     if (collision_evaluations.empty()) {
       return DracArtifact{
         to_drac_risk_level(-ego_dec, ego_drac_params), -ego_dec,
-        std::move(last_collision_evaluations), {}};
+        std::move(last_collision_evaluations)};
     }
 
     last_collision_evaluations = std::move(collision_evaluations);
@@ -318,7 +291,7 @@ DracArtifact assess_drac(
 
   return DracArtifact{
     to_drac_risk_level(std::nullopt, ego_drac_params), std::nullopt,
-    std::move(last_collision_evaluations), {}};
+    std::move(last_collision_evaluations)};
 }
 
 std::vector<TrajectoryData> generate_object_trajectories(
@@ -399,24 +372,9 @@ std::pair<PetArtifact, DracArtifact> assess(
     nominal_speed_object_trajectories);
 
   DracArtifact drac_artifact{};
-  for (const auto * type : kCanonicalTrajectoryTypes) {
-    const auto isolated = isolate_drac_param_map(drac_param_map, type);
-    const auto & base_at = isolated.at(kCollisionCheckParamBaseKey).assessment_trajectories;
-    if (!base_at.map_based && !base_at.constant_curvature && !base_at.diffusion_based) {
-      drac_artifact.drac_by_type[type] = std::optional<double>{0.0};
-      continue;
-    }
-    const auto sub = assess_drac(
-      traj_points, context, isolated, vehicle_info, nominal_speed_object_trajectories,
-      global_params);
-    drac_artifact.drac_by_type[type] = sub.required_acceleration;
-    for (auto & ev : sub.object_evaluations) {
-      drac_artifact.object_evaluations.push_back(std::move(ev));
-    }
-  }
-  drac_artifact.required_acceleration = combine_per_type_drac(drac_artifact.drac_by_type);
-  drac_artifact.risk = to_drac_risk_level(
-    drac_artifact.required_acceleration, drac_param_map.at(kCollisionCheckParamBaseKey));
+  drac_artifact = assess_drac(
+    traj_points, context, drac_param_map, vehicle_info, nominal_speed_object_trajectories,
+    global_params);
   return {pet_artifact, drac_artifact};
 }
 }  // namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment

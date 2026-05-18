@@ -83,10 +83,14 @@ struct PetWorst
 
 struct DracWorst
 {
+  bool known{false};
   std::optional<double> drac{0.0};
 
   double metric_value() const
   {
+    if (!known) {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
     if (!drac.has_value()) {
       return std::numeric_limits<double>::max();
     }
@@ -95,6 +99,9 @@ struct DracWorst
 
   uint8_t metric_level(const DracParams & params) const
   {
+    if (!known) {
+      return MetricReport::OK;
+    }
     if (!drac.has_value()) {
       return MetricReport::ERROR;
     }
@@ -138,15 +145,30 @@ std::map<std::string, PetWorst> compute_pet_worst(const PetArtifact & pet_artifa
   return worst;
 }
 
-std::map<std::string, DracWorst> compute_drac_worst(const DracArtifact & drac_artifact)
+bool is_type_enabled_in_settings(const DracParamMap & m, const std::string & type)
 {
-  std::map<std::string, DracWorst> worst;
+  const auto & at = m.at(kCollisionCheckParamBaseKey).assessment_trajectories;
+  if (type == "map_based_predicted_path") return at.map_based;
+  if (type == "constant_curvature_path") return at.constant_curvature;
+  if (type == "diffusion_based_trajectory") return at.diffusion_based;
+  return false;
+}
+
+std::map<std::string, DracWorst> compute_drac_per_type(
+  const DracArtifact & drac_artifact, const DracParamMap & drac_param_map)
+{
+  std::map<std::string, DracWorst> result;
   for (const auto * type : kCanonicalTrajectoryTypes) {
-    const auto it = drac_artifact.drac_by_type.find(type);
-    worst[type] = DracWorst{
-      it != drac_artifact.drac_by_type.end() ? it->second : std::optional<double>{0.0}};
+    result[type] = DracWorst{false, std::nullopt};
   }
-  return worst;
+  for (const auto & ev : drac_artifact.object_evaluations) {
+    const auto t = canonical_trajectory_type(ev.detail.object_identification.trajectory_type);
+    if (t.empty()) continue;
+    if (!is_type_enabled_in_settings(drac_param_map, t)) continue;
+    result[t].known = true;
+    result[t].drac = drac_artifact.required_acceleration;
+  }
+  return result;
 }
 
 RssWorst compute_rss_worst(const RssArtifact & rss_artifact)
@@ -186,9 +208,9 @@ std::vector<MetricReport> build_metric_reports(
       w.metric_level(pet_params_base)));
   }
 
-  const auto drac_worst = compute_drac_worst(drac_artifact);
+  const auto drac_per_type = compute_drac_per_type(drac_artifact, drac_param_map);
   for (const auto * type : kCanonicalTrajectoryTypes) {
-    const auto & w = drac_worst.at(type);
+    const auto & w = drac_per_type.at(type);
     reports.push_back(make_metric_report(
       validator_name, validator_category, fmt::format("check_DRAC_{}", type), w.metric_value(),
       w.metric_level(drac_params_base)));

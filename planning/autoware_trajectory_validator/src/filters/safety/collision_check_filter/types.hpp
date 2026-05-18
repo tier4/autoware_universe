@@ -25,7 +25,6 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 
-#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -113,7 +112,6 @@ struct DracArtifact
   RiskLevel risk{RiskLevel::SAFE};
   std::optional<double> required_acceleration;
   std::vector<CollisionEvaluation> object_evaluations;
-  std::map<std::string, std::optional<double>> drac_by_type;
 };
 
 struct PetArtifact
