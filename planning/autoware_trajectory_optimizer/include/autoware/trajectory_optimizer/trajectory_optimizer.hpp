@@ -20,6 +20,7 @@
 
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
+#include <autoware_utils_system/stop_watch.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/subscription.hpp>
