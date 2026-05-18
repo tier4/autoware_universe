@@ -160,13 +160,13 @@ enabled_sensors:
   # LiDAR
   - velodyne_top_base_link
 
-  # Cameras (6 for 360-degree coverage)
+  # Cameras (reduced to 1 to save RAM — re-enable others when memory allows)
   - CAM_FRONT/camera_link
-  - CAM_FRONT_LEFT/camera_link
-  - CAM_FRONT_RIGHT/camera_link
-  - CAM_BACK/camera_link
-  - CAM_BACK_LEFT/camera_link
-  - CAM_BACK_RIGHT/camera_link
+  # - CAM_FRONT_LEFT/camera_link
+  # - CAM_FRONT_RIGHT/camera_link
+  # - CAM_BACK/camera_link
+  # - CAM_BACK_LEFT/camera_link
+  # - CAM_BACK_RIGHT/camera_link
 
   # IMU and GNSS
   - tamagawa/imu_link

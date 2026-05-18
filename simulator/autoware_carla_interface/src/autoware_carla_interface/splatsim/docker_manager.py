@@ -89,12 +89,13 @@ class SplatSimDockerManager:
         tileset_dir = str(Path(tileset_host_path).resolve().parent)
 
         _log(f"Starting container (image={self._image}, name={self._container_name}, mount={tileset_dir} -> /data)")
-        env = {}
+        env = {"GRPC_PORT": str(self._grpc_port)}
         splatsim_log_level = os.environ.get("SPLATSIM_LOG_LEVEL")
         if splatsim_log_level:
             env["SPLATSIM_LOG_LEVEL"] = splatsim_log_level
         run_kwargs = dict(
             image=self._image,
+            command=f"splatsim-grpc-server --port {self._grpc_port}",
             detach=True,
             network_mode="host",
             device_requests=[DeviceRequest(count=-1, capabilities=[["gpu"]])],

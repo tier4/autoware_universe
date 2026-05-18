@@ -11,13 +11,14 @@
     <arg name="ego_vehicle_role_name" default="ego_vehicle"/>
     <arg name="vehicle_type" default="vehicle.toyota.prius"/>
     <arg name="spawn_point" default="None" description="location of ego vehicle spawn (default is random), example = [0.2 , 4.1, 0.4, 0., 0., 0.]"/>
-    <arg name="map_path" default="" description="Autoware map directory path (map name will be extracted for CARLA)"/>
+    <arg name="map_path" default="" description="Autoware map directory path"/>
+    <arg name="carla_map" default="" description="CARLA map name (e.g. odaibatest, Town01). If empty, derived from map_path basename."/>
     <arg name="sync_mode" default="True"/>
     <arg name="fixed_delta_seconds" default="0.05" description="Time step for CARLA, FPS=1/value"/>
     <arg name="use_traffic_manager" default="False"/>
     <arg name="max_real_delta_seconds" default="0.05"/>
 
-    <let name="carla_map" value="$(eval &quot;__import__('os').path.basename('$(var map_path)'.strip().rstrip('/')) or 'Town01'&quot;)"/>
+    <let name="carla_map" value="$(eval &quot;'$(var carla_map)' if '$(var carla_map)' else (__import__('os').path.basename('$(var map_path)'.strip().rstrip('/')) or 'Town01')&quot;)"/>
 
     <log message="[CARLA Interface] Map Path: '$(var map_path)' -> Loading CARLA Map: '$(var carla_map)'"/>
 

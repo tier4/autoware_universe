@@ -1040,7 +1040,8 @@ class carla_ros2_interface(object):
         from .splatsim.splatsim_camera import SplatSimRGBCamera
 
         p = self.param_values
-        for cfg in self._splatsim_camera_configs:
+        base_grpc_port = p["splatsim_grpc_port"]
+        for cam_idx, cfg in enumerate(self._splatsim_camera_configs):
             # Build sensor spec dict matching SplatSimRGBCamera expectations
             spec = {
                 "id": cfg.sensor_id,
@@ -1052,17 +1053,18 @@ class carla_ros2_interface(object):
                     "roll": 0.0, "pitch": 0.0, "yaw": 0.0,
                 },
             }
+            grpc_port = base_grpc_port + cam_idx
             cam = SplatSimRGBCamera(
                 spec,
                 proj_origin=self._proj_origin,
                 tileset_path=p["splatsim_tileset_path"],
                 splatsim_image=p["splatsim_image"],
-                grpc_port=p["splatsim_grpc_port"],
+                grpc_port=grpc_port,
                 use_sh=p["splatsim_use_sh"],
                 frame_rate=p["splatsim_frame_rate"],
-                image_topic=p["splatsim_image_topic"],
-                camera_info_topic=p["splatsim_camera_info_topic"],
-                frame_id=p["splatsim_frame_id"],
+                image_topic=cfg.topic_image or p["splatsim_image_topic"],
+                camera_info_topic=cfg.topic_info or p["splatsim_camera_info_topic"],
+                frame_id=cfg.frame_id or p["splatsim_frame_id"],
                 near_plane=p["splatsim_near_plane"],
                 far_plane=p["splatsim_far_plane"],
                 device=p["splatsim_device"],
