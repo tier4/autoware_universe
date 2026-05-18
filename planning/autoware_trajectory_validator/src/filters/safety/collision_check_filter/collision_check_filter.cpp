@@ -80,68 +80,50 @@ std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
     "diffusion_based_trajectory",
   };
 
-  const auto canonical_type_index = [&](const std::string & raw) -> int {
-    for (size_t i = 0; i < kCanonicalTrajectoryTypes.size(); ++i) {
-      if (raw.find(kCanonicalTrajectoryTypes[i]) != std::string::npos) {
-        return static_cast<int>(i);
+  // DRAC
+  for (const auto * type : kCanonicalTrajectoryTypes) {
+    bool has_finding = false;
+    for (const auto & ev : drac_artifact.object_evaluations) {
+      if (ev.detail.object_identification.trajectory_type.find(type) != std::string::npos) {
+        has_finding = true;
+        break;
       }
     }
-    return -1;
-  };
-
-  struct PetTypeWorst
-  {
-    bool has_finding{false};
-    double pet{0.0};
-    RiskLevel risk{RiskLevel::SAFE};
-  };
-  std::array<PetTypeWorst, 3> pet_worst{};
-  for (const auto & ev : pet_artifact.object_evaluations) {
-    const int idx = canonical_type_index(ev.detail.object_identification.trajectory_type);
-    if (idx < 0) continue;
-    auto & cur = pet_worst[idx];
-    if (!cur.has_finding || std::abs(ev.detail.pet) < std::abs(cur.pet)) {
-      cur.has_finding = true;
-      cur.pet = ev.detail.pet;
-      cur.risk = ev.risk;
-    }
-  }
-  for (size_t i = 0; i < kCanonicalTrajectoryTypes.size(); ++i) {
-    const auto & w = pet_worst[i];
-    const double value = w.has_finding ? w.pet : std::numeric_limits<double>::quiet_NaN();
-    const RiskLevel level = w.has_finding ? w.risk : RiskLevel::SAFE;
-    add_report(fmt::format("check_PET_{}", kCanonicalTrajectoryTypes[i]), value, level);
+    const double drac_val = has_finding && drac_artifact.required_acceleration.has_value()
+                              ? drac_artifact.required_acceleration.value()
+                              : std::numeric_limits<double>::quiet_NaN();
+    const RiskLevel drac_risk = has_finding ? drac_artifact.risk : RiskLevel::SAFE;
+    add_report(fmt::format("DRAC_{}", type), drac_val, drac_risk);
   }
 
-  std::array<bool, 3> drac_has_finding{};
-  for (const auto & ev : drac_artifact.object_evaluations) {
-    const int idx = canonical_type_index(ev.detail.object_identification.trajectory_type);
-    if (idx >= 0) drac_has_finding[idx] = true;
-  }
-  for (size_t i = 0; i < kCanonicalTrajectoryTypes.size(); ++i) {
-    double value;
-    RiskLevel level;
-    if (!drac_has_finding[i]) {
-      value = std::numeric_limits<double>::quiet_NaN();
-      level = RiskLevel::SAFE;
-    } else if (!drac_artifact.required_acceleration.has_value()) {
-      value = std::numeric_limits<double>::quiet_NaN();
-      level = drac_artifact.risk;
-    } else {
-      value = drac_artifact.required_acceleration.value();
-      level = drac_artifact.risk;
+  // PET
+  for (const auto * type : kCanonicalTrajectoryTypes) {
+    double pet_val = std::numeric_limits<double>::quiet_NaN();
+    RiskLevel pet_risk = RiskLevel::SAFE;
+    for (const auto & ev : pet_artifact.object_evaluations) {
+      if (ev.detail.object_identification.trajectory_type.find(type) == std::string::npos) {
+        continue;
+      }
+      if (std::isnan(pet_val) || std::abs(ev.detail.pet) < std::abs(pet_val)) {
+        pet_val = ev.detail.pet;
+        pet_risk = ev.risk;
+      }
     }
-    add_report(fmt::format("check_DRAC_{}", kCanonicalTrajectoryTypes[i]), value, level);
+    add_report(fmt::format("PET_{}", type), pet_val, pet_risk);
   }
 
-  double max_rss = 0.0;
-  for (const auto & ev : rss_artifact.object_evaluations) {
-    const double rss = ev.detail.rss_acceleration;
-    if (rss > max_rss) {
-      max_rss = rss;
+  // RSS
+  const auto rss_val = [&rss_artifact]() {
+    double max_rss = 0.0;
+    for (const auto & evaluation : rss_artifact.object_evaluations) {
+      const double rss = evaluation.detail.rss_acceleration;
+      if (rss > max_rss) {
+        max_rss = rss;
+      }
     }
-  }
-  add_report("check_RSS", max_rss, rss_artifact.risk);
+    return max_rss;
+  }();
+  add_report("RSS", rss_val, rss_artifact.risk);
 
   return reports;
 }
