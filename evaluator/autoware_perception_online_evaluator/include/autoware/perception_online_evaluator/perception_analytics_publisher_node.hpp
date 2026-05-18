@@ -21,6 +21,8 @@
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 
+#include <autoware/agnocast_wrapper/autoware_agnocast_wrapper.hpp>
+
 #include "autoware_perception_msgs/msg/object_classification.hpp"
 #include "autoware_perception_msgs/msg/predicted_objects.hpp"
 #include "nav_msgs/msg/odometry.hpp"
@@ -31,6 +33,7 @@
 #include <array>
 #include <deque>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -69,12 +72,16 @@ private:
 
   // Subscribers and publishers
   rclcpp::Subscription<PredictedObjects>::SharedPtr objects_sub_;
-  rclcpp::Subscription<Float64Stamped>::SharedPtr meas_to_tracked_latency_sub_;
+  // cppcheck-suppress unknownMacro
+  AUTOWARE_SUBSCRIPTION_PTR(Float64Stamped) meas_to_tracked_latency_sub_;
   rclcpp::Subscription<Float64Stamped>::SharedPtr prediction_latency_sub_;
   rclcpp::Publisher<tier4_metric_msgs::msg::MetricArray>::SharedPtr perception_analytics_pub_;
 
+  rclcpp::CallbackGroup::SharedPtr latency_callback_group_;
+
   // Latency cache (by topic id)
   std::array<double, autoware::perception_diagnostics::LATENCY_TOPIC_NUM> latencies_;
+  std::mutex latencies_mutex_;
 
   // TF
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;

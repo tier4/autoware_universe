@@ -52,12 +52,22 @@ PerceptionAnalyticsPublisherNode::PerceptionAnalyticsPublisherNode(
     this->get_parameter("meas_to_tracked_latency_topic_name").as_string();
   const auto latency_topic_prediction =
     this->get_parameter("prediction_latency_topic_name").as_string();
-  meas_to_tracked_latency_sub_ = create_subscription<Float64Stamped>(
-    latency_topic_meas_to_tracked, 1, [this](const Float64Stamped::ConstSharedPtr msg) {
+
+  latency_callback_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  AUTOWARE_SUBSCRIPTION_OPTIONS latency_sub_options{};
+  latency_sub_options.callback_group = latency_callback_group_;
+  // cppcheck-suppress unknownMacro
+  meas_to_tracked_latency_sub_ = AUTOWARE_CREATE_SUBSCRIPTION(
+    Float64Stamped, latency_topic_meas_to_tracked, 1,
+    // cppcheck-suppress unknownMacro
+    [this](AUTOWARE_MESSAGE_CONST_SHARED_PTR(Float64Stamped) msg) {
+      std::lock_guard<std::mutex> lock(latencies_mutex_);
       latencies_[LATENCY_TOPIC_ID_MEAS_TO_TRACKED] = msg->data;
-    });
+    },
+    latency_sub_options);
   prediction_latency_sub_ = create_subscription<Float64Stamped>(
     latency_topic_prediction, 1, [this](const Float64Stamped::ConstSharedPtr msg) {
+      std::lock_guard<std::mutex> lock(latencies_mutex_);
       latencies_[LATENCY_TOPIC_ID_PREDICTION] = msg->data;
     });
 
@@ -125,7 +135,10 @@ void PerceptionAnalyticsPublisherNode::publishPerceptionAnalytics()
 void PerceptionAnalyticsPublisherNode::onObjects(const PredictedObjects::ConstSharedPtr objects_msg)
 {
   perception_analytics_calculator_.setPredictedObjects(objects_msg);
-  perception_analytics_calculator_.setLatencies(latencies_);
+  {
+    std::lock_guard<std::mutex> lock(latencies_mutex_);
+    perception_analytics_calculator_.setLatencies(latencies_);
+  }
   publishPerceptionAnalytics();
 }
 
