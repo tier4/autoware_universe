@@ -16,9 +16,15 @@
 
 #include "assessment.hpp"
 
+#include <fmt/core.h>
+
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <limits>
+#include <optional>
 #include <string>
-#include <utility>
+#include <string_view>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -69,34 +75,74 @@ std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
           .level(convert_metrics_level(risk)));
     };
 
-  const double drac_val = drac_artifact.required_acceleration.has_value()
-                            ? drac_artifact.required_acceleration.value()
-                            : std::numeric_limits<double>::quiet_NaN();
-  add_report("DRAC", drac_val, drac_artifact.risk);
+  static constexpr std::array<const char *, 3> kCanonicalTrajectoryTypes = {
+    "map_based_predicted_path",
+    "constant_curvature_path",
+    "diffusion_based_trajectory",
+  };
 
-  const auto pet_val = [&pet_artifact]() {
-    double min_abs_pet = std::numeric_limits<double>::quiet_NaN();
-    for (const auto & evaluation : pet_artifact.object_evaluations) {
-      const double pet = evaluation.detail.pet;
-      if (std::isnan(min_abs_pet) || std::abs(pet) < std::abs(min_abs_pet)) {
-        min_abs_pet = pet;
+  const auto canonical_type_index = [&](const std::string & raw) -> int {
+    for (size_t i = 0; i < kCanonicalTrajectoryTypes.size(); ++i) {
+      if (raw.find(kCanonicalTrajectoryTypes[i]) != std::string::npos) {
+        return static_cast<int>(i);
       }
     }
-    return min_abs_pet;
-  }();
-  add_report("PET", pet_val, pet_artifact.risk);
+    return -1;
+  };
 
-  const auto rss_val = [&rss_artifact]() {
-    double min_rss = 0.0;
-    for (const auto & evaluation : rss_artifact.object_evaluations) {
-      const double rss = evaluation.detail.rss_acceleration;
-      if (rss < min_rss) {
-        min_rss = rss;
-      }
+  struct PetTypeWorst
+  {
+    bool has_finding{false};
+    double pet{0.0};
+    RiskLevel risk{RiskLevel::SAFE};
+  };
+  std::array<PetTypeWorst, 3> pet_worst{};
+  for (const auto & ev : pet_artifact.object_evaluations) {
+    const int idx = canonical_type_index(ev.detail.object_identification.trajectory_type);
+    if (idx < 0) continue;
+    auto & cur = pet_worst[idx];
+    if (!cur.has_finding || std::abs(ev.detail.pet) < std::abs(cur.pet)) {
+      cur.has_finding = true;
+      cur.pet = ev.detail.pet;
+      cur.risk = ev.risk;
     }
-    return min_rss;
-  }();
-  add_report("RSS", rss_val, rss_artifact.risk);
+  }
+  for (size_t i = 0; i < kCanonicalTrajectoryTypes.size(); ++i) {
+    const auto & w = pet_worst[i];
+    const double value = w.has_finding ? w.pet : std::numeric_limits<double>::quiet_NaN();
+    const RiskLevel level = w.has_finding ? w.risk : RiskLevel::SAFE;
+    add_report(fmt::format("check_PET_{}", kCanonicalTrajectoryTypes[i]), value, level);
+  }
+
+  std::array<bool, 3> drac_has_finding{};
+  for (const auto & ev : drac_artifact.object_evaluations) {
+    const int idx = canonical_type_index(ev.detail.object_identification.trajectory_type);
+    if (idx >= 0) drac_has_finding[idx] = true;
+  }
+  for (size_t i = 0; i < kCanonicalTrajectoryTypes.size(); ++i) {
+    double value;
+    RiskLevel level;
+    if (!drac_has_finding[i]) {
+      value = std::numeric_limits<double>::quiet_NaN();
+      level = RiskLevel::SAFE;
+    } else if (!drac_artifact.required_acceleration.has_value()) {
+      value = std::numeric_limits<double>::quiet_NaN();
+      level = drac_artifact.risk;
+    } else {
+      value = drac_artifact.required_acceleration.value();
+      level = drac_artifact.risk;
+    }
+    add_report(fmt::format("check_DRAC_{}", kCanonicalTrajectoryTypes[i]), value, level);
+  }
+
+  double max_rss = 0.0;
+  for (const auto & ev : rss_artifact.object_evaluations) {
+    const double rss = ev.detail.rss_acceleration;
+    if (rss > max_rss) {
+      max_rss = rss;
+    }
+  }
+  add_report("check_RSS", max_rss, rss_artifact.risk);
 
   return reports;
 }
