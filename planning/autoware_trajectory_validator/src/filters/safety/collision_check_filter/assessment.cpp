@@ -474,9 +474,8 @@ RssArtifact assess(
       ego_trajectory, context.odometry->twist.twist, object, rss_params,
       context.predicted_objects->header.stamp);
     const auto risk_level =
-      rss_detail.rss_acceleration > -rss_params.error_threshold.ego_acceleration
-        ? RiskLevel::ERROR
-        : RiskLevel::SAFE;
+      rss_detail.rss_acceleration > -rss_params.error_threshold.ego_acceleration ? RiskLevel::ERROR
+                                                                                 : RiskLevel::SAFE;
     rss_evaluations.push_back(RssEvaluation{risk_level, rss_detail});
   }
 
