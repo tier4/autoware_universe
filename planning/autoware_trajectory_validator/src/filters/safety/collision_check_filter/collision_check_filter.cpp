@@ -84,8 +84,8 @@ std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
   // DRAC
   for (const auto * type : kCanonicalTrajectoryTypes) {
     bool has_finding = false;
-    for (const auto & ev : drac_artifact.object_evaluations) {
-      if (ev.detail.object_identification.trajectory_type.find(type) != std::string::npos) {
+    for (const auto & evaluation : drac_artifact.object_evaluations) {
+      if (evaluation.detail.object_identification.trajectory_type.find(type) != std::string::npos) {
         has_finding = true;
         break;
       }
@@ -101,13 +101,13 @@ std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
   for (const auto * type : kCanonicalTrajectoryTypes) {
     double pet_val = std::numeric_limits<double>::quiet_NaN();
     RiskLevel pet_risk = RiskLevel::SAFE;
-    for (const auto & ev : pet_artifact.object_evaluations) {
-      if (ev.detail.object_identification.trajectory_type.find(type) == std::string::npos) {
+    for (const auto & evaluation : pet_artifact.object_evaluations) {
+      if (evaluation.detail.object_identification.trajectory_type.find(type) == std::string::npos) {
         continue;
       }
-      if (std::isnan(pet_val) || std::abs(ev.detail.pet) < std::abs(pet_val)) {
-        pet_val = ev.detail.pet;
-        pet_risk = ev.risk;
+      if (std::isnan(pet_val) || std::abs(evaluation.detail.pet) < std::abs(pet_val)) {
+        pet_val = evaluation.detail.pet;
+        pet_risk = evaluation.risk;
       }
     }
     add_report(fmt::format("PET_{}", type), pet_val, pet_risk);
