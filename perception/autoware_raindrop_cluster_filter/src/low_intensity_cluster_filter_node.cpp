@@ -30,7 +30,7 @@ namespace autoware::low_intensity_cluster_filter
 LowIntensityClusterFilter::LowIntensityClusterFilter(const rclcpp::NodeOptions & node_options)
 : autoware::agnocast_wrapper::Node("low_intensity_cluster_filter_node", node_options),
   tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_, *this)
+  tf_listener_(tf_buffer_)
 {
   intensity_threshold_ = declare_parameter<double>("intensity_threshold");
   existence_probability_threshold_ = declare_parameter<double>("existence_probability_threshold");

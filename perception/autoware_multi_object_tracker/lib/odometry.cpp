@@ -33,7 +33,7 @@ Odometry::Odometry(
   ego_frame_id_(ego_frame_id),
   world_frame_id_(world_frame_id),
   tf_buffer_(node_.get_clock()),
-  tf_listener_(tf_buffer_, node_),
+  tf_listener_(tf_buffer_),
   enable_odometry_uncertainty_(enable_odometry_uncertainty)
 {
   // Create tf timer

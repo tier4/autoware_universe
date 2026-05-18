@@ -56,7 +56,7 @@ ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::ObjectLaneletFilterBase(
   const std::string & node_name, const rclcpp::NodeOptions & node_options)
 : autoware::agnocast_wrapper::Node(node_name, node_options),
   tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_, *this)
+  tf_listener_(tf_buffer_)
 {
   using std::placeholders::_1;
 

@@ -90,7 +90,7 @@ namespace autoware::detection_by_tracker
 DetectionByTracker::DetectionByTracker(const rclcpp::NodeOptions & node_options)
 : autoware::agnocast_wrapper::Node("detection_by_tracker", node_options),
   tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_, *this)
+  tf_listener_(tf_buffer_)
 {
   // Create publishers and subscribers
   trackers_sub_ = create_subscription<autoware_perception_msgs::msg::TrackedObjects>(

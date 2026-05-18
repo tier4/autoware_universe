@@ -49,7 +49,7 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
   const std::string & node_name, const rclcpp::NodeOptions & options)
 : autoware::agnocast_wrapper::Node(node_name, options),
   tf_buffer_(this->get_clock()),
-  tf_listener_(tf_buffer_, *this)
+  tf_listener_(tf_buffer_)
 {
   // set rois_number
   rois_number_ = static_cast<std::size_t>(declare_parameter<int32_t>("rois_number"));
