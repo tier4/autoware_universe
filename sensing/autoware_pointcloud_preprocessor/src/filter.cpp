@@ -195,9 +195,8 @@ void autoware::pointcloud_preprocessor::Filter::compute_publish(
   // Copy timestamp to keep it
   output->header.stamp = input->header.stamp;
 
-  // Publish a boost shared ptr
-  pub_output_->publish(std::move(output));
-  published_time_publisher_->publish_if_subscribed(pub_output_, input->header.stamp);
+  // Publish a boost shared ptr (dispatches through virtual hook for derived overrides).
+  publish_output(std::move(output), input->header.stamp);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -438,8 +437,14 @@ void autoware::pointcloud_preprocessor::Filter::faster_input_indices_callback(
   if (!convert_output_costly(output)) return;
 
   output->header.stamp = cloud->header.stamp;
+  publish_output(std::move(output), cloud->header.stamp);
+}
+
+void autoware::pointcloud_preprocessor::Filter::publish_output(
+  std::unique_ptr<PointCloud2> output, const rclcpp::Time & stamp)
+{
   pub_output_->publish(std::move(output));
-  published_time_publisher_->publish_if_subscribed(pub_output_, cloud->header.stamp);
+  published_time_publisher_->publish_if_subscribed(pub_output_, stamp);
 }
 
 // TODO(sykwer): Temporary Implementation: Remove this interface when all the filter nodes conform

@@ -213,6 +213,14 @@ protected:
     const PointCloud2ConstPtr cloud, const PointIndicesConstPtr indices);
   virtual bool convert_output_costly(std::unique_ptr<PointCloud2> & output);
 
+  /** \brief Publish the filtered PointCloud2 and the corresponding PublishedTime.
+   *
+   * Hook for derived classes to redirect the publisher (e.g. to swap in an
+   * agnocast-capable publisher). The default implementation publishes via the
+   * base-class `pub_output_` / `published_time_publisher_`.
+   */
+  virtual void publish_output(std::unique_ptr<PointCloud2> output, const rclcpp::Time & stamp);
+
   //////////////////////
   // from PCLNodelet //
   //////////////////////

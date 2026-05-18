@@ -100,10 +100,14 @@ if(BUILD_TESTING)
     test/test_utils.cpp
     test/object_position_filter/test_object_position_filter.cpp
   )
-  ament_auto_add_gtest(object_lanelet_filter_tests
-    test/test_utils.cpp
-    test/lanelet_filter/test_lanelet_filter.cpp
-  )
+  # test_lanelet_filter passes the node as a plain rclcpp::Node, which only
+  # holds when Agnocast is disabled. Skip it for agnocast builds.
+  if(NOT "$ENV{ENABLE_AGNOCAST}" STREQUAL "1")
+    ament_auto_add_gtest(object_lanelet_filter_tests
+      test/test_utils.cpp
+      test/lanelet_filter/test_lanelet_filter.cpp
+    )
+  endif()
 endif()
 
 ament_auto_package(INSTALL_TO_SHARE
