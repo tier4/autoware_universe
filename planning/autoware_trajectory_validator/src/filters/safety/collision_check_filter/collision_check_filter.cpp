@@ -114,14 +114,14 @@ std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
 
   // RSS
   const auto rss_val = [&rss_artifact]() {
-    double min_rss = 0.0;
+    double max_rss = 0.0;
     for (const auto & evaluation : rss_artifact.object_evaluations) {
       const double rss = evaluation.detail.rss_acceleration;
-      if (rss < min_rss) {
-        min_rss = rss;
+      if (rss > max_rss) {
+        max_rss = rss;
       }
     }
-    return min_rss;
+    return max_rss;
   }();
   add_report("RSS", rss_val, rss_artifact.risk);
 
