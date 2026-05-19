@@ -50,11 +50,9 @@ bool VelocityModifier::is_trajectory_modification_required(
 
   const auto v_prev = prev_point.longitudinal_velocity_mps;
 
-  // Avoid division by zero if points are overlapping
   static constexpr double epsilon = 1e-3;
   if (ds < epsilon && v_prev > epsilon) return true;
 
-  // 4. Calculate the implicit step deceleration
   const auto expected_accel = -1.0 * (v_prev * v_prev) / (2.0 * ds);
   const auto a_prev = prev_point.acceleration_mps2;
 
