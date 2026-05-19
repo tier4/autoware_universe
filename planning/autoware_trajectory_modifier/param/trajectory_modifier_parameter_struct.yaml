@@ -5,6 +5,7 @@ trajectory_modifier_params:
       [
         autoware::trajectory_modifier::plugin::ObstacleStop,
         autoware::trajectory_modifier::plugin::StopPointFixer,
+        autoware::trajectory_modifier::plugin::VelocityModifier,
       ]
     description: List of plugin names to load
     read_only: false
@@ -59,6 +60,36 @@ trajectory_modifier_params:
       validation:
         bounds<>: [0.0, 10.0]
 
+  stopping_constraints:
+    stopped_velocity_th:
+      type: double
+      default_value: 0.1
+      description: Velocity threshold below which ego vehicle is considered stationary [m/s]
+      read_only: false
+      validation:
+        bounds<>: [0.0, 100.0]
+    nominal_deceleration:
+      type: double
+      default_value: 1.0
+      description: Nominal deceleration during stopping [m/s^2]
+      read_only: false
+      validation:
+        bounds<>: [0.0, 10.0]
+    maximum_deceleration:
+      type: double
+      default_value: 4.0
+      description: Maximum deceleration during stopping [m/s^2]
+      read_only: false
+      validation:
+        bounds<>: [0.0, 10.0]
+    jerk_limit:
+      type: double
+      default_value: 3.0
+      description: Jerk limit during stopping [m/s^3]
+      read_only: false
+      validation:
+        bounds<>: [0.0, 10.0]
+
   obstacle_stop:
     use_objects:
       type: bool
@@ -86,27 +117,6 @@ trajectory_modifier_params:
       description: Distance to maintain from an obstacle when stopped [m]
       validation:
         bounds<>: [0.0, 100.0]
-      read_only: false
-    nominal_stopping_decel:
-      type: double
-      default_value: 1.0
-      description: Nominal deceleration during stopping [m/s^2]
-      validation:
-        bounds<>: [0.0, 10.0]
-      read_only: false
-    maximum_stopping_decel:
-      type: double
-      default_value: 4.0
-      description: Maximum deceleration during stopping [m/s^2]
-      validation:
-        bounds<>: [0.0, 10.0]
-      read_only: false
-    stopping_jerk:
-      type: double
-      default_value: 3.0
-      description: Jerk during stopping [m/s^3]
-      validation:
-        bounds<>: [0.0, 10.0]
       read_only: false
     lateral_margin:
       type: double

@@ -217,15 +217,17 @@ protected:
     params_.use_stop_point_fixer = false;
     params_.trajectory_time_step = 0.1;
 
+    params_.stopping_constraints.stopped_velocity_th = 0.25;
+    params_.stopping_constraints.nominal_deceleration = 1.0;
+    params_.stopping_constraints.maximum_deceleration = 4.0;
+    params_.stopping_constraints.jerk_limit = 3.0;
+
     auto & p = params_.obstacle_stop;
     p.use_objects = true;
     p.use_pointcloud = true;
     p.enable_stop_for_objects = true;
     p.enable_stop_for_pointcloud = true;
     p.stop_margin = 6.0;
-    p.nominal_stopping_decel = 1.0;
-    p.maximum_stopping_decel = 4.0;
-    p.stopping_jerk = 3.0;
     p.lateral_margin = 0.5;
     p.arrived_distance_threshold = 0.5;
 
