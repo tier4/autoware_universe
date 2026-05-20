@@ -112,6 +112,9 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
     [this](const OperationModeState::SharedPtr msg) { current_operation_mode_ = *msg; });
   mrm_state_sub_ = create_subscription<MrmState>(
     "input/mrm_state", 1, std::bind(&VehicleCmdGate::onMrmState, this, _1));
+  teleoperation_state_sub_ = create_subscription<TeleoperationState>(
+    "input/teleoperation_state", rclcpp::QoS(1),
+    [this](const TeleoperationState::SharedPtr msg) { current_teleoperation_state_ = *msg; });
 
   // Subscriber for auto
   auto_control_cmd_sub_ = create_subscription<Control>(
@@ -182,6 +185,8 @@ VehicleCmdGate::VehicleCmdGate(const rclcpp::NodeOptions & node_options)
   // Set default value
   current_gate_mode_.data = GateMode::AUTO;
   current_operation_mode_.mode = OperationModeState::STOP;
+  current_teleoperation_state_.state = TeleoperationState::TELEOP_STATUS_IDLE;
+  current_teleoperation_state_.mode = TeleoperationState::TELEOP_MODE_NONE;
 
   // Service
   srv_engage_ = create_service<EngageSrv>(
@@ -334,6 +339,14 @@ void VehicleCmdGate::onAutoCtrlCmd(Control::ConstSharedPtr msg)
 
   if (current_gate_mode_.data == GateMode::AUTO) {
     publishControlCommands(auto_commands_);
+  }
+
+  if (current_gate_mode_.data == GateMode::EXTERNAL) {
+    if (
+      current_teleoperation_state_.state == TeleoperationState::TELEOP_STATUS_TELEOPERATION &&
+      current_teleoperation_state_.mode == TeleoperationState::TELEOP_MODE_TRAJECTORY_GUIDANCE) {
+      publishControlCommands(auto_commands_);
+    }
   }
 }
 

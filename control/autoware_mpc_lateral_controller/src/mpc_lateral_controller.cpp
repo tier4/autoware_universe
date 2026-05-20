@@ -263,8 +263,10 @@ trajectory_follower::LateralOutput MpcLateralController::run(
   Float32MultiArrayStamped debug_values;
 
   const bool is_under_control = input_data.current_operation_mode.is_autoware_control_enabled &&
-                                input_data.current_operation_mode.mode ==
-                                  autoware_adapi_v1_msgs::msg::OperationModeState::AUTONOMOUS;
+                                (input_data.current_operation_mode.mode ==
+                                   autoware_adapi_v1_msgs::msg::OperationModeState::AUTONOMOUS ||
+                                 input_data.current_operation_mode.mode ==
+                                   autoware_adapi_v1_msgs::msg::OperationModeState::REMOTE);
 
   if (!m_is_ctrl_cmd_prev_initialized || !is_under_control) {
     m_ctrl_cmd_prev = getInitialControlCommand();

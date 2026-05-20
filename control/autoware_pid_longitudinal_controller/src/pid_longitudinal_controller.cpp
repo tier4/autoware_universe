@@ -673,7 +673,8 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
   const auto debug_msg_once = [this](const auto & s) { RCLCPP_DEBUG_ONCE(logger_, "%s", s); };
 
   const bool is_under_control = m_current_operation_mode.is_autoware_control_enabled &&
-                                m_current_operation_mode.mode == OperationModeState::AUTONOMOUS;
+                                (m_current_operation_mode.mode == OperationModeState::AUTONOMOUS || 
+                                 m_current_operation_mode.mode == OperationModeState::REMOTE);
 
   if (is_under_control != m_prev_vehicle_is_under_control) {
     m_prev_vehicle_is_under_control = is_under_control;
@@ -906,6 +907,7 @@ autoware_control_msgs::msg::Longitudinal PidLongitudinalController::createCtrlCm
   cmd.stamp = clock_->now();
   cmd.velocity = static_cast<decltype(cmd.velocity)>(ctrl_cmd.vel);
   cmd.acceleration = static_cast<decltype(cmd.acceleration)>(ctrl_cmd.acc);
+  // cmd.is_defined_acceleration = true; // TODO do we need this?
 
   // store current velocity history
   m_vel_hist.push_back({clock_->now(), current_vel});
@@ -1072,7 +1074,10 @@ PidLongitudinalController::StateAfterDelay PidLongitudinalController::predictedS
   double pred_vel = current_vel;
   double pred_acc = current_acc;
 
-  if (m_ctrl_cmd_vec.empty() || m_current_operation_mode.mode != OperationModeState::AUTONOMOUS) {
+  if (
+    m_ctrl_cmd_vec.empty() ||
+    (m_current_operation_mode.mode != OperationModeState::AUTONOMOUS &&
+     m_current_operation_mode.mode != OperationModeState::REMOTE)) {
     // check time to stop
     const double time_to_stop = -current_vel / current_acc;
     const double delay_time_calculation =
@@ -1127,8 +1132,12 @@ double PidLongitudinalController::applyVelocityFeedback(const ControlData & cont
     control_data.interpolated_traj.points.at(control_data.target_idx).longitudinal_velocity_mps,
     control_data.interpolated_traj.points.at(control_data.target_idx).acceleration_mps2};
   const double diff_vel = (target_motion.vel - current_vel) * vel_sign;
-  const bool is_under_control = m_current_operation_mode.is_autoware_control_enabled &&
-                                m_current_operation_mode.mode == OperationModeState::AUTONOMOUS;
+  const bool is_under_control =
+    m_current_operation_mode.is_autoware_control_enabled &&
+    (m_current_operation_mode.mode == OperationModeState::AUTONOMOUS ||
+     m_current_operation_mode.mode == OperationModeState::REMOTE);
+
+  std::cout << "under control 2: " << is_under_control << "\n";
 
   const bool vehicle_is_moving = std::abs(current_vel) > m_current_vel_threshold_pid_integrate;
   const double time_under_control = getTimeUnderControl();

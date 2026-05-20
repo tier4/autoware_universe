@@ -31,6 +31,7 @@
 
 #include <autoware_adapi_v1_msgs/msg/mrm_state.hpp>
 #include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
+#include <autoware_adapi_v1_msgs/msg/teleoperation_state.hpp> 
 #include <autoware_control_msgs/msg/control.hpp>
 #include <autoware_internal_debug_msgs/msg/bool_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
@@ -60,6 +61,7 @@ namespace autoware::vehicle_cmd_gate
 
 using autoware_adapi_v1_msgs::msg::MrmState;
 using autoware_adapi_v1_msgs::msg::OperationModeState;
+using autoware_adapi_v1_msgs::msg::TeleoperationState;
 using autoware_control_msgs::msg::Control;
 using autoware_control_msgs::msg::Longitudinal;
 using autoware_internal_debug_msgs::msg::BoolStamped;
@@ -130,6 +132,7 @@ private:
   rclcpp::Subscription<Odometry>::SharedPtr kinematics_sub_;             // for filter
   rclcpp::Subscription<AccelWithCovarianceStamped>::SharedPtr acc_sub_;  // for filter
   rclcpp::Subscription<SteeringReport>::SharedPtr steer_sub_;            // for filter
+  rclcpp::Subscription<TeleoperationState>::SharedPtr teleoperation_state_sub_;
 
   void onGateMode(GateMode::ConstSharedPtr msg);
   void onExternalEmergencyStopHeartbeat(Heartbeat::ConstSharedPtr msg);
@@ -142,6 +145,7 @@ private:
   GateMode current_gate_mode_;
   MrmState current_mrm_state_;
   Odometry current_kinematics_;
+  TeleoperationState current_teleoperation_state_;
   double current_acceleration_ = 0.0;
   int filter_activated_count_ = 0;
 
