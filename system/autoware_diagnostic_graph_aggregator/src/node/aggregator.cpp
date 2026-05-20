@@ -157,13 +157,13 @@ void AggregatorNode::check_sequence_gaps(const DiagnosticArray & msg)
     if (iter != last_sequence_by_name_.end()) {
       const auto last_sequence_id = iter->second;
       if (current_sequence_id > last_sequence_id + 1) {
-        RCLCPP_WARN(
+        RCLCPP_ERROR(
           get_logger(),
           "diagnostics sequence_id gap detected for name '%s': last=%lu current=%lu missing=[%lu,%lu]",
           name.c_str(), last_sequence_id, current_sequence_id, last_sequence_id + 1,
           current_sequence_id - 1);
       } else if (current_sequence_id <= last_sequence_id) {
-        RCLCPP_WARN(
+        RCLCPP_DEBUG(
           get_logger(),
           "diagnostics sequence_id went backward or duplicated for name '%s': last=%lu current=%lu",
           name.c_str(), last_sequence_id, current_sequence_id);
