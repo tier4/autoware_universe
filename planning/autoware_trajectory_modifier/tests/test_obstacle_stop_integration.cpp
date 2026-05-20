@@ -205,10 +205,10 @@ protected:
 
   void TearDown() override
   {
+    rclcpp::shutdown();
     plugin_.reset();
     context_.reset();
     node_.reset();
-    rclcpp::shutdown();
   }
 
   void set_up_default_params()
@@ -358,8 +358,13 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedBeforeObject)
 
   // Assert
   ASSERT_TRUE(modified);
-  EXPECT_NEAR(trajectory.back().longitudinal_velocity_mps, 0.0F, 0.1F);
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
   EXPECT_LT(trajectory.back().pose.position.x, object_x);
+
+  const auto obj_length = car_blocking_path->objects.at(0).shape.dimensions.x;
+  const auto ego_fornt_offset = context_->vehicle_info.max_longitudinal_offset_m;
+  const auto expected_stop_margin = params_.obstacle_stop.stop_margin + ego_fornt_offset + obj_length / 2.0;
+  EXPECT_NEAR(object_x - trajectory.back().pose.position.x, expected_stop_margin, 0.1);
 }
 
 TEST_F(ObstacleStopIntegrationTest, StopPointInsertedForBlockingPointcloudCluster)
@@ -380,6 +385,21 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedForBlockingPointcloudCluste
 
   // Assert
   ASSERT_TRUE(modified);
-  EXPECT_NEAR(trajectory.back().longitudinal_velocity_mps, 0.0F, 0.1F);
+  EXPECT_FLOAT_EQ(trajectory.back().longitudinal_velocity_mps, 0.0F);
   EXPECT_LT(trajectory.back().pose.position.x, cluster_center_x);
+
+  const auto min_pcd_x = [&pointcloud_blocking_path]() {
+    sensor_msgs::PointCloud2ConstIterator<float> iter_x(*pointcloud_blocking_path, "x");
+    auto min_x = std::numeric_limits<float>::max();
+    for (; iter_x != iter_x.end(); ++iter_x) {
+      if (*iter_x < min_x) {
+        min_x = *iter_x;
+      }
+    }
+    return min_x;
+  }();
+
+  const auto ego_fornt_offset = context_->vehicle_info.max_longitudinal_offset_m;
+  const auto expected_stop_margin = params_.obstacle_stop.stop_margin + ego_fornt_offset;
+  EXPECT_NEAR(min_pcd_x - trajectory.back().pose.position.x, expected_stop_margin, 0.1);
 }
