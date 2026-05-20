@@ -20,6 +20,8 @@
 #include "reporter.hpp"
 #include "types.hpp"
 
+#include <vector>
+
 namespace autoware::trajectory_validator::plugin::safety
 {
 class CollisionCheckFilter : public plugin::ValidatorInterface
