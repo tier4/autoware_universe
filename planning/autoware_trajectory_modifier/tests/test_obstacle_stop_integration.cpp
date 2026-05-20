@@ -30,6 +30,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <limits>
 #include <memory>
 #include <string>
 #include <thread>
