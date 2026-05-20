@@ -44,8 +44,6 @@ protected:
 private:
   TrajectoryModifierParams::StoppingConstraints params_;
 
-  std::optional<size_t> zero_velocity_idx_;
-
   size_t update_velocities(
     TrajectoryPoints & trajectory, const double jerk, const double decel) const;
 };

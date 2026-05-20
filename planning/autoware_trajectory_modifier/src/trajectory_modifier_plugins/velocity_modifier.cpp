@@ -36,12 +36,12 @@ void VelocityModifier::on_initialize(const TrajectoryModifierParams & params)
 bool VelocityModifier::is_trajectory_modification_required(
   const TrajectoryPoints & traj_points, [[maybe_unused]] const InputData & input)
 {
-  if (
-    traj_points.size() < 2 || !zero_velocity_idx_.has_value() || zero_velocity_idx_.value() == 0) {
-    return false;
-  }
+  if (traj_points.size() < 2) return false;
 
-  const auto idx = zero_velocity_idx_.value();
+  const auto stop_idx = autoware::motion_utils::searchZeroVelocityIndex(traj_points);
+  if (!stop_idx || stop_idx == 0) return false;
+
+  const auto idx = stop_idx.value();
   const auto & stop_point = traj_points.at(idx);
   const auto & prev_point = traj_points.at(idx - 1);
 
@@ -51,7 +51,7 @@ bool VelocityModifier::is_trajectory_modification_required(
   const auto v_prev = prev_point.longitudinal_velocity_mps;
 
   static constexpr double epsilon = 1e-3;
-  if (ds < epsilon && v_prev > epsilon) return true;
+  if (ds < epsilon) return v_prev > epsilon;
 
   const auto expected_accel = -1.0 * (v_prev * v_prev) / (2.0 * ds);
   const auto a_prev = prev_point.acceleration_mps2;
@@ -62,13 +62,14 @@ bool VelocityModifier::is_trajectory_modification_required(
 
 bool VelocityModifier::modify_trajectory(TrajectoryPoints & traj_points, const InputData & input)
 {
-  zero_velocity_idx_ = autoware::motion_utils::searchZeroVelocityIndex(traj_points);
   if (!is_trajectory_modification_required(traj_points, input)) return false;
 
-  auto trajectory = traj_points;
-  const auto stop_idx = zero_velocity_idx_.value();
+  const auto stop_idx = autoware::motion_utils::searchZeroVelocityIndex(traj_points);
+  if (!stop_idx || stop_idx.value() == 0) return false;
 
-  trajectory.erase(trajectory.begin() + stop_idx + 1, trajectory.end());
+  auto trajectory = traj_points;
+
+  trajectory.erase(trajectory.begin() + stop_idx.value() + 1, trajectory.end());
   trajectory.back().longitudinal_velocity_mps = 0.0;
   trajectory.back().acceleration_mps2 = 0.0;
 
@@ -92,7 +93,7 @@ bool VelocityModifier::modify_trajectory(TrajectoryPoints & traj_points, const I
   if (!trajectory_interpolation_util) {
     RCLCPP_WARN_THROTTLE(
       get_node_ptr()->get_logger(), *get_clock(), 1000,
-      "[TM ObstacleStop] Failed to build interpolation trajectory");
+      "[TM VelocityModifier] Failed to build interpolation trajectory");
     return false;
   }
 
@@ -101,7 +102,7 @@ bool VelocityModifier::modify_trajectory(TrajectoryPoints & traj_points, const I
   if (dt < 1e-3) {
     RCLCPP_ERROR_THROTTLE(
       get_node_ptr()->get_logger(), *get_clock(), 1000,
-      "[TM ObstacleStop] Invalid trajectory time step: %f, unable to interpolate trajectory", dt);
+      "[TM VelocityModifier] Invalid trajectory time step: %f, unable to interpolate trajectory", dt);
     traj_points = std::move(trajectory);
     return true;
   }
