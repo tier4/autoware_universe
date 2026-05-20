@@ -41,11 +41,10 @@ bool VelocityModifier::is_trajectory_modification_required(
   if (traj_points.size() < 2) return false;
 
   const auto stop_idx = autoware::motion_utils::searchZeroVelocityIndex(traj_points);
-  if (!stop_idx || stop_idx == 0) return false;
+  if (!stop_idx.has_value() || stop_idx.value() == 0) return false;
 
-  const auto idx = stop_idx.value();
-  const auto & stop_point = traj_points.at(idx);
-  const auto & prev_point = traj_points.at(idx - 1);
+  const auto & stop_point = traj_points.at(stop_idx.value());
+  const auto & prev_point = traj_points.at(stop_idx.value() - 1);
 
   const auto ds =
     autoware_utils_geometry::calc_distance2d(stop_point.pose.position, prev_point.pose.position);
@@ -67,7 +66,7 @@ bool VelocityModifier::modify_trajectory(TrajectoryPoints & traj_points, const I
   if (!enabled_ || !is_trajectory_modification_required(traj_points, input)) return false;
 
   const auto stop_idx = autoware::motion_utils::searchZeroVelocityIndex(traj_points);
-  if (!stop_idx || stop_idx.value() == 0) return false;
+  if (!stop_idx.has_value() || stop_idx.value() == 0) return false;
 
   auto trajectory = traj_points;
 
