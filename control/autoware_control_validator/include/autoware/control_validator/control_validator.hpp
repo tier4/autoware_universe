@@ -31,6 +31,7 @@
 #include <autoware_internal_debug_msgs/msg/float64_stamped.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
+#include <diagnostic_msgs/msg/key_value.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
@@ -286,6 +287,11 @@ private:
     DiagnosticStatusWrapper & stat, const bool & is_ok, const std::string & msg) const;
 
   /**
+   * @brief Add common diagnostic values shared by all control validator statuses
+   */
+  void add_common_diag_values(DiagnosticStatusWrapper & stat) const;
+
+  /**
    * @brief Infer autonomous control state
    */
   bool infer_autonomous_control_state(const OperationModeState::ConstSharedPtr);
@@ -313,6 +319,7 @@ private:
   int64_t diag_error_count_threshold_ = 0;
   bool display_on_terminal_ = true;
   Updater diag_updater_{this};
+  uint64_t diag_sequence_id_{0};
   ControlValidatorStatus validation_status_;
   vehicle_info_utils::VehicleInfo vehicle_info_;
   bool flag_autonomous_control_enabled_ = false;
