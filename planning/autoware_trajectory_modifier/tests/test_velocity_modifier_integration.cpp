@@ -35,11 +35,12 @@ namespace
 {
 using autoware::trajectory_modifier::TrajectoryModifierContext;
 using autoware::trajectory_modifier::plugin::InputData;
-using autoware::trajectory_modifier::plugin::VelocityModifier;
 using autoware::trajectory_modifier::plugin::TrajectoryPoints;
+using autoware::trajectory_modifier::plugin::VelocityModifier;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 
-TrajectoryPoint create_trajectory_point(double x, double y, double velocity, double acceleration = 0.0)
+TrajectoryPoint create_trajectory_point(
+  double x, double y, double velocity, double acceleration = 0.0)
 {
   TrajectoryPoint point;
   point.pose.position.x = x;
@@ -54,7 +55,8 @@ TrajectoryPoint create_trajectory_point(double x, double y, double velocity, dou
   return point;
 }
 
-TrajectoryPoints create_constant_velocity_trajectory(double length, double velocity, double spacing = 1.0)
+TrajectoryPoints create_constant_velocity_trajectory(
+  double length, double velocity, double spacing = 1.0)
 {
   TrajectoryPoints trajectory;
   for (double x = 0.0; x <= length + 1e-6; x += spacing) {
@@ -63,7 +65,8 @@ TrajectoryPoints create_constant_velocity_trajectory(double length, double veloc
   return trajectory;
 }
 
-TrajectoryPoints create_step_change_zero_velocity_trajectory(double length, double default_velocity, double zero_velocity_length, double spacing = 1.0)
+TrajectoryPoints create_step_change_zero_velocity_trajectory(
+  double length, double default_velocity, double zero_velocity_length, double spacing = 1.0)
 {
   TrajectoryPoints trajectory;
   for (double x = 0.0; x <= length + 1e-6; x += spacing) {
@@ -73,7 +76,8 @@ TrajectoryPoints create_step_change_zero_velocity_trajectory(double length, doub
   return trajectory;
 }
 
-TrajectoryPoints create_constant_deceleration_trajectory(double length, double initial_velocity, double spacing = 1.0)
+TrajectoryPoints create_constant_deceleration_trajectory(
+  double length, double initial_velocity, double spacing = 1.0)
 {
   const auto accel = -1.0 * initial_velocity * initial_velocity / (2.0 * length);
   TrajectoryPoints trajectory;

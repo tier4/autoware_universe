@@ -104,7 +104,8 @@ bool VelocityModifier::modify_trajectory(TrajectoryPoints & traj_points, const I
   if (dt < 1e-3) {
     RCLCPP_ERROR_THROTTLE(
       get_node_ptr()->get_logger(), *get_clock(), 1000,
-      "[TM VelocityModifier] Invalid trajectory time step: %f, unable to interpolate trajectory", dt);
+      "[TM VelocityModifier] Invalid trajectory time step: %f, unable to interpolate trajectory",
+      dt);
     traj_points = std::move(trajectory);
     return true;
   }

@@ -362,8 +362,9 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedBeforeObject)
   EXPECT_LT(trajectory.back().pose.position.x, object_x);
 
   const auto obj_length = car_blocking_path->objects.at(0).shape.dimensions.x;
-  const auto ego_fornt_offset = context_->vehicle_info.max_longitudinal_offset_m;
-  const auto expected_stop_margin = params_.obstacle_stop.stop_margin + ego_fornt_offset + obj_length / 2.0;
+  const auto ego_front_offset = context_->vehicle_info.max_longitudinal_offset_m;
+  const auto expected_stop_margin =
+    params_.obstacle_stop.stop_margin + ego_front_offset + obj_length / 2.0;
   EXPECT_NEAR(object_x - trajectory.back().pose.position.x, expected_stop_margin, 0.1);
 }
 
@@ -399,7 +400,7 @@ TEST_F(ObstacleStopIntegrationTest, StopPointInsertedForBlockingPointcloudCluste
     return min_x;
   }();
 
-  const auto ego_fornt_offset = context_->vehicle_info.max_longitudinal_offset_m;
-  const auto expected_stop_margin = params_.obstacle_stop.stop_margin + ego_fornt_offset;
+  const auto ego_front_offset = context_->vehicle_info.max_longitudinal_offset_m;
+  const auto expected_stop_margin = params_.obstacle_stop.stop_margin + ego_front_offset;
   EXPECT_NEAR(min_pcd_x - trajectory.back().pose.position.x, expected_stop_margin, 0.1);
 }
