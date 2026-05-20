@@ -16,7 +16,9 @@
 
 #include "assessment.hpp"
 
+#include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -58,12 +60,13 @@ std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
 
   const auto add_report =
     [&](const std::string_view metric_name, double metric_value, RiskLevel risk) {
-      reports.push_back(autoware_trajectory_validator::build<MetricReport>()
-                          .validator_name(get_name())
-                          .validator_category(category())
-                          .metric_name(std::string(metric_name))
-                          .metric_value(metric_value)
-                          .level(convert_metrics_level(risk)));
+      reports.push_back(
+        autoware_trajectory_validator::build<MetricReport>()
+          .validator_name(get_name())
+          .validator_category(category())
+          .metric_name(std::string(metric_name))
+          .metric_value(metric_value)
+          .level(convert_metrics_level(risk)));
     };
 
   const double drac_val = drac_artifact.required_acceleration.has_value()

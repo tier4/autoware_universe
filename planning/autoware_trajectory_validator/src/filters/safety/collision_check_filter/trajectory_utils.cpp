@@ -28,6 +28,7 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -328,9 +329,10 @@ FootprintTrajectory compute_footprint_trajectory(
   footprint_trajectory.reserve(pose_trajectory.size());
 
   for (const auto & pose : pose_trajectory) {
-    footprint_trajectory.push_back(autoware_utils_geometry::to_footprint(
-      pose, vehicle_info.max_longitudinal_offset_m, -vehicle_info.min_longitudinal_offset_m,
-      vehicle_info.vehicle_width_m));
+    footprint_trajectory.push_back(
+      autoware_utils_geometry::to_footprint(
+        pose, vehicle_info.max_longitudinal_offset_m, -vehicle_info.min_longitudinal_offset_m,
+        vehicle_info.vehicle_width_m));
   }
   return footprint_trajectory;
 }

@@ -12,16 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__REPORTER_HPP_
-#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__REPORTER_HPP_
+#ifndef FILTERS__SAFETY__COLLISION_CHECK_FILTER__REPORTER_HPP_
+#define FILTERS__SAFETY__COLLISION_CHECK_FILTER__REPORTER_HPP_
 
 #include "types.hpp"
 
-#include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <rclcpp/time.hpp>
+
+#include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <nav_msgs/msg/odometry.hpp>
-#include <rclcpp/time.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <cstdint>
@@ -91,4 +92,4 @@ autoware_internal_planning_msgs::msg::PlanningFactorArray process_collision_arti
   visualization_msgs::msg::MarkerArray & debug_markers, double time_resolution);
 }  // namespace autoware::trajectory_validator::plugin::safety::reporter
 
-#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__REPORTER_HPP_
+#endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__REPORTER_HPP_

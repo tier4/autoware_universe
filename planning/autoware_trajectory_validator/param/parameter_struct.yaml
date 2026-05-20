@@ -22,7 +22,7 @@ validator:
       default_value: 0.0
       description: Minimum distance to lane boundary
       read_only: false
-  
+
   vehicle_constraint:
     max_speed:
       type: double
