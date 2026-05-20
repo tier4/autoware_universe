@@ -6,6 +6,7 @@
       - "autoware::trajectory_modifier::plugin::VelocityModifier"
     use_stop_point_fixer: true
     use_obstacle_stop: true
+    use_velocity_modifier: true
     trajectory_time_step: 0.1 # [s]
 
     # Stop Point Fixer Plugin Parameters

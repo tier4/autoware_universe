@@ -28,6 +28,11 @@
           "description": "Enable the obstacle stop modifier plugin",
           "default": true
         },
+        "use_velocity_modifier": {
+          "type": "boolean",
+          "description": "Enable the velocity modifier plugin",
+          "default": true
+        },
         "trajectory_time_step": {
           "type": "number",
           "description": "Time step for trajectory modification [s]",

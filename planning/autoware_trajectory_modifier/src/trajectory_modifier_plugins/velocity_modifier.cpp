@@ -30,6 +30,8 @@ using InterpolationTrajectory =
 
 void VelocityModifier::on_initialize(const TrajectoryModifierParams & params)
 {
+  enabled_ = params.use_velocity_modifier;
+  trajectory_time_step_ = params.trajectory_time_step;
   params_ = params.stopping_constraints;
 }
 
@@ -62,7 +64,7 @@ bool VelocityModifier::is_trajectory_modification_required(
 
 bool VelocityModifier::modify_trajectory(TrajectoryPoints & traj_points, const InputData & input)
 {
-  if (!is_trajectory_modification_required(traj_points, input)) return false;
+  if (!enabled_ || !is_trajectory_modification_required(traj_points, input)) return false;
 
   const auto stop_idx = autoware::motion_utils::searchZeroVelocityIndex(traj_points);
   if (!stop_idx || stop_idx.value() == 0) return false;

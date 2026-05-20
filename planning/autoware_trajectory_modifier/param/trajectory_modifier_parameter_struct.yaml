@@ -19,6 +19,11 @@ trajectory_modifier_params:
     default_value: true
     description: Enable the use of obstacle stop
     read_only: false
+  use_velocity_modifier:
+    type: bool
+    default_value: true
+    description: Enable the use of velocity modifier
+    read_only: false
   trajectory_time_step:
     type: double
     default_value: 0.1

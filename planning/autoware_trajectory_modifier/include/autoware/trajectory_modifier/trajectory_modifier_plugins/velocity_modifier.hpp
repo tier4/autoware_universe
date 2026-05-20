@@ -35,6 +35,8 @@ public:
 
   void update_params(const TrajectoryModifierParams & params) override
   {
+    enabled_ = params.use_velocity_modifier;
+    trajectory_time_step_ = params.trajectory_time_step;
     params_ = params.stopping_constraints;
   };
 
