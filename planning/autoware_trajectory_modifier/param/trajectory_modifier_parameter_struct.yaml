@@ -66,13 +66,6 @@ trajectory_modifier_params:
         bounds<>: [0.0, 10.0]
 
   stopping_constraints:
-    stopped_velocity_th:
-      type: double
-      default_value: 0.1
-      description: Velocity threshold below which ego vehicle is considered stationary [m/s]
-      read_only: false
-      validation:
-        bounds<>: [0.0, 100.0]
     nominal_deceleration:
       type: double
       default_value: 1.0

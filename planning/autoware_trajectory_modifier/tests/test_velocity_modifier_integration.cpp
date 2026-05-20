@@ -127,7 +127,6 @@ protected:
   {
     params_.use_velocity_modifier = true;
     params_.trajectory_time_step = 0.1;
-    params_.stopping_constraints.stopped_velocity_th = 0.1;
     params_.stopping_constraints.nominal_deceleration = 1.0;
     params_.stopping_constraints.maximum_deceleration = 4.0;
     params_.stopping_constraints.jerk_limit = 3.0;

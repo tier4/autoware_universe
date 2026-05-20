@@ -18,7 +18,6 @@
       min_stop_duration: 0.5 # [s]
 
     stopping_constraints:
-      stopped_velocity_th: 0.1 # [m/s]
       nominal_deceleration: 1.0 # [m/s^2]
       maximum_deceleration: 4.0 # [m/s^2]
       jerk_limit: 3.0 # [m/s^3]

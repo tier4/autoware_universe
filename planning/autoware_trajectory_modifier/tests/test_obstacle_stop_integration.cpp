@@ -217,7 +217,6 @@ protected:
     params_.use_stop_point_fixer = false;
     params_.trajectory_time_step = 0.1;
 
-    params_.stopping_constraints.stopped_velocity_th = 0.25;
     params_.stopping_constraints.nominal_deceleration = 1.0;
     params_.stopping_constraints.maximum_deceleration = 4.0;
     params_.stopping_constraints.jerk_limit = 3.0;

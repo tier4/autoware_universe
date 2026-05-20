@@ -77,12 +77,6 @@
         "stopping_constraints": {
           "type": "object",
           "properties": {
-            "stopped_velocity_th": {
-              "type": "number",
-              "description": "Velocity threshold below which ego vehicle is considered stationary [m/s]",
-              "default": 0.1,
-              "minimum": 0.0
-            },
             "nominal_deceleration": {
               "type": "number",
               "description": "Nominal deceleration during stopping [m/s^2]",
