@@ -163,7 +163,7 @@ std::optional<CollisionDetail> find_collision_timing(
 
 PetArtifact assess_planned_speed_collision_timing(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const PetParamMap & pet_param_map, double time_resolution, VehicleInfo & vehicle_info,
+  const PetParamMap & pet_param_map, const GlobalParams & global_params, VehicleInfo & vehicle_info,
   const std::vector<TrajectoryData> & object_trajectories)
 {
   // todo (takagi): ego_trajectory options can not set for each object type because cache structure
@@ -173,7 +173,7 @@ PetArtifact assess_planned_speed_collision_timing(
                                             -ego_pet_params.ego_assumed_acceleration +
                                           ego_pet_params.ego_total_braking_delay;
   auto ego_trajectory = trajectory::generate_ego_trajectory(
-    traj_points, context, ego_time_horizon_for_pet, time_resolution, vehicle_info);
+    traj_points, context, ego_time_horizon_for_pet, vehicle_info, global_params);
 
   std::vector<CollisionEvaluation> collision_evaluations{};
   for (const auto & object_trajectory : object_trajectories) {
@@ -186,7 +186,7 @@ PetArtifact assess_planned_speed_collision_timing(
     }
 
     auto collision = find_collision_timing(
-      ego_trajectory, object_trajectory, pet_params.warn_threshold, time_resolution);
+      ego_trajectory, object_trajectory, pet_params.warn_threshold, global_params.time_resolution);
 
     if (collision.has_value()) {
       const auto risk_level =
@@ -223,15 +223,15 @@ DracArtifact assess_drac(
     const auto ego_deceleration_trajectory = [&]() {
       if (ego_dec == 0.0) {
         return trajectory::generate_ego_trajectory(
-          traj_points, context, ego_time_horizon, global_params.time_resolution, vehicle_info);
+          traj_points, context, ego_time_horizon, vehicle_info, global_params);
       } else if (ego_dec > default_max_ego_deceleration - 1e-3) {
         return trajectory::generate_ego_trajectory(
-          context.odometry->twist.twist, 0.0, -ego_dec, ego_time_horizon,
-          global_params.time_resolution, traj_points, vehicle_info);
+          context.odometry->twist.twist, 0.0, -ego_dec, ego_time_horizon, traj_points, vehicle_info,
+          global_params);
       }
       return trajectory::generate_ego_trajectory(
         context.odometry->twist.twist, ego_drac_params.ego_total_braking_delay, -ego_dec,
-        ego_time_horizon, global_params.time_resolution, traj_points, vehicle_info);
+        ego_time_horizon, traj_points, vehicle_info, global_params);
     }();
 
     std::vector<CollisionEvaluation> collision_evaluations{};
@@ -374,7 +374,7 @@ std::pair<PetArtifact, DracArtifact> assess(
 
   PetArtifact pet_artifact{};
   pet_artifact = assess_planned_speed_collision_timing(
-    traj_points, context, pet_param_map, global_params.time_resolution, vehicle_info,
+    traj_points, context, pet_param_map, global_params, vehicle_info,
     nominal_speed_object_trajectories);
 
   DracArtifact drac_artifact{};
@@ -412,14 +412,14 @@ std::optional<double> compute_distance_to_collision(
 }
 
 TrajectoryData generate_rss_ego_trajectory(
-  const TrajectoryPoints & traj_points, const FilterContext & context, double time_resolution,
-  VehicleInfo & vehicle_info)
+  const TrajectoryPoints & traj_points, const FilterContext & context,
+  const GlobalParams & global_params, VehicleInfo & vehicle_info)
 {
   const double ego_time_horizon_for_rss =
     rclcpp::Duration(traj_points.back().time_from_start).seconds();
 
   return trajectory::generate_ego_trajectory(
-    traj_points, context, ego_time_horizon_for_rss, time_resolution, vehicle_info);
+    traj_points, context, ego_time_horizon_for_rss, vehicle_info, global_params);
 }
 
 RssDetail assess_required_acceleration(
@@ -453,14 +453,14 @@ RssDetail assess_required_acceleration(
 
 RssArtifact assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const RssParamMap & rss_param_map, double time_resolution, VehicleInfo & vehicle_info)
+  const RssParamMap & rss_param_map, const GlobalParams & global_params, VehicleInfo & vehicle_info)
 {
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
     return {};
   }
 
   const auto ego_trajectory =
-    generate_rss_ego_trajectory(traj_points, context, time_resolution, vehicle_info);
+    generate_rss_ego_trajectory(traj_points, context, global_params, vehicle_info);
 
   std::vector<RssEvaluation> rss_evaluations{};
   rss_evaluations.reserve(context.predicted_objects->objects.size());

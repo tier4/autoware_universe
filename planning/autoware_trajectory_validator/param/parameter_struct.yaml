@@ -45,6 +45,22 @@ validator:
         default_value: 0.1
         description: sampling interval used in collision check trajectory generation
         read_only: false
+      ego_footprint_margin:
+        lateral:
+          type: double
+          default_value: 0.0
+          description: lateral margin added to both sides of the ego footprint for collision checks
+          read_only: false
+        front:
+          type: double
+          default_value: 0.0
+          description: front margin added to the ego footprint for collision checks
+          read_only: false
+        rear:
+          type: double
+          default_value: 0.0
+          description: rear margin added to the ego footprint for collision checks
+          read_only: false
     drac:
       enable_assessment:
         base:
