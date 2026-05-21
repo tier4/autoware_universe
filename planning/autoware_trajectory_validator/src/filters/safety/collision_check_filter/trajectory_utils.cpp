@@ -29,6 +29,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -254,55 +255,117 @@ PoseTrajectory compute_pose_trajectory_from_time(
 
 namespace autoware::trajectory_validator::plugin::safety::geometry
 {
-Polygon2d to_polygon2d(
-  const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape)
+namespace detail
 {
-  Polygon2d polygon;
-
+Eigen::Isometry2d pose_to_isometry(const geometry_msgs::msg::Pose & pose)
+{
   Eigen::Isometry2d transform = Eigen::Isometry2d::Identity();
   transform.linear() = Eigen::Rotation2Dd(tf2::getYaw(pose.orientation)).toRotationMatrix();
   transform.translation() = Eigen::Vector2d{pose.position.x, pose.position.y};
+  return transform;
+}
 
-  auto append_transformed_point =
-    [&](const Eigen::Isometry2d & current_transform, const double x, const double y) {
-      const Eigen::Vector2d transformed = current_transform * Eigen::Vector2d{x, y};
-      polygon.outer().push_back(Point2d{transformed.x(), transformed.y()});
-    };
+Point2d transform_point(const Eigen::Isometry2d & transform, const Point2d & point)
+{
+  const Eigen::Vector2d transformed = transform * Eigen::Vector2d{point.x(), point.y()};
+  return Point2d{transformed.x(), transformed.y()};
+}
 
+BaseFootprint create_base_polygon(const autoware_perception_msgs::msg::Shape & shape)
+{
   if (shape.type == autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
     const double half_x = shape.dimensions.x / 2.0;
     const double half_y = shape.dimensions.y / 2.0;
 
-    polygon.outer().reserve(5);
-    append_transformed_point(transform, half_x, half_y);
-    append_transformed_point(transform, half_x, -half_y);
-    append_transformed_point(transform, -half_x, -half_y);
-    append_transformed_point(transform, -half_x, half_y);
-    polygon.outer().push_back(polygon.outer().front());
-  } else if (shape.type == autoware_perception_msgs::msg::Shape::CYLINDER) {
+    return QuadFootprint{
+      Point2d{half_x, half_y}, Point2d{half_x, -half_y}, Point2d{-half_x, -half_y},
+      Point2d{-half_x, half_y}};
+  }
+
+  if (shape.type == autoware_perception_msgs::msg::Shape::CYLINDER) {
     const double radius = shape.dimensions.x / 2.0;
     constexpr int circle_discrete_num = 6;
 
-    polygon.outer().reserve(circle_discrete_num + 1);
+    NgonFootprint polygon;
+    polygon.reserve(circle_discrete_num);
     for (int i = 0; i < circle_discrete_num; ++i) {
       const double theta =
         -1.0 * (static_cast<double>(i) / static_cast<double>(circle_discrete_num)) * 2.0 * M_PI;
-      append_transformed_point(transform, std::cos(theta) * radius, std::sin(theta) * radius);
+      polygon.push_back(Point2d{std::cos(theta) * radius, std::sin(theta) * radius});
     }
-    polygon.outer().push_back(polygon.outer().front());
-  } else if (shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
-    polygon.outer().reserve(shape.footprint.points.size() + 1);
-    for (const auto & point : shape.footprint.points) {
-      append_transformed_point(transform, point.x, point.y);
-    }
-    if (!polygon.outer().empty()) {
-      polygon.outer().push_back(polygon.outer().front());
-    }
-  } else {
-    throw std::logic_error("The shape type is not supported in autoware_utils.");
+    return polygon;
   }
 
+  if (shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
+    NgonFootprint polygon;
+    polygon.reserve(shape.footprint.points.size());
+    for (const auto & point : shape.footprint.points) {
+      polygon.push_back(Point2d{point.x, point.y});
+    }
+    if (
+      polygon.size() > 1 && shape.footprint.points.front().x == shape.footprint.points.back().x &&
+      shape.footprint.points.front().y == shape.footprint.points.back().y) {
+      polygon.pop_back();
+    }
+    if (polygon.size() == 4U) {
+      return QuadFootprint{polygon[0], polygon[1], polygon[2], polygon[3]};
+    }
+    return polygon;
+  }
+
+  throw std::logic_error("The shape type is not supported in autoware_utils.");
+}
+
+QuadFootprint create_base_quad(const VehicleInfo & vehicle_info)
+{
+  const double half_width = vehicle_info.vehicle_width_m / 2.0;
+  return QuadFootprint{
+    Point2d{vehicle_info.max_longitudinal_offset_m, half_width},
+    Point2d{vehicle_info.max_longitudinal_offset_m, -half_width},
+    Point2d{vehicle_info.min_longitudinal_offset_m, -half_width},
+    Point2d{vehicle_info.min_longitudinal_offset_m, half_width}};
+}
+
+NgonFootprint transform_footprint(const Eigen::Isometry2d & transform, const NgonFootprint & points)
+{
+  NgonFootprint polygon;
+  for (const auto & point : points) {
+    polygon.push_back(transform_point(transform, point));
+  }
   return polygon;
+}
+
+QuadFootprint transform_footprint(const Eigen::Isometry2d & transform, const QuadFootprint & points)
+{
+  QuadFootprint polygon;
+  for (size_t i = 0; i < points.size(); ++i) {
+    polygon[i] = transform_point(transform, points[i]);
+  }
+  return polygon;
+}
+
+template <typename Points>
+Polygon2d to_closed_polygon2d(const Eigen::Isometry2d & transform, const Points & points)
+{
+  Polygon2d polygon;
+  polygon.outer().reserve(points.size() + 1U);
+  for (const auto & point : points) {
+    polygon.outer().push_back(transform_point(transform, point));
+  }
+  if (!polygon.outer().empty()) {
+    polygon.outer().push_back(polygon.outer().front());
+  }
+  return polygon;
+}
+}  // namespace detail
+
+Polygon2d to_polygon2d(
+  const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape)
+{
+  const auto transform = detail::pose_to_isometry(pose);
+  return std::visit(
+    [&](const auto & base_polygon) { return detail::to_closed_polygon2d(transform, base_polygon); },
+    detail::create_base_polygon(shape));
 }
 }  // namespace autoware::trajectory_validator::plugin::safety::geometry
 
@@ -313,26 +376,33 @@ namespace footprint
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const autoware_perception_msgs::msg::Shape & object_shape)
 {
-  FootprintTrajectory footprint_trajectory;
-  footprint_trajectory.reserve(pose_trajectory.size());
-
-  for (const auto & pose : pose_trajectory) {
-    footprint_trajectory.push_back(geometry::to_polygon2d(pose, object_shape));
-  }
-  return footprint_trajectory;
+  return std::visit(
+    [&](const auto & base_footprint) -> FootprintTrajectory {
+      using Footprint = std::decay_t<decltype(base_footprint)>;
+      using Trajectory = std::conditional_t<
+        std::is_same_v<Footprint, QuadFootprint>, QuadTrajectory, NgonTrajectory>;
+      Trajectory footprint_trajectory;
+      footprint_trajectory.reserve(pose_trajectory.size());
+      for (const auto & pose : pose_trajectory) {
+        footprint_trajectory.push_back(
+          geometry::detail::transform_footprint(
+            geometry::detail::pose_to_isometry(pose), base_footprint));
+      }
+      return footprint_trajectory;
+    },
+    geometry::detail::create_base_polygon(object_shape));
 }
 
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const VehicleInfo & vehicle_info)
 {
-  FootprintTrajectory footprint_trajectory;
+  const auto base_quad = geometry::detail::create_base_quad(vehicle_info);
+  QuadTrajectory footprint_trajectory;
   footprint_trajectory.reserve(pose_trajectory.size());
 
   for (const auto & pose : pose_trajectory) {
     footprint_trajectory.push_back(
-      autoware_utils_geometry::to_footprint(
-        pose, vehicle_info.max_longitudinal_offset_m, -vehicle_info.min_longitudinal_offset_m,
-        vehicle_info.vehicle_width_m));
+      geometry::detail::transform_footprint(geometry::detail::pose_to_isometry(pose), base_quad));
   }
   return footprint_trajectory;
 }

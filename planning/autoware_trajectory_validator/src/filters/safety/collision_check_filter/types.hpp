@@ -25,9 +25,11 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 
+#include <array>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -40,7 +42,12 @@ using autoware_utils_geometry::Polygon2d;
 using TimeTrajectory = std::vector<double>;
 using TravelDistanceTrajectory = std::vector<double>;
 using PoseTrajectory = std::vector<geometry_msgs::msg::Pose>;
-using FootprintTrajectory = std::vector<Polygon2d>;
+using QuadFootprint = std::array<Point2d, 4>;
+using NgonFootprint = std::vector<Point2d>;
+using BaseFootprint = std::variant<QuadFootprint, NgonFootprint>;
+using QuadTrajectory = std::vector<QuadFootprint>;
+using NgonTrajectory = std::vector<NgonFootprint>;
+using FootprintTrajectory = std::variant<QuadTrajectory, NgonTrajectory>;
 using StepPolygonTrajectory = std::vector<Polygon2d>;
 
 static constexpr double TIME_INDEX_EPSILON = 1e-3;
