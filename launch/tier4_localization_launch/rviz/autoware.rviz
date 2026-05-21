@@ -4,9 +4,9 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
+        - /Map1
         - /Map1/Lanelet2VectorMap1/Namespaces1
         - /Sensing1/LiDAR1
-        - /Sensing1/LiDAR1/ConcatenatePointCloud1
         - /Sensing1/LiDAR1/ConcatenatePointCloud1/Autocompute Value Bounds1
       Splitter Ratio: 0.557669460773468
     Tree Height: 366
@@ -232,7 +232,7 @@ Visualization Manager:
       Displays:
         - Class: rviz_common/Group
           Displays:
-            - Alpha: 0.4000000059604645
+            - Alpha: 1
               Autocompute Intensity Bounds: true
               Autocompute Value Bounds:
                 Max Value: 5
@@ -381,7 +381,7 @@ Visualization Manager:
                   Scale: 1
                   Value: true
                 Value: true
-              Enabled: false
+              Enabled: true
               Head Length: 0.4000000059604645
               Head Radius: 0.6000000238418579
               Name: PoseWithCovAligned
@@ -395,7 +395,7 @@ Visualization Manager:
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /localization/pose_estimator/pose_with_covariance
-              Value: false
+              Value: true
             - Buffer Size: 200
               Class: rviz_plugins::PoseHistory
               Enabled: false
@@ -599,8 +599,7 @@ Visualization Manager:
                     Alpha: 0.9990000128746033
                     Color: 119; 11; 32
                   Name: DetectedObjects
-                  Namespaces:
-                    {}
+                  Namespaces: ~
                   Object Fill Type: skeleton
                   PEDESTRIAN:
                     Alpha: 0.9990000128746033
@@ -660,8 +659,7 @@ Visualization Manager:
                     Alpha: 0.9990000128746033
                     Color: 119; 11; 32
                   Name: TrackedObjects
-                  Namespaces:
-                    {}
+                  Namespaces: ~
                   Object Fill Type: skeleton
                   PEDESTRIAN:
                     Alpha: 0.9990000128746033
@@ -721,8 +719,7 @@ Visualization Manager:
                     Alpha: 0.9990000128746033
                     Color: 119; 11; 32
                   Name: PredictedObjects
-                  Namespaces:
-                    {}
+                  Namespaces: ~
                   Object Fill Type: skeleton
                   PEDESTRIAN:
                     Alpha: 0.9990000128746033
@@ -2953,6 +2950,7 @@ Visualization Manager:
                 Value: /sensing/camera/camera6/image_raw
               Value: true
               Visibility:
+                "": true
                 Control:
                   Debug/AEB: true
                   Debug/MPC: true
@@ -2973,21 +2971,8 @@ Visualization Manager:
                     "": true
                     Value: true
                   Planning:
-                    Objects Of Interest:
-                      AvoidanceByLCLeft: true
-                      AvoidanceByLCRight: true
-                      AvoidanceLeft: true
-                      AvoidanceRight: true
-                      BlindSpot: true
-                      Crosswalk: true
-                      DetectionArea: true
-                      GoalPlanner: true
-                      Intersection: true
-                      LaneChangeLeft: true
-                      LaneChangeRight: true
-                      NoStoppingArea: true
-                      StartPlanner: true
-                      TrafficLight: true
+                    "":
+                      "": true
                       Value: true
                     Value: true
                   Sensing:
@@ -3254,8 +3239,7 @@ Visualization Manager:
                 Alpha: 0.5
                 Color: 255; 255; 255
               Name: RadarRawObjects(white)
-              Namespaces:
-                {}
+              Namespaces: ~
               Object Fill Type: skeleton
               PEDESTRIAN:
                 Alpha: 0.5
@@ -3420,8 +3404,7 @@ Visualization Manager:
                 Alpha: 0.9990000128746033
                 Color: 255; 138; 128
               Name: Centerpoint(red1)
-              Namespaces:
-                {}
+              Namespaces: ~
               Object Fill Type: skeleton
               PEDESTRIAN:
                 Alpha: 0.9990000128746033
@@ -3476,8 +3459,7 @@ Visualization Manager:
                 Alpha: 0.9990000128746033
                 Color: 255; 82; 82
               Name: CenterpointROIFusion(red2)
-              Namespaces:
-                {}
+              Namespaces: ~
               Object Fill Type: skeleton
               PEDESTRIAN:
                 Alpha: 0.9990000128746033
@@ -3532,8 +3514,7 @@ Visualization Manager:
                 Alpha: 0.9990000128746033
                 Color: 213; 0; 0
               Name: CenterpointValidator(red3)
-              Namespaces:
-                {}
+              Namespaces: ~
               Object Fill Type: skeleton
               PEDESTRIAN:
                 Alpha: 0.9990000128746033
@@ -3588,8 +3569,7 @@ Visualization Manager:
                 Alpha: 0.9990000128746033
                 Color: 178; 255; 89
               Name: PointPainting(light_green1)
-              Namespaces:
-                {}
+              Namespaces: ~
               Object Fill Type: skeleton
               PEDESTRIAN:
                 Alpha: 0.9990000128746033
@@ -3644,8 +3624,7 @@ Visualization Manager:
                 Alpha: 0.9990000128746033
                 Color: 118; 255; 3
               Name: PointPaintingROIFusion(light_green2)
-              Namespaces:
-                {}
+              Namespaces: ~
               Object Fill Type: skeleton
               PEDESTRIAN:
                 Alpha: 0.9990000128746033
@@ -3700,8 +3679,7 @@ Visualization Manager:
                 Alpha: 0.9990000128746033
                 Color: 100; 221; 23
               Name: PointPaintingValidator(light_green3)
-              Namespaces:
-                {}
+              Namespaces: ~
               Object Fill Type: skeleton
               PEDESTRIAN:
                 Alpha: 0.9990000128746033
@@ -3756,8 +3734,7 @@ Visualization Manager:
                 Alpha: 0.9990000128746033
                 Color: 255; 145; 0
               Name: DetectionByTracker(orange)
-              Namespaces:
-                {}
+              Namespaces: ~
               Object Fill Type: skeleton
               PEDESTRIAN:
                 Alpha: 0.9990000128746033
@@ -3812,8 +3789,7 @@ Visualization Manager:
                 Alpha: 0.9990000128746033
                 Color: 213; 0; 249
               Name: CameraLidarFusion(purple)
-              Namespaces:
-                {}
+              Namespaces: ~
               Object Fill Type: skeleton
               PEDESTRIAN:
                 Alpha: 0.9990000128746033
@@ -3868,8 +3844,7 @@ Visualization Manager:
                 Alpha: 0.9990000128746033
                 Color: 255; 255; 255
               Name: RadarFarObjects(white)
-              Namespaces:
-                {}
+              Namespaces: ~
               Object Fill Type: skeleton
               PEDESTRIAN:
                 Alpha: 0.9990000128746033
@@ -3924,8 +3899,7 @@ Visualization Manager:
                 Alpha: 0.9990000128746033
                 Color: 255; 234; 0
               Name: Detection(yellow)
-              Namespaces:
-                {}
+              Namespaces: ~
               Object Fill Type: skeleton
               PEDESTRIAN:
                 Alpha: 0.9990000128746033
@@ -3981,8 +3955,7 @@ Visualization Manager:
                 Alpha: 0.9990000128746033
                 Color: 0; 230; 118
               Name: Tracking(green)
-              Namespaces:
-                {}
+              Namespaces: ~
               Object Fill Type: skeleton
               PEDESTRIAN:
                 Alpha: 0.9990000128746033
@@ -4038,8 +4011,7 @@ Visualization Manager:
                 Alpha: 0.9990000128746033
                 Color: 0; 176; 255
               Name: Prediction(light_blue)
-              Namespaces:
-                {}
+              Namespaces: ~
               Object Fill Type: skeleton
               PEDESTRIAN:
                 Alpha: 0.9990000128746033
@@ -4246,6 +4218,41 @@ Visualization Manager:
           Name: Control
       Enabled: false
       Name: Debug
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.10000000149011612
+      Class: rviz_default_plugins/PoseWithCovariance
+      Color: 255; 25; 0
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 204; 51; 204
+          Scale: 1
+          Value: true
+        Value: true
+      Enabled: true
+      Head Length: 0.4000000059604645
+      Head Radius: 0.6000000238418579
+      Name: PoseWithCovariance
+      Shaft Length: 0.6000000238418579
+      Shaft Radius: 0.30000001192092896
+      Shape: Arrow
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /localization/pose_twist_fusion_filter/biased_pose_with_covariance
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 42; 42; 42
@@ -4394,6 +4401,21 @@ Visualization Manager:
         Value: TopDownOrtho (rviz)
         X: 0
         Y: 0
+      - Angle: 0
+        Class: rviz_default_plugins/TopDownOrtho
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Invert Z Axis: false
+        Name: TopDownOrtho
+        Near Clip Distance: 0.009999999776482582
+        Scale: 24.403093338012695
+        Target Frame: base_link
+        Value: TopDownOrtho (rviz_default_plugins)
+        X: 0
+        Y: 0
 Window Geometry:
   AutowareDateTimePanel:
     collapsed: false
@@ -4406,7 +4428,7 @@ Window Geometry:
   Hide Right Dock: false
   PointcloudOnCamera:
     collapsed: false
-  QMainWindow State: 000000ff00000000fd0000000400000000000001ee000004d6fc020000000efb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb00000024004100750074006f00770061007200650053007400610074006500500061006e0065006c010000003e000004d60000006e00fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb0000000c00430061006d0065007200610100000682000000eb0000000000000000fb0000000a0049006d0061006700650100000505000002680000000000000000fb0000002c0049006e0069007400690061006c0050006f007300650042007500740074006f006e00500061006e0065006c000000068f000000de0000000000000000fb0000002c0049006e0069007400690061006c0050006f007300650042007500740074006f006e00500061006e0065006c000000068f000000de0000000000000000fb00000030005200650063006f0067006e006900740069006f006e0052006500730075006c0074004f006e0049006d00610067006500000003bf000001550000002800fffffffb0000002a004100750074006f0077006100720065004400610074006500540069006d006500500061006e0065006c0000000332000000720000004200fffffffb000000240050006f0069006e00740063006c006f00750064004f006e00430061006d006500720061000000039d000000560000002800ffffff00000001000001ab000004d6fc0200000004fb000000100044006900730070006c006100790073010000003e000001ac000000ca00fffffffc000001f000000324000000c40100001dfa000000000100000002fb0000000a0056006900650077007301000005d5000001ab0000010000fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000000ffffffff0000008a00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000e7a0000005afc0100000001fb0000000a00560069006500770073030000004e00000080000002e1000001970000000300000e7a0000005afc0100000002fb0000000800540069006d0065010000000000000e7a0000000000000000fb0000000800540069006d006501000000000000045000000000000000000000065b000004d600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000400000000000001ee000004d6fc020000000efb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb00000024004100750074006f00770061007200650053007400610074006500500061006e0065006c000000003e000004d60000006e00fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb0000000c00430061006d0065007200610100000682000000eb0000000000000000fb0000000a0049006d0061006700650100000505000002680000000000000000fb0000002c0049006e0069007400690061006c0050006f007300650042007500740074006f006e00500061006e0065006c000000068f000000de0000000000000000fb0000002c0049006e0069007400690061006c0050006f007300650042007500740074006f006e00500061006e0065006c000000068f000000de0000000000000000fb00000030005200650063006f0067006e006900740069006f006e0052006500730075006c0074004f006e0049006d00610067006500000003bf000001550000002800fffffffb0000002a004100750074006f0077006100720065004400610074006500540069006d006500500061006e0065006c0000000332000000720000006e00fffffffb000000240050006f0069006e00740063006c006f00750064004f006e00430061006d006500720061000000039d000000560000002800ffffff00000001000001ab000004d6fc0200000004fb000000100044006900730070006c006100790073010000003e000001ac000000ca00fffffffc000001f000000324000000c40100001dfa000000000100000002fb0000000a0056006900650077007301000005d5000001ab0000010000fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000000ffffffff0000008a00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000e7a0000005afc0100000001fb0000000a00560069006500770073030000004e00000080000002e1000001970000000300000e7a0000005afc0100000002fb0000000800540069006d0065010000000000000e7a0000000000000000fb0000000800540069006d006501000000000000045000000000000000000000084f000004d600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   RecognitionResultOnImage:
     collapsed: false
   Selection:
