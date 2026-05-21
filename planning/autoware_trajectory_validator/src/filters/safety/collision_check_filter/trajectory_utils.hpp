@@ -98,11 +98,7 @@ private:
     MultiPoint2d all_points;
     std::visit(
       [&](const auto & polygons) {
-        size_t total_point_count = 0;
-        for (size_t i = key.first; i <= key.second; ++i) {
-          total_point_count += polygons[i].size();
-        }
-
+        size_t total_point_count = (key.second - key.first + 1U) * polygons[key.first].size();
         all_points.reserve(total_point_count);
         for (size_t i = key.first; i <= key.second; ++i) {
           for (const auto & pt : polygons[i]) {

@@ -42,11 +42,8 @@ using autoware_utils_geometry::Polygon2d;
 using TimeTrajectory = std::vector<double>;
 using TravelDistanceTrajectory = std::vector<double>;
 using PoseTrajectory = std::vector<geometry_msgs::msg::Pose>;
-using QuadFootprint = std::array<Point2d, 4>;
-using NgonFootprint = std::vector<Point2d>;
-using BaseFootprint = std::variant<QuadFootprint, NgonFootprint>;
-using QuadTrajectory = std::vector<QuadFootprint>;
-using NgonTrajectory = std::vector<NgonFootprint>;
+using QuadTrajectory = std::vector<std::array<Point2d, 4>>;
+using NgonTrajectory = std::vector<std::vector<Point2d>>;
 using FootprintTrajectory = std::variant<QuadTrajectory, NgonTrajectory>;
 using StepPolygonTrajectory = std::vector<Polygon2d>;
 
