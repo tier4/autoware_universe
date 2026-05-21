@@ -12,17 +12,17 @@ This node is an alternative implementation to `autoware::pointcloud_preprocessor
 
 ### Input
 
-| Name                      | Type                                             | Description                               |
-| ------------------------- | ------------------------------------------------ | ----------------------------------------- |
-| `~/input/pointcloud`      | `sensor_msgs::msg::PointCloud2`                  | Input pointcloud topic.                   |
-| `~/input/pointcloud/cuda` | `negotiated_interfaces/msg/NegotiatedTopicsInfo` | Input pointcloud type negotiation topic.  |
+| Name                      | Type                                             | Description                              |
+| ------------------------- | ------------------------------------------------ | ---------------------------------------- |
+| `~/input/pointcloud`      | `sensor_msgs::msg::PointCloud2`                  | Input pointcloud topic.                  |
+| `~/input/pointcloud/cuda` | `negotiated_interfaces/msg/NegotiatedTopicsInfo` | Input pointcloud type negotiation topic. |
 
 ### Output
 
-| Name                       | Type                                             | Description                                   |
-| -------------------------- | ------------------------------------------------ | --------------------------------------------- |
-| `~/output/pointcloud`      | `sensor_msgs::msg::PointCloud2`                  | Filtered pointcloud topic.                    |
-| `~/output/pointcloud/cuda` | `negotiated_interfaces/msg/NegotiatedTopicsInfo` | Filtered pointcloud type negotiation topic.   |
+| Name                       | Type                                             | Description                                 |
+| -------------------------- | ------------------------------------------------ | ------------------------------------------- |
+| `~/output/pointcloud`      | `sensor_msgs::msg::PointCloud2`                  | Filtered pointcloud topic.                  |
+| `~/output/pointcloud/cuda` | `negotiated_interfaces/msg/NegotiatedTopicsInfo` | Filtered pointcloud type negotiation topic. |
 
 #### Additional Debug Topics
 
