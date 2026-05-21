@@ -116,12 +116,11 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   const auto [pet_artifact, drac_artifact] = collision_timing_assessment::assess(
     traj_points, context, pet_param_map_, drac_param_map_, global_params_, *vehicle_info_ptr_);
   const auto rss_artifact = rss_deceleration::assess(
-    traj_points, context, rss_param_map_, global_params_.time_resolution, *vehicle_info_ptr_);
+    traj_points, context, rss_param_map_, global_params_, *vehicle_info_ptr_);
 
   auto planning_factors = reporter::process_collision_artifacts(
-    *context.odometry, pet_artifact, pet_continuous_times_, drac_artifact,
-    drac_continuous_times_, rss_artifact, rss_continuous_times_, debug_markers_,
-    global_params_.time_resolution);
+    *context.odometry, pet_artifact, pet_continuous_times_, drac_artifact, drac_continuous_times_,
+    rss_artifact, rss_continuous_times_, debug_markers_, global_params_.time_resolution);
 
   return ValidationResult{
     calc_worst_risk({pet_artifact.risk, drac_artifact.risk, rss_artifact.risk}) != RiskLevel::ERROR,

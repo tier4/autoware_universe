@@ -15,8 +15,8 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__PARAMETER_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__PARAMETER_HPP_
 
-#include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
+#include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 
 #include <cmath>
 #include <map>
@@ -109,12 +109,23 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string_
 
 struct GlobalParams
 {
+  struct EgoFootprintMargin
+  {
+    double lateral{0.0};
+    double front{0.0};
+    double rear{0.0};
+  };
+
   double time_resolution{0.1};
+  EgoFootprintMargin ego_footprint_margin{};
 
   GlobalParams() = default;
   explicit GlobalParams(const validator::Params::CollisionCheck::GlobalSetting & params)
   {
     time_resolution = params.time_resolution;
+    ego_footprint_margin.lateral = params.ego_footprint_margin.lateral;
+    ego_footprint_margin.front = params.ego_footprint_margin.front;
+    ego_footprint_margin.rear = params.ego_footprint_margin.rear;
   }
 };
 

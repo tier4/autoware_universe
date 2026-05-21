@@ -21,6 +21,10 @@
     collision_check:
       global_setting:
         time_resolution: 0.1
+        ego_footprint_margin:
+          lateral: 0.0
+          front: 0.0
+          rear: 0.0
       drac:
         enable_assessment:
           # default value is true.
