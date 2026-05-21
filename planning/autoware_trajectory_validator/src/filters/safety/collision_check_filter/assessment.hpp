@@ -76,7 +76,8 @@ std::optional<double> compute_distance_to_collision(
 
 RssArtifact assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const RssParamMap & rss_param_map, double time_resolution, VehicleInfo & vehicle_info);
+  const RssParamMap & rss_param_map, const GlobalParams & global_params,
+  VehicleInfo & vehicle_info);
 }  // namespace autoware::trajectory_validator::plugin::safety::rss_deceleration
 
 #endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__ASSESSMENT_HPP_
