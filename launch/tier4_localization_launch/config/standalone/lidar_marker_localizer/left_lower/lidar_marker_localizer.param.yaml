@@ -1,0 +1,60 @@
+/**:
+  ros__parameters:
+
+    enable_read_all_target_ids: true
+    target_ids: [
+                 "01", "02", "03", "04", "05", "06", "07", "08", "09", "10",
+                 "11", "12", "13", "14", "15", "16", "17", "18", "19"
+                ]
+    queue_size_for_output_pose: 10 # Queue size for output/pose_with_covariance publisher
+
+    # marker name
+    marker_name: "reflector"
+
+    # for marker detection algorithm
+    road_surface_mode: true
+    use_marker_offset_y_from_map: true  # true: Y offset from nearest map landmark (for varying Y, this means that it didn't correct y-position from marker)
+    resolution: 0.05
+
+    intensity_pattern: [-1, -1, -1, 1, 1, 1, 1, -1, -1, -1]  # No.9 pattern
+    match_intensity_difference_threshold: 11 # No.9 pattern 0m range
+    positive_match_num_threshold: 2 # No.9 pattern 0m range
+    negative_match_num_threshold: 4 # No.9 pattern 0m range
+    vote_threshold_for_detect_marker: 3 # No.9 pattern 0m range
+
+    # Maximum threshold for average intensity (disabled when 0.0).
+    # To prevent false detection on surfaces directly facing the LiDAR receiver, matching is disabled when this value is exceeded.
+    max_average_intensity_threshold: 0.0
+    marker_to_vehicle_offset_y: 3.845 # 2m range
+    marker_height_from_ground: 0.0
+    lower_ring_id_init: 128
+    upper_ring_id_init: 0
+    reference_ring_number: 255 # set to 255 to disable ring filtering
+
+    # for interpolate algorithm
+    self_pose_timeout_sec: 1.0
+    self_pose_distance_tolerance_m: 1.0
+
+    # for validation
+    limit_distance_from_self_pose_to_nearest_marker: 10.0
+    limit_distance_from_self_pose_to_nearest_marker_y: 10.0
+    limit_distance_from_self_pose_to_marker: 10.0
+
+    # base_covariance
+    # [TBD] This value is dynamically scaled according to the distance at which markers are detected.
+    base_covariance: [0.0225, 0.0,  0.0,  0.0,        0.0,        0.0,
+                      0.0,  0.0225, 0.0,  0.0,        0.0,        0.0,
+                      0.0,  0.0,  0.01, 0.0,        0.0,        0.0,
+                      0.0,  0.0,  0.0,  0.00007569, 0.0,        0.0,
+                      0.0,  0.0,  0.0,  0.0,        0.00007569, 0.0,
+                      0.0,  0.0,  0.0,  0.0,        0.0,        0.00030625]
+
+    # for save log
+    enable_save_log: false
+    save_file_directory_path: detected_reflector_intensity_left_lower
+    save_file_name: detected_reflector_intensity
+    # pointcloud_raw_ex と同じ frame_id（TF に存在するフレーム）
+    save_frame_id: left_lower/lidar
+    # for visualize the detected marker pointcloud
+    radius_for_extracting_marker_pointcloud: 0.4 # [m] within
+    queue_size_for_debug_pub_msg: 10 # Queue size for debug publishers

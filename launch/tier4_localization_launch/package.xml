@@ -18,12 +18,19 @@
   <buildtool_depend>autoware_cmake</buildtool_depend>
 
   <exec_depend>autoware_ar_tag_based_localizer</exec_depend>
+  <exec_depend>autoware_adapi_adaptors</exec_depend>
   <exec_depend>autoware_automatic_pose_initializer</exec_depend>
+  <exec_depend>autoware_default_adapi_universe</exec_depend>
   <exec_depend>autoware_ekf_localizer</exec_depend>
   <exec_depend>autoware_geo_pose_projector</exec_depend>
+  <exec_depend>autoware_global_parameter_loader</exec_depend>
+  <exec_depend>autoware_glog_component</exec_depend>
   <exec_depend>autoware_gyro_odometer</exec_depend>
   <exec_depend>autoware_lidar_marker_localizer</exec_depend>
   <exec_depend>autoware_localization_error_monitor</exec_depend>
+  <exec_depend>autoware_map_loader</exec_depend>
+  <exec_depend>autoware_map_projection_loader</exec_depend>
+  <exec_depend>autoware_map_tf_generator</exec_depend>
   <exec_depend>autoware_ndt_scan_matcher</exec_depend>
   <exec_depend>autoware_pointcloud_preprocessor</exec_depend>
   <exec_depend>autoware_pose_covariance_modifier</exec_depend>
@@ -32,9 +39,14 @@
   <exec_depend>autoware_pose_instability_detector</exec_depend>
   <exec_depend>autoware_stop_filter</exec_depend>
   <exec_depend>autoware_twist2accel</exec_depend>
+  <exec_depend>autoware_vehicle_info_utils</exec_depend>
   <exec_depend>eagleye_geo_pose_fusion</exec_depend>
   <exec_depend>eagleye_gnss_converter</exec_depend>
   <exec_depend>eagleye_rt</exec_depend>
+  <exec_depend>rclcpp_components</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>tier4_map_launch</exec_depend>
+  <exec_depend>tier4_sensing_launch</exec_depend>
   <exec_depend>topic_tools</exec_depend>
   <exec_depend>yabloc_common</exec_depend>
   <exec_depend>yabloc_image_processing</exec_depend>
