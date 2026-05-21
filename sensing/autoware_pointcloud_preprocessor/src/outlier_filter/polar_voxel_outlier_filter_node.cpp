@@ -428,6 +428,9 @@ void PolarVoxelOutlierFilterComponent::publish_diagnostics(
   // Publish metrics
   publish_visibility_metric();
   publish_filter_ratio_metric();
+
+  // Update diagnostics
+  updater_.force_update();
 }
 
 void PolarVoxelOutlierFilterComponent::calculate_visibility_metric(
