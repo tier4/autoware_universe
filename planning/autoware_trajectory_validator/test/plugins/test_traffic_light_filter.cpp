@@ -56,6 +56,10 @@ protected:
     node_->declare_parameter("traffic_light.delay_response_time", 0.5);
     node_->declare_parameter("traffic_light.crossing_time_limit", 2.75);
     node_->declare_parameter("traffic_light.treat_amber_light_as_red_light", false);
+    node_->declare_parameter("traffic_light.stable_duration_threshold_red", 0.0);
+    node_->declare_parameter("traffic_light.stable_duration_threshold_amber", 0.0);
+    node_->declare_parameter("traffic_light.amber_rejection_hysteresis_duration", 0.0);
+    node_->declare_parameter("traffic_light.ego_stopped_velocity_threshold", 0.01);
     node_->declare_parameter("traffic_light.checked_trajectory_length.deceleration_limit", 999.9);
     node_->declare_parameter("traffic_light.checked_trajectory_length.jerk_limit", 999.9);
 
@@ -65,6 +69,10 @@ protected:
     params.traffic_light.delay_response_time = 0.5;
     params.traffic_light.crossing_time_limit = 2.75;
     params.traffic_light.treat_amber_light_as_red_light = false;
+    params.traffic_light.stable_duration_threshold_red = 0.0;
+    params.traffic_light.stable_duration_threshold_amber = 0.0;
+    params.traffic_light.amber_rejection_hysteresis_duration = 0.0;
+    params.traffic_light.ego_stopped_velocity_threshold = 0.01;
     params.traffic_light.checked_trajectory_length.deceleration_limit = 999.9;
     params.traffic_light.checked_trajectory_length.jerk_limit = 999.9;
     filter_->update_parameters(params);
@@ -75,6 +83,7 @@ protected:
     acceleration->accel.accel.linear.x = 0.0f;
     context_.acceleration = acceleration;
     auto odometry = std::make_shared<nav_msgs::msg::Odometry>();
+    odometry->header.stamp = node_->now();
     odometry->twist.twist.linear.x = 5.0f;
     context_.odometry = odometry;
   }
@@ -364,6 +373,12 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightAsRedLight)
   params.traffic_light.delay_response_time = 0.5;
   params.traffic_light.crossing_time_limit = 2.75;
   params.traffic_light.treat_amber_light_as_red_light = true;
+  params.traffic_light.stable_duration_threshold_red = 0.0;
+  params.traffic_light.stable_duration_threshold_amber = 0.0;
+  params.traffic_light.amber_rejection_hysteresis_duration = 0.0;
+  params.traffic_light.ego_stopped_velocity_threshold = 0.01;
+  params.traffic_light.checked_trajectory_length.deceleration_limit = 999.9;
+  params.traffic_light.checked_trajectory_length.jerk_limit = 999.9;
   filter_->update_parameters(params);
 
   // Even if it's NOT stoppable (ego at 0m, velocity 10m/s, stop at 5m),
@@ -376,8 +391,52 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightAsRedLight)
     << "Should return false for amber light when treat_amber_light_as_red_light is true";
 }
 
-int main(int argc, char ** argv)
+TEST_F(TrafficLightFilterTest, IsFeasibleWithStabilityFiltering)
 {
-  testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  const lanelet::Id light_id = 400;
+  const double stop_x = 5.0;
+
+  create_and_set_map(light_id, stop_x);
+
+  validator::Params params;
+  params.traffic_light.deceleration_limit = 2.8;
+  params.traffic_light.delay_response_time = 0.5;
+  params.traffic_light.crossing_time_limit = 2.75;
+  params.traffic_light.treat_amber_light_as_red_light = false;
+  params.traffic_light.stable_duration_threshold_red = 1.0;  // 1 second stability
+  params.traffic_light.stable_duration_threshold_amber = 1.0;
+  params.traffic_light.amber_rejection_hysteresis_duration = 0.0;
+  params.traffic_light.ego_stopped_velocity_threshold = 0.01;
+  params.traffic_light.checked_trajectory_length.deceleration_limit = 999.9;
+  params.traffic_light.checked_trajectory_length.jerk_limit = 999.9;
+  filter_->update_parameters(params);
+
+  // Set initial state to GREEN
+  set_traffic_light_signal(light_id, TrafficLightElement::GREEN);
+  auto points = create_trajectory(0.0, 10.0);
+  EXPECT_TRUE(filter_->is_feasible(points, context_));
+
+  // Switch to RED at t=0
+  set_traffic_light_signal(light_id, TrafficLightElement::RED);
+  nav_msgs::msg::Odometry odometry = *context_.odometry;
+  odometry.header.stamp = node_->now();
+  context_.odometry = std::make_shared<nav_msgs::msg::Odometry>(odometry);
+
+  // Immediately check, should be feasible because of stability threshold
+  EXPECT_TRUE(filter_->is_feasible(points, context_))
+    << "Should be feasible because signal is not stable yet";
+
+  // Advance time by 0.5s (less than 1s threshold)
+  odometry.header.stamp =
+    rclcpp::Time(context_.odometry->header.stamp) + rclcpp::Duration::from_seconds(0.5);
+  context_.odometry = std::make_shared<nav_msgs::msg::Odometry>(odometry);
+  EXPECT_TRUE(filter_->is_feasible(points, context_)) << "Should still be feasible after 0.5s";
+
+  // Advance time by another 0.6s (total 1.1s > 1s threshold)
+  odometry.header.stamp =
+    rclcpp::Time(context_.odometry->header.stamp) + rclcpp::Duration::from_seconds(0.6);
+  context_.odometry = std::make_shared<nav_msgs::msg::Odometry>(odometry);
+  const auto res = filter_->is_feasible(points, context_);
+  ASSERT_TRUE(res.has_value());
+  EXPECT_FALSE(res->is_feasible) << "Should be infeasible after stability threshold is exceeded";
 }

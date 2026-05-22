@@ -14,6 +14,7 @@
 
 #include "autoware/trajectory_validator/filters/traffic_rule/traffic_light_filter.hpp"
 
+#include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 #include <rclcpp/logging.hpp>
 
 #include <memory>
@@ -60,6 +61,10 @@ autoware::trajectory_validator::traffic_light_filter::Parameters to_checker_para
   p.crossing_time_limit = params.crossing_time_limit;
   p.treat_amber_light_as_red_light = params.treat_amber_light_as_red_light;
   p.stop_overshoot_margin = params.stop_overshoot_margin;
+  p.stable_duration_threshold_red = params.stable_duration_threshold_red;
+  p.stable_duration_threshold_amber = params.stable_duration_threshold_amber;
+  p.amber_rejection_hysteresis_duration = params.amber_rejection_hysteresis_duration;
+  p.ego_stopped_velocity_threshold = params.ego_stopped_velocity_threshold;
   p.checked_trajectory_length.deceleration_limit =
     params.checked_trajectory_length.deceleration_limit;
   p.checked_trajectory_length.jerk_limit = params.checked_trajectory_length.jerk_limit;
@@ -100,13 +105,62 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
     return tl::make_unexpected("Compliance checker is not initialized.");
   }
 
+  const auto current_time = rclcpp::Time(context.odometry->header.stamp);
+  const auto velocity = context.odometry->twist.twist.linear.x;
+  const bool is_ego_stopped = std::abs(velocity) < params_.ego_stopped_velocity_threshold;
+
+  // Signal Stability Filter
+  autoware_perception_msgs::msg::TrafficLightGroupArray filtered_signals;
+  filtered_signals.stamp = context.traffic_light_signals->stamp;
+
+  for (const auto & signal : context.traffic_light_signals->traffic_light_groups) {
+    const auto id = signal.traffic_light_group_id;
+    if (signal_history_.find(id) == signal_history_.end()) {
+      signal_history_[id] = {signal, current_time};
+    } else {
+      if (signal_history_[id].msg.elements != signal.elements) {
+        signal_history_[id].first_seen_time = current_time;
+        signal_history_[id].msg = signal;
+      }
+    }
+
+    auto filtered_signal = signal;
+    if (!is_ego_stopped) {
+      const auto state_duration = (current_time - signal_history_[id].first_seen_time).seconds();
+      bool is_red = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
+        signal.elements, autoware_perception_msgs::msg::TrafficLightElement::CIRCLE,
+        autoware_perception_msgs::msg::TrafficLightElement::RED);
+      bool is_amber = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
+        signal.elements, autoware_perception_msgs::msg::TrafficLightElement::CIRCLE,
+        autoware_perception_msgs::msg::TrafficLightElement::AMBER);
+
+      if (is_red && state_duration < params_.stable_duration_threshold_red) {
+        filtered_signal.elements.clear();
+      } else if (is_amber && state_duration < params_.stable_duration_threshold_amber) {
+        filtered_signal.elements.clear();
+      }
+    }
+    filtered_signals.traffic_light_groups.push_back(filtered_signal);
+  }
+
+  // Amber Hysteresis Tracking
+  std::vector<int64_t> force_reject_amber_ids;
+  if (!is_ego_stopped) {
+    for (const auto & [id, rejected_time] : amber_rejection_history_) {
+      if ((current_time - rejected_time).seconds() <= params_.amber_rejection_hysteresis_duration) {
+        force_reject_amber_ids.push_back(id);
+      }
+    }
+  }
+
   const traffic_light_filter::Inputs inputs{
     traj_points,
     context.lanelet_map,
     *context.route,
-    *context.traffic_light_signals,
+    filtered_signals,
     context.odometry->twist.twist.linear.x,
-    context.acceleration->accel.accel.linear.x};
+    context.acceleration->accel.accel.linear.x,
+    force_reject_amber_ids};
 
   const auto result = checker_->check(inputs);
   if (!result) {
@@ -121,6 +175,16 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
       is_crossing_red = true;
     } else if (violation.type == traffic_light_filter::ViolationType::AMBER_LIGHT) {
       is_crossing_amber = true;
+      amber_rejection_history_[violation.traffic_light_id] = current_time;
+    }
+  }
+
+  // Memory Management
+  for (auto it = amber_rejection_history_.begin(); it != amber_rejection_history_.end();) {
+    if ((current_time - it->second).seconds() > 2.0 * params_.amber_rejection_hysteresis_duration) {
+      it = amber_rejection_history_.erase(it);
+    } else {
+      ++it;
     }
   }
 

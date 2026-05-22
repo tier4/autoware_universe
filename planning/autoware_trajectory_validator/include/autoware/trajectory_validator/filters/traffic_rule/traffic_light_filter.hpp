@@ -23,8 +23,7 @@
 #include <lanelet2_core/Forward.h>
 
 #include <memory>
-#include <string>
-#include <vector>
+#include <unordered_map>
 
 namespace autoware::trajectory_validator::plugin::traffic_rule
 {
@@ -40,8 +39,17 @@ public:
   void set_vehicle_info(const VehicleInfo & vehicle_info) final;
 
 private:
+  struct SignalStateHistory
+  {
+    autoware_perception_msgs::msg::TrafficLightGroup msg;
+    rclcpp::Time first_seen_time;
+  };
+
   std::unique_ptr<traffic_light_filter::TrafficLightComplianceChecker> checker_;
   validator::Params::TrafficLight params_;
+
+  std::unordered_map<int64_t, SignalStateHistory> signal_history_;
+  std::unordered_map<int64_t, rclcpp::Time> amber_rejection_history_;
 };
 
 }  // namespace autoware::trajectory_validator::plugin::traffic_rule
