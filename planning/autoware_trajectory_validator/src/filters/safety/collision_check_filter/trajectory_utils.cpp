@@ -255,8 +255,6 @@ PoseTrajectory compute_pose_trajectory_from_time(
 
 namespace autoware::trajectory_validator::plugin::safety::geometry
 {
-namespace detail
-{
 Eigen::Isometry2d pose_to_isometry(const geometry_msgs::msg::Pose & pose)
 {
   Eigen::Isometry2d transform = Eigen::Isometry2d::Identity();
@@ -292,11 +290,7 @@ std::vector<Point2d> create_base_polygon(const autoware_perception_msgs::msg::Sh
     for (const auto & point : shape.footprint.points) {
       polygon.push_back(Point2d{point.x, point.y});
     }
-    if (
-      polygon.size() > 1 && shape.footprint.points.front().x == shape.footprint.points.back().x &&
-      shape.footprint.points.front().y == shape.footprint.points.back().y) {
-      polygon.pop_back();
-    }
+
     return polygon;
   }
 
@@ -306,7 +300,6 @@ std::vector<Point2d> create_base_polygon(const autoware_perception_msgs::msg::Sh
 std::vector<Point2d> create_base_polygon(const VehicleInfo & vehicle_info)
 {
   const double half_width = vehicle_info.vehicle_width_m / 2.0;
-  // DO NOT change the order of the points and number of points.
   return {
     Point2d{vehicle_info.max_longitudinal_offset_m, half_width},
     Point2d{vehicle_info.max_longitudinal_offset_m, -half_width},
@@ -314,18 +307,16 @@ std::vector<Point2d> create_base_polygon(const VehicleInfo & vehicle_info)
     Point2d{vehicle_info.min_longitudinal_offset_m, half_width}};
 }
 
-}  // namespace detail
-
 Polygon2d to_polygon2d(
   const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape)
 {
-  const auto iso = detail::pose_to_isometry(pose);
-  const auto points = detail::create_base_polygon(shape);
+  const auto iso = pose_to_isometry(pose);
+  const auto points = create_base_polygon(shape);
 
   Polygon2d polygon;
   polygon.outer().reserve(points.size() + 1U);
   for (const auto & point : points) {
-    polygon.outer().push_back(detail::transform_point(iso, point));
+    polygon.outer().push_back(transform_point(iso, point));
   }
   if (!polygon.outer().empty()) {
     polygon.outer().push_back(polygon.outer().front());
@@ -341,22 +332,19 @@ namespace footprint
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const std::vector<Point2d> & base_poly)
 {
-  auto transform_point = [](const auto & transform, const Point2d & pt) {
-    const Eigen::Vector2d p = transform * Eigen::Vector2d{pt.x(), pt.y()};
-    return Point2d{p.x(), p.y()};
-  };
-
   if (base_poly.size() == 4) {
     QuadTrajectory trajectory;
     trajectory.reserve(pose_trajectory.size());
 
     for (const auto & pose : pose_trajectory) {
-      const auto iso = geometry::detail::pose_to_isometry(pose);
+      const auto iso = geometry::pose_to_isometry(pose);
 
       trajectory.push_back(
         std::array<Point2d, 4>{
-          transform_point(iso, base_poly[0]), transform_point(iso, base_poly[1]),
-          transform_point(iso, base_poly[2]), transform_point(iso, base_poly[3])});
+          geometry::transform_point(iso, base_poly[0]),
+          geometry::transform_point(iso, base_poly[1]),
+          geometry::transform_point(iso, base_poly[2]),
+          geometry::transform_point(iso, base_poly[3])});
     }
     return trajectory;
   } else {
@@ -364,13 +352,13 @@ FootprintTrajectory compute_footprint_trajectory(
     trajectory.reserve(pose_trajectory.size());
 
     for (const auto & pose : pose_trajectory) {
-      const auto iso = geometry::detail::pose_to_isometry(pose);
+      const auto iso = geometry::pose_to_isometry(pose);
 
       std::vector<Point2d> transformed_poly;
       transformed_poly.reserve(base_poly.size());
 
       for (const auto & pt : base_poly) {
-        transformed_poly.push_back(transform_point(iso, pt));
+        transformed_poly.push_back(geometry::transform_point(iso, pt));
       }
 
       trajectory.push_back(std::move(transformed_poly));
@@ -382,15 +370,13 @@ FootprintTrajectory compute_footprint_trajectory(
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const autoware_perception_msgs::msg::Shape & object_shape)
 {
-  return compute_footprint_trajectory(
-    pose_trajectory, geometry::detail::create_base_polygon(object_shape));
+  return compute_footprint_trajectory(pose_trajectory, geometry::create_base_polygon(object_shape));
 }
 
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const VehicleInfo & vehicle_info)
 {
-  return compute_footprint_trajectory(
-    pose_trajectory, geometry::detail::create_base_polygon(vehicle_info));
+  return compute_footprint_trajectory(pose_trajectory, geometry::create_base_polygon(vehicle_info));
 }
 }  // namespace footprint
 

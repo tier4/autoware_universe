@@ -39,14 +39,6 @@ using autoware_utils_geometry::MultiPoint2d;
 using autoware_utils_geometry::Point2d;
 using autoware_utils_geometry::Polygon2d;
 
-using TimeTrajectory = std::vector<double>;
-using TravelDistanceTrajectory = std::vector<double>;
-using PoseTrajectory = std::vector<geometry_msgs::msg::Pose>;
-using QuadTrajectory = std::vector<std::array<Point2d, 4>>;
-using NgonTrajectory = std::vector<std::vector<Point2d>>;
-using FootprintTrajectory = std::variant<QuadTrajectory, NgonTrajectory>;
-using StepPolygonTrajectory = std::vector<Polygon2d>;
-
 static constexpr double TIME_INDEX_EPSILON = 1e-3;
 
 struct TrajectoryIdentification
@@ -88,8 +80,8 @@ struct CollisionDetail
   TrajectoryIdentification object_identification;
   double pet;
   double ttc;
-  PoseTrajectory ego_trajectory;
-  PoseTrajectory object_trajectory;
+  std::vector<geometry_msgs::msg::Pose> ego_trajectory;
+  std::vector<geometry_msgs::msg::Pose> object_trajectory;
   Polygon2d ego_hull;
   Polygon2d object_hull;
 };

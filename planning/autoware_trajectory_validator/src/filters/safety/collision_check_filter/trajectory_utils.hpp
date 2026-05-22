@@ -32,12 +32,20 @@
 #include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
 {
 
 using IndexRange = std::pair<size_t, size_t>;
 using TimeRange = std::pair<double, double>;
+
+using TimeTrajectory = std::vector<double>;
+using TravelDistanceTrajectory = std::vector<double>;
+using PoseTrajectory = std::vector<geometry_msgs::msg::Pose>;
+using QuadTrajectory = std::vector<std::array<Point2d, 4>>;
+using NgonTrajectory = std::vector<std::vector<Point2d>>;
+using FootprintTrajectory = std::variant<QuadTrajectory, NgonTrajectory>;
 
 class TrajectoryData
 {
