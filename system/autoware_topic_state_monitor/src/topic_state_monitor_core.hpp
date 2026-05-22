@@ -20,6 +20,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <cstdint>
 #include <tf2_msgs/msg/tf_message.hpp>
 
 #include <deque>
@@ -67,6 +68,7 @@ private:
 
   // Diagnostic Updater
   diagnostic_updater::Updater updater_;
+  uint64_t diag_sequence_id_{0};
 
   void checkTopicStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
 };

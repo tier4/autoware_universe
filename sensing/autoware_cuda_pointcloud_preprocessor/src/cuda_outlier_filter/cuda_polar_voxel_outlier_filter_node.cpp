@@ -435,6 +435,7 @@ void CudaPolarVoxelOutlierFilterNode::on_visibility_check(
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Visibility within normal range");
   }
 
+  stat.add("sequence_id", std::to_string(++diag_sequence_id_));
   stat.add("Visibility", visibility_value);
   stat.add("Error Threshold", filter_params_.visibility_error_threshold);
   stat.add("Warning Threshold", filter_params_.visibility_warn_threshold);
@@ -468,6 +469,7 @@ void CudaPolarVoxelOutlierFilterNode::on_filter_ratio_check(
     stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Filter ratio within normal range");
   }
 
+  stat.add("sequence_id", std::to_string(++diag_sequence_id_));
   stat.add("Filter Ratio", ratio_value);
   stat.add("Error Threshold", filter_params_.filter_ratio_error_threshold);
   stat.add("Warning Threshold", filter_params_.filter_ratio_warn_threshold);

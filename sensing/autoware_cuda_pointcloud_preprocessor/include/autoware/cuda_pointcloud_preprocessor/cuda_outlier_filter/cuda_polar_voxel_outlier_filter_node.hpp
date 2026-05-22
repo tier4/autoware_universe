@@ -27,6 +27,7 @@
 
 #include <autoware_internal_debug_msgs/msg/float32_stamped.hpp>
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -93,6 +94,7 @@ private:
   // Diagnostics members
   std::optional<double> visibility_;    // Current visibility value
   std::optional<double> filter_ratio_;  // Current filter ratio
+  uint64_t diag_sequence_id_{0};
   diagnostic_updater::Updater updater_;
 
   // CUDA sub

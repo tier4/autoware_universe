@@ -161,6 +161,8 @@ VoxelDistanceBasedCompareMapFilterComponent::VoxelDistanceBasedCompareMapFilterC
 void VoxelDistanceBasedCompareMapFilterComponent::checkStatus(
   diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
+  ++diag_sequence_id_;
+
   // map loader status
   DiagStatus & map_loader_status =
     (*voxel_distance_based_map_loader_).diagnostics_map_voxel_status_;
@@ -169,6 +171,7 @@ void VoxelDistanceBasedCompareMapFilterComponent::checkStatus(
   } else {
     stat.add("Map loader status", "NG");
   }
+  stat.add("sequence_id", std::to_string(diag_sequence_id_));
 
   // final status = map loader status
   stat.summary(map_loader_status.level, map_loader_status.message);

@@ -14,6 +14,8 @@
 
 #include "topic_state_monitor_core.hpp"
 
+#include <diagnostic_msgs/msg/key_value.hpp>
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -126,11 +128,13 @@ rcl_interfaces::msg::SetParametersResult TopicStateMonitorNode::onParameter(
 void TopicStateMonitorNode::checkTopicStatus(diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
   using diagnostic_msgs::msg::DiagnosticStatus;
+  using diagnostic_msgs::msg::KeyValue;
 
   // Get information
   const auto topic_status = topic_state_monitor_->getTopicStatus();
   const auto last_message_time = topic_state_monitor_->getLastMessageTime();
   const auto topic_rate = topic_state_monitor_->getTopicRate();
+  ++diag_sequence_id_;
 
   // Add topic name
   if (node_param_.is_transform) {
@@ -179,6 +183,10 @@ void TopicStateMonitorNode::checkTopicStatus(diagnostic_updater::DiagnosticStatu
   stat.addf("measured_rate", "%.2f [Hz]", topic_rate);
   stat.addf("now", "%.2f [s]", this->now().seconds());
   stat.addf("last_message_time", "%.2f [s]", last_message_time.seconds());
+  KeyValue sequence_id;
+  sequence_id.key = "sequence_id";
+  sequence_id.value = std::to_string(diag_sequence_id_);
+  stat.values.push_back(sequence_id);
 
   // Create message
   std::string msg;

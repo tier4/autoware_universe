@@ -23,6 +23,7 @@
 #include <std_srvs/srv/set_bool.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -47,9 +48,12 @@ private:
   rclcpp::Publisher<DiagnosticArray>::SharedPtr pub_unknown_;
   rclcpp::Service<ResetDiagGraph>::SharedPtr srv_reset_;
   rclcpp::Service<SetBool>::SharedPtr srv_set_initializing_;
+  std::unordered_map<std::string, uint64_t> last_sequence_by_name_;
 
   void on_timer();
   void on_diag(const DiagnosticArray & msg);
+  void check_sequence_gaps(const DiagnosticArray & msg);
+  static std::optional<uint64_t> find_sequence_id(const DiagnosticStatus & status);
   void on_reset(
     const ResetDiagGraph::Request::SharedPtr request,
     const ResetDiagGraph::Response::SharedPtr response);

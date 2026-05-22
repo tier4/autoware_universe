@@ -26,6 +26,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <cstdint>
 #include <memory>
 
 namespace autoware::compare_map_segmentation
@@ -62,6 +63,7 @@ private:
 
   // diagnostics
   diagnostic_updater::Updater diagnostic_updater_;
+  uint64_t diag_sequence_id_{0};
   void checkStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
 public:

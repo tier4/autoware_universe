@@ -434,6 +434,7 @@ void PointCloudConcatenateDataSynchronizerComponentTemplated<MsgTraits>::check_c
   const DiagnosticInfo & diagnostic_info)
 {
   diagnostics_interface_->clear();
+  diagnostics_interface_->add_key_value("sequence_id", std::to_string(++diag_sequence_id_));
 
   const bool should_publish_diag =
     diagnostic_info.publish_pointcloud || diagnostic_info.drop_previous_but_late_pointcloud;

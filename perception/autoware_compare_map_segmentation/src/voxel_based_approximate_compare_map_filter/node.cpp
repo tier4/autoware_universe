@@ -120,6 +120,8 @@ VoxelBasedApproximateCompareMapFilterComponent::VoxelBasedApproximateCompareMapF
 void VoxelBasedApproximateCompareMapFilterComponent::checkStatus(
   diagnostic_updater::DiagnosticStatusWrapper & stat)
 {
+  ++diag_sequence_id_;
+
   // map loader status
   DiagStatus & map_loader_status =
     (*voxel_based_approximate_map_loader_).diagnostics_map_voxel_status_;
@@ -128,6 +130,7 @@ void VoxelBasedApproximateCompareMapFilterComponent::checkStatus(
   } else {
     stat.add("Map loader status", "NG");
   }
+  stat.add("sequence_id", std::to_string(diag_sequence_id_));
 
   // final status = map loader status
   stat.summary(map_loader_status.level, map_loader_status.message);

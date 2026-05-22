@@ -17,7 +17,9 @@
 #include <yaml-cpp/yaml.h>
 
 #include <memory>
+#include <optional>
 #include <sstream>
+#include <set>
 #include <string>
 #include <unordered_map>
 
@@ -100,7 +102,75 @@ void AggregatorNode::on_timer()
 
 void AggregatorNode::on_diag(const DiagnosticArray & msg)
 {
+  check_sequence_gaps(msg);
   graph_->update(now(), msg);
+}
+
+std::optional<uint64_t> AggregatorNode::find_sequence_id(const DiagnosticStatus & status)
+{
+  const auto iter = std::find_if(status.values.begin(), status.values.end(), [](const auto & kv) {
+    return kv.key == "sequence_id";
+  });
+  if (iter == status.values.end()) {
+    return std::nullopt;
+  }
+
+  try {
+    return std::stoull(iter->value);
+  } catch (const std::exception &) {
+    return std::nullopt;
+  }
+}
+
+void AggregatorNode::check_sequence_gaps(const DiagnosticArray & msg)
+{
+  std::unordered_map<std::string, std::set<uint64_t>> sequences_by_name;
+
+  for (const auto & status : msg.status) {
+    const auto sequence_id = find_sequence_id(status);
+    if (!sequence_id || status.name.empty()) {
+      continue;
+    }
+    sequences_by_name[status.name].insert(*sequence_id);
+  }
+
+  for (const auto & [name, sequence_ids] : sequences_by_name) {
+    if (sequence_ids.size() > 1) {
+      std::ostringstream oss;
+      bool first = true;
+      for (const auto sequence_id : sequence_ids) {
+        if (!first) {
+          oss << ", ";
+        }
+        oss << sequence_id;
+        first = false;
+      }
+      RCLCPP_WARN(
+        get_logger(),
+        "diagnostics with name '%s' contain inconsistent sequence_id values in one "
+        "DiagnosticArray: [%s]",
+        name.c_str(), oss.str().c_str());
+    }
+
+    const auto current_sequence_id = *sequence_ids.begin();
+    const auto iter = last_sequence_by_name_.find(name);
+    if (iter != last_sequence_by_name_.end()) {
+      const auto last_sequence_id = iter->second;
+      if (current_sequence_id > last_sequence_id + 1) {
+        RCLCPP_ERROR(
+          get_logger(),
+          "diagnostics sequence_id gap detected for name '%s': last=%lu current=%lu missing=[%lu,%lu]",
+          name.c_str(), last_sequence_id, current_sequence_id, last_sequence_id + 1,
+          current_sequence_id - 1);
+      } else if (current_sequence_id <= last_sequence_id) {
+        RCLCPP_DEBUG(
+          get_logger(),
+          "diagnostics sequence_id went backward or duplicated for name '%s': last=%lu current=%lu",
+          name.c_str(), last_sequence_id, current_sequence_id);
+      }
+    }
+    last_sequence_by_name_[name] = current_sequence_id;
+  }
 }
 
 void AggregatorNode::on_reset(

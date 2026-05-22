@@ -303,6 +303,7 @@ void ControlValidator::setup_parameters()
 void ControlValidator::set_status(
   DiagnosticStatusWrapper & stat, const bool & is_ok, const std::string & msg) const
 {
+  add_common_diag_values(stat);
   if (is_ok) {
     stat.summary(DiagnosticStatus::OK, "validated.");
   } else if (validation_status_.invalid_count < diag_error_count_threshold_) {
@@ -313,6 +314,14 @@ void ControlValidator::set_status(
   } else {
     stat.summary(DiagnosticStatus::ERROR, msg);
   }
+}
+
+void ControlValidator::add_common_diag_values(DiagnosticStatusWrapper & stat) const
+{
+  diagnostic_msgs::msg::KeyValue sequence_id;
+  sequence_id.key = "sequence_id";
+  sequence_id.value = std::to_string(diag_sequence_id_);
+  stat.values.push_back(sequence_id);
 }
 
 void ControlValidator::setup_diag()
@@ -474,6 +483,7 @@ void ControlValidator::on_control_cmd(const Control::ConstSharedPtr msg)
   validation_status_.invalid_count =
     is_all_valid(validation_status_) ? 0 : validation_status_.invalid_count + 1;
 
+  ++diag_sequence_id_;
   diag_updater_.force_update();
 
   publish_debug_info(kinematics_msg->pose.pose);

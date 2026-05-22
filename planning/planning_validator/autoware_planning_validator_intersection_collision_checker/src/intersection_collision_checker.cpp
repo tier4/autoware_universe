@@ -94,6 +94,7 @@ void IntersectionCollisionChecker::setup_diag()
 void IntersectionCollisionChecker::set_diag_status(
   DiagnosticStatusWrapper & stat, const bool & is_ok, const std::string & msg) const
 {
+  context_->add_common_diag_values(stat);
   if (is_ok) {
     stat.summary(DiagnosticStatus::OK, "validated.");
     return;

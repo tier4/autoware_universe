@@ -24,6 +24,7 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/search/pcl_search.h>
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
@@ -143,6 +144,7 @@ private:
 
   // diagnostics
   diagnostic_updater::Updater diagnostic_updater_;
+  uint64_t diag_sequence_id_{0};
   void checkStatus(diagnostic_updater::DiagnosticStatusWrapper & stat);
 
 public:

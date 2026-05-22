@@ -26,6 +26,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 
 #include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
+#include <diagnostic_msgs/msg/key_value.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -49,6 +50,7 @@ using autoware_planning_msgs::msg::Trajectory;
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using autoware_planning_validator::msg::PlanningValidatorStatus;
 using diagnostic_msgs::msg::DiagnosticStatus;
+using diagnostic_msgs::msg::KeyValue;
 using diagnostic_updater::DiagnosticStatusWrapper;
 using diagnostic_updater::Updater;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
@@ -235,11 +237,24 @@ struct PlanningValidatorContext
     }
   }
 
+  void prepare_diag_update()
+  {
+    ++diag_sequence_id_;
+  }
+
   void update_diag()
   {
     if (diag_updater) {
       diag_updater->force_update();
     }
+  }
+
+  void add_common_diag_values(DiagnosticStatusWrapper & stat) const
+  {
+    KeyValue sequence_id;
+    sequence_id.key = "sequence_id";
+    sequence_id.value = std::to_string(diag_sequence_id_);
+    stat.values.push_back(sequence_id);
   }
 
   void init_validation_status()
@@ -279,6 +294,7 @@ struct PlanningValidatorContext
 
 private:
   InvalidTrajectoryHandlingType inv_traj_handling;
+  uint64_t diag_sequence_id_{0};
 };
 
 }  // namespace autoware::planning_validator

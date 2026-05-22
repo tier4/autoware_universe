@@ -17,6 +17,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 
@@ -94,6 +95,7 @@ private:
 
   double current_concatenate_cloud_timestamp_{0.0};
   double latest_concatenate_cloud_timestamp_{0.0};
+  uint64_t diag_sequence_id_{0};
 
   struct DiagnosticInfo
   {
