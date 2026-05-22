@@ -164,10 +164,14 @@ void PoseInstabilityDetector::callback_timer()
   status.hardware_id = this->get_name();
   bool all_ok = true;
 
+  diagnostic_msgs::msg::KeyValue kv;
+  kv.key = "sequence_id";
+  kv.value = std::to_string(++diag_sequence_id_);
+  status.values.push_back(kv);
+
   for (size_t i = 0; i < values.size(); ++i) {
     const bool ok = (std::abs(values[i]) < thresholds[i]) || !enable_validation_flags_[i];
     all_ok &= ok;
-    diagnostic_msgs::msg::KeyValue kv;
     kv.key = labels[i] + ":validation_enabled";
     kv.value = enable_validation_flags_[i] ? "True" : "False";
     status.values.push_back(kv);

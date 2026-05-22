@@ -23,6 +23,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <deque>
+#include <cstdint>
 #include <tuple>
 #include <vector>
 
@@ -95,6 +96,7 @@ private:
   std::optional<Odometry> latest_odometry_ = std::nullopt;
   std::optional<Odometry> prev_odometry_ = std::nullopt;
   std::deque<TwistWithCovarianceStamped> twist_buffer_;
+  uint64_t diag_sequence_id_{0};
 
   std::vector<bool> enable_validation_flags_;  // must be 6D for x, y, z, roll, pitch, yaw
 };
