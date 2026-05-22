@@ -35,14 +35,17 @@ struct PointXY
   double x;
   double y;
 };
-PointXY closest_polygon_point_to_origin(const autoware_utils_geometry::Polygon2d & poly)
+// Closest point on the polygon's outer ring to a reference point (same frame as polygon).
+// Linear in vertex count.
+PointXY closest_polygon_point_to_reference(
+  const Polygon2d & polygon, const autoware_utils_geometry::Point2d & reference)
 {
+  PointXY best = {0.0, 0.0};
   double min_d2 = std::numeric_limits<double>::infinity();
-  PointXY best{0.0, 0.0};
-  const auto & ring = poly.outer();
-  if (ring.size() < 2) {
-    return best;
-  }
+  const double rx = reference.x();
+  const double ry = reference.y();
+
+  const auto & ring = polygon.outer();
   for (std::size_t i = 0; i + 1 < ring.size(); ++i) {
     const double x1 = ring[i].x();
     const double y1 = ring[i].y();
@@ -51,14 +54,16 @@ PointXY closest_polygon_point_to_origin(const autoware_utils_geometry::Polygon2d
     const double dx = x2 - x1;
     const double dy = y2 - y1;
     const double len2 = dx * dx + dy * dy;
-    double t = 0.0;
-    if (len2 > 1e-12) {
-      t = -(x1 * dx + y1 * dy) / len2;
+
+    double t{0.0};
+    if (len2 >= std::numeric_limits<double>::epsilon()) {
+      t = -((x1 - rx) * dx + (y1 - ry) * dy) / len2;
       t = std::clamp(t, 0.0, 1.0);
     }
+
     const double px = x1 + t * dx;
     const double py = y1 + t * dy;
-    const double d2 = px * px + py * py;
+    const double d2 = (px - rx) * (px - rx) + (py - ry) * (py - ry);
     if (d2 < min_d2) {
       min_d2 = d2;
       best = {px, py};
@@ -75,6 +80,8 @@ ProximityHazardObjectChecker::ProximityHazardObjectChecker(
   vehicle_circumradius_(0.0),
   max_detection_range_squared_(0.0)
 {
+  boost::geometry::centroid(vehicle_footprint_, ego_center_);
+
   max_detection_range_squared_ = params_.max_detection_range_m * params_.max_detection_range_m;
 
   // base_link is not necessarily at the vehicle's geometric center, so derive the
@@ -133,9 +140,12 @@ ProximityHazardObjects ProximityHazardObjectChecker::process(
       continue;
     }
 
-    // Bearing from base_link origin to the closest point on the object polygon.
-    const auto object_closest = closest_polygon_point_to_origin(object_polygon);
-    const double bearing = std::atan2(object_closest.y, object_closest.x);
+    // Bearing from the ego footprint centroid (ego_center_) to the closest point on
+    // the object polygon. Using ego_center_ rather than base_link keeps the sector
+    // geometry symmetric about the vehicle body.
+    const auto object_closest = closest_polygon_point_to_reference(object_polygon, ego_center_);
+    const double bearing =
+      std::atan2(object_closest.y - ego_center_.y(), object_closest.x - ego_center_.x());
     const auto sector_opt = bearing_to_sector(bearing);
     if (!sector_opt) {
       // Bearing fell outside all configured sector ranges — misconfiguration.

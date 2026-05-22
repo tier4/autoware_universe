@@ -37,14 +37,14 @@ public:
 
   // Build the per-sector hazard message from a PredictedObjects input and the
   // transform from the input's frame to base_link.
-  ProximityHazardObjects process(
+  [[nodiscard]] ProximityHazardObjects process(
     const PredictedObjects & input,
     const geometry_msgs::msg::TransformStamped & to_base_link) const;
 
   // Maps a bearing in radians (any range; normalized internally) to a sector index
   // per the configured per-sector ranges. Returns nullopt if the bearing does not
   // fall in any configured sector (misconfiguration: gap or under-specified).
-  std::optional<uint8_t> bearing_to_sector(double bearing_rad) const;
+  [[nodiscard]] std::optional<uint8_t> bearing_to_sector(double bearing_rad) const;
 
   // Bounding-circle pre-filter helper. Returns the radius of the smallest circle
   // centered at the object-local origin that contains the shape.
@@ -53,6 +53,7 @@ public:
 private:
   proximity_hazard_object::Params params_;
   LinearRing2d vehicle_footprint_;
+  autoware_utils_geometry::Point2d ego_center_;  // Centroid of vehicle_footprint_
   double vehicle_circumradius_;  // Max distance from base_link origin to any footprint vertex.
   double max_detection_range_squared_;  // Cached: params_.max_detection_range_m^2.
 };
