@@ -185,7 +185,8 @@ void process_pet_artifacts(
     reporter::append_text_marker_message(marker_messages, finding_msg);
     reporter::add_debug_markers(
       debug_markers, current_time, "planned_speed_collision", obj_id.trajectory_id_string(),
-      timing.ego_trajectory, timing.object_trajectory, timing.ego_hull, timing.object_hull);
+      timing.ego_trajectory, timing.object_trajectory, timing.ego_hull, timing.object_hull,
+      timing.ego_polygon_at_first_collision, timing.object_polygon_at_first_collision);
     if (is_error) {
       add_collision_planning_factor(
         time_resolution, odometry.header.stamp, odometry.pose.pose, timing, "PET",
@@ -234,7 +235,8 @@ void process_drac_artifacts(
     reporter::append_text_marker_message(marker_messages, finding_msg);
     reporter::add_debug_markers(
       debug_markers, current_time, "drac_collision", obj_id.trajectory_id_string(),
-      timing.ego_trajectory, timing.object_trajectory, timing.ego_hull, timing.object_hull);
+      timing.ego_trajectory, timing.object_trajectory, timing.ego_hull, timing.object_hull,
+      timing.ego_polygon_at_first_collision, timing.object_polygon_at_first_collision);
     if (has_error) {
       add_collision_planning_factor(
         time_resolution, odometry.header.stamp, odometry.pose.pose, timing, "DRAC",
@@ -311,7 +313,8 @@ void add_debug_markers(
   visualization_msgs::msg::MarkerArray & debug_markers, const rclcpp::Time & stamp,
   const std::string & ns, const std::string & trajectory_id, const PoseTrajectory & ego_trajectory,
   const PoseTrajectory & object_trajectory, const Polygon2d & ego_hull,
-  const Polygon2d & object_hull)
+  const Polygon2d & object_hull, const Polygon2d & ego_polygon_at_first_collision,
+  const Polygon2d & object_polygon_at_first_collision)
 {
   int id = next_marker_id(debug_markers);
   const auto trajectory_color = resolve_trajectory_color(trajectory_id);
@@ -382,6 +385,8 @@ void add_debug_markers(
 
   add_poly_marker(ego_hull, "ego_worst_pet", 0.0F, 0.0F, 1.0F);
   add_poly_marker(object_hull, "obj_worst_pet", 1.0F, 0.0F, 0.0F);
+  add_poly_marker(ego_polygon_at_first_collision, "ego_first_collision", 0.0F, 0.6F, 1.0F);
+  add_poly_marker(object_polygon_at_first_collision, "obj_first_collision", 1.0F, 0.3F, 0.3F);
   add_trajectory_marker(ego_trajectory, "ego_trajectory", 1.0F, 1.0F, 1.0F, 0.9F);
   add_trajectory_marker(
     object_trajectory, "object_trajectory", trajectory_color.r, trajectory_color.g,

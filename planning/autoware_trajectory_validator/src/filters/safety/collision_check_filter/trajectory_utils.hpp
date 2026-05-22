@@ -33,9 +33,26 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
-
 using IndexRange = std::pair<size_t, size_t>;
 using TimeRange = std::pair<double, double>;
+
+inline Polygon2d compute_convex_hull(const FootprintTrajectory & footprints, const IndexRange & key)
+{
+  assert(key.first <= key.second);
+
+  MultiPoint2d all_points;
+  all_points.reserve((key.second - key.first + 1) * 4);
+  for (size_t i = key.first; i <= key.second; ++i) {
+    for (const auto & pt : footprints[i].outer()) {
+      all_points.push_back(pt);
+    }
+  }
+
+  Polygon2d hull;
+  hull.outer().reserve(all_points.size());
+  boost::geometry::convex_hull(all_points, hull);
+  return hull;
+}
 
 class TrajectoryData
 {
@@ -48,6 +65,7 @@ private:
   mutable std::map<IndexRange, Box2d> envelope_cache_;
   mutable std::map<IndexRange, Polygon2d> convex_cache_;
 
+public:
   size_t get_same_or_earlier_time_index(const double t) const
   {
     const auto it = std::upper_bound(times_.begin(), times_.end(), t + TIME_INDEX_EPSILON);
@@ -84,26 +102,6 @@ private:
     }
     return box;
   }
-
-  Polygon2d compute_convex(const IndexRange & key) const
-  {
-    assert(key.first <= key.second);
-
-    MultiPoint2d all_points;
-    all_points.reserve((key.second - key.first + 1) * 4);
-    for (size_t i = key.first; i <= key.second; ++i) {
-      for (const auto & pt : footprints_[i].outer()) {
-        all_points.push_back(pt);
-      }
-    }
-
-    Polygon2d hull;
-    hull.outer().reserve(all_points.size());
-    boost::geometry::convex_hull(all_points, hull);
-    return hull;
-  }
-
-public:
   TrajectoryData(
     TrajectoryIdentification trajectory_identification, TimeTrajectory times,
     TravelDistanceTrajectory distances, PoseTrajectory poses, FootprintTrajectory footprints)
@@ -171,7 +169,7 @@ public:
 
     auto [it, inserted] = convex_cache_.try_emplace(key);
     if (inserted) {
-      it->second = compute_convex(key);
+      it->second = compute_convex_hull(footprints_, key);
     }
     return it->second;
   }

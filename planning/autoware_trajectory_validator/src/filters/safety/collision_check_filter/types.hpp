@@ -108,6 +108,8 @@ struct CollisionDetail
   PoseTrajectory object_trajectory;
   Polygon2d ego_hull;
   Polygon2d object_hull;
+  Polygon2d ego_polygon_at_first_collision;
+  Polygon2d object_polygon_at_first_collision;
   EgoFootprintEdgeIntersections ego_collision_edges_at_first_collision{};
 };
 

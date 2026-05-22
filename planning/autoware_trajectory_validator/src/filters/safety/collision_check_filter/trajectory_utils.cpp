@@ -351,7 +351,6 @@ FootprintTrajectory compute_footprint_trajectory(
 {
   FootprintTrajectory footprint_trajectory;
   footprint_trajectory.reserve(pose_trajectory.size());
-
   const double front_offset =
     vehicle_info.max_longitudinal_offset_m + global_params.ego_footprint_margin.front;
   const double rear_overhang =
