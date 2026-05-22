@@ -36,6 +36,34 @@ namespace
 {
 using autoware_trajectory_validator::msg::MetricReport;
 
+std::string to_string(const EgoFootprintEdgeIntersections & edges)
+{
+  std::vector<std::string> edge_names;
+  if (edges.front) {
+    edge_names.push_back("front");
+  }
+  if (edges.right) {
+    edge_names.push_back("right");
+  }
+  if (edges.rear) {
+    edge_names.push_back("rear");
+  }
+  if (edges.left) {
+    edge_names.push_back("left");
+  }
+
+  if (edge_names.empty()) {
+    return "none";
+  }
+
+  std::string out = edge_names.front();
+  for (size_t i = 1; i < edge_names.size(); ++i) {
+    out += ",";
+    out += edge_names.at(i);
+  }
+  return out;
+}
+
 struct VisualizationData
 {
   std::string error_msg{};
@@ -147,8 +175,10 @@ void process_pet_artifacts(
     }
 
     const auto finding_msg = fmt::format(
-      "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{};",
+      "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, first edges: {}, duration: "
+      "{}, stamp: {}.{};",
       obj_id.classification, obj_id.trajectory_id_string(), timing.pet, timing.ttc,
+      to_string(timing.ego_collision_edges_at_first_collision),
       pet_continuous_times.get_time(obj_id.trajectory_id_string()), obj_id.stamp.sec,
       obj_id.stamp.nanosec);
     log_messages += finding_msg;
@@ -192,12 +222,13 @@ void process_drac_artifacts(
 
     const auto finding_msg = fmt::format(
       "DRAC collision, classification: {}, ID: {}, PET: {}, TTC: {}, DRAC: {}, duration: {}, "
-      "stamp: {}.{};",
+      "first edges: {}, stamp: {}.{};",
       obj_id.classification, obj_id.trajectory_id_string(), timing.pet, timing.ttc,
       drac_artifact.required_acceleration.has_value()
         ? std::to_string(drac_artifact.required_acceleration.value())
         : "Cant be avoided",
-      drac_continuous_times.get_time(obj_id.trajectory_id_string()), obj_id.stamp.sec,
+      drac_continuous_times.get_time(obj_id.trajectory_id_string()),
+      to_string(timing.ego_collision_edges_at_first_collision), obj_id.stamp.sec,
       obj_id.stamp.nanosec);
     log_messages += finding_msg;
     reporter::append_text_marker_message(marker_messages, finding_msg);

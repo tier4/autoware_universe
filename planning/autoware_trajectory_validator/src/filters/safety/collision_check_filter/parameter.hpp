@@ -109,6 +109,13 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string_
 
 struct GlobalParams
 {
+  struct CollisionDetectionTargetEdges
+  {
+    bool front{true};
+    bool side{true};
+    bool rear{true};
+  };
+
   struct EgoFootprintMargin
   {
     double lateral{0.0};
@@ -117,12 +124,16 @@ struct GlobalParams
   };
 
   double time_resolution{0.1};
+  CollisionDetectionTargetEdges collision_detection_target_edges{};
   EgoFootprintMargin ego_footprint_margin{};
 
   GlobalParams() = default;
   explicit GlobalParams(const validator::Params::CollisionCheck::GlobalSetting & params)
   {
     time_resolution = params.time_resolution;
+    collision_detection_target_edges.front = params.collision_detection_target_edges.front;
+    collision_detection_target_edges.side = params.collision_detection_target_edges.side;
+    collision_detection_target_edges.rear = params.collision_detection_target_edges.rear;
     ego_footprint_margin.lateral = params.ego_footprint_margin.lateral;
     ego_footprint_margin.front = params.ego_footprint_margin.front;
     ego_footprint_margin.rear = params.ego_footprint_margin.rear;

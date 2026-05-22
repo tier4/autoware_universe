@@ -51,6 +51,22 @@ validator:
         default_value: 0.1
         description: sampling interval used in collision check trajectory generation
         read_only: false
+      collision_detection_target_edges:
+        front:
+          type: bool
+          default_value: true
+          description: reject trajectories when the ego front edge collides with an object
+          read_only: false
+        side:
+          type: bool
+          default_value: true
+          description: reject trajectories when either ego side edge collides with an object
+          read_only: false
+        rear:
+          type: bool
+          default_value: true
+          description: reject trajectories when the ego rear edge collides with an object
+          read_only: false
       ego_footprint_margin:
         lateral:
           type: double

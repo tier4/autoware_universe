@@ -303,6 +303,9 @@ bool intersects_sat(const ConvexPolygon & poly_a, const ConvexPolygon & poly_b)
 
 Polygon2d to_polygon2d(
   const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape);
+
+EgoFootprintEdgeIntersections intersecting_ego_footprint_edges(
+  const Polygon2d & ego_footprint, const Polygon2d & object_polygon);
 }  // namespace autoware::trajectory_validator::plugin::safety::geometry
 
 namespace autoware::trajectory_validator::plugin::safety::trajectory

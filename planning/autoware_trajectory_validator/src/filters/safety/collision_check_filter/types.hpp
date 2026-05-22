@@ -79,6 +79,26 @@ struct TrajectoryIdentification
 };
 
 enum class RiskLevel { SAFE, WARN, ERROR };
+
+struct EgoFootprintEdgeIntersections
+{
+  bool front{false};
+  bool right{false};
+  bool rear{false};
+  bool left{false};
+
+  bool any() const { return front || right || rear || left; }
+
+  EgoFootprintEdgeIntersections & operator|=(const EgoFootprintEdgeIntersections & other)
+  {
+    front = front || other.front;
+    right = right || other.right;
+    rear = rear || other.rear;
+    left = left || other.left;
+    return *this;
+  }
+};
+
 struct CollisionDetail
 {
   TrajectoryIdentification object_identification;
@@ -88,6 +108,7 @@ struct CollisionDetail
   PoseTrajectory object_trajectory;
   Polygon2d ego_hull;
   Polygon2d object_hull;
+  EgoFootprintEdgeIntersections ego_collision_edges_at_first_collision{};
 };
 
 struct CollisionEvaluation

@@ -214,5 +214,27 @@ TEST(GeometryTest, IntersectsSatMatchesBoostForPointContactAndNearPointCases)
   expect_both_outcomes_covered("point boundary shifts", saw_intersection, saw_separation);
 }
 
+TEST(GeometryTest, IntersectingEgoFootprintEdgesReportsExpectedSides)
+{
+  Polygon2d ego_poly;
+  ego_poly.outer() = {
+    Point2d(2.0, 1.0), Point2d(2.0, -1.0), Point2d(0.0, -1.0), Point2d(0.0, 1.0),
+    Point2d(2.0, 1.0)};
+
+  const auto front_object = create_rect_poly(1.8, -0.2, 2.2, 0.2);
+  const auto front_edges = intersecting_ego_footprint_edges(ego_poly, front_object);
+  EXPECT_TRUE(front_edges.front);
+  EXPECT_FALSE(front_edges.right);
+  EXPECT_FALSE(front_edges.rear);
+  EXPECT_FALSE(front_edges.left);
+
+  const auto front_left_object = create_rect_poly(1.8, 0.8, 2.2, 1.2);
+  const auto front_left_edges = intersecting_ego_footprint_edges(ego_poly, front_left_object);
+  EXPECT_TRUE(front_left_edges.front);
+  EXPECT_FALSE(front_left_edges.right);
+  EXPECT_FALSE(front_left_edges.rear);
+  EXPECT_TRUE(front_left_edges.left);
+}
+
 }  // namespace
 }  // namespace autoware::trajectory_validator::plugin::safety::geometry

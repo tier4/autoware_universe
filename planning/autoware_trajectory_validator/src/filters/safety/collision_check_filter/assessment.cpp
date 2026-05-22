@@ -64,9 +64,17 @@ RiskLevel to_drac_risk_level(const std::optional<double> & acc, const DracParams
   return RiskLevel::SAFE;
 }
 
+bool has_enabled_collision_edge(
+  const EgoFootprintEdgeIntersections & edges, const GlobalParams & global_params)
+{
+  return (global_params.collision_detection_target_edges.front && edges.front) ||
+         (global_params.collision_detection_target_edges.side && (edges.left || edges.right)) ||
+         (global_params.collision_detection_target_edges.rear && edges.rear);
+}
+
 std::optional<CollisionDetail> find_collision_timing(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
-  PetThreshold pet_find_range, double time_resolution)
+  PetThreshold pet_find_range, double time_resolution, const GlobalParams & global_params)
 {
   const double max_pet_threshold = std::max(
     pet_find_range.ego_first_passing_time_gap, pet_find_range.object_first_passing_time_gap);
@@ -85,6 +93,7 @@ std::optional<CollisionDetail> find_collision_timing(
     double pet;
     IndexRange ref_index_range;
     TimeRange test_time_range;
+    EgoFootprintEdgeIntersections ego_collision_edges_at_first_collision;
   };
 
   const auto make_finding = [&](const CandidateFinding & candidate) -> CollisionDetail {
@@ -95,7 +104,8 @@ std::optional<CollisionDetail> find_collision_timing(
       ref_trajectory.getPoses(),
       test_trajectory.getPoses(),
       ref_trajectory.get_or_compute_convex(candidate.ref_index_range),
-      test_trajectory.get_or_compute_convex(candidate.test_time_range)};
+      test_trajectory.get_or_compute_convex(candidate.test_time_range),
+      candidate.ego_collision_edges_at_first_collision};
   };
 
   std::optional<CandidateFinding> candidate_finding{};
@@ -118,32 +128,54 @@ std::optional<CollisionDetail> find_collision_timing(
       continue;
     }
 
-    const auto has_intersects = [&](const TimeRange & time_range) -> bool {
+    const auto has_intersects = [&](const TimeRange & time_range)
+      -> std::optional<EgoFootprintEdgeIntersections> {
       if (!boost::geometry::intersects(
             ref_envelope, test_trajectory.get_or_compute_envelope(time_range))) {
-        return false;
+        return std::nullopt;
       }
 
-      return geometry::intersects_sat(
-        ref_convex, test_trajectory.get_or_compute_convex(time_range));
+      const auto & test_convex = test_trajectory.get_or_compute_convex(time_range);
+      if (!geometry::intersects_sat(ref_convex, test_convex)) {
+        return std::nullopt;
+      }
+
+      EgoFootprintEdgeIntersections edge_intersections;
+      for (size_t footprint_index = ref_index_range.first; footprint_index <= ref_index_range.second;
+           ++footprint_index) {
+        edge_intersections |= geometry::intersecting_ego_footprint_edges(
+          ref_trajectory.getFootprints().at(footprint_index), test_convex);
+      }
+
+      if (!has_enabled_collision_edge(edge_intersections, global_params)) {
+        return std::nullopt;
+      }
+
+      return edge_intersections;
     };
 
     for (double pet_range = 0.0; pet_range < current_pet_limit; pet_range += time_resolution) {
       const TimeRange test_time_range_before{ref_start_time - pet_range, ref_end_time - pet_range};
-      const bool has_intersects_before = has_intersects(test_time_range_before);
+      const auto edge_intersections_before = has_intersects(test_time_range_before);
 
       const TimeRange test_time_range_after{ref_start_time + pet_range, ref_end_time + pet_range};
-      const bool has_intersects_after = has_intersects(test_time_range_after);
+      const auto edge_intersections_after = has_intersects(test_time_range_after);
 
-      if (!has_intersects_before && !has_intersects_after) {
+      if (!edge_intersections_before.has_value() && !edge_intersections_after.has_value()) {
         continue;
       }
 
+      const bool has_intersects_before = edge_intersections_before.has_value();
       const double pet = has_intersects_before ? -pet_range : pet_range;
       const TimeRange test_time_range =
         has_intersects_before ? test_time_range_before : test_time_range_after;
+      const auto ego_collision_edges_at_first_collision =
+        has_intersects_before ? edge_intersections_before.value()
+                              : edge_intersections_after.value();
 
-      candidate_finding = CandidateFinding{ref_start_time, pet, ref_index_range, test_time_range};
+      candidate_finding =
+        CandidateFinding{ref_start_time, pet, ref_index_range, test_time_range,
+                         ego_collision_edges_at_first_collision};
       break;
     }
     if (candidate_finding.has_value() && candidate_finding->pet == 0.0) {
@@ -183,7 +215,8 @@ PetArtifact assess_planned_speed_collision_timing(
     }
 
     auto collision = find_collision_timing(
-      ego_trajectory, object_trajectory, pet_params.warn_threshold, global_params.time_resolution);
+      ego_trajectory, object_trajectory, pet_params.warn_threshold, global_params.time_resolution,
+      global_params);
 
     if (collision.has_value()) {
       const auto risk_level =
@@ -244,7 +277,7 @@ DracArtifact assess_drac(
       constexpr double drac_params_collision_time_threshold = 1.0;
       auto finding_nominal_object_motion = find_collision_timing(
         ego_deceleration_trajectory, object_trajectory, error_pet_th,
-        global_params.time_resolution);
+        global_params.time_resolution, global_params);
 
       const RiskLevel nominal_motion_risk_level =
         finding_nominal_object_motion.has_value()
@@ -263,7 +296,7 @@ DracArtifact assess_drac(
 
       auto finding_dec_object_motion = find_collision_timing(
         ego_deceleration_trajectory, object_deceleration_trajectory, error_pet_th,
-        global_params.time_resolution);
+        global_params.time_resolution, global_params);
 
       const RiskLevel dec_motion_risk_level =
         finding_dec_object_motion.has_value()

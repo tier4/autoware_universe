@@ -303,6 +303,30 @@ Polygon2d to_polygon2d(
 
   return polygon;
 }
+
+EgoFootprintEdgeIntersections intersecting_ego_footprint_edges(
+  const Polygon2d & ego_footprint, const Polygon2d & object_polygon)
+{
+  EgoFootprintEdgeIntersections edges;
+
+  constexpr size_t rectangle_closed_ring_size = 5U;
+  if (ego_footprint.outer().size() < rectangle_closed_ring_size) {
+    return edges;
+  }
+
+  using Segment2d = boost::geometry::model::segment<Point2d>;
+  const auto & ring = ego_footprint.outer();
+  const auto intersects_object = [&](const size_t start_index, const size_t end_index) {
+    return boost::geometry::intersects(
+      Segment2d{ring.at(start_index), ring.at(end_index)}, object_polygon);
+  };
+
+  edges.front = intersects_object(0U, 1U);
+  edges.right = intersects_object(1U, 2U);
+  edges.rear = intersects_object(2U, 3U);
+  edges.left = intersects_object(3U, 0U);
+  return edges;
+}
 }  // namespace autoware::trajectory_validator::plugin::safety::geometry
 
 namespace autoware::trajectory_validator::plugin::safety::trajectory
