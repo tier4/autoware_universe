@@ -21,6 +21,7 @@
   <arg name="output_current_velocity_limit_mps" default="/planning/scenario_planning/current_max_velocity"/>
 
   <node pkg="autoware_trajectory_optimizer" exec="autoware_trajectory_optimizer_node" name="trajectory_optimizer_node" output="screen">
+    <env name="LD_LIBRARY_PATH" value="/opt/acados/lib:$(env LD_LIBRARY_PATH)"/>
     <param from="$(var trajectory_optimizer_param_path)" allow_substs="true"/>
     <param from="$(var common_param_path)"/>
     <param from="$(var elastic_band_param_path)" allow_substs="true"/>
