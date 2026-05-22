@@ -1,0 +1,44 @@
+proximity_hazard_object:
+  max_detection_range_m:
+    type: double
+    default_value: 2.0
+    description: metrics.
+    read_only: false
+
+  include_unknown_objects:
+    type: bool
+    default_value: true
+    description: metrics.
+    read_only: false
+
+  sector_range:
+    front:
+      type: double_array
+      default_value: [-45.0, 45.0]
+      description: metrics.
+      read_only: false
+    front_left:
+      type: double_array
+      default_value: [45.0, 100.0]
+      description: metrics.
+      read_only: false
+    rear_left:
+      type: double_array
+      default_value: [100.0, 135.0]
+      description: metrics.
+      read_only: false
+    rear:
+      type: double_array
+      default_value: [135.0, -135.0]
+      description: metrics.
+      read_only: false
+    rear_right:
+      type: double_array
+      default_value: [-135.0, -100.0]
+      description: metrics.
+      read_only: false
+    front_right:
+      type: double_array
+      default_value: [-100.0, -45.0]
+      description: metrics.
+      read_only: false
