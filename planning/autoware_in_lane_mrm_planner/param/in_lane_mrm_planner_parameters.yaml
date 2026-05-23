@@ -1,0 +1,7 @@
+in_lane_mrm_planner:
+  planning_frequency_hz:
+    type: double
+    default_value: 10.0
+    description: Planning timer frequency [Hz]
+    validation:
+      gt<>: [0.0]
