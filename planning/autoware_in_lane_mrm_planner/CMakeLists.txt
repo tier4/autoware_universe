@@ -12,6 +12,7 @@ generate_parameter_library(in_lane_mrm_planner_parameters
 
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/in_lane_mrm_planner_node.cpp
+  src/path_planner.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_lib
