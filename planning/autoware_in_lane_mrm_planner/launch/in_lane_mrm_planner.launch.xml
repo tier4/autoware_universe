@@ -1,0 +1,7 @@
+<launch>
+  <arg name="param_path" default="$(find-pkg-share autoware_in_lane_mrm_planner)/config/in_lane_mrm_planner.param.yaml"/>
+
+  <node pkg="autoware_in_lane_mrm_planner" exec="autoware_in_lane_mrm_planner_node" name="in_lane_mrm_planner" output="screen">
+    <param from="$(var param_path)"/>
+  </node>
+</launch>
