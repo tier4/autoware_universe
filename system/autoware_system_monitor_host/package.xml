@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>autoware_system_monitor_host</name>
+  <version>0.1.0</version>
+  <description>Single-node system monitor host with pluginlib-based monitor plugins</description>
+  <maintainer email="autoware@tier4.jp">Autoware Maintainers</maintainer>
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+  <buildtool_depend>autoware_cmake</buildtool_depend>
+
+  <depend>autoware_component_interface_tools</depend>
+  <depend>autoware_component_state_monitor</depend>
+  <depend>autoware_duplicated_node_checker</depend>
+  <depend>autoware_internal_debug_msgs</depend>
+  <depend>autoware_pipeline_latency_monitor</depend>
+  <depend>autoware_processing_time_checker</depend>
+  <depend>autoware_system_monitor</depend>
+  <depend>autoware_topic_state_monitor</depend>
+  <depend>autoware_utils</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>diagnostic_updater</depend>
+  <depend>libnl-3-dev</depend>
+  <depend>nlohmann-json-dev</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>std_msgs</depend>
+  <depend>tier4_external_api_msgs</depend>
+  <depend>tier4_metric_msgs</depend>
+  <depend>tier4_system_msgs</depend>
+  <depend>tf2_msgs</depend>
+  <depend>yaml_cpp_vendor</depend>
+
+  <exec_depend>chrony</exec_depend>
+
+  <test_depend>ament_cmake_ros</test_depend>
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>autoware_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

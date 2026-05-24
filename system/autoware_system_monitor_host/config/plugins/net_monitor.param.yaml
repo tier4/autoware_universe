@@ -1,0 +1,6 @@
+/**:
+  ros__parameters:
+    net_monitor:
+      devices:
+        - "eth0"
+        - "wlan0"

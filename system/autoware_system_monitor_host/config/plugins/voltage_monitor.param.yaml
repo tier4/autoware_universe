@@ -1,0 +1,6 @@
+/**:
+  ros__parameters:
+    voltage_monitor:
+      cmos_battery_label: ""
+      cmos_battery_warn: 2.95
+      cmos_battery_error: 2.75

@@ -14,6 +14,7 @@ include_directories(
 )
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
+  src/collision_detector_core.cpp
   src/node.cpp
 )
 

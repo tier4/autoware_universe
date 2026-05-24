@@ -22,9 +22,14 @@ rclcpp_components_register_node(pcd_map_tf_generator_node
   EXECUTABLE autoware_pcd_map_tf_generator
 )
 
+ament_auto_add_library(vector_map_tf_generator SHARED
+  src/vector_map_tf_generator.cpp
+)
+
 ament_auto_add_library(vector_map_tf_generator_node SHARED
   src/vector_map_tf_generator_node.cpp
 )
+target_link_libraries(vector_map_tf_generator_node vector_map_tf_generator)
 
 rclcpp_components_register_node(vector_map_tf_generator_node
   PLUGIN "autoware::map_tf_generator::VectorMapTFGeneratorNode"

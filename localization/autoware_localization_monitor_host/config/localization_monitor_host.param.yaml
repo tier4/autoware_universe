@@ -1,0 +1,36 @@
+/**:
+  ros__parameters:
+    plugin_names:
+      - "autoware::localization_monitor_host::plugin::LocalizationErrorPlugin"
+      - "autoware::localization_monitor_host::plugin::PoseInstabilityPlugin"
+
+    use_localization_error_monitor: true
+    use_pose_instability_detector: true
+
+    timer_period: 0.1
+
+    localization_error:
+      scale: 3.0
+      error_ellipse_size: 1.0
+      warn_ellipse_size: 0.8
+      error_ellipse_size_lateral_direction: 0.35
+      warn_ellipse_size_lateral_direction: 0.3
+
+    pose_instability:
+      timer_period: 0.5
+      heading_velocity_maximum: 16.667
+      heading_velocity_scale_factor_tolerance: 3.0
+      angular_velocity_maximum: 0.523
+      angular_velocity_scale_factor_tolerance: 0.2
+      angular_velocity_bias_tolerance: 0.00698
+      pose_estimator_longitudinal_tolerance: 0.11
+      pose_estimator_lateral_tolerance: 0.11
+      pose_estimator_vertical_tolerance: 0.5
+      pose_estimator_angular_tolerance: 0.0175
+      enable_validation:
+        position_x: true
+        position_y: true
+        position_z: true
+        angle_x: false
+        angle_y: false
+        angle_z: true

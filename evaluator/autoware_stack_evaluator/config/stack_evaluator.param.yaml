@@ -1,0 +1,10 @@
+/**:
+  ros__parameters:
+    # Plugin execution order
+    plugin_names:
+      - "autoware::stack_evaluator::plugin::ControlMetricsPlugin"
+      - "autoware::stack_evaluator::plugin::PlanningMetricsPlugin"
+
+    # Host enable flags (plugins no-op when false)
+    use_control_evaluator: true
+    use_planning_evaluator: true

@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<library path="autoware_system_monitor_host_plugins">
+  <class type="autoware::system_monitor_host::plugin::CpuMonitorPlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>CPU temperature, usage, load, frequency, thermal throttling monitor</description>
+  </class>
+  <class type="autoware::system_monitor_host::plugin::GpuMonitorPlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>GPU temperature, usage, memory, thermal throttling, frequency monitor</description>
+  </class>
+  <class type="autoware::system_monitor_host::plugin::HddMonitorPlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>HDD temperature, usage, SMART attributes, I/O rates monitor</description>
+  </class>
+  <class type="autoware::system_monitor_host::plugin::MemMonitorPlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>Memory usage and ECC error monitor</description>
+  </class>
+  <class type="autoware::system_monitor_host::plugin::NetMonitorPlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>Network connection, usage, traffic, CRC errors monitor</description>
+  </class>
+  <class type="autoware::system_monitor_host::plugin::NtpMonitorPlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>NTP/chrony offset monitor</description>
+  </class>
+  <class type="autoware::system_monitor_host::plugin::ProcessMonitorPlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>Process count and high-load/memory process monitor</description>
+  </class>
+  <class type="autoware::system_monitor_host::plugin::VoltageMonitorPlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>CMOS battery voltage monitor</description>
+  </class>
+  <class type="autoware::system_monitor_host::plugin::DuplicatedNodePlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>Duplicate ROS node name checker</description>
+  </class>
+  <class type="autoware::system_monitor_host::plugin::ProcessingTimePlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>Processing time metrics collector from debug topics</description>
+  </class>
+  <class type="autoware::system_monitor_host::plugin::PipelineLatencyPlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>Pipeline step latency monitor with diagnostic output</description>
+  </class>
+  <class type="autoware::system_monitor_host::plugin::ServiceLogPlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>Service call failure log monitor</description>
+  </class>
+  <class type="autoware::system_monitor_host::plugin::TopicStatePlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>Multi-topic presence and rate monitor</description>
+  </class>
+  <class type="autoware::system_monitor_host::plugin::ComponentStateAggregatorPlugin"
+         base_class_type="autoware::system_monitor_host::plugin::MonitorPluginBase">
+    <description>Component state availability aggregator from topic_state diagnostics</description>
+  </class>
+</library>

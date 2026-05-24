@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<library path="autoware_control_safety_monitor_host_plugins">
+  <class type="autoware::control_safety_monitor_host::plugin::SurroundCollisionPlugin"
+         base_class_type="autoware::control_safety_monitor_host::plugin::SafetyMonitorPluginBase">
+    <description>
+      Surround collision monitor (pointcloud + dynamic objects at current ego pose).
+    </description>
+  </class>
+  <class type="autoware::control_safety_monitor_host::plugin::TrajectoryObstacleCollisionPlugin"
+         base_class_type="autoware::control_safety_monitor_host::plugin::SafetyMonitorPluginBase">
+    <description>
+      Trajectory obstacle collision monitor (predicted path vs pointcloud).
+    </description>
+  </class>
+  <class type="autoware::control_safety_monitor_host::plugin::TrajectoryObjectCollisionPlugin"
+         base_class_type="autoware::control_safety_monitor_host::plugin::SafetyMonitorPluginBase">
+    <description>
+      Trajectory object collision monitor (predicted path vs dynamic objects + set_pause).
+    </description>
+  </class>
+</library>

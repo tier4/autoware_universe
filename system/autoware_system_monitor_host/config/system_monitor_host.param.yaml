@@ -1,0 +1,19 @@
+/**:
+  ros__parameters:
+    update_rate: 10.0
+
+    plugin_names:
+      - "autoware::system_monitor_host::plugin::CpuMonitorPlugin"
+      - "autoware::system_monitor_host::plugin::GpuMonitorPlugin"
+      - "autoware::system_monitor_host::plugin::MemMonitorPlugin"
+      - "autoware::system_monitor_host::plugin::NetMonitorPlugin"
+      - "autoware::system_monitor_host::plugin::NtpMonitorPlugin"
+      - "autoware::system_monitor_host::plugin::ProcessMonitorPlugin"
+      - "autoware::system_monitor_host::plugin::HddMonitorPlugin"
+      - "autoware::system_monitor_host::plugin::VoltageMonitorPlugin"
+      - "autoware::system_monitor_host::plugin::DuplicatedNodePlugin"
+      - "autoware::system_monitor_host::plugin::ProcessingTimePlugin"
+      - "autoware::system_monitor_host::plugin::PipelineLatencyPlugin"
+      - "autoware::system_monitor_host::plugin::ServiceLogPlugin"
+      - "autoware::system_monitor_host::plugin::TopicStatePlugin"
+      - "autoware::system_monitor_host::plugin::ComponentStateAggregatorPlugin"

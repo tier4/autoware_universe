@@ -1,0 +1,124 @@
+/**:
+  ros__parameters:
+    planning_metrics:
+      output_metrics: false
+      ego_frame: base_link
+
+      metrics_for_publish:
+        - curvature
+        - point_interval
+        - relative_angle
+        - resampled_relative_angle
+        - length
+        - duration
+        - velocity
+        - acceleration
+        - jerk
+        - lateral_deviation
+        - yaw_deviation
+        - velocity_deviation
+        - lateral_trajectory_displacement_local
+        - lateral_trajectory_displacement_lookahead
+        - stability
+        - stability_frechet
+        - obstacle_distance
+        - obstacle_ttc
+        - obstacle_pet
+        - obstacle_drac
+        - modified_goal_longitudinal_deviation
+        - modified_goal_lateral_deviation
+        - modified_goal_yaw_deviation
+        - stop_decision
+        - abnormal_stop_decision
+        - blinker_change_count
+        - steer_change_count
+
+      metrics_for_output:
+        - curvature
+        - point_interval
+        - relative_angle
+        - resampled_relative_angle
+        - length
+        - duration
+        - velocity
+        - acceleration
+        - jerk
+        - lateral_deviation
+        - yaw_deviation
+        - velocity_deviation
+        - lateral_trajectory_displacement_local
+        - lateral_trajectory_displacement_lookahead
+        - stability
+        - stability_frechet
+        - obstacle_distance
+        - obstacle_ttc
+        - obstacle_pet
+        - obstacle_drac
+        - modified_goal_longitudinal_deviation
+        - modified_goal_lateral_deviation
+        - modified_goal_yaw_deviation
+        - stop_decision
+        - abnormal_stop_decision
+        - blinker_change_count
+        - steer_change_count
+
+      trajectory:
+        min_point_dist_m: 0.1
+        evaluation_time_s: 5.0
+        lookahead:
+          max_dist_m: 5.0
+          max_time_s: 3.0
+
+      obstacle:
+        worst_only: true
+        use_ego_traj_vel: false
+        collision_thr_m: 0.0
+        stop_velocity_mps: 0.2777
+        min_time_interval_s: 0.05
+        min_spatial_interval_m: 0.1
+
+      stop_decision:
+        topic_prefix: /planning/planning_factors/
+        time_count_threshold_s: 60.0
+        dist_count_threshold_m: 5.0
+        abnormal_deceleration_threshold_mps2: 2.0
+        module_list:
+          - avoidance_by_lane_change
+          - behavior_path_planner
+          - blind_spot
+          - crosswalk
+          - detection_area
+          - dynamic_obstacle_avoidance
+          - dynamic_obstacle_stop
+          - goal_planner
+          - intersection
+          - lane_change_left
+          - lane_change_right
+          - motion_velocity_planner
+          - merge_from_private
+          - no_drivable_lane
+          - no_stopping_area
+          - obstacle_cruise
+          - obstacle_slow_down
+          - obstacle_stop
+          - occlusion_spot
+          - out_of_lane
+          - run_out
+          - side_shift
+          - start_planner
+          - static_obstacle_avoidance
+          - stop_line
+          - surround_obstacle_checker
+          - traffic_light
+          - virtual_traffic_light
+          - walkway
+
+      blinker_change_count:
+        window_duration_s: 5.0
+
+      steer_change_count:
+        window_duration_s: 5.0
+        steer_rate_margin: 0.2
+
+      limit:
+        min_acc: -5.0

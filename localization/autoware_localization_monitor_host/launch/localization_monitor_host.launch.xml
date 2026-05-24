@@ -1,0 +1,11 @@
+<launch>
+  <arg name="input/odom" default="/localization/kinematic_state"/>
+  <arg name="input/twist" default="/localization/twist_estimator/twist_with_covariance"/>
+  <arg name="param_file" default="$(find-pkg-share autoware_localization_monitor_host)/config/localization_monitor_host.param.yaml"/>
+
+  <node pkg="autoware_localization_monitor_host" exec="autoware_localization_monitor_host" output="both">
+    <remap from="input/odom" to="$(var input/odom)"/>
+    <remap from="input/twist" to="$(var input/twist)"/>
+    <param from="$(var param_file)"/>
+  </node>
+</launch>

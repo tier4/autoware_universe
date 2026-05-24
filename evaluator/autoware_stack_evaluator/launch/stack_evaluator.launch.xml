@@ -1,0 +1,50 @@
+<launch>
+  <arg name="launch_stack_evaluator" default="true"/>
+  <arg name="use_control_evaluator" default="true"/>
+  <arg name="use_planning_evaluator" default="true"/>
+  <arg name="output_metrics" default="false"/>
+  <arg name="input/odometry" default="/localization/kinematic_state"/>
+  <arg name="input/acceleration" default="/localization/acceleration"/>
+  <arg name="input/trajectory" default="/planning/trajectory"/>
+  <arg name="input/vector_map" default="/map/vector_map"/>
+  <arg name="input/route" default="/planning/mission_planning/route"/>
+  <arg name="input/behavior_path" default="/planning/scenario_planning/lane_driving/behavior_planning/path_with_lane_id"/>
+  <arg name="input/reference_trajectory" default="/planning/scenario_planning/lane_driving/motion_planning/path_optimizer/trajectory"/>
+  <arg name="input/objects" default="/perception/object_recognition/objects"/>
+  <arg name="input/modified_goal" default="/planning/scenario_planning/modified_goal"/>
+  <arg name="input/steering_status" default="/vehicle/status/steering_status"/>
+  <arg name="input/turn_indicators_status" default="/vehicle/status/turn_indicators_status"/>
+
+  <!-- Output topic remaps to preserve original metric topic names -->
+  <arg name="output/control_metrics" default="/control/control_evaluator/metrics"/>
+  <arg name="output/planning_metrics" default="/planning/planning_evaluator/metrics"/>
+
+  <group if="$(var launch_stack_evaluator)">
+    <node name="stack_evaluator" exec="stack_evaluator" pkg="autoware_stack_evaluator">
+      <param from="$(find-pkg-share autoware_stack_evaluator)/config/stack_evaluator.param.yaml"/>
+      <param from="$(find-pkg-share autoware_stack_evaluator)/config/plugins/control_metrics.param.yaml"/>
+      <param from="$(find-pkg-share autoware_stack_evaluator)/config/plugins/planning_metrics.param.yaml"/>
+      <param name="use_control_evaluator" value="$(var use_control_evaluator)"/>
+      <param name="use_planning_evaluator" value="$(var use_planning_evaluator)"/>
+      <param name="control_metrics.output_metrics" value="$(var output_metrics)"/>
+      <param name="planning_metrics.output_metrics" value="$(var output_metrics)"/>
+
+      <!-- Shared inputs (deduplicated subscriptions on host) -->
+      <remap from="~/input/odometry" to="$(var input/odometry)"/>
+      <remap from="~/input/acceleration" to="$(var input/acceleration)"/>
+      <remap from="~/input/trajectory" to="$(var input/trajectory)"/>
+      <remap from="~/input/vector_map" to="$(var input/vector_map)"/>
+      <remap from="~/input/route" to="$(var input/route)"/>
+      <remap from="~/input/behavior_path" to="$(var input/behavior_path)"/>
+      <remap from="~/input/objects" to="$(var input/objects)"/>
+      <remap from="~/input/steering_status" to="$(var input/steering_status)"/>
+      <remap from="~/input/turn_indicators_status" to="$(var input/turn_indicators_status)"/>
+      <remap from="~/input/reference_trajectory" to="$(var input/reference_trajectory)"/>
+      <remap from="~/input/modified_goal" to="$(var input/modified_goal)"/>
+
+      <!-- Preserve original metric topic names via remap -->
+      <remap from="~/control/metrics" to="$(var output/control_metrics)"/>
+      <remap from="~/planning/metrics" to="$(var output/planning_metrics)"/>
+    </node>
+  </group>
+</launch>

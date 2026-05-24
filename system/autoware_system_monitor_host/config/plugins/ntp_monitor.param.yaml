@@ -1,0 +1,5 @@
+/**:
+  ros__parameters:
+    ntp_monitor:
+      offset_warn: 0.1
+      offset_error: 5.0

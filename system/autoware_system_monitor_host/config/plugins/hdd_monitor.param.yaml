@@ -1,0 +1,7 @@
+/**:
+  ros__parameters:
+    hdd_monitor:
+      usage_warn: 0.95
+      usage_error: 0.99
+      temp_warn: 55.0
+      temp_error: 60.0

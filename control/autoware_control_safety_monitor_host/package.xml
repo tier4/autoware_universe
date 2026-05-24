@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>autoware_control_safety_monitor_host</name>
+  <version>0.50.0</version>
+  <description>Single-node monitor host for control safety checks (collision detector trio)</description>
+  <maintainer email="yamato.ando@tier4.jp">Yamato Ando</maintainer>
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+  <buildtool_depend>autoware_cmake</buildtool_depend>
+  <buildtool_depend>eigen3_cmake_module</buildtool_depend>
+
+  <depend>autoware_collision_detector</depend>
+  <depend>autoware_component_interface_specs_universe</depend>
+  <depend>autoware_component_interface_utils</depend>
+  <depend>autoware_obstacle_collision_checker</depend>
+  <depend>autoware_predicted_path_checker</depend>
+  <depend>autoware_utils</depend>
+  <depend>autoware_vehicle_info_utils</depend>
+  <depend>autoware_planning_msgs</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>diagnostic_updater</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>sensor_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>autoware_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

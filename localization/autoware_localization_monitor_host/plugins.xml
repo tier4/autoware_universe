@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<library path="autoware_localization_monitor_host_plugins">
+  <class type="autoware::localization_monitor_host::plugin::LocalizationErrorPlugin"
+         base_class_type="autoware::localization_monitor_host::plugin::LocalizationMonitorPluginBase">
+    <description>
+      Monitors localization error ellipse size from odometry covariance.
+      Publishes /diagnostics (ellipse_error_status) and debug ellipse marker.
+    </description>
+  </class>
+  <class type="autoware::localization_monitor_host::plugin::PoseInstabilityPlugin"
+         base_class_type="autoware::localization_monitor_host::plugin::LocalizationMonitorPluginBase">
+    <description>
+      Detects pose instability by comparing dead-reckoned pose (from twist integration)
+      with EKF estimated pose. Publishes /diagnostics and debug diff_pose.
+    </description>
+  </class>
+</library>

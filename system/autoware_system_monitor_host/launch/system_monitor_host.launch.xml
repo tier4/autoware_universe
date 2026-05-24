@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="system_monitor_host_param_path"
+       default="$(find-pkg-share autoware_system_monitor_host)/config/system_monitor_host.param.yaml"/>
+
+  <!-- System monitor plugin params -->
+  <arg name="cpu_monitor_param_path"
+       default="$(find-pkg-share autoware_system_monitor_host)/config/plugins/cpu_monitor.param.yaml"/>
+  <arg name="gpu_monitor_param_path"
+       default="$(find-pkg-share autoware_system_monitor_host)/config/plugins/gpu_monitor.param.yaml"/>
+  <arg name="mem_monitor_param_path"
+       default="$(find-pkg-share autoware_system_monitor_host)/config/plugins/mem_monitor.param.yaml"/>
+  <arg name="net_monitor_param_path"
+       default="$(find-pkg-share autoware_system_monitor_host)/config/plugins/net_monitor.param.yaml"/>
+  <arg name="ntp_monitor_param_path"
+       default="$(find-pkg-share autoware_system_monitor_host)/config/plugins/ntp_monitor.param.yaml"/>
+  <arg name="process_monitor_param_path"
+       default="$(find-pkg-share autoware_system_monitor_host)/config/plugins/process_monitor.param.yaml"/>
+  <arg name="hdd_monitor_param_path"
+       default="$(find-pkg-share autoware_system_monitor_host)/config/plugins/hdd_monitor.param.yaml"/>
+  <arg name="voltage_monitor_param_path"
+       default="$(find-pkg-share autoware_system_monitor_host)/config/plugins/voltage_monitor.param.yaml"/>
+
+  <!-- External plugin param files (from existing packages) -->
+  <arg name="duplicated_node_checker_param_path" default=""/>
+  <arg name="processing_time_checker_param_path" default=""/>
+  <arg name="pipeline_latency_monitor_param_path" default=""/>
+  <arg name="component_state_monitor_topic_path" default=""/>
+
+  <!-- Configurable args -->
+  <arg name="run_mode" default="online"/>
+
+  <!-- SINGLE NODE: all monitors as plugins -->
+  <node pkg="autoware_system_monitor_host"
+        exec="autoware_system_monitor_host_node"
+        name="monitor_host" output="screen">
+    <!-- Host params -->
+    <param from="$(var system_monitor_host_param_path)" allow_substs="true"/>
+
+    <!-- System monitor plugin param files (from host config/plugins/) -->
+    <param from="$(var cpu_monitor_param_path)" allow_substs="true"/>
+    <param from="$(var gpu_monitor_param_path)" allow_substs="true"/>
+    <param from="$(var mem_monitor_param_path)" allow_substs="true"/>
+    <param from="$(var net_monitor_param_path)" allow_substs="true"/>
+    <param from="$(var ntp_monitor_param_path)" allow_substs="true"/>
+    <param from="$(var process_monitor_param_path)" allow_substs="true"/>
+    <param from="$(var hdd_monitor_param_path)" allow_substs="true"/>
+    <param from="$(var voltage_monitor_param_path)" allow_substs="true"/>
+
+    <!-- Legacy param files (from existing packages, same format as today) -->
+    <param from="$(var duplicated_node_checker_param_path)" allow_substs="true"/>
+    <param from="$(var processing_time_checker_param_path)" allow_substs="true"/>
+    <param from="$(var pipeline_latency_monitor_param_path)" allow_substs="true"/>
+
+    <!-- Component state / topic state config -->
+    <param name="topic_state_monitor.config_file" value="$(var component_state_monitor_topic_path)"/>
+    <param name="component_state_monitor.config_file" value="$(var component_state_monitor_topic_path)"/>
+    <param name="topic_state_monitor.run_mode" value="$(var run_mode)"/>
+    <param name="component_state_monitor.run_mode" value="$(var run_mode)"/>
+
+    <!-- Legacy topic paths for external API / simulator consumers -->
+    <remap from="~/cpu_temperature" to="/system/system_monitor/cpu_monitor/cpu_temperature"/>
+    <remap from="~/cpu_usage" to="/system/system_monitor/cpu_monitor/cpu_usage"/>
+    <remap from="~/memory_status" to="/system/system_monitor/mem_monitor/memory_status"/>
+    <remap from="~/gpu_status" to="/system/system_monitor/gpu_monitor/gpu_status"/>
+    <remap from="~/network_status" to="/system/system_monitor/net_monitor/network_status"/>
+    <remap from="~/hdd_status" to="/system/system_monitor/hdd_monitor/hdd_status"/>
+    <remap from="~/metrics" to="/system/processing_time_checker/metrics"/>
+
+    <!-- Legacy component_state_monitor paths (AutowareStateNode and other consumers) -->
+    <remap from="~/component/launch/sensing" to="/system/component_state_monitor/component/launch/sensing"/>
+    <remap from="~/component/launch/perception" to="/system/component_state_monitor/component/launch/perception"/>
+    <remap from="~/component/launch/map" to="/system/component_state_monitor/component/launch/map"/>
+    <remap from="~/component/launch/localization" to="/system/component_state_monitor/component/launch/localization"/>
+    <remap from="~/component/launch/planning" to="/system/component_state_monitor/component/launch/planning"/>
+    <remap from="~/component/launch/control" to="/system/component_state_monitor/component/launch/control"/>
+    <remap from="~/component/launch/vehicle" to="/system/component_state_monitor/component/launch/vehicle"/>
+    <remap from="~/component/launch/system" to="/system/component_state_monitor/component/launch/system"/>
+    <remap from="~/component/autonomous/sensing" to="/system/component_state_monitor/component/autonomous/sensing"/>
+    <remap from="~/component/autonomous/perception" to="/system/component_state_monitor/component/autonomous/perception"/>
+    <remap from="~/component/autonomous/map" to="/system/component_state_monitor/component/autonomous/map"/>
+    <remap from="~/component/autonomous/localization" to="/system/component_state_monitor/component/autonomous/localization"/>
+    <remap from="~/component/autonomous/planning" to="/system/component_state_monitor/component/autonomous/planning"/>
+    <remap from="~/component/autonomous/control" to="/system/component_state_monitor/component/autonomous/control"/>
+    <remap from="~/component/autonomous/vehicle" to="/system/component_state_monitor/component/autonomous/vehicle"/>
+    <remap from="~/component/autonomous/system" to="/system/component_state_monitor/component/autonomous/system"/>
+  </node>
+</launch>

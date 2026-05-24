@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<library path="autoware_stack_evaluator_plugins">
+  <class type="autoware::stack_evaluator::plugin::ControlMetricsPlugin"
+         base_class_type="autoware::stack_evaluator::plugin::EvaluatorPluginBase">
+    <description>
+      Control evaluator metrics plugin. Computes control tracking error metrics:
+      lateral/yaw/velocity deviation, steering metrics, object distance,
+      boundary distance, goal deviation, stop deviation.
+    </description>
+  </class>
+  <class type="autoware::stack_evaluator::plugin::PlanningMetricsPlugin"
+         base_class_type="autoware::stack_evaluator::plugin::EvaluatorPluginBase">
+    <description>
+      Planning evaluator metrics plugin. Computes planning trajectory quality metrics:
+      curvature, point interval, relative angle, stability, obstacle TTC/PET/DRAC,
+      modified goal deviation, stop decision counts, blinker/steer change counts.
+    </description>
+  </class>
+</library>

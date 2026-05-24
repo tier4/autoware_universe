@@ -1,0 +1,29 @@
+<launch>
+  <arg name="input/odometry" default="/localization/kinematic_state"/>
+  <arg name="input/pointcloud" default="/perception/obstacle_segmentation/pointcloud"/>
+  <arg name="input/objects" default="/perception/object_recognition/objects"/>
+  <arg name="input/reference_trajectory" default="/planning/trajectory"/>
+  <arg name="input/predicted_trajectory" default="/control/trajectory_follower/lateral/predicted_trajectory"/>
+  <arg name="input/current_accel" default="/localization/acceleration"/>
+  <arg name="param_file" default="$(find-pkg-share autoware_control_safety_monitor_host)/config/safety_monitor_host.param.yaml"/>
+  <arg name="vehicle_param_file"/>
+  <arg name="use_collision_detector" default="true"/>
+  <arg name="use_obstacle_collision_checker" default="false"/>
+  <arg name="use_predicted_path_checker" default="false"/>
+
+  <!-- Namespace is applied by tier4_control_launch (push-ros-namespace control). -->
+  <node pkg="autoware_control_safety_monitor_host" exec="autoware_control_safety_monitor_host_node" name="safety_monitor_host" output="both">
+    <remap from="input/odometry" to="$(var input/odometry)"/>
+    <remap from="input/pointcloud" to="$(var input/pointcloud)"/>
+    <remap from="input/objects" to="$(var input/objects)"/>
+    <remap from="input/reference_trajectory" to="$(var input/reference_trajectory)"/>
+    <remap from="input/predicted_trajectory" to="$(var input/predicted_trajectory)"/>
+    <remap from="input/obstacle_pointcloud" to="$(var input/pointcloud)"/>
+    <remap from="input/current_accel" to="$(var input/current_accel)"/>
+    <param from="$(var param_file)"/>
+    <param from="$(var vehicle_param_file)"/>
+    <param name="use_collision_detector" value="$(var use_collision_detector)"/>
+    <param name="use_obstacle_collision_checker" value="$(var use_obstacle_collision_checker)"/>
+    <param name="use_predicted_path_checker" value="$(var use_predicted_path_checker)"/>
+  </node>
+</launch>

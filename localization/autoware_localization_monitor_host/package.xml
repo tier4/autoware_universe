@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>autoware_localization_monitor_host</name>
+  <version>0.50.0</version>
+  <description>Single-node monitor host for localization diagnostics (error ellipse + pose instability)</description>
+  <maintainer email="yamato.ando@tier4.jp">Yamato Ando</maintainer>
+  <maintainer email="taiki.yamada@tier4.jp">Taiki Yamada</maintainer>
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+  <buildtool_depend>autoware_cmake</buildtool_depend>
+  <buildtool_depend>eigen</buildtool_depend>
+
+  <depend>autoware_localization_util</depend>
+  <depend>autoware_utils_diagnostics</depend>
+  <depend>autoware_utils_geometry</depend>
+  <depend>autoware_utils_logging</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>tf2</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>visualization_msgs</depend>
+
+  <test_depend>ament_cmake_ros</test_depend>
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>autoware_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

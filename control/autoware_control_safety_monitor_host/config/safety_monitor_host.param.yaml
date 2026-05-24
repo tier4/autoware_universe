@@ -1,0 +1,60 @@
+/**:
+  ros__parameters:
+    plugin_names:
+      - "autoware::control_safety_monitor_host::plugin::SurroundCollisionPlugin"
+      - "autoware::control_safety_monitor_host::plugin::TrajectoryObstacleCollisionPlugin"
+      - "autoware::control_safety_monitor_host::plugin::TrajectoryObjectCollisionPlugin"
+
+    use_collision_detector: true
+    use_obstacle_collision_checker: false
+    use_predicted_path_checker: false
+    timer_period: 0.1
+
+    collision_detector:
+      use_pointcloud: false
+      use_dynamic_object: true
+      collision_distance: 0.1
+      nearby_filter_radius: 5.0
+      keep_ignoring_time: 10.0
+      nearby_object_type_filters:
+        filter_car: false
+        filter_truck: false
+        filter_bus: false
+        filter_trailer: false
+        filter_bicycle: false
+        filter_motorcycle: false
+        filter_pedestrian: false
+        filter_unknown: true
+      ignore_behind_rear_axle: true
+      time_buffer:
+        on_duration: 0.2
+        off_duration: 5.0
+        off_distance_hysteresis: 1.0
+
+    obstacle_collision_checker:
+      update_rate: 10.0
+      delay_time: 0.03
+      footprint_margin: 0.0
+      max_deceleration: 1.5
+      resample_interval: 0.3
+      search_radius: 5.0
+
+    predicted_path_checker:
+      update_rate: 10.0
+      delay_time: 0.17
+      max_deceleration: 1.5
+      resample_interval: 0.5
+      stop_margin: 0.5
+      ego_nearest_dist_threshold: 3.0
+      ego_nearest_yaw_threshold: 1.046
+      min_trajectory_check_length: 1.5
+      trajectory_check_time: 3.0
+      distinct_point_distance_threshold: 0.3
+      distinct_point_yaw_threshold: 5.0
+      filtering_distance_threshold: 1.5
+      use_object_prediction: true
+      collision_checker_params:
+        width_margin: 0.2
+        chattering_threshold: 0.2
+        z_axis_filtering_buffer: 0.3
+        enable_z_axis_obstacle_filtering: false
