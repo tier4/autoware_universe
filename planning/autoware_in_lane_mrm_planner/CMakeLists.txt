@@ -5,6 +5,7 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 find_package(OpenCV REQUIRED)
+find_package(PCL REQUIRED COMPONENTS common io)
 
 generate_parameter_library(in_lane_mrm_planner_parameters
   param/in_lane_mrm_planner_parameters.yaml
@@ -13,15 +14,22 @@ generate_parameter_library(in_lane_mrm_planner_parameters
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/in_lane_mrm_planner_node.cpp
   src/in_lane_mrm_trajectory_planner.cpp
+  src/in_lane_mrm_trajectory_modifier.cpp
   src/trajectory_smoother.cpp
   src/path_planner.cpp
+  src/obstacle_stop_utils.cpp
+  src/mrm_obstacle_stop.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_lib
   in_lane_mrm_planner_parameters
+  ${PCL_LIBRARIES}
 )
 
-target_compile_options(${PROJECT_NAME}_lib PRIVATE -Wno-deprecated-declarations)
+target_compile_options(${PROJECT_NAME}_lib PRIVATE
+  -Wno-deprecated-declarations
+  -Wno-error=deprecated-declarations
+)
 
 rclcpp_components_register_node(${PROJECT_NAME}_lib
   PLUGIN "autoware::in_lane_mrm_planner::InLaneMrmPlannerNode"
