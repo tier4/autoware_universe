@@ -330,13 +330,19 @@ namespace autoware::trajectory_validator::plugin::safety::trajectory
 {
 namespace footprint
 {
+struct EgoDimensions
+{
+  double front_offset{0.0};
+  double rear_overhang{0.0};
+  double vehicle_width{0.0};
+};
+
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory,
   const autoware_perception_msgs::msg::Shape & object_shape);
 
 FootprintTrajectory compute_footprint_trajectory(
-  const PoseTrajectory & pose_trajectory, const VehicleInfo & vehicle_info,
-  const GlobalParams & global_params);
+  const PoseTrajectory & pose_trajectory, const EgoDimensions & ego_dimensions);
 }  // namespace footprint
 
 namespace detail
@@ -357,12 +363,12 @@ geometry_msgs::msg::Pose interpolate_predicted_path_pose(
 
 TrajectoryData generate_ego_trajectory(
   const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
-  double max_time, const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info,
-  const GlobalParams & global_params);
+  double max_time, const TrajectoryPoints & traj_points,
+  const footprint::EgoDimensions & ego_dimensions, double time_resolution);
 
 TrajectoryData generate_ego_trajectory(
   const TrajectoryPoints & traj_points, const FilterContext & context, double max_time,
-  const VehicleInfo & vehicle_info, const GlobalParams & global_params);
+  const footprint::EgoDimensions & ego_dimensions, double time_resolution);
 
 TrajectoryData generate_predicted_path_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,

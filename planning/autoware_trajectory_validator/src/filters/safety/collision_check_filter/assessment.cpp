@@ -65,6 +65,15 @@ RiskLevel to_drac_risk_level(const std::optional<double> & acc, const DracParams
   return RiskLevel::SAFE;
 }
 
+trajectory::footprint::EgoDimensions make_ego_dimensions(
+  const VehicleInfo & vehicle_info, const GlobalParams & global_params)
+{
+  return trajectory::footprint::EgoDimensions{
+    vehicle_info.max_longitudinal_offset_m + global_params.ego_footprint_margin.front,
+    -vehicle_info.min_longitudinal_offset_m + global_params.ego_footprint_margin.rear,
+    vehicle_info.vehicle_width_m + 2.0 * global_params.ego_footprint_margin.lateral};
+}
+
 std::optional<CollisionDetail> find_collision_timing(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
   PetThreshold pet_find_range, double time_resolution)
@@ -169,11 +178,13 @@ PetArtifact assess_planned_speed_collision_timing(
   // todo (takagi): ego_trajectory options can not set for each object type because cache structure
   // is not implemented yet.
   const auto & ego_pet_params = pet_param_map.at(kCollisionCheckParamBaseKey);
+  const auto ego_dimensions =
+    collision_timing_assessment::make_ego_dimensions(vehicle_info, global_params);
   const double ego_time_horizon_for_pet = std::abs(context.odometry->twist.twist.linear.x) * 0.5 /
                                             -ego_pet_params.ego_assumed_acceleration +
                                           ego_pet_params.ego_total_braking_delay;
   auto ego_trajectory = trajectory::generate_ego_trajectory(
-    traj_points, context, ego_time_horizon_for_pet, vehicle_info, global_params);
+    traj_points, context, ego_time_horizon_for_pet, ego_dimensions, global_params.time_resolution);
 
   std::vector<CollisionEvaluation> collision_evaluations{};
   for (const auto & object_trajectory : object_trajectories) {
@@ -212,6 +223,7 @@ DracArtifact assess_drac(
   // todo (takagi): ego_trajectory options can not set for each object type because cache structure
   // is not implemented yet.
   const auto & ego_drac_params = drac_param_map.at(kCollisionCheckParamBaseKey);
+  const auto ego_dimensions = make_ego_dimensions(vehicle_info, global_params);
   constexpr double default_ego_deceleration_step = 1.0;
   constexpr double default_max_ego_deceleration = 6.0;
   constexpr PetThreshold error_pet_th{0.6, 0.3};
@@ -223,15 +235,15 @@ DracArtifact assess_drac(
     const auto ego_deceleration_trajectory = [&]() {
       if (ego_dec == 0.0) {
         return trajectory::generate_ego_trajectory(
-          traj_points, context, ego_time_horizon, vehicle_info, global_params);
+          traj_points, context, ego_time_horizon, ego_dimensions, global_params.time_resolution);
       } else if (ego_dec > default_max_ego_deceleration - 1e-3) {
         return trajectory::generate_ego_trajectory(
-          context.odometry->twist.twist, 0.0, -ego_dec, ego_time_horizon, traj_points, vehicle_info,
-          global_params);
+          context.odometry->twist.twist, 0.0, -ego_dec, ego_time_horizon, traj_points,
+          ego_dimensions, global_params.time_resolution);
       }
       return trajectory::generate_ego_trajectory(
         context.odometry->twist.twist, ego_drac_params.ego_total_braking_delay, -ego_dec,
-        ego_time_horizon, traj_points, vehicle_info, global_params);
+        ego_time_horizon, traj_points, ego_dimensions, global_params.time_resolution);
     }();
 
     std::vector<CollisionEvaluation> collision_evaluations{};
@@ -417,9 +429,11 @@ TrajectoryData generate_rss_ego_trajectory(
 {
   const double ego_time_horizon_for_rss =
     rclcpp::Duration(traj_points.back().time_from_start).seconds();
+  const auto ego_dimensions =
+    collision_timing_assessment::make_ego_dimensions(vehicle_info, global_params);
 
   return trajectory::generate_ego_trajectory(
-    traj_points, context, ego_time_horizon_for_rss, vehicle_info, global_params);
+    traj_points, context, ego_time_horizon_for_rss, ego_dimensions, global_params.time_resolution);
 }
 
 RssDetail assess_required_acceleration(
