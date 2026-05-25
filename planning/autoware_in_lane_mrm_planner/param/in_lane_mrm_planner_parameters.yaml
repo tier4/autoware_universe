@@ -319,20 +319,36 @@ in_lane_mrm_planner:
   mrm_velocity:
     target_deceleration:
       type: double
-      default_value: -2.5
+      default_value: -3.0
       description: target longitudinal deceleration for MRM stop velocity planning [m/s^2]
     target_jerk:
       type: double
-      default_value: -1.5
+      default_value: -5.0
       description: target longitudinal jerk for MRM stop velocity planning [m/s^3]
     max_jerk_relaxation:
       type: double
-      default_value: -5.0
+      default_value: -20.0
       description: vehicle jerk limit used when relaxing MRM stop profile [m/s^3]
     max_deceleration_relaxation:
       type: double
-      default_value: -5.0
+      default_value: -6.0
       description: vehicle deceleration limit used when relaxing MRM stop profile [m/s^2]
+    step_jerk_relaxation:
+      type: double
+      default_value: -5.0
+      description: jerk relaxation step per iteration (more negative is harsher) [m/s^3]
+    step_deceleration_relaxation:
+      type: double
+      default_value: -1.0
+      description: deceleration relaxation step per iteration (more negative is harsher) [m/s^2]
+    decel_resample_range:
+      type: double
+      default_value: 2.0
+      description: arc-length range around constraint stop to densify trajectory before decel fill [m]
+    decel_resample_interval:
+      type: double
+      default_value: 0.1
+      description: point interval used inside decel_resample_range [m]
 
   latch:
     use_latched_objects:

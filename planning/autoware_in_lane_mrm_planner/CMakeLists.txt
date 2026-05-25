@@ -19,6 +19,7 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/path_planner.cpp
   src/obstacle_stop_utils.cpp
   src/mrm_obstacle_stop.cpp
+  src/mrm_stop_velocity_planner.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_lib
@@ -41,6 +42,7 @@ if(BUILD_TESTING)
 
   ament_add_ros_isolated_gmock(test_${PROJECT_NAME}
     test/test_lateral_offset.cpp
+    test/test_mrm_stop_velocity_planner.cpp
   )
 
   target_include_directories(test_${PROJECT_NAME} PRIVATE
