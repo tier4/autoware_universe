@@ -322,9 +322,12 @@ TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryForVehicleMatchesUtility
 {
   const PoseTrajectory poses = {create_pose(1.0, 2.0, 0.0)};
   const auto vehicle_info = create_vehicle_info();
+  const trajectory::footprint::EgoDimensions ego_dimensions{
+    vehicle_info.max_longitudinal_offset_m, -vehicle_info.min_longitudinal_offset_m,
+    vehicle_info.vehicle_width_m};
 
   const auto footprints =
-    trajectory::footprint::compute_footprint_trajectory(poses, vehicle_info, GlobalParams{});
+    trajectory::footprint::compute_footprint_trajectory(poses, ego_dimensions);
 
   EXPECT_TRUE(std::holds_alternative<QuadTrajectory>(footprints));
   ASSERT_EQ(footprint_count(footprints), 1u);
@@ -335,18 +338,16 @@ TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryForVehicleMatchesUtility
       -vehicle_info.min_longitudinal_offset_m, vehicle_info.vehicle_width_m));
 }
 
-TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryForVehicleAppliesGlobalMargins)
+TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryForVehicleAppliesSpecifiedDimensions)
 {
   const PoseTrajectory poses = {create_pose(1.0, 2.0, 0.0)};
   const auto vehicle_info = create_vehicle_info();
-
-  GlobalParams global_params;
-  global_params.ego_footprint_margin.lateral = 0.3;
-  global_params.ego_footprint_margin.front = 0.7;
-  global_params.ego_footprint_margin.rear = 0.5;
+  const trajectory::footprint::EgoDimensions ego_dimensions{
+    vehicle_info.max_longitudinal_offset_m + 0.7, -vehicle_info.min_longitudinal_offset_m + 0.5,
+    vehicle_info.vehicle_width_m + 0.6};
 
   const auto footprints =
-    trajectory::footprint::compute_footprint_trajectory(poses, vehicle_info, global_params);
+    trajectory::footprint::compute_footprint_trajectory(poses, ego_dimensions);
 
   ASSERT_EQ(footprints.size(), 1u);
   expect_same_polygon(
@@ -394,9 +395,12 @@ TEST(TrajectoryUtilitiesTest, GenerateEgoTrajectoryBuildsConsistentTrajectoryDat
   auto vehicle_info = create_vehicle_info();
   const auto traj_points = create_straight_trajectory_points({0.0, 10.0, 20.0});
   const auto initial_twist = create_twist(2.0);
+  const trajectory::footprint::EgoDimensions ego_dimensions{
+    vehicle_info.max_longitudinal_offset_m, -vehicle_info.min_longitudinal_offset_m,
+    vehicle_info.vehicle_width_m};
 
   const auto trajectory_data = trajectory::generate_ego_trajectory(
-    initial_twist, 0.0, 0.0, 1.05, traj_points, vehicle_info, GlobalParams{});
+    initial_twist, 0.0, 0.0, 1.05, traj_points, ego_dimensions, GlobalParams{}.time_resolution);
 
   ASSERT_EQ(trajectory_data.getObjectIdentification().classification, "EGO");
   ASSERT_TRUE(trajectory_data.getObjectIdentification().trajectory_type.empty());
@@ -418,9 +422,12 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryProjectsCurrentPoseOntoT
     create_straight_timed_trajectory_points({0.0, 10.0, 20.0}, {0.0, 1.0, 2.0});
   const auto odometry = create_odometry(create_pose(5.0, 1.0, 0.0));
   const auto context = create_filter_context(odometry);
+  const trajectory::footprint::EgoDimensions ego_dimensions{
+    vehicle_info.max_longitudinal_offset_m, -vehicle_info.min_longitudinal_offset_m,
+    vehicle_info.vehicle_width_m};
 
-  const auto trajectory_data =
-    trajectory::generate_ego_trajectory(traj_points, context, 0.25, vehicle_info, GlobalParams{});
+  const auto trajectory_data = trajectory::generate_ego_trajectory(
+    traj_points, context, 0.25, ego_dimensions, GlobalParams{}.time_resolution);
 
   ASSERT_EQ(trajectory_data.getObjectIdentification().classification, "EGO");
   ASSERT_EQ(trajectory_data.size(), 3u);
@@ -443,11 +450,14 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryAllowsExtrapolationBefor
     create_straight_timed_trajectory_points({0.0, 10.0, 20.0}, {0.0, 1.0, 2.0});
   const auto odometry = create_odometry(create_pose(-5.0, 0.0, 0.0));
   const auto context = create_filter_context(odometry);
+  const trajectory::footprint::EgoDimensions ego_dimensions{
+    vehicle_info.max_longitudinal_offset_m, -vehicle_info.min_longitudinal_offset_m,
+    vehicle_info.vehicle_width_m};
 
   const double projected_time =
     trajectory::detail::project_current_pose_on_trajectory(traj_points, odometry->pose.pose);
-  const auto trajectory_data =
-    trajectory::generate_ego_trajectory(traj_points, context, 0.25, vehicle_info, GlobalParams{});
+  const auto trajectory_data = trajectory::generate_ego_trajectory(
+    traj_points, context, 0.25, ego_dimensions, GlobalParams{}.time_resolution);
 
   EXPECT_NEAR(projected_time, -0.5, 1e-6);
   ASSERT_EQ(trajectory_data.size(), 3u);
@@ -465,11 +475,14 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryWithSinglePointReturnsSi
   const auto traj_points = create_straight_timed_trajectory_points({3.0}, {1.0});
   const auto odometry = create_odometry(create_pose(8.0, 1.0, 0.0));
   const auto context = create_filter_context(odometry);
+  const trajectory::footprint::EgoDimensions ego_dimensions{
+    vehicle_info.max_longitudinal_offset_m, -vehicle_info.min_longitudinal_offset_m,
+    vehicle_info.vehicle_width_m};
 
   const double projected_time =
     trajectory::detail::project_current_pose_on_trajectory(traj_points, odometry->pose.pose);
-  const auto trajectory_data =
-    trajectory::generate_ego_trajectory(traj_points, context, 1.0, vehicle_info, GlobalParams{});
+  const auto trajectory_data = trajectory::generate_ego_trajectory(
+    traj_points, context, 1.0, ego_dimensions, GlobalParams{}.time_resolution);
 
   EXPECT_NEAR(projected_time, 1.0, 1e-6);
   ASSERT_EQ(trajectory_data.size(), 1u);
@@ -486,11 +499,14 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryHandlesNonUniformTimeAnd
     create_straight_timed_trajectory_points({0.0, 3.0, 9.0}, {0.0, 0.3, 1.5});
   const auto odometry = create_odometry(create_pose(6.0, 0.5, 0.0));
   const auto context = create_filter_context(odometry);
+  const trajectory::footprint::EgoDimensions ego_dimensions{
+    vehicle_info.max_longitudinal_offset_m, -vehicle_info.min_longitudinal_offset_m,
+    vehicle_info.vehicle_width_m};
 
   const double projected_time =
     trajectory::detail::project_current_pose_on_trajectory(traj_points, odometry->pose.pose);
-  const auto trajectory_data =
-    trajectory::generate_ego_trajectory(traj_points, context, 0.25, vehicle_info, GlobalParams{});
+  const auto trajectory_data = trajectory::generate_ego_trajectory(
+    traj_points, context, 0.25, ego_dimensions, GlobalParams{}.time_resolution);
 
   EXPECT_NEAR(projected_time, 0.9, 1e-6);
 
