@@ -163,8 +163,8 @@ std::optional<CollisionDetail> find_collision_timing(
 
 PetArtifact assess_planned_speed_collision_timing(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const PetParamMap & pet_param_map, const GlobalParams & global_params, VehicleInfo & vehicle_info,
-  const std::vector<TrajectoryData> & object_trajectories)
+  const PetParamMap & pet_param_map, const GlobalParams & global_params,
+  const VehicleInfo & vehicle_info, const std::vector<TrajectoryData> & object_trajectories)
 {
   // todo (takagi): ego_trajectory options can not set for each object type because cache structure
   // is not implemented yet.
@@ -204,7 +204,7 @@ PetArtifact assess_planned_speed_collision_timing(
 
 DracArtifact assess_drac(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const DracParamMap & drac_param_map, VehicleInfo & vehicle_info,
+  const DracParamMap & drac_param_map, const VehicleInfo & vehicle_info,
   const std::vector<TrajectoryData> & object_trajectories, const GlobalParams & global_params)
 {
   const double ego_time_horizon = rclcpp::Duration(traj_points.back().time_from_start).seconds();
@@ -364,7 +364,7 @@ std::vector<TrajectoryData> generate_object_trajectories(
 std::pair<PetArtifact, DracArtifact> assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const PetParamMap & pet_param_map, const DracParamMap & drac_param_map,
-  const GlobalParams & global_params, VehicleInfo & vehicle_info)
+  const GlobalParams & global_params, const VehicleInfo & vehicle_info)
 {
   const double required_time_horizon =
     rclcpp::Duration(traj_points.back().time_from_start).seconds();
@@ -413,7 +413,7 @@ std::optional<double> compute_distance_to_collision(
 
 TrajectoryData generate_rss_ego_trajectory(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const GlobalParams & global_params, VehicleInfo & vehicle_info)
+  const GlobalParams & global_params, const VehicleInfo & vehicle_info)
 {
   const double ego_time_horizon_for_rss =
     rclcpp::Duration(traj_points.back().time_from_start).seconds();
@@ -453,7 +453,8 @@ RssDetail assess_required_acceleration(
 
 RssArtifact assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
-  const RssParamMap & rss_param_map, const GlobalParams & global_params, VehicleInfo & vehicle_info)
+  const RssParamMap & rss_param_map, const GlobalParams & global_params,
+  const VehicleInfo & vehicle_info)
 {
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
     return {};

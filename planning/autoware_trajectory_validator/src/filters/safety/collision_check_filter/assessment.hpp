@@ -38,7 +38,7 @@ std::vector<TrajectoryData> generate_object_trajectories(
 std::pair<PetArtifact, DracArtifact> assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const PetParamMap & pet_param_map, const DracParamMap & drac_param_map,
-  const GlobalParams & global_params, VehicleInfo & vehicle_info);
+  const GlobalParams & global_params, const VehicleInfo & vehicle_info);
 }  // namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 
 namespace autoware::trajectory_validator::plugin::safety::rss_deceleration
@@ -77,7 +77,7 @@ std::optional<double> compute_distance_to_collision(
 RssArtifact assess(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   const RssParamMap & rss_param_map, const GlobalParams & global_params,
-  VehicleInfo & vehicle_info);
+  const VehicleInfo & vehicle_info);
 }  // namespace autoware::trajectory_validator::plugin::safety::rss_deceleration
 
 #endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__ASSESSMENT_HPP_
