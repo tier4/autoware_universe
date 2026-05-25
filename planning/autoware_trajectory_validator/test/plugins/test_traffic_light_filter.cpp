@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
 
 using autoware::trajectory_validator::FilterContext;
@@ -170,6 +171,15 @@ protected:
     return points;
   }
 
+  void expect_feasibility(
+    const std::vector<TrajectoryPoint> & points, const bool expected_feasible,
+    const std::string & message = "")
+  {
+    const auto res = filter_->is_feasible(points, context_);
+    ASSERT_TRUE(res.has_value()) << "is_feasible should not return an error";
+    EXPECT_EQ(res->is_feasible, expected_feasible) << message;
+  }
+
   std::shared_ptr<TrafficLightFilter> filter_;
   std::shared_ptr<rclcpp::Node> node_;
   FilterContext context_;
@@ -180,10 +190,9 @@ TEST_F(TrafficLightFilterTest, IsFeasibleEmptyInput)
   std::vector<TrajectoryPoint> points;
   create_and_set_map(0, 0);
   set_traffic_light_signal(0, TrafficLightElement::RED);
-  const auto res = filter_->is_feasible(points, context_);
-  ASSERT_TRUE(res.has_value());
-  EXPECT_TRUE(res->is_feasible)
-    << "Empty trajectory should always be feasible (cannot cross a traffic light if empty)";
+  expect_feasibility(
+    points, true,
+    "Empty trajectory should always be feasible (cannot cross a traffic light if empty)");
 }
 
 TEST_F(TrafficLightFilterTest, IsInfeasibleWithoutMapAndSignals)
@@ -234,9 +243,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithRedLightIntersection)
   // Trajectory crossing stop line (0 -> 10)
   auto points = create_trajectory(0.0, 10.0);
 
-  const auto res = filter_->is_feasible(points, context_);
-  ASSERT_TRUE(res.has_value());
-  EXPECT_FALSE(res->is_feasible) << "Should return false when crossing red light stop line";
+  expect_feasibility(points, false, "Should return false when crossing red light stop line");
 }
 
 TEST_F(TrafficLightFilterTest, IsFeasibleWithGreenLight)
@@ -250,9 +257,7 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithGreenLight)
   // Trajectory crossing stop line (0 -> 10)
   auto points = create_trajectory(0.0, 10.0);
 
-  const auto res = filter_->is_feasible(points, context_);
-  ASSERT_TRUE(res.has_value());
-  EXPECT_TRUE(res->is_feasible) << "Should return true for green light";
+  expect_feasibility(points, true, "Should return true for green light");
 }
 
 TEST_F(TrafficLightFilterTest, IsFeasibleWithRedLightNoIntersection)
@@ -266,9 +271,7 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithRedLightNoIntersection)
   // Trajectory stops before stop line (0 -> 4)
   auto points = create_trajectory(0.0, 4.0);
 
-  const auto res = filter_->is_feasible(points, context_);
-  ASSERT_TRUE(res.has_value());
-  EXPECT_TRUE(res->is_feasible) << "Should return true if red light is not crossed";
+  expect_feasibility(points, true, "Should return true if red light is not crossed");
 }
 
 TEST_F(TrafficLightFilterTest, IsInfeasibleWithFrontOverhang)
@@ -286,9 +289,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithFrontOverhang)
   vehicle_info.max_longitudinal_offset_m = 2.0;
   filter_->set_vehicle_info(vehicle_info);
 
-  const auto res = filter_->is_feasible(points, context_);
-  ASSERT_TRUE(res.has_value());
-  EXPECT_FALSE(res->is_feasible) << "Should return false when crossing red light stop line";
+  expect_feasibility(points, false, "Should return false when crossing red light stop line");
 }
 
 TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStop)
@@ -307,9 +308,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStop)
 
   auto points = create_trajectory(0.0, 30.0, 5.0);
 
-  const auto res = filter_->is_feasible(points, context_);
-  ASSERT_TRUE(res.has_value());
-  EXPECT_FALSE(res->is_feasible) << "Should return false if amber light can be stopped";
+  expect_feasibility(points, false, "Should return false if amber light can be stopped");
 }
 
 TEST_F(TrafficLightFilterTest, IsFeasibleWithAmberLightCannotStop)
@@ -331,10 +330,8 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithAmberLightCannotStop)
 
   auto points = create_trajectory(0.0, 10.0, 10.0);
 
-  const auto res = filter_->is_feasible(points, context_);
-  ASSERT_TRUE(res.has_value());
-  EXPECT_TRUE(res->is_feasible)
-    << "Should return true if amber light cannot be stopped but is reachable";
+  expect_feasibility(
+    points, true, "Should return true if amber light cannot be stopped but is reachable");
 }
 
 TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStopAndCannotPass)
@@ -362,9 +359,7 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightCanStopAndCannotPass)
 
   auto points = create_trajectory(0.0, 200.0, 10.0);
 
-  const auto res = filter_->is_feasible(points, context_);
-  ASSERT_TRUE(res.has_value());
-  EXPECT_FALSE(res->is_feasible) << "Should return false if ego can stop but cannot pass";
+  expect_feasibility(points, false, "Should return false if ego can stop but cannot pass");
 }
 
 TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightAsRedLight)
@@ -392,10 +387,9 @@ TEST_F(TrafficLightFilterTest, IsInfeasibleWithAmberLightAsRedLight)
   // it should be rejected because it's treated as red.
   auto points = create_trajectory(0.0, 10.0, 10.0);
 
-  const auto res = filter_->is_feasible(points, context_);
-  ASSERT_TRUE(res.has_value());
-  EXPECT_FALSE(res->is_feasible)
-    << "Should return false for amber light when treat_amber_light_as_red_light is true";
+  expect_feasibility(
+    points, false,
+    "Should return false for amber light when treat_amber_light_as_red_light is true");
 }
 
 TEST_F(TrafficLightFilterTest, IsFeasibleWithStabilityFiltering)
@@ -421,11 +415,7 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithStabilityFiltering)
   // Set initial state to GREEN
   set_traffic_light_signal(light_id, TrafficLightElement::GREEN);
   auto points = create_trajectory(0.0, 10.0);
-  {
-    const auto res = filter_->is_feasible(points, context_);
-    ASSERT_TRUE(res.has_value());
-    EXPECT_TRUE(res->is_feasible);
-  }
+  expect_feasibility(points, true);
 
   // Switch to RED at t=0
   set_traffic_light_signal(light_id, TrafficLightElement::RED);
@@ -434,31 +424,19 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithStabilityFiltering)
   context_.odometry = std::make_shared<nav_msgs::msg::Odometry>(odometry);
 
   // Immediately check, should be feasible because of stability threshold
-  {
-    const auto res = filter_->is_feasible(points, context_);
-    ASSERT_TRUE(res.has_value());
-    EXPECT_TRUE(res->is_feasible) << "Should be feasible because signal is not stable yet";
-  }
+  expect_feasibility(points, true, "Should be feasible because signal is not stable yet");
 
   // Advance time by 0.5s (less than 1s threshold)
   odometry.header.stamp =
     rclcpp::Time(context_.odometry->header.stamp) + rclcpp::Duration::from_seconds(0.5);
   context_.odometry = std::make_shared<nav_msgs::msg::Odometry>(odometry);
-  {
-    const auto res = filter_->is_feasible(points, context_);
-    ASSERT_TRUE(res.has_value());
-    EXPECT_TRUE(res->is_feasible) << "Should still be feasible after 0.5s";
-  }
+  expect_feasibility(points, true, "Should still be feasible after 0.5s");
 
   // Advance time by another 0.6s (total 1.1s > 1s threshold)
   odometry.header.stamp =
     rclcpp::Time(context_.odometry->header.stamp) + rclcpp::Duration::from_seconds(0.6);
   context_.odometry = std::make_shared<nav_msgs::msg::Odometry>(odometry);
-  {
-    const auto res = filter_->is_feasible(points, context_);
-    ASSERT_TRUE(res.has_value());
-    EXPECT_FALSE(res->is_feasible) << "Should be infeasible after stability threshold is exceeded";
-  }
+  expect_feasibility(points, false, "Should be infeasible after stability threshold is exceeded");
 }
 
 TEST_F(TrafficLightFilterTest, IsFeasibleWithAmberHysteresis)
@@ -484,9 +462,7 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithAmberHysteresis)
   auto points = create_trajectory(0.0, 30.0, 5.0);
 
   // First check: should be infeasible (can stop for amber)
-  const auto res1 = filter_->is_feasible(points, context_);
-  ASSERT_TRUE(res1.has_value());
-  EXPECT_FALSE(res1->is_feasible);
+  expect_feasibility(points, false);
 
   // Advance time by 1s (less than 2s hysteresis)
   nav_msgs::msg::Odometry odometry = *context_.odometry;
@@ -496,18 +472,14 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithAmberHysteresis)
   // Move ego closer to 5m from stop line. Now cannot stop (5m away at 10m/s)
   auto points2 = create_trajectory(15.0, 30.0, 10.0);
 
-  const auto res2 = filter_->is_feasible(points2, context_);
-  ASSERT_TRUE(res2.has_value());
-  EXPECT_FALSE(res2->is_feasible) << "Should be infeasible due to amber hysteresis";
+  expect_feasibility(points2, false, "Should be infeasible due to amber hysteresis");
 
   // Advance time by another 1.1s (total 2.1s > 2s hysteresis)
   odometry.header.stamp = rclcpp::Time(odometry.header.stamp) + rclcpp::Duration::from_seconds(1.1);
   context_.odometry = std::make_shared<nav_msgs::msg::Odometry>(odometry);
 
   // Now it should be feasible if it cannot stop
-  const auto res3 = filter_->is_feasible(points2, context_);
-  ASSERT_TRUE(res3.has_value());
-  EXPECT_TRUE(res3->is_feasible) << "Should be feasible after hysteresis duration";
+  expect_feasibility(points2, true, "Should be feasible after hysteresis duration");
 }
 
 TEST_F(TrafficLightFilterTest, IsFeasibleWithSignalHistoryCleanup)
@@ -528,11 +500,7 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithSignalHistoryCleanup)
 
   // 1. Send RED signal
   set_traffic_light_signal(light_id, TrafficLightElement::RED);
-  {
-    const auto res = filter_->is_feasible(points, context_);
-    ASSERT_TRUE(res.has_value());
-    EXPECT_TRUE(res->is_feasible);
-  }
+  expect_feasibility(points, true);
 
   // 2. Stop sending signal for 2.0s
   context_.traffic_light_signals = std::make_shared<TrafficLightGroupArray>();
@@ -541,19 +509,11 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithSignalHistoryCleanup)
   context_.odometry = std::make_shared<nav_msgs::msg::Odometry>(odometry);
 
   // Trigger cleanup
-  {
-    const auto res = filter_->is_feasible(points, context_);
-    ASSERT_TRUE(res.has_value());
-    EXPECT_TRUE(res->is_feasible);
-  }
+  expect_feasibility(points, true);
 
   // 3. Send RED signal again. It should be treated as new (not stable yet).
   set_traffic_light_signal(light_id, TrafficLightElement::RED);
-  {
-    const auto res = filter_->is_feasible(points, context_);
-    ASSERT_TRUE(res.has_value());
-    EXPECT_TRUE(res->is_feasible) << "Should be feasible because history was cleaned up";
-  }
+  expect_feasibility(points, true, "Should be feasible because history was cleaned up");
 }
 
 TEST_F(TrafficLightFilterTest, IsFeasibleWithSignalStateChange)
@@ -574,46 +534,26 @@ TEST_F(TrafficLightFilterTest, IsFeasibleWithSignalStateChange)
 
   // 1. Send AMBER signal
   set_traffic_light_signal(light_id, TrafficLightElement::AMBER);
-  {
-    const auto res = filter_->is_feasible(points, context_);
-    ASSERT_TRUE(res.has_value());
-    EXPECT_TRUE(res->is_feasible);
-  }
+  expect_feasibility(points, true);
 
   // 2. Advance 0.5s, still AMBER
   nav_msgs::msg::Odometry odometry = *context_.odometry;
   odometry.header.stamp = rclcpp::Time(odometry.header.stamp) + rclcpp::Duration::from_seconds(0.5);
   context_.odometry = std::make_shared<nav_msgs::msg::Odometry>(odometry);
-  {
-    const auto res = filter_->is_feasible(points, context_);
-    ASSERT_TRUE(res.has_value());
-    EXPECT_TRUE(res->is_feasible);
-  }
+  expect_feasibility(points, true);
 
   // 3. Switch to RED
   set_traffic_light_signal(light_id, TrafficLightElement::RED);
   // Stability timer should reset.
-  {
-    const auto res = filter_->is_feasible(points, context_);
-    ASSERT_TRUE(res.has_value());
-    EXPECT_TRUE(res->is_feasible) << "Should be feasible after state change";
-  }
+  expect_feasibility(points, true, "Should be feasible after state change");
 
   // 4. Advance another 0.6s (total from AMBER start is 1.1s, but from RED start is 0.6s)
   odometry.header.stamp = rclcpp::Time(odometry.header.stamp) + rclcpp::Duration::from_seconds(0.6);
   context_.odometry = std::make_shared<nav_msgs::msg::Odometry>(odometry);
-  {
-    const auto res = filter_->is_feasible(points, context_);
-    ASSERT_TRUE(res.has_value());
-    EXPECT_TRUE(res->is_feasible) << "Should still be feasible (0.6s < 1.0s)";
-  }
+  expect_feasibility(points, true, "Should still be feasible (0.6s < 1.0s)");
 
   // 5. Advance another 0.5s (total from RED start is 1.1s > 1.0s duration threshold)
   odometry.header.stamp = rclcpp::Time(odometry.header.stamp) + rclcpp::Duration::from_seconds(0.5);
   context_.odometry = std::make_shared<nav_msgs::msg::Odometry>(odometry);
-  {
-    const auto res = filter_->is_feasible(points, context_);
-    ASSERT_TRUE(res.has_value());
-    EXPECT_FALSE(res->is_feasible) << "Should be unfeasible (stable RED signal)";
-  }
+  expect_feasibility(points, false, "Should be unfeasible (stable RED signal)");
 }
