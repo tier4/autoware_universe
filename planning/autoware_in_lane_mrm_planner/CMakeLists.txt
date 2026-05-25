@@ -22,6 +22,8 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/mrm_stop_velocity_planner.cpp
   src/trajectory_latcher.cpp
   src/predicted_objects_latcher.cpp
+  src/mrm_trigger_relay_node.cpp
+  src/mrm_in_lane_stop_auxiliary_commands_node.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_lib
@@ -37,6 +39,16 @@ target_compile_options(${PROJECT_NAME}_lib PRIVATE
 rclcpp_components_register_node(${PROJECT_NAME}_lib
   PLUGIN "autoware::in_lane_mrm_planner::InLaneMrmPlannerNode"
   EXECUTABLE ${PROJECT_NAME}_node
+)
+
+rclcpp_components_register_node(${PROJECT_NAME}_lib
+  PLUGIN "autoware::in_lane_mrm_planner::MrmTriggerRelayNode"
+  EXECUTABLE mrm_trigger_relay_node
+)
+
+rclcpp_components_register_node(${PROJECT_NAME}_lib
+  PLUGIN "autoware::in_lane_mrm_planner::MrmInLaneStopAuxiliaryCommandsNode"
+  EXECUTABLE mrm_in_lane_stop_auxiliary_commands_node
 )
 
 if(BUILD_TESTING)

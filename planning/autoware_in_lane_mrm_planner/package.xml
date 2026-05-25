@@ -27,7 +27,10 @@
   <depend>autoware_utils</depend>
   <depend>autoware_utils_debug</depend>
   <depend>autoware_vehicle_info_utils</depend>
+  <depend>autoware_control_msgs</depend>
+  <depend>autoware_vehicle_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>jerk_constant_deceleration_controller_msgs</depend>
   <depend>libopencv-dev</depend>
   <depend>magic_enum</depend>
   <depend>nav_msgs</depend>
