@@ -1,0 +1,8 @@
+<library path="autoware_guidance_trigger_rviz_plugin">
+  <class
+    name="autoware_guidance_trigger_rviz_plugin/GuidanceTriggerPanel"
+    type="autoware::guidance_trigger_rviz_plugin::GuidanceTriggerPanel"
+    base_class_type="rviz_common::Panel">
+    <description>Panel for triggering diffusion planner guidance services.</description>
+  </class>
+</library>
