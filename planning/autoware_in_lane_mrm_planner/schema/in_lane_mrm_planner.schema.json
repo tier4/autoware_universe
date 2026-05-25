@@ -514,22 +514,42 @@
           "target_deceleration": {
             "type": "number",
             "description": "Target longitudinal deceleration for MRM stop velocity planning [m/s^2]",
-            "default": -2.5
+            "default": -3.0
           },
           "target_jerk": {
             "type": "number",
             "description": "Target longitudinal jerk for MRM stop velocity planning [m/s^3]",
-            "default": -1.5
+            "default": -5.0
           },
           "max_jerk_relaxation": {
             "type": "number",
             "description": "Vehicle jerk limit used when relaxing MRM stop profile [m/s^3]",
-            "default": -5.0
+            "default": -20.0
           },
           "max_deceleration_relaxation": {
             "type": "number",
             "description": "Vehicle deceleration limit used when relaxing MRM stop profile [m/s^2]",
+            "default": -6.0
+          },
+          "step_jerk_relaxation": {
+            "type": "number",
+            "description": "Jerk relaxation step per iteration (more negative is harsher) [m/s^3]",
             "default": -5.0
+          },
+          "step_deceleration_relaxation": {
+            "type": "number",
+            "description": "Deceleration relaxation step per iteration (more negative is harsher) [m/s^2]",
+            "default": -1.0
+          },
+          "decel_resample_range": {
+            "type": "number",
+            "description": "Arc-length range around constraint stop to densify trajectory [m]",
+            "default": 2.0
+          },
+          "decel_resample_interval": {
+            "type": "number",
+            "description": "Point interval inside decel_resample_range [m]",
+            "default": 0.1
           }
         },
         "required": [],

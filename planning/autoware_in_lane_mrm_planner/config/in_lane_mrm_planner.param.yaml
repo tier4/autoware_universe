@@ -96,10 +96,14 @@
       enable_output_trajectory: true
 
     mrm_velocity:
-      target_deceleration: -2.5
-      target_jerk: -1.5
-      max_jerk_relaxation: -5.0
-      max_deceleration_relaxation: -5.0
+      target_deceleration: -3.0
+      target_jerk: -5.0
+      max_jerk_relaxation: -20.0
+      max_deceleration_relaxation: -6.0
+      step_jerk_relaxation: -5.0
+      step_deceleration_relaxation: -1.0
+      decel_resample_range: 2.0
+      decel_resample_interval: 0.1
 
     latch:
       use_latched_objects: true
