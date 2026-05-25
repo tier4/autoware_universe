@@ -22,8 +22,12 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 
+#include <memory>
+
 namespace autoware::behavior_path_planner
 {
+struct PlannerData;
+
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
 using geometry_msgs::msg::Point;
 using geometry_msgs::msg::Pose;
@@ -47,6 +51,16 @@ void setOrientation(PathWithLaneId * path);
  */
 double getClosestShiftLength(
   const ShiftedPath & shifted_path, const geometry_msgs::msg::Point ego_point);
+
+/**
+ * @brief True if any approved module name contains "lane_change" or "avoidance".
+ */
+bool hasConflictingApprovedModules(const PlannerData & data);
+
+/**
+ * @brief True if any approved/candidate module name contains "lane_change" or "avoidance".
+ */
+bool hasConflictingSceneModules(const PlannerData & data);
 
 }  // namespace autoware::behavior_path_planner
 

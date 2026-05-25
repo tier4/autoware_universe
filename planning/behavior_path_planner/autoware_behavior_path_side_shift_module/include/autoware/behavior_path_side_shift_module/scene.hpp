@@ -22,9 +22,9 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
-#include <tier4_planning_msgs/msg/lateral_offset.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -35,7 +35,6 @@ namespace autoware::behavior_path_planner
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
 using geometry_msgs::msg::Pose;
 using nav_msgs::msg::OccupancyGrid;
-using tier4_planning_msgs::msg::LateralOffset;
 
 class SideShiftModule : public SceneModuleInterface
 {
@@ -46,7 +45,9 @@ public:
     const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
     std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
       objects_of_interest_marker_interface_ptr_map,
-    const std::shared_ptr<PlanningFactorInterface> planning_factor_interface);
+    const std::shared_ptr<PlanningFactorInterface> planning_factor_interface,
+    const std::shared_ptr<InsertedLateralOffsetState> & inserted_lateral_offset_state = nullptr,
+    const std::shared_ptr<RequestedLateralOffsetState> & requested_lateral_offset_state = nullptr);
 
   bool isExecutionRequested() const override;
   bool isExecutionReady() const override;
@@ -71,6 +72,14 @@ public:
   {
   }
 
+  /**
+   * @brief Compute the lateral offset limits derived from the current lanelet boundaries.
+   * @return {right_limit, left_limit} pair in metres, or std::nullopt when the limits cannot
+   * be evaluated (no planner data, empty reference path, or no lanelet found along the planned
+   * shift segment).
+   */
+  std::optional<std::pair<double, double>> calcOffsetLimitsFromLanelets() const;
+
 private:
   bool canTransitSuccessState() override;
 
@@ -84,6 +93,8 @@ private:
   ShiftLine calcShiftLine() const;
 
   void replaceShiftLine();
+
+  double calcMaxLateralOffset(const double requested_offset) const;
 
   // const methods
   void publishPath(const PathWithLaneId & path) const;
@@ -122,6 +133,13 @@ private:
   mutable rclcpp::Time last_requested_shift_change_time_{clock_->now()};
 
   rclcpp::Time latest_lateral_offset_stamp_;
+  std::optional<rclcpp::Time> conflicting_approved_module_since_{std::nullopt};
+
+  /** Shared state updated by this scene and read by the manager for publishing. */
+  std::shared_ptr<InsertedLateralOffsetState> inserted_lateral_offset_state_;
+
+  /** Shared state updated by the manager and read by this scene. */
+  std::shared_ptr<RequestedLateralOffsetState> requested_lateral_offset_state_;
 
   // debug
   mutable SideShiftDebugData debug_data_;
