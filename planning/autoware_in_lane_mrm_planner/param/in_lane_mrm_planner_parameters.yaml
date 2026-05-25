@@ -354,4 +354,4 @@ in_lane_mrm_planner:
     use_latched_objects:
       type: bool
       default_value: true
-      description: latch predicted objects on MRM trigger to stabilize obstacle stop during deceleration
+      description: latch predicted objects on MRM trigger rising edge; release on falling edge (recovery) to resume live perception updates

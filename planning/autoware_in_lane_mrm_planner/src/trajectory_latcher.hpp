@@ -12,31 +12,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef IN_LANE_MRM_TRAJECTORY_MODIFIER_HPP_
-#define IN_LANE_MRM_TRAJECTORY_MODIFIER_HPP_
+#ifndef TRAJECTORY_LATCHER_HPP_
+#define TRAJECTORY_LATCHER_HPP_
 
-#include "mrm_obstacle_stop_planner.hpp"
 #include "type_alias.hpp"
 
-#include <rclcpp/rclcpp.hpp>
+#include <optional>
 
 namespace autoware::in_lane_mrm_planner
 {
 
-class InLaneMrmTrajectoryModifier
+class TrajectoryLatcher
 {
 public:
-  void initialize(rclcpp::Node * node, const VehicleInfo & vehicle_info, const Params & params);
-  void set_objects(const PredictedObjects & objects);
-  void apply(
-    TrajectoryPoints & points, const Odometry & odom, const AccelWithCovarianceStamped & accel);
-  void publish_planning_factor();
+  void update_candidate(const Trajectory & candidate);
+
+  void latch();
+
+  void unlatch();
+
+  bool is_latched() const;
+
+  std::optional<Trajectory> output() const;
 
 private:
-  MrmObstacleStopPlanner obstacle_stop_planner_;
-  PredictedObjects objects_;
+  bool latched_{false};
+  Trajectory latched_traj_;
+  std::optional<Trajectory> latest_candidate_;
 };
 
 }  // namespace autoware::in_lane_mrm_planner
 
-#endif  // IN_LANE_MRM_TRAJECTORY_MODIFIER_HPP_
+#endif  // TRAJECTORY_LATCHER_HPP_

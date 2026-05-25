@@ -12,32 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "in_lane_mrm_trajectory_modifier.hpp"
+#include "trajectory_latcher.hpp"
 
 namespace autoware::in_lane_mrm_planner
 {
 
-void InLaneMrmTrajectoryModifier::initialize(
-  rclcpp::Node * node, const VehicleInfo & vehicle_info, const Params & params)
+void TrajectoryLatcher::update_candidate(const Trajectory & candidate)
 {
-  obstacle_stop_planner_.initialize(node, vehicle_info, params);
+  if (candidate.points.empty()) {
+    return;
+  }
+  latest_candidate_ = candidate;
 }
 
-void InLaneMrmTrajectoryModifier::set_objects(const PredictedObjects & objects)
+void TrajectoryLatcher::latch()
 {
-  objects_ = objects;
+  if (!latest_candidate_.has_value()) {
+    return;
+  }
+  latched_traj_ = latest_candidate_.value();
+  latched_ = true;
 }
 
-void InLaneMrmTrajectoryModifier::apply(
-  TrajectoryPoints & points, const Odometry & odom, const AccelWithCovarianceStamped & accel)
+void TrajectoryLatcher::unlatch()
 {
-  obstacle_stop_planner_.set_input(odom, accel, objects_);
-  obstacle_stop_planner_.apply(points);
+  latched_ = false;
 }
 
-void InLaneMrmTrajectoryModifier::publish_planning_factor()
+bool TrajectoryLatcher::is_latched() const
 {
-  obstacle_stop_planner_.publish_planning_factor();
+  return latched_;
+}
+
+std::optional<Trajectory> TrajectoryLatcher::output() const
+{
+  if (latched_) {
+    return latched_traj_;
+  }
+  return latest_candidate_;
 }
 
 }  // namespace autoware::in_lane_mrm_planner

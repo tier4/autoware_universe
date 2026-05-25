@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "mrm_obstacle_stop.hpp"
+#include "mrm_obstacle_stop_planner.hpp"
 
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
@@ -37,7 +37,7 @@ using obstacle_stop::get_trajectory_shape;
 using obstacle_stop::PointCloud;
 }  // namespace
 
-void MrmObstacleStop::initialize(
+void MrmObstacleStopPlanner::initialize(
   rclcpp::Node * node, const VehicleInfo & vehicle_info, const Params & params)
 {
   node_ = node;
@@ -49,7 +49,7 @@ void MrmObstacleStop::initialize(
 
   planning_factor_interface_ =
     std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
-      node_, "in_lane_mrm_obstacle_stop");
+      node_, "in_lane_mrm_obstacle_stop_planner");
 
   pointcloud_filter_ = std::make_unique<obstacle_stop::PointCloudFilter>(
     params_.pointcloud.voxel_grid_filter.x, params_.pointcloud.voxel_grid_filter.y,
@@ -68,7 +68,7 @@ void MrmObstacleStop::initialize(
   update_object_decel_map();
 }
 
-void MrmObstacleStop::set_input(
+void MrmObstacleStopPlanner::set_input(
   const Odometry & odom, const AccelWithCovarianceStamped & accel, const PredictedObjects & objects)
 {
   odom_ = odom;
@@ -76,12 +76,12 @@ void MrmObstacleStop::set_input(
   objects_ = objects;
 }
 
-void MrmObstacleStop::set_obstacle_pointcloud(const PointCloud2 & pointcloud)
+void MrmObstacleStopPlanner::set_obstacle_pointcloud(const PointCloud2 & pointcloud)
 {
   obstacle_pointcloud_ = pointcloud;
 }
 
-void MrmObstacleStop::update_params(const Params & params)
+void MrmObstacleStopPlanner::update_params(const Params & params)
 {
   params_ = params.obstacle_stop;
 
@@ -101,7 +101,7 @@ void MrmObstacleStop::update_params(const Params & params)
   update_object_decel_map();
 }
 
-void MrmObstacleStop::update_object_decel_map()
+void MrmObstacleStopPlanner::update_object_decel_map()
 {
   const auto & p = params_.rss_params;
   object_decel_map_ = {
@@ -114,7 +114,7 @@ void MrmObstacleStop::update_object_decel_map()
     {ObjectType::PEDESTRIAN, p.object_decel.pedestrian}};
 }
 
-void MrmObstacleStop::apply(TrajectoryPoints & traj_points)
+void MrmObstacleStopPlanner::apply(TrajectoryPoints & traj_points)
 {
   if (!params_.enable) return;
 
@@ -133,14 +133,14 @@ void MrmObstacleStop::apply(TrajectoryPoints & traj_points)
   set_stop_point(traj_points);
 }
 
-void MrmObstacleStop::publish_planning_factor()
+void MrmObstacleStopPlanner::publish_planning_factor()
 {
   if (planning_factor_interface_) {
     planning_factor_interface_->publish();
   }
 }
 
-bool MrmObstacleStop::is_obstacle_detected(const TrajectoryPoints & traj_points)
+bool MrmObstacleStopPlanner::is_obstacle_detected(const TrajectoryPoints & traj_points)
 {
   debug_data_ = DebugData();
   safety_factors_ = SafetyFactorArray{};
@@ -181,7 +181,7 @@ bool MrmObstacleStop::is_obstacle_detected(const TrajectoryPoints & traj_points)
   return nearest_collision_point_ != std::nullopt;
 }
 
-void MrmObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
+void MrmObstacleStopPlanner::set_stop_point(TrajectoryPoints & traj_points)
 {
   const auto stop_margin = params_.stop_margin + vehicle_info_.max_longitudinal_offset_m;
   const auto target_stop_point_arc_length =
@@ -202,7 +202,7 @@ void MrmObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
     target_stop_point_arc_length);
 }
 
-std::optional<CollisionPoint> MrmObstacleStop::check_predicted_objects(
+std::optional<CollisionPoint> MrmObstacleStopPlanner::check_predicted_objects(
   const TrajectoryPoints & traj_points)
 {
   if (!params_.use_objects) return std::nullopt;
@@ -229,7 +229,7 @@ std::optional<CollisionPoint> MrmObstacleStop::check_predicted_objects(
   return collision_point;
 }
 
-std::optional<CollisionPoint> MrmObstacleStop::check_pointcloud(const TrajectoryPoints & traj_points)
+std::optional<CollisionPoint> MrmObstacleStopPlanner::check_pointcloud(const TrajectoryPoints & traj_points)
 {
   if (!params_.use_pointcloud) return std::nullopt;
 
@@ -287,7 +287,7 @@ std::optional<CollisionPoint> MrmObstacleStop::check_pointcloud(const Trajectory
     traj_points, debug_data_.trajectory_shape, clustered_points, debug_data_.target_pcd_points);
 }
 
-void MrmObstacleStop::update_collision_points_buffer(
+void MrmObstacleStopPlanner::update_collision_points_buffer(
   std::vector<CollisionPoint> & collision_points_buffer, const TrajectoryPoints & traj_points,
   const std::optional<CollisionPoint> & collision_point)
 {
@@ -351,7 +351,7 @@ void MrmObstacleStop::update_collision_points_buffer(
   }
 }
 
-std::optional<CollisionPoint> MrmObstacleStop::get_nearest_collision_point() const
+std::optional<CollisionPoint> MrmObstacleStopPlanner::get_nearest_collision_point() const
 {
   std::optional<CollisionPoint> nearest_collision_point = std::nullopt;
   if (collision_points_buffer_.empty()) return nearest_collision_point;
@@ -372,7 +372,7 @@ std::optional<CollisionPoint> MrmObstacleStop::get_nearest_collision_point() con
   return nearest_collision_point;
 }
 
-void MrmObstacleStop::publish_debug_string(bool is_safe) const
+void MrmObstacleStopPlanner::publish_debug_string(bool is_safe) const
 {
   const auto cluster_pcd_size =
     debug_data_.cluster_points ? debug_data_.cluster_points->data.size() : 0;
@@ -395,7 +395,7 @@ void MrmObstacleStop::publish_debug_string(bool is_safe) const
   pub_debug_text_->publish(string_stamp);
 }
 
-void MrmObstacleStop::publish_debug_data(const std::string & ns) const
+void MrmObstacleStopPlanner::publish_debug_data(const std::string & ns) const
 {
   if (debug_data_.cluster_points) pub_clustered_pointcloud_->publish(*debug_data_.cluster_points);
 
