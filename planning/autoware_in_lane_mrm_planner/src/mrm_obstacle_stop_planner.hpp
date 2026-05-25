@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef MRM_OBSTACLE_STOP_HPP_
-#define MRM_OBSTACLE_STOP_HPP_
+#ifndef MRM_OBSTACLE_STOP_PLANNER_HPP_
+#define MRM_OBSTACLE_STOP_PLANNER_HPP_
 
 #include "obstacle_stop_utils.hpp"
 #include "type_alias.hpp"
@@ -47,7 +47,7 @@ using obstacle_stop::ObjectType;
 using visualization_msgs::msg::Marker;
 using visualization_msgs::msg::MarkerArray;
 
-class MrmObstacleStop
+class MrmObstacleStopPlanner
 {
 public:
   void initialize(rclcpp::Node * node, const VehicleInfo & vehicle_info, const Params & params);
@@ -122,4 +122,4 @@ private:
 
 }  // namespace autoware::in_lane_mrm_planner
 
-#endif  // MRM_OBSTACLE_STOP_HPP_
+#endif  // MRM_OBSTACLE_STOP_PLANNER_HPP_

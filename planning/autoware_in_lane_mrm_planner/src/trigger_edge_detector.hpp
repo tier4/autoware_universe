@@ -12,31 +12,38 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef IN_LANE_MRM_TRAJECTORY_MODIFIER_HPP_
-#define IN_LANE_MRM_TRAJECTORY_MODIFIER_HPP_
-
-#include "mrm_obstacle_stop_planner.hpp"
-#include "type_alias.hpp"
-
-#include <rclcpp/rclcpp.hpp>
+#ifndef TRIGGER_EDGE_DETECTOR_HPP_
+#define TRIGGER_EDGE_DETECTOR_HPP_
 
 namespace autoware::in_lane_mrm_planner
 {
 
-class InLaneMrmTrajectoryModifier
+class TriggerEdgeDetector
 {
 public:
-  void initialize(rclcpp::Node * node, const VehicleInfo & vehicle_info, const Params & params);
-  void set_objects(const PredictedObjects & objects);
-  void apply(
-    TrajectoryPoints & points, const Odometry & odom, const AccelWithCovarianceStamped & accel);
-  void publish_planning_factor();
+  struct Edges
+  {
+    bool rising{false};
+    bool falling{false};
+  };
+
+  Edges update(const bool trigger_active)
+  {
+    Edges edges;
+    if (trigger_active && !prev_active_) {
+      edges.rising = true;
+    }
+    if (!trigger_active && prev_active_) {
+      edges.falling = true;
+    }
+    prev_active_ = trigger_active;
+    return edges;
+  }
 
 private:
-  MrmObstacleStopPlanner obstacle_stop_planner_;
-  PredictedObjects objects_;
+  bool prev_active_{false};
 };
 
 }  // namespace autoware::in_lane_mrm_planner
 
-#endif  // IN_LANE_MRM_TRAJECTORY_MODIFIER_HPP_
+#endif  // TRIGGER_EDGE_DETECTOR_HPP_

@@ -12,32 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "in_lane_mrm_trajectory_modifier.hpp"
+#include "predicted_objects_latcher.hpp"
 
 namespace autoware::in_lane_mrm_planner
 {
 
-void InLaneMrmTrajectoryModifier::initialize(
-  rclcpp::Node * node, const VehicleInfo & vehicle_info, const Params & params)
+void PredictedObjectsLatcher::latch(const PredictedObjects & live_objects, const bool use_latch)
 {
-  obstacle_stop_planner_.initialize(node, vehicle_info, params);
+  if (!use_latch) {
+    return;
+  }
+  latched_objects_ = live_objects;
+  latched_ = true;
 }
 
-void InLaneMrmTrajectoryModifier::set_objects(const PredictedObjects & objects)
+void PredictedObjectsLatcher::unlatch()
 {
-  objects_ = objects;
+  latched_ = false;
 }
 
-void InLaneMrmTrajectoryModifier::apply(
-  TrajectoryPoints & points, const Odometry & odom, const AccelWithCovarianceStamped & accel)
+bool PredictedObjectsLatcher::is_latched() const
 {
-  obstacle_stop_planner_.set_input(odom, accel, objects_);
-  obstacle_stop_planner_.apply(points);
+  return latched_;
 }
 
-void InLaneMrmTrajectoryModifier::publish_planning_factor()
+const PredictedObjects & PredictedObjectsLatcher::objects_for_planning(
+  const PredictedObjects & live_objects) const
 {
-  obstacle_stop_planner_.publish_planning_factor();
+  return latched_ ? latched_objects_ : live_objects;
 }
 
 }  // namespace autoware::in_lane_mrm_planner
