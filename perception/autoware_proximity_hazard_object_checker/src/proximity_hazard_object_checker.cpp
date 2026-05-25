@@ -2,6 +2,15 @@
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "autoware/proximity_hazard_object_checker/proximity_hazard_object_checker.hpp"
 
@@ -25,8 +34,6 @@ namespace autoware::proximity_hazard_object_checker
 
 namespace
 {
-constexpr std::size_t kNumSectors = 6;
-
 // Closest point on a 2D polygon's outer ring to (0, 0). Walks each segment,
 // projects origin onto it (clamped to [0, 1]), keeps the minimum-distance hit.
 // Avoids boost::geometry::closest_points, which is Boost 1.81+ only.
@@ -98,9 +105,10 @@ ProximityHazardObjects ProximityHazardObjectChecker::process(
 {
   ProximityHazardObjects out;
   out.header = input.header;  // propagate the source perception header unchanged
-  // out.sectors is fixed-size 6; all slots default to has_object == false.
+  // out.sectors is fixed-size 8; all slots default to has_object == false.
 
-  std::array<double, kNumSectors> closest_cd;
+  constexpr int num_sectors = 8;
+  std::array<double, num_sectors> closest_cd{};
   closest_cd.fill(std::numeric_limits<double>::infinity());
 
   for (const auto & object : input.objects) {
@@ -193,6 +201,9 @@ std::optional<uint8_t> ProximityHazardObjectChecker::bearing_to_sector(double be
   const auto [front_left_start, front_left_end] = sector(params_.sector_range.front_left);
   if (in_range(front_left_start, front_left_end)) return ProximityHazardObjects::FRONT_LEFT;
 
+  const auto [left_start, left_end] = sector(params_.sector_range.left);
+  if (in_range(left_start, left_end)) return ProximityHazardObjects::LEFT;
+
   const auto [rear_left_start, rear_left_end] = sector(params_.sector_range.rear_left);
   if (in_range(rear_left_start, rear_left_end)) return ProximityHazardObjects::REAR_LEFT;
 
@@ -201,6 +212,9 @@ std::optional<uint8_t> ProximityHazardObjectChecker::bearing_to_sector(double be
 
   const auto [rear_right_start, rear_right_end] = sector(params_.sector_range.rear_right);
   if (in_range(rear_right_start, rear_right_end)) return ProximityHazardObjects::REAR_RIGHT;
+
+  const auto [right_start, right_end] = sector(params_.sector_range.right);
+  if (in_range(right_start, right_end)) return ProximityHazardObjects::RIGHT;
 
   const auto [front_right_start, front_right_end] = sector(params_.sector_range.front_right);
   if (in_range(front_right_start, front_right_end)) return ProximityHazardObjects::FRONT_RIGHT;

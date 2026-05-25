@@ -7,9 +7,11 @@
     include_unknown_objects: true
 
     sector_range:
-      front: [-45.0, 45.0]
-      front_left: [45.0, 100]
-      rear_left: [100.0, 135.0]
-      rear: [135, -135]
-      rear_right: [-135.0, -100.0]
-      front_right: [-100.0, -45.0]
+      front: [-22.5, 22.5]
+      front_left: [22.5, 67.5]
+      left: [67.5, 112.5]
+      rear_left: [112.5, 157.5]
+      rear: [157.5, -157.5]
+      rear_right: [-157.5, -112.5]
+      right: [-112.5, -67.5]
+      front_right: [-67.5, -22.5]
