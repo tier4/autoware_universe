@@ -1,4 +1,10 @@
 proximity_hazard_object:
+  node_hz:
+    type: double
+    default_value: 5.0
+    description: metrics.
+    read_only: true
+
   max_detection_range_m:
     type: double
     default_value: 2.0

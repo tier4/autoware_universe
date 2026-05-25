@@ -1,5 +1,7 @@
 /**:
   ros__parameters:
+    node_hz: 5.0
+
     max_detection_range_m: 2.0
 
     include_unknown_objects: true
