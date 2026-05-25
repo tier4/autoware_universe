@@ -374,22 +374,15 @@ FootprintTrajectory compute_footprint_trajectory(
 }
 
 FootprintTrajectory compute_footprint_trajectory(
-  const PoseTrajectory & pose_trajectory, const VehicleInfo & vehicle_info,
-  const GlobalParams & global_params)
+  const PoseTrajectory & pose_trajectory, const EgoDimensions & ego_dimensions)
 {
   FootprintTrajectory footprint_trajectory;
   footprint_trajectory.reserve(pose_trajectory.size());
 
-  const double front_offset =
-    vehicle_info.max_longitudinal_offset_m + global_params.ego_footprint_margin.front;
-  const double rear_overhang =
-    -vehicle_info.min_longitudinal_offset_m + global_params.ego_footprint_margin.rear;
-  const double vehicle_width =
-    vehicle_info.vehicle_width_m + 2.0 * global_params.ego_footprint_margin.lateral;
-
   for (const auto & pose : pose_trajectory) {
-    footprint_trajectory.push_back(
-      autoware_utils_geometry::to_footprint(pose, front_offset, rear_overhang, vehicle_width));
+    footprint_trajectory.push_back(autoware_utils_geometry::to_footprint(
+      pose, ego_dimensions.front_offset, ego_dimensions.rear_overhang,
+      ego_dimensions.vehicle_width));
   }
   return footprint_trajectory;
 }
@@ -510,11 +503,11 @@ geometry_msgs::msg::Pose interpolate_predicted_path_pose(
 
 TrajectoryData generate_ego_trajectory(
   const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
-  double max_time, const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info,
-  const GlobalParams & global_params)
+  double max_time, const TrajectoryPoints & traj_points,
+  const footprint::EgoDimensions & ego_dimensions, double time_resolution)
 {
   auto [times, distances] = time_distance::compute_motion_profile_1d(
-    initial_twist, braking_lag, assumed_acceleration, 0.0, max_time, global_params.time_resolution);
+    initial_twist, braking_lag, assumed_acceleration, 0.0, max_time, time_resolution);
 
   double distance_offset =
     autoware::motion_utils::calcSignedArcLength(traj_points, traj_points.front().pose.position, 0);
@@ -522,7 +515,7 @@ TrajectoryData generate_ego_trajectory(
     val += distance_offset;
   }
   auto poses = pose::compute_pose_trajectory(traj_points, distances);
-  auto footprints = footprint::compute_footprint_trajectory(poses, vehicle_info, global_params);
+  auto footprints = footprint::compute_footprint_trajectory(poses, ego_dimensions);
 
   return TrajectoryData(
     TrajectoryIdentification{"EGO"}, std::move(times), std::move(distances), std::move(poses),
@@ -531,7 +524,7 @@ TrajectoryData generate_ego_trajectory(
 
 TrajectoryData generate_ego_trajectory(
   const TrajectoryPoints & traj_points, const FilterContext & context, double max_time,
-  const VehicleInfo & vehicle_info, const GlobalParams & global_params)
+  const footprint::EgoDimensions & ego_dimensions, double time_resolution)
 {
   if (traj_points.empty()) {
     throw std::invalid_argument("points must not be empty");
@@ -544,18 +537,16 @@ TrajectoryData generate_ego_trajectory(
 
   TimeTrajectory relative_times{0.0};
   TimeTrajectory absolute_times{start_time};
-  for (double sample_time = global_params.time_resolution; start_time + sample_time < end_time;
+  for (double sample_time = time_resolution; start_time + sample_time < end_time;
        sample_time =
-         std::floor(
-           (sample_time + global_params.time_resolution + 1e-6) / global_params.time_resolution) *
-         global_params.time_resolution) {
+         std::floor((sample_time + time_resolution + 1e-6) / time_resolution) * time_resolution) {
     relative_times.push_back(sample_time);
     absolute_times.push_back(start_time + sample_time);
   }
 
   auto poses = pose::compute_pose_trajectory_from_time(traj_points, absolute_times);
   auto distances = detail::compute_cumulative_distances(poses);
-  auto footprints = footprint::compute_footprint_trajectory(poses, vehicle_info, global_params);
+  auto footprints = footprint::compute_footprint_trajectory(poses, ego_dimensions);
 
   return TrajectoryData(
     TrajectoryIdentification{"EGO"}, std::move(relative_times), std::move(distances),
