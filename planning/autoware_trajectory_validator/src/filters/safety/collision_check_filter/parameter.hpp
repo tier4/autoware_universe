@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__PARAMETER_HPP_
-#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__PARAMETER_HPP_
+#ifndef FILTERS__SAFETY__COLLISION_CHECK_FILTER__PARAMETER_HPP_
+#define FILTERS__SAFETY__COLLISION_CHECK_FILTER__PARAMETER_HPP_
 
-#include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
+#include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 
 #include <cmath>
 #include <map>
@@ -248,4 +248,4 @@ using RssParamMap = std::map<std::string_view, RssParams>;
 
 }  // namespace autoware::trajectory_validator::plugin::safety
 
-#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__COLLISION_CHECK_FILTER__PARAMETER_HPP_
+#endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__PARAMETER_HPP_
