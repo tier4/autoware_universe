@@ -155,6 +155,13 @@ struct AssessmentTrajectories
 
 struct DracParams
 {
+  struct NoFeasibleDecelerationSafeEdges
+  {
+    bool front{false};
+    bool side{false};
+    bool rear{false};
+  };
+
   struct Threshold
   {
     double ego_acceleration{-4.0};
@@ -178,6 +185,9 @@ struct DracParams
       extract_labeled_param<double>(drac.warn_threshold.ego_acceleration, key);
     error_threshold.ego_acceleration =
       extract_labeled_param<double>(drac.error_threshold.ego_acceleration, key);
+    no_feasible_deceleration_safe_edges.front = drac.no_feasible_deceleration_safe_edges.front;
+    no_feasible_deceleration_safe_edges.side = drac.no_feasible_deceleration_safe_edges.side;
+    no_feasible_deceleration_safe_edges.rear = drac.no_feasible_deceleration_safe_edges.rear;
   }
 
   bool enable_assessment{false};
@@ -185,6 +195,7 @@ struct DracParams
   double ego_total_braking_delay{0.4};
   Threshold warn_threshold{-2.0};
   Threshold error_threshold{};
+  NoFeasibleDecelerationSafeEdges no_feasible_deceleration_safe_edges{};
 };
 
 struct PetParams

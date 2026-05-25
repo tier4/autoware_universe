@@ -42,6 +42,10 @@
           ego_acceleration: -3.0
         error_threshold:
           ego_acceleration: -5.0
+        no_feasible_deceleration_safe_edges:
+          front: false
+          side: false
+          rear: false
       pet_collision:
         enable_assessment:
           # default value is true.

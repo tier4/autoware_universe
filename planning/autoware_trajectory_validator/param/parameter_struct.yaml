@@ -137,6 +137,22 @@ validator:
           default_value: -5.0
           description: Ego acceleration threshold for DRAC error (m/s^2, negative)
           read_only: false
+      no_feasible_deceleration_safe_edges:
+        front:
+          type: bool
+          default_value: false
+          description: treat DRAC as safe when no feasible deceleration is found and collision only occurs on the ego front edge
+          read_only: false
+        side:
+          type: bool
+          default_value: false
+          description: treat DRAC as safe when no feasible deceleration is found and collision only occurs on either ego side edge
+          read_only: false
+        rear:
+          type: bool
+          default_value: false
+          description: treat DRAC as safe when no feasible deceleration is found and collision only occurs on the ego rear edge
+          read_only: false
     pet_collision:
       enable_assessment:
         base:

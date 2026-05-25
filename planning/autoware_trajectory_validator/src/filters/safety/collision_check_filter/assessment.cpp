@@ -67,6 +67,32 @@ RiskLevel to_drac_risk_level(const std::optional<double> & acc, const DracParams
   return RiskLevel::SAFE;
 }
 
+bool is_safe_when_no_feasible_deceleration(
+  const EgoFootprintEdgeIntersections & edges, const DracParams & drac_params)
+{
+  const bool has_unsafe_front =
+    edges.front && !drac_params.no_feasible_deceleration_safe_edges.front;
+  const bool has_unsafe_side =
+    (edges.left || edges.right) && !drac_params.no_feasible_deceleration_safe_edges.side;
+  const bool has_unsafe_rear = edges.rear && !drac_params.no_feasible_deceleration_safe_edges.rear;
+  return !has_unsafe_front && !has_unsafe_side && !has_unsafe_rear && edges.any();
+}
+
+RiskLevel to_drac_risk_level_when_no_feasible_deceleration(
+  const std::vector<CollisionEvaluation> & collision_evaluations, const DracParams & drac_params)
+{
+  if (
+    !collision_evaluations.empty() &&
+    std::all_of(
+      collision_evaluations.begin(), collision_evaluations.end(), [&](const auto & evaluation) {
+        return is_safe_when_no_feasible_deceleration(
+          evaluation.detail.ego_collision_edges_at_first_collision, drac_params);
+      })) {
+    return RiskLevel::SAFE;
+  }
+  return RiskLevel::ERROR;
+}
+
 bool has_enabled_collision_edge(
   const EgoFootprintEdgeIntersections & edges, const GlobalParams & global_params)
 {
@@ -462,8 +488,8 @@ DracArtifact assess_drac(
   }
 
   return DracArtifact{
-    to_drac_risk_level(std::nullopt, ego_drac_params), std::nullopt,
-    std::move(last_collision_evaluations)};
+    to_drac_risk_level_when_no_feasible_deceleration(last_collision_evaluations, ego_drac_params),
+    std::nullopt, std::move(last_collision_evaluations)};
 }
 
 std::vector<TrajectoryData> generate_object_trajectories(
