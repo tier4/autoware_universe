@@ -46,4 +46,32 @@ None.
 
 ## Assumptions / Known limits
 
-TBD.
+| Name                               | Type   | Default Value | Explanation                                                             |
+| ---------------------------------- | ------ | ------------- | ----------------------------------------------------------------------- |
+| `min_predicted_path_keep_duration` | double | 3.0           | minimum time (seconds) to keep using same prediction                    |
+| `switch_time_threshold`            | double | 2.0           | time threshold (seconds) to switch from straight-line to predicted path |
+
+#### Common Remapping Parameters
+
+The plugin uses `CommonParameters` for both vehicle and pedestrian object types. Each parameter is prefixed with either `vehicle.` or `pedestrian.`:
+
+| Parameter Name               | Type   | Explanation                                               |
+| ---------------------------- | ------ | --------------------------------------------------------- |
+| `max_remapping_distance`     | double | maximum distance (meters) for remapping validation        |
+| `max_speed_difference_ratio` | double | maximum speed difference ratio tolerance                  |
+| `min_speed_ratio`            | double | minimum speed ratio relative to dummy object speed        |
+| `max_speed_ratio`            | double | maximum speed ratio relative to dummy object speed        |
+| `speed_check_threshold`      | double | speed threshold (m/s) above which speed checks apply      |
+| `path_selection_strategy`    | string | path selection strategy: "highest_confidence" or "random" |
+
+## Auxiliary Nodes
+
+### empty_objects_publisher
+
+A simple node that publishes empty `PredictedObjects` messages at 10 Hz on `~/output/objects`. This is used as a fallback when no object recognition is running, ensuring downstream nodes still receive the expected topic.
+
+### empty_traffic_light_group_array_publisher
+
+A simple node that publishes empty `TrafficLightGroupArray` messages at 10 Hz on `~/output/traffic_light_group_array`. This is used as a fallback when no traffic light recognition is running, ensuring downstream nodes still receive the expected topic.
+
+In the launch file, this node is enabled by the `use_empty_traffic_light_recognition` argument (default: `true`) and remaps its output to `/perception/traffic_light_recognition/traffic_signals`.
