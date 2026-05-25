@@ -24,6 +24,7 @@
 
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 namespace autoware::trajectory_validator::plugin::traffic_rule
 {
@@ -43,6 +44,7 @@ private:
   {
     autoware_perception_msgs::msg::TrafficLightGroup msg;
     rclcpp::Time first_seen_time;
+    rclcpp::Time last_seen_time;
   };
 
   std::unique_ptr<traffic_light_filter::TrafficLightComplianceChecker> checker_;
@@ -50,6 +52,15 @@ private:
 
   std::unordered_map<int64_t, SignalStateHistory> signal_history_;
   std::unordered_map<int64_t, rclcpp::Time> amber_rejection_history_;
+
+  autoware_perception_msgs::msg::TrafficLightGroupArray filter_signals(
+    const autoware_perception_msgs::msg::TrafficLightGroupArray & signals,
+    const rclcpp::Time & current_time, bool is_ego_stopped);
+
+  std::vector<int64_t> get_force_reject_amber_ids(
+    const rclcpp::Time & current_time, bool is_ego_stopped) const;
+
+  void cleanup_history(const rclcpp::Time & current_time);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::traffic_rule
