@@ -58,6 +58,9 @@ private:
     TrajectoryPoints & points, size_t ego_idx, double v0, double a0, double jerk,
     double decel) const;
 
+  void fill_ego_prefix(
+    TrajectoryPoints & points, size_t ego_idx, double v0, double a0) const;
+
   void fill_zero_velocity_profile(TrajectoryPoints & points, float longitudinal_accel_mps2) const;
 
   void apply_zero_stop_profile(
