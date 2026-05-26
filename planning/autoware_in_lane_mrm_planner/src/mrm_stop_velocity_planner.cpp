@@ -245,6 +245,24 @@ void MrmStopVelocityPlanner::densify_near_arc_length(
   points = std::move(resampled);
 }
 
+void MrmStopVelocityPlanner::fill_zero_velocity_profile(
+  TrajectoryPoints & points, const float longitudinal_accel_mps2) const
+{
+  for (auto & point : points) {
+    point.longitudinal_velocity_mps = 0.0F;
+    point.lateral_velocity_mps = 0.0F;
+    point.acceleration_mps2 = longitudinal_accel_mps2;
+  }
+}
+
+void MrmStopVelocityPlanner::apply_zero_stop_profile(
+  TrajectoryPoints & points, const Odometry & odom, const float longitudinal_accel_mps2) const
+{
+  fill_zero_velocity_profile(points, longitudinal_accel_mps2);
+  autoware::motion_utils::calculate_time_from_start(
+    points, odom.pose.pose.position, static_cast<float>(kMinVelocityForTimeCalc));
+}
+
 void MrmStopVelocityPlanner::fill_forward(
   TrajectoryPoints & points, const size_t ego_idx, const double v0, const double a0,
   const double jerk, const double decel) const
@@ -293,12 +311,27 @@ void MrmStopVelocityPlanner::apply(
   const double v0 = std::max(0.0, odom.twist.twist.linear.x);
   const double a0 = extract_longitudinal_accel(accel);
 
+  if (v0 <= kStopVelocityThreshold) {
+    apply_zero_stop_profile(points, odom, static_cast<float>(a0));
+    return;
+  }
+
   const size_t ego_idx = autoware::motion_utils::findNearestSegmentIndex(
     points, odom.pose.pose.position);
   const size_t constraint_idx =
     find_constraint_stop_index(points).value_or(points.size() - 1);
 
   const auto limits = select_profile_limits(points, ego_idx, constraint_idx, v0, a0);
+
+  if (!is_feasible(points, ego_idx, constraint_idx, v0, a0, limits.jerk, limits.decel)) {
+    RCLCPP_ERROR(
+      rclcpp::get_logger("mrm_stop_velocity_planner"),
+      "Cannot stop before constraint index %zu; applying zero velocity fallback",
+      constraint_idx);
+    apply_zero_stop_profile(
+      points, odom, static_cast<float>(params_.max_deceleration_relaxation));
+    return;
+  }
 
   const double ego_arc_length = autoware::motion_utils::calcSignedArcLength(points, 0, ego_idx);
   const double predicted_stop_arc_length =

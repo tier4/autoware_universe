@@ -555,6 +555,48 @@
         "required": [],
         "additionalProperties": false
       },
+      "trajectory_validator": {
+        "type": "object",
+        "properties": {
+          "enable": {
+            "type": "boolean",
+            "description": "Enable read-only output trajectory validation before publish (non-latched only)",
+            "default": true
+          },
+          "min_point_count": {
+            "type": "integer",
+            "description": "Minimum number of trajectory points",
+            "default": 3,
+            "minimum": 2
+          },
+          "min_point_spacing_m": {
+            "type": "number",
+            "description": "Minimum distance between consecutive points [m]",
+            "default": 0.05,
+            "minimum": 0.0
+          },
+          "min_trajectory_length_m": {
+            "type": "number",
+            "description": "Minimum total arc length [m]",
+            "default": 1.0,
+            "minimum": 0.0
+          },
+          "standstill_velocity_threshold_mps": {
+            "type": "number",
+            "description": "Velocity treated as standstill [m/s]",
+            "default": 0.01,
+            "minimum": 0.0
+          },
+          "hazardous_leading_velocity_mps": {
+            "type": "number",
+            "description": "Leading velocity above this with mostly-zero tail is rejected [m/s]",
+            "default": 0.5,
+            "minimum": 0.0
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
       "latch": {
         "type": "object",
         "properties": {

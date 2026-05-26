@@ -20,6 +20,7 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/obstacle_stop_utils.cpp
   src/mrm_obstacle_stop_planner.cpp
   src/mrm_stop_velocity_planner.cpp
+  src/in_lane_mrm_trajectory_validator.cpp
   src/trajectory_latcher.cpp
   src/predicted_objects_latcher.cpp
   src/mrm_trigger_relay_node.cpp
@@ -57,6 +58,7 @@ if(BUILD_TESTING)
   ament_add_ros_isolated_gmock(test_${PROJECT_NAME}
     test/test_lateral_offset.cpp
     test/test_mrm_stop_velocity_planner.cpp
+    test/test_in_lane_mrm_trajectory_validator.cpp
     test/test_trajectory_latcher.cpp
   )
 

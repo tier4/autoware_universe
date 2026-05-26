@@ -17,6 +17,7 @@
 
 #include "in_lane_mrm_trajectory_modifier.hpp"
 #include "in_lane_mrm_trajectory_planner.hpp"
+#include "in_lane_mrm_trajectory_validator.hpp"
 #include "mrm_stop_velocity_planner.hpp"
 #include "path_planner.hpp"
 #include "predicted_objects_latcher.hpp"
@@ -70,6 +71,7 @@ private:
   TrajectorySmoother trajectory_smoother_;
   InLaneMrmTrajectoryModifier trajectory_modifier_;
   MrmStopVelocityPlanner velocity_planner_;
+  InLaneMrmTrajectoryValidator trajectory_validator_;
   TrajectorySelectorStub trajectory_selector_;
   TrajectoryLatcher trajectory_latcher_;
   PredictedObjectsLatcher objects_latcher_;

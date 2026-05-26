@@ -30,6 +30,7 @@ InLaneMrmPlannerNode::InLaneMrmPlannerNode(const rclcpp::NodeOptions & options)
   vehicle_info_(autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()),
   time_keeper_(std::make_shared<autoware_utils_debug::TimeKeeper>()),
   velocity_planner_(params_),
+  trajectory_validator_(params_),
   route_subscriber_(this, "~/input/route", rclcpp::QoS{1}.transient_local()),
   vector_map_subscriber_(this, "~/input/vector_map", rclcpp::QoS{1}.transient_local()),
   kinematic_state_subscriber_(this, "~/input/kinematic_state"),
@@ -88,24 +89,38 @@ void InLaneMrmPlannerNode::on_timer()
     trajectory_latcher_.unlatch();
   }
 
-  const auto planned_traj = trajectory_planner_->plan(odom);
-  if (planned_traj) {
-    auto traj = *planned_traj;
-    trajectory_smoother_.smooth(traj.points, odom.pose.pose);
-    trajectory_modifier_.set_objects(objects_latcher_.objects_for_planning(live_objects));
-    trajectory_modifier_.apply(traj.points, odom, accel);
-    velocity_planner_.apply(traj.points, odom, accel);
-    trajectory_modifier_.publish_planning_factor();
+  std::optional<Trajectory> trajectory_to_publish;
 
-    traj.header.stamp = now();
-    traj.header.frame_id = odom.header.frame_id;
-    trajectory_latcher_.update_candidate(trajectory_selector_.select(traj));
+  if (trajectory_latcher_.is_latched()) {
+    trajectory_to_publish = trajectory_latcher_.output();
   } else {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "Trajectory planning failed.");
+    const auto planned_traj = trajectory_planner_->plan(odom);
+    if (planned_traj) {
+      auto traj = *planned_traj;
+      trajectory_smoother_.smooth(traj.points, odom.pose.pose);
+      trajectory_modifier_.set_objects(objects_latcher_.objects_for_planning(live_objects));
+      trajectory_modifier_.apply(traj.points, odom, accel);
+      velocity_planner_.apply(traj.points, odom, accel);
+      trajectory_modifier_.publish_planning_factor();
+
+      const auto validation = trajectory_validator_.validate(traj.points, odom);
+      if (validation.ok) {
+        traj.header.stamp = now();
+        traj.header.frame_id = odom.header.frame_id;
+        trajectory_latcher_.update_candidate(trajectory_selector_.select(traj));
+        trajectory_to_publish = trajectory_latcher_.output();
+      } else {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000, "Trajectory validation failed: %s",
+          validation.reason.c_str());
+      }
+    } else {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "Trajectory planning failed.");
+    }
   }
 
-  if (const auto output = trajectory_latcher_.output()) {
-    auto published = *output;
+  if (trajectory_to_publish) {
+    auto published = *trajectory_to_publish;
     published.header.stamp = now();
     if (published.header.frame_id.empty()) {
       published.header.frame_id = odom.header.frame_id;
@@ -173,6 +188,7 @@ void InLaneMrmPlannerNode::update_params()
   params_ = param_listener_->get_params();
   path_planner_->update_params(params_);
   velocity_planner_.update_params(params_);
+  trajectory_validator_.update_params(params_);
 }
 
 }  // namespace autoware::in_lane_mrm_planner
