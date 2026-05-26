@@ -14,6 +14,7 @@
 
 #include "mrm_stop_velocity_planner.hpp"
 
+#include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -45,20 +46,7 @@ std::vector<double> calc_arc_lengths(const TrajectoryPoints & points)
   return arc_lengths;
 }
 
-TrajectoryPoint interpolate_point(
-  const TrajectoryPoint & from, const TrajectoryPoint & to, const double ratio)
-{
-  TrajectoryPoint out;
-  out.pose = autoware_utils_geometry::calc_interpolated_pose(from.pose, to.pose, ratio);
-  out.longitudinal_velocity_mps = 0.0F;
-  out.lateral_velocity_mps = 0.0F;
-  out.acceleration_mps2 = 0.0F;
-  out.heading_rate_rps = 0.0F;
-  return out;
-}
-
-TrajectoryPoint sample_point_at_arc_length(
-  const TrajectoryPoints & points, const std::vector<double> & arc_lengths, const double s)
+TrajectoryPoint sample_point_at_arc_length(const TrajectoryPoints & points, const double s)
 {
   if (points.empty()) {
     return TrajectoryPoint{};
@@ -66,17 +54,16 @@ TrajectoryPoint sample_point_at_arc_length(
   if (s <= 0.0) {
     return points.front();
   }
-  if (s >= arc_lengths.back()) {
+
+  const double total_length = autoware::motion_utils::calcSignedArcLength(points, 0, points.size() - 1);
+  if (s >= total_length) {
     return points.back();
   }
 
-  const auto it = std::upper_bound(arc_lengths.begin(), arc_lengths.end(), s);
-  const size_t idx = static_cast<size_t>(std::distance(arc_lengths.begin(), it));
-  const size_t i0 = std::max<size_t>(1, idx) - 1;
-  const size_t i1 = i0 + 1;
-  const double ds = arc_lengths.at(i1) - arc_lengths.at(i0);
-  const double ratio = (ds < 1e-9) ? 0.0 : (s - arc_lengths.at(i0)) / ds;
-  return interpolate_point(points.at(i0), points.at(i1), ratio);
+  const auto pose = autoware::motion_utils::calcInterpolatedPose(points, s);
+  Trajectory trajectory;
+  trajectory.points = points;
+  return autoware::motion_utils::calcInterpolatedPoint(trajectory, pose, false);
 }
 
 void advance_decel_state(
@@ -240,7 +227,7 @@ void MrmStopVelocityPlanner::densify_near_arc_length(
   TrajectoryPoints resampled;
   resampled.reserve(sample_s.size());
   for (const double s : sample_s) {
-    resampled.push_back(sample_point_at_arc_length(points, arc_lengths, s));
+    resampled.push_back(sample_point_at_arc_length(points, s));
   }
   points = std::move(resampled);
 }
@@ -261,6 +248,16 @@ void MrmStopVelocityPlanner::apply_zero_stop_profile(
   fill_zero_velocity_profile(points, longitudinal_accel_mps2);
   autoware::motion_utils::calculate_time_from_start(
     points, odom.pose.pose.position, static_cast<float>(kMinVelocityForTimeCalc));
+}
+
+void MrmStopVelocityPlanner::fill_ego_prefix(
+  TrajectoryPoints & points, const size_t ego_idx, const double v0, const double a0) const
+{
+  const size_t last_idx = std::min(ego_idx, points.empty() ? 0U : points.size() - 1);
+  for (size_t i = 0; i <= last_idx; ++i) {
+    points.at(i).longitudinal_velocity_mps = static_cast<float>(v0);
+    points.at(i).acceleration_mps2 = static_cast<float>(a0);
+  }
 }
 
 void MrmStopVelocityPlanner::fill_forward(
@@ -342,6 +339,7 @@ void MrmStopVelocityPlanner::apply(
     autoware::motion_utils::findNearestSegmentIndex(points, odom.pose.pose.position);
 
   fill_forward(points, ego_idx_after, v0, a0, limits.jerk, limits.decel);
+  fill_ego_prefix(points, ego_idx_after, v0, a0);
 
   autoware::motion_utils::calculate_time_from_start(
     points, odom.pose.pose.position, static_cast<float>(kMinVelocityForTimeCalc));

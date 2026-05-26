@@ -255,4 +255,45 @@ TEST(MrmStopVelocityPlannerTest, FillsZeroVelocityWhenStopIsInfeasible)
   }
 }
 
+TEST(MrmStopVelocityPlannerTest, NoSpuriousZeroVelocityIslandAfterDensifyAndApply)
+{
+  auto points = make_straight_trajectory(40, 0.5, 10.0F);
+  Odometry odom = make_odometry(2.0);
+  odom.pose.pose.position.x = 2.25;
+  const MrmStopVelocityPlanner planner(make_default_params());
+
+  planner.apply(points, odom, make_accel(0.0));
+
+  const size_t ego_idx =
+    autoware::motion_utils::findNearestSegmentIndex(points, odom.pose.pose.position);
+  ASSERT_GE(points.size(), ego_idx + 2);
+  for (size_t i = 0; i <= std::min(ego_idx + 1, points.size() - 1); ++i) {
+    EXPECT_NEAR(points.at(i).longitudinal_velocity_mps, 2.0F, 0.05F)
+      << "point " << i << " should follow odom/prefix policy, not resample-to-zero";
+  }
+  EXPECT_GT(find_first_stopped_index(points), ego_idx);
+}
+
+TEST(MrmStopVelocityPlannerTest, AlignsPrefixThroughEgoWithOdomVelocity)
+{
+  // Simulates stale lane-speed at index 0; densify must not inject zeros before ego.
+  auto points = make_straight_trajectory(30, 0.5, 9.17F);
+  points.back().longitudinal_velocity_mps = 0.0F;
+
+  Odometry odom = make_odometry(2.0);
+  odom.pose.pose.position.x = 2.25;
+  const MrmStopVelocityPlanner planner(make_default_params());
+
+  planner.apply(points, odom, make_accel(0.0));
+
+  const size_t ego_idx =
+    autoware::motion_utils::findNearestSegmentIndex(points, odom.pose.pose.position);
+  for (size_t i = 0; i <= ego_idx; ++i) {
+    EXPECT_NEAR(points.at(i).longitudinal_velocity_mps, 2.0F, 0.05F)
+      << "prefix index " << i << " should match odom velocity";
+  }
+  EXPECT_GT(points.at(ego_idx + 1).longitudinal_velocity_mps, 0.01F);
+  EXPECT_GE(find_first_stopped_index(points), ego_idx + 1);
+}
+
 }  // namespace autoware::in_lane_mrm_planner
