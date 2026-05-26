@@ -58,6 +58,7 @@ private:
   std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
 
   std::shared_ptr<proximity_hazard_object::ParamListener> param_listener_;
+  autoware_utils_geometry::LinearRing2d vehicle_footprint_;
 
   std::unique_ptr<ProximityHazardObjectChecker> impl_;
 };

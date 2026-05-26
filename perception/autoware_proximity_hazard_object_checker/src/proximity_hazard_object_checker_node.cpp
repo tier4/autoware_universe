@@ -19,6 +19,13 @@
 
 #include <visualization_msgs/msg/marker.hpp>
 
+#include <boost/geometry/algorithms/append.hpp>
+#include <boost/geometry/algorithms/buffer.hpp>
+#include <boost/geometry/algorithms/correct.hpp>
+#include <boost/geometry/geometries/multi_polygon.hpp>
+#include <boost/geometry/strategies/buffer.hpp>
+#include <boost/geometry/strategies/strategies.hpp>
+
 #include <array>
 #include <cmath>
 #include <memory>
@@ -40,9 +47,10 @@ ProximityHazardObjectCheckerNode::ProximityHazardObjectCheckerNode(
     std::bind(&ProximityHazardObjectCheckerNode::on_timer, this));
 
   const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
+  vehicle_footprint_ = vehicle_info.createFootprint();
 
   impl_ = std::make_unique<ProximityHazardObjectChecker>(
-    param_listener_->get_params(), vehicle_info.createFootprint());
+    param_listener_->get_params(), vehicle_footprint_);
 
   tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
   tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
@@ -89,11 +97,69 @@ void ProximityHazardObjectCheckerNode::publish_sector_markers(const std::string 
 {
   using visualization_msgs::msg::Marker;
   using visualization_msgs::msg::MarkerArray;
+  namespace bg = boost::geometry;
 
   const auto params = param_listener_->get_params();
   const double range = params.max_detection_range_m;
   const auto & ego = impl_->ego_center();
   const auto stamp = now();
+
+  // Build the detection-zone outline: Minkowski sum of the vehicle footprint
+  // with a disc of radius `range`. This is exactly the set of points within
+  // `range` of the footprint -- i.e. the actual detection zone, not a circle
+  // around ego_center.
+  Polygon2d footprint_polygon;
+  for (const auto & p : vehicle_footprint_) {
+    bg::append(footprint_polygon, p);
+  }
+  bg::correct(footprint_polygon);
+
+  constexpr int kPointsPerCircle = 36;
+  const bg::strategy::buffer::distance_symmetric<double> distance_strategy(range);
+  const bg::strategy::buffer::join_round join_strategy(kPointsPerCircle);
+  const bg::strategy::buffer::end_round end_strategy(kPointsPerCircle);
+  const bg::strategy::buffer::point_circle point_strategy(kPointsPerCircle);
+  const bg::strategy::buffer::side_straight side_strategy;
+
+  bg::model::multi_polygon<Polygon2d> buffered_mp;
+  bg::buffer(
+    footprint_polygon, buffered_mp, distance_strategy, side_strategy, join_strategy, end_strategy,
+    point_strategy);
+
+  if (buffered_mp.empty()) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Buffered footprint is empty; skipping debug marker publish.");
+    return;
+  }
+  const auto & outline = buffered_mp.front().outer();
+
+  // Distance from ego along unit direction (dx, dy) to the first outline edge
+  // hit by the ray. ego_center is inside the buffered region (it's inside the
+  // footprint), so the ray exits at exactly one boundary point.
+  auto ray_to_outline = [&](double dx, double dy) -> double {
+    double t_min = std::numeric_limits<double>::infinity();
+    for (std::size_t i = 0; i + 1 < outline.size(); ++i) {
+      const double ax = outline[i].x();
+      const double ay = outline[i].y();
+      const double bx = outline[i + 1].x();
+      const double by = outline[i + 1].y();
+      const double ex = bx - ax;
+      const double ey = by - ay;
+      const double det = dy * ex - dx * ey;
+      if (std::abs(det) < 1e-12) {
+        continue;
+      }
+      const double rx = ax - ego.x();
+      const double ry = ay - ego.y();
+      const double t = (ry * ex - rx * ey) / det;
+      const double s = (dx * ry - dy * rx) / det;
+      if (t > 0.0 && s >= 0.0 && s <= 1.0 && t < t_min) {
+        t_min = t;
+      }
+    }
+    return t_min;
+  };
 
   // Sectors in the same order as bearing_to_sector (CCW around the vehicle).
   struct SectorVis
@@ -121,57 +187,61 @@ void ProximityHazardObjectCheckerNode::publish_sector_markers(const std::string 
   MarkerArray out;
   out.markers.reserve(2 + sectors.size());
 
-  // Outer circle at max_detection_range_m around ego_center.
+  // Detection-zone outline (replaces the circle).
   {
     Marker m;
     m.header.frame_id = frame_id;
     m.header.stamp = stamp;
-    m.frame_locked = true;
     m.ns = "proximity_hazard_sectors";
     m.id = 0;
     m.type = Marker::LINE_STRIP;
     m.action = Marker::ADD;
+    m.frame_locked = true;
     m.scale.x = 0.03;
     m.color = color;
     m.pose.orientation.w = 1.0;
-    constexpr int kSegments = 64;
-    m.points.reserve(kSegments + 1);
-    for (int i = 0; i <= kSegments; ++i) {
-      const double a = 2.0 * M_PI * static_cast<double>(i) / static_cast<double>(kSegments);
-      geometry_msgs::msg::Point p;
-      p.x = ego.x() + range * std::cos(a);
-      p.y = ego.y() + range * std::sin(a);
-      p.z = 0.0;
-      m.points.push_back(p);
+    m.points.reserve(outline.size());
+    for (const auto & p : outline) {
+      geometry_msgs::msg::Point pt;
+      pt.x = p.x();
+      pt.y = p.y();
+      pt.z = 0.0;
+      m.points.push_back(pt);
     }
     out.markers.push_back(m);
   }
 
-  // Sector boundary lines: one line per sector start angle, from ego_center
-  // outward to the outer circle. End-of-one == start-of-next when ranges tile,
-  // so no duplicates.
+  // Sector boundary lines: each line starts at ego_center and extends along the
+  // sector's start angle out to the buffered outline, so it actually shows the
+  // detection extent in that direction.
   {
     Marker m;
     m.header.frame_id = frame_id;
     m.header.stamp = stamp;
-    m.frame_locked = true;
     m.ns = "proximity_hazard_sectors";
     m.id = 1;
     m.type = Marker::LINE_LIST;
     m.action = Marker::ADD;
+    m.frame_locked = true;
     m.scale.x = 0.03;
     m.color = color;
     m.pose.orientation.w = 1.0;
     m.points.reserve(sectors.size() * 2);
     for (const auto & s : sectors) {
       const double a = autoware_utils_math::deg2rad(s.range_deg.front());
+      const double dx = std::cos(a);
+      const double dy = std::sin(a);
+      const double t = ray_to_outline(dx, dy);
+      if (!std::isfinite(t)) {
+        continue;
+      }
       geometry_msgs::msg::Point p0;
       p0.x = ego.x();
       p0.y = ego.y();
       p0.z = 0.0;
       geometry_msgs::msg::Point p1;
-      p1.x = ego.x() + range * std::cos(a);
-      p1.y = ego.y() + range * std::sin(a);
+      p1.x = ego.x() + t * dx;
+      p1.y = ego.y() + t * dy;
       p1.z = 0.0;
       m.points.push_back(p0);
       m.points.push_back(p1);
@@ -179,7 +249,9 @@ void ProximityHazardObjectCheckerNode::publish_sector_markers(const std::string 
     out.markers.push_back(m);
   }
 
-  // Sector labels placed at angular midpoint, just outside the circle.
+  // Sector labels placed at the sector's angular midpoint, slightly past the
+  // buffered outline so they don't sit on the line.
+  constexpr double kLabelOffsetM = 0.5;
   int label_id = 100;
   for (const auto & s : sectors) {
     const double start = s.range_deg.front();
@@ -190,19 +262,24 @@ void ProximityHazardObjectCheckerNode::publish_sector_markers(const std::string 
       mid_deg -= 360.0;
     }
     const double mid_rad = autoware_utils_math::deg2rad(mid_deg);
-    constexpr double kLabelRadiusScale = 1.2;
-    const double label_r = range * kLabelRadiusScale;
+    const double dx = std::cos(mid_rad);
+    const double dy = std::sin(mid_rad);
+    const double t_outline = ray_to_outline(dx, dy);
+    if (!std::isfinite(t_outline)) {
+      continue;
+    }
+    const double t = t_outline + kLabelOffsetM;
 
     Marker m;
     m.header.frame_id = frame_id;
     m.header.stamp = stamp;
-    m.frame_locked = true;
     m.ns = "proximity_hazard_sectors";
     m.id = label_id++;
     m.type = Marker::TEXT_VIEW_FACING;
     m.action = Marker::ADD;
-    m.pose.position.x = ego.x() + label_r * std::cos(mid_rad);
-    m.pose.position.y = ego.y() + label_r * std::sin(mid_rad);
+    m.frame_locked = true;
+    m.pose.position.x = ego.x() + t * dx;
+    m.pose.position.y = ego.y() + t * dy;
     m.pose.position.z = 0.0;
     m.pose.orientation.w = 1.0;
     m.scale.z = 0.3;  // text height in meters
