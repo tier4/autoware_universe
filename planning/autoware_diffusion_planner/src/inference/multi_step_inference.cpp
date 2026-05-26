@@ -53,8 +53,6 @@ MultiStepInference::MultiStepInference(
     autoware::cuda_utils::make_unique<float[]>(num_elements(diffusion_time_shape));
   ego_history_d_ = autoware::cuda_utils::make_unique<float[]>(
     batch_size_ * num_elements_without_batch(EGO_HISTORY_SHAPE));
-  ego_current_state_d_ = autoware::cuda_utils::make_unique<float[]>(
-    batch_size_ * num_elements_without_batch(EGO_CURRENT_STATE_SHAPE));
   neighbor_agents_past_d_ = autoware::cuda_utils::make_unique<float[]>(
     batch_size_ * num_elements_without_batch(NEIGHBOR_SHAPE));
   static_objects_d_ = autoware::cuda_utils::make_unique<float[]>(
@@ -148,7 +146,6 @@ void MultiStepInference::load_engines(
   add_decoder_tensor("encoding", encoding_shape);
   add_decoder_tensor("sampled_trajectories", SAMPLED_TRAJECTORIES_SHAPE);
   add_decoder_tensor("diffusion_time", diffusion_time_shape);
-  add_decoder_tensor("ego_current_state", EGO_CURRENT_STATE_SHAPE);
   add_decoder_tensor("neighbor_agents_past", NEIGHBOR_SHAPE);
   decoder_network_io.emplace_back("model_output", to_dynamic_dims(model_output_shape, batch_size_));
 
@@ -233,14 +230,11 @@ void MultiStepInference::bind_decoder_buffers()
   decoder_trt_ptr_->setInputShape(
     "diffusion_time", to_dims_with_batch(diffusion_time_shape, batch_size_));
   decoder_trt_ptr_->setInputShape(
-    "ego_current_state", to_dims_with_batch(EGO_CURRENT_STATE_SHAPE, batch_size_));
-  decoder_trt_ptr_->setInputShape(
     "neighbor_agents_past", to_dims_with_batch(NEIGHBOR_SHAPE, batch_size_));
 
   decoder_trt_ptr_->setTensorAddress("encoding", encoding_d_.get());
   decoder_trt_ptr_->setTensorAddress("sampled_trajectories", sampled_trajectories_d_.get());
   decoder_trt_ptr_->setTensorAddress("diffusion_time", diffusion_time_d_.get());
-  decoder_trt_ptr_->setTensorAddress("ego_current_state", ego_current_state_d_.get());
   decoder_trt_ptr_->setTensorAddress("neighbor_agents_past", neighbor_agents_past_d_.get());
   decoder_trt_ptr_->setTensorAddress("model_output", model_output_d_.get());
 }
@@ -264,7 +258,6 @@ void MultiStepInference::transfer_inputs_to_device(const preprocess::InputDataMa
 {
   transfer_float_input(input_data_map.at("sampled_trajectories"), sampled_trajectories_d_, stream_);
   transfer_float_input(input_data_map.at("ego_agent_past"), ego_history_d_, stream_);
-  transfer_float_input(input_data_map.at("ego_current_state"), ego_current_state_d_, stream_);
   transfer_float_input(input_data_map.at("neighbor_agents_past"), neighbor_agents_past_d_, stream_);
   transfer_float_input(input_data_map.at("static_objects"), static_objects_d_, stream_);
   transfer_float_input(input_data_map.at("lanes"), lanes_d_, stream_);

@@ -63,7 +63,6 @@ private:
   autoware::cuda_utils::CudaUniquePtr<float[]> sampled_trajectories_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> diffusion_time_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> ego_history_d_;
-  autoware::cuda_utils::CudaUniquePtr<float[]> ego_current_state_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> neighbor_agents_past_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> static_objects_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> lanes_d_;
