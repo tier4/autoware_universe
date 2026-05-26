@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <string>
@@ -30,13 +31,60 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+namespace
+{
+// Reads `<base_param_name>_map.<class>` entries from the node's parameter_overrides snapshot and
+// writes the value via `accessor(map_entry)` for each matching class. The base entry
+// (kCollisionCheckParamBaseKey) is intentionally left untouched so it always mirrors the
+// generate_parameter_library scalar.
+template <typename ValueT, typename ParamMap, typename Accessor>
+void apply_scalar_per_class_overrides(
+  const std::vector<rclcpp::Parameter> & parameter_overrides, const std::string & base_param_name,
+  Accessor accessor, ParamMap & param_map)
+{
+  const std::string map_prefix = base_param_name + "_map.";
+  for (const auto & param : parameter_overrides) {
+    const auto & name = param.get_name();
+    if (name.rfind(map_prefix, 0) != 0) continue;
+    const auto class_key = name.substr(map_prefix.size());
+    auto it = param_map.find(class_key);
+    if (it == param_map.end()) {
+      std::string valid_keys;
+      for (const auto & [key, _] : param_map) {
+        if (key == kCollisionCheckParamBaseKey) continue;
+        if (!valid_keys.empty()) valid_keys += ", ";
+        valid_keys += std::string(key);
+      }
+      throw std::invalid_argument(
+        fmt::format(
+          "parameter_overrides: unknown class key '{}' in '{}' (valid keys: [{}])", class_key, name,
+          valid_keys));
+    }
+    accessor(it->second) = param.get_value<ValueT>();
+  }
+}
+}  // namespace
+
 void CollisionCheckFilter::update_parameters(const validator::Params & node_params)
 {
   global_params_ = GlobalParams(node_params.collision_check.global_setting);
 
-  drac_param_map_ = create_param_map_per_object<DracParams>(node_params);
-  pet_param_map_ = create_param_map_per_object<PetParams>(node_params);
-  rss_param_map_ = create_param_map_per_object<RssParams>(node_params);
+  drac_param_map_ = make_param_map_from_base<DracParamMap>(node_params.collision_check.drac);
+  pet_param_map_ = make_param_map_from_base<PetParamMap>(node_params.collision_check.pet_collision);
+  rss_param_map_ = make_param_map_from_base<RssParamMap>(node_params.collision_check.rss);
+
+  // Per-class enable_assessment overrides come from `<base_name>_map.<class>` entries in
+  // trajectory_validator.param.yaml. They are not declared via generate_parameter_library, so we
+  // read them from the node's parameter_overrides snapshot forwarded by the validator node.
+  apply_scalar_per_class_overrides<bool>(
+    parameter_overrides_, "collision_check.drac.enable_assessment",
+    [](auto & s) -> bool & { return s.enable_assessment; }, drac_param_map_);
+  apply_scalar_per_class_overrides<bool>(
+    parameter_overrides_, "collision_check.pet_collision.enable_assessment",
+    [](auto & s) -> bool & { return s.enable_assessment; }, pet_param_map_);
+  apply_scalar_per_class_overrides<bool>(
+    parameter_overrides_, "collision_check.rss.enable_assessment",
+    [](auto & s) -> bool & { return s.enable_assessment; }, rss_param_map_);
 }
 
 void CollisionCheckFilter::clear_detection_times()

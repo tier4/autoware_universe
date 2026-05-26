@@ -100,21 +100,22 @@ FilterContext create_filter_context(const nav_msgs::msg::Odometry::ConstSharedPt
   return context;
 }
 
-AssessmentTrajectories make_assessment_trajectories(
+template <typename ParamMap>
+ParamMap make_param_map_with_assessment_trajectories(
   const bool map_based, const bool constant_curvature, const bool diffusion_based)
 {
-  return AssessmentTrajectories{map_based, constant_curvature, diffusion_based};
-}
-
-template <typename ParamMap>
-ParamMap make_param_map_with_assessment_trajectories(const AssessmentTrajectories & assessment)
-{
+  const auto assign = [&](auto & entry) {
+    entry.enable_assessment = true;
+    entry.assessment_trajectories.map_based = map_based;
+    entry.assessment_trajectories.constant_curvature = constant_curvature;
+    entry.assessment_trajectories.diffusion_based = diffusion_based;
+  };
   ParamMap param_map;
   for (const auto & [label, class_name] : kObjectClassifications) {
     (void)label;
-    param_map[class_name].assessment_trajectories = assessment;
+    assign(param_map[class_name]);
   }
-  param_map[kCollisionCheckParamBaseKey].assessment_trajectories = assessment;
+  assign(param_map[kCollisionCheckParamBaseKey]);
   return param_map;
 }
 
@@ -601,10 +602,10 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
       });
     };
 
-  const auto all_enabled_drac_param_map = make_param_map_with_assessment_trajectories<DracParamMap>(
-    make_assessment_trajectories(true, true, true));
-  const auto all_enabled_pet_param_map = make_param_map_with_assessment_trajectories<PetParamMap>(
-    make_assessment_trajectories(true, true, true));
+  const auto all_enabled_drac_param_map =
+    make_param_map_with_assessment_trajectories<DracParamMap>(true, true, true);
+  const auto all_enabled_pet_param_map =
+    make_param_map_with_assessment_trajectories<PetParamMap>(true, true, true);
   const auto all_enabled = collision_timing_assessment::generate_object_trajectories(
     context, 0.2, 0.0, 0.1, all_enabled_drac_param_map, all_enabled_pet_param_map);
   EXPECT_EQ(all_enabled.size(), 3u);
@@ -613,11 +614,9 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
   EXPECT_EQ(count_trajectory_type(all_enabled, "diffusion_based_trajectory"), 1);
 
   const auto constant_curvature_drac_param_map =
-    make_param_map_with_assessment_trajectories<DracParamMap>(
-      make_assessment_trajectories(false, true, false));
+    make_param_map_with_assessment_trajectories<DracParamMap>(false, true, false);
   const auto constant_curvature_pet_param_map =
-    make_param_map_with_assessment_trajectories<PetParamMap>(
-      make_assessment_trajectories(false, true, false));
+    make_param_map_with_assessment_trajectories<PetParamMap>(false, true, false);
   const auto constant_curvature_only = collision_timing_assessment::generate_object_trajectories(
     context, 0.2, 0.0, 0.1, constant_curvature_drac_param_map, constant_curvature_pet_param_map);
   ASSERT_EQ(constant_curvature_only.size(), 1u);
@@ -626,11 +625,9 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
     "constant_curvature_path");
 
   const auto predicted_path_and_diffusion_drac_param_map =
-    make_param_map_with_assessment_trajectories<DracParamMap>(
-      make_assessment_trajectories(true, false, true));
+    make_param_map_with_assessment_trajectories<DracParamMap>(true, false, true);
   const auto predicted_path_and_diffusion_pet_param_map =
-    make_param_map_with_assessment_trajectories<PetParamMap>(
-      make_assessment_trajectories(true, false, true));
+    make_param_map_with_assessment_trajectories<PetParamMap>(true, false, true);
   const auto predicted_path_and_diffusion =
     collision_timing_assessment::generate_object_trajectories(
       context, 0.2, 0.0, 0.1, predicted_path_and_diffusion_drac_param_map,
@@ -665,10 +662,10 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesUsesTrajectoryTypeUnionA
   context.predicted_objects = predicted_objects;
   context.neural_network_predicted_objects = neural_network_predicted_objects;
 
-  const auto drac_param_map = make_param_map_with_assessment_trajectories<DracParamMap>(
-    make_assessment_trajectories(false, true, false));
-  const auto pet_param_map = make_param_map_with_assessment_trajectories<PetParamMap>(
-    make_assessment_trajectories(true, false, true));
+  const auto drac_param_map =
+    make_param_map_with_assessment_trajectories<DracParamMap>(false, true, false);
+  const auto pet_param_map =
+    make_param_map_with_assessment_trajectories<PetParamMap>(true, false, true);
 
   const auto trajectories = collision_timing_assessment::generate_object_trajectories(
     context, 0.2, 0.0, 0.1, drac_param_map, pet_param_map);

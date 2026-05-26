@@ -218,6 +218,7 @@ void TrajectoryValidator::load_metric(const std::string & name, const bool is_sh
 
     plugin->set_vehicle_info(vehicle_info_);
     plugin->set_shadow_mode(is_shadow_mode);
+    plugin->set_parameter_overrides(get_node_options().parameter_overrides());
     plugin->update_parameters(params_);
     std::string category;
     size_t pos = name.find("::");

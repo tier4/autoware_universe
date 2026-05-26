@@ -24,6 +24,41 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+// Initialise every collision_check field with the same values that
+// `config/trajectory_validator.param.yaml` ships with. The schema no longer
+// carries default_value for collision_check, so a default-constructed
+// `validator::Params` contains uninitialised members.
+inline validator::Params make_default_params()
+{
+  validator::Params p;
+  p.collision_check.global_setting.time_resolution = 0.1;
+
+  p.collision_check.drac.enable_assessment = true;
+  p.collision_check.drac.assessment_trajectories.map_based = true;
+  p.collision_check.drac.assessment_trajectories.constant_curvature = true;
+  p.collision_check.drac.assessment_trajectories.diffusion_based = true;
+  p.collision_check.drac.ego_total_braking_delay = 0.4;
+  p.collision_check.drac.warn_threshold.ego_acceleration = -2.0;
+  p.collision_check.drac.error_threshold.ego_acceleration = -4.0;
+
+  p.collision_check.pet_collision.enable_assessment = true;
+  p.collision_check.pet_collision.assessment_trajectories.map_based = true;
+  p.collision_check.pet_collision.assessment_trajectories.constant_curvature = true;
+  p.collision_check.pet_collision.assessment_trajectories.diffusion_based = true;
+  p.collision_check.pet_collision.ego_total_braking_delay = 0.4;
+  p.collision_check.pet_collision.ego_assumed_acceleration = -4.0;
+  p.collision_check.pet_collision.warn_threshold.ego_first_passing_time_gap = 1.0;
+  p.collision_check.pet_collision.warn_threshold.object_first_passing_time_gap = 1.0;
+  p.collision_check.pet_collision.error_threshold.ego_first_passing_time_gap = 0.6;
+  p.collision_check.pet_collision.error_threshold.object_first_passing_time_gap = 0.3;
+
+  p.collision_check.rss.enable_assessment = true;
+  p.collision_check.rss.stop_distance_margin = 2.0;
+  p.collision_check.rss.ego_total_braking_delay = 0.4;
+  p.collision_check.rss.object_assumed_acceleration = -4.0;
+  p.collision_check.rss.error_threshold.ego_acceleration = -4.0;
+  return p;
+}
 
 class CollisionCheckFilterTest : public ::testing::Test
 {
@@ -41,6 +76,7 @@ protected:
     vehicle_info.vehicle_width_m = 2.0;
 
     filter_->set_vehicle_info(vehicle_info);
+    filter_->update_parameters(make_default_params());
   }
   geometry_msgs::msg::Twist create_twist(double linear_x, double angular_z)
   {
@@ -176,7 +212,7 @@ protected:
 
   validator::Params create_drac_only_params(double error_deceleration_threshold)
   {
-    validator::Params params;
+    auto params = make_default_params();
     params.collision_check.pet_collision.enable_assessment = false;
     params.collision_check.rss.enable_assessment = false;
     params.collision_check.drac.assessment_trajectories.map_based = true;
@@ -190,7 +226,7 @@ protected:
   validator::Params create_pet_only_params(
     double error_threshold_positive, double error_threshold_negative)
   {
-    validator::Params params;
+    auto params = make_default_params();
     params.collision_check.drac.enable_assessment = false;
     params.collision_check.rss.enable_assessment = false;
     params.collision_check.pet_collision.assessment_trajectories.map_based = true;
@@ -317,19 +353,22 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
   vehicle_info.min_longitudinal_offset_m = -1.0;
   vehicle_info.vehicle_width_m = 2.0;
 
-  PetCollisionParams pet_collision_params;
+  const auto defaults = make_default_params().collision_check;
+  PetParams pet_collision_params = defaults.pet_collision;
   pet_collision_params.enable_assessment = true;
   pet_collision_params.assessment_trajectories.map_based = false;
   pet_collision_params.assessment_trajectories.constant_curvature = false;
   pet_collision_params.assessment_trajectories.diffusion_based = false;
-  DracParams drac_params;
+  DracParams drac_params = defaults.drac;
   drac_params.enable_assessment = true;
   drac_params.assessment_trajectories.map_based = false;
   drac_params.assessment_trajectories.constant_curvature = false;
   drac_params.assessment_trajectories.diffusion_based = true;
 
+  const auto pet_param_map = make_param_map_from_base<PetParamMap>(pet_collision_params);
+  const auto drac_param_map = make_param_map_from_base<DracParamMap>(drac_params);
   const auto [pet_artifacts, drac_artifact] = collision_timing_assessment::assess(
-    ego_path, context, pet_collision_params, drac_params, GlobalParams{}, vehicle_info);
+    ego_path, context, pet_param_map, drac_param_map, GlobalParams{}, vehicle_info);
 
   EXPECT_TRUE(pet_artifacts.empty());
   ASSERT_TRUE(drac_artifact.has_value());
