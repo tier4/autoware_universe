@@ -350,6 +350,40 @@ in_lane_mrm_planner:
       default_value: 0.1
       description: point interval used inside decel_resample_range [m]
 
+  trajectory_validator:
+    enable:
+      type: bool
+      default_value: true
+      description: enable read-only validation of output trajectory before publish (non-latched only)
+    min_point_count:
+      type: int
+      default_value: 3
+      description: minimum number of trajectory points required for valid output
+      validation:
+        gt<>: [1]
+    min_point_spacing_m:
+      type: double
+      default_value: 0.05
+      description: minimum distance between consecutive trajectory points [m]
+      validation:
+        gt<>: [0.0]
+    min_trajectory_length_m:
+      type: double
+      default_value: 1.0
+      description: minimum total arc length of trajectory [m]
+      validation:
+        gt<>: [0.0]
+    standstill_velocity_threshold_mps:
+      type: double
+      default_value: 0.01
+      description: velocity threshold treated as standstill [m/s]
+    hazardous_leading_velocity_mps:
+      type: double
+      default_value: 0.5
+      description: leading point velocity above this with mostly-zero tail is rejected [m/s]
+      validation:
+        gt<>: [0.0]
+
   latch:
     use_latched_objects:
       type: bool

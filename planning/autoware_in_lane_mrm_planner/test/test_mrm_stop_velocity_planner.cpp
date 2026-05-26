@@ -229,4 +229,30 @@ TEST(MrmStopVelocityPlannerTest, PlansStopAtTrajectoryEndWithoutConstraint)
   EXPECT_TRUE(found_deceleration);
 }
 
+TEST(MrmStopVelocityPlannerTest, FillsZeroVelocityWhenEgoIsStopped)
+{
+  auto points = make_straight_trajectory(20, 1.0, 10.0F);
+  const MrmStopVelocityPlanner planner(make_default_params());
+
+  planner.apply(points, make_odometry(0.0), make_accel(0.5));
+
+  for (const auto & point : points) {
+    EXPECT_NEAR(point.longitudinal_velocity_mps, 0.0, 1e-3);
+    EXPECT_NEAR(point.acceleration_mps2, 0.5F, 1e-3);
+  }
+}
+
+TEST(MrmStopVelocityPlannerTest, FillsZeroVelocityWhenStopIsInfeasible)
+{
+  auto points = make_straight_trajectory_with_constraint_at(15, 1.0, 10.0F, 1);
+  const MrmStopVelocityPlanner planner(make_default_params());
+
+  planner.apply(points, make_odometry(10.0), make_accel(0.0));
+
+  for (const auto & point : points) {
+    EXPECT_NEAR(point.longitudinal_velocity_mps, 0.0, 1e-3);
+    EXPECT_NEAR(point.acceleration_mps2, -6.0F, 1e-3);
+  }
+}
+
 }  // namespace autoware::in_lane_mrm_planner
