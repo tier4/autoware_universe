@@ -42,9 +42,10 @@ ProximityHazardObjectCheckerNode::ProximityHazardObjectCheckerNode(
   param_listener_ =
     std::make_shared<proximity_hazard_object::ParamListener>(get_node_parameters_interface());
 
-  const auto node_ms = 1 / param_listener_->get_params().node_hz;
+  const double node_hz = param_listener_->get_params().node_hz;
+  const double node_period_sec = 1.0 / node_hz;
   timer_ = rclcpp::create_timer(
-    this, get_clock(), rclcpp::Duration::from_seconds(node_ms),
+    this, get_clock(), rclcpp::Duration::from_seconds(node_period_sec),
     std::bind(&ProximityHazardObjectCheckerNode::on_timer, this));
 
   const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
