@@ -8,10 +8,10 @@
 
     sector_range:
       front: [-10.0, 10.0]
-      front_left: [10.0, 22.5]
-      left: [22.5, 157.5]
-      rear_left: [157.5, 170.0]
+      front_left: [10.0, 30.0]
+      left: [30.0, 150.0]
+      rear_left: [150.0, 170.0]
       rear: [170.0, -170.0]
-      rear_right: [-170.0, -157.5]
-      right: [-157.5, -22.5]
-      front_right: [-22.5, -10.0]
+      rear_right: [-170.0, -150.0]
+      right: [-150.0, -30.0]
+      front_right: [-30.0, -10.0]

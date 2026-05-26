@@ -1,60 +1,49 @@
 proximity_hazard_object:
   node_hz:
     type: double
-    default_value: 5.0
     description: Timer frequency in Hz.
     read_only: true
 
   max_detection_range_m:
     type: double
-    default_value: 2.0
     description: Polygon-to-polygon distance threshold in meters between the ego footprint and an object polygon. Objects beyond this are filtered out before sector assignment.
     read_only: false
 
   include_unknown_objects:
     type: bool
-    default_value: true
     description: If false, objects whose classification contains UNKNOWN are dropped before sector assignment.
     read_only: false
 
   sector_range:
     front:
       type: double_array
-      default_value: [-22.5, 22.5]
       description: "[from_deg, to_deg] angular extent of the FRONT sector. REP-103 bearing (+x forward, +y left, 0 = ahead). Half-open [from, to). The 8 sectors must tile the full circle without gaps or overlaps."
       read_only: false
     front_left:
       type: double_array
-      default_value: [22.5, 67.5]
       description: "[from_deg, to_deg] angular extent of the FRONT_LEFT sector. See `front` for bearing convention and tiling requirement."
       read_only: false
     left:
       type: double_array
-      default_value: [67.5, 112.5]
       description: "[from_deg, to_deg] angular extent of the LEFT sector. See `front` for bearing convention and tiling requirement."
       read_only: false
     rear_left:
       type: double_array
-      default_value: [112.5, 157.5]
       description: "[from_deg, to_deg] angular extent of the REAR_LEFT sector. See `front` for bearing convention and tiling requirement."
       read_only: false
     rear:
       type: double_array
-      default_value: [157.5, -157.5]
       description: "[from_deg, to_deg] angular extent of the REAR sector. Set to_deg < from_deg to wrap through +/-180 degrees, as the default does. See `front` for bearing convention and tiling requirement."
       read_only: false
     rear_right:
       type: double_array
-      default_value: [-157.5, -112.5]
       description: "[from_deg, to_deg] angular extent of the REAR_RIGHT sector. See `front` for bearing convention and tiling requirement."
       read_only: false
     right:
       type: double_array
-      default_value: [-112.5, -67.5]
       description: "[from_deg, to_deg] angular extent of the RIGHT sector. See `front` for bearing convention and tiling requirement."
       read_only: false
     front_right:
       type: double_array
-      default_value: [-67.5, -22.5]
       description: "[from_deg, to_deg] angular extent of the FRONT_RIGHT sector. See `front` for bearing convention and tiling requirement."
       read_only: false

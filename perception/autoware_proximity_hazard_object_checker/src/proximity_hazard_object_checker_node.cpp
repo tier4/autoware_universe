@@ -28,6 +28,7 @@
 
 #include <array>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -114,11 +115,11 @@ void ProximityHazardObjectCheckerNode::publish_sector_markers(const std::string 
   }
   bg::correct(footprint_polygon);
 
-  constexpr int kPointsPerCircle = 36;
+  constexpr int k_points_per_circle = 36;
   const bg::strategy::buffer::distance_symmetric<double> distance_strategy(range);
-  const bg::strategy::buffer::join_round join_strategy(kPointsPerCircle);
-  const bg::strategy::buffer::end_round end_strategy(kPointsPerCircle);
-  const bg::strategy::buffer::point_circle point_strategy(kPointsPerCircle);
+  const bg::strategy::buffer::join_round join_strategy(k_points_per_circle);
+  const bg::strategy::buffer::end_round end_strategy(k_points_per_circle);
+  const bg::strategy::buffer::point_circle point_strategy(k_points_per_circle);
   const bg::strategy::buffer::side_straight side_strategy;
 
   bg::model::multi_polygon<Polygon2d> buffered_mp;
@@ -251,7 +252,7 @@ void ProximityHazardObjectCheckerNode::publish_sector_markers(const std::string 
 
   // Sector labels placed at the sector's angular midpoint, slightly past the
   // buffered outline so they don't sit on the line.
-  constexpr double kLabelOffsetM = 0.5;
+  constexpr double k_label_offset_m = 0.5;
   int label_id = 100;
   for (const auto & s : sectors) {
     const double start = s.range_deg.front();
@@ -268,7 +269,7 @@ void ProximityHazardObjectCheckerNode::publish_sector_markers(const std::string 
     if (!std::isfinite(t_outline)) {
       continue;
     }
-    const double t = t_outline + kLabelOffsetM;
+    const double t = t_outline + k_label_offset_m;
 
     Marker m;
     m.header.frame_id = frame_id;

@@ -34,25 +34,54 @@ namespace autoware::proximity_hazard_object_checker
 
 namespace
 {
-// Closest point on a 2D polygon's outer ring to (0, 0). Walks each segment,
-// projects origin onto it (clamped to [0, 1]), keeps the minimum-distance hit.
-// Avoids boost::geometry::closest_points, which is Boost 1.81+ only.
 struct PointXY
 {
   double x;
   double y;
 };
-// Closest point on the polygon's outer ring to a reference point (same frame as polygon).
-// Linear in vertex count.
-PointXY closest_polygon_point_to_reference(
-  const Polygon2d & polygon, const autoware_utils_geometry::Point2d & reference)
+
+// Closest point on the polygon's outer ring to specific coordinates.
+// Avoids boost::geometry::closest_points, which is Boost 1.81+ only.
+PointXY closest_polygon_point_to_coordinates(
+  const Polygon2d & polygon, const double rx, const double ry)
 {
   PointXY best = {0.0, 0.0};
   double min_d2 = std::numeric_limits<double>::infinity();
-  const double rx = reference.x();
-  const double ry = reference.y();
 
   const auto & ring = polygon.outer();
+  for (std::size_t i = 0; i + 1 < ring.size(); ++i) {
+    const double x1 = ring[i].x();
+    const double y1 = ring[i].y();
+    const double x2 = ring[i + 1].x();
+    const double y2 = ring[i + 1].y();
+    const double dx = x2 - x1;
+    const double dy = y2 - y1;
+    const double len2 = dx * dx + dy * dy;
+
+    double t{0.0};
+    if (len2 >= std::numeric_limits<double>::epsilon()) {
+      t = -((x1 - rx) * dx + (y1 - ry) * dy) / len2;
+      t = std::clamp(t, 0.0, 1.0);
+    }
+
+    const double px = x1 + t * dx;
+    const double py = y1 + t * dy;
+    const double d2 = (px - rx) * (px - rx) + (py - ry) * (py - ry);
+    if (d2 < min_d2) {
+      min_d2 = d2;
+      best = {px, py};
+    }
+  }
+  return best;
+}
+
+// Closest point on a linear ring to specific coordinates.
+PointXY closest_ring_point_to_coordinates(
+  const LinearRing2d & ring, const double rx, const double ry)
+{
+  PointXY best = {0.0, 0.0};
+  double min_d2 = std::numeric_limits<double>::infinity();
+
   for (std::size_t i = 0; i + 1 < ring.size(); ++i) {
     const double x1 = ring[i].x();
     const double y1 = ring[i].y();
@@ -91,8 +120,6 @@ ProximityHazardObjectChecker::ProximityHazardObjectChecker(
 
   max_detection_range_squared_ = params_.max_detection_range_m * params_.max_detection_range_m;
 
-  // base_link is not necessarily at the vehicle's geometric center, so derive the
-  // circumradius from the footprint itself rather than length/width.
   double max_r2 = 0.0;
   for (const auto & p : vehicle_footprint_) {
     max_r2 = std::max(max_r2, p.x() * p.x() + p.y() * p.y());
@@ -104,8 +131,7 @@ ProximityHazardObjects ProximityHazardObjectChecker::process(
   const PredictedObjects & input, const geometry_msgs::msg::TransformStamped & to_base_link) const
 {
   ProximityHazardObjects out;
-  out.header = input.header;  // propagate the source perception header unchanged
-  // out.sectors is fixed-size 8; all slots default to has_object == false.
+  out.header = input.header;
 
   constexpr int num_sectors = 8;
   std::array<double, num_sectors> closest_cd{};
@@ -123,12 +149,10 @@ ProximityHazardObjects ProximityHazardObjectChecker::process(
       }
     }
 
-    // Transform pose into base_link; shape is object-local and unchanged.
     geometry_msgs::msg::Pose pose_in_base_link;
     tf2::doTransform(
       object.kinematics.initial_pose_with_covariance.pose, pose_in_base_link, to_base_link);
 
-    // Bounding-circle pre-filter, in squared space (no sqrt).
     const double object_radius = compute_circumradius(object.shape);
     const double center_d2 = pose_in_base_link.position.x * pose_in_base_link.position.x +
                              pose_in_base_link.position.y * pose_in_base_link.position.y;
@@ -141,27 +165,48 @@ ProximityHazardObjects ProximityHazardObjectChecker::process(
     const auto object_polygon =
       autoware_utils_geometry::to_polygon2d(pose_in_base_link, object.shape);
 
-    // Comparable (squared) polygon-to-polygon distance — same ordering as distance,
-    // no sqrt. Cartesian comparable_distance returns the squared distance.
     const double cd = boost::geometry::comparable_distance(vehicle_footprint_, object_polygon);
     if (cd > max_detection_range_squared_) {
       continue;
     }
 
-    // Bearing from the ego footprint centroid (ego_center_) to the closest point on
-    // the object polygon. Using ego_center_ rather than base_link keeps the sector
-    // geometry symmetric about the vehicle body.
-    const auto object_closest = closest_polygon_point_to_reference(object_polygon, ego_center_);
+    // Find the point on object_polygon closest to vehicle_footprint_ (the exact point of approach)
+    PointXY object_closest = {0.0, 0.0};
+    double min_poly_d2 = std::numeric_limits<double>::infinity();
+
+    // 1. Check all vertices of vehicle_footprint_ against object_polygon
+    for (const auto & p_ego : vehicle_footprint_) {
+      PointXY p_obj = closest_polygon_point_to_coordinates(object_polygon, p_ego.x(), p_ego.y());
+      double d2 = (p_obj.x - p_ego.x()) * (p_obj.x - p_ego.x()) +
+                  (p_obj.y - p_ego.y()) * (p_obj.y - p_ego.y());
+      if (d2 < min_poly_d2) {
+        min_poly_d2 = d2;
+        object_closest = p_obj;
+      }
+    }
+
+    // 2. Check all vertices of object_polygon against vehicle_footprint_
+    const auto & obj_ring = object_polygon.outer();
+    for (const auto & p_obj : obj_ring) {
+      PointXY p_ego = closest_ring_point_to_coordinates(vehicle_footprint_, p_obj.x(), p_obj.y());
+      double d2 = (p_obj.x() - p_ego.x) * (p_obj.x() - p_ego.x) +
+                  (p_obj.y() - p_ego.y) * (p_obj.y() - p_ego.y);
+      if (d2 < min_poly_d2) {
+        min_poly_d2 = d2;
+        object_closest = {p_obj.x(), p_obj.y()};
+      }
+    }
+
+    // Bearing from the ego footprint centroid (ego_center_) to the true closest point on the object
+    // polygon.
     const double bearing =
       std::atan2(object_closest.y - ego_center_.y(), object_closest.x - ego_center_.x());
     const auto sector_opt = bearing_to_sector(bearing);
     if (!sector_opt) {
-      // Bearing fell outside all configured sector ranges — misconfiguration.
       continue;
     }
     const uint8_t sector = *sector_opt;
 
-    // Keep only the closest per sector; defer sqrt until we know we're updating.
     if (cd < closest_cd[sector]) {
       closest_cd[sector] = cd;
       auto & slot = out.sectors[sector];
@@ -176,21 +221,18 @@ ProximityHazardObjects ProximityHazardObjectChecker::process(
 
 std::optional<uint8_t> ProximityHazardObjectChecker::bearing_to_sector(double bearing_rad) const
 {
-  // Normalize to [-pi, pi).
   double b = std::fmod(bearing_rad + M_PI, 2.0 * M_PI);
   if (b < 0.0) {
     b += 2.0 * M_PI;
   }
   b -= M_PI;
 
-  // REP-103: +x forward, +y left. Bearing 0 = directly ahead. Sectors are half-open [a, b).
   auto sector = [](const auto & range) -> std::pair<double, double> {
     const auto start = autoware_utils_math::deg2rad(range.front());
     const auto end = autoware_utils_math::deg2rad(range.back());
     return std::make_pair(start, end);
   };
 
-  // Handles wraparound: if end < start, the range crosses +/-pi (e.g. REAR).
   auto in_range = [b](double start, double end) {
     return (end > start) ? (b >= start && b < end) : (b >= start || b < end);
   };
@@ -225,13 +267,12 @@ std::optional<uint8_t> ProximityHazardObjectChecker::bearing_to_sector(double be
 double ProximityHazardObjectChecker::compute_circumradius(
   const autoware_perception_msgs::msg::Shape & shape)
 {
-  using ShapeMsg = autoware_perception_msgs::msg::Shape;
   switch (shape.type) {
-    case ShapeMsg::BOUNDING_BOX:
+    case autoware_perception_msgs::msg::Shape::BOUNDING_BOX:
       return 0.5 * std::hypot(shape.dimensions.x, shape.dimensions.y);
-    case ShapeMsg::CYLINDER:
+    case autoware_perception_msgs::msg::Shape::CYLINDER:
       return 0.5 * shape.dimensions.x;
-    case ShapeMsg::POLYGON: {
+    case autoware_perception_msgs::msg::Shape::POLYGON: {
       double max_r2 = 0.0;
       for (const auto & p : shape.footprint.points) {
         max_r2 = std::max(max_r2, static_cast<double>(p.x * p.x + p.y * p.y));
