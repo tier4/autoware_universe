@@ -75,6 +75,35 @@ if(BUILD_TESTING)
   )
 endif()
 
+install(
+  PROGRAMS scripts/in_lane_mrm_rosbag_common.py
+  DESTINATION lib/${PROJECT_NAME}
+  PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE
+)
+
+install(
+  PROGRAMS scripts/in_lane_mrm_planner_rosbag_analyzer.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME in_lane_mrm_planner_rosbag_analyzer
+  PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE
+)
+
+install(
+  PROGRAMS scripts/in_lane_mrm_planner_rosbag_record.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME in_lane_mrm_planner_rosbag_record
+  PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE
+)
+
 ament_auto_package(
   INSTALL_TO_SHARE
     config
