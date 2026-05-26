@@ -19,6 +19,7 @@
 
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 
+#include <chrono>
 #include <cstddef>
 #include <string>
 #include <utility>
@@ -227,6 +228,8 @@ void SingleStepInference::transferInputsToDevice(const preprocess::InputDataMap 
 SingleStepInference::InferenceResult SingleStepInference::infer(
   const preprocess::InputDataMap & input_data_map)
 {
+  auto start = std::chrono::steady_clock::now();
+
   transferInputsToDevice(input_data_map);
 
   const bool status = network_trt_ptr_->enqueueV3(stream_);
@@ -248,8 +251,12 @@ SingleStepInference::InferenceResult SingleStepInference::infer(
   std::vector<float> output_host(output_pinned_.get(), output_pinned_.get() + output_num_elements_);
   std::vector<float> logit_host(logit_pinned_.get(), logit_pinned_.get() + logit_num_elements_);
 
+  auto end = std::chrono::steady_clock::now();
+  std::chrono::duration<double, std::milli> elapsed = end - start;
+
   InferenceOutput output;
   output.outputs = std::make_pair(std::move(output_host), std::move(logit_host));
+  output.inference_time_ms = elapsed.count();
   output.is_denormalized = true;
   return output;
 }
