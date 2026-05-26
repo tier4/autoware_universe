@@ -14,6 +14,20 @@
 
 // #include "../../../src/filters/safety/collision_check_filter/collision_check_filter.cpp"
 
+#include "../../../src/filters/safety/collision_check_filter/assessment.hpp"
+#include "../../../src/filters/safety/collision_check_filter/collision_check_filter.hpp"
+#include "../../../src/filters/safety/collision_check_filter/trajectory_utils.hpp"
+
+#include <autoware/universe_utils/geometry/geometry.hpp>
+#include <autoware_test_utils/autoware_test_utils.hpp>
+#include <autoware_utils_uuid/uuid_helper.hpp>
+#include <rclcpp/rclcpp.hpp>
+
+#include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/twist.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -24,46 +38,41 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
-// Initialise every collision_check field with the same values that
-// `config/trajectory_validator.param.yaml` ships with. The schema no longer
-// carries default_value for collision_check, so a default-constructed
-// `validator::Params` contains uninitialised members.
-inline validator::Params make_default_params()
+inline validator::Params load_default_params_from_yaml()
 {
-  validator::Params p;
-  p.collision_check.global_setting.time_resolution = 0.1;
+  const auto validator_param_path = autoware::test_utils::get_absolute_path_to_config(
+    "autoware_trajectory_validator", "trajectory_validator.param.yaml");
 
-  p.collision_check.drac.enable_assessment = true;
-  p.collision_check.drac.assessment_trajectories.map_based = true;
-  p.collision_check.drac.assessment_trajectories.constant_curvature = true;
-  p.collision_check.drac.assessment_trajectories.diffusion_based = true;
-  p.collision_check.drac.ego_total_braking_delay = 0.4;
-  p.collision_check.drac.warn_threshold.ego_acceleration = -2.0;
-  p.collision_check.drac.error_threshold.ego_acceleration = -4.0;
+  rclcpp::NodeOptions options;
+  autoware::test_utils::updateNodeOptions(options, {validator_param_path});
+  options.append_parameter_override(
+    "filter_names", std::vector<std::string>{"placeholder_filter_for_param_loading"});
 
-  p.collision_check.pet_collision.enable_assessment = true;
-  p.collision_check.pet_collision.assessment_trajectories.map_based = true;
-  p.collision_check.pet_collision.assessment_trajectories.constant_curvature = true;
-  p.collision_check.pet_collision.assessment_trajectories.diffusion_based = true;
-  p.collision_check.pet_collision.ego_total_braking_delay = 0.4;
-  p.collision_check.pet_collision.ego_assumed_acceleration = -4.0;
-  p.collision_check.pet_collision.warn_threshold.ego_first_passing_time_gap = 1.0;
-  p.collision_check.pet_collision.warn_threshold.object_first_passing_time_gap = 1.0;
-  p.collision_check.pet_collision.error_threshold.ego_first_passing_time_gap = 0.6;
-  p.collision_check.pet_collision.error_threshold.object_first_passing_time_gap = 0.3;
-
-  p.collision_check.rss.enable_assessment = true;
-  p.collision_check.rss.stop_distance_margin = 2.0;
-  p.collision_check.rss.ego_total_braking_delay = 0.4;
-  p.collision_check.rss.object_assumed_acceleration = -4.0;
-  p.collision_check.rss.error_threshold.ego_acceleration = -4.0;
-  return p;
+  auto node = std::make_shared<rclcpp::Node>("trajectory_validator_test_param_loader", options);
+  validator::ParamListener listener(node->get_node_parameters_interface());
+  return listener.get_params();
 }
 
 class CollisionCheckFilterTest : public ::testing::Test
 {
 protected:
   std::unique_ptr<CollisionCheckFilter> filter_;
+  static validator::Params default_params_;
+
+  static void SetUpTestSuite()
+  {
+    if (!rclcpp::ok()) {
+      rclcpp::init(0, nullptr);
+    }
+    default_params_ = load_default_params_from_yaml();
+  }
+
+  static void TearDownTestSuite()
+  {
+    if (rclcpp::ok()) {
+      rclcpp::shutdown();
+    }
+  }
 
   void SetUp() override
   {
@@ -76,7 +85,7 @@ protected:
     vehicle_info.vehicle_width_m = 2.0;
 
     filter_->set_vehicle_info(vehicle_info);
-    filter_->update_parameters(make_default_params());
+    filter_->update_parameters(default_params_);
   }
   geometry_msgs::msg::Twist create_twist(double linear_x, double angular_z)
   {
@@ -212,7 +221,7 @@ protected:
 
   validator::Params create_drac_only_params(double error_deceleration_threshold)
   {
-    auto params = make_default_params();
+    auto params = default_params_;
     params.collision_check.pet_collision.enable_assessment = false;
     params.collision_check.rss.enable_assessment = false;
     params.collision_check.drac.assessment_trajectories.map_based = true;
@@ -226,7 +235,7 @@ protected:
   validator::Params create_pet_only_params(
     double error_threshold_positive, double error_threshold_negative)
   {
-    auto params = make_default_params();
+    auto params = default_params_;
     params.collision_check.drac.enable_assessment = false;
     params.collision_check.rss.enable_assessment = false;
     params.collision_check.pet_collision.assessment_trajectories.map_based = true;
@@ -255,6 +264,8 @@ protected:
     });
   }
 };
+
+validator::Params CollisionCheckFilterTest::default_params_;
 
 TEST_F(CollisionCheckFilterTest, EmptyObjects)
 {
@@ -353,7 +364,7 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
   vehicle_info.min_longitudinal_offset_m = -1.0;
   vehicle_info.vehicle_width_m = 2.0;
 
-  const auto defaults = make_default_params().collision_check;
+  const auto defaults = default_params_.collision_check;
   PetParams pet_collision_params = defaults.pet_collision;
   pet_collision_params.enable_assessment = true;
   pet_collision_params.assessment_trajectories.map_based = false;

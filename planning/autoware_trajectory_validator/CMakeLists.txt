@@ -112,10 +112,13 @@ if(BUILD_TESTING)
   )
 
   # ament_add_gtest(test_collision_check_filter
-  #   test/collision_check_filter/test_collision_check_filter.cpp
+  #   test/plugins/collision_check_filter/test_collision_check_filter.cpp
   # )
   # target_link_libraries(test_collision_check_filter
   #   autoware_trajectory_validator_plugins
+  # )
+  # ament_target_dependencies(test_collision_check_filter
+  #   autoware_test_utils
   # )
 
   # ament_add_gtest(test_reporter

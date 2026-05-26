@@ -74,17 +74,12 @@ struct GlobalParams
   }
 };
 
-// Lightweight POD used by helper functions in assessment.cpp. Not bound to any
-// generate_parameter_library struct.
 struct PetThreshold
 {
   double ego_first_passing_time_gap{1.0};
   double object_first_passing_time_gap{1.0};
 };
 
-// Aliases to the generate_parameter_library structs. Per-class enable_assessment
-// values are applied at runtime in CollisionCheckFilter::update_parameters from
-// parameter_overrides (see `<base_param>_map.<class>` keys in the config YAML).
 using DracParams = validator::Params::CollisionCheck::Drac;
 using PetParams = validator::Params::CollisionCheck::PetCollision;
 using RssParams = validator::Params::CollisionCheck::Rss;
@@ -93,9 +88,6 @@ using DracParamMap = std::map<std::string_view, DracParams>;
 using PetParamMap = std::map<std::string_view, PetParams>;
 using RssParamMap = std::map<std::string_view, RssParams>;
 
-// Build a per-class map (one entry per supported ObjectClassification plus the base key) by
-// copying the same `base` value into every slot. Per-class overrides — when needed — are applied
-// on top of this map afterwards from the node's parameter_overrides snapshot.
 template <typename ParamMap>
 ParamMap make_param_map_from_base(const typename ParamMap::mapped_type & base)
 {

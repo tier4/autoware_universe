@@ -70,9 +70,6 @@ public:
 
   virtual void update_parameters(const validator::Params & params) = 0;
 
-  // Forward the node's parameter_overrides snapshot so plugins can read
-  // values that are not declared via generate_parameter_library (e.g. per-class
-  // overrides). Default implementation stores them in parameter_overrides_.
   virtual void set_parameter_overrides(const std::vector<rclcpp::Parameter> & overrides)
   {
     parameter_overrides_ = overrides;

@@ -36,9 +36,6 @@ protected:
     const auto test_pkg_share = ament_index_cpp::get_package_share_directory("autoware_test_utils");
     const auto vehicle_info_param_path = autoware::test_utils::get_absolute_path_to_config(
       "autoware_test_utils", "test_vehicle_info.param.yaml");
-    // collision_check parameters no longer ship with default_value in the schema, so
-    // the node fails to construct unless every collision_check param is provided. Load
-    // the package's production config to satisfy that requirement.
     const auto validator_param_path = autoware::test_utils::get_absolute_path_to_config(
       "autoware_trajectory_validator", "trajectory_validator.param.yaml");
 

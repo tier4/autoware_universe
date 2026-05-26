@@ -26,9 +26,6 @@
 
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
-// Accepts any struct that exposes `map_based / constant_curvature / diffusion_based` bool members
-// (works with both the local AssessmentTrajectories utility and the generated nested struct from
-// validator::Params::CollisionCheck::*).
 template <typename AssessmentT>
 bool is_target_trajectory_type(const AssessmentT & options, const std::string & trajectory_type)
 {
@@ -44,8 +41,6 @@ bool is_target_trajectory_type(const AssessmentT & options, const std::string & 
   return false;
 }
 
-// Accepts any struct with `ego_first_passing_time_gap / object_first_passing_time_gap` doubles
-// (PetThreshold or the generated nested {Warn,Error}Threshold of PetCollision).
 template <typename ErrorT, typename WarnT>
 RiskLevel to_pet_risk_level(double pet, const ErrorT & error_th, const WarnT & warn_th)
 {
