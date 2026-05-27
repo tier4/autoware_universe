@@ -62,7 +62,7 @@ ProximityHazardObjectChecker::ProximityHazardObjectChecker(
     {params_.sector_range.left},
     {params_.sector_range.front_left},
   }};
-  for (uint8_t s = 0; s < 8; ++s) {
+  for (uint8_t s = 0; s < g_num_sectors; ++s) {
     const double a_from = autoware_utils_math::deg2rad(
       sector_refs_in_enum_order[s].front() - params_.sector_boundary_tolerance_deg);
     const double a_to = autoware_utils_math::deg2rad(
