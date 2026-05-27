@@ -312,7 +312,7 @@ TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryForCylinderUsesNgonTraje
 
   const auto footprints = trajectory::footprint::compute_footprint_trajectory(poses, shape);
 
-  EXPECT_TRUE(std::holds_alternative<NgonTrajectory>(footprints));
+  EXPECT_TRUE(std::holds_alternative<QuadTrajectory>(footprints));
   ASSERT_EQ(footprint_count(footprints), 1u);
   expect_same_polygon(
     footprint_to_polygon2d(footprints, 0U), geometry::to_polygon2d(poses.front(), shape));
