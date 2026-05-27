@@ -44,6 +44,11 @@ bool TrajectoryLatcher::is_latched() const
   return latched_;
 }
 
+bool TrajectoryLatcher::has_latest_candidate() const
+{
+  return latest_candidate_.has_value();
+}
+
 std::optional<Trajectory> TrajectoryLatcher::output() const
 {
   if (latched_) {

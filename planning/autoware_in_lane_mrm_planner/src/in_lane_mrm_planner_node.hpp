@@ -30,11 +30,13 @@
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
+#include <autoware_internal_debug_msgs/msg/float32_multi_array_stamped.hpp>
 #include <in_lane_mrm_planner_parameters.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <std_msgs/msg/bool.hpp>
 
+#include <cstddef>
 #include <memory>
 
 namespace autoware::in_lane_mrm_planner
@@ -46,6 +48,23 @@ public:
   explicit InLaneMrmPlannerNode(const rclcpp::NodeOptions & options);
 
 private:
+  using Float32MultiArrayStamped = autoware_internal_debug_msgs::msg::Float32MultiArrayStamped;
+
+  struct DebugStatus
+  {
+    int reason_code{99};
+    bool trigger_active{false};
+    bool is_latched{false};
+    bool has_latest_candidate{false};
+    bool data_ready{false};
+    bool plan_ok{false};
+    bool validation_ok{false};
+    size_t planned_points{0};
+    size_t published_points{0};
+    double cycle_time_ms{0.0};
+    double odom_vx{0.0};
+  };
+
   struct InputData
   {
     LaneletMapBin::ConstSharedPtr lanelet_map_bin_ptr;
@@ -60,6 +79,7 @@ private:
   InputData take_data();
   bool is_data_ready(const InputData & input_data) const;
   void update_params();
+  void publish_debug_status(const DebugStatus & status);
 
   std::shared_ptr<::in_lane_mrm_planner::ParamListener> param_listener_;
   Params params_;
@@ -97,6 +117,7 @@ private:
   autoware_utils::InterProcessPollingSubscriber<std_msgs::msg::Bool> trigger_subscriber_;
 
   rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_;
+  rclcpp::Publisher<Float32MultiArrayStamped>::SharedPtr pub_debug_status_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

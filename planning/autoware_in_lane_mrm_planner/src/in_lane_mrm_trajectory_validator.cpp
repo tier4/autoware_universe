@@ -126,18 +126,21 @@ InLaneMrmTrajectoryValidator::ValidationResult InLaneMrmTrajectoryValidator::val
 
   if (points.empty()) {
     result.ok = false;
+    result.code = FailureCode::EMPTY_TRAJECTORY;
     result.reason = "trajectory is empty";
     return result;
   }
 
   if (!has_finite_values(points)) {
     result.ok = false;
+    result.code = FailureCode::NON_FINITE_VALUES;
     result.reason = "trajectory contains non-finite values";
     return result;
   }
 
   if (!has_sufficient_geometry(points)) {
     result.ok = false;
+    result.code = FailureCode::INSUFFICIENT_GEOMETRY;
     result.reason = "trajectory geometry is insufficient for planning output";
     return result;
   }
@@ -146,12 +149,14 @@ InLaneMrmTrajectoryValidator::ValidationResult InLaneMrmTrajectoryValidator::val
 
   if (has_hazardous_velocity_step(points)) {
     result.ok = false;
+    result.code = FailureCode::HAZARDOUS_VELOCITY_STEP;
     result.reason = "hazardous velocity step profile detected";
     return result;
   }
 
   if (has_velocity_mismatch_at_standstill(points, v0)) {
     result.ok = false;
+    result.code = FailureCode::STANDSTILL_VELOCITY_MISMATCH;
     result.reason = "non-zero velocity profile while ego is near standstill";
     return result;
   }

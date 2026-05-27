@@ -27,6 +27,7 @@
 
 #include <memory>
 #include <optional>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -91,6 +92,20 @@ struct TrajectoryShiftParams
 class PathPlanner
 {
 public:
+  enum class PlanFailureCode : int32_t {
+    NONE = 0,
+    UPDATE_CURRENT_LANELET_FAILED = 1,
+    BACKWARD_LANELETS_FAILED = 2,
+    FORWARD_LANELETS_FAILED = 3,
+    INVALID_S_RANGE = 4,
+    LANELET_SEQUENCE_EMPTY = 5,
+    NO_PATH_POINTS = 6,
+    TRAJECTORY_BUILD_FAILED = 7,
+    TRAJECTORY_TOO_SHORT_AFTER_CROP = 8,
+    FINALIZED_PATH_EMPTY = 9,
+    GENERATE_PATH_FAILED = 10,
+  };
+
   PathPlanner(
     const rclcpp::Logger & logger, rclcpp::Clock::SharedPtr clock,
     std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper, const Params & params,
@@ -125,6 +140,7 @@ public:
 
   // Params update
   void update_params(const Params & params);
+  PlanFailureCode last_failure_code() const { return last_failure_code_; }
 
   // Lane change interpolation
   void interpolate_lane_change_sections(
@@ -141,6 +157,7 @@ private:
   VehicleInfo vehicle_info_;
   RouteContext route_context_;
   std::optional<lanelet::ConstLanelet> current_lanelet_;
+  PlanFailureCode last_failure_code_{PlanFailureCode::NONE};
 };
 
 // ---------------------------------------------------------------------------

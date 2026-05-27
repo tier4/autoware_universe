@@ -10,6 +10,7 @@
   <arg name="input_objects" default="/main/perception/object_recognition/objects"/>
   <arg name="input_trigger_topic" default="/planning/in_lane_mrm_planner/input/trigger"/>
   <arg name="output_trajectory" default="/planning/in_lane_mrm_planner/output/trajectory"/>
+  <arg name="output_planner_status" default="/planning/in_lane_mrm_planner/debug/planner_status"/>
 
   <!-- Trigger relay + auxiliary gate inputs -->
   <arg name="input_jerk_trigger" default="/main/control/jerk_constant_deceleration_trigger"/>
@@ -29,6 +30,7 @@
     <remap from="~/input/objects" to="$(var input_objects)"/>
     <remap from="~/input/trigger" to="$(var input_trigger_topic)"/>
     <remap from="~/output/trajectory" to="$(var output_trajectory)"/>
+    <remap from="~/debug/planner_status" to="$(var output_planner_status)"/>
   </node>
 
   <node pkg="autoware_in_lane_mrm_planner" exec="mrm_trigger_relay_node" name="mrm_trigger_relay" output="screen">
