@@ -218,20 +218,22 @@ autoware_perception_msgs::msg::TrafficLightGroupArray TrafficLightFilter::filter
     }
 
     auto filtered_signal = signal;
-    if (!is_ego_stopped) {
-      const auto state_duration = (current_time - signal_history_[id].first_seen_time).seconds();
-      const bool is_red = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
-        signal.elements, autoware_perception_msgs::msg::TrafficLightElement::CIRCLE,
-        autoware_perception_msgs::msg::TrafficLightElement::RED);
-      const bool is_amber = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
-        signal.elements, autoware_perception_msgs::msg::TrafficLightElement::CIRCLE,
-        autoware_perception_msgs::msg::TrafficLightElement::AMBER);
+    if (is_ego_stopped) {
+      filtered_signals.traffic_light_groups.push_back(filtered_signal);
+      continue;
+    }
+    const auto state_duration = (current_time - signal_history_[id].first_seen_time).seconds();
+    const bool is_red = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
+      signal.elements, autoware_perception_msgs::msg::TrafficLightElement::CIRCLE,
+      autoware_perception_msgs::msg::TrafficLightElement::RED);
+    const bool is_amber = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
+      signal.elements, autoware_perception_msgs::msg::TrafficLightElement::CIRCLE,
+      autoware_perception_msgs::msg::TrafficLightElement::AMBER);
 
-      if (is_red && state_duration < params_.stable_duration_threshold_red) {
-        filtered_signal.elements.clear();
-      } else if (is_amber && state_duration < params_.stable_duration_threshold_amber) {
-        filtered_signal.elements.clear();
-      }
+    if (is_red && state_duration < params_.stable_duration_threshold_red) {
+      filtered_signal.elements.clear();
+    } else if (is_amber && state_duration < params_.stable_duration_threshold_amber) {
+      filtered_signal.elements.clear();
     }
     filtered_signals.traffic_light_groups.push_back(filtered_signal);
   }
@@ -243,11 +245,12 @@ std::vector<int64_t> TrafficLightFilter::get_force_reject_amber_ids(
   const rclcpp::Time & current_time, bool is_ego_stopped) const
 {
   std::vector<int64_t> force_reject_amber_ids;
-  if (!is_ego_stopped) {
-    for (const auto & [id, rejected_time] : amber_rejection_history_) {
-      if ((current_time - rejected_time).seconds() <= params_.amber_rejection_hysteresis_duration) {
-        force_reject_amber_ids.push_back(id);
-      }
+  if (is_ego_stopped) {
+    return force_reject_amber_ids;
+  }
+  for (const auto & [id, rejected_time] : amber_rejection_history_) {
+    if ((current_time - rejected_time).seconds() <= params_.amber_rejection_hysteresis_duration) {
+      force_reject_amber_ids.push_back(id);
     }
   }
   return force_reject_amber_ids;
