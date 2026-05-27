@@ -1,0 +1,23 @@
+/**:
+  ros__parameters:
+    origin_frame_id: "odom"
+    simulated_frame_id: "base_link"
+    command_type: "ackermann"
+    baseline_model_type: "ackermann"
+    learned_backend: "none"  # none, linear_cpu, numpy_mlp_cpu
+    learned_model_type: "direct_next_state"  # direct_next_state or mlp_residual
+    learned_weights_csv: ""
+    mlp_w1_csv: ""
+    mlp_b1_csv: ""
+    mlp_w2_csv: ""
+    mlp_b2_csv: ""
+    mlp_x_mean_csv: ""
+    mlp_x_std_csv: ""
+    mlp_y_mean_csv: ""
+    mlp_y_std_csv: ""
+    timer_period_s: 0.03
+    wheelbase: 2.7
+    track_width: 1.5
+    wheel_radius: 0.3
+    steer_time_constant: 0.0
+    use_wheel_command: false

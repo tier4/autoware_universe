@@ -1,0 +1,24 @@
+name: ackermann_default
+vehicle_pattern: ackermann
+command_type: ackermann
+topics:
+  state: /localization/kinematic_state
+  command: /control/command/control_cmd
+  initialpose: /initialpose3d
+frames:
+  origin: odom
+  base: base_link
+state_schema: [x, y, yaw, vx, vy, wz, steer]
+command_schema: [velocity, acceleration, steer]
+required_maneuvers:
+  stop:
+    min_samples: 10
+  straight:
+    min_samples: 10
+  left_turn:
+    min_samples: 5
+  right_turn:
+    min_samples: 5
+baseline:
+  type: ackermann
+  wheelbase: 2.7

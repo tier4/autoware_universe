@@ -1,0 +1,22 @@
+sampling_period_s: 0.1
+max_command_age_s: 0.5
+max_time_gap_s: 0.5
+latency_search:
+  enabled: true
+  min_s: -0.5
+  max_s: 0.5
+  step_s: 0.02
+outlier_limits:
+  max_abs_vx: 30.0
+  max_abs_vy: 10.0
+  max_abs_wz: 2.5
+  max_abs_ax: 10.0
+maneuver_thresholds:
+  stop_speed: 0.1
+  straight_abs_wz: 0.05
+  turn_abs_wz: 0.1
+  accel_abs_ax: 0.3
+split:
+  train_ratio: 0.7
+  validation_ratio: 0.15
+  test_ratio: 0.15

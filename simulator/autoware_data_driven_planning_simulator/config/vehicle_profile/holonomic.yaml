@@ -1,0 +1,24 @@
+name: holonomic_default
+vehicle_pattern: holonomic
+command_type: cmd_vel
+topics:
+  state: /localization/kinematic_state
+  command: /cmd_vel
+frames:
+  origin: odom
+  base: base_link
+state_schema: [x, y, yaw, vx, vy, wz]
+command_schema: [vx, vy, wz]
+required_maneuvers:
+  stop:
+    min_samples: 10
+  straight:
+    min_samples: 10
+  left_turn:
+    min_samples: 5
+  right_turn:
+    min_samples: 5
+  lateral_motion:
+    min_samples: 5
+baseline:
+  type: holonomic
