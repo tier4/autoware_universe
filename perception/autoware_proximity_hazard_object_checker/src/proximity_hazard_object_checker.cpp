@@ -63,8 +63,10 @@ ProximityHazardObjectChecker::ProximityHazardObjectChecker(
     {params_.sector_range.front_left},
   }};
   for (uint8_t s = 0; s < 8; ++s) {
-    const double a_from = autoware_utils_math::deg2rad(sector_refs_in_enum_order[s].front());
-    const double a_to = autoware_utils_math::deg2rad(sector_refs_in_enum_order[s].back());
+    const double a_from = autoware_utils_math::deg2rad(
+      sector_refs_in_enum_order[s].front() - params_.sector_boundary_tolerance_deg);
+    const double a_to = autoware_utils_math::deg2rad(
+      sector_refs_in_enum_order[s].back() + params_.sector_boundary_tolerance_deg);
     boost::geometry::append(
       sector_wedges_[s], autoware_utils_geometry::Point2d{ego_center_.x(), ego_center_.y()});
     boost::geometry::append(
