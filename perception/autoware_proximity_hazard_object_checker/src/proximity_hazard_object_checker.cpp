@@ -31,84 +31,6 @@
 
 namespace autoware::proximity_hazard_object_checker
 {
-
-namespace
-{
-struct PointXY
-{
-  double x;
-  double y;
-};
-
-// Closest point on the polygon's outer ring to specific coordinates.
-// Avoids boost::geometry::closest_points, which is Boost 1.81+ only.
-PointXY closest_polygon_point_to_coordinates(
-  const Polygon2d & polygon, const double rx, const double ry)
-{
-  PointXY best = {0.0, 0.0};
-  double min_d2 = std::numeric_limits<double>::infinity();
-
-  const auto & ring = polygon.outer();
-  for (std::size_t i = 0; i + 1 < ring.size(); ++i) {
-    const double x1 = ring[i].x();
-    const double y1 = ring[i].y();
-    const double x2 = ring[i + 1].x();
-    const double y2 = ring[i + 1].y();
-    const double dx = x2 - x1;
-    const double dy = y2 - y1;
-    const double len2 = dx * dx + dy * dy;
-
-    double t{0.0};
-    if (len2 >= std::numeric_limits<double>::epsilon()) {
-      t = -((x1 - rx) * dx + (y1 - ry) * dy) / len2;
-      t = std::clamp(t, 0.0, 1.0);
-    }
-
-    const double px = x1 + t * dx;
-    const double py = y1 + t * dy;
-    const double d2 = (px - rx) * (px - rx) + (py - ry) * (py - ry);
-    if (d2 < min_d2) {
-      min_d2 = d2;
-      best = {px, py};
-    }
-  }
-  return best;
-}
-
-// Closest point on a linear ring to specific coordinates.
-PointXY closest_ring_point_to_coordinates(
-  const LinearRing2d & ring, const double rx, const double ry)
-{
-  PointXY best = {0.0, 0.0};
-  double min_d2 = std::numeric_limits<double>::infinity();
-
-  for (std::size_t i = 0; i + 1 < ring.size(); ++i) {
-    const double x1 = ring[i].x();
-    const double y1 = ring[i].y();
-    const double x2 = ring[i + 1].x();
-    const double y2 = ring[i + 1].y();
-    const double dx = x2 - x1;
-    const double dy = y2 - y1;
-    const double len2 = dx * dx + dy * dy;
-
-    double t{0.0};
-    if (len2 >= std::numeric_limits<double>::epsilon()) {
-      t = -((x1 - rx) * dx + (y1 - ry) * dy) / len2;
-      t = std::clamp(t, 0.0, 1.0);
-    }
-
-    const double px = x1 + t * dx;
-    const double py = y1 + t * dy;
-    const double d2 = (px - rx) * (px - rx) + (py - ry) * (py - ry);
-    if (d2 < min_d2) {
-      min_d2 = d2;
-      best = {px, py};
-    }
-  }
-  return best;
-}
-}  // namespace
-
 ProximityHazardObjectChecker::ProximityHazardObjectChecker(
   proximity_hazard_object::Params params, LinearRing2d vehicle_footprint)
 : params_(std::move(params)),
@@ -125,6 +47,38 @@ ProximityHazardObjectChecker::ProximityHazardObjectChecker(
     max_r2 = std::max(max_r2, p.x() * p.x() + p.y() * p.y());
   }
   vehicle_circumradius_ = std::sqrt(max_r2);
+
+  constexpr double wedge_radius_offset = 1e-3;
+  const double wedge_radius =
+    vehicle_circumradius_ + params_.max_detection_range_m + wedge_radius_offset;
+
+  const std::array<std::vector<double>, g_num_sectors> sector_refs_in_enum_order = {{
+    {params_.sector_range.front},
+    {params_.sector_range.front_right},
+    {params_.sector_range.right},
+    {params_.sector_range.rear_right},
+    {params_.sector_range.rear},
+    {params_.sector_range.rear_left},
+    {params_.sector_range.left},
+    {params_.sector_range.front_left},
+  }};
+  for (uint8_t s = 0; s < 8; ++s) {
+    const double a_from = autoware_utils_math::deg2rad(sector_refs_in_enum_order[s].front());
+    const double a_to = autoware_utils_math::deg2rad(sector_refs_in_enum_order[s].back());
+    boost::geometry::append(
+      sector_wedges_[s], autoware_utils_geometry::Point2d{ego_center_.x(), ego_center_.y()});
+    boost::geometry::append(
+      sector_wedges_[s], autoware_utils_geometry::Point2d{
+                           ego_center_.x() + wedge_radius * std::cos(a_from),
+                           ego_center_.y() + wedge_radius * std::sin(a_from)});
+    boost::geometry::append(
+      sector_wedges_[s], autoware_utils_geometry::Point2d{
+                           ego_center_.x() + wedge_radius * std::cos(a_to),
+                           ego_center_.y() + wedge_radius * std::sin(a_to)});
+    boost::geometry::append(
+      sector_wedges_[s], autoware_utils_geometry::Point2d{ego_center_.x(), ego_center_.y()});
+    boost::geometry::correct(sector_wedges_[s]);
+  }
 }
 
 ProximityHazardObjects ProximityHazardObjectChecker::process(
@@ -133,12 +87,10 @@ ProximityHazardObjects ProximityHazardObjectChecker::process(
   ProximityHazardObjects out;
   out.header = input.header;
 
-  constexpr int num_sectors = 8;
-  std::array<double, num_sectors> closest_cd{};
+  std::array<double, g_num_sectors> closest_cd{};
   closest_cd.fill(std::numeric_limits<double>::infinity());
 
   for (const auto & object : input.objects) {
-    // Classification filter.
     if (!params_.include_unknown_objects) {
       const bool is_unknown =
         std::any_of(object.classification.begin(), object.classification.end(), [](const auto & c) {
@@ -170,49 +122,29 @@ ProximityHazardObjects ProximityHazardObjectChecker::process(
       continue;
     }
 
-    // Find the point on object_polygon closest to vehicle_footprint_ (the exact point of approach)
-    PointXY object_closest = {0.0, 0.0};
-    double min_poly_d2 = std::numeric_limits<double>::infinity();
-
-    // 1. Check all vertices of vehicle_footprint_ against object_polygon
-    for (const auto & p_ego : vehicle_footprint_) {
-      PointXY p_obj = closest_polygon_point_to_coordinates(object_polygon, p_ego.x(), p_ego.y());
-      double d2 = (p_obj.x - p_ego.x()) * (p_obj.x - p_ego.x()) +
-                  (p_obj.y - p_ego.y()) * (p_obj.y - p_ego.y());
-      if (d2 < min_poly_d2) {
-        min_poly_d2 = d2;
-        object_closest = p_obj;
+    for (uint8_t s = 0; s < g_num_sectors; ++s) {
+      boost::geometry::model::multi_polygon<Polygon2d> clipped;
+      boost::geometry::intersection(object_polygon, sector_wedges_[s], clipped);
+      if (clipped.empty()) {
+        continue;
       }
-    }
 
-    // 2. Check all vertices of object_polygon against vehicle_footprint_
-    const auto & obj_ring = object_polygon.outer();
-    for (const auto & p_obj : obj_ring) {
-      PointXY p_ego = closest_ring_point_to_coordinates(vehicle_footprint_, p_obj.x(), p_obj.y());
-      double d2 = (p_obj.x() - p_ego.x) * (p_obj.x() - p_ego.x) +
-                  (p_obj.y() - p_ego.y) * (p_obj.y() - p_ego.y);
-      if (d2 < min_poly_d2) {
-        min_poly_d2 = d2;
-        object_closest = {p_obj.x(), p_obj.y()};
+      double sector_cd = std::numeric_limits<double>::infinity();
+      for (const auto & part : clipped) {
+        sector_cd =
+          std::min(sector_cd, boost::geometry::comparable_distance(part, vehicle_footprint_));
       }
-    }
+      if (sector_cd > max_detection_range_squared_) {
+        continue;
+      }
 
-    // Bearing from the ego footprint centroid (ego_center_) to the true closest point on the object
-    // polygon.
-    const double bearing =
-      std::atan2(object_closest.y - ego_center_.y(), object_closest.x - ego_center_.x());
-    const auto sector_opt = bearing_to_sector(bearing);
-    if (!sector_opt) {
-      continue;
-    }
-    const uint8_t sector = *sector_opt;
-
-    if (cd < closest_cd[sector]) {
-      closest_cd[sector] = cd;
-      auto & slot = out.sectors[sector];
-      slot.has_object = true;
-      slot.distance_m = static_cast<float>(std::sqrt(cd));
-      slot.predicted_object = object;
+      if (sector_cd < closest_cd[s]) {
+        closest_cd[s] = sector_cd;
+        auto & slot = out.sectors[s];
+        slot.has_object = true;
+        slot.distance_m = static_cast<float>(std::sqrt(sector_cd));
+        slot.predicted_object = object;
+      }
     }
   }
 

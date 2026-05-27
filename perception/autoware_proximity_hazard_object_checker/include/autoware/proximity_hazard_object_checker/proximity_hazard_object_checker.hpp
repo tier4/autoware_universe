@@ -33,6 +33,8 @@ using autoware_proximity_hazard_object_checker::msg::ProximityHazardObjects;
 using autoware_utils_geometry::LinearRing2d;
 using autoware_utils_geometry::Polygon2d;
 
+constexpr int g_num_sectors = 8;
+
 class ProximityHazardObjectChecker
 {
 public:
@@ -64,6 +66,8 @@ private:
   autoware_utils_geometry::Point2d ego_center_;  // Centroid of vehicle_footprint_
   double vehicle_circumradius_;  // Max distance from base_link origin to any footprint vertex.
   double max_detection_range_squared_;  // Cached: params_.max_detection_range_m^2.
+  std::array<Polygon2d, g_num_sectors>
+    sector_wedges_;  // Triangular wedge polygons use to clip object polygons per sector.
 };
 
 }  // namespace autoware::proximity_hazard_object_checker
