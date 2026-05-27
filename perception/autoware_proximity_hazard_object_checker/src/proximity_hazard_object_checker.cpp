@@ -116,6 +116,8 @@ ProximityHazardObjects ProximityHazardObjectChecker::process(
       continue;
     }
 
+    // The object polygon is assumed to have a closed topology (i.e., the first and last vertices
+    // are connected, forming a closed loop).
     const auto object_polygon =
       autoware_utils_geometry::to_polygon2d(pose_in_base_link, object.shape);
 
