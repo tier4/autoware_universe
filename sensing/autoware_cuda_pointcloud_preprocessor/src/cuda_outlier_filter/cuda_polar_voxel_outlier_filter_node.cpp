@@ -17,6 +17,8 @@
 #include "autoware/pointcloud_preprocessor/filter.hpp"  // for get_param
 #include "autoware/pointcloud_preprocessor/utility/memory.hpp"  // for autoware::pointcloud_preprocessor::utils
 
+#include <nvtx3/nvtx3.hpp>
+
 #include <cmath>
 #include <stdexcept>
 
@@ -159,21 +161,24 @@ void CudaPolarVoxelOutlierFilterNode::pointcloud_callback(
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> filtered_cloud;
   std::unique_ptr<cuda_blackboard::CudaPointCloud2> noise_cloud;
   CudaPolarVoxelOutlierFilter::FilterReturn filter_return{};
-  if (has_polar_coords) {
-    RCLCPP_DEBUG_ONCE(
-      get_logger(), "Processing PointXYZIRCAEDT format with pre-computed polar coordinates");
-    filter_return = cuda_polar_voxel_outlier_filter_->filter(
-      msg, filter_params_, CudaPolarVoxelOutlierFilter::PolarDataType::PreComputed);
-  } else if (has_return_type) {
-    RCLCPP_DEBUG_ONCE(
-      get_logger(), "Processing PointXYZIRC format, computing azimuth and elevation");
-    filter_return = cuda_polar_voxel_outlier_filter_->filter(
-      msg, filter_params_, CudaPolarVoxelOutlierFilter::PolarDataType::DeriveFromCartesian);
-  } else {
-    RCLCPP_ERROR(
-      get_logger(),
-      "PointXYZ format has not been supported by "
-      "autoware_cuda_pointcloud_preprocessor::cuda_polar_voxel_outlier_filter yet.");
+  {
+    nvtx3::scoped_range nvtx_polar_outlier{"polar_outlier"};
+    if (has_polar_coords) {
+      RCLCPP_DEBUG_ONCE(
+        get_logger(), "Processing PointXYZIRCAEDT format with pre-computed polar coordinates");
+      filter_return = cuda_polar_voxel_outlier_filter_->filter(
+        msg, filter_params_, CudaPolarVoxelOutlierFilter::PolarDataType::PreComputed);
+    } else if (has_return_type) {
+      RCLCPP_DEBUG_ONCE(
+        get_logger(), "Processing PointXYZIRC format, computing azimuth and elevation");
+      filter_return = cuda_polar_voxel_outlier_filter_->filter(
+        msg, filter_params_, CudaPolarVoxelOutlierFilter::PolarDataType::DeriveFromCartesian);
+    } else {
+      RCLCPP_ERROR(
+        get_logger(),
+        "PointXYZ format has not been supported by "
+        "autoware_cuda_pointcloud_preprocessor::cuda_polar_voxel_outlier_filter yet.");
+    }
   }
 
   filtered_cloud = std::move(filter_return.filtered_cloud);

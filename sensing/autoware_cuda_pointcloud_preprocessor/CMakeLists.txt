@@ -22,6 +22,8 @@ endif()
 
 ament_auto_find_build_dependencies()
 
+find_package(nvtx3 REQUIRED)
+
 # Default to C++17
 if(NOT CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 17)
@@ -94,6 +96,7 @@ cuda_add_library(cuda_pointcloud_preprocessor_lib SHARED
 
 target_link_libraries(cuda_pointcloud_preprocessor_lib
   ${autoware_pointcloud_preprocessor_TARGETS}
+  nvtx3::nvtx3-cpp
 )
 
 target_include_directories(cuda_pointcloud_preprocessor_lib SYSTEM PRIVATE
@@ -135,6 +138,7 @@ target_link_libraries(cuda_pointcloud_preprocessor
   ${CUDA_LIBRARIES}
   ${diagnostic_msgs_LIBRARIES}
   cuda_pointcloud_preprocessor_lib
+  nvtx3::nvtx3-cpp
 )
 
 # ========== Concatenate and Sync data ==========

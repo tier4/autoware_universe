@@ -25,6 +25,8 @@
 #include <spconvlib/spconv/csrc/sparse/convops/spops/ConvGemmOps.h>
 #include <spconvlib/spconv/csrc/sparse/inference/InferenceOps.h>
 
+#include <nvtx3/nvtx3.hpp>
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -261,7 +263,10 @@ std::int32_t GetIndicesPairsImplicitGemmPlugin::enqueue(
   std::vector<int> dilation(params_.dilation.begin(), params_.dilation.end());
   std::vector<int> input_dims(params_.spatial_shape.begin(), params_.spatial_shape.end());
 
-  auto out_dims = SpconvOps::get_conv_output_size(input_dims, ksize, stride, padding, dilation);
+  auto out_dims = [&]() {
+    nvtx3::scoped_range nvtx_spconv{"SpconvOps::get_conv_output_size"};
+    return SpconvOps::get_conv_output_size(input_dims, ksize, stride, padding, dilation);
+  }();
   std::vector<std::int64_t> output_dims_i64(out_dims.begin(), out_dims.end());
   std::int64_t out_spatial_volume = std::accumulate(
     output_dims_i64.begin(), output_dims_i64.end(), static_cast<std::int64_t>(1),
@@ -273,12 +278,18 @@ std::int32_t GetIndicesPairsImplicitGemmPlugin::enqueue(
   int kernel_volume =
     std::accumulate(params_.ksize.begin(), params_.ksize.end(), 1, std::multiplies<int>());
 
-  auto max_act_out_theory = SpconvOps::get_handcrafted_max_act_out(
-    input_desc[0].dims.d[0], ksize, stride, padding, dilation);
+  auto max_act_out_theory = [&]() {
+    nvtx3::scoped_range nvtx_spconv{"SpconvOps::get_handcrafted_max_act_out"};
+    return SpconvOps::get_handcrafted_max_act_out(
+      input_desc[0].dims.d[0], ksize, stride, padding, dilation);
+  }();
 
-  auto ws_tensors = SpconvOps::get_indice_gen_tensors_from_workspace(
-    reinterpret_cast<std::uint8_t *>(workspace), kernel_volume, out_indices_num_limit_,
-    out_indices_num_limit_, max_act_out_theory, is_subm, use_int64_hash_k, use_direct_table);
+  auto ws_tensors = [&]() {
+    nvtx3::scoped_range nvtx_spconv{"SpconvOps::get_indice_gen_tensors_from_workspace"};
+    return SpconvOps::get_indice_gen_tensors_from_workspace(
+      reinterpret_cast<std::uint8_t *>(workspace), kernel_volume, out_indices_num_limit_,
+      out_indices_num_limit_, max_act_out_theory, is_subm, use_int64_hash_k, use_direct_table);
+  }();
 
   int pair_fwd_size_padded = is_subm ? input_desc[0].dims.d[0] : out_indices_num_limit_;
   tv::Tensor pair_fwd_padded =
@@ -315,11 +326,14 @@ std::int32_t GetIndicesPairsImplicitGemmPlugin::enqueue(
     StaticAllocator alloc(ws_tensors);
 
     // cSpell:ignore indice
-    pair_res = SpconvOps::get_indice_pairs_implicit_gemm(
-      alloc, input_indices, params_.batch_size, input_dims, static_cast<int>(params_.algo), ksize,
-      stride, padding, dilation, {0, 0, 0}, params_.subm, params_.transpose, false /*is_train*/,
-      reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_, tv::CUDAKernelTimer(false),
-      use_direct_table);
+    {
+      nvtx3::scoped_range nvtx_spconv{"SpconvOps::get_indice_pairs_implicit_gemm"};
+      pair_res = SpconvOps::get_indice_pairs_implicit_gemm(
+        alloc, input_indices, params_.batch_size, input_dims, static_cast<int>(params_.algo),
+        ksize, stride, padding, dilation, {0, 0, 0}, params_.subm, params_.transpose,
+        false /*is_train*/, reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_,
+        tv::CUDAKernelTimer(false), use_direct_table);
+    }
 
   } else {
     tv::Tensor pair_bwd_padded = tv::empty({kernel_volume, static_num_act_in}, tv::int32, 0);
@@ -342,11 +356,14 @@ std::int32_t GetIndicesPairsImplicitGemmPlugin::enqueue(
     StaticAllocator alloc(ws_tensors);
 
     // cSpell:ignore indice
-    pair_res = SpconvOps::get_indice_pairs_implicit_gemm(
-      alloc, input_indices, params_.batch_size, input_dims, static_cast<int>(params_.algo), ksize,
-      stride, padding, dilation, {0, 0, 0}, params_.subm, params_.transpose, false /*is_train*/,
-      reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_, tv::CUDAKernelTimer(false),
-      use_direct_table);
+    {
+      nvtx3::scoped_range nvtx_spconv{"SpconvOps::get_indice_pairs_implicit_gemm"};
+      pair_res = SpconvOps::get_indice_pairs_implicit_gemm(
+        alloc, input_indices, params_.batch_size, input_dims, static_cast<int>(params_.algo),
+        ksize, stride, padding, dilation, {0, 0, 0}, params_.subm, params_.transpose,
+        false /*is_train*/, reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_,
+        tv::CUDAKernelTimer(false), use_direct_table);
+    }
   }
 
   std::int32_t num_act_out_real = std::get<1>(pair_res);

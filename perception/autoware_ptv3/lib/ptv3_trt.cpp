@@ -21,6 +21,7 @@
 #include <autoware/cuda_utils/cuda_utils.hpp>
 #include <autoware/point_types/memory.hpp>
 #include <autoware/point_types/types.hpp>
+#include <nvtx3/nvtx3.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <sensor_msgs/msg/point_field.hpp>
@@ -258,6 +259,8 @@ bool PTv3TRT::segment(
   bool should_publish_segmented_pointcloud, bool should_publish_visualization_pointcloud,
   bool should_publish_filtered_pointcloud, std::unordered_map<std::string, double> & proc_timing)
 {
+  nvtx3::scoped_range nvtx_ptv3{"ptv3"};
+
   stop_watch_ptr_->toc("processing/inner", true);
   if (!preProcess(msg_ptr)) {
     RCLCPP_ERROR(rclcpp::get_logger("ptv3"), "Pre-process failed. Skipping detection.");
@@ -289,6 +292,8 @@ bool PTv3TRT::segment(
 
 bool PTv3TRT::preProcess(const std::shared_ptr<const cuda_blackboard::CudaPointCloud2> & msg_ptr)
 {
+  nvtx3::scoped_range nvtx_preprocess{"preprocess"};
+
   using autoware::cuda_utils::clear_async;
 
   std::call_once(init_cloud_, [this, &msg_ptr]() {
@@ -448,6 +453,8 @@ bool PTv3TRT::preProcess(const std::shared_ptr<const cuda_blackboard::CudaPointC
 
 bool PTv3TRT::inference()
 {
+  nvtx3::scoped_range nvtx_inference{"inference"};
+
   auto status = network_trt_ptr_->enqueueV3(stream_);
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
@@ -463,6 +470,8 @@ bool PTv3TRT::postProcess(
   const std_msgs::msg::Header & header, bool should_publish_segmented_pointcloud,
   bool should_publish_visualization_pointcloud, bool should_publish_filtered_pointcloud)
 {
+  nvtx3::scoped_range nvtx_postprocess{"postprocess"};
+
   // Segmentation pointcloud
   if (config_.source_reconstruction_ == SourceReconstruction::PARTIAL) {
     post_ptr_->reconstructPartial(

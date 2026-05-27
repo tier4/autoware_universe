@@ -22,6 +22,8 @@
   <depend>autoware_tensorrt_common</depend>
   <depend>autoware_universe_utils</depend>
   <depend>cuda_blackboard</depend>
+  <!-- NVTX (vendored from NVIDIA/NVTX via autoware.repos); upstream CMake project name is nvtx_dummy_project -->
+  <depend>nvtx_dummy_project</depend>
   <depend>launch_ros</depend>
   <depend>pcl_ros</depend>
   <depend>rclcpp</depend>

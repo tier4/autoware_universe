@@ -21,6 +21,7 @@
 #include <cuda_blackboard/cuda_pointcloud2.hpp>
 
 #include <cuda_runtime.h>
+#include <nvtx3/nvtx3.hpp>
 
 #include <memory>
 #include <string>
@@ -92,6 +93,8 @@ CombineCloudHandler<CudaPointCloud2Traits>::combine_pointclouds(
     topic_to_cloud_map,
   const std::shared_ptr<CollectorInfoBase> & collector_info)
 {
+  nvtx3::scoped_range nvtx_concat{"concat"};
+
   ConcatenatedCloudResult<CudaPointCloud2Traits> concatenate_cloud_result;
   std::lock_guard<std::mutex> lock(mutex_);
 

@@ -16,6 +16,8 @@
 
 #include "autoware/pointcloud_preprocessor/utility/memory.hpp"
 
+#include <nvtx3/nvtx3.hpp>
+
 namespace autoware::cuda_pointcloud_preprocessor
 {
 CudaVoxelGridDownsampleFilterNode::CudaVoxelGridDownsampleFilterNode(
@@ -64,7 +66,10 @@ void CudaVoxelGridDownsampleFilterNode::cudaPointcloudCallback(
       "The output result may not be correct");
   }
 
-  auto output_pointcloud_ptr = cuda_voxel_grid_downsample_filter_->filter(msg);
+  auto output_pointcloud_ptr = [&]() {
+    nvtx3::scoped_range nvtx_voxel_downsample{"voxel_downsample"};
+    return cuda_voxel_grid_downsample_filter_->filter(msg);
+  }();
   pub_->publish(std::move(output_pointcloud_ptr));
 }
 }  // namespace autoware::cuda_pointcloud_preprocessor

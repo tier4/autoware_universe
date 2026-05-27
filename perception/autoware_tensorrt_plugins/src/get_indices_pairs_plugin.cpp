@@ -25,6 +25,8 @@
 #include <spconvlib/spconv/csrc/sparse/convops/spops/ConvGemmOps.h>
 #include <spconvlib/spconv/csrc/sparse/inference/InferenceOps.h>
 
+#include <nvtx3/nvtx3.hpp>
+
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -245,7 +247,10 @@ std::int32_t GetIndicesPairsPlugin::enqueue(
   std::vector<int32_t> dilation(params_.dilation.begin(), params_.dilation.end());
   std::vector<int32_t> input_dims(params_.spatial_shape.begin(), params_.spatial_shape.end());
 
-  auto out_dims = SpconvOps::get_conv_output_size(input_dims, ksize, stride, padding, dilation);
+  auto out_dims = [&]() {
+    nvtx3::scoped_range nvtx_spconv{"SpconvOps::get_conv_output_size"};
+    return SpconvOps::get_conv_output_size(input_dims, ksize, stride, padding, dilation);
+  }();
   std::vector<std::int64_t> output_dims_i64(out_dims.begin(), out_dims.end());
   std::int64_t out_spatial_volume = std::accumulate(
     output_dims_i64.begin(), output_dims_i64.end(), static_cast<std::int64_t>(1),
@@ -257,9 +262,12 @@ std::int32_t GetIndicesPairsPlugin::enqueue(
   int kernel_volume =
     std::accumulate(params_.ksize.begin(), params_.ksize.end(), 1, std::multiplies<int>());
 
-  auto ws_tensors = SpconvOps::get_indice_gen_tensors_from_workspace(
-    reinterpret_cast<std::uint8_t *>(workspace), kernel_volume, out_indices_num_limit_,
-    out_indices_num_limit_, 0, is_subm, use_int64_hash_k, false);
+  auto ws_tensors = [&]() {
+    nvtx3::scoped_range nvtx_spconv{"SpconvOps::get_indice_gen_tensors_from_workspace"};
+    return SpconvOps::get_indice_gen_tensors_from_workspace(
+      reinterpret_cast<std::uint8_t *>(workspace), kernel_volume, out_indices_num_limit_,
+      out_indices_num_limit_, 0, is_subm, use_int64_hash_k, false);
+  }();
 
   tv::Tensor pair = tv::from_blob(outputs[1], {2, kernel_volume, num_act_in}, tv::int32, 0);
   tv::Tensor indices_kernel_num = tv::from_blob(outputs[2], {kernel_volume}, tv::int32, 0);
@@ -277,11 +285,14 @@ std::int32_t GetIndicesPairsPlugin::enqueue(
 
   StaticAllocator alloc(ws_tensors);
 
-  int num_act_out_real = SpconvOps::get_indice_pairs(
-    alloc, input_indices, params_.batch_size, is_subm ? input_dims : out_dims,
-    static_cast<int>(tv::gemm::SparseConvAlgo::kNative), ksize, stride, padding, dilation,
-    {0, 0, 0}, is_subm, false, reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_,
-    num_act_in);
+  int num_act_out_real = [&]() {
+    nvtx3::scoped_range nvtx_spconv{"SpconvOps::get_indice_pairs"};
+    return SpconvOps::get_indice_pairs(
+      alloc, input_indices, params_.batch_size, is_subm ? input_dims : out_dims,
+      static_cast<int>(tv::gemm::SparseConvAlgo::kNative), ksize, stride, padding, dilation,
+      {0, 0, 0}, is_subm, false, reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_,
+      num_act_in);
+  }();
 
   if (is_subm) {
     cudaMemcpyAsync(

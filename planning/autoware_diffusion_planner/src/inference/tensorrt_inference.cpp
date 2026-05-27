@@ -18,6 +18,7 @@
 
 #include <autoware/cuda_utils/cuda_check_error.hpp>
 #include <autoware/tensorrt_common/utils.hpp>
+#include <nvtx3/nvtx3.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -326,16 +327,27 @@ void TensorrtInference::transferInputsToDevice(const preprocess::InputDataMap & 
 TensorrtInference::InferenceResult TensorrtInference::infer(
   const preprocess::InputDataMap & input_data_map)
 {
-  transferInputsToDevice(input_data_map);
+  nvtx3::scoped_range nvtx_diffusion_planner{"diffusion_planner"};
 
-  const bool status = network_trt_ptr_->enqueueV3(stream_);
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  {
+    nvtx3::scoped_range nvtx_preprocess{"preprocess"};
+    transferInputsToDevice(input_data_map);
+  }
+
+  bool status;
+  {
+    nvtx3::scoped_range nvtx_inference{"inference"};
+    status = network_trt_ptr_->enqueueV3(stream_);
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  }
 
   if (!status) {
     InferenceResult result;
     result.error_msg = "Failed to enqueue and do inference.";
     return result;
   }
+
+  nvtx3::scoped_range nvtx_postprocess{"postprocess"};
 
   // Async D2H via pre-allocated pinned host buffers
   CHECK_CUDA_ERROR(cudaMemcpyAsync(

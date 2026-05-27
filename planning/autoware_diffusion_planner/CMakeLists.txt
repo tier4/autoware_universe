@@ -44,6 +44,8 @@ else()
 endif()
 
 if(TRT_AVAIL AND CUDA_AVAIL)
+  find_package(nvtx3 REQUIRED)
+
   # Add compile option to suppress deprecation warnings (optional)
   add_compile_options(-Wno-deprecated-declarations)
 
@@ -76,6 +78,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${NVONNXPARSER}
     ${CUDA_LIBRARIES}
     ${CUBLAS_LIBRARIES}
+    nvtx3::nvtx3-cpp
   )
 
   rclcpp_components_register_node(autoware_diffusion_planner_component

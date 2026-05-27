@@ -27,6 +27,8 @@
 #include <spconvlib/spconv/csrc/sparse/convops/spops/ConvGemmOps.h>
 #include <spconvlib/spconv/csrc/sparse/inference/InferenceOps.h>
 
+#include <nvtx3/nvtx3.hpp>
+
 #include <cstdint>
 #include <exception>
 #include <memory>
@@ -254,11 +256,15 @@ std::int32_t IndiceConvPlugin::enqueue(
 
   SimpleExternalSpconvMatmul ext_mm(alloc2);
 
-  ConvGemmOps::indice_conv(
-    alloc2, ext_mm, *tuner_ptr, true, false, input_features, weights, pairs, pairs_num, arch_,
-    out_features.dim(0), false, params_.is_subm,
-    static_cast<int>(tv::gemm::SparseConvAlgo::kNative), reinterpret_cast<std::uintptr_t>(stream),
-    tv::Tensor(), 0.f, 0.f, tv::gemm::Activation::kNone, false);
+  {
+    nvtx3::scoped_range nvtx_spconv{"ConvGemmOps::indice_conv"};
+    ConvGemmOps::indice_conv(
+      alloc2, ext_mm, *tuner_ptr, true, false, input_features, weights, pairs, pairs_num, arch_,
+      out_features.dim(0), false, params_.is_subm,
+      static_cast<int>(tv::gemm::SparseConvAlgo::kNative),
+      reinterpret_cast<std::uintptr_t>(stream), tv::Tensor(), 0.f, 0.f,
+      tv::gemm::Activation::kNone, false);
+  }
 
   return 0;
 }

@@ -23,6 +23,7 @@
 #include <autoware/cuda_utils/cuda_utils.hpp>
 #include <autoware/point_types/memory.hpp>
 #include <autoware/universe_utils/math/constants.hpp>
+#include <nvtx3/nvtx3.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -373,6 +374,8 @@ bool BEVFusionTRT::detect(
   std::vector<Box3D> & det_boxes3d, std::unordered_map<std::string, double> & proc_timing,
   bool & is_num_voxels_within_range)
 {
+  nvtx3::scoped_range nvtx_bevfusion{"bevfusion"};
+
   stop_watch_ptr_->toc("processing/inner", true);
   if (!preProcess(pc_msg_ptr, image_msgs, camera_masks, tf_buffer, is_num_voxels_within_range)) {
     RCLCPP_ERROR(rclcpp::get_logger("bevfusion"), "Pre-process failed. Skipping detection.");
@@ -644,6 +647,8 @@ bool BEVFusionTRT::preProcess(
   const std::vector<float> & camera_masks, const tf2_ros::Buffer & tf_buffer,
   bool & is_num_voxels_within_range)
 {
+  nvtx3::scoped_range nvtx_preprocess{"preprocess"};
+
   is_num_voxels_within_range = true;
 
   if (!validatePointCloud(pc_msg_ptr)) {
@@ -694,6 +699,8 @@ bool BEVFusionTRT::preProcess(
 
 bool BEVFusionTRT::inference()
 {
+  nvtx3::scoped_range nvtx_inference{"inference"};
+
   // Fusion model: run image backbone first, then main network
   if (config_.sensor_fusion_) {
     image_backbone_trt_ptr_->setInputShape(
@@ -723,6 +730,8 @@ bool BEVFusionTRT::inference()
 
 bool BEVFusionTRT::postProcess(std::vector<Box3D> & det_boxes3d)
 {
+  nvtx3::scoped_range nvtx_postprocess{"postprocess"};
+
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   CHECK_CUDA_ERROR(post_ptr_->generateDetectedBoxes3D_launch(

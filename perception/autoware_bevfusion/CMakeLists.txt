@@ -65,6 +65,8 @@ if(TRT_AVAIL AND CUDA_AVAIL AND SPCONV_AVAIL)
   find_package(ament_cmake_auto REQUIRED)
   ament_auto_find_build_dependencies()
 
+  find_package(nvtx3 REQUIRED)
+
   include_directories(
     include
     ${CUDA_INCLUDE_DIRS}
@@ -133,6 +135,7 @@ if(TRT_AVAIL AND CUDA_AVAIL AND SPCONV_AVAIL)
     ${CUBLAS_LIBRARIES}
     ${CUDA_curand_LIBRARY}
     ${PROJECT_NAME}_cuda_lib
+    nvtx3::nvtx3-cpp
   )
 
   # To suppress unknown-pragmas error. The root-cause is CUB library in CUDA 11.6.

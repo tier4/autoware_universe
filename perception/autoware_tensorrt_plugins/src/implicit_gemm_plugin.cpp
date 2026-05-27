@@ -24,6 +24,8 @@
 #include <spconvlib/spconv/csrc/sparse/convops/spops/ConvGemmOps.h>
 #include <spconvlib/spconv/csrc/sparse/inference/InferenceOps.h>
 
+#include <nvtx3/nvtx3.hpp>
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -287,11 +289,15 @@ std::int32_t ImplicitGemmPlugin::enqueue(
 
   auto & tuner_ptr = dtype == tv::float32 ? tuner_fp32_ptr_ : tuner_fp16_ptr_;
 
-  auto conv_run_status = ConvGemmOps::implicit_gemm(
-    alloc2, *tuner_ptr, input_features, weights, pair_fwd, pair_mask_splits, mask_argsort_splits,
-    num_act_out, mask_tensor, arch_, false, params_.is_subm,
-    reinterpret_cast<std::uintptr_t>(stream), tv::CUDAKernelTimer(false), true, false, tv::Tensor(),
-    0.0, 0.0, tv::gemm::Activation::kNone, false, 1.0, tv::Tensor(), tv::Tensor(), 0.0, -1);
+  auto conv_run_status = [&]() {
+    nvtx3::scoped_range nvtx_spconv{"ConvGemmOps::implicit_gemm"};
+    return ConvGemmOps::implicit_gemm(
+      alloc2, *tuner_ptr, input_features, weights, pair_fwd, pair_mask_splits, mask_argsort_splits,
+      num_act_out, mask_tensor, arch_, false, params_.is_subm,
+      reinterpret_cast<std::uintptr_t>(stream), tv::CUDAKernelTimer(false), true, false,
+      tv::Tensor(), 0.0, 0.0, tv::gemm::Activation::kNone, false, 1.0, tv::Tensor(), tv::Tensor(),
+      0.0, -1);
+  }();
 
   return 0;
 }

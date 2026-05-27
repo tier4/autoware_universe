@@ -30,6 +30,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <cuda_runtime.h>
+#include <nvtx3/nvtx3.hpp>
 #include <pcl/pcl_base.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -391,6 +392,8 @@ std::unique_ptr<cuda_blackboard::CudaPointCloud2> CudaPointcloudPreprocessorNode
   const geometry_msgs::msg::TransformStamped & transform_msg,
   const std::uint32_t first_point_rel_stamp)
 {
+  nvtx3::scoped_range nvtx_pointcloud_preprocessor{"pointcloud_preprocessor"};
+
   return cuda_pointcloud_preprocessor_->process(
     input_pointcloud_msg, transform_msg, twist_queue_, angular_velocity_queue_,
     first_point_rel_stamp);
