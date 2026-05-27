@@ -1,0 +1,8 @@
+<library path="autoware_denoising_step_rviz_plugin">
+  <class
+    name="autoware_denoising_step_rviz_plugin/DenoisingStepPanel"
+    type="autoware::denoising_step_rviz_plugin::DenoisingStepPanel"
+    base_class_type="rviz_common::Panel">
+    <description>Panel for plotting diffusion planner denoising steps.</description>
+  </class>
+</library>
