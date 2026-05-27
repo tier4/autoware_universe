@@ -32,6 +32,7 @@ public:
   void unlatch();
 
   bool is_latched() const;
+  bool has_latest_candidate() const;
 
   std::optional<Trajectory> output() const;
 

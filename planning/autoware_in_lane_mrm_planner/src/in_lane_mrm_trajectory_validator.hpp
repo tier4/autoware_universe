@@ -17,6 +17,7 @@
 
 #include "type_alias.hpp"
 
+#include <cstdint>
 #include <string>
 
 namespace autoware::in_lane_mrm_planner
@@ -25,9 +26,19 @@ namespace autoware::in_lane_mrm_planner
 class InLaneMrmTrajectoryValidator
 {
 public:
+  enum class FailureCode : int32_t {
+    NONE = 0,
+    EMPTY_TRAJECTORY = 1,
+    NON_FINITE_VALUES = 2,
+    INSUFFICIENT_GEOMETRY = 3,
+    HAZARDOUS_VELOCITY_STEP = 4,
+    STANDSTILL_VELOCITY_MISMATCH = 5,
+  };
+
   struct ValidationResult
   {
     bool ok{false};
+    FailureCode code{FailureCode::NONE};
     std::string reason;
   };
 

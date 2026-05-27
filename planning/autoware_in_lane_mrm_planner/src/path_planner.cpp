@@ -1240,10 +1240,12 @@ bool PathPlanner::update_current_lanelet(const geometry_msgs::msg::Pose & curren
 std::optional<PathWithLaneId> PathPlanner::plan_path(
   const geometry_msgs::msg::Pose & current_pose, const double ego_velocity)
 {
+  last_failure_code_ = PlanFailureCode::NONE;
   const auto path_length_backward = params_.path_planning.path_length.backward;
   const auto path_length_forward = params_.path_planning.path_length.forward;
 
   if (!update_current_lanelet(current_pose)) {
+    last_failure_code_ = PlanFailureCode::UPDATE_CURRENT_LANELET_FAILED;
     RCLCPP_ERROR_THROTTLE(logger_, *clock_, 5000, "Failed to update current lanelet");
     return std::nullopt;
   }
@@ -1271,6 +1273,7 @@ std::optional<PathWithLaneId> PathPlanner::plan_path(
   const auto backward_lanelets_within_route =
     utils::get_lanelets_within_route_up_to(base_lanelet, route_context_, backward_length);
   if (!backward_lanelets_within_route) {
+    last_failure_code_ = PlanFailureCode::BACKWARD_LANELETS_FAILED;
     RCLCPP_ERROR(
       logger_, "Failed to get backward lanelets within route for current lanelet (id: %ld)",
       base_lanelet.id());
@@ -1301,6 +1304,7 @@ std::optional<PathWithLaneId> PathPlanner::plan_path(
   const auto forward_lanelets_within_route =
     utils::get_lanelets_within_route_after(base_lanelet, route_context_, forward_length);
   if (!forward_lanelets_within_route) {
+    last_failure_code_ = PlanFailureCode::FORWARD_LANELETS_FAILED;
     RCLCPP_ERROR(
       logger_, "Failed to get forward lanelets within route for current lanelet (id: %ld)",
       base_lanelet.id());
@@ -1406,13 +1410,18 @@ std::optional<PathWithLaneId> PathPlanner::plan_path(
   }();
 
   if (s_end <= s_start) {
+    last_failure_code_ = PlanFailureCode::INVALID_S_RANGE;
     RCLCPP_WARN_THROTTLE(
       logger_, *clock_, 5000, "s_end (%.2f) <= s_start (%.2f), cannot generate path", s_end,
       s_start);
     return std::nullopt;
   }
 
-  return generate_path(lanelets, s_start, s_end, ego_velocity);
+  const auto path = generate_path(lanelets, s_start, s_end, ego_velocity);
+  if (!path && last_failure_code_ == PlanFailureCode::NONE) {
+    last_failure_code_ = PlanFailureCode::GENERATE_PATH_FAILED;
+  }
+  return path;
 }
 
 std::optional<PathWithLaneId> PathPlanner::generate_path(
@@ -1420,6 +1429,7 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
   const double ego_velocity)
 {
   if (lanelet_sequence.empty()) {
+    last_failure_code_ = PlanFailureCode::LANELET_SEQUENCE_EMPTY;
     RCLCPP_ERROR(logger_, "Lanelet sequence is empty");
     return std::nullopt;
   }
@@ -1511,6 +1521,7 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
   }
 
   if (path_points_with_lane_id.empty()) {
+    last_failure_code_ = PlanFailureCode::NO_PATH_POINTS;
     RCLCPP_ERROR(logger_, "No path points generated from lanelet sequence");
     return std::nullopt;
   }
@@ -1520,6 +1531,7 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
 
   auto trajectory = autoware::experimental::trajectory::pretty_build(path_points_with_lane_id);
   if (!trajectory) {
+    last_failure_code_ = PlanFailureCode::TRAJECTORY_BUILD_FAILED;
     RCLCPP_ERROR(logger_, "Failed to build trajectory from path points");
     return std::nullopt;
   }
@@ -1565,6 +1577,7 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
   }
 
   if (trajectory->length() < 1e-3) {
+    last_failure_code_ = PlanFailureCode::TRAJECTORY_TOO_SHORT_AFTER_CROP;
     RCLCPP_WARN(logger_, "Trajectory length too short after cropping: %f", trajectory->length());
     return std::nullopt;
   }
@@ -1574,6 +1587,7 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
   finalized_path_with_lane_id.points = trajectory->restore();
 
   if (finalized_path_with_lane_id.points.empty()) {
+    last_failure_code_ = PlanFailureCode::FINALIZED_PATH_EMPTY;
     RCLCPP_ERROR(logger_, "Finalized path points are empty after cropping");
     return std::nullopt;
   }
