@@ -349,9 +349,10 @@ TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryForVehicleAppliesSpecifi
   const auto footprints =
     trajectory::footprint::compute_footprint_trajectory(poses, ego_dimensions);
 
-  ASSERT_EQ(footprints.size(), 1u);
+  EXPECT_TRUE(std::holds_alternative<QuadTrajectory>(footprints));
+  ASSERT_EQ(footprint_count(footprints), 1u);
   expect_same_polygon(
-    footprints.front(),
+    footprint_to_polygon2d(footprints, 0U),
     autoware_utils_geometry::to_footprint(
       poses.front(), vehicle_info.max_longitudinal_offset_m + 0.7,
       -vehicle_info.min_longitudinal_offset_m + 0.5, vehicle_info.vehicle_width_m + 0.6));
