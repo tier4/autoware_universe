@@ -307,6 +307,17 @@ std::vector<Point2d> create_base_polygon(const VehicleInfo & vehicle_info)
     Point2d{vehicle_info.min_longitudinal_offset_m, half_width}};
 }
 
+std::vector<Point2d> create_base_polygon(
+  const trajectory::footprint::EgoDimensions & ego_dimensions)
+{
+  const double half_width = ego_dimensions.vehicle_width / 2.0;
+  return {
+    Point2d{ego_dimensions.front_offset, half_width},
+    Point2d{ego_dimensions.front_offset, -half_width},
+    Point2d{-ego_dimensions.rear_overhang, -half_width},
+    Point2d{-ego_dimensions.rear_overhang, half_width}};
+}
+
 Polygon2d to_polygon2d(
   const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape)
 {
@@ -376,15 +387,8 @@ FootprintTrajectory compute_footprint_trajectory(
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const EgoDimensions & ego_dimensions)
 {
-  FootprintTrajectory footprint_trajectory;
-  footprint_trajectory.reserve(pose_trajectory.size());
-
-  for (const auto & pose : pose_trajectory) {
-    footprint_trajectory.push_back(autoware_utils_geometry::to_footprint(
-      pose, ego_dimensions.front_offset, ego_dimensions.rear_overhang,
-      ego_dimensions.vehicle_width));
-  }
-  return footprint_trajectory;
+  return compute_footprint_trajectory(
+    pose_trajectory, geometry::create_base_polygon(ego_dimensions));
 }
 }  // namespace footprint
 
