@@ -259,7 +259,7 @@ std::vector<int64_t> TrafficLightFilter::get_force_reject_amber_ids(
 void TrafficLightFilter::cleanup_history(const rclcpp::Time & current_time)
 {
   for (auto it = amber_rejection_history_.begin(); it != amber_rejection_history_.end();) {
-    if ((current_time - it->second).seconds() > 2.0 * params_.amber_rejection_hysteresis_duration) {
+    if ((current_time - it->second).seconds() > params_.amber_rejection_hysteresis_duration) {
       it = amber_rejection_history_.erase(it);
     } else {
       ++it;
