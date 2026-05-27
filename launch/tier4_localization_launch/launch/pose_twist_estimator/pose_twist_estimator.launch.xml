@@ -8,6 +8,16 @@
   <!-- When gnss_enabled is false, automatic_pose_initializer will not run, only manual initial position estimation is available. -->
   <arg name="gnss_enabled" default="true" description="gnss availability for initial position estimation"/>
 
+  <arg name="camera_pose_initializer_param_path" default="$(find-pkg-share yabloc_pose_initializer)/config/camera_pose_initializer.param.yaml"/>
+  <arg name="camera_particle_corrector_param_path" default="$(find-pkg-share yabloc_particle_filter)/config/camera_particle_corrector.param.yaml"/>
+  <arg name="gnss_particle_corrector_param_path" default="$(find-pkg-share yabloc_particle_filter)/config/gnss_particle_corrector.param.yaml"/>
+  <arg name="predictor_param_path" default="$(find-pkg-share yabloc_particle_filter)/config/predictor.param.yaml"/>
+  <arg name="graph_segment_param_path" default="$(find-pkg-share yabloc_image_processing)/config/graph_segment.param.yaml"/>
+  <arg name="segment_filter_param_path" default="$(find-pkg-share yabloc_image_processing)/config/segment_filter.param.yaml"/>
+  <arg name="undistort_param_path" default="$(find-pkg-share yabloc_image_processing)/config/undistort.param.yaml"/>
+  <arg name="ground_server_param_path" default="$(find-pkg-share yabloc_common)/config/ground_server.param.yaml"/>
+  <arg name="ll2_decomposer_param_path" default="$(find-pkg-share yabloc_common)/config/ll2_decomposer.param.yaml"/>
+
   <!-- split string with underscores -->
   <let name="available_args" value="[\'ndt\',\'yabloc\',\'eagleye\',\'artag\',\'lidar-marker\']"/>
   <let name="split_function" value="list(set('$(var pose_source)'.split('_')).intersection($(var available_args)))"/>
@@ -55,6 +65,15 @@
 
     <include file="$(find-pkg-share tier4_localization_launch)/launch/pose_twist_estimator/yabloc.launch.xml">
       <arg name="src_image" value="$(var yabloc_src_image)"/>
+      <arg name="camera_pose_initializer_param_path" value="$(var camera_pose_initializer_param_path)"/>
+      <arg name="camera_particle_corrector_param_path" value="$(var camera_particle_corrector_param_path)"/>
+      <arg name="gnss_particle_corrector_param_path" value="$(var gnss_particle_corrector_param_path)"/>
+      <arg name="predictor_param_path" value="$(var predictor_param_path)"/>
+      <arg name="graph_segment_param_path" value="$(var graph_segment_param_path)"/>
+      <arg name="segment_filter_param_path" value="$(var segment_filter_param_path)"/>
+      <arg name="undistort_param_path" value="$(var undistort_param_path)"/>
+      <arg name="ground_server_param_path" value="$(var ground_server_param_path)"/>
+      <arg name="ll2_decomposer_param_path" value="$(var ll2_decomposer_param_path)"/>
     </include>
   </group>
 

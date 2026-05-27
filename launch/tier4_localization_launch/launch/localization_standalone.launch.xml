@@ -1,0 +1,176 @@
+<?xml version="1.0"?>
+<!--
+  Localization +（オプション）Sensing +（オプション）Map を autoware_launch なしで起動する launch。
+
+  - preset:=logging は logging_simulator.launch.xml と揃えた主要スイッチ（use_sim_time=true,
+    system_run_mode=logging_simulation, sensing ドライバ OFF, 地図ロード ON）
+  - pointcloud 用 component container
+  - tier4_map_launch（launch_map または preset=logging 時）
+  - tier4_sensing_launch
+  - tier4_localization_launch（localization.launch.xml）
+
+  sensor_model は「<name>_launch」パッケージ名の <name> 部分（例: aip_xx1 -> aip_xx1_launch）。
+
+  例:
+    ros2 launch tier4_localization_launch localization_standalone.launch.xml
+    ros2 launch tier4_localization_launch localization_standalone.launch.xml preset:=logging map_path:=/path/to/map
+    ros2 launch tier4_localization_launch localization_standalone.launch.xml rviz:=false
+-->
+<launch>
+  <let name="loc_config_path" value="$(find-pkg-share tier4_localization_launch)/config/standalone"/>
+
+  <arg name="preset" default="online" description="online: live vehicle. logging: rosbag replay preset (logging_simulator.launch.xml と同等の主要スイッチ)"/>
+  <arg name="use_sim_time" default="false" description="preset=online のとき global_parameter_loader に渡す（preset=logging では true に上書き）"/>
+  <arg name="system_run_mode" default="online" description="preset=online のとき localization に渡す（preset=logging では logging_simulation に上書き）"/>
+  <arg name="launch_sensing_driver" default="true" description="preset=online のとき sensing に渡す（preset=logging では false に上書き）"/>
+
+  <let name="effective_use_sim_time" value="true" if="$(eval &quot;'$(var preset)'=='logging'&quot;)"/>
+  <let name="effective_use_sim_time" value="$(var use_sim_time)" unless="$(eval &quot;'$(var preset)'=='logging'&quot;)"/>
+
+  <let name="effective_system_run_mode" value="logging_simulation" if="$(eval &quot;'$(var preset)'=='logging'&quot;)"/>
+  <let name="effective_system_run_mode" value="$(var system_run_mode)" unless="$(eval &quot;'$(var preset)'=='logging'&quot;)"/>
+
+  <let name="effective_launch_sensing_driver" value="false" if="$(eval &quot;'$(var preset)'=='logging'&quot;)"/>
+  <let name="effective_launch_sensing_driver" value="$(var launch_sensing_driver)" unless="$(eval &quot;'$(var preset)'=='logging'&quot;)"/>
+
+  <arg name="launch_map" default="false" description="tier4_map_launch で地図を読み込む（preset=logging では true に上書き）"/>
+  <let name="effective_launch_map" value="true" if="$(eval &quot;'$(var preset)'=='logging'&quot;)"/>
+  <let name="effective_launch_map" value="$(var launch_map)" unless="$(eval &quot;'$(var preset)'=='logging'&quot;)"/>
+
+  <arg name="map_path" default="" description="地図ディレクトリ（pointcloud_map.pcd, lanelet2_map.osm, pointcloud_map_metadata.yaml, map_projector_info.yaml）。launch_map または preset=logging のとき必須"/>
+  <arg name="pointcloud_map_file" default="pointcloud_map.pcd"/>
+  <arg name="lanelet2_map_file" default="lanelet2_map.osm"/>
+
+  <arg name="launch_sensing" default="true" description="launch tier4_sensing_launch (drivers + sensor-side pipelines)"/>
+  <arg name="launch_api" default="true" description="launch tier4_autoware_api_launch (default_adapi + adaptors)"/>
+  <arg name="launch_default_ad_api" default="true" description="maps to launch_default_adapi in autoware_api.launch.xml"/>
+  <arg name="launch_rviz_adaptors" default="true" description="launch ad_api_adaptors rviz adaptors"/>
+
+  <arg name="vehicle_model" default="aip_xx1" description="vehicle description package prefix ($(var vehicle_model)_description に vehicle_info.param.yaml があること)"/>
+  <arg name="sensor_model" default="aip_xx1" description="sensor kit launch prefix (例: aip_xx1 -> aip_xx1_launch)"/>
+  <arg
+    name="vehicle_mirror_param_file"
+    default="$(find-pkg-share autoware_vehicle_info_utils)/config/vehicle_mirror.param.yaml"
+    description="LiDAR mirror crop YAML（車両用に上書き可）"
+  />
+
+  <arg name="pointcloud_container_name" default="pointcloud_container" description="rclcpp component container name (no leading slash)"/>
+  <arg
+    name="localization_pointcloud_container_name"
+    default="/pointcloud_container"
+    description="target container for localization pointcloud preprocessing; must match /$(var pointcloud_container_name)"
+  />
+
+  <arg name="rviz" default="true" description="launch rviz2 with bundled autoware.rviz"/>
+  <arg name="rviz_config" default="$(find-pkg-share tier4_localization_launch)/rviz/autoware.rviz" description="rviz2 config path"/>
+  <arg name="rviz_respawn" default="false" description="respawn rviz2 if it exits"/>
+
+  <arg name="pose_source" default="ndt" description="select pose_estimator: ndt, yabloc, eagleye, artag (underscore for multi)"/>
+  <arg name="twist_source" default="gyro_odom" description="select twist_estimator: gyro_odom, eagleye"/>
+  <arg name="input_pointcloud" default="/sensing/lidar/concatenated/pointcloud" description="input for localization pointcloud util"/>
+  <arg name="initial_pose" default="[]" description="initial pose (x, y, z, quat_x, quat_y, quat_z, quat_w)"/>
+
+  <group scoped="false">
+    <include file="$(find-pkg-share global_parameter_loader)/launch/global_params.launch.py">
+      <arg name="use_sim_time" value="$(var effective_use_sim_time)"/>
+      <arg name="vehicle_model" value="$(var vehicle_model)"/>
+    </include>
+  </group>
+
+  <include file="$(find-pkg-share tier4_localization_launch)/launch/pointcloud_container.launch.py">
+    <arg name="use_multithread" value="true"/>
+    <arg name="container_name" value="$(var pointcloud_container_name)"/>
+  </include>
+
+  <group if="$(var effective_launch_map)">
+    <include file="$(find-pkg-share tier4_map_launch)/launch/map.launch.xml">
+      <arg name="pointcloud_map_path" value="$(var map_path)/$(var pointcloud_map_file)"/>
+      <arg name="pointcloud_map_metadata_path" value="$(var map_path)/pointcloud_map_metadata.yaml"/>
+      <arg name="lanelet2_map_path" value="$(var map_path)/$(var lanelet2_map_file)"/>
+      <arg name="map_projector_info_path" value="$(var map_path)/map_projector_info.yaml"/>
+      <arg name="pointcloud_map_loader_param_path" value="$(find-pkg-share map_loader)/config/pointcloud_map_loader.param.yaml"/>
+      <arg name="lanelet2_map_loader_param_path" value="$(find-pkg-share map_loader)/config/lanelet2_map_loader.param.yaml"/>
+      <arg name="map_tf_generator_param_path" value="$(find-pkg-share autoware_map_tf_generator)/config/map_tf_generator.param.yaml"/>
+      <arg name="map_projection_loader_param_path" value="$(find-pkg-share autoware_map_projection_loader)/config/map_projection_loader.param.yaml"/>
+    </include>
+  </group>
+
+  <group if="$(var launch_sensing)">
+    <include file="$(find-pkg-share tier4_sensing_launch)/launch/sensing.launch.xml">
+      <arg name="launch_driver" value="$(var effective_launch_sensing_driver)"/>
+      <arg name="sensor_model" value="$(var sensor_model)"/>
+      <arg name="vehicle_mirror_param_file" value="$(var vehicle_mirror_param_file)"/>
+      <arg name="pointcloud_container_name" value="$(var pointcloud_container_name)"/>
+    </include>
+  </group>
+
+  <group if="$(var launch_api)">
+    <include file="$(find-pkg-share tier4_autoware_api_launch)/launch/autoware_api.launch.xml">
+      <arg name="launch_default_adapi" value="$(var launch_default_ad_api)"/>
+      <arg name="launch_rviz_adaptors" value="$(var launch_rviz_adaptors)"/>
+    </include>
+  </group>
+
+  <group>
+    <include file="$(find-pkg-share tier4_localization_launch)/launch/localization.launch.xml">
+      <arg name="pose_source" value="$(var pose_source)"/>
+      <arg name="twist_source" value="$(var twist_source)"/>
+      <arg name="system_run_mode" value="$(var effective_system_run_mode)"/>
+      <arg name="input_pointcloud" value="$(var input_pointcloud)"/>
+      <arg name="localization_pointcloud_container_name" value="$(var localization_pointcloud_container_name)"/>
+      <arg name="initial_pose" value="$(var initial_pose)"/>
+
+      <arg name="localization_error_monitor_param_path" value="$(var loc_config_path)/localization_error_monitor.param.yaml"/>
+      <arg name="ekf_localizer_param_path" value="$(var loc_config_path)/ekf_localizer.param.yaml"/>
+      <arg name="stop_filter_param_path" value="$(var loc_config_path)/stop_filter.param.yaml"/>
+      <arg name="pose_initializer_param_path" value="$(var loc_config_path)/pose_initializer.param.yaml"/>
+      <arg name="twist2accel_param_path" value="$(var loc_config_path)/twist2accel.param.yaml"/>
+
+      <arg name="ndt_scan_matcher/ndt_scan_matcher_param_path" value="$(var loc_config_path)/ndt_scan_matcher/ndt_scan_matcher.param.yaml"/>
+      <arg
+        name="ndt_scan_matcher/pointcloud_preprocessor/crop_box_filter_measurement_range_param_path"
+        value="$(var loc_config_path)/ndt_scan_matcher/pointcloud_preprocessor/crop_box_filter_measurement_range.param.yaml"
+      />
+      <arg
+        name="ndt_scan_matcher/pointcloud_preprocessor/voxel_grid_downsample_filter_param_path"
+        value="$(var loc_config_path)/ndt_scan_matcher/pointcloud_preprocessor/voxel_grid_filter.param.yaml"
+      />
+      <arg
+        name="ndt_scan_matcher/pointcloud_preprocessor/random_downsample_filter_param_path"
+        value="$(var loc_config_path)/ndt_scan_matcher/pointcloud_preprocessor/random_downsample_filter.param.yaml"
+      />
+
+      <arg name="camera_pose_initializer_param_path" value="$(var loc_config_path)/yabloc/camera_pose_initializer.param.yaml"/>
+      <arg name="camera_particle_corrector_param_path" value="$(var loc_config_path)/yabloc/camera_particle_corrector.param.yaml"/>
+      <arg name="gnss_particle_corrector_param_path" value="$(var loc_config_path)/yabloc/gnss_particle_corrector.param.yaml"/>
+      <arg name="predictor_param_path" value="$(var loc_config_path)/yabloc/predictor.param.yaml"/>
+      <arg name="graph_segment_param_path" value="$(var loc_config_path)/yabloc/graph_segment.param.yaml"/>
+      <arg name="segment_filter_param_path" value="$(var loc_config_path)/yabloc/segment_filter.param.yaml"/>
+      <arg name="undistort_param_path" value="$(var loc_config_path)/yabloc/undistort.param.yaml"/>
+      <arg name="ground_server_param_path" value="$(var loc_config_path)/yabloc/ground_server.param.yaml"/>
+      <arg name="ll2_decomposer_param_path" value="$(var loc_config_path)/yabloc/ll2_decomposer.param.yaml"/>
+
+      <arg name="eagleye_param_path" value="$(var loc_config_path)/eagleye_config.param.yaml"/>
+      <arg name="ar_tag_based_localizer_param_path" value="$(var loc_config_path)/ar_tag_based_localizer.param.yaml"/>
+
+      <arg name="lidar_marker_localizer/lidar_marker_localizer_param_path" value="$(var loc_config_path)/lidar_marker_localizer/lidar_marker_localizer.param.yaml"/>
+      <arg
+        name="lidar_marker_localizer/pointcloud_preprocessor/crop_box_filter_measurement_range_param_path"
+        value="$(var loc_config_path)/lidar_marker_localizer/pointcloud_preprocessor/crop_box_filter_measurement_range.param.yaml"
+      />
+      <arg name="lidar_marker_localizer/pointcloud_preprocessor/ring_filter_param_path" value="$(var loc_config_path)/lidar_marker_localizer/pointcloud_preprocessor/ring_filter.param.yaml"/>
+    </include>
+  </group>
+
+  <group>
+    <node
+      pkg="tier4_localization_launch"
+      exec="rviz2_with_filtered_ament.sh"
+      name="rviz2"
+      output="screen"
+      args="-d $(var rviz_config)"
+      if="$(var rviz)"
+      respawn="$(var rviz_respawn)"
+    />
+  </group>
+</launch>
