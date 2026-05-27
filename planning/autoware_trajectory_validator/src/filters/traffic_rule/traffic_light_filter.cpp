@@ -266,10 +266,13 @@ void TrafficLightFilter::cleanup_history(const rclcpp::Time & current_time)
     }
   }
 
-  const double max_stable_duration =
-    std::max(params_.stable_duration_threshold_red, params_.stable_duration_threshold_amber);
   for (auto it = signal_history_.begin(); it != signal_history_.end();) {
-    if ((current_time - it->second.last_seen_time).seconds() > max_stable_duration) {
+    const auto stable_duration =
+      autoware::traffic_light_utils::hasTrafficLightColor(
+        it->second.msg.elements, autoware_perception_msgs::msg::TrafficLightElement::RED)
+        ? params_.stable_duration_threshold_red
+        : params_.stable_duration_threshold_amber;
+    if ((current_time - it->second.last_seen_time).seconds() > stable_duration) {
       it = signal_history_.erase(it);
     } else {
       ++it;
