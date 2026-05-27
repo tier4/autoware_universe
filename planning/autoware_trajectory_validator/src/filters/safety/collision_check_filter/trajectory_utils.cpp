@@ -297,16 +297,6 @@ std::vector<Point2d> create_base_polygon(const autoware_perception_msgs::msg::Sh
   throw std::logic_error("The shape type is not supported in autoware_utils.");
 }
 
-std::vector<Point2d> create_base_polygon(const VehicleInfo & vehicle_info)
-{
-  const double half_width = vehicle_info.vehicle_width_m / 2.0;
-  return {
-    Point2d{vehicle_info.max_longitudinal_offset_m, half_width},
-    Point2d{vehicle_info.max_longitudinal_offset_m, -half_width},
-    Point2d{vehicle_info.min_longitudinal_offset_m, -half_width},
-    Point2d{vehicle_info.min_longitudinal_offset_m, half_width}};
-}
-
 std::vector<Point2d> create_base_polygon(
   const trajectory::footprint::EgoDimensions & ego_dimensions)
 {
