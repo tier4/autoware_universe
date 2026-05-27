@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// cspell : ignore circumradius
+
 #include "autoware/proximity_hazard_object_checker/proximity_hazard_object_checker.hpp"
 
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
