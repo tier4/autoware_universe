@@ -16,6 +16,7 @@
 #define AUTOWARE__TRAFFIC_LIGHT_COMPLIANCE_CHECKER__TRAFFIC_LIGHT_COMPLIANCE_CHECKER_HPP_
 
 #include "autoware/traffic_light_compliance_checker/structs.hpp"
+#include "autoware/traffic_light_compliance_checker/traffic_light_status_tracker.hpp"
 
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 #include <tl_expected/expected.hpp>
@@ -25,8 +26,13 @@
 
 #include <lanelet2_core/LaneletMap.h>
 
+#include <rclcpp/time.hpp>
+
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -45,12 +51,14 @@ public:
   TrafficLightComplianceChecker(
     const Parameters & parameters, const vehicle_info_utils::VehicleInfo & vehicle_info);
 
+  ~TrafficLightComplianceChecker();
+
   /**
    * @brief check if the trajectory complies with traffic lights
-   * @param input input data for compliance check
+   * @param input input data for compliance check (raw signals are filtered internally)
    * @return result of compliance check, or error message if check fails
    */
-  [[nodiscard]] tl::expected<ComplianceResult, std::string> check(const Inputs & input) const;
+  [[nodiscard]] tl::expected<ComplianceResult, std::string> check(const Inputs & input);
 
   /**
    * @brief update parameters
@@ -59,6 +67,20 @@ public:
   void update_parameters(const Parameters & parameters);
 
 private:
+  [[nodiscard]] std::vector<int64_t> get_force_reject_amber_ids(
+    const rclcpp::Time & current_time, bool is_ego_stopped) const;
+
+  void update_amber_rejection_history(
+    const ComplianceResult & result, const rclcpp::Time & current_time,
+    const std::vector<int64_t> & force_reject_amber_ids);
+
+  void cleanup_amber_rejection_history(const rclcpp::Time & current_time);
+
+  [[nodiscard]] tl::expected<ComplianceResult, std::string> check_with_filtered_signals(
+    const Inputs & input,
+    const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
+    const std::vector<int64_t> & force_reject_amber_ids) const;
+
   /// @brief return the red and amber stop lines related to the given traffic light groups
   [[nodiscard]] std::pair<std::vector<StopLineInfo>, std::vector<StopLineInfo>> get_stop_lines(
     const lanelet::LaneletMap & lanelet_map,
@@ -77,6 +99,8 @@ private:
 
   Parameters params_;
   vehicle_info_utils::VehicleInfo vehicle_info_;
+  std::unique_ptr<TrafficLightStatusTracker> status_tracker_;
+  std::unordered_map<int64_t, rclcpp::Time> amber_rejection_history_;
 };
 
 }  // namespace autoware::traffic_light_compliance_checker

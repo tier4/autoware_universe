@@ -19,6 +19,8 @@
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
+#include <rclcpp/time.hpp>
+
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/LineString.h>
 
@@ -35,9 +37,9 @@ struct Inputs
   lanelet::LaneletMapPtr map;
   autoware_planning_msgs::msg::LaneletRoute route;
   autoware_perception_msgs::msg::TrafficLightGroupArray signals;
+  rclcpp::Time current_time;
   double current_velocity;
   double current_acceleration;
-  std::vector<int64_t> force_reject_amber_ids;
 };
 
 /// @brief information about a stop line and its associated traffic light

@@ -18,14 +18,8 @@
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <autoware/traffic_light_compliance_checker/traffic_light_compliance_checker.hpp>
-#include <autoware/traffic_light_compliance_checker/traffic_light_status_tracker.hpp>
 
-#include <rclcpp/time.hpp>
-
-#include <cstdint>
 #include <memory>
-#include <unordered_map>
-#include <vector>
 
 namespace autoware::trajectory_validator::plugin::traffic_rule
 {
@@ -42,15 +36,7 @@ public:
 
 private:
   std::unique_ptr<traffic_light_compliance_checker::TrafficLightComplianceChecker> checker_;
-  std::unique_ptr<traffic_light_compliance_checker::TrafficLightStatusTracker> status_tracker_;
   validator::Params::TrafficLight params_;
-
-  std::unordered_map<int64_t, rclcpp::Time> amber_rejection_history_;
-
-  [[nodiscard]] std::vector<int64_t> get_force_reject_amber_ids(
-    const rclcpp::Time & current_time, bool is_ego_stopped) const;
-
-  void cleanup_history(const rclcpp::Time & current_time);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::traffic_rule

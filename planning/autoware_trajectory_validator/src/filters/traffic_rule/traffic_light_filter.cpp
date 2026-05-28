@@ -14,8 +14,6 @@
 
 #include "autoware/trajectory_validator/filters/traffic_rule/traffic_light_filter.hpp"
 
-#include <algorithm>
-#include <cmath>
 #include <memory>
 #include <string>
 #include <utility>
@@ -69,15 +67,6 @@ autoware::traffic_light_compliance_checker::Parameters to_checker_params(
   p.checked_trajectory_length.jerk_limit = params.checked_trajectory_length.jerk_limit;
   return p;
 }
-
-autoware::traffic_light_compliance_checker::StatusTrackerParameters to_status_tracker_params(
-  const validator::Params::TrafficLight & params)
-{
-  autoware::traffic_light_compliance_checker::StatusTrackerParameters p;
-  p.stable_duration_threshold_red = params.stable_duration_threshold_red;
-  p.stable_duration_threshold_amber = params.stable_duration_threshold_amber;
-  return p;
-}
 }  // namespace
 
 namespace autoware::trajectory_validator::plugin::traffic_rule
@@ -90,15 +79,6 @@ TrafficLightFilter::TrafficLightFilter() : ValidatorInterface("traffic_light_fil
 void TrafficLightFilter::update_parameters(const validator::Params & params)
 {
   params_ = params.traffic_light;
-
-  const auto status_tracker_params = to_status_tracker_params(params_);
-  if (!status_tracker_) {
-    status_tracker_ = std::make_unique<traffic_light_compliance_checker::TrafficLightStatusTracker>(
-      status_tracker_params);
-  } else {
-    status_tracker_->update_parameters(status_tracker_params);
-  }
-
   if (checker_) {
     checker_->update_parameters(to_checker_params(params_));
   }
@@ -122,28 +102,16 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
     return tl::make_unexpected("Compliance checker is not initialized.");
   }
 
-  if (!status_tracker_) {
-    return tl::make_unexpected("Traffic light status tracker is not initialized.");
-  }
-
   const auto current_time = rclcpp::Time(context.odometry->header.stamp);
-  const auto velocity = context.odometry->twist.twist.linear.x;
-  const bool is_ego_stopped = std::abs(velocity) < params_.ego_stopped_velocity_threshold;
-
-  const auto filtered_signals = status_tracker_->filter_signals(
-    *context.traffic_light_signals, current_time, is_ego_stopped);
-
-  // Amber Hysteresis Tracking
-  const auto force_reject_amber_ids = get_force_reject_amber_ids(current_time, is_ego_stopped);
 
   const traffic_light_compliance_checker::Inputs inputs{
     traj_points,
     context.lanelet_map,
     *context.route,
-    filtered_signals,
+    *context.traffic_light_signals,
+    current_time,
     context.odometry->twist.twist.linear.x,
-    context.acceleration->accel.accel.linear.x,
-    force_reject_amber_ids};
+    context.acceleration->accel.accel.linear.x};
 
   const auto result = checker_->check(inputs);
   if (!result) {
@@ -158,17 +126,8 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
       is_crossing_red = true;
     } else if (violation.type == traffic_light_compliance_checker::ViolationType::AMBER_LIGHT) {
       is_crossing_amber = true;
-      if (
-        std::find(
-          force_reject_amber_ids.begin(), force_reject_amber_ids.end(),
-          violation.traffic_light_id) == force_reject_amber_ids.end()) {
-        amber_rejection_history_[violation.traffic_light_id] = current_time;
-      }
     }
   }
-
-  // Memory Management
-  cleanup_history(current_time);
 
   std::vector<MetricReport> metrics;
   metrics.push_back(
@@ -190,32 +149,6 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
   const bool is_feasible = !is_crossing_red && !is_crossing_amber;
 
   return ValidationResult{is_feasible, std::move(metrics)};
-}
-
-std::vector<int64_t> TrafficLightFilter::get_force_reject_amber_ids(
-  const rclcpp::Time & current_time, bool is_ego_stopped) const
-{
-  std::vector<int64_t> force_reject_amber_ids;
-  if (is_ego_stopped) {
-    return force_reject_amber_ids;
-  }
-  for (const auto & [id, rejected_time] : amber_rejection_history_) {
-    if ((current_time - rejected_time).seconds() <= params_.amber_rejection_hysteresis_duration) {
-      force_reject_amber_ids.push_back(id);
-    }
-  }
-  return force_reject_amber_ids;
-}
-
-void TrafficLightFilter::cleanup_history(const rclcpp::Time & current_time)
-{
-  for (auto it = amber_rejection_history_.begin(); it != amber_rejection_history_.end();) {
-    if ((current_time - it->second).seconds() > params_.amber_rejection_hysteresis_duration) {
-      it = amber_rejection_history_.erase(it);
-    } else {
-      ++it;
-    }
-  }
 }
 }  // namespace autoware::trajectory_validator::plugin::traffic_rule
 
