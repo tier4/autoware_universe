@@ -100,7 +100,8 @@ TrafficLightComplianceChecker::TrafficLightComplianceChecker(
   const Parameters & parameters, const vehicle_info_utils::VehicleInfo & vehicle_info)
 : params_(parameters),
   vehicle_info_(vehicle_info),
-  status_tracker_(std::make_unique<TrafficLightStatusTracker>(to_status_tracker_parameters(parameters)))
+  status_tracker_(
+    std::make_unique<TrafficLightStatusTracker>(to_status_tracker_parameters(parameters)))
 {
 }
 
@@ -112,7 +113,8 @@ void TrafficLightComplianceChecker::update_parameters(const Parameters & paramet
   status_tracker_->update_parameters(to_status_tracker_parameters(parameters));
 }
 
-tl::expected<ComplianceResult, std::string> TrafficLightComplianceChecker::check(const Inputs & input)
+tl::expected<ComplianceResult, std::string> TrafficLightComplianceChecker::check(
+  const Inputs & input)
 {
   const bool is_ego_stopped =
     std::abs(input.current_velocity) < params_.ego_stopped_velocity_threshold;
@@ -158,14 +160,15 @@ void TrafficLightComplianceChecker::update_amber_rejection_history(
     }
     if (
       std::find(
-        force_reject_amber_ids.begin(), force_reject_amber_ids.end(),
-        violation.traffic_light_id) == force_reject_amber_ids.end()) {
+        force_reject_amber_ids.begin(), force_reject_amber_ids.end(), violation.traffic_light_id) ==
+      force_reject_amber_ids.end()) {
       amber_rejection_history_[violation.traffic_light_id] = current_time;
     }
   }
 }
 
-void TrafficLightComplianceChecker::cleanup_amber_rejection_history(const rclcpp::Time & current_time)
+void TrafficLightComplianceChecker::cleanup_amber_rejection_history(
+  const rclcpp::Time & current_time)
 {
   for (auto it = amber_rejection_history_.begin(); it != amber_rejection_history_.end();) {
     if ((current_time - it->second).seconds() > params_.amber_rejection_hysteresis_duration) {
@@ -176,7 +179,8 @@ void TrafficLightComplianceChecker::cleanup_amber_rejection_history(const rclcpp
   }
 }
 
-tl::expected<ComplianceResult, std::string> TrafficLightComplianceChecker::check_with_filtered_signals(
+tl::expected<ComplianceResult, std::string>
+TrafficLightComplianceChecker::check_with_filtered_signals(
   const Inputs & input,
   const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
   const std::vector<int64_t> & force_reject_amber_ids) const

@@ -15,11 +15,11 @@
 #ifndef AUTOWARE__TRAFFIC_LIGHT_COMPLIANCE_CHECKER__STRUCTS_HPP_
 #define AUTOWARE__TRAFFIC_LIGHT_COMPLIANCE_CHECKER__STRUCTS_HPP_
 
+#include <rclcpp/time.hpp>
+
 #include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
-
-#include <rclcpp/time.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/LineString.h>

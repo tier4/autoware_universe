@@ -19,14 +19,13 @@
 #include "autoware/traffic_light_compliance_checker/traffic_light_status_tracker.hpp"
 
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
+#include <rclcpp/time.hpp>
 #include <tl_expected/expected.hpp>
 
 #include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
-
-#include <rclcpp/time.hpp>
 
 #include <cstdint>
 #include <memory>

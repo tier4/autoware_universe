@@ -16,6 +16,8 @@
 
 #include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 
+#include <vector>
+
 namespace
 {
 bool is_equal(

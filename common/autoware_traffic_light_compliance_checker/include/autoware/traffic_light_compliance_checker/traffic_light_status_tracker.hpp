@@ -17,9 +17,9 @@
 
 #include "autoware/traffic_light_compliance_checker/structs.hpp"
 
-#include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
-
 #include <rclcpp/time.hpp>
+
+#include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 
 #include <cstdint>
 #include <unordered_map>
