@@ -91,39 +91,6 @@ geometry_msgs::msg::PoseStamped::ConstSharedPtr getCurrentPose(
   return geometry_msgs::msg::PoseStamped::ConstSharedPtr(p);
 }
 
-// copied from scenario selector
-std::shared_ptr<lanelet::ConstPolygon3d> findNearestParkinglot(
-  const std::shared_ptr<lanelet::LaneletMap> & lanelet_map_ptr,
-  const lanelet::BasicPoint2d & current_position)
-{
-  auto linked_parking_lot = std::make_shared<lanelet::ConstPolygon3d>();
-  const auto result = lanelet::utils::query::getLinkedParkingLot(
-    current_position, lanelet_map_ptr, linked_parking_lot.get());
-
-  if (result) {
-    return linked_parking_lot;
-  }
-  return {};
-}
-
-// copied from scenario selector
-bool isInParkingLot(
-  const std::shared_ptr<lanelet::LaneletMap> & lanelet_map_ptr,
-  const geometry_msgs::msg::Pose & current_pose)
-{
-  const auto & p = current_pose.position;
-  const lanelet::Point3d search_point(lanelet::InvalId, p.x, p.y, p.z);
-
-  const auto nearest_parking_lot =
-    findNearestParkinglot(lanelet_map_ptr, search_point.basicPoint2d());
-
-  if (!nearest_parking_lot) {
-    return false;
-  }
-
-  return lanelet::geometry::within(search_point, nearest_parking_lot->basicPolygon());
-}
-
 pcl::PointCloud<pcl::PointXYZ> getTransformedPointCloud(
   const sensor_msgs::msg::PointCloud2 & pointcloud_msg,
   const geometry_msgs::msg::Transform & transform)
@@ -339,8 +306,9 @@ bool CostmapGenerator::isActive()
     });
   }
 
+  // When not gated by scenario, always generate costmap as long as TF is available.
   if (!current_pose_) return false;
-  return isInParkingLot(lanelet_map_, current_pose_->pose);
+  return true;
 }
 
 void CostmapGenerator::initGridmap()

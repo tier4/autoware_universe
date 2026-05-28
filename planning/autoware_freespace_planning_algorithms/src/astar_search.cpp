@@ -356,6 +356,12 @@ void AstarSearch::expandNodes(AstarNode & current_node, const bool is_back)
     move_cost += getSteeringChangeCost(steering_index, current_node.steering_index);
     move_cost += getObsDistanceCost(next_index, obs_edt);
     move_cost += getLatDistanceCost(next_pose);
+    if (!path_distance_map_.empty()) {
+      const float pd = path_distance_map_[indexToId(next_index)];
+      if (pd < std::numeric_limits<float>::max()) {
+        move_cost += path_distance_weight_ * static_cast<double>(pd);
+      }
+    }
     if (is_direction_switch) move_cost += getDirectionChangeCost(current_node.dir_distance);
 
     double total_cost = move_cost + estimateCost(next_pose, next_index);

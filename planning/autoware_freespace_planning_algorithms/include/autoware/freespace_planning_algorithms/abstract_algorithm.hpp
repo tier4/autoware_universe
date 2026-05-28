@@ -191,6 +191,16 @@ public:
   const PlannerWaypoints & getWaypoints() const { return waypoints_; }
   double getDistanceToObstacle(const geometry_msgs::msg::Pose & pose) const;
 
+  const nav_msgs::msg::OccupancyGrid & getCostmap() const { return costmap_; }
+  const std::vector<EDTData> & getEDTMap() const { return edt_map_; }
+  const std::vector<bool> & getObstacleTable() const { return is_obstacle_table_; }
+
+  void setPathDistanceCost(std::vector<float> map, double weight)
+  {
+    path_distance_map_ = std::move(map);
+    path_distance_weight_ = weight;
+  }
+
   virtual ~AbstractPlanningAlgorithm() {}
 
 protected:
@@ -293,6 +303,10 @@ protected:
 
   // Euclidean distance transform map (distance & angle info to nearest obstacle cell)
   std::vector<EDTData> edt_map_;
+
+  // Free-space distance raster from reference path cells (meters). Empty = feature disabled.
+  std::vector<float> path_distance_map_;
+  double path_distance_weight_ = 0.0;
 
   // pose in costmap frame
   geometry_msgs::msg::Pose start_pose_;
