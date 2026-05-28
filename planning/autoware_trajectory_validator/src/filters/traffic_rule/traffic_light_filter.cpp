@@ -14,9 +14,6 @@
 
 #include "autoware/trajectory_validator/filters/traffic_rule/traffic_light_filter.hpp"
 
-#include <autoware/traffic_light_utils/traffic_light_utils.hpp>
-#include <rclcpp/logging.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -73,28 +70,13 @@ autoware::traffic_light_compliance_checker::Parameters to_checker_params(
   return p;
 }
 
-bool is_equal(
-  const autoware_perception_msgs::msg::TrafficLightElement & a,
-  const autoware_perception_msgs::msg::TrafficLightElement & b)
+autoware::traffic_light_compliance_checker::StatusTrackerParameters to_status_tracker_params(
+  const validator::Params::TrafficLight & params)
 {
-  return a.color == b.color && a.shape == b.shape && a.status == b.status;
-}
-
-bool is_equal(
-  const std::vector<autoware_perception_msgs::msg::TrafficLightElement> & a,
-  const std::vector<autoware_perception_msgs::msg::TrafficLightElement> & b)
-{
-  if (a.size() != b.size()) {
-    return false;
-  }
-
-  for (size_t i = 0; i < a.size(); ++i) {
-    if (!is_equal(a[i], b[i])) {
-      return false;
-    }
-  }
-
-  return true;
+  autoware::traffic_light_compliance_checker::StatusTrackerParameters p;
+  p.stable_duration_threshold_red = params.stable_duration_threshold_red;
+  p.stable_duration_threshold_amber = params.stable_duration_threshold_amber;
+  return p;
 }
 }  // namespace
 
@@ -108,6 +90,15 @@ TrafficLightFilter::TrafficLightFilter() : ValidatorInterface("traffic_light_fil
 void TrafficLightFilter::update_parameters(const validator::Params & params)
 {
   params_ = params.traffic_light;
+
+  const auto status_tracker_params = to_status_tracker_params(params_);
+  if (!status_tracker_) {
+    status_tracker_ = std::make_unique<traffic_light_compliance_checker::TrafficLightStatusTracker>(
+      status_tracker_params);
+  } else {
+    status_tracker_->update_parameters(status_tracker_params);
+  }
+
   if (checker_) {
     checker_->update_parameters(to_checker_params(params_));
   }
@@ -131,13 +122,16 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
     return tl::make_unexpected("Compliance checker is not initialized.");
   }
 
+  if (!status_tracker_) {
+    return tl::make_unexpected("Traffic light status tracker is not initialized.");
+  }
+
   const auto current_time = rclcpp::Time(context.odometry->header.stamp);
   const auto velocity = context.odometry->twist.twist.linear.x;
   const bool is_ego_stopped = std::abs(velocity) < params_.ego_stopped_velocity_threshold;
 
-  // Signal Stability Filter
-  const auto filtered_signals =
-    filter_signals(*context.traffic_light_signals, current_time, is_ego_stopped);
+  const auto filtered_signals = status_tracker_->filter_signals(
+    *context.traffic_light_signals, current_time, is_ego_stopped);
 
   // Amber Hysteresis Tracking
   const auto force_reject_amber_ids = get_force_reject_amber_ids(current_time, is_ego_stopped);
@@ -198,49 +192,6 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
   return ValidationResult{is_feasible, std::move(metrics)};
 }
 
-autoware_perception_msgs::msg::TrafficLightGroupArray TrafficLightFilter::filter_signals(
-  const autoware_perception_msgs::msg::TrafficLightGroupArray & signals,
-  const rclcpp::Time & current_time, bool is_ego_stopped)
-{
-  autoware_perception_msgs::msg::TrafficLightGroupArray filtered_signals;
-  filtered_signals.stamp = signals.stamp;
-
-  for (const auto & signal : signals.traffic_light_groups) {
-    const auto id = signal.traffic_light_group_id;
-    if (signal_history_.find(id) == signal_history_.end()) {
-      signal_history_[id] = {signal, current_time, current_time};
-    } else {
-      if (!is_equal(signal_history_[id].msg.elements, signal.elements)) {
-        signal_history_[id].first_seen_time = current_time;
-        signal_history_[id].msg = signal;
-      }
-      signal_history_[id].last_seen_time = current_time;
-    }
-
-    auto filtered_signal = signal;
-    if (is_ego_stopped) {
-      filtered_signals.traffic_light_groups.push_back(filtered_signal);
-      continue;
-    }
-    const auto state_duration = (current_time - signal_history_[id].first_seen_time).seconds();
-    const bool is_red = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
-      signal.elements, autoware_perception_msgs::msg::TrafficLightElement::CIRCLE,
-      autoware_perception_msgs::msg::TrafficLightElement::RED);
-    const bool is_amber = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
-      signal.elements, autoware_perception_msgs::msg::TrafficLightElement::CIRCLE,
-      autoware_perception_msgs::msg::TrafficLightElement::AMBER);
-
-    if (is_red && state_duration < params_.stable_duration_threshold_red) {
-      filtered_signal.elements.clear();
-    } else if (is_amber && state_duration < params_.stable_duration_threshold_amber) {
-      filtered_signal.elements.clear();
-    }
-    filtered_signals.traffic_light_groups.push_back(filtered_signal);
-  }
-
-  return filtered_signals;
-}
-
 std::vector<int64_t> TrafficLightFilter::get_force_reject_amber_ids(
   const rclcpp::Time & current_time, bool is_ego_stopped) const
 {
@@ -261,19 +212,6 @@ void TrafficLightFilter::cleanup_history(const rclcpp::Time & current_time)
   for (auto it = amber_rejection_history_.begin(); it != amber_rejection_history_.end();) {
     if ((current_time - it->second).seconds() > params_.amber_rejection_hysteresis_duration) {
       it = amber_rejection_history_.erase(it);
-    } else {
-      ++it;
-    }
-  }
-
-  for (auto it = signal_history_.begin(); it != signal_history_.end();) {
-    const auto stable_duration =
-      autoware::traffic_light_utils::hasTrafficLightColor(
-        it->second.msg.elements, autoware_perception_msgs::msg::TrafficLightElement::RED)
-        ? params_.stable_duration_threshold_red
-        : params_.stable_duration_threshold_amber;
-    if ((current_time - it->second.last_seen_time).seconds() > stable_duration) {
-      it = signal_history_.erase(it);
     } else {
       ++it;
     }

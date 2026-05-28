@@ -64,6 +64,13 @@ struct ComplianceResult
   std::vector<Violation> violations;
 };
 
+/// @brief parameters for traffic light signal status tracking
+struct StatusTrackerParameters
+{
+  double stable_duration_threshold_red;
+  double stable_duration_threshold_amber;
+};
+
 /// @brief parameters for traffic light compliance check
 struct Parameters
 {

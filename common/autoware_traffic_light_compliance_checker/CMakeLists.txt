@@ -6,6 +6,7 @@ autoware_package()
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/traffic_light_compliance_checker.cpp
+  src/traffic_light_status_tracker.cpp
 )
 
 if(BUILD_TESTING)
