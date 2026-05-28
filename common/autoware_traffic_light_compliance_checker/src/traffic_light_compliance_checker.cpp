@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_validator/filters/traffic_rule/traffic_light_compliance_checker.hpp"
+#include "autoware/traffic_light_compliance_checker/traffic_light_compliance_checker.hpp"
 
 #include <autoware/interpolation/linear_interpolation.hpp>
 #include <autoware/motion_utils/distance/distance.hpp>
@@ -34,7 +34,7 @@
 
 namespace
 {
-using autoware::trajectory_validator::traffic_light_filter::StopLineInfo;
+using autoware::traffic_light_compliance_checker::StopLineInfo;
 
 /// @brief get stop lines where ego need to stop, and their corresponding signals from the given
 /// traffic light groups
@@ -83,7 +83,7 @@ collect_stop_lines(
 }
 }  // namespace
 
-namespace autoware::trajectory_validator::traffic_light_filter
+namespace autoware::traffic_light_compliance_checker
 {
 
 TrafficLightComplianceChecker::TrafficLightComplianceChecker(
@@ -273,4 +273,4 @@ bool TrafficLightComplianceChecker::can_pass_amber_light(
   return can_pass;
 }
 
-}  // namespace autoware::trajectory_validator::traffic_light_filter
+}  // namespace autoware::traffic_light_compliance_checker

@@ -53,10 +53,10 @@ std::optional<std::string> is_invalid_input(
   return std::nullopt;
 }
 
-autoware::trajectory_validator::traffic_light_filter::Parameters to_checker_params(
+autoware::traffic_light_compliance_checker::Parameters to_checker_params(
   const validator::Params::TrafficLight & params)
 {
-  autoware::trajectory_validator::traffic_light_filter::Parameters p;
+  autoware::traffic_light_compliance_checker::Parameters p;
   p.deceleration_limit = params.deceleration_limit;
   p.jerk_limit = params.jerk_limit;
   p.delay_response_time = params.delay_response_time;
@@ -116,7 +116,7 @@ void TrafficLightFilter::update_parameters(const validator::Params & params)
 void TrafficLightFilter::set_vehicle_info(const VehicleInfo & vehicle_info)
 {
   ValidatorInterface::set_vehicle_info(vehicle_info);
-  checker_ = std::make_unique<traffic_light_filter::TrafficLightComplianceChecker>(
+  checker_ = std::make_unique<traffic_light_compliance_checker::TrafficLightComplianceChecker>(
     to_checker_params(params_), vehicle_info);
 }
 
@@ -142,7 +142,7 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
   // Amber Hysteresis Tracking
   const auto force_reject_amber_ids = get_force_reject_amber_ids(current_time, is_ego_stopped);
 
-  const traffic_light_filter::Inputs inputs{
+  const traffic_light_compliance_checker::Inputs inputs{
     traj_points,
     context.lanelet_map,
     *context.route,
@@ -160,9 +160,9 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
   bool is_crossing_amber = false;
 
   for (const auto & violation : result->violations) {
-    if (violation.type == traffic_light_filter::ViolationType::RED_LIGHT) {
+    if (violation.type == traffic_light_compliance_checker::ViolationType::RED_LIGHT) {
       is_crossing_red = true;
-    } else if (violation.type == traffic_light_filter::ViolationType::AMBER_LIGHT) {
+    } else if (violation.type == traffic_light_compliance_checker::ViolationType::AMBER_LIGHT) {
       is_crossing_amber = true;
       if (
         std::find(

@@ -15,8 +15,9 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__TRAFFIC_RULE__TRAFFIC_LIGHT_FILTER_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__TRAFFIC_RULE__TRAFFIC_LIGHT_FILTER_HPP_
 
-#include "autoware/trajectory_validator/filters/traffic_rule/traffic_light_compliance_checker.hpp"
 #include "autoware/trajectory_validator/validator_interface.hpp"
+
+#include <autoware/traffic_light_compliance_checker/traffic_light_compliance_checker.hpp>
 
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 
@@ -47,7 +48,7 @@ private:
     rclcpp::Time last_seen_time;
   };
 
-  std::unique_ptr<traffic_light_filter::TrafficLightComplianceChecker> checker_;
+  std::unique_ptr<traffic_light_compliance_checker::TrafficLightComplianceChecker> checker_;
   validator::Params::TrafficLight params_;
 
   std::unordered_map<int64_t, SignalStateHistory> signal_history_;
