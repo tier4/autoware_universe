@@ -14,6 +14,20 @@
 
 // #include "../../../src/filters/safety/collision_check_filter/collision_check_filter.cpp"
 
+#include "../../../src/filters/safety/collision_check_filter/assessment.hpp"
+#include "../../../src/filters/safety/collision_check_filter/collision_check_filter.hpp"
+#include "../../../src/filters/safety/collision_check_filter/trajectory_utils.hpp"
+
+#include <autoware/universe_utils/geometry/geometry.hpp>
+#include <autoware_test_utils/autoware_test_utils.hpp>
+#include <autoware_utils_uuid/uuid_helper.hpp>
+#include <rclcpp/rclcpp.hpp>
+
+#include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/twist.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -24,11 +38,41 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
+inline validator::Params load_default_params_from_yaml()
+{
+  const auto validator_param_path = autoware::test_utils::get_absolute_path_to_config(
+    "autoware_trajectory_validator", "trajectory_validator.param.yaml");
+
+  rclcpp::NodeOptions options;
+  autoware::test_utils::updateNodeOptions(options, {validator_param_path});
+  options.append_parameter_override(
+    "filter_names", std::vector<std::string>{"placeholder_filter_for_param_loading"});
+
+  auto node = std::make_shared<rclcpp::Node>("trajectory_validator_test_param_loader", options);
+  validator::ParamListener listener(node->get_node_parameters_interface());
+  return listener.get_params();
+}
 
 class CollisionCheckFilterTest : public ::testing::Test
 {
 protected:
   std::unique_ptr<CollisionCheckFilter> filter_;
+  static validator::Params default_params_;
+
+  static void SetUpTestSuite()
+  {
+    if (!rclcpp::ok()) {
+      rclcpp::init(0, nullptr);
+    }
+    default_params_ = load_default_params_from_yaml();
+  }
+
+  static void TearDownTestSuite()
+  {
+    if (rclcpp::ok()) {
+      rclcpp::shutdown();
+    }
+  }
 
   void SetUp() override
   {
@@ -41,6 +85,7 @@ protected:
     vehicle_info.vehicle_width_m = 2.0;
 
     filter_->set_vehicle_info(vehicle_info);
+    filter_->update_parameters(default_params_);
   }
   geometry_msgs::msg::Twist create_twist(double linear_x, double angular_z)
   {
@@ -176,7 +221,7 @@ protected:
 
   validator::Params create_drac_only_params(double error_deceleration_threshold)
   {
-    validator::Params params;
+    auto params = default_params_;
     params.collision_check.pet_collision.enable_assessment = false;
     params.collision_check.rss.enable_assessment = false;
     params.collision_check.drac.assessment_trajectories.map_based = true;
@@ -190,7 +235,7 @@ protected:
   validator::Params create_pet_only_params(
     double error_threshold_positive, double error_threshold_negative)
   {
-    validator::Params params;
+    auto params = default_params_;
     params.collision_check.drac.enable_assessment = false;
     params.collision_check.rss.enable_assessment = false;
     params.collision_check.pet_collision.assessment_trajectories.map_based = true;
@@ -219,6 +264,8 @@ protected:
     });
   }
 };
+
+validator::Params CollisionCheckFilterTest::default_params_;
 
 TEST_F(CollisionCheckFilterTest, EmptyObjects)
 {
@@ -317,19 +364,22 @@ TEST_F(CollisionCheckFilterTest, ObjectTrajectoryTypesCanBeConfiguredIndependent
   vehicle_info.min_longitudinal_offset_m = -1.0;
   vehicle_info.vehicle_width_m = 2.0;
 
-  PetCollisionParams pet_collision_params;
+  const auto defaults = default_params_.collision_check;
+  PetParams pet_collision_params = defaults.pet_collision;
   pet_collision_params.enable_assessment = true;
   pet_collision_params.assessment_trajectories.map_based = false;
   pet_collision_params.assessment_trajectories.constant_curvature = false;
   pet_collision_params.assessment_trajectories.diffusion_based = false;
-  DracParams drac_params;
+  DracParams drac_params = defaults.drac;
   drac_params.enable_assessment = true;
   drac_params.assessment_trajectories.map_based = false;
   drac_params.assessment_trajectories.constant_curvature = false;
   drac_params.assessment_trajectories.diffusion_based = true;
 
+  const auto pet_param_map = make_param_map_from_base<PetParamMap>(pet_collision_params);
+  const auto drac_param_map = make_param_map_from_base<DracParamMap>(drac_params);
   const auto [pet_artifacts, drac_artifact] = collision_timing_assessment::assess(
-    ego_path, context, pet_collision_params, drac_params, GlobalParams{}, vehicle_info);
+    ego_path, context, pet_param_map, drac_param_map, GlobalParams{}, vehicle_info);
 
   EXPECT_TRUE(pet_artifacts.empty());
   ASSERT_TRUE(drac_artifact.has_value());

@@ -20,6 +20,7 @@
 #include <autoware_trajectory_validator/autoware_trajectory_validator_param.hpp>
 #include <autoware_trajectory_validator/msg/metric_report.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
+#include <rclcpp/parameter.hpp>
 #include <tl_expected/expected.hpp>
 
 #include <autoware_internal_planning_msgs/msg/planning_factor_array.hpp>
@@ -69,6 +70,11 @@ public:
 
   virtual void update_parameters(const validator::Params & params) = 0;
 
+  virtual void set_parameter_overrides(const std::vector<rclcpp::Parameter> & overrides)
+  {
+    parameter_overrides_ = overrides;
+  }
+
   // Set vehicle info
   virtual void set_vehicle_info(const VehicleInfo & vehicle_info)
   {
@@ -110,6 +116,7 @@ protected:
   std::string category_;
   std::shared_ptr<VehicleInfo> vehicle_info_ptr_;
   visualization_msgs::msg::MarkerArray debug_markers_;
+  std::vector<rclcpp::Parameter> parameter_overrides_;
 };
 }  // namespace autoware::trajectory_validator::plugin
 

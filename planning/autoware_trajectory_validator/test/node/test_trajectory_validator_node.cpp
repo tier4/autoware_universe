@@ -32,16 +32,20 @@ protected:
   void SetUp() override
   {
     rclcpp::init(0, nullptr);
-    node_options_.append_parameter_override(
-      "filter_names",
-      std::vector<std::string>{"autoware::trajectory_validator::plugin::DummyFilter"});
-    node_options_.append_parameter_override("dummy.dummy_param", 0.0);
 
     const auto test_pkg_share = ament_index_cpp::get_package_share_directory("autoware_test_utils");
     const auto vehicle_info_param_path = autoware::test_utils::get_absolute_path_to_config(
       "autoware_test_utils", "test_vehicle_info.param.yaml");
+    const auto validator_param_path = autoware::test_utils::get_absolute_path_to_config(
+      "autoware_trajectory_validator", "trajectory_validator.param.yaml");
 
-    autoware::test_utils::updateNodeOptions(node_options_, {vehicle_info_param_path});
+    autoware::test_utils::updateNodeOptions(
+      node_options_, {vehicle_info_param_path, validator_param_path});
+
+    node_options_.append_parameter_override(
+      "filter_names",
+      std::vector<std::string>{"autoware::trajectory_validator::plugin::DummyFilter"});
+    node_options_.append_parameter_override("dummy.dummy_param", 0.0);
 
     node_under_test_ = std::make_shared<TrajectoryValidator>(node_options_);
     test_node_ = std::make_shared<rclcpp::Node>("test_helper_node");

@@ -26,8 +26,8 @@
 
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
-bool is_target_trajectory_type(
-  const AssessmentTrajectories & options, const std::string & trajectory_type)
+template <typename AssessmentT>
+bool is_target_trajectory_type(const AssessmentT & options, const std::string & trajectory_type)
 {
   if (trajectory_type.find("diffusion_based_trajectory") != std::string::npos) {
     return options.diffusion_based;
@@ -41,7 +41,8 @@ bool is_target_trajectory_type(
   return false;
 }
 
-RiskLevel to_pet_risk_level(double pet, const PetThreshold & error_th, const PetThreshold & warn_th)
+template <typename ErrorT, typename WarnT>
+RiskLevel to_pet_risk_level(double pet, const ErrorT & error_th, const WarnT & warn_th)
 {
   const bool is_error =
     pet <= error_th.ego_first_passing_time_gap && pet >= -error_th.object_first_passing_time_gap;
@@ -65,9 +66,10 @@ RiskLevel to_drac_risk_level(const std::optional<double> & acc, const DracParams
   return RiskLevel::SAFE;
 }
 
+template <typename PetRange>
 std::optional<CollisionDetail> find_collision_timing(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
-  PetThreshold pet_find_range, double time_resolution)
+  const PetRange & pet_find_range, double time_resolution)
 {
   const double max_pet_threshold = std::max(
     pet_find_range.ego_first_passing_time_gap, pet_find_range.object_first_passing_time_gap);
@@ -179,6 +181,9 @@ PetArtifact assess_planned_speed_collision_timing(
   for (const auto & object_trajectory : object_trajectories) {
     const auto & pet_params =
       pet_param_map.at(object_trajectory.getObjectIdentification().classification);
+    if (!pet_params.enable_assessment) {
+      continue;
+    }
     if (!is_target_trajectory_type(
           pet_params.assessment_trajectories,
           object_trajectory.getObjectIdentification().trajectory_type)) {
@@ -238,6 +243,9 @@ DracArtifact assess_drac(
     for (const auto & object_trajectory : object_trajectories) {
       const auto & drac_params =
         drac_param_map.at(object_trajectory.getObjectIdentification().classification);
+      if (!drac_params.enable_assessment) {
+        continue;
+      }
       if (!is_target_trajectory_type(
             drac_params.assessment_trajectories,
             object_trajectory.getObjectIdentification().trajectory_type)) {
@@ -317,7 +325,8 @@ std::vector<TrajectoryData> generate_object_trajectories(
       const auto & drac_param = drac_param_map.at(to_type_string(object.classification));
       const auto & pet_param = pet_param_map.at(to_type_string(object.classification));
       const bool is_require_map_based =
-        drac_param.assessment_trajectories.map_based || pet_param.assessment_trajectories.map_based;
+        (drac_param.enable_assessment && drac_param.assessment_trajectories.map_based) ||
+        (pet_param.enable_assessment && pet_param.assessment_trajectories.map_based);
       if (is_require_map_based && !object.kinematics.predicted_paths.empty()) {
         object_trajectories.push_back(
           trajectory::generate_predicted_path_trajectory(
@@ -326,8 +335,8 @@ std::vector<TrajectoryData> generate_object_trajectories(
       }
 
       if (
-        drac_param.assessment_trajectories.constant_curvature ||
-        pet_param.assessment_trajectories.constant_curvature) {
+        (drac_param.enable_assessment && drac_param.assessment_trajectories.constant_curvature) ||
+        (pet_param.enable_assessment && pet_param.assessment_trajectories.constant_curvature)) {
         object_trajectories.push_back(
           trajectory::generate_constant_curvature_trajectory(
             object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
@@ -348,8 +357,9 @@ std::vector<TrajectoryData> generate_object_trajectories(
       }
       const auto & drac_param = drac_param_map.at(to_type_string(object.classification));
       const auto & pet_param = pet_param_map.at(to_type_string(object.classification));
-      const bool is_require_diffusion_based = drac_param.assessment_trajectories.diffusion_based ||
-                                              pet_param.assessment_trajectories.diffusion_based;
+      const bool is_require_diffusion_based =
+        (drac_param.enable_assessment && drac_param.assessment_trajectories.diffusion_based) ||
+        (pet_param.enable_assessment && pet_param.assessment_trajectories.diffusion_based);
       if (is_require_diffusion_based) {
         object_trajectories.push_back(
           trajectory::generate_diffusion_based_trajectory(
