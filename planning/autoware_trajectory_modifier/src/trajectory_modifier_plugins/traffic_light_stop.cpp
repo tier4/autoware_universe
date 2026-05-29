@@ -16,6 +16,9 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp"
 
+#include <memory>
+#include <string>
+
 namespace autoware::trajectory_modifier::plugin
 {
 
@@ -32,8 +35,7 @@ void TrafficLightStop::update_params([[maybe_unused]] const TrajectoryModifierPa
 }
 
 bool TrafficLightStop::is_trajectory_modification_required(
-  [[maybe_unused]] const TrajectoryPoints & traj_points,
-  [[maybe_unused]] const InputData & input)
+  [[maybe_unused]] const TrajectoryPoints & traj_points, [[maybe_unused]] const InputData & input)
 {
   return false;
 }
@@ -45,8 +47,7 @@ bool TrafficLightStop::modify_trajectory(
 }
 
 void TrafficLightStop::check_traffic_lights(
-  [[maybe_unused]] const TrajectoryPoints & traj_points,
-  [[maybe_unused]] const InputData & input)
+  [[maybe_unused]] const TrajectoryPoints & traj_points, [[maybe_unused]] const InputData & input)
 {
 }
 
