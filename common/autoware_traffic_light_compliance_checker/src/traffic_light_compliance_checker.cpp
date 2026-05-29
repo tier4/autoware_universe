@@ -358,14 +358,18 @@ TrafficLightComplianceChecker::get_stop_lines(
   std::vector<StopLineInfo> amber_stop_lines;
   for (const auto & [stop_line_info, signal] :
        collect_stop_lines(lanelet_map, route, traffic_lights.traffic_light_groups)) {
-    if (autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
-          signal.elements, autoware_perception_msgs::msg::TrafficLightElement::CIRCLE,
-          autoware_perception_msgs::msg::TrafficLightElement::RED)) {
+    const bool is_red = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
+      signal.elements, autoware_perception_msgs::msg::TrafficLightElement::CIRCLE,
+      autoware_perception_msgs::msg::TrafficLightElement::RED);
+    const bool is_amber = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
+      signal.elements, autoware_perception_msgs::msg::TrafficLightElement::CIRCLE,
+      autoware_perception_msgs::msg::TrafficLightElement::AMBER);
+    const bool is_unknown = autoware::traffic_light_utils::hasTrafficLightColor(
+      signal.elements, autoware_perception_msgs::msg::TrafficLightElement::UNKNOWN);
+
+    if (is_red || (is_unknown && params_.treat_unknown_light_as_red_light)) {
       red_stop_lines.push_back(stop_line_info);
-    }
-    if (autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
-          signal.elements, autoware_perception_msgs::msg::TrafficLightElement::CIRCLE,
-          autoware_perception_msgs::msg::TrafficLightElement::AMBER)) {
+    } else if (is_amber) {
       amber_stop_lines.push_back(stop_line_info);
     }
   }
