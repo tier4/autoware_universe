@@ -278,6 +278,9 @@ public:
 
     RCLCPP_INFO_THROTTLE(
       getLogger(), *clock_, 1000, "lane parking and freespace parking callbacks finished");
+
+    lane_parking_timer_cb_group_.reset();
+    freespace_parking_timer_cb_group_.reset();
   }
 
   void updateModuleParams([[maybe_unused]] const std::any & parameters) override {}

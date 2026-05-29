@@ -1137,8 +1137,6 @@ double PidLongitudinalController::applyVelocityFeedback(const ControlData & cont
     (m_current_operation_mode.mode == OperationModeState::AUTONOMOUS ||
      m_current_operation_mode.mode == OperationModeState::REMOTE);
 
-  std::cout << "under control 2: " << is_under_control << "\n";
-
   const bool vehicle_is_moving = std::abs(current_vel) > m_current_vel_threshold_pid_integrate;
   const double time_under_control = getTimeUnderControl();
   const bool vehicle_is_stuck =
