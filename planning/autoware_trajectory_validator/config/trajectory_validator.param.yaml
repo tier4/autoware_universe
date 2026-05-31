@@ -31,6 +31,10 @@
           lateral: 0.0
           front: 0.0
           rear: 0.0
+        collision_detection_target_edges:
+          front: true
+          side: true
+          rear: true
         warn_threshold:
           ego_acceleration: -2.0
         error_threshold:
@@ -48,6 +52,10 @@
           lateral: 0.0
           front: 0.0
           rear: 0.0
+        collision_detection_target_edges:
+          front: true
+          side: true
+          rear: true
         ego_assumed_acceleration: -4.0
         warn_threshold:
           ego_first_passing_time_gap: 1.0

@@ -116,6 +116,13 @@ struct EgoFootprintMargin
   double rear{0.0};
 };
 
+struct CollisionDetectionTargetEdges
+{
+  bool front{true};
+  bool side{true};
+  bool rear{true};
+};
+
 struct GlobalParams
 {
   double time_resolution{0.1};
@@ -164,6 +171,9 @@ struct DracParams
     ego_footprint_margin.lateral = drac.ego_footprint_margin.lateral;
     ego_footprint_margin.front = drac.ego_footprint_margin.front;
     ego_footprint_margin.rear = drac.ego_footprint_margin.rear;
+    collision_detection_target_edges.front = drac.collision_detection_target_edges.front;
+    collision_detection_target_edges.side = drac.collision_detection_target_edges.side;
+    collision_detection_target_edges.rear = drac.collision_detection_target_edges.rear;
     warn_threshold.ego_acceleration =
       extract_labeled_param<double>(drac.warn_threshold.ego_acceleration, key);
     error_threshold.ego_acceleration =
@@ -174,6 +184,7 @@ struct DracParams
   AssessmentTrajectories assessment_trajectories{};
   double ego_total_braking_delay{0.4};
   EgoFootprintMargin ego_footprint_margin{};
+  CollisionDetectionTargetEdges collision_detection_target_edges{};
   Threshold warn_threshold{-2.0};
   Threshold error_threshold{};
 };
@@ -184,6 +195,7 @@ struct PetParams
   AssessmentTrajectories assessment_trajectories{};
   double ego_total_braking_delay{0.4};
   EgoFootprintMargin ego_footprint_margin{};
+  CollisionDetectionTargetEdges collision_detection_target_edges{};
   double ego_assumed_acceleration{-5.0};
   PetThreshold warn_threshold{};
   PetThreshold error_threshold{0.6, 0.3};
@@ -205,6 +217,9 @@ struct PetParams
     ego_footprint_margin.lateral = pet.ego_footprint_margin.lateral;
     ego_footprint_margin.front = pet.ego_footprint_margin.front;
     ego_footprint_margin.rear = pet.ego_footprint_margin.rear;
+    collision_detection_target_edges.front = pet.collision_detection_target_edges.front;
+    collision_detection_target_edges.side = pet.collision_detection_target_edges.side;
+    collision_detection_target_edges.rear = pet.collision_detection_target_edges.rear;
     ego_assumed_acceleration = extract_labeled_param<double>(pet.ego_assumed_acceleration, key);
 
     warn_threshold.ego_first_passing_time_gap =

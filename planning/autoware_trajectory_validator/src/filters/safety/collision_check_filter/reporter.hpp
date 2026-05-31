@@ -74,7 +74,8 @@ void add_debug_markers(
   visualization_msgs::msg::MarkerArray & debug_markers, const rclcpp::Time & stamp,
   const std::string & ns, const std::string & trajectory_id, const PoseTrajectory & ego_trajectory,
   const PoseTrajectory & object_trajectory, const Polygon2d & ego_hull,
-  const Polygon2d & object_hull);
+  const Polygon2d & object_hull, const Polygon2d & ego_polygon_at_first_collision,
+  const Polygon2d & object_polygon_at_first_collision);
 
 void add_error_text_marker(
   visualization_msgs::msg::MarkerArray & debug_markers, const rclcpp::Time & stamp,

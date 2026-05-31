@@ -36,6 +36,34 @@ namespace
 {
 using autoware_trajectory_validator::msg::MetricReport;
 
+std::string to_string(const EgoFootprintEdgeIntersections & edges)
+{
+  std::vector<std::string> edge_names;
+  if (edges.front) {
+    edge_names.push_back("front");
+  }
+  if (edges.right) {
+    edge_names.push_back("right");
+  }
+  if (edges.rear) {
+    edge_names.push_back("rear");
+  }
+  if (edges.left) {
+    edge_names.push_back("left");
+  }
+
+  if (edge_names.empty()) {
+    return "none";
+  }
+
+  std::string out = edge_names.front();
+  for (size_t i = 1; i < edge_names.size(); ++i) {
+    out += ",";
+    out += edge_names.at(i);
+  }
+  return out;
+}
+
 struct VisualizationData
 {
   std::string error_msg{};
@@ -147,15 +175,18 @@ void process_pet_artifacts(
     }
 
     const auto finding_msg = fmt::format(
-      "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, duration: {}, stamp: {}.{};",
+      "PET collision, classification: {}, ID: {}, PET: {}, TTC: {}, first edges: {}, duration: "
+      "{}, stamp: {}.{};",
       obj_id.classification, obj_id.trajectory_id_string(), timing.pet, timing.ttc,
+      to_string(timing.ego_collision_edges_at_first_collision),
       pet_continuous_times.get_time(obj_id.trajectory_id_string()), obj_id.stamp.sec,
       obj_id.stamp.nanosec);
     log_messages += finding_msg;
     reporter::append_text_marker_message(marker_messages, finding_msg);
     reporter::add_debug_markers(
       debug_markers, current_time, "planned_speed_collision", obj_id.trajectory_id_string(),
-      timing.ego_trajectory, timing.object_trajectory, timing.ego_hull, timing.object_hull);
+      timing.ego_trajectory, timing.object_trajectory, timing.ego_hull, timing.object_hull,
+      timing.ego_polygon_at_first_collision, timing.object_polygon_at_first_collision);
     if (is_error) {
       add_collision_planning_factor(
         time_resolution, odometry.header.stamp, odometry.pose.pose, timing, "PET",
@@ -192,18 +223,20 @@ void process_drac_artifacts(
 
     const auto finding_msg = fmt::format(
       "DRAC collision, classification: {}, ID: {}, PET: {}, TTC: {}, DRAC: {}, duration: {}, "
-      "stamp: {}.{};",
+      "first edges: {}, stamp: {}.{};",
       obj_id.classification, obj_id.trajectory_id_string(), timing.pet, timing.ttc,
       drac_artifact.required_acceleration.has_value()
         ? std::to_string(drac_artifact.required_acceleration.value())
         : "Cant be avoided",
-      drac_continuous_times.get_time(obj_id.trajectory_id_string()), obj_id.stamp.sec,
+      drac_continuous_times.get_time(obj_id.trajectory_id_string()),
+      to_string(timing.ego_collision_edges_at_first_collision), obj_id.stamp.sec,
       obj_id.stamp.nanosec);
     log_messages += finding_msg;
     reporter::append_text_marker_message(marker_messages, finding_msg);
     reporter::add_debug_markers(
       debug_markers, current_time, "drac_collision", obj_id.trajectory_id_string(),
-      timing.ego_trajectory, timing.object_trajectory, timing.ego_hull, timing.object_hull);
+      timing.ego_trajectory, timing.object_trajectory, timing.ego_hull, timing.object_hull,
+      timing.ego_polygon_at_first_collision, timing.object_polygon_at_first_collision);
     if (has_error) {
       add_collision_planning_factor(
         time_resolution, odometry.header.stamp, odometry.pose.pose, timing, "DRAC",
@@ -280,7 +313,8 @@ void add_debug_markers(
   visualization_msgs::msg::MarkerArray & debug_markers, const rclcpp::Time & stamp,
   const std::string & ns, const std::string & trajectory_id, const PoseTrajectory & ego_trajectory,
   const PoseTrajectory & object_trajectory, const Polygon2d & ego_hull,
-  const Polygon2d & object_hull)
+  const Polygon2d & object_hull, const Polygon2d & ego_polygon_at_first_collision,
+  const Polygon2d & object_polygon_at_first_collision)
 {
   int id = next_marker_id(debug_markers);
   const auto trajectory_color = resolve_trajectory_color(trajectory_id);
@@ -351,6 +385,8 @@ void add_debug_markers(
 
   add_poly_marker(ego_hull, "ego_worst_pet", 0.0F, 0.0F, 1.0F);
   add_poly_marker(object_hull, "obj_worst_pet", 1.0F, 0.0F, 0.0F);
+  add_poly_marker(ego_polygon_at_first_collision, "ego_first_collision", 0.0F, 0.6F, 1.0F);
+  add_poly_marker(object_polygon_at_first_collision, "obj_first_collision", 1.0F, 0.3F, 0.3F);
   add_trajectory_marker(ego_trajectory, "ego_trajectory", 1.0F, 1.0F, 1.0F, 0.9F);
   add_trajectory_marker(
     object_trajectory, "object_trajectory", trajectory_color.r, trajectory_color.g,

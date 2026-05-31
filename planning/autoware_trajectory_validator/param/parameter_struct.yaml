@@ -115,6 +115,22 @@ validator:
           default_value: 0.0
           description: rear margin added to the ego footprint for DRAC assessment
           read_only: false
+      collision_detection_target_edges:
+        front:
+          type: bool
+          default_value: true
+          description: reject DRAC trajectories when the ego front edge collides with an object
+          read_only: false
+        side:
+          type: bool
+          default_value: true
+          description: reject DRAC trajectories when either ego side edge collides with an object
+          read_only: false
+        rear:
+          type: bool
+          default_value: true
+          description: reject DRAC trajectories when the ego rear edge collides with an object
+          read_only: false
       warn_threshold:
         ego_acceleration:
           type: double
@@ -184,6 +200,22 @@ validator:
           type: double
           default_value: 0.0
           description: rear margin added to the ego footprint for PET assessment
+          read_only: false
+      collision_detection_target_edges:
+        front:
+          type: bool
+          default_value: true
+          description: reject PET trajectories when the ego front edge collides with an object
+          read_only: false
+        side:
+          type: bool
+          default_value: true
+          description: reject PET trajectories when either ego side edge collides with an object
+          read_only: false
+        rear:
+          type: bool
+          default_value: true
+          description: reject PET trajectories when the ego rear edge collides with an object
           read_only: false
       ego_assumed_acceleration:
         type: double

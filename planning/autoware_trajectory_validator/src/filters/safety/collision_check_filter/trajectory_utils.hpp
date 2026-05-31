@@ -21,6 +21,7 @@
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/universe_utils/geometry/geometry.hpp>
+#include <autoware_utils/geometry/geometry.hpp>
 #include <rclcpp/duration.hpp>
 
 #include <geometry_msgs/msg/pose.hpp>
@@ -36,7 +37,6 @@
 
 namespace autoware::trajectory_validator::plugin::safety
 {
-
 using IndexRange = std::pair<size_t, size_t>;
 using TimeRange = std::pair<double, double>;
 
@@ -46,6 +46,7 @@ using PoseTrajectory = std::vector<geometry_msgs::msg::Pose>;
 using QuadTrajectory = std::vector<std::array<Point2d, 4>>;
 using NgonTrajectory = std::vector<std::vector<Point2d>>;
 using FootprintTrajectory = std::variant<QuadTrajectory, NgonTrajectory>;
+using BaseFootprint = std::vector<Point2d>;
 
 class TrajectoryData
 {
@@ -54,10 +55,12 @@ private:
   TimeTrajectory times_;
   TravelDistanceTrajectory distances_;
   PoseTrajectory poses_;
+  BaseFootprint base_footprint_;
   FootprintTrajectory footprints_;
   mutable std::map<IndexRange, Box2d> envelope_cache_;
   mutable std::map<IndexRange, Polygon2d> convex_cache_;
 
+public:
   size_t get_same_or_earlier_time_index(const double t) const
   {
     const auto it = std::upper_bound(times_.begin(), times_.end(), t + TIME_INDEX_EPSILON);
@@ -70,6 +73,25 @@ private:
     const auto it = std::lower_bound(times_.begin(), times_.end(), t - TIME_INDEX_EPSILON);
     if (it == times_.end()) return times_.size() - 1;
     return std::distance(times_.begin(), it);
+  }
+
+  geometry_msgs::msg::Pose interpolate_pose_at_time(const double t) const
+  {
+    if (poses_.size() == 1 || t <= times_.front()) {
+      return poses_.front();
+    }
+    if (t >= times_.back()) {
+      return poses_.back();
+    }
+
+    const size_t upper_index = get_same_or_later_time_index(t);
+    const size_t lower_index = get_same_or_earlier_time_index(t);
+    const double lower_time = times_.at(lower_index);
+    const double upper_time = times_.at(upper_index);
+    const double duration = upper_time - lower_time;
+    const double ratio = duration > TIME_INDEX_EPSILON ? (t - lower_time) / duration : 0.0;
+    return autoware_utils::calc_interpolated_pose(
+      poses_.at(lower_index), poses_.at(upper_index), ratio, false);
   }
 
   IndexRange resolve_covering_index_range(const TimeRange & key_time) const
@@ -125,11 +147,13 @@ private:
 public:
   TrajectoryData(
     TrajectoryIdentification trajectory_identification, TimeTrajectory times,
-    TravelDistanceTrajectory distances, PoseTrajectory poses, FootprintTrajectory footprints)
+    TravelDistanceTrajectory distances, PoseTrajectory poses, BaseFootprint base_footprint,
+    FootprintTrajectory footprints)
   : identification_(std::move(trajectory_identification)),
     times_(std::move(times)),
     distances_(std::move(distances)),
     poses_(std::move(poses)),
+    base_footprint_(std::move(base_footprint)),
     footprints_(std::move(footprints))
   {
     if (times_.empty()) {
@@ -144,6 +168,11 @@ public:
     if (times_.size() != poses_.size()) {
       throw std::invalid_argument(
         "Trajectory sizes mismatch (times vs poses) classification: " +
+        identification_.classification);
+    }
+    if (base_footprint_.empty()) {
+      throw std::invalid_argument(
+        "Trajectory base footprint must not be empty classification: " +
         identification_.classification);
     }
     const auto footprint_size =
@@ -161,9 +190,60 @@ public:
   const TimeTrajectory & getTimes() const { return times_; }
   const TravelDistanceTrajectory & getDistances() const { return distances_; }
   const PoseTrajectory & getPoses() const { return poses_; }
+  const BaseFootprint & getBaseFootprint() const { return base_footprint_; }
   const FootprintTrajectory & getFootprints() const { return footprints_; }
 
   size_t size() const { return times_.size(); }
+
+  Polygon2d interpolate_footprint_at_time(const double t) const;
+
+  Box2d get_precise_envelope(const TimeRange & key_time) const
+  {
+    assert(key_time.first <= key_time.second);
+
+    Box2d box;
+    boost::geometry::assign_inverse(box);
+
+    const auto expand_points = [&](const auto & points) {
+      for (const auto & pt : points) {
+        boost::geometry::expand(box, pt);
+      }
+    };
+
+    const auto start_footprint = interpolate_footprint_at_time(key_time.first);
+    expand_points(start_footprint.outer());
+
+    const auto end_footprint = interpolate_footprint_at_time(key_time.second);
+    expand_points(end_footprint.outer());
+
+    return box;
+  }
+
+  Polygon2d get_precise_convex(const TimeRange & key_time) const
+  {
+    assert(key_time.first <= key_time.second);
+
+    MultiPoint2d all_points;
+    const auto append_points = [&](const auto & points) {
+      const size_t point_count =
+        points.empty() ? 0U : points.size() - (points.size() > 1U ? 1U : 0U);
+      all_points.reserve(all_points.size() + point_count);
+      for (size_t i = 0; i < point_count; ++i) {
+        all_points.push_back(points[i]);
+      }
+    };
+
+    const auto start_footprint = interpolate_footprint_at_time(key_time.first);
+    append_points(start_footprint.outer());
+
+    const auto end_footprint = interpolate_footprint_at_time(key_time.second);
+    append_points(end_footprint.outer());
+
+    Polygon2d hull;
+    hull.outer().reserve(all_points.size());
+    boost::geometry::convex_hull(all_points, hull);
+    return hull;
+  }
 
   const Box2d & get_or_compute_envelope(const IndexRange & key) const
   {
@@ -322,8 +402,13 @@ bool intersects_sat(const ConvexPolygon & poly_a, const ConvexPolygon & poly_b)
          !detail::has_separating_axis(ring_b, ring_a, ring_b);
 }
 
+Polygon2d to_polygon2d(const geometry_msgs::msg::Pose & pose, const BaseFootprint & base_polygon);
+
 Polygon2d to_polygon2d(
   const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape);
+
+EgoFootprintEdgeIntersections intersecting_ego_footprint_edges(
+  const Polygon2d & ego_footprint, const Polygon2d & object_polygon);
 }  // namespace autoware::trajectory_validator::plugin::safety::geometry
 
 namespace autoware::trajectory_validator::plugin::safety::trajectory

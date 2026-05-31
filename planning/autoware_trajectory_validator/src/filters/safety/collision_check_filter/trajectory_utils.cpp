@@ -308,21 +308,49 @@ std::vector<Point2d> create_base_polygon(
     Point2d{-ego_dimensions.rear_overhang, half_width}};
 }
 
-Polygon2d to_polygon2d(
-  const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape)
+Polygon2d to_polygon2d(const geometry_msgs::msg::Pose & pose, const BaseFootprint & base_polygon)
 {
   const auto iso = pose_to_isometry(pose);
-  const auto points = create_base_polygon(shape);
 
   Polygon2d polygon;
-  polygon.outer().reserve(points.size() + 1U);
-  for (const auto & point : points) {
+  polygon.outer().reserve(base_polygon.size() + 1U);
+  for (const auto & point : base_polygon) {
     polygon.outer().push_back(transform_point(iso, point));
   }
   if (!polygon.outer().empty()) {
     polygon.outer().push_back(polygon.outer().front());
   }
   return polygon;
+}
+
+Polygon2d to_polygon2d(
+  const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape)
+{
+  return to_polygon2d(pose, create_base_polygon(shape));
+}
+
+EgoFootprintEdgeIntersections intersecting_ego_footprint_edges(
+  const Polygon2d & ego_footprint, const Polygon2d & object_polygon)
+{
+  EgoFootprintEdgeIntersections edges;
+
+  constexpr size_t rectangle_closed_ring_size = 5U;
+  if (ego_footprint.outer().size() < rectangle_closed_ring_size) {
+    return edges;
+  }
+
+  using Segment2d = boost::geometry::model::segment<Point2d>;
+  const auto & ring = ego_footprint.outer();
+  const auto intersects_object = [&](const size_t start_index, const size_t end_index) {
+    return boost::geometry::intersects(
+      Segment2d{ring.at(start_index), ring.at(end_index)}, object_polygon);
+  };
+
+  edges.front = intersects_object(0U, 1U);
+  edges.right = intersects_object(1U, 2U);
+  edges.rear = intersects_object(2U, 3U);
+  edges.left = intersects_object(3U, 0U);
+  return edges;
 }
 }  // namespace autoware::trajectory_validator::plugin::safety::geometry
 
@@ -494,7 +522,18 @@ geometry_msgs::msg::Pose interpolate_predicted_path_pose(
     predicted_path.path.at(index), predicted_path.path.at(next_index), ratio, false);
 }
 }  // namespace detail
+}  // namespace autoware::trajectory_validator::plugin::safety::trajectory
 
+namespace autoware::trajectory_validator::plugin::safety
+{
+Polygon2d TrajectoryData::interpolate_footprint_at_time(const double t) const
+{
+  return geometry::to_polygon2d(interpolate_pose_at_time(t), base_footprint_);
+}
+}  // namespace autoware::trajectory_validator::plugin::safety
+
+namespace autoware::trajectory_validator::plugin::safety::trajectory
+{
 TrajectoryData generate_ego_trajectory(
   const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
   double max_time, const TrajectoryPoints & traj_points,
@@ -509,11 +548,12 @@ TrajectoryData generate_ego_trajectory(
     val += distance_offset;
   }
   auto poses = pose::compute_pose_trajectory(traj_points, distances);
-  auto footprints = footprint::compute_footprint_trajectory(poses, ego_dimensions);
+  auto base_footprint = geometry::create_base_polygon(ego_dimensions);
+  auto footprints = footprint::compute_footprint_trajectory(poses, base_footprint);
 
   return TrajectoryData(
     TrajectoryIdentification{"EGO"}, std::move(times), std::move(distances), std::move(poses),
-    std::move(footprints));
+    std::move(base_footprint), std::move(footprints));
 }
 
 TrajectoryData generate_ego_trajectory(
@@ -540,11 +580,12 @@ TrajectoryData generate_ego_trajectory(
 
   auto poses = pose::compute_pose_trajectory_from_time(traj_points, absolute_times);
   auto distances = detail::compute_cumulative_distances(poses);
-  auto footprints = footprint::compute_footprint_trajectory(poses, ego_dimensions);
+  auto base_footprint = geometry::create_base_polygon(ego_dimensions);
+  auto footprints = footprint::compute_footprint_trajectory(poses, base_footprint);
 
   return TrajectoryData(
     TrajectoryIdentification{"EGO"}, std::move(relative_times), std::move(distances),
-    std::move(poses), std::move(footprints));
+    std::move(poses), std::move(base_footprint), std::move(footprints));
 }
 
 TrajectoryData generate_predicted_path_trajectory(
@@ -565,12 +606,14 @@ TrajectoryData generate_predicted_path_trajectory(
     time_resolution);
 
   auto poses = pose::compute_pose_trajectory(most_confident_path_it->path, distances);
-  auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
+  auto base_footprint = geometry::create_base_polygon(predicted_object.shape);
+  auto footprints = footprint::compute_footprint_trajectory(poses, base_footprint);
 
   return TrajectoryData(
     TrajectoryIdentification{
       predicted_object, stamp, "map_based_predicted_path", assumed_acceleration},
-    std::move(times), std::move(distances), std::move(poses), std::move(footprints));
+    std::move(times), std::move(distances), std::move(poses), std::move(base_footprint),
+    std::move(footprints));
 }
 
 TrajectoryData generate_diffusion_based_trajectory(
@@ -604,11 +647,13 @@ TrajectoryData generate_diffusion_based_trajectory(
       autoware_utils_geometry::calc_distance2d(poses.at(i - 1).position, poses.at(i).position));
   }
 
-  auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
+  auto base_footprint = geometry::create_base_polygon(predicted_object.shape);
+  auto footprints = footprint::compute_footprint_trajectory(poses, base_footprint);
 
   return TrajectoryData(
     TrajectoryIdentification{predicted_object, stamp, "diffusion_based_trajectory", 0.0},
-    std::move(times), std::move(distances), std::move(poses), std::move(footprints));
+    std::move(times), std::move(distances), std::move(poses), std::move(base_footprint),
+    std::move(footprints));
 }
 
 TrajectoryData generate_constant_curvature_trajectory(
@@ -623,12 +668,14 @@ TrajectoryData generate_constant_curvature_trajectory(
   auto poses = pose::constant_curvature_predictor::compute(
     predicted_object.kinematics.initial_pose_with_covariance.pose,
     predicted_object.kinematics.initial_twist_with_covariance.twist, distances);
-  auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
+  auto base_footprint = geometry::create_base_polygon(predicted_object.shape);
+  auto footprints = footprint::compute_footprint_trajectory(poses, base_footprint);
 
   return TrajectoryData(
     TrajectoryIdentification{
       predicted_object, stamp, "constant_curvature_path", assumed_acceleration},
-    std::move(times), std::move(distances), std::move(poses), std::move(footprints));
+    std::move(times), std::move(distances), std::move(poses), std::move(base_footprint),
+    std::move(footprints));
 }
 
 TrajectoryData generate_object_trajectory(
