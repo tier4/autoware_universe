@@ -97,6 +97,19 @@ minimum_rule_based_planner:
         validation:
           gt<>: [0.0]
 
+    lane_change_stop:
+      enable:
+        type: bool
+        default_value: true
+        description: stop before the end of the current lane when a lane change into the preferred lane is required
+
+      stop_margin_from_lane_end:
+        type: double
+        default_value: 5.0
+        description: longitudinal margin between the vehicle front and the end of the current (selected) lane when stopped [m]
+        validation:
+          gt_eq<>: [0.0]
+
   obstacle_stop:
     enable:
       type: bool
@@ -290,6 +303,11 @@ minimum_rule_based_planner:
       type: bool
       default_value: true
       description: publish debug modifier module trajectories
+
+    enable_debug_markers:
+      type: bool
+      default_value: true
+      description: publish aggregated debug markers
 
   # Post-optimization resample parameters
   post_resample:

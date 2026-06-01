@@ -34,6 +34,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <vector>
 
@@ -52,6 +53,7 @@ using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 using sensor_msgs::msg::PointCloud2;
 using unique_identifier_msgs::msg::UUID;
+using visualization_msgs::msg::MarkerArray;
 using Params = ::minimum_rule_based_planner::Params;
 using TrajectoryPoints = std::vector<TrajectoryPoint>;
 using PathPointTrajectory = autoware::experimental::trajectory::Trajectory<PathPointWithLaneId>;

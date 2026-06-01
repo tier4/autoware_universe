@@ -68,6 +68,9 @@ private:
   bool is_data_ready(const InputData & input_data);
   void update_params();
 
+  //! publish aggregated debug markers (preferred lane, selected lane, etc.)
+  void publish_debug_markers();
+
   rclcpp::TimerBase::SharedPtr timer_;
   std::shared_ptr<::minimum_rule_based_planner::ParamListener> param_listener_;
   const UUID generator_uuid_;
@@ -172,6 +175,8 @@ private:
   rclcpp::Publisher<PathWithLaneId>::SharedPtr pub_debug_path_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;
+  //! aggregated debug markers (lanes etc.), separated by namespace
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_debug_marker_;
   /** @} */
 };
 

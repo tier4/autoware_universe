@@ -19,6 +19,7 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/trajectory/utils/pretty_build.hpp>
 #include <autoware/velocity_smoother/resample.hpp>
+#include <autoware_lanelet2_extension/visualization/visualization.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 
 #include <algorithm>
@@ -63,6 +64,7 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   pub_debug_trajectory_ = this->create_publisher<Trajectory>("~/debug/trajectory", 1);
   pub_debug_shifted_trajectory_ =
     this->create_publisher<Trajectory>("~/debug/shifted_trajectory", 1);
+  pub_debug_marker_ = this->create_publisher<MarkerArray>("~/debug/markers", 1);
   debug_processing_time_detail_pub_ =
     this->create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
       "~/debug/processing_time_detail_ms", 1);
@@ -256,8 +258,7 @@ void MinimumRuleBasedPlannerNode::on_timer()
     if (input_data.test_path_with_lane_id_ptr) {
       return *input_data.test_path_with_lane_id_ptr;
     }
-    return path_planner_->plan_path(
-      input_data.odometry_ptr->pose.pose, input_data.odometry_ptr->twist.twist.linear.x);
+    return path_planner_->plan_path(input_data.odometry_ptr->pose.pose);
   }();
 
   if (!path) {
@@ -399,12 +400,46 @@ void MinimumRuleBasedPlannerNode::on_timer()
   if (params_.debug.enable_output_trajectory) {
     pub_debug_trajectory_->publish(smoothed_traj);
   }
+  if (params_.debug.enable_debug_markers) {
+    publish_debug_markers();
+  }
 
   // Publish processing time
   autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
   processing_time_msg.stamp = get_clock()->now();
   processing_time_msg.data = stop_watch_ptr_->toc("processing_time", true);
   debug_processing_time_pub_->publish(processing_time_msg);
+}
+
+void MinimumRuleBasedPlannerNode::publish_debug_markers()
+{
+  const auto make_color = [](float r, float g, float b, float a) {
+    std_msgs::msg::ColorRGBA color;
+    color.r = r;
+    color.g = g;
+    color.b = b;
+    color.a = a;
+    return color;
+  };
+
+  MarkerArray marker_array;
+  const auto append = [&marker_array](const MarkerArray & markers) {
+    marker_array.markers.insert(
+      marker_array.markers.end(), markers.markers.begin(), markers.markers.end());
+  };
+
+  // Preferred lane: the route's ideal lane sequence (green).
+  append(
+    lanelet::visualization::laneletsAsTriangleMarkerArray(
+      "preferred_lanes", path_planner_->route_context().preferred_lanelets,
+      make_color(0.0f, 0.8f, 0.2f, 0.4f)));
+
+  // Selected lane: the current-lane corridor the planner chose to drive along (blue).
+  append(
+    lanelet::visualization::laneletsAsTriangleMarkerArray(
+      "selected_lanes", path_planner_->planned_lanelets(), make_color(0.1f, 0.4f, 1.0f, 0.5f)));
+
+  pub_debug_marker_->publish(marker_array);
 }
 
 MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()

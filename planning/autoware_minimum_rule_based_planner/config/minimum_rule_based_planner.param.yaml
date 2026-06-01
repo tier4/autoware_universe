@@ -24,6 +24,10 @@
         min_speed_for_curvature: 2.77  # [m/s] 10 km/h
         lateral_accel_limit: 1.0      # [m/s^2]
 
+      lane_change_stop:
+        enable: true
+        stop_margin_from_lane_end: 5.0          # [m]
+
       waypoint_group:
         separation_threshold: 1.0
         interval_margin_ratio: 10.0
@@ -109,3 +113,4 @@
       enable_optimizer_trajectory: true
       enable_modifier_trajectory: true
       enable_output_trajectory: true
+      enable_debug_markers: true
