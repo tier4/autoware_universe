@@ -25,6 +25,17 @@
               "default": "/opt/autoware/mlmodels/diffusion_planner/args.json",
               "description": "Path to model argument/configuration file"
             },
+            "precision": {
+              "type": "string",
+              "default": "fp32",
+              "enum": ["fp32", "fp16"],
+              "description": "TensorRT engine precision"
+            },
+            "use_cuda_graph": {
+              "type": "boolean",
+              "default": false,
+              "description": "Use CUDA Graph replay for TensorRT enqueue calls"
+            },
             "single_step_model": {
               "type": "object",
               "properties": {
@@ -69,7 +80,14 @@
               ]
             }
           },
-          "required": ["type", "args_path", "single_step_model", "multi_step_model"]
+          "required": [
+            "type",
+            "args_path",
+            "precision",
+            "use_cuda_graph",
+            "single_step_model",
+            "multi_step_model"
+          ]
         },
         "planning_frequency_hz": {
           "type": "number",

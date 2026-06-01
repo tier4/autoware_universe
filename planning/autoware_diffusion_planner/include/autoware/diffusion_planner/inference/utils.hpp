@@ -33,6 +33,25 @@
 namespace autoware::diffusion_planner
 {
 
+class CudaGraphExecutor
+{
+public:
+  CudaGraphExecutor() = default;
+  ~CudaGraphExecutor();
+
+  CudaGraphExecutor(const CudaGraphExecutor &) = delete;
+  CudaGraphExecutor & operator=(const CudaGraphExecutor &) = delete;
+
+  bool is_captured() const;
+  void reset();
+  bool capture(cudaStream_t stream, const std::function<bool(cudaStream_t)> & enqueue);
+  bool launch(cudaStream_t stream) const;
+
+private:
+  cudaGraph_t graph_{nullptr};
+  cudaGraphExec_t graph_exec_{nullptr};
+};
+
 template <class Container>
 size_t num_elements_without_batch(const Container & shape)
 {
@@ -69,11 +88,18 @@ autoware::tensorrt_common::ProfileDims make_profile_dims(
   const std::string & name, const nvinfer1::Dims & dims, int batch_size);
 
 std::string engine_file_path(const std::string & model_path, int batch_size);
+std::string engine_file_path(
+  const std::string & model_path, int batch_size, const std::string & precision);
 
 std::unique_ptr<autoware::tensorrt_common::TrtCommon> setup_engine(
   const std::string & model_path, const std::string & plugins_path, int batch_size,
+  const std::string & precision,
   const std::vector<autoware::tensorrt_common::NetworkIO> & network_io,
   const std::vector<autoware::tensorrt_common::ProfileDims> & profile_dims);
+
+bool enqueue_trt(
+  autoware::tensorrt_common::TrtCommon & trt, CudaGraphExecutor & cuda_graph, cudaStream_t stream,
+  bool use_cuda_graph);
 
 template <class DevicePtr>
 void transfer_float_input(

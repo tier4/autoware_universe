@@ -30,8 +30,12 @@ namespace autoware::diffusion_planner
 using autoware::tensorrt_common::ProfileDims;
 
 SingleStepInference::SingleStepInference(
-  const std::string & model_path, const std::string & plugins_path, int batch_size)
-: batch_size_(batch_size), plugins_path_(plugins_path)
+  const std::string & model_path, const std::string & plugins_path, int batch_size,
+  const std::string & precision, bool use_cuda_graph)
+: batch_size_(batch_size),
+  plugins_path_(plugins_path),
+  precision_(precision),
+  use_cuda_graph_(use_cuda_graph)
 {
   const size_t sampled_trajectories_size =
     batch_size_ * num_elements_without_batch(SAMPLED_TRAJECTORIES_SHAPE);
@@ -136,7 +140,8 @@ void SingleStepInference::load_engine(const std::string & model_path)
   network_io.emplace_back(
     "turn_indicator_logit", to_dynamic_dims(TURN_INDICATOR_LOGIT_SHAPE, batch_size_));
 
-  network_trt_ptr_ = setup_engine(model_path, plugins_path_, batch_size_, network_io, profile_dims);
+  network_trt_ptr_ =
+    setup_engine(model_path, plugins_path_, batch_size_, precision_, network_io, profile_dims);
 
   bindBuffers();
 }
@@ -232,7 +237,7 @@ SingleStepInference::InferenceResult SingleStepInference::infer(
 
   transferInputsToDevice(input_data_map);
 
-  const bool status = network_trt_ptr_->enqueueV3(stream_);
+  const bool status = enqueue_trt(*network_trt_ptr_, network_cuda_graph_, stream_, use_cuda_graph_);
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   if (!status) {

@@ -18,6 +18,7 @@
 #include "autoware/diffusion_planner/inference/guidance/guidance.hpp"
 #include "autoware/diffusion_planner/inference/inference.hpp"
 #include "autoware/diffusion_planner/inference/solver/dpm_solver.hpp"
+#include "autoware/diffusion_planner/inference/utils.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 
 #include <autoware/cuda_utils/cuda_unique_ptr.hpp>
@@ -41,7 +42,7 @@ public:
   MultiStepInference(
     const std::string & encoder_model_path, const std::string & decoder_model_path,
     const std::string & turn_indicator_model_path, const std::string & plugins_path, int batch_size,
-    int dpm_solver_steps = 10,
+    const std::string & precision = "fp32", bool use_cuda_graph = false, int dpm_solver_steps = 10,
     std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances = {});
   ~MultiStepInference() override;
 
@@ -54,11 +55,16 @@ private:
   int batch_size_{1};
   int dpm_solver_steps_{10};
   std::string plugins_path_;
+  std::string precision_{"fp32"};
+  bool use_cuda_graph_{false};
   std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances_;
 
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> encoder_trt_ptr_{nullptr};
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> decoder_trt_ptr_{nullptr};
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> turn_indicator_trt_ptr_{nullptr};
+  CudaGraphExecutor encoder_cuda_graph_;
+  CudaGraphExecutor decoder_cuda_graph_;
+  CudaGraphExecutor turn_indicator_cuda_graph_;
 
   autoware::cuda_utils::CudaUniquePtr<float[]> sampled_trajectories_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> diffusion_time_d_;

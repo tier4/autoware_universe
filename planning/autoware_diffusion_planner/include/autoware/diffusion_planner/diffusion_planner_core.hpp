@@ -117,6 +117,8 @@ struct DiffusionPlannerParams
   std::string turn_indicator_model_path;
   std::string args_path;
   std::string plugins_path;
+  std::string trt_precision;
+  bool use_cuda_graph;
   bool build_only;
   double planning_frequency_hz;
   bool ignore_neighbors;

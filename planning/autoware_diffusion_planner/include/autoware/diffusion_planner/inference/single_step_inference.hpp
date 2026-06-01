@@ -16,6 +16,7 @@
 #define AUTOWARE__DIFFUSION_PLANNER__INFERENCE__SINGLE_STEP_INFERENCE_HPP_
 
 #include "autoware/diffusion_planner/inference/inference.hpp"
+#include "autoware/diffusion_planner/inference/utils.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 
 #include <autoware/cuda_utils/cuda_unique_ptr.hpp>
@@ -46,7 +47,8 @@ public:
    * @param batch_size Batch size for inference buffers and shapes.
    */
   SingleStepInference(
-    const std::string & model_path, const std::string & plugins_path, int batch_size);
+    const std::string & model_path, const std::string & plugins_path, int batch_size,
+    const std::string & precision = "fp32", bool use_cuda_graph = false);
   ~SingleStepInference() override;
 
   /**
@@ -64,7 +66,10 @@ public:
 private:
   int batch_size_{1};
   std::string plugins_path_;
+  std::string precision_{"fp32"};
+  bool use_cuda_graph_{false};
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> network_trt_ptr_{nullptr};
+  CudaGraphExecutor network_cuda_graph_;
   /**
    * @brief Device buffers for model inputs/outputs.
    */

@@ -36,10 +36,13 @@ using autoware::tensorrt_common::ProfileDims;
 MultiStepInference::MultiStepInference(
   const std::string & encoder_model_path, const std::string & decoder_model_path,
   const std::string & turn_indicator_model_path, const std::string & plugins_path, int batch_size,
-  int dpm_solver_steps, std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances)
+  const std::string & precision, bool use_cuda_graph, int dpm_solver_steps,
+  std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances)
 : batch_size_(batch_size),
   dpm_solver_steps_(dpm_solver_steps),
   plugins_path_(plugins_path),
+  precision_(precision),
+  use_cuda_graph_(use_cuda_graph),
   guidances_(std::move(guidances))
 {
   const std::vector<int64_t> encoding_shape = {batch_size_, ENCODING_TOKEN_NUM, HIDDEN_DIM};
@@ -134,7 +137,8 @@ void MultiStepInference::load_engines(
   encoder_network_io.emplace_back("encoding", to_dynamic_dims(encoding_shape, batch_size_));
 
   encoder_trt_ptr_ = setup_engine(
-    encoder_model_path, plugins_path_, batch_size_, encoder_network_io, encoder_profile_dims);
+    encoder_model_path, plugins_path_, batch_size_, precision_, encoder_network_io,
+    encoder_profile_dims);
 
   std::vector<ProfileDims> decoder_profile_dims;
   std::vector<NetworkIO> decoder_network_io;
@@ -150,7 +154,8 @@ void MultiStepInference::load_engines(
   decoder_network_io.emplace_back("model_output", to_dynamic_dims(model_output_shape, batch_size_));
 
   decoder_trt_ptr_ = setup_engine(
-    decoder_model_path, plugins_path_, batch_size_, decoder_network_io, decoder_profile_dims);
+    decoder_model_path, plugins_path_, batch_size_, precision_, decoder_network_io,
+    decoder_profile_dims);
 
   std::vector<ProfileDims> turn_indicator_profile_dims;
   std::vector<NetworkIO> turn_indicator_network_io;
@@ -165,7 +170,7 @@ void MultiStepInference::load_engines(
     "turn_indicator_logit", to_dynamic_dims(TURN_INDICATOR_LOGIT_SHAPE, batch_size_));
 
   turn_indicator_trt_ptr_ = setup_engine(
-    turn_indicator_model_path, plugins_path_, batch_size_, turn_indicator_network_io,
+    turn_indicator_model_path, plugins_path_, batch_size_, precision_, turn_indicator_network_io,
     turn_indicator_profile_dims);
 
   bind_encoder_buffers();
@@ -344,7 +349,7 @@ std::vector<float> MultiStepInference::evaluate_decoder(const std::vector<float>
     diffusion_time_d_.get(), diffusion_time.data(), diffusion_time.size() * sizeof(float),
     cudaMemcpyHostToDevice, stream_));
 
-  const bool status = decoder_trt_ptr_->enqueueV3(stream_);
+  const bool status = enqueue_trt(*decoder_trt_ptr_, decoder_cuda_graph_, stream_, use_cuda_graph_);
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
   if (!status) {
     throw std::runtime_error("Failed to enqueue decoder inference.");
@@ -382,7 +387,7 @@ MultiStepInference::InferenceResult MultiStepInference::infer(
 
   transfer_inputs_to_device(input_data_map);
 
-  bool status = encoder_trt_ptr_->enqueueV3(stream_);
+  bool status = enqueue_trt(*encoder_trt_ptr_, encoder_cuda_graph_, stream_, use_cuda_graph_);
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
   if (!status) {
     return tl::unexpected(std::string{"Failed to enqueue encoder inference."});
@@ -400,7 +405,8 @@ MultiStepInference::InferenceResult MultiStepInference::infer(
     solver_result.final_x.size() * sizeof(float), cudaMemcpyHostToDevice, stream_));
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
-  status = turn_indicator_trt_ptr_->enqueueV3(stream_);
+  status =
+    enqueue_trt(*turn_indicator_trt_ptr_, turn_indicator_cuda_graph_, stream_, use_cuda_graph_);
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
   if (!status) {
     return tl::unexpected(std::string{"Failed to enqueue turn indicator inference."});

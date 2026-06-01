@@ -96,11 +96,13 @@ void DiffusionPlannerCore::load_model()
     {"start", start_guidance_}, {"stop", stop_guidance_}, {"centerline", centerline_guidance_}};
   if (params_.model_type == "single_step") {
     diffusion_planner_inference_ = std::make_unique<SingleStepInference>(
-      params_.single_step_model_path, params_.plugins_path, params_.batch_size);
+      params_.single_step_model_path, params_.plugins_path, params_.batch_size,
+      params_.trt_precision, params_.use_cuda_graph);
   } else if (params_.model_type == "multi_step") {
     diffusion_planner_inference_ = std::make_unique<MultiStepInference>(
       params_.encoder_model_path, params_.decoder_model_path, params_.turn_indicator_model_path,
-      params_.plugins_path, params_.batch_size, params_.dpm_solver_steps, std::move(guidances));
+      params_.plugins_path, params_.batch_size, params_.trt_precision, params_.use_cuda_graph,
+      params_.dpm_solver_steps, std::move(guidances));
   } else {
     throw std::invalid_argument(
       "Unsupported model.type '" + params_.model_type +
