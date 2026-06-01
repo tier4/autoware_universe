@@ -21,6 +21,7 @@
 #include <gtest/gtest.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -285,7 +286,8 @@ TEST(ObjectFusionMergerNodeTest, testMultipleSubObjectsCanExpandOneMainObject)
   test_manager->test_pub_msg<DetectedObjects>(test_target_node, "input/sub_objects", sub_objects);
 
   ASSERT_EQ(latest_msg.objects.size(), 1U);
-  EXPECT_NEAR(latest_msg.objects.front().kinematics.pose_with_covariance.pose.position.x, 0.0, 1e-3);
+  EXPECT_NEAR(
+    latest_msg.objects.front().kinematics.pose_with_covariance.pose.position.x, 0.0, 1e-3);
   EXPECT_NEAR(latest_msg.objects.front().shape.dimensions.x, 3.2, 1e-3);
 
   rclcpp::shutdown();
@@ -325,7 +327,8 @@ TEST(ObjectFusionMergerNodeTest, testPolygonSubCanExpandMainBoundingBox)
 
   ASSERT_EQ(latest_msg.objects.size(), 1U);
   EXPECT_EQ(latest_msg.objects.front().shape.type, Shape::BOUNDING_BOX);
-  EXPECT_NEAR(latest_msg.objects.front().kinematics.pose_with_covariance.pose.position.x, 1.0, 1e-3);
+  EXPECT_NEAR(
+    latest_msg.objects.front().kinematics.pose_with_covariance.pose.position.x, 1.0, 1e-3);
   EXPECT_NEAR(latest_msg.objects.front().shape.dimensions.x, 7.0, 1e-3);
   EXPECT_NEAR(latest_msg.objects.front().shape.dimensions.y, 3.0, 1e-3);
 

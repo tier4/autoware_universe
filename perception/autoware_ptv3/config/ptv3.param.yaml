@@ -14,8 +14,8 @@
         "drivable_surface",
         "other_flat_surface",
         "sidewalk",
-        "vegetation", 
-        "noise+ghost_point", 
+        "vegetation",
+        "noise+ghost_point",
         "manmade"
       ]
       output_format: ""

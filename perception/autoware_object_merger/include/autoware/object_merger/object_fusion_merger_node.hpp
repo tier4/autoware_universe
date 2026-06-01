@@ -40,7 +40,8 @@
 namespace autoware::object_merger
 {
 /**
- * @brief Merge two detected-object streams by expanding each main object with uniquely overlapped sub objects.
+ * @brief Merge two detected-object streams by expanding each main object with uniquely overlapped
+ * sub objects.
  */
 class ObjectFusionMergerNode : public rclcpp::Node
 {

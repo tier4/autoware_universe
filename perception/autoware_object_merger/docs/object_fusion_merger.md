@@ -18,10 +18,10 @@ The node is stateless across frames.
 
 ### Output
 
-| Name            | Type                                             | Description                                                       |
-| --------------- | ------------------------------------------------ | ----------------------------------------------------------------- |
-| `output/objects` | `autoware_perception_msgs::msg::DetectedObjects` | Main-based detected objects after association and shape expansion |
-| `output/other_objects` | `autoware_perception_msgs::msg::DetectedObjects` | Sub detected objects that did not match any main object |
+| Name                   | Type                                             | Description                                                       |
+| ---------------------- | ------------------------------------------------ | ----------------------------------------------------------------- |
+| `output/objects`       | `autoware_perception_msgs::msg::DetectedObjects` | Main-based detected objects after association and shape expansion |
+| `output/other_objects` | `autoware_perception_msgs::msg::DetectedObjects` | Sub detected objects that did not match any main object           |
 
 The packaged launch file remaps these by default to the following topics:
 
