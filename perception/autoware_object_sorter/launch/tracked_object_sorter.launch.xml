@@ -1,4 +1,6 @@
 <launch>
+  <!-- Node Name -->
+  <arg name="node_name" default="tracked_object_sorter"/>
   <!-- Input -->
   <arg name="input/objects" default="~/input/objects"/>
   <!-- Output -->
@@ -7,7 +9,7 @@
   <arg name="param_path" default="$(find-pkg-share autoware_object_sorter)/config/tracked_object_sorter.param.yaml"/>
 
   <!-- Node -->
-  <node pkg="autoware_object_sorter" exec="tracked_object_sorter_node" name="tracked_object_sorter" output="screen">
+  <node pkg="autoware_object_sorter" exec="tracked_object_sorter_node" name="$(var node_name)" output="screen">
     <remap from="~/input/objects" to="$(var input/objects)"/>
     <remap from="~/output/objects" to="$(var output/objects)"/>
     <param from="$(var param_path)"/>

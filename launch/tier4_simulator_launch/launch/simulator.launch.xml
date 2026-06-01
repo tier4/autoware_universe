@@ -47,6 +47,11 @@
   <arg name="use_perception_online_evaluator" default="false" description="use perception online evaluator"/>
   <arg name="use_perception_analytics_publisher" default="true" description="use perception analytics publisher"/>
 
+  <arg name="use_v2x_tracking_fusion" default="false" description="if true, v2x objects are merged in tracking module. Otherwise, v2x objects are merged in detection module."/>
+  <arg name="v2x_location" default="komatsu" description="location for v2x"/>
+  <arg name="launch_v2i_collective_perception" default="false" description="launch V2I collective perception"/>
+  <arg name="launch_v2i_traffic_signal" default="false" description="launch V2I traffic signal"/>
+
   <arg name="vehicle_model" description="vehicle model name"/>
   <arg name="initial_engage_state" default="true" description="/vehicle/engage state after starting Autoware"/>
 
@@ -94,14 +99,44 @@
         <!-- tracking module -->
         <group>
           <push-ros-namespace namespace="tracking"/>
+          <!-- Run with tracking merger to add far v2x information -->
+          <include file="$(find-pkg-share autoware_object_sorter)/launch/tracked_object_sorter.launch.xml">
+            <arg name="node_name" value="v2x_tracked_object_sorter"/>
+            <arg name="input/objects" value="/v2x/smartpole/tracking/objects"/>
+            <arg name="output/objects" value="v2x/sorted_tracked_objects"/>
+            <arg name="param_path" value="$(var object_recognition_tracking_v2x_tracked_object_sorter_param_path)"/>
+          </include>
+
+          <include file="$(find-pkg-share autoware_detected_object_validation)/launch/tracked_object_lanelet_filter.launch.xml">
+            <arg name="node_name" value="v2x_tracked_object_lanelet_filter"/>
+            <arg name="input/object" value="v2x/sorted_tracked_objects"/>
+            <arg name="output/object" value="v2x/filtered_tracked_objects"/>
+            <arg name="filtering_range_param" value="$(var object_recognition_tracking_v2x_tracked_object_lanelet_filter_param_path)"/>
+          </include>
+          
+          <let name="multi_object_tracker/output/objects" value="objects" unless="$(var use_v2x_tracking_fusion)"/>
+          <let name="multi_object_tracker/output/objects" value="camera_lidar_objects" if="$(var use_v2x_tracking_fusion)"/>
+
           <include file="$(find-pkg-share autoware_multi_object_tracker)/launch/multi_object_tracker.launch.xml">
             <arg name="input/detection01/objects" value="/perception/object_recognition/detection/objects"/>
             <arg name="input/detection01/channel" value="detected_objects"/>
-            <arg name="output/objects" value="objects"/>
+            <arg name="output/objects" value="$(var multi_object_tracker/output/objects)"/>
             <arg name="data_association_matrix_path" value="$(var object_recognition_tracking_multi_object_tracker_data_association_matrix_param_path)"/>
             <arg name="input_channels_path" value="$(var object_recognition_tracking_multi_object_tracker_input_channels_param_path)"/>
             <arg name="tracker_setting_path" value="$(var object_recognition_tracking_multi_object_tracker_node_param_path)"/>
           </include>
+
+          <group if="$(var use_v2x_tracking_fusion)">
+            <!-- tracking object merger to merge camera lidar and radar objects -->
+            <include file="$(find-pkg-share autoware_tracking_object_merger)/launch/decorative_tracker_merger.launch.xml">
+              <arg name="node_name" value="decorative_v2x_tracker_merger"/>
+              <arg name="input/main_object" value="$(var multi_object_tracker/output/objects)"/>
+              <arg name="input/sub_object" value="v2x/filtered_tracked_objects"/>
+              <arg name="output" value="objects"/>
+              <arg name="data_association_matrix_path" value="$(var object_recognition_tracking_v2x_object_merger_data_association_matrix_param_path)"/>
+              <arg name="node_param_file_path" value="$(var object_recognition_tracking_v2x_object_merger_node_param_path)"/>
+            </include>
+          </group>
         </group>
         <!-- prediction module -->
         <group>

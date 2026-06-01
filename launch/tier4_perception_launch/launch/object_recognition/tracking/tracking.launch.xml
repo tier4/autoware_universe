@@ -9,6 +9,12 @@
   <arg name="object_recognition_tracking_object_merger_data_association_matrix_param_path" description="association param file for radar and lidar object merger"/>
   <arg name="object_recognition_tracking_object_merger_node_param_path" description="node param file for radar and lidar object merger"/>
 
+  <!-- V2X Tracking and Merger parameters -->
+  <arg name="object_recognition_tracking_v2x_tracked_object_sorter_param_path" description="param file for v2x distance and velocity filters"/>
+  <arg name="object_recognition_tracking_v2x_tracked_object_lanelet_filter_param_path" description="param file for v2x lanelet filter"/>
+  <arg name="object_recognition_tracking_v2x_object_merger_data_association_matrix_param_path" description="association param file for v2x and lidar object merger"/>
+  <arg name="object_recognition_tracking_v2x_object_merger_node_param_path" description="node param file for v2x and lidar object merger"/>
+
   <!-- Pipeline junctions -->
   <arg name="mode" default="lidar">
     <choice value="camera_lidar_radar_fusion"/>
@@ -20,6 +26,8 @@
 
   <arg name="use_radar_tracking_fusion" default="false" description="use radar tracking fusion"/>
   <let name="use_radar_tracking_fusion" value="false" if="$(eval '&quot;$(var mode)&quot;!=&quot;camera_lidar_radar_fusion&quot;')"/>
+  <arg name="use_v2x_tracking_fusion" default="false" description="use v2x tracking fusion"/>
+  <let name="use_tracking_fusion" value="$(eval &quot;$(var use_radar_tracking_fusion) or $(var use_v2x_tracking_fusion)&quot;)"/>
   <arg name="use_multi_channel_tracker_merger"/>
   <arg name="use_validator" description="use obstacle_pointcloud based validator"/>
   <arg name="use_short_range_detection"/>
@@ -49,6 +57,7 @@
   <arg name="input/camera_only/channel" default="camera_streampetr"/>
   <arg name="input/camera_vru/channel" default="camera_vru"/>
   <arg name="input/camera_vru/objects" default="/perception/object_recognition/detection/camera_vru/objects"/>
+  <arg name="input/v2x/raw_objects" default="/v2x/smartpole/tracking/objects"/>
 
   <arg name="output/objects" default="$(var ns)/objects"/>
 
@@ -60,12 +69,24 @@
     <let name="radar_tracked_object_lanelet_filter/input/object" value="$(var radar_tracked_object_sorter/output/objects)"/>
     <let name="radar_tracked_object_lanelet_filter/output/object" value="$(var ns)/radar/tracked_objects"/>
 
-    <let name="multi_object_tracker/output/objects" value="$(var output/objects)" unless="$(var use_radar_tracking_fusion)"/>
-    <let name="multi_object_tracker/output/objects" value="$(var ns)/near_objects" if="$(var use_radar_tracking_fusion)"/>
+    <let name="multi_object_tracker/output/objects" value="$(var output/objects)" unless="$(var use_tracking_fusion)"/>
+    <let name="multi_object_tracker/output/objects" value="$(var ns)/camera_lidar_objects" if="$(var use_tracking_fusion)"/>
 
     <let name="tracker_merger/input/main_objects" value="$(var multi_object_tracker/output/objects)"/>
     <let name="tracker_merger/input/sub_objects" value="$(var radar_tracked_object_lanelet_filter/output/object)"/>
-    <let name="tracker_merger/output/objects" value="$(var output/objects)"/>
+    <let name="tracker_merger/output/objects" value="$(var output/objects)" unless="$(var use_v2x_tracking_fusion)"/>
+    <let name="tracker_merger/output/objects" value="$(var ns)/camera_lidar_radar_objects" if="$(var use_v2x_tracking_fusion)"/>
+
+    <let name="v2x_tracked_object_sorter/input/objects" value="$(var input/v2x/raw_objects)"/>
+    <let name="v2x_tracked_object_sorter/output/objects" value="$(var ns)/v2x/sorted_tracked_objects"/>
+
+    <let name="v2x_tracked_object_lanelet_filter/input/object" value="$(var v2x_tracked_object_sorter/output/objects)"/>
+    <let name="v2x_tracked_object_lanelet_filter/output/object" value="$(var ns)/v2x/filtered_tracked_objects"/>
+
+    <let name="v2x_tracker_merger/input/main_objects" value="$(var tracker_merger/output/objects)" if="$(var use_radar_tracking_fusion)"/>
+    <let name="v2x_tracker_merger/input/main_objects" value="$(var multi_object_tracker/output/objects)" unless="$(var use_radar_tracking_fusion)"/>
+    <let name="v2x_tracker_merger/input/sub_objects" value="$(var v2x_tracked_object_lanelet_filter/output/object)"/>
+    <let name="v2x_tracker_merger/output/objects" value="$(var output/objects)"/>
 
     <!-- Multi object tracking -->
     <include file="$(find-pkg-share autoware_multi_object_tracker)/launch/multi_object_tracker.launch.xml">
@@ -81,12 +102,14 @@
     <group if="$(var use_radar_tracking_fusion)">
       <!-- radar tracked object filters -->
       <include file="$(find-pkg-share autoware_object_sorter)/launch/tracked_object_sorter.launch.xml">
+        <arg name="node_name" value="radar_tracked_object_sorter"/>
         <arg name="input/objects" value="$(var radar_tracked_object_sorter/input/objects)"/>
         <arg name="output/objects" value="$(var radar_tracked_object_sorter/output/objects)"/>
         <arg name="param_path" value="$(var object_recognition_tracking_radar_tracked_object_sorter_param_path)"/>
       </include>
 
       <include file="$(find-pkg-share autoware_detected_object_validation)/launch/tracked_object_lanelet_filter.launch.xml">
+        <arg name="node_name" value="radar_tracked_object_lanelet_filter"/>
         <arg name="input/object" value="$(var radar_tracked_object_lanelet_filter/input/object)"/>
         <arg name="output/object" value="$(var radar_tracked_object_lanelet_filter/output/object)"/>
         <arg name="filtering_range_param" value="$(var object_recognition_tracking_radar_tracked_object_lanelet_filter_param_path)"/>
@@ -102,6 +125,36 @@
         <arg name="node_param_file_path" value="$(var object_recognition_tracking_object_merger_node_param_path)"/>
       </include>
     </group>
+
+    <!-- Run with tracking merger to add far v2x information -->
+    <include file="$(find-pkg-share autoware_object_sorter)/launch/tracked_object_sorter.launch.xml">
+      <arg name="node_name" value="v2x_tracked_object_sorter"/>
+      <arg name="input/objects" value="$(var v2x_tracked_object_sorter/input/objects)"/>
+      <arg name="output/objects" value="$(var v2x_tracked_object_sorter/output/objects)"/>
+      <arg name="param_path" value="$(var object_recognition_tracking_v2x_tracked_object_sorter_param_path)"/>
+    </include>
+
+    <include file="$(find-pkg-share autoware_detected_object_validation)/launch/tracked_object_lanelet_filter.launch.xml">
+      <arg name="node_name" value="v2x_tracked_object_lanelet_filter"/>
+      <arg name="input/object" value="$(var v2x_tracked_object_lanelet_filter/input/object)"/>
+      <arg name="output/object" value="$(var v2x_tracked_object_lanelet_filter/output/object)"/>
+      <arg name="filtering_range_param" value="$(var object_recognition_tracking_v2x_tracked_object_lanelet_filter_param_path)"/>
+    </include>
+    
+    <group if="$(var use_v2x_tracking_fusion)">
+      <!-- tracking object merger to merge camera lidar and radar objects -->
+      <include file="$(find-pkg-share autoware_tracking_object_merger)/launch/decorative_tracker_merger.launch.xml">
+        <arg name="node_name" value="decorative_v2x_tracker_merger"/>
+        <arg name="input/main_object" value="$(var v2x_tracker_merger/input/main_objects)"/>
+        <!-- <arg name="input/main_object" value="/v2x/dummy_pub"/> -->
+        <arg name="input/sub_object" value="$(var v2x_tracker_merger/input/sub_objects)"/>
+        <arg name="output" value="$(var v2x_tracker_merger/output/objects)"/>
+        <arg name="data_association_matrix_path" value="$(var object_recognition_tracking_v2x_object_merger_data_association_matrix_param_path)"/>
+        <arg name="node_param_file_path" value="$(var object_recognition_tracking_v2x_object_merger_node_param_path)"/>
+      </include>
+    </group>
+
+    
   </group>
 
   <!-- Object list for multi-channel tracker merger -->
