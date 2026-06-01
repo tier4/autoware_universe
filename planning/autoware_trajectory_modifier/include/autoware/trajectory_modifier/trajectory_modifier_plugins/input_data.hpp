@@ -21,6 +21,9 @@
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <lanelet2_core/LaneletMap.h>
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
+#include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 
 namespace autoware::trajectory_modifier::plugin
 {
@@ -30,6 +33,9 @@ struct InputData
   geometry_msgs::msg::AccelWithCovarianceStamped::ConstSharedPtr current_acceleration = nullptr;
   autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr predicted_objects = nullptr;
   sensor_msgs::msg::PointCloud2::ConstSharedPtr obstacle_pointcloud = nullptr;
+  std::shared_ptr<lanelet::LaneletMap> lanelet_map = nullptr;
+  autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr route = nullptr;
+  autoware_perception_msgs::msg::TrafficLightGroupArray::ConstSharedPtr traffic_light_signals = nullptr;
 };
 
 }  // namespace autoware::trajectory_modifier::plugin
