@@ -19,6 +19,8 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 
+#include <tl_expected/expected.hpp>
+
 #include <vector>
 
 namespace autoware::trajectory_modifier::utils
@@ -36,6 +38,14 @@ void replace_trajectory_with_stop_point(
 
 bool is_ego_vehicle_moving(
   const geometry_msgs::msg::Twist & twist, const double velocity_threshold);
+
+double clamp_stop_point_arc_length(
+  const double stop_point_arc_length, const double max_length, const double ego_vel,
+  const double ego_accel, const double decel_limit, const double jerk_limit);
+
+bool stop_point_exists(const TrajectoryPoints & traj_points, const double stop_point_arc_length, const double duplicate_check_threshold = 0.0);
+
+bool insert_stop_point(TrajectoryPoints & trajectory, const double stop_point_arc_length, const double traj_length);
 
 }  // namespace autoware::trajectory_modifier::utils
 

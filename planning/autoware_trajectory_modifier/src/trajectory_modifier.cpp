@@ -39,7 +39,7 @@ TrajectoryModifier::TrajectoryModifier(const rclcpp::NodeOptions & options)
   context_{std::make_shared<TrajectoryModifierContext>(this)}
 {
   sub_map_ = create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
-    "~/input/lanelet2_map", rclcpp::QoS{1}.transient_local(),
+    "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&TrajectoryModifier::on_map, this, std::placeholders::_1));
 
   trajectories_sub_ = create_subscription<CandidateTrajectories>(
@@ -142,19 +142,19 @@ tl::expected<plugin::InputData, std::string> TrajectoryModifier::make_input_data
     return tl::make_unexpected("Data is not ready: current_acceleration is not set");
   }
   if (!input.predicted_objects) {
-    RCLCPP_WARN(get_logger(), "Missing data: predicted_objects is not set");
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: predicted_objects is not set");
   }
   if (!input.obstacle_pointcloud) {
-    RCLCPP_WARN(get_logger(), "Missing data: obstacle_pointcloud is not set");
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: obstacle_pointcloud is not set");
   }
   if (!input.route) {
-    RCLCPP_WARN(get_logger(), "Missing data: route is not set");
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: route is not set");
   }
   if (!input.traffic_light_signals) {
-    RCLCPP_WARN(get_logger(), "Missing data: traffic_light_signals is not set");
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: traffic_light_signals is not set");
   }
   if (!input.lanelet_map) {
-    RCLCPP_WARN(get_logger(), "Missing data: lanelet_map is not set");
+    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: lanelet_map is not set");
   }
   return input;
 }
