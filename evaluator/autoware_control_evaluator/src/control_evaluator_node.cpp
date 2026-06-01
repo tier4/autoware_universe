@@ -19,8 +19,8 @@
 #include <autoware/deprecated/boundary_departure_checker/conversion.hpp>
 #include <autoware/deprecated/boundary_departure_checker/utils.hpp>
 #include <autoware/lanelet2_utils/nn_search.hpp>
-#include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
+#include <autoware_lanelet2_extension/utility/utilities.hpp>
 #include <autoware_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <nlohmann/json.hpp>
