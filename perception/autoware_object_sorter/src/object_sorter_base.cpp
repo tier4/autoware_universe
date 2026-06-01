@@ -55,11 +55,12 @@ ObjectSorterBase<ObjsMsgType>::ObjectSorterBase(
 template <typename ObjsMsgType>
 void ObjectSorterBase<ObjsMsgType>::setupSortTarget(bool use_distance_thresholding)
 {
-  const std::array<std::string, 8> label_names{"UNKNOWN", "CAR",        "TRUCK",   "BUS",
-                                               "TRAILER", "MOTORCYCLE", "BICYCLE", "PEDESTRIAN"};
-  const std::array<uint8_t, 8> label_number{Label::UNKNOWN, Label::CAR,       Label::TRUCK,
-                                            Label::BUS,     Label::TRAILER,   Label::MOTORCYCLE,
-                                            Label::BICYCLE, Label::PEDESTRIAN};
+  const std::array<std::string, 10> label_names{"UNKNOWN", "CAR",        "TRUCK",   "BUS",
+                                                "TRAILER", "MOTORCYCLE", "BICYCLE", "PEDESTRIAN",
+                                                "ANIMAL",  "HAZARD"};
+  const std::array<uint8_t, 10> label_number{
+    Label::UNKNOWN,    Label::CAR,     Label::TRUCK,      Label::BUS,    Label::TRAILER,
+    Label::MOTORCYCLE, Label::BICYCLE, Label::PEDESTRIAN, Label::ANIMAL, Label::HAZARD};
 
   // read each label settings
   for (size_t i = 0; i < label_names.size(); i++) {
