@@ -16,6 +16,8 @@
 
 #include "autoware/tensorrt_plugins/plugin_utils.hpp"
 
+#include <nvtx3/nvtx3.hpp>
+
 #include <NvInferRuntime.h>
 #include <NvInferRuntimePlugin.h>
 #include <spconvlib/spconv/csrc/sparse/all/SpconvOps.h>  // cSpell:ignore spconvlib
@@ -24,8 +26,6 @@
 #include <spconvlib/spconv/csrc/sparse/convops/gemmops/GemmTunerSimple.h>
 #include <spconvlib/spconv/csrc/sparse/convops/spops/ConvGemmOps.h>
 #include <spconvlib/spconv/csrc/sparse/inference/InferenceOps.h>
-
-#include <nvtx3/nvtx3.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -65,6 +65,7 @@ void GetIndicesPairsImplicitGemmPlugin::initFieldsToSerialize()
   data_to_serialize_.emplace_back(
     "subm", &params_.subm, PluginFieldType::kINT32, 1);  // cSpell:ignore subm
   data_to_serialize_.emplace_back("transpose", &params_.transpose, PluginFieldType::kINT32, 1);
+  data_to_serialize_.emplace_back("do_sort", &params_.do_sort, PluginFieldType::kINT32, 1);
 
   fc_to_serialize_.nbFields = data_to_serialize_.size();
   fc_to_serialize_.fields = data_to_serialize_.data();
@@ -402,10 +403,10 @@ std::int32_t GetIndicesPairsImplicitGemmPlugin::enqueue(
     {
       nvtx3::scoped_range nvtx_spconv{"SpconvOps::get_indice_pairs_implicit_gemm"};
       pair_res = SpconvOps::get_indice_pairs_implicit_gemm(
-        alloc, input_indices, params_.batch_size, input_dims, static_cast<int>(params_.algo),
-        ksize, stride, padding, dilation, {0, 0, 0}, params_.subm, params_.transpose,
-        false /*is_train*/, reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_,
-        tv::CUDAKernelTimer(false), use_direct_table);
+        alloc, input_indices, params_.batch_size, input_dims, static_cast<int>(params_.algo), ksize,
+        stride, padding, dilation, {0, 0, 0}, params_.subm, params_.transpose, false /*is_train*/,
+        reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_,
+        tv::CUDAKernelTimer(false), use_direct_table, static_cast<bool>(params_.do_sort));
     }
 
   } else {
@@ -445,10 +446,10 @@ std::int32_t GetIndicesPairsImplicitGemmPlugin::enqueue(
     {
       nvtx3::scoped_range nvtx_spconv{"SpconvOps::get_indice_pairs_implicit_gemm"};
       pair_res = SpconvOps::get_indice_pairs_implicit_gemm(
-        alloc, input_indices, params_.batch_size, input_dims, static_cast<int>(params_.algo),
-        ksize, stride, padding, dilation, {0, 0, 0}, params_.subm, params_.transpose,
-        false /*is_train*/, reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_,
-        tv::CUDAKernelTimer(false), use_direct_table);
+        alloc, input_indices, params_.batch_size, input_dims, static_cast<int>(params_.algo), ksize,
+        stride, padding, dilation, {0, 0, 0}, params_.subm, params_.transpose, false /*is_train*/,
+        reinterpret_cast<std::uintptr_t>(stream), out_indices_num_limit_,
+        tv::CUDAKernelTimer(false), use_direct_table, static_cast<bool>(params_.do_sort));
     }
   }
 
