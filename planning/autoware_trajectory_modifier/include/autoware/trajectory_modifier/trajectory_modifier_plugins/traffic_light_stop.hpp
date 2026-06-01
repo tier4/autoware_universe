@@ -46,7 +46,7 @@ public:
 
   void update_params(const TrajectoryModifierParams & params) override;
 
-  void publish_debug_data([[maybe_unused]] const std::string & ns) const override;
+  const TrajectoryModifierParams::TrafficLightStop & get_params() const { return params_; }
 
 protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
@@ -60,20 +60,9 @@ private:
   std::unique_ptr<autoware::traffic_light_compliance_checker::TrafficLightComplianceChecker>
     checker_;
 
-  SafetyFactorArray safety_factors_;
-
-  MarkerArray marker_array_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_viz_pub_;
-  rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
-
-  void check_traffic_lights(const TrajectoryPoints & traj_points, const InputData & input);
+  bool check_traffic_lights(const TrajectoryPoints & traj_points, const InputData & input);
 
   bool set_stop_point(TrajectoryPoints & traj_points, const InputData & input);
-
-  bool apply_stopping(
-    TrajectoryPoints & traj_points, const double target_stop_point_arc_length) const;
-
-  void publish_debug_string(bool is_safe) const;
 
   bool check_inputs(const InputData & input);
 };

@@ -14,8 +14,8 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp"
 
-#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/motion_utils/distance/distance.hpp>
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 
 #include <cmath>
 
@@ -68,16 +68,18 @@ bool is_ego_vehicle_moving(const geometry_msgs::msg::Twist & twist, const double
 }
 
 double clamp_stop_point_arc_length(
-  const double stop_point_arc_length, const double max_length,
-  const double ego_vel, const double ego_accel, const double decel_limit, const double jerk_limit)
+  const double stop_point_arc_length, const double max_length, const double ego_vel,
+  const double ego_accel, const double decel_limit, const double jerk_limit)
 {
-  auto min_stopping_distance = motion_utils::calculate_stop_distance(
-    ego_vel, ego_accel, decel_limit, jerk_limit, 0.0);
+  auto min_stopping_distance =
+    motion_utils::calculate_stop_distance(ego_vel, ego_accel, decel_limit, jerk_limit, 0.0);
   if (!min_stopping_distance) min_stopping_distance = 0.0;
   return std::clamp(stop_point_arc_length, min_stopping_distance.value(), max_length);
 }
 
-bool stop_point_exists(const TrajectoryPoints & traj_points, const double stop_point_arc_length, const double duplicate_check_threshold)
+bool stop_point_exists(
+  const TrajectoryPoints & traj_points, const double stop_point_arc_length,
+  const double duplicate_check_threshold)
 {
   constexpr double stop_velocity_threshold = 0.01;
   auto checked_distance = 0.0;

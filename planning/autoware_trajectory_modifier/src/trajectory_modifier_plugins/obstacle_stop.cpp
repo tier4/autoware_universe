@@ -211,14 +211,12 @@ bool ObstacleStop::set_stop_point(TrajectoryPoints & traj_points, const InputDat
   const auto stop_margin = params_.stop_margin + context_->vehicle_info.max_longitudinal_offset_m;
   const auto target_stop_point_arc_length = utils::clamp_stop_point_arc_length(
     nearest_collision_point_->arc_length - stop_margin,
-    debug_data_.trajectory_shape.trajectory_length,
-    input.current_odometry->twist.twist.linear.x,
-    input.current_acceleration->accel.accel.linear.x,
-    stopping_params_.maximum_deceleration,
-    stopping_params_.jerk_limit
-  );
+    debug_data_.trajectory_shape.trajectory_length, input.current_odometry->twist.twist.linear.x,
+    input.current_acceleration->accel.accel.linear.x, stopping_params_.maximum_deceleration,
+    stopping_params_.jerk_limit);
 
-  if (utils::stop_point_exists(traj_points, target_stop_point_arc_length, params_.duplicate_check_threshold)) {
+  if (utils::stop_point_exists(
+        traj_points, target_stop_point_arc_length, params_.duplicate_check_threshold)) {
     RCLCPP_WARN_THROTTLE(
       get_node_ptr()->get_logger(), *get_clock(), 1000,
       "[TM ObstacleStop] Preceding (or duplicate) stop point exists, skip inserting stop point");
@@ -227,7 +225,8 @@ bool ObstacleStop::set_stop_point(TrajectoryPoints & traj_points, const InputDat
 
   if (
     target_stop_point_arc_length < stopping_params_.arrived_distance_threshold ||
-    !utils::insert_stop_point(traj_points, target_stop_point_arc_length, debug_data_.trajectory_shape.trajectory_length)) {
+    !utils::insert_stop_point(
+      traj_points, target_stop_point_arc_length, debug_data_.trajectory_shape.trajectory_length)) {
     traj_points = std::invoke([&]() {
       TrajectoryPoints stop_points;
       auto p = traj_points.front();

@@ -115,7 +115,7 @@ void TrafficLightComplianceChecker::update_parameters(const Parameters & paramet
 }
 
 tl::expected<ComplianceResult, std::string> TrafficLightComplianceChecker::check(
-  const Inputs & input)
+  const Inputs & input, const bool check_red_lights, const bool check_amber_lights)
 {
   const bool is_ego_stopped =
     std::abs(input.current_velocity) < params_.ego_stopped_velocity_threshold;
@@ -125,7 +125,8 @@ tl::expected<ComplianceResult, std::string> TrafficLightComplianceChecker::check
   const auto force_reject_amber_ids =
     get_force_reject_amber_ids(input.current_time, is_ego_stopped);
 
-  auto result = check_with_filtered_signals(input, filtered_signals, force_reject_amber_ids);
+  auto result = check_with_filtered_signals(
+    input, filtered_signals, force_reject_amber_ids, check_red_lights, check_amber_lights);
   if (!result) {
     return result;
   }
@@ -270,8 +271,13 @@ tl::expected<ComplianceResult, std::string>
 TrafficLightComplianceChecker::check_with_filtered_signals(
   const Inputs & input,
   const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
-  const std::vector<int64_t> & force_reject_amber_ids) const
+  const std::vector<int64_t> & force_reject_amber_ids, const bool check_red_lights,
+  const bool check_amber_lights) const
 {
+  if (!check_red_lights && !check_amber_lights) {
+    return ComplianceResult{};
+  }
+
   std::vector<autoware_planning_msgs::msg::TrajectoryPoint> trajectory;
   lanelet::BasicLineString2d trajectory_ls;
   const auto ego_stopping_distance = autoware::motion_utils::calculate_stop_distance(
@@ -325,16 +331,20 @@ TrafficLightComplianceChecker::check_with_filtered_signals(
     get_stop_lines(*input.map, input.route, filtered_signals);
 
   ComplianceResult result;
-  result.violations =
-    get_red_light_violations(red_stop_lines, trajectory_ls, stop_point, backward_length);
-  const auto amber_light_violations =
-    params_.treat_amber_light_as_red_light
-      ? get_red_light_violations(amber_stop_lines, trajectory_ls, stop_point, backward_length)
-      : get_amber_light_violations(
-          amber_stop_lines, trajectory, trajectory_ls, stop_point, force_reject_amber_ids,
-          backward_length);
-  result.violations.insert(
-    result.violations.end(), amber_light_violations.begin(), amber_light_violations.end());
+  if (check_red_lights) {
+    result.violations =
+      get_red_light_violations(red_stop_lines, trajectory_ls, stop_point, backward_length);
+  }
+  if (check_amber_lights) {
+    const auto amber_light_violations =
+      params_.treat_amber_light_as_red_light
+        ? get_red_light_violations(amber_stop_lines, trajectory_ls, stop_point, backward_length)
+        : get_amber_light_violations(
+            amber_stop_lines, trajectory, trajectory_ls, stop_point, force_reject_amber_ids,
+            backward_length);
+    result.violations.insert(
+      result.violations.end(), amber_light_violations.begin(), amber_light_violations.end());
+  }
 
   return result;
 }

@@ -142,16 +142,19 @@ tl::expected<plugin::InputData, std::string> TrajectoryModifier::make_input_data
     return tl::make_unexpected("Data is not ready: current_acceleration is not set");
   }
   if (!input.predicted_objects) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: predicted_objects is not set");
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000, "Missing data: predicted_objects is not set");
   }
   if (!input.obstacle_pointcloud) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: obstacle_pointcloud is not set");
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000, "Missing data: obstacle_pointcloud is not set");
   }
   if (!input.route) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: route is not set");
   }
   if (!input.traffic_light_signals) {
-    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: traffic_light_signals is not set");
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000, "Missing data: traffic_light_signals is not set");
   }
   if (!input.lanelet_map) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Missing data: lanelet_map is not set");

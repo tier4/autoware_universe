@@ -83,9 +83,9 @@
     traffic_light_stop:
       stop_margin: 1.0 # [m]
       stop_for_red_light: true
-      stop_for_amber_light: false
+      stop_for_amber_light: true
       treat_amber_light_as_red: false
-      overshoot_tolerance: 0.5 # [m]
+      overshoot_tolerance: 0.0 # [m]
       th_stable_duration_red: 1.0 # [s]
       th_stable_duration_amber: 1.0 # [s]
       th_amber_rejection_hysteresis: 1.0 # [s]

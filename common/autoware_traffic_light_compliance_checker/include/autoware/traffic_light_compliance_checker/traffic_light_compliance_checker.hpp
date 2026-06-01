@@ -57,7 +57,8 @@ public:
    * @param input input data for compliance check (raw signals are filtered internally)
    * @return result of compliance check, or error message if check fails
    */
-  [[nodiscard]] tl::expected<ComplianceResult, std::string> check(const Inputs & input);
+  [[nodiscard]] tl::expected<ComplianceResult, std::string> check(
+    const Inputs & input, const bool check_red_lights = true, const bool check_amber_lights = true);
 
   /**
    * @brief update parameters
@@ -78,7 +79,8 @@ private:
   [[nodiscard]] tl::expected<ComplianceResult, std::string> check_with_filtered_signals(
     const Inputs & input,
     const autoware_perception_msgs::msg::TrafficLightGroupArray & filtered_signals,
-    const std::vector<int64_t> & force_reject_amber_ids) const;
+    const std::vector<int64_t> & force_reject_amber_ids, const bool check_red_lights,
+    const bool check_amber_lights) const;
 
   std::vector<Violation> get_red_light_violations(
     const std::vector<StopLineInfo> & red_stop_lines,
