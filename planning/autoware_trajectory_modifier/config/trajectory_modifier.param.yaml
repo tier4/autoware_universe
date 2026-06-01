@@ -3,9 +3,11 @@
     plugin_names:
       - "autoware::trajectory_modifier::plugin::StopPointFixer"
       - "autoware::trajectory_modifier::plugin::ObstacleStop"
+      - "autoware::trajectory_modifier::plugin::TrafficLightStop"
       - "autoware::trajectory_modifier::plugin::VelocityModifier"
     use_stop_point_fixer: true
     use_obstacle_stop: true
+    use_traffic_light_stop: true
     use_velocity_modifier: true
     trajectory_time_step: 0.1 # [s]
 
@@ -76,3 +78,15 @@
         reaction_time: 0.2 # [s]
         safety_margin: 2.0 # [m]
         lookahead_horizon: 1.5 # [s]
+
+    # Traffic Light Stop Plugin Parameters
+    traffic_light_stop:
+      stop_margin: 1.0 # [m]
+      stop_for_red_light: true
+      stop_for_amber_light: false
+      treat_amber_light_as_red: false
+      overshoot_tolerance: 0.5 # [m]
+      th_stable_duration_red: 1.0 # [s]
+      th_stable_duration_amber: 1.0 # [s]
+      th_amber_rejection_hysteresis: 1.0 # [s]
+      crossing_time_limit: 2.75 # [s]

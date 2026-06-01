@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__TRAFFIC_LIGHT_STOP_HPP_
 #define AUTOWARE__TRAJECTORY_MODIFIER__TRAJECTORY_MODIFIER_PLUGINS__TRAFFIC_LIGHT_STOP_HPP_
 
+#include "autoware/traffic_light_compliance_checker/structs.hpp"
+#include "autoware/traffic_light_compliance_checker/traffic_light_compliance_checker.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_plugins/trajectory_modifier_plugin_base.hpp"
 #include "autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp"
 
@@ -50,7 +52,13 @@ protected:
   void on_initialize(const TrajectoryModifierParams & params) override;
 
 private:
+  TrajectoryModifierParams::TrafficLightStop params_;
   TrajectoryModifierParams::StoppingConstraints stopping_params_;
+
+  std::optional<autoware::traffic_light_compliance_checker::Violation> nearest_violation_;
+
+  std::unique_ptr<autoware::traffic_light_compliance_checker::TrafficLightComplianceChecker>
+    checker_;
 
   SafetyFactorArray safety_factors_;
 
@@ -66,6 +74,8 @@ private:
     TrajectoryPoints & traj_points, const double target_stop_point_arc_length) const;
 
   void publish_debug_string(bool is_safe) const;
+
+  bool check_inputs(const InputData & input);
 };
 
 }  // namespace autoware::trajectory_modifier::plugin

@@ -14,10 +14,10 @@
 
 #include "autoware/trajectory_modifier/trajectory_modifier.hpp"
 
+#include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
 #include <rclcpp/logging.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
-#include <autoware/lanelet2_utils/conversion.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/LaneletMap.h>
@@ -38,7 +38,6 @@ TrajectoryModifier::TrajectoryModifier(const rclcpp::NodeOptions & options)
     "autoware::trajectory_modifier::plugin::TrajectoryModifierPluginBase"),
   context_{std::make_shared<TrajectoryModifierContext>(this)}
 {
-
   sub_map_ = create_subscription<autoware_map_msgs::msg::LaneletMapBin>(
     "~/input/lanelet2_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&TrajectoryModifier::on_map, this, std::placeholders::_1));

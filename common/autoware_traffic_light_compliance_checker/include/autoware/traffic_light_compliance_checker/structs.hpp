@@ -71,6 +71,11 @@ struct Violation
     arc_length_to_cross_point(arc_length_to_cross_point)
   {
   }
+
+  bool operator<(const Violation & other) const
+  {
+    return arc_length_to_cross_point < other.arc_length_to_cross_point;
+  }
 };
 
 /// @brief result of compliance check
