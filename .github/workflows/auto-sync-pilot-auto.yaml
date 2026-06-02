@@ -3,7 +3,7 @@ name: sync-version-to-pilot-auto
 on:
   push:
     branches:
-      - feat/v0.64/e2e # Target branch in universe repo
+      - feat/v0.64/e2e-experiment-2026_06_04 # Target branch in universe repo
 
 jobs:
   sync-version:
@@ -35,7 +35,7 @@ jobs:
           repository: tier4/pilot-auto.x2
           token: ${{ steps.generate-token.outputs.token }}
           path: pilot-auto-repo
-          ref: feat/v4.4/e2e # The target branch in pilot-auto.x2
+          ref: feat/v4.4/e2e-experiment-2026_06_04 # The target branch in pilot-auto.x2
 
       - name: Update autoware.repos
         env:
@@ -57,7 +57,7 @@ jobs:
             Auto-generated PR to sync autoware/universe version from merged changes in universe repository.
 
             cc: @${{ github.actor }} (commit author: ${{ steps.vars.outputs.author }})
-          base: feat/v4.4/e2e
+          base: feat/v4.4/e2e-experiment-2026_06_04
           commit-message: "chore: update autoware/universe version"
           delete-branch: true
           reviewers: ${{ github.actor }}
