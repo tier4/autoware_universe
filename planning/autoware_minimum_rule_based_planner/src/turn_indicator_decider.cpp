@@ -27,28 +27,28 @@ namespace autoware::minimum_rule_based_planner
 {
 namespace
 {
-using turn_signal::PathPointLite;
-using turn_signal::TurnDir;
+using turn_indicator::PathPointLite;
+using turn_indicator::TurnDirection;
 
-TurnDir parse_turn_direction(const std::string & value)
+TurnDirection parse_turn_direction(const std::string & value)
 {
   if (value == "left") {
-    return TurnDir::kLeft;
+    return TurnDirection::LEFT;
   }
   if (value == "right") {
-    return TurnDir::kRight;
+    return TurnDirection::RIGHT;
   }
-  return TurnDir::kNone;
+  return TurnDirection::NONE;
 }
 
-uint8_t to_command(TurnDir dir)
+uint8_t to_command(TurnDirection dir)
 {
   switch (dir) {
-    case TurnDir::kLeft:
+    case TurnDirection::LEFT:
       return TurnIndicatorsCommand::ENABLE_LEFT;
-    case TurnDir::kRight:
+    case TurnDirection::RIGHT:
       return TurnIndicatorsCommand::ENABLE_RIGHT;
-    case TurnDir::kNone:
+    case TurnDirection::NONE:
     default:
       return TurnIndicatorsCommand::DISABLE;
   }
@@ -69,10 +69,11 @@ std::vector<PathPointLite> to_lite_points(const PathWithLaneId & path)
 }
 
 //! Build lane_id -> turn direction map for every lane id referenced by the path.
-std::unordered_map<int64_t, TurnDir> build_direction_map(
+// TODO(odashima): rebuilt from scratch every cycle; cache by lane_id (or per route) to speed up.
+std::unordered_map<int64_t, TurnDirection> build_direction_map(
   const std::vector<PathPointLite> & points, const lanelet::LaneletMapPtr & map)
 {
-  std::unordered_map<int64_t, TurnDir> direction_of;
+  std::unordered_map<int64_t, TurnDirection> direction_of;
   if (!map) {
     return direction_of;
   }
@@ -85,7 +86,7 @@ std::unordered_map<int64_t, TurnDir> build_direction_map(
         const auto lanelet = map->laneletLayer.get(id);
         direction_of[id] = parse_turn_direction(lanelet.attributeOr("turn_direction", "none"));
       } catch (const lanelet::NoSuchPrimitiveError &) {
-        direction_of[id] = TurnDir::kNone;
+        direction_of[id] = TurnDirection::NONE;
       }
     }
   }
@@ -94,12 +95,12 @@ std::unordered_map<int64_t, TurnDir> build_direction_map(
 
 }  // namespace
 
-TurnIndicatorDecider::TurnIndicatorDecider(const turn_signal::TurnSignalParams & params)
+TurnIndicatorDecider::TurnIndicatorDecider(const turn_indicator::TurnSignalParams & params)
 : params_(params), blink_hold_(params.min_blink_duration)
 {
 }
 
-void TurnIndicatorDecider::update_params(const turn_signal::TurnSignalParams & params)
+void TurnIndicatorDecider::update_params(const turn_indicator::TurnSignalParams & params)
 {
   params_ = params;
   blink_hold_.set_min_duration(params.min_blink_duration);
@@ -114,23 +115,23 @@ TurnIndicatorsCommand TurnIndicatorDecider::decide(
 
   const auto points = to_lite_points(path);
   if (points.empty()) {
-    cmd.command = to_command(blink_hold_.update(TurnDir::kNone, stamp.seconds()));
+    cmd.command = to_command(blink_hold_.update(TurnDirection::NONE, stamp.seconds()));
     return cmd;
   }
 
   const auto & map = route_context.lanelet_map_ptr;
   const std::size_t ego_index =
-    turn_signal::nearest_index(points, ego_pose.position.x, ego_pose.position.y);
+    turn_indicator::nearest_index(points, ego_pose.position.x, ego_pose.position.y);
 
   // 1. Intersection turn (lanelet turn_direction attribute).
   const auto direction_of = build_direction_map(points, map);
-  const auto segment = turn_signal::find_next_turn_segment(points, ego_index, direction_of);
-  const TurnDir intersection_dir =
-    turn_signal::decide_intersection_signal(segment, ego_velocity, params_);
+  const auto segment = turn_indicator::find_next_turn_segment(points, ego_index, direction_of);
+  const TurnDirection intersection_dir =
+    turn_indicator::decide_intersection_signal(segment, ego_velocity, params_);
 
   // Record the detected turn-segment geometry for debug visualization.
   debug_.has_segment = false;
-  debug_.direction = TurnDir::kNone;
+  debug_.direction = TurnDirection::NONE;
   if (
     segment && segment->start_index < path.points.size() &&
     segment->end_index < path.points.size()) {
@@ -138,9 +139,8 @@ TurnIndicatorsCommand TurnIndicatorDecider::decide(
     debug_.direction = segment->direction;
     debug_.start_point = path.points[segment->start_index].point.pose.position;
     debug_.end_point = path.points[segment->end_index].point.pose.position;
-    // Path heading at the start point, used to draw the lateral (left/right) debug arrow.
-    // Use a forward neighbour if available, else fall back to the previous point so the
-    // heading is taken between two distinct points (avoids atan2(0,0) at the path end).
+    // Heading at the start point (for the debug arrow); fall back to the previous point at the
+    // path end so two distinct points are used (avoids atan2(0, 0)).
     if (segment->start_index + 1 < path.points.size()) {
       const auto & p0 = path.points[segment->start_index].point.pose.position;
       const auto & p1 = path.points[segment->start_index + 1].point.pose.position;
@@ -154,26 +154,21 @@ TurnIndicatorsCommand TurnIndicatorDecider::decide(
     }
   }
 
-  // 2./3. Pull-out and pull-over direction from the signed lateral offset of the maneuver
-  // endpoint relative to the main-lane (preferred) centerline (autoware_lanelet2_extension
-  // getArcCoordinates: +distance = left of centerline). The offset MAGNITUDE is the trigger,
-  // so no road_shoulder attribute is required (it is often untagged on real maps); a vehicle
-  // tracking the lane centre has offset ~0, so normal driving / curves do not blink.
-  // This mirrors behavior_path start/goal_planner, which signal from the shift sign while the
-  // maneuver is active rather than from a lanelet subtype.
-  TurnDir pull_out_dir = TurnDir::kNone;
-  TurnDir pull_over_dir = TurnDir::kNone;
+  // 2./3. Pull-out and pull-over direction from the signed lateral offset (getArcCoordinates:
+  // +distance = left of centerline) of the maneuver endpoint vs the main-lane centerline. The
+  // offset magnitude is the trigger, so no road_shoulder attribute is needed; a lane-tracking
+  // ego has offset ~0, so normal driving does not blink.
+  TurnDirection pull_out_dir = TurnDirection::NONE;
+  TurnDirection pull_over_dir = TurnDirection::NONE;
   const auto & reference_lanelets = route_context.preferred_lanelets;
   if (!reference_lanelets.empty()) {
-    // Pull-out: ego is offset from the lane it is driving into; it shifts back onto the centre,
-    // i.e. relative shift = (centre ~0) - ego_offset = -ego_offset.
+    // Pull-out: ego shifts from its offset back onto the centre, so direction = -sign(ego_offset).
     const double ego_offset =
       lanelet::utils::getArcCoordinates(reference_lanelets, ego_pose).distance;
     pull_out_dir =
-      turn_signal::direction_from_lateral_offset(-ego_offset, params_.lateral_shift_threshold);
+      turn_indicator::direction_from_lateral_offset(-ego_offset, params_.lateral_shift_threshold);
 
-    // Pull-over: near the goal and the goal sits off the main-lane centre (e.g. a shoulder/bay);
-    // signal toward the side the goal is on.
+    // Pull-over: near the goal, signal toward the side the goal sits on.
     const double dist_to_goal = std::hypot(
       route_context.goal_pose.position.x - ego_pose.position.x,
       route_context.goal_pose.position.y - ego_pose.position.y);
@@ -181,12 +176,12 @@ TurnIndicatorsCommand TurnIndicatorDecider::decide(
       const double goal_offset =
         lanelet::utils::getArcCoordinates(reference_lanelets, route_context.goal_pose).distance;
       pull_over_dir =
-        turn_signal::direction_from_lateral_offset(goal_offset, params_.lateral_shift_threshold);
+        turn_indicator::direction_from_lateral_offset(goal_offset, params_.lateral_shift_threshold);
     }
   }
 
-  const TurnDir desired =
-    turn_signal::resolve_priority(intersection_dir, pull_out_dir, pull_over_dir);
+  const TurnDirection desired =
+    turn_indicator::resolve_priority(intersection_dir, pull_out_dir, pull_over_dir);
   cmd.command = to_command(blink_hold_.update(desired, stamp.seconds()));
   return cmd;
 }

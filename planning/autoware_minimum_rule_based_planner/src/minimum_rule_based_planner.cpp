@@ -46,9 +46,10 @@ trajectory_optimizer::TrajectoryOptimizerData make_optimizer_data(
   return data;
 }
 
-turn_signal::TurnSignalParams make_turn_signal_params(const minimum_rule_based_planner::Params & p)
+turn_indicator::TurnSignalParams make_turn_signal_params(
+  const minimum_rule_based_planner::Params & p)
 {
-  turn_signal::TurnSignalParams params;
+  turn_indicator::TurnSignalParams params;
   params.intersection_search_distance = p.turn_signal.intersection_search_distance;
   params.search_time = p.turn_signal.search_time;
   params.lateral_shift_threshold = p.turn_signal.lateral_shift_threshold;
@@ -465,9 +466,8 @@ void MinimumRuleBasedPlannerNode::publish_debug_markers()
     lanelet::visualization::laneletsAsTriangleMarkerArray(
       "selected_lanes", path_planner_->planned_lanelets(), make_color(0.1f, 0.4f, 1.0f, 0.5f)));
 
-  // Turn-indicator: the detected left/right turn segment (single namespace, unified colour).
-  // Start is an arrow pointing laterally (perpendicular to the path) toward the turn side, so
-  // left/right is read directly; end is a sphere. Both dropped (DELETE) when no segment.
+  // Turn-indicator debug: lateral arrow at the turn-segment start (points to the turn side) and a
+  // sphere at the end; both DELETE'd when no segment is detected.
   {
     constexpr double lateral_arrow_length = 3.0;  // [m] debug arrow length
     const auto & ti_debug = turn_indicator_decider_->debug();
@@ -476,7 +476,7 @@ void MinimumRuleBasedPlannerNode::publish_debug_markers()
                                              : visualization_msgs::msg::Marker::DELETE;
 
     // Left-normal of the heading is (-sin, cos); flip for a right turn.
-    const double side = ti_debug.direction == turn_signal::TurnDir::kRight ? -1.0 : 1.0;
+    const double side = ti_debug.direction == turn_indicator::TurnDirection::RIGHT ? -1.0 : 1.0;
     geometry_msgs::msg::Point arrow_tip = ti_debug.start_point;
     arrow_tip.x += side * lateral_arrow_length * (-std::sin(ti_debug.start_yaw));
     arrow_tip.y += side * lateral_arrow_length * (std::cos(ti_debug.start_yaw));
