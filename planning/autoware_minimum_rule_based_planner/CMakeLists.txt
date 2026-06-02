@@ -14,6 +14,8 @@ generate_parameter_library(minimum_rule_based_planner_parameters
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/minimum_rule_based_planner.cpp
   src/path_planner.cpp
+  src/turn_indicator_decider.cpp
+  src/turn_signal_logic.cpp
   src/velocity_smoother.cpp
 )
 

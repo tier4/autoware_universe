@@ -29,15 +29,16 @@ A minimum rule-based trajectory planner that generates safe and feasible traject
 
 ### Outputs
 
-| Topic                                 | Type                    | Description                                   |
-| ------------------------------------- | ----------------------- | --------------------------------------------- |
-| `~/output/candidate_trajectories`     | `CandidateTrajectories` | Planned trajectory                            |
-| `~/debug/path_with_lane_id`           | `PathWithLaneId`        | Debug: planned path                           |
-| `~/debug/trajectory`                  | `Trajectory`            | Debug: final output trajectory                |
-| `~/debug/shifted_trajectory`          | `Trajectory`            | Debug: trajectory after path shifting         |
-| `~/debug/optimizer/{name}/trajectory` | `Trajectory`            | Debug: trajectory after each optimizer plugin |
-| `~/debug/modifier/{name}/trajectory`  | `Trajectory`            | Debug: trajectory after each modifier plugin  |
-| `~/debug/processing_time_detail_ms`   | `ProcessingTimeDetail`  | Debug: processing time breakdown              |
+| Topic                                 | Type                    | Description                                       |
+| ------------------------------------- | ----------------------- | ------------------------------------------------- |
+| `~/output/candidate_trajectories`     | `CandidateTrajectories` | Planned trajectory                                |
+| `~/output/turn_indicators`            | `TurnIndicatorsCommand` | Turn signal (intersection / pull-out / pull-over) |
+| `~/debug/path_with_lane_id`           | `PathWithLaneId`        | Debug: planned path                               |
+| `~/debug/trajectory`                  | `Trajectory`            | Debug: final output trajectory                    |
+| `~/debug/shifted_trajectory`          | `Trajectory`            | Debug: trajectory after path shifting             |
+| `~/debug/optimizer/{name}/trajectory` | `Trajectory`            | Debug: trajectory after each optimizer plugin     |
+| `~/debug/modifier/{name}/trajectory`  | `Trajectory`            | Debug: trajectory after each modifier plugin      |
+| `~/debug/processing_time_detail_ms`   | `ProcessingTimeDetail`  | Debug: processing time breakdown                  |
 
 ## Parameters
 

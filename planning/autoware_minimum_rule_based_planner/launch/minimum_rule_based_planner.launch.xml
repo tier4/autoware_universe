@@ -23,6 +23,7 @@
   <arg name="input_objects" default="~/input/objects"/>
   <arg name="input_pointcloud" default="~/input/pointcloud"/>
   <arg name="output_candidate_trajectories" default="~/output/candidate_trajectories"/>
+  <arg name="output_turn_indicators" default="~/output/turn_indicators"/>
 
   <!-- Modifier plugins -->
   <arg name="launch_obstacle_stop" default="true"/>
@@ -54,5 +55,6 @@
     <remap from="~/input/objects" to="$(var input_objects)"/>
     <remap from="~/input/pointcloud" to="$(var input_pointcloud)"/>
     <remap from="~/output/candidate_trajectories" to="$(var output_candidate_trajectories)"/>
+    <remap from="~/output/turn_indicators" to="$(var output_turn_indicators)"/>
   </node>
 </launch>

@@ -17,6 +17,7 @@
 
 #include "autoware/trajectory_optimizer/trajectory_optimizer_structs.hpp"
 #include "path_planner.hpp"
+#include "turn_indicator_decider.hpp"
 #include "velocity_smoother.hpp"
 
 #include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
@@ -99,6 +100,16 @@ private:
 private:
   /**
    ***********************************************************
+   * @defgroup turn-indicator turn signal output
+   * Decides the turn-signal command (intersection / pull-out / pull-over).
+   * @{
+   */
+  std::unique_ptr<TurnIndicatorDecider> turn_indicator_decider_;
+  /** @} */
+
+private:
+  /**
+   ***********************************************************
    * @defgroup optimizer-plugins trajectory optimizer plugins
    * @{
    */
@@ -172,6 +183,7 @@ private:
   PathWithLaneId::ConstSharedPtr test_path_with_lane_id_ptr;
 
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
+  rclcpp::Publisher<TurnIndicatorsCommand>::SharedPtr pub_turn_indicators_;
   rclcpp::Publisher<PathWithLaneId>::SharedPtr pub_debug_path_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;

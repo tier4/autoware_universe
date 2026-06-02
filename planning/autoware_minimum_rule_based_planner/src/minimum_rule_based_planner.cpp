@@ -23,6 +23,7 @@
 #include <autoware_utils/geometry/geometry.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <string>
@@ -44,6 +45,17 @@ trajectory_optimizer::TrajectoryOptimizerData make_optimizer_data(
   }
   return data;
 }
+
+turn_signal::TurnSignalParams make_turn_signal_params(const minimum_rule_based_planner::Params & p)
+{
+  turn_signal::TurnSignalParams params;
+  params.intersection_search_distance = p.turn_signal.intersection_search_distance;
+  params.search_time = p.turn_signal.search_time;
+  params.lateral_shift_threshold = p.turn_signal.lateral_shift_threshold;
+  params.pull_over_search_distance = p.turn_signal.pull_over_search_distance;
+  params.min_blink_duration = p.turn_signal.min_blink_duration;
+  return params;
+}
 }  // namespace
 
 MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptions & options)
@@ -60,6 +72,8 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
 
   pub_trajectories_ =
     this->create_publisher<CandidateTrajectories>("~/output/candidate_trajectories", 1);
+  pub_turn_indicators_ =
+    this->create_publisher<TurnIndicatorsCommand>("~/output/turn_indicators", 1);
   pub_debug_path_ = this->create_publisher<PathWithLaneId>("~/debug/path_with_lane_id", 1);
   pub_debug_trajectory_ = this->create_publisher<Trajectory>("~/debug/trajectory", 1);
   pub_debug_shifted_trajectory_ =
@@ -81,6 +95,8 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
 
   path_planner_ =
     std::make_unique<PathPlanner>(get_logger(), get_clock(), time_keeper_, params_, vehicle_info_);
+  turn_indicator_decider_ =
+    std::make_unique<TurnIndicatorDecider>(make_turn_signal_params(params_));
   timer_ = rclcpp::create_timer(
     this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
     std::bind(&MinimumRuleBasedPlannerNode::on_timer, this));
@@ -266,6 +282,16 @@ void MinimumRuleBasedPlannerNode::on_timer()
     return;
   }
 
+  // 2.5 Decide and publish the turn-signal command.
+  //     Done here, while the path still carries lane_ids (lost in convert_path_to_trajectory).
+  {
+    autoware_utils_debug::ScopedTimeTrack st("turn_indicators", *time_keeper_);
+    const auto turn_indicators = turn_indicator_decider_->decide(
+      *path, path_planner_->route_context(), input_data.odometry_ptr->pose.pose,
+      input_data.odometry_ptr->twist.twist.linear.x, now());
+    pub_turn_indicators_->publish(turn_indicators);
+  }
+
   // 3. Convert path to trajectory
   auto traj_from_path =
     path_planner_->convert_path_to_trajectory(*path, params_.path_planning.output.delta_arc_length);
@@ -439,6 +465,52 @@ void MinimumRuleBasedPlannerNode::publish_debug_markers()
     lanelet::visualization::laneletsAsTriangleMarkerArray(
       "selected_lanes", path_planner_->planned_lanelets(), make_color(0.1f, 0.4f, 1.0f, 0.5f)));
 
+  // Turn-indicator: the detected left/right turn segment (single namespace, unified colour).
+  // Start is an arrow pointing laterally (perpendicular to the path) toward the turn side, so
+  // left/right is read directly; end is a sphere. Both dropped (DELETE) when no segment.
+  {
+    constexpr double lateral_arrow_length = 3.0;  // [m] debug arrow length
+    const auto & ti_debug = turn_indicator_decider_->debug();
+    const auto turn_color = make_color(1.0f, 0.5f, 0.0f, 0.9f);
+    const auto action = ti_debug.has_segment ? visualization_msgs::msg::Marker::ADD
+                                             : visualization_msgs::msg::Marker::DELETE;
+
+    // Left-normal of the heading is (-sin, cos); flip for a right turn.
+    const double side = ti_debug.direction == turn_signal::TurnDir::kRight ? -1.0 : 1.0;
+    geometry_msgs::msg::Point arrow_tip = ti_debug.start_point;
+    arrow_tip.x += side * lateral_arrow_length * (-std::sin(ti_debug.start_yaw));
+    arrow_tip.y += side * lateral_arrow_length * (std::cos(ti_debug.start_yaw));
+
+    visualization_msgs::msg::Marker start_marker;
+    start_marker.header.frame_id = "map";
+    start_marker.header.stamp = now();
+    start_marker.ns = "turn_indicator";
+    start_marker.id = 0;
+    start_marker.type = visualization_msgs::msg::Marker::ARROW;
+    start_marker.action = action;
+    start_marker.points.push_back(ti_debug.start_point);
+    start_marker.points.push_back(arrow_tip);
+    start_marker.scale.x = 0.5;  // shaft diameter
+    start_marker.scale.y = 1.5;  // head diameter
+    start_marker.scale.z = 1.5;  // head length
+    start_marker.pose.orientation.w = 1.0;
+    start_marker.color = turn_color;
+    marker_array.markers.push_back(start_marker);
+
+    visualization_msgs::msg::Marker end_marker;
+    end_marker.header.frame_id = "map";
+    end_marker.header.stamp = now();
+    end_marker.ns = "turn_indicator";
+    end_marker.id = 1;
+    end_marker.type = visualization_msgs::msg::Marker::SPHERE;
+    end_marker.action = action;
+    end_marker.pose.position = ti_debug.end_point;
+    end_marker.pose.orientation.w = 1.0;
+    end_marker.scale.x = end_marker.scale.y = end_marker.scale.z = 1.0;
+    end_marker.color = turn_color;
+    marker_array.markers.push_back(end_marker);
+  }
+
   pub_debug_marker_->publish(marker_array);
 }
 
@@ -521,6 +593,7 @@ void MinimumRuleBasedPlannerNode::update_params()
 {
   params_ = param_listener_->get_params();
   path_planner_->update_params(params_);
+  turn_indicator_decider_->update_params(make_turn_signal_params(params_));
 
   for (auto & modifier : modifier_plugins_) {
     modifier->update_params(params_);
