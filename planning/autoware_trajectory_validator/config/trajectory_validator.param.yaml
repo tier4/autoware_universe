@@ -18,6 +18,10 @@
     collision_check:
       global_setting:
         time_resolution: 0.1
+        prediction_time_horizon:
+          constant_curvature: 2.0
+          map_based: 10.0
+          diffusion_based: 10.0
       drac:
         enable_assessment:
           # default value is true.
@@ -25,7 +29,7 @@
         assessment_trajectories:
           map_based: true
           constant_curvature: true
-          diffusion_based: true
+          diffusion_based: false
         ego_total_braking_delay: 0.4
         warn_threshold:
           ego_acceleration: -2.0
@@ -38,7 +42,7 @@
         assessment_trajectories:
           map_based: true
           constant_curvature: true
-          diffusion_based: true
+          diffusion_based: false
         ego_total_braking_delay: 0.4
         ego_assumed_acceleration: -4.0
         warn_threshold:

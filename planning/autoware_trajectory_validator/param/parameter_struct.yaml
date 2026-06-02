@@ -57,6 +57,22 @@ validator:
         default_value: 0.1
         description: sampling interval used in collision check trajectory generation
         read_only: false
+      prediction_time_horizon:
+        constant_curvature:
+          type: double
+          default_value: 10.0
+          description: Time horizon [s] limiting the constant curvature object prediction used in collision check (only the 0..value interval is used)
+          read_only: false
+        map_based:
+          type: double
+          default_value: 10.0
+          description: Time horizon [s] limiting the map based object prediction used in collision check (only the 0..value interval is used)
+          read_only: false
+        diffusion_based:
+          type: double
+          default_value: 10.0
+          description: Time horizon [s] limiting the diffusion based object prediction used in collision check (only the 0..value interval is used)
+          read_only: false
     drac:
       enable_assessment:
         base:

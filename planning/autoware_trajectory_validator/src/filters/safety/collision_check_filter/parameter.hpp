@@ -112,11 +112,18 @@ OutT extract_labeled_param(const ParamStruct & params_struct, const std::string_
 struct GlobalParams
 {
   double time_resolution{0.1};
+  // Time horizon [s] limiting each object prediction type to its 0..value interval.
+  double constant_curvature_time_horizon{10.0};
+  double map_based_time_horizon{10.0};
+  double diffusion_based_time_horizon{10.0};
 
   GlobalParams() = default;
   explicit GlobalParams(const validator::Params::CollisionCheck::GlobalSetting & params)
   {
     time_resolution = params.time_resolution;
+    constant_curvature_time_horizon = params.prediction_time_horizon.constant_curvature;
+    map_based_time_horizon = params.prediction_time_horizon.map_based;
+    diffusion_based_time_horizon = params.prediction_time_horizon.diffusion_based;
   }
 };
 
