@@ -60,11 +60,23 @@ private:
   std::unique_ptr<autoware::traffic_light_compliance_checker::TrafficLightComplianceChecker>
     checker_;
 
+  struct DebugData
+  {
+    bool active = false;
+    size_t violations_count = 0;
+    double nearest_violation_arc_length = 0.0;
+    double stop_point_arc_length = 0.0;
+  } debug_data_;
+
+  rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
+
   bool check_traffic_lights(const TrajectoryPoints & traj_points, const InputData & input);
 
   bool set_stop_point(TrajectoryPoints & traj_points, const InputData & input);
 
   bool check_inputs(const InputData & input);
+
+  void publish_debug_string() const;
 };
 
 }  // namespace autoware::trajectory_modifier::plugin

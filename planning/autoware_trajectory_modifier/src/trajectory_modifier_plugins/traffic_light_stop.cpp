@@ -53,6 +53,8 @@ void TrafficLightStop::on_initialize([[maybe_unused]] const TrajectoryModifierPa
     std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
       node_ptr, "modifier_traffic_light_stop");
 
+  pub_debug_text_ = node_ptr->create_publisher<StringStamped>("~/traffic_light_stop/debug/text", 1);
+
   enabled_ = params.use_traffic_light_stop;
   params_ = params.traffic_light_stop;
   stopping_params_ = params.stopping_constraints;
@@ -115,6 +117,9 @@ bool TrafficLightStop::check_traffic_lights(
   const auto nearest_it = std::min_element(result->violations.begin(), result->violations.end());
   nearest_violation_ = *nearest_it;
 
+  debug_data_.violations_count = result->violations.size();
+  debug_data_.nearest_violation_arc_length = nearest_it->arc_length_to_cross_point;
+
   RCLCPP_WARN_THROTTLE(
     get_node_ptr()->get_logger(), *get_clock(), 1000,
     "[TM TrafficLightStop] Detected traffic light violation at arc length %f m",
@@ -127,11 +132,14 @@ bool TrafficLightStop::modify_trajectory(
 {
   autoware_utils_debug::ScopedTimeTrack st(
     "TrafficLightStop::modify_trajectory", *get_time_keeper());
-  if (!is_trajectory_modification_required(traj_points, input)) return false;
+  debug_data_ = DebugData{};
 
-  if (!nearest_violation_) return false;
+  if (is_trajectory_modification_required(traj_points, input) && nearest_violation_) {
+    debug_data_.active = set_stop_point(traj_points, input);
+  }
 
-  return set_stop_point(traj_points, input);
+  publish_debug_string();
+  return debug_data_.active;
 }
 
 bool TrafficLightStop::set_stop_point(TrajectoryPoints & traj_points, const InputData & input)
@@ -178,10 +186,30 @@ bool TrafficLightStop::set_stop_point(TrajectoryPoints & traj_points, const Inpu
   if (std::isnan(distance)) distance = 0.0;
   planning_factor_interface_->add(distance, stop_pose, PlanningFactor::STOP, SafetyFactorArray{});
 
+  debug_data_.stop_point_arc_length = target_stop_point_arc_length;
+
   RCLCPP_WARN_THROTTLE(
     get_node_ptr()->get_logger(), *get_clock(), 1000,
     "[TM TrafficLightStop] Inserted stop point at arc length %f m", target_stop_point_arc_length);
   return true;
+}
+
+void TrafficLightStop::publish_debug_string() const
+{
+  std::ostringstream ss;
+  ss << std::fixed << std::setprecision(2) << std::boolalpha;
+  ss << "TRAFFIC LIGHT STOP MODIFIER: " << "\n";
+  ss << "\t\t" << "ACTIVE: " << debug_data_.active << "\n";
+  if (debug_data_.active) {
+    ss << "\t\t" << "VIOLATIONS: " << debug_data_.violations_count << "\n";
+    ss << "\t\t" << "NEAREST VIOLATION: " << debug_data_.nearest_violation_arc_length << " m"
+       << "\n";
+    ss << "\t\t" << "STOP POINT: " << debug_data_.stop_point_arc_length << " m" << "\n";
+  }
+  StringStamped string_stamp;
+  string_stamp.stamp = get_clock()->now();
+  string_stamp.data = ss.str();
+  pub_debug_text_->publish(string_stamp);
 }
 
 }  // namespace autoware::trajectory_modifier::plugin
