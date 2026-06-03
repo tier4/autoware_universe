@@ -274,7 +274,7 @@ TrafficLightComplianceChecker::check_with_filtered_signals(
   const std::vector<int64_t> & force_reject_amber_ids, const bool check_red_lights,
   const bool check_amber_lights) const
 {
-  if (!check_red_lights && !check_amber_lights) {
+  if (input.trajectory.empty() || (!check_red_lights && !check_amber_lights)) {
     return ComplianceResult{};
   }
 
