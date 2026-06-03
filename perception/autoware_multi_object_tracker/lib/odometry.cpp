@@ -18,8 +18,6 @@
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
-#include <tf2_ros/create_timer_ros.h>
-
 #include <memory>
 #include <string>
 
@@ -36,10 +34,10 @@ Odometry::Odometry(
   tf_listener_(tf_buffer_),
   enable_odometry_uncertainty_(enable_odometry_uncertainty)
 {
-  // Create tf timer
-  auto cti = std::make_shared<tf2_ros::CreateTimerROS>(
-    node_.get_node_base_interface(), node_.get_node_timers_interface());
-  tf_buffer_.setCreateTimerInterface(cti);
+  // NOTE: No tf2_ros::CreateTimerInterface is set on the buffer. It is only required for
+  // asynchronous waitForTransform() calls, which this class does not use; all lookups here are
+  // synchronous. The agnocast wrapper's Buffer (agnocast::Buffer) also does not expose
+  // setCreateTimerInterface(), so this keeps the code valid in both backends.
 }
 
 void Odometry::updateTfCache(

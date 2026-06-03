@@ -84,7 +84,7 @@ private:
   // set as optional to avoid sending error diagnostics before the node starts processing
   std::optional<double> last_processing_time_ms_;
   std::optional<rclcpp::Time> last_in_time_processing_timestamp_;
-  autoware::agnocast_wrapper::Updater diagnostic_processing_time_updater_{this};
+  autoware::agnocast_wrapper::diagnostic_updater::Updater diagnostic_processing_time_updater_{this};
 };
 }  // namespace autoware::image_projection_based_fusion
 #endif  // AUTOWARE__IMAGE_PROJECTION_BASED_FUSION__POINTPAINTING_FUSION__NODE_HPP_

@@ -149,7 +149,7 @@ FusionNode<Msg3D, Msg2D, ExportObj>::FusionNode(
   // debugger
   debug_mode_ = declare_parameter<bool>("debug_mode");
 #ifdef USE_AGNOCAST_ENABLED
-  if (debug_mode_ && this->is_using_agnocast()) {
+  if (debug_mode_ && autoware::agnocast_wrapper::use_agnocast()) {
     RCLCPP_WARN(
       get_logger(),
       "debug_mode is not supported in Agnocast mode (image_transport requires rclcpp::Node). "

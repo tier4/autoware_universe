@@ -44,7 +44,7 @@ FusionCollector<Msg3D, Msg2D, ExportObj>::FusionCollector(
     std::chrono::duration<double>(init_timeout_sec));
 
   timer_ = autoware::agnocast_wrapper::create_timer(
-    parent_node_.get(), period_ns, [this]() {
+    parent_node_.get(), parent_node_->get_clock(), period_ns, [this]() {
       std::lock_guard<std::mutex> fusion_lock(fusion_mutex_);
       if (status_ == CollectorStatus::Finished) return;
       fusion_callback();
@@ -215,7 +215,7 @@ void FusionCollector<Msg3D, Msg2D, ExportObj>::set_period(const std::chrono::nan
     if (!timer_) {
       return;
     }
-    timer_->set_period(period);
+    autoware::agnocast_wrapper::set_period(timer_, period);
   } catch (const std::exception & ex) {
     RCLCPP_WARN_THROTTLE(
       parent_node_->get_logger(), *parent_node_->get_clock(), 5000, "%s", ex.what());

@@ -126,7 +126,7 @@ private:
     AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_sensing_msgs::msg::ConcatenatedPointCloudInfo)>
     concatenated_info_map_;
 
-  autoware::agnocast_wrapper::Updater diagnostic_updater_{this};
+  autoware::agnocast_wrapper::diagnostic_updater::Updater diagnostic_updater_{this};
   std::shared_ptr<FusionCollectorInfoBase> diagnostic_collector_info_;
   std::unordered_map<std::size_t, double> diagnostic_id_to_stamp_map_;
 

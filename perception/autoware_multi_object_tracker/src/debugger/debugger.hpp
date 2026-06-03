@@ -91,7 +91,7 @@ private:
     processing_time_publisher_;
   AUTOWARE_PUBLISHER_PTR(visualization_msgs::msg::MarkerArray) debug_objects_markers_pub_;
 
-  autoware::agnocast_wrapper::Updater diagnostic_updater_;
+  autoware::agnocast_wrapper::diagnostic_updater::Updater diagnostic_updater_;
   // Object debugger
   TrackerObjectDebugger object_debugger_;
   // Time measurement

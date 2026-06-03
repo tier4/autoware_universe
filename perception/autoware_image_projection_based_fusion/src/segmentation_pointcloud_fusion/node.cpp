@@ -43,7 +43,7 @@ SegmentPointCloudFusionNode::SegmentPointCloudFusionNode(const rclcpp::NodeOptio
   }
   is_publish_debug_mask_ = declare_parameter<bool>("is_publish_debug_mask");
 #ifdef USE_AGNOCAST_ENABLED
-  if (is_publish_debug_mask_ && this->is_using_agnocast()) {
+  if (is_publish_debug_mask_ && autoware::agnocast_wrapper::use_agnocast()) {
     RCLCPP_WARN(
       get_logger(),
       "is_publish_debug_mask is not supported in Agnocast mode (image_transport requires "

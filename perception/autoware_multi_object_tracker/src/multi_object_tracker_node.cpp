@@ -162,7 +162,7 @@ MultiObjectTracker::MultiObjectTracker(const rclcpp::NodeOptions & node_options)
     constexpr double timer_multiplier = 10.0;  // 10 times frequent for publish timing check
     const auto timer_period = rclcpp::Rate(publish_rate * timer_multiplier).period();
     publish_timer_ = autoware::agnocast_wrapper::create_timer(
-      this, timer_period, std::bind(&MultiObjectTracker::onTimer, this));
+      this, get_clock(), timer_period, std::bind(&MultiObjectTracker::onTimer, this));
   }
 
   // Initialize processor
