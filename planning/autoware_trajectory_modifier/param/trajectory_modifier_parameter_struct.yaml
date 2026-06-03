@@ -376,7 +376,7 @@ trajectory_modifier_params:
   traffic_light_stop:
     stop_margin:
       type: double
-      default_value: 1.0
+      default_value: 0.75
       description: Distance to maintain from a traffic light when stopped [m]
       validation:
         bounds<>: [0.0, 100.0]
@@ -405,21 +405,21 @@ trajectory_modifier_params:
       read_only: false
     th_stable_duration_red:
       type: double
-      default_value: 1.0
+      default_value: 0.2
       description: Threshold for stable duration of red light [s]
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
     th_stable_duration_amber:
       type: double
-      default_value: 1.0
+      default_value: 0.2
       description: Threshold for stable duration of amber light [s]
       validation:
         bounds<>: [0.0, 10.0]
       read_only: false
     th_amber_rejection_hysteresis:
       type: double
-      default_value: 1.0
+      default_value: 0.5
       description: Threshold for amber rejection hysteresis [s]
       validation:
         bounds<>: [0.0, 10.0]
