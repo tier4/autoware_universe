@@ -367,15 +367,14 @@ TrafficLightComplianceChecker::get_stop_lines(
     const bool is_unknown = autoware::traffic_light_utils::hasTrafficLightColor(
       signal.elements, autoware_perception_msgs::msg::TrafficLightElement::UNKNOWN);
 
-    if (is_red || (is_unknown && params_.treat_unknown_light_as_red_light)) {
+    const auto is_treated_as_red = is_red ||
+                                   (is_unknown && params_.treat_unknown_light_as_red_light) ||
+                                   (is_amber && params_.treat_amber_light_as_red_light);
+    if (is_treated_as_red) {
       red_stop_lines.push_back(stop_line_info);
     } else if (is_amber) {
       amber_stop_lines.push_back(stop_line_info);
     }
-  }
-  if (params_.treat_amber_light_as_red_light) {
-    red_stop_lines.insert(red_stop_lines.end(), amber_stop_lines.begin(), amber_stop_lines.end());
-    amber_stop_lines.clear();
   }
   return {red_stop_lines, amber_stop_lines};
 }

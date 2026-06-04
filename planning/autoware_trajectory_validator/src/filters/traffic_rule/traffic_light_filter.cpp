@@ -41,7 +41,7 @@ std::string get_signal_label(
     if (params.treat_amber_light_as_red_light) return "amber as red";
     return "amber";
   }
-  if (is_unknown && params.treat_unknown_light_as_red_light) return "unknown as amber";
+  if (is_unknown && params.treat_unknown_light_as_red_light) return "unknown as red";
   return "unknown";
 }
 
