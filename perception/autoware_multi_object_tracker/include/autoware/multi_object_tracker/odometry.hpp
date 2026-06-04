@@ -17,13 +17,12 @@
 
 #include "autoware/multi_object_tracker/object_model/types.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
+#include <autoware/agnocast_wrapper/tf2.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <map>
 #include <optional>
@@ -36,8 +35,8 @@ class Odometry
 {
 public:
   Odometry(
-    rclcpp::Node & node, const std::string & world_frame_id, const std::string & ego_frame_id,
-    bool enable_odometry_uncertainty = false);
+    autoware::agnocast_wrapper::Node & node, const std::string & world_frame_id,
+    const std::string & ego_frame_id, bool enable_odometry_uncertainty = false);
 
   std::optional<geometry_msgs::msg::Transform> getTransform(
     const std::string & source_frame_id, const rclcpp::Time & time) const;
@@ -49,13 +48,13 @@ public:
     const types::DynamicObjectList & input_objects) const;
 
 private:
-  rclcpp::Node & node_;
+  autoware::agnocast_wrapper::Node & node_;
   // frame id
   std::string ego_frame_id_;    // ego vehicle frame
   std::string world_frame_id_;  // absolute/relative ground frame
   // tf
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  autoware::agnocast_wrapper::Buffer tf_buffer_;
+  autoware::agnocast_wrapper::TransformListener tf_listener_;
 
 public:
   bool enable_odometry_uncertainty_ = false;

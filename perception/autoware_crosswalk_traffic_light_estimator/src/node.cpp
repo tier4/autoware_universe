@@ -177,10 +177,12 @@ CrosswalkTrafficLightEstimatorNode::CrosswalkTrafficLightEstimatorNode(
 
   pub_traffic_light_array_ =
     this->create_publisher<TrafficSignalArray>("~/output/traffic_signals", rclcpp::QoS{1});
-  pub_processing_time_ = std::make_shared<DebugPublisher>(this, "~/debug");
+  pub_processing_time_ = std::make_shared<
+    autoware_utils_debug::BasicDebugPublisher<autoware::agnocast_wrapper::Node>>(this, "~/debug");
 }
 
-void CrosswalkTrafficLightEstimatorNode::onMap(const LaneletMapBin::ConstSharedPtr msg)
+void CrosswalkTrafficLightEstimatorNode::onMap(
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(LaneletMapBin) & msg)
 {
   RCLCPP_DEBUG(get_logger(), "[CrosswalkTrafficLightEstimatorNode]: Start loading lanelet");
   lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::remove_const(
@@ -208,7 +210,8 @@ void CrosswalkTrafficLightEstimatorNode::onMap(const LaneletMapBin::ConstSharedP
   RCLCPP_DEBUG(get_logger(), "[CrosswalkTrafficLightEstimatorNode]: Map is loaded");
 }
 
-void CrosswalkTrafficLightEstimatorNode::onRoute(const LaneletRoute::ConstSharedPtr msg)
+void CrosswalkTrafficLightEstimatorNode::onRoute(
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(LaneletRoute) & msg)
 {
   if (lanelet_map_ptr_ == nullptr) {
     RCLCPP_WARN(get_logger(), "cannot set traffic light in route because don't receive map");
@@ -270,7 +273,7 @@ void CrosswalkTrafficLightEstimatorNode::update_crosswalk_overrides_from_map(
 }
 
 void CrosswalkTrafficLightEstimatorNode::onTrafficLightArray(
-  const TrafficSignalArray::ConstSharedPtr msg)
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(TrafficSignalArray) & msg)
 {
   if (lanelet_map_ptr_ == nullptr) {
     RCLCPP_WARN(get_logger(), "cannot process traffic light array because the map is not received");
@@ -280,7 +283,9 @@ void CrosswalkTrafficLightEstimatorNode::onTrafficLightArray(
   StopWatch<std::chrono::milliseconds> stop_watch;
   stop_watch.tic("Total");
 
-  TrafficSignalArray output = *msg;
+  auto output_ptr = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_traffic_light_array_);
+  auto & output = *output_ptr;
+  output = *msg;
 
   TrafficLightIdMap traffic_light_id_map;
 
@@ -311,7 +316,7 @@ void CrosswalkTrafficLightEstimatorNode::onTrafficLightArray(
   updateLastDetectedSignal(traffic_light_id_map);
   updateLastDetectedSignals(traffic_light_id_map);
 
-  pub_traffic_light_array_->publish(output);
+  pub_traffic_light_array_->publish(std::move(output_ptr));
   pub_processing_time_->publish<Float64Stamped>("processing_time_ms", stop_watch.toc("Total"));
 
   return;

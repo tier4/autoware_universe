@@ -31,7 +31,7 @@ namespace autoware::multi_object_tracker
 /////// InputStream ///////
 ///////////////////////////
 InputStream::InputStream(
-  rclcpp::Node & node, const types::InputChannel & input_channel,
+  autoware::agnocast_wrapper::Node & node, const types::InputChannel & input_channel,
   std::shared_ptr<Odometry> odometry)
 : node_(node), channel_(input_channel), odometry_(odometry)
 {
@@ -49,7 +49,7 @@ InputStream::InputStream(
 }
 
 void InputStream::onMessage(
-  const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr msg)
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_perception_msgs::msg::DetectedObjects) & msg)
 {
   const autoware_perception_msgs::msg::DetectedObjects & objects = *msg;
   const rclcpp::Time timestamp = objects.header.stamp;
@@ -238,7 +238,8 @@ void InputStream::getObjectsOlderThan(
 ////////////////////////////
 /////// InputManager ///////
 ////////////////////////////
-InputManager::InputManager(rclcpp::Node & node, std::shared_ptr<Odometry> odometry)
+InputManager::InputManager(
+  autoware::agnocast_wrapper::Node & node, std::shared_ptr<Odometry> odometry)
 : node_(node), odometry_(odometry)
 {
   latest_exported_object_time_ = node_.now() - rclcpp::Duration::from_seconds(3.0);
@@ -267,7 +268,8 @@ void InputManager::init(const std::vector<types::InputChannel> & input_channels)
     RCLCPP_INFO(
       node_.get_logger(), "InputManager::init Initializing %s input stream from %s",
       input_channels[i].long_name.c_str(), input_channels[i].input_topic.c_str());
-    std::function<void(const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr msg)>
+    std::function<void(
+      const AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_perception_msgs::msg::DetectedObjects) &)>
       func = std::bind(&InputStream::onMessage, input_streams_.at(i), std::placeholders::_1);
     sub_objects_array_.at(i) =
       node_.create_subscription<autoware_perception_msgs::msg::DetectedObjects>(

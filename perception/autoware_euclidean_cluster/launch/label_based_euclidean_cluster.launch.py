@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import launch
 from launch.actions import DeclareLaunchArgument
 from launch.actions import OpaqueFunction
@@ -31,8 +33,15 @@ def launch_setup(context, *args, **kwargs):
             return yaml.safe_load(f)["/**"]["ros__parameters"]
 
     ns = ""
+    pkg = "autoware_euclidean_cluster"
+    use_agnocast = os.environ.get("ENABLE_AGNOCAST", "0") == "1"
+
+    # The node stays an rclcpp::Node and only Agnocast-wraps its output publisher (Method 1), so it
+    # is always loaded as a composable node into a container. When Agnocast is enabled the container
+    # must be an Agnocast component container with the heaphook preloaded so the Agnocast publisher
+    # gets zero-copy; otherwise a plain rclcpp component container is used.
     component = ComposableNode(
-        package="autoware_euclidean_cluster",
+        package=pkg,
         namespace=ns,
         plugin="autoware::euclidean_cluster::LabelBasedEuclideanClusterNode",
         name="label_based_euclidean_cluster",
@@ -46,13 +55,29 @@ def launch_setup(context, *args, **kwargs):
         ],
     )
 
+    if use_agnocast:
+        container_package = "agnocast_components"
+        container_executable = "agnocast_component_container"
+        container_env = {
+            "LD_PRELOAD": "/opt/ros/{}/lib/libagnocast_heaphook.so".format(
+                os.environ.get("ROS_DISTRO", "humble")
+            )
+            + ":"
+            + os.environ.get("LD_PRELOAD", ""),
+        }
+    else:
+        container_package = "rclcpp_components"
+        container_executable = "component_container"
+        container_env = {}
+
     container = ComposableNodeContainer(
         name="label_based_euclidean_cluster_container",
         namespace=ns,
-        package="rclcpp_components",
-        executable="component_container",
+        package=container_package,
+        executable=container_executable,
         composable_node_descriptions=[],
         output="screen",
+        additional_env=container_env,
         condition=UnlessCondition(LaunchConfiguration("use_pointcloud_container")),
     )
 

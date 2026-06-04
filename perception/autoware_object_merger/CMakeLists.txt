@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_object_merger)
 
 find_package(autoware_cmake REQUIRED)
+find_package(autoware_agnocast_wrapper REQUIRED)
 autoware_package()
 
 # Ignore -Wnonportable-include-path in Clang for mussp
@@ -30,27 +31,45 @@ target_link_libraries(${PROJECT_NAME}
   Eigen3::Eigen
 )
 
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+  ${autoware_agnocast_wrapper_INCLUDE_DIRS}
+)
+
+ament_target_dependencies(${PROJECT_NAME}
+  autoware_agnocast_wrapper
+  autoware_utils_debug
+  autoware_utils_diagnostics
+)
+
+autoware_agnocast_wrapper_setup(${PROJECT_NAME})
+
 autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::object_merger::ObjectAssociationMergerNode"
   EXECUTABLE object_association_merger_node
   ROS2_EXECUTOR SingleThreadedExecutor
-  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::object_merger::ObjectFusionMergerNode"
   EXECUTABLE object_fusion_merger_node
   ROS2_EXECUTOR SingleThreadedExecutor
-  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
-  ament_auto_add_gtest(object_fusion_merger_node_tests
-    test/test_object_fusion_merger_node.cpp
-  )
+  # The fusion merger test instantiates the migrated agnocast_wrapper::Node directly. When Agnocast
+  # is enabled the node is compiled with USE_AGNOCAST_ENABLED, so building the test (without that
+  # define) would create an ABI mismatch. Skip it in that configuration.
+  if(NOT "$ENV{ENABLE_AGNOCAST}" STREQUAL "1")
+    ament_auto_add_gtest(object_fusion_merger_node_tests
+      test/test_object_fusion_merger_node.cpp
+    )
+  endif()
 endif()
 
 ament_auto_package(INSTALL_TO_SHARE

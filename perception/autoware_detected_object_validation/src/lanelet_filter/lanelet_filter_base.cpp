@@ -54,7 +54,7 @@ using TriangleMesh = std::vector<std::array<Eigen::Vector3d, 3>>;
 template <typename ObjsMsgType, typename ObjMsgType>
 ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::ObjectLaneletFilterBase(
   const std::string & node_name, const rclcpp::NodeOptions & node_options)
-: Node(node_name, node_options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_)
+: Node(node_name, node_options), tf_buffer_(this->get_clock()), tf_listener_(tf_buffer_, *this)
 {
   using std::placeholders::_1;
 
@@ -106,9 +106,11 @@ ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::ObjectLaneletFilterBase(
     "input/object", rclcpp::QoS{1}, std::bind(&ObjectLaneletFilterBase::objectCallback, this, _1));
   object_pub_ = this->create_publisher<ObjsMsgType>("output/object", rclcpp::QoS{1});
 
-  debug_publisher_ =
-    std::make_unique<autoware_utils::DebugPublisher>(this, "object_lanelet_filter");
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  debug_publisher_ = std::make_unique<
+    autoware_utils_debug::BasicDebugPublisher<autoware::agnocast_wrapper::Node>>(
+    this, "object_lanelet_filter");
+  published_time_publisher_ = std::make_unique<
+    autoware_utils_debug::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>(this);
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
   if (filter_settings_.debug) {
     viz_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -319,7 +321,7 @@ bool isPointAboveLaneletMesh(
 
 template <typename ObjsMsgType, typename ObjMsgType>
 void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::mapCallback(
-  const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr map_msg)
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_map_msgs::msg::LaneletMapBin) & map_msg)
 {
   lanelet_frame_id_ = map_msg->header.frame_id;
   lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::remove_const(
@@ -328,15 +330,12 @@ void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::mapCallback(
 
 template <typename ObjsMsgType, typename ObjMsgType>
 void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::objectCallback(
-  const typename ObjsMsgType::ConstSharedPtr input_msg)
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(ObjsMsgType) & input_msg)
 {
   stop_watch_ptr_->tic("processing_time");
 
   // Guard
   if (object_pub_->get_subscription_count() < 1) return;
-
-  ObjsMsgType output_object_msg;
-  output_object_msg.header = input_msg->header;
 
   if (!lanelet_map_ptr_) {
     RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 3000, "No vector map received.");
@@ -349,6 +348,11 @@ void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::objectCallback(
     RCLCPP_ERROR(get_logger(), "Failed transform to %s.", lanelet_frame_id_.c_str());
     return;
   }
+
+  // Build the output directly into the loaned message to avoid an extra copy.
+  auto output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(object_pub_);
+  auto & output_object_msg = *output;
+  output_object_msg.header = input_msg->header;
 
   if (!transformed_objects.objects.empty()) {
     // calculate convex hull
@@ -374,14 +378,14 @@ void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::objectCallback(
     }
   }
 
-  object_pub_->publish(output_object_msg);
-  published_time_publisher_->publish_if_subscribed(object_pub_, output_object_msg.header.stamp);
+  const auto output_stamp = output_object_msg.header.stamp;
+  object_pub_->publish(std::move(output));
+  published_time_publisher_->publish_if_subscribed(object_pub_, output_stamp);
 
   // Publish debug info
   const double pipeline_latency =
     std::chrono::duration<double, std::milli>(
-      std::chrono::nanoseconds(
-        (this->get_clock()->now() - output_object_msg.header.stamp).nanoseconds()))
+      std::chrono::nanoseconds((this->get_clock()->now() - output_stamp).nanoseconds()))
       .count();
   debug_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "debug/pipeline_latency_ms", pipeline_latency);

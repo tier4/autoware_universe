@@ -18,10 +18,12 @@
 #include "autoware/detected_object_validation/utils/utils.hpp"
 #include "autoware_lanelet2_extension/utility/utilities.hpp"
 #include "autoware_utils/geometry/geometry.hpp"
-#include "autoware_utils/ros/debug_publisher.hpp"
-#include "autoware_utils/ros/published_time_publisher.hpp"
 #include "autoware_utils/system/stop_watch.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
+#include <autoware/agnocast_wrapper/tf2.hpp>
+#include <autoware_utils_debug/debug_publisher.hpp>
+#include <autoware_utils_debug/published_time_publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "autoware_map_msgs/msg/lanelet_map_bin.hpp"
@@ -31,8 +33,6 @@
 
 #include <lanelet2_core/Forward.h>
 #include <lanelet2_core/geometry/Lanelet.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <limits>
 #include <memory>
@@ -62,32 +62,34 @@ using BoxAndLanelet = std::pair<Box, PolygonAndLanelet>;
 using RtreeAlgo = bgi::rstar<16>;
 
 template <typename ObjsMsgType, typename ObjMsgType>
-class ObjectLaneletFilterBase : public rclcpp::Node
+class ObjectLaneletFilterBase : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit ObjectLaneletFilterBase(
     const std::string & node_name, const rclcpp::NodeOptions & node_options);
 
 private:
-  void objectCallback(const typename ObjsMsgType::ConstSharedPtr);
-  void mapCallback(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr);
+  // cppcheck-suppress unknownMacro
+  void objectCallback(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(ObjsMsgType) &);
+  void mapCallback(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_map_msgs::msg::LaneletMapBin) &);
 
   void publishDebugMarkers(
     rclcpp::Time stamp, const LinearRing2d & hull, const std::vector<BoxAndLanelet> & lanelets);
 
-  typename rclcpp::Publisher<ObjsMsgType>::SharedPtr object_pub_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr viz_pub_;
-  rclcpp::Subscription<autoware_map_msgs::msg::LaneletMapBin>::SharedPtr map_sub_;
-  typename rclcpp::Subscription<ObjsMsgType>::SharedPtr object_sub_;
+  AUTOWARE_PUBLISHER_PTR(ObjsMsgType) object_pub_;
+  AUTOWARE_PUBLISHER_PTR(visualization_msgs::msg::MarkerArray) viz_pub_;
+  AUTOWARE_SUBSCRIPTION_PTR(autoware_map_msgs::msg::LaneletMapBin) map_sub_;
+  AUTOWARE_SUBSCRIPTION_PTR(ObjsMsgType) object_sub_;
 
-  std::unique_ptr<autoware_utils::DebugPublisher> debug_publisher_{nullptr};
+  std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<autoware::agnocast_wrapper::Node>>
+    debug_publisher_{nullptr};
   std::unique_ptr<autoware_utils::StopWatch<std::chrono::milliseconds>> stop_watch_ptr_;
 
   lanelet::LaneletMapPtr lanelet_map_ptr_;
   std::string lanelet_frame_id_;
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  autoware::agnocast_wrapper::Buffer tf_buffer_;
+  autoware::agnocast_wrapper::TransformListener tf_listener_;
 
   utils::FilterTargetLabel filter_target_;
   double ego_base_height_ = 0.0;
@@ -126,7 +128,9 @@ private:
   geometry_msgs::msg::Polygon setFootprint(const ObjMsgType &);
 
   lanelet::BasicPolygon2d getPolygon(const lanelet::ConstLanelet & lanelet);
-  std::unique_ptr<autoware_utils::PublishedTimePublisher> published_time_publisher_;
+  std::unique_ptr<
+    autoware_utils_debug::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>
+    published_time_publisher_;
 };
 
 }  // namespace lanelet_filter

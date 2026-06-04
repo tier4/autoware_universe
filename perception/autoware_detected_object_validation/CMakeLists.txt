@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_detected_object_validation)
 
 find_package(autoware_cmake REQUIRED)
+find_package(autoware_agnocast_wrapper REQUIRED)
 autoware_package()
 
 ### Find OpenCV Dependencies
@@ -59,6 +60,18 @@ target_link_libraries(object_lanelet_filter
   Eigen3::Eigen
 )
 
+target_include_directories(object_lanelet_filter PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+  ${autoware_agnocast_wrapper_INCLUDE_DIRS}
+)
+
+ament_target_dependencies(object_lanelet_filter
+  autoware_agnocast_wrapper
+  autoware_utils_debug
+)
+
+autoware_agnocast_wrapper_setup(object_lanelet_filter)
+
 ament_auto_add_library(object_position_filter SHARED
   src/position_filter/position_filter.cpp
   lib/utils/utils.cpp
@@ -75,14 +88,14 @@ autoware_agnocast_wrapper_register_node(object_lanelet_filter
   PLUGIN "autoware::detected_object_validation::lanelet_filter::DetectedObjectLaneletFilterNode"
   EXECUTABLE object_lanelet_filter_node
   ROS2_EXECUTOR SingleThreadedExecutor
-  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 autoware_agnocast_wrapper_register_node(object_lanelet_filter
   PLUGIN "autoware::detected_object_validation::lanelet_filter::TrackedObjectLaneletFilterNode"
   EXECUTABLE tracked_object_lanelet_filter_node
   ROS2_EXECUTOR SingleThreadedExecutor
-  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 rclcpp_components_register_node(object_position_filter
@@ -100,10 +113,15 @@ if(BUILD_TESTING)
     test/test_utils.cpp
     test/object_position_filter/test_object_position_filter.cpp
   )
-  ament_auto_add_gtest(object_lanelet_filter_tests
-    test/test_utils.cpp
-    test/lanelet_filter/test_lanelet_filter.cpp
-  )
+  # The lanelet filter test instantiates the migrated agnocast_wrapper::Node directly. When
+  # Agnocast is enabled the node is compiled with USE_AGNOCAST_ENABLED, so building the test
+  # (without that define) would create an ABI mismatch. Skip it in that configuration.
+  if(NOT "$ENV{ENABLE_AGNOCAST}" STREQUAL "1")
+    ament_auto_add_gtest(object_lanelet_filter_tests
+      test/test_utils.cpp
+      test/lanelet_filter/test_lanelet_filter.cpp
+    )
+  endif()
 endif()
 
 ament_auto_package(INSTALL_TO_SHARE

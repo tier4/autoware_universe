@@ -371,7 +371,8 @@ LabelBasedEuclideanClusterNode::LabelBasedEuclideanClusterNode(const rclcpp::Nod
   pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
     "input", rclcpp::SensorDataQoS().keep_last(1),
     std::bind(&LabelBasedEuclideanClusterNode::on_pointcloud, this, _1));
-  objects_pub_ = this->create_publisher<DetectedObjects>("output", rclcpp::QoS{1});
+  // cppcheck-suppress unknownMacro
+  objects_pub_ = AUTOWARE_CREATE_PUBLISHER2(DetectedObjects, "output", rclcpp::QoS{1});
 
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
   debug_publisher_ = std::make_unique<autoware_utils::DebugPublisher>(this, "~/debug");
@@ -422,8 +423,9 @@ void LabelBasedEuclideanClusterNode::on_pointcloud(
   // 1. Split points by label and filter by probability
   auto split_points = split_pointcloud(*input_msg, class_id_to_object_label_, min_probability_);
 
-  DetectedObjects output_msg;
-  output_msg.header = input_msg->header;
+  // Build the output directly into the loaned message to avoid an extra copy.
+  auto output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(objects_pub_);
+  output->header = input_msg->header;
 
   for (const auto & [label, semantic_points] : split_points) {
     pcl::PointCloud<pcl::PointXYZ>::Ptr label_cloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -441,12 +443,12 @@ void LabelBasedEuclideanClusterNode::on_pointcloud(
         continue;
       }
 
-      output_msg.objects.push_back(create_detected_object(
+      output->objects.push_back(create_detected_object(
         cluster, label, label_probability, shape_policy_, *shape_estimator_));
     }
   }
 
-  objects_pub_->publish(output_msg);
+  objects_pub_->publish(std::move(output));
 
   if (debug_publisher_) {
     const double cyclic_time_ms = stop_watch_ptr_->toc("cyclic_time", true);

@@ -26,6 +26,7 @@
 #include "processor/input_manager.hpp"
 #include "processor/processor.hpp"
 
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2/LinearMath/Transform.hpp>
@@ -51,27 +52,29 @@
 namespace autoware::multi_object_tracker
 {
 
-class MultiObjectTracker : public rclcpp::Node
+class MultiObjectTracker : public autoware::agnocast_wrapper::Node
 {
 public:
   explicit MultiObjectTracker(const rclcpp::NodeOptions & node_options);
 
 private:
   // ROS interface
-  rclcpp::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr tracked_objects_pub_;
+  AUTOWARE_PUBLISHER_PTR(autoware_perception_msgs::msg::TrackedObjects) tracked_objects_pub_;
 
   // debugger
   std::unique_ptr<TrackerDebugger> debugger_;
-  std::unique_ptr<autoware_utils_debug::PublishedTimePublisher> published_time_publisher_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr merged_objects_pub_;
+  std::unique_ptr<
+    autoware_utils_debug::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>
+    published_time_publisher_;
+  AUTOWARE_PUBLISHER_PTR(autoware_perception_msgs::msg::DetectedObjects) merged_objects_pub_;
   bool publish_merged_objects_{false};
 
-  rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
+  AUTOWARE_PUBLISHER_PTR(autoware_utils_debug::ProcessingTimeDetail)
     detailed_processing_time_publisher_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
 
   // publish timer
-  rclcpp::TimerBase::SharedPtr publish_timer_;
+  AUTOWARE_TIMER_PTR publish_timer_;
   rclcpp::Time last_published_time_;
   rclcpp::Time last_updated_time_;
   double publisher_period_;

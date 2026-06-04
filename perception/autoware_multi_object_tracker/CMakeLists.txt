@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_multi_object_tracker)
 
 find_package(autoware_cmake REQUIRED)
+find_package(autoware_agnocast_wrapper REQUIRED)
 autoware_package()
 
 find_package(tf2 REQUIRED)
@@ -70,11 +71,22 @@ target_link_libraries(${PROJECT_NAME}
   tf2_geometry_msgs::tf2_geometry_msgs
 )
 
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${agnocastlib_INCLUDE_DIRS}
+  ${autoware_agnocast_wrapper_INCLUDE_DIRS}
+)
+
+ament_target_dependencies(${PROJECT_NAME}
+  autoware_agnocast_wrapper
+)
+
+autoware_agnocast_wrapper_setup(${PROJECT_NAME})
+
 autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::multi_object_tracker::MultiObjectTracker"
   EXECUTABLE multi_object_tracker_node
   ROS2_EXECUTOR SingleThreadedExecutor
-  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 ## Tests
@@ -86,19 +98,24 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
-  file(GLOB_RECURSE test_files test/test_multi_object_tracker.cpp
-    test/test_bench.cpp
-    test/test_utils.cpp
-    test/test_bench_association.cpp
-    test/test_vehicle_tracker.cpp
-  )
-  add_definitions(-D_SRC_RESOURCES_DIR_PATH="${PROJECT_SOURCE_DIR}/test/data/")
-  ament_add_ros_isolated_gtest(test_multi_object_tracker ${test_files})
+  # The test links the package library and instantiates the migrated agnocast_wrapper::Node. When
+  # Agnocast is enabled the library is compiled with USE_AGNOCAST_ENABLED, so building the test
+  # (without that define) would create an ABI mismatch. Skip it in that configuration.
+  if(NOT "$ENV{ENABLE_AGNOCAST}" STREQUAL "1")
+    file(GLOB_RECURSE test_files test/test_multi_object_tracker.cpp
+      test/test_bench.cpp
+      test/test_utils.cpp
+      test/test_bench_association.cpp
+      test/test_vehicle_tracker.cpp
+    )
+    add_definitions(-D_SRC_RESOURCES_DIR_PATH="${PROJECT_SOURCE_DIR}/test/data/")
+    ament_add_ros_isolated_gtest(test_multi_object_tracker ${test_files})
 
-  target_link_libraries(test_multi_object_tracker
-  ${PROJECT_NAME}
-  ${autoware_perception_msgs_LIBRARIES}
-  )
+    target_link_libraries(test_multi_object_tracker
+    ${PROJECT_NAME}
+    ${autoware_perception_msgs_LIBRARIES}
+    )
+  endif()
 endif()
 
 ament_auto_package(INSTALL_TO_SHARE

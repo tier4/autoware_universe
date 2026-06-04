@@ -5,6 +5,8 @@ project(autoware_object_sorter)
 find_package(autoware_cmake REQUIRED)
 autoware_package()
 
+find_package(autoware_agnocast_wrapper REQUIRED)
+
 # Targets
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/object_sorter_base.cpp
@@ -12,18 +14,27 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   src/tracked_object_sorter_node.cpp
 )
 
+# Agnocast Method 2: the sorter nodes inherit autoware::agnocast_wrapper::Node (via the shared
+# ObjectSorterBase template). Pull in the wrapper (and, transitively, agnocastlib) include dirs
+# and define USE_AGNOCAST_ENABLED when Agnocast is enabled.
+ament_target_dependencies(${PROJECT_NAME}
+  autoware_agnocast_wrapper
+)
+
+autoware_agnocast_wrapper_setup(${PROJECT_NAME})
+
 autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::object_sorter::DetectedObjectSorterNode"
   EXECUTABLE detected_object_sorter_node
   ROS2_EXECUTOR SingleThreadedExecutor
-  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::object_sorter::TrackedObjectSorterNode"
   EXECUTABLE tracked_object_sorter_node
   ROS2_EXECUTOR SingleThreadedExecutor
-  AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
+  AGNOCAST_EXECUTOR AgnocastOnlyCallbackIsolatedExecutor
 )
 
 # Tests

@@ -113,7 +113,7 @@ TrafficLightArbiter::TrafficLightArbiter(const rclcpp::NodeOptions & options)
   pub_ = create_publisher<TrafficSignalArray>("~/pub/traffic_signals", rclcpp::QoS(1));
 }
 
-void TrafficLightArbiter::onMap(const LaneletMapBin::ConstSharedPtr msg)
+void TrafficLightArbiter::onMap(const AUTOWARE_MESSAGE_CONST_SHARED_PTR(LaneletMapBin) & msg)
 {
   const auto map = autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*msg);
 
@@ -131,7 +131,8 @@ void TrafficLightArbiter::onMap(const LaneletMapBin::ConstSharedPtr msg)
   }
 }
 
-void TrafficLightArbiter::onPerceptionMsg(const TrafficSignalArray::ConstSharedPtr msg)
+void TrafficLightArbiter::onPerceptionMsg(
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(TrafficSignalArray) & msg)
 {
   latest_perception_msg_ = *msg;
 
@@ -142,7 +143,8 @@ void TrafficLightArbiter::onPerceptionMsg(const TrafficSignalArray::ConstSharedP
   arbitrateAndPublish(msg->stamp);
 }
 
-void TrafficLightArbiter::onExternalMsg(const TrafficSignalArray::ConstSharedPtr msg)
+void TrafficLightArbiter::onExternalMsg(
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(TrafficSignalArray) & msg)
 {
   const auto current_time = this->now();
   const auto msg_time = rclcpp::Time(msg->stamp);
@@ -218,11 +220,12 @@ void TrafficLightArbiter::arbitrateAndPublish(const builtin_interfaces::msg::Tim
     return;
   }
 
-  TrafficSignalArray output_signals_msg;
+  auto output_signals_msg_ptr = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(pub_);
+  auto & output_signals_msg = *output_signals_msg_ptr;
   output_signals_msg.stamp = stamp;
 
   if (map_regulatory_elements_set_->empty()) {
-    pub_->publish(output_signals_msg);
+    pub_->publish(std::move(output_signals_msg_ptr));
     return;
   }
 
@@ -297,7 +300,7 @@ void TrafficLightArbiter::arbitrateAndPublish(const builtin_interfaces::msg::Tim
     output_signals_msg.traffic_light_groups.emplace_back(signal_msg);
   }
 
-  pub_->publish(output_signals_msg);
+  pub_->publish(std::move(output_signals_msg_ptr));
 
   // Calculate latest time from available sources
   rclcpp::Time latest_time = rclcpp::Time(latest_perception_msg_.stamp);
@@ -308,7 +311,7 @@ void TrafficLightArbiter::arbitrateAndPublish(const builtin_interfaces::msg::Tim
     }
   }
 
-  if (rclcpp::Time(output_signals_msg.stamp) < latest_time) {
+  if (rclcpp::Time(stamp) < latest_time) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000, "Published traffic signal messages are not latest");
   }

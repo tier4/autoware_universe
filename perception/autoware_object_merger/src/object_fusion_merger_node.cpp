@@ -215,9 +215,9 @@ namespace autoware::object_merger
  * @param node_options ROS node options used for component construction.
  */
 ObjectFusionMergerNode::ObjectFusionMergerNode(const rclcpp::NodeOptions & node_options)
-: rclcpp::Node("object_fusion_merger_node", node_options),
+: Node("object_fusion_merger_node", node_options),
   tf_buffer_(get_clock()),
-  tf_listener_(tf_buffer_),
+  tf_listener_(tf_buffer_, *this),
   main_object_sub_(this, "input/main_objects", rclcpp::QoS{1}.get_rmw_qos_profile()),
   sub_object_sub_(this, "input/sub_objects", rclcpp::QoS{1}.get_rmw_qos_profile())
 {
@@ -235,11 +235,14 @@ ObjectFusionMergerNode::ObjectFusionMergerNode(const rclcpp::NodeOptions & node_
   fused_objects_pub_ = create_publisher<DetectedObjects>("output/objects", rclcpp::QoS{1});
   other_objects_pub_ = create_publisher<DetectedObjects>("output/other_objects", rclcpp::QoS{1});
 
-  processing_time_publisher_ = std::make_unique<autoware_utils::DebugPublisher>(this, get_name());
+  processing_time_publisher_ = std::make_unique<
+    autoware_utils_debug::BasicDebugPublisher<autoware::agnocast_wrapper::Node>>(
+    this, "object_fusion_merger");
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
   stop_watch_ptr_->tic("cyclic_time");
   stop_watch_ptr_->tic("processing_time");
-  published_time_publisher_ = std::make_unique<autoware_utils::PublishedTimePublisher>(this);
+  published_time_publisher_ = std::make_unique<
+    autoware_utils_debug::BasicPublishedTimePublisher<autoware::agnocast_wrapper::Node>>(this);
 }
 
 /**
@@ -249,8 +252,8 @@ ObjectFusionMergerNode::ObjectFusionMergerNode(const rclcpp::NodeOptions & node_
  * @param sub_objects_msg Sub detected objects input message.
  */
 void ObjectFusionMergerNode::callback(
-  const DetectedObjects::ConstSharedPtr & main_objects_msg,
-  const DetectedObjects::ConstSharedPtr & sub_objects_msg)
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(DetectedObjects) & main_objects_msg,
+  const AUTOWARE_MESSAGE_CONST_SHARED_PTR(DetectedObjects) & sub_objects_msg)
 {
   stop_watch_ptr_->toc("processing_time", true);
 
@@ -273,13 +276,21 @@ void ObjectFusionMergerNode::callback(
     return;
   }
 
-  const auto result = fuse_objects(transformed_main_objects, transformed_sub_objects);
-  fused_objects_pub_->publish(result.fused_objects);
-  other_objects_pub_->publish(result.other_objects);
+  // Borrow the loaned (shared-memory) messages BEFORE assembling the outputs, then let fuse_objects
+  // build the objects directly into them. borrow_loaned_message() makes every allocation on this
+  // thread route to shared memory until publish(), so the objects and their nested vectors are
+  // constructed in place: no extra copy, and no regular-heap pointers leak into the loaned message.
+  auto fused_out = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(fused_objects_pub_);
+  auto other_out = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(other_objects_pub_);
+
+  fuse_objects(transformed_main_objects, transformed_sub_objects, *fused_out, *other_out);
+  const auto output_stamp = fused_out->header.stamp;
+
+  fused_objects_pub_->publish(std::move(fused_out));
+  other_objects_pub_->publish(std::move(other_out));
 
   // Publish debug info
-  published_time_publisher_->publish_if_subscribed(
-    fused_objects_pub_, result.fused_objects.header.stamp);
+  published_time_publisher_->publish_if_subscribed(fused_objects_pub_, output_stamp);
   processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "debug/cyclic_time_ms", stop_watch_ptr_->toc("cyclic_time", true));
   processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
@@ -287,21 +298,37 @@ void ObjectFusionMergerNode::callback(
 }
 
 /**
- * @brief Group sub objects by unique overlap and build fused and unmatched outputs.
+ * @brief Group sub objects by unique overlap and assemble fused and unmatched outputs in place.
+ *
+ * The two output messages are expected to be loaned (shared-memory) messages borrowed before the
+ * call: all object payloads are appended directly into them so nothing is copied afterwards.
  *
  * @param main_objects_msg Main detected objects already transformed into the base frame.
  * @param sub_objects_msg Sub detected objects already transformed into the base frame.
- * @return Fused main-based objects and unmatched sub objects for separate publication.
+ * @param fused_objects Output message filled with the main-based fused objects.
+ * @param other_objects Output message filled with the unmatched sub objects.
  */
-ObjectFusionMergerNode::FusionResult ObjectFusionMergerNode::fuse_objects(
-  const DetectedObjects & main_objects_msg, const DetectedObjects & sub_objects_msg)
+void ObjectFusionMergerNode::fuse_objects(
+  const DetectedObjects & main_objects_msg, const DetectedObjects & sub_objects_msg,
+  DetectedObjects & fused_objects, DetectedObjects & other_objects)
 {
   const auto & main_objects = main_objects_msg.objects;
   const auto & sub_objects = sub_objects_msg.objects;
 
+  // Fill the headers in place (outputs live in the base_link frame, stamped from the main input).
+  fused_objects.header.stamp = main_objects_msg.header.stamp;
+  fused_objects.header.frame_id = base_link_frame_id_;
+  other_objects.header.stamp = main_objects_msg.header.stamp;
+  other_objects.header.frame_id = base_link_frame_id_;
+
+  auto & matched_objects = fused_objects.objects;
+  auto & other_unmatched_objects = other_objects.objects;
+  matched_objects.clear();
+  other_unmatched_objects.clear();
+  matched_objects.reserve(main_objects.size());
+  other_unmatched_objects.reserve(sub_objects.size());
+
   std::vector<std::vector<DetectedObject>> grouped_sub_objects(main_objects.size());
-  std::vector<DetectedObject> other_objects;
-  other_objects.reserve(sub_objects.size());
 
   for (const auto & sub_object : sub_objects) {
     std::vector<std::size_t> overlapped_main_indices;
@@ -313,7 +340,7 @@ ObjectFusionMergerNode::FusionResult ObjectFusionMergerNode::fuse_objects(
 
     // If sub-object does not overlap with any main object, treat it as a matched object
     if (overlapped_main_indices.empty()) {
-      other_objects.push_back(sub_object);
+      other_unmatched_objects.push_back(sub_object);
       continue;
     }
 
@@ -324,8 +351,6 @@ ObjectFusionMergerNode::FusionResult ObjectFusionMergerNode::fuse_objects(
     }
   }
 
-  std::vector<DetectedObject> matched_objects;
-  matched_objects.reserve(main_objects.size());
   for (std::size_t main_index = 0; main_index < main_objects.size(); ++main_index) {
     const auto & main_object = main_objects.at(main_index);
     const auto & grouped_subs = grouped_sub_objects.at(main_index);
@@ -335,14 +360,6 @@ ObjectFusionMergerNode::FusionResult ObjectFusionMergerNode::fuse_objects(
     }
     matched_objects.push_back(enclose_union_with_main_shape(main_object, grouped_subs));
   }
-
-  const auto header = std_msgs::build<std_msgs::msg::Header>()
-                        .stamp(main_objects_msg.header.stamp)
-                        .frame_id(base_link_frame_id_);
-
-  return FusionResult{
-    autoware_perception_msgs::build<DetectedObjects>().header(header).objects(matched_objects),
-    autoware_perception_msgs::build<DetectedObjects>().header(header).objects(other_objects)};
 }
 
 }  // namespace autoware::object_merger

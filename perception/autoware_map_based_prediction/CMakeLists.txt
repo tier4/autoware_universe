@@ -7,6 +7,7 @@ autoware_package()
 find_package(Eigen3 REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(autoware_agnocast_wrapper REQUIRED)
 
 include_directories(
   SYSTEM
@@ -24,6 +25,12 @@ ament_auto_add_library(map_based_prediction_node SHARED
 target_link_libraries(map_based_prediction_node
   tf2::tf2
   tf2_geometry_msgs::tf2_geometry_msgs
+)
+
+# Agnocast Method 1: pull in the wrapper (and, transitively, agnocastlib) include dirs
+# so the AUTOWARE_* subscription macros resolve. The node stays an rclcpp::Node.
+ament_target_dependencies(map_based_prediction_node
+  autoware_agnocast_wrapper
 )
 
 autoware_agnocast_wrapper_register_node(map_based_prediction_node
