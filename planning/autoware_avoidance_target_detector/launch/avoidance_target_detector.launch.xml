@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="input_objects" default="/planning/trajectory_generator/neural_network_based_planner/diffusion_planner_node/output/predicted_objects"/>
+  <arg name="input_trajectory" default="/planning/trajectory_generator/neural_network_based_planner/diffusion_planner_node/output/trajectory"/>
+  <arg name="output_avoidance_targets" default="/planning/avoidance_target_detector/output/avoidance_targets"/>
+
+  <node pkg="autoware_avoidance_target_detector" exec="autoware_avoidance_target_detector_node" name="avoidance_target_detector" output="screen">
+    <remap from="~/input/objects" to="$(var input_objects)"/>
+    <remap from="~/input/trajectory" to="$(var input_trajectory)"/>
+    <remap from="~/output/avoidance_targets" to="$(var output_avoidance_targets)"/>
+  </node>
+</launch>
