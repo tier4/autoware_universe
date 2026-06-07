@@ -48,10 +48,17 @@ ResultWithReason MPC::calculateMPC(
   Trajectory & predicted_trajectory, Float32MultiArrayStamped & diagnostic,
   LateralHorizon & ctrl_cmd_horizon)
 {
+  const auto tp = [](){ return std::chrono::system_clock::now(); };
+  const auto us = [](const auto & a, const auto & b) {
+    return std::chrono::duration_cast<std::chrono::microseconds>(b - a).count();
+  };
+
   // since the reference trajectory does not take into account the current velocity of the ego
   // vehicle, it needs to calculate the trajectory velocity considering the longitudinal dynamics.
+  const auto ta0 = tp();
   const auto reference_trajectory =
     applyVelocityDynamicsFilter(m_reference_trajectory, current_kinematics);
+  const auto ta1 = tp();
 
   // get the necessary data
   const auto [get_data_result, mpc_data] =
@@ -64,8 +71,10 @@ ResultWithReason MPC::calculateMPC(
   const auto x0 = getInitialState(mpc_data);
 
   // apply time delay compensation to the initial state
+  const auto tb0 = tp();
   const auto [success_delay, x0_delayed] =
     updateStateForDelayCompensation(reference_trajectory, mpc_data.nearest_time, x0);
+  const auto tb1 = tp();
   if (!success_delay) {
     return ResultWithReason{false, "delay compensation."};
   }
@@ -75,23 +84,35 @@ ResultWithReason MPC::calculateMPC(
   const double prediction_dt =
     getPredictionDeltaTime(mpc_start_time, reference_trajectory, current_kinematics);
 
+  const auto tc0 = tp();
   const auto [resample_result, mpc_resampled_ref_trajectory] =
     resampleMPCTrajectoryByTime(mpc_start_time, prediction_dt, reference_trajectory);
+  const auto tc1 = tp();
   if (!resample_result.result) {
     return ResultWithReason{
       false, fmt::format("trajectory resampling ({}).", resample_result.reason)};
   }
 
   // generate mpc matrix : predict equation Xec = Aex * x0 + Bex * Uex + Wex
+  const auto td0 = tp();
   const auto mpc_matrix = generateMPCMatrix(mpc_resampled_ref_trajectory, prediction_dt);
+  const auto td1 = tp();
 
   // solve Optimization problem
+  const auto te0 = tp();
   const auto [opt_result, Uex] = executeOptimization(
     mpc_matrix, x0_delayed, prediction_dt, mpc_resampled_ref_trajectory,
     current_kinematics.twist.twist.linear.x);
+  const auto te1 = tp();
   if (!opt_result.result) {
     return ResultWithReason{false, fmt::format("optimization failure ({}).", opt_result.reason)};
   }
+
+  RCLCPP_INFO(
+    rclcpp::get_logger("mpc"),
+    "[MPC_TIMING] calculateMPC breakdown [us]: velocityFilter=%ld, delayComp=%ld, resample=%ld, "
+    "genMatrix=%ld, optimization=%ld",
+    us(ta0, ta1), us(tb0, tb1), us(tc0, tc1), us(td0, td1), us(te0, te1));
 
   // apply filters for the input limitation and low pass filter
   const double u_saturated = std::clamp(Uex(0), -m_steer_lim, m_steer_lim);
@@ -578,19 +599,33 @@ std::pair<ResultWithReason, VectorXd> MPC::executeOptimization(
     return {ResultWithReason{false, "invalid model matrix"}, {}};
   }
 
+  const auto tp2 = []() { return std::chrono::system_clock::now(); };
+  const auto us2 = [](const auto & a, const auto & b) {
+    return std::chrono::duration_cast<std::chrono::microseconds>(b - a).count();
+  };
+
   const int DIM_U_N = m_param.prediction_horizon * m_vehicle_model_ptr->getDimU();
 
   // cost function: 1/2 * Uex' * H * Uex + f' * Uex,  H = B' * C' * Q * C * B + R
-  const MatrixXd CB = m.Cex * m.Bex;
-  const MatrixXd QCB = m.Qex * CB;
+  const auto t_CB0 = tp2();
+  MatrixXd CB(m.Cex.rows(), m.Bex.cols());
+  const auto t_CB_alloc = tp2();
+  CB.noalias() = m.Cex * m.Bex;
+  const auto t_CB1 = tp2();
+  MatrixXd QCB(m.Qex.rows(), CB.cols());
+  const auto t_QCB_alloc = tp2();
+  QCB.noalias() = m.Qex * CB;
+  const auto t_QCB1 = tp2();
   // MatrixXd H = CB.transpose() * QCB + m.R1ex + m.R2ex; // This calculation is heavy. looking for
   // a good way.  //NOLINT
   MatrixXd H = MatrixXd::Zero(DIM_U_N, DIM_U_N);
   H.triangularView<Eigen::Upper>() = CB.transpose() * QCB;
   H.triangularView<Eigen::Upper>() += m.R1ex + m.R2ex;
   H.triangularView<Eigen::Lower>() = H.transpose();
+  const auto t_H1 = tp2();
   MatrixXd f = (m.Cex * (m.Aex * x0 + m.Wex)).transpose() * QCB - m.Uref_ex.transpose() * m.R1ex;
   addSteerWeightF(prediction_dt, f);
+  const auto t_f1 = tp2();
 
   MatrixXd A = MatrixXd::Identity(DIM_U_N, DIM_U_N);
   for (int i = 1; i < DIM_U_N; i++) {
@@ -607,6 +642,15 @@ std::pair<ResultWithReason, VectorXd> MPC::executeOptimization(
   VectorXd lbA = -steer_rate_limits * prediction_dt;
   ubA(0) = m_raw_steer_cmd_prev + steer_rate_limits(0) * m_ctrl_period;
   lbA(0) = m_raw_steer_cmd_prev - steer_rate_limits(0) * m_ctrl_period;
+  const auto t_bounds1 = tp2();
+
+  RCLCPP_INFO(
+    rclcpp::get_logger("mpc"),
+    "[MPC_TIMING] executeOptimization breakdown [us]: "
+    "CB_alloc=%ld, CB_gemm=%ld, QCB_alloc=%ld, QCB_gemm=%ld, H=%ld, f=%ld, bounds=%ld",
+    us2(t_CB0, t_CB_alloc), us2(t_CB_alloc, t_CB1),
+    us2(t_CB1, t_QCB_alloc), us2(t_QCB_alloc, t_QCB1),
+    us2(t_QCB1, t_H1), us2(t_H1, t_f1), us2(t_f1, t_bounds1));
 
   auto t_start = std::chrono::system_clock::now();
   bool solve_result = m_qpsolver_ptr->solve(H, f.transpose(), A, lb, ub, lbA, ubA, Uex);

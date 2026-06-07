@@ -165,6 +165,10 @@ MpcLateralController::MpcLateralController(
   m_mpc->setClock(clock_);
 
   setupDiag();
+
+  RCLCPP_INFO(
+    rclcpp::get_logger("mpc_lateral_controller"),
+    "[MPC_TIMING] Eigen threads: %d", Eigen::nbThreads());
 }
 
 MpcLateralController::~MpcLateralController()
@@ -245,8 +249,12 @@ void MpcLateralController::setupDiag()
 trajectory_follower::LateralOutput MpcLateralController::run(
   trajectory_follower::InputData const & input_data)
 {
+  const auto t_run_start = std::chrono::system_clock::now();
+
   // set input data
+  const auto t0 = std::chrono::system_clock::now();
   setTrajectory(input_data.current_trajectory, input_data.current_odometry);
+  const auto t1 = std::chrono::system_clock::now();
 
   m_current_kinematic_state = input_data.current_odometry;
   m_current_steering = input_data.current_steering;
@@ -280,9 +288,11 @@ trajectory_follower::LateralOutput MpcLateralController::run(
   }
 
   trajectory_follower::LateralHorizon ctrl_cmd_horizon{};
+  const auto t2 = std::chrono::system_clock::now();
   const auto mpc_solved_status = m_mpc->calculateMPC(
     m_current_steering, m_current_kinematic_state, ctrl_cmd, predicted_traj, debug_values,
     ctrl_cmd_horizon);
+  const auto t3 = std::chrono::system_clock::now();
 
   if (
     (m_mpc_solved_status.result == true && mpc_solved_status.result == false) ||
@@ -304,8 +314,18 @@ trajectory_follower::LateralOutput MpcLateralController::run(
 
   ctrl_cmd.steering_tire_angle -= static_cast<float>(m_steering_offset_filtered_);
 
+  const auto t4 = std::chrono::system_clock::now();
   publishPredictedTraj(predicted_traj);
   publishDebugValues(debug_values);
+  const auto t5 = std::chrono::system_clock::now();
+
+  const auto us = [](const auto & a, const auto & b) {
+    return std::chrono::duration_cast<std::chrono::microseconds>(b - a).count();
+  };
+  RCLCPP_INFO(
+    rclcpp::get_logger("mpc_lateral_controller"),
+    "[MPC_TIMING] run breakdown [us]: setTrajectory=%ld, calculateMPC=%ld, publish=%ld, total=%ld",
+    us(t0, t1), us(t2, t3), us(t4, t5), us(t_run_start, t5));
 
   const auto createLateralOutput =
     [this](
