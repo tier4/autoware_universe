@@ -14,18 +14,10 @@
 
 #include "in_lane_mrm_trajectory_validator.hpp"
 
-#include <autoware/motion_utils/trajectory/trajectory.hpp>
-#include <autoware_utils/geometry/geometry.hpp>
-
 #include <cmath>
-#include <limits>
 
 namespace autoware::in_lane_mrm_planner
 {
-namespace
-{
-constexpr double kHazardousTrailingStoppedRatio = 0.8;
-}  // namespace
 
 InLaneMrmTrajectoryValidator::InLaneMrmTrajectoryValidator(const Params & params)
 : params_(params.trajectory_validator)
@@ -53,69 +45,8 @@ bool InLaneMrmTrajectoryValidator::has_finite_values(const TrajectoryPoints & po
   return true;
 }
 
-bool InLaneMrmTrajectoryValidator::has_sufficient_geometry(const TrajectoryPoints & points) const
-{
-  if (points.size() < static_cast<size_t>(params_.min_point_count)) {
-    return false;
-  }
-
-  double min_spacing = std::numeric_limits<double>::max();
-  for (size_t i = 1; i < points.size(); ++i) {
-    const auto & p0 = points.at(i - 1).pose.position;
-    const auto & p1 = points.at(i).pose.position;
-    min_spacing = std::min(
-      min_spacing, autoware_utils::calc_distance2d(p0, p1));
-  }
-
-  if (min_spacing < params_.min_point_spacing_m) {
-    return false;
-  }
-
-  const double total_length =
-    autoware::motion_utils::calcSignedArcLength(points, 0, points.size() - 1);
-  return total_length + 1e-3 >= params_.min_trajectory_length_m;
-}
-
-bool InLaneMrmTrajectoryValidator::has_hazardous_velocity_step(
-  const TrajectoryPoints & points) const
-{
-  if (points.size() < 2) {
-    return false;
-  }
-
-  if (points.front().longitudinal_velocity_mps <= params_.hazardous_leading_velocity_mps) {
-    return false;
-  }
-
-  size_t stopped_count = 0;
-  for (size_t i = 1; i < points.size(); ++i) {
-    if (points.at(i).longitudinal_velocity_mps <= params_.standstill_velocity_threshold_mps) {
-      ++stopped_count;
-    }
-  }
-
-  const double stopped_ratio =
-    static_cast<double>(stopped_count) / static_cast<double>(points.size() - 1);
-  return stopped_ratio >= kHazardousTrailingStoppedRatio;
-}
-
-bool InLaneMrmTrajectoryValidator::has_velocity_mismatch_at_standstill(
-  const TrajectoryPoints & points, const double v0) const
-{
-  if (v0 > params_.standstill_velocity_threshold_mps) {
-    return false;
-  }
-
-  for (const auto & point : points) {
-    if (point.longitudinal_velocity_mps > params_.standstill_velocity_threshold_mps) {
-      return true;
-    }
-  }
-  return false;
-}
-
 InLaneMrmTrajectoryValidator::ValidationResult InLaneMrmTrajectoryValidator::validate(
-  const TrajectoryPoints & points, const Odometry & odom) const
+  const TrajectoryPoints & points) const
 {
   ValidationResult result;
   result.ok = true;
@@ -124,10 +55,11 @@ InLaneMrmTrajectoryValidator::ValidationResult InLaneMrmTrajectoryValidator::val
     return result;
   }
 
-  if (points.empty()) {
+  // min_point_count is validated (gt<>: [1]) to be >= 2, so the size_t cast cannot wrap.
+  if (points.size() < static_cast<size_t>(params_.min_point_count)) {
     result.ok = false;
-    result.code = FailureCode::EMPTY_TRAJECTORY;
-    result.reason = "trajectory is empty";
+    result.code = FailureCode::INSUFFICIENT_POINT_COUNT;
+    result.reason = "trajectory has too few points";
     return result;
   }
 
@@ -135,29 +67,6 @@ InLaneMrmTrajectoryValidator::ValidationResult InLaneMrmTrajectoryValidator::val
     result.ok = false;
     result.code = FailureCode::NON_FINITE_VALUES;
     result.reason = "trajectory contains non-finite values";
-    return result;
-  }
-
-  if (!has_sufficient_geometry(points)) {
-    result.ok = false;
-    result.code = FailureCode::INSUFFICIENT_GEOMETRY;
-    result.reason = "trajectory geometry is insufficient for planning output";
-    return result;
-  }
-
-  const double v0 = std::max(0.0, odom.twist.twist.linear.x);
-
-  if (has_hazardous_velocity_step(points)) {
-    result.ok = false;
-    result.code = FailureCode::HAZARDOUS_VELOCITY_STEP;
-    result.reason = "hazardous velocity step profile detected";
-    return result;
-  }
-
-  if (has_velocity_mismatch_at_standstill(points, v0)) {
-    result.ok = false;
-    result.code = FailureCode::STANDSTILL_VELOCITY_MISMATCH;
-    result.reason = "non-zero velocity profile while ego is near standstill";
     return result;
   }
 
