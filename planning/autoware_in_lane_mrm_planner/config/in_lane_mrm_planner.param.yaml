@@ -108,10 +108,6 @@
     trajectory_validator:
       enable: true
       min_point_count: 3
-      min_point_spacing_m: 0.05
-      min_trajectory_length_m: 1.0
-      standstill_velocity_threshold_mps: 0.01
-      hazardous_leading_velocity_mps: 0.5
 
     latch:
       use_latched_objects: true

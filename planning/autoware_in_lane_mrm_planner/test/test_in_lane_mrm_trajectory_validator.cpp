@@ -17,6 +17,9 @@
 #include <autoware_utils/geometry/geometry.hpp>
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <limits>
+
 namespace autoware::in_lane_mrm_planner
 {
 namespace
@@ -27,10 +30,6 @@ Params make_default_params()
   Params params;
   params.trajectory_validator.enable = true;
   params.trajectory_validator.min_point_count = 3;
-  params.trajectory_validator.min_point_spacing_m = 0.05;
-  params.trajectory_validator.min_trajectory_length_m = 1.0;
-  params.trajectory_validator.standstill_velocity_threshold_mps = 0.01;
-  params.trajectory_validator.hazardous_leading_velocity_mps = 0.5;
   return params;
 }
 
@@ -52,51 +51,80 @@ TrajectoryPoints make_straight_trajectory(
   return points;
 }
 
-Odometry make_odometry(const double velocity)
-{
-  Odometry odom;
-  odom.pose.pose.orientation = autoware_utils::create_quaternion_from_yaw(0.0);
-  odom.twist.twist.linear.x = velocity;
-  return odom;
-}
-
 }  // namespace
 
 TEST(InLaneMrmTrajectoryValidatorTest, AcceptsUniformLowSpeedTrajectory)
 {
   const InLaneMrmTrajectoryValidator validator(make_default_params());
   const auto points = make_straight_trajectory(10, 1.0, 0.0F);
-
-  const auto result = validator.validate(points, make_odometry(0.0));
-  EXPECT_TRUE(result.ok);
+  EXPECT_TRUE(validator.validate(points).ok);
 }
 
-TEST(InLaneMrmTrajectoryValidatorTest, RejectsHazardousVelocityStepProfile)
+TEST(InLaneMrmTrajectoryValidatorTest, AcceptsMrmStopFromSpeedWithLongZeroTail)
 {
+  // Regression: a legitimate MRM stop from speed decelerates to zero quickly,
+  // leaving a long zero-velocity tail (front fast, >=80% of points stopped).
+  // The removed hazardous_step check used to drop this; it must now pass.
   const InLaneMrmTrajectoryValidator validator(make_default_params());
   auto points = make_straight_trajectory(10, 1.0, 0.0F);
-  points.front().longitudinal_velocity_mps = 16.67F;
-
-  const auto result = validator.validate(points, make_odometry(0.0));
-  EXPECT_FALSE(result.ok);
+  points.front().longitudinal_velocity_mps = 3.0F;
+  EXPECT_TRUE(validator.validate(points).ok);
 }
 
-TEST(InLaneMrmTrajectoryValidatorTest, RejectsNonZeroVelocityAtStandstill)
+TEST(InLaneMrmTrajectoryValidatorTest, AcceptsNonZeroProfile)
 {
+  // Regression: removed standstill_mismatch check. A nonzero profile is fine;
+  // this is the publish gate, not a longitudinal-feasibility judge.
   const InLaneMrmTrajectoryValidator validator(make_default_params());
-  auto points = make_straight_trajectory(10, 1.0, 5.0F);
-
-  const auto result = validator.validate(points, make_odometry(0.0));
-  EXPECT_FALSE(result.ok);
+  const auto points = make_straight_trajectory(10, 1.0, 5.0F);
+  EXPECT_TRUE(validator.validate(points).ok);
 }
 
 TEST(InLaneMrmTrajectoryValidatorTest, RejectsInsufficientPointCount)
 {
   const InLaneMrmTrajectoryValidator validator(make_default_params());
   const auto points = make_straight_trajectory(2, 1.0, 0.0F);
-
-  const auto result = validator.validate(points, make_odometry(0.0));
+  const auto result = validator.validate(points);
   EXPECT_FALSE(result.ok);
+  EXPECT_EQ(result.code, InLaneMrmTrajectoryValidator::FailureCode::INSUFFICIENT_POINT_COUNT);
+}
+
+TEST(InLaneMrmTrajectoryValidatorTest, RejectsEmptyTrajectory)
+{
+  const InLaneMrmTrajectoryValidator validator(make_default_params());
+  const TrajectoryPoints points;
+  const auto result = validator.validate(points);
+  EXPECT_FALSE(result.ok);
+  EXPECT_EQ(result.code, InLaneMrmTrajectoryValidator::FailureCode::INSUFFICIENT_POINT_COUNT);
+}
+
+TEST(InLaneMrmTrajectoryValidatorTest, RejectsNonFiniteValues)
+{
+  const InLaneMrmTrajectoryValidator validator(make_default_params());
+  auto points = make_straight_trajectory(5, 1.0, 0.0F);
+  points.at(2).pose.position.x = std::numeric_limits<double>::quiet_NaN();
+  const auto result = validator.validate(points);
+  EXPECT_FALSE(result.ok);
+  EXPECT_EQ(result.code, InLaneMrmTrajectoryValidator::FailureCode::NON_FINITE_VALUES);
+}
+
+TEST(InLaneMrmTrajectoryValidatorTest, AcceptsExactlyMinPointCount)
+{
+  // Boundary: a trajectory with exactly min_point_count points must pass.
+  const InLaneMrmTrajectoryValidator validator(make_default_params());
+  const auto points = make_straight_trajectory(3, 1.0, 0.0F);
+  EXPECT_TRUE(validator.validate(points).ok);
+}
+
+TEST(InLaneMrmTrajectoryValidatorTest, RejectsNonFiniteVelocity)
+{
+  // has_finite_values guards more than position; an infinite velocity must be rejected.
+  const InLaneMrmTrajectoryValidator validator(make_default_params());
+  auto points = make_straight_trajectory(5, 1.0, 0.0F);
+  points.at(2).longitudinal_velocity_mps = std::numeric_limits<float>::infinity();
+  const auto result = validator.validate(points);
+  EXPECT_FALSE(result.ok);
+  EXPECT_EQ(result.code, InLaneMrmTrajectoryValidator::FailureCode::NON_FINITE_VALUES);
 }
 
 }  // namespace autoware::in_lane_mrm_planner

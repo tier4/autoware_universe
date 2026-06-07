@@ -28,11 +28,8 @@ class InLaneMrmTrajectoryValidator
 public:
   enum class FailureCode : int32_t {
     NONE = 0,
-    EMPTY_TRAJECTORY = 1,
+    INSUFFICIENT_POINT_COUNT = 1,
     NON_FINITE_VALUES = 2,
-    INSUFFICIENT_GEOMETRY = 3,
-    HAZARDOUS_VELOCITY_STEP = 4,
-    STANDSTILL_VELOCITY_MISMATCH = 5,
   };
 
   struct ValidationResult
@@ -46,19 +43,12 @@ public:
 
   void update_params(const Params & params);
 
-  ValidationResult validate(const TrajectoryPoints & points, const Odometry & odom) const;
+  ValidationResult validate(const TrajectoryPoints & points) const;
 
 private:
   using TrajectoryValidatorParams = Params::TrajectoryValidator;
 
   bool has_finite_values(const TrajectoryPoints & points) const;
-
-  bool has_sufficient_geometry(const TrajectoryPoints & points) const;
-
-  bool has_hazardous_velocity_step(const TrajectoryPoints & points) const;
-
-  bool has_velocity_mismatch_at_standstill(
-    const TrajectoryPoints & points, const double v0) const;
 
   TrajectoryValidatorParams params_;
 };

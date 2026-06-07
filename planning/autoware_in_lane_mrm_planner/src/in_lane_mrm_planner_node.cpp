@@ -37,11 +37,8 @@ enum class StatusReasonCode : int32_t {
   PLAN_FAILED_INVALID_S_RANGE = 13,
   PLAN_FAILED_GENERATE_PATH = 14,
   PLAN_FAILED_NO_OUTPUT = 15,
-  VALIDATION_FAILED_EMPTY = 20,
+  VALIDATION_FAILED_POINT_COUNT = 20,
   VALIDATION_FAILED_NON_FINITE = 21,
-  VALIDATION_FAILED_GEOMETRY = 22,
-  VALIDATION_FAILED_HAZARDOUS_STEP = 23,
-  VALIDATION_FAILED_STANDSTILL_MISMATCH = 24,
   LATCHED_OUTPUT_PUBLISHED = 30,
   LATCHED_WITHOUT_CANDIDATE = 31,
   UNKNOWN = 99,
@@ -76,16 +73,10 @@ int to_reason_code(const InLaneMrmTrajectoryValidator::FailureCode code)
 {
   using Code = InLaneMrmTrajectoryValidator::FailureCode;
   switch (code) {
-    case Code::EMPTY_TRAJECTORY:
-      return static_cast<int>(StatusReasonCode::VALIDATION_FAILED_EMPTY);
+    case Code::INSUFFICIENT_POINT_COUNT:
+      return static_cast<int>(StatusReasonCode::VALIDATION_FAILED_POINT_COUNT);
     case Code::NON_FINITE_VALUES:
       return static_cast<int>(StatusReasonCode::VALIDATION_FAILED_NON_FINITE);
-    case Code::INSUFFICIENT_GEOMETRY:
-      return static_cast<int>(StatusReasonCode::VALIDATION_FAILED_GEOMETRY);
-    case Code::HAZARDOUS_VELOCITY_STEP:
-      return static_cast<int>(StatusReasonCode::VALIDATION_FAILED_HAZARDOUS_STEP);
-    case Code::STANDSTILL_VELOCITY_MISMATCH:
-      return static_cast<int>(StatusReasonCode::VALIDATION_FAILED_STANDSTILL_MISMATCH);
     case Code::NONE:
     default:
       return static_cast<int>(StatusReasonCode::UNKNOWN);
@@ -207,7 +198,7 @@ void InLaneMrmPlannerNode::on_timer()
       velocity_planner_.apply(traj.points, odom, accel);
       trajectory_modifier_.publish_planning_factor();
 
-      const auto validation = trajectory_validator_.validate(traj.points, odom);
+      const auto validation = trajectory_validator_.validate(traj.points);
       if (validation.ok) {
         status.validation_ok = true;
         traj.header.stamp = now();
