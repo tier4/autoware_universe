@@ -15,10 +15,10 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__TRAJECTORY_VALIDATOR_WRAPPER_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__TRAJECTORY_VALIDATOR_WRAPPER_HPP_
 
-#include "autoware/trajectory_validator/pseudo_emergency_stop_handler.hpp"
 #include "autoware/trajectory_validator/detail/trajectory_validator.hpp"
 #include "autoware/trajectory_validator/detail/trajectory_validator_report.hpp"
 #include "autoware/trajectory_validator/detail/validator_context.hpp"
+#include "autoware/trajectory_validator/pseudo_emergency_stop_handler.hpp"
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <autoware_trajectory_validator/msg/metric_report.hpp>
