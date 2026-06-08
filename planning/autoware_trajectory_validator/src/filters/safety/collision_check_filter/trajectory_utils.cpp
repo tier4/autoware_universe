@@ -497,8 +497,8 @@ geometry_msgs::msg::Pose interpolate_predicted_path_pose(
 
 TrajectoryData generate_ego_trajectory(
   const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
-  double max_time, const TrajectoryPoints & traj_points,
-  const footprint::EgoDimensions & ego_dimensions, double time_resolution)
+  double max_time, double time_resolution, const TrajectoryPoints & traj_points,
+  const footprint::EgoDimensions & ego_dimensions)
 {
   auto [times, distances] = time_distance::compute_motion_profile_1d(
     initial_twist, braking_lag, assumed_acceleration, 0.0, max_time, time_resolution);
@@ -518,7 +518,7 @@ TrajectoryData generate_ego_trajectory(
 
 TrajectoryData generate_ego_trajectory(
   const TrajectoryPoints & traj_points, const FilterContext & context, double max_time,
-  const footprint::EgoDimensions & ego_dimensions, double time_resolution)
+  double time_resolution, const footprint::EgoDimensions & ego_dimensions)
 {
   if (traj_points.empty()) {
     throw std::invalid_argument("points must not be empty");

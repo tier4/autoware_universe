@@ -401,7 +401,7 @@ TEST(TrajectoryUtilitiesTest, GenerateEgoTrajectoryBuildsConsistentTrajectoryDat
     vehicle_info.vehicle_width_m};
 
   const auto trajectory_data = trajectory::generate_ego_trajectory(
-    initial_twist, 0.0, 0.0, 1.05, traj_points, ego_dimensions, GlobalParams{}.time_resolution);
+    initial_twist, 0.0, 0.0, 1.05, GlobalParams{}.time_resolution, traj_points, ego_dimensions);
 
   ASSERT_EQ(trajectory_data.getObjectIdentification().classification, "EGO");
   ASSERT_TRUE(trajectory_data.getObjectIdentification().trajectory_type.empty());
@@ -428,7 +428,7 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryProjectsCurrentPoseOntoT
     vehicle_info.vehicle_width_m};
 
   const auto trajectory_data = trajectory::generate_ego_trajectory(
-    traj_points, context, 0.25, ego_dimensions, GlobalParams{}.time_resolution);
+    traj_points, context, 0.25, GlobalParams{}.time_resolution, ego_dimensions);
 
   ASSERT_EQ(trajectory_data.getObjectIdentification().classification, "EGO");
   ASSERT_EQ(trajectory_data.size(), 3u);
@@ -458,7 +458,7 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryAllowsExtrapolationBefor
   const double projected_time =
     trajectory::detail::project_current_pose_on_trajectory(traj_points, odometry->pose.pose);
   const auto trajectory_data = trajectory::generate_ego_trajectory(
-    traj_points, context, 0.25, ego_dimensions, GlobalParams{}.time_resolution);
+    traj_points, context, 0.25, GlobalParams{}.time_resolution, ego_dimensions);
 
   EXPECT_NEAR(projected_time, -0.5, 1e-6);
   ASSERT_EQ(trajectory_data.size(), 3u);
@@ -483,7 +483,7 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryWithSinglePointReturnsSi
   const double projected_time =
     trajectory::detail::project_current_pose_on_trajectory(traj_points, odometry->pose.pose);
   const auto trajectory_data = trajectory::generate_ego_trajectory(
-    traj_points, context, 1.0, ego_dimensions, GlobalParams{}.time_resolution);
+    traj_points, context, 1.0, GlobalParams{}.time_resolution, ego_dimensions);
 
   EXPECT_NEAR(projected_time, 1.0, 1e-6);
   ASSERT_EQ(trajectory_data.size(), 1u);
@@ -507,7 +507,7 @@ TEST(TrajectoryUtilitiesTest, GenerateTimedEgoTrajectoryHandlesNonUniformTimeAnd
   const double projected_time =
     trajectory::detail::project_current_pose_on_trajectory(traj_points, odometry->pose.pose);
   const auto trajectory_data = trajectory::generate_ego_trajectory(
-    traj_points, context, 0.25, ego_dimensions, GlobalParams{}.time_resolution);
+    traj_points, context, 0.25, GlobalParams{}.time_resolution, ego_dimensions);
 
   EXPECT_NEAR(projected_time, 0.9, 1e-6);
 

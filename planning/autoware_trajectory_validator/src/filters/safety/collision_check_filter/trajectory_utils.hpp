@@ -363,12 +363,12 @@ geometry_msgs::msg::Pose interpolate_predicted_path_pose(
 
 TrajectoryData generate_ego_trajectory(
   const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
-  double max_time, const TrajectoryPoints & traj_points,
-  const footprint::EgoDimensions & ego_dimensions, double time_resolution);
+  double max_time, double time_resolution, const TrajectoryPoints & traj_points,
+  const footprint::EgoDimensions & ego_dimensions);
 
 TrajectoryData generate_ego_trajectory(
   const TrajectoryPoints & traj_points, const FilterContext & context, double max_time,
-  const footprint::EgoDimensions & ego_dimensions, double time_resolution);
+  double time_resolution, const footprint::EgoDimensions & ego_dimensions);
 
 TrajectoryData generate_predicted_path_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,

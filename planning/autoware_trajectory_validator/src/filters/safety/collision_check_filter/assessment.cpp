@@ -184,7 +184,7 @@ PetArtifact assess_planned_speed_collision_timing(
                                             -ego_pet_params.ego_assumed_acceleration +
                                           ego_pet_params.ego_total_braking_delay;
   auto ego_trajectory = trajectory::generate_ego_trajectory(
-    traj_points, context, ego_time_horizon_for_pet, ego_dimensions, global_params.time_resolution);
+    traj_points, context, ego_time_horizon_for_pet, global_params.time_resolution, ego_dimensions);
 
   std::vector<CollisionEvaluation> collision_evaluations{};
   for (const auto & object_trajectory : object_trajectories) {
@@ -236,15 +236,15 @@ DracArtifact assess_drac(
     const auto ego_deceleration_trajectory = [&]() {
       if (ego_dec == 0.0) {
         return trajectory::generate_ego_trajectory(
-          traj_points, context, ego_time_horizon, ego_dimensions, global_params.time_resolution);
+          traj_points, context, ego_time_horizon, global_params.time_resolution, ego_dimensions);
       } else if (ego_dec > default_max_ego_deceleration - 1e-3) {
         return trajectory::generate_ego_trajectory(
-          context.odometry->twist.twist, 0.0, -ego_dec, ego_time_horizon, traj_points,
-          ego_dimensions, global_params.time_resolution);
+          context.odometry->twist.twist, 0.0, -ego_dec, ego_time_horizon,
+          global_params.time_resolution, traj_points, ego_dimensions);
       }
       return trajectory::generate_ego_trajectory(
         context.odometry->twist.twist, ego_drac_params.ego_total_braking_delay, -ego_dec,
-        ego_time_horizon, traj_points, ego_dimensions, global_params.time_resolution);
+        ego_time_horizon, global_params.time_resolution, traj_points, ego_dimensions);
     }();
 
     std::vector<CollisionEvaluation> collision_evaluations{};
@@ -434,7 +434,7 @@ TrajectoryData generate_rss_ego_trajectory(
     collision_timing_assessment::make_ego_dimensions(vehicle_info, rss_params.ego_footprint_margin);
 
   return trajectory::generate_ego_trajectory(
-    traj_points, context, ego_time_horizon_for_rss, ego_dimensions, global_params.time_resolution);
+    traj_points, context, ego_time_horizon_for_rss, global_params.time_resolution, ego_dimensions);
 }
 
 RssDetail assess_required_acceleration(
