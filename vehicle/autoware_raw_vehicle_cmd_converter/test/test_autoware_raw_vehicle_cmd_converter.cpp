@@ -390,4 +390,7 @@ TEST(UndersteerCompensationTests, ratioFormula)
 
   // at standstill there is no understeer to compensate -> unity factor
   EXPECT_NEAR(us.calculateUndersteerRatio(0.0), 1.0, epsilon);
+
+  // compensation is disables at negative velocities
+  EXPECT_NEAR(us.calculateUndersteerRatio(-1.0), 1.0, epsilon);
 }

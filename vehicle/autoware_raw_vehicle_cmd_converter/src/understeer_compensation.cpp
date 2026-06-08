@@ -25,6 +25,7 @@ void UndersteerCompensation::setUndersteerParams(const double k_us, const double
 
 double UndersteerCompensation::calculateUndersteerRatio(const double vel) const
 {
+  if (vel <= 0.0) return 1.0;
   return 1.0 + k_us_ * vel * vel / wheelbase_;
 }
 
