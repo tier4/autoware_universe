@@ -27,8 +27,8 @@
       emergency_vehicle: car
       train: unknown
       truck: truck
-      tractor_unit: trailer
-      semi_trailer: trailer
+      tractor_unit: truck
+      semi_trailer: truck
       construction_vehicle: truck
       forklift: car
       kart: car
@@ -38,8 +38,8 @@
       personal_mobility: pedestrian
       animal: animal
       pushable_pullable: unknown
-      traffic_cone: unknown
-      debris: unknown
+      traffic_cone: hazard
+      debris: hazard
       stroller: pedestrian
       other_stuff: ignore
       noise+ghost_point: ignore
