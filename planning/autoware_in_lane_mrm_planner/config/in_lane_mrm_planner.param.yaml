@@ -96,7 +96,7 @@
       enable_output_trajectory: true
 
     mrm_velocity:
-      target_deceleration: -3.0
+      target_deceleration: -1.5
       target_jerk: -5.0
       max_jerk_relaxation: -20.0
       max_deceleration_relaxation: -6.0
