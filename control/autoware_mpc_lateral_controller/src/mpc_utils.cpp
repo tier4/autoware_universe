@@ -17,8 +17,11 @@
 #include "autoware/interpolation/linear_interpolation.hpp"
 #include "autoware/interpolation/spline_interpolation.hpp"
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
+#include "autoware/mpc_lateral_controller/taubin_curvature.hpp"
 #include "autoware_utils/geometry/geometry.hpp"
 #include "autoware_utils/math/normalization.hpp"
+
+#include <Eigen/Dense>
 
 #include <algorithm>
 #include <iostream>
@@ -62,6 +65,69 @@ bool isTemporalShortSegment(
   const double expected_distance = std::max(std::fabs(vx), min_velocity_floor) * bounded_dt;
   return ds < expected_distance_ratio * expected_distance;
 }
+
+// constexpr double kSlowSpeedThreshold = 0.8;
+
+// std::vector<bool> detectSlowPoints(const MPCTrajectory & traj)
+// {
+//   std::vector<bool> is_slow(traj.x.size(), false);
+//   for (size_t i = 0; i < traj.x.size(); ++i) {
+//     is_slow.at(i) = traj.vx.at(i) < kSlowSpeedThreshold;
+//   }
+//   return is_slow;
+// }
+
+// void applySlowSegmentCurvatureInterpolation(
+//   std::vector<double> & curvature_vec, const std::vector<bool> & is_slow)
+// {
+//   size_t i = 0;
+//   while (i < is_slow.size()) {
+//     if (!is_slow.at(i)) {
+//       ++i;
+//       continue;
+//     }
+
+//     const size_t seg_start = i;
+//     while (i < is_slow.size() && is_slow.at(i)) {
+//       ++i;
+//     }
+//     const size_t seg_end = i - 1;
+
+//     double k_start = curvature_vec.at(0);
+//     if (seg_start > 0) {
+//       for (size_t j = seg_start - 1; ; --j) {
+//         if (!is_slow.at(j)) {
+//           k_start = curvature_vec.at(j);
+//           break;
+//         }
+//         if (j == 0) {
+//           break;
+//         }
+//       }
+//     }
+
+//     double k_end = curvature_vec.back();
+//     if (seg_end + 1 < is_slow.size()) {
+//       for (size_t j = seg_end + 1; j < is_slow.size(); ++j) {
+//         if (!is_slow.at(j)) {
+//           k_end = curvature_vec.at(j);
+//           break;
+//         }
+//       }
+//     }
+
+//     const size_t seg_len = seg_end - seg_start;
+//     if (seg_len == 0) {
+//       curvature_vec.at(seg_start) = 0.5 * (k_start + k_end);
+//       continue;
+//     }
+
+//     for (size_t j = seg_start; j <= seg_end; ++j) {
+//       const double t = static_cast<double>(j - seg_start) / static_cast<double>(seg_len);
+//       curvature_vec.at(j) = k_start + t * (k_end - k_start);
+//     }
+//   }
+// }
 }  // namespace
 
 namespace MPCUtils
@@ -299,7 +365,7 @@ void calcTrajectoryCurvatureBySpatialResample(
   std::vector<double> orig_arclength;
   calcMPCTrajectoryArcLength(traj, orig_arclength);
   const double total_length = orig_arclength.back();
-  if (total_length < 1e-6) {
+  if (total_length < 1.0) {
     return;
   }
 
@@ -322,7 +388,6 @@ void calcTrajectoryCurvatureBySpatialResample(
   if (unique_arclength.size() < 3) {
     return;
   }
-
   // 3. Generate equally-spaced arc length points
   std::vector<double> resampled_arclength;
   for (double s = 0.0; s < total_length; s += resample_interval_dist) {
@@ -382,15 +447,28 @@ std::vector<double> calcTrajectoryCurvature(
   const int curvature_smoothing_num, const MPCTrajectory & traj,
   const bool use_short_segment_protection)
 {
-  std::vector<double> curvature_vec(traj.x.size());
-  if (traj.x.size() < 3) {
+  const size_t n = traj.x.size();
+  std::vector<double> curvature_vec(n);
+  if (n < 3) {
+    return curvature_vec;
+  }
+
+  const int max_smoothing_num = static_cast<int>(std::floor(0.5 * (static_cast<double>(n - 1))));
+
+  Eigen::MatrixX2d pts(static_cast<Eigen::Index>(n), 2);
+  if (max_smoothing_num < curvature_smoothing_num) {
+    for (size_t i = 0; i < n; ++i) {
+      pts(static_cast<Eigen::Index>(i), 0) = traj.x.at(i);
+      pts(static_cast<Eigen::Index>(i), 1) = traj.y.at(i);
+    }
+    // Get a constant curvature and assign to all indices
+    const double kappa = taubin_curvature(pts).kappa;
+    curvature_vec.assign(n, kappa);
     return curvature_vec;
   }
 
   /* calculate curvature by circle fitting from three points */
   geometry_msgs::msg::Point p1, p2, p3;
-  const int max_smoothing_num =
-    static_cast<int>(std::floor(0.5 * (static_cast<double>(traj.x.size() - 1))));
   const size_t L = static_cast<size_t>(std::min(curvature_smoothing_num, max_smoothing_num));
   for (size_t i = L; i < traj.x.size() - L; ++i) {
     const size_t curr_idx = i;
