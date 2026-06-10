@@ -108,6 +108,35 @@ public:
     const double lateral_duration, const double path_width = 0.0,
     const double speed_limit = 0.0) const;
 
+  /**
+   * @brief generate a conservative on-lane path that decelerates along @p ref_path
+   *
+   * For priority prediction: instead of following the lane at constant speed, the
+   * object brakes from its current speed down to @p target_velocity.
+   * For a hard stop (@p target_velocity == 0) it comes to rest at @p stop_distance
+   * (the arc length to the stop line / conflict area) and then holds position for
+   * the remaining horizon; for a creep (@p target_velocity > 0) it decelerates at
+   * @p deceleration and then proceeds slowly. The lateral profile keeps the
+   * object's current offset, so only the longitudinal motion differs from
+   * generatePathForOnLaneVehicle. Reuses the existing Frenet -> reference-path
+   * interpolation so the resulting poses stay consistent with the normal path.
+   *
+   * @param stop_distance  arc length [m] from the object to the stop point; pass a
+   *                       large value (e.g. infinity) when no stop line is known,
+   *                       in which case the kinematic stop distance is used.
+   * @param extend_to_stop_line  when true (and a finite stop_distance with a full
+   *                       stop is requested), force the path to span all the way to
+   *                       the stop line within the horizon, regardless of whether
+   *                       the object would actually reach it at its current speed.
+   *                       Visualization aid only -- it distorts the longitudinal
+   *                       profile of slow objects.
+   * @return predicted path, or an empty path if @p ref_path is too short
+   */
+  PredictedPath generateStoppingPathForOnLaneVehicle(
+    const TrackedObject & object, const PosePath & ref_path, const double duration,
+    const double deceleration, const double target_velocity, const double stop_distance,
+    const double speed_limit = 0.0, const bool extend_to_stop_line = false) const;
+
   [[nodiscard]] PredictedPathWithArrivalIndex generatePathForCrosswalkUser(
     const TrackedObject & object, const CrosswalkEdgePoints & reachable_crosswalk,
     const double duration) const;

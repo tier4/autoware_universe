@@ -23,6 +23,7 @@
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
+#include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_utils/autoware_utils.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/math/constants.hpp>
@@ -41,6 +42,7 @@
 #include <lanelet2_core/geometry/Lanelet.h>
 #include <lanelet2_core/geometry/LaneletMap.h>
 #include <lanelet2_core/geometry/Point.h>
+#include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 #include <lanelet2_routing/RoutingGraph.h>
 
 #include <algorithm>
@@ -62,6 +64,105 @@ using autoware_utils::ScopedTimeTrack;
 
 namespace
 {
+// Two signal groups are "the same state" when they carry the same set of
+// (color, shape) elements, ignoring confidence / ordering. Used to debounce the
+// signal: a new observation must differ from the held state to start a switch.
+bool sameSignalState(const TrafficLightGroup & a, const TrafficLightGroup & b)
+{
+  if (a.elements.size() != b.elements.size()) {
+    return false;
+  }
+  const auto key = [](const TrafficLightGroup & group) {
+    std::vector<std::pair<uint8_t, uint8_t>> pairs;
+    pairs.reserve(group.elements.size());
+    for (const auto & element : group.elements) {
+      pairs.emplace_back(element.color, element.shape);
+    }
+    std::sort(pairs.begin(), pairs.end());
+    return pairs;
+  };
+  return key(a) == key(b);
+}
+
+// Make a stop path end exactly on the stop line (extend_stop_path_to_stopline aid).
+// The path is generated long enough to reach / slightly pass the stop line; this
+// truncates it at the first point where it crosses the stop line and sets that
+// crossing as the final point, dropping any overshoot -- so the path neither stops
+// short nor pokes past the line and then doubles back. If the path never crosses the
+// line (it ends just short), the nearest point on the line is appended, bounded so a
+// far-ending path is not bridged across a large gap.
+void clipPathAtStopLine(PredictedPath & path, const lanelet::ConstLineString3d & stop_line)
+{
+  if (path.path.size() < 2 || stop_line.size() < 2) {
+    return;
+  }
+
+  // 1. First crossing of the path with the stop-line (its infinite extent in the
+  //    lateral direction) -> truncate there. The u (lateral) bound is generous so a
+  //    laterally-offset path still clips at the longitudinal stop position rather
+  //    than running past it.
+  for (size_t i = 1; i < path.path.size(); ++i) {
+    const auto & a = path.path[i - 1].position;
+    const auto & b = path.path[i].position;
+    const double rx = b.x - a.x;
+    const double ry = b.y - a.y;
+    for (size_t j = 1; j < stop_line.size(); ++j) {
+      const double cx = stop_line[j - 1].x();
+      const double cy = stop_line[j - 1].y();
+      const double sx = stop_line[j].x() - cx;
+      const double sy = stop_line[j].y() - cy;
+      const double denom = rx * sy - ry * sx;
+      if (std::abs(denom) < 1e-9) {
+        continue;  // parallel segments
+      }
+      const double t = ((cx - a.x) * sy - (cy - a.y) * sx) / denom;  // along path segment
+      const double u = ((cx - a.x) * ry - (cy - a.y) * rx) / denom;  // along stop-line segment
+      if (t >= -1e-6 && t <= 1.0 + 1e-6 && u >= -1.0 && u <= 2.0) {
+        auto crossing = path.path[i];  // keep orientation / time fields
+        crossing.position.x = a.x + std::clamp(t, 0.0, 1.0) * rx;
+        crossing.position.y = a.y + std::clamp(t, 0.0, 1.0) * ry;
+        crossing.position.z = a.z;
+        path.path.resize(i);            // keep points [0 .. i-1]
+        path.path.push_back(crossing);  // end exactly at the crossing
+        return;
+      }
+    }
+  }
+
+  // 2. No crossing: append the nearest point on the stop line if the path ends close
+  //    to it (bounded, so a path ending far short is left as-is).
+  constexpr double max_bridge = 3.0;  // [m]
+  const auto & last = path.path.back().position;
+  double best_d_sq = std::numeric_limits<double>::infinity();
+  geometry_msgs::msg::Point target;
+  for (size_t j = 1; j < stop_line.size(); ++j) {
+    const double cx = stop_line[j - 1].x();
+    const double cy = stop_line[j - 1].y();
+    const double dx = stop_line[j].x() - cx;
+    const double dy = stop_line[j].y() - cy;
+    const double len_sq = dx * dx + dy * dy;
+    const double u = len_sq > 1e-12
+                       ? std::clamp(((last.x - cx) * dx + (last.y - cy) * dy) / len_sq, 0.0, 1.0)
+                       : 0.0;
+    const double qx = cx + u * dx;
+    const double qy = cy + u * dy;
+    const double d_sq = (last.x - qx) * (last.x - qx) + (last.y - qy) * (last.y - qy);
+    if (d_sq < best_d_sq) {
+      best_d_sq = d_sq;
+      target.x = qx;
+      target.y = qy;
+      target.z = last.z;
+    }
+  }
+  if (std::isfinite(best_d_sq) && std::sqrt(best_d_sq) <= max_bridge) {
+    auto pose = path.path.back();
+    pose.position = target;
+    path.path.push_back(pose);
+    return;
+  }
+  // Otherwise the path ends far from the stop line; leave it as-is.
+}
+
 /**
  * @brief First order Low pass filtering
  *
@@ -426,6 +527,48 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   acceleration_exponential_half_life_ =
     declare_parameter<double>("acceleration_exponential_half_life");
 
+  // Traffic-signal-aware stop/creep prediction parameters.
+  use_priority_prediction_ = declare_parameter<bool>("priority_prediction.enable");
+  priority_calibration_params_.use_signal_priority =
+    declare_parameter<bool>("priority_prediction.use_signal_priority");
+  priority_calibration_params_.stop_probability_boost =
+    declare_parameter<double>("priority_prediction.stop_probability_boost");
+  priority_calibration_params_.creep_probability_boost =
+    declare_parameter<double>("priority_prediction.creep_probability_boost");
+  priority_calibration_params_.go_probability_decay_on_yield =
+    declare_parameter<double>("priority_prediction.go_probability_decay_on_yield");
+  priority_stop_deceleration_ = declare_parameter<double>("priority_prediction.stop_deceleration");
+  // Amber-signal pass/stop judgement params (ported from the traffic_light module).
+  priority_yellow_params_.lamp_period =
+    declare_parameter<double>("priority_prediction.yellow.lamp_period");
+  priority_yellow_params_.max_stop_acceleration =
+    declare_parameter<double>("priority_prediction.yellow.max_stop_acceleration");
+  priority_yellow_params_.max_stop_jerk =
+    declare_parameter<double>("priority_prediction.yellow.max_stop_jerk");
+  priority_yellow_params_.delay_response_time =
+    declare_parameter<double>("priority_prediction.yellow.delay_response_time");
+  priority_yellow_params_.stop_velocity =
+    declare_parameter<double>("priority_prediction.yellow.stop_velocity");
+  priority_hysteresis_time_ = declare_parameter<double>("priority_prediction.hysteresis_time");
+  priority_use_hysteresis_ = declare_parameter<bool>("priority_prediction.use_hysteresis");
+  priority_retain_last_valid_signal_ =
+    declare_parameter<bool>("priority_prediction.retain_last_valid_signal");
+  // Publish the predicted-path / signal debug markers independently of the
+  // feature, so a "before" (enable=false) movie can use the same path style.
+  priority_debug_viz_ = declare_parameter<bool>("priority_prediction.debug_visualization");
+  // When a path gets a stop/creep conservative hypothesis, drop its own "go" path
+  // so only the conservative prediction remains for that direction.
+  priority_suppress_go_on_conservative_ =
+    declare_parameter<bool>("priority_prediction.suppress_go_on_conservative");
+  // Visualization aid: stretch the stop path to the stop line regardless of speed.
+  priority_extend_stop_path_to_stopline_ =
+    declare_parameter<bool>("priority_prediction.extend_stop_path_to_stopline");
+  // Lead-vehicle clamp: a signal-stopping follower stops behind the car ahead.
+  priority_use_lead_vehicle_ = declare_parameter<bool>("priority_prediction.use_lead_vehicle");
+  priority_follow_lateral_threshold_ =
+    declare_parameter<double>("priority_prediction.follow_lateral_threshold");
+  priority_follow_gap_margin_ = declare_parameter<double>("priority_prediction.follow_gap_margin");
+
   // initialize VRU predictor
   predictor_vru_ = std::make_unique<PredictorVru>(*this);
 
@@ -522,6 +665,14 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
     pub_debug_markers_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>("maneuver", rclcpp::QoS{1});
   }
+
+  // Priority-prediction debug visualization. Object markers stream per callback.
+  pub_priority_object_markers_ =
+    this->create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/priority_objects", 1);
+  // Hysteresis-stabilized signals, republished so RViz's stock TrafficLight
+  // display can show the debounced state used by the decision.
+  pub_stabilized_signals_ =
+    this->create_publisher<TrafficLightGroupArray>("~/debug/stabilized_traffic_signals", 1);
   // dynamic reconfigure
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&MapBasedPredictionNode::onParam, this, std::placeholders::_1));
@@ -613,7 +764,8 @@ void MapBasedPredictionNode::mapCallback(const LaneletMapBin::ConstSharedPtr msg
   traffic_rules_ptr_ = routing_graph_and_traffic_rules.second;
 
   lru_cache_of_convert_path_type_.clear();  // clear cache
-  RCLCPP_DEBUG(get_logger(), "[Map Based Prediction]: Map is loaded");
+
+  RCLCPP_INFO(get_logger(), "[Map Based Prediction]: Map is loaded.");
 
   predictor_vru_->setLaneletMap(lanelet_map_ptr_);
 }
@@ -623,6 +775,62 @@ void MapBasedPredictionNode::trafficSignalsCallback(
 {
   // load traffic signals to the predictor
   predictor_vru_->setTrafficSignal(*msg);
+
+  // Build the raw observation map keyed by traffic-light-group id. Optionally
+  // retain the last non-UNKNOWN observation per group so a transient perception
+  // dropout (all-UNKNOWN) does not erase a red/green state.
+  if (!priority_retain_last_valid_signal_) {
+    raw_signal_id_map_.clear();
+  }
+  for (const auto & group : msg->traffic_light_groups) {
+    const bool has_valid_color = std::any_of(
+      group.elements.begin(), group.elements.end(),
+      [](const auto & element) { return element.color != TrafficLightElement::UNKNOWN; });
+    if (
+      !priority_retain_last_valid_signal_ || has_valid_color ||
+      raw_signal_id_map_.find(group.traffic_light_group_id) == raw_signal_id_map_.end()) {
+      raw_signal_id_map_[group.traffic_light_group_id] = group;
+    }
+  }
+
+  // Debounce each group over time so chattering recognition does not flip the
+  // decision (or the display). A new observation must persist for hysteresis_time
+  // seconds before it replaces the held state. The stabilized map is what the
+  // decision reads and what is republished for visualization.
+  const double now = this->now().seconds();
+  traffic_signal_id_map_.clear();
+  for (const auto & [group_id, observed] : raw_signal_id_map_) {
+    auto & state = signal_hysteresis_[group_id];
+    if (!state.initialized) {
+      state.held = observed;
+      state.candidate = observed;
+      state.candidate_since = now;
+      state.initialized = true;
+    } else if (!priority_use_hysteresis_) {
+      state.held = observed;
+    } else if (sameSignalState(observed, state.held)) {
+      state.candidate = state.held;  // observation agrees with the held state
+      state.candidate_since = now;
+    } else if (sameSignalState(observed, state.candidate)) {
+      if (now - state.candidate_since >= priority_hysteresis_time_) {
+        state.held = observed;  // candidate persisted long enough -> switch
+      }
+    } else {
+      state.candidate = observed;  // a new candidate restarts the timer
+      state.candidate_since = now;
+    }
+    traffic_signal_id_map_[group_id] = state.held;
+  }
+
+  // Republish the stabilized signals so RViz's stock TrafficLight display can show
+  // the debounced state instead of the raw recognition topic.
+  TrafficLightGroupArray stabilized;
+  stabilized.stamp = msg->stamp;
+  stabilized.traffic_light_groups.reserve(traffic_signal_id_map_.size());
+  for (const auto & [group_id, group] : traffic_signal_id_map_) {
+    stabilized.traffic_light_groups.push_back(group);
+  }
+  pub_stabilized_signals_->publish(stabilized);
 }
 
 void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPtr in_objects)
@@ -661,7 +869,7 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
 
   // Remove old objects information in object history
   // road users
-  utils::removeOldObjectsHistory(
+  const auto removed_object_ids = utils::removeOldObjectsHistory(
     objects_detected_time, object_buffer_time_length_, road_users_history_);
   // crosswalk users
   predictor_vru_->removeOldKnownMatches(objects_detected_time, object_buffer_time_length_);
@@ -676,6 +884,38 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
 
   // get current crosswalk users for later prediction
   predictor_vru_->loadCurrentCrosswalkUsers(*in_objects);
+
+  // Reset the per-frame priority debug markers; objectsCallback rebuilds them.
+  priority_object_markers_.markers.clear();
+  conservative_path_is_creep_.clear();
+  priority_debug_stop_lines_.clear();
+  if (priority_debug_viz_) {
+    visualization_msgs::msg::Marker clear_marker;
+    clear_marker.header.frame_id = "map";
+    clear_marker.header.stamp = this->now();
+    clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    priority_object_markers_.markers.push_back(clear_marker);
+  }
+
+  // Reduce every tracked object to a map-frame {id, pose, length} so the
+  // lead-vehicle clamp can find the car ahead of each predicted object. Built
+  // once per frame; only needed when priority prediction is enabled.
+  lead_objects_.clear();
+  if (use_priority_prediction_ && priority_use_lead_vehicle_) {
+    lead_objects_.reserve(in_objects->objects.size());
+    for (const auto & object : in_objects->objects) {
+      geometry_msgs::msg::Pose pose_map = object.kinematics.pose_with_covariance.pose;
+      if (is_object_not_in_map_frame) {
+        geometry_msgs::msg::PoseStamped pose_in_map;
+        geometry_msgs::msg::PoseStamped pose_orig;
+        pose_orig.pose = pose_map;
+        tf2::doTransform(pose_orig, pose_in_map, *world2map_transform);
+        pose_map = pose_in_map.pose;
+      }
+      lead_objects_.push_back(
+        {autoware_utils::to_hex_string(object.object_id), pose_map, object.shape.dimensions.x});
+    }
+  }
 
   // for each object
   for (const auto & object : in_objects->objects) {
@@ -739,6 +979,13 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
 
   // Publish Results
   publish(output, debug_markers);
+
+  // Publish the priority-prediction object debug markers. Driven by
+  // debug_visualization (not the feature switch) so a "before" (enable=false)
+  // movie shows the same green path style with no red stop hypotheses.
+  if (priority_debug_viz_) {
+    publishPriorityDebugMarkers(output, in_objects);
+  }
 
   // Processing time
   const auto processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
@@ -1336,63 +1583,395 @@ ManeuverProbability MapBasedPredictionNode::calculateManeuverProbability(
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
-  float left_lane_change_probability = 0.0;
-  float right_lane_change_probability = 0.0;
-  float lane_follow_probability = 0.0;
-  if (left_paths_exists && predicted_maneuver == Maneuver::LEFT_LANE_CHANGE) {
-    constexpr float LF_PROB_WHEN_LC = 0.9;  // probability for lane follow during lane change
-    constexpr float LC_PROB_WHEN_LC = 1.0;  // probability for left lane change
-    left_lane_change_probability = LC_PROB_WHEN_LC;
-    right_lane_change_probability = 0.0;
-    lane_follow_probability = LF_PROB_WHEN_LC;
-  } else if (right_paths_exists && predicted_maneuver == Maneuver::RIGHT_LANE_CHANGE) {
-    constexpr float LF_PROB_WHEN_LC = 0.9;  // probability for lane follow during lane change
-    constexpr float RC_PROB_WHEN_LC = 1.0;  // probability for right lane change
-    left_lane_change_probability = 0.0;
-    right_lane_change_probability = RC_PROB_WHEN_LC;
-    lane_follow_probability = LF_PROB_WHEN_LC;
-  } else if (center_paths_exists) {
-    constexpr float LF_PROB = 1.0;  // probability for lane follow
-    constexpr float LC_PROB = 0.3;  // probability for left lane change
-    constexpr float RC_PROB = 0.3;  // probability for right lane change
-    if (predicted_maneuver == Maneuver::LEFT_LANE_CHANGE) {
-      // If prediction says left change, but left lane is empty, assume lane follow
-      left_lane_change_probability = 0.0;
-      right_lane_change_probability = (right_paths_exists) ? RC_PROB : 0.0;
-    } else if (predicted_maneuver == Maneuver::RIGHT_LANE_CHANGE) {
-      // If prediction says right change, but right lane is empty, assume lane follow
-      left_lane_change_probability = (left_paths_exists) ? LC_PROB : 0.0;
-      right_lane_change_probability = 0.0;
-    } else {
-      // Predicted Maneuver is Lane Follow
-      left_lane_change_probability = LC_PROB;
-      right_lane_change_probability = RC_PROB;
-    }
-    lane_follow_probability = LF_PROB;
-  } else {
-    // Center path is empty
-    constexpr float LC_PROB = 1.0;  // probability for left lane change
-    constexpr float RC_PROB = 1.0;  // probability for right lane change
-    lane_follow_probability = 0.0;
+  // The distribution itself is a pure function; keep it in utils so it can be
+  // unit-tested and re-weighted by the priority context.
+  return utils::calculateManeuverProbability(
+    predicted_maneuver, left_paths_exists, right_paths_exists, center_paths_exists);
+}
 
-    // If the given lane is empty, the probability goes to 0
-    left_lane_change_probability = left_paths_exists ? LC_PROB : 0.0;
-    right_lane_change_probability = right_paths_exists ? RC_PROB : 0.0;
+std::optional<lanelet::Id> MapBasedPredictionNode::getTrafficSignalId(
+  const lanelet::ConstLanelet & way_lanelet) const
+{
+  const auto traffic_light_reg_elems =
+    way_lanelet.regulatoryElementsAs<const lanelet::TrafficLight>();
+  if (traffic_light_reg_elems.empty()) {
+    return std::nullopt;
+  }
+  if (traffic_light_reg_elems.size() > 1) {
+    RCLCPP_ERROR(
+      get_logger(),
+      "[Map Based Prediction]: Multiple regulatory elements as TrafficLight are defined to one "
+      "lanelet object.");
+  }
+  return traffic_light_reg_elems.front()->id();
+}
+
+std::optional<TrafficLightGroup> MapBasedPredictionNode::getSignalForLanelet(
+  const lanelet::ConstLanelet & lanelet) const
+{
+  const auto signal_id = getTrafficSignalId(lanelet);
+  if (!signal_id) {
+    return std::nullopt;
+  }
+  const auto it = traffic_signal_id_map_.find(*signal_id);
+  if (it == traffic_signal_id_map_.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+void MapBasedPredictionNode::publishPriorityDebugMarkers(
+  const PredictedObjects & output, const TrackedObjects::ConstSharedPtr & in_objects)
+{
+  // Per-vehicle predicted-path classification: each vehicle's go / stop / creep
+  // paths, a box per vehicle, and the stop lines that drove a conservative
+  // hypothesis. The traffic-signal state itself is shown by RViz's stock
+  // TrafficLight display fed from the stabilized signals topic.
+  const auto now = this->now();
+  int32_t path_id = 0;
+  const auto go_color = autoware_utils::create_marker_color(0.6, 1.0, 0.6, 0.95);
+  const auto stop_color = autoware_utils::create_marker_color(1.0, 0.0, 0.0, 1.0);
+  // CREEP (amber signal) hypotheses are drawn yellow to match the signal.
+  const auto creep_color = autoware_utils::create_marker_color(1.0, 0.85, 0.0, 1.0);
+  for (const auto & obj : output.objects) {
+    const auto label =
+      obj.classification.empty()
+        ? ObjectClassification::UNKNOWN
+        : autoware::object_recognition_utils::getHighestProbLabel(obj.classification);
+    if (
+      label != ObjectClassification::CAR && label != ObjectClassification::BUS &&
+      label != ObjectClassification::TRAILER && label != ObjectClassification::MOTORCYCLE &&
+      label != ObjectClassification::TRUCK) {
+      continue;
+    }
+    const auto & paths = obj.kinematics.predicted_paths;
+    const std::string oid = autoware_utils::to_hex_string(obj.object_id);
+    const auto cons_it = conservative_path_is_creep_.find(oid);
+    const bool has_conservative = cons_it != conservative_path_is_creep_.end();
+
+    // A clearly-visible translucent bounding box on every vehicle, using the
+    // object's own dimensions and pose.
+    const auto & dims = obj.shape.dimensions;
+    auto box = autoware_utils::create_default_marker(
+      "map", now, "vehicle_boxes", path_id++, visualization_msgs::msg::Marker::CUBE,
+      autoware_utils::create_marker_scale(
+        dims.x > 0.1 ? dims.x : 4.5, dims.y > 0.1 ? dims.y : 2.0, dims.z > 0.1 ? dims.z : 1.7),
+      autoware_utils::create_marker_color(0.75, 0.85, 1.0, 0.45));
+    box.pose = obj.kinematics.initial_pose_with_covariance.pose;
+    box.lifetime = rclcpp::Duration::from_seconds(0.3);
+    priority_object_markers_.markers.push_back(box);
+
+    // Highlight the most-likely path of this object: the highest-confidence path
+    // is drawn prominently (alpha 0.7), the rest faint (alpha 0.1).
+    size_t max_conf_pi = paths.size();
+    float max_conf = -1.0f;
+    for (size_t pi = 0; pi < paths.size(); ++pi) {
+      if (paths[pi].path.size() >= 2 && paths[pi].confidence > max_conf) {
+        max_conf = paths[pi].confidence;
+        max_conf_pi = pi;
+      }
+    }
+    for (size_t pi = 0; pi < paths.size(); ++pi) {
+      if (paths[pi].path.size() < 2) {
+        continue;
+      }
+      // Conservative hypotheses are the appended paths recorded per index: yellow
+      // for a CREEP (amber signal), red for a full STOP, light green otherwise
+      // (go). All lines share the same width.
+      bool is_conservative = false;
+      bool is_creep = false;
+      if (has_conservative) {
+        const auto idx_it = cons_it->second.find(pi);
+        if (idx_it != cons_it->second.end()) {
+          is_conservative = true;
+          is_creep = idx_it->second;
+        }
+      }
+      auto color = !is_conservative ? go_color : (is_creep ? creep_color : stop_color);
+      color.a = (pi == max_conf_pi) ? 0.7f : 0.1f;
+      constexpr double width = 0.6;
+      constexpr double z_off = 0.8;
+      auto line = autoware_utils::create_default_marker(
+        "map", now, "step3_paths", path_id++, visualization_msgs::msg::Marker::LINE_STRIP,
+        autoware_utils::create_marker_scale(width, 0.0, 0.0), color);
+      line.lifetime = rclcpp::Duration::from_seconds(0.3);
+      for (const auto & pose : paths[pi].path) {
+        auto pt = pose.position;
+        pt.z += z_off;
+        line.points.push_back(pt);
+      }
+      priority_object_markers_.markers.push_back(line);
+    }
   }
 
-  const float MIN_PROBABILITY = 1e-3;
-  const float max_prob = std::max(
-    MIN_PROBABILITY, std::max(
-                       lane_follow_probability,
-                       std::max(left_lane_change_probability, right_lane_change_probability)));
+  // Draw the stop lines that drove a conservative (stop/creep) hypothesis this
+  // frame, so the StopPath end can be compared to the map stop line.
+  for (const auto & stop_line : priority_debug_stop_lines_) {
+    auto sl = autoware_utils::create_default_marker(
+      "map", now, "stop_lines", path_id++, visualization_msgs::msg::Marker::LINE_STRIP,
+      autoware_utils::create_marker_scale(0.4, 0.0, 0.0),
+      autoware_utils::create_marker_color(1.0, 0.0, 1.0, 0.9));  // magenta
+    sl.lifetime = rclcpp::Duration::from_seconds(0.3);
+    for (const auto & p : stop_line) {
+      geometry_msgs::msg::Point pt;
+      pt.x = p.x();
+      pt.y = p.y();
+      pt.z = p.z() + 0.5;
+      sl.points.push_back(pt);
+    }
+    priority_object_markers_.markers.push_back(sl);
+  }
 
-  // Insert Normalized Probability
-  ManeuverProbability maneuver_prob;
-  maneuver_prob[Maneuver::LEFT_LANE_CHANGE] = left_lane_change_probability / max_prob;
-  maneuver_prob[Maneuver::RIGHT_LANE_CHANGE] = right_lane_change_probability / max_prob;
-  maneuver_prob[Maneuver::LANE_FOLLOW] = lane_follow_probability / max_prob;
+  // Add the ego vehicle's own bbox (from the map->base_link transform) so the
+  // debug view shows where "we" are among the classified objects.
+  const auto map_to_base = transform_listener_.get_transform(
+    "map", "base_link", in_objects->header.stamp, rclcpp::Duration::from_seconds(0.1));
+  if (map_to_base) {
+    geometry_msgs::msg::Pose ego_pose;
+    ego_pose.position.x = map_to_base->transform.translation.x;
+    ego_pose.position.y = map_to_base->transform.translation.y;
+    ego_pose.position.z = map_to_base->transform.translation.z;
+    ego_pose.orientation = map_to_base->transform.rotation;
+    const auto ego_color = autoware_utils::create_marker_color(0.1, 0.9, 1.0, 0.95);  // cyan
+    auto ego_box = autoware_utils::create_default_marker(
+      "map", now, "ego", 0, visualization_msgs::msg::Marker::CUBE,
+      autoware_utils::create_marker_scale(5.0, 2.2, 1.8), ego_color);
+    ego_box.pose = ego_pose;
+    ego_box.pose.position.z += 1.5;
+    ego_box.lifetime = rclcpp::Duration::from_seconds(0.3);
+    priority_object_markers_.markers.push_back(ego_box);
 
-  return maneuver_prob;
+    auto ego_text = autoware_utils::create_default_marker(
+      "map", now, "ego_text", 0, visualization_msgs::msg::Marker::TEXT_VIEW_FACING,
+      autoware_utils::create_marker_scale(0.0, 0.0, 2.5),
+      autoware_utils::create_marker_color(0.6, 1.0, 1.0, 1.0));
+    ego_text.pose = ego_pose;
+    ego_text.pose.position.z += 4.0;
+    ego_text.text = "EGO";
+    ego_text.lifetime = rclcpp::Duration::from_seconds(0.3);
+    priority_object_markers_.markers.push_back(ego_text);
+  }
+  pub_priority_object_markers_->publish(priority_object_markers_);
+}
+
+void MapBasedPredictionNode::applyPriorityCalibration(
+  const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
+  const std::vector<int> & predicted_path_ref_index, const double time_horizon,
+  std::vector<PredictedPath> & predicted_paths)
+{
+  std::unique_ptr<ScopedTimeTrack> st_ptr;
+  if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
+
+  if (predicted_paths.empty() || ref_paths.empty()) {
+    return;
+  }
+
+  const std::string object_id_str = autoware_utils::to_hex_string(object.object_id);
+  priority_debug_.vehicles++;
+
+  // Each predicted "go" path is classified by the first traffic-light-controlled
+  // lanelet its own lanelet sequence enters. A signalled (stop / creep) path gets
+  // a conservative hypothesis appended along itself; a path the signal lets
+  // proceed is left untouched.
+  const size_t original_count = predicted_paths.size();
+  // Conservative hypotheses are collected here and appended after the loop so the
+  // (object, path index) bookkeeping stays correct when go paths are suppressed.
+  std::vector<bool> suppress_go(original_count, false);
+  std::vector<PredictedPath> conservative_to_add;
+  std::vector<bool> conservative_is_creep;
+  // When an object gets a STOP hypothesis it is predicted to stop, so all of its
+  // remaining go paths are decayed (object-level) to let the stop dominate.
+  bool object_has_stop = false;
+  for (size_t i = 0; i < original_count; ++i) {
+    const int ref_idx = predicted_path_ref_index[i];
+    if (ref_idx < 0 || static_cast<size_t>(ref_idx) >= ref_paths.size()) {
+      continue;
+    }
+    const auto & ref_path = ref_paths[ref_idx];
+    if (ref_path.path.size() < 2) {
+      continue;
+    }
+
+    // 1. Classify this path by the first traffic-light-controlled lanelet it enters.
+    const auto info = priority::classifyPathAtTrafficLight(ref_path.lanelet_path);
+
+    // 2. Build the priority context from the signal observed for that lanelet --
+    //    so an object still on the approach lane already reacts to the junction's
+    //    signal.
+    priority::PriorityContext context;
+    if (info.found) {
+      context.has_traffic_light = true;
+      const auto signal = getSignalForLanelet(info.signal_lanelet);
+      context.signal_priority = priority::evaluateSignalPriority(info.signal_lanelet, signal);
+    }
+    if (context.signal_priority == priority::SignalPriority::FULLY_PRIORITIZED) {
+      priority_debug_.signal_stop++;
+    }
+    if (context.signal_priority == priority::SignalPriority::PARTIALLY_PRIORITIZED) {
+      priority_debug_.signal_creep++;
+    }
+
+    // 3. The object's own offset s_obj along the reference path. ref_path[0] may
+    //    sit a lanelet ahead of / behind the object, so arc lengths measured from
+    //    ref_path[0] (stop line, lead vehicle) are converted to object-relative by
+    //    subtracting s_obj -- the same convention as the path generator. Otherwise
+    //    the distance is underestimated and the stop path is drawn far too long.
+    const auto & op = object.kinematics.pose_with_covariance.pose.position;
+    const auto & r0 = ref_path.path.front();
+    const double h0 = tf2::getYaw(r0.orientation);
+    const double s_obj =
+      (op.x - r0.position.x) * std::cos(h0) + (op.y - r0.position.y) * std::sin(h0);
+
+    // Distance to the signal stop line, measured from the object.
+    if (info.stop_line) {
+      if (const auto distance = priority::arcLengthToStopLine(ref_path.path, *info.stop_line)) {
+        context.distance_to_stopline = *distance - s_obj;
+        priority_debug_.stopline_found++;
+      }
+    }
+
+    // TEMP[leadcheck]: capture the signal stop-line distance before the clamp.
+    const double dbg_stopline_rel = context.distance_to_stopline;
+    double dbg_lead_rel = -1.0;
+    bool dbg_clamped = false;
+
+    // 3b. Lead-vehicle clamp: a follower stops behind the car ahead in its lane,
+    //     not at the signal stop line. This only refines the stop POSITION; whether
+    //     the object stops at all is still decided by the signal below, so on green
+    //     a leader has no effect. distanceToLeadObject returns an arc length from
+    //     ref_path[0], so subtract s_obj to match the object-relative convention.
+    if (priority_use_lead_vehicle_) {
+      if (
+        const auto lead = priority::distanceToLeadObject(
+          ref_path.path, object_id_str, object.shape.dimensions.x, lead_objects_,
+          priority_follow_lateral_threshold_, priority_follow_gap_margin_, s_obj)) {
+        const double lead_rel = *lead - s_obj;
+        dbg_lead_rel = lead_rel;
+        if (lead_rel < context.distance_to_stopline) {
+          context.distance_to_stopline = lead_rel;
+          dbg_clamped = true;
+          priority_debug_.lead_clamped++;
+        }
+      }
+    }
+
+    // 4. Decision. Chattering is already suppressed upstream by the per-signal
+    //    hysteresis on traffic_signal_id_map_, so no per-object debounce is needed.
+    //    Red is a straight stop; amber runs the jerk-limited pass/stop judgement and
+    //    is multimodal (stop + keep-go) in the dilemma zone.
+    const auto maneuver =
+      priority::decideConservativeManeuver(context, priority_calibration_params_);
+    const auto calibration = priority::weightsForManeuver(maneuver, priority_calibration_params_);
+
+    if (calibration.maneuver == priority::ConservativeManeuver::NONE) {
+      continue;
+    }
+
+    // Amber (CREEP) outcome: predict a stop, a pass-through, or -- in the dilemma
+    // zone -- both. Red (STOP) always emits a confident stop.
+    const bool is_amber = calibration.maneuver == priority::ConservativeManeuver::CREEP;
+    bool keep_go = false;  // dilemma: keep the go (pass) hypothesis beside the stop
+    if (is_amber) {
+      const double velocity = object.kinematics.twist_with_covariance.twist.linear.x;
+      const double acceleration = object.kinematics.acceleration_with_covariance.accel.linear.x;
+      switch (priority::judgeYellow(
+        velocity, acceleration, context.distance_to_stopline, priority_yellow_params_)) {
+        case priority::YellowOutcome::PASS:
+          continue;  // predicted to clear the junction -> keep only the go path
+        case priority::YellowOutcome::DILEMMA:
+          keep_go = true;  // ambiguous -> emit stop AND keep go (multimodal)
+          break;
+        case priority::YellowOutcome::STOP:
+          break;  // predicted to stop
+      }
+    }
+
+    // 5. Generate the stop path to the stop line and append it. Both STOP (red)
+    //    and the surviving CREEP (amber) cases stop at the line, so target_velocity
+    //    is 0.0 for both: amber objects that pass or creep through have already been
+    //    filtered out above by judgeYellow (PASS keeps only the go path).
+    PredictedPath conservative_path = path_generator_->generateStoppingPathForOnLaneVehicle(
+      object, ref_path.path, time_horizon, priority_stop_deceleration_, 0.0,
+      context.distance_to_stopline, ref_path.speed_limit, priority_extend_stop_path_to_stopline_);
+    if (conservative_path.path.empty()) {
+      continue;
+    }
+    // Clip the stop path exactly at the stop line so it never crosses the line and
+    // doubles back. This runs regardless of the extend flag: with extend on it caps
+    // the deliberately over-generated path; with extend off it removes the small
+    // residual overshoot that lane curvature / angled stop lines can still produce.
+    if (info.stop_line) {
+      clipPathAtStopLine(conservative_path, *info.stop_line);
+    }
+    // TEMP[leadcheck]: measure the actual object-relative arc length of the final
+    // (clipped) stop path and compare it against the lead and signal-stop-line
+    // targets, to verify whether the lead clamp actually moves the stop position.
+    {
+      double path_arc = 0.0;
+      for (size_t k = 1; k < conservative_path.path.size(); ++k) {
+        const auto & pa = conservative_path.path[k - 1].position;
+        const auto & pb = conservative_path.path[k].position;
+        path_arc += std::hypot(pb.x - pa.x, pb.y - pa.y);
+      }
+      RCLCPP_INFO(
+        get_logger(), "[leadcheck] clamped=%d lead_rel=%.2f stopline_rel=%.2f path_end=%.2f",
+        dbg_clamped ? 1 : 0, dbg_lead_rel, dbg_stopline_rel, path_arc);
+    }
+    conservative_path.confidence = static_cast<float>(calibration.conservative_weight);
+    if (!keep_go) {
+      // A confident stop (red, or amber the object can stop for): predict the object
+      // stops, so decay its other go paths and drop this path's own go hypothesis.
+      object_has_stop = true;
+      if (priority_suppress_go_on_conservative_) {
+        suppress_go[i] = true;
+      }
+    }
+    conservative_to_add.push_back(conservative_path);
+    conservative_is_creep.push_back(is_amber);  // colour amber-driven stops yellow
+    if (info.stop_line) {
+      priority_debug_stop_lines_.push_back(*info.stop_line);
+    }
+    priority_debug_.conservative_added++;
+  }
+
+  // Object-level go decay: if a stop hypothesis was added, fade every remaining go
+  // path of this object (e.g. to ~0.1 after normalization) so the stop dominates.
+  if (object_has_stop) {
+    const auto go_scale =
+      static_cast<float>(priority_calibration_params_.go_probability_decay_on_yield);
+    for (size_t i = 0; i < original_count; ++i) {
+      if (!suppress_go[i]) {
+        predicted_paths[i].confidence *= go_scale;
+      }
+    }
+  }
+
+  // Rebuild the path set: keep the (non-suppressed) go paths, then append the
+  // conservative hypotheses, recording each one's final index so objectsCallback
+  // colours it red (STOP) / yellow (CREEP) while the go paths stay light green.
+  if (!conservative_to_add.empty()) {
+    std::vector<PredictedPath> rebuilt;
+    rebuilt.reserve(predicted_paths.size() + conservative_to_add.size());
+    for (size_t i = 0; i < predicted_paths.size(); ++i) {
+      if (i < original_count && suppress_go[i]) {
+        continue;
+      }
+      rebuilt.push_back(predicted_paths[i]);
+    }
+    for (size_t k = 0; k < conservative_to_add.size(); ++k) {
+      conservative_path_is_creep_[object_id_str][rebuilt.size()] = conservative_is_creep[k];
+      rebuilt.push_back(conservative_to_add[k]);
+    }
+    predicted_paths = std::move(rebuilt);
+  }
+
+  // Periodically report the gate statistics so real-data behavior is observable.
+  RCLCPP_INFO_THROTTLE(
+    get_logger(), *get_clock(), 5000,
+    "[priority] vehicles=%zu sig_stop=%zu sig_creep=%zu stopline=%zu lead=%zu added=%zu",
+    priority_debug_.vehicles, priority_debug_.signal_stop, priority_debug_.signal_creep,
+    priority_debug_.stopline_found, priority_debug_.lead_clamped,
+    priority_debug_.conservative_added);
 }
 
 std::vector<PredictedRefPath> MapBasedPredictionNode::convertPredictedReferencePath(
@@ -1415,6 +1994,9 @@ std::vector<PredictedRefPath> MapBasedPredictionNode::convertPredictedReferenceP
     predicted_path.width = converted_path.second;
     predicted_path.maneuver = ref_path_info.maneuver;
     predicted_path.speed_limit = ref_path_info.speed_limit;
+    // Keep the lanelet sequence so the priority logic can classify this path by
+    // the first traffic-light-controlled lanelet it enters.
+    predicted_path.lanelet_path = lanelet_path;
     converted_ref_paths.push_back(predicted_path);
   }
 
@@ -1644,10 +2226,15 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
   }
   // Generate Predicted Path
   std::vector<PredictedPath> predicted_paths;
+  // Index into ref_paths for each generated predicted_path, so the priority logic
+  // can classify each path by its own lanelet sequence (-1 = no source ref path).
+  std::vector<int> predicted_path_ref_index;
   double min_avg_curvature = std::numeric_limits<double>::max();
   PredictedPath path_with_smallest_avg_curvature;
+  int ref_index_of_smallest_avg_curvature = -1;
 
-  for (const auto & ref_path : ref_paths) {
+  for (size_t ref_idx = 0; ref_idx < ref_paths.size(); ++ref_idx) {
+    const auto & ref_path = ref_paths[ref_idx];
     PredictedPath predicted_path = path_generator_->generatePathForOnLaneVehicle(
       yaw_fixed_object, ref_path.path, prediction_time_horizon_.vehicle,
       lateral_control_time_horizon_, ref_path.width, ref_path.speed_limit);
@@ -1656,6 +2243,7 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
     if (!check_lateral_acceleration_constraints_) {
       predicted_path.confidence = ref_path.probability;
       predicted_paths.push_back(predicted_path);
+      predicted_path_ref_index.push_back(static_cast<int>(ref_idx));
       continue;
     }
 
@@ -1666,6 +2254,7 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
           trajectory_with_const_velocity, prediction_sampling_time_interval_)) {
       predicted_path.confidence = ref_path.probability;
       predicted_paths.push_back(predicted_path);
+      predicted_path_ref_index.push_back(static_cast<int>(ref_idx));
       continue;
     }
 
@@ -1687,10 +2276,24 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
       min_avg_curvature = curvature_avg;
       path_with_smallest_avg_curvature = predicted_path;
       path_with_smallest_avg_curvature.confidence = ref_path.probability;
+      ref_index_of_smallest_avg_curvature = static_cast<int>(ref_idx);
     }
   }
 
-  if (predicted_paths.empty()) predicted_paths.push_back(path_with_smallest_avg_curvature);
+  if (predicted_paths.empty()) {
+    predicted_paths.push_back(path_with_smallest_avg_curvature);
+    predicted_path_ref_index.push_back(ref_index_of_smallest_avg_curvature);
+  }
+
+  // Traffic-signal-aware prediction: optionally add a conservative stop/creep
+  // hypothesis and re-weight the go paths. No-op unless enabled, so the default
+  // output is unchanged.
+  if (use_priority_prediction_) {
+    applyPriorityCalibration(
+      yaw_fixed_object, ref_paths, predicted_path_ref_index, prediction_time_horizon_.vehicle,
+      predicted_paths);
+  }
+
   // Normalize Path Confidence and output the predicted object
 
   float sum_confidence = 0.0;
