@@ -19,6 +19,7 @@ ament_auto_add_library(map_based_prediction_node SHARED
   src/predictor_vru.cpp
   src/priority_utils.cpp
   src/debug.cpp
+  src/debug_util.cpp
   src/utils.cpp
 )
 

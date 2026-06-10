@@ -854,16 +854,8 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
   // get current crosswalk users for later prediction
   predictor_vru_->loadCurrentCrosswalkUsers(*in_objects);
 
-  priority_object_markers_.markers.clear();
   conservative_path_is_creep_.clear();
   priority_debug_stop_lines_.clear();
-  if (priority_debug_viz_) {
-    visualization_msgs::msg::Marker clear_marker;
-    clear_marker.header.frame_id = "map";
-    clear_marker.header.stamp = this->now();
-    clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
-    priority_object_markers_.markers.push_back(clear_marker);
-  }
 
   // for each object
   for (const auto & object : in_objects->objects) {
@@ -1566,119 +1558,20 @@ std::optional<TrafficLightGroup> MapBasedPredictionNode::getSignalForLanelet(
 void MapBasedPredictionNode::publishPriorityDebugMarkers(
   const PredictedObjects & output, const TrackedObjects::ConstSharedPtr & in_objects)
 {
-  const auto now = this->now();
-  int32_t path_id = 0;
-  const auto go_color = autoware_utils::create_marker_color(0.6, 1.0, 0.6, 0.95);
-  const auto stop_color = autoware_utils::create_marker_color(1.0, 0.0, 0.0, 1.0);
-  const auto creep_color = autoware_utils::create_marker_color(1.0, 0.85, 0.0, 1.0);
-  for (const auto & obj : output.objects) {
-    const auto label =
-      obj.classification.empty()
-        ? ObjectClassification::UNKNOWN
-        : autoware::object_recognition_utils::getHighestProbLabel(obj.classification);
-    if (
-      label != ObjectClassification::CAR && label != ObjectClassification::BUS &&
-      label != ObjectClassification::TRAILER && label != ObjectClassification::MOTORCYCLE &&
-      label != ObjectClassification::TRUCK) {
-      continue;
-    }
-    const auto & paths = obj.kinematics.predicted_paths;
-    const std::string oid = autoware_utils::to_hex_string(obj.object_id);
-    const auto cons_it = conservative_path_is_creep_.find(oid);
-    const bool has_conservative = cons_it != conservative_path_is_creep_.end();
-
-    const auto & dims = obj.shape.dimensions;
-    auto box = autoware_utils::create_default_marker(
-      "map", now, "vehicle_boxes", path_id++, visualization_msgs::msg::Marker::CUBE,
-      autoware_utils::create_marker_scale(
-        dims.x > 0.1 ? dims.x : 4.5, dims.y > 0.1 ? dims.y : 2.0, dims.z > 0.1 ? dims.z : 1.7),
-      autoware_utils::create_marker_color(0.75, 0.85, 1.0, 0.45));
-    box.pose = obj.kinematics.initial_pose_with_covariance.pose;
-    box.lifetime = rclcpp::Duration::from_seconds(0.3);
-    priority_object_markers_.markers.push_back(box);
-
-    size_t max_conf_pi = paths.size();
-    float max_conf = -1.0f;
-    for (size_t pi = 0; pi < paths.size(); ++pi) {
-      if (paths[pi].path.size() >= 2 && paths[pi].confidence > max_conf) {
-        max_conf = paths[pi].confidence;
-        max_conf_pi = pi;
-      }
-    }
-    for (size_t pi = 0; pi < paths.size(); ++pi) {
-      if (paths[pi].path.size() < 2) {
-        continue;
-      }
-      bool is_conservative = false;
-      bool is_creep = false;
-      if (has_conservative) {
-        const auto idx_it = cons_it->second.find(pi);
-        if (idx_it != cons_it->second.end()) {
-          is_conservative = true;
-          is_creep = idx_it->second;
-        }
-      }
-      auto color = !is_conservative ? go_color : (is_creep ? creep_color : stop_color);
-      color.a = (pi == max_conf_pi) ? 0.7f : 0.1f;
-      constexpr double width = 0.6;
-      constexpr double z_off = 0.8;
-      auto line = autoware_utils::create_default_marker(
-        "map", now, "step3_paths", path_id++, visualization_msgs::msg::Marker::LINE_STRIP,
-        autoware_utils::create_marker_scale(width, 0.0, 0.0), color);
-      line.lifetime = rclcpp::Duration::from_seconds(0.3);
-      for (const auto & pose : paths[pi].path) {
-        auto pt = pose.position;
-        pt.z += z_off;
-        line.points.push_back(pt);
-      }
-      priority_object_markers_.markers.push_back(line);
-    }
-  }
-
-  for (const auto & stop_line : priority_debug_stop_lines_) {
-    auto sl = autoware_utils::create_default_marker(
-      "map", now, "stop_lines", path_id++, visualization_msgs::msg::Marker::LINE_STRIP,
-      autoware_utils::create_marker_scale(0.4, 0.0, 0.0),
-      autoware_utils::create_marker_color(1.0, 0.0, 1.0, 0.9));  // magenta
-    sl.lifetime = rclcpp::Duration::from_seconds(0.3);
-    for (const auto & p : stop_line) {
-      geometry_msgs::msg::Point pt;
-      pt.x = p.x();
-      pt.y = p.y();
-      pt.z = p.z() + 0.5;
-      sl.points.push_back(pt);
-    }
-    priority_object_markers_.markers.push_back(sl);
-  }
-
+  std::optional<geometry_msgs::msg::Pose> ego_pose;
   const auto map_to_base = transform_listener_.get_transform(
     "map", "base_link", in_objects->header.stamp, rclcpp::Duration::from_seconds(0.1));
   if (map_to_base) {
-    geometry_msgs::msg::Pose ego_pose;
-    ego_pose.position.x = map_to_base->transform.translation.x;
-    ego_pose.position.y = map_to_base->transform.translation.y;
-    ego_pose.position.z = map_to_base->transform.translation.z;
-    ego_pose.orientation = map_to_base->transform.rotation;
-    const auto ego_color = autoware_utils::create_marker_color(0.1, 0.9, 1.0, 0.95);  // cyan
-    auto ego_box = autoware_utils::create_default_marker(
-      "map", now, "ego", 0, visualization_msgs::msg::Marker::CUBE,
-      autoware_utils::create_marker_scale(5.0, 2.2, 1.8), ego_color);
-    ego_box.pose = ego_pose;
-    ego_box.pose.position.z += 1.5;
-    ego_box.lifetime = rclcpp::Duration::from_seconds(0.3);
-    priority_object_markers_.markers.push_back(ego_box);
-
-    auto ego_text = autoware_utils::create_default_marker(
-      "map", now, "ego_text", 0, visualization_msgs::msg::Marker::TEXT_VIEW_FACING,
-      autoware_utils::create_marker_scale(0.0, 0.0, 2.5),
-      autoware_utils::create_marker_color(0.6, 1.0, 1.0, 1.0));
-    ego_text.pose = ego_pose;
-    ego_text.pose.position.z += 4.0;
-    ego_text.text = "EGO";
-    ego_text.lifetime = rclcpp::Duration::from_seconds(0.3);
-    priority_object_markers_.markers.push_back(ego_text);
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = map_to_base->transform.translation.x;
+    pose.position.y = map_to_base->transform.translation.y;
+    pose.position.z = map_to_base->transform.translation.z;
+    pose.orientation = map_to_base->transform.rotation;
+    ego_pose = pose;
   }
-  pub_priority_object_markers_->publish(priority_object_markers_);
+  pub_priority_object_markers_->publish(
+    debug_util::createPriorityObjectMarkers(
+      output, conservative_path_is_creep_, priority_debug_stop_lines_, ego_pose, this->now()));
 }
 
 void MapBasedPredictionNode::applyPriorityCalibration(

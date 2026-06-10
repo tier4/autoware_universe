@@ -16,6 +16,7 @@
 #define MAP_BASED_PREDICTION__MAP_BASED_PREDICTION_NODE_HPP_
 
 #include "map_based_prediction/data_structure.hpp"
+#include "map_based_prediction/debug_util.hpp"
 #include "map_based_prediction/path_generator.hpp"
 #include "map_based_prediction/predictor_vru.hpp"
 #include "map_based_prediction/priority_utils.hpp"
@@ -87,7 +88,6 @@ private:
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_markers_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_priority_object_markers_;
-  visualization_msgs::msg::MarkerArray priority_object_markers_;  // rebuilt per callback
   // Hysteresis-stabilized signals, republished so RViz can show the debounced state.
   rclcpp::Publisher<TrafficLightGroupArray>::SharedPtr pub_stabilized_signals_;
   rclcpp::Subscription<TrackedObjects>::SharedPtr sub_objects_;
@@ -115,15 +115,7 @@ private:
   };
   std::unordered_map<lanelet::Id, SignalHysteresis> signal_hysteresis_;
 
-  // Gate-fire counters for the signal calibration, logged throttled.
-  struct PriorityDebugCounters
-  {
-    size_t vehicles = 0;
-    size_t signal_stop = 0;
-    size_t signal_creep = 0;
-    size_t stopline_found = 0;
-    size_t conservative_added = 0;
-  } priority_debug_;
+  debug_util::PriorityDebugCounters priority_debug_;
 
   // Lanelet Map Pointers
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
@@ -203,9 +195,8 @@ private:
   bool priority_debug_viz_;
   bool priority_suppress_go_on_conservative_;
   bool priority_extend_stop_path_to_stopline_;
-  // object id -> {predicted_path index -> is_creep}, rebuilt per callback so
-  // objectsCallback can colour the conservative path lines.
-  std::unordered_map<std::string, std::unordered_map<size_t, bool>> conservative_path_is_creep_;
+  // Rebuilt per callback so objectsCallback can colour the conservative path lines.
+  debug_util::ConservativePathIndexMap conservative_path_is_creep_;
   // Stop lines that drove a conservative hypothesis this frame (debug markers).
   std::vector<lanelet::ConstLineString3d> priority_debug_stop_lines_;
 
