@@ -16,6 +16,7 @@
 #define MAP_BASED_PREDICTION__PRIORITY_UTILS_HPP_
 
 #include "map_based_prediction/data_structure.hpp"
+#include "map_based_prediction/debug_util.hpp"
 
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 
@@ -25,40 +26,42 @@
 #include <lanelet2_core/primitives/Point.h>
 #include <lanelet2_routing/Forward.h>
 
+#include <cstddef>
 #include <limits>
 #include <optional>
-#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+namespace autoware::map_based_prediction
+{
+class PathGenerator;
+}  // namespace autoware::map_based_prediction
 
 namespace autoware::map_based_prediction::priority
 {
 using autoware_perception_msgs::msg::TrafficLightGroup;
 
 enum class SignalPriority {
-  NOT_PRIORITIZED = 0,    ///< green / matching green arrow -> object may proceed
-  PARTIALLY_PRIORITIZED,  ///< amber -> object should creep / be cautious
-  FULLY_PRIORITIZED,      ///< red / non-matching arrow -> object must stop
+  NOT_PRIORITIZED = 0,  ///< green / matching green arrow -> object may proceed
+  FULLY_PRIORITIZED,    ///< red / non-matching arrow -> object must stop
 };
 
 struct PriorityContext
 {
   SignalPriority signal_priority{SignalPriority::NOT_PRIORITIZED};
-  bool has_traffic_light{false};
   double distance_to_stopline{std::numeric_limits<double>::infinity()};
 };
 
-// Both CREEP and STOP emit a stop-at-the-line path; CREEP is kept distinct so
-// amber-driven stops can be weighted and coloured separately from red.
 enum class ConservativeManeuver {
   NONE = 0,
-  CREEP,  ///< amber
-  STOP,   ///< red
+  STOP,  ///< red
 };
 
 struct PriorityCalibrationParams
 {
   bool use_signal_priority{true};
   double stop_probability_boost{0.35};
-  double creep_probability_boost{0.25};
   double go_probability_decay_on_yield{0.5};
 };
 
@@ -68,16 +71,6 @@ struct PriorityCalibration
   double conservative_weight{0.0};
   double go_scale{1.0};
 };
-
-struct HysteresisState
-{
-  ConservativeManeuver held{ConservativeManeuver::NONE};
-  ConservativeManeuver candidate{ConservativeManeuver::NONE};
-  double candidate_since{0.0};
-};
-
-/// "turn_direction" attribute of a lanelet ("straight" if absent).
-std::string getTurnDirection(const lanelet::ConstLanelet & lanelet);
 
 bool hasTrafficLight(const lanelet::ConstLanelet & lanelet);
 
@@ -93,7 +86,6 @@ struct PathSignalInfo
   bool found{false};
   lanelet::ConstLanelet signal_lanelet;
   std::optional<lanelet::ConstLineString3d> stop_line;
-  std::string turn_direction{"straight"};
 };
 
 /// Classify a predicted reference path by the first traffic-light-controlled
@@ -107,52 +99,35 @@ PathSignalInfo classifyPathAtTrafficLight(const lanelet::routing::LaneletPath & 
 SignalPriority evaluateSignalPriority(
   const lanelet::ConstLanelet & lanelet, const std::optional<TrafficLightGroup> & signal);
 
-/// Distance [m] needed to stop under deceleration and jerk limits after a response
-/// delay. Ported verbatim from
-/// autoware::behavior_velocity_planner::planning_utils::calcJudgeLineDistWithJerkLimit
-/// (autoware_behavior_velocity_planner_common) to avoid a perception -> planning
-/// dependency.
-double judgeLineDistWithJerkLimit(
-  double velocity, double acceleration, double max_stop_acceleration, double max_stop_jerk,
-  double delay_response_time);
-
-struct YellowJudgeParams
-{
-  double lamp_period{2.75};            ///< assumed remaining yellow duration [s]
-  double max_stop_acceleration{-3.0};  ///< deceleration limit [m/s^2] (negative)
-  double max_stop_jerk{-3.0};          ///< jerk limit [m/s^3] (negative)
-  double delay_response_time{0.5};     ///< reaction delay before braking [s]
-  double stop_velocity{1.0};           ///< below this speed the object always stops [m/s]
-};
-
-enum class YellowOutcome {
-  STOP,     ///< can comfortably stop
-  PASS,     ///< clears the junction within the yellow
-  DILEMMA,  ///< can neither stop nor clearly clear (emit stop AND pass)
-};
-
-/// Amber-signal outcome from the object's kinematics and its distance to the stop
-/// line. Mirrors TrafficLightModule::isPassthrough
-/// (autoware_behavior_velocity_traffic_light_module) but surfaces the dilemma zone.
-YellowOutcome judgeYellow(
-  double velocity, double acceleration, double distance_to_stopline,
-  const YellowJudgeParams & params);
-
 PriorityCalibration calibratePriority(
   const PriorityContext & context, const PriorityCalibrationParams & params);
 
-/// Raw conservative decision before hysteresis, split out so the node can
-/// debounce it across frames before turning it into weights.
 ConservativeManeuver decideConservativeManeuver(
   const PriorityContext & context, const PriorityCalibrationParams & params);
 
 PriorityCalibration weightsForManeuver(
   ConservativeManeuver maneuver, const PriorityCalibrationParams & params);
 
-/// Debounce: a new @p raw value becomes the held output only after persisting for
-/// @p hysteresis_time seconds; flipping back to the held value cancels the switch.
-ConservativeManeuver updateHysteresis(
-  HysteresisState & state, ConservativeManeuver raw, double now, double hysteresis_time);
+struct PriorityPredictionParams
+{
+  PriorityCalibrationParams calibration;
+  double stop_deceleration{2.0};
+  bool suppress_go_on_conservative{true};
+  bool extend_stop_path_to_stopline{false};
+};
+
+/// Adds conservative stop hypotheses based on each path's traffic-signal context,
+/// mutating @p predicted_paths in place: a red signal appends a stopping path
+/// clipped at the stop line and decays / drops the go hypotheses.
+/// @return indices into @p predicted_paths of the added conservative paths
+std::unordered_set<size_t> applyPriorityCalibration(
+  const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
+  const std::vector<int> & predicted_path_ref_index, const double time_horizon,
+  const PathGenerator & path_generator,
+  const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
+  const PriorityPredictionParams & params, std::vector<PredictedPath> & predicted_paths,
+  debug_util::PriorityDebugCounters & counters,
+  std::vector<lanelet::ConstLineString3d> & debug_stop_lines);
 
 }  // namespace autoware::map_based_prediction::priority
 

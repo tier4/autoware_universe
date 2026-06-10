@@ -109,17 +109,16 @@ public:
     const double speed_limit = 0.0) const;
 
   /**
-   * @brief generate a conservative on-lane path that brakes down to
-   * @p target_velocity, stopping at @p stop_distance for a hard stop
-   * (target_velocity == 0). Only the longitudinal motion differs from
-   * generatePathForOnLaneVehicle. extend_to_stop_line is a visualization aid that
-   * forces the path to span to the stop line regardless of the object's speed.
+   * @brief generate a conservative on-lane path that stops at @p stop_distance.
+   * Only the longitudinal motion differs from generatePathForOnLaneVehicle.
+   * extend_to_stop_line is a visualization aid that forces the path to span to
+   * the stop line regardless of the object's speed.
    * @return predicted path, or an empty path if @p ref_path is too short
    */
   PredictedPath generateStoppingPathForOnLaneVehicle(
     const TrackedObject & object, const PosePath & ref_path, const double duration,
-    const double deceleration, const double target_velocity, const double stop_distance,
-    const double speed_limit = 0.0, const bool extend_to_stop_line = false) const;
+    const double deceleration, const double stop_distance, const double speed_limit = 0.0,
+    const bool extend_to_stop_line = false) const;
 
   [[nodiscard]] PredictedPathWithArrivalIndex generatePathForCrosswalkUser(
     const TrackedObject & object, const CrosswalkEdgePoints & reachable_crosswalk,

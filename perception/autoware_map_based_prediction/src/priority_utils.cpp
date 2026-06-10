@@ -14,8 +14,12 @@
 
 #include "map_based_prediction/priority_utils.hpp"
 
+#include "map_based_prediction/lanelet_util.hpp"
+#include "map_based_prediction/path_generator.hpp"
+
 #include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
+#include <tf2/utils.hpp>
 
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 #include <lanelet2_core/primitives/Lanelet.h>
@@ -27,19 +31,84 @@
 #include <cstddef>
 #include <limits>
 #include <optional>
-#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace autoware::map_based_prediction::priority
 {
 namespace
 {
-using TrafficLightElement = autoware_perception_msgs::msg::TrafficLightElement;
-}  // namespace
-
-std::string getTurnDirection(const lanelet::ConstLanelet & lanelet)
+// Truncate the path at its first crossing with the stop line; if it never crosses,
+// bridge the last point to the line (bounded) so the path ends exactly on it.
+void clipPathAtStopLine(PredictedPath & path, const lanelet::ConstLineString3d & stop_line)
 {
-  return lanelet.attributeOr("turn_direction", "straight");
+  if (path.path.size() < 2 || stop_line.size() < 2) {
+    return;
+  }
+
+  // The u (lateral) bound is generous so a laterally-offset path still clips at
+  // the longitudinal stop position.
+  for (size_t i = 1; i < path.path.size(); ++i) {
+    const auto & a = path.path[i - 1].position;
+    const auto & b = path.path[i].position;
+    const double rx = b.x - a.x;
+    const double ry = b.y - a.y;
+    for (size_t j = 1; j < stop_line.size(); ++j) {
+      const double cx = stop_line[j - 1].x();
+      const double cy = stop_line[j - 1].y();
+      const double sx = stop_line[j].x() - cx;
+      const double sy = stop_line[j].y() - cy;
+      const double denom = rx * sy - ry * sx;
+      if (std::abs(denom) < 1e-9) {
+        continue;  // parallel segments
+      }
+      const double t = ((cx - a.x) * sy - (cy - a.y) * sx) / denom;  // along path segment
+      const double u = ((cx - a.x) * ry - (cy - a.y) * rx) / denom;  // along stop-line segment
+      if (t >= -1e-6 && t <= 1.0 + 1e-6 && u >= -1.0 && u <= 2.0) {
+        auto crossing = path.path[i];  // keep orientation / time fields
+        crossing.position.x = a.x + std::clamp(t, 0.0, 1.0) * rx;
+        crossing.position.y = a.y + std::clamp(t, 0.0, 1.0) * ry;
+        crossing.position.z = a.z;
+        path.path.resize(i);
+        path.path.push_back(crossing);
+        return;
+      }
+    }
+  }
+
+  constexpr double max_bridge = 3.0;  // [m]
+  const auto & last = path.path.back().position;
+  double best_d_sq = std::numeric_limits<double>::infinity();
+  geometry_msgs::msg::Point target;
+  for (size_t j = 1; j < stop_line.size(); ++j) {
+    const double cx = stop_line[j - 1].x();
+    const double cy = stop_line[j - 1].y();
+    const double dx = stop_line[j].x() - cx;
+    const double dy = stop_line[j].y() - cy;
+    const double len_sq = dx * dx + dy * dy;
+    const double u = len_sq > 1e-12
+                       ? std::clamp(((last.x - cx) * dx + (last.y - cy) * dy) / len_sq, 0.0, 1.0)
+                       : 0.0;
+    const double qx = cx + u * dx;
+    const double qy = cy + u * dy;
+    const double d_sq = (last.x - qx) * (last.x - qx) + (last.y - qy) * (last.y - qy);
+    if (d_sq < best_d_sq) {
+      best_d_sq = d_sq;
+      target.x = qx;
+      target.y = qy;
+      target.z = last.z;
+    }
+  }
+  if (std::isfinite(best_d_sq) && std::sqrt(best_d_sq) <= max_bridge) {
+    auto pose = path.path.back();
+    pose.position = target;
+    path.path.push_back(pose);
+    return;
+  }
 }
+}  // namespace
 
 bool hasTrafficLight(const lanelet::ConstLanelet & lanelet)
 {
@@ -129,7 +198,6 @@ PathSignalInfo classifyPathAtTrafficLight(const lanelet::routing::LaneletPath & 
     }
     info.found = true;
     info.signal_lanelet = lanelet;
-    info.turn_direction = getTurnDirection(lanelet);
     info.stop_line = getStopLine(lanelet);
     if (!info.stop_line) {
       // No tagged stop line: fall back to the lanelet's entry edge so a stopping
@@ -161,72 +229,7 @@ SignalPriority evaluateSignalPriority(
   if (!autoware::traffic_light_utils::isTrafficSignalStop(lanelet, *signal)) {
     return SignalPriority::NOT_PRIORITIZED;
   }
-
-  // A solid amber circle without a red is cautionary -> creep; anything else -> stop.
-  const bool has_amber = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
-    signal->elements, TrafficLightElement::CIRCLE, TrafficLightElement::AMBER);
-  const bool has_red = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
-    signal->elements, TrafficLightElement::CIRCLE, TrafficLightElement::RED);
-  if (has_amber && !has_red) {
-    return SignalPriority::PARTIALLY_PRIORITIZED;
-  }
   return SignalPriority::FULLY_PRIORITIZED;
-}
-
-double judgeLineDistWithJerkLimit(
-  const double velocity, const double acceleration, const double max_stop_acceleration,
-  const double max_stop_jerk, const double delay_response_time)
-{
-  // Ported verbatim from
-  // autoware::behavior_velocity_planner::planning_utils::calcJudgeLineDistWithJerkLimit
-  // (autoware_behavior_velocity_planner_common/src/utilization/util.cpp); keep in sync.
-  if (velocity <= 0.0) {
-    return 0.0;
-  }
-
-  // t0: observe the signal and decide to stop / t1: braking starts (jerk-limited)
-  // t2: reach max deceleration / t3: stop.
-  const double t1 = delay_response_time;
-  const double x1 = velocity * t1;
-
-  const double v2 = velocity + (std::pow(max_stop_acceleration, 2) - std::pow(acceleration, 2)) /
-                                 (2.0 * max_stop_jerk);
-
-  if (v2 <= 0.0) {
-    const double t2 = -1.0 *
-                      (max_stop_acceleration +
-                       std::sqrt(acceleration * acceleration - 2.0 * max_stop_jerk * velocity)) /
-                      max_stop_jerk;
-    const double x2 =
-      velocity * t2 + acceleration * std::pow(t2, 2) / 2.0 + max_stop_jerk * std::pow(t2, 3) / 6.0;
-    return std::max(0.0, x1 + x2);
-  }
-
-  const double t2 = (max_stop_acceleration - acceleration) / max_stop_jerk;
-  const double x2 =
-    velocity * t2 + acceleration * std::pow(t2, 2) / 2.0 + max_stop_jerk * std::pow(t2, 3) / 6.0;
-
-  const double x3 = -1.0 * std::pow(v2, 2) / (2.0 * max_stop_acceleration);
-  return std::max(0.0, x1 + x2 + x3);
-}
-
-YellowOutcome judgeYellow(
-  const double velocity, const double acceleration, const double distance_to_stopline,
-  const YellowJudgeParams & params)
-{
-  // Mirrors TrafficLightModule::isPassthrough
-  // (autoware_behavior_velocity_traffic_light_module/src/scene.cpp), but surfaces
-  // the dilemma zone instead of a single stop/pass decision.
-  const double stop_distance = judgeLineDistWithJerkLimit(
-    velocity, acceleration, params.max_stop_acceleration, params.max_stop_jerk,
-    params.delay_response_time);
-  const bool stoppable =
-    (stop_distance < distance_to_stopline) || (velocity < params.stop_velocity);
-  if (stoppable) {
-    return YellowOutcome::STOP;
-  }
-  const bool reachable = distance_to_stopline < velocity * params.lamp_period;
-  return reachable ? YellowOutcome::PASS : YellowOutcome::DILEMMA;
 }
 
 ConservativeManeuver decideConservativeManeuver(
@@ -234,22 +237,11 @@ ConservativeManeuver decideConservativeManeuver(
 {
   const bool stop_by_signal =
     params.use_signal_priority && context.signal_priority == SignalPriority::FULLY_PRIORITIZED;
-  const bool creep_by_signal =
-    params.use_signal_priority && context.signal_priority == SignalPriority::PARTIALLY_PRIORITIZED;
-
-  ConservativeManeuver maneuver = ConservativeManeuver::NONE;
-  if (stop_by_signal) {
-    maneuver = ConservativeManeuver::STOP;
-  } else if (creep_by_signal) {
-    maneuver = ConservativeManeuver::CREEP;
-  }
 
   // No distance threshold: a far object just gets a stop path capped at the horizon.
   const bool stop_line_known = std::isfinite(context.distance_to_stopline);
-  if (!stop_line_known) {
-    maneuver = ConservativeManeuver::NONE;
-  }
-  return maneuver;
+  return (stop_by_signal && stop_line_known) ? ConservativeManeuver::STOP
+                                             : ConservativeManeuver::NONE;
 }
 
 PriorityCalibration weightsForManeuver(
@@ -261,11 +253,6 @@ PriorityCalibration weightsForManeuver(
     case ConservativeManeuver::STOP:
       calibration.conservative_weight = params.stop_probability_boost;
       calibration.go_scale = params.go_probability_decay_on_yield;
-      break;
-    case ConservativeManeuver::CREEP:
-      // Amber: the object may still proceed, so the go hypotheses are kept intact.
-      calibration.conservative_weight = params.creep_probability_boost;
-      calibration.go_scale = 1.0;
       break;
     case ConservativeManeuver::NONE:
     default:
@@ -282,22 +269,122 @@ PriorityCalibration calibratePriority(
   return weightsForManeuver(decideConservativeManeuver(context, params), params);
 }
 
-ConservativeManeuver updateHysteresis(
-  HysteresisState & state, const ConservativeManeuver raw, const double now,
-  const double hysteresis_time)
+std::unordered_set<size_t> applyPriorityCalibration(
+  const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
+  const std::vector<int> & predicted_path_ref_index, const double time_horizon,
+  const PathGenerator & path_generator,
+  const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
+  const PriorityPredictionParams & params, std::vector<PredictedPath> & predicted_paths,
+  debug_util::PriorityDebugCounters & counters,
+  std::vector<lanelet::ConstLineString3d> & debug_stop_lines)
 {
-  if (raw == state.held) {
-    state.candidate = state.held;
-    return state.held;
+  std::unordered_set<size_t> conservative_indices;
+  if (predicted_paths.empty() || ref_paths.empty()) {
+    return conservative_indices;
   }
-  if (raw != state.candidate) {
-    state.candidate = raw;
-    state.candidate_since = now;
+
+  counters.vehicles++;
+
+  const size_t original_count = predicted_paths.size();
+  // Conservative hypotheses are appended after the loop so the (object, path
+  // index) bookkeeping stays correct when go paths are suppressed.
+  std::vector<bool> suppress_go(original_count, false);
+  std::vector<PredictedPath> conservative_to_add;
+  bool object_has_stop = false;
+  for (size_t i = 0; i < original_count; ++i) {
+    const int ref_idx = predicted_path_ref_index[i];
+    if (ref_idx < 0 || static_cast<size_t>(ref_idx) >= ref_paths.size()) {
+      continue;
+    }
+    const auto & ref_path = ref_paths[ref_idx];
+    if (ref_path.path.size() < 2) {
+      continue;
+    }
+
+    const auto info = classifyPathAtTrafficLight(ref_path.lanelet_path);
+
+    PriorityContext context;
+    if (info.found) {
+      const auto signal =
+        lanelet_util::getSignalForLanelet(traffic_signal_id_map, info.signal_lanelet);
+      context.signal_priority = evaluateSignalPriority(info.signal_lanelet, signal);
+    }
+    if (context.signal_priority == SignalPriority::FULLY_PRIORITIZED) {
+      counters.signal_stop++;
+    }
+
+    // ref_path[0] may sit a lanelet ahead of / behind the object, so arc lengths
+    // measured from ref_path[0] are converted to object-relative by subtracting
+    // s_obj -- the same convention as the path generator.
+    const auto & op = object.kinematics.pose_with_covariance.pose.position;
+    const auto & r0 = ref_path.path.front();
+    const double h0 = tf2::getYaw(r0.orientation);
+    const double s_obj =
+      (op.x - r0.position.x) * std::cos(h0) + (op.y - r0.position.y) * std::sin(h0);
+
+    if (info.stop_line) {
+      if (const auto distance = arcLengthToStopLine(ref_path.path, *info.stop_line)) {
+        context.distance_to_stopline = *distance - s_obj;
+        counters.stopline_found++;
+      }
+    }
+
+    const auto maneuver = decideConservativeManeuver(context, params.calibration);
+    const auto calibration = weightsForManeuver(maneuver, params.calibration);
+
+    if (calibration.maneuver == ConservativeManeuver::NONE) {
+      continue;
+    }
+
+    PredictedPath conservative_path = path_generator.generateStoppingPathForOnLaneVehicle(
+      object, ref_path.path, time_horizon, params.stop_deceleration, context.distance_to_stopline,
+      ref_path.speed_limit, params.extend_stop_path_to_stopline);
+    if (conservative_path.path.empty()) {
+      continue;
+    }
+    // Clip regardless of the extend flag: lane curvature / angled stop lines can
+    // produce a small overshoot even without extend.
+    if (info.stop_line) {
+      clipPathAtStopLine(conservative_path, *info.stop_line);
+    }
+    conservative_path.confidence = static_cast<float>(calibration.conservative_weight);
+    object_has_stop = true;
+    if (params.suppress_go_on_conservative) {
+      suppress_go[i] = true;
+    }
+    conservative_to_add.push_back(conservative_path);
+    if (info.stop_line) {
+      debug_stop_lines.push_back(*info.stop_line);
+    }
+    counters.conservative_added++;
   }
-  if (now - state.candidate_since >= hysteresis_time) {
-    state.held = raw;
+
+  if (object_has_stop) {
+    const auto go_scale = static_cast<float>(params.calibration.go_probability_decay_on_yield);
+    for (size_t i = 0; i < original_count; ++i) {
+      if (!suppress_go[i]) {
+        predicted_paths[i].confidence *= go_scale;
+      }
+    }
   }
-  return state.held;
+
+  if (!conservative_to_add.empty()) {
+    std::vector<PredictedPath> rebuilt;
+    rebuilt.reserve(predicted_paths.size() + conservative_to_add.size());
+    for (size_t i = 0; i < predicted_paths.size(); ++i) {
+      if (i < original_count && suppress_go[i]) {
+        continue;
+      }
+      rebuilt.push_back(predicted_paths[i]);
+    }
+    for (size_t k = 0; k < conservative_to_add.size(); ++k) {
+      conservative_indices.insert(rebuilt.size());
+      rebuilt.push_back(conservative_to_add[k]);
+    }
+    predicted_paths = std::move(rebuilt);
+  }
+
+  return conservative_indices;
 }
 
 }  // namespace autoware::map_based_prediction::priority

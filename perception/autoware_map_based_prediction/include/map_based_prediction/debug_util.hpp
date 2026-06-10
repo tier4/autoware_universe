@@ -27,6 +27,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace autoware::map_based_prediction::debug_util
@@ -37,20 +38,19 @@ struct PriorityDebugCounters
 {
   size_t vehicles = 0;
   size_t signal_stop = 0;
-  size_t signal_creep = 0;
   size_t stopline_found = 0;
   size_t conservative_added = 0;
 };
 
-/// object id -> {predicted_path index -> is_creep} for the conservative paths.
-using ConservativePathIndexMap = std::unordered_map<std::string, std::unordered_map<size_t, bool>>;
+/// object id -> set of predicted_path indices holding a conservative (stop) path.
+using ConservativePathIndexMap = std::unordered_map<std::string, std::unordered_set<size_t>>;
 
 /// Per-frame priority-prediction debug markers: vehicle boxes, predicted-path
-/// lines coloured go/stop/creep, the stop lines that drove a conservative
+/// lines coloured go/stop, the stop lines that drove a conservative
 /// hypothesis, and the ego box. Starts with a DELETEALL marker.
 visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
   const autoware_perception_msgs::msg::PredictedObjects & output,
-  const ConservativePathIndexMap & conservative_path_is_creep,
+  const ConservativePathIndexMap & conservative_path_indices,
   const std::vector<lanelet::ConstLineString3d> & stop_lines,
   const std::optional<geometry_msgs::msg::Pose> & ego_pose, const rclcpp::Time & now);
 

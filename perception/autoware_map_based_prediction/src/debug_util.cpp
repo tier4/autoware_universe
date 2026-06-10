@@ -27,7 +27,7 @@ using autoware_perception_msgs::msg::ObjectClassification;
 
 visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
   const autoware_perception_msgs::msg::PredictedObjects & output,
-  const ConservativePathIndexMap & conservative_path_is_creep,
+  const ConservativePathIndexMap & conservative_path_indices,
   const std::vector<lanelet::ConstLineString3d> & stop_lines,
   const std::optional<geometry_msgs::msg::Pose> & ego_pose, const rclcpp::Time & now)
 {
@@ -42,7 +42,6 @@ visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
   int32_t path_id = 0;
   const auto go_color = autoware_utils::create_marker_color(0.6, 1.0, 0.6, 0.95);
   const auto stop_color = autoware_utils::create_marker_color(1.0, 0.0, 0.0, 1.0);
-  const auto creep_color = autoware_utils::create_marker_color(1.0, 0.85, 0.0, 1.0);
   for (const auto & obj : output.objects) {
     const auto label =
       obj.classification.empty()
@@ -56,8 +55,8 @@ visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
     }
     const auto & paths = obj.kinematics.predicted_paths;
     const std::string oid = autoware_utils::to_hex_string(obj.object_id);
-    const auto cons_it = conservative_path_is_creep.find(oid);
-    const bool has_conservative = cons_it != conservative_path_is_creep.end();
+    const auto cons_it = conservative_path_indices.find(oid);
+    const bool has_conservative = cons_it != conservative_path_indices.end();
 
     const auto & dims = obj.shape.dimensions;
     auto box = autoware_utils::create_default_marker(
@@ -81,16 +80,8 @@ visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
       if (paths[pi].path.size() < 2) {
         continue;
       }
-      bool is_conservative = false;
-      bool is_creep = false;
-      if (has_conservative) {
-        const auto idx_it = cons_it->second.find(pi);
-        if (idx_it != cons_it->second.end()) {
-          is_conservative = true;
-          is_creep = idx_it->second;
-        }
-      }
-      auto color = !is_conservative ? go_color : (is_creep ? creep_color : stop_color);
+      const bool is_conservative = has_conservative && cons_it->second.count(pi) > 0;
+      auto color = is_conservative ? stop_color : go_color;
       color.a = (pi == max_conf_pi) ? 0.7f : 0.1f;
       constexpr double width = 0.6;
       constexpr double z_off = 0.8;

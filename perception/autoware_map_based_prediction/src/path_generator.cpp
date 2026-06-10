@@ -221,8 +221,8 @@ PredictedPath PathGenerator::generatePathForOnLaneVehicle(
 
 PredictedPath PathGenerator::generateStoppingPathForOnLaneVehicle(
   const TrackedObject & object, const PosePath & ref_path, const double duration,
-  const double deceleration, const double target_velocity, const double stop_distance,
-  const double speed_limit, const bool extend_to_stop_line) const
+  const double deceleration, const double stop_distance, const double speed_limit,
+  const bool extend_to_stop_line) const
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
@@ -233,7 +233,6 @@ PredictedPath PathGenerator::generateStoppingPathForOnLaneVehicle(
 
   constexpr double epsilon = 1e-3;
   const double decel = std::max(deceleration, epsilon);
-  const double v_target = std::max(target_velocity, 0.0);
 
   // s0 is the object's signed position relative to ref_path[0]; stop_distance is
   // passed in the same object-relative convention, so the stop point is at
@@ -247,16 +246,16 @@ PredictedPath PathGenerator::generateStoppingPathForOnLaneVehicle(
   // segment on curved / skewed approaches -- the caller clips at the line
   // geometrically (clipPathAtStopLine). extend_to_stop_line instead force-sweeps
   // to the stop line (plus a margin) so even a far object's path reaches the line.
-  const bool hard_stop = (v_target < epsilon) && std::isfinite(stop_distance);
+  const bool hard_stop = std::isfinite(stop_distance);
   const double reachable = v0 * duration;
   constexpr double extend_overshoot = 5.0;  // [m]
   const bool extend_hard_stop = hard_stop && extend_to_stop_line;
   const double s_stop =
     extend_hard_stop ? s0 + std::max(stop_distance, 0.0) + extend_overshoot : s0 + reachable;
 
-  // Decelerating-profile parameters (creep / no-stop-line fallback).
+  // Decelerating-profile parameters (no-stop-line fallback: brake to a halt).
   const double brake_decel = decel;
-  const double t_reach = (v0 - v_target) / brake_decel;
+  const double t_reach = v0 / brake_decel;
   const double s_reach = s0 + v0 * t_reach - 0.5 * brake_decel * t_reach * t_reach;
 
   constexpr double ep = 0.001;
@@ -276,11 +275,11 @@ PredictedPath PathGenerator::generateStoppingPathForOnLaneVehicle(
       p.s_acc = 0.0;
     } else if (t <= t_reach) {
       p.s = s0 + v0 * t - 0.5 * brake_decel * t * t;
-      p.s_vel = static_cast<float>(std::max(v0 - brake_decel * t, v_target));
+      p.s_vel = static_cast<float>(std::max(v0 - brake_decel * t, 0.0));
       p.s_acc = static_cast<float>(-brake_decel);
     } else {
-      p.s = s_reach + v_target * (t - t_reach);
-      p.s_vel = static_cast<float>(v_target);
+      p.s = s_reach;
+      p.s_vel = 0.0;
       p.s_acc = 0.0;
     }
     p.d = current_point.d;
