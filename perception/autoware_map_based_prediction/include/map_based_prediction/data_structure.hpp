@@ -75,8 +75,6 @@ struct PredictedRefPath
   double width;
   PosePath path;
   Maneuver maneuver;
-  // Source lanelet sequence of this reference path, kept so the priority logic can
-  // classify the path by the first traffic-light-controlled lanelet it enters.
   lanelet::routing::LaneletPath lanelet_path;
 };
 

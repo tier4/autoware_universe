@@ -86,13 +86,9 @@ private:
   // ROS Publisher and Subscriber
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_markers_;
-  // Priority-prediction debug visualization: per-object predicted-path lines,
-  // rebuilt per callback.
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_priority_object_markers_;
   visualization_msgs::msg::MarkerArray priority_object_markers_;  // rebuilt per callback
-  // Hysteresis-stabilized traffic signals (the same state used by the prediction
-  // decision), republished so RViz's stock TrafficLight display can show the
-  // debounced signal instead of the raw, flickering recognition topic.
+  // Hysteresis-stabilized signals, republished so RViz can show the debounced state.
   rclcpp::Publisher<TrafficLightGroupArray>::SharedPtr pub_stabilized_signals_;
   rclcpp::Subscription<TrackedObjects>::SharedPtr sub_objects_;
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
@@ -106,15 +102,10 @@ private:
   // Object History
   std::unordered_map<std::string, std::deque<RoadUser>> road_users_history_;
 
-  // Raw traffic-signal observations (with last-valid retention applied), keyed by
-  // traffic-light-group id, updated from /traffic_signals every callback.
+  // Raw observations (with last-valid retention), keyed by traffic-light-group id.
   std::unordered_map<lanelet::Id, TrafficLightGroup> raw_signal_id_map_;
-  // Hysteresis-stabilized traffic-signal state, keyed by traffic-light-group id.
-  // This is what getSignalForLanelet (and thus the decision) reads, and what is
-  // republished for visualization. Debounced from raw_signal_id_map_.
+  // Debounced state read by getSignalForLanelet and republished for visualization.
   std::unordered_map<lanelet::Id, TrafficLightGroup> traffic_signal_id_map_;
-  // Per-group debounce state for the signal stabilization: the held (stable)
-  // group, the pending candidate, and when the candidate first appeared [s].
   struct SignalHysteresis
   {
     TrafficLightGroup held;
@@ -124,8 +115,7 @@ private:
   };
   std::unordered_map<lanelet::Id, SignalHysteresis> signal_hysteresis_;
 
-  // Diagnostic counters for the signal calibration (logged throttled). Used to
-  // understand how often each gate fires on real data.
+  // Gate-fire counters for the signal calibration, logged throttled.
   struct PriorityDebugCounters
   {
     size_t vehicles = 0;
@@ -206,35 +196,24 @@ private:
   // Traffic-signal-aware stop/creep prediction parameters.
   bool use_priority_prediction_;
   priority::PriorityCalibrationParams priority_calibration_params_;
-  // Amber-signal pass/stop judgement tunables (multimodal in the dilemma zone).
   priority::YellowJudgeParams priority_yellow_params_;
   double priority_stop_deceleration_;
   double priority_hysteresis_time_;
   bool priority_use_hysteresis_;
   bool priority_retain_last_valid_signal_;
   bool priority_debug_viz_;
-  // Drop a path's own "go" hypothesis when it gets a stop/creep conservative path,
-  // so only the conservative prediction remains for that direction (default on).
   bool priority_suppress_go_on_conservative_;
-  // Visualization aid: force the stop path to span all the way to the stop line,
-  // even for slow objects that would not reach it within the horizon (default off).
   bool priority_extend_stop_path_to_stopline_;
-  // Lead-vehicle clamp: a signal-stopping follower stops behind the car ahead in
-  // its lane, not at the signal stop line (default on).
   bool priority_use_lead_vehicle_;
   double priority_follow_lateral_threshold_;
   double priority_follow_gap_margin_;
-  // Conservative (stop/creep) predicted-path indices per object this frame, so
-  // objectsCallback colours those path lines (red STOP / yellow CREEP) while the
-  // go paths stay light green. object id -> {predicted_path index -> is_creep}.
-  // Rebuilt per callback. A single object can have several yielding paths.
+  // object id -> {predicted_path index -> is_creep}, rebuilt per callback so
+  // objectsCallback can colour the conservative path lines.
   std::unordered_map<std::string, std::unordered_map<size_t, bool>> conservative_path_is_creep_;
-  // Stop lines that drove a conservative (stop/creep) hypothesis this frame, drawn
-  // as debug markers so the StopPath end can be compared to the map stop line.
+  // Stop lines that drove a conservative hypothesis this frame (debug markers).
   std::vector<lanelet::ConstLineString3d> priority_debug_stop_lines_;
-  // All tracked objects this frame reduced to map-frame poses + lengths, so the
-  // lead-vehicle clamp can find the car ahead of each predicted object. Rebuilt
-  // per callback when priority prediction is enabled.
+  // This frame's tracked objects reduced to map-frame poses + lengths, for the
+  // lead-vehicle clamp.
   std::vector<priority::LaneObject> lead_objects_;
 
   ////// Member Functions
@@ -265,19 +244,13 @@ private:
   std::optional<lanelet::Id> getTrafficSignalId(const lanelet::ConstLanelet & way_lanelet) const;
   std::optional<TrafficLightGroup> getSignalForLanelet(const lanelet::ConstLanelet & lanelet) const;
 
-  // Priority prediction: add conservative stop/creep hypotheses to an object's
-  // predicted paths based on its traffic-signal context. Mutates
-  // @p predicted_paths in place (scales the go-path confidences and appends the
-  // conservative path); a no-op unless use_priority_prediction_ is enabled.
+  // Adds conservative stop/creep hypotheses based on the object's traffic-signal
+  // context, mutating @p predicted_paths in place.
   void applyPriorityCalibration(
     const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
     const std::vector<int> & predicted_path_ref_index, const double time_horizon,
     std::vector<PredictedPath> & predicted_paths);
 
-  // Priority prediction: publish the per-object debug markers (predicted-path
-  // lines coloured go/stop/creep, vehicle boxes, the stop lines that drove a
-  // conservative hypothesis, and the ego box). Built from this frame's @p output;
-  // gated by priority_debug_viz_ at the call site.
   void publishPriorityDebugMarkers(
     const PredictedObjects & output, const TrackedObjects::ConstSharedPtr & in_objects);
 

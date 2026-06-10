@@ -55,30 +55,28 @@
 
     # parameters for traffic-signal-aware stop/creep prediction
     priority_prediction:
-      enable: false # master switch; when false the prediction output is unchanged
-      use_signal_priority: true # use traffic signal state (red/amber) to detect stopping objects
+      enable: false
+      use_signal_priority: true
       stop_probability_boost: 0.35 # confidence weight of the stop hypothesis added on red
       creep_probability_boost: 0.25 # confidence weight of the stop hypothesis added on amber
-      go_probability_decay_on_yield: 0.1 # multiplier applied to ALL go-path confidences of an object that gets a STOP, so the stop hypothesis dominates
-      stop_deceleration: 2.0 #[m/s^2] deceleration used when no stop line distance is known
-      use_lead_vehicle: true # a signal-stopping follower stops behind the car ahead instead of always at the stop line
-      follow_lateral_threshold: 2.0 #[m] max lateral offset for a leading object to count as same-lane
-      follow_gap_margin: 3.0 #[m] bumper-to-bumper gap kept behind a leading object when stopping
-      # Amber pass/stop judgement (ported from the behavior_velocity traffic_light module).
-      # Decides whether an amber-facing object stops, passes, or -- in the dilemma zone --
-      # both (a multimodal stop + go prediction).
+      go_probability_decay_on_yield: 0.1 # multiplier applied to the go-path confidences of an object that gets a STOP
+      stop_deceleration: 2.0 #[m/s^2] used when no stop line distance is known
+      use_lead_vehicle: true # stop behind the car ahead instead of always at the stop line
+      follow_lateral_threshold: 2.0 #[m] max lateral offset to count as same-lane
+      follow_gap_margin: 3.0 #[m] bumper-to-bumper gap kept behind a leading object
+      # amber pass/stop judgement (ported from the behavior_velocity traffic_light module)
       yellow:
-        lamp_period: 2.75 #[s] assumed remaining yellow duration used for the reachability check
-        max_stop_acceleration: -3.0 #[m/s^2] deceleration limit for the stoppable check (negative)
-        max_stop_jerk: -3.0 #[m/s^3] jerk limit for the stoppable check (negative)
-        delay_response_time: 0.5 #[s] reaction delay before braking starts
+        lamp_period: 2.75 #[s] assumed remaining yellow duration
+        max_stop_acceleration: -3.0 #[m/s^2]
+        max_stop_jerk: -3.0 #[m/s^3]
+        delay_response_time: 0.5 #[s]
         stop_velocity: 1.0 #[m/s] below this speed the object is always treated as able to stop
       hysteresis_time: 1.0 #[s] a new signal state must persist this long before it switches
-      use_hysteresis: true # debounce the signal state over time (off = react every frame)
-      retain_last_valid_signal: true # keep the last non-UNKNOWN signal to ride out transient dropouts
-      suppress_go_on_conservative: true # for a confident stop, drop the path's own go hypothesis (off = keep it faintly via go_probability_decay_on_yield)
-      extend_stop_path_to_stopline: false # viz aid: stretch the stop path to the stop line even for slow objects (distorts the longitudinal profile)
-      debug_visualization: false # publish predicted-path debug markers regardless of enable
+      use_hysteresis: true
+      retain_last_valid_signal: true # keep the last non-UNKNOWN signal over transient dropouts
+      suppress_go_on_conservative: true # for a confident stop, drop the path's own go hypothesis
+      extend_stop_path_to_stopline: false # viz aid: stretch the stop path to the stop line
+      debug_visualization: false # publish debug markers regardless of enable
 
     # debug parameters
     publish_processing_time: false

@@ -227,7 +227,6 @@ PredictedPath PathGenerator::generateStoppingPathForOnLaneVehicle(
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
-  // Need at least a 2-point reference path to interpolate along.
   if (ref_path.size() < 2) {
     return PredictedPath{};
   }
@@ -236,29 +235,20 @@ PredictedPath PathGenerator::generateStoppingPathForOnLaneVehicle(
   const double decel = std::max(deceleration, epsilon);
   const double v_target = std::max(target_velocity, 0.0);
 
-  // Longitudinal start state on the reference path. s0 is the object's signed
-  // position relative to ref_path[0] (which may sit a lanelet ahead of / behind the
-  // object). stop_distance is passed in the SAME object-relative convention, so the
-  // stop point is at s0 + stop_distance.
+  // s0 is the object's signed position relative to ref_path[0]; stop_distance is
+  // passed in the same object-relative convention, so the stop point is at
+  // s0 + stop_distance.
   const auto current_point = getFrenetPoint(object, ref_path.at(0), duration, speed_limit);
   const double s0 = current_point.s;
   const double v0 = std::max(static_cast<double>(current_point.s_vel), 0.0);
 
-  // Full stop at a known stop line: ignore deceleration dynamics entirely. The
-  // object advances at its current speed up to the horizon reach, so the stop (red)
-  // path is never longer than the normal go (green) path. The stop line itself is
-  // NOT applied here -- the caller cuts the path at the stop line geometrically
-  // (clipPathAtStopLine). The decelerating profile below is only used for the creep
-  // hypothesis or when no stop line distance is known.
+  // Hard stop: constant speed up to the horizon reach; the stop line is not
+  // clamped on the centerline arc because it can disagree with the 2D stop-line
+  // segment on curved / skewed approaches -- the caller clips at the line
+  // geometrically (clipPathAtStopLine). extend_to_stop_line instead force-sweeps
+  // to the stop line (plus a margin) so even a far object's path reaches the line.
   const bool hard_stop = (v_target < epsilon) && std::isfinite(stop_distance);
   const double reachable = v0 * duration;
-  // Without extend, the hard-stop path runs at constant speed up to the horizon
-  // reach (s0 + reachable); the stop line is not clamped on the centerline arc here
-  // because the arc length can disagree with the 2D stop-line segment on curved /
-  // skewed approaches -- the caller clips at the line geometrically instead. A path
-  // that cannot reach the stop line within the horizon simply ends at reachable.
-  // extend_to_stop_line instead force-sweeps all the way to the stop line (plus a
-  // small margin) so even a far object's path reaches the line before being clipped.
   constexpr double extend_overshoot = 5.0;  // [m]
   const bool extend_hard_stop = hard_stop && extend_to_stop_line;
   const double s_stop =
@@ -266,10 +256,9 @@ PredictedPath PathGenerator::generateStoppingPathForOnLaneVehicle(
 
   // Decelerating-profile parameters (creep / no-stop-line fallback).
   const double brake_decel = decel;
-  const double t_reach = (v0 - v_target) / brake_decel;  // >= 0 since v0 >= 0, v_target >= 0
+  const double t_reach = (v0 - v_target) / brake_decel;
   const double s_reach = s0 + v0 * t_reach - 0.5 * brake_decel * t_reach * t_reach;
 
-  // Build a longitudinal profile s(t). Keep the object's current lateral offset.
   constexpr double ep = 0.001;
   const double total_duration = duration + ep;
   FrenetPath frenet_path;
@@ -277,19 +266,15 @@ PredictedPath PathGenerator::generateStoppingPathForOnLaneVehicle(
   for (double t = 0.0; t < total_duration; t += sampling_time_interval_) {
     FrenetPoint p;
     if (extend_hard_stop) {
-      // Force the path to sweep from the object to the stop line over the horizon
-      // (visualization aid; decelerates linearly to a stop at the line).
       const double ratio = std::min(t / duration, 1.0);
       p.s = s0 + (s_stop - s0) * ratio;
       p.s_vel = static_cast<float>(v0 * (1.0 - ratio));
       p.s_acc = 0.0;
     } else if (hard_stop) {
-      // Travel at the current speed, then stop exactly at the stop line.
       p.s = std::min(s0 + v0 * t, s_stop);
       p.s_vel = static_cast<float>(p.s < s_stop ? v0 : 0.0);
       p.s_acc = 0.0;
     } else if (t <= t_reach) {
-      // Decelerate at the nominal rate (creep / no stop line).
       p.s = s0 + v0 * t - 0.5 * brake_decel * t * t;
       p.s_vel = static_cast<float>(std::max(v0 - brake_decel * t, v_target));
       p.s_acc = static_cast<float>(-brake_decel);

@@ -50,7 +50,6 @@ bool hasTrafficLight(const lanelet::ConstLanelet & lanelet)
 
 std::optional<lanelet::ConstLineString3d> getStopLine(const lanelet::ConstLanelet & lanelet)
 {
-  // The traffic-light stop line of a signalized lanelet.
   for (const auto & traffic_light : lanelet.regulatoryElementsAs<lanelet::TrafficLight>()) {
     if (const auto stop_line = traffic_light->stopLine()) {
       return *stop_line;
@@ -66,11 +65,8 @@ std::optional<double> arcLengthToStopLine(
     return std::nullopt;
   }
 
-  // Primary: the arc length at which the reference path geometrically crosses the
-  // stop-line segments. The stop line is a line string spanning the lane width, so
-  // its true crossing with the path is the correct stop point -- not the path
-  // vertex nearest the stop-line centroid, which drifts when the stop line is
-  // oblique to / laterally offset from the path.
+  // Use the geometric crossing, not the nearest vertex, which drifts when the
+  // stop line is oblique to / laterally offset from the path.
   double arc_length = 0.0;
   for (size_t i = 1; i < ref_path.size(); ++i) {
     const double ax = ref_path.at(i - 1).position.x;
@@ -98,8 +94,7 @@ std::optional<double> arcLengthToStopLine(
     arc_length += seg_len;
   }
 
-  // Fallback (no geometric crossing, e.g. the path ends before the stop line):
-  // the path vertex closest to the stop-line centroid.
+  // No crossing (e.g. the path ends before the stop line): nearest vertex fallback.
   double center_x = 0.0;
   double center_y = 0.0;
   for (const auto & point : stop_line) {
@@ -136,14 +131,13 @@ std::optional<double> distanceToLeadObject(
     return std::nullopt;
   }
 
-  // Pre-compute cumulative arc length at each reference-path vertex.
   std::vector<double> cum_length(ref_path.size(), 0.0);
   for (size_t i = 1; i < ref_path.size(); ++i) {
     cum_length[i] =
       cum_length[i - 1] + autoware_utils::calc_distance2d(ref_path[i - 1], ref_path[i]);
   }
 
-  // Project a map-frame point onto the polyline, returning {arc_length, lateral}.
+  // Projects a map-frame point onto the polyline -> {arc_length, lateral}.
   const auto project = [&](const double px, const double py) {
     double best_lateral_sq = std::numeric_limits<double>::infinity();
     double best_arc = 0.0;
@@ -171,10 +165,8 @@ std::optional<double> distanceToLeadObject(
     return std::make_pair(best_arc, std::sqrt(best_lateral_sq));
   };
 
-  // Nearest in-lane object that lies ahead of the ego on the path. "Ahead" is
-  // measured from the ego's own arc position (ego_arc), not from ref_path[0],
-  // because the reference path may start a lanelet behind the ego -- objects
-  // between ref_path[0] and the ego are behind it and must not count as leaders.
+  // "Ahead" is measured from ego_arc, not ref_path[0]: the reference path may
+  // start a lanelet behind the ego, and objects in that span are not leaders.
   const double min_ahead = ego_arc + std::max(ego_length * 0.5, 0.5);
   double nearest_arc = std::numeric_limits<double>::infinity();
   double nearest_length = 0.0;
@@ -197,7 +189,6 @@ std::optional<double> distanceToLeadObject(
     return std::nullopt;
   }
 
-  // Stop the ego reference point a gap behind the leader's rear.
   const double target = nearest_arc - nearest_length * 0.5 - ego_length * 0.5 - gap_margin;
   return std::max(target, 0.0);
 }
@@ -207,18 +198,15 @@ PathSignalInfo classifyPathAtTrafficLight(const lanelet::routing::LaneletPath & 
   PathSignalInfo info;
   for (const auto & lanelet : lanelet_path) {
     if (!hasTrafficLight(lanelet)) {
-      continue;  // not a signalized lanelet; keep walking forward
+      continue;
     }
     info.found = true;
     info.signal_lanelet = lanelet;
     info.turn_direction = getTurnDirection(lanelet);
-    // Stop line: the traffic-light stop line of the signalized lanelet.
     info.stop_line = getStopLine(lanelet);
     if (!info.stop_line) {
-      // The traffic light carries no tagged stop line. Fall back to the lanelet's
-      // entry edge -- the front of its left/right bounds -- so a stopping object
-      // still has a target at the junction entrance instead of an infinite stop
-      // distance.
+      // No tagged stop line: fall back to the lanelet's entry edge so a stopping
+      // object still has a finite target at the junction entrance.
       const auto & left = lanelet.leftBound();
       const auto & right = lanelet.rightBound();
       if (!left.empty() && !right.empty()) {
@@ -239,21 +227,15 @@ PathSignalInfo classifyPathAtTrafficLight(const lanelet::routing::LaneletPath & 
 SignalPriority evaluateSignalPriority(
   const lanelet::ConstLanelet & lanelet, const std::optional<TrafficLightGroup> & signal)
 {
-  // No observation -> NOT_PRIORITIZED (the object may proceed).
   if (!signal) {
     return SignalPriority::NOT_PRIORITIZED;
   }
 
-  // Reuse the canonical stop/go decision shared with the behavior_velocity
-  // traffic_light module: a green circle, or a green arrow matching the lanelet's
-  // turn_direction (a protected movement), means the object may proceed; red or a
-  // non-matching arrow means it must stop.
   if (!autoware::traffic_light_utils::isTrafficSignalStop(lanelet, *signal)) {
     return SignalPriority::NOT_PRIORITIZED;
   }
 
-  // A stop is required: a solid amber circle (without a red) is cautionary -> creep,
-  // anything else (red, non-matching arrow) -> full stop.
+  // A solid amber circle without a red is cautionary -> creep; anything else -> stop.
   const bool has_amber = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
     signal->elements, TrafficLightElement::CIRCLE, TrafficLightElement::AMBER);
   const bool has_red = autoware::traffic_light_utils::hasTrafficLightShapeAndColor(
@@ -268,10 +250,7 @@ double judgeLineDistWithJerkLimit(
   const double velocity, const double acceleration, const double max_stop_acceleration,
   const double max_stop_jerk, const double delay_response_time)
 {
-  // NOTE: ported verbatim from
-  // autoware::behavior_velocity_planner::planning_utils::calcJudgeLineDistWithJerkLimit
-  // (autoware_behavior_velocity_planner_common/src/utilization/util.cpp). Kept here so
-  // perception does not depend on the planning stack; keep in sync with the original.
+  // Ported verbatim from planning_utils::calcJudgeLineDistWithJerkLimit; keep in sync.
   if (velocity <= 0.0) {
     return 0.0;
   }
@@ -306,10 +285,7 @@ YellowOutcome judgeYellow(
   const double velocity, const double acceleration, const double distance_to_stopline,
   const YellowJudgeParams & params)
 {
-  // NOTE: mirrors TrafficLightModule::isPassthrough
-  // (autoware_behavior_velocity_traffic_light_module/src/scene.cpp). The original
-  // returns a single ego stop/pass decision (dilemma -> stop, the safe side); here
-  // we surface the dilemma zone so the predictor can emit both hypotheses.
+  // Mirrors TrafficLightModule::isPassthrough, but surfaces the dilemma zone.
   const double stop_distance = judgeLineDistWithJerkLimit(
     velocity, acceleration, params.max_stop_acceleration, params.max_stop_jerk,
     params.delay_response_time);
@@ -325,7 +301,6 @@ YellowOutcome judgeYellow(
 ConservativeManeuver decideConservativeManeuver(
   const PriorityContext & context, const PriorityCalibrationParams & params)
 {
-  // Base trigger from the traffic signal.
   const bool stop_by_signal =
     params.use_signal_priority && context.signal_priority == SignalPriority::FULLY_PRIORITIZED;
   const bool creep_by_signal =
@@ -338,11 +313,7 @@ ConservativeManeuver decideConservativeManeuver(
     maneuver = ConservativeManeuver::CREEP;
   }
 
-  // Only act when a finite stop line is known to stop / creep toward. There is no
-  // distance threshold: as long as the path reaches a signalized stop line, the
-  // conservative maneuver is assigned. The path generator caps the travel at the
-  // horizon reach, so a far object that cannot reach the line within the horizon
-  // simply gets a shorter stop path that ends before the line.
+  // No distance threshold: a far object just gets a stop path capped at the horizon.
   const bool stop_line_known = std::isfinite(context.distance_to_stopline);
   if (!stop_line_known) {
     maneuver = ConservativeManeuver::NONE;
@@ -361,8 +332,7 @@ PriorityCalibration weightsForManeuver(
       calibration.go_scale = params.go_probability_decay_on_yield;
       break;
     case ConservativeManeuver::CREEP:
-      // Amber: the object may still proceed, so keep the go hypotheses and only
-      // add the creep hypothesis alongside them.
+      // Amber: the object may still proceed, so the go hypotheses are kept intact.
       calibration.conservative_weight = params.creep_probability_boost;
       calibration.go_scale = 1.0;
       break;
@@ -385,8 +355,6 @@ ConservativeManeuver updateHysteresis(
   HysteresisState & state, const ConservativeManeuver raw, const double now,
   const double hysteresis_time)
 {
-  // The raw decision must persist for hysteresis_time before the held output
-  // switches to it. Transient flips back to the held value reset the candidate.
   if (raw == state.held) {
     state.candidate = state.held;
     return state.held;
