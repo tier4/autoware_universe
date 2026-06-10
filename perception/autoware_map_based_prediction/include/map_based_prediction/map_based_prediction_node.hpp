@@ -104,7 +104,7 @@ private:
 
   // Raw observations (with last-valid retention), keyed by traffic-light-group id.
   std::unordered_map<lanelet::Id, TrafficLightGroup> raw_signal_id_map_;
-  // Debounced state read by getSignalForLanelet and republished for visualization.
+  // Debounced state read by the priority decision and republished for visualization.
   std::unordered_map<lanelet::Id, TrafficLightGroup> traffic_signal_id_map_;
   struct SignalHysteresis
   {
@@ -225,8 +225,6 @@ private:
     const LaneletsData & lanelets_data);
   bool isDuplicated(
     const PredictedPath & predicted_path, const std::vector<PredictedPath> & predicted_paths);
-  std::optional<lanelet::Id> getTrafficSignalId(const lanelet::ConstLanelet & way_lanelet) const;
-  std::optional<TrafficLightGroup> getSignalForLanelet(const lanelet::ConstLanelet & lanelet) const;
 
   // Adds conservative stop/creep hypotheses based on the object's traffic-signal
   // context, mutating @p predicted_paths in place.

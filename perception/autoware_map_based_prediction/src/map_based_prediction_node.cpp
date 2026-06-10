@@ -15,6 +15,7 @@
 #include "map_based_prediction/map_based_prediction_node.hpp"
 
 #include "map_based_prediction/data_structure.hpp"
+#include "map_based_prediction/lanelet_util.hpp"
 #include "map_based_prediction/utils.hpp"
 
 #include <autoware/interpolation/linear_interpolation.hpp>
@@ -1520,39 +1521,63 @@ ManeuverProbability MapBasedPredictionNode::calculateManeuverProbability(
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
-  return utils::calculateManeuverProbability(
-    predicted_maneuver, left_paths_exists, right_paths_exists, center_paths_exists);
-}
+  float left_lane_change_probability = 0.0;
+  float right_lane_change_probability = 0.0;
+  float lane_follow_probability = 0.0;
+  if (left_paths_exists && predicted_maneuver == Maneuver::LEFT_LANE_CHANGE) {
+    constexpr float LF_PROB_WHEN_LC = 0.9;  // probability for lane follow during lane change
+    constexpr float LC_PROB_WHEN_LC = 1.0;  // probability for left lane change
+    left_lane_change_probability = LC_PROB_WHEN_LC;
+    right_lane_change_probability = 0.0;
+    lane_follow_probability = LF_PROB_WHEN_LC;
+  } else if (right_paths_exists && predicted_maneuver == Maneuver::RIGHT_LANE_CHANGE) {
+    constexpr float LF_PROB_WHEN_LC = 0.9;  // probability for lane follow during lane change
+    constexpr float RC_PROB_WHEN_LC = 1.0;  // probability for right lane change
+    left_lane_change_probability = 0.0;
+    right_lane_change_probability = RC_PROB_WHEN_LC;
+    lane_follow_probability = LF_PROB_WHEN_LC;
+  } else if (center_paths_exists) {
+    constexpr float LF_PROB = 1.0;  // probability for lane follow
+    constexpr float LC_PROB = 0.3;  // probability for left lane change
+    constexpr float RC_PROB = 0.3;  // probability for right lane change
+    if (predicted_maneuver == Maneuver::LEFT_LANE_CHANGE) {
+      // If prediction says left change, but left lane is empty, assume lane follow
+      left_lane_change_probability = 0.0;
+      right_lane_change_probability = (right_paths_exists) ? RC_PROB : 0.0;
+    } else if (predicted_maneuver == Maneuver::RIGHT_LANE_CHANGE) {
+      // If prediction says right change, but right lane is empty, assume lane follow
+      left_lane_change_probability = (left_paths_exists) ? LC_PROB : 0.0;
+      right_lane_change_probability = 0.0;
+    } else {
+      // Predicted Maneuver is Lane Follow
+      left_lane_change_probability = LC_PROB;
+      right_lane_change_probability = RC_PROB;
+    }
+    lane_follow_probability = LF_PROB;
+  } else {
+    // Center path is empty
+    constexpr float LC_PROB = 1.0;  // probability for left lane change
+    constexpr float RC_PROB = 1.0;  // probability for right lane change
+    lane_follow_probability = 0.0;
 
-std::optional<lanelet::Id> MapBasedPredictionNode::getTrafficSignalId(
-  const lanelet::ConstLanelet & way_lanelet) const
-{
-  const auto traffic_light_reg_elems =
-    way_lanelet.regulatoryElementsAs<const lanelet::TrafficLight>();
-  if (traffic_light_reg_elems.empty()) {
-    return std::nullopt;
+    // If the given lane is empty, the probability goes to 0
+    left_lane_change_probability = left_paths_exists ? LC_PROB : 0.0;
+    right_lane_change_probability = right_paths_exists ? RC_PROB : 0.0;
   }
-  if (traffic_light_reg_elems.size() > 1) {
-    RCLCPP_ERROR(
-      get_logger(),
-      "[Map Based Prediction]: Multiple regulatory elements as TrafficLight are defined to one "
-      "lanelet object.");
-  }
-  return traffic_light_reg_elems.front()->id();
-}
 
-std::optional<TrafficLightGroup> MapBasedPredictionNode::getSignalForLanelet(
-  const lanelet::ConstLanelet & lanelet) const
-{
-  const auto signal_id = getTrafficSignalId(lanelet);
-  if (!signal_id) {
-    return std::nullopt;
-  }
-  const auto it = traffic_signal_id_map_.find(*signal_id);
-  if (it == traffic_signal_id_map_.end()) {
-    return std::nullopt;
-  }
-  return it->second;
+  const float MIN_PROBABILITY = 1e-3;
+  const float max_prob = std::max(
+    MIN_PROBABILITY, std::max(
+                       lane_follow_probability,
+                       std::max(left_lane_change_probability, right_lane_change_probability)));
+
+  // Insert Normalized Probability
+  ManeuverProbability maneuver_prob;
+  maneuver_prob[Maneuver::LEFT_LANE_CHANGE] = left_lane_change_probability / max_prob;
+  maneuver_prob[Maneuver::RIGHT_LANE_CHANGE] = right_lane_change_probability / max_prob;
+  maneuver_prob[Maneuver::LANE_FOLLOW] = lane_follow_probability / max_prob;
+
+  return maneuver_prob;
 }
 
 void MapBasedPredictionNode::publishPriorityDebugMarkers(
@@ -1611,7 +1636,8 @@ void MapBasedPredictionNode::applyPriorityCalibration(
     priority::PriorityContext context;
     if (info.found) {
       context.has_traffic_light = true;
-      const auto signal = getSignalForLanelet(info.signal_lanelet);
+      const auto signal =
+        lanelet_util::getSignalForLanelet(traffic_signal_id_map_, info.signal_lanelet);
       context.signal_priority = priority::evaluateSignalPriority(info.signal_lanelet, signal);
     }
     if (context.signal_priority == priority::SignalPriority::FULLY_PRIORITIZED) {

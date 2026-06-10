@@ -130,14 +130,6 @@ LaneletsData getCurrentLanelets(
 double lateral_distance_to_lanelet_bounds(
   const lanelet::ConstLanelet & ll, const geometry_msgs::msg::Point & point);
 
-/**
- * @brief distribute lane-follow / left / right lane-change probabilities for a maneuver
- * @return per-maneuver probabilities, normalized so the maximum entry is 1.0
- */
-ManeuverProbability calculateManeuverProbability(
-  const Maneuver & predicted_maneuver, const bool left_paths_exists, const bool right_paths_exists,
-  const bool center_paths_exists);
-
 }  // namespace utils
 
 }  // namespace autoware::map_based_prediction
