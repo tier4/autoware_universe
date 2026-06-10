@@ -171,7 +171,7 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
       .validator_category(category())
       .metric_name("check_crossing_red_light")
       .metric_value(0.0)
-      .level(is_crossing_red ? MetricReport::ERROR : MetricReport::OK));
+      .level(is_crossing_red ? MetricReport::DANGER : MetricReport::SAFE));
 
   metrics.push_back(
     autoware_trajectory_validator::build<MetricReport>()
@@ -179,7 +179,7 @@ TrafficLightFilter::result_t TrafficLightFilter::is_feasible(
       .validator_category(category())
       .metric_name("check_crossing_amber_light")
       .metric_value(0.0)
-      .level(is_crossing_amber ? MetricReport::ERROR : MetricReport::OK));
+      .level(is_crossing_amber ? MetricReport::DANGER : MetricReport::SAFE));
 
   const bool is_feasible = !is_crossing_red && !is_crossing_amber;
 

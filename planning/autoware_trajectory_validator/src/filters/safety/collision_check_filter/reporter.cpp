@@ -134,7 +134,7 @@ void process_pet_artifacts(
 
   std::string log_messages{};
   std::string marker_messages{};
-  uint8_t log_level = MetricReport::WARN;
+  uint8_t log_level = MetricReport::HIGH_CAUTION;
   for (const auto & evaluation : pet_artifact.object_evaluations) {
     if (evaluation.risk == RiskLevel::SAFE) {
       continue;
@@ -144,7 +144,7 @@ void process_pet_artifacts(
     const auto & obj_id = detail.object_identification;
     const bool is_error = evaluation.risk == RiskLevel::ERROR;
     if (is_error) {
-      log_level = MetricReport::ERROR;
+      log_level = MetricReport::DANGER;
     }
 
     const auto finding_msg = fmt::format(
@@ -187,7 +187,7 @@ void process_drac_artifacts(
   std::string log_messages{};
   std::string marker_messages{};
   const bool has_error = drac_artifact.risk == RiskLevel::ERROR;
-  const uint8_t log_level = has_error ? MetricReport::ERROR : MetricReport::WARN;
+  const uint8_t log_level = has_error ? MetricReport::DANGER : MetricReport::HIGH_CAUTION;
   for (const auto & evaluation : drac_artifact.object_evaluations) {
     const auto & timing = evaluation.detail;
     const auto & obj_id = timing.object_identification;
@@ -255,7 +255,7 @@ void process_rss_artifacts(
   }
 
   artifacts.error_msg += marker_messages;
-  reporter::log_collision_messages(MetricReport::ERROR, log_messages);
+  reporter::log_collision_messages(MetricReport::DANGER, log_messages);
 }
 }  // namespace
 
@@ -396,7 +396,7 @@ void log_collision_messages(const uint8_t level, const std::string & messages)
   if (messages.empty()) {
     return;
   }
-  if (level == MetricReport::ERROR) {
+  if (level == MetricReport::DANGER) {
     RCLCPP_ERROR(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", messages.c_str());
     return;
   }

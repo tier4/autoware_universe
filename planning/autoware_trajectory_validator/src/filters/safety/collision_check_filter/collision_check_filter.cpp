@@ -55,11 +55,11 @@ std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
   const auto convert_metrics_level = [](const RiskLevel risk_level) {
     switch (risk_level) {
       case RiskLevel::SAFE:
-        return MetricReport::OK;
+        return MetricReport::SAFE;
       case RiskLevel::WARN:
-        return MetricReport::WARN;
+        return MetricReport::HIGH_CAUTION;
       case RiskLevel::ERROR:
-        return MetricReport::ERROR;
+        return MetricReport::DANGER;
       default:
         throw std::runtime_error("invalid argument");
     }
