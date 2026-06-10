@@ -65,69 +65,6 @@ bool isTemporalShortSegment(
   const double expected_distance = std::max(std::fabs(vx), min_velocity_floor) * bounded_dt;
   return ds < expected_distance_ratio * expected_distance;
 }
-
-// constexpr double kSlowSpeedThreshold = 0.8;
-
-// std::vector<bool> detectSlowPoints(const MPCTrajectory & traj)
-// {
-//   std::vector<bool> is_slow(traj.x.size(), false);
-//   for (size_t i = 0; i < traj.x.size(); ++i) {
-//     is_slow.at(i) = traj.vx.at(i) < kSlowSpeedThreshold;
-//   }
-//   return is_slow;
-// }
-
-// void applySlowSegmentCurvatureInterpolation(
-//   std::vector<double> & curvature_vec, const std::vector<bool> & is_slow)
-// {
-//   size_t i = 0;
-//   while (i < is_slow.size()) {
-//     if (!is_slow.at(i)) {
-//       ++i;
-//       continue;
-//     }
-
-//     const size_t seg_start = i;
-//     while (i < is_slow.size() && is_slow.at(i)) {
-//       ++i;
-//     }
-//     const size_t seg_end = i - 1;
-
-//     double k_start = curvature_vec.at(0);
-//     if (seg_start > 0) {
-//       for (size_t j = seg_start - 1; ; --j) {
-//         if (!is_slow.at(j)) {
-//           k_start = curvature_vec.at(j);
-//           break;
-//         }
-//         if (j == 0) {
-//           break;
-//         }
-//       }
-//     }
-
-//     double k_end = curvature_vec.back();
-//     if (seg_end + 1 < is_slow.size()) {
-//       for (size_t j = seg_end + 1; j < is_slow.size(); ++j) {
-//         if (!is_slow.at(j)) {
-//           k_end = curvature_vec.at(j);
-//           break;
-//         }
-//       }
-//     }
-
-//     const size_t seg_len = seg_end - seg_start;
-//     if (seg_len == 0) {
-//       curvature_vec.at(seg_start) = 0.5 * (k_start + k_end);
-//       continue;
-//     }
-
-//     for (size_t j = seg_start; j <= seg_end; ++j) {
-//       const double t = static_cast<double>(j - seg_start) / static_cast<double>(seg_len);
-//       curvature_vec.at(j) = k_start + t * (k_end - k_start);
-//     }
-//   }
-// }
 }  // namespace
 
 namespace MPCUtils
@@ -365,7 +302,7 @@ void calcTrajectoryCurvatureBySpatialResample(
   std::vector<double> orig_arclength;
   calcMPCTrajectoryArcLength(traj, orig_arclength);
   const double total_length = orig_arclength.back();
-  if (total_length < 1.0) {
+  if (total_length < 1e-6) {
     return;
   }
 
