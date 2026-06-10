@@ -61,9 +61,6 @@
       creep_probability_boost: 0.25 # confidence weight of the stop hypothesis added on amber
       go_probability_decay_on_yield: 0.1 # multiplier applied to the go-path confidences of an object that gets a STOP
       stop_deceleration: 2.0 #[m/s^2] used when no stop line distance is known
-      use_lead_vehicle: true # stop behind the car ahead instead of always at the stop line
-      follow_lateral_threshold: 2.0 #[m] max lateral offset to count as same-lane
-      follow_gap_margin: 3.0 #[m] bumper-to-bumper gap kept behind a leading object
       # amber pass/stop judgement (ported from the behavior_velocity traffic_light module)
       yellow:
         lamp_period: 2.75 #[s] assumed remaining yellow duration

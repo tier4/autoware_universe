@@ -123,7 +123,6 @@ private:
     size_t signal_creep = 0;
     size_t stopline_found = 0;
     size_t conservative_added = 0;
-    size_t lead_clamped = 0;
   } priority_debug_;
 
   // Lanelet Map Pointers
@@ -204,17 +203,11 @@ private:
   bool priority_debug_viz_;
   bool priority_suppress_go_on_conservative_;
   bool priority_extend_stop_path_to_stopline_;
-  bool priority_use_lead_vehicle_;
-  double priority_follow_lateral_threshold_;
-  double priority_follow_gap_margin_;
   // object id -> {predicted_path index -> is_creep}, rebuilt per callback so
   // objectsCallback can colour the conservative path lines.
   std::unordered_map<std::string, std::unordered_map<size_t, bool>> conservative_path_is_creep_;
   // Stop lines that drove a conservative hypothesis this frame (debug markers).
   std::vector<lanelet::ConstLineString3d> priority_debug_stop_lines_;
-  // This frame's tracked objects reduced to map-frame poses + lengths, for the
-  // lead-vehicle clamp.
-  std::vector<priority::LaneObject> lead_objects_;
 
   ////// Member Functions
   // Node callbacks

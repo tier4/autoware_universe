@@ -28,8 +28,6 @@
 #include <limits>
 #include <optional>
 #include <string>
-#include <utility>
-#include <vector>
 
 namespace autoware::map_based_prediction::priority
 {
@@ -122,77 +120,6 @@ std::optional<double> arcLengthToStopLine(
   return std::max(nearest_arc_length, 0.0);
 }
 
-std::optional<double> distanceToLeadObject(
-  const PosePath & ref_path, const std::string & ego_id, const double ego_length,
-  const std::vector<LaneObject> & objects, const double lateral_threshold, const double gap_margin,
-  const double ego_arc)
-{
-  if (ref_path.size() < 2) {
-    return std::nullopt;
-  }
-
-  std::vector<double> cum_length(ref_path.size(), 0.0);
-  for (size_t i = 1; i < ref_path.size(); ++i) {
-    cum_length[i] =
-      cum_length[i - 1] + autoware_utils::calc_distance2d(ref_path[i - 1], ref_path[i]);
-  }
-
-  // Projects a map-frame point onto the polyline -> {arc_length, lateral}.
-  const auto project = [&](const double px, const double py) {
-    double best_lateral_sq = std::numeric_limits<double>::infinity();
-    double best_arc = 0.0;
-    for (size_t i = 1; i < ref_path.size(); ++i) {
-      const double ax = ref_path[i - 1].position.x;
-      const double ay = ref_path[i - 1].position.y;
-      const double bx = ref_path[i].position.x;
-      const double by = ref_path[i].position.y;
-      const double dx = bx - ax;
-      const double dy = by - ay;
-      const double seg_sq = dx * dx + dy * dy;
-      double t = 0.0;
-      if (seg_sq > 1e-9) {
-        t = ((px - ax) * dx + (py - ay) * dy) / seg_sq;
-        t = std::clamp(t, 0.0, 1.0);
-      }
-      const double fx = ax + t * dx;
-      const double fy = ay + t * dy;
-      const double lat_sq = (px - fx) * (px - fx) + (py - fy) * (py - fy);
-      if (lat_sq < best_lateral_sq) {
-        best_lateral_sq = lat_sq;
-        best_arc = cum_length[i - 1] + t * std::sqrt(seg_sq);
-      }
-    }
-    return std::make_pair(best_arc, std::sqrt(best_lateral_sq));
-  };
-
-  // "Ahead" is measured from ego_arc, not ref_path[0]: the reference path may
-  // start a lanelet behind the ego, and objects in that span are not leaders.
-  const double min_ahead = ego_arc + std::max(ego_length * 0.5, 0.5);
-  double nearest_arc = std::numeric_limits<double>::infinity();
-  double nearest_length = 0.0;
-  bool found = false;
-  for (const auto & obj : objects) {
-    if (obj.id == ego_id) {
-      continue;
-    }
-    const auto [arc, lateral] = project(obj.pose.position.x, obj.pose.position.y);
-    if (lateral > lateral_threshold || arc < min_ahead) {
-      continue;
-    }
-    if (arc < nearest_arc) {
-      nearest_arc = arc;
-      nearest_length = obj.length;
-      found = true;
-    }
-  }
-  if (!found) {
-    return std::nullopt;
-  }
-
-  const double target = nearest_arc - nearest_length * 0.5 - ego_length * 0.5 - gap_margin;
-  return std::max(target, 0.0);
-}
-
 PathSignalInfo classifyPathAtTrafficLight(const lanelet::routing::LaneletPath & lanelet_path)
 {
   PathSignalInfo info;
@@ -250,7 +177,9 @@ double judgeLineDistWithJerkLimit(
   const double velocity, const double acceleration, const double max_stop_acceleration,
   const double max_stop_jerk, const double delay_response_time)
 {
-  // Ported verbatim from planning_utils::calcJudgeLineDistWithJerkLimit; keep in sync.
+  // Ported verbatim from
+  // autoware::behavior_velocity_planner::planning_utils::calcJudgeLineDistWithJerkLimit
+  // (autoware_behavior_velocity_planner_common/src/utilization/util.cpp); keep in sync.
   if (velocity <= 0.0) {
     return 0.0;
   }
@@ -285,7 +214,9 @@ YellowOutcome judgeYellow(
   const double velocity, const double acceleration, const double distance_to_stopline,
   const YellowJudgeParams & params)
 {
-  // Mirrors TrafficLightModule::isPassthrough, but surfaces the dilemma zone.
+  // Mirrors TrafficLightModule::isPassthrough
+  // (autoware_behavior_velocity_traffic_light_module/src/scene.cpp), but surfaces
+  // the dilemma zone instead of a single stop/pass decision.
   const double stop_distance = judgeLineDistWithJerkLimit(
     velocity, acceleration, params.max_stop_acceleration, params.max_stop_jerk,
     params.delay_response_time);

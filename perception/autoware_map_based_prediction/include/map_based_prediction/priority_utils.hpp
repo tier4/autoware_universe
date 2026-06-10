@@ -18,7 +18,6 @@
 #include "map_based_prediction/data_structure.hpp"
 
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
-#include <geometry_msgs/msg/pose.hpp>
 
 #include <lanelet2_core/Forward.h>
 #include <lanelet2_core/primitives/Lanelet.h>
@@ -29,7 +28,6 @@
 #include <limits>
 #include <optional>
 #include <string>
-#include <vector>
 
 namespace autoware::map_based_prediction::priority
 {
@@ -90,22 +88,6 @@ std::optional<lanelet::ConstLineString3d> getStopLine(const lanelet::ConstLanele
 std::optional<double> arcLengthToStopLine(
   const PosePath & ref_path, const lanelet::ConstLineString3d & stop_line);
 
-struct LaneObject
-{
-  std::string id;
-  geometry_msgs::msg::Pose pose;
-  double length{0.0};
-};
-
-/// Arc length [m] along @p ref_path at which the ego object must stop to keep
-/// @p gap_margin behind the nearest in-lane leading object, or nullopt when no
-/// leader is ahead. Measured from @p ref_path's start (same convention as
-/// arcLengthToStopLine); "ahead" is measured from @p ego_arc, not ref_path[0].
-std::optional<double> distanceToLeadObject(
-  const PosePath & ref_path, const std::string & ego_id, double ego_length,
-  const std::vector<LaneObject> & objects, double lateral_threshold, double gap_margin,
-  double ego_arc = 0.0);
-
 struct PathSignalInfo
 {
   bool found{false};
@@ -126,8 +108,10 @@ SignalPriority evaluateSignalPriority(
   const lanelet::ConstLanelet & lanelet, const std::optional<TrafficLightGroup> & signal);
 
 /// Distance [m] needed to stop under deceleration and jerk limits after a response
-/// delay. Ported verbatim from behavior_velocity planning_utils::
-/// calcJudgeLineDistWithJerkLimit to avoid a perception -> planning dependency.
+/// delay. Ported verbatim from
+/// autoware::behavior_velocity_planner::planning_utils::calcJudgeLineDistWithJerkLimit
+/// (autoware_behavior_velocity_planner_common) to avoid a perception -> planning
+/// dependency.
 double judgeLineDistWithJerkLimit(
   double velocity, double acceleration, double max_stop_acceleration, double max_stop_jerk,
   double delay_response_time);
@@ -148,7 +132,8 @@ enum class YellowOutcome {
 };
 
 /// Amber-signal outcome from the object's kinematics and its distance to the stop
-/// line. Mirrors TrafficLightModule::isPassthrough but surfaces the dilemma zone.
+/// line. Mirrors TrafficLightModule::isPassthrough
+/// (autoware_behavior_velocity_traffic_light_module) but surfaces the dilemma zone.
 YellowOutcome judgeYellow(
   double velocity, double acceleration, double distance_to_stopline,
   const YellowJudgeParams & params);

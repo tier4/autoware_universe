@@ -545,10 +545,6 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
     declare_parameter<bool>("priority_prediction.suppress_go_on_conservative");
   priority_extend_stop_path_to_stopline_ =
     declare_parameter<bool>("priority_prediction.extend_stop_path_to_stopline");
-  priority_use_lead_vehicle_ = declare_parameter<bool>("priority_prediction.use_lead_vehicle");
-  priority_follow_lateral_threshold_ =
-    declare_parameter<double>("priority_prediction.follow_lateral_threshold");
-  priority_follow_gap_margin_ = declare_parameter<double>("priority_prediction.follow_gap_margin");
 
   // initialize VRU predictor
   predictor_vru_ = std::make_unique<PredictorVru>(*this);
@@ -867,23 +863,6 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
     clear_marker.header.stamp = this->now();
     clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
     priority_object_markers_.markers.push_back(clear_marker);
-  }
-
-  lead_objects_.clear();
-  if (use_priority_prediction_ && priority_use_lead_vehicle_) {
-    lead_objects_.reserve(in_objects->objects.size());
-    for (const auto & object : in_objects->objects) {
-      geometry_msgs::msg::Pose pose_map = object.kinematics.pose_with_covariance.pose;
-      if (is_object_not_in_map_frame) {
-        geometry_msgs::msg::PoseStamped pose_in_map;
-        geometry_msgs::msg::PoseStamped pose_orig;
-        pose_orig.pose = pose_map;
-        tf2::doTransform(pose_orig, pose_in_map, *world2map_transform);
-        pose_map = pose_in_map.pose;
-      }
-      lead_objects_.push_back(
-        {autoware_utils::to_hex_string(object.object_id), pose_map, object.shape.dimensions.x});
-    }
   }
 
   // for each object
@@ -1765,28 +1744,6 @@ void MapBasedPredictionNode::applyPriorityCalibration(
       }
     }
 
-    // TEMP[leadcheck]
-    const double dbg_stopline_rel = context.distance_to_stopline;
-    double dbg_lead_rel = -1.0;
-    bool dbg_clamped = false;
-
-    // Lead-vehicle clamp only refines the stop POSITION; whether the object stops
-    // at all is still decided by the signal, so on green a leader has no effect.
-    if (priority_use_lead_vehicle_) {
-      if (
-        const auto lead = priority::distanceToLeadObject(
-          ref_path.path, object_id_str, object.shape.dimensions.x, lead_objects_,
-          priority_follow_lateral_threshold_, priority_follow_gap_margin_, s_obj)) {
-        const double lead_rel = *lead - s_obj;
-        dbg_lead_rel = lead_rel;
-        if (lead_rel < context.distance_to_stopline) {
-          context.distance_to_stopline = lead_rel;
-          dbg_clamped = true;
-          priority_debug_.lead_clamped++;
-        }
-      }
-    }
-
     // Chattering is already suppressed by the per-signal hysteresis, so no
     // per-object debounce is needed.
     const auto maneuver =
@@ -1826,18 +1783,6 @@ void MapBasedPredictionNode::applyPriorityCalibration(
     // produce a small overshoot even without extend.
     if (info.stop_line) {
       clipPathAtStopLine(conservative_path, *info.stop_line);
-    }
-    // TEMP[leadcheck]: verify whether the lead clamp actually moves the stop position.
-    {
-      double path_arc = 0.0;
-      for (size_t k = 1; k < conservative_path.path.size(); ++k) {
-        const auto & pa = conservative_path.path[k - 1].position;
-        const auto & pb = conservative_path.path[k].position;
-        path_arc += std::hypot(pb.x - pa.x, pb.y - pa.y);
-      }
-      RCLCPP_INFO(
-        get_logger(), "[leadcheck] clamped=%d lead_rel=%.2f stopline_rel=%.2f path_end=%.2f",
-        dbg_clamped ? 1 : 0, dbg_lead_rel, dbg_stopline_rel, path_arc);
     }
     conservative_path.confidence = static_cast<float>(calibration.conservative_weight);
     if (!keep_go) {
@@ -1882,10 +1827,9 @@ void MapBasedPredictionNode::applyPriorityCalibration(
 
   RCLCPP_INFO_THROTTLE(
     get_logger(), *get_clock(), 5000,
-    "[priority] vehicles=%zu sig_stop=%zu sig_creep=%zu stopline=%zu lead=%zu added=%zu",
+    "[priority] vehicles=%zu sig_stop=%zu sig_creep=%zu stopline=%zu added=%zu",
     priority_debug_.vehicles, priority_debug_.signal_stop, priority_debug_.signal_creep,
-    priority_debug_.stopline_found, priority_debug_.lead_clamped,
-    priority_debug_.conservative_added);
+    priority_debug_.stopline_found, priority_debug_.conservative_added);
 }
 
 std::vector<PredictedRefPath> MapBasedPredictionNode::convertPredictedReferencePath(
