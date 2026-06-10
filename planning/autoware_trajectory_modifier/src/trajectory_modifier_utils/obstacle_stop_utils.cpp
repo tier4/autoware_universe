@@ -474,8 +474,10 @@ void PointCloudFilter::filter_pointcloud_by_object(
 
 void ObjectFilter::filter_by_target_area(
   PredictedObjects & objects, const TrajectoryPoints & trajectory_points,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
   const MultiPolygon2d & target_area, MultiPolygon2d & target_polygons)
 {
+  const auto ego_front_offset = vehicle_info.max_longitudinal_offset_m;
   constexpr double time_buffer = 1.0;
   auto time_to_obj_current_pos =
     [&](const auto & object_pose, const size_t nearest_seg_idx) -> double {
@@ -485,8 +487,10 @@ void ObjectFilter::filter_by_target_area(
     const auto lon_offset_dist =
       motion_utils::calcSignedArcLength(trajectory_points, nearest_seg_idx, object_pose.position);
     const auto nearest_seg_vel = trajectory_points.at(nearest_seg_idx).longitudinal_velocity_mps;
-    const auto t_to_obj = t_to_nearest_seg + lon_offset_dist / nearest_seg_vel;
-    return t_to_obj - time_buffer;
+    const auto ego_front_time_offset = ego_front_offset / nearest_seg_vel;
+    const auto t_to_obj =
+      t_to_nearest_seg + (lon_offset_dist / nearest_seg_vel) - ego_front_time_offset - time_buffer;
+    return std::max(0.0, t_to_obj);
   };
 
   auto get_object_polygon = [&](const auto & pose, const auto & shape) {

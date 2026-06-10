@@ -321,7 +321,8 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
     debug_data_.filtered_objects, active_objects, get_clock()->now());
 
   object_filter_->filter_by_target_area(
-    active_objects, traj_points, debug_data_.trajectory_shape.polygon, debug_data_.target_polygons);
+    active_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape.polygon,
+    debug_data_.target_polygons);
 
   autoware_perception_msgs::msg::PredictedObject colliding_object;
   auto collision_point = get_nearest_object_collision(

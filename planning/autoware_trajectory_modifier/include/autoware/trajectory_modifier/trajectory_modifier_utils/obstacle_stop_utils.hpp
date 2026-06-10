@@ -286,6 +286,7 @@ struct ObjectFilter
    */
   void filter_by_target_area(
     PredictedObjects & objects, const TrajectoryPoints & trajectory_points,
+    const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
     const MultiPolygon2d & target_area, MultiPolygon2d & target_polygons);
 
   /**
