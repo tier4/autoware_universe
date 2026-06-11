@@ -1429,7 +1429,6 @@ void MapBasedPredictionNode::addTrafficSignalPriority(
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
-  // 赤信号だと停止線までのPathにCutされます。停止線が見つからない場合は、信号の位置でPathが切られます。
   predicted_paths = priority::addTrafficSignalStopHypotheses(
     priority::ObjectPrediction{object, ref_paths, lanelet_paths, predicted_paths}, traffic_signal_id_map_,
     priority_params_, stop_hypothesis_debug_);
