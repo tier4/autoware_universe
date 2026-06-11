@@ -97,6 +97,9 @@ private:
   autoware_utils_rclcpp::InterProcessPollingSubscriber<
     autoware_perception_msgs::msg::TrafficLightGroupArray>
     sub_traffic_lights_{this, "~/input/traffic_signals"};
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<
+    autoware_planning_msgs::msg::LaneletRoute, autoware_utils_rclcpp::polling_policy::Latest>
+    sub_route_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
 
   // Normal Subscribers
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
