@@ -1,0 +1,92 @@
+lane_event_classifier:
+  object_overlap_threshold:
+    type: double
+    default_value: 0.1
+    description: Minimum overlap area in m² for an object to qualify as the avoided obstacle
+    validation:
+      gt_eq<>: [0.0]
+  longitudinal_window_front:
+    type: double
+    default_value: 20.0
+    description: Distance ahead in metres defining the object search window
+    validation:
+      gt<>: [0.0]
+  reposition_jump_margin_m:
+    type: double
+    default_value: 0.5
+    description: Localization-noise margin added to the speed-explained step (speed * dt); a per-cycle ego step beyond that is treated as a reposition jump and resets the tracking state. Catches small jumps (e.g. a backward nudge at a standstill) that a fixed distance threshold would miss.
+    validation:
+      gt<>: [0.0]
+  lane_departure_reset_distance_m:
+    type: double
+    default_value: 5.0
+    description: While the reference lane is held, distance from the ego to that lane above which the tracking state is reset (countermeasure for a manual takeover that drives away from the route)
+    validation:
+      gt<>: [0.0]
+  lane_following:
+    connected_sequence_length_m:
+      type: double
+      default_value: 200.0
+      description: Fore/aft distance walked from the origin to build the connected lane sequence
+      validation:
+        gt<>: [0.0]
+    lateral_tolerance_m:
+      type: double
+      default_value: 0.3
+      description: Lateral margin around the connected lane sequence still treated as lane following
+      validation:
+        gt_eq<>: [0.0]
+    enable_road_shoulder_exemption:
+      type: bool
+      default_value: true
+      description: Treat the ego overlapping a road shoulder as lane following (road-shoulder exemption)
+    enable_turn_lane_exemption:
+      type: bool
+      default_value: true
+      description: Treat going out of lane in a turn/intersection lane as lane following (turn-lane exemption)
+    enable_virtual_boundary_exemption:
+      type: bool
+      default_value: true
+      description: Treat crossing a virtual boundary linestring as lane following (virtual-boundary exemption)
+  lane_change:
+    enable_classifier:
+      type: bool
+      default_value: true
+      description: Enable or disable LaneChangeClassifier
+    crossing_persist_duration_s:
+      type: double
+      default_value: 0.3
+      description: Seconds the trajectory crossing must persist (same target + stable location) before onset
+      validation:
+        gt<>: [0.0]
+    settle_confirm_duration_s:
+      type: double
+      default_value: 0.7
+      description: Seconds the footprint must stay fully inside the target route primitive to confirm a settle
+      validation:
+        gt<>: [0.0]
+    crossing_look_ahead_m:
+      type: double
+      default_value: 30.0
+      description: Arc length ahead along the trajectory scanned for a lane-change crossing
+      validation:
+        gt<>: [0.0]
+    crossing_position_tolerance_m:
+      type: double
+      default_value: 2.0
+      description: Positional tolerance on the crossing location for the onset both-persistence test
+      validation:
+        gt<>: [0.0]
+    confidence_factor:
+      type: double
+      default_value: 0.3
+      description: Fraction the crossing-persistence window is shortened to when a confidence signal is present (0 < factor < 1; keep above 0 so it shortens but never bypasses the window)
+      # A single two-sided validator: two separate validators (gt + lt) would emit two
+      # floating_point_range entries, overflowing ParameterDescriptor's size-1 bounded vector.
+      validation:
+        bounds<>: [0.0, 1.0]
+  lane_crossing:
+    enable_classifier:
+      type: bool
+      default_value: true
+      description: Enable or disable IntentionalCrossingClassifier
