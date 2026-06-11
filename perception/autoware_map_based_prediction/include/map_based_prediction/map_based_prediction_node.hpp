@@ -209,7 +209,7 @@ private:
   // Adds stop hypotheses based on the object's traffic-signal
   // context, mutating @p predicted_paths in place.
   void addTrafficSignalPriority(
-    const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
+    const TrackedObject & object, const std::vector<LaneletPathWithPathInfo> & ref_paths,
     std::vector<PredictedPath> & predicted_paths);
 
   // Vehicle history process
@@ -247,7 +247,7 @@ private:
   std::vector<LaneletPathWithPathInfo> getPredictedReferencePath(
     const TrackedObject & object, const LaneletsData & current_lanelets_data,
     const double object_detected_time, const double time_horizon);
-  std::vector<PredictedRefPath> convertPredictedReferencePath(
+  std::vector<LaneletPathWithPathInfo> convertPredictedReferencePath(
     const TrackedObject & object,
     const std::vector<LaneletPathWithPathInfo> & lanelet_ref_paths) const;
   mutable autoware_utils::LRUCache<lanelet::routing::LaneletPath, std::pair<PosePath, double>>

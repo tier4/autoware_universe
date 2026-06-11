@@ -215,7 +215,8 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     // predicted_path is a mutable copy: it is clipped in place and written back
     // to result[i] when a stop hypothesis replaces the go path.
     PredictedPath predicted_path = predicted_paths[i];
-    const PredictedRefPath & ref_path = ref_paths[i];  // the path predicted_path was generated from
+    const auto & lanelet_path = ref_paths[i].first;
+    const PredictedRefPath & ref_path = ref_paths[i].second;
 
     if (ref_path.path.size() < 2 || predicted_path.path.size() < 2) {
       continue;
@@ -223,7 +224,7 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
 
     // 1. Get signal status , line info for target path.
     lanelet::ConstLanelet target_signal_lanelet;
-    if (!findTrafficLightLaneletOnPath(ref_path.lanelet_path, target_signal_lanelet)) {
+    if (!findTrafficLightLaneletOnPath(lanelet_path, target_signal_lanelet)) {
       continue;
     }
     const std::optional<TrafficLightGroup> signal_status =
