@@ -14,9 +14,9 @@
 
 #include "autoware/avoidance_target_detector/node.hpp"
 
-#include "autoware/avoidance_target_detector/impl.hpp"
+#include <autoware_utils_uuid/uuid_helper.hpp>
 
-#include <optional>
+#include <algorithm>
 
 namespace autoware::avoidance_target_detector
 {
@@ -44,11 +44,54 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
     return;
   }
 
-  trajectory_ = sub_trajectory_.take_data();
+  const auto current_time = get_clock()->now();
 
-  const std::optional<Trajectory> trajectory =
-    trajectory_ ? std::make_optional(*trajectory_) : std::nullopt;
-  const auto avoidance_targets = detect_avoidance_targets(*msg, trajectory);
+  trajectory_ = sub_trajectory_.take_data();
+  const Trajectory trajectory_msg = trajectory_ ? *trajectory_ : Trajectory{};
+
+  for (const auto & object : msg->objects) {
+    const auto object_id_str = autoware_utils_uuid::to_hex_string(object.object_id);
+    if (object_filters_.find(object_id_str) == object_filters_.end()) {
+      object_filters_.emplace(object_id_str, FilterManager(object, current_time));
+    }
+  }
+
+  for (const auto & object : msg->objects) {
+    const auto object_id_str = autoware_utils_uuid::to_hex_string(object.object_id);
+    const auto it = object_filters_.find(object_id_str);
+    if (it != object_filters_.end()) {
+      it->second.observe_and_update_all(current_time, object, trajectory_msg);
+    }
+  }
+
+  for (auto it = object_filters_.begin(); it != object_filters_.end();) {
+    if (it->second.is_stale(current_time)) {
+      it = object_filters_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  for (auto & [object_id_str, filter_manager] : object_filters_) {
+    if (filter_manager.get_debug_log().empty()) {
+      continue;
+    }
+    RCLCPP_INFO(
+      get_logger(), "Object ID: %s, Debug Log: %s", object_id_str.c_str(),
+      filter_manager.get_debug_log().c_str());
+    filter_manager.clear_debug_log();
+  }
+
+  PredictedObjects avoidance_targets = *msg;
+  avoidance_targets.objects.erase(
+    std::remove_if(
+      avoidance_targets.objects.begin(), avoidance_targets.objects.end(),
+      [&](const PredictedObject & object) {
+        const auto it = object_filters_.find(autoware_utils_uuid::to_hex_string(object.object_id));
+        return it == object_filters_.end() || !it->second.is_target();
+      }),
+    avoidance_targets.objects.end());
+
   pub_avoidance_targets_->publish(avoidance_targets);
 }
 

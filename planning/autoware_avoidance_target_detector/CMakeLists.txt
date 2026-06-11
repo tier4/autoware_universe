@@ -7,6 +7,7 @@ autoware_package()
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/node.cpp
   src/impl.cpp
+  src/two_class_filter.cpp
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}

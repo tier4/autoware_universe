@@ -15,12 +15,15 @@
 #ifndef AUTOWARE__AVOIDANCE_TARGET_DETECTOR__NODE_HPP_
 #define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__NODE_HPP_
 
+#include "autoware/avoidance_target_detector/two_class_filter.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+
+#include <map>
 
 namespace autoware::avoidance_target_detector
 {
@@ -50,6 +53,8 @@ private:
     this, "~/input/trajectory"};
 
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_avoidance_targets_;
+
+  FilterManagerMap object_filters_;
 
   Trajectory::ConstSharedPtr trajectory_;
 };
