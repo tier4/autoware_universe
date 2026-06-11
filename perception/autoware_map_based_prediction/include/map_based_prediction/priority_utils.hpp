@@ -78,9 +78,10 @@ struct PriorityPredictionParams
   PriorityCalibrationParams calibration;
 };
 
-/// Confidence of a stop hypothesis derived from its source go
-/// path's maneuver: the lane-follow (center) copy is always the strongest.
-double stopHypothesisConfidence(const Maneuver & maneuver, const double stop_weight);
+/// Stop-hypothesis weight after a lane-change penalty: the lane-follow (center)
+/// copy keeps the full stop weight, while lane-change copies are attenuated so
+/// the center hypothesis is always the strongest.
+double weakenConfidenceInLaneChange(const Maneuver & maneuver, const double stop_weight);
 
 /// One object's prediction: its tracked state, the candidate reference paths,
 /// and the predicted paths generated 1:1 from them.

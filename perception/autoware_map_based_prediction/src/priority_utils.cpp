@@ -180,13 +180,13 @@ bool shouldAddStopHypothesis(
   return params.use_signal_priority && signal_requires_stop && has_stop_line_ahead;
 }
 
-double stopHypothesisConfidence(const Maneuver & maneuver, const double stop_weight)
+double weakenConfidenceInLaneChange(const Maneuver & maneuver, const double stop_weight)
 {
   // A stopping object most likely stays in its lane: the lane-follow copy keeps
-  // the full stop weight and lane-change copies are scaled down so the center
+  // the full stop weight and lane-change copies are penalized so the center
   // hypothesis is always the strongest.
-  constexpr double lane_change_scale = 0.5;
-  return maneuver == Maneuver::LANE_FOLLOW ? stop_weight : stop_weight * lane_change_scale;
+  constexpr double lane_change_penalty = 0.5;
+  return maneuver == Maneuver::LANE_FOLLOW ? stop_weight : stop_weight * lane_change_penalty;
 }
 
 std::vector<PredictedPath> addTrafficSignalStopHypotheses(
@@ -207,66 +207,64 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
 
   debug.counter.vehicles++;
 
-  // Build the new path set in one pass: each go path is either kept as-is, or
-  // replaced by / accompanied by a stop hypothesis when its signal is red.
-  std::vector<PredictedPath> result;
-  result.reserve(predicted_paths.size() + 1);
+  // Start from a copy of the go paths and replace only the entries that get a
+  // stop hypothesis; every other path is left untouched in place.
+  std::vector<PredictedPath> result = predicted_paths;
 
   for (size_t i = 0; i < predicted_paths.size(); ++i) {
-    const auto & go_path = predicted_paths[i];
-    const auto & ref_path = ref_paths[i];  // the path go_path was generated from
+    // predicted_path is a mutable copy: it is clipped in place and written back
+    // to result[i] when a stop hypothesis replaces the go path.
+    PredictedPath predicted_path = predicted_paths[i];
+    const PredictedRefPath & ref_path = ref_paths[i];  // the path predicted_path was generated from
 
-    const auto keep_go_path = [&] { result.push_back(go_path); };
-
-    if (ref_path.path.size() < 2 || go_path.path.size() < 2) {
-      keep_go_path();
+    if (ref_path.path.size() < 2 || predicted_path.path.size() < 2) {
       continue;
     }
 
-    // 1. The first traffic light governing this path.
-    lanelet::ConstLanelet signal_lanelet;
-    if (!findTrafficLightLaneletOnPath(ref_path.lanelet_path, signal_lanelet)) {
-      keep_go_path();
+    // 1. Get signal status , line info for target path.
+    lanelet::ConstLanelet target_signal_lanelet;
+    if (!findTrafficLightLaneletOnPath(ref_path.lanelet_path, target_signal_lanelet)) {
       continue;
     }
-
-    // 2. Its stop line (tagged, or the lanelet entry edge).
-    const auto stop_line = lanelet_util::getStopLineOrEntryEdge(signal_lanelet);
+    const std::optional<TrafficLightGroup> signal_status =
+      lanelet_util::getSignalForLanelet(traffic_signal_id_map, target_signal_lanelet);
+    const std::optional<lanelet::ConstLineString3d> related_stop_line =
+      lanelet_util::getStopLineOrEntryEdge(target_signal_lanelet);
 
     // 3. Signal state and whether the stop line is still ahead of the object.
-    const auto signal = lanelet_util::getSignalForLanelet(traffic_signal_id_map, signal_lanelet);
-    const bool signal_requires_stop = evaluateSignalStopRequirement(signal_lanelet, signal);
+    const bool signal_requires_stop =
+      evaluateSignalStopRequirement(target_signal_lanelet, signal_status);
     const bool stop_line_ahead =
-      stop_line &&
+      related_stop_line &&
       hasStopLineAhead(
-        object.kinematics.pose_with_covariance.pose.position, ref_path.path, *stop_line);
-    debug.counter.signal_stop += signal_requires_stop ? 1 : 0;
-    debug.counter.stopline_found += stop_line_ahead ? 1 : 0;
+        object.kinematics.pose_with_covariance.pose.position, ref_path.path, *related_stop_line);
 
     // 4. Add a stop hypothesis only on a red signal whose stop line is still ahead.
     if (!shouldAddStopHypothesis(signal_requires_stop, stop_line_ahead, params.calibration)) {
-      keep_go_path();
       continue;
     }
 
     // 5. The stop hypothesis is a copy of the go path cut at the stop line.
-    auto stop_hypothesis = go_path;
-    if (stop_line) {
-      clipPathAtStopLine(stop_hypothesis, *stop_line);
-    }
-    if (stop_hypothesis.path.size() < 2) {
-      keep_go_path();  // nothing to clip to -> the go path stands
-      continue;
-    }
-    stop_hypothesis.confidence = static_cast<float>(
-      stopHypothesisConfidence(ref_path.maneuver, params.calibration.stop_probability_boost));
+    if (stop_line_ahead && signal_requires_stop) {
+      clipPathAtStopLine(predicted_path, *related_stop_line);
 
-    // The stop hypothesis replaces the go path (the go path is dropped).
-    debug.stop_hypothesis_path_indices[autoware_utils::to_hex_string(object.object_id)].insert(
-      result.size());
-    result.push_back(std::move(stop_hypothesis));
-    if (stop_line) {
-      debug.stop_lines.push_back(*stop_line);
+      if (predicted_path.path.size() < 2) {
+        continue;  // nothing to clip to -> the go path stands
+      }
+
+      predicted_path.confidence = static_cast<float>(
+        weakenConfidenceInLaneChange(ref_path.maneuver, params.calibration.stop_probability_boost));
+
+      // The stop hypothesis replaces the go path in place (the go path is dropped).
+      result[i] = predicted_path;
+    }
+
+    // debug part
+    debug.counter.signal_stop += signal_requires_stop ? 1 : 0;
+    debug.counter.stopline_found += stop_line_ahead ? 1 : 0;
+    debug.stop_hypothesis_path_indices[autoware_utils::to_hex_string(object.object_id)].insert(i);
+    if (related_stop_line) {
+      debug.stop_lines.push_back(*related_stop_line);
     }
     debug.counter.stop_hypothesis_added++;
   }

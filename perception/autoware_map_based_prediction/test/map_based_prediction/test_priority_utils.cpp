@@ -319,10 +319,10 @@ TEST(PriorityUtils, StopHypothesisConfidenceCenterIsStrongest)
 {
   // Among stop hypotheses, the lane-follow (center) copy must be the strongest.
   const double weight = 0.35;
-  const double center = stopHypothesisConfidence(Maneuver::LANE_FOLLOW, weight);
+  const double center = weakenConfidenceInLaneChange(Maneuver::LANE_FOLLOW, weight);
   EXPECT_DOUBLE_EQ(center, weight);
-  EXPECT_LT(stopHypothesisConfidence(Maneuver::LEFT_LANE_CHANGE, weight), center);
-  EXPECT_LT(stopHypothesisConfidence(Maneuver::RIGHT_LANE_CHANGE, weight), center);
+  EXPECT_LT(weakenConfidenceInLaneChange(Maneuver::LEFT_LANE_CHANGE, weight), center);
+  EXPECT_LT(weakenConfidenceInLaneChange(Maneuver::RIGHT_LANE_CHANGE, weight), center);
 }
 
 }  // namespace
