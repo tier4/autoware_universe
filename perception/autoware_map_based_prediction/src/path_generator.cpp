@@ -20,8 +20,6 @@
 #include <autoware_utils/geometry/geometry.hpp>
 
 #include <algorithm>
-#include <cmath>
-#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -217,88 +215,6 @@ PredictedPath PathGenerator::generatePathForOnLaneVehicle(
 
   return generatePolynomialPath(
     object, ref_path, duration, lateral_duration, path_width, backlash_width, speed_limit);
-}
-
-PredictedPath PathGenerator::generateStoppingPathForOnLaneVehicle(
-  const TrackedObject & object, const PosePath & ref_path, const double duration,
-  const double deceleration, const double stop_distance, const double speed_limit,
-  const bool extend_to_stop_line) const
-{
-  std::unique_ptr<ScopedTimeTrack> st_ptr;
-  if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
-
-  if (ref_path.size() < 2) {
-    return PredictedPath{};
-  }
-
-  constexpr double epsilon = 1e-3;
-  const double decel = std::max(deceleration, epsilon);
-
-  // s0 is the object's signed position relative to ref_path[0]; stop_distance is
-  // passed in the same object-relative convention, so the stop point is at
-  // s0 + stop_distance.
-  const auto current_point = getFrenetPoint(object, ref_path.at(0), duration, speed_limit);
-  const double s0 = current_point.s;
-  const double v0 = std::max(static_cast<double>(current_point.s_vel), 0.0);
-
-  // Hard stop: constant speed up to the horizon reach; the stop line is not
-  // clamped on the centerline arc because it can disagree with the 2D stop-line
-  // segment on curved / skewed approaches -- the caller clips at the line
-  // geometrically (clipPathAtStopLine). extend_to_stop_line instead force-sweeps
-  // to the stop line (plus a margin) so even a far object's path reaches the line.
-  const bool hard_stop = std::isfinite(stop_distance);
-  const double reachable = v0 * duration;
-  constexpr double extend_overshoot = 5.0;  // [m]
-  const bool extend_hard_stop = hard_stop && extend_to_stop_line;
-  const double s_stop =
-    extend_hard_stop ? s0 + std::max(stop_distance, 0.0) + extend_overshoot : s0 + reachable;
-
-  // Decelerating-profile parameters (no-stop-line fallback: brake to a halt).
-  const double brake_decel = decel;
-  const double t_reach = v0 / brake_decel;
-  const double s_reach = s0 + v0 * t_reach - 0.5 * brake_decel * t_reach * t_reach;
-
-  constexpr double ep = 0.001;
-  const double total_duration = duration + ep;
-  FrenetPath frenet_path;
-  frenet_path.reserve(static_cast<size_t>(total_duration / sampling_time_interval_) + 1);
-  for (double t = 0.0; t < total_duration; t += sampling_time_interval_) {
-    FrenetPoint p;
-    if (extend_hard_stop) {
-      const double ratio = std::min(t / duration, 1.0);
-      p.s = s0 + (s_stop - s0) * ratio;
-      p.s_vel = static_cast<float>(v0 * (1.0 - ratio));
-      p.s_acc = 0.0;
-    } else if (hard_stop) {
-      p.s = std::min(s0 + v0 * t, s_stop);
-      p.s_vel = static_cast<float>(p.s < s_stop ? v0 : 0.0);
-      p.s_acc = 0.0;
-    } else if (t <= t_reach) {
-      p.s = s0 + v0 * t - 0.5 * brake_decel * t * t;
-      p.s_vel = static_cast<float>(std::max(v0 - brake_decel * t, 0.0));
-      p.s_acc = static_cast<float>(-brake_decel);
-    } else {
-      p.s = s_reach;
-      p.s_vel = 0.0;
-      p.s_acc = 0.0;
-    }
-    p.d = current_point.d;
-    p.d_vel = 0.0;
-    p.d_acc = 0.0;
-    frenet_path.push_back(p);
-  }
-
-  if (frenet_path.size() < 2) {
-    return PredictedPath{};
-  }
-
-  const auto interpolated_ref_path = interpolateReferencePath(ref_path, frenet_path);
-
-  if (interpolated_ref_path.size() < 2) {
-    return PredictedPath{};
-  }
-
-  return convertToPredictedPath(object, frenet_path, interpolated_ref_path);
 }
 
 PredictedPath PathGenerator::generateStraightPath(

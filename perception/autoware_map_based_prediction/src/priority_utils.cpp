@@ -15,7 +15,6 @@
 #include "map_based_prediction/priority_utils.hpp"
 
 #include "map_based_prediction/lanelet_util.hpp"
-#include "map_based_prediction/path_generator.hpp"
 
 #include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
@@ -40,8 +39,8 @@ namespace autoware::map_based_prediction::priority
 {
 namespace
 {
-// Truncate the path at its first crossing with the stop line; if it never crosses,
-// bridge the last point to the line (bounded) so the path ends exactly on it.
+// Truncate the path at its first crossing with the stop line; a path that never
+// crosses the line is left untouched.
 void clipPathAtStopLine(PredictedPath & path, const lanelet::ConstLineString3d & stop_line)
 {
   if (path.path.size() < 2 || stop_line.size() < 2) {
@@ -76,36 +75,6 @@ void clipPathAtStopLine(PredictedPath & path, const lanelet::ConstLineString3d &
         return;
       }
     }
-  }
-
-  constexpr double max_bridge = 3.0;  // [m]
-  const auto & last = path.path.back().position;
-  double best_d_sq = std::numeric_limits<double>::infinity();
-  geometry_msgs::msg::Point target;
-  for (size_t j = 1; j < stop_line.size(); ++j) {
-    const double cx = stop_line[j - 1].x();
-    const double cy = stop_line[j - 1].y();
-    const double dx = stop_line[j].x() - cx;
-    const double dy = stop_line[j].y() - cy;
-    const double len_sq = dx * dx + dy * dy;
-    const double u = len_sq > 1e-12
-                       ? std::clamp(((last.x - cx) * dx + (last.y - cy) * dy) / len_sq, 0.0, 1.0)
-                       : 0.0;
-    const double qx = cx + u * dx;
-    const double qy = cy + u * dy;
-    const double d_sq = (last.x - qx) * (last.x - qx) + (last.y - qy) * (last.y - qy);
-    if (d_sq < best_d_sq) {
-      best_d_sq = d_sq;
-      target.x = qx;
-      target.y = qy;
-      target.z = last.z;
-    }
-  }
-  if (std::isfinite(best_d_sq) && std::sqrt(best_d_sq) <= max_bridge) {
-    auto pose = path.path.back();
-    pose.position = target;
-    path.path.push_back(pose);
-    return;
   }
 }
 }  // namespace
@@ -161,7 +130,12 @@ std::optional<double> arcLengthToStopLine(
     arc_length += seg_len;
   }
 
-  // No crossing (e.g. the path ends before the stop line): nearest vertex fallback.
+  // No crossing: the only trusted case is the path ending just before the stop
+  // line, i.e. the stop line is nearest to the path END. A nearest vertex at the
+  // start or middle means the stop line lies behind / beside this path (e.g. a
+  // branch candidate starting ahead of the object), where no on-path distance
+  // exists -- returning a clamped value here used to fabricate a positive
+  // distance for objects already past the line.
   double center_x = 0.0;
   double center_y = 0.0;
   for (const auto & point : stop_line) {
@@ -173,6 +147,7 @@ std::optional<double> arcLengthToStopLine(
 
   double cum_length = 0.0;
   double nearest_arc_length = 0.0;
+  size_t nearest_index = 0;
   double nearest_distance_sq = std::numeric_limits<double>::infinity();
   for (size_t i = 0; i < ref_path.size(); ++i) {
     if (i > 0) {
@@ -184,7 +159,11 @@ std::optional<double> arcLengthToStopLine(
     if (distance_sq < nearest_distance_sq) {
       nearest_distance_sq = distance_sq;
       nearest_arc_length = cum_length;
+      nearest_index = i;
     }
+  }
+  if (nearest_index + 1 < ref_path.size()) {
+    return std::nullopt;
   }
   return std::max(nearest_arc_length, 0.0);
 }
@@ -239,8 +218,10 @@ ConservativeManeuver decideConservativeManeuver(
     params.use_signal_priority && context.signal_priority == SignalPriority::FULLY_PRIORITIZED;
 
   // No distance threshold: a far object just gets a stop path capped at the horizon.
-  const bool stop_line_known = std::isfinite(context.distance_to_stopline);
-  return (stop_by_signal && stop_line_known) ? ConservativeManeuver::STOP
+  // A non-positive distance means the object has already passed the stop line.
+  const bool stop_line_ahead =
+    std::isfinite(context.distance_to_stopline) && context.distance_to_stopline > 0.0;
+  return (stop_by_signal && stop_line_ahead) ? ConservativeManeuver::STOP
                                              : ConservativeManeuver::NONE;
 }
 
@@ -271,8 +252,7 @@ PriorityCalibration calibratePriority(
 
 std::unordered_set<size_t> applyPriorityCalibration(
   const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
-  const std::vector<int> & predicted_path_ref_index, const double time_horizon,
-  const PathGenerator & path_generator,
+  const std::vector<int> & predicted_path_ref_index,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
   const PriorityPredictionParams & params, std::vector<PredictedPath> & predicted_paths,
   debug_util::PriorityDebugCounters & counters,
@@ -336,16 +316,14 @@ std::unordered_set<size_t> applyPriorityCalibration(
       continue;
     }
 
-    PredictedPath conservative_path = path_generator.generateStoppingPathForOnLaneVehicle(
-      object, ref_path.path, time_horizon, params.stop_deceleration, context.distance_to_stopline,
-      ref_path.speed_limit, params.extend_stop_path_to_stopline);
-    if (conservative_path.path.empty()) {
-      continue;
-    }
-    // Clip regardless of the extend flag: lane curvature / angled stop lines can
-    // produce a small overshoot even without extend.
+    // The stop hypothesis is a copy of the go path, cut at the stop-line crossing;
+    // a path that ends before the line stays as-is.
+    PredictedPath conservative_path = predicted_paths[i];
     if (info.stop_line) {
       clipPathAtStopLine(conservative_path, *info.stop_line);
+    }
+    if (conservative_path.path.size() < 2) {
+      continue;
     }
     conservative_path.confidence = static_cast<float>(calibration.conservative_weight);
     object_has_stop = true;

@@ -59,9 +59,7 @@
       use_signal_priority: true
       stop_probability_boost: 0.35 # confidence weight of the stop hypothesis added on red
       go_probability_decay_on_yield: 0.1 # multiplier applied to the go-path confidences of an object that gets a STOP
-      stop_deceleration: 2.0 #[m/s^2] used when no stop line distance is known
       suppress_go_on_conservative: true # for a confident stop, drop the path's own go hypothesis
-      extend_stop_path_to_stopline: false # viz aid: stretch the stop path to the stop line
       debug_visualization: false # publish debug markers regardless of enable
 
     # debug parameters

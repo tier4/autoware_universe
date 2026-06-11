@@ -33,11 +33,6 @@
 #include <unordered_set>
 #include <vector>
 
-namespace autoware::map_based_prediction
-{
-class PathGenerator;
-}  // namespace autoware::map_based_prediction
-
 namespace autoware::map_based_prediction::priority
 {
 using autoware_perception_msgs::msg::TrafficLightGroup;
@@ -76,8 +71,10 @@ bool hasTrafficLight(const lanelet::ConstLanelet & lanelet);
 
 std::optional<lanelet::ConstLineString3d> getStopLine(const lanelet::ConstLanelet & lanelet);
 
-/// Arc length [m] along @p ref_path from its start to where it crosses @p stop_line
-/// (falling back to the vertex nearest the stop-line centroid). Clamped to >= 0.
+/// Arc length [m] along @p ref_path from its start to where it crosses @p stop_line.
+/// Without a crossing, falls back to the path end if that is the vertex nearest the
+/// stop-line centroid (the path ends just before the line); otherwise the stop line
+/// lies behind / beside the path and nullopt is returned.
 std::optional<double> arcLengthToStopLine(
   const PosePath & ref_path, const lanelet::ConstLineString3d & stop_line);
 
@@ -111,19 +108,16 @@ PriorityCalibration weightsForManeuver(
 struct PriorityPredictionParams
 {
   PriorityCalibrationParams calibration;
-  double stop_deceleration{2.0};
   bool suppress_go_on_conservative{true};
-  bool extend_stop_path_to_stopline{false};
 };
 
 /// Adds conservative stop hypotheses based on each path's traffic-signal context,
-/// mutating @p predicted_paths in place: a red signal appends a stopping path
-/// clipped at the stop line and decays / drops the go hypotheses.
+/// mutating @p predicted_paths in place: a red signal appends a copy of the go
+/// path cut at the stop-line crossing and decays / drops the go hypotheses.
 /// @return indices into @p predicted_paths of the added conservative paths
 std::unordered_set<size_t> applyPriorityCalibration(
   const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
-  const std::vector<int> & predicted_path_ref_index, const double time_horizon,
-  const PathGenerator & path_generator,
+  const std::vector<int> & predicted_path_ref_index,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
   const PriorityPredictionParams & params, std::vector<PredictedPath> & predicted_paths,
   debug_util::PriorityDebugCounters & counters,

@@ -212,7 +212,7 @@ private:
   // context, mutating @p predicted_paths in place.
   void applyPriorityCalibration(
     const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
-    const std::vector<int> & predicted_path_ref_index, const double time_horizon,
+    const std::vector<int> & predicted_path_ref_index,
     std::vector<PredictedPath> & predicted_paths);
 
   void publishPriorityDebugMarkers(

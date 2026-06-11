@@ -434,12 +434,8 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
     declare_parameter<double>("priority_prediction.stop_probability_boost");
   priority_params_.calibration.go_probability_decay_on_yield =
     declare_parameter<double>("priority_prediction.go_probability_decay_on_yield");
-  priority_params_.stop_deceleration =
-    declare_parameter<double>("priority_prediction.stop_deceleration");
   priority_params_.suppress_go_on_conservative =
     declare_parameter<bool>("priority_prediction.suppress_go_on_conservative");
-  priority_params_.extend_stop_path_to_stopline =
-    declare_parameter<bool>("priority_prediction.extend_stop_path_to_stopline");
   priority_debug_viz_ = declare_parameter<bool>("priority_prediction.debug_visualization");
 
   // initialize VRU predictor
@@ -1447,16 +1443,14 @@ void MapBasedPredictionNode::publishPriorityDebugMarkers(
 
 void MapBasedPredictionNode::applyPriorityCalibration(
   const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
-  const std::vector<int> & predicted_path_ref_index, const double time_horizon,
-  std::vector<PredictedPath> & predicted_paths)
+  const std::vector<int> & predicted_path_ref_index, std::vector<PredictedPath> & predicted_paths)
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
   const auto conservative_indices = priority::applyPriorityCalibration(
-    object, ref_paths, predicted_path_ref_index, time_horizon, *path_generator_,
-    traffic_signal_id_map_, priority_params_, predicted_paths, priority_debug_,
-    priority_debug_stop_lines_);
+    object, ref_paths, predicted_path_ref_index, traffic_signal_id_map_, priority_params_,
+    predicted_paths, priority_debug_, priority_debug_stop_lines_);
   if (!conservative_indices.empty()) {
     conservative_path_indices_[autoware_utils::to_hex_string(object.object_id)] =
       conservative_indices;
@@ -1778,8 +1772,7 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
 
   if (use_priority_prediction_) {
     applyPriorityCalibration(
-      yaw_fixed_object, ref_paths, predicted_path_ref_index, prediction_time_horizon_.vehicle,
-      predicted_paths);
+      yaw_fixed_object, ref_paths, predicted_path_ref_index, predicted_paths);
   }
 
   // Normalize Path Confidence and output the predicted object
