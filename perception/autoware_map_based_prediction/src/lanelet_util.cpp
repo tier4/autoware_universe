@@ -23,6 +23,21 @@
 namespace autoware::map_based_prediction::lanelet_util
 {
 
+bool hasTrafficLight(const lanelet::ConstLanelet & lanelet)
+{
+  return !lanelet.regulatoryElementsAs<lanelet::TrafficLight>().empty();
+}
+
+std::optional<lanelet::ConstLineString3d> getStopLine(const lanelet::ConstLanelet & lanelet)
+{
+  for (const auto & traffic_light : lanelet.regulatoryElementsAs<lanelet::TrafficLight>()) {
+    if (const auto stop_line = traffic_light->stopLine()) {
+      return *stop_line;
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<lanelet::Id> getTrafficSignalId(const lanelet::ConstLanelet & way_lanelet)
 {
   const auto traffic_light_reg_elems =

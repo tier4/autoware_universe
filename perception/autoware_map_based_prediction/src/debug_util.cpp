@@ -138,4 +138,26 @@ visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
   return markers;
 }
 
+void publishPriorityObjectMarkers(
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray> & publisher,
+  autoware_utils::TransformListener & transform_listener,
+  const autoware_perception_msgs::msg::PredictedObjects & output,
+  const rclcpp::Time & objects_stamp, const ConservativePathIndexMap & conservative_path_indices,
+  const std::vector<lanelet::ConstLineString3d> & stop_lines, const rclcpp::Time & now)
+{
+  std::optional<geometry_msgs::msg::Pose> ego_pose;
+  const auto map_to_base = transform_listener.get_transform(
+    "map", "base_link", objects_stamp, rclcpp::Duration::from_seconds(0.1));
+  if (map_to_base) {
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = map_to_base->transform.translation.x;
+    pose.position.y = map_to_base->transform.translation.y;
+    pose.position.z = map_to_base->transform.translation.z;
+    pose.orientation = map_to_base->transform.rotation;
+    ego_pose = pose;
+  }
+  publisher.publish(
+    createPriorityObjectMarkers(output, conservative_path_indices, stop_lines, ego_pose, now));
+}
+
 }  // namespace autoware::map_based_prediction::debug_util

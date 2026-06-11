@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "map_based_prediction/lanelet_util.hpp"
 #include "map_based_prediction/priority_utils.hpp"
 
 #include <gtest/gtest.h>
@@ -189,6 +190,16 @@ TEST(PriorityUtils, ArcLengthToStopLineNoneForShortPath)
   EXPECT_FALSE(arcLengthToStopLine(ref_path, stop_line).has_value());
 }
 
+TEST(PriorityUtils, ArcLengthToStopLineNoneWhenBehindPathStart)
+{
+  // A stop line behind the path start never crosses it and is nearest to the
+  // FIRST vertex: it is not on this path, so no distance must be fabricated.
+  lanelet::Id id = 5400;
+  const PosePath ref_path = makeRefPath(50.0);
+  const auto stop_line = makeStopLine(id, -10.0);
+  EXPECT_FALSE(arcLengthToStopLine(ref_path, stop_line).has_value());
+}
+
 // ---- evaluateSignalPriority ------------------------------------------------
 
 TEST(PriorityUtils, SignalPriorityNoObservation)
@@ -251,7 +262,7 @@ TEST(PriorityUtils, GetStopLineFromTrafficLight)
   auto junction = makeLanelet(id, 0.0);
   const auto stop_line = makeStopLine(id, 10.0);
   attachTrafficLight(junction, id, stop_line);
-  const auto got = getStopLine(junction);
+  const auto got = lanelet_util::getStopLine(junction);
   ASSERT_TRUE(got.has_value());
   EXPECT_EQ(got->id(), stop_line.id());
 }
@@ -260,7 +271,7 @@ TEST(PriorityUtils, GetStopLineNoneWhenUntagged)
 {
   lanelet::Id id = 6200;
   const auto plain_lanelet = makeLanelet(id, 0.0);
-  EXPECT_FALSE(getStopLine(plain_lanelet).has_value());
+  EXPECT_FALSE(lanelet_util::getStopLine(plain_lanelet).has_value());
 }
 
 // ---- calibratePriority -----------------------------------------------------
@@ -307,6 +318,19 @@ TEST(PriorityUtils, CalibrateNoConservativeWhenNoStopLine)
   EXPECT_EQ(calibration.maneuver, ConservativeManeuver::NONE);
 }
 
+TEST(PriorityUtils, CalibrateNoConservativeWhenPastStopLine)
+{
+  // Red, but the object has already passed the stop line (negative distance):
+  // a stop path can no longer end at the line -> NONE.
+  PriorityCalibrationParams params;
+  PriorityContext context;
+  context.signal_priority = SignalPriority::FULLY_PRIORITIZED;
+  context.distance_to_stopline = -2.0;
+
+  const auto calibration = calibratePriority(context, params);
+  EXPECT_EQ(calibration.maneuver, ConservativeManeuver::NONE);
+}
+
 TEST(PriorityUtils, CalibrateRespectsDisableFlag)
 {
   PriorityCalibrationParams params;
@@ -317,6 +341,16 @@ TEST(PriorityUtils, CalibrateRespectsDisableFlag)
 
   const auto calibration = calibratePriority(context, params);
   EXPECT_EQ(calibration.maneuver, ConservativeManeuver::NONE);
+}
+
+TEST(PriorityUtils, ConservativeConfidenceCenterIsStrongest)
+{
+  // Among stop hypotheses, the lane-follow (center) copy must be the strongest.
+  const double weight = 0.35;
+  const double center = conservativeConfidence(Maneuver::LANE_FOLLOW, weight);
+  EXPECT_DOUBLE_EQ(center, weight);
+  EXPECT_LT(conservativeConfidence(Maneuver::LEFT_LANE_CHANGE, weight), center);
+  EXPECT_LT(conservativeConfidence(Maneuver::RIGHT_LANE_CHANGE, weight), center);
 }
 
 TEST(PriorityUtils, DecideAndWeightsComposeIntoCalibrate)

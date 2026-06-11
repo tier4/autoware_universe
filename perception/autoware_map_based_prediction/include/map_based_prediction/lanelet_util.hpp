@@ -19,6 +19,7 @@
 
 #include <lanelet2_core/Forward.h>
 #include <lanelet2_core/primitives/Lanelet.h>
+#include <lanelet2_core/primitives/LineString.h>
 
 #include <optional>
 #include <unordered_map>
@@ -26,6 +27,11 @@
 namespace autoware::map_based_prediction::lanelet_util
 {
 using autoware_perception_msgs::msg::TrafficLightGroup;
+
+bool hasTrafficLight(const lanelet::ConstLanelet & lanelet);
+
+/// Stop line of the lanelet's TrafficLight regulatory element, if tagged.
+std::optional<lanelet::ConstLineString3d> getStopLine(const lanelet::ConstLanelet & lanelet);
 
 /// Id of the TrafficLight regulatory element of @p way_lanelet, if any.
 std::optional<lanelet::Id> getTrafficSignalId(const lanelet::ConstLanelet & way_lanelet);

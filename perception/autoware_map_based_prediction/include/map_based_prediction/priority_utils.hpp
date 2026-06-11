@@ -67,10 +67,6 @@ struct PriorityCalibration
   double go_scale{1.0};
 };
 
-bool hasTrafficLight(const lanelet::ConstLanelet & lanelet);
-
-std::optional<lanelet::ConstLineString3d> getStopLine(const lanelet::ConstLanelet & lanelet);
-
 /// Arc length [m] along @p ref_path from its start to where it crosses @p stop_line.
 /// Without a crossing, falls back to the path end if that is the vertex nearest the
 /// stop-line centroid (the path ends just before the line); otherwise the stop line
@@ -111,13 +107,18 @@ struct PriorityPredictionParams
   bool suppress_go_on_conservative{true};
 };
 
+/// Confidence of a conservative (stop) hypothesis derived from its source go
+/// path's maneuver: the lane-follow (center) copy is always the strongest.
+double conservativeConfidence(const Maneuver & maneuver, const double conservative_weight);
+
 /// Adds conservative stop hypotheses based on each path's traffic-signal context,
 /// mutating @p predicted_paths in place: a red signal appends a copy of the go
 /// path cut at the stop-line crossing and decays / drops the go hypotheses.
+/// @p predicted_paths must correspond 1:1 to @p ref_paths (objects whose paths
+/// were dropped by the lateral-acceleration constraint are skipped).
 /// @return indices into @p predicted_paths of the added conservative paths
 std::unordered_set<size_t> applyPriorityCalibration(
   const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
-  const std::vector<int> & predicted_path_ref_index,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
   const PriorityPredictionParams & params, std::vector<PredictedPath> & predicted_paths,
   debug_util::PriorityDebugCounters & counters,

@@ -20,7 +20,6 @@
 #include <autoware_utils/geometry/geometry.hpp>
 #include <tf2/utils.hpp>
 
-#include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/utility/Utilities.h>
 #include <lanelet2_routing/LaneletPath.h>
@@ -78,21 +77,6 @@ void clipPathAtStopLine(PredictedPath & path, const lanelet::ConstLineString3d &
   }
 }
 }  // namespace
-
-bool hasTrafficLight(const lanelet::ConstLanelet & lanelet)
-{
-  return !lanelet.regulatoryElementsAs<lanelet::TrafficLight>().empty();
-}
-
-std::optional<lanelet::ConstLineString3d> getStopLine(const lanelet::ConstLanelet & lanelet)
-{
-  for (const auto & traffic_light : lanelet.regulatoryElementsAs<lanelet::TrafficLight>()) {
-    if (const auto stop_line = traffic_light->stopLine()) {
-      return *stop_line;
-    }
-  }
-  return std::nullopt;
-}
 
 std::optional<double> arcLengthToStopLine(
   const PosePath & ref_path, const lanelet::ConstLineString3d & stop_line)
@@ -172,12 +156,12 @@ PathSignalInfo classifyPathAtTrafficLight(const lanelet::routing::LaneletPath & 
 {
   PathSignalInfo info;
   for (const auto & lanelet : lanelet_path) {
-    if (!hasTrafficLight(lanelet)) {
+    if (!lanelet_util::hasTrafficLight(lanelet)) {
       continue;
     }
     info.found = true;
     info.signal_lanelet = lanelet;
-    info.stop_line = getStopLine(lanelet);
+    info.stop_line = lanelet_util::getStopLine(lanelet);
     if (!info.stop_line) {
       // No tagged stop line: fall back to the lanelet's entry edge so a stopping
       // object still has a finite target at the junction entrance.
@@ -250,16 +234,28 @@ PriorityCalibration calibratePriority(
   return weightsForManeuver(decideConservativeManeuver(context, params), params);
 }
 
+double conservativeConfidence(const Maneuver & maneuver, const double conservative_weight)
+{
+  // A stopping object most likely stays in its lane: the lane-follow copy keeps
+  // the full stop weight and lane-change copies are scaled down so the center
+  // hypothesis is always the strongest.
+  constexpr double lane_change_scale = 0.5;
+  return maneuver == Maneuver::LANE_FOLLOW ? conservative_weight
+                                           : conservative_weight * lane_change_scale;
+}
+
 std::unordered_set<size_t> applyPriorityCalibration(
   const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
-  const std::vector<int> & predicted_path_ref_index,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
   const PriorityPredictionParams & params, std::vector<PredictedPath> & predicted_paths,
   debug_util::PriorityDebugCounters & counters,
   std::vector<lanelet::ConstLineString3d> & debug_stop_lines)
 {
   std::unordered_set<size_t> conservative_indices;
-  if (predicted_paths.empty() || ref_paths.empty()) {
+  // predicted_paths[i] corresponds to ref_paths[i] only when no path was dropped
+  // (e.g. by the lateral-acceleration constraint); dropped-path objects are out
+  // of scope for the priority calibration.
+  if (predicted_paths.empty() || predicted_paths.size() != ref_paths.size()) {
     return conservative_indices;
   }
 
@@ -272,11 +268,7 @@ std::unordered_set<size_t> applyPriorityCalibration(
   std::vector<PredictedPath> conservative_to_add;
   bool object_has_stop = false;
   for (size_t i = 0; i < original_count; ++i) {
-    const int ref_idx = predicted_path_ref_index[i];
-    if (ref_idx < 0 || static_cast<size_t>(ref_idx) >= ref_paths.size()) {
-      continue;
-    }
-    const auto & ref_path = ref_paths[ref_idx];
+    const auto & ref_path = ref_paths[i];
     if (ref_path.path.size() < 2) {
       continue;
     }
@@ -325,7 +317,8 @@ std::unordered_set<size_t> applyPriorityCalibration(
     if (conservative_path.path.size() < 2) {
       continue;
     }
-    conservative_path.confidence = static_cast<float>(calibration.conservative_weight);
+    conservative_path.confidence = static_cast<float>(
+      conservativeConfidence(ref_path.maneuver, calibration.conservative_weight));
     object_has_stop = true;
     if (params.suppress_go_on_conservative) {
       suppress_go[i] = true;

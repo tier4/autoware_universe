@@ -764,7 +764,9 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
   publish(output, debug_markers);
 
   if (priority_debug_viz_) {
-    publishPriorityDebugMarkers(output, in_objects);
+    debug_util::publishPriorityObjectMarkers(
+      *pub_priority_object_markers_, transform_listener_, output, in_objects->header.stamp,
+      conservative_path_indices_, priority_debug_stop_lines_, this->now());
   }
 
   // Processing time
@@ -1422,35 +1424,16 @@ ManeuverProbability MapBasedPredictionNode::calculateManeuverProbability(
   return maneuver_prob;
 }
 
-void MapBasedPredictionNode::publishPriorityDebugMarkers(
-  const PredictedObjects & output, const TrackedObjects::ConstSharedPtr & in_objects)
-{
-  std::optional<geometry_msgs::msg::Pose> ego_pose;
-  const auto map_to_base = transform_listener_.get_transform(
-    "map", "base_link", in_objects->header.stamp, rclcpp::Duration::from_seconds(0.1));
-  if (map_to_base) {
-    geometry_msgs::msg::Pose pose;
-    pose.position.x = map_to_base->transform.translation.x;
-    pose.position.y = map_to_base->transform.translation.y;
-    pose.position.z = map_to_base->transform.translation.z;
-    pose.orientation = map_to_base->transform.rotation;
-    ego_pose = pose;
-  }
-  pub_priority_object_markers_->publish(
-    debug_util::createPriorityObjectMarkers(
-      output, conservative_path_indices_, priority_debug_stop_lines_, ego_pose, this->now()));
-}
-
 void MapBasedPredictionNode::applyPriorityCalibration(
   const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
-  const std::vector<int> & predicted_path_ref_index, std::vector<PredictedPath> & predicted_paths)
+  std::vector<PredictedPath> & predicted_paths)
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
   const auto conservative_indices = priority::applyPriorityCalibration(
-    object, ref_paths, predicted_path_ref_index, traffic_signal_id_map_, priority_params_,
-    predicted_paths, priority_debug_, priority_debug_stop_lines_);
+    object, ref_paths, traffic_signal_id_map_, priority_params_, predicted_paths, priority_debug_,
+    priority_debug_stop_lines_);
   if (!conservative_indices.empty()) {
     conservative_path_indices_[autoware_utils::to_hex_string(object.object_id)] =
       conservative_indices;
@@ -1712,14 +1695,10 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
   }
   // Generate Predicted Path
   std::vector<PredictedPath> predicted_paths;
-  // Index into ref_paths for each generated predicted_path (-1 = no source ref path).
-  std::vector<int> predicted_path_ref_index;
   double min_avg_curvature = std::numeric_limits<double>::max();
   PredictedPath path_with_smallest_avg_curvature;
-  int ref_index_of_smallest_avg_curvature = -1;
 
-  for (size_t ref_idx = 0; ref_idx < ref_paths.size(); ++ref_idx) {
-    const auto & ref_path = ref_paths[ref_idx];
+  for (const auto & ref_path : ref_paths) {
     PredictedPath predicted_path = path_generator_->generatePathForOnLaneVehicle(
       yaw_fixed_object, ref_path.path, prediction_time_horizon_.vehicle,
       lateral_control_time_horizon_, ref_path.width, ref_path.speed_limit);
@@ -1728,7 +1707,6 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
     if (!check_lateral_acceleration_constraints_) {
       predicted_path.confidence = ref_path.probability;
       predicted_paths.push_back(predicted_path);
-      predicted_path_ref_index.push_back(static_cast<int>(ref_idx));
       continue;
     }
 
@@ -1739,7 +1717,6 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
           trajectory_with_const_velocity, prediction_sampling_time_interval_)) {
       predicted_path.confidence = ref_path.probability;
       predicted_paths.push_back(predicted_path);
-      predicted_path_ref_index.push_back(static_cast<int>(ref_idx));
       continue;
     }
 
@@ -1761,18 +1738,13 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
       min_avg_curvature = curvature_avg;
       path_with_smallest_avg_curvature = predicted_path;
       path_with_smallest_avg_curvature.confidence = ref_path.probability;
-      ref_index_of_smallest_avg_curvature = static_cast<int>(ref_idx);
     }
   }
 
-  if (predicted_paths.empty()) {
-    predicted_paths.push_back(path_with_smallest_avg_curvature);
-    predicted_path_ref_index.push_back(ref_index_of_smallest_avg_curvature);
-  }
+  if (predicted_paths.empty()) predicted_paths.push_back(path_with_smallest_avg_curvature);
 
   if (use_priority_prediction_) {
-    applyPriorityCalibration(
-      yaw_fixed_object, ref_paths, predicted_path_ref_index, predicted_paths);
+    applyPriorityCalibration(yaw_fixed_object, ref_paths, predicted_paths);
   }
 
   // Normalize Path Confidence and output the predicted object
