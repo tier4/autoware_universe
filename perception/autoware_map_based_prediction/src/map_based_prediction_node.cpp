@@ -1422,7 +1422,8 @@ ManeuverProbability MapBasedPredictionNode::calculateManeuverProbability(
 }
 
 void MapBasedPredictionNode::addTrafficSignalPriority(
-  const TrackedObject & object, const std::vector<LaneletPathWithPathInfo> & ref_paths,
+  const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
+  const std::vector<lanelet::routing::LaneletPath> & lanelet_paths,
   std::vector<PredictedPath> & predicted_paths)
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
@@ -1430,7 +1431,7 @@ void MapBasedPredictionNode::addTrafficSignalPriority(
 
   // 赤信号だと停止線までのPathにCutされます。停止線が見つからない場合は、信号の位置でPathが切られます。
   predicted_paths = priority::addTrafficSignalStopHypotheses(
-    priority::ObjectPrediction{object, ref_paths, predicted_paths}, traffic_signal_id_map_,
+    priority::ObjectPrediction{object, ref_paths, lanelet_paths, predicted_paths}, traffic_signal_id_map_,
     priority_params_, stop_hypothesis_debug_);
 
   RCLCPP_INFO_THROTTLE(
@@ -1653,10 +1654,10 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
   // return: <probability, paths>
   const auto lanelet_ref_paths = getPredictedReferencePath(
     object, current_lanelets, objects_detected_time, prediction_time_horizon_.vehicle);
-  const auto ref_paths = convertPredictedReferencePath(object, lanelet_ref_paths);
+  const auto ref_paths_with_lanelet = convertPredictedReferencePath(object, lanelet_ref_paths);
 
   // If predicted reference path is empty, assume this object is out of the lane
-  if (ref_paths.empty()) {
+  if (ref_paths_with_lanelet.empty()) {
     PredictedPath predicted_path =
       path_generator_->generatePathForOffLaneVehicle(object, prediction_time_horizon_.vehicle);
     predicted_path.confidence = 1.0;
@@ -1669,15 +1670,25 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
     return predicted_object_out_of_lane;
   }
 
+
+  std::vector<PredictedRefPath> ref_paths;
+  std::vector<lanelet::routing::LaneletPath> ref_lanelet_paths;
+  ref_paths.reserve(ref_paths_with_lanelet.size());
+  ref_lanelet_paths.reserve(ref_paths_with_lanelet.size());
+  for (const auto & [lanelet_path, ref_path_info] : ref_paths_with_lanelet) {
+    ref_lanelet_paths.push_back(lanelet_path);
+    ref_paths.push_back(ref_path_info);
+  }
+
   // Get Debug Marker for On Lane Vehicles
   if (pub_debug_markers_) {
     const auto max_prob_path = std::max_element(
       ref_paths.begin(), ref_paths.end(),
-      [](const LaneletPathWithPathInfo & a, const LaneletPathWithPathInfo & b) {
-        return a.second.probability < b.second.probability;
+      [](const PredictedRefPath & a, const PredictedRefPath & b) {
+        return a.probability < b.probability;
       });
     const auto debug_marker =
-      getDebugMarker(object, max_prob_path->second.maneuver, debug_markers.markers.size());
+      getDebugMarker(object, max_prob_path->maneuver, debug_markers.markers.size());
     debug_markers.markers.push_back(debug_marker);
   }
 
@@ -1696,12 +1707,12 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
 
   for (const auto & ref_path : ref_paths) {
     PredictedPath predicted_path = path_generator_->generatePathForOnLaneVehicle(
-      yaw_fixed_object, ref_path.second.path, prediction_time_horizon_.vehicle,
-      lateral_control_time_horizon_, ref_path.second.width, ref_path.second.speed_limit);
+      yaw_fixed_object, ref_path.path, prediction_time_horizon_.vehicle,
+      lateral_control_time_horizon_, ref_path.width, ref_path.speed_limit);
     if (predicted_path.path.empty()) continue;
 
     if (!check_lateral_acceleration_constraints_) {
-      predicted_path.confidence = ref_path.second.probability;
+      predicted_path.confidence = ref_path.probability;
       predicted_paths.push_back(predicted_path);
       continue;
     }
@@ -1711,7 +1722,7 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
 
     if (isLateralAccelerationConstraintSatisfied(
       trajectory_with_const_velocity, prediction_sampling_time_interval_)) {
-      predicted_path.confidence = ref_path.second.probability;
+      predicted_path.confidence = ref_path.probability;
       predicted_paths.push_back(predicted_path);
       continue;
     }
@@ -1733,14 +1744,14 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
     if (curvature_avg < min_avg_curvature) {
       min_avg_curvature = curvature_avg;
       path_with_smallest_avg_curvature = predicted_path;
-      path_with_smallest_avg_curvature.confidence = ref_path.second.probability;
+      path_with_smallest_avg_curvature.confidence = ref_path.probability;
     }
   }
 
   if (predicted_paths.empty()) predicted_paths.push_back(path_with_smallest_avg_curvature);
 
   if (use_priority_prediction_) {
-    addTrafficSignalPriority(yaw_fixed_object, ref_paths, predicted_paths);
+    addTrafficSignalPriority(yaw_fixed_object, ref_paths, ref_lanelet_paths, predicted_paths);
   }
 
   // Normalize Path Confidence and output the predicted object

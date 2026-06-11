@@ -195,13 +195,16 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   const PriorityPredictionParams & params, debug_util::StopHypothesisDebug & debug)
 {
   const TrackedObject & object = prediction.object;
-  const std::vector<LaneletPathWithPathInfo> & ref_paths = prediction.ref_paths;
+  const std::vector<PredictedRefPath> & ref_paths = prediction.ref_paths;
+  const std::vector<lanelet::routing::LaneletPath> & lanelet_paths = prediction.lanelet_paths;
   const std::vector<PredictedPath> & predicted_paths = prediction.predicted_paths;
 
   // predicted_paths[i] corresponds to ref_paths[i] only when no path was dropped
   // (e.g. by the lateral-acceleration constraint); dropped-path objects are out
   // of scope for the priority calibration and returned unchanged.
-  if (predicted_paths.empty() || predicted_paths.size() != ref_paths.size()) {
+  if (
+    predicted_paths.empty() || predicted_paths.size() != ref_paths.size() ||
+    lanelet_paths.size() != ref_paths.size()) {
     return predicted_paths;
   }
 
@@ -215,11 +218,10 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     // predicted_path is a mutable copy: it is clipped in place and written back
     // to result[i] when a stop hypothesis replaces the go path.
     PredictedPath predicted_path = predicted_paths[i];
-    const LaneletPathWithPathInfo & ref_path = ref_paths[i];
-    const lanelet::routing::LaneletPath & lanelet_path = ref_path.first;
-    const PredictedRefPath & ref_path_info = ref_path.second;
+    const PredictedRefPath & ref_path = ref_paths[i];
+    const lanelet::routing::LaneletPath & lanelet_path = lanelet_paths[i];
 
-    if (ref_path_info.path.size() < 2 || predicted_path.path.size() < 2) {
+    if (ref_path.path.size() < 2 || predicted_path.path.size() < 2) {
       continue;
     }
 
@@ -239,8 +241,7 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     const bool stop_line_ahead =
       related_stop_line &&
       hasStopLineAhead(
-        object.kinematics.pose_with_covariance.pose.position, ref_path_info.path,
-        *related_stop_line);
+        object.kinematics.pose_with_covariance.pose.position, ref_path.path, *related_stop_line);
 
     // 4. Add a stop hypothesis only on a red signal whose stop line is still ahead.
     if (!shouldAddStopHypothesis(signal_requires_stop, stop_line_ahead, params.calibration)) {
@@ -255,8 +256,8 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
         continue;  // nothing to clip to -> the go path stands
       }
 
-      predicted_path.confidence = static_cast<float>(weakenConfidenceInLaneChange(
-        ref_path_info.maneuver, params.calibration.stop_probability_boost));
+      predicted_path.confidence = static_cast<float>(
+        weakenConfidenceInLaneChange(ref_path.maneuver, params.calibration.stop_probability_boost));
 
       // The stop hypothesis replaces the go path in place (the go path is dropped).
       result[i] = predicted_path;

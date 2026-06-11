@@ -209,7 +209,8 @@ private:
   // Adds stop hypotheses based on the object's traffic-signal
   // context, mutating @p predicted_paths in place.
   void addTrafficSignalPriority(
-    const TrackedObject & object, const std::vector<LaneletPathWithPathInfo> & ref_paths,
+    const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
+    const std::vector<lanelet::routing::LaneletPath> & lanelet_paths,
     std::vector<PredictedPath> & predicted_paths);
 
   // Vehicle history process
