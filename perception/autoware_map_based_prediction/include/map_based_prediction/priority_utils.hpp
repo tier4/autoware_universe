@@ -88,7 +88,7 @@ double weakenConfidenceInLaneChange(const Maneuver & maneuver, const double stop
 struct ObjectPrediction
 {
   const TrackedObject & object;
-  const std::vector<PredictedRefPath> & ref_paths;
+  const std::vector<LaneletPathWithPathInfo> & ref_paths;
   const std::vector<PredictedPath> & predicted_paths;
 };
 
