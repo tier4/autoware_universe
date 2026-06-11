@@ -1447,15 +1447,23 @@ std::vector<LaneletPathWithPathInfo> MapBasedPredictionNode::convertPredictedRef
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
-  std::vector<LaneletPathWithPathInfo> converted_ref_paths = lanelet_ref_paths;
+  std::vector<LaneletPathWithPathInfo> converted_ref_paths;
 
   // Step 1. Convert lanelet path to pose path
-  for (auto & ref_path : converted_ref_paths) {
+  for (auto & ref_path : lanelet_ref_paths) {
     const auto & lanelet_path = ref_path.first;
-    auto & ref_path_info = ref_path.second;
+    const auto & ref_path_info = ref_path.second;
+
+    lanelet::routing::LaneletPath path_info = lanelet_path;
+
     const auto converted_path = convertLaneletPathToPosePath(lanelet_path);
-    ref_path_info.path = converted_path.first;
-    ref_path_info.width = converted_path.second;
+    PredictedRefPath predicted_path;
+    predicted_path.probability = ref_path_info.probability;
+    predicted_path.path = converted_path.first;
+    predicted_path.width = converted_path.second;
+    predicted_path.maneuver = ref_path_info.maneuver;
+    predicted_path.speed_limit = ref_path_info.speed_limit;
+    converted_ref_paths.push_back({path_info, predicted_path});
   }
 
   // Step 2. Search starting point for each reference path
@@ -1645,15 +1653,15 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
 
   // Get Predicted Reference Path for Each Maneuver and current lanelets
   // return: <probability, paths>
-  const auto lanelet_ref_paths = convertPredictedReferencePath(
-    object,
-    getPredictedReferencePath(
-      object, current_lanelets, objects_detected_time, prediction_time_horizon_.vehicle));
+  const auto lanelet_ref_paths = getPredictedReferencePath(
+    object, current_lanelets, objects_detected_time, prediction_time_horizon_.vehicle);
+  const auto lanelet_ref_paths_with_info = convertPredictedReferencePath(
+    object,lanelet_ref_paths);
 
   std::vector<PredictedRefPath> ref_paths;
-  ref_paths.reserve(lanelet_ref_paths.size());
-  for (const auto & lanelet_ref_path : lanelet_ref_paths) {
-    ref_paths.push_back(lanelet_ref_path.second);
+  ref_paths.reserve(lanelet_ref_paths_with_info.size());
+  for (const auto & lanelet_ref_path_info : lanelet_ref_paths_with_info) {
+    ref_paths.push_back(lanelet_ref_path_info.second);
   }
 
   // If predicted reference path is empty, assume this object is out of the lane
