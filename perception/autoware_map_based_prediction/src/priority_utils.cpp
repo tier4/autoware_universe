@@ -38,6 +38,24 @@ namespace autoware::map_based_prediction::priority
 {
 namespace
 {
+// Map stop lines are straight: treat one as the segment between its endpoints,
+// extended sideways by margin * length on both ends.
+std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> stopLineChord(
+  const lanelet::ConstLineString3d & stop_line, const double margin)
+{
+  const double sx = stop_line.back().x() - stop_line.front().x();
+  const double sy = stop_line.back().y() - stop_line.front().y();
+  geometry_msgs::msg::Point c1;
+  c1.x = stop_line.front().x() - margin * sx;
+  c1.y = stop_line.front().y() - margin * sy;
+  c1.z = stop_line.front().z();
+  geometry_msgs::msg::Point c2;
+  c2.x = stop_line.back().x() + margin * sx;
+  c2.y = stop_line.back().y() + margin * sy;
+  c2.z = stop_line.back().z();
+  return {c1, c2};
+}
+
 // Truncate the path at its first crossing with the stop line; a path that never
 // crosses the line is left untouched.
 void clipPathAtStopLine(PredictedPath & path, const lanelet::ConstLineString3d & stop_line)
@@ -46,33 +64,18 @@ void clipPathAtStopLine(PredictedPath & path, const lanelet::ConstLineString3d &
     return;
   }
 
-  // The u (lateral) bound is generous so a laterally-offset path still clips at
+  // The chord is extended sideways so a laterally-offset path still clips at
   // the longitudinal stop position.
+  const auto [c1, c2] = stopLineChord(stop_line, 1.0);
   for (size_t i = 1; i < path.path.size(); ++i) {
-    const auto & a = path.path[i - 1].position;
-    const auto & b = path.path[i].position;
-    const double rx = b.x - a.x;
-    const double ry = b.y - a.y;
-    for (size_t j = 1; j < stop_line.size(); ++j) {
-      const double cx = stop_line[j - 1].x();
-      const double cy = stop_line[j - 1].y();
-      const double sx = stop_line[j].x() - cx;
-      const double sy = stop_line[j].y() - cy;
-      const double denom = rx * sy - ry * sx;
-      if (std::abs(denom) < 1e-9) {
-        continue;  // parallel segments
-      }
-      const double t = ((cx - a.x) * sy - (cy - a.y) * sx) / denom;  // along path segment
-      const double u = ((cx - a.x) * ry - (cy - a.y) * rx) / denom;  // along stop-line segment
-      if (t >= -1e-6 && t <= 1.0 + 1e-6 && u >= -1.0 && u <= 2.0) {
-        auto crossing = path.path[i];  // keep orientation / time fields
-        crossing.position.x = a.x + std::clamp(t, 0.0, 1.0) * rx;
-        crossing.position.y = a.y + std::clamp(t, 0.0, 1.0) * ry;
-        crossing.position.z = a.z;
-        path.path.resize(i);
-        path.path.push_back(crossing);
-        return;
-      }
+    const auto crossing_point =
+      autoware_utils::intersect(path.path[i - 1].position, path.path[i].position, c1, c2);
+    if (crossing_point) {
+      auto crossing = path.path[i];  // keep orientation / time fields
+      crossing.position = *crossing_point;
+      path.path.resize(i);
+      path.path.push_back(crossing);
+      return;
     }
   }
 }
@@ -81,37 +84,21 @@ void clipPathAtStopLine(PredictedPath & path, const lanelet::ConstLineString3d &
 std::optional<double> arcLengthToStopLine(
   const PosePath & ref_path, const lanelet::ConstLineString3d & stop_line)
 {
-  if (ref_path.size() < 2 || stop_line.empty()) {
+  if (ref_path.size() < 2 || stop_line.size() < 2) {
     return std::nullopt;
   }
 
   // Use the geometric crossing, not the nearest vertex, which drifts when the
   // stop line is oblique to / laterally offset from the path.
+  const auto [c1, c2] = stopLineChord(stop_line, 0.0);
   double arc_length = 0.0;
   for (size_t i = 1; i < ref_path.size(); ++i) {
-    const double ax = ref_path.at(i - 1).position.x;
-    const double ay = ref_path.at(i - 1).position.y;
-    const double rx = ref_path.at(i).position.x - ax;
-    const double ry = ref_path.at(i).position.y - ay;
-    const double seg_len = std::hypot(rx, ry);
-    for (size_t j = 1; j < stop_line.size(); ++j) {
-      const double cx = stop_line[j - 1].x();
-      const double cy = stop_line[j - 1].y();
-      const double sx = stop_line[j].x() - cx;
-      const double sy = stop_line[j].y() - cy;
-      const double denom = rx * sy - ry * sx;
-      if (std::abs(denom) < 1e-9) {
-        continue;  // parallel segments
-      }
-      // a + t*r == c + u*s ; intersection lies on both when t,u in [0,1].
-      const double t = ((cx - ax) * sy - (cy - ay) * sx) / denom;
-      const double u = ((cx - ax) * ry - (cy - ay) * rx) / denom;
-      constexpr double eps = 1e-6;
-      if (t >= -eps && t <= 1.0 + eps && u >= -eps && u <= 1.0 + eps) {
-        return std::max(arc_length + std::clamp(t, 0.0, 1.0) * seg_len, 0.0);
-      }
+    const auto & a = ref_path.at(i - 1).position;
+    const auto & b = ref_path.at(i).position;
+    if (const auto crossing = autoware_utils::intersect(a, b, c1, c2)) {
+      return std::max(arc_length + std::hypot(crossing->x - a.x, crossing->y - a.y), 0.0);
     }
-    arc_length += seg_len;
+    arc_length += std::hypot(b.x - a.x, b.y - a.y);
   }
 
   // No crossing: the only trusted case is the path ending just before the stop
@@ -120,14 +107,8 @@ std::optional<double> arcLengthToStopLine(
   // branch candidate starting ahead of the object), where no on-path distance
   // exists -- returning a clamped value here used to fabricate a positive
   // distance for objects already past the line.
-  double center_x = 0.0;
-  double center_y = 0.0;
-  for (const auto & point : stop_line) {
-    center_x += point.x();
-    center_y += point.y();
-  }
-  center_x /= static_cast<double>(stop_line.size());
-  center_y /= static_cast<double>(stop_line.size());
+  const double center_x = 0.5 * (c1.x + c2.x);
+  const double center_y = 0.5 * (c1.y + c2.y);
 
   double cum_length = 0.0;
   double nearest_arc_length = 0.0;
