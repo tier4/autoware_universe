@@ -432,10 +432,6 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
     declare_parameter<bool>("priority_prediction.use_signal_priority");
   priority_params_.calibration.stop_probability_boost =
     declare_parameter<double>("priority_prediction.stop_probability_boost");
-  priority_params_.calibration.go_probability_decay_on_yield =
-    declare_parameter<double>("priority_prediction.go_probability_decay_on_yield");
-  priority_params_.suppress_go_on_conservative =
-    declare_parameter<bool>("priority_prediction.suppress_go_on_conservative");
   priority_debug_viz_ = declare_parameter<bool>("priority_prediction.debug_visualization");
 
   // initialize VRU predictor
@@ -697,8 +693,8 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
   // get current crosswalk users for later prediction
   predictor_vru_->loadCurrentCrosswalkUsers(*in_objects);
 
-  conservative_path_indices_.clear();
-  priority_debug_stop_lines_.clear();
+  stop_hypothesis_debug_.stop_lines.clear();
+  stop_hypothesis_debug_.stop_hypothesis_path_indices.clear();
 
   // for each object
   for (const auto & object : in_objects->objects) {
@@ -766,7 +762,8 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
   if (priority_debug_viz_) {
     debug_util::publishPriorityObjectMarkers(
       *pub_priority_object_markers_, transform_listener_, output, in_objects->header.stamp,
-      conservative_path_indices_, priority_debug_stop_lines_, this->now());
+      stop_hypothesis_debug_.stop_hypothesis_path_indices, stop_hypothesis_debug_.stop_lines,
+      this->now());
   }
 
   // Processing time
@@ -1424,25 +1421,23 @@ ManeuverProbability MapBasedPredictionNode::calculateManeuverProbability(
   return maneuver_prob;
 }
 
-void MapBasedPredictionNode::applyPriorityCalibration(
+void MapBasedPredictionNode::addTrafficSignalPriority(
   const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
   std::vector<PredictedPath> & predicted_paths)
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
-  const auto conservative_indices = priority::applyPriorityCalibration(
-    object, ref_paths, traffic_signal_id_map_, priority_params_, predicted_paths, priority_debug_,
-    priority_debug_stop_lines_);
-  if (!conservative_indices.empty()) {
-    conservative_path_indices_[autoware_utils::to_hex_string(object.object_id)] =
-      conservative_indices;
-  }
+  // 赤信号だと停止線までのPathにCutされます。停止線が見つからない場合は、信号の位置でPathが切られます。
+  predicted_paths = priority::addTrafficSignalStopHypotheses(
+    priority::ObjectPrediction{object, ref_paths, predicted_paths}, traffic_signal_id_map_,
+    priority_params_, stop_hypothesis_debug_);
 
   RCLCPP_INFO_THROTTLE(
     get_logger(), *get_clock(), 5000, "[priority] vehicles=%zu sig_stop=%zu stopline=%zu added=%zu",
-    priority_debug_.vehicles, priority_debug_.signal_stop, priority_debug_.stopline_found,
-    priority_debug_.conservative_added);
+    stop_hypothesis_debug_.counter.vehicles, stop_hypothesis_debug_.counter.signal_stop,
+    stop_hypothesis_debug_.counter.stopline_found,
+    stop_hypothesis_debug_.counter.stop_hypothesis_added);
 }
 
 std::vector<PredictedRefPath> MapBasedPredictionNode::convertPredictedReferencePath(
@@ -1744,7 +1739,7 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
   if (predicted_paths.empty()) predicted_paths.push_back(path_with_smallest_avg_curvature);
 
   if (use_priority_prediction_) {
-    applyPriorityCalibration(yaw_fixed_object, ref_paths, predicted_paths);
+    addTrafficSignalPriority(yaw_fixed_object, ref_paths, predicted_paths);
   }
 
   // Normalize Path Confidence and output the predicted object

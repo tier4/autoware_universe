@@ -27,7 +27,7 @@ using autoware_perception_msgs::msg::ObjectClassification;
 
 visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
   const autoware_perception_msgs::msg::PredictedObjects & output,
-  const ConservativePathIndexMap & conservative_path_indices,
+  const StopHypothesisIndexMap & stop_hypothesis_indices,
   const std::vector<lanelet::ConstLineString3d> & stop_lines,
   const std::optional<geometry_msgs::msg::Pose> & ego_pose, const rclcpp::Time & now)
 {
@@ -55,8 +55,8 @@ visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
     }
     const auto & paths = obj.kinematics.predicted_paths;
     const std::string oid = autoware_utils::to_hex_string(obj.object_id);
-    const auto cons_it = conservative_path_indices.find(oid);
-    const bool has_conservative = cons_it != conservative_path_indices.end();
+    const auto indices_it = stop_hypothesis_indices.find(oid);
+    const bool has_stop_hypothesis = indices_it != stop_hypothesis_indices.end();
 
     const auto & dims = obj.shape.dimensions;
     auto box = autoware_utils::create_default_marker(
@@ -80,8 +80,8 @@ visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
       if (paths[pi].path.size() < 2) {
         continue;
       }
-      const bool is_conservative = has_conservative && cons_it->second.count(pi) > 0;
-      auto color = is_conservative ? stop_color : go_color;
+      const bool is_stop_hypothesis = has_stop_hypothesis && indices_it->second.count(pi) > 0;
+      auto color = is_stop_hypothesis ? stop_color : go_color;
       color.a = (pi == max_conf_pi) ? 0.7f : 0.1f;
       constexpr double width = 0.6;
       constexpr double z_off = 0.8;
@@ -142,7 +142,7 @@ void publishPriorityObjectMarkers(
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray> & publisher,
   autoware_utils::TransformListener & transform_listener,
   const autoware_perception_msgs::msg::PredictedObjects & output,
-  const rclcpp::Time & objects_stamp, const ConservativePathIndexMap & conservative_path_indices,
+  const rclcpp::Time & objects_stamp, const StopHypothesisIndexMap & stop_hypothesis_indices,
   const std::vector<lanelet::ConstLineString3d> & stop_lines, const rclcpp::Time & now)
 {
   std::optional<geometry_msgs::msg::Pose> ego_pose;
@@ -157,7 +157,7 @@ void publishPriorityObjectMarkers(
     ego_pose = pose;
   }
   publisher.publish(
-    createPriorityObjectMarkers(output, conservative_path_indices, stop_lines, ego_pose, now));
+    createPriorityObjectMarkers(output, stop_hypothesis_indices, stop_lines, ego_pose, now));
 }
 
 }  // namespace autoware::map_based_prediction::debug_util

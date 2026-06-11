@@ -18,6 +18,7 @@
 
 #include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
+#include <autoware_utils/ros/uuid_helper.hpp>
 #include <tf2/utils.hpp>
 
 #include <lanelet2_core/primitives/Lanelet.h>
@@ -66,7 +67,7 @@ void clipPathAtStopLine(PredictedPath & path, const lanelet::ConstLineString3d &
 
   // The chord is extended sideways so a laterally-offset path still clips at
   // the longitudinal stop position.
-  const auto [c1, c2] = stopLineChord(stop_line, 1.0);
+  const auto [c1, c2] = stopLineChord(stop_line, 0.0);
   for (size_t i = 1; i < path.path.size(); ++i) {
     const auto crossing_point =
       autoware_utils::intersect(path.path[i - 1].position, path.path[i].position, c1, c2);
@@ -133,210 +134,144 @@ std::optional<double> arcLengthToStopLine(
   return std::max(nearest_arc_length, 0.0);
 }
 
-PathSignalInfo classifyPathAtTrafficLight(const lanelet::routing::LaneletPath & lanelet_path)
+bool hasStopLineAhead(
+  const geometry_msgs::msg::Point & position, const PosePath & ref_path,
+  const lanelet::ConstLineString3d & stop_line)
 {
-  PathSignalInfo info;
-  for (const auto & lanelet : lanelet_path) {
-    if (!lanelet_util::hasTrafficLight(lanelet)) {
-      continue;
-    }
-    info.found = true;
-    info.signal_lanelet = lanelet;
-    info.stop_line = lanelet_util::getStopLine(lanelet);
-    if (!info.stop_line) {
-      // No tagged stop line: fall back to the lanelet's entry edge so a stopping
-      // object still has a finite target at the junction entrance.
-      const auto & left = lanelet.leftBound();
-      const auto & right = lanelet.rightBound();
-      if (!left.empty() && !right.empty()) {
-        const auto lp = left.front();
-        const auto rp = right.front();
-        info.stop_line = lanelet::ConstLineString3d(
-          lanelet::LineString3d(
-            lanelet::utils::getId(),
-            {lanelet::Point3d(lanelet::utils::getId(), lp.x(), lp.y(), lp.z()),
-             lanelet::Point3d(lanelet::utils::getId(), rp.x(), rp.y(), rp.z())}));
-      }
-    }
-    break;
+  const auto arc_length = arcLengthToStopLine(ref_path, stop_line);
+  if (!arc_length) {
+    return false;
   }
-  return info;
+  // ref_path[0] may sit a lanelet ahead of / behind the object, so the arc length
+  // measured from ref_path[0] is compared against the object's signed offset
+  // along the path.
+  const auto & r0 = ref_path.front();
+  const double h0 = tf2::getYaw(r0.orientation);
+  const double s_obj =
+    (position.x - r0.position.x) * std::cos(h0) + (position.y - r0.position.y) * std::sin(h0);
+  return *arc_length > s_obj;
 }
 
-SignalPriority evaluateSignalPriority(
+bool findTrafficLightLaneletOnPath(
+  const lanelet::routing::LaneletPath & lanelet_path, lanelet::ConstLanelet & signal_lanelet)
+{
+  for (const auto & lanelet : lanelet_path) {
+    if (lanelet_util::hasTrafficLight(lanelet)) {
+      signal_lanelet = lanelet;
+      return true;
+    }
+  }
+  return false;
+}
+
+bool evaluateSignalStopRequirement(
   const lanelet::ConstLanelet & lanelet, const std::optional<TrafficLightGroup> & signal)
 {
   if (!signal) {
-    return SignalPriority::NOT_PRIORITIZED;
+    return false;
   }
-
-  if (!autoware::traffic_light_utils::isTrafficSignalStop(lanelet, *signal)) {
-    return SignalPriority::NOT_PRIORITIZED;
-  }
-  return SignalPriority::FULLY_PRIORITIZED;
+  return autoware::traffic_light_utils::isTrafficSignalStop(lanelet, *signal);
 }
 
-ConservativeManeuver decideConservativeManeuver(
-  const PriorityContext & context, const PriorityCalibrationParams & params)
+bool shouldAddStopHypothesis(
+  const bool signal_requires_stop, const bool has_stop_line_ahead,
+  const PriorityCalibrationParams & params)
 {
-  const bool stop_by_signal =
-    params.use_signal_priority && context.signal_priority == SignalPriority::FULLY_PRIORITIZED;
-
-  // No distance threshold: a far object just gets a stop path capped at the horizon.
-  // A non-positive distance means the object has already passed the stop line.
-  const bool stop_line_ahead =
-    std::isfinite(context.distance_to_stopline) && context.distance_to_stopline > 0.0;
-  return (stop_by_signal && stop_line_ahead) ? ConservativeManeuver::STOP
-                                             : ConservativeManeuver::NONE;
+  return params.use_signal_priority && signal_requires_stop && has_stop_line_ahead;
 }
 
-PriorityCalibration weightsForManeuver(
-  const ConservativeManeuver maneuver, const PriorityCalibrationParams & params)
-{
-  PriorityCalibration calibration;
-  calibration.maneuver = maneuver;
-  switch (maneuver) {
-    case ConservativeManeuver::STOP:
-      calibration.conservative_weight = params.stop_probability_boost;
-      calibration.go_scale = params.go_probability_decay_on_yield;
-      break;
-    case ConservativeManeuver::NONE:
-    default:
-      calibration.conservative_weight = 0.0;
-      calibration.go_scale = 1.0;
-      break;
-  }
-  return calibration;
-}
-
-PriorityCalibration calibratePriority(
-  const PriorityContext & context, const PriorityCalibrationParams & params)
-{
-  return weightsForManeuver(decideConservativeManeuver(context, params), params);
-}
-
-double conservativeConfidence(const Maneuver & maneuver, const double conservative_weight)
+double stopHypothesisConfidence(const Maneuver & maneuver, const double stop_weight)
 {
   // A stopping object most likely stays in its lane: the lane-follow copy keeps
   // the full stop weight and lane-change copies are scaled down so the center
   // hypothesis is always the strongest.
   constexpr double lane_change_scale = 0.5;
-  return maneuver == Maneuver::LANE_FOLLOW ? conservative_weight
-                                           : conservative_weight * lane_change_scale;
+  return maneuver == Maneuver::LANE_FOLLOW ? stop_weight : stop_weight * lane_change_scale;
 }
 
-std::unordered_set<size_t> applyPriorityCalibration(
-  const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
+std::vector<PredictedPath> addTrafficSignalStopHypotheses(
+  const ObjectPrediction & prediction,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
-  const PriorityPredictionParams & params, std::vector<PredictedPath> & predicted_paths,
-  debug_util::PriorityDebugCounters & counters,
-  std::vector<lanelet::ConstLineString3d> & debug_stop_lines)
+  const PriorityPredictionParams & params, debug_util::StopHypothesisDebug & debug)
 {
-  std::unordered_set<size_t> conservative_indices;
+  const auto & object = prediction.object;
+  const auto & ref_paths = prediction.ref_paths;
+  const auto & predicted_paths = prediction.predicted_paths;
+
   // predicted_paths[i] corresponds to ref_paths[i] only when no path was dropped
   // (e.g. by the lateral-acceleration constraint); dropped-path objects are out
-  // of scope for the priority calibration.
+  // of scope for the priority calibration and returned unchanged.
   if (predicted_paths.empty() || predicted_paths.size() != ref_paths.size()) {
-    return conservative_indices;
+    return predicted_paths;
   }
 
-  counters.vehicles++;
+  debug.counter.vehicles++;
 
-  const size_t original_count = predicted_paths.size();
-  // Conservative hypotheses are appended after the loop so the (object, path
-  // index) bookkeeping stays correct when go paths are suppressed.
-  std::vector<bool> suppress_go(original_count, false);
-  std::vector<PredictedPath> conservative_to_add;
-  bool object_has_stop = false;
-  for (size_t i = 0; i < original_count; ++i) {
-    const auto & ref_path = ref_paths[i];
-    if (ref_path.path.size() < 2) {
+  // Build the new path set in one pass: each go path is either kept as-is, or
+  // replaced by / accompanied by a stop hypothesis when its signal is red.
+  std::vector<PredictedPath> result;
+  result.reserve(predicted_paths.size() + 1);
+
+  for (size_t i = 0; i < predicted_paths.size(); ++i) {
+    const auto & go_path = predicted_paths[i];
+    const auto & ref_path = ref_paths[i];  // the path go_path was generated from
+
+    const auto keep_go_path = [&] { result.push_back(go_path); };
+
+    if (ref_path.path.size() < 2 || go_path.path.size() < 2) {
+      keep_go_path();
       continue;
     }
 
-    const auto info = classifyPathAtTrafficLight(ref_path.lanelet_path);
-
-    PriorityContext context;
-    if (info.found) {
-      const auto signal =
-        lanelet_util::getSignalForLanelet(traffic_signal_id_map, info.signal_lanelet);
-      context.signal_priority = evaluateSignalPriority(info.signal_lanelet, signal);
-    }
-    if (context.signal_priority == SignalPriority::FULLY_PRIORITIZED) {
-      counters.signal_stop++;
-    }
-
-    // ref_path[0] may sit a lanelet ahead of / behind the object, so arc lengths
-    // measured from ref_path[0] are converted to object-relative by subtracting
-    // s_obj -- the same convention as the path generator.
-    const auto & op = object.kinematics.pose_with_covariance.pose.position;
-    const auto & r0 = ref_path.path.front();
-    const double h0 = tf2::getYaw(r0.orientation);
-    const double s_obj =
-      (op.x - r0.position.x) * std::cos(h0) + (op.y - r0.position.y) * std::sin(h0);
-
-    if (info.stop_line) {
-      if (const auto distance = arcLengthToStopLine(ref_path.path, *info.stop_line)) {
-        context.distance_to_stopline = *distance - s_obj;
-        counters.stopline_found++;
-      }
-    }
-
-    const auto maneuver = decideConservativeManeuver(context, params.calibration);
-    const auto calibration = weightsForManeuver(maneuver, params.calibration);
-
-    if (calibration.maneuver == ConservativeManeuver::NONE) {
+    // 1. The first traffic light governing this path.
+    lanelet::ConstLanelet signal_lanelet;
+    if (!findTrafficLightLaneletOnPath(ref_path.lanelet_path, signal_lanelet)) {
+      keep_go_path();
       continue;
     }
 
-    // The stop hypothesis is a copy of the go path, cut at the stop-line crossing;
-    // a path that ends before the line stays as-is.
-    PredictedPath conservative_path = predicted_paths[i];
-    if (info.stop_line) {
-      clipPathAtStopLine(conservative_path, *info.stop_line);
-    }
-    if (conservative_path.path.size() < 2) {
+    // 2. Its stop line (tagged, or the lanelet entry edge).
+    const auto stop_line = lanelet_util::getStopLineOrEntryEdge(signal_lanelet);
+
+    // 3. Signal state and whether the stop line is still ahead of the object.
+    const auto signal = lanelet_util::getSignalForLanelet(traffic_signal_id_map, signal_lanelet);
+    const bool signal_requires_stop = evaluateSignalStopRequirement(signal_lanelet, signal);
+    const bool stop_line_ahead =
+      stop_line &&
+      hasStopLineAhead(
+        object.kinematics.pose_with_covariance.pose.position, ref_path.path, *stop_line);
+    debug.counter.signal_stop += signal_requires_stop ? 1 : 0;
+    debug.counter.stopline_found += stop_line_ahead ? 1 : 0;
+
+    // 4. Add a stop hypothesis only on a red signal whose stop line is still ahead.
+    if (!shouldAddStopHypothesis(signal_requires_stop, stop_line_ahead, params.calibration)) {
+      keep_go_path();
       continue;
     }
-    conservative_path.confidence = static_cast<float>(
-      conservativeConfidence(ref_path.maneuver, calibration.conservative_weight));
-    object_has_stop = true;
-    if (params.suppress_go_on_conservative) {
-      suppress_go[i] = true;
+
+    // 5. The stop hypothesis is a copy of the go path cut at the stop line.
+    auto stop_hypothesis = go_path;
+    if (stop_line) {
+      clipPathAtStopLine(stop_hypothesis, *stop_line);
     }
-    conservative_to_add.push_back(conservative_path);
-    if (info.stop_line) {
-      debug_stop_lines.push_back(*info.stop_line);
+    if (stop_hypothesis.path.size() < 2) {
+      keep_go_path();  // nothing to clip to -> the go path stands
+      continue;
     }
-    counters.conservative_added++;
+    stop_hypothesis.confidence = static_cast<float>(
+      stopHypothesisConfidence(ref_path.maneuver, params.calibration.stop_probability_boost));
+
+    // The stop hypothesis replaces the go path (the go path is dropped).
+    debug.stop_hypothesis_path_indices[autoware_utils::to_hex_string(object.object_id)].insert(
+      result.size());
+    result.push_back(std::move(stop_hypothesis));
+    if (stop_line) {
+      debug.stop_lines.push_back(*stop_line);
+    }
+    debug.counter.stop_hypothesis_added++;
   }
 
-  if (object_has_stop) {
-    const auto go_scale = static_cast<float>(params.calibration.go_probability_decay_on_yield);
-    for (size_t i = 0; i < original_count; ++i) {
-      if (!suppress_go[i]) {
-        predicted_paths[i].confidence *= go_scale;
-      }
-    }
-  }
-
-  if (!conservative_to_add.empty()) {
-    std::vector<PredictedPath> rebuilt;
-    rebuilt.reserve(predicted_paths.size() + conservative_to_add.size());
-    for (size_t i = 0; i < predicted_paths.size(); ++i) {
-      if (i < original_count && suppress_go[i]) {
-        continue;
-      }
-      rebuilt.push_back(predicted_paths[i]);
-    }
-    for (size_t k = 0; k < conservative_to_add.size(); ++k) {
-      conservative_indices.insert(rebuilt.size());
-      rebuilt.push_back(conservative_to_add[k]);
-    }
-    predicted_paths = std::move(rebuilt);
-  }
-
-  return conservative_indices;
+  return result;
 }
 
 }  // namespace autoware::map_based_prediction::priority

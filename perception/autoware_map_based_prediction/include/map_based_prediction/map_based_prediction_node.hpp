@@ -103,7 +103,9 @@ private:
   // Latest observation read by the priority decision, keyed by traffic-light-group id.
   std::unordered_map<lanelet::Id, TrafficLightGroup> traffic_signal_id_map_;
 
-  debug_util::PriorityDebugCounters priority_debug_;
+  // Debug-only outputs of the stop-hypothesis calibration (log counters, marker
+  // stop lines, and the path indices to colour). Rebuilt per callback.
+  debug_util::StopHypothesisDebug stop_hypothesis_debug_;
 
   // Lanelet Map Pointers
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
@@ -176,10 +178,6 @@ private:
   bool use_priority_prediction_;
   priority::PriorityPredictionParams priority_params_;
   bool priority_debug_viz_;
-  // Rebuilt per callback so objectsCallback can colour the conservative path lines.
-  debug_util::ConservativePathIndexMap conservative_path_indices_;
-  // Stop lines that drove a conservative hypothesis this frame (debug markers).
-  std::vector<lanelet::ConstLineString3d> priority_debug_stop_lines_;
 
   ////// Member Functions
   // Node callbacks
@@ -208,9 +206,9 @@ private:
     const PredictedPath & predicted_path, const std::vector<PredictedPath> & predicted_paths);
   std::optional<lanelet::Id> getTrafficSignalId(const lanelet::ConstLanelet & way_lanelet);
 
-  // Adds conservative stop hypotheses based on the object's traffic-signal
+  // Adds stop hypotheses based on the object's traffic-signal
   // context, mutating @p predicted_paths in place.
-  void applyPriorityCalibration(
+  void addTrafficSignalPriority(
     const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
     std::vector<PredictedPath> & predicted_paths);
 

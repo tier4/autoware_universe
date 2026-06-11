@@ -16,6 +16,7 @@
 
 #include <rclcpp/logging.hpp>
 
+#include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 
 #include <unordered_map>
@@ -36,6 +37,26 @@ std::optional<lanelet::ConstLineString3d> getStopLine(const lanelet::ConstLanele
     }
   }
   return std::nullopt;
+}
+
+std::optional<lanelet::ConstLineString3d> getStopLineOrEntryEdge(
+  const lanelet::ConstLanelet & lanelet)
+{
+  if (const auto stop_line = getStopLine(lanelet)) {
+    return stop_line;
+  }
+  const auto & left = lanelet.leftBound();
+  const auto & right = lanelet.rightBound();
+  if (left.empty() || right.empty()) {
+    return std::nullopt;
+  }
+  const auto lp = left.front();
+  const auto rp = right.front();
+  return lanelet::ConstLineString3d(
+    lanelet::LineString3d(
+      lanelet::utils::getId(),
+      {lanelet::Point3d(lanelet::utils::getId(), lp.x(), lp.y(), lp.z()),
+       lanelet::Point3d(lanelet::utils::getId(), rp.x(), rp.y(), rp.z())}));
 }
 
 std::optional<lanelet::Id> getTrafficSignalId(const lanelet::ConstLanelet & way_lanelet)

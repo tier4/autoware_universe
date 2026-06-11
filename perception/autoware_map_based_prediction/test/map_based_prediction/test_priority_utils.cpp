@@ -89,9 +89,9 @@ PosePath makeRefPath(const double length)
   return ref_path;
 }
 
-// ---- classifyPathAtTrafficLight --------------------------------------------
+// ---- findTrafficLightLaneletOnPath --------------------------------------------
 
-TEST(PriorityUtils, ClassifyPathFindsTrafficLightLanelet)
+TEST(PriorityUtils, FindsTrafficLightLaneletOnPath)
 {
   lanelet::Id id = 4000;
   const auto approach = makeLanelet(id, 0.0);
@@ -99,24 +99,25 @@ TEST(PriorityUtils, ClassifyPathFindsTrafficLightLanelet)
   const auto stop_line = makeStopLine(id, 6.0);
   attachTrafficLight(junction, id, stop_line);
   const lanelet::routing::LaneletPath path(lanelet::ConstLanelets{approach, junction});
-  const auto info = classifyPathAtTrafficLight(path);
-  EXPECT_TRUE(info.found);
-  EXPECT_EQ(info.signal_lanelet.id(), junction.id());
-  ASSERT_TRUE(info.stop_line.has_value());
-  EXPECT_EQ(info.stop_line->id(), stop_line.id());
+  lanelet::ConstLanelet signal_lanelet;
+  ASSERT_TRUE(findTrafficLightLaneletOnPath(path, signal_lanelet));
+  EXPECT_EQ(signal_lanelet.id(), junction.id());
+  const auto got = lanelet_util::getStopLineOrEntryEdge(signal_lanelet);
+  ASSERT_TRUE(got.has_value());
+  EXPECT_EQ(got->id(), stop_line.id());
 }
 
-TEST(PriorityUtils, ClassifyPathNoTrafficLightNotFound)
+TEST(PriorityUtils, NoTrafficLightLaneletOnPath)
 {
   lanelet::Id id = 4100;
   const auto a = makeLanelet(id, 0.0);
   const auto b = makeLanelet(id, 5.0);
   const lanelet::routing::LaneletPath path(lanelet::ConstLanelets{a, b});
-  const auto info = classifyPathAtTrafficLight(path);
-  EXPECT_FALSE(info.found);
+  lanelet::ConstLanelet signal_lanelet;
+  EXPECT_FALSE(findTrafficLightLaneletOnPath(path, signal_lanelet));
 }
 
-TEST(PriorityUtils, ClassifyPathStopsAtFirstTrafficLight)
+TEST(PriorityUtils, FindsFirstTrafficLightLaneletOnPath)
 {
   // With two signalized lanelets ahead, the first one entered wins.
   lanelet::Id id = 4200;
@@ -126,22 +127,19 @@ TEST(PriorityUtils, ClassifyPathStopsAtFirstTrafficLight)
   attachTrafficLight(first, id, makeStopLine(id, 6.0));
   attachTrafficLight(second, id, makeStopLine(id, 11.0));
   const lanelet::routing::LaneletPath path(lanelet::ConstLanelets{approach, first, second});
-  const auto info = classifyPathAtTrafficLight(path);
-  EXPECT_TRUE(info.found);
-  EXPECT_EQ(info.signal_lanelet.id(), first.id());
+  lanelet::ConstLanelet signal_lanelet;
+  ASSERT_TRUE(findTrafficLightLaneletOnPath(path, signal_lanelet));
+  EXPECT_EQ(signal_lanelet.id(), first.id());
 }
 
-TEST(PriorityUtils, ClassifyPathFallsBackToEntryEdgeStopLine)
+TEST(PriorityUtils, GetStopLineOrEntryEdgeFallsBackToEntryEdge)
 {
   // A signalized lanelet with no tagged stop line still gets a stop target: the
   // entry edge of its lane bounds.
   lanelet::Id id = 4300;
   auto junction = makeLanelet(id, 0.0);
   attachTrafficLight(junction, id, std::nullopt);
-  const lanelet::routing::LaneletPath path(lanelet::ConstLanelets{junction});
-  const auto info = classifyPathAtTrafficLight(path);
-  EXPECT_TRUE(info.found);
-  EXPECT_TRUE(info.stop_line.has_value());  // entry-edge fallback
+  EXPECT_TRUE(lanelet_util::getStopLineOrEntryEdge(junction).has_value());
 }
 
 // ---- arcLengthToStopLine (intersection-based) ------------------------------
@@ -200,44 +198,70 @@ TEST(PriorityUtils, ArcLengthToStopLineNoneWhenBehindPathStart)
   EXPECT_FALSE(arcLengthToStopLine(ref_path, stop_line).has_value());
 }
 
-// ---- evaluateSignalPriority ------------------------------------------------
+TEST(PriorityUtils, HasStopLineAheadByObjectPosition)
+{
+  // The same path / stop line answers differently depending on where the
+  // object currently is: ahead of the line -> false, behind it -> true.
+  lanelet::Id id = 5500;
+  const PosePath ref_path = makeRefPath(50.0);
+  const auto stop_line = makeStopLine(id, 10.0);
 
-TEST(PriorityUtils, SignalPriorityNoObservation)
+  geometry_msgs::msg::Point position;
+  position.y = 0.0;
+
+  position.x = 5.0;  // before the line
+  EXPECT_TRUE(hasStopLineAhead(position, ref_path, stop_line));
+
+  position.x = -5.0;  // behind the path start, still before the line
+  EXPECT_TRUE(hasStopLineAhead(position, ref_path, stop_line));
+
+  position.x = 15.0;  // already past the line
+  EXPECT_FALSE(hasStopLineAhead(position, ref_path, stop_line));
+
+  // A stop line that is not on the path at all is never "ahead".
+  const auto behind_line = makeStopLine(id, -10.0);
+  position.x = 5.0;
+  EXPECT_FALSE(hasStopLineAhead(position, ref_path, behind_line));
+}
+
+// ---- evaluateSignalStopRequirement ------------------------------------------------
+
+TEST(PriorityUtils, SignalStopNotRequiredWithoutObservation)
 {
   lanelet::Id id = 5000;
   const auto lane = makeLanelet(id, 0.0);
-  EXPECT_EQ(evaluateSignalPriority(lane, std::nullopt), SignalPriority::NOT_PRIORITIZED);
+  EXPECT_FALSE(evaluateSignalStopRequirement(lane, std::nullopt));
 }
 
-TEST(PriorityUtils, SignalPriorityGreenCircle)
+TEST(PriorityUtils, SignalStopNotRequiredOnGreenCircle)
 {
   lanelet::Id id = 5100;
   const auto lane = makeLanelet(id, 0.0);
   TrafficLightGroup signal;
   signal.elements.push_back(makeElement(TrafficLightElement::GREEN, TrafficLightElement::CIRCLE));
-  EXPECT_EQ(evaluateSignalPriority(lane, signal), SignalPriority::NOT_PRIORITIZED);
+  EXPECT_FALSE(evaluateSignalStopRequirement(lane, signal));
 }
 
-TEST(PriorityUtils, SignalPriorityAmber)
+TEST(PriorityUtils, SignalStopRequiredOnAmber)
 {
   // Amber is treated as a stop, the same as red.
   lanelet::Id id = 5200;
   const auto lane = makeLanelet(id, 0.0);
   TrafficLightGroup signal;
   signal.elements.push_back(makeElement(TrafficLightElement::AMBER, TrafficLightElement::CIRCLE));
-  EXPECT_EQ(evaluateSignalPriority(lane, signal), SignalPriority::FULLY_PRIORITIZED);
+  EXPECT_TRUE(evaluateSignalStopRequirement(lane, signal));
 }
 
-TEST(PriorityUtils, SignalPriorityRed)
+TEST(PriorityUtils, SignalStopRequiredOnRed)
 {
   lanelet::Id id = 5300;
   const auto lane = makeLanelet(id, 0.0);
   TrafficLightGroup signal;
   signal.elements.push_back(makeElement(TrafficLightElement::RED, TrafficLightElement::CIRCLE));
-  EXPECT_EQ(evaluateSignalPriority(lane, signal), SignalPriority::FULLY_PRIORITIZED);
+  EXPECT_TRUE(evaluateSignalStopRequirement(lane, signal));
 }
 
-TEST(PriorityUtils, SignalPriorityMatchingArrowGoes)
+TEST(PriorityUtils, SignalStopNotRequiredForMatchingArrow)
 {
   // A green UP arrow is a protected straight movement: a "straight" lane may go,
   // while a "right" lane (no matching arrow) must stop.
@@ -247,11 +271,11 @@ TEST(PriorityUtils, SignalPriorityMatchingArrowGoes)
   lanelet::Id id = 5500;
   auto straight_lane = makeLanelet(id, 0.0);
   straight_lane.setAttribute("turn_direction", "straight");
-  EXPECT_EQ(evaluateSignalPriority(straight_lane, signal), SignalPriority::NOT_PRIORITIZED);
+  EXPECT_FALSE(evaluateSignalStopRequirement(straight_lane, signal));
 
   auto right_lane = makeLanelet(id, 0.0);
   right_lane.setAttribute("turn_direction", "right");
-  EXPECT_EQ(evaluateSignalPriority(right_lane, signal), SignalPriority::FULLY_PRIORITIZED);
+  EXPECT_TRUE(evaluateSignalStopRequirement(right_lane, signal));
 }
 
 // ---- helpers ---------------------------------------------------------------
@@ -274,98 +298,31 @@ TEST(PriorityUtils, GetStopLineNoneWhenUntagged)
   EXPECT_FALSE(lanelet_util::getStopLine(plain_lanelet).has_value());
 }
 
-// ---- calibratePriority -----------------------------------------------------
+// ---- calibrateStopDecision -----------------------------------------------------
 
-PriorityContext withinRangeContext()
-{
-  PriorityContext context;
-  context.distance_to_stopline = 10.0;  // a finite, known stop line
-  return context;
-}
-
-TEST(PriorityUtils, CalibrateRedSignalStopsAndDecaysGo)
+TEST(PriorityUtils, ShouldAddStopHypothesisOnlyOnRedWithStopLineAhead)
 {
   PriorityCalibrationParams params;
-  auto context = withinRangeContext();
-  context.signal_priority = SignalPriority::FULLY_PRIORITIZED;
-
-  const auto calibration = calibratePriority(context, params);
-  EXPECT_EQ(calibration.maneuver, ConservativeManeuver::STOP);
-  EXPECT_DOUBLE_EQ(calibration.conservative_weight, params.stop_probability_boost);
-  EXPECT_DOUBLE_EQ(calibration.go_scale, params.go_probability_decay_on_yield);
+  EXPECT_TRUE(shouldAddStopHypothesis(true, true, params));
+  EXPECT_FALSE(shouldAddStopHypothesis(false, true, params));  // signal does not demand a stop
+  EXPECT_FALSE(shouldAddStopHypothesis(true, false, params));  // no stop line ahead
 }
 
-TEST(PriorityUtils, CalibrateGreenKeepsGoing)
-{
-  PriorityCalibrationParams params;
-  auto context = withinRangeContext();
-  context.signal_priority = SignalPriority::NOT_PRIORITIZED;
-
-  const auto calibration = calibratePriority(context, params);
-  EXPECT_EQ(calibration.maneuver, ConservativeManeuver::NONE);
-  EXPECT_DOUBLE_EQ(calibration.conservative_weight, 0.0);
-  EXPECT_DOUBLE_EQ(calibration.go_scale, 1.0);
-}
-
-TEST(PriorityUtils, CalibrateNoConservativeWhenNoStopLine)
-{
-  // Red, but no finite stop line is known (distance is infinity) -> NONE.
-  PriorityCalibrationParams params;
-  PriorityContext context;  // distances default to infinity
-  context.signal_priority = SignalPriority::FULLY_PRIORITIZED;
-
-  const auto calibration = calibratePriority(context, params);
-  EXPECT_EQ(calibration.maneuver, ConservativeManeuver::NONE);
-}
-
-TEST(PriorityUtils, CalibrateNoConservativeWhenPastStopLine)
-{
-  // Red, but the object has already passed the stop line (negative distance):
-  // a stop path can no longer end at the line -> NONE.
-  PriorityCalibrationParams params;
-  PriorityContext context;
-  context.signal_priority = SignalPriority::FULLY_PRIORITIZED;
-  context.distance_to_stopline = -2.0;
-
-  const auto calibration = calibratePriority(context, params);
-  EXPECT_EQ(calibration.maneuver, ConservativeManeuver::NONE);
-}
-
-TEST(PriorityUtils, CalibrateRespectsDisableFlag)
+TEST(PriorityUtils, ShouldAddStopHypothesisRespectsDisableFlag)
 {
   PriorityCalibrationParams params;
   params.use_signal_priority = false;
-
-  auto context = withinRangeContext();
-  context.signal_priority = SignalPriority::FULLY_PRIORITIZED;
-
-  const auto calibration = calibratePriority(context, params);
-  EXPECT_EQ(calibration.maneuver, ConservativeManeuver::NONE);
+  EXPECT_FALSE(shouldAddStopHypothesis(true, true, params));
 }
 
-TEST(PriorityUtils, ConservativeConfidenceCenterIsStrongest)
+TEST(PriorityUtils, StopHypothesisConfidenceCenterIsStrongest)
 {
   // Among stop hypotheses, the lane-follow (center) copy must be the strongest.
   const double weight = 0.35;
-  const double center = conservativeConfidence(Maneuver::LANE_FOLLOW, weight);
+  const double center = stopHypothesisConfidence(Maneuver::LANE_FOLLOW, weight);
   EXPECT_DOUBLE_EQ(center, weight);
-  EXPECT_LT(conservativeConfidence(Maneuver::LEFT_LANE_CHANGE, weight), center);
-  EXPECT_LT(conservativeConfidence(Maneuver::RIGHT_LANE_CHANGE, weight), center);
-}
-
-TEST(PriorityUtils, DecideAndWeightsComposeIntoCalibrate)
-{
-  PriorityCalibrationParams params;
-  auto context = withinRangeContext();
-  context.signal_priority = SignalPriority::FULLY_PRIORITIZED;
-
-  const auto maneuver = decideConservativeManeuver(context, params);
-  EXPECT_EQ(maneuver, ConservativeManeuver::STOP);
-  const auto weights = weightsForManeuver(maneuver, params);
-  const auto direct = calibratePriority(context, params);
-  EXPECT_EQ(weights.maneuver, direct.maneuver);
-  EXPECT_DOUBLE_EQ(weights.conservative_weight, direct.conservative_weight);
-  EXPECT_DOUBLE_EQ(weights.go_scale, direct.go_scale);
+  EXPECT_LT(stopHypothesisConfidence(Maneuver::LEFT_LANE_CHANGE, weight), center);
+  EXPECT_LT(stopHypothesisConfidence(Maneuver::RIGHT_LANE_CHANGE, weight), center);
 }
 
 }  // namespace
