@@ -1645,12 +1645,19 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
 
   // Get Predicted Reference Path for Each Maneuver and current lanelets
   // return: <probability, paths>
-  auto lanelet_ref_paths = getPredictedReferencePath(
-    object, current_lanelets, objects_detected_time, prediction_time_horizon_.vehicle);
-  lanelet_ref_paths = convertPredictedReferencePath(object, lanelet_ref_paths);
+  const auto lanelet_ref_paths = convertPredictedReferencePath(
+    object,
+    getPredictedReferencePath(
+      object, current_lanelets, objects_detected_time, prediction_time_horizon_.vehicle));
+
+  std::vector<PredictedRefPath> ref_paths;
+  ref_paths.reserve(lanelet_ref_paths.size());
+  for (const auto & lanelet_ref_path : lanelet_ref_paths) {
+    ref_paths.push_back(lanelet_ref_path.second);
+  }
 
   // If predicted reference path is empty, assume this object is out of the lane
-  if (lanelet_ref_paths.empty()) {
+  if (ref_paths.empty()) {
     PredictedPath predicted_path =
       path_generator_->generatePathForOffLaneVehicle(object, prediction_time_horizon_.vehicle);
     predicted_path.confidence = 1.0;
@@ -1666,12 +1673,12 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
   // Get Debug Marker for On Lane Vehicles
   if (pub_debug_markers_) {
     const auto max_prob_path = std::max_element(
-      lanelet_ref_paths.begin(), lanelet_ref_paths.end(),
-      [](const LaneletPathWithPathInfo & a, const LaneletPathWithPathInfo & b) {
-        return a.second.probability < b.second.probability;
+      ref_paths.begin(), ref_paths.end(),
+      [](const PredictedRefPath & a, const PredictedRefPath & b) {
+        return a.probability < b.probability;
       });
     const auto debug_marker =
-      getDebugMarker(object, max_prob_path->second.maneuver, debug_markers.markers.size());
+      getDebugMarker(object, max_prob_path->maneuver, debug_markers.markers.size());
     debug_markers.markers.push_back(debug_marker);
   }
 
@@ -1688,15 +1695,14 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
   double min_avg_curvature = std::numeric_limits<double>::max();
   PredictedPath path_with_smallest_avg_curvature;
 
-  for (const auto & ref_path : lanelet_ref_paths) {
-    const auto & ref_path_info = ref_path.second;
+  for (const auto & ref_path : ref_paths) {
     PredictedPath predicted_path = path_generator_->generatePathForOnLaneVehicle(
-      yaw_fixed_object, ref_path_info.path, prediction_time_horizon_.vehicle,
-      lateral_control_time_horizon_, ref_path_info.width, ref_path_info.speed_limit);
+      yaw_fixed_object, ref_path.path, prediction_time_horizon_.vehicle,
+      lateral_control_time_horizon_, ref_path.width, ref_path.speed_limit);
     if (predicted_path.path.empty()) continue;
 
     if (!check_lateral_acceleration_constraints_) {
-      predicted_path.confidence = ref_path_info.probability;
+      predicted_path.confidence = ref_path.probability;
       predicted_paths.push_back(predicted_path);
       continue;
     }
@@ -1705,8 +1711,8 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
     const auto trajectory_with_const_velocity = toTrajectoryPoints(predicted_path, abs_obj_speed);
 
     if (isLateralAccelerationConstraintSatisfied(
-          trajectory_with_const_velocity, prediction_sampling_time_interval_)) {
-      predicted_path.confidence = ref_path_info.probability;
+      trajectory_with_const_velocity, prediction_sampling_time_interval_)) {
+      predicted_path.confidence = ref_path.probability;
       predicted_paths.push_back(predicted_path);
       continue;
     }
@@ -1728,7 +1734,7 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
     if (curvature_avg < min_avg_curvature) {
       min_avg_curvature = curvature_avg;
       path_with_smallest_avg_curvature = predicted_path;
-      path_with_smallest_avg_curvature.confidence = ref_path_info.probability;
+      path_with_smallest_avg_curvature.confidence = ref_path.probability;
     }
   }
 
