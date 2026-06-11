@@ -194,9 +194,9 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
   const PriorityPredictionParams & params, debug_util::StopHypothesisDebug & debug)
 {
-  const auto & object = prediction.object;
-  const auto & ref_paths = prediction.ref_paths;
-  const auto & predicted_paths = prediction.predicted_paths;
+  const TrackedObject & object = prediction.object;
+  const std::vector<PredictedRefPath> & ref_paths = prediction.ref_paths;
+  const std::vector<PredictedPath> & predicted_paths = prediction.predicted_paths;
 
   // predicted_paths[i] corresponds to ref_paths[i] only when no path was dropped
   // (e.g. by the lateral-acceleration constraint); dropped-path objects are out
@@ -215,26 +215,25 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     // predicted_path is a mutable copy: it is clipped in place and written back
     // to result[i] when a stop hypothesis replaces the go path.
     PredictedPath predicted_path = predicted_paths[i];
-    const auto & lanelet_path = ref_paths[i].first;
-    const PredictedRefPath & ref_path = ref_paths[i].second;
+    const PredictedRefPath & ref_path = ref_paths[i];  // the path predicted_path was generated from
 
     if (ref_path.path.size() < 2 || predicted_path.path.size() < 2) {
       continue;
     }
 
     // 1. Get signal status , line info for target path.
-    lanelet::ConstLanelet target_signal_lanelet;
-    if (!findTrafficLightLaneletOnPath(lanelet_path, target_signal_lanelet)) {
+    lanelet::ConstLanelet target_lanelet_signal_object;
+    if (!findTrafficLightLaneletOnPath(ref_path.lanelet_path, target_lanelet_signal_object)) {
       continue;
     }
     const std::optional<TrafficLightGroup> signal_status =
-      lanelet_util::getSignalForLanelet(traffic_signal_id_map, target_signal_lanelet);
+      lanelet_util::getSignalForLanelet(traffic_signal_id_map, target_lanelet_signal_object);
     const std::optional<lanelet::ConstLineString3d> related_stop_line =
-      lanelet_util::getStopLineOrEntryEdge(target_signal_lanelet);
+      lanelet_util::getStopLineOrEntryEdge(target_lanelet_signal_object);
 
     // 3. Signal state and whether the stop line is still ahead of the object.
     const bool signal_requires_stop =
-      evaluateSignalStopRequirement(target_signal_lanelet, signal_status);
+      evaluateSignalStopRequirement(target_lanelet_signal_object, signal_status);
     const bool stop_line_ahead =
       related_stop_line &&
       hasStopLineAhead(

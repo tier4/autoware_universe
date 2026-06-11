@@ -1422,7 +1422,7 @@ ManeuverProbability MapBasedPredictionNode::calculateManeuverProbability(
 }
 
 void MapBasedPredictionNode::addTrafficSignalPriority(
-  const TrackedObject & object, const std::vector<LaneletPathWithPathInfo> & ref_paths,
+  const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
   std::vector<PredictedPath> & predicted_paths)
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
@@ -1440,21 +1440,19 @@ void MapBasedPredictionNode::addTrafficSignalPriority(
     stop_hypothesis_debug_.counter.stop_hypothesis_added);
 }
 
-std::vector<LaneletPathWithPathInfo> MapBasedPredictionNode::convertPredictedReferencePath(
+std::vector<PredictedRefPath> MapBasedPredictionNode::convertPredictedReferencePath(
   const TrackedObject & object,
   const std::vector<LaneletPathWithPathInfo> & lanelet_ref_paths) const
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
-  std::vector<LaneletPathWithPathInfo> converted_ref_paths;
+  std::vector<PredictedRefPath> converted_ref_paths;
 
   // Step 1. Convert lanelet path to pose path
-  for (auto & ref_path : lanelet_ref_paths) {
+  for (const auto & ref_path : lanelet_ref_paths) {
     const auto & lanelet_path = ref_path.first;
     const auto & ref_path_info = ref_path.second;
-
-    lanelet::routing::LaneletPath path_info = lanelet_path;
 
     const auto converted_path = convertLaneletPathToPosePath(lanelet_path);
     PredictedRefPath predicted_path;
@@ -1463,12 +1461,13 @@ std::vector<LaneletPathWithPathInfo> MapBasedPredictionNode::convertPredictedRef
     predicted_path.width = converted_path.second;
     predicted_path.maneuver = ref_path_info.maneuver;
     predicted_path.speed_limit = ref_path_info.speed_limit;
-    converted_ref_paths.push_back({path_info, predicted_path});
+    predicted_path.lanelet_path = lanelet_path;
+    converted_ref_paths.push_back(predicted_path);
   }
 
   // Step 2. Search starting point for each reference path
   for (auto it = converted_ref_paths.begin(); it != converted_ref_paths.end();) {
-    auto & pose_path = it->second.path;
+    auto & pose_path = it->path;
     if (pose_path.empty()) {
       it = converted_ref_paths.erase(it);
       continue;
@@ -1655,14 +1654,7 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
   // return: <probability, paths>
   const auto lanelet_ref_paths = getPredictedReferencePath(
     object, current_lanelets, objects_detected_time, prediction_time_horizon_.vehicle);
-  const auto lanelet_ref_paths_with_info = convertPredictedReferencePath(
-    object,lanelet_ref_paths);
-
-  std::vector<PredictedRefPath> ref_paths;
-  ref_paths.reserve(lanelet_ref_paths_with_info.size());
-  for (const auto & lanelet_ref_path_info : lanelet_ref_paths_with_info) {
-    ref_paths.push_back(lanelet_ref_path_info.second);
-  }
+  const auto ref_paths = convertPredictedReferencePath(object, lanelet_ref_paths);
 
   // If predicted reference path is empty, assume this object is out of the lane
   if (ref_paths.empty()) {
@@ -1749,7 +1741,7 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
   if (predicted_paths.empty()) predicted_paths.push_back(path_with_smallest_avg_curvature);
 
   if (use_priority_prediction_) {
-    addTrafficSignalPriority(yaw_fixed_object, lanelet_ref_paths, predicted_paths);
+    addTrafficSignalPriority(yaw_fixed_object, ref_paths, predicted_paths);
   }
 
   // Normalize Path Confidence and output the predicted object
