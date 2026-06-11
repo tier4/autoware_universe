@@ -14,13 +14,11 @@
 
 #include "autoware/pointcloud_preprocessor/outlier_filter/voxel_grid_outlier_filter_node.hpp"
 
-#include <cmath>
-#include <cstddef>
-#include <functional>
-#include <tuple>
-#include <unordered_map>
-#include <vector>
+#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/search/kdtree.h>
+#include <pcl/segmentation/segment_differences.h>
 
+#include <vector>
 
 namespace autoware::pointcloud_preprocessor
 {
@@ -47,84 +45,25 @@ void VoxelGridOutlierFilterComponent::filter(
   if (indices) {
     RCLCPP_WARN(get_logger(), "Indices are not supported and will be ignored");
   }
-
   pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_input(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_voxelized_input(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_output(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::fromROSMsg(*input, *pcl_input);
+  pcl_voxelized_input->points.reserve(pcl_input->points.size());
+  voxel_filter.setInputCloud(pcl_input);
+  voxel_filter.setSaveLeafLayout(true);
+  voxel_filter.setLeafSize(voxel_size_x_, voxel_size_y_, voxel_size_z_);
+  voxel_filter.setMinimumPointsNumberPerVoxel(voxel_points_threshold_);
+  voxel_filter.filter(*pcl_voxelized_input);
 
   pcl_output->points.reserve(pcl_input->points.size());
-
-  if (
-    voxel_size_x_ <= 0.0 || voxel_size_y_ <= 0.0 || voxel_size_z_ <= 0.0 ||
-    voxel_points_threshold_ <= 0) {
-    RCLCPP_WARN(
-      get_logger(),
-      "Invalid voxel_grid_outlier_filter parameters. "
-      "voxel_size=(%f,%f,%f), voxel_points_threshold=%d",
-      voxel_size_x_, voxel_size_y_, voxel_size_z_, voxel_points_threshold_);
-    pcl::toROSMsg(*pcl_output, output);
-    output.header = input->header;
-    return;
-  }
-
-  using VoxelKey = std::tuple<int, int, int>;
-
-  struct VoxelKeyHash
-  {
-    std::size_t operator()(const VoxelKey & key) const
-    {
-      const auto h1 = std::hash<int>{}(std::get<0>(key));
-      const auto h2 = std::hash<int>{}(std::get<1>(key));
-      const auto h3 = std::hash<int>{}(std::get<2>(key));
-      // Hash combine. This avoids depending on PCL's leaf layout storage.
-      return h1 ^ (h2 << 1U) ^ (h3 << 2U);
-    }
-  };
-
-  const auto get_voxel_key = [this](const pcl::PointXYZ & point) -> VoxelKey {
-    return VoxelKey{
-      static_cast<int>(std::floor(point.x / voxel_size_x_)),
-      static_cast<int>(std::floor(point.y / voxel_size_y_)),
-      static_cast<int>(std::floor(point.z / voxel_size_z_))};
-  };
-
-  std::unordered_map<VoxelKey, std::size_t, VoxelKeyHash> voxel_point_counts;
-  voxel_point_counts.reserve(pcl_input->points.size());
-
-  std::size_t finite_points = 0;
-  for (const auto & point : pcl_input->points) {
-    if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) {
-      continue;
-    }
-    ++finite_points;
-    ++voxel_point_counts[get_voxel_key(point)];
-  }
-
-  std::size_t kept = 0;
-  std::size_t rejected = 0;
-  const auto threshold = static_cast<std::size_t>(voxel_points_threshold_);
-
-  for (const auto & point : pcl_input->points) {
-    if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) {
-      ++rejected;
-      continue;
-    }
-
-    const auto count_it = voxel_point_counts.find(get_voxel_key(point));
-    if (count_it != voxel_point_counts.end() && count_it->second >= threshold) {
-      pcl_output->points.push_back(point);
-      ++kept;
-    } else {
-      ++rejected;
+  for (size_t i = 0; i < pcl_input->points.size(); ++i) {
+    const int index = voxel_filter.getCentroidIndexAt(voxel_filter.getGridCoordinates(
+      pcl_input->points.at(i).x, pcl_input->points.at(i).y, pcl_input->points.at(i).z));
+    if (index != -1) {  // not empty voxel
+      pcl_output->points.push_back(pcl_input->points.at(i));
     }
   }
-
-  RCLCPP_DEBUG(
-    get_logger(),
-    "voxel_grid_outlier_filter: input=%zu finite=%zu voxels=%zu kept=%zu rejected=%zu "
-    "leaf=(%f,%f,%f) threshold=%d",
-    pcl_input->points.size(), finite_points, voxel_point_counts.size(), kept, rejected,
-    voxel_size_x_, voxel_size_y_, voxel_size_z_, voxel_points_threshold_);
 
   pcl::toROSMsg(*pcl_output, output);
   output.header = input->header;
