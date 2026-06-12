@@ -91,6 +91,7 @@
       max_speed: 16.7 # m/s
       max_acceleration: 5.0 # m/s^2
       max_deceleration: 5.0 # m/s^2 (positive but represents deceleration)
+      max_yaw_deviation: 0.35 # rad
       max_steering_angle: 0.8 # rad
       max_steering_rate: 0.3 # rad/s
 
