@@ -177,6 +177,8 @@ private:
   // Traffic-signal-aware stop prediction parameters.
   bool use_priority_prediction_;
   priority::PriorityPredictionParams priority_params_;
+  double signal_observation_timeout_;
+  std::optional<rclcpp::Time> latest_traffic_signal_time_;
   bool priority_debug_viz_;
 
   ////// Member Functions

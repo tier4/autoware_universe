@@ -432,6 +432,8 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
     declare_parameter<bool>("priority_prediction.use_signal_priority");
   priority_params_.calibration.stop_probability_boost =
     declare_parameter<double>("priority_prediction.stop_probability_boost");
+  signal_observation_timeout_ =
+    declare_parameter<double>("priority_prediction.signal_observation_timeout");
   priority_debug_viz_ = declare_parameter<bool>("priority_prediction.debug_visualization");
 
   // initialize VRU predictor
@@ -639,6 +641,7 @@ void MapBasedPredictionNode::trafficSignalsCallback(
   for (const auto & group : msg->traffic_light_groups) {
     traffic_signal_id_map_[group.traffic_light_group_id] = group;
   }
+  latest_traffic_signal_time_ = this->now();
 }
 
 void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPtr in_objects)
@@ -1429,9 +1432,18 @@ void MapBasedPredictionNode::addTrafficSignalPriority(
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
+  // Skip on a stale / missing signal observation (e.g. the signal topic went
+  // silent): an old red must not keep cutting paths, so the go paths stand.
+  const bool signal_observation_stale =
+    !latest_traffic_signal_time_ ||
+    (this->now() - *latest_traffic_signal_time_).seconds() > signal_observation_timeout_;
+  if (signal_observation_stale) {
+    return;
+  }
+
   predicted_paths = priority::addTrafficSignalStopHypotheses(
-    priority::ObjectPrediction{object, ref_paths, lanelet_paths, predicted_paths}, traffic_signal_id_map_,
-    priority_params_, stop_hypothesis_debug_);
+    priority::ObjectPrediction{object, ref_paths, lanelet_paths, predicted_paths},
+    traffic_signal_id_map_, priority_params_, stop_hypothesis_debug_);
 
   RCLCPP_INFO_THROTTLE(
     get_logger(), *get_clock(), 5000, "[priority] vehicles=%zu sig_stop=%zu stopline=%zu added=%zu",
@@ -1669,7 +1681,6 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
     return predicted_object_out_of_lane;
   }
 
-
   std::vector<PredictedRefPath> ref_paths;
   std::vector<lanelet::routing::LaneletPath> ref_lanelet_paths;
   ref_paths.reserve(ref_paths_with_lanelet.size());
@@ -1720,7 +1731,7 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
     const auto trajectory_with_const_velocity = toTrajectoryPoints(predicted_path, abs_obj_speed);
 
     if (isLateralAccelerationConstraintSatisfied(
-      trajectory_with_const_velocity, prediction_sampling_time_interval_)) {
+          trajectory_with_const_velocity, prediction_sampling_time_interval_)) {
       predicted_path.confidence = ref_path.probability;
       predicted_paths.push_back(predicted_path);
       continue;
