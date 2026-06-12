@@ -116,7 +116,7 @@ void TrajectoryFeasibilityFilter::update_parameters(const validator::Params & pa
 }
 
 TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
-  const CandidateTrajectory & candidate_trajectory, const FilterContext &)
+  const CandidateTrajectory & candidate_trajectory, const FilterContext & context)
 {
   const auto & traj_points = candidate_trajectory.points;
   if (!vehicle_info_ptr_) {
@@ -128,7 +128,7 @@ TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
   bool is_feasible = true;
   std::vector<MetricReport> metrics;
   for (const auto & checker : checkers_) {
-    auto report = (this->*checker)(traj_points);
+    auto report = (this->*checker)(traj_points, context);
     is_feasible &= report.risk.level == RiskLevel::SAFE;
     metrics.push_back(report);
   }
@@ -136,7 +136,8 @@ TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
   return ValidationResult{is_feasible, std::move(metrics)};
 }
 
-MetricReport TrajectoryFeasibilityFilter::check_speed(const TrajectoryPoints & traj_points) const
+MetricReport TrajectoryFeasibilityFilter::check_speed(
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] = is_speed_ok(traj_points, params_.max_speed);
 
@@ -151,7 +152,7 @@ MetricReport TrajectoryFeasibilityFilter::check_speed(const TrajectoryPoints & t
 }
 
 MetricReport TrajectoryFeasibilityFilter::check_acceleration(
-  const TrajectoryPoints & traj_points) const
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] = is_acceleration_ok(traj_points, params_.max_acceleration);
 
@@ -166,7 +167,7 @@ MetricReport TrajectoryFeasibilityFilter::check_acceleration(
 }
 
 MetricReport TrajectoryFeasibilityFilter::check_deceleration(
-  const TrajectoryPoints & traj_points) const
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] = is_deceleration_ok(traj_points, params_.max_deceleration);
 
@@ -180,8 +181,24 @@ MetricReport TrajectoryFeasibilityFilter::check_deceleration(
     .risk(risk_level);
 }
 
+MetricReport TrajectoryFeasibilityFilter::check_lateral_acceleration(
+  const TrajectoryPoints & traj_points, const FilterContext &) const
+{
+  const auto [max_observed, is_ok] =
+    is_lateral_acceleration_ok(traj_points, params_.max_lateral_acceleration);
+
+  RiskLevel risk_level;
+  risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
+  return autoware_trajectory_validator::build<MetricReport>()
+    .validator_name(get_name())
+    .validator_category(category())
+    .metric_name("lateral_acceleration")
+    .metric_value(max_observed)
+    .risk(risk_level);
+}
+
 MetricReport TrajectoryFeasibilityFilter::check_steering_angle(
-  const TrajectoryPoints & traj_points) const
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] =
     is_steering_angle_ok(traj_points, *vehicle_info_ptr_, params_.max_steering_angle);
@@ -197,7 +214,7 @@ MetricReport TrajectoryFeasibilityFilter::check_steering_angle(
 }
 
 MetricReport TrajectoryFeasibilityFilter::check_steering_rate(
-  const TrajectoryPoints & traj_points) const
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] =
     is_steering_rate_ok(traj_points, *vehicle_info_ptr_, params_.max_steering_rate);
@@ -255,6 +272,38 @@ std::pair<double, bool> is_deceleration_ok(
       is_ok = false;
     }
   }
+  return {max_observed, is_ok};
+}
+
+std::pair<double, bool> is_lateral_acceleration_ok(
+  const TrajectoryPoints & traj_points, double max_lateral_acceleration)
+{
+  double max_observed = 0.0;
+  bool is_ok = true;
+
+  if (traj_points.size() < 3) {
+    return {max_observed, is_ok};
+  }
+
+  for (size_t i = 1; i + 1 < traj_points.size(); ++i) {
+    const auto & prev_p = traj_points[i - 1].pose.position;
+    const auto & curr_p = traj_points[i].pose.position;
+    const auto & next_p = traj_points[i + 1].pose.position;
+
+    try {
+      const double curvature = autoware_utils_geometry::calc_curvature(prev_p, curr_p, next_p);
+      const double longitudinal_velocity = traj_points[i].longitudinal_velocity_mps;
+      const double lateral_acceleration =
+        std::abs(longitudinal_velocity * longitudinal_velocity * curvature);
+      if (lateral_acceleration > max_lateral_acceleration) {
+        max_observed = std::max(max_observed, lateral_acceleration);
+        is_ok = false;
+      }
+    } catch (...) {  // skip if three points are too close
+      continue;
+    }
+  }
+
   return {max_observed, is_ok};
 }
 

@@ -27,6 +27,11 @@ validator:
       default_value: 5.0
       description: Maximum allowed deceleration (m/s^2, positive but represents deceleration)
       read_only: false
+    max_lateral_acceleration:
+      type: double
+      default_value: 9.8
+      description: Maximum allowed absolute lateral acceleration (m/s^2)
+      read_only: false
     max_steering_angle:
       type: double
       default_value: 0.8
