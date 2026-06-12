@@ -3,17 +3,17 @@
     filter_names:
       [
         "autoware::trajectory_validator::plugin::OutOfLaneFilter",
-        "autoware::trajectory_validator::plugin::VehicleConstraintFilter",
+        "autoware::trajectory_validator::plugin::TrajectoryFeasibilityFilter",
       ]
     # available filters:
     #  "autoware::trajectory_validator::plugin::OutOfLaneFilter"
-    #  "autoware::trajectory_validator::plugin::VehicleConstraintFilter"
+    #  "autoware::trajectory_validator::plugin::TrajectoryFeasibilityFilter"
 
     out_of_lane:
       time: 2.0
       min_value: 0.0
 
-    vehicle_constraint:
+    trajectory_feasibility:
       max_speed: 16.7 # m/s
       max_acceleration: 5.0 # m/s^2
       max_deceleration: 5.0 # m/s^2 (positive but represents deceleration)

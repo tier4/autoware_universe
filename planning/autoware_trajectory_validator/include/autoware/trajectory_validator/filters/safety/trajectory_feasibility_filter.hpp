@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__VEHICLE_CONSTRAINT_FILTER_HPP_
-#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__VEHICLE_CONSTRAINT_FILTER_HPP_
+#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__TRAJECTORY_FEASIBILITY_FILTER_HPP_
+#define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__TRAJECTORY_FEASIBILITY_FILTER_HPP_
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
@@ -25,13 +25,13 @@
 namespace autoware::trajectory_validator::plugin::safety
 {
 /**
- * @brief VehicleConstraintFilter class - checks if the trajectory respects vehicle constraints
- * (e.g., max speed, max acceleration/deceleration).
+ * @brief TrajectoryFeasibilityFilter class - checks if the trajectory respects vehicle
+ * feasibility constraints (e.g., max speed, max acceleration/deceleration).
  */
-class VehicleConstraintFilter final : public plugin::ValidatorInterface
+class TrajectoryFeasibilityFilter final : public plugin::ValidatorInterface
 {
 public:
-  VehicleConstraintFilter();
+  TrajectoryFeasibilityFilter();
 
   result_t is_feasible(
     const CandidateTrajectory & candidate_trajectory, const FilterContext & context) final;
@@ -45,17 +45,17 @@ private:
   MetricReport check_steering_angle(const TrajectoryPoints & traj_points) const;
   MetricReport check_steering_rate(const TrajectoryPoints & traj_points) const;
 
-  using Checker = MetricReport (VehicleConstraintFilter::*)(const TrajectoryPoints &) const;
+  using Checker = MetricReport (TrajectoryFeasibilityFilter::*)(const TrajectoryPoints &) const;
 
   inline static const std::array<Checker, 5> checkers_ = {{
-    &VehicleConstraintFilter::check_speed,
-    &VehicleConstraintFilter::check_acceleration,
-    &VehicleConstraintFilter::check_deceleration,
-    &VehicleConstraintFilter::check_steering_angle,
-    &VehicleConstraintFilter::check_steering_rate,
+    &TrajectoryFeasibilityFilter::check_speed,
+    &TrajectoryFeasibilityFilter::check_acceleration,
+    &TrajectoryFeasibilityFilter::check_deceleration,
+    &TrajectoryFeasibilityFilter::check_steering_angle,
+    &TrajectoryFeasibilityFilter::check_steering_rate,
   }};  //!< Array of checker functions
 
-  validator::Params::VehicleConstraint params_;  //!< Parameters for this filter
+  validator::Params::TrajectoryFeasibility params_;  //!< Parameters for this filter
 };
 
 // --- Helper functions for constraint checks ---
@@ -113,4 +113,4 @@ std::pair<double, bool> is_steering_angle_ok(
 std::pair<double, bool> is_steering_rate_ok(
   const TrajectoryPoints & traj_points, const VehicleInfo & vehicle_info, double max_steering_rate);
 }  // namespace autoware::trajectory_validator::plugin::safety
-#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__VEHICLE_CONSTRAINT_FILTER_HPP_
+#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__TRAJECTORY_FEASIBILITY_FILTER_HPP_
