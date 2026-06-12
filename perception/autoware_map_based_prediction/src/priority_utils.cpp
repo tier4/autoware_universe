@@ -235,41 +235,36 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     const std::optional<lanelet::ConstLineString3d> related_stop_line =
       lanelet_util::getStopLineOrEntryEdge(target_lanelet_signal_object);
 
-    // 3. Signal state and whether the stop line is still ahead of the object.
+    // 2. Signal state and whether the stop line is still ahead of the object.
     const bool signal_requires_stop =
       evaluateSignalStopRequirement(target_lanelet_signal_object, signal_status);
     const bool stop_line_ahead =
       related_stop_line &&
       hasStopLineAhead(
         object.kinematics.pose_with_covariance.pose.position, ref_path.path, *related_stop_line);
+    debug.counter.signal_stop += signal_requires_stop ? 1 : 0;
+    debug.counter.stopline_found += stop_line_ahead ? 1 : 0;
 
-    // 4. Add a stop hypothesis only on a red signal whose stop line is still ahead.
+    // 3. Add a stop hypothesis only on a red signal whose stop line is still ahead.
     if (!shouldAddStopHypothesis(signal_requires_stop, stop_line_ahead, params.calibration)) {
       continue;
     }
 
-    // 5. The stop hypothesis is a copy of the go path cut at the stop line.
-    if (stop_line_ahead && signal_requires_stop) {
-      clipPathAtStopLine(predicted_path, *related_stop_line);
+    // 4. The stop hypothesis is a copy of the go path cut at the stop line.
+    clipPathAtStopLine(predicted_path, *related_stop_line);
 
-      if (predicted_path.path.size() < 2) {
-        continue;  // nothing to clip to -> the go path stands
-      }
-
-      predicted_path.confidence = static_cast<float>(
-        weakenConfidenceInLaneChange(ref_path.maneuver, params.calibration.stop_probability_boost));
-
-      // The stop hypothesis replaces the go path in place (the go path is dropped).
-      result[i] = predicted_path;
+    if (predicted_path.path.size() < 2) {
+      continue;  // nothing to clip to -> the go path stands
     }
 
-    // debug part
-    debug.counter.signal_stop += signal_requires_stop ? 1 : 0;
-    debug.counter.stopline_found += stop_line_ahead ? 1 : 0;
+    predicted_path.confidence = static_cast<float>(
+      weakenConfidenceInLaneChange(ref_path.maneuver, params.calibration.stop_probability_boost));
+
+    // The stop hypothesis replaces the go path in place (the go path is dropped).
+    result[i] = predicted_path;
+
     debug.stop_hypothesis_path_indices[autoware_utils::to_hex_string(object.object_id)].insert(i);
-    if (related_stop_line) {
-      debug.stop_lines.push_back(*related_stop_line);
-    }
+    debug.stop_lines.push_back(*related_stop_line);
     debug.counter.stop_hypothesis_added++;
   }
 
