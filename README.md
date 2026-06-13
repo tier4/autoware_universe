@@ -44,7 +44,9 @@ You can check more details by clicking the badge and navigating the codecov webs
 
 <!-- NOTE: `query` fields to shields.io should be converted to slug form   -->
 <!--
+
 TODO(soblin):
 - dynamic `label` name(maybe not supported by shields.io)
 - use https://github.com/marketplace/actions/dynamic-badges
+
 -->
