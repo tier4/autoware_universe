@@ -1,4 +1,4 @@
-// Copyright 2022 TIER IV, Inc.
+// Copyright 2026 TIER IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,34 +11,37 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-//
-// Author: v1.0 Yutaka Shimizu
-//
 
-#ifndef AUTOWARE__MULTI_OBJECT_TRACKER__TRACKER__MODEL__PASS_THROUGH_TRACKER_HPP_
-#define AUTOWARE__MULTI_OBJECT_TRACKER__TRACKER__MODEL__PASS_THROUGH_TRACKER_HPP_
+#ifndef AUTOWARE__MULTI_OBJECT_TRACKER__TRACKER__MODEL__STATIC_TRACKER_HPP_
+#define AUTOWARE__MULTI_OBJECT_TRACKER__TRACKER__MODEL__STATIC_TRACKER_HPP_
 
-#include "autoware/multi_object_tracker/object_model/types.hpp"
-#include "tracker_base.hpp"
+#include "autoware/multi_object_tracker/object_model/object_model.hpp"
+#include "autoware/multi_object_tracker/tracker/model/tracker_base.hpp"
+#include "autoware/multi_object_tracker/tracker/motion_model/static_motion_model.hpp"
+#include "autoware/multi_object_tracker/types.hpp"
 
 namespace autoware::multi_object_tracker
 {
 
-class PassThroughTracker : public Tracker
+class StaticTracker : public Tracker
 {
 private:
-  types::DynamicObject prev_observed_object_;
   rclcpp::Logger logger_;
-  rclcpp::Time last_update_time_;
+
+  StaticMotionModel motion_model_;
+
+  std::optional<geometry_msgs::msg::Point> ego_pos_;
 
 public:
-  PassThroughTracker(const rclcpp::Time & time, const types::DynamicObject & object);
+  StaticTracker(const rclcpp::Time & time, const types::DynamicObject & object);
+
+  void setEgoPose(const std::optional<geometry_msgs::msg::Point> & pos) override { ego_pos_ = pos; }
 
   bool predict(const rclcpp::Time & time) override;
   bool measure(
     const types::DynamicObject & object, const rclcpp::Time & time,
     const types::InputChannel & channel_info) override;
+  bool measureWithPose(const types::DynamicObject & object);
   bool getTrackedObject(
     const rclcpp::Time & time, types::DynamicObject & object,
     const bool to_publish = false) const override;
@@ -46,4 +49,4 @@ public:
 
 }  // namespace autoware::multi_object_tracker
 
-#endif  // AUTOWARE__MULTI_OBJECT_TRACKER__TRACKER__MODEL__PASS_THROUGH_TRACKER_HPP_
+#endif  // AUTOWARE__MULTI_OBJECT_TRACKER__TRACKER__MODEL__STATIC_TRACKER_HPP_
