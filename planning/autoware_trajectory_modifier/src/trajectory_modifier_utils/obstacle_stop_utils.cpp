@@ -505,7 +505,7 @@ void ObjectFilter::filter_by_target_area(
   const MultiPolygon2d & target_area, MultiPolygon2d & target_polygons)
 {
   const auto ego_front_offset = vehicle_info.max_longitudinal_offset_m;
-  constexpr double time_buffer = 1.0;
+  constexpr double time_buffer = 0.5;
   auto time_to_obj_current_pos =
     [&](const auto & object_pose, const size_t nearest_seg_idx) -> double {
     const auto t_to_nearest_seg =
