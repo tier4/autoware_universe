@@ -128,11 +128,12 @@
 
           <group if="$(var use_v2x_tracking_fusion)">
             <!-- tracking object merger to merge camera lidar and radar objects -->
-            <include file="$(find-pkg-share autoware_tracking_object_merger)/launch/decorative_tracker_merger.launch.xml">
+            <include file="$(find-pkg-share autoware_tracking_object_merger_v2x)/launch/decorative_v2x_tracker_merger.launch.xml">
               <arg name="node_name" value="decorative_v2x_tracker_merger"/>
               <arg name="input/main_object" value="$(var multi_object_tracker/output/objects)"/>
               <arg name="input/sub_object" value="v2x/filtered_tracked_objects"/>
               <arg name="output" value="objects"/>
+              <arg name="output_v2x" value="v2x_objects"/>
               <arg name="data_association_matrix_path" value="$(var object_recognition_tracking_v2x_object_merger_data_association_matrix_param_path)"/>
               <arg name="node_param_file_path" value="$(var object_recognition_tracking_v2x_object_merger_node_param_path)"/>
             </include>

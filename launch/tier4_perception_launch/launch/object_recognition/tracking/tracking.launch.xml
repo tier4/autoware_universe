@@ -87,6 +87,7 @@
     <let name="v2x_tracker_merger/input/main_objects" value="$(var multi_object_tracker/output/objects)" unless="$(var use_radar_tracking_fusion)"/>
     <let name="v2x_tracker_merger/input/sub_objects" value="$(var v2x_tracked_object_lanelet_filter/output/object)"/>
     <let name="v2x_tracker_merger/output/objects" value="$(var output/objects)"/>
+    <let name="v2x_tracker_merger/output/v2x_objects" value="$(var ns)/v2x_objects"/>
 
     <!-- Multi object tracking -->
     <include file="$(find-pkg-share autoware_multi_object_tracker)/launch/multi_object_tracker.launch.xml">
@@ -143,12 +144,13 @@
     
     <group if="$(var use_v2x_tracking_fusion)">
       <!-- tracking object merger to merge camera lidar and radar objects -->
-      <include file="$(find-pkg-share autoware_tracking_object_merger)/launch/decorative_tracker_merger.launch.xml">
+      <include file="$(find-pkg-share autoware_tracking_object_merger_v2x)/launch/decorative_v2x_tracker_merger.launch.xml">
         <arg name="node_name" value="decorative_v2x_tracker_merger"/>
         <arg name="input/main_object" value="$(var v2x_tracker_merger/input/main_objects)"/>
         <!-- <arg name="input/main_object" value="/v2x/dummy_pub"/> -->
         <arg name="input/sub_object" value="$(var v2x_tracker_merger/input/sub_objects)"/>
         <arg name="output" value="$(var v2x_tracker_merger/output/objects)"/>
+        <arg name="output_v2x" value="$(var v2x_tracker_merger/output/v2x_objects)"/>
         <arg name="data_association_matrix_path" value="$(var object_recognition_tracking_v2x_object_merger_data_association_matrix_param_path)"/>
         <arg name="node_param_file_path" value="$(var object_recognition_tracking_v2x_object_merger_node_param_path)"/>
       </include>
