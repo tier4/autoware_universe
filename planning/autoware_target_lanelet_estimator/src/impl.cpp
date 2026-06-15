@@ -14,6 +14,20 @@
 
 #include "autoware/target_lanelet_estimator/impl.hpp"
 
+#include <autoware_utils_geometry/boost_geometry.hpp>
+#include <tf2/utils.hpp>
+
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
+#include <boost/geometry/algorithms/disjoint.hpp>
+
+#include <lanelet2_core/geometry/Lanelet.h>
+#include <lanelet2_core/geometry/Polygon.h>
+
+#include <cmath>
+#include <utility>
+#include <vector>
+
 namespace autoware::target_lanelet_estimator
 {
 namespace
@@ -29,18 +43,56 @@ lanelet::ConstLanelets extract_route_lanelets(
   }
   return route_lanelets;
 }
+
+std::vector<lanelet::BasicPolygon2d> compute_trajectory_footprints(
+  const Trajectory & trajectory, const VehicleInfo & vehicle_info)
+{
+  const auto base_footprint = vehicle_info.createFootprint();
+
+  std::vector<lanelet::BasicPolygon2d> footprints;
+  footprints.reserve(trajectory.points.size());
+  for (const auto & point : trajectory.points) {
+    const auto & pose = point.pose;
+    const double yaw = tf2::getYaw(pose.orientation);
+    const double cos_yaw = std::cos(yaw);
+    const double sin_yaw = std::sin(yaw);
+
+    lanelet::BasicPolygon2d footprint;
+    footprint.reserve(base_footprint.size());
+    for (const auto & p : base_footprint) {
+      footprint.emplace_back(
+        pose.position.x + cos_yaw * p.x() - sin_yaw * p.y(),
+        pose.position.y + sin_yaw * p.x() + cos_yaw * p.y());
+    }
+    footprints.push_back(std::move(footprint));
+  }
+  return footprints;
+}
+
+bool overlaps_any(
+  const lanelet::ConstLanelet & lanelet, const std::vector<lanelet::BasicPolygon2d> & footprints)
+{
+  const auto lanelet_polygon = lanelet.polygon2d().basicPolygon();
+  for (const auto & footprint : footprints) {
+    if (!boost::geometry::disjoint(footprint, lanelet_polygon)) {
+      return true;
+    }
+  }
+  return false;
+}
 }  // namespace
 
 TargetLaneletsResult get_target_lanelets(
   const LaneletRoute & route, const Trajectory & trajectory,
   const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info)
 {
-  (void)trajectory;
-  (void)vehicle_info;
+  const auto footprints = compute_trajectory_footprints(trajectory, vehicle_info);
 
   TargetLaneletsResult result;
   for (const auto & lanelet : extract_route_lanelets(route, lanelet_map)) {
-    result.lanelets.push_back({lanelet.id(), 0.0});
+    if (overlaps_any(lanelet, footprints)) {
+      result.lanelets.push_back({lanelet.id(), 100.0});
+    }
   }
   return result;
 }

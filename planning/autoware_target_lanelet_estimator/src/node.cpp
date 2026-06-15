@@ -82,7 +82,7 @@ void TargetLaneletEstimatorNode::run_estimation()
     ids << lanelet.id << " ";
   }
   RCLCPP_INFO_THROTTLE(
-    get_logger(), *get_clock(), 1000, "route lanelets (%zu): %s", result.lanelets.size(),
+    get_logger(), *get_clock(), 1000, "target lanelets (%zu): %s", result.lanelets.size(),
     ids.str().c_str());
 }
 
