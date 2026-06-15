@@ -72,6 +72,7 @@
       <arg name="sensor_model" value="$(var sensor_model)"/>
       <arg name="data_path" value="$(var data_path)"/>
       <!-- launch module preset -->
+      <arg name="planning_setting" value="$(var planning_setting)"/>
       <arg name="planning_module_preset" value="$(var planning_module_preset)"/>
       <arg name="control_module_preset" value="$(var control_module_preset)"/>
       <!-- Modules to be launched -->

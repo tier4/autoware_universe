@@ -4,7 +4,7 @@
     onnx_model_path: /opt/autoware/mlmodels/diffusion_planner_for_x2/diffusion_planner.onnx
     args_path: /opt/autoware/mlmodels/diffusion_planner_for_x2/args.json
     planning_frequency_hz: 10.0
-    ignore_neighbors: false
+    ignore_neighbors: true
     ignore_unknown_neighbors: true
     traffic_light_group_msg_timeout_seconds: 0.3  # 0.3 = 0.15 (basic pipeline latency) + 0.1 (maximum delay due to 10Hz timer callback in diffusion planner) + 0.05 (safety margin)
     batch_size: 1
@@ -16,7 +16,8 @@
     shift_x: false
     delay_step: 0
     line_string_max_step_m: 5.0
-    use_time_interpolation: true
+    use_time_interpolation: false
+    use_mppi_optimizer: true
     planning_factor:
       enable_stop: true
       enable_slowdown: false
