@@ -276,18 +276,18 @@ void ObjectFusionMergerNode::callback(
     return;
   }
 
+  const auto result = fuse_objects(transformed_main_objects, transformed_sub_objects);
+
   auto fused_output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(fused_objects_pub_);
   auto other_output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(other_objects_pub_);
-  auto result = fuse_objects(transformed_main_objects, transformed_sub_objects);
-  *fused_output = std::move(result.fused_objects);
-  *other_output = std::move(result.other_objects);
-
-  const auto fused_stamp = fused_output->header.stamp;
+  *fused_output = result.fused_objects;
+  *other_output = result.other_objects;
   fused_objects_pub_->publish(std::move(fused_output));
   other_objects_pub_->publish(std::move(other_output));
 
   // Publish debug info
-  published_time_publisher_->publish_if_subscribed(fused_objects_pub_, fused_stamp);
+  published_time_publisher_->publish_if_subscribed(
+    fused_objects_pub_, result.fused_objects.header.stamp);
   processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "debug/cyclic_time_ms", stop_watch_ptr_->toc("cyclic_time", true));
   processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
@@ -299,7 +299,7 @@ void ObjectFusionMergerNode::callback(
  *
  * @param main_objects_msg Main detected objects already transformed into the base frame.
  * @param sub_objects_msg Sub detected objects already transformed into the base frame.
- * @return Fusion result containing the main-based output and unmatched sub objects.
+ * @return Fused main-based objects and unmatched sub objects for separate publication.
  */
 ObjectFusionMergerNode::FusionResult ObjectFusionMergerNode::fuse_objects(
   const DetectedObjects & main_objects_msg, const DetectedObjects & sub_objects_msg)
@@ -349,8 +349,10 @@ ObjectFusionMergerNode::FusionResult ObjectFusionMergerNode::fuse_objects(
                         .frame_id(base_link_frame_id_);
 
   return FusionResult{
-    autoware_perception_msgs::build<DetectedObjects>().header(header).objects(matched_objects),
-    autoware_perception_msgs::build<DetectedObjects>().header(header).objects(other_objects)};
+    autoware_perception_msgs::build<DetectedObjects>().header(header).objects(
+      std::move(matched_objects)),
+    autoware_perception_msgs::build<DetectedObjects>().header(header).objects(
+      std::move(other_objects))};
 }
 
 }  // namespace autoware::object_merger
