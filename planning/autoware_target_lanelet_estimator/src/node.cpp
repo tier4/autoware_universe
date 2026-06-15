@@ -40,6 +40,10 @@ TargetLaneletEstimatorNode::TargetLaneletEstimatorNode(const rclcpp::NodeOptions
   sub_trajectory_ = create_subscription<Trajectory>(
     "~/input/trajectory", rclcpp::QoS{1},
     std::bind(&TargetLaneletEstimatorNode::on_trajectory, this, _1));
+
+  RCLCPP_INFO(
+    get_logger(), "vehicle_info: length=%.2fm width=%.2fm wheel_base=%.2fm",
+    vehicle_info_.vehicle_length_m, vehicle_info_.vehicle_width_m, vehicle_info_.wheel_base_m);
 }
 
 void TargetLaneletEstimatorNode::on_map(const LaneletMapBin::ConstSharedPtr msg)
@@ -52,11 +56,14 @@ void TargetLaneletEstimatorNode::on_map(const LaneletMapBin::ConstSharedPtr msg)
 void TargetLaneletEstimatorNode::on_route(const LaneletRoute::ConstSharedPtr msg)
 {
   route_ = msg;
+  RCLCPP_INFO(get_logger(), "Received route (%zu segments).", msg->segments.size());
 }
 
 void TargetLaneletEstimatorNode::on_trajectory(const Trajectory::ConstSharedPtr msg)
 {
   trajectory_ = msg;
+  RCLCPP_INFO_THROTTLE(
+    get_logger(), *get_clock(), 1000, "Received trajectory (%zu points).", msg->points.size());
   run_estimation();
 }
 
