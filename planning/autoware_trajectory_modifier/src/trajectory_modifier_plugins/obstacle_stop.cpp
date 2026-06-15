@@ -434,7 +434,8 @@ void ObstacleStop::publish_debug_string(bool is_safe) const
   if (nearest_collision_point_) {
     ss << "\t\t" << "DISTANCE TO COLLISION: " << nearest_collision_point_->arc_length << " m"
        << "\n";
-    ss << "\t\t" << "OBSTACLE TYPE: " << (nearest_collision_point_->is_dynamic ? "DYNAMIC" : "STATIC")
+    ss << "\t\t"
+       << "OBSTACLE TYPE: " << (nearest_collision_point_->is_dynamic ? "DYNAMIC" : "STATIC")
        << "\n";
   }
 

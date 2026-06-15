@@ -99,7 +99,8 @@ struct CollisionPoint
    * @param arc_length Signed arc length from the start of the trajectory to the collision point.
    * @param is_dynamic Whether this collision is dynamic.
    */
-  CollisionPoint(const geometry_msgs::msg::Point & point, const double arc_length, const bool is_dynamic = false)
+  CollisionPoint(
+    const geometry_msgs::msg::Point & point, const double arc_length, const bool is_dynamic = false)
   : point(point), arc_length(arc_length), is_dynamic(is_dynamic)
   {
   }
