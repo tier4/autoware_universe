@@ -345,22 +345,23 @@ std::optional<CollisionPoint> get_nearest_object_collision(
 
   auto is_safe = [&](
                    const auto & object, const double obj_arc_length, const double obj_lon_vel,
-                   const double ego_arc_length, const double ego_vel) -> bool {
-    if (object.classification.empty()) return false;
+                   const double ego_arc_length, const double ego_vel) -> std::pair<bool, bool> {
+    if (object.classification.empty()) return {false, false};
     const auto obj_type = classification_to_object_type.at(object.classification.front().label);
-    if (!object_decel_map.count(obj_type)) return false;
+    if (!object_decel_map.count(obj_type)) return {false, false};
     const auto obj_decel = object_decel_map.at(obj_type);
-    if (obj_lon_vel < stopped_vel_th) return false;
+    if (obj_lon_vel < stopped_vel_th) return {false, false};
     const auto safe_dist =
       get_safe_distance(ego_vel, obj_lon_vel, ego_decel, obj_decel, reaction_time, safety_margin);
     const auto ego_front_arc_length = ego_arc_length + ego_front_offset;
     const auto relative_arc_length = std::max(0.0, obj_arc_length - ego_front_arc_length);
-    return relative_arc_length - safe_dist > 1e-3;
+    return {relative_arc_length - safe_dist > 1e-3, true};
   };
 
   auto min_obj_arc_length = std::numeric_limits<double>::max();
   geometry_msgs::msg::Point nearest_collision_point;
   bool found_collision = false;
+  bool is_dynamic_collision = false;
   auto curr_arc_length = 0.0;
 
   for (const auto & object : target_objects.objects) {
@@ -371,13 +372,14 @@ std::optional<CollisionPoint> get_nearest_object_collision(
       curr_arc_length += autoware_utils::calc_distance2d(last_p, traj_p.pose.position);
       const auto target_ego_vel = traj_p.longitudinal_velocity_mps;
       const auto obj_state = get_object_state_at_time(trajectory_points, object, t);
-      if (is_safe(object, obj_state.arc_length, obj_state.lon_vel, curr_arc_length, target_ego_vel))
-        continue;
+      const auto [safe, dynamic] = is_safe(object, obj_state.arc_length, obj_state.lon_vel, curr_arc_length, target_ego_vel);
+      if (safe) continue;
       found_collision = true;
       if (obj_state.arc_length < min_obj_arc_length) {
         min_obj_arc_length = obj_state.arc_length;
         colliding_object = object;
         nearest_collision_point = obj_state.nearest_point;
+        is_dynamic_collision = dynamic;
       }
       last_p = traj_p.pose.position;
       break;
@@ -385,7 +387,7 @@ std::optional<CollisionPoint> get_nearest_object_collision(
   }
 
   if (!found_collision) return std::nullopt;
-  return CollisionPoint(nearest_collision_point, min_obj_arc_length);
+  return CollisionPoint(nearest_collision_point, min_obj_arc_length, is_dynamic_collision);
 }
 
 void PointCloudFilter::filter_pointcloud(
