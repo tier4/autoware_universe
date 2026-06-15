@@ -1,0 +1,42 @@
+name: check-pr-target-branch
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+
+jobs:
+  check-target-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Check target branch
+        id: check-branch
+        run: |
+          TARGET_BRANCH="${{ github.event.pull_request.base.ref }}"
+          echo "Target branch is: $TARGET_BRANCH"
+
+          if [ "$TARGET_BRANCH" = "awf-latest" ]; then
+            echo "is_awf_latest=true" >> $GITHUB_OUTPUT
+            echo "ERROR: Pull requests targeting the awf-latest branch are not allowed."
+            exit 1
+          else
+            echo "is_awf_latest=false" >> $GITHUB_OUTPUT
+            echo "Target branch is acceptable."
+          fi
+
+      - name: Comment on PR
+        if: failure() && steps.check-branch.outputs.is_awf_latest == 'true'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          message: |
+            ⚠️ **WARNING: Invalid Target Branch** ⚠️
+
+            This pull request is targeting the `awf-latest` branch, which is not allowed.
+
+            The `awf-latest` branch is a mirror of https://github.com/autowarefoundation/autoware_universe and is not intended for direct contributions.
+            Please push your changes to Autoware Foundation main branch, or appropriate release branch for hotfixes.
