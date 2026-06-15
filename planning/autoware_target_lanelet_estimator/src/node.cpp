@@ -18,6 +18,7 @@
 #include <autoware/vehicle_info_utils/vehicle_info_utils.hpp>
 
 #include <memory>
+#include <sstream>
 
 namespace autoware::target_lanelet_estimator
 {
@@ -62,8 +63,6 @@ void TargetLaneletEstimatorNode::on_route(const LaneletRoute::ConstSharedPtr msg
 void TargetLaneletEstimatorNode::on_trajectory(const Trajectory::ConstSharedPtr msg)
 {
   trajectory_ = msg;
-  RCLCPP_INFO_THROTTLE(
-    get_logger(), *get_clock(), 1000, "Received trajectory (%zu points).", msg->points.size());
   run_estimation();
 }
 
@@ -78,9 +77,13 @@ void TargetLaneletEstimatorNode::run_estimation()
 
   const auto result = get_target_lanelets(*route_, *trajectory_, lanelet_map_, vehicle_info_);
 
-  RCLCPP_INFO(
-    get_logger(), "get_target_lanelets returned %zu lanelet(s), out_of_lanelet=%d.",
-    result.lanelets.size(), result.out_of_lanelet);
+  std::stringstream ids;
+  for (const auto & lanelet : result.lanelets) {
+    ids << lanelet.id << " ";
+  }
+  RCLCPP_INFO_THROTTLE(
+    get_logger(), *get_clock(), 1000, "route lanelets (%zu): %s", result.lanelets.size(),
+    ids.str().c_str());
 }
 
 }  // namespace autoware::target_lanelet_estimator

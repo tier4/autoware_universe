@@ -16,17 +16,33 @@
 
 namespace autoware::target_lanelet_estimator
 {
+namespace
+{
+lanelet::ConstLanelets extract_route_lanelets(
+  const LaneletRoute & route, const lanelet::LaneletMapConstPtr & lanelet_map)
+{
+  lanelet::ConstLanelets route_lanelets;
+  for (const auto & segment : route.segments) {
+    for (const auto & primitive : segment.primitives) {
+      route_lanelets.push_back(lanelet_map->laneletLayer.get(primitive.id));
+    }
+  }
+  return route_lanelets;
+}
+}  // namespace
 
 TargetLaneletsResult get_target_lanelets(
   const LaneletRoute & route, const Trajectory & trajectory,
   const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info)
 {
-  (void)route;
   (void)trajectory;
-  (void)lanelet_map;
   (void)vehicle_info;
 
-  return TargetLaneletsResult{};
+  TargetLaneletsResult result;
+  for (const auto & lanelet : extract_route_lanelets(route, lanelet_map)) {
+    result.lanelets.push_back({lanelet.id(), 0.0});
+  }
+  return result;
 }
 
 }  // namespace autoware::target_lanelet_estimator
