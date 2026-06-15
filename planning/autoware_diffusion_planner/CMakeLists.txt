@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 3.14)
 project(autoware_diffusion_planner)
 
 find_package(autoware_cmake REQUIRED)
+find_package(autoware_mppi_optimizer REQUIRED)
+if(EXISTS "${autoware_mppi_optimizer_DIR}/ament_cmake_export_libraries-extras.cmake")
+  include("${autoware_mppi_optimizer_DIR}/ament_cmake_export_libraries-extras.cmake")
+endif()
+if(EXISTS "${autoware_mppi_optimizer_DIR}/ament_cmake_export_dependencies-extras.cmake")
+  include("${autoware_mppi_optimizer_DIR}/ament_cmake_export_dependencies-extras.cmake")
+endif()
 autoware_package()
 
 # Options
@@ -76,7 +83,9 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${NVONNXPARSER}
     ${CUDA_LIBRARIES}
     ${CUBLAS_LIBRARIES}
+    ${autoware_mppi_optimizer_LIBRARIES}
   )
+  ament_target_dependencies(autoware_diffusion_planner_component autoware_mppi_optimizer)
 
   rclcpp_components_register_node(autoware_diffusion_planner_component
     PLUGIN "autoware::diffusion_planner::DiffusionPlanner"
