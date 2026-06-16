@@ -15,20 +15,33 @@
 #ifndef AUTOWARE__AVOIDANCE_TARGET_DETECTOR__NODE_HPP_
 #define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__NODE_HPP_
 
+#include "autoware/avoidance_target_detector/drivable_area.hpp"
+#include "autoware/avoidance_target_detector/impl.hpp"
 #include "autoware/avoidance_target_detector/two_class_filter.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
 
+#include <autoware/route_handler/route_handler.hpp>
+#include <autoware/vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
+#include <autoware_planning_msgs/msg/path.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 
 #include <map>
+#include <memory>
 
 namespace autoware::avoidance_target_detector
 {
 
+using autoware::route_handler::RouteHandler;
+using autoware::vehicle_info_utils::VehicleInfo;
+using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
+using autoware_planning_msgs::msg::LaneletRoute;
+using autoware_planning_msgs::msg::Path;
 using autoware_planning_msgs::msg::Trajectory;
 
 /** ROS 2 node that detects and publishes avoidance target objects. */
@@ -51,8 +64,21 @@ private:
   rclcpp::Subscription<PredictedObjects>::SharedPtr sub_objects_;
   autoware_utils::InterProcessPollingSubscriber<Trajectory> sub_trajectory_{
     this, "~/input/trajectory"};
+  autoware_utils::InterProcessPollingSubscriber<
+    LaneletRoute, autoware_utils::polling_policy::Newest>
+    sub_route_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
+  autoware_utils::InterProcessPollingSubscriber<
+    LaneletMapBin, autoware_utils::polling_policy::Newest>
+    sub_lanelet_map_{this, "~/input/lanelet_map_bin", rclcpp::QoS{1}.transient_local()};
 
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_avoidance_targets_;
+  rclcpp::Publisher<PredictedObjects>::SharedPtr pub_debug_avoidance_targets_;
+  rclcpp::Publisher<Path>::SharedPtr pub_drivable_area_path_;
+
+  std::shared_ptr<RouteHandler> route_handler_;
+  VehicleInfo vehicle_info_;
+  LongitudinalDistanceFilterParams longitudinal_filter_params_;
+  LateralDistanceFilterParams lateral_filter_params_;
 
   FilterManagerMap object_filters_;
 
