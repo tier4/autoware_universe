@@ -883,8 +883,7 @@ void PidLongitudinalController::updateControlState(const ControlData & control_d
         return changeControlState(ControlState::DRIVE);
       }
       if (
-        m_enable_emergency_exit_without_stop &&
-        stop_dist > p.emergency_state_overshoot_stop_dist) {
+        m_enable_emergency_exit_without_stop && stop_dist > p.emergency_state_overshoot_stop_dist) {
         m_pid_vel.reset();
         m_lpf_vel_error->reset(0.0);
         return changeControlState(ControlState::DRIVE);
