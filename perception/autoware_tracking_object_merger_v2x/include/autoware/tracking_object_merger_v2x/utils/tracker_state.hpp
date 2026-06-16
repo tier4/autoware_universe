@@ -149,11 +149,13 @@ struct TrackedObjectsFromStates
 {
   TrackedObjects merged;
   TrackedObjects v2x_only;
+  TrackedObjects both;
 };
 
 TrackedObjectsFromStates getTrackedObjectsFromTrackerStates(
   std::vector<TrackerState> & tracker_states, const rclcpp::Time & time,
-  const std::string & frame_id);
+  const std::string & frame_id, const MEASUREMENT_STATE main_sensor_type,
+  const MEASUREMENT_STATE sub_sensor_type);
 }  // namespace autoware::tracking_object_merger_v2x
 
 #endif  // AUTOWARE__TRACKING_OBJECT_MERGER_V2X__UTILS__TRACKER_STATE_HPP_

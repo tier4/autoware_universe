@@ -134,6 +134,7 @@
               <arg name="input/sub_object" value="v2x/filtered_tracked_objects"/>
               <arg name="output" value="objects"/>
               <arg name="output_v2x" value="v2x_objects"/>
+              <arg name="output_both" value="both_objects"/>
               <arg name="data_association_matrix_path" value="$(var object_recognition_tracking_v2x_object_merger_data_association_matrix_param_path)"/>
               <arg name="node_param_file_path" value="$(var object_recognition_tracking_v2x_object_merger_node_param_path)"/>
             </include>

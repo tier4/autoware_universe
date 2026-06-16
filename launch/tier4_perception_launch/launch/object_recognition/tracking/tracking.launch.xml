@@ -88,6 +88,7 @@
     <let name="v2x_tracker_merger/input/sub_objects" value="$(var v2x_tracked_object_lanelet_filter/output/object)"/>
     <let name="v2x_tracker_merger/output/objects" value="$(var output/objects)"/>
     <let name="v2x_tracker_merger/output/v2x_objects" value="$(var ns)/v2x_objects"/>
+    <let name="v2x_tracker_merger/output/both_objects" value="$(var ns)/both_objects"/>
 
     <!-- Multi object tracking -->
     <include file="$(find-pkg-share autoware_multi_object_tracker)/launch/multi_object_tracker.launch.xml">
@@ -151,6 +152,7 @@
         <arg name="input/sub_object" value="$(var v2x_tracker_merger/input/sub_objects)"/>
         <arg name="output" value="$(var v2x_tracker_merger/output/objects)"/>
         <arg name="output_v2x" value="$(var v2x_tracker_merger/output/v2x_objects)"/>
+        <arg name="output_both" value="$(var v2x_tracker_merger/output/both_objects)"/>
         <arg name="data_association_matrix_path" value="$(var object_recognition_tracking_v2x_object_merger_data_association_matrix_param_path)"/>
         <arg name="node_param_file_path" value="$(var object_recognition_tracking_v2x_object_merger_node_param_path)"/>
       </include>

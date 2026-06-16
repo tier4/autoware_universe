@@ -310,7 +310,8 @@ TrackerState::~TrackerState()
 
 TrackedObjectsFromStates getTrackedObjectsFromTrackerStates(
   std::vector<TrackerState> & tracker_states, const rclcpp::Time & current_time,
-  const std::string & frame_id)
+  const std::string & frame_id, const MEASUREMENT_STATE main_sensor_type,
+  const MEASUREMENT_STATE sub_sensor_type)
 {
   TrackedObjectsFromStates result;
 
@@ -319,9 +320,15 @@ TrackedObjectsFromStates getTrackedObjectsFromTrackerStates(
     // check if tracker state is valid
     if (it->isValid(current_time)) {
       if (it->canPublish()) {
+        const auto current_measurement_state = it->getCurrentMeasurementState(current_time);
+        const bool has_main = current_measurement_state & main_sensor_type;
+        const bool has_sub = current_measurement_state & sub_sensor_type;
         result.merged.objects.push_back(it->getObject());
-      } else {
-        result.v2x_only.objects.push_back(it->getObject());
+        if (has_sub && !has_main) {
+          result.v2x_only.objects.push_back(it->getObject());
+        } else if (has_main && has_sub) {
+          result.both.objects.push_back(it->getObject());
+        }
       }
       ++it;
     } else {
@@ -335,6 +342,8 @@ TrackedObjectsFromStates getTrackedObjectsFromTrackerStates(
   result.merged.header.frame_id = frame_id;
   result.v2x_only.header.stamp = current_time;
   result.v2x_only.header.frame_id = frame_id;
+  result.both.header.stamp = current_time;
+  result.both.header.frame_id = frame_id;
   return result;
 }
 

@@ -84,6 +84,7 @@ private:
   tf2_ros::TransformListener tf_listener_;
   rclcpp::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr merged_object_pub_;
   rclcpp::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr v2x_only_object_pub_;
+  rclcpp::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr both_object_pub_;
   rclcpp::Subscription<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr sub_main_objects_;
   rclcpp::Subscription<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr sub_sub_objects_;
   // debug object publisher

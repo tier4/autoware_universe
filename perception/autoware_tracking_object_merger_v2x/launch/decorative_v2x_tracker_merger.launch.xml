@@ -5,6 +5,7 @@
   <arg name="input/sub_object" default="sub_object"/>
   <arg name="output" default="merged_object"/>
   <arg name="output_v2x" default="v2x_object"/>
+  <arg name="output_both" default="both_objects"/>
   <arg name="data_association_matrix_path" default="$(find-pkg-share autoware_tracking_object_merger_v2x)/config/data_association_matrix.param.yaml"/>
   <arg name="merge_options_path" default="$(find-pkg-share autoware_tracking_object_merger_v2x)/config/decorative_tracker_merger_policy.param.yaml"/>
   <arg name="node_param_file_path" default="$(find-pkg-share autoware_tracking_object_merger_v2x)/config/decorative_tracker_merger.param.yaml"/>
@@ -14,6 +15,7 @@
     <remap from="input/sub_object" to="$(var input/sub_object)"/>
     <remap from="output/object" to="$(var output)"/>
     <remap from="output/v2x_object" to="$(var output_v2x)"/>
+    <remap from="output/both_object" to="$(var output_both)"/>
     <param from="$(var data_association_matrix_path)"/>
     <param from="$(var node_param_file_path)"/>
   </node>

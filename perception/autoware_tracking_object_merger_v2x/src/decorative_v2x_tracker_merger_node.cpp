@@ -110,6 +110,7 @@ DecorativeTrackerMergerNode::DecorativeTrackerMergerNode(const rclcpp::NodeOptio
   // merged object publisher
   merged_object_pub_ = create_publisher<TrackedObjects>("output/object", rclcpp::QoS{1});
   v2x_only_object_pub_ = create_publisher<TrackedObjects>("output/v2x_object", rclcpp::QoS{1});
+  both_object_pub_ = create_publisher<TrackedObjects>("output/both_object", rclcpp::QoS{1});
   // debug object publisher
   debug_object_pub_ =
     create_publisher<TrackedObjects>("debug/interpolated_sub_object", rclcpp::QoS{1});
@@ -268,6 +269,7 @@ void DecorativeTrackerMergerNode::mainObjectsCallback(
   const auto tracked_objects_from_states = getTrackedObjects(transformed_main_objects->header);
   merged_object_pub_->publish(tracked_objects_from_states.merged);
   v2x_only_object_pub_->publish(tracked_objects_from_states.v2x_only);
+  both_object_pub_->publish(tracked_objects_from_states.both);
 
   // update diagnostics
   updateDiagnostics();
@@ -276,6 +278,8 @@ void DecorativeTrackerMergerNode::mainObjectsCallback(
     merged_object_pub_, tracked_objects_from_states.merged.header.stamp);
   published_time_publisher_->publish_if_subscribed(
     v2x_only_object_pub_, tracked_objects_from_states.v2x_only.header.stamp);
+  published_time_publisher_->publish_if_subscribed(
+    both_object_pub_, tracked_objects_from_states.both.header.stamp);
   processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
     "debug/cyclic_time_ms", stop_watch_ptr_->toc("cyclic_time", true));
   processing_time_publisher_->publish<autoware_internal_debug_msgs::msg::Float64Stamped>(
@@ -458,7 +462,8 @@ TrackedObjectsFromStates DecorativeTrackerMergerNode::getTrackedObjects(
   const std_msgs::msg::Header & header)
 {
   rclcpp::Time current_time = rclcpp::Time(header.stamp);
-  return getTrackedObjectsFromTrackerStates(inner_tracker_objects_, current_time, merge_frame_id_);
+  return getTrackedObjectsFromTrackerStates(
+    inner_tracker_objects_, current_time, merge_frame_id_, main_sensor_type_, sub_sensor_type_);
 }
 
 // create new tracker
