@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__AVOIDANCE_TARGET_DETECTOR__IMPL_HPP_
 #define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__IMPL_HPP_
 
+#include "autoware/avoidance_target_detector/drivable_area.hpp"
+
 #include <autoware_perception_msgs/msg/object_classification.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -39,7 +41,7 @@ struct MovingObjectFilterParams
 {
   static constexpr double promising_stop_velocity_mps = 0.28;
   static constexpr double max_linear_velocity_mps =
-    3.0;  ///< Objects with linear velocity norm above this are removed [m/s].
+    1.0;  ///< Objects with linear velocity norm above this are removed [m/s].
 };
 
 /** Parameters for on-trajectory d-coordinate validation (filter-out). */
@@ -50,6 +52,18 @@ struct OnTrajectoryDValidationParams
   static constexpr double deviation_threshold_m = 0.3;  ///< Max |d(k) - d(k-1)| threshold [m].
   static constexpr double near_s_range_m = 15.0;        ///< s-range around footprint (S) [m].
   static constexpr double s_sample_interval_m = 1.0;    ///< Fallback s sampling interval [m].
+};
+
+/** Parameters for longitudinal distance filtering using trajectory arc length. */
+struct LongitudinalDistanceFilterParams
+{
+  double tolerance_m{0.0};  ///< Margin before start / after end [m].
+};
+
+/** Parameters for lateral distance filtering using drivable area bounds. */
+struct LateralDistanceFilterParams
+{
+  double tolerance_m{1.0};  ///< Margin outside left/right bounds [m].
 };
 
 /**
@@ -69,6 +83,25 @@ struct OnTrajectoryDValidationParams
  */
 [[nodiscard]] bool should_filter_out_on_trajectory_object(
   const Trajectory & trajectory, const PredictedObject & object);
+
+/**
+ * @brief Check whether an object should be filtered out by longitudinal distance from trajectory.
+ * @details Removes objects whose entire footprint lies before the trajectory start or after the
+ *          trajectory end, with tolerance. Uses signed longitudinal deviation from start/end poses
+ *          so points beyond the polyline end are detected correctly.
+ */
+[[nodiscard]] bool should_filter_out_by_longitudinal_distance(
+  const Trajectory & trajectory, const PredictedObject & object,
+  const LongitudinalDistanceFilterParams & params = {});
+
+/**
+ * @brief Check whether an object should be filtered out by lateral distance from drivable bounds.
+ * @details Removes objects whose entire footprint lies outside the drivable area corridor, with
+ *          tolerance.
+ */
+[[nodiscard]] bool should_filter_out_by_lateral_distance(
+  const DrivableAreaResult & drivable_area, const Trajectory & trajectory,
+  const PredictedObject & object, const LateralDistanceFilterParams & params = {});
 
 }  // namespace autoware::avoidance_target_detector
 
