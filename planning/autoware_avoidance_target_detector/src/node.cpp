@@ -30,8 +30,16 @@ AvoidanceTargetDetectorNode::AvoidanceTargetDetectorNode(const rclcpp::NodeOptio
   sub_objects_{create_subscription<PredictedObjects>(
     "~/input/objects", rclcpp::QoS{1},
     std::bind(&AvoidanceTargetDetectorNode::on_objects, this, std::placeholders::_1))},
-  pub_avoidance_targets_{create_publisher<PredictedObjects>("~/output/avoidance_targets", 1)}
+  pub_avoidance_targets_{create_publisher<PredictedObjects>("~/output/avoidance_targets", 1)},
+  pub_debug_avoidance_targets_{create_publisher<PredictedObjects>("~/debug/avoidance_targets", 1)},
+  pub_drivable_area_path_{create_publisher<Path>("~/output/drivable_area", 1)},
+  route_handler_{std::make_shared<RouteHandler>()},
+  vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()}
 {
+  longitudinal_filter_params_.tolerance_m =
+    declare_parameter<double>("longitudinal_distance_filter.tolerance_m", 2.0);
+  lateral_filter_params_.tolerance_m =
+    declare_parameter<double>("lateral_distance_filter.tolerance_m", 1.0);
 }
 
 /**
@@ -42,6 +50,15 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
 {
   if (!msg) {
     return;
+  }
+
+  if (const auto map_msg = sub_lanelet_map_.take_data()) {
+    route_handler_->setMap(*map_msg);
+  }
+  if (const auto route_msg = sub_route_.take_data()) {
+    if (!route_msg->segments.empty()) {
+      route_handler_->setRoute(*route_msg);
+    }
   }
 
   const auto current_time = get_clock()->now();
@@ -82,13 +99,41 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
     filter_manager.clear_debug_log();
   }
 
-  PredictedObjects avoidance_targets = *msg;
+  PredictedObjects debug_avoidance_targets = *msg;
+  debug_avoidance_targets.objects.erase(
+    std::remove_if(
+      debug_avoidance_targets.objects.begin(), debug_avoidance_targets.objects.end(),
+      [&](const PredictedObject & object) {
+        const auto it = object_filters_.find(autoware_utils_uuid::to_hex_string(object.object_id));
+        return it == object_filters_.end() || !it->second.is_target();
+      }),
+    debug_avoidance_targets.objects.end());
+
+  pub_debug_avoidance_targets_->publish(debug_avoidance_targets);
+
+  std::optional<DrivableAreaResult> drivable_area;
+  if (trajectory_ && route_handler_->isHandlerReady()) {
+    drivable_area = create_drivable_area(*route_handler_, *trajectory_, vehicle_info_);
+    if (drivable_area) {
+      pub_drivable_area_path_->publish(to_path_msg(*drivable_area, *trajectory_));
+    }
+  }
+
+  PredictedObjects avoidance_targets = debug_avoidance_targets;
   avoidance_targets.objects.erase(
     std::remove_if(
       avoidance_targets.objects.begin(), avoidance_targets.objects.end(),
       [&](const PredictedObject & object) {
-        const auto it = object_filters_.find(autoware_utils_uuid::to_hex_string(object.object_id));
-        return it == object_filters_.end() || !it->second.is_target();
+        if (should_filter_out_by_longitudinal_distance(
+              trajectory_msg, object, longitudinal_filter_params_)) {
+          return true;
+        }
+        if (
+          drivable_area && should_filter_out_by_lateral_distance(
+                             *drivable_area, trajectory_msg, object, lateral_filter_params_)) {
+          return true;
+        }
+        return false;
       }),
     avoidance_targets.objects.end());
 

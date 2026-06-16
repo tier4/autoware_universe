@@ -243,6 +243,90 @@ bool matches_small_d_pattern(
   return true;
 }
 
+std::vector<geometry_msgs::msg::Point> get_object_footprint_points(const PredictedObject & object)
+{
+  const auto footprint = autoware_utils_geometry::to_polygon2d(object);
+  std::vector<geometry_msgs::msg::Point> footprint_points;
+  footprint_points.reserve(footprint.outer().size());
+
+  for (const auto & footprint_point : footprint.outer()) {
+    footprint_points.push_back(
+      autoware_utils_geometry::create_point(footprint_point.x(), footprint_point.y(), 0.0));
+  }
+
+  if (footprint_points.empty()) {
+    footprint_points.push_back(get_object_reference_point(object));
+  }
+
+  return footprint_points;
+}
+
+geometry_msgs::msg::Point get_closest_point_on_polyline(
+  const geometry_msgs::msg::Point & query, const std::vector<geometry_msgs::msg::Point> & polyline)
+{
+  if (polyline.empty()) {
+    return query;
+  }
+  if (polyline.size() == 1) {
+    return polyline.front();
+  }
+
+  geometry_msgs::msg::Point closest_point = polyline.front();
+  double min_dist_sq = std::numeric_limits<double>::max();
+
+  for (std::size_t i = 0; i + 1 < polyline.size(); ++i) {
+    const auto & seg_start = polyline[i];
+    const auto & seg_end = polyline[i + 1];
+
+    const double dx = seg_end.x - seg_start.x;
+    const double dy = seg_end.y - seg_start.y;
+    const double len_sq = dx * dx + dy * dy;
+
+    geometry_msgs::msg::Point projected_point = seg_start;
+    if (len_sq > 1e-12) {
+      const double t = std::clamp(
+        ((query.x - seg_start.x) * dx + (query.y - seg_start.y) * dy) / len_sq, 0.0, 1.0);
+      projected_point.x = seg_start.x + t * dx;
+      projected_point.y = seg_start.y + t * dy;
+      projected_point.z = seg_start.z + t * (seg_end.z - seg_start.z);
+    }
+
+    const double dist_sq = (query.x - projected_point.x) * (query.x - projected_point.x) +
+                           (query.y - projected_point.y) * (query.y - projected_point.y);
+    if (dist_sq < min_dist_sq) {
+      min_dist_sq = dist_sq;
+      closest_point = projected_point;
+    }
+  }
+
+  return closest_point;
+}
+
+bool is_footprint_point_inside_drivable_area(
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
+  const geometry_msgs::msg::Point & footprint_point,
+  const std::vector<geometry_msgs::msg::Point> & left_bound,
+  const std::vector<geometry_msgs::msg::Point> & right_bound, const double tolerance_m)
+{
+  const double s = aw_trajectory::closest(trajectory, footprint_point);
+  const auto ref_pose = trajectory.compute(s).pose;
+
+  const double lateral_offset =
+    autoware_utils_geometry::calc_lateral_deviation(ref_pose, footprint_point);
+  const auto left_closest = get_closest_point_on_polyline(ref_pose.position, left_bound);
+  const auto right_closest = get_closest_point_on_polyline(ref_pose.position, right_bound);
+  const double left_bound_offset =
+    autoware_utils_geometry::calc_lateral_deviation(ref_pose, left_closest);
+  const double right_bound_offset =
+    autoware_utils_geometry::calc_lateral_deviation(ref_pose, right_closest);
+
+  const double left_limit = std::max(left_bound_offset, right_bound_offset);
+  const double right_limit = std::min(left_bound_offset, right_bound_offset);
+
+  return (right_limit - tolerance_m) <= lateral_offset &&
+         lateral_offset <= (left_limit + tolerance_m);
+}
+
 }  // namespace
 
 bool is_object_beyond_trajectory_end(
@@ -277,6 +361,59 @@ bool should_filter_out_on_trajectory_object(
   }
 
   return false;
+}
+
+bool should_filter_out_by_longitudinal_distance(
+  const Trajectory & trajectory_msg, const PredictedObject & object,
+  const LongitudinalDistanceFilterParams & params)
+{
+  const auto built_trajectory = build_trajectory(trajectory_msg);
+  if (!built_trajectory) {
+    return false;
+  }
+
+  const auto start_pose = built_trajectory->compute(0.0).pose;
+  const auto end_pose = built_trajectory->compute(built_trajectory->length()).pose;
+  const auto footprint_points = get_object_footprint_points(object);
+
+  const bool all_before_start = std::all_of(
+    footprint_points.begin(), footprint_points.end(),
+    [&](const geometry_msgs::msg::Point & footprint_point) {
+      return autoware_utils_geometry::calc_longitudinal_deviation(start_pose, footprint_point) <
+             -params.tolerance_m;
+    });
+
+  const bool all_after_end = std::all_of(
+    footprint_points.begin(), footprint_points.end(),
+    [&](const geometry_msgs::msg::Point & footprint_point) {
+      return autoware_utils_geometry::calc_longitudinal_deviation(end_pose, footprint_point) >
+             params.tolerance_m;
+    });
+
+  return all_before_start || all_after_end;
+}
+
+bool should_filter_out_by_lateral_distance(
+  const DrivableAreaResult & drivable_area, const Trajectory & trajectory_msg,
+  const PredictedObject & object, const LateralDistanceFilterParams & params)
+{
+  if (drivable_area.left_bound.size() < 2 || drivable_area.right_bound.size() < 2) {
+    return false;
+  }
+
+  const auto built_trajectory = build_trajectory(trajectory_msg);
+  if (!built_trajectory) {
+    return false;
+  }
+
+  const auto footprint_points = get_object_footprint_points(object);
+  return std::all_of(
+    footprint_points.begin(), footprint_points.end(),
+    [&](const geometry_msgs::msg::Point & footprint_point) {
+      return !is_footprint_point_inside_drivable_area(
+        *built_trajectory, footprint_point, drivable_area.left_bound, drivable_area.right_bound,
+        params.tolerance_m);
+    });
 }
 
 }  // namespace autoware::avoidance_target_detector

@@ -2,11 +2,23 @@
 <launch>
   <arg name="input_objects" default="/planning/trajectory_generator/neural_network_based_planner/diffusion_planner_node/output/predicted_objects"/>
   <arg name="input_trajectory" default="/planning/trajectory_generator/neural_network_based_planner/diffusion_planner_node/output/trajectory"/>
+  <arg name="input_route" default="/planning/route"/>
+  <arg name="input_lanelet_map_bin" default="/map/vector_map"/>
   <arg name="output_avoidance_targets" default="/planning/avoidance_target_detector/output/avoidance_targets"/>
+  <arg name="debug_avoidance_targets" default="/planning/avoidance_target_detector/debug/avoidance_targets"/>
+  <arg name="output_drivable_area" default="/planning/avoidance_target_detector/output/drivable_area"/>
+  <arg name="vehicle_info_param_path" default="$(find-pkg-share j6_gen2_description)/config/vehicle_info.param.yaml"/>
 
   <node pkg="autoware_avoidance_target_detector" exec="autoware_avoidance_target_detector_node" name="avoidance_target_detector" output="screen">
+    <param from="$(var vehicle_info_param_path)"/>
     <remap from="~/input/objects" to="$(var input_objects)"/>
     <remap from="~/input/trajectory" to="$(var input_trajectory)"/>
+    <remap from="~/input/route" to="$(var input_route)"/>
+    <remap from="~/input/lanelet_map_bin" to="$(var input_lanelet_map_bin)"/>
     <remap from="~/output/avoidance_targets" to="$(var output_avoidance_targets)"/>
+    <remap from="~/debug/avoidance_targets" to="$(var debug_avoidance_targets)"/>
+    <remap from="~/output/drivable_area" to="$(var output_drivable_area)"/>
+    <param name="longitudinal_distance_filter.tolerance_m" value="2.0"/>
+    <param name="lateral_distance_filter.tolerance_m" value="1.0"/>
   </node>
 </launch>
