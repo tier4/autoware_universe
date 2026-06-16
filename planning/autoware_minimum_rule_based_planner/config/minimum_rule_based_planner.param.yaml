@@ -44,6 +44,7 @@
       on_time_buffer: 0.5 # [s]
       off_time_buffer: 0.7 # [s]
       lateral_margin: 0.2     # lateral margin on top of ego width from trajectory to consider for obstacle stop [m]
+      arrived_distance_threshold: 0.5 # threshold to check if the ego vehicle has arrived at the stop point [m]
 
       objects:
         object_types: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "unknown"] # object types to consider for obstacle stop

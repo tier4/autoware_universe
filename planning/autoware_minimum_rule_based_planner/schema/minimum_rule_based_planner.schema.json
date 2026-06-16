@@ -220,6 +220,12 @@
               "default": 0.5,
               "minimum": 0.0
             },
+            "arrived_distance_threshold": {
+              "type": "number",
+              "description": "Threshold to check if the ego vehicle has arrived at the stop point [m]",
+              "default": 0.5,
+              "minimum": 0.0
+            },
             "objects": {
               "type": "object",
               "properties": {
