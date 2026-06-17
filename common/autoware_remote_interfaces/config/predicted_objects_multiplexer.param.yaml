@@ -1,0 +1,12 @@
+/**:
+  traffic_signals_multiplexer:
+    ros__parameters:
+      input_topic_names:
+        - "/perception/traffic_light_recognition/estimation/traffic_signals"
+        - "/external/remote/traffic_signals"
+      input_topic_keys:
+        - "AUTO"
+        - "REMOTE"
+      topic_type: "autoware_perception_msgs/msg/TrafficLightGroupArray"
+      output_topic: "/perception/traffic_light_recognition/traffic_signals"
+      select_input_service: "traffic_signals_multiplexer/select_input"

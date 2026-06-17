@@ -1,0 +1,12 @@
+/**:
+  trajectory_multiplexer:
+    ros__parameters:
+      input_topic_names:
+        - "/planning/scenario_planning/planning_validator/trajectory"
+        - "/external/remote/trajectory"
+      input_topic_keys:
+        - "AUTO"
+        - "REMOTE"
+      topic_type: "autoware_planning_msgs/msg/Trajectory"
+      output_topic: "/planning/trajectory"
+      select_input_service: "trajectory_multiplexer/select_input"

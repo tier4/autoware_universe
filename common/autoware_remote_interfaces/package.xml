@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="3">
+    <name>autoware_remote_interfaces</name>
+    <version>1.0.0</version>
+    <description>Teleoperation Interfaces for Autoware</description>
+ 
+    <maintainer email="tobias.kerbl@tum.de">Tobias Kerbl</maintainer>
+
+    <license>LGPLv3</license>
+
+    <buildtool_depend>ament_cmake</buildtool_depend>
+
+    <depend>rclcpp</depend>
+    <depend>autoware_adapi_v1_msgs</depend>
+    <depend>autoware_perception_msgs</depend>
+    <depend>autoware_planning_msgs</depend>
+
+    <export>
+        <build_type>ament_cmake</build_type>
+    </export>
+</package>
