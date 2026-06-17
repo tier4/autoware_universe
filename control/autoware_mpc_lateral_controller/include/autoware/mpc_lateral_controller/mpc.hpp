@@ -100,6 +100,17 @@ struct MPCParam
   // Sampling time for the prediction horizon.
   double prediction_dt;
 
+  // Number of initial prediction steps for which the state-error weight Q and the steering-input
+  // weight R are forced to zero. This relaxes the over-sensitive optimization against the path
+  // immediately ahead of the vehicle. 0 keeps the original behavior. The smoothing weights
+  // (steer_rate, steer_acc, lat_jerk) are NOT affected by this; use zero_smoothing_weight_steps.
+  int zero_weight_steps;
+
+  // Number of initial prediction steps for which the smoothing weights (steer_rate, steer_acc and
+  // lat_jerk) are forced to zero. 0 keeps the original behavior. This is independent from
+  // zero_weight_steps.
+  int zero_smoothing_weight_steps;
+
   // Threshold at which the feed-forward steering angle becomes zero.
   double zero_ff_steer_deg;
 

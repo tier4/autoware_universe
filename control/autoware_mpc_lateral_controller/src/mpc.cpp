@@ -782,6 +782,14 @@ MPCMatrix MPC::generateMPCMatrix(
     Q_adaptive(1, 1) += ref_vx_squared * mpc_weight.heading_error_squared_vel;
     R_adaptive(0, 0) += ref_vx_squared * mpc_weight.steering_input_squared_vel;
 
+    // Zero out the state-error weight Q and the steering-input weight R for the first
+    // `zero_weight_steps` steps so that the optimization is not over-sensitive to the path
+    // immediately ahead. Smoothing weights (steer_rate/steer_acc/lat_jerk) are kept intact.
+    if (i < m_param.zero_weight_steps) {
+      Q_adaptive = MatrixXd::Zero(DIM_Y, DIM_Y);
+      R_adaptive = MatrixXd::Zero(DIM_U, DIM_U);
+    }
+
     // update mpc matrix
     int idx_x_i = i * DIM_X;
     int idx_u_i = i * DIM_U;
@@ -816,6 +824,10 @@ MPCMatrix MPC::generateMPCMatrix(
 
   // add lateral jerk : weight for (v * {u(i) - u(i-1)} )^2
   for (int i = 0; i < N - 1; ++i) {
+    // skip smoothing penalty for the first steps when requested
+    if (i < m_param.zero_smoothing_weight_steps) {
+      continue;
+    }
     const double ref_vx = reference_trajectory.vx.at(i);
     const double ref_k = reference_trajectory.k.at(i) * sign_vx;
     const double j = ref_vx * ref_vx * getWeight(ref_k).lat_jerk / (DT * DT);
@@ -913,14 +925,21 @@ void MPC::addSteerWeightR(const double prediction_dt, MatrixXd & R) const
   const int N = m_param.prediction_horizon;
   const double DT = prediction_dt;
 
+  // Number of initial steps for which the smoothing penalty is skipped. When > 0, the boundary
+  // terms coupling step 0/1 with the previous command are skipped as well (see addSteerWeightF).
+  const int skip = m_param.zero_smoothing_weight_steps;
+
   // add steering rate : weight for (u(i) - u(i-1) / dt )^2
   {
     const double steer_rate_r = m_param.nominal_weight.steer_rate / (DT * DT);
     const Eigen::Matrix2d D = steer_rate_r * (Eigen::Matrix2d() << 1.0, -1.0, -1.0, 1.0).finished();
     for (int i = 0; i < N - 1; ++i) {
+      if (i < skip) {
+        continue;
+      }
       R.block(i, i, 2, 2) += D;
     }
-    if (N > 1) {
+    if (N > 1 && skip == 0) {
       // steer rate i = 0
       R(0, 0) += m_param.nominal_weight.steer_rate / (m_ctrl_period * m_ctrl_period);
     }
@@ -937,9 +956,12 @@ void MPC::addSteerWeightR(const double prediction_dt, MatrixXd & R) const
       steer_acc_r *
       (Eigen::Matrix3d() << 1.0, -2.0, 1.0, -2.0, 4.0, -2.0, 1.0, -2.0, 1.0).finished();
     for (int i = 1; i < N - 1; ++i) {
+      if (i < skip) {
+        continue;
+      }
       R.block(i - 1, i - 1, 3, 3) += D;
     }
-    if (N > 1) {
+    if (N > 1 && skip == 0) {
       // steer acc i = 1
       R(0, 0) += steer_acc_r * 1.0 + steer_acc_r_cp2 * 1.0 + steer_acc_r_cp1 * 2.0;
       R(1, 0) += steer_acc_r * -1.0 + steer_acc_r_cp1 * -1.0;
@@ -954,6 +976,12 @@ void MPC::addSteerWeightR(const double prediction_dt, MatrixXd & R) const
 void MPC::addSteerWeightF(const double prediction_dt, MatrixXd & f) const
 {
   if (f.rows() < 2) {
+    return;
+  }
+
+  // These linear terms only couple step 0/1 with the previous command, so skip them entirely
+  // when the smoothing weight is zeroed for the initial steps.
+  if (m_param.zero_smoothing_weight_steps > 0) {
     return;
   }
 

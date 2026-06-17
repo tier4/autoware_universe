@@ -103,6 +103,8 @@ protected:
   {
     param.prediction_horizon = 50;
     param.prediction_dt = 0.1;
+    param.zero_weight_steps = 0;
+    param.zero_smoothing_weight_steps = 0;
     param.zero_ff_steer_deg = 0.5;
     param.input_delay = 0.0;
     param.acceleration_limit = 2.0;

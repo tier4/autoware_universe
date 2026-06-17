@@ -588,6 +588,9 @@ void MpcLateralController::declareMPCparameters(rclcpp::Node & node)
 {
   m_mpc->m_param.prediction_horizon = node.declare_parameter<int>("mpc_prediction_horizon");
   m_mpc->m_param.prediction_dt = node.declare_parameter<double>("mpc_prediction_dt");
+  m_mpc->m_param.zero_weight_steps = node.declare_parameter<int>("mpc_zero_weight_steps");
+  m_mpc->m_param.zero_smoothing_weight_steps =
+    node.declare_parameter<int>("mpc_zero_smoothing_weight_steps");
 
   const auto dp = [&](const auto & param) { return node.declare_parameter<double>(param); };
 
@@ -637,6 +640,8 @@ rcl_interfaces::msg::SetParametersResult MpcLateralController::paramCallback(
 
     update_param(parameters, "mpc_prediction_horizon", param.prediction_horizon);
     update_param(parameters, "mpc_prediction_dt", param.prediction_dt);
+    update_param(parameters, "mpc_zero_weight_steps", param.zero_weight_steps);
+    update_param(parameters, "mpc_zero_smoothing_weight_steps", param.zero_smoothing_weight_steps);
 
     const std::string ns_nw = "mpc_weight_";
     update_param(parameters, ns_nw + "lat_error", nw.lat_error);
