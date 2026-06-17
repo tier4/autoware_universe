@@ -188,6 +188,7 @@ void snapPathEndToGoal(PathWithLaneId * path, const geometry_msgs::msg::Pose & g
 } */
 }  // namespace
 
+<<<<<<< HEAD
 std::vector<size_t> getCuspPointIndices(const PathWithLaneId & path, const double angle_threshold_deg)
 {
   std::vector<size_t> cusp_indices;
@@ -223,21 +224,31 @@ std::vector<CuspPoint> detectCuspPointsFromPath(
   return detectCuspPointsOnPathWithIndices(path, angle_threshold_deg);
 }
 
+=======
+>>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 std::vector<CuspPoint> detectCuspPointsOnPathWithIndices(
   const PathWithLaneId & path, const double angle_threshold_deg)
 {
-  const auto cusp_indices = getCuspPointIndices(path, angle_threshold_deg);
   std::vector<CuspPoint> cusp_points;
-  cusp_points.reserve(cusp_indices.size());
-  for (const auto idx : cusp_indices) {
-    CuspPoint cusp_point;
-    cusp_point.tagged_centerline_index = idx;
-    cusp_point.pose = path.points.at(idx).point.pose;
-    cusp_points.push_back(cusp_point);
+  if (path.points.size() < 2) {
+    return cusp_points;
+  }
+
+  const double angle_threshold_rad = autoware_utils::deg2rad(angle_threshold_deg);
+  for (size_t i = 1; i < path.points.size(); ++i) {
+    const double prev_yaw = tf2::getYaw(path.points.at(i - 1).point.pose.orientation);
+    const double curr_yaw = tf2::getYaw(path.points.at(i).point.pose.orientation);
+    if (std::abs(autoware_utils::normalize_radian(curr_yaw - prev_yaw)) > angle_threshold_rad) {
+      CuspPoint cusp_point;
+      cusp_point.tagged_centerline_index = i;
+      cusp_point.pose = path.points.at(i).point.pose;
+      cusp_points.push_back(cusp_point);
+    }
   }
   return cusp_points;
 }
 
+<<<<<<< HEAD
 bool isSameCuspPoint(
   const CuspPoint & a, const CuspPoint & b, const double position_threshold_m)
 {
@@ -272,6 +283,8 @@ void mergeNewCuspPointsAheadOfEgo(
   }
 }
 
+=======
+>>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 double calcDistanceAlongPathToPose(
   const PathWithLaneId & path, const geometry_msgs::msg::Pose & ego_pose,
   const geometry_msgs::msg::Pose & target_pose)
@@ -373,6 +386,49 @@ PathWithLaneId trimPathToGoal(
   }
   return path;
 }
+
+PathWithLaneId extractPathPointsForLaneIds(
+  const PathWithLaneId & path, const std::vector<int64_t> & target_lane_ids)
+{
+  PathWithLaneId extracted_path;
+  if (path.points.empty() || target_lane_ids.empty()) {
+    return extracted_path;
+  }
+
+  const std::set<int64_t> target_lane_id_set(target_lane_ids.begin(), target_lane_ids.end());
+  extracted_path.header = path.header;
+  extracted_path.points.reserve(path.points.size());
+  for (const auto & point : path.points) {
+    if (pathPointHasAnyLaneId(point, target_lane_id_set)) {
+      extracted_path.points.push_back(point);
+    }
+  }
+  return extracted_path;
+}
+
+PathWithLaneId buildCenterlinePathForLaneIds(
+  const std::vector<int64_t> & lane_ids,
+  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
+{
+  PathWithLaneId centerline_path;
+  if (!route_handler || lane_ids.empty()) {
+    return centerline_path;
+  }
+
+  const auto lanelets = laneletsFromIds(lane_ids, route_handler);
+  if (lanelets.empty()) {
+    return centerline_path;
+  }
+
+  centerline_path =
+    route_handler->getCenterLinePath(lanelets, 0.0, std::numeric_limits<double>::max());
+  if (centerline_path.points.empty()) {
+    return centerline_path;
+  }
+
+  centerline_path.header = route_handler->getRouteHeader();
+  return centerline_path;
+}
 }  // namespace
 
 std::optional<DirectionChangeRouteContext> buildDirectionChangeRouteContext(
@@ -439,38 +495,19 @@ std::optional<DirectionChangeRouteContext> buildDirectionChangeRouteContext(
   return context.is_valid ? std::optional<DirectionChangeRouteContext>{context} : std::nullopt;
 }
 
-PathWithLaneId extractPathPointsForLaneIds(
-  const PathWithLaneId & path, const std::vector<int64_t> & target_lane_ids)
-{
-  PathWithLaneId extracted_path;
-  if (path.points.empty() || target_lane_ids.empty()) {
-    return extracted_path;
-  }
-
-  const std::set<int64_t> target_lane_id_set(target_lane_ids.begin(), target_lane_ids.end());
-  extracted_path.header = path.header;
-  extracted_path.points.reserve(path.points.size());
-  for (const auto & point : path.points) {
-    if (pathPointHasAnyLaneId(point, target_lane_id_set)) {
-      extracted_path.points.push_back(point);
-    }
-  }
-  return extracted_path;
-}
-
-PathWithLaneId buildCenterlinePathForLaneIds(
-  const std::vector<int64_t> & lane_ids,
+PathWithLaneId buildPathForLaneIds(
+  const PathWithLaneId & previous_module_path, const std::vector<int64_t> & lane_ids,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
 {
-  PathWithLaneId centerline_path;
-  if (!route_handler || lane_ids.empty()) {
-    return centerline_path;
+  if (lane_ids.empty()) {
+    return PathWithLaneId{};
   }
 
-  const auto lanelets = laneletsFromIds(lane_ids, route_handler);
-  if (lanelets.empty()) {
-    return centerline_path;
+  auto path = extractPathPointsForLaneIds(previous_module_path, lane_ids);
+  if (path.points.empty()) {
+    path = buildCenterlinePathForLaneIds(lane_ids, route_handler);
   }
+<<<<<<< HEAD
 
   centerline_path = route_handler->getCenterLinePath(
     lanelets, 0.0, std::numeric_limits<double>::max());
@@ -480,6 +517,9 @@ PathWithLaneId buildCenterlinePathForLaneIds(
 
   centerline_path.header = route_handler->getRouteHeader();
   return centerline_path;
+=======
+  return path;
+>>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 }
 
 ReferencePathAssemblyPhase determineReferencePathAssemblyPhase(
@@ -500,18 +540,13 @@ ReferencePathAssemblyPhase determineReferencePathAssemblyPhase(
     return ReferencePathAssemblyPhase::INSIDE_TAGGED_CORRIDOR;
   }
 
-  const int64_t ego_lane_id = closest_route_lanelet.id();
-  const auto is_lane_id_in = [&](const std::vector<int64_t> & lane_ids) {
-    return std::find(lane_ids.begin(), lane_ids.end(), ego_lane_id) != lane_ids.end();
-  };
-
-  if (is_lane_id_in(route_context.tagged_lanelet_ids_ordered)) {
+  if (isEgoOnRouteLanelets(ego_pose, route_handler, route_context.tagged_lanelet_ids_ordered)) {
     return ReferencePathAssemblyPhase::INSIDE_TAGGED_CORRIDOR;
   }
-  if (is_lane_id_in(route_context.prefix_lanelet_ids)) {
+  if (isEgoOnRouteLanelets(ego_pose, route_handler, route_context.prefix_lanelet_ids)) {
     return ReferencePathAssemblyPhase::APPROACHING_TAGGED_AREA;
   }
-  if (is_lane_id_in(route_context.suffix_lanelet_ids)) {
+  if (isEgoOnRouteLanelets(ego_pose, route_handler, route_context.suffix_lanelet_ids)) {
     return ReferencePathAssemblyPhase::EXITING_TAGGED_AREA;
   }
 
@@ -522,6 +557,7 @@ ReferencePathAssemblyPhase determineReferencePathAssemblyPhase(
   return ReferencePathAssemblyPhase::INSIDE_TAGGED_CORRIDOR;
 }
 
+<<<<<<< HEAD
 PathWithLaneId buildPrefixPathForStitching(
   const DirectionChangeRouteContext & route_context, const PathWithLaneId & previous_module_path,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
@@ -558,6 +594,8 @@ PathWithLaneId cropPathFromEgo(
   return cropped_path;
 }
 
+=======
+>>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 PathWithLaneId assembleReferencePathWithLaneStitching(
   const DirectionChangeRouteContext & route_context, const PathWithLaneId & previous_module_path,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
@@ -568,6 +606,7 @@ PathWithLaneId assembleReferencePathWithLaneStitching(
     return previous_module_path;
   }
 
+<<<<<<< HEAD
   auto prefix_path = buildPrefixPathForStitching(route_context, previous_module_path, route_handler);
 
   auto suffix_path =
@@ -576,6 +615,12 @@ PathWithLaneId assembleReferencePathWithLaneStitching(
     suffix_path =
       buildCenterlinePathForLaneIds(route_context.suffix_lanelet_ids, route_handler);
   }
+=======
+  const auto prefix_path =
+    buildPathForLaneIds(previous_module_path, route_context.prefix_lanelet_ids, route_handler);
+  const auto suffix_path =
+    buildPathForLaneIds(previous_module_path, route_context.suffix_lanelet_ids, route_handler);
+>>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 
   switch (assembly_phase) {
     case ReferencePathAssemblyPhase::APPROACHING_TAGGED_AREA:
@@ -713,12 +758,12 @@ bool isEgoNearRouteGoal(
   return false;
 }
 
-bool isEgoOnTaggedLanelets(
+bool isEgoOnRouteLanelets(
   const geometry_msgs::msg::Pose & ego_pose,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
-  const std::vector<int64_t> & tagged_lanelet_ids)
+  const std::vector<int64_t> & lanelet_ids)
 {
-  if (!route_handler || tagged_lanelet_ids.empty()) {
+  if (!route_handler || lanelet_ids.empty()) {
     return false;
   }
 
@@ -728,27 +773,7 @@ bool isEgoOnTaggedLanelets(
   }
 
   const int64_t ego_lane_id = closest_route_lanelet.id();
-  return std::find(tagged_lanelet_ids.begin(), tagged_lanelet_ids.end(), ego_lane_id) !=
-         tagged_lanelet_ids.end();
-}
-
-bool isEgoOnPrefixLanelets(
-  const geometry_msgs::msg::Pose & ego_pose,
-  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
-  const std::vector<int64_t> & prefix_lanelet_ids)
-{
-  if (!route_handler || prefix_lanelet_ids.empty()) {
-    return false;
-  }
-
-  lanelet::ConstLanelet closest_route_lanelet;
-  if (!route_handler->getClosestLaneletWithinRoute(ego_pose, &closest_route_lanelet)) {
-    return false;
-  }
-
-  const int64_t ego_lane_id = closest_route_lanelet.id();
-  return std::find(prefix_lanelet_ids.begin(), prefix_lanelet_ids.end(), ego_lane_id) !=
-         prefix_lanelet_ids.end();
+  return std::find(lanelet_ids.begin(), lanelet_ids.end(), ego_lane_id) != lanelet_ids.end();
 }
 
 bool isDirectionChangeManeuverFinished(
@@ -763,7 +788,11 @@ bool isDirectionChangeManeuverFinished(
 
   const bool near_goal = isEgoNearRouteGoal(
     ego_pose, route_handler, th_arrived_distance, route_context.suffix_lanelet_ids);
+<<<<<<< HEAD
   const bool on_tagged = isEgoOnTaggedLanelets(
+=======
+  const bool on_tagged = isEgoOnRouteLanelets(
+>>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
     ego_pose, route_handler, route_context.tagged_lanelet_ids_ordered);
 
   return near_goal || !on_tagged;
@@ -849,25 +878,6 @@ std::optional<PathWithLaneId> applyGoalLateralShift(
   return shifted_path;
 }
 
-bool isEgoDrivingForwardWrtLane(
-  const geometry_msgs::msg::Pose & ego_pose, const PathWithLaneId & reference_path)
-{
-  if (reference_path.points.empty()) {
-    return true;
-  }
-
-  const auto nearest_idx_opt =
-    autoware::motion_utils::findNearestIndex(reference_path.points, ego_pose);
-  if (!nearest_idx_opt) {
-    return true;
-  }
-
-  const double ref_yaw =
-    tf2::getYaw(reference_path.points.at(*nearest_idx_opt).point.pose.orientation);
-  const double ego_yaw = tf2::getYaw(ego_pose.orientation);
-  return std::abs(autoware_utils::normalize_radian(ego_yaw - ref_yaw)) < M_PI_2;
-}
-
 double calcDistanceToPathEnd(const PathWithLaneId & path, const geometry_msgs::msg::Pose & ego_pose)
 {
   if (path.points.empty()) {
@@ -881,6 +891,22 @@ double calcDistanceToPathEnd(const PathWithLaneId & path, const geometry_msgs::m
 
   return autoware::motion_utils::calcSignedArcLength(
     path.points, *nearest_idx_opt, path.points.size() - 1);
+}
+
+void clipPathAroundEgo(
+  PathWithLaneId & path, const geometry_msgs::msg::Pose & ego_pose,
+  const double backward_path_length, const double forward_path_length)
+{
+  if (path.points.empty()) {
+    return;
+  }
+
+  const auto ego_idx_opt = autoware::motion_utils::findNearestIndex(path.points, ego_pose);
+  if (!ego_idx_opt) {
+    return;
+  }
+
+  utils::clipPathLength(path, *ego_idx_opt, forward_path_length, backward_path_length);
 }
 
 namespace
