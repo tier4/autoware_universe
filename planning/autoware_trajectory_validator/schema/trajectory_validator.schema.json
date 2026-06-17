@@ -3,6 +3,69 @@
   "title": "Parameters for Trajectory Validator",
   "type": "object",
   "definitions": {
+    "enable_assessment_per_class": {
+      "type": "object",
+      "properties": {
+        "unknown": { "type": "boolean", "default": true },
+        "car": { "type": "boolean", "default": true },
+        "truck": { "type": "boolean", "default": true },
+        "bus": { "type": "boolean", "default": true },
+        "trailer": { "type": "boolean", "default": true },
+        "motorcycle": { "type": "boolean", "default": true },
+        "bicycle": { "type": "boolean", "default": true },
+        "pedestrian": { "type": "boolean", "default": true },
+        "animal": { "type": "boolean", "default": true },
+        "hazard": { "type": "boolean", "default": true },
+        "over_drivable": { "type": "boolean", "default": true },
+        "under_drivable": { "type": "boolean", "default": true }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "assessment_trajectories": {
+      "type": "object",
+      "properties": {
+        "map_based": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use map-based predicted path trajectories."
+        },
+        "constant_curvature": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use constant-curvature predicted trajectories."
+        },
+        "diffusion_based": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use diffusion-model predicted trajectories."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "ego_footprint_margin": {
+      "type": "object",
+      "properties": {
+        "lateral": {
+          "type": "number",
+          "default": 0.0,
+          "description": "Lateral margin added to both sides of the ego footprint [m]."
+        },
+        "front": {
+          "type": "number",
+          "default": 0.0,
+          "description": "Front margin added to the ego footprint [m]."
+        },
+        "rear": {
+          "type": "number",
+          "default": 0.0,
+          "description": "Rear margin added to the ego footprint [m]."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
     "trajectory_validator": {
       "type": "object",
       "properties": {
@@ -17,6 +80,166 @@
           "items": { "type": "string" },
           "description": "List of validator plugin class names that run in shadow mode: results are evaluated, logged, and reported via diagnostics but do not affect the output trajectory set.",
           "default": [""]
+        },
+        "collision_check": {
+          "type": "object",
+          "properties": {
+            "global_setting": {
+              "type": "object",
+              "properties": {
+                "time_resolution": {
+                  "type": "number",
+                  "description": "Sampling interval used when generating collision-check trajectories [s].",
+                  "default": 0.1,
+                  "minimum": 0.0
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "drac": {
+              "type": "object",
+              "description": "Deceleration Rate to Avoid Collision (DRAC) assessment settings.",
+              "properties": {
+                "enable_assessment": { "$ref": "#/definitions/enable_assessment_per_class" },
+                "assessment_trajectories": { "$ref": "#/definitions/assessment_trajectories" },
+                "ego_total_braking_delay": {
+                  "type": "number",
+                  "description": "Total ego braking delay for DRAC assessment [s].",
+                  "default": 0.4,
+                  "minimum": 0.0
+                },
+                "ego_footprint_margin": { "$ref": "#/definitions/ego_footprint_margin" },
+                "warn_threshold": {
+                  "type": "object",
+                  "properties": {
+                    "ego_acceleration": {
+                      "type": "number",
+                      "description": "Ego acceleration threshold for DRAC warning (negative, m/s²).",
+                      "default": -3.0
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                },
+                "error_threshold": {
+                  "type": "object",
+                  "properties": {
+                    "ego_acceleration": {
+                      "type": "number",
+                      "description": "Ego acceleration threshold for DRAC error (negative, m/s²).",
+                      "default": -5.0
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "pet_collision": {
+              "type": "object",
+              "description": "Post-Encroachment Time (PET) collision assessment settings.",
+              "properties": {
+                "enable_assessment": { "$ref": "#/definitions/enable_assessment_per_class" },
+                "assessment_trajectories": { "$ref": "#/definitions/assessment_trajectories" },
+                "ego_total_braking_delay": {
+                  "type": "number",
+                  "description": "Total ego braking delay for PET assessment [s].",
+                  "default": 0.4,
+                  "minimum": 0.0
+                },
+                "ego_footprint_margin": { "$ref": "#/definitions/ego_footprint_margin" },
+                "ego_assumed_acceleration": {
+                  "type": "number",
+                  "description": "Assumed ego acceleration for PET assessment (negative, m/s²).",
+                  "default": -5.0
+                },
+                "warn_threshold": {
+                  "type": "object",
+                  "properties": {
+                    "ego_first_passing_time_gap": {
+                      "type": "number",
+                      "description": "Allowed time gap when ego passes the conflict point first [s].",
+                      "default": 1.0,
+                      "minimum": 0.0
+                    },
+                    "object_first_passing_time_gap": {
+                      "type": "number",
+                      "description": "Allowed time gap when the object passes the conflict point first [s].",
+                      "default": 1.0,
+                      "minimum": 0.0
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                },
+                "error_threshold": {
+                  "type": "object",
+                  "properties": {
+                    "ego_first_passing_time_gap": {
+                      "type": "number",
+                      "description": "Minimum time gap for error when ego passes first [s].",
+                      "default": 0.3,
+                      "minimum": 0.0
+                    },
+                    "object_first_passing_time_gap": {
+                      "type": "number",
+                      "description": "Minimum time gap for error when object passes first [s].",
+                      "default": 0.6,
+                      "minimum": 0.0
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "rss": {
+              "type": "object",
+              "description": "Responsibility-Sensitive Safety (RSS) assessment settings.",
+              "properties": {
+                "enable_assessment": { "$ref": "#/definitions/enable_assessment_per_class" },
+                "stop_distance_margin": {
+                  "type": "number",
+                  "description": "Required remaining distance to the object when ego stops [m].",
+                  "default": 2.0,
+                  "minimum": 0.0
+                },
+                "ego_total_braking_delay": {
+                  "type": "number",
+                  "description": "Total ego braking delay for RSS calculation [s].",
+                  "default": 0.4,
+                  "minimum": 0.0
+                },
+                "ego_footprint_margin": { "$ref": "#/definitions/ego_footprint_margin" },
+                "object_assumed_acceleration": {
+                  "type": "number",
+                  "description": "Assumed object acceleration for RSS calculation (negative, m/s²).",
+                  "default": -1.0
+                },
+                "error_threshold": {
+                  "type": "object",
+                  "properties": {
+                    "ego_acceleration": {
+                      "type": "number",
+                      "description": "Ego acceleration threshold to determine RSS collision (negative, m/s²).",
+                      "default": -4.0
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            }
+          },
+          "required": [],
+          "additionalProperties": false
         },
         "vehicle_constraint": {
           "type": "object",
