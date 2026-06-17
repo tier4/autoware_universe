@@ -23,6 +23,7 @@
 
 #include <lanelet2_core/geometry/Lanelet.h>
 #include <lanelet2_core/geometry/Polygon.h>
+#include <lanelet2_core/primitives/BoundingBox.h>
 
 #include <cmath>
 #include <utility>
@@ -80,6 +81,21 @@ bool overlaps_any(
   }
   return false;
 }
+
+bool is_on_any_lanelet(
+  const lanelet::BasicPolygon2d & footprint, const lanelet::LaneletMapConstPtr & lanelet_map)
+{
+  lanelet::BoundingBox2d bbox;
+  for (const auto & p : footprint) {
+    bbox.extend(p);
+  }
+  for (const auto & lanelet : lanelet_map->laneletLayer.search(bbox)) {
+    if (!boost::geometry::disjoint(footprint, lanelet.polygon2d().basicPolygon())) {
+      return true;
+    }
+  }
+  return false;
+}
 }  // namespace
 
 TargetLaneletsResult get_target_lanelets(
@@ -92,6 +108,14 @@ TargetLaneletsResult get_target_lanelets(
   for (const auto & lanelet : extract_route_lanelets(route, lanelet_map)) {
     if (overlaps_any(lanelet, footprints)) {
       result.lanelets.push_back({lanelet.id(), 100.0});
+    }
+  }
+
+  // the trajectory enters an area that belongs to no lanelet at all
+  for (const auto & footprint : footprints) {
+    if (!is_on_any_lanelet(footprint, lanelet_map)) {
+      result.out_of_lanelet = true;
+      break;
     }
   }
   return result;

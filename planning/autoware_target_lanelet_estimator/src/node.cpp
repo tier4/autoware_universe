@@ -81,6 +81,9 @@ void TargetLaneletEstimatorNode::run_estimation()
   for (const auto & lanelet : result.lanelets) {
     ids << lanelet.id << " ";
   }
+  if (result.out_of_lanelet) {
+    ids << "out_of_lanelet";
+  }
   RCLCPP_INFO_THROTTLE(
     get_logger(), *get_clock(), 1000, "target lanelets (%zu): %s", result.lanelets.size(),
     ids.str().c_str());
