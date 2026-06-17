@@ -40,11 +40,11 @@ struct LaneletScore
 struct TargetLaneletsResult
 {
   std::vector<LaneletScore> lanelets;  // overlapped route lanelets (>1 means straddling)
-  bool out_of_lanelet{false};          // footprint lies outside all route lanelets
+  bool out_of_lanelet{false};          // a footprint lies outside every lanelet
 };
 
-// Estimate which route lanelet(s) the ego is going to drive on, by overlapping the ego
-// footprint along the trajectory with each route lanelet polygon.
+// Estimate which route lanelet(s) the ego is going to drive on by overlapping the ego footprint
+// along the trajectory with each route lanelet, and flag driving outside every lanelet.
 TargetLaneletsResult get_target_lanelets(
   const LaneletRoute & route, const Trajectory & trajectory,
   const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info);

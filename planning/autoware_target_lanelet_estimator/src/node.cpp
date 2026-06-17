@@ -17,7 +17,6 @@
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info_utils.hpp>
 
-#include <memory>
 #include <sstream>
 
 namespace autoware::target_lanelet_estimator

@@ -111,7 +111,7 @@ TargetLaneletsResult get_target_lanelets(
     }
   }
 
-  // the trajectory enters an area that belongs to no lanelet at all
+  // out_of_lanelet: a footprint overlaps no lanelet at all
   for (const auto & footprint : footprints) {
     if (!is_on_any_lanelet(footprint, lanelet_map)) {
       result.out_of_lanelet = true;
