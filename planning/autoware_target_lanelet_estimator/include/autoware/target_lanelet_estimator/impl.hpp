@@ -34,7 +34,7 @@ using autoware_planning_msgs::msg::Trajectory;
 struct LaneletScore
 {
   lanelet::Id id{lanelet::InvalId};
-  double score{0.0};  // 0 or 100 for now; kept as double for future probability output
+  double score{0.0};  // 0 or 100 now; future: share of trajectory footprints overlapping it
 };
 
 struct TargetLaneletsResult

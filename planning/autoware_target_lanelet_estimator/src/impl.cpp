@@ -26,6 +26,7 @@
 #include <lanelet2_core/primitives/BoundingBox.h>
 
 #include <cmath>
+#include <cstddef>
 #include <utility>
 #include <vector>
 
@@ -70,16 +71,17 @@ std::vector<lanelet::BasicPolygon2d> compute_trajectory_footprints(
   return footprints;
 }
 
-bool overlaps_any(
+size_t count_overlapping_footprints(
   const lanelet::ConstLanelet & lanelet, const std::vector<lanelet::BasicPolygon2d> & footprints)
 {
   const auto lanelet_polygon = lanelet.polygon2d().basicPolygon();
+  size_t count = 0;
   for (const auto & footprint : footprints) {
     if (!boost::geometry::disjoint(footprint, lanelet_polygon)) {
-      return true;
+      ++count;
     }
   }
-  return false;
+  return count;
 }
 
 bool is_on_any_lanelet(
@@ -106,7 +108,8 @@ TargetLaneletsResult get_target_lanelets(
 
   TargetLaneletsResult result;
   for (const auto & lanelet : extract_route_lanelets(route, lanelet_map)) {
-    if (overlaps_any(lanelet, footprints)) {
+    const auto overlap_count = count_overlapping_footprints(lanelet, footprints);
+    if (overlap_count > 0) {
       result.lanelets.push_back({lanelet.id(), 100.0});
     }
   }
