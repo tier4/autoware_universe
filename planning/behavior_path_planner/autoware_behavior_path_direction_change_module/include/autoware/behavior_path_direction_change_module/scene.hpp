@@ -70,6 +70,7 @@ public:
   DirectionChangeModule(
     const std::string & name, rclcpp::Node & node,
     const std::shared_ptr<DirectionChangeParameters> & parameters,
+    const std::shared_ptr<DirectionChangePersistentState> & persistent_state,
     const std::unordered_map<std::string, std::shared_ptr<RTCInterface>> & rtc_interface_ptr_map,
     std::unordered_map<std::string, std::shared_ptr<ObjectsOfInterestMarkerInterface>> &
       objects_of_interest_marker_interface_ptr_map,
@@ -104,6 +105,12 @@ private:
 
   void initVariables();
 
+  /// Build route lanelet groups and tagged centerline once per module activation.
+  bool buildRouteContextIfNeeded() const;
+
+  /// Detect cusps on the tagged centerline and store stable path indices.
+  void initializeCuspPointsFromTaggedCenterline();
+
   // Helper functions
   bool shouldActivateModule() const;
 
@@ -128,8 +135,9 @@ private:
 
   /// Distance from ego to the next cusp pose, or to path end when no cusps remain.
   double calcDistanceToNextCusp(
-    const PathWithLaneId & reference_path, const geometry_msgs::msg::Pose & ego_pose) const;
+    const PathWithLaneId & maneuver_path, const geometry_msgs::msg::Pose & ego_pose) const;
 
+<<<<<<< HEAD
   /// Build output path from @p start_cusp_pose (or path begin) up to @p end_cusp_pose on @p source_path.
   PathWithLaneId slicePathBetweenCusps(
     const PathWithLaneId & source_path, const geometry_msgs::msg::Pose & ego_pose,
@@ -141,16 +149,25 @@ private:
     const PathWithLaneId & source_path, const geometry_msgs::msg::Pose & ego_pose,
     const std::optional<geometry_msgs::msg::Pose> & start_cusp_pose,
     const geometry_msgs::msg::Pose & goal_pose) const;
+=======
+  const PathWithLaneId & getTaggedLaneletCenterlinePath() const;
+>>>>>>> 1a6e221a26 (fix: address issues of path snapping with multiple cusps; build path from dc tagged lanelets)
 
   const CuspPoint * getFirstUnvisitedCusp() const;
   const CuspPoint * getLastVisitedCusp() const;
   bool allCuspsVisited() const;
   size_t countUnvisitedCusps() const;
 
+  bool isManeuverCompletedForCurrentRoute() const;
+  void markManeuverCompletedForCurrentRoute();
+
   // Member variables
   PathWithLaneId reference_path_{};
   PathWithLaneId modified_path_{};
+  mutable DirectionChangeRouteContext route_context_;
+  mutable bool is_route_context_initialized_{false};
   std::shared_ptr<DirectionChangeParameters> parameters_;
+  std::shared_ptr<DirectionChangePersistentState> persistent_state_;
 
   // Cusp transition poses discovered from reference_path; visited after stop at AT_CUSP
   std::vector<CuspPoint> cusp_points_{};
