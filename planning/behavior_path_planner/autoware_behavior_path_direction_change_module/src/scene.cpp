@@ -219,29 +219,6 @@ const PathWithLaneId & DirectionChangeModule::getTaggedLaneletCenterlinePath() c
   return reference_path_;
 }
 
-<<<<<<< HEAD
-void DirectionChangeModule::getCuspPointsFromReferencePath(
-  const PathWithLaneId & reference_path, const geometry_msgs::msg::Pose & ego_pose)
-{
-  const auto detected = detectCuspPointsFromPath(
-    reference_path, parameters_->cusp_detection_angle_threshold_deg);
-  const size_t before = cusp_points_.size();
-  mergeNewCuspPointsAheadOfEgo(
-    cusp_points_, detected, reference_path, ego_pose,
-    parameters_->cusp_detection_distance_threshold);
-
-  if (parameters_->print_debug_info && cusp_points_.size() > before) {
-    for (size_t i = before; i < cusp_points_.size(); ++i) {
-      const auto & p = cusp_points_.at(i).pose.position;
-      const double yaw_deg = tf2::getYaw(cusp_points_.at(i).pose.orientation) * 180.0 / M_PI;
-      RCLCPP_INFO(
-        getLogger(), "Tracked new cusp[%zu]: x=%.2f, y=%.2f, yaw=%.1f deg", i, p.x, p.y, yaw_deg);
-    }
-  }
-}
-
-=======
->>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 void DirectionChangeModule::initializeManeuverState()
 {
   is_ego_driving_forward_wrt_lane_ = true;
@@ -331,136 +308,11 @@ double DirectionChangeModule::calcDistanceToNextCusp(
   return calcDistanceAlongPathToPose(maneuver_path, ego_pose, next_cusp->pose);
 }
 
-<<<<<<< HEAD
-PathWithLaneId DirectionChangeModule::slicePathBetweenCusps(
-  const PathWithLaneId & source_path, const geometry_msgs::msg::Pose & ego_pose,
-  const std::optional<geometry_msgs::msg::Pose> & start_cusp_pose,
-  const geometry_msgs::msg::Pose & end_cusp_pose) const
-{
-  PathWithLaneId sliced;
-  if (source_path.points.empty()) {
-    return sliced;
-  }
-
-  const auto ego_idx_opt = findNearestIndex(source_path.points, ego_pose);
-  const size_t ego_idx = ego_idx_opt ? *ego_idx_opt : 0;
-
-  const size_t end_cusp_idx =
-    autoware::motion_utils::findNearestIndex(source_path.points, end_cusp_pose.position);
-
-  std::optional<size_t> start_cusp_idx;
-  if (start_cusp_pose) {
-    start_cusp_idx = autoware::motion_utils::findNearestIndex(
-      source_path.points, start_cusp_pose->position);
-  }
-
-  size_t start_idx = start_cusp_idx.value_or(0);
-  if (start_cusp_idx) {
-    const size_t after_cusp_idx = *start_cusp_idx + 1;
-    if (after_cusp_idx < end_cusp_idx) {
-      start_idx = after_cusp_idx;
-    }
-  }
-  const size_t end_idx = end_cusp_idx;
-  const bool reset_start_to_zero = start_idx >= end_idx;
-  if (reset_start_to_zero) {
-    start_idx = 0;
-  }
-
-  std::cout << "[Debug2 DirectionChangeModule] slicePathBetweenCusps:"
-            << " ego_idx=" << ego_idx
-            << " start_cusp_idx=" << (start_cusp_idx ? std::to_string(*start_cusp_idx) : "none")
-            << " end_cusp_idx=" << end_cusp_idx << " start_idx=" << start_idx
-            << " end_idx=" << end_idx << " reset_start_to_zero=" << reset_start_to_zero
-            << " output_size=" << (end_idx > start_idx ? end_idx - start_idx : 0) << std::endl;
-
-  if (parameters_->print_debug_info) {
-    if (start_cusp_idx) {
-      RCLCPP_INFO(
-        getLogger(),
-        "slicePathBetweenCusps: ego_idx=%zu, start_cusp_idx=%zu, end_cusp_idx=%zu, start_idx=%zu, "
-        "end_idx=%zu, reset_start_to_zero=%d, output_size=%zu",
-        ego_idx, *start_cusp_idx, end_cusp_idx, start_idx, end_idx,
-        static_cast<int>(reset_start_to_zero), end_idx > start_idx ? end_idx - start_idx : 0);
-    } else {
-      RCLCPP_INFO(
-        getLogger(),
-        "slicePathBetweenCusps: ego_idx=%zu, start_cusp_idx=none, end_cusp_idx=%zu, start_idx=%zu, "
-        "end_idx=%zu, reset_start_to_zero=%d, output_size=%zu",
-        ego_idx, end_cusp_idx, start_idx, end_idx, static_cast<int>(reset_start_to_zero),
-        end_idx > start_idx ? end_idx - start_idx : 0);
-    }
-  }
-
-  sliced.header = source_path.header;
-  sliced.points.assign(
-    source_path.points.begin() + static_cast<std::ptrdiff_t>(start_idx),
-    source_path.points.begin() + static_cast<std::ptrdiff_t>(end_idx));  // end cusp is not included
-  return sliced;
-}
-
-PathWithLaneId DirectionChangeModule::slicePathToGoal(
-  const PathWithLaneId & source_path, const geometry_msgs::msg::Pose & ego_pose,
-  const std::optional<geometry_msgs::msg::Pose> & start_cusp_pose,
-  const geometry_msgs::msg::Pose & goal_pose) const
-{
-  PathWithLaneId sliced;
-  if (source_path.points.empty()) {
-    return sliced;
-  }
-
-  const auto ego_idx_opt = findNearestIndex(source_path.points, ego_pose);
-  const size_t ego_idx = ego_idx_opt ? *ego_idx_opt : 0;
-
-  const size_t goal_idx =
-    autoware::motion_utils::findNearestIndex(source_path.points, goal_pose.position);
-
-  std::optional<size_t> start_cusp_idx;
-  if (start_cusp_pose) {
-    start_cusp_idx = autoware::motion_utils::findNearestIndex(
-      source_path.points, start_cusp_pose->position);
-  }
-
-  const size_t end_idx = goal_idx + 1;
-  size_t start_idx = start_cusp_idx.value_or(0);
-  if (start_cusp_idx) {
-    const size_t after_cusp_idx = *start_cusp_idx + 1;
-    if (after_cusp_idx < end_idx) {
-      start_idx = after_cusp_idx;
-    }
-  }
-  const bool reset_start_to_zero = start_idx >= end_idx;
-  if (reset_start_to_zero) {
-    start_idx = 0;
-  }
-
-  std::cout << "[Debug2 DirectionChangeModule] slicePathToGoal:"
-            << " ego_idx=" << ego_idx
-            << " start_cusp_idx=" << (start_cusp_idx ? std::to_string(*start_cusp_idx) : "none")
-            << " goal_idx=" << goal_idx << " start_idx=" << start_idx << " end_idx=" << end_idx
-            << " reset_start_to_zero=" << reset_start_to_zero
-            << " output_size=" << (end_idx > start_idx ? end_idx - start_idx : 0) << std::endl;
-
-  sliced.header = source_path.header;
-  sliced.points.assign(
-    source_path.points.begin() + static_cast<std::ptrdiff_t>(start_idx),
-    source_path.points.begin() + static_cast<std::ptrdiff_t>(end_idx));  // goal point is included
-  return sliced;
-}
-
-void DirectionChangeModule::updateManeuverStateMachine(const PathWithLaneId & reference_path)
-{
-  const auto & ego_pose = planner_data_->self_odometry->pose.pose;
-  const double dist_to_cusp = calcDistanceToNextCusp(reference_path, ego_pose);
-  const double vehicle_velocity =
-    std::abs(planner_data_->self_odometry->twist.twist.linear.x);
-=======
 void DirectionChangeModule::updateManeuverStateMachine(const PathWithLaneId & maneuver_path)
 {
   const auto & ego_pose = planner_data_->self_odometry->pose.pose;
   const double dist_to_cusp = calcDistanceToNextCusp(maneuver_path, ego_pose);
   const double vehicle_velocity = std::abs(planner_data_->self_odometry->twist.twist.linear.x);
->>>>>>> 1a6e221a26 (fix: address issues of path snapping with multiple cusps; build path from dc tagged lanelets)
 
   if (allCuspsVisited()) {
     cusp_stopped_since_.reset();
@@ -498,16 +350,10 @@ void DirectionChangeModule::updateManeuverStateMachine(const PathWithLaneId & ma
   if (dist_to_cusp > parameters_->cusp_detection_distance_threshold) {
     new_state = base_following_state;
     cusp_stopped_since_.reset();
-<<<<<<< HEAD
-    std::cout << "[Debug2 DirectionChangeModule] updateManeuverStateMachine: cusp_detection_distance_threshold: " << parameters_->cusp_detection_distance_threshold << std::endl;
-    std::cout << "[Debug2 DirectionChangeModule] updateManeuverStateMachine: distance to cusp: " << dist_to_cusp << std::endl;
-    std::cout << "[Debug2 DirectionChangeModule] updateManeuverStateMachine: far From Cusp" << std::endl;
-=======
     RCLCPP_DEBUG_EXPRESSION(
       getLogger(), parameters_->print_debug_info,
       "updateManeuverStateMachine: far from cusp, dist=%.2f, threshold=%.2f", dist_to_cusp,
       parameters_->cusp_detection_distance_threshold);
->>>>>>> 1a6e221a26 (fix: address issues of path snapping with multiple cusps; build path from dc tagged lanelets)
   } else {
     new_state = PathSegmentState::AT_CUSP;
 
@@ -704,36 +550,21 @@ void DirectionChangeModule::filterLaneletsAtCusp(BehaviorModuleOutput & output)
 
 void DirectionChangeModule::updateDrivableAreaInfo(BehaviorModuleOutput & output)
 {
-  // TODO: This check might not be necessary, but keep it for reference. 
-  //    Clean once confirmation of results.
-  const bool is_active_segment =
-    current_segment_state_ == PathSegmentState::FORWARD_FOLLOWING ||
-    current_segment_state_ == PathSegmentState::AT_CUSP ||
-    current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING;
+  // TODO(emmeyteja): This check might not be necessary, but keep it for reference.
+  // Clean once confirmation of results.
+  const bool is_active_segment = current_segment_state_ == PathSegmentState::FORWARD_FOLLOWING ||
+                                 current_segment_state_ == PathSegmentState::AT_CUSP ||
+                                 current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING;
 
   const auto prev_drivable_info = getPreviousModuleOutput().drivable_area_info;
 
   if (is_active_segment && !output.path.points.empty()) {
-<<<<<<< HEAD
-    const auto lanelets =
-      utils::getLaneletsFromPath(output.path, planner_data_->route_handler);
-    std::cout << "[Debug2 DirectionChangeModule] updateDrivableAreaInfo: path_lane_ids="
-              << format_unique_path_lane_ids(output.path) << std::endl;
-    std::cout << "[Debug2 DirectionChangeModule] updateDrivableAreaInfo: lanelets.size()="
-              << lanelets.size() << " lanelet_ids=" << format_lanelet_ids(lanelets) << std::endl;
-    output.drivable_area_info.drivable_lanes = utils::generateDrivableLanes(lanelets);
-    std::cout << "[Debug2 DirectionChangeModule] updateDrivableAreaInfo: drivable_lanes.size()="
-              << output.drivable_area_info.drivable_lanes.size()
-              << " drivable_lane_ids=" << format_drivable_lanes_ids(output.drivable_area_info.drivable_lanes)
-              << std::endl;
-=======
     const auto lanelets = utils::getLaneletsFromPath(output.path, planner_data_->route_handler);
     RCLCPP_DEBUG_EXPRESSION(
       getLogger(), parameters_->print_debug_info,
       "updateDrivableAreaInfo: path_lane_ids=%s, lanelet_ids=%s",
       format_unique_path_lane_ids(output.path).c_str(), format_lanelet_ids(lanelets).c_str());
     output.drivable_area_info.drivable_lanes = utils::generateDrivableLanes(lanelets);
->>>>>>> 1a6e221a26 (fix: address issues of path snapping with multiple cusps; build path from dc tagged lanelets)
     return;
   }
 
@@ -866,11 +697,6 @@ BehaviorModuleOutput DirectionChangeModule::plan()
           tagged_centerline_path.points.begin() + static_cast<std::ptrdiff_t>(end_idx));
       }
     }
-<<<<<<< HEAD
-    output.path = slicePathBetweenCusps(
-      current_reference_path, ego_pose, start_cusp_pose, next_cusp->pose);
-=======
->>>>>>> 1a6e221a26 (fix: address issues of path snapping with multiple cusps; build path from dc tagged lanelets)
 
     if (!is_ego_driving_forward_wrt_lane_) {
       flipPathPointOrientation(output.path);

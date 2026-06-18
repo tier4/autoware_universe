@@ -35,46 +35,9 @@ namespace autoware::behavior_path_planner
 {
 using autoware_internal_planning_msgs::msg::PathWithLaneId;
 
-<<<<<<< HEAD
-/**
- * @brief Detects cusp points in the path where direction changes occur (legacy geometric fallback).
- */
-std::vector<size_t> getCuspPointIndices(const PathWithLaneId & path, const double angle_threshold_deg);
-
-/**
- * @brief Detect cusp poses (x, y, orientation) from yaw discontinuities on @p path.
- */
-std::vector<CuspPoint> detectCuspPointsFromPath(
-  const PathWithLaneId & path, const double angle_threshold_deg);
-
-/**
- * @brief Detect cusps on a path and store the path index on each CuspPoint.
- */
-=======
->>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 std::vector<CuspPoint> detectCuspPointsOnPathWithIndices(
   const PathWithLaneId & path, double angle_threshold_deg);
 
-<<<<<<< HEAD
-/**
- * @brief True when two cusp poses refer to the same transition point.
- */
-bool isSameCuspPoint(
-  const CuspPoint & a, const CuspPoint & b, const double position_threshold_m);
-
-/**
- * @brief Append newly visible cusp poses ahead of ego; skip duplicates already tracked.
- */
-void mergeNewCuspPointsAheadOfEgo(
-  std::vector<CuspPoint> & tracked_cusp_points, const std::vector<CuspPoint> & detected_cusp_points,
-  const PathWithLaneId & path, const geometry_msgs::msg::Pose & ego_pose,
-  const double dedup_distance_m);
-
-/**
- * @brief Distance from ego to @p target_pose along @p path, or Euclidean if target is off-path.
- */
-=======
->>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 double calcDistanceAlongPathToPose(
   const PathWithLaneId & path, const geometry_msgs::msg::Pose & ego_pose,
   const geometry_msgs::msg::Pose & target_pose);
@@ -89,12 +52,6 @@ PathWithLaneId buildPathForLaneIds(
   const PathWithLaneId & previous_module_path, const std::vector<int64_t> & lane_ids,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler);
 
-<<<<<<< HEAD
-/**
- * @brief Decide whether to prepend prefix lanes, use tagged centerline only, or append suffix lanes.
- */
-=======
->>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 ReferencePathAssemblyPhase determineReferencePathAssemblyPhase(
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
   const geometry_msgs::msg::Pose & ego_pose, const DirectionChangeRouteContext & route_context,

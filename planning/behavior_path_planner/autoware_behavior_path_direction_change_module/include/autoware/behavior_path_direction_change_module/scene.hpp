@@ -122,30 +122,12 @@ private:
 
   void initializeManeuverState();
 
-<<<<<<< HEAD
-  /// Update state machine from ego pose, maneuver direction, and distance to next cusp (or path end).
-=======
->>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
   void updateManeuverStateMachine(const PathWithLaneId & reference_path);
 
   double calcDistanceToNextCusp(
     const PathWithLaneId & maneuver_path, const geometry_msgs::msg::Pose & ego_pose) const;
 
-<<<<<<< HEAD
-  /// Build output path from @p start_cusp_pose (or path begin) up to @p end_cusp_pose on @p source_path.
-  PathWithLaneId slicePathBetweenCusps(
-    const PathWithLaneId & source_path, const geometry_msgs::msg::Pose & ego_pose,
-    const std::optional<geometry_msgs::msg::Pose> & start_cusp_pose,
-    const geometry_msgs::msg::Pose & end_cusp_pose) const;
-
-  /// Build final segment from last visited cusp (or path begin) through @p goal_pose on @p source_path.
-  PathWithLaneId slicePathToGoal(
-    const PathWithLaneId & source_path, const geometry_msgs::msg::Pose & ego_pose,
-    const std::optional<geometry_msgs::msg::Pose> & start_cusp_pose,
-    const geometry_msgs::msg::Pose & goal_pose) const;
-=======
   const PathWithLaneId & getTaggedLaneletCenterlinePath() const;
->>>>>>> 1a6e221a26 (fix: address issues of path snapping with multiple cusps; build path from dc tagged lanelets)
 
   const CuspPoint * getFirstUnvisitedCusp() const;
   const CuspPoint * getLastVisitedCusp() const;

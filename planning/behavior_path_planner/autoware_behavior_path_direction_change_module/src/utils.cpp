@@ -189,44 +189,6 @@ void snapPathEndToGoal(PathWithLaneId * path, const geometry_msgs::msg::Pose & g
 } */
 }  // namespace
 
-<<<<<<< HEAD
-std::vector<size_t> getCuspPointIndices(const PathWithLaneId & path, const double angle_threshold_deg)
-{
-  std::vector<size_t> cusp_indices;
-  if (path.points.size() < 2) {
-    return cusp_indices;
-  }
-
-  const double angle_threshold_rad = autoware_utils::deg2rad(angle_threshold_deg);
-
-  // Detect cusp points by comparing yaw angles between consecutive path points
-  for (size_t i = 1; i < path.points.size(); ++i) {
-    const auto & prev_point = path.points[i - 1].point.pose;
-    const auto & curr_point = path.points[i].point.pose;
-
-    // Extract yaw angles from path point orientations
-    const double prev_yaw = tf2::getYaw(prev_point.orientation);
-    const double curr_yaw = tf2::getYaw(curr_point.orientation);
-
-    // Calculate normalized angle difference
-    const double angle_diff = autoware_utils::normalize_radian(curr_yaw - prev_yaw);
-
-    // If angle change exceeds threshold, mark as cusp point
-    if (std::abs(angle_diff) > angle_threshold_rad) {
-      cusp_indices.push_back(i);
-    }
-  }
-  return cusp_indices;
-}
-
-std::vector<CuspPoint> detectCuspPointsFromPath(
-  const PathWithLaneId & path, const double angle_threshold_deg)
-{
-  return detectCuspPointsOnPathWithIndices(path, angle_threshold_deg);
-}
-
-=======
->>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 std::vector<CuspPoint> detectCuspPointsOnPathWithIndices(
   const PathWithLaneId & path, const double angle_threshold_deg)
 {
@@ -249,43 +211,6 @@ std::vector<CuspPoint> detectCuspPointsOnPathWithIndices(
   return cusp_points;
 }
 
-<<<<<<< HEAD
-bool isSameCuspPoint(
-  const CuspPoint & a, const CuspPoint & b, const double position_threshold_m)
-{
-  return autoware_utils::calc_distance2d(a.pose.position, b.pose.position) < position_threshold_m;
-}
-
-void mergeNewCuspPointsAheadOfEgo(
-  std::vector<CuspPoint> & tracked_cusp_points,
-  const std::vector<CuspPoint> & detected_cusp_points, const PathWithLaneId & path,
-  const geometry_msgs::msg::Pose & ego_pose, const double dedup_distance_m)
-{
-  if (detected_cusp_points.empty()) {
-    return;
-  }
-
-  const auto ego_idx_opt = autoware::motion_utils::findNearestIndex(path.points, ego_pose);
-
-  for (const auto & candidate : detected_cusp_points) {
-    const auto candidate_idx_opt =
-      autoware::motion_utils::findNearestIndex(path.points, candidate.pose);
-    if (ego_idx_opt && candidate_idx_opt && *candidate_idx_opt <= *ego_idx_opt) {
-      continue;
-    }
-
-    const bool already_tracked = std::any_of(
-      tracked_cusp_points.begin(), tracked_cusp_points.end(), [&](const CuspPoint & tracked) {
-        return isSameCuspPoint(tracked, candidate, dedup_distance_m);
-      });
-    if (!already_tracked) {
-      tracked_cusp_points.push_back(candidate);
-    }
-  }
-}
-
-=======
->>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 double calcDistanceAlongPathToPose(
   const PathWithLaneId & path, const geometry_msgs::msg::Pose & ego_pose,
   const geometry_msgs::msg::Pose & target_pose)
@@ -334,21 +259,8 @@ lanelet::ConstLanelets laneletsFromIds(
       return {};
     }
   }
-<<<<<<< HEAD
-  const auto raw_path =
-    route_handler->getCenterLinePath(lanelet_sequence, 0.0, std::numeric_limits<double>::max());
-  if (raw_path.points.empty()) {
-    return out;
-  }
-  out = raw_path;
-  out.header = route_handler->getRouteHeader();
-
-  std::cout << "[Debug2 DirectionChangeModule] getReferencePathFromDirectionChangeLanelets: out.points.size(): " << out.points.size() << std::endl;
-  std::cout << "[Debug2 DirectionChangeModule] getReferencePathFromDirectionChangeLanelets: lanelets: " << lanelet_sequence << std::endl;
-=======
   return lanelets;
 }
->>>>>>> 1a6e221a26 (fix: address issues of path snapping with multiple cusps; build path from dc tagged lanelets)
 
 PathWithLaneId trimPathToGoal(
   PathWithLaneId path,
@@ -356,32 +268,11 @@ PathWithLaneId trimPathToGoal(
 {
   try {
     const auto goal_pose = route_handler->getGoalPose();
-<<<<<<< HEAD
-  const auto goal_idx_opt = autoware::motion_utils::findNearestIndex(out.points, goal_pose.position);
-    if (goal_idx_opt >= out.points.size()) {
-      return out;
-    }
-
-    out.points.resize(goal_idx_opt + 1);
-<<<<<<< HEAD
-
-    if (parameters.enable_goal_lateral_shift) {
-      if (const auto shifted_path = applyGoalLateralShift(out, goal_pose, parameters, route_handler)) {
-        return *shifted_path;
-      }
-    }
-
-    // Fallback: hard snap when shift is disabled or validation fails.
-    snapPathEndToGoal(&out, goal_pose);
-=======
->>>>>>> 2d859f2b84 (refactor: direction_change module)
-=======
     const auto goal_idx =
       autoware::motion_utils::findNearestIndex(path.points, goal_pose.position);
     if (goal_idx < path.points.size()) {
       path.points.resize(goal_idx + 1);
     }
->>>>>>> 1a6e221a26 (fix: address issues of path snapping with multiple cusps; build path from dc tagged lanelets)
   } catch (...) {
     // No goal or getGoalPose failed; keep full path
   }
@@ -508,19 +399,7 @@ PathWithLaneId buildPathForLaneIds(
   if (path.points.empty()) {
     path = buildCenterlinePathForLaneIds(lane_ids, route_handler);
   }
-<<<<<<< HEAD
-
-  centerline_path = route_handler->getCenterLinePath(
-    lanelets, 0.0, std::numeric_limits<double>::max());
-  if (centerline_path.points.empty()) {
-    return centerline_path;
-  }
-
-  centerline_path.header = route_handler->getRouteHeader();
-  return centerline_path;
-=======
   return path;
->>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 }
 
 ReferencePathAssemblyPhase determineReferencePathAssemblyPhase(
@@ -558,45 +437,6 @@ ReferencePathAssemblyPhase determineReferencePathAssemblyPhase(
   return ReferencePathAssemblyPhase::INSIDE_TAGGED_CORRIDOR;
 }
 
-<<<<<<< HEAD
-PathWithLaneId buildPrefixPathForStitching(
-  const DirectionChangeRouteContext & route_context, const PathWithLaneId & previous_module_path,
-  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
-{
-  if (!route_context.is_valid || route_context.prefix_lanelet_ids.empty()) {
-    return PathWithLaneId{};
-  }
-
-  auto prefix_path =
-    extractPathPointsForLaneIds(previous_module_path, route_context.prefix_lanelet_ids);
-  if (prefix_path.points.empty()) {
-    prefix_path =
-      buildCenterlinePathForLaneIds(route_context.prefix_lanelet_ids, route_handler);
-  }
-  return prefix_path;
-}
-
-PathWithLaneId cropPathFromEgo(
-  const PathWithLaneId & path, const geometry_msgs::msg::Pose & ego_pose)
-{
-  if (path.points.empty()) {
-    return path;
-  }
-
-  const auto ego_idx_opt = autoware::motion_utils::findNearestIndex(path.points, ego_pose);
-  if (!ego_idx_opt || *ego_idx_opt >= path.points.size()) {
-    return path;
-  }
-
-  PathWithLaneId cropped_path;
-  cropped_path.header = path.header;
-  cropped_path.points.assign(
-    path.points.begin() + static_cast<std::ptrdiff_t>(*ego_idx_opt), path.points.end());
-  return cropped_path;
-}
-
-=======
->>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 PathWithLaneId assembleReferencePathWithLaneStitching(
   const DirectionChangeRouteContext & route_context, const PathWithLaneId & previous_module_path,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
@@ -607,21 +447,10 @@ PathWithLaneId assembleReferencePathWithLaneStitching(
     return previous_module_path;
   }
 
-<<<<<<< HEAD
-  auto prefix_path = buildPrefixPathForStitching(route_context, previous_module_path, route_handler);
-
-  auto suffix_path =
-    extractPathPointsForLaneIds(previous_module_path, route_context.suffix_lanelet_ids);
-  if (suffix_path.points.empty() && !route_context.suffix_lanelet_ids.empty()) {
-    suffix_path =
-      buildCenterlinePathForLaneIds(route_context.suffix_lanelet_ids, route_handler);
-  }
-=======
   const auto prefix_path =
     buildPathForLaneIds(previous_module_path, route_context.prefix_lanelet_ids, route_handler);
   const auto suffix_path =
     buildPathForLaneIds(previous_module_path, route_context.suffix_lanelet_ids, route_handler);
->>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
 
   switch (assembly_phase) {
     case ReferencePathAssemblyPhase::APPROACHING_TAGGED_AREA:
@@ -789,11 +618,7 @@ bool isDirectionChangeManeuverFinished(
 
   const bool near_goal = isEgoNearRouteGoal(
     ego_pose, route_handler, th_arrived_distance, route_context.suffix_lanelet_ids);
-<<<<<<< HEAD
-  const bool on_tagged = isEgoOnTaggedLanelets(
-=======
   const bool on_tagged = isEgoOnRouteLanelets(
->>>>>>> b46ab05dcd (refactor: remove unused methods and helpers)
     ego_pose, route_handler, route_context.tagged_lanelet_ids_ordered);
 
   return near_goal || !on_tagged;
@@ -804,15 +629,7 @@ std::optional<PathWithLaneId> applyGoalLateralShift(
   const DirectionChangeParameters & parameters,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
 {
-<<<<<<< HEAD
-  /*if (path.points.size() < 2 || !route_handler) {
-    return std::nullopt;
-  }*/
-  static const auto logger_ =
-  rclcpp::get_logger("direction_change");
-=======
   static const auto logger_ = rclcpp::get_logger("direction_change");
->>>>>>> 2d859f2b84 (refactor: direction_change module)
 
   const auto goal_idx_opt = autoware::motion_utils::findNearestIndex(path.points, goal_pose.position);
   if (goal_idx_opt >= path.points.size()) {
@@ -834,12 +651,6 @@ std::optional<PathWithLaneId> applyGoalLateralShift(
   const double maneuver_length = computeManeuverLength(d_goal, max_allowed_yaw_rad);
 
   const double shift_start_s = goal_s - maneuver_length;
-<<<<<<< HEAD
-  std::cout << "[Debug applyGoalLateralShift] shift_start_s: " << shift_start_s 
-            << ", maneuver_length: " << maneuver_length 
-            << ", goal_s: " << goal_s << std::endl;
-=======
->>>>>>> 2d859f2b84 (refactor: direction_change module)
 
   if (shift_start_s < 0.0) {
     RCLCPP_WARN(
