@@ -63,7 +63,7 @@ struct LongitudinalDistanceFilterParams
 /** Parameters for lateral distance filtering using drivable area bounds. */
 struct LateralDistanceFilterParams
 {
-  double tolerance_m{1.0};  ///< Margin outside left/right bounds [m].
+  double tolerance_m{0.0};  ///< Margin outside left/right bounds [m].
 };
 
 /**

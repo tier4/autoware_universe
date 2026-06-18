@@ -17,6 +17,7 @@
 
 #include "autoware/avoidance_target_detector/drivable_area.hpp"
 #include "autoware/avoidance_target_detector/impl.hpp"
+#include "autoware/avoidance_target_detector/traffic_rules.hpp"
 #include "autoware/avoidance_target_detector/two_class_filter.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
 
@@ -30,8 +31,11 @@
 #include <autoware_planning_msgs/msg/path.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 
+#include <lanelet2_routing/RoutingGraph.h>
+
 #include <map>
 #include <memory>
+#include <optional>
 
 namespace autoware::avoidance_target_detector
 {
@@ -76,6 +80,7 @@ private:
   rclcpp::Publisher<Path>::SharedPtr pub_drivable_area_path_;
 
   std::shared_ptr<RouteHandler> route_handler_;
+  lanelet::routing::RoutingGraphConstPtr goal_purpose_routing_graph_;
   VehicleInfo vehicle_info_;
   LongitudinalDistanceFilterParams longitudinal_filter_params_;
   LateralDistanceFilterParams lateral_filter_params_;
@@ -83,6 +88,8 @@ private:
   FilterManagerMap object_filters_;
 
   Trajectory::ConstSharedPtr trajectory_;
+  LaneletRoute::ConstSharedPtr route_;
+  std::optional<DrivableAreaResult> cached_drivable_area_;
 };
 
 }  // namespace autoware::avoidance_target_detector
