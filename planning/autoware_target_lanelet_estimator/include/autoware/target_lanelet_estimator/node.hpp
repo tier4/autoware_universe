@@ -23,14 +23,25 @@
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
+
+#include <vector>
 
 namespace autoware::target_lanelet_estimator
 {
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
+
+// Pre-triangulated fill of one route lanelet, reused every cycle so the (noisy and costly)
+// triangulation runs only once per route.
+struct LaneletTriangles
+{
+  lanelet::Id id{lanelet::InvalId};
+  std::vector<geometry_msgs::msg::Point> points;
+};
 
 class TargetLaneletEstimatorNode : public rclcpp::Node
 {
@@ -42,16 +53,22 @@ private:
   void on_route(const LaneletRoute::ConstSharedPtr msg);
   void on_trajectory(const Trajectory::ConstSharedPtr msg);
   void run_estimation();  // triggered by on_trajectory
+  void publish_markers(const TargetLaneletsResult & result);
 
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
   rclcpp::Subscription<LaneletRoute>::SharedPtr sub_route_;
   rclcpp::Subscription<Trajectory>::SharedPtr sub_trajectory_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_marker_;
 
   lanelet::LaneletMapConstPtr lanelet_map_;
   LaneletRoute::ConstSharedPtr route_;
   Trajectory::ConstSharedPtr trajectory_;
 
   VehicleInfo vehicle_info_;
+
+  // marker geometry cache, rebuilt only when the route changes
+  std::vector<LaneletTriangles> route_triangles_;
+  LaneletRoute::ConstSharedPtr triangles_route_;
 };
 
 }  // namespace autoware::target_lanelet_estimator
