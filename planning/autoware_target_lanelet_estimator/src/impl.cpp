@@ -110,7 +110,13 @@ bool is_on_any_lanelet(
   for (const auto & p : footprint) {
     bbox.extend(p);
   }
-  for (const auto & lanelet : lanelet_map->laneletLayer.search(bbox)) {
+  // Pad the search box so axis-aligned lanelets are not missed by the R-tree query. This only
+  // widens the candidate set; the disjoint test below still uses the original footprint.
+  constexpr double search_margin_m = 2.0;
+  const lanelet::BasicPoint2d margin(search_margin_m, search_margin_m);
+  const lanelet::BoundingBox2d search_box(bbox.min() - margin, bbox.max() + margin);
+
+  for (const auto & lanelet : lanelet_map->laneletLayer.search(search_box)) {
     if (!boost::geometry::disjoint(footprint, lanelet.polygon2d().basicPolygon())) {
       return true;
     }
