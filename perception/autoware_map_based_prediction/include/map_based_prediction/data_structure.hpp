@@ -75,6 +75,7 @@ struct PredictedRefPath
   double width;
   PosePath path;
   Maneuver maneuver;
+  lanelet::routing::LaneletPath lanelet_path;
 };
 
 /**

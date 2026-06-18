@@ -16,8 +16,10 @@
 #define MAP_BASED_PREDICTION__MAP_BASED_PREDICTION_NODE_HPP_
 
 #include "map_based_prediction/data_structure.hpp"
+#include "map_based_prediction/debug_util.hpp"
 #include "map_based_prediction/path_generator.hpp"
 #include "map_based_prediction/predictor_vru.hpp"
+#include "map_based_prediction/priority_utils.hpp"
 
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
@@ -85,6 +87,9 @@ private:
   // ROS Publisher and Subscriber
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_markers_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_priority_object_markers_;
+  // Hysteresis-stabilized signals, republished so RViz can show the debounced state.
+  rclcpp::Publisher<TrafficLightGroupArray>::SharedPtr pub_stabilized_signals_;
   rclcpp::Subscription<TrackedObjects>::SharedPtr sub_objects_;
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
   autoware_utils::InterProcessPollingSubscriber<TrafficLightGroupArray> sub_traffic_signals_{
@@ -96,6 +101,21 @@ private:
 
   // Object History
   std::unordered_map<std::string, std::deque<RoadUser>> road_users_history_;
+
+  // Raw observations (with last-valid retention), keyed by traffic-light-group id.
+  std::unordered_map<lanelet::Id, TrafficLightGroup> raw_signal_id_map_;
+  // Debounced state read by the priority decision and republished for visualization.
+  std::unordered_map<lanelet::Id, TrafficLightGroup> traffic_signal_id_map_;
+  struct SignalHysteresis
+  {
+    TrafficLightGroup held;
+    TrafficLightGroup candidate;
+    double candidate_since{0.0};
+    bool initialized{false};
+  };
+  std::unordered_map<lanelet::Id, SignalHysteresis> signal_hysteresis_;
+
+  debug_util::PriorityDebugCounters priority_debug_;
 
   // Lanelet Map Pointers
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
@@ -164,6 +184,22 @@ private:
   double speed_limit_multiplier_;
   double acceleration_exponential_half_life_;
 
+  // Traffic-signal-aware stop/creep prediction parameters.
+  bool use_priority_prediction_;
+  priority::PriorityCalibrationParams priority_calibration_params_;
+  priority::YellowJudgeParams priority_yellow_params_;
+  double priority_stop_deceleration_;
+  double priority_hysteresis_time_;
+  bool priority_use_hysteresis_;
+  bool priority_retain_last_valid_signal_;
+  bool priority_debug_viz_;
+  bool priority_suppress_go_on_conservative_;
+  bool priority_extend_stop_path_to_stopline_;
+  // Rebuilt per callback so objectsCallback can colour the conservative path lines.
+  debug_util::ConservativePathIndexMap conservative_path_is_creep_;
+  // Stop lines that drove a conservative hypothesis this frame (debug markers).
+  std::vector<lanelet::ConstLineString3d> priority_debug_stop_lines_;
+
   ////// Member Functions
   // Node callbacks
   void mapCallback(const LaneletMapBin::ConstSharedPtr msg);
@@ -189,7 +225,16 @@ private:
     const LaneletsData & lanelets_data);
   bool isDuplicated(
     const PredictedPath & predicted_path, const std::vector<PredictedPath> & predicted_paths);
-  std::optional<lanelet::Id> getTrafficSignalId(const lanelet::ConstLanelet & way_lanelet);
+
+  // Adds conservative stop/creep hypotheses based on the object's traffic-signal
+  // context, mutating @p predicted_paths in place.
+  void applyPriorityCalibration(
+    const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
+    const std::vector<int> & predicted_path_ref_index, const double time_horizon,
+    std::vector<PredictedPath> & predicted_paths);
+
+  void publishPriorityDebugMarkers(
+    const PredictedObjects & output, const TrackedObjects::ConstSharedPtr & in_objects);
 
   // Vehicle history process
   void updateRoadUsersHistory(
