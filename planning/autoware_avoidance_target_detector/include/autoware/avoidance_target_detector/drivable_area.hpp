@@ -18,10 +18,13 @@
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
 
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/path.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <std_msgs/msg/header.hpp>
+
+#include <lanelet2_routing/RoutingGraph.h>
 
 #include <optional>
 #include <vector>
@@ -29,6 +32,7 @@
 namespace autoware::avoidance_target_detector
 {
 
+using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Path;
 using autoware_planning_msgs::msg::Trajectory;
 
@@ -46,13 +50,17 @@ struct DrivableAreaResult
  *          Neighbor lanelets are expanded when any overlapping footprint intersects them.
  *          Only lanelet segments where the trajectory lies are included.
  * @param route_handler Route handler with map and route set.
+ * @param routing_graph Cached routing graph built with goal_purpose traffic rules.
  * @param trajectory Reference trajectory used for lanelet overlap and expansion.
  * @param vehicle_info Vehicle dimensions for footprint calculation.
+ * @param route Optional route used to relax route-lanelet filtering near the goal.
  * @return Drivable area if generation succeeds, otherwise std::nullopt.
  */
 std::optional<DrivableAreaResult> create_drivable_area(
-  const autoware::route_handler::RouteHandler & route_handler, const Trajectory & trajectory,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info);
+  const autoware::route_handler::RouteHandler & route_handler,
+  const lanelet::routing::RoutingGraph & routing_graph, const Trajectory & trajectory,
+  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
+  const LaneletRoute * route = nullptr);
 
 /**
  * @brief Convert a drivable area result into an autoware_planning_msgs/Path for publishing.

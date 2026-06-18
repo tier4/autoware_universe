@@ -17,6 +17,8 @@
 #include <autoware_utils_uuid/uuid_helper.hpp>
 
 #include <algorithm>
+#include <memory>
+#include <utility>
 
 namespace autoware::avoidance_target_detector
 {
@@ -37,9 +39,9 @@ AvoidanceTargetDetectorNode::AvoidanceTargetDetectorNode(const rclcpp::NodeOptio
   vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()}
 {
   longitudinal_filter_params_.tolerance_m =
-    declare_parameter<double>("longitudinal_distance_filter.tolerance_m", 2.0);
+    declare_parameter<double>("longitudinal_distance_filter.tolerance_m", 0.0);
   lateral_filter_params_.tolerance_m =
-    declare_parameter<double>("lateral_distance_filter.tolerance_m", 1.0);
+    declare_parameter<double>("lateral_distance_filter.tolerance_m", 0.0);
 }
 
 /**
@@ -54,17 +56,31 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
 
   if (const auto map_msg = sub_lanelet_map_.take_data()) {
     route_handler_->setMap(*map_msg);
+    goal_purpose_routing_graph_ =
+      traffic_rules::create_goal_purpose_routing_graph(*route_handler_->getLaneletMapPtr());
+    cached_drivable_area_.reset();
   }
   if (const auto route_msg = sub_route_.take_data()) {
     if (!route_msg->segments.empty()) {
       route_handler_->setRoute(*route_msg);
+      route_ = std::make_shared<LaneletRoute>(*route_msg);
+      cached_drivable_area_.reset();
     }
+  }
+
+  if (!route_handler_->isHandlerReady() || !goal_purpose_routing_graph_) {
+    return;
   }
 
   const auto current_time = get_clock()->now();
 
   trajectory_ = sub_trajectory_.take_data();
   const Trajectory trajectory_msg = trajectory_ ? *trajectory_ : Trajectory{};
+
+  if (!trajectory_ || !route_handler_->isHandlerReady() || !goal_purpose_routing_graph_) {
+    RCLCPP_WARN(get_logger(), "Data is not ready");
+    return;
+  }
 
   for (const auto & object : msg->objects) {
     const auto object_id_str = autoware_utils_uuid::to_hex_string(object.object_id);
@@ -112,8 +128,14 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
   pub_debug_avoidance_targets_->publish(debug_avoidance_targets);
 
   std::optional<DrivableAreaResult> drivable_area;
-  if (trajectory_ && route_handler_->isHandlerReady()) {
-    drivable_area = create_drivable_area(*route_handler_, *trajectory_, vehicle_info_);
+  if (trajectory_ && route_handler_->isHandlerReady() && goal_purpose_routing_graph_) {
+    if (
+      auto new_drivable_area = create_drivable_area(
+        *route_handler_, *goal_purpose_routing_graph_, *trajectory_, vehicle_info_,
+        route_ ? route_.get() : nullptr)) {
+      cached_drivable_area_ = std::move(new_drivable_area);
+    }
+    drivable_area = cached_drivable_area_;
     if (drivable_area) {
       pub_drivable_area_path_->publish(to_path_msg(*drivable_area, *trajectory_));
     }

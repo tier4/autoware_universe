@@ -21,6 +21,7 @@
 #include <autoware_utils_geometry/boost_geometry.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/path_point.hpp>
 
 #include <boost/geometry/algorithms/correct.hpp>
@@ -28,6 +29,7 @@
 
 #include <lanelet2_core/LaneletMap.h>
 
+#include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -41,9 +43,12 @@ namespace
 
 using autoware::route_handler::RouteHandler;
 using autoware::vehicle_info_utils::VehicleInfo;
+using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::PathPoint;
 using geometry_msgs::msg::Point;
 using geometry_msgs::msg::Pose;
+using traffic_rules::get_left_lanelet;
+using traffic_rules::get_right_lanelet;
 
 struct DrivableLanes
 {
@@ -115,13 +120,13 @@ bool footprint_intersects_lanelet(
 
 bool is_same_or_left_of(
   const lanelet::ConstLanelet & base, const lanelet::ConstLanelet & candidate,
-  const RouteHandler & route_handler)
+  const lanelet::routing::RoutingGraph & routing_graph)
 {
   auto current = base;
   if (current.id() == candidate.id()) {
     return true;
   }
-  while (const auto left = route_handler.getLeftLanelet(current)) {
+  while (const auto left = get_left_lanelet(routing_graph, current)) {
     if (left->id() == candidate.id()) {
       return true;
     }
@@ -132,13 +137,13 @@ bool is_same_or_left_of(
 
 bool is_same_or_right_of(
   const lanelet::ConstLanelet & base, const lanelet::ConstLanelet & candidate,
-  const RouteHandler & route_handler)
+  const lanelet::routing::RoutingGraph & routing_graph)
 {
   auto current = base;
   if (current.id() == candidate.id()) {
     return true;
   }
-  while (const auto right = route_handler.getRightLanelet(current)) {
+  while (const auto right = get_right_lanelet(routing_graph, current)) {
     if (right->id() == candidate.id()) {
       return true;
     }
@@ -149,12 +154,12 @@ bool is_same_or_right_of(
 
 lanelet::ConstLanelet pick_leftmost_lane(
   const lanelet::ConstLanelet & base, const lanelet::ConstLanelet & a,
-  const lanelet::ConstLanelet & b, const RouteHandler & route_handler)
+  const lanelet::ConstLanelet & b, const lanelet::routing::RoutingGraph & routing_graph)
 {
-  if (is_same_or_left_of(base, a, route_handler) && is_same_or_left_of(a, b, route_handler)) {
+  if (is_same_or_left_of(base, a, routing_graph) && is_same_or_left_of(a, b, routing_graph)) {
     return b;
   }
-  if (is_same_or_left_of(base, b, route_handler) && is_same_or_left_of(b, a, route_handler)) {
+  if (is_same_or_left_of(base, b, routing_graph) && is_same_or_left_of(b, a, routing_graph)) {
     return a;
   }
   return a;
@@ -162,12 +167,12 @@ lanelet::ConstLanelet pick_leftmost_lane(
 
 lanelet::ConstLanelet pick_rightmost_lane(
   const lanelet::ConstLanelet & base, const lanelet::ConstLanelet & a,
-  const lanelet::ConstLanelet & b, const RouteHandler & route_handler)
+  const lanelet::ConstLanelet & b, const lanelet::routing::RoutingGraph & routing_graph)
 {
-  if (is_same_or_right_of(base, a, route_handler) && is_same_or_right_of(a, b, route_handler)) {
+  if (is_same_or_right_of(base, a, routing_graph) && is_same_or_right_of(a, b, routing_graph)) {
     return b;
   }
-  if (is_same_or_right_of(base, b, route_handler) && is_same_or_right_of(b, a, route_handler)) {
+  if (is_same_or_right_of(base, b, routing_graph) && is_same_or_right_of(b, a, routing_graph)) {
     return a;
   }
   return a;
@@ -175,13 +180,14 @@ lanelet::ConstLanelet pick_rightmost_lane(
 
 lanelet::ConstLanelet expand_lane_to_left(
   const lanelet::ConstLanelet & lanelet, const RouteHandler & route_handler,
-  const autoware_utils::LinearRing2d & footprint)
+  const lanelet::routing::RoutingGraph & routing_graph,
+  const autoware_utils::LinearRing2d & footprint, const bool allow_non_route_neighbors)
 {
   auto left_lane = lanelet;
   auto current_lane = lanelet;
 
-  while (const auto neighbor = route_handler.getLeftLanelet(current_lane)) {
-    if (!route_handler.isRouteLanelet(*neighbor)) {
+  while (const auto neighbor = get_left_lanelet(routing_graph, current_lane)) {
+    if (!allow_non_route_neighbors && !route_handler.isRouteLanelet(*neighbor)) {
       break;
     }
     if (!footprint_intersects_lanelet(footprint, *neighbor)) {
@@ -196,13 +202,14 @@ lanelet::ConstLanelet expand_lane_to_left(
 
 lanelet::ConstLanelet expand_lane_to_right(
   const lanelet::ConstLanelet & lanelet, const RouteHandler & route_handler,
-  const autoware_utils::LinearRing2d & footprint)
+  const lanelet::routing::RoutingGraph & routing_graph,
+  const autoware_utils::LinearRing2d & footprint, const bool allow_non_route_neighbors)
 {
   auto right_lane = lanelet;
   auto current_lane = lanelet;
 
-  while (const auto neighbor = route_handler.getRightLanelet(current_lane)) {
-    if (!route_handler.isRouteLanelet(*neighbor)) {
+  while (const auto neighbor = get_right_lanelet(routing_graph, current_lane)) {
+    if (!allow_non_route_neighbors && !route_handler.isRouteLanelet(*neighbor)) {
       break;
     }
     if (!footprint_intersects_lanelet(footprint, *neighbor)) {
@@ -217,36 +224,98 @@ lanelet::ConstLanelet expand_lane_to_right(
 
 DrivableLanes expand_drivable_lanes_for_footprint(
   const lanelet::ConstLanelet & lanelet, const RouteHandler & route_handler,
-  const autoware_utils::LinearRing2d & footprint)
+  const lanelet::routing::RoutingGraph & routing_graph,
+  const autoware_utils::LinearRing2d & footprint, const bool allow_non_route_neighbors)
 {
   DrivableLanes drivable_lanes;
-  drivable_lanes.left_lane = expand_lane_to_left(lanelet, route_handler, footprint);
-  drivable_lanes.right_lane = expand_lane_to_right(lanelet, route_handler, footprint);
+  drivable_lanes.left_lane = expand_lane_to_left(
+    lanelet, route_handler, routing_graph, footprint, allow_non_route_neighbors);
+  drivable_lanes.right_lane = expand_lane_to_right(
+    lanelet, route_handler, routing_graph, footprint, allow_non_route_neighbors);
   return drivable_lanes;
 }
 
 DrivableLanes expand_drivable_lanes_for_footprints(
   const lanelet::ConstLanelet & lanelet, const RouteHandler & route_handler,
-  const std::vector<autoware_utils::LinearRing2d> & footprints)
+  const lanelet::routing::RoutingGraph & routing_graph,
+  const std::vector<autoware_utils::LinearRing2d> & footprints,
+  const bool allow_non_route_neighbors)
 {
   auto drivable_lanes = make_not_expanded_drivable_lanes(lanelet);
   for (const auto & footprint : footprints) {
-    const auto expanded = expand_drivable_lanes_for_footprint(lanelet, route_handler, footprint);
+    const auto expanded = expand_drivable_lanes_for_footprint(
+      lanelet, route_handler, routing_graph, footprint, allow_non_route_neighbors);
     drivable_lanes.left_lane =
-      pick_leftmost_lane(lanelet, drivable_lanes.left_lane, expanded.left_lane, route_handler);
+      pick_leftmost_lane(lanelet, drivable_lanes.left_lane, expanded.left_lane, routing_graph);
     drivable_lanes.right_lane =
-      pick_rightmost_lane(lanelet, drivable_lanes.right_lane, expanded.right_lane, route_handler);
+      pick_rightmost_lane(lanelet, drivable_lanes.right_lane, expanded.right_lane, routing_graph);
   }
   return drivable_lanes;
 }
 
+bool is_lanelet_in_first_n_route_sections(
+  const LaneletRoute & route, const lanelet::ConstLanelet & lanelet, const size_t n)
+{
+  if (route.segments.empty() || n == 0) {
+    return false;
+  }
+
+  const size_t end_idx = std::min(n, route.segments.size());
+  for (size_t i = 0; i < end_idx; ++i) {
+    for (const auto & primitive : route.segments[i].primitives) {
+      if (primitive.id == lanelet.id()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool is_lanelet_in_last_n_route_sections(
+  const LaneletRoute & route, const lanelet::ConstLanelet & lanelet, const size_t n)
+{
+  if (route.segments.empty() || n == 0) {
+    return false;
+  }
+
+  const size_t start_idx = route.segments.size() > n ? route.segments.size() - n : 0;
+  for (size_t i = start_idx; i < route.segments.size(); ++i) {
+    for (const auto & primitive : route.segments[i].primitives) {
+      if (primitive.id == lanelet.id()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool is_lanelet_in_relaxed_route_sections(
+  const LaneletRoute * route, const lanelet::ConstLanelet & lanelet)
+{
+  if (route == nullptr) {
+    return false;
+  }
+
+  constexpr size_t route_section_relax_count = 5;
+  return is_lanelet_in_first_n_route_sections(*route, lanelet, route_section_relax_count) ||
+         is_lanelet_in_last_n_route_sections(*route, lanelet, route_section_relax_count);
+}
+
 std::vector<lanelet::Id> collect_overlapping_route_lanelets(
   const lanelet::ConstLanelet & seed_lanelet, const autoware_utils::LinearRing2d & footprint,
-  const RouteHandler & route_handler, FootprintsByLaneletId & footprints_by_lanelet_id)
+  const RouteHandler & route_handler, const lanelet::routing::RoutingGraph & routing_graph,
+  FootprintsByLaneletId & footprints_by_lanelet_id, const LaneletRoute * route)
 {
+  const bool allow_non_route_neighbors = is_lanelet_in_relaxed_route_sections(route, seed_lanelet);
+
   std::vector<lanelet::ConstLanelet> queue{seed_lanelet};
   std::unordered_set<lanelet::Id> visited;
-  std::vector<lanelet::Id> newly_found_lanelet_ids;
+  std::unordered_set<lanelet::Id> newly_found_lanelet_ids;
+
+  const auto register_route_lanelet = [&](const lanelet::ConstLanelet & route_lanelet) {
+    footprints_by_lanelet_id[route_lanelet.id()].push_back(footprint);
+    newly_found_lanelet_ids.insert(route_lanelet.id());
+  };
 
   while (!queue.empty()) {
     const auto current_lanelet = queue.back();
@@ -255,30 +324,42 @@ std::vector<lanelet::Id> collect_overlapping_route_lanelets(
     if (!visited.insert(current_lanelet.id()).second) {
       continue;
     }
-    if (!route_handler.isRouteLanelet(current_lanelet)) {
+
+    const bool is_route_lanelet = route_handler.isRouteLanelet(current_lanelet);
+    if (!is_route_lanelet && !allow_non_route_neighbors) {
       continue;
     }
     if (!footprint_intersects_lanelet(footprint, current_lanelet)) {
+      if (const auto left_lanelet = get_left_lanelet(routing_graph, current_lanelet)) {
+        queue.push_back(*left_lanelet);
+      }
+      if (const auto right_lanelet = get_right_lanelet(routing_graph, current_lanelet)) {
+        queue.push_back(*right_lanelet);
+      }
       continue;
     }
 
-    footprints_by_lanelet_id[current_lanelet.id()].push_back(footprint);
-    newly_found_lanelet_ids.push_back(current_lanelet.id());
+    if (is_route_lanelet) {
+      register_route_lanelet(current_lanelet);
+    } else if (route_handler.isRouteLanelet(seed_lanelet)) {
+      register_route_lanelet(seed_lanelet);
+    }
 
-    if (const auto left_lanelet = route_handler.getLeftLanelet(current_lanelet)) {
+    if (const auto left_lanelet = get_left_lanelet(routing_graph, current_lanelet)) {
       queue.push_back(*left_lanelet);
     }
-    if (const auto right_lanelet = route_handler.getRightLanelet(current_lanelet)) {
+    if (const auto right_lanelet = get_right_lanelet(routing_graph, current_lanelet)) {
       queue.push_back(*right_lanelet);
     }
   }
 
-  return newly_found_lanelet_ids;
+  return {newly_found_lanelet_ids.begin(), newly_found_lanelet_ids.end()};
 }
 
 std::vector<lanelet::ConstLanelet> collect_trajectory_lanelets(
-  const RouteHandler & route_handler, const Trajectory & trajectory,
-  const VehicleInfo & vehicle_info, FootprintsByLaneletId & footprints_by_lanelet_id)
+  const RouteHandler & route_handler, const lanelet::routing::RoutingGraph & routing_graph,
+  const Trajectory & trajectory, const VehicleInfo & vehicle_info,
+  FootprintsByLaneletId & footprints_by_lanelet_id, const LaneletRoute * route)
 {
   std::vector<lanelet::ConstLanelet> ordered_lanelets;
   std::unordered_set<lanelet::Id> added_lanelet_ids;
@@ -294,7 +375,7 @@ std::vector<lanelet::ConstLanelet> collect_trajectory_lanelets(
     }
 
     const auto newly_found_lanelet_ids = collect_overlapping_route_lanelets(
-      closest_lanelet, footprint, route_handler, footprints_by_lanelet_id);
+      closest_lanelet, footprint, route_handler, routing_graph, footprints_by_lanelet_id, route);
 
     for (const auto lanelet_id : newly_found_lanelet_ids) {
       if (!added_lanelet_ids.insert(lanelet_id).second) {
@@ -309,7 +390,8 @@ std::vector<lanelet::ConstLanelet> collect_trajectory_lanelets(
 
 std::vector<DrivableLanes> build_drivable_lanes(
   const std::vector<lanelet::ConstLanelet> & trajectory_lanelets,
-  const RouteHandler & route_handler, const FootprintsByLaneletId & footprints_by_lanelet_id)
+  const RouteHandler & route_handler, const lanelet::routing::RoutingGraph & routing_graph,
+  const FootprintsByLaneletId & footprints_by_lanelet_id, const LaneletRoute * route)
 {
   std::vector<DrivableLanes> drivable_lanes;
   drivable_lanes.reserve(trajectory_lanelets.size());
@@ -319,8 +401,9 @@ std::vector<DrivableLanes> build_drivable_lanes(
     if (footprints_it == footprints_by_lanelet_id.end() || footprints_it->second.empty()) {
       continue;
     }
-    drivable_lanes.push_back(
-      expand_drivable_lanes_for_footprints(lanelet, route_handler, footprints_it->second));
+    const bool allow_non_route_neighbors = is_lanelet_in_relaxed_route_sections(route, lanelet);
+    drivable_lanes.push_back(expand_drivable_lanes_for_footprints(
+      lanelet, route_handler, routing_graph, footprints_it->second, allow_non_route_neighbors));
   }
 
   return drivable_lanes;
@@ -363,22 +446,22 @@ std::vector<Point> generate_bound(
 }  // namespace
 
 std::optional<DrivableAreaResult> create_drivable_area(
-  const RouteHandler & route_handler, const Trajectory & trajectory,
-  const VehicleInfo & vehicle_info)
+  const RouteHandler & route_handler, const lanelet::routing::RoutingGraph & routing_graph,
+  const Trajectory & trajectory, const VehicleInfo & vehicle_info, const LaneletRoute * route)
 {
   if (!route_handler.isHandlerReady() || trajectory.points.empty()) {
     return std::nullopt;
   }
 
   FootprintsByLaneletId footprints_by_lanelet_id;
-  const auto trajectory_lanelets =
-    collect_trajectory_lanelets(route_handler, trajectory, vehicle_info, footprints_by_lanelet_id);
+  const auto trajectory_lanelets = collect_trajectory_lanelets(
+    route_handler, routing_graph, trajectory, vehicle_info, footprints_by_lanelet_id, route);
   if (trajectory_lanelets.empty()) {
     return std::nullopt;
   }
 
-  const auto drivable_lanes =
-    build_drivable_lanes(trajectory_lanelets, route_handler, footprints_by_lanelet_id);
+  const auto drivable_lanes = build_drivable_lanes(
+    trajectory_lanelets, route_handler, routing_graph, footprints_by_lanelet_id, route);
 
   auto left_bound = generate_bound(drivable_lanes, true);
   auto right_bound = generate_bound(drivable_lanes, false);
