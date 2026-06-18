@@ -56,9 +56,9 @@ std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
     switch (risk_level) {
       case RiskLevel::SAFE:
         return MetricReport::SAFE;
-      case RiskLevel::WARN:
+      case RiskLevel::HIGH_CAUTION:
         return MetricReport::HIGH_CAUTION;
-      case RiskLevel::ERROR:
+      case RiskLevel::DANGER:
         return MetricReport::DANGER;
       default:
         throw std::runtime_error("invalid argument");
@@ -159,7 +159,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     rss_artifact, rss_continuous_times_, debug_markers_, global_params_.time_resolution);
 
   return ValidationResult{
-    calc_worst_risk({pet_artifact.risk, drac_artifact.risk, rss_artifact.risk}) != RiskLevel::ERROR,
+    calc_worst_risk({pet_artifact.risk, drac_artifact.risk, rss_artifact.risk}) !=
+      RiskLevel::DANGER,
     generate_metric_reports(drac_artifact, pet_artifact, rss_artifact),
     std::move(planning_factors)};
 }

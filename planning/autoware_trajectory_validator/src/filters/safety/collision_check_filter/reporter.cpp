@@ -142,7 +142,7 @@ void process_pet_artifacts(
 
     const auto & detail = evaluation.detail;
     const auto & obj_id = detail.object_identification;
-    const bool is_error = evaluation.risk == RiskLevel::ERROR;
+    const bool is_error = evaluation.risk == RiskLevel::DANGER;
     if (is_error) {
       log_level = MetricReport::DANGER;
     }
@@ -186,7 +186,7 @@ void process_drac_artifacts(
 
   std::string log_messages{};
   std::string marker_messages{};
-  const bool has_error = drac_artifact.risk == RiskLevel::ERROR;
+  const bool has_error = drac_artifact.risk == RiskLevel::DANGER;
   const uint8_t log_level = has_error ? MetricReport::DANGER : MetricReport::HIGH_CAUTION;
   for (const auto & evaluation : drac_artifact.object_evaluations) {
     const auto & timing = evaluation.detail;

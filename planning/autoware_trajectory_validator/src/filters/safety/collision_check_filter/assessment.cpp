@@ -46,21 +46,21 @@ RiskLevel to_pet_risk_level(double pet, const PetThreshold & error_th, const Pet
   const bool is_error =
     pet <= error_th.ego_first_passing_time_gap && pet >= -error_th.object_first_passing_time_gap;
   if (is_error) {
-    return RiskLevel::ERROR;
+    return RiskLevel::DANGER;
   }
 
   const bool is_warn =
     pet <= warn_th.ego_first_passing_time_gap && pet >= -warn_th.object_first_passing_time_gap;
-  return is_warn ? RiskLevel::WARN : RiskLevel::SAFE;
+  return is_warn ? RiskLevel::HIGH_CAUTION : RiskLevel::SAFE;
 }
 
 RiskLevel to_drac_risk_level(const std::optional<double> & acc, const DracParams & drac_params)
 {
   if (!acc.has_value() || acc.value() < drac_params.error_threshold.ego_acceleration) {
-    return RiskLevel::ERROR;
+    return RiskLevel::DANGER;
   }
   if (acc.value() < drac_params.warn_threshold.ego_acceleration) {
-    return RiskLevel::WARN;
+    return RiskLevel::HIGH_CAUTION;
   }
   return RiskLevel::SAFE;
 }
@@ -274,7 +274,7 @@ DracArtifact assess_drac(
           ? to_pet_risk_level(
               finding_nominal_object_motion->worst_pet_timing.pet, error_pet_th, error_pet_th)
           : RiskLevel::SAFE;
-      if (nominal_motion_risk_level != RiskLevel::ERROR) {
+      if (nominal_motion_risk_level != RiskLevel::DANGER) {
         continue;
       }
 
@@ -295,7 +295,7 @@ DracArtifact assess_drac(
               finding_dec_object_motion->worst_pet_timing.pet, error_pet_th, error_pet_th)
           : RiskLevel::SAFE;
 
-      if (dec_motion_risk_level != RiskLevel::ERROR) {
+      if (dec_motion_risk_level != RiskLevel::DANGER) {
         continue;
       }
 
@@ -500,7 +500,7 @@ RssArtifact assess(
       ego_trajectory, context.odometry->twist.twist, object, rss_params,
       context.predicted_objects->header.stamp);
     const auto risk_level =
-      rss_detail.rss_acceleration < rss_params.error_threshold.ego_acceleration ? RiskLevel::ERROR
+      rss_detail.rss_acceleration < rss_params.error_threshold.ego_acceleration ? RiskLevel::DANGER
                                                                                 : RiskLevel::SAFE;
     rss_evaluations.push_back(RssEvaluation{risk_level, rss_detail});
   }

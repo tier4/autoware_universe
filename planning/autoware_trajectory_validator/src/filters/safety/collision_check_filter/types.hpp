@@ -74,7 +74,7 @@ struct TrajectoryIdentification
   }
 };
 
-enum class RiskLevel { SAFE, WARN, ERROR };
+enum class RiskLevel { SAFE, LOW_CAUTION, HIGH_CAUTION, DANGER };
 
 struct CollisionTiming
 {
@@ -138,7 +138,7 @@ RiskLevel calc_worst_risk(const Container & evaluations)
     if (eval.risk > worst) {
       worst = eval.risk;
     }
-    if (worst == RiskLevel::ERROR) {
+    if (worst == RiskLevel::DANGER) {
       break;
     }
   }
@@ -153,7 +153,7 @@ inline RiskLevel calc_worst_risk(std::initializer_list<RiskLevel> risks)
     if (risk > worst) {
       worst = risk;
     }
-    if (worst == RiskLevel::ERROR) {
+    if (worst == RiskLevel::DANGER) {
       break;
     }
   }
