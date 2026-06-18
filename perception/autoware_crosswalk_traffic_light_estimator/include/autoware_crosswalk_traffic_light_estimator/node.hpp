@@ -71,13 +71,9 @@ private:
 
   lanelet::ConstLanelets conflicting_crosswalks_;
 
-  // every signalized intersection id (intersection_area polygon id) in the map
   std::vector<std::string> all_intersection_ids_;
-  // intersection id -> traffic_light reg_elem ids governed by its lanes
   std::unordered_map<std::string, std::vector<lanelet::Id>> signals_by_intersection_;
-  // traffic_light reg_elem id -> the intersection it belongs to (resolves targets when no route)
   std::unordered_map<lanelet::Id, std::string> intersection_by_signal_;
-  // intersection ids the current route passes through
   std::vector<std::string> target_intersection_ids_;
   bool route_received_{false};
 
@@ -93,8 +89,6 @@ private:
   std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> buildSameSignalHeadMembers(
     const std::vector<lanelet::Id> & traffic_light_reg_elem_ids) const;
 
-  // Movement a signal head currently grants; selects how the signal_color_relation
-  // rules apply (see classifySignalHeadPhase).
   enum class SignalHeadMovement { through_active, protected_turn_only, not_proceeding };
   struct SignalHeadPhase
   {
@@ -131,8 +125,7 @@ private:
     const std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> & same_signal_head_members)
     const;
 
-  // Merge crosswalk and intersection overrides into the output traffic signals,
-  // creating groups for ids not present in the detection (route-independent).
+
   void mergeOverridesIntoTrafficSignals(
     const std::unordered_map<lanelet::Id, uint8_t> & crosswalk_traffic_signal_overrides,
     const std::unordered_map<lanelet::Id, uint8_t> &
