@@ -105,7 +105,6 @@ private:
     const std::vector<std::string> & target_intersection_ids,
     const TrafficLightIdMap & traffic_light_id_map,
     std::unordered_map<lanelet::Id, uint8_t> & estimated_intersection_traffic_signal_overrides);
-  // Write the phase-decided override color to the rule's target signals.
   void overwrite_to_color_by_phase(
     const SignalHeadPhase & phase, const uint8_t from_color, const uint8_t to_color,
     const lanelet::Ids & target_reg_elem_ids,
