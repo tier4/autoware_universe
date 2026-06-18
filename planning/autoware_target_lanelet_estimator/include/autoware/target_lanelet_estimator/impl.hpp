@@ -34,12 +34,12 @@ using autoware_planning_msgs::msg::Trajectory;
 struct LaneletScore
 {
   lanelet::Id id{lanelet::InvalId};
-  double score{0.0};  // 0 or 100 now; future: share of trajectory footprints overlapping it
+  double score{0.0};  // likelihood in [0, 1]: max footprint-overlap-area ratio over the trajectory
 };
 
 struct TargetLaneletsResult
 {
-  std::vector<LaneletScore> lanelets;  // overlapped route lanelets (>1 means straddling)
+  std::vector<LaneletScore> lanelets;  // route lanelets with score > 0 (>1 entry means straddling)
   bool out_of_lanelet{false};          // a footprint lies outside every lanelet
 };
 

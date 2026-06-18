@@ -19,14 +19,17 @@
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
+#include <boost/geometry/algorithms/area.hpp>
+#include <boost/geometry/algorithms/correct.hpp>
 #include <boost/geometry/algorithms/disjoint.hpp>
+#include <boost/geometry/algorithms/intersection.hpp>
 
 #include <lanelet2_core/geometry/Lanelet.h>
 #include <lanelet2_core/geometry/Polygon.h>
 #include <lanelet2_core/primitives/BoundingBox.h>
 
+#include <algorithm>
 #include <cmath>
-#include <cstddef>
 #include <utility>
 #include <vector>
 
@@ -66,22 +69,38 @@ std::vector<lanelet::BasicPolygon2d> compute_trajectory_footprints(
         pose.position.x + cos_yaw * p.x() - sin_yaw * p.y(),
         pose.position.y + sin_yaw * p.x() + cos_yaw * p.y());
     }
+    boost::geometry::correct(footprint);  // close/orient so area and intersection are valid
     footprints.push_back(std::move(footprint));
   }
   return footprints;
 }
 
-size_t count_overlapping_footprints(
-  const lanelet::ConstLanelet & lanelet, const std::vector<lanelet::BasicPolygon2d> & footprints)
+// Likelihood that the ego intends to drive on a lanelet: the maximum over trajectory points of
+// (overlap area between the footprint and the lanelet) / (footprint area), in [0, 1].
+double lanelet_likelihood(
+  const lanelet::ConstLanelet & lanelet, const std::vector<lanelet::BasicPolygon2d> & footprints,
+  double footprint_area)
 {
-  const auto lanelet_polygon = lanelet.polygon2d().basicPolygon();
-  size_t count = 0;
+  if (footprint_area <= 0.0) {
+    return 0.0;
+  }
+  lanelet::BasicPolygon2d lanelet_polygon = lanelet.polygon2d().basicPolygon();
+  boost::geometry::correct(lanelet_polygon);
+
+  double likelihood = 0.0;
   for (const auto & footprint : footprints) {
-    if (!boost::geometry::disjoint(footprint, lanelet_polygon)) {
-      ++count;
+    std::vector<lanelet::BasicPolygon2d> overlap;
+    boost::geometry::intersection(footprint, lanelet_polygon, overlap);
+    double overlap_area = 0.0;
+    for (const auto & polygon : overlap) {
+      overlap_area += boost::geometry::area(polygon);
+    }
+    likelihood = std::max(likelihood, overlap_area / footprint_area);
+    if (likelihood >= 1.0) {
+      return 1.0;
     }
   }
-  return count;
+  return likelihood;
 }
 
 bool is_on_any_lanelet(
@@ -105,12 +124,14 @@ TargetLaneletsResult get_target_lanelets(
   const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info)
 {
   const auto footprints = compute_trajectory_footprints(trajectory, vehicle_info);
+  const double footprint_area =
+    footprints.empty() ? 0.0 : boost::geometry::area(footprints.front());
 
   TargetLaneletsResult result;
   for (const auto & lanelet : extract_route_lanelets(route, lanelet_map)) {
-    const auto overlap_count = count_overlapping_footprints(lanelet, footprints);
-    if (overlap_count > 0) {
-      result.lanelets.push_back({lanelet.id(), 100.0});
+    const double likelihood = lanelet_likelihood(lanelet, footprints, footprint_area);
+    if (likelihood > 0.0) {
+      result.lanelets.push_back({lanelet.id(), likelihood});
     }
   }
 

@@ -19,6 +19,7 @@
 #include <autoware_utils/ros/marker_helper.hpp>
 
 #include <algorithm>
+#include <iomanip>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
@@ -28,10 +29,10 @@ namespace autoware::target_lanelet_estimator
 {
 namespace
 {
-// Heatmap color from score (0-100): cold blue -> hot red, more opaque when higher.
+// Heatmap color from score (likelihood 0-1): cold blue -> hot red, more opaque when higher.
 std_msgs::msg::ColorRGBA score_to_color(double score)
 {
-  const float t = static_cast<float>(std::clamp(score / 100.0, 0.0, 1.0));
+  const float t = static_cast<float>(std::clamp(score, 0.0, 1.0));
   return autoware_utils::create_marker_color(t, 0.0f, 1.0f - t, 0.2f + 0.6f * t);
 }
 
@@ -136,8 +137,9 @@ void TargetLaneletEstimatorNode::run_estimation()
   const auto result = get_target_lanelets(*route_, *trajectory_, lanelet_map_, vehicle_info_);
 
   std::stringstream ids;
+  ids << std::fixed << std::setprecision(2);
   for (const auto & lanelet : result.lanelets) {
-    ids << lanelet.id << " ";
+    ids << lanelet.id << ":" << lanelet.score << " ";
   }
   if (result.out_of_lanelet) {
     ids << "out_of_lanelet";

@@ -20,7 +20,6 @@
 #include <lanelet2_core/primitives/LineString.h>
 #include <lanelet2_core/primitives/Point.h>
 
-#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -81,9 +80,14 @@ VehicleInfo make_vehicle_info()
   return vehicle_info;
 }
 
-bool contains(const std::vector<LaneletScore> & lanelets, lanelet::Id id)
+double score_of(const std::vector<LaneletScore> & lanelets, lanelet::Id id)
 {
-  return std::any_of(lanelets.begin(), lanelets.end(), [id](const auto & l) { return l.id == id; });
+  for (const auto & lanelet : lanelets) {
+    if (lanelet.id == id) {
+      return lanelet.score;
+    }
+  }
+  return 0.0;
 }
 
 constexpr lanelet::Id lane_a = 1001;
@@ -114,7 +118,8 @@ TEST_F(GetTargetLaneletsTest, SingleLanelet)
 
   ASSERT_EQ(result.lanelets.size(), 1u);
   EXPECT_EQ(result.lanelets.front().id, lane_a);
-  EXPECT_DOUBLE_EQ(result.lanelets.front().score, 100.0);
+  // footprint stays fully inside lane A -> likelihood 1.0
+  EXPECT_NEAR(result.lanelets.front().score, 1.0, 1e-6);
   EXPECT_FALSE(result.out_of_lanelet);
 }
 
@@ -127,8 +132,24 @@ TEST_F(GetTargetLaneletsTest, LaneChangeStraddling)
   const auto result = get_target_lanelets(route, trajectory, lanelet_map_, vehicle_info_);
 
   EXPECT_EQ(result.lanelets.size(), 2u);
-  EXPECT_TRUE(contains(result.lanelets, lane_a));
-  EXPECT_TRUE(contains(result.lanelets, lane_b));
+  // the footprint is fully inside each lane at some point -> both reach likelihood 1.0
+  EXPECT_NEAR(score_of(result.lanelets, lane_a), 1.0, 1e-6);
+  EXPECT_NEAR(score_of(result.lanelets, lane_b), 1.0, 1e-6);
+  EXPECT_FALSE(result.out_of_lanelet);
+}
+
+// A footprint that always straddles the A/B boundary -> partial likelihood on both.
+TEST_F(GetTargetLaneletsTest, PartialOverlapLikelihood)
+{
+  const auto route = make_route({lane_a, lane_b});
+  // footprint centered at y=1.25 spans y in [0.75, 1.75]; the A/B boundary is at y=1.5,
+  // so 0.75 of the footprint is on lane A and 0.25 on lane B.
+  const auto trajectory = make_trajectory({{0.0, 1.25}, {5.0, 1.25}, {10.0, 1.25}});
+
+  const auto result = get_target_lanelets(route, trajectory, lanelet_map_, vehicle_info_);
+
+  EXPECT_NEAR(score_of(result.lanelets, lane_a), 0.75, 1e-3);
+  EXPECT_NEAR(score_of(result.lanelets, lane_b), 0.25, 1e-3);
   EXPECT_FALSE(result.out_of_lanelet);
 }
 
