@@ -22,8 +22,10 @@
 #include <charconv>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -152,6 +154,87 @@ lanelet::Ids parse_ids(std::string_view input)
   }
   return ids;
 }
+
+// Sorted ids of a reg_elem's physical faces (role=refers linestrings).
+std::vector<lanelet::Id> collect_face_ids(const lanelet::TrafficLight & traffic_light)
+{
+  std::vector<lanelet::Id> face_ids;
+  for (const auto & signal_face : traffic_light.trafficLights()) {
+    if (!signal_face.isLineString()) {
+      continue;
+    }
+    face_ids.push_back(static_cast<lanelet::ConstLineString3d>(signal_face).id());
+  }
+  std::sort(face_ids.begin(), face_ids.end());
+  return face_ids;
+}
+
+TrafficSignalElement make_solid_circle(const uint8_t color)
+{
+  TrafficSignalElement element;
+  element.color = color;
+  element.shape = TrafficSignalElement::CIRCLE;
+  element.confidence = 1.0;
+  return element;
+}
+
+template <typename ElementPredicate>
+bool has_element_matching(
+  const lanelet::Id & reg_elem_id, const TrafficLightIdMap & traffic_light_id_map,
+  const ElementPredicate & is_match)
+{
+  const auto signal_entry = traffic_light_id_map.find(reg_elem_id);
+  if (signal_entry == traffic_light_id_map.end()) {
+    return false;
+  }
+  const auto & elements = signal_entry->second.first.elements;
+  return std::any_of(elements.begin(), elements.end(), is_match);
+}
+
+boost::optional<uint8_t> highest_confidence_circle_color(
+  const lanelet::Id & reg_elem_id, const TrafficLightIdMap & traffic_light_id_map)
+{
+  const auto signal_entry = traffic_light_id_map.find(reg_elem_id);
+  if (signal_entry == traffic_light_id_map.end()) {
+    return boost::none;
+  }
+  boost::optional<uint8_t> circle_color{boost::none};
+  double highest_confidence = 0.0;
+  for (const auto & element : signal_entry->second.first.elements) {
+    if (element.shape != TrafficSignalElement::CIRCLE) {
+      continue;
+    }
+    if (element.confidence < highest_confidence) {
+      continue;
+    }
+    highest_confidence = element.confidence;
+    circle_color = element.color;
+  }
+  return circle_color;
+}
+
+bool is_shows_green_arrow(
+  const lanelet::Id & reg_elem_id, const TrafficLightIdMap & traffic_light_id_map)
+{
+  return has_element_matching(
+    reg_elem_id, traffic_light_id_map, [](const TrafficSignalElement & element) {
+      return element.color == TrafficSignalElement::GREEN &&
+             element.shape != TrafficSignalElement::CIRCLE &&
+             element.shape != TrafficSignalElement::CROSS;
+    });
+}
+
+bool is_shows_straight_arrow(
+  const lanelet::Id & reg_elem_id, const TrafficLightIdMap & traffic_light_id_map)
+{
+  return has_element_matching(
+    reg_elem_id, traffic_light_id_map, [](const TrafficSignalElement & element) {
+      return element.color == TrafficSignalElement::GREEN &&
+             (element.shape == TrafficSignalElement::UP_ARROW ||
+              element.shape == TrafficSignalElement::UP_LEFT_ARROW ||
+              element.shape == TrafficSignalElement::UP_RIGHT_ARROW);
+    });
+}
 }  // namespace
 
 CrosswalkTrafficLightEstimatorNode::CrosswalkTrafficLightEstimatorNode(
@@ -205,7 +288,35 @@ void CrosswalkTrafficLightEstimatorNode::onMap(const LaneletMapBin::ConstSharedP
   lanelet::routing::RoutingGraphContainer overall_graphs({vehicle_graph, pedestrian_graph});
   overall_graphs_ptr_ =
     std::make_shared<const lanelet::routing::RoutingGraphContainer>(overall_graphs);
+  buildIntersectionSignalIndex();
   RCLCPP_DEBUG(get_logger(), "[CrosswalkTrafficLightEstimatorNode]: Map is loaded");
+}
+
+void CrosswalkTrafficLightEstimatorNode::buildIntersectionSignalIndex()
+{
+  all_intersection_ids_.clear();
+  signals_by_intersection_.clear();
+  intersection_by_signal_.clear();
+  std::unordered_set<std::string> seen_intersection;
+  for (const auto & lanelet : lanelet_map_ptr_->laneletLayer) {
+    const std::string intersection_id = lanelet.attributeOr("intersection_area", "none");
+    if (intersection_id == "none") {
+      continue;
+    }
+    if (seen_intersection.insert(intersection_id).second) {
+      all_intersection_ids_.push_back(intersection_id);
+    }
+
+    // for no route case
+    for (const auto & traffic_light : lanelet.regulatoryElementsAs<const lanelet::TrafficLight>()) {
+      const auto reg_elem_id = traffic_light->id();
+      auto & reg_elem_ids = signals_by_intersection_[intersection_id];
+      if (std::find(reg_elem_ids.begin(), reg_elem_ids.end(), reg_elem_id) == reg_elem_ids.end()) {
+        reg_elem_ids.push_back(reg_elem_id);
+      }
+      intersection_by_signal_[reg_elem_id] = intersection_id;
+    }
+  }
 }
 
 void CrosswalkTrafficLightEstimatorNode::onRoute(const LaneletRoute::ConstSharedPtr msg)
@@ -214,6 +325,7 @@ void CrosswalkTrafficLightEstimatorNode::onRoute(const LaneletRoute::ConstShared
     RCLCPP_WARN(get_logger(), "cannot set traffic light in route because don't receive map");
     return;
   }
+  route_received_ = true;
 
   lanelet::ConstLanelets route_lanelets;
   for (const auto & segment : msg->segments) {
@@ -237,6 +349,20 @@ void CrosswalkTrafficLightEstimatorNode::onRoute(const LaneletRoute::ConstShared
       conflicting_crosswalks_.push_back(lanelet);
     }
   }
+
+  std::unordered_set<std::string> route_intersections;
+  for (const auto & route_lanelet : route_lanelets) {
+    const std::string intersection_id = route_lanelet.attributeOr("intersection_area", "none");
+    if (intersection_id != "none") {
+      route_intersections.insert(intersection_id);
+    }
+  }
+  target_intersection_ids_.clear();
+  for (const auto & intersection_id : all_intersection_ids_) {
+    if (route_intersections.count(intersection_id) > 0) {
+      target_intersection_ids_.push_back(intersection_id);
+    }
+  }
 }
 
 void CrosswalkTrafficLightEstimatorNode::update_crosswalk_overrides_from_map(
@@ -254,6 +380,7 @@ void CrosswalkTrafficLightEstimatorNode::update_crosswalk_overrides_from_map(
   const auto & traffic_light = *traffic_light_it;
   const auto current_vehicle_traffic_light_color =
     getHighestConfidenceTrafficSignal(traffic_light->id(), traffic_light_id_map);
+
   for (const auto & attribute : traffic_light->attributes()) {
     const auto & color_mapping = parse_signal_estimation_rules(attribute.first);
     if (!color_mapping) {
@@ -267,6 +394,176 @@ void CrosswalkTrafficLightEstimatorNode::update_crosswalk_overrides_from_map(
       crosswalk_traffic_signal_overrides[id] = to_color;
     }
   }
+}
+
+void CrosswalkTrafficLightEstimatorNode::estimateIntersectionTrafficSignal(
+  const std::vector<std::string> & target_intersection_ids,
+  const TrafficLightIdMap & traffic_light_id_map,
+  std::unordered_map<lanelet::Id, uint8_t> & estimated_intersection_traffic_signal_overrides)
+{
+  for (const std::string & intersection_id : target_intersection_ids) {
+    if (signals_by_intersection_.count(intersection_id) == 0) {
+      continue;
+    }
+    const std::vector<lanelet::Id> & reg_elem_ids = signals_by_intersection_.at(intersection_id);
+    const std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> same_signal_head_members =
+      buildSameSignalHeadMembers(reg_elem_ids);
+
+    for (const lanelet::Id reg_elem_id : reg_elem_ids) {
+      if (!lanelet_map_ptr_->regulatoryElementLayer.exists(reg_elem_id)) {
+        continue;
+      }
+      const lanelet::RegulatoryElementPtr traffic_light =
+        lanelet_map_ptr_->regulatoryElementLayer.get(reg_elem_id);
+      const SignalHeadPhase phase = classifySignalHeadPhase(
+        traffic_light->id(), traffic_light_id_map, same_signal_head_members);
+
+      for (const std::pair<const std::string, lanelet::Attribute> & attribute :
+           traffic_light->attributes()) {
+        const std::optional<std::pair<uint8_t, uint8_t>> color_mapping =
+          parse_signal_estimation_rules(attribute.first);
+        if (!color_mapping) {
+          continue;
+        }
+        overwrite_to_color_by_phase(
+          phase, color_mapping->first, color_mapping->second, parse_ids(attribute.second.value()),
+          estimated_intersection_traffic_signal_overrides);
+      }
+    }
+  }
+}
+
+void CrosswalkTrafficLightEstimatorNode::overwrite_to_color_by_phase(
+  const SignalHeadPhase & phase, const uint8_t from_color, const uint8_t to_color,
+  const lanelet::Ids & target_reg_elem_ids,
+  std::unordered_map<lanelet::Id, uint8_t> & estimated_intersection_traffic_signal_overrides) const
+{
+  if (phase.movement == SignalHeadMovement::protected_turn_only) {
+    // A protected turn stops all opposing and cross traffic, which the from->to rules
+    // cannot express, so force red.
+    for (const lanelet::Id target_reg_elem_id : target_reg_elem_ids) {
+      estimated_intersection_traffic_signal_overrides[target_reg_elem_id] =
+        TrafficSignalElement::RED;
+    }
+    return;
+  }
+  if (!phase.from_color || from_color != phase.from_color.get()) {
+    return;
+  }
+  for (const lanelet::Id target_reg_elem_id : target_reg_elem_ids) {
+    estimated_intersection_traffic_signal_overrides[target_reg_elem_id] = to_color;
+  }
+}
+
+std::unordered_map<lanelet::Id, std::vector<lanelet::Id>>
+CrosswalkTrafficLightEstimatorNode::buildSameSignalHeadMembers(
+  const std::vector<lanelet::Id> & traffic_light_reg_elem_ids) const
+{
+  // A same-signal-head group bundles reg_elems whose physical faces match exactly; matching by
+  // exact set (not overlap) keeps independent phases such as green arrows apart.
+  std::map<std::vector<lanelet::Id>, std::vector<lanelet::Id>> reg_elem_ids_by_face_set;
+  for (const auto reg_elem_id : traffic_light_reg_elem_ids) {
+    const auto reg_elem_it = lanelet_map_ptr_->regulatoryElementLayer.find(reg_elem_id);
+    if (reg_elem_it == lanelet_map_ptr_->regulatoryElementLayer.end()) {
+      continue;
+    }
+    const auto traffic_light = std::dynamic_pointer_cast<const lanelet::TrafficLight>(*reg_elem_it);
+    if (!traffic_light) {
+      continue;
+    }
+    reg_elem_ids_by_face_set[collect_face_ids(*traffic_light)].push_back(reg_elem_id);
+  }
+  std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> same_signal_head_members;
+  for (const auto & [face_linestring_ids, same_head_reg_elem_ids] : reg_elem_ids_by_face_set) {
+    for (const auto reg_elem_id : same_head_reg_elem_ids) {
+      same_signal_head_members[reg_elem_id] = same_head_reg_elem_ids;
+    }
+  }
+  return same_signal_head_members;
+}
+
+CrosswalkTrafficLightEstimatorNode::SignalHeadPhase
+CrosswalkTrafficLightEstimatorNode::classifySignalHeadPhase(
+  const lanelet::Id & reg_elem_id, const TrafficLightIdMap & traffic_light_id_map,
+  const std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> & same_signal_head_members) const
+{
+  const auto circle_color =
+    getSignalHeadCircleColor(reg_elem_id, traffic_light_id_map, same_signal_head_members);
+
+  // Through is active on a green circle, or on a straight arrow (which also lets the
+  // opposing through flow). Normalize both to GREEN.
+  // 緑丸、または青直進矢印（対向直進も同時に流れる）のとき through。どちらも GREEN に正規化。
+  if (
+    isSignalHeadShowsStraightArrow(reg_elem_id, traffic_light_id_map, same_signal_head_members) ||
+    (circle_color && circle_color.get() == TrafficSignalElement::GREEN)) {
+    return {SignalHeadMovement::through_active, TrafficSignalElement::GREEN};
+  }
+
+  // Turn-only green arrow stops the opposing and cross traffic, which a from->to color
+  // cannot express, so mark it for a forced red instead.
+  // 直進でないターン矢印（赤丸＋青右矢印など）。対向・交差を一律 RED に倒す（from→to の色対応では
+  // 表せないため別扱い）。右折では物理的に正しく、左折のみのときは安全側の近似。
+  if (isSignalHeadShowsGreenArrow(reg_elem_id, traffic_light_id_map, same_signal_head_members)) {
+    return {SignalHeadMovement::protected_turn_only, boost::none};
+  }
+
+  // Plain red/amber/unknown circle: use the circle color as the rule's from color.
+  // 赤丸・黄丸・UNKNOWN の丸。丸の色をそのままルールの from に使う。
+  return {SignalHeadMovement::not_proceeding, circle_color};
+}
+
+boost::optional<uint8_t> CrosswalkTrafficLightEstimatorNode::getSignalHeadCircleColor(
+  const lanelet::Id & reg_elem_id, const TrafficLightIdMap & traffic_light_id_map,
+  const std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> & same_signal_head_members) const
+{
+  // Keep the latest valid color so one occluded (UNKNOWN) reg_elem this frame does
+  // not blank the rule for the whole signal-head group.
+  boost::optional<uint8_t> latest_valid_color{boost::none};
+  for (const auto member_reg_elem_id :
+       getSameSignalHeadMemberIds(reg_elem_id, same_signal_head_members)) {
+    const auto color = highest_confidence_circle_color(member_reg_elem_id, traffic_light_id_map);
+    if (color && color.get() != TrafficSignalElement::UNKNOWN) {
+      latest_valid_color = color;
+    }
+  }
+  return latest_valid_color;
+}
+
+bool CrosswalkTrafficLightEstimatorNode::isSignalHeadShowsStraightArrow(
+  const lanelet::Id & reg_elem_id, const TrafficLightIdMap & traffic_light_id_map,
+  const std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> & same_signal_head_members) const
+{
+  const auto member_reg_elem_ids =
+    getSameSignalHeadMemberIds(reg_elem_id, same_signal_head_members);
+  return std::any_of(
+    member_reg_elem_ids.begin(), member_reg_elem_ids.end(),
+    [&](const lanelet::Id member_reg_elem_id) {
+      return is_shows_straight_arrow(member_reg_elem_id, traffic_light_id_map);
+    });
+}
+
+bool CrosswalkTrafficLightEstimatorNode::isSignalHeadShowsGreenArrow(
+  const lanelet::Id & reg_elem_id, const TrafficLightIdMap & traffic_light_id_map,
+  const std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> & same_signal_head_members) const
+{
+  const auto member_reg_elem_ids =
+    getSameSignalHeadMemberIds(reg_elem_id, same_signal_head_members);
+  return std::any_of(
+    member_reg_elem_ids.begin(), member_reg_elem_ids.end(),
+    [&](const lanelet::Id member_reg_elem_id) {
+      return is_shows_green_arrow(member_reg_elem_id, traffic_light_id_map);
+    });
+}
+
+std::vector<lanelet::Id> CrosswalkTrafficLightEstimatorNode::getSameSignalHeadMemberIds(
+  const lanelet::Id & reg_elem_id,
+  const std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> & same_signal_head_members) const
+{
+  const auto it = same_signal_head_members.find(reg_elem_id);
+  if (it == same_signal_head_members.end()) {
+    return {reg_elem_id};
+  }
+  return it->second;
 }
 
 void CrosswalkTrafficLightEstimatorNode::onTrafficLightArray(
@@ -305,6 +602,35 @@ void CrosswalkTrafficLightEstimatorNode::onTrafficLightArray(
     setCrosswalkTrafficSignal(
       crosswalk, crosswalk_tl_color, *msg, output, crosswalk_traffic_signal_overrides);
   }
+
+  // Estimate opposing/cross vehicle signals for the intersections the ego cares about.
+  // With a route, use the intersections it traverses; otherwise resolve them from the
+  // detected signals so the estimation still runs route-independently (replay/verification).
+  std::vector<std::string> target_intersection_ids;
+  if (route_received_) {
+    target_intersection_ids = target_intersection_ids_;
+  } else {
+    std::unordered_set<std::string> active_intersections;
+    for (const auto & traffic_signal : msg->traffic_light_groups) {
+      const auto it = intersection_by_signal_.find(traffic_signal.traffic_light_group_id);
+      if (it != intersection_by_signal_.end()) {
+        active_intersections.insert(it->second);
+      }
+    }
+    for (const auto & intersection_id : all_intersection_ids_) {
+      if (active_intersections.count(intersection_id) > 0) {
+        target_intersection_ids.push_back(intersection_id);
+      }
+    }
+  }
+
+  std::unordered_map<lanelet::Id, uint8_t> estimated_intersection_traffic_signal_overrides;
+  estimateIntersectionTrafficSignal(
+    target_intersection_ids, traffic_light_id_map, estimated_intersection_traffic_signal_overrides);
+
+  // Merge crosswalk (pedestrian) and intersection (vehicle) overrides into the output.
+  mergeOverridesIntoTrafficSignals(
+    crosswalk_traffic_signal_overrides, estimated_intersection_traffic_signal_overrides, output);
 
   removeDuplicateIds(output);
 
@@ -488,6 +814,34 @@ void CrosswalkTrafficLightEstimatorNode::setCrosswalkTrafficSignal(
     // 3. No detection available → use estimated vehicle-based color
     replace_out_signal_elements(base_traffic_signal_element);
   }
+}
+
+void CrosswalkTrafficLightEstimatorNode::mergeOverridesIntoTrafficSignals(
+  const std::unordered_map<lanelet::Id, uint8_t> & crosswalk_traffic_signal_overrides,
+  const std::unordered_map<lanelet::Id, uint8_t> & estimated_intersection_traffic_signal_overrides,
+  TrafficSignalArray & output)
+{
+  std::unordered_map<lanelet::Id, size_t> group_index_by_id;
+  for (size_t i = 0; i < output.traffic_light_groups.size(); ++i) {
+    group_index_by_id[output.traffic_light_groups[i].traffic_light_group_id] = i;
+  }
+
+  const auto merge_one = [&](const std::unordered_map<lanelet::Id, uint8_t> & overrides) {
+    for (const auto & [group_id, color] : overrides) {
+      const auto element = make_solid_circle(color);
+      if (const auto it = group_index_by_id.find(group_id); it != group_index_by_id.end()) {
+        output.traffic_light_groups[it->second].elements.assign(1, element);
+      } else {
+        TrafficSignal new_group;
+        new_group.traffic_light_group_id = group_id;
+        new_group.elements.push_back(element);
+        output.traffic_light_groups.push_back(new_group);
+        group_index_by_id[group_id] = output.traffic_light_groups.size() - 1;
+      }
+    }
+  };
+  merge_one(crosswalk_traffic_signal_overrides);
+  merge_one(estimated_intersection_traffic_signal_overrides);
 }
 
 bool CrosswalkTrafficLightEstimatorNode::isInvalidDetectionStatus(

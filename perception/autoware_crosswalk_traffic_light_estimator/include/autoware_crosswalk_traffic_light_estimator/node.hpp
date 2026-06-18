@@ -33,6 +33,7 @@
 
 #include <map>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -70,6 +71,16 @@ private:
 
   lanelet::ConstLanelets conflicting_crosswalks_;
 
+  // every signalized intersection id (intersection_area polygon id) in the map
+  std::vector<std::string> all_intersection_ids_;
+  // intersection id -> traffic_light reg_elem ids governed by its lanes
+  std::unordered_map<std::string, std::vector<lanelet::Id>> signals_by_intersection_;
+  // traffic_light reg_elem id -> the intersection it belongs to (resolves targets when no route)
+  std::unordered_map<lanelet::Id, std::string> intersection_by_signal_;
+  // intersection ids the current route passes through
+  std::vector<std::string> target_intersection_ids_;
+  bool route_received_{false};
+
   void onMap(const LaneletMapBin::ConstSharedPtr msg);
   void onRoute(const LaneletRoute::ConstSharedPtr msg);
   void onTrafficLightArray(const TrafficSignalArray::ConstSharedPtr msg);
@@ -77,6 +88,57 @@ private:
   void updateLastDetectedSignal(const TrafficLightIdMap & traffic_signals);
   void updateLastDetectedSignals(const TrafficLightIdMap & traffic_signals);
   void updateFlashingState(const TrafficSignal & signal);
+
+  void buildIntersectionSignalIndex();
+  std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> buildSameSignalHeadMembers(
+    const std::vector<lanelet::Id> & traffic_light_reg_elem_ids) const;
+
+  // Movement a signal head currently grants; selects how the signal_color_relation
+  // rules apply (see classifySignalHeadPhase).
+  enum class SignalHeadMovement { through_active, protected_turn_only, not_proceeding };
+  struct SignalHeadPhase
+  {
+    SignalHeadMovement movement;
+    boost::optional<uint8_t> from_color;  // effective "from" color for the rules
+  };
+  void estimateIntersectionTrafficSignal(
+    const std::vector<std::string> & target_intersection_ids,
+    const TrafficLightIdMap & traffic_light_id_map,
+    std::unordered_map<lanelet::Id, uint8_t> & estimated_intersection_traffic_signal_overrides);
+  // Write the phase-decided override color to the rule's target signals.
+  void overwrite_to_color_by_phase(
+    const SignalHeadPhase & phase, const uint8_t from_color, const uint8_t to_color,
+    const lanelet::Ids & target_reg_elem_ids,
+    std::unordered_map<lanelet::Id, uint8_t> & estimated_intersection_traffic_signal_overrides)
+    const;
+  SignalHeadPhase classifySignalHeadPhase(
+    const lanelet::Id & reg_elem_id, const TrafficLightIdMap & traffic_light_id_map,
+    const std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> & same_signal_head_members)
+    const;
+  boost::optional<uint8_t> getSignalHeadCircleColor(
+    const lanelet::Id & reg_elem_id, const TrafficLightIdMap & traffic_light_id_map,
+    const std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> & same_signal_head_members)
+    const;
+  bool isSignalHeadShowsStraightArrow(
+    const lanelet::Id & reg_elem_id, const TrafficLightIdMap & traffic_light_id_map,
+    const std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> & same_signal_head_members)
+    const;
+  bool isSignalHeadShowsGreenArrow(
+    const lanelet::Id & reg_elem_id, const TrafficLightIdMap & traffic_light_id_map,
+    const std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> & same_signal_head_members)
+    const;
+  std::vector<lanelet::Id> getSameSignalHeadMemberIds(
+    const lanelet::Id & reg_elem_id,
+    const std::unordered_map<lanelet::Id, std::vector<lanelet::Id>> & same_signal_head_members)
+    const;
+
+  // Merge crosswalk and intersection overrides into the output traffic signals,
+  // creating groups for ids not present in the detection (route-independent).
+  void mergeOverridesIntoTrafficSignals(
+    const std::unordered_map<lanelet::Id, uint8_t> & crosswalk_traffic_signal_overrides,
+    const std::unordered_map<lanelet::Id, uint8_t> &
+      estimated_intersection_traffic_signal_overrides,
+    TrafficSignalArray & output);
 
   uint8_t updateAndGetColorState(const TrafficSignal & signal);
   /// @brief update the overrides of crosswalk signals from the lanelet map for the given traffic
