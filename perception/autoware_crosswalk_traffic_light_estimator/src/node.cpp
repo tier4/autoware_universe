@@ -438,20 +438,29 @@ void CrosswalkTrafficLightEstimatorNode::overwrite_to_color_by_phase(
   const lanelet::Ids & target_reg_elem_ids,
   std::unordered_map<lanelet::Id, uint8_t> & estimated_intersection_traffic_signal_overrides) const
 {
-  if (phase.movement == SignalHeadMovement::protected_turn_only) {
-    // A protected turn stops all opposing and cross traffic, which the from->to rules
-    // cannot express, so force red.
+  const auto overwrite_targets = [&](const uint8_t color) {
     for (const lanelet::Id target_reg_elem_id : target_reg_elem_ids) {
-      estimated_intersection_traffic_signal_overrides[target_reg_elem_id] =
-        TrafficSignalElement::RED;
+      estimated_intersection_traffic_signal_overrides[target_reg_elem_id] = color;
     }
-    return;
-  }
-  if (!phase.from_color || from_color != phase.from_color.get()) {
-    return;
-  }
-  for (const lanelet::Id target_reg_elem_id : target_reg_elem_ids) {
-    estimated_intersection_traffic_signal_overrides[target_reg_elem_id] = to_color;
+  };
+
+  switch (phase.movement) {
+    case SignalHeadMovement::protected_turn_only:
+      // Opposing and cross all stop, which a from->to color cannot express, so force red.
+      overwrite_targets(TrafficSignalElement::RED);
+      return;
+    case SignalHeadMovement::through_active:
+      // from color is GREEN here; apply the rule whose from matches.
+      if (phase.from_color && from_color == phase.from_color.get()) {
+        overwrite_targets(to_color);
+      }
+      return;
+    case SignalHeadMovement::not_proceeding:
+      // from color is the circle color; apply the rule whose from matches.
+      if (phase.from_color && from_color == phase.from_color.get()) {
+        overwrite_targets(to_color);
+      }
+      return;
   }
 }
 
@@ -573,6 +582,12 @@ void CrosswalkTrafficLightEstimatorNode::onTrafficLightArray(
     RCLCPP_WARN(get_logger(), "cannot process traffic light array because the map is not received");
     return;
   }
+
+  // example
+  // group_id=10323:  [RED/CIRCLE(1.00), GREEN/LEFT_ARROW(1.00), GREEN/UP_ARROW(1.00)]
+  // group_id=190426: [RED/CIRCLE(1.00), GREEN/LEFT_ARROW(1.00), GREEN/UP_ARROW(1.00)]
+  // group_id=2118985:[RED/CIRCLE(1.00), GREEN/LEFT_ARROW(1.00), GREEN/UP_ARROW(1.00)]
+  // group_id=179970: [RED/CIRCLE(1.00)]
 
   StopWatch<std::chrono::milliseconds> stop_watch;
   stop_watch.tic("Total");
