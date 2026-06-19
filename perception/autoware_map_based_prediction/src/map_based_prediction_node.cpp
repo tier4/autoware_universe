@@ -15,6 +15,7 @@
 #include "map_based_prediction/map_based_prediction_node.hpp"
 
 #include "map_based_prediction/data_structure.hpp"
+#include "map_based_prediction/debug_util.hpp"
 #include "map_based_prediction/utils.hpp"
 
 #include <autoware/interpolation/linear_interpolation.hpp>
@@ -428,13 +429,18 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
 
   // Traffic-signal-aware stop prediction parameters.
   use_priority_prediction_ = declare_parameter<bool>("priority_prediction.enable");
-  priority_params_.calibration.use_signal_priority =
+  priority::PriorityCalibrationParams priority_params;
+  priority_params.use_signal_priority =
     declare_parameter<bool>("priority_prediction.use_signal_priority");
-  priority_params_.calibration.stop_probability_boost =
+  priority_params.stop_probability_boost =
     declare_parameter<double>("priority_prediction.stop_probability_boost");
-  signal_observation_timeout_ =
+  const double signal_observation_timeout =
     declare_parameter<double>("priority_prediction.signal_observation_timeout");
   priority_debug_viz_ = declare_parameter<bool>("priority_prediction.debug_visualization");
+
+  // initialize traffic-signal stop predictor
+  priority_predictor_ = std::make_unique<priority::TrafficSignalStopPredictor>();
+  priority_predictor_->setParameters(priority_params, signal_observation_timeout);
 
   // initialize VRU predictor
   predictor_vru_ = std::make_unique<PredictorVru>(*this);
@@ -631,14 +637,8 @@ void MapBasedPredictionNode::mapCallback(const LaneletMapBin::ConstSharedPtr msg
 void MapBasedPredictionNode::trafficSignalsCallback(
   const TrafficLightGroupArray::ConstSharedPtr msg)
 {
-  // load traffic signals to the predictor
   predictor_vru_->setTrafficSignal(*msg);
-
-  traffic_signal_id_map_.clear();
-  for (const auto & group : msg->traffic_light_groups) {
-    traffic_signal_id_map_[group.traffic_light_group_id] = group;
-  }
-  latest_traffic_signal_time_ = this->now();
+  priority_predictor_->setTrafficSignal(*msg, now());
 }
 
 void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPtr in_objects)
@@ -693,8 +693,6 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
   // get current crosswalk users for later prediction
   predictor_vru_->loadCurrentCrosswalkUsers(*in_objects);
 
-  stop_hypothesis_debug_.stop_lines.clear();
-  stop_hypothesis_debug_.stop_hypothesis_path_indices.clear();
 
   // for each object
   for (const auto & object : in_objects->objects) {
@@ -760,10 +758,18 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
   publish(output, debug_markers);
 
   if (priority_debug_viz_) {
+    const auto & debug = priority_predictor_->getDebugInfo();
+
+    const auto & counter = debug.counter;
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 5000, "[priority] vehicles=%zu sig_stop=%zu stopline=%zu added=%zu",
+        counter.vehicles, counter.signal_stop, counter.stopline_found, counter.stop_hypothesis_added);
+
+
     debug_util::publishPriorityObjectMarkers(
       *pub_debug_markers_, transform_listener_, output, in_objects->header.stamp,
-      stop_hypothesis_debug_.stop_hypothesis_path_indices, stop_hypothesis_debug_.stop_lines,
-      this->now());
+      debug.stop_hypothesis_path_indices, debug.stop_lines, this->now());
+    
   }
 
   // Processing time
@@ -1421,34 +1427,6 @@ ManeuverProbability MapBasedPredictionNode::calculateManeuverProbability(
   return maneuver_prob;
 }
 
-void MapBasedPredictionNode::addTrafficSignalPriority(
-  const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
-  const std::vector<lanelet::routing::LaneletPath> & lanelet_paths,
-  std::vector<PredictedPath> & predicted_paths)
-{
-  std::unique_ptr<ScopedTimeTrack> st_ptr;
-  if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
-
-  // Skip on a stale / missing signal observation (e.g. the signal topic went
-  // silent): an old red must not keep cutting paths, so the go paths stand.
-  const bool signal_observation_stale =
-    !latest_traffic_signal_time_ ||
-    (this->now() - *latest_traffic_signal_time_).seconds() > signal_observation_timeout_;
-  if (signal_observation_stale) {
-    return;
-  }
-
-  predicted_paths = priority::addTrafficSignalStopHypotheses(
-    priority::ObjectPrediction{object, ref_paths, lanelet_paths, predicted_paths},
-    traffic_signal_id_map_, priority_params_, stop_hypothesis_debug_);
-
-  RCLCPP_INFO_THROTTLE(
-    get_logger(), *get_clock(), 5000, "[priority] vehicles=%zu sig_stop=%zu stopline=%zu added=%zu",
-    stop_hypothesis_debug_.counter.vehicles, stop_hypothesis_debug_.counter.signal_stop,
-    stop_hypothesis_debug_.counter.stopline_found,
-    stop_hypothesis_debug_.counter.stop_hypothesis_added);
-}
-
 std::vector<LaneletPathWithPathInfo> MapBasedPredictionNode::convertPredictedReferencePath(
   const TrackedObject & object,
   const std::vector<LaneletPathWithPathInfo> & lanelet_ref_paths) const
@@ -1758,7 +1736,7 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
   if (predicted_paths.empty()) predicted_paths.push_back(path_with_smallest_avg_curvature);
 
   if (use_priority_prediction_) {
-    addTrafficSignalPriority(yaw_fixed_object, ref_paths, ref_lanelet_paths, predicted_paths);
+    predicted_paths = priority_predictor_->addStopHypotheses(priority::ObjectPrediction{yaw_fixed_object, ref_paths, ref_lanelet_paths, predicted_paths}, now());
   }
 
   // Normalize Path Confidence and output the predicted object

@@ -185,7 +185,7 @@ double weakenConfidenceInLaneChange(const Maneuver & maneuver, const double stop
 std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   const ObjectPrediction & prediction,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
-  const PriorityPredictionParams & params, debug_util::StopHypothesisDebug & debug)
+  const PriorityCalibrationParams & params, debug_util::StopHypothesisDebug & debug)
 {
   const TrackedObject & object = prediction.object;
   const std::vector<PredictedRefPath> & ref_paths = prediction.ref_paths;
@@ -239,7 +239,7 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     debug.counter.stopline_found += stop_line_ahead ? 1 : 0;
 
     // 3. Add a stop hypothesis only on a red signal whose stop line is still ahead.
-    if (!shouldAddStopHypothesis(signal_requires_stop, stop_line_ahead, params.calibration)) {
+    if (!shouldAddStopHypothesis(signal_requires_stop, stop_line_ahead, params)) {
       continue;
     }
 
@@ -250,7 +250,7 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
       continue;  // nothing to clip to -> the go path stands
     }
 
-    predicted_path.confidence = static_cast<float>(params.calibration.stop_probability_boost);
+    predicted_path.confidence = static_cast<float>(params.stop_probability_boost);
 
     // The stop hypothesis replaces the go path in place (the go path is dropped).
     result.at(i) = predicted_path;
@@ -261,6 +261,37 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   }
 
   return result;
+}
+
+void TrafficSignalStopPredictor::setTrafficSignal(
+  const TrafficLightGroupArray & traffic_signals, const rclcpp::Time & now)
+{
+  traffic_signal_id_map_.clear();
+  for (const auto & group : traffic_signals.traffic_light_groups) {
+    traffic_signal_id_map_[group.traffic_light_group_id] = group;
+  }
+  latest_traffic_signal_time_ = now;
+}
+
+void TrafficSignalStopPredictor::clearFrameDebug()
+{
+  debug_.stop_lines.clear();
+  debug_.stop_hypothesis_path_indices.clear();
+}
+
+std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
+  const ObjectPrediction & prediction, const rclcpp::Time & now)
+{
+  // Skip on a stale / missing signal observation (e.g. the signal topic went
+  // silent): an old red must not keep cutting paths, so the go paths stand.
+  const bool signal_observation_stale =
+    !latest_traffic_signal_time_ ||
+    (now - *latest_traffic_signal_time_).seconds() > signal_observation_timeout_;
+  if (signal_observation_stale) {
+    return prediction.predicted_paths;
+  }
+
+  return addTrafficSignalStopHypotheses(prediction, traffic_signal_id_map_, params_, debug_);
 }
 
 }  // namespace autoware::map_based_prediction::priority

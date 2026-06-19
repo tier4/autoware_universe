@@ -16,7 +16,6 @@
 #define MAP_BASED_PREDICTION__MAP_BASED_PREDICTION_NODE_HPP_
 
 #include "map_based_prediction/data_structure.hpp"
-#include "map_based_prediction/debug_util.hpp"
 #include "map_based_prediction/path_generator.hpp"
 #include "map_based_prediction/predictor_vru.hpp"
 #include "map_based_prediction/priority_utils.hpp"
@@ -99,13 +98,6 @@ private:
   // Object History
   std::unordered_map<std::string, std::deque<RoadUser>> road_users_history_;
 
-  // Latest observation read by the priority decision, keyed by traffic-light-group id.
-  std::unordered_map<lanelet::Id, TrafficLightGroup> traffic_signal_id_map_;
-
-  // Debug-only outputs of the stop-hypothesis calibration (log counters, marker
-  // stop lines, and the path indices to colour). Rebuilt per callback.
-  debug_util::StopHypothesisDebug stop_hypothesis_debug_;
-
   // Lanelet Map Pointers
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
   std::shared_ptr<lanelet::routing::RoutingGraph> routing_graph_ptr_;
@@ -124,6 +116,7 @@ private:
 
   // Predictor
   std::shared_ptr<PredictorVru> predictor_vru_;
+  std::unique_ptr<priority::TrafficSignalStopPredictor> priority_predictor_;
 
   // Diagnostics
   std::unique_ptr<autoware_utils::DiagnosticsInterface> diagnostics_interface_ptr_;
@@ -175,9 +168,6 @@ private:
 
   // Traffic-signal-aware stop prediction parameters.
   bool use_priority_prediction_;
-  priority::PriorityPredictionParams priority_params_;
-  double signal_observation_timeout_;
-  std::optional<rclcpp::Time> latest_traffic_signal_time_;
   bool priority_debug_viz_;
 
   ////// Member Functions
@@ -206,13 +196,6 @@ private:
   bool isDuplicated(
     const PredictedPath & predicted_path, const std::vector<PredictedPath> & predicted_paths);
   std::optional<lanelet::Id> getTrafficSignalId(const lanelet::ConstLanelet & way_lanelet);
-
-  // Adds stop hypotheses based on the object's traffic-signal
-  // context, mutating @p predicted_paths in place.
-  void addTrafficSignalPriority(
-    const TrackedObject & object, const std::vector<PredictedRefPath> & ref_paths,
-    const std::vector<lanelet::routing::LaneletPath> & lanelet_paths,
-    std::vector<PredictedPath> & predicted_paths);
 
   // Vehicle history process
   void updateRoadUsersHistory(

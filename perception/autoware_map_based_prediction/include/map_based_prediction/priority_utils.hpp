@@ -18,7 +18,10 @@
 #include "map_based_prediction/data_structure.hpp"
 #include "map_based_prediction/debug_util.hpp"
 
+#include <rclcpp/rclcpp.hpp>
+
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
+#include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 
 #include <lanelet2_core/Forward.h>
 #include <lanelet2_core/primitives/Lanelet.h>
@@ -35,6 +38,7 @@
 namespace autoware::map_based_prediction::priority
 {
 using autoware_perception_msgs::msg::TrafficLightGroup;
+using autoware_perception_msgs::msg::TrafficLightGroupArray;
 
 struct PriorityCalibrationParams
 {
@@ -73,11 +77,6 @@ bool evaluateSignalStopRequirement(
 bool shouldAddStopHypothesis(
   bool signal_requires_stop, bool has_stop_line_ahead, const PriorityCalibrationParams & params);
 
-struct PriorityPredictionParams
-{
-  PriorityCalibrationParams calibration;
-};
-
 /// Stop-hypothesis weight after a lane-change penalty: the lane-follow (center)
 /// copy keeps the full stop weight, while lane-change copies are attenuated so
 /// the center hypothesis is always the strongest.
@@ -103,7 +102,40 @@ struct ObjectPrediction
 std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   const ObjectPrediction & prediction,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
-  const PriorityPredictionParams & params, debug_util::StopHypothesisDebug & debug);
+  const PriorityCalibrationParams & params, debug_util::StopHypothesisDebug & debug);
+
+/// Owns the latest traffic-signal observation and turns it into stop hypotheses.
+/// setTrafficSignal() refreshes the observation (and its timestamp); addStopHypotheses()
+/// drops the call when that observation is stale so an old red never keeps cutting paths.
+/// The caller supplies the current time and consumes the returned debug counters,
+/// so this class stays free of any rclcpp::Node dependency.
+class TrafficSignalStopPredictor
+{
+public:
+  void setParameters(const PriorityCalibrationParams & params, double signal_observation_timeout)
+  {
+    params_ = params;
+    signal_observation_timeout_ = signal_observation_timeout;
+  }
+
+  void setTrafficSignal(const TrafficLightGroupArray & traffic_signals, const rclcpp::Time & now);
+
+  /// Drop the previous frame's marker data (stop lines and hypothesis indices);
+  /// the cumulative gate counters survive for the throttled log.
+  void clearFrameDebug();
+
+  std::vector<PredictedPath> addStopHypotheses(
+    const ObjectPrediction & prediction, const rclcpp::Time & now);
+
+  const debug_util::StopHypothesisDebug & getDebugInfo() const { return debug_; }
+
+private:
+  std::unordered_map<lanelet::Id, TrafficLightGroup> traffic_signal_id_map_;
+  std::optional<rclcpp::Time> latest_traffic_signal_time_;
+  PriorityCalibrationParams params_;
+  double signal_observation_timeout_{0.0};
+  debug_util::StopHypothesisDebug debug_;
+};
 
 }  // namespace autoware::map_based_prediction::priority
 
