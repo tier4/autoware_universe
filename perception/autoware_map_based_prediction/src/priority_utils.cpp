@@ -39,35 +39,28 @@ namespace autoware::map_based_prediction::priority
 {
 namespace
 {
-// Map stop lines are straight: treat one as the segment between its endpoints,
-// extended sideways by margin * length on both ends.
-std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> stopLineChord(
-  const lanelet::ConstLineString3d & stop_line, const double margin)
+
+  std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> stopLineChord(
+  const lanelet::ConstLineString3d & stop_line)
 {
-  const double sx = stop_line.back().x() - stop_line.front().x();
-  const double sy = stop_line.back().y() - stop_line.front().y();
   geometry_msgs::msg::Point c1;
-  c1.x = stop_line.front().x() - margin * sx;
-  c1.y = stop_line.front().y() - margin * sy;
+  c1.x = stop_line.front().x();
+  c1.y = stop_line.front().y();
   c1.z = stop_line.front().z();
   geometry_msgs::msg::Point c2;
-  c2.x = stop_line.back().x() + margin * sx;
-  c2.y = stop_line.back().y() + margin * sy;
+  c2.x = stop_line.back().x();
+  c2.y = stop_line.back().y();
   c2.z = stop_line.back().z();
   return {c1, c2};
 }
 
-// Truncate the path at its first crossing with the stop line; a path that never
-// crosses the line is left untouched.
 void clipPathAtStopLine(PredictedPath & path, const lanelet::ConstLineString3d & stop_line)
 {
   if (path.path.size() < 2 || stop_line.size() < 2) {
     return;
   }
 
-  // The chord is extended sideways so a laterally-offset path still clips at
-  // the longitudinal stop position.
-  const auto [c1, c2] = stopLineChord(stop_line, 0.0);
+  const auto [c1, c2] = stopLineChord(stop_line);
   for (size_t i = 1; i < path.path.size(); ++i) {
     const auto crossing_point =
       autoware_utils::intersect(path.path.at(i - 1).position, path.path.at(i).position, c1, c2);
@@ -91,7 +84,7 @@ std::optional<double> arcLengthToStopLine(
 
   // Use the geometric crossing, not the nearest vertex, which drifts when the
   // stop line is oblique to / laterally offset from the path.
-  const auto [c1, c2] = stopLineChord(stop_line, 0.0);
+  const auto [c1, c2] = stopLineChord(stop_line);
   double arc_length = 0.0;
   for (size_t i = 1; i < ref_path.size(); ++i) {
     const auto & a = ref_path.at(i - 1).position;
@@ -257,8 +250,7 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
       continue;  // nothing to clip to -> the go path stands
     }
 
-    predicted_path.confidence = static_cast<float>(
-      weakenConfidenceInLaneChange(ref_path.maneuver, params.calibration.stop_probability_boost));
+    predicted_path.confidence = static_cast<float>(params.calibration.stop_probability_boost);
 
     // The stop hypothesis replaces the go path in place (the go path is dropped).
     result.at(i) = predicted_path;
