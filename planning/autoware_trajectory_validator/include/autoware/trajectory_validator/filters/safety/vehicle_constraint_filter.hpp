@@ -18,6 +18,8 @@
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <array>
+#include <chrono>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -38,6 +40,37 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
+  /**
+   * @brief Internal state for hysteresis-based violation detection.
+   *
+   * Tracks cumulative time for violation onset and clearance to implement time-based
+   * hysteresis. The state transitions to ERROR only after the violation persists for
+   * on_time_buffer_s, and clears only after the violation is absent for off_time_buffer_s.
+   */
+  struct HysteresisState
+  {
+    /** @brief Current hysteresis latched state (true = ERROR condition is active). */
+    bool has_violation{false};
+    /** @brief Cumulative time (seconds) the violation has been detected continuously. */
+    double detected_time_s{0.0};
+    /** @brief Cumulative time (seconds) the violation has been absent continuously. */
+    double absent_time_s{0.0};
+    /** @brief Last call timestamp for computing delta time. */
+    std::optional<std::chrono::steady_clock::time_point> last_update_time;
+  };
+
+  /**
+   * @brief Updates hysteresis state and returns the final feasibility decision.
+   *
+   * Accumulates detection/absence time and applies threshold-based transitions:
+   * - Entering ERROR: when detected_time_s >= on_time_buffer_s
+   * - Exiting ERROR: when absent_time_s >= off_time_buffer_s
+   *
+   * @param current_has_violation True if constraint violation detected in current frame.
+   * @return False if violation ERROR is latched, true otherwise (feasible).
+   */
+  bool update_and_judge_hysteresis_state(bool current_has_violation);
+
   MetricReport check_speed(const TrajectoryPoints & traj_points) const;
   MetricReport check_acceleration(const TrajectoryPoints & traj_points) const;
   MetricReport check_deceleration(const TrajectoryPoints & traj_points) const;
@@ -55,6 +88,7 @@ private:
   }};  //!< Array of checker functions
 
   validator::Params::VehicleConstraint params_;  //!< Parameters for this filter
+  HysteresisState hysteresis_state_;
 };
 
 // --- Helper functions for constraint checks ---

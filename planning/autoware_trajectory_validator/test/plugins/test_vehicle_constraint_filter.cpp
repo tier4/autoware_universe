@@ -16,6 +16,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <thread>
+
 namespace
 {
 autoware_planning_msgs::msg::TrajectoryPoint create_trajectory_point(
@@ -57,6 +60,8 @@ TEST(VehicleConstraintFilterTest, FeasibleWhenAllConstraintsSatisfied)
   params.vehicle_constraint.max_deceleration = 2.0;
   params.vehicle_constraint.max_steering_angle = 0.5;
   params.vehicle_constraint.max_steering_rate = 0.1;
+  params.vehicle_constraint.on_time_buffer_s = 0.0;
+  params.vehicle_constraint.off_time_buffer_s = 0.0;
   filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
@@ -82,11 +87,18 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSpeedExceedsMax)
 
   validator::Params params;
   params.vehicle_constraint.max_speed = 10.0;
+  params.vehicle_constraint.on_time_buffer_s = 0.0;
+  params.vehicle_constraint.off_time_buffer_s = 0.0;
   filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible);
+
+  result = filter.is_feasible(traj_points, context);
 
   ASSERT_TRUE(result.has_value());
   EXPECT_FALSE(result.value().is_feasible);
@@ -107,11 +119,18 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenAccelerationExceedsMax)
   VehicleConstraintFilter filter;
   validator::Params params;
   params.vehicle_constraint.max_acceleration = 2.0;
+  params.vehicle_constraint.on_time_buffer_s = 0.0;
+  params.vehicle_constraint.off_time_buffer_s = 0.0;
   filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible);
+
+  result = filter.is_feasible(traj_points, context);
 
   ASSERT_TRUE(result.has_value());
   EXPECT_FALSE(result.value().is_feasible);
@@ -133,11 +152,18 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenDecelerationExceedsMax)
 
   validator::Params params;
   params.vehicle_constraint.max_deceleration = 2.0;
+  params.vehicle_constraint.on_time_buffer_s = 0.0;
+  params.vehicle_constraint.off_time_buffer_s = 0.0;
   filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible);
+
+  result = filter.is_feasible(traj_points, context);
 
   ASSERT_TRUE(result.has_value());
   EXPECT_FALSE(result.value().is_feasible);
@@ -162,11 +188,18 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringAngleExceedsMax)
 
   validator::Params params;
   params.vehicle_constraint.max_steering_angle = 0.5;
+  params.vehicle_constraint.on_time_buffer_s = 0.0;
+  params.vehicle_constraint.off_time_buffer_s = 0.0;
   filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
   FilterContext context;  // Empty context for now
   auto result = filter.is_feasible(traj_points, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible);
+
+  result = filter.is_feasible(traj_points, context);
 
   ASSERT_TRUE(result.has_value());
   EXPECT_FALSE(result.value().is_feasible);
@@ -193,6 +226,8 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringRateExceedsMax)
 
   validator::Params params;
   params.vehicle_constraint.max_steering_rate = 0.1;
+  params.vehicle_constraint.on_time_buffer_s = 0.0;
+  params.vehicle_constraint.off_time_buffer_s = 0.0;
   filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
@@ -200,7 +235,58 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringRateExceedsMax)
   auto result = filter.is_feasible(traj_points, context);
 
   ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result.value().is_feasible);
+
+  result = filter.is_feasible(traj_points, context);
+
+  ASSERT_TRUE(result.has_value());
   EXPECT_FALSE(result.value().is_feasible);
+}
+
+TEST(VehicleConstraintFilterTest, HysteresisLatchesAndClearsAfterBuffer)
+{
+  TrajectoryPoints violating_traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
+    create_trajectory_point(1.0, 1.0, 0.0, 6.0, 0.0, 1.0),
+    create_trajectory_point(2.0, 2.0, 0.0, 11.0, 0.0, 2.0)};
+
+  TrajectoryPoints non_violating_traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
+    create_trajectory_point(1.0, 1.0, 0.0, 6.0, 0.0, 1.0),
+    create_trajectory_point(2.0, 2.0, 0.0, 9.0, 0.0, 2.0)};
+
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+
+  VehicleConstraintFilter filter;
+  validator::Params params;
+  params.vehicle_constraint.max_speed = 10.0;
+  params.vehicle_constraint.on_time_buffer_s = 0.15;
+  params.vehicle_constraint.off_time_buffer_s = 0.15;
+  filter.update_parameters(params);
+  filter.set_vehicle_info(vehicle_info);
+
+  FilterContext context;
+
+  auto result = filter.is_feasible(violating_traj_points, context);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result->is_feasible);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  result = filter.is_feasible(violating_traj_points, context);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result->is_feasible);
+
+  result = filter.is_feasible(non_violating_traj_points, context);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result->is_feasible);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  result = filter.is_feasible(non_violating_traj_points, context);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_TRUE(result->is_feasible);
 }
 
 // --- is_speed_ok(...) tests ---

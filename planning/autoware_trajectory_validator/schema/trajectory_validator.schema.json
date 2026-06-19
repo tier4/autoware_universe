@@ -273,6 +273,18 @@
               "description": "Maximum allowed steering rate [rad/s].",
               "default": 0.3,
               "minimum": 0.0
+            },
+            "on_time_buffer_s": {
+              "type": "number",
+              "description": "Duration a violation must persist before entering ERROR [s].",
+              "default": 0.15,
+              "minimum": 0.0
+            },
+            "off_time_buffer_s": {
+              "type": "number",
+              "description": "Duration a violation must be absent before clearing ERROR [s].",
+              "default": 0.15,
+              "minimum": 0.0
             }
           },
           "required": [],

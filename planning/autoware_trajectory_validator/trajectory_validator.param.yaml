@@ -19,3 +19,5 @@
       max_deceleration: 5.0 # m/s^2 (positive but represents deceleration)
       max_steering_angle: 0.8 # rad
       max_steering_rate: 0.3 # rad/s
+      on_time_buffer_s: 0.15 # s
+      off_time_buffer_s: 0.15 # s

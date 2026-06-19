@@ -18,6 +18,7 @@
 #include <builtin_interfaces/msg/duration.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <string>
 #include <utility>
 #include <vector>
@@ -123,15 +124,56 @@ VehicleConstraintFilter::result_t VehicleConstraintFilter::is_feasible(
 
   // NOTE: Feasibility decision logic might be more complex in the future, but for now we just
   // check all constraints and return false if any are violated
-  bool is_feasible = true;
+  bool current_has_violation = false;
   std::vector<MetricReport> metrics;
   for (const auto & checker : checkers_) {
     auto report = (this->*checker)(traj_points);
-    is_feasible &= report.level == MetricReport::OK;
+    current_has_violation |= report.level == MetricReport::ERROR;
     metrics.push_back(report);
   }
 
+  const bool is_feasible = update_and_judge_hysteresis_state(current_has_violation);
+
   return ValidationResult{is_feasible, std::move(metrics)};
+}
+
+bool VehicleConstraintFilter::update_and_judge_hysteresis_state(const bool current_has_violation)
+{
+  // Implementation details:
+  // - On first call: dt_s = 0 (no hysteresis trigger on init)
+  // - On violation detection: accumulate detected_time_s until on_time_buffer_s is reached
+  // - On violation absence: accumulate absent_time_s until off_time_buffer_s is reached
+  // - Transitions are one-way within each phase (detected or absent)
+  const auto now = std::chrono::steady_clock::now();
+  const bool is_first_call = !hysteresis_state_.last_update_time.has_value();
+  double dt_s = 0.0;
+  if (hysteresis_state_.last_update_time.has_value()) {
+    dt_s = std::chrono::duration<double>(now - *hysteresis_state_.last_update_time).count();
+  }
+  hysteresis_state_.last_update_time = now;
+
+  if (is_first_call) {
+    return !hysteresis_state_.has_violation;
+  }
+
+  if (current_has_violation) {
+    hysteresis_state_.detected_time_s += dt_s;
+    hysteresis_state_.absent_time_s = 0.0;
+    if (
+      !hysteresis_state_.has_violation &&
+      hysteresis_state_.detected_time_s >= params_.on_time_buffer_s) {
+      hysteresis_state_.has_violation = true;
+    }
+  } else {
+    hysteresis_state_.absent_time_s += dt_s;
+    hysteresis_state_.detected_time_s = 0.0;
+    if (
+      hysteresis_state_.has_violation &&
+      hysteresis_state_.absent_time_s >= params_.off_time_buffer_s) {
+      hysteresis_state_.has_violation = false;
+    }
+  }
+  return !hysteresis_state_.has_violation;
 }
 
 MetricReport VehicleConstraintFilter::check_speed(const TrajectoryPoints & traj_points) const
