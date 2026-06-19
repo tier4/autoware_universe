@@ -1,0 +1,12 @@
+/**:
+  path_multiplexer:
+    ros__parameters:
+      input_topic_names:
+        - "/planning/scenario_planning/lane_driving/behavior_planning/output/path"
+        - "/external/remote/path"
+      input_topic_keys:
+        - "AUTO"
+        - "REMOTE"
+      topic_type: "autoware_planning_msgs/msg/Path"
+      output_topic: "/planning/scenario_planning/lane_driving/behavior_planning/path"
+      select_input_service: "path_multiplexer/select_input"
