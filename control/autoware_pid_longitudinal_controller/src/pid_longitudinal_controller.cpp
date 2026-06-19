@@ -1277,9 +1277,19 @@ double PidLongitudinalController::applyVelocityFeedback(const ControlData & cont
     const double error_vel_filtered = m_lpf_vel_error->filter(diff_vel);
 
     const double a_connect = error_vel_filtered / dt_target;
-    const double target_acc = target_motion.acc;
+    
 
-    return w * a_connect + (1.0 - w) * target_acc;
+    double target_acc = target_motion.acc;
+
+    // Detect stopped points, on the trajectory they have acceleration 0 based on the speed diff,
+    // but we still need deacceleration to enter stop.
+    if ( abs(target_motion.vel) < m_state_transition_params.stopped_state_entry_vel &&
+              target_motion.acc < m_state_transition_params.stopped_state_entry_acc ) {
+      target_acc = m_stopped_state_params.acc;
+    }
+
+    const double feedback_acc = w * a_connect + (1.0 - w) * target_acc;
+    return feedback_acc;
   }
 
   const auto target_motion = Motion{
