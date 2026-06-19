@@ -82,8 +82,7 @@ bool shouldAddStopHypothesis(
 /// the center hypothesis is always the strongest.
 double weakenConfidenceInLaneChange(const Maneuver & maneuver, const double stop_weight);
 
-/// One object's prediction: its tracked state, the candidate reference paths,
-/// and the predicted paths generated 1:1 from them.
+
 struct ObjectPrediction
 {
   const TrackedObject & object;
@@ -92,23 +91,13 @@ struct ObjectPrediction
   const std::vector<PredictedPath> & predicted_paths;
 };
 
-/// Recompute the predicted paths with traffic-signal stop hypotheses: on a red
-/// signal a copy of the go path cut at the stop-line crossing is appended and the
-/// go hypothesis is dropped. predicted_paths must correspond 1:1 to ref_paths
-/// (objects whose paths were dropped by the lateral-acceleration constraint are
-/// returned unchanged). @p debug accumulates throttled-log counters and marker
-/// data only.
-/// @return the predicted paths to replace the prediction's own with
+
 std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   const ObjectPrediction & prediction,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
   const PriorityCalibrationParams & params, debug_util::StopHypothesisDebug & debug);
 
-/// Owns the latest traffic-signal observation and turns it into stop hypotheses.
-/// setTrafficSignal() refreshes the observation (and its timestamp); addStopHypotheses()
-/// drops the call when that observation is stale so an old red never keeps cutting paths.
-/// The caller supplies the current time and consumes the returned debug counters,
-/// so this class stays free of any rclcpp::Node dependency.
+
 class TrafficSignalStopPredictor
 {
 public:
