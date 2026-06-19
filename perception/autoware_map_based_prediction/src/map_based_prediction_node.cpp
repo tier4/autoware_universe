@@ -528,13 +528,10 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   }
 
   // debug marker
-  if (use_debug_marker) {
+  if (use_debug_marker || priority_debug_viz_) {
     pub_debug_markers_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>("maneuver", rclcpp::QoS{1});
   }
-
-  pub_priority_object_markers_ =
-    this->create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/priority_objects", 1);
   // dynamic reconfigure
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&MapBasedPredictionNode::onParam, this, std::placeholders::_1));
@@ -764,7 +761,7 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
 
   if (priority_debug_viz_) {
     debug_util::publishPriorityObjectMarkers(
-      *pub_priority_object_markers_, transform_listener_, output, in_objects->header.stamp,
+      *pub_debug_markers_, transform_listener_, output, in_objects->header.stamp,
       stop_hypothesis_debug_.stop_hypothesis_path_indices, stop_hypothesis_debug_.stop_lines,
       this->now());
   }

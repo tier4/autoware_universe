@@ -70,9 +70,9 @@ void clipPathAtStopLine(PredictedPath & path, const lanelet::ConstLineString3d &
   const auto [c1, c2] = stopLineChord(stop_line, 0.0);
   for (size_t i = 1; i < path.path.size(); ++i) {
     const auto crossing_point =
-      autoware_utils::intersect(path.path[i - 1].position, path.path[i].position, c1, c2);
+      autoware_utils::intersect(path.path.at(i - 1).position, path.path.at(i).position, c1, c2);
     if (crossing_point) {
-      auto crossing = path.path[i];  // keep orientation / time fields
+      auto crossing = path.path.at(i);  // keep orientation / time fields
       crossing.position = *crossing_point;
       path.path.resize(i);
       path.path.push_back(crossing);
@@ -217,9 +217,9 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   for (size_t i = 0; i < predicted_paths.size(); ++i) {
     // predicted_path is a mutable copy: it is clipped in place and written back
     // to result[i] when a stop hypothesis replaces the go path.
-    PredictedPath predicted_path = predicted_paths[i];
-    const PredictedRefPath & ref_path = ref_paths[i];
-    const lanelet::routing::LaneletPath & lanelet_path = lanelet_paths[i];
+    PredictedPath predicted_path = predicted_paths.at(i);
+    const PredictedRefPath & ref_path = ref_paths.at(i);
+    const lanelet::routing::LaneletPath & lanelet_path = lanelet_paths.at(i);
 
     if (ref_path.path.size() < 2 || predicted_path.path.size() < 2) {
       continue;
@@ -261,7 +261,7 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
       weakenConfidenceInLaneChange(ref_path.maneuver, params.calibration.stop_probability_boost));
 
     // The stop hypothesis replaces the go path in place (the go path is dropped).
-    result[i] = predicted_path;
+    result.at(i) = predicted_path;
 
     debug.stop_hypothesis_path_indices[autoware_utils::to_hex_string(object.object_id)].insert(i);
     debug.stop_lines.push_back(*related_stop_line);
