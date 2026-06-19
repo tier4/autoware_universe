@@ -308,7 +308,7 @@ void CrosswalkTrafficLightEstimatorNode::onTrafficLightArray(
   }
 
   // inject intersection (oncoming/cross) signals from map tags even when no route is set
-  add_intersectionTrafficSignals(crosswalk_traffic_signal_overrides, output);
+  addIntersectionTrafficSignals(crosswalk_traffic_signal_overrides, output);
 
   removeDuplicateIds(output);
 
