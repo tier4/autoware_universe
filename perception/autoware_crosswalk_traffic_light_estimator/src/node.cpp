@@ -511,7 +511,7 @@ void CrosswalkTrafficLightEstimatorNode::update_intersection_overrides_from_map(
     TrafficSignalElement element;
     element.color = color;
     element.shape = TrafficSignalElement::CIRCLE;
-    element.confidence = 1.0;
+    element.confidence = 1.0; 
 
     TrafficSignal new_signal;
     new_signal.traffic_light_group_id = id;

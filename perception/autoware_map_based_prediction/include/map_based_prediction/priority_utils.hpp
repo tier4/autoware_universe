@@ -67,10 +67,16 @@ struct PriorityCalibrationParams
 std::optional<double> arcLengthToStopLine(
   const PosePath & ref_path, const lanelet::ConstLineString3d & stop_line);
 
+/// Whether @p stop_line still lies ahead of an object at @p position travelling
+/// along @p ref_path: the on-path arc length to the line must exceed the object's
+/// own signed offset along the path.
 bool hasStopLineAhead(
   const geometry_msgs::msg::Point & position, const PosePath & ref_path,
   const lanelet::ConstLineString3d & stop_line);
 
+/// Find the first traffic-light-controlled lanelet a predicted path enters
+/// (@p lanelet_path is the lane sequence the path follows).
+/// @return true when found, with the lanelet written to @p signal_lanelet
 bool findTrafficLightLaneletOnPath(
   const lanelet::routing::LaneletPath & lanelet_path, lanelet::ConstLanelet & signal_lanelet);
 
@@ -80,6 +86,8 @@ bool findTrafficLightLaneletOnPath(
 bool evaluateSignalStopRequirement(
   const lanelet::ConstLanelet & lanelet, const std::optional<TrafficLightGroup> & signal);
 
+/// Whether a stop hypothesis should be added: the feature is enabled, the signal
+/// demands a stop, and the stop line still lies ahead of the object.
 bool shouldAddStopHypothesis(
   bool signal_requires_stop, bool has_stop_line_ahead, const PriorityCalibrationParams & params);
 
@@ -124,18 +132,7 @@ public:
 
   const debug_util::StopHypothesisDebug & getDebugInfo() const { return debug_; }
 
-  /// Debounced signal map actually used for the stop decision; exposed for the
-  /// stabilized-signal debug topic.
-  const std::unordered_map<lanelet::Id, TrafficLightGroup> & getStabilizedTrafficSignals() const
-  {
-    return stabilized_traffic_signal_id_map_;
-  }
-
 private:
-  // Whether the traffic-signal topic has gone silent (no message within
-  // signal_observation_timeout_). A non-positive timeout disables the check.
-  bool isTrafficSignalObservationOld(const rclcpp::Time & now) const;
-
   std::unordered_map<lanelet::Id, TrafficLightGroup> traffic_signal_id_map_;
   std::unordered_map<lanelet::Id, TrafficLightGroup> stabilized_traffic_signal_id_map_;
   std::unordered_map<lanelet::Id, SignalStabilizeState> signal_stabilize_state_;

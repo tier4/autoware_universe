@@ -320,26 +320,18 @@ void TrafficSignalStopPredictor::clearFrameDebug()
   debug_.stop_signal_links.clear();
 }
 
-bool TrafficSignalStopPredictor::isTrafficSignalObservationOld(const rclcpp::Time & now) const
-{
-  // A non-positive timeout disables expiry: the last stabilized signal is kept
-  // even after it leaves view (e.g. after turning into the intersection the
-  // signal head is no longer detected but the stop hypothesis must hold).
-  if (signal_observation_timeout_ <= 0.0) {
-    return false;
-  }
-  if (!latest_traffic_signal_time_) {
-    return true;
-  }
-  return (now - *latest_traffic_signal_time_).seconds() > signal_observation_timeout_;
-}
-
 std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
   const ObjectPrediction & prediction, const rclcpp::Time & now)
 {
-  // Skip on a stale / missing signal observation (e.g. the signal topic went
-  // silent): an old red must not keep cutting paths, so the go paths stand.
-  if (isTrafficSignalObservationOld(now)) {
+  // Skip on a stale signal observation (the signal topic went silent): an old red
+  // must not keep cutting paths. A non-positive timeout disables expiry, keeping
+  // the last stabilized signal even after it leaves view (e.g. once the ego turns
+  // into the intersection the signal head is no longer detected).
+  const bool observation_old =
+    signal_observation_timeout_ > 0.0 &&
+    (!latest_traffic_signal_time_ ||
+     (now - *latest_traffic_signal_time_).seconds() > signal_observation_timeout_);
+  if (observation_old) {
     signal_stabilize_state_.clear();
     stabilized_traffic_signal_id_map_.clear();
     return prediction.predicted_paths;
