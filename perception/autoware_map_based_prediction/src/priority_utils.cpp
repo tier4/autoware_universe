@@ -39,40 +39,33 @@ namespace autoware::map_based_prediction::priority
 {
 namespace
 {
-// Map stop lines are straight: treat one as the segment between its endpoints,
-// extended sideways by margin * length on both ends.
-std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> stopLineChord(
-  const lanelet::ConstLineString3d & stop_line, const double margin)
+
+  std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> stopLineChord(
+  const lanelet::ConstLineString3d & stop_line)
 {
-  const double sx = stop_line.back().x() - stop_line.front().x();
-  const double sy = stop_line.back().y() - stop_line.front().y();
   geometry_msgs::msg::Point c1;
-  c1.x = stop_line.front().x() - margin * sx;
-  c1.y = stop_line.front().y() - margin * sy;
+  c1.x = stop_line.front().x();
+  c1.y = stop_line.front().y();
   c1.z = stop_line.front().z();
   geometry_msgs::msg::Point c2;
-  c2.x = stop_line.back().x() + margin * sx;
-  c2.y = stop_line.back().y() + margin * sy;
+  c2.x = stop_line.back().x();
+  c2.y = stop_line.back().y();
   c2.z = stop_line.back().z();
   return {c1, c2};
 }
 
-// Truncate the path at its first crossing with the stop line; a path that never
-// crosses the line is left untouched.
 void clipPathAtStopLine(PredictedPath & path, const lanelet::ConstLineString3d & stop_line)
 {
   if (path.path.size() < 2 || stop_line.size() < 2) {
     return;
   }
 
-  // The chord is extended sideways so a laterally-offset path still clips at
-  // the longitudinal stop position.
-  const auto [c1, c2] = stopLineChord(stop_line, 0.0);
+  const auto [c1, c2] = stopLineChord(stop_line);
   for (size_t i = 1; i < path.path.size(); ++i) {
     const auto crossing_point =
-      autoware_utils::intersect(path.path[i - 1].position, path.path[i].position, c1, c2);
+      autoware_utils::intersect(path.path.at(i - 1).position, path.path.at(i).position, c1, c2);
     if (crossing_point) {
-      auto crossing = path.path[i];  // keep orientation / time fields
+      auto crossing = path.path.at(i);  // keep orientation / time fields
       crossing.position = *crossing_point;
       path.path.resize(i);
       path.path.push_back(crossing);
@@ -91,7 +84,7 @@ std::optional<double> arcLengthToStopLine(
 
   // Use the geometric crossing, not the nearest vertex, which drifts when the
   // stop line is oblique to / laterally offset from the path.
-  const auto [c1, c2] = stopLineChord(stop_line, 0.0);
+  const auto [c1, c2] = stopLineChord(stop_line);
   double arc_length = 0.0;
   for (size_t i = 1; i < ref_path.size(); ++i) {
     const auto & a = ref_path.at(i - 1).position;
@@ -192,7 +185,7 @@ double weakenConfidenceInLaneChange(const Maneuver & maneuver, const double stop
 std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   const ObjectPrediction & prediction,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
-  const PriorityPredictionParams & params, debug_util::StopHypothesisDebug & debug)
+  const PriorityCalibrationParams & params, debug_util::StopHypothesisDebug & debug)
 {
   const TrackedObject & object = prediction.object;
   const std::vector<PredictedRefPath> & ref_paths = prediction.ref_paths;
@@ -217,9 +210,9 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   for (size_t i = 0; i < predicted_paths.size(); ++i) {
     // predicted_path is a mutable copy: it is clipped in place and written back
     // to result[i] when a stop hypothesis replaces the go path.
-    PredictedPath predicted_path = predicted_paths[i];
-    const PredictedRefPath & ref_path = ref_paths[i];
-    const lanelet::routing::LaneletPath & lanelet_path = lanelet_paths[i];
+    PredictedPath predicted_path = predicted_paths.at(i);
+    const PredictedRefPath & ref_path = ref_paths.at(i);
+    const lanelet::routing::LaneletPath & lanelet_path = lanelet_paths.at(i);
 
     if (ref_path.path.size() < 2 || predicted_path.path.size() < 2) {
       continue;
@@ -246,7 +239,7 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     debug.counter.stopline_found += stop_line_ahead ? 1 : 0;
 
     // 3. Add a stop hypothesis only on a red signal whose stop line is still ahead.
-    if (!shouldAddStopHypothesis(signal_requires_stop, stop_line_ahead, params.calibration)) {
+    if (!shouldAddStopHypothesis(signal_requires_stop, stop_line_ahead, params)) {
       continue;
     }
 
@@ -257,11 +250,10 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
       continue;  // nothing to clip to -> the go path stands
     }
 
-    predicted_path.confidence = static_cast<float>(
-      weakenConfidenceInLaneChange(ref_path.maneuver, params.calibration.stop_probability_boost));
+    predicted_path.confidence = static_cast<float>(params.stop_probability_boost);
 
     // The stop hypothesis replaces the go path in place (the go path is dropped).
-    result[i] = predicted_path;
+    result.at(i) = predicted_path;
 
     debug.stop_hypothesis_path_indices[autoware_utils::to_hex_string(object.object_id)].insert(i);
     debug.stop_lines.push_back(*related_stop_line);
@@ -269,6 +261,37 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   }
 
   return result;
+}
+
+void TrafficSignalStopPredictor::setTrafficSignal(
+  const TrafficLightGroupArray & traffic_signals, const rclcpp::Time & now)
+{
+  traffic_signal_id_map_.clear();
+  for (const auto & group : traffic_signals.traffic_light_groups) {
+    traffic_signal_id_map_[group.traffic_light_group_id] = group;
+  }
+  latest_traffic_signal_time_ = now;
+}
+
+void TrafficSignalStopPredictor::clearFrameDebug()
+{
+  debug_.stop_lines.clear();
+  debug_.stop_hypothesis_path_indices.clear();
+}
+
+std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
+  const ObjectPrediction & prediction, const rclcpp::Time & now)
+{
+  // Skip on a stale / missing signal observation (e.g. the signal topic went
+  // silent): an old red must not keep cutting paths, so the go paths stand.
+  const bool signal_observation_stale =
+    !latest_traffic_signal_time_ ||
+    (now - *latest_traffic_signal_time_).seconds() > signal_observation_timeout_;
+  if (signal_observation_stale) {
+    return prediction.predicted_paths;
+  }
+
+  return addTrafficSignalStopHypotheses(prediction, traffic_signal_id_map_, params_, debug_);
 }
 
 }  // namespace autoware::map_based_prediction::priority
