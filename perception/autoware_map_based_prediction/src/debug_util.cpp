@@ -17,7 +17,16 @@
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
 #include <autoware_utils/ros/uuid_helper.hpp>
+#include <rclcpp/duration.hpp>
+#include <rclcpp/logging.hpp>
 
+#include <std_msgs/msg/color_rgba.hpp>
+
+#include <lanelet2_core/primitives/BasicRegulatoryElements.h>
+#include <lanelet2_core/primitives/Lanelet.h>
+
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -25,10 +34,54 @@ namespace autoware::map_based_prediction::debug_util
 {
 using autoware_perception_msgs::msg::ObjectClassification;
 
+void recordStopSignalLink(
+  const lanelet::ConstLanelet & signal_lanelet, const geometry_msgs::msg::Point & vehicle_position,
+  StopHypothesisDebug & debug)
+{
+  const auto tls = signal_lanelet.regulatoryElementsAs<const lanelet::TrafficLight>();
+  if (tls.empty()) {
+    return;
+  }
+  std::optional<geometry_msgs::msg::Point> nearest_face;
+  double nearest_d2 = std::numeric_limits<double>::max();
+  for (const auto & light : tls.front()->trafficLights()) {
+    if (!light.isLineString()) {
+      continue;
+    }
+    double sx = 0.0, sy = 0.0, sz = 0.0;
+    size_t n = 0;
+    for (const auto & p : static_cast<lanelet::ConstLineString3d>(light)) {
+      sx += p.x();
+      sy += p.y();
+      sz += p.z();
+      ++n;
+    }
+    if (n == 0) {
+      continue;
+    }
+    geometry_msgs::msg::Point face;
+    face.x = sx / static_cast<double>(n);
+    face.y = sy / static_cast<double>(n);
+    face.z = sz / static_cast<double>(n);
+    const double dx = face.x - vehicle_position.x;
+    const double dy = face.y - vehicle_position.y;
+    const double d2 = dx * dx + dy * dy;
+    if (d2 < nearest_d2) {
+      nearest_d2 = d2;
+      nearest_face = face;
+    }
+  }
+  if (nearest_face) {
+    debug.stop_signal_links.push_back({vehicle_position, *nearest_face});
+  }
+}
+
 visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
   const autoware_perception_msgs::msg::PredictedObjects & output,
   const StopHypothesisIndexMap & stop_hypothesis_indices,
   const std::vector<lanelet::ConstLineString3d> & stop_lines,
+  const std::vector<std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point>> &
+    stop_signal_links,
   const std::optional<geometry_msgs::msg::Pose> & ego_pose, const rclcpp::Time & now)
 {
   visualization_msgs::msg::MarkerArray markers;
@@ -114,6 +167,21 @@ visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
     markers.markers.push_back(sl);
   }
 
+  // Line from each stopping vehicle to the red signal it is responding to.
+  for (const auto & [vehicle_pos, signal_pos] : stop_signal_links) {
+    auto link = autoware_utils::create_default_marker(
+      "map", now, "stop_signal_links", path_id++, visualization_msgs::msg::Marker::LINE_STRIP,
+      autoware_utils::create_marker_scale(0.3, 0.0, 0.0),
+      autoware_utils::create_marker_color(1.0, 0.3, 0.3, 0.9));  // red
+    link.lifetime = rclcpp::Duration::from_seconds(0.3);
+    auto v = vehicle_pos;
+    v.z += 1.0;
+    auto s = signal_pos;
+    link.points.push_back(v);
+    link.points.push_back(s);
+    markers.markers.push_back(link);
+  }
+
   if (ego_pose) {
     const auto ego_color = autoware_utils::create_marker_color(0.1, 0.9, 1.0, 0.95);  // cyan
     auto ego_box = autoware_utils::create_default_marker(
@@ -143,7 +211,10 @@ void publishPriorityObjectMarkers(
   autoware_utils::TransformListener & transform_listener,
   const autoware_perception_msgs::msg::PredictedObjects & output,
   const rclcpp::Time & objects_stamp, const StopHypothesisIndexMap & stop_hypothesis_indices,
-  const std::vector<lanelet::ConstLineString3d> & stop_lines, const rclcpp::Time & now)
+  const std::vector<lanelet::ConstLineString3d> & stop_lines,
+  const std::vector<std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point>> &
+    stop_signal_links,
+  const rclcpp::Time & now)
 {
   std::optional<geometry_msgs::msg::Pose> ego_pose;
   const auto map_to_base = transform_listener.get_transform(
@@ -156,8 +227,53 @@ void publishPriorityObjectMarkers(
     pose.orientation = map_to_base->transform.rotation;
     ego_pose = pose;
   }
-  publisher.publish(
-    createPriorityObjectMarkers(output, stop_hypothesis_indices, stop_lines, ego_pose, now));
+  publisher.publish(createPriorityObjectMarkers(
+    output, stop_hypothesis_indices, stop_lines, stop_signal_links, ego_pose, now));
+}
+
+namespace
+{
+std_msgs::msg::ColorRGBA maneuverColor(const Maneuver maneuver)
+{
+  switch (maneuver) {
+    case Maneuver::LEFT_LANE_CHANGE:
+      return autoware_utils::create_marker_color(0.0, 1.0, 0.0, 0.8);  // green
+    case Maneuver::RIGHT_LANE_CHANGE:
+      return autoware_utils::create_marker_color(1.0, 0.0, 0.0, 0.8);  // red
+    default:
+      return autoware_utils::create_marker_color(0.0, 0.0, 1.0, 0.8);  // blue
+  }
+}
+}  // namespace
+
+visualization_msgs::msg::Marker createManeuverMarker(
+  const autoware_perception_msgs::msg::TrackedObject & object, const Maneuver maneuver,
+  const std::size_t marker_id)
+{
+  visualization_msgs::msg::Marker marker;
+  marker.header.frame_id = "map";
+  marker.ns = "maneuver";
+  marker.id = static_cast<int32_t>(marker_id);
+  marker.lifetime = rclcpp::Duration::from_seconds(1.0);
+  marker.type = visualization_msgs::msg::Marker::CUBE;
+  marker.action = visualization_msgs::msg::Marker::ADD;
+  marker.pose = object.kinematics.pose_with_covariance.pose;
+  marker.scale = autoware_utils::create_marker_scale(3.0, 1.0, 1.0);
+  marker.color = maneuverColor(maneuver);
+  return marker;
+}
+
+void logPriorityCounters(
+  const rclcpp::Logger & logger, rclcpp::Clock & clock, const DebugLogCounter & counter)
+{
+  RCLCPP_INFO_THROTTLE(
+    logger, clock, 5000,
+    "[priority] vehicles=%zu sig_stop=%zu should_add=%zu added=%zu clip_failed=%zu "
+    "skipped_mismatch=%zu | tl_missing=%zu red_no_sl=%zu red_behind_straight=%zu "
+    "red_behind_turn=%zu",
+    counter.vehicles, counter.signal_stop, counter.should_add, counter.stop_hypothesis_added,
+    counter.clip_failed, counter.skipped_mismatch, counter.tl_missing, counter.red_no_stopline,
+    counter.red_behind_straight, counter.red_behind_turn);
 }
 
 }  // namespace autoware::map_based_prediction::debug_util

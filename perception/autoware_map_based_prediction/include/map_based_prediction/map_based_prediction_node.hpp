@@ -19,6 +19,7 @@
 #include "map_based_prediction/path_generator.hpp"
 #include "map_based_prediction/predictor_vru.hpp"
 #include "map_based_prediction/priority_utils.hpp"
+#include "map_based_prediction/signal_stop_hysteresis.hpp"
 
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/debug_publisher.hpp>
@@ -86,6 +87,8 @@ private:
   // ROS Publisher and Subscriber
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_debug_markers_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_priority_object_markers_;
+  rclcpp::Publisher<TrafficLightGroupArray>::SharedPtr pub_stabilized_traffic_signals_;
   rclcpp::Subscription<TrackedObjects>::SharedPtr sub_objects_;
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
   autoware_utils::InterProcessPollingSubscriber<TrafficLightGroupArray> sub_traffic_signals_{
@@ -174,6 +177,8 @@ private:
   // Node callbacks
   void mapCallback(const LaneletMapBin::ConstSharedPtr msg);
   void trafficSignalsCallback(const TrafficLightGroupArray::ConstSharedPtr msg);
+
+  void publishStabilizedTrafficSignals(const std_msgs::msg::Header & header);
   void objectsCallback(const TrackedObjects::ConstSharedPtr in_objects);
 
   // Diagnostics proccess
@@ -245,8 +250,6 @@ private:
   rclcpp::Publisher<autoware_utils::ProcessingTimeDetail>::SharedPtr
     detailed_processing_time_publisher_;
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
-  visualization_msgs::msg::Marker getDebugMarker(
-    const TrackedObject & object, const Maneuver & maneuver, const size_t obj_num);
 
   //// Node functions
   void publish(

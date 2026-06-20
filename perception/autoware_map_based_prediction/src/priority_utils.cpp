@@ -39,8 +39,7 @@ namespace autoware::map_based_prediction::priority
 {
 namespace
 {
-
-  std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> stopLineChord(
+std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> stopLineChord(
   const lanelet::ConstLineString3d & stop_line)
 {
   geometry_msgs::msg::Point c1;
@@ -128,20 +127,25 @@ std::optional<double> arcLengthToStopLine(
 }
 
 bool hasStopLineAhead(
-  const geometry_msgs::msg::Point & position, const PosePath & ref_path,
+  const geometry_msgs::msg::Point & position, const PosePath & path,
   const lanelet::ConstLineString3d & stop_line)
 {
-  const auto arc_length = arcLengthToStopLine(ref_path, stop_line);
+  // @p path should be the object's actual predicted path (which starts at the
+  // object and is the trajectory that gets clipped), NOT the lane reference
+  // path: a turning maneuver's reference path is anchored at the turn lanelet
+  // (downstream of the stop line) so the stop line never lies on it and the
+  // crossing is missed. The predicted path crosses the stop line ahead of the
+  // object, so the same arc-length crossing used for clipping applies here.
+  const auto arc_length = arcLengthToStopLine(path, stop_line);
   if (!arc_length) {
     return false;
   }
-  // ref_path[0] may sit a lanelet ahead of / behind the object, so the arc length
-  // measured from ref_path[0] is compared against the object's signed offset
-  // along the path.
-  const auto & r0 = ref_path.front();
-  const double h0 = tf2::getYaw(r0.orientation);
+  // path[0] may sit slightly ahead of / behind the object, so the arc length
+  // measured from path[0] is compared against the object's signed offset.
+  const auto & p0 = path.front();
+  const double h0 = tf2::getYaw(p0.orientation);
   const double s_obj =
-    (position.x - r0.position.x) * std::cos(h0) + (position.y - r0.position.y) * std::sin(h0);
+    (position.x - p0.position.x) * std::cos(h0) + (position.y - p0.position.y) * std::sin(h0);
   return *arc_length > s_obj;
 }
 
@@ -198,13 +202,15 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   if (
     predicted_paths.empty() || predicted_paths.size() != ref_paths.size() ||
     lanelet_paths.size() != ref_paths.size()) {
+    if (!predicted_paths.empty()) {
+      debug.counter.skipped_mismatch++;
+    }
     return predicted_paths;
   }
 
   debug.counter.vehicles++;
 
-  // Start from a copy of the go paths and replace only the entries that get a
-  // stop hypothesis; every other path is left untouched in place.
+  // Only entries that receive a stop hypothesis are replaced; the rest stay as the go path.
   std::vector<PredictedPath> result = predicted_paths;
 
   for (size_t i = 0; i < predicted_paths.size(); ++i) {
@@ -218,9 +224,10 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
       continue;
     }
 
-    // 1. Get signal status , line info for target path.
+    // 1. Resolve the signal-controlled lanelet on this path, plus its signal and stop line.
     lanelet::ConstLanelet target_lanelet_signal_object;
     if (!findTrafficLightLaneletOnPath(lanelet_path, target_lanelet_signal_object)) {
+      debug.counter.tl_missing++;
       continue;
     }
     const std::optional<TrafficLightGroup> signal_status =
@@ -228,29 +235,49 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     const std::optional<lanelet::ConstLineString3d> related_stop_line =
       lanelet_util::getStopLineOrEntryEdge(target_lanelet_signal_object);
 
-    // 2. Signal state and whether the stop line is still ahead of the object.
+    // 2. Decide whether the signal requires a stop and whether the stop line is still ahead.
+    // traffic_signal_id_map is already temporally stabilized by the node
+    // (signal_stop_hysteresis.hpp), so the decision here is the debounced one.
     const bool signal_requires_stop =
       evaluateSignalStopRequirement(target_lanelet_signal_object, signal_status);
     const bool stop_line_ahead =
-      related_stop_line &&
-      hasStopLineAhead(
-        object.kinematics.pose_with_covariance.pose.position, ref_path.path, *related_stop_line);
+      related_stop_line && hasStopLineAhead(
+                             object.kinematics.pose_with_covariance.pose.position,
+                             predicted_path.path, *related_stop_line);
     debug.counter.signal_stop += signal_requires_stop ? 1 : 0;
     debug.counter.stopline_found += stop_line_ahead ? 1 : 0;
+
+    // Diagnose why a signal-commanded stop yields no hypothesis, split by turn
+    // direction, to tell missing-stop-line from already-passed cases apart in logs.
+    if (signal_requires_stop && !stop_line_ahead) {
+      const std::string turn =
+        target_lanelet_signal_object.attributeOr("turn_direction", "straight");
+      if (!related_stop_line) {
+        debug.counter.red_no_stopline++;
+      } else if (turn == "left" || turn == "right") {
+        debug.counter.red_behind_turn++;
+      } else {
+        debug.counter.red_behind_straight++;
+      }
+    }
 
     // 3. Add a stop hypothesis only on a red signal whose stop line is still ahead.
     if (!shouldAddStopHypothesis(signal_requires_stop, stop_line_ahead, params)) {
       continue;
     }
+    debug.counter.should_add++;
 
-    // 4. The stop hypothesis is a copy of the go path cut at the stop line.
+    // 4. Build the hypothesis: clip the go path at the stop line, weaken its confidence.
     clipPathAtStopLine(predicted_path, *related_stop_line);
 
+    // Gate passed but the path never crossed the line: leave the go path in place.
     if (predicted_path.path.size() < 2) {
-      continue;  // nothing to clip to -> the go path stands
+      debug.counter.clip_failed++;
+      continue;
     }
 
-    predicted_path.confidence = static_cast<float>(params.stop_probability_boost);
+    predicted_path.confidence = static_cast<float>(
+      weakenConfidenceInLaneChange(ref_path.maneuver, params.stop_probability_boost));
 
     // The stop hypothesis replaces the go path in place (the go path is dropped).
     result.at(i) = predicted_path;
@@ -258,6 +285,9 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     debug.stop_hypothesis_path_indices[autoware_utils::to_hex_string(object.object_id)].insert(i);
     debug.stop_lines.push_back(*related_stop_line);
     debug.counter.stop_hypothesis_added++;
+
+    debug_util::recordStopSignalLink(
+      target_lanelet_signal_object, object.kinematics.pose_with_covariance.pose.position, debug);
   }
 
   return result;
@@ -270,6 +300,16 @@ void TrafficSignalStopPredictor::setTrafficSignal(
   for (const auto & group : traffic_signals.traffic_light_groups) {
     traffic_signal_id_map_[group.traffic_light_group_id] = group;
   }
+
+  // Debounce per group to absorb single-frame signal flicker before the priority
+  // decision reads it; disabling falls back to the raw map.
+  if (params_.use_stop_hysteresis) {
+    stabilized_traffic_signal_id_map_ = stabilizeTrafficSignalMap(
+      traffic_signal_id_map_, signal_stabilize_state_, now, params_.stop_time_hysteresis,
+      params_.go_time_hysteresis, params_.signal_retention_timeout);
+  } else {
+    stabilized_traffic_signal_id_map_ = traffic_signal_id_map_;
+  }
   latest_traffic_signal_time_ = now;
 }
 
@@ -277,6 +317,21 @@ void TrafficSignalStopPredictor::clearFrameDebug()
 {
   debug_.stop_lines.clear();
   debug_.stop_hypothesis_path_indices.clear();
+  debug_.stop_signal_links.clear();
+}
+
+bool TrafficSignalStopPredictor::isTrafficSignalObservationOld(const rclcpp::Time & now) const
+{
+  // A non-positive timeout disables expiry: the last stabilized signal is kept
+  // even after it leaves view (e.g. after turning into the intersection the
+  // signal head is no longer detected but the stop hypothesis must hold).
+  if (signal_observation_timeout_ <= 0.0) {
+    return false;
+  }
+  if (!latest_traffic_signal_time_) {
+    return true;
+  }
+  return (now - *latest_traffic_signal_time_).seconds() > signal_observation_timeout_;
 }
 
 std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
@@ -284,14 +339,16 @@ std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
 {
   // Skip on a stale / missing signal observation (e.g. the signal topic went
   // silent): an old red must not keep cutting paths, so the go paths stand.
-  const bool signal_observation_stale =
-    !latest_traffic_signal_time_ ||
-    (now - *latest_traffic_signal_time_).seconds() > signal_observation_timeout_;
-  if (signal_observation_stale) {
+  if (isTrafficSignalObservationOld(now)) {
+    signal_stabilize_state_.clear();
+    stabilized_traffic_signal_id_map_.clear();
     return prediction.predicted_paths;
   }
 
-  return addTrafficSignalStopHypotheses(prediction, traffic_signal_id_map_, params_, debug_);
+  // The map is already debounced in setTrafficSignal(), so the decision is the
+  // temporally stabilized one.
+  return addTrafficSignalStopHypotheses(
+    prediction, stabilized_traffic_signal_id_map_, params_, debug_);
 }
 
 }  // namespace autoware::map_based_prediction::priority

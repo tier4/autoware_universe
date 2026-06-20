@@ -18,8 +18,8 @@ ament_auto_add_library(map_based_prediction_node SHARED
   src/path_generator.cpp
   src/predictor_vru.cpp
   src/priority_utils.cpp
+  src/signal_stop_hysteresis.cpp
   src/lanelet_util.cpp
-  src/debug.cpp
   src/debug_util.cpp
   src/utils.cpp
 )

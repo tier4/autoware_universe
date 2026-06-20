@@ -434,6 +434,14 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
     declare_parameter<bool>("priority_prediction.use_signal_priority");
   priority_params.stop_probability_boost =
     declare_parameter<double>("priority_prediction.stop_probability_boost");
+  priority_params.use_stop_hysteresis =
+    declare_parameter<bool>("priority_prediction.use_stop_hysteresis");
+  priority_params.stop_time_hysteresis =
+    declare_parameter<double>("priority_prediction.stop_time_hysteresis");
+  priority_params.go_time_hysteresis =
+    declare_parameter<double>("priority_prediction.go_time_hysteresis");
+  priority_params.signal_retention_timeout =
+    declare_parameter<double>("priority_prediction.signal_retention_timeout");
   const double signal_observation_timeout =
     declare_parameter<double>("priority_prediction.signal_observation_timeout");
   priority_debug_viz_ = declare_parameter<bool>("priority_prediction.debug_visualization");
@@ -538,6 +546,14 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
     pub_debug_markers_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>("maneuver", rclcpp::QoS{1});
   }
+
+  pub_priority_object_markers_ =
+    this->create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/priority_objects", 1);
+  if (priority_debug_viz_) {
+    pub_stabilized_traffic_signals_ =
+      this->create_publisher<TrafficLightGroupArray>("~/debug/stabilized_traffic_signals", 1);
+  }
+
   // dynamic reconfigure
   set_param_res_ = this->add_on_set_parameters_callback(
     std::bind(&MapBasedPredictionNode::onParam, this, std::placeholders::_1));
@@ -639,6 +655,21 @@ void MapBasedPredictionNode::trafficSignalsCallback(
 {
   predictor_vru_->setTrafficSignal(*msg);
   priority_predictor_->setTrafficSignal(*msg, now());
+}
+
+void MapBasedPredictionNode::publishStabilizedTrafficSignals(const std_msgs::msg::Header & header)
+{
+  if (!pub_stabilized_traffic_signals_) {
+    return;
+  }
+  TrafficLightGroupArray msg;
+  msg.stamp = header.stamp;
+  const auto & stabilized_traffic_signals = priority_predictor_->getStabilizedTrafficSignals();
+  msg.traffic_light_groups.reserve(stabilized_traffic_signals.size());
+  for (const auto & [id, group] : stabilized_traffic_signals) {
+    msg.traffic_light_groups.push_back(group);
+  }
+  pub_stabilized_traffic_signals_->publish(msg);
 }
 
 void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPtr in_objects)
@@ -767,10 +798,14 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
 
 
     debug_util::publishPriorityObjectMarkers(
-      *pub_debug_markers_, transform_listener_, output, in_objects->header.stamp,
-      debug.stop_hypothesis_path_indices, debug.stop_lines, this->now());
-    
+      *pub_priority_object_markers_, transform_listener_, output, in_objects->header.stamp,
+      debug.stop_hypothesis_path_indices, debug.stop_lines, debug.stop_signal_links, this->now());
   }
+
+  priority_predictor_->clearFrameDebug();
+
+  // Stamp to the objects frame so the visualizer can align signals with predictions.
+  publishStabilizedTrafficSignals(in_objects->header);
 
   // Processing time
   const auto processing_time_ms = stop_watch_ptr_->toc("processing_time", true);
@@ -1672,8 +1707,8 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
       [](const PredictedRefPath & a, const PredictedRefPath & b) {
         return a.probability < b.probability;
       });
-    const auto debug_marker =
-      getDebugMarker(object, max_prob_path->maneuver, debug_markers.markers.size());
+    const auto debug_marker = debug_util::createManeuverMarker(
+      object, max_prob_path->maneuver, debug_markers.markers.size());
     debug_markers.markers.push_back(debug_marker);
   }
 

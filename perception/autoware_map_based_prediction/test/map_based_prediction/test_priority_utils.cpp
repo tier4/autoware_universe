@@ -14,6 +14,9 @@
 
 #include "map_based_prediction/lanelet_util.hpp"
 #include "map_based_prediction/priority_utils.hpp"
+#include "map_based_prediction/signal_stop_hysteresis.hpp"
+
+#include <rclcpp/time.hpp>
 
 #include <gtest/gtest.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
@@ -323,6 +326,125 @@ TEST(PriorityUtils, StopHypothesisConfidenceCenterIsStrongest)
   EXPECT_DOUBLE_EQ(center, weight);
   EXPECT_LT(weakenConfidenceInLaneChange(Maneuver::LEFT_LANE_CHANGE, weight), center);
   EXPECT_LT(weakenConfidenceInLaneChange(Maneuver::RIGHT_LANE_CHANGE, weight), center);
+}
+
+// ---- debounceStopDecision -------------------------------------------------------
+
+namespace
+{
+rclcpp::Time t(double seconds)
+{
+  return rclcpp::Time(static_cast<int64_t>(seconds * 1e9));
+}
+}  // namespace
+
+TEST(PriorityUtils, StopHysteresisDelaysEnteringStop)
+{
+  // A raw stop must persist for stop_time_hysteresis before it is committed.
+  SignalStabilizeState state;
+  EXPECT_FALSE(debounceStopDecision(state, true, t(0.0), 0.2, 0.1));   // just appeared
+  EXPECT_FALSE(debounceStopDecision(state, true, t(0.15), 0.2, 0.1));  // still within window
+  EXPECT_TRUE(debounceStopDecision(state, true, t(0.2), 0.2, 0.1));    // window elapsed
+}
+
+TEST(PriorityUtils, StopHysteresisRevertsToGoSoonerThanStop)
+{
+  // go_time_hysteresis (0.1) is shorter than stop (0.2): the safe go path is
+  // restored faster than a stop is committed.
+  SignalStabilizeState state;
+  ASSERT_FALSE(debounceStopDecision(state, true, t(0.0), 0.2, 0.1));    // arm the stop timer
+  ASSERT_TRUE(debounceStopDecision(state, true, t(0.2), 0.2, 0.1));     // committed to stop
+  EXPECT_TRUE(debounceStopDecision(state, false, t(0.25), 0.2, 0.1));   // go arming, still stop
+  EXPECT_TRUE(debounceStopDecision(state, false, t(0.3), 0.2, 0.1));    // 0.05s < go window
+  EXPECT_FALSE(debounceStopDecision(state, false, t(0.35), 0.2, 0.1));  // go committed at 0.1s
+}
+
+TEST(PriorityUtils, StopHysteresisAbsorbsSingleFrameFlicker)
+{
+  // A stop that flickers away before the window elapses never commits.
+  SignalStabilizeState state;
+  EXPECT_FALSE(debounceStopDecision(state, true, t(0.0), 0.2, 0.1));
+  EXPECT_FALSE(debounceStopDecision(state, true, t(0.1), 0.2, 0.1));
+  EXPECT_FALSE(debounceStopDecision(state, false, t(0.12), 0.2, 0.1));  // flicker resets timer
+  EXPECT_FALSE(debounceStopDecision(state, true, t(0.2), 0.2, 0.1));    // re-armed, not yet held
+}
+
+TEST(PriorityUtils, StopHysteresisIsIdempotentWithinAFrame)
+{
+  // Repeated calls with the same timestamp (several objects, one lanelet) must
+  // not advance the timer.
+  SignalStabilizeState state;
+  EXPECT_FALSE(debounceStopDecision(state, true, t(0.0), 0.2, 0.1));
+  EXPECT_FALSE(debounceStopDecision(state, true, t(0.0), 0.2, 0.1));
+  EXPECT_FALSE(debounceStopDecision(state, true, t(0.0), 0.2, 0.1));
+  EXPECT_TRUE(debounceStopDecision(state, true, t(0.2), 0.2, 0.1));
+}
+
+// ---- debounceSignalGroup ----------------------------------------------------
+
+namespace
+{
+TrafficLightGroup makeGroup(const uint8_t color, const uint8_t shape = TrafficLightElement::CIRCLE)
+{
+  TrafficLightGroup group;
+  group.elements.push_back(makeElement(color, shape));
+  return group;
+}
+
+uint8_t firstColor(const TrafficLightGroup & group)
+{
+  return group.elements.empty() ? TrafficLightElement::UNKNOWN : group.elements.front().color;
+}
+}  // namespace
+
+TEST(PriorityUtils, ShowsRedOrAmberCircleClassifiesCircleColors)
+{
+  EXPECT_TRUE(showsRedOrAmberCircle(makeGroup(TrafficLightElement::RED)));
+  EXPECT_TRUE(showsRedOrAmberCircle(makeGroup(TrafficLightElement::AMBER)));
+  EXPECT_FALSE(showsRedOrAmberCircle(makeGroup(TrafficLightElement::GREEN)));
+  EXPECT_FALSE(showsRedOrAmberCircle(makeGroup(TrafficLightElement::UNKNOWN)));
+  // A red circle alongside a green (left) arrow is still stop-causing.
+  TrafficLightGroup mixed = makeGroup(TrafficLightElement::RED);
+  mixed.elements.push_back(
+    makeElement(TrafficLightElement::GREEN, TrafficLightElement::LEFT_ARROW));
+  EXPECT_TRUE(showsRedOrAmberCircle(mixed));
+}
+
+TEST(PriorityUtils, StabilizeHoldsLastStableUntilStopCommits)
+{
+  // First observation (green) is adopted immediately; a later green -> red change
+  // stays green until the red has persisted for stop_time_hysteresis (0.2 s).
+  SignalStabilizeState state;
+  EXPECT_EQ(
+    firstColor(debounceSignalGroup(state, makeGroup(TrafficLightElement::GREEN), t(0.0), 0.2, 0.1)),
+    TrafficLightElement::GREEN);  // first observation adopted
+  EXPECT_EQ(
+    firstColor(debounceSignalGroup(state, makeGroup(TrafficLightElement::RED), t(0.1), 0.2, 0.1)),
+    TrafficLightElement::GREEN);  // red just appeared, pending
+  EXPECT_EQ(
+    firstColor(debounceSignalGroup(state, makeGroup(TrafficLightElement::RED), t(0.2), 0.2, 0.1)),
+    TrafficLightElement::GREEN);  // 0.1 s < stop window, still pending
+  EXPECT_EQ(
+    firstColor(debounceSignalGroup(state, makeGroup(TrafficLightElement::RED), t(0.3), 0.2, 0.1)),
+    TrafficLightElement::RED);  // red committed 0.2 s after it appeared
+}
+
+TEST(PriorityUtils, StabilizeRestoresGoQuickerThanStop)
+{
+  // First observation (red) is adopted immediately; a later return to green
+  // commits after go_time_hysteresis (0.1 s) -- faster than entering red (0.2 s).
+  SignalStabilizeState state;
+  ASSERT_EQ(
+    firstColor(debounceSignalGroup(state, makeGroup(TrafficLightElement::RED), t(0.0), 0.2, 0.1)),
+    TrafficLightElement::RED);  // first observation adopted
+  EXPECT_EQ(
+    firstColor(
+      debounceSignalGroup(state, makeGroup(TrafficLightElement::GREEN), t(0.05), 0.2, 0.1)),
+    TrafficLightElement::RED);  // green just appeared, pending
+  EXPECT_EQ(
+    firstColor(
+      debounceSignalGroup(state, makeGroup(TrafficLightElement::GREEN), t(0.15), 0.2, 0.1)),
+    TrafficLightElement::GREEN);  // green committed 0.1 s after it appeared
 }
 
 }  // namespace
