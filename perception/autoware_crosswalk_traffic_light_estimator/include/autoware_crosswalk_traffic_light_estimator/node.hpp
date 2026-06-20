@@ -81,8 +81,8 @@ private:
   uint8_t updateAndGetColorState(const TrafficSignal & signal);
   /// @brief update the overrides of crosswalk signals from the lanelet map for the given traffic
   /// light id
-  void update_crosswalk_overrides_from_map(
-    std::unordered_map<lanelet::Id, uint8_t> & crosswalk_traffic_signal_overrides,
+  void update_overrides_from_map(
+    std::unordered_map<lanelet::Id, uint8_t> & traffic_signal_overrides,
     const lanelet::Id traffic_light_group_id, const TrafficLightIdMap & traffic_light_id_map);
 
   void setCrosswalkTrafficSignal(
@@ -90,8 +90,8 @@ private:
     TrafficSignalArray & output,
     const std::unordered_map<lanelet::Id, uint8_t> & crosswalk_traffic_signal_overrides);
 
-  void addIntersectionTrafficSignals(
-    const std::unordered_map<lanelet::Id, uint8_t> & crosswalk_traffic_signal_overrides,
+  void update_intersection_overrides_from_map(
+    const std::unordered_map<lanelet::Id, uint8_t> & traffic_signal_overrides,
     TrafficSignalArray & output);
 
   lanelet::ConstLanelets getNonRedLanelets(
