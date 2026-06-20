@@ -45,19 +45,10 @@ struct PriorityCalibrationParams
 {
   bool use_signal_priority{true};
   double stop_probability_boost{0.35};
-  // Temporal debounce of the raw stop/go decision (see signal_stop_hysteresis.hpp),
-  // mirroring the behavior_velocity traffic_light module. Asymmetric on purpose:
-  // predicting a stop drops the go path (a false stop is the dangerous error for
-  // other-vehicle prediction), so entering a stop is resisted longer than
-  // reverting to go. Disable to use the raw per-frame decision directly.
   bool use_stop_hysteresis{true};
-  double stop_time_hysteresis{0.2};  // [s] sustained raw stop before committing to stop
-  double go_time_hysteresis{0.1};    // [s] sustained raw go before reverting to go
-  // Carry a group's last stable signal forward for this long after it drops out
-  // of the observation (e.g. the signal leaves the camera view once the ego turns
-  // into the intersection), so the stop hypothesis is not lost. <= 0 disables the
-  // carry-forward (a group is dropped the moment it is no longer observed).
-  double signal_retention_timeout{15.0};  // [s]
+  double stop_time_hysteresis{0.2};
+  double go_time_hysteresis{0.1};
+  double signal_retention_timeout{15.0};
 };
 
 /// Arc length [m] along @p ref_path from its start to where it crosses @p stop_line.
@@ -131,6 +122,13 @@ public:
     const ObjectPrediction & prediction, const rclcpp::Time & now);
 
   const debug_util::StopHypothesisDebug & getDebugInfo() const { return debug_; }
+
+  /// The temporally stabilized signal map the stop decision actually used this
+  /// frame (debounced + carry-forward retained), for debug visualization.
+  const std::unordered_map<lanelet::Id, TrafficLightGroup> & getStabilizedSignals() const
+  {
+    return stabilized_traffic_signal_id_map_;
+  }
 
 private:
   std::unordered_map<lanelet::Id, TrafficLightGroup> traffic_signal_id_map_;

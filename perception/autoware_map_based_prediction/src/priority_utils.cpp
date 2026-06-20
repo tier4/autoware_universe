@@ -130,18 +130,10 @@ bool hasStopLineAhead(
   const geometry_msgs::msg::Point & position, const PosePath & path,
   const lanelet::ConstLineString3d & stop_line)
 {
-  // @p path should be the object's actual predicted path (which starts at the
-  // object and is the trajectory that gets clipped), NOT the lane reference
-  // path: a turning maneuver's reference path is anchored at the turn lanelet
-  // (downstream of the stop line) so the stop line never lies on it and the
-  // crossing is missed. The predicted path crosses the stop line ahead of the
-  // object, so the same arc-length crossing used for clipping applies here.
   const auto arc_length = arcLengthToStopLine(path, stop_line);
   if (!arc_length) {
     return false;
   }
-  // path[0] may sit slightly ahead of / behind the object, so the arc length
-  // measured from path[0] is compared against the object's signed offset.
   const auto & p0 = path.front();
   const double h0 = tf2::getYaw(p0.orientation);
   const double s_obj =
@@ -247,8 +239,6 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     debug.counter.signal_stop += signal_requires_stop ? 1 : 0;
     debug.counter.stopline_found += stop_line_ahead ? 1 : 0;
 
-    // Diagnose why a signal-commanded stop yields no hypothesis, split by turn
-    // direction, to tell missing-stop-line from already-passed cases apart in logs.
     if (signal_requires_stop && !stop_line_ahead) {
       const std::string turn =
         target_lanelet_signal_object.attributeOr("turn_direction", "straight");
@@ -270,7 +260,6 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     // 4. Build the hypothesis: clip the go path at the stop line, weaken its confidence.
     clipPathAtStopLine(predicted_path, *related_stop_line);
 
-    // Gate passed but the path never crossed the line: leave the go path in place.
     if (predicted_path.path.size() < 2) {
       debug.counter.clip_failed++;
       continue;
@@ -301,8 +290,6 @@ void TrafficSignalStopPredictor::setTrafficSignal(
     traffic_signal_id_map_[group.traffic_light_group_id] = group;
   }
 
-  // Debounce per group to absorb single-frame signal flicker before the priority
-  // decision reads it; disabling falls back to the raw map.
   if (params_.use_stop_hysteresis) {
     stabilized_traffic_signal_id_map_ = stabilizeTrafficSignalMap(
       traffic_signal_id_map_, signal_stabilize_state_, now, params_.stop_time_hysteresis,
@@ -323,10 +310,7 @@ void TrafficSignalStopPredictor::clearFrameDebug()
 std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
   const ObjectPrediction & prediction, const rclcpp::Time & now)
 {
-  // Skip on a stale signal observation (the signal topic went silent): an old red
-  // must not keep cutting paths. A non-positive timeout disables expiry, keeping
-  // the last stabilized signal even after it leaves view (e.g. once the ego turns
-  // into the intersection the signal head is no longer detected).
+  // A non-positive timeout disables expiry; otherwise drop stale observations.
   const bool observation_old =
     signal_observation_timeout_ > 0.0 &&
     (!latest_traffic_signal_time_ ||
@@ -337,8 +321,6 @@ std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
     return prediction.predicted_paths;
   }
 
-  // The map is already debounced in setTrafficSignal(), so the decision is the
-  // temporally stabilized one.
   return addTrafficSignalStopHypotheses(
     prediction, stabilized_traffic_signal_id_map_, params_, debug_);
 }

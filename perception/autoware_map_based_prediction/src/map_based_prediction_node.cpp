@@ -777,7 +777,8 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
 
     debug_util::publishPriorityObjectMarkers(
       *pub_debug_markers_, transform_listener_, output, in_objects->header.stamp,
-      debug.stop_hypothesis_path_indices, debug.stop_lines, debug.stop_signal_links, this->now());
+      debug.stop_hypothesis_path_indices, debug.stop_lines, debug.stop_signal_links,
+      priority_predictor_->getStabilizedSignals(), this->now());
   }
 
   priority_predictor_->clearFrameDebug();

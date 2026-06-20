@@ -20,6 +20,7 @@
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
 
+#include <autoware_perception_msgs/msg/traffic_light_element.hpp>
 #include <std_msgs/msg/color_rgba.hpp>
 
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
@@ -76,12 +77,34 @@ void recordStopSignalLink(
   }
 }
 
+std_msgs::msg::ColorRGBA stabilizedSignalColor(const TrafficLightGroup & group)
+{
+  // Colour of the group's representative (first) element, matching the renderer's
+  // STATE_COLOR palette so the debug marker reads the same as the old display.
+  const uint8_t color = group.elements.empty()
+                          ? autoware_perception_msgs::msg::TrafficLightElement::UNKNOWN
+                          : group.elements.front().color;
+  switch (color) {
+    case autoware_perception_msgs::msg::TrafficLightElement::RED:
+      return autoware_utils::create_marker_color(0.878, 0.0, 0.0, 0.95);
+    case autoware_perception_msgs::msg::TrafficLightElement::AMBER:
+      return autoware_utils::create_marker_color(0.878, 0.627, 0.0, 0.95);
+    case autoware_perception_msgs::msg::TrafficLightElement::GREEN:
+      return autoware_utils::create_marker_color(0.0, 0.690, 0.0, 0.95);
+    case autoware_perception_msgs::msg::TrafficLightElement::WHITE:
+      return autoware_utils::create_marker_color(0.867, 0.867, 0.867, 0.95);
+    default:
+      return autoware_utils::create_marker_color(0.533, 0.533, 0.533, 0.95);
+  }
+}
+
 visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
   const autoware_perception_msgs::msg::PredictedObjects & output,
   const StopHypothesisIndexMap & stop_hypothesis_indices,
   const std::vector<lanelet::ConstLineString3d> & stop_lines,
   const std::vector<std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point>> &
     stop_signal_links,
+  const std::unordered_map<lanelet::Id, TrafficLightGroup> & stabilized_signals,
   const std::optional<geometry_msgs::msg::Pose> & ego_pose, const rclcpp::Time & now)
 {
   visualization_msgs::msg::MarkerArray markers;
@@ -182,6 +205,19 @@ visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
     markers.markers.push_back(link);
   }
 
+  // Stabilized signals the priority decision actually used. These persist across
+  // frames the estimator stops publishing them (carry-forward), so they may differ
+  // from the raw estimator output. The marker id is the traffic-light-group id so
+  // the renderer can place each at its mapped signal face; colour = signal colour.
+  for (const auto & [group_id, group] : stabilized_signals) {
+    auto sig = autoware_utils::create_default_marker(
+      "map", now, "used_signals", static_cast<int32_t>(group_id),
+      visualization_msgs::msg::Marker::SPHERE, autoware_utils::create_marker_scale(1.0, 1.0, 1.0),
+      stabilizedSignalColor(group));
+    sig.lifetime = rclcpp::Duration::from_seconds(0.3);
+    markers.markers.push_back(sig);
+  }
+
   if (ego_pose) {
     const auto ego_color = autoware_utils::create_marker_color(0.1, 0.9, 1.0, 0.95);  // cyan
     auto ego_box = autoware_utils::create_default_marker(
@@ -214,6 +250,7 @@ void publishPriorityObjectMarkers(
   const std::vector<lanelet::ConstLineString3d> & stop_lines,
   const std::vector<std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point>> &
     stop_signal_links,
+  const std::unordered_map<lanelet::Id, TrafficLightGroup> & stabilized_signals,
   const rclcpp::Time & now)
 {
   std::optional<geometry_msgs::msg::Pose> ego_pose;
@@ -228,7 +265,8 @@ void publishPriorityObjectMarkers(
     ego_pose = pose;
   }
   publisher.publish(createPriorityObjectMarkers(
-    output, stop_hypothesis_indices, stop_lines, stop_signal_links, ego_pose, now));
+    output, stop_hypothesis_indices, stop_lines, stop_signal_links, stabilized_signals, ego_pose,
+    now));
 }
 
 namespace
