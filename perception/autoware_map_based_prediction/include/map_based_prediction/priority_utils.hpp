@@ -82,7 +82,6 @@ bool shouldAddStopHypothesis(
 /// the center hypothesis is always the strongest.
 double weakenConfidenceInLaneChange(const Maneuver & maneuver, const double stop_weight);
 
-
 struct ObjectPrediction
 {
   const TrackedObject & object;
@@ -91,12 +90,10 @@ struct ObjectPrediction
   const std::vector<PredictedPath> & predicted_paths;
 };
 
-
 std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   const ObjectPrediction & prediction,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
   const PriorityCalibrationParams & params, debug_util::StopHypothesisDebug & debug);
-
 
 class TrafficSignalStopPredictor
 {
