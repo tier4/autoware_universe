@@ -59,11 +59,10 @@
       use_signal_priority: true
       stop_probability_boost: 0.35 # confidence weight of the stop hypothesis added on red
       signal_observation_timeout: 1.0 # [s] ignore signal observations older than this
-      debug_visualization: false # publish debug markers regardless of enable
 
     # debug parameters
     publish_processing_time: false
     publish_processing_time_detail: false
-    publish_debug_markers: false
+    publish_debug_markers: false # publish maneuver and priority-prediction debug markers
     processing_time_tolerance: 0.5 #[s]
     processing_time_consecutive_excess_tolerance: 1.0 #[s]

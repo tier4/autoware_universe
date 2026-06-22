@@ -436,7 +436,6 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
     declare_parameter<double>("priority_prediction.stop_probability_boost");
   const double signal_observation_timeout =
     declare_parameter<double>("priority_prediction.signal_observation_timeout");
-  priority_debug_viz_ = declare_parameter<bool>("priority_prediction.debug_visualization");
 
   // initialize traffic-signal stop predictor
   priority_predictor_ = std::make_unique<priority::TrafficSignalStopPredictor>();
@@ -534,7 +533,7 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   }
 
   // debug marker
-  if (use_debug_marker || priority_debug_viz_) {
+  if (use_debug_marker) {
     pub_debug_markers_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>("maneuver", rclcpp::QoS{1});
   }
@@ -756,7 +755,7 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
   // Publish Results
   publish(output, debug_markers);
 
-  if (priority_debug_viz_) {
+  if (pub_debug_markers_) {
     const auto & debug = priority_predictor_->getDebugInfo();
 
     const auto & counter = debug.counter;

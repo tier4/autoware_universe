@@ -168,7 +168,6 @@ private:
 
   // Traffic-signal-aware stop prediction parameters.
   bool use_priority_prediction_;
-  bool priority_debug_viz_;
 
   ////// Member Functions
   // Node callbacks
