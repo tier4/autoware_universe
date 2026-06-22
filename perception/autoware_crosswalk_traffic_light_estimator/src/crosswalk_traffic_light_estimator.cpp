@@ -367,11 +367,39 @@ TrafficSignalArray CrosswalkTrafficLightEstimator::estimate(
       crosswalk, crosswalk_tl_color, msg, output, crosswalk_traffic_signal_overrides, current_time);
   }
 
+  update_intersection_overrides_from_map(crosswalk_traffic_signal_overrides, output);
+  
   remove_duplicate_ids(output);
 
   update_last_detected_signal(traffic_light_id_map, current_time);
 
   return output;
+}
+
+void CrosswalkTrafficLightEstimator::update_intersection_overrides_from_map(
+  const std::unordered_map<lanelet::Id, uint8_t> & traffic_signal_overrides,
+  TrafficSignalArray & output)
+{
+  std::unordered_set<lanelet::Id> existing_ids;
+  for (const auto & signal : output.traffic_light_groups) {
+    existing_ids.insert(signal.traffic_light_group_id);
+  }
+
+  for (const auto & [id, color] : traffic_signal_overrides) {
+    if (existing_ids.count(id)) {
+      continue;
+    }
+
+    TrafficSignalElement element;
+    element.color = color;
+    element.shape = TrafficSignalElement::CIRCLE;
+    element.confidence = 1.0;
+
+    TrafficSignal new_signal;
+    new_signal.traffic_light_group_id = id;
+    new_signal.elements.push_back(element);
+    output.traffic_light_groups.push_back(new_signal);
+  }
 }
 
 void CrosswalkTrafficLightEstimator::update_last_detected_signal(

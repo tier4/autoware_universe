@@ -66,6 +66,10 @@ private:
     const std::unordered_map<lanelet::Id, uint8_t> & crosswalk_traffic_signal_overrides,
     const rclcpp::Time & current_time);
 
+  void update_intersection_overrides_from_map(
+    const std::unordered_map<lanelet::Id, uint8_t> & traffic_signal_overrides,
+    TrafficSignalArray & output);
+
   lanelet::ConstLanelets get_non_red_lanelets(
     const lanelet::ConstLanelets & lanelets, const TrafficLightIdMap & traffic_light_id_map) const;
 
