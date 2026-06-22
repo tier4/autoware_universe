@@ -40,7 +40,7 @@ namespace autoware::map_based_prediction::priority
 namespace
 {
 
-  std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> stopLineChord(
+std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> stopLineChord(
   const lanelet::ConstLineString3d & stop_line)
 {
   geometry_msgs::msg::Point c1;

@@ -693,7 +693,6 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
   // get current crosswalk users for later prediction
   predictor_vru_->loadCurrentCrosswalkUsers(*in_objects);
 
-
   // for each object
   for (const auto & object : in_objects->objects) {
     TrackedObject transformed_object = object;
@@ -761,15 +760,14 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
     const auto & debug = priority_predictor_->getDebugInfo();
 
     const auto & counter = debug.counter;
-      RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 5000, "[priority] vehicles=%zu sig_stop=%zu stopline=%zu added=%zu",
-        counter.vehicles, counter.signal_stop, counter.stopline_found, counter.stop_hypothesis_added);
-
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "[priority] vehicles=%zu sig_stop=%zu stopline=%zu added=%zu", counter.vehicles,
+      counter.signal_stop, counter.stopline_found, counter.stop_hypothesis_added);
 
     debug_util::publishPriorityObjectMarkers(
       *pub_debug_markers_, transform_listener_, output, in_objects->header.stamp,
       debug.stop_hypothesis_path_indices, debug.stop_lines, this->now());
-    
   }
 
   // Processing time
@@ -1736,7 +1734,9 @@ std::optional<PredictedObject> MapBasedPredictionNode::getPredictionForVehicleOb
   if (predicted_paths.empty()) predicted_paths.push_back(path_with_smallest_avg_curvature);
 
   if (use_priority_prediction_) {
-    predicted_paths = priority_predictor_->addStopHypotheses(priority::ObjectPrediction{yaw_fixed_object, ref_paths, ref_lanelet_paths, predicted_paths}, now());
+    predicted_paths = priority_predictor_->addStopHypotheses(
+      priority::ObjectPrediction{yaw_fixed_object, ref_paths, ref_lanelet_paths, predicted_paths},
+      now());
   }
 
   // Normalize Path Confidence and output the predicted object
