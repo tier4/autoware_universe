@@ -19,6 +19,8 @@
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
 #include <lanelet2_core/primitives/Point.h>
+#include <lanelet2_routing/RoutingGraph.h>
+#include <lanelet2_traffic_rules/TrafficRulesFactory.h>
 
 #include <utility>
 #include <vector>
@@ -27,33 +29,43 @@ namespace autoware::target_lanelet_estimator
 {
 namespace
 {
-// A 3 m wide straight lane along x, centered at y_center.
-lanelet::Lanelet make_lane(lanelet::Id id, double y_center, double x_start, double x_end)
+lanelet::Lanelet make_lane(
+  lanelet::Id id, const lanelet::LineString3d & left, const lanelet::LineString3d & right)
 {
-  constexpr double half_width = 1.5;
-  lanelet::LineString3d left{
-    lanelet::utils::getId(),
-    {lanelet::Point3d{lanelet::utils::getId(), x_start, y_center + half_width},
-     lanelet::Point3d{lanelet::utils::getId(), x_end, y_center + half_width}}};
-  lanelet::LineString3d right{
-    lanelet::utils::getId(),
-    {lanelet::Point3d{lanelet::utils::getId(), x_start, y_center - half_width},
-     lanelet::Point3d{lanelet::utils::getId(), x_end, y_center - half_width}}};
-  return lanelet::Lanelet{id, left, right};
+  lanelet::Lanelet lanelet{id, left, right};
+  lanelet.setAttribute(lanelet::AttributeName::Subtype, lanelet::AttributeValueString::Road);
+  return lanelet;
+}
+
+lanelet::LineString3d make_line(const lanelet::Point3d & start, const lanelet::Point3d & end)
+{
+  return lanelet::LineString3d{lanelet::utils::getId(), {start, end}};
+}
+
+lanelet::Point3d make_point(double x, double y)
+{
+  return lanelet::Point3d{lanelet::utils::getId(), x, y, 0.0};
+}
+
+LaneletRoute make_route(const std::vector<std::vector<lanelet::Id>> & segment_ids)
+{
+  LaneletRoute route;
+  for (const auto & ids : segment_ids) {
+    autoware_planning_msgs::msg::LaneletSegment segment;
+    for (const auto id : ids) {
+      autoware_planning_msgs::msg::LaneletPrimitive primitive;
+      primitive.id = id;
+      segment.primitives.push_back(primitive);
+    }
+    segment.preferred_primitive.id = ids.front();
+    route.segments.push_back(segment);
+  }
+  return route;
 }
 
 LaneletRoute make_route(const std::vector<lanelet::Id> & ids)
 {
-  LaneletRoute route;
-  autoware_planning_msgs::msg::LaneletSegment segment;
-  for (const auto id : ids) {
-    autoware_planning_msgs::msg::LaneletPrimitive primitive;
-    primitive.id = id;
-    segment.primitives.push_back(primitive);
-  }
-  segment.preferred_primitive.id = ids.front();
-  route.segments.push_back(segment);
-  return route;
+  return make_route(std::vector<std::vector<lanelet::Id>>{ids});
 }
 
 // All points share yaw = 0 (orientation.w = 1).
@@ -90,8 +102,38 @@ double score_of(const std::vector<LaneletScore> & lanelets, lanelet::Id id)
   return 0.0;
 }
 
+double likelihood_of(const std::vector<LaneletScore> & lanelets, lanelet::Id id)
+{
+  for (const auto & lanelet : lanelets) {
+    if (lanelet.id == id) {
+      return lanelet.likelihood;
+    }
+  }
+  return 0.0;
+}
+
+double prior_of(const std::vector<LaneletScore> & lanelets, lanelet::Id id)
+{
+  for (const auto & lanelet : lanelets) {
+    if (lanelet.id == id) {
+      return lanelet.prior;
+    }
+  }
+  return 0.0;
+}
+
+lanelet::routing::RoutingGraphConstPtr make_routing_graph(
+  const lanelet::LaneletMapConstPtr & lanelet_map)
+{
+  const auto traffic_rules = lanelet::traffic_rules::TrafficRulesFactory::create(
+    lanelet::Locations::Germany, lanelet::Participants::Vehicle);
+  return lanelet::routing::RoutingGraph::build(*lanelet_map, *traffic_rules);
+}
+
 constexpr lanelet::Id lane_a = 1001;
 constexpr lanelet::Id lane_b = 1002;
+constexpr lanelet::Id lane_c = 1003;
+constexpr lanelet::Id lane_d = 1004;
 }  // namespace
 
 class GetTargetLaneletsTest : public ::testing::Test
@@ -99,8 +141,26 @@ class GetTargetLaneletsTest : public ::testing::Test
 protected:
   void SetUp() override
   {
+    const auto a_left_start = make_point(-5.0, 1.5);
+    const auto a_left_end = make_point(5.0, 1.5);
+    const auto a_right_start = make_point(-5.0, -1.5);
+    const auto a_right_end = make_point(5.0, -1.5);
+    const auto b_left_start = make_point(-5.0, 4.5);
+    const auto b_left_end = make_point(5.0, 4.5);
+    const auto c_left_end = make_point(25.0, 1.5);
+    const auto c_right_end = make_point(25.0, -1.5);
+    const auto d_left_end = make_point(25.0, 4.5);
+
+    const auto a_left = make_line(a_left_start, a_left_end);
+    const auto a_right = make_line(a_right_start, a_right_end);
+    const auto b_left = make_line(b_left_start, b_left_end);
+    const auto c_left = make_line(a_left_end, c_left_end);
+    const auto c_right = make_line(a_right_end, c_right_end);
+    const auto d_left = make_line(b_left_end, d_left_end);
+
     lanelet_map_ = lanelet::utils::createMap(
-      {make_lane(lane_a, 0.0, -5.0, 25.0), make_lane(lane_b, 3.0, -5.0, 25.0)});
+      {make_lane(lane_a, a_left, a_right), make_lane(lane_b, b_left, a_left),
+       make_lane(lane_c, c_left, c_right), make_lane(lane_d, d_left, c_left)});
     vehicle_info_ = make_vehicle_info();
   }
 
@@ -112,14 +172,15 @@ protected:
 TEST_F(GetTargetLaneletsTest, SingleLanelet)
 {
   const auto route = make_route({lane_a, lane_b});
-  const auto trajectory = make_trajectory({{0.0, 0.0}, {5.0, 0.0}, {10.0, 0.0}});
+  const auto trajectory = make_trajectory({{0.0, 0.0}, {2.0, 0.0}, {4.0, 0.0}});
 
   const auto result = get_target_lanelets(route, trajectory, lanelet_map_, vehicle_info_);
 
-  ASSERT_EQ(result.lanelets.size(), 1u);
-  EXPECT_EQ(result.lanelets.front().id, lane_a);
+  ASSERT_EQ(result.lanelets.size(), 2u);
   // footprint stays fully inside lane A -> likelihood 1.0
-  EXPECT_NEAR(result.lanelets.front().score, 1.0, 1e-6);
+  EXPECT_NEAR(likelihood_of(result.lanelets, lane_a), 1.0, 1e-6);
+  EXPECT_NEAR(score_of(result.lanelets, lane_a), 1.0, 1e-6);
+  EXPECT_NEAR(score_of(result.lanelets, lane_b), 0.0, 1e-6);
   EXPECT_FALSE(result.out_of_lanelet);
 }
 
@@ -127,12 +188,14 @@ TEST_F(GetTargetLaneletsTest, SingleLanelet)
 TEST_F(GetTargetLaneletsTest, LaneChangeStraddling)
 {
   const auto route = make_route({lane_a, lane_b});
-  const auto trajectory = make_trajectory({{0.0, 0.0}, {5.0, 1.5}, {10.0, 3.0}});
+  const auto trajectory = make_trajectory({{0.0, 0.0}, {1.0, 1.5}, {2.0, 3.0}});
 
   const auto result = get_target_lanelets(route, trajectory, lanelet_map_, vehicle_info_);
 
   EXPECT_EQ(result.lanelets.size(), 2u);
   // the footprint is fully inside each lane at some point -> both reach likelihood 1.0
+  EXPECT_NEAR(likelihood_of(result.lanelets, lane_a), 1.0, 1e-6);
+  EXPECT_NEAR(likelihood_of(result.lanelets, lane_b), 1.0, 1e-6);
   EXPECT_NEAR(score_of(result.lanelets, lane_a), 1.0, 1e-6);
   EXPECT_NEAR(score_of(result.lanelets, lane_b), 1.0, 1e-6);
   EXPECT_FALSE(result.out_of_lanelet);
@@ -144,12 +207,14 @@ TEST_F(GetTargetLaneletsTest, PartialOverlapLikelihood)
   const auto route = make_route({lane_a, lane_b});
   // footprint centered at y=1.25 spans y in [0.75, 1.75]; the A/B boundary is at y=1.5,
   // so 0.75 of the footprint is on lane A and 0.25 on lane B.
-  const auto trajectory = make_trajectory({{0.0, 1.25}, {5.0, 1.25}, {10.0, 1.25}});
+  const auto trajectory = make_trajectory({{0.0, 1.25}, {2.0, 1.25}, {4.0, 1.25}});
 
   const auto result = get_target_lanelets(route, trajectory, lanelet_map_, vehicle_info_);
 
-  EXPECT_NEAR(score_of(result.lanelets, lane_a), 0.75, 1e-3);
-  EXPECT_NEAR(score_of(result.lanelets, lane_b), 0.25, 1e-3);
+  EXPECT_NEAR(likelihood_of(result.lanelets, lane_a), 0.75, 1e-3);
+  EXPECT_NEAR(likelihood_of(result.lanelets, lane_b), 0.25, 1e-3);
+  EXPECT_NEAR(score_of(result.lanelets, lane_a), 0.909, 1e-3);
+  EXPECT_NEAR(score_of(result.lanelets, lane_b), 0.091, 1e-3);
   EXPECT_FALSE(result.out_of_lanelet);
 }
 
@@ -157,12 +222,44 @@ TEST_F(GetTargetLaneletsTest, PartialOverlapLikelihood)
 TEST_F(GetTargetLaneletsTest, OutOfLanelet)
 {
   const auto route = make_route({lane_a, lane_b});
-  const auto trajectory = make_trajectory({{0.0, 50.0}, {5.0, 50.0}});
+  const auto trajectory = make_trajectory({{0.0, 50.0}, {2.0, 50.0}});
 
   const auto result = get_target_lanelets(route, trajectory, lanelet_map_, vehicle_info_);
 
-  EXPECT_TRUE(result.lanelets.empty());
+  ASSERT_EQ(result.lanelets.size(), 2u);
+  EXPECT_NEAR(score_of(result.lanelets, lane_a), 0.0, 1e-6);
+  EXPECT_NEAR(score_of(result.lanelets, lane_b), 0.0, 1e-6);
   EXPECT_TRUE(result.out_of_lanelet);
+}
+
+TEST_F(GetTargetLaneletsTest, KeepsInitialProbabilitiesOutsideUpdateScope)
+{
+  const auto route = make_route({{lane_a, lane_b}, {lane_c, lane_d}});
+  const auto trajectory = make_trajectory({{0.0, 0.0}, {2.0, 0.0}});
+
+  const auto result = get_target_lanelets(route, trajectory, lanelet_map_, vehicle_info_);
+
+  ASSERT_EQ(result.lanelets.size(), 4u);
+  EXPECT_NEAR(score_of(result.lanelets, lane_c), 0.8, 1e-6);
+  EXPECT_NEAR(score_of(result.lanelets, lane_d), 0.2, 1e-6);
+}
+
+TEST_F(GetTargetLaneletsTest, NextSegmentPriorUsesRoutingRelation)
+{
+  const auto route = make_route({{lane_a, lane_b}, {lane_c, lane_d}});
+  const auto trajectory = make_trajectory({{0.0, 0.0}, {6.0, 0.0}});
+  const auto routing_graph = make_routing_graph(lanelet_map_);
+  const auto previous_posteriors = initialize_lanelet_probabilities(route);
+
+  const auto result = get_target_lanelets(
+    route, trajectory, lanelet_map_, vehicle_info_, previous_posteriors, routing_graph);
+
+  ASSERT_EQ(result.lanelets.size(), 4u);
+  EXPECT_GT(prior_of(result.lanelets, lane_c), prior_of(result.lanelets, lane_d));
+  EXPECT_NEAR(prior_of(result.lanelets, lane_c), 0.68, 1e-6);
+  EXPECT_NEAR(prior_of(result.lanelets, lane_d), 0.32, 1e-6);
+  EXPECT_NEAR(score_of(result.lanelets, lane_c), 1.0, 1e-6);
+  EXPECT_NEAR(score_of(result.lanelets, lane_d), 0.0, 1e-6);
 }
 
 }  // namespace autoware::target_lanelet_estimator
