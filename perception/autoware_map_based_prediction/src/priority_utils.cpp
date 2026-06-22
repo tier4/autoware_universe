@@ -265,8 +265,7 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
       continue;
     }
 
-    predicted_path.confidence = static_cast<float>(
-      weakenConfidenceInLaneChange(ref_path.maneuver, params.stop_probability_boost));
+    predicted_path.confidence = static_cast<float>(params.stop_probability_boost);
 
     // The stop hypothesis replaces the go path in place (the go path is dropped).
     result.at(i) = predicted_path;
