@@ -106,7 +106,9 @@ std::vector<MetricReport> CollisionCheckFilter::generate_metric_reports(
       if (evaluation.detail.object_identification.trajectory_type.find(type) == std::string::npos) {
         continue;
       }
-      if (std::isnan(pet_val) || std::abs(evaluation.detail.worst_pet_timing.pet) < std::abs(pet_val)) {
+      if (
+        std::isnan(pet_val) ||
+        std::abs(evaluation.detail.worst_pet_timing.pet) < std::abs(pet_val)) {
         pet_val = evaluation.detail.worst_pet_timing.pet;
         pet_risk = evaluation.risk;
       }
