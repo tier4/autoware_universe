@@ -74,7 +74,16 @@ TrajectoryValidatorWrapper::TrajectoryValidatorWrapper(
     std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
       &node, "trajectory_validator");
   validator_ptr_ = std::make_unique<TrajectoryValidator>(plugins_);
-  diagnostics_interface_ptr_ = std::make_unique<DiagnosticsInterface>(node_ptr_, interface_name_);
+
+  std::set<std::string> shadow_validator_names;
+  for (const auto & plugin : plugins_) {
+    if (plugin->is_shadow_mode()) {
+      shadow_validator_names.insert(plugin->get_name());
+    }
+  }
+  validator_diagnostic_ptr_ = std::make_unique<TrajectoryValidatorDiagnostic>(
+    node, make_default_filter_status_map(), "trajectory_validator_no_candidate_trajectory",
+    shadow_validator_names);
 }
 
 void TrajectoryValidatorWrapper::load_metric(const std::string & name, const bool is_shadow_mode)
@@ -143,8 +152,6 @@ CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
 
   const auto report = validator_ptr_->process(input_trajectories, context);
 
-  diagnostics_interface_ptr_->clear();
-
   for (const auto & table : report.evaluation_tables) {
     for (const auto & eval : table.plugin_evaluations) {
       if (!eval.is_feasible) {
@@ -152,40 +159,17 @@ CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
           logger_, *node_ptr_->get_clock(), 1000, "[%s] %s", eval.plugin_name.c_str(),
           eval.reason.c_str());
       }
-      // Exact original behavior: last trajectory's result overwrites previous ones
-      diagnostics_interface_ptr_->add_key_value(
-        eval.plugin_name, std::string(eval.is_feasible ? "OK" : "NG"));
     }
   }
 
-  update_diagnostic(input_trajectories, report.num_feasible_trajectories);
-
   publish_validation_reports(report.validation_reports);
   publish_planning_factor(report.planning_factors);
+  validator_diagnostic_ptr_->update_and_publish(
+    report.validation_reports, node_ptr_->get_clock()->now());
 
   publish_debug(report.evaluation_tables, report.processing_time_ms, context.odometry->pose.pose);
 
   return report.valid_trajectories;
-}
-
-void TrajectoryValidatorWrapper::update_diagnostic(
-  const CandidateTrajectories & input_trajectories, const size_t num_feasible_trajectories)
-{
-  if (input_trajectories.candidate_trajectories.size() == num_feasible_trajectories) {
-    // All trajectories are feasible
-    diagnostics_interface_ptr_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::OK, "");
-  } else if (num_feasible_trajectories == 0) {
-    // No feasible trajectories found
-    diagnostics_interface_ptr_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::ERROR, "No feasible trajectories found");
-  } else {
-    // At least one trajectory is infeasible
-    diagnostics_interface_ptr_->update_level_and_message(
-      diagnostic_msgs::msg::DiagnosticStatus::WARN, "At least one trajectory is infeasible");
-  }
-
-  diagnostics_interface_ptr_->publish(node_ptr_->get_clock()->now());
 }
 
 void TrajectoryValidatorWrapper::publish_validation_reports(

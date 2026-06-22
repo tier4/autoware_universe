@@ -16,6 +16,7 @@
 #define AUTOWARE__TRAJECTORY_VALIDATOR__TRAJECTORY_VALIDATOR_WRAPPER_HPP_
 
 #include "autoware/trajectory_validator/detail/trajectory_validator.hpp"
+#include "autoware/trajectory_validator/detail/trajectory_validator_diagnostic.hpp"
 #include "autoware/trajectory_validator/detail/trajectory_validator_report.hpp"
 #include "autoware/trajectory_validator/detail/validator_context.hpp"
 #include "autoware/trajectory_validator/pseudo_emergency_stop_handler.hpp"
@@ -26,7 +27,6 @@
 #include <autoware_trajectory_validator/msg/validation_report_array.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
-#include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -57,7 +57,6 @@ using autoware_planning_msgs::msg::TrajectoryPoint;
 using autoware_trajectory_validator::msg::MetricReport;
 using autoware_trajectory_validator::msg::ValidationReport;
 using autoware_trajectory_validator::msg::ValidationReportArray;
-using autoware_utils_diagnostics::DiagnosticsInterface;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 
@@ -102,14 +101,6 @@ private:
    * @param is_shadow_mode If true, plugin results are logged but not enforced.
    */
   void load_metric(const std::string & name, const bool is_shadow_mode = false);
-
-  /**
-   * @brief Updates the diagnostics status based on the number of feasible trajectories.
-   * @param input_trajectories Original input trajectories (used for total count).
-   * @param num_feasible_trajectories Number of trajectories that passed all plugins.
-   */
-  void update_diagnostic(
-    const CandidateTrajectories & input_trajectories, const size_t num_feasible_trajectories);
 
   /**
    * @brief Publishes the validation report array.
@@ -178,7 +169,7 @@ private:
   std::unique_ptr<PseudoEmergencyStopHandler> pseudo_emergency_stop_handler_;
 
   // Internal state
-  std::unique_ptr<DiagnosticsInterface> diagnostics_interface_ptr_;
+  std::unique_ptr<TrajectoryValidatorDiagnostic> validator_diagnostic_ptr_;
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};
 };
 

@@ -16,6 +16,7 @@ ament_auto_add_library(${trajectory_validator_lib_target} SHARED
   src/pseudo_emergency_stop_handler.cpp
   src/trajectory_validator_wrapper.cpp
   src/detail/trajectory_validator.cpp
+  src/detail/trajectory_validator_diagnostic.cpp
 )
 
 target_link_libraries(${trajectory_validator_lib_target}
@@ -130,6 +131,13 @@ if(BUILD_TESTING)
     autoware_trajectory_validator_plugins
   )
 
+  ament_add_gtest(test_trajectory_validator_diagnostic
+    test/cases/trajectory_validator_diagnostic.cpp
+  )
+  target_link_libraries(test_trajectory_validator_diagnostic
+    ${trajectory_validator_lib_target}
+    rclcpp::rclcpp
+  )
 
 endif()
 
