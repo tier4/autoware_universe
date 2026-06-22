@@ -202,7 +202,6 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
 
   debug.counter.vehicles++;
 
-  // Only entries that receive a stop hypothesis are replaced; the rest stay as the go path.
   std::vector<PredictedPath> result = predicted_paths;
 
   for (size_t i = 0; i < predicted_paths.size(); ++i) {
@@ -216,7 +215,7 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
       continue;
     }
 
-    // 1. Resolve the signal-controlled lanelet on this path, plus its signal and stop line.
+    // 1. Get signal status , line info for target path.
     lanelet::ConstLanelet target_lanelet_signal_object;
     if (!findTrafficLightLaneletOnPath(lanelet_path, target_lanelet_signal_object)) {
       debug.counter.tl_missing++;
@@ -227,9 +226,7 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     const std::optional<lanelet::ConstLineString3d> related_stop_line =
       lanelet_util::getStopLineOrEntryEdge(target_lanelet_signal_object);
 
-    // 2. Decide whether the signal requires a stop and whether the stop line is still ahead.
-    // traffic_signal_id_map is already temporally stabilized by the node
-    // (signal_stop_hysteresis.hpp), so the decision here is the debounced one.
+    // 2. Signal state and whether the stop line is still ahead of the object.
     const bool signal_requires_stop =
       evaluateSignalStopRequirement(target_lanelet_signal_object, signal_status);
     const bool stop_line_ahead =
@@ -257,7 +254,7 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     }
     debug.counter.should_add++;
 
-    // 4. Build the hypothesis: clip the go path at the stop line, weaken its confidence.
+    // 4. The stop hypothesis is a copy of the go path cut at the stop line.
     clipPathAtStopLine(predicted_path, *related_stop_line);
 
     if (predicted_path.path.size() < 2) {
