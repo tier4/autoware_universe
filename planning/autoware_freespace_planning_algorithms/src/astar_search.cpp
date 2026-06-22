@@ -149,8 +149,12 @@ bool AstarSearch::makePlan(const Pose & start_pose, const Pose & goal_pose)
   start_pose_ = global2local(costmap_, start_pose);
   goal_pose_ = global2local(costmap_, goal_pose);
 
-  if (detectCollision(start_pose_) || detectCollision(goal_pose_)) {
-    throw std::logic_error("Invalid start or goal pose");
+  if (detectCollision(start_pose_)) {
+    throw std::logic_error("Invalid start pose: Detected Collision");
+  }
+
+  if (detectCollision(goal_pose_)) {
+    throw std::logic_error("Invalid goal pose: Detected Collision");
   }
 
   if (is_backward_search_) std::swap(start_pose_, goal_pose_);
@@ -161,8 +165,12 @@ bool AstarSearch::makePlan(const Pose & start_pose, const Pose & goal_pose)
 
   setStartNode();
 
-  if (!search()) {
-    throw std::logic_error("HA* failed to find path to goal");
+  const auto search_status = search();
+  if (search_status == SearchStatus::Timeout) {
+    throw std::logic_error("HA* search timed out");
+  }
+  if (search_status == SearchStatus::Failure) {
+    throw std::logic_error("HA* search exhausted all nodes without finding a path");
   }
 
   return true;
@@ -189,8 +197,12 @@ bool AstarSearch::makePlan(
     goals_local.push_back(goal_local);
   }
 
-  if (detectCollision(start_pose_) || goals_local.empty()) {
-    throw std::logic_error("Invalid start or goal pose");
+  if (detectCollision(start_pose_)) {
+    throw std::logic_error("Invalid start pose: Detected Collision");
+  }
+
+  if (goals_local.empty()) {
+    throw std::logic_error("Invalid goal pose: All goal candidates are in collision");
   }
 
   goal_pose_ = is_backward_search_ ? start_pose_ : goals_local.front();
@@ -211,8 +223,12 @@ bool AstarSearch::makePlan(
     alternate_goals_ = goals_local;
   }
 
-  if (!search()) {
-    throw std::logic_error("HA* failed to find path to goal");
+  const auto search_status = search();
+  if (search_status == SearchStatus::Timeout) {
+    throw std::logic_error("HA* search timed out");
+  }
+  if (search_status == SearchStatus::Failure) {
+    throw std::logic_error("HA* search exhausted all nodes without finding a path");
   }
 
   return true;
@@ -287,17 +303,17 @@ double AstarSearch::estimateCost(const Pose & pose, const IndexXYT & index) cons
   return astar_param_.distance_heuristic_weight * total_cost;
 }
 
-bool AstarSearch::search()
+AstarSearch::SearchStatus AstarSearch::search()
 {
-  const rclcpp::Time begin = rclcpp::Clock(RCL_ROS_TIME).now();
+  const rclcpp::Time begin = clock_->now();
 
   // Start A* search
   while (!openlist_.empty()) {
     // Check time and terminate if the search reaches the time limit
-    const rclcpp::Time now = rclcpp::Clock(RCL_ROS_TIME).now();
+    const rclcpp::Time now = clock_->now();
     const double msec = (now - begin).seconds() * 1000.0;
     if (msec > planner_common_param_.time_limit) {
-      return false;
+      return SearchStatus::Timeout;
     }
 
     // Expand minimum cost node
@@ -309,7 +325,7 @@ bool AstarSearch::search()
     if (isGoal(*current_node)) {
       goal_node_ = current_node;
       setPath(*current_node);
-      return true;
+      return SearchStatus::Success;
     }
 
     expandNodes(*current_node);
@@ -317,7 +333,7 @@ bool AstarSearch::search()
   }
 
   // Failed to find path
-  return false;
+  return SearchStatus::Failure;
 }
 
 void AstarSearch::expandNodes(AstarNode & current_node, const bool is_back)

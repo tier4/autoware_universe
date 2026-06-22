@@ -134,8 +134,10 @@ public:
   }
 
 private:
+  enum class SearchStatus { Success, Timeout, Failure };
+
   void setCollisionFreeDistanceMap();
-  bool search();
+  SearchStatus search();
   void expandNodes(AstarNode & current_node, const bool is_back = false);
   void resetData();
   void setPath(const AstarNode & goal);
