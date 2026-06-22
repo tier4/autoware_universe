@@ -25,6 +25,7 @@
 
 namespace autoware::trajectory_validator
 {
+using autoware_trajectory_validator::msg::RiskLevel;
 using autoware_trajectory_validator::msg::ValidationReport;
 
 TrajectoryValidatorReport TrajectoryValidator::process(
@@ -98,12 +99,14 @@ TrajectoryValidatorReport TrajectoryValidator::process(
       report.num_feasible_trajectories++;
     }
 
+    RiskLevel risk_level;
+    risk_level.level = all_feasible ? RiskLevel::SAFE : RiskLevel::DANGER;
     report.validation_reports.push_back(
       autoware_trajectory_validator::build<ValidationReport>()
         .trajectory_stamp(candidate_trajectory.header.stamp)
         .generator_id(candidate_trajectory.generator_id)
         .generator_name(uuid_to_name.at(hex_generator_id))
-        .level(all_feasible ? ValidationReport::SAFE : ValidationReport::DANGER)
+        .risk(risk_level)
         .metrics(std::move(combined_metrics)));
   }
 
