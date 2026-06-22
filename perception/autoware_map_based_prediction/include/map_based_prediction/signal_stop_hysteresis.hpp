@@ -29,20 +29,14 @@ namespace autoware::map_based_prediction::priority
 {
 using autoware_perception_msgs::msg::TrafficLightGroup;
 
-/// Persisted across frames so a brief drop-out does not reset the debounce or lose
-/// the last stable signal. The observed color (stop or go) is timed from its start time;
-/// once it has been held for the matching window the confirmed flags flip to it.
 struct SignalStabilizeState
 {
-  TrafficLightGroup last_stable_signal;  // last group whose class matched the confirmed state
-  bool is_confirmed_stop{false};         // debounced output: stop confirmed
-  bool is_confirmed_go{
-    false};  // debounced output: go confirmed (always != is_confirmed_stop after the first frame)
-  // when stop / go was first continuously observed; only the currently observed color's timer is
-  // set
+  TrafficLightGroup last_stable_signal;
+  bool is_confirmed_stop{false};
+  bool is_confirmed_go{false};
   std::optional<rclcpp::Time> stop_start_time{};
   std::optional<rclcpp::Time> go_start_time{};
-  std::optional<rclcpp::Time> last_observed_time{};  // last frame observed with a non-UNKNOWN color
+  std::optional<rclcpp::Time> last_observed_time{};
 };
 
 std::unordered_map<lanelet::Id, TrafficLightGroup> stabilizeTrafficSignalMap(

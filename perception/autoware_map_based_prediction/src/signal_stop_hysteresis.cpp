@@ -30,12 +30,9 @@ std::unordered_map<lanelet::Id, TrafficLightGroup> stabilizeTrafficSignalMap(
   const double go_time_hysteresis, const double retention_timeout)
 {
   std::unordered_map<lanelet::Id, TrafficLightGroup> stabilized_traffic_signal_map;
-  // Debounce the signals observed this frame to absorb single-frame chattering.
   debounceObservedSignals(
     raw_traffic_signal_map, signal_stabilize_states_histories, stabilized_traffic_signal_map,
     observe_time, stop_time_hysteresis, go_time_hysteresis);
-  // Retain the last stable signal for signals that dropped out by blind spot, if within the
-  // retention timeout.
   retainUnobservedSignalsWithinTimeout(
     signal_stabilize_states_histories, stabilized_traffic_signal_map, observe_time,
     retention_timeout);
@@ -79,7 +76,6 @@ TrafficLightGroup debounceSignalGroup(
   const TrafficLightGroup & raw_traffic_signal_group, const rclcpp::Time & observe_time,
   const double stop_time_hysteresis, const double go_time_hysteresis)
 {
-  // No timer has been armed yet -> this is the first observation of the group.
   const bool is_first_observation = !signal_stabilize_state_history.stop_start_time.has_value() &&
                                     !signal_stabilize_state_history.go_start_time.has_value();
   const bool is_traffic_signal_stop = showsRedOrAmberCircle(raw_traffic_signal_group);
@@ -128,7 +124,6 @@ void armObservedColorTimer(
   SignalStabilizeState & signal_stabilize_state_history, const bool is_traffic_signal_stop,
   const rclcpp::Time & observe_time)
 {
-  // Run the observed color's timer (start it once) and stop the opposite color's.
   if (is_traffic_signal_stop) {
     signal_stabilize_state_history.go_start_time.reset();
     if (!signal_stabilize_state_history.stop_start_time) {
