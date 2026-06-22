@@ -71,13 +71,13 @@ visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
     size_t max_conf_pi = paths.size();
     float max_conf = -1.0f;
     for (size_t pi = 0; pi < paths.size(); ++pi) {
-      if (paths[pi].path.size() >= 2 && paths[pi].confidence > max_conf) {
-        max_conf = paths[pi].confidence;
+      if (paths.at(pi).path.size() >= 2 && paths.at(pi).confidence > max_conf) {
+        max_conf = paths.at(pi).confidence;
         max_conf_pi = pi;
       }
     }
     for (size_t pi = 0; pi < paths.size(); ++pi) {
-      if (paths[pi].path.size() < 2) {
+      if (paths.at(pi).path.size() < 2) {
         continue;
       }
       const bool is_stop_hypothesis = has_stop_hypothesis && indices_it->second.count(pi) > 0;
@@ -89,7 +89,7 @@ visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
         "map", now, "step3_paths", path_id++, visualization_msgs::msg::Marker::LINE_STRIP,
         autoware_utils::create_marker_scale(width, 0.0, 0.0), color);
       line.lifetime = rclcpp::Duration::from_seconds(0.3);
-      for (const auto & pose : paths[pi].path) {
+      for (const auto & pose : paths.at(pi).path) {
         auto pt = pose.position;
         pt.z += z_off;
         line.points.push_back(pt);
