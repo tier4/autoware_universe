@@ -26,6 +26,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_routing/Forward.h>
 
 #include <vector>
 
@@ -61,10 +62,12 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_marker_;
 
   lanelet::LaneletMapConstPtr lanelet_map_;
+  lanelet::routing::RoutingGraphConstPtr routing_graph_;
   LaneletRoute::ConstSharedPtr route_;
   Trajectory::ConstSharedPtr trajectory_;
 
   VehicleInfo vehicle_info_;
+  LaneletProbabilityMap posterior_probabilities_;
 
   // marker geometry cache, rebuilt only when the route changes
   std::vector<LaneletTriangles> route_triangles_;

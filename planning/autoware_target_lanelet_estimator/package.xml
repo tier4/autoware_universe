@@ -24,6 +24,8 @@
   <depend>autoware_utils_geometry</depend>
   <depend>autoware_vehicle_info_utils</depend>
   <depend>geometry_msgs</depend>
+  <depend>lanelet2_routing</depend>
+  <depend>lanelet2_traffic_rules</depend>
   <depend>libboost-dev</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>

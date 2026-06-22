@@ -18,6 +18,9 @@
 #include <autoware/vehicle_info_utils/vehicle_info_utils.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
 
+#include <lanelet2_routing/RoutingGraph.h>
+#include <lanelet2_traffic_rules/TrafficRulesFactory.h>
+
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
@@ -29,7 +32,7 @@ namespace autoware::target_lanelet_estimator
 {
 namespace
 {
-// Heatmap color from score (likelihood 0-1): cold blue -> hot red, more opaque when higher.
+// Heatmap color from posterior probability: cold blue -> hot red, more opaque when higher.
 std_msgs::msg::ColorRGBA score_to_color(double score)
 {
   const float t = static_cast<float>(std::clamp(score, 0.0, 1.0));
@@ -99,7 +102,7 @@ TargetLaneletEstimatorNode::TargetLaneletEstimatorNode(const rclcpp::NodeOptions
     "~/input/trajectory", rclcpp::QoS{1},
     std::bind(&TargetLaneletEstimatorNode::on_trajectory, this, _1));
 
-  pub_marker_ = create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/markers", 1);
+  pub_marker_ = create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/route_marker", 1);
 
   RCLCPP_INFO(
     get_logger(), "vehicle_info: length=%.2fm width=%.2fm wheel_base=%.2fm",
@@ -109,6 +112,9 @@ TargetLaneletEstimatorNode::TargetLaneletEstimatorNode(const rclcpp::NodeOptions
 void TargetLaneletEstimatorNode::on_map(const LaneletMapBin::ConstSharedPtr msg)
 {
   lanelet_map_ = autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*msg);
+  const auto traffic_rules = lanelet::traffic_rules::TrafficRulesFactory::create(
+    lanelet::Locations::Germany, lanelet::Participants::Vehicle);
+  routing_graph_ = lanelet::routing::RoutingGraph::build(*lanelet_map_, *traffic_rules);
   RCLCPP_INFO(
     get_logger(), "Received vector map (%zu lanelets).", lanelet_map_->laneletLayer.size());
 }
@@ -116,6 +122,7 @@ void TargetLaneletEstimatorNode::on_map(const LaneletMapBin::ConstSharedPtr msg)
 void TargetLaneletEstimatorNode::on_route(const LaneletRoute::ConstSharedPtr msg)
 {
   route_ = msg;
+  posterior_probabilities_ = initialize_lanelet_probabilities(*route_);
   RCLCPP_INFO(get_logger(), "Received route (%zu segments).", msg->segments.size());
 }
 
@@ -134,12 +141,21 @@ void TargetLaneletEstimatorNode::run_estimation()
     return;
   }
 
-  const auto result = get_target_lanelets(*route_, *trajectory_, lanelet_map_, vehicle_info_);
+  const auto result = get_target_lanelets(
+    *route_, *trajectory_, lanelet_map_, vehicle_info_, posterior_probabilities_, routing_graph_);
+  posterior_probabilities_.clear();
+  for (const auto & lanelet : result.lanelets) {
+    posterior_probabilities_[lanelet.id] = lanelet.score;
+  }
 
   std::stringstream ids;
   ids << std::fixed << std::setprecision(2);
   for (const auto & lanelet : result.lanelets) {
-    ids << lanelet.id << ":" << lanelet.score << " ";
+    ids << lanelet.id << ":" << lanelet.score;
+    if (lanelet.updated) {
+      ids << "(prior=" << lanelet.prior << ",L=" << lanelet.likelihood << ")";
+    }
+    ids << " ";
   }
   if (result.out_of_lanelet) {
     ids << "out_of_lanelet";
