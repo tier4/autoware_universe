@@ -24,7 +24,6 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -240,8 +239,8 @@ void CrosswalkTrafficLightEstimatorNode::onRoute(const LaneletRoute::ConstShared
   }
 }
 
-void CrosswalkTrafficLightEstimatorNode::update_overrides_from_map(
-  std::unordered_map<lanelet::Id, uint8_t> & traffic_signal_overrides,
+void CrosswalkTrafficLightEstimatorNode::update_crosswalk_overrides_from_map(
+  std::unordered_map<lanelet::Id, uint8_t> & crosswalk_traffic_signal_overrides,
   const lanelet::Id traffic_light_group_id, const TrafficLightIdMap & traffic_light_id_map)
 {
   const auto traffic_light_it =
@@ -265,7 +264,7 @@ void CrosswalkTrafficLightEstimatorNode::update_overrides_from_map(
       continue;
     }
     for (const auto id : parse_ids(attribute.second.value())) {
-      traffic_signal_overrides[id] = to_color;
+      crosswalk_traffic_signal_overrides[id] = to_color;
     }
   }
 }
@@ -285,15 +284,16 @@ void CrosswalkTrafficLightEstimatorNode::onTrafficLightArray(
 
   TrafficLightIdMap traffic_light_id_map;
 
-  std::unordered_map<lanelet::Id, uint8_t> traffic_signal_overrides;
+  std::unordered_map<lanelet::Id, uint8_t> crosswalk_traffic_signal_overrides;
   for (const auto & traffic_signal : msg->traffic_light_groups) {
     traffic_light_id_map[traffic_signal.traffic_light_group_id] =
       std::pair<TrafficSignal, rclcpp::Time>(traffic_signal, get_clock()->now());
   }
   // we need the full traffic_light_id_map before calculating overrides from map
   for (const auto & traffic_signal : msg->traffic_light_groups) {
-    update_overrides_from_map(
-      traffic_signal_overrides, traffic_signal.traffic_light_group_id, traffic_light_id_map);
+    update_crosswalk_overrides_from_map(
+      crosswalk_traffic_signal_overrides, traffic_signal.traffic_light_group_id,
+      traffic_light_id_map);
   }
 
   for (const auto & crosswalk : conflicting_crosswalks_) {
@@ -303,11 +303,8 @@ void CrosswalkTrafficLightEstimatorNode::onTrafficLightArray(
 
     const auto crosswalk_tl_color = estimateCrosswalkTrafficSignal(crosswalk, non_red_lanelets);
     setCrosswalkTrafficSignal(
-      crosswalk, crosswalk_tl_color, *msg, output, traffic_signal_overrides);
+      crosswalk, crosswalk_tl_color, *msg, output, crosswalk_traffic_signal_overrides);
   }
-
-  // inject intersection (oncoming/cross) signals from map tags even when no route is set
-  update_intersection_overrides_from_map(traffic_signal_overrides, output);
 
   removeDuplicateIds(output);
 
@@ -490,33 +487,6 @@ void CrosswalkTrafficLightEstimatorNode::setCrosswalkTrafficSignal(
 
     // 3. No detection available → use estimated vehicle-based color
     replace_out_signal_elements(base_traffic_signal_element);
-  }
-}
-
-void CrosswalkTrafficLightEstimatorNode::update_intersection_overrides_from_map(
-  const std::unordered_map<lanelet::Id, uint8_t> & traffic_signal_overrides,
-  TrafficSignalArray & output)
-{
-  std::unordered_set<lanelet::Id> existing_ids;
-  for (const auto & signal : output.traffic_light_groups) {
-    existing_ids.insert(signal.traffic_light_group_id);
-  }
-
-  for (const auto & [id, color] : traffic_signal_overrides) {
-
-    if (existing_ids.count(id)) {
-      continue;
-    }
-
-    TrafficSignalElement element;
-    element.color = color;
-    element.shape = TrafficSignalElement::CIRCLE;
-    element.confidence = 1.0; 
-
-    TrafficSignal new_signal;
-    new_signal.traffic_light_group_id = id;
-    new_signal.elements.push_back(element);
-    output.traffic_light_groups.push_back(new_signal);
   }
 }
 
