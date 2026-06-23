@@ -70,8 +70,7 @@ void MapCallback::mapCallback(const LaneletMapBin::ConstSharedPtr msg)
 // ---------------------------------------------------------------------------
 
 ObjectsCallback::ObjectsCallback(rclcpp::Node * node, NodeState & state)
-: state_(state),
-  sub_traffic_signals_(node, "/traffic_signals"),
+: state_(state), sub_traffic_signals_(node, "/traffic_signals"),
   transform_listener_(node)
 {
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
