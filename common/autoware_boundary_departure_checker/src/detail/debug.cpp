@@ -56,6 +56,11 @@ inline ColorRGBA magenta(float a = 0.99)
   return autoware_utils_visualization::create_marker_color(1., 0., 1., a);
 }
 
+inline ColorRGBA white(float a = 0.99)
+{
+  return autoware_utils_visualization::create_marker_color(1., 1., 1., a);
+}
+
 }  // namespace color
 
 namespace autoware::boundary_departure_checker::debug
@@ -198,7 +203,7 @@ MarkerArray create_virtual_wall_marker(
     auto text_marker = autoware_utils_visualization::create_default_marker(
       "map", curr_time, "uncrossable_departure_wall", ++id,
       visualization_msgs::msg::Marker::TEXT_VIEW_FACING,
-      autoware_utils_visualization::create_marker_scale(0.0, 0.0, 0.5), color::red());
+      autoware_utils_visualization::create_marker_scale(0.0, 0.0, 0.5), color::white());
     text_marker.pose.position.x = cx;
     text_marker.pose.position.y = cy;
     text_marker.pose.position.z = base_link_z + 2.5;
