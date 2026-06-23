@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__PRIORITY_UTILS_HPP_
-#define AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__PRIORITY_UTILS_HPP_
+#ifndef AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__TRAFFICLIGHT_PRIORITY_HPP_
+#define AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__TRAFFICLIGHT_PRIORITY_HPP_
 
 #include "autoware/map_based_prediction/data_structure.hpp"
-#include "autoware/map_based_prediction/predictor_vehicle/debug_util.hpp"
+#include "autoware/map_based_prediction/predictor_vehicle/debug.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -35,7 +35,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace autoware::map_based_prediction::priority
+namespace autoware::map_based_prediction::trafficlight_priority
 {
 using autoware_perception_msgs::msg::TrafficLightGroup;
 using autoware_perception_msgs::msg::TrafficLightGroupArray;
@@ -93,7 +93,7 @@ struct ObjectPrediction
 std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   const ObjectPrediction & prediction,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
-  const PriorityCalibrationParams & params, debug_util::StopHypothesisDebug & debug);
+  const PriorityCalibrationParams & params, StopHypothesisDebug & debug);
 
 class TrafficSignalStopPredictor
 {
@@ -113,16 +113,16 @@ public:
   std::vector<PredictedPath> addStopHypotheses(
     const ObjectPrediction & prediction, const rclcpp::Time & now);
 
-  const debug_util::StopHypothesisDebug & getDebugInfo() const { return debug_; }
+  const StopHypothesisDebug & getDebugInfo() const { return debug_; }
 
 private:
   std::unordered_map<lanelet::Id, TrafficLightGroup> traffic_signal_id_map_;
   std::optional<rclcpp::Time> latest_traffic_signal_time_;
   PriorityCalibrationParams params_;
   double signal_observation_timeout_{0.0};
-  debug_util::StopHypothesisDebug debug_;
+  StopHypothesisDebug debug_;
 };
 
-}  // namespace autoware::map_based_prediction::priority
+}  // namespace autoware::map_based_prediction::trafficlight_priority
 
-#endif  // AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__PRIORITY_UTILS_HPP_
+#endif  // AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__TRAFFICLIGHT_PRIORITY_HPP_

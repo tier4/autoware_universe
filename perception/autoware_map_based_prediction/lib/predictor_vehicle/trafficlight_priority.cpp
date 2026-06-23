@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/map_based_prediction/predictor_vehicle/priority_utils.hpp"
+#include "autoware/map_based_prediction/predictor_vehicle/trafficlight_priority.hpp"
 
 #include "autoware/map_based_prediction/predictor_vehicle/lanelet_util.hpp"
 
@@ -35,7 +35,7 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::map_based_prediction::priority
+namespace autoware::map_based_prediction::trafficlight_priority
 {
 namespace
 {
@@ -185,7 +185,7 @@ double weakenConfidenceInLaneChange(const Maneuver & maneuver, const double stop
 std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   const ObjectPrediction & prediction,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
-  const PriorityCalibrationParams & params, debug_util::StopHypothesisDebug & debug)
+  const PriorityCalibrationParams & params, StopHypothesisDebug & debug)
 {
   const TrackedObject & object = prediction.object;
   const std::vector<PredictedRefPath> & ref_paths = prediction.ref_paths;
@@ -294,4 +294,4 @@ std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
   return addTrafficSignalStopHypotheses(prediction, traffic_signal_id_map_, params_, debug_);
 }
 
-}  // namespace autoware::map_based_prediction::priority
+}  // namespace autoware::map_based_prediction::trafficlight_priority

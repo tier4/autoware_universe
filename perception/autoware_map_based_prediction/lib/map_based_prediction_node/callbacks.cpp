@@ -14,7 +14,7 @@
 
 #include "autoware/map_based_prediction/map_based_prediction_node/callbacks.hpp"
 
-#include "autoware/map_based_prediction/predictor_vehicle/debug_util.hpp"
+#include "autoware/map_based_prediction/predictor_vehicle/debug.hpp"
 #include "autoware/map_based_prediction/map_based_prediction_node/diagnostics.hpp"
 #include "autoware/map_based_prediction/utils.hpp"
 
@@ -205,7 +205,7 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
       counter.signal_stop, counter.stopline_found, counter.stop_hypothesis_added);
 
     const auto stamp = rclcpp::Time(in_objects->header.stamp);
-    debug_util::publishPriorityObjectMarkers(
+    publishPriorityObjectMarkers(
       *pub_debug_markers_, transform_listener_, output, stamp,
       debug.stop_hypothesis_path_indices, debug.stop_lines, stamp);
   }

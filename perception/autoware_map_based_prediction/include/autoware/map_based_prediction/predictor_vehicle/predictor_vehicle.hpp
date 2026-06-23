@@ -63,7 +63,7 @@ public:
   void setTimeKeeper(std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_ptr);
 
   void setPriorityPredictor(
-    std::shared_ptr<priority::TrafficSignalStopPredictor> priority_predictor,
+    std::shared_ptr<trafficlight_priority::TrafficSignalStopPredictor> priority_predictor,
     bool use_priority_prediction);
 
   void removeOldHistory(double current_time, double buffer_time);

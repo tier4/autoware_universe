@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #include "autoware/map_based_prediction/predictor_vehicle/lanelet_util.hpp"
-#include "autoware/map_based_prediction/predictor_vehicle/priority_utils.hpp"
+#include "autoware/map_based_prediction/predictor_vehicle/trafficlight_priority.hpp"
 
 #include <gtest/gtest.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
@@ -26,7 +26,7 @@
 #include <string>
 #include <vector>
 
-namespace autoware::map_based_prediction::priority
+namespace autoware::map_based_prediction::trafficlight_priority
 {
 namespace
 {
@@ -326,4 +326,4 @@ TEST(PriorityUtils, StopHypothesisConfidenceCenterIsStrongest)
 }
 
 }  // namespace
-}  // namespace autoware::map_based_prediction::priority
+}  // namespace autoware::map_based_prediction::trafficlight_priority

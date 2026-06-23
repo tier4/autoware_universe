@@ -197,7 +197,7 @@ void PathProcessor::clearLRUCache()
 }
 
 void PathProcessor::setPriorityPredictor(
-  std::shared_ptr<priority::TrafficSignalStopPredictor> priority_predictor,
+  std::shared_ptr<trafficlight_priority::TrafficSignalStopPredictor> priority_predictor,
   const bool use_priority_prediction)
 {
   priority_predictor_ = std::move(priority_predictor);
@@ -333,7 +333,7 @@ std::optional<PredictedObject> PathProcessor::predict(
       ref_lanelet_paths.push_back(lanelet_ref_path.first);
     }
     predicted_paths = priority_predictor_->addStopHypotheses(
-      priority::ObjectPrediction{yaw_fixed_object, ref_paths, ref_lanelet_paths, predicted_paths},
+      trafficlight_priority::ObjectPrediction{yaw_fixed_object, ref_paths, ref_lanelet_paths, predicted_paths},
       rclcpp::Time(header.stamp));
   }
 
