@@ -75,7 +75,9 @@ TrajectoryValidatorWrapper::TrajectoryValidatorWrapper(
       &node, "trajectory_validator");
   validator_ptr_ = std::make_unique<TrajectoryValidator>(plugins_);
 
-  std::set<std::string> shadow_validator_names;
+  // Note: because plugin filter name is not snake_case, so we have to get the shadow validator
+  // names from the plugin instances instead of the parameter list
+  std::unordered_set<std::string> shadow_validator_names;
   for (const auto & plugin : plugins_) {
     if (plugin->is_shadow_mode()) {
       shadow_validator_names.insert(plugin->get_name());

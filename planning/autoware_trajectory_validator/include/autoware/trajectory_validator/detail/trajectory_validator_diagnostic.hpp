@@ -23,9 +23,9 @@
 
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace autoware::trajectory_validator
@@ -77,9 +77,8 @@ public:
    *        during action aggregation.
    */
   TrajectoryValidatorDiagnostic(
-    rclcpp::Node & node, const FilterStatusMap & filter_status_map,
-    const std::string & no_candidate_name,
-    const std::set<std::string> & shadow_validator_names = {});
+    rclcpp::Node & node, FilterStatusMap filter_status_map, std::string no_candidate_name,
+    const std::unordered_set<std::string> & shadow_validator_names = {});
 
   /**
    * @brief Aggregates reports into a best-available action and publishes all tracked statuses.
@@ -125,7 +124,7 @@ private:
 
   rclcpp::Node * node_ptr_;
   FilterStatusMap filter_status_map_;
-  std::set<std::string> shadow_validator_names_;
+  std::unordered_set<std::string> shadow_validator_names_;
   std::string no_candidate_name_;
   std::unordered_map<std::string, std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface>>
     diag_by_name_;
