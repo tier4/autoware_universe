@@ -53,13 +53,6 @@ void PredictorVehicle::setTimeKeeper(std::shared_ptr<autoware_utils::TimeKeeper>
   path_processor_.setTimeKeeper(time_keeper_ptr);
 }
 
-void PredictorVehicle::setPriorityPredictor(
-  std::shared_ptr<trafficlight_priority::TrafficSignalStopPredictor> priority_predictor,
-  const bool use_priority_prediction)
-{
-  path_processor_.setPriorityPredictor(priority_predictor, use_priority_prediction);
-}
-
 void PredictorVehicle::removeOldHistory(double current_time, double buffer_time)
 {
   object_tracker_.removeOldHistory(current_time, buffer_time);

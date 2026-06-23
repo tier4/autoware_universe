@@ -14,8 +14,8 @@
 
 #include "autoware/map_based_prediction/map_based_prediction_node/callbacks.hpp"
 
-#include "autoware/map_based_prediction/predictor_vehicle/debug.hpp"
 #include "autoware/map_based_prediction/map_based_prediction_node/diagnostics.hpp"
+#include "autoware/map_based_prediction/priority_predictor/debug_priority_pred.hpp"
 #include "autoware/map_based_prediction/utils.hpp"
 
 #include <autoware/lanelet2_utils/conversion.hpp>
@@ -61,6 +61,9 @@ void MapCallback::mapCallback(const LaneletMapBin::ConstSharedPtr msg)
   state_.predictor_vehicle->setLaneletMap(
     state_.lanelet_map_ptr, routing_graph_ptr, traffic_rules_ptr);
   state_.predictor_vru->setLaneletMap(state_.lanelet_map_ptr);
+  if (state_.priority_predictor) {
+    state_.priority_predictor->setLaneletMap(state_.lanelet_map_ptr);
+  }
 
   RCLCPP_DEBUG(node_->get_logger(), "[Map Based Prediction]: Map is loaded");
 }
@@ -70,8 +73,7 @@ void MapCallback::mapCallback(const LaneletMapBin::ConstSharedPtr msg)
 // ---------------------------------------------------------------------------
 
 ObjectsCallback::ObjectsCallback(rclcpp::Node * node, NodeState & state)
-: state_(state), sub_traffic_signals_(node, "/traffic_signals"),
-  transform_listener_(node)
+: state_(state), sub_traffic_signals_(node, "/traffic_signals"), transform_listener_(node)
 {
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
   stop_watch_ptr_->tic("cyclic_time");
@@ -141,6 +143,10 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
 
   state_.predictor_vru->loadCurrentCrosswalkUsers(*in_objects);
 
+  if (state_.params.use_priority_prediction && state_.priority_predictor) {
+    state_.priority_predictor->clearFrameDebug();
+  }
+
   for (const auto & object : in_objects->objects) {
     TrackedObject transformed_object = object;
 
@@ -168,9 +174,18 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
       case ObjectClassification::TRAILER:
       case ObjectClassification::MOTORCYCLE:
       case ObjectClassification::TRUCK: {
-        const auto predicted_object_opt = state_.predictor_vehicle->predict(
+        auto predicted_object_opt = state_.predictor_vehicle->predict(
           output.header, transformed_object, objects_detected_time,
           pub_debug_markers_ ? &debug_markers : nullptr);
+
+        if (predicted_object_opt && state_.params.use_priority_prediction && state_.priority_predictor) {
+          predicted_object_opt->kinematics.predicted_paths =
+            state_.priority_predictor->addStopHypotheses(
+              priority_predictor::ObjectPrediction{
+                transformed_object, predicted_object_opt->kinematics.predicted_paths},
+              rclcpp::Time(output.header.stamp));
+        }
+
         if (predicted_object_opt) output.objects.push_back(predicted_object_opt.value());
         break;
       }
@@ -204,9 +219,9 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
       counter.signal_stop, counter.stopline_found, counter.stop_hypothesis_added);
 
     const auto stamp = rclcpp::Time(in_objects->header.stamp);
-    publishPriorityObjectMarkers(
-      *pub_debug_markers_, transform_listener_, output, stamp,
-      debug.stop_hypothesis_path_indices, debug.stop_lines, stamp);
+    priority_predictor::publishPriorityObjectMarkers(
+      *pub_debug_markers_, transform_listener_, output, stamp, debug.stop_hypothesis_path_indices,
+      debug.stop_lines, debug.used_signal_colors, stamp);
   }
 
   const auto processing_time_ms = stop_watch_ptr_->toc("processing_time", true);

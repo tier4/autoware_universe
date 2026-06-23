@@ -19,7 +19,6 @@
 #include "autoware/map_based_prediction/path_generator/path_generator.hpp"
 #include "autoware/map_based_prediction/predictor_vehicle/maneuver_prediction.hpp"
 #include "autoware/map_based_prediction/predictor_vehicle/object_processing.hpp"
-#include "autoware/map_based_prediction/predictor_vehicle/trafficlight_priority.hpp"
 
 #include <autoware_utils/system/lru_cache.hpp>
 #include <autoware_utils/system/time_keeper.hpp>
@@ -92,9 +91,6 @@ public:
   void setObjectTracker(ObjectTracker & object_tracker);
   void setParams(const Params & params);
   void clearLRUCache();
-  void setPriorityPredictor(
-    std::shared_ptr<trafficlight_priority::TrafficSignalStopPredictor> priority_predictor,
-    bool use_priority_prediction);
 
   std::optional<PredictedObject> predict(
     const std_msgs::msg::Header & header, const TrackedObject & object,
@@ -128,8 +124,6 @@ private:
   mutable autoware_utils::LRUCache<lanelet::routing::LaneletPath, std::pair<PosePath, double>>
     lru_cache_of_convert_path_type_{1000};
   Params params_;
-  std::shared_ptr<trafficlight_priority::TrafficSignalStopPredictor> priority_predictor_;
-  bool use_priority_prediction_{false};
 };
 
 }  // namespace autoware::map_based_prediction

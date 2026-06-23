@@ -196,14 +196,6 @@ void PathProcessor::clearLRUCache()
   lru_cache_of_convert_path_type_.clear();
 }
 
-void PathProcessor::setPriorityPredictor(
-  std::shared_ptr<trafficlight_priority::TrafficSignalStopPredictor> priority_predictor,
-  const bool use_priority_prediction)
-{
-  priority_predictor_ = std::move(priority_predictor);
-  use_priority_prediction_ = use_priority_prediction;
-}
-
 std::optional<PredictedObject> PathProcessor::predict(
   const std_msgs::msg::Header & header, const TrackedObject & transformed_object,
   const double objects_detected_time, visualization_msgs::msg::MarkerArray * debug_markers)
@@ -324,17 +316,6 @@ std::optional<PredictedObject> PathProcessor::predict(
       straight_path.confidence = 1.0;
       predicted_paths.push_back(straight_path);
     }
-  }
-
-  if (use_priority_prediction_ && priority_predictor_) {
-    std::vector<lanelet::routing::LaneletPath> ref_lanelet_paths;
-    ref_lanelet_paths.reserve(lanelet_ref_paths.size());
-    for (const auto & lanelet_ref_path : lanelet_ref_paths) {
-      ref_lanelet_paths.push_back(lanelet_ref_path.first);
-    }
-    predicted_paths = priority_predictor_->addStopHypotheses(
-      trafficlight_priority::ObjectPrediction{yaw_fixed_object, ref_paths, ref_lanelet_paths, predicted_paths},
-      rclcpp::Time(header.stamp));
   }
 
   float sum_confidence = 0.0;

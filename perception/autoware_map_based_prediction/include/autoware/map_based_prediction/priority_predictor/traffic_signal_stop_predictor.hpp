@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__TRAFFICLIGHT_PRIORITY_HPP_
-#define AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__TRAFFICLIGHT_PRIORITY_HPP_
+#ifndef AUTOWARE__MAP_BASED_PREDICTION__PRIORITY_PREDICTOR__TRAFFIC_SIGNAL_STOP_PREDICTOR_HPP_
+#define AUTOWARE__MAP_BASED_PREDICTION__PRIORITY_PREDICTOR__TRAFFIC_SIGNAL_STOP_PREDICTOR_HPP_
 
 #include "autoware/map_based_prediction/data_structure.hpp"
-#include "autoware/map_based_prediction/predictor_vehicle/debug.hpp"
+#include "autoware/map_based_prediction/priority_predictor/debug_priority_pred.hpp"
 
+#include <autoware/lanelet2_utils/nn_search.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
@@ -29,32 +30,25 @@
 #include <lanelet2_core/primitives/Point.h>
 #include <lanelet2_routing/Forward.h>
 
-#include <cstddef>
+#include <memory>
 #include <optional>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
-namespace autoware::map_based_prediction::trafficlight_priority
+namespace autoware::map_based_prediction::priority_predictor
 {
 using autoware_perception_msgs::msg::TrafficLightGroup;
 using autoware_perception_msgs::msg::TrafficLightGroupArray;
 
 bool hasTrafficLight(const lanelet::ConstLanelet & way_lanelet);
 
-/// Stop line of the lanelet's TrafficLight regulatory element, if tagged.
 std::optional<lanelet::ConstLineString3d> getStopLine(const lanelet::ConstLanelet & way_lanelet);
 
-/// Stop line of the lanelet's TrafficLight regulatory element; falls back to the
-/// lanelet's entry edge when no stop line is tagged, so a stopping object still
-/// has a finite target at the junction entrance.
 std::optional<lanelet::ConstLineString3d> getStopLineOrEntryEdge(
   const lanelet::ConstLanelet & way_lanelet);
 
-/// Id of the TrafficLight regulatory element of @p way_lanelet, if any.
 std::optional<lanelet::Id> getTrafficSignalId(const lanelet::ConstLanelet & way_lanelet);
 
-/// Latest observation in @p signal_id_map for the traffic light of @p way_lanelet.
 std::optional<TrafficLightGroup> getSignalForLanelet(
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & signal_id_map,
   const lanelet::ConstLanelet & way_lanelet);
@@ -64,53 +58,38 @@ struct PriorityCalibrationParams
   double stop_probability_boost{0.35};
 };
 
-/// Arc length [m] along @p ref_path from its start to where it crosses @p stop_line.
-/// Without a crossing, falls back to the path end if that is the vertex nearest the
-/// stop-line centroid (the path ends just before the line); otherwise the stop line
-/// lies behind / beside the path and nullopt is returned.
 std::optional<double> arcLengthToStopLine(
   const PosePath & ref_path, const lanelet::ConstLineString3d & stop_line);
 
-/// Whether @p stop_line still lies ahead of an object at @p position travelling
-/// along @p ref_path: the on-path arc length to the line must exceed the object's
-/// own signed offset along the path.
 bool hasStopLineAhead(
   const geometry_msgs::msg::Point & position, const PosePath & ref_path,
   const lanelet::ConstLineString3d & stop_line);
 
-/// Find the first traffic-light-controlled lanelet a predicted path enters
-/// (@p lanelet_path is the lane sequence the path follows).
-/// @return true when found, with the lanelet written to @p signal_lanelet
 bool findTrafficLightLaneletOnPath(
   const lanelet::routing::LaneletPath & lanelet_path, lanelet::ConstLanelet & signal_lanelet);
 
-/// Whether the signal tells an object on @p lanelet to stop, matching the
-/// behavior_velocity traffic_light stop/go boundary (isTrafficSignalStop).
-/// No observation -> false.
+lanelet::routing::LaneletPath buildLaneletPathFromPredictedPath(
+  const PredictedPath & predicted_path,
+  const autoware::experimental::lanelet2_utils::LaneletRTree & road_lanelet_rtree,
+  double sample_interval_m = 3.0);
+
+bool findTrafficLightLaneletOnPredictedPath(
+  const PredictedPath & predicted_path,
+  const autoware::experimental::lanelet2_utils::LaneletRTree & road_lanelet_rtree,
+  lanelet::ConstLanelet & signal_lanelet);
+
 bool evaluateSignalStopRequirement(
   const lanelet::ConstLanelet & lanelet, const std::optional<TrafficLightGroup> & signal);
 
-/// Whether a stop hypothesis should be added: the feature is enabled, the signal
-/// demands a stop, and the stop line still lies ahead of the object.
 bool shouldAddStopHypothesis(bool signal_requires_stop, bool has_stop_line_ahead);
 
-/// Stop-hypothesis weight after a lane-change penalty: the lane-follow (center)
-/// copy keeps the full stop weight, while lane-change copies are attenuated so
-/// the center hypothesis is always the strongest.
 double weakenConfidenceInLaneChange(const Maneuver & maneuver, const double stop_weight);
 
 struct ObjectPrediction
 {
   const TrackedObject & object;
-  const std::vector<PredictedRefPath> & ref_paths;
-  const std::vector<lanelet::routing::LaneletPath> & lanelet_paths;
-  const std::vector<PredictedPath> & predicted_paths;
+  std::vector<PredictedPath> predicted_paths;
 };
-
-std::vector<PredictedPath> addTrafficSignalStopHypotheses(
-  const ObjectPrediction & prediction,
-  const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
-  const PriorityCalibrationParams & params, StopHypothesisDebug & debug);
 
 class TrafficSignalStopPredictor
 {
@@ -121,10 +100,10 @@ public:
     signal_observation_timeout_ = signal_observation_timeout;
   }
 
+  void setLaneletMap(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr);
+
   void setTrafficSignal(const TrafficLightGroupArray & traffic_signals, const rclcpp::Time & now);
 
-  /// Drop the previous frame's marker data (stop lines and hypothesis indices);
-  /// the cumulative gate counters survive for the throttled log.
   void clearFrameDebug();
 
   std::vector<PredictedPath> addStopHypotheses(
@@ -133,6 +112,8 @@ public:
   const StopHypothesisDebug & getDebugInfo() const { return debug_; }
 
 private:
+  std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
+  std::optional<autoware::experimental::lanelet2_utils::LaneletRTree> road_lanelet_rtree_;
   std::unordered_map<lanelet::Id, TrafficLightGroup> traffic_signal_id_map_;
   std::optional<rclcpp::Time> latest_traffic_signal_time_;
   PriorityCalibrationParams params_;
@@ -140,6 +121,6 @@ private:
   StopHypothesisDebug debug_;
 };
 
-}  // namespace autoware::map_based_prediction::trafficlight_priority
+}  // namespace autoware::map_based_prediction::priority_predictor
 
-#endif  // AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__TRAFFICLIGHT_PRIORITY_HPP_
+#endif  // AUTOWARE__MAP_BASED_PREDICTION__PRIORITY_PREDICTOR__TRAFFIC_SIGNAL_STOP_PREDICTOR_HPP_

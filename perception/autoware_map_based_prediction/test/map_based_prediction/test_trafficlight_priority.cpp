@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/map_based_prediction/predictor_vehicle/trafficlight_priority.hpp"
+#include "autoware/map_based_prediction/priority_predictor/traffic_signal_stop_predictor.hpp"
 
+#include <autoware/lanelet2_utils/nn_search.hpp>
 #include <gtest/gtest.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 #include <lanelet2_core/primitives/Lanelet.h>
@@ -25,10 +26,11 @@
 #include <string>
 #include <vector>
 
-namespace autoware::map_based_prediction::trafficlight_priority
+namespace autoware::map_based_prediction::priority_predictor
 {
 namespace
 {
+using autoware::experimental::lanelet2_utils::LaneletRTree;
 using autoware_perception_msgs::msg::TrafficLightElement;
 using autoware_perception_msgs::msg::TrafficLightGroup;
 
@@ -37,7 +39,6 @@ lanelet::Point3d makePoint(const lanelet::Id id, const double x, const double y)
   return lanelet::Point3d(id, x, y, 0.0);
 }
 
-// Build a trivial straight lanelet [ (x,0)-(x,1) wide, length 1 ] with a running id.
 lanelet::Lanelet makeLanelet(lanelet::Id & next_id, const double x_offset)
 {
   const lanelet::LineString3d left(
@@ -55,14 +56,12 @@ TrafficLightElement makeElement(const uint8_t color, const uint8_t shape)
   return element;
 }
 
-// A vertical stop line at x == x_pos, spanning y in [-1, 1].
 lanelet::LineString3d makeStopLine(lanelet::Id & next_id, const double x_pos)
 {
   return lanelet::LineString3d(
     next_id++, {makePoint(next_id++, x_pos, -1.0), makePoint(next_id++, x_pos, 1.0)});
 }
 
-// Attach a TrafficLight regulatory element (with an optional stop line) to a lanelet.
 void attachTrafficLight(
   lanelet::Lanelet & lanelet, lanelet::Id & next_id,
   const std::optional<lanelet::LineString3d> & stop_line)
@@ -75,7 +74,6 @@ void attachTrafficLight(
   lanelet.addRegulatoryElement(traffic_light);
 }
 
-// A straight reference pose path along +x, [0, length] at 1 m spacing.
 PosePath makeRefPath(const double length)
 {
   PosePath ref_path;
@@ -88,7 +86,22 @@ PosePath makeRefPath(const double length)
   return ref_path;
 }
 
-// ---- findTrafficLightLaneletOnPath --------------------------------------------
+PredictedPath makePredictedPathAlongX(const double length)
+{
+  PredictedPath predicted_path;
+  for (double x = 0.0; x <= length + 1e-6; x += 0.5) {
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = x;
+    pose.position.y = 0.5;
+    predicted_path.path.push_back(pose);
+  }
+  return predicted_path;
+}
+
+LaneletRTree makeRoadLaneletRTree(const lanelet::ConstLanelets & lanelets)
+{
+  return LaneletRTree(lanelets);
+}
 
 TEST(PriorityUtils, FindsTrafficLightLaneletOnPath)
 {
@@ -106,6 +119,20 @@ TEST(PriorityUtils, FindsTrafficLightLaneletOnPath)
   EXPECT_EQ(got->id(), stop_line.id());
 }
 
+TEST(PriorityUtils, FindsTrafficLightLaneletOnPredictedPath)
+{
+  lanelet::Id id = 4050;
+  const auto approach = makeLanelet(id, 0.0);
+  auto junction = makeLanelet(id, 5.0);
+  const auto stop_line = makeStopLine(id, 6.0);
+  attachTrafficLight(junction, id, stop_line);
+  const LaneletRTree rtree = makeRoadLaneletRTree({approach, junction});
+  const PredictedPath predicted_path = makePredictedPathAlongX(10.0);
+  lanelet::ConstLanelet signal_lanelet;
+  ASSERT_TRUE(findTrafficLightLaneletOnPredictedPath(predicted_path, rtree, signal_lanelet));
+  EXPECT_EQ(signal_lanelet.id(), junction.id());
+}
+
 TEST(PriorityUtils, NoTrafficLightLaneletOnPath)
 {
   lanelet::Id id = 4100;
@@ -118,7 +145,6 @@ TEST(PriorityUtils, NoTrafficLightLaneletOnPath)
 
 TEST(PriorityUtils, FindsFirstTrafficLightLaneletOnPath)
 {
-  // With two signalized lanelets ahead, the first one entered wins.
   lanelet::Id id = 4200;
   const auto approach = makeLanelet(id, 0.0);
   auto first = makeLanelet(id, 5.0);
@@ -133,20 +159,14 @@ TEST(PriorityUtils, FindsFirstTrafficLightLaneletOnPath)
 
 TEST(PriorityUtils, GetStopLineOrEntryEdgeFallsBackToEntryEdge)
 {
-  // A signalized lanelet with no tagged stop line still gets a stop target: the
-  // entry edge of its lane bounds.
   lanelet::Id id = 4300;
   auto junction = makeLanelet(id, 0.0);
   attachTrafficLight(junction, id, std::nullopt);
   EXPECT_TRUE(getStopLineOrEntryEdge(junction).has_value());
 }
 
-// ---- arcLengthToStopLine (intersection-based) ------------------------------
-
 TEST(PriorityUtils, ArcLengthToStopLineUsesIntersectionNotCentroid)
 {
-  // Oblique stop line from (10,0) to (12,4): it crosses the straight path (y=0) at
-  // x=10, while its centroid (11,2) would mislead a nearest-vertex method to x=11.
   lanelet::Id id = 5000;
   const PosePath ref_path = makeRefPath(50.0);
   const lanelet::LineString3d stop_line(
@@ -158,8 +178,6 @@ TEST(PriorityUtils, ArcLengthToStopLineUsesIntersectionNotCentroid)
 
 TEST(PriorityUtils, ArcLengthToStopLineFallsBackWhenNoCrossing)
 {
-  // A stop line beyond the path end never crosses it: fall back to the nearest
-  // path vertex (the path end at 50 m).
   lanelet::Id id = 5100;
   const PosePath ref_path = makeRefPath(50.0);
   const lanelet::LineString3d stop_line(
@@ -182,15 +200,13 @@ TEST(PriorityUtils, ArcLengthToStopLineStraightPath)
 TEST(PriorityUtils, ArcLengthToStopLineNoneForShortPath)
 {
   lanelet::Id id = 5300;
-  const PosePath ref_path;  // empty
+  const PosePath ref_path;
   const auto stop_line = makeStopLine(id, 10.0);
   EXPECT_FALSE(arcLengthToStopLine(ref_path, stop_line).has_value());
 }
 
 TEST(PriorityUtils, ArcLengthToStopLineNoneWhenBehindPathStart)
 {
-  // A stop line behind the path start never crosses it and is nearest to the
-  // FIRST vertex: it is not on this path, so no distance must be fabricated.
   lanelet::Id id = 5400;
   const PosePath ref_path = makeRefPath(50.0);
   const auto stop_line = makeStopLine(id, -10.0);
@@ -199,8 +215,6 @@ TEST(PriorityUtils, ArcLengthToStopLineNoneWhenBehindPathStart)
 
 TEST(PriorityUtils, HasStopLineAheadByObjectPosition)
 {
-  // The same path / stop line answers differently depending on where the
-  // object currently is: ahead of the line -> false, behind it -> true.
   lanelet::Id id = 5500;
   const PosePath ref_path = makeRefPath(50.0);
   const auto stop_line = makeStopLine(id, 10.0);
@@ -208,22 +222,19 @@ TEST(PriorityUtils, HasStopLineAheadByObjectPosition)
   geometry_msgs::msg::Point position;
   position.y = 0.0;
 
-  position.x = 5.0;  // before the line
+  position.x = 5.0;
   EXPECT_TRUE(hasStopLineAhead(position, ref_path, stop_line));
 
-  position.x = -5.0;  // behind the path start, still before the line
+  position.x = -5.0;
   EXPECT_TRUE(hasStopLineAhead(position, ref_path, stop_line));
 
-  position.x = 15.0;  // already past the line
+  position.x = 15.0;
   EXPECT_FALSE(hasStopLineAhead(position, ref_path, stop_line));
 
-  // A stop line that is not on the path at all is never "ahead".
   const auto behind_line = makeStopLine(id, -10.0);
   position.x = 5.0;
   EXPECT_FALSE(hasStopLineAhead(position, ref_path, behind_line));
 }
-
-// ---- evaluateSignalStopRequirement ------------------------------------------------
 
 TEST(PriorityUtils, SignalStopNotRequiredWithoutObservation)
 {
@@ -243,7 +254,6 @@ TEST(PriorityUtils, SignalStopNotRequiredOnGreenCircle)
 
 TEST(PriorityUtils, SignalStopRequiredOnAmber)
 {
-  // Amber is treated as a stop, the same as red.
   lanelet::Id id = 5200;
   const auto lane = makeLanelet(id, 0.0);
   TrafficLightGroup signal;
@@ -262,8 +272,6 @@ TEST(PriorityUtils, SignalStopRequiredOnRed)
 
 TEST(PriorityUtils, SignalStopNotRequiredForMatchingArrow)
 {
-  // A green UP arrow is a protected straight movement: a "straight" lane may go,
-  // while a "right" lane (no matching arrow) must stop.
   TrafficLightGroup signal;
   signal.elements.push_back(makeElement(TrafficLightElement::GREEN, TrafficLightElement::UP_ARROW));
 
@@ -276,8 +284,6 @@ TEST(PriorityUtils, SignalStopNotRequiredForMatchingArrow)
   right_lane.setAttribute("turn_direction", "right");
   EXPECT_TRUE(evaluateSignalStopRequirement(right_lane, signal));
 }
-
-// ---- helpers ---------------------------------------------------------------
 
 TEST(PriorityUtils, GetStopLineFromTrafficLight)
 {
@@ -297,18 +303,15 @@ TEST(PriorityUtils, GetStopLineNoneWhenUntagged)
   EXPECT_FALSE(getStopLine(plain_lanelet).has_value());
 }
 
-// ---- calibrateStopDecision -----------------------------------------------------
-
 TEST(PriorityUtils, ShouldAddStopHypothesisOnlyOnRedWithStopLineAhead)
 {
   EXPECT_TRUE(shouldAddStopHypothesis(true, true));
-  EXPECT_FALSE(shouldAddStopHypothesis(false, true));  // signal does not demand a stop
-  EXPECT_FALSE(shouldAddStopHypothesis(true, false));  // no stop line ahead
+  EXPECT_FALSE(shouldAddStopHypothesis(false, true));
+  EXPECT_FALSE(shouldAddStopHypothesis(true, false));
 }
 
 TEST(PriorityUtils, StopHypothesisConfidenceCenterIsStrongest)
 {
-  // Among stop hypotheses, the lane-follow (center) copy must be the strongest.
   const double weight = 0.35;
   const double center = weakenConfidenceInLaneChange(Maneuver::LANE_FOLLOW, weight);
   EXPECT_DOUBLE_EQ(center, weight);
@@ -317,4 +320,4 @@ TEST(PriorityUtils, StopHypothesisConfidenceCenterIsStrongest)
 }
 
 }  // namespace
-}  // namespace autoware::map_based_prediction::trafficlight_priority
+}  // namespace autoware::map_based_prediction::priority_predictor
