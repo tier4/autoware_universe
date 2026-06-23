@@ -56,14 +56,11 @@
     # parameters for traffic-signal-aware stop prediction
     priority_prediction:
       enable: false
-      use_signal_priority: true
-      stop_probability_boost: 0.35 # confidence weight of the stop hypothesis added on red
       use_stop_hysteresis: true # debounce the stop/go decision (false = raw per-frame decision)
       stop_time_hysteresis: 0.2 # [s] sustained red required before predicting a stop (debounce)
       go_time_hysteresis: 0.1 # [s] sustained non-red required before reverting to a go prediction
-      signal_retention_timeout: 15.0 # [s] keep a signal's last stable color this long after it leaves view (<= 0 disables carry-forward)
-      signal_observation_timeout: -1.0 # [s] ignore signal observations older than this (<= 0 disables expiry: keep last signal even after it leaves view)
-      debug_visualization: false # publish debug markers regardless of enable
+      signal_retention_timeout: 15.0 # [s] keep last stable color after signal leaves view (<= 0 disables)
+      signal_observation_timeout: 1.0 # [s] ignore stale observations (<= 0 disables expiry)
 
     # debug parameters
     publish_processing_time: false

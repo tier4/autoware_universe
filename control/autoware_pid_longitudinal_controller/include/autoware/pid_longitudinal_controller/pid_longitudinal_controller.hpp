@@ -182,6 +182,9 @@ private:
   double m_time_threshold_before_pid_integrate;
   double m_ff_scale_min{0.5};
   double m_ff_scale_max{2.0};
+  bool m_enable_velocity_lookahead_feedback{true};
+  double m_velocity_lookahead_time{1.0};
+  double m_velocity_lookahead_blend_weight{0.5};
   bool m_enable_brake_keeping_before_stop;
   double m_brake_keeping_acc;
 
@@ -290,8 +293,11 @@ private:
   /**
    * @brief set reference trajectory with received message
    * @param [in] msg trajectory message
+   * @param [in] current_kinematics current ego odometry used to reset temporal phase on replan
    */
-  void setTrajectory(const autoware_planning_msgs::msg::Trajectory & msg);
+  void setTrajectory(
+    const autoware_planning_msgs::msg::Trajectory & msg,
+    const nav_msgs::msg::Odometry & current_kinematics);
 
   bool isReady(const trajectory_follower::InputData & input_data) override;
 
