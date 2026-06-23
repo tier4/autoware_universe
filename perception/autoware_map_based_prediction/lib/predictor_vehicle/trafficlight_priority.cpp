@@ -233,10 +233,9 @@ bool evaluateSignalStopRequirement(
 }
 
 bool shouldAddStopHypothesis(
-  const bool signal_requires_stop, const bool has_stop_line_ahead,
-  const PriorityCalibrationParams & params)
+  const bool signal_requires_stop, const bool has_stop_line_ahead)
 {
-  return params.use_signal_priority && signal_requires_stop && has_stop_line_ahead;
+  return signal_requires_stop && has_stop_line_ahead;
 }
 
 double weakenConfidenceInLaneChange(const Maneuver & maneuver, const double stop_weight)
@@ -251,7 +250,7 @@ double weakenConfidenceInLaneChange(const Maneuver & maneuver, const double stop
 std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   const ObjectPrediction & prediction,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
-  const PriorityCalibrationParams & params, StopHypothesisDebug & debug)
+  [[maybe_unused]] const PriorityCalibrationParams & params, StopHypothesisDebug & debug)
 {
   const TrackedObject & object = prediction.object;
   const std::vector<PredictedRefPath> & ref_paths = prediction.ref_paths;
@@ -305,7 +304,7 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     debug.counter.stopline_found += stop_line_ahead ? 1 : 0;
 
     // 3. Add a stop hypothesis only on a red signal whose stop line is still ahead.
-    if (!shouldAddStopHypothesis(signal_requires_stop, stop_line_ahead, params)) {
+    if (!shouldAddStopHypothesis(signal_requires_stop, stop_line_ahead)) {
       continue;
     }
 

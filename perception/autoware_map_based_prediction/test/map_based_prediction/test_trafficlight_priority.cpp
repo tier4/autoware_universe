@@ -301,17 +301,9 @@ TEST(PriorityUtils, GetStopLineNoneWhenUntagged)
 
 TEST(PriorityUtils, ShouldAddStopHypothesisOnlyOnRedWithStopLineAhead)
 {
-  PriorityCalibrationParams params;
-  EXPECT_TRUE(shouldAddStopHypothesis(true, true, params));
-  EXPECT_FALSE(shouldAddStopHypothesis(false, true, params));  // signal does not demand a stop
-  EXPECT_FALSE(shouldAddStopHypothesis(true, false, params));  // no stop line ahead
-}
-
-TEST(PriorityUtils, ShouldAddStopHypothesisRespectsDisableFlag)
-{
-  PriorityCalibrationParams params;
-  params.use_signal_priority = false;
-  EXPECT_FALSE(shouldAddStopHypothesis(true, true, params));
+  EXPECT_TRUE(shouldAddStopHypothesis(true, true));
+  EXPECT_FALSE(shouldAddStopHypothesis(false, true));  // signal does not demand a stop
+  EXPECT_FALSE(shouldAddStopHypothesis(true, false));  // no stop line ahead
 }
 
 TEST(PriorityUtils, StopHypothesisConfidenceCenterIsStrongest)

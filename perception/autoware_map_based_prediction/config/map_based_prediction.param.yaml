@@ -56,7 +56,6 @@
     # parameters for traffic-signal-aware stop prediction
     priority_prediction:
       enable: false
-      use_signal_priority: true
       stop_probability_boost: 0.35 # confidence weight of the stop hypothesis added on red
       signal_observation_timeout: 1.0 # [s] ignore signal observations older than this
 

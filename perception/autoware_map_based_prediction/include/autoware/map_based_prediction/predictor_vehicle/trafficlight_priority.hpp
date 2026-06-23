@@ -61,7 +61,6 @@ std::optional<TrafficLightGroup> getSignalForLanelet(
 
 struct PriorityCalibrationParams
 {
-  bool use_signal_priority{true};
   double stop_probability_boost{0.35};
 };
 
@@ -93,8 +92,7 @@ bool evaluateSignalStopRequirement(
 
 /// Whether a stop hypothesis should be added: the feature is enabled, the signal
 /// demands a stop, and the stop line still lies ahead of the object.
-bool shouldAddStopHypothesis(
-  bool signal_requires_stop, bool has_stop_line_ahead, const PriorityCalibrationParams & params);
+bool shouldAddStopHypothesis(bool signal_requires_stop, bool has_stop_line_ahead);
 
 /// Stop-hypothesis weight after a lane-change penalty: the lane-follow (center)
 /// copy keeps the full stop weight, while lane-change copies are attenuated so
