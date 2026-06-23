@@ -15,10 +15,10 @@
 #ifndef AUTOWARE__AVOIDANCE_TARGET_DETECTOR__NODE_HPP_
 #define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__NODE_HPP_
 
-#include "autoware/avoidance_target_detector/drivable_area.hpp"
-#include "autoware/avoidance_target_detector/impl.hpp"
-#include "autoware/avoidance_target_detector/traffic_rules.hpp"
-#include "autoware/avoidance_target_detector/two_class_filter.hpp"
+#include "autoware/avoidance_target_detector/boundary.hpp"
+#include "autoware/avoidance_target_detector/map_construction.hpp"
+#include "autoware/avoidance_target_detector/object_filtering.hpp"
+#include "autoware/avoidance_target_detector/parameter.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
 
 #include <autoware/route_handler/route_handler.hpp>
@@ -33,7 +33,6 @@
 
 #include <lanelet2_routing/RoutingGraph.h>
 
-#include <map>
 #include <memory>
 #include <optional>
 
@@ -76,17 +75,15 @@ private:
     sub_lanelet_map_{this, "~/input/lanelet_map_bin", rclcpp::QoS{1}.transient_local()};
 
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_avoidance_targets_;
-  rclcpp::Publisher<PredictedObjects>::SharedPtr pub_debug_avoidance_targets_;
   rclcpp::Publisher<Path>::SharedPtr pub_drivable_area_path_;
 
   std::shared_ptr<RouteHandler> route_handler_;
-  lanelet::routing::RoutingGraphConstPtr goal_purpose_routing_graph_;
+  lanelet::routing::RoutingGraphConstPtr routing_graph_;
   VehicleInfo vehicle_info_;
-  LongitudinalDistanceFilterParams longitudinal_filter_params_;
-  LateralDistanceFilterParams lateral_filter_params_;
 
   FilterManagerMap object_filters_;
 
+  LaneletMapBin::ConstSharedPtr map_bin_;
   Trajectory::ConstSharedPtr trajectory_;
   LaneletRoute::ConstSharedPtr route_;
   std::optional<DrivableAreaResult> cached_drivable_area_;

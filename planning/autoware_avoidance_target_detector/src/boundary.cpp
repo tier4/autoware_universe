@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/avoidance_target_detector/drivable_area.hpp"
+#include "autoware/avoidance_target_detector/boundary.hpp"
 
-#include "autoware/avoidance_target_detector/traffic_rules.hpp"
+#include "autoware/avoidance_target_detector/map_construction.hpp"
 
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_utils/geometry/boost_geometry.hpp>
@@ -30,6 +30,7 @@
 #include <lanelet2_core/LaneletMap.h>
 
 #include <algorithm>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -41,9 +42,6 @@ namespace autoware::avoidance_target_detector
 namespace
 {
 
-using autoware::route_handler::RouteHandler;
-using autoware::vehicle_info_utils::VehicleInfo;
-using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::PathPoint;
 using geometry_msgs::msg::Point;
 using geometry_msgs::msg::Pose;
@@ -446,8 +444,8 @@ std::vector<Point> generate_bound(
 }  // namespace
 
 std::optional<DrivableAreaResult> create_drivable_area(
-  const RouteHandler & route_handler, const lanelet::routing::RoutingGraph & routing_graph,
-  const Trajectory & trajectory, const VehicleInfo & vehicle_info, const LaneletRoute * route)
+  const Trajectory & trajectory, const VehicleInfo & vehicle_info, const LaneletRoute & route,
+  const RouteHandler & route_handler, const lanelet::routing::RoutingGraph & routing_graph)
 {
   if (!route_handler.isHandlerReady() || trajectory.points.empty()) {
     return std::nullopt;
@@ -455,13 +453,13 @@ std::optional<DrivableAreaResult> create_drivable_area(
 
   FootprintsByLaneletId footprints_by_lanelet_id;
   const auto trajectory_lanelets = collect_trajectory_lanelets(
-    route_handler, routing_graph, trajectory, vehicle_info, footprints_by_lanelet_id, route);
+    route_handler, routing_graph, trajectory, vehicle_info, footprints_by_lanelet_id, &route);
   if (trajectory_lanelets.empty()) {
     return std::nullopt;
   }
 
   const auto drivable_lanes = build_drivable_lanes(
-    trajectory_lanelets, route_handler, routing_graph, footprints_by_lanelet_id, route);
+    trajectory_lanelets, route_handler, routing_graph, footprints_by_lanelet_id, &route);
 
   auto left_bound = generate_bound(drivable_lanes, true);
   auto right_bound = generate_bound(drivable_lanes, false);
