@@ -171,7 +171,7 @@ CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
 
   publish_debug(report.evaluation_tables, report.processing_time_ms, context.odometry->pose.pose);
 
-  return report.valid_trajectories;
+  return input_trajectories;
 }
 
 void TrajectoryValidatorWrapper::publish_validation_reports(
