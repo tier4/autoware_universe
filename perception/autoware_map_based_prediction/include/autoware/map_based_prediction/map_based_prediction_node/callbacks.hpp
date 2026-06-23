@@ -19,8 +19,8 @@
 #include "autoware/map_based_prediction/params.hpp"
 #include "autoware/map_based_prediction/path_generator/path_generator.hpp"
 #include "autoware/map_based_prediction/predictor_vehicle/predictor_vehicle.hpp"
-#include "autoware/map_based_prediction/priority_predictor/traffic_signal_stop_predictor.hpp"
 #include "autoware/map_based_prediction/predictor_vru/predictor_vru.hpp"
+#include "autoware/map_based_prediction/priority_predictor/traffic_signal_stop_predictor.hpp"
 
 #include <autoware_utils/ros/polling_subscriber.hpp>
 #include <autoware_utils/ros/transform_listener.hpp>

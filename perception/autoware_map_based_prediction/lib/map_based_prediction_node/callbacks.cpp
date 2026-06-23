@@ -178,7 +178,9 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
           output.header, transformed_object, objects_detected_time,
           pub_debug_markers_ ? &debug_markers : nullptr);
 
-        if (predicted_object_opt && state_.params.use_priority_prediction && state_.priority_predictor) {
+        if (
+          predicted_object_opt && state_.params.use_priority_prediction &&
+          state_.priority_predictor) {
           predicted_object_opt->kinematics.predicted_paths =
             state_.priority_predictor->addStopHypotheses(
               priority_predictor::ObjectPrediction{

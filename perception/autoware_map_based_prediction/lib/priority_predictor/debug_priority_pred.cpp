@@ -139,8 +139,7 @@ visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
   for (const auto & [gid, rgb] : used_signal_colors) {
     auto signal_marker = autoware_utils::create_default_marker(
       "map", now, "used_signals", static_cast<int32_t>(gid),
-      visualization_msgs::msg::Marker::SPHERE,
-      autoware_utils::create_marker_scale(0.1, 0.1, 0.1),
+      visualization_msgs::msg::Marker::SPHERE, autoware_utils::create_marker_scale(0.1, 0.1, 0.1),
       autoware_utils::create_marker_color(rgb.at(0), rgb.at(1), rgb.at(2), 1.0));
     signal_marker.lifetime = rclcpp::Duration::from_seconds(0.3);
     markers.markers.push_back(signal_marker);

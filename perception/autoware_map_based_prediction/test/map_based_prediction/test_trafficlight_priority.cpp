@@ -15,6 +15,7 @@
 #include "autoware/map_based_prediction/priority_predictor/traffic_signal_stop_predictor.hpp"
 
 #include <autoware/lanelet2_utils/nn_search.hpp>
+
 #include <gtest/gtest.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 #include <lanelet2_core/primitives/Lanelet.h>

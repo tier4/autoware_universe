@@ -381,10 +381,9 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
     const bool signal_requires_stop =
       evaluateSignalStopRequirement(target_lanelet_signal_object, signal_status);
     const bool stop_line_ahead =
-      related_stop_line &&
-      hasStopLineAhead(
-        object.kinematics.pose_with_covariance.pose.position, predicted_path.path,
-        *related_stop_line);
+      related_stop_line && hasStopLineAhead(
+                             object.kinematics.pose_with_covariance.pose.position,
+                             predicted_path.path, *related_stop_line);
     debug.counter.signal_stop += signal_requires_stop ? 1 : 0;
     debug.counter.stopline_found += stop_line_ahead ? 1 : 0;
 
@@ -410,8 +409,7 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
 
 }  // namespace
 
-void TrafficSignalStopPredictor::setLaneletMap(
-  std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr)
+void TrafficSignalStopPredictor::setLaneletMap(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr)
 {
   lanelet_map_ptr_ = std::move(lanelet_map_ptr);
   if (!lanelet_map_ptr_) {
