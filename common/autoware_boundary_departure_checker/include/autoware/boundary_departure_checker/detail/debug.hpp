@@ -15,8 +15,11 @@
 #ifndef AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__DETAIL__DEBUG_HPP_
 #define AUTOWARE__BOUNDARY_DEPARTURE_CHECKER__DETAIL__DEBUG_HPP_
 
+#include "autoware/boundary_departure_checker/detail/data_structs.hpp"
 #include "autoware/boundary_departure_checker/detail/footprints_generator.hpp"
 #include "autoware/boundary_departure_checker/detail/hysteresis_logic.hpp"
+
+#include <builtin_interfaces/msg/time.hpp>
 
 #include <visualization_msgs/msg/marker_array.hpp>
 
