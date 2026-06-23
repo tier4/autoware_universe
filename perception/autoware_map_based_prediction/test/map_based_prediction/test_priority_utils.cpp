@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "map_based_prediction/lanelet_util.hpp"
-#include "map_based_prediction/priority_utils.hpp"
+#include "autoware/map_based_prediction/lanelet_util.hpp"
+#include "autoware/map_based_prediction/priority_utils.hpp"
 
 #include <gtest/gtest.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>

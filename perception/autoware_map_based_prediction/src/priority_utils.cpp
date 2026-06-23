@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "map_based_prediction/priority_utils.hpp"
+#include "autoware/map_based_prediction/priority_utils.hpp"
 
-#include "map_based_prediction/lanelet_util.hpp"
+#include "autoware/map_based_prediction/lanelet_util.hpp"
 
 #include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 #include <autoware_utils/geometry/geometry.hpp>

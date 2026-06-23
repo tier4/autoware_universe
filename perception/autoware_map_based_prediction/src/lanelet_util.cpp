@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "map_based_prediction/lanelet_util.hpp"
+#include "autoware/map_based_prediction/lanelet_util.hpp"
 
 #include <rclcpp/logging.hpp>
 
