@@ -56,11 +56,11 @@
     # parameters for traffic-signal-aware stop prediction
     priority_prediction:
       enable: false
-      signal_observation_timeout: 1.0 # [s] ignore signal observations older than this
+      signal_observation_timeout: 1.0
 
     # debug parameters
     publish_processing_time: false
     publish_processing_time_detail: false
-    publish_debug_markers: false # publish maneuver and priority-prediction debug markers
+    publish_debug_markers: false
     processing_time_tolerance: 0.5 #[s]
     processing_time_consecutive_excess_tolerance: 1.0 #[s]

@@ -18,12 +18,53 @@
 #include <autoware_utils/ros/marker_helper.hpp>
 #include <autoware_utils/ros/uuid_helper.hpp>
 
+#include <algorithm>
+#include <array>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-namespace autoware::map_based_prediction::priority_predictor
+namespace autoware::map_based_prediction::priority_predictor::debug
 {
+namespace
+{
+
+std::array<float, 3> trafficLightElementRgb(const uint8_t color)
+{
+  using autoware_perception_msgs::msg::TrafficLightElement;
+  switch (color) {
+    case TrafficLightElement::RED:
+      return {1.0f, 0.0f, 0.0f};
+    case TrafficLightElement::AMBER:
+      return {1.0f, 0.63f, 0.0f};
+    case TrafficLightElement::GREEN:
+      return {0.0f, 0.69f, 0.0f};
+    case TrafficLightElement::WHITE:
+      return {0.87f, 0.87f, 0.87f};
+    default:
+      return {0.53f, 0.53f, 0.53f};
+  }
+}
+
+}  // namespace
+
 using autoware_perception_msgs::msg::ObjectClassification;
+
+void populateUsedSignalColors(
+  const std::unordered_map<lanelet::Id, TrafficLightGroup> & signal_id_map,
+  UsedSignalColorMap & out)
+{
+  out.clear();
+  for (const auto & [id, group] : signal_id_map) {
+    if (group.elements.empty()) {
+      continue;
+    }
+    const auto best = std::max_element(
+      group.elements.begin(), group.elements.end(),
+      [](const auto & a, const auto & b) { return a.confidence < b.confidence; });
+    out[id] = trafficLightElementRgb(best->color);
+  }
+}
 
 visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
   const autoware_perception_msgs::msg::PredictedObjects & output,
@@ -171,4 +212,4 @@ void publishPriorityObjectMarkers(
     output, stop_hypothesis_indices, stop_lines, used_signal_colors, ego_pose, now));
 }
 
-}  // namespace autoware::map_based_prediction::priority_predictor
+}  // namespace autoware::map_based_prediction::priority_predictor::debug

@@ -27,7 +27,6 @@
 #include <lanelet2_routing/LaneletPath.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -42,39 +41,6 @@ namespace
 {
 
 using autoware::experimental::lanelet2_utils::LaneletRTree;
-
-std::array<float, 3> trafficLightElementRgb(const uint8_t color)
-{
-  using autoware_perception_msgs::msg::TrafficLightElement;
-  switch (color) {
-    case TrafficLightElement::RED:
-      return {1.0f, 0.0f, 0.0f};
-    case TrafficLightElement::AMBER:
-      return {1.0f, 0.63f, 0.0f};
-    case TrafficLightElement::GREEN:
-      return {0.0f, 0.69f, 0.0f};
-    case TrafficLightElement::WHITE:
-      return {0.87f, 0.87f, 0.87f};
-    default:
-      return {0.53f, 0.53f, 0.53f};
-  }
-}
-
-void populateUsedSignalColors(
-  const std::unordered_map<lanelet::Id, TrafficLightGroup> & signal_id_map,
-  UsedSignalColorMap & out)
-{
-  out.clear();
-  for (const auto & [id, group] : signal_id_map) {
-    if (group.elements.empty()) {
-      continue;
-    }
-    const auto best = std::max_element(
-      group.elements.begin(), group.elements.end(),
-      [](const auto & a, const auto & b) { return a.confidence < b.confidence; });
-    out[id] = trafficLightElementRgb(best->color);
-  }
-}
 
 bool isRoadLanelet(const lanelet::ConstLanelet & lanelet)
 {
@@ -452,7 +418,8 @@ std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
     return prediction.predicted_paths;
   }
 
-  populateUsedSignalColors(traffic_signal_id_map_, debug_.used_signal_colors);
+  debug::populateUsedSignalColors(traffic_signal_id_map_, debug_.used_signal_colors);
+
   return addTrafficSignalStopHypotheses(
     prediction, traffic_signal_id_map_, *road_lanelet_rtree_, debug_);
 }

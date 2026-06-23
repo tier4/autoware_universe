@@ -215,7 +215,7 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
     const auto & debug = state_.priority_predictor->getDebugInfo();
 
     const auto stamp = rclcpp::Time(in_objects->header.stamp);
-    priority_predictor::publishPriorityObjectMarkers(
+    priority_predictor::debug::publishPriorityObjectMarkers(
       *pub_debug_markers_, transform_listener_, output, stamp, debug.stop_hypothesis_path_indices,
       debug.stop_lines, debug.used_signal_colors, stamp);
   }

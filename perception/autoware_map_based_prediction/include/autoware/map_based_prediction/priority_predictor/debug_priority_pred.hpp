@@ -20,6 +20,7 @@
 #include <rclcpp/time.hpp>
 
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -35,6 +36,7 @@
 
 namespace autoware::map_based_prediction::priority_predictor
 {
+using autoware_perception_msgs::msg::TrafficLightGroup;
 
 /// Cumulative gate-fire counters for the throttled debug log.
 struct DebugLogCounter
@@ -62,6 +64,13 @@ struct StopHypothesisDebug
   UsedSignalColorMap used_signal_colors;
 };
 
+namespace debug
+{
+
+void populateUsedSignalColors(
+  const std::unordered_map<lanelet::Id, TrafficLightGroup> & signal_id_map,
+  UsedSignalColorMap & out);
+
 visualization_msgs::msg::MarkerArray createPriorityObjectMarkers(
   const autoware_perception_msgs::msg::PredictedObjects & output,
   const StopHypothesisIndexMap & stop_hypothesis_indices,
@@ -76,6 +85,8 @@ void publishPriorityObjectMarkers(
   const rclcpp::Time & objects_stamp, const StopHypothesisIndexMap & stop_hypothesis_indices,
   const std::vector<lanelet::ConstLineString3d> & stop_lines,
   const UsedSignalColorMap & used_signal_colors, const rclcpp::Time & now);
+
+}  // namespace debug
 
 }  // namespace autoware::map_based_prediction::priority_predictor
 
