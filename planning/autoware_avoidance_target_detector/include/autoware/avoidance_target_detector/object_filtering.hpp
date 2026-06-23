@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__AVOIDANCE_TARGET_DETECTOR__TWO_CLASS_FILTER_HPP_
-#define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__TWO_CLASS_FILTER_HPP_
+#ifndef AUTOWARE__AVOIDANCE_TARGET_DETECTOR__OBJECT_FILTERING_HPP_
+#define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__OBJECT_FILTERING_HPP_
+
+#include "autoware/avoidance_target_detector/boundary.hpp"
+#include "autoware/avoidance_target_detector/parameter.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -32,6 +35,7 @@ namespace autoware::avoidance_target_detector
 {
 
 using autoware_perception_msgs::msg::PredictedObject;
+using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::Trajectory;
 
 /** Two-class Bayesian filter with a configurable transition matrix and observation model. */
@@ -147,17 +151,13 @@ public:
   [[nodiscard]] bool is_stale(const rclcpp::Time & current_time) const
   {
     return rclcpp::Time(current_time) - rclcpp::Time(stale_check_time_) >
-           rclcpp::Duration::from_seconds(stale_threshold_seconds);
+           rclcpp::Duration::from_seconds(FilterManagerParams::stale_threshold_seconds);
   }
 
   [[nodiscard]] const std::string & get_debug_log() const { return debug_log_; }
   void clear_debug_log() { debug_log_.clear(); }
 
 private:
-  constexpr static double stale_threshold_seconds = 1.0;
-  constexpr static double hysteresis_seconds = 0.5;
-  constexpr static uint8_t count_threshold = 3;
-
   std::string debug_log_;
   uint8_t state_change_count_{0};
 
@@ -173,6 +173,59 @@ private:
 
 using FilterManagerMap = std::map<std::string, FilterManager>;
 
+/**
+ * @brief Check whether the object footprint lies beyond the trajectory end in arc-length.
+ * @param trajectory Reference trajectory.
+ * @param object Predicted object.
+ * @return True if the minimum footprint s exceeds trajectory.length().
+ */
+[[nodiscard]] bool is_object_beyond_trajectory_end(
+  const Trajectory & trajectory, const PredictedObject & object);
+
+/**
+ * @brief Check whether an object should be filtered out as on-trajectory corridor alignment.
+ * @param trajectory Reference trajectory.
+ * @param object Predicted object.
+ * @return True if the object aligns with the trajectory corridor and should be filtered out.
+ */
+[[nodiscard]] bool should_filter_out_on_trajectory_object(
+  const Trajectory & trajectory, const PredictedObject & object);
+
+/**
+ * @brief Check whether an object should be filtered out by longitudinal distance from trajectory.
+ * @details Removes objects whose entire footprint lies before the trajectory start or after the
+ *          trajectory end, with tolerance. Uses signed longitudinal deviation from start/end poses
+ *          so points beyond the polyline end are detected correctly.
+ */
+[[nodiscard]] bool should_filter_out_by_longitudinal_distance(
+  const Trajectory & trajectory, const PredictedObject & object,
+  const LongitudinalDistanceFilterParams & params = {});
+
+/**
+ * @brief Check whether an object should be filtered out by lateral distance from drivable bounds.
+ * @details Removes objects whose entire footprint lies outside the drivable area corridor, with
+ *          tolerance.
+ */
+[[nodiscard]] bool should_filter_out_by_lateral_distance(
+  const DrivableAreaResult & drivable_area, const Trajectory & trajectory,
+  const PredictedObject & object, const LateralDistanceFilterParams & params = {});
+
+/**
+ * @brief Detect avoidance targets among predicted objects.
+ * @details Updates per-object Bayesian filters, prunes stale entries, selects target objects, and
+ *          removes objects filtered out by longitudinal and lateral distance.
+ * @param current_time Current time stamp.
+ * @param objects Incoming predicted objects.
+ * @param trajectory Reference trajectory.
+ * @param object_filters Per-object filter state (updated in place).
+ * @param drivable_area Cached drivable area used for lateral filtering (optional).
+ * @return Predicted objects considered avoidance targets.
+ */
+[[nodiscard]] PredictedObjects get_avoidance_targets(
+  const rclcpp::Time & current_time, const PredictedObjects & objects,
+  const Trajectory & trajectory, FilterManagerMap & object_filters,
+  const std::optional<DrivableAreaResult> & drivable_area);
+
 }  // namespace autoware::avoidance_target_detector
 
-#endif  // AUTOWARE__AVOIDANCE_TARGET_DETECTOR__TWO_CLASS_FILTER_HPP_
+#endif  // AUTOWARE__AVOIDANCE_TARGET_DETECTOR__OBJECT_FILTERING_HPP_

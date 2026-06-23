@@ -12,24 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__AVOIDANCE_TARGET_DETECTOR__IMPL_HPP_
-#define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__IMPL_HPP_
-
-#include "autoware/avoidance_target_detector/drivable_area.hpp"
+#ifndef AUTOWARE__AVOIDANCE_TARGET_DETECTOR__PARAMETER_HPP_
+#define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__PARAMETER_HPP_
 
 #include <autoware_perception_msgs/msg/object_classification.hpp>
-#include <autoware_perception_msgs/msg/predicted_objects.hpp>
-#include <autoware_planning_msgs/msg/trajectory.hpp>
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 
 namespace autoware::avoidance_target_detector
 {
 
 using autoware_perception_msgs::msg::ObjectClassification;
-using autoware_perception_msgs::msg::PredictedObject;
-using autoware_planning_msgs::msg::Trajectory;
 
 /** Object classification labels considered as avoidance targets. */
 inline constexpr std::array<uint8_t, 6> labels_of_interest{
@@ -66,43 +61,14 @@ struct LateralDistanceFilterParams
   double tolerance_m{0.0};  ///< Margin outside left/right bounds [m].
 };
 
-/**
- * @brief Check whether the object footprint lies beyond the trajectory end in arc-length.
- * @param trajectory Reference trajectory.
- * @param object Predicted object.
- * @return True if the minimum footprint s exceeds trajectory.length().
- */
-[[nodiscard]] bool is_object_beyond_trajectory_end(
-  const Trajectory & trajectory, const PredictedObject & object);
-
-/**
- * @brief Check whether an object should be filtered out as on-trajectory corridor alignment.
- * @param trajectory Reference trajectory.
- * @param object Predicted object.
- * @return True if the object aligns with the trajectory corridor and should be filtered out.
- */
-[[nodiscard]] bool should_filter_out_on_trajectory_object(
-  const Trajectory & trajectory, const PredictedObject & object);
-
-/**
- * @brief Check whether an object should be filtered out by longitudinal distance from trajectory.
- * @details Removes objects whose entire footprint lies before the trajectory start or after the
- *          trajectory end, with tolerance. Uses signed longitudinal deviation from start/end poses
- *          so points beyond the polyline end are detected correctly.
- */
-[[nodiscard]] bool should_filter_out_by_longitudinal_distance(
-  const Trajectory & trajectory, const PredictedObject & object,
-  const LongitudinalDistanceFilterParams & params = {});
-
-/**
- * @brief Check whether an object should be filtered out by lateral distance from drivable bounds.
- * @details Removes objects whose entire footprint lies outside the drivable area corridor, with
- *          tolerance.
- */
-[[nodiscard]] bool should_filter_out_by_lateral_distance(
-  const DrivableAreaResult & drivable_area, const Trajectory & trajectory,
-  const PredictedObject & object, const LateralDistanceFilterParams & params = {});
+/** Parameters controlling FilterManager target-state hysteresis and staleness. */
+struct FilterManagerParams
+{
+  static constexpr double stale_threshold_seconds = 1.0;
+  static constexpr double hysteresis_seconds = 0.5;
+  static constexpr uint8_t count_threshold = 3;
+};
 
 }  // namespace autoware::avoidance_target_detector
 
-#endif  // AUTOWARE__AVOIDANCE_TARGET_DETECTOR__IMPL_HPP_
+#endif  // AUTOWARE__AVOIDANCE_TARGET_DETECTOR__PARAMETER_HPP_

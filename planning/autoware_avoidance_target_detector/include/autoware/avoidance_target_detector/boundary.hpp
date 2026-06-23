@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__AVOIDANCE_TARGET_DETECTOR__DRIVABLE_AREA_HPP_
-#define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__DRIVABLE_AREA_HPP_
+#ifndef AUTOWARE__AVOIDANCE_TARGET_DETECTOR__BOUNDARY_HPP_
+#define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__BOUNDARY_HPP_
 
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
@@ -32,6 +32,8 @@
 namespace autoware::avoidance_target_detector
 {
 
+using autoware::route_handler::RouteHandler;
+using autoware::vehicle_info_utils::VehicleInfo;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Path;
 using autoware_planning_msgs::msg::Trajectory;
@@ -49,18 +51,16 @@ struct DrivableAreaResult
  * @details For each trajectory point, a vehicle footprint is checked against route lanelets.
  *          Neighbor lanelets are expanded when any overlapping footprint intersects them.
  *          Only lanelet segments where the trajectory lies are included.
- * @param route_handler Route handler with map and route set.
- * @param routing_graph Cached routing graph built with goal_purpose traffic rules.
  * @param trajectory Reference trajectory used for lanelet overlap and expansion.
  * @param vehicle_info Vehicle dimensions for footprint calculation.
- * @param route Optional route used to relax route-lanelet filtering near the goal.
+ * @param route Route used to relax route-lanelet filtering near the goal.
+ * @param route_handler Route handler with map and route set.
+ * @param routing_graph Cached routing graph built with goal_purpose traffic rules.
  * @return Drivable area if generation succeeds, otherwise std::nullopt.
  */
 std::optional<DrivableAreaResult> create_drivable_area(
-  const autoware::route_handler::RouteHandler & route_handler,
-  const lanelet::routing::RoutingGraph & routing_graph, const Trajectory & trajectory,
-  const autoware::vehicle_info_utils::VehicleInfo & vehicle_info,
-  const LaneletRoute * route = nullptr);
+  const Trajectory & trajectory, const VehicleInfo & vehicle_info, const LaneletRoute & route,
+  const RouteHandler & route_handler, const lanelet::routing::RoutingGraph & routing_graph);
 
 /**
  * @brief Convert a drivable area result into an autoware_planning_msgs/Path for publishing.
@@ -72,4 +72,4 @@ Path to_path_msg(const DrivableAreaResult & area, const Trajectory & trajectory)
 
 }  // namespace autoware::avoidance_target_detector
 
-#endif  // AUTOWARE__AVOIDANCE_TARGET_DETECTOR__DRIVABLE_AREA_HPP_
+#endif  // AUTOWARE__AVOIDANCE_TARGET_DETECTOR__BOUNDARY_HPP_

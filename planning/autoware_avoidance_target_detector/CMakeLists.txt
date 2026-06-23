@@ -6,10 +6,10 @@ autoware_package()
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
   src/node.cpp
-  src/impl.cpp
-  src/two_class_filter.cpp
-  src/drivable_area.cpp
-  src/traffic_rules.cpp
+  src/object_filtering.cpp
+  src/boundary.cpp
+  src/parameter.cpp
+  src/map_construction.cpp
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}
