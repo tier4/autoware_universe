@@ -41,7 +41,8 @@ bool is_target_trajectory_type(
   return false;
 }
 
-RiskLevel to_pet_risk_level(double pet, const PetThreshold & error_th, const PetThreshold & warn_th)
+RiskLevel::_level_type to_pet_risk_level(
+  double pet, const PetThreshold & error_th, const PetThreshold & warn_th)
 {
   const bool is_error =
     pet <= error_th.ego_first_passing_time_gap && pet >= -error_th.object_first_passing_time_gap;
@@ -54,7 +55,8 @@ RiskLevel to_pet_risk_level(double pet, const PetThreshold & error_th, const Pet
   return is_warn ? RiskLevel::HIGH_CAUTION : RiskLevel::SAFE;
 }
 
-RiskLevel to_drac_risk_level(const std::optional<double> & acc, const DracParams & drac_params)
+RiskLevel::_level_type to_drac_risk_level(
+  const std::optional<double> & acc, const DracParams & drac_params)
 {
   if (!acc.has_value() || acc.value() < drac_params.error_threshold.ego_acceleration) {
     return RiskLevel::DANGER;
@@ -269,7 +271,7 @@ DracArtifact assess_drac(
         ego_deceleration_trajectory, object_trajectory, error_pet_th,
         global_params.time_resolution);
 
-      const RiskLevel nominal_motion_risk_level =
+      const RiskLevel::_level_type nominal_motion_risk_level =
         finding_nominal_object_motion.has_value()
           ? to_pet_risk_level(
               finding_nominal_object_motion->worst_pet_timing.pet, error_pet_th, error_pet_th)
@@ -289,7 +291,7 @@ DracArtifact assess_drac(
         ego_deceleration_trajectory, object_deceleration_trajectory, error_pet_th,
         global_params.time_resolution);
 
-      const RiskLevel dec_motion_risk_level =
+      const RiskLevel::_level_type dec_motion_risk_level =
         finding_dec_object_motion.has_value()
           ? to_pet_risk_level(
               finding_dec_object_motion->worst_pet_timing.pet, error_pet_th, error_pet_th)

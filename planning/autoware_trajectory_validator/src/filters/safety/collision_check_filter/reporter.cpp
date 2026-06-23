@@ -134,7 +134,7 @@ void process_pet_artifacts(
 
   std::string log_messages{};
   std::string marker_messages{};
-  uint8_t log_level = MetricReport::HIGH_CAUTION;
+  RiskLevel::_level_type log_level = RiskLevel::HIGH_CAUTION;
   for (const auto & evaluation : pet_artifact.object_evaluations) {
     if (evaluation.risk == RiskLevel::SAFE) {
       continue;
@@ -144,7 +144,7 @@ void process_pet_artifacts(
     const auto & obj_id = detail.object_identification;
     const bool is_error = evaluation.risk == RiskLevel::DANGER;
     if (is_error) {
-      log_level = MetricReport::DANGER;
+      log_level = RiskLevel::DANGER;
     }
 
     const auto finding_msg = fmt::format(
@@ -187,7 +187,7 @@ void process_drac_artifacts(
   std::string log_messages{};
   std::string marker_messages{};
   const bool has_error = drac_artifact.risk == RiskLevel::DANGER;
-  const uint8_t log_level = has_error ? MetricReport::DANGER : MetricReport::HIGH_CAUTION;
+  const RiskLevel::_level_type log_level = has_error ? RiskLevel::DANGER : RiskLevel::HIGH_CAUTION;
   for (const auto & evaluation : drac_artifact.object_evaluations) {
     const auto & timing = evaluation.detail;
     const auto & obj_id = timing.object_identification;
@@ -255,7 +255,7 @@ void process_rss_artifacts(
   }
 
   artifacts.error_msg += marker_messages;
-  reporter::log_collision_messages(MetricReport::DANGER, log_messages);
+  reporter::log_collision_messages(RiskLevel::DANGER, log_messages);
 }
 }  // namespace
 
@@ -389,14 +389,12 @@ void append_text_marker_message(std::string & text, const std::string & message)
   }
 }
 
-void log_collision_messages(const uint8_t level, const std::string & messages)
+void log_collision_messages(const RiskLevel::_level_type level, const std::string & messages)
 {
-  using autoware_trajectory_validator::msg::MetricReport;
-
   if (messages.empty()) {
     return;
   }
-  if (level == MetricReport::DANGER) {
+  if (level == RiskLevel::DANGER) {
     RCLCPP_ERROR(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", messages.c_str());
     return;
   }

@@ -74,15 +74,15 @@ TrajectoryValidatorReport TrajectoryValidator::process(
           std::back_inserter(report.planning_factors.factors));
       }
 
+      RiskLevel risk_level;
+      risk_level.level = evaluation.is_feasible ? RiskLevel::SAFE : RiskLevel::DANGER;
       combined_metrics.push_back(
         autoware_trajectory_validator::build<autoware_trajectory_validator::msg::MetricReport>()
           .validator_name(plugin->get_name())
           .validator_category(plugin->category())
           .metric_name("trajectory_feasibility")
           .metric_value(evaluation.is_feasible ? 1.0 : 0.0)
-          .level(
-            evaluation.is_feasible ? autoware_trajectory_validator::msg::MetricReport::SAFE
-                                   : autoware_trajectory_validator::msg::MetricReport::DANGER));
+          .risk(risk_level));
       report.processing_time_ms[evaluation.plugin_name] += stop_watch.toc(evaluation.plugin_name);
 
       table.plugin_evaluations.push_back(evaluation);
