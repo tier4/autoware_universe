@@ -62,11 +62,13 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
   }
 
   if (map_or_route_updated && route_ && map_bin_) {
-    create_map(*map_bin_, *route_, route_handler_, routing_graph_);
+    enhanced_route_handler_ = std::make_shared<EnhancedRouteHandler>(*map_bin_, *route_);
+    enhanced_route_handler_->create_map();
+    enhanced_route_handler_->export_debug_map();
     cached_drivable_area_.reset();
   }
 
-  if (!route_ || !route_handler_ || !routing_graph_) {
+  if (!route_ || !enhanced_route_handler_) {
     return;
   }
 
@@ -75,14 +77,15 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
   trajectory_ = sub_trajectory_.take_data();
   const Trajectory trajectory_msg = trajectory_ ? *trajectory_ : Trajectory{};
 
-  if (!trajectory_ || !route_handler_->isHandlerReady()) {
+  if (!trajectory_ || !enhanced_route_handler_->getOriginalRouteHandler()->isHandlerReady()) {
     RCLCPP_WARN(get_logger(), "Data is not ready");
     return;
   }
 
   if (
     auto new_drivable_area = create_drivable_area(
-      *trajectory_, vehicle_info_, *route_, *route_handler_, *routing_graph_)) {
+      *trajectory_, vehicle_info_, *route_, *enhanced_route_handler_->getOriginalRouteHandler(),
+      *enhanced_route_handler_->getEnhancedRoutingGraph())) {
     cached_drivable_area_ = std::move(new_drivable_area);
   }
   if (cached_drivable_area_) {
