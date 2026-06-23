@@ -456,6 +456,9 @@ public:
   //!< @brief steering rate limit list depending on velocity [m/s], [rad/s]
   std::vector<std::pair<double, double>> m_steer_rate_lim_map_by_velocity{};
 
+  //!< @brief steering rate limit used while the vehicle is stopped, for dry steering [rad/s]
+  double m_steer_rate_lim_when_stopped = 30.0 * M_PI / 180.0;
+
   bool m_use_steer_prediction;  // Flag to use predicted steer instead of measured steer.
   double ego_nearest_dist_threshold = 3.0;  // Threshold for nearest index search based on distance.
   double ego_nearest_yaw_threshold = M_PI_2;  // Threshold for nearest index search based on yaw.

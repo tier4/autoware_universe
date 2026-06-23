@@ -100,6 +100,10 @@ MpcLateralController::MpcLateralController(
       velocity_list_for_steer_rate_lim.at(i), steer_rate_lim_dps_list_by_velocity.at(i) * deg2rad);
   }
 
+  // steer rate limit while the vehicle is stopped (for dry steering)
+  m_mpc->m_steer_rate_lim_when_stopped =
+    node.declare_parameter<double>("steer_rate_lim_dps_when_stopped") * deg2rad;
+
   /* vehicle model setup */
   auto vehicle_model_ptr =
     createVehicleModel(wheelbase, m_mpc->m_steer_lim, m_mpc->m_param.steer_tau, node);

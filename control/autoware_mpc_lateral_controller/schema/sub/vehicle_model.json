@@ -53,6 +53,11 @@
           "description": "velocity list for steering angle rate limit interpolation in ascending order [m/s]",
           "default": [10.0, 15.0, 20.0]
         },
+        "steer_rate_lim_dps_when_stopped": {
+          "type": "number",
+          "description": "steering angle rate limit applied while the vehicle is stopped, for dry steering [deg/s]",
+          "default": 30.0
+        },
         "acceleration_limit": {
           "type": "number",
           "description": "acceleration limit for trajectory velocity modification [m/ss]",
@@ -72,6 +77,7 @@
         "curvature_list_for_steer_rate_lim",
         "steer_rate_lim_dps_list_by_velocity",
         "velocity_list_for_steer_rate_lim",
+        "steer_rate_lim_dps_when_stopped",
         "acceleration_limit",
         "velocity_time_constant"
       ],
