@@ -17,20 +17,23 @@
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator
 {
 
 TrajectoryValidatorDiagnostic::TrajectoryValidatorDiagnostic(
-  rclcpp::Node & node, const FilterStatusMap & filter_status_map,
-  const std::string & no_candidate_name, const std::set<std::string> & shadow_validator_names)
+  rclcpp::Node & node, FilterStatusMap filter_status_map, std::string no_candidate_name,
+  const std::unordered_set<std::string> & shadow_validator_names)
 : node_ptr_(&node),
-  filter_status_map_(filter_status_map),
+  filter_status_map_(std::move(filter_status_map)),
   shadow_validator_names_(shadow_validator_names),
-  no_candidate_name_(no_candidate_name)
+  no_candidate_name_(std::move(no_candidate_name))
 {
   // Create one DiagnosticsInterface per distinct non-empty status name from the map.
   for (const auto & [validator, binding] : filter_status_map_) {

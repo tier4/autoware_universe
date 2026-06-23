@@ -26,10 +26,10 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 using autoware::trajectory_validator::Action;
-using autoware::trajectory_validator::FilterStatusBinding;
 using autoware::trajectory_validator::FilterStatusMap;
 using autoware::trajectory_validator::published_level_of;
 using autoware::trajectory_validator::to_action;
@@ -119,7 +119,7 @@ struct DiagHarness
   }
 
   // Merge all received arrays into one flat list of statuses
-  std::vector<DiagnosticStatus> all_statuses() const
+  [[nodiscard]] std::vector<DiagnosticStatus> all_statuses() const
   {
     std::vector<DiagnosticStatus> result;
     for (const auto & arr : received) {
@@ -131,7 +131,7 @@ struct DiagHarness
   }
 
   // Find a status by name suffix across all received messages (last wins)
-  std::optional<DiagnosticStatus> find(const std::string & name_suffix) const
+  [[nodiscard]] std::optional<DiagnosticStatus> find(const std::string & name_suffix) const
   {
     std::optional<DiagnosticStatus> found;
     for (const auto & arr : received) {
@@ -171,10 +171,8 @@ TEST(RiskAction, PublishedLevelOf)
 class TrajectoryValidatorDiagnosticTest : public ::testing::Test
 {
 protected:
-  void SetUp() override
-  {
-    if (!rclcpp::ok()) rclcpp::init(0, nullptr);
-  }
+  void SetUp() override { rclcpp::init(0, nullptr); }
+  void TearDown() override { rclcpp::shutdown(); }
 
   // Build a simple single-entry map for "validator_a" -> MODERATE -> "status_a"
   static FilterStatusMap single_map(
@@ -373,10 +371,8 @@ TEST_F(TrajectoryValidatorDiagnosticTest, TwoValidatorsDistinctNamesPublishedEac
 class ShadowModeTest : public ::testing::Test
 {
 protected:
-  void SetUp() override
-  {
-    if (!rclcpp::ok()) rclcpp::init(0, nullptr);
-  }
+  void SetUp() override { rclcpp::init(0, nullptr); }
+  void TearDown() override { rclcpp::shutdown(); }
 };
 
 // Test 11: Shadow validator at ERROR on best trajectory (enforced ones OK) -> every status OK
@@ -442,13 +438,4 @@ TEST_F(ShadowModeTest, ShadowWithMappingEntryErrorStillRaisesNothing)
   auto status = h.find("shadow_status");
   ASSERT_TRUE(status.has_value());
   EXPECT_EQ(status->level, DiagnosticStatus::OK);
-}
-
-int main(int argc, char ** argv)
-{
-  ::testing::InitGoogleTest(&argc, argv);
-  rclcpp::init(argc, argv);
-  const int result = RUN_ALL_TESTS();
-  rclcpp::shutdown();
-  return result;
 }

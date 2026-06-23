@@ -68,6 +68,7 @@ endif()
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_ros REQUIRED)
   find_package(ament_lint_auto REQUIRED)
   ament_auto_find_test_dependencies()
 
@@ -130,7 +131,7 @@ if(BUILD_TESTING)
     autoware_trajectory_validator_plugins
   )
 
-  ament_add_gtest(test_trajectory_validator_diagnostic
+  ament_add_ros_isolated_gtest(test_trajectory_validator_diagnostic
     test/cases/trajectory_validator_diagnostic.cpp
   )
   target_link_libraries(test_trajectory_validator_diagnostic
