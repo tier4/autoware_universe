@@ -14,13 +14,13 @@
 
 #include "autoware/map_based_prediction/predictor_vehicle/trafficlight_priority.hpp"
 
-#include "autoware/map_based_prediction/predictor_vehicle/lanelet_util.hpp"
-
 #include <autoware/traffic_light_utils/traffic_light_utils.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/ros/uuid_helper.hpp>
+#include <rclcpp/logging.hpp>
 #include <tf2/utils.hpp>
 
+#include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/utility/Utilities.h>
 #include <lanelet2_routing/LaneletPath.h>
@@ -145,12 +145,78 @@ bool hasStopLineAhead(
   return *arc_length > s_obj;
 }
 
+bool hasTrafficLight(const lanelet::ConstLanelet & way_lanelet)
+{
+  return !way_lanelet.regulatoryElementsAs<lanelet::TrafficLight>().empty();
+}
+
+std::optional<lanelet::ConstLineString3d> getStopLine(const lanelet::ConstLanelet & way_lanelet)
+{
+  for (const auto & traffic_light : way_lanelet.regulatoryElementsAs<lanelet::TrafficLight>()) {
+    if (const auto stop_line = traffic_light->stopLine()) {
+      return *stop_line;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<lanelet::ConstLineString3d> getStopLineOrEntryEdge(
+  const lanelet::ConstLanelet & way_lanelet)
+{
+  if (const auto stop_line = getStopLine(way_lanelet)) {
+    return stop_line;
+  }
+  const auto & left = way_lanelet.leftBound();
+  const auto & right = way_lanelet.rightBound();
+  if (left.empty() || right.empty()) {
+    return std::nullopt;
+  }
+  const auto lp = left.front();
+  const auto rp = right.front();
+  return lanelet::ConstLineString3d(
+    lanelet::LineString3d(
+      lanelet::utils::getId(),
+      {lanelet::Point3d(lanelet::utils::getId(), lp.x(), lp.y(), lp.z()),
+       lanelet::Point3d(lanelet::utils::getId(), rp.x(), rp.y(), rp.z())}));
+}
+
+std::optional<lanelet::Id> getTrafficSignalId(const lanelet::ConstLanelet & way_lanelet)
+{
+  const auto traffic_light_reg_elems =
+    way_lanelet.regulatoryElementsAs<const lanelet::TrafficLight>();
+  if (traffic_light_reg_elems.empty()) {
+    return std::nullopt;
+  }
+  if (traffic_light_reg_elems.size() > 1) {
+    RCLCPP_ERROR(
+      rclcpp::get_logger("map_based_prediction"),
+      "[Map Based Prediction]: Multiple regulatory elements as TrafficLight are defined to one "
+      "lanelet object.");
+  }
+  return traffic_light_reg_elems.front()->id();
+}
+
+std::optional<TrafficLightGroup> getSignalForLanelet(
+  const std::unordered_map<lanelet::Id, TrafficLightGroup> & signal_id_map,
+  const lanelet::ConstLanelet & way_lanelet)
+{
+  const auto signal_id = getTrafficSignalId(way_lanelet);
+  if (!signal_id) {
+    return std::nullopt;
+  }
+  const auto it = signal_id_map.find(*signal_id);
+  if (it == signal_id_map.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
 bool findTrafficLightLaneletOnPath(
   const lanelet::routing::LaneletPath & lanelet_path, lanelet::ConstLanelet & signal_lanelet)
 {
-  for (const auto & lanelet : lanelet_path) {
-    if (lanelet_util::hasTrafficLight(lanelet)) {
-      signal_lanelet = lanelet;
+  for (const auto & way_lanelet : lanelet_path) {
+    if (hasTrafficLight(way_lanelet)) {
+      signal_lanelet = way_lanelet;
       return true;
     }
   }
@@ -158,12 +224,12 @@ bool findTrafficLightLaneletOnPath(
 }
 
 bool evaluateSignalStopRequirement(
-  const lanelet::ConstLanelet & lanelet, const std::optional<TrafficLightGroup> & signal)
+  const lanelet::ConstLanelet & way_lanelet, const std::optional<TrafficLightGroup> & signal)
 {
   if (!signal) {
     return false;
   }
-  return autoware::traffic_light_utils::isTrafficSignalStop(lanelet, *signal);
+  return autoware::traffic_light_utils::isTrafficSignalStop(way_lanelet, *signal);
 }
 
 bool shouldAddStopHypothesis(
@@ -224,9 +290,9 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
       continue;
     }
     const std::optional<TrafficLightGroup> signal_status =
-      lanelet_util::getSignalForLanelet(traffic_signal_id_map, target_lanelet_signal_object);
+      getSignalForLanelet(traffic_signal_id_map, target_lanelet_signal_object);
     const std::optional<lanelet::ConstLineString3d> related_stop_line =
-      lanelet_util::getStopLineOrEntryEdge(target_lanelet_signal_object);
+      getStopLineOrEntryEdge(target_lanelet_signal_object);
 
     // 2. Signal state and whether the stop line is still ahead of the object.
     const bool signal_requires_stop =

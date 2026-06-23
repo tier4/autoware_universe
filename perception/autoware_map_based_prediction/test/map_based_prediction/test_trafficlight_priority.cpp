@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/map_based_prediction/predictor_vehicle/lanelet_util.hpp"
 #include "autoware/map_based_prediction/predictor_vehicle/trafficlight_priority.hpp"
 
 #include <gtest/gtest.h>
@@ -102,7 +101,7 @@ TEST(PriorityUtils, FindsTrafficLightLaneletOnPath)
   lanelet::ConstLanelet signal_lanelet;
   ASSERT_TRUE(findTrafficLightLaneletOnPath(path, signal_lanelet));
   EXPECT_EQ(signal_lanelet.id(), junction.id());
-  const auto got = lanelet_util::getStopLineOrEntryEdge(signal_lanelet);
+  const auto got = getStopLineOrEntryEdge(signal_lanelet);
   ASSERT_TRUE(got.has_value());
   EXPECT_EQ(got->id(), stop_line.id());
 }
@@ -139,7 +138,7 @@ TEST(PriorityUtils, GetStopLineOrEntryEdgeFallsBackToEntryEdge)
   lanelet::Id id = 4300;
   auto junction = makeLanelet(id, 0.0);
   attachTrafficLight(junction, id, std::nullopt);
-  EXPECT_TRUE(lanelet_util::getStopLineOrEntryEdge(junction).has_value());
+  EXPECT_TRUE(getStopLineOrEntryEdge(junction).has_value());
 }
 
 // ---- arcLengthToStopLine (intersection-based) ------------------------------
@@ -286,7 +285,7 @@ TEST(PriorityUtils, GetStopLineFromTrafficLight)
   auto junction = makeLanelet(id, 0.0);
   const auto stop_line = makeStopLine(id, 10.0);
   attachTrafficLight(junction, id, stop_line);
-  const auto got = lanelet_util::getStopLine(junction);
+  const auto got = getStopLine(junction);
   ASSERT_TRUE(got.has_value());
   EXPECT_EQ(got->id(), stop_line.id());
 }
@@ -295,7 +294,7 @@ TEST(PriorityUtils, GetStopLineNoneWhenUntagged)
 {
   lanelet::Id id = 6200;
   const auto plain_lanelet = makeLanelet(id, 0.0);
-  EXPECT_FALSE(lanelet_util::getStopLine(plain_lanelet).has_value());
+  EXPECT_FALSE(getStopLine(plain_lanelet).has_value());
 }
 
 // ---- calibrateStopDecision -----------------------------------------------------

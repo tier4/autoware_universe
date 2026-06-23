@@ -28,7 +28,6 @@ ament_auto_add_library(map_based_prediction_node SHARED
   lib/predictor_vehicle/maneuver_prediction.cpp
   lib/predictor_vehicle/path_processing.cpp
   lib/predictor_vehicle/debug.cpp
-  lib/predictor_vehicle/lanelet_util.cpp
   lib/predictor_vehicle/trafficlight_priority.cpp
   lib/predictor_vru/predictor_vru.cpp
   lib/predictor_vru/history.cpp

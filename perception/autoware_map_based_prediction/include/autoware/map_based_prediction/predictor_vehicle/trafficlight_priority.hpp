@@ -40,6 +40,25 @@ namespace autoware::map_based_prediction::trafficlight_priority
 using autoware_perception_msgs::msg::TrafficLightGroup;
 using autoware_perception_msgs::msg::TrafficLightGroupArray;
 
+bool hasTrafficLight(const lanelet::ConstLanelet & way_lanelet);
+
+/// Stop line of the lanelet's TrafficLight regulatory element, if tagged.
+std::optional<lanelet::ConstLineString3d> getStopLine(const lanelet::ConstLanelet & way_lanelet);
+
+/// Stop line of the lanelet's TrafficLight regulatory element; falls back to the
+/// lanelet's entry edge when no stop line is tagged, so a stopping object still
+/// has a finite target at the junction entrance.
+std::optional<lanelet::ConstLineString3d> getStopLineOrEntryEdge(
+  const lanelet::ConstLanelet & way_lanelet);
+
+/// Id of the TrafficLight regulatory element of @p way_lanelet, if any.
+std::optional<lanelet::Id> getTrafficSignalId(const lanelet::ConstLanelet & way_lanelet);
+
+/// Latest observation in @p signal_id_map for the traffic light of @p way_lanelet.
+std::optional<TrafficLightGroup> getSignalForLanelet(
+  const std::unordered_map<lanelet::Id, TrafficLightGroup> & signal_id_map,
+  const lanelet::ConstLanelet & way_lanelet);
+
 struct PriorityCalibrationParams
 {
   bool use_signal_priority{true};
