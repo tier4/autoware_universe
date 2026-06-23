@@ -20,13 +20,15 @@
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 
-#include <lanelet2_core/Forward.h>
+#include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_routing/RoutingGraph.h>
 #include <lanelet2_traffic_rules/GenericTrafficRules.h>
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace autoware::avoidance_target_detector
 {
@@ -76,19 +78,60 @@ std::optional<lanelet::ConstLanelet> get_right_lanelet(
 
 }  // namespace traffic_rules
 
-/**
- * @brief Build the route handler and goal-purpose routing graph from a map and route.
- * @details Creates the route handler internally, sets the map and route, and builds the cached
- *          routing graph. Outputs are written into the provided references.
- * @param map_bin Lanelet map binary message.
- * @param route Lanelet route message.
- * @param route_handler Output route handler (created internally).
- * @param routing_graph Output goal-purpose routing graph.
- */
-void create_map(
-  const LaneletMapBin & map_bin, const LaneletRoute & route,
-  std::shared_ptr<RouteHandler> & route_handler,
-  lanelet::routing::RoutingGraphConstPtr & routing_graph);
+class EnhancedLaneletSegments
+{
+public:
+  explicit EnhancedLaneletSegments(const LaneletRoute & route);
+
+  struct Segment
+  {
+    int64_t preferred_primitive{0};
+    std::vector<int64_t> original_ordered_primitives;
+    std::vector<int64_t> ordered_primitives;
+    std::vector<int64_t> siblings_included_primitives;
+    std::vector<int64_t> floating_primitives;
+  };
+
+  void build(const lanelet::LaneletMap & map, const lanelet::routing::RoutingGraph & routing_graph);
+
+  [[nodiscard]] const std::vector<Segment> & segments() const { return segments_; }
+
+private:
+  LaneletRoute route_;
+  std::vector<Segment> segments_;
+};
+
+class EnhancedRouteHandler
+{
+public:
+  EnhancedRouteHandler(const LaneletMapBin & map, const LaneletRoute & route);
+
+  /** Build the enhanced route map and routing graph from the original map and route. */
+  void create_map();
+
+  /** Write the route map to the debug OSM file. Temporary debug code. Must be removed before
+   * release. */
+  void export_debug_map() const;
+
+  [[nodiscard]] const std::shared_ptr<RouteHandler> & getOriginalRouteHandler() const
+  {
+    return original_route_handler_;
+  }
+
+  [[nodiscard]] lanelet::routing::RoutingGraphConstPtr getEnhancedRoutingGraph() const
+  {
+    return enhanced_routing_graph_;
+  }
+
+  [[nodiscard]] lanelet::LaneletMapPtr getRouteMap() const { return route_map_; }
+
+private:
+  LaneletRoute route_;
+  lanelet::LaneletMapPtr route_map_;
+  EnhancedLaneletSegments enhanced_lanelet_segments_;
+  lanelet::routing::RoutingGraphConstPtr enhanced_routing_graph_;
+  std::shared_ptr<RouteHandler> original_route_handler_;
+};
 
 }  // namespace autoware::avoidance_target_detector
 

@@ -18,9 +18,6 @@
 #include <autoware_lanelet2_extension/projection/mgrs_projector.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <autoware_planning_msgs/msg/lanelet_primitive.hpp>
-#include <autoware_planning_msgs/msg/lanelet_segment.hpp>
-
 #include <lanelet2_core/Attribute.h>
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/geometry/LaneletMap.h>
@@ -32,7 +29,9 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::avoidance_target_detector
@@ -145,95 +144,345 @@ std::optional<lanelet::ConstLanelet> get_right_lanelet(
 namespace
 {
 
-// Temporary debug code. Must be removed before release.
-void export_debug_map(const lanelet::LaneletMapPtr & map, const LaneletRoute & route)
+bool exists_in_map(const lanelet::LaneletMap & map, const lanelet::Id id)
 {
-  const auto package_share_directory =
-    ament_index_cpp::get_package_share_directory("autoware_avoidance_target_detector");
-  const auto debug_map_path_str = package_share_directory + "/debug_map.osm";
+  return map.laneletLayer.exists(id);
+}
 
-  lanelet::LaneletMapPtr debug_map = std::make_shared<lanelet::LaneletMap>();
-  const auto routing_graph = traffic_rules::create_goal_purpose_routing_graph(*map);
+bool are_laterally_connected(
+  const lanelet::routing::RoutingGraph & routing_graph, const lanelet::LaneletMap & map,
+  const lanelet::Id a, const lanelet::Id b)
+{
+  if (!exists_in_map(map, a) || !exists_in_map(map, b)) {
+    return false;
+  }
 
-  autoware_planning_msgs::msg::LaneletRoute enhanced_route;
-  enhanced_route.header = route.header;
-  enhanced_route.start_pose = route.start_pose;
-  enhanced_route.goal_pose = route.goal_pose;
+  const auto lanelet_a = map.laneletLayer.get(a);
+  if (const auto left = traffic_rules::get_left_lanelet(routing_graph, lanelet_a)) {
+    if (left->id() == b) {
+      return true;
+    }
+  }
+  if (const auto right = traffic_rules::get_right_lanelet(routing_graph, lanelet_a)) {
+    if (right->id() == b) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void insert_lateral_chain_to_edge(
+  lanelet::ConstLanelet lanelet, const lanelet::routing::RoutingGraph & routing_graph,
+  const bool to_left, std::set<int64_t> & ids)
+{
+  constexpr size_t k_max_lateral_hops = 4;
+  for (size_t hop = 0; hop < k_max_lateral_hops; ++hop) {
+    const auto neighbor = to_left ? traffic_rules::get_left_lanelet(routing_graph, lanelet)
+                                  : traffic_rules::get_right_lanelet(routing_graph, lanelet);
+    if (!neighbor) {
+      break;
+    }
+    if (!ids.insert(neighbor->id()).second) {
+      break;
+    }
+    lanelet = *neighbor;
+  }
+}
+
+std::vector<std::vector<int64_t>> find_lateral_connected_components(
+  const std::vector<int64_t> & primitive_ids, const lanelet::LaneletMap & map,
+  const lanelet::routing::RoutingGraph & routing_graph)
+{
+  std::set<int64_t> unvisited(primitive_ids.begin(), primitive_ids.end());
+  for (const auto id : primitive_ids) {
+    if (!exists_in_map(map, id)) {
+      continue;
+    }
+    const auto lanelet = map.laneletLayer.get(id);
+    insert_lateral_chain_to_edge(lanelet, routing_graph, true, unvisited);
+    insert_lateral_chain_to_edge(lanelet, routing_graph, false, unvisited);
+  }
+
+  std::vector<std::vector<int64_t>> components;
+  while (!unvisited.empty()) {
+    const auto seed = *unvisited.begin();
+    std::vector<int64_t> component;
+    std::vector<int64_t> queue{seed};
+    unvisited.erase(seed);
+
+    while (!queue.empty()) {
+      const auto current = queue.back();
+      queue.pop_back();
+      component.push_back(current);
+
+      for (auto it = unvisited.begin(); it != unvisited.end();) {
+        const auto neighbor = *it;
+        if (are_laterally_connected(routing_graph, map, current, neighbor)) {
+          queue.push_back(neighbor);
+          it = unvisited.erase(it);
+        } else {
+          ++it;
+        }
+      }
+    }
+
+    components.push_back(std::move(component));
+  }
+
+  return components;
+}
+
+std::optional<int64_t> find_left_neighbor_in_set(
+  const int64_t id, const std::set<int64_t> & id_set, const lanelet::LaneletMap & map,
+  const lanelet::routing::RoutingGraph & routing_graph)
+{
+  if (!exists_in_map(map, id)) {
+    return std::nullopt;
+  }
+
+  const auto lanelet = map.laneletLayer.get(id);
+  if (const auto left = traffic_rules::get_left_lanelet(routing_graph, lanelet)) {
+    if (id_set.count(left->id()) > 0) {
+      return left->id();
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<int64_t> find_right_neighbor_in_set(
+  const int64_t id, const std::set<int64_t> & id_set, const lanelet::LaneletMap & map,
+  const lanelet::routing::RoutingGraph & routing_graph)
+{
+  if (!exists_in_map(map, id)) {
+    return std::nullopt;
+  }
+
+  const auto lanelet = map.laneletLayer.get(id);
+  if (const auto right = traffic_rules::get_right_lanelet(routing_graph, lanelet)) {
+    if (id_set.count(right->id()) > 0) {
+      return right->id();
+    }
+  }
+  return std::nullopt;
+}
+
+std::vector<int64_t> sort_left_to_right(
+  const std::vector<int64_t> & primitive_ids, const lanelet::LaneletMap & map,
+  const lanelet::routing::RoutingGraph & routing_graph)
+{
+  if (primitive_ids.empty()) {
+    return {};
+  }
+
+  const std::set<int64_t> id_set(primitive_ids.begin(), primitive_ids.end());
+
+  int64_t leftmost = primitive_ids.front();
+  for (const auto id : primitive_ids) {
+    if (!find_left_neighbor_in_set(id, id_set, map, routing_graph)) {
+      leftmost = id;
+      break;
+    }
+  }
+
+  std::vector<int64_t> ordered;
+  ordered.reserve(primitive_ids.size());
+  std::set<int64_t> visited;
+  auto current = leftmost;
+
+  while (visited.count(current) == 0) {
+    ordered.push_back(current);
+    visited.insert(current);
+    if (const auto right = find_right_neighbor_in_set(current, id_set, map, routing_graph)) {
+      current = *right;
+    } else {
+      break;
+    }
+  }
+
+  for (const auto id : primitive_ids) {
+    if (visited.count(id) == 0) {
+      ordered.push_back(id);
+    }
+  }
+
+  return ordered;
+}
+
+std::vector<int64_t> collect_sibling_primitives(
+  const std::vector<int64_t> & prev_ordered_primitives,
+  const std::vector<int64_t> & /*current_ordered_primitives*/,
+  const std::vector<int64_t> & next_ordered_primitives, const lanelet::LaneletMap & map,
+  const lanelet::routing::RoutingGraph & routing_graph)
+{
+  std::vector<int64_t> siblings;
+  std::set<int64_t> added;
+
+  for (int64_t next_id : next_ordered_primitives) {
+    if (!exists_in_map(map, next_id)) {
+      continue;
+    }
+
+    for (int64_t prev_id : prev_ordered_primitives) {
+      if (!exists_in_map(map, prev_id)) {
+        continue;
+      }
+
+      const auto prev_lanelet = map.laneletLayer.get(prev_id);
+      for (const auto & middle : routing_graph.following(prev_lanelet)) {
+        if (added.count(middle.id()) > 0) {
+          continue;
+        }
+
+        const auto next_lanelets = routing_graph.following(middle);
+        const bool connects_to_next = std::any_of(
+          next_lanelets.begin(), next_lanelets.end(),
+          [&](const auto & next) { return next.id() == next_id; });
+        if (!connects_to_next) {
+          continue;
+        }
+
+        added.insert(middle.id());
+        siblings.push_back(middle.id());
+      }
+    }
+  }
+
+  return siblings;
+}
+
+}  // namespace
+
+EnhancedLaneletSegments::EnhancedLaneletSegments(const LaneletRoute & route) : route_{route}
+{
+  segments_.reserve(route.segments.size());
+  for (const auto & segment : route.segments) {
+    Segment enhanced_segment;
+    enhanced_segment.preferred_primitive = segment.preferred_primitive.id;
+    segments_.push_back(std::move(enhanced_segment));
+  }
+}
+
+void EnhancedLaneletSegments::build(
+  const lanelet::LaneletMap & map, const lanelet::routing::RoutingGraph & routing_graph)
+{
+  segments_.clear();
+  segments_.reserve(route_.segments.size());
+
+  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Initialized segments_");
+
+  int i = 0;
+
+  auto ids_to_string = [&](const std::vector<int64_t> & ids) {
+    std::stringstream ss;
+    for (const auto id : ids) {
+      ss << std::to_string(id) << " ";
+    }
+    return ss.str();
+  };
+
+  for (const auto & route_segment : route_.segments) {
+    RCLCPP_INFO(
+      rclcpp::get_logger("autoware_avoidance_target_detector"), "Processing segment %d", i++);
+    Segment segment;
+    segment.preferred_primitive = route_segment.preferred_primitive.id;
+
+    std::vector<int64_t> original_primitive_ids;
+    original_primitive_ids.reserve(route_segment.primitives.size());
+    for (const auto & primitive : route_segment.primitives) {
+      if (!exists_in_map(map, primitive.id)) {
+        continue;
+      }
+      original_primitive_ids.push_back(primitive.id);
+    }
+
+    const auto components =
+      find_lateral_connected_components(original_primitive_ids, map, routing_graph);
+
+    std::vector<int64_t> largest_component;
+    for (const auto & component : components) {
+      if (component.size() > largest_component.size()) {
+        largest_component = component;
+      }
+    }
+
+    segment.ordered_primitives = sort_left_to_right(largest_component, map, routing_graph);
+    segment.siblings_included_primitives = segment.ordered_primitives;
+
+    const std::set<int64_t> original_ids(
+      original_primitive_ids.begin(), original_primitive_ids.end());
+    segment.original_ordered_primitives.reserve(segment.ordered_primitives.size());
+    for (const auto id : segment.ordered_primitives) {
+      if (original_ids.count(id) > 0) {
+        segment.original_ordered_primitives.push_back(id);
+      }
+    }
+
+    RCLCPP_INFO(
+      rclcpp::get_logger("autoware_avoidance_target_detector"), "    Set ordered primitives: %s",
+      ids_to_string(segment.ordered_primitives).c_str());
+
+    const std::set<int64_t> ordered_ids(
+      segment.ordered_primitives.begin(), segment.ordered_primitives.end());
+    for (const auto id : original_primitive_ids) {
+      if (ordered_ids.count(id) == 0) {
+        segment.floating_primitives.push_back(id);
+        RCLCPP_WARN(
+          rclcpp::get_logger("autoware_avoidance_target_detector"), "    Floating primitive: %ld",
+          id);
+      }
+    }
+
+    segments_.push_back(std::move(segment));
+  }
+
+  for (size_t i = 0; i + 2 < segments_.size(); ++i) {
+    auto & current_segment = segments_[i + 1];
+    const auto siblings = collect_sibling_primitives(
+      segments_[i].ordered_primitives, current_segment.ordered_primitives,
+      segments_[i + 2].ordered_primitives, map, routing_graph);
+
+    // When there are siblings not originally included in the segment
+    if (siblings.size() > current_segment.ordered_primitives.size()) {
+      current_segment.siblings_included_primitives = siblings;
+
+      RCLCPP_INFO(
+        rclcpp::get_logger("autoware_avoidance_target_detector"),
+        "    Built siblings included primitives: %s", ids_to_string(siblings).c_str());
+    }
+  }
+}
+
+EnhancedRouteHandler::EnhancedRouteHandler(const LaneletMapBin & map, const LaneletRoute & route)
+: route_{route},
+  route_map_{std::make_shared<lanelet::LaneletMap>()},
+  enhanced_lanelet_segments_{route},
+  original_route_handler_{std::make_shared<RouteHandler>()}
+{
+  original_route_handler_->setMap(map);
+  original_route_handler_->setRoute(route);
+}
+
+void EnhancedRouteHandler::create_map()
+{
+  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Start create_map()");
+  const auto map = original_route_handler_->getLaneletMapPtr();
+  enhanced_routing_graph_ = traffic_rules::create_goal_purpose_routing_graph(*map);
+  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Built routing graph");
+  enhanced_lanelet_segments_.build(*map, *enhanced_routing_graph_);
+
+  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Built segments");
 
   std::set<lanelet::Id> lanelet_ids;
-  for (const auto & segment : route.segments) {
-    autoware_planning_msgs::msg::LaneletSegment enhanced_segment;
-    enhanced_segment.preferred_primitive = segment.preferred_primitive;
-    for (const auto & primitive : segment.primitives) {
-      if (!map->laneletLayer.exists(primitive.id)) {
-        continue;
-      }
-      autoware_planning_msgs::msg::LaneletPrimitive prim;
-      prim.id = primitive.id;
-      prim.primitive_type = "lane";
-      lanelet::Lanelet lanelet = map->laneletLayer.get(primitive.id);
-      enhanced_segment.primitives.push_back(prim);
-
-      if (const auto left_lanelet = traffic_rules::get_left_lanelet(*routing_graph, lanelet)) {
-        autoware_planning_msgs::msg::LaneletPrimitive prim;
-        prim.id = left_lanelet->id();
-        prim.primitive_type = "lane";
-        enhanced_segment.primitives.push_back(prim);
-        lanelet_ids.insert(left_lanelet->id());
-      }
-      if (const auto right_lanelet = traffic_rules::get_right_lanelet(*routing_graph, lanelet)) {
-        autoware_planning_msgs::msg::LaneletPrimitive prim;
-        prim.id = right_lanelet->id();
-        prim.primitive_type = "lane";
-        enhanced_segment.primitives.push_back(prim);
-        lanelet_ids.insert(right_lanelet->id());
-      }
-      lanelet_ids.insert(primitive.id);
+  for (const auto & segment : enhanced_lanelet_segments_.segments()) {
+    for (const auto id : segment.siblings_included_primitives) {
+      lanelet_ids.insert(id);
     }
-    enhanced_route.segments.push_back(enhanced_segment);
-  }
-
-  // Get siblings
-  for (size_t i = 0; i + 2 < enhanced_route.segments.size(); ++i) {
-    auto & segment = enhanced_route.segments[i + 1];
-
-    std::set<lanelet::Id> next_ids;
-    for (const auto & prim : enhanced_route.segments[i + 2].primitives) {
-      next_ids.insert(prim.id);
-    }
-
-    std::set<lanelet::Id> current_ids;
-    for (const auto & prim : segment.primitives) {
-      current_ids.insert(prim.id);
-    }
-
-    for (const auto & prev_prim : enhanced_route.segments[i].primitives) {
-      if (!map->laneletLayer.exists(prev_prim.id)) {
-        continue;
-      }
-      const auto lanelet = map->laneletLayer.get(prev_prim.id);
-      for (const auto & candidate : routing_graph->following(lanelet)) {
-        if (current_ids.count(candidate.id()) > 0) {
-          continue;
-        }
-        const auto next_lanelets = routing_graph->following(candidate);
-        const bool connects_to_next_segment = std::any_of(
-          next_lanelets.begin(), next_lanelets.end(),
-          [&](const auto & next) { return next_ids.count(next.id()) > 0; });
-        if (!connects_to_next_segment) {
-          continue;
-        }
-
-        autoware_planning_msgs::msg::LaneletPrimitive sibling_prim;
-        sibling_prim.id = candidate.id();
-        sibling_prim.primitive_type = "lane";
-        segment.primitives.push_back(sibling_prim);
-        current_ids.insert(candidate.id());
-        lanelet_ids.insert(candidate.id());
-      }
+    for (const auto id : segment.floating_primitives) {
+      lanelet_ids.insert(id);
     }
   }
 
+  route_map_ = std::make_shared<lanelet::LaneletMap>();
   for (const auto lanelet_id : lanelet_ids) {
     if (!map->laneletLayer.exists(lanelet_id)) {
       continue;
@@ -243,7 +492,7 @@ void export_debug_map(const lanelet::LaneletMapPtr & map, const LaneletRoute & r
     for (const auto & elem : reg_elements) {
       lanelet.removeRegulatoryElement(elem);
     }
-    debug_map->add(lanelet);
+    route_map_->add(lanelet);
   }
 
   constexpr double k_road_border_near_distance_m = 1.5;
@@ -266,11 +515,18 @@ void export_debug_map(const lanelet::LaneletMapPtr & map, const LaneletRoute & r
         continue;
       }
       road_border_ids.insert(linestring.id());
-      debug_map->add(linestring);
+      route_map_->add(linestring);
     }
   }
 
-  // get map origin
+  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Built route map");
+}
+
+void EnhancedRouteHandler::export_debug_map() const
+{
+  const auto package_share_directory =
+    ament_index_cpp::get_package_share_directory("autoware_avoidance_target_detector");
+  const auto debug_map_path_str = package_share_directory + "/debug_map.osm";
 
   constexpr double origin_lat = 35.22312494103;
   constexpr double origin_lon = 138.80245834626;
@@ -278,27 +534,10 @@ void export_debug_map(const lanelet::LaneletMapPtr & map, const LaneletRoute & r
   lanelet::projection::MGRSProjector projector(origin);
   projector.setMGRSCode(lanelet::GPSPoint{origin_lat, origin_lon, 0.0});
 
-  lanelet::write(debug_map_path_str, *debug_map, projector);
+  lanelet::write(debug_map_path_str, *route_map_, projector);
   RCLCPP_INFO(
     rclcpp::get_logger("autoware_avoidance_target_detector"), "Exported debug map to %s",
     debug_map_path_str.c_str());
-}
-
-}  // namespace
-
-void create_map(
-  const LaneletMapBin & map_bin, const LaneletRoute & route,
-  std::shared_ptr<RouteHandler> & route_handler,
-  lanelet::routing::RoutingGraphConstPtr & routing_graph)
-{
-  route_handler = std::make_shared<RouteHandler>();
-  route_handler->setMap(map_bin);
-  route_handler->setRoute(route);
-
-  routing_graph =
-    traffic_rules::create_goal_purpose_routing_graph(*route_handler->getLaneletMapPtr());
-
-  export_debug_map(route_handler->getLaneletMapPtr(), route);
 }
 
 }  // namespace autoware::avoidance_target_detector

@@ -77,8 +77,7 @@ private:
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_avoidance_targets_;
   rclcpp::Publisher<Path>::SharedPtr pub_drivable_area_path_;
 
-  std::shared_ptr<RouteHandler> route_handler_;
-  lanelet::routing::RoutingGraphConstPtr routing_graph_;
+  std::shared_ptr<EnhancedRouteHandler> enhanced_route_handler_;
   VehicleInfo vehicle_info_;
 
   FilterManagerMap object_filters_;
