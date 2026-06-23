@@ -368,7 +368,7 @@ TrafficSignalArray CrosswalkTrafficLightEstimator::estimate(
   }
 
   update_intersection_overrides_from_map(crosswalk_traffic_signal_overrides, output);
-  
+
   remove_duplicate_ids(output);
 
   update_last_detected_signal(traffic_light_id_map, current_time);
