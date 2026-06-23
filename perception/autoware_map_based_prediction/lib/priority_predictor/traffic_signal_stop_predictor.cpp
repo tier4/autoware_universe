@@ -394,13 +394,9 @@ void TrafficSignalStopPredictor::setTrafficSignal(
     traffic_signal_id_map_[group.traffic_light_group_id] = group;
   }
 
-  if (params_.use_stop_hysteresis) {
-    stabilized_traffic_signal_id_map_ = stabilizeTrafficSignalMap(
-      traffic_signal_id_map_, signal_stabilize_state_, now, params_.stop_time_hysteresis,
-      params_.go_time_hysteresis, params_.signal_retention_timeout);
-  } else {
-    stabilized_traffic_signal_id_map_ = traffic_signal_id_map_;
-  }
+  stabilized_traffic_signal_id_map_ = stabilizeTrafficSignalMap(
+    traffic_signal_id_map_, signal_stabilize_state_, now, params_.stop_time_hysteresis,
+    params_.go_time_hysteresis, params_.signal_retention_timeout);
   latest_traffic_signal_time_ = now;
 }
 

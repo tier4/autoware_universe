@@ -98,8 +98,6 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   // --- Priority prediction (traffic-signal stop hypotheses) ---
   state_.params.use_priority_prediction = declare_parameter<bool>("priority_prediction.enable");
   priority_predictor::PriorityPredictionParams priority_params;
-  priority_params.use_stop_hysteresis =
-    declare_parameter<bool>("priority_prediction.use_stop_hysteresis");
   priority_params.stop_time_hysteresis =
     declare_parameter<double>("priority_prediction.stop_time_hysteresis");
   priority_params.go_time_hysteresis =

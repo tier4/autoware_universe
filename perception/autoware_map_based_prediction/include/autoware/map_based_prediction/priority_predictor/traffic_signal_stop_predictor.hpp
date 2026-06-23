@@ -89,7 +89,6 @@ struct ObjectPrediction
 
 struct PriorityPredictionParams
 {
-  bool use_stop_hysteresis{true};
   double stop_time_hysteresis{0.2};
   double go_time_hysteresis{0.1};
   double signal_retention_timeout{15.0};
