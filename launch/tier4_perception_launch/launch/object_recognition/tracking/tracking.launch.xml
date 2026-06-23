@@ -27,7 +27,7 @@
   <arg name="use_radar_tracking_fusion" default="false" description="use radar tracking fusion"/>
   <let name="use_radar_tracking_fusion" value="false" if="$(eval '&quot;$(var mode)&quot;!=&quot;camera_lidar_radar_fusion&quot;')"/>
   <arg name="use_v2x_tracking_fusion" default="false" description="use v2x tracking fusion"/>
-  <let name="use_tracking_fusion" value="$(eval &quot;$(var use_radar_tracking_fusion) or $(var use_v2x_tracking_fusion)&quot;)"/>
+  <let name="use_tracking_fusion" value="$(or $(var use_radar_tracking_fusion) $(var use_v2x_tracking_fusion))"/>
   <arg name="use_multi_channel_tracker_merger"/>
   <arg name="use_validator" description="use obstacle_pointcloud based validator"/>
   <arg name="use_short_range_detection"/>
