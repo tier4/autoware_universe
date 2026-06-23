@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef MAP_BASED_PREDICTION__DEBUG_UTIL_HPP_
-#define MAP_BASED_PREDICTION__DEBUG_UTIL_HPP_
+#ifndef AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__DEBUG_UTIL_HPP_
+#define AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__DEBUG_UTIL_HPP_
 
 #include <autoware_utils/ros/transform_listener.hpp>
 #include <rclcpp/publisher.hpp>
@@ -79,4 +79,4 @@ void publishPriorityObjectMarkers(
 
 }  // namespace autoware::map_based_prediction::debug_util
 
-#endif  // MAP_BASED_PREDICTION__DEBUG_UTIL_HPP_
+#endif  // AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__DEBUG_UTIL_HPP_

@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef MAP_BASED_PREDICTION__PRIORITY_UTILS_HPP_
-#define MAP_BASED_PREDICTION__PRIORITY_UTILS_HPP_
+#ifndef AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__PRIORITY_UTILS_HPP_
+#define AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__PRIORITY_UTILS_HPP_
 
 #include "autoware/map_based_prediction/data_structure.hpp"
-#include "autoware/map_based_prediction/debug_util.hpp"
+#include "autoware/map_based_prediction/predictor_vehicle/debug_util.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -125,4 +125,4 @@ private:
 
 }  // namespace autoware::map_based_prediction::priority
 
-#endif  // MAP_BASED_PREDICTION__PRIORITY_UTILS_HPP_
+#endif  // AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__PRIORITY_UTILS_HPP_

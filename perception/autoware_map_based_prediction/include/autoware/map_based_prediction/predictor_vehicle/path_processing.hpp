@@ -19,7 +19,7 @@
 #include "autoware/map_based_prediction/path_generator/path_generator.hpp"
 #include "autoware/map_based_prediction/predictor_vehicle/maneuver_prediction.hpp"
 #include "autoware/map_based_prediction/predictor_vehicle/object_processing.hpp"
-#include "autoware/map_based_prediction/priority_utils.hpp"
+#include "autoware/map_based_prediction/predictor_vehicle/priority_utils.hpp"
 
 #include <autoware_utils/system/lru_cache.hpp>
 #include <autoware_utils/system/time_keeper.hpp>

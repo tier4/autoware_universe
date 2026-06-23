@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/map_based_prediction/debug_util.hpp"
+#include "autoware/map_based_prediction/predictor_vehicle/debug_util.hpp"
 
 #include <autoware/object_recognition_utils/object_recognition_utils.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>

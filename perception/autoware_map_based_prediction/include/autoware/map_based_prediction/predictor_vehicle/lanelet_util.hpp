@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef MAP_BASED_PREDICTION__LANELET_UTIL_HPP_
-#define MAP_BASED_PREDICTION__LANELET_UTIL_HPP_
+#ifndef AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__LANELET_UTIL_HPP_
+#define AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__LANELET_UTIL_HPP_
 
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 
@@ -49,4 +49,4 @@ std::optional<TrafficLightGroup> getSignalForLanelet(
 
 }  // namespace autoware::map_based_prediction::lanelet_util
 
-#endif  // MAP_BASED_PREDICTION__LANELET_UTIL_HPP_
+#endif  // AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VEHICLE__LANELET_UTIL_HPP_

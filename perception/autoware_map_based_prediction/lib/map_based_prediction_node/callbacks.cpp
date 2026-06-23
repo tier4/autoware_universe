@@ -14,7 +14,7 @@
 
 #include "autoware/map_based_prediction/map_based_prediction_node/callbacks.hpp"
 
-#include "autoware/map_based_prediction/debug_util.hpp"
+#include "autoware/map_based_prediction/predictor_vehicle/debug_util.hpp"
 #include "autoware/map_based_prediction/map_based_prediction_node/diagnostics.hpp"
 #include "autoware/map_based_prediction/utils.hpp"
 
