@@ -91,6 +91,21 @@ DefaultPlanner::DefaultPlanner(
   const autoware::vehicle_info_utils::VehicleInfo & vehicle_info)
 : vehicle_info_(vehicle_info), is_graph_ready_(false), param_(param)
 {
+  is_graph_ready_ = false;
+  node_ = node;
+
+  const auto durable_qos = rclcpp::QoS(1).transient_local();
+  pub_goal_footprint_marker_ =
+    node_->create_publisher<MarkerArray>("~/debug/goal_footprint", durable_qos);
+
+  vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*node_).getVehicleInfo();
+  param_.goal_angle_threshold_deg = node_->declare_parameter<double>("goal_angle_threshold_deg");
+  param_.enable_correct_goal_pose = node_->declare_parameter<bool>("enable_correct_goal_pose");
+  param_.consider_no_drivable_lanes = node_->declare_parameter<bool>("consider_no_drivable_lanes");
+  param_.check_footprint_inside_lanes =
+    node_->declare_parameter<bool>("check_footprint_inside_lanes");
+  param_.allow_area = node_->declare_parameter<bool>("allow_area", false);
+  route_handler_.setAllowArea(param_.allow_area);
 }
 
 void DefaultPlanner::set_map(const LaneletMapBin & msg)
