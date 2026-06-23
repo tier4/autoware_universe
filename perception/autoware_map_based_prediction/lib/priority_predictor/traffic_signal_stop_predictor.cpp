@@ -348,8 +348,7 @@ namespace
 std::vector<PredictedPath> addTrafficSignalStopHypotheses(
   const ObjectPrediction & prediction,
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & traffic_signal_id_map,
-  const LaneletRTree & road_lanelet_rtree, [[maybe_unused]] const PriorityCalibrationParams & params,
-  StopHypothesisDebug & debug)
+  const LaneletRTree & road_lanelet_rtree, StopHypothesisDebug & debug)
 {
   const TrackedObject & object = prediction.object;
   const std::vector<PredictedPath> & predicted_paths = prediction.predicted_paths;
@@ -457,7 +456,7 @@ std::vector<PredictedPath> TrafficSignalStopPredictor::addStopHypotheses(
 
   populateUsedSignalColors(traffic_signal_id_map_, debug_.used_signal_colors);
   return addTrafficSignalStopHypotheses(
-    prediction, traffic_signal_id_map_, *road_lanelet_rtree_, params_, debug_);
+    prediction, traffic_signal_id_map_, *road_lanelet_rtree_, debug_);
 }
 
 }  // namespace autoware::map_based_prediction::priority_predictor

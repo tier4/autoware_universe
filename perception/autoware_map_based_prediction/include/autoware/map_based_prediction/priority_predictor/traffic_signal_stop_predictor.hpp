@@ -53,11 +53,6 @@ std::optional<TrafficLightGroup> getSignalForLanelet(
   const std::unordered_map<lanelet::Id, TrafficLightGroup> & signal_id_map,
   const lanelet::ConstLanelet & way_lanelet);
 
-struct PriorityCalibrationParams
-{
-  double stop_probability_boost{0.35};
-};
-
 std::optional<double> arcLengthToStopLine(
   const PosePath & ref_path, const lanelet::ConstLineString3d & stop_line);
 
@@ -94,9 +89,8 @@ struct ObjectPrediction
 class TrafficSignalStopPredictor
 {
 public:
-  void setParameters(const PriorityCalibrationParams & params, double signal_observation_timeout)
+  void setParameters(double signal_observation_timeout)
   {
-    params_ = params;
     signal_observation_timeout_ = signal_observation_timeout;
   }
 
@@ -116,7 +110,6 @@ private:
   std::optional<autoware::experimental::lanelet2_utils::LaneletRTree> road_lanelet_rtree_;
   std::unordered_map<lanelet::Id, TrafficLightGroup> traffic_signal_id_map_;
   std::optional<rclcpp::Time> latest_traffic_signal_time_;
-  PriorityCalibrationParams params_;
   double signal_observation_timeout_{0.0};
   StopHypothesisDebug debug_;
 };

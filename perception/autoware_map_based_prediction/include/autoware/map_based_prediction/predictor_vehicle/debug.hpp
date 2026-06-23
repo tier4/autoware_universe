@@ -19,6 +19,8 @@
 
 #include <visualization_msgs/msg/marker.hpp>
 
+#include <cstddef>
+
 namespace autoware::map_based_prediction
 {
 

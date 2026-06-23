@@ -211,12 +211,6 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
 
   if (pub_debug_markers_ && state_.priority_predictor) {
     const auto & debug = state_.priority_predictor->getDebugInfo();
-    const auto & counter = debug.counter;
-    static auto clock = std::make_shared<rclcpp::Clock>(RCL_STEADY_TIME);
-    RCLCPP_INFO_THROTTLE(
-      rclcpp::get_logger("map_based_prediction"), *clock, 5000,
-      "[priority] vehicles=%zu sig_stop=%zu stopline=%zu added=%zu", counter.vehicles,
-      counter.signal_stop, counter.stopline_found, counter.stop_hypothesis_added);
 
     const auto stamp = rclcpp::Time(in_objects->header.stamp);
     priority_predictor::publishPriorityObjectMarkers(

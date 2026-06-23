@@ -97,14 +97,11 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
 
   // --- Priority prediction (traffic-signal stop hypotheses) ---
   state_.params.use_priority_prediction = declare_parameter<bool>("priority_prediction.enable");
-  priority_predictor::PriorityCalibrationParams priority_params;
-  priority_params.stop_probability_boost =
-    declare_parameter<double>("priority_prediction.stop_probability_boost");
   const double signal_observation_timeout =
     declare_parameter<double>("priority_prediction.signal_observation_timeout");
   state_.priority_predictor =
     std::make_shared<priority_predictor::TrafficSignalStopPredictor>();
-  state_.priority_predictor->setParameters(priority_params, signal_observation_timeout);
+  state_.priority_predictor->setParameters(signal_observation_timeout);
 
   // --- VRU predictor ---
   state_.predictor_vru = std::make_shared<PredictorVru>(*this);
