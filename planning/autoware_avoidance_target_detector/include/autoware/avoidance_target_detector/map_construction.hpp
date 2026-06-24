@@ -28,6 +28,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::avoidance_target_detector
@@ -124,6 +125,17 @@ public:
   }
 
   [[nodiscard]] lanelet::LaneletMapPtr getRouteMap() const { return route_map_; }
+
+  [[nodiscard]] std::vector<lanelet::LineString2d> get_road_borders() const;
+
+  [[nodiscard]] std::pair<lanelet::LineString2d, lanelet::LineString2d> get_primitive_set_bounds(
+    const std::vector<int64_t> & primitives) const;
+
+  [[nodiscard]] std::pair<lanelet::LineString2d, lanelet::LineString2d> get_original_route_bounds()
+    const;
+
+  [[nodiscard]] std::pair<lanelet::LineString2d, lanelet::LineString2d> get_enhanced_route_bounds()
+    const;
 
 private:
   LaneletRoute route_;

@@ -33,6 +33,7 @@ AvoidanceTargetDetectorNode::AvoidanceTargetDetectorNode(const rclcpp::NodeOptio
   pub_drivable_area_path_{create_publisher<Path>("~/output/drivable_area", 1)},
   vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()}
 {
+  declare_parameter<bool>("use_enhanced_route_bounds", false);
 }
 
 /**
@@ -88,6 +89,11 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
       *enhanced_route_handler_->getEnhancedRoutingGraph())) {
     cached_drivable_area_ = std::move(new_drivable_area);
   }
+  // const auto use_enhanced_bounds = get_parameter("use_enhanced_route_bounds").as_bool();
+  // const auto route_bounds = use_enhanced_bounds
+  //                             ? enhanced_route_handler_->get_enhanced_route_bounds()
+  //                              : enhanced_route_handler_->get_original_route_bounds();
+  // cached_drivable_area_ = to_drivable_area_result(route_bounds, trajectory_->header);
   if (cached_drivable_area_) {
     pub_drivable_area_path_->publish(to_path_msg(*cached_drivable_area_, *trajectory_));
   }

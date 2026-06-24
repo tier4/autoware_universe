@@ -474,6 +474,30 @@ std::optional<DrivableAreaResult> create_drivable_area(
   return result;
 }
 
+DrivableAreaResult to_drivable_area_result(
+  const std::pair<lanelet::LineString2d, lanelet::LineString2d> & bounds,
+  const std_msgs::msg::Header & header)
+{
+  auto to_geometry_points = [](const lanelet::LineString2d & linestring) {
+    std::vector<Point> points;
+    points.reserve(linestring.size());
+    for (const auto & point : linestring) {
+      Point geometry_point;
+      geometry_point.x = point.x();
+      geometry_point.y = point.y();
+      geometry_point.z = 0.0;
+      points.push_back(geometry_point);
+    }
+    return points;
+  };
+
+  DrivableAreaResult result;
+  result.header = header;
+  result.left_bound = to_geometry_points(bounds.first);
+  result.right_bound = to_geometry_points(bounds.second);
+  return result;
+}
+
 Path to_path_msg(const DrivableAreaResult & area, const Trajectory & trajectory)
 {
   Path path;
