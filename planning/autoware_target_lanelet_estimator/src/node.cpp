@@ -95,15 +95,15 @@ TargetLaneletEstimatorNode::TargetLaneletEstimatorNode(const rclcpp::NodeOptions
   // map is latched
   sub_map_ = create_subscription<LaneletMapBin>(
     "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
-    std::bind(&TargetLaneletEstimatorNode::on_map, this, _1));
+    [this](const LaneletMapBin::ConstSharedPtr msg) { on_map(msg); });
 
   sub_route_ = create_subscription<LaneletRoute>(
     "~/input/route", rclcpp::QoS{1}.transient_local(),
-    std::bind(&TargetLaneletEstimatorNode::on_route, this, _1));
+    [this](const LaneletRoute::ConstSharedPtr msg) { on_route(msg); });
 
   sub_trajectory_ = create_subscription<Trajectory>(
     "~/input/trajectory", rclcpp::QoS{1},
-    std::bind(&TargetLaneletEstimatorNode::on_trajectory, this, _1));
+    [this](const Trajectory::ConstSharedPtr msg) { on_trajectory(msg); });
 
   pub_marker_ = create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/route_marker", 1);
 

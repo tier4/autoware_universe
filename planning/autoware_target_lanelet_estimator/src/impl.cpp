@@ -194,9 +194,7 @@ bool is_on_any_lanelet(
   const lanelet::BasicPolygon2d & footprint, const lanelet::LaneletMapConstPtr & lanelet_map)
 {
   lanelet::BoundingBox2d bbox;
-  for (const auto & p : footprint) {
-    bbox.extend(p);
-  }
+  boost::geometry::envelope(footprint, bbox);
   // Pad the search box so axis-aligned lanelets are not missed by the R-tree query. This only
   // widens the candidate set; the disjoint test below still uses the original footprint.
   constexpr double search_margin_m = 2.0;
@@ -399,10 +397,7 @@ TargetLaneletsResult get_target_lanelets(
       double prior = previous_probability(route_lanelet, previous_posteriors);
       double posterior = prior;
       bool updated = false;
-      if (!update_scope.current_segment_index) {
-        posterior = prior;
-        updated = false;
-      } else if (update_scope.current_segment_index == segment.index) {
+      if (update_scope.current_segment_index == segment.index) {
         prior = same_segment_prior(route_lanelet, segment, previous_posteriors);
         posterior = posterior_probability(prior, likelihood);
         updated = true;
