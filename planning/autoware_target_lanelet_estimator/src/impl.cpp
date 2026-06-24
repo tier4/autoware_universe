@@ -400,8 +400,8 @@ TargetLaneletsResult get_target_lanelets(
       double posterior = prior;
       bool updated = false;
       if (!update_scope.current_segment_index) {
-        posterior = posterior_probability(prior, likelihood);
-        updated = true;
+        posterior = prior;
+        updated = false;
       } else if (update_scope.current_segment_index == segment.index) {
         prior = same_segment_prior(route_lanelet, segment, previous_posteriors);
         posterior = posterior_probability(prior, likelihood);
