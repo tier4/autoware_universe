@@ -36,8 +36,11 @@ namespace
 std_msgs::msg::ColorRGBA score_to_color(double score)
 {
   const float t = static_cast<float>(std::clamp(score, 0.0, 1.0));
-  return autoware_utils::create_marker_color(t, 0.0f, 1.0f - t, 0.2f + 0.6f * t);
+  return autoware_utils::create_marker_color(t, 0.0f, 1.0f - t, 0.3f + 0.5f * t);
 }
+
+const std_msgs::msg::ColorRGBA transparent_color =
+  autoware_utils::create_marker_color(0.0f, 0.0f, 0.0f, 0.0f);
 
 geometry_msgs::msg::Point to_point(const lanelet::BasicPoint3d & p)
 {
@@ -123,6 +126,7 @@ void TargetLaneletEstimatorNode::on_route(const LaneletRoute::ConstSharedPtr msg
 {
   route_ = msg;
   posterior_probabilities_ = initialize_lanelet_probabilities(*route_);
+  covered_lanelet_ids_.clear();
   RCLCPP_INFO(get_logger(), "Received route (%zu segments).", msg->segments.size());
 }
 
@@ -146,23 +150,36 @@ void TargetLaneletEstimatorNode::run_estimation()
   posterior_probabilities_.clear();
   for (const auto & lanelet : result.lanelets) {
     posterior_probabilities_[lanelet.id] = lanelet.score;
+    if (lanelet.likelihood > 0.0) {
+      covered_lanelet_ids_.insert(
+        lanelet.id);  // keep it on the trail once the trajectory reaches it
+    }
   }
 
+  // Only the lanelets the trajectory actually touches are interesting: those updated this cycle and
+  // those already on the trail. The rest of the route just sits at its initial prior, so collapse
+  // it into a count instead of printing every lanelet.
   std::stringstream ids;
   ids << std::fixed << std::setprecision(2);
+  size_t shown = 0;
   for (const auto & lanelet : result.lanelets) {
+    const bool on_trail = covered_lanelet_ids_.count(lanelet.id) > 0;
+    if (!lanelet.updated && !on_trail) {
+      continue;
+    }
     ids << lanelet.id << ":" << lanelet.score;
     if (lanelet.updated) {
       ids << "(prior=" << lanelet.prior << ",L=" << lanelet.likelihood << ")";
     }
     ids << " ";
+    ++shown;
   }
   if (result.out_of_lanelet) {
     ids << "out_of_lanelet";
   }
   RCLCPP_INFO_THROTTLE(
-    get_logger(), *get_clock(), 1000, "target lanelets (%zu): %s", result.lanelets.size(),
-    ids.str().c_str());
+    get_logger(), *get_clock(), 1000, "trajectory lanelets (%zu of %zu route): %s", shown,
+    result.lanelets.size(), ids.str().c_str());
 
   publish_markers(result);
 }
@@ -200,6 +217,7 @@ void TargetLaneletEstimatorNode::publish_markers(const TargetLaneletsResult & re
   for (const auto & triangles : route_triangles_) {
     const auto it = score_by_id.find(triangles.id);
     const double score = it != score_by_id.end() ? it->second : 0.0;
+    const bool covered = covered_lanelet_ids_.count(triangles.id) > 0;
 
     visualization_msgs::msg::Marker marker;
     marker.header.frame_id = "map";
@@ -213,7 +231,7 @@ void TargetLaneletEstimatorNode::publish_markers(const TargetLaneletsResult & re
     marker.scale.z = 1.0;
     marker.pose.orientation.w = 1.0;
     marker.points = triangles.points;
-    marker.color = score_to_color(score);
+    marker.color = covered ? score_to_color(score) : transparent_color;
     marker_array.markers.push_back(marker);
   }
 

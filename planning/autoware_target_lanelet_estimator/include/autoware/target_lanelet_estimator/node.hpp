@@ -28,6 +28,7 @@
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_routing/Forward.h>
 
+#include <unordered_set>
 #include <vector>
 
 namespace autoware::target_lanelet_estimator
@@ -68,6 +69,10 @@ private:
 
   VehicleInfo vehicle_info_;
   LaneletProbabilityMap posterior_probabilities_;
+
+  // lanelets the trajectory footprint has overlapped at any time (the traveled "trail"); only these
+  // are drawn so the heatmap shows the route the trajectory has covered, not the whole route
+  std::unordered_set<lanelet::Id> covered_lanelet_ids_;
 
   // marker geometry cache, rebuilt only when the route changes
   std::vector<LaneletTriangles> route_triangles_;
