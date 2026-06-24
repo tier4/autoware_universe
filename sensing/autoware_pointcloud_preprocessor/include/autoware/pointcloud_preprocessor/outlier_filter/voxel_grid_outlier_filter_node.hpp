@@ -23,7 +23,7 @@
   // disable SIMD by defining EIGEN_DONT_VECTORIZE
   // error occurs in voxel_grid_outlier_filter_node.cpp line 61-62
 */
-#define EIGEN_DONT_VECTORIZE
+// #define EIGEN_DONT_VECTORIZE
 #include "autoware/pointcloud_preprocessor/filter.hpp"
 
 #include <pcl/filters/voxel_grid.h>
