@@ -17,12 +17,16 @@
 
 #include "autoware/target_lanelet_estimator/impl.hpp"
 
-#include <autoware/vehicle_info_utils/vehicle_info.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_internal_debug_msgs/msg/bool_stamped.hpp>
+#include <autoware_internal_debug_msgs/msg/float64_multi_array_stamped.hpp>
+#include <autoware_internal_debug_msgs/msg/int64_multi_array_stamped.hpp>
+#include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <geometry_msgs/msg/point.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
@@ -33,6 +37,10 @@
 
 namespace autoware::target_lanelet_estimator
 {
+using autoware_internal_debug_msgs::msg::BoolStamped;
+using autoware_internal_debug_msgs::msg::Float64MultiArrayStamped;
+using autoware_internal_debug_msgs::msg::Int64MultiArrayStamped;
+using autoware_internal_debug_msgs::msg::StringStamped;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
@@ -55,12 +63,17 @@ private:
   void on_route(const LaneletRoute::ConstSharedPtr msg);
   void on_trajectory(const Trajectory::ConstSharedPtr msg);
   void run_estimation();  // triggered by on_trajectory
+  void publish_result(const TargetLaneletsResult & result);
   void publish_markers(const TargetLaneletsResult & result);
 
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
   rclcpp::Subscription<LaneletRoute>::SharedPtr sub_route_;
   rclcpp::Subscription<Trajectory>::SharedPtr sub_trajectory_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_marker_;
+  rclcpp::Publisher<Int64MultiArrayStamped>::SharedPtr pub_target_lanelet_ids_;
+  rclcpp::Publisher<Float64MultiArrayStamped>::SharedPtr pub_target_lanelet_probabilities_;
+  rclcpp::Publisher<BoolStamped>::SharedPtr pub_out_of_lanelet_;
+  rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
 
   lanelet::LaneletMapConstPtr lanelet_map_;
   lanelet::routing::RoutingGraphConstPtr routing_graph_;

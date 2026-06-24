@@ -35,10 +35,10 @@ using autoware_planning_msgs::msg::Trajectory;
 
 using LaneletProbabilityMap = std::unordered_map<lanelet::Id, double>;
 
-struct LaneletScore
+struct LaneletProbability
 {
   lanelet::Id id{lanelet::InvalId};
-  double score{0.0};       // posterior probability in [0, 1]
+  double posterior{0.0};   // posterior probability in [0, 1]
   double prior{0.0};       // prior probability after transition update
   double likelihood{0.0};  // max footprint-overlap-area ratio over the trajectory
   bool updated{false};     // true when this lanelet is in S_curr or S_next for this trajectory
@@ -46,8 +46,11 @@ struct LaneletScore
 
 struct TargetLaneletsResult
 {
-  std::vector<LaneletScore> lanelets;  // all route lanelets with posterior probability
-  bool out_of_lanelet{false};          // a footprint lies outside every lanelet
+  std::vector<LaneletProbability>
+    lanelet_probabilities;  // all route lanelets with posterior probability
+  std::vector<lanelet::Id>
+    target_lanelet_ids;        // route lanelets overlapped by trajectory footprints
+  bool out_of_lanelet{false};  // no footprint overlaps any lanelet in the map
 };
 
 LaneletProbabilityMap initialize_lanelet_probabilities(const LaneletRoute & route);
@@ -59,7 +62,8 @@ TargetLaneletsResult get_target_lanelets(
   const LaneletRoute & route, const Trajectory & trajectory,
   const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info,
   const LaneletProbabilityMap & previous_posteriors,
-  const lanelet::routing::RoutingGraphConstPtr & routing_graph);
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph,
+  double selection_likelihood_threshold = 1.0e-3);
 
 TargetLaneletsResult get_target_lanelets(
   const LaneletRoute & route, const Trajectory & trajectory,
