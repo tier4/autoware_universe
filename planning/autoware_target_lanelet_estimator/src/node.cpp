@@ -122,7 +122,6 @@ TargetLaneletEstimatorNode::TargetLaneletEstimatorNode(const rclcpp::NodeOptions
   pub_target_lanelet_probabilities_ =
     create_publisher<Float64MultiArrayStamped>("~/output/target_lanelet_probabilities", 1);
   pub_out_of_lanelet_ = create_publisher<BoolStamped>("~/output/out_of_lanelet", 1);
-  pub_debug_text_ = create_publisher<StringStamped>("~/debug/target_lanelet_text", 1);
 
   RCLCPP_INFO(
     get_logger(), "vehicle_info: length=%.2fm width=%.2fm wheel_base=%.2fm",
@@ -167,36 +166,21 @@ void TargetLaneletEstimatorNode::run_estimation()
   posterior_probabilities_.clear();
   for (const auto & lanelet : result.lanelet_probabilities) {
     posterior_probabilities_[lanelet.id] = lanelet.posterior;
+    // once the trajectory reaches a lanelet it stays on the colored trail
     if (lanelet.likelihood > 0.0) {
-      covered_lanelet_ids_.insert(
-        lanelet.id);  // keep it on the trail once the trajectory reaches it
+      covered_lanelet_ids_.insert(lanelet.id);
     }
   }
 
-  // Only the lanelets the trajectory actually touches are interesting: those updated this cycle and
-  // those already on the trail. The rest of the route just sits at its initial prior, so collapse
-  // it into a count instead of printing every lanelet.
   std::stringstream log_stream;
   log_stream << std::fixed << std::setprecision(2);
-  size_t shown_lanelet_count = 0;
-  for (const auto & lanelet : result.lanelet_probabilities) {
-    const bool on_trail = covered_lanelet_ids_.count(lanelet.id) > 0;
-    if (!lanelet.updated && !on_trail) {
-      continue;
-    }
-    log_stream << lanelet.id << ":" << lanelet.posterior;
-    if (lanelet.updated) {
-      log_stream << "(prior=" << lanelet.prior << ",L=" << lanelet.likelihood << ")";
-    }
-    log_stream << " ";
-    ++shown_lanelet_count;
-  }
-  if (result.out_of_lanelet) {
-    log_stream << "out_of_lanelet";
+  for (const auto id : result.target_lanelet_ids) {
+    log_stream << " " << id << ":" << posterior_probabilities_[id];
   }
   RCLCPP_INFO_THROTTLE(
-    get_logger(), *get_clock(), 1000, "trajectory lanelets (%zu of %zu route): %s",
-    shown_lanelet_count, result.lanelet_probabilities.size(), log_stream.str().c_str());
+    get_logger(), *get_clock(), 1000, "target lanelets (%zu):%s%s",
+    result.target_lanelet_ids.size(), log_stream.str().c_str(),
+    result.out_of_lanelet ? " (out_of_lanelet)" : "");
 
   publish_result(result);
   publish_markers(result);
@@ -221,37 +205,21 @@ void TargetLaneletEstimatorNode::publish_result(const TargetLaneletsResult & res
   probabilities_msg.layout = ids_msg.layout;
   probabilities_msg.data.reserve(result.target_lanelet_ids.size());
 
-  std::stringstream text;
-  text << std::fixed << std::setprecision(3);
-  if (result.out_of_lanelet) {
-    text << "out_of_lanelet";
-  } else if (result.target_lanelet_ids.empty()) {
-    text << "no_route_lanelet_overlap";
-  } else {
-    text << "target_lanelets:";
-  }
-
   for (const auto id : result.target_lanelet_ids) {
     const auto probability_it = probability_by_id.find(id);
     const auto probability =
       probability_it != probability_by_id.end() ? probability_it->second : 0.0;
     ids_msg.data.push_back(id);
     probabilities_msg.data.push_back(probability);
-    text << " " << id << "(" << probability << ")";
   }
 
   BoolStamped out_of_lanelet_msg;
   out_of_lanelet_msg.stamp = stamp;
   out_of_lanelet_msg.data = result.out_of_lanelet;
 
-  StringStamped text_msg;
-  text_msg.stamp = stamp;
-  text_msg.data = text.str();
-
   pub_target_lanelet_ids_->publish(ids_msg);
   pub_target_lanelet_probabilities_->publish(probabilities_msg);
   pub_out_of_lanelet_->publish(out_of_lanelet_msg);
-  pub_debug_text_->publish(text_msg);
 }
 
 void TargetLaneletEstimatorNode::publish_markers(const TargetLaneletsResult & result)

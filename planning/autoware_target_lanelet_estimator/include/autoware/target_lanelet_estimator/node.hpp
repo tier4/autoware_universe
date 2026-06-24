@@ -22,7 +22,6 @@
 #include <autoware_internal_debug_msgs/msg/bool_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_multi_array_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/int64_multi_array_stamped.hpp>
-#include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -40,7 +39,6 @@ namespace autoware::target_lanelet_estimator
 using autoware_internal_debug_msgs::msg::BoolStamped;
 using autoware_internal_debug_msgs::msg::Float64MultiArrayStamped;
 using autoware_internal_debug_msgs::msg::Int64MultiArrayStamped;
-using autoware_internal_debug_msgs::msg::StringStamped;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
@@ -73,7 +71,6 @@ private:
   rclcpp::Publisher<Int64MultiArrayStamped>::SharedPtr pub_target_lanelet_ids_;
   rclcpp::Publisher<Float64MultiArrayStamped>::SharedPtr pub_target_lanelet_probabilities_;
   rclcpp::Publisher<BoolStamped>::SharedPtr pub_out_of_lanelet_;
-  rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
 
   lanelet::LaneletMapConstPtr lanelet_map_;
   lanelet::routing::RoutingGraphConstPtr routing_graph_;
@@ -83,8 +80,7 @@ private:
   VehicleInfo vehicle_info_;
   LaneletProbabilityMap posterior_probabilities_;
 
-  // lanelets the trajectory footprint has overlapped at any time (the traveled "trail"); only these
-  // are drawn so the heatmap shows the route the trajectory has covered, not the whole route
+  // lanelets the trajectory footprint has ever overlapped (the colored "trail")
   std::unordered_set<lanelet::Id> covered_lanelet_ids_;
 
   // marker geometry cache, rebuilt only when the route changes
