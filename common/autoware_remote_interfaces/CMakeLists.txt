@@ -31,5 +31,5 @@ install(
     DESTINATION share/${PROJECT_NAME}
 )
 
-ament_export_dependencies(rclcpp autoware_adapi_v1_msgs autoware_perception_msgs autoware_planning_msgs) # TODO delete TUM
+ament_export_dependencies(rclcpp autoware_adapi_v1_msgs autoware_perception_msgs autoware_planning_msgs)
 ament_package()

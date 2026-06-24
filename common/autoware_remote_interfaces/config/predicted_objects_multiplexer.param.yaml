@@ -1,12 +1,17 @@
 /**:
-  traffic_signals_multiplexer:
+  predicted_objects_multiplexer:
     ros__parameters:
       input_topic_names:
-        - "/perception/traffic_light_recognition/estimation/traffic_signals"
-        - "/external/remote/traffic_signals"
+        - "/perception/object_recognition/prediction/objects"
+        - "/external/remote/objects"
       input_topic_keys:
         - "AUTO"
         - "REMOTE"
-      topic_type: "autoware_perception_msgs/msg/TrafficLightGroupArray"
-      output_topic: "/perception/traffic_light_recognition/traffic_signals"
-      select_input_service: "traffic_signals_multiplexer/select_input"
+      topic_type: "autoware_perception_msgs/msg/PredictedObjects"
+      output_topic: "/perception/object_recognition/objects"
+      select_input_service: "predicted_objects_multiplexer/select_input"
+  predicted_objects_modifier:
+    ros__parameters:
+      input_topic: "/perception/object_recognition/prediction/objects"
+      output_topic: "/external/remote/objects"
+      select_mod_service: "object_list_modifier/select_mod"

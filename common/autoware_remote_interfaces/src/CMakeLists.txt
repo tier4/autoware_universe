@@ -10,31 +10,31 @@ ament_target_dependencies(GenericMultiplexerNode
     autoware_adapi_v1_msgs
 )
 
-# ### Target ObjectListModifierNode ###
-# set(TARGETS ${TARGETS} ObjectListModifierNode)
-# add_executable(ObjectListModifierNode
-#     object_list_modifier.cpp
-#     object_list_modifier_node.cpp
-# )
+### Target ObjectListModifierNode ###
+set(TARGETS ${TARGETS} ObjectListModifierNode)
+add_executable(ObjectListModifierNode
+    object_list_modifier.cpp
+    object_list_modifier_node.cpp
+)
 
-# ament_target_dependencies(ObjectListModifierNode
-#     rclcpp
-#     tum_autoware_teleoperation_msgs
-#     autoware_perception_msgs
-# )
+ament_target_dependencies(ObjectListModifierNode
+    rclcpp
+    autoware_adapi_v1_msgs
+    autoware_perception_msgs
+)
 
-# ### Target TrafficSignalsModifierNode ###
-# set(TARGETS ${TARGETS} TrafficSignalsModifierNode)
-# add_executable(TrafficSignalsModifierNode
-#     traffic_signals_modifier.cpp
-#     traffic_signals_modifier_node.cpp
-# )
+### Target TrafficSignalsModifierNode ###
+set(TARGETS ${TARGETS} TrafficSignalsModifierNode)
+add_executable(TrafficSignalsModifierNode
+    traffic_signals_modifier.cpp
+    traffic_signals_modifier_node.cpp
+)
 
-# ament_target_dependencies(TrafficSignalsModifierNode
-#     rclcpp
-#     tum_autoware_teleoperation_msgs
-#     autoware_perception_msgs
-# )
+ament_target_dependencies(TrafficSignalsModifierNode
+    rclcpp
+    autoware_adapi_v1_msgs
+    autoware_perception_msgs
+)
 
 ### Install all Targets ###
 install(

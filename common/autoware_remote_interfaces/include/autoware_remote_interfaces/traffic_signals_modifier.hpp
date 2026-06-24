@@ -11,11 +11,11 @@
 
 #include "autoware_remote_interfaces/base_modifier.hpp"
 
-#include "tum_autoware_teleoperation_msgs/srv/mod_traffic_signals.hpp"
+#include "autoware_adapi_v1_msgs/srv/mod_traffic_signals.hpp"
 
 #include "autoware_perception_msgs/msg/traffic_light_group_array.hpp"
 
-using tum_autoware_teleoperation_msgs::srv::ModTrafficSignals;
+using autoware_adapi_v1_msgs::srv::ModTrafficSignals;
 
 namespace autoware_remote_interfaces {
 

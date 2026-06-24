@@ -14,9 +14,9 @@
 #include "unique_identifier_msgs/msg/uuid.hpp"
 #include "autoware_perception_msgs/msg/predicted_objects.hpp"
 
-#include "tum_autoware_teleoperation_msgs/srv/mod_object_list.hpp"
+#include "autoware_adapi_v1_msgs/srv/mod_object_list.hpp"
 
-using tum_autoware_teleoperation_msgs::srv::ModObjectList;
+using autoware_adapi_v1_msgs::srv::ModObjectList;
 
 namespace autoware_remote_interfaces {
 

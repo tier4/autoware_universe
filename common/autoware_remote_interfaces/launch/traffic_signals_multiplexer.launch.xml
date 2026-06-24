@@ -5,4 +5,8 @@
   <node pkg="autoware_remote_interfaces" exec="GenericMultiplexerNode" name="traffic_signals_multiplexer" output="both">
     <param from="$(var traffic_signals_multiplexer_param_path)"/>
   </node>
+
+  <node pkg="autoware_remote_interfaces" exec="TrafficSignalsModifierNode" name="traffic_signals_modifier" output="both">
+    <param from="$(var traffic_signals_multiplexer_param_path)"/>
+  </node>
 </launch>

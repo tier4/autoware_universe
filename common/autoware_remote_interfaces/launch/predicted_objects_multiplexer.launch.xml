@@ -5,4 +5,8 @@
   <node pkg="autoware_remote_interfaces" exec="GenericMultiplexerNode" name="predicted_objects_multiplexer" output="both">
     <param from="$(var predicted_objects_multiplexer_param_path)"/>
   </node>
+
+  <node pkg="autoware_remote_interfaces" exec="ObjectListModifierNode" name="predicted_objects_modifier" output="both">
+    <param from="$(var predicted_objects_multiplexer_param_path)"/>
+  </node>
 </launch>

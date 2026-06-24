@@ -10,3 +10,9 @@
       topic_type: "autoware_perception_msgs/msg/TrafficLightGroupArray"
       output_topic: "/perception/traffic_light_recognition/traffic_signals"
       select_input_service: "traffic_signals_multiplexer/select_input"
+  traffic_signals_modifier:
+    ros__parameters:
+      input_topic: "/perception/traffic_light_recognition/estimation/traffic_signals"
+      output_topic: "/external/remote/traffic_signals"
+      select_mod_service: "traffic_signals_modifier/select_mod"
+
