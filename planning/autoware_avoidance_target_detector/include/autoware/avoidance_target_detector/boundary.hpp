@@ -24,9 +24,11 @@
 #include <geometry_msgs/msg/point.hpp>
 #include <std_msgs/msg/header.hpp>
 
+#include <lanelet2_core/primitives/LineString.h>
 #include <lanelet2_routing/RoutingGraph.h>
 
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace autoware::avoidance_target_detector
@@ -69,6 +71,16 @@ std::optional<DrivableAreaResult> create_drivable_area(
  * @return Path message with left_bound and right_bound populated.
  */
 Path to_path_msg(const DrivableAreaResult & area, const Trajectory & trajectory);
+
+/**
+ * @brief Convert left/right lanelet bounds into a drivable area result.
+ * @param bounds Left and right boundary linestrings.
+ * @param header Header copied into the result.
+ * @return Drivable area with left_bound and right_bound populated.
+ */
+DrivableAreaResult to_drivable_area_result(
+  const std::pair<lanelet::LineString2d, lanelet::LineString2d> & bounds,
+  const std_msgs::msg::Header & header);
 
 }  // namespace autoware::avoidance_target_detector
 

@@ -20,8 +20,11 @@
 
 #include <lanelet2_core/Attribute.h>
 #include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_core/geometry/Lanelet.h>
 #include <lanelet2_core/geometry/LaneletMap.h>
+#include <lanelet2_core/primitives/CompoundLineString.h>
 #include <lanelet2_core/primitives/GPSPoint.h>
+#include <lanelet2_core/utility/Utilities.h>
 #include <lanelet2_io/Io.h>
 #include <lanelet2_traffic_rules/TrafficRulesFactory.h>
 
@@ -350,6 +353,11 @@ std::vector<int64_t> collect_sibling_primitives(
   return siblings;
 }
 
+lanelet::LineString2d remove_const(const lanelet::ConstLineString2d & line_string)
+{
+  lanelet::LineString2d linestring(lanelet::utils::removeConst(line_string.constData()));
+  return linestring;
+}
 }  // namespace
 
 EnhancedLaneletSegments::EnhancedLaneletSegments(const LaneletRoute & route) : route_{route}
@@ -538,6 +546,93 @@ void EnhancedRouteHandler::export_debug_map() const
   RCLCPP_INFO(
     rclcpp::get_logger("autoware_avoidance_target_detector"), "Exported debug map to %s",
     debug_map_path_str.c_str());
+}
+
+std::vector<lanelet::LineString2d> EnhancedRouteHandler::get_road_borders() const
+{
+  std::vector<lanelet::LineString2d> road_borders;
+  for (const auto & ls : route_map_->lineStringLayer) {
+    const std::string type = ls.attributeOr(lanelet::AttributeName::Type, "none");
+    if (type != "road_border") {
+      continue;
+    }
+    road_borders.push_back(lanelet::utils::to2D(ls));
+  }
+  return road_borders;
+}
+
+std::pair<lanelet::LineString2d, lanelet::LineString2d>
+EnhancedRouteHandler::get_primitive_set_bounds(const std::vector<int64_t> & primitives) const
+{
+  if (
+    !exists_in_map(*route_map_, primitives.front()) ||
+    !exists_in_map(*route_map_, primitives.back())) {
+    return std::make_pair(lanelet::LineString2d(), lanelet::LineString2d());
+  }
+
+  const lanelet::Lanelet start_lanelet = route_map_->laneletLayer.get(primitives.front());
+  const lanelet::Lanelet end_lanelet = route_map_->laneletLayer.get(primitives.back());
+  const lanelet::LineString2d start_left_bound = remove_const(start_lanelet.leftBound2d());
+  const lanelet::LineString2d end_right_bound = remove_const(end_lanelet.rightBound2d());
+  return std::make_pair(start_left_bound, end_right_bound);
+}
+
+std::pair<lanelet::LineString2d, lanelet::LineString2d>
+EnhancedRouteHandler::get_original_route_bounds() const
+{
+  std::vector<lanelet::LineString2d> left_bounds;
+  std::vector<lanelet::LineString2d> right_bounds;
+  for (const auto & segment : enhanced_lanelet_segments_.segments()) {
+    const auto bounds = get_primitive_set_bounds(segment.original_ordered_primitives);
+    left_bounds.push_back(bounds.first);
+    right_bounds.push_back(bounds.second);
+  }
+  const auto left_compound_bound = lanelet::CompoundLineString2d(left_bounds);
+  const auto right_compound_bound = lanelet::CompoundLineString2d(right_bounds);
+
+  lanelet::LineString2d left_bound(lanelet::utils::getId());
+  lanelet::LineString2d right_bound(lanelet::utils::getId());
+  left_bound.reserve(left_compound_bound.size());
+  right_bound.reserve(right_compound_bound.size());
+  for (const auto & point : left_compound_bound) {
+    left_bound.push_back(
+      lanelet::Point2d(point.id(), {point.basicPoint().x(), point.basicPoint().y(), 0.0}));
+  }
+  for (const auto & point : right_compound_bound) {
+    right_bound.push_back(
+      lanelet::Point2d(point.id(), {point.basicPoint().x(), point.basicPoint().y(), 0.0}));
+  }
+
+  return std::make_pair(left_bound, right_bound);
+}
+
+std::pair<lanelet::LineString2d, lanelet::LineString2d>
+EnhancedRouteHandler::get_enhanced_route_bounds() const
+{
+  std::vector<lanelet::LineString2d> left_bounds;
+  std::vector<lanelet::LineString2d> right_bounds;
+  for (const auto & segment : enhanced_lanelet_segments_.segments()) {
+    const auto bounds = get_primitive_set_bounds(segment.siblings_included_primitives);
+    left_bounds.push_back(bounds.first);
+    right_bounds.push_back(bounds.second);
+  }
+  const auto left_compound_bound = lanelet::CompoundLineString2d(left_bounds);
+  const auto right_compound_bound = lanelet::CompoundLineString2d(right_bounds);
+
+  lanelet::LineString2d left_bound(lanelet::utils::getId());
+  lanelet::LineString2d right_bound(lanelet::utils::getId());
+  left_bound.reserve(left_compound_bound.size());
+  right_bound.reserve(right_compound_bound.size());
+  for (const auto & point : left_compound_bound) {
+    left_bound.push_back(
+      lanelet::Point2d(point.id(), {point.basicPoint().x(), point.basicPoint().y(), 0.0}));
+  }
+  for (const auto & point : right_compound_bound) {
+    right_bound.push_back(
+      lanelet::Point2d(point.id(), {point.basicPoint().x(), point.basicPoint().y(), 0.0}));
+  }
+
+  return std::make_pair(left_bound, right_bound);
 }
 
 }  // namespace autoware::avoidance_target_detector
