@@ -22,6 +22,7 @@
 #include <lanelet2_routing/RoutingGraph.h>
 #include <lanelet2_traffic_rules/TrafficRulesFactory.h>
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -92,17 +93,17 @@ VehicleInfo make_vehicle_info()
   return vehicle_info;
 }
 
-double score_of(const std::vector<LaneletScore> & lanelets, lanelet::Id id)
+double posterior_of(const std::vector<LaneletProbability> & lanelets, lanelet::Id id)
 {
   for (const auto & lanelet : lanelets) {
     if (lanelet.id == id) {
-      return lanelet.score;
+      return lanelet.posterior;
     }
   }
   return 0.0;
 }
 
-double likelihood_of(const std::vector<LaneletScore> & lanelets, lanelet::Id id)
+double likelihood_of(const std::vector<LaneletProbability> & lanelets, lanelet::Id id)
 {
   for (const auto & lanelet : lanelets) {
     if (lanelet.id == id) {
@@ -112,7 +113,7 @@ double likelihood_of(const std::vector<LaneletScore> & lanelets, lanelet::Id id)
   return 0.0;
 }
 
-double prior_of(const std::vector<LaneletScore> & lanelets, lanelet::Id id)
+double prior_of(const std::vector<LaneletProbability> & lanelets, lanelet::Id id)
 {
   for (const auto & lanelet : lanelets) {
     if (lanelet.id == id) {
@@ -120,6 +121,12 @@ double prior_of(const std::vector<LaneletScore> & lanelets, lanelet::Id id)
     }
   }
   return 0.0;
+}
+
+bool has_target_lanelet(const TargetLaneletsResult & result, lanelet::Id id)
+{
+  return std::find(result.target_lanelet_ids.begin(), result.target_lanelet_ids.end(), id) !=
+         result.target_lanelet_ids.end();
 }
 
 lanelet::routing::RoutingGraphConstPtr make_routing_graph(
@@ -176,11 +183,13 @@ TEST_F(GetTargetLaneletsTest, SingleLanelet)
 
   const auto result = get_target_lanelets(route, trajectory, lanelet_map_, vehicle_info_);
 
-  ASSERT_EQ(result.lanelets.size(), 2u);
+  ASSERT_EQ(result.lanelet_probabilities.size(), 2u);
   // footprint stays fully inside lane A -> likelihood 1.0
-  EXPECT_NEAR(likelihood_of(result.lanelets, lane_a), 1.0, 1e-6);
-  EXPECT_NEAR(score_of(result.lanelets, lane_a), 1.0, 1e-6);
-  EXPECT_NEAR(score_of(result.lanelets, lane_b), 0.0, 1e-6);
+  EXPECT_NEAR(likelihood_of(result.lanelet_probabilities, lane_a), 1.0, 1e-6);
+  EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_a), 1.0, 1e-6);
+  EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_b), 0.0, 1e-6);
+  ASSERT_EQ(result.target_lanelet_ids.size(), 1u);
+  EXPECT_TRUE(has_target_lanelet(result, lane_a));
   EXPECT_FALSE(result.out_of_lanelet);
 }
 
@@ -192,12 +201,15 @@ TEST_F(GetTargetLaneletsTest, LaneChangeStraddling)
 
   const auto result = get_target_lanelets(route, trajectory, lanelet_map_, vehicle_info_);
 
-  EXPECT_EQ(result.lanelets.size(), 2u);
+  EXPECT_EQ(result.lanelet_probabilities.size(), 2u);
   // the footprint is fully inside each lane at some point -> both reach likelihood 1.0
-  EXPECT_NEAR(likelihood_of(result.lanelets, lane_a), 1.0, 1e-6);
-  EXPECT_NEAR(likelihood_of(result.lanelets, lane_b), 1.0, 1e-6);
-  EXPECT_NEAR(score_of(result.lanelets, lane_a), 1.0, 1e-6);
-  EXPECT_NEAR(score_of(result.lanelets, lane_b), 1.0, 1e-6);
+  EXPECT_NEAR(likelihood_of(result.lanelet_probabilities, lane_a), 1.0, 1e-6);
+  EXPECT_NEAR(likelihood_of(result.lanelet_probabilities, lane_b), 1.0, 1e-6);
+  EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_a), 1.0, 1e-6);
+  EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_b), 1.0, 1e-6);
+  ASSERT_EQ(result.target_lanelet_ids.size(), 2u);
+  EXPECT_TRUE(has_target_lanelet(result, lane_a));
+  EXPECT_TRUE(has_target_lanelet(result, lane_b));
   EXPECT_FALSE(result.out_of_lanelet);
 }
 
@@ -211,10 +223,13 @@ TEST_F(GetTargetLaneletsTest, PartialOverlapLikelihood)
 
   const auto result = get_target_lanelets(route, trajectory, lanelet_map_, vehicle_info_);
 
-  EXPECT_NEAR(likelihood_of(result.lanelets, lane_a), 0.75, 1e-3);
-  EXPECT_NEAR(likelihood_of(result.lanelets, lane_b), 0.25, 1e-3);
-  EXPECT_NEAR(score_of(result.lanelets, lane_a), 0.909, 1e-3);
-  EXPECT_NEAR(score_of(result.lanelets, lane_b), 0.091, 1e-3);
+  EXPECT_NEAR(likelihood_of(result.lanelet_probabilities, lane_a), 0.75, 1e-3);
+  EXPECT_NEAR(likelihood_of(result.lanelet_probabilities, lane_b), 0.25, 1e-3);
+  EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_a), 0.909, 1e-3);
+  EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_b), 0.091, 1e-3);
+  ASSERT_EQ(result.target_lanelet_ids.size(), 2u);
+  EXPECT_TRUE(has_target_lanelet(result, lane_a));
+  EXPECT_TRUE(has_target_lanelet(result, lane_b));
   EXPECT_FALSE(result.out_of_lanelet);
 }
 
@@ -226,9 +241,10 @@ TEST_F(GetTargetLaneletsTest, OutOfLanelet)
 
   const auto result = get_target_lanelets(route, trajectory, lanelet_map_, vehicle_info_);
 
-  ASSERT_EQ(result.lanelets.size(), 2u);
-  EXPECT_NEAR(score_of(result.lanelets, lane_a), 0.0, 1e-6);
-  EXPECT_NEAR(score_of(result.lanelets, lane_b), 0.0, 1e-6);
+  ASSERT_EQ(result.lanelet_probabilities.size(), 2u);
+  EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_a), 0.0, 1e-6);
+  EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_b), 0.0, 1e-6);
+  EXPECT_TRUE(result.target_lanelet_ids.empty());
   EXPECT_TRUE(result.out_of_lanelet);
 }
 
@@ -239,9 +255,9 @@ TEST_F(GetTargetLaneletsTest, KeepsInitialProbabilitiesOutsideUpdateScope)
 
   const auto result = get_target_lanelets(route, trajectory, lanelet_map_, vehicle_info_);
 
-  ASSERT_EQ(result.lanelets.size(), 4u);
-  EXPECT_NEAR(score_of(result.lanelets, lane_c), 0.8, 1e-6);
-  EXPECT_NEAR(score_of(result.lanelets, lane_d), 0.2, 1e-6);
+  ASSERT_EQ(result.lanelet_probabilities.size(), 4u);
+  EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_c), 0.8, 1e-6);
+  EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_d), 0.2, 1e-6);
 }
 
 TEST_F(GetTargetLaneletsTest, NextSegmentPriorUsesRoutingRelation)
@@ -254,12 +270,13 @@ TEST_F(GetTargetLaneletsTest, NextSegmentPriorUsesRoutingRelation)
   const auto result = get_target_lanelets(
     route, trajectory, lanelet_map_, vehicle_info_, previous_posteriors, routing_graph);
 
-  ASSERT_EQ(result.lanelets.size(), 4u);
-  EXPECT_GT(prior_of(result.lanelets, lane_c), prior_of(result.lanelets, lane_d));
-  EXPECT_NEAR(prior_of(result.lanelets, lane_c), 0.68, 1e-6);
-  EXPECT_NEAR(prior_of(result.lanelets, lane_d), 0.32, 1e-6);
-  EXPECT_NEAR(score_of(result.lanelets, lane_c), 1.0, 1e-6);
-  EXPECT_NEAR(score_of(result.lanelets, lane_d), 0.0, 1e-6);
+  ASSERT_EQ(result.lanelet_probabilities.size(), 4u);
+  EXPECT_GT(
+    prior_of(result.lanelet_probabilities, lane_c), prior_of(result.lanelet_probabilities, lane_d));
+  EXPECT_NEAR(prior_of(result.lanelet_probabilities, lane_c), 0.68, 1e-6);
+  EXPECT_NEAR(prior_of(result.lanelet_probabilities, lane_d), 0.32, 1e-6);
+  EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_c), 1.0, 1e-6);
+  EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_d), 0.0, 1e-6);
 }
 
 }  // namespace autoware::target_lanelet_estimator
