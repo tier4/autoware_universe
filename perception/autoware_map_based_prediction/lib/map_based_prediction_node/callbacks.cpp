@@ -147,8 +147,22 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
       transformed_object.kinematics.pose_with_covariance.pose = pose_in_map.pose;
     }
 
-    const auto & label_ =
+    auto label_ =
       autoware::object_recognition_utils::getHighestProbLabel(transformed_object.classification);
+
+    // Remap ANIMAL and HAZARD to UNKNOWN to keep the legacy label set expected by downstream
+    // planning. Overwrite the classification so the published PredictedObject also reports UNKNOWN.
+    if (label_ == ObjectClassification::ANIMAL || label_ == ObjectClassification::HAZARD) {
+      ObjectClassification unknown_classification;
+      unknown_classification.label = ObjectClassification::UNKNOWN;
+      unknown_classification.probability =
+        autoware::object_recognition_utils::getHighestProbClassification(
+          transformed_object.classification)
+          .probability;
+      transformed_object.classification = {unknown_classification};
+      label_ = ObjectClassification::UNKNOWN;
+    }
+
     const auto label = utils::changeVRULabelForPrediction(label_, object, state_.lanelet_map_ptr);
 
     switch (label) {
