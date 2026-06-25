@@ -46,6 +46,7 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
     return;
   }
 
+  // Check if the map or route has been updated
   bool map_or_route_updated = false;
 
   if (const auto route_msg = sub_route_.take_data()) {
@@ -69,11 +70,10 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
     cached_drivable_area_.reset();
   }
 
+  // Check if the route or extended route handler is not ready
   if (!route_ || !extended_route_handler_) {
     return;
   }
-
-  const auto current_time = get_clock()->now();
 
   trajectory_ = sub_trajectory_.take_data();
   const Trajectory trajectory_msg = trajectory_ ? *trajectory_ : Trajectory{};
@@ -99,7 +99,7 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
   }
 
   const auto avoidance_targets = object_selector_.get_avoidance_targets(
-    current_time, *msg, trajectory_msg, cached_drivable_area_);
+    get_clock()->now(), *msg, trajectory_msg, cached_drivable_area_);
 
   pub_avoidance_targets_->publish(avoidance_targets);
 }
