@@ -15,7 +15,6 @@
 #ifndef AUTOWARE__BEVFUSION__BEVFUSION_CONFIG_HPP_
 #define AUTOWARE__BEVFUSION__BEVFUSION_CONFIG_HPP_
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -30,8 +29,8 @@ class BEVFusionConfig
 {
 public:
   BEVFusionConfig(
-    const std::size_t class_size, const std::string & plugins_path,
-    const std::string & image_backbone_onnx_path, const std::string & image_backbone_engine_path,
+    const std::string & plugins_path, const std::string & image_backbone_onnx_path,
+    const std::string & image_backbone_engine_path,
     const std::string & image_backbone_trt_precision, const std::int64_t out_size_factor,
     const std::int64_t cloud_capacity, const std::int64_t max_points_per_voxel,
     const std::vector<std::int64_t> & voxels_num, const std::vector<float> & point_cloud_range,
@@ -44,8 +43,7 @@ public:
     const std::int64_t features_width, const std::int64_t num_depth_features,
     const std::int64_t image_feature_channel, const std::int64_t num_proposals,
     const float circle_nms_dist_threshold, const std::vector<double> & yaw_norm_thresholds,
-    const std::vector<float> & score_thresholds,
-    const std::vector<float> & distance_bin_upper_limits, const bool use_intensity)
+    const float score_threshold, const bool use_intensity)
   {
     // Derive sensor_fusion from image backbone parameters
     // All three must be empty OR all three must be non-empty
@@ -121,32 +119,13 @@ public:
     image_feature_channel_ = image_feature_channel;
     resized_height_ = raw_image_height_ * img_aug_scale_y_;
     resized_width_ = raw_image_width_ * img_aug_scale_x_;
-    num_classes_ = class_size;
 
     if (num_proposals > 0) {
       num_proposals_ = num_proposals;
     }
-    // score_upper_bounds must be sorted in ascending order, raise an error if not
-    if (!std::is_sorted(distance_bin_upper_limits.begin(), distance_bin_upper_limits.end())) {
-      throw std::invalid_argument("distance_bin_upper_limits must be sorted in ascending order");
+    if (score_threshold > 0.0) {
+      score_threshold_ = score_threshold;
     }
-    distance_bin_upper_limits_ = distance_bin_upper_limits;
-    for (auto & distance_bin_upper_limit : distance_bin_upper_limits_) {
-      // Note: Square the distance bin upper limit to get the radial distance to skip the sqrtf
-      // operation
-      distance_bin_upper_limit = distance_bin_upper_limit * distance_bin_upper_limit;
-    }
-
-    // score_thresholds must have the size of score_upper_bounds * class_size
-    if (score_thresholds.size() != distance_bin_upper_limits_.size() * num_classes_) {
-      throw std::invalid_argument(
-        "score_thresholds must have the size of distance_bin_upper_limits * class_size");
-    }
-    score_thresholds_ = score_thresholds;
-    for (auto & score_threshold : score_thresholds_) {
-      score_threshold = (score_threshold >= 0.f && score_threshold < 1.f) ? score_threshold : 0.f;
-    }
-
     if (circle_nms_dist_threshold > 0.0) {
       circle_nms_dist_threshold_ = circle_nms_dist_threshold;
     }
@@ -232,13 +211,12 @@ public:
 
   // Head parameters
   std::int64_t num_proposals_{};
-  std::size_t num_classes_{5};
+  const std::size_t num_classes_{5};
 
   // Post processing parameters
 
   // the score threshold for classification
-  std::vector<float> distance_bin_upper_limits_{};
-  std::vector<float> score_thresholds_{};
+  float score_threshold_{};
 
   float circle_nms_dist_threshold_{};
   std::vector<float> yaw_norm_thresholds_{};

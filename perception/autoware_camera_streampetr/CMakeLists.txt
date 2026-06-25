@@ -50,7 +50,6 @@ endif()
 
 if(TRT_AVAIL AND CUDA_AVAIL)
   find_package(ament_cmake_auto REQUIRED)
-  find_package(yaml-cpp REQUIRED)
   ament_auto_find_build_dependencies()
 
   include_directories(
@@ -67,7 +66,6 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   ament_auto_add_library(${PROJECT_NAME}_lib SHARED
     lib/postprocess/non_maximum_suppression.cpp
     lib/network/camera_data_store.cpp
-    lib/network/camera_ego_mask.cpp
     lib/network/network.cpp
   )
 
@@ -90,7 +88,6 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   cuda_add_library(${PROJECT_NAME}_cuda_lib SHARED
     lib/postprocess/circle_nms_kernel.cu
     lib/postprocess/postprocess_kernel.cu
-    lib/network/ego_mask_kernel.cu
     lib/network/memory.cu
     lib/network/preprocess_kernel.cu
   )
@@ -104,7 +101,6 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${CUDA_curand_LIBRARY}
     ${PROJECT_NAME}_cuda_lib
     ${OpenCV_LIBRARIES}
-    yaml-cpp
   )
 
   target_include_directories(${PROJECT_NAME}_lib

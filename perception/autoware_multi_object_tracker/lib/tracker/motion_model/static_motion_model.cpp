@@ -1,4 +1,4 @@
-// Copyright 2024 TIER IV, Inc.
+// Copyright 2024 Tier IV, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,11 @@
 #include "autoware/multi_object_tracker/tracker/motion_model/static_motion_model.hpp"
 
 #include <Eigen/Core>
+#include <Eigen/Geometry>
 #include <autoware_utils_geometry/msg/covariance.hpp>
+#include <autoware_utils_math/normalization.hpp>
+#include <autoware_utils_math/unit_conversion.hpp>
+#include <tf2/utils.hpp>
 
 namespace autoware::multi_object_tracker
 {
@@ -148,8 +152,7 @@ bool StaticMotionModel::getPredictedState(
   // set position
   pose.position.x = X(IDX::X);
   pose.position.y = X(IDX::Y);
-  pose.position.z = z_;
-  pose.orientation = orientation_;
+  // do not change z
 
   // set twist
   twist.linear.x = 0.0;

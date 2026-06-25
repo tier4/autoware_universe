@@ -19,7 +19,6 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   lib/euclidean_cluster.cpp
   lib/voxel_grid_based_euclidean_cluster.cpp
   lib/utils.cpp
-  lib/confusable_cluster_merger.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_lib
