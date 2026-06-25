@@ -9,6 +9,10 @@ generate_parameter_library(${PROJECT_NAME}_param
   param/parameter_struct.yaml
 )
 
+generate_parameter_library(${PROJECT_NAME}_diagnostic_param
+  param/diagnostic_parameter_struct.yaml
+)
+
 set(trajectory_validator_lib_target ${PROJECT_NAME}_lib)
 
 
@@ -21,6 +25,7 @@ ament_auto_add_library(${trajectory_validator_lib_target} SHARED
 
 target_link_libraries(${trajectory_validator_lib_target}
   ${PROJECT_NAME}_param
+  ${PROJECT_NAME}_diagnostic_param
 )
 
 target_compile_options(${trajectory_validator_lib_target} PUBLIC

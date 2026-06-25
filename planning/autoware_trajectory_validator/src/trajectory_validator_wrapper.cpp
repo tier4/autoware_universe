@@ -16,6 +16,8 @@
 
 #include "autoware/trajectory_validator/detail/trajectory_validator.hpp"
 
+#include <autoware_trajectory_validator/autoware_trajectory_validator_diagnostic_param.hpp>
+
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
@@ -31,6 +33,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -45,6 +48,7 @@ TrajectoryValidatorWrapper::TrajectoryValidatorWrapper(
 : node_ptr_(&node),
   logger_(node.get_logger().get_child(interface_name_)),
   validator_params_listener_{node_parameters_interface},
+  validator_params_{validator_params_listener_.get_params()},
   vehicle_info_(vehicle_info),
   plugin_loader_(
     "autoware_trajectory_validator", "autoware::trajectory_validator::plugin::ValidatorInterface"),
@@ -54,7 +58,6 @@ TrajectoryValidatorWrapper::TrajectoryValidatorWrapper(
     throw std::runtime_error("TimeKeeper is required for TrajectoryValidatorWrapper");
   }
 
-  validator_params_ = validator_params_listener_.get_params();
   const auto filters = validator_params_.filter_names;
   for (const auto & filter : filters) {
     load_metric(filter);
@@ -75,17 +78,23 @@ TrajectoryValidatorWrapper::TrajectoryValidatorWrapper(
       &node, "trajectory_validator");
   validator_ptr_ = std::make_unique<TrajectoryValidator>(plugins_);
 
-  // Note: because plugin filter name is not snake_case, so we have to get the shadow validator
-  // names from the plugin instances instead of the parameter list
-  std::unordered_set<std::string> shadow_validator_names;
+  // Note: plugin class names are not snake_case, so we iterate loaded plugins to get the
+  // short names (from get_name()) of the active (non-shadow) validators.
+  std::unordered_set<std::string> active_filter_names;
   for (const auto & plugin : plugins_) {
-    if (plugin->is_shadow_mode()) {
-      shadow_validator_names.insert(plugin->get_name());
+    if (!plugin->is_shadow_mode()) {
+      active_filter_names.insert(plugin->get_name());
     }
   }
+
+  trajectory_validator_diagnostic::ParamListener diag_param_listener(node_parameters_interface);
+  const auto filter_status_map =
+    make_filter_status_map(diag_param_listener.get_params().bindings);
+  const std::string no_candidate_name = "trajectory_validator_no_candidate_trajectory";
+  auto diag_by_name = build_diagnostic_interface_map(node, filter_status_map, no_candidate_name);
+
   validator_diagnostic_ptr_ = std::make_unique<TrajectoryValidatorDiagnostic>(
-    node, make_default_filter_status_map(), "trajectory_validator_no_candidate_trajectory",
-    shadow_validator_names);
+    filter_status_map, no_candidate_name, active_filter_names, std::move(diag_by_name));
 }
 
 void TrajectoryValidatorWrapper::load_metric(const std::string & name, const bool is_shadow_mode)

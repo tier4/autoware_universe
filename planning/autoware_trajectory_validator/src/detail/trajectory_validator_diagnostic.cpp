@@ -27,30 +27,39 @@
 namespace autoware::trajectory_validator
 {
 
-TrajectoryValidatorDiagnostic::TrajectoryValidatorDiagnostic(
-  rclcpp::Node & node, FilterStatusMap filter_status_map, std::string no_candidate_name,
-  const std::unordered_set<std::string> & shadow_validator_names)
-: node_ptr_(&node),
-  filter_status_map_(std::move(filter_status_map)),
-  shadow_validator_names_(shadow_validator_names),
-  no_candidate_name_(std::move(no_candidate_name))
+std::unordered_map<std::string, std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface>>
+build_diagnostic_interface_map(
+  rclcpp::Node & node, const FilterStatusMap & filter_status_map,
+  const std::string & no_candidate_name)
 {
-  // Create one DiagnosticsInterface per distinct non-empty status name from the map.
-  for (const auto & [validator, binding] : filter_status_map_) {
+  std::unordered_map<std::string, std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface>>
+    diag_by_name;
+  for (const auto & [validator, binding] : filter_status_map) {
     for (const auto & [action, name] : binding.name_by_action) {
-      if (!name.empty() && diag_by_name_.find(name) == diag_by_name_.end()) {
-        diag_by_name_.emplace(
-          name,
-          std::make_unique<autoware_utils_diagnostics::DiagnosticsInterface>(node_ptr_, name));
+      if (!name.empty() && !diag_by_name.count(name)) {
+        diag_by_name.emplace(
+          name, std::make_unique<autoware_utils_diagnostics::DiagnosticsInterface>(&node, name));
       }
     }
   }
-  if (
-    !no_candidate_name_.empty() && diag_by_name_.find(no_candidate_name_) == diag_by_name_.end()) {
-    diag_by_name_.emplace(
-      no_candidate_name_, std::make_unique<autoware_utils_diagnostics::DiagnosticsInterface>(
-                            node_ptr_, no_candidate_name_));
+  if (!no_candidate_name.empty() && !diag_by_name.count(no_candidate_name)) {
+    diag_by_name.emplace(
+      no_candidate_name,
+      std::make_unique<autoware_utils_diagnostics::DiagnosticsInterface>(&node, no_candidate_name));
   }
+  return diag_by_name;
+}
+
+TrajectoryValidatorDiagnostic::TrajectoryValidatorDiagnostic(
+  FilterStatusMap filter_status_map, std::string no_candidate_name,
+  const std::unordered_set<std::string> & active_filter_names,
+  std::unordered_map<std::string, std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface>>
+    diag_by_name)
+: filter_status_map_(std::move(filter_status_map)),
+  active_filter_names_(active_filter_names),
+  no_candidate_name_(std::move(no_candidate_name)),
+  diag_by_name_(std::move(diag_by_name))
+{
 }
 
 TrajectoryValidatorDiagnostic::ValidatorDiagnosticActionInfo
@@ -59,7 +68,7 @@ TrajectoryValidatorDiagnostic::compute_action_info(
 {
   ValidatorDiagnosticActionInfo info;
   for (const auto & metric : report.metrics) {
-    if (shadow_validator_names_.count(metric.validator_name)) {
+    if (!active_filter_names_.empty() && !active_filter_names_.count(metric.validator_name)) {
       continue;
     }
     const Action metric_action = to_action(metric.level);
@@ -80,23 +89,14 @@ void TrajectoryValidatorDiagnostic::collect_active_statuses(
 {
   for (const auto & [vname, vaction] : best_info.per_validator) {
     if (vaction != best_info.action) {
-      continue;  // only binding validators (those at the trajectory's action level)
+      continue;
     }
     const auto map_it = filter_status_map_.find(vname);
     if (map_it == filter_status_map_.end()) {
-      RCLCPP_WARN_THROTTLE(
-        node_ptr_->get_logger(), *node_ptr_->get_clock(), 1000,
-        "[TrajectoryValidatorDiagnostic] no mapping entry for binding validator '%s'",
-        vname.c_str());
       continue;
     }
     const auto name_it = map_it->second.name_by_action.find(vaction);
     if (name_it == map_it->second.name_by_action.end() || name_it->second.empty()) {
-      RCLCPP_WARN_THROTTLE(
-        node_ptr_->get_logger(), *node_ptr_->get_clock(), 1000,
-        "[TrajectoryValidatorDiagnostic] empty status name for binding validator '%s' at "
-        "action %d",
-        vname.c_str(), static_cast<int>(vaction));
       continue;
     }
     active[name_it->second] = published_level_of(vaction);
@@ -107,7 +107,7 @@ void TrajectoryValidatorDiagnostic::update_and_publish(
   const std::vector<autoware_trajectory_validator::msg::ValidationReport> & reports,
   const rclcpp::Time & stamp)
 {
-  std::unordered_map<std::string, int8_t> active;  // status name -> published level
+  std::unordered_map<std::string, int8_t> active;
 
   if (reports.empty()) {
     if (!no_candidate_name_.empty()) {

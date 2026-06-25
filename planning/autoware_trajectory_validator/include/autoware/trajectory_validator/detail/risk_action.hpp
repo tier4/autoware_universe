@@ -19,8 +19,6 @@
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
-#include <cstdint>
-
 namespace autoware::trajectory_validator
 {
 
@@ -35,9 +33,19 @@ enum class Action : uint8_t { NONE = 0, COMFORTABLE = 1, MODERATE = 2, EMERGENCY
 inline Action to_action(uint8_t metric_level)
 {
   using autoware_trajectory_validator::msg::MetricReport;
-  // Interim map (current 3-level scale):
-  //   OK, WARN -> NONE  |  ERROR -> MODERATE
   if (metric_level == MetricReport::ERROR) return Action::MODERATE;
+  return Action::NONE;
+}
+
+/**
+ * @brief Parses an action string from a parameter into an Action value.
+ * @param action_str One of "none", "comfortable", "moderate", "emergency".
+ */
+inline Action parse_action(const std::string & action_str)
+{
+  if (action_str == "comfortable") return Action::COMFORTABLE;
+  if (action_str == "moderate") return Action::MODERATE;
+  if (action_str == "emergency") return Action::EMERGENCY;
   return Action::NONE;
 }
 

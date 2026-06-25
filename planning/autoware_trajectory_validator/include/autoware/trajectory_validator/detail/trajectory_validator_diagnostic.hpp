@@ -19,7 +19,8 @@
 
 #include <autoware_trajectory_validator/msg/validation_report.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
-#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/node.hpp>
+#include <rclcpp/time.hpp>
 
 #include <map>
 #include <memory>
@@ -46,39 +47,73 @@ struct FilterStatusBinding
 using FilterStatusMap = std::unordered_map<std::string, FilterStatusBinding>;
 
 /**
- * @brief Default production mapping.
- * @note Key is "uncrossable_boundary_departure_filter" — the short name from
- *       UncrossableBoundaryDepartureFilter::get_name().  shadow_mode_filter_names stores plugin
- *       CLASS names; wrapper wiring must translate them via plugin->get_name() before passing
- *       the shadow set to TrajectoryValidatorDiagnostic.
+ * @brief Builds a FilterStatusMap from a bindings string array loaded from
+ *        trajectory_validator_diagnostic parameters.
+ * @param bindings Each entry encodes one binding as
+ *        filter_name:action:diagnostic_name. Entries that are empty or
+ *        lack the two required colons are skipped silently.
  */
-inline FilterStatusMap make_default_filter_status_map()
+inline FilterStatusMap make_filter_status_map(const std::vector<std::string> & bindings)
 {
   FilterStatusMap m;
-  m["uncrossable_boundary_departure_filter"].name_by_action[Action::MODERATE] =
-    "trajectory_validator_uncrossable_boundary_departure_danger";
+  for (const auto & binding : bindings) {
+    if (binding.empty()) {
+      continue;
+    }
+    const auto first_colon = binding.find(':');
+    if (first_colon == std::string::npos) {
+      continue;
+    }
+    const auto second_colon = binding.find(':', first_colon + 1);
+    if (second_colon == std::string::npos) {
+      continue;
+    }
+    const auto filter_name = binding.substr(0, first_colon);
+    const auto action_str = binding.substr(first_colon + 1, second_colon - first_colon - 1);
+    const auto diagnostic_name = binding.substr(second_colon + 1);
+    if (filter_name.empty() || diagnostic_name.empty()) {
+      continue;
+    }
+    m[filter_name].name_by_action[parse_action(action_str)] = diagnostic_name;
+  }
   return m;
 }
 
 /**
- * @brief Reads ValidationReports, decides a per-trajectory Action, and republishes per-validator
- *        DiagnosticStatus values every cycle so none go stale.
+ * @brief Creates one DiagnosticsInterface per distinct non-empty status name found in
+ *        filter_status_map, plus one for no_candidate_name if non-empty.
+ * @param node ROS 2 node used for publisher creation.
+ * @param filter_status_map Mapping from validator_name to its status name bindings.
+ * @param no_candidate_name Status name published when no candidate trajectory is available.
+ */
+std::unordered_map<std::string, std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface>>
+build_diagnostic_interface_map(
+  rclcpp::Node & node, const FilterStatusMap & filter_status_map,
+  const std::string & no_candidate_name);
+
+/**
+ * @brief Aggregates ValidationReports into a per-trajectory action and republishes every tracked
+ *        DiagnosticStatus every cycle so none go stale.
+ *
+ * Pure logic class: takes a pre-built DiagnosticsInterface map; does not hold a ROS node.
  */
 class TrajectoryValidatorDiagnostic
 {
 public:
   /**
-   * @brief Constructs the diagnostic handler and pre-creates one DiagnosticsInterface per
-   *        distinct status name found in filter_status_map.
-   * @param node ROS 2 node used for publisher creation and logging.
+   * @brief Constructs the diagnostic handler with pre-built DiagnosticsInterface objects.
    * @param filter_status_map Mapping from validator_name to its status name bindings.
    * @param no_candidate_name Status name to raise ERROR on when reports is empty.
-   * @param shadow_validator_names Short validator_name strings (from plugin->get_name()) to skip
-   *        during action aggregation.
+   * @param active_filter_names Short validator_name strings (from plugin->get_name()) that are
+   *        active (non-shadow). Any validator not in this set is treated as shadow and excluded
+   *        from action aggregation. An empty set means all validators are considered active.
+   * @param diag_by_name Pre-built DiagnosticsInterface map (use build_diagnostic_interface_map).
    */
   TrajectoryValidatorDiagnostic(
-    rclcpp::Node & node, FilterStatusMap filter_status_map, std::string no_candidate_name,
-    const std::unordered_set<std::string> & shadow_validator_names = {});
+    FilterStatusMap filter_status_map, std::string no_candidate_name,
+    const std::unordered_set<std::string> & active_filter_names,
+    std::unordered_map<std::string, std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface>>
+      diag_by_name);
 
   /**
    * @brief Aggregates reports into a best-available action and publishes all tracked statuses.
@@ -97,8 +132,8 @@ private:
   };
 
   /**
-   * @brief Aggregates per-validator actions for one candidate trajectory, skipping shadow
-   *        validators.
+   * @brief Aggregates per-validator actions for one candidate trajectory, considering only
+   *        active validators (those in active_filter_names_, or all if the set is empty).
    * @param report Validation report for a single candidate trajectory.
    */
   ValidatorDiagnosticActionInfo compute_action_info(
@@ -122,9 +157,8 @@ private:
   void publish_all(
     const std::unordered_map<std::string, int8_t> & active, const rclcpp::Time & stamp);
 
-  rclcpp::Node * node_ptr_;
   FilterStatusMap filter_status_map_;
-  std::unordered_set<std::string> shadow_validator_names_;
+  std::unordered_set<std::string> active_filter_names_;
   std::string no_candidate_name_;
   std::unordered_map<std::string, std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface>>
     diag_by_name_;

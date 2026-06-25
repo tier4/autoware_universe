@@ -18,6 +18,8 @@
 #include <autoware_trajectory_validator/msg/validation_report.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <unordered_set>
+
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 
 #include <gtest/gtest.h>
@@ -30,6 +32,7 @@
 #include <vector>
 
 using autoware::trajectory_validator::Action;
+using autoware::trajectory_validator::build_diagnostic_interface_map;
 using autoware::trajectory_validator::FilterStatusMap;
 using autoware::trajectory_validator::published_level_of;
 using autoware::trajectory_validator::to_action;
@@ -86,6 +89,17 @@ const DiagnosticStatus * find_status(const DiagnosticArray & arr, const std::str
     }
   }
   return nullptr;
+}
+
+// Convenience factory: builds the DiagnosticsInterface map and constructs TrajectoryValidatorDiagnostic.
+TrajectoryValidatorDiagnostic make_diag(
+  rclcpp::Node & node, FilterStatusMap filter_map, std::string no_candidate_name,
+  const std::unordered_set<std::string> & active_filter_names = {})
+{
+  auto diag_by_name = build_diagnostic_interface_map(node, filter_map, no_candidate_name);
+  return TrajectoryValidatorDiagnostic(
+    std::move(filter_map), std::move(no_candidate_name), active_filter_names,
+    std::move(diag_by_name));
 }
 
 // Helper: create a node, subscribe, run diagnostic once, collect all published arrays
@@ -188,7 +202,7 @@ protected:
 TEST_F(TrajectoryValidatorDiagnosticTest, BestAllOkOtherError)
 {
   DiagHarness h("t3_node");
-  TrajectoryValidatorDiagnostic diag(*h.node, single_map(), "");
+  auto diag = make_diag(*h.node, single_map(), "");
 
   std::vector<ValidationReport> reports = {
     make_report({make_metric("validator_a", MetricReport::OK)}),    // best
@@ -206,7 +220,7 @@ TEST_F(TrajectoryValidatorDiagnosticTest, BestAllOkOtherError)
 TEST_F(TrajectoryValidatorDiagnosticTest, BestHasBindingValidatorAtError)
 {
   DiagHarness h("t4_node");
-  TrajectoryValidatorDiagnostic diag(*h.node, single_map(), "");
+  auto diag = make_diag(*h.node, single_map(), "");
 
   std::vector<ValidationReport> reports = {
     make_report({make_metric("validator_a", MetricReport::ERROR)})};
@@ -222,7 +236,7 @@ TEST_F(TrajectoryValidatorDiagnosticTest, BestHasBindingValidatorAtError)
 TEST_F(TrajectoryValidatorDiagnosticTest, BestAvailableOkWhileWorseError)
 {
   DiagHarness h("t5_node");
-  TrajectoryValidatorDiagnostic diag(*h.node, single_map(), "");
+  auto diag = make_diag(*h.node, single_map(), "");
 
   std::vector<ValidationReport> reports = {
     make_report({make_metric("validator_a", MetricReport::WARN)}),  // best (WARN -> NONE action)
@@ -244,7 +258,7 @@ TEST_F(TrajectoryValidatorDiagnosticTest, TwoValidatorsBindingBothFire)
   filter_map["validator_a"].name_by_action[Action::MODERATE] = "status_a";
   filter_map["validator_b"].name_by_action[Action::MODERATE] = "status_b";
 
-  TrajectoryValidatorDiagnostic diag(*h.node, filter_map, "");
+  auto diag = make_diag(*h.node, filter_map, "");
 
   std::vector<ValidationReport> reports = {make_report(
     {make_metric("validator_a", MetricReport::ERROR),
@@ -264,7 +278,7 @@ TEST_F(TrajectoryValidatorDiagnosticTest, TwoValidatorsBindingBothFire)
 TEST_F(TrajectoryValidatorDiagnosticTest, Renew)
 {
   DiagHarness h("t7_node");
-  TrajectoryValidatorDiagnostic diag(*h.node, single_map(), "");
+  auto diag = make_diag(*h.node, single_map(), "");
 
   // First cycle: ERROR
   std::vector<ValidationReport> error_reports = {
@@ -295,7 +309,7 @@ TEST_F(TrajectoryValidatorDiagnosticTest, EmptyNameNoStatusFired)
   filter_map["validator_a"].name_by_action[Action::MODERATE] = "";  // empty name
 
   // No DiagnosticsInterface is created, so nothing is published
-  TrajectoryValidatorDiagnostic diag(*h.node, filter_map, "");
+  auto diag = make_diag(*h.node, filter_map, "");
 
   std::vector<ValidationReport> reports = {
     make_report({make_metric("validator_a", MetricReport::ERROR)})};
@@ -316,7 +330,7 @@ TEST_F(TrajectoryValidatorDiagnosticTest, EmptyNameNoStatusFired)
 TEST_F(TrajectoryValidatorDiagnosticTest, NoReportsFiresNoCandidateName)
 {
   DiagHarness h("t9_node");
-  TrajectoryValidatorDiagnostic diag(*h.node, {}, "no_candidate_status");
+  auto diag = make_diag(*h.node, FilterStatusMap{}, "no_candidate_status");
 
   h.run(diag, {});
 
@@ -329,7 +343,7 @@ TEST_F(TrajectoryValidatorDiagnosticTest, NoReportsFiresNoCandidateName)
 TEST_F(TrajectoryValidatorDiagnosticTest, NoReportsEmptyNoCandidateNameNothing)
 {
   DiagHarness h("t9b_node");
-  TrajectoryValidatorDiagnostic diag(*h.node, {}, "");
+  auto diag = make_diag(*h.node, FilterStatusMap{}, "");
 
   spin_until(h.node, [&h]() { return h.sub->get_publisher_count() > 0; });
   h.received.clear();
@@ -348,7 +362,7 @@ TEST_F(TrajectoryValidatorDiagnosticTest, TwoValidatorsDistinctNamesPublishedEac
   filter_map["validator_a"].name_by_action[Action::MODERATE] = "status_a";
   filter_map["validator_b"].name_by_action[Action::MODERATE] = "status_b";
 
-  TrajectoryValidatorDiagnostic diag(*h.node, filter_map, "");
+  auto diag = make_diag(*h.node, filter_map, "");
 
   // OK cycle — both statuses still published (at OK level)
   std::vector<ValidationReport> reports = {make_report(
@@ -375,14 +389,15 @@ protected:
   void TearDown() override { rclcpp::shutdown(); }
 };
 
-// Test 11: Shadow validator at ERROR on best trajectory (enforced ones OK) -> every status OK
+// Test 11: Shadow validator at ERROR on best trajectory; active set does not include it -> status OK
 TEST_F(ShadowModeTest, ShadowErrorOnBestDoesNotFireStatus)
 {
   DiagHarness h("t11_node");
   FilterStatusMap filter_map;
   filter_map["shadow_v"].name_by_action[Action::MODERATE] = "shadow_status";
 
-  TrajectoryValidatorDiagnostic diag(*h.node, filter_map, "", {"shadow_v"});
+  // active_filter_names does not contain "shadow_v" -> it is treated as shadow
+  auto diag = make_diag(*h.node, filter_map, "", {"enforced_v"});
 
   std::vector<ValidationReport> reports = {
     make_report({make_metric("shadow_v", MetricReport::ERROR)})};
@@ -394,7 +409,7 @@ TEST_F(ShadowModeTest, ShadowErrorOnBestDoesNotFireStatus)
   EXPECT_EQ(status->level, DiagnosticStatus::OK);
 }
 
-// Test 12: Best trajectory: enforced OK + shadow ERROR -> shadow never binds; no status fires
+// Test 12: Best trajectory: enforced OK + shadow ERROR -> shadow excluded; no status fires
 TEST_F(ShadowModeTest, EnforcedOkShadowErrorNoStatusFires)
 {
   DiagHarness h("t12_node");
@@ -402,7 +417,8 @@ TEST_F(ShadowModeTest, EnforcedOkShadowErrorNoStatusFires)
   filter_map["enforced_v"].name_by_action[Action::MODERATE] = "enforced_status";
   filter_map["shadow_v"].name_by_action[Action::MODERATE] = "shadow_status";
 
-  TrajectoryValidatorDiagnostic diag(*h.node, filter_map, "", {"shadow_v"});
+  // only "enforced_v" is active; "shadow_v" is excluded from aggregation
+  auto diag = make_diag(*h.node, filter_map, "", {"enforced_v"});
 
   std::vector<ValidationReport> reports = {make_report(
     {make_metric("enforced_v", MetricReport::OK), make_metric("shadow_v", MetricReport::ERROR)})};
@@ -418,18 +434,16 @@ TEST_F(ShadowModeTest, EnforcedOkShadowErrorNoStatusFires)
   EXPECT_EQ(ss->level, DiagnosticStatus::OK);
 }
 
-// Test 13: Shadow validator with mapping entry + ERROR + no enforced above OK -> still raises
-// nothing
+// Test 13: Only shadow metrics reported; active set excludes them -> nothing fires
 TEST_F(ShadowModeTest, ShadowWithMappingEntryErrorStillRaisesNothing)
 {
   DiagHarness h("t13_node");
   FilterStatusMap filter_map;
-  // Only shadow_v is in the map
   filter_map["shadow_v"].name_by_action[Action::MODERATE] = "shadow_status";
 
-  TrajectoryValidatorDiagnostic diag(*h.node, filter_map, "", {"shadow_v"});
+  // active_filter_names contains a different validator -> "shadow_v" is excluded
+  auto diag = make_diag(*h.node, filter_map, "", {"enforced_v"});
 
-  // Only metrics come from shadow_v (enforced set is empty)
   std::vector<ValidationReport> reports = {
     make_report({make_metric("shadow_v", MetricReport::ERROR)})};
 
