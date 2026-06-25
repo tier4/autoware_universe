@@ -18,7 +18,7 @@
 #include "autoware_utils/ros/logger_level_configure.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
 #include "debug_marker.hpp"
-#include "surround_obstacle_checker_node_parameters.hpp"
+#include "autoware_surround_obstacle_checker/surround_obstacle_checker_node_parameters.hpp"
 
 #include <autoware/motion_utils/vehicle/vehicle_state_checker.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>

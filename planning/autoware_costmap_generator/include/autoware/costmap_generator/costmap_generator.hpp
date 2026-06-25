@@ -47,7 +47,7 @@
 
 #include "autoware/costmap_generator/utils/objects_to_costmap.hpp"
 #include "autoware/costmap_generator/utils/points_to_costmap.hpp"
-#include "costmap_generator_node_parameters.hpp"
+#include "autoware_costmap_generator/costmap_generator_node_parameters.hpp"
 
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>

@@ -17,7 +17,7 @@
 
 #include <autoware/route_handler/route_handler.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <remaining_distance_time_calculator_parameters.hpp>
+#include <autoware_remaining_distance_time_calculator/remaining_distance_time_calculator_parameters.hpp>
 
 #include <autoware_internal_msgs/msg/mission_remaining_distance_time.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>

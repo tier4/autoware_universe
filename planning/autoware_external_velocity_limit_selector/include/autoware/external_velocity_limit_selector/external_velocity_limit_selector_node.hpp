@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__EXTERNAL_VELOCITY_LIMIT_SELECTOR__EXTERNAL_VELOCITY_LIMIT_SELECTOR_NODE_HPP_
 #define AUTOWARE__EXTERNAL_VELOCITY_LIMIT_SELECTOR__EXTERNAL_VELOCITY_LIMIT_SELECTOR_NODE_HPP_
 
-#include <external_velocity_limit_selector_parameters.hpp>
+#include <autoware_external_velocity_limit_selector/external_velocity_limit_selector_parameters.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>

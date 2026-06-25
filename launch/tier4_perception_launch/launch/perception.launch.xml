@@ -301,7 +301,7 @@
     <group if="$(var use_empty_dynamic_object_publisher)">
       <push-ros-namespace namespace="object_recognition"/>
       <node pkg="autoware_dummy_perception_publisher" exec="empty_objects_publisher" name="empty_objects_publisher" output="screen">
-        <remap from="~/output/objects" to="/perception/object_recognition/objects"/>
+        <remap from="~/output/objects" to="/perception/object_recognition/prediction/objects"/>
       </node>
     </group>
 
@@ -327,4 +327,9 @@
   <group if="$(var use_perception_online_evaluator)">
     <include file="$(find-pkg-share autoware_perception_online_evaluator)/launch/perception_online_evaluator.launch.xml"/>
   </group>
+
+  <!-- multiplexer for remote operation -->
+  <include file="$(find-pkg-share autoware_remote_interfaces)/launch/predicted_objects_multiplexer.launch.xml">
+    <arg name="predicted_objects_multiplexer_param_path" value="$(var predicted_objects_multiplexer_param_path)"/>
+  </include>
 </launch>

@@ -222,7 +222,7 @@
       <remap from="~/input/traffic_signals" to="$(var input_traffic_light_topic_name)"/>
       <remap from="~/input/virtual_traffic_light_states" to="$(var input_virtual_traffic_light_topic_name)"/>
       <remap from="~/input/occupancy_grid" to="/perception/occupancy_grid_map/map"/>
-      <remap from="~/output/path" to="path"/>
+      <remap from="~/output/path" to="output/path"/>
       <remap from="~/output/stop_reasons" to="/planning/scenario_planning/status/stop_reasons"/>
       <remap from="~/output/infrastructure_commands" to="/planning/scenario_planning/status/infrastructure_commands"/>
       <remap from="~/output/traffic_signal" to="debug/traffic_signal"/>
@@ -287,5 +287,12 @@
         <extra_arg name="use_intra_process_comms" value="false"/>
       </composable_node>
     </load_composable_node>
+  </group>
+
+  <!-- Path multiplexer for remote operation -->
+  <group>
+    <include file="$(find-pkg-share autoware_remote_interfaces)/launch/path_multiplexer.launch.xml">
+      <arg name="path_multiplexer_param_path" value="$(find-pkg-share autoware_launch)/config/planning/scenario_planning/common/path_multiplexer/path_multiplexer.param.yaml"/>
+    </include>
   </group>
 </launch>

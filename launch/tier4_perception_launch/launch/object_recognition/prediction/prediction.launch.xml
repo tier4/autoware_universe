@@ -4,9 +4,9 @@
   <arg name="input/objects" default="/perception/object_recognition/tracking/objects"/>
 
   <group if="$(var use_vector_map)">
-    <set_remap from="objects" to="/perception/object_recognition/objects"/>
+    <set_remap from="objects" to="/perception/object_recognition/prediction/objects"/>
     <include file="$(find-pkg-share autoware_map_based_prediction)/launch/map_based_prediction.launch.xml">
-      <arg name="output_topic" value="/perception/object_recognition/objects"/>
+      <arg name="output_topic" value="/perception/object_recognition/prediction/objects"/>
       <arg name="input_topic" value="$(var input/objects)"/>
       <arg name="param_path" value="$(var object_recognition_prediction_map_based_prediction_param_path)"/>
     </include>
@@ -14,4 +14,9 @@
   <group unless="$(var use_vector_map)">
     <!-- Not support without vector map -->
   </group>
+
+  <!-- multiplexer for remote operation -->
+  <include file="$(find-pkg-share autoware_remote_interfaces)/launch/predicted_objects_multiplexer.launch.xml">
+    <arg name="predicted_objects_multiplexer_param_path" value="$(var predicted_objects_multiplexer_param_path)"/>
+  </include>
 </launch>

@@ -34,7 +34,7 @@
     <group>
       <include file="$(find-pkg-share autoware_planning_validator)/launch/planning_validator.launch.xml">
         <arg name="input_trajectory" value="/planning/scenario_planning/velocity_smoother/trajectory"/>
-        <arg name="output_trajectory" value="/planning/scenario_planning/trajectory"/>
+        <arg name="output_trajectory" value="/planning/scenario_planning/planning_validator/trajectory"/>
         <arg name="planning_validator_param_path" value="$(var planning_validator_param_path)"/>
       </include>
     </group>
@@ -47,6 +47,13 @@
     <!-- mission remaining distance and time calculator -->
     <group>
       <include file="$(find-pkg-share autoware_remaining_distance_time_calculator)/launch/remaining_distance_time_calculator.launch.xml"/>
+    </group>
+
+    <!-- trajectory multiplexer -->
+    <group>
+      <include file="$(find-pkg-share autoware_remote_interfaces)/launch/trajectory_multiplexer.launch.xml">
+        <arg name="trajectory_multiplexer_param_path" value="$(find-pkg-share autoware_remote_interfaces)/config/trajectory_multiplexer.param.yaml"/>
+      </include>
     </group>
   </group>
 </launch>

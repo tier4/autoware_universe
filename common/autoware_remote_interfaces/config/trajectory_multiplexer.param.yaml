@@ -8,5 +8,5 @@
         - "AUTO"
         - "REMOTE"
       topic_type: "autoware_planning_msgs/msg/Trajectory"
-      output_topic: "/planning/trajectory"
+      output_topic: "/planning/scenario_planning/trajectory"
       select_input_service: "trajectory_multiplexer/select_input"
