@@ -173,6 +173,23 @@ private:
 
 using FilterManagerMap = std::map<std::string, FilterManager>;
 
+/** Selects avoidance targets from predicted objects using per-object Bayesian filters. */
+class ObjectSelector
+{
+public:
+  /**
+   * @brief Detect avoidance targets among predicted objects.
+   * @details Updates per-object Bayesian filters, prunes stale entries, selects target objects, and
+   *          removes objects filtered out by longitudinal and lateral distance.
+   */
+  [[nodiscard]] PredictedObjects get_avoidance_targets(
+    const rclcpp::Time & current_time, const PredictedObjects & objects,
+    const Trajectory & trajectory, const std::optional<DrivableAreaResult> & drivable_area);
+
+private:
+  FilterManagerMap object_filters_;
+};
+
 /**
  * @brief Check whether the object footprint lies beyond the trajectory end in arc-length.
  * @param trajectory Reference trajectory.
@@ -209,22 +226,6 @@ using FilterManagerMap = std::map<std::string, FilterManager>;
 [[nodiscard]] bool should_filter_out_by_lateral_distance(
   const DrivableAreaResult & drivable_area, const Trajectory & trajectory,
   const PredictedObject & object, const LateralDistanceFilterParams & params = {});
-
-/**
- * @brief Detect avoidance targets among predicted objects.
- * @details Updates per-object Bayesian filters, prunes stale entries, selects target objects, and
- *          removes objects filtered out by longitudinal and lateral distance.
- * @param current_time Current time stamp.
- * @param objects Incoming predicted objects.
- * @param trajectory Reference trajectory.
- * @param object_filters Per-object filter state (updated in place).
- * @param drivable_area Cached drivable area used for lateral filtering (optional).
- * @return Predicted objects considered avoidance targets.
- */
-[[nodiscard]] PredictedObjects get_avoidance_targets(
-  const rclcpp::Time & current_time, const PredictedObjects & objects,
-  const Trajectory & trajectory, FilterManagerMap & object_filters,
-  const std::optional<DrivableAreaResult> & drivable_area);
 
 }  // namespace autoware::avoidance_target_detector
 

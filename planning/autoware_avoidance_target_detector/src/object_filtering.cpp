@@ -628,35 +628,25 @@ void FilterManager::observe_and_update_all(
   is_target_stamped_.second = is_target_now;
 }
 
-PredictedObjects get_avoidance_targets(
+PredictedObjects ObjectSelector::get_avoidance_targets(
   const rclcpp::Time & current_time, const PredictedObjects & objects,
-  const Trajectory & trajectory, FilterManagerMap & object_filters,
-  const std::optional<DrivableAreaResult> & drivable_area)
+  const Trajectory & trajectory, const std::optional<DrivableAreaResult> & drivable_area)
 {
   for (const auto & object : objects.objects) {
     const auto object_id_str = autoware_utils_uuid::to_hex_string(object.object_id);
-    if (object_filters.find(object_id_str) == object_filters.end()) {
-      object_filters.emplace(object_id_str, FilterManager(object, current_time));
-    }
+    const auto it = object_filters_.try_emplace(object_id_str, object, current_time).first;
+    it->second.observe_and_update_all(current_time, object, trajectory);
   }
 
-  for (const auto & object : objects.objects) {
-    const auto object_id_str = autoware_utils_uuid::to_hex_string(object.object_id);
-    const auto it = object_filters.find(object_id_str);
-    if (it != object_filters.end()) {
-      it->second.observe_and_update_all(current_time, object, trajectory);
-    }
-  }
-
-  for (auto it = object_filters.begin(); it != object_filters.end();) {
+  for (auto it = object_filters_.begin(); it != object_filters_.end();) {
     if (it->second.is_stale(current_time)) {
-      it = object_filters.erase(it);
+      it = object_filters_.erase(it);
     } else {
       ++it;
     }
   }
 
-  for (auto & [object_id_str, filter_manager] : object_filters) {
+  for (auto & [object_id_str, filter_manager] : object_filters_) {
     if (filter_manager.get_debug_log().empty()) {
       continue;
     }
@@ -671,8 +661,8 @@ PredictedObjects get_avoidance_targets(
     std::remove_if(
       avoidance_targets.objects.begin(), avoidance_targets.objects.end(),
       [&](const PredictedObject & object) {
-        const auto it = object_filters.find(autoware_utils_uuid::to_hex_string(object.object_id));
-        return it == object_filters.end() || !it->second.is_target();
+        const auto it = object_filters_.find(autoware_utils_uuid::to_hex_string(object.object_id));
+        return it == object_filters_.end() || !it->second.is_target();
       }),
     avoidance_targets.objects.end());
 

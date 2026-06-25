@@ -356,21 +356,44 @@ std::vector<int64_t> collect_sibling_primitives(
 lanelet::LineString2d remove_const(const lanelet::ConstLineString2d & line_string)
 {
   lanelet::LineString2d linestring(lanelet::utils::removeConst(line_string.constData()));
-  return linestring;
+  return line_string.inverted() ? linestring.invert() : linestring;
+}
+
+void add_bounds_linestring_to_map(
+  lanelet::LaneletMap & map, const lanelet::LineString2d & linestring_2d, const std::string & type)
+{
+  if (linestring_2d.empty()) {
+    return;
+  }
+  lanelet::LineString3d linestring = lanelet::utils::to3D(linestring_2d);
+  linestring.setAttribute(lanelet::AttributeName::Type, type);
+  map.add(linestring);
+}
+
+lanelet::LaneletMap build_debug_map(lanelet::LaneletMap & route_map)
+{
+  lanelet::LaneletMap debug_map;
+  for (const auto & lanelet : route_map.laneletLayer) {
+    debug_map.add(lanelet);
+  }
+  for (const auto & linestring : route_map.lineStringLayer) {
+    debug_map.add(linestring);
+  }
+  return debug_map;
 }
 }  // namespace
 
-EnhancedLaneletSegments::EnhancedLaneletSegments(const LaneletRoute & route) : route_{route}
+ExtendedLaneletSegments::ExtendedLaneletSegments(const LaneletRoute & route) : route_{route}
 {
   segments_.reserve(route.segments.size());
   for (const auto & segment : route.segments) {
-    Segment enhanced_segment;
-    enhanced_segment.preferred_primitive = segment.preferred_primitive.id;
-    segments_.push_back(std::move(enhanced_segment));
+    Segment extended_segment;
+    extended_segment.preferred_primitive = segment.preferred_primitive.id;
+    segments_.push_back(std::move(extended_segment));
   }
 }
 
-void EnhancedLaneletSegments::build(
+void ExtendedLaneletSegments::build(
   const lanelet::LaneletMap & map, const lanelet::routing::RoutingGraph & routing_graph)
 {
   segments_.clear();
@@ -460,28 +483,28 @@ void EnhancedLaneletSegments::build(
   }
 }
 
-EnhancedRouteHandler::EnhancedRouteHandler(const LaneletMapBin & map, const LaneletRoute & route)
+ExtendedRouteHandler::ExtendedRouteHandler(const LaneletMapBin & map, const LaneletRoute & route)
 : route_{route},
   route_map_{std::make_shared<lanelet::LaneletMap>()},
-  enhanced_lanelet_segments_{route},
+  extended_lanelet_segments_{route},
   original_route_handler_{std::make_shared<RouteHandler>()}
 {
   original_route_handler_->setMap(map);
   original_route_handler_->setRoute(route);
 }
 
-void EnhancedRouteHandler::create_map()
+void ExtendedRouteHandler::create_map()
 {
   RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Start create_map()");
   const auto map = original_route_handler_->getLaneletMapPtr();
-  enhanced_routing_graph_ = traffic_rules::create_goal_purpose_routing_graph(*map);
+  extended_routing_graph_ = traffic_rules::create_goal_purpose_routing_graph(*map);
   RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Built routing graph");
-  enhanced_lanelet_segments_.build(*map, *enhanced_routing_graph_);
+  extended_lanelet_segments_.build(*map, *extended_routing_graph_);
 
   RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Built segments");
 
   std::set<lanelet::Id> lanelet_ids;
-  for (const auto & segment : enhanced_lanelet_segments_.segments()) {
+  for (const auto & segment : extended_lanelet_segments_.segments()) {
     for (const auto id : segment.siblings_included_primitives) {
       lanelet_ids.insert(id);
     }
@@ -528,9 +551,20 @@ void EnhancedRouteHandler::create_map()
   }
 
   RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Built route map");
+
+  std::vector<const std::vector<int64_t> *> original_primitive_lists;
+  std::vector<const std::vector<int64_t> *> extended_primitive_lists;
+  original_primitive_lists.reserve(extended_lanelet_segments_.segments().size());
+  extended_primitive_lists.reserve(extended_lanelet_segments_.segments().size());
+  for (const auto & segment : extended_lanelet_segments_.segments()) {
+    original_primitive_lists.push_back(&segment.original_ordered_primitives);
+    extended_primitive_lists.push_back(&segment.siblings_included_primitives);
+  }
+  original_route_bounds_ = build_route_bounds(original_primitive_lists);
+  extended_route_bounds_ = build_route_bounds(extended_primitive_lists);
 }
 
-void EnhancedRouteHandler::export_debug_map() const
+void ExtendedRouteHandler::export_debug_map() const
 {
   const auto package_share_directory =
     ament_index_cpp::get_package_share_directory("autoware_avoidance_target_detector");
@@ -542,13 +576,23 @@ void EnhancedRouteHandler::export_debug_map() const
   lanelet::projection::MGRSProjector projector(origin);
   projector.setMGRSCode(lanelet::GPSPoint{origin_lat, origin_lon, 0.0});
 
-  lanelet::write(debug_map_path_str, *route_map_, projector);
+  auto debug_map = build_debug_map(*route_map_);
+
+  const auto original_bounds = get_original_route_bounds();
+  add_bounds_linestring_to_map(debug_map, original_bounds.first, "original_route");
+  add_bounds_linestring_to_map(debug_map, original_bounds.second, "original_route");
+
+  const auto extended_bounds = get_extended_route_bounds();
+  add_bounds_linestring_to_map(debug_map, extended_bounds.first, "extended_route");
+  add_bounds_linestring_to_map(debug_map, extended_bounds.second, "extended_route");
+
+  lanelet::write(debug_map_path_str, debug_map, projector);
   RCLCPP_INFO(
     rclcpp::get_logger("autoware_avoidance_target_detector"), "Exported debug map to %s",
     debug_map_path_str.c_str());
 }
 
-std::vector<lanelet::LineString2d> EnhancedRouteHandler::get_road_borders() const
+std::vector<lanelet::LineString2d> ExtendedRouteHandler::get_road_borders() const
 {
   std::vector<lanelet::LineString2d> road_borders;
   for (const auto & ls : route_map_->lineStringLayer) {
@@ -562,7 +606,7 @@ std::vector<lanelet::LineString2d> EnhancedRouteHandler::get_road_borders() cons
 }
 
 std::pair<lanelet::LineString2d, lanelet::LineString2d>
-EnhancedRouteHandler::get_primitive_set_bounds(const std::vector<int64_t> & primitives) const
+ExtendedRouteHandler::get_primitive_set_bounds(const std::vector<int64_t> & primitives) const
 {
   if (
     !exists_in_map(*route_map_, primitives.front()) ||
@@ -577,42 +621,15 @@ EnhancedRouteHandler::get_primitive_set_bounds(const std::vector<int64_t> & prim
   return std::make_pair(start_left_bound, end_right_bound);
 }
 
-std::pair<lanelet::LineString2d, lanelet::LineString2d>
-EnhancedRouteHandler::get_original_route_bounds() const
+std::pair<lanelet::LineString2d, lanelet::LineString2d> ExtendedRouteHandler::build_route_bounds(
+  const std::vector<const std::vector<int64_t> *> & segment_primitives) const
 {
   std::vector<lanelet::LineString2d> left_bounds;
   std::vector<lanelet::LineString2d> right_bounds;
-  for (const auto & segment : enhanced_lanelet_segments_.segments()) {
-    const auto bounds = get_primitive_set_bounds(segment.original_ordered_primitives);
-    left_bounds.push_back(bounds.first);
-    right_bounds.push_back(bounds.second);
-  }
-  const auto left_compound_bound = lanelet::CompoundLineString2d(left_bounds);
-  const auto right_compound_bound = lanelet::CompoundLineString2d(right_bounds);
-
-  lanelet::LineString2d left_bound(lanelet::utils::getId());
-  lanelet::LineString2d right_bound(lanelet::utils::getId());
-  left_bound.reserve(left_compound_bound.size());
-  right_bound.reserve(right_compound_bound.size());
-  for (const auto & point : left_compound_bound) {
-    left_bound.push_back(
-      lanelet::Point2d(point.id(), {point.basicPoint().x(), point.basicPoint().y(), 0.0}));
-  }
-  for (const auto & point : right_compound_bound) {
-    right_bound.push_back(
-      lanelet::Point2d(point.id(), {point.basicPoint().x(), point.basicPoint().y(), 0.0}));
-  }
-
-  return std::make_pair(left_bound, right_bound);
-}
-
-std::pair<lanelet::LineString2d, lanelet::LineString2d>
-EnhancedRouteHandler::get_enhanced_route_bounds() const
-{
-  std::vector<lanelet::LineString2d> left_bounds;
-  std::vector<lanelet::LineString2d> right_bounds;
-  for (const auto & segment : enhanced_lanelet_segments_.segments()) {
-    const auto bounds = get_primitive_set_bounds(segment.siblings_included_primitives);
+  left_bounds.reserve(segment_primitives.size());
+  right_bounds.reserve(segment_primitives.size());
+  for (const auto * primitives : segment_primitives) {
+    const auto bounds = get_primitive_set_bounds(*primitives);
     left_bounds.push_back(bounds.first);
     right_bounds.push_back(bounds.second);
   }
