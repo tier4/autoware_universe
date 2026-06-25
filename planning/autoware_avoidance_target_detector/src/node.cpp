@@ -33,7 +33,7 @@ AvoidanceTargetDetectorNode::AvoidanceTargetDetectorNode(const rclcpp::NodeOptio
   pub_drivable_area_path_{create_publisher<Path>("~/output/drivable_area", 1)},
   vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()}
 {
-  declare_parameter<bool>("use_enhanced_route_bounds", false);
+  declare_parameter<bool>("use_extended_route_bounds", true);
 }
 
 /**
@@ -63,13 +63,13 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
   }
 
   if (map_or_route_updated && route_ && map_bin_) {
-    enhanced_route_handler_ = std::make_shared<EnhancedRouteHandler>(*map_bin_, *route_);
-    enhanced_route_handler_->create_map();
-    enhanced_route_handler_->export_debug_map();
+    extended_route_handler_ = std::make_shared<ExtendedRouteHandler>(*map_bin_, *route_);
+    extended_route_handler_->create_map();
+    extended_route_handler_->export_debug_map();
     cached_drivable_area_.reset();
   }
 
-  if (!route_ || !enhanced_route_handler_) {
+  if (!route_ || !extended_route_handler_) {
     return;
   }
 
@@ -78,28 +78,28 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
   trajectory_ = sub_trajectory_.take_data();
   const Trajectory trajectory_msg = trajectory_ ? *trajectory_ : Trajectory{};
 
-  if (!trajectory_ || !enhanced_route_handler_->getOriginalRouteHandler()->isHandlerReady()) {
+  if (!trajectory_ || !extended_route_handler_->getOriginalRouteHandler()->isHandlerReady()) {
     RCLCPP_WARN(get_logger(), "Data is not ready");
     return;
   }
 
-  if (
+  /*if (
     auto new_drivable_area = create_drivable_area(
-      *trajectory_, vehicle_info_, *route_, *enhanced_route_handler_->getOriginalRouteHandler(),
-      *enhanced_route_handler_->getEnhancedRoutingGraph())) {
+      *trajectory_, vehicle_info_, *route_, *extended_route_handler_->getOriginalRouteHandler(),
+      *extended_route_handler_->getExtendedRoutingGraph())) {
     cached_drivable_area_ = std::move(new_drivable_area);
-  }
-  // const auto use_enhanced_bounds = get_parameter("use_enhanced_route_bounds").as_bool();
-  // const auto route_bounds = use_enhanced_bounds
-  //                             ? enhanced_route_handler_->get_enhanced_route_bounds()
-  //                              : enhanced_route_handler_->get_original_route_bounds();
-  // cached_drivable_area_ = to_drivable_area_result(route_bounds, trajectory_->header);
+  }*/
+  const auto use_extended_bounds = get_parameter("use_extended_route_bounds").as_bool();
+  const auto & route_bounds = use_extended_bounds
+                                ? extended_route_handler_->get_extended_route_bounds()
+                                : extended_route_handler_->get_original_route_bounds();
+  cached_drivable_area_ = to_drivable_area_result(route_bounds, trajectory_->header);
   if (cached_drivable_area_) {
     pub_drivable_area_path_->publish(to_path_msg(*cached_drivable_area_, *trajectory_));
   }
 
-  const auto avoidance_targets = get_avoidance_targets(
-    current_time, *msg, trajectory_msg, object_filters_, cached_drivable_area_);
+  const auto avoidance_targets = object_selector_.get_avoidance_targets(
+    current_time, *msg, trajectory_msg, cached_drivable_area_);
 
   pub_avoidance_targets_->publish(avoidance_targets);
 }

@@ -39,7 +39,6 @@
 namespace autoware::avoidance_target_detector
 {
 
-using autoware::route_handler::RouteHandler;
 using autoware::vehicle_info_utils::VehicleInfo;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
@@ -77,10 +76,10 @@ private:
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_avoidance_targets_;
   rclcpp::Publisher<Path>::SharedPtr pub_drivable_area_path_;
 
-  std::shared_ptr<EnhancedRouteHandler> enhanced_route_handler_;
+  std::shared_ptr<ExtendedRouteHandler> extended_route_handler_;
   VehicleInfo vehicle_info_;
 
-  FilterManagerMap object_filters_;
+  ObjectSelector object_selector_;
 
   LaneletMapBin::ConstSharedPtr map_bin_;
   Trajectory::ConstSharedPtr trajectory_;

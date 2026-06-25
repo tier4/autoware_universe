@@ -79,10 +79,10 @@ std::optional<lanelet::ConstLanelet> get_right_lanelet(
 
 }  // namespace traffic_rules
 
-class EnhancedLaneletSegments
+class ExtendedLaneletSegments
 {
 public:
-  explicit EnhancedLaneletSegments(const LaneletRoute & route);
+  explicit ExtendedLaneletSegments(const LaneletRoute & route);
 
   struct Segment
   {
@@ -102,12 +102,12 @@ private:
   std::vector<Segment> segments_;
 };
 
-class EnhancedRouteHandler
+class ExtendedRouteHandler
 {
 public:
-  EnhancedRouteHandler(const LaneletMapBin & map, const LaneletRoute & route);
+  ExtendedRouteHandler(const LaneletMapBin & map, const LaneletRoute & route);
 
-  /** Build the enhanced route map and routing graph from the original map and route. */
+  /** Build the extended route map and routing graph from the original map and route. */
   void create_map();
 
   /** Write the route map to the debug OSM file. Temporary debug code. Must be removed before
@@ -119,9 +119,9 @@ public:
     return original_route_handler_;
   }
 
-  [[nodiscard]] lanelet::routing::RoutingGraphConstPtr getEnhancedRoutingGraph() const
+  [[nodiscard]] lanelet::routing::RoutingGraphConstPtr getExtendedRoutingGraph() const
   {
-    return enhanced_routing_graph_;
+    return extended_routing_graph_;
   }
 
   [[nodiscard]] lanelet::LaneletMapPtr getRouteMap() const { return route_map_; }
@@ -131,18 +131,29 @@ public:
   [[nodiscard]] std::pair<lanelet::LineString2d, lanelet::LineString2d> get_primitive_set_bounds(
     const std::vector<int64_t> & primitives) const;
 
-  [[nodiscard]] std::pair<lanelet::LineString2d, lanelet::LineString2d> get_original_route_bounds()
-    const;
+  [[nodiscard]] const std::pair<lanelet::LineString2d, lanelet::LineString2d> &
+  get_original_route_bounds() const
+  {
+    return original_route_bounds_;
+  }
 
-  [[nodiscard]] std::pair<lanelet::LineString2d, lanelet::LineString2d> get_enhanced_route_bounds()
-    const;
+  [[nodiscard]] const std::pair<lanelet::LineString2d, lanelet::LineString2d> &
+  get_extended_route_bounds() const
+  {
+    return extended_route_bounds_;
+  }
 
 private:
+  [[nodiscard]] std::pair<lanelet::LineString2d, lanelet::LineString2d> build_route_bounds(
+    const std::vector<const std::vector<int64_t> *> & segment_primitives) const;
+
   LaneletRoute route_;
   lanelet::LaneletMapPtr route_map_;
-  EnhancedLaneletSegments enhanced_lanelet_segments_;
-  lanelet::routing::RoutingGraphConstPtr enhanced_routing_graph_;
+  ExtendedLaneletSegments extended_lanelet_segments_;
+  lanelet::routing::RoutingGraphConstPtr extended_routing_graph_;
   std::shared_ptr<RouteHandler> original_route_handler_;
+  std::pair<lanelet::LineString2d, lanelet::LineString2d> original_route_bounds_;
+  std::pair<lanelet::LineString2d, lanelet::LineString2d> extended_route_bounds_;
 };
 
 }  // namespace autoware::avoidance_target_detector
