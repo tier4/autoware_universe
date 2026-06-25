@@ -330,8 +330,7 @@ TrafficSignalArray CrosswalkTrafficLightEstimator::estimate(
   // we need the full traffic_light_id_map before calculating overrides from map
   for (const auto & traffic_signal : msg.traffic_light_groups) {
     update_overrides_from_map(
-      traffic_signal_overrides, traffic_signal.traffic_light_group_id,
-      traffic_light_id_map);
+      traffic_signal_overrides, traffic_signal.traffic_light_group_id, traffic_light_id_map);
   }
 
   // Collect vehicle traffic light IDs with known colors (from received and last detected signals)
@@ -368,7 +367,7 @@ TrafficSignalArray CrosswalkTrafficLightEstimator::estimate(
   }
 
   update_intersection_overrides_from_map(traffic_signal_overrides, output);
-  
+
   remove_duplicate_ids(output);
 
   update_last_detected_signal(traffic_light_id_map, current_time);
