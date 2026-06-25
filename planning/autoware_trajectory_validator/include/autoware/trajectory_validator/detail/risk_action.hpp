@@ -19,6 +19,8 @@
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
+#include <string>
+
 namespace autoware::trajectory_validator
 {
 

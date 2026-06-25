@@ -16,9 +16,8 @@
 
 #include "autoware/trajectory_validator/detail/trajectory_validator.hpp"
 
-#include <autoware_trajectory_validator/autoware_trajectory_validator_diagnostic_param.hpp>
-
 #include <autoware/lanelet2_utils/conversion.hpp>
+#include <autoware_trajectory_validator/autoware_trajectory_validator_diagnostic_param.hpp>
 #include <autoware_utils_system/stop_watch.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
@@ -88,8 +87,7 @@ TrajectoryValidatorWrapper::TrajectoryValidatorWrapper(
   }
 
   trajectory_validator_diagnostic::ParamListener diag_param_listener(node_parameters_interface);
-  const auto filter_status_map =
-    make_filter_status_map(diag_param_listener.get_params().bindings);
+  const auto filter_status_map = make_filter_status_map(diag_param_listener.get_params().bindings);
   const std::string no_candidate_name = "trajectory_validator_no_candidate_trajectory";
   auto diag_by_name = build_diagnostic_interface_map(node, filter_status_map, no_candidate_name);
 

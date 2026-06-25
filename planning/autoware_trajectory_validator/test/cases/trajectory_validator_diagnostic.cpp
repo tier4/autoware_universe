@@ -18,8 +18,6 @@
 #include <autoware_trajectory_validator/msg/validation_report.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <unordered_set>
-
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 
 #include <gtest/gtest.h>
@@ -28,6 +26,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -91,7 +90,8 @@ const DiagnosticStatus * find_status(const DiagnosticArray & arr, const std::str
   return nullptr;
 }
 
-// Convenience factory: builds the DiagnosticsInterface map and constructs TrajectoryValidatorDiagnostic.
+// Convenience factory: builds the DiagnosticsInterface map and constructs
+// TrajectoryValidatorDiagnostic.
 TrajectoryValidatorDiagnostic make_diag(
   rclcpp::Node & node, FilterStatusMap filter_map, std::string no_candidate_name,
   const std::unordered_set<std::string> & active_filter_names = {})
@@ -389,7 +389,8 @@ protected:
   void TearDown() override { rclcpp::shutdown(); }
 };
 
-// Test 11: Shadow validator at ERROR on best trajectory; active set does not include it -> status OK
+// Test 11: Shadow validator at ERROR on best trajectory; active set does not include it -> status
+// OK
 TEST_F(ShadowModeTest, ShadowErrorOnBestDoesNotFireStatus)
 {
   DiagHarness h("t11_node");

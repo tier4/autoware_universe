@@ -112,7 +112,8 @@ public:
   TrajectoryValidatorDiagnostic(
     FilterStatusMap filter_status_map, std::string no_candidate_name,
     const std::unordered_set<std::string> & active_filter_names,
-    std::unordered_map<std::string, std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface>>
+    std::unordered_map<
+      std::string, std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface>>
       diag_by_name);
 
   /**
