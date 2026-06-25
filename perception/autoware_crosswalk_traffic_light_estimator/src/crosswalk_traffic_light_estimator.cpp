@@ -288,8 +288,8 @@ std::vector<lanelet::Id> CrosswalkTrafficLightEstimator::find_unregistered_traff
   return unregistered_ids;
 }
 
-void CrosswalkTrafficLightEstimator::update_crosswalk_overrides_from_map(
-  std::unordered_map<lanelet::Id, uint8_t> & crosswalk_traffic_signal_overrides,
+void CrosswalkTrafficLightEstimator::update_overrides_from_map(
+  std::unordered_map<lanelet::Id, uint8_t> & traffic_signal_overrides,
   lanelet::Id traffic_light_group_id, const TrafficLightIdMap & traffic_light_id_map)
 {
   const auto traffic_light_it =
@@ -310,7 +310,7 @@ void CrosswalkTrafficLightEstimator::update_crosswalk_overrides_from_map(
       continue;
     }
     for (const auto id : parse_ids(attribute.second.value())) {
-      crosswalk_traffic_signal_overrides[id] = to_color;
+      traffic_signal_overrides[id] = to_color;
     }
   }
 }
@@ -322,15 +322,15 @@ TrafficSignalArray CrosswalkTrafficLightEstimator::estimate(
 
   TrafficLightIdMap traffic_light_id_map;
 
-  std::unordered_map<lanelet::Id, uint8_t> crosswalk_traffic_signal_overrides;
+  std::unordered_map<lanelet::Id, uint8_t> traffic_signal_overrides;
   for (const auto & traffic_signal : msg.traffic_light_groups) {
     traffic_light_id_map[traffic_signal.traffic_light_group_id] =
       std::pair<TrafficSignal, rclcpp::Time>(traffic_signal, current_time);
   }
   // we need the full traffic_light_id_map before calculating overrides from map
   for (const auto & traffic_signal : msg.traffic_light_groups) {
-    update_crosswalk_overrides_from_map(
-      crosswalk_traffic_signal_overrides, traffic_signal.traffic_light_group_id,
+    update_overrides_from_map(
+      traffic_signal_overrides, traffic_signal.traffic_light_group_id,
       traffic_light_id_map);
   }
 
@@ -364,11 +364,11 @@ TrafficSignalArray CrosswalkTrafficLightEstimator::estimate(
 
     const auto crosswalk_tl_color = estimate_crosswalk_traffic_signal(crosswalk, non_red_lanelets);
     set_crosswalk_traffic_signal(
-      crosswalk, crosswalk_tl_color, msg, output, crosswalk_traffic_signal_overrides, current_time);
+      crosswalk, crosswalk_tl_color, msg, output, traffic_signal_overrides, current_time);
   }
 
-  update_intersection_overrides_from_map(crosswalk_traffic_signal_overrides, output);
-
+  update_intersection_overrides_from_map(traffic_signal_overrides, output);
+  
   remove_duplicate_ids(output);
 
   update_last_detected_signal(traffic_light_id_map, current_time);
