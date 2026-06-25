@@ -147,6 +147,8 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
       transformed_object.kinematics.pose_with_covariance.pose = pose_in_map.pose;
     }
 
+    // TODO(badai-nguyen): This is adhoc change to adapt with current planning specifications of old perception objects classes
+    // revert this change after new ANIMAL and HAZARD handling is implemented in planning side
     auto label_ =
       autoware::object_recognition_utils::getHighestProbLabel(transformed_object.classification);
 
