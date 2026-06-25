@@ -220,30 +220,112 @@ std::vector<double> get_s_samples_near_object(
 }
 
 /**
- * @brief Compute signed lateral d-coordinate at a given trajectory s.
- * @param trajectory Interpolated reference trajectory.
- * @param s Arc length on the trajectory [m].
- * @param object_point Object reference point.
- * @return Signed lateral deviation [m].
+ * @brief Get rear-left and rear-right corners of the object footprint.
+ * @param object Predicted object.
+ * @return Rear edge corner points in map frame.
  */
-double calc_lateral_d_at_s(
+std::pair<geometry_msgs::msg::Point, geometry_msgs::msg::Point> get_object_rear_edge_points(
+  const PredictedObject & object)
+{
+  if (object.shape.type != autoware_perception_msgs::msg::Shape::POLYGON) {
+    const auto reference_point = get_object_reference_point(object);
+    return {reference_point, reference_point};
+  }
+
+  const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
+  const auto footprint = autoware_utils_geometry::to_polygon2d(object);
+
+  if (footprint.outer().empty()) {
+    const auto reference_point = get_object_reference_point(object);
+    return {reference_point, reference_point};
+  }
+
+  double rear_longitudinal = std::numeric_limits<double>::max();
+  for (const auto & footprint_point : footprint.outer()) {
+    const auto point =
+      autoware_utils_geometry::create_point(footprint_point.x(), footprint_point.y(), 0.0);
+    rear_longitudinal = std::min(
+      rear_longitudinal, autoware_utils_geometry::calc_longitudinal_deviation(object_pose, point));
+  }
+
+  constexpr double k_rear_edge_tolerance_m = 0.01;
+  geometry_msgs::msg::Point rear_left;
+  geometry_msgs::msg::Point rear_right;
+  double rear_left_lateral = std::numeric_limits<double>::lowest();
+  double rear_right_lateral = std::numeric_limits<double>::max();
+  bool has_rear_left = false;
+  bool has_rear_right = false;
+
+  for (const auto & footprint_point : footprint.outer()) {
+    const auto point =
+      autoware_utils_geometry::create_point(footprint_point.x(), footprint_point.y(), 0.0);
+    const double longitudinal =
+      autoware_utils_geometry::calc_longitudinal_deviation(object_pose, point);
+    if (rear_longitudinal + k_rear_edge_tolerance_m < longitudinal) {
+      continue;
+    }
+
+    const double lateral = autoware_utils_geometry::calc_lateral_deviation(object_pose, point);
+    if (lateral > rear_left_lateral) {
+      rear_left_lateral = lateral;
+      rear_left = point;
+      has_rear_left = true;
+    }
+    if (lateral < rear_right_lateral) {
+      rear_right_lateral = lateral;
+      rear_right = point;
+      has_rear_right = true;
+    }
+  }
+
+  if (!has_rear_left || !has_rear_right) {
+    const auto reference_point = get_object_reference_point(object);
+    return {reference_point, reference_point};
+  }
+
+  return {rear_left, rear_right};
+}
+
+/**
+ * @brief Compute |d| at a given trajectory s from the object rear edge.
+ * @details When the rear edge straddles the trajectory (d_rear_left > 0 and d_rear_right < 0),
+ *          |d| is 0. Otherwise |d| is taken from the rear corner closest to the trajectory.
+ */
+double calc_rear_edge_d_magnitude_at_s(
   const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const double s,
-  const geometry_msgs::msg::Point & object_point)
+  const geometry_msgs::msg::Point & rear_left, const geometry_msgs::msg::Point & rear_right)
 {
   const auto trajectory_point = trajectory.compute(s);
-  return autoware_utils_geometry::calc_lateral_deviation(trajectory_point.pose, object_point);
+  const double d_rear_left =
+    autoware_utils_geometry::calc_lateral_deviation(trajectory_point.pose, rear_left);
+  const double d_rear_right =
+    autoware_utils_geometry::calc_lateral_deviation(trajectory_point.pose, rear_right);
+
+  if (d_rear_left > 0.0 && d_rear_right < 0.0) {
+    return 0.0;
+  }
+  if (d_rear_left > 0.0 && d_rear_right > 0.0) {
+    return std::abs(d_rear_right);
+  }
+  if (d_rear_left < 0.0 && d_rear_right < 0.0) {
+    return std::abs(d_rear_left);
+  }
+
+  return std::max(std::abs(d_rear_left), std::abs(d_rear_right));
 }
 
 /**
  * @brief Check whether |d(k)| and |d(k) - d(k-1)| are consistently small over s samples.
  * @param trajectory Interpolated reference trajectory.
- * @param object_point Object reference point.
+ * @param rear_left Rear-left corner of the object footprint.
+ * @param rear_right Rear-right corner of the object footprint.
  * @param s_samples Arc-length samples to evaluate.
  * @return True if all magnitudes and consecutive deviations are below thresholds.
  */
 bool matches_small_d_pattern(
   const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
-  const geometry_msgs::msg::Point & object_point, const std::vector<double> & s_samples)
+  const geometry_msgs::msg::Point & rear_left, const geometry_msgs::msg::Point & rear_right,
+  const std::vector<double> & s_samples)
 {
   if (s_samples.size() < 2) {
     return false;
@@ -252,7 +334,7 @@ bool matches_small_d_pattern(
   std::vector<double> d_magnitudes;
   d_magnitudes.reserve(s_samples.size());
   for (const double s : s_samples) {
-    d_magnitudes.push_back(std::abs(calc_lateral_d_at_s(trajectory, s, object_point)));
+    d_magnitudes.push_back(calc_rear_edge_d_magnitude_at_s(trajectory, s, rear_left, rear_right));
   }
 
   for (const double d_magnitude : d_magnitudes) {
@@ -377,16 +459,17 @@ bool should_filter_out_on_trajectory_object(
     return false;
   }
 
-  const auto object_point = get_object_reference_point(object);
+  const auto [rear_left, rear_right] = get_object_rear_edge_points(object);
 
   if (is_beyond_trajectory_end(*built_trajectory, object)) {
     return matches_small_d_pattern(
-      *built_trajectory, object_point, get_last_m_s_samples(*built_trajectory));
+      *built_trajectory, rear_left, rear_right, get_last_m_s_samples(*built_trajectory));
   }
 
   if (is_within_trajectory_s_range(*built_trajectory, object)) {
     return matches_small_d_pattern(
-      *built_trajectory, object_point, get_s_samples_near_object(*built_trajectory, object));
+      *built_trajectory, rear_left, rear_right,
+      get_s_samples_near_object(*built_trajectory, object));
   }
 
   return false;
