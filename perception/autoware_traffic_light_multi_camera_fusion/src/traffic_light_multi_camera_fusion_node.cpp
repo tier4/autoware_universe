@@ -14,6 +14,8 @@
 
 #include "traffic_light_multi_camera_fusion_node.hpp"
 
+#include "conflict_rules.hpp"
+
 #include <autoware/lanelet2_utils/conversion.hpp>
 
 #include <functional>
@@ -42,6 +44,25 @@ MultiCameraFusionNode::MultiCameraFusionNode(const rclcpp::NodeOptions & node_op
     this->declare_parameter<bool>("signal_consistency_check.enable");
   fusion_config_.publish_partial_matched_signal =
     this->declare_parameter<bool>("signal_consistency_check.publish_partial_matched_signal");
+
+  // PR 2: per-element fusion is opt-in. When the mode is "per_element", the
+  // signal_consistency_check.* parameters above are ignored.
+  const std::string fusion_mode_str =
+    this->declare_parameter<std::string>("fusion_mode", "stateset");
+  if (fusion_mode_str == "per_element") {
+    fusion_config_.fusion_mode = FusionMode::PerElement;
+    fusion_config_.per_element_config.prior_log_odds = fusion_config_.prior_log_odds;
+    fusion_config_.per_element_config.on_threshold =
+      this->declare_parameter<double>("per_element.on_threshold", 0.0);
+    fusion_config_.per_element_config.confidence_gate =
+      this->declare_parameter<double>("per_element.confidence_gate", 0.0);
+    fusion_config_.per_element_config.strict_mode =
+      this->declare_parameter<bool>("per_element.strict_mode", false);
+    fusion_config_.per_element_config.rules = per_element::default_japan_rules();
+  } else if (fusion_mode_str != "stateset") {
+    RCLCPP_WARN_STREAM(
+      get_logger(), "Unknown fusion_mode '" << fusion_mode_str << "', falling back to 'stateset'.");
+  }
 
   fusion_ = MultiCameraFusion(fusion_config_);
 

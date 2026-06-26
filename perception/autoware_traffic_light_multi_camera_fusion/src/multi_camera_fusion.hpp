@@ -15,9 +15,12 @@
 #ifndef MULTI_CAMERA_FUSION_HPP_
 #define MULTI_CAMERA_FUSION_HPP_
 
+#include "per_element_fusion.hpp"
 #include "signal_validator.hpp"
 #include "traffic_light_multi_camera_fusion_process.hpp"
 #include "types.hpp"
+
+#include <builtin_interfaces/msg/time.hpp>
 
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
@@ -58,6 +61,14 @@ struct GroupFusionResult
   std::vector<ConflictInfo> conflicts;
 };
 
+enum class FusionMode {
+  // Legacy: accumulate Bayesian log-odds at the whole-StateKey level. Uses the
+  // signal_consistency_check + publish_partial_matched_signal flags below.
+  StateSet,
+  // Per-element Bayesian fusion. Uses per_element_config below.
+  PerElement,
+};
+
 struct MultiCameraFusionConfig
 {
   /*
@@ -73,6 +84,13 @@ struct MultiCameraFusionConfig
   bool use_signal_consistency_check{false};
   bool publish_partial_matched_signal{false};
   lanelet::LaneletMapPtr lanelet_map_ptr{nullptr};
+
+  // PR 2: per-element fusion path. When fusion_mode == PerElement, MultiCameraFusion::fuse()
+  // dispatches to the per_element implementation and ignores
+  // use_signal_consistency_check/publish_partial_matched_signal. Default mode is StateSet so
+  // existing behavior and tests are bit-exact.
+  FusionMode fusion_mode{FusionMode::StateSet};
+  per_element::Config per_element_config{};
 };
 
 struct MultiCameraFusionResult
@@ -104,6 +122,10 @@ public:
     const CamInfoType & cam_info, const RoiArrayType & rois, const SignalArrayType & signals);
 
 private:
+  // Per-element fusion dispatch. Stamp is the timestamp of the just-received camera frame and is
+  // used as the output message header.
+  MultiCameraFusionResult fuse_per_element(const builtin_interfaces::msg::Time & stamp);
+
   GroupFusionResult group_fusion(const std::map<IdType, utils::FusionRecord> & fused_record_map);
 
   /**

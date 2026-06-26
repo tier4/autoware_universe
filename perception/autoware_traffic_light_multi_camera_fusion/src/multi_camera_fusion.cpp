@@ -14,6 +14,8 @@
 
 #include "multi_camera_fusion.hpp"
 
+#include "per_element_fusion.hpp"
+
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <rclcpp/time.hpp>
 
@@ -169,6 +171,62 @@ std::vector<MultiCameraFusion::IdType> find_unmapped_traffic_light_ids(
   return unmapped_traffic_light_ids;
 }
 
+/**
+ * @brief Per-element variant: collects unique unmapped traffic light ids from a flat record list.
+ */
+std::vector<MultiCameraFusion::IdType> find_unmapped_traffic_light_ids_from_records(
+  const std::vector<utils::FusionRecord> & records,
+  const std::map<lanelet::Id, std::vector<lanelet::Id>> & traffic_light_id_to_regulatory_ele_id)
+{
+  std::set<MultiCameraFusion::IdType> unmapped_set;
+  for (const auto & record : records) {
+    const auto tl_id = record.roi.traffic_light_id;
+    if (
+      traffic_light_id_to_regulatory_ele_id.find(tl_id) ==
+      traffic_light_id_to_regulatory_ele_id.end()) {
+      unmapped_set.insert(tl_id);
+    }
+  }
+  return {unmapped_set.begin(), unmapped_set.end()};
+}
+
+/**
+ * @brief Per-element Stage 1: purge records older than message_lifespan and return every
+ * (record, roi, signal) triple that survives. Unlike the legacy multi_camera_fusion()
+ * free function, this does NOT dedupe to one record per traffic_light_id — all observations
+ * within the lifespan are kept so they can contribute as independent evidence in Stage 2.
+ */
+std::vector<utils::FusionRecord> collect_all_records(
+  std::multiset<utils::FusionRecordArr> & record_arr_set, double message_lifespan)
+{
+  std::vector<utils::FusionRecord> records;
+  if (record_arr_set.empty()) {
+    return records;
+  }
+
+  const rclcpp::Time newest_stamp(record_arr_set.rbegin()->header.stamp);
+  for (auto it = record_arr_set.begin(); it != record_arr_set.end();) {
+    if (
+      (newest_stamp - rclcpp::Time(it->header.stamp)) >
+      rclcpp::Duration::from_seconds(message_lifespan)) {
+      it = record_arr_set.erase(it);
+      continue;
+    }
+    const auto & record_arr = *it;
+    for (const auto & roi : record_arr.rois.rois) {
+      auto signal_it = std::find_if(
+        record_arr.signals.signals.begin(), record_arr.signals.signals.end(),
+        [&roi](const auto & s) { return roi.traffic_light_id == s.traffic_light_id; });
+      if (signal_it == record_arr.signals.signals.end()) {
+        continue;
+      }
+      records.push_back({record_arr.header, record_arr.cam_info, roi, *signal_it});
+    }
+    ++it;
+  }
+  return records;
+}
+
 }  // namespace
 
 std::map<MultiCameraFusion::IdType, utils::FusionRecord> multi_camera_fusion(
@@ -198,6 +256,10 @@ MultiCameraFusionResult MultiCameraFusion::fuse(
   */
   record_arr_set_.insert(utils::FusionRecordArr{cam_info.header, cam_info, rois, signals});
 
+  if (config_.fusion_mode == FusionMode::PerElement) {
+    return fuse_per_element(cam_info.header.stamp);
+  }
+
   MultiCameraFusionResult result;
   std::map<IdType, utils::FusionRecord> fused_record_map =
     multi_camera_fusion(record_arr_set_, config_.message_lifespan);
@@ -211,6 +273,42 @@ MultiCameraFusionResult MultiCameraFusion::fuse(
   msg_out.stamp = cam_info.header.stamp;
   result.traffic_light_groups = msg_out;
 
+  return result;
+}
+
+MultiCameraFusionResult MultiCameraFusion::fuse_per_element(
+  const builtin_interfaces::msg::Time & stamp)
+{
+  MultiCameraFusionResult result;
+
+  const auto all_records = collect_all_records(record_arr_set_, config_.message_lifespan);
+  result.unmapped_traffic_light_ids = find_unmapped_traffic_light_ids_from_records(
+    all_records, traffic_light_id_to_regulatory_ele_id_);
+
+  const auto evidence_map = per_element::accumulate_group_evidence(
+    all_records, traffic_light_id_to_regulatory_ele_id_, config_.per_element_config);
+  const auto decision_map =
+    per_element::decide_group_states(evidence_map, config_.per_element_config);
+
+  NewSignalArrayType msg_out;
+  msg_out.stamp = stamp;
+  for (const auto & [reg_ele_id, decision] : decision_map) {
+    NewSignalType group;
+    group.traffic_light_group_id = reg_ele_id;
+    group.elements = decision.elements;
+    msg_out.traffic_light_groups.push_back(group);
+
+    if (decision.conflict == per_element::GroupConflict::NONE) {
+      continue;
+    }
+    // Map per-element conflict severities onto the diagnostics conflict types used by the
+    // legacy path: resolved-by-argmax is a partial conflict; failsafe is a full conflict.
+    const auto conflict_type = decision.conflict == per_element::GroupConflict::FAILSAFE
+                                 ? ConflictType::CONFLICT
+                                 : ConflictType::PARTIAL_CONFLICT;
+    result.conflicted_regulatory_element_status.push_back({reg_ele_id, conflict_type});
+  }
+  result.traffic_light_groups = msg_out;
   return result;
 }
 

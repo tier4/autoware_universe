@@ -12,23 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TYPES_HPP_
-#define TYPES_HPP_
+#include "conflict_rules.hpp"
 
-#include <tier4_perception_msgs/msg/traffic_light.hpp>
+#include <tier4_perception_msgs/msg/traffic_light_element.hpp>
 
-#include <utility>
-#include <vector>
-
-namespace autoware::traffic_light
+namespace autoware::traffic_light::per_element
 {
 
-using ElementKey = std::pair<
-  tier4_perception_msgs::msg::TrafficLightElement::_color_type,
-  tier4_perception_msgs::msg::TrafficLightElement::_shape_type>;
+ConflictRules default_japan_rules()
+{
+  using T4 = tier4_perception_msgs::msg::TrafficLightElement;
+  ConflictRules rules;
+  rules.mutex_groups.push_back(
+    ElementSet{{T4::RED, T4::CIRCLE}, {T4::AMBER, T4::CIRCLE}, {T4::GREEN, T4::CIRCLE}});
+  return rules;
+}
 
-using StateKey = std::vector<ElementKey>;
-
-}  // namespace autoware::traffic_light
-
-#endif  // TYPES_HPP_
+}  // namespace autoware::traffic_light::per_element

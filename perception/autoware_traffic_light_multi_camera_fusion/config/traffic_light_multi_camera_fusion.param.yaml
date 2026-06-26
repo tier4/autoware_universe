@@ -6,3 +6,18 @@
     signal_consistency_check:
       enable: false
       publish_partial_matched_signal: false
+    # Fusion algorithm. "stateset" (default) is the legacy StateKey-level Bayesian fusion.
+    # "per_element" enables per-(color,shape) Bayesian fusion with mutex-group conflict
+    # resolution. When set to "per_element", the signal_consistency_check.* values above are
+    # ignored.
+    fusion_mode: stateset
+    per_element:
+      # Output an element when its accumulated log-odds exceeds this threshold.
+      on_threshold: 0.0
+      # Drop classifier detections whose confidence is below this gate before they accumulate
+      # any evidence.
+      confidence_gate: 0.0
+      # When true, an unresolved mutex conflict (e.g. RED-CIRCLE and GREEN-CIRCLE both above
+      # threshold) produces a failsafe UNKNOWN output for the entire group. When false, the
+      # conflict is resolved by keeping the argmax element.
+      strict_mode: false

@@ -35,6 +35,32 @@
               "default": false
             }
           }
+        },
+        "fusion_mode": {
+          "type": "string",
+          "enum": ["stateset", "per_element"],
+          "description": "Fusion algorithm. 'stateset' (default) is the legacy StateKey-level Bayesian fusion. 'per_element' enables per-(color,shape) Bayesian fusion with mutex-group conflict resolution; in that mode signal_consistency_check.* is ignored.",
+          "default": "stateset"
+        },
+        "per_element": {
+          "type": "object",
+          "properties": {
+            "on_threshold": {
+              "type": "number",
+              "description": "Output an element when its accumulated log-odds exceed this threshold. Only used when fusion_mode is 'per_element'.",
+              "default": 0.0
+            },
+            "confidence_gate": {
+              "type": "number",
+              "description": "Drop classifier detections whose confidence is below this gate before they accumulate any evidence. Only used when fusion_mode is 'per_element'.",
+              "default": 0.0
+            },
+            "strict_mode": {
+              "type": "boolean",
+              "description": "When true, an unresolved mutex conflict produces a failsafe UNKNOWN output for the entire group. When false, the conflict is resolved by keeping the argmax element. Only used when fusion_mode is 'per_element'.",
+              "default": false
+            }
+          }
         }
       },
       "required": ["message_lifespan", "approximate_sync"],
