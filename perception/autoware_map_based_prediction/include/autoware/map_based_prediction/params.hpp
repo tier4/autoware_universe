@@ -34,6 +34,7 @@ struct NodeParams
   // When true, ANIMAL and HAZARD classifications are remapped to UNKNOWN before prediction
   // so that downstream planning (which only understands the legacy label set) keeps working.
   bool remap_unsupported_labels_to_unknown{true};
+  bool use_priority_prediction{false};
 };
 
 }  // namespace autoware::map_based_prediction
