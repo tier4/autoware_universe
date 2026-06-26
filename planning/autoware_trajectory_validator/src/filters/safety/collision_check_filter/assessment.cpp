@@ -20,6 +20,7 @@
 #include <cmath>
 #include <limits>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,6 +40,21 @@ bool is_target_trajectory_type(
     return options.map_based;
   }
   return false;
+}
+
+double resolve_prediction_time_horizon(
+  const GlobalParams & global_params, const std::string & trajectory_type)
+{
+  if (trajectory_type.find("constant_curvature_path") != std::string::npos) {
+    return global_params.constant_curvature_time_horizon;
+  }
+  if (trajectory_type.find("map_based_predicted_path") != std::string::npos) {
+    return global_params.map_based_time_horizon;
+  }
+  if (trajectory_type.find("diffusion_based") != std::string::npos) {
+    return global_params.diffusion_based_time_horizon;
+  }
+  throw std::logic_error("Unsupported trajectory type for time horizon: " + trajectory_type);
 }
 
 RiskLevel to_pet_risk_level(double pet, const PetThreshold & error_th, const PetThreshold & warn_th)
@@ -281,9 +297,14 @@ DracArtifact assess_drac(
       const auto & traj_type_str = object_trajectory.getObjectIdentification().trajectory_type;
       const auto & object_id = object_trajectory.getObjectIdentification().uuid;
 
+      // Limit the regenerated object motion to its per-type time horizon (with the DRAC
+      // collision-time buffer), keeping it consistent with the nominal object trajectory.
+      const double object_time_horizon =
+        resolve_prediction_time_horizon(global_params, traj_type_str) +
+        drac_params_collision_time_threshold;
       const auto object_deceleration_trajectory = trajectory::generate_object_trajectory(
         context, object_id, traj_type_str, -ego_dec, global_params.time_resolution,
-        ego_time_horizon + drac_params_collision_time_threshold);
+        object_time_horizon);
 
       auto finding_dec_object_motion = find_collision_timing(
         ego_deceleration_trajectory, object_deceleration_trajectory, error_pet_th,
@@ -320,9 +341,11 @@ DracArtifact assess_drac(
 }
 
 std::vector<TrajectoryData> generate_object_trajectories(
-  const FilterContext & context, double required_time_horizon, double object_assumed_acceleration,
-  double time_resolution, const DracParamMap & drac_param_map, const PetParamMap & pet_param_map)
+  const FilterContext & context, double object_assumed_acceleration,
+  const GlobalParams & global_params, const DracParamMap & drac_param_map,
+  const PetParamMap & pet_param_map)
 {
+  const double time_resolution = global_params.time_resolution;
   std::vector<TrajectoryData> object_trajectories{};
 
   if (context.predicted_objects) {
@@ -343,8 +366,9 @@ std::vector<TrajectoryData> generate_object_trajectories(
       if (is_require_map_based && !object.kinematics.predicted_paths.empty()) {
         object_trajectories.push_back(
           trajectory::generate_predicted_path_trajectory(
-            object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
-            context.predicted_objects->header.stamp, time_resolution));
+            object, 0.0, object_assumed_acceleration, objects_reference_time,
+            global_params.map_based_time_horizon, context.predicted_objects->header.stamp,
+            time_resolution));
       }
 
       if (
@@ -352,8 +376,9 @@ std::vector<TrajectoryData> generate_object_trajectories(
         pet_param.assessment_trajectories.constant_curvature) {
         object_trajectories.push_back(
           trajectory::generate_constant_curvature_trajectory(
-            object, 0.0, object_assumed_acceleration, objects_reference_time, required_time_horizon,
-            context.predicted_objects->header.stamp, time_resolution));
+            object, 0.0, object_assumed_acceleration, objects_reference_time,
+            global_params.constant_curvature_time_horizon, context.predicted_objects->header.stamp,
+            time_resolution));
       }
     }
   }
@@ -375,7 +400,8 @@ std::vector<TrajectoryData> generate_object_trajectories(
       if (is_require_diffusion_based) {
         object_trajectories.push_back(
           trajectory::generate_diffusion_based_trajectory(
-            object, neural_network_objects_reference_time, required_time_horizon,
+            object, neural_network_objects_reference_time,
+            global_params.diffusion_based_time_horizon,
             context.neural_network_predicted_objects->header.stamp, time_resolution));
       }
     }
@@ -388,11 +414,8 @@ std::pair<PetArtifact, DracArtifact> assess(
   const PetParamMap & pet_param_map, const DracParamMap & drac_param_map,
   const GlobalParams & global_params, const VehicleInfo & vehicle_info)
 {
-  const double required_time_horizon =
-    rclcpp::Duration(traj_points.back().time_from_start).seconds();
-  const auto nominal_speed_object_trajectories = generate_object_trajectories(
-    context, required_time_horizon, -1.0, global_params.time_resolution, drac_param_map,
-    pet_param_map);
+  const auto nominal_speed_object_trajectories =
+    generate_object_trajectories(context, -1.0, global_params, drac_param_map, pet_param_map);
 
   PetArtifact pet_artifact{};
   pet_artifact = assess_planned_speed_collision_timing(

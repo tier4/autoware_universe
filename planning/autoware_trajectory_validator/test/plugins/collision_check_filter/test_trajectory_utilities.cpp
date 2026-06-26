@@ -32,6 +32,18 @@ namespace
 {
 constexpr double kDefaultTimeResolution = GlobalParams{}.time_resolution;
 
+// Build GlobalParams with a single time horizon applied to all object prediction types.
+GlobalParams make_global_params(
+  const double time_horizon, const double time_resolution = kDefaultTimeResolution)
+{
+  GlobalParams params;
+  params.time_resolution = time_resolution;
+  params.constant_curvature_time_horizon = time_horizon;
+  params.map_based_time_horizon = time_horizon;
+  params.diffusion_based_time_horizon = time_horizon;
+  return params;
+}
+
 geometry_msgs::msg::Pose create_pose(const double x, const double y, const double yaw = 0.0)
 {
   geometry_msgs::msg::Pose pose;
@@ -695,7 +707,8 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
   const auto all_enabled_pet_param_map = make_param_map_with_assessment_trajectories<PetParamMap>(
     make_assessment_trajectories(true, true, true));
   const auto all_enabled = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0, 0.1, all_enabled_drac_param_map, all_enabled_pet_param_map);
+    context, 0.0, make_global_params(0.2, 0.1), all_enabled_drac_param_map,
+    all_enabled_pet_param_map);
   EXPECT_EQ(all_enabled.size(), 3u);
   EXPECT_EQ(count_trajectory_type(all_enabled, "map_based_predicted_path"), 1);
   EXPECT_EQ(count_trajectory_type(all_enabled, "constant_curvature_path"), 1);
@@ -708,7 +721,8 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
     make_param_map_with_assessment_trajectories<PetParamMap>(
       make_assessment_trajectories(false, true, false));
   const auto constant_curvature_only = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0, 0.1, constant_curvature_drac_param_map, constant_curvature_pet_param_map);
+    context, 0.0, make_global_params(0.2, 0.1), constant_curvature_drac_param_map,
+    constant_curvature_pet_param_map);
   ASSERT_EQ(constant_curvature_only.size(), 1u);
   EXPECT_EQ(
     constant_curvature_only.front().getObjectIdentification().trajectory_type,
@@ -722,7 +736,7 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
       make_assessment_trajectories(true, false, true));
   const auto predicted_path_and_diffusion =
     collision_timing_assessment::generate_object_trajectories(
-      context, 0.2, 0.0, 0.1, predicted_path_and_diffusion_drac_param_map,
+      context, 0.0, make_global_params(0.2, 0.1), predicted_path_and_diffusion_drac_param_map,
       predicted_path_and_diffusion_pet_param_map);
   EXPECT_EQ(predicted_path_and_diffusion.size(), 2u);
   EXPECT_EQ(count_trajectory_type(predicted_path_and_diffusion, "map_based_predicted_path"), 1);
@@ -760,7 +774,7 @@ TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesUsesTrajectoryTypeUnionA
     make_assessment_trajectories(true, false, true));
 
   const auto trajectories = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0, 0.1, drac_param_map, pet_param_map);
+    context, 0.0, make_global_params(0.2, 0.1), drac_param_map, pet_param_map);
 
   EXPECT_EQ(trajectories.size(), 3u);
   EXPECT_EQ(
