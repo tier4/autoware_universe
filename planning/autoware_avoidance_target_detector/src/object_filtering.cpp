@@ -744,16 +744,6 @@ PredictedObjects ObjectSelector::get_avoidance_targets(
     }
   }
 
-  for (auto & [object_id_str, filter_manager] : object_filters_) {
-    if (filter_manager.get_debug_log().empty()) {
-      continue;
-    }
-    RCLCPP_INFO(
-      rclcpp::get_logger("autoware_avoidance_target_detector"), "Object ID: %s, Debug Log: %s",
-      object_id_str.c_str(), filter_manager.get_debug_log().c_str());
-    filter_manager.clear_debug_log();
-  }
-
   PredictedObjects avoidance_targets = objects;
   avoidance_targets.objects.erase(
     std::remove_if(
