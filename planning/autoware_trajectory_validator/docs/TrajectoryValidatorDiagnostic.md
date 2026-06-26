@@ -85,6 +85,42 @@ ValidationReport[]  (one entry per candidate trajectory)
 
 validator_x best action = `NONE` (minimum of `NONE` and `MODERATE`). No status fires — the validator passes on at least one candidate.
 
+### Pattern reference
+
+**Within one candidate — `std::max` (harshest metric governs)**
+
+| Pattern      | Sequence                                               | Result    |
+| ------------ | ------------------------------------------------------ | --------- |
+| min only     | NONE                                                   | NONE      |
+| max only     | EMERGENCY                                              | EMERGENCY |
+| min then max | emplace NONE → `max(NONE, EMERGENCY)` = EMERGENCY      | EMERGENCY |
+| max then min | emplace EMERGENCY → `max(EMERGENCY, NONE)` = EMERGENCY | EMERGENCY |
+
+Order does not matter — `std::max` is commutative.
+
+**Across candidates — `std::min` (safest outcome governs)**
+
+| Pattern              | Sequence                                          | Result    |
+| -------------------- | ------------------------------------------------- | --------- |
+| min only             | NONE                                              | NONE      |
+| max only             | EMERGENCY                                         | EMERGENCY |
+| min first, max later | emplace NONE → `min(NONE, EMERGENCY)` = NONE      | NONE      |
+| max first, min later | emplace EMERGENCY → `min(EMERGENCY, NONE)` = NONE | NONE      |
+
+Order does not matter — `std::min` is commutative.
+
+#### Combined two-stage example
+
+```text
+Candidate A: metric at ERROR  →  candidate_action = MODERATE  (max within A)
+Candidate B: metric at WARN   →  candidate_action = NONE      (max within B, WARN maps to NONE)
+
+validator_actions after A: MODERATE
+validator_actions after B: min(MODERATE, NONE) = NONE
+```
+
+No binding fires — there is a safe candidate available (B).
+
 ### No candidate trajectories
 
 When the `ValidationReport` array is empty (the generator produced no candidates), the class publishes the `no_candidate_name` status at `ERROR`. This name is fixed as `"trajectory_validator_no_candidate_trajectory"` in `TrajectoryValidatorWrapper`.
