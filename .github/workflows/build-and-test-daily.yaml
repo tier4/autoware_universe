@@ -45,7 +45,7 @@ jobs:
 
           # Architecture specific configurations
           - arch: amd64
-            runner: "['self-hosted', 'Linux', 'X64']"
+            runner: "['ubuntu-24.04']"
             build-pre-command: ""
 
           - arch: arm64

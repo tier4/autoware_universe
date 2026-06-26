@@ -80,7 +80,7 @@ jobs:
       rosdistro: ${{ matrix.rosdistro }}
       container: ${{ matrix.container }}
       run-condition: ${{ needs.check-if-cuda-job-is-needed.outputs.cuda_job_is_needed == 'true' }}
-      runner: "['self-hosted', 'Linux', 'X64']"
+      runner: "['ubuntu-24.04']"
     secrets:
       codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
@@ -102,4 +102,4 @@ jobs:
     with:
       container: ghcr.io/autowarefoundation/autoware:universe-dependencies-cuda-jazzy
       run-condition: ${{ needs.check-if-cuda-job-is-needed.outputs.cuda_job_is_needed == 'true' && needs.build-and-test-differential-cuda.result == 'success' }}
-      runner: "['self-hosted', 'Linux', 'X64']"
+      runner: "['ubuntu-24.04']"

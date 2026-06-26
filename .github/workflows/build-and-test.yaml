@@ -24,7 +24,7 @@ jobs:
     with:
       rosdistro: ${{ matrix.rosdistro }}
       container: ${{ matrix.container }}
-      runner: "['self-hosted', 'Linux', 'X64']"
+      runner: "['ubuntu-24.04']"
       concurrency-group: build-and-test-${{ matrix.rosdistro }}-${{ github.ref }}
       cancel-in-progress: false
       pull-ccache: false
