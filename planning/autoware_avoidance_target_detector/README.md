@@ -109,6 +109,8 @@ No arguments.
 
 **Preconditions:** `create_map()` completed. Values are cached and do not change until the next `create_map()`.
 
+![Original and extended route comparison](assets/orignal_and_extended_route_lanelets.png)
+
 ---
 
 ### Route bounds and `to_path_msg`
