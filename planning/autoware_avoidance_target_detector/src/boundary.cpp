@@ -16,7 +16,6 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <autoware_lanelet2_extension/projection/mgrs_projector.hpp>
-#include <rclcpp/rclcpp.hpp>
 
 #include <autoware_planning_msgs/msg/path_point.hpp>
 #include <geometry_msgs/msg/point.hpp>
@@ -35,7 +34,6 @@
 #include <map>
 #include <memory>
 #include <set>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -402,21 +400,7 @@ void ExtendedLaneletSegments::build(
   segments_.clear();
   segments_.reserve(route_.segments.size());
 
-  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Initialized segments_");
-
-  int i = 0;
-
-  auto ids_to_string = [&](const std::vector<int64_t> & ids) {
-    std::stringstream ss;
-    for (const auto id : ids) {
-      ss << std::to_string(id) << " ";
-    }
-    return ss.str();
-  };
-
   for (const auto & route_segment : route_.segments) {
-    RCLCPP_INFO(
-      rclcpp::get_logger("autoware_avoidance_target_detector"), "Processing segment %d", i++);
     Segment segment;
     segment.preferred_primitive = route_segment.preferred_primitive.id;
 
@@ -451,18 +435,11 @@ void ExtendedLaneletSegments::build(
       }
     }
 
-    RCLCPP_INFO(
-      rclcpp::get_logger("autoware_avoidance_target_detector"), "    Set ordered primitives: %s",
-      ids_to_string(segment.ordered_primitives).c_str());
-
     const std::set<int64_t> ordered_ids(
       segment.ordered_primitives.begin(), segment.ordered_primitives.end());
     for (const auto id : original_primitive_ids) {
       if (ordered_ids.count(id) == 0) {
         segment.floating_primitives.push_back(id);
-        RCLCPP_WARN(
-          rclcpp::get_logger("autoware_avoidance_target_detector"), "    Floating primitive: %ld",
-          id);
       }
     }
 
@@ -478,10 +455,6 @@ void ExtendedLaneletSegments::build(
     // When there are siblings not originally included in the segment
     if (siblings.size() > current_segment.ordered_primitives.size()) {
       current_segment.siblings_included_primitives = siblings;
-
-      RCLCPP_INFO(
-        rclcpp::get_logger("autoware_avoidance_target_detector"),
-        "    Built siblings included primitives: %s", ids_to_string(siblings).c_str());
     }
   }
 }
@@ -498,13 +471,9 @@ ExtendedRouteHandler::ExtendedRouteHandler(const LaneletMapBin & map, const Lane
 
 void ExtendedRouteHandler::create_map()
 {
-  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Start create_map()");
   const auto map = original_route_handler_->getLaneletMapPtr();
   extended_routing_graph_ = traffic_rules::create_goal_purpose_routing_graph(*map);
-  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Built routing graph");
   extended_lanelet_segments_.build(*map, *extended_routing_graph_);
-
-  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Built segments");
 
   std::set<lanelet::Id> lanelet_ids;
   for (const auto & segment : extended_lanelet_segments_.segments()) {
@@ -553,8 +522,6 @@ void ExtendedRouteHandler::create_map()
     }
   }
 
-  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Built route map");
-
   std::vector<const std::vector<int64_t> *> original_primitive_lists;
   std::vector<const std::vector<int64_t> *> extended_primitive_lists;
   original_primitive_lists.reserve(extended_lanelet_segments_.segments().size());
@@ -590,9 +557,6 @@ void ExtendedRouteHandler::export_debug_map() const
   add_bounds_linestring_to_map(debug_map, extended_bounds.second, "extended_route");
 
   lanelet::write(debug_map_path_str, debug_map, projector);
-  RCLCPP_INFO(
-    rclcpp::get_logger("autoware_avoidance_target_detector"), "Exported debug map to %s",
-    debug_map_path_str.c_str());
 }
 
 std::vector<lanelet::LineString2d> ExtendedRouteHandler::get_road_borders() const

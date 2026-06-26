@@ -50,14 +50,12 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
     if (!route_msg->segments.empty()) {
       route_ = route_msg;
       map_or_route_updated = true;
-      RCLCPP_INFO(get_logger(), "Received route");
     }
   }
 
   if (const auto map_msg = sub_lanelet_map_.take_data()) {
     map_bin_ = map_msg;
     map_or_route_updated = true;
-    RCLCPP_INFO(get_logger(), "Received lanelet map");
   }
 
   if (map_or_route_updated && route_ && map_bin_) {
@@ -74,7 +72,6 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
   const Trajectory trajectory_msg = trajectory_ ? *trajectory_ : Trajectory{};
 
   if (!trajectory_ || !extended_route_handler_->getOriginalRouteHandler()->isHandlerReady()) {
-    RCLCPP_WARN(get_logger(), "Data is not ready");
     return;
   }
 
