@@ -76,23 +76,7 @@ TrajectoryValidatorWrapper::TrajectoryValidatorWrapper(
     std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
       &node, "trajectory_validator");
   validator_ptr_ = std::make_unique<TrajectoryValidator>(plugins_);
-
-  // Note: plugin class names are not snake_case, so we iterate loaded plugins to get the
-  // short names (from get_name()) of the active (non-shadow) validators.
-  std::unordered_set<std::string> active_filter_names;
-  for (const auto & plugin : plugins_) {
-    if (!plugin->is_shadow_mode()) {
-      active_filter_names.insert(plugin->get_name());
-    }
-  }
-
-  trajectory_validator_diagnostic::ParamListener diag_param_listener(node_parameters_interface);
-  const auto filter_status_map = make_filter_status_map(diag_param_listener.get_params().bindings);
-  const std::string no_candidate_name = "trajectory_validator_no_candidate_trajectory";
-  auto diag_by_name = build_diagnostic_interface_map(node, filter_status_map, no_candidate_name);
-
-  validator_diagnostic_ptr_ = std::make_unique<TrajectoryValidatorDiagnostic>(
-    filter_status_map, no_candidate_name, active_filter_names, std::move(diag_by_name));
+  validator_diagnostic_ptr_ = init_diagnostic(node_parameters_interface);
 }
 
 void TrajectoryValidatorWrapper::load_metric(const std::string & name, const bool is_shadow_mode)
@@ -175,6 +159,7 @@ CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
   publish_planning_factor(report.planning_factors);
   validator_diagnostic_ptr_->update_and_publish(
     report.validation_reports, node_ptr_->get_clock()->now());
+  publish_diagnostic(report.validation_reports);
 
   publish_debug(report.evaluation_tables, report.processing_time_ms, context.odometry->pose.pose);
 
@@ -312,6 +297,36 @@ void TrajectoryValidatorWrapper::publish_processing_time_text(
   pub_debug_->publish<autoware_internal_debug_msgs::msg::StringStamped>(
     "processing_time_text", fmt::to_string(out));
 }
+
+std::unique_ptr<TrajectoryValidatorDiagnostic> TrajectoryValidatorWrapper::init_diagnostic(
+  rclcpp::node_interfaces::NodeParametersInterface::SharedPtr node_parameters_interface) const
+{
+  // Plugin class names are not snake_case; iterate loaded plugins to get the
+  // short names (from get_name()) of the active (non-shadow) validators.
+  std::unordered_set<std::string> active_filter_names;
+  for (const auto & plugin : plugins_) {
+    if (!plugin->is_shadow_mode()) {
+      active_filter_names.insert(plugin->get_name());
+    }
+  }
+
+  trajectory_validator_diagnostic::ParamListener diag_param_listener(node_parameters_interface);
+  const auto filter_status_map = make_filter_status_map(diag_param_listener.get_params().bindings);
+  const std::string no_candidate_name = "trajectory_validator_no_candidate_trajectory";
+  auto diag_by_name =
+    build_diagnostic_interface_map(*node_ptr_, filter_status_map, no_candidate_name);
+
+  return std::make_unique<TrajectoryValidatorDiagnostic>(
+    filter_status_map, no_candidate_name, active_filter_names, std::move(diag_by_name));
+}
+
+void TrajectoryValidatorWrapper::publish_diagnostic(const std::vector<ValidationReport> & reports)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  validator_diagnostic_ptr_->update_and_publish(reports, node_ptr_->get_clock()->now());
+}
+
+
 
 void TrajectoryValidatorWrapper::add_planning_factors(
   const autoware_internal_planning_msgs::msg::PlanningFactorArray & planning_factors)

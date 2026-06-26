@@ -96,6 +96,19 @@ private:
   void update_parameters();
 
   /**
+   * @brief Constructs the diagnostic handler from bindings parameters and active plugin names.
+   * @param node_parameters_interface Parameter interface used to read the bindings parameter.
+   */
+  std::unique_ptr<TrajectoryValidatorDiagnostic> init_diagnostic(
+    rclcpp::node_interfaces::NodeParametersInterface::SharedPtr node_parameters_interface) const;
+
+  /**
+   * @brief Aggregates validation reports into diagnostic statuses and publishes them.
+   * @param reports Per-trajectory validation reports produced this cycle.
+   */
+  void publish_diagnostic(const std::vector<ValidationReport> & reports);
+
+  /**
    * @brief Loads a single plugin by class name and configures it.
    * @param name Plugin class name to load.
    * @param is_shadow_mode If true, plugin results are logged but not enforced.
