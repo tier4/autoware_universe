@@ -51,13 +51,14 @@ build_diagnostic_interface_map(
 }
 
 TrajectoryValidatorDiagnostic::TrajectoryValidatorDiagnostic(
-  FilterStatusMap filter_status_map, std::string no_candidate_name,
+  FilterStatusMap filter_status_map,
+  const trajectory_validator_diagnostic::Params & trajectory_validator_params,
   const std::unordered_set<std::string> & active_filter_names,
   std::unordered_map<std::string, std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface>>
     diag_by_name)
 : filter_status_map_(std::move(filter_status_map)),
   active_filter_names_(active_filter_names),
-  no_candidate_name_(std::move(no_candidate_name)),
+  no_candidate_name_(trajectory_validator_params.no_candidate_name),
   diag_by_name_(std::move(diag_by_name))
 {
 }

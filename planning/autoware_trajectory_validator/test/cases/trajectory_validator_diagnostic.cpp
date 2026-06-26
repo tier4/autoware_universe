@@ -14,6 +14,7 @@
 
 #include "autoware/trajectory_validator/detail/trajectory_validator_diagnostic.hpp"
 
+#include <autoware_trajectory_validator/autoware_trajectory_validator_diagnostic_param.hpp>
 #include <autoware_trajectory_validator/msg/metric_report.hpp>
 #include <autoware_trajectory_validator/msg/validation_report.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -96,10 +97,11 @@ TrajectoryValidatorDiagnostic make_diag(
   rclcpp::Node & node, FilterStatusMap filter_map, std::string no_candidate_name,
   const std::unordered_set<std::string> & active_filter_names = {})
 {
+  trajectory_validator_diagnostic::Params params;
+  params.no_candidate_name = no_candidate_name;
   auto diag_by_name = build_diagnostic_interface_map(node, filter_map, no_candidate_name);
   return TrajectoryValidatorDiagnostic(
-    std::move(filter_map), std::move(no_candidate_name), active_filter_names,
-    std::move(diag_by_name));
+    std::move(filter_map), params, active_filter_names, std::move(diag_by_name));
 }
 
 // Helper: create a node, subscribe, run diagnostic once, collect all published arrays

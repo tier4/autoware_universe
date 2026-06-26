@@ -3,3 +3,4 @@
     trajectory_validator_diagnostic:
       bindings:
         - uncrossable_boundary_departure_filter:moderate:trajectory_validator_uncrossable_boundary_departure_danger
+      no_candidate_name: trajectory_validator_no_candidate_trajectory

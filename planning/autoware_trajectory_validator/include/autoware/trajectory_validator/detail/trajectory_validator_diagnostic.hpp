@@ -17,6 +17,7 @@
 
 #include "autoware/trajectory_validator/detail/risk_action.hpp"
 
+#include <autoware_trajectory_validator/autoware_trajectory_validator_diagnostic_param.hpp>
 #include <autoware_trajectory_validator/msg/validation_report.hpp>
 #include <autoware_utils_diagnostics/diagnostics_interface.hpp>
 #include <rclcpp/node.hpp>
@@ -103,14 +104,15 @@ public:
   /**
    * @brief Constructs the diagnostic handler with pre-built DiagnosticsInterface objects.
    * @param filter_status_map Mapping from validator_name to its status name bindings.
-   * @param no_candidate_name Status name to raise ERROR on when reports is empty.
+   * @param trajectory_validator_params Diagnostic parameters; no_candidate_name is read from here.
    * @param active_filter_names Short validator_name strings (from plugin->get_name()) that are
    *        active (non-shadow). Any validator not in this set is treated as shadow and excluded
    *        from action aggregation. An empty set means all validators are considered active.
    * @param diag_by_name Pre-built DiagnosticsInterface map (use build_diagnostic_interface_map).
    */
   TrajectoryValidatorDiagnostic(
-    FilterStatusMap filter_status_map, std::string no_candidate_name,
+    FilterStatusMap filter_status_map,
+    const trajectory_validator_diagnostic::Params & trajectory_validator_params,
     const std::unordered_set<std::string> & active_filter_names,
     std::unordered_map<
       std::string, std::unique_ptr<autoware_utils_diagnostics::DiagnosticsInterface>>

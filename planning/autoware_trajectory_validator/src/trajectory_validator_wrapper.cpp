@@ -311,13 +311,13 @@ std::unique_ptr<TrajectoryValidatorDiagnostic> TrajectoryValidatorWrapper::init_
   }
 
   trajectory_validator_diagnostic::ParamListener diag_param_listener(node_parameters_interface);
-  const auto filter_status_map = make_filter_status_map(diag_param_listener.get_params().bindings);
-  const std::string no_candidate_name = "trajectory_validator_no_candidate_trajectory";
+  const auto diag_params = diag_param_listener.get_params();
+  const auto filter_status_map = make_filter_status_map(diag_params.bindings);
   auto diag_by_name =
-    build_diagnostic_interface_map(*node_ptr_, filter_status_map, no_candidate_name);
+    build_diagnostic_interface_map(*node_ptr_, filter_status_map, diag_params.no_candidate_name);
 
   return std::make_unique<TrajectoryValidatorDiagnostic>(
-    filter_status_map, no_candidate_name, active_filter_names, std::move(diag_by_name));
+    filter_status_map, diag_params, active_filter_names, std::move(diag_by_name));
 }
 
 void TrajectoryValidatorWrapper::publish_diagnostic(const std::vector<ValidationReport> & reports)
@@ -325,8 +325,6 @@ void TrajectoryValidatorWrapper::publish_diagnostic(const std::vector<Validation
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   validator_diagnostic_ptr_->update_and_publish(reports, node_ptr_->get_clock()->now());
 }
-
-
 
 void TrajectoryValidatorWrapper::add_planning_factors(
   const autoware_internal_planning_msgs::msg::PlanningFactorArray & planning_factors)
