@@ -1,0 +1,7 @@
+<library path="tier4_localization_pose_estimator_switch_rviz_plugin">
+  <class name="PoseEstimatorSwitch"
+         type="PoseEstimatorSwitch"
+         base_class_type="rviz_common::Panel">
+    <description>Pose Estimator Swtich Panel</description>
+  </class>
+</library>

@@ -5,6 +5,14 @@
 
   <node pkg="autoware_pose_estimator_arbiter" exec="autoware_pose_estimator_arbiter_node" output="both">
     <param name="pose_sources" value="$(var pose_sources)"/>
+    <param
+      name="lidar_marker_instance_names"
+      value="[
+      /localization/pose_estimator/lidar_marker_localizer/top,
+      /localization/pose_estimator/lidar_marker_localizer/front_lower_left,
+      /localization/pose_estimator/lidar_marker_localizer/front_lower_right
+    ]"
+    />
 
     <!-- ndt -->
     <remap from="~/input/ndt/pointcloud" to="$(var input_pointcloud)"/>
