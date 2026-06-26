@@ -164,12 +164,16 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
     auto label_ =
       autoware::object_recognition_utils::getHighestProbLabel(transformed_object.classification);
 
-    // Optionally remap ANIMAL and HAZARD to UNKNOWN to keep the legacy label set expected by
+    // Optionally remap any label outside the known set (CAR, BUS, TRUCK, TRAILER, PEDESTRIAN,
+    // BICYCLE, MOTORCYCLE, UNKNOWN) to UNKNOWN to keep the legacy label set expected by
     // downstream planning. Overwrite the classification so the published PredictedObject also
     // reports UNKNOWN. Controlled by the `remap_unsupported_labels_to_unknown` parameter.
-    if (
-      state_.params.remap_unsupported_labels_to_unknown &&
-      (label_ == ObjectClassification::ANIMAL || label_ == ObjectClassification::HAZARD)) {
+    const bool is_known_label =
+      label_ == ObjectClassification::CAR || label_ == ObjectClassification::BUS ||
+      label_ == ObjectClassification::TRUCK || label_ == ObjectClassification::TRAILER ||
+      label_ == ObjectClassification::PEDESTRIAN || label_ == ObjectClassification::BICYCLE ||
+      label_ == ObjectClassification::MOTORCYCLE || label_ == ObjectClassification::UNKNOWN;
+    if (state_.params.remap_unsupported_labels_to_unknown && !is_known_label) {
       ObjectClassification unknown_classification;
       unknown_classification.label = ObjectClassification::UNKNOWN;
       unknown_classification.probability =
