@@ -16,13 +16,10 @@
 #define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__NODE_HPP_
 
 #include "autoware/avoidance_target_detector/boundary.hpp"
-#include "autoware/avoidance_target_detector/map_construction.hpp"
 #include "autoware/avoidance_target_detector/object_filtering.hpp"
 #include "autoware/avoidance_target_detector/parameter.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
 
-#include <autoware/route_handler/route_handler.hpp>
-#include <autoware/vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
@@ -31,15 +28,11 @@
 #include <autoware_planning_msgs/msg/path.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 
-#include <lanelet2_routing/RoutingGraph.h>
-
 #include <memory>
-#include <optional>
 
 namespace autoware::avoidance_target_detector
 {
 
-using autoware::vehicle_info_utils::VehicleInfo;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
@@ -77,14 +70,11 @@ private:
   rclcpp::Publisher<Path>::SharedPtr pub_drivable_area_path_;
 
   std::shared_ptr<ExtendedRouteHandler> extended_route_handler_;
-  VehicleInfo vehicle_info_;
-
   ObjectSelector object_selector_;
 
   LaneletMapBin::ConstSharedPtr map_bin_;
   Trajectory::ConstSharedPtr trajectory_;
   LaneletRoute::ConstSharedPtr route_;
-  std::optional<DrivableAreaResult> cached_drivable_area_;
 };
 
 }  // namespace autoware::avoidance_target_detector

@@ -15,7 +15,6 @@
 #include "autoware/avoidance_target_detector/node.hpp"
 
 #include <memory>
-#include <utility>
 
 namespace autoware::avoidance_target_detector
 {
@@ -30,8 +29,7 @@ AvoidanceTargetDetectorNode::AvoidanceTargetDetectorNode(const rclcpp::NodeOptio
     "~/input/objects", rclcpp::QoS{1},
     std::bind(&AvoidanceTargetDetectorNode::on_objects, this, std::placeholders::_1))},
   pub_avoidance_targets_{create_publisher<PredictedObjects>("~/output/avoidance_targets", 1)},
-  pub_drivable_area_path_{create_publisher<Path>("~/output/drivable_area", 1)},
-  vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()}
+  pub_drivable_area_path_{create_publisher<Path>("~/output/drivable_area", 1)}
 {
   declare_parameter<bool>("use_extended_route_bounds", true);
 }
@@ -46,7 +44,6 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
     return;
   }
 
-  // Check if the map or route has been updated
   bool map_or_route_updated = false;
 
   if (const auto route_msg = sub_route_.take_data()) {
@@ -67,10 +64,8 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
     extended_route_handler_ = std::make_shared<ExtendedRouteHandler>(*map_bin_, *route_);
     extended_route_handler_->create_map();
     extended_route_handler_->export_debug_map();
-    cached_drivable_area_.reset();
   }
 
-  // Check if the route or extended route handler is not ready
   if (!route_ || !extended_route_handler_) {
     return;
   }
@@ -83,23 +78,14 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
     return;
   }
 
-  /*if (
-    auto new_drivable_area = create_drivable_area(
-      *trajectory_, vehicle_info_, *route_, *extended_route_handler_->getOriginalRouteHandler(),
-      *extended_route_handler_->getExtendedRoutingGraph())) {
-    cached_drivable_area_ = std::move(new_drivable_area);
-  }*/
   const auto use_extended_bounds = get_parameter("use_extended_route_bounds").as_bool();
   const auto & route_bounds = use_extended_bounds
                                 ? extended_route_handler_->get_extended_route_bounds()
                                 : extended_route_handler_->get_original_route_bounds();
-  cached_drivable_area_ = to_drivable_area_result(route_bounds, trajectory_->header);
-  if (cached_drivable_area_) {
-    pub_drivable_area_path_->publish(to_path_msg(*cached_drivable_area_, *trajectory_));
-  }
+  pub_drivable_area_path_->publish(to_path_msg(route_bounds, *trajectory_));
 
-  const auto avoidance_targets = object_selector_.get_avoidance_targets(
-    get_clock()->now(), *msg, trajectory_msg, cached_drivable_area_);
+  const auto avoidance_targets =
+    object_selector_.get_avoidance_targets(get_clock()->now(), *msg, trajectory_msg, route_bounds);
 
   pub_avoidance_targets_->publish(avoidance_targets);
 }
