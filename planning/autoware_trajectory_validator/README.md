@@ -10,7 +10,7 @@ For each input `CandidateTrajectories` message the library runs every loaded plu
 
 1. **Plugin evaluation**: each plugin's `is_feasible()` is called with the trajectory points and the current `ValidatorContext` (odometry, predicted objects, acceleration, HD map, traffic light states).
 2. **Feasibility decision**: a trajectory survives if every plugin listed in `filter_names` returns `is_feasible = true`. Plugins listed in `shadow_mode_filter_names` are evaluated and reported but never remove a trajectory.
-3. **Diagnostics**: the wrapper publishes an Autoware diagnostics status — `OK` if all trajectories pass all enforced plugins, `WARN` if at least one is rejected, `ERROR` if none survive.
+3. **Diagnostics**: `TrajectoryValidatorDiagnostic` selects the best candidate (the one whose worst enforced-validator action is lowest), resolves the `(validator_name, action)` pair to a named `DiagnosticStatus` via the `bindings` parameter, and publishes every tracked status every cycle (active ones at their level, inactive ones at `OK` to prevent staleness). Shadow-mode validators never contribute to the action aggregation. See [docs/TrajectoryValidatorDiagnostic.md](docs/TrajectoryValidatorDiagnostic.md) for details.
 
 ## Built-in Plugins
 
@@ -44,3 +44,7 @@ This package is a C++ library. The topics below are subscribed to by the hosting
 ### Parameters
 
 {{ json_to_markdown("planning/autoware_trajectory_validator/schema/trajectory_validator.schema.json") }}
+
+#### Diagnostic bindings (`trajectory_validator_diagnostic.param.yaml`)
+
+{{ json_to_markdown("planning/autoware_trajectory_validator/schema/trajectory_validator_diagnostic.schema.json") }}

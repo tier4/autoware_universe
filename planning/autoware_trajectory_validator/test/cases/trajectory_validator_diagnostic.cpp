@@ -198,8 +198,8 @@ protected:
   }
 };
 
-// Test 3: Best trajectory all-OK (another worse trajectory at ERROR) -> every status OK
-TEST_F(TrajectoryValidatorDiagnosticTest, BestAllOkOtherError)
+// Test 3: Validator passes on one candidate (ERROR on another) -> min action NONE -> status OK
+TEST_F(TrajectoryValidatorDiagnosticTest, ValidatorPassesOnOneCandidateStatusOk)
 {
   DiagHarness h("t3_node");
   auto diag = make_diag(*h.node, single_map(), "");
@@ -272,6 +272,81 @@ TEST_F(TrajectoryValidatorDiagnosticTest, TwoValidatorsBindingBothFire)
   ASSERT_TRUE(sb.has_value());
   EXPECT_EQ(sa->level, DiagnosticStatus::ERROR);
   EXPECT_EQ(sb->level, DiagnosticStatus::ERROR);
+}
+
+// Test 6b: Validator fails on ALL candidates -> min action MODERATE -> status fires
+TEST_F(TrajectoryValidatorDiagnosticTest, ValidatorFailsOnAllCandidatesFires)
+{
+  DiagHarness h("t6b_node");
+  auto diag = make_diag(*h.node, single_map(), "");
+
+  std::vector<ValidationReport> reports = {
+    make_report({make_metric("validator_a", MetricReport::ERROR)}),
+    make_report({make_metric("validator_a", MetricReport::ERROR)})};
+
+  h.run(diag, reports);
+
+  auto status = h.find("status_a");
+  ASSERT_TRUE(status.has_value());
+  EXPECT_EQ(status->level, DiagnosticStatus::ERROR);
+}
+
+// Test 6c: Each validator fails on a different candidate -> per-validator min is NONE for both ->
+// neither fires
+TEST_F(TrajectoryValidatorDiagnosticTest, EachValidatorFailsOnDifferentCandidateNeitherFires)
+{
+  DiagHarness h("t6c_node");
+  FilterStatusMap filter_map;
+  filter_map["validator_a"].name_by_action[Action::MODERATE] = "status_a";
+  filter_map["validator_b"].name_by_action[Action::MODERATE] = "status_b";
+  auto diag = make_diag(*h.node, filter_map, "");
+
+  std::vector<ValidationReport> reports = {
+    make_report(
+      {make_metric("validator_a", MetricReport::ERROR),  // validator_a fails here
+       make_metric("validator_b", MetricReport::OK)}),   // validator_b passes here
+    make_report(
+      {make_metric("validator_a", MetricReport::OK),      // validator_a passes here
+       make_metric("validator_b", MetricReport::ERROR)})  // validator_b fails here
+  };
+
+  h.run(diag, reports);
+
+  auto sa = h.find("status_a");
+  auto sb = h.find("status_b");
+  ASSERT_TRUE(sa.has_value());
+  ASSERT_TRUE(sb.has_value());
+  EXPECT_EQ(sa->level, DiagnosticStatus::OK);  // min action NONE (passes on candidate B)
+  EXPECT_EQ(sb->level, DiagnosticStatus::OK);  // min action NONE (passes on candidate A)
+}
+
+// Test 6d: validator_a fails on all candidates, validator_b has one safe candidate ->
+// only validator_a fires
+TEST_F(TrajectoryValidatorDiagnosticTest, OneAlwaysFailsOtherHasSafeCandidateOnlyAlwaysFailFires)
+{
+  DiagHarness h("t6d_node");
+  FilterStatusMap filter_map;
+  filter_map["validator_a"].name_by_action[Action::MODERATE] = "status_a";
+  filter_map["validator_b"].name_by_action[Action::MODERATE] = "status_b";
+  auto diag = make_diag(*h.node, filter_map, "");
+
+  std::vector<ValidationReport> reports = {
+    make_report(
+      {make_metric("validator_a", MetricReport::ERROR),    // validator_a fails
+       make_metric("validator_b", MetricReport::ERROR)}),  // validator_b fails
+    make_report(
+      {make_metric("validator_a", MetricReport::ERROR),  // validator_a fails
+       make_metric("validator_b", MetricReport::OK)})    // validator_b passes
+  };
+
+  h.run(diag, reports);
+
+  auto sa = h.find("status_a");
+  auto sb = h.find("status_b");
+  ASSERT_TRUE(sa.has_value());
+  ASSERT_TRUE(sb.has_value());
+  EXPECT_EQ(sa->level, DiagnosticStatus::ERROR);  // min action MODERATE (fails on both)
+  EXPECT_EQ(sb->level, DiagnosticStatus::OK);     // min action NONE (passes on candidate B)
 }
 
 // Test 7: Renew — ERROR cycle then all-OK cycle -> status returns to OK
@@ -378,6 +453,30 @@ TEST_F(TrajectoryValidatorDiagnosticTest, TwoValidatorsDistinctNamesPublishedEac
   EXPECT_EQ(sb->level, DiagnosticStatus::OK);
 }
 
+// Test 10b: One validator with two bindings (moderate + emergency); ERROR -> action MODERATE ->
+// only moderate binding fires, emergency binding stays OK
+TEST_F(TrajectoryValidatorDiagnosticTest, MultiBindingSameValidatorThresholdRespected)
+{
+  DiagHarness h("t10b_node");
+  FilterStatusMap filter_map;
+  filter_map["validator_a"].name_by_action[Action::MODERATE] = "status_moderate";
+  filter_map["validator_a"].name_by_action[Action::EMERGENCY] = "status_emergency";
+
+  auto diag = make_diag(*h.node, filter_map, "");
+
+  std::vector<ValidationReport> reports = {
+    make_report({make_metric("validator_a", MetricReport::ERROR)})};  // ERROR -> MODERATE action
+
+  h.run(diag, reports);
+
+  auto sm = h.find("status_moderate");
+  auto se = h.find("status_emergency");
+  ASSERT_TRUE(sm.has_value());
+  ASSERT_TRUE(se.has_value());
+  EXPECT_EQ(sm->level, DiagnosticStatus::ERROR);  // MODERATE binding fires
+  EXPECT_EQ(se->level, DiagnosticStatus::OK);     // EMERGENCY binding does not fire
+}
+
 // ============================================================================
 // Tests 11-13: Shadow mode (dedicated)
 // ============================================================================
@@ -389,9 +488,8 @@ protected:
   void TearDown() override { rclcpp::shutdown(); }
 };
 
-// Test 11: Shadow validator at ERROR on best trajectory; active set does not include it -> status
-// OK
-TEST_F(ShadowModeTest, ShadowErrorOnBestDoesNotFireStatus)
+// Test 11: Shadow validator has a binding entry -> its status is published at WARN every cycle
+TEST_F(ShadowModeTest, ShadowValidatorStatusPublishedAtWarn)
 {
   DiagHarness h("t11_node");
   FilterStatusMap filter_map;
@@ -407,11 +505,11 @@ TEST_F(ShadowModeTest, ShadowErrorOnBestDoesNotFireStatus)
 
   auto status = h.find("shadow_status");
   ASSERT_TRUE(status.has_value());
-  EXPECT_EQ(status->level, DiagnosticStatus::OK);
+  EXPECT_EQ(status->level, DiagnosticStatus::WARN);
 }
 
-// Test 12: Best trajectory: enforced OK + shadow ERROR -> shadow excluded; no status fires
-TEST_F(ShadowModeTest, EnforcedOkShadowErrorNoStatusFires)
+// Test 12: Enforced OK + shadow ERROR -> enforced_status OK, shadow_status WARN
+TEST_F(ShadowModeTest, EnforcedOkShadowErrorShadowPublishesWarn)
 {
   DiagHarness h("t12_node");
   FilterStatusMap filter_map;
@@ -426,17 +524,18 @@ TEST_F(ShadowModeTest, EnforcedOkShadowErrorNoStatusFires)
 
   h.run(diag, reports);
 
-  // enforced_v is OK -> action NONE -> nothing fires
+  // enforced_v is OK -> action NONE -> enforced_status stays OK
+  // shadow_v is shadow-mode -> shadow_status published at WARN
   auto se = h.find("enforced_status");
   auto ss = h.find("shadow_status");
   ASSERT_TRUE(se.has_value());
   ASSERT_TRUE(ss.has_value());
   EXPECT_EQ(se->level, DiagnosticStatus::OK);
-  EXPECT_EQ(ss->level, DiagnosticStatus::OK);
+  EXPECT_EQ(ss->level, DiagnosticStatus::WARN);
 }
 
-// Test 13: Only shadow metrics reported; active set excludes them -> nothing fires
-TEST_F(ShadowModeTest, ShadowWithMappingEntryErrorStillRaisesNothing)
+// Test 13: Shadow validator with binding entry -> status published at WARN regardless of reports
+TEST_F(ShadowModeTest, ShadowWithMappingEntryPublishesWarn)
 {
   DiagHarness h("t13_node");
   FilterStatusMap filter_map;
@@ -452,5 +551,5 @@ TEST_F(ShadowModeTest, ShadowWithMappingEntryErrorStillRaisesNothing)
 
   auto status = h.find("shadow_status");
   ASSERT_TRUE(status.has_value());
-  EXPECT_EQ(status->level, DiagnosticStatus::OK);
+  EXPECT_EQ(status->level, DiagnosticStatus::WARN);
 }

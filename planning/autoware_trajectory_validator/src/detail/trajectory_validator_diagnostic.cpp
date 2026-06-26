@@ -16,7 +16,6 @@
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
-#include <algorithm>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -62,44 +61,42 @@ TrajectoryValidatorDiagnostic::TrajectoryValidatorDiagnostic(
 {
 }
 
-TrajectoryValidatorDiagnostic::ValidatorDiagnosticActionInfo
-TrajectoryValidatorDiagnostic::compute_action_info(
-  const autoware_trajectory_validator::msg::ValidationReport & report) const
-{
-  ValidatorDiagnosticActionInfo info;
-  for (const auto & metric : report.metrics) {
-    if (!active_filter_names_.empty() && !active_filter_names_.count(metric.validator_name)) {
-      continue;
-    }
-    const Action metric_action = to_action(metric.level);
-    auto [it, inserted] = info.per_validator.emplace(metric.validator_name, metric_action);
-    if (!inserted) {
-      it->second = std::max(it->second, metric_action);
-    }
-  }
-  for (const auto & [vname, vaction] : info.per_validator) {
-    info.action = std::max(info.action, vaction);
-  }
-  return info;
-}
-
 void TrajectoryValidatorDiagnostic::collect_active_statuses(
-  const ValidatorDiagnosticActionInfo & best_info,
+  const std::unordered_map<std::string, Action> & validator_action,
   std::unordered_map<std::string, int8_t> & active) const
 {
-  for (const auto & [vname, vaction] : best_info.per_validator) {
-    if (vaction != best_info.action) {
+  for (const auto & [vname, vaction] : validator_action) {
+    if (vaction == Action::NONE) {
       continue;
     }
     const auto map_it = filter_status_map_.find(vname);
     if (map_it == filter_status_map_.end()) {
       continue;
     }
-    const auto name_it = map_it->second.name_by_action.find(vaction);
-    if (name_it == map_it->second.name_by_action.end() || name_it->second.empty()) {
+    for (const auto & [binding_action, status_name] : map_it->second.name_by_action) {
+      if (status_name.empty() || binding_action == Action::NONE || binding_action > vaction) {
+        continue;
+      }
+      active[status_name] = published_level_of(binding_action);
+    }
+  }
+}
+
+void TrajectoryValidatorDiagnostic::mark_shadow_statuses(
+  std::unordered_map<std::string, int8_t> & active) const
+{
+  if (active_filter_names_.empty()) {
+    return;
+  }
+  for (const auto & [vname, binding] : filter_status_map_) {
+    if (active_filter_names_.count(vname)) {
       continue;
     }
-    active[name_it->second] = published_level_of(vaction);
+    for (const auto & [action, status_name] : binding.name_by_action) {
+      if (!status_name.empty() && !active.count(status_name)) {
+        active[status_name] = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+      }
+    }
   }
 }
 
@@ -113,26 +110,24 @@ void TrajectoryValidatorDiagnostic::update_and_publish(
     if (!no_candidate_name_.empty()) {
       active[no_candidate_name_] = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
     }
-    publish_all(active, stamp);
-    return;
+  } else {
+    std::unordered_map<std::string, Action> validator_action;
+    for (const auto & report : reports) {
+      for (const auto & metric : report.metrics) {
+        if (!active_filter_names_.empty() && !active_filter_names_.count(metric.validator_name)) {
+          continue;
+        }
+        const Action metric_action = to_action(metric.level);
+        auto [it, inserted] = validator_action.emplace(metric.validator_name, metric_action);
+        if (!inserted) {
+          it->second = std::min(it->second, metric_action);
+        }
+      }
+    }
+    collect_active_statuses(validator_action, active);
   }
 
-  std::vector<ValidatorDiagnosticActionInfo> traj_infos;
-  traj_infos.reserve(reports.size());
-  for (const auto & report : reports) {
-    traj_infos.push_back(compute_action_info(report));
-  }
-
-  const auto best = std::min_element(
-    traj_infos.begin(), traj_infos.end(),
-    [](const ValidatorDiagnosticActionInfo & lhs, const ValidatorDiagnosticActionInfo & rhs) {
-      return lhs.action < rhs.action;
-    });
-
-  if (best->action != Action::NONE) {
-    collect_active_statuses(*best, active);
-  }
-
+  mark_shadow_statuses(active);
   publish_all(active, stamp);
 }
 

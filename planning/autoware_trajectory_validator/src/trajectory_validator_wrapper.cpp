@@ -345,4 +345,5 @@ void TrajectoryValidatorWrapper::publish_planning_factor(
   add_planning_factors(planning_factors);
   planning_factor_interface_->publish();
 }
+
 }  // namespace autoware::trajectory_validator

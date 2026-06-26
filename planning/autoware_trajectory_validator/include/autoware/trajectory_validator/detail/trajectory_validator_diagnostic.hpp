@@ -126,29 +126,29 @@ public:
     const rclcpp::Time & stamp);
 
 private:
-  struct ValidatorDiagnosticActionInfo
-  {
-    Action action{Action::NONE};
-    std::unordered_map<std::string, Action> per_validator;
-  };
-
   /**
-   * @brief Aggregates per-validator actions for one candidate trajectory, considering only
-   *        active validators (those in active_filter_names_, or all if the set is empty).
-   * @param report Validation report for a single candidate trajectory.
-   */
-  ValidatorDiagnosticActionInfo compute_action_info(
-    const autoware_trajectory_validator::msg::ValidationReport & report) const;
-
-  /**
-   * @brief Looks up status names for each binding validator on the best trajectory and marks them
-   *        active.
-   * @param best_info Action info for the best-available trajectory.
+   * @brief For each validator, fires all bindings whose action threshold is <= the validator's
+   *        best action.
+   *
+   * A validator with both a MODERATE and EMERGENCY binding fires both when its best action reaches
+   * EMERGENCY, but only the MODERATE binding when its best action is MODERATE.
+   * @param validator_action Action level reached by each validator (minimum across all candidates:
+   *        NONE if the validator passed on at least one candidate, otherwise the worst level seen).
    * @param active Output map of status name to published level.
    */
   void collect_active_statuses(
-    const ValidatorDiagnosticActionInfo & best_info,
+    const std::unordered_map<std::string, Action> & validator_action,
     std::unordered_map<std::string, int8_t> & active) const;
+
+  /**
+   * @brief Marks all bound status names for shadow-mode validators at WARN.
+   *
+   * A validator is shadow-mode when active_filter_names_ is non-empty and the validator's name
+   * is absent from the set. Each of its bound status names is inserted at WARN unless the name
+   * was already marked active by collect_active_statuses (active entries are never downgraded).
+   * @param active In/out map of status name to published level for this cycle.
+   */
+  void mark_shadow_statuses(std::unordered_map<std::string, int8_t> & active) const;
 
   /**
    * @brief Resets every tracked DiagnosticsInterface, applies active levels, and publishes.

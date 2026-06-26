@@ -2,9 +2,7 @@ trajectory_validator_diagnostic:
   bindings:
     type: string_array
     default_value:
-      [
-        "uncrossable_boundary_departure_filter:moderate:trajectory_validator_uncrossable_boundary_departure_danger",
-      ]
+      - uncrossable_boundary_departure_filter:moderate:trajectory_validator_uncrossable_boundary_departure_danger
     description: >-
       Each entry defines one diagnostic status binding encoded as
       filter_name:action:diagnostic_name, where filter_name is the validator short name
