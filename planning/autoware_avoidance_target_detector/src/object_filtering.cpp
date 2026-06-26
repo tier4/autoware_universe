@@ -438,6 +438,20 @@ bool is_footprint_point_inside_drivable_area(
          lateral_offset <= (left_limit + tolerance_m);
 }
 
+std::vector<geometry_msgs::msg::Point> to_geometry_points(const lanelet::LineString2d & linestring)
+{
+  std::vector<geometry_msgs::msg::Point> points;
+  points.reserve(linestring.size());
+  for (const auto & point : linestring) {
+    geometry_msgs::msg::Point geometry_point;
+    geometry_point.x = point.x();
+    geometry_point.y = point.y();
+    geometry_point.z = 0.0;
+    points.push_back(geometry_point);
+  }
+  return points;
+}
+
 }  // namespace
 
 bool is_object_beyond_trajectory_end(
@@ -506,10 +520,12 @@ bool should_filter_out_by_longitudinal_distance(
 }
 
 bool should_filter_out_by_lateral_distance(
-  const DrivableAreaResult & drivable_area, const Trajectory & trajectory_msg,
+  const RouteBounds & route_bounds, const Trajectory & trajectory_msg,
   const PredictedObject & object, const LateralDistanceFilterParams & params)
 {
-  if (drivable_area.left_bound.size() < 2 || drivable_area.right_bound.size() < 2) {
+  const auto left_bound = to_geometry_points(route_bounds.first);
+  const auto right_bound = to_geometry_points(route_bounds.second);
+  if (left_bound.size() < 2 || right_bound.size() < 2) {
     return false;
   }
 
@@ -523,8 +539,7 @@ bool should_filter_out_by_lateral_distance(
     footprint_points.begin(), footprint_points.end(),
     [&](const geometry_msgs::msg::Point & footprint_point) {
       return !is_footprint_point_inside_drivable_area(
-        *built_trajectory, footprint_point, drivable_area.left_bound, drivable_area.right_bound,
-        params.tolerance_m);
+        *built_trajectory, footprint_point, left_bound, right_bound, params.tolerance_m);
     });
 }
 
@@ -713,7 +728,7 @@ void FilterManager::observe_and_update_all(
 
 PredictedObjects ObjectSelector::get_avoidance_targets(
   const rclcpp::Time & current_time, const PredictedObjects & objects,
-  const Trajectory & trajectory, const std::optional<DrivableAreaResult> & drivable_area)
+  const Trajectory & trajectory, const RouteBounds & route_bounds)
 {
   for (const auto & object : objects.objects) {
     const auto object_id_str = autoware_utils_uuid::to_hex_string(object.object_id);
@@ -757,9 +772,8 @@ PredictedObjects ObjectSelector::get_avoidance_targets(
               trajectory, object, LongitudinalDistanceFilterParams{})) {
           return true;
         }
-        if (
-          drivable_area && should_filter_out_by_lateral_distance(
-                             *drivable_area, trajectory, object, LateralDistanceFilterParams{})) {
+        if (should_filter_out_by_lateral_distance(
+              route_bounds, trajectory, object, LateralDistanceFilterParams{})) {
           return true;
         }
         return false;

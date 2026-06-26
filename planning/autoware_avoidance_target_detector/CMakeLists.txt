@@ -9,7 +9,6 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   src/object_filtering.cpp
   src/boundary.cpp
   src/parameter.cpp
-  src/map_construction.cpp
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}

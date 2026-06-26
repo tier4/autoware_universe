@@ -14,475 +14,654 @@
 
 #include "autoware/avoidance_target_detector/boundary.hpp"
 
-#include "autoware/avoidance_target_detector/map_construction.hpp"
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <autoware_lanelet2_extension/projection/mgrs_projector.hpp>
+#include <rclcpp/rclcpp.hpp>
 
-#include <autoware_lanelet2_extension/utility/message_conversion.hpp>
-#include <autoware_utils/geometry/boost_geometry.hpp>
-#include <autoware_utils_geometry/boost_geometry.hpp>
-#include <autoware_utils_geometry/geometry.hpp>
-
-#include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/path_point.hpp>
+#include <geometry_msgs/msg/point.hpp>
 
-#include <boost/geometry/algorithms/correct.hpp>
-#include <boost/geometry/algorithms/intersects.hpp>
-
+#include <lanelet2_core/Attribute.h>
 #include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_core/geometry/Lanelet.h>
+#include <lanelet2_core/geometry/LaneletMap.h>
+#include <lanelet2_core/primitives/CompoundLineString.h>
+#include <lanelet2_core/primitives/GPSPoint.h>
+#include <lanelet2_core/utility/Utilities.h>
+#include <lanelet2_io/Io.h>
+#include <lanelet2_traffic_rules/TrafficRulesFactory.h>
 
 #include <algorithm>
-#include <optional>
-#include <unordered_map>
-#include <unordered_set>
+#include <map>
+#include <memory>
+#include <set>
+#include <sstream>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace autoware::avoidance_target_detector
 {
 
+namespace traffic_rules
+{
+
+namespace
+{
+lanelet::traffic_rules::RegisterTrafficRules<GoalPurposeRules> register_goal_purpose_rule(
+  k_goal_purpose_location, lanelet::Participants::Vehicle);
+}  // namespace
+
+lanelet::Optional<bool> GoalPurposeRules::canPass(
+  const lanelet::RegulatoryElementConstPtrs & /*reg_elems*/) const
+{
+  return {};
+}
+
+lanelet::Optional<bool> GoalPurposeRules::canPass(
+  const std::string & type, const std::string & /*location*/) const
+{
+  using ParticipantsMap = std::map<std::string, std::vector<std::string>>;
+  using Value = lanelet::AttributeValueString;
+
+  static const ParticipantsMap participant_map{
+    {"", {lanelet::Participants::Vehicle}},
+    {Value::Road, {lanelet::Participants::Vehicle, lanelet::Participants::Bicycle}},
+    {"road_shoulder",
+     {lanelet::Participants::Vehicle, lanelet::Participants::Bicycle,
+      lanelet::Participants::Pedestrian}},
+    {"pedestrian_lane",
+     {lanelet::Participants::Vehicle, lanelet::Participants::Bicycle,
+      lanelet::Participants::Pedestrian}},
+    {Value::Highway, {lanelet::Participants::Vehicle}},
+    {Value::BicycleLane, {lanelet::Participants::Vehicle, lanelet::Participants::Bicycle}},
+    {Value::PlayStreet,
+     {lanelet::Participants::Pedestrian, lanelet::Participants::Bicycle,
+      lanelet::Participants::Vehicle}},
+    {Value::BusLane,
+     {lanelet::Participants::VehicleBus, lanelet::Participants::VehicleEmergency,
+      lanelet::Participants::VehicleTaxi}},
+    {Value::EmergencyLane, {lanelet::Participants::VehicleEmergency}},
+    {Value::Exit,
+     {lanelet::Participants::Pedestrian, lanelet::Participants::Bicycle,
+      lanelet::Participants::Vehicle}},
+    {Value::Walkway, {lanelet::Participants::Pedestrian}},
+    {Value::Crosswalk, {lanelet::Participants::Pedestrian}},
+    {Value::Stairs, {lanelet::Participants::Pedestrian}},
+    {Value::SharedWalkway, {lanelet::Participants::Pedestrian, lanelet::Participants::Bicycle}}};
+
+  const auto participants = participant_map.find(type);
+  if (participants == participant_map.end()) {
+    return {};
+  }
+
+  return std::any_of(
+    participants->second.begin(), participants->second.end(),
+    [this](const std::string & allowed_participant) {
+      return this->participant().compare(0, allowed_participant.size(), allowed_participant) == 0;
+    });
+}
+
+const lanelet::traffic_rules::CountrySpeedLimits & GoalPurposeRules::countrySpeedLimits() const
+{
+  return speed_limits_;
+}
+
+lanelet::Optional<lanelet::traffic_rules::SpeedLimitInformation> GoalPurposeRules::speedLimit(
+  const lanelet::RegulatoryElementConstPtrs & /*reg_elems*/) const
+{
+  return {};
+}
+
+lanelet::routing::RoutingGraphConstPtr create_goal_purpose_routing_graph(
+  const lanelet::LaneletMap & lanelet_map)
+{
+  const auto traffic_rules = lanelet::traffic_rules::TrafficRulesFactory::create(
+    k_goal_purpose_location, lanelet::Participants::Vehicle);
+  return lanelet::routing::RoutingGraph::build(lanelet_map, *traffic_rules);
+}
+
+std::optional<lanelet::ConstLanelet> get_left_lanelet(
+  const lanelet::routing::RoutingGraph & routing_graph, const lanelet::ConstLanelet & lanelet)
+{
+  if (const auto left_lanelet = routing_graph.left(lanelet)) {
+    return *left_lanelet;
+  }
+  if (const auto adjacent_left_lanelet = routing_graph.adjacentLeft(lanelet)) {
+    return *adjacent_left_lanelet;
+  }
+  return std::nullopt;
+}
+
+std::optional<lanelet::ConstLanelet> get_right_lanelet(
+  const lanelet::routing::RoutingGraph & routing_graph, const lanelet::ConstLanelet & lanelet)
+{
+  if (const auto right_lanelet = routing_graph.right(lanelet)) {
+    return *right_lanelet;
+  }
+  if (const auto adjacent_right_lanelet = routing_graph.adjacentRight(lanelet)) {
+    return *adjacent_right_lanelet;
+  }
+  return std::nullopt;
+}
+
+}  // namespace traffic_rules
+
 namespace
 {
 
-using autoware_planning_msgs::msg::PathPoint;
-using geometry_msgs::msg::Point;
-using geometry_msgs::msg::Pose;
-using traffic_rules::get_left_lanelet;
-using traffic_rules::get_right_lanelet;
-
-struct DrivableLanes
+bool exists_in_map(const lanelet::LaneletMap & map, const lanelet::Id id)
 {
-  lanelet::ConstLanelet left_lane;
-  lanelet::ConstLanelet right_lane;
-};
-
-using FootprintsByLaneletId =
-  std::unordered_map<lanelet::Id, std::vector<autoware_utils::LinearRing2d>>;
-
-DrivableLanes make_not_expanded_drivable_lanes(const lanelet::ConstLanelet & lanelet)
-{
-  return DrivableLanes{lanelet, lanelet};
+  return map.laneletLayer.exists(id);
 }
 
-autoware_utils::LinearRing2d create_vehicle_footprint(
-  const Pose & ego_pose, const VehicleInfo & vehicle_info)
+bool are_laterally_connected(
+  const lanelet::routing::RoutingGraph & routing_graph, const lanelet::LaneletMap & map,
+  const lanelet::Id a, const lanelet::Id b)
 {
-  const auto local_footprint = vehicle_info.createFootprint();
-  return autoware_utils_geometry::transform_vector(
-    local_footprint, autoware_utils_geometry::pose2transform(ego_pose));
-}
-
-// Indices of rear-right and rear-left corners in VehicleInfo::createFootprint().
-constexpr size_t k_rear_right_footprint_index = 3;
-constexpr size_t k_rear_left_footprint_index = 4;
-
-Pose create_rear_midpoint_pose(
-  const autoware_utils::LinearRing2d & footprint, const Pose & base_pose)
-{
-  if (footprint.size() <= k_rear_left_footprint_index) {
-    return base_pose;
+  if (!exists_in_map(map, a) || !exists_in_map(map, b)) {
+    return false;
   }
 
-  const auto & rear_right = footprint[k_rear_right_footprint_index];
-  const auto & rear_left = footprint[k_rear_left_footprint_index];
-
-  Pose rear_midpoint_pose = base_pose;
-  rear_midpoint_pose.position.x = (rear_right.x() + rear_left.x()) * 0.5;
-  rear_midpoint_pose.position.y = (rear_right.y() + rear_left.y()) * 0.5;
-  return rear_midpoint_pose;
-}
-
-autoware_utils_geometry::Polygon2d to_polygon2d(const autoware_utils::LinearRing2d & footprint)
-{
-  autoware_utils_geometry::Polygon2d polygon;
-  for (const auto & point : footprint) {
-    polygon.outer().emplace_back(point.x(), point.y());
-  }
-  boost::geometry::correct(polygon);
-  return polygon;
-}
-
-autoware_utils_geometry::Polygon2d to_polygon2d(const lanelet::ConstLanelet & lanelet)
-{
-  autoware_utils_geometry::Polygon2d polygon;
-  for (const auto & point : lanelet.polygon2d().basicPolygon()) {
-    polygon.outer().emplace_back(point.x(), point.y());
-  }
-  boost::geometry::correct(polygon);
-  return polygon;
-}
-
-bool footprint_intersects_lanelet(
-  const autoware_utils::LinearRing2d & footprint, const lanelet::ConstLanelet & lanelet)
-{
-  return boost::geometry::intersects(to_polygon2d(footprint), to_polygon2d(lanelet));
-}
-
-bool is_same_or_left_of(
-  const lanelet::ConstLanelet & base, const lanelet::ConstLanelet & candidate,
-  const lanelet::routing::RoutingGraph & routing_graph)
-{
-  auto current = base;
-  if (current.id() == candidate.id()) {
-    return true;
-  }
-  while (const auto left = get_left_lanelet(routing_graph, current)) {
-    if (left->id() == candidate.id()) {
+  const auto lanelet_a = map.laneletLayer.get(a);
+  if (const auto left = traffic_rules::get_left_lanelet(routing_graph, lanelet_a)) {
+    if (left->id() == b) {
       return true;
     }
-    current = *left;
   }
-  return false;
-}
-
-bool is_same_or_right_of(
-  const lanelet::ConstLanelet & base, const lanelet::ConstLanelet & candidate,
-  const lanelet::routing::RoutingGraph & routing_graph)
-{
-  auto current = base;
-  if (current.id() == candidate.id()) {
-    return true;
-  }
-  while (const auto right = get_right_lanelet(routing_graph, current)) {
-    if (right->id() == candidate.id()) {
+  if (const auto right = traffic_rules::get_right_lanelet(routing_graph, lanelet_a)) {
+    if (right->id() == b) {
       return true;
     }
-    current = *right;
   }
   return false;
 }
 
-lanelet::ConstLanelet pick_leftmost_lane(
-  const lanelet::ConstLanelet & base, const lanelet::ConstLanelet & a,
-  const lanelet::ConstLanelet & b, const lanelet::routing::RoutingGraph & routing_graph)
+void insert_lateral_chain_to_edge(
+  lanelet::ConstLanelet lanelet, const lanelet::routing::RoutingGraph & routing_graph,
+  const bool to_left, std::set<int64_t> & ids)
 {
-  if (is_same_or_left_of(base, a, routing_graph) && is_same_or_left_of(a, b, routing_graph)) {
-    return b;
-  }
-  if (is_same_or_left_of(base, b, routing_graph) && is_same_or_left_of(b, a, routing_graph)) {
-    return a;
-  }
-  return a;
-}
-
-lanelet::ConstLanelet pick_rightmost_lane(
-  const lanelet::ConstLanelet & base, const lanelet::ConstLanelet & a,
-  const lanelet::ConstLanelet & b, const lanelet::routing::RoutingGraph & routing_graph)
-{
-  if (is_same_or_right_of(base, a, routing_graph) && is_same_or_right_of(a, b, routing_graph)) {
-    return b;
-  }
-  if (is_same_or_right_of(base, b, routing_graph) && is_same_or_right_of(b, a, routing_graph)) {
-    return a;
-  }
-  return a;
-}
-
-lanelet::ConstLanelet expand_lane_to_left(
-  const lanelet::ConstLanelet & lanelet, const RouteHandler & route_handler,
-  const lanelet::routing::RoutingGraph & routing_graph,
-  const autoware_utils::LinearRing2d & footprint, const bool allow_non_route_neighbors)
-{
-  auto left_lane = lanelet;
-  auto current_lane = lanelet;
-
-  while (const auto neighbor = get_left_lanelet(routing_graph, current_lane)) {
-    if (!allow_non_route_neighbors && !route_handler.isRouteLanelet(*neighbor)) {
+  constexpr size_t k_max_lateral_hops = 4;
+  for (size_t hop = 0; hop < k_max_lateral_hops; ++hop) {
+    const auto neighbor = to_left ? traffic_rules::get_left_lanelet(routing_graph, lanelet)
+                                  : traffic_rules::get_right_lanelet(routing_graph, lanelet);
+    if (!neighbor) {
       break;
     }
-    if (!footprint_intersects_lanelet(footprint, *neighbor)) {
+    if (!ids.insert(neighbor->id()).second) {
       break;
     }
-    left_lane = *neighbor;
-    current_lane = *neighbor;
+    lanelet = *neighbor;
   }
-
-  return left_lane;
 }
 
-lanelet::ConstLanelet expand_lane_to_right(
-  const lanelet::ConstLanelet & lanelet, const RouteHandler & route_handler,
-  const lanelet::routing::RoutingGraph & routing_graph,
-  const autoware_utils::LinearRing2d & footprint, const bool allow_non_route_neighbors)
+std::vector<std::vector<int64_t>> find_lateral_connected_components(
+  const std::vector<int64_t> & primitive_ids, const lanelet::LaneletMap & map,
+  const lanelet::routing::RoutingGraph & routing_graph)
 {
-  auto right_lane = lanelet;
-  auto current_lane = lanelet;
-
-  while (const auto neighbor = get_right_lanelet(routing_graph, current_lane)) {
-    if (!allow_non_route_neighbors && !route_handler.isRouteLanelet(*neighbor)) {
-      break;
+  std::set<int64_t> unvisited(primitive_ids.begin(), primitive_ids.end());
+  for (const auto id : primitive_ids) {
+    if (!exists_in_map(map, id)) {
+      continue;
     }
-    if (!footprint_intersects_lanelet(footprint, *neighbor)) {
-      break;
-    }
-    right_lane = *neighbor;
-    current_lane = *neighbor;
+    const auto lanelet = map.laneletLayer.get(id);
+    insert_lateral_chain_to_edge(lanelet, routing_graph, true, unvisited);
+    insert_lateral_chain_to_edge(lanelet, routing_graph, false, unvisited);
   }
 
-  return right_lane;
-}
+  std::vector<std::vector<int64_t>> components;
+  while (!unvisited.empty()) {
+    const auto seed = *unvisited.begin();
+    std::vector<int64_t> component;
+    std::vector<int64_t> queue{seed};
+    unvisited.erase(seed);
 
-DrivableLanes expand_drivable_lanes_for_footprint(
-  const lanelet::ConstLanelet & lanelet, const RouteHandler & route_handler,
-  const lanelet::routing::RoutingGraph & routing_graph,
-  const autoware_utils::LinearRing2d & footprint, const bool allow_non_route_neighbors)
-{
-  DrivableLanes drivable_lanes;
-  drivable_lanes.left_lane = expand_lane_to_left(
-    lanelet, route_handler, routing_graph, footprint, allow_non_route_neighbors);
-  drivable_lanes.right_lane = expand_lane_to_right(
-    lanelet, route_handler, routing_graph, footprint, allow_non_route_neighbors);
-  return drivable_lanes;
-}
+    while (!queue.empty()) {
+      const auto current = queue.back();
+      queue.pop_back();
+      component.push_back(current);
 
-DrivableLanes expand_drivable_lanes_for_footprints(
-  const lanelet::ConstLanelet & lanelet, const RouteHandler & route_handler,
-  const lanelet::routing::RoutingGraph & routing_graph,
-  const std::vector<autoware_utils::LinearRing2d> & footprints,
-  const bool allow_non_route_neighbors)
-{
-  auto drivable_lanes = make_not_expanded_drivable_lanes(lanelet);
-  for (const auto & footprint : footprints) {
-    const auto expanded = expand_drivable_lanes_for_footprint(
-      lanelet, route_handler, routing_graph, footprint, allow_non_route_neighbors);
-    drivable_lanes.left_lane =
-      pick_leftmost_lane(lanelet, drivable_lanes.left_lane, expanded.left_lane, routing_graph);
-    drivable_lanes.right_lane =
-      pick_rightmost_lane(lanelet, drivable_lanes.right_lane, expanded.right_lane, routing_graph);
-  }
-  return drivable_lanes;
-}
-
-bool is_lanelet_in_first_n_route_sections(
-  const LaneletRoute & route, const lanelet::ConstLanelet & lanelet, const size_t n)
-{
-  if (route.segments.empty() || n == 0) {
-    return false;
-  }
-
-  const size_t end_idx = std::min(n, route.segments.size());
-  for (size_t i = 0; i < end_idx; ++i) {
-    for (const auto & primitive : route.segments[i].primitives) {
-      if (primitive.id == lanelet.id()) {
-        return true;
+      for (auto it = unvisited.begin(); it != unvisited.end();) {
+        const auto neighbor = *it;
+        if (are_laterally_connected(routing_graph, map, current, neighbor)) {
+          queue.push_back(neighbor);
+          it = unvisited.erase(it);
+        } else {
+          ++it;
+        }
       }
     }
+
+    components.push_back(std::move(component));
   }
-  return false;
+
+  return components;
 }
 
-bool is_lanelet_in_last_n_route_sections(
-  const LaneletRoute & route, const lanelet::ConstLanelet & lanelet, const size_t n)
+std::optional<int64_t> find_left_neighbor_in_set(
+  const int64_t id, const std::set<int64_t> & id_set, const lanelet::LaneletMap & map,
+  const lanelet::routing::RoutingGraph & routing_graph)
 {
-  if (route.segments.empty() || n == 0) {
-    return false;
+  if (!exists_in_map(map, id)) {
+    return std::nullopt;
   }
 
-  const size_t start_idx = route.segments.size() > n ? route.segments.size() - n : 0;
-  for (size_t i = start_idx; i < route.segments.size(); ++i) {
-    for (const auto & primitive : route.segments[i].primitives) {
-      if (primitive.id == lanelet.id()) {
-        return true;
-      }
+  const auto lanelet = map.laneletLayer.get(id);
+  if (const auto left = traffic_rules::get_left_lanelet(routing_graph, lanelet)) {
+    if (id_set.count(left->id()) > 0) {
+      return left->id();
     }
   }
-  return false;
+  return std::nullopt;
 }
 
-bool is_lanelet_in_relaxed_route_sections(
-  const LaneletRoute * route, const lanelet::ConstLanelet & lanelet)
+std::optional<int64_t> find_right_neighbor_in_set(
+  const int64_t id, const std::set<int64_t> & id_set, const lanelet::LaneletMap & map,
+  const lanelet::routing::RoutingGraph & routing_graph)
 {
-  if (route == nullptr) {
-    return false;
+  if (!exists_in_map(map, id)) {
+    return std::nullopt;
   }
 
-  constexpr size_t route_section_relax_count = 5;
-  return is_lanelet_in_first_n_route_sections(*route, lanelet, route_section_relax_count) ||
-         is_lanelet_in_last_n_route_sections(*route, lanelet, route_section_relax_count);
+  const auto lanelet = map.laneletLayer.get(id);
+  if (const auto right = traffic_rules::get_right_lanelet(routing_graph, lanelet)) {
+    if (id_set.count(right->id()) > 0) {
+      return right->id();
+    }
+  }
+  return std::nullopt;
 }
 
-std::vector<lanelet::Id> collect_overlapping_route_lanelets(
-  const lanelet::ConstLanelet & seed_lanelet, const autoware_utils::LinearRing2d & footprint,
-  const RouteHandler & route_handler, const lanelet::routing::RoutingGraph & routing_graph,
-  FootprintsByLaneletId & footprints_by_lanelet_id, const LaneletRoute * route)
+std::vector<int64_t> sort_left_to_right(
+  const std::vector<int64_t> & primitive_ids, const lanelet::LaneletMap & map,
+  const lanelet::routing::RoutingGraph & routing_graph)
 {
-  const bool allow_non_route_neighbors = is_lanelet_in_relaxed_route_sections(route, seed_lanelet);
+  if (primitive_ids.empty()) {
+    return {};
+  }
 
-  std::vector<lanelet::ConstLanelet> queue{seed_lanelet};
-  std::unordered_set<lanelet::Id> visited;
-  std::unordered_set<lanelet::Id> newly_found_lanelet_ids;
+  const std::set<int64_t> id_set(primitive_ids.begin(), primitive_ids.end());
 
-  const auto register_route_lanelet = [&](const lanelet::ConstLanelet & route_lanelet) {
-    footprints_by_lanelet_id[route_lanelet.id()].push_back(footprint);
-    newly_found_lanelet_ids.insert(route_lanelet.id());
-  };
+  int64_t leftmost = primitive_ids.front();
+  for (const auto id : primitive_ids) {
+    if (!find_left_neighbor_in_set(id, id_set, map, routing_graph)) {
+      leftmost = id;
+      break;
+    }
+  }
 
-  while (!queue.empty()) {
-    const auto current_lanelet = queue.back();
-    queue.pop_back();
+  std::vector<int64_t> ordered;
+  ordered.reserve(primitive_ids.size());
+  std::set<int64_t> visited;
+  auto current = leftmost;
 
-    if (!visited.insert(current_lanelet.id()).second) {
+  while (visited.count(current) == 0) {
+    ordered.push_back(current);
+    visited.insert(current);
+    if (const auto right = find_right_neighbor_in_set(current, id_set, map, routing_graph)) {
+      current = *right;
+    } else {
+      break;
+    }
+  }
+
+  for (const auto id : primitive_ids) {
+    if (visited.count(id) == 0) {
+      ordered.push_back(id);
+    }
+  }
+
+  return ordered;
+}
+
+std::vector<int64_t> collect_sibling_primitives(
+  const std::vector<int64_t> & prev_ordered_primitives,
+  const std::vector<int64_t> & /*current_ordered_primitives*/,
+  const std::vector<int64_t> & next_ordered_primitives, const lanelet::LaneletMap & map,
+  const lanelet::routing::RoutingGraph & routing_graph)
+{
+  std::vector<int64_t> siblings;
+  std::set<int64_t> added;
+
+  for (int64_t next_id : next_ordered_primitives) {
+    if (!exists_in_map(map, next_id)) {
       continue;
     }
 
-    const bool is_route_lanelet = route_handler.isRouteLanelet(current_lanelet);
-    if (!is_route_lanelet && !allow_non_route_neighbors) {
-      continue;
-    }
-    if (!footprint_intersects_lanelet(footprint, current_lanelet)) {
-      if (const auto left_lanelet = get_left_lanelet(routing_graph, current_lanelet)) {
-        queue.push_back(*left_lanelet);
-      }
-      if (const auto right_lanelet = get_right_lanelet(routing_graph, current_lanelet)) {
-        queue.push_back(*right_lanelet);
-      }
-      continue;
-    }
-
-    if (is_route_lanelet) {
-      register_route_lanelet(current_lanelet);
-    } else if (route_handler.isRouteLanelet(seed_lanelet)) {
-      register_route_lanelet(seed_lanelet);
-    }
-
-    if (const auto left_lanelet = get_left_lanelet(routing_graph, current_lanelet)) {
-      queue.push_back(*left_lanelet);
-    }
-    if (const auto right_lanelet = get_right_lanelet(routing_graph, current_lanelet)) {
-      queue.push_back(*right_lanelet);
-    }
-  }
-
-  return {newly_found_lanelet_ids.begin(), newly_found_lanelet_ids.end()};
-}
-
-std::vector<lanelet::ConstLanelet> collect_trajectory_lanelets(
-  const RouteHandler & route_handler, const lanelet::routing::RoutingGraph & routing_graph,
-  const Trajectory & trajectory, const VehicleInfo & vehicle_info,
-  FootprintsByLaneletId & footprints_by_lanelet_id, const LaneletRoute * route)
-{
-  std::vector<lanelet::ConstLanelet> ordered_lanelets;
-  std::unordered_set<lanelet::Id> added_lanelet_ids;
-  const auto lanelet_map_ptr = route_handler.getLaneletMapPtr();
-
-  for (const auto & trajectory_point : trajectory.points) {
-    const auto footprint = create_vehicle_footprint(trajectory_point.pose, vehicle_info);
-    const auto rear_midpoint_pose = create_rear_midpoint_pose(footprint, trajectory_point.pose);
-
-    lanelet::ConstLanelet closest_lanelet;
-    if (!route_handler.getClosestLaneletWithinRoute(rear_midpoint_pose, &closest_lanelet)) {
-      continue;
-    }
-
-    const auto newly_found_lanelet_ids = collect_overlapping_route_lanelets(
-      closest_lanelet, footprint, route_handler, routing_graph, footprints_by_lanelet_id, route);
-
-    for (const auto lanelet_id : newly_found_lanelet_ids) {
-      if (!added_lanelet_ids.insert(lanelet_id).second) {
+    for (int64_t prev_id : prev_ordered_primitives) {
+      if (!exists_in_map(map, prev_id)) {
         continue;
       }
-      ordered_lanelets.push_back(lanelet_map_ptr->laneletLayer.get(lanelet_id));
-    }
-  }
 
-  return ordered_lanelets;
-}
+      const auto prev_lanelet = map.laneletLayer.get(prev_id);
+      for (const auto & middle : routing_graph.following(prev_lanelet)) {
+        if (added.count(middle.id()) > 0) {
+          continue;
+        }
 
-std::vector<DrivableLanes> build_drivable_lanes(
-  const std::vector<lanelet::ConstLanelet> & trajectory_lanelets,
-  const RouteHandler & route_handler, const lanelet::routing::RoutingGraph & routing_graph,
-  const FootprintsByLaneletId & footprints_by_lanelet_id, const LaneletRoute * route)
-{
-  std::vector<DrivableLanes> drivable_lanes;
-  drivable_lanes.reserve(trajectory_lanelets.size());
+        const auto next_lanelets = routing_graph.following(middle);
+        const bool connects_to_next = std::any_of(
+          next_lanelets.begin(), next_lanelets.end(),
+          [&](const auto & next) { return next.id() == next_id; });
+        if (!connects_to_next) {
+          continue;
+        }
 
-  for (const auto & lanelet : trajectory_lanelets) {
-    const auto footprints_it = footprints_by_lanelet_id.find(lanelet.id());
-    if (footprints_it == footprints_by_lanelet_id.end() || footprints_it->second.empty()) {
-      continue;
-    }
-    const bool allow_non_route_neighbors = is_lanelet_in_relaxed_route_sections(route, lanelet);
-    drivable_lanes.push_back(expand_drivable_lanes_for_footprints(
-      lanelet, route_handler, routing_graph, footprints_it->second, allow_non_route_neighbors));
-  }
-
-  return drivable_lanes;
-}
-
-std::vector<Point> generate_bound(
-  const std::vector<DrivableLanes> & drivable_lanes, const bool is_left)
-{
-  constexpr double overlap_threshold = 0.01;
-
-  std::vector<lanelet::ConstPoint3d> points;
-  lanelet::Id previous_bound_id = lanelet::InvalId;
-
-  for (const auto & drivable_lane : drivable_lanes) {
-    const auto bound =
-      is_left ? drivable_lane.left_lane.leftBound3d() : drivable_lane.right_lane.rightBound3d();
-
-    if (bound.id() == previous_bound_id) {
-      continue;
-    }
-    previous_bound_id = bound.id();
-
-    for (const auto & point : bound) {
-      if (
-        points.empty() ||
-        overlap_threshold < (points.back().basicPoint2d() - point.basicPoint2d()).norm()) {
-        points.push_back(point);
+        added.insert(middle.id());
+        siblings.push_back(middle.id());
       }
     }
   }
 
-  std::vector<Point> bound_points;
-  bound_points.reserve(points.size());
-  for (const auto & point : points) {
-    bound_points.push_back(lanelet::utils::conversion::toGeomMsgPt(point));
-  }
-  return bound_points;
+  return siblings;
 }
 
+lanelet::LineString2d remove_const(const lanelet::ConstLineString2d & line_string)
+{
+  lanelet::LineString2d linestring(lanelet::utils::removeConst(line_string.constData()));
+  return line_string.inverted() ? linestring.invert() : linestring;
+}
+
+void add_bounds_linestring_to_map(
+  lanelet::LaneletMap & map, const lanelet::LineString2d & linestring_2d, const std::string & type)
+{
+  if (linestring_2d.empty()) {
+    return;
+  }
+  lanelet::LineString3d linestring = lanelet::utils::to3D(linestring_2d);
+  linestring.setAttribute(lanelet::AttributeName::Type, type);
+  map.add(linestring);
+}
+
+lanelet::LaneletMap build_debug_map(lanelet::LaneletMap & route_map)
+{
+  lanelet::LaneletMap debug_map;
+  for (const auto & lanelet : route_map.laneletLayer) {
+    debug_map.add(lanelet);
+  }
+  for (const auto & linestring : route_map.lineStringLayer) {
+    debug_map.add(linestring);
+  }
+  return debug_map;
+}
 }  // namespace
 
-std::optional<DrivableAreaResult> create_drivable_area(
-  const Trajectory & trajectory, const VehicleInfo & vehicle_info, const LaneletRoute & route,
-  const RouteHandler & route_handler, const lanelet::routing::RoutingGraph & routing_graph)
+ExtendedLaneletSegments::ExtendedLaneletSegments(const LaneletRoute & route) : route_{route}
 {
-  if (!route_handler.isHandlerReady() || trajectory.points.empty()) {
-    return std::nullopt;
+  segments_.reserve(route.segments.size());
+  for (const auto & segment : route.segments) {
+    Segment extended_segment;
+    extended_segment.preferred_primitive = segment.preferred_primitive.id;
+    segments_.push_back(std::move(extended_segment));
   }
-
-  FootprintsByLaneletId footprints_by_lanelet_id;
-  const auto trajectory_lanelets = collect_trajectory_lanelets(
-    route_handler, routing_graph, trajectory, vehicle_info, footprints_by_lanelet_id, &route);
-  if (trajectory_lanelets.empty()) {
-    return std::nullopt;
-  }
-
-  const auto drivable_lanes = build_drivable_lanes(
-    trajectory_lanelets, route_handler, routing_graph, footprints_by_lanelet_id, &route);
-
-  auto left_bound = generate_bound(drivable_lanes, true);
-  auto right_bound = generate_bound(drivable_lanes, false);
-  if (left_bound.size() < 2 || right_bound.size() < 2) {
-    return std::nullopt;
-  }
-
-  DrivableAreaResult result;
-  result.header = trajectory.header;
-  result.left_bound = std::move(left_bound);
-  result.right_bound = std::move(right_bound);
-  return result;
 }
 
-DrivableAreaResult to_drivable_area_result(
-  const std::pair<lanelet::LineString2d, lanelet::LineString2d> & bounds,
-  const std_msgs::msg::Header & header)
+void ExtendedLaneletSegments::build(
+  const lanelet::LaneletMap & map, const lanelet::routing::RoutingGraph & routing_graph)
+{
+  segments_.clear();
+  segments_.reserve(route_.segments.size());
+
+  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Initialized segments_");
+
+  int i = 0;
+
+  auto ids_to_string = [&](const std::vector<int64_t> & ids) {
+    std::stringstream ss;
+    for (const auto id : ids) {
+      ss << std::to_string(id) << " ";
+    }
+    return ss.str();
+  };
+
+  for (const auto & route_segment : route_.segments) {
+    RCLCPP_INFO(
+      rclcpp::get_logger("autoware_avoidance_target_detector"), "Processing segment %d", i++);
+    Segment segment;
+    segment.preferred_primitive = route_segment.preferred_primitive.id;
+
+    std::vector<int64_t> original_primitive_ids;
+    original_primitive_ids.reserve(route_segment.primitives.size());
+    for (const auto & primitive : route_segment.primitives) {
+      if (!exists_in_map(map, primitive.id)) {
+        continue;
+      }
+      original_primitive_ids.push_back(primitive.id);
+    }
+
+    const auto components =
+      find_lateral_connected_components(original_primitive_ids, map, routing_graph);
+
+    std::vector<int64_t> largest_component;
+    for (const auto & component : components) {
+      if (component.size() > largest_component.size()) {
+        largest_component = component;
+      }
+    }
+
+    segment.ordered_primitives = sort_left_to_right(largest_component, map, routing_graph);
+    segment.siblings_included_primitives = segment.ordered_primitives;
+
+    const std::set<int64_t> original_ids(
+      original_primitive_ids.begin(), original_primitive_ids.end());
+    segment.original_ordered_primitives.reserve(segment.ordered_primitives.size());
+    for (const auto id : segment.ordered_primitives) {
+      if (original_ids.count(id) > 0) {
+        segment.original_ordered_primitives.push_back(id);
+      }
+    }
+
+    RCLCPP_INFO(
+      rclcpp::get_logger("autoware_avoidance_target_detector"), "    Set ordered primitives: %s",
+      ids_to_string(segment.ordered_primitives).c_str());
+
+    const std::set<int64_t> ordered_ids(
+      segment.ordered_primitives.begin(), segment.ordered_primitives.end());
+    for (const auto id : original_primitive_ids) {
+      if (ordered_ids.count(id) == 0) {
+        segment.floating_primitives.push_back(id);
+        RCLCPP_WARN(
+          rclcpp::get_logger("autoware_avoidance_target_detector"), "    Floating primitive: %ld",
+          id);
+      }
+    }
+
+    segments_.push_back(std::move(segment));
+  }
+
+  for (size_t i = 0; i + 2 < segments_.size(); ++i) {
+    auto & current_segment = segments_[i + 1];
+    const auto siblings = collect_sibling_primitives(
+      segments_[i].ordered_primitives, current_segment.ordered_primitives,
+      segments_[i + 2].ordered_primitives, map, routing_graph);
+
+    // When there are siblings not originally included in the segment
+    if (siblings.size() > current_segment.ordered_primitives.size()) {
+      current_segment.siblings_included_primitives = siblings;
+
+      RCLCPP_INFO(
+        rclcpp::get_logger("autoware_avoidance_target_detector"),
+        "    Built siblings included primitives: %s", ids_to_string(siblings).c_str());
+    }
+  }
+}
+
+ExtendedRouteHandler::ExtendedRouteHandler(const LaneletMapBin & map, const LaneletRoute & route)
+: route_{route},
+  route_map_{std::make_shared<lanelet::LaneletMap>()},
+  extended_lanelet_segments_{route},
+  original_route_handler_{std::make_shared<RouteHandler>()}
+{
+  original_route_handler_->setMap(map);
+  original_route_handler_->setRoute(route);
+}
+
+void ExtendedRouteHandler::create_map()
+{
+  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Start create_map()");
+  const auto map = original_route_handler_->getLaneletMapPtr();
+  extended_routing_graph_ = traffic_rules::create_goal_purpose_routing_graph(*map);
+  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Built routing graph");
+  extended_lanelet_segments_.build(*map, *extended_routing_graph_);
+
+  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Built segments");
+
+  std::set<lanelet::Id> lanelet_ids;
+  for (const auto & segment : extended_lanelet_segments_.segments()) {
+    for (const auto id : segment.siblings_included_primitives) {
+      lanelet_ids.insert(id);
+    }
+    for (const auto id : segment.floating_primitives) {
+      lanelet_ids.insert(id);
+    }
+  }
+
+  route_map_ = std::make_shared<lanelet::LaneletMap>();
+  for (const auto lanelet_id : lanelet_ids) {
+    if (!map->laneletLayer.exists(lanelet_id)) {
+      continue;
+    }
+    lanelet::Lanelet lanelet = map->laneletLayer.get(lanelet_id);
+    const auto reg_elements = lanelet.regulatoryElements();
+    for (const auto & elem : reg_elements) {
+      lanelet.removeRegulatoryElement(elem);
+    }
+    route_map_->add(lanelet);
+  }
+
+  constexpr double k_road_border_near_distance_m = 1.5;
+  std::set<lanelet::Id> road_border_ids;
+  for (const auto lanelet_id : lanelet_ids) {
+    if (!map->laneletLayer.exists(lanelet_id)) {
+      continue;
+    }
+    const auto lanelet = map->laneletLayer.get(lanelet_id);
+    const auto nearby_linestrings =
+      lanelet::geometry::findWithin2d(map->lineStringLayer, lanelet, k_road_border_near_distance_m);
+    for (const auto & nearby_linestring : nearby_linestrings) {
+      const auto & linestring = nearby_linestring.second;
+      if (road_border_ids.count(linestring.id()) > 0) {
+        continue;
+      }
+      constexpr auto no_type = "none";
+      const std::string type = linestring.attributeOr(lanelet::AttributeName::Type, no_type);
+      if (type != "road_border") {
+        continue;
+      }
+      road_border_ids.insert(linestring.id());
+      route_map_->add(linestring);
+    }
+  }
+
+  RCLCPP_INFO(rclcpp::get_logger("autoware_avoidance_target_detector"), "Built route map");
+
+  std::vector<const std::vector<int64_t> *> original_primitive_lists;
+  std::vector<const std::vector<int64_t> *> extended_primitive_lists;
+  original_primitive_lists.reserve(extended_lanelet_segments_.segments().size());
+  extended_primitive_lists.reserve(extended_lanelet_segments_.segments().size());
+  for (const auto & segment : extended_lanelet_segments_.segments()) {
+    original_primitive_lists.push_back(&segment.original_ordered_primitives);
+    extended_primitive_lists.push_back(&segment.siblings_included_primitives);
+  }
+  original_route_bounds_ = build_route_bounds(original_primitive_lists);
+  extended_route_bounds_ = build_route_bounds(extended_primitive_lists);
+}
+
+void ExtendedRouteHandler::export_debug_map() const
+{
+  const auto package_share_directory =
+    ament_index_cpp::get_package_share_directory("autoware_avoidance_target_detector");
+  const auto debug_map_path_str = package_share_directory + "/debug_map.osm";
+
+  constexpr double origin_lat = 35.22312494103;
+  constexpr double origin_lon = 138.80245834626;
+  lanelet::Origin origin({origin_lat, origin_lon});
+  lanelet::projection::MGRSProjector projector(origin);
+  projector.setMGRSCode(lanelet::GPSPoint{origin_lat, origin_lon, 0.0});
+
+  auto debug_map = build_debug_map(*route_map_);
+
+  const auto original_bounds = get_original_route_bounds();
+  add_bounds_linestring_to_map(debug_map, original_bounds.first, "original_route");
+  add_bounds_linestring_to_map(debug_map, original_bounds.second, "original_route");
+
+  const auto extended_bounds = get_extended_route_bounds();
+  add_bounds_linestring_to_map(debug_map, extended_bounds.first, "extended_route");
+  add_bounds_linestring_to_map(debug_map, extended_bounds.second, "extended_route");
+
+  lanelet::write(debug_map_path_str, debug_map, projector);
+  RCLCPP_INFO(
+    rclcpp::get_logger("autoware_avoidance_target_detector"), "Exported debug map to %s",
+    debug_map_path_str.c_str());
+}
+
+std::vector<lanelet::LineString2d> ExtendedRouteHandler::get_road_borders() const
+{
+  std::vector<lanelet::LineString2d> road_borders;
+  for (const auto & ls : route_map_->lineStringLayer) {
+    const std::string type = ls.attributeOr(lanelet::AttributeName::Type, "none");
+    if (type != "road_border") {
+      continue;
+    }
+    road_borders.push_back(lanelet::utils::to2D(ls));
+  }
+  return road_borders;
+}
+
+std::pair<lanelet::LineString2d, lanelet::LineString2d>
+ExtendedRouteHandler::get_primitive_set_bounds(const std::vector<int64_t> & primitives) const
+{
+  if (
+    !exists_in_map(*route_map_, primitives.front()) ||
+    !exists_in_map(*route_map_, primitives.back())) {
+    return std::make_pair(lanelet::LineString2d(), lanelet::LineString2d());
+  }
+
+  const lanelet::Lanelet start_lanelet = route_map_->laneletLayer.get(primitives.front());
+  const lanelet::Lanelet end_lanelet = route_map_->laneletLayer.get(primitives.back());
+  const lanelet::LineString2d start_left_bound = remove_const(start_lanelet.leftBound2d());
+  const lanelet::LineString2d end_right_bound = remove_const(end_lanelet.rightBound2d());
+  return std::make_pair(start_left_bound, end_right_bound);
+}
+
+std::pair<lanelet::LineString2d, lanelet::LineString2d> ExtendedRouteHandler::build_route_bounds(
+  const std::vector<const std::vector<int64_t> *> & segment_primitives) const
+{
+  std::vector<lanelet::LineString2d> left_bounds;
+  std::vector<lanelet::LineString2d> right_bounds;
+  left_bounds.reserve(segment_primitives.size());
+  right_bounds.reserve(segment_primitives.size());
+  for (const auto * primitives : segment_primitives) {
+    const auto bounds = get_primitive_set_bounds(*primitives);
+    left_bounds.push_back(bounds.first);
+    right_bounds.push_back(bounds.second);
+  }
+  const auto left_compound_bound = lanelet::CompoundLineString2d(left_bounds);
+  const auto right_compound_bound = lanelet::CompoundLineString2d(right_bounds);
+
+  lanelet::LineString2d left_bound(lanelet::utils::getId());
+  lanelet::LineString2d right_bound(lanelet::utils::getId());
+  left_bound.reserve(left_compound_bound.size());
+  right_bound.reserve(right_compound_bound.size());
+  for (const auto & point : left_compound_bound) {
+    left_bound.push_back(
+      lanelet::Point2d(point.id(), {point.basicPoint().x(), point.basicPoint().y(), 0.0}));
+  }
+  for (const auto & point : right_compound_bound) {
+    right_bound.push_back(
+      lanelet::Point2d(point.id(), {point.basicPoint().x(), point.basicPoint().y(), 0.0}));
+  }
+
+  return std::make_pair(left_bound, right_bound);
+}
+
+Path to_path_msg(const RouteBounds & bounds, const Trajectory & trajectory)
 {
   auto to_geometry_points = [](const lanelet::LineString2d & linestring) {
-    std::vector<Point> points;
+    std::vector<geometry_msgs::msg::Point> points;
     points.reserve(linestring.size());
     for (const auto & point : linestring) {
-      Point geometry_point;
+      geometry_msgs::msg::Point geometry_point;
       geometry_point.x = point.x();
       geometry_point.y = point.y();
       geometry_point.z = 0.0;
@@ -491,23 +670,14 @@ DrivableAreaResult to_drivable_area_result(
     return points;
   };
 
-  DrivableAreaResult result;
-  result.header = header;
-  result.left_bound = to_geometry_points(bounds.first);
-  result.right_bound = to_geometry_points(bounds.second);
-  return result;
-}
-
-Path to_path_msg(const DrivableAreaResult & area, const Trajectory & trajectory)
-{
   Path path;
-  path.header = area.header;
-  path.left_bound = area.left_bound;
-  path.right_bound = area.right_bound;
+  path.header = trajectory.header;
+  path.left_bound = to_geometry_points(bounds.first);
+  path.right_bound = to_geometry_points(bounds.second);
 
   path.points.reserve(trajectory.points.size());
   for (const auto & trajectory_point : trajectory.points) {
-    PathPoint path_point;
+    autoware_planning_msgs::msg::PathPoint path_point;
     path_point.pose = trajectory_point.pose;
     path_point.longitudinal_velocity_mps = trajectory_point.longitudinal_velocity_mps;
     path_point.lateral_velocity_mps = trajectory_point.lateral_velocity_mps;

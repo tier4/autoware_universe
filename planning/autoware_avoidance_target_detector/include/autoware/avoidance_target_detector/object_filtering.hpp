@@ -184,7 +184,7 @@ public:
    */
   [[nodiscard]] PredictedObjects get_avoidance_targets(
     const rclcpp::Time & current_time, const PredictedObjects & objects,
-    const Trajectory & trajectory, const std::optional<DrivableAreaResult> & drivable_area);
+    const Trajectory & trajectory, const RouteBounds & route_bounds);
 
 private:
   FilterManagerMap object_filters_;
@@ -224,8 +224,8 @@ private:
  *          tolerance.
  */
 [[nodiscard]] bool should_filter_out_by_lateral_distance(
-  const DrivableAreaResult & drivable_area, const Trajectory & trajectory,
-  const PredictedObject & object, const LateralDistanceFilterParams & params = {});
+  const RouteBounds & route_bounds, const Trajectory & trajectory, const PredictedObject & object,
+  const LateralDistanceFilterParams & params = {});
 
 }  // namespace autoware::avoidance_target_detector
 
