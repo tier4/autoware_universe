@@ -116,9 +116,48 @@ Masking the area of the ego vehicle in order to reduce FP caused by reflection. 
 - `ego_mask.fill_value_bgr`: BGR fill inside polygons, 0–255 (default: `[0, 0, 0]`)
 - `ego_mask.roi_polygons_yaml`: One YAML path per model ROI index; empty string disables that ROI.
 
+Mask polygons are rasterized at the subscribed image resolution before StreamPETR preprocessing
+resizes, crops, and normalizes the image. If `is_distorted_image` is `true`, the mask is applied
+after CUDA undistortion/remap at the full image resolution. If `normalized` is `true`, polygon
+coordinates are scaled by the current full image width and height.
+
 Example polygon files: `config/camera9_polygons.yaml`, `config/camera10_polygons.yaml`.
 
 **X2 five-camera layout** (`tensorrt_stream_petr.x2.launch.xml`): ROI 2 → camera10 (left strip), ROI 4 → camera9 (right strip). Ego mask params are set in that launch file.
+
+The standalone live designer subscribes to available raw and compressed camera image topics, pairs
+them with `CameraInfo`, shows undistorted full-resolution frames in a browser dropdown, and exports
+both `camera_N_mask` parameter snippets and `polygons` YAML:
+
+```bash
+python3 tools/camera_mask_designer.py \
+  --param-path config/camera_streampetr.param.yaml \
+  --output-dir /tmp/streampetr_mask_evidence
+```
+
+Open the URL printed by the tool, select a stream, freeze a representative frame, draw the mask,
+then copy the generated output. The default port is `8766`; if it is already in use, the tool tries
+the next ports automatically. If a matching `CameraInfo` topic is not available, the preview falls
+back to the original image and marks the stream as `original/fallback`.
+
+The UI can load the current `camera_N_mask` values from the parameter YAML, display the selected
+camera's existing mask over the undistorted preview, save the updated `camera_N_mask` block back to
+the YAML, and write a PNG evidence image with the mask overlaid semi-transparently to the output
+folder. The parameter path also accepts a `file://` URL.
+
+For offline workflows, save a one-frame undistorted snapshot and open it in the static editor:
+
+```bash
+python3 tools/save_undistorted_snapshot.py \
+  --image-topic /sensing/camera/camera0/image_raw \
+  --camera-info-topic /sensing/camera/camera0/camera_info \
+  --output /tmp/streampetr_camera0_undistorted.png
+```
+
+For compressed input, add `--compressed` and pass the compressed image topic. Then open
+`tools/camera_mask_editor.html` locally. Both helpers are separate from the StreamPETR node and only
+use the subscribed image plus `CameraInfo` to reproduce the same full-resolution OpenCV
+undistortion map.
 
 #### Node Parameters
 

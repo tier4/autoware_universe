@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StreamPETR Camera Mask Editor</title>
+  <style>
+    :root {
+      --bg: #f4f5f7;
+      --panel: #ffffff;
+      --ink: #1f2933;
+      --muted: #667085;
+      --line: #d0d5dd;
+      --accent: #006c67;
+      --accent-strong: #004f4b;
+      --danger: #b42318;
+      --canvas-bg: #101828;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 380px;
+      gap: 16px;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    .workspace,
+    .side {
+      min-width: 0;
+    }
+
+    .toolbar,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 10px;
+    }
+
+    .panel {
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .canvas-shell {
+      display: grid;
+      place-items: center;
+      min-height: calc(100vh - 112px);
+      padding: 12px;
+      background: var(--canvas-bg);
+      border-radius: 8px;
+      overflow: auto;
+    }
+
+    canvas {
+      max-width: 100%;
+      max-height: calc(100vh - 136px);
+      background: #182230;
+      cursor: crosshair;
+      image-rendering: auto;
+    }
+
+    label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    input[type="file"],
+    input[type="number"],
+    textarea,
+    select {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px;
+      color: var(--ink);
+      background: #ffffff;
+      font: inherit;
+      font-size: 13px;
+    }
+
+    input[type="number"] {
+      height: 36px;
+    }
+
+    textarea {
+      min-height: 112px;
+      resize: vertical;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      line-height: 1.45;
+    }
+
+    button {
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 12px;
+      color: var(--ink);
+      background: #ffffff;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    button.primary {
+      border-color: var(--accent);
+      color: #ffffff;
+      background: var(--accent);
+    }
+
+    button.primary:hover {
+      background: var(--accent-strong);
+    }
+
+    button.danger {
+      border-color: #fecdca;
+      color: var(--danger);
+      background: #fff5f5;
+    }
+
+    button:disabled {
+      cursor: default;
+      opacity: 0.45;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 10px;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 36px;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .stat {
+      display: grid;
+      grid-template-columns: 110px minmax(0, 1fr);
+      gap: 8px;
+      padding: 5px 0;
+      border-bottom: 1px solid #eef2f6;
+      font-size: 13px;
+    }
+
+    .stat:last-child {
+      border-bottom: 0;
+    }
+
+    .stat span:first-child {
+      color: var(--muted);
+      font-weight: 650;
+    }
+
+    .side h1,
+    .side h2 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      line-height: 1.3;
+    }
+
+    .side h1 {
+      font-size: 18px;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 13px;
+      min-height: 18px;
+    }
+
+    @media (max-width: 980px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+
+      .canvas-shell {
+        min-height: 54vh;
+      }
+
+      canvas {
+        max-height: 64vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="workspace">
+      <div class="toolbar">
+        <label>
+          Image
+          <input id="imageFile" type="file" accept="image/*">
+        </label>
+        <button id="undoButton" type="button">Undo Point</button>
+        <button id="newPolygonButton" type="button">New Polygon</button>
+        <button id="clearButton" type="button" class="danger">Clear</button>
+        <span id="status" class="status"></span>
+      </div>
+      <div class="canvas-shell">
+        <canvas id="maskCanvas" width="1280" height="720"></canvas>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="panel">
+        <h1>StreamPETR Camera Mask</h1>
+        <div class="row">
+          <label>
+            Camera ID
+            <input id="cameraId" type="number" min="0" max="10" value="9">
+          </label>
+          <label class="check">
+            <input id="normalized" type="checkbox" checked>
+            Normalized
+          </label>
+        </div>
+        <div class="row">
+          <label>
+            Fill B
+            <input id="fillB" type="number" min="0" max="255" value="0">
+          </label>
+          <label>
+            Fill G
+            <input id="fillG" type="number" min="0" max="255" value="0">
+          </label>
+        </div>
+        <div class="row">
+          <label>
+            Fill R
+            <input id="fillR" type="number" min="0" max="255" value="0">
+          </label>
+          <button id="copyButton" type="button" class="primary">Copy Output</button>
+        </div>
+        <div id="stats"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Import Points</h2>
+        <textarea id="importText" spellcheck="false">[0.8, 0.0, 1.0, 0.0, 1.0, 1.0, 0.8, 1.0]</textarea>
+        <div class="button-row">
+          <button id="importButton" type="button">Import</button>
+          <button id="sampleLeftButton" type="button">Left Strip</button>
+          <button id="sampleRightButton" type="button">Right Strip</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Output</h2>
+        <label>
+          ROS parameter snippet
+          <textarea id="paramOutput" readonly spellcheck="false"></textarea>
+        </label>
+        <label style="margin-top: 10px;">
+          polygons YAML
+          <textarea id="yamlOutput" readonly spellcheck="false"></textarea>
+        </label>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("maskCanvas");
+    const ctx = canvas.getContext("2d");
+    const imageFile = document.getElementById("imageFile");
+    const statusEl = document.getElementById("status");
+    const statsEl = document.getElementById("stats");
+    const cameraIdEl = document.getElementById("cameraId");
+    const normalizedEl = document.getElementById("normalized");
+    const importTextEl = document.getElementById("importText");
+    const paramOutputEl = document.getElementById("paramOutput");
+    const yamlOutputEl = document.getElementById("yamlOutput");
+    const fillBEl = document.getElementById("fillB");
+    const fillGEl = document.getElementById("fillG");
+    const fillREl = document.getElementById("fillR");
+
+    const state = {
+      image: null,
+      imageName: "",
+      polygons: [[]],
+      activePolygon: 0,
+      drag: null,
+      hover: null,
+    };
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function round(value, digits) {
+      const scale = 10 ** digits;
+      return Math.round(value * scale) / scale;
+    }
+
+    function activePoints() {
+      if (!state.polygons[state.activePolygon]) {
+        state.polygons[state.activePolygon] = [];
+      }
+      return state.polygons[state.activePolygon];
+    }
+
+    function validPolygons() {
+      return state.polygons.filter((points) => points.length >= 3);
+    }
+
+    function imageSizeText() {
+      if (!state.image) {
+        return "no image";
+      }
+      return `${state.image.width} x ${state.image.height}`;
+    }
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function pointerToImagePoint(event) {
+      const rect = canvas.getBoundingClientRect();
+      const x = (event.clientX - rect.left) * canvas.width / rect.width;
+      const y = (event.clientY - rect.top) * canvas.height / rect.height;
+      return {
+        x: clamp(x, 0, canvas.width - 1),
+        y: clamp(y, 0, canvas.height - 1),
+      };
+    }
+
+    function displayThreshold() {
+      const rect = canvas.getBoundingClientRect();
+      const scale = canvas.width / Math.max(1, rect.width);
+      return 11 * scale;
+    }
+
+    function findVertex(point) {
+      const threshold = displayThreshold();
+      let best = null;
+      let bestDist = Number.POSITIVE_INFINITY;
+      state.polygons.forEach((polygon, polygonIndex) => {
+        polygon.forEach((vertex, vertexIndex) => {
+          const dist = Math.hypot(vertex.x - point.x, vertex.y - point.y);
+          if (dist < threshold && dist < bestDist) {
+            best = { polygonIndex, vertexIndex };
+            bestDist = dist;
+          }
+        });
+      });
+      return best;
+    }
+
+    function drawPolygon(points, index) {
+      if (points.length === 0) {
+        return;
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      points.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
+      if (points.length >= 3) {
+        ctx.closePath();
+        ctx.fillStyle = index === state.activePolygon ? "rgba(0, 108, 103, 0.32)" : "rgba(255, 138, 76, 0.24)";
+        ctx.fill();
+      }
+
+      ctx.lineWidth = Math.max(2, canvas.width / 900);
+      ctx.strokeStyle = index === state.activePolygon ? "#00a991" : "#ff9f43";
+      ctx.stroke();
+
+      points.forEach((point, vertexIndex) => {
+        const isHover = state.hover &&
+          state.hover.polygonIndex === index &&
+          state.hover.vertexIndex === vertexIndex;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, isHover ? 8 : 6, 0, Math.PI * 2);
+        ctx.fillStyle = isHover ? "#ffffff" : "#ffd166";
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#101828";
+        ctx.stroke();
+      });
+    }
+
+    function drawPlaceholder() {
+      ctx.fillStyle = "#182230";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#d0d5dd";
+      ctx.font = "24px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Load an image", canvas.width / 2, canvas.height / 2);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (state.image) {
+        ctx.drawImage(state.image, 0, 0, canvas.width, canvas.height);
+      } else {
+        drawPlaceholder();
+      }
+      state.polygons.forEach(drawPolygon);
+      updateOutput();
+      updateStats();
+    }
+
+    function outputPoints(points) {
+      const normalized = normalizedEl.checked;
+      const width = state.image ? state.image.width : canvas.width;
+      const height = state.image ? state.image.height : canvas.height;
+      return points.flatMap((point) => {
+        if (normalized) {
+          return [round(point.x / width, 6), round(point.y / height, 6)];
+        }
+        return [round(point.x, 2), round(point.y, 2)];
+      });
+    }
+
+    function formatArray(values) {
+      return `[${values.map((value) => Number.isInteger(value) ? value.toString() : value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")).join(", ")}]`;
+    }
+
+    function updateOutput() {
+      const cameraId = clamp(Number.parseInt(cameraIdEl.value || "0", 10), 0, 10);
+      const normalized = normalizedEl.checked ? "true" : "false";
+      const polygons = validPolygons();
+      const first = polygons[0] || [];
+      const firstMask = first.length ? formatArray(outputPoints(first)) : "[]";
+      const fill = [
+        clamp(Number.parseInt(fillBEl.value || "0", 10), 0, 255),
+        clamp(Number.parseInt(fillGEl.value || "0", 10), 0, 255),
+        clamp(Number.parseInt(fillREl.value || "0", 10), 0, 255),
+      ];
+
+      paramOutputEl.value =
+        `ego_mask.fill_value_bgr: [${fill.join(", ")}]\n` +
+        `camera_${cameraId}_mask:\n` +
+        `  enable: ${first.length ? "true" : "false"}\n` +
+        `  mask: ${firstMask}\n` +
+        `  normalized: ${normalized}\n`;
+
+      if (polygons.length === 0) {
+        yamlOutputEl.value = "polygons: []\n";
+      } else {
+        const yamlLines = ["polygons:"];
+        polygons.forEach((points) => {
+          yamlLines.push(`  - points: ${formatArray(outputPoints(points))}`);
+          yamlLines.push(`    normalized: ${normalized}`);
+        });
+        yamlOutputEl.value = `${yamlLines.join("\n")}\n`;
+      }
+    }
+
+    function updateStats() {
+      const polygons = validPolygons();
+      const current = activePoints();
+      statsEl.innerHTML = [
+        ["Image", imageSizeText()],
+        ["Polygons", polygons.length.toString()],
+        ["Active points", current.length.toString()],
+        ["Coordinate", normalizedEl.checked ? "normalized" : "pixel"],
+      ].map(([key, value]) => `<div class="stat"><span>${key}</span><span>${value}</span></div>`).join("");
+    }
+
+    function loadImage(file) {
+      if (!file) {
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => {
+        state.image = image;
+        state.imageName = file.name;
+        canvas.width = image.width;
+        canvas.height = image.height;
+        URL.revokeObjectURL(url);
+        setStatus(file.name);
+        draw();
+      };
+      image.src = url;
+    }
+
+    function importPoints(text) {
+      const normalizedMatch = text.match(/normalized\s*:\s*(true|false)/i);
+      if (normalizedMatch) {
+        normalizedEl.checked = normalizedMatch[1].toLowerCase() === "true";
+      }
+
+      const arrayMatch =
+        text.match(/(?:mask|points)\s*:\s*\[([^\]]*)\]/i) || text.match(/\[([^\]]*)\]/);
+      const pointText = arrayMatch ? arrayMatch[1] : text;
+      const values = (pointText.match(/-?\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi) || []).map(Number);
+      if (values.length < 6 || values.length % 2 !== 0) {
+        setStatus("import needs at least 3 points");
+        return;
+      }
+
+      const width = state.image ? state.image.width : canvas.width;
+      const height = state.image ? state.image.height : canvas.height;
+      const isNormalized = normalizedEl.checked;
+      const points = [];
+      for (let i = 0; i < values.length; i += 2) {
+        const x = isNormalized ? values[i] * width : values[i];
+        const y = isNormalized ? values[i + 1] * height : values[i + 1];
+        points.push({
+          x: clamp(x, 0, width - 1),
+          y: clamp(y, 0, height - 1),
+        });
+      }
+      state.polygons[state.activePolygon] = points;
+      setStatus("imported points");
+      draw();
+    }
+
+    imageFile.addEventListener("change", (event) => loadImage(event.target.files[0]));
+
+    canvas.addEventListener("pointerdown", (event) => {
+      if (!state.image) {
+        return;
+      }
+      const point = pointerToImagePoint(event);
+      const vertex = findVertex(point);
+      if (vertex) {
+        state.activePolygon = vertex.polygonIndex;
+        state.drag = vertex;
+      } else {
+        activePoints().push(point);
+      }
+      draw();
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+      if (!state.image) {
+        return;
+      }
+      const point = pointerToImagePoint(event);
+      if (state.drag) {
+        state.polygons[state.drag.polygonIndex][state.drag.vertexIndex] = point;
+      }
+      state.hover = findVertex(point);
+      draw();
+    });
+
+    canvas.addEventListener("pointerup", () => {
+      state.drag = null;
+    });
+
+    canvas.addEventListener("pointerleave", () => {
+      state.drag = null;
+      state.hover = null;
+      draw();
+    });
+
+    document.getElementById("undoButton").addEventListener("click", () => {
+      activePoints().pop();
+      draw();
+    });
+
+    document.getElementById("newPolygonButton").addEventListener("click", () => {
+      state.polygons.push([]);
+      state.activePolygon = state.polygons.length - 1;
+      draw();
+    });
+
+    document.getElementById("clearButton").addEventListener("click", () => {
+      state.polygons = [[]];
+      state.activePolygon = 0;
+      draw();
+    });
+
+    document.getElementById("importButton").addEventListener("click", () => {
+      importPoints(importTextEl.value);
+    });
+
+    document.getElementById("sampleLeftButton").addEventListener("click", () => {
+      normalizedEl.checked = true;
+      importTextEl.value = "[0.0, 0.0, 0.2, 0.0, 0.2, 1.0, 0.0, 1.0]";
+      importPoints(importTextEl.value);
+    });
+
+    document.getElementById("sampleRightButton").addEventListener("click", () => {
+      normalizedEl.checked = true;
+      importTextEl.value = "[0.8, 0.0, 1.0, 0.0, 1.0, 1.0, 0.8, 1.0]";
+      importPoints(importTextEl.value);
+    });
+
+    document.getElementById("copyButton").addEventListener("click", async () => {
+      const text = `${paramOutputEl.value}\n${yamlOutputEl.value}`;
+      try {
+        await navigator.clipboard.writeText(text);
+        setStatus("copied output");
+      } catch (error) {
+        paramOutputEl.focus();
+        paramOutputEl.select();
+        setStatus("copy unavailable");
+      }
+    });
+
+    [cameraIdEl, normalizedEl, fillBEl, fillGEl, fillREl].forEach((element) => {
+      element.addEventListener("input", draw);
+      element.addEventListener("change", draw);
+    });
+
+    draw();
+  </script>
+</body>
+</html>
