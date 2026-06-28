@@ -1122,6 +1122,17 @@ class CameraMaskDesignerNode(Node):
             "encoding": "bgr8-jpeg",
             "image_file": image_path.name,
         }
+        if stream.camera_info is not None:
+            metadata.update(
+                {
+                    "camera_info_k": list(stream.camera_info.k),
+                    "camera_info_d": list(stream.camera_info.d),
+                    "camera_info_p": list(stream.camera_info.p),
+                    "camera_info_width": int(stream.camera_info.width),
+                    "camera_info_height": int(stream.camera_info.height),
+                    "camera_frame_id": stream.camera_info.header.frame_id,
+                }
+            )
         metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
         return {"image_path": str(image_path), "metadata_path": str(metadata_path)}
 

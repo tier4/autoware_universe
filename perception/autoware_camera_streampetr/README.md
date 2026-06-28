@@ -156,6 +156,21 @@ python3 tools/camera_mask_designer.py \
   --param-path config/camera_streampetr.param.yaml
 ```
 
+An experimental ONNX overlay helper can run the three StreamPETR ONNX files from cached frames and
+write per-camera PNGs with projected 3D boxes:
+
+```bash
+python3 tools/streampetr_onnx_overlay.py \
+  --cache-dir /tmp/streampetr_mask_frame_cache \
+  --model-dir /home/yoshiri/autoware_data/camera_streampetr \
+  --output-dir /tmp/streampetr_onnx_overlay \
+  --projection-json /path/to/lidar2img_by_camera.json
+```
+
+The helper requires `onnxruntime`. The cached metadata or `--projection-json` must provide
+`lidar2img` or `img2lidar` matrices to draw geometrically meaningful 2D boxes. Without those
+projection matrices, it can still run inference but cannot place boxes on the image correctly.
+
 For offline workflows, save a one-frame undistorted snapshot and open it in the static editor:
 
 ```bash
