@@ -132,7 +132,8 @@ both `camera_N_mask` parameter snippets and `polygons` YAML:
 ```bash
 python3 tools/camera_mask_designer.py \
   --param-path config/camera_streampetr.param.yaml \
-  --output-dir /tmp/streampetr_mask_evidence
+  --output-dir /tmp/streampetr_mask_evidence \
+  --cache-dir /tmp/streampetr_mask_frame_cache
 ```
 
 Open the URL printed by the tool, select a stream, freeze a representative frame, draw the mask,
@@ -142,8 +143,18 @@ back to the original image and marks the stream as `original/fallback`.
 
 The UI can load the current `camera_N_mask` values from the parameter YAML, display the selected
 camera's existing mask over the undistorted preview, save the updated `camera_N_mask` block back to
-the YAML, and write a PNG evidence image with the mask overlaid semi-transparently to the output
-folder. The parameter path also accepts a `file://` URL.
+the YAML, and write PNG evidence images to the output folder. Evidence export can write multiple
+patterns from the same frame: semi-transparent overlay, filled-mask preview, and outline-only. The
+parameter path also accepts a `file://` URL.
+
+Use `Save Current Frame` to cache the selected undistorted frame and stream metadata. A later
+session can avoid ROS 2 subscriptions entirely and use only cached frames:
+
+```bash
+python3 tools/camera_mask_designer.py \
+  --offline-cache-dir /tmp/streampetr_mask_frame_cache \
+  --param-path config/camera_streampetr.param.yaml
+```
 
 For offline workflows, save a one-frame undistorted snapshot and open it in the static editor:
 

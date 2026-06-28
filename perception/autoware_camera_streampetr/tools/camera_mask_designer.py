@@ -266,10 +266,25 @@ HTML = r"""<!doctype html>
           Output folder
           <input id="outputDir" type="text" spellcheck="false">
         </label>
+        <label class="check"><input id="saveOverlayVariant" type="checkbox" checked> Overlay</label>
+        <label class="check"><input id="saveFilledVariant" type="checkbox" checked> Filled preview</label>
+        <label class="check"><input id="saveOutlineVariant" type="checkbox" checked> Outline</label>
         <div class="button-row">
-          <button id="saveEvidenceButton" type="button" class="primary">Save Overlay PNG</button>
+          <button id="saveEvidenceButton" type="button" class="primary">Save Evidence PNGs</button>
         </div>
         <div id="evidenceStatus" class="status" style="margin-top: 8px;"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Frame Cache</h2>
+        <label>
+          Cache folder
+          <input id="cacheDir" type="text" spellcheck="false">
+        </label>
+        <div class="button-row">
+          <button id="saveCacheButton" type="button">Save Current Frame</button>
+        </div>
+        <div id="cacheStatus" class="status" style="margin-top: 8px;"></div>
       </div>
 
       <div class="panel">
@@ -315,6 +330,11 @@ HTML = r"""<!doctype html>
     const paramStatusEl = document.getElementById("paramStatus");
     const outputDirEl = document.getElementById("outputDir");
     const evidenceStatusEl = document.getElementById("evidenceStatus");
+    const cacheDirEl = document.getElementById("cacheDir");
+    const cacheStatusEl = document.getElementById("cacheStatus");
+    const saveOverlayVariantEl = document.getElementById("saveOverlayVariant");
+    const saveFilledVariantEl = document.getElementById("saveFilledVariant");
+    const saveOutlineVariantEl = document.getElementById("saveOutlineVariant");
 
     const state = {
       image: null,
@@ -346,6 +366,7 @@ HTML = r"""<!doctype html>
     function setStatus(text) { statusEl.textContent = text; }
     function setParamStatus(text) { paramStatusEl.textContent = text; }
     function setEvidenceStatus(text) { evidenceStatusEl.textContent = text; }
+    function setCacheStatus(text) { cacheStatusEl.textContent = text; }
 
     function pointerToImagePoint(event) {
       const rect = canvas.getBoundingClientRect();
@@ -549,24 +570,41 @@ HTML = r"""<!doctype html>
       paramPathEl.value = data.path;
       setParamStatus(`saved camera_${cameraId}_mask to ${data.path}`);
     }
-    function evidenceDataUrl() {
+    function drawEvidencePolygons(targetCtx, variant) {
+      validPolygons().forEach((points) => {
+        targetCtx.beginPath();
+        targetCtx.moveTo(points[0].x, points[0].y);
+        points.slice(1).forEach((point) => targetCtx.lineTo(point.x, point.y));
+        targetCtx.closePath();
+        if (variant === "overlay") {
+          targetCtx.fillStyle = "rgba(0, 169, 145, 0.36)";
+          targetCtx.fill();
+          targetCtx.lineWidth = Math.max(3, canvas.width / 700);
+          targetCtx.strokeStyle = "rgba(255, 209, 102, 0.95)";
+          targetCtx.stroke();
+        } else if (variant === "filled") {
+          const fill = [
+            clamp(Number.parseInt(fillBEl.value || "0", 10), 0, 255),
+            clamp(Number.parseInt(fillGEl.value || "0", 10), 0, 255),
+            clamp(Number.parseInt(fillREl.value || "0", 10), 0, 255),
+          ];
+          targetCtx.fillStyle = `rgb(${fill[2]}, ${fill[1]}, ${fill[0]})`;
+          targetCtx.fill();
+        } else if (variant === "outline") {
+          targetCtx.lineWidth = Math.max(4, canvas.width / 600);
+          targetCtx.strokeStyle = "rgba(255, 209, 102, 1.0)";
+          targetCtx.stroke();
+        }
+      });
+    }
+    function evidenceDataUrl(variant) {
       if (!state.image) return "";
       const evidenceCanvas = document.createElement("canvas");
       evidenceCanvas.width = canvas.width;
       evidenceCanvas.height = canvas.height;
       const evidenceCtx = evidenceCanvas.getContext("2d");
       evidenceCtx.drawImage(state.image, 0, 0, evidenceCanvas.width, evidenceCanvas.height);
-      validPolygons().forEach((points) => {
-        evidenceCtx.beginPath();
-        evidenceCtx.moveTo(points[0].x, points[0].y);
-        points.slice(1).forEach((point) => evidenceCtx.lineTo(point.x, point.y));
-        evidenceCtx.closePath();
-        evidenceCtx.fillStyle = "rgba(0, 169, 145, 0.36)";
-        evidenceCtx.fill();
-        evidenceCtx.lineWidth = Math.max(3, evidenceCanvas.width / 700);
-        evidenceCtx.strokeStyle = "rgba(255, 209, 102, 0.95)";
-        evidenceCtx.stroke();
-      });
+      drawEvidencePolygons(evidenceCtx, variant);
       return evidenceCanvas.toDataURL("image/png");
     }
     async function saveEvidence() {
@@ -579,11 +617,19 @@ HTML = r"""<!doctype html>
         setEvidenceStatus("no frame loaded");
         return;
       }
+      const variants = [];
+      if (saveOverlayVariantEl.checked) variants.push("overlay");
+      if (saveFilledVariantEl.checked) variants.push("filled");
+      if (saveOutlineVariantEl.checked) variants.push("outline");
+      if (variants.length === 0) {
+        setEvidenceStatus("select at least one evidence variant");
+        return;
+      }
       const payload = {
         output_dir: outputDir,
         camera_id: clamp(Number.parseInt(cameraIdEl.value || "0", 10), 0, 99),
         stream: currentStream() ? currentStream().image_topic : "",
-        image_data: evidenceDataUrl(),
+        images: variants.map((variant) => ({ variant, image_data: evidenceDataUrl(variant) })),
       };
       const response = await fetch("/api/evidence", {
         method: "POST",
@@ -595,7 +641,29 @@ HTML = r"""<!doctype html>
         setEvidenceStatus(data.error || "failed to save evidence");
         return;
       }
-      setEvidenceStatus(`saved ${data.path}`);
+      setEvidenceStatus(`saved ${data.paths.length} files`);
+    }
+    async function saveCache() {
+      const cacheDir = cacheDirEl.value.trim();
+      if (!cacheDir) {
+        setCacheStatus("cache folder is empty");
+        return;
+      }
+      if (!state.selectedKey) {
+        setCacheStatus("no stream selected");
+        return;
+      }
+      const response = await fetch("/api/cache", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: state.selectedKey, cache_dir: cacheDir }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setCacheStatus(data.error || "failed to save cache");
+        return;
+      }
+      setCacheStatus(`cached ${data.metadata_path}`);
     }
     function updateStats() {
       const stream = currentStream();
@@ -741,6 +809,7 @@ HTML = r"""<!doctype html>
     document.getElementById("applyParamButton").addEventListener("click", applyLoadedParamForCamera);
     document.getElementById("saveParamButton").addEventListener("click", saveParam);
     document.getElementById("saveEvidenceButton").addEventListener("click", saveEvidence);
+    document.getElementById("saveCacheButton").addEventListener("click", saveCache);
     document.getElementById("sampleLeftButton").addEventListener("click", () => {
       normalizedEl.checked = true;
       importTextEl.value = "[0.0, 0.0, 0.2, 0.0, 0.2, 1.0, 0.0, 1.0]";
@@ -779,6 +848,7 @@ HTML = r"""<!doctype html>
     fetch("/api/config").then((response) => response.json()).then((config) => {
       paramPathEl.value = config.default_param_path || "";
       outputDirEl.value = config.default_output_dir || "";
+      cacheDirEl.value = config.default_cache_dir || "";
     });
     refreshStreams().then(loadFrame);
   </script>
@@ -811,12 +881,14 @@ class StreamState:
 
 class CameraMaskDesignerNode(Node):
     def __init__(
-        self, jpeg_quality: int, default_param_path: str, default_output_dir: str
+        self, jpeg_quality: int, default_param_path: str, default_output_dir: str,
+        default_cache_dir: str
     ) -> None:
         super().__init__("streampetr_camera_mask_designer")
         self._jpeg_quality = int(max(1, min(100, jpeg_quality)))
         self._default_param_path = default_param_path
         self._default_output_dir = default_output_dir
+        self._default_cache_dir = default_cache_dir
         self._streams: dict[str, StreamState] = {}
         self._camera_infos: dict[str, CameraInfo] = {}
         self._subscriptions_by_topic: set[str] = set()
@@ -829,6 +901,7 @@ class CameraMaskDesignerNode(Node):
         return {
             "default_param_path": self._default_param_path,
             "default_output_dir": self._default_output_dir,
+            "default_cache_dir": self._default_cache_dir,
         }
 
     def _discover_topics(self) -> None:
@@ -1010,11 +1083,60 @@ class CameraMaskDesignerNode(Node):
         return summaries
 
     def encoded_frame(self, key: str) -> tuple[Optional[bytes], str]:
+        image_bgr, error = self._frame_bgr(key)
+        if image_bgr is None:
+            return None, error
+
+        success, encoded = cv2.imencode(
+            ".jpg", image_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), self._jpeg_quality]
+        )
+        if not success:
+            return None, "failed to encode frame"
+        return encoded.tobytes(), ""
+
+    def save_cached_frame(self, key: str, cache_dir_text: str) -> dict[str, str]:
+        image_bgr, error = self._frame_bgr(key)
+        if image_bgr is None:
+            raise RuntimeError(error)
+
+        stream = self._stream_for_key(key)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_stream = re.sub(r"[^A-Za-z0-9_.-]+", "_", stream.image_topic.strip("_"))[:80]
+        stem = f"{timestamp}_{safe_stream}_{key}"
+        cache_dir = _resolve_local_path(cache_dir_text)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        image_path = cache_dir / f"{stem}.jpg"
+        metadata_path = cache_dir / f"{stem}.json"
+        if not cv2.imwrite(str(image_path), image_bgr):
+            raise RuntimeError(f"failed to write cached frame: {image_path}")
+
+        metadata = {
+            "key": f"cached_{key}_{timestamp}",
+            "image_topic": stream.image_topic,
+            "image_type": stream.image_type,
+            "camera_info_topic": stream.camera_info_topic,
+            "has_camera_info": stream.camera_info is not None,
+            "is_undistorted": stream.camera_info is not None,
+            "width": int(image_bgr.shape[1]),
+            "height": int(image_bgr.shape[0]),
+            "encoding": "bgr8-jpeg",
+            "image_file": image_path.name,
+        }
+        metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        return {"image_path": str(image_path), "metadata_path": str(metadata_path)}
+
+    def _stream_for_key(self, key: str) -> StreamState:
         with self._lock:
             stream = self._streams.get(key)
         if stream is None:
-            return None, "unknown stream"
+            raise RuntimeError("unknown stream")
+        return stream
 
+    def _frame_bgr(self, key: str) -> tuple[Optional[np.ndarray], str]:
+        try:
+            stream = self._stream_for_key(key)
+        except RuntimeError as error:
+            return None, str(error)
         with stream.lock:
             if stream.latest_bgr is None:
                 return None, "no frame received yet"
@@ -1024,15 +1146,9 @@ class CameraMaskDesignerNode(Node):
         try:
             if camera_info is not None:
                 image_bgr = self._undistort(stream, image_bgr, camera_info)
-            success, encoded = cv2.imencode(
-                ".jpg", image_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), self._jpeg_quality]
-            )
         except Exception as error:  # noqa: BLE001 - return UI-readable error.
             return None, str(error)
-
-        if not success:
-            return None, "failed to encode frame"
-        return encoded.tobytes(), ""
+        return image_bgr, ""
 
     def _undistort(
         self, stream: StreamState, image_bgr: np.ndarray, camera_info: CameraInfo
@@ -1068,10 +1184,84 @@ class CameraMaskDesignerNode(Node):
         return cv2.remap(image_bgr, map_x, map_y, interpolation=cv2.INTER_LINEAR)
 
 
+class SimpleLogger:
+    def debug(self, message: str) -> None:
+        print(f"[DEBUG] {message}")
+
+    def info(self, message: str) -> None:
+        print(f"[INFO] {message}")
+
+    def warn(self, message: str) -> None:
+        print(f"[WARN] {message}")
+
+
+class CachedFrameProvider:
+    def __init__(
+        self, cache_dir: str, default_param_path: str, default_output_dir: str,
+        default_cache_dir: str
+    ) -> None:
+        self._cache_dir = _resolve_local_path(cache_dir)
+        self._default_param_path = default_param_path
+        self._default_output_dir = default_output_dir
+        self._default_cache_dir = default_cache_dir
+        self._logger = SimpleLogger()
+
+    def get_logger(self) -> SimpleLogger:
+        return self._logger
+
+    def config_summary(self) -> dict[str, str]:
+        return {
+            "default_param_path": self._default_param_path,
+            "default_output_dir": self._default_output_dir,
+            "default_cache_dir": self._default_cache_dir,
+        }
+
+    def streams_summary(self) -> list[dict[str, object]]:
+        summaries = []
+        for metadata_path in sorted(self._cache_dir.glob("*.json")):
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                image_path = self._cache_dir / str(metadata.get("image_file", ""))
+                if not image_path.exists():
+                    continue
+                summaries.append(
+                    {
+                        "key": str(metadata.get("key", metadata_path.stem)),
+                        "image_topic": str(metadata.get("image_topic", metadata_path.stem)),
+                        "image_type": "cached",
+                        "camera_info_topic": metadata.get("camera_info_topic"),
+                        "has_camera_info": bool(metadata.get("has_camera_info", False)),
+                        "is_undistorted": bool(metadata.get("is_undistorted", True)),
+                        "last_frame_age_sec": 0.0,
+                        "width": metadata.get("width"),
+                        "height": metadata.get("height"),
+                        "encoding": metadata.get("encoding", "bgr8-jpeg"),
+                        "error": "",
+                    }
+                )
+            except Exception as error:  # noqa: BLE001 - keep bad cache entries non-fatal.
+                self._logger.warn(f"failed to read cache metadata {metadata_path}: {error}")
+        return summaries
+
+    def encoded_frame(self, key: str) -> tuple[Optional[bytes], str]:
+        for metadata_path in sorted(self._cache_dir.glob("*.json")):
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if str(metadata.get("key", metadata_path.stem)) != key:
+                continue
+            image_path = self._cache_dir / str(metadata.get("image_file", ""))
+            if not image_path.exists():
+                return None, f"cached image missing: {image_path}"
+            return image_path.read_bytes(), ""
+        return None, "unknown cached frame"
+
+    def save_cached_frame(self, key: str, cache_dir_text: str) -> dict[str, str]:
+        raise RuntimeError("cache saving is unavailable in offline cache mode")
+
+
 class DesignerHttpServer(ThreadingHTTPServer):
     def __init__(
         self, server_address: tuple[str, int], handler_class: type[BaseHTTPRequestHandler],
-        node: CameraMaskDesignerNode
+        node: object
     ) -> None:
         super().__init__(server_address, handler_class)
         self.node = node
@@ -1127,6 +1317,12 @@ class DesignerRequestHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/evidence":
                 result = save_evidence_png(payload)
+                self._send_bytes(json.dumps(result).encode("utf-8"), "application/json")
+                return
+            if parsed.path == "/api/cache":
+                result = self.server.node.save_cached_frame(
+                    str(payload.get("key", "")), str(payload.get("cache_dir", ""))
+                )
                 self._send_bytes(json.dumps(result).encode("utf-8"), "application/json")
                 return
         except Exception as error:  # noqa: BLE001 - return UI-readable error.
@@ -1201,20 +1397,33 @@ def save_param_file(payload: dict[str, object]) -> dict[str, object]:
 
 def save_evidence_png(payload: dict[str, object]) -> dict[str, object]:
     output_dir = _resolve_local_path(str(payload.get("output_dir", "")))
-    image_data = str(payload.get("image_data", ""))
-    if not image_data.startswith("data:image/png;base64,"):
-        raise RuntimeError("image_data must be a PNG data URL")
-
     camera_id = int(payload.get("camera_id", 0))
     stream = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(payload.get("stream", "")).strip("_"))
     if not stream:
         stream = "camera"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"camera_{camera_id}_mask_overlay_{timestamp}_{stream[:80]}.png"
     output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / filename
-    path.write_bytes(base64.b64decode(image_data.split(",", 1)[1]))
-    return {"path": str(path)}
+
+    images = payload.get("images")
+    if not isinstance(images, list):
+        image_data = payload.get("image_data")
+        images = [{"variant": "overlay", "image_data": image_data}]
+
+    paths = []
+    for item in images:
+        if not isinstance(item, dict):
+            continue
+        variant = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(item.get("variant", "overlay")))
+        image_data = str(item.get("image_data", ""))
+        if not image_data.startswith("data:image/png;base64,"):
+            raise RuntimeError("image_data must be a PNG data URL")
+        filename = f"camera_{camera_id}_mask_{variant}_{timestamp}_{stream[:80]}.png"
+        path = output_dir / filename
+        path.write_bytes(base64.b64decode(image_data.split(",", 1)[1]))
+        paths.append(str(path))
+    if not paths:
+        raise RuntimeError("no evidence images were provided")
+    return {"paths": paths, "path": paths[0]}
 
 
 def _resolve_local_path(path_text: str) -> Path:
@@ -1475,11 +1684,21 @@ def parse_args() -> argparse.Namespace:
         default="/tmp/streampetr_mask_evidence",
         help="Default folder for overlay evidence PNG files",
     )
+    parser.add_argument(
+        "--cache-dir",
+        default="/tmp/streampetr_mask_frame_cache",
+        help="Default folder for cached undistorted frames",
+    )
+    parser.add_argument(
+        "--offline-cache-dir",
+        default="",
+        help="Serve cached frames from this folder without initializing ROS 2 subscriptions",
+    )
     parser.add_argument("--jpeg-quality", type=int, default=85, help="Preview JPEG quality")
     return parser.parse_args()
 
 
-def create_http_server(args: argparse.Namespace, node: CameraMaskDesignerNode) -> DesignerHttpServer:
+def create_http_server(args: argparse.Namespace, node: object) -> DesignerHttpServer:
     for offset in range(max(1, args.port_retries + 1)):
         port = args.port + offset
         try:
@@ -1494,11 +1713,35 @@ def create_http_server(args: argparse.Namespace, node: CameraMaskDesignerNode) -
 
 def main() -> None:
     args = parse_args()
+    if args.offline_cache_dir:
+        provider = CachedFrameProvider(
+            cache_dir=args.offline_cache_dir,
+            default_param_path=args.param_path,
+            default_output_dir=args.output_dir,
+            default_cache_dir=args.cache_dir,
+        )
+        server = create_http_server(args, provider)
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        host, port = server.server_address[:2]
+        provider.get_logger().info(f"mask designer UI: http://{host}:{port}/")
+        provider.get_logger().info("offline cache mode: ROS 2 subscriptions are disabled")
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.shutdown()
+            server.server_close()
+        return
+
     rclpy.init()
     node = CameraMaskDesignerNode(
         jpeg_quality=args.jpeg_quality,
         default_param_path=args.param_path,
         default_output_dir=args.output_dir,
+        default_cache_dir=args.cache_dir,
     )
     server = create_http_server(args, node)
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
