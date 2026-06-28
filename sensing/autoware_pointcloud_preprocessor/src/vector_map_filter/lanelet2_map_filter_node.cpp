@@ -234,6 +234,7 @@ void Lanelet2MapFilterComponent::pointcloudCallback(const PointCloud2ConstPtr cl
     return;
   }
   auto output = std::make_unique<sensor_msgs::msg::PointCloud2>(*output_transformed_cloud_ptr);
+  output->header = cloud_msg->header;
   if ((*cloud_msg).fields.size() > 3) {
     (*output).fields.resize(6);
     (*output).fields[3].name = "intensity";
