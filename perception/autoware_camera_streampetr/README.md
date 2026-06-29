@@ -146,7 +146,9 @@ The UI can load the current `camera_N_mask` values from the parameter YAML, disp
 camera's existing mask over the undistorted preview, save the updated `camera_N_mask` block back to
 the YAML, and write PNG evidence images to the output folder. Evidence export can write multiple
 patterns from the same frame: semi-transparent overlay, filled-mask preview, and outline-only. The
-parameter path also accepts a `file://` URL.
+parameter path also accepts a `file://` URL. On startup, the UI tries to load the default parameter
+path automatically; if the file or the selected camera's mask is unavailable, that camera is treated
+as having no mask.
 
 Use `Save Current Frame` to cache the selected undistorted frame and stream metadata. In live mode
 the tool also listens to `/tf` and `/tf_static`; once `base_link -> CameraInfo.header.frame_id` is

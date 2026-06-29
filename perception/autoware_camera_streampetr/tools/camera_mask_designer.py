@@ -392,6 +392,8 @@ HTML = r"""<!doctype html>
       streams: [],
       selectedKey: "",
       loadedParam: null,
+      uiMasks: {},
+      editorCameraId: cameraIdEl.value || "0",
       polygons: [[]],
       activePolygon: 0,
       drag: null,
@@ -420,6 +422,13 @@ HTML = r"""<!doctype html>
     function setCacheStatus(text) { cacheStatusEl.textContent = text; }
     function setOnnxStatus(text) { onnxStatusEl.textContent = text; }
     function setOnnxLog(text) { onnxLogEl.value = text || ""; }
+    function currentFillBgr() {
+      return [
+        clamp(Number.parseInt(fillBEl.value || "0", 10), 0, 255),
+        clamp(Number.parseInt(fillGEl.value || "0", 10), 0, 255),
+        clamp(Number.parseInt(fillREl.value || "0", 10), 0, 255),
+      ];
+    }
     function currentCameraId() {
       const cameraId = Number.parseInt(cameraIdEl.value || "0", 10);
       return Number.isInteger(cameraId) ? clamp(cameraId, 0, 99) : 0;
@@ -533,11 +542,7 @@ HTML = r"""<!doctype html>
       const polygons = validPolygons();
       const first = polygons[0] || [];
       const firstMask = first.length ? formatArray(outputPoints(first)) : "[]";
-      const fill = [
-        clamp(Number.parseInt(fillBEl.value || "0", 10), 0, 255),
-        clamp(Number.parseInt(fillGEl.value || "0", 10), 0, 255),
-        clamp(Number.parseInt(fillREl.value || "0", 10), 0, 255),
-      ];
+      const fill = currentFillBgr();
       paramOutputEl.value =
         `ego_mask.fill_value_bgr: [${fill.join(", ")}]\n` +
         `camera_${cameraId}_mask:\n` +
@@ -554,6 +559,7 @@ HTML = r"""<!doctype html>
         });
         yamlOutputEl.value = `${yamlLines.join("\n")}\n`;
       }
+      syncCurrentMask();
     }
     function setFillBgr(fill) {
       if (!Array.isArray(fill) || fill.length < 3) return;
@@ -574,44 +580,92 @@ HTML = r"""<!doctype html>
     function pointsFromMask(values, normalized) {
       return pointsFromMaskForSize(values, normalized, canvas.width, canvas.height);
     }
+    function emptyMask() {
+      return { enable: false, mask: [], polygons: [], normalized: true };
+    }
+    function editorMask() {
+      const masks = validPolygons().map((points) => outputPoints(points));
+      return {
+        enable: masks.length > 0,
+        mask: masks[0] || [],
+        polygons: masks,
+        normalized: normalizedEl.checked,
+      };
+    }
+    function normalizeMask(mask) {
+      if (!mask || !mask.enable || !Array.isArray(mask.mask) || mask.mask.length < 6) {
+        return emptyMask();
+      }
+      return {
+        enable: true,
+        mask: mask.mask,
+        polygons: Array.isArray(mask.polygons) && mask.polygons.length ? mask.polygons : [mask.mask],
+        normalized: Boolean(mask.normalized),
+      };
+    }
+    function syncCurrentMask() {
+      state.uiMasks[String(state.editorCameraId || currentCameraId())] = editorMask();
+    }
+    function applyMaskToEditor(mask, cameraId, sourceText) {
+      const normalizedMask = normalizeMask(mask);
+      state.editorCameraId = String(cameraId);
+      normalizedEl.checked = Boolean(normalizedMask.normalized);
+      state.polygons = normalizedMask.enable
+        ? normalizedMask.polygons.map((values) => pointsFromMask(values, normalizedMask.normalized))
+        : [[]];
+      state.activePolygon = 0;
+      setParamStatus(
+        normalizedMask.enable
+          ? `${sourceText} camera_${cameraId}_mask`
+          : `camera_${cameraId}_mask is not available; using no mask`
+      );
+      draw();
+    }
+    function loadMasksIntoUi(data) {
+      state.uiMasks = {};
+      if (!data || !data.masks) return;
+      Object.entries(data.masks).forEach(([cameraId, mask]) => {
+        state.uiMasks[String(cameraId)] = normalizeMask(mask);
+      });
+    }
+    function applyUiMaskForCamera() {
+      const cameraId = String(currentCameraId());
+      applyMaskToEditor(state.uiMasks[cameraId] || emptyMask(), cameraId, "using");
+    }
     function applyLoadedParamForCamera() {
       if (!state.loadedParam) {
         setParamStatus("no param loaded");
         return;
       }
       const cameraId = String(currentCameraId());
-      const mask = state.loadedParam.masks[cameraId];
       setFillBgr(state.loadedParam.fill_value_bgr);
-      if (!mask || !mask.enable || !Array.isArray(mask.mask) || mask.mask.length < 6) {
-        state.polygons = [[]];
-        state.activePolygon = 0;
-        setParamStatus(`camera_${cameraId}_mask is disabled or empty`);
-        draw();
-        return;
-      }
-      normalizedEl.checked = Boolean(mask.normalized);
-      state.polygons = [pointsFromMask(mask.mask, mask.normalized)];
-      state.activePolygon = 0;
-      setParamStatus(`loaded camera_${cameraId}_mask from param`);
-      draw();
+      state.uiMasks[cameraId] = normalizeMask(state.loadedParam.masks[cameraId]);
+      applyMaskToEditor(state.uiMasks[cameraId], cameraId, "loaded");
     }
-    async function loadParam() {
+    async function loadParam(options = {}) {
       const path = paramPathEl.value.trim();
       if (!path) {
-        setParamStatus("param path is empty");
+        if (!options.optional) setParamStatus("param path is empty");
         return;
       }
       const response = await fetch(`/api/param?path=${encodeURIComponent(path)}`);
       const data = await response.json();
       if (!response.ok) {
-        setParamStatus(data.error || "failed to load param");
+        state.loadedParam = null;
+        state.uiMasks = {};
+        setParamStatus(
+          options.optional
+            ? "default param unavailable; using no masks"
+            : (data.error || "failed to load param")
+        );
         return;
       }
       state.loadedParam = data;
       paramPathEl.value = data.path;
       setFillBgr(data.fill_value_bgr);
+      loadMasksIntoUi(data);
       setParamStatus(`loaded ${data.path}`);
-      applyLoadedParamForCamera();
+      applyUiMaskForCamera();
     }
     async function saveParam() {
       const path = paramPathEl.value.trim();
@@ -645,38 +699,24 @@ HTML = r"""<!doctype html>
       }
       state.loadedParam = data;
       paramPathEl.value = data.path;
+      loadMasksIntoUi(data);
+      state.uiMasks[String(cameraId)] = editorMask();
       setParamStatus(`saved camera_${cameraId}_mask to ${data.path}`);
     }
     function polygonsForCamera(cameraId, width, height) {
-      if (cameraId === currentCameraId()) return validPolygons();
-      if (!state.loadedParam || !state.loadedParam.masks) return [];
-      const mask = state.loadedParam.masks[String(cameraId)];
-      if (!mask || !mask.enable || !Array.isArray(mask.mask) || mask.mask.length < 6) return [];
-      return [pointsFromMaskForSize(mask.mask, Boolean(mask.normalized), width, height)];
+      syncCurrentMask();
+      const mask = state.uiMasks[String(cameraId)] || emptyMask();
+      if (!mask.enable) return [];
+      return mask.polygons.map((values) =>
+        pointsFromMaskForSize(values, Boolean(mask.normalized), width, height)
+      );
     }
     function onnxMaskPayload(cameraIds) {
-      const fill = [
-        clamp(Number.parseInt(fillBEl.value || "0", 10), 0, 255),
-        clamp(Number.parseInt(fillGEl.value || "0", 10), 0, 255),
-        clamp(Number.parseInt(fillREl.value || "0", 10), 0, 255),
-      ];
+      syncCurrentMask();
+      const fill = currentFillBgr();
       const masks = {};
       cameraIds.forEach((cameraId) => {
-        if (cameraId === currentCameraId()) {
-          const polygons = validPolygons();
-          masks[String(cameraId)] = {
-            enable: polygons.length > 0,
-            mask: polygons.length > 0 ? outputPoints(polygons[0]) : [],
-            normalized: normalizedEl.checked,
-          };
-          return;
-        }
-        const mask = state.loadedParam && state.loadedParam.masks
-          ? state.loadedParam.masks[String(cameraId)]
-          : null;
-        masks[String(cameraId)] = mask && mask.enable && Array.isArray(mask.mask)
-          ? { enable: true, mask: mask.mask, normalized: Boolean(mask.normalized) }
-          : { enable: false, mask: [], normalized: true };
+        masks[String(cameraId)] = state.uiMasks[String(cameraId)] || emptyMask();
       });
       return { fill_value_bgr: fill, masks };
     }
@@ -916,10 +956,13 @@ HTML = r"""<!doctype html>
       if (!stream) return;
       const cameraId = cameraIdFromStream(stream);
       if (cameraId !== null) {
+        const previousCameraId = String(state.editorCameraId || currentCameraId());
         cameraIdEl.value = String(cameraId);
         if (!cameraIdsEl.value.trim()) cameraIdsEl.value = String(cameraId);
+        if (String(cameraId) !== previousCameraId) {
+          applyUiMaskForCamera();
+        }
       }
-      if (state.loadedParam) applyLoadedParamForCamera();
     }
 
     function loadFrame() {
@@ -987,10 +1030,9 @@ HTML = r"""<!doctype html>
     canvas.addEventListener("pointerleave", () => { state.drag = null; state.hover = null; draw(); });
 
     streamSelect.addEventListener("change", () => {
+      syncCurrentMask();
       state.selectedKey = streamSelect.value;
       state.image = null;
-      state.polygons = [[]];
-      state.activePolygon = 0;
       inferCameraId();
       loadFrame();
     });
@@ -1044,7 +1086,7 @@ HTML = r"""<!doctype html>
       element.addEventListener("change", draw);
     });
     cameraIdEl.addEventListener("change", () => {
-      if (state.loadedParam) applyLoadedParamForCamera();
+      applyUiMaskForCamera();
     });
 
     setInterval(() => {
@@ -1052,15 +1094,22 @@ HTML = r"""<!doctype html>
     }, 650);
     setInterval(refreshStreams, 3000);
 
-    draw();
-    fetch("/api/config").then((response) => response.json()).then((config) => {
+    async function boot() {
+      draw();
+      const config = await fetch("/api/config").then((response) => response.json());
       paramPathEl.value = config.default_param_path || "";
       outputDirEl.value = config.default_output_dir || "";
       cacheDirEl.value = config.default_cache_dir || "";
       onnxModelDirEl.value = config.default_onnx_model_dir || "";
       onnxOutputDirEl.value = config.default_onnx_output_dir || "";
+      await loadParam({ optional: true });
+      await refreshStreams();
+      loadFrame();
+    }
+    boot().catch((error) => {
+      setStatus(error.message || "failed to initialize UI");
+      refreshStreams().then(loadFrame);
     });
-    refreshStreams().then(loadFrame);
   </script>
 </body>
 </html>

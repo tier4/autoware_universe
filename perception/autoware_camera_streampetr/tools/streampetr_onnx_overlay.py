@@ -303,18 +303,25 @@ def apply_ego_masks(frames: list[CachedFrame], mask_json: Path) -> int:
         mask = masks.get(str(frame.camera_id))
         if not isinstance(mask, dict) or not bool(mask.get("enable", False)):
             continue
-        values = mask.get("mask", [])
-        if not isinstance(values, list) or len(values) < 6:
+        polygons = mask.get("polygons", [])
+        if not isinstance(polygons, list) or not polygons:
+            polygons = [mask.get("mask", [])]
+        valid_polygons = 0
+        for values in polygons:
+            if not isinstance(values, list) or len(values) < 6:
+                continue
+            points = mask_points_for_image(
+                values,
+                normalized=bool(mask.get("normalized", False)),
+                width=frame.image_bgr.shape[1],
+                height=frame.image_bgr.shape[0],
+            )
+            if points.shape[0] < 3:
+                continue
+            cv2.fillPoly(frame.image_bgr, [points], fill)
+            valid_polygons += 1
+        if valid_polygons == 0:
             continue
-        points = mask_points_for_image(
-            values,
-            normalized=bool(mask.get("normalized", False)),
-            width=frame.image_bgr.shape[1],
-            height=frame.image_bgr.shape[0],
-        )
-        if points.shape[0] < 3:
-            continue
-        cv2.fillPoly(frame.image_bgr, [points], fill)
         frame.metadata["mask_applied"] = True
         applied += 1
     return applied
