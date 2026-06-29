@@ -584,22 +584,31 @@ HTML = r"""<!doctype html>
       return { enable: false, mask: [], polygons: [], normalized: true };
     }
     function editorMask() {
-      const masks = validPolygons().map((points) => outputPoints(points));
+      const masks = state.polygons
+        .filter((points) => points.length > 0)
+        .map((points) => outputPoints(points));
+      const validMasks = masks.filter((mask) => mask.length >= 6);
       return {
-        enable: masks.length > 0,
-        mask: masks[0] || [],
+        enable: validMasks.length > 0,
+        mask: validMasks[0] || [],
         polygons: masks,
         normalized: normalizedEl.checked,
       };
     }
     function normalizeMask(mask) {
-      if (!mask || !mask.enable || !Array.isArray(mask.mask) || mask.mask.length < 6) {
+      if (!mask) {
         return emptyMask();
       }
+      const rawPolygons = Array.isArray(mask.polygons) && mask.polygons.length
+        ? mask.polygons
+        : [mask.mask || []];
+      const polygons = rawPolygons.filter((values) => Array.isArray(values) && values.length > 0);
+      const validPolygons = polygons.filter((values) => values.length >= 6);
+      if (!mask.enable && validPolygons.length === 0) return emptyMask();
       return {
-        enable: true,
-        mask: mask.mask,
-        polygons: Array.isArray(mask.polygons) && mask.polygons.length ? mask.polygons : [mask.mask],
+        enable: validPolygons.length > 0,
+        mask: validPolygons[0] || [],
+        polygons,
         normalized: Boolean(mask.normalized),
       };
     }
@@ -610,7 +619,7 @@ HTML = r"""<!doctype html>
       const normalizedMask = normalizeMask(mask);
       state.editorCameraId = String(cameraId);
       normalizedEl.checked = Boolean(normalizedMask.normalized);
-      state.polygons = normalizedMask.enable
+      state.polygons = normalizedMask.polygons.length
         ? normalizedMask.polygons.map((values) => pointsFromMask(values, normalizedMask.normalized))
         : [[]];
       state.activePolygon = 0;

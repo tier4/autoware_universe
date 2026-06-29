@@ -181,6 +181,12 @@ StreamPETR resize/crop/normalize. Older cached metadata or manual workflows can 
 `--projection-json` to provide `lidar2img` or `img2lidar` matrices. Without those projection
 matrices, it can still run inference but cannot place boxes on the image correctly.
 
+The ONNX overlay is a debugging aid, not a bit-exact replacement for the ROS 2 node output. It
+reimplements only the basic score, yaw-norm, range filtering, score sort, and max-box limit in
+Python. The production CUDA postprocess also applies circle NMS and may apply BEV IoU NMS depending
+on `post_process_params.iou_nms_threshold`; the helper also runs with zeroed temporal memory and
+identity ego pose. Therefore overlay boxes can differ from `~/output/objects`.
+
 For offline workflows, save a one-frame undistorted snapshot and open it in the static editor:
 
 ```bash
