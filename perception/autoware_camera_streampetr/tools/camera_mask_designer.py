@@ -326,6 +326,7 @@ HTML = r"""<!doctype html>
         <label class="check"><input id="onnxIdentityProjection" type="checkbox"> Identity projection</label>
         <div class="button-row">
           <button id="runOnnxButton" type="button" class="primary">Run ONNX Overlay</button>
+          <button id="openOnnxOutputButton" type="button">Open Output Folder</button>
         </div>
         <div id="onnxStatus" class="status" style="margin-top: 8px;"></div>
         <label style="margin-top: 10px;">
@@ -918,6 +919,24 @@ HTML = r"""<!doctype html>
       setOnnxStatus(`done: ${data.output_dir} (${cacheText})`);
       setOnnxLog(formatOnnxLog(data));
     }
+    async function openOnnxOutputFolder() {
+      const path = onnxOutputDirEl.value.trim();
+      if (!path) {
+        setOnnxStatus("ONNX output folder is empty");
+        return;
+      }
+      const response = await fetch("/api/open_folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setOnnxStatus(data.error || "failed to open output folder");
+        return;
+      }
+      setOnnxStatus(`opened ${data.path}`);
+    }
     function formatOnnxLog(data) {
       const parts = [];
       if (data.cache) {
@@ -1107,6 +1126,7 @@ HTML = r"""<!doctype html>
     document.getElementById("saveEvidenceButton").addEventListener("click", saveEvidence);
     document.getElementById("saveCacheButton").addEventListener("click", saveCache);
     document.getElementById("runOnnxButton").addEventListener("click", runOnnxOverlay);
+    document.getElementById("openOnnxOutputButton").addEventListener("click", openOnnxOutputFolder);
     document.getElementById("sampleLeftButton").addEventListener("click", () => {
       normalizedEl.checked = true;
       importTextEl.value = "[0.0, 0.0, 0.2, 0.0, 0.2, 1.0, 0.0, 1.0]";
@@ -1784,6 +1804,10 @@ class DesignerRequestHandler(BaseHTTPRequestHandler):
                 result = run_onnx_overlay(payload, self.server.node)
                 self._send_bytes(json.dumps(result).encode("utf-8"), "application/json")
                 return
+            if parsed.path == "/api/open_folder":
+                result = open_folder(payload)
+                self._send_bytes(json.dumps(result).encode("utf-8"), "application/json")
+                return
         except Exception as error:  # noqa: BLE001 - return UI-readable error.
             self._send_error(
                 HTTPStatus.BAD_REQUEST,
@@ -1905,6 +1929,24 @@ def save_evidence_png(payload: dict[str, object]) -> dict[str, object]:
     if not paths:
         raise RuntimeError("no evidence images were provided")
     return {"paths": paths, "path": paths[0]}
+
+
+def open_folder(payload: dict[str, object]) -> dict[str, object]:
+    path = _resolve_local_path(str(payload.get("path", "")))
+    if not path.exists():
+        raise RuntimeError(f"folder does not exist: {path}")
+    if not path.is_dir():
+        raise RuntimeError(f"path is not a folder: {path}")
+    try:
+        subprocess.Popen(
+            ["xdg-open", str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except FileNotFoundError as error:
+        raise RuntimeError("xdg-open is not available in this environment") from error
+    return {"path": str(path)}
 
 
 def run_onnx_overlay(payload: dict[str, object], frame_provider: object) -> dict[str, object]:
