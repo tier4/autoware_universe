@@ -17,9 +17,12 @@
 
 #include "autoware/map_based_prediction/path_generator/path_generator.hpp"
 
+#include <autoware_perception_msgs/msg/shape.hpp>
+
 #include <lanelet2_core/LaneletMap.h>
 
 #include <memory>
+#include <optional>
 
 namespace autoware::map_based_prediction
 {
@@ -31,12 +34,16 @@ public:
 
   void buildFromMap(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr);
 
-  [[nodiscard]] bool doesPathCrossAnyVegetationBeforeCrosswalk(
-    const PredictedPathWithArrivalIndex & predicted_path) const;
-
-  [[nodiscard]] PredictedPath cutPathBeforeVegetation(const PredictedPath & predicted_path) const;
+  [[nodiscard]] PredictedPath cutPathCrossingVegetation(
+    const PredictedPath & predicted_path,
+    const autoware_perception_msgs::msg::Shape & shape) const;
 
 private:
+  // @brief return the first path index whose object footprint intersects a vegetation area
+  [[nodiscard]] std::optional<size_t> getVegetationCrossingIndex(
+    const PredictedPath & predicted_path,
+    const autoware_perception_msgs::msg::Shape & shape) const;
+
   lanelet::LaneletMapUPtr vegetation_layer_{nullptr};
 };
 
