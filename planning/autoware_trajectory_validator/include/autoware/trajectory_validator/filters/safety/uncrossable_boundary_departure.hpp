@@ -15,32 +15,18 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__FILTERS__SAFETY__UNCROSSABLE_BOUNDARY_DEPARTURE_HPP_
 
+#include "autoware/trajectory_validator/detail/uuid_hash.hpp"
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
 #include <autoware/boundary_departure_checker/uncrossable_boundary_checker.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
 namespace autoware::trajectory_validator::plugin::safety
 {
-/// @brief Hashes a raw 16-byte UUID (FNV-1a) without allocating an intermediate string.
-struct UuidHash
-{
-  std::size_t operator()(const std::array<uint8_t, 16> & uuid) const noexcept
-  {
-    std::size_t hash = 14695981039346656037ULL;  // FNV-1a offset basis
-    for (const auto byte : uuid) {
-      hash ^= static_cast<std::size_t>(byte);
-      hash *= 1099511628211ULL;  // FNV-1a prime
-    }
-    return hash;
-  }
-};
-
 class UncrossableBoundaryDepartureFilter : public plugin::ValidatorInterface
 {
 public:
