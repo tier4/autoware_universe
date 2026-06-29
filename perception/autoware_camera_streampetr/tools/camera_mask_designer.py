@@ -1668,16 +1668,19 @@ class CachedFrameProvider:
 class DesignerHttpServer(ThreadingHTTPServer):
     def __init__(
         self, server_address: tuple[str, int], handler_class: type[BaseHTTPRequestHandler],
-        node: object
+        node: object, http_access_log: bool = False
     ) -> None:
         super().__init__(server_address, handler_class)
         self.node = node
+        self.http_access_log = http_access_log
 
 
 class DesignerRequestHandler(BaseHTTPRequestHandler):
     server: DesignerHttpServer
 
     def log_message(self, fmt: str, *args: object) -> None:
+        if not self.server.http_access_log:
+            return
         self.server.node.get_logger().debug(fmt % args)
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib API.
@@ -2429,6 +2432,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Force live ROS 2 subscriptions even when --cache-dir already has cached frames",
     )
+    parser.add_argument(
+        "--http-access-log",
+        action="store_true",
+        help="Print HTTP access logs for UI polling requests",
+    )
     parser.add_argument("--jpeg-quality", type=int, default=85, help="Preview JPEG quality")
     return parser.parse_args()
 
@@ -2437,7 +2445,12 @@ def create_http_server(args: argparse.Namespace, node: object) -> DesignerHttpSe
     for offset in range(max(1, args.port_retries + 1)):
         port = args.port + offset
         try:
-            return DesignerHttpServer((args.host, port), DesignerRequestHandler, node)
+            return DesignerHttpServer(
+                (args.host, port),
+                DesignerRequestHandler,
+                node,
+                http_access_log=args.http_access_log,
+            )
         except OSError as error:
             if error.errno != errno.EADDRINUSE or offset >= args.port_retries:
                 raise
