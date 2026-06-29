@@ -166,7 +166,7 @@ write per-camera PNGs with projected 3D boxes:
 ```bash
 python3 tools/streampetr_onnx_overlay.py \
   --cache-dir /tmp/streampetr_mask_editor/frame_cache \
-  --model-dir /home/yoshiri/autoware_data/camera_streampetr \
+  --model-dir /opt/autoware/mlmodels/streampetr \
   --output-dir /tmp/streampetr_mask_editor/onnx_overlay \
   --projection-json /path/to/lidar2img_by_camera.json
 ```

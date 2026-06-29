@@ -2185,7 +2185,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--onnx-model-dir",
-        default="/home/yoshiri/autoware_data/camera_streampetr",
+        default="/opt/autoware/mlmodels/streampetr",
         help="Default folder containing the three StreamPETR ONNX files",
     )
     parser.add_argument(

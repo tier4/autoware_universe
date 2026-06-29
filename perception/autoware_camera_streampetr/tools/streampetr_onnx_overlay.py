@@ -176,7 +176,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cache-dir", required=True, help="Frame cache folder from mask designer")
     parser.add_argument(
         "--model-dir",
-        default="/home/yoshiri/autoware_data/camera_streampetr",
+        default="/opt/autoware/mlmodels/streampetr",
         help="Folder containing the three StreamPETR ONNX files",
     )
     parser.add_argument("--output-dir", default=str(WORK_DIR / "onnx_overlay"))
