@@ -132,8 +132,8 @@ both `camera_N_mask` parameter snippets and `polygons` YAML:
 ```bash
 python3 tools/camera_mask_designer.py \
   --param-path config/camera_streampetr.param.yaml \
-  --output-dir /tmp/streampetr_mask_evidence \
-  --cache-dir /tmp/streampetr_mask_frame_cache
+  --output-dir /tmp/streampetr_mask_editor/evidence \
+  --cache-dir /tmp/streampetr_mask_editor/frame_cache
 ```
 
 Open the URL printed by the tool, select a stream, freeze a representative frame, draw the mask,
@@ -152,7 +152,7 @@ session can avoid ROS 2 subscriptions entirely and use only cached frames:
 
 ```bash
 python3 tools/camera_mask_designer.py \
-  --offline-cache-dir /tmp/streampetr_mask_frame_cache \
+  --offline-cache-dir /tmp/streampetr_mask_editor/frame_cache \
   --param-path config/camera_streampetr.param.yaml
 ```
 
@@ -161,9 +161,9 @@ write per-camera PNGs with projected 3D boxes:
 
 ```bash
 python3 tools/streampetr_onnx_overlay.py \
-  --cache-dir /tmp/streampetr_mask_frame_cache \
+  --cache-dir /tmp/streampetr_mask_editor/frame_cache \
   --model-dir /home/yoshiri/autoware_data/camera_streampetr \
-  --output-dir /tmp/streampetr_onnx_overlay \
+  --output-dir /tmp/streampetr_mask_editor/onnx_overlay \
   --projection-json /path/to/lidar2img_by_camera.json
 ```
 
@@ -177,7 +177,7 @@ For offline workflows, save a one-frame undistorted snapshot and open it in the 
 python3 tools/save_undistorted_snapshot.py \
   --image-topic /sensing/camera/camera0/image_raw \
   --camera-info-topic /sensing/camera/camera0/camera_info \
-  --output /tmp/streampetr_camera0_undistorted.png
+  --output /tmp/streampetr_mask_editor/snapshots/streampetr_camera0_undistorted.png
 ```
 
 For compressed input, add `--compressed` and pass the compressed image topic. Then open

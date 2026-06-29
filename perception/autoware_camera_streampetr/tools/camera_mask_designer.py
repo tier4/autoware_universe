@@ -25,6 +25,8 @@ import errno
 import hashlib
 import json
 import re
+import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -41,6 +43,11 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, CompressedImage, Image
+
+try:
+    from ament_index_python.packages import get_package_share_directory
+except Exception:  # noqa: BLE001 - keep this standalone outside a sourced ROS environment.
+    get_package_share_directory = None
 
 
 HTML = r"""<!doctype html>
@@ -128,6 +135,12 @@ HTML = r"""<!doctype html>
       font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
       line-height: 1.45;
     }
+    .log-output {
+      min-height: 180px;
+      max-height: 340px;
+      white-space: pre;
+      overflow: auto;
+    }
     button {
       height: 36px;
       border: 1px solid var(--line);
@@ -213,10 +226,14 @@ HTML = r"""<!doctype html>
         <div class="row">
           <label>
             Camera ID
-            <input id="cameraId" type="number" min="0" max="99" value="0">
+            <input id="cameraId" type="number" min="0" max="99" value="8">
           </label>
           <label class="check"><input id="normalized" type="checkbox" checked> Normalized</label>
         </div>
+        <label>
+          Camera IDs
+          <input id="cameraIds" type="text" value="8,6,10,7,9" spellcheck="false">
+        </label>
         <div class="row">
           <label>
             Fill B
@@ -282,9 +299,30 @@ HTML = r"""<!doctype html>
           <input id="cacheDir" type="text" spellcheck="false">
         </label>
         <div class="button-row">
-          <button id="saveCacheButton" type="button">Save Current Frame</button>
+          <button id="saveCacheButton" type="button">Save Frame Cache</button>
         </div>
         <div id="cacheStatus" class="status" style="margin-top: 8px;"></div>
+      </div>
+
+      <div class="panel">
+        <h2>ONNX Overlay</h2>
+        <label>
+          Model folder
+          <input id="onnxModelDir" type="text" spellcheck="false">
+        </label>
+        <label style="margin-top: 10px;">
+          Output folder
+          <input id="onnxOutputDir" type="text" spellcheck="false">
+        </label>
+        <label class="check"><input id="onnxIdentityProjection" type="checkbox"> Identity projection</label>
+        <div class="button-row">
+          <button id="runOnnxButton" type="button" class="primary">Run ONNX Overlay</button>
+        </div>
+        <div id="onnxStatus" class="status" style="margin-top: 8px;"></div>
+        <label style="margin-top: 10px;">
+          ONNX log
+          <textarea id="onnxLog" class="log-output" readonly spellcheck="false"></textarea>
+        </label>
       </div>
 
       <div class="panel">
@@ -318,6 +356,7 @@ HTML = r"""<!doctype html>
     const statusEl = document.getElementById("status");
     const statsEl = document.getElementById("stats");
     const cameraIdEl = document.getElementById("cameraId");
+    const cameraIdsEl = document.getElementById("cameraIds");
     const normalizedEl = document.getElementById("normalized");
     const importTextEl = document.getElementById("importText");
     const paramOutputEl = document.getElementById("paramOutput");
@@ -335,6 +374,11 @@ HTML = r"""<!doctype html>
     const saveOverlayVariantEl = document.getElementById("saveOverlayVariant");
     const saveFilledVariantEl = document.getElementById("saveFilledVariant");
     const saveOutlineVariantEl = document.getElementById("saveOutlineVariant");
+    const onnxModelDirEl = document.getElementById("onnxModelDir");
+    const onnxOutputDirEl = document.getElementById("onnxOutputDir");
+    const onnxIdentityProjectionEl = document.getElementById("onnxIdentityProjection");
+    const onnxStatusEl = document.getElementById("onnxStatus");
+    const onnxLogEl = document.getElementById("onnxLog");
 
     const state = {
       image: null,
@@ -367,6 +411,29 @@ HTML = r"""<!doctype html>
     function setParamStatus(text) { paramStatusEl.textContent = text; }
     function setEvidenceStatus(text) { evidenceStatusEl.textContent = text; }
     function setCacheStatus(text) { cacheStatusEl.textContent = text; }
+    function setOnnxStatus(text) { onnxStatusEl.textContent = text; }
+    function setOnnxLog(text) { onnxLogEl.value = text || ""; }
+    function currentCameraId() {
+      const cameraId = Number.parseInt(cameraIdEl.value || "0", 10);
+      return Number.isInteger(cameraId) ? clamp(cameraId, 0, 99) : 0;
+    }
+    function parseCameraIds() {
+      const ids = cameraIdsEl.value.split(/[,\s]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => Number.parseInt(item, 10))
+        .filter((id) => Number.isInteger(id) && id >= 0);
+      return [...new Set(ids)];
+    }
+    function cameraIdFromStream(stream) {
+      if (!stream) return null;
+      if (Number.isInteger(stream.camera_id)) return stream.camera_id;
+      const match = stream.image_topic.match(/camera[_/\\-]?(\d+)/i);
+      return match ? Number.parseInt(match[1], 10) : null;
+    }
+    function streamForCameraId(cameraId) {
+      return state.streams.find((stream) => cameraIdFromStream(stream) === cameraId);
+    }
 
     function pointerToImagePoint(event) {
       const rect = canvas.getBoundingClientRect();
@@ -454,7 +521,7 @@ HTML = r"""<!doctype html>
       return `[${values.map((value) => Number.isInteger(value) ? value.toString() : value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")).join(", ")}]`;
     }
     function updateOutput() {
-      const cameraId = clamp(Number.parseInt(cameraIdEl.value || "0", 10), 0, 99);
+      const cameraId = currentCameraId();
       const normalized = normalizedEl.checked ? "true" : "false";
       const polygons = validPolygons();
       const first = polygons[0] || [];
@@ -487,22 +554,25 @@ HTML = r"""<!doctype html>
       fillGEl.value = Math.round(clamp(Number(fill[1]), 0, 255));
       fillREl.value = Math.round(clamp(Number(fill[2]), 0, 255));
     }
-    function pointsFromMask(values, normalized) {
+    function pointsFromMaskForSize(values, normalized, width, height) {
       const points = [];
       if (!Array.isArray(values)) return points;
       for (let i = 0; i + 1 < values.length; i += 2) {
-        const x = normalized ? Number(values[i]) * canvas.width : Number(values[i]);
-        const y = normalized ? Number(values[i + 1]) * canvas.height : Number(values[i + 1]);
-        points.push({ x: clamp(x, 0, canvas.width - 1), y: clamp(y, 0, canvas.height - 1) });
+        const x = normalized ? Number(values[i]) * width : Number(values[i]);
+        const y = normalized ? Number(values[i + 1]) * height : Number(values[i + 1]);
+        points.push({ x: clamp(x, 0, width - 1), y: clamp(y, 0, height - 1) });
       }
       return points;
+    }
+    function pointsFromMask(values, normalized) {
+      return pointsFromMaskForSize(values, normalized, canvas.width, canvas.height);
     }
     function applyLoadedParamForCamera() {
       if (!state.loadedParam) {
         setParamStatus("no param loaded");
         return;
       }
-      const cameraId = String(clamp(Number.parseInt(cameraIdEl.value || "0", 10), 0, 99));
+      const cameraId = String(currentCameraId());
       const mask = state.loadedParam.masks[cameraId];
       setFillBgr(state.loadedParam.fill_value_bgr);
       if (!mask || !mask.enable || !Array.isArray(mask.mask) || mask.mask.length < 6) {
@@ -543,7 +613,7 @@ HTML = r"""<!doctype html>
         return;
       }
       const polygons = validPolygons();
-      const cameraId = clamp(Number.parseInt(cameraIdEl.value || "0", 10), 0, 99);
+      const cameraId = currentCameraId();
       const payload = {
         path,
         camera_id: cameraId,
@@ -570,8 +640,15 @@ HTML = r"""<!doctype html>
       paramPathEl.value = data.path;
       setParamStatus(`saved camera_${cameraId}_mask to ${data.path}`);
     }
-    function drawEvidencePolygons(targetCtx, variant) {
-      validPolygons().forEach((points) => {
+    function polygonsForCamera(cameraId, width, height) {
+      if (cameraId === currentCameraId()) return validPolygons();
+      if (!state.loadedParam || !state.loadedParam.masks) return [];
+      const mask = state.loadedParam.masks[String(cameraId)];
+      if (!mask || !mask.enable || !Array.isArray(mask.mask) || mask.mask.length < 6) return [];
+      return [pointsFromMaskForSize(mask.mask, Boolean(mask.normalized), width, height)];
+    }
+    function drawEvidencePolygons(targetCtx, variant, polygons, width) {
+      polygons.filter((points) => points.length >= 3).forEach((points) => {
         targetCtx.beginPath();
         targetCtx.moveTo(points[0].x, points[0].y);
         points.slice(1).forEach((point) => targetCtx.lineTo(point.x, point.y));
@@ -579,7 +656,7 @@ HTML = r"""<!doctype html>
         if (variant === "overlay") {
           targetCtx.fillStyle = "rgba(0, 169, 145, 0.36)";
           targetCtx.fill();
-          targetCtx.lineWidth = Math.max(3, canvas.width / 700);
+          targetCtx.lineWidth = Math.max(3, width / 700);
           targetCtx.strokeStyle = "rgba(255, 209, 102, 0.95)";
           targetCtx.stroke();
         } else if (variant === "filled") {
@@ -591,30 +668,38 @@ HTML = r"""<!doctype html>
           targetCtx.fillStyle = `rgb(${fill[2]}, ${fill[1]}, ${fill[0]})`;
           targetCtx.fill();
         } else if (variant === "outline") {
-          targetCtx.lineWidth = Math.max(4, canvas.width / 600);
+          targetCtx.lineWidth = Math.max(4, width / 600);
           targetCtx.strokeStyle = "rgba(255, 209, 102, 1.0)";
           targetCtx.stroke();
         }
       });
     }
-    function evidenceDataUrl(variant) {
-      if (!state.image) return "";
+    function evidenceDataUrlForImage(image, cameraId, variant) {
       const evidenceCanvas = document.createElement("canvas");
-      evidenceCanvas.width = canvas.width;
-      evidenceCanvas.height = canvas.height;
+      evidenceCanvas.width = image.naturalWidth;
+      evidenceCanvas.height = image.naturalHeight;
       const evidenceCtx = evidenceCanvas.getContext("2d");
-      evidenceCtx.drawImage(state.image, 0, 0, evidenceCanvas.width, evidenceCanvas.height);
-      drawEvidencePolygons(evidenceCtx, variant);
+      evidenceCtx.drawImage(image, 0, 0, evidenceCanvas.width, evidenceCanvas.height);
+      drawEvidencePolygons(
+        evidenceCtx,
+        variant,
+        polygonsForCamera(cameraId, evidenceCanvas.width, evidenceCanvas.height),
+        evidenceCanvas.width,
+      );
       return evidenceCanvas.toDataURL("image/png");
+    }
+    function loadStreamImage(key) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("failed to load frame"));
+        image.src = `/api/frame?key=${encodeURIComponent(key)}&t=${Date.now()}`;
+      });
     }
     async function saveEvidence() {
       const outputDir = outputDirEl.value.trim();
       if (!outputDir) {
         setEvidenceStatus("output folder is empty");
-        return;
-      }
-      if (!state.image) {
-        setEvidenceStatus("no frame loaded");
         return;
       }
       const variants = [];
@@ -625,23 +710,47 @@ HTML = r"""<!doctype html>
         setEvidenceStatus("select at least one evidence variant");
         return;
       }
-      const payload = {
-        output_dir: outputDir,
-        camera_id: clamp(Number.parseInt(cameraIdEl.value || "0", 10), 0, 99),
-        stream: currentStream() ? currentStream().image_topic : "",
-        images: variants.map((variant) => ({ variant, image_data: evidenceDataUrl(variant) })),
-      };
-      const response = await fetch("/api/evidence", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        setEvidenceStatus(data.error || "failed to save evidence");
+      const cameraIds = parseCameraIds();
+      if (cameraIds.length === 0) {
+        setEvidenceStatus("camera ids are empty");
         return;
       }
-      setEvidenceStatus(`saved ${data.paths.length} files`);
+      const allPaths = [];
+      try {
+        for (const cameraId of cameraIds) {
+          const stream = streamForCameraId(cameraId);
+          if (!stream) {
+            setEvidenceStatus(`camera ${cameraId}: stream not found`);
+            return;
+          }
+          setEvidenceStatus(`saving camera ${cameraId}`);
+          const image = await loadStreamImage(stream.key);
+          const payload = {
+            output_dir: outputDir,
+            camera_id: cameraId,
+            stream: stream.image_topic,
+            images: variants.map((variant) => ({
+              variant,
+              image_data: evidenceDataUrlForImage(image, cameraId, variant),
+            })),
+          };
+          const response = await fetch("/api/evidence", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            setEvidenceStatus(data.error || `camera ${cameraId}: failed to save evidence`);
+            return;
+          }
+          allPaths.push(...data.paths);
+        }
+      } catch (error) {
+        setEvidenceStatus(error.message || "failed to save evidence");
+        return;
+      }
+      setEvidenceStatus(`saved ${allPaths.length} files for ${cameraIds.length} cameras`);
     }
     async function saveCache() {
       const cacheDir = cacheDirEl.value.trim();
@@ -649,21 +758,74 @@ HTML = r"""<!doctype html>
         setCacheStatus("cache folder is empty");
         return;
       }
-      if (!state.selectedKey) {
-        setCacheStatus("no stream selected");
+      const cameraIds = parseCameraIds();
+      if (cameraIds.length === 0) {
+        setCacheStatus("camera ids are empty");
         return;
       }
-      const response = await fetch("/api/cache", {
+      const response = await fetch("/api/cache_batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: state.selectedKey, cache_dir: cacheDir }),
+        body: JSON.stringify({ camera_ids: cameraIds, cache_dir: cacheDir }),
       });
       const data = await response.json();
       if (!response.ok) {
         setCacheStatus(data.error || "failed to save cache");
         return;
       }
-      setCacheStatus(`cached ${data.metadata_path}`);
+      setCacheStatus(`cached ${data.items.length} frames`);
+    }
+    async function runOnnxOverlay() {
+      const cameraIds = parseCameraIds();
+      if (cameraIds.length === 0) {
+        setOnnxStatus("camera ids are empty");
+        return;
+      }
+      const payload = {
+        cache_dir: cacheDirEl.value.trim(),
+        model_dir: onnxModelDirEl.value.trim(),
+        output_dir: onnxOutputDirEl.value.trim(),
+        camera_ids: cameraIds,
+        allow_identity_projection: onnxIdentityProjectionEl.checked,
+      };
+      if (!payload.cache_dir || !payload.model_dir || !payload.output_dir) {
+        setOnnxStatus("cache/model/output folder is required");
+        return;
+      }
+      setOnnxStatus("running ONNX overlay");
+      setOnnxLog("");
+      const response = await fetch("/api/onnx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setOnnxStatus(data.error || "ONNX overlay failed");
+        setOnnxLog(formatOnnxLog(data));
+        return;
+      }
+      setOnnxStatus(`done: ${data.output_dir}`);
+      setOnnxLog(formatOnnxLog(data));
+    }
+    function formatOnnxLog(data) {
+      const parts = [];
+      if (data.command) {
+        parts.push(`$ ${Array.isArray(data.command) ? data.command.join(" ") : data.command}`);
+      }
+      if (data.returncode !== undefined && data.returncode !== null) {
+        parts.push(`returncode: ${data.returncode}`);
+      }
+      if (data.error) {
+        parts.push(`error:\n${data.error}`);
+      }
+      if (data.stdout) {
+        parts.push(`stdout:\n${data.stdout}`);
+      }
+      if (data.stderr) {
+        parts.push(`stderr:\n${data.stderr}`);
+      }
+      return parts.join("\n\n");
     }
     function updateStats() {
       const stream = currentStream();
@@ -673,6 +835,7 @@ HTML = r"""<!doctype html>
         ["Type", stream ? stream.image_type : "none"],
         ["CameraInfo", stream && stream.has_camera_info ? stream.camera_info_topic : "not paired"],
         ["Mode", stream && stream.is_undistorted ? "undistorted" : "original/fallback"],
+        ["Camera IDs", parseCameraIds().join(", ") || "none"],
         ["Polygons", validPolygons().length.toString()],
         ["Active points", activePoints().length.toString()],
       ];
@@ -710,8 +873,11 @@ HTML = r"""<!doctype html>
     function inferCameraId() {
       const stream = currentStream();
       if (!stream) return;
-      const match = stream.image_topic.match(/camera[_/\\-]?(\d+)/i);
-      if (match) cameraIdEl.value = match[1];
+      const cameraId = cameraIdFromStream(stream);
+      if (cameraId !== null) {
+        cameraIdEl.value = String(cameraId);
+        if (!cameraIdsEl.value.trim()) cameraIdsEl.value = String(cameraId);
+      }
       if (state.loadedParam) applyLoadedParamForCamera();
     }
 
@@ -810,6 +976,7 @@ HTML = r"""<!doctype html>
     document.getElementById("saveParamButton").addEventListener("click", saveParam);
     document.getElementById("saveEvidenceButton").addEventListener("click", saveEvidence);
     document.getElementById("saveCacheButton").addEventListener("click", saveCache);
+    document.getElementById("runOnnxButton").addEventListener("click", runOnnxOverlay);
     document.getElementById("sampleLeftButton").addEventListener("click", () => {
       normalizedEl.checked = true;
       importTextEl.value = "[0.0, 0.0, 0.2, 0.0, 0.2, 1.0, 0.0, 1.0]";
@@ -831,7 +998,7 @@ HTML = r"""<!doctype html>
         setStatus("copy unavailable");
       }
     });
-    [cameraIdEl, normalizedEl, fillBEl, fillGEl, fillREl].forEach((element) => {
+    [cameraIdEl, cameraIdsEl, normalizedEl, fillBEl, fillGEl, fillREl].forEach((element) => {
       element.addEventListener("input", draw);
       element.addEventListener("change", draw);
     });
@@ -849,6 +1016,8 @@ HTML = r"""<!doctype html>
       paramPathEl.value = config.default_param_path || "";
       outputDirEl.value = config.default_output_dir || "";
       cacheDirEl.value = config.default_cache_dir || "";
+      onnxModelDirEl.value = config.default_onnx_model_dir || "";
+      onnxOutputDirEl.value = config.default_onnx_output_dir || "";
     });
     refreshStreams().then(loadFrame);
   </script>
@@ -859,6 +1028,13 @@ HTML = r"""<!doctype html>
 
 IMAGE_TYPES = {"sensor_msgs/msg/Image", "sensor_msgs/msg/CompressedImage"}
 CAMERA_INFO_TYPE = "sensor_msgs/msg/CameraInfo"
+WORK_DIR = Path("/tmp/streampetr_mask_editor")
+
+
+class OnnxOverlayError(RuntimeError):
+    def __init__(self, message: str, details: dict[str, object]) -> None:
+        super().__init__(message)
+        self.details = details
 
 
 @dataclass
@@ -882,13 +1058,15 @@ class StreamState:
 class CameraMaskDesignerNode(Node):
     def __init__(
         self, jpeg_quality: int, default_param_path: str, default_output_dir: str,
-        default_cache_dir: str
+        default_cache_dir: str, default_onnx_model_dir: str, default_onnx_output_dir: str
     ) -> None:
         super().__init__("streampetr_camera_mask_designer")
         self._jpeg_quality = int(max(1, min(100, jpeg_quality)))
         self._default_param_path = default_param_path
         self._default_output_dir = default_output_dir
         self._default_cache_dir = default_cache_dir
+        self._default_onnx_model_dir = default_onnx_model_dir
+        self._default_onnx_output_dir = default_onnx_output_dir
         self._streams: dict[str, StreamState] = {}
         self._camera_infos: dict[str, CameraInfo] = {}
         self._subscriptions_by_topic: set[str] = set()
@@ -902,6 +1080,8 @@ class CameraMaskDesignerNode(Node):
             "default_param_path": self._default_param_path,
             "default_output_dir": self._default_output_dir,
             "default_cache_dir": self._default_cache_dir,
+            "default_onnx_model_dir": self._default_onnx_model_dir,
+            "default_onnx_output_dir": self._default_onnx_output_dir,
         }
 
     def _discover_topics(self) -> None:
@@ -1070,6 +1250,7 @@ class CameraMaskDesignerNode(Node):
                         "key": stream.key,
                         "image_topic": stream.image_topic,
                         "image_type": "compressed" if stream.compressed else "raw",
+                        "camera_id": _infer_camera_id(stream.image_topic, None),
                         "camera_info_topic": stream.camera_info_topic,
                         "has_camera_info": stream.camera_info is not None,
                         "is_undistorted": stream.camera_info is not None and not stream.latest_error,
@@ -1114,6 +1295,7 @@ class CameraMaskDesignerNode(Node):
             "key": f"cached_{key}_{timestamp}",
             "image_topic": stream.image_topic,
             "image_type": stream.image_type,
+            "camera_id": _infer_camera_id(stream.image_topic, -1),
             "camera_info_topic": stream.camera_info_topic,
             "has_camera_info": stream.camera_info is not None,
             "is_undistorted": stream.camera_info is not None,
@@ -1135,6 +1317,26 @@ class CameraMaskDesignerNode(Node):
             )
         metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
         return {"image_path": str(image_path), "metadata_path": str(metadata_path)}
+
+    def save_cached_frames_by_camera_ids(
+        self, camera_ids: list[int], cache_dir_text: str
+    ) -> dict[str, object]:
+        if not camera_ids:
+            raise RuntimeError("camera_ids is empty")
+        with self._lock:
+            streams = list(self._streams.values())
+        items = []
+        for camera_id in camera_ids:
+            stream = next(
+                (item for item in streams if _infer_camera_id(item.image_topic, None) == camera_id),
+                None,
+            )
+            if stream is None:
+                raise RuntimeError(f"camera {camera_id}: stream not found")
+            result = self.save_cached_frame(stream.key, cache_dir_text)
+            result["camera_id"] = str(camera_id)
+            items.append(result)
+        return {"items": items}
 
     def _stream_for_key(self, key: str) -> StreamState:
         with self._lock:
@@ -1209,12 +1411,14 @@ class SimpleLogger:
 class CachedFrameProvider:
     def __init__(
         self, cache_dir: str, default_param_path: str, default_output_dir: str,
-        default_cache_dir: str
+        default_cache_dir: str, default_onnx_model_dir: str, default_onnx_output_dir: str
     ) -> None:
         self._cache_dir = _resolve_local_path(cache_dir)
         self._default_param_path = default_param_path
         self._default_output_dir = default_output_dir
         self._default_cache_dir = default_cache_dir
+        self._default_onnx_model_dir = default_onnx_model_dir
+        self._default_onnx_output_dir = default_onnx_output_dir
         self._logger = SimpleLogger()
 
     def get_logger(self) -> SimpleLogger:
@@ -1225,6 +1429,8 @@ class CachedFrameProvider:
             "default_param_path": self._default_param_path,
             "default_output_dir": self._default_output_dir,
             "default_cache_dir": self._default_cache_dir,
+            "default_onnx_model_dir": self._default_onnx_model_dir,
+            "default_onnx_output_dir": self._default_onnx_output_dir,
         }
 
     def streams_summary(self) -> list[dict[str, object]]:
@@ -1240,6 +1446,7 @@ class CachedFrameProvider:
                         "key": str(metadata.get("key", metadata_path.stem)),
                         "image_topic": str(metadata.get("image_topic", metadata_path.stem)),
                         "image_type": "cached",
+                        "camera_id": _camera_id_from_metadata(metadata, -1),
                         "camera_info_topic": metadata.get("camera_info_topic"),
                         "has_camera_info": bool(metadata.get("has_camera_info", False)),
                         "is_undistorted": bool(metadata.get("is_undistorted", True)),
@@ -1266,6 +1473,11 @@ class CachedFrameProvider:
         return None, "unknown cached frame"
 
     def save_cached_frame(self, key: str, cache_dir_text: str) -> dict[str, str]:
+        raise RuntimeError("cache saving is unavailable in offline cache mode")
+
+    def save_cached_frames_by_camera_ids(
+        self, camera_ids: list[int], cache_dir_text: str
+    ) -> dict[str, object]:
         raise RuntimeError("cache saving is unavailable in offline cache mode")
 
 
@@ -1336,8 +1548,23 @@ class DesignerRequestHandler(BaseHTTPRequestHandler):
                 )
                 self._send_bytes(json.dumps(result).encode("utf-8"), "application/json")
                 return
+            if parsed.path == "/api/cache_batch":
+                result = self.server.node.save_cached_frames_by_camera_ids(
+                    _parse_camera_ids_payload(payload.get("camera_ids", [])),
+                    str(payload.get("cache_dir", "")),
+                )
+                self._send_bytes(json.dumps(result).encode("utf-8"), "application/json")
+                return
+            if parsed.path == "/api/onnx":
+                result = run_onnx_overlay(payload)
+                self._send_bytes(json.dumps(result).encode("utf-8"), "application/json")
+                return
         except Exception as error:  # noqa: BLE001 - return UI-readable error.
-            self._send_error(HTTPStatus.BAD_REQUEST, str(error))
+            self._send_error(
+                HTTPStatus.BAD_REQUEST,
+                str(error),
+                getattr(error, "details", None),
+            )
             return
         self._send_error(HTTPStatus.NOT_FOUND, "not found")
 
@@ -1356,8 +1583,13 @@ class DesignerRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def _send_error(self, status: HTTPStatus, message: str) -> None:
-        payload = json.dumps({"error": message}).encode("utf-8")
+    def _send_error(
+        self, status: HTTPStatus, message: str, details: Optional[dict[str, object]] = None
+    ) -> None:
+        body: dict[str, object] = {"error": message}
+        if details:
+            body.update(details)
+        payload = json.dumps(body).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
@@ -1435,6 +1667,80 @@ def save_evidence_png(payload: dict[str, object]) -> dict[str, object]:
     if not paths:
         raise RuntimeError("no evidence images were provided")
     return {"paths": paths, "path": paths[0]}
+
+
+def run_onnx_overlay(payload: dict[str, object]) -> dict[str, object]:
+    cache_dir = _resolve_local_path(str(payload.get("cache_dir", "")))
+    model_dir = _resolve_local_path(str(payload.get("model_dir", "")))
+    output_dir = _resolve_local_path(str(payload.get("output_dir", "")))
+    camera_ids = _parse_camera_ids_payload(payload.get("camera_ids", []))
+    if not camera_ids:
+        raise RuntimeError("camera_ids is empty")
+
+    script = Path(__file__).with_name("streampetr_onnx_overlay.py")
+    command = [
+        sys.executable,
+        str(script),
+        "--cache-dir",
+        str(cache_dir),
+        "--model-dir",
+        str(model_dir),
+        "--output-dir",
+        str(output_dir),
+        "--rois-number",
+        str(len(camera_ids)),
+        "--camera-ids",
+        ",".join(str(camera_id) for camera_id in camera_ids),
+    ]
+    if bool(payload.get("allow_identity_projection", False)):
+        command.append("--allow-identity-projection")
+
+    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    details = {
+        "command": command,
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
+    if result.returncode != 0:
+        raise OnnxOverlayError(
+            (result.stderr or result.stdout or "ONNX overlay failed").strip(),
+            details,
+        )
+    return {
+        "output_dir": str(output_dir),
+        "camera_ids": camera_ids,
+        "command": command,
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
+
+
+def _parse_camera_ids_payload(value: object) -> list[int]:
+    if isinstance(value, str):
+        items = re.split(r"[,\s]+", value.strip())
+    elif isinstance(value, list):
+        items = value
+    else:
+        raise RuntimeError("camera_ids must be a list or comma-separated string")
+
+    camera_ids = []
+    for item in items:
+        if item == "":
+            continue
+        camera_id = int(item)
+        if camera_id < 0:
+            raise RuntimeError("camera ids must be non-negative")
+        camera_ids.append(camera_id)
+    return list(dict.fromkeys(camera_ids))
+
+
+def _camera_id_from_metadata(metadata: dict[str, object], fallback: int) -> int:
+    camera_id = metadata.get("camera_id")
+    if camera_id is not None:
+        return int(camera_id)
+    return int(_infer_camera_id(str(metadata.get("image_topic", "")), fallback))
 
 
 def _resolve_local_path(path_text: str) -> Path:
@@ -1600,6 +1906,22 @@ def _insert_after_ros_parameters(text: str, block: str) -> str:
     return text + block
 
 
+def _infer_camera_id(text: str, fallback: Optional[int]) -> Optional[int]:
+    match = re.search(r"camera[_/\-]?(\d+)", text, re.IGNORECASE)
+    return int(match.group(1)) if match else fallback
+
+
+def _package_share_path(relative_path: str) -> str:
+    if get_package_share_directory is not None:
+        try:
+            path = Path(get_package_share_directory("autoware_camera_streampetr")) / relative_path
+            if path.exists():
+                return str(path)
+        except Exception:
+            pass
+    return str(Path(__file__).resolve().parents[1] / relative_path)
+
+
 def _common_prefix(left: str, right: str) -> str:
     chars = []
     for left_char, right_char in zip(left, right):
@@ -1687,18 +2009,28 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--param-path",
-        default="config/camera_streampetr.param.yaml",
+        default=_package_share_path("config/camera_streampetr.param.yaml"),
         help="Default ROS parameter YAML path shown in the UI",
     )
     parser.add_argument(
         "--output-dir",
-        default="/tmp/streampetr_mask_evidence",
+        default=str(WORK_DIR / "evidence"),
         help="Default folder for overlay evidence PNG files",
     )
     parser.add_argument(
         "--cache-dir",
-        default="/tmp/streampetr_mask_frame_cache",
+        default=str(WORK_DIR / "frame_cache"),
         help="Default folder for cached undistorted frames",
+    )
+    parser.add_argument(
+        "--onnx-model-dir",
+        default="/home/yoshiri/autoware_data/camera_streampetr",
+        help="Default folder containing the three StreamPETR ONNX files",
+    )
+    parser.add_argument(
+        "--onnx-output-dir",
+        default=str(WORK_DIR / "onnx_overlay"),
+        help="Default folder for ONNX overlay outputs",
     )
     parser.add_argument(
         "--offline-cache-dir",
@@ -1730,6 +2062,8 @@ def main() -> None:
             default_param_path=args.param_path,
             default_output_dir=args.output_dir,
             default_cache_dir=args.cache_dir,
+            default_onnx_model_dir=args.onnx_model_dir,
+            default_onnx_output_dir=args.onnx_output_dir,
         )
         server = create_http_server(args, provider)
         server_thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1753,6 +2087,8 @@ def main() -> None:
         default_param_path=args.param_path,
         default_output_dir=args.output_dir,
         default_cache_dir=args.cache_dir,
+        default_onnx_model_dir=args.onnx_model_dir,
+        default_onnx_output_dir=args.onnx_output_dir,
     )
     server = create_http_server(args, node)
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)

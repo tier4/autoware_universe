@@ -41,6 +41,7 @@ DEFAULT_CLASS_NAMES = ["CAR", "TRUCK", "BUS", "BICYCLE", "PEDESTRIAN", "TRAFFIC_
 DEFAULT_SCORE_THRESHOLDS = [0.36, 0.39, 0.38, 0.41, 0.43, 0.43, 0.43]
 DEFAULT_YAW_NORM_THRESHOLDS = [0.3, 0.3, 0.3, 0.3, 0.0, 0.0, 0.0]
 DEFAULT_DETECTION_RANGE = [-61.2, -61.2, -10.0, 61.2, 61.2, 10.0]
+WORK_DIR = Path("/tmp/streampetr_mask_editor")
 
 
 @dataclass
@@ -69,7 +70,8 @@ class Box3D:
 def main() -> None:
     args = parse_args()
     ort = import_onnxruntime()
-    frames = load_cached_frames(Path(args.cache_dir), args.rois_number)
+    camera_ids = parse_camera_ids(args.camera_ids)
+    frames = load_cached_frames(Path(args.cache_dir), args.rois_number, camera_ids)
     if len(frames) < args.rois_number:
         raise RuntimeError(
             f"need at least {args.rois_number} cached frames, found {len(frames)} in {args.cache_dir}"
@@ -177,8 +179,13 @@ def parse_args() -> argparse.Namespace:
         default="/home/yoshiri/autoware_data/camera_streampetr",
         help="Folder containing the three StreamPETR ONNX files",
     )
-    parser.add_argument("--output-dir", default="/tmp/streampetr_onnx_overlay")
+    parser.add_argument("--output-dir", default=str(WORK_DIR / "onnx_overlay"))
     parser.add_argument("--rois-number", type=int, default=5)
+    parser.add_argument(
+        "--camera-ids",
+        default="8,6,10,7,9",
+        help="Comma-separated camera ids to load from the frame cache, in ONNX input order",
+    )
     parser.add_argument("--input-height", type=int, default=480)
     parser.add_argument("--input-width", type=int, default=640)
     parser.add_argument("--max-boxes", type=int, default=100)
@@ -204,7 +211,23 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_cached_frames(cache_dir: Path, rois_number: int) -> list[CachedFrame]:
+def parse_camera_ids(text: str) -> list[int]:
+    if not text.strip():
+        return []
+    camera_ids = []
+    for item in re.split(r"[,\s]+", text.strip()):
+        if not item:
+            continue
+        camera_id = int(item)
+        if camera_id < 0:
+            raise RuntimeError("camera ids must be non-negative")
+        camera_ids.append(camera_id)
+    return camera_ids
+
+
+def load_cached_frames(
+    cache_dir: Path, rois_number: int, camera_ids: Optional[list[int]] = None
+) -> list[CachedFrame]:
     frames = []
     for metadata_path in sorted(cache_dir.expanduser().resolve().glob("*.json")):
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -220,11 +243,18 @@ def load_cached_frames(cache_dir: Path, rois_number: int) -> list[CachedFrame]:
                 key=str(metadata.get("key", metadata_path.stem)),
                 image_topic=topic,
                 image_path=image_path,
-                camera_id=infer_camera_id(topic, len(frames)),
+                camera_id=int(metadata.get("camera_id", infer_camera_id(topic, len(frames)))),
                 image_bgr=image_bgr,
                 metadata=metadata,
             )
         )
+    if camera_ids:
+        by_camera_id = {frame.camera_id: frame for frame in frames}
+        missing = [camera_id for camera_id in camera_ids if camera_id not in by_camera_id]
+        if missing:
+            raise RuntimeError(f"missing cached frames for camera ids: {missing}")
+        return [by_camera_id[camera_id] for camera_id in camera_ids]
+
     frames.sort(key=lambda frame: (frame.camera_id, frame.image_topic))
     return frames[:rois_number]
 

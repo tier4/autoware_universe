@@ -30,6 +30,8 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, CompressedImage, Image
 
+WORK_DIR = Path("/tmp/streampetr_mask_editor")
+
 
 class UndistortedSnapshotSaver(Node):
     def __init__(self, args: argparse.Namespace) -> None:
@@ -112,7 +114,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output",
-        default="/tmp/streampetr_undistorted_snapshot.png",
+        default=str(WORK_DIR / "snapshots" / "streampetr_undistorted_snapshot.png"),
         help="PNG/JPEG output path",
     )
     parser.add_argument(
