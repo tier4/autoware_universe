@@ -281,6 +281,7 @@ HTML = r"""<!doctype html>
           <button id="loadParamButton" type="button">Load Param</button>
           <button id="applyParamButton" type="button">Apply Loaded</button>
           <button id="saveParamButton" type="button" class="primary">Save Param</button>
+          <button id="saveParamAsButton" type="button">Save As</button>
         </div>
         <div id="paramStatus" class="status" style="margin-top: 8px;"></div>
       </div>
@@ -433,6 +434,13 @@ HTML = r"""<!doctype html>
     function currentCameraId() {
       const cameraId = Number.parseInt(cameraIdEl.value || "0", 10);
       return Number.isInteger(cameraId) ? clamp(cameraId, 0, 99) : 0;
+    }
+    function defaultSaveAsPath(path) {
+      if (!path) return "";
+      const withoutUrl = path.startsWith("file://") ? path.slice("file://".length) : path;
+      const dot = withoutUrl.lastIndexOf(".");
+      if (dot <= withoutUrl.lastIndexOf("/")) return `${withoutUrl}.mask_edit`;
+      return `${withoutUrl.slice(0, dot)}.mask_edit${withoutUrl.slice(dot)}`;
     }
     function parseCameraIds() {
       const ids = cameraIdsEl.value.split(/[,\s]+/)
@@ -684,8 +692,16 @@ HTML = r"""<!doctype html>
       setParamStatus(`loaded ${data.path}`);
       applyUiMaskForCamera();
     }
-    async function saveParam() {
-      const path = paramPathEl.value.trim();
+    async function saveParam(options = {}) {
+      let path = paramPathEl.value.trim();
+      if (options.saveAs) {
+        const nextPath = window.prompt("Save parameter YAML as", defaultSaveAsPath(path));
+        if (!nextPath) {
+          setParamStatus("save as cancelled");
+          return;
+        }
+        path = nextPath.trim();
+      }
       if (!path) {
         setParamStatus("param path is empty");
         return;
@@ -718,7 +734,8 @@ HTML = r"""<!doctype html>
       paramPathEl.value = data.path;
       loadMasksIntoUi(data);
       state.uiMasks[String(cameraId)] = editorMask();
-      setParamStatus(`saved camera_${cameraId}_mask to ${data.path}`);
+      const backupText = data.backup_path ? `, backup: ${data.backup_path}` : "";
+      setParamStatus(`saved camera_${cameraId}_mask to ${data.path}${backupText}`);
     }
     function polygonsForCamera(cameraId, width, height) {
       syncCurrentMask();
@@ -1086,6 +1103,7 @@ HTML = r"""<!doctype html>
     document.getElementById("loadParamButton").addEventListener("click", loadParam);
     document.getElementById("applyParamButton").addEventListener("click", applyLoadedParamForCamera);
     document.getElementById("saveParamButton").addEventListener("click", saveParam);
+    document.getElementById("saveParamAsButton").addEventListener("click", () => saveParam({ saveAs: true }));
     document.getElementById("saveEvidenceButton").addEventListener("click", saveEvidence);
     document.getElementById("saveCacheButton").addEventListener("click", saveCache);
     document.getElementById("runOnnxButton").addEventListener("click", runOnnxOverlay);
@@ -1841,8 +1859,21 @@ def save_param_file(payload: dict[str, object]) -> dict[str, object]:
     text = _replace_fill_value_bgr(text, fill_values)
     text = _replace_camera_mask_block(text, camera_id, enable, mask_values, normalized)
     path.parent.mkdir(parents=True, exist_ok=True)
+    backup_path = _backup_existing_file(path)
     path.write_text(text, encoding="utf-8")
-    return load_param_file(str(path))
+    result = load_param_file(str(path))
+    if backup_path is not None:
+        result["backup_path"] = str(backup_path)
+    return result
+
+
+def _backup_existing_file(path: Path) -> Optional[Path]:
+    if not path.exists():
+        return None
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = path.with_name(f"{path.name}.bak_{timestamp}")
+    backup_path.write_bytes(path.read_bytes())
+    return backup_path
 
 
 def save_evidence_png(payload: dict[str, object]) -> dict[str, object]:

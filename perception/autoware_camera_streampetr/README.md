@@ -148,7 +148,8 @@ the YAML, and write PNG evidence images to the output folder. Evidence export ca
 patterns from the same frame: semi-transparent overlay, filled-mask preview, and outline-only. The
 parameter path also accepts a `file://` URL. On startup, the UI tries to load the default parameter
 path automatically; if the file or the selected camera's mask is unavailable, that camera is treated
-as having no mask.
+as having no mask. `Save Param` creates a timestamped `.bak_YYYYmmdd_HHMMSS` copy before overwriting
+an existing YAML, and `Save As` can write the edited mask to a separate YAML path.
 
 `camera_N_mask.mask` accepts one polygon with at least three `(x, y)` points; four or more points
 are valid. Disabled masks are treated as empty even if their YAML `mask` field contains placeholder
