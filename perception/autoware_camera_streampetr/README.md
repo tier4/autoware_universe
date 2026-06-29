@@ -171,10 +171,11 @@ python3 tools/streampetr_onnx_overlay.py \
   --projection-json /path/to/lidar2img_by_camera.json
 ```
 
-The helper requires `onnxruntime`. New frame caches saved while TF is ready provide the projection
-matrices automatically. Older cached metadata or manual workflows can still use `--projection-json`
-to provide `lidar2img` or `img2lidar` matrices. Without those projection matrices, it can still run
-inference but cannot place boxes on the image correctly.
+The helper requires `onnxruntime`. The browser UI checks the frame cache before `Run ONNX Overlay`;
+if the requested camera ids are missing or lack projection metadata, live mode automatically saves a
+fresh batch frame cache first. Older cached metadata or manual workflows can still use
+`--projection-json` to provide `lidar2img` or `img2lidar` matrices. Without those projection
+matrices, it can still run inference but cannot place boxes on the image correctly.
 
 For offline workflows, save a one-frame undistorted snapshot and open it in the static editor:
 

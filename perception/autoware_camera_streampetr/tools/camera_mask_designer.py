@@ -813,11 +813,15 @@ HTML = r"""<!doctype html>
         setOnnxLog(formatOnnxLog(data));
         return;
       }
-      setOnnxStatus(`done: ${data.output_dir}`);
+      const cacheText = data.cache && data.cache.saved ? "auto-cached" : "cache ok";
+      setOnnxStatus(`done: ${data.output_dir} (${cacheText})`);
       setOnnxLog(formatOnnxLog(data));
     }
     function formatOnnxLog(data) {
       const parts = [];
+      if (data.cache) {
+        parts.push(`cache:\n${JSON.stringify(data.cache, null, 2)}`);
+      }
       if (data.command) {
         parts.push(`$ ${Array.isArray(data.command) ? data.command.join(" ") : data.command}`);
       }
@@ -1651,7 +1655,7 @@ class DesignerRequestHandler(BaseHTTPRequestHandler):
                 self._send_bytes(json.dumps(result).encode("utf-8"), "application/json")
                 return
             if parsed.path == "/api/onnx":
-                result = run_onnx_overlay(payload)
+                result = run_onnx_overlay(payload, self.server.node)
                 self._send_bytes(json.dumps(result).encode("utf-8"), "application/json")
                 return
         except Exception as error:  # noqa: BLE001 - return UI-readable error.
@@ -1764,13 +1768,20 @@ def save_evidence_png(payload: dict[str, object]) -> dict[str, object]:
     return {"paths": paths, "path": paths[0]}
 
 
-def run_onnx_overlay(payload: dict[str, object]) -> dict[str, object]:
+def run_onnx_overlay(payload: dict[str, object], frame_provider: object) -> dict[str, object]:
     cache_dir = _resolve_local_path(str(payload.get("cache_dir", "")))
     model_dir = _resolve_local_path(str(payload.get("model_dir", "")))
     output_dir = _resolve_local_path(str(payload.get("output_dir", "")))
     camera_ids = _parse_camera_ids_payload(payload.get("camera_ids", []))
     if not camera_ids:
         raise RuntimeError("camera_ids is empty")
+    allow_identity_projection = bool(payload.get("allow_identity_projection", False))
+    cache_result = ensure_onnx_frame_cache(
+        frame_provider,
+        cache_dir,
+        camera_ids,
+        require_projection=not allow_identity_projection,
+    )
 
     script = Path(__file__).with_name("streampetr_onnx_overlay.py")
     command = [
@@ -1787,11 +1798,12 @@ def run_onnx_overlay(payload: dict[str, object]) -> dict[str, object]:
         "--camera-ids",
         ",".join(str(camera_id) for camera_id in camera_ids),
     ]
-    if bool(payload.get("allow_identity_projection", False)):
+    if allow_identity_projection:
         command.append("--allow-identity-projection")
 
     result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     details = {
+        "cache": cache_result,
         "command": command,
         "returncode": result.returncode,
         "stdout": result.stdout,
@@ -1805,11 +1817,88 @@ def run_onnx_overlay(payload: dict[str, object]) -> dict[str, object]:
     return {
         "output_dir": str(output_dir),
         "camera_ids": camera_ids,
+        "cache": cache_result,
         "command": command,
         "returncode": result.returncode,
         "stdout": result.stdout,
         "stderr": result.stderr,
     }
+
+
+def ensure_onnx_frame_cache(
+    frame_provider: object, cache_dir: Path, camera_ids: list[int], require_projection: bool
+) -> dict[str, object]:
+    before = inspect_onnx_frame_cache(cache_dir, camera_ids, require_projection)
+    if before["ready"]:
+        return {"saved": False, **before}
+
+    try:
+        saved = frame_provider.save_cached_frames_by_camera_ids(camera_ids, str(cache_dir))
+    except Exception as error:  # noqa: BLE001 - expose why live auto-cache could not happen.
+        raise RuntimeError(
+            "ONNX frame cache is incomplete and automatic frame cache failed: "
+            f"{error}. Cache status: {before}"
+        ) from error
+
+    after = inspect_onnx_frame_cache(cache_dir, camera_ids, require_projection)
+    if not after["ready"]:
+        raise RuntimeError(
+            "automatic frame cache did not produce ONNX-ready metadata. "
+            f"Cache status: {after}"
+        )
+    return {"saved": True, "saved_items": saved.get("items", []), **after}
+
+
+def inspect_onnx_frame_cache(
+    cache_dir: Path, camera_ids: list[int], require_projection: bool
+) -> dict[str, object]:
+    selected: dict[int, dict[str, object]] = {}
+    for metadata_path in sorted(cache_dir.expanduser().resolve().glob("*.json")):
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        camera_id = _camera_id_from_metadata(metadata, -1)
+        if camera_id < 0:
+            continue
+        image_path = metadata_path.parent / str(metadata.get("image_file", ""))
+        selected[camera_id] = {
+            "metadata_path": str(metadata_path),
+            "image_path": str(image_path),
+            "image_exists": image_path.exists(),
+            "projection_ready": _metadata_has_projection_matrix(metadata),
+            "projection_error": str(metadata.get("projection_error", "")),
+        }
+
+    missing = []
+    missing_projection = []
+    entries = []
+    for camera_id in camera_ids:
+        entry = selected.get(camera_id)
+        if entry is None or not bool(entry.get("image_exists", False)):
+            missing.append(camera_id)
+            continue
+        if require_projection and not bool(entry.get("projection_ready", False)):
+            missing_projection.append(camera_id)
+        entries.append({"camera_id": camera_id, **entry})
+
+    return {
+        "ready": not missing and not missing_projection,
+        "require_projection": require_projection,
+        "missing_camera_ids": missing,
+        "missing_projection_camera_ids": missing_projection,
+        "entries": entries,
+    }
+
+
+def _metadata_has_projection_matrix(metadata: dict[str, object]) -> bool:
+    return any(
+        _is_matrix_metadata(metadata.get(key)) for key in ("img2lidar", "lidar2img_model", "lidar2img")
+    )
+
+
+def _is_matrix_metadata(value: object) -> bool:
+    return isinstance(value, list) and len(value) == 16
 
 
 def _parse_camera_ids_payload(value: object) -> list[int]:
