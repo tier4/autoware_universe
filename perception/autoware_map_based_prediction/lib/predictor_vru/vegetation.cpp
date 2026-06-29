@@ -26,6 +26,7 @@
 #include <lanelet2_core/primitives/Polygon.h>
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <string>
@@ -33,6 +34,22 @@
 
 namespace autoware::map_based_prediction
 {
+
+namespace
+{
+double calcFootprintSearchMargin(const autoware_perception_msgs::msg::Shape & shape)
+{
+  if (shape.type == autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
+    const auto hx = shape.dimensions.x * 0.5;
+    const auto hy = shape.dimensions.y * 0.5;
+    return std::hypot(hx, hy);
+  }
+  if (shape.type == autoware_perception_msgs::msg::Shape::CYLINDER) {
+    return shape.dimensions.x * 0.5;
+  }
+  return std::max(shape.dimensions.x, shape.dimensions.y) * 0.5;
+}
+}  // namespace
 
 void VegetationModule::buildFromMap(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr)
 {
@@ -67,13 +84,16 @@ std::optional<size_t> VegetationModule::getVegetationCrossingIndex(
     return std::nullopt;
   }
 
-  // bounding box over the whole path to narrow down candidate vegetation areas
-  lanelet::BasicLineString2d path_ls;
+  // Bounding box over the whole path with footprint margin to avoid candidate misses.
+  lanelet::BoundingBox2d search_bbox;
+  const auto search_margin = calcFootprintSearchMargin(shape);
   for (const auto & pose : predicted_path.path) {
-    path_ls.emplace_back(pose.position.x, pose.position.y);
+    const lanelet::BasicPoint2d center(pose.position.x, pose.position.y);
+    const lanelet::BasicPoint2d offset(search_margin, search_margin);
+    search_bbox.extend(center - offset);
+    search_bbox.extend(center + offset);
   }
-  const auto candidate_vegetation_polygons =
-    vegetation_layer_->polygonLayer.search(lanelet::geometry::boundingBox2d(path_ls));
+  const auto candidate_vegetation_polygons = vegetation_layer_->polygonLayer.search(search_bbox);
   if (candidate_vegetation_polygons.empty()) {
     return std::nullopt;
   }
@@ -81,6 +101,7 @@ std::optional<size_t> VegetationModule::getVegetationCrossingIndex(
   // convert candidate vegetation areas to 2d polygons once
   std::vector<autoware_utils_geometry::Polygon2d> vegetation_polygons_2d;
   vegetation_polygons_2d.reserve(candidate_vegetation_polygons.size());
+
   for (const auto & candidate : candidate_vegetation_polygons) {
     autoware_utils_geometry::LinearRing2d ring;
     boost::geometry::convert(lanelet::utils::to2D(candidate.basicPolygon()), ring);
@@ -93,6 +114,7 @@ std::optional<size_t> VegetationModule::getVegetationCrossingIndex(
   // check the object footprint at each path point against the vegetation areas
   for (auto i = 0UL; i < predicted_path.path.size(); ++i) {
     const auto footprint = autoware_utils_geometry::to_polygon2d(predicted_path.path[i], shape);
+  
     for (const auto & vegetation_polygon : vegetation_polygons_2d) {
       // NOTE: intersects_convex (GJK) treats both polygons as convex. A non-convex vegetation area
       // is evaluated as its convex hull, but this work effectively.
