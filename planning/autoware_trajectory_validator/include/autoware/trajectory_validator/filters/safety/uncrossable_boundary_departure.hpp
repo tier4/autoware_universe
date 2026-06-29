@@ -20,10 +20,27 @@
 #include <autoware/boundary_departure_checker/uncrossable_boundary_checker.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
-#include <string>
+#include <unordered_map>
 namespace autoware::trajectory_validator::plugin::safety
 {
+/// @brief Hashes a raw 16-byte UUID (FNV-1a) without allocating an intermediate string.
+struct UuidHash
+{
+  std::size_t operator()(const std::array<uint8_t, 16> & uuid) const noexcept
+  {
+    std::size_t hash = 14695981039346656037ULL;  // FNV-1a offset basis
+    for (const auto byte : uuid) {
+      hash ^= static_cast<std::size_t>(byte);
+      hash *= 1099511628211ULL;  // FNV-1a prime
+    }
+    return hash;
+  }
+};
+
 class UncrossableBoundaryDepartureFilter : public plugin::ValidatorInterface
 {
 public:
@@ -39,6 +56,13 @@ public:
 private:
   std::unique_ptr<boundary_departure_checker::UncrossableBoundaryChecker> checker_;
   boundary_departure_checker::UncrossableBoundaryDepartureParam params_;
+
+  // Per-generator hysteresis state, keyed by the generator UUID's raw 16 bytes. Each generator's
+  // trajectory keeps its own hysteresis so one trajectory cannot remove another via the
+  // shared ON/OFF time buffers.
+  std::unordered_map<
+    std::array<uint8_t, 16>, boundary_departure_checker::HysteresisState, UuidHash>
+    hysteresis_states_;
 
   tl::expected<void, std::string> validate_filter_context(const FilterContext & context) const;
 };
