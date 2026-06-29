@@ -61,8 +61,8 @@ DepartureResult UncrossableBoundaryChecker::update_departure_status(
   state = hysteresis_result.updated_state;
 
   result.status = hysteresis_result.status;
-  result.debug_markers = debug::create_debug_markers(
-    state, footprints, ego_state, param_.enable_developer_marker);
+  result.debug_markers =
+    debug::create_debug_markers(state, footprints, ego_state, param_.enable_developer_marker);
   return result;
 }
 

@@ -24,6 +24,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <unordered_map>
 namespace autoware::trajectory_validator::plugin::safety
 {
@@ -46,8 +47,7 @@ private:
   // Per-generator hysteresis state, keyed by the generator UUID's raw 16 bytes. Each generator's
   // trajectory keeps its own hysteresis so one trajectory cannot remove another via the
   // shared ON/OFF time buffers.
-  std::unordered_map<
-    std::array<uint8_t, 16>, boundary_departure_checker::HysteresisState, UuidHash>
+  std::unordered_map<std::array<uint8_t, 16>, boundary_departure_checker::HysteresisState, UuidHash>
     hysteresis_states_;
 
   tl::expected<void, std::string> validate_filter_context(const FilterContext & context) const;
