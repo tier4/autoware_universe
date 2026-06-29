@@ -133,7 +133,8 @@ both `camera_N_mask` parameter snippets and `polygons` YAML:
 python3 tools/camera_mask_designer.py \
   --param-path config/camera_streampetr.param.yaml \
   --output-dir /tmp/streampetr_mask_editor/evidence \
-  --cache-dir /tmp/streampetr_mask_editor/frame_cache
+  --cache-dir /tmp/streampetr_mask_editor/frame_cache \
+  --base-frame base_link
 ```
 
 Open the URL printed by the tool, select a stream, freeze a representative frame, draw the mask,
@@ -147,8 +148,11 @@ the YAML, and write PNG evidence images to the output folder. Evidence export ca
 patterns from the same frame: semi-transparent overlay, filled-mask preview, and outline-only. The
 parameter path also accepts a `file://` URL.
 
-Use `Save Current Frame` to cache the selected undistorted frame and stream metadata. A later
-session can avoid ROS 2 subscriptions entirely and use only cached frames:
+Use `Save Current Frame` to cache the selected undistorted frame and stream metadata. In live mode
+the tool also listens to `/tf` and `/tf_static`; once `base_link -> CameraInfo.header.frame_id` is
+available, the cache JSON includes `camera_info_p`, `base_to_camera`, full-resolution `lidar2img`,
+model-space `lidar2img_model`, and `img2lidar`. A later session can avoid ROS 2 subscriptions
+entirely and use only cached frames:
 
 ```bash
 python3 tools/camera_mask_designer.py \
@@ -167,9 +171,10 @@ python3 tools/streampetr_onnx_overlay.py \
   --projection-json /path/to/lidar2img_by_camera.json
 ```
 
-The helper requires `onnxruntime`. The cached metadata or `--projection-json` must provide
-`lidar2img` or `img2lidar` matrices to draw geometrically meaningful 2D boxes. Without those
-projection matrices, it can still run inference but cannot place boxes on the image correctly.
+The helper requires `onnxruntime`. New frame caches saved while TF is ready provide the projection
+matrices automatically. Older cached metadata or manual workflows can still use `--projection-json`
+to provide `lidar2img` or `img2lidar` matrices. Without those projection matrices, it can still run
+inference but cannot place boxes on the image correctly.
 
 For offline workflows, save a one-frame undistorted snapshot and open it in the static editor:
 

@@ -42,7 +42,14 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
+from rclpy.time import Time
 from sensor_msgs.msg import CameraInfo, CompressedImage, Image
+
+try:
+    from tf2_ros import Buffer, TransformListener
+except Exception:  # noqa: BLE001 - allow offline/static cache workflows without tf2_ros.
+    Buffer = None
+    TransformListener = None
 
 try:
     from ament_index_python.packages import get_package_share_directory
@@ -773,7 +780,8 @@ HTML = r"""<!doctype html>
         setCacheStatus(data.error || "failed to save cache");
         return;
       }
-      setCacheStatus(`cached ${data.items.length} frames`);
+      const readyCount = data.items.filter((item) => item.projection_ready).length;
+      setCacheStatus(`cached ${data.items.length} frames, projection ready ${readyCount}/${data.items.length}`);
     }
     async function runOnnxOverlay() {
       const cameraIds = parseCameraIds();
@@ -835,6 +843,7 @@ HTML = r"""<!doctype html>
         ["Type", stream ? stream.image_type : "none"],
         ["CameraInfo", stream && stream.has_camera_info ? stream.camera_info_topic : "not paired"],
         ["Mode", stream && stream.is_undistorted ? "undistorted" : "original/fallback"],
+        ["Projection", stream && stream.projection_ready ? "ready" : (stream && stream.projection_error ? stream.projection_error : "not ready")],
         ["Camera IDs", parseCameraIds().join(", ") || "none"],
         ["Polygons", validPolygons().length.toString()],
         ["Active points", activePoints().length.toString()],
@@ -851,8 +860,9 @@ HTML = r"""<!doctype html>
         const option = document.createElement("option");
         option.value = stream.key;
         const info = stream.has_camera_info ? "info" : "no info";
+        const projection = stream.projection_ready ? "projection" : "no projection";
         const age = stream.last_frame_age_sec == null ? "no frame" : `${stream.last_frame_age_sec.toFixed(1)}s`;
-        option.textContent = `${stream.image_topic} (${stream.image_type}, ${info}, ${age})`;
+        option.textContent = `${stream.image_topic} (${stream.image_type}, ${info}, ${projection}, ${age})`;
         streamSelect.appendChild(option);
       });
       if (state.streams.length === 0) {
@@ -1058,7 +1068,8 @@ class StreamState:
 class CameraMaskDesignerNode(Node):
     def __init__(
         self, jpeg_quality: int, default_param_path: str, default_output_dir: str,
-        default_cache_dir: str, default_onnx_model_dir: str, default_onnx_output_dir: str
+        default_cache_dir: str, default_onnx_model_dir: str, default_onnx_output_dir: str,
+        base_frame: str, model_input_height: int, model_input_width: int
     ) -> None:
         super().__init__("streampetr_camera_mask_designer")
         self._jpeg_quality = int(max(1, min(100, jpeg_quality)))
@@ -1067,6 +1078,15 @@ class CameraMaskDesignerNode(Node):
         self._default_cache_dir = default_cache_dir
         self._default_onnx_model_dir = default_onnx_model_dir
         self._default_onnx_output_dir = default_onnx_output_dir
+        self._base_frame = base_frame
+        self._model_input_height = int(model_input_height)
+        self._model_input_width = int(model_input_width)
+        self._tf_buffer = Buffer() if Buffer is not None else None
+        self._tf_listener = (
+            TransformListener(self._tf_buffer, self)
+            if self._tf_buffer is not None and TransformListener is not None
+            else None
+        )
         self._streams: dict[str, StreamState] = {}
         self._camera_infos: dict[str, CameraInfo] = {}
         self._subscriptions_by_topic: set[str] = set()
@@ -1082,6 +1102,9 @@ class CameraMaskDesignerNode(Node):
             "default_cache_dir": self._default_cache_dir,
             "default_onnx_model_dir": self._default_onnx_model_dir,
             "default_onnx_output_dir": self._default_onnx_output_dir,
+            "base_frame": self._base_frame,
+            "model_input_height": str(self._model_input_height),
+            "model_input_width": str(self._model_input_width),
         }
 
     def _discover_topics(self) -> None:
@@ -1245,6 +1268,7 @@ class CameraMaskDesignerNode(Node):
                 height = None
                 if stream.latest_bgr is not None:
                     height, width = stream.latest_bgr.shape[:2]
+                projection_status = self._projection_status(stream.camera_info)
                 summaries.append(
                     {
                         "key": stream.key,
@@ -1259,6 +1283,8 @@ class CameraMaskDesignerNode(Node):
                         "height": height,
                         "encoding": stream.latest_encoding,
                         "error": stream.latest_error,
+                        "projection_ready": projection_status[0],
+                        "projection_error": projection_status[1],
                     }
                 )
         return summaries
@@ -1275,7 +1301,7 @@ class CameraMaskDesignerNode(Node):
             return None, "failed to encode frame"
         return encoded.tobytes(), ""
 
-    def save_cached_frame(self, key: str, cache_dir_text: str) -> dict[str, str]:
+    def save_cached_frame(self, key: str, cache_dir_text: str) -> dict[str, object]:
         image_bgr, error = self._frame_bgr(key)
         if image_bgr is None:
             raise RuntimeError(error)
@@ -1303,6 +1329,8 @@ class CameraMaskDesignerNode(Node):
             "height": int(image_bgr.shape[0]),
             "encoding": "bgr8-jpeg",
             "image_file": image_path.name,
+            "projection_ready": False,
+            "projection_error": "missing CameraInfo",
         }
         if stream.camera_info is not None:
             metadata.update(
@@ -1315,8 +1343,73 @@ class CameraMaskDesignerNode(Node):
                     "camera_frame_id": stream.camera_info.header.frame_id,
                 }
             )
+            metadata.update(self._projection_metadata(stream.camera_info, image_bgr.shape[:2]))
         metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-        return {"image_path": str(image_path), "metadata_path": str(metadata_path)}
+        return {
+            "image_path": str(image_path),
+            "metadata_path": str(metadata_path),
+            "projection_ready": bool(metadata.get("projection_ready", False)),
+            "projection_error": str(metadata.get("projection_error", "")),
+        }
+
+    def _projection_status(self, camera_info: Optional[CameraInfo]) -> tuple[bool, str]:
+        if camera_info is None:
+            return False, "missing CameraInfo"
+        camera_frame = camera_info.header.frame_id
+        if not camera_frame:
+            return False, "missing CameraInfo.header.frame_id"
+        if self._tf_buffer is None:
+            return False, "tf2_ros is unavailable"
+        try:
+            self._tf_buffer.lookup_transform(camera_frame, self._base_frame, Time())
+        except Exception as error:  # noqa: BLE001 - shown in the UI/status JSON.
+            return False, str(error)
+        return True, ""
+
+    def _projection_metadata(
+        self, camera_info: CameraInfo, image_shape: tuple[int, int]
+    ) -> dict[str, object]:
+        metadata: dict[str, object] = {
+            "tf_base_frame": self._base_frame,
+            "tf_camera_frame": camera_info.header.frame_id,
+            "model_input_height": self._model_input_height,
+            "model_input_width": self._model_input_width,
+            "projection_ready": False,
+        }
+        camera_frame = camera_info.header.frame_id
+        if not camera_frame:
+            metadata["projection_error"] = "missing CameraInfo.header.frame_id"
+            return metadata
+        if self._tf_buffer is None:
+            metadata["projection_error"] = "tf2_ros is unavailable"
+            return metadata
+
+        try:
+            transform = self._tf_buffer.lookup_transform(camera_frame, self._base_frame, Time())
+            base_to_camera = _transform_to_matrix(transform.transform)
+            lidar2img = _camera_info_projection_matrix(camera_info) @ base_to_camera
+            lidar2img_model = (
+                _adjust_intrinsic_for_preprocess(
+                    _camera_info_projection_matrix(camera_info),
+                    image_shape,
+                    self._model_input_height,
+                    self._model_input_width,
+                )
+                @ base_to_camera
+            )
+            metadata.update(
+                {
+                    "projection_ready": True,
+                    "base_to_camera": _flatten_matrix(base_to_camera),
+                    "lidar2img": _flatten_matrix(lidar2img),
+                    "lidar2img_model": _flatten_matrix(lidar2img_model),
+                    "img2lidar": _flatten_matrix(np.linalg.inv(lidar2img_model)),
+                    "projection_error": "",
+                }
+            )
+        except Exception as error:  # noqa: BLE001 - keep frame cache usable without projection.
+            metadata["projection_error"] = str(error)
+        return metadata
 
     def save_cached_frames_by_camera_ids(
         self, camera_ids: list[int], cache_dir_text: str
@@ -1455,6 +1548,8 @@ class CachedFrameProvider:
                         "height": metadata.get("height"),
                         "encoding": metadata.get("encoding", "bgr8-jpeg"),
                         "error": "",
+                        "projection_ready": bool(metadata.get("projection_ready", False)),
+                        "projection_error": metadata.get("projection_error", ""),
                     }
                 )
             except Exception as error:  # noqa: BLE001 - keep bad cache entries non-fatal.
@@ -1472,7 +1567,7 @@ class CachedFrameProvider:
             return image_path.read_bytes(), ""
         return None, "unknown cached frame"
 
-    def save_cached_frame(self, key: str, cache_dir_text: str) -> dict[str, str]:
+    def save_cached_frame(self, key: str, cache_dir_text: str) -> dict[str, object]:
         raise RuntimeError("cache saving is unavailable in offline cache mode")
 
     def save_cached_frames_by_camera_ids(
@@ -1945,6 +2040,72 @@ def _camera_info_signature(camera_info: CameraInfo) -> str:
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 
+def _camera_info_projection_matrix(camera_info: CameraInfo) -> np.ndarray:
+    p = camera_info.p
+    return np.array(
+        [
+            [p[0], p[1], p[2], p[3]],
+            [p[4], p[5], p[6], p[7]],
+            [p[8], p[9], p[10], p[11]],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+
+
+def _adjust_intrinsic_for_preprocess(
+    intrinsic: np.ndarray, original_shape: tuple[int, int], out_h: int, out_w: int
+) -> np.ndarray:
+    raw_h, raw_w = original_shape
+    resize = max(out_h / raw_h, out_w / raw_w)
+    new_w = int(raw_w * resize)
+    new_h = int(raw_h * resize)
+    crop_h = max(0, new_h - out_h)
+    crop_w = max(0, (new_w - out_w) // 2)
+    adjusted = intrinsic.copy()
+    adjusted[0, :] *= resize
+    adjusted[1, :] *= resize
+    adjusted[0, 2] -= crop_w
+    adjusted[1, 2] -= crop_h
+    return adjusted
+
+
+def _transform_to_matrix(transform: object) -> np.ndarray:
+    translation = transform.translation
+    rotation = transform.rotation
+    x = float(rotation.x)
+    y = float(rotation.y)
+    z = float(rotation.z)
+    w = float(rotation.w)
+    norm = np.linalg.norm([x, y, z, w])
+    if norm <= 0.0:
+        raise RuntimeError("invalid zero-length TF quaternion")
+    x /= norm
+    y /= norm
+    z /= norm
+    w /= norm
+
+    matrix = np.eye(4, dtype=np.float64)
+    matrix[:3, :3] = np.array(
+        [
+            [1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y - z * w), 2.0 * (x * z + y * w)],
+            [2.0 * (x * y + z * w), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z - x * w)],
+            [2.0 * (x * z - y * w), 2.0 * (y * z + x * w), 1.0 - 2.0 * (x * x + y * y)],
+        ],
+        dtype=np.float64,
+    )
+    matrix[:3, 3] = [
+        float(translation.x),
+        float(translation.y),
+        float(translation.z),
+    ]
+    return matrix
+
+
+def _flatten_matrix(matrix: np.ndarray) -> list[float]:
+    return [float(value) for value in matrix.reshape(-1)]
+
+
 def _compressed_image_to_bgr(msg: CompressedImage) -> np.ndarray:
     encoded = np.frombuffer(msg.data, dtype=np.uint8)
     image_bgr = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
@@ -2033,6 +2194,23 @@ def parse_args() -> argparse.Namespace:
         help="Default folder for ONNX overlay outputs",
     )
     parser.add_argument(
+        "--base-frame",
+        default="base_link",
+        help="Base frame used to cache camera projection matrices from TF",
+    )
+    parser.add_argument(
+        "--model-input-height",
+        type=int,
+        default=480,
+        help="StreamPETR model input height used when caching img2lidar",
+    )
+    parser.add_argument(
+        "--model-input-width",
+        type=int,
+        default=640,
+        help="StreamPETR model input width used when caching img2lidar",
+    )
+    parser.add_argument(
         "--offline-cache-dir",
         default="",
         help="Serve cached frames from this folder without initializing ROS 2 subscriptions",
@@ -2089,6 +2267,9 @@ def main() -> None:
         default_cache_dir=args.cache_dir,
         default_onnx_model_dir=args.onnx_model_dir,
         default_onnx_output_dir=args.onnx_output_dir,
+        base_frame=args.base_frame,
+        model_input_height=args.model_input_height,
+        model_input_width=args.model_input_width,
     )
     server = create_http_server(args, node)
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)

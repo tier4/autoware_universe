@@ -331,6 +331,10 @@ def build_img2lidar(frames: list[CachedFrame], allow_identity: bool) -> np.ndarr
     for frame in frames:
         matrix = matrix_from_metadata(frame.metadata, "img2lidar")
         if matrix is None:
+            lidar2img_model = matrix_from_metadata(frame.metadata, "lidar2img_model")
+            if lidar2img_model is not None:
+                matrix = np.linalg.inv(lidar2img_model)
+        if matrix is None:
             lidar2img = matrix_from_metadata(frame.metadata, "lidar2img")
             if lidar2img is not None:
                 matrix = np.linalg.inv(lidar2img)
