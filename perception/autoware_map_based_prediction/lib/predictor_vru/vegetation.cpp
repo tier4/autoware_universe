@@ -25,6 +25,7 @@
 #include <lanelet2_core/geometry/Polygon.h>
 #include <lanelet2_core/primitives/Polygon.h>
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -40,7 +41,8 @@ void VegetationModule::buildFromMap(std::shared_ptr<lanelet::LaneletMap> lanelet
     const std::string type = polygon.attributeOr(lanelet::AttributeName::Type, "none");
     const std::string subtype = polygon.attributeOr(lanelet::AttributeName::Subtype, "none");
     if (type == "area" && subtype == "vegetation") {
-      vegetations.emplace_back(std::const_pointer_cast<lanelet::PolygonData>(polygon.constData()));
+      vegetations.emplace_back(
+        std::const_pointer_cast<lanelet::LineStringData>(polygon.constData()));
     }
   }
   vegetation_layer_ = lanelet::utils::createMap(vegetations);
@@ -54,7 +56,6 @@ PredictedPath VegetationModule::cutPathCrossingVegetation(
   if (!crossing_index) {
     return predicted_path;
   }
-  // keep the path up to the point before entering the vegetation area
   auto trimmed_path = predicted_path;
   trimmed_path.path.resize(*crossing_index);
   return trimmed_path;
@@ -95,6 +96,8 @@ std::optional<size_t> VegetationModule::getVegetationCrossingIndex(
   for (auto i = 0UL; i < predicted_path.path.size(); ++i) {
     const auto footprint = autoware_utils_geometry::to_polygon2d(predicted_path.path[i], shape);
     for (const auto & vegetation_polygon : vegetation_polygons_2d) {
+      // NOTE: intersects_convex (GJK) treats both polygons as convex. A non-convex vegetation area
+      // is evaluated as its convex hull, but this work effectively.
       if (autoware_utils_geometry::intersects_convex(footprint, vegetation_polygon)) {
         return i;
       }

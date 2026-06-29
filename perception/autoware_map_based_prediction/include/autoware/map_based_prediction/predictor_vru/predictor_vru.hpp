@@ -20,6 +20,7 @@
 #include "autoware/map_based_prediction/predictor_vru/fence.hpp"
 #include "autoware/map_based_prediction/predictor_vru/history.hpp"
 #include "autoware/map_based_prediction/predictor_vru/traffic_signal.hpp"
+#include "autoware/map_based_prediction/predictor_vru/vegetation.hpp"
 
 #include <autoware_utils/system/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -102,6 +103,7 @@ private:
 
   // Sub-modules
   FenceModule fence_module_;
+  VegetationModule vegetation_module_;
   TrafficSignalModule traffic_signal_module_;
   CrosswalkUserHistoryManager history_manager_;
 

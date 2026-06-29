@@ -149,6 +149,7 @@ void PredictorVru::setLaneletMap(std::shared_ptr<lanelet::LaneletMap> lanelet_ma
   crosswalks_.insert(crosswalks_.end(), walkways.begin(), walkways.end());
 
   fence_module_.buildFromMap(lanelet_map_ptr_);
+  vegetation_module_.buildFromMap(lanelet_map_ptr_);
 }
 
 void PredictorVru::loadCurrentCrosswalkUsers(const TrackedObjects & objects)
@@ -385,6 +386,12 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(const TrackedObj
       continue;
     }
     predicted_object.kinematics.predicted_paths.push_back(predicted_path);
+  }
+
+  // trim every predicted path where the object would enter a vegetation area
+  for (auto & predicted_path : predicted_object.kinematics.predicted_paths) {
+    predicted_path =
+      vegetation_module_.cutPathCrossingVegetation(predicted_path, mutable_object.shape);
   }
 
   const auto n_path = predicted_object.kinematics.predicted_paths.size();
