@@ -150,6 +150,10 @@ parameter path also accepts a `file://` URL. On startup, the UI tries to load th
 path automatically; if the file or the selected camera's mask is unavailable, that camera is treated
 as having no mask.
 
+`camera_N_mask.mask` accepts one polygon with at least three `(x, y)` points; four or more points
+are valid. Disabled masks are treated as empty even if their YAML `mask` field contains placeholder
+coordinates.
+
 Use `Save Current Frame` to cache the selected undistorted frame and stream metadata. In live mode
 the tool also listens to `/tf` and `/tf_static`; once `base_link -> CameraInfo.header.frame_id` is
 available, the cache JSON includes `camera_info_p`, `base_to_camera`, full-resolution `lidar2img`,

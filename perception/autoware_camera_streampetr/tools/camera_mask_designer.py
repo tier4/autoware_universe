@@ -265,6 +265,7 @@ HTML = r"""<!doctype html>
         <h2>Edit</h2>
         <div class="button-row">
           <button id="undoButton" type="button">Undo Point</button>
+          <button id="resetPointsButton" type="button">Reset Points</button>
           <button id="newPolygonButton" type="button">New Polygon</button>
           <button id="clearButton" type="button" class="danger">Clear</button>
         </div>
@@ -479,17 +480,19 @@ HTML = r"""<!doctype html>
 
     function drawPolygon(points, index) {
       if (points.length === 0) return;
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      points.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
-      if (points.length >= 3) {
-        ctx.closePath();
-        ctx.fillStyle = index === state.activePolygon ? "rgba(0, 108, 103, 0.32)" : "rgba(255, 138, 76, 0.24)";
-        ctx.fill();
+      if (points.length >= 2) {
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        points.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
+        if (points.length >= 3) {
+          ctx.closePath();
+          ctx.fillStyle = index === state.activePolygon ? "rgba(0, 108, 103, 0.32)" : "rgba(255, 138, 76, 0.24)";
+          ctx.fill();
+        }
+        ctx.lineWidth = Math.max(2, canvas.width / 900);
+        ctx.strokeStyle = index === state.activePolygon ? "#00a991" : "#ff9f43";
+        ctx.stroke();
       }
-      ctx.lineWidth = Math.max(2, canvas.width / 900);
-      ctx.strokeStyle = index === state.activePolygon ? "#00a991" : "#ff9f43";
-      ctx.stroke();
       points.forEach((point, vertexIndex) => {
         const isHover = state.hover &&
           state.hover.polygonIndex === index &&
@@ -593,10 +596,14 @@ HTML = r"""<!doctype html>
         mask: validMasks[0] || [],
         polygons: masks,
         normalized: normalizedEl.checked,
+        draft: true,
       };
     }
     function normalizeMask(mask) {
       if (!mask) {
+        return emptyMask();
+      }
+      if (!mask.enable && !mask.draft) {
         return emptyMask();
       }
       const rawPolygons = Array.isArray(mask.polygons) && mask.polygons.length
@@ -610,6 +617,7 @@ HTML = r"""<!doctype html>
         mask: validPolygons[0] || [],
         polygons,
         normalized: Boolean(mask.normalized),
+        draft: Boolean(mask.draft),
       };
     }
     function syncCurrentMask() {
@@ -1000,6 +1008,11 @@ HTML = r"""<!doctype html>
         text.match(/(?:mask|points)\s*:\s*\[([^\]]*)\]/i) || text.match(/\[([^\]]*)\]/);
       const pointText = arrayMatch ? arrayMatch[1] : text;
       const values = (pointText.match(/-?\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi) || []).map(Number);
+      if (values.length === 0) {
+        resetActivePolygon();
+        setStatus("reset points");
+        return;
+      }
       if (values.length < 6 || values.length % 2 !== 0) {
         setStatus("import needs at least 3 points");
         return;
@@ -1013,6 +1026,12 @@ HTML = r"""<!doctype html>
       }
       state.polygons[state.activePolygon] = points;
       setStatus("imported points");
+      draw();
+    }
+    function resetActivePolygon() {
+      state.polygons[state.activePolygon] = [];
+      state.hover = null;
+      state.drag = null;
       draw();
     }
 
@@ -1052,6 +1071,7 @@ HTML = r"""<!doctype html>
       setStatus("frame frozen");
     });
     document.getElementById("undoButton").addEventListener("click", () => { activePoints().pop(); draw(); });
+    document.getElementById("resetPointsButton").addEventListener("click", resetActivePolygon);
     document.getElementById("newPolygonButton").addEventListener("click", () => {
       state.polygons.push([]);
       state.activePolygon = state.polygons.length - 1;
