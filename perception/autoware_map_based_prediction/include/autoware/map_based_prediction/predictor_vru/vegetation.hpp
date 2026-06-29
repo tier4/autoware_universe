@@ -35,14 +35,12 @@ public:
   void buildFromMap(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr);
 
   [[nodiscard]] PredictedPath cutPathCrossingVegetation(
-    const PredictedPath & predicted_path,
-    const autoware_perception_msgs::msg::Shape & shape) const;
+    const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & shape) const;
 
 private:
   // @brief return the first path index whose object footprint intersects a vegetation area
   [[nodiscard]] std::optional<size_t> getVegetationCrossingIndex(
-    const PredictedPath & predicted_path,
-    const autoware_perception_msgs::msg::Shape & shape) const;
+    const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & shape) const;
 
   lanelet::LaneletMapUPtr vegetation_layer_{nullptr};
 };

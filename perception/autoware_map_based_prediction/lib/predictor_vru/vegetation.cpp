@@ -48,7 +48,6 @@ void VegetationModule::buildFromMap(std::shared_ptr<lanelet::LaneletMap> lanelet
   vegetation_layer_ = lanelet::utils::createMap(vegetations);
 }
 
-
 PredictedPath VegetationModule::cutPathCrossingVegetation(
   const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & shape) const
 {
@@ -60,7 +59,6 @@ PredictedPath VegetationModule::cutPathCrossingVegetation(
   trimmed_path.path.resize(*crossing_index);
   return trimmed_path;
 }
-
 
 std::optional<size_t> VegetationModule::getVegetationCrossingIndex(
   const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & shape) const
