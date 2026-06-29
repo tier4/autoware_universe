@@ -78,6 +78,9 @@ def main() -> None:
         )
     if args.projection_json:
         apply_projection_overrides(frames, Path(args.projection_json))
+    if args.mask_json:
+        applied_count = apply_ego_masks(frames, Path(args.mask_json))
+        print(f"applied ego masks: {applied_count}/{len(frames)}")
 
     model_dir = Path(args.model_dir).expanduser().resolve()
     output_dir = Path(args.output_dir).expanduser().resolve()
@@ -196,6 +199,11 @@ def parse_args() -> argparse.Namespace:
         help="Optional JSON mapping camera id or image topic to lidar2img/img2lidar matrices",
     )
     parser.add_argument(
+        "--mask-json",
+        default="",
+        help="Optional JSON containing camera_N_mask polygons and fill_value_bgr",
+    )
+    parser.add_argument(
         "--allow-identity-projection",
         action="store_true",
         help="Use identity projection when cached metadata lacks lidar2img/img2lidar",
@@ -281,6 +289,62 @@ def apply_projection_overrides(frames: list[CachedFrame], projection_json: Path)
                 frame.metadata["lidar2img"] = override["lidar2img"]
             if "img2lidar" in override:
                 frame.metadata["img2lidar"] = override["img2lidar"]
+
+
+def apply_ego_masks(frames: list[CachedFrame], mask_json: Path) -> int:
+    data = json.loads(mask_json.expanduser().read_text(encoding="utf-8"))
+    fill = parse_fill_value_bgr(data.get("fill_value_bgr", [0, 0, 0]))
+    masks = data.get("masks", {})
+    if not isinstance(masks, dict):
+        return 0
+
+    applied = 0
+    for frame in frames:
+        mask = masks.get(str(frame.camera_id))
+        if not isinstance(mask, dict) or not bool(mask.get("enable", False)):
+            continue
+        values = mask.get("mask", [])
+        if not isinstance(values, list) or len(values) < 6:
+            continue
+        points = mask_points_for_image(
+            values,
+            normalized=bool(mask.get("normalized", False)),
+            width=frame.image_bgr.shape[1],
+            height=frame.image_bgr.shape[0],
+        )
+        if points.shape[0] < 3:
+            continue
+        cv2.fillPoly(frame.image_bgr, [points], fill)
+        frame.metadata["mask_applied"] = True
+        applied += 1
+    return applied
+
+
+def parse_fill_value_bgr(value: object) -> tuple[int, int, int]:
+    if not isinstance(value, list):
+        value = [0, 0, 0]
+    channels = []
+    for item in value[:3]:
+        channels.append(int(max(0, min(255, round(float(item))))))
+    while len(channels) < 3:
+        channels.append(0)
+    return channels[0], channels[1], channels[2]
+
+
+def mask_points_for_image(
+    values: list[object], normalized: bool, width: int, height: int
+) -> np.ndarray:
+    points = []
+    for index in range(0, len(values) - 1, 2):
+        x = float(values[index])
+        y = float(values[index + 1])
+        if normalized:
+            x *= width
+            y *= height
+        x = max(0.0, min(float(width - 1), x))
+        y = max(0.0, min(float(height - 1), y))
+        points.append([int(round(x)), int(round(y))])
+    return np.array(points, dtype=np.int32)
 
 
 def infer_camera_id(topic: str, fallback: int) -> int:

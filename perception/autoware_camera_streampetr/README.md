@@ -173,7 +173,9 @@ python3 tools/streampetr_onnx_overlay.py \
 
 The helper requires `onnxruntime`. The browser UI checks the frame cache before `Run ONNX Overlay`;
 if the requested camera ids are missing or lack projection metadata, live mode automatically saves a
-fresh batch frame cache first. Older cached metadata or manual workflows can still use
+fresh batch frame cache first. It also passes the currently loaded/designed `camera_N_mask` values
+to the ONNX helper, which applies them to the full-resolution undistorted cached image before
+StreamPETR resize/crop/normalize. Older cached metadata or manual workflows can still use
 `--projection-json` to provide `lidar2img` or `img2lidar` matrices. Without those projection
 matrices, it can still run inference but cannot place boxes on the image correctly.
 

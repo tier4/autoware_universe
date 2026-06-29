@@ -654,6 +654,32 @@ HTML = r"""<!doctype html>
       if (!mask || !mask.enable || !Array.isArray(mask.mask) || mask.mask.length < 6) return [];
       return [pointsFromMaskForSize(mask.mask, Boolean(mask.normalized), width, height)];
     }
+    function onnxMaskPayload(cameraIds) {
+      const fill = [
+        clamp(Number.parseInt(fillBEl.value || "0", 10), 0, 255),
+        clamp(Number.parseInt(fillGEl.value || "0", 10), 0, 255),
+        clamp(Number.parseInt(fillREl.value || "0", 10), 0, 255),
+      ];
+      const masks = {};
+      cameraIds.forEach((cameraId) => {
+        if (cameraId === currentCameraId()) {
+          const polygons = validPolygons();
+          masks[String(cameraId)] = {
+            enable: polygons.length > 0,
+            mask: polygons.length > 0 ? outputPoints(polygons[0]) : [],
+            normalized: normalizedEl.checked,
+          };
+          return;
+        }
+        const mask = state.loadedParam && state.loadedParam.masks
+          ? state.loadedParam.masks[String(cameraId)]
+          : null;
+        masks[String(cameraId)] = mask && mask.enable && Array.isArray(mask.mask)
+          ? { enable: true, mask: mask.mask, normalized: Boolean(mask.normalized) }
+          : { enable: false, mask: [], normalized: true };
+      });
+      return { fill_value_bgr: fill, masks };
+    }
     function drawEvidencePolygons(targetCtx, variant, polygons, width) {
       polygons.filter((points) => points.length >= 3).forEach((points) => {
         targetCtx.beginPath();
@@ -795,6 +821,7 @@ HTML = r"""<!doctype html>
         output_dir: onnxOutputDirEl.value.trim(),
         camera_ids: cameraIds,
         allow_identity_projection: onnxIdentityProjectionEl.checked,
+        mask: onnxMaskPayload(cameraIds),
       };
       if (!payload.cache_dir || !payload.model_dir || !payload.output_dir) {
         setOnnxStatus("cache/model/output folder is required");
@@ -1800,6 +1827,9 @@ def run_onnx_overlay(payload: dict[str, object], frame_provider: object) -> dict
     ]
     if allow_identity_projection:
         command.append("--allow-identity-projection")
+    mask_json_path = write_onnx_mask_json(payload, output_dir)
+    if mask_json_path is not None:
+        command.extend(["--mask-json", str(mask_json_path)])
 
     result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     details = {
@@ -1899,6 +1929,19 @@ def _metadata_has_projection_matrix(metadata: dict[str, object]) -> bool:
 
 def _is_matrix_metadata(value: object) -> bool:
     return isinstance(value, list) and len(value) == 16
+
+
+def write_onnx_mask_json(payload: dict[str, object], output_dir: Path) -> Optional[Path]:
+    mask_payload = payload.get("mask")
+    if not isinstance(mask_payload, dict):
+        return None
+    masks = mask_payload.get("masks")
+    if not isinstance(masks, dict) or not masks:
+        return None
+    output_dir.mkdir(parents=True, exist_ok=True)
+    mask_json_path = output_dir / "onnx_mask_input.json"
+    mask_json_path.write_text(json.dumps(mask_payload, indent=2), encoding="utf-8")
+    return mask_json_path
 
 
 def _parse_camera_ids_payload(value: object) -> list[int]:
