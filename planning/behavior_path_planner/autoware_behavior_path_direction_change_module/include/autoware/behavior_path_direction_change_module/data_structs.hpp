@@ -85,6 +85,7 @@ struct DirectionChangeParameters
   // Cusp detection parameters
   double cusp_detection_distance_threshold;
   double cusp_detection_angle_threshold_deg;
+  size_t cusp_path_end_trim_points{0};  // trim centerline points before cusp when slicing path
 
   // State transition parameters
   double cusp_detection_distance_start_approaching;  // [m] Distance to zero terminal velocity at cusp

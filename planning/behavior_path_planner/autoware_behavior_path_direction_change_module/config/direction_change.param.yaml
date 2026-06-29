@@ -14,6 +14,7 @@
       cusp_detection_angle_threshold_deg: 90.0  # [deg] Angle threshold to detect cusp point
       cusp_detection_distance_threshold: 0.2  # [m] Distance threshold to detect approaching cusp
       cusp_detection_distance_start_approaching: 10.0  # [m] Distance to zero terminal velocity at cusp
+      cusp_path_end_trim_points: 0  # trim N centerline points before cusp when slicing (0 = disabled; cusp point stays excluded)
 
       # ========================================
       # State transition parameters

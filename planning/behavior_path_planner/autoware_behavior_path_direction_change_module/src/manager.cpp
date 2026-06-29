@@ -18,6 +18,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -39,6 +40,8 @@ void DirectionChangeModuleManager::init(rclcpp::Node * node)
     node->declare_parameter<double>(ns + "cusp_detection_distance_threshold");
   p.cusp_detection_angle_threshold_deg =
     node->declare_parameter<double>(ns + "cusp_detection_angle_threshold_deg");
+  p.cusp_path_end_trim_points =
+    static_cast<size_t>(node->declare_parameter<int64_t>(ns + "cusp_path_end_trim_points"));
 
   // State transition parameters
   p.cusp_detection_distance_start_approaching =
@@ -67,6 +70,11 @@ void DirectionChangeModuleManager::updateModuleParams(
   update_param<bool>(parameters, ns + "print_debug_info", p->print_debug_info);
   update_param<bool>(parameters, ns + "enable_goal_lateral_shift", p->enable_goal_lateral_shift);
   update_param<double>(parameters, ns + "max_allowed_yaw_deg", p->max_allowed_yaw_deg);
+  {
+    int64_t cusp_path_end_trim_points = static_cast<int64_t>(p->cusp_path_end_trim_points);
+    update_param<int64_t>(parameters, ns + "cusp_path_end_trim_points", cusp_path_end_trim_points);
+    p->cusp_path_end_trim_points = static_cast<size_t>(std::max<int64_t>(0, cusp_path_end_trim_points));
+  }
 
   std::for_each(observers_.begin(), observers_.end(), [&p](const auto & observer) {
     if (!observer.expired()) observer.lock()->updateModuleParams(p);

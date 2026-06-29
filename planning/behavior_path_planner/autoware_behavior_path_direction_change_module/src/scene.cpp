@@ -673,8 +673,13 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       start_after_cusp_index = last_visited->tagged_centerline_index;
     }
 
+    const size_t cusp_idx = next_cusp->tagged_centerline_index;
+    const size_t trim_points = parameters_->cusp_path_end_trim_points;
+    const size_t end_cusp_index =
+      (trim_points > 0 && cusp_idx > trim_points) ? cusp_idx - trim_points : cusp_idx;
+
     output.path = slicePathBetweenCuspIndices(
-      tagged_centerline_path, start_after_cusp_index, next_cusp->tagged_centerline_index);
+      tagged_centerline_path, start_after_cusp_index, end_cusp_index);
 
     output.path = prependPrefixLanesIfApproaching(output.path);
 
@@ -684,8 +689,8 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         "slicePathBetweenCuspIndices returned empty path; falling back to tagged centerline tail");
       const auto ego_idx_opt = findNearestIndex(tagged_centerline_path.points, ego_pose);
       const size_t ego_idx = ego_idx_opt ? *ego_idx_opt : 0;
-      const size_t end_idx = std::min(
-        next_cusp->tagged_centerline_index + 1, tagged_centerline_path.points.size());
+      const size_t end_idx =
+        std::min(end_cusp_index + 1, tagged_centerline_path.points.size());
       const size_t start_idx = std::min(ego_idx, end_idx > 0 ? end_idx - 1 : 0);
       output.path.header = tagged_centerline_path.header;
       if (end_idx > start_idx) {
