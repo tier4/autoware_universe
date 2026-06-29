@@ -154,7 +154,9 @@ Use `Save Current Frame` to cache the selected undistorted frame and stream meta
 the tool also listens to `/tf` and `/tf_static`; once `base_link -> CameraInfo.header.frame_id` is
 available, the cache JSON includes `camera_info_p`, `base_to_camera`, full-resolution `lidar2img`,
 model-space `lidar2img_model`, and `img2lidar`. A later session can avoid ROS 2 subscriptions
-entirely and use only cached frames:
+entirely and use only cached frames. By default, if `--cache-dir` already contains valid cached
+frames, the UI automatically starts in offline cache mode. Use `--live` to force fresh ROS 2 image
+and TF subscriptions, or `--no-auto-offline-cache` to disable the automatic fallback:
 
 ```bash
 python3 tools/camera_mask_designer.py \

@@ -1989,6 +1989,20 @@ def _is_matrix_metadata(value: object) -> bool:
     return isinstance(value, list) and len(value) == 16
 
 
+def _cache_dir_has_frames(cache_dir: Path) -> bool:
+    if not cache_dir.exists():
+        return False
+    for metadata_path in sorted(cache_dir.glob("*.json")):
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        image_file = metadata.get("image_file")
+        if isinstance(image_file, str) and (metadata_path.parent / image_file).exists():
+            return True
+    return False
+
+
 def write_onnx_mask_json(payload: dict[str, object], output_dir: Path) -> Optional[Path]:
     mask_payload = payload.get("mask")
     if not isinstance(mask_payload, dict):
@@ -2405,6 +2419,16 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Serve cached frames from this folder without initializing ROS 2 subscriptions",
     )
+    parser.add_argument(
+        "--no-auto-offline-cache",
+        action="store_true",
+        help="Do not automatically use --cache-dir as an offline source when it already has frames",
+    )
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Force live ROS 2 subscriptions even when --cache-dir already has cached frames",
+    )
     parser.add_argument("--jpeg-quality", type=int, default=85, help="Preview JPEG quality")
     return parser.parse_args()
 
@@ -2424,9 +2448,16 @@ def create_http_server(args: argparse.Namespace, node: object) -> DesignerHttpSe
 
 def main() -> None:
     args = parse_args()
-    if args.offline_cache_dir:
+    auto_cache_dir = _resolve_local_path(args.cache_dir)
+    auto_offline_cache_dir = (
+        str(auto_cache_dir)
+        if not args.live and not args.no_auto_offline_cache and _cache_dir_has_frames(auto_cache_dir)
+        else ""
+    )
+    offline_cache_dir = args.offline_cache_dir or auto_offline_cache_dir
+    if offline_cache_dir:
         provider = CachedFrameProvider(
-            cache_dir=args.offline_cache_dir,
+            cache_dir=offline_cache_dir,
             default_param_path=args.param_path,
             default_output_dir=args.output_dir,
             default_cache_dir=args.cache_dir,
@@ -2438,7 +2469,9 @@ def main() -> None:
         server_thread.start()
         host, port = server.server_address[:2]
         provider.get_logger().info(f"mask designer UI: http://{host}:{port}/")
-        provider.get_logger().info("offline cache mode: ROS 2 subscriptions are disabled")
+        provider.get_logger().info(
+            f"offline cache mode: ROS 2 subscriptions are disabled; cache={offline_cache_dir}"
+        )
         try:
             while True:
                 time.sleep(3600)
