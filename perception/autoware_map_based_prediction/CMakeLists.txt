@@ -36,6 +36,7 @@ ament_auto_add_library(map_based_prediction_node SHARED
   lib/predictor_vru/traffic_signal.cpp
   lib/predictor_vru/fence.cpp
   lib/predictor_vru/vegetation.cpp
+  lib/predictor_vru/vegetation_debug.cpp
   lib/utils.cpp
 )
 

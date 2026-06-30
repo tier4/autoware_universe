@@ -168,7 +168,8 @@ void PredictorVru::removeOldKnownMatches(const double current_time, const double
 }
 
 PredictedObject PredictorVru::predict(
-  const std_msgs::msg::Header & header, const TrackedObject & object)
+  const std_msgs::msg::Header & header, const TrackedObject & object,
+  visualization_msgs::msg::MarkerArray * debug_markers)
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
@@ -177,23 +178,25 @@ PredictedObject PredictorVru::predict(
   object_id = history_manager_.tryMatchToDisappeared(object_id);
   history_manager_.predictedIds().insert(object_id);
   history_manager_.updateHistory(header, object, object_id);
-  return getPredictedObjectAsCrosswalkUser(object);
+  return getPredictedObjectAsCrosswalkUser(object, debug_markers);
 }
 
-PredictedObjects PredictorVru::retrieveUndetectedObjects()
+PredictedObjects PredictorVru::retrieveUndetectedObjects(
+  visualization_msgs::msg::MarkerArray * debug_markers)
 {
   PredictedObjects output;
   for (const auto & [id, crosswalk_user] : history_manager_.history()) {
     if (history_manager_.predictedIds().count(id) == 0) {
       const auto predicted_object =
-        getPredictedObjectAsCrosswalkUser(crosswalk_user.back().tracked_object);
+        getPredictedObjectAsCrosswalkUser(crosswalk_user.back().tracked_object, debug_markers);
       output.objects.push_back(predicted_object);
     }
   }
   return output;
 }
 
-PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(const TrackedObject & object)
+PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
+  const TrackedObject & object, visualization_msgs::msg::MarkerArray * debug_markers)
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
@@ -390,8 +393,13 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(const TrackedObj
 
   // trim every predicted path where the object would enter a vegetation area
   for (auto & predicted_path : predicted_object.kinematics.predicted_paths) {
+    const auto original_path = predicted_path;
     predicted_path =
       vegetation_module_.cutPathCrossingVegetation(predicted_path, mutable_object.shape);
+    if (debug_markers) {
+      vegetation_module_.recordVegetationPathCutEvent(
+        original_path, predicted_path, mutable_object);
+    }
   }
 
   const auto n_path = predicted_object.kinematics.predicted_paths.size();

@@ -15,6 +15,7 @@
 #include "autoware/map_based_prediction/map_based_prediction_node/callbacks.hpp"
 
 #include "autoware/map_based_prediction/map_based_prediction_node/diagnostics.hpp"
+#include "autoware/map_based_prediction/predictor_vru/vegetation_debug.hpp"
 #include "autoware/map_based_prediction/priority_predictor/debug_priority_pred.hpp"
 #include "autoware/map_based_prediction/utils.hpp"
 
@@ -29,6 +30,7 @@
 #include <chrono>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 namespace autoware::map_based_prediction
@@ -165,8 +167,8 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
     switch (label) {
       case ObjectClassification::PEDESTRIAN:
       case ObjectClassification::BICYCLE: {
-        output.objects.emplace_back(
-          state_.predictor_vru->predict(output.header, transformed_object));
+        output.objects.emplace_back(state_.predictor_vru->predict(
+          output.header, transformed_object, pub_debug_markers_ ? &debug_markers : nullptr));
         break;
       }
       case ObjectClassification::CAR:
@@ -204,9 +206,20 @@ void ObjectsCallback::objectsCallback(const TrackedObjects::ConstSharedPtr in_ob
   }
 
   if (state_.params.remember_lost_crosswalk_users) {
-    PredictedObjects retrieved_objects = state_.predictor_vru->retrieveUndetectedObjects();
+    PredictedObjects retrieved_objects = state_.predictor_vru->retrieveUndetectedObjects(
+      pub_debug_markers_ ? &debug_markers : nullptr);
     output.objects.insert(
       output.objects.end(), retrieved_objects.objects.begin(), retrieved_objects.objects.end());
+  }
+
+  if (pub_debug_markers_) {
+    const auto stamp = rclcpp::Time(in_objects->header.stamp);
+    const auto & vdebug = state_.predictor_vru->getVegetationModule().getFrameDebug();
+    std::unordered_set<std::string> boxed_objects;
+    for (const auto & event : vdebug.paths) {
+      debug::appendVegetationEventMarkers(debug_markers, event, stamp, boxed_objects);
+    }
+    state_.predictor_vru->getVegetationModule().clearFrameDebug();
   }
 
   publish(output, debug_markers);
