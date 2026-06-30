@@ -44,7 +44,6 @@ namespace autoware::behavior_path_planner
 {
 namespace
 {
-constexpr double kMinManeuverLengthM = 0.0;
 constexpr double kShiftValidationSampleIntervalM = 1.0;
 
 struct CubicShiftCoefficients
@@ -82,9 +81,7 @@ double computeManeuverLength(
   // Approximation: tan(theta_max) ~= lateral_shift / maneuver_length
   // Assumption: max_allowed_yaw_rad > 0.0
 
-  return std::max(
-    kMinManeuverLengthM,
-    std::abs(lateral_shift) / std::tan(max_allowed_yaw_rad));
+  return std::abs(lateral_shift) / std::tan(max_allowed_yaw_rad);
 }
 
 geometry_msgs::msg::Pose applyLateralShiftToPose(
@@ -558,9 +555,7 @@ bool isEgoNearRouteGoal(
   const double dy = ego_pose.position.y - goal_pose.position.y;
   const double longitudinal = dx * std::cos(goal_yaw) + dy * std::sin(goal_yaw);
   const double lateral = -dx * std::sin(goal_yaw) + dy * std::cos(goal_yaw);
-  if (
-    std::abs(longitudinal) < th_arrived_distance * longitudinal_tolerance_multiplier &&
-    std::abs(lateral) < th_arrived_distance) {
+  if (std::abs(longitudinal) < th_arrived_distance && std::abs(lateral) < th_arrived_distance) {
     return true;
   }
 
@@ -575,12 +570,12 @@ bool isEgoNearRouteGoal(
            suffix_lanelet_ids.end();
   };
 
-  if (is_on_suffix_lane() && dist_to_goal < th_arrived_distance * longitudinal_tolerance_multiplier) {
+  if (is_on_suffix_lane() && dist_to_goal < th_arrived_distance) {
     return true;
   }
 
   if (route_handler->isInGoalRouteSection(closest_route_lanelet) &&
-      dist_to_goal < th_arrived_distance * longitudinal_tolerance_multiplier) {
+      dist_to_goal < th_arrived_distance) {
     return true;
   }
 
