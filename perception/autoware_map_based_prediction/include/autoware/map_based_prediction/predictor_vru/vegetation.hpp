@@ -16,11 +16,14 @@
 #define AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VRU__VEGETATION_HPP_
 
 #include "autoware/map_based_prediction/path_generator/path_generator.hpp"
+#include "autoware/map_based_prediction/predictor_vru/vegetation_debug.hpp"
 
 #include <autoware_perception_msgs/msg/shape.hpp>
+#include <autoware_perception_msgs/msg/tracked_objects.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 
@@ -32,17 +35,30 @@ class VegetationModule
 public:
   VegetationModule() = default;
 
+  /// @pre lanelet_map_ptr is non-null when building from a map; nullptr clears the layer.
   void buildFromMap(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr);
 
   [[nodiscard]] PredictedPath cutPathCrossingVegetation(
     const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & shape) const;
 
+  void clearFrameDebug() { debug_recorder_.clear(); }
+
+  [[nodiscard]] const VegetationFrameDebug & getFrameDebug() const
+  {
+    return debug_recorder_.getFrameDebug();
+  }
+
+  void recordVegetationPathCutEvent(
+    const PredictedPath & predicted_path, const PredictedPath & cut_path,
+    const autoware_perception_msgs::msg::TrackedObject & object);
+
 private:
-  // @brief return the first path index whose object footprint intersects a vegetation area
+  /// Return the first path index whose object footprint intersects a vegetation area.
   [[nodiscard]] std::optional<size_t> getVegetationCrossingIndex(
     const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & shape) const;
 
   lanelet::LaneletMapUPtr vegetation_layer_{nullptr};
+  VegetationDebugRecorder debug_recorder_{};
 };
 
 }  // namespace autoware::map_based_prediction
