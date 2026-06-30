@@ -101,12 +101,9 @@ std::optional<size_t> VegetationModule::getVegetationCrossingIndex(
   // convert candidate vegetation areas to 2d polygons once
   std::vector<autoware_utils_geometry::Polygon2d> vegetation_polygons_2d;
   vegetation_polygons_2d.reserve(candidate_vegetation_polygons.size());
-
   for (const auto & candidate : candidate_vegetation_polygons) {
-    autoware_utils_geometry::LinearRing2d ring;
-    boost::geometry::convert(lanelet::utils::to2D(candidate.basicPolygon()), ring);
     autoware_utils_geometry::Polygon2d polygon;
-    polygon.outer() = ring;
+    boost::geometry::convert(lanelet::utils::to2D(candidate.basicPolygon()), polygon);
     boost::geometry::correct(polygon);
     vegetation_polygons_2d.push_back(polygon);
   }
