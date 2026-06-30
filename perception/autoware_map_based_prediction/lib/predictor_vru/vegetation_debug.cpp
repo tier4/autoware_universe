@@ -17,9 +17,9 @@
 #include <autoware/object_recognition_utils/object_classification.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
 #include <autoware_utils/ros/uuid_helper.hpp>
+#include <rclcpp/duration.hpp>
 
 #include <geometry_msgs/msg/vector3.hpp>
-#include <rclcpp/duration.hpp>
 
 #include <cstdint>
 #include <string>
