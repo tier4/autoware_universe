@@ -445,6 +445,8 @@ HTML = r"""<!doctype html>
       ];
     }
     function currentCameraId() {
+      const streamCameraId = cameraIdFromStream(currentStream());
+      if (streamCameraId !== null) return clamp(streamCameraId, 0, 99);
       const cameraId = Number.parseInt(cameraIdEl.value || "0", 10);
       return Number.isInteger(cameraId) ? clamp(cameraId, 0, 99) : 0;
     }
@@ -748,7 +750,12 @@ HTML = r"""<!doctype html>
       loadMasksIntoUi(data);
       state.uiMasks[String(cameraId)] = editorMask();
       const backupText = data.backup_path ? `, backup: ${data.backup_path}` : "";
-      setParamStatus(`saved camera_${cameraId}_mask to ${data.path}${backupText}`);
+      const saved = data.saved || {};
+      const pointsText = saved.points !== undefined ? `, points=${saved.points}` : "";
+      const normalizedText = saved.normalized !== undefined ? `, normalized=${saved.normalized}` : "";
+      setParamStatus(
+        `saved camera_${cameraId}_mask enable=${payload.enable}${pointsText}${normalizedText} to ${data.path}${backupText}`
+      );
     }
     function polygonsForCamera(cameraId, width, height) {
       syncCurrentMask();
@@ -1909,6 +1916,13 @@ def save_param_file(payload: dict[str, object]) -> dict[str, object]:
     backup_path = _backup_existing_file(path)
     path.write_text(text, encoding="utf-8")
     result = load_param_file(str(path))
+    result["saved"] = {
+        "camera_id": camera_id,
+        "enable": enable,
+        "points": len(mask_values) // 2,
+        "normalized": normalized,
+        "mask": mask_values,
+    }
     if backup_path is not None:
         result["backup_path"] = str(backup_path)
     return result
