@@ -80,8 +80,8 @@ PTv3Node::PTv3Node(const rclcpp::NodeOptions & options) : Node("ptv3", options)
 
   pointcloud_sub_ =
     std::make_unique<cuda_blackboard::CudaBlackboardSubscriber<cuda_blackboard::CudaPointCloud2>>(
-      *this, "~/input/pointcloud",
-      std::bind(&PTv3Node::cloudCallback, this, std::placeholders::_1));
+      *this, "~/input/pointcloud", std::bind(&PTv3Node::cloudCallback, this, std::placeholders::_1),
+      model_ptr_->stream());
 
   segmented_pointcloud_pub_ =
     std::make_unique<cuda_blackboard::CudaBlackboardPublisher<cuda_blackboard::CudaPointCloud2>>(

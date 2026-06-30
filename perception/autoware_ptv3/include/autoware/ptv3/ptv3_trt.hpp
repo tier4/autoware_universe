@@ -57,6 +57,10 @@ public:
   void setPublishFilteredPointcloud(
     std::function<void(std::unique_ptr<const cuda_blackboard::CudaPointCloud2>)> func);
 
+  /// CUDA stream used for pointcloud processing and inference.
+  /// Enables stream-ordered producer/consumer lifetime handling.
+  cudaStream_t stream() const { return stream_; }
+
 protected:
   void initPtr();
   void initTrt(const tensorrt_common::TrtCommonConfig & trt_config);
