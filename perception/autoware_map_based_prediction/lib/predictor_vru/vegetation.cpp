@@ -52,12 +52,8 @@ double calcFootprintSearchMargin(const autoware_perception_msgs::msg::Shape & sh
   return std::max(shape.dimensions.x, shape.dimensions.y) * 0.5;
 }
 
-// Gather the vegetation areas that could overlap any of the object's predicted paths, converted to
-// 2d polygons once. A single bounding box over all paths (plus footprint margin) is searched so the
-// expensive lanelet search and polygon conversion run once per object instead of once per path.
 std::vector<autoware_utils_geometry::Polygon2d> collectCandidateVegetationPolygons(
-  const lanelet::LaneletMap & vegetation_layer,
-  const std::vector<PredictedPath> & predicted_paths,
+  const lanelet::LaneletMap & vegetation_layer, const std::vector<PredictedPath> & predicted_paths,
   const autoware_perception_msgs::msg::Shape & shape)
 {
   lanelet::BoundingBox2d search_bbox;
@@ -83,11 +79,13 @@ std::vector<autoware_utils_geometry::Polygon2d> collectCandidateVegetationPolygo
   return vegetation_polygons_2d;
 }
 
-/// Return the first path index whose object footprint intersects a vegetation area.
 std::optional<size_t> findVegetationCrossingIndex(
   const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & shape,
   const std::vector<autoware_utils_geometry::Polygon2d> & vegetation_polygons_2d)
 {
+  if (vegetation_polygons_2d.empty()) {
+    return std::nullopt;
+  }
   for (auto i = 0UL; i < predicted_path.path.size(); ++i) {
     const auto footprint = autoware_utils_geometry::to_polygon2d(predicted_path.path[i], shape);
     for (const auto & vegetation_polygon : vegetation_polygons_2d) {
@@ -132,7 +130,6 @@ void VegetationModule::cutPathsCrossingVegetation(
       collectCandidateVegetationPolygons(*vegetation_layer_, predicted_paths, object.shape);
   }
 
-  // One box per object across this object's paths; object ids are unique within a frame.
   std::unordered_set<std::string> boxed_objects;
   for (auto & predicted_path : predicted_paths) {
     PredictedPath original_path;
@@ -140,14 +137,10 @@ void VegetationModule::cutPathsCrossingVegetation(
       original_path = predicted_path;
     }
 
-    if (!candidate_polygons.empty()) {
-      const auto crossing_index =
-        findVegetationCrossingIndex(predicted_path, object.shape, candidate_polygons);
-      if (crossing_index) {
-        // Keep at least the first point so a path that starts inside vegetation is not emptied; an
-        // empty path would dilute the remaining paths' confidence and be published with no points.
-        predicted_path.path.resize(std::max<size_t>(*crossing_index, 1UL));
-      }
+    const auto crossing_index =
+      findVegetationCrossingIndex(predicted_path, object.shape, candidate_polygons);
+    if (crossing_index) {
+      predicted_path.path.resize(std::max<size_t>(*crossing_index, 1UL));
     }
 
     if (debug_markers) {

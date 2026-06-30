@@ -77,6 +77,13 @@ visualization_msgs::msg::Marker makeLineStrip(
   return line;
 }
 
+void pushMarker(
+  visualization_msgs::msg::MarkerArray & markers, visualization_msgs::msg::Marker marker)
+{
+  marker.id = static_cast<int32_t>(markers.markers.size());
+  markers.markers.push_back(std::move(marker));
+}
+
 std::vector<geometry_msgs::msg::Point> keptLinePoints(const VegetationPathEvent & event)
 {
   auto kept = event.path_debug.kept_points;
@@ -157,8 +164,7 @@ void appendVegetationEventMarkers(
     box.pose = event.object_pose;
     box.text = event.object_id + ":" + std::to_string(event.label);
     box.lifetime = rclcpp::Duration::from_seconds(0.3);
-    box.id = static_cast<int32_t>(markers.markers.size());
-    markers.markers.push_back(std::move(box));
+    pushMarker(markers, std::move(box));
   }
 
   if (event.path_debug.cut) {
@@ -166,8 +172,7 @@ void appendVegetationEventMarkers(
       auto line = makeLineStrip(
         stamp, "vegetation_vru_path", 0, text, event.path_debug.display_points,
         autoware_utils::create_marker_color(1.0, 0.53, 0.0, 0.9));
-      line.id = static_cast<int32_t>(markers.markers.size());
-      markers.markers.push_back(std::move(line));
+      pushMarker(markers, std::move(line));
     }
 
     const auto kept_line = keptLinePoints(event);
@@ -175,8 +180,7 @@ void appendVegetationEventMarkers(
       auto line = makeLineStrip(
         stamp, "vegetation_vru_kept", 0, text, kept_line,
         autoware_utils::create_marker_color(0.53, 0.8, 0.53, 0.9));
-      line.id = static_cast<int32_t>(markers.markers.size());
-      markers.markers.push_back(std::move(line));
+      pushMarker(markers, std::move(line));
     }
 
     auto sphere = autoware_utils::create_default_marker(
@@ -186,14 +190,12 @@ void appendVegetationEventMarkers(
     sphere.pose.position = event.cut_pose;
     sphere.text = text;
     sphere.lifetime = rclcpp::Duration::from_seconds(0.3);
-    sphere.id = static_cast<int32_t>(markers.markers.size());
-    markers.markers.push_back(std::move(sphere));
+    pushMarker(markers, std::move(sphere));
   } else if (event.path_debug.display_points.size() >= 2) {
     auto line = makeLineStrip(
       stamp, "vegetation_vru_path", 0, text, event.path_debug.display_points,
       autoware_utils::create_marker_color(0.53, 0.8, 0.53, 0.9));
-    line.id = static_cast<int32_t>(markers.markers.size());
-    markers.markers.push_back(std::move(line));
+    pushMarker(markers, std::move(line));
   }
 }
 
