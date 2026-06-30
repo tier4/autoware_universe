@@ -18,9 +18,13 @@
 #include <autoware_utils/ros/marker_helper.hpp>
 #include <autoware_utils/ros/uuid_helper.hpp>
 
-#include <array>
+#include <geometry_msgs/msg/vector3.hpp>
+#include <rclcpp/duration.hpp>
+
+#include <cstdint>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace autoware::map_based_prediction::debug
@@ -29,52 +33,29 @@ namespace autoware::map_based_prediction::debug
 namespace
 {
 
-std::string markerText(const VegetationPathEvent & event)
-{
-  return event.object_id + ":" + (event.path_debug.cut ? "1" : "0");
-}
+// All markers live in the "map" frame and fade out after a short lifetime so a path that stops
+// crossing vegetation is not left behind. Each marker kind has its own namespace.
+constexpr double kMarkerLifetimeSec = 0.3;
+constexpr double kPathLineWidth = 0.5;
+constexpr double kCutPointDiameter = 0.8;
 
-std::array<double, 3> boxScale(uint8_t label)
-{
-  using autoware_perception_msgs::msg::ObjectClassification;
-  if (label == ObjectClassification::PEDESTRIAN) {
-    return {0.6, 0.6, 1.7};
-  }
-  if (label == ObjectClassification::BICYCLE) {
-    return {1.8, 0.6, 1.5};
-  }
-  if (label == ObjectClassification::MOTORCYCLE) {
-    return {2.2, 0.8, 1.5};
-  }
-  return {1.0, 1.0, 1.7};
-}
+constexpr const char * kNsObjectBox = "vegetation_vru_box";
+constexpr const char * kNsPathLine = "vegetation_vru_path";
+constexpr const char * kNsKeptLine = "vegetation_vru_kept";
+constexpr const char * kNsCutPoint = "vegetation_cut";
 
-std_msgs::msg::ColorRGBA boxColor(uint8_t label)
-{
-  using autoware_perception_msgs::msg::ObjectClassification;
-  if (label == ObjectClassification::PEDESTRIAN) {
-    return autoware_utils::create_marker_color(1.0, 0.67, 0.27, 0.75);
-  }
-  if (label == ObjectClassification::BICYCLE) {
-    return autoware_utils::create_marker_color(0.38, 0.75, 0.38, 0.75);
-  }
-  if (label == ObjectClassification::MOTORCYCLE) {
-    return autoware_utils::create_marker_color(0.65, 0.45, 0.85, 0.75);
-  }
-  return autoware_utils::create_marker_color(0.5, 0.5, 0.5, 0.75);
-}
+// ---------------------------------------------------------------------------
+// Low-level marker helpers
+// ---------------------------------------------------------------------------
 
-visualization_msgs::msg::Marker makeLineStrip(
-  const rclcpp::Time & stamp, const std::string & ns, int32_t id, const std::string & text,
-  const std::vector<geometry_msgs::msg::Point> & points, const std_msgs::msg::ColorRGBA & color)
+// The id is left at 0; pushMarker() assigns the final id when the marker is stored.
+visualization_msgs::msg::Marker makeMarker(
+  const rclcpp::Time & stamp, const std::string & ns, int32_t type,
+  const geometry_msgs::msg::Vector3 & scale, const std_msgs::msg::ColorRGBA & color)
 {
-  auto line = autoware_utils::create_default_marker(
-    "map", stamp, ns, id, visualization_msgs::msg::Marker::LINE_STRIP,
-    autoware_utils::create_marker_scale(0.5, 0.0, 0.0), color);
-  line.text = text;
-  line.lifetime = rclcpp::Duration::from_seconds(0.3);
-  line.points = points;
-  return line;
+  auto marker = autoware_utils::create_default_marker("map", stamp, ns, 0, type, scale, color);
+  marker.lifetime = rclcpp::Duration::from_seconds(kMarkerLifetimeSec);
+  return marker;
 }
 
 void pushMarker(
@@ -84,6 +65,92 @@ void pushMarker(
   markers.markers.push_back(std::move(marker));
 }
 
+// A LINE_STRIP needs at least two points, so shorter inputs are skipped.
+void appendLineStrip(
+  visualization_msgs::msg::MarkerArray & markers, const rclcpp::Time & stamp,
+  const std::string & ns, const std::string & text,
+  const std::vector<geometry_msgs::msg::Point> & points, const std_msgs::msg::ColorRGBA & color)
+{
+  if (points.size() < 2) {
+    return;
+  }
+  auto line = makeMarker(
+    stamp, ns, visualization_msgs::msg::Marker::LINE_STRIP,
+    autoware_utils::create_marker_scale(kPathLineWidth, 0.0, 0.0), color);
+  line.text = text;
+  line.points = points;
+  pushMarker(markers, std::move(line));
+}
+
+// ---------------------------------------------------------------------------
+// Styling
+// ---------------------------------------------------------------------------
+
+// Orange: the segment that enters vegetation and is trimmed away.
+std_msgs::msg::ColorRGBA cutSegmentColor()
+{
+  return autoware_utils::create_marker_color(1.0, 0.53, 0.0, 0.9);
+}
+
+// Green: a segment that is kept, or a whole path that is not cut.
+std_msgs::msg::ColorRGBA safeSegmentColor()
+{
+  return autoware_utils::create_marker_color(0.53, 0.8, 0.53, 0.9);
+}
+
+// Green sphere: the point where the path is cut.
+std_msgs::msg::ColorRGBA cutPointColor()
+{
+  return autoware_utils::create_marker_color(0.0, 0.67, 0.0, 0.9);
+}
+
+struct BoxStyle
+{
+  geometry_msgs::msg::Vector3 scale;
+  std_msgs::msg::ColorRGBA color;
+};
+
+BoxStyle boxStyleForLabel(uint8_t label)
+{
+  using autoware_perception_msgs::msg::ObjectClassification;
+  using autoware_utils::create_marker_color;
+  using autoware_utils::create_marker_scale;
+  switch (label) {
+    case ObjectClassification::PEDESTRIAN:
+      return {create_marker_scale(0.6, 0.6, 1.7), create_marker_color(1.0, 0.67, 0.27, 0.75)};
+    case ObjectClassification::BICYCLE:
+      return {create_marker_scale(1.8, 0.6, 1.5), create_marker_color(0.38, 0.75, 0.38, 0.75)};
+    case ObjectClassification::MOTORCYCLE:
+      return {create_marker_scale(2.2, 0.8, 1.5), create_marker_color(0.65, 0.45, 0.85, 0.75)};
+    default:
+      return {create_marker_scale(1.0, 1.0, 1.7), create_marker_color(0.5, 0.5, 0.5, 0.75)};
+  }
+}
+
+// Short label drawn with the path markers: "<object id>:<1 if cut else 0>".
+std::string markerText(const VegetationPathEvent & event)
+{
+  return event.object_id + ":" + (event.path_debug.cut ? "1" : "0");
+}
+
+// ---------------------------------------------------------------------------
+// Geometry helpers
+// ---------------------------------------------------------------------------
+
+// Positions of the path poses in the half-open index range [begin, end).
+std::vector<geometry_msgs::msg::Point> collectPositions(
+  const PredictedPath & path, size_t begin, size_t end)
+{
+  std::vector<geometry_msgs::msg::Point> points;
+  points.reserve(end - begin);
+  for (size_t i = begin; i < end; ++i) {
+    points.push_back(path.path.at(i).position);
+  }
+  return points;
+}
+
+// At least two points for the kept-segment line, falling back to the object and cut positions when
+// the kept segment alone is too short to draw.
 std::vector<geometry_msgs::msg::Point> keptLinePoints(const VegetationPathEvent & event)
 {
   auto kept = event.path_debug.kept_points;
@@ -100,31 +167,27 @@ std::vector<geometry_msgs::msg::Point> keptLinePoints(const VegetationPathEvent 
 VegetationPathDebug buildPathDebug(
   const PredictedPath & predicted_path, const PredictedPath & cut_path)
 {
+  const auto total_size = predicted_path.path.size();
+  const auto kept_size = cut_path.path.size();
+
   VegetationPathDebug path_debug;
-  path_debug.cut = cut_path.path.size() < predicted_path.path.size();
+  path_debug.cut = kept_size < total_size;
   if (!path_debug.cut) {
-    for (const auto & pose : predicted_path.path) {
-      path_debug.display_points.push_back(pose.position);
-    }
+    path_debug.display_points = collectPositions(predicted_path, 0, total_size);
     return path_debug;
   }
-
-  const auto crossing_index = cut_path.path.size();
-  for (size_t i = 0; i < crossing_index; ++i) {
-    path_debug.kept_points.push_back(predicted_path.path.at(i).position);
-  }
-  for (size_t i = crossing_index; i < predicted_path.path.size(); ++i) {
-    path_debug.display_points.push_back(predicted_path.path.at(i).position);
-  }
+  // Trimmed at kept_size: [0, kept_size) is kept, [kept_size, total_size) enters vegetation.
+  path_debug.kept_points = collectPositions(predicted_path, 0, kept_size);
+  path_debug.display_points = collectPositions(predicted_path, kept_size, total_size);
   return path_debug;
 }
 
+// The position where the path is cut: the last kept pose, or the path start when fully cut.
 geometry_msgs::msg::Point cutPose(
   const PredictedPath & predicted_path, const PredictedPath & cut_path)
 {
-  geometry_msgs::msg::Point cut_pose;
   if (cut_path.path.size() >= predicted_path.path.size()) {
-    return cut_pose;
+    return geometry_msgs::msg::Point{};  // not cut
   }
   if (!cut_path.path.empty()) {
     return cut_path.path.back().position;
@@ -132,7 +195,60 @@ geometry_msgs::msg::Point cutPose(
   if (!predicted_path.path.empty()) {
     return predicted_path.path.front().position;
   }
-  return cut_pose;
+  return geometry_msgs::msg::Point{};
+}
+
+// ---------------------------------------------------------------------------
+// Per-event marker appenders
+// ---------------------------------------------------------------------------
+
+// Box each object only once per frame (the first event for the object wins).
+void appendObjectBox(
+  visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,
+  const rclcpp::Time & stamp, std::unordered_set<std::string> & boxed_objects)
+{
+  if (!boxed_objects.insert(event.object_id).second) {
+    return;  // already drawn for this object
+  }
+  const auto style = boxStyleForLabel(event.label);
+  auto box = makeMarker(
+    stamp, kNsObjectBox, visualization_msgs::msg::Marker::CUBE, style.scale, style.color);
+  box.pose = event.object_pose;
+  box.text = event.object_id + ":" + std::to_string(event.label);
+  pushMarker(markers, std::move(box));
+}
+
+void appendCutPoint(
+  visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,
+  const rclcpp::Time & stamp, const std::string & text)
+{
+  auto sphere = makeMarker(
+    stamp, kNsCutPoint, visualization_msgs::msg::Marker::SPHERE,
+    autoware_utils::create_marker_scale(kCutPointDiameter, kCutPointDiameter, kCutPointDiameter),
+    cutPointColor());
+  sphere.pose.position = event.cut_pose;
+  sphere.text = text;
+  pushMarker(markers, std::move(sphere));
+}
+
+void appendCutMarkers(
+  visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,
+  const rclcpp::Time & stamp)
+{
+  const auto text = markerText(event);
+  appendLineStrip(
+    markers, stamp, kNsPathLine, text, event.path_debug.display_points, cutSegmentColor());
+  appendLineStrip(markers, stamp, kNsKeptLine, text, keptLinePoints(event), safeSegmentColor());
+  appendCutPoint(markers, event, stamp, text);
+}
+
+void appendUncutMarkers(
+  visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,
+  const rclcpp::Time & stamp)
+{
+  appendLineStrip(
+    markers, stamp, kNsPathLine, markerText(event), event.path_debug.display_points,
+    safeSegmentColor());
 }
 
 }  // namespace
@@ -154,48 +270,11 @@ void appendVegetationEventMarkers(
   visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,
   const rclcpp::Time & stamp, std::unordered_set<std::string> & boxed_objects)
 {
-  const auto text = markerText(event);
-
-  if (boxed_objects.insert(event.object_id).second) {
-    const auto scale = boxScale(event.label);
-    auto box = autoware_utils::create_default_marker(
-      "map", stamp, "vegetation_vru_box", 0, visualization_msgs::msg::Marker::CUBE,
-      autoware_utils::create_marker_scale(scale[0], scale[1], scale[2]), boxColor(event.label));
-    box.pose = event.object_pose;
-    box.text = event.object_id + ":" + std::to_string(event.label);
-    box.lifetime = rclcpp::Duration::from_seconds(0.3);
-    pushMarker(markers, std::move(box));
-  }
-
+  appendObjectBox(markers, event, stamp, boxed_objects);
   if (event.path_debug.cut) {
-    if (event.path_debug.display_points.size() >= 2) {
-      auto line = makeLineStrip(
-        stamp, "vegetation_vru_path", 0, text, event.path_debug.display_points,
-        autoware_utils::create_marker_color(1.0, 0.53, 0.0, 0.9));
-      pushMarker(markers, std::move(line));
-    }
-
-    const auto kept_line = keptLinePoints(event);
-    if (kept_line.size() >= 2) {
-      auto line = makeLineStrip(
-        stamp, "vegetation_vru_kept", 0, text, kept_line,
-        autoware_utils::create_marker_color(0.53, 0.8, 0.53, 0.9));
-      pushMarker(markers, std::move(line));
-    }
-
-    auto sphere = autoware_utils::create_default_marker(
-      "map", stamp, "vegetation_cut", 0, visualization_msgs::msg::Marker::SPHERE,
-      autoware_utils::create_marker_scale(0.8, 0.8, 0.8),
-      autoware_utils::create_marker_color(0.0, 0.67, 0.0, 0.9));
-    sphere.pose.position = event.cut_pose;
-    sphere.text = text;
-    sphere.lifetime = rclcpp::Duration::from_seconds(0.3);
-    pushMarker(markers, std::move(sphere));
-  } else if (event.path_debug.display_points.size() >= 2) {
-    auto line = makeLineStrip(
-      stamp, "vegetation_vru_path", 0, text, event.path_debug.display_points,
-      autoware_utils::create_marker_color(0.53, 0.8, 0.53, 0.9));
-    pushMarker(markers, std::move(line));
+    appendCutMarkers(markers, event, stamp);
+  } else {
+    appendUncutMarkers(markers, event, stamp);
   }
 }
 
