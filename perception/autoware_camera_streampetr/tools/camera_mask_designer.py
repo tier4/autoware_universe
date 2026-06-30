@@ -24,6 +24,7 @@ import base64
 import errno
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -2328,7 +2329,25 @@ def _infer_camera_id(text: str, fallback: Optional[int]) -> Optional[int]:
     return int(match.group(1)) if match else fallback
 
 
-def _package_share_path(relative_path: str) -> str:
+def _default_param_path() -> str:
+    env_path = os.environ.get("STREAMPETR_MASK_PARAM_PATH", "").strip()
+    if env_path:
+        return env_path
+    return _discover_default_path("config/camera_streampetr.param.yaml")
+
+
+def _discover_default_path(relative_path: str) -> str:
+    relative = Path(relative_path)
+    search_roots = [
+        Path.cwd(),
+        Path(__file__).resolve().parent,
+        Path(__file__).resolve().parents[1],
+    ]
+    for root in search_roots:
+        path = root / relative
+        if path.exists():
+            return str(path)
+
     if get_package_share_directory is not None:
         try:
             path = Path(get_package_share_directory("autoware_camera_streampetr")) / relative_path
@@ -2336,7 +2355,11 @@ def _package_share_path(relative_path: str) -> str:
                 return str(path)
         except Exception:
             pass
-    return str(Path(__file__).resolve().parents[1] / relative_path)
+    return str(Path.cwd() / relative)
+
+
+def _default_onnx_model_dir() -> str:
+    return os.environ.get("STREAMPETR_ONNX_MODEL_DIR", "/opt/autoware/mlmodels/streampetr")
 
 
 def _common_prefix(left: str, right: str) -> str:
@@ -2492,7 +2515,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--param-path",
-        default=_package_share_path("config/camera_streampetr.param.yaml"),
+        default=_default_param_path(),
         help="Default ROS parameter YAML path shown in the UI",
     )
     parser.add_argument(
@@ -2507,7 +2530,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--onnx-model-dir",
-        default="/opt/autoware/mlmodels/streampetr",
+        default=_default_onnx_model_dir(),
         help="Default folder containing the three StreamPETR ONNX files",
     )
     parser.add_argument(

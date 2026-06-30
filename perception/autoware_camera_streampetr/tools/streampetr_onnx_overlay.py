@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,6 +43,10 @@ DEFAULT_SCORE_THRESHOLDS = [0.36, 0.39, 0.38, 0.41, 0.43, 0.43, 0.43]
 DEFAULT_YAW_NORM_THRESHOLDS = [0.3, 0.3, 0.3, 0.3, 0.0, 0.0, 0.0]
 DEFAULT_DETECTION_RANGE = [-61.2, -61.2, -10.0, 61.2, 61.2, 10.0]
 WORK_DIR = Path("/tmp/streampetr_mask_editor")
+
+
+def default_model_dir() -> str:
+    return os.environ.get("STREAMPETR_ONNX_MODEL_DIR", "/opt/autoware/mlmodels/streampetr")
 
 
 @dataclass
@@ -179,7 +184,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cache-dir", required=True, help="Frame cache folder from mask designer")
     parser.add_argument(
         "--model-dir",
-        default="/opt/autoware/mlmodels/streampetr",
+        default=default_model_dir(),
         help="Folder containing the three StreamPETR ONNX files",
     )
     parser.add_argument("--output-dir", default=str(WORK_DIR / "onnx_overlay"))

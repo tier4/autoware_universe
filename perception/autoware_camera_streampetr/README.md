@@ -137,6 +137,13 @@ python3 tools/camera_mask_designer.py \
   --base-frame base_link
 ```
 
+The mask designer tools are standalone Python/browser helpers and can be copied to another
+repository. They do not import the StreamPETR C++ package. When used outside this package, pass
+`--param-path` explicitly or set `STREAMPETR_MASK_PARAM_PATH`; the default parameter file is searched
+from the current working directory, the script directory, a sibling package-style `config/` folder,
+and finally the ROS package share directory when available. Set `STREAMPETR_ONNX_MODEL_DIR` or pass
+`--onnx-model-dir`/`--model-dir` if the ONNX files are not in `/opt/autoware/mlmodels/streampetr`.
+
 Open the URL printed by the tool, select a stream, freeze a representative frame, draw the mask,
 then copy the generated output. The default port is `8766`; if it is already in use, the tool tries
 the next ports automatically. If a matching `CameraInfo` topic is not available, the preview falls
