@@ -191,6 +191,11 @@ HTML = r"""<!doctype html>
     }
     .stat:last-child { border-bottom: 0; }
     .stat span:first-child { color: var(--muted); font-weight: 700; }
+    .compact-controls {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
     .side h1, .side h2 { margin: 0 0 10px; font-size: 15px; line-height: 1.3; }
     .side h1 { font-size: 18px; }
     .status {
@@ -229,34 +234,19 @@ HTML = r"""<!doctype html>
 
     <aside class="side">
       <div class="panel">
-        <h1>StreamPETR Camera Mask</h1>
-        <div class="row">
-          <label>
-            Camera ID
-            <input id="cameraId" type="number" min="0" max="99" value="8">
+        <h1>Info</h1>
+        <input id="cameraId" type="hidden" value="8">
+        <div class="compact-controls">
+          <label title="Comma-separated camera ids used for batch actions: evidence export, frame cache capture, and ONNX overlay input order.">
+            Camera IDs
+            <input
+              id="cameraIds"
+              type="text"
+              value="8,6,10,7,9"
+              spellcheck="false"
+              title="Comma-separated camera ids used for batch actions: evidence export, frame cache capture, and ONNX overlay input order."
+            >
           </label>
-          <label class="check"><input id="normalized" type="checkbox" checked> Normalized</label>
-        </div>
-        <label>
-          Camera IDs
-          <input id="cameraIds" type="text" value="8,6,10,7,9" spellcheck="false">
-        </label>
-        <div class="row">
-          <label>
-            Fill B
-            <input id="fillB" type="number" min="0" max="255" value="0">
-          </label>
-          <label>
-            Fill G
-            <input id="fillG" type="number" min="0" max="255" value="0">
-          </label>
-        </div>
-        <div class="row">
-          <label>
-            Fill R
-            <input id="fillR" type="number" min="0" max="255" value="0">
-          </label>
-          <button id="copyButton" type="button" class="primary">Copy Output</button>
         </div>
         <div id="stats"></div>
       </div>
@@ -273,6 +263,24 @@ HTML = r"""<!doctype html>
 
       <div class="panel">
         <h2>Param YAML</h2>
+        <label class="check" title="When enabled, exported mask coordinates are divided by the current image width and height.">
+          <input id="normalized" type="checkbox" checked title="When enabled, exported mask coordinates are divided by the current image width and height.">
+          Normalized coordinates
+        </label>
+        <div class="row">
+          <label title="Blue channel for ego_mask.fill_value_bgr, applied inside the mask area before StreamPETR resize/crop.">
+            Fill B
+            <input id="fillB" type="number" min="0" max="255" value="0" title="Blue channel for ego_mask.fill_value_bgr.">
+          </label>
+          <label title="Green channel for ego_mask.fill_value_bgr, applied inside the mask area before StreamPETR resize/crop.">
+            Fill G
+            <input id="fillG" type="number" min="0" max="255" value="0" title="Green channel for ego_mask.fill_value_bgr.">
+          </label>
+        </div>
+        <label title="Red channel for ego_mask.fill_value_bgr, applied inside the mask area before StreamPETR resize/crop.">
+          Fill R
+          <input id="fillR" type="number" min="0" max="255" value="0" title="Red channel for ego_mask.fill_value_bgr.">
+        </label>
         <label>
           Path or file URL
           <input id="paramPath" type="text" spellcheck="false">
@@ -355,6 +363,9 @@ HTML = r"""<!doctype html>
           polygons YAML
           <textarea id="yamlOutput" readonly spellcheck="false"></textarea>
         </label>
+        <div class="button-row">
+          <button id="copyButton" type="button" class="primary">Copy Output</button>
+        </div>
       </div>
     </aside>
   </main>
@@ -962,17 +973,28 @@ HTML = r"""<!doctype html>
     function updateStats() {
       const stream = currentStream();
       const rows = [
+        ["Camera ID", currentCameraId().toString(), "Inferred from the selected Camera stream and used for the current camera_N_mask."],
         ["Frame", imageSizeText()],
         ["Stream", stream ? stream.image_topic : "none"],
         ["Type", stream ? stream.image_type : "none"],
         ["CameraInfo", stream && stream.has_camera_info ? stream.camera_info_topic : "not paired"],
         ["Mode", stream && stream.is_undistorted ? "undistorted" : "original/fallback"],
         ["Projection", stream && stream.projection_ready ? "ready" : (stream && stream.projection_error ? stream.projection_error : "not ready")],
-        ["Camera IDs", parseCameraIds().join(", ") || "none"],
+        ["Camera IDs", parseCameraIds().join(", ") || "none", "Batch camera ids for evidence export, frame cache capture, and ONNX overlay input order."],
         ["Polygons", validPolygons().length.toString()],
         ["Active points", activePoints().length.toString()],
       ];
-      statsEl.innerHTML = rows.map(([key, value]) => `<div class="stat"><span>${key}</span><span>${value}</span></div>`).join("");
+      statsEl.replaceChildren(...rows.map(([key, value, title]) => {
+        const row = document.createElement("div");
+        row.className = "stat";
+        if (title) row.title = title;
+        const keyEl = document.createElement("span");
+        keyEl.textContent = key;
+        const valueEl = document.createElement("span");
+        valueEl.textContent = value;
+        row.append(keyEl, valueEl);
+        return row;
+      }));
     }
 
     async function refreshStreams() {
