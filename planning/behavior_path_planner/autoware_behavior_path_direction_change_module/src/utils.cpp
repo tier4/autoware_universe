@@ -534,8 +534,7 @@ PathWithLaneId slicePathToGoalFromCuspIndex(
 bool isEgoNearRouteGoal(
   const geometry_msgs::msg::Pose & ego_pose,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
-  const double th_arrived_distance, const std::vector<int64_t> & suffix_lanelet_ids,
-  const double longitudinal_tolerance_multiplier)
+  const double th_arrived_distance, const std::vector<int64_t> & suffix_lanelet_ids)
 {
   if (!route_handler) {
     return false;
@@ -558,8 +557,9 @@ bool isEgoNearRouteGoal(
   const double dy = ego_pose.position.y - goal_pose.position.y;
   const double longitudinal = dx * std::cos(goal_yaw) + dy * std::sin(goal_yaw);
   const double lateral = -dx * std::sin(goal_yaw) + dy * std::cos(goal_yaw);
+  constexpr double k_longitudinal_tolerance_multiplier = 3.0;
   if (
-    std::abs(longitudinal) < th_arrived_distance * longitudinal_tolerance_multiplier &&
+    std::abs(longitudinal) < th_arrived_distance * k_longitudinal_tolerance_multiplier &&
     std::abs(lateral) < th_arrived_distance) {
     return true;
   }
@@ -575,12 +575,12 @@ bool isEgoNearRouteGoal(
            suffix_lanelet_ids.end();
   };
 
-  if (is_on_suffix_lane() && dist_to_goal < th_arrived_distance * longitudinal_tolerance_multiplier) {
+  if (is_on_suffix_lane() && dist_to_goal < th_arrived_distance * k_longitudinal_tolerance_multiplier) {
     return true;
   }
 
   if (route_handler->isInGoalRouteSection(closest_route_lanelet) &&
-      dist_to_goal < th_arrived_distance * longitudinal_tolerance_multiplier) {
+      dist_to_goal < th_arrived_distance * k_longitudinal_tolerance_multiplier) {
     return true;
   }
 
@@ -615,15 +615,8 @@ bool isDirectionChangeManeuverFinished(
     return false;
   }
 
-  // Use the strict arrival tolerance (multiplier = 1.0) for the completion check. The inflated
-  // longitudinal/goal-section tolerance used for activation gating would otherwise declare the
-  // maneuver finished while the ego is still reversing toward the goal (~th_arrived_distance * 3
-  // away), causing the module to deactivate and its drivable area to be dropped just before the
-  // goal. Keep the module (and its drivable lanes) alive until the ego genuinely arrives.
-  constexpr double kStrictArrivalToleranceMultiplier = 1.0;
   const bool near_goal = isEgoNearRouteGoal(
-    ego_pose, route_handler, th_arrived_distance, route_context.suffix_lanelet_ids,
-    kStrictArrivalToleranceMultiplier);
+    ego_pose, route_handler, th_arrived_distance, route_context.suffix_lanelet_ids);
   const bool on_tagged = isEgoOnRouteLanelets(
     ego_pose, route_handler, route_context.tagged_lanelet_ids_ordered);
 

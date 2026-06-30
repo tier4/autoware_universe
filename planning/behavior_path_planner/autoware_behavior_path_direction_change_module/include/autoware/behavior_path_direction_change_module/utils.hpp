@@ -88,8 +88,7 @@ std::optional<PathWithLaneId> applyGoalLateralShift(
 bool isEgoNearRouteGoal(
   const geometry_msgs::msg::Pose & ego_pose,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler,
-  double th_arrived_distance, const std::vector<int64_t> & suffix_lanelet_ids = {},
-  double longitudinal_tolerance_multiplier = 3.0);
+  double th_arrived_distance, const std::vector<int64_t> & suffix_lanelet_ids = {});
 
 bool isEgoOnRouteLanelets(
   const geometry_msgs::msg::Pose & ego_pose,
