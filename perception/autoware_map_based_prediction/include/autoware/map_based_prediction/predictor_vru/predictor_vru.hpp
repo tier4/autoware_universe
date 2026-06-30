@@ -94,9 +94,8 @@ public:
   PredictedObject predict(
     const std_msgs::msg::Header & header, const TrackedObject & object,
     visualization_msgs::msg::MarkerArray * debug_markers);
-  PredictedObjects retrieveUndetectedObjects(visualization_msgs::msg::MarkerArray * debug_markers);
-
-  VegetationModule & getVegetationModule() { return vegetation_module_; }
+  PredictedObjects retrieveUndetectedObjects(
+    const rclcpp::Time & stamp, visualization_msgs::msg::MarkerArray * debug_markers);
 
 private:
   std::shared_ptr<autoware_utils::TimeKeeper> time_keeper_;
@@ -115,7 +114,8 @@ private:
   Params params_{};
 
   PredictedObject getPredictedObjectAsCrosswalkUser(
-    const TrackedObject & object, visualization_msgs::msg::MarkerArray * debug_markers);
+    const TrackedObject & object, const rclcpp::Time & stamp,
+    visualization_msgs::msg::MarkerArray * debug_markers);
 };
 
 }  // namespace autoware::map_based_prediction

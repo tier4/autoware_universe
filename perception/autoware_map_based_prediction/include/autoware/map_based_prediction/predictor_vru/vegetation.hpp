@@ -18,14 +18,15 @@
 #include "autoware/map_based_prediction/path_generator/path_generator.hpp"
 #include "autoware/map_based_prediction/predictor_vru/vegetation_debug.hpp"
 
-#include <autoware_perception_msgs/msg/shape.hpp>
+#include <rclcpp/time.hpp>
+
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 
-#include <cstddef>
 #include <memory>
-#include <optional>
+#include <vector>
 
 namespace autoware::map_based_prediction
 {
@@ -38,27 +39,16 @@ public:
   /// @pre lanelet_map_ptr is non-null when building from a map; nullptr clears the layer.
   void buildFromMap(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr);
 
-  [[nodiscard]] PredictedPath cutPathCrossingVegetation(
-    const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & shape) const;
-
-  void clearFrameDebug() { debug_recorder_.clear(); }
-
-  [[nodiscard]] const VegetationFrameDebug & getFrameDebug() const
-  {
-    return debug_recorder_.getFrameDebug();
-  }
-
-  void recordVegetationPathCutEvent(
-    const PredictedPath & predicted_path, const PredictedPath & cut_path,
-    const autoware_perception_msgs::msg::TrackedObject & object);
+  /// Trim every predicted path of one object where its footprint enters a vegetation area.
+  /// Candidate vegetation areas are gathered once per object and reused across all its paths.
+  /// When debug_markers is non-null, the cut visualization markers are appended to it.
+  void cutPathsCrossingVegetation(
+    std::vector<PredictedPath> & predicted_paths,
+    const autoware_perception_msgs::msg::TrackedObject & object,
+    visualization_msgs::msg::MarkerArray * debug_markers, const rclcpp::Time & stamp);
 
 private:
-  /// Return the first path index whose object footprint intersects a vegetation area.
-  [[nodiscard]] std::optional<size_t> getVegetationCrossingIndex(
-    const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & shape) const;
-
   lanelet::LaneletMapUPtr vegetation_layer_{nullptr};
-  VegetationDebugRecorder debug_recorder_{};
 };
 
 }  // namespace autoware::map_based_prediction

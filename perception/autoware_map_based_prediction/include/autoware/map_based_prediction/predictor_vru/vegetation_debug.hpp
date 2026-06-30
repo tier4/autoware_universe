@@ -50,25 +50,6 @@ struct VegetationPathEvent
   geometry_msgs::msg::Point cut_pose{};
 };
 
-struct VegetationFrameDebug
-{
-  std::vector<VegetationPathEvent> paths;
-};
-
-class VegetationDebugRecorder
-{
-public:
-  void clear() { frame_debug_ = VegetationFrameDebug{}; }
-  [[nodiscard]] const VegetationFrameDebug & getFrameDebug() const { return frame_debug_; }
-
-  void recordEvent(
-    const PredictedPath & predicted_path, const PredictedPath & cut_path,
-    const autoware_perception_msgs::msg::TrackedObject & object);
-
-private:
-  VegetationFrameDebug frame_debug_{};
-};
-
 namespace debug
 {
 
@@ -79,9 +60,6 @@ VegetationPathEvent createVegetationPathEvent(
 void appendVegetationEventMarkers(
   visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,
   const rclcpp::Time & stamp, std::unordered_set<std::string> & boxed_objects);
-
-visualization_msgs::msg::MarkerArray createVegetationMarkers(
-  const VegetationFrameDebug & debug, const rclcpp::Time & stamp);
 
 }  // namespace debug
 

@@ -178,17 +178,17 @@ PredictedObject PredictorVru::predict(
   object_id = history_manager_.tryMatchToDisappeared(object_id);
   history_manager_.predictedIds().insert(object_id);
   history_manager_.updateHistory(header, object, object_id);
-  return getPredictedObjectAsCrosswalkUser(object, debug_markers);
+  return getPredictedObjectAsCrosswalkUser(object, rclcpp::Time(header.stamp), debug_markers);
 }
 
 PredictedObjects PredictorVru::retrieveUndetectedObjects(
-  visualization_msgs::msg::MarkerArray * debug_markers)
+  const rclcpp::Time & stamp, visualization_msgs::msg::MarkerArray * debug_markers)
 {
   PredictedObjects output;
   for (const auto & [id, crosswalk_user] : history_manager_.history()) {
     if (history_manager_.predictedIds().count(id) == 0) {
-      const auto predicted_object =
-        getPredictedObjectAsCrosswalkUser(crosswalk_user.back().tracked_object, debug_markers);
+      const auto predicted_object = getPredictedObjectAsCrosswalkUser(
+        crosswalk_user.back().tracked_object, stamp, debug_markers);
       output.objects.push_back(predicted_object);
     }
   }
@@ -196,7 +196,8 @@ PredictedObjects PredictorVru::retrieveUndetectedObjects(
 }
 
 PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
-  const TrackedObject & object, visualization_msgs::msg::MarkerArray * debug_markers)
+  const TrackedObject & object, const rclcpp::Time & stamp,
+  visualization_msgs::msg::MarkerArray * debug_markers)
 {
   std::unique_ptr<ScopedTimeTrack> st_ptr;
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
@@ -391,16 +392,10 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
     predicted_object.kinematics.predicted_paths.push_back(predicted_path);
   }
 
-  // trim every predicted path where the object would enter a vegetation area
-  for (auto & predicted_path : predicted_object.kinematics.predicted_paths) {
-    const auto original_path = predicted_path;
-    predicted_path =
-      vegetation_module_.cutPathCrossingVegetation(predicted_path, mutable_object.shape);
-    if (debug_markers) {
-      vegetation_module_.recordVegetationPathCutEvent(
-        original_path, predicted_path, mutable_object);
-    }
-  }
+  // trim every predicted path where the object would enter a vegetation area; when debug markers
+  // are requested, the cut visualization is appended to debug_markers in the same pass
+  vegetation_module_.cutPathsCrossingVegetation(
+    predicted_object.kinematics.predicted_paths, mutable_object, debug_markers, stamp);
 
   const auto n_path = predicted_object.kinematics.predicted_paths.size();
   for (auto & predicted_path : predicted_object.kinematics.predicted_paths) {

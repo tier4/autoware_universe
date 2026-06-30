@@ -23,18 +23,6 @@
 #include <unordered_set>
 #include <vector>
 
-namespace autoware::map_based_prediction
-{
-
-void VegetationDebugRecorder::recordEvent(
-  const PredictedPath & predicted_path, const PredictedPath & cut_path,
-  const autoware_perception_msgs::msg::TrackedObject & object)
-{
-  frame_debug_.paths.push_back(debug::createVegetationPathEvent(predicted_path, cut_path, object));
-}
-
-}  // namespace autoware::map_based_prediction
-
 namespace autoware::map_based_prediction::debug
 {
 
@@ -207,19 +195,6 @@ void appendVegetationEventMarkers(
     line.id = static_cast<int32_t>(markers.markers.size());
     markers.markers.push_back(std::move(line));
   }
-}
-
-visualization_msgs::msg::MarkerArray createVegetationMarkers(
-  const VegetationFrameDebug & debug, const rclcpp::Time & stamp)
-{
-  visualization_msgs::msg::MarkerArray markers;
-  std::unordered_set<std::string> boxed_objects;
-
-  for (const auto & event : debug.paths) {
-    appendVegetationEventMarkers(markers, event, stamp, boxed_objects);
-  }
-
-  return markers;
 }
 
 }  // namespace autoware::map_based_prediction::debug
