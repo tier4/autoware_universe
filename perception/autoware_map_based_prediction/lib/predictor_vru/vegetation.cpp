@@ -52,9 +52,6 @@ double calcFootprintSearchMargin(const autoware_perception_msgs::msg::Shape & sh
   return std::max(shape.dimensions.x, shape.dimensions.y) * 0.5;
 }
 
-// Gather the vegetation areas that could overlap any of the object's predicted paths, converted to
-// 2d polygons once. A single bounding box over all paths (plus footprint margin) is searched so the
-// expensive lanelet search and polygon conversion run once per object instead of once per path.
 std::vector<autoware_utils_geometry::Polygon2d> collectCandidateVegetationPolygons(
   const lanelet::LaneletMap & vegetation_layer,
   const std::vector<PredictedPath> & predicted_paths,
@@ -83,7 +80,6 @@ std::vector<autoware_utils_geometry::Polygon2d> collectCandidateVegetationPolygo
   return vegetation_polygons_2d;
 }
 
-/// Return the first path index whose object footprint intersects a vegetation area.
 std::optional<size_t> findVegetationCrossingIndex(
   const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & shape,
   const std::vector<autoware_utils_geometry::Polygon2d> & vegetation_polygons_2d)
@@ -132,7 +128,6 @@ void VegetationModule::cutPathsCrossingVegetation(
       collectCandidateVegetationPolygons(*vegetation_layer_, predicted_paths, object.shape);
   }
 
-  // One box per object across this object's paths; object ids are unique within a frame.
   std::unordered_set<std::string> boxed_objects;
   for (auto & predicted_path : predicted_paths) {
     PredictedPath original_path;
@@ -144,8 +139,6 @@ void VegetationModule::cutPathsCrossingVegetation(
       const auto crossing_index =
         findVegetationCrossingIndex(predicted_path, object.shape, candidate_polygons);
       if (crossing_index) {
-        // Keep at least the first point so a path that starts inside vegetation is not emptied; an
-        // empty path would dilute the remaining paths' confidence and be published with no points.
         predicted_path.path.resize(std::max<size_t>(*crossing_index, 1UL));
       }
     }

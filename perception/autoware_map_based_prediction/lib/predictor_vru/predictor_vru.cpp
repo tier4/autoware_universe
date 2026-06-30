@@ -392,8 +392,6 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
     predicted_object.kinematics.predicted_paths.push_back(predicted_path);
   }
 
-  // trim every predicted path where the object would enter a vegetation area; when debug markers
-  // are requested, the cut visualization is appended to debug_markers in the same pass
   vegetation_module_.cutPathsCrossingVegetation(
     predicted_object.kinematics.predicted_paths, mutable_object, debug_markers, stamp);
 
