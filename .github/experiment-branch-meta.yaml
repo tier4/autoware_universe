@@ -1,0 +1,6 @@
+base_branch: feat/v0.64/e2e
+branch_out_commit: b155a6485231d97c8e248ec6428bd3c33585b58e
+created_at: 2026-06-30T09:09:34Z
+product_name: diffusion_planner
+experiment_branch: feat/v0.64/e2e-experiment-2026_06_30
+pilot_auto_sync_branch: feat/v4.4/e2e-experiment-2026_06_30
