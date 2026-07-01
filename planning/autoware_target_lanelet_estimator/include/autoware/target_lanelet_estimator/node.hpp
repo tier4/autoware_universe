@@ -78,6 +78,7 @@ private:
   Trajectory::ConstSharedPtr trajectory_;
 
   VehicleInfo vehicle_info_;
+  Parameters params_;
   LaneletProbabilityMap posterior_probabilities_;
 
   // lanelets the trajectory footprint has ever overlapped (the colored "trail")

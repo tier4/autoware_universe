@@ -35,6 +35,18 @@ using autoware_planning_msgs::msg::Trajectory;
 
 using LaneletProbabilityMap = std::unordered_map<lanelet::Id, double>;
 
+// Tunable parameters of the estimator. Defaults match the values validated by the unit tests.
+struct Parameters
+{
+  double preferred_lanelet_initial_probability{0.8};  // initial probability of a preferred lanelet
+  double other_lanelet_initial_probability{0.2};      // initial probability of a non-preferred one
+  double same_segment_lane_change_probability{0.05};  // per-lane leak within the same segment
+  double following_transition_weight{0.8};            // transition weight to a connected successor
+  double non_following_transition_weight{0.2};        // transition weight to an unconnected lanelet
+  double selection_likelihood_threshold{1.0e-3};      // min likelihood to report a target lanelet
+  double out_of_lanelet_search_margin{2.0};  // [m] padding of the out-of-lanelet search box
+};
+
 struct LaneletProbability
 {
   lanelet::Id id{lanelet::InvalId};
@@ -53,7 +65,8 @@ struct TargetLaneletsResult
   bool out_of_lanelet{false};  // no footprint overlaps any lanelet in the map
 };
 
-LaneletProbabilityMap initialize_lanelet_probabilities(const LaneletRoute & route);
+LaneletProbabilityMap initialize_lanelet_probabilities(
+  const LaneletRoute & route, const Parameters & params = {});
 
 // Estimate posterior probabilities for route lanelets by combining:
 // - prior: previous posterior and transition probability
@@ -62,12 +75,12 @@ TargetLaneletsResult get_target_lanelets(
   const LaneletRoute & route, const Trajectory & trajectory,
   const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info,
   const LaneletProbabilityMap & previous_posteriors,
-  const lanelet::routing::RoutingGraphConstPtr & routing_graph,
-  double selection_likelihood_threshold = 1.0e-3);
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph, const Parameters & params = {});
 
 TargetLaneletsResult get_target_lanelets(
   const LaneletRoute & route, const Trajectory & trajectory,
-  const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info);
+  const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info,
+  const Parameters & params = {});
 
 }  // namespace autoware::target_lanelet_estimator
 

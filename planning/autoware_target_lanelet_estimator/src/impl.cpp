@@ -39,11 +39,6 @@ namespace autoware::target_lanelet_estimator
 {
 namespace
 {
-constexpr double preferred_lanelet_initial_probability = 0.8;
-constexpr double other_lanelet_initial_probability = 0.2;
-constexpr double same_segment_lane_change_probability = 0.05;
-constexpr double following_transition_weight = 0.8;
-constexpr double non_following_transition_weight = 0.2;
 constexpr double epsilon = 1.0e-9;
 
 struct RouteLanelet
@@ -87,53 +82,55 @@ std::vector<RouteSegmentLanelets> extract_route_segments(
   return route_segments;
 }
 
-double initial_probability(const RouteLanelet & lanelet)
+double initial_probability(const RouteLanelet & lanelet, const Parameters & params)
 {
-  return lanelet.preferred ? preferred_lanelet_initial_probability
-                           : other_lanelet_initial_probability;
+  return lanelet.preferred ? params.preferred_lanelet_initial_probability
+                           : params.other_lanelet_initial_probability;
 }
 
 double previous_probability(
-  const RouteLanelet & lanelet, const LaneletProbabilityMap & previous_posteriors)
+  const RouteLanelet & lanelet, const LaneletProbabilityMap & previous_posteriors,
+  const Parameters & params)
 {
   const auto it = previous_posteriors.find(lanelet.lanelet.id());
   if (it == previous_posteriors.end() || !std::isfinite(it->second)) {
-    return initial_probability(lanelet);
+    return initial_probability(lanelet, params);
   }
   return std::clamp(it->second, 0.0, 1.0);
 }
 
 double previous_probability_sum(
-  const RouteSegmentLanelets & segment, const LaneletProbabilityMap & previous_posteriors)
+  const RouteSegmentLanelets & segment, const LaneletProbabilityMap & previous_posteriors,
+  const Parameters & params)
 {
   double sum = 0.0;
   for (const auto & lanelet : segment.lanelets) {
-    sum += previous_probability(lanelet, previous_posteriors);
+    sum += previous_probability(lanelet, previous_posteriors, params);
   }
   return sum;
 }
 
-double initial_probability_sum(const RouteSegmentLanelets & segment)
+double initial_probability_sum(const RouteSegmentLanelets & segment, const Parameters & params)
 {
   double sum = 0.0;
   for (const auto & lanelet : segment.lanelets) {
-    sum += initial_probability(lanelet);
+    sum += initial_probability(lanelet, params);
   }
   return sum;
 }
 
 double normalized_previous_probability(
   const RouteLanelet & lanelet, const RouteSegmentLanelets & segment,
-  const LaneletProbabilityMap & previous_posteriors)
+  const LaneletProbabilityMap & previous_posteriors, const Parameters & params)
 {
-  const double sum = previous_probability_sum(segment, previous_posteriors);
+  const double sum = previous_probability_sum(segment, previous_posteriors, params);
   if (sum > epsilon) {
-    return previous_probability(lanelet, previous_posteriors) / sum;
+    return previous_probability(lanelet, previous_posteriors, params) / sum;
   }
 
-  const double initial_sum = initial_probability_sum(segment);
+  const double initial_sum = initial_probability_sum(segment, params);
   if (initial_sum > epsilon) {
-    return initial_probability(lanelet) / initial_sum;
+    return initial_probability(lanelet, params) / initial_sum;
   }
   return segment.lanelets.empty() ? 0.0 : 1.0 / static_cast<double>(segment.lanelets.size());
 }
@@ -193,13 +190,13 @@ double calc_lanelet_likelihood(
 }
 
 bool overlaps_any_lanelet(
-  const lanelet::BasicPolygon2d & footprint, const lanelet::LaneletMapConstPtr & lanelet_map)
+  const lanelet::BasicPolygon2d & footprint, const lanelet::LaneletMapConstPtr & lanelet_map,
+  double search_margin_m)
 {
   lanelet::BoundingBox2d bbox;
   boost::geometry::envelope(footprint, bbox);
   // Pad the search box so axis-aligned lanelets are not missed by the R-tree query. This only
   // widens the candidate set; the disjoint test below still uses the original footprint.
-  constexpr double search_margin_m = 2.0;
   const lanelet::BasicPoint2d margin(search_margin_m, search_margin_m);
   const lanelet::BoundingBox2d search_box(bbox.min() - margin, bbox.max() + margin);
 
@@ -292,45 +289,48 @@ size_t count_predecessor_lanelets_connected_to_target(
 }
 
 double calc_same_segment_transition_probability(
-  const RouteLanelet & from, const RouteLanelet & to, const RouteSegmentLanelets & segment)
+  const RouteLanelet & from, const RouteLanelet & to, const RouteSegmentLanelets & segment,
+  const Parameters & params)
 {
   if (from.lanelet.id() != to.lanelet.id()) {
-    return same_segment_lane_change_probability;
+    return params.same_segment_lane_change_probability;
   }
 
   const size_t non_self_lanelets = segment.lanelets.empty() ? 0 : segment.lanelets.size() - 1;
   return std::clamp(
-    1.0 - same_segment_lane_change_probability * static_cast<double>(non_self_lanelets), 0.0, 1.0);
+    1.0 - params.same_segment_lane_change_probability * static_cast<double>(non_self_lanelets), 0.0,
+    1.0);
 }
 
 double calc_previous_segment_transition_probability(
   const RouteLanelet & from, const RouteLanelet & target, const RouteSegmentLanelets & from_segment,
-  const lanelet::routing::RoutingGraphConstPtr & routing_graph)
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph, const Parameters & params)
 {
   const size_t num_connected_predecessors =
     count_predecessor_lanelets_connected_to_target(target, from_segment, routing_graph);
   const size_t num_unconnected_predecessors =
     from_segment.lanelets.size() - num_connected_predecessors;
   const double denominator =
-    following_transition_weight * static_cast<double>(num_connected_predecessors) +
-    non_following_transition_weight * static_cast<double>(num_unconnected_predecessors);
+    params.following_transition_weight * static_cast<double>(num_connected_predecessors) +
+    params.non_following_transition_weight * static_cast<double>(num_unconnected_predecessors);
   if (denominator <= epsilon) {
     return 0.0;
   }
 
-  return (has_successor_relation(from, target, routing_graph) ? following_transition_weight
-                                                              : non_following_transition_weight) /
+  return (has_successor_relation(from, target, routing_graph)
+            ? params.following_transition_weight
+            : params.non_following_transition_weight) /
          denominator;
 }
 
 double calc_same_segment_prior(
   const RouteLanelet & target, const RouteSegmentLanelets & segment,
-  const LaneletProbabilityMap & previous_posteriors)
+  const LaneletProbabilityMap & previous_posteriors, const Parameters & params)
 {
   double prior = 0.0;
   for (const auto & from : segment.lanelets) {
-    prior += calc_same_segment_transition_probability(from, target, segment) *
-             normalized_previous_probability(from, segment, previous_posteriors);
+    prior += calc_same_segment_transition_probability(from, target, segment, params) *
+             normalized_previous_probability(from, segment, previous_posteriors, params);
   }
   return std::clamp(prior, 0.0, 1.0);
 }
@@ -338,13 +338,13 @@ double calc_same_segment_prior(
 double calc_previous_segment_prior(
   const RouteLanelet & target, const RouteSegmentLanelets & previous_segment,
   const LaneletProbabilityMap & previous_posteriors,
-  const lanelet::routing::RoutingGraphConstPtr & routing_graph)
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph, const Parameters & params)
 {
   double prior = 0.0;
   for (const auto & from : previous_segment.lanelets) {
-    prior +=
-      calc_previous_segment_transition_probability(from, target, previous_segment, routing_graph) *
-      normalized_previous_probability(from, previous_segment, previous_posteriors);
+    prior += calc_previous_segment_transition_probability(
+               from, target, previous_segment, routing_graph, params) *
+             normalized_previous_probability(from, previous_segment, previous_posteriors, params);
   }
   return std::clamp(prior, 0.0, 1.0);
 }
@@ -362,14 +362,15 @@ double calc_posterior_probability(double prior, double likelihood)
 }
 }  // namespace
 
-LaneletProbabilityMap initialize_lanelet_probabilities(const LaneletRoute & route)
+LaneletProbabilityMap initialize_lanelet_probabilities(
+  const LaneletRoute & route, const Parameters & params)
 {
   LaneletProbabilityMap probabilities;
   for (const auto & segment : route.segments) {
     for (const auto & primitive : segment.primitives) {
       const double probability = primitive.id == segment.preferred_primitive.id
-                                   ? preferred_lanelet_initial_probability
-                                   : other_lanelet_initial_probability;
+                                   ? params.preferred_lanelet_initial_probability
+                                   : params.other_lanelet_initial_probability;
       const auto [it, inserted] = probabilities.emplace(primitive.id, probability);
       if (!inserted) {
         it->second = std::max(it->second, probability);
@@ -383,8 +384,7 @@ TargetLaneletsResult get_target_lanelets(
   const LaneletRoute & route, const Trajectory & trajectory,
   const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info,
   const LaneletProbabilityMap & previous_posteriors,
-  const lanelet::routing::RoutingGraphConstPtr & routing_graph,
-  const double selection_likelihood_threshold)
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph, const Parameters & params)
 {
   const auto route_segments = extract_route_segments(route, lanelet_map);
   const auto update_scope = determine_update_scope(trajectory, route_segments);
@@ -398,25 +398,25 @@ TargetLaneletsResult get_target_lanelets(
       const double likelihood =
         calc_lanelet_likelihood(route_lanelet.lanelet, footprints, footprint_area);
 
-      double prior = previous_probability(route_lanelet, previous_posteriors);
+      double prior = previous_probability(route_lanelet, previous_posteriors, params);
       double posterior = prior;
       bool updated = false;
       if (update_scope.current_segment_index == segment.index) {
-        prior = calc_same_segment_prior(route_lanelet, segment, previous_posteriors);
+        prior = calc_same_segment_prior(route_lanelet, segment, previous_posteriors, params);
         posterior = calc_posterior_probability(prior, likelihood);
         updated = true;
       } else if (
         update_scope.next_segment_index == segment.index && update_scope.current_segment_index) {
         const auto & previous_segment = route_segments.at(*update_scope.current_segment_index);
         prior = calc_previous_segment_prior(
-          route_lanelet, previous_segment, previous_posteriors, routing_graph);
+          route_lanelet, previous_segment, previous_posteriors, routing_graph, params);
         posterior = calc_posterior_probability(prior, likelihood);
         updated = true;
       }
 
       result.lanelet_probabilities.push_back(
         {route_lanelet.lanelet.id(), posterior, prior, likelihood, updated});
-      if (likelihood > selection_likelihood_threshold) {
+      if (likelihood > params.selection_likelihood_threshold) {
         result.target_lanelet_ids.push_back(route_lanelet.lanelet.id());
       }
     }
@@ -425,7 +425,7 @@ TargetLaneletsResult get_target_lanelets(
   // out_of_lanelet: the trajectory footprint never overlaps any lanelet in the map.
   bool has_lanelet_overlap = false;
   for (const auto & footprint : footprints) {
-    if (overlaps_any_lanelet(footprint, lanelet_map)) {
+    if (overlaps_any_lanelet(footprint, lanelet_map, params.out_of_lanelet_search_margin)) {
       has_lanelet_overlap = true;
       break;
     }
@@ -442,10 +442,12 @@ TargetLaneletsResult get_target_lanelets(
 
 TargetLaneletsResult get_target_lanelets(
   const LaneletRoute & route, const Trajectory & trajectory,
-  const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info)
+  const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info,
+  const Parameters & params)
 {
   return get_target_lanelets(
-    route, trajectory, lanelet_map, vehicle_info, initialize_lanelet_probabilities(route), nullptr);
+    route, trajectory, lanelet_map, vehicle_info, initialize_lanelet_probabilities(route, params),
+    nullptr, params);
 }
 
 }  // namespace autoware::target_lanelet_estimator

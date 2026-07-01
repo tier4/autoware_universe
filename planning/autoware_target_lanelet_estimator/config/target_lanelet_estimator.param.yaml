@@ -1,0 +1,9 @@
+/**:
+  ros__parameters:
+    preferred_lanelet_initial_probability: 0.8
+    other_lanelet_initial_probability: 0.2
+    same_segment_lane_change_probability: 0.05
+    following_transition_weight: 0.8
+    non_following_transition_weight: 0.2
+    selection_likelihood_threshold: 0.001
+    out_of_lanelet_search_margin: 2.0

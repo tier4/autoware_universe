@@ -123,6 +123,19 @@ TargetLaneletEstimatorNode::TargetLaneletEstimatorNode(const rclcpp::NodeOptions
     create_publisher<Float64MultiArrayStamped>("~/output/target_lanelet_probabilities", 1);
   pub_out_of_lanelet_ = create_publisher<BoolStamped>("~/output/out_of_lanelet", 1);
 
+  params_.preferred_lanelet_initial_probability =
+    declare_parameter<double>("preferred_lanelet_initial_probability");
+  params_.other_lanelet_initial_probability =
+    declare_parameter<double>("other_lanelet_initial_probability");
+  params_.same_segment_lane_change_probability =
+    declare_parameter<double>("same_segment_lane_change_probability");
+  params_.following_transition_weight = declare_parameter<double>("following_transition_weight");
+  params_.non_following_transition_weight =
+    declare_parameter<double>("non_following_transition_weight");
+  params_.selection_likelihood_threshold =
+    declare_parameter<double>("selection_likelihood_threshold");
+  params_.out_of_lanelet_search_margin = declare_parameter<double>("out_of_lanelet_search_margin");
+
   RCLCPP_INFO(
     get_logger(), "vehicle_info: length=%.2fm width=%.2fm wheel_base=%.2fm",
     vehicle_info_.vehicle_length_m, vehicle_info_.vehicle_width_m, vehicle_info_.wheel_base_m);
@@ -141,7 +154,7 @@ void TargetLaneletEstimatorNode::on_map(const LaneletMapBin::ConstSharedPtr msg)
 void TargetLaneletEstimatorNode::on_route(const LaneletRoute::ConstSharedPtr msg)
 {
   route_ = msg;
-  posterior_probabilities_ = initialize_lanelet_probabilities(*route_);
+  posterior_probabilities_ = initialize_lanelet_probabilities(*route_, params_);
   covered_lanelet_ids_.clear();
   RCLCPP_INFO(get_logger(), "Received route (%zu segments).", msg->segments.size());
 }
@@ -162,7 +175,8 @@ void TargetLaneletEstimatorNode::run_estimation()
   }
 
   const auto result = get_target_lanelets(
-    *route_, *trajectory_, lanelet_map_, vehicle_info_, posterior_probabilities_, routing_graph_);
+    *route_, *trajectory_, lanelet_map_, vehicle_info_, posterior_probabilities_, routing_graph_,
+    params_);
   posterior_probabilities_.clear();
   for (const auto & lanelet : result.lanelet_probabilities) {
     posterior_probabilities_[lanelet.id] = lanelet.posterior;
