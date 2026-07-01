@@ -35,9 +35,7 @@ namespace autoware::map_based_prediction
 struct VegetationPathDebug
 {
   bool cut{false};
-  /// crossing_index valid → [crossing_index, end) trimmed segment; else full predicted_path.
   std::vector<geometry_msgs::msg::Point> display_points;
-  /// cut=true only: [0, crossing_index) kept segment.
   std::vector<geometry_msgs::msg::Point> kept_points;
 };
 
@@ -53,11 +51,11 @@ struct VegetationPathEvent
 namespace debug
 {
 
-VegetationPathEvent createVegetationPathEvent(
+VegetationPathEvent create_vegetation_path_event(
   const PredictedPath & predicted_path, const PredictedPath & cut_path,
   const autoware_perception_msgs::msg::PredictedObject & object);
 
-void appendVegetationEventMarkers(
+void append_vegetation_event_markers(
   visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,
   const rclcpp::Time & stamp, std::unordered_set<std::string> & boxed_objects);
 

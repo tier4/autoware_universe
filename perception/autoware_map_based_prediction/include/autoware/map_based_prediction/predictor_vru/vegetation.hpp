@@ -36,12 +36,10 @@ public:
   VegetationModule() = default;
 
   /// @pre lanelet_map_ptr is non-null when building from a map; nullptr clears the layer.
-  void buildFromMap(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr);
+  void build_from_map(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr);
 
   /// Trim every predicted path of the object where its footprint enters a vegetation area.
-  /// Candidate vegetation areas are gathered once per object and reused across all its paths.
-  /// When debug_markers is non-null, the cut visualization markers are appended to it.
-  void cutPathsCrossingVegetation(
+  void cut_paths_crossing_vegetation(
     autoware_perception_msgs::msg::PredictedObject & predicted_object,
     visualization_msgs::msg::MarkerArray * debug_markers, const rclcpp::Time & stamp);
 

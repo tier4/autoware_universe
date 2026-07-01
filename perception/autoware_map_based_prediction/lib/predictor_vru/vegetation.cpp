@@ -39,7 +39,7 @@ namespace autoware::map_based_prediction
 
 namespace
 {
-double calcFootprintSearchMargin(const autoware_perception_msgs::msg::Shape & shape)
+double calc_footprint_search_margin(const autoware_perception_msgs::msg::Shape & shape)
 {
   if (shape.type == autoware_perception_msgs::msg::Shape::BOUNDING_BOX) {
     const auto hx = shape.dimensions.x * 0.5;
@@ -52,10 +52,7 @@ double calcFootprintSearchMargin(const autoware_perception_msgs::msg::Shape & sh
   return std::max(shape.dimensions.x, shape.dimensions.y) * 0.5;
 }
 
-// The downstream trimming needs at least one predicted path and an object footprint that
-// to_polygon2d() can build (supported shape type, and a non-empty footprint for POLYGON).
-// Objects lacking either are passed through as-is.
-bool hasRequiredInfo(const autoware_perception_msgs::msg::PredictedObject & predicted_object)
+bool has_required_info(const autoware_perception_msgs::msg::PredictedObject & predicted_object)
 {
   using autoware_perception_msgs::msg::Shape;
   if (predicted_object.kinematics.predicted_paths.empty()) {
@@ -73,12 +70,12 @@ bool hasRequiredInfo(const autoware_perception_msgs::msg::PredictedObject & pred
   }
 }
 
-std::vector<autoware_utils_geometry::Polygon2d> collectCandidateVegetationPolygons(
+std::vector<autoware_utils_geometry::Polygon2d> collect_candidate_vegetation_polygons(
   const lanelet::LaneletMap & vegetation_layer, const std::vector<PredictedPath> & predicted_paths,
   const autoware_perception_msgs::msg::Shape & shape)
 {
   lanelet::BoundingBox2d search_bbox;
-  const auto search_margin = calcFootprintSearchMargin(shape);
+  const auto search_margin = calc_footprint_search_margin(shape);
   const lanelet::BasicPoint2d offset(search_margin, search_margin);
   for (const auto & predicted_path : predicted_paths) {
     for (const auto & pose : predicted_path.path) {
@@ -100,7 +97,7 @@ std::vector<autoware_utils_geometry::Polygon2d> collectCandidateVegetationPolygo
   return vegetation_polygons_2d;
 }
 
-std::optional<size_t> findVegetationCrossingIndex(
+std::optional<size_t> find_vegetation_crossing_index(
   const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & shape,
   const std::vector<autoware_utils_geometry::Polygon2d> & vegetation_polygons_2d)
 {
@@ -109,7 +106,7 @@ std::optional<size_t> findVegetationCrossingIndex(
   }
   for (auto i = 0UL; i < predicted_path.path.size(); ++i) {
     const autoware_utils_geometry::Polygon2d footprint =
-      autoware_utils_geometry::to_polygon2d(predicted_path.path[i], shape);
+      autoware_utils_geometry::to_polygon2d(predicted_path.path.at(i), shape);
     for (const auto & vegetation_polygon : vegetation_polygons_2d) {
       // NOTE: intersects_convex (GJK) treats both polygons as convex. A non-convex vegetation area
       // is evaluated as its convex hull, but this works effectively.
@@ -122,7 +119,7 @@ std::optional<size_t> findVegetationCrossingIndex(
 }
 }  // namespace
 
-void VegetationModule::buildFromMap(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr)
+void VegetationModule::build_from_map(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr)
 {
   if (!lanelet_map_ptr) {
     vegetation_layer_ = nullptr;
@@ -141,11 +138,11 @@ void VegetationModule::buildFromMap(std::shared_ptr<lanelet::LaneletMap> lanelet
   vegetation_layer_ = lanelet::utils::createMap(vegetations);
 }
 
-void VegetationModule::cutPathsCrossingVegetation(
+void VegetationModule::cut_paths_crossing_vegetation(
   autoware_perception_msgs::msg::PredictedObject & predicted_object,
   visualization_msgs::msg::MarkerArray * debug_markers, const rclcpp::Time & stamp)
 {
-  if (!hasRequiredInfo(predicted_object) || !vegetation_layer_) {
+  if (!has_required_info(predicted_object) || !vegetation_layer_) {
     return;
   }
 
@@ -153,7 +150,7 @@ void VegetationModule::cutPathsCrossingVegetation(
   const autoware_perception_msgs::msg::Shape & shape = predicted_object.shape;
 
   const std::vector<autoware_utils_geometry::Polygon2d> candidate_polygons =
-    collectCandidateVegetationPolygons(*vegetation_layer_, predicted_paths, shape);
+    collect_candidate_vegetation_polygons(*vegetation_layer_, predicted_paths, shape);
 
   std::vector<PredictedPath> original_paths;
   if (debug_markers) {
@@ -162,7 +159,7 @@ void VegetationModule::cutPathsCrossingVegetation(
 
   for (auto & predicted_path : predicted_paths) {
     const std::optional<size_t> crossing_index =
-      findVegetationCrossingIndex(predicted_path, shape, candidate_polygons);
+      find_vegetation_crossing_index(predicted_path, shape, candidate_polygons);
     if (crossing_index) {
       predicted_path.path.resize(std::max<size_t>(*crossing_index, 1UL));
     }
@@ -171,9 +168,9 @@ void VegetationModule::cutPathsCrossingVegetation(
   if (debug_markers) {
     std::unordered_set<std::string> boxed_objects;
     for (size_t i = 0; i < predicted_paths.size(); ++i) {
-      const VegetationPathEvent event =
-        debug::createVegetationPathEvent(original_paths[i], predicted_paths[i], predicted_object);
-      debug::appendVegetationEventMarkers(*debug_markers, event, stamp, boxed_objects);
+      const VegetationPathEvent event = debug::create_vegetation_path_event(
+        original_paths.at(i), predicted_paths.at(i), predicted_object);
+      debug::append_vegetation_event_markers(*debug_markers, event, stamp, boxed_objects);
     }
   }
 }
