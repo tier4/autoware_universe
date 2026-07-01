@@ -19,7 +19,7 @@
 
 #include <rclcpp/time.hpp>
 
-#include <autoware_perception_msgs/msg/tracked_objects.hpp>
+#include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -55,7 +55,7 @@ namespace debug
 
 VegetationPathEvent createVegetationPathEvent(
   const PredictedPath & predicted_path, const PredictedPath & cut_path,
-  const autoware_perception_msgs::msg::TrackedObject & object);
+  const autoware_perception_msgs::msg::PredictedObject & object);
 
 void appendVegetationEventMarkers(
   visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,

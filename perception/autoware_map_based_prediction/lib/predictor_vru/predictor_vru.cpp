@@ -392,8 +392,7 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
     predicted_object.kinematics.predicted_paths.push_back(predicted_path);
   }
 
-  vegetation_module_.cutPathsCrossingVegetation(
-    predicted_object.kinematics.predicted_paths, mutable_object, debug_markers, stamp);
+  vegetation_module_.cutPathsCrossingVegetation(predicted_object, debug_markers, stamp);
 
   const auto n_path = predicted_object.kinematics.predicted_paths.size();
   for (auto & predicted_path : predicted_object.kinematics.predicted_paths) {

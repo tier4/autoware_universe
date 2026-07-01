@@ -20,13 +20,12 @@
 
 #include <rclcpp/time.hpp>
 
-#include <autoware_perception_msgs/msg/tracked_objects.hpp>
+#include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 
 #include <memory>
-#include <vector>
 
 namespace autoware::map_based_prediction
 {
@@ -39,12 +38,11 @@ public:
   /// @pre lanelet_map_ptr is non-null when building from a map; nullptr clears the layer.
   void buildFromMap(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr);
 
-  /// Trim every predicted path of one object where its footprint enters a vegetation area.
+  /// Trim every predicted path of the object where its footprint enters a vegetation area.
   /// Candidate vegetation areas are gathered once per object and reused across all its paths.
   /// When debug_markers is non-null, the cut visualization markers are appended to it.
   void cutPathsCrossingVegetation(
-    std::vector<PredictedPath> & predicted_paths,
-    const autoware_perception_msgs::msg::TrackedObject & object,
+    autoware_perception_msgs::msg::PredictedObject & predicted_object,
     visualization_msgs::msg::MarkerArray * debug_markers, const rclcpp::Time & stamp);
 
 private:

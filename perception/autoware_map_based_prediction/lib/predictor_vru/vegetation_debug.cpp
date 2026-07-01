@@ -255,12 +255,12 @@ void appendUncutMarkers(
 
 VegetationPathEvent createVegetationPathEvent(
   const PredictedPath & predicted_path, const PredictedPath & cut_path,
-  const autoware_perception_msgs::msg::TrackedObject & object)
+  const autoware_perception_msgs::msg::PredictedObject & object)
 {
   VegetationPathEvent event;
   event.object_id = autoware_utils::to_hex_string(object.object_id);
   event.label = autoware::object_recognition_utils::getHighestProbLabel(object.classification);
-  event.object_pose = object.kinematics.pose_with_covariance.pose;
+  event.object_pose = object.kinematics.initial_pose_with_covariance.pose;
   event.path_debug = buildPathDebug(predicted_path, cut_path);
   event.cut_pose = cutPose(predicted_path, cut_path);
   return event;

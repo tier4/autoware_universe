@@ -52,6 +52,27 @@ double calcFootprintSearchMargin(const autoware_perception_msgs::msg::Shape & sh
   return std::max(shape.dimensions.x, shape.dimensions.y) * 0.5;
 }
 
+// The downstream trimming needs at least one predicted path and an object footprint that
+// to_polygon2d() can build (supported shape type, and a non-empty footprint for POLYGON).
+// Objects lacking either are passed through as-is.
+bool hasRequiredInfo(const autoware_perception_msgs::msg::PredictedObject & predicted_object)
+{
+  using autoware_perception_msgs::msg::Shape;
+  if (predicted_object.kinematics.predicted_paths.empty()) {
+    return false;
+  }
+  const auto & shape = predicted_object.shape;
+  switch (shape.type) {
+    case Shape::BOUNDING_BOX:
+    case Shape::CYLINDER:
+      return true;
+    case Shape::POLYGON:
+      return !shape.footprint.points.empty();
+    default:
+      return false;
+  }
+}
+
 std::vector<autoware_utils_geometry::Polygon2d> collectCandidateVegetationPolygons(
   const lanelet::LaneletMap & vegetation_layer, const std::vector<PredictedPath> & predicted_paths,
   const autoware_perception_msgs::msg::Shape & shape)
@@ -87,7 +108,8 @@ std::optional<size_t> findVegetationCrossingIndex(
     return std::nullopt;
   }
   for (auto i = 0UL; i < predicted_path.path.size(); ++i) {
-    const auto footprint = autoware_utils_geometry::to_polygon2d(predicted_path.path[i], shape);
+    const autoware_utils_geometry::Polygon2d footprint =
+      autoware_utils_geometry::to_polygon2d(predicted_path.path[i], shape);
     for (const auto & vegetation_polygon : vegetation_polygons_2d) {
       // NOTE: intersects_convex (GJK) treats both polygons as convex. A non-convex vegetation area
       // is evaluated as its convex hull, but this works effectively.
@@ -120,31 +142,37 @@ void VegetationModule::buildFromMap(std::shared_ptr<lanelet::LaneletMap> lanelet
 }
 
 void VegetationModule::cutPathsCrossingVegetation(
-  std::vector<PredictedPath> & predicted_paths,
-  const autoware_perception_msgs::msg::TrackedObject & object,
+  autoware_perception_msgs::msg::PredictedObject & predicted_object,
   visualization_msgs::msg::MarkerArray * debug_markers, const rclcpp::Time & stamp)
 {
-  std::vector<autoware_utils_geometry::Polygon2d> candidate_polygons;
-  if (vegetation_layer_ && !predicted_paths.empty()) {
-    candidate_polygons =
-      collectCandidateVegetationPolygons(*vegetation_layer_, predicted_paths, object.shape);
+  if (!hasRequiredInfo(predicted_object) || !vegetation_layer_) {
+    return;
   }
 
-  std::unordered_set<std::string> boxed_objects;
-  for (auto & predicted_path : predicted_paths) {
-    PredictedPath original_path;
-    if (debug_markers) {
-      original_path = predicted_path;
-    }
+  std::vector<PredictedPath> & predicted_paths = predicted_object.kinematics.predicted_paths;
+  const autoware_perception_msgs::msg::Shape & shape = predicted_object.shape;
 
-    const auto crossing_index =
-      findVegetationCrossingIndex(predicted_path, object.shape, candidate_polygons);
+  const std::vector<autoware_utils_geometry::Polygon2d> candidate_polygons =
+    collectCandidateVegetationPolygons(*vegetation_layer_, predicted_paths, shape);
+
+  std::vector<PredictedPath> original_paths;
+  if (debug_markers) {
+    original_paths = predicted_paths;
+  }
+
+  for (auto & predicted_path : predicted_paths) {
+    const std::optional<size_t> crossing_index =
+      findVegetationCrossingIndex(predicted_path, shape, candidate_polygons);
     if (crossing_index) {
       predicted_path.path.resize(std::max<size_t>(*crossing_index, 1UL));
     }
+  }
 
-    if (debug_markers) {
-      const auto event = debug::createVegetationPathEvent(original_path, predicted_path, object);
+  if (debug_markers) {
+    std::unordered_set<std::string> boxed_objects;
+    for (size_t i = 0; i < predicted_paths.size(); ++i) {
+      const VegetationPathEvent event =
+        debug::createVegetationPathEvent(original_paths[i], predicted_paths[i], predicted_object);
       debug::appendVegetationEventMarkers(*debug_markers, event, stamp, boxed_objects);
     }
   }
