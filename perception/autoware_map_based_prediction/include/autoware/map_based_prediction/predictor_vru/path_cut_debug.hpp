@@ -26,7 +26,6 @@
 
 #include <cstdint>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 namespace autoware::map_based_prediction
@@ -53,14 +52,16 @@ struct PathCutEvent
 namespace debug
 {
 
-PathCutEvent create_path_cut_event(
-  const PredictedPath & predicted_path, const PredictedPath & cut_path,
-  const autoware_perception_msgs::msg::PredictedObject & object);
+void append_path_cut_event_markers(
+  visualization_msgs::msg::MarkerArray * debug_markers, const PredictedPath & original_path,
+  const PredictedPath & cut_path, const autoware_perception_msgs::msg::PredictedObject & object,
+  PathCutSource source, const rclcpp::Time & stamp);
 
-void append_path_cut_markers(
-  visualization_msgs::msg::MarkerArray & markers, const PathCutEvent & event,
-  const rclcpp::Time & stamp, PathCutSource source,
-  std::unordered_set<std::string> & boxed_objects);
+void append_path_cut_event_markers(
+  visualization_msgs::msg::MarkerArray * debug_markers,
+  const std::vector<PredictedPath> & original_paths, const std::vector<PredictedPath> & cut_paths,
+  const autoware_perception_msgs::msg::PredictedObject & object, PathCutSource source,
+  const rclcpp::Time & stamp);
 
 }  // namespace debug
 

@@ -21,6 +21,7 @@
 
 #include <geometry_msgs/msg/vector3.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <unordered_set>
@@ -160,8 +161,7 @@ std::vector<geometry_msgs::msg::Point> kept_line_points(const PathCutEvent & eve
   return {event.object_pose.position, event.cut_pose};
 }
 
-PathCutDebug build_path_debug(
-  const PredictedPath & predicted_path, const PredictedPath & cut_path)
+PathCutDebug build_path_debug(const PredictedPath & predicted_path, const PredictedPath & cut_path)
 {
   const auto total_size = predicted_path.path.size();
   const auto kept_size = cut_path.path.size();
@@ -240,11 +240,9 @@ void append_uncut_markers(
   const rclcpp::Time & stamp, const SourceStyle & source_style)
 {
   append_line_strip(
-    markers, stamp, source_style.ns_path_line, marker_text(event),
-    event.path_debug.display_points, safe_segment_color());
+    markers, stamp, source_style.ns_path_line, marker_text(event), event.path_debug.display_points,
+    safe_segment_color());
 }
-
-}  // namespace
 
 PathCutEvent create_path_cut_event(
   const PredictedPath & predicted_path, const PredictedPath & cut_path,
@@ -261,8 +259,7 @@ PathCutEvent create_path_cut_event(
 
 void append_path_cut_markers(
   visualization_msgs::msg::MarkerArray & markers, const PathCutEvent & event,
-  const rclcpp::Time & stamp, PathCutSource source,
-  std::unordered_set<std::string> & boxed_objects)
+  const rclcpp::Time & stamp, PathCutSource source, std::unordered_set<std::string> & boxed_objects)
 {
   const SourceStyle style = style_for_source(source);
   append_object_box(markers, event, stamp, style, boxed_objects);
@@ -271,6 +268,38 @@ void append_path_cut_markers(
   } else {
     append_uncut_markers(markers, event, stamp, style);
   }
+}
+
+}  // namespace
+
+void append_path_cut_event_markers(
+  visualization_msgs::msg::MarkerArray * debug_markers,
+  const std::vector<PredictedPath> & original_paths, const std::vector<PredictedPath> & cut_paths,
+  const autoware_perception_msgs::msg::PredictedObject & object, PathCutSource source,
+  const rclcpp::Time & stamp)
+{
+  if (!debug_markers) {
+    return;
+  }
+  std::unordered_set<std::string> boxed_objects;
+  const size_t count = std::min(original_paths.size(), cut_paths.size());
+  for (size_t i = 0; i < count; ++i) {
+    const PathCutEvent event = create_path_cut_event(original_paths.at(i), cut_paths.at(i), object);
+    append_path_cut_markers(*debug_markers, event, stamp, source, boxed_objects);
+  }
+}
+
+void append_path_cut_event_markers(
+  visualization_msgs::msg::MarkerArray * debug_markers, const PredictedPath & original_path,
+  const PredictedPath & cut_path, const autoware_perception_msgs::msg::PredictedObject & object,
+  PathCutSource source, const rclcpp::Time & stamp)
+{
+  if (!debug_markers) {
+    return;
+  }
+  append_path_cut_event_markers(
+    debug_markers, std::vector<PredictedPath>{original_path}, std::vector<PredictedPath>{cut_path},
+    object, source, stamp);
 }
 
 }  // namespace autoware::map_based_prediction::debug

@@ -31,7 +31,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 namespace autoware::map_based_prediction
@@ -138,26 +137,19 @@ void VegetationModule::build_from_map(std::shared_ptr<lanelet::LaneletMap> lanel
   vegetation_layer_ = lanelet::utils::createMap(vegetations);
 }
 
-void VegetationModule::cut_paths_crossing_vegetation(
-  autoware_perception_msgs::msg::PredictedObject & predicted_object,
-  visualization_msgs::msg::MarkerArray * debug_markers, const rclcpp::Time & stamp)
+std::vector<PredictedPath> VegetationModule::cut_paths_crossing_vegetation(
+  const autoware_perception_msgs::msg::PredictedObject & predicted_object) const
 {
+  std::vector<PredictedPath> cut_paths = predicted_object.kinematics.predicted_paths;
   if (!has_required_info(predicted_object) || !vegetation_layer_) {
-    return;
+    return cut_paths;
   }
 
-  std::vector<PredictedPath> & predicted_paths = predicted_object.kinematics.predicted_paths;
   const autoware_perception_msgs::msg::Shape & object_shape = predicted_object.shape;
-
   const std::vector<autoware_utils_geometry::Polygon2d> candidate_polygons =
-    collect_candidate_vegetation_polygons(*vegetation_layer_, predicted_paths, object_shape);
+    collect_candidate_vegetation_polygons(*vegetation_layer_, cut_paths, object_shape);
 
-  std::vector<PredictedPath> original_paths;
-  if (debug_markers) {
-    original_paths = predicted_paths;
-  }
-
-  for (auto & predicted_path : predicted_paths) {
+  for (PredictedPath & predicted_path : cut_paths) {
     const std::optional<size_t> crossing_index =
       find_vegetation_crossing_index(predicted_path, object_shape, candidate_polygons);
     if (crossing_index) {
@@ -165,15 +157,6 @@ void VegetationModule::cut_paths_crossing_vegetation(
       // resize keep [0, crossing_index-1]: the crossing point and the rest are dropped
     }
   }
-
-  if (debug_markers) {
-    std::unordered_set<std::string> boxed_objects;
-    for (size_t i = 0; i < predicted_paths.size(); ++i) {
-      const PathCutEvent event = debug::create_path_cut_event(
-        original_paths.at(i), predicted_paths.at(i), predicted_object);
-      debug::append_path_cut_markers(
-        *debug_markers, event, stamp, PathCutSource::Vegetation, boxed_objects);
-    }
-  }
+  return cut_paths;
 }
 }  // namespace autoware::map_based_prediction

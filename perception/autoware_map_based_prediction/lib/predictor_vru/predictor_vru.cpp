@@ -33,7 +33,6 @@
 #include <limits>
 #include <memory>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -250,15 +249,8 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
     predicted_path.confidence = 1.0;
 
     const PredictedPath cut_path = fence_module_.cutPathBeforeFences(predicted_path);
-
-    if (debug_markers) {
-      std::unordered_set<std::string> boxed_objects;
-      const PathCutEvent event =
-        debug::create_path_cut_event(predicted_path, cut_path, predicted_object);
-      debug::append_path_cut_markers(
-        *debug_markers, event, stamp, PathCutSource::Fence, boxed_objects);
-    }
-
+    debug::append_path_cut_event_markers(
+      debug_markers, predicted_path, cut_path, predicted_object, PathCutSource::Fence, stamp);
     predicted_object.kinematics.predicted_paths.push_back(cut_path);
   }
 
@@ -403,8 +395,14 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
     predicted_object.kinematics.predicted_paths.push_back(predicted_path);
   }
 
-  vegetation_module_.cut_paths_crossing_vegetation(predicted_object, debug_markers, stamp);
+  const std::vector<PredictedPath> paths_cut_with_vegetation =
+    vegetation_module_.cut_paths_crossing_vegetation(predicted_object);
 
+  debug::append_path_cut_event_markers(
+    debug_markers, predicted_object.kinematics.predicted_paths, paths_cut_with_vegetation,
+    predicted_object, PathCutSource::Vegetation, stamp);
+
+  predicted_object.kinematics.predicted_paths = paths_cut_with_vegetation;
   const auto n_path = predicted_object.kinematics.predicted_paths.size();
   for (auto & predicted_path : predicted_object.kinematics.predicted_paths) {
     predicted_path.confidence = 1.0 / n_path;
