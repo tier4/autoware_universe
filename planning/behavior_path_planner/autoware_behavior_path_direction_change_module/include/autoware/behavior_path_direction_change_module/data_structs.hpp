@@ -88,14 +88,16 @@ struct DirectionChangeParameters
   size_t cusp_path_end_trim_points{0};  // trim centerline points before cusp when slicing path
 
   // State transition parameters
-  double cusp_detection_distance_start_approaching;  // [m] Distance to zero terminal velocity at cusp
+  double
+    cusp_detection_distance_start_approaching;  // [m] Distance to zero terminal velocity at cusp
   double stop_velocity_threshold;  // [m/s] Velocity threshold to determine vehicle has stopped
   double th_stopped_time;  // [s] Duration velocity must stay below stop_velocity_threshold before
                            // direction switch at cusp
 
   // Goal lateral shift parameters (cubic polynomial blend toward route goal)
   bool enable_goal_lateral_shift{true};
-  double max_allowed_yaw_deg{20.0};  // [deg] Max heading change rate limit for shift maneuver length
+  double max_allowed_yaw_deg{
+    20.0};  // [deg] Max heading change rate limit for shift maneuver length
 
   // General parameters
   bool print_debug_info{false};

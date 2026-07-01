@@ -73,7 +73,8 @@ void DirectionChangeModuleManager::updateModuleParams(
   {
     int64_t cusp_path_end_trim_points = static_cast<int64_t>(p->cusp_path_end_trim_points);
     update_param<int64_t>(parameters, ns + "cusp_path_end_trim_points", cusp_path_end_trim_points);
-    p->cusp_path_end_trim_points = static_cast<size_t>(std::max<int64_t>(0, cusp_path_end_trim_points));
+    p->cusp_path_end_trim_points =
+      static_cast<size_t>(std::max<int64_t>(0, cusp_path_end_trim_points));
   }
 
   std::for_each(observers_.begin(), observers_.end(), [&p](const auto & observer) {

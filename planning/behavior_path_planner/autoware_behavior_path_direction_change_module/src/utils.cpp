@@ -75,8 +75,7 @@ double evalShiftDerivative(const CubicShiftCoefficients & coeffs, const double s
   return 2.0 * coeffs.a2 * s + 3.0 * coeffs.a3 * s * s;
 }
 
-double computeManeuverLength(
-  const double lateral_shift, const double max_allowed_yaw_rad)
+double computeManeuverLength(const double lateral_shift, const double max_allowed_yaw_rad)
 {
   // Approximation: tan(theta_max) ~= lateral_shift / maneuver_length
   // Assumption: max_allowed_yaw_rad > 0.0
@@ -128,7 +127,9 @@ bool validateShiftedPathInCorridor(
   const CubicShiftCoefficients & coeffs, const double shift_start_s, const double goal_s,
   const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
 {
-  if (reference_path.points.size() < 2 || reference_arc_lengths.size() != reference_path.points.size()) {
+  if (
+    reference_path.points.size() < 2 ||
+    reference_arc_lengths.size() != reference_path.points.size()) {
     return false;
   }
 
@@ -215,8 +216,7 @@ double calcDistanceAlongPathToPose(
     return std::numeric_limits<double>::max();
   }
 
-  const auto ego_idx_opt =
-    autoware::motion_utils::findNearestIndex(path.points, ego_pose);
+  const auto ego_idx_opt = autoware::motion_utils::findNearestIndex(path.points, ego_pose);
   const size_t target_idx =
     autoware::motion_utils::findNearestIndex(path.points, target_pose.position);
   if (!ego_idx_opt) {
@@ -224,8 +224,7 @@ double calcDistanceAlongPathToPose(
   }
 
   if (target_idx >= *ego_idx_opt) {
-    return autoware::motion_utils::calcSignedArcLength(
-      path.points, *ego_idx_opt, target_idx);
+    return autoware::motion_utils::calcSignedArcLength(path.points, *ego_idx_opt, target_idx);
   }
 
   return autoware_utils::calc_distance2d(ego_pose.position, target_pose.position);
@@ -237,9 +236,9 @@ bool pathPointHasAnyLaneId(
   const autoware_internal_planning_msgs::msg::PathPointWithLaneId & point,
   const std::set<int64_t> & lane_id_set)
 {
-  return std::any_of(
-    point.lane_ids.begin(), point.lane_ids.end(),
-    [&](const int64_t lane_id) { return lane_id_set.count(lane_id) > 0; });
+  return std::any_of(point.lane_ids.begin(), point.lane_ids.end(), [&](const int64_t lane_id) {
+    return lane_id_set.count(lane_id) > 0;
+  });
 }
 
 lanelet::ConstLanelets laneletsFromIds(
@@ -259,13 +258,11 @@ lanelet::ConstLanelets laneletsFromIds(
 }
 
 PathWithLaneId trimPathToGoal(
-  PathWithLaneId path,
-  const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
+  PathWithLaneId path, const std::shared_ptr<autoware::route_handler::RouteHandler> & route_handler)
 {
   try {
     const auto goal_pose = route_handler->getGoalPose();
-    const auto goal_idx =
-      autoware::motion_utils::findNearestIndex(path.points, goal_pose.position);
+    const auto goal_idx = autoware::motion_utils::findNearestIndex(path.points, goal_pose.position);
     if (goal_idx < path.points.size()) {
       path.points.resize(goal_idx + 1);
     }
@@ -364,14 +361,13 @@ std::optional<DirectionChangeRouteContext> buildDirectionChangeRouteContext(
     }
   }
 
-  const auto tagged_lanelets =
-    laneletsFromIds(context.tagged_lanelet_ids_ordered, route_handler);
+  const auto tagged_lanelets = laneletsFromIds(context.tagged_lanelet_ids_ordered, route_handler);
   if (tagged_lanelets.empty()) {
     return std::nullopt;
   }
 
-  auto tagged_centerline_path = route_handler->getCenterLinePath(
-    tagged_lanelets, 0.0, std::numeric_limits<double>::max());
+  auto tagged_centerline_path =
+    route_handler->getCenterLinePath(tagged_lanelets, 0.0, std::numeric_limits<double>::max());
   if (tagged_centerline_path.points.empty()) {
     return std::nullopt;
   }
@@ -450,15 +446,13 @@ PathWithLaneId assembleReferencePathWithLaneStitching(
 
   switch (assembly_phase) {
     case ReferencePathAssemblyPhase::APPROACHING_TAGGED_AREA:
-      return prefix_path.points.empty()
-               ? tagged_centerline
-               : utils::combinePath(prefix_path, tagged_centerline);
+      return prefix_path.points.empty() ? tagged_centerline
+                                        : utils::combinePath(prefix_path, tagged_centerline);
     case ReferencePathAssemblyPhase::INSIDE_TAGGED_CORRIDOR:
       return tagged_centerline;
     case ReferencePathAssemblyPhase::EXITING_TAGGED_AREA:
-      return suffix_path.points.empty()
-               ? tagged_centerline
-               : utils::combinePath(tagged_centerline, suffix_path);
+      return suffix_path.points.empty() ? tagged_centerline
+                                        : utils::combinePath(tagged_centerline, suffix_path);
   }
 
   return tagged_centerline;
@@ -505,8 +499,7 @@ PathWithLaneId slicePathToGoalFromCuspIndex(
     return sliced_path;
   }
 
-  const size_t goal_idx =
-    autoware::motion_utils::findNearestIndex(path.points, goal_pose.position);
+  const size_t goal_idx = autoware::motion_utils::findNearestIndex(path.points, goal_pose.position);
   if (goal_idx >= path.points.size()) {
     return sliced_path;
   }
@@ -544,7 +537,8 @@ bool isEgoNearRouteGoal(
     return false;
   }
 
-  const double dist_to_goal = autoware_utils::calc_distance2d(ego_pose.position, goal_pose.position);
+  const double dist_to_goal =
+    autoware_utils::calc_distance2d(ego_pose.position, goal_pose.position);
   if (dist_to_goal < th_arrived_distance) {
     return true;
   }
@@ -573,8 +567,9 @@ bool isEgoNearRouteGoal(
     return true;
   }
 
-  if (route_handler->isInGoalRouteSection(closest_route_lanelet) &&
-      dist_to_goal < th_arrived_distance) {
+  if (
+    route_handler->isInGoalRouteSection(closest_route_lanelet) &&
+    dist_to_goal < th_arrived_distance) {
     return true;
   }
 
@@ -611,8 +606,8 @@ bool isDirectionChangeManeuverFinished(
 
   const bool near_goal = isEgoNearRouteGoal(
     ego_pose, route_handler, th_arrived_distance, route_context.suffix_lanelet_ids);
-  const bool on_tagged = isEgoOnRouteLanelets(
-    ego_pose, route_handler, route_context.tagged_lanelet_ids_ordered);
+  const bool on_tagged =
+    isEgoOnRouteLanelets(ego_pose, route_handler, route_context.tagged_lanelet_ids_ordered);
 
   return near_goal || !on_tagged;
 }
@@ -624,7 +619,8 @@ std::optional<PathWithLaneId> applyGoalLateralShift(
 {
   static const auto logger_ = rclcpp::get_logger("direction_change");
 
-  const auto goal_idx_opt = autoware::motion_utils::findNearestIndex(path.points, goal_pose.position);
+  const auto goal_idx_opt =
+    autoware::motion_utils::findNearestIndex(path.points, goal_pose.position);
   if (goal_idx_opt >= path.points.size()) {
     return std::nullopt;
   }
@@ -651,8 +647,7 @@ std::optional<PathWithLaneId> applyGoalLateralShift(
       "Infeasible lateral shift request. "
       "Required maneuver length: %.2f m, "
       "available distance: %.2f m",
-      maneuver_length,
-      goal_s);
+      maneuver_length, goal_s);
 
     return std::nullopt;
   }
@@ -716,8 +711,7 @@ void clipPathAroundEgo(
 
 namespace
 {
-void flipPathPointYawByPi(
-  autoware_internal_planning_msgs::msg::PathPointWithLaneId & point)
+void flipPathPointYawByPi(autoware_internal_planning_msgs::msg::PathPointWithLaneId & point)
 {
   double yaw = tf2::getYaw(point.point.pose.orientation);
   yaw = autoware_utils::normalize_radian(yaw + M_PI);
