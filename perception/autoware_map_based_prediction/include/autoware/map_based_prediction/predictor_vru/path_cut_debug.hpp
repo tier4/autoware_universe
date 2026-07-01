@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VRU__VEGETATION_DEBUG_HPP_
-#define AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VRU__VEGETATION_DEBUG_HPP_
+#ifndef AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VRU__PATH_CUT_DEBUG_HPP_
+#define AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VRU__PATH_CUT_DEBUG_HPP_
 
 #include "autoware/map_based_prediction/path_generator/path_generator.hpp"
 
@@ -32,35 +32,38 @@
 namespace autoware::map_based_prediction
 {
 
-struct VegetationPathDebug
+enum class PathCutSource { Vegetation, Fence };
+
+struct PathCutDebug
 {
   bool cut{false};
   std::vector<geometry_msgs::msg::Point> display_points;
   std::vector<geometry_msgs::msg::Point> kept_points;
 };
 
-struct VegetationPathEvent
+struct PathCutEvent
 {
   std::string object_id;
   uint8_t label{0};
   geometry_msgs::msg::Pose object_pose{};
-  VegetationPathDebug path_debug;
+  PathCutDebug path_debug;
   geometry_msgs::msg::Point cut_pose{};
 };
 
 namespace debug
 {
 
-VegetationPathEvent create_vegetation_path_event(
+PathCutEvent create_path_cut_event(
   const PredictedPath & predicted_path, const PredictedPath & cut_path,
   const autoware_perception_msgs::msg::PredictedObject & object);
 
-void append_vegetation_event_markers(
-  visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,
-  const rclcpp::Time & stamp, std::unordered_set<std::string> & boxed_objects);
+void append_path_cut_markers(
+  visualization_msgs::msg::MarkerArray & markers, const PathCutEvent & event,
+  const rclcpp::Time & stamp, PathCutSource source,
+  std::unordered_set<std::string> & boxed_objects);
 
 }  // namespace debug
 
 }  // namespace autoware::map_based_prediction
 
-#endif  // AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VRU__VEGETATION_DEBUG_HPP_
+#endif  // AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VRU__PATH_CUT_DEBUG_HPP_

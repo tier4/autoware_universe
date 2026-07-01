@@ -14,6 +14,7 @@
 
 #include "autoware/map_based_prediction/predictor_vru/predictor_vru.hpp"
 
+#include "autoware/map_based_prediction/predictor_vru/path_cut_debug.hpp"
 #include "autoware/map_based_prediction/utils.hpp"
 
 #include <autoware/lanelet2_utils/nn_search.hpp>
@@ -32,6 +33,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -247,8 +249,17 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
       mutable_object, params_.prediction_time_horizon);
     predicted_path.confidence = 1.0;
 
-    predicted_object.kinematics.predicted_paths.push_back(
-      fence_module_.cutPathBeforeFences(predicted_path));
+    const PredictedPath cut_path = fence_module_.cutPathBeforeFences(predicted_path);
+
+    if (debug_markers) {
+      std::unordered_set<std::string> boxed_objects;
+      const PathCutEvent event =
+        debug::create_path_cut_event(predicted_path, cut_path, predicted_object);
+      debug::append_path_cut_markers(
+        *debug_markers, event, stamp, PathCutSource::Fence, boxed_objects);
+    }
+
+    predicted_object.kinematics.predicted_paths.push_back(cut_path);
   }
 
   boost::optional<lanelet::ConstLanelet> crossing_crosswalk{boost::none};

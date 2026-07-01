@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/map_based_prediction/predictor_vru/vegetation_debug.hpp"
+#include "autoware/map_based_prediction/predictor_vru/path_cut_debug.hpp"
 
 #include <autoware/object_recognition_utils/object_classification.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
@@ -37,10 +37,39 @@ constexpr double kMarkerLifetimeSec = 0.3;
 constexpr double kPathLineWidth = 0.5;
 constexpr double kCutPointDiameter = 0.8;
 
-constexpr const char * kNsObjectBox = "vegetation_vru_box";
-constexpr const char * kNsPathLine = "vegetation_vru_path";
-constexpr const char * kNsKeptLine = "vegetation_vru_kept";
-constexpr const char * kNsCutPoint = "vegetation_cut";
+struct SourceStyle
+{
+  const char * ns_object_box;
+  const char * ns_path_line;
+  const char * ns_kept_line;
+  const char * ns_cut_point;
+  std_msgs::msg::ColorRGBA cut_segment_color;
+  std_msgs::msg::ColorRGBA cut_point_color;
+};
+
+SourceStyle style_for_source(PathCutSource source)
+{
+  using autoware_utils::create_marker_color;
+  switch (source) {
+    case PathCutSource::Fence:
+      return {
+        "fence_vru_box",
+        "fence_vru_path",
+        "fence_vru_kept",
+        "fence_cut",
+        create_marker_color(0.0, 0.4, 1.0, 0.9),
+        create_marker_color(0.0, 0.27, 0.8, 0.9)};
+    case PathCutSource::Vegetation:
+    default:
+      return {
+        "vegetation_vru_box",
+        "vegetation_vru_path",
+        "vegetation_vru_kept",
+        "vegetation_cut",
+        create_marker_color(1.0, 0.53, 0.0, 0.9),
+        create_marker_color(0.0, 0.67, 0.0, 0.9)};
+  }
+}
 
 visualization_msgs::msg::Marker make_marker(
   const rclcpp::Time & stamp, const std::string & ns, int32_t type,
@@ -74,19 +103,9 @@ void append_line_strip(
   push_marker(markers, std::move(line));
 }
 
-std_msgs::msg::ColorRGBA cut_segment_color()
-{
-  return autoware_utils::create_marker_color(1.0, 0.53, 0.0, 0.9);
-}
-
 std_msgs::msg::ColorRGBA safe_segment_color()
 {
   return autoware_utils::create_marker_color(0.53, 0.8, 0.53, 0.9);
-}
-
-std_msgs::msg::ColorRGBA cut_point_color()
-{
-  return autoware_utils::create_marker_color(0.0, 0.67, 0.0, 0.9);
 }
 
 struct BoxStyle
@@ -112,7 +131,7 @@ BoxStyle box_style_for_label(uint8_t label)
   }
 }
 
-std::string marker_text(const VegetationPathEvent & event)
+std::string marker_text(const PathCutEvent & event)
 {
   return event.object_id + ":" + (event.path_debug.cut ? "1" : "0");
 }
@@ -128,7 +147,7 @@ std::vector<geometry_msgs::msg::Point> collect_positions(
   return points;
 }
 
-std::vector<geometry_msgs::msg::Point> kept_line_points(const VegetationPathEvent & event)
+std::vector<geometry_msgs::msg::Point> kept_line_points(const PathCutEvent & event)
 {
   auto kept = event.path_debug.kept_points;
   if (kept.size() >= 2) {
@@ -141,13 +160,13 @@ std::vector<geometry_msgs::msg::Point> kept_line_points(const VegetationPathEven
   return {event.object_pose.position, event.cut_pose};
 }
 
-VegetationPathDebug build_path_debug(
+PathCutDebug build_path_debug(
   const PredictedPath & predicted_path, const PredictedPath & cut_path)
 {
   const auto total_size = predicted_path.path.size();
   const auto kept_size = cut_path.path.size();
 
-  VegetationPathDebug path_debug;
+  PathCutDebug path_debug;
   path_debug.cut = kept_size < total_size;
   if (!path_debug.cut) {
     path_debug.display_points = collect_positions(predicted_path, 0, total_size);
@@ -174,61 +193,64 @@ geometry_msgs::msg::Point cut_pose(
 }
 
 void append_object_box(
-  visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,
-  const rclcpp::Time & stamp, std::unordered_set<std::string> & boxed_objects)
+  visualization_msgs::msg::MarkerArray & markers, const PathCutEvent & event,
+  const rclcpp::Time & stamp, const SourceStyle & source_style,
+  std::unordered_set<std::string> & boxed_objects)
 {
   if (!boxed_objects.insert(event.object_id).second) {
     return;
   }
   const auto style = box_style_for_label(event.label);
   auto box = make_marker(
-    stamp, kNsObjectBox, visualization_msgs::msg::Marker::CUBE, style.scale, style.color);
+    stamp, source_style.ns_object_box, visualization_msgs::msg::Marker::CUBE, style.scale,
+    style.color);
   box.pose = event.object_pose;
   box.text = event.object_id + ":" + std::to_string(event.label);
   push_marker(markers, std::move(box));
 }
 
 void append_cut_point(
-  visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,
-  const rclcpp::Time & stamp, const std::string & text)
+  visualization_msgs::msg::MarkerArray & markers, const PathCutEvent & event,
+  const rclcpp::Time & stamp, const SourceStyle & source_style, const std::string & text)
 {
   auto sphere = make_marker(
-    stamp, kNsCutPoint, visualization_msgs::msg::Marker::SPHERE,
+    stamp, source_style.ns_cut_point, visualization_msgs::msg::Marker::SPHERE,
     autoware_utils::create_marker_scale(kCutPointDiameter, kCutPointDiameter, kCutPointDiameter),
-    cut_point_color());
+    source_style.cut_point_color);
   sphere.pose.position = event.cut_pose;
   sphere.text = text;
   push_marker(markers, std::move(sphere));
 }
 
 void append_cut_markers(
-  visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,
-  const rclcpp::Time & stamp)
+  visualization_msgs::msg::MarkerArray & markers, const PathCutEvent & event,
+  const rclcpp::Time & stamp, const SourceStyle & source_style)
 {
   const auto text = marker_text(event);
   append_line_strip(
-    markers, stamp, kNsPathLine, text, event.path_debug.display_points, cut_segment_color());
+    markers, stamp, source_style.ns_path_line, text, event.path_debug.display_points,
+    source_style.cut_segment_color);
   append_line_strip(
-    markers, stamp, kNsKeptLine, text, kept_line_points(event), safe_segment_color());
-  append_cut_point(markers, event, stamp, text);
+    markers, stamp, source_style.ns_kept_line, text, kept_line_points(event), safe_segment_color());
+  append_cut_point(markers, event, stamp, source_style, text);
 }
 
 void append_uncut_markers(
-  visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,
-  const rclcpp::Time & stamp)
+  visualization_msgs::msg::MarkerArray & markers, const PathCutEvent & event,
+  const rclcpp::Time & stamp, const SourceStyle & source_style)
 {
   append_line_strip(
-    markers, stamp, kNsPathLine, marker_text(event), event.path_debug.display_points,
-    safe_segment_color());
+    markers, stamp, source_style.ns_path_line, marker_text(event),
+    event.path_debug.display_points, safe_segment_color());
 }
 
 }  // namespace
 
-VegetationPathEvent create_vegetation_path_event(
+PathCutEvent create_path_cut_event(
   const PredictedPath & predicted_path, const PredictedPath & cut_path,
   const autoware_perception_msgs::msg::PredictedObject & object)
 {
-  VegetationPathEvent event;
+  PathCutEvent event;
   event.object_id = autoware_utils::to_hex_string(object.object_id);
   event.label = autoware::object_recognition_utils::getHighestProbLabel(object.classification);
   event.object_pose = object.kinematics.initial_pose_with_covariance.pose;
@@ -237,15 +259,17 @@ VegetationPathEvent create_vegetation_path_event(
   return event;
 }
 
-void append_vegetation_event_markers(
-  visualization_msgs::msg::MarkerArray & markers, const VegetationPathEvent & event,
-  const rclcpp::Time & stamp, std::unordered_set<std::string> & boxed_objects)
+void append_path_cut_markers(
+  visualization_msgs::msg::MarkerArray & markers, const PathCutEvent & event,
+  const rclcpp::Time & stamp, PathCutSource source,
+  std::unordered_set<std::string> & boxed_objects)
 {
-  append_object_box(markers, event, stamp, boxed_objects);
+  const SourceStyle style = style_for_source(source);
+  append_object_box(markers, event, stamp, style, boxed_objects);
   if (event.path_debug.cut) {
-    append_cut_markers(markers, event, stamp);
+    append_cut_markers(markers, event, stamp, style);
   } else {
-    append_uncut_markers(markers, event, stamp);
+    append_uncut_markers(markers, event, stamp, style);
   }
 }
 

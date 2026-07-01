@@ -169,9 +169,10 @@ void VegetationModule::cut_paths_crossing_vegetation(
   if (debug_markers) {
     std::unordered_set<std::string> boxed_objects;
     for (size_t i = 0; i < predicted_paths.size(); ++i) {
-      const VegetationPathEvent event = debug::create_vegetation_path_event(
+      const PathCutEvent event = debug::create_path_cut_event(
         original_paths.at(i), predicted_paths.at(i), predicted_object);
-      debug::append_vegetation_event_markers(*debug_markers, event, stamp, boxed_objects);
+      debug::append_path_cut_markers(
+        *debug_markers, event, stamp, PathCutSource::Vegetation, boxed_objects);
     }
   }
 }

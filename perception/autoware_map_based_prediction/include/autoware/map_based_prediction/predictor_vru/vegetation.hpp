@@ -16,7 +16,7 @@
 #define AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VRU__VEGETATION_HPP_
 
 #include "autoware/map_based_prediction/path_generator/path_generator.hpp"
-#include "autoware/map_based_prediction/predictor_vru/vegetation_debug.hpp"
+#include "autoware/map_based_prediction/predictor_vru/path_cut_debug.hpp"
 
 #include <rclcpp/time.hpp>
 
