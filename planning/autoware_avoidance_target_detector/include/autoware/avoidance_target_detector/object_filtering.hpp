@@ -122,12 +122,12 @@ private:
     [[maybe_unused]] const Trajectory & trajectory) const override;
 };
 
-/** Filter Manager */
-
-class FilterManager
+/** Per-object avoidance target detector using Bayesian filters and hysteresis. */
+class AvoidanceTargetDetector
 {
 public:
-  explicit FilterManager(const PredictedObject & object, const rclcpp::Time & last_update_time);
+  explicit AvoidanceTargetDetector(
+    const PredictedObject & object, const rclcpp::Time & last_update_time);
 
   void observe_and_update_all(
     const rclcpp::Time & current_time, const PredictedObject & object,
@@ -146,7 +146,15 @@ public:
   [[nodiscard]] bool is_stationary() const { return stationary_filter_->get_posterior() > 0.5; }
   [[nodiscard]] bool is_deviated() const { return deviation_filter_->get_posterior() > 0.5; }
 
-  [[nodiscard]] bool is_target() const { return is_target_stamped_.second; }
+  [[nodiscard]] bool is_stationary_avoidance_target() const
+  {
+    return is_stationary_avoidance_target_stamped_.second;
+  }
+
+  [[nodiscard]] bool is_moving_vehicle() const
+  {
+    return is_moving_vehicle_stamped_.second;
+  }
 
   [[nodiscard]] bool is_stale(const rclcpp::Time & current_time) const
   {
@@ -165,13 +173,14 @@ private:
   std::unique_ptr<StationaryFilter> stationary_filter_;
   std::unique_ptr<DeviationFilter> deviation_filter_;
 
-  std::pair<rclcpp::Time, bool> is_target_stamped_;
+  std::pair<rclcpp::Time, bool> is_stationary_avoidance_target_stamped_;
+  std::pair<rclcpp::Time, bool> is_moving_vehicle_stamped_;
   rclcpp::Time stale_check_time_;
 
   bool is_initialized_{false};
 };
 
-using FilterManagerMap = std::map<std::string, FilterManager>;
+using AvoidanceTargetDetectorMap = std::map<std::string, AvoidanceTargetDetector>;
 
 /** Selects avoidance targets from predicted objects using per-object Bayesian filters. */
 class ObjectSelector
@@ -186,8 +195,10 @@ public:
     const rclcpp::Time & current_time, const PredictedObjects & objects,
     const Trajectory & trajectory, const RouteBounds & route_bounds);
 
+  [[nodiscard]] PredictedObjects get_driving_along_vehicles();
+
 private:
-  FilterManagerMap object_filters_;
+  AvoidanceTargetDetectorMap object_filters_;
 };
 
 /**

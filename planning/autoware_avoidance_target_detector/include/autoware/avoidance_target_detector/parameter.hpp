@@ -61,7 +61,7 @@ struct LateralDistanceFilterParams
   double tolerance_m{0.0};  ///< Margin outside left/right bounds [m].
 };
 
-/** Parameters controlling FilterManager target-state hysteresis and staleness. */
+/** Parameters controlling AvoidanceTargetDetector target-state hysteresis and staleness. */
 struct FilterManagerParams
 {
   static constexpr double stale_threshold_seconds = 1.0;

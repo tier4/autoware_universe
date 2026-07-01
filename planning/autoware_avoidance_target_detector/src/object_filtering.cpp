@@ -671,16 +671,17 @@ TwoClassFilter::Matrix2x2 DeviationFilter::transition_matrix(
   }};
 }
 
-FilterManager::FilterManager(const PredictedObject & object, const rclcpp::Time & last_update_time)
+AvoidanceTargetDetector::AvoidanceTargetDetector(
+  const PredictedObject & object, const rclcpp::Time & last_update_time)
 : target_filter_{std::make_unique<TargetFilter>(object, last_update_time)},
   stationary_filter_{std::make_unique<StationaryFilter>(object, last_update_time)},
   deviation_filter_{std::make_unique<DeviationFilter>(object, last_update_time)},
-  is_target_stamped_{last_update_time, false},
+  is_stationary_avoidance_target_stamped_{last_update_time, false},
   stale_check_time_{last_update_time}
 {
 }
 
-void FilterManager::observe_and_update_all(
+void AvoidanceTargetDetector::observe_and_update_all(
   const rclcpp::Time & current_time, const PredictedObject & object, const Trajectory & trajectory)
 {
   stale_check_time_ = current_time;
@@ -690,18 +691,21 @@ void FilterManager::observe_and_update_all(
   deviation_filter_->observe_and_update(current_time, object, trajectory);
 
   const bool is_target_now = is_object_of_interest() && is_stationary() && is_deviated();
+  const bool is_moving_vehicle_now = is_object_of_interest() && !is_stationary();
 
   if (!is_initialized_) {
-    is_target_stamped_.first = current_time;
-    is_target_stamped_.second = is_target_now;
+    is_stationary_avoidance_target_stamped_.first = current_time;
+    is_stationary_avoidance_target_stamped_.second = is_target_now;
+    is_moving_vehicle_stamped_.first = current_time;
+    is_moving_vehicle_stamped_.second = is_moving_vehicle_now;
     is_initialized_ = true;
     return;
   }
 
-  state_change_count_ = (is_target_now != is_target_stamped_.second) ? state_change_count_ + 1 : 0;
+  state_change_count_ = (is_target_now != is_stationary_avoidance_target_stamped_.second) ? state_change_count_ + 1 : 0;
 
   if (
-    rclcpp::Time(current_time) - rclcpp::Time(is_target_stamped_.first) <
+    rclcpp::Time(current_time) - rclcpp::Time(is_stationary_avoidance_target_stamped_.first) <
     rclcpp::Duration::from_seconds(FilterManagerParams::hysteresis_seconds)) {
     return;
   }
@@ -710,20 +714,22 @@ void FilterManager::observe_and_update_all(
     return;
   }
 
-  if (is_target_now && !is_target_stamped_.second) {
+  if (is_target_now && !is_stationary_avoidance_target_stamped_.second) {
     debug_log_ = std::string("Turned to target on due to \n") +
                  "is_object_of_interest: " + std::to_string(get_is_target_probability()) + "\n" +
                  "is_stationary: " + std::to_string(get_is_stationary_probability()) + "\n" +
                  "is_deviated: " + std::to_string(get_is_deviated_probability());
-  } else if (!is_target_now && is_target_stamped_.second) {
+  } else if (!is_target_now && is_stationary_avoidance_target_stamped_.second) {
     debug_log_ = std::string("Turned to non-target on due to \n") +
                  "is_object_of_interest: " + std::to_string(get_is_target_probability()) + "\n" +
                  "is_stationary: " + std::to_string(get_is_stationary_probability()) + "\n" +
                  "is_deviated: " + std::to_string(get_is_deviated_probability());
   }
 
-  is_target_stamped_.first = current_time;
-  is_target_stamped_.second = is_target_now;
+  is_stationary_avoidance_target_stamped_.first = current_time;
+  is_stationary_avoidance_target_stamped_.second = is_target_now;
+  is_moving_vehicle_stamped_.first = current_time;
+  is_moving_vehicle_stamped_.second = is_moving_vehicle_now;
 }
 
 PredictedObjects ObjectSelector::get_avoidance_targets(
@@ -750,7 +756,7 @@ PredictedObjects ObjectSelector::get_avoidance_targets(
       avoidance_targets.objects.begin(), avoidance_targets.objects.end(),
       [&](const PredictedObject & object) {
         const auto it = object_filters_.find(autoware_utils_uuid::to_hex_string(object.object_id));
-        return it == object_filters_.end() || !it->second.is_target();
+        return it == object_filters_.end() || !it->second.is_stationary_avoidance_target();
       }),
     avoidance_targets.objects.end());
 

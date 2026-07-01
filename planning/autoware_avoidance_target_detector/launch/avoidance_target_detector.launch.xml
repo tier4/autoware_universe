@@ -7,6 +7,7 @@
   <arg name="output_avoidance_targets" default="/planning/avoidance_target_detector/output/avoidance_targets"/>
   <arg name="debug_avoidance_targets" default="/planning/avoidance_target_detector/debug/avoidance_targets"/>
   <arg name="output_drivable_area" default="/planning/avoidance_target_detector/output/drivable_area"/>
+  <arg name="debug_near_segment_polygon" default="/planning/avoidance_target_detector/debug/near_segment_polygon"/>
   <arg name="vehicle_info_param_path" default="$(find-pkg-share j6_gen2_description)/config/vehicle_info.param.yaml"/>
 
   <node pkg="autoware_avoidance_target_detector" exec="autoware_avoidance_target_detector_node" name="avoidance_target_detector" output="screen">
@@ -18,6 +19,7 @@
     <remap from="~/output/avoidance_targets" to="$(var output_avoidance_targets)"/>
     <remap from="~/debug/avoidance_targets" to="$(var debug_avoidance_targets)"/>
     <remap from="~/output/drivable_area" to="$(var output_drivable_area)"/>
+    <remap from="~/debug/near_segment_polygon" to="$(var debug_near_segment_polygon)"/>
     <param name="longitudinal_distance_filter.tolerance_m" value="2.0"/>
     <param name="lateral_distance_filter.tolerance_m" value="1.0"/>
   </node>

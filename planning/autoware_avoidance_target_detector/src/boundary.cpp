@@ -19,6 +19,7 @@
 
 #include <autoware_planning_msgs/msg/path_point.hpp>
 #include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 
 #include <lanelet2_core/Attribute.h>
 #include <lanelet2_core/LaneletMap.h>
@@ -31,6 +32,7 @@
 #include <lanelet2_traffic_rules/TrafficRulesFactory.h>
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <set>
@@ -617,6 +619,108 @@ std::pair<lanelet::LineString2d, lanelet::LineString2d> ExtendedRouteHandler::bu
   }
 
   return std::make_pair(left_bound, right_bound);
+}
+
+std::optional<std::size_t> ExtendedRouteHandler::find_segment_index_for_lanelet(
+  const lanelet::Id lanelet_id) const
+{
+  const auto & segments = extended_lanelet_segments_.segments();
+  for (std::size_t i = 0; i < segments.size(); ++i) {
+    const auto & primitives = segments.at(i).siblings_included_primitives;
+    if (std::find(primitives.begin(), primitives.end(), lanelet_id) != primitives.end()) {
+      return i;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<std::size_t> ExtendedRouteHandler::find_segment_index_for_point(
+  const geometry_msgs::msg::Point & point) const
+{
+  const lanelet::BasicPoint2d search_point{point.x, point.y};
+
+  const auto searched_lanelets = route_map_->laneletLayer.nearest(search_point, 1);
+  if (searched_lanelets.empty()) {
+    return std::nullopt;
+  }
+
+  const auto & closest_lanelet = searched_lanelets.front();
+
+  return find_segment_index_for_lanelet(closest_lanelet.id());
+}
+
+std::vector<ExtendedLaneletSegments::Segment> ExtendedRouteHandler::get_near_segments(
+  const geometry_msgs::msg::Point & prev_end_point,
+  const geometry_msgs::msg::Point & following_end_point) const
+{
+  const auto start_idx = find_segment_index_for_point(prev_end_point);
+  const auto end_idx = find_segment_index_for_point(following_end_point);
+  if (!start_idx || !end_idx) {
+    return {};
+  }
+
+  if (*end_idx < *start_idx) {
+    return {};
+  }
+
+  const auto & all_segments = extended_lanelet_segments_.segments();
+  return {all_segments.begin() + static_cast<std::ptrdiff_t>(*start_idx),
+          all_segments.begin() + static_cast<std::ptrdiff_t>(*end_idx) + 1};
+}
+
+lanelet::BasicPolygon2d ExtendedRouteHandler::get_near_segment_polygon(
+  const geometry_msgs::msg::Point & prev_end_point,
+  const geometry_msgs::msg::Point & following_end_point) const
+{
+  const auto segments = get_near_segments(prev_end_point, following_end_point);
+  if (segments.empty()) {
+    return {};
+  }
+
+  std::vector<lanelet::LineString2d> left_bounds;
+  std::vector<lanelet::LineString2d> right_bounds;
+  left_bounds.reserve(segments.size());
+  right_bounds.reserve(segments.size());
+
+  for (const auto & segment : segments) {
+    if (segment.siblings_included_primitives.empty()) {
+      continue;
+    }
+    const auto bounds = get_primitive_set_bounds(segment.siblings_included_primitives);
+    if (bounds.first.empty() || bounds.second.empty()) {
+      continue;
+    }
+    left_bounds.push_back(bounds.first);
+    right_bounds.push_back(bounds.second.invert());
+  }
+
+  if (left_bounds.empty() || right_bounds.empty()) {
+    return {};
+  }
+
+  std::reverse(right_bounds.begin(), right_bounds.end());
+
+  const auto left_compound_bound = lanelet::CompoundLineString2d(left_bounds);
+  const auto right_compound_bound = lanelet::CompoundLineString2d(right_bounds);
+
+  lanelet::BasicLineString2d ring;
+  ring.reserve(left_compound_bound.size() + right_compound_bound.size() + 1);
+
+  for (const auto & point : left_compound_bound) {
+    ring.emplace_back(point.basicPoint2d());
+  }
+
+  for (const auto & point : right_compound_bound) {
+    ring.emplace_back(point.basicPoint2d());
+  }
+
+  if (ring.size() < 3) {
+    return {};
+  }
+
+  ring.emplace_back(ring.front());
+
+  return lanelet::BasicPolygon2d(ring);
 }
 
 Path to_path_msg(const RouteBounds & bounds, const Trajectory & trajectory)

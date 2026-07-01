@@ -20,6 +20,7 @@
 #include "autoware/avoidance_target_detector/parameter.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
 
+#include <autoware/trajectory/trajectory_point.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
@@ -27,6 +28,7 @@
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/path.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <memory>
 
@@ -38,6 +40,8 @@ using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Path;
 using autoware_planning_msgs::msg::Trajectory;
+using autoware_planning_msgs::msg::TrajectoryPoint;
+using visualization_msgs::msg::MarkerArray;
 
 /** ROS 2 node that detects and publishes avoidance target objects. */
 class AvoidanceTargetDetectorNode : public rclcpp::Node
@@ -56,6 +60,8 @@ private:
    */
   void on_objects(const PredictedObjects::ConstSharedPtr msg);
 
+  void update_ego_trajectory(const TrajectoryPoint & ego_point);
+
   rclcpp::Subscription<PredictedObjects>::SharedPtr sub_objects_;
   autoware_utils::InterProcessPollingSubscriber<Trajectory> sub_trajectory_{
     this, "~/input/trajectory"};
@@ -68,6 +74,7 @@ private:
 
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_avoidance_targets_;
   rclcpp::Publisher<Path>::SharedPtr pub_drivable_area_path_;
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_near_segment_polygon_;
 
   std::shared_ptr<ExtendedRouteHandler> extended_route_handler_;
   ObjectSelector object_selector_;
@@ -75,6 +82,9 @@ private:
   LaneletMapBin::ConstSharedPtr map_bin_;
   Trajectory::ConstSharedPtr trajectory_;
   LaneletRoute::ConstSharedPtr route_;
+
+  autoware::experimental::trajectory::Trajectory<TrajectoryPoint> ego_trajectory_;
+  bool ego_trajectory_built_{false};
 };
 
 }  // namespace autoware::avoidance_target_detector

@@ -14,6 +14,9 @@
 
 #include "autoware/avoidance_target_detector/node.hpp"
 
+#include <autoware/marker_utils/marker_conversion.hpp>
+#include <autoware_utils_visualization/marker_helper.hpp>
+
 #include <memory>
 
 namespace autoware::avoidance_target_detector
@@ -29,9 +32,41 @@ AvoidanceTargetDetectorNode::AvoidanceTargetDetectorNode(const rclcpp::NodeOptio
     "~/input/objects", rclcpp::QoS{1},
     std::bind(&AvoidanceTargetDetectorNode::on_objects, this, std::placeholders::_1))},
   pub_avoidance_targets_{create_publisher<PredictedObjects>("~/output/avoidance_targets", 1)},
-  pub_drivable_area_path_{create_publisher<Path>("~/output/drivable_area", 1)}
+  pub_drivable_area_path_{create_publisher<Path>("~/output/drivable_area", 1)},
+  pub_near_segment_polygon_{
+    create_publisher<MarkerArray>("~/debug/near_segment_polygon", rclcpp::QoS{1}.transient_local())}
 {
   declare_parameter<bool>("use_extended_route_bounds", true);
+}
+
+void AvoidanceTargetDetectorNode::update_ego_trajectory(const TrajectoryPoint & ego_point)
+{
+  namespace aw_trajectory = autoware::experimental::trajectory;
+  constexpr double k_max_ego_trajectory_length_m = 100.0;
+  constexpr std::size_t k_max_ego_trajectory_points = 100;
+
+  std::vector<TrajectoryPoint> points;
+  if (ego_trajectory_built_) {
+    points = ego_trajectory_.restore();
+  }
+  points.push_back(ego_point);
+
+  while (points.size() > k_max_ego_trajectory_points) {
+    points.erase(points.begin());
+  }
+
+  const auto built = aw_trajectory::Trajectory<TrajectoryPoint>::Builder{}.build(points);
+  if (!built) {
+    return;
+  }
+
+  ego_trajectory_ = *built;
+  ego_trajectory_built_ = true;
+
+  while (ego_trajectory_.length() > k_max_ego_trajectory_length_m) {
+    const double excess = ego_trajectory_.length() - k_max_ego_trajectory_length_m;
+    ego_trajectory_.crop(excess, k_max_ego_trajectory_length_m);
+  }
 }
 
 /**
@@ -75,11 +110,31 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
     return;
   }
 
+  if (!trajectory_->points.empty()) {
+    update_ego_trajectory(trajectory_->points.front());
+  }
+
   const auto use_extended_bounds = get_parameter("use_extended_route_bounds").as_bool();
   const auto & route_bounds = use_extended_bounds
                                 ? extended_route_handler_->get_extended_route_bounds()
                                 : extended_route_handler_->get_original_route_bounds();
   pub_drivable_area_path_->publish(to_path_msg(route_bounds, *trajectory_));
+
+  if (ego_trajectory_built_ && !trajectory_msg.points.empty()) {
+    const auto ego_points = ego_trajectory_.restore();
+    if (!ego_points.empty()) {
+      const auto near_segment_polygon = extended_route_handler_->get_near_segment_polygon(
+        ego_points.front().pose.position, trajectory_msg.points.back().pose.position);
+      if (near_segment_polygon.size() >= 3) {
+        using autoware_utils_visualization::create_marker_color;
+        using autoware_utils_visualization::create_marker_scale;
+        pub_near_segment_polygon_->publish(
+          autoware::experimental::marker_utils::create_lanelet_polygon_marker_array(
+            near_segment_polygon, get_clock()->now(), "near_segment_polygon", 0,
+            create_marker_scale(0.2, 0.0, 0.0), create_marker_color(1.0, 0.5, 0.0, 0.5), 0.0));
+      }
+    }
+  }
 
   const auto avoidance_targets =
     object_selector_.get_avoidance_targets(get_clock()->now(), *msg, trajectory_msg, route_bounds);

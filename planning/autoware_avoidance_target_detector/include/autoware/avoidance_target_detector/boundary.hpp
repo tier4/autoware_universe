@@ -22,8 +22,11 @@
 #include <autoware_planning_msgs/msg/path.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 
+#include <geometry_msgs/msg/point.hpp>
+
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/LineString.h>
+#include <lanelet2_core/primitives/Polygon.h>
 #include <lanelet2_routing/RoutingGraph.h>
 #include <lanelet2_traffic_rules/GenericTrafficRules.h>
 
@@ -148,7 +151,21 @@ public:
     return extended_route_bounds_;
   }
 
+  [[nodiscard]] lanelet::BasicPolygon2d get_near_segment_polygon(
+    const geometry_msgs::msg::Point & prev_end_point,
+    const geometry_msgs::msg::Point & following_end_point) const;
+
 private:
+  [[nodiscard]] std::optional<std::size_t> find_segment_index_for_point(
+    const geometry_msgs::msg::Point & point) const;
+
+  [[nodiscard]] std::optional<std::size_t> find_segment_index_for_lanelet(
+    const lanelet::Id lanelet_id) const;
+
+  [[nodiscard]] std::vector<ExtendedLaneletSegments::Segment> get_near_segments(
+    const geometry_msgs::msg::Point & prev_end_point,
+    const geometry_msgs::msg::Point & following_end_point) const;
+
   [[nodiscard]] RouteBounds build_route_bounds(
     const std::vector<const std::vector<int64_t> *> & segment_primitives) const;
 
