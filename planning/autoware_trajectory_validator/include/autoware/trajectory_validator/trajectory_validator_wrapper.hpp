@@ -15,8 +15,8 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__TRAJECTORY_VALIDATOR_WRAPPER_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__TRAJECTORY_VALIDATOR_WRAPPER_HPP_
 
+#include "autoware/trajectory_validator/detail/diagnostic.hpp"
 #include "autoware/trajectory_validator/detail/trajectory_validator.hpp"
-#include "autoware/trajectory_validator/detail/trajectory_validator_diagnostic.hpp"
 #include "autoware/trajectory_validator/detail/trajectory_validator_report.hpp"
 #include "autoware/trajectory_validator/detail/validator_context.hpp"
 #include "autoware/trajectory_validator/pseudo_emergency_stop_handler.hpp"
@@ -96,8 +96,10 @@ private:
   void update_parameters();
 
   /**
-   * @brief Constructs the diagnostic handler from bindings parameters and active plugin names.
-   * @param node_parameters_interface Parameter interface used to read the bindings parameter.
+   * @brief Constructs the diagnostic handler from configured_actions parameters and active plugin
+   * names.
+   * @param node_parameters_interface Parameter interface used to read the configured_actions
+   * parameter.
    */
   std::unique_ptr<TrajectoryValidatorDiagnostic> init_diagnostic(
     rclcpp::node_interfaces::NodeParametersInterface::SharedPtr node_parameters_interface) const;
@@ -111,7 +113,8 @@ private:
   /**
    * @brief Loads a single plugin by class name and configures it.
    * @param name Plugin class name to load.
-   * @param is_shadow_mode If true, plugin results are logged but not enforced.
+   * @param is_shadow_mode If true, plugin results are logged but do not affect trajectory
+   * selection.
    */
   void load_metric(const std::string & name, const bool is_shadow_mode = false);
 

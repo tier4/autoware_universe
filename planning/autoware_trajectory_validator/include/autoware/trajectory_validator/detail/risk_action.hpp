@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_ACTION_HPP_
 #define AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_ACTION_HPP_
 
-#include <autoware_trajectory_validator/msg/metric_report.hpp>
+#include <autoware_trajectory_validator/msg/risk_level.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
@@ -30,20 +30,29 @@ enum class Action : uint8_t { NONE = 0, COMFORTABLE = 1, MODERATE = 2, EMERGENCY
 /**
  * @brief Translates a MetricReport.level into an Action.
  * @note This is the ONLY place MetricReport level values (OK/WARN/ERROR) are named.
- * @param metric_level Level value from MetricReport (OK/WARN/ERROR).
+ * @param risk_level Level value from MetricReport (OK/WARN/ERROR).
  */
-inline Action to_action(uint8_t metric_level)
+inline Action convert_risk_level_to_action(uint8_t risk_level)
 {
-  using autoware_trajectory_validator::msg::MetricReport;
-  if (metric_level == MetricReport::ERROR) return Action::MODERATE;
-  return Action::NONE;
+  using autoware_trajectory_validator::msg::RiskLevel;
+
+  switch (risk_level) {
+    case RiskLevel::HIGH_CAUTION:
+      return Action::COMFORTABLE;
+    case RiskLevel::DANGER:
+      return Action::MODERATE;
+    case RiskLevel::FATAL:
+      return Action::EMERGENCY;
+    default:
+      return Action::NONE;
+  }
 }
 
 /**
  * @brief Parses an action string from a parameter into an Action value.
  * @param action_str One of "none", "comfortable", "moderate", "emergency".
  */
-inline Action parse_action(const std::string & action_str)
+inline Action parse_action_string_to_enum(const std::string & action_str)
 {
   if (action_str == "comfortable") return Action::COMFORTABLE;
   if (action_str == "moderate") return Action::MODERATE;
@@ -55,13 +64,12 @@ inline Action parse_action(const std::string & action_str)
  * @brief Maps an Action to its published DiagnosticStatus level.
  * @param action Action to map.
  */
-inline int8_t published_level_of(Action action)
+inline int8_t map_action_to_diagnostic_level(Action action)
 {
   switch (action) {
     case Action::NONE:
       return diagnostic_msgs::msg::DiagnosticStatus::OK;
     case Action::COMFORTABLE:
-      return diagnostic_msgs::msg::DiagnosticStatus::WARN;
     case Action::MODERATE:
     case Action::EMERGENCY:
       return diagnostic_msgs::msg::DiagnosticStatus::ERROR;

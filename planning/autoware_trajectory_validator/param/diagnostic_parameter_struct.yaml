@@ -1,11 +1,11 @@
 trajectory_validator_diagnostic:
-  bindings:
+  configured_actions:
     type: string_array
     default_value:
       - uncrossable_boundary_departure_filter:moderate:trajectory_validator_uncrossable_boundary_departure_danger
     description: >-
-      Each entry defines one diagnostic status binding encoded as
-      filter_name:action:diagnostic_name, where filter_name is the validator short name
+      Each entry defines one configured_action encoded as
+      filter_name:action:diagnostic_name, where filter_name is the filter short name
       (from plugin->get_name()), action is one of none/comfortable/moderate/emergency, and
       diagnostic_name is the status name to publish when the action fires.
     read_only: true

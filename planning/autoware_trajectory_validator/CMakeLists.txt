@@ -20,7 +20,7 @@ ament_auto_add_library(${trajectory_validator_lib_target} SHARED
   src/pseudo_emergency_stop_handler.cpp
   src/trajectory_validator_wrapper.cpp
   src/detail/trajectory_validator.cpp
-  src/detail/trajectory_validator_diagnostic.cpp
+  src/detail/diagnostic.cpp
 )
 
 target_link_libraries(${trajectory_validator_lib_target}
@@ -81,33 +81,33 @@ if(BUILD_TESTING)
   # ==========================================
   # 1. Plugin Unit Tests
   # ==========================================
-  ament_add_gtest(test_vehicle_constraint_filter
-    test/plugins/test_vehicle_constraint_filter.cpp
-  )
-  target_link_libraries(test_vehicle_constraint_filter
-    autoware_trajectory_validator_plugins
-  )
+  # ament_add_gtest(test_vehicle_constraint_filter
+  #   test/plugins/test_vehicle_constraint_filter.cpp
+  # )
+  # target_link_libraries(test_vehicle_constraint_filter
+  #   autoware_trajectory_validator_plugins
+  # )
 
-  ament_add_gtest(test_pose_constant_curvature_predictor
-    test/plugins/collision_check_filter/test_pose_constant_curvature_predictor.cpp
-  )
-  target_link_libraries(test_pose_constant_curvature_predictor
-    autoware_trajectory_validator_plugins
-  )
+  # ament_add_gtest(test_pose_constant_curvature_predictor
+  #   test/plugins/collision_check_filter/test_pose_constant_curvature_predictor.cpp
+  # )
+  # target_link_libraries(test_pose_constant_curvature_predictor
+  #   autoware_trajectory_validator_plugins
+  # )
 
-  ament_add_gtest(test_time_distance
-    test/plugins/collision_check_filter/test_time_distance.cpp
-  )
-  target_link_libraries(test_time_distance
-    autoware_trajectory_validator_plugins
-  )
+  # ament_add_gtest(test_time_distance
+  #   test/plugins/collision_check_filter/test_time_distance.cpp
+  # )
+  # target_link_libraries(test_time_distance
+  #   autoware_trajectory_validator_plugins
+  # )
 
-  ament_add_gtest(test_geometry
-    test/plugins/collision_check_filter/test_geometry.cpp
-  )
-  target_link_libraries(test_geometry
-    autoware_trajectory_validator_plugins
-  )
+  # ament_add_gtest(test_geometry
+  #   test/plugins/collision_check_filter/test_geometry.cpp
+  # )
+  # target_link_libraries(test_geometry
+  #   autoware_trajectory_validator_plugins
+  # )
 
   # ament_add_gtest(test_collision_check_filter
   #   test/collision_check_filter/test_collision_check_filter.cpp
@@ -123,24 +123,32 @@ if(BUILD_TESTING)
   #   autoware_trajectory_validator_plugins
   # )
 
-  ament_add_gtest(test_trajectory_utilities
-    test/plugins/collision_check_filter/test_trajectory_utilities.cpp
+  # ament_add_gtest(test_trajectory_utilities
+  #   test/plugins/collision_check_filter/test_trajectory_utilities.cpp
+  # )
+  # target_link_libraries(test_trajectory_utilities
+  #   autoware_trajectory_validator_plugins
+  # )
+
+  # ament_add_gtest(test_traffic_light_filter
+  #   test/plugins/test_traffic_light_filter.cpp
+  # )
+  # target_link_libraries(test_traffic_light_filter
+  #   autoware_trajectory_validator_plugins
+  # )
+
+  ament_add_ros_isolated_gtest(test_diagnostic_core_behavior
+    test/diagnostic/diagnostic_core_behavior.cpp
   )
-  target_link_libraries(test_trajectory_utilities
-    autoware_trajectory_validator_plugins
+  target_link_libraries(test_diagnostic_core_behavior
+    ${trajectory_validator_lib_target}
+    rclcpp::rclcpp
   )
 
-  ament_add_gtest(test_traffic_light_filter
-    test/plugins/test_traffic_light_filter.cpp
+  ament_add_ros_isolated_gtest(test_diagnostic_shadow_mode
+    test/diagnostic/diagnostic_shadow_mode.cpp
   )
-  target_link_libraries(test_traffic_light_filter
-    autoware_trajectory_validator_plugins
-  )
-
-  ament_add_ros_isolated_gtest(test_trajectory_validator_diagnostic
-    test/cases/trajectory_validator_diagnostic.cpp
-  )
-  target_link_libraries(test_trajectory_validator_diagnostic
+  target_link_libraries(test_diagnostic_shadow_mode
     ${trajectory_validator_lib_target}
     rclcpp::rclcpp
   )

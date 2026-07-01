@@ -6,10 +6,10 @@
     "trajectory_validator_diagnostic": {
       "type": "object",
       "properties": {
-        "bindings": {
+        "configured_actions": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "List of diagnostic status bindings. Each entry encodes one binding as filter_name:action:diagnostic_name, where filter_name is the validator short name returned by plugin->get_name(), action is one of none/comfortable/moderate/emergency, and diagnostic_name is the DiagnosticStatus name to publish when that action fires on the best candidate trajectory.",
+          "description": "List of configured_actions. Each entry encodes one configured_action as filter_name:action:diagnostic_name, where filter_name is the filter short name returned by plugin->get_name(), action is one of none/comfortable/moderate/emergency, and diagnostic_name is the DiagnosticStatus name to publish when that action fires on the best candidate trajectory.",
           "default": [
             "uncrossable_boundary_departure_filter:moderate:trajectory_validator_uncrossable_boundary_departure_danger"
           ]

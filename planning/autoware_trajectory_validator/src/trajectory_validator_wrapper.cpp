@@ -157,8 +157,6 @@ CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
 
   publish_validation_reports(report.validation_reports);
   publish_planning_factor(report.planning_factors);
-  validator_diagnostic_ptr_->update_and_publish(
-    report.validation_reports, node_ptr_->get_clock()->now());
   publish_diagnostic(report.validation_reports);
 
   publish_debug(report.evaluation_tables, report.processing_time_ms, context.odometry->pose.pose);
@@ -312,12 +310,13 @@ std::unique_ptr<TrajectoryValidatorDiagnostic> TrajectoryValidatorWrapper::init_
 
   trajectory_validator_diagnostic::ParamListener diag_param_listener(node_parameters_interface);
   const auto diag_params = diag_param_listener.get_params();
-  const auto filter_status_map = make_filter_status_map(diag_params.bindings);
-  auto diag_by_name =
-    build_diagnostic_interface_map(*node_ptr_, filter_status_map, diag_params.no_candidate_name);
+  const auto filter_configured_actions_map =
+    make_filter_configured_actions_map(diag_params.configured_actions);
+  auto diag_by_name = build_diagnostic_interface_map(
+    *node_ptr_, filter_configured_actions_map, diag_params.no_candidate_name);
 
   return std::make_unique<TrajectoryValidatorDiagnostic>(
-    filter_status_map, diag_params, active_filter_names, std::move(diag_by_name));
+    filter_configured_actions_map, diag_params, active_filter_names, std::move(diag_by_name));
 }
 
 void TrajectoryValidatorWrapper::publish_diagnostic(const std::vector<ValidationReport> & reports)
