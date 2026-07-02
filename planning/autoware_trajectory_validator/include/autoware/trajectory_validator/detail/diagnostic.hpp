@@ -111,8 +111,8 @@ public:
    * @brief Constructs the diagnostic handler with pre-built DiagnosticsInterface objects.
    * @param filter_configured_actions_map Mapping from filter_name to its configured_actions.
    * @param diagnostic_params Diagnostic parameters; no_candidate_name is read from here.
-   * @param active_filter_names Short filter_name strings (from plugin->get_name()) that are
-   *        active. Only metrics from these filters contribute to action aggregation.
+   * @param active_filter_names Filter names (from plugin->get_name()) of active (non-shadow)
+   *        filters. Only metrics from these filters contribute to action aggregation.
    *        An empty set means all filters are considered active.
    * @param diag_by_name Pre-built DiagnosticsInterface map (use build_diagnostic_interface_map).
    */
@@ -142,21 +142,22 @@ private:
    * @param filter_current_action Current action level reached by each filter (minimum across all
    *        candidates: NONE if the filter passed on at least one candidate, otherwise the worst
    *        level seen).
-   * @param active Output map of status name to published level.
+   * @param diag_level_by_status_name Output map of status name to DiagnosticStatus level.
    */
-  void collect_active_statuses(
+  void get_active_statuses(
     const std::unordered_map<std::string, Action> & filter_current_action,
-    std::unordered_map<std::string, int8_t> & active) const;
+    std::unordered_map<std::string, int8_t> & diag_level_by_status_name) const;
 
   /**
    * @brief Resets every tracked DiagnosticsInterface, applies levels, and publishes.
-   * @param active Complete map of every tracked status name to its level for this cycle.
-   *        Entries at OK are published without a message; non-OK entries publish with a
-   *        "<name> triggered" message.
+   * @param diag_level_by_status_name Complete map of every tracked status name to its
+   *        DiagnosticStatus level for this cycle. Entries at OK are published without a
+   *        message; non-OK entries publish with a "<name> triggered" message.
    * @param stamp Timestamp forwarded to each publish call.
    */
   void publish_all(
-    const std::unordered_map<std::string, int8_t> & active, const rclcpp::Time & stamp);
+    const std::unordered_map<std::string, int8_t> & diag_level_by_status_name,
+    const rclcpp::Time & stamp);
 
   FilterConfiguredActionsMap filter_configured_actions_map_;
   std::unordered_set<std::string> active_filter_names_;

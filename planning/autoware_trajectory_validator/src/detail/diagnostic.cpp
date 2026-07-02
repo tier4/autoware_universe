@@ -62,9 +62,9 @@ TrajectoryValidatorDiagnostic::TrajectoryValidatorDiagnostic(
 {
 }
 
-void TrajectoryValidatorDiagnostic::collect_active_statuses(
+void TrajectoryValidatorDiagnostic::get_active_statuses(
   const std::unordered_map<std::string, Action> & filter_current_action,
-  std::unordered_map<std::string, int8_t> & active) const
+  std::unordered_map<std::string, int8_t> & diag_level_by_status_name) const
 {
   const auto trigger_matching_status = [&](const std::string & name, Action action) {
     const auto map_it = filter_configured_actions_map_.find(name);
@@ -73,8 +73,8 @@ void TrajectoryValidatorDiagnostic::collect_active_statuses(
       // Each configured_action fires only at its exact action level so MODERATE and EMERGENCY
       // statuses trigger independent diagnostic responses rather than both firing at EMERGENCY.
       if (
-        !status_name.empty() && configured_action != Action::NONE && configured_action == action) {
-        active[status_name] = map_action_to_diagnostic_level(configured_action);
+        !status_name.empty() && configured_action != Action::NONE && action == configured_action) {
+        diag_level_by_status_name[status_name] = map_action_to_diagnostic_level(configured_action);
       }
     }
   };
@@ -90,12 +90,13 @@ void TrajectoryValidatorDiagnostic::update_and_publish(
   const std::vector<autoware_trajectory_validator::msg::ValidationReport> & reports,
   const rclcpp::Time & stamp)
 {
-  // Within one candidate: take the worst (max) action per filter.
-  // A filter may produce multiple metrics for the same candidate; the worst one is taken.
+  // Within one candidate: returns most severe action for each filter.
+  // A filter may produce multiple metrics for the same candidate; the most severe one is taken.
   const auto compute_candidate_traj_action = [&](const auto & report) {
     std::unordered_map<std::string, Action> candidate_traj_action;
     for (const auto & metric : report.metrics) {
-      // Skip metrics from shadow-mode filters (those not in active_filter_names_).
+      // Skip metrics from shadow-mode filters (those not in
+      // active_filter_names_).
       if (!active_filter_names_.empty() && !active_filter_names_.count(metric.validator_name)) {
         continue;
       }
@@ -122,16 +123,17 @@ void TrajectoryValidatorDiagnostic::update_and_publish(
       }
     };
 
-  // Pre-fill every tracked status at OK. Active filters that trigger will override their entry
-  // to ERROR below. Shadow filters are skipped during aggregation so their entry stays at OK.
-  std::unordered_map<std::string, int8_t> active;
-  for (const auto & entry : diag_by_name_) {
-    active[entry.first] = diagnostic_msgs::msg::DiagnosticStatus::OK;
+  // Pre-fill every tracked status at OK. Active filters that trigger will override their
+  // status_name to ERROR below. Shadow filters are skipped during aggregation so their status_name
+  // stays at OK.
+  std::unordered_map<std::string, int8_t> diag_level_by_status_name;
+  for (const auto & status_name : diag_by_name_) {
+    diag_level_by_status_name[status_name.first] = diagnostic_msgs::msg::DiagnosticStatus::OK;
   }
 
   if (reports.empty()) {
     if (!no_candidate_name_.empty()) {
-      active[no_candidate_name_] = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+      diag_level_by_status_name[no_candidate_name_] = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
     }
   } else {
     std::unordered_map<std::string, Action> filter_current_action;
@@ -139,18 +141,19 @@ void TrajectoryValidatorDiagnostic::update_and_publish(
       accumulate_best_action_across_all_candidates(
         filter_current_action, compute_candidate_traj_action(report));
     }
-    collect_active_statuses(filter_current_action, active);
+    get_active_statuses(filter_current_action, diag_level_by_status_name);
   }
 
-  publish_all(active, stamp);
+  publish_all(diag_level_by_status_name, stamp);
 }
 
 void TrajectoryValidatorDiagnostic::publish_all(
-  const std::unordered_map<std::string, int8_t> & active, const rclcpp::Time & stamp)
+  const std::unordered_map<std::string, int8_t> & diag_level_by_status_name,
+  const rclcpp::Time & stamp)
 {
   for (auto & [name, diag] : diag_by_name_) {
     diag->clear();
-    const auto level = active.at(name);
+    const auto level = diag_level_by_status_name.at(name);
     if (level != diagnostic_msgs::msg::DiagnosticStatus::OK) {
       diag->update_level_and_message(level, name + " triggered");
     }
