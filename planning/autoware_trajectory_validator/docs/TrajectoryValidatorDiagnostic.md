@@ -77,10 +77,10 @@ ValidationReport[]  (one entry per candidate trajectory)
 
 **LOW_CAUTION vs DANGER example.** Two candidates — A has one filter at `LOW_CAUTION`, B has one filter at `DANGER`:
 
-| Candidate | filter_x level | Action                                |
-| --------- | -------------- | ------------------------------------- |
-| A         | `LOW_CAUTION`  | `NONE` (LOW_CAUTION maps to NONE)     |
-| B         | `DANGER`       | `MODERATE`                            |
+| Candidate | filter_x level | Action                            |
+| --------- | -------------- | --------------------------------- |
+| A         | `LOW_CAUTION`  | `NONE` (LOW_CAUTION maps to NONE) |
+| B         | `DANGER`       | `MODERATE`                        |
 
 filter_x best action = `NONE` (minimum of `NONE` and `MODERATE`). No status fires — the filter passes on at least one candidate.
 
@@ -154,7 +154,7 @@ Each entry is a colon-separated triple:
 
 | Field                    | Description                                                                                                  |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `filter_name`            | the name returned by `plugin->get_name()` — lowercase snake_case                                            |
+| `filter_name`            | the name returned by `plugin->get_name()` — lowercase snake_case                                             |
 | `action`                 | one of `none`, `comfortable`, `moderate`, `emergency`                                                        |
 | `diagnostic_status_name` | the name published in `DiagnosticStatus.name` (without the node-name prefix added by `DiagnosticsInterface`) |
 
