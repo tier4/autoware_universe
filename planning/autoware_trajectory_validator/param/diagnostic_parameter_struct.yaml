@@ -9,7 +9,7 @@ trajectory_validator_diagnostic:
       (from plugin->get_name()), action is one of none/comfortable/moderate/emergency, and
       diagnostic_name is the status name to publish when the action fires.
     read_only: true
-  no_candidate_name:
+  no_candidates_diag_status_name:
     type: string
     default_value: trajectory_validator_no_candidate_trajectory
     description: >-

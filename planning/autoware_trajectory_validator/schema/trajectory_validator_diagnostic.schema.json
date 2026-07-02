@@ -14,7 +14,7 @@
             "uncrossable_boundary_departure_filter:moderate:trajectory_validator_uncrossable_boundary_departure_danger"
           ]
         },
-        "no_candidate_name": {
+        "no_candidates_diag_status_name": {
           "type": "string",
           "description": "Diagnostic status name published at ERROR when no candidate trajectory is available. Set to an empty string to disable this status.",
           "default": "trajectory_validator_no_candidate_trajectory"

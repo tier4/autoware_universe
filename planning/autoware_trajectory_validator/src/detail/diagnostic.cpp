@@ -29,7 +29,7 @@ namespace autoware::trajectory_validator
 
 DiagnosticInterfaceMap build_diagnostic_interface_map(
   rclcpp::Node & node, const FilterConfiguredActionsMap & filter_configured_actions_map,
-  const std::string & no_candidate_name)
+  const std::string & no_candidates_diag_status_name)
 {
   DiagnosticInterfaceMap diag_by_name;
 
@@ -47,7 +47,7 @@ DiagnosticInterfaceMap build_diagnostic_interface_map(
     }
   }
 
-  register_status(no_candidate_name);
+  register_status(no_candidates_diag_status_name);
   return diag_by_name;
 }
 
@@ -57,7 +57,7 @@ TrajectoryValidatorDiagnostic::TrajectoryValidatorDiagnostic(
   const std::unordered_set<std::string> & active_filter_names, DiagnosticInterfaceMap diag_by_name)
 : filter_configured_actions_map_(std::move(filter_configured_actions_map)),
   active_filter_names_(active_filter_names),
-  no_candidate_name_(diagnostic_params.no_candidate_name),
+  no_candidates_diag_status_name_(diagnostic_params.no_candidates_diag_status_name),
   diag_by_name_(std::move(diag_by_name))
 {
 }
@@ -132,8 +132,9 @@ void TrajectoryValidatorDiagnostic::update_and_publish(
   }
 
   if (reports.empty()) {
-    if (!no_candidate_name_.empty()) {
-      diag_level_by_status_name[no_candidate_name_] = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    if (!no_candidates_diag_status_name_.empty()) {
+      diag_level_by_status_name[no_candidates_diag_status_name_] =
+        diagnostic_msgs::msg::DiagnosticStatus::ERROR;
     }
   } else {
     std::unordered_map<std::string, Action> filter_current_action;

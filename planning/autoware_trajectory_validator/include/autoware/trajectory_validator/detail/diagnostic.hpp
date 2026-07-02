@@ -89,14 +89,15 @@ inline FilterConfiguredActionsMap make_filter_configured_actions_map(
 
 /**
  * @brief Creates one DiagnosticsInterface per distinct non-empty status name found in
- *        filter_configured_actions_map, plus one for no_candidate_name if non-empty.
+ *        filter_configured_actions_map, plus one for no_candidates_diag_status_name if non-empty.
  * @param node ROS 2 node used for publisher creation.
  * @param filter_configured_actions_map Mapping from filter_name to its configured_actions.
- * @param no_candidate_name Status name published when no candidate trajectory is available.
+ * @param no_candidates_diag_status_name Status name published when no candidate trajectory is
+ *        available.
  */
 DiagnosticInterfaceMap build_diagnostic_interface_map(
   rclcpp::Node & node, const FilterConfiguredActionsMap & filter_configured_actions_map,
-  const std::string & no_candidate_name);
+  const std::string & no_candidates_diag_status_name);
 
 /**
  * @brief Aggregates ValidationReports into a per-trajectory action and republishes every tracked
@@ -110,7 +111,8 @@ public:
   /**
    * @brief Constructs the diagnostic handler with pre-built DiagnosticsInterface objects.
    * @param filter_configured_actions_map Mapping from filter_name to its configured_actions.
-   * @param diagnostic_params Diagnostic parameters; no_candidate_name is read from here.
+   * @param diagnostic_params Diagnostic parameters; no_candidates_diag_status_name is read from
+   *        here.
    * @param active_filter_names Filter names (from plugin->get_name()) of active (non-shadow)
    *        filters. Only metrics from these filters contribute to action aggregation.
    *        An empty set means all filters are considered active.
@@ -161,7 +163,7 @@ private:
 
   FilterConfiguredActionsMap filter_configured_actions_map_;
   std::unordered_set<std::string> active_filter_names_;
-  std::string no_candidate_name_;
+  std::string no_candidates_diag_status_name_;
   DiagnosticInterfaceMap diag_by_name_;
 };
 

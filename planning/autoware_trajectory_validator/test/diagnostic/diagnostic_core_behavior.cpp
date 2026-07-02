@@ -205,7 +205,7 @@ TEST_F(TrajectoryValidatorDiagnosticTest, EmptyNameNoStatusFired)
   EXPECT_TRUE(h.all_statuses().empty());
 }
 
-// Test 9: No reports -> no_candidate_name fires at ERROR
+// Test 9: No reports -> no_candidates_diag_status_name fires at ERROR
 TEST_F(TrajectoryValidatorDiagnosticTest, NoReportsFiresNoCandidateName)
 {
   DiagHarness h("t9_node");
@@ -218,7 +218,7 @@ TEST_F(TrajectoryValidatorDiagnosticTest, NoReportsFiresNoCandidateName)
   EXPECT_EQ(status->level, DiagnosticStatus::ERROR);
 }
 
-// Test 9b: No reports, empty no_candidate_name -> nothing fires
+// Test 9b: No reports, empty no_candidates_diag_status_name -> nothing fires
 TEST_F(TrajectoryValidatorDiagnosticTest, NoReportsEmptyNoCandidateNameNothing)
 {
   DiagHarness h("t9b_node");

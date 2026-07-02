@@ -313,7 +313,7 @@ std::unique_ptr<TrajectoryValidatorDiagnostic> TrajectoryValidatorWrapper::init_
   const auto filter_configured_actions_map =
     make_filter_configured_actions_map(diag_params.configured_actions);
   auto diag_by_name = build_diagnostic_interface_map(
-    *node_ptr_, filter_configured_actions_map, diag_params.no_candidate_name);
+    *node_ptr_, filter_configured_actions_map, diag_params.no_candidates_diag_status_name);
 
   return std::make_unique<TrajectoryValidatorDiagnostic>(
     filter_configured_actions_map, diag_params, active_filter_names, std::move(diag_by_name));

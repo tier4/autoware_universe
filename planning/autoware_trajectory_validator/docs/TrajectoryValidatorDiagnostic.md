@@ -122,7 +122,7 @@ No configured_action fires — there is a safe candidate available (B).
 
 ### No candidate trajectories
 
-When the `ValidationReport` array is empty (the generator produced no candidates), the class publishes the `no_candidate_name` status at `ERROR`. This name is fixed as `"trajectory_validator_no_candidate_trajectory"` in `TrajectoryValidatorWrapper`.
+When the `ValidationReport` array is empty (the generator produced no candidates), the class publishes the `no_candidates_diag_status_name` status at `ERROR`. This name is fixed as `"trajectory_validator_no_candidate_trajectory"` in `TrajectoryValidatorWrapper`.
 
 ### Shadow-mode filters
 
@@ -158,7 +158,7 @@ Each entry is a colon-separated triple:
 | `action`                 | one of `none`, `comfortable`, `moderate`, `emergency`                                                        |
 | `diagnostic_status_name` | the name published in `DiagnosticStatus.name` (without the node-name prefix added by `DiagnosticsInterface`) |
 
-The class creates one `DiagnosticsInterface` publisher for each distinct `diagnostic_status_name` found in the configured_actions, plus one for `no_candidate_name`. This preset is built once at startup and never changes at runtime.
+The class creates one `DiagnosticsInterface` publisher for each distinct `diagnostic_status_name` found in the configured_actions, plus one for `no_candidates_diag_status_name`. This preset is built once at startup and never changes at runtime.
 
 ### Finding the filter name
 

@@ -87,12 +87,14 @@ inline const DiagnosticStatus * find_status(
 }
 
 inline TrajectoryValidatorDiagnostic make_diag(
-  rclcpp::Node & node, FilterConfiguredActionsMap filter_map, std::string no_candidate_name,
+  rclcpp::Node & node, FilterConfiguredActionsMap filter_map,
+  std::string no_candidates_diag_status_name,
   const std::unordered_set<std::string> & active_filter_names = {})
 {
   trajectory_validator_diagnostic::Params params;
-  params.no_candidate_name = no_candidate_name;
-  auto diag_by_name = build_diagnostic_interface_map(node, filter_map, no_candidate_name);
+  params.no_candidates_diag_status_name = no_candidates_diag_status_name;
+  auto diag_by_name =
+    build_diagnostic_interface_map(node, filter_map, no_candidates_diag_status_name);
   return {std::move(filter_map), params, active_filter_names, std::move(diag_by_name)};
 }
 
