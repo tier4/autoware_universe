@@ -39,16 +39,25 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
-  MetricReport check_speed(const TrajectoryPoints & traj_points) const;
-  MetricReport check_acceleration(const TrajectoryPoints & traj_points) const;
-  MetricReport check_deceleration(const TrajectoryPoints & traj_points) const;
-  MetricReport check_steering_angle(const TrajectoryPoints & traj_points) const;
-  MetricReport check_steering_rate(const TrajectoryPoints & traj_points) const;
+  MetricReport check_speed(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
+  MetricReport check_lanelet_speed_limit(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
+  MetricReport check_acceleration(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
+  MetricReport check_deceleration(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
+  MetricReport check_steering_angle(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
+  MetricReport check_steering_rate(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
 
-  using Checker = MetricReport (TrajectoryFeasibilityFilter::*)(const TrajectoryPoints &) const;
+  using Checker = MetricReport (TrajectoryFeasibilityFilter::*)(
+    const TrajectoryPoints &, const FilterContext &) const;
 
-  inline static const std::array<Checker, 5> checkers_ = {{
+  inline static const std::array<Checker, 6> checkers_ = {{
     &TrajectoryFeasibilityFilter::check_speed,
+    &TrajectoryFeasibilityFilter::check_lanelet_speed_limit,
     &TrajectoryFeasibilityFilter::check_acceleration,
     &TrajectoryFeasibilityFilter::check_deceleration,
     &TrajectoryFeasibilityFilter::check_steering_angle,

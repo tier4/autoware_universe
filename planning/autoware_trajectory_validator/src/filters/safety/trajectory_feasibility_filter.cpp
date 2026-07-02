@@ -14,10 +14,17 @@
 
 #include "autoware/trajectory_validator/filters/safety/trajectory_feasibility_filter.hpp"
 
+#include <autoware/lanelet2_utils/nn_search.hpp>
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_utils_math/unit_conversion.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
 
+#include <lanelet2_core/geometry/LaneletMap.h>
+
 #include <algorithm>
+#include <cmath>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -103,6 +110,37 @@ std::vector<std::optional<double>> to_steering_angles(
   }
   return smoothed_angles;
 }
+
+/**
+ * @brief Convert a lanelet's speed limit attribute to m/s, if it exists.
+ */
+std::optional<double> to_lanelet_speed_limit_mps(const lanelet::ConstLanelet & lanelet)
+{
+  constexpr char attribute_name[] = "speed_limit";
+
+  const auto result = lanelet.attribute(attribute_name).as<double>().map([](const auto v) {
+    return autoware_utils_math::kmph2mps(v);
+  });
+
+  return result.has_value() ? std::make_optional(result.value()) : std::nullopt;
+}
+
+/**
+ * @brief Find the speed limit of the nearest lanelet to a given pose, in m/s.
+ */
+std::optional<double> find_nearest_lanelet_speed_limit_mps(
+  const lanelet::LaneletMap & lanelet_map, const geometry_msgs::msg::Pose & search_pose)
+{
+  const auto nearest_lanelets =
+    autoware::experimental::lanelet2_utils::find_nearest(lanelet_map.laneletLayer, search_pose, 10);
+  for (const auto & [_, nearest_lanelet] : nearest_lanelets) {
+    if (const auto speed_limit_mps = to_lanelet_speed_limit_mps(nearest_lanelet)) {
+      return speed_limit_mps;
+    }
+  }
+
+  return std::nullopt;
+}
 }  // namespace
 
 TrajectoryFeasibilityFilter::TrajectoryFeasibilityFilter()
@@ -116,7 +154,7 @@ void TrajectoryFeasibilityFilter::update_parameters(const validator::Params & pa
 }
 
 TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
-  const CandidateTrajectory & candidate_trajectory, const FilterContext &)
+  const CandidateTrajectory & candidate_trajectory, const FilterContext & context)
 {
   const auto & traj_points = candidate_trajectory.points;
   if (!vehicle_info_ptr_) {
@@ -128,7 +166,7 @@ TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
   bool is_feasible = true;
   std::vector<MetricReport> metrics;
   for (const auto & checker : checkers_) {
-    auto report = (this->*checker)(traj_points);
+    auto report = (this->*checker)(traj_points, context);
     is_feasible &= report.risk.level == RiskLevel::SAFE;
     metrics.push_back(report);
   }
@@ -136,7 +174,8 @@ TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
   return ValidationResult{is_feasible, std::move(metrics)};
 }
 
-MetricReport TrajectoryFeasibilityFilter::check_speed(const TrajectoryPoints & traj_points) const
+MetricReport TrajectoryFeasibilityFilter::check_speed(
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] = is_speed_ok(traj_points, params_.max_speed);
 
@@ -150,8 +189,37 @@ MetricReport TrajectoryFeasibilityFilter::check_speed(const TrajectoryPoints & t
     .risk(risk_level);
 }
 
+MetricReport TrajectoryFeasibilityFilter::check_lanelet_speed_limit(
+  const TrajectoryPoints & traj_points, const FilterContext & context) const
+{
+  double observed_speed = 0.0;
+  bool is_ok = true;
+
+  if (!traj_points.empty() && context.odometry && context.lanelet_map) {
+    const auto nearest_idx =
+      autoware::motion_utils::findNearestIndex(traj_points, context.odometry->pose.pose.position);
+    const auto & nearest_point = traj_points.at(nearest_idx);
+    observed_speed = to_speed(nearest_point);
+
+    if (
+      const auto speed_limit_mps =
+        find_nearest_lanelet_speed_limit_mps(*context.lanelet_map, nearest_point.pose)) {
+      is_ok = observed_speed <= *speed_limit_mps;
+    }
+  }
+
+  RiskLevel risk_level;
+  risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
+  return autoware_trajectory_validator::build<MetricReport>()
+    .validator_name(get_name())
+    .validator_category(category())
+    .metric_name("lanelet_speed_limit")
+    .metric_value(observed_speed)
+    .risk(risk_level);
+}
+
 MetricReport TrajectoryFeasibilityFilter::check_acceleration(
-  const TrajectoryPoints & traj_points) const
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] = is_acceleration_ok(traj_points, params_.max_acceleration);
 
@@ -166,7 +234,7 @@ MetricReport TrajectoryFeasibilityFilter::check_acceleration(
 }
 
 MetricReport TrajectoryFeasibilityFilter::check_deceleration(
-  const TrajectoryPoints & traj_points) const
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] = is_deceleration_ok(traj_points, params_.max_deceleration);
 
@@ -181,7 +249,7 @@ MetricReport TrajectoryFeasibilityFilter::check_deceleration(
 }
 
 MetricReport TrajectoryFeasibilityFilter::check_steering_angle(
-  const TrajectoryPoints & traj_points) const
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] =
     is_steering_angle_ok(traj_points, *vehicle_info_ptr_, params_.max_steering_angle);
@@ -197,7 +265,7 @@ MetricReport TrajectoryFeasibilityFilter::check_steering_angle(
 }
 
 MetricReport TrajectoryFeasibilityFilter::check_steering_rate(
-  const TrajectoryPoints & traj_points) const
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] =
     is_steering_rate_ok(traj_points, *vehicle_info_ptr_, params_.max_steering_rate);
