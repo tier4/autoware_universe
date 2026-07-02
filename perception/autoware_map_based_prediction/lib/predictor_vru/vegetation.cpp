@@ -60,8 +60,9 @@ bool has_required_info(const autoware_perception_msgs::msg::PredictedObject & pr
   const auto & shape = predicted_object.shape;
   switch (shape.type) {
     case Shape::BOUNDING_BOX:
+      return shape.dimensions.x > 0.0 && shape.dimensions.y > 0.0;
     case Shape::CYLINDER:
-      return true;
+      return shape.dimensions.x > 0.0;
     case Shape::POLYGON:
       return !shape.footprint.points.empty();
     default:
