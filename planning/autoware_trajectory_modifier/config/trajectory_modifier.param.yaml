@@ -10,7 +10,7 @@
     use_obstacle_stop: true
     use_traffic_light_stop: true
     use_velocity_modifier: true
-    use_surround_obstacle_stop: false
+    use_surround_obstacle_stop: true
     trajectory_time_step: 0.1 # [s]
 
     # Stop Point Fixer Plugin Parameters

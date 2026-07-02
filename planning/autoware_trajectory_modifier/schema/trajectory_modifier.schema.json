@@ -37,7 +37,7 @@
         "use_surround_obstacle_stop": {
           "type": "boolean",
           "description": "Enable the surround obstacle stop modifier plugin",
-          "default": false
+          "default": true
         },
         "use_velocity_modifier": {
           "type": "boolean",

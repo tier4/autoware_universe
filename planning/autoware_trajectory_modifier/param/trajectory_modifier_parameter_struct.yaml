@@ -31,7 +31,7 @@ trajectory_modifier_params:
     read_only: false
   use_surround_obstacle_stop:
     type: bool
-    default_value: false
+    default_value: true
     description: Enable the use of surround obstacle stop
     read_only: false
   trajectory_time_step:
