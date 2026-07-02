@@ -25,6 +25,7 @@
 
 #include <angles/angles/angles.h>
 
+#include <cmath>
 #include <memory>
 #include <string>
 
@@ -521,6 +522,12 @@ bool TrajectoryChecker::check_valid_longitudinal_distance_deviation()
   const auto has_valid_lon_deviation = [&](const size_t seg_idx, const bool is_last) {
     auto long_offset = autoware::motion_utils::calcLongitudinalOffsetToSegment(
       trajectory.points, seg_idx, ego_pose.position);
+
+    // Skip the check for degenerate (collapsed) trajectory where the offset is undefined (NaN).
+    if (std::isnan(long_offset)) {
+      status->longitudinal_distance_deviation = 0.0;
+      return true;
+    }
 
     // for last, need to remove distance for the last segment.
     if (is_last) {
