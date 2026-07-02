@@ -18,7 +18,7 @@
         },
         "reference_confidence_L_ahead_ref": {
           "type": "number",
-          "description": "spatial arc length [m] at or above which reference is fully trusted for steer slew limiting",
+          "description": "spatial arc length [m] at or above which reference is fully trusted and slew limiting is disabled",
           "default": 2.0
         },
         "reference_confidence_time_check": {
@@ -28,13 +28,8 @@
         },
         "steer_slew_rate_min_rad_s": {
           "type": "number",
-          "description": "minimum steering rate limit [rad/s] applied when reference confidence is lowest (soft hold)",
+          "description": "steering rate limit [rad/s] at lowest reference confidence (soft hold); scales down toward zero as confidence increases",
           "default": 0.02
-        },
-        "steer_slew_rate_nom_rad_s": {
-          "type": "number",
-          "description": "nominal steering rate limit [rad/s] applied when reference confidence is highest",
-          "default": 0.7
         }
       },
       "required": [
@@ -42,8 +37,7 @@
         "reference_confidence_L_ahead_min",
         "reference_confidence_L_ahead_ref",
         "reference_confidence_time_check",
-        "steer_slew_rate_min_rad_s",
-        "steer_slew_rate_nom_rad_s"
+        "steer_slew_rate_min_rad_s"
       ],
       "additionalProperties": false
     }

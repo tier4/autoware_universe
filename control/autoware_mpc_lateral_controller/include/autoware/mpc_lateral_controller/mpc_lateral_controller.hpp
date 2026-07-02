@@ -108,7 +108,6 @@ private:
   double m_reference_confidence_L_ahead_ref{2.0};
   double m_reference_confidence_time_check{2.0};
   double m_steer_slew_rate_min_rad_s{0.02};
-  double m_steer_slew_rate_nom_rad_s{0.7};
   double m_ctrl_period{0.0};
 
   // MPC solver checker.
@@ -282,14 +281,19 @@ private:
   [[nodiscard]] bool isSteerConverged(const Lateral & cmd) const;
 
   /**
+   * @brief Minimum target velocity ahead of ego over the stop-state distance margin.
+   */
+  [[nodiscard]] double getMinTargetVelocityAhead() const;
+
+  /**
+   * @brief True when ego and trajectory target speed indicate a full stop (stop-state kinematics).
+   */
+  [[nodiscard]] bool isEgoAndTrajectoryStopped() const;
+
+  /**
    * @brief Compute reference confidence weight in [0, 1] from spatial extent ahead of ego.
    */
   [[nodiscard]] double computeReferenceConfidenceWeight() const;
-
-  /**
-   * @brief Map reference confidence weight to a steering rate limit [rad/s].
-   */
-  [[nodiscard]] double computeConfidenceSteerRateLimit(const double confidence_weight) const;
 
   /**
    * @brief Apply post-MPC slew limit on steering command when reference confidence is low.

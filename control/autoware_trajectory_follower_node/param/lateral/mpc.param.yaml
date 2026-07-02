@@ -72,7 +72,6 @@
     reference_confidence_L_ahead_ref: 2.0
     reference_confidence_time_check: 2.0
     steer_slew_rate_min_rad_s: 0.02
-    steer_slew_rate_nom_rad_s: 0.7
 
     # steer offset
     steering_offset:

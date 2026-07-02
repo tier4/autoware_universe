@@ -74,7 +74,6 @@
     reference_confidence_L_ahead_ref: 2.0   # [m] full-confidence spatial extent ahead of ego
     reference_confidence_time_check: 2.0    # [s] time window for L_ahead measurement
     steer_slew_rate_min_rad_s: 0.02         # [rad/s] soft-hold rate when confidence is lowest
-    steer_slew_rate_nom_rad_s: 0.7          # [rad/s] nominal rate when confidence is highest
 
     # steer offset
     steering_offset:

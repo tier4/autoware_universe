@@ -80,7 +80,6 @@ MpcLateralController::MpcLateralController(
   m_reference_confidence_L_ahead_ref = dp_double("reference_confidence_L_ahead_ref");
   m_reference_confidence_time_check = dp_double("reference_confidence_time_check");
   m_steer_slew_rate_min_rad_s = dp_double("steer_slew_rate_min_rad_s");
-  m_steer_slew_rate_nom_rad_s = dp_double("steer_slew_rate_nom_rad_s");
 
   /* mpc parameters */
   const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo();
@@ -462,12 +461,50 @@ Lateral MpcLateralController::getInitialControlCommand() const
   return cmd;
 }
 
+double MpcLateralController::getMinTargetVelocityAhead() const
+{
+  if (m_current_trajectory.points.empty()) {
+    return std::numeric_limits<double>::infinity();
+  }
+
+  const size_t nearest = autoware::motion_utils::findFirstNearestIndexWithSoftConstraints(
+    m_current_trajectory.points, m_current_kinematic_state.pose.pose, m_ego_nearest_dist_threshold,
+    m_ego_nearest_yaw_threshold);
+
+  // It is possible that stop is executed earlier than stop point, and velocity controller
+  // will not start when the distance from ego to stop point is less than 0.5 meter.
+  // So we use a distance margin to ensure we can detect stopped state.
+  static constexpr double distance_margin = 1.0;
+  auto min_vel = m_current_trajectory.points.at(nearest).longitudinal_velocity_mps;
+  auto covered_distance = 0.0;
+  for (auto i = nearest + 1; i < m_current_trajectory.points.size(); ++i) {
+    min_vel = std::min(min_vel, m_current_trajectory.points.at(i).longitudinal_velocity_mps);
+    covered_distance += autoware_utils::calc_distance2d(
+      m_current_trajectory.points.at(i - 1).pose, m_current_trajectory.points.at(i).pose);
+    if (covered_distance > distance_margin) {
+      break;
+    }
+  }
+  return min_vel;
+}
+
+bool MpcLateralController::isEgoAndTrajectoryStopped() const
+{
+  if (m_current_trajectory.points.empty()) {
+    return false;
+  }
+
+  const double current_vel = m_current_kinematic_state.twist.twist.linear.x;
+  if (std::fabs(current_vel) > m_stop_state_entry_ego_speed) {
+    return false;
+  }
+
+  return std::fabs(getMinTargetVelocityAhead()) < m_stop_state_entry_target_speed;
+}
+
 bool MpcLateralController::isStoppedState() const
 {
-  const double current_vel = m_current_kinematic_state.twist.twist.linear.x;
-  // If the nearest index is not found, return false
-  if (
-    m_current_trajectory.points.empty() || std::fabs(current_vel) > m_stop_state_entry_ego_speed) {
+  if (!isEgoAndTrajectoryStopped()) {
     return false;
   }
 
@@ -481,27 +518,7 @@ bool MpcLateralController::isStoppedState() const
   // for the stop state judgement. However, it has been removed since the steering
   // control was turned off when approaching/exceeding the stop line on a curve or
   // emergency stop situation and it caused large tracking error.
-  const size_t nearest = autoware::motion_utils::findFirstNearestIndexWithSoftConstraints(
-    m_current_trajectory.points, m_current_kinematic_state.pose.pose, m_ego_nearest_dist_threshold,
-    m_ego_nearest_yaw_threshold);
-
-  // It is possible that stop is executed earlier than stop point, and velocity controller
-  // will not start when the distance from ego to stop point is less than 0.5 meter.
-  // So we use a distance margin to ensure we can detect stopped state.
-  static constexpr double distance_margin = 1.0;
-  const double target_vel = std::invoke([&]() -> double {
-    auto min_vel = m_current_trajectory.points.at(nearest).longitudinal_velocity_mps;
-    auto covered_distance = 0.0;
-    for (auto i = nearest + 1; i < m_current_trajectory.points.size(); ++i) {
-      min_vel = std::min(min_vel, m_current_trajectory.points.at(i).longitudinal_velocity_mps);
-      covered_distance += autoware_utils::calc_distance2d(
-        m_current_trajectory.points.at(i - 1).pose, m_current_trajectory.points.at(i).pose);
-      if (covered_distance > distance_margin) break;
-    }
-    return min_vel;
-  });
-
-  return std::fabs(target_vel) < m_stop_state_entry_target_speed;
+  return true;
 }
 
 Lateral MpcLateralController::createCtrlCmdMsg(const Lateral & ctrl_cmd)
@@ -722,17 +739,21 @@ double MpcLateralController::computeReferenceConfidenceWeight() const
   return std::clamp((L_ahead - m_reference_confidence_L_ahead_min) / L_span, 0.0, 1.0);
 }
 
-double MpcLateralController::computeConfidenceSteerRateLimit(const double confidence_weight) const
-{
-  const double w = std::clamp(confidence_weight, 0.0, 1.0);
-  return m_steer_slew_rate_min_rad_s +
-         w * (m_steer_slew_rate_nom_rad_s - m_steer_slew_rate_min_rad_s);
-}
-
 bool MpcLateralController::applyConfidenceSteerSlewLimit(Lateral & ctrl_cmd) const
 {
+  // Full stop: same kinematic judgement as stop state (without steer-convergence gate).
+  // Allow MPC / downstream controllers to restore steering instead of soft-holding on a
+  // spatially collapsed trajectory.
+  if (isEgoAndTrajectoryStopped()) {
+    return false;
+  }
+
   const double confidence_weight = computeReferenceConfidenceWeight();
-  const double steer_rate_limit = computeConfidenceSteerRateLimit(confidence_weight);
+  if (confidence_weight >= 1.0) {
+    return false;
+  }
+
+  const double steer_rate_limit = m_steer_slew_rate_min_rad_s * (1.0 - confidence_weight);
   const double ds_max = steer_rate_limit * m_ctrl_period;
 
   const double ds =
