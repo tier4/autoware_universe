@@ -102,6 +102,15 @@ private:
   // Flag indicating whether to keep the steering control until it converges.
   bool m_keep_steer_control_until_converged;
 
+  // Reference-confidence steer slew limit (outside MPC QP).
+  bool m_enable_confidence_steer_slew_limit{false};
+  double m_reference_confidence_L_ahead_min{0.4};
+  double m_reference_confidence_L_ahead_ref{2.0};
+  double m_reference_confidence_time_check{2.0};
+  double m_steer_slew_rate_min_rad_s{0.02};
+  double m_steer_slew_rate_nom_rad_s{0.7};
+  double m_ctrl_period{0.0};
+
   // MPC solver checker.
   ResultWithReason m_mpc_solved_status{true};
 
@@ -271,6 +280,27 @@ private:
    * @return True if the steering control is converged and stable, false otherwise.
    */
   [[nodiscard]] bool isSteerConverged(const Lateral & cmd) const;
+
+  /**
+   * @brief Compute reference confidence weight in [0, 1] from spatial extent ahead of ego.
+   */
+  [[nodiscard]] double computeReferenceConfidenceWeight() const;
+
+  /**
+   * @brief Map reference confidence weight to a steering rate limit [rad/s].
+   */
+  [[nodiscard]] double computeConfidenceSteerRateLimit(const double confidence_weight) const;
+
+  /**
+   * @brief Apply post-MPC slew limit on steering command when reference confidence is low.
+   * @return true if the command was modified by the slew limiter
+   */
+  [[nodiscard]] bool applyConfidenceSteerSlewLimit(Lateral & ctrl_cmd) const;
+
+  /**
+   * @brief Sync MPC internal delay-compensation state to the published steer command.
+   */
+  void syncMpcSteerStateToCommand(const float steering_tire_angle);
 
   rclcpp::Node::OnSetParametersCallbackHandle::SharedPtr m_set_param_res;
 

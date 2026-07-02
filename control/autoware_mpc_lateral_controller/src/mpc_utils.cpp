@@ -127,6 +127,24 @@ double calcMPCTrajectoryArcLength(const MPCTrajectory & trajectory)
   return length;
 }
 
+double calcMPCTrajectoryArcLengthAheadByTime(
+  const MPCTrajectory & trajectory, const size_t start_idx, const double time_horizon_s)
+{
+  if (trajectory.size() < 2 || start_idx >= trajectory.size()) {
+    return 0.0;
+  }
+
+  const double start_time = trajectory.relative_time.at(start_idx);
+  double length = 0.0;
+  for (size_t i = start_idx + 1; i < trajectory.size(); ++i) {
+    if (trajectory.relative_time.at(i) - start_time > time_horizon_s) {
+      break;
+    }
+    length += calcDistance2d(trajectory, i, i - 1);
+  }
+  return length;
+}
+
 std::pair<bool, MPCTrajectory> resampleMPCTrajectoryByDistance(
   const MPCTrajectory & input, const double resample_interval_dist, const size_t nearest_seg_idx,
   const double ego_offset_to_segment)

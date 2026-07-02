@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MPC Lateral Controller Params",
+  "type": "object",
+  "definitions": {
+    "reference_confidence_steer_slew": {
+      "type": "object",
+      "properties": {
+        "enable_confidence_steer_slew_limit": {
+          "type": "boolean",
+          "description": "when enabled, limit published steering rate when reference spatial extent ahead of ego is short (soft hold on curves during planner hesitation)",
+          "default": false
+        },
+        "reference_confidence_L_ahead_min": {
+          "type": "number",
+          "description": "spatial arc length [m] below which reference curvature is treated as low-confidence",
+          "default": 0.4
+        },
+        "reference_confidence_L_ahead_ref": {
+          "type": "number",
+          "description": "spatial arc length [m] at or above which reference is fully trusted for steer slew limiting",
+          "default": 2.0
+        },
+        "reference_confidence_time_check": {
+          "type": "number",
+          "description": "time horizon [s] for measuring spatial arc length ahead of ego on the reference trajectory",
+          "default": 2.0
+        },
+        "steer_slew_rate_min_rad_s": {
+          "type": "number",
+          "description": "minimum steering rate limit [rad/s] applied when reference confidence is lowest (soft hold)",
+          "default": 0.02
+        },
+        "steer_slew_rate_nom_rad_s": {
+          "type": "number",
+          "description": "nominal steering rate limit [rad/s] applied when reference confidence is highest",
+          "default": 0.7
+        }
+      },
+      "required": [
+        "enable_confidence_steer_slew_limit",
+        "reference_confidence_L_ahead_min",
+        "reference_confidence_L_ahead_ref",
+        "reference_confidence_time_check",
+        "steer_slew_rate_min_rad_s",
+        "steer_slew_rate_nom_rad_s"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "/**": {
+      "type": "object",
+      "properties": {
+        "ros__parameters": {
+          "$ref": "#/definitions/reference_confidence_steer_slew"
+        }
+      },
+      "required": ["ros__parameters"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["/**"],
+  "additionalProperties": false
+}

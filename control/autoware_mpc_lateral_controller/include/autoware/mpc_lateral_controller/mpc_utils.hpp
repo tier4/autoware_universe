@@ -99,6 +99,16 @@ void calcMPCTrajectoryArcLength(const MPCTrajectory & trajectory, std::vector<do
 double calcMPCTrajectoryArcLength(const MPCTrajectory & trajectory);
 
 /**
+ * @brief calculate spatial arc length ahead of a start index within a time horizon
+ * @param [in] trajectory trajectory to measure
+ * @param [in] start_idx index from which to start accumulating distance
+ * @param [in] time_horizon_s maximum relative time span from start_idx [s]
+ * @return accumulated 2D distance until time_horizon_s is exceeded or trajectory ends
+ */
+double calcMPCTrajectoryArcLengthAheadByTime(
+  const MPCTrajectory & trajectory, const size_t start_idx, const double time_horizon_s);
+
+/**
  * @brief resample the given trajectory with the given fixed interval
  * @param [in] input trajectory to resample
  * @param [in] resample_interval_dist the desired distance between two successive trajectory points

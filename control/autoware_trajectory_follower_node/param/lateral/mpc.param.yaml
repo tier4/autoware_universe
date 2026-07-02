@@ -66,6 +66,14 @@
     new_traj_end_dist: 0.3
     mpc_converged_threshold_rps:  0.01 # threshold of mpc convergence check [rad/s]
 
+    # reference-confidence steer slew limit (post-MPC, outside QP)
+    enable_confidence_steer_slew_limit: true
+    reference_confidence_L_ahead_min: 0.4
+    reference_confidence_L_ahead_ref: 2.0
+    reference_confidence_time_check: 2.0
+    steer_slew_rate_min_rad_s: 0.02
+    steer_slew_rate_nom_rad_s: 0.7
+
     # steer offset
     steering_offset:
       enable_auto_steering_offset_removal: true

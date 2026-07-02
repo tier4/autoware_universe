@@ -52,6 +52,7 @@ MpcLateralController::MpcLateralController(
 
   const auto ctrl_period = node.get_parameter("ctrl_period").as_double();
   m_mpc->m_ctrl_period = ctrl_period;
+  m_ctrl_period = ctrl_period;
 
   auto & p_filt = m_trajectory_filtering_param;
   p_filt.enable_path_smoothing = dp_bool("enable_path_smoothing");
@@ -72,6 +73,14 @@ MpcLateralController::MpcLateralController(
   m_new_traj_duration_time = dp_double("new_traj_duration_time");            // [s]
   m_new_traj_end_dist = dp_double("new_traj_end_dist");                      // [m]
   m_mpc_converged_threshold_rps = dp_double("mpc_converged_threshold_rps");  // [rad/s]
+
+  /* reference-confidence steer slew limit */
+  m_enable_confidence_steer_slew_limit = dp_bool("enable_confidence_steer_slew_limit");
+  m_reference_confidence_L_ahead_min = dp_double("reference_confidence_L_ahead_min");
+  m_reference_confidence_L_ahead_ref = dp_double("reference_confidence_L_ahead_ref");
+  m_reference_confidence_time_check = dp_double("reference_confidence_time_check");
+  m_steer_slew_rate_min_rad_s = dp_double("steer_slew_rate_min_rad_s");
+  m_steer_slew_rate_nom_rad_s = dp_double("steer_slew_rate_nom_rad_s");
 
   /* mpc parameters */
   const auto vehicle_info = autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo();
@@ -357,6 +366,8 @@ trajectory_follower::LateralOutput MpcLateralController::run(
   if (!mpc_solved_status.result) {
     debug_throttle("MPC is not solved, use stop control command");
     ctrl_cmd = getStopControlCommand();
+  } else if (m_enable_confidence_steer_slew_limit && applyConfidenceSteerSlewLimit(ctrl_cmd)) {
+    syncMpcSteerStateToCommand(ctrl_cmd.steering_tire_angle);
   }
 
   m_ctrl_cmd_prev = ctrl_cmd;
@@ -685,6 +696,64 @@ rcl_interfaces::msg::SetParametersResult MpcLateralController::paramCallback(
   }
 
   return result;
+}
+
+double MpcLateralController::computeReferenceConfidenceWeight() const
+{
+  const auto & ref_traj = m_mpc->m_reference_trajectory;
+  if (ref_traj.size() < 2) {
+    return 0.0;
+  }
+
+  const auto traj_points = ref_traj.toTrajectoryPoints();
+  if (traj_points.empty()) {
+    return 0.0;
+  }
+
+  const size_t nearest_idx = autoware::motion_utils::findFirstNearestIndexWithSoftConstraints(
+    traj_points, m_current_kinematic_state.pose.pose, m_ego_nearest_dist_threshold,
+    m_ego_nearest_yaw_threshold);
+
+  const double L_ahead = MPCUtils::calcMPCTrajectoryArcLengthAheadByTime(
+    ref_traj, nearest_idx, m_reference_confidence_time_check);
+
+  const double L_span =
+    std::max(m_reference_confidence_L_ahead_ref - m_reference_confidence_L_ahead_min, 1.0e-6);
+  return std::clamp((L_ahead - m_reference_confidence_L_ahead_min) / L_span, 0.0, 1.0);
+}
+
+double MpcLateralController::computeConfidenceSteerRateLimit(const double confidence_weight) const
+{
+  const double w = std::clamp(confidence_weight, 0.0, 1.0);
+  return m_steer_slew_rate_min_rad_s +
+         w * (m_steer_slew_rate_nom_rad_s - m_steer_slew_rate_min_rad_s);
+}
+
+bool MpcLateralController::applyConfidenceSteerSlewLimit(Lateral & ctrl_cmd) const
+{
+  const double confidence_weight = computeReferenceConfidenceWeight();
+  const double steer_rate_limit = computeConfidenceSteerRateLimit(confidence_weight);
+  const double ds_max = steer_rate_limit * m_ctrl_period;
+
+  const double ds =
+    static_cast<double>(ctrl_cmd.steering_tire_angle - m_ctrl_cmd_prev.steering_tire_angle);
+  if (std::abs(ds) <= ds_max) {
+    return false;
+  }
+
+  const double ds_clamped = std::clamp(ds, -ds_max, ds_max);
+  ctrl_cmd.steering_tire_angle =
+    m_ctrl_cmd_prev.steering_tire_angle + static_cast<float>(ds_clamped);
+  ctrl_cmd.steering_tire_rotation_rate = static_cast<float>(ds_clamped / m_ctrl_period);
+  return true;
+}
+
+void MpcLateralController::syncMpcSteerStateToCommand(const float steering_tire_angle)
+{
+  m_mpc->m_raw_steer_cmd_prev = steering_tire_angle;
+  for (auto & value : m_mpc->m_input_buffer) {
+    value = steering_tire_angle;
+  }
 }
 
 bool MpcLateralController::isTrajectoryShapeChanged() const
