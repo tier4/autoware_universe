@@ -21,11 +21,6 @@
           "description": "spatial arc length [m] at or above which reference is fully trusted and slew limiting is disabled",
           "default": 2.0
         },
-        "reference_confidence_time_check": {
-          "type": "number",
-          "description": "time horizon [s] for measuring spatial arc length ahead of ego on the reference trajectory",
-          "default": 2.0
-        },
         "steer_slew_rate_min_rad_s": {
           "type": "number",
           "description": "steering rate limit [rad/s] at lowest reference confidence (soft hold); scales down toward zero as confidence increases",
@@ -36,7 +31,6 @@
         "enable_confidence_steer_slew_limit",
         "reference_confidence_L_ahead_min",
         "reference_confidence_L_ahead_ref",
-        "reference_confidence_time_check",
         "steer_slew_rate_min_rad_s"
       ],
       "additionalProperties": false

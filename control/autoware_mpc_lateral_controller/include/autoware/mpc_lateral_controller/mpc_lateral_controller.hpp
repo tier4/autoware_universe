@@ -36,6 +36,7 @@
 
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -102,11 +103,15 @@ private:
   // Flag indicating whether to keep the steering control until it converges.
   bool m_keep_steer_control_until_converged;
 
+  // Duration to freeze steering in stop state before allowing MPC to restore steering [s].
+  double m_stop_state_steer_hold_duration{5.0};
+
+  std::optional<rclcpp::Time> m_stop_state_hold_started_at;
+
   // Reference-confidence steer slew limit (outside MPC QP).
   bool m_enable_confidence_steer_slew_limit{false};
   double m_reference_confidence_L_ahead_min{0.4};
   double m_reference_confidence_L_ahead_ref{2.0};
-  double m_reference_confidence_time_check{2.0};
   double m_steer_slew_rate_min_rad_s{0.02};
   double m_ctrl_period{0.0};
 
@@ -291,7 +296,22 @@ private:
   [[nodiscard]] bool isEgoAndTrajectoryStopped() const;
 
   /**
-   * @brief Compute reference confidence weight in [0, 1] from spatial extent ahead of ego.
+   * @brief True when stop-state kinematics are met and steer convergence gate allows hold.
+   */
+  [[nodiscard]] bool isStopStateSteerHoldEligible() const;
+
+  /**
+   * @brief Update the stop-state hold timer from current kinematics.
+   */
+  void updateStopStateHoldTimer();
+
+  /**
+   * @brief Get spatial arc length of the reference trajectory remaining ahead of ego [m].
+   */
+  [[nodiscard]] double getReferenceRemainingArcLength() const;
+  /**
+   * @brief Compute reference confidence weight in [0, 1] from remaining spatial extent ahead of
+   * ego.
    */
   [[nodiscard]] double computeReferenceConfidenceWeight() const;
 

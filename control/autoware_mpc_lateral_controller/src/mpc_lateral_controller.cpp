@@ -73,12 +73,12 @@ MpcLateralController::MpcLateralController(
   m_new_traj_duration_time = dp_double("new_traj_duration_time");            // [s]
   m_new_traj_end_dist = dp_double("new_traj_end_dist");                      // [m]
   m_mpc_converged_threshold_rps = dp_double("mpc_converged_threshold_rps");  // [rad/s]
+  m_stop_state_steer_hold_duration = dp_double("stop_state_steer_hold_duration");
 
   /* reference-confidence steer slew limit */
   m_enable_confidence_steer_slew_limit = dp_bool("enable_confidence_steer_slew_limit");
   m_reference_confidence_L_ahead_min = dp_double("reference_confidence_L_ahead_min");
   m_reference_confidence_L_ahead_ref = dp_double("reference_confidence_L_ahead_ref");
-  m_reference_confidence_time_check = dp_double("reference_confidence_time_check");
   m_steer_slew_rate_min_rad_s = dp_double("steer_slew_rate_min_rad_s");
 
   /* mpc parameters */
@@ -351,6 +351,8 @@ trajectory_follower::LateralOutput MpcLateralController::run(
     return output;
   };
 
+  updateStopStateHoldTimer();
+
   if (isStoppedState()) {
     // Reset input buffer
     debug_throttle("Stopped state detected, use previous control command");
@@ -502,23 +504,45 @@ bool MpcLateralController::isEgoAndTrajectoryStopped() const
   return std::fabs(getMinTargetVelocityAhead()) < m_stop_state_entry_target_speed;
 }
 
-bool MpcLateralController::isStoppedState() const
+bool MpcLateralController::isStopStateSteerHoldEligible() const
 {
   if (!isEgoAndTrajectoryStopped()) {
     return false;
   }
 
-  const auto latest_published_cmd = m_ctrl_cmd_prev;  // use prev_cmd as a latest published command
+  const auto latest_published_cmd = m_ctrl_cmd_prev;
   if (m_keep_steer_control_until_converged && !isSteerConverged(latest_published_cmd)) {
     debug_throttle("steering is not converged.");
-    return false;  // not stopState: keep control
+    return false;
   }
 
-  // Note: This function used to take into account the distance to the stop line
-  // for the stop state judgement. However, it has been removed since the steering
-  // control was turned off when approaching/exceeding the stop line on a curve or
-  // emergency stop situation and it caused large tracking error.
   return true;
+}
+
+void MpcLateralController::updateStopStateHoldTimer()
+{
+  if (!isStopStateSteerHoldEligible()) {
+    m_stop_state_hold_started_at.reset();
+    return;
+  }
+
+  if (!m_stop_state_hold_started_at.has_value()) {
+    m_stop_state_hold_started_at = clock_->now();
+  }
+}
+
+bool MpcLateralController::isStoppedState() const
+{
+  if (!isStopStateSteerHoldEligible()) {
+    return false;
+  }
+
+  if (!m_stop_state_hold_started_at.has_value()) {
+    return true;
+  }
+
+  const double elapsed = (clock_->now() - m_stop_state_hold_started_at.value()).seconds();
+  return elapsed < m_stop_state_steer_hold_duration;
 }
 
 Lateral MpcLateralController::createCtrlCmdMsg(const Lateral & ctrl_cmd)
@@ -715,7 +739,7 @@ rcl_interfaces::msg::SetParametersResult MpcLateralController::paramCallback(
   return result;
 }
 
-double MpcLateralController::computeReferenceConfidenceWeight() const
+double MpcLateralController::getReferenceRemainingArcLength() const
 {
   const auto & ref_traj = m_mpc->m_reference_trajectory;
   if (ref_traj.size() < 2) {
@@ -731,8 +755,12 @@ double MpcLateralController::computeReferenceConfidenceWeight() const
     traj_points, m_current_kinematic_state.pose.pose, m_ego_nearest_dist_threshold,
     m_ego_nearest_yaw_threshold);
 
-  const double L_ahead = MPCUtils::calcMPCTrajectoryArcLengthAheadByTime(
-    ref_traj, nearest_idx, m_reference_confidence_time_check);
+  return MPCUtils::calcMPCTrajectoryRemainingArcLength(ref_traj, nearest_idx);
+}
+
+double MpcLateralController::computeReferenceConfidenceWeight() const
+{
+  const double L_ahead = getReferenceRemainingArcLength();
 
   const double L_span =
     std::max(m_reference_confidence_L_ahead_ref - m_reference_confidence_L_ahead_min, 1.0e-6);

@@ -127,19 +127,14 @@ double calcMPCTrajectoryArcLength(const MPCTrajectory & trajectory)
   return length;
 }
 
-double calcMPCTrajectoryArcLengthAheadByTime(
-  const MPCTrajectory & trajectory, const size_t start_idx, const double time_horizon_s)
+double calcMPCTrajectoryRemainingArcLength(const MPCTrajectory & trajectory, const size_t start_idx)
 {
-  if (trajectory.size() < 2 || start_idx >= trajectory.size()) {
+  if (trajectory.size() < 2 || start_idx >= trajectory.size() - 1) {
     return 0.0;
   }
 
-  const double start_time = trajectory.relative_time.at(start_idx);
   double length = 0.0;
   for (size_t i = start_idx + 1; i < trajectory.size(); ++i) {
-    if (trajectory.relative_time.at(i) - start_time > time_horizon_s) {
-      break;
-    }
     length += calcDistance2d(trajectory, i, i - 1);
   }
   return length;
