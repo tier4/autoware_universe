@@ -41,26 +41,28 @@ bool is_target_trajectory_type(
   return false;
 }
 
-RiskLevel to_pet_risk_level(double pet, const PetThreshold & error_th, const PetThreshold & warn_th)
+RiskLevel::_level_type to_pet_risk_level(
+  double pet, const PetThreshold & error_th, const PetThreshold & warn_th)
 {
   const bool is_error =
     pet <= error_th.ego_first_passing_time_gap && pet >= -error_th.object_first_passing_time_gap;
   if (is_error) {
-    return RiskLevel::ERROR;
+    return RiskLevel::DANGER;
   }
 
   const bool is_warn =
     pet <= warn_th.ego_first_passing_time_gap && pet >= -warn_th.object_first_passing_time_gap;
-  return is_warn ? RiskLevel::WARN : RiskLevel::SAFE;
+  return is_warn ? RiskLevel::HIGH_CAUTION : RiskLevel::SAFE;
 }
 
-RiskLevel to_drac_risk_level(const std::optional<double> & acc, const DracParams & drac_params)
+RiskLevel::_level_type to_drac_risk_level(
+  const std::optional<double> & acc, const DracParams & drac_params)
 {
   if (!acc.has_value() || acc.value() < drac_params.error_threshold.ego_acceleration) {
-    return RiskLevel::ERROR;
+    return RiskLevel::DANGER;
   }
   if (acc.value() < drac_params.warn_threshold.ego_acceleration) {
-    return RiskLevel::WARN;
+    return RiskLevel::HIGH_CAUTION;
   }
   return RiskLevel::SAFE;
 }
@@ -98,18 +100,22 @@ std::optional<CollisionDetail> find_collision_timing(
     TimeRange test_time_range;
   };
 
-  const auto make_finding = [&](const CandidateFinding & candidate) -> CollisionDetail {
+  const auto make_collision_detail =
+    [&](
+      const CandidateFinding & worst_pet,
+      const CandidateFinding & first_collision) -> CollisionDetail {
     return CollisionDetail{
       test_trajectory.getObjectIdentification(),
-      candidate.pet,
-      candidate.ttc,
+      CollisionTiming{first_collision.ttc, first_collision.pet},
+      CollisionTiming{worst_pet.ttc, worst_pet.pet},
       ref_trajectory.getPoses(),
       test_trajectory.getPoses(),
-      ref_trajectory.get_or_compute_convex(candidate.ref_index_range),
-      test_trajectory.get_or_compute_convex(candidate.test_time_range)};
+      ref_trajectory.get_or_compute_convex(worst_pet.ref_index_range),
+      test_trajectory.get_or_compute_convex(worst_pet.test_time_range)};
   };
 
-  std::optional<CandidateFinding> candidate_finding{};
+  std::optional<CandidateFinding> first_collision_timing{};
+  std::optional<CandidateFinding> worst_pet_timing{};
   for (size_t i = 0; i < ref_trajectory.size(); ++i) {
     size_t prev_i = (i == 0) ? 0 : i - 1;
     const double ref_start_time = ref_trajectory.getTimes().at(prev_i);
@@ -120,7 +126,7 @@ std::optional<CollisionDetail> find_collision_timing(
     const Polygon2d & ref_convex = ref_trajectory.get_or_compute_convex(ref_index_range);
 
     const double current_pet_limit =
-      candidate_finding.has_value() ? std::abs(candidate_finding->pet) : max_pet_threshold;
+      worst_pet_timing.has_value() ? std::abs(worst_pet_timing->pet) : max_pet_threshold;
 
     if (!boost::geometry::intersects(
           ref_envelope, test_trajectory.get_or_compute_envelope(
@@ -155,19 +161,22 @@ std::optional<CollisionDetail> find_collision_timing(
       const TimeRange test_time_range =
         has_intersects_before ? test_time_range_before : test_time_range_after;
 
-      candidate_finding = CandidateFinding{ref_start_time, pet, ref_index_range, test_time_range};
+      worst_pet_timing = CandidateFinding{ref_start_time, pet, ref_index_range, test_time_range};
+      if (!first_collision_timing.has_value()) {
+        first_collision_timing = worst_pet_timing;
+      }
       break;
     }
-    if (candidate_finding.has_value() && candidate_finding->pet == 0.0) {
-      return make_finding(candidate_finding.value());
+    if (worst_pet_timing.has_value() && worst_pet_timing->pet == 0.0) {
+      return make_collision_detail(worst_pet_timing.value(), first_collision_timing.value());
     }
   }
 
-  if (!candidate_finding.has_value()) {
+  if (!worst_pet_timing.has_value()) {
     return std::nullopt;
   }
 
-  return make_finding(candidate_finding.value());
+  return make_collision_detail(worst_pet_timing.value(), first_collision_timing.value());
 }
 
 PetArtifact assess_planned_speed_collision_timing(
@@ -200,8 +209,8 @@ PetArtifact assess_planned_speed_collision_timing(
       ego_trajectory, object_trajectory, pet_params.warn_threshold, global_params.time_resolution);
 
     if (collision.has_value()) {
-      const auto risk_level =
-        to_pet_risk_level(collision->pet, pet_params.error_threshold, pet_params.warn_threshold);
+      const auto risk_level = to_pet_risk_level(
+        collision->worst_pet_timing.pet, pet_params.error_threshold, pet_params.warn_threshold);
       if (risk_level == RiskLevel::SAFE) {
         continue;
       }
@@ -262,11 +271,12 @@ DracArtifact assess_drac(
         ego_deceleration_trajectory, object_trajectory, error_pet_th,
         global_params.time_resolution);
 
-      const RiskLevel nominal_motion_risk_level =
+      const RiskLevel::_level_type nominal_motion_risk_level =
         finding_nominal_object_motion.has_value()
-          ? to_pet_risk_level(finding_nominal_object_motion->pet, error_pet_th, error_pet_th)
+          ? to_pet_risk_level(
+              finding_nominal_object_motion->worst_pet_timing.pet, error_pet_th, error_pet_th)
           : RiskLevel::SAFE;
-      if (nominal_motion_risk_level != RiskLevel::ERROR) {
+      if (nominal_motion_risk_level != RiskLevel::DANGER) {
         continue;
       }
 
@@ -281,12 +291,13 @@ DracArtifact assess_drac(
         ego_deceleration_trajectory, object_deceleration_trajectory, error_pet_th,
         global_params.time_resolution);
 
-      const RiskLevel dec_motion_risk_level =
+      const RiskLevel::_level_type dec_motion_risk_level =
         finding_dec_object_motion.has_value()
-          ? to_pet_risk_level(finding_dec_object_motion->pet, error_pet_th, error_pet_th)
+          ? to_pet_risk_level(
+              finding_dec_object_motion->worst_pet_timing.pet, error_pet_th, error_pet_th)
           : RiskLevel::SAFE;
 
-      if (dec_motion_risk_level != RiskLevel::ERROR) {
+      if (dec_motion_risk_level != RiskLevel::DANGER) {
         continue;
       }
 
@@ -491,7 +502,7 @@ RssArtifact assess(
       ego_trajectory, context.odometry->twist.twist, object, rss_params,
       context.predicted_objects->header.stamp);
     const auto risk_level =
-      rss_detail.rss_acceleration < rss_params.error_threshold.ego_acceleration ? RiskLevel::ERROR
+      rss_detail.rss_acceleration < rss_params.error_threshold.ego_acceleration ? RiskLevel::DANGER
                                                                                 : RiskLevel::SAFE;
     rss_evaluations.push_back(RssEvaluation{risk_level, rss_detail});
   }
