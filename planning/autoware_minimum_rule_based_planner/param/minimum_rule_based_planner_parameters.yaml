@@ -313,6 +313,214 @@ minimum_rule_based_planner:
         validation:
           bounds<>: [0.0, 10.0]
 
+  surround_obstacle_stop:
+    enable:
+      type: bool
+      default_value: true
+      description: enable surround obstacle stop
+      read_only: false
+    use_objects:
+      type: bool
+      default_value: true
+      description: enable the use of objects for surround obstacle stop
+      read_only: false
+    use_pointcloud:
+      type: bool
+      default_value: false
+      description: enable the use of pointcloud for surround obstacle stop
+      read_only: false
+    object_types:
+      type: string_array
+      default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, unknown]
+      description: types of objects to consider for surround obstacle stop
+      read_only: false
+    front_distance_th:
+      car:
+        type: double
+        default_value: 0.5
+        description: front surround check distance for car [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      truck:
+        type: double
+        default_value: 0.5
+        description: front surround check distance for truck [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      bus:
+        type: double
+        default_value: 0.5
+        description: front surround check distance for bus [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      trailer:
+        type: double
+        default_value: 0.5
+        description: front surround check distance for trailer [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      motorcycle:
+        type: double
+        default_value: 0.5
+        description: front surround check distance for motorcycle [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      bicycle:
+        type: double
+        default_value: 0.5
+        description: front surround check distance for bicycle [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      pedestrian:
+        type: double
+        default_value: 0.5
+        description: front surround check distance for pedestrian [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      unknown:
+        type: double
+        default_value: 0.5
+        description: front surround check distance for unknown [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      pointcloud:
+        type: double
+        default_value: 0.5
+        description: front surround check distance for pointcloud [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+    side_distance_th:
+      car:
+        type: double
+        default_value: 0.0
+        description: side surround check distance for car [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      truck:
+        type: double
+        default_value: 0.0
+        description: side surround check distance for truck [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      bus:
+        type: double
+        default_value: 0.0
+        description: side surround check distance for bus [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      trailer:
+        type: double
+        default_value: 0.0
+        description: side surround check distance for trailer [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      motorcycle:
+        type: double
+        default_value: 1.0
+        description: side surround check distance for motorcycle [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      bicycle:
+        type: double
+        default_value: 1.0
+        description: side surround check distance for bicycle [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      pedestrian:
+        type: double
+        default_value: 1.0
+        description: side surround check distance for pedestrian [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      unknown:
+        type: double
+        default_value: 0.5
+        description: side surround check distance for unknown [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      pointcloud:
+        type: double
+        default_value: 0.5
+        description: side surround check distance for pointcloud [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+    back_distance_th:
+      car:
+        type: double
+        default_value: 0.0
+        description: back surround check distance for car [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      truck:
+        type: double
+        default_value: 0.0
+        description: back surround check distance for truck [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      bus:
+        type: double
+        default_value: 0.0
+        description: back surround check distance for bus [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      trailer:
+        type: double
+        default_value: 0.0
+        description: back surround check distance for trailer [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      motorcycle:
+        type: double
+        default_value: 0.5
+        description: back surround check distance for motorcycle [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      bicycle:
+        type: double
+        default_value: 0.5
+        description: back surround check distance for bicycle [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      pedestrian:
+        type: double
+        default_value: 0.5
+        description: back surround check distance for pedestrian [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      unknown:
+        type: double
+        default_value: 0.5
+        description: back surround check distance for unknown [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+      pointcloud:
+        type: double
+        default_value: 0.5
+        description: back surround check distance for pointcloud [m]
+        validation:
+          bounds<>: [0.0, 10.0]
+    hysteresis_distance:
+      type: double
+      default_value: 0.1
+      description: distance hysteresis threshold for clearing surround stop [m]
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: false
+    hysteresis_time:
+      type: double
+      default_value: 0.2
+      description: time hysteresis threshold for clearing surround stop [s]
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: false
+    ego_stopped_vel_th:
+      type: double
+      default_value: 0.1
+      description: velocity threshold below which ego vehicle is considered stopped [m/s]
+      validation:
+        bounds<>: [0.0, 10.0]
+      read_only: false
+
   debug:
     enable_path:
       type: bool

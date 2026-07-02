@@ -26,12 +26,18 @@
 
   <!-- Modifier plugins -->
   <arg name="launch_obstacle_stop" default="true"/>
+  <arg name="launch_surround_obstacle_stop" default="true"/>
   <arg name="launch_modules_list_end" default="&quot;&quot;]"/>
   <arg name="minimum_rule_base_planner_trajectory_modifier_launch_modules" default="["/>
   <let
     name="minimum_rule_base_planner_trajectory_modifier_launch_modules"
     value="$(eval &quot;'$(var minimum_rule_base_planner_trajectory_modifier_launch_modules)' + 'autoware::minimum_rule_based_planner::plugin::ObstacleStop, '&quot;)"
     if="$(var launch_obstacle_stop)"
+  />
+  <let
+    name="minimum_rule_base_planner_trajectory_modifier_launch_modules"
+    value="$(eval &quot;'$(var minimum_rule_base_planner_trajectory_modifier_launch_modules)' + 'autoware::minimum_rule_based_planner::plugin::SurroundObstacleStop, '&quot;)"
+    if="$(var launch_surround_obstacle_stop)"
   />
   <let
     name="minimum_rule_base_planner_trajectory_modifier_launch_modules"
