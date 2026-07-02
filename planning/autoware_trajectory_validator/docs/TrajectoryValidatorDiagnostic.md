@@ -6,31 +6,34 @@
 
 ## Concepts
 
-### MetricReport level
+### RiskLevel
 
 Each filter plugin rates every candidate trajectory and writes one `MetricReport` per (candidate, filter) pair.
-The `MetricReport.level` field uses three values:
+The `MetricReport.risk.level` field carries a `RiskLevel` value:
 
-| `MetricReport.level` | Meaning                              |
-| -------------------- | ------------------------------------ |
-| `OK`                 | trajectory passes this check         |
-| `WARN`               | trajectory passes but with a concern |
-| `ERROR`              | trajectory fails this check          |
+| `MetricReport.risk.level` | Meaning                      |
+| ------------------------- | ---------------------------- |
+| `SAFE`                    | no concern                   |
+| `LOW_CAUTION`             | minor concern, treated as OK |
+| `HIGH_CAUTION`            | notable concern              |
+| `DANGER`                  | trajectory at risk           |
+| `FATAL`                   | critical failure             |
 
 ### Action enum
 
 Internally, `TrajectoryValidatorDiagnostic` works with a four-step `Action` enum.
-`convert_risk_level_to_action()` translates a `MetricReport.level` into an `Action`:
+`convert_risk_level_to_action()` translates a `RiskLevel` into an `Action`:
 
-| `MetricReport.level` | → `Action` |
-| -------------------- | ---------- |
-| `OK`                 | `NONE`     |
-| `WARN`               | `NONE`     |
-| `ERROR`              | `MODERATE` |
+| `MetricReport.risk.level` | → `Action`    |
+| ------------------------- | ------------- |
+| `SAFE`                    | `NONE`        |
+| `LOW_CAUTION`             | `NONE`        |
+| `HIGH_CAUTION`            | `COMFORTABLE` |
+| `DANGER`                  | `MODERATE`    |
+| `FATAL`                   | `EMERGENCY`   |
 
-**`WARN` maps to `NONE`, the same as `OK`.** A candidate whose worst filter level is `WARN` is treated identically to a fully-clean candidate: it beats any candidate that has an `ERROR`.
+**`LOW_CAUTION` maps to `NONE`, the same as `SAFE`.** A candidate whose worst filter level is `LOW_CAUTION` is treated identically to a fully-clean candidate: it beats any candidate that has a `DANGER` or higher level.
 
-`COMFORTABLE` and `EMERGENCY` are reserved for future use — no filter currently produces them.
 `convert_risk_level_to_action()` in `risk_action.hpp` is the **only** place these constants are named, so updating the scale means editing one function.
 
 ### DiagnosticStatus published level
@@ -40,7 +43,7 @@ Each `Action` maps to a `DiagnosticStatus` level:
 | `Action`      | published level |
 | ------------- | --------------- |
 | `NONE`        | `OK`            |
-| `COMFORTABLE` | `WARN`          |
+| `COMFORTABLE` | `ERROR`         |
 | `MODERATE`    | `ERROR`         |
 | `EMERGENCY`   | `ERROR`         |
 
@@ -72,14 +75,14 @@ ValidationReport[]  (one entry per candidate trajectory)
 
 **Why per-filter minimum?** Each filter is evaluated independently. If a filter passes on at least one candidate, it does not fire — there is a safe trajectory available for that check. Only filters that fail on every candidate raise a diagnostic.
 
-**WARN vs ERROR example.** Two candidates — A has one filter at `WARN`, B has one filter at `ERROR`:
+**LOW_CAUTION vs DANGER example.** Two candidates — A has one filter at `LOW_CAUTION`, B has one filter at `DANGER`:
 
-| Candidate | validator_x level | Action                     |
-| --------- | ----------------- | -------------------------- |
-| A         | `WARN`            | `NONE` (WARN maps to NONE) |
-| B         | `ERROR`           | `MODERATE`                 |
+| Candidate | filter_x level | Action                                |
+| --------- | -------------- | ------------------------------------- |
+| A         | `LOW_CAUTION`  | `NONE` (LOW_CAUTION maps to NONE)     |
+| B         | `DANGER`       | `MODERATE`                            |
 
-validator_x best action = `NONE` (minimum of `NONE` and `MODERATE`). No status fires — the filter passes on at least one candidate.
+filter_x best action = `NONE` (minimum of `NONE` and `MODERATE`). No status fires — the filter passes on at least one candidate.
 
 ### Pattern reference
 
@@ -108,11 +111,11 @@ Order does not matter — `std::min` is commutative.
 #### Combined two-stage example
 
 ```text
-Candidate A: metric at ERROR  →  candidate_action = MODERATE  (max within A)
-Candidate B: metric at WARN   →  candidate_action = NONE      (max within B, WARN maps to NONE)
+Candidate A: metric at DANGER       →  candidate_action = MODERATE  (max within A)
+Candidate B: metric at LOW_CAUTION  →  candidate_action = NONE      (max within B, LOW_CAUTION maps to NONE)
 
-filter_to_action after A: MODERATE
-filter_to_action after B: min(MODERATE, NONE) = NONE
+filter_current_action after A: MODERATE
+filter_current_action after B: min(MODERATE, NONE) = NONE
 ```
 
 No configured_action fires — there is a safe candidate available (B).
@@ -125,7 +128,7 @@ When the `ValidationReport` array is empty (the generator produced no candidates
 
 Filters loaded via `shadow_mode_filter_names` are excluded from the Action aggregation entirely. Their `MetricReport` entries still appear in the published `ValidationReportArray` topic (for debug), but they do not influence which trajectory is chosen as best. Their configured_action status names are published at `OK` every cycle.
 
-The wrapper identifies shadow filters by calling `plugin->get_name()` on plugins with `is_shadow_mode() == true` and passing the resulting short names as `active_filter_names` to the class. Any filter name **not** in `active_filter_names` is treated as shadow.
+The wrapper identifies shadow filters by calling `plugin->get_name()` on plugins with `is_shadow_mode() == true` and passing the resulting names as `active_filter_names` to the class. Any filter name **not** in `active_filter_names` is treated as shadow.
 
 ---
 
@@ -146,34 +149,34 @@ trajectory_validator_diagnostic:
 Each entry is a colon-separated triple:
 
 ```text
-<filter_short_name>:<action>:<diagnostic_status_name>
+<filter_name>:<action>:<diagnostic_status_name>
 ```
 
 | Field                    | Description                                                                                                  |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `filter_short_name`      | the short name returned by `plugin->get_name()` — lowercase snake_case                                       |
+| `filter_name`            | the name returned by `plugin->get_name()` — lowercase snake_case                                            |
 | `action`                 | one of `none`, `comfortable`, `moderate`, `emergency`                                                        |
 | `diagnostic_status_name` | the name published in `DiagnosticStatus.name` (without the node-name prefix added by `DiagnosticsInterface`) |
 
 The class creates one `DiagnosticsInterface` publisher for each distinct `diagnostic_status_name` found in the configured_actions, plus one for `no_candidate_name`. This preset is built once at startup and never changes at runtime.
 
-### Finding the filter short name
+### Finding the filter name
 
-The short name is what `plugin->get_name()` returns, **not** the plugin class name used in `filter_names` / `shadow_mode_filter_names`. The two differ in naming convention:
+The filter name is what `plugin->get_name()` returns, **not** the plugin class name used in `filter_names` / `shadow_mode_filter_names`. The two differ in naming convention:
 
 | Parameter value                                | `get_name()` value                        |
 | ---------------------------------------------- | ----------------------------------------- |
 | `"safety::UncrossableBoundaryDepartureFilter"` | `"uncrossable_boundary_departure_filter"` |
 
-To find the short name for any plugin, either check its `getName()` / `get_name()` implementation or run the node and look at the `ValidationReportArray` topic — the `validator_name` field in each `MetricReport` is the short name.
+To find the filter name for any plugin, either check its `get_name()` implementation or run the node and look at the `ValidationReportArray` topic — the `validator_name` field in each `MetricReport` is the filter name.
 
 ---
 
 ## How to add a new diagnostic
 
-**Step 1 — identify the filter short name and the action level.**
+**Step 1 — identify the filter name and the action level.**
 
-Run the node (or check the plugin source) to find the short name. Decide which `Action` level should fire the new status. Today only `moderate` is in use.
+Run the node (or check the plugin source) to find the filter name. Decide which `Action` level should fire the new status. Today only `moderate` is in use.
 
 **Step 2 — choose a diagnostic status name.**
 
@@ -200,17 +203,18 @@ The full status name seen on `/diagnostics` is `"<node_name>: <diagnostic_status
 
 ```text
 filter plugins
-    │  MetricReport { validator_name, level }
+    │  MetricReport { validator_name, risk.level }
     ▼
 ValidationReport[]  ──────────────────────────────────────────────┐
     │                                                              │
     │  TrajectoryValidatorDiagnostic.update_and_publish()          │  (published as
     │                                                              │   ValidationReportArray
-    │  1. compute per-candidate worst Action (skip shadow names)   │   topic — unaffected
-    │  2. pick best candidate (lowest Action)                      │   by this class)
-    │  3. find configured_action filters on best candidate                   │
-    │  4. resolve (filter, Action) → status_name via configured_actions      │
-    │  5. publish all preset DiagnosticsInterface, active or OK    │
+    │  1. compute per-candidate worst Action per filter            │   topic — unaffected
+    │     (skip shadow filters)                                    │   by this class)
+    │  2. accumulate per-filter minimum Action across candidates   │
+    │  3. for each filter with Action != NONE,                     │
+    │     fire the configured_action that exactly matches          │
+    │  4. publish all statuses (triggered at ERROR, rest at OK)    │
     │                                                              │
     ▼                                                              │
 /diagnostics  ◄────────────────────────────────────────────────────┘
