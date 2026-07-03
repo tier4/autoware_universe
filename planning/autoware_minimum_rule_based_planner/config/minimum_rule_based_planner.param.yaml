@@ -2,6 +2,9 @@
   ros__parameters:
     # generate_parameter_library parameters
     planning_frequency_hz: 10.0
+    plugin_names:
+      - "autoware::minimum_rule_based_planner::plugin::ObstacleStop"
+      - "autoware::minimum_rule_based_planner::plugin::SurroundObstacleStop"
 
     path_planning:
       path_length:

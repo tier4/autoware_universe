@@ -4,6 +4,15 @@ minimum_rule_based_planner:
     default_value: 10.0
     validation:
       gt<>: [0.0]
+  plugin_names:
+    type: string_array
+    default_value:
+      [
+        autoware::minimum_rule_based_planner::plugin::ObstacleStop,
+        autoware::minimum_rule_based_planner::plugin::SurroundObstacleStop,
+      ]
+    description: List of plugin names to load
+    read_only: false
 
   path_planning:
     waypoint_group:
@@ -334,171 +343,28 @@ minimum_rule_based_planner:
       default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, unknown]
       description: types of objects to consider for surround obstacle stop
       read_only: false
-    front_distance_th:
-      car:
-        type: double
-        default_value: 0.5
-        description: front surround check distance for car [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      truck:
-        type: double
-        default_value: 0.5
-        description: front surround check distance for truck [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      bus:
-        type: double
-        default_value: 0.5
-        description: front surround check distance for bus [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      trailer:
-        type: double
-        default_value: 0.5
-        description: front surround check distance for trailer [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      motorcycle:
-        type: double
-        default_value: 0.5
-        description: front surround check distance for motorcycle [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      bicycle:
-        type: double
-        default_value: 0.5
-        description: front surround check distance for bicycle [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      pedestrian:
-        type: double
-        default_value: 0.5
-        description: front surround check distance for pedestrian [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      unknown:
-        type: double
-        default_value: 0.5
-        description: front surround check distance for unknown [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      pointcloud:
-        type: double
-        default_value: 0.5
-        description: front surround check distance for pointcloud [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-    side_distance_th:
-      car:
-        type: double
-        default_value: 0.0
-        description: side surround check distance for car [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      truck:
-        type: double
-        default_value: 0.0
-        description: side surround check distance for truck [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      bus:
-        type: double
-        default_value: 0.0
-        description: side surround check distance for bus [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      trailer:
-        type: double
-        default_value: 0.0
-        description: side surround check distance for trailer [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      motorcycle:
-        type: double
-        default_value: 1.0
-        description: side surround check distance for motorcycle [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      bicycle:
-        type: double
-        default_value: 1.0
-        description: side surround check distance for bicycle [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      pedestrian:
-        type: double
-        default_value: 1.0
-        description: side surround check distance for pedestrian [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      unknown:
-        type: double
-        default_value: 0.5
-        description: side surround check distance for unknown [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      pointcloud:
-        type: double
-        default_value: 0.5
-        description: side surround check distance for pointcloud [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-    back_distance_th:
-      car:
-        type: double
-        default_value: 0.0
-        description: back surround check distance for car [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      truck:
-        type: double
-        default_value: 0.0
-        description: back surround check distance for truck [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      bus:
-        type: double
-        default_value: 0.0
-        description: back surround check distance for bus [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      trailer:
-        type: double
-        default_value: 0.0
-        description: back surround check distance for trailer [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      motorcycle:
-        type: double
-        default_value: 0.5
-        description: back surround check distance for motorcycle [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      bicycle:
-        type: double
-        default_value: 0.5
-        description: back surround check distance for bicycle [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      pedestrian:
-        type: double
-        default_value: 0.5
-        description: back surround check distance for pedestrian [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      unknown:
-        type: double
-        default_value: 0.5
-        description: back surround check distance for unknown [m]
-        validation:
-          bounds<>: [0.0, 10.0]
-      pointcloud:
-        type: double
-        default_value: 0.5
-        description: back surround check distance for pointcloud [m]
-        validation:
-          bounds<>: [0.0, 10.0]
+    base_distance_th:
+      &distance_th_template {
+        type: double,
+        default_value: 0.5,
+        validation: { bounds<>: [0.0, 10.0] },
+        read_only: false,
+      }
+    base:
+      &base_template {
+        car: *distance_th_template,
+        truck: *distance_th_template,
+        bus: *distance_th_template,
+        trailer: *distance_th_template,
+        motorcycle: *distance_th_template,
+        bicycle: *distance_th_template,
+        pedestrian: *distance_th_template,
+        unknown: *distance_th_template,
+        pointcloud: *distance_th_template,
+      }
+    front_distance_th: *base_template
+    side_distance_th: *base_template
+    back_distance_th: *base_template
     hysteresis_distance:
       type: double
       default_value: 0.1

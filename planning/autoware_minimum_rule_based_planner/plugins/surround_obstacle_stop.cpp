@@ -103,8 +103,8 @@ void SurroundObstacleStop::on_initialize(const MinimumRuleBasedPlannerParams & p
     std::make_unique<autoware::planning_factor_interface::PlanningFactorInterface>(
       get_node_ptr(), "backup_planner_surround_obstacle_stop");
 
-  pub_debug_text_ = get_node_ptr()->create_publisher<StringStamped>(
-    "~/surround_obstacle_stop/debug/text", 1);
+  pub_debug_text_ =
+    get_node_ptr()->create_publisher<StringStamped>("~/surround_obstacle_stop/debug/text", 1);
 
   proximity_checker_ = std::make_unique<obstacle_proximity_checker::ProximityChecker>(
     to_proximity_checker_parameters(params_), vehicle_info_);
@@ -151,7 +151,9 @@ obstacle_proximity_checker::Inputs SurroundObstacleStop::to_proximity_checker_in
   checker_inputs.ego_pose = data_->odometry_ptr->pose.pose;
   checker_inputs.objects = data_->predicted_objects_ptr;
 
-  if (!data_->obstacle_pointcloud_ptr) return checker_inputs;
+  if (!data_->obstacle_pointcloud_ptr || data_->obstacle_pointcloud_ptr->data.empty()) {
+    return checker_inputs;
+  }
 
   const auto transform_stamped = get_transform(
     "base_link", data_->obstacle_pointcloud_ptr->header.frame_id,

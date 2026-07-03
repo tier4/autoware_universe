@@ -12,6 +12,17 @@
           "default": 10.0,
           "minimum": 0.0
         },
+        "plugin_names": {
+          "type": "array",
+          "description": "List of plugins to load",
+          "default": [
+            "autoware::minimum_rule_based_planner::plugin::ObstacleStop",
+            "autoware::minimum_rule_based_planner::plugin::SurroundObstacleStop"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
         "path_planning": {
           "type": "object",
           "properties": {

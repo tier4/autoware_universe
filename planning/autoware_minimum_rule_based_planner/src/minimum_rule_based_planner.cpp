@@ -150,8 +150,7 @@ void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
 
 void MinimumRuleBasedPlannerNode::load_modifier_plugins()
 {
-  for (const auto & name : this->declare_parameter<std::vector<std::string>>(
-         "modifier_launch_modules", std::vector<std::string>{})) {
+  for (const auto & name : params_.plugin_names) {
     if (name.empty()) continue;
     load_plugin(name);
   }
@@ -163,11 +162,16 @@ void MinimumRuleBasedPlannerNode::load_modifier_plugins()
 
 void MinimumRuleBasedPlannerNode::load_plugin(const std::string & name)
 {
-  // Check if the plugin is already loaded.
-  if (modifier_plugin_loader_.isClassLoaded(name)) {
-    RCLCPP_WARN(this->get_logger(), "The plugin '%s' is already loaded.", name.c_str());
+  // Check if the plugin is already instantiated
+  auto it = std::find_if(modifier_plugins_.begin(), modifier_plugins_.end(), [&](const auto & p) {
+    return p->get_name() == name;
+  });
+  if (it != modifier_plugins_.end()) {
+    RCLCPP_WARN(
+      this->get_logger(), "The plugin '%s' is already in the plugins list.", name.c_str());
     return;
   }
+
   if (modifier_plugin_loader_.isClassAvailable(name)) {
     const auto plugin = modifier_plugin_loader_.createSharedInstance(name);
     plugin->initialize(name, this, time_keeper_, modifier_data_, vehicle_info_, params_);
