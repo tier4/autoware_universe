@@ -24,7 +24,7 @@
   <arg name="input_pointcloud" default="~/input/pointcloud"/>
   <arg name="output_candidate_trajectories" default="~/output/candidate_trajectories"/>
 
-  <node pkg="autoware_minimum_rule_based_planner" exec="autoware_minimum_rule_based_planner_node" name="minimum_rule_based_planner_node" output="both" launch-prefix="konsole -e gdb -ex run --args">
+  <node pkg="autoware_minimum_rule_based_planner" exec="autoware_minimum_rule_based_planner_node" name="minimum_rule_based_planner_node" output="both">
     <!-- Load parameter files -->
     <env name="LD_LIBRARY_PATH" value="/opt/acados/lib:$(env LD_LIBRARY_PATH)"/>
     <param from="$(var common_param_path)"/>
