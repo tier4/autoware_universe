@@ -81,33 +81,33 @@ if(BUILD_TESTING)
   # ==========================================
   # 1. Plugin Unit Tests
   # ==========================================
-  # ament_add_gtest(test_vehicle_constraint_filter
-  #   test/plugins/test_vehicle_constraint_filter.cpp
-  # )
-  # target_link_libraries(test_vehicle_constraint_filter
-  #   autoware_trajectory_validator_plugins
-  # )
+  ament_add_gtest(test_vehicle_constraint_filter
+    test/plugins/test_vehicle_constraint_filter.cpp
+  )
+  target_link_libraries(test_vehicle_constraint_filter
+    autoware_trajectory_validator_plugins
+  )
 
-  # ament_add_gtest(test_pose_constant_curvature_predictor
-  #   test/plugins/collision_check_filter/test_pose_constant_curvature_predictor.cpp
-  # )
-  # target_link_libraries(test_pose_constant_curvature_predictor
-  #   autoware_trajectory_validator_plugins
-  # )
+  ament_add_gtest(test_pose_constant_curvature_predictor
+    test/plugins/collision_check_filter/test_pose_constant_curvature_predictor.cpp
+  )
+  target_link_libraries(test_pose_constant_curvature_predictor
+    autoware_trajectory_validator_plugins
+  )
 
-  # ament_add_gtest(test_time_distance
-  #   test/plugins/collision_check_filter/test_time_distance.cpp
-  # )
-  # target_link_libraries(test_time_distance
-  #   autoware_trajectory_validator_plugins
-  # )
+  ament_add_gtest(test_time_distance
+    test/plugins/collision_check_filter/test_time_distance.cpp
+  )
+  target_link_libraries(test_time_distance
+    autoware_trajectory_validator_plugins
+  )
 
-  # ament_add_gtest(test_geometry
-  #   test/plugins/collision_check_filter/test_geometry.cpp
-  # )
-  # target_link_libraries(test_geometry
-  #   autoware_trajectory_validator_plugins
-  # )
+  ament_add_gtest(test_geometry
+    test/plugins/collision_check_filter/test_geometry.cpp
+  )
+  target_link_libraries(test_geometry
+    autoware_trajectory_validator_plugins
+  )
 
   # ament_add_gtest(test_collision_check_filter
   #   test/collision_check_filter/test_collision_check_filter.cpp
@@ -123,19 +123,19 @@ if(BUILD_TESTING)
   #   autoware_trajectory_validator_plugins
   # )
 
-  # ament_add_gtest(test_trajectory_utilities
-  #   test/plugins/collision_check_filter/test_trajectory_utilities.cpp
-  # )
-  # target_link_libraries(test_trajectory_utilities
-  #   autoware_trajectory_validator_plugins
-  # )
+  ament_add_gtest(test_trajectory_utilities
+    test/plugins/collision_check_filter/test_trajectory_utilities.cpp
+  )
+  target_link_libraries(test_trajectory_utilities
+    autoware_trajectory_validator_plugins
+  )
 
-  # ament_add_gtest(test_traffic_light_filter
-  #   test/plugins/test_traffic_light_filter.cpp
-  # )
-  # target_link_libraries(test_traffic_light_filter
-  #   autoware_trajectory_validator_plugins
-  # )
+  ament_add_gtest(test_traffic_light_filter
+    test/plugins/test_traffic_light_filter.cpp
+  )
+  target_link_libraries(test_traffic_light_filter
+    autoware_trajectory_validator_plugins
+  )
 
   ament_add_ros_isolated_gtest(test_diagnostic_core_behavior
     test/diagnostic/diagnostic_core_behavior.cpp
