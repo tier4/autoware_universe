@@ -21,6 +21,7 @@
 
 // Autoware
 #include <autoware_control_msgs/msg/control.hpp>
+#include <tier4_system_msgs/msg/driving_mode_flag.hpp>
 #include <tier4_system_msgs/msg/driving_mode_info.hpp>
 #include <tier4_system_msgs/msg/driving_mode_mrm_state.hpp>
 #include <tier4_system_msgs/msg/driving_mode_request.hpp>
@@ -34,6 +35,7 @@
 namespace autoware::mrm_emergency_stop_operator
 {
 using autoware_control_msgs::msg::Control;
+using tier4_system_msgs::msg::DrivingModeFlag;
 using tier4_system_msgs::msg::DrivingModeInfo;
 using tier4_system_msgs::msg::DrivingModeMrmState;
 using tier4_system_msgs::msg::DrivingModeRequest;
@@ -91,9 +93,11 @@ private:
   // Driving mode interface
   rclcpp::Subscription<DrivingModeRequest>::SharedPtr sub_driving_mode_request_;
   rclcpp::Subscription<DrivingModeInfo>::SharedPtr sub_driving_mode_info_;
+  rclcpp::Publisher<DrivingModeFlag>::SharedPtr pub_driving_mode_active_;
   rclcpp::Publisher<DrivingModeMrmState>::SharedPtr pub_mrm_state_;
   void onDrivingModeRequest(DrivingModeRequest::ConstSharedPtr msg);
   void onDrivingModeInfo(DrivingModeInfo::ConstSharedPtr msg);
+  void publishDrivingModeActive() const;
   void publishMrmState() const;
   std::optional<uint32_t> driving_mode_id_;  // Refer to the driving_mode_manager for this ID.
 
