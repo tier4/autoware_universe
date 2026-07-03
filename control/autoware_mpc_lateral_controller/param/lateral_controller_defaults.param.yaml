@@ -73,7 +73,7 @@
     enable_confidence_steer_slew_limit: true
     reference_confidence_L_ahead_min: 0.5   # [m] low-confidence remaining spatial extent
     reference_confidence_L_ahead_ref: 1.0   # [m] full-confidence remaining spatial extent
-    steer_slew_rate_min_rad_s: 0.02         # [rad/s] soft-hold rate when confidence is lowest
+    steer_slew_rate_min_rad_s: 0.02         # [rad/s] soft-hold rate at zero reference confidence
 
     # steer offset
     steering_offset:

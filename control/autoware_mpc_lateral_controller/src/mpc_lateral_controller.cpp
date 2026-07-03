@@ -777,16 +777,17 @@ bool MpcLateralController::applyConfidenceSteerSlewLimit(Lateral & ctrl_cmd) con
   }
 
   const double confidence_weight = computeReferenceConfidenceWeight();
-  if (confidence_weight >= 1.0) {
-    return false;
-  }
-
-  const double steer_rate_limit = m_steer_slew_rate_min_rad_s * (1.0 - confidence_weight);
-  const double ds_max = steer_rate_limit * m_ctrl_period;
 
   const double ds =
     static_cast<double>(ctrl_cmd.steering_tire_angle - m_ctrl_cmd_prev.steering_tire_angle);
-  if (std::abs(ds) <= ds_max) {
+  const double ds_abs = std::abs(ds);
+
+  // Linear blend: conf=0 -> ds_max = min_rate*period; conf=1 -> ds_max = |ds| (pass-through).
+  const double ds_max_at_zero_confidence = m_steer_slew_rate_min_rad_s * m_ctrl_period;
+  const double ds_max =
+    (1.0 - confidence_weight) * ds_max_at_zero_confidence + confidence_weight * ds_abs;
+
+  if (ds_abs <= ds_max) {
     return false;
   }
 

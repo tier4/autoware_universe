@@ -317,6 +317,7 @@ private:
 
   /**
    * @brief Apply post-MPC slew limit on steering command when reference confidence is low.
+   * ds_max blends linearly from min_rate*period (conf=0) to |MPC delta| (conf=1).
    * @return true if the command was modified by the slew limiter
    */
   [[nodiscard]] bool applyConfidenceSteerSlewLimit(Lateral & ctrl_cmd) const;

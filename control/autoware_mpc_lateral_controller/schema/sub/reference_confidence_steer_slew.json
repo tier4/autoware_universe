@@ -23,7 +23,7 @@
         },
         "steer_slew_rate_min_rad_s": {
           "type": "number",
-          "description": "steering rate limit [rad/s] at lowest reference confidence (soft hold); scales down toward zero as confidence increases",
+          "description": "steering rate limit [rad/s] at zero reference confidence; allowed per-cycle steer change blends linearly from min_rate*period (conf=0) to full MPC delta (conf=1)",
           "default": 0.02
         }
       },
