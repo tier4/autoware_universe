@@ -520,8 +520,10 @@ bool TrajectoryChecker::check_valid_longitudinal_distance_deviation()
 
   // Check if the valid longitudinal deviation for given segment index
   const auto has_valid_lon_deviation = [&](const size_t seg_idx, const bool is_last) {
-    // Skip when removeOverlapPoints leaves no segment (calcLongitudinalOffsetToSegment would return NaN).
-    const auto dedup_points = autoware::motion_utils::removeOverlapPoints(trajectory.points, seg_idx);
+    // Skip when removeOverlapPoints leaves no segment (calcLongitudinalOffsetToSegment would return
+    // NaN).
+    const auto dedup_points =
+      autoware::motion_utils::removeOverlapPoints(trajectory.points, seg_idx);
     if (dedup_points.size() < seg_idx + 2) {
       status->longitudinal_distance_deviation = 0.0;
       return true;
