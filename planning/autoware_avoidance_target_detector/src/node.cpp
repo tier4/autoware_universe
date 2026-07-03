@@ -18,6 +18,7 @@
 #include <autoware_utils_visualization/marker_helper.hpp>
 
 #include <memory>
+#include <vector>
 
 namespace autoware::avoidance_target_detector
 {
@@ -131,13 +132,15 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
         pub_near_segment_polygon_->publish(
           autoware::experimental::marker_utils::create_lanelet_polygon_marker_array(
             near_segment_polygon, get_clock()->now(), "near_segment_polygon", 0,
-            create_marker_scale(0.2, 0.0, 0.0), create_marker_color(1.0, 0.5, 0.0, 0.5), 0.0));
+            create_marker_scale(0.4, 0.0, 0.0), create_marker_color(1.0, 0.5, 0.0, 0.7), 0.0));
       }
     }
   }
 
+  object_selector_.update_objects(get_clock()->now(), *msg, trajectory_msg);
+
   const auto avoidance_targets =
-    object_selector_.get_avoidance_targets(get_clock()->now(), *msg, trajectory_msg, route_bounds);
+    object_selector_.get_avoidance_targets(*msg, trajectory_msg, route_bounds);
 
   pub_avoidance_targets_->publish(avoidance_targets);
 }

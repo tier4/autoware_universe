@@ -151,10 +151,7 @@ public:
     return is_stationary_avoidance_target_stamped_.second;
   }
 
-  [[nodiscard]] bool is_moving_vehicle() const
-  {
-    return is_moving_vehicle_stamped_.second;
-  }
+  [[nodiscard]] bool is_moving_vehicle() const { return is_moving_vehicle_stamped_.second; }
 
   [[nodiscard]] bool is_stale(const rclcpp::Time & current_time) const
   {
@@ -186,16 +183,23 @@ using AvoidanceTargetDetectorMap = std::map<std::string, AvoidanceTargetDetector
 class ObjectSelector
 {
 public:
+  /** @brief Update per-object Bayesian filters and prune stale entries. */
+  void update_objects(
+    const rclcpp::Time & current_time, const PredictedObjects & objects,
+    const Trajectory & trajectory);
+
   /**
-   * @brief Detect avoidance targets among predicted objects.
-   * @details Updates per-object Bayesian filters, prunes stale entries, selects target objects, and
-   *          removes objects filtered out by longitudinal and lateral distance.
+   * @brief Select avoidance targets from predicted objects using updated filter state.
+   * @details Call update_objects() first. Removes non-targets and objects outside longitudinal
+   *          and lateral distance bounds.
    */
   [[nodiscard]] PredictedObjects get_avoidance_targets(
-    const rclcpp::Time & current_time, const PredictedObjects & objects,
-    const Trajectory & trajectory, const RouteBounds & route_bounds);
+    const PredictedObjects & objects, const Trajectory & trajectory,
+    const RouteBounds & route_bounds);
 
-  [[nodiscard]] PredictedObjects get_driving_along_vehicles();
+  [[nodiscard]] PredictedObjects get_driving_along_vehicles(
+    const rclcpp::Time & current_time, const PredictedObjects & objects,
+    const ExtendedRouteHandler & extended_route_handler);
 
 private:
   AvoidanceTargetDetectorMap object_filters_;

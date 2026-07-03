@@ -702,7 +702,8 @@ void AvoidanceTargetDetector::observe_and_update_all(
     return;
   }
 
-  state_change_count_ = (is_target_now != is_stationary_avoidance_target_stamped_.second) ? state_change_count_ + 1 : 0;
+  state_change_count_ =
+    (is_target_now != is_stationary_avoidance_target_stamped_.second) ? state_change_count_ + 1 : 0;
 
   if (
     rclcpp::Time(current_time) - rclcpp::Time(is_stationary_avoidance_target_stamped_.first) <
@@ -732,9 +733,9 @@ void AvoidanceTargetDetector::observe_and_update_all(
   is_moving_vehicle_stamped_.second = is_moving_vehicle_now;
 }
 
-PredictedObjects ObjectSelector::get_avoidance_targets(
+void ObjectSelector::update_objects(
   const rclcpp::Time & current_time, const PredictedObjects & objects,
-  const Trajectory & trajectory, const RouteBounds & route_bounds)
+  const Trajectory & trajectory)
 {
   for (const auto & object : objects.objects) {
     const auto object_id_str = autoware_utils_uuid::to_hex_string(object.object_id);
@@ -749,7 +750,11 @@ PredictedObjects ObjectSelector::get_avoidance_targets(
       ++it;
     }
   }
+}
 
+PredictedObjects ObjectSelector::get_avoidance_targets(
+  const PredictedObjects & objects, const Trajectory & trajectory, const RouteBounds & route_bounds)
+{
   PredictedObjects avoidance_targets = objects;
   avoidance_targets.objects.erase(
     std::remove_if(
