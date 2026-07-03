@@ -250,7 +250,8 @@
                     "trailer",
                     "motorcycle",
                     "bicycle",
-                    "pedestrian"
+                    "pedestrian",
+                    "hazard"
                   ],
                   "items": {
                     "type": "string"
@@ -491,6 +492,8 @@
                 "motorcycle",
                 "bicycle",
                 "pedestrian",
+                "hazard",
+                "animal",
                 "unknown"
               ],
               "items": {
@@ -545,6 +548,20 @@
                 "pedestrian": {
                   "type": "number",
                   "description": "Front surround check distance for pedestrian [m]",
+                  "default": 0.5,
+                  "minimum": 0.0,
+                  "maximum": 10.0
+                },
+                "hazard": {
+                  "type": "number",
+                  "description": "Front surround check distance for hazard [m]",
+                  "default": 0.5,
+                  "minimum": 0.0,
+                  "maximum": 10.0
+                },
+                "animal": {
+                  "type": "number",
+                  "description": "Front surround check distance for animal [m]",
                   "default": 0.5,
                   "minimum": 0.0,
                   "maximum": 10.0
@@ -619,6 +636,20 @@
                   "minimum": 0.0,
                   "maximum": 10.0
                 },
+                "hazard": {
+                  "type": "number",
+                  "description": "Side surround check distance for hazard [m]",
+                  "default": 0.5,
+                  "minimum": 0.0,
+                  "maximum": 10.0
+                },
+                "animal": {
+                  "type": "number",
+                  "description": "Side surround check distance for animal [m]",
+                  "default": 0.5,
+                  "minimum": 0.0,
+                  "maximum": 10.0
+                },
                 "unknown": {
                   "type": "number",
                   "description": "Side surround check distance for unknown [m]",
@@ -685,6 +716,20 @@
                 "pedestrian": {
                   "type": "number",
                   "description": "Back surround check distance for pedestrian [m]",
+                  "default": 0.5,
+                  "minimum": 0.0,
+                  "maximum": 10.0
+                },
+                "hazard": {
+                  "type": "number",
+                  "description": "Back surround check distance for hazard [m]",
+                  "default": 0.5,
+                  "minimum": 0.0,
+                  "maximum": 10.0
+                },
+                "animal": {
+                  "type": "number",
+                  "description": "Back surround check distance for animal [m]",
                   "default": 0.5,
                   "minimum": 0.0,
                   "maximum": 10.0

@@ -68,6 +68,17 @@ private:
   bool is_data_ready(const InputData & input_data);
   void update_params();
 
+  std::optional<PathWithLaneId> plan_path(const InputData & input_data);
+  Trajectory shift_trajectory_to_ego(const Trajectory & trajectory, const InputData & input_data);
+  Trajectory smooth_trajectory(const Trajectory & trajectory, const InputData & input_data);
+  void apply_modifiers(Trajectory & trajectory, const InputData & input_data);
+  Trajectory optimize_velocity(const Trajectory & trajectory, const InputData & input_data);
+
+  void publish_candidate_trajectories(const Trajectory & trajectory);
+
+  void publish_debug_trajectory(
+    const std::string & plugin_name, const TrajectoryPoints & traj_points);
+
   rclcpp::TimerBase::SharedPtr timer_;
   std::shared_ptr<::minimum_rule_based_planner::ParamListener> param_listener_;
   const UUID generator_uuid_;

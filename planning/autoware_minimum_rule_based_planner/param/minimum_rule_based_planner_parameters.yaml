@@ -164,7 +164,7 @@ minimum_rule_based_planner:
     objects:
       object_types:
         type: string_array
-        default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian]
+        default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, hazard]
         description: object types to consider for obstacle stop
       max_velocity_th:
         type: double
@@ -340,7 +340,8 @@ minimum_rule_based_planner:
       read_only: false
     object_types:
       type: string_array
-      default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, unknown]
+      default_value:
+        [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, hazard, animal, unknown]
       description: types of objects to consider for surround obstacle stop
       read_only: false
     base_distance_th:
@@ -359,6 +360,8 @@ minimum_rule_based_planner:
         motorcycle: *distance_th_template,
         bicycle: *distance_th_template,
         pedestrian: *distance_th_template,
+        hazard: *distance_th_template,
+        animal: *distance_th_template,
         unknown: *distance_th_template,
         pointcloud: *distance_th_template,
       }

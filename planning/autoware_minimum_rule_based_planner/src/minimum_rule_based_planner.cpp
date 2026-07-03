@@ -227,18 +227,19 @@ void MinimumRuleBasedPlannerNode::set_modifier_data(
   modifier_data_->obstacle_pointcloud_ptr = input_data.obstacle_pointcloud_ptr;
 }
 
+void MinimumRuleBasedPlannerNode::publish_debug_trajectory(
+  const std::string & plugin_name, const TrajectoryPoints & traj_points)
+{
+  Trajectory traj;
+  traj.points = traj_points;
+  pub_debug_modifier_module_trajectories_[plugin_name]->publish(traj);
+}
+
 void MinimumRuleBasedPlannerNode::on_timer()
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   stop_watch_ptr_ = std::make_unique<autoware_utils_system::StopWatch<std::chrono::milliseconds>>();
   stop_watch_ptr_->tic("processing_time");
-
-  auto publish_debug_trajectory =
-    [](const auto & publisher_map, const auto & plugin, const TrajectoryPoints & points) {
-      Trajectory traj;
-      traj.points = points;
-      publisher_map.at(plugin->get_name())->publish(traj);
-    };
 
   // 1. Check data availability
   const auto input_data = take_data();
@@ -255,14 +256,7 @@ void MinimumRuleBasedPlannerNode::on_timer()
   }
 
   // 2. Get path
-  const auto path = [&]() -> std::optional<PathWithLaneId> {
-    autoware_utils_debug::ScopedTimeTrack st("plan_path", *time_keeper_);
-    if (input_data.test_path_with_lane_id_ptr) {
-      return *input_data.test_path_with_lane_id_ptr;
-    }
-    return path_planner_->plan_path(
-      input_data.odometry_ptr->pose.pose, input_data.odometry_ptr->twist.twist.linear.x);
-  }();
+  const auto path = plan_path(input_data);
 
   if (!path) {
     RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Failed to plan path.");
@@ -272,136 +266,29 @@ void MinimumRuleBasedPlannerNode::on_timer()
   // 3. Convert path to trajectory
   auto traj_from_path =
     path_planner_->convert_path_to_trajectory(*path, params_.path_planning.output.delta_arc_length);
+  traj_from_path.header = path->header;
 
   // 4. Shift trajectory to ego position
-  if (params_.path_planning.path_shift.enable) {
-    autoware_utils_debug::ScopedTimeTrack st("shift_trajectory_to_ego", *time_keeper_);
-    TrajectoryShiftParams shift_params;
-    shift_params.minimum_shift_length = params_.path_planning.path_shift.minimum_shift_length;
-    shift_params.minimum_shift_yaw = params_.path_planning.path_shift.minimum_shift_yaw;
-    shift_params.minimum_shift_distance = params_.path_planning.path_shift.minimum_shift_distance;
-    shift_params.min_speed_for_curvature = params_.path_planning.path_shift.min_speed_for_curvature;
-    shift_params.lateral_accel_limit = params_.path_planning.path_shift.lateral_accel_limit;
-
-    const double ego_velocity = input_data.odometry_ptr->twist.twist.linear.x;
-    const double ego_yaw_rate = input_data.odometry_ptr->twist.twist.angular.z;
-    traj_from_path = path_planner_->shift_trajectory_to_ego(
-      traj_from_path, input_data.odometry_ptr->pose.pose, ego_velocity, ego_yaw_rate, shift_params,
-      params_.path_planning.output.delta_arc_length);
-
-    if (params_.debug.enable_shifted_trajectory) {
-      Trajectory shifted_traj;
-      shifted_traj.header = path->header;
-      shifted_traj.points = traj_from_path.points;
-      pub_debug_shifted_trajectory_->publish(shifted_traj);
-    }
-  }
+  const auto shifted_trajectory = shift_trajectory_to_ego(traj_from_path, input_data);
 
   // 5. Smooth path
-  auto smoothed_path = [&]() {
-    autoware_utils_debug::ScopedTimeTrack st("smoothing_path", *time_keeper_);
-    auto optimizer_data = make_optimizer_data(input_data);
-
-    trajectory_optimizer::TrajectoryOptimizerParams optimizer_params;
-    optimizer_params.use_eb_smoother = true;
-
-    auto trajectory_points = traj_from_path.points;
-    if (path_smoother_) {
-      autoware_utils_debug::ScopedTimeTrack st(path_smoother_->get_name(), *time_keeper_);
-      path_smoother_->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
-      if (params_.debug.enable_optimizer_trajectory) {
-        publish_debug_trajectory(
-          pub_debug_optimizer_module_trajectories_, path_smoother_, trajectory_points);
-      }
-    }
-
-    Trajectory traj = traj_from_path;
-    traj.points = trajectory_points;
-    return traj;
-  }();
+  auto smoothed_trajectory = smooth_trajectory(shifted_trajectory, input_data);
 
   // 6. Apply trajectory modifiers
-  {
-    set_modifier_data(input_data);
-    for (auto & modifier : modifier_plugins_) {
-      autoware_utils_debug::ScopedTimeTrack st(modifier->get_name(), *time_keeper_);
-      modifier->run(smoothed_path.points);
-      modifier->publish_planning_factor();
-      if (params_.debug.enable_modifier_trajectory) {
-        publish_debug_trajectory(
-          pub_debug_modifier_module_trajectories_, modifier, smoothed_path.points);
-      }
-    }
-  }
+  apply_modifiers(smoothed_trajectory, input_data);
 
   // 7. Velocity optimization
-  const auto smoothed_traj = [&]() {
-    autoware_utils_debug::ScopedTimeTrack st("velocity_optimization", *time_keeper_);
-
-    auto trajectory_points = smoothed_path.points;
-
-    velocity_smoother_->optimize(
-      trajectory_points, *input_data.odometry_ptr,
-      input_data.acceleration_ptr->accel.accel.linear.x);
-
-    // Post-optimization resample
-    {
-      autoware::velocity_smoother::resampling::ResampleParam post_resample_param;
-      post_resample_param.max_trajectory_length = params_.post_resample.max_trajectory_length;
-      post_resample_param.min_trajectory_length = params_.post_resample.min_trajectory_length;
-      post_resample_param.resample_time = params_.post_resample.resample_time;
-      post_resample_param.dense_resample_dt = params_.post_resample.dense_resample_dt;
-      post_resample_param.dense_min_interval_distance =
-        params_.post_resample.dense_min_interval_distance;
-      post_resample_param.sparse_resample_dt = params_.post_resample.sparse_resample_dt;
-      post_resample_param.sparse_min_interval_distance =
-        params_.post_resample.sparse_min_interval_distance;
-
-      const auto & ego_pose = input_data.odometry_ptr->pose.pose;
-      const double v_current = input_data.odometry_ptr->twist.twist.linear.x;
-
-      trajectory_points = autoware::velocity_smoother::resampling::resampleTrajectory(
-        trajectory_points, v_current, ego_pose,
-        params_.path_planning.ego_nearest_lanelet.dist_threshold,
-        params_.path_planning.ego_nearest_lanelet.yaw_threshold, post_resample_param, false);
-
-      if (!trajectory_points.empty()) {
-        trajectory_points.back().longitudinal_velocity_mps = 0.0;
-      }
-    }
-
-    autoware::motion_utils::calculate_time_from_start(
-      trajectory_points, input_data.odometry_ptr->pose.pose.position);
-
-    Trajectory traj = traj_from_path;
-    traj.points = trajectory_points;
-    return traj;
-  }();
+  const auto trajectory = optimize_velocity(smoothed_trajectory, input_data);
 
   // 8. Create and publish CandidateTrajectories message
-  {
-    CandidateTrajectories msg;
-
-    autoware_internal_planning_msgs::msg::CandidateTrajectory candidate_traj;
-    candidate_traj.header = path->header;
-    candidate_traj.generator_id = generator_uuid_;
-    candidate_traj.points = smoothed_traj.points;
-    msg.candidate_trajectories.push_back(candidate_traj);
-
-    autoware_internal_planning_msgs::msg::GeneratorInfo generator_info;
-    generator_info.generator_id = generator_uuid_;
-    generator_info.generator_name.data = "MinimumRuleBasedPlanner";
-    msg.generator_info.push_back(generator_info);
-
-    pub_trajectories_->publish(msg);
-  }
+  publish_candidate_trajectories(trajectory);
 
   // 9. Publish debug information if enabled
   if (params_.debug.enable_path) {
     pub_debug_path_->publish(*path);
   }
   if (params_.debug.enable_output_trajectory) {
-    pub_debug_trajectory_->publish(smoothed_traj);
+    pub_debug_trajectory_->publish(trajectory);
   }
 
   // Publish processing time
@@ -409,6 +296,149 @@ void MinimumRuleBasedPlannerNode::on_timer()
   processing_time_msg.stamp = get_clock()->now();
   processing_time_msg.data = stop_watch_ptr_->toc("processing_time", true);
   debug_processing_time_pub_->publish(processing_time_msg);
+}
+
+std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::plan_path(const InputData & input_data)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  if (input_data.test_path_with_lane_id_ptr) {
+    return *input_data.test_path_with_lane_id_ptr;
+  }
+  return path_planner_->plan_path(
+    input_data.odometry_ptr->pose.pose, input_data.odometry_ptr->twist.twist.linear.x);
+}
+
+Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(
+  const Trajectory & trajectory, const InputData & input_data)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  if (!params_.path_planning.path_shift.enable) return trajectory;
+
+  TrajectoryShiftParams shift_params;
+  shift_params.minimum_shift_length = params_.path_planning.path_shift.minimum_shift_length;
+  shift_params.minimum_shift_yaw = params_.path_planning.path_shift.minimum_shift_yaw;
+  shift_params.minimum_shift_distance = params_.path_planning.path_shift.minimum_shift_distance;
+  shift_params.min_speed_for_curvature = params_.path_planning.path_shift.min_speed_for_curvature;
+  shift_params.lateral_accel_limit = params_.path_planning.path_shift.lateral_accel_limit;
+
+  const double ego_velocity = input_data.odometry_ptr->twist.twist.linear.x;
+  const double ego_yaw_rate = input_data.odometry_ptr->twist.twist.angular.z;
+  const auto shifted_trajectory = path_planner_->shift_trajectory_to_ego(
+    trajectory, input_data.odometry_ptr->pose.pose, ego_velocity, ego_yaw_rate, shift_params,
+    params_.path_planning.output.delta_arc_length);
+
+  if (params_.debug.enable_shifted_trajectory) {
+    Trajectory shifted_traj;
+    shifted_traj.header = trajectory.header;
+    shifted_traj.points = shifted_trajectory.points;
+    pub_debug_shifted_trajectory_->publish(shifted_traj);
+  }
+  return shifted_trajectory;
+}
+
+Trajectory MinimumRuleBasedPlannerNode::smooth_trajectory(
+  const Trajectory & trajectory, const InputData & input_data)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  auto optimizer_data = make_optimizer_data(input_data);
+
+  trajectory_optimizer::TrajectoryOptimizerParams optimizer_params;
+  optimizer_params.use_eb_smoother = true;
+
+  auto trajectory_points = trajectory.points;
+  if (path_smoother_) {
+    autoware_utils_debug::ScopedTimeTrack st(path_smoother_->get_name(), *time_keeper_);
+    path_smoother_->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
+    if (params_.debug.enable_optimizer_trajectory) {
+      publish_debug_trajectory(path_smoother_->get_name(), trajectory_points);
+    }
+  }
+
+  Trajectory traj;
+  traj.header = trajectory.header;
+  traj.points = trajectory_points;
+  return traj;
+}
+
+void MinimumRuleBasedPlannerNode::apply_modifiers(
+  Trajectory & trajectory, const InputData & input_data)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  set_modifier_data(input_data);
+  for (auto & modifier : modifier_plugins_) {
+    autoware_utils_debug::ScopedTimeTrack st(modifier->get_name(), *time_keeper_);
+    modifier->run(trajectory.points);
+    modifier->publish_planning_factor();
+    if (params_.debug.enable_modifier_trajectory) {
+      publish_debug_trajectory(modifier->get_name(), trajectory.points);
+    }
+  }
+}
+
+Trajectory MinimumRuleBasedPlannerNode::optimize_velocity(
+  const Trajectory & trajectory, const InputData & input_data)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  auto trajectory_points = trajectory.points;
+
+  velocity_smoother_->optimize(
+    trajectory_points, *input_data.odometry_ptr, input_data.acceleration_ptr->accel.accel.linear.x);
+
+  // Post-optimization resample
+  {
+    autoware::velocity_smoother::resampling::ResampleParam post_resample_param;
+    post_resample_param.max_trajectory_length = params_.post_resample.max_trajectory_length;
+    post_resample_param.min_trajectory_length = params_.post_resample.min_trajectory_length;
+    post_resample_param.resample_time = params_.post_resample.resample_time;
+    post_resample_param.dense_resample_dt = params_.post_resample.dense_resample_dt;
+    post_resample_param.dense_min_interval_distance =
+      params_.post_resample.dense_min_interval_distance;
+    post_resample_param.sparse_resample_dt = params_.post_resample.sparse_resample_dt;
+    post_resample_param.sparse_min_interval_distance =
+      params_.post_resample.sparse_min_interval_distance;
+
+    const auto & ego_pose = input_data.odometry_ptr->pose.pose;
+    const double v_current = input_data.odometry_ptr->twist.twist.linear.x;
+
+    trajectory_points = autoware::velocity_smoother::resampling::resampleTrajectory(
+      trajectory_points, v_current, ego_pose,
+      params_.path_planning.ego_nearest_lanelet.dist_threshold,
+      params_.path_planning.ego_nearest_lanelet.yaw_threshold, post_resample_param, false);
+
+    if (!trajectory_points.empty()) {
+      trajectory_points.back().longitudinal_velocity_mps = 0.0;
+    }
+  }
+
+  autoware::motion_utils::calculate_time_from_start(
+    trajectory_points, input_data.odometry_ptr->pose.pose.position);
+
+  Trajectory traj;
+  traj.header = trajectory.header;
+  traj.points = trajectory_points;
+  return traj;
+}
+
+void MinimumRuleBasedPlannerNode::publish_candidate_trajectories(const Trajectory & trajectory)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  autoware_internal_planning_msgs::msg::CandidateTrajectory candidate_traj;
+  candidate_traj.header = trajectory.header;
+  candidate_traj.generator_id = generator_uuid_;
+  candidate_traj.points = trajectory.points;
+
+  CandidateTrajectories msg;
+  msg.candidate_trajectories.push_back(candidate_traj);
+
+  autoware_internal_planning_msgs::msg::GeneratorInfo generator_info;
+  generator_info.generator_id = generator_uuid_;
+  generator_info.generator_name.data = "MinimumRuleBasedPlanner";
+  msg.generator_info.push_back(generator_info);
+
+  pub_trajectories_->publish(msg);
 }
 
 MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()
