@@ -95,6 +95,20 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   state_.predictor_vehicle = std::make_shared<PredictorVehicle>(*this);
   state_.predictor_vehicle->setParams(vehicle_params);
 
+  // --- Priority prediction (traffic-signal stop hypotheses) ---
+  state_.params.use_priority_prediction = declare_parameter<bool>("priority_prediction.enable");
+  priority_predictor::PriorityPredictionParams priority_params;
+  priority_params.stop_time_hysteresis =
+    declare_parameter<double>("priority_prediction.stop_time_hysteresis");
+  priority_params.go_time_hysteresis =
+    declare_parameter<double>("priority_prediction.go_time_hysteresis");
+  priority_params.signal_retention_timeout =
+    declare_parameter<double>("priority_prediction.signal_retention_timeout");
+  const double signal_observation_timeout =
+    declare_parameter<double>("priority_prediction.signal_observation_timeout");
+  state_.priority_predictor = std::make_shared<priority_predictor::TrafficSignalStopPredictor>();
+  state_.priority_predictor->setParameters(priority_params, signal_observation_timeout);
+
   // --- VRU predictor ---
   state_.predictor_vru = std::make_shared<PredictorVru>(*this);
   {
@@ -134,6 +148,8 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   state_.params.remember_lost_crosswalk_users =
     declare_parameter<bool>("use_crosswalk_user_history.remember_lost_users");
   state_.params.prediction_time_horizon_unknown = time_horizon.unknown;
+  state_.params.remap_unsupported_labels_to_unknown =
+    declare_parameter<bool>("remap_unsupported_labels_to_unknown");
 
   // --- Callbacks ---
   map_callback_ = std::make_unique<MapCallback>(this, state_);
