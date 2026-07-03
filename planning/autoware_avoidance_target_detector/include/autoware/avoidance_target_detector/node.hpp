@@ -73,6 +73,7 @@ private:
     sub_lanelet_map_{this, "~/input/lanelet_map_bin", rclcpp::QoS{1}.transient_local()};
 
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_avoidance_targets_;
+  rclcpp::Publisher<PredictedObjects>::SharedPtr pub_driving_along_vehicles_;
   rclcpp::Publisher<Path>::SharedPtr pub_drivable_area_path_;
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_near_segment_polygon_;
 

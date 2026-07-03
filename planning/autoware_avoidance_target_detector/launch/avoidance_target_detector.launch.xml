@@ -5,6 +5,7 @@
   <arg name="input_route" default="/planning/route"/>
   <arg name="input_lanelet_map_bin" default="/map/vector_map"/>
   <arg name="output_avoidance_targets" default="/planning/avoidance_target_detector/output/avoidance_targets"/>
+  <arg name="output_driving_along_vehicles" default="/planning/avoidance_target_detector/output/driving_along_vehicles"/>
   <arg name="debug_avoidance_targets" default="/planning/avoidance_target_detector/debug/avoidance_targets"/>
   <arg name="output_drivable_area" default="/planning/avoidance_target_detector/output/drivable_area"/>
   <arg name="debug_near_segment_polygon" default="/planning/avoidance_target_detector/debug/near_segment_polygon"/>
@@ -17,6 +18,7 @@
     <remap from="~/input/route" to="$(var input_route)"/>
     <remap from="~/input/lanelet_map_bin" to="$(var input_lanelet_map_bin)"/>
     <remap from="~/output/avoidance_targets" to="$(var output_avoidance_targets)"/>
+    <remap from="~/output/driving_along_vehicles" to="$(var output_driving_along_vehicles)"/>
     <remap from="~/debug/avoidance_targets" to="$(var debug_avoidance_targets)"/>
     <remap from="~/output/drivable_area" to="$(var output_drivable_area)"/>
     <remap from="~/debug/near_segment_polygon" to="$(var debug_near_segment_polygon)"/>

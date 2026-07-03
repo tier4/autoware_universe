@@ -1,6 +1,6 @@
 # autoware_avoidance_target_detector
 
-Experimental toy package for developing auxiliary planning functions. The reference node (`AvoidanceTargetDetectorNode`) shows how to wire the library; the reusable pieces are **`ExtendedRouteHandler`** (route / boundary construction) and **`ObjectSelector`** (avoidance target filtering).
+Experimental toy package for developing auxiliary planning functions. The reference node (`AvoidanceTargetDetectorNode`) shows how to wire the library; the reusable pieces are **`ExtendedRouteHandler`** (route / boundary construction) and **`ObjectSelector`** (avoidance target and driving-along vehicle filtering).
 
 When integrating into another package, your node typically owns:
 
@@ -18,7 +18,7 @@ Headers:
 
 ## Required subscriptions
 
-Rebuild `ExtendedRouteHandler` whenever the **map** or **route** changes. Call `ObjectSelector::get_avoidance_targets()` on each **objects** update (with the latest trajectory and route bounds).
+Rebuild `ExtendedRouteHandler` whenever the **map** or **route** changes. On each **objects** update, call `ObjectSelector::update_objects()` first, then `get_avoidance_targets()` and/or `get_driving_along_vehicles()` (with the latest trajectory and route handler).
 
 | Topic (reference node)    | Message type                                    | Role                                                  |
 | ------------------------- | ----------------------------------------------- | ----------------------------------------------------- |
@@ -34,7 +34,7 @@ Until map, route, and trajectory are available, boundary and object-selection AP
 ## Integration flow
 
 1. On map or route update: construct `ExtendedRouteHandler`, call `create_map()`, then read cached bounds (see below).
-2. On each objects callback: select route bounds, optionally publish via `to_path_msg`, then call `get_avoidance_targets()`.
+2. On each objects callback: call `update_objects()`, select route bounds, optionally publish via `to_path_msg`, then call `get_avoidance_targets()` and/or `get_driving_along_vehicles()`.
 
 Minimal pattern (see `src/node.cpp`):
 
@@ -47,8 +47,14 @@ extended_route_handler_->create_map();
 const auto & bounds = extended_route_handler_->get_extended_route_bounds();  // or get_original_route_bounds()
 pub_drivable_area_path_->publish(to_path_msg(bounds, trajectory));
 
-const auto targets = object_selector_.get_avoidance_targets(
-  get_clock()->now(), objects, trajectory, bounds);
+object_selector_.update_objects(get_clock()->now(), objects, trajectory);
+
+const auto targets = object_selector_.get_avoidance_targets(objects, trajectory, bounds);
+
+const auto driving_along = object_selector_.get_driving_along_vehicles(
+  objects, *extended_route_handler_,
+  ego_history_front.pose.position,   // e.g. oldest point on built ego trajectory
+  trajectory.points.back().pose.position);
 ```
 
 Parameter `use_extended_route_bounds` (reference node) switches between original and extended route bounds for the drivable area.
@@ -80,7 +86,7 @@ No arguments.
 
 **Preconditions:** Handler constructed with valid `map` and `route`.
 
-**Effect:** Builds the goal-purpose routing graph, extended lanelet segments, `route_map_` (route lanelets + nearby `road_border` linestrings), and caches `original_route_bounds_` / `extended_route_bounds_`.
+**Effect:** Builds the goal-purpose routing graph, extended lanelet segments, `route_map_` (route lanelets + nearby `road_border` linestrings), `route_map_routing_graph_` (routing graph over `route_map_` only), and caches `original_route_bounds_` / `extended_route_bounds_`.
 
 **When to call:** Once after construction, and again whenever the subscribed map or route message changes.
 
@@ -108,6 +114,25 @@ No arguments.
 | `get_extended_route_bounds()` | Extended primitives (lateral expansion + sibling lanelets where found). Wider corridor than original.          |
 
 **Preconditions:** `create_map()` completed. Values are cached and do not change until the next `create_map()`.
+
+#### `get_near_segment_polygon(prev_end_point, following_end_point)`
+
+```cpp
+lanelet::BasicPolygon2d get_near_segment_polygon(
+  const geometry_msgs::msg::Point & prev_end_point,
+  const geometry_msgs::msg::Point & following_end_point) const;
+```
+
+| Argument              | Description                                                                                               |
+| --------------------- | --------------------------------------------------------------------------------------------------------- |
+| `prev_end_point`      | Start of the query range on the route (reference node: oldest point on the built ego trajectory history). |
+| `following_end_point` | End of the query range (reference node: last point of the subscribed planning trajectory).                |
+
+| Returns                   | Description                                                                                                                                                   |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lanelet::BasicPolygon2d` | Polygon covering extended route segments between the two points (left bounds forward + right bounds reversed). Empty if segment lookup or bounds build fails. |
+
+**Preconditions:** `create_map()` completed.
 
 ![Original and extended route comparison](assets/orignal_and_extended_route_lanelets.png)
 
@@ -140,35 +165,93 @@ Path to_path_msg(const RouteBounds & bounds, const Trajectory & trajectory);
 
 ---
 
-### `ObjectSelector::get_avoidance_targets()`
+### `ObjectSelector`
+
+Per-object Bayesian filters are updated via `update_objects()`. Getter methods (`get_avoidance_targets()`, `get_driving_along_vehicles()`) read the latest filter state. Reuse the same `ObjectSelector` instance across callbacks.
+
+#### `update_objects()`
+
+```cpp
+void update_objects(
+  const rclcpp::Time & current_time,
+  const PredictedObjects & objects,
+  const Trajectory & trajectory);
+```
+
+| Argument       | Description                                                                                                                                                                                                           |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `current_time` | ROS time for this update cycle. Used for filter staleness, hysteresis timing, and Bayesian updates. Typically `node->get_clock()->now()`.                                                                             |
+| `objects`      | Full predicted-objects message for the current frame. Every object in `objects.objects` is observed; objects not seen for longer than `FilterManagerParams::stale_threshold_seconds` are removed from internal state. |
+| `trajectory`   | Reference trajectory (same source as subscribed trajectory). Must have **at least two points** for deviation and distance checks.                                                                                     |
+
+Call once per objects callback before any getter in the same cycle.
+
+#### `get_avoidance_targets()`
 
 ```cpp
 PredictedObjects get_avoidance_targets(
-  const rclcpp::Time & current_time,
   const PredictedObjects & objects,
   const Trajectory & trajectory,
   const RouteBounds & route_bounds);
 ```
 
-Maintains per-object Bayesian filter state internally (keyed by object UUID). Same `ObjectSelector` instance must be reused across callbacks so filters can converge and hysteresis can apply.
+| Argument       | Description                                                                                                                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `objects`      | Same predicted-objects message passed to `update_objects()` for this cycle.                                                                                                                     |
+| `trajectory`   | Reference trajectory. Used for on-trajectory deviation, longitudinal extent filtering, and lateral corridor checks.                                                                             |
+| `route_bounds` | Left/right corridor for lateral filtering. Objects whose footprint lies entirely outside the bounds are removed. Typically from `get_original_route_bounds()` or `get_extended_route_bounds()`. |
 
-| Argument       | Description                                                                                                                                                                                                                     |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `current_time` | ROS time for this update cycle. Used for filter staleness, hysteresis timing, and Bayesian updates. Typically `node->get_clock()->now()`.                                                                                       |
-| `objects`      | Full predicted-objects message for the current frame. Every object in `objects.objects` is observed; objects not seen for longer than `FilterManagerParams::stale_threshold_seconds` are removed from internal state.           |
-| `trajectory`   | Reference trajectory (same source as subscribed trajectory). Must have **at least two points** for deviation and distance checks. Used for on-trajectory deviation, longitudinal extent filtering, and lateral corridor checks. |
-| `route_bounds` | Left/right corridor for lateral filtering. Objects whose footprint lies entirely outside the bounds are removed. Typically from `get_original_route_bounds()` or `get_extended_route_bounds()`.                                 |
-
-| Returns            | Description                                                                                                                                                       |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PredictedObjects` | Subset of input objects classified as avoidance targets. Header and structure match input style; `objects` contains only selected targets. Empty if none qualify. |
+| Returns            | Description                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| `PredictedObjects` | Subset of input objects classified as stationary avoidance targets. Empty if none qualify. |
 
 **Brief behavior:**
 
-- Updates per-object filters (classification, stationary, on-trajectory deviation).
-- Applies hysteresis before toggling target / non-target state.
+- Keeps objects whose per-object filter reports `is_stationary_avoidance_target()` (interest + stationary + deviated from trajectory, with hysteresis).
 - Removes objects outside trajectory longitudinal range or outside the route corridor.
 - Filter tuning constants: `parameter.hpp` (`OnTrajectoryDValidationParams`, `FilterManagerParams`, `MovingObjectFilterParams`, etc.).
+
+#### `get_driving_along_vehicles()`
+
+```cpp
+PredictedObjects get_driving_along_vehicles(
+  const PredictedObjects & objects,
+  const ExtendedRouteHandler & extended_route_handler,
+  const geometry_msgs::msg::Point & prev_end_point,
+  const geometry_msgs::msg::Point & following_end_point);
+```
+
+Selects **moving vehicles along the extended route corridor** near ego (e.g. traffic in sibling / adjacent lanes), complementary to stationary `get_avoidance_targets()`.
+
+**Preconditions:** `update_objects()` called for the same `objects` in the same cycle. `extended_route_handler.create_map()` completed.
+
+| Argument                 | Description                                                                                          |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `objects`                | Same predicted-objects message passed to `update_objects()` for this cycle.                          |
+| `extended_route_handler` | Handler with built `route_map_` and `route_map_routing_graph_`.                                      |
+| `prev_end_point`         | Start of the near-segment range (reference node: `ego_trajectory_.restore().front().pose.position`). |
+| `following_end_point`    | End of the near-segment range (reference node: `trajectory.points.back().pose.position`).            |
+
+| Returns            | Description                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------ |
+| `PredictedObjects` | Subset of input objects passing all criteria below. Empty if the near-segment polygon cannot be built. |
+
+**Selection criteria** (object is kept only if all pass):
+
+1. **Filter state** — `is_object_of_interest()` and **not** `is_stationary()`.
+2. **Near-segment overlap** — footprint intersects `get_near_segment_polygon(prev_end_point, following_end_point)`.
+3. **Not on ego lane sequence** — ego and object lanelets are resolved on `route_map_` via `nearestUntil` with `lanelet::geometry::inside()`. Removed if `route_map_routing_graph_` has a shortest path between ego and object in either direction with **lane changes disabled**.
+
+Parallel sibling lanes (not routably connected without lane change) are intended to be kept. Same-lane or longitudinally connected traffic along the corridor is removed.
+
+**Reference node:**
+
+| Topic                             | Message type                                         |
+| --------------------------------- | ---------------------------------------------------- |
+| `~/output/driving_along_vehicles` | `autoware_perception_msgs/msg/PredictedObjects`      |
+| `~/debug/near_segment_polygon`    | `visualization_msgs/msg/MarkerArray` (debug polygon) |
+
+Default output remap: `/planning/avoidance_target_detector/output/driving_along_vehicles`.
 
 ---
 
@@ -179,6 +262,13 @@ ros2 launch autoware_avoidance_target_detector avoidance_target_detector.launch.
 ```
 
 Default remaps are defined in `launch/avoidance_target_detector.launch.xml`.
+
+| Output (reference node)           | Default topic                                                       |
+| --------------------------------- | ------------------------------------------------------------------- |
+| `~/output/avoidance_targets`      | `/planning/avoidance_target_detector/output/avoidance_targets`      |
+| `~/output/driving_along_vehicles` | `/planning/avoidance_target_detector/output/driving_along_vehicles` |
+| `~/output/drivable_area`          | `/planning/avoidance_target_detector/output/drivable_area`          |
+| `~/debug/near_segment_polygon`    | `/planning/avoidance_target_detector/debug/near_segment_polygon`    |
 
 ---
 

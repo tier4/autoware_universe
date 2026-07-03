@@ -24,6 +24,10 @@
 
 #include <autoware_perception_msgs/msg/predicted_object.hpp>
 
+#include <boost/geometry.hpp>
+
+#include <lanelet2_core/geometry/Lanelet.h>
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -61,6 +65,67 @@ bool is_object_of_interest(const PredictedObject & object)
                labels_of_interest.begin(), labels_of_interest.end(), classification.label) !=
              labels_of_interest.end();
     });
+}
+
+bool overlaps_near_segment_polygon(
+  const PredictedObject & object, const lanelet::BasicPolygon2d & near_segment_polygon)
+{
+  if (near_segment_polygon.size() < 3) {
+    return false;
+  }
+
+  autoware_utils_geometry::Polygon2d segment_polygon;
+  auto & outer = segment_polygon.outer();
+  outer.reserve(near_segment_polygon.size());
+  for (const auto & point : near_segment_polygon) {
+    outer.emplace_back(point.x(), point.y());
+  }
+  boost::geometry::correct(segment_polygon);
+
+  const auto object_polygon = autoware_utils_geometry::to_polygon2d(object);
+  return boost::geometry::intersects(object_polygon, segment_polygon);
+}
+
+std::optional<lanelet::ConstLanelet> get_nearest_lanelet(
+  const lanelet::LaneletMap & route_map, const geometry_msgs::msg::Point & point)
+{
+  const lanelet::BasicPoint2d search_point{point.x, point.y};
+  bool found = false;
+  std::optional<lanelet::ConstLanelet> nearest_lanelet;
+
+  route_map.laneletLayer.nearestUntil(
+    search_point, [&](const lanelet::BoundingBox2d & bbox, const lanelet::ConstLanelet & lanelet) {
+      if (lanelet::geometry::inside(lanelet, search_point)) {
+        nearest_lanelet = lanelet;
+        found = true;
+        return true;
+      }
+      constexpr double k_bbox_touch_epsilon_m = 1e-3;
+      return lanelet::geometry::distance2d(bbox, search_point) > k_bbox_touch_epsilon_m;
+    });
+
+  if (found) {
+    return nearest_lanelet;
+  }
+  return std::nullopt;
+}
+
+bool has_shortest_path_without_lane_change(
+  const lanelet::routing::RoutingGraph & routing_graph, const lanelet::ConstLanelet & from,
+  const lanelet::ConstLanelet & to)
+{
+  constexpr lanelet::routing::RoutingCostId k_default_routing_cost_id{0};
+  constexpr bool k_with_lane_changes{false};
+  return static_cast<bool>(
+    routing_graph.shortestPath(from, to, k_default_routing_cost_id, k_with_lane_changes));
+}
+
+bool is_routably_connected_to_ego_without_lane_change(
+  const lanelet::routing::RoutingGraph & routing_graph, const lanelet::ConstLanelet & ego_lanelet,
+  const lanelet::ConstLanelet & object_lanelet)
+{
+  return has_shortest_path_without_lane_change(routing_graph, object_lanelet, ego_lanelet) ||
+         has_shortest_path_without_lane_change(routing_graph, ego_lanelet, object_lanelet);
 }
 
 double linear_velocity_norm(const PredictedObject & object)
@@ -782,6 +847,56 @@ PredictedObjects ObjectSelector::get_avoidance_targets(
     avoidance_targets.objects.end());
 
   return avoidance_targets;
+}
+
+PredictedObjects ObjectSelector::get_driving_along_vehicles(
+  const PredictedObjects & objects, const ExtendedRouteHandler & extended_route_handler,
+  const geometry_msgs::msg::Point & prev_end_point,
+  const geometry_msgs::msg::Point & following_end_point)
+{
+  const auto near_segment_polygon =
+    extended_route_handler.get_near_segment_polygon(prev_end_point, following_end_point);
+  if (near_segment_polygon.size() < 3) {
+    return PredictedObjects{};
+  }
+
+  const auto route_map = extended_route_handler.getRouteMap();
+  const auto routing_graph = extended_route_handler.getRouteMapRoutingGraph();
+  const auto ego_lanelet =
+    route_map ? get_nearest_lanelet(*route_map, prev_end_point) : std::nullopt;
+
+  PredictedObjects driving_along_vehicles = objects;
+  driving_along_vehicles.objects.erase(
+    std::remove_if(
+      driving_along_vehicles.objects.begin(), driving_along_vehicles.objects.end(),
+      [&](const PredictedObject & object) {
+        const auto it = object_filters_.find(autoware_utils_uuid::to_hex_string(object.object_id));
+        if (it == object_filters_.end()) {
+          return true;
+        }
+        if (!it->second.is_object_of_interest() || it->second.is_stationary()) {
+          return true;
+        }
+        if (!overlaps_near_segment_polygon(object, near_segment_polygon)) {
+          return true;
+        }
+
+        if (!route_map || !routing_graph || !ego_lanelet) {
+          return false;
+        }
+
+        const auto object_lanelet = get_nearest_lanelet(
+          *route_map, object.kinematics.initial_pose_with_covariance.pose.position);
+        if (!object_lanelet) {
+          return true;
+        }
+
+        return is_routably_connected_to_ego_without_lane_change(
+          *routing_graph, *ego_lanelet, *object_lanelet);
+      }),
+    driving_along_vehicles.objects.end());
+
+  return driving_along_vehicles;
 }
 
 }  // namespace autoware::avoidance_target_detector

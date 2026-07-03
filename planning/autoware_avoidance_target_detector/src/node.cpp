@@ -33,6 +33,8 @@ AvoidanceTargetDetectorNode::AvoidanceTargetDetectorNode(const rclcpp::NodeOptio
     "~/input/objects", rclcpp::QoS{1},
     std::bind(&AvoidanceTargetDetectorNode::on_objects, this, std::placeholders::_1))},
   pub_avoidance_targets_{create_publisher<PredictedObjects>("~/output/avoidance_targets", 1)},
+  pub_driving_along_vehicles_{
+    create_publisher<PredictedObjects>("~/output/driving_along_vehicles", 1)},
   pub_drivable_area_path_{create_publisher<Path>("~/output/drivable_area", 1)},
   pub_near_segment_polygon_{
     create_publisher<MarkerArray>("~/debug/near_segment_polygon", rclcpp::QoS{1}.transient_local())}
@@ -143,6 +145,17 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
     object_selector_.get_avoidance_targets(*msg, trajectory_msg, route_bounds);
 
   pub_avoidance_targets_->publish(avoidance_targets);
+
+  PredictedObjects driving_along_vehicles;
+  if (ego_trajectory_built_ && !trajectory_msg.points.empty()) {
+    const auto ego_points = ego_trajectory_.restore();
+    if (!ego_points.empty()) {
+      driving_along_vehicles = object_selector_.get_driving_along_vehicles(
+        *msg, *extended_route_handler_, ego_points.front().pose.position,
+        trajectory_msg.points.back().pose.position);
+    }
+  }
+  pub_driving_along_vehicles_->publish(driving_along_vehicles);
 }
 
 }  // namespace autoware::avoidance_target_detector

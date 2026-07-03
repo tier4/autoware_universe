@@ -23,6 +23,7 @@
 #include <autoware_perception_msgs/msg/detail/predicted_object__struct.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <geometry_msgs/msg/point.hpp>
 
 #include <array>
 #include <map>
@@ -198,8 +199,9 @@ public:
     const RouteBounds & route_bounds);
 
   [[nodiscard]] PredictedObjects get_driving_along_vehicles(
-    const rclcpp::Time & current_time, const PredictedObjects & objects,
-    const ExtendedRouteHandler & extended_route_handler);
+    const PredictedObjects & objects, const ExtendedRouteHandler & extended_route_handler,
+    const geometry_msgs::msg::Point & prev_end_point,
+    const geometry_msgs::msg::Point & following_end_point);
 
 private:
   AvoidanceTargetDetectorMap object_filters_;

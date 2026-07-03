@@ -534,6 +534,8 @@ void ExtendedRouteHandler::create_map()
   }
   original_route_bounds_ = build_route_bounds(original_primitive_lists);
   extended_route_bounds_ = build_route_bounds(extended_primitive_lists);
+
+  route_map_routing_graph_ = traffic_rules::create_goal_purpose_routing_graph(*route_map_);
 }
 
 void ExtendedRouteHandler::export_debug_map() const
@@ -664,8 +666,9 @@ std::vector<ExtendedLaneletSegments::Segment> ExtendedRouteHandler::get_near_seg
   }
 
   const auto & all_segments = extended_lanelet_segments_.segments();
-  return {all_segments.begin() + static_cast<std::ptrdiff_t>(*start_idx),
-          all_segments.begin() + static_cast<std::ptrdiff_t>(*end_idx) + 1};
+  return {
+    all_segments.begin() + static_cast<std::ptrdiff_t>(*start_idx),
+    all_segments.begin() + static_cast<std::ptrdiff_t>(*end_idx) + 1};
 }
 
 lanelet::BasicPolygon2d ExtendedRouteHandler::get_near_segment_polygon(

@@ -21,7 +21,6 @@
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/path.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
-
 #include <geometry_msgs/msg/point.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
@@ -135,6 +134,11 @@ public:
     return extended_routing_graph_;
   }
 
+  [[nodiscard]] lanelet::routing::RoutingGraphConstPtr getRouteMapRoutingGraph() const
+  {
+    return route_map_routing_graph_;
+  }
+
   [[nodiscard]] lanelet::LaneletMapPtr getRouteMap() const { return route_map_; }
 
   [[nodiscard]] std::vector<lanelet::LineString2d> get_road_borders() const;
@@ -173,6 +177,7 @@ private:
   lanelet::LaneletMapPtr route_map_;
   ExtendedLaneletSegments extended_lanelet_segments_;
   lanelet::routing::RoutingGraphConstPtr extended_routing_graph_;
+  lanelet::routing::RoutingGraphConstPtr route_map_routing_graph_;
   std::shared_ptr<RouteHandler> original_route_handler_;
   RouteBounds original_route_bounds_;
   RouteBounds extended_route_bounds_;
