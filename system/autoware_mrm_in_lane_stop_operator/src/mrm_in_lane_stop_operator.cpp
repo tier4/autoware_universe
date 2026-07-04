@@ -32,6 +32,7 @@ MrmInLaneStopOperator::MrmInLaneStopOperator(const rclcpp::NodeOptions & node_op
     mode.name = name;
     mode.target_acceleration = declare_parameter<double>(name + ".target_acceleration");
     mode.target_jerk = declare_parameter<double>(name + ".target_jerk");
+    mode.send_active_flag = declare_parameter<bool>(name + ".send_active_flag", true);
 
     modes_.push_back(std::move(mode));
   }
@@ -189,7 +190,7 @@ void MrmInLaneStopOperator::publishDrivingModeActive() const
   msg.stamp = now();
 
   for (const auto & mode : modes_) {
-    if (!mode.mode_id) continue;
+    if (!mode.mode_id || !mode.send_active_flag) continue;
     tier4_system_msgs::msg::DrivingModeFlagItem item;
     item.mode = mode.mode_id.value();
     item.flag = (active_mode_id_ == mode.mode_id);

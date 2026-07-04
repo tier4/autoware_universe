@@ -45,6 +45,7 @@ struct ModeConfig
   std::string name;
   double target_acceleration;
   double target_jerk;
+  bool send_active_flag;
   std::optional<uint32_t> mode_id;
 };
 

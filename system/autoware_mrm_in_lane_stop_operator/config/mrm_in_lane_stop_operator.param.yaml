@@ -10,5 +10,6 @@
 
     # Per-mode parameters (one block per entry in mode_names).
     in_lane_moderate_stop:
+      send_active_flag: true
       target_acceleration: -2.5  # [m/s^2]
       target_jerk: -1.5          # [m/s^3]
