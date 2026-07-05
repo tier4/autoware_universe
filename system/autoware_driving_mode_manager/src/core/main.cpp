@@ -96,7 +96,7 @@ void ManagerMain::publish_operation_mode() const
   };
 
   OperationModeState state;
-  state.mode = config_->to_operation_mode(request_.operation_mode);
+  state.mode = config_->to_operation_mode(request_.operation_mode).value_or(OperationMode::kUnknown);
   state.is_autoware_control_enabled = (request_.platform_mode != PlatformMode::kManual);
   state.is_in_transition = !tasks_.empty();
   state.is_stop_mode_available = is_available(OperationMode::kStop);
@@ -126,7 +126,7 @@ void ManagerMain::publish_driving_mode_request() const
 
 void ManagerMain::publish_driving_mode_sync() const
 {
-  interface_->publish_driving_mode_sync(self_available_modes_);
+  interface_->publish_driving_mode_sync(config_->autoware_modes(), self_available_modes_);
 }
 
 void ManagerMain::publish_debug_flags() const
@@ -274,7 +274,7 @@ ServiceResponse ManagerMain::change_operation_mode(const OperationMode & operati
   }
 
   const auto mode = config_->to_autoware_mode(operation_mode);
-  if (!status_->is_available(mode)) {
+  if (!config_->is_reference_mode(mode) && !status_->is_available(mode)) {
     return ServiceResponse{false, "operation mode is not available"};
   }
 
@@ -407,6 +407,7 @@ void ManagerMain::execute_tasks()
       case TaskResult::kTimeout:
         interface_->log_warn(tasks_.get()->describe() + ": timeout");
         temporary_unavailable_modes_.insert(request_.autoware_mode);
+        tasks_.clear_autoware_tasks();
         return;
       default:
         throw std::logic_error("invalid task result");

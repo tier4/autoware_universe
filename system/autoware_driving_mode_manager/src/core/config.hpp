@@ -34,6 +34,8 @@ public:
   void define_autoware_mode(
     const AutowareMode & autoware_mode, const MrmBehavior & mrm_behavior,
     uint16_t priority) override;
+  void define_operation_mode_reference(
+    const AutowareMode & autoware_mode, const OperationMode & operation_mode) override;
   void define_trajectory_source(const TrajectorySource & source) override;
   void define_command_source(const CommandSource & source) override;
   void set_ignore_flags(const AutowareMode & autoware_mode, const Flags & flags) override;
@@ -49,8 +51,9 @@ public:
   Flags ignore_flags(const AutowareMode & autoware_mode) const;
   AutowareMode to_autoware_mode(const OperationMode & operation_mode) const;
   std::optional<AutowareMode> to_autoware_mode(const MrmBehavior & mrm_behavior) const;
-  OperationMode to_operation_mode(const AutowareMode & autoware_mode) const;
+  std::optional<OperationMode> to_operation_mode(const AutowareMode & autoware_mode) const;
   std::optional<MrmBehavior> to_mrm_behavior(const AutowareMode & autoware_mode) const;
+  bool is_reference_mode(const AutowareMode & autoware_mode) const;
   uint16_t priority(const AutowareMode & autoware_mode) const;
 
 private:
@@ -68,6 +71,7 @@ private:
   std::unordered_set<CommandSource> command_sources_;
   std::unordered_map<OperationMode, AutowareMode> operation_to_autoware_;
   std::unordered_map<MrmBehavior, AutowareMode> mrm_to_autoware_;
+  std::unordered_map<AutowareMode, OperationMode> reference_operation_modes_;
   std::vector<AutowareMode> autoware_modes_list_;
 };
 

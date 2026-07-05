@@ -191,14 +191,15 @@ void RosInterface::publish_mrm_state(const MrmState & state)
   pub_mrm_state_->publish(msg);
 }
 
-void RosInterface::publish_driving_mode_sync(const AutowareModeSet & modes)
+void RosInterface::publish_driving_mode_sync(
+  const std::vector<AutowareMode> & all_modes, const AutowareModeSet & available_modes)
 {
   DrivingModeFlagMsg msg;
   msg.stamp = now();
-  for (const auto & mode : modes) {
+  for (const auto & mode : all_modes) {
     tier4_system_msgs::msg::DrivingModeFlagItem item;
     item.mode = mode.id;
-    item.flag = true;
+    item.flag = available_modes.count(mode) > 0;
     msg.items.push_back(item);
   }
   pub_driving_mode_sync_->publish(msg);

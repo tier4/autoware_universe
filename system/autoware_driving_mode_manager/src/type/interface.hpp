@@ -42,7 +42,8 @@ public:
   virtual void publish_operation_mode(const OperationModeState & state) = 0;
   virtual void publish_mrm_state(const MrmState & state) = 0;
   virtual void publish_driving_mode_request(const ModeRequest & request) = 0;
-  virtual void publish_driving_mode_sync(const AutowareModeSet & modes) = 0;
+  virtual void publish_driving_mode_sync(
+    const std::vector<AutowareMode> & all_modes, const AutowareModeSet & available_modes) = 0;
   virtual void publish_driving_mode_info(const ModeInfo & info) = 0;
   virtual void publish_debug_flags(const DebugFlags & flags) = 0;
   virtual void publish_debug_request(const RequestModes & request) = 0;

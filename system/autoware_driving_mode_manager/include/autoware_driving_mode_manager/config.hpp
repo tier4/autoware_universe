@@ -46,6 +46,10 @@ struct DrivingModeConfigInterface
   virtual void define_autoware_mode(
     const AutowareMode & autoware_mode, const MrmBehavior & mrm_behavior,
     uint16_t priority = 0) = 0;
+  // Register an OperationMode→AutowareMode mapping without adding the mode to local tracking.
+  // Used by sub-ECU plugins to reference main-ECU modes that arrive via the sync topic.
+  virtual void define_operation_mode_reference(
+    const AutowareMode & autoware_mode, const OperationMode & operation_mode) = 0;
   virtual void define_trajectory_source(const TrajectorySource & source) = 0;
   virtual void define_command_source(const CommandSource & source) = 0;
   virtual void set_ignore_flags(const AutowareMode & autoware_mode, const Flags & flags) = 0;
