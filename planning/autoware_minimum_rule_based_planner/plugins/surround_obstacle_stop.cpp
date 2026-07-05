@@ -113,7 +113,7 @@ void SurroundObstacleStop::on_initialize(const MinimumRuleBasedPlannerParams & p
     get_node_ptr()->create_publisher<StringStamped>("~/surround_obstacle_stop/debug/text", 1);
 
   proximity_checker_ = std::make_unique<obstacle_proximity_checker::ProximityChecker>(
-    to_proximity_checker_parameters(params_), vehicle_info_);
+    to_proximity_checker_parameters(params_), context_->vehicle_info);
 }
 
 void SurroundObstacleStop::update_params(const MinimumRuleBasedPlannerParams & params)
@@ -122,22 +122,22 @@ void SurroundObstacleStop::update_params(const MinimumRuleBasedPlannerParams & p
   proximity_checker_->update_parameters(to_proximity_checker_parameters(params_));
 }
 
-void SurroundObstacleStop::run(TrajectoryPoints & traj_points)
+void SurroundObstacleStop::run(TrajectoryPoints & traj_points, const ModifierData & data)
 {
   proximity_check_result_ = std::nullopt;
 
-  if (!is_stop_required(traj_points)) {
+  if (!is_stop_required(traj_points, data)) {
     publish_debug_string(false);
     return;
   }
 
-  set_stop_point(traj_points);
+  set_stop_point(traj_points, data);
   publish_debug_string(true);
 }
 
-bool SurroundObstacleStop::check_inputs() const
+bool SurroundObstacleStop::check_inputs(const ModifierData & data) const
 {
-  if (!data_->odometry_ptr) {
+  if (!data.odometry_ptr) {
     return false;
   }
 
@@ -145,32 +145,33 @@ bool SurroundObstacleStop::check_inputs() const
     return false;
   }
 
-  const bool has_pointcloud = params_.use_pointcloud && data_->obstacle_pointcloud_ptr;
-  const bool has_objects = params_.use_objects && data_->predicted_objects_ptr;
+  const bool has_pointcloud = params_.use_pointcloud && data.obstacle_pointcloud_ptr;
+  const bool has_objects = params_.use_objects && data.predicted_objects_ptr;
 
   return has_pointcloud || has_objects;
 }
 
-obstacle_proximity_checker::Inputs SurroundObstacleStop::to_proximity_checker_inputs() const
+obstacle_proximity_checker::Inputs SurroundObstacleStop::to_proximity_checker_inputs(
+  const ModifierData & data) const
 {
   obstacle_proximity_checker::Inputs checker_inputs;
-  checker_inputs.ego_pose = data_->odometry_ptr->pose.pose;
-  checker_inputs.objects = data_->predicted_objects_ptr;
+  checker_inputs.ego_pose = data.odometry_ptr->pose.pose;
+  checker_inputs.objects = data.predicted_objects_ptr;
 
-  if (!data_->obstacle_pointcloud_ptr || data_->obstacle_pointcloud_ptr->data.empty()) {
+  if (!data.obstacle_pointcloud_ptr || data.obstacle_pointcloud_ptr->data.empty()) {
     return checker_inputs;
   }
 
   const auto transform_stamped = get_transform(
-    "base_link", data_->obstacle_pointcloud_ptr->header.frame_id,
-    data_->obstacle_pointcloud_ptr->header.stamp, 0.5);
+    "base_link", data.obstacle_pointcloud_ptr->header.frame_id,
+    data.obstacle_pointcloud_ptr->header.stamp, 0.5);
 
   if (!transform_stamped.has_value()) return checker_inputs;
 
   Eigen::Affine3f isometry =
     tf2::transformToEigen(transform_stamped.value().transform).cast<float>();
   pcl::PointCloud<pcl::PointXYZ> transformed_pointcloud;
-  pcl::fromROSMsg(*data_->obstacle_pointcloud_ptr, transformed_pointcloud);
+  pcl::fromROSMsg(*data.obstacle_pointcloud_ptr, transformed_pointcloud);
   autoware_utils::transform_pointcloud(transformed_pointcloud, transformed_pointcloud, isometry);
 
   checker_inputs.pointcloud_in_base_link = transformed_pointcloud.makeShared();
@@ -185,8 +186,8 @@ std::optional<geometry_msgs::msg::TransformStamped> SurroundObstacleStop::get_tr
   geometry_msgs::msg::TransformStamped transform_stamped;
 
   try {
-    transform_stamped =
-      data_->tf_buffer.lookupTransform(target, source, stamp, tf2::durationFromSec(duration_sec));
+    transform_stamped = context_->tf_buffer.lookupTransform(
+      target, source, stamp, tf2::durationFromSec(duration_sec));
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       get_node_ptr()->get_logger(), *get_clock(), 1000, "no transform found for pointcloud: %s",
@@ -197,13 +198,13 @@ std::optional<geometry_msgs::msg::TransformStamped> SurroundObstacleStop::get_tr
   return transform_stamped;
 }
 
-bool SurroundObstacleStop::is_obstacle_nearby()
+bool SurroundObstacleStop::is_obstacle_nearby(const ModifierData & data)
 {
   const double contact_distance_threshold = is_stop_active_ ? params_.hysteresis_distance : 1e-3;
 
   if (!proximity_check_result_.has_value()) {
     proximity_check_result_ =
-      proximity_checker_->check(to_proximity_checker_inputs(), contact_distance_threshold);
+      proximity_checker_->check(to_proximity_checker_inputs(data), contact_distance_threshold);
   }
 
   const auto & result = proximity_check_result_.value();
@@ -225,28 +226,29 @@ bool SurroundObstacleStop::is_obstacle_nearby()
   return false;
 }
 
-bool SurroundObstacleStop::is_stop_required(const TrajectoryPoints & traj_points)
+bool SurroundObstacleStop::is_stop_required(
+  const TrajectoryPoints & traj_points, const ModifierData & data)
 {
-  if (!params_.enable || !check_inputs()) {
+  if (!params_.enable || !check_inputs(data)) {
     return false;
   }
 
   if (
     utils::is_stop_trajectory(traj_points, params_.ego_stopped_vel_th) ||
-    utils::is_ego_vehicle_moving(data_->odometry_ptr->twist.twist, params_.ego_stopped_vel_th)) {
+    utils::is_ego_vehicle_moving(data.odometry_ptr->twist.twist, params_.ego_stopped_vel_th)) {
     is_stop_active_ = false;
     last_obstacle_found_time_ = std::nullopt;
     return false;
   }
 
-  return is_obstacle_nearby();
+  return is_obstacle_nearby(data);
 }
 
-void SurroundObstacleStop::set_stop_point(TrajectoryPoints & traj_points)
+void SurroundObstacleStop::set_stop_point(TrajectoryPoints & traj_points, const ModifierData & data)
 {
   if (traj_points.empty()) return;
 
-  const auto & ego_pose = data_->odometry_ptr->pose.pose;
+  const auto & ego_pose = data.odometry_ptr->pose.pose;
 
   // Insert a zero-velocity stop point at the ego pose while keeping the trajectory shape.
   const auto stop_index = motion_utils::insertStopPoint(ego_pose, 0.0, traj_points);

@@ -39,7 +39,7 @@ class SurroundObstacleStop : public PluginInterface
 public:
   SurroundObstacleStop() = default;
 
-  void run(TrajectoryPoints & traj_points) override;
+  void run(TrajectoryPoints & traj_points, const ModifierData & data) override;
 
   void update_params(const MinimumRuleBasedPlannerParams & params) override;
 
@@ -60,19 +60,21 @@ private:
 
   rclcpp::Publisher<StringStamped>::SharedPtr pub_debug_text_;
 
-  [[nodiscard]] bool check_inputs() const;
+  [[nodiscard]] bool check_inputs(const ModifierData & data) const;
 
-  [[nodiscard]] obstacle_proximity_checker::Inputs to_proximity_checker_inputs() const;
+  [[nodiscard]] obstacle_proximity_checker::Inputs to_proximity_checker_inputs(
+    const ModifierData & data) const;
 
-  [[nodiscard]] bool is_obstacle_nearby();
+  [[nodiscard]] bool is_obstacle_nearby(const ModifierData & data);
 
-  [[nodiscard]] bool is_stop_required(const TrajectoryPoints & traj_points);
+  [[nodiscard]] bool is_stop_required(
+    const TrajectoryPoints & traj_points, const ModifierData & data);
 
   std::optional<geometry_msgs::msg::TransformStamped> get_transform(
     const std::string & target, const std::string & source, const rclcpp::Time & stamp,
     double duration_sec) const;
 
-  void set_stop_point(TrajectoryPoints & traj_points);
+  void set_stop_point(TrajectoryPoints & traj_points, const ModifierData & data);
 
   void publish_debug_string(bool is_active) const;
 };

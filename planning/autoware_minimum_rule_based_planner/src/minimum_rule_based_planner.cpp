@@ -43,6 +43,17 @@ trajectory_optimizer::TrajectoryOptimizerData make_optimizer_data(
   }
   return data;
 }
+
+minimum_rule_based_planner::plugin::ModifierData make_modifier_data(
+  const MinimumRuleBasedPlannerNode::InputData & input_data)
+{
+  minimum_rule_based_planner::plugin::ModifierData data;
+  data.odometry_ptr = input_data.odometry_ptr;
+  data.acceleration_ptr = input_data.acceleration_ptr;
+  data.predicted_objects_ptr = input_data.predicted_objects_ptr;
+  data.obstacle_pointcloud_ptr = input_data.obstacle_pointcloud_ptr;
+  return data;
+}
 }  // namespace
 
 MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptions & options)
@@ -52,7 +63,7 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   modifier_plugin_loader_(
     "autoware_minimum_rule_based_planner",
     "autoware::minimum_rule_based_planner::plugin::PluginInterface"),
-  modifier_data_(std::make_shared<plugin::ModifierData>(this))
+  modifier_context_(std::make_shared<plugin::ModifierContext>(this))
 {
   param_listener_ =
     std::make_shared<::minimum_rule_based_planner::ParamListener>(get_node_parameters_interface());
@@ -174,7 +185,7 @@ void MinimumRuleBasedPlannerNode::load_plugin(const std::string & name)
 
   if (modifier_plugin_loader_.isClassAvailable(name)) {
     const auto plugin = modifier_plugin_loader_.createSharedInstance(name);
-    plugin->initialize(name, this, time_keeper_, modifier_data_, vehicle_info_, params_);
+    plugin->initialize(name, this, time_keeper_, modifier_context_, params_);
 
     // Convert "autoware::...::ObstacleStop" to "obstacle_stop"
     const auto short_name = [](const std::string & plugin_name) {
@@ -218,21 +229,12 @@ void MinimumRuleBasedPlannerNode::unload_plugin(const std::string & name)
   }
 }
 
-void MinimumRuleBasedPlannerNode::set_modifier_data(
-  const MinimumRuleBasedPlannerNode::InputData & input_data)
-{
-  modifier_data_->odometry_ptr = input_data.odometry_ptr;
-  modifier_data_->acceleration_ptr = input_data.acceleration_ptr;
-  modifier_data_->predicted_objects_ptr = input_data.predicted_objects_ptr;
-  modifier_data_->obstacle_pointcloud_ptr = input_data.obstacle_pointcloud_ptr;
-}
-
 void MinimumRuleBasedPlannerNode::publish_debug_trajectory(
-  const std::string & plugin_name, const TrajectoryPoints & traj_points)
+  const std::string & plugin_name, const TrajectoryPoints & traj_points) const
 {
   Trajectory traj;
   traj.points = traj_points;
-  pub_debug_modifier_module_trajectories_[plugin_name]->publish(traj);
+  pub_debug_modifier_module_trajectories_.at(plugin_name)->publish(traj);
 }
 
 void MinimumRuleBasedPlannerNode::on_timer()
@@ -309,7 +311,7 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::plan_path(const Input
 }
 
 Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(
-  const Trajectory & trajectory, const InputData & input_data)
+  const Trajectory & trajectory, const InputData & input_data) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -338,7 +340,7 @@ Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(
 }
 
 Trajectory MinimumRuleBasedPlannerNode::smooth_trajectory(
-  const Trajectory & trajectory, const InputData & input_data)
+  const Trajectory & trajectory, const InputData & input_data) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   auto optimizer_data = make_optimizer_data(input_data);
@@ -348,7 +350,8 @@ Trajectory MinimumRuleBasedPlannerNode::smooth_trajectory(
 
   auto trajectory_points = trajectory.points;
   if (path_smoother_) {
-    autoware_utils_debug::ScopedTimeTrack st(path_smoother_->get_name(), *time_keeper_);
+    autoware_utils_debug::ScopedTimeTrack st_path_smoother(
+      path_smoother_->get_name(), *time_keeper_);
     path_smoother_->optimize_trajectory(trajectory_points, optimizer_params, optimizer_data);
     if (params_.debug.enable_optimizer_trajectory) {
       publish_debug_trajectory(path_smoother_->get_name(), trajectory_points);
@@ -362,13 +365,13 @@ Trajectory MinimumRuleBasedPlannerNode::smooth_trajectory(
 }
 
 void MinimumRuleBasedPlannerNode::apply_modifiers(
-  Trajectory & trajectory, const InputData & input_data)
+  Trajectory & trajectory, const InputData & input_data) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-  set_modifier_data(input_data);
+  const auto modifier_data = make_modifier_data(input_data);
   for (auto & modifier : modifier_plugins_) {
-    autoware_utils_debug::ScopedTimeTrack st(modifier->get_name(), *time_keeper_);
-    modifier->run(trajectory.points);
+    autoware_utils_debug::ScopedTimeTrack st_modifier(modifier->get_name(), *time_keeper_);
+    modifier->run(trajectory.points, modifier_data);
     modifier->publish_planning_factor();
     if (params_.debug.enable_modifier_trajectory) {
       publish_debug_trajectory(modifier->get_name(), trajectory.points);
@@ -377,7 +380,7 @@ void MinimumRuleBasedPlannerNode::apply_modifiers(
 }
 
 Trajectory MinimumRuleBasedPlannerNode::optimize_velocity(
-  const Trajectory & trajectory, const InputData & input_data)
+  const Trajectory & trajectory, const InputData & input_data) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -421,7 +424,8 @@ Trajectory MinimumRuleBasedPlannerNode::optimize_velocity(
   return traj;
 }
 
-void MinimumRuleBasedPlannerNode::publish_candidate_trajectories(const Trajectory & trajectory)
+void MinimumRuleBasedPlannerNode::publish_candidate_trajectories(
+  const Trajectory & trajectory) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
