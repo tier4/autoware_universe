@@ -111,6 +111,10 @@ void MrmResetManager::advance_init_state()
 
   switch (init_state_) {
     case InitState::WAIT_SERVICES_READY:
+      if (!cli_reset_diag_graph_->service_is_ready()) {
+        RCLCPP_INFO(get_logger(), "Waiting for reset_diag_graph service");
+        return;
+      }
       if (!cli_set_aggregator_initializing_->service_is_ready()) {
         RCLCPP_INFO(get_logger(), "Waiting for set_aggregator_initializing service");
         return;
@@ -119,7 +123,7 @@ void MrmResetManager::advance_init_state()
         RCLCPP_INFO(get_logger(), "Waiting for reset_redundancy_switcher service");
         return;
       }
-      if (!cli_set_redundancy_switcher_interface_initializing_->service_is_ready()) {
+      if (is_redundant_ && !cli_set_redundancy_switcher_interface_initializing_->service_is_ready()) {
         RCLCPP_INFO(
           get_logger(), "Waiting for set_redundancy_switcher_interface_initializing service");
         return;
