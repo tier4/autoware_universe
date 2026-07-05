@@ -58,6 +58,7 @@ private:
   std::vector<ModeConfig> modes_;
   std::optional<uint32_t> active_mode_id_;
   int64_t service_timeout_ms_;
+  bool skip_relay_call_;
   std::string relay_service_name_;
 
   rclcpp::CallbackGroup::SharedPtr relay_group_;

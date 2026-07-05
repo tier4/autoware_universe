@@ -1,5 +1,7 @@
 <launch>
   <arg name="config" default="$(find-pkg-share autoware_mrm_in_lane_stop_operator)/config/mrm_in_lane_stop_operator.param.yaml"/>
+  <arg name="skip_relay_call" default="false"/>
+
   <arg name="driving_mode_request_topic" default="/system/driving_mode/request"/>
   <arg name="driving_mode_info_topic" default="/system/driving_mode/info"/>
   <arg name="mrm_state_topic" default="/system/driving_mode/mrm_state"/>
@@ -9,6 +11,8 @@
 
   <node pkg="autoware_mrm_in_lane_stop_operator" exec="autoware_mrm_in_lane_stop_operator_node" name="mrm_in_lane_stop_operator">
     <param from="$(var config)"/>
+    <param name="skip_relay_call" value="$(var skip_relay_call)"/>
+    
     <remap from="~/input/driving_mode_request" to="$(var driving_mode_request_topic)"/>
     <remap from="~/input/driving_mode_info" to="$(var driving_mode_info_topic)"/>
     <remap from="~/input/relay_service" to="$(var relay_service_name)"/>

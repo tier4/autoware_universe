@@ -25,6 +25,7 @@ MrmInLaneStopOperator::MrmInLaneStopOperator(const rclcpp::NodeOptions & node_op
 {
   // parameter
   service_timeout_ms_ = declare_parameter<int64_t>("service_timeout_ms");
+  skip_relay_call_ = declare_parameter<bool>("skip_relay_call");
   const auto mode_names = declare_parameter<std::vector<std::string>>("mode_names");
 
   for (const auto & name : mode_names) {
@@ -97,9 +98,9 @@ void MrmInLaneStopOperator::on_request(DrivingModeRequest::ConstSharedPtr msg)
     if (active_mode_id_.has_value()) {
       // A different one of our modes is running; cancel it first.
       auto * current = find_mode_by_id(active_mode_id_.value());
-      if (current) cancel(*current);
+      if (!skip_relay_call_ && current) cancel(*current);
     }
-    if (execute(*requested)) {
+    if (skip_relay_call_ || execute(*requested)) {
       active_mode_id_ = requested_id;
       // For real-time safety, we should only publish the active flag
       // After switching the active_mode_id_ to the new mode, so that the published flag is consistent with the internal state.
@@ -114,7 +115,7 @@ void MrmInLaneStopOperator::on_request(DrivingModeRequest::ConstSharedPtr msg)
     // Request is not for any of our modes; cancel if we are active.
     if (active_mode_id_.has_value()) {
       auto * current = find_mode_by_id(active_mode_id_.value());
-      if (current) cancel(*current);
+      if (!skip_relay_call_ && current) cancel(*current);
       active_mode_id_ = std::nullopt;
     }
   }
@@ -157,7 +158,7 @@ bool MrmInLaneStopOperator::call_relay(bool relay_on)
   if (!relay_client_->service_is_ready()) {
     RCLCPP_WARN(
       get_logger(), "Service unavailable: %s (relay_on=%s)",
-      relay_service_name_.c_str(), relay_on ? "true" : "false");
+      relay_client_->get_service_name(), relay_on ? "true" : "false");
     return false;
   }
 
@@ -169,7 +170,7 @@ bool MrmInLaneStopOperator::call_relay(bool relay_on)
     future.wait_for(std::chrono::milliseconds(service_timeout_ms_)) !=
     std::future_status::ready) {
     RCLCPP_WARN(
-      get_logger(), "Timeout waiting for relay service: %s", relay_service_name_.c_str());
+      get_logger(), "Timeout waiting for relay service: %s", relay_client_->get_service_name());
     return false;
   }
 
@@ -177,7 +178,7 @@ bool MrmInLaneStopOperator::call_relay(bool relay_on)
   if (!response->status.success) {
     RCLCPP_WARN(
       get_logger(), "Failed to change relay control: %s (relay_on=%s)",
-      relay_service_name_.c_str(), relay_on ? "true" : "false");
+      relay_client_->get_service_name(), relay_on ? "true" : "false");
     return false;
   }
 
@@ -212,7 +213,6 @@ void MrmInLaneStopOperator::publish_mrm_state() const
     DrivingModeMrmStateItem item;
     item.mode = mode.mode_id.value();
 
-    item.state = DrivingModeMrmStateItem::UNKNOWN;
     if (active_mode_id_ != mode.mode_id) {
       item.state = DrivingModeMrmStateItem::NORMAL;
     } else if (is_vehicle_stopped()) {
