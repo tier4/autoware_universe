@@ -58,7 +58,17 @@ MultiCameraFusionNode::MultiCameraFusionNode(const rclcpp::NodeOptions & node_op
       this->declare_parameter<double>("per_element.confidence_gate", 0.0);
     fusion_config_.per_element_config.strict_mode =
       this->declare_parameter<bool>("per_element.strict_mode", false);
-    fusion_config_.per_element_config.rules = per_element::default_japan_rules();
+
+    // Conflict rules: load from a YAML file when conflict_rules_file is non-empty, otherwise
+    // fall back to the JP-equivalent hardcoded default. Loader failures abort node construction —
+    // misconfiguration here would cause undetected conflicts at runtime.
+    const std::string rules_path = this->declare_parameter<std::string>("conflict_rules_file", "");
+    if (rules_path.empty()) {
+      fusion_config_.per_element_config.rules = per_element::default_rules();
+    } else {
+      fusion_config_.per_element_config.rules = per_element::load_rules_from_file(rules_path);
+      RCLCPP_INFO_STREAM(get_logger(), "Loaded conflict rules from " << rules_path);
+    }
   } else if (fusion_mode_str != "stateset") {
     RCLCPP_WARN_STREAM(
       get_logger(), "Unknown fusion_mode '" << fusion_mode_str << "', falling back to 'stateset'.");

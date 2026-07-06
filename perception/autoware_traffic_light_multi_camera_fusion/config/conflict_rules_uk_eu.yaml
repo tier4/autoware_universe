@@ -1,0 +1,15 @@
+# Conflict rules for UK and mainland-EU traffic signals.
+#
+# Same mutex group as Japan (only one of R/A/G circles lit at a time), with one allowed
+# conjunction: the {RED, AMBER} transition state shown briefly before GREEN in UK / DE / AT /
+# CH / NO / IE / etc. signal sequences. Without this exception the transition would be flagged
+# as a critical conflict and the failsafe path would fire on every cycle.
+mutex_groups:
+  - elements:
+      - { color: RED, shape: CIRCLE }
+      - { color: AMBER, shape: CIRCLE }
+      - { color: GREEN, shape: CIRCLE }
+allowed_conjunctions:
+  - elements:
+      - { color: RED, shape: CIRCLE }
+      - { color: AMBER, shape: CIRCLE }

@@ -1,0 +1,17 @@
+# Conflict rules for Japanese traffic signals.
+#
+# Loaded by per_element fusion when conflict_rules_file points to this file.
+# Schema:
+#   mutex_groups:           list of element groups whose members cannot all be lit at once
+#   allowed_conjunctions:   subsets of a mutex group that are, in fact, valid lit-sets
+#                           (overrides the mutex). May be omitted or empty.
+#
+# Japan only mutually-excludes the three main circle colours. Arrows (LEFT/UP/etc.), WHITE
+# pedestrian bulbs, and CROSS lane indicators are unconstrained — they may co-exist with any
+# circle (e.g. RED-CIRCLE + GREEN-LEFT_ARROW is a common filter-light state).
+mutex_groups:
+  - elements:
+      - { color: RED, shape: CIRCLE }
+      - { color: AMBER, shape: CIRCLE }
+      - { color: GREEN, shape: CIRCLE }
+allowed_conjunctions: []

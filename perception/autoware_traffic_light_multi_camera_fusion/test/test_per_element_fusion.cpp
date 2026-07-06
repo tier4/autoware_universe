@@ -102,7 +102,7 @@ MultiCameraFusionConfig make_per_element_config()
   cfg.per_element_config.on_threshold = 0.0;
   cfg.per_element_config.confidence_gate = 0.0;
   cfg.per_element_config.strict_mode = false;
-  cfg.per_element_config.rules = per_element::default_japan_rules();
+  cfg.per_element_config.rules = per_element::default_rules();
   return cfg;
 }
 
@@ -358,4 +358,75 @@ TEST(PerElementFusion, BriefUnknownIsOutvotedByRecentKnownObservation)
   ASSERT_EQ(result.traffic_light_groups.traffic_light_groups.size(), 1u);
   const auto & group = result.traffic_light_groups.traffic_light_groups.front();
   EXPECT_TRUE(has_element(group, TrafficLightElement::RED, TrafficLightElement::CIRCLE));
+}
+
+namespace
+{
+// UK / mainland-EU rules: same {R, A, G}-circle mutex as Japan, plus an explicit allowance for
+// the {RED, AMBER} transition state that appears between RED and GREEN.
+per_element::ConflictRules uk_eu_rules()
+{
+  per_element::ConflictRules rules;
+  rules.mutex_groups.push_back(
+    per_element::ElementSet{
+      {T4Element::RED, T4Element::CIRCLE},
+      {T4Element::AMBER, T4Element::CIRCLE},
+      {T4Element::GREEN, T4Element::CIRCLE}});
+  rules.allowed_conjunctions.push_back(
+    per_element::ElementSet{
+      {T4Element::RED, T4Element::CIRCLE}, {T4Element::AMBER, T4Element::CIRCLE}});
+  return rules;
+}
+}  // namespace
+
+// With UK rules loaded, simultaneous RED + AMBER (transition state) is NOT a conflict — both
+// elements pass through to the output. Under JP rules the same input would be flagged as a
+// mutex conflict and resolved to a single circle.
+TEST(PerElementFusion, UkRulesAllowRedAmberTransitionState)
+{
+  auto cfg = make_per_element_config();
+  cfg.per_element_config.rules = uk_eu_rules();
+  MultiCameraFusion fusion(cfg);
+  const auto input_red = make_input(
+    "camera0", make_signal(LEFT_TL_ID, {make_element(T4Element::RED, T4Element::CIRCLE, 0.9f)}));
+  const auto input_amber = make_input(
+    "camera1", make_signal(RIGHT_TL_ID, {make_element(T4Element::AMBER, T4Element::CIRCLE, 0.9f)}));
+
+  fusion.fuse(input_red.cam_info, input_red.rois, input_red.signals);
+  const auto result = fusion.fuse(input_amber.cam_info, input_amber.rois, input_amber.signals);
+
+  ASSERT_EQ(result.traffic_light_groups.traffic_light_groups.size(), 1u);
+  const auto & group = result.traffic_light_groups.traffic_light_groups.front();
+  EXPECT_TRUE(has_element(group, TrafficLightElement::RED, TrafficLightElement::CIRCLE));
+  EXPECT_TRUE(has_element(group, TrafficLightElement::AMBER, TrafficLightElement::CIRCLE));
+  // No conflict reported — the lit set exactly matches an allowed_conjunction.
+  EXPECT_TRUE(result.conflicted_regulatory_element_status.empty());
+}
+
+// UK rules still detect a conflict when all three circles are lit — the allowed conjunction
+// is exactly {RED, AMBER}, not any superset.
+TEST(PerElementFusion, UkRulesStillFlagAllThreeCirclesAsConflict)
+{
+  auto cfg = make_per_element_config();
+  cfg.per_element_config.rules = uk_eu_rules();
+  MultiCameraFusion fusion(cfg);
+  // Three observations on the same regulatory element, one for each circle colour.
+  const auto input_red = make_input(
+    "camera0", make_signal(LEFT_TL_ID, {make_element(T4Element::RED, T4Element::CIRCLE, 0.9f)}),
+    rclcpp::Time(100, 0));
+  const auto input_amber = make_input(
+    "camera1", make_signal(RIGHT_TL_ID, {make_element(T4Element::AMBER, T4Element::CIRCLE, 0.9f)}),
+    rclcpp::Time(100, 10000000));
+  const auto input_green = make_input(
+    "camera2", make_signal(LEFT_TL_ID, {make_element(T4Element::GREEN, T4Element::CIRCLE, 0.9f)}),
+    rclcpp::Time(100, 20000000));
+
+  fusion.fuse(input_red.cam_info, input_red.rois, input_red.signals);
+  fusion.fuse(input_amber.cam_info, input_amber.rois, input_amber.signals);
+  const auto result = fusion.fuse(input_green.cam_info, input_green.rois, input_green.signals);
+
+  ASSERT_EQ(result.conflicted_regulatory_element_status.size(), 1u);
+  EXPECT_EQ(
+    result.conflicted_regulatory_element_status.front().conflict_type,
+    ConflictType::PARTIAL_CONFLICT);
 }

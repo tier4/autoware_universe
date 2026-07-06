@@ -11,6 +11,10 @@
     # resolution. When set to "per_element", the signal_consistency_check.* values above are
     # ignored.
     fusion_mode: stateset
+    # Path to a conflict_rules YAML file (loaded by yaml-cpp, NOT a ROS-parameter file). Used
+    # only when fusion_mode is "per_element". An empty string falls back to the JP-equivalent
+    # hardcoded default. Bundled presets are installed under this package's share/config/.
+    conflict_rules_file: ""
     per_element:
       # Output an element when its accumulated log-odds exceeds this threshold.
       on_threshold: 0.0

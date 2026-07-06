@@ -17,6 +17,9 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   src/conflict_rules.cpp
 )
 
+# yaml-cpp is used by conflict_rules.cpp to load region-preset rules at runtime.
+target_link_libraries(${PROJECT_NAME} yaml-cpp)
+
 autoware_agnocast_wrapper_register_node(${PROJECT_NAME}
   PLUGIN "autoware::traffic_light::MultiCameraFusionNode"
   EXECUTABLE traffic_light_multi_camera_fusion_node
@@ -32,7 +35,9 @@ if(BUILD_TESTING AND (NOT "$ENV{ENABLE_AGNOCAST}" STREQUAL "1"))
     test/test_signal_validator.cpp
     test/test_multi_camera_fusion.cpp
     test/test_per_element_fusion.cpp
+    test/test_conflict_rules.cpp
   )
+  target_link_libraries(${PROJECT_NAME}_test yaml-cpp)
   ament_add_ros_isolated_gtest(${PROJECT_NAME}_node_test
     test/test_traffic_light_multi_camera_fusion_node.cpp
   )

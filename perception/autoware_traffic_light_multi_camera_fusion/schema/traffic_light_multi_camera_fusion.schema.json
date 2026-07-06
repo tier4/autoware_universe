@@ -42,6 +42,11 @@
           "description": "Fusion algorithm. 'stateset' (default) is the legacy StateKey-level Bayesian fusion. 'per_element' enables per-(color,shape) Bayesian fusion with mutex-group conflict resolution; in that mode signal_consistency_check.* is ignored.",
           "default": "stateset"
         },
+        "conflict_rules_file": {
+          "type": "string",
+          "description": "Path to a conflict_rules YAML file describing mutex_groups and allowed_conjunctions. Only used when fusion_mode is 'per_element'. Empty string falls back to a JP-equivalent hardcoded default. Bundled presets (Japan, UK/EU) are installed in the package share/config/.",
+          "default": ""
+        },
         "per_element": {
           "type": "object",
           "properties": {
