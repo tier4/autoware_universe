@@ -31,6 +31,39 @@
 
 namespace autoware::diffusion_planner::preprocess
 {
+namespace
+{
+double stamp_to_sec(const builtin_interfaces::msg::Time & stamp)
+{
+  return static_cast<double>(stamp.sec) + static_cast<double>(stamp.nanosec) * 1e-9;
+}
+
+nav_msgs::msg::Odometry interpolate_odom(
+  const nav_msgs::msg::Odometry & odom0, const nav_msgs::msg::Odometry & odom1, const double ratio)
+{
+  nav_msgs::msg::Odometry result = odom0;
+  result.pose.pose =
+    autoware_utils_geometry::calc_interpolated_pose(odom0.pose.pose, odom1.pose.pose, ratio, false);
+  result.twist.twist.linear.x =
+    odom0.twist.twist.linear.x * (1.0 - ratio) + odom1.twist.twist.linear.x * ratio;
+  result.twist.twist.linear.y =
+    odom0.twist.twist.linear.y * (1.0 - ratio) + odom1.twist.twist.linear.y * ratio;
+  return result;
+}
+
+geometry_msgs::msg::AccelWithCovarianceStamped interpolate_accel(
+  const geometry_msgs::msg::AccelWithCovarianceStamped & accel0,
+  const geometry_msgs::msg::AccelWithCovarianceStamped & accel1, const double ratio)
+{
+  geometry_msgs::msg::AccelWithCovarianceStamped result = accel0;
+  result.accel.accel.linear.x =
+    accel0.accel.accel.linear.x * (1.0 - ratio) + accel1.accel.accel.linear.x * ratio;
+  result.accel.accel.linear.y =
+    accel0.accel.accel.linear.y * (1.0 - ratio) + accel1.accel.accel.linear.y * ratio;
+  return result;
+}
+}  // namespace
+
 void normalize_input_data(InputDataMap & input_data_map, const NormalizationMap & normalization_map)
 {
   auto normalize_vector = [](
@@ -66,10 +99,10 @@ void normalize_input_data(InputDataMap & input_data_map, const NormalizationMap 
   };
 
   for (auto & [key, value] : input_data_map) {
-    // Skip normalization for ego_shape, sampled_trajectories, turn_indicators, and delay
+    // Skip inputs that are consumed without observation normalization.
     if (
-      key == "ego_shape" || key == "sampled_trajectories" || key == "turn_indicators" ||
-      key == "delay") {
+      key == "ego_shape" || key == "ego_velocity_past" || key == "sampled_trajectories" ||
+      key == "turn_indicators" || key == "delay") {
       continue;
     }
 
@@ -201,6 +234,133 @@ std::vector<float> create_ego_agent_past(
   }
 
   return ego_agent_past;
+}
+
+std::vector<float> create_ego_velocity(
+  const std::deque<nav_msgs::msg::Odometry> & odom_msgs, size_t num_timesteps,
+  const std::optional<rclcpp::Time> & reference_time)
+{
+  const size_t features_per_timestep = EGO_VELOCITY_DIM;
+  const size_t total_size = num_timesteps * features_per_timestep;
+  std::vector<float> ego_velocity(total_size, 0.0f);
+
+  if (odom_msgs.empty()) {
+    return ego_velocity;
+  }
+
+  auto store_velocity = [&](size_t timestep_idx, const nav_msgs::msg::Odometry & odom) {
+    const size_t base_idx = timestep_idx * features_per_timestep;
+    ego_velocity[base_idx + 0] = static_cast<float>(odom.twist.twist.linear.x);
+    ego_velocity[base_idx + 1] = static_cast<float>(odom.twist.twist.linear.y);
+  };
+
+  if (!reference_time.has_value()) {
+    const size_t start_idx =
+      (odom_msgs.size() >= num_timesteps) ? odom_msgs.size() - num_timesteps : 0;
+    for (size_t i = start_idx; i < odom_msgs.size(); ++i) {
+      store_velocity(i - start_idx, odom_msgs[i]);
+    }
+    return ego_velocity;
+  }
+
+  const double ref_sec = reference_time->seconds();
+  constexpr double dt = constants::PREDICTION_TIME_STEP_S;
+
+  const double first_sec = stamp_to_sec(odom_msgs.front().header.stamp);
+  const double last_sec = stamp_to_sec(odom_msgs.back().header.stamp);
+
+  size_t search_start = 0;
+  for (size_t t = 0; t < num_timesteps; ++t) {
+    const double target_sec = ref_sec - static_cast<double>(num_timesteps - 1 - t) * dt;
+
+    nav_msgs::msg::Odometry interpolated_odom;
+    if (target_sec <= first_sec) {
+      interpolated_odom = odom_msgs.front();
+    } else if (target_sec >= last_sec) {
+      interpolated_odom = odom_msgs.back();
+    } else {
+      for (; search_start + 1 < odom_msgs.size(); ++search_start) {
+        const double t_next = stamp_to_sec(odom_msgs[search_start + 1].header.stamp);
+        if (target_sec <= t_next) {
+          break;
+        }
+      }
+
+      const double t0 = stamp_to_sec(odom_msgs[search_start].header.stamp);
+      const double t1 = stamp_to_sec(odom_msgs[search_start + 1].header.stamp);
+      const double ratio = (t1 > t0) ? (target_sec - t0) / (t1 - t0) : 0.0;
+      interpolated_odom =
+        interpolate_odom(odom_msgs[search_start], odom_msgs[search_start + 1], ratio);
+    }
+
+    store_velocity(t, interpolated_odom);
+  }
+
+  return ego_velocity;
+}
+
+std::vector<float> create_ego_acceleration(
+  const std::deque<geometry_msgs::msg::AccelWithCovarianceStamped> & accel_msgs,
+  size_t num_timesteps, const std::optional<rclcpp::Time> & reference_time)
+{
+  const size_t features_per_timestep = EGO_ACCELERATION_DIM;
+  const size_t total_size = num_timesteps * features_per_timestep;
+  std::vector<float> ego_acceleration(total_size, 0.0f);
+
+  if (accel_msgs.empty()) {
+    return ego_acceleration;
+  }
+
+  auto store_acceleration =
+    [&](size_t timestep_idx, const geometry_msgs::msg::AccelWithCovarianceStamped & accel) {
+      const size_t base_idx = timestep_idx * features_per_timestep;
+      ego_acceleration[base_idx + 0] = static_cast<float>(accel.accel.accel.linear.x);
+      ego_acceleration[base_idx + 1] = static_cast<float>(accel.accel.accel.linear.y);
+    };
+
+  if (!reference_time.has_value()) {
+    const size_t start_idx =
+      (accel_msgs.size() >= num_timesteps) ? accel_msgs.size() - num_timesteps : 0;
+    for (size_t i = start_idx; i < accel_msgs.size(); ++i) {
+      store_acceleration(i - start_idx, accel_msgs[i]);
+    }
+    return ego_acceleration;
+  }
+
+  const double ref_sec = reference_time->seconds();
+  constexpr double dt = constants::PREDICTION_TIME_STEP_S;
+
+  const double first_sec = stamp_to_sec(accel_msgs.front().header.stamp);
+  const double last_sec = stamp_to_sec(accel_msgs.back().header.stamp);
+
+  size_t search_start = 0;
+  for (size_t t = 0; t < num_timesteps; ++t) {
+    const double target_sec = ref_sec - static_cast<double>(num_timesteps - 1 - t) * dt;
+
+    geometry_msgs::msg::AccelWithCovarianceStamped interpolated_accel;
+    if (target_sec <= first_sec) {
+      interpolated_accel = accel_msgs.front();
+    } else if (target_sec >= last_sec) {
+      interpolated_accel = accel_msgs.back();
+    } else {
+      for (; search_start + 1 < accel_msgs.size(); ++search_start) {
+        const double t_next = stamp_to_sec(accel_msgs[search_start + 1].header.stamp);
+        if (target_sec <= t_next) {
+          break;
+        }
+      }
+
+      const double t0 = stamp_to_sec(accel_msgs[search_start].header.stamp);
+      const double t1 = stamp_to_sec(accel_msgs[search_start + 1].header.stamp);
+      const double ratio = (t1 > t0) ? (target_sec - t0) / (t1 - t0) : 0.0;
+      interpolated_accel =
+        interpolate_accel(accel_msgs[search_start], accel_msgs[search_start + 1], ratio);
+    }
+
+    store_acceleration(t, interpolated_accel);
+  }
+
+  return ego_acceleration;
 }
 
 std::vector<float> create_sampled_trajectories(const double temperature)

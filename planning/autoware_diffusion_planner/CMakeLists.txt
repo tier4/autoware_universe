@@ -83,6 +83,8 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     src/utils/marker_utils.cpp
     src/utils/planning_factor_utils.cpp
     src/postprocessing/turn_indicator_manager.cpp
+    src/postprocessing/stop_manager.cpp
+    src/postprocessing/pseudo_controller.cpp
     src/inference/solver/dpm_solver.cpp
     src/inference/guidance/guidance.cpp
     src/inference/guidance/centerline_guidance.cpp

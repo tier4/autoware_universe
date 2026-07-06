@@ -74,6 +74,7 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
 {
   // Initialize the node
   pub_trajectory_ = this->create_publisher<Trajectory>("~/output/trajectory", 1);
+  pub_spatial_trajectory_ = this->create_publisher<Trajectory>("~/debug/spatial_trajectory", 1);
   pub_trajectories_ = this->create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
   pub_objects_ =
     this->create_publisher<PredictedObjects>("~/output/predicted_objects", rclcpp::QoS(1));
@@ -167,6 +168,8 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<std::string>("model.multi_step_model.decoder_onnx_model_path", "");
   params_.turn_indicator_model_path = this->declare_parameter<std::string>(
     "model.multi_step_model.turn_indicator_onnx_model_path", "");
+  params_.speed_predictor_model_path = this->declare_parameter<std::string>(
+    "model.multi_step_model.speed_predictor_onnx_model_path", "");
   params_.dpm_solver_steps =
     this->declare_parameter<int>("model.multi_step_model.dpm_solver_steps", 10);
   params_.backend = this->declare_parameter<std::string>("model.backend", "tensorrt");
@@ -182,8 +185,6 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<double>("traffic_light_group_msg_timeout_seconds", 0.2);
   params_.batch_size = this->declare_parameter<int>("batch_size", 1);
   params_.temperature_list = this->declare_parameter<std::vector<double>>("temperature", {0.0});
-  params_.velocity_smoothing_window =
-    this->declare_parameter<int64_t>("velocity_smoothing_window", 8);
   params_.stopping_threshold = this->declare_parameter<double>("stopping_threshold", 0.3);
   params_.turn_indicator_keep_offset =
     this->declare_parameter<float>("turn_indicator_keep_offset", -1.25f);
@@ -201,6 +202,28 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<double>("guidance.stop_guidance.stop_acceleration_mps2", 1.0);
   params_.centerline_guidance_start_time_s =
     this->declare_parameter<double>("guidance.centerline_guidance.start_time_s", 2.0);
+  params_.pseudo_controller_type =
+    this->declare_parameter<std::string>("pseudo_controller.type", "stanley");
+  params_.stanley_max_steer_rad =
+    this->declare_parameter<double>("pseudo_controller.stanley.max_steer_rad", 2.0);
+  params_.stanley_max_steer_rate_rad_s =
+    this->declare_parameter<double>("pseudo_controller.stanley.max_steer_rate_rad_s", 3.0);
+  params_.stanley_stop_velocity_threshold =
+    this->declare_parameter<double>("pseudo_controller.stanley.stop_velocity_threshold", 0.2);
+  params_.stanley_heading_gain =
+    this->declare_parameter<double>("pseudo_controller.stanley.heading_gain", 3.0);
+  params_.stanley_cross_track_gain =
+    this->declare_parameter<double>("pseudo_controller.stanley.cross_track_gain", 3.0);
+  params_.feedback_linearization_max_steer_rad =
+    this->declare_parameter<double>("pseudo_controller.feedback_linearization.max_steer_rad", 2.0);
+  params_.feedback_linearization_max_steer_rate_rad_s = this->declare_parameter<double>(
+    "pseudo_controller.feedback_linearization.max_steer_rate_rad_s", 3.0);
+  params_.feedback_linearization_stop_velocity_threshold = this->declare_parameter<double>(
+    "pseudo_controller.feedback_linearization.stop_velocity_threshold", 0.2);
+  params_.feedback_linearization_lateral_gain =
+    this->declare_parameter<double>("pseudo_controller.feedback_linearization.lateral_gain", 1.0);
+  params_.feedback_linearization_heading_gain =
+    this->declare_parameter<double>("pseudo_controller.feedback_linearization.heading_gain", 1.0);
 
   // planning factor params
   planning_factor_params_.enable_stop =
@@ -249,6 +272,10 @@ void DiffusionPlanner::load_model()
       get_logger(), "Loaded turn_indicator_model_path="
                       << params_.turn_indicator_model_path << " (hash="
                       << compute_file_hash_hex(params_.turn_indicator_model_path) << ")");
+    RCLCPP_INFO_STREAM(
+      get_logger(), "Loaded speed_predictor_model_path="
+                      << params_.speed_predictor_model_path << " (hash="
+                      << compute_file_hash_hex(params_.speed_predictor_model_path) << ")");
   }
   RCLCPP_INFO_STREAM(
     get_logger(), "Loaded args_path=" << params_.args_path << " (hash="
@@ -267,6 +294,7 @@ SetParametersResult DiffusionPlanner::on_parameter(
     const auto previous_encoder_model_path = params_.encoder_model_path;
     const auto previous_decoder_model_path = params_.decoder_model_path;
     const auto previous_turn_indicator_model_path = params_.turn_indicator_model_path;
+    const auto previous_speed_predictor_model_path = params_.speed_predictor_model_path;
     const auto previous_batch_size = params_.batch_size;
     const auto previous_dpm_solver_steps = params_.dpm_solver_steps;
     const auto previous_backend = params_.backend;
@@ -284,6 +312,9 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<std::string>(
       parameters, "model.multi_step_model.turn_indicator_onnx_model_path",
       temp_params.turn_indicator_model_path);
+    update_param<std::string>(
+      parameters, "model.multi_step_model.speed_predictor_onnx_model_path",
+      temp_params.speed_predictor_model_path);
     update_param<int>(
       parameters, "model.multi_step_model.dpm_solver_steps", temp_params.dpm_solver_steps);
     update_param<std::string>(parameters, "model.backend", temp_params.backend);
@@ -297,8 +328,6 @@ SetParametersResult DiffusionPlanner::on_parameter(
       temp_params.traffic_light_group_msg_timeout_seconds);
     update_param<int>(parameters, "batch_size", temp_params.batch_size);
     update_param<std::vector<double>>(parameters, "temperature", temp_params.temperature_list);
-    update_param<int64_t>(
-      parameters, "velocity_smoothing_window", temp_params.velocity_smoothing_window);
     update_param<double>(parameters, "stopping_threshold", temp_params.stopping_threshold);
     update_param<float>(
       parameters, "turn_indicator_keep_offset", temp_params.turn_indicator_keep_offset);
@@ -319,6 +348,44 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<double>(
       parameters, "guidance.centerline_guidance.start_time_s",
       temp_params.centerline_guidance_start_time_s);
+    update_param<std::string>(
+      parameters, "pseudo_controller.type", temp_params.pseudo_controller_type);
+    update_param<double>(
+      parameters, "pseudo_controller.stanley.max_steer_rad", temp_params.stanley_max_steer_rad);
+    update_param<double>(
+      parameters, "pseudo_controller.stanley.max_steer_rate_rad_s",
+      temp_params.stanley_max_steer_rate_rad_s);
+    update_param<double>(
+      parameters, "pseudo_controller.stanley.stop_velocity_threshold",
+      temp_params.stanley_stop_velocity_threshold);
+    update_param<double>(
+      parameters, "pseudo_controller.stanley.heading_gain", temp_params.stanley_heading_gain);
+    update_param<double>(
+      parameters, "pseudo_controller.stanley.cross_track_gain",
+      temp_params.stanley_cross_track_gain);
+    update_param<double>(
+      parameters, "pseudo_controller.feedback_linearization.max_steer_rad",
+      temp_params.feedback_linearization_max_steer_rad);
+    update_param<double>(
+      parameters, "pseudo_controller.feedback_linearization.max_steer_rate_rad_s",
+      temp_params.feedback_linearization_max_steer_rate_rad_s);
+    update_param<double>(
+      parameters, "pseudo_controller.feedback_linearization.stop_velocity_threshold",
+      temp_params.feedback_linearization_stop_velocity_threshold);
+    update_param<double>(
+      parameters, "pseudo_controller.feedback_linearization.lateral_gain",
+      temp_params.feedback_linearization_lateral_gain);
+    update_param<double>(
+      parameters, "pseudo_controller.feedback_linearization.heading_gain",
+      temp_params.feedback_linearization_heading_gain);
+    if (
+      temp_params.pseudo_controller_type != "stanley" &&
+      temp_params.pseudo_controller_type != "feedback_linearization") {
+      SetParametersResult result;
+      result.successful = false;
+      result.reason = "pseudo_controller.type must be 'stanley' or 'feedback_linearization'";
+      return result;
+    }
     if (temp_params.trt_precision != "fp32" && temp_params.trt_precision != "fp16") {
       SetParametersResult result;
       result.successful = false;
@@ -349,7 +416,8 @@ SetParametersResult DiffusionPlanner::on_parameter(
       temp_params.single_step_model_path != previous_single_step_model_path ||
       temp_params.encoder_model_path != previous_encoder_model_path ||
       temp_params.decoder_model_path != previous_decoder_model_path ||
-      temp_params.turn_indicator_model_path != previous_turn_indicator_model_path;
+      temp_params.turn_indicator_model_path != previous_turn_indicator_model_path ||
+      temp_params.speed_predictor_model_path != previous_speed_predictor_model_path;
     const bool batch_size_changed = temp_params.batch_size != previous_batch_size;
     const bool dpm_solver_steps_changed = temp_params.dpm_solver_steps != previous_dpm_solver_steps;
     const bool backend_changed = temp_params.backend != previous_backend;
@@ -496,14 +564,15 @@ void DiffusionPlanner::on_timer()
   auto objects = sub_tracked_objects_.take_data();
   auto ego_kinematic_state = sub_current_odometry_.take_data();
   auto ego_acceleration = sub_current_acceleration_.take_data();
+  auto ego_steering_status = sub_current_steering_.take_data();
   auto traffic_signals = sub_traffic_signals_.take_data();
   auto temp_route_ptr = route_subscriber_.take_data();
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
 
   // Prepare frame context using core
   const std::optional<FrameContext> frame_context = core_->create_frame_context(
-    ego_kinematic_state, ego_acceleration, objects, traffic_signals, turn_indicators_ptr,
-    temp_route_ptr, this->now());
+    ego_kinematic_state, ego_acceleration, ego_steering_status, objects, traffic_signals,
+    turn_indicators_ptr, temp_route_ptr, this->now());
 
   if (!frame_context) {
     // Log detailed information about missing inputs
@@ -513,6 +582,7 @@ void DiffusionPlanner::on_timer()
         << (objects ? "true" : "false")
         << ", ego_kinematic_state: " << (ego_kinematic_state ? "true" : "false")
         << ", ego_acceleration: " << (ego_acceleration ? "true" : "false")
+        << ", ego_steering_status: " << (ego_steering_status ? "true" : "false")
         << ", route: " << (core_->get_route() ? "true" : "false")
         << ", turn_indicators: " << (turn_indicators_ptr ? "true" : "false"));
     diagnostics_inference_->update_level_and_message(
@@ -593,6 +663,7 @@ void DiffusionPlanner::on_timer()
   publish_guidance_status(planner_output.guidance_triggered, frame_time);
 
   pub_trajectory_->publish(planner_output.trajectory);
+  pub_spatial_trajectory_->publish(planner_output.spatial_trajectory);
   pub_trajectories_->publish(planner_output.candidate_trajectories);
   pub_objects_->publish(planner_output.predicted_objects);
   pub_turn_indicators_->publish(planner_output.turn_indicator_command);

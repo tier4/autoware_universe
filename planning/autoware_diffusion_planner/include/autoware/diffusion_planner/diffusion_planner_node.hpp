@@ -38,6 +38,7 @@
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/float64.hpp>
@@ -219,6 +220,7 @@ private:
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::Float64Stamped>::SharedPtr
     debug_processing_time_pub_{nullptr};
   rclcpp::Publisher<Trajectory>::SharedPtr pub_trajectory_{nullptr};
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_spatial_trajectory_{nullptr};
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_{nullptr};
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_lane_marker_{nullptr};
@@ -239,6 +241,8 @@ private:
     this, "~/input/odometry"};
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
     sub_current_acceleration_{this, "~/input/acceleration"};
+  autoware_utils::InterProcessPollingSubscriber<autoware_vehicle_msgs::msg::SteeringReport>
+    sub_current_steering_{this, "~/input/steering"};
   autoware_utils::InterProcessPollingSubscriber<TrackedObjects> sub_tracked_objects_{
     this, "~/input/tracked_objects"};
   autoware_utils::InterProcessPollingSubscriber<

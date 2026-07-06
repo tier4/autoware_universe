@@ -41,14 +41,15 @@ public:
 
   MultiStepInference(
     const std::string & encoder_model_path, const std::string & decoder_model_path,
-    const std::string & turn_indicator_model_path, const std::string & plugins_path, int batch_size,
-    const std::string & precision = "fp32", bool use_cuda_graph = false, int dpm_solver_steps = 10,
+    const std::string & turn_indicator_model_path, const std::string & speed_predictor_model_path,
+    const std::string & plugins_path, int batch_size, const std::string & precision = "fp32",
+    bool use_cuda_graph = false, int dpm_solver_steps = 10,
     std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances = {});
   ~MultiStepInference() override;
 
   void load_engines(
     const std::string & encoder_model_path, const std::string & decoder_model_path,
-    const std::string & turn_indicator_model_path);
+    const std::string & turn_indicator_model_path, const std::string & speed_predictor_model_path);
   InferenceResult infer(const preprocess::InputDataMap & input_data_map) override;
 
 private:
@@ -62,13 +63,17 @@ private:
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> encoder_trt_ptr_{nullptr};
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> decoder_trt_ptr_{nullptr};
   std::unique_ptr<autoware::tensorrt_common::TrtCommon> turn_indicator_trt_ptr_{nullptr};
+  std::unique_ptr<autoware::tensorrt_common::TrtCommon> speed_predictor_trt_ptr_{nullptr};
   CudaGraphExecutor encoder_cuda_graph_;
   CudaGraphExecutor decoder_cuda_graph_;
   CudaGraphExecutor turn_indicator_cuda_graph_;
+  CudaGraphExecutor speed_predictor_cuda_graph_;
 
   autoware::cuda_utils::CudaUniquePtr<float[]> sampled_trajectories_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> diffusion_time_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> ego_history_d_;
+  autoware::cuda_utils::CudaUniquePtr<float[]> ego_velocity_past_d_;
+  autoware::cuda_utils::CudaUniquePtr<float[]> ego_current_state_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> neighbor_agents_past_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> static_objects_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> lanes_d_;
@@ -86,18 +91,25 @@ private:
   autoware::cuda_utils::CudaUniquePtr<float[]> encoding_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> model_output_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> turn_indicator_logit_d_;
+  autoware::cuda_utils::CudaUniquePtr<float[]> ego_agent_future_d_;
+  autoware::cuda_utils::CudaUniquePtr<float[]> ego_velocity_future_d_;
 
   autoware::cuda_utils::CudaUniquePtrHost<float[]> model_output_pinned_;
   autoware::cuda_utils::CudaUniquePtrHost<float[]> logit_pinned_;
+  autoware::cuda_utils::CudaUniquePtrHost<float[]> ego_velocity_future_pinned_;
   size_t encoding_num_elements_{0};
   size_t model_output_num_elements_{0};
   size_t logit_num_elements_{0};
+  size_t ego_agent_future_num_elements_{0};
+  size_t ego_velocity_future_num_elements_{0};
 
   cudaStream_t stream_{nullptr};
 
   void bind_encoder_buffers();
   void bind_decoder_buffers();
   void bind_turn_indicator_buffers();
+  void bind_speed_predictor_buffers();
+  void copy_ego_agent_future_to_device(const std::vector<float> & final_x0);
   void transfer_inputs_to_device(const preprocess::InputDataMap & input_data_map);
   DpmSolver::SampleResult run_dpm_solver(const preprocess::InputDataMap & input_data_map);
   std::vector<float> evaluate_decoder(const std::vector<float> & x, float t);

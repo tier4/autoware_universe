@@ -93,7 +93,7 @@ std::vector<FloatInput> single_step_float_inputs(const preprocess::InputDataMap 
 {
   return {
     {"sampled_trajectories", &input_data_map.at("sampled_trajectories")},
-    {"ego_agent_past", &input_data_map.at("ego_agent_past")},
+    {"ego_velocity_past", &input_data_map.at("ego_velocity_past")},
     {"ego_current_state", &input_data_map.at("ego_current_state")},
     {"neighbor_agents_past", &input_data_map.at("neighbor_agents_past")},
     {"static_objects", &input_data_map.at("static_objects")},
@@ -112,7 +112,8 @@ std::vector<FloatInput> single_step_float_inputs(const preprocess::InputDataMap 
 std::vector<FloatInput> encoder_float_inputs(const preprocess::InputDataMap & input_data_map)
 {
   return {
-    {"ego_agent_past", &input_data_map.at("ego_agent_past")},
+    {"ego_velocity_past", &input_data_map.at("ego_velocity_past")},
+    {"ego_current_state", &input_data_map.at("ego_current_state")},
     {"neighbor_agents_past", &input_data_map.at("neighbor_agents_past")},
     {"static_objects", &input_data_map.at("static_objects")},
     {"lanes", &input_data_map.at("lanes")},
@@ -233,6 +234,11 @@ std::unordered_map<std::string, std::vector<float>> OrtModel::run(
       add_float_tensor(
         name, data,
         {static_cast<int64_t>(data.size() / ((INPUT_T + 1) * POSE_DIM)), INPUT_T + 1, POSE_DIM});
+    } else if (name == "ego_velocity_past") {
+      add_float_tensor(
+        name, data,
+        {static_cast<int64_t>(data.size() / ((INPUT_T + 1) * EGO_VELOCITY_DIM)), INPUT_T + 1,
+         EGO_VELOCITY_DIM});
     } else if (name == "ego_current_state") {
       add_float_tensor(name, data, {static_cast<int64_t>(data.size() / 10), 10});
     } else if (name == "neighbor_agents_past") {
@@ -300,6 +306,10 @@ std::unordered_map<std::string, std::vector<float>> OrtModel::run(
         name, data,
         {static_cast<int64_t>(data.size() / (MAX_NUM_AGENTS * (OUTPUT_T + 1) * POSE_DIM)),
          MAX_NUM_AGENTS, OUTPUT_T + 1, POSE_DIM});
+    } else if (name == "ego_agent_future") {
+      add_float_tensor(
+        name, data,
+        {static_cast<int64_t>(data.size() / (OUTPUT_T * POSE_DIM)), OUTPUT_T, POSE_DIM});
     } else {
       throw std::runtime_error("Unsupported ONNX Runtime input: " + name);
     }
@@ -370,16 +380,18 @@ InferenceResult OnnxruntimeSingleStepInference::infer(
 
 OnnxruntimeMultiStepInference::OnnxruntimeMultiStepInference(
   const std::string & encoder_model_path, const std::string & decoder_model_path,
-  const std::string & turn_indicator_model_path, const std::string & execution_provider,
-  const std::string & plugins_path, const int batch_size, const int dpm_solver_steps,
-  std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances)
+  const std::string & turn_indicator_model_path, const std::string & speed_predictor_model_path,
+  const std::string & execution_provider, const std::string & plugins_path, const int batch_size,
+  const int dpm_solver_steps, std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances)
 : batch_size_(batch_size),
   dpm_solver_steps_(dpm_solver_steps),
   guidances_(std::move(guidances)),
   encoder_model_(encoder_model_path, parse_execution_provider(execution_provider), plugins_path),
   decoder_model_(decoder_model_path, parse_execution_provider(execution_provider), plugins_path),
   turn_indicator_model_(
-    turn_indicator_model_path, parse_execution_provider(execution_provider), plugins_path)
+    turn_indicator_model_path, parse_execution_provider(execution_provider), plugins_path),
+  speed_predictor_model_(
+    speed_predictor_model_path, parse_execution_provider(execution_provider), plugins_path)
 {
 }
 
@@ -473,6 +485,20 @@ InferenceResult OnnxruntimeMultiStepInference::infer(
 
     const auto turn_indicator_outputs = turn_indicator_model_.run(
       {{"encoding", encoding_}, {"final_x0", solver_result.final_x}}, {}, {"turn_indicator_logit"});
+    std::vector<float> ego_agent_future(batch_size_ * OUTPUT_T * POSE_DIM);
+    for (int b = 0; b < batch_size_; ++b) {
+      for (int64_t t = 0; t < OUTPUT_T; ++t) {
+        for (int64_t d = 0; d < POSE_DIM; ++d) {
+          const size_t src_idx =
+            ((static_cast<size_t>(b) * MAX_NUM_AGENTS) * (OUTPUT_T + 1) + (t + 1)) * POSE_DIM + d;
+          const size_t dst_idx = (static_cast<size_t>(b) * OUTPUT_T + t) * POSE_DIM + d;
+          ego_agent_future[dst_idx] = solver_result.final_x[src_idx];
+        }
+      }
+    }
+    const auto speed_predictor_outputs = speed_predictor_model_.run(
+      {{"encoding", encoding_}, {"ego_agent_future", ego_agent_future}}, {},
+      {"ego_velocity_future_prediction"});
 
     std::vector<float> denoising_predictions;
     for (const auto & step : solver_result.denoising_steps) {
@@ -485,6 +511,7 @@ InferenceResult OnnxruntimeMultiStepInference::infer(
     InferenceOutput output;
     output.outputs = std::make_pair(
       std::move(solver_result.final_x), turn_indicator_outputs.at("turn_indicator_logit"));
+    output.ego_velocity_future = speed_predictor_outputs.at("ego_velocity_future_prediction");
     output.denoising_predictions = std::move(denoising_predictions);
     output.denoising_timesteps = std::move(solver_result.denoising_timesteps);
     output.inference_time_ms = elapsed.count();

@@ -13,6 +13,7 @@
         encoder_onnx_model_path: $(var data_path)/diffusion_planner/v5.0/diffusion_planner_encoder.onnx
         decoder_onnx_model_path: $(var data_path)/diffusion_planner/v5.0/diffusion_planner_decoder.onnx
         turn_indicator_onnx_model_path: $(var data_path)/diffusion_planner/v5.0/diffusion_planner_turn_indicator.onnx
+        speed_predictor_onnx_model_path: $(var data_path)/diffusion_planner/v5.0/diffusion_planner_speed_predictor.onnx
         dpm_solver_steps: 10
     guidance:
       start_guidance:
@@ -28,7 +29,6 @@
     traffic_light_group_msg_timeout_seconds: 0.2
     batch_size: 1
     temperature: [0.0]
-    velocity_smoothing_window: 8
     stopping_threshold: 0.3
     turn_indicator_keep_offset: -1.25
     turn_indicator_hold_duration: 1.0
@@ -36,6 +36,20 @@
     delay_step: 0
     line_string_max_step_m: 5.0
     use_time_interpolation: false
+    pseudo_controller:
+      type: "stanley" # convergence algorithm used to steer the ego trajectory onto the predicted path/velocity plan: "stanley" or "feedback_linearization"
+      stanley:
+        max_steer_rad: 2.0
+        max_steer_rate_rad_s: 3.0
+        stop_velocity_threshold: 0.6
+        heading_gain: 3.0
+        cross_track_gain: 3.0
+      feedback_linearization:
+        max_steer_rad: 2.0
+        max_steer_rate_rad_s: 3.0
+        stop_velocity_threshold: 0.2
+        lateral_gain: 1.0
+        heading_gain: 1.0
     planning_factor:
       enable_stop: true
       enable_slowdown: false

@@ -34,7 +34,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -45,6 +44,32 @@
 
 namespace autoware::diffusion_planner
 {
+namespace
+{
+std::unique_ptr<postprocess::PseudoController> create_pseudo_controller(
+  const DiffusionPlannerParams & params)
+{
+  if (params.pseudo_controller_type == "stanley") {
+    return std::make_unique<postprocess::StanleyPseudoController>(
+      postprocess::StanleyControllerParams{
+        params.stanley_max_steer_rad, params.stanley_max_steer_rate_rad_s,
+        params.stanley_stop_velocity_threshold, params.stanley_heading_gain,
+        params.stanley_cross_track_gain});
+  }
+  if (params.pseudo_controller_type == "feedback_linearization") {
+    return std::make_unique<postprocess::FeedbackLinearizationPseudoController>(
+      postprocess::FeedbackLinearizationControllerParams{
+        params.feedback_linearization_max_steer_rad,
+        params.feedback_linearization_max_steer_rate_rad_s,
+        params.feedback_linearization_stop_velocity_threshold,
+        params.feedback_linearization_lateral_gain, params.feedback_linearization_heading_gain});
+  }
+  throw std::invalid_argument(
+    "Unsupported pseudo_controller.type '" + params.pseudo_controller_type +
+    "'. Expected 'stanley' or 'feedback_linearization'.");
+}
+}  // namespace
+
 #ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ONNXRUNTIME
 namespace
 {
@@ -77,7 +102,8 @@ DiffusionPlannerCore::DiffusionPlannerCore(
   vehicle_spec_(vehicle_info),
   turn_indicator_manager_(
     rclcpp::Duration::from_seconds(params.turn_indicator_hold_duration),
-    params.turn_indicator_keep_offset)
+    params.turn_indicator_keep_offset),
+  pseudo_controller_(create_pseudo_controller(params))
 {
 }
 
@@ -130,8 +156,9 @@ void DiffusionPlannerCore::load_model()
   } else if (params_.backend == "tensorrt" && params_.model_type == "multi_step") {
     diffusion_planner_inference_ = std::make_unique<MultiStepInference>(
       params_.encoder_model_path, params_.decoder_model_path, params_.turn_indicator_model_path,
-      params_.plugins_path, params_.batch_size, params_.trt_precision, params_.use_cuda_graph,
-      params_.dpm_solver_steps, std::move(guidances));
+      params_.speed_predictor_model_path, params_.plugins_path, params_.batch_size,
+      params_.trt_precision, params_.use_cuda_graph, params_.dpm_solver_steps,
+      std::move(guidances));
 #ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ONNXRUNTIME
   } else if (is_onnxruntime_backend(params_.backend) && params_.model_type == "single_step") {
     diffusion_planner_inference_ = std::make_unique<OnnxruntimeSingleStepInference>(
@@ -140,6 +167,7 @@ void DiffusionPlannerCore::load_model()
   } else if (is_onnxruntime_backend(params_.backend) && params_.model_type == "multi_step") {
     diffusion_planner_inference_ = std::make_unique<OnnxruntimeMultiStepInference>(
       params_.encoder_model_path, params_.decoder_model_path, params_.turn_indicator_model_path,
+      params_.speed_predictor_model_path,
       onnxruntime_execution_provider_from_backend(params_.backend), params_.plugins_path,
       params_.batch_size, params_.dpm_solver_steps, std::move(guidances));
 #endif
@@ -161,6 +189,7 @@ void DiffusionPlannerCore::update_params(const DiffusionPlannerParams & params)
   turn_indicator_manager_.set_hold_duration(
     rclcpp::Duration::from_seconds(params_.turn_indicator_hold_duration));
   turn_indicator_manager_.set_keep_offset(params_.turn_indicator_keep_offset);
+  pseudo_controller_ = create_pseudo_controller(params_);
   if (start_guidance_) {
     StartGuidanceConfig start_guidance_config;
     start_guidance_config.reference_distance_m =
@@ -231,6 +260,7 @@ void DiffusionPlannerCore::set_map(
 std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   const std::shared_ptr<const Odometry> & ego_kinematic_state,
   const std::shared_ptr<const AccelWithCovarianceStamped> & ego_acceleration,
+  const std::shared_ptr<const SteeringReport> & ego_steering_status,
   const std::shared_ptr<const TrackedObjects> & objects,
   const std::vector<std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
     traffic_signals,
@@ -246,7 +276,9 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
     effective_objects = std::make_shared<TrackedObjects>(empty_object_list);
   }
 
-  if (!effective_objects || !ego_kinematic_state || !ego_acceleration || !turn_indicators) {
+  if (
+    !effective_objects || !ego_kinematic_state || !ego_acceleration || !ego_steering_status ||
+    !turn_indicators) {
     return std::nullopt;
   }
 
@@ -290,7 +322,11 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   // Create frame context
   const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
   const FrameContext frame_context{
-    *ego_kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
+    *ego_kinematic_state,
+    *ego_acceleration,
+    ego_steering_status->steering_tire_angle,
+    ego_to_map_transform,
+    processed_neighbor_histories,
     frame_time};
 
   return frame_context;
@@ -359,6 +395,10 @@ InputDataMap DiffusionPlannerCore::create_input_data(const FrameContext & frame_
       ego_history_, EGO_HISTORY_SHAPE[1], map_to_ego_transform, reference_time);
     input_data_map["ego_agent_past"] =
       utils::replicate_for_batch(single_ego_agent_past, params_.batch_size);
+    const std::vector<float> single_ego_velocity_past =
+      preprocess::create_ego_velocity(ego_history_, EGO_VELOCITY_SHAPE[1], reference_time);
+    input_data_map["ego_velocity_past"] =
+      utils::replicate_for_batch(single_ego_velocity_past, params_.batch_size);
   }
   // Ego state
   {
@@ -509,18 +549,29 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
     postprocess::parse_predictions(denormalized_predictions, frame_context.ego_to_map_transform);
   last_agent_poses_map_ = agent_poses;
 
-  const bool enable_force_stop =
-    frame_context.ego_kinematic_state.twist.twist.linear.x > std::numeric_limits<double>::epsilon();
-
   PlannerOutput output;
   output.denoising_steps = postprocess::create_denoising_steps_message(
     denormalized_denoising_predictions, inference_output.denoising_timesteps);
 
+  // Decide whether to latch the predicted velocity plan to zero once it dips to (near-)zero, so a
+  // spurious/premature re-departure predicted later in the same plan does not move the vehicle.
+  // The decision is based on the main (batch-0) velocity plan and applied to every batch.
+  constexpr double velocity_plan_dt = 0.1;
+  const size_t departure_check_size =
+    std::min<size_t>(static_cast<size_t>(OUTPUT_T), inference_output.ego_velocity_future.size());
+  const std::vector<float> batch0_velocity_profile(
+    inference_output.ego_velocity_future.begin(),
+    inference_output.ego_velocity_future.begin() +
+      static_cast<std::ptrdiff_t>(departure_check_size));
+  const bool enable_force_stop = stop_manager_.update(
+    timestamp, batch0_velocity_profile, params_.stopping_threshold, velocity_plan_dt);
+
   // Trajectory and CandidateTrajectories
   for (int i = 0; i < params_.batch_size; i++) {
     auto trajectory = postprocess::create_ego_trajectory(
-      agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose.position, i,
-      params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
+      agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose, i, enable_force_stop,
+      params_.stopping_threshold, vehicle_spec_.wheel_base, frame_context.ego_steering_tire_angle,
+      *pseudo_controller_, inference_output.ego_velocity_future);
 
     if (params_.shift_x) {
       for (auto & point : trajectory.points) {
@@ -531,6 +582,13 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
     if (i == 0) {
       // Use the first trajectory as the main output trajectory
       output.trajectory = trajectory;
+      output.spatial_trajectory = postprocess::create_spatial_ego_trajectory(
+        agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose, i);
+      if (params_.shift_x) {
+        for (auto & point : output.spatial_trajectory.points) {
+          point.pose = utils::shift_x(point.pose, -vehicle_spec_.base_link_to_center);
+        }
+      }
     }
 
     const auto candidate_trajectory = autoware_internal_planning_msgs::build<
