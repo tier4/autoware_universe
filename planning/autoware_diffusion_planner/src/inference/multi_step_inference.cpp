@@ -35,8 +35,9 @@ using autoware::tensorrt_common::ProfileDims;
 
 MultiStepInference::MultiStepInference(
   const std::string & encoder_model_path, const std::string & decoder_model_path,
-  const std::string & turn_indicator_model_path, const std::string & plugins_path, int batch_size,
-  const std::string & precision, bool use_cuda_graph, int dpm_solver_steps,
+  const std::string & turn_indicator_model_path, const std::string & speed_predictor_model_path,
+  const std::string & plugins_path, int batch_size, const std::string & precision,
+  bool use_cuda_graph, int dpm_solver_steps,
   std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances)
 : batch_size_(batch_size),
   dpm_solver_steps_(dpm_solver_steps),
@@ -49,6 +50,8 @@ MultiStepInference::MultiStepInference(
   const std::vector<int64_t> diffusion_time_shape = {batch_size_, MAX_NUM_AGENTS, OUTPUT_T + 1, 1};
   const std::vector<int64_t> model_output_shape = {
     batch_size_, MAX_NUM_AGENTS, OUTPUT_T + 1, POSE_DIM};
+  const std::vector<int64_t> ego_agent_future_shape = {batch_size_, OUTPUT_T, POSE_DIM};
+  const std::vector<int64_t> ego_velocity_future_shape = {batch_size_, OUTPUT_T, 1};
 
   sampled_trajectories_d_ = autoware::cuda_utils::make_unique<float[]>(
     batch_size_ * num_elements_without_batch(SAMPLED_TRAJECTORIES_SHAPE));
@@ -56,6 +59,10 @@ MultiStepInference::MultiStepInference(
     autoware::cuda_utils::make_unique<float[]>(num_elements(diffusion_time_shape));
   ego_history_d_ = autoware::cuda_utils::make_unique<float[]>(
     batch_size_ * num_elements_without_batch(EGO_HISTORY_SHAPE));
+  ego_velocity_past_d_ = autoware::cuda_utils::make_unique<float[]>(
+    batch_size_ * num_elements_without_batch(EGO_VELOCITY_SHAPE));
+  ego_current_state_d_ = autoware::cuda_utils::make_unique<float[]>(
+    batch_size_ * num_elements_without_batch(EGO_CURRENT_STATE_SHAPE));
   neighbor_agents_past_d_ = autoware::cuda_utils::make_unique<float[]>(
     batch_size_ * num_elements_without_batch(NEIGHBOR_SHAPE));
   static_objects_d_ = autoware::cuda_utils::make_unique<float[]>(
@@ -86,15 +93,23 @@ MultiStepInference::MultiStepInference(
   encoding_num_elements_ = num_elements(encoding_shape);
   model_output_num_elements_ = num_elements(model_output_shape);
   logit_num_elements_ = batch_size_ * num_elements_without_batch(TURN_INDICATOR_LOGIT_SHAPE);
+  ego_agent_future_num_elements_ = num_elements(ego_agent_future_shape);
+  ego_velocity_future_num_elements_ = num_elements(ego_velocity_future_shape);
   encoding_d_ = autoware::cuda_utils::make_unique<float[]>(encoding_num_elements_);
   model_output_d_ = autoware::cuda_utils::make_unique<float[]>(model_output_num_elements_);
   turn_indicator_logit_d_ = autoware::cuda_utils::make_unique<float[]>(logit_num_elements_);
+  ego_agent_future_d_ = autoware::cuda_utils::make_unique<float[]>(ego_agent_future_num_elements_);
+  ego_velocity_future_d_ =
+    autoware::cuda_utils::make_unique<float[]>(ego_velocity_future_num_elements_);
   model_output_pinned_ = autoware::cuda_utils::make_unique_host<float[]>(
     model_output_num_elements_, cudaHostAllocDefault);
   logit_pinned_ =
     autoware::cuda_utils::make_unique_host<float[]>(logit_num_elements_, cudaHostAllocDefault);
+  ego_velocity_future_pinned_ = autoware::cuda_utils::make_unique_host<float[]>(
+    ego_velocity_future_num_elements_, cudaHostAllocDefault);
 
-  load_engines(encoder_model_path, decoder_model_path, turn_indicator_model_path);
+  load_engines(
+    encoder_model_path, decoder_model_path, turn_indicator_model_path, speed_predictor_model_path);
   CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
 }
 
@@ -107,11 +122,13 @@ MultiStepInference::~MultiStepInference()
 
 void MultiStepInference::load_engines(
   const std::string & encoder_model_path, const std::string & decoder_model_path,
-  const std::string & turn_indicator_model_path)
+  const std::string & turn_indicator_model_path, const std::string & speed_predictor_model_path)
 {
   const std::vector<int64_t> encoding_shape = {1, ENCODING_TOKEN_NUM, HIDDEN_DIM};
   const std::vector<int64_t> diffusion_time_shape = {1, MAX_NUM_AGENTS, OUTPUT_T + 1, 1};
   const std::vector<int64_t> model_output_shape = {1, MAX_NUM_AGENTS, OUTPUT_T + 1, POSE_DIM};
+  const std::vector<int64_t> ego_agent_future_shape = {1, OUTPUT_T, POSE_DIM};
+  const std::vector<int64_t> ego_velocity_future_shape = {1, OUTPUT_T, 1};
 
   std::vector<ProfileDims> encoder_profile_dims;
   std::vector<NetworkIO> encoder_network_io;
@@ -120,7 +137,8 @@ void MultiStepInference::load_engines(
     encoder_profile_dims.emplace_back(make_profile_dims(name, dims, batch_size_));
     encoder_network_io.emplace_back(name, dims);
   };
-  add_encoder_tensor("ego_agent_past", EGO_HISTORY_SHAPE);
+  add_encoder_tensor("ego_velocity_past", EGO_VELOCITY_SHAPE);
+  add_encoder_tensor("ego_current_state", EGO_CURRENT_STATE_SHAPE);
   add_encoder_tensor("neighbor_agents_past", NEIGHBOR_SHAPE);
   add_encoder_tensor("static_objects", STATIC_OBJECTS_SHAPE);
   add_encoder_tensor("lanes", LANES_SHAPE);
@@ -173,15 +191,34 @@ void MultiStepInference::load_engines(
     turn_indicator_model_path, plugins_path_, batch_size_, precision_, turn_indicator_network_io,
     turn_indicator_profile_dims);
 
+  std::vector<ProfileDims> speed_predictor_profile_dims;
+  std::vector<NetworkIO> speed_predictor_network_io;
+  const auto add_speed_predictor_tensor = [&](const std::string & name, const auto & shape) {
+    const auto dims = to_dynamic_dims(shape, batch_size_);
+    speed_predictor_profile_dims.emplace_back(make_profile_dims(name, dims, batch_size_));
+    speed_predictor_network_io.emplace_back(name, dims);
+  };
+  add_speed_predictor_tensor("encoding", encoding_shape);
+  add_speed_predictor_tensor("ego_agent_future", ego_agent_future_shape);
+  speed_predictor_network_io.emplace_back(
+    "ego_velocity_future_prediction", to_dynamic_dims(ego_velocity_future_shape, batch_size_));
+
+  speed_predictor_trt_ptr_ = setup_engine(
+    speed_predictor_model_path, plugins_path_, batch_size_, precision_, speed_predictor_network_io,
+    speed_predictor_profile_dims);
+
   bind_encoder_buffers();
   bind_decoder_buffers();
   bind_turn_indicator_buffers();
+  bind_speed_predictor_buffers();
 }
 
 void MultiStepInference::bind_encoder_buffers()
 {
   encoder_trt_ptr_->setInputShape(
-    "ego_agent_past", to_dims_with_batch(EGO_HISTORY_SHAPE, batch_size_));
+    "ego_velocity_past", to_dims_with_batch(EGO_VELOCITY_SHAPE, batch_size_));
+  encoder_trt_ptr_->setInputShape(
+    "ego_current_state", to_dims_with_batch(EGO_CURRENT_STATE_SHAPE, batch_size_));
   encoder_trt_ptr_->setInputShape(
     "neighbor_agents_past", to_dims_with_batch(NEIGHBOR_SHAPE, batch_size_));
   encoder_trt_ptr_->setInputShape(
@@ -206,7 +243,8 @@ void MultiStepInference::bind_encoder_buffers()
   encoder_trt_ptr_->setInputShape(
     "turn_indicators", to_dims_with_batch(TURN_INDICATORS_SHAPE, batch_size_));
 
-  encoder_trt_ptr_->setTensorAddress("ego_agent_past", ego_history_d_.get());
+  encoder_trt_ptr_->setTensorAddress("ego_velocity_past", ego_velocity_past_d_.get());
+  encoder_trt_ptr_->setTensorAddress("ego_current_state", ego_current_state_d_.get());
   encoder_trt_ptr_->setTensorAddress("neighbor_agents_past", neighbor_agents_past_d_.get());
   encoder_trt_ptr_->setTensorAddress("static_objects", static_objects_d_.get());
   encoder_trt_ptr_->setTensorAddress("lanes", lanes_d_.get());
@@ -259,10 +297,45 @@ void MultiStepInference::bind_turn_indicator_buffers()
   turn_indicator_trt_ptr_->setTensorAddress("turn_indicator_logit", turn_indicator_logit_d_.get());
 }
 
+void MultiStepInference::bind_speed_predictor_buffers()
+{
+  const std::vector<int64_t> encoding_shape = {1, ENCODING_TOKEN_NUM, HIDDEN_DIM};
+  const std::vector<int64_t> ego_agent_future_shape = {1, OUTPUT_T, POSE_DIM};
+
+  speed_predictor_trt_ptr_->setInputShape(
+    "encoding", to_dims_with_batch(encoding_shape, batch_size_));
+  speed_predictor_trt_ptr_->setInputShape(
+    "ego_agent_future", to_dims_with_batch(ego_agent_future_shape, batch_size_));
+
+  speed_predictor_trt_ptr_->setTensorAddress("encoding", encoding_d_.get());
+  speed_predictor_trt_ptr_->setTensorAddress("ego_agent_future", ego_agent_future_d_.get());
+  speed_predictor_trt_ptr_->setTensorAddress(
+    "ego_velocity_future_prediction", ego_velocity_future_d_.get());
+}
+
+void MultiStepInference::copy_ego_agent_future_to_device(const std::vector<float> & final_x0)
+{
+  std::vector<float> ego_agent_future(ego_agent_future_num_elements_);
+  for (int b = 0; b < batch_size_; ++b) {
+    for (int64_t t = 0; t < OUTPUT_T; ++t) {
+      for (int64_t d = 0; d < POSE_DIM; ++d) {
+        const size_t src_idx =
+          ((static_cast<size_t>(b) * MAX_NUM_AGENTS) * (OUTPUT_T + 1) + (t + 1)) * POSE_DIM + d;
+        const size_t dst_idx = (static_cast<size_t>(b) * OUTPUT_T + t) * POSE_DIM + d;
+        ego_agent_future[dst_idx] = final_x0[src_idx];
+      }
+    }
+  }
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    ego_agent_future_d_.get(), ego_agent_future.data(), ego_agent_future.size() * sizeof(float),
+    cudaMemcpyHostToDevice, stream_));
+}
+
 void MultiStepInference::transfer_inputs_to_device(const preprocess::InputDataMap & input_data_map)
 {
   transfer_float_input(input_data_map.at("sampled_trajectories"), sampled_trajectories_d_, stream_);
-  transfer_float_input(input_data_map.at("ego_agent_past"), ego_history_d_, stream_);
+  transfer_float_input(input_data_map.at("ego_velocity_past"), ego_velocity_past_d_, stream_);
+  transfer_float_input(input_data_map.at("ego_current_state"), ego_current_state_d_, stream_);
   transfer_float_input(input_data_map.at("neighbor_agents_past"), neighbor_agents_past_d_, stream_);
   transfer_float_input(input_data_map.at("static_objects"), static_objects_d_, stream_);
   transfer_float_input(input_data_map.at("lanes"), lanes_d_, stream_);
@@ -415,6 +488,20 @@ MultiStepInference::InferenceResult MultiStepInference::infer(
   CHECK_CUDA_ERROR(cudaMemcpyAsync(
     logit_pinned_.get(), turn_indicator_logit_d_.get(), logit_num_elements_ * sizeof(float),
     cudaMemcpyDeviceToHost, stream_));
+
+  copy_ego_agent_future_to_device(solver_result.final_x);
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+
+  status =
+    enqueue_trt(*speed_predictor_trt_ptr_, speed_predictor_cuda_graph_, stream_, use_cuda_graph_);
+  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
+  if (!status) {
+    return tl::unexpected(std::string{"Failed to enqueue speed predictor inference."});
+  }
+
+  CHECK_CUDA_ERROR(cudaMemcpyAsync(
+    ego_velocity_future_pinned_.get(), ego_velocity_future_d_.get(),
+    ego_velocity_future_num_elements_ * sizeof(float), cudaMemcpyDeviceToHost, stream_));
   CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   std::vector<float> denoising_predictions;
@@ -422,12 +509,16 @@ MultiStepInference::InferenceResult MultiStepInference::infer(
     denoising_predictions.insert(denoising_predictions.end(), step.begin(), step.end());
   }
   std::vector<float> logit_host(logit_pinned_.get(), logit_pinned_.get() + logit_num_elements_);
+  std::vector<float> ego_velocity_future_host(
+    ego_velocity_future_pinned_.get(),
+    ego_velocity_future_pinned_.get() + ego_velocity_future_num_elements_);
 
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<double, std::milli> elapsed = end - start;
 
   InferenceOutput output;
   output.outputs = std::make_pair(std::move(solver_result.final_x), std::move(logit_host));
+  output.ego_velocity_future = std::move(ego_velocity_future_host);
   output.denoising_predictions = std::move(denoising_predictions);
   output.denoising_timesteps = std::move(solver_result.denoising_timesteps);
   output.inference_time_ms = elapsed.count();
