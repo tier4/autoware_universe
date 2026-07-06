@@ -22,6 +22,8 @@
 
 #include <boost/geometry.hpp>
 
+#include <lanelet2_core/Attribute.h>
+#include <lanelet2_core/geometry/Area.h>
 #include <lanelet2_core/geometry/Lanelet.h>
 
 #include <limits>
@@ -29,6 +31,19 @@
 
 namespace autoware::mission_planner_universe::lanelet2
 {
+namespace
+{
+bool is_vehicle_routable_freespace_area(const lanelet::ConstArea & area)
+{
+  const std::string subtype = area.attributeOr(lanelet::AttributeName::Subtype, std::string(""));
+  if (subtype != "freespace") {
+    return false;
+  }
+  const std::string participant_vehicle =
+    area.attributeOr(lanelet::AttributeNamesString::ParticipantVehicle, std::string("yes"));
+  return participant_vehicle != "no";
+}
+}  // namespace
 autoware_utils::Polygon2d convert_linear_ring_to_polygon(autoware_utils::LinearRing2d footprint)
 {
   autoware_utils::Polygon2d footprint_polygon;
@@ -82,6 +97,16 @@ bool is_in_lane(const lanelet::ConstLanelet & lanelet, const lanelet::ConstPoint
     lanelet.polygon2d().basicPolygon(), lanelet::utils::to2D(point).basicPoint());
   constexpr double th_distance = std::numeric_limits<double>::epsilon();
   return distance < th_distance;
+}
+
+bool has_direction_change_area_tag(const lanelet::ConstLanelet & lanelet)
+{
+  const std::string direction_change = lanelet.attributeOr("direction_change", "none");
+  if (direction_change == "yes") {
+    return true;
+  }
+  const std::string direction_change_lane = lanelet.attributeOr("direction_change_lane", "none");
+  return direction_change_lane == "yes";
 }
 
 bool is_in_parking_space(
@@ -159,6 +184,29 @@ geometry_msgs::msg::Pose get_closest_centerline_pose(
     nearest_point.x() + delta_x, nearest_point.y() + delta_y, nearest_point.z());
 
   return convertBasicPoint3dToPose(refined_point, lane_yaw);
+}
+
+std::optional<lanelet::ConstArea> find_vehicle_freespace_area_at(
+  const lanelet::BasicPoint2d & point, const lanelet::LaneletMapPtr & lanelet_map_ptr)
+{
+  if (!lanelet_map_ptr) {
+    return std::nullopt;
+  }
+
+  constexpr double search_margin = 0.1;
+  const lanelet::BoundingBox2d bbox(
+    lanelet::BasicPoint2d(point.x() - search_margin, point.y() - search_margin),
+    lanelet::BasicPoint2d(point.x() + search_margin, point.y() + search_margin));
+
+  for (const auto & area : lanelet_map_ptr->areaLayer.search(bbox)) {
+    if (!is_vehicle_routable_freespace_area(area)) {
+      continue;
+    }
+    if (lanelet::geometry::inside(area, point)) {
+      return lanelet::ConstArea(area);
+    }
+  }
+  return std::nullopt;
 }
 
 }  // namespace autoware::mission_planner_universe::lanelet2

@@ -65,6 +65,11 @@
           "type": "boolean",
           "description": "This flag is for considering no_drivable_lanes in planning or not",
           "default": "false"
+        },
+        "allow_area_routing": {
+          "type": "boolean",
+          "description": "Enable planning routes through lanelet2 Areas (e.g. freespace) and accepting goal poses inside a routable Area",
+          "default": "false"
         }
       },
       "required": [

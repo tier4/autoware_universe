@@ -18,7 +18,12 @@
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
 
 #include <gtest/gtest.h>
+#include <lanelet2_core/Attribute.h>
+#include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_core/geometry/Area.h>
+#include <lanelet2_core/geometry/BoundingBox.h>
 #include <lanelet2_core/geometry/Polygon.h>
+#include <lanelet2_core/primitives/Area.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
 #include <lanelet2_core/primitives/Point.h>
@@ -29,7 +34,9 @@ using autoware::mission_planner_universe::lanelet2::convert_linear_ring_to_polyg
 using autoware::mission_planner_universe::lanelet2::convertBasicPoint3dToPose;
 using autoware::mission_planner_universe::lanelet2::convertCenterlineToPoints;
 using autoware::mission_planner_universe::lanelet2::exists;
+using autoware::mission_planner_universe::lanelet2::find_vehicle_freespace_area_at;
 using autoware::mission_planner_universe::lanelet2::get_closest_centerline_pose;
+using autoware::mission_planner_universe::lanelet2::has_direction_change_area_tag;
 using autoware::mission_planner_universe::lanelet2::insert_marker_array;
 using autoware::mission_planner_universe::lanelet2::is_in_lane;
 using autoware::mission_planner_universe::lanelet2::is_in_parking_lot;
@@ -422,4 +429,102 @@ TEST(TestUtilityFunctions, TestUtilityFunctions)
     EXPECT_DOUBLE_EQ(pose.position.y, 0.0);
     EXPECT_DOUBLE_EQ(pose.position.z, 0.0);
   }
+}
+
+TEST(TestUtilityFunctions, hasDirectionChangeAreaTag)
+{
+  lanelet::LineString3d left_bound;
+  lanelet::LineString3d right_bound;
+  left_bound.push_back(lanelet::Point3d{lanelet::InvalId, -1, -1});
+  left_bound.push_back(lanelet::Point3d{lanelet::InvalId, 1, -1});
+  right_bound.push_back(lanelet::Point3d{lanelet::InvalId, -1, 1});
+  right_bound.push_back(lanelet::Point3d{lanelet::InvalId, 1, 1});
+
+  {
+    lanelet::Lanelet lanelet{lanelet::InvalId, left_bound, right_bound};
+    EXPECT_FALSE(has_direction_change_area_tag(lanelet));
+  }
+
+  {
+    lanelet::Lanelet lanelet{lanelet::InvalId, left_bound, right_bound};
+    lanelet.setAttribute("direction_change", "yes");
+    EXPECT_TRUE(has_direction_change_area_tag(lanelet));
+  }
+
+  {
+    lanelet::Lanelet lanelet{lanelet::InvalId, left_bound, right_bound};
+    lanelet.setAttribute("direction_change_lane", "yes");
+    EXPECT_TRUE(has_direction_change_area_tag(lanelet));
+  }
+
+  {
+    lanelet::Lanelet lanelet{lanelet::InvalId, left_bound, right_bound};
+    lanelet.setAttribute("direction_change", "no");
+    lanelet.setAttribute("direction_change_lane", "yes");
+    EXPECT_TRUE(has_direction_change_area_tag(lanelet));
+  }
+}
+
+class TestFindVehicleFreespaceAreaAt : public ::testing::Test
+{
+protected:
+  void SetUp() override
+  {
+    lanelet::LineString3d outer_bound{
+      lanelet::InvalId,
+      {
+        lanelet::Point3d{lanelet::InvalId, -1, -1},
+        lanelet::Point3d{lanelet::InvalId, 1, -1},
+        lanelet::Point3d{lanelet::InvalId, 1, 1},
+        lanelet::Point3d{lanelet::InvalId, -1, 1},
+      }};
+    area_ = lanelet::Area(lanelet::utils::getId(), lanelet::LineStrings3d{outer_bound});
+    area_.setAttribute(lanelet::AttributeName::Subtype, "freespace");
+
+    map_ = std::make_shared<lanelet::LaneletMap>();
+    map_->add(area_);
+  }
+
+  lanelet::Area area_;
+  lanelet::LaneletMapPtr map_;
+};
+
+TEST_F(TestFindVehicleFreespaceAreaAt, PointInsideFreespaceArea)
+{
+  const lanelet::BasicPoint2d point{0.0, 0.0};
+  const auto found = find_vehicle_freespace_area_at(point, map_);
+  ASSERT_TRUE(found.has_value());
+  EXPECT_EQ(found->id(), area_.id());
+}
+
+TEST_F(TestFindVehicleFreespaceAreaAt, PointOutsideArea)
+{
+  const lanelet::BasicPoint2d point{5.0, 5.0};
+  EXPECT_FALSE(find_vehicle_freespace_area_at(point, map_).has_value());
+}
+
+TEST_F(TestFindVehicleFreespaceAreaAt, NonFreespaceSubtypeIsIgnored)
+{
+  area_.setAttribute(lanelet::AttributeName::Subtype, "parking_lot");
+  map_ = std::make_shared<lanelet::LaneletMap>();
+  map_->add(area_);
+
+  const lanelet::BasicPoint2d point{0.0, 0.0};
+  EXPECT_FALSE(find_vehicle_freespace_area_at(point, map_).has_value());
+}
+
+TEST_F(TestFindVehicleFreespaceAreaAt, ParticipantVehicleNoIsIgnored)
+{
+  area_.setAttribute(lanelet::AttributeNamesString::ParticipantVehicle, "no");
+  map_ = std::make_shared<lanelet::LaneletMap>();
+  map_->add(area_);
+
+  const lanelet::BasicPoint2d point{0.0, 0.0};
+  EXPECT_FALSE(find_vehicle_freespace_area_at(point, map_).has_value());
+}
+
+TEST(TestUtilityFunctions, findVehicleFreespaceAreaAtNullMap)
+{
+  const lanelet::BasicPoint2d point{0.0, 0.0};
+  EXPECT_FALSE(find_vehicle_freespace_area_at(point, nullptr).has_value());
 }

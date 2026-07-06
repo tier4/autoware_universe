@@ -25,8 +25,11 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_core/primitives/Area.h>
 #include <lanelet2_core/primitives/LaneletSequence.h>
+#include <lanelet2_core/primitives/Point.h>
 
+#include <optional>
 #include <vector>
 
 namespace autoware::mission_planner_universe::lanelet2
@@ -53,6 +56,7 @@ geometry_msgs::msg::Pose convertBasicPoint3dToPose(
   const lanelet::BasicPoint3d & point, const double lane_yaw);
 
 bool is_in_lane(const lanelet::ConstLanelet & lanelet, const lanelet::ConstPoint3d & point);
+bool has_direction_change_area_tag(const lanelet::ConstLanelet & lanelet);
 bool is_in_parking_space(
   const lanelet::ConstLineStrings3d & parking_spaces, const lanelet::ConstPoint3d & point);
 bool is_in_parking_lot(
@@ -62,6 +66,9 @@ double project_goal_to_map(
 geometry_msgs::msg::Pose get_closest_centerline_pose(
   const lanelet::ConstLanelets & road_lanelets, const geometry_msgs::msg::Pose & point,
   autoware::vehicle_info_utils::VehicleInfo vehicle_info);
+
+std::optional<lanelet::ConstArea> find_vehicle_freespace_area_at(
+  const lanelet::BasicPoint2d & point, const lanelet::LaneletMapPtr & lanelet_map_ptr);
 
 }  // namespace autoware::mission_planner_universe::lanelet2
 #endif  // LANELET2_PLUGINS__UTILITY_FUNCTIONS_HPP_
