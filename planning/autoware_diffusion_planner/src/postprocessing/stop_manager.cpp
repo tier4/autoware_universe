@@ -35,6 +35,14 @@ bool StopManager::update(
     return true;
   }
 
+  // if all velocities are below the threshold, then the vehicle is considered stopped
+  if (std::all_of(
+        planned_velocity_profile.begin(), planned_velocity_profile.end(),
+        [stopping_threshold](const float v) { return std::abs(v) <= stopping_threshold; })) {
+    reset();
+    return true;
+  }
+
   if (!is_tracking_) {
     is_tracking_ = true;
     stop_start_time_ = stamp;
