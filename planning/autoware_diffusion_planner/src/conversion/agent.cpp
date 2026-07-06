@@ -52,7 +52,13 @@ bool is_unknown_object(const TrackedObject & object)
 {
   const auto autoware_label =
     autoware::object_recognition_utils::getHighestProbLabel(object.classification);
-  return autoware_label == autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+  const auto shape = object.shape.type;
+  return autoware_label == autoware_perception_msgs::msg::ObjectClassification::UNKNOWN ||
+         autoware_label == autoware_perception_msgs::msg::ObjectClassification::HAZARD ||
+         autoware_label == autoware_perception_msgs::msg::ObjectClassification::OVER_DRIVABLE ||
+         autoware_label == autoware_perception_msgs::msg::ObjectClassification::UNDER_DRIVABLE ||
+         autoware_label == autoware_perception_msgs::msg::ObjectClassification::ANIMAL ||
+         shape == autoware_perception_msgs::msg::Shape::POLYGON;
 }
 
 }  // namespace
