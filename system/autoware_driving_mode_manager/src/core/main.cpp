@@ -92,7 +92,11 @@ void ManagerMain::update()
 void ManagerMain::publish_operation_mode() const
 {
   const auto is_available = [this](const OperationMode & mode) {
-    return status_->is_available(config_->to_autoware_mode(mode));
+    const auto autoware_mode = config_->to_autoware_mode(mode);
+    if (config_->is_reference_mode(autoware_mode)) {
+      return sync_available_modes_.count(autoware_mode) > 0;
+    }
+    return status_->is_available(autoware_mode);
   };
 
   OperationModeState state;
