@@ -1,0 +1,3 @@
+<library path="autoware_behavior_path_freespace_area_module">
+  <class type="autoware::behavior_path_planner::FreespaceAreaModuleManager" base_class_type="autoware::behavior_path_planner::SceneModuleManagerInterface"/>
+</library>

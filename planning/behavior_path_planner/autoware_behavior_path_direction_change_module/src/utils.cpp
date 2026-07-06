@@ -210,6 +210,12 @@ PathWithLaneId getReferencePathFromDirectionChangeLanelets(
 
 bool hasDirectionChangeAreaTag(const lanelet::ConstLanelet & lanelet)
 {
+  // Preferred map convention (also read by autoware_core).
+  const std::string direction_change = lanelet.attributeOr("direction_change", "none");
+  if (direction_change == "yes") {
+    return true;
+  }
+  // Backward compatibility with the older attribute name.
   const std::string direction_change_lane = lanelet.attributeOr("direction_change_lane", "none");
   return direction_change_lane == "yes";
 }

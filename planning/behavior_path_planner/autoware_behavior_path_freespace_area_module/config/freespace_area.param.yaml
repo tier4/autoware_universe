@@ -1,0 +1,69 @@
+/**:
+  ros__parameters:
+    freespace_area:
+      # ========================================
+      # Activation
+      # ========================================
+      activation:
+        lookahead_distance: 100.0  # [m] activate when the area entry is within this arc-length ahead of ego
+
+      # ========================================
+      # Planner (A* / RRT*)
+      # ========================================
+      planner:
+        algorithm: "astar"  # options: astar, rrtstar
+        velocity: 1.39  # [m/s] target velocity on the area segment
+        vehicle_shape_margin: 0.5  # [m] collision footprint margin added to the vehicle shape
+        update_rate: 2.0  # [Hz] rate of the asynchronous planning worker
+        # -- Configurations common to all planners (mirror freespace_planner.param.yaml) --
+        common:
+          # base configs
+          time_limit: 30000.0
+          max_turning_ratio: 0.5  # ratio of actual turning limit of vehicle
+          turning_steps: 1
+          # search configs
+          theta_size: 120
+          angle_goal_range: 6.0
+          lateral_goal_range: 0.5
+          longitudinal_goal_range: 1.0
+          curve_weight: 0.5
+          reverse_weight: 0.7
+          direction_change_weight: 2.0
+          # costmap configs
+          obstacle_threshold: 100
+        # -- A* search configurations --
+        astar:
+          search_method: "forward"  # options: forward, backward
+          only_behind_solutions: false
+          use_back: true
+          adapt_expansion_distance: true
+          expansion_distance: 0.5
+          near_goal_distance: 3.0
+          distance_heuristic_weight: 2.0
+          smoothness_weight: 0.5
+          obstacle_distance_weight: 1.75
+          goal_lat_distance_weight: 5.0
+        # -- RRT* search configurations --
+        rrtstar:
+          enable_update: true
+          use_informed_sampling: true
+          max_planning_time: 150.0
+          neighbor_radius: 8.0
+          margin: 0.1
+
+      # ========================================
+      # Latch & replan
+      # ========================================
+      latch:
+        replan_lateral_deviation: 0.5  # [m] invalidate latch when lateral deviation exceeds this
+        replan_when_obstacle_found: true  # replan when an obstacle is detected on the latched area segment
+        obstacle_check_margin: 0.3  # [m] margin used when checking obstacles on the latched trajectory
+        stuck_time_threshold: 5.0  # [s] replan when ego is unexpectedly stopped longer than this
+
+      # ========================================
+      # Path composition
+      # ========================================
+      path:
+        junction_blend_distance: 5.0  # [m] blend distance at the lane<->area junctions
+        goal_position_tolerance: 0.3  # [m] terminal-mode arrival position tolerance
+        goal_yaw_tolerance_deg: 15.0  # [deg] terminal-mode arrival yaw tolerance

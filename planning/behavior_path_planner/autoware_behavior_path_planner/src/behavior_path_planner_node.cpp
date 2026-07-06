@@ -44,6 +44,9 @@ BehaviorPathPlannerNode::BehaviorPathPlannerNode(const rclcpp::NodeOptions & nod
   {
     planner_data_ = std::make_shared<PlannerData>();
     planner_data_->init_parameters(*this);
+    if (declare_parameter<bool>("allow_area_route", false)) {
+      planner_data_->route_handler->setAllowArea(true);
+    }
   }
 
   // publisher
