@@ -52,9 +52,7 @@ object_selector_.update_objects(get_clock()->now(), objects, trajectory);
 const auto targets = object_selector_.get_avoidance_targets(objects, trajectory, bounds);
 
 const auto driving_along = object_selector_.get_driving_along_vehicles(
-  objects, *extended_route_handler_,
-  ego_history_front.pose.position,   // e.g. oldest point on built ego trajectory
-  trajectory.points.back().pose.position);
+  objects, *extended_route_handler_, ego_trajectory_, trajectory);
 ```
 
 Parameter `use_extended_route_bounds` (reference node) switches between original and extended route bounds for the drivable area.
@@ -217,20 +215,20 @@ PredictedObjects get_avoidance_targets(
 PredictedObjects get_driving_along_vehicles(
   const PredictedObjects & objects,
   const ExtendedRouteHandler & extended_route_handler,
-  const geometry_msgs::msg::Point & prev_end_point,
-  const geometry_msgs::msg::Point & following_end_point);
+  const autoware::experimental::trajectory::Trajectory<TrajectoryPoint> & ego_trajectory,
+  const Trajectory & trajectory);
 ```
 
 Selects **moving vehicles along the extended route corridor** near ego (e.g. traffic in sibling / adjacent lanes), complementary to stationary `get_avoidance_targets()`.
 
-**Preconditions:** `update_objects()` called for the same `objects` in the same cycle. `extended_route_handler.create_map()` completed.
+**Preconditions:** `update_objects()` called for the same `objects` in the same cycle. `extended_route_handler.create_map()` completed. `ego_trajectory` must be built and non-empty; `trajectory` must have at least one point.
 
-| Argument                 | Description                                                                                          |
-| ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `objects`                | Same predicted-objects message passed to `update_objects()` for this cycle.                          |
-| `extended_route_handler` | Handler with built `route_map_` and `route_map_routing_graph_`.                                      |
-| `prev_end_point`         | Start of the near-segment range (reference node: `ego_trajectory_.restore().front().pose.position`). |
-| `following_end_point`    | End of the near-segment range (reference node: `trajectory.points.back().pose.position`).            |
+| Argument                 | Description                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `objects`                | Same predicted-objects message passed to `update_objects()` for this cycle.                                |
+| `extended_route_handler` | Handler with built `route_map_` and `route_map_routing_graph_`.                                            |
+| `ego_trajectory`         | Built ego history trajectory (reference node: `ego_trajectory_`). Near-segment start: `restore().front()`. |
+| `trajectory`             | Subscribed planning trajectory message. Near-segment end: `points.back()`.                                 |
 
 | Returns            | Description                                                                                            |
 | ------------------ | ------------------------------------------------------------------------------------------------------ |
@@ -239,7 +237,7 @@ Selects **moving vehicles along the extended route corridor** near ego (e.g. tra
 **Selection criteria** (object is kept only if all pass):
 
 1. **Filter state** — `is_object_of_interest()` and **not** `is_stationary()`.
-2. **Near-segment overlap** — footprint intersects `get_near_segment_polygon(prev_end_point, following_end_point)`.
+2. **Near-segment overlap** — footprint intersects the polygon from `get_near_segment_polygon(ego_trajectory.restore().front(), trajectory.points.back())`.
 3. **Not on ego lane sequence** — ego and object lanelets are resolved on `route_map_` via `nearestUntil` with `lanelet::geometry::inside()`. Removed if `route_map_routing_graph_` has a shortest path between ego and object in either direction with **lane changes disabled**.
 
 Parallel sibling lanes (not routably connected without lane change) are intended to be kept. Same-lane or longitudinally connected traffic along the corridor is removed.

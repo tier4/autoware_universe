@@ -86,28 +86,25 @@ bool overlaps_near_segment_polygon(
   return boost::geometry::intersects(object_polygon, segment_polygon);
 }
 
-std::optional<lanelet::ConstLanelet> get_nearest_lanelet(
+std::vector<lanelet::ConstLanelet> get_nearest_lanelets(
   const lanelet::LaneletMap & route_map, const geometry_msgs::msg::Point & point)
 {
+  constexpr size_t k_max_nearest_lanelets = 5;
   const lanelet::BasicPoint2d search_point{point.x, point.y};
-  bool found = false;
-  std::optional<lanelet::ConstLanelet> nearest_lanelet;
+  std::vector<lanelet::ConstLanelet> nearest_lanelets;
+  nearest_lanelets.reserve(k_max_nearest_lanelets);
 
   route_map.laneletLayer.nearestUntil(
     search_point, [&](const lanelet::BoundingBox2d & bbox, const lanelet::ConstLanelet & lanelet) {
       if (lanelet::geometry::inside(lanelet, search_point)) {
-        nearest_lanelet = lanelet;
-        found = true;
-        return true;
+        nearest_lanelets.push_back(lanelet);
+        return nearest_lanelets.size() >= k_max_nearest_lanelets;
       }
       constexpr double k_bbox_touch_epsilon_m = 1e-3;
       return lanelet::geometry::distance2d(bbox, search_point) > k_bbox_touch_epsilon_m;
     });
 
-  if (found) {
-    return nearest_lanelet;
-  }
-  return std::nullopt;
+  return nearest_lanelets;
 }
 
 bool has_shortest_path_without_lane_change(
@@ -165,6 +162,33 @@ geometry_msgs::msg::Point get_object_reference_point(const PredictedObject & obj
   return object.kinematics.initial_pose_with_covariance.pose.position;
 }
 
+double max_interpolator_safe_s(const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory)
+{
+  const auto bases = trajectory.get_underlying_bases();
+  if (bases.empty()) {
+    return trajectory.length();
+  }
+  return std::min(trajectory.length(), bases.back());
+}
+
+double clamp_trajectory_s(
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const double s)
+{
+  return std::clamp(s, 0.0, max_interpolator_safe_s(trajectory));
+}
+
+double closest_trajectory_s(
+  const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory,
+  const geometry_msgs::msg::Point & point)
+{
+  const auto s =
+    aw_trajectory::closest_with_constraint(trajectory, point, [](const double &) { return true; });
+  if (!s.has_value()) {
+    return clamp_trajectory_s(trajectory, 0.0);
+  }
+  return clamp_trajectory_s(trajectory, *s);
+}
+
 /**
  * @brief Compute the arc-length range of an object footprint along the trajectory.
  * @param trajectory Interpolated reference trajectory.
@@ -181,7 +205,7 @@ void get_footprint_s_range(
   s_max = std::numeric_limits<double>::lowest();
 
   const auto update_s_range = [&](const geometry_msgs::msg::Point & point) {
-    const double s = aw_trajectory::closest(trajectory, point);
+    const double s = closest_trajectory_s(trajectory, point);
     s_min = std::min(s_min, s);
     s_max = std::max(s_max, s);
   };
@@ -259,8 +283,8 @@ std::vector<double> get_s_samples_near_object(
   get_footprint_s_range(trajectory, object, s_min, s_max);
 
   const double s_lo = std::max(0.0, s_min - OnTrajectoryDValidationParams::near_s_range_m);
-  const double s_hi =
-    std::min(trajectory.length(), s_max + OnTrajectoryDValidationParams::near_s_range_m);
+  const double s_hi = std::min(
+    max_interpolator_safe_s(trajectory), s_max + OnTrajectoryDValidationParams::near_s_range_m);
 
   if (s_hi < s_lo) {
     return {};
@@ -360,7 +384,7 @@ double calc_rear_edge_d_magnitude_at_s(
   const aw_trajectory::Trajectory<TrajectoryPoint> & trajectory, const double s,
   const geometry_msgs::msg::Point & rear_left, const geometry_msgs::msg::Point & rear_right)
 {
-  const auto trajectory_point = trajectory.compute(s);
+  const auto trajectory_point = trajectory.compute(clamp_trajectory_s(trajectory, s));
   const double d_rear_left =
     autoware_utils_geometry::calc_lateral_deviation(trajectory_point.pose, rear_left);
   const double d_rear_right =
@@ -484,7 +508,7 @@ bool is_footprint_point_inside_drivable_area(
   const std::vector<geometry_msgs::msg::Point> & left_bound,
   const std::vector<geometry_msgs::msg::Point> & right_bound, const double tolerance_m)
 {
-  const double s = aw_trajectory::closest(trajectory, footprint_point);
+  const double s = closest_trajectory_s(trajectory, footprint_point);
   const auto ref_pose = trajectory.compute(s).pose;
 
   const double lateral_offset =
@@ -564,7 +588,7 @@ bool should_filter_out_by_longitudinal_distance(
   }
 
   const auto start_pose = built_trajectory->compute(0.0).pose;
-  const auto end_pose = built_trajectory->compute(built_trajectory->length()).pose;
+  const auto end_pose = built_trajectory->compute(max_interpolator_safe_s(*built_trajectory)).pose;
   const auto footprint_points = get_object_footprint_points(object);
 
   const bool all_before_start = std::all_of(
@@ -772,7 +796,15 @@ void AvoidanceTargetDetector::observe_and_update_all(
 
   if (
     rclcpp::Time(current_time) - rclcpp::Time(is_stationary_avoidance_target_stamped_.first) <
-    rclcpp::Duration::from_seconds(FilterManagerParams::hysteresis_seconds)) {
+    rclcpp::Duration::from_seconds(FilterManagerParams::static_hysteresis_seconds)) {
+    return;
+  }
+
+  // If the object is a moving vehicle, keep its status for a while.
+  if (
+    is_moving_vehicle_stamped_.second &&
+    rclcpp::Time(current_time) - rclcpp::Time(is_moving_vehicle_stamped_.first) <
+      rclcpp::Duration::from_seconds(FilterManagerParams::moving_hysteresis_seconds)) {
     return;
   }
 
@@ -851,9 +883,17 @@ PredictedObjects ObjectSelector::get_avoidance_targets(
 
 PredictedObjects ObjectSelector::get_driving_along_vehicles(
   const PredictedObjects & objects, const ExtendedRouteHandler & extended_route_handler,
-  const geometry_msgs::msg::Point & prev_end_point,
-  const geometry_msgs::msg::Point & following_end_point)
+  const aw_trajectory::Trajectory<TrajectoryPoint> & ego_trajectory, const Trajectory & trajectory)
 {
+  const auto ego_points = ego_trajectory.restore();
+  if (ego_points.empty() || trajectory.points.empty()) {
+    return PredictedObjects{};
+  }
+
+  const auto & prev_end_point = ego_points.front().pose.position;
+  const auto & ego_point = ego_points.back().pose.position;
+  const auto & following_end_point = trajectory.points.back().pose.position;
+
   const auto near_segment_polygon =
     extended_route_handler.get_near_segment_polygon(prev_end_point, following_end_point);
   if (near_segment_polygon.size() < 3) {
@@ -862,8 +902,8 @@ PredictedObjects ObjectSelector::get_driving_along_vehicles(
 
   const auto route_map = extended_route_handler.getRouteMap();
   const auto routing_graph = extended_route_handler.getRouteMapRoutingGraph();
-  const auto ego_lanelet =
-    route_map ? get_nearest_lanelet(*route_map, prev_end_point) : std::nullopt;
+  const auto ego_lanelets =
+    route_map ? get_nearest_lanelets(*route_map, ego_point) : std::vector<lanelet::ConstLanelet>{};
 
   PredictedObjects driving_along_vehicles = objects;
   driving_along_vehicles.objects.erase(
@@ -881,18 +921,26 @@ PredictedObjects ObjectSelector::get_driving_along_vehicles(
           return true;
         }
 
-        if (!route_map || !routing_graph || !ego_lanelet) {
+        if (!route_map || !routing_graph || ego_lanelets.empty()) {
           return false;
         }
 
-        const auto object_lanelet = get_nearest_lanelet(
+        const auto object_lanelets = get_nearest_lanelets(
           *route_map, object.kinematics.initial_pose_with_covariance.pose.position);
-        if (!object_lanelet) {
+        if (object_lanelets.empty()) {
           return true;
         }
 
-        return is_routably_connected_to_ego_without_lane_change(
-          *routing_graph, *ego_lanelet, *object_lanelet);
+        const bool is_routably_connected = std::any_of(
+          ego_lanelets.begin(), ego_lanelets.end(), [&](const lanelet::ConstLanelet & ego_lanelet) {
+            return std::any_of(
+              object_lanelets.begin(), object_lanelets.end(),
+              [&](const lanelet::ConstLanelet & object_lanelet) {
+                return is_routably_connected_to_ego_without_lane_change(
+                  *routing_graph, ego_lanelet, object_lanelet);
+              });
+          });
+        return is_routably_connected;
       }),
     driving_along_vehicles.objects.end());
 

@@ -18,6 +18,7 @@
 #include "autoware/avoidance_target_detector/boundary.hpp"
 #include "autoware/avoidance_target_detector/parameter.hpp"
 
+#include <autoware/trajectory/trajectory_point.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/detail/predicted_object__struct.hpp>
@@ -38,6 +39,7 @@ namespace autoware::avoidance_target_detector
 using autoware_perception_msgs::msg::PredictedObject;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::Trajectory;
+using autoware_planning_msgs::msg::TrajectoryPoint;
 
 /** Two-class Bayesian filter with a configurable transition matrix and observation model. */
 class TwoClassFilter
@@ -200,8 +202,8 @@ public:
 
   [[nodiscard]] PredictedObjects get_driving_along_vehicles(
     const PredictedObjects & objects, const ExtendedRouteHandler & extended_route_handler,
-    const geometry_msgs::msg::Point & prev_end_point,
-    const geometry_msgs::msg::Point & following_end_point);
+    const autoware::experimental::trajectory::Trajectory<TrajectoryPoint> & ego_trajectory,
+    const Trajectory & trajectory);
 
 private:
   AvoidanceTargetDetectorMap object_filters_;

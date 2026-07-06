@@ -148,12 +148,8 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
 
   PredictedObjects driving_along_vehicles;
   if (ego_trajectory_built_ && !trajectory_msg.points.empty()) {
-    const auto ego_points = ego_trajectory_.restore();
-    if (!ego_points.empty()) {
-      driving_along_vehicles = object_selector_.get_driving_along_vehicles(
-        *msg, *extended_route_handler_, ego_points.front().pose.position,
-        trajectory_msg.points.back().pose.position);
-    }
+    driving_along_vehicles = object_selector_.get_driving_along_vehicles(
+      *msg, *extended_route_handler_, ego_trajectory_, trajectory_msg);
   }
   pub_driving_along_vehicles_->publish(driving_along_vehicles);
 }

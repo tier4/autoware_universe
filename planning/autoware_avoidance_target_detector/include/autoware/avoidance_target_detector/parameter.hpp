@@ -36,7 +36,7 @@ struct MovingObjectFilterParams
 {
   static constexpr double promising_stop_velocity_mps = 0.28;
   static constexpr double max_linear_velocity_mps =
-    1.0;  ///< Objects with linear velocity norm above this are removed [m/s].
+    1.0;  ///< Objects with linear velocity norm above this are regarded as moving [m/s].
 };
 
 /** Parameters for on-trajectory d-coordinate validation (filter-out). */
@@ -65,7 +65,8 @@ struct LateralDistanceFilterParams
 struct FilterManagerParams
 {
   static constexpr double stale_threshold_seconds = 1.0;
-  static constexpr double hysteresis_seconds = 0.5;
+  static constexpr double static_hysteresis_seconds = 0.5;
+  static constexpr double moving_hysteresis_seconds = 10.0;
   static constexpr uint8_t count_threshold = 3;
 };
 
