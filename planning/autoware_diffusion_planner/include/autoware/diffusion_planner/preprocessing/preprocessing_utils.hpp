@@ -85,6 +85,40 @@ std::vector<float> create_ego_agent_past(
   const std::optional<rclcpp::Time> & reference_time = std::nullopt);
 
 /**
+ * @brief Creates ego velocity history data from odometry messages.
+ *
+ * When reference_time is provided, generates velocity by linearly interpolating odometry
+ * twist.linear.x/y at regular time intervals (0.1s) backwards from the reference time. When
+ * reference_time is std::nullopt, uses the original behavior of taking the last num_timesteps
+ * odometry messages directly.
+ *
+ * @param[in] odom_msgs           Deque of odometry messages
+ * @param[in] num_timesteps       Number of timesteps to process
+ * @param[in] reference_time      Reference time for interpolation (nullopt for legacy behavior)
+ * @return Vector of floats containing [twist.linear.x, twist.linear.y] for each timestep
+ */
+std::vector<float> create_ego_velocity(
+  const std::deque<nav_msgs::msg::Odometry> & odom_msgs, size_t num_timesteps,
+  const std::optional<rclcpp::Time> & reference_time = std::nullopt);
+
+/**
+ * @brief Creates ego acceleration history data from acceleration messages.
+ *
+ * When reference_time is provided, generates acceleration by linearly interpolating
+ * accel.linear.x/y at regular time intervals (0.1s) backwards from the reference time. When
+ * reference_time is std::nullopt, uses the original behavior of taking the last num_timesteps
+ * acceleration messages directly.
+ *
+ * @param[in] accel_msgs          Deque of acceleration messages
+ * @param[in] num_timesteps       Number of timesteps to process
+ * @param[in] reference_time      Reference time for interpolation (nullopt for legacy behavior)
+ * @return Vector of floats containing [accel.linear.x, accel.linear.y] for each timestep
+ */
+std::vector<float> create_ego_acceleration(
+  const std::deque<geometry_msgs::msg::AccelWithCovarianceStamped> & accel_msgs,
+  size_t num_timesteps, const std::optional<rclcpp::Time> & reference_time = std::nullopt);
+
+/**
  * @brief Creates random sampled trajectories for diffusion model input.
  *
  * This function generates a set of random sampled trajectories based on the specified

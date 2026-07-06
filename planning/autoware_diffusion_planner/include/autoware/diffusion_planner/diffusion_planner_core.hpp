@@ -20,6 +20,8 @@
 #include "autoware/diffusion_planner/inference/guidance/start_guidance.hpp"
 #include "autoware/diffusion_planner/inference/guidance/stop_guidance.hpp"
 #include "autoware/diffusion_planner/inference/inference.hpp"
+#include "autoware/diffusion_planner/postprocessing/pseudo_controller.hpp"
+#include "autoware/diffusion_planner/postprocessing/stop_manager.hpp"
 #include "autoware/diffusion_planner/postprocessing/turn_indicator_manager.hpp"
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
 #include "autoware/diffusion_planner/preprocessing/traffic_signals.hpp"
@@ -35,6 +37,7 @@
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -61,6 +64,7 @@ using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
+using autoware_vehicle_msgs::msg::SteeringReport;
 using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using autoware_vehicle_msgs::msg::TurnIndicatorsReport;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
@@ -92,6 +96,7 @@ struct VehicleSpec
 struct PlannerOutput
 {
   Trajectory trajectory;
+  Trajectory spatial_trajectory;
   CandidateTrajectories candidate_trajectories;
   PredictedObjects predicted_objects;
   TurnIndicatorsCommand turn_indicator_command;
@@ -103,6 +108,7 @@ struct FrameContext
 {
   nav_msgs::msg::Odometry ego_kinematic_state;
   geometry_msgs::msg::AccelWithCovarianceStamped ego_acceleration;
+  double ego_steering_tire_angle;
   Eigen::Matrix4d ego_to_map_transform;
   std::vector<AgentHistory> ego_centric_neighbor_histories;
   rclcpp::Time frame_time;
@@ -115,6 +121,7 @@ struct DiffusionPlannerParams
   std::string encoder_model_path;
   std::string decoder_model_path;
   std::string turn_indicator_model_path;
+  std::string speed_predictor_model_path;
   std::string args_path;
   std::string plugins_path;
   std::string backend;
@@ -127,7 +134,6 @@ struct DiffusionPlannerParams
   double traffic_light_group_msg_timeout_seconds;
   int batch_size;
   std::vector<double> temperature_list;
-  int64_t velocity_smoothing_window;
   double stopping_threshold;
   float turn_indicator_keep_offset;
   double turn_indicator_hold_duration;
@@ -142,6 +148,17 @@ struct DiffusionPlannerParams
   double centerline_guidance_start_time_s;
   bool use_mppi_optimizer;
   bool shadow_mode;
+  std::string pseudo_controller_type;
+  double stanley_max_steer_rad;
+  double stanley_max_steer_rate_rad_s;
+  double stanley_stop_velocity_threshold;
+  double stanley_heading_gain;
+  double stanley_cross_track_gain;
+  double feedback_linearization_max_steer_rad;
+  double feedback_linearization_max_steer_rate_rad_s;
+  double feedback_linearization_stop_velocity_threshold;
+  double feedback_linearization_lateral_gain;
+  double feedback_linearization_heading_gain;
 };
 
 /**
@@ -186,6 +203,7 @@ public:
    *
    * @param ego_kinematic_state Current ego vehicle odometry
    * @param ego_acceleration Current ego vehicle acceleration
+   * @param ego_steering_status Current ego vehicle steering status
    * @param objects Tracked objects in the scene
    * @param traffic_signals Traffic signal information
    * @param turn_indicators Current turn indicator state
@@ -196,6 +214,7 @@ public:
   std::optional<FrameContext> create_frame_context(
     const std::shared_ptr<const Odometry> & ego_kinematic_state,
     const std::shared_ptr<const AccelWithCovarianceStamped> & ego_acceleration,
+    const std::shared_ptr<const SteeringReport> & ego_steering_status,
     const std::shared_ptr<const TrackedObjects> & objects,
     const std::vector<
       std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
@@ -332,6 +351,8 @@ private:
 
   // Postprocessing
   postprocess::TurnIndicatorManager turn_indicator_manager_;
+  postprocess::StopManager stop_manager_;
+  std::unique_ptr<postprocess::PseudoController> pseudo_controller_;
 
   // History data
   std::deque<nav_msgs::msg::Odometry> ego_history_;

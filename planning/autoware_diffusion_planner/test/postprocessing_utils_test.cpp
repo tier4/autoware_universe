@@ -18,7 +18,7 @@
 
 #include <Eigen/Dense>
 
-#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 
 #include <gtest/gtest.h>
 
@@ -46,17 +46,22 @@ TEST(PostprocessingUtilsTest, CreateTrajectoryAndMultipleTrajectories)
   rclcpp::Time stamp(123, 0);
 
   auto expected_points = prediction_shape[2];
-  const int64_t velocity_smoothing_window = 8;
-  const bool enable_force_stop = false;
   const double stopping_threshold = 0.0;
   const auto agent_poses = postprocess::parse_predictions(data, transform);
-  geometry_msgs::msg::Point base_position;
-  base_position.x = 0.0;
-  base_position.y = 0.0;
-  base_position.z = 0.0;
+  geometry_msgs::msg::Pose base_pose;
+  base_pose.position.x = 0.0;
+  base_pose.position.y = 0.0;
+  base_pose.position.z = 0.0;
+  base_pose.orientation.w = 1.0;
+  constexpr double wheel_base = 2.79;
+  constexpr double current_steering_angle = 0.0;
+  const postprocess::StanleyControllerParams convergence_params{2.0, 3.0, 0.2, 3.0, 3.0};
+  const postprocess::StanleyPseudoController pseudo_controller(convergence_params);
+  const std::vector<float> ego_velocity_future(static_cast<size_t>(batch_size * rows), 1.0f);
+  const bool enable_force_stop = false;
   auto traj = postprocess::create_ego_trajectory(
-    agent_poses, stamp, base_position, 0, velocity_smoothing_window, enable_force_stop,
-    stopping_threshold);
+    agent_poses, stamp, base_pose, 0, enable_force_stop, stopping_threshold, wheel_base,
+    current_steering_angle, pseudo_controller, ego_velocity_future);
   ASSERT_EQ(traj.points.size(), expected_points);
 }
 

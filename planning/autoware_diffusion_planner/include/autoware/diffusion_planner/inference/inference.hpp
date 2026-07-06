@@ -30,6 +30,7 @@ namespace autoware::diffusion_planner
 struct InferenceOutput
 {
   std::pair<std::vector<float>, std::vector<float>> outputs;
+  std::vector<float> ego_velocity_future;
   std::vector<float> denoising_predictions;
   std::vector<float> denoising_timesteps;
   double inference_time_ms{0.0};

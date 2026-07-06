@@ -40,6 +40,8 @@ SingleStepInference::SingleStepInference(
   const size_t sampled_trajectories_size =
     batch_size_ * num_elements_without_batch(SAMPLED_TRAJECTORIES_SHAPE);
   const size_t ego_history_size = batch_size_ * num_elements_without_batch(EGO_HISTORY_SHAPE);
+  const size_t ego_velocity_past_size =
+    batch_size_ * num_elements_without_batch(EGO_VELOCITY_SHAPE);
   const size_t ego_current_state_size =
     batch_size_ * num_elements_without_batch(EGO_CURRENT_STATE_SHAPE);
   const size_t neighbor_agents_past_size = batch_size_ * num_elements_without_batch(NEIGHBOR_SHAPE);
@@ -67,6 +69,7 @@ SingleStepInference::SingleStepInference(
 
   sampled_trajectories_d_ = autoware::cuda_utils::make_unique<float[]>(sampled_trajectories_size);
   ego_history_d_ = autoware::cuda_utils::make_unique<float[]>(ego_history_size);
+  ego_velocity_past_d_ = autoware::cuda_utils::make_unique<float[]>(ego_velocity_past_size);
   ego_current_state_d_ = autoware::cuda_utils::make_unique<float[]>(ego_current_state_size);
   neighbor_agents_past_d_ = autoware::cuda_utils::make_unique<float[]>(neighbor_agents_past_size);
   static_objects_d_ = autoware::cuda_utils::make_unique<float[]>(static_objects_size);
@@ -120,6 +123,7 @@ void SingleStepInference::load_engine(const std::string & model_path)
 
   add_input_tensor("sampled_trajectories", SAMPLED_TRAJECTORIES_SHAPE);
   add_input_tensor("ego_agent_past", EGO_HISTORY_SHAPE);
+  add_input_tensor("ego_velocity_past", EGO_VELOCITY_SHAPE);
   add_input_tensor("ego_current_state", EGO_CURRENT_STATE_SHAPE);
   add_input_tensor("neighbor_agents_past", NEIGHBOR_SHAPE);
   add_input_tensor("static_objects", STATIC_OBJECTS_SHAPE);
@@ -154,6 +158,8 @@ void SingleStepInference::bindBuffers()
   network_trt_ptr_->setInputShape(
     "ego_agent_past", to_dims_with_batch(EGO_HISTORY_SHAPE, batch_size_));
   network_trt_ptr_->setInputShape(
+    "ego_velocity_past", to_dims_with_batch(EGO_VELOCITY_SHAPE, batch_size_));
+  network_trt_ptr_->setInputShape(
     "ego_current_state", to_dims_with_batch(EGO_CURRENT_STATE_SHAPE, batch_size_));
   network_trt_ptr_->setInputShape(
     "neighbor_agents_past", to_dims_with_batch(NEIGHBOR_SHAPE, batch_size_));
@@ -183,6 +189,7 @@ void SingleStepInference::bindBuffers()
   // Bind tensor addresses once (GPU buffers are pre-allocated and stable)
   network_trt_ptr_->setTensorAddress("sampled_trajectories", sampled_trajectories_d_.get());
   network_trt_ptr_->setTensorAddress("ego_agent_past", ego_history_d_.get());
+  network_trt_ptr_->setTensorAddress("ego_velocity_past", ego_velocity_past_d_.get());
   network_trt_ptr_->setTensorAddress("ego_current_state", ego_current_state_d_.get());
   network_trt_ptr_->setTensorAddress("neighbor_agents_past", neighbor_agents_past_d_.get());
   network_trt_ptr_->setTensorAddress("static_objects", static_objects_d_.get());
@@ -207,6 +214,7 @@ void SingleStepInference::transferInputsToDevice(const preprocess::InputDataMap 
 {
   transfer_float_input(input_data_map.at("sampled_trajectories"), sampled_trajectories_d_, stream_);
   transfer_float_input(input_data_map.at("ego_agent_past"), ego_history_d_, stream_);
+  transfer_float_input(input_data_map.at("ego_velocity_past"), ego_velocity_past_d_, stream_);
   transfer_float_input(input_data_map.at("ego_current_state"), ego_current_state_d_, stream_);
   transfer_float_input(input_data_map.at("neighbor_agents_past"), neighbor_agents_past_d_, stream_);
   transfer_float_input(input_data_map.at("static_objects"), static_objects_d_, stream_);

@@ -230,6 +230,7 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr pub_mppi_reference_trajectory_{nullptr};
   rclcpp::Publisher<Trajectory>::SharedPtr pub_mppi_optimized_trajectory_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_mppi_markers_{nullptr};
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_spatial_trajectory_{nullptr};
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_{nullptr};
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_lane_marker_{nullptr};
@@ -252,6 +253,8 @@ private:
     this, "~/input/steering_status"};
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
     sub_current_acceleration_{this, "~/input/acceleration"};
+  autoware_utils::InterProcessPollingSubscriber<autoware_vehicle_msgs::msg::SteeringReport>
+    sub_current_steering_{this, "~/input/steering"};
   autoware_utils::InterProcessPollingSubscriber<TrackedObjects> sub_tracked_objects_{
     this, "~/input/tracked_objects"};
   autoware_utils::InterProcessPollingSubscriber<

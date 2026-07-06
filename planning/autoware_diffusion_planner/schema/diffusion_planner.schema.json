@@ -71,6 +71,11 @@
                   "default": "$(var data_path)/diffusion_planner/v5.0/diffusion_planner_turn_indicator.onnx",
                   "description": "Path to the turn indicator ONNX model file"
                 },
+                "speed_predictor_onnx_model_path": {
+                  "type": "string",
+                  "default": "$(var data_path)/diffusion_planner/v5.0/diffusion_planner_speed_predictor.onnx",
+                  "description": "Path to the speed predictor ONNX model file"
+                },
                 "dpm_solver_steps": {
                   "type": "integer",
                   "default": 10,
@@ -82,6 +87,7 @@
                 "encoder_onnx_model_path",
                 "decoder_onnx_model_path",
                 "turn_indicator_onnx_model_path",
+                "speed_predictor_onnx_model_path",
                 "dpm_solver_steps"
               ]
             }
@@ -138,12 +144,6 @@
           "default": [0.0],
           "description": "List of temperature for sampling trajectories. Its length must be the same as `batch_size`. Each value means the coefficient of the standard normal distribution which is used for each initial noise of corresponding batch index. val = N(0,1) * temperature"
         },
-        "velocity_smoothing_window": {
-          "type": "integer",
-          "default": 8,
-          "minimum": 1,
-          "description": "Window size for velocity smoothing. Set to 1 to disable smoothing."
-        },
         "stopping_threshold": {
           "type": "number",
           "default": 0.3,
@@ -180,6 +180,105 @@
           "type": "boolean",
           "default": false,
           "description": "Whether to interpolate ego past trajectory at regular time intervals"
+        },
+        "pseudo_controller": {
+          "type": "object",
+          "description": "Convergence algorithm used to steer the ego trajectory from its current state onto the predicted path/velocity plan. Each supported `type` has its own parameter sub-object below; adding a new algorithm means adding a new `type` enum value and a new sub-object with that algorithm's parameters.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "default": "stanley",
+              "enum": ["stanley", "feedback_linearization"],
+              "description": "Which convergence algorithm to use"
+            },
+            "stanley": {
+              "type": "object",
+              "description": "Parameters for the 'stanley' pseudo controller (Stanley lateral control law driving a kinematic bicycle model)",
+              "properties": {
+                "max_steer_rad": {
+                  "type": "number",
+                  "default": 2.0,
+                  "exclusiveMinimum": 0,
+                  "description": "Maximum steering (tire) angle [rad]"
+                },
+                "max_steer_rate_rad_s": {
+                  "type": "number",
+                  "default": 3.0,
+                  "exclusiveMinimum": 0,
+                  "description": "Steering rate limit [rad/s]"
+                },
+                "stop_velocity_threshold": {
+                  "type": "number",
+                  "default": 0.2,
+                  "minimum": 0,
+                  "description": "Velocity below which steering tracking is frozen [m/s]"
+                },
+                "heading_gain": {
+                  "type": "number",
+                  "default": 3.0,
+                  "minimum": 0,
+                  "description": "Weight on the heading-error term of the steering control"
+                },
+                "cross_track_gain": {
+                  "type": "number",
+                  "default": 3.0,
+                  "minimum": 0,
+                  "description": "Weight on the cross-track-error term of the steering control"
+                }
+              },
+              "required": [
+                "max_steer_rad",
+                "max_steer_rate_rad_s",
+                "stop_velocity_threshold",
+                "heading_gain",
+                "cross_track_gain"
+              ]
+            },
+            "feedback_linearization": {
+              "type": "object",
+              "description": "Parameters for the 'feedback_linearization' pseudo controller (exact feedback-linearization state-feedback tracking law for the kinematic bicycle model)",
+              "properties": {
+                "max_steer_rad": {
+                  "type": "number",
+                  "default": 2.0,
+                  "exclusiveMinimum": 0,
+                  "description": "Maximum steering (tire) angle delta_max [rad]"
+                },
+                "max_steer_rate_rad_s": {
+                  "type": "number",
+                  "default": 3.0,
+                  "exclusiveMinimum": 0,
+                  "description": "Steering rate limit delta_dot_max [rad/s]"
+                },
+                "stop_velocity_threshold": {
+                  "type": "number",
+                  "default": 0.2,
+                  "minimum": 0,
+                  "description": "Velocity below which the yaw-rate-to-steering inversion is suspended (v_stop) [m/s]"
+                },
+                "lateral_gain": {
+                  "type": "number",
+                  "default": 1.0,
+                  "exclusiveMinimum": 0,
+                  "description": "Lateral-error feedback gain k_y"
+                },
+                "heading_gain": {
+                  "type": "number",
+                  "default": 1.0,
+                  "exclusiveMinimum": 0,
+                  "description": "Heading-error feedback gain k_psi"
+                }
+              },
+              "required": [
+                "max_steer_rad",
+                "max_steer_rate_rad_s",
+                "stop_velocity_threshold",
+                "lateral_gain",
+                "heading_gain"
+              ]
+            }
+          },
+          "required": ["type", "stanley", "feedback_linearization"]
         },
         "guidance": {
           "type": "object",
@@ -294,13 +393,13 @@
         "traffic_light_group_msg_timeout_seconds",
         "batch_size",
         "temperature",
-        "velocity_smoothing_window",
         "stopping_threshold",
         "turn_indicator_keep_offset",
         "turn_indicator_hold_duration",
         "planning_factor",
         "debug_params",
-        "guidance"
+        "guidance",
+        "pseudo_controller"
       ]
     }
   },

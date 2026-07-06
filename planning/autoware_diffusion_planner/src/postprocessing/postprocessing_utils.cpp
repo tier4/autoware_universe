@@ -15,6 +15,7 @@
 #include "autoware/diffusion_planner/postprocessing/postprocessing_utils.hpp"
 
 #include "autoware/diffusion_planner/dimensions.hpp"
+#include "autoware/diffusion_planner/utils/utils.hpp"
 
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/math/normalization.hpp>
@@ -58,20 +59,71 @@ float state_normalizer_value(
 /**
  * @brief Converts a vector of poses to a Trajectory message.
  *
+ * The output longitudinal velocity/acceleration are a simple finite-difference estimate from
+ * consecutive poses; callers that have an authoritative velocity plan should overwrite them
+ * afterwards with `overwrite_velocity_and_acceleration`.
+ *
  * @param poses The vector of 4x4 transformation matrices representing poses.
  * @param base_x The base x position to calculate relative velocities.
  * @param base_y The base y position to calculate relative velocities.
  * @param base_z The base z position to calculate relative velocities.
  * @param stamp The ROS time stamp for the message.
- * @param velocity_smoothing_window The window size for velocity smoothing.
- * @param enable_force_stop Whether to enable force stop logic.
- * @param stopping_threshold The threshold for keeping the stopping state [m/s].
  * @return A Trajectory message in map coordinates.
  */
 Trajectory get_trajectory_from_poses(
   const std::vector<Eigen::Matrix4d> & poses, const double base_x, const double base_y,
-  const double base_z, const rclcpp::Time & stamp, const int64_t velocity_smoothing_window,
-  const bool enable_force_stop, const double stopping_threshold);
+  const double base_z, const rclcpp::Time & stamp);
+
+/**
+ * @brief Zeroes out velocity samples at or below the stopping threshold.
+ *
+ * When `enable_force_stop` is set, the zeroing latches: once any sample drops to (near-)zero,
+ * every subsequent sample is zeroed too, even if it would otherwise be above the threshold. This
+ * prevents the vehicle from being commanded to move again after the plan has it come to a stop.
+ */
+void apply_stopping_threshold(
+  std::vector<float> & velocities, const double stopping_threshold, const bool enable_force_stop)
+{
+  const float threshold = static_cast<float>(stopping_threshold);
+  bool stopped_latch = false;
+  for (auto & v : velocities) {
+    const bool is_stopped = v < threshold;
+    stopped_latch = stopped_latch || (enable_force_stop && is_stopped);
+    if (is_stopped || stopped_latch) {
+      v = 0.0f;
+    }
+  }
+}
+
+std::vector<float> preprocess_velocity(
+  const std::vector<float> & ego_velocity_future, const size_t offset, const size_t size,
+  const double stopping_threshold, const bool enable_force_stop)
+{
+  std::vector<float> velocities(
+    ego_velocity_future.begin() + static_cast<std::ptrdiff_t>(offset),
+    ego_velocity_future.begin() + static_cast<std::ptrdiff_t>(offset + size));
+  apply_stopping_threshold(velocities, stopping_threshold, enable_force_stop);
+  return velocities;
+}
+
+void overwrite_velocity_and_acceleration(
+  Trajectory & trajectory, const std::vector<float> & velocities)
+{
+  constexpr double dt = 0.1;
+  const size_t size = std::min(trajectory.points.size(), velocities.size());
+  for (size_t i = 0; i < size; ++i) {
+    trajectory.points[i].longitudinal_velocity_mps = velocities[i];
+  }
+  for (size_t i = 0; i + 1 < trajectory.points.size(); ++i) {
+    const double v0 = trajectory.points[i].longitudinal_velocity_mps;
+    const double v1 = trajectory.points[i + 1].longitudinal_velocity_mps;
+    trajectory.points[i].acceleration_mps2 = static_cast<float>((v1 - v0) / dt);
+  }
+  if (!trajectory.points.empty()) {
+    trajectory.points.back().acceleration_mps2 = 0.0f;
+  }
+}
+
 };  // namespace
 
 std::vector<float> denormalize_prediction(
@@ -257,12 +309,8 @@ PredictedObjects create_predicted_objects(
     const double base_x = latest_pose(0, 3);
     const double base_y = latest_pose(1, 3);
     const double base_z = latest_pose(2, 3);
-    constexpr int64_t velocity_smoothing_window = 1;
-    constexpr bool enable_force_stop = false;  // Don't force stop for neighbors
-    constexpr double stopping_threshold = 0.0;
-    const Trajectory trajectory_points_in_map_reference = get_trajectory_from_poses(
-      neighbor_poses, base_x, base_y, base_z, stamp, velocity_smoothing_window, enable_force_stop,
-      stopping_threshold);
+    const Trajectory trajectory_points_in_map_reference =
+      get_trajectory_from_poses(neighbor_poses, base_x, base_y, base_z, stamp);
 
     PredictedObject object;
     const TrackedObject & object_info =
@@ -297,9 +345,10 @@ PredictedObjects create_predicted_objects(
 
 Trajectory create_ego_trajectory(
   const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
-  const rclcpp::Time & stamp, const geometry_msgs::msg::Point & base_position,
-  const int64_t batch_index, const int64_t velocity_smoothing_window, const bool enable_force_stop,
-  const double stopping_threshold)
+  const rclcpp::Time & stamp, const geometry_msgs::msg::Pose & base_pose, const int64_t batch_index,
+  const bool enable_force_stop, const double stopping_threshold, const double wheel_base,
+  const double current_steering_angle, const PseudoController & pseudo_controller,
+  const std::vector<float> & ego_velocity_future)
 {
   const int64_t ego_index = 0;
 
@@ -313,13 +362,49 @@ Trajectory create_ego_trajectory(
   // Extract ego poses (ego_index = 0)
   const auto & ego_poses = agent_poses[batch_index][ego_index];
 
-  const double base_x = base_position.x;
-  const double base_y = base_position.y;
-  const double base_z = base_position.z;
+  const Eigen::Matrix4d ego_pose = utils::pose_to_matrix4d(base_pose);
 
-  return get_trajectory_from_poses(
-    ego_poses, base_x, base_y, base_z, stamp, velocity_smoothing_window, enable_force_stop,
-    stopping_threshold);
+  const size_t batch_velocity_offset = static_cast<size_t>(batch_index) * OUTPUT_T;
+  if (ego_velocity_future.size() < batch_velocity_offset + ego_poses.size()) {
+    throw std::runtime_error(
+      "ego_velocity_future is too small for batch_index " + std::to_string(batch_index) +
+      ": size=" + std::to_string(ego_velocity_future.size()) +
+      ", required=" + std::to_string(batch_velocity_offset + ego_poses.size()));
+  }
+
+  const auto velocities = preprocess_velocity(
+    ego_velocity_future, batch_velocity_offset, ego_poses.size(), stopping_threshold,
+    enable_force_stop);
+  // The network path does not necessarily start at the ego base-link, so simulate a smooth
+  // convergence from the current ego state onto the predicted path/velocity plan, starting from
+  // the vehicle's actual current steering angle. The controller resamples the raw path against
+  // the velocity plan internally.
+  const auto converged_poses =
+    pseudo_controller.simulate(ego_poses, velocities, ego_pose, wheel_base, current_steering_angle);
+  auto trajectory = get_trajectory_from_poses(
+    converged_poses, ego_pose(0, 3), ego_pose(1, 3), ego_pose(2, 3), stamp);
+  overwrite_velocity_and_acceleration(trajectory, velocities);
+  return trajectory;
+}
+
+Trajectory create_spatial_ego_trajectory(
+  const std::vector<std::vector<std::vector<Eigen::Matrix4d>>> & agent_poses,
+  const rclcpp::Time & stamp, const geometry_msgs::msg::Pose & base_pose, const int64_t batch_index)
+{
+  constexpr int64_t ego_index = 0;
+
+  if (batch_index < 0 || batch_index >= static_cast<int64_t>(agent_poses.size())) {
+    throw std::out_of_range(
+      "Invalid batch_index: " + std::to_string(batch_index) +
+      ", batch_size=" + std::to_string(agent_poses.size()));
+  }
+
+  const auto & ego_poses = agent_poses[batch_index][ego_index];
+  static_cast<void>(base_pose);
+  const double first_x = ego_poses.front()(0, 3);
+  const double first_y = ego_poses.front()(1, 3);
+  const double first_z = ego_poses.front()(2, 3);
+  return get_trajectory_from_poses(ego_poses, first_x, first_y, first_z, stamp);
 }
 
 int64_t count_valid_elements(
@@ -361,8 +446,7 @@ namespace
 {
 Trajectory get_trajectory_from_poses(
   const std::vector<Eigen::Matrix4d> & poses, const double base_x, const double base_y,
-  const double base_z, const rclcpp::Time & stamp, const int64_t velocity_smoothing_window,
-  const bool enable_force_stop, const double stopping_threshold)
+  const double base_z, const rclcpp::Time & stamp)
 {
   Trajectory trajectory;
   trajectory.header.stamp = stamp;
@@ -402,46 +486,7 @@ Trajectory get_trajectory_from_poses(
     trajectory.points.push_back(p);
   }
 
-  // smooth velocity
-  bool force_stop = false;
-  const float threshold_velocity = static_cast<float>(stopping_threshold);
   const int64_t num_points = static_cast<int64_t>(poses.size());
-
-  if (num_points <= velocity_smoothing_window) {
-    throw std::invalid_argument("velocity_smoothing_window must be smaller than number of points");
-  }
-
-  for (int64_t i = 0; i + velocity_smoothing_window <= num_points; ++i) {
-    double sum_velocity = 0.0;
-    for (int64_t w = 0; w < velocity_smoothing_window; ++w) {
-      sum_velocity += trajectory.points[i + w].longitudinal_velocity_mps;
-    }
-    trajectory.points[i].longitudinal_velocity_mps =
-      static_cast<float>(sum_velocity / static_cast<double>(velocity_smoothing_window));
-
-    // stopping logic
-    if (
-      enable_force_stop && i > 0 &&
-      std::abs(trajectory.points[i - 1].longitudinal_velocity_mps) > threshold_velocity &&
-      std::abs(trajectory.points[i].longitudinal_velocity_mps) < threshold_velocity) {
-      force_stop = true;
-    }
-    if (i > 0 && force_stop) {
-      trajectory.points[i].longitudinal_velocity_mps = 0.0f;
-      trajectory.points[i].pose = trajectory.points[i - 1].pose;
-    }
-  }
-
-  // keep the last smoothed velocity for the remaining points
-  const auto last_smoothed_velocity =
-    trajectory.points[num_points - velocity_smoothing_window].longitudinal_velocity_mps;
-  for (int64_t i = num_points - velocity_smoothing_window + 1; i < num_points; ++i) {
-    trajectory.points[i].longitudinal_velocity_mps = last_smoothed_velocity;
-    if (force_stop) {
-      trajectory.points[i].longitudinal_velocity_mps = 0.0f;
-      trajectory.points[i].pose = trajectory.points[i - 1].pose;
-    }
-  }
 
   // calculate acceleration
   for (int64_t i = 0; i + 1 < num_points; ++i) {
