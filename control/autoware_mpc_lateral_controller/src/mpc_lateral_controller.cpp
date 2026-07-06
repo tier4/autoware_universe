@@ -542,7 +542,7 @@ bool MpcLateralController::isStoppedState() const
   }
 
   const double elapsed = (clock_->now() - m_stop_state_hold_started_at.value()).seconds();
-  return elapsed < m_stop_state_steer_hold_duration;
+  return elapsed > m_stop_state_steer_hold_duration;
 }
 
 Lateral MpcLateralController::createCtrlCmdMsg(const Lateral & ctrl_cmd)
