@@ -161,7 +161,7 @@ void SteerOffsetEstimatorNode::on_timer()
   auto result = estimator_.update(poses, steers);
   if (result) {
     set_latest_reliable_result(result.value());
-    publish_data(result.value(), steer_mean);
+    publish_data(result.value());
     check_auto_calibration();
   } else {
     RCLCPP_DEBUG(
@@ -174,6 +174,9 @@ void SteerOffsetEstimatorNode::on_timer()
     pub_debug_info_->publish(debug_info);
     last_no_result_time_ = this->now();
   }
+
+  // Publish metrics every cycle, independent of whether an estimate was produced.
+  publish_metrics(steer_mean);
 }
 
 void SteerOffsetEstimatorNode::set_latest_reliable_result(
@@ -191,8 +194,7 @@ void SteerOffsetEstimatorNode::set_latest_reliable_result(
   latest_reliable_result_ = result;
 }
 
-void SteerOffsetEstimatorNode::publish_data(
-  const SteerOffsetEstimationUpdated & result, const double steer_mean)
+void SteerOffsetEstimatorNode::publish_data(const SteerOffsetEstimationUpdated & result)
 {
   auto pub_float = [this](const auto & publisher, const double value) {
     autoware_internal_debug_msgs::msg::Float32Stamped msg;
@@ -220,7 +222,10 @@ void SteerOffsetEstimatorNode::publish_data(
     result.offset, std::sqrt(result.covariance), result.velocity, result.angular_velocity,
     result.steering_angle, result.kalman_gain, result.residual);
   pub_debug_info_->publish(debug_info);
+}
 
+void SteerOffsetEstimatorNode::publish_metrics(const double steer_mean)
+{
   // Publish metrics for the metric_agent as a fixed-size Float32MultiArray.
   // The values are packed in the order documented for pub_metrics_ in node.hpp.
   const double calibration_file_offset =
