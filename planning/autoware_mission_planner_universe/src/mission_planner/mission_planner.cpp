@@ -694,6 +694,9 @@ bool MissionPlanner::check_reroute_safety(
   const bool ego_is_on_first_target_section = std::any_of(
     target_route.segments.front().primitives.begin(),
     target_route.segments.front().primitives.end(), [&](const auto & primitive) {
+      if (primitive.primitive_type == "area") {
+        return false;
+      }
       const auto lanelet = lanelet_map_ptr_->laneletLayer.get(primitive.id);
       return lanelet::utils::isInLanelet(target_route.start_pose, lanelet);
     });
@@ -715,6 +718,9 @@ bool MissionPlanner::check_reroute_safety(
     const auto primitives = original_route.segments.at(start_idx_original - 1).primitives;
     lanelet::ConstLanelets start_lanelets;
     for (const auto & primitive : primitives) {
+      if (primitive.primitive_type == "area") {
+        continue;
+      }
       const auto lanelet = lanelet_map_ptr_->laneletLayer.get(primitive.id);
       start_lanelets.push_back(lanelet);
     }
@@ -740,6 +746,9 @@ bool MissionPlanner::check_reroute_safety(
     const auto primitives = original_route.segments.at(start_idx_original).primitives;
     lanelet::ConstLanelets start_lanelets;
     for (const auto & primitive : primitives) {
+      if (primitive.primitive_type == "area") {
+        continue;
+      }
       const auto lanelet = lanelet_map_ptr_->laneletLayer.get(primitive.id);
       start_lanelets.push_back(lanelet);
     }
@@ -768,11 +777,17 @@ bool MissionPlanner::check_reroute_safety(
       break;
     }
 
-    std::vector<double> lanelets_length(primitives.size());
-    for (size_t primitive_idx = 0; primitive_idx < primitives.size(); ++primitive_idx) {
-      const auto & primitive = primitives.at(primitive_idx);
+    std::vector<double> lanelets_length;
+    lanelets_length.reserve(primitives.size());
+    for (const auto & primitive : primitives) {
+      if (primitive.primitive_type == "area") {
+        continue;
+      }
       const auto & lanelet = lanelet_map_ptr_->laneletLayer.get(primitive.id);
-      lanelets_length.at(primitive_idx) = (lanelet::geometry::length2d(lanelet));
+      lanelets_length.push_back(lanelet::geometry::length2d(lanelet));
+    }
+    if (lanelets_length.empty()) {
+      continue;
     }
     accumulated_length += *std::min_element(lanelets_length.begin(), lanelets_length.end());
   }
@@ -781,6 +796,9 @@ bool MissionPlanner::check_reroute_safety(
   const auto & target_end_primitives = target_route.segments.at(end_idx_target).primitives;
   const auto & target_goal = target_route.goal_pose;
   for (const auto & target_end_primitive : target_end_primitives) {
+    if (target_end_primitive.primitive_type == "area") {
+      continue;
+    }
     const auto lanelet = lanelet_map_ptr_->laneletLayer.get(target_end_primitive.id);
     if (lanelet::utils::isInLanelet(target_goal, lanelet)) {
       const auto target_goal_position =

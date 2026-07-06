@@ -126,9 +126,14 @@ PlannerPlugin::MarkerArray DefaultPlanner::visualize(
   lanelet::ConstLanelets route_lanelets;
   lanelet::ConstLanelets end_lanelets;
   lanelet::ConstLanelets goal_lanelets;
+  lanelet::ConstAreas route_areas;
 
   for (const auto & route_section : route.segments) {
     for (const auto & lane_id : route_section.primitives) {
+      if (lane_id.primitive_type == "area") {
+        route_areas.push_back(route_handler_.getAreaFromId(lane_id.id));
+        continue;
+      }
       auto lanelet = route_handler_.getLaneletsFromId(lane_id.id);
       route_lanelets.push_back(lanelet);
       if (route_section.preferred_primitive.id == lane_id.id) {
@@ -160,6 +165,20 @@ PlannerPlugin::MarkerArray DefaultPlanner::visualize(
   insert_marker_array(
     &route_marker_array,
     lanelet::visualization::laneletsAsTriangleMarkerArray("goal_lanelets", goal_lanelets, cl_goal));
+
+  for (const auto & area : route_areas) {
+    auto marker = autoware_utils::create_default_marker(
+      "map", rclcpp::Clock().now(), "route_areas", static_cast<int32_t>(area.id()),
+      visualization_msgs::msg::Marker::LINE_STRIP,
+      autoware_utils::create_marker_scale(0.2, 0.0, 0.0), cl_ll_borders);
+    for (const auto & point : area.outerBoundPolygon()) {
+      marker.points.push_back(autoware_utils::create_point(point.x(), point.y(), point.z()));
+    }
+    if (!marker.points.empty()) {
+      marker.points.push_back(marker.points.front());
+    }
+    route_marker_array.markers.push_back(marker);
+  }
 
   return route_marker_array;
 }
