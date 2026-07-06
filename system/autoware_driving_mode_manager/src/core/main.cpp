@@ -274,7 +274,10 @@ ServiceResponse ManagerMain::change_operation_mode(const OperationMode & operati
   }
 
   const auto mode = config_->to_autoware_mode(operation_mode);
-  if (!config_->is_reference_mode(mode) && !status_->is_available(mode)) {
+  const bool available = config_->is_reference_mode(mode)
+    ? sync_available_modes_.count(mode) > 0
+    : status_->is_available(mode);
+  if (!available) {
     return ServiceResponse{false, "operation mode is not available"};
   }
 
