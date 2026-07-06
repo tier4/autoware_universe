@@ -41,7 +41,7 @@ ManagerMain::ManagerMain(ManagerInit & init)
   gates_.status = init.gates();
   gates_.expect = init.gates();
 
-  request_.operation_mode = config_->to_autoware_mode(OperationMode::kStop);
+  request_.operation_mode = config_->to_autoware_mode(OperationMode::kStop).value_or(unknown_mode);
   request_.platform_mode = init.platform_mode_.value();
   request_.mrm_strategy = MrmStrategy::kNone;
   request_.mrm_behavior = unknown_mode;
@@ -91,12 +91,14 @@ void ManagerMain::update()
 
 void ManagerMain::publish_operation_mode() const
 {
-  const auto is_available = [this](const OperationMode & mode) {
-    return status_->is_available(config_->to_autoware_mode(mode));
+  const auto is_available = [this](const OperationMode & operation_mode) {
+    const auto mode = config_->to_autoware_mode(operation_mode);
+    return mode ? status_->is_available(mode.value()) : false;
   };
 
   OperationModeState state;
-  state.mode = config_->to_operation_mode(request_.operation_mode);
+  state.mode =
+    config_->to_operation_mode(request_.operation_mode).value_or(OperationMode::kUnknown);
   state.is_autoware_control_enabled = (request_.platform_mode != PlatformMode::kManual);
   state.is_in_transition = !tasks_.empty();
   state.is_stop_mode_available = is_available(OperationMode::kStop);
@@ -274,11 +276,14 @@ ServiceResponse ManagerMain::change_operation_mode(const OperationMode & operati
   }
 
   const auto mode = config_->to_autoware_mode(operation_mode);
-  if (!status_->is_available(mode)) {
+  if (!mode) {
+    return ServiceResponse{false, "operation mode is not supported"};
+  }
+  if (!status_->is_available(mode.value())) {
     return ServiceResponse{false, "operation mode is not available"};
   }
 
-  request_.operation_mode = mode;
+  request_.operation_mode = mode.value();
   temporary_unavailable_modes_.clear();
   return ServiceResponse{true, ""};
 }
