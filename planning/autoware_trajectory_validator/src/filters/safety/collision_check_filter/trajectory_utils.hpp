@@ -52,7 +52,7 @@ class TrajectoryData
 private:
   TrajectoryIdentification identification_;
   TimeTrajectory times_;
-  TravelDistanceTrajectory distances_;
+  TravelDistanceTrajectory distances_;  // todo(takagi): obsolete
   PoseTrajectory poses_;
   FootprintTrajectory footprints_;
   mutable std::map<IndexRange, Box2d> envelope_cache_;
@@ -328,6 +328,96 @@ Polygon2d to_polygon2d(
 
 namespace autoware::trajectory_validator::plugin::safety::trajectory
 {
+
+TimeTrajectory seriarize_times(const CandidateTrajectory & candidate_trajectory);
+TravelDistanceTrajectory seriarize_distances(const CandidateTrajectory & candidate_trajectory);
+
+struct EgoTrajectoryGenerationParams
+{
+  double braking_lag{0.0};
+  double assumed_acceleration{0.0};
+  footprint::EgoDimensions ego_dimensions{};
+
+  bool operator<(const EgoTrajectoryGenerationParams & rhs) const
+  {
+    return std::tie(
+             braking_lag, assumed_acceleration, ego_dimensions.front_offset,
+             ego_dimensions.rear_overhang, ego_dimensions.vehicle_width) <
+           std::tie(
+             rhs.braking_lag, rhs.assumed_acceleration, rhs.ego_dimensions.front_offset,
+             rhs.ego_dimensions.rear_overhang, rhs.ego_dimensions.vehicle_width);
+  }
+};
+
+// todo(takagi): reuse for object trajectory generation
+class EgoTrajectoryCache
+{
+private:
+  const TrajectoryInterpolator trajectory_interpolator_;
+  rclcpp::Time sampling_reference_time_;
+  rclcpp::Time current_time_;
+  double time_resolution_;
+  mutable std::map<EgoTrajectoryGenerationParams, TrajectoryData> trajectory_data_cache_;
+
+public:
+  EgoTrajectoryCache(
+    const CandidateTrajectory & candidate_traj, const rclcpp::Time & sampling_reference_time,
+    const rclcpp::Time & current_time, double time_resolution)
+  : trajectory_interpolator_(candidate_traj),
+    sampling_reference_time_(sampling_reference_time),
+    current_time_(current_time),
+    time_resolution_(time_resolution)
+  {
+    if (candidate_traj.points.empty()) {
+      throw std::invalid_argument("points must not be empty");
+    }
+    if (time_resolution <= 0.0) {
+      throw std::invalid_argument("time_resolution must be positive");
+    }
+  };
+
+  TrajectoryData get_or_compute_trajectory_data(const EgoTrajectoryGenerationParams & params) const
+  {
+    auto [it, inserted] = trajectory_data_cache_.try_emplace(params);
+    if (inserted) {
+      it->second = generate_ego_trajectory(
+        trajectory_interpolator_, sampling_reference_time_, current_time_, time_resolution_,
+        params);
+    }
+    return it->second;
+  }
+};
+
+struct InterpolatedState
+{
+  // double time_from_start;
+  double distance;
+  geometry_msgs::msg::Pose pose;
+  double longitudinal_velocity;
+};
+
+class TrajectoryInterpolator
+{
+public:
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> trajectory_points_{};
+  const rclcpp::Time reference_time_{};
+  const std::vector<double> time_from_refs_{};
+  const std::vector<double> dist_from_fronts_{};
+
+  explicit TrajectoryInterpolator(const CandidateTrajectory & candidate_traj)
+  : trajectory_points_(candidate_traj.points),
+    reference_time_(rclcpp::Time(candidate_traj.header.stamp)),
+    time_from_refs_(seriarize_times(candidate_traj)),
+    dist_from_fronts_(seriarize_distances(candidate_traj))
+  {
+    if (trajectory_points_.empty()) {
+      throw std::invalid_argument("points must not be empty");
+    }
+  };
+  InterpolatedState interpolate_state_from_time(const rclcpp::Time & target_time) const;
+  InterpolatedState interpolate_state_from_dist(const double target_dist) const;
+};
+
 namespace footprint
 {
 struct EgoDimensions
@@ -336,6 +426,15 @@ struct EgoDimensions
   double rear_overhang{0.0};
   double vehicle_width{0.0};
 };
+
+EgoDimensions make_ego_dimensions(
+  const VehicleInfo & vehicle_info, const EgoFootprintMargin & ego_footprint_margin)
+{
+  return trajectory::footprint::EgoDimensions{
+    vehicle_info.max_longitudinal_offset_m + ego_footprint_margin.front,
+    -vehicle_info.min_longitudinal_offset_m + ego_footprint_margin.rear,
+    vehicle_info.vehicle_width_m + 2.0 * ego_footprint_margin.lateral};
+}
 
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory,
@@ -354,6 +453,11 @@ double project_current_pose_on_trajectory(
 
 TravelDistanceTrajectory compute_cumulative_distances(const PoseTrajectory & pose_trajectory);
 }  // namespace detail
+
+TrajectoryData generate_ego_trajectory(
+  const CandidateTrajectory & candidate_traj, const rclcpp::Time & sampling_reference_time,
+  const rclcpp::Time & current_time, double time_resolution,
+  const EgoTrajectoryGenerationParams & params);
 
 TrajectoryData generate_ego_trajectory(
   const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
