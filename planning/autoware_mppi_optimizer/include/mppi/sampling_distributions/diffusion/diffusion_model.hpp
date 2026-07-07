@@ -196,10 +196,15 @@ inline void diffusionSampleTrajectory(
 
   const int infer = std::max(1, w.inference_timesteps);
   for (int step = 0; step < infer; ++step) {
-    const int t_val = static_cast<int>(std::lround(
-      static_cast<float>(w.train_timesteps - 1) *
-      (1.0F - static_cast<float>(step) / static_cast<float>(infer - 1))));
-    const int t = std::max(0, std::min(w.train_timesteps - 1, t_val));
+    int t = 0;
+    if (infer == 1) {
+      t = std::max(0, w.train_timesteps - 1);
+    } else {
+      const int t_val = static_cast<int>(std::lround(
+        static_cast<float>(w.train_timesteps - 1) *
+        (1.0F - static_cast<float>(step) / static_cast<float>(infer - 1))));
+      t = std::max(0, std::min(w.train_timesteps - 1, t_val));
+    }
     diffusionPredictEps(w, x.data(), u_nom, context, t, eps.data());
     const float alpha = 1.0F - w.betas[static_cast<size_t>(t)];
     const float alpha_bar = w.alpha_bar[static_cast<size_t>(t)];

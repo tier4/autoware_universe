@@ -34,6 +34,7 @@
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -639,13 +640,13 @@ void DiffusionPlanner::on_timer()
       autoware_utils_debug::ScopedTimeTrack optimize_trajectory_st(
         "mppi_optimizer/optimize_trajectory", *time_keeper_);
       stop_watch_ptr_->tic("mppi_optimizer/optimize_trajectory");
-      const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> ego_acceleration{
-        frame_context->ego_acceleration};
+      const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped>
+        ego_acceleration_for_mppi{frame_context->ego_acceleration};
       const auto steering_status = sub_steering_status_.take_data();
       const std::optional<SteeringReport> ego_steering =
         steering_status ? std::make_optional(*steering_status) : std::nullopt;
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
-        planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration,
+        planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
         ego_steering, *objects);
       record_section_time(
         *stop_watch_ptr_, "mppi_optimizer/optimize_trajectory", *diagnostics_inference_);
@@ -663,7 +664,7 @@ void DiffusionPlanner::on_timer()
       }
       record_section_time(
         *stop_watch_ptr_, "mppi_optimizer/publish_debug", *diagnostics_inference_);
-    } catch (const std::exception & e) {
+    } catch (const std::runtime_error & e) {
       RCLCPP_ERROR_STREAM(get_logger(), "MPPI optimization failed: " << e.what());
       diagnostics_inference_->update_level_and_message(DiagnosticStatus::ERROR, e.what());
       diagnostics_inference_->publish(frame_time);

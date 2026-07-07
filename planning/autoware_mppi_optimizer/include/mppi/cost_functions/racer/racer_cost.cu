@@ -17,12 +17,12 @@ __host__ __device__ inline float racerRolloutSpeed(const float * y)
 
 __host__ __device__ inline float racerRolloutSteerAngle(const float * y)
 {
-  return y[static_cast<int>(RacerDubinsParams::OutputIndex::BASELINK_POS_I_Z)];
+  return y[static_cast<int>(RacerDubinsParams::OutputIndex::STEER_ANGLE)];
 }
 
 __host__ __device__ inline float racerRolloutSteerRate(const float * y)
 {
-  return y[static_cast<int>(RacerDubinsParams::OutputIndex::ROLL)];
+  return y[static_cast<int>(RacerDubinsParams::OutputIndex::STEER_ANGLE_RATE)];
 }
 
 __host__ __device__ inline float racerRolloutYaw(const float * y)

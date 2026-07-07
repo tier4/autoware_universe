@@ -22,6 +22,9 @@
 
 #include <memory>
 #include <optional>
+#include <stdexcept>
+
+#include <rclcpp_components/register_node_macro.hpp>
 
 namespace autoware::mppi_optimizer
 {
@@ -61,7 +64,7 @@ void MppiOptimizer::on_trajectory(const Trajectory::ConstSharedPtr msg)
     Trajectory tracked = result.trajectory;
     tracked.header = msg->header;
     trajectory_pub_->publish(tracked);
-  } catch (const std::exception & e) {
+  } catch (const std::runtime_error & e) {
     RCLCPP_ERROR_STREAM(get_logger(), "MPPI tracking failed: " << e.what());
     trajectory_pub_->publish(*msg);
   }
@@ -69,5 +72,4 @@ void MppiOptimizer::on_trajectory(const Trajectory::ConstSharedPtr msg)
 
 }  // namespace autoware::mppi_optimizer
 
-#include <rclcpp_components/register_node_macro.hpp>
 RCLCPP_COMPONENTS_REGISTER_NODE(autoware::mppi_optimizer::MppiOptimizer)
