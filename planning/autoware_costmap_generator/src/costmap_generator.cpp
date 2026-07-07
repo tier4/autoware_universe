@@ -60,6 +60,8 @@
 #include <lanelet2_core/Forward.h>
 #include <lanelet2_core/geometry/Polygon.h>
 
+#include <algorithm>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -122,6 +124,34 @@ bool isInParkingLot(
   }
 
   return lanelet::geometry::within(search_point, nearest_parking_lot->basicPolygon());
+}
+
+// Activate the costmap over lanelet2 freespace Areas (subtype=freespace) so the
+// behavior_path freespace_area module gets a fresh costmap while approaching / inside the Area.
+// Returns true when ego is within distance_threshold of any freespace Area polygon.
+bool isNearFreespaceArea(
+  const std::shared_ptr<lanelet::LaneletMap> & lanelet_map_ptr,
+  const geometry_msgs::msg::Pose & current_pose, const double distance_threshold)
+{
+  if (!lanelet_map_ptr) {
+    return false;
+  }
+  const auto & p = current_pose.position;
+  for (const auto & area : lanelet_map_ptr->areaLayer) {
+    if (!area.hasAttribute("subtype") || area.attribute("subtype").value() != "freespace") {
+      continue;
+    }
+    double min_dist_sq = std::numeric_limits<double>::max();
+    for (const auto & pt : area.outerBoundPolygon()) {
+      const double dx = pt.x() - p.x;
+      const double dy = pt.y() - p.y;
+      min_dist_sq = std::min(min_dist_sq, dx * dx + dy * dy);
+    }
+    if (min_dist_sq <= distance_threshold * distance_threshold) {
+      return true;
+    }
+  }
+  return false;
 }
 
 pcl::PointCloud<pcl::PointXYZ> getTransformedPointCloud(
@@ -246,6 +276,27 @@ void CostmapGenerator::loadParkingAreasFromLaneletMap(
   }
 }
 
+void CostmapGenerator::loadFreespaceAreasFromLaneletMap(
+  const lanelet::LaneletMapPtr lanelet_map,
+  std::vector<geometry_msgs::msg::Polygon> & area_polygons)
+{
+  for (const auto & area : lanelet_map->areaLayer) {
+    if (!area.hasAttribute("subtype") || area.attribute("subtype").value() != "freespace") {
+      continue;
+    }
+    geometry_msgs::msg::Polygon poly;
+    for (const auto & ll_pt : area.outerBoundPolygon()) {
+      const auto geom_pt = experimental::lanelet2_utils::to_ros(ll_pt.basicPoint());
+      poly.points.push_back(
+        geometry_msgs::build<geometry_msgs::msg::Point32>()
+          .x(static_cast<float>(geom_pt.x))
+          .y(static_cast<float>(geom_pt.y))
+          .z(static_cast<float>(geom_pt.z)));
+    }
+    area_polygons.push_back(poly);
+  }
+}
+
 void CostmapGenerator::onLaneletMapBin(
   const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg)
 {
@@ -259,6 +310,10 @@ void CostmapGenerator::onLaneletMapBin(
   if (param_->use_parkinglot) {
     loadParkingAreasFromLaneletMap(lanelet_map_, primitives_polygons_);
   }
+
+  // Always treat lanelet2 freespace Areas as drivable free space so the behavior_path
+  // freespace_area module can plan an A* path through them on the shared costmap.
+  loadFreespaceAreasFromLaneletMap(lanelet_map_, primitives_polygons_);
 }
 
 void CostmapGenerator::update_data()
@@ -305,7 +360,9 @@ void CostmapGenerator::onTimer()
 
   set_grid_center(tf);
 
-  if ((param_->use_wayarea || param_->use_parkinglot) && lanelet_map_) {
+  if (
+    (param_->use_wayarea || param_->use_parkinglot || !primitives_polygons_.empty()) &&
+    lanelet_map_) {
     autoware_utils::ScopedTimeTrack st("generatePrimitivesCostmap()", *time_keeper_);
     costmap_[LayerName::primitives] = generatePrimitivesCostmap();
   }
@@ -354,7 +411,15 @@ bool CostmapGenerator::isActive()
   }
 
   if (!current_pose_) return false;
-  return isInParkingLot(lanelet_map_, current_pose_->pose);
+  if (isInParkingLot(lanelet_map_, current_pose_->pose)) {
+    return true;
+  }
+  // Also activate when approaching / inside a lanelet2 freespace Area so the
+  // behavior_path freespace_area module receives a costmap covering the Area.
+  // Use half the grid footprint as the threshold so the Area is within the published grid.
+  const double activation_distance =
+    0.5 * std::max(param_->grid_length_x, param_->grid_length_y);
+  return isNearFreespaceArea(lanelet_map_, current_pose_->pose, activation_distance);
 }
 
 void CostmapGenerator::initGridmap()

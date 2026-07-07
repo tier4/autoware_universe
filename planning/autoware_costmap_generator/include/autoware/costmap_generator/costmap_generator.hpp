@@ -174,6 +174,14 @@ private:
     const lanelet::LaneletMapPtr lanelet_map,
     std::vector<geometry_msgs::msg::Polygon> & area_polygons);
 
+  /// \brief fill a vector with lanelet2 freespace Area polygons (subtype=freespace) so they are
+  /// treated as drivable free space (needed by the behavior_path freespace_area module)
+  /// \param [in] lanelet_map input lanelet map
+  /// \param [out] area_polygons polygon vector to fill
+  static void loadFreespaceAreasFromLaneletMap(
+    const lanelet::LaneletMapPtr lanelet_map,
+    std::vector<geometry_msgs::msg::Polygon> & area_polygons);
+
   /// \brief calculate cost from pointcloud data
   /// \param[in] in_points: subscribed pointcloud data
   /// \param[in] vehicle_to_map_z: z value of the ego vehicle in the costmap frame
