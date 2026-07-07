@@ -11,6 +11,7 @@ bool will_overrun_stop_point
 bool is_valid_latency
 bool is_valid_yaw
 bool is_warn_yaw
+bool is_valid_boundary_departure
 
 # values
 float64 max_distance_deviation
