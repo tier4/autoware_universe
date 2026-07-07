@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -171,6 +172,90 @@ generateBoundsFromAreaPolygon(const PathWithLaneId & path, const lanelet::ConstA
   }
 
   return {left_bound, right_bound};
+}
+
+nav_msgs::msg::OccupancyGrid cropCostmapAroundArea(
+  const nav_msgs::msg::OccupancyGrid & src, const lanelet::ConstArea & area,
+  const std::vector<geometry_msgs::msg::Pose> & keep_poses, const double margin)
+{
+  const auto & q = src.info.origin.orientation;
+  const bool identity_orientation =
+    std::abs(q.x) < 1e-6 && std::abs(q.y) < 1e-6 && std::abs(q.z) < 1e-6;
+  if (!identity_orientation || src.info.resolution <= 0.0) {
+    return src;
+  }
+
+  // bounding box over the area outline and the poses to keep (start/goal)
+  double min_x = std::numeric_limits<double>::max();
+  double min_y = std::numeric_limits<double>::max();
+  double max_x = std::numeric_limits<double>::lowest();
+  double max_y = std::numeric_limits<double>::lowest();
+  const auto expand = [&](const double x, const double y) {
+    min_x = std::min(min_x, x);
+    min_y = std::min(min_y, y);
+    max_x = std::max(max_x, x);
+    max_y = std::max(max_y, y);
+  };
+  for (const auto & p : area.outerBoundPolygon()) {
+    expand(p.x(), p.y());
+  }
+  for (const auto & pose : keep_poses) {
+    expand(pose.position.x, pose.position.y);
+  }
+  if (min_x > max_x || min_y > max_y) {
+    return src;
+  }
+  min_x -= margin;
+  min_y -= margin;
+  max_x += margin;
+  max_y += margin;
+
+  const double res = src.info.resolution;
+  const double src_ox = src.info.origin.position.x;
+  const double src_oy = src.info.origin.position.y;
+
+  // snap the crop window to the source grid cells
+  const auto to_cell_x = [&](const double x) {
+    return static_cast<int64_t>(std::floor((x - src_ox) / res));
+  };
+  const auto to_cell_y = [&](const double y) {
+    return static_cast<int64_t>(std::floor((y - src_oy) / res));
+  };
+  const int64_t cx0 = to_cell_x(min_x);
+  const int64_t cy0 = to_cell_y(min_y);
+  const int64_t cx1 = to_cell_x(max_x) + 1;
+  const int64_t cy1 = to_cell_y(max_y) + 1;
+  const int64_t out_w = cx1 - cx0;
+  const int64_t out_h = cy1 - cy0;
+  if (out_w <= 0 || out_h <= 0) {
+    return src;
+  }
+
+  nav_msgs::msg::OccupancyGrid out;
+  out.header = src.header;
+  out.info = src.info;
+  out.info.width = static_cast<uint32_t>(out_w);
+  out.info.height = static_cast<uint32_t>(out_h);
+  out.info.origin.position.x = src_ox + static_cast<double>(cx0) * res;
+  out.info.origin.position.y = src_oy + static_cast<double>(cy0) * res;
+  // cells with no source data (outside the published grid) are treated as occupied
+  out.data.assign(static_cast<size_t>(out_w * out_h), static_cast<int8_t>(100));
+
+  const int64_t src_w = src.info.width;
+  const int64_t src_h = src.info.height;
+  const int64_t copy_x0 = std::max<int64_t>(cx0, 0);
+  const int64_t copy_x1 = std::min<int64_t>(cx1, src_w);
+  const int64_t copy_y0 = std::max<int64_t>(cy0, 0);
+  const int64_t copy_y1 = std::min<int64_t>(cy1, src_h);
+  for (int64_t sy = copy_y0; sy < copy_y1; ++sy) {
+    const int64_t oy = sy - cy0;
+    for (int64_t sx = copy_x0; sx < copy_x1; ++sx) {
+      const int64_t ox = sx - cx0;
+      out.data[static_cast<size_t>(oy * out_w + ox)] =
+        src.data[static_cast<size_t>(sy * src_w + sx)];
+    }
+  }
+  return out;
 }
 
 }  // namespace autoware::behavior_path_planner::freespace_area_utils

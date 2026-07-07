@@ -17,7 +17,9 @@
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 #include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_array.hpp>
+#include <nav_msgs/msg/occupancy_grid.hpp>
 
 #include <lanelet2_core/primitives/Area.h>
 
@@ -52,6 +54,16 @@ geometry_msgs::msg::PoseArray toPoseArray(const PathWithLaneId & path);
 /// module (see README); it is kept and unit-tested for future integration work.
 std::pair<std::vector<geometry_msgs::msg::Point>, std::vector<geometry_msgs::msg::Point>>
 generateBoundsFromAreaPolygon(const PathWithLaneId & path, const lanelet::ConstArea & area);
+
+/// @brief Crop an occupancy grid to the bounding box of the Area outer polygon and the given poses,
+/// expanded by margin [m]. The freespace search graph scales with width*height*theta_size, so
+/// feeding the full (e.g. 150 m) costmap to A* would allocate a multi-GB graph per plan; cropping
+/// to the Area keeps it in the tens of MB. Cells outside the source grid are marked occupied.
+/// Only axis-aligned source grids are supported (costmap_generator publishes identity orientation);
+/// the source grid is returned unchanged when its orientation is not identity.
+nav_msgs::msg::OccupancyGrid cropCostmapAroundArea(
+  const nav_msgs::msg::OccupancyGrid & src, const lanelet::ConstArea & area,
+  const std::vector<geometry_msgs::msg::Pose> & keep_poses, double margin);
 
 }  // namespace autoware::behavior_path_planner::freespace_area_utils
 

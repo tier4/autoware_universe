@@ -442,7 +442,11 @@ void FreespaceAreaModule::requestPlan(
   FreespaceAreaPlanRequest req;
   req.valid = true;
   req.need_plan = (state_ != FreespaceAreaState::LATCHED);
-  req.costmap = *planner_data_->costmap;
+  // Crop the costmap to the Area (+ start/goal) so the A* graph, which scales with
+  // width*height*theta_size, stays small (the full 150 m grid would cost gigabytes per plan).
+  constexpr double crop_margin = 10.0;
+  req.costmap = freespace_area_utils::cropCostmapAroundArea(
+    *planner_data_->costmap, current_ctx_.area, {start_pose, goal_pose}, crop_margin);
   req.start_pose = start_pose;
   req.goal_pose = goal_pose;
   if (!composed_path_.points.empty()) {
