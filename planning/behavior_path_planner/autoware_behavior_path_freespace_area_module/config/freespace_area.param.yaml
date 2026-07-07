@@ -13,7 +13,7 @@
       planner:
         algorithm: "astar"  # options: astar, rrtstar
         velocity: 1.39  # [m/s] target velocity on the area segment
-        vehicle_shape_margin: 0.5  # [m] collision footprint margin added to the vehicle shape
+        vehicle_shape_margin: 0.2  # [m] collision footprint margin added to the vehicle shape
         update_rate: 2.0  # [Hz] rate of the asynchronous planning worker
         # -- Configurations common to all planners (mirror freespace_planner.param.yaml) --
         common:
@@ -65,5 +65,6 @@
       # ========================================
       path:
         junction_blend_distance: 5.0  # [m] blend distance at the lane<->area junctions
+        junction_inset_distance: 2.0  # [m] inset of the A* start/goal from the lane<->area boundary along the entry/exit centerlines (boundary poses sit on the Area edge where the footprint check is marginal)
         goal_position_tolerance: 0.3  # [m] terminal-mode arrival position tolerance
         goal_yaw_tolerance_deg: 15.0  # [deg] terminal-mode arrival yaw tolerance

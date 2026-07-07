@@ -54,6 +54,7 @@ struct FreespaceAreaParameters
 
   // path composition
   double junction_blend_distance;
+  double junction_inset_distance;
   double goal_position_tolerance;
   double goal_yaw_tolerance_deg;
 };

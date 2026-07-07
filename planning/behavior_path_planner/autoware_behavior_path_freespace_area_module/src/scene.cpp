@@ -279,6 +279,15 @@ geometry_msgs::msg::Pose FreespaceAreaModule::computeStartPose(const ActivationC
   if (entry_path.points.empty()) {
     return planner_data_->self_odometry->pose.pose;
   }
+  // Inset the A* start back along the entry centerline: the boundary pose sits exactly on the
+  // Area edge, where the footprint collision check is marginal by construction (the outside of
+  // the lane<->area corner is not covered by any free-space polygon).
+  const auto inset_pose = autoware::motion_utils::calcLongitudinalOffsetPose(
+    entry_path.points, entry_path.points.back().point.pose.position,
+    -parameters_->junction_inset_distance);
+  if (inset_pose) {
+    return *inset_pose;
+  }
   return entry_path.points.back().point.pose;
 }
 
@@ -292,6 +301,13 @@ geometry_msgs::msg::Pose FreespaceAreaModule::computeGoalPose(const ActivationCo
     rh->getCenterLinePath(ctx.exit_lanelets, 0.0, std::numeric_limits<double>::max());
   if (exit_path.points.empty()) {
     return rh->getGoalPose();
+  }
+  // Inset the A* goal forward along the exit centerline (same rationale as computeStartPose).
+  const auto inset_pose = autoware::motion_utils::calcLongitudinalOffsetPose(
+    exit_path.points, exit_path.points.front().point.pose.position,
+    parameters_->junction_inset_distance);
+  if (inset_pose) {
+    return *inset_pose;
   }
   return exit_path.points.front().point.pose;
 }
@@ -462,12 +478,17 @@ BehaviorModuleOutput FreespaceAreaModule::composeOutput()
     append_point(p);
   }
 
-  // 3. Transit mode: append the exit-lane centerline continuation.
+  // 3. Transit mode: append the exit-lane centerline continuation. Start from the point nearest
+  // to the A* goal (which is inset into the exit lane) so the path does not double back over the
+  // insetted segment.
   if (mode_ == FreespaceAreaMode::TRANSIT && !current_ctx_.exit_lanelets.empty()) {
     const auto exit_path = planner_data_->route_handler->getCenterLinePath(
       current_ctx_.exit_lanelets, 0.0, std::numeric_limits<double>::max());
-    for (const auto & p : exit_path.points) {
-      append_point(p);
+    if (!exit_path.points.empty()) {
+      const auto goal_idx = findNearestIndex(exit_path.points, latched_goal_pose_.position);
+      for (size_t i = goal_idx; i < exit_path.points.size(); ++i) {
+        append_point(exit_path.points[i]);
+      }
     }
   }
 

@@ -97,6 +97,8 @@ void FreespaceAreaModuleManager::init(rclcpp::Node * node)
 
   // path
   p.junction_blend_distance = node->declare_parameter<double>(ns + "path.junction_blend_distance");
+  p.junction_inset_distance =
+    node->declare_parameter<double>(ns + "path.junction_inset_distance", 2.0);
   p.goal_position_tolerance = node->declare_parameter<double>(ns + "path.goal_position_tolerance");
   p.goal_yaw_tolerance_deg = node->declare_parameter<double>(ns + "path.goal_yaw_tolerance_deg");
 
