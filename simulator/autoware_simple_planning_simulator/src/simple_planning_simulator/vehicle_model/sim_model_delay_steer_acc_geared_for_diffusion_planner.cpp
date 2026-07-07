@@ -54,17 +54,35 @@ double SimModelDelaySteerAccGearedForDiffusionPlanner::calc_yaw_rate(double vel,
   return vel * std::tan(steer + steer_bias_) / denom;
 }
 
-double SimModelDelaySteerAccGearedForDiffusionPlanner::getX() { return state_(IDX::X); }
+double SimModelDelaySteerAccGearedForDiffusionPlanner::getX()
+{
+  return state_(IDX::X);
+}
 
-double SimModelDelaySteerAccGearedForDiffusionPlanner::getY() { return state_(IDX::Y); }
+double SimModelDelaySteerAccGearedForDiffusionPlanner::getY()
+{
+  return state_(IDX::Y);
+}
 
-double SimModelDelaySteerAccGearedForDiffusionPlanner::getYaw() { return state_(IDX::YAW); }
+double SimModelDelaySteerAccGearedForDiffusionPlanner::getYaw()
+{
+  return state_(IDX::YAW);
+}
 
-double SimModelDelaySteerAccGearedForDiffusionPlanner::getVx() { return state_(IDX::VX); }
+double SimModelDelaySteerAccGearedForDiffusionPlanner::getVx()
+{
+  return state_(IDX::VX);
+}
 
-double SimModelDelaySteerAccGearedForDiffusionPlanner::getVy() { return 0.0; }
+double SimModelDelaySteerAccGearedForDiffusionPlanner::getVy()
+{
+  return 0.0;
+}
 
-double SimModelDelaySteerAccGearedForDiffusionPlanner::getAx() { return state_(IDX::ACCX); }
+double SimModelDelaySteerAccGearedForDiffusionPlanner::getAx()
+{
+  return state_(IDX::ACCX);
+}
 
 double SimModelDelaySteerAccGearedForDiffusionPlanner::getWz()
 {
@@ -135,10 +153,10 @@ void SimModelDelaySteerAccGearedForDiffusionPlanner::initializeInputQueue(const 
 void SimModelDelaySteerAccGearedForDiffusionPlanner::initializeStateQueue(const double & dt)
 {
   // State history buffers mirror the command-queue sizes so the delayed state feedback lags by the
-  // same round(delay/dt) samples. Zero-fill (exactly like initializeInputQueue's command-queue fill)
-  // so the realtime path — which constructs the model and never calls resetStateQueues() — reads a
-  // well-defined at-rest pre-window state for the first round(delay/dt) steps, without relying on
-  // the base class having zero-initialised state_.
+  // same round(delay/dt) samples. Zero-fill (exactly like initializeInputQueue's command-queue
+  // fill) so the realtime path — which constructs the model and never calls resetStateQueues() —
+  // reads a well-defined at-rest pre-window state for the first round(delay/dt) steps, without
+  // relying on the base class having zero-initialised state_.
   const size_t steer_state_queue_size = static_cast<size_t>(round(steer_delay_ / dt));
   steer_state_queue_.assign(steer_state_queue_size, 0.0);
 

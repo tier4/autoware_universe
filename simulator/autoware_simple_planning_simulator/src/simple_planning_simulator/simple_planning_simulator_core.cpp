@@ -295,8 +295,8 @@ void SimplePlanningSimulator::initialize_vehicle_model(const std::string & vehic
     const int delay_steer_acc_geared_for_diffusion_planner_version =
       declare_parameter<int>("delay_steer_acc_geared_for_diffusion_planner.version", 1);
     const std::string ns = "delay_steer_acc_geared_for_diffusion_planner.v" +
-                            std::to_string(delay_steer_acc_geared_for_diffusion_planner_version) +
-                            ".";
+                           std::to_string(delay_steer_acc_geared_for_diffusion_planner_version) +
+                           ".";
     vehicle_model_ptr_ = std::make_shared<SimModelDelaySteerAccGearedForDiffusionPlanner>(
       vel_lim, steer_lim, vel_rate_lim, steer_rate_lim, wheelbase, timer_sampling_time_ms_ / 1000.0,
       declare_parameter<double>(ns + "acc_time_delay", 0.1),
