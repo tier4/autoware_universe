@@ -14,13 +14,6 @@
   <arg name="output_set_aggregator_initializing" default="/system/aggregator/set_initializing"/>
   <arg name="output_set_redundancy_switcher_interface_initializing" default="/system/redundancy_switcher_interface/set_initializing"/>
 
-  <node pkg="x2_autoware_ready_checker" exec="autoware_ready_checker" name="autoware_ready_checker" output="screen">
-    <remap from="~/input/localization_initialization_state" to="$(var input_localization_initialization_state)"/>
-    <remap from="~/input/route_state" to="$(var input_route_state)"/>
-    <remap from="~/input/operation_mode_state" to="$(var input_operation_mode_state)"/>
-    <remap from="~/output/launch_status" to="$(var input_launch_status)"/>
-  </node>
-
   <node pkg="autoware_mrm_reset_manager" exec="autoware_mrm_reset_manager_node" name="autoware_mrm_reset_manager" output="screen">
     <param from="$(var mrm_reset_manager_param_file)"/>
     <param name="is_redundant" value="$(var is_redundant)"/>
