@@ -325,10 +325,35 @@ validator:
           read_only: false
 
   crosswalk:
-    stop_margin:
+    object_types:
+      type: string_array
+      default_value: [pedestrian, bicycle]
+      description: object types to consider as target object
+      read_only: false
+    object_distance_th:
       type: double
-      default_value: 0.5
-      description: Maximum distance between the stop point and the crosswalk stop line to consider the trajectory feasible (m)
+      default_value: 1.0
+      description: distance of object from crosswalk to consider as target object (m)
+      read_only: false
+    overshoot_tolerance:
+      type: double
+      default_value: 0.1
+      description: maximum distance between the stop point and the crosswalk stop line to consider the trajectory feasible (m)
+      read_only: false
+    nominal_deceleration:
+      type: double
+      default_value: 1.0
+      description: nominal deceleration to calculate the stop distance used as trajectory length limit (m/s^2)
+      read_only: false
+    nominal_jerk:
+      type: double
+      default_value: 1.0
+      description: nominal jerk to calculate the stop distance used as trajectory length limit (m/s^3)
+      read_only: false
+    stop_duration:
+      type: double
+      default_value: 3.0
+      description: minimum duration of the stop to consider the trajectory feasible (s)
       read_only: false
 
   traffic_light:

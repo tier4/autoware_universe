@@ -14,8 +14,105 @@
 
 #include "autoware/trajectory_validator/filters/traffic_rule/crosswalk_filter.hpp"
 
+#include <autoware_lanelet2_extension/regulatory_elements/Forward.hpp>
+#include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
+#include <autoware_utils_geometry/boost_geometry.hpp>
+
+#include <autoware_utils_geometry/geometry.hpp>
+#include <autoware/motion_utils/distance/distance.hpp>
+
+
+#include <boost/geometry/algorithms/intersection.hpp>
+
+#include <lanelet2_core/geometry/LineString.h>
+
+#include <algorithm>
+#include <cmath>
+#include <optional>
+#include <unordered_set>
 #include <utility>
 #include <vector>
+
+namespace
+{
+using autoware_utils_geometry::Line2d;
+
+std::vector<lanelet::CrosswalkConstPtr> collect_crosswalk_reg_elems_from_route(
+  const lanelet::LaneletMap & lanelet_map,
+  const autoware_planning_msgs::msg::LaneletRoute & route)
+{
+  std::vector<lanelet::CrosswalkConstPtr> crosswalks_on_route;
+  std::unordered_set<lanelet::Id> seen_crosswalk_ids;
+
+  for (const auto & segment : route.segments) {
+    const auto & road_lanelet = lanelet_map.laneletLayer.get(segment.preferred_primitive.id);
+    for (const auto & reg_elem :
+         road_lanelet.regulatoryElementsAs<lanelet::autoware::Crosswalk>()) {
+      const auto crosswalk_id = reg_elem->id();
+      if (!seen_crosswalk_ids.insert(crosswalk_id).second) {
+        continue;
+      }
+      crosswalks_on_route.push_back(reg_elem);
+    }
+  }
+
+  return crosswalks_on_route;
+}
+
+using autoware::trajectory_validator::plugin::traffic_rule::CrosswalkOnTrajectory;
+std::vector<CrosswalkOnTrajectory> filter_crosswalks_intersecting_trajectory(
+  const std::vector<lanelet::CrosswalkConstPtr> & crosswalks_on_route,
+  const lanelet::BasicLineString2d trajectory_ls)
+{
+  std::vector<CrosswalkOnTrajectory> crosswalks_on_trajectory;
+
+  if (trajectory_ls.size() < 2 || crosswalks_on_route.empty()) {
+    return crosswalks_on_trajectory;
+  }
+
+  std::unordered_set<lanelet::Id> seen_crosswalk_ids;
+  auto checked_length = 0.0;
+
+  auto process_cw = [&](const lanelet::CrosswalkConstPtr & cw, const lanelet::BasicLineString2d & traj_seg) {
+    auto stop_lines = cw->stopLines();
+    if (stop_lines.empty()) return;
+
+    auto distance_to_stop_line = std::numeric_limits<double>::max();
+    std::optional<lanelet::BasicPoints2d> stop_line;
+    for (const auto & sl : stop_lines) {
+      const auto stop_line_2d = lanelet::utils::to2D(sl).basicLineString();
+      auto distance = 0.0;
+      lanelet::BasicPoints2d intersection_points;
+      boost::geometry::intersection(traj_seg, stop_line_2d, intersection_points);
+      if (!intersection_points.empty()) {
+        distance += static_cast<double>(
+          boost::geometry::distance(traj_seg.front(), intersection_points.front()));
+        if (distance < distance_to_stop_line) {
+          distance_to_stop_line = checked_length + distance;
+          stop_line = stop_line_2d;
+        }
+      }
+    }
+    if (stop_line) {
+      crosswalks_on_trajectory.emplace_back(cw, distance_to_stop_line, *stop_line);
+      seen_crosswalk_ids.insert(cw->id());
+    }
+  };
+
+  for (size_t i = 0; i + 1 < trajectory_ls.size(); ++i) {
+    const lanelet::BasicLineString2d segment{trajectory_ls[i], trajectory_ls[i + 1]};
+
+    for (const auto & cw : crosswalks_on_route) {
+      if (seen_crosswalk_ids.count(cw->id())) continue;
+      process_cw(cw, segment);
+    }
+    checked_length += static_cast<double>(boost::geometry::length(segment));
+  }
+
+  return crosswalks_on_trajectory;
+}
+
+}  // namespace
 
 namespace autoware::trajectory_validator::plugin::traffic_rule
 {
@@ -35,10 +132,95 @@ void CrosswalkFilter::set_vehicle_info(const VehicleInfo & vehicle_info)
 }
 
 CrosswalkFilter::result_t CrosswalkFilter::is_feasible(
-  const CandidateTrajectory & /*candidate_trajectory*/, const FilterContext & /*context*/)
+  const CandidateTrajectory & candidate_trajectory, const FilterContext & context)
 {
+  if (!context.lanelet_map) {
+    return tl::make_unexpected("Lanelet map is not available in the context.");
+  }
+
+  if (!context.route) {
+    return tl::make_unexpected("Route is not available in the context.");
+  }
+
+  const auto target_crosswalks = get_target_crosswalks(candidate_trajectory.points, context);
+
   std::vector<MetricReport> metrics;
+  if (target_crosswalks.empty()) return ValidationResult{true, std::move(metrics)};
+
   return ValidationResult{true, std::move(metrics)};
+}
+
+std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(const TrajectoryPoints & traj_points, const FilterContext & context)
+{
+  std::vector<TargetCrosswalk> target_crosswalks;
+
+  if (traj_points.size() < 2) return target_crosswalks;
+
+  constexpr double zero_vel_threshold = 0.1;
+  const auto start_move_it = std::find_if(traj_points.begin(), traj_points.end(), [&](const auto & p) {
+    return p.longitudinal_velocity_mps > zero_vel_threshold;
+  });
+
+  // skip check if ego is not moving
+  if (start_move_it == traj_points.end()) return target_crosswalks;
+
+  // skip check if ego is stopping for sufficient time
+  const auto start_move_time = rclcpp::Duration(start_move_it->time_from_start).seconds();
+  if (start_move_time > 3.0) return target_crosswalks;
+
+  const auto crosswalks_on_route = collect_crosswalk_reg_elems_from_route(
+    *context.lanelet_map, *context.route);
+
+  const double current_vel = context.odometry->twist.twist.linear.x;
+  const double current_acc = context.acceleration->accel.accel.linear.x;
+  const auto decel_limit = 1.0;
+  const auto jerk_limit = 1.0;
+  
+  auto stop_distance = autoware::motion_utils::calculate_stop_distance(current_vel, current_acc, decel_limit, jerk_limit);
+  if (!stop_distance) stop_distance = std::numeric_limits<double>::max();
+  const auto lookahead_distance_m = *stop_distance;
+
+  lanelet::BasicLineString2d trajectory_ls;
+  std::unordered_set<lanelet::Id> seen_crosswalk_ids;
+  double length = 0.0;
+
+  for (const auto & p : traj_points) {
+    // skip points behind ego
+    if (rclcpp::Duration(p.time_from_start).seconds() < 0.0) {
+      continue;
+    }
+
+    const lanelet::BasicPoint2d lanelet_p(p.pose.position.x, p.pose.position.y);
+    if (!trajectory_ls.empty()) {
+      length += lanelet::geometry::distance2d(trajectory_ls.back(), lanelet_p);
+    }
+    trajectory_ls.emplace_back(lanelet_p);
+
+    // skip points beyond the first stop, or skip once we reach the maximum length
+    if (p.longitudinal_velocity_mps <= 1e-6 || length > lookahead_distance_m) {
+      break;
+    }
+  }
+
+  constexpr double overshoot_tolerance_m = 0.1;
+  const auto longitudinal_offset_m = vehicle_info_ptr_->max_longitudinal_offset_m - overshoot_tolerance_m;
+
+  if (longitudinal_offset_m > 0.0) {
+    // extend the trajectory linestring by the vehicle's longitudinal offset
+    const auto offset_pose = autoware_utils_geometry::calc_offset_pose(
+      traj_points.back().pose, longitudinal_offset_m, 0.0, 0.0);
+    const lanelet::BasicPoint2d offset_point(offset_pose.position.x, offset_pose.position.y);
+    trajectory_ls.emplace_back(offset_point);
+  }
+
+  const auto intersecting_crosswalks = filter_crosswalks_intersecting_trajectory(crosswalks_on_route, trajectory_ls);
+
+  for (const auto & cw : intersecting_crosswalks) {
+    auto crosswalk_polygon = cw.crosswalk->crosswalkLanelet().polygon2d().basicPolygon();
+    target_crosswalks.emplace_back(cw, crosswalk_polygon);
+  }
+
+  return target_crosswalks;
 }
 
 }  // namespace autoware::trajectory_validator::plugin::traffic_rule

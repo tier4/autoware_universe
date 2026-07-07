@@ -414,10 +414,40 @@
         "crosswalk": {
           "type": "object",
           "properties": {
-            "stop_margin": {
+            "object_types": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "List of object types to consider as target object (e.g., 'pedestrian', 'bicycle').",
+              "default": ["pedestrian", "bicycle"]
+            },
+            "object_distance_th": {
               "type": "number",
-              "description": "Maximum allowed distance between the trajectory's stop point and the crosswalk stop line for the trajectory to be considered as stopping correctly [m].",
-              "default": 0.5,
+              "description": "Distance of object from crosswalk to consider as target object [m].",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "overshoot_tolerance": {
+              "type": "number",
+              "description": "Maximum distance between the stop point and the crosswalk stop line to consider the trajectory feasible [m].",
+              "default": 0.1,
+              "minimum": 0.0
+            },
+            "nominal_deceleration": {
+              "type": "number",
+              "description": "Nominal deceleration to calculate the stop distance used as trajectory length limit [m/s²].",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "nominal_jerk": {
+              "type": "number",
+              "description": "Nominal jerk to calculate the stop distance used as trajectory length limit [m/s³].",
+              "default": 1.0,
+              "minimum": 0.0
+            },
+            "stop_duration": {
+              "type": "number",
+              "description": "Minimum duration of the stop to consider the trajectory feasible [s].",
+              "default": 3.0,
               "minimum": 0.0
             }
           },
