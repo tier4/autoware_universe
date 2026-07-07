@@ -498,9 +498,10 @@ void DiffusionPlanner::publish_debug_markers(
 
 void DiffusionPlanner::on_timer()
 {
+  // Timer callback function
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   stop_watch_ptr_ = std::make_unique<autoware_utils_system::StopWatch<std::chrono::milliseconds>>();
-  stop_watch_ptr_->tic("total");
+  stop_watch_ptr_->tic("processing_time");
 
   diagnostics_inference_->clear();
 
@@ -523,51 +524,43 @@ void DiffusionPlanner::on_timer()
     return;
   }
 
-  std::optional<FrameContext> frame_context;
-  std::optional<autoware_perception_msgs::msg::TrackedObjects> tracked_objects_for_mppi;
-  {
-    autoware_utils_debug::ScopedTimeTrack prepare_st("prepare_frame_context", *time_keeper_);
-    stop_watch_ptr_->tic("prepare_frame_context");
+  // Take data from subscribers
+  auto objects = sub_tracked_objects_.take_data();
+  auto ego_kinematic_state = sub_current_odometry_.take_data();
+  auto ego_acceleration = sub_current_acceleration_.take_data();
+  auto traffic_signals = sub_traffic_signals_.take_data();
+  auto temp_route_ptr = route_subscriber_.take_data();
+  auto turn_indicators_ptr = sub_turn_indicators_.take_data();
 
-    auto objects = sub_tracked_objects_.take_data();
-    if (objects) {
-      tracked_objects_for_mppi = *objects;
-    }
-    auto ego_kinematic_state = sub_current_odometry_.take_data();
-    auto ego_acceleration = sub_current_acceleration_.take_data();
-    auto traffic_signals = sub_traffic_signals_.take_data();
-    auto temp_route_ptr = route_subscriber_.take_data();
-    auto turn_indicators_ptr = sub_turn_indicators_.take_data();
+  // Prepare frame context using core
+  const std::optional<FrameContext> frame_context = core_->create_frame_context(
+    ego_kinematic_state, ego_acceleration, objects, traffic_signals, turn_indicators_ptr,
+    temp_route_ptr, this->now());
 
-    frame_context = core_->create_frame_context(
-      ego_kinematic_state, ego_acceleration, objects, traffic_signals, turn_indicators_ptr,
-      temp_route_ptr, this->now());
+  if (!frame_context) {
+    // Log detailed information about missing inputs
+    RCLCPP_WARN_STREAM_THROTTLE(
+      get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+      "There is no input data. objects: "
+        << (objects ? "true" : "false")
+        << ", ego_kinematic_state: " << (ego_kinematic_state ? "true" : "false")
+        << ", ego_acceleration: " << (ego_acceleration ? "true" : "false")
+        << ", route: " << (core_->get_route() ? "true" : "false")
+        << ", turn_indicators: " << (turn_indicators_ptr ? "true" : "false"));
+    diagnostics_inference_->update_level_and_message(
+      DiagnosticStatus::WARN, "No input data available for inference");
+    diagnostics_inference_->publish(current_time);
+    return;
+  }
 
-    if (!frame_context) {
-      RCLCPP_WARN_STREAM_THROTTLE(
-        get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
-        "There is no input data. objects: "
-          << (objects ? "true" : "false")
-          << ", ego_kinematic_state: " << (ego_kinematic_state ? "true" : "false")
-          << ", ego_acceleration: " << (ego_acceleration ? "true" : "false")
-          << ", route: " << (core_->get_route() ? "true" : "false")
-          << ", turn_indicators: " << (turn_indicators_ptr ? "true" : "false"));
-      diagnostics_inference_->update_level_and_message(
-        DiagnosticStatus::WARN, "No input data available for inference");
-      diagnostics_inference_->publish(current_time);
-      return;
-    }
-
-    if (traffic_signals.empty()) {
-      RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
-        "no traffic signal received. traffic light info will not be updated");
-    }
-
-    record_section_time(*stop_watch_ptr_, "prepare_frame_context", *diagnostics_inference_);
+  if (traffic_signals.empty()) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+      "no traffic signal received. traffic light info will not be updated");
   }
 
   const rclcpp::Time frame_time(frame_context->frame_time);
+  InputDataMap input_data_map = core_->create_input_data(*frame_context);
 
   publish_debug_markers(input_data_map, frame_context->ego_to_map_transform, frame_time);
 
@@ -629,13 +622,6 @@ void DiffusionPlanner::on_timer()
     pub_denoising_steps_->publish(planner_output.denoising_steps);
   }
 
-  publish_guidance_status(planner_output.guidance_triggered, frame_time);
-
-  pub_trajectory_->publish(planner_output.trajectory);
-  pub_trajectories_->publish(planner_output.candidate_trajectories);
-  pub_objects_->publish(planner_output.predicted_objects);
-  pub_turn_indicators_->publish(planner_output.turn_indicator_command);
-
   if (params_.use_mppi_optimizer) {
     autoware_utils_debug::ScopedTimeTrack mppi_st("mppi_optimizer", *time_keeper_);
     stop_watch_ptr_->tic("mppi_optimizer");
@@ -648,10 +634,6 @@ void DiffusionPlanner::on_timer()
     }
 
     try {
-      const autoware_perception_msgs::msg::TrackedObjects& mppi_tracked_objects =
-        tracked_objects_for_mppi ? *tracked_objects_for_mppi
-                                 : autoware_perception_msgs::msg::TrackedObjects{};
-
       autoware_utils_debug::ScopedTimeTrack optimize_trajectory_st("mppi_optimizer/optimize_trajectory", *time_keeper_);
       stop_watch_ptr_->tic("mppi_optimizer/optimize_trajectory");
       const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> ego_acceleration{
@@ -661,7 +643,7 @@ void DiffusionPlanner::on_timer()
         steering_status ? std::make_optional(*steering_status) : std::nullopt;
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration,
-        ego_steering, mppi_tracked_objects);
+        ego_steering, *objects);
       record_section_time(*stop_watch_ptr_, "mppi_optimizer/optimize_trajectory", *diagnostics_inference_);
       if (!params_.shadow_mode) {
         planner_output.trajectory = mppi_result.trajectory;
@@ -684,27 +666,22 @@ void DiffusionPlanner::on_timer()
     record_section_time(*stop_watch_ptr_, "mppi_optimizer", *diagnostics_inference_);
   }
 
-  {
-    autoware_utils_debug::ScopedTimeTrack publish_st("publish_outputs", *time_keeper_);
-    stop_watch_ptr_->tic("publish_outputs");
+  publish_guidance_status(planner_output.guidance_triggered, frame_time);
 
-    pub_trajectory_->publish(planner_output.trajectory);
-    pub_trajectories_->publish(planner_output.candidate_trajectories);
-    pub_objects_->publish(planner_output.predicted_objects);
-    pub_turn_indicators_->publish(planner_output.turn_indicator_command);
+  pub_trajectory_->publish(planner_output.trajectory);
+  pub_trajectories_->publish(planner_output.candidate_trajectories);
+  pub_objects_->publish(planner_output.predicted_objects);
+  pub_turn_indicators_->publish(planner_output.turn_indicator_command);
 
-    publish_planning_factor(planner_output.trajectory);
+  publish_planning_factor(planner_output.trajectory);
 
-    record_section_time(*stop_watch_ptr_, "publish_outputs", *diagnostics_inference_);
-  }
-
-  const double total_processing_time_ms = stop_watch_ptr_->toc("total");
-  diagnostics_inference_->add_key_value("total_processing_time_ms", total_processing_time_ms);
+  // Publish diagnostics
   diagnostics_inference_->publish(frame_time);
 
+  // Publish processing time
   autoware_internal_debug_msgs::msg::Float64Stamped processing_time_msg;
   processing_time_msg.stamp = get_clock()->now();
-  processing_time_msg.data = total_processing_time_ms;
+  processing_time_msg.data = stop_watch_ptr_->toc("processing_time", true);
   debug_processing_time_pub_->publish(processing_time_msg);
 }
 
