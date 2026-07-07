@@ -130,9 +130,9 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
 
 void MinimumRuleBasedPlannerNode::load_optimizer_plugins()
 {
-  // Create plugin loader for autoware_trajectory_optimizer
+  // Create plugin loader for autoware_trajectory_processor
   plugin_loader_ = std::make_unique<OptimizerPluginLoader>(
-    "autoware_trajectory_optimizer",
+    "autoware_trajectory_processor",
     "autoware::trajectory_optimizer::plugin::TrajectoryOptimizerPluginBase");
 
   auto try_load_optimizer_plugin = [&](const std::string & plugin_path, const std::string & name)

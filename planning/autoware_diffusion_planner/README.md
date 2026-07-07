@@ -102,7 +102,7 @@ diff --git a/tier4_universe_launch/tier4_planning_launch/launch/planning.launch.
 +        <arg name="output_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
 +        <arg name="output_turn_indicators" value="/planning/turn_indicators_cmd"/>
 +      </include>
-+      <include file="$(find-pkg-share autoware_trajectory_optimizer)/launch/trajectory_optimizer.launch.xml">
++      <include file="$(find-pkg-share autoware_trajectory_processor)/launch/trajectory_optimizer.launch.xml">
 +        <arg name="input_trajectories" value="/planning/generator/diffusion_planner/candidate_trajectories"/>
 +        <arg name="output_traj" value="/planning/trajectory"/>
 +        <arg name="output_trajectories" value="/planning/generator/trajectory_optimizer/candidate_trajectories"/>
