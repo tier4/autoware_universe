@@ -81,6 +81,8 @@ private:
   geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr cov_;
   LaneletRoute::ConstSharedPtr last_route_;
   lanelet::ConstLanelets route_lanelets_;
+  // Outer polygons of route freespace Areas (treated as drivable during lane<->area transit)
+  std::vector<lanelet::BasicPolygon2d> route_area_polygons_;
   Trajectory::ConstSharedPtr reference_trajectory_;
   Trajectory::ConstSharedPtr predicted_trajectory_;
   autoware_adapi_v1_msgs::msg::OperationModeState::ConstSharedPtr operation_mode_;

@@ -19,6 +19,11 @@
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_lanelet2_extension/utility/route_checker.hpp>
 #include <autoware_lanelet2_extension/visualization/visualization.hpp>
+
+#include <boost/geometry/algorithms/covered_by.hpp>
+
+#include <lanelet2_core/geometry/Lanelet.h>
+#include <lanelet2_core/geometry/Polygon.h>
 #include <autoware_utils/math/unit_conversion.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
 #include <autoware_utils/system/stop_watch.hpp>
@@ -57,20 +62,25 @@ std::map<lanelet::Id, lanelet::ConstLanelet> getRouteLanelets(
   const lanelet::LaneletMapPtr & lanelet_map,
   const lanelet::routing::RoutingGraphPtr & routing_graph,
   const autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr & route_ptr,
-  const double vehicle_length)
+  const double vehicle_length, const bool allow_area)
 {
   std::map<lanelet::Id, lanelet::ConstLanelet> route_lanelets;
 
-  bool is_route_valid = lanelet::utils::route::isRouteValid(*route_ptr, lanelet_map);
+  bool is_route_valid = lanelet::utils::route::isRouteValid(*route_ptr, lanelet_map, allow_area);
   if (!is_route_valid) {
     return route_lanelets;
   }
+
+  const auto is_area = [](const auto & primitive) { return primitive.primitive_type == "area"; };
 
   // Add preceding lanes of front route_section to prevent detection errors
   {
     const auto extension_length = 2 * vehicle_length;
 
     for (const auto & primitive : route_ptr->segments.front().primitives) {
+      if (is_area(primitive)) {
+        continue;
+      }
       const auto lane_id = primitive.id;
       for (const auto & lanelet_sequence :
            autoware::experimental::lanelet2_utils::get_preceding_lanelet_sequences(
@@ -84,6 +94,9 @@ std::map<lanelet::Id, lanelet::ConstLanelet> getRouteLanelets(
 
   for (const auto & route_section : route_ptr->segments) {
     for (const auto & primitive : route_section.primitives) {
+      if (is_area(primitive)) {
+        continue;
+      }
       const auto lane_id = primitive.id;
       route_lanelets[lane_id] = lanelet_map->laneletLayer.get(lane_id);
     }
@@ -94,6 +107,9 @@ std::map<lanelet::Id, lanelet::ConstLanelet> getRouteLanelets(
     const auto extension_length = 2 * vehicle_length;
 
     for (const auto & primitive : route_ptr->segments.back().primitives) {
+      if (is_area(primitive)) {
+        continue;
+      }
       const auto lane_id = primitive.id;
       for (const auto & lanelet_sequence :
            autoware::experimental::lanelet2_utils::get_succeeding_lanelet_sequences(
@@ -106,6 +122,32 @@ std::map<lanelet::Id, lanelet::ConstLanelet> getRouteLanelets(
   }
 
   return route_lanelets;
+}
+
+// Collect the outer polygons of lanelet2 freespace Areas referenced by the route ("area"
+// primitives). The vehicle legitimately leaves the lanelets while traversing these Areas
+// (behavior_path freespace_area module), so the departure check must treat them as drivable.
+std::vector<lanelet::BasicPolygon2d> getRouteAreaPolygons(
+  const lanelet::LaneletMapPtr & lanelet_map,
+  const autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr & route_ptr)
+{
+  std::vector<lanelet::BasicPolygon2d> polygons;
+  for (const auto & route_section : route_ptr->segments) {
+    for (const auto & primitive : route_section.primitives) {
+      if (primitive.primitive_type != "area") {
+        continue;
+      }
+      try {
+        const auto area = lanelet_map->areaLayer.get(primitive.id);
+        polygons.push_back(lanelet::traits::toBasicPolygon2d(area.outerBoundPolygon()));
+      } catch (const std::exception & e) {
+        RCLCPP_WARN(
+          rclcpp::get_logger("lane_departure_checker"), "failed to get route area %ld: %s",
+          static_cast<long>(primitive.id), e.what());
+      }
+    }
+  }
+  return polygons;
 }
 
 template <typename T>
@@ -279,8 +321,11 @@ void LaneDepartureCheckerNode::onTimer()
   if (last_route_ != route_ && !route_->segments.empty()) {
     std::map<lanelet::Id, lanelet::ConstLanelet>::iterator itr;
 
-    auto map_route_lanelets_ =
-      getRouteLanelets(lanelet_map_, routing_graph_, route_, vehicle_length_m_);
+    auto map_route_lanelets_ = getRouteLanelets(
+      lanelet_map_, routing_graph_, route_, vehicle_length_m_, node_param_.allow_area_route);
+    route_area_polygons_ = node_param_.allow_area_route
+                             ? getRouteAreaPolygons(lanelet_map_, route_)
+                             : std::vector<lanelet::BasicPolygon2d>{};
 
     lanelet::ConstLanelets shared_lanelets_tmp;
 
@@ -314,6 +359,40 @@ void LaneDepartureCheckerNode::onTimer()
 
   output_ = boundary_departure_checker_->update(input_);
   processing_time_map["Node: update"] = stop_watch.toc(true);
+
+  // Suppress lane-departure flags while the footprint is covered by route freespace Areas
+  // (lane<->area transit planned by the behavior_path freespace_area module).
+  if (!route_area_polygons_.empty() && (output_.is_out_of_lane || output_.will_leave_lane)) {
+    const auto is_point_covered = [this](const auto & point) {
+      const lanelet::BasicPoint2d p(point.x(), point.y());
+      for (const auto & poly : route_area_polygons_) {
+        if (boost::geometry::covered_by(p, poly)) {
+          return true;
+        }
+      }
+      for (const auto & ll : output_.candidate_lanelets) {
+        if (lanelet::geometry::inside(ll, p)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    const auto is_footprint_covered = [&](const auto & footprint) {
+      return std::all_of(footprint.begin(), footprint.end(), is_point_covered);
+    };
+    if (
+      output_.is_out_of_lane && !output_.vehicle_footprints.empty() &&
+      is_footprint_covered(output_.vehicle_footprints.front())) {
+      output_.is_out_of_lane = false;
+    }
+    if (
+      output_.will_leave_lane &&
+      std::all_of(
+        output_.vehicle_footprints.begin(), output_.vehicle_footprints.end(),
+        is_footprint_covered)) {
+      output_.will_leave_lane = false;
+    }
+  }
 
   updater_.force_update();
   processing_time_map["Node: updateDiagnostics"] = stop_watch.toc(true);

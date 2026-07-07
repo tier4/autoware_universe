@@ -50,6 +50,9 @@ NodeParam NodeParam::init(rclcpp::Node & node)
   p.include_left_lanes = get_or_declare_parameter<bool>(node, "include_left_lanes");
   p.include_opposite_lanes = get_or_declare_parameter<bool>(node, "include_opposite_lanes");
   p.include_conflicting_lanes = get_or_declare_parameter<bool>(node, "include_conflicting_lanes");
+  // Accept routes traversing lanelet2 freespace Areas and treat those Areas as drivable
+  // (behavior_path freespace_area module). Declared with a default so existing launches work.
+  p.allow_area_route = node.declare_parameter<bool>("allow_area_route", false);
   p.boundary_types_to_detect =
     get_or_declare_parameter<std::vector<std::string>>(node, "boundary_types_to_detect");
   return p;
