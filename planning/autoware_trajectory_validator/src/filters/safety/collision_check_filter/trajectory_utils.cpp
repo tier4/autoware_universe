@@ -285,6 +285,15 @@ namespace autoware::trajectory_validator::plugin::safety::trajectory
 {
 namespace footprint
 {
+EgoDimensions make_ego_dimensions(
+  const VehicleInfo & vehicle_info, const EgoFootprintMargin & ego_footprint_margin)
+{
+  return EgoDimensions{
+    vehicle_info.max_longitudinal_offset_m + ego_footprint_margin.front,
+    -vehicle_info.min_longitudinal_offset_m + ego_footprint_margin.rear,
+    vehicle_info.vehicle_width_m + 2.0 * ego_footprint_margin.lateral};
+}
+
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const std::vector<Point2d> & base_poly)
 {
@@ -435,7 +444,7 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_dist(
       "dist_from_fronts_ must be set before calling interpolate_state_from_dist");
   }
 
-  const auto [lower_idx, upper_idx, ratio] = resolve_interpolation(time_from_refs_, target_dist);
+  const auto [lower_idx, upper_idx, ratio] = resolve_interpolation(dist_from_fronts_, target_dist);
 
   const auto pose = pose::interpolate_pose(
     trajectory_points_.at(lower_idx).pose, trajectory_points_.at(upper_idx).pose, ratio);
@@ -447,17 +456,17 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_dist(
       static_cast<double>(trajectory_points_.at(upper_idx).longitudinal_velocity_mps), ratio)};
 }
 
-std::vector<double> seriarize_times(const CandidateTrajectory & candidate_trajectory)
+std::vector<double> serialize_times(const CandidateTrajectory & candidate_trajectory)
 {
   std::vector<double> times;
   times.reserve(candidate_trajectory.points.size());
   for (const auto & point : candidate_trajectory.points) {
-    times.push_back(detail::to_seconds(point.time_from_start));
+    times.push_back(rclcpp::Duration(point.time_from_start).seconds());
   }
   return times;
 }
 
-std::vector<double> seriarize_distances(const CandidateTrajectory & candidate_trajectory)
+std::vector<double> serialize_distances(const CandidateTrajectory & candidate_trajectory)
 {
   const auto & points = candidate_trajectory.points;
   std::vector<double> distances;
@@ -541,6 +550,38 @@ TrajectoryData generate_ego_trajectory(
   return TrajectoryData(
     TrajectoryIdentification{"EGO"}, std::move(times), std::move(distances), std::move(poses),
     std::move(footprints));
+}
+
+EgoTrajectoryCache::EgoTrajectoryCache(
+  const CandidateTrajectory & candidate_traj, const rclcpp::Time & sampling_reference_time,
+  const rclcpp::Time & current_time, const double time_resolution)
+: trajectory_interpolator_(candidate_traj),
+  sampling_reference_time_(sampling_reference_time),
+  current_time_(current_time),
+  time_resolution_(time_resolution)
+{
+  if (candidate_traj.points.empty()) {
+    throw std::invalid_argument("points must not be empty");
+  }
+  if (time_resolution <= 0.0) {
+    throw std::invalid_argument("time_resolution must be positive");
+  }
+}
+
+const TrajectoryData & EgoTrajectoryCache::get_or_compute_trajectory_data(
+  const EgoTrajectoryGenerationParams & params) const
+{
+  const auto it = trajectory_data_cache_.find(params);
+  if (it != trajectory_data_cache_.end()) {
+    return it->second;
+  }
+
+  const auto [inserted_it, inserted] = trajectory_data_cache_.emplace(
+    params,
+    generate_ego_trajectory(
+      trajectory_interpolator_, sampling_reference_time_, current_time_, time_resolution_, params));
+  static_cast<void>(inserted);
+  return inserted_it->second;
 }
 
 TrajectoryData generate_predicted_path_trajectory(
