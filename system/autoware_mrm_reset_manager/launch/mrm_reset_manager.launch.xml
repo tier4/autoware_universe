@@ -7,11 +7,19 @@
   <arg name="input_localization_initialization_state" default="/api/localization/initialization_state"/>
   <arg name="input_route_state" default="/api/routing/state"/>
   <arg name="input_operation_mode_state" default="/api/operation_mode/state"/>
+  <arg name="input_launch_status" default="/system/launch/status"/>
 
   <arg name="output_reset_diag_graph" default="/diagnostics_graph/reset"/>
   <arg name="output_reset_redundancy_switcher" default="/system/redundancy_switcher/reset"/>
   <arg name="output_set_aggregator_initializing" default="/system/aggregator/set_initializing"/>
   <arg name="output_set_redundancy_switcher_interface_initializing" default="/system/redundancy_switcher_interface/set_initializing"/>
+
+  <node pkg="x2_autoware_ready_checker" exec="autoware_ready_checker" name="autoware_ready_checker" output="screen">
+    <remap from="~/input/localization_initialization_state" to="$(var input_localization_initialization_state)"/>
+    <remap from="~/input/route_state" to="$(var input_route_state)"/>
+    <remap from="~/input/operation_mode_state" to="$(var input_operation_mode_state)"/>
+    <remap from="~/output/launch_status" to="$(var input_launch_status)"/>
+  </node>
 
   <node pkg="autoware_mrm_reset_manager" exec="autoware_mrm_reset_manager_node" name="autoware_mrm_reset_manager" output="screen">
     <param from="$(var mrm_reset_manager_param_file)"/>
@@ -19,9 +27,7 @@
     <param name="enable_autoware_ready_actions" value="$(var enable_autoware_ready_actions)"/>
 
     <remap from="~/input/reset_mrm" to="$(var input_reset_mrm)"/>
-    <remap from="~/input/localization_initialization_state" to="$(var input_localization_initialization_state)"/>
-    <remap from="~/input/route_state" to="$(var input_route_state)"/>
-    <remap from="~/input/operation_mode_state" to="$(var input_operation_mode_state)"/>
+    <remap from="~/input/launch_status" to="$(var input_launch_status)"/>
 
     <remap from="~/output/reset_diag_graph" to="$(var output_reset_diag_graph)"/>
     <remap from="~/output/reset_redundancy_switcher" to="$(var output_reset_redundancy_switcher)"/>

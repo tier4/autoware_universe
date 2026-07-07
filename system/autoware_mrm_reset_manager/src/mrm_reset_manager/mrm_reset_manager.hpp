@@ -17,10 +17,8 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include <autoware_adapi_v1_msgs/msg/localization_initialization_state.hpp>
-#include <autoware_adapi_v1_msgs/msg/operation_mode_state.hpp>
-#include <autoware_adapi_v1_msgs/msg/route_state.hpp>
 #include <std_srvs/srv/set_bool.hpp>
+#include <tier4_system_msgs/msg/launch_status.hpp>
 #include <tier4_external_api_msgs/srv/reset_mrm.hpp>
 #include <tier4_system_msgs/srv/reset_diag_graph.hpp>
 #include <tier4_system_msgs/srv/reset_redundancy_switcher.hpp>
@@ -37,9 +35,7 @@ public:
   explicit MrmResetManager(const rclcpp::NodeOptions & options);
 
 private:
-  using LocalizationState = autoware_adapi_v1_msgs::msg::LocalizationInitializationState;
-  using RouteState = autoware_adapi_v1_msgs::msg::RouteState;
-  using OperationMode = autoware_adapi_v1_msgs::msg::OperationModeState;
+  using LaunchStatus = tier4_system_msgs::msg::LaunchStatus;
   using SetBool = std_srvs::srv::SetBool;
   using ResetMrm = tier4_external_api_msgs::srv::ResetMrm;
   using ResetDiagGraph = tier4_system_msgs::srv::ResetDiagGraph;
@@ -83,9 +79,7 @@ private:
 
   rclcpp::Service<ResetMrm>::SharedPtr srv_reset_mrm_;
 
-  rclcpp::Subscription<LocalizationState>::SharedPtr sub_localization_initialization_state_;
-  rclcpp::Subscription<RouteState>::SharedPtr sub_route_state_;
-  rclcpp::Subscription<OperationMode>::SharedPtr sub_operation_mode_state_;
+  rclcpp::Subscription<LaunchStatus>::SharedPtr sub_launch_status_;
 
   rclcpp::Client<SetBool>::SharedPtr cli_set_aggregator_initializing_;
   rclcpp::Client<SetBool>::SharedPtr cli_set_redundancy_switcher_interface_initializing_;
@@ -99,9 +93,7 @@ private:
   InitState init_state_{InitState::WAIT_SERVICES_READY};
   bool is_aggregator_initializing_{false};
   bool is_redundancy_switcher_interface_initializing_{false};
-  LocalizationState::ConstSharedPtr localization_initialization_state_ptr_;
-  RouteState::ConstSharedPtr route_state_ptr_;
-  OperationMode::ConstSharedPtr operation_mode_state_ptr_;
+  LaunchStatus::ConstSharedPtr launch_status_ptr_;
 };
 
 }  // namespace autoware::mrm_reset_manager
