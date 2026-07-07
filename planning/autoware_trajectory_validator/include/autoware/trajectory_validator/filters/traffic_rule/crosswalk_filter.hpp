@@ -64,6 +64,10 @@ private:
   validator::Params::Crosswalk params_;
 
   std::vector<TargetCrosswalk> get_target_crosswalks(const TrajectoryPoints & traj_points, const FilterContext & context);
+
+  void update_debug_data(
+    const std::vector<TargetCrosswalk> & target_crosswalks,
+    const rclcpp::Time & current_time, const double z);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::traffic_rule

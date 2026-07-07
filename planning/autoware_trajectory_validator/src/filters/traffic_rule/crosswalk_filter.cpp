@@ -20,6 +20,7 @@
 
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware/motion_utils/distance/distance.hpp>
+#include <autoware_utils/ros/marker_helper.hpp>
 
 
 #include <boost/geometry/algorithms/intersection.hpp>
@@ -37,6 +38,12 @@ namespace
 {
 using autoware_utils_geometry::Line2d;
 
+bool is_signaled_crosswalk(const lanelet::CrosswalkConstPtr & crosswalk_reg_elem)
+{
+  const auto & crosswalk_lanelet = crosswalk_reg_elem->crosswalkLanelet();
+  return !crosswalk_lanelet.regulatoryElementsAs<const lanelet::TrafficLight>().empty();
+}
+
 std::vector<lanelet::CrosswalkConstPtr> collect_crosswalk_reg_elems_from_route(
   const lanelet::LaneletMap & lanelet_map,
   const autoware_planning_msgs::msg::LaneletRoute & route)
@@ -45,17 +52,18 @@ std::vector<lanelet::CrosswalkConstPtr> collect_crosswalk_reg_elems_from_route(
   std::unordered_set<lanelet::Id> seen_crosswalk_ids;
 
   for (const auto & segment : route.segments) {
-    const auto & road_lanelet = lanelet_map.laneletLayer.get(segment.preferred_primitive.id);
-    for (const auto & reg_elem :
-         road_lanelet.regulatoryElementsAs<lanelet::autoware::Crosswalk>()) {
-      const auto crosswalk_id = reg_elem->id();
+    for (const auto & cw_reg_elem : lanelet_map.laneletLayer.get(segment.preferred_primitive.id)
+                             .regulatoryElementsAs<lanelet::autoware::Crosswalk>()) {
+      const auto crosswalk_id = cw_reg_elem->id();
       if (!seen_crosswalk_ids.insert(crosswalk_id).second) {
         continue;
       }
-      crosswalks_on_route.push_back(reg_elem);
+      if (is_signaled_crosswalk(cw_reg_elem)) {
+        continue;
+      }
+      crosswalks_on_route.push_back(cw_reg_elem);
     }
   }
-
   return crosswalks_on_route;
 }
 
@@ -147,6 +155,8 @@ CrosswalkFilter::result_t CrosswalkFilter::is_feasible(
   std::vector<MetricReport> metrics;
   if (target_crosswalks.empty()) return ValidationResult{true, std::move(metrics)};
 
+  update_debug_data(target_crosswalks, context.odometry->header.stamp, context.odometry->pose.pose.position.z);
+
   return ValidationResult{true, std::move(metrics)};
 }
 
@@ -161,7 +171,7 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(const Trajec
     return p.longitudinal_velocity_mps > zero_vel_threshold;
   });
 
-  // skip check if ego is not moving
+  // skip check for non-moving trajectory
   if (start_move_it == traj_points.end()) return target_crosswalks;
 
   // skip check if ego is stopping for sufficient time
@@ -170,6 +180,11 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(const Trajec
 
   const auto crosswalks_on_route = collect_crosswalk_reg_elems_from_route(
     *context.lanelet_map, *context.route);
+
+  if (crosswalks_on_route.empty()) {
+    RCLCPP_WARN(rclcpp::get_logger("crosswalk_filter"), "No crosswalks on route found");
+    return target_crosswalks;
+  }
 
   const double current_vel = context.odometry->twist.twist.linear.x;
   const double current_acc = context.acceleration->accel.accel.linear.x;
@@ -181,7 +196,6 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(const Trajec
   const auto lookahead_distance_m = *stop_distance;
 
   lanelet::BasicLineString2d trajectory_ls;
-  std::unordered_set<lanelet::Id> seen_crosswalk_ids;
   double length = 0.0;
 
   for (const auto & p : traj_points) {
@@ -215,12 +229,50 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(const Trajec
 
   const auto intersecting_crosswalks = filter_crosswalks_intersecting_trajectory(crosswalks_on_route, trajectory_ls);
 
+  if (intersecting_crosswalks.empty()) {
+    RCLCPP_WARN(rclcpp::get_logger("crosswalk_filter"), "No intersecting crosswalks found");
+    return target_crosswalks;
+  }
+
   for (const auto & cw : intersecting_crosswalks) {
     auto crosswalk_polygon = cw.crosswalk->crosswalkLanelet().polygon2d().basicPolygon();
     target_crosswalks.emplace_back(cw, crosswalk_polygon);
   }
 
   return target_crosswalks;
+}
+
+void CrosswalkFilter::update_debug_data(
+  const std::vector<TargetCrosswalk> & target_crosswalks,
+  const rclcpp::Time & current_time, const double z)
+{
+  using visualization_msgs::msg::Marker;
+  debug_markers_.markers.clear();
+
+  auto add_polygon_marker = [&](
+                              const lanelet::BasicPolygon2d & polygon,
+                              const std::string & ns, const int id,
+                              const std_msgs::msg::ColorRGBA & color) {
+    visualization_msgs::msg::Marker marker = autoware_utils::create_default_marker(
+      "map", current_time, ns, id, Marker::LINE_STRIP,
+      autoware_utils::create_marker_scale(0.1, 0.1, 0.1), color);
+    marker.lifetime = rclcpp::Duration::from_seconds(0.2);
+
+    for (const auto & p : polygon) {
+      marker.points.push_back(autoware_utils_geometry::create_point(p.x(), p.y(), z));
+    }
+    if (!marker.points.empty()) {
+      marker.points.push_back(marker.points.front());
+    }
+    debug_markers_.markers.push_back(marker);
+  };
+
+  int id = 0;
+  const auto magenta = autoware_utils::create_marker_color(1.0, 0.0, 1.0, 1.0);
+  for (const auto & cw : target_crosswalks) {
+    add_polygon_marker(cw.crosswalk_polygon, "target_crosswalks", id, magenta);
+    id++;
+  }
 }
 
 }  // namespace autoware::trajectory_validator::plugin::traffic_rule
