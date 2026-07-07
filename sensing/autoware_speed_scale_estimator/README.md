@@ -12,7 +12,7 @@ The package is split into a core library and a ROS adapter layer. The core imple
 
 | Layer | Library                              | Responsibility                                                                                           |
 | ----- | ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| Core  | `autoware_speed_scale_estimator`     | Utils, Kalman filter estimation (`SpeedScaleEstimator`); no ROS graph I/O |
+| Core  | `autoware_speed_scale_estimator`     | Utils, Kalman filter estimation (`SpeedScaleEstimator`); no ROS graph I/O                                |
 | ROS   | `autoware_speed_scale_estimator_ros` | Message handling, debug formatting, node I/O (`SpeedScaleEstimatorProcessor`, `SpeedScaleEstimatorNode`) |
 
 ## Block Diagram
