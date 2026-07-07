@@ -8,6 +8,7 @@
         "safety::UncrossableBoundaryDepartureFilter",
         "safety::TrajectoryFeasibilityFilter",
         "traffic_rule::TrafficLightFilter",
+        "traffic_rule::CrosswalkFilter",
       ]
 
     collision_check:
@@ -110,6 +111,9 @@
       max_distance_deviation: 100.0 # m
       max_steering_angle: 0.8 # rad
       max_steering_rate: 0.3 # rad/s
+
+    crosswalk:
+      stop_margin: 0.5  # [m] maximum distance between the stop point and the crosswalk stop line to consider the trajectory feasible
 
     traffic_light:
       deceleration_limit: 2.8  # [m/s^2] trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit

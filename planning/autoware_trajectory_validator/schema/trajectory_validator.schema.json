@@ -411,6 +411,19 @@
           "required": [],
           "additionalProperties": false
         },
+        "crosswalk": {
+          "type": "object",
+          "properties": {
+            "stop_margin": {
+              "type": "number",
+              "description": "Maximum allowed distance between the trajectory's stop point and the crosswalk stop line for the trajectory to be considered as stopping correctly [m].",
+              "default": 0.5,
+              "minimum": 0.0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
         "traffic_light": {
           "type": "object",
           "properties": {

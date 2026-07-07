@@ -324,6 +324,13 @@ validator:
           description: Ego acceleration threshold to determine RSS collision (m/s^2, negative)
           read_only: false
 
+  crosswalk:
+    stop_margin:
+      type: double
+      default_value: 0.5
+      description: Maximum distance between the stop point and the crosswalk stop line to consider the trajectory feasible (m)
+      read_only: false
+
   traffic_light:
     deceleration_limit:
       type: double
