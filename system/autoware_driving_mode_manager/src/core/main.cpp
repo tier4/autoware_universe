@@ -356,7 +356,6 @@ void ManagerMain::update_autoware_mode()
   const auto prev_text = std::to_string(prev.id);
   const auto mode_text = std::to_string(mode.id);
   if (!config_->exists(mode)) {
-    temporary_unavailable_modes_.clear();
     interface_->log_error("decision logic returns unknown mode: " + mode_text);
     return;
   }
