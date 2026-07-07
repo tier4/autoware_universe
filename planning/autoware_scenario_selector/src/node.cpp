@@ -267,6 +267,9 @@ bool ScenarioSelectorNode::isEmptyParkingTrajectory() const
 void ScenarioSelectorNode::onMap(const autoware_map_msgs::msg::LaneletMapBin::ConstSharedPtr msg)
 {
   route_handler_ = std::make_shared<autoware::route_handler::RouteHandler>(*msg);
+  // Allow routes that traverse lanelet2 freespace Areas so the area-containing route from
+  // mission_planner is accepted as valid (otherwise isRouteValid rejects the area primitive).
+  route_handler_->setAllowArea(allow_area_route_);
 }
 
 void ScenarioSelectorNode::onRoute(
@@ -446,6 +449,7 @@ ScenarioSelectorNode::ScenarioSelectorNode(const rclcpp::NodeOptions & node_opti
   th_stopped_time_sec_(this->declare_parameter<double>("th_stopped_time_sec")),
   th_stopped_velocity_mps_(this->declare_parameter<double>("th_stopped_velocity_mps")),
   enable_mode_switching_(this->declare_parameter<bool>("enable_mode_switching")),
+  allow_area_route_(this->declare_parameter<bool>("allow_area_route", false)),
   is_parking_completed_(false)
 {
   lane_driving_stop_time_ = {};

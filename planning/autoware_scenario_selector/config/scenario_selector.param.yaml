@@ -6,3 +6,4 @@
       th_stopped_time_sec: 1.0
       th_stopped_velocity_mps: 0.01
       enable_mode_switching: true
+      allow_area_route: true
