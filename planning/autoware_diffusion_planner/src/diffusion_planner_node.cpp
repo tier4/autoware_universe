@@ -281,7 +281,9 @@ void DiffusionPlanner::load_model()
   }
   if (params_.shadow_mode) {
     RCLCPP_INFO(
-      get_logger(), "Shadow mode enabled. MPPI will not track diffusion reference trajectory (poses + velocities)");
+      get_logger(),
+      "Shadow mode enabled. MPPI will not track diffusion reference trajectory (poses + "
+      "velocities)");
   }
 }
 
@@ -634,7 +636,8 @@ void DiffusionPlanner::on_timer()
     }
 
     try {
-      autoware_utils_debug::ScopedTimeTrack optimize_trajectory_st("mppi_optimizer/optimize_trajectory", *time_keeper_);
+      autoware_utils_debug::ScopedTimeTrack optimize_trajectory_st(
+        "mppi_optimizer/optimize_trajectory", *time_keeper_);
       stop_watch_ptr_->tic("mppi_optimizer/optimize_trajectory");
       const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> ego_acceleration{
         frame_context->ego_acceleration};
@@ -644,19 +647,22 @@ void DiffusionPlanner::on_timer()
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration,
         ego_steering, *objects);
-      record_section_time(*stop_watch_ptr_, "mppi_optimizer/optimize_trajectory", *diagnostics_inference_);
+      record_section_time(
+        *stop_watch_ptr_, "mppi_optimizer/optimize_trajectory", *diagnostics_inference_);
       if (!params_.shadow_mode) {
         planner_output.trajectory = mppi_result.trajectory;
       }
 
-      autoware_utils_debug::ScopedTimeTrack publish_debug_st("mppi_optimizer/publish_debug", *time_keeper_);
+      autoware_utils_debug::ScopedTimeTrack publish_debug_st(
+        "mppi_optimizer/publish_debug", *time_keeper_);
       stop_watch_ptr_->tic("mppi_optimizer/publish_debug");
       publish_mppi_debug(mppi_result.debug, planner_output.trajectory.header.frame_id, frame_time);
       if (!planner_output.candidate_trajectories.candidate_trajectories.empty()) {
         planner_output.candidate_trajectories.candidate_trajectories.front().points =
           planner_output.trajectory.points;
       }
-      record_section_time(*stop_watch_ptr_, "mppi_optimizer/publish_debug", *diagnostics_inference_);
+      record_section_time(
+        *stop_watch_ptr_, "mppi_optimizer/publish_debug", *diagnostics_inference_);
     } catch (const std::exception & e) {
       RCLCPP_ERROR_STREAM(get_logger(), "MPPI optimization failed: " << e.what());
       diagnostics_inference_->update_level_and_message(DiagnosticStatus::ERROR, e.what());
