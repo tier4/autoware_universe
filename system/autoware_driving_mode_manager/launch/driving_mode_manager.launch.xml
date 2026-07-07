@@ -23,6 +23,7 @@
 
   <node pkg="autoware_driving_mode_manager" exec="driving_mode_manager_node">
     <param from="$(var config)"/>
+    <remap from="~/system/launch/status" to="/system/launch/status"/>
     <remap from="~/system/change_operation_mode" to="$(var change_operation_mode_srv)"/>
     <remap from="~/system/change_autoware_control" to="$(var change_autoware_control_srv)"/>
     <remap from="~/system/operation_mode_state" to="$(var operation_mode_state_topic)"/>

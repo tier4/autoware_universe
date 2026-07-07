@@ -124,13 +124,14 @@ void ManagerInit::on_continuable_flag(const AutowareMode & mode, bool flag)
   }
 }
 
-void ManagerInit::on_driving_mode_sync(const AutowareMode &, bool)
-{
-}
-
 void ManagerInit::on_mrm_state(const AutowareMode & mode, const MrmState::State & state)
 {
   mrm_states_[mode] = state;
+}
+
+void ManagerInit::on_launch_status(const LaunchStatus &)
+{
+  // Do nothing
 }
 
 ServiceResponse ManagerInit::change_operation_mode(const OperationMode &)

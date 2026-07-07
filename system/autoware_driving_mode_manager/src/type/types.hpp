@@ -71,6 +71,12 @@ struct ModeInfo
   std::unordered_map<AutowareMode, std::string> names;
 };
 
+enum class LaunchStatus {
+  kUnknown,
+  kInitializing,
+  kRunning,
+};
+
 struct GateStatusItem
 {
   TrajectorySource trajectory_source;
