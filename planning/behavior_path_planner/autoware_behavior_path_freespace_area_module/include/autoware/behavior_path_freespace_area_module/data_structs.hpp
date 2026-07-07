@@ -24,6 +24,9 @@
 #include <geometry_msgs/msg/pose_array.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 
+#include <atomic>
+#include <mutex>
+#include <optional>
 #include <string>
 
 namespace autoware::behavior_path_planner
@@ -74,6 +77,20 @@ struct FreespaceAreaPlanResponse
   bool obstacle_on_latched{false};
   autoware::freespace_planning_algorithms::PlannerWaypoints waypoints;
   rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
+};
+
+// State shared between the module (BPP main thread) and the asynchronous planning worker.
+// It is owned via std::shared_ptr by BOTH sides: scene module instances are created and
+// destroyed every cycle by the planner manager, and the worker's timer callback can still be
+// in flight on another executor thread when the module is destroyed. Shared ownership
+// guarantees the worker never touches freed memory (dangling mutex/request/response were the
+// source of heap corruption crashes).
+struct FreespaceAreaWorkerContext
+{
+  std::mutex mutex;
+  std::optional<FreespaceAreaPlanRequest> request;
+  FreespaceAreaPlanResponse response;
+  std::atomic<bool> is_running{false};
 };
 
 }  // namespace autoware::behavior_path_planner

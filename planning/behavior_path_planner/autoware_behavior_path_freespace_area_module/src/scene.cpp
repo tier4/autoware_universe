@@ -45,18 +45,34 @@ using autoware::freespace_planning_algorithms::VehicleShape;
 using autoware::motion_utils::calcSignedArcLength;
 using autoware::motion_utils::findNearestIndex;
 
+namespace
+{
+// RAII running-flag, mirroring goal_planner's ScopedFlag: set before any shared state is
+// touched and cleared on every exit path.
+class ScopedRunningFlag
+{
+public:
+  explicit ScopedRunningFlag(std::atomic<bool> & flag) : flag_(flag) { flag_.store(true); }
+  ~ScopedRunningFlag() { flag_.store(false); }
+
+private:
+  std::atomic<bool> & flag_;
+};
+}  // namespace
+
 void FreespaceAreaPlanner::onTimer()
 {
+  const ScopedRunningFlag running_flag(ctx_->is_running);
+
   FreespaceAreaPlanRequest req;
   {
-    std::lock_guard<std::mutex> guard(mutex_);
-    if (!request_ || !request_->valid) {
+    std::lock_guard<std::mutex> guard(ctx_->mutex);
+    if (!ctx_->request || !ctx_->request->valid) {
       return;
     }
-    req = *request_;
+    req = *ctx_->request;
   }
 
-  is_running_ = true;
   FreespaceAreaPlanResponse res;
   res.stamp = clock_->now();
 
@@ -77,16 +93,15 @@ void FreespaceAreaPlanner::onTimer()
   }
 
   {
-    std::lock_guard<std::mutex> guard(mutex_);
+    std::lock_guard<std::mutex> guard(ctx_->mutex);
     // Preserve the newest successful waypoints if this cycle only did an obstacle re-check.
-    if (!res.success && response_.success && !req.need_plan) {
+    if (!res.success && ctx_->response.success && !req.need_plan) {
       res.success = true;
-      res.waypoints = response_.waypoints;
-      res.stamp = response_.stamp;
+      res.waypoints = ctx_->response.waypoints;
+      res.stamp = ctx_->response.stamp;
     }
-    response_ = res;
+    ctx_->response = res;
   }
-  is_running_ = false;
 }
 
 FreespaceAreaModule::FreespaceAreaModule(
@@ -99,7 +114,7 @@ FreespaceAreaModule::FreespaceAreaModule(
 : SceneModuleInterface{name, node, rtc_interface_ptr_map, objects_of_interest_marker_interface_ptr_map, planning_factor_interface},  // NOLINT
   parameters_{parameters},
   vehicle_info_{autoware::vehicle_info_utils::VehicleInfoUtils(node).getVehicleInfo()},
-  is_planning_cb_running_{false}
+  worker_ctx_{std::make_shared<FreespaceAreaWorkerContext>()}
 {
   const VehicleShape vehicle_shape(vehicle_info_, parameters_->planner_vehicle_shape_margin);
   if (parameters_->planner_algorithm == "astar") {
@@ -118,18 +133,19 @@ FreespaceAreaModule::FreespaceAreaModule(
   timer_ = rclcpp::create_timer(
     &node, clock_, period_ns,
     [worker = std::make_unique<FreespaceAreaPlanner>(
-       mutex_, request_, response_, is_planning_cb_running_, getLogger(), clock_, algo_,
-       parameters_->replan_when_obstacle_found)]() { worker->onTimer(); },
+       worker_ctx_, getLogger(), clock_, algo_, parameters_->replan_when_obstacle_found)]() {
+      worker->onTimer();
+    },
     timer_cb_group_);
 }
 
 FreespaceAreaModule::~FreespaceAreaModule()
 {
+  // Stop future worker invocations. A callback that is already in flight is safe: it owns the
+  // worker context (and the algorithm object) via shared_ptr, so no spin-wait is needed here
+  // (a spin-wait would also block the planner main thread for up to the A* time limit).
   if (timer_) {
     timer_->cancel();
-  }
-  while (is_planning_cb_running_.load()) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 }
 
@@ -141,9 +157,9 @@ void FreespaceAreaModule::initVariables()
   latched_response_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   stopped_since_.reset();
   {
-    std::lock_guard<std::mutex> guard(mutex_);
-    request_.reset();
-    response_ = FreespaceAreaPlanResponse();
+    std::lock_guard<std::mutex> guard(worker_ctx_->mutex);
+    worker_ctx_->request.reset();
+    worker_ctx_->response = FreespaceAreaPlanResponse();
   }
   resetPathCandidate();
   resetPathReference();
@@ -299,8 +315,8 @@ bool FreespaceAreaModule::isLatchInvalid(const geometry_msgs::msg::Pose & start_
   // obstacle on the latched area segment (reported by the worker)
   bool obstacle_on_latched = false;
   {
-    std::lock_guard<std::mutex> guard(mutex_);
-    obstacle_on_latched = response_.obstacle_on_latched;
+    std::lock_guard<std::mutex> guard(worker_ctx_->mutex);
+    obstacle_on_latched = worker_ctx_->response.obstacle_on_latched;
   }
   if (parameters_->replan_when_obstacle_found && obstacle_on_latched) {
     RCLCPP_INFO(getLogger(), "freespace_area: replan (obstacle on latched trajectory)");
@@ -355,31 +371,36 @@ BehaviorModuleOutput FreespaceAreaModule::plan()
   // Publish request to the worker.
   requestPlan(start_pose, goal_pose);
   if (!costmap_fresh) {
-    std::lock_guard<std::mutex> guard(mutex_);
-    if (request_) request_->valid = false;
+    std::lock_guard<std::mutex> guard(worker_ctx_->mutex);
+    if (worker_ctx_->request) worker_ctx_->request->valid = false;
   }
 
-  // Adopt a fresh successful plan if available.
+  // Adopt a fresh successful plan if available (copy the response out under the lock, then
+  // compose outside of it).
+  std::optional<FreespaceAreaPlanResponse> adopted;
   {
-    std::lock_guard<std::mutex> guard(mutex_);
+    std::lock_guard<std::mutex> guard(worker_ctx_->mutex);
+    const auto & response = worker_ctx_->response;
     if (
-      response_.success && response_.stamp > latched_response_stamp_ &&
-      !response_.waypoints.waypoints.empty()) {
-      latched_response_stamp_ = response_.stamp;
-      latched_start_pose_ = start_pose;
-      latched_goal_pose_ = goal_pose;
-
-      // Build the composed path from the freespace waypoints.
-      lanelet::ConstLanelets lanes = current_ctx_.entry_lanelets;
-      lanes.insert(
-        lanes.end(), current_ctx_.exit_lanelets.begin(), current_ctx_.exit_lanelets.end());
-      PathWithLaneId area_path = utils::convertWayPointsToPathWithLaneId(
-        response_.waypoints, parameters_->planner_velocity, lanes);
-      freespace_area_utils::encodeTravelDirectionOrientation(area_path);
-
-      composed_path_ = area_path;
-      state_ = FreespaceAreaState::LATCHED;
+      response.success && response.stamp > latched_response_stamp_ &&
+      !response.waypoints.waypoints.empty()) {
+      adopted = response;
     }
+  }
+  if (adopted) {
+    latched_response_stamp_ = adopted->stamp;
+    latched_start_pose_ = start_pose;
+    latched_goal_pose_ = goal_pose;
+
+    // Build the composed path from the freespace waypoints.
+    lanelet::ConstLanelets lanes = current_ctx_.entry_lanelets;
+    lanes.insert(lanes.end(), current_ctx_.exit_lanelets.begin(), current_ctx_.exit_lanelets.end());
+    PathWithLaneId area_path = utils::convertWayPointsToPathWithLaneId(
+      adopted->waypoints, parameters_->planner_velocity, lanes);
+    freespace_area_utils::encodeTravelDirectionOrientation(area_path);
+
+    composed_path_ = area_path;
+    state_ = FreespaceAreaState::LATCHED;
   }
 
   if (composed_path_.points.empty()) {
@@ -405,8 +426,8 @@ void FreespaceAreaModule::requestPlan(
   if (!composed_path_.points.empty()) {
     req.latched_trajectory = freespace_area_utils::toPoseArray(composed_path_);
   }
-  std::lock_guard<std::mutex> guard(mutex_);
-  request_ = req;
+  std::lock_guard<std::mutex> guard(worker_ctx_->mutex);
+  worker_ctx_->request = req;
 }
 
 BehaviorModuleOutput FreespaceAreaModule::composeOutput()

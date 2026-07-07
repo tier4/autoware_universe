@@ -44,19 +44,18 @@ using autoware_internal_planning_msgs::msg::PathWithLaneId;
 
 // Asynchronous A*/RRT* worker. Mirrors goal_planner's FreespaceParkingPlanner pattern: a dedicated
 // timer on its own callback group, request/response guarded by one mutex, and an is-running atomic.
+// Unlike goal_planner it shares state with the module through a shared_ptr-owned context instead of
+// raw references, so a callback that is still in flight when the module instance is destroyed can
+// never dereference freed memory.
 class FreespaceAreaPlanner
 {
 public:
   FreespaceAreaPlanner(
-    std::mutex & mutex, const std::optional<FreespaceAreaPlanRequest> & request,
-    FreespaceAreaPlanResponse & response, std::atomic<bool> & is_running,
-    const rclcpp::Logger & logger, const rclcpp::Clock::SharedPtr clock,
+    std::shared_ptr<FreespaceAreaWorkerContext> context, const rclcpp::Logger & logger,
+    const rclcpp::Clock::SharedPtr clock,
     std::shared_ptr<autoware::freespace_planning_algorithms::AbstractPlanningAlgorithm> algo,
     const bool replan_when_obstacle_found)
-  : mutex_(mutex),
-    request_(request),
-    response_(response),
-    is_running_(is_running),
+  : ctx_(std::move(context)),
     logger_(logger),
     clock_(clock),
     algo_(std::move(algo)),
@@ -66,10 +65,7 @@ public:
   void onTimer();
 
 private:
-  std::mutex & mutex_;
-  const std::optional<FreespaceAreaPlanRequest> & request_;
-  FreespaceAreaPlanResponse & response_;
-  std::atomic<bool> & is_running_;
+  std::shared_ptr<FreespaceAreaWorkerContext> ctx_;
   rclcpp::Logger logger_;
   rclcpp::Clock::SharedPtr clock_;
   std::shared_ptr<autoware::freespace_planning_algorithms::AbstractPlanningAlgorithm> algo_;
@@ -144,13 +140,10 @@ private:
   std::shared_ptr<FreespaceAreaParameters> parameters_;
   autoware::vehicle_info_utils::VehicleInfo vehicle_info_;
 
-  // Async worker plumbing.
+  // Async worker plumbing. worker_ctx_ is shared with the worker (see FreespaceAreaWorkerContext).
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::CallbackGroup::SharedPtr timer_cb_group_;
-  std::mutex mutex_;
-  std::optional<FreespaceAreaPlanRequest> request_;
-  FreespaceAreaPlanResponse response_;
-  std::atomic<bool> is_planning_cb_running_;
+  std::shared_ptr<FreespaceAreaWorkerContext> worker_ctx_;
   std::shared_ptr<autoware::freespace_planning_algorithms::AbstractPlanningAlgorithm> algo_;
 
   // State.
