@@ -264,7 +264,16 @@ void DecorativeTrackerMergerNode::mainObjectsCallback(
   auto output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(merged_object_pub_);
   *output = getTrackedObjects(transformed_main_objects->header);
   const auto output_stamp = output->header.stamp;
+  const size_t output_num_objects = output->objects.size();
   merged_object_pub_->publish(std::move(output));
+  {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] decorative_tracker_merger published TrackedObjects on output/object "
+      "(/perception/object_recognition/tracking/objects): %zu objects, stamp=%d.%09u",
+      output_num_objects, output_stamp.sec, output_stamp.nanosec);
+  }
 
   // update diagnostics
   updateDiagnostics();

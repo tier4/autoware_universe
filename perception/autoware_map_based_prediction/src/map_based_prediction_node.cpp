@@ -763,6 +763,14 @@ void MapBasedPredictionNode::publish(
   if (time_keeper_) st_ptr = std::make_unique<ScopedTimeTrack>(__func__, *time_keeper_);
 
   pub_objects_->publish(output);
+  {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] map_based_prediction published PredictedObjects on ~/output/objects "
+      "(/perception/object_recognition/objects): %zu objects, stamp=%d.%09u",
+      output.objects.size(), output.header.stamp.sec, output.header.stamp.nanosec);
+  }
   if (published_time_publisher_)
     published_time_publisher_->publish_if_subscribed(pub_objects_, output.header.stamp);
   if (pub_debug_markers_) pub_debug_markers_->publish(debug_markers);
