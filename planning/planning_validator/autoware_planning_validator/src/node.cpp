@@ -77,6 +77,11 @@ void PlanningValidatorNode::setupParameters()
   p.soft_stop_deceleration = declare_parameter<double>("soft_stop_deceleration");
   p.soft_stop_jerk_lim = declare_parameter<double>("soft_stop_jerk_lim");
   p.th_traffic_light_timeout = declare_parameter<double>("th_traffic_light_timeout");
+
+  // Accept routes that traverse lanelet2 freespace Areas (mirrors behavior_path_planner's
+  // allow_area_route). Without this the route handler rejects area-containing routes and the
+  // validator never becomes ready, gating /planning/trajectory forever.
+  context_->data->route_handler->setAllowArea(declare_parameter<bool>("allow_area_route", false));
 }
 
 bool PlanningValidatorNode::isDataReady()
