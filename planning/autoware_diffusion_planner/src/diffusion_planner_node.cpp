@@ -640,8 +640,8 @@ void DiffusionPlanner::on_timer()
       autoware_utils_debug::ScopedTimeTrack optimize_trajectory_st(
         "mppi_optimizer/optimize_trajectory", *time_keeper_);
       stop_watch_ptr_->tic("mppi_optimizer/optimize_trajectory");
-      const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped>
-        ego_acceleration_for_mppi{frame_context->ego_acceleration};
+      const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> ego_acceleration_for_mppi{
+        frame_context->ego_acceleration};
       const auto steering_status = sub_steering_status_.take_data();
       const std::optional<SteeringReport> ego_steering =
         steering_status ? std::make_optional(*steering_status) : std::nullopt;

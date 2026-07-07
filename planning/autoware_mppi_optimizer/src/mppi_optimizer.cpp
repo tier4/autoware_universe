@@ -18,13 +18,13 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
 
+#include <rclcpp_components/register_node_macro.hpp>
+
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 
 #include <memory>
 #include <optional>
 #include <stdexcept>
-
-#include <rclcpp_components/register_node_macro.hpp>
 
 namespace autoware::mppi_optimizer
 {
