@@ -142,6 +142,19 @@ You can change these parameters in rosparam in the table below.
 | `max_lateral_accel`                      | `2.0` [m/s^2]  |
 | `min_acceleration_before_curve`          | `-2.0` [m/s^2] |
 
+#### Deceleration-aware stop-line cut (for vehicle obstacles)
+
+When traffic-signal-aware stop prediction is enabled (`priority_prediction.enable`), a vehicle predicted path that approaches a stop line whose signal requires a stop is clipped at that stop line only if the vehicle can physically stop before it. Feasibility uses a constant-deceleration model, `stopping_distance = speed^2 / (2 * max_deceleration)`, and the path is clipped when `stopping_distance <= distance_to_stop_line`. If the vehicle cannot stop in time, the constant-velocity path is kept unchanged (it is predicted to run the light).
+
+The maximum deceleration is configured per object class under `path_cut.max_deceleration`. Only `vehicle` (car/bus/truck/trailer) and `motorcycle` are consumed today; `pedestrian` and `bicycle` are reserved for a future road-border cut. The `FenceModule` and `VegetationModule` cuts remain unconditional (they are not gated by deceleration).
+
+| param name                             | default value |
+| -------------------------------------- | ------------- |
+| `path_cut.max_deceleration.vehicle`    | `2.5` [m/s^2] |
+| `path_cut.max_deceleration.motorcycle` | `3.0` [m/s^2] |
+| `path_cut.max_deceleration.pedestrian` | `1.5` [m/s^2] |
+| `path_cut.max_deceleration.bicycle`    | `2.0` [m/s^2] |
+
 ## Using Vehicle Acceleration for Path Prediction (for Vehicle Obstacles)
 
 By default, the `map_based_prediction` module uses the current obstacle's velocity to compute its predicted path length. However, it is possible to use the obstacle's current acceleration to calculate its predicted path's length.
