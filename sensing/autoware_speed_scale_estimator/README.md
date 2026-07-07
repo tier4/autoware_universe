@@ -123,7 +123,7 @@ $$
 
 ## Parameters
 
-{{ json_to_markdown("localization/autoware_speed_scale_estimator/schema/speed_scale_estimator.schema.json") }}
+{{ json_to_markdown("sensing/autoware_speed_scale_estimator/schema/speed_scale_estimator.schema.json") }}
 
 ### Tuning
 
