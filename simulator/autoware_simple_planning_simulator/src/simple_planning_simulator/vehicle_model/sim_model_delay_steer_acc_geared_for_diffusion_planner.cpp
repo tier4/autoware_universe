@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <deque>
 
 namespace autoware::simulator::simple_planning_simulator
 {
