@@ -320,12 +320,18 @@ bool FreespaceAreaModule::isLatchInvalid(const geometry_msgs::msg::Pose & start_
 
   const auto ego_pose = planner_data_->self_odometry->pose.pose;
 
-  // lateral deviation from the latched path
-  const double lateral =
-    std::abs(autoware::motion_utils::calcLateralOffset(composed_path_.points, ego_pose.position));
-  if (lateral > parameters_->replan_lateral_deviation) {
-    RCLCPP_INFO(getLogger(), "freespace_area: replan (lateral deviation %.2f m)", lateral);
-    return true;
+  // lateral deviation from the latched path — only meaningful once ego has actually reached the
+  // area segment. While ego is still approaching on the entry lane the lateral offset to the
+  // area path is naturally large and must not invalidate the latch every cycle.
+  const double lon_to_path_start = autoware::motion_utils::calcLongitudinalOffsetToSegment(
+    composed_path_.points, 0, ego_pose.position);
+  if (lon_to_path_start >= 0.0) {
+    const double lateral =
+      std::abs(autoware::motion_utils::calcLateralOffset(composed_path_.points, ego_pose.position));
+    if (lateral > parameters_->replan_lateral_deviation) {
+      RCLCPP_INFO(getLogger(), "freespace_area: replan (lateral deviation %.2f m)", lateral);
+      return true;
+    }
   }
 
   // obstacle on the latched area segment (reported by the worker)
