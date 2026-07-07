@@ -66,7 +66,7 @@ struct FilterManagerParams
 {
   static constexpr double stale_threshold_seconds = 1.0;
   static constexpr double static_hysteresis_seconds = 0.5;
-  static constexpr double moving_hysteresis_seconds = 10.0;
+  static constexpr double moving_hysteresis_seconds = 5.0;
   static constexpr uint8_t count_threshold = 3;
 };
 

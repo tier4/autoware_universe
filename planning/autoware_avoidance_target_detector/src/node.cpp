@@ -139,7 +139,9 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
     }
   }
 
-  object_selector_.update_objects(get_clock()->now(), *msg, trajectory_msg);
+  object_selector_.update_objects(
+    get_clock()->now(), *msg, trajectory_msg, *extended_route_handler_, ego_trajectory_,
+    ego_trajectory_built_);
 
   const auto avoidance_targets =
     object_selector_.get_avoidance_targets(*msg, trajectory_msg, route_bounds);

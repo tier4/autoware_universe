@@ -47,7 +47,9 @@ extended_route_handler_->create_map();
 const auto & bounds = extended_route_handler_->get_extended_route_bounds();  // or get_original_route_bounds()
 pub_drivable_area_path_->publish(to_path_msg(bounds, trajectory));
 
-object_selector_.update_objects(get_clock()->now(), objects, trajectory);
+object_selector_.update_objects(
+  get_clock()->now(), objects, trajectory, *extended_route_handler_, ego_trajectory_,
+  ego_trajectory_built);
 
 const auto targets = object_selector_.get_avoidance_targets(objects, trajectory, bounds);
 
@@ -173,16 +175,22 @@ Per-object Bayesian filters are updated via `update_objects()`. Getter methods (
 void update_objects(
   const rclcpp::Time & current_time,
   const PredictedObjects & objects,
-  const Trajectory & trajectory);
+  const Trajectory & trajectory,
+  const ExtendedRouteHandler & extended_route_handler,
+  const autoware::experimental::trajectory::Trajectory<TrajectoryPoint> & ego_trajectory,
+  bool ego_trajectory_built);
 ```
 
-| Argument       | Description                                                                                                                                                                                                           |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `current_time` | ROS time for this update cycle. Used for filter staleness, hysteresis timing, and Bayesian updates. Typically `node->get_clock()->now()`.                                                                             |
-| `objects`      | Full predicted-objects message for the current frame. Every object in `objects.objects` is observed; objects not seen for longer than `FilterManagerParams::stale_threshold_seconds` are removed from internal state. |
-| `trajectory`   | Reference trajectory (same source as subscribed trajectory). Must have **at least two points** for deviation and distance checks.                                                                                     |
+| Argument                 | Description                                                                                                                                                                                                           |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `current_time`           | ROS time for this update cycle. Used for filter staleness, hysteresis timing, and Bayesian updates. Typically `node->get_clock()->now()`.                                                                             |
+| `objects`                | Full predicted-objects message for the current frame. Every object in `objects.objects` is observed; objects not seen for longer than `FilterManagerParams::stale_threshold_seconds` are removed from internal state. |
+| `trajectory`             | Reference trajectory (same source as subscribed trajectory). Must have **at least two points** for deviation and distance checks.                                                                                     |
+| `extended_route_handler` | Handler with built `route_map_` and `route_map_routing_graph_`. Used for driving-along spatial checks during observation.                                                                                             |
+| `ego_trajectory`         | Built ego history trajectory. Used with `trajectory` to build the near-segment polygon and resolve ego lanelets.                                                                                                      |
+| `ego_trajectory_built`   | Whether `ego_trajectory` is valid. When false, driving-along spatial checks are skipped for that cycle.                                                                                                               |
 
-Call once per objects callback before any getter in the same cycle.
+Call once per objects callback before any getter in the same cycle. Runs per-object Bayesian observation, driving-along spatial evaluation (for moving objects of interest), and stale pruning. Hysteresis tracking runs inside each getter.
 
 #### `get_avoidance_targets()`
 
@@ -205,7 +213,7 @@ PredictedObjects get_avoidance_targets(
 
 **Brief behavior:**
 
-- Keeps objects whose per-object filter reports `is_stationary_avoidance_target()` (interest + stationary + deviated from trajectory, with hysteresis).
+- Runs avoidance-target hysteresis tracking, then keeps objects whose per-object filter reports `is_stationary_avoidance_target()` (interest + stationary + deviated from trajectory, with hysteresis).
 - Removes objects outside trajectory longitudinal range or outside the route corridor.
 - Filter tuning constants: `parameter.hpp` (`OnTrajectoryDValidationParams`, `FilterManagerParams`, `MovingObjectFilterParams`, etc.).
 
@@ -221,26 +229,24 @@ PredictedObjects get_driving_along_vehicles(
 
 Selects **moving vehicles along the extended route corridor** near ego (e.g. traffic in sibling / adjacent lanes), complementary to stationary `get_avoidance_targets()`.
 
-**Preconditions:** `update_objects()` called for the same `objects` in the same cycle. `extended_route_handler.create_map()` completed. `ego_trajectory` must be built and non-empty; `trajectory` must have at least one point.
+**Preconditions:** `update_objects()` called for the same `objects` in the same cycle with the same `extended_route_handler`, `ego_trajectory`, and `ego_trajectory_built` flag.
 
-| Argument                 | Description                                                                                                |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `objects`                | Same predicted-objects message passed to `update_objects()` for this cycle.                                |
-| `extended_route_handler` | Handler with built `route_map_` and `route_map_routing_graph_`.                                            |
-| `ego_trajectory`         | Built ego history trajectory (reference node: `ego_trajectory_`). Near-segment start: `restore().front()`. |
-| `trajectory`             | Subscribed planning trajectory message. Near-segment end: `points.back()`.                                 |
+| Argument                 | Description                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------- |
+| `objects`                | Same predicted-objects message passed to `update_objects()` for this cycle.                       |
+| `extended_route_handler` | Retained for API compatibility with the reference node. Spatial checks run in `update_objects()`. |
+| `ego_trajectory`         | Retained for API compatibility with the reference node.                                           |
+| `trajectory`             | Retained for API compatibility with the reference node.                                           |
 
-| Returns            | Description                                                                                            |
-| ------------------ | ------------------------------------------------------------------------------------------------------ |
-| `PredictedObjects` | Subset of input objects passing all criteria below. Empty if the near-segment polygon cannot be built. |
+| Returns            | Description                                                           |
+| ------------------ | --------------------------------------------------------------------- |
+| `PredictedObjects` | Subset of input objects whose tracked state is `is_moving_vehicle()`. |
 
-**Selection criteria** (object is kept only if all pass):
+**Selection criteria:**
 
-1. **Filter state** — `is_object_of_interest()` and **not** `is_stationary()`.
-2. **Near-segment overlap** — footprint intersects the polygon from `get_near_segment_polygon(ego_trajectory.restore().front(), trajectory.points.back())`.
-3. **Not on ego lane sequence** — ego and object lanelets are resolved on `route_map_` via `nearestUntil` with `lanelet::geometry::inside()`. Removed if `route_map_routing_graph_` has a shortest path between ego and object in either direction with **lane changes disabled**.
+1. **Tracked state** — `is_moving_vehicle()` after driving-along hysteresis (updated when this getter is called).
 
-Parallel sibling lanes (not routably connected without lane change) are intended to be kept. Same-lane or longitudinally connected traffic along the corridor is removed.
+Spatial checks (near-segment overlap, lanelet on `route_map_`, not routably connected to ego without lane change) are evaluated during `update_objects()` for moving objects of interest and folded into the driving-along candidate signal before tracking.
 
 **Reference node:**
 

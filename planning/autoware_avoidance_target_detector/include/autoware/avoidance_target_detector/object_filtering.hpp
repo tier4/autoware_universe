@@ -32,6 +32,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace autoware::avoidance_target_detector
 {
@@ -126,6 +127,8 @@ private:
 };
 
 /** Per-object avoidance target detector using Bayesian filters and hysteresis. */
+class ObjectSelector;
+
 class AvoidanceTargetDetector
 {
 public:
@@ -134,7 +137,10 @@ public:
 
   void observe_and_update_all(
     const rclcpp::Time & current_time, const PredictedObject & object,
-    const Trajectory & trajectory);
+    const Trajectory & trajectory, const lanelet::LaneletMapPtr & route_map,
+    const lanelet::routing::RoutingGraphConstPtr & routing_graph,
+    const lanelet::BasicPolygon2d & near_segment_polygon,
+    const std::vector<lanelet::ConstLanelet> & ego_lanelets);
   [[nodiscard]] double get_is_target_probability() const { return target_filter_->get_posterior(); }
   [[nodiscard]] double get_is_stationary_probability() const
   {
@@ -162,12 +168,9 @@ public:
            rclcpp::Duration::from_seconds(FilterManagerParams::stale_threshold_seconds);
   }
 
-  [[nodiscard]] const std::string & get_debug_log() const { return debug_log_; }
-  void clear_debug_log() { debug_log_.clear(); }
-
 private:
-  std::string debug_log_;
-  uint8_t state_change_count_{0};
+  uint8_t avoidance_state_change_count_{0};
+  uint8_t moving_vehicle_state_change_count_{0};
 
   std::unique_ptr<TargetFilter> target_filter_;
   std::unique_ptr<StationaryFilter> stationary_filter_;
@@ -177,7 +180,16 @@ private:
   std::pair<rclcpp::Time, bool> is_moving_vehicle_stamped_;
   rclcpp::Time stale_check_time_;
 
-  bool is_initialized_{false};
+  bool is_driving_along_candidate_now_{false};
+  bool is_on_polygon_now_{false};
+
+  bool is_avoidance_tracking_initialized_{false};
+  bool is_moving_vehicle_tracking_initialized_{false};
+
+  void track_avoidance_targets();
+  void track_driving_along_vehicles();
+
+  friend class ObjectSelector;
 };
 
 using AvoidanceTargetDetectorMap = std::map<std::string, AvoidanceTargetDetector>;
@@ -189,12 +201,14 @@ public:
   /** @brief Update per-object Bayesian filters and prune stale entries. */
   void update_objects(
     const rclcpp::Time & current_time, const PredictedObjects & objects,
-    const Trajectory & trajectory);
+    const Trajectory & trajectory, const ExtendedRouteHandler & extended_route_handler,
+    const autoware::experimental::trajectory::Trajectory<TrajectoryPoint> & ego_trajectory,
+    bool ego_trajectory_built);
 
   /**
    * @brief Select avoidance targets from predicted objects using updated filter state.
-   * @details Call update_objects() first. Removes non-targets and objects outside longitudinal
-   *          and lateral distance bounds.
+   * @details Call update_objects() first in the same cycle. Runs avoidance-target tracking,
+   *          then removes non-targets and objects outside longitudinal and lateral distance bounds.
    */
   [[nodiscard]] PredictedObjects get_avoidance_targets(
     const PredictedObjects & objects, const Trajectory & trajectory,
@@ -206,6 +220,9 @@ public:
     const Trajectory & trajectory);
 
 private:
+  void track_avoidance_targets();
+  void track_driving_along_vehicles();
+
   AvoidanceTargetDetectorMap object_filters_;
 };
 

@@ -766,12 +766,17 @@ AvoidanceTargetDetector::AvoidanceTargetDetector(
   stationary_filter_{std::make_unique<StationaryFilter>(object, last_update_time)},
   deviation_filter_{std::make_unique<DeviationFilter>(object, last_update_time)},
   is_stationary_avoidance_target_stamped_{last_update_time, false},
+  is_moving_vehicle_stamped_{last_update_time, false},
   stale_check_time_{last_update_time}
 {
 }
 
 void AvoidanceTargetDetector::observe_and_update_all(
-  const rclcpp::Time & current_time, const PredictedObject & object, const Trajectory & trajectory)
+  const rclcpp::Time & current_time, const PredictedObject & object, const Trajectory & trajectory,
+  const lanelet::LaneletMapPtr & route_map,
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph,
+  const lanelet::BasicPolygon2d & near_segment_polygon,
+  const std::vector<lanelet::ConstLanelet> & ego_lanelets)
 {
   stale_check_time_ = current_time;
 
@@ -779,20 +784,59 @@ void AvoidanceTargetDetector::observe_and_update_all(
   stationary_filter_->observe_and_update(current_time, object, trajectory);
   deviation_filter_->observe_and_update(current_time, object, trajectory);
 
-  const bool is_target_now = is_object_of_interest() && is_stationary() && is_deviated();
-  const bool is_moving_vehicle_now = is_object_of_interest() && !is_stationary();
-
-  if (!is_initialized_) {
-    is_stationary_avoidance_target_stamped_.first = current_time;
-    is_stationary_avoidance_target_stamped_.second = is_target_now;
-    is_moving_vehicle_stamped_.first = current_time;
-    is_moving_vehicle_stamped_.second = is_moving_vehicle_now;
-    is_initialized_ = true;
+  is_driving_along_candidate_now_ = false;
+  is_on_polygon_now_ = false;
+  if (!is_object_of_interest() || is_stationary()) {
     return;
   }
 
-  state_change_count_ =
-    (is_target_now != is_stationary_avoidance_target_stamped_.second) ? state_change_count_ + 1 : 0;
+  is_on_polygon_now_ =
+    near_segment_polygon.size() >= 3 && overlaps_near_segment_polygon(object, near_segment_polygon);
+  if (!is_on_polygon_now_) {
+    return;
+  }
+
+  if (!route_map) {
+    return;
+  }
+
+  const auto object_lanelets =
+    get_nearest_lanelets(*route_map, object.kinematics.initial_pose_with_covariance.pose.position);
+  if (object_lanelets.empty()) {
+    return;
+  }
+
+  if (!routing_graph || ego_lanelets.empty()) {
+    return;
+  }
+
+  const bool is_routably_connected = std::any_of(
+    ego_lanelets.begin(), ego_lanelets.end(), [&](const lanelet::ConstLanelet & ego_lanelet) {
+      return std::any_of(
+        object_lanelets.begin(), object_lanelets.end(),
+        [&](const lanelet::ConstLanelet & object_lanelet) {
+          return is_routably_connected_to_ego_without_lane_change(
+            *routing_graph, ego_lanelet, object_lanelet);
+        });
+    });
+  is_driving_along_candidate_now_ = !is_routably_connected;
+}
+
+void AvoidanceTargetDetector::track_avoidance_targets()
+{
+  const auto & current_time = stale_check_time_;
+  const bool is_target_now = is_object_of_interest() && is_stationary() && is_deviated();
+
+  if (!is_avoidance_tracking_initialized_) {
+    is_stationary_avoidance_target_stamped_.first = current_time;
+    is_stationary_avoidance_target_stamped_.second = is_target_now;
+    is_avoidance_tracking_initialized_ = true;
+    return;
+  }
+
+  avoidance_state_change_count_ = (is_target_now != is_stationary_avoidance_target_stamped_.second)
+                                    ? avoidance_state_change_count_ + 1
+                                    : 0;
 
   if (
     rclcpp::Time(current_time) - rclcpp::Time(is_stationary_avoidance_target_stamped_.first) <
@@ -800,7 +844,38 @@ void AvoidanceTargetDetector::observe_and_update_all(
     return;
   }
 
-  // If the object is a moving vehicle, keep its status for a while.
+  if (avoidance_state_change_count_ < FilterManagerParams::count_threshold) {
+    return;
+  }
+
+  is_stationary_avoidance_target_stamped_.first = current_time;
+  is_stationary_avoidance_target_stamped_.second = is_target_now;
+}
+
+void AvoidanceTargetDetector::track_driving_along_vehicles()
+{
+  const auto & current_time = stale_check_time_;
+  const bool is_moving_vehicle_now = is_driving_along_candidate_now_;
+
+  if (!is_moving_vehicle_tracking_initialized_) {
+    is_moving_vehicle_stamped_.first = current_time;
+    is_moving_vehicle_stamped_.second = is_moving_vehicle_now;
+    is_moving_vehicle_tracking_initialized_ = true;
+    return;
+  }
+
+  moving_vehicle_state_change_count_ = (is_moving_vehicle_now != is_moving_vehicle_stamped_.second)
+                                         ? moving_vehicle_state_change_count_ + 1
+                                         : 0;
+
+  // Keep stamped moving-vehicle state when a previously tracked vehicle leaves the near-segment
+  // polygon.
+  if (is_moving_vehicle_stamped_.second && !is_on_polygon_now_) {
+    is_moving_vehicle_stamped_.first = current_time;
+    is_moving_vehicle_stamped_.second = true;
+    return;
+  }
+
   if (
     is_moving_vehicle_stamped_.second &&
     rclcpp::Time(current_time) - rclcpp::Time(is_moving_vehicle_stamped_.first) <
@@ -808,36 +883,61 @@ void AvoidanceTargetDetector::observe_and_update_all(
     return;
   }
 
-  if (state_change_count_ < FilterManagerParams::count_threshold) {
+  if (moving_vehicle_state_change_count_ < FilterManagerParams::count_threshold) {
     return;
   }
 
-  if (is_target_now && !is_stationary_avoidance_target_stamped_.second) {
-    debug_log_ = std::string("Turned to target on due to \n") +
-                 "is_object_of_interest: " + std::to_string(get_is_target_probability()) + "\n" +
-                 "is_stationary: " + std::to_string(get_is_stationary_probability()) + "\n" +
-                 "is_deviated: " + std::to_string(get_is_deviated_probability());
-  } else if (!is_target_now && is_stationary_avoidance_target_stamped_.second) {
-    debug_log_ = std::string("Turned to non-target on due to \n") +
-                 "is_object_of_interest: " + std::to_string(get_is_target_probability()) + "\n" +
-                 "is_stationary: " + std::to_string(get_is_stationary_probability()) + "\n" +
-                 "is_deviated: " + std::to_string(get_is_deviated_probability());
-  }
-
-  is_stationary_avoidance_target_stamped_.first = current_time;
-  is_stationary_avoidance_target_stamped_.second = is_target_now;
   is_moving_vehicle_stamped_.first = current_time;
   is_moving_vehicle_stamped_.second = is_moving_vehicle_now;
 }
 
+void ObjectSelector::track_avoidance_targets()
+{
+  for (auto & [object_id, detector] : object_filters_) {
+    (void)object_id;
+    detector.track_avoidance_targets();
+  }
+}
+
+void ObjectSelector::track_driving_along_vehicles()
+{
+  for (auto & [object_id, detector] : object_filters_) {
+    (void)object_id;
+    detector.track_driving_along_vehicles();
+  }
+}
+
 void ObjectSelector::update_objects(
   const rclcpp::Time & current_time, const PredictedObjects & objects,
-  const Trajectory & trajectory)
+  const Trajectory & trajectory, const ExtendedRouteHandler & extended_route_handler,
+  const aw_trajectory::Trajectory<TrajectoryPoint> & ego_trajectory,
+  const bool ego_trajectory_built)
 {
+  const auto route_map = extended_route_handler.getRouteMap();
+  const auto routing_graph = extended_route_handler.getRouteMapRoutingGraph();
+
+  lanelet::BasicPolygon2d near_segment_polygon;
+  std::vector<lanelet::ConstLanelet> ego_lanelets;
+  if (ego_trajectory_built && !trajectory.points.empty()) {
+    const auto ego_points = ego_trajectory.restore();
+    if (!ego_points.empty()) {
+      near_segment_polygon = extended_route_handler.get_near_segment_polygon(
+        ego_points.front().pose.position, trajectory.points.back().pose.position);
+      if (route_map) {
+        ego_lanelets = get_nearest_lanelets(*route_map, ego_points.back().pose.position);
+      }
+    }
+  }
+
   for (const auto & object : objects.objects) {
+    if (!is_object_of_interest(object)) {
+      continue;
+    }
     const auto object_id_str = autoware_utils_uuid::to_hex_string(object.object_id);
     const auto it = object_filters_.try_emplace(object_id_str, object, current_time).first;
-    it->second.observe_and_update_all(current_time, object, trajectory);
+    it->second.observe_and_update_all(
+      current_time, object, trajectory, route_map, routing_graph, near_segment_polygon,
+      ego_lanelets);
   }
 
   for (auto it = object_filters_.begin(); it != object_filters_.end();) {
@@ -852,6 +952,8 @@ void ObjectSelector::update_objects(
 PredictedObjects ObjectSelector::get_avoidance_targets(
   const PredictedObjects & objects, const Trajectory & trajectory, const RouteBounds & route_bounds)
 {
+  track_avoidance_targets();
+
   PredictedObjects avoidance_targets = objects;
   avoidance_targets.objects.erase(
     std::remove_if(
@@ -885,25 +987,11 @@ PredictedObjects ObjectSelector::get_driving_along_vehicles(
   const PredictedObjects & objects, const ExtendedRouteHandler & extended_route_handler,
   const aw_trajectory::Trajectory<TrajectoryPoint> & ego_trajectory, const Trajectory & trajectory)
 {
-  const auto ego_points = ego_trajectory.restore();
-  if (ego_points.empty() || trajectory.points.empty()) {
-    return PredictedObjects{};
-  }
+  (void)extended_route_handler;
+  (void)ego_trajectory;
+  (void)trajectory;
 
-  const auto & prev_end_point = ego_points.front().pose.position;
-  const auto & ego_point = ego_points.back().pose.position;
-  const auto & following_end_point = trajectory.points.back().pose.position;
-
-  const auto near_segment_polygon =
-    extended_route_handler.get_near_segment_polygon(prev_end_point, following_end_point);
-  if (near_segment_polygon.size() < 3) {
-    return PredictedObjects{};
-  }
-
-  const auto route_map = extended_route_handler.getRouteMap();
-  const auto routing_graph = extended_route_handler.getRouteMapRoutingGraph();
-  const auto ego_lanelets =
-    route_map ? get_nearest_lanelets(*route_map, ego_point) : std::vector<lanelet::ConstLanelet>{};
+  track_driving_along_vehicles();
 
   PredictedObjects driving_along_vehicles = objects;
   driving_along_vehicles.objects.erase(
@@ -911,36 +999,8 @@ PredictedObjects ObjectSelector::get_driving_along_vehicles(
       driving_along_vehicles.objects.begin(), driving_along_vehicles.objects.end(),
       [&](const PredictedObject & object) {
         const auto it = object_filters_.find(autoware_utils_uuid::to_hex_string(object.object_id));
-        if (it == object_filters_.end()) {
-          return true;
-        }
-        if (!it->second.is_object_of_interest() || it->second.is_stationary()) {
-          return true;
-        }
-        if (!overlaps_near_segment_polygon(object, near_segment_polygon)) {
-          return true;
-        }
-
-        if (!route_map || !routing_graph || ego_lanelets.empty()) {
-          return false;
-        }
-
-        const auto object_lanelets = get_nearest_lanelets(
-          *route_map, object.kinematics.initial_pose_with_covariance.pose.position);
-        if (object_lanelets.empty()) {
-          return true;
-        }
-
-        const bool is_routably_connected = std::any_of(
-          ego_lanelets.begin(), ego_lanelets.end(), [&](const lanelet::ConstLanelet & ego_lanelet) {
-            return std::any_of(
-              object_lanelets.begin(), object_lanelets.end(),
-              [&](const lanelet::ConstLanelet & object_lanelet) {
-                return is_routably_connected_to_ego_without_lane_change(
-                  *routing_graph, ego_lanelet, object_lanelet);
-              });
-          });
-        return is_routably_connected;
+        return it == object_filters_.end() || !it->second.is_moving_vehicle() ||
+               it->second.is_stationary_avoidance_target();
       }),
     driving_along_vehicles.objects.end());
 
