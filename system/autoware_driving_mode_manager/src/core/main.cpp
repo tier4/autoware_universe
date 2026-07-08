@@ -83,6 +83,7 @@ void ManagerMain::update()
   publish_operation_mode();
   publish_mrm_state();
   publish_driving_mode_request();
+  publish_diagnostics();
 
   // Publish debug topics.
   if (interface_->get_enable_debug_topics()) {
@@ -130,6 +131,15 @@ void ManagerMain::publish_driving_mode_request() const
 {
   const auto & mode = request_.autoware_mode;
   interface_->publish_driving_mode_request({mode, config_->priority(mode)});
+}
+
+void ManagerMain::publish_diagnostics() const
+{
+  if (is_initial_request_) {
+    interface_->publish_diagnostics(false, "initial request is in progress");
+  } else {
+    interface_->publish_diagnostics(true, "");
+  }
 }
 
 void ManagerMain::publish_debug_flags() const

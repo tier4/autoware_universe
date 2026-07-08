@@ -79,6 +79,7 @@ RosInterface::RosInterface(rclcpp::Node * node) : node_(node)
   srv_mrm_request_ = node->create_service<ChangeMrmRequestSrv>(
     "~/system/change_mrm_request", std::bind(&RosInterface::on_change_mrm_request, this, _1, _2));
 
+  pub_diagnostics_ = node->create_publisher<DiagnosticArrayMsg>("/diagnostics", rclcpp::QoS(1));
   pub_driving_mode_request_ =
     node->create_publisher<DrivingModeRequestMsg>("~/system/driving_mode/request", rclcpp::QoS(1));
   pub_driving_mode_info_ = node->create_publisher<DrivingModeInfoMsg>(
@@ -199,6 +200,18 @@ void RosInterface::publish_driving_mode_info(const ModeInfo & info)
     msg.items.push_back(item);
   }
   pub_driving_mode_info_->publish(msg);
+}
+
+void RosInterface::publish_diagnostics(bool ok, const std::string & message)
+{
+  using diagnostic_msgs::msg::DiagnosticStatus;
+  DiagnosticArrayMsg msg;
+  msg.header.stamp = now();
+  msg.status.resize(1);
+  msg.status[0].name = std::string(node_->get_name()) + ": ready";
+  msg.status[0].level = ok ? DiagnosticStatus::OK : DiagnosticStatus::ERROR;
+  msg.status[0].message = message;
+  pub_diagnostics_->publish(msg);
 }
 
 void RosInterface::publish_debug_flags(const DebugFlags & flags)

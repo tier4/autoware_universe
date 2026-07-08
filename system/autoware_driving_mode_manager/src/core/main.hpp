@@ -58,6 +58,7 @@ private:
   void publish_operation_mode() const;
   void publish_mrm_state() const;
   void publish_driving_mode_request() const;
+  void publish_diagnostics() const;
   void publish_debug_flags() const;
   void publish_debug_request() const;
 

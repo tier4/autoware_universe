@@ -76,6 +76,12 @@ void MockInterface::publish_driving_mode_info(const ModeInfo & info)
   (void)info;
 }
 
+void MockInterface::publish_diagnostics(bool ok, const std::string & message)
+{
+  (void)ok;
+  (void)message;
+}
+
 void MockInterface::publish_debug_flags(const DebugFlags & flags)
 {
   (void)flags;
