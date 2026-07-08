@@ -44,11 +44,13 @@ double max_deceleration_for_label(const MaxDecelerationParams & params, const ui
 
 double distance_to_stop_with_max_deceleration(const double speed, const double max_deceleration)
 {
-  if (speed <= 0.0){
-     return 0.0;  }
-  
-  if (max_deceleration <= 0.0){
-     return std::numeric_limits<double>::infinity(); }
+  if (speed <= 0.0) {
+    return 0.0;
+  }
+
+  if (max_deceleration <= 0.0) {
+    return std::numeric_limits<double>::infinity();
+  }
 
   return (speed * speed) / (2.0 * max_deceleration);
 }
