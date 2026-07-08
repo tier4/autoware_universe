@@ -98,7 +98,8 @@ void ObstacleStop::on_initialize(const TrajectoryModifierParams & params)
       {utils::obstacle_stop::ObjectType::TRAILER, p.object_decel.trailer},
       {utils::obstacle_stop::ObjectType::MOTORCYCLE, p.object_decel.motorcycle},
       {utils::obstacle_stop::ObjectType::BICYCLE, p.object_decel.bicycle},
-      {utils::obstacle_stop::ObjectType::PEDESTRIAN, p.object_decel.pedestrian}};
+      {utils::obstacle_stop::ObjectType::PEDESTRIAN, p.object_decel.pedestrian},
+      {utils::obstacle_stop::ObjectType::ANIMAL, p.object_decel.animal}};
   }
 }
 
@@ -146,7 +147,8 @@ void ObstacleStop::update_params(const TrajectoryModifierParams & params)
       {utils::obstacle_stop::ObjectType::TRAILER, p.object_decel.trailer},
       {utils::obstacle_stop::ObjectType::MOTORCYCLE, p.object_decel.motorcycle},
       {utils::obstacle_stop::ObjectType::BICYCLE, p.object_decel.bicycle},
-      {utils::obstacle_stop::ObjectType::PEDESTRIAN, p.object_decel.pedestrian}};
+      {utils::obstacle_stop::ObjectType::PEDESTRIAN, p.object_decel.pedestrian},
+      {utils::obstacle_stop::ObjectType::ANIMAL, p.object_decel.animal}};
   }
 }
 
@@ -227,17 +229,8 @@ bool ObstacleStop::set_stop_point(TrajectoryPoints & traj_points, const InputDat
     target_stop_point_arc_length < stopping_params_.arrived_distance_threshold ||
     !utils::insert_stop_point(
       traj_points, target_stop_point_arc_length, debug_data_.trajectory_shape.trajectory_length)) {
-    traj_points = std::invoke([&]() {
-      TrajectoryPoints stop_points;
-      auto p = traj_points.front();
-      p.longitudinal_velocity_mps = 0.0;
-      p.acceleration_mps2 = 0.0;
-      p.time_from_start = rclcpp::Duration::from_seconds(0.0);
-      stop_points.push_back(p);
-      p.time_from_start = rclcpp::Duration::from_seconds(trajectory_time_step_);
-      stop_points.push_back(p);
-      return stop_points;
-    });
+    utils::replace_trajectory_with_stop_point(
+      traj_points, input.current_odometry->pose.pose, trajectory_time_step_);
   }
 
   const auto & stop_pose = traj_points.back().pose;
@@ -321,7 +314,8 @@ std::optional<CollisionPoint> ObstacleStop::check_predicted_objects(
     debug_data_.filtered_objects, active_objects, get_clock()->now());
 
   object_filter_->filter_by_target_area(
-    active_objects, traj_points, debug_data_.trajectory_shape.polygon, debug_data_.target_polygons);
+    active_objects, traj_points, context_->vehicle_info, debug_data_.trajectory_shape.polygon,
+    debug_data_.target_polygons);
 
   autoware_perception_msgs::msg::PredictedObject colliding_object;
   auto collision_point = get_nearest_object_collision(
@@ -432,6 +426,9 @@ void ObstacleStop::publish_debug_string(bool is_safe) const
      << debug_data_.target_pcd_points.size() << "\n";
   if (nearest_collision_point_) {
     ss << "\t\t" << "DISTANCE TO COLLISION: " << nearest_collision_point_->arc_length << " m"
+       << "\n";
+    ss << "\t\t"
+       << "OBSTACLE TYPE: " << (nearest_collision_point_->is_dynamic ? "DYNAMIC" : "STATIC")
        << "\n";
   }
 
