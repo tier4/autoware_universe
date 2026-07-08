@@ -101,7 +101,7 @@ void ManagerMain::publish_operation_mode() const
     return mode ? status_->is_available(mode.value()) : false;
   };
 
-  const auto operation_mode = config_->to_autoware_mode(request_.operation_mode);
+  const auto operation_mode = config_->to_operation_mode(request_.operation_mode);
 
   OperationModeState state;
   state.mode = operation_mode ? operation_mode.value() : OperationMode::kUnknown;
