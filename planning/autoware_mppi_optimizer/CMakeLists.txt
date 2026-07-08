@@ -95,7 +95,6 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   ament_auto_add_library(${PROJECT_NAME} SHARED
     src/mppi_optimizer.cpp
     src/first_order_dubins_mppi_cost_params_ros.cpp
-    src/first_order_dubins_mppi_interface_params_ros.cpp
     src/first_order_dubins_mppi_vehicle_params_ros.cpp
   )
   target_link_libraries(${PROJECT_NAME} first_order_dubins_mppi)

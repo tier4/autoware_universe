@@ -20,7 +20,6 @@
 #include "autoware/diffusion_planner/utils/marker_utils.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp"
-#include "autoware/mppi_optimizer/first_order_dubins_mppi_interface_params_ros.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
 
 #include <rclcpp/duration.hpp>
@@ -218,7 +217,6 @@ void DiffusionPlanner::set_up_params()
   params_.use_mppi_optimizer = this->declare_parameter<bool>("use_mppi_optimizer", false);
   params_.shadow_mode = this->declare_parameter<bool>("shadow_mode", false);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_cost_params(*this);
-  autoware::mppi_optimizer::declare_first_order_dubins_mppi_interface_params(*this);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
 
   // planning factor params
@@ -630,8 +628,6 @@ void DiffusionPlanner::on_timer()
       mppi_optimizer_ = std::make_unique<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface>();
       mppi_optimizer_->setCostParams(
         autoware::mppi_optimizer::get_first_order_dubins_mppi_cost_params(*this));
-      mppi_optimizer_->setInterfaceParams(
-        autoware::mppi_optimizer::get_first_order_dubins_mppi_interface_params(*this));
       mppi_optimizer_->setVehicleParams(
         autoware::mppi_optimizer::get_first_order_dubins_mppi_vehicle_params(*this));
     }

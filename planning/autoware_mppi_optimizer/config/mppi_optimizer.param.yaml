@@ -1,9 +1,5 @@
 /**:
   ros__parameters:
-    # When true, u_nom is seeded from the diffusion reference every planning cycle.
-    # When false, u_nom is seeded only on tracking reset and otherwise warm-started from u_opt.
-    always_seed_nominal_from_diffusion_actuation: true
-
     # Vehicle actuation dynamics are loaded from $(vehicle_model)_description/config/simulator_model.param.yaml
 
     # FirstOrderDubinsBicycleCostParams (see first_order_dubins_bicycle_cost.cuh)

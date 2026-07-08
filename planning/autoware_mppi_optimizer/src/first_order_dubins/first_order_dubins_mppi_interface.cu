@@ -14,7 +14,6 @@
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
-#include "autoware/mppi_optimizer/first_order_dubins_mppi_interface_params.hpp"
 #include "autoware/mppi_optimizer/tracked_objects_obstacles.hpp"
 
 #include <mppi/controllers/MPPI/mppi_controller.cuh>
@@ -351,7 +350,6 @@ struct FirstOrderDubinsMppiInterface::Impl
   FirstOrderDubinsBicycleParams dyn;
   FirstOrderDubinsMppiVehicleParams vehicle_params{};
   FirstOrderDubinsMppiCostParams user_cost_params_{};
-  FirstOrderDubinsMppiInterfaceParams interface_params_{};
   COST cost;
   FirstOrderDubinsBicycleCostParams<kRefHorizon> cost_params{};
   SAMPLER sampler;
@@ -532,12 +530,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       resetTrackingState();
     }
     tracking_start_idx = new_start_idx;
-
-    if (
-      interface_params_.always_seed_nominal_from_diffusion_actuation || step_count == 0 ||
-      large_index_jump) {
-      seedNominalControlFromDiffusionReference(reference, tracking_start_idx);
-    }
+    seedNominalControlFromDiffusionReference(reference, tracking_start_idx);
 
     const float ego_yaw = yawFromOdometry(odometry);
     const float ego_v = static_cast<float>(odometry.twist.twist.linear.x);
@@ -566,12 +559,6 @@ struct FirstOrderDubinsMppiInterface::Impl
 
   FirstOrderDubinsMppiControl runStep()
   {
-    if (
-      step_count > 0 && !interface_params_.always_seed_nominal_from_diffusion_actuation) {
-      u_nom.leftCols(kMppiHorizon - 1) = u_opt.rightCols(kMppiHorizon - 1);
-      u_nom.rightCols(1) = u_opt.rightCols(1);
-    }
-
     const std::vector<mppi::path::PathReferenceSample> ref =
       buildDiffusionReferenceHorizon(diffusion_reference, tracking_start_idx, path);
     mppi::cost::fillFirstOrderDubinsBicycleCostFromPathReference<kRefHorizon>(cost, ref);
@@ -704,15 +691,6 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
     impl_->teardown();
   }
   impl_->user_cost_params_ = params;
-}
-
-void FirstOrderDubinsMppiInterface::setInterfaceParams(
-  const FirstOrderDubinsMppiInterfaceParams & params)
-{
-  if (!impl_) {
-    throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
-  }
-  impl_->interface_params_ = params;
 }
 
 FirstOrderDubinsMppiControl FirstOrderDubinsMppiInterface::computeStep(

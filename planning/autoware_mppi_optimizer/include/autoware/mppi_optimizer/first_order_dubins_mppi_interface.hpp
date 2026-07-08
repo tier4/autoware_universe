@@ -16,7 +16,6 @@
 #define AUTOWARE__MPPI_OPTIMIZER__FIRST_ORDER_DUBINS_MPPI_INTERFACE_HPP_
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
-#include "autoware/mppi_optimizer/first_order_dubins_mppi_interface_params.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params.hpp"
 
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
@@ -99,9 +98,6 @@ public:
   /** Configure MPPI cost weights (FirstOrderDubinsBicycleCostParams). */
   void setCostParams(const FirstOrderDubinsMppiCostParams & params);
 
-  /** Configure warm-start / interface behavior. */
-  void setInterfaceParams(const FirstOrderDubinsMppiInterfaceParams & params);
-
   /**
    * @brief Run one MPPI control step and propagate the vehicle state forward.
    * @param state Current ego state (updated in place).
@@ -115,7 +111,7 @@ public:
    * @brief Track a diffusion-planner reference (poses + velocities) with one MPPI step.
    *
    * Uses the diffusion trajectory directly as the MPPI reference horizon (x, y, yaw, v),
-   * keeps warm-started controls between calls, and returns the MPPI-predicted feasible
+   * seeds u_nom from diffusion actuations each cycle, and returns the MPPI-predicted feasible
    * state rollout that best tracks that reference.
    *
    * @param input Reference trajectory from the diffusion planner (map frame).
