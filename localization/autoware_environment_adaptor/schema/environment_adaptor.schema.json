@@ -14,7 +14,7 @@
         "default_longitudinal_scale_factor": {
           "type": "number",
           "default": 1.0,
-          "description": "Longitudinal velocity scale factor when no environment match is found. Applied as v_out = v_in * factor"
+          "description": "Longitudinal velocity scale factor applied only inside a degenerate_area polygon that has no per-polygon map attribute. Outside all polygons (or before the map is ready), no scaling is applied. Applied as v_out = v_in * factor"
         },
         "map_longitudinal_scale_factor_attribute": {
           "type": "string",
