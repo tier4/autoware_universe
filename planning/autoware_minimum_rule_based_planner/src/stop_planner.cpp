@@ -14,15 +14,18 @@
 
 #include "stop_planner.hpp"
 
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/autoware_traffic_light.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/road_marking.hpp>
 #include <autoware_lanelet2_extension/visualization/visualization.hpp>
 
+#include <boost/geometry/algorithms/intersection.hpp>
 #include <boost/geometry/algorithms/intersects.hpp>
 
 #include <lanelet2_core/geometry/LineString.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 
+#include <optional>
 #include <unordered_set>
 #include <vector>
 
@@ -112,6 +115,42 @@ std::vector<lanelet::ConstLineString3d> StopPlanner::filter_stop_lines_on_trajec
     }
   }
   return intersecting;
+}
+
+std::optional<double> StopPlanner::calc_nearest_stop_arc_length(
+  const std::vector<lanelet::ConstLineString3d> & stop_lines,
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points) const
+{
+  if (stop_lines.empty() || trajectory_points.size() < 2) {
+    return std::nullopt;
+  }
+
+  lanelet::BasicLineString2d trajectory_line;
+  trajectory_line.reserve(trajectory_points.size());
+  for (const auto & point : trajectory_points) {
+    trajectory_line.emplace_back(point.pose.position.x, point.pose.position.y);
+  }
+
+  std::optional<double> nearest_arc_length;
+  for (const auto & stop_line : stop_lines) {
+    const auto stop_line_2d = lanelet::utils::to2D(stop_line).basicLineString();
+
+    std::vector<lanelet::BasicPoint2d> intersections;
+    boost::geometry::intersection(trajectory_line, stop_line_2d, intersections);
+
+    for (const auto & intersection : intersections) {
+      geometry_msgs::msg::Point crossing;
+      crossing.x = intersection.x();
+      crossing.y = intersection.y();
+      const double arc_length =
+        autoware::motion_utils::calcSignedArcLength(trajectory_points, 0UL, crossing);
+      if (!nearest_arc_length || arc_length < *nearest_arc_length) {
+        nearest_arc_length = arc_length;
+      }
+    }
+  }
+
+  return nearest_arc_length;
 }
 
 visualization_msgs::msg::MarkerArray StopPlanner::create_stop_line_marker_array(

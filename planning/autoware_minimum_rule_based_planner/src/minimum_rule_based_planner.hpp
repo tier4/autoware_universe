@@ -74,19 +74,21 @@ private:
     const Trajectory & trajectory, const InputData & input_data) const;
   Trajectory smooth_trajectory(const Trajectory & trajectory, const InputData & input_data) const;
   void apply_modifiers(Trajectory & trajectory, const InputData & input_data) const;
+  std::optional<Trajectory> plan_stop(const Trajectory & trajectory) const;
   Trajectory optimize_velocity(const Trajectory & trajectory, const InputData & input_data) const;
 
-  void publish_candidate_trajectories(const Trajectory & trajectory) const;
-
-  //! extract stop lines crossed by the trajectory and publish them as markers
-  void publish_stop_line_markers(const Trajectory & trajectory) const;
+  void publish_candidate_trajectories(
+    const Trajectory & go_trajectory, const std::optional<Trajectory> & stop_trajectory) const;
 
   void publish_debug_trajectory(
     const std::string & plugin_name, const TrajectoryPoints & traj_points) const;
 
   rclcpp::TimerBase::SharedPtr timer_;
   std::shared_ptr<::minimum_rule_based_planner::ParamListener> param_listener_;
-  const UUID generator_uuid_;
+  //! generator id for the always-published "Go" trajectory
+  const UUID go_generator_uuid_;
+  //! generator id for the optional "Stop" trajectory (map-defined stop lines)
+  const UUID stop_generator_uuid_;
   const VehicleInfo vehicle_info_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr

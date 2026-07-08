@@ -23,6 +23,7 @@
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
 
+#include <optional>
 #include <vector>
 
 namespace autoware::minimum_rule_based_planner
@@ -62,6 +63,18 @@ public:
    * by the currently planned trajectory.
    */
   std::vector<lanelet::ConstLineString3d> filter_stop_lines_on_trajectory(
+    const std::vector<lanelet::ConstLineString3d> & stop_lines,
+    const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points) const;
+
+  /**
+   * @brief Arc length along the trajectory (measured from its first point) to the nearest
+   *        stop line crossing.
+   *
+   * For every stop line, the 2D intersection points with the trajectory polyline are computed
+   * and the smallest signed arc length among them is returned. Returns nullopt when none of the
+   * stop lines cross the trajectory.
+   */
+  std::optional<double> calc_nearest_stop_arc_length(
     const std::vector<lanelet::ConstLineString3d> & stop_lines,
     const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points) const;
 

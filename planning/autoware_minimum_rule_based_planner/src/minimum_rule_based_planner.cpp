@@ -18,6 +18,7 @@
 #include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/trajectory/utils/pretty_build.hpp>
+#include <autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp>
 #include <autoware/velocity_smoother/resample.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 
@@ -58,7 +59,8 @@ minimum_rule_based_planner::plugin::ModifierData make_modifier_data(
 
 MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("minimum_rule_based_planner_node", options),
-  generator_uuid_(autoware_utils_uuid::generate_uuid()),
+  go_generator_uuid_(autoware_utils_uuid::generate_uuid()),
+  stop_generator_uuid_(autoware_utils_uuid::generate_uuid()),
   vehicle_info_(vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo()),
   modifier_plugin_loader_(
     "autoware_minimum_rule_based_planner",
@@ -292,22 +294,27 @@ void MinimumRuleBasedPlannerNode::on_timer()
   // 6. Apply trajectory modifiers
   apply_modifiers(smoothed_trajectory, input_data);
 
-  // ここに停止判断処理やマーカーを追加
-  // Publish markers for the map-defined stop lines crossed by the planned trajectory
-  publish_stop_line_markers(smoothed_trajectory);
+  // 停止計画: insert a stop point at map-defined stop lines when needed.
+  const auto smoothed_stop_trajectory = plan_stop(smoothed_trajectory);
 
   // 7. Velocity optimization
-  const auto trajectory = optimize_velocity(smoothed_trajectory, input_data);
+  // The "Go" trajectory is always produced. When a stop is additionally required, the
+  // stop trajectory is optimized separately and published as a second candidate.
+  const auto go_trajectory = optimize_velocity(smoothed_trajectory, input_data);
+  const auto stop_trajectory =
+    smoothed_stop_trajectory
+      ? std::make_optional(optimize_velocity(*smoothed_stop_trajectory, input_data))
+      : std::nullopt;
 
   // 8. Create and publish CandidateTrajectories message
-  publish_candidate_trajectories(trajectory);
+  publish_candidate_trajectories(go_trajectory, stop_trajectory);
 
   // 9. Publish debug information if enabled
   if (params_.debug.enable_path) {
     pub_debug_path_->publish(*path);
   }
   if (params_.debug.enable_output_trajectory) {
-    pub_debug_trajectory_->publish(trajectory);
+    pub_debug_trajectory_->publish(go_trajectory);
   }
 
   // Publish processing time
@@ -396,6 +403,56 @@ void MinimumRuleBasedPlannerNode::apply_modifiers(
   }
 }
 
+std::optional<Trajectory> MinimumRuleBasedPlannerNode::plan_stop(
+  const Trajectory & trajectory) const
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  if (trajectory.points.size() < 2) return std::nullopt;
+
+  // Collect map-defined stop lines along the route and keep only those crossed by the trajectory.
+  const auto candidate_stop_lines =
+    stop_planner_->collect_stop_lines(path_planner_->route_context().route_lanelets);
+  const auto stop_lines =
+    stop_planner_->filter_stop_lines_on_trajectory(candidate_stop_lines, trajectory.points);
+
+  // Visualize the stop lines currently under consideration.
+  pub_stop_lines_marker_->publish(stop_planner_->create_stop_line_marker_array(stop_lines));
+
+  if (stop_lines.empty()) return std::nullopt;
+
+  // Arc length (from the trajectory start) to the nearest stop line crossing.
+  const auto nearest_stop_line_arc_length =
+    stop_planner_->calc_nearest_stop_arc_length(stop_lines, trajectory.points);
+  if (!nearest_stop_line_arc_length) return std::nullopt;
+
+  // Place the stop point so the vehicle front bumper stops at the stop line.
+  const double stop_point_arc_length =
+    *nearest_stop_line_arc_length - vehicle_info_.max_longitudinal_offset_m;
+
+  // The stop line is at or behind the vehicle front: nothing feasible to insert.
+  if (stop_point_arc_length < 1e-3) return std::nullopt;
+
+  // If an earlier stage (e.g. the ObstacleStop modifier) already stops the vehicle before this
+  // stop line, there is nothing to add.
+  if (autoware::trajectory_modifier::utils::stop_point_exists(
+        trajectory.points, stop_point_arc_length)) {
+    return std::nullopt;
+  }
+
+  const double trajectory_length = autoware::motion_utils::calcArcLength(trajectory.points);
+
+  // Insert the stop point on a copy; the downstream velocity optimizer builds the deceleration
+  // profile down to it. Return the copy only when the stop point was actually inserted.
+  Trajectory stop_trajectory = trajectory;
+  if (!autoware::trajectory_modifier::utils::insert_stop_point(
+        stop_trajectory.points, stop_point_arc_length, trajectory_length)) {
+    return std::nullopt;
+  }
+
+  return stop_trajectory;
+}
+
 Trajectory MinimumRuleBasedPlannerNode::optimize_velocity(
   const Trajectory & trajectory, const InputData & input_data) const
 {
@@ -442,35 +499,36 @@ Trajectory MinimumRuleBasedPlannerNode::optimize_velocity(
 }
 
 void MinimumRuleBasedPlannerNode::publish_candidate_trajectories(
-  const Trajectory & trajectory) const
+  const Trajectory & go_trajectory, const std::optional<Trajectory> & stop_trajectory) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-
-  autoware_internal_planning_msgs::msg::CandidateTrajectory candidate_traj;
-  candidate_traj.header = trajectory.header;
-  candidate_traj.generator_id = generator_uuid_;
-  candidate_traj.points = trajectory.points;
 
   CandidateTrajectories msg;
-  msg.candidate_trajectories.push_back(candidate_traj);
 
-  autoware_internal_planning_msgs::msg::GeneratorInfo generator_info;
-  generator_info.generator_id = generator_uuid_;
-  generator_info.generator_name.data = "MinimumRuleBasedPlanner";
-  msg.generator_info.push_back(generator_info);
+  const auto add_candidate = [&msg](
+                               const UUID & generator_id, const std::string & generator_name,
+                               const Trajectory & trajectory) {
+    autoware_internal_planning_msgs::msg::CandidateTrajectory candidate_traj;
+    candidate_traj.header = trajectory.header;
+    candidate_traj.generator_id = generator_id;
+    candidate_traj.points = trajectory.points;
+    msg.candidate_trajectories.push_back(candidate_traj);
+
+    autoware_internal_planning_msgs::msg::GeneratorInfo generator_info;
+    generator_info.generator_id = generator_id;
+    generator_info.generator_name.data = generator_name;
+    msg.generator_info.push_back(generator_info);
+  };
+
+  // The "Go" trajectory is always published.
+  add_candidate(go_generator_uuid_, "MinimumRuleBasedPlanner_Go", go_trajectory);
+
+  // The "Stop" trajectory is published as a second candidate only when a stop is required.
+  if (stop_trajectory) {
+    add_candidate(stop_generator_uuid_, "MinimumRuleBasedPlanner_Stop", *stop_trajectory);
+  }
 
   pub_trajectories_->publish(msg);
-}
-
-void MinimumRuleBasedPlannerNode::publish_stop_line_markers(const Trajectory & trajectory) const
-{
-  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-
-  const auto candidate_stop_lines =
-    stop_planner_->collect_stop_lines(path_planner_->route_context().route_lanelets);
-  const auto stop_lines =
-    stop_planner_->filter_stop_lines_on_trajectory(candidate_stop_lines, trajectory.points);
-  pub_stop_lines_marker_->publish(stop_planner_->create_stop_line_marker_array(stop_lines));
 }
 
 MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()
