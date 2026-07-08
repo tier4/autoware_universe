@@ -202,3 +202,15 @@ The first polygon that contains the vehicle position is used.
 ### Does twist scaling affect gyro odometer covariance?
 
 No. Only `twist.twist.linear.x` is scaled. Covariance and other twist components are unchanged.
+
+### Which position is used to classify the environment for twist scaling?
+
+Twist scaling is classified using the **most recently received pose position**, not the position at the twist message timestamp. Pose messages are used to update the classification, and each twist message reuses the latest classified position.
+
+Because of this, when the pose rate is lower than the twist rate (typical for NDT vs. wheel-speed inputs) or near a `degenerate_area` polygon boundary, the applied scale factor can lag by up to one pose cycle. For example, just after entering or exiting a tunnel, the scaling may briefly reflect the previous side of the boundary until the next pose arrives.
+
+This is acceptable for the intended tunnel use cases, where the vehicle stays inside the polygon for long stretches and only the short boundary transitions are affected. If boundary flicker becomes an issue in testing, consider one of the following:
+
+- Offset the polygon boundaries a few meters inward from the physical entrance/exit in the Lanelet2 map.
+- Classify at the twist stamp using pose interpolation (requires keeping a short pose history).
+- Add a throttled debug log when `|t_twist - t_pose|` exceeds a threshold to quantify the lag.
