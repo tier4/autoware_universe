@@ -16,16 +16,20 @@
 
 #include <autoware_lanelet2_extension/regulatory_elements/Forward.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
+#include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_utils_geometry/boost_geometry.hpp>
-
+#include <autoware_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware_utils/ros/marker_helper.hpp>
 
 
 #include <boost/geometry/algorithms/intersection.hpp>
+#include <boost/geometry.hpp>
 
 #include <lanelet2_core/geometry/LineString.h>
+#include <lanelet2_core/geometry/Polygon.h>
 
 #include <algorithm>
 #include <cmath>
@@ -37,6 +41,28 @@
 namespace
 {
 using autoware_utils_geometry::Line2d;
+using autoware_perception_msgs::msg::ObjectClassification;
+
+ObjectClassification::_label_type to_classification_label(const std::string & label_str)
+{
+  static const std::unordered_map<std::string, ObjectClassification::_label_type> string_to_classification_map = {
+    {"unknown", ObjectClassification::UNKNOWN},
+    {"car", ObjectClassification::CAR},
+    {"truck", ObjectClassification::TRUCK},
+    {"bus", ObjectClassification::BUS},
+    {"trailer", ObjectClassification::TRAILER},
+    {"motorcycle", ObjectClassification::MOTORCYCLE},
+    {"bicycle", ObjectClassification::BICYCLE},
+    {"pedestrian", ObjectClassification::PEDESTRIAN},
+    {"animal", ObjectClassification::ANIMAL},
+    {"hazard", ObjectClassification::HAZARD}};
+
+  const auto it = string_to_classification_map.find(label_str);
+  if (it == string_to_classification_map.end()) {
+    return ObjectClassification::UNKNOWN;
+  }
+  return it->second;
+}
 
 bool is_signaled_crosswalk(const lanelet::CrosswalkConstPtr & crosswalk_reg_elem)
 {
@@ -48,21 +74,18 @@ std::vector<lanelet::CrosswalkConstPtr> collect_crosswalk_reg_elems_from_route(
   const lanelet::LaneletMap & lanelet_map,
   const autoware_planning_msgs::msg::LaneletRoute & route)
 {
-  std::vector<lanelet::CrosswalkConstPtr> crosswalks_on_route;
-  std::unordered_set<lanelet::Id> seen_crosswalk_ids;
-
+  lanelet::ConstLanelets route_lanelets;
   for (const auto & segment : route.segments) {
-    for (const auto & cw_reg_elem : lanelet_map.laneletLayer.get(segment.preferred_primitive.id)
-                             .regulatoryElementsAs<lanelet::autoware::Crosswalk>()) {
-      const auto crosswalk_id = cw_reg_elem->id();
-      if (!seen_crosswalk_ids.insert(crosswalk_id).second) {
-        continue;
-      }
-      if (is_signaled_crosswalk(cw_reg_elem)) {
-        continue;
-      }
-      crosswalks_on_route.push_back(cw_reg_elem);
+    const auto ll = lanelet_map.laneletLayer.get(segment.preferred_primitive.id);
+    route_lanelets.push_back(ll);
+  }
+
+  std::vector<lanelet::CrosswalkConstPtr> crosswalks_on_route;
+  for (const auto & cw : lanelet::utils::query::crosswalks(route_lanelets)) {
+    if (is_signaled_crosswalk(cw)) {
+      continue;
     }
+    crosswalks_on_route.push_back(cw);
   }
   return crosswalks_on_route;
 }
@@ -132,6 +155,10 @@ CrosswalkFilter::CrosswalkFilter() : ValidatorInterface("crosswalk_filter")
 void CrosswalkFilter::update_parameters(const validator::Params & params)
 {
   params_ = params.crosswalk;
+  object_types_.clear();
+  for (const auto & object_type_string : params_.object_types) {
+    object_types_.insert(to_classification_label(object_type_string));
+  }
 }
 
 void CrosswalkFilter::set_vehicle_info(const VehicleInfo & vehicle_info)
@@ -154,6 +181,8 @@ CrosswalkFilter::result_t CrosswalkFilter::is_feasible(
 
   std::vector<MetricReport> metrics;
   if (target_crosswalks.empty()) return ValidationResult{true, std::move(metrics)};
+
+  update_target_objects(context, target_crosswalks);
 
   update_debug_data(target_crosswalks, context.odometry->header.stamp, context.odometry->pose.pose.position.z);
 
@@ -181,10 +210,7 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(const Trajec
   const auto crosswalks_on_route = collect_crosswalk_reg_elems_from_route(
     *context.lanelet_map, *context.route);
 
-  if (crosswalks_on_route.empty()) {
-    RCLCPP_WARN(rclcpp::get_logger("crosswalk_filter"), "No crosswalks on route found");
-    return target_crosswalks;
-  }
+  if (crosswalks_on_route.empty()) return target_crosswalks;
 
   const double current_vel = context.odometry->twist.twist.linear.x;
   const double current_acc = context.acceleration->accel.accel.linear.x;
@@ -229,10 +255,7 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(const Trajec
 
   const auto intersecting_crosswalks = filter_crosswalks_intersecting_trajectory(crosswalks_on_route, trajectory_ls);
 
-  if (intersecting_crosswalks.empty()) {
-    RCLCPP_WARN(rclcpp::get_logger("crosswalk_filter"), "No intersecting crosswalks found");
-    return target_crosswalks;
-  }
+  if (intersecting_crosswalks.empty()) return target_crosswalks;
 
   for (const auto & cw : intersecting_crosswalks) {
     auto crosswalk_polygon = cw.crosswalk->crosswalkLanelet().polygon2d().basicPolygon();
@@ -240,6 +263,75 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(const Trajec
   }
 
   return target_crosswalks;
+}
+
+void CrosswalkFilter::update_target_objects(const FilterContext & context, const TargetCrosswalks & target_crosswalks)
+{
+  auto objects = context.predicted_objects->objects;
+
+  if (objects.empty()) {
+    RCLCPP_WARN(rclcpp::get_logger("CrosswalkFilter"), "No objects in the context.");
+    return;
+  }
+
+  const auto current_time = rclcpp::Time(context.odometry->header.stamp);
+
+  objects.erase(
+    std::remove_if(
+      objects.begin(), objects.end(),
+      [&](const auto & object) {
+        auto label = object.classification.empty() ? ObjectClassification::UNKNOWN : object.classification.front().label;
+        return object_types_.count(label) == 0;
+      }),
+    objects.end());
+
+  if (objects.empty()) {
+    RCLCPP_WARN(rclcpp::get_logger("CrosswalkFilter"), "No objects after filtering by type.");
+    return;
+  }
+
+  auto update_object = [&](const PredictedObject & obj, const auto cw_id) {
+    if (crosswalk_objects_map_.count(cw_id) == 0) {
+      crosswalk_objects_map_[cw_id] = TargetObjects{};
+    }
+    auto cw_objects = crosswalk_objects_map_[cw_id];
+    if (cw_objects.empty()) {
+      cw_objects.emplace_back(TargetObject{obj, current_time, current_time});
+      return;
+    }
+    const auto it = std::find_if(cw_objects.begin(), cw_objects.end(), [&](const auto & cw_object) {
+      return cw_object.object.object_id.uuid == obj.object_id.uuid;
+    });
+    if (it != cw_objects.end()) {
+      it->object = obj;
+      it->last_seen_time = current_time;
+    } else {
+      cw_objects.emplace_back(TargetObject{obj, current_time, current_time});
+    }
+  };
+
+  // auto clear_old_objects = [&](const auto cw_id) {
+  //   if (crosswalk_objects_map_.count(cw_id) == 0) return;
+  //   auto & cw_objects = crosswalk_objects_map_[cw_id];
+  //   cw_objects.erase(std::remove_if(cw_objects.begin(), cw_objects.end(), [&](const auto & cw_object) {
+  //     return current_time - cw_object.last_seen_time > rclcpp::Duration::from_seconds(0.5);
+  //   }), cw_objects.end());
+  // };
+
+  for (const auto & cw : target_crosswalks) {
+    auto cw_polygon = cw.crosswalk_polygon;
+    for (const auto & object : objects) {
+      const auto obj_position = object.kinematics.initial_pose_with_covariance.pose.position;
+      lanelet::BasicPoint2d obj_point(obj_position.x, obj_position.y);
+      const double dist = lanelet::geometry::distance(cw_polygon, obj_point);
+      RCLCPP_INFO(rclcpp::get_logger("CrosswalkFilter"), "Object distance to crosswalk: %f", dist);
+      if (dist < 0.0) continue;
+      if (dist > params_.object_distance_th) continue;
+      update_object(object, cw.crosswalk_info.crosswalk->id());
+      RCLCPP_INFO(rclcpp::get_logger("CrosswalkFilter"), "Object updated for crosswalk: %ld", cw.crosswalk_info.crosswalk->id());
+    }
+    // clear_old_objects(cw.crosswalk_info.crosswalk->id());
+  }
 }
 
 void CrosswalkFilter::update_debug_data(
@@ -250,7 +342,7 @@ void CrosswalkFilter::update_debug_data(
   debug_markers_.markers.clear();
 
   auto add_polygon_marker = [&](
-                              const lanelet::BasicPolygon2d & polygon,
+                              const auto & polygon,
                               const std::string & ns, const int id,
                               const std_msgs::msg::ColorRGBA & color) {
     visualization_msgs::msg::Marker marker = autoware_utils::create_default_marker(
@@ -267,10 +359,34 @@ void CrosswalkFilter::update_debug_data(
     debug_markers_.markers.push_back(marker);
   };
 
+  auto add_line_marker = [&](
+    const lanelet::BasicLineString2d & line,
+    const std::string & ns, const int id,
+    const std_msgs::msg::ColorRGBA & color) {
+    visualization_msgs::msg::Marker marker = autoware_utils::create_default_marker(
+      "map", current_time, ns, id, Marker::LINE_STRIP,
+      autoware_utils::create_marker_scale(0.15, 0.15, 0.15), color);
+    marker.lifetime = rclcpp::Duration::from_seconds(0.2);
+    for (const auto & p : line) {
+      marker.points.push_back(autoware_utils_geometry::create_point(p.x(), p.y(), z));
+    }
+    debug_markers_.markers.push_back(marker);
+  };
+
   int id = 0;
   const auto magenta = autoware_utils::create_marker_color(1.0, 0.0, 1.0, 1.0);
+  const auto yellow = autoware_utils::create_marker_color(1.0, 1.0, 0.0, 1.0);
   for (const auto & cw : target_crosswalks) {
     add_polygon_marker(cw.crosswalk_polygon, "target_crosswalks", id, magenta);
+    add_line_marker(cw.crosswalk_info.stop_line, "target_stop_lines", id, magenta);
+    int obj_id = 0;
+    if (crosswalk_objects_map_.count(cw.crosswalk_info.crosswalk->id())) {
+      for (const auto & cw_object : crosswalk_objects_map_[cw.crosswalk_info.crosswalk->id()]) {
+        auto obj_polygon = autoware_utils_geometry::to_polygon2d(cw_object.object.kinematics.initial_pose_with_covariance.pose, cw_object.object.shape);
+        add_polygon_marker(obj_polygon.outer(), "target_objects", obj_id, yellow);
+        obj_id++;
+      }
+    }
     id++;
   }
 }

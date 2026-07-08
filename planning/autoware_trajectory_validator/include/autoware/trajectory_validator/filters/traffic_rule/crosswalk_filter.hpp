@@ -21,7 +21,9 @@
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
 namespace autoware::trajectory_validator::plugin::traffic_rule
 {
-
+using autoware_perception_msgs::msg::PredictedObject;
+using autoware_perception_msgs::msg::PredictedObjects;
+using autoware_perception_msgs::msg::ObjectClassification;
 
 struct CrosswalkOnTrajectory
 {
@@ -47,6 +49,15 @@ struct CrosswalkOnTrajectory
   {
   }
 };
+using TargetCrosswalks = std::vector<TargetCrosswalk>;
+
+struct TargetObject
+{
+  PredictedObject object;
+  rclcpp::Time first_seen_time;
+  rclcpp::Time last_seen_time;
+};
+using TargetObjects = std::vector<TargetObject>;
 
 class CrosswalkFilter : public ValidatorInterface
 {
@@ -62,11 +73,16 @@ public:
 
 private:
   validator::Params::Crosswalk params_;
+  std::unordered_map<lanelet::Id, TargetObjects> crosswalk_objects_map_;
+  std::unordered_set<ObjectClassification::_label_type> object_types_;
 
-  std::vector<TargetCrosswalk> get_target_crosswalks(const TrajectoryPoints & traj_points, const FilterContext & context);
+
+  TargetCrosswalks get_target_crosswalks(const TrajectoryPoints & traj_points, const FilterContext & context);
+
+  void update_target_objects(const FilterContext & context, const TargetCrosswalks & target_crosswalks);
 
   void update_debug_data(
-    const std::vector<TargetCrosswalk> & target_crosswalks,
+    const TargetCrosswalks & target_crosswalks,
     const rclcpp::Time & current_time, const double z);
 };
 
