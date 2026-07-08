@@ -10,7 +10,6 @@
   <arg name="driving_mode_active_topic" default="/system/driving_mode/active"/>
   <arg name="driving_mode_stable_topic" default="/system/driving_mode/stable"/>
   <arg name="driving_mode_continuable_topic" default="/system/driving_mode/continuable"/>
-  <arg name="driving_mode_sync_topic" default="/system/driving_mode/sync"/>
   <arg name="driving_mode_mrm_state_topic" default="/system/driving_mode/mrm_state"/>
   <arg name="trajectory_source_status_topic" default="/control/trajectory_gate/source/status"/>
   <arg name="trajectory_source_change_cli" default="/control/trajectory_gate/source/change"/>
@@ -34,7 +33,6 @@
     <remap from="~/system/driving_mode/active" to="$(var driving_mode_active_topic)"/>
     <remap from="~/system/driving_mode/stable" to="$(var driving_mode_stable_topic)"/>
     <remap from="~/system/driving_mode/continuable" to="$(var driving_mode_continuable_topic)"/>
-    <remap from="~/system/driving_mode/sync" to="$(var driving_mode_sync_topic)"/>
     <remap from="~/system/driving_mode/mrm_state" to="$(var driving_mode_mrm_state_topic)"/>
     <remap from="~/trajectory/source/status" to="$(var trajectory_source_status_topic)"/>
     <remap from="~/trajectory/source/change" to="$(var trajectory_source_change_cli)"/>
