@@ -26,13 +26,13 @@
 #include <autoware_system_msgs/srv/change_operation_mode.hpp>
 #include <autoware_vehicle_msgs/msg/control_mode_report.hpp>
 #include <autoware_vehicle_msgs/srv/control_mode_command.hpp>
+#include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <tier4_system_msgs/msg/command_filter_status.hpp>
 #include <tier4_system_msgs/msg/command_source_status.hpp>
 #include <tier4_system_msgs/msg/driving_mode_flag.hpp>
 #include <tier4_system_msgs/msg/driving_mode_info.hpp>
 #include <tier4_system_msgs/msg/driving_mode_mrm_state.hpp>
 #include <tier4_system_msgs/msg/driving_mode_request.hpp>
-#include <tier4_system_msgs/msg/launch_status.hpp>
 #include <tier4_system_msgs/msg/trajectory_source_status.hpp>
 #include <tier4_system_msgs/srv/change_command_filter.hpp>
 #include <tier4_system_msgs/srv/change_command_source.hpp>
@@ -61,6 +61,8 @@ public:
   void publish_mrm_state(const MrmState & state) override;
   void publish_driving_mode_request(const ModeRequest & request) override;
   void publish_driving_mode_info(const ModeInfo & info) override;
+  void publish_diagnostics(bool ok, const std::string & message) override;
+
   void publish_debug_flags(const DebugFlags & flags) override;
   void publish_debug_request(const RequestModes & request) override;
 
@@ -77,11 +79,11 @@ private:
   using OperationModeStateMsg = autoware_adapi_v1_msgs::msg::OperationModeState;
   using MrmStateMsg = autoware_adapi_v1_msgs::msg::MrmState;
 
+  using DiagnosticArrayMsg = diagnostic_msgs::msg::DiagnosticArray;
   using DrivingModeRequestMsg = tier4_system_msgs::msg::DrivingModeRequest;
   using DrivingModeFlagMsg = tier4_system_msgs::msg::DrivingModeFlag;
   using DrivingModeInfoMsg = tier4_system_msgs::msg::DrivingModeInfo;
   using DrivingModeMrmStateMsg = tier4_system_msgs::msg::DrivingModeMrmState;
-  using LaunchStatusMsg = tier4_system_msgs::msg::LaunchStatus;
   using TrajectorySourceMsg = tier4_system_msgs::msg::TrajectorySourceStatus;
   using CommandSourceMsg = tier4_system_msgs::msg::CommandSourceStatus;
   using CommandFilterMsg = tier4_system_msgs::msg::CommandFilterStatus;
@@ -109,7 +111,6 @@ private:
   rclcpp::Subscription<DrivingModeFlagMsg>::SharedPtr sub_driving_mode_stable_;
   rclcpp::Subscription<DrivingModeFlagMsg>::SharedPtr sub_driving_mode_continuable_;
   rclcpp::Subscription<DrivingModeMrmStateMsg>::SharedPtr sub_driving_mode_mrm_state_;
-  rclcpp::Subscription<LaunchStatusMsg>::SharedPtr sub_launch_status_;
   rclcpp::Subscription<TrajectorySourceMsg>::SharedPtr sub_trajectory_source_;
   rclcpp::Subscription<CommandSourceMsg>::SharedPtr sub_command_source_;
   rclcpp::Subscription<CommandFilterMsg>::SharedPtr sub_command_filter_;
@@ -117,6 +118,7 @@ private:
   rclcpp::Service<ChangeOperationModeSrv>::SharedPtr srv_operation_mode_;
   rclcpp::Service<ChangeAutowareControlSrv>::SharedPtr srv_autoware_control_;
   rclcpp::Service<ChangeMrmRequestSrv>::SharedPtr srv_mrm_request_;
+  rclcpp::Publisher<DiagnosticArrayMsg>::SharedPtr pub_diagnostics_;
   rclcpp::Publisher<DrivingModeRequestMsg>::SharedPtr pub_driving_mode_request_;
   rclcpp::Publisher<DrivingModeInfoMsg>::SharedPtr pub_driving_mode_info_;
   rclcpp::Publisher<DebugModeFlagsMsg>::SharedPtr pub_debug_mode_flag_;
@@ -127,7 +129,6 @@ private:
   void on_driving_mode_stable(const DrivingModeFlagMsg & msg);
   void on_driving_mode_continuable(const DrivingModeFlagMsg & msg);
   void on_driving_mode_mrm_state(const DrivingModeMrmStateMsg & msg);
-  void on_launch_status(const LaunchStatusMsg & msg);
   void on_trajectory_source(const TrajectorySourceMsg & msg);
   void on_command_source(const CommandSourceMsg & msg);
   void on_command_filter(const CommandFilterMsg & msg);

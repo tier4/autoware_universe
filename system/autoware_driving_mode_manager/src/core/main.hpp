@@ -47,7 +47,6 @@ public:
   void on_stable_flag(const AutowareMode & mode, bool flag) override;
   void on_continuable_flag(const AutowareMode & mode, bool flag) override;
   void on_mrm_state(const AutowareMode & mode, const MrmState::State & state) override;
-  void on_launch_status(const LaunchStatus & status) override;
   ServiceResponse change_mrm_request(const MrmRequest & request) override;
   ServiceResponse change_operation_mode(const OperationMode & operation_mode) override;
   ServiceResponse change_autoware_control(const AutowareControl & autoware_control) override;
@@ -58,6 +57,7 @@ private:
   void publish_operation_mode() const;
   void publish_mrm_state() const;
   void publish_driving_mode_request() const;
+  void publish_diagnostics() const;
   void publish_debug_flags() const;
   void publish_debug_request() const;
 
@@ -69,10 +69,10 @@ private:
   std::unordered_map<AutowareMode, MrmState::State> mrm_states_;
   std::unordered_set<AutowareMode> temporary_unavailable_modes_;
 
+  bool is_initial_request_;
   RequestModes request_;
   GateStatus gates_;
   TaskList tasks_;
-  LaunchStatus launch_status_;
 
   static constexpr AutowareMode unknown_mode = AutowareMode{0};
 };

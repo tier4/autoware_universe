@@ -55,8 +55,6 @@ RosInterface::RosInterface(rclcpp::Node * node) : node_(node)
   sub_driving_mode_mrm_state_ = node->create_subscription<DrivingModeMrmStateMsg>(
     "~/system/driving_mode/mrm_state", rclcpp::QoS(10),
     std::bind(&RosInterface::on_driving_mode_mrm_state, this, _1));
-  sub_launch_status_ = node->create_subscription<LaunchStatusMsg>(
-    "~/system/launch/status", rclcpp::QoS(1), std::bind(&RosInterface::on_launch_status, this, _1));
   sub_trajectory_source_ = node->create_subscription<TrajectorySourceMsg>(
     "~/trajectory/source/status", rclcpp::QoS(1).transient_local(),
     std::bind(&RosInterface::on_trajectory_source, this, _1));
@@ -79,6 +77,7 @@ RosInterface::RosInterface(rclcpp::Node * node) : node_(node)
   srv_mrm_request_ = node->create_service<ChangeMrmRequestSrv>(
     "~/system/change_mrm_request", std::bind(&RosInterface::on_change_mrm_request, this, _1, _2));
 
+  pub_diagnostics_ = node->create_publisher<DiagnosticArrayMsg>("~/diagnostics", rclcpp::QoS(1));
   pub_driving_mode_request_ =
     node->create_publisher<DrivingModeRequestMsg>("~/system/driving_mode/request", rclcpp::QoS(1));
   pub_driving_mode_info_ = node->create_publisher<DrivingModeInfoMsg>(
@@ -201,6 +200,18 @@ void RosInterface::publish_driving_mode_info(const ModeInfo & info)
   pub_driving_mode_info_->publish(msg);
 }
 
+void RosInterface::publish_diagnostics(bool ok, const std::string & message)
+{
+  using diagnostic_msgs::msg::DiagnosticStatus;
+  DiagnosticArrayMsg msg;
+  msg.header.stamp = now();
+  msg.status.resize(1);
+  msg.status[0].name = std::string(node_->get_name()) + ": ready";
+  msg.status[0].level = ok ? DiagnosticStatus::OK : DiagnosticStatus::ERROR;
+  msg.status[0].message = message;
+  pub_diagnostics_->publish(msg);
+}
+
 void RosInterface::publish_debug_flags(const DebugFlags & flags)
 {
   DebugModeFlagsMsg msg;
@@ -275,21 +286,6 @@ void RosInterface::on_driving_mode_mrm_state(const DrivingModeMrmStateMsg & msg)
   for (const auto & item : msg.items) {
     logic_->on_mrm_state(AutowareMode{item.mode}, convert(item.state));
   }
-}
-
-void RosInterface::on_launch_status(const LaunchStatusMsg & msg)
-{
-  const auto convert = [](const LaunchStatusMsg & status) {
-    // clang-format off
-    switch (status.status) {
-      case LaunchStatusMsg::INITIALIZING: return LaunchStatus::kInitializing;
-      case LaunchStatusMsg::RUNNING:      return LaunchStatus::kRunning;
-      default:                            return LaunchStatus::kUnknown;
-    }
-    // clang-format on
-  };
-
-  logic_->on_launch_status(convert(msg));
 }
 
 void RosInterface::publish_driving_mode_request(const ModeRequest & request)
