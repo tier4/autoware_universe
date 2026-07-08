@@ -48,7 +48,8 @@ TEST(EnvironmentClassifierTest, test_map_not_ready)
 
   const auto result = classifier.classify(make_point(0.0, 0.0));
   EXPECT_EQ(result.environment_id, 0);
-  EXPECT_DOUBLE_EQ(result.longitudinal_scale_factor, 1.0);
+  // No scaling until the map is ready.
+  EXPECT_FALSE(result.longitudinal_scale_factor.has_value());
 }
 
 TEST(EnvironmentClassifierTest, test_point_outside_polygon)
@@ -59,19 +60,37 @@ TEST(EnvironmentClassifierTest, test_point_outside_polygon)
 
   const auto result = classifier.classify(make_point(10.0, 10.0));
   EXPECT_EQ(result.environment_id, 0);
-  EXPECT_DOUBLE_EQ(result.longitudinal_scale_factor, 1.0);
+  // Outside all polygons: no scaling.
+  EXPECT_FALSE(result.longitudinal_scale_factor.has_value());
+}
+
+TEST(EnvironmentClassifierTest, test_point_outside_polygon_nonunit_default)
+{
+  EnvironmentClassifier classifier;
+  auto param = base_param();
+  param.default_longitudinal_scale_factor = 1.05;
+  classifier.set_param(param);
+  classifier.load_map(make_map_bin("uniform_road"));
+
+  // Even with a non-unit default, points outside all polygons are not scaled.
+  const auto result = classifier.classify(make_point(10.0, 10.0));
+  EXPECT_EQ(result.environment_id, 0);
+  EXPECT_FALSE(result.longitudinal_scale_factor.has_value());
 }
 
 TEST(EnvironmentClassifierTest, test_point_inside_polygon_default_fallback)
 {
   EnvironmentClassifier classifier;
-  classifier.set_param(base_param());
+  auto param = base_param();
+  param.default_longitudinal_scale_factor = 1.05;
+  classifier.set_param(param);
   classifier.load_map(make_map_bin("uniform_road"));
 
   // Polygon has no longitudinal_scale_factor attribute, so default is applied.
   const auto result = classifier.classify(make_point(0.0, 0.0));
   EXPECT_EQ(result.environment_id, 1);
-  EXPECT_DOUBLE_EQ(result.longitudinal_scale_factor, 1.0);
+  ASSERT_TRUE(result.longitudinal_scale_factor.has_value());
+  EXPECT_DOUBLE_EQ(result.longitudinal_scale_factor.value(), 1.05);
 }
 
 TEST(EnvironmentClassifierTest, test_point_inside_polygon_map_attribute)
@@ -82,18 +101,23 @@ TEST(EnvironmentClassifierTest, test_point_inside_polygon_map_attribute)
 
   const auto result = classifier.classify(make_point(0.0, 0.0));
   EXPECT_EQ(result.environment_id, 1);
-  EXPECT_DOUBLE_EQ(result.longitudinal_scale_factor, 1.02);
+  ASSERT_TRUE(result.longitudinal_scale_factor.has_value());
+  EXPECT_DOUBLE_EQ(result.longitudinal_scale_factor.value(), 1.02);
 }
 
 TEST(EnvironmentClassifierTest, test_point_inside_polygon_unknown_subtype)
 {
   EnvironmentClassifier classifier;
-  classifier.set_param(base_param());
+  auto param = base_param();
+  param.default_longitudinal_scale_factor = 1.05;
+  classifier.set_param(param);
   classifier.load_map(make_map_bin("unknown_subtype"));
 
+  // Inside a polygon (even with unknown subtype), the default factor is applied.
   const auto result = classifier.classify(make_point(0.0, 0.0));
   EXPECT_EQ(result.environment_id, 0);
-  EXPECT_DOUBLE_EQ(result.longitudinal_scale_factor, 1.0);
+  ASSERT_TRUE(result.longitudinal_scale_factor.has_value());
+  EXPECT_DOUBLE_EQ(result.longitudinal_scale_factor.value(), 1.05);
 }
 
 }  // namespace autoware::environment_adaptor

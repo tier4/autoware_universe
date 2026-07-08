@@ -228,18 +228,21 @@ void EnvironmentAdaptor::on_twist(
   if (warn == ClassificationWarn::PoseNotReceived) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), 5000,
-      "Pose not received yet; using default longitudinal_scale_factor");
+      "Pose not received yet; twist longitudinal velocity is passed through unchanged");
   } else if (warn == ClassificationWarn::MapNotReady) {
     RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Lanelet map not ready yet");
   }
 
+  // Only scale when inside a degenerate_area polygon; otherwise pass through unchanged.
+  const double applied_scale_factor = classification.longitudinal_scale_factor.value_or(1.0);
+
   auto out = *msg;
-  out.twist.twist.linear.x *= classification.longitudinal_scale_factor;
+  out.twist.twist.linear.x *= applied_scale_factor;
   pub_twist_->publish(out);
 
   autoware_internal_debug_msgs::msg::Float64Stamped factor_msg;
   factor_msg.stamp = msg->header.stamp;
-  factor_msg.data = classification.longitudinal_scale_factor;
+  factor_msg.data = applied_scale_factor;
   pub_longitudinal_scale_factor_->publish(factor_msg);
 }
 
