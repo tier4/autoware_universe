@@ -16,6 +16,7 @@
 #define AUTOWARE__MPPI_OPTIMIZER__FIRST_ORDER_DUBINS_MPPI_INTERFACE_HPP_
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_interface_params.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params.hpp"
 
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
@@ -97,6 +98,9 @@ public:
 
   /** Configure MPPI cost weights (FirstOrderDubinsBicycleCostParams). */
   void setCostParams(const FirstOrderDubinsMppiCostParams & params);
+
+  /** Configure warm-start / interface behavior. */
+  void setInterfaceParams(const FirstOrderDubinsMppiInterfaceParams & params);
 
   /**
    * @brief Run one MPPI control step and propagate the vehicle state forward.

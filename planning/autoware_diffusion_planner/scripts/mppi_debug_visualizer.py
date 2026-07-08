@@ -62,10 +62,13 @@ def trajectory_acceleration(points) -> List[float]:
     return [float(p.acceleration_mps2) for p in points]
 
 
-def trajectory_steering(points, wheel_base: float) -> List[float]:
+def trajectory_steering(points, wheel_base: float, *, prefer_message: bool = False) -> List[float]:
     """Use front_wheel_angle_rad when set; otherwise derive from discrete curvature."""
     if not points:
         return []
+
+    if prefer_message:
+        return [float(p.front_wheel_angle_rad) for p in points]
 
     headings = trajectory_heading(points)
     steer: List[float] = []
@@ -197,13 +200,18 @@ class MppiDebugVisualizer(Node):
         except (ImportError, AttributeError):
             pass
 
-    def _process_trajectory(self, msg: Trajectory) -> MppiDebugFrame:
+    def _process_trajectory(self, msg: Trajectory, *, is_optimized: bool = False) -> MppiDebugFrame:
         points = msg.points
         dt = estimate_dt(points)
         velocities = trajectory_velocity(points)
-        accel = trajectory_acceleration(points)
-        if all(abs(a) < 1e-9 for a in accel) and len(velocities) > 1:
-            accel = finite_difference_acceleration(velocities, dt)
+        if is_optimized:
+            accel = trajectory_acceleration(points)
+            steer = trajectory_steering(points, self._wheel_base, prefer_message=True)
+        else:
+            accel = trajectory_acceleration(points)
+            if all(abs(a) < 1e-9 for a in accel) and len(velocities) > 1:
+                accel = finite_difference_acceleration(velocities, dt)
+            steer = trajectory_steering(points, self._wheel_base)
 
         stamp = f"{msg.header.stamp.sec}.{msg.header.stamp.nanosec:09d}"
         return MppiDebugFrame(
@@ -215,7 +223,7 @@ class MppiDebugVisualizer(Node):
             optimized_vel=[],
             reference_accel=accel,
             optimized_accel=[],
-            reference_steer=trajectory_steering(points, self._wheel_base),
+            reference_steer=steer,
             optimized_steer=[],
             stamp_text=stamp,
         )
@@ -234,7 +242,7 @@ class MppiDebugVisualizer(Node):
             self.get_logger().info(f"Receiving reference_trajectory ({len(msg.points)} points).")
 
     def on_optimized_trajectory(self, msg: Trajectory) -> None:
-        processed = self._process_trajectory(msg)
+        processed = self._process_trajectory(msg, is_optimized=True)
         with self._lock:
             self._frame.optimized_xy = processed.reference_xy
             self._frame.optimized_heading = processed.reference_heading
@@ -344,7 +352,7 @@ class MppiDebugVisualizer(Node):
         # Acceleration + steering
         self._ax_accel.clear()
         self._ax_steer.clear()
-        self._ax_accel.set_title("Acceleration and steering")
+        self._ax_accel.set_title("Acceleration / steering (MPPI: optimal control sequence)")
         self._ax_accel.set_xlabel("point index")
         self._ax_accel.set_ylabel("a [m/s²]", color="tab:blue")
         self._ax_steer.set_ylabel("δ [rad]", color="tab:orange")
@@ -363,7 +371,7 @@ class MppiDebugVisualizer(Node):
                 frame.optimized_accel[:n_compare],
                 color="tab:blue",
                 linewidth=2,
-                label="MPPI accel",
+                label="MPPI accel cmd",
             )
             self._ax_steer.plot(
                 idx,
@@ -378,7 +386,7 @@ class MppiDebugVisualizer(Node):
                 frame.optimized_steer[:n_compare],
                 color="tab:orange",
                 linewidth=2,
-                label="MPPI δ",
+                label="MPPI steer cmd",
             )
             lines_a, labels_a = self._ax_accel.get_legend_handles_labels()
             lines_s, labels_s = self._ax_steer.get_legend_handles_labels()
