@@ -420,7 +420,7 @@ void ManagerMain::execute_tasks()
         interface_->log_debug(tasks_.get()->describe() + ": running");
         return;
       case TaskResult::kTimeout:
-        interface_->log_warn(tasks_.get()->describe() + ": timeout");
+        interface_->log_debug(tasks_.get()->describe() + ": timeout");
         if (is_initial_request_) {
           request_.autoware_mode = unknown_mode;
         } else {
