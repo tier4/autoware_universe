@@ -303,6 +303,20 @@ TEST_F(EnvironmentAdaptorTest, test_twist_map_not_ready)
   EXPECT_DOUBLE_EQ(helper_->last_linear_x.value(), 10.0);
 }
 
+TEST_F(EnvironmentAdaptorTest, test_twist_pose_not_received_origin_inside_polygon)
+{
+  auto opts = base_options();
+  opts.append_parameter_override("default_longitudinal_scale_factor", 1.05);
+  create_node(opts);
+
+  publish_map_and_wait(make_map_bin("uniform_road"));
+  helper_->publish_twist(10.0);
+  ASSERT_TRUE(spin_until_twist());
+  // Pose not received yet: latest_pose_position_ is (0,0,0) inside the polygon, but twist must
+  // pass through unchanged until the first pose arrives.
+  EXPECT_DOUBLE_EQ(helper_->last_linear_x.value(), 10.0);
+}
+
 TEST_F(EnvironmentAdaptorTest, test_twist_point_outside_polygon)
 {
   create_node(base_options());

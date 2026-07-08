@@ -234,7 +234,10 @@ void EnvironmentAdaptor::on_twist(
   }
 
   // Only scale when inside a degenerate_area polygon; otherwise pass through unchanged.
-  const double applied_scale_factor = classification.longitudinal_scale_factor.value_or(1.0);
+  const double applied_scale_factor =
+    (warn == ClassificationWarn::PoseNotReceived)
+      ? 1.0
+      : classification.longitudinal_scale_factor.value_or(1.0);
 
   auto out = *msg;
   out.twist.twist.linear.x *= applied_scale_factor;
