@@ -69,6 +69,7 @@ private:
   std::unordered_map<AutowareMode, MrmState::State> mrm_states_;
   std::unordered_set<AutowareMode> temporary_unavailable_modes_;
 
+  bool is_initial_request_;
   RequestModes request_;
   GateStatus gates_;
   TaskList tasks_;

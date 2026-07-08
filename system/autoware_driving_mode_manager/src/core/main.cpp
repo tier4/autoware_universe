@@ -41,6 +41,7 @@ ManagerMain::ManagerMain(ManagerInit & init)
   gates_.status = init.gates();
   gates_.expect = init.gates();
 
+  is_initial_request_ = true;
   request_.operation_mode = config_->to_autoware_mode(OperationMode::kStop).value_or(unknown_mode);
   request_.platform_mode = init.platform_mode_.value();
   request_.mrm_strategy = MrmStrategy::kNone;
@@ -93,13 +94,17 @@ void ManagerMain::update()
 void ManagerMain::publish_operation_mode() const
 {
   const auto is_available = [this](const OperationMode & operation_mode) {
+    if (is_initial_request_) {
+      return false;
+    }
     const auto mode = config_->to_autoware_mode(operation_mode);
     return mode ? status_->is_available(mode.value()) : false;
   };
 
+  const auto operation_mode = config_->to_autoware_mode(request_.operation_mode);
+
   OperationModeState state;
-  state.mode =
-    config_->to_operation_mode(request_.operation_mode).value_or(OperationMode::kUnknown);
+  state.mode = operation_mode ? operation_mode.value() : OperationMode::kUnknown;
   state.is_autoware_control_enabled = (request_.platform_mode != PlatformMode::kManual);
   state.is_in_transition = !tasks_.empty();
   state.is_stop_mode_available = is_available(OperationMode::kStop);
@@ -150,6 +155,8 @@ void ManagerMain::on_trajectory_source(const TrajectorySource & source)
 {
   if (gates_.expect.trajectory_source != source) {
     interface_->log_warn("trajectory source override: " + std::to_string(source.id));
+    request_.autoware_mode = unknown_mode;
+    temporary_unavailable_modes_.clear();
   }
   gates_.status.trajectory_source = source;
   gates_.expect.trajectory_source = source;
@@ -160,6 +167,8 @@ void ManagerMain::on_command_source(const CommandSource & source)
 {
   if (gates_.expect.command_source != source) {
     interface_->log_warn("command source override: " + std::to_string(source.id));
+    request_.autoware_mode = unknown_mode;
+    temporary_unavailable_modes_.clear();
   }
   gates_.status.command_source = source;
   gates_.expect.command_source = source;
@@ -170,6 +179,8 @@ void ManagerMain::on_command_filter(const CommandFilter & filter)
 {
   if (gates_.expect.command_filter != filter) {
     interface_->log_warn("command filter override: " + std::to_string(filter.flag));
+    request_.autoware_mode = unknown_mode;
+    temporary_unavailable_modes_.clear();
   }
   gates_.status.command_filter = filter;
   gates_.expect.command_filter = filter;
@@ -233,16 +244,16 @@ void ManagerMain::on_mrm_state(const AutowareMode & mode, const MrmState::State 
   mrm_states_[mode] = state;
 }
 
-void ManagerMain::on_launch_status(const LaunchStatus & status)
+void ManagerMain::on_launch_status(const LaunchStatus &)
 {
-  if (launch_status_ != LaunchStatus::kRunning && status == LaunchStatus::kRunning) {
-    temporary_unavailable_modes_.clear();
-  }
-  launch_status_ = status;
 }
 
 ServiceResponse ManagerMain::change_mrm_request(const MrmRequest & request)
 {
+  if (is_initial_request_) {
+    return ServiceResponse{false, "initial request is in progress"};
+  }
+
   if (request.strategy == MrmStrategy::kNone || request.strategy == MrmStrategy::kDelegate) {
     request_.mrm_strategy = request.strategy;
     request_.mrm_behavior = unknown_mode;
@@ -262,6 +273,9 @@ ServiceResponse ManagerMain::change_mrm_request(const MrmRequest & request)
 
 ServiceResponse ManagerMain::change_operation_mode(const OperationMode & operation_mode)
 {
+  if (is_initial_request_) {
+    return ServiceResponse{false, "initial request is in progress"};
+  }
   if (!tasks_.interruptible()) {
     return ServiceResponse{false, "mode transition is in progress"};
   }
@@ -300,6 +314,9 @@ ServiceResponse ManagerMain::change_autoware_control(const AutowareControl & aut
     return ServiceResponse{true, ""};
   }
 
+  if (is_initial_request_) {
+    return ServiceResponse{false, "initial request is in progress"};
+  }
   if (!tasks_.interruptible()) {
     return ServiceResponse{false, "mode transition is in progress"};
   }
@@ -394,12 +411,18 @@ void ManagerMain::execute_tasks()
         return;
       case TaskResult::kTimeout:
         interface_->log_warn(tasks_.get()->describe() + ": timeout");
-        temporary_unavailable_modes_.insert(request_.autoware_mode);
+        if (is_initial_request_) {
+          request_.autoware_mode = unknown_mode;
+        } else {
+          temporary_unavailable_modes_.insert(request_.autoware_mode);
+        }
         return;
       default:
         throw std::logic_error("invalid task result");
     }
   }
+  interface_->log_debug("transition completed");
+  is_initial_request_ = false;
 }
 
 }  // namespace autoware::driving_mode_manager
