@@ -129,11 +129,6 @@ void ManagerInit::on_mrm_state(const AutowareMode & mode, const MrmState::State 
   mrm_states_[mode] = state;
 }
 
-void ManagerInit::on_launch_status(const LaunchStatus &)
-{
-  // Do nothing
-}
-
 ServiceResponse ManagerInit::change_operation_mode(const OperationMode &)
 {
   return ServiceResponse{false, "driving mode manager is not ready"};

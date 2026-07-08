@@ -69,7 +69,6 @@ public:
   virtual void on_stable_flag(const AutowareMode & mode, bool flag) = 0;
   virtual void on_continuable_flag(const AutowareMode & mode, bool flag) = 0;
   virtual void on_mrm_state(const AutowareMode & mode, const MrmState::State & state) = 0;
-  virtual void on_launch_status(const LaunchStatus & status) = 0;
   virtual ServiceResponse change_operation_mode(const OperationMode & operation_mode) = 0;
   virtual ServiceResponse change_autoware_control(const AutowareControl & autoware_control) = 0;
   virtual ServiceResponse change_mrm_request(const MrmRequest & request) = 0;

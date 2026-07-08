@@ -33,7 +33,6 @@
 #include <tier4_system_msgs/msg/driving_mode_info.hpp>
 #include <tier4_system_msgs/msg/driving_mode_mrm_state.hpp>
 #include <tier4_system_msgs/msg/driving_mode_request.hpp>
-#include <tier4_system_msgs/msg/launch_status.hpp>
 #include <tier4_system_msgs/msg/trajectory_source_status.hpp>
 #include <tier4_system_msgs/srv/change_command_filter.hpp>
 #include <tier4_system_msgs/srv/change_command_source.hpp>
@@ -85,7 +84,6 @@ private:
   using DrivingModeFlagMsg = tier4_system_msgs::msg::DrivingModeFlag;
   using DrivingModeInfoMsg = tier4_system_msgs::msg::DrivingModeInfo;
   using DrivingModeMrmStateMsg = tier4_system_msgs::msg::DrivingModeMrmState;
-  using LaunchStatusMsg = tier4_system_msgs::msg::LaunchStatus;
   using TrajectorySourceMsg = tier4_system_msgs::msg::TrajectorySourceStatus;
   using CommandSourceMsg = tier4_system_msgs::msg::CommandSourceStatus;
   using CommandFilterMsg = tier4_system_msgs::msg::CommandFilterStatus;
@@ -113,7 +111,6 @@ private:
   rclcpp::Subscription<DrivingModeFlagMsg>::SharedPtr sub_driving_mode_stable_;
   rclcpp::Subscription<DrivingModeFlagMsg>::SharedPtr sub_driving_mode_continuable_;
   rclcpp::Subscription<DrivingModeMrmStateMsg>::SharedPtr sub_driving_mode_mrm_state_;
-  rclcpp::Subscription<LaunchStatusMsg>::SharedPtr sub_launch_status_;
   rclcpp::Subscription<TrajectorySourceMsg>::SharedPtr sub_trajectory_source_;
   rclcpp::Subscription<CommandSourceMsg>::SharedPtr sub_command_source_;
   rclcpp::Subscription<CommandFilterMsg>::SharedPtr sub_command_filter_;
@@ -132,7 +129,6 @@ private:
   void on_driving_mode_stable(const DrivingModeFlagMsg & msg);
   void on_driving_mode_continuable(const DrivingModeFlagMsg & msg);
   void on_driving_mode_mrm_state(const DrivingModeMrmStateMsg & msg);
-  void on_launch_status(const LaunchStatusMsg & msg);
   void on_trajectory_source(const TrajectorySourceMsg & msg);
   void on_command_source(const CommandSourceMsg & msg);
   void on_command_filter(const CommandFilterMsg & msg);

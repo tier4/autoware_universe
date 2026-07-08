@@ -55,8 +55,6 @@ RosInterface::RosInterface(rclcpp::Node * node) : node_(node)
   sub_driving_mode_mrm_state_ = node->create_subscription<DrivingModeMrmStateMsg>(
     "~/system/driving_mode/mrm_state", rclcpp::QoS(10),
     std::bind(&RosInterface::on_driving_mode_mrm_state, this, _1));
-  sub_launch_status_ = node->create_subscription<LaunchStatusMsg>(
-    "~/system/launch/status", rclcpp::QoS(1), std::bind(&RosInterface::on_launch_status, this, _1));
   sub_trajectory_source_ = node->create_subscription<TrajectorySourceMsg>(
     "~/trajectory/source/status", rclcpp::QoS(1).transient_local(),
     std::bind(&RosInterface::on_trajectory_source, this, _1));
@@ -288,21 +286,6 @@ void RosInterface::on_driving_mode_mrm_state(const DrivingModeMrmStateMsg & msg)
   for (const auto & item : msg.items) {
     logic_->on_mrm_state(AutowareMode{item.mode}, convert(item.state));
   }
-}
-
-void RosInterface::on_launch_status(const LaunchStatusMsg & msg)
-{
-  const auto convert = [](const LaunchStatusMsg & status) {
-    // clang-format off
-    switch (status.status) {
-      case LaunchStatusMsg::INITIALIZING: return LaunchStatus::kInitializing;
-      case LaunchStatusMsg::RUNNING:      return LaunchStatus::kRunning;
-      default:                            return LaunchStatus::kUnknown;
-    }
-    // clang-format on
-  };
-
-  logic_->on_launch_status(convert(msg));
 }
 
 void RosInterface::publish_driving_mode_request(const ModeRequest & request)

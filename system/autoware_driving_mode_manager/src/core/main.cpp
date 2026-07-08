@@ -48,8 +48,6 @@ ManagerMain::ManagerMain(ManagerInit & init)
   request_.mrm_behavior = unknown_mode;
   request_.autoware_mode = unknown_mode;
 
-  launch_status_ = LaunchStatus::kUnknown;
-
   interface_->log_debug("Driving mode manager is ready");
 }
 
@@ -252,10 +250,6 @@ void ManagerMain::on_continuable_flag(const AutowareMode & mode, bool flag)
 void ManagerMain::on_mrm_state(const AutowareMode & mode, const MrmState::State & state)
 {
   mrm_states_[mode] = state;
-}
-
-void ManagerMain::on_launch_status(const LaunchStatus &)
-{
 }
 
 ServiceResponse ManagerMain::change_mrm_request(const MrmRequest & request)
