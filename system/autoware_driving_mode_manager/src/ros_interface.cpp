@@ -79,7 +79,7 @@ RosInterface::RosInterface(rclcpp::Node * node) : node_(node)
   srv_mrm_request_ = node->create_service<ChangeMrmRequestSrv>(
     "~/system/change_mrm_request", std::bind(&RosInterface::on_change_mrm_request, this, _1, _2));
 
-  pub_diagnostics_ = node->create_publisher<DiagnosticArrayMsg>("/diagnostics", rclcpp::QoS(1));
+  pub_diagnostics_ = node->create_publisher<DiagnosticArrayMsg>("~/diagnostics", rclcpp::QoS(1));
   pub_driving_mode_request_ =
     node->create_publisher<DrivingModeRequestMsg>("~/system/driving_mode/request", rclcpp::QoS(1));
   pub_driving_mode_info_ = node->create_publisher<DrivingModeInfoMsg>(

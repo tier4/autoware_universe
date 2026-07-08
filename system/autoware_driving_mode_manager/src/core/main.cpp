@@ -138,7 +138,7 @@ void ManagerMain::publish_diagnostics() const
   if (is_initial_request_) {
     interface_->publish_diagnostics(false, "initial request is in progress");
   } else {
-    interface_->publish_diagnostics(true, "");
+    interface_->publish_diagnostics(true, "OK");
   }
 }
 
