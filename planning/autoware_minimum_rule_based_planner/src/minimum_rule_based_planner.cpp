@@ -70,6 +70,8 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
 
   pub_trajectories_ =
     this->create_publisher<CandidateTrajectories>("~/output/candidate_trajectories", 1);
+  pub_stop_lines_marker_ =
+    this->create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/stop_lines", 1);
   pub_debug_path_ = this->create_publisher<PathWithLaneId>("~/debug/path_with_lane_id", 1);
   pub_debug_trajectory_ = this->create_publisher<Trajectory>("~/debug/trajectory", 1);
   pub_debug_shifted_trajectory_ =
@@ -90,6 +92,7 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
 
   path_planner_ =
     std::make_unique<PathPlanner>(get_logger(), get_clock(), time_keeper_, params_, vehicle_info_);
+  stop_planner_ = std::make_unique<StopPlanner>(get_logger());
   timer_ = rclcpp::create_timer(
     this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
     std::bind(&MinimumRuleBasedPlannerNode::on_timer, this));
@@ -289,6 +292,10 @@ void MinimumRuleBasedPlannerNode::on_timer()
   // 6. Apply trajectory modifiers
   apply_modifiers(smoothed_trajectory, input_data);
 
+  // ここに停止判断処理やマーカーを追加
+  // Publish markers for the map-defined stop lines crossed by the planned trajectory
+  publish_stop_line_markers(smoothed_trajectory);
+
   // 7. Velocity optimization
   const auto trajectory = optimize_velocity(smoothed_trajectory, input_data);
 
@@ -453,6 +460,17 @@ void MinimumRuleBasedPlannerNode::publish_candidate_trajectories(
   msg.generator_info.push_back(generator_info);
 
   pub_trajectories_->publish(msg);
+}
+
+void MinimumRuleBasedPlannerNode::publish_stop_line_markers(const Trajectory & trajectory) const
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  const auto candidate_stop_lines =
+    stop_planner_->collect_stop_lines(path_planner_->route_context().route_lanelets);
+  const auto stop_lines =
+    stop_planner_->filter_stop_lines_on_trajectory(candidate_stop_lines, trajectory.points);
+  pub_stop_lines_marker_->publish(stop_planner_->create_stop_line_marker_array(stop_lines));
 }
 
 MinimumRuleBasedPlannerNode::InputData MinimumRuleBasedPlannerNode::take_data()

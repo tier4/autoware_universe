@@ -17,6 +17,7 @@
 
 #include "autoware/trajectory_optimizer/trajectory_optimizer_structs.hpp"
 #include "path_planner.hpp"
+#include "stop_planner.hpp"
 #include "velocity_smoother.hpp"
 
 #include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
@@ -77,6 +78,9 @@ private:
 
   void publish_candidate_trajectories(const Trajectory & trajectory) const;
 
+  //! extract stop lines crossed by the trajectory and publish them as markers
+  void publish_stop_line_markers(const Trajectory & trajectory) const;
+
   void publish_debug_trajectory(
     const std::string & plugin_name, const TrajectoryPoints & traj_points) const;
 
@@ -103,6 +107,8 @@ private:
    */
   //! PathPlanner encapsulates path planning, trajectory shifting, and conversion
   std::unique_ptr<PathPlanner> path_planner_;
+  //! StopPlanner extracts map-defined stop locations along the route
+  std::unique_ptr<StopPlanner> stop_planner_;
   /** @} */
 
 private:
@@ -179,6 +185,7 @@ private:
   PathWithLaneId::ConstSharedPtr test_path_with_lane_id_ptr;
 
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_stop_lines_marker_;
   rclcpp::Publisher<PathWithLaneId>::SharedPtr pub_debug_path_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;
