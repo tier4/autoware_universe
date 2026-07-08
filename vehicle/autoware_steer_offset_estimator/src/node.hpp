@@ -200,14 +200,9 @@ private:
   /**
    * @brief Publish steering offset estimation results
    * @param result steer offset estimation result
-   */
-  void publish_data(const SteerOffsetEstimationUpdated & result);
-
-  /**
-   * @brief Publish metrics for the metric_agent (called every cycle, regardless of update success)
    * @param steer_mean mean of the steering angles used in the current cycle [rad]
    */
-  void publish_metrics(double steer_mean);
+  void publish_data(const SteerOffsetEstimationUpdated & result, double steer_mean);
 };
 
 }  // namespace autoware::steer_offset_estimator
