@@ -100,6 +100,10 @@ map_longitudinal_scale_factor_attribute: longitudinal_scale_factor
 The scale factor is defined per polygon via the `longitudinal_scale_factor` map attribute.
 When a polygon has no such attribute, `default_longitudinal_scale_factor` is applied.
 
+Scaling is applied **only inside** a `degenerate_area` polygon.
+Outside all polygons (or before the map is ready), the twist passes through unchanged
+(`default_longitudinal_scale_factor` is not applied globally).
+
 Applied as: `v_out = v_in * longitudinal_scale_factor` on `twist.twist.linear.x`.
 
 ## Workflow

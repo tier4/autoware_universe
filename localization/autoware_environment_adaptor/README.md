@@ -49,10 +49,12 @@ This node allows per-environment tuning of both pose covariance and longitudinal
 These areas are where geometric features are insufficient to constrain at least one translational or rotational degree of freedom in scan matching or lane line matching.
 For each incoming pose, the node checks whether the vehicle position is inside any such polygon.
 
-Classification priority for `longitudinal_scale_factor`:
+Classification priority for `longitudinal_scale_factor` (only inside a `degenerate_area` polygon):
 
 1. Polygon attribute specified by `map_longitudinal_scale_factor_attribute` (default: `longitudinal_scale_factor`)
 2. `default_longitudinal_scale_factor` (when the polygon has no such attribute)
+
+Outside all `degenerate_area` polygons (or before the map is ready), **no scaling is applied** (the twist passes through unchanged). `default_longitudinal_scale_factor` is **not** applied globally.
 
 The polygon `subtype` attribute is mapped to an `environment_id` via `area_subtype_<subtype>.environment_id` parameters.
 
@@ -176,7 +178,11 @@ Add new environments by:
 
 ### How is pose covariance applied when the map is not ready?
 
-If the Lanelet2 map has not been received yet, classification falls back to `default_environment_id` and the corresponding covariance / scale factor.
+If the Lanelet2 map has not been received yet, classification falls back to `default_environment_id` for pose covariance, and **no longitudinal velocity scaling is applied** (the twist passes through unchanged).
+
+### When is `default_longitudinal_scale_factor` applied?
+
+Only when the vehicle is inside a `degenerate_area` polygon that has no per-polygon `longitudinal_scale_factor` map attribute. Outside all polygons (or before the map is ready), the twist is passed through unchanged regardless of this value. This keeps the scaling effect scoped to annotated areas rather than the entire map.
 
 ### What happens if covariance parameters are missing?
 
