@@ -149,7 +149,9 @@ obstacle_proximity_checker::Inputs SurroundObstacleStop::to_proximity_checker_in
   checker_inputs.ego_pose = input.current_odometry->pose.pose;
   checker_inputs.objects = input.predicted_objects;
 
-  if (!input.obstacle_pointcloud) return checker_inputs;
+  if (!input.obstacle_pointcloud || input.obstacle_pointcloud->data.empty()) {
+    return checker_inputs;
+  }
 
   const auto transform_stamped = get_transform(
     "base_link", input.obstacle_pointcloud->header.frame_id,
