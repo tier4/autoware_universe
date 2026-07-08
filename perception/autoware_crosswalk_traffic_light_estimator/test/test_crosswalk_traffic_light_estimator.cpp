@@ -71,6 +71,25 @@ TrafficSignal make_signal(
   return signal;
 }
 
+TrafficSignal make_signal(lanelet::Id tl_id, const std::vector<TrafficSignalElement> & elements)
+{
+  TrafficSignal signal;
+  signal.traffic_light_group_id = tl_id;
+  signal.elements = elements;
+  return signal;
+}
+
+TrafficSignalElement make_signal_element(
+  uint8_t color, float confidence = 1.0, uint8_t shape = TrafficSignalElement::CIRCLE)
+{
+  TrafficSignalElement element;
+  element.color = color;
+  element.shape = shape;
+  element.status = TrafficSignalElement::SOLID_ON;
+  element.confidence = confidence;
+  return element;
+}
+
 TrafficSignalArray make_signal_array(const std::vector<TrafficSignal> & signals)
 {
   TrafficSignalArray array;
@@ -384,6 +403,57 @@ TEST(
   // Assert
   assert_estimated_linked_signal(
     result, TrafficSignalElement::GREEN, TrafficSignalElement::RIGHT_ARROW);
+}
+
+TEST(
+  CrosswalkTrafficLightEstimatorTest,
+  Estimate_GreenRightArrowRelationPreferredOverHigherConfidenceRedCircleRelation)
+{
+  // Arrange: both relation tags match the ego-side signal. The arrow relation should be selected
+  // even though the red circle element has higher confidence.
+  lanelet::AttributeMap vehicle_tl_attrs;
+  vehicle_tl_attrs["signal_color_relation:green_right_arrow:red"] =
+    std::to_string(CROSSWALK_TL_REG_ELEM_ID);
+  vehicle_tl_attrs["signal_color_relation:red:green"] = std::to_string(CROSSWALK_TL_REG_ELEM_ID);
+
+  CrosswalkTrafficLightEstimator estimator(make_default_config());
+  estimator.update_map(create_test_map(vehicle_tl_attrs));
+
+  TrafficSignalArray input = make_signal_array({make_signal(
+    VEHICLE_TL_REG_ELEM_ID,
+    {make_signal_element(TrafficSignalElement::RED, 0.9, TrafficSignalElement::CIRCLE),
+     make_signal_element(TrafficSignalElement::GREEN, 0.1, TrafficSignalElement::RIGHT_ARROW)})});
+
+  // Act
+  const auto result = estimator.estimate(input, make_time(0.0));
+
+  // Assert: green_right_arrow:red wins over red:green.
+  assert_estimated_linked_signal(result, TrafficSignalElement::RED, TrafficSignalElement::CIRCLE);
+}
+
+TEST(
+  CrosswalkTrafficLightEstimatorTest,
+  Estimate_GreenCrossRelationPreferredOverHigherConfidenceRedCircleRelation)
+{
+  // Arrange: cross is prioritized in the same way as directional arrow shapes.
+  lanelet::AttributeMap vehicle_tl_attrs;
+  vehicle_tl_attrs["signal_color_relation:green_cross:red"] =
+    std::to_string(CROSSWALK_TL_REG_ELEM_ID);
+  vehicle_tl_attrs["signal_color_relation:red:green"] = std::to_string(CROSSWALK_TL_REG_ELEM_ID);
+
+  CrosswalkTrafficLightEstimator estimator(make_default_config());
+  estimator.update_map(create_test_map(vehicle_tl_attrs));
+
+  TrafficSignalArray input = make_signal_array({make_signal(
+    VEHICLE_TL_REG_ELEM_ID,
+    {make_signal_element(TrafficSignalElement::RED, 0.9, TrafficSignalElement::CIRCLE),
+     make_signal_element(TrafficSignalElement::GREEN, 0.1, TrafficSignalElement::CROSS)})});
+
+  // Act
+  const auto result = estimator.estimate(input, make_time(0.0));
+
+  // Assert: green_cross:red wins over red:green.
+  assert_estimated_linked_signal(result, TrafficSignalElement::RED, TrafficSignalElement::CIRCLE);
 }
 
 /// @brief Right-turn arrow scenario: only the right-turn TL (ID=300) reports GREEN,

@@ -259,7 +259,17 @@ std::optional<uint8_t> get_highest_confidence_traffic_signal(
   return ret;
 }
 
-bool has_traffic_signal_state(
+bool is_prioritized_relation_shape(const uint8_t shape)
+{
+  return shape == TrafficSignalElement::LEFT_ARROW || shape == TrafficSignalElement::RIGHT_ARROW ||
+         shape == TrafficSignalElement::UP_ARROW || shape == TrafficSignalElement::UP_LEFT_ARROW ||
+         shape == TrafficSignalElement::UP_RIGHT_ARROW ||
+         shape == TrafficSignalElement::DOWN_ARROW ||
+         shape == TrafficSignalElement::DOWN_LEFT_ARROW ||
+         shape == TrafficSignalElement::DOWN_RIGHT_ARROW || shape == TrafficSignalElement::CROSS;
+}
+
+bool has_matching_signal_state(
   const lanelet::Id & id, const TrafficLightIdMap & traffic_light_id_map,
   const TrafficSignalState & state)
 {
@@ -393,18 +403,42 @@ void CrosswalkTrafficLightEstimator::update_overrides_from_map(
     return;
   }
   const auto & traffic_light = *traffic_light_it;
+
+  std::optional<std::pair<TrafficSignalState, TrafficSignalState>> selected_state_mapping{
+    std::nullopt};
+  lanelet::Ids selected_target_ids;
+  bool selected_has_prioritized_shape = false;
+
   for (const auto & attribute : traffic_light->attributes()) {
     const auto & state_mapping = parse_signal_estimation_rules(attribute.first);
     if (!state_mapping) {
       continue;
     }
     const auto & [from_state, to_state] = *state_mapping;
-    if (!has_traffic_signal_state(traffic_light->id(), traffic_light_id_map, from_state)) {
+    if (!has_matching_signal_state(traffic_light->id(), traffic_light_id_map, from_state)) {
       continue;
     }
-    for (const auto id : parse_ids(attribute.second.value())) {
-      traffic_signal_overrides[id] = make_solid_on_signal_element(to_state);
+
+    const bool has_prioritized_shape = is_prioritized_relation_shape(from_state.shape);
+    if (selected_state_mapping && selected_has_prioritized_shape) {
+      continue;
     }
+    if (selected_state_mapping && !has_prioritized_shape) {
+      continue;
+    }
+
+    selected_state_mapping = *state_mapping;
+    selected_target_ids = parse_ids(attribute.second.value());
+    selected_has_prioritized_shape = has_prioritized_shape;
+  }
+
+  if (!selected_state_mapping) {
+    return;
+  }
+
+  const auto & to_state = selected_state_mapping->second;
+  for (const auto id : selected_target_ids) {
+    traffic_signal_overrides[id] = make_solid_on_signal_element(to_state);
   }
 }
 
