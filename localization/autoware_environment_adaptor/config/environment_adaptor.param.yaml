@@ -40,5 +40,7 @@
     # The scale factor is read from the "longitudinal_scale_factor" attribute on each
     # degenerate_area polygon. When a polygon has no such attribute,
     # default_longitudinal_scale_factor is applied instead.
+    # Outside all degenerate_area polygons (or before the map is ready),
+    # no scaling is applied (equivalent to a factor of 1.0), regardless of this value.
     default_longitudinal_scale_factor: 1.0
     map_longitudinal_scale_factor_attribute: longitudinal_scale_factor

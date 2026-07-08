@@ -45,7 +45,9 @@ public:
   struct AreaClassification
   {
     int32_t environment_id{0};
-    double longitudinal_scale_factor{1.0};
+    // std::nullopt means no longitudinal velocity scaling should be applied
+    // (e.g. outside all degenerate_area polygons or map not ready).
+    std::optional<double> longitudinal_scale_factor{std::nullopt};
   };
 
   struct Param

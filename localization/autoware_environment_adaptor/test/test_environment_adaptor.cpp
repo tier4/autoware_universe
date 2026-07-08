@@ -324,6 +324,34 @@ TEST_F(EnvironmentAdaptorTest, test_twist_point_inside_polygon_default_fallback)
   EXPECT_DOUBLE_EQ(helper_->last_linear_x.value(), 10.0);
 }
 
+TEST_F(EnvironmentAdaptorTest, test_twist_nonunit_default_not_applied_outside_polygon)
+{
+  auto opts = base_options();
+  opts.append_parameter_override("default_longitudinal_scale_factor", 1.05);
+  create_node(opts);
+
+  publish_map_and_wait(make_map_bin("uniform_road"));
+  publish_pose_and_wait(10.0, 10.0);
+  helper_->publish_twist(10.0);
+  ASSERT_TRUE(spin_until_twist());
+  // Outside all polygons: the non-unit default must NOT be applied.
+  EXPECT_DOUBLE_EQ(helper_->last_linear_x.value(), 10.0);
+}
+
+TEST_F(EnvironmentAdaptorTest, test_twist_nonunit_default_applied_inside_polygon)
+{
+  auto opts = base_options();
+  opts.append_parameter_override("default_longitudinal_scale_factor", 1.05);
+  create_node(opts);
+
+  publish_map_and_wait(make_map_bin("uniform_road"));
+  publish_pose_and_wait(0.0, 0.0);
+  helper_->publish_twist(10.0);
+  ASSERT_TRUE(spin_until_twist());
+  // Inside a polygon without a map attribute: the non-unit default is applied.
+  EXPECT_DOUBLE_EQ(helper_->last_linear_x.value(), 10.0 * 1.05);
+}
+
 TEST_F(EnvironmentAdaptorTest, test_twist_point_inside_polygon_map_attribute)
 {
   create_node(base_options());

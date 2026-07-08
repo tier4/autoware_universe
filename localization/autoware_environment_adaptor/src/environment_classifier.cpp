@@ -69,9 +69,10 @@ EnvironmentClassifier::AreaClassification EnvironmentClassifier::classify(
   const geometry_msgs::msg::Point & point) const
 {
   if (!is_map_ready_) {
+    // No scaling until the map is available.
     AreaClassification result;
     result.environment_id = param_.default_environment_id;
-    result.longitudinal_scale_factor = param_.default_longitudinal_scale_factor;
+    result.longitudinal_scale_factor = std::nullopt;
     return result;
   }
 
@@ -86,14 +87,16 @@ EnvironmentClassifier::AreaClassification EnvironmentClassifier::classify(
     if (area.map_longitudinal_scale_factor.has_value()) {
       result.longitudinal_scale_factor = area.map_longitudinal_scale_factor.value();
     } else {
+      // Inside a degenerate_area polygon without a map attribute: use the default factor.
       result.longitudinal_scale_factor = param_.default_longitudinal_scale_factor;
     }
     return result;
   }
 
+  // Outside all degenerate_area polygons: no scaling.
   AreaClassification result;
   result.environment_id = param_.default_environment_id;
-  result.longitudinal_scale_factor = param_.default_longitudinal_scale_factor;
+  result.longitudinal_scale_factor = std::nullopt;
   return result;
 }
 
