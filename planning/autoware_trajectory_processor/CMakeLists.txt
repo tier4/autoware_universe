@@ -169,15 +169,13 @@ if(BUILD_TESTING)
 endif()
 
 install(TARGETS acados_interface_temporal LIBRARY DESTINATION lib)
-install(FILES src/acados_mpt/include/acados_interface.hpp
-  DESTINATION include/autoware/trajectory_optimizer)
 
 set(TEMPORAL_MODEL "kinematic_bicycle_temporal")
 set(TEMPORAL_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/src/acados_mpt/c_generated_code")
 install(FILES
   ${TEMPORAL_GEN_DIR}/acados_solver_${TEMPORAL_MODEL}.h
   ${TEMPORAL_GEN_DIR}/${TEMPORAL_MODEL}_model/${TEMPORAL_MODEL}_model.h
-  DESTINATION include/autoware/trajectory_optimizer/c_generated_code
+  DESTINATION include/autoware/trajectory_processor/c_generated_code
   OPTIONAL
 )
 

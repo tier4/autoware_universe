@@ -16,7 +16,7 @@
 
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
-#include <autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp>
+#include <autoware/trajectory_processor/trajectory_modifier_utils/utils.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/autoware_traffic_light.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/road_marking.hpp>
