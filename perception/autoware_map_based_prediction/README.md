@@ -144,9 +144,7 @@ You can change these parameters in rosparam in the table below.
 
 #### Deceleration-aware stop-line cut (for vehicle obstacles)
 
-When traffic-signal-aware stop prediction is enabled (`priority_prediction.enable`), a vehicle predicted path that approaches a stop line whose signal requires a stop is clipped at that stop line only if the vehicle can physically stop before it. Feasibility uses a constant-deceleration model, `stopping_distance = speed^2 / (2 * max_deceleration)`, and the path is clipped when `stopping_distance <= distance_to_stop_line`. If the vehicle cannot stop in time, the constant-velocity path is kept unchanged (it is predicted to run the light).
-
-The maximum deceleration is configured per object class under `path_cut.max_deceleration`. Only `vehicle` (car/bus/truck/trailer) and `motorcycle` are consumed today; `pedestrian` and `bicycle` are reserved for a future road-border cut. The `FenceModule` and `VegetationModule` cuts remain unconditional (they are not gated by deceleration).
+When `priority_prediction.enable` is set, a vehicle path approaching a stop line that requires a stop is clipped at the stop line only if the vehicle can brake in time (`speed^2 / (2 * max_deceleration) <= distance_to_stop_line`); otherwise the constant-velocity path is kept. `max_deceleration` is configured per object class.
 
 | param name                             | default value |
 | -------------------------------------- | ------------- |
