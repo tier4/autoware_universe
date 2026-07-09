@@ -56,6 +56,8 @@ enum AgentLabel { VEHICLE = 0, PEDESTRIAN = 1, BICYCLE = 2 };
  */
 struct AgentState
 {
+  // Default-constructed state represents an empty (padding) slot: `is_valid` is
+  // false and it is serialized as all zeros by `AgentHistory::as_array`.
   AgentState() = default;
 
   AgentState(const TrackedObject & object, const rclcpp::Time & timestamp);
@@ -69,6 +71,9 @@ struct AgentState
   const AgentLabel label{AgentLabel::VEHICLE};
   const std::string object_id;
   const TrackedObject original_info;
+  // True only for states built from a real observation. Padding states used to
+  // zero-fill missing history keep this false.
+  bool is_valid{false};
 };
 
 /**
@@ -80,9 +85,15 @@ struct AgentHistory
 
   void fill(const AgentState & state)
   {
+    // Newly observed agent: zero-pad all past timesteps and keep only the
+    // current observation at the most recent slot. Missing history is
+    // represented by empty (all-zero) states, matching the training-time
+    // padding convention. As real observations arrive, `update` gradually
+    // replaces the leading padding states with actual data.
     while (!full()) {
-      push_back(state);
+      push_back(AgentState{});  // padding
     }
+    push_back(state);  // pops one padding from the front; real state ends at the back
   }
 
   void update(const TrackedObject & object, const rclcpp::Time & timestamp)
@@ -99,9 +110,15 @@ struct AgentHistory
   [[nodiscard]] std::vector<float> as_array() const noexcept
   {
     std::vector<float> output;
+    output.reserve(queue_.size() * AGENT_STATE_DIM);
     for (const auto & state : queue_) {
-      for (const auto & v : state.as_array()) {
-        output.push_back(v);
+      if (!state.is_valid) {
+        // Padding slot: emit zeros instead of the default state's fields.
+        output.insert(output.end(), AGENT_STATE_DIM, 0.0f);
+      } else {
+        for (const auto & v : state.as_array()) {
+          output.push_back(v);
+        }
       }
     }
     return output;

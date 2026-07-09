@@ -68,7 +68,8 @@ AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timest
   timestamp(timestamp),
   label(get_model_label(object)),
   object_id(autoware_utils_uuid::to_hex_string(object.object_id)),
-  original_info(object)
+  original_info(object),
+  is_valid(true)
 {
 }
 
