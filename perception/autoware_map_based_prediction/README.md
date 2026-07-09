@@ -142,17 +142,6 @@ You can change these parameters in rosparam in the table below.
 | `max_lateral_accel`                      | `2.0` [m/s^2]  |
 | `min_acceleration_before_curve`          | `-2.0` [m/s^2] |
 
-#### Deceleration-aware stop-line cut (for vehicle obstacles)
-
-When `priority_prediction.enable` is set, a vehicle path approaching a stop line that requires a stop is clipped at the stop line only if the vehicle can brake in time (`speed^2 / (2 * max_deceleration) <= distance_to_stop_line`); otherwise the constant-velocity path is kept. `max_deceleration` is configured per object class.
-
-| param name                             | default value |
-| -------------------------------------- | ------------- |
-| `path_cut.max_deceleration.vehicle`    | `2.5` [m/s^2] |
-| `path_cut.max_deceleration.motorcycle` | `3.0` [m/s^2] |
-| `path_cut.max_deceleration.pedestrian` | `1.5` [m/s^2] |
-| `path_cut.max_deceleration.bicycle`    | `2.0` [m/s^2] |
-
 ## Using Vehicle Acceleration for Path Prediction (for Vehicle Obstacles)
 
 By default, the `map_based_prediction` module uses the current obstacle's velocity to compute its predicted path length. However, it is possible to use the obstacle's current acceleration to calculate its predicted path's length.

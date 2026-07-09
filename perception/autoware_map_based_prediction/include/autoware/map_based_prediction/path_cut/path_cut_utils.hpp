@@ -26,10 +26,10 @@ using autoware_perception_msgs::msg::PredictedPath;
 
 struct MaxDecelerationParams
 {
-  double vehicle{2.5};
-  double pedestrian{1.5};
-  double bicycle{2.0};
-  double motorcycle{3.0};
+  double vehicle{3.0};
+  double pedestrian{0.5};
+  double bicycle{1.0};
+  double motorcycle{2.0};
 };
 
 double max_deceleration_for_label(const MaxDecelerationParams & params, uint8_t label);
