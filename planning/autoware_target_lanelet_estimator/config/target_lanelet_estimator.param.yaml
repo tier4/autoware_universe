@@ -7,3 +7,6 @@
     non_following_transition_weight: 0.2
     selection_likelihood_threshold: 0.001
     out_of_lanelet_search_margin: 2.0
+    track_objects: true
+    target_object_uuid: ""
+    max_tracked_objects: 0

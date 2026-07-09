@@ -25,6 +25,9 @@
 #include <cmath>
 #include <iomanip>
 #include <sstream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -97,6 +100,58 @@ std::vector<geometry_msgs::msg::Point> create_lanelet_triangle_list(
   }
   return triangles;
 }
+
+// The dominant classification is CAR.
+bool is_car(const autoware_perception_msgs::msg::PredictedObject & object)
+{
+  const auto & classification = object.classification;
+  if (classification.empty()) {
+    return false;
+  }
+  const auto dominant = std::max_element(
+    classification.begin(), classification.end(),
+    [](const auto & a, const auto & b) { return a.probability < b.probability; });
+  return dominant->label == autoware_perception_msgs::msg::ObjectClassification::CAR;
+}
+
+std::string to_uuid_string(const unique_identifier_msgs::msg::UUID & uuid)
+{
+  std::stringstream ss;
+  ss << std::hex << std::setfill('0');
+  for (const auto byte : uuid.uuid) {
+    ss << std::setw(2) << static_cast<int>(byte);
+  }
+  return ss.str();
+}
+
+// Local-frame footprint of an object from its bounding-box dimensions (x = length, y = width).
+autoware_utils_geometry::LinearRing2d object_base_footprint(
+  const autoware_perception_msgs::msg::Shape & shape)
+{
+  const double half_length = 0.5 * shape.dimensions.x;
+  const double half_width = 0.5 * shape.dimensions.y;
+  autoware_utils_geometry::LinearRing2d footprint;
+  footprint.push_back(autoware_utils_geometry::Point2d(half_length, half_width));
+  footprint.push_back(autoware_utils_geometry::Point2d(half_length, -half_width));
+  footprint.push_back(autoware_utils_geometry::Point2d(-half_length, -half_width));
+  footprint.push_back(autoware_utils_geometry::Point2d(-half_length, half_width));
+  footprint.push_back(autoware_utils_geometry::Point2d(half_length, half_width));  // close the ring
+  return footprint;
+}
+
+// Poses of the object's most likely predicted path.
+std::vector<geometry_msgs::msg::Pose> best_predicted_path_poses(
+  const autoware_perception_msgs::msg::PredictedObject & object)
+{
+  const auto & paths = object.kinematics.predicted_paths;
+  if (paths.empty()) {
+    return {};
+  }
+  const auto best = std::max_element(
+    paths.begin(), paths.end(),
+    [](const auto & a, const auto & b) { return a.confidence < b.confidence; });
+  return {best->path.begin(), best->path.end()};
+}
 }  // namespace
 
 TargetLaneletEstimatorNode::TargetLaneletEstimatorNode(const rclcpp::NodeOptions & options)
@@ -116,12 +171,22 @@ TargetLaneletEstimatorNode::TargetLaneletEstimatorNode(const rclcpp::NodeOptions
     "~/input/trajectory", rclcpp::QoS{1},
     [this](const Trajectory::ConstSharedPtr msg) { on_trajectory(msg); });
 
+  sub_objects_ = create_subscription<PredictedObjects>(
+    "~/input/objects", rclcpp::QoS{1},
+    [this](const PredictedObjects::ConstSharedPtr msg) { on_objects(msg); });
+
   pub_marker_ = create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/route_marker", 1);
+  pub_object_marker_ =
+    create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/object_marker", 1);
   pub_target_lanelet_ids_ =
     create_publisher<Int64MultiArrayStamped>("~/output/target_lanelet_ids", 1);
   pub_target_lanelet_probabilities_ =
     create_publisher<Float64MultiArrayStamped>("~/output/target_lanelet_probabilities", 1);
   pub_out_of_lanelet_ = create_publisher<BoolStamped>("~/output/out_of_lanelet", 1);
+
+  track_objects_ = declare_parameter<bool>("track_objects");
+  target_object_uuid_ = declare_parameter<std::string>("target_object_uuid");
+  max_tracked_objects_ = declare_parameter<int64_t>("max_tracked_objects");
 
   params_.preferred_lanelet_initial_probability =
     declare_parameter<double>("preferred_lanelet_initial_probability");
@@ -154,7 +219,8 @@ void TargetLaneletEstimatorNode::on_map(const LaneletMapBin::ConstSharedPtr msg)
 void TargetLaneletEstimatorNode::on_route(const LaneletRoute::ConstSharedPtr msg)
 {
   route_ = msg;
-  posterior_probabilities_ = initialize_lanelet_probabilities(*route_, params_);
+  ego_tracker_ = {};
+  object_trackers_.clear();
   covered_lanelet_ids_.clear();
   RCLCPP_INFO(get_logger(), "Received route (%zu segments).", msg->segments.size());
 }
@@ -165,31 +231,43 @@ void TargetLaneletEstimatorNode::on_trajectory(const Trajectory::ConstSharedPtr 
   run_estimation();
 }
 
+bool TargetLaneletEstimatorNode::inputs_ready()
+{
+  const bool ready = lanelet_map_ && route_ && routing_graph_;
+  if (!ready) {
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 5000, "Waiting for inputs (map: %d, route: %d).",
+      lanelet_map_ != nullptr, route_ != nullptr);
+  }
+  return ready;
+}
+
 void TargetLaneletEstimatorNode::run_estimation()
 {
-  if (!lanelet_map_ || !route_ || !trajectory_) {
-    RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), 5000, "Waiting for inputs (map: %d, route: %d, trajectory: %d).",
-      lanelet_map_ != nullptr, route_ != nullptr, trajectory_ != nullptr);
+  if (!inputs_ready() || !trajectory_) {
     return;
   }
 
-  const auto result = get_target_lanelets(
-    *route_, *trajectory_, lanelet_map_, vehicle_info_, posterior_probabilities_, routing_graph_,
-    params_);
-  posterior_probabilities_.clear();
+  std::vector<geometry_msgs::msg::Pose> poses;
+  poses.reserve(trajectory_->points.size());
+  for (const auto & point : trajectory_->points) {
+    poses.push_back(point.pose);
+  }
+  ego_tracker_.update(
+    *route_, poses, vehicle_info_.createFootprint(), lanelet_map_, routing_graph_, params_);
+  const auto & result = ego_tracker_.get_target_lanelets();
+
+  std::stringstream log_stream;
+  log_stream << std::fixed << std::setprecision(2);
   for (const auto & lanelet : result.lanelet_probabilities) {
-    posterior_probabilities_[lanelet.id] = lanelet.posterior;
     // once the trajectory reaches a lanelet it stays on the colored trail
     if (lanelet.likelihood > 0.0) {
       covered_lanelet_ids_.insert(lanelet.id);
     }
   }
-
-  std::stringstream log_stream;
-  log_stream << std::fixed << std::setprecision(2);
+  const auto probability_by_id = create_probability_map(result.lanelet_probabilities);
   for (const auto id : result.target_lanelet_ids) {
-    log_stream << " " << id << ":" << posterior_probabilities_[id];
+    log_stream << " " << id << ":" << probability_by_id.at(id);
   }
   RCLCPP_INFO_THROTTLE(
     get_logger(), *get_clock(), 1000, "target lanelets (%zu):%s%s",
@@ -198,6 +276,43 @@ void TargetLaneletEstimatorNode::run_estimation()
 
   publish_result(result);
   publish_markers(result);
+}
+
+void TargetLaneletEstimatorNode::on_objects(const PredictedObjects::ConstSharedPtr msg)
+{
+  if (!track_objects_ || !inputs_ready()) {
+    return;
+  }
+
+  std::unordered_set<std::string> present_uuids;
+  for (const auto & object : msg->objects) {
+    if (!is_car(object)) {
+      continue;
+    }
+    const auto uuid = to_uuid_string(object.object_id);
+    if (!target_object_uuid_.empty() && uuid != target_object_uuid_) {
+      continue;
+    }
+    if (
+      max_tracked_objects_ > 0 &&
+      static_cast<int64_t>(present_uuids.size()) >= max_tracked_objects_) {
+      break;
+    }
+    const auto poses = best_predicted_path_poses(object);
+    if (poses.empty()) {
+      continue;
+    }
+    object_trackers_[uuid].update(
+      *route_, poses, object_base_footprint(object.shape), lanelet_map_, routing_graph_, params_);
+    present_uuids.insert(uuid);
+  }
+
+  // drop trackers of objects no longer seen so the map does not grow unbounded
+  for (auto it = object_trackers_.begin(); it != object_trackers_.end();) {
+    it = present_uuids.count(it->first) ? std::next(it) : object_trackers_.erase(it);
+  }
+
+  publish_object_markers();
 }
 
 void TargetLaneletEstimatorNode::publish_result(const TargetLaneletsResult & result)
@@ -236,25 +351,31 @@ void TargetLaneletEstimatorNode::publish_result(const TargetLaneletsResult & res
   pub_out_of_lanelet_->publish(out_of_lanelet_msg);
 }
 
+void TargetLaneletEstimatorNode::ensure_route_triangles()
+{
+  if (triangles_route_ == route_) {
+    return;
+  }
+  route_triangles_.clear();
+  for (const auto & segment : route_->segments) {
+    for (const auto & primitive : segment.primitives) {
+      if (!lanelet_map_->laneletLayer.exists(primitive.id)) {
+        continue;
+      }
+      const auto route_lanelet = lanelet_map_->laneletLayer.get(primitive.id);
+      LaneletTriangles triangles;
+      triangles.id = primitive.id;
+      triangles.points = create_lanelet_triangle_list(route_lanelet);
+      route_triangles_.push_back(std::move(triangles));
+    }
+  }
+  triangles_route_ = route_;
+}
+
 void TargetLaneletEstimatorNode::publish_markers(const TargetLaneletsResult & result)
 {
   const bool route_changed = triangles_route_ != route_;
-  if (route_changed) {
-    route_triangles_.clear();
-    for (const auto & segment : route_->segments) {
-      for (const auto & primitive : segment.primitives) {
-        if (!lanelet_map_->laneletLayer.exists(primitive.id)) {
-          continue;
-        }
-        const auto route_lanelet = lanelet_map_->laneletLayer.get(primitive.id);
-        LaneletTriangles triangles;
-        triangles.id = primitive.id;
-        triangles.points = create_lanelet_triangle_list(route_lanelet);
-        route_triangles_.push_back(std::move(triangles));
-      }
-    }
-    triangles_route_ = route_;
-  }
+  ensure_route_triangles();
 
   const auto probability_by_id = create_probability_map(result.lanelet_probabilities);
 
@@ -289,6 +410,51 @@ void TargetLaneletEstimatorNode::publish_markers(const TargetLaneletsResult & re
   }
 
   pub_marker_->publish(marker_array);
+}
+
+void TargetLaneletEstimatorNode::publish_object_markers()
+{
+  ensure_route_triangles();
+
+  std::unordered_map<lanelet::Id, const std::vector<geometry_msgs::msg::Point> *> triangles_by_id;
+  triangles_by_id.reserve(route_triangles_.size());
+  for (const auto & triangles : route_triangles_) {
+    triangles_by_id[triangles.id] = &triangles.points;
+  }
+
+  // objects move, so clear the previous markers and redraw the current target lanelets each cycle
+  visualization_msgs::msg::MarkerArray marker_array;
+  visualization_msgs::msg::Marker clear_marker;
+  clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+  marker_array.markers.push_back(clear_marker);
+
+  int marker_id = 0;
+  for (const auto & [uuid, tracker] : object_trackers_) {
+    const auto & result = tracker.get_target_lanelets();
+    const auto probability_by_id = create_probability_map(result.lanelet_probabilities);
+    for (const auto id : result.target_lanelet_ids) {
+      const auto it = triangles_by_id.find(id);
+      if (it == triangles_by_id.end()) {
+        continue;
+      }
+      visualization_msgs::msg::Marker marker;
+      marker.header.frame_id = "map";
+      marker.header.stamp = now();
+      marker.ns = "object_" + uuid;
+      marker.id = marker_id++;
+      marker.type = visualization_msgs::msg::Marker::TRIANGLE_LIST;
+      marker.action = visualization_msgs::msg::Marker::ADD;
+      marker.scale.x = 1.0;
+      marker.scale.y = 1.0;
+      marker.scale.z = 1.0;
+      marker.pose.orientation.w = 1.0;
+      marker.points = *it->second;
+      marker.color = probability_to_marker_color(probability_by_id.at(id));
+      marker_array.markers.push_back(marker);
+    }
+  }
+
+  pub_object_marker_->publish(marker_array);
 }
 
 }  // namespace autoware::target_lanelet_estimator
