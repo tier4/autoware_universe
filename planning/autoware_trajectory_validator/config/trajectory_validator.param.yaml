@@ -114,11 +114,13 @@
 
     crosswalk:
       object_types: ["pedestrian", "bicycle"]
-      object_distance_th: 1.0 # [m] distance of object from crosswalk to consider as target object
-      overshoot_tolerance: 0.1  # [m] maximum distance between the stop point and the crosswalk stop line to consider the trajectory feasible
+      object_distance_th: 3.0 # [m] distance of object from crosswalk to consider as target object
+      object_clear_time_th: 0.3 # [s] duration threshold to clear target object when no longer seen
+      overshoot_tolerance: 0.1  # [m] maximum overshoot distance allowed to consider the trajectory feasible
       nominal_deceleration: 1.0 # [m/s^2] nominal deceleration to calculate the stop distance used as trajectory length limit
       nominal_jerk: 1.0 # [m/s^3] nominal jerk to calculate the stop distance used as trajectory length limit
       stop_duration: 3.0 # [s] minimum duration of the stop to consider the trajectory feasible
+      arrived_distance_threshold: 2.0 # [m] threshold to check if the ego vehicle has arrived at crosswalk stop line
 
     traffic_light:
       deceleration_limit: 2.8  # [m/s^2] trajectories crossing an amber light are rejected if ego can stop at the stop line without breaking this limit

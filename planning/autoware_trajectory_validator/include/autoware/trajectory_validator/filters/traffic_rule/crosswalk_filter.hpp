@@ -19,11 +19,21 @@
 
 #include <autoware_lanelet2_extension/regulatory_elements/Forward.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_utils_uuid/uuid_helper.hpp>
+
+#include <autoware_perception_msgs/msg/detail/object_classification__struct.hpp>
+
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
 namespace autoware::trajectory_validator::plugin::traffic_rule
 {
+using autoware_perception_msgs::msg::ObjectClassification;
 using autoware_perception_msgs::msg::PredictedObject;
 using autoware_perception_msgs::msg::PredictedObjects;
-using autoware_perception_msgs::msg::ObjectClassification;
+using autoware_utils_uuid::to_hex_string;
 
 struct CrosswalkOnTrajectory
 {
@@ -32,20 +42,23 @@ struct CrosswalkOnTrajectory
   lanelet::BasicLineString2d stop_line;
 
   CrosswalkOnTrajectory(
-    lanelet::CrosswalkConstPtr crosswalk, double arc_length_to_stop_line_m, lanelet::BasicLineString2d stop_line)
+    lanelet::CrosswalkConstPtr crosswalk, double arc_length_to_stop_line_m,
+    lanelet::BasicLineString2d stop_line)
   : crosswalk(crosswalk), arc_length_to_stop_line_m(arc_length_to_stop_line_m), stop_line(stop_line)
   {
   }
 };
 
-  struct TargetCrosswalk
+struct TargetCrosswalk
 {
   CrosswalkOnTrajectory crosswalk_info;
   lanelet::BasicPolygon2d crosswalk_polygon;
+  bool is_crossing{false};
 
   TargetCrosswalk(
-    CrosswalkOnTrajectory crosswalk_info, lanelet::BasicPolygon2d crosswalk_polygon)
-  : crosswalk_info(crosswalk_info), crosswalk_polygon(crosswalk_polygon)
+    const CrosswalkOnTrajectory & crosswalk_info, const lanelet::BasicPolygon2d & crosswalk_polygon,
+    const bool is_crossing)
+  : crosswalk_info(crosswalk_info), crosswalk_polygon(crosswalk_polygon), is_crossing(is_crossing)
   {
   }
 };
@@ -56,6 +69,51 @@ struct TargetObject
   PredictedObject object;
   rclcpp::Time first_seen_time;
   rclcpp::Time last_seen_time;
+  ObjectClassification::_label_type type;
+
+  TargetObject(
+    const PredictedObject & object, const rclcpp::Time & first_seen_time,
+    const rclcpp::Time & last_seen_time)
+  : object(object),
+    first_seen_time(first_seen_time),
+    last_seen_time(last_seen_time),
+    type(
+      object.classification.empty() ? ObjectClassification::UNKNOWN
+                                    : object.classification.front().label)
+  {
+  }
+
+  bool operator==(const TargetObject & other) const
+  {
+    return to_hex_string(object.object_id) == to_hex_string(other.object.object_id);
+  }
+
+  bool operator==(const PredictedObject & other) const
+  {
+    return to_hex_string(object.object_id) == to_hex_string(other.object_id);
+  }
+
+  [[nodiscard]] bool matches(const TargetObject & other, const double distance_th) const
+  {
+    if (*this == other) return true;
+    if (type != other.type) return false;
+    const auto distance = autoware_utils_geometry::calc_distance2d(
+      object.kinematics.initial_pose_with_covariance.pose.position,
+      other.object.kinematics.initial_pose_with_covariance.pose.position);
+    return distance < distance_th;
+  }
+
+  [[nodiscard]] bool matches(const PredictedObject & other, const double distance_th = 1e-3) const
+  {
+    if (*this == other) return true;
+    const auto other_type = other.classification.empty() ? ObjectClassification::UNKNOWN
+                                                         : other.classification.front().label;
+    if (type != other_type) return false;
+    const auto distance = autoware_utils_geometry::calc_distance2d(
+      object.kinematics.initial_pose_with_covariance.pose.position,
+      other.kinematics.initial_pose_with_covariance.pose.position);
+    return distance < distance_th;
+  }
 };
 using TargetObjects = std::vector<TargetObject>;
 
@@ -76,14 +134,14 @@ private:
   std::unordered_map<lanelet::Id, TargetObjects> crosswalk_objects_map_;
   std::unordered_set<ObjectClassification::_label_type> object_types_;
 
+  TargetCrosswalks get_target_crosswalks(
+    const TrajectoryPoints & traj_points, const FilterContext & context);
 
-  TargetCrosswalks get_target_crosswalks(const TrajectoryPoints & traj_points, const FilterContext & context);
-
-  void update_target_objects(const FilterContext & context, const TargetCrosswalks & target_crosswalks);
+  void update_target_objects(
+    const FilterContext & context, const TargetCrosswalks & target_crosswalks);
 
   void update_debug_data(
-    const TargetCrosswalks & target_crosswalks,
-    const rclcpp::Time & current_time, const double z);
+    const TargetCrosswalks & target_crosswalks, const rclcpp::Time & current_time, const double z);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::traffic_rule

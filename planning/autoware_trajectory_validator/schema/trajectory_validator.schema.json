@@ -426,9 +426,21 @@
               "default": 1.0,
               "minimum": 0.0
             },
+            "object_clear_time_th": {
+              "type": "number",
+              "description": "Duration threshold to clear target object when no longer seen [s].",
+              "default": 0.3,
+              "minimum": 0.0
+            },
+            "distance_hysteresis_th": {
+              "type": "number",
+              "description": "Hysteresis threshold to consider the object as the same object [m].",
+              "default": 0.3,
+              "minimum": 0.0
+            },
             "overshoot_tolerance": {
               "type": "number",
-              "description": "Maximum distance between the stop point and the crosswalk stop line to consider the trajectory feasible [m].",
+              "description": "Maximum overshoot distance allowed to consider the trajectory feasible [m].",
               "default": 0.1,
               "minimum": 0.0
             },
@@ -448,6 +460,12 @@
               "type": "number",
               "description": "Minimum duration of the stop to consider the trajectory feasible [s].",
               "default": 3.0,
+              "minimum": 0.0
+            },
+            "arrived_distance_threshold": {
+              "type": "number",
+              "description": "Threshold to check if the ego vehicle has arrived at crosswalk stop line [m].",
+              "default": 2.0,
               "minimum": 0.0
             }
           },

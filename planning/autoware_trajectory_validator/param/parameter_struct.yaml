@@ -335,10 +335,20 @@ validator:
       default_value: 1.0
       description: distance of object from crosswalk to consider as target object (m)
       read_only: false
+    object_clear_time_th:
+      type: double
+      default_value: 0.3
+      description: duration threshold to clear target object when no longer seen
+      read_only: false
+    distance_hysteresis_th:
+      type: double
+      default_value: 0.3
+      description: hysteresis threshold to consider the object as the same object
+      read_only: false
     overshoot_tolerance:
       type: double
       default_value: 0.1
-      description: maximum distance between the stop point and the crosswalk stop line to consider the trajectory feasible (m)
+      description: maximum overshoot distance allowed to consider the trajectory feasible (m)
       read_only: false
     nominal_deceleration:
       type: double
@@ -354,6 +364,11 @@ validator:
       type: double
       default_value: 3.0
       description: minimum duration of the stop to consider the trajectory feasible (s)
+      read_only: false
+    arrived_distance_threshold:
+      type: double
+      default_value: 2.0
+      description: threshold to check if the ego vehicle has arrived at crosswalk stop line (m)
       read_only: false
 
   traffic_light:
