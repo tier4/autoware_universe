@@ -18,6 +18,8 @@
 #include "autoware/multi_object_tracker/object_model/types.hpp"
 #include "debug_object.hpp"
 
+#include <autoware/agnocast_wrapper/diagnostic_updater.hpp>
+#include <autoware/agnocast_wrapper/node.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_debug/published_time_publisher.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -45,7 +47,7 @@ class TrackerDebugger
 {
 public:
   TrackerDebugger(
-    rclcpp::Node & node, const std::string & frame_id,
+    autoware::agnocast_wrapper::Node & node, const std::string & frame_id,
     const std::vector<types::InputChannel> & channels_config);
 
 private:
@@ -81,13 +83,14 @@ private:
   } diagnostic_values_;
 
   // ROS node, publishers
-  rclcpp::Node & node_;
-  rclcpp::Publisher<autoware_perception_msgs::msg::TrackedObjects>::SharedPtr
+  autoware::agnocast_wrapper::Node & node_;
+  AUTOWARE_PUBLISHER_PTR(autoware_perception_msgs::msg::TrackedObjects)
     debug_tentative_objects_pub_;
-  std::unique_ptr<autoware_utils_debug::DebugPublisher> processing_time_publisher_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_objects_markers_pub_;
+  std::unique_ptr<autoware_utils_debug::BasicDebugPublisher<autoware::agnocast_wrapper::Node>>
+    processing_time_publisher_;
+  AUTOWARE_PUBLISHER_PTR(visualization_msgs::msg::MarkerArray) debug_objects_markers_pub_;
 
-  diagnostic_updater::Updater diagnostic_updater_;
+  autoware::agnocast_wrapper::diagnostic_updater::Updater diagnostic_updater_;
   // Object debugger
   TrackerObjectDebugger object_debugger_;
   // Time measurement
