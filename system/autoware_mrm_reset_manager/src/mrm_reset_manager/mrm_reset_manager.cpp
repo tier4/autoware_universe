@@ -50,10 +50,23 @@ MrmResetManager::MrmResetManager(const rclcpp::NodeOptions & options)
     rmw_qos_profile_services_default, service_callback_group_);
 
   const auto qos = rclcpp::QoS(1).transient_local();
-  sub_launch_status_ = create_subscription<LaunchStatus>(
-    "~/input/launch_status", qos, [this](const LaunchStatus::ConstSharedPtr & msg) {
+  sub_localization_initialization_state_ = create_subscription<LocalizationState>(
+    "~/input/localization_initialization_state", qos,
+    [this](const LocalizationState::ConstSharedPtr & msg) {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      launch_status_ptr_ = msg;
+      localization_initialization_state_ptr_ = msg;
+      apply_ready_state();
+    });
+  sub_route_state_ = create_subscription<RouteState>(
+    "~/input/route_state", qos, [this](const RouteState::ConstSharedPtr & msg) {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      route_state_ptr_ = msg;
+      apply_ready_state();
+    });
+  sub_operation_mode_state_ = create_subscription<OperationMode>(
+    "~/input/operation_mode_state", qos, [this](const OperationMode::ConstSharedPtr & msg) {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      operation_mode_state_ptr_ = msg;
       apply_ready_state();
     });
 
@@ -170,17 +183,24 @@ void MrmResetManager::apply_ready_state()
     return;
   }
 
-  if (!enable_autoware_ready_actions_) {
-    return;
-  }
+  const bool localized =
+    localization_initialization_state_ptr_->state == LocalizationState::INITIALIZED;
+  const bool route_set = route_state_ptr_->state == RouteState::SET;
+  const bool autoware_control = operation_mode_state_ptr_->is_autoware_control_enabled;
 
-  if (!set_aggregator_initializing(false)) {
-    return;
+  if (localized && route_set && autoware_control) {
+    if (!enable_autoware_ready_actions_) {
+      return;
+    }
+
+    if (!set_aggregator_initializing(false)) {
+      return;
+    }
+    if (!call_reset_redundancy_switcher()) {
+      return;
+    }
+    (void)set_redundancy_switcher_interface_initializing(false);
   }
-  if (!call_reset_redundancy_switcher()) {
-    return;
-  }
-  (void)set_redundancy_switcher_interface_initializing(false);
 }
 
 bool MrmResetManager::set_aggregator_initializing(bool initializing)
@@ -288,7 +308,7 @@ bool MrmResetManager::call_set_bool(
 
 bool MrmResetManager::is_autoware_ready() const
 {
-  return launch_status_ptr_ && launch_status_ptr_->status == LaunchStatus::RUNNING;
+  return localization_initialization_state_ptr_ && route_state_ptr_ && operation_mode_state_ptr_;
 }
 
 bool MrmResetManager::is_initializing() const
