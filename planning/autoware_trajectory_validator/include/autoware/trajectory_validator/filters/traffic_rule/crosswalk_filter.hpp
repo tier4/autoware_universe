@@ -70,6 +70,7 @@ struct TargetObject
   rclcpp::Time first_seen_time;
   rclcpp::Time last_seen_time;
   ObjectClassification::_label_type type;
+  bool ignore{false};
 
   TargetObject(
     const PredictedObject & object, const rclcpp::Time & first_seen_time,
@@ -139,6 +140,9 @@ private:
 
   void update_target_objects(
     const FilterContext & context, const TargetCrosswalks & target_crosswalks);
+
+  bool is_obstructing_crosswalk(
+    const TrajectoryPoints & traj_points, const TargetCrosswalk & target_crosswalk) const;
 
   void update_debug_data(
     const TargetCrosswalks & target_crosswalks, const rclcpp::Time & current_time, const double z);

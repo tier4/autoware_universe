@@ -181,10 +181,24 @@ CrosswalkFilter::result_t CrosswalkFilter::is_feasible(
 
   update_target_objects(context, target_crosswalks);
 
+  const bool feasible = std::none_of(
+    target_crosswalks.begin(), target_crosswalks.end(),
+    [&](const auto & cw) { return is_obstructing_crosswalk(candidate_trajectory.points, cw); });
+
   update_debug_data(
     target_crosswalks, context.odometry->header.stamp, context.odometry->pose.pose.position.z);
 
-  return ValidationResult{true, std::move(metrics)};
+  RiskLevel risk_level;
+  risk_level.level = feasible ? RiskLevel::SAFE : RiskLevel::DANGER;
+  metrics.push_back(
+    autoware_trajectory_validator::build<MetricReport>()
+      .validator_name(get_name())
+      .validator_category(category())
+      .metric_name("check_crosswalk_obstruction")
+      .metric_value(0.0)
+      .risk(risk_level));
+
+  return ValidationResult{feasible, std::move(metrics)};
 }
 
 std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(
@@ -266,7 +280,7 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(
 
   for (const auto & cw : intersecting_crosswalks) {
     auto crosswalk_polygon = cw.crosswalk->crosswalkLanelet().polygon2d().basicPolygon();
-    const bool is_crossing = cw.arc_length_to_stop_line_m < trajectory_footprint_length;
+    const bool is_crossing = trajectory_footprint_length < cw.arc_length_to_stop_line_m;
     target_crosswalks.emplace_back(cw, crosswalk_polygon, is_crossing);
   }
 
@@ -276,12 +290,20 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(
 void CrosswalkFilter::update_target_objects(
   const FilterContext & context, const TargetCrosswalks & target_crosswalks)
 {
-  auto objects = context.predicted_objects->objects;
-
-  if (objects.empty()) {
-    RCLCPP_WARN(rclcpp::get_logger("CrosswalkFilter"), "No objects in the context.");
-    return;
+  std::unordered_set<lanelet::Id> target_crosswalk_ids;
+  target_crosswalk_ids.reserve(target_crosswalks.size());
+  for (const auto & cw : target_crosswalks) {
+    target_crosswalk_ids.insert(cw.crosswalk_info.crosswalk->id());
   }
+  for (auto it = crosswalk_objects_map_.begin(); it != crosswalk_objects_map_.end();) {
+    if (target_crosswalk_ids.count(it->first) == 0) {
+      it = crosswalk_objects_map_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  auto objects = context.predicted_objects->objects;
 
   const auto current_time = rclcpp::Time(context.odometry->header.stamp);
 
@@ -295,29 +317,32 @@ void CrosswalkFilter::update_target_objects(
       }),
     objects.end());
 
-  if (objects.empty()) {
-    RCLCPP_WARN(rclcpp::get_logger("CrosswalkFilter"), "No objects after filtering by type.");
-    return;
-  }
+  const auto ego_vel = context.odometry->twist.twist.linear.x;
+  const auto ego_longitudinal_offset = vehicle_info_ptr_->max_longitudinal_offset_m;
 
-  auto update_object = [&](const PredictedObject & obj, const auto cw_id) {
+  auto is_stopped_at_crosswalk = [&](const TargetCrosswalk & cw) {
+    const auto dist_to_cw = cw.crosswalk_info.arc_length_to_stop_line_m;
+    if (dist_to_cw - ego_longitudinal_offset > params_.arrived_distance_threshold) return false;
+    return ego_vel < 0.1;
+  };
+
+  auto update_object = [&](const PredictedObject & obj, const auto cw_id, bool stopped_at_cw) {
     if (crosswalk_objects_map_.count(cw_id) == 0) {
       crosswalk_objects_map_[cw_id] = TargetObjects{};
     }
     auto & cw_objects = crosswalk_objects_map_[cw_id];
-    if (cw_objects.empty()) {
-      cw_objects.emplace_back(obj, current_time, current_time);
-      return;
-    }
     const auto it = std::find_if(cw_objects.begin(), cw_objects.end(), [&](const auto & cw_object) {
       return cw_object.matches(obj, params_.distance_hysteresis_th);
     });
-    if (it != cw_objects.end()) {
-      it->object = obj;
-      it->last_seen_time = current_time;
-    } else {
+    if (it == cw_objects.end()) {
       cw_objects.emplace_back(obj, current_time, current_time);
+      return;
     }
+    it->object = obj;
+    it->last_seen_time = current_time;
+    if (it->ignore) return;
+    it->first_seen_time = stopped_at_cw ? it->first_seen_time : current_time;
+    it->ignore = (it->last_seen_time - it->first_seen_time).seconds() > params_.stop_duration;
   };
 
   auto clear_old_objects = [&](const auto cw_id) {
@@ -327,8 +352,7 @@ void CrosswalkFilter::update_target_objects(
       std::remove_if(
         cw_objects.begin(), cw_objects.end(),
         [&](const auto & cw_object) {
-          return current_time - cw_object.last_seen_time >
-                 rclcpp::Duration::from_seconds(params_.object_clear_time_th);
+          return (current_time - cw_object.last_seen_time).seconds() > params_.object_clear_time_th;
         }),
       cw_objects.end());
   };
@@ -339,22 +363,49 @@ void CrosswalkFilter::update_target_objects(
       const auto obj_position = object.kinematics.initial_pose_with_covariance.pose.position;
       lanelet::BasicPoint2d obj_point(obj_position.x, obj_position.y);
       const double dist = lanelet::geometry::distance(cw_polygon, obj_point);
-      RCLCPP_INFO(rclcpp::get_logger("CrosswalkFilter"), "Object distance to crosswalk: %f", dist);
       if (dist < 0.0) continue;
       if (dist > params_.object_distance_th) continue;
-      update_object(object, cw.crosswalk_info.crosswalk->id());
-      RCLCPP_INFO(
-        rclcpp::get_logger("CrosswalkFilter"), "Object updated for crosswalk: %ld",
-        cw.crosswalk_info.crosswalk->id());
+      update_object(object, cw.crosswalk_info.crosswalk->id(), is_stopped_at_crosswalk(cw));
     }
     clear_old_objects(cw.crosswalk_info.crosswalk->id());
-
-    if (crosswalk_objects_map_.count(cw.crosswalk_info.crosswalk->id()) > 0)
-      RCLCPP_WARN(
-        rclcpp::get_logger("CrosswalkFilter"), "Crosswalk: %ld, objects: %ld",
-        cw.crosswalk_info.crosswalk->id(),
-        crosswalk_objects_map_[cw.crosswalk_info.crosswalk->id()].size());
   }
+}
+
+bool CrosswalkFilter::is_obstructing_crosswalk(
+  const TrajectoryPoints & traj_points, const TargetCrosswalk & target_crosswalk) const
+{
+  if (!target_crosswalk.is_crossing) return false;
+
+  constexpr double zero_vel_threshold = 0.1;
+  const auto start_move_it = std::find_if(
+    traj_points.begin(), traj_points.end(),
+    [&](const auto & p) { return p.longitudinal_velocity_mps > zero_vel_threshold; });
+
+  // skip check for non-moving trajectory
+  if (start_move_it == traj_points.end()) return false;
+
+  if (crosswalk_objects_map_.count(target_crosswalk.crosswalk_info.crosswalk->id()) == 0)
+    return false;
+
+  const auto & cw_objects =
+    crosswalk_objects_map_.at(target_crosswalk.crosswalk_info.crosswalk->id());
+  if (cw_objects.empty()) return false;
+
+  const auto required_waiting_time = [&]() {
+    auto min_object_duration = std::numeric_limits<double>::max();
+    for (const auto & obj : cw_objects) {
+      if (obj.ignore) continue;
+      const auto duration = rclcpp::Duration(obj.last_seen_time - obj.first_seen_time).seconds();
+      if (duration < min_object_duration) min_object_duration = duration;
+    }
+    return params_.stop_duration - min_object_duration;
+  }();
+
+  if (required_waiting_time < 1e-3) return false;
+
+  // check if stopping duration is sufficient
+  const auto start_move_time = rclcpp::Duration(start_move_it->time_from_start).seconds();
+  return start_move_time < required_waiting_time;
 }
 
 void CrosswalkFilter::update_debug_data(

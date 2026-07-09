@@ -465,7 +465,7 @@
             "arrived_distance_threshold": {
               "type": "number",
               "description": "Threshold to check if the ego vehicle has arrived at crosswalk stop line [m].",
-              "default": 2.0,
+              "default": 5.0,
               "minimum": 0.0
             }
           },
