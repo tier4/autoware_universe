@@ -16,9 +16,11 @@
 #define AUTOWARE__TARGET_LANELET_ESTIMATOR__IMPL_HPP_
 
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
+#include <autoware_utils_geometry/boost_geometry.hpp>
 
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/Lanelet.h>
@@ -70,7 +72,18 @@ LaneletProbabilityMap initialize_lanelet_probabilities(
 
 // Estimate posterior probabilities for route lanelets by combining:
 // - prior: previous posterior and transition probability
-// - likelihood: max footprint/lanelet overlap along the trajectory
+// - likelihood: max footprint/lanelet overlap along the poses
+// This footprint-agnostic form works for any tracked vehicle: `poses` is the vehicle's
+// trajectory/predicted path and `base_footprint` its local-frame footprint.
+TargetLaneletsResult get_target_lanelets(
+  const LaneletRoute & route, const std::vector<geometry_msgs::msg::Pose> & poses,
+  const autoware_utils_geometry::LinearRing2d & base_footprint,
+  const lanelet::LaneletMapConstPtr & lanelet_map,
+  const LaneletProbabilityMap & previous_posteriors,
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph, const Parameters & params = {});
+
+// Convenience overloads for the ego vehicle: the trajectory points supply the poses and
+// vehicle_info the footprint.
 TargetLaneletsResult get_target_lanelets(
   const LaneletRoute & route, const Trajectory & trajectory,
   const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info,

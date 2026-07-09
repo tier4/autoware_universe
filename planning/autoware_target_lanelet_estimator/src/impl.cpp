@@ -135,15 +135,13 @@ double normalized_previous_probability(
   return segment.lanelets.empty() ? 0.0 : 1.0 / static_cast<double>(segment.lanelets.size());
 }
 
-std::vector<lanelet::BasicPolygon2d> create_trajectory_footprints(
-  const Trajectory & trajectory, const VehicleInfo & vehicle_info)
+std::vector<lanelet::BasicPolygon2d> create_footprints(
+  const std::vector<geometry_msgs::msg::Pose> & poses,
+  const autoware_utils_geometry::LinearRing2d & base_footprint)
 {
-  const auto base_footprint = vehicle_info.createFootprint();
-
   std::vector<lanelet::BasicPolygon2d> footprints;
-  footprints.reserve(trajectory.points.size());
-  for (const auto & point : trajectory.points) {
-    const auto & pose = point.pose;
+  footprints.reserve(poses.size());
+  for (const auto & pose : poses) {
     const double yaw = tf2::getYaw(pose.orientation);
     const double cos_yaw = std::cos(yaw);
     const double sin_yaw = std::sin(yaw);
@@ -231,12 +229,12 @@ std::optional<size_t> find_segment_index_containing_point(
   return std::nullopt;
 }
 
-bool does_trajectory_reach_segment(
-  const Trajectory & trajectory, const RouteSegmentLanelets & segment)
+bool does_path_reach_segment(
+  const std::vector<geometry_msgs::msg::Pose> & poses, const RouteSegmentLanelets & segment)
 {
-  for (const auto & point : trajectory.points) {
+  for (const auto & pose : poses) {
     for (const auto & lanelet : segment.lanelets) {
-      if (is_point_inside_lanelet(point.pose.position, lanelet.lanelet)) {
+      if (is_point_inside_lanelet(pose.position, lanelet.lanelet)) {
         return true;
       }
     }
@@ -245,15 +243,16 @@ bool does_trajectory_reach_segment(
 }
 
 UpdateScope determine_update_scope(
-  const Trajectory & trajectory, const std::vector<RouteSegmentLanelets> & route_segments)
+  const std::vector<geometry_msgs::msg::Pose> & poses,
+  const std::vector<RouteSegmentLanelets> & route_segments)
 {
   UpdateScope scope;
-  if (trajectory.points.empty()) {
+  if (poses.empty()) {
     return scope;
   }
 
   scope.current_segment_index =
-    find_segment_index_containing_point(route_segments, trajectory.points.front().pose.position);
+    find_segment_index_containing_point(route_segments, poses.front().position);
   if (!scope.current_segment_index) {
     return scope;
   }
@@ -261,7 +260,7 @@ UpdateScope determine_update_scope(
   const size_t next_segment_index = *scope.current_segment_index + 1;
   if (
     next_segment_index < route_segments.size() &&
-    does_trajectory_reach_segment(trajectory, route_segments.at(next_segment_index))) {
+    does_path_reach_segment(poses, route_segments.at(next_segment_index))) {
     scope.next_segment_index = next_segment_index;
   }
   return scope;
@@ -381,14 +380,15 @@ LaneletProbabilityMap initialize_lanelet_probabilities(
 }
 
 TargetLaneletsResult get_target_lanelets(
-  const LaneletRoute & route, const Trajectory & trajectory,
-  const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info,
+  const LaneletRoute & route, const std::vector<geometry_msgs::msg::Pose> & poses,
+  const autoware_utils_geometry::LinearRing2d & base_footprint,
+  const lanelet::LaneletMapConstPtr & lanelet_map,
   const LaneletProbabilityMap & previous_posteriors,
   const lanelet::routing::RoutingGraphConstPtr & routing_graph, const Parameters & params)
 {
   const auto route_segments = extract_route_segments(route, lanelet_map);
-  const auto update_scope = determine_update_scope(trajectory, route_segments);
-  const auto footprints = create_trajectory_footprints(trajectory, vehicle_info);
+  const auto update_scope = determine_update_scope(poses, route_segments);
+  const auto footprints = create_footprints(poses, base_footprint);
   const double footprint_area =
     footprints.empty() ? 0.0 : std::abs(boost::geometry::area(footprints.front()));
 
@@ -438,6 +438,22 @@ TargetLaneletsResult get_target_lanelets(
     }
   }
   return result;
+}
+
+TargetLaneletsResult get_target_lanelets(
+  const LaneletRoute & route, const Trajectory & trajectory,
+  const lanelet::LaneletMapConstPtr & lanelet_map, const VehicleInfo & vehicle_info,
+  const LaneletProbabilityMap & previous_posteriors,
+  const lanelet::routing::RoutingGraphConstPtr & routing_graph, const Parameters & params)
+{
+  std::vector<geometry_msgs::msg::Pose> poses;
+  poses.reserve(trajectory.points.size());
+  for (const auto & point : trajectory.points) {
+    poses.push_back(point.pose);
+  }
+  return get_target_lanelets(
+    route, poses, vehicle_info.createFootprint(), lanelet_map, previous_posteriors, routing_graph,
+    params);
 }
 
 TargetLaneletsResult get_target_lanelets(
