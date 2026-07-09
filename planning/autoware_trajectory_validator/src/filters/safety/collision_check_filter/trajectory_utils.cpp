@@ -513,16 +513,13 @@ TrajectoryData generate_ego_trajectory(
     const auto time_from_sampling_reference =
       rclcpp::Duration::from_seconds(static_cast<double>(n) * time_resolution);
     const auto sampling_time = sampling_reference_time + time_from_sampling_reference;
-    if (sampling_time < trajectory_start_time) {
-      continue;
-    }
 
     if (!braking_profile.has_value() || sampling_time < braking_profile->start_time) {
+      auto sample_state = trajectory_interpolator.interpolate_state_from_time(sampling_time);
+      append_sample(time_from_sampling_reference.seconds(), sample_state);
       if (sampling_time > trajectory_end_time) {
         break;
       }
-      auto sample_state = trajectory_interpolator.interpolate_state_from_time(sampling_time);
-      append_sample(time_from_sampling_reference.seconds(), sample_state);
     } else {
       const double sample_distance = [&]() {
         const double elapsed_time = (sampling_time - braking_profile->start_time).seconds();
