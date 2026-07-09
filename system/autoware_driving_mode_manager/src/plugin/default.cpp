@@ -35,7 +35,7 @@ constexpr auto EmergencyStopCommand = CommandSource{21};
 
 AutowareMode DefaultPlugin::decide()
 {
-  return AutonomousMode;
+  return StopMode;
 }
 
 AutowareMode DefaultPlugin::decide(const RequestModes & modes, const AutowareModeSet & available)
