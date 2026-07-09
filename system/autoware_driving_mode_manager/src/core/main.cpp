@@ -426,7 +426,9 @@ void ManagerMain::execute_tasks()
     }
   }
   interface_->log_debug("transition completed");
-  is_initial_request_ = false;
+  if (request_.autoware_mode != unknown_mode) {
+    is_initial_request_ = false;
+  }
 }
 
 }  // namespace autoware::driving_mode_manager
