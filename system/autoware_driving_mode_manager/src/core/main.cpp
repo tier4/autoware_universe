@@ -369,7 +369,7 @@ void ManagerMain::update_autoware_mode()
   };
 
   const auto available = diff_sets(available_modes(), temporary_unavailable_modes_);
-  const auto mode = plugin_->decide(request_, available);
+  const auto mode = is_initial_request_ ? plugin_->decide() : plugin_->decide(request_, available);
   const auto prev = request_.autoware_mode;
   if (prev.id == mode.id) {
     return;
