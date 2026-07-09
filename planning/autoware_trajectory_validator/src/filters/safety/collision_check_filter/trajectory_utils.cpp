@@ -539,6 +539,7 @@ TrajectoryData generate_ego_trajectory(
   }
 
   if (times.empty()) {
+    // append_sample() is executed before break.
     throw std::invalid_argument("no samples are available for the requested time range");
   }
 
