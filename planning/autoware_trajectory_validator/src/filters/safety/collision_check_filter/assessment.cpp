@@ -26,30 +26,6 @@
 
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
-bool is_target_trajectory_type(
-  const AssessmentTrajectories & options, const std::string & trajectory_type)
-{
-  if (trajectory_type.find("constant_curvature_path") != std::string::npos) {
-    return options.constant_curvature;
-  }
-  if (trajectory_type.find("map_based_predicted_path") != std::string::npos) {
-    return options.map_based;
-  }
-  return false;
-}
-
-RiskLevel::_level_type to_drac_risk_level(
-  const std::optional<double> & acc, const DracParams & drac_params)
-{
-  if (!acc.has_value() || acc.value() < drac_params.error_threshold.ego_acceleration) {
-    return RiskLevel::DANGER;
-  }
-  if (acc.value() < drac_params.warn_threshold.ego_acceleration) {
-    return RiskLevel::HIGH_CAUTION;
-  }
-  return RiskLevel::SAFE;
-}
-
 std::optional<CollisionDetail> find_collision_timing(
   const TrajectoryData & ref_trajectory, const TrajectoryData & test_trajectory,
   PetThreshold pet_find_range, double time_resolution)
@@ -163,12 +139,26 @@ DracArtifact assess_drac_constant_curvature_ego_first(CollisionDetail && nominal
 }
 
 DracArtifact assess_drac_constant_curvature_object_first(
-  CollisionDetail && nominal_collision_result)
+  const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
+  const TrajectoryData & object_trajectory, const DracParams & drac_params,
+  const GlobalParams & global_params, const VehicleInfo & vehicle_info)
 {
-  CollisionEvaluation result{
-    RiskLevel::SAFE,
-    std::move(nominal_collision_result),
-  };
+  const std::vector<double> ego_acceleration_list{0.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0};
+
+  for (auto ego_acc : ego_acceleration_list) {
+    trajectory::EgoTrajectoryGenerationParams ego_traj_params{
+      drac_params.ego_total_braking_delay, ego_acc,
+      trajectory::footprint::make_ego_dimensions(vehicle_info, drac_params.ego_footprint_margin)};
+    auto & ego_trajectory = ego_trajectory_cache.get_or_compute_trajectory_data(ego_traj_params);
+
+    auto collision_result = find_collision_timing(
+      ego_trajectory, object_trajectory, PetThreshold{0.3, 0.3}, global_params.time_resolution);
+    if (!collision_result.has_value()) {
+      return;
+    }
+  }
+
+  CollisionEvaluation result{};
   return DracArtifact{result.risk, 0.0, {result}};
 }
 
@@ -178,18 +168,19 @@ DracArtifact assess_constant_curvature(
   const GlobalParams & global_params, const VehicleInfo & vehicle_info)
 {
   trajectory::EgoTrajectoryGenerationParams ego_traj_params{
-    0.0, 0.0,
+    drac_params.ego_total_braking_delay, 0.0,
     trajectory::footprint::make_ego_dimensions(vehicle_info, drac_params.ego_footprint_margin)};
 
   const auto & ego_nominal_trajectory =
     ego_trajectory_cache.get_or_compute_trajectory_data(ego_traj_params);
 
-  const auto predicted_path_nominal_trajectory = trajectory::generate_constant_curvature_trajectory(
-    object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.0), 1.0, rclcpp::Time{},
-    global_params.time_resolution);
+  const auto object_constant_curvature_trajectory =
+    trajectory::generate_constant_curvature_trajectory(
+      object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.0), 1.0, rclcpp::Time{},
+      global_params.time_resolution);
 
   auto nominal_collision_result = find_collision_timing(
-    ego_nominal_trajectory, predicted_path_nominal_trajectory, PetThreshold{0.3, 0.3},
+    ego_nominal_trajectory, object_constant_curvature_trajectory, PetThreshold{0.3, 0.3},
     global_params.time_resolution);
   if (!nominal_collision_result.has_value()) {
     return DracArtifact{};
@@ -246,7 +237,7 @@ DracArtifact assess_map_baased(
   DracArtifact drac_artifact{};
 
   trajectory::EgoTrajectoryGenerationParams ego_traj_params{
-    0.0, 0.0,
+    drac_params.ego_total_braking_delay, 0.0,
     trajectory::footprint::make_ego_dimensions(vehicle_info, drac_params.ego_footprint_margin)};
 
   for (const auto & obj_predicted_path : object.kinematics.predicted_paths) {

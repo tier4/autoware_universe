@@ -97,6 +97,7 @@ struct CollisionEvaluation
 {
   RiskLevel::_level_type risk;
   // std::string method;
+  // double drac_acceleration;
   CollisionDetail detail;
 };
 struct RssDetail
