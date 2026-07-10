@@ -76,7 +76,3 @@ repositories:
     type: git
     url: https://github.com/autowarefoundation/bevdet_vendor.git
     version: 0.1.0
-  universe/external/mppi_generic_vendor:
-    type: git
-    url: https://github.com/autowarefoundation/mppi_generic_vendor.git
-    version: main
