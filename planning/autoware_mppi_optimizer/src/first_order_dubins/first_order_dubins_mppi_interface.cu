@@ -491,10 +491,8 @@ struct FirstOrderDubinsMppiInterface::Impl
       float steer = point.front_wheel_angle_rad;
       if (std::abs(steer) <= 1.0E-6F && idx + 1U < reference.points.size()) {
         const auto & next = reference.points[idx + 1U];
-        const float dx =
-          static_cast<float>(next.pose.position.x - point.pose.position.x);
-        const float dy =
-          static_cast<float>(next.pose.position.y - point.pose.position.y);
+        const float dx = static_cast<float>(next.pose.position.x - point.pose.position.x);
+        const float dy = static_cast<float>(next.pose.position.y - point.pose.position.y);
         const float ds = std::hypot(dx, dy);
         if (ds > 1.0E-6F) {
           const float yaw0 = static_cast<float>(tf2::getYaw(point.pose.orientation));
@@ -744,7 +742,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const int vel_x_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X);
   const int accel_cmd_idx =
     static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
-  const int steer_cmd_idx = static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
+  const int steer_cmd_idx = 
+    static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
 
   const size_t num_points = std::min(output.points.size(), static_cast<size_t>(kMppiHorizon));
 
