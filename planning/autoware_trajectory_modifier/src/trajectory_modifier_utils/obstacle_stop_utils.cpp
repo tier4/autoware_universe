@@ -371,7 +371,8 @@ std::optional<CollisionPoint> get_nearest_object_collision(
                    const auto & object, const double obj_arc_length, const double obj_lon_vel,
                    const double ego_arc_length, const double ego_vel) -> std::pair<bool, bool> {
     if (object.classification.empty()) return {false, false};
-    const auto obj_type = classification_to_object_type.at(object.classification.front().label);
+    const auto obj_type = classification_to_object_type.at(
+      autoware::object_recognition_utils::getHighestProbLabel(object.classification));
     if (!object_decel_map.count(obj_type)) return {false, false};
     const auto obj_decel = object_decel_map.at(obj_type);
     if (obj_lon_vel < stopped_vel_th) return {false, false};
@@ -578,11 +579,10 @@ void ObstacleTracker::update_objects(
     if (persistent_objects_map_.empty()) return std::nullopt;
     double min_distance = object_distance_th_ + std::numeric_limits<double>::epsilon();
     for (const auto & [uuid, existing_object] : persistent_objects_map_) {
-      const auto existing_obj_label = existing_object.object.classification.empty()
-                                        ? ObjectClassification::UNKNOWN
-                                        : existing_object.object.classification.front().label;
-      const auto obj_label = object.classification.empty() ? ObjectClassification::UNKNOWN
-                                                           : object.classification.front().label;
+      const auto existing_obj_label = autoware::object_recognition_utils::getHighestProbLabel(
+        existing_object.object.classification);
+      const auto obj_label =
+        autoware::object_recognition_utils::getHighestProbLabel(object.classification);
       if (existing_obj_label != obj_label) continue;
       const auto distance = autoware_utils::calc_distance2d(
         object.kinematics.initial_pose_with_covariance.pose.position,
