@@ -6,7 +6,7 @@
     anchor_camera_id: 0 # Camera id of the anchor topic. The forward pass begins once every anchor camera topic reaches.
     is_compressed_image: false # Whether the input images are compressed
     is_distorted_image: false # Whether the input images are distorted
-    ego_mask.fill_value_bgr: [0, 0, 0]
+    ego_mask.fill_value_bgr: [0.0, 0.0, 0.0]
     camera_mask.camera_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     camera_0_mask:
       enable: false
@@ -33,22 +33,22 @@
       mask: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
       normalized: false
     camera_6_mask:
-      enable: true
-      mask: [0.64, 1.0, 0.73, 0.65, 0.8, 0.65, 0.79, 0.74, 0.97, 0.83, 1.0, 0.73, 1.0, 1.0]
-      normalized: true
+      enable: false
+      mask: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      normalized: false
     camera_7_mask:
-      enable: true
-      mask: [0.19, 1.0, 0.21, 0.89, 0.38, 0.89, 0.39, 1.0]
-      normalized: true
+      enable: false
+      mask: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      normalized: false
     camera_8_mask:
       enable: false
       mask: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
       normalized: false
     camera_9_mask:
       enable: true
-      mask: [0.88, 0.0, 1.0, 0.0, 1.0, 1.0, 0.8, 1.0]
+      mask: [0.8, 0.0, 1.0, 0.0, 1.0, 1.0, 0.8, 1.0]
       normalized: true
     camera_10_mask:
       enable: true
-      mask: [0.0, 0.0, 0.11, 0.0, 0.2, 1.0, 0.0, 1.0]
+      mask: [0.0, 0.0, 0.2, 0.0, 0.2, 1.0, 0.0, 1.0]
       normalized: true

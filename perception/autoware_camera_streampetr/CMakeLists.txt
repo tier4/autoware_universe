@@ -8,6 +8,13 @@ add_compile_options(-Wno-deprecated-declarations)
 
 option(CUDA_VERBOSE "Verbose output of CUDA modules" OFF)
 
+install(
+  PROGRAMS
+    tools/camera_mask_designer.py
+    tools/streampetr_onnx_overlay.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 # set flags for CUDA availability
 option(CUDA_AVAIL "CUDA available" OFF)
 find_package(CUDA)
@@ -157,5 +164,6 @@ else()
   ament_auto_package(
     INSTALL_TO_SHARE
       launch
+      config
   )
 endif()

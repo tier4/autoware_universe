@@ -97,7 +97,7 @@ HTML = r"""<!doctype html>
     }
     .toolbar {
       display: grid;
-      grid-template-columns: minmax(260px, 1fr) auto auto auto auto;
+      grid-template-columns: minmax(260px, 1fr) auto auto auto auto auto;
       gap: 10px;
       align-items: end;
       margin-bottom: 12px;
@@ -225,6 +225,10 @@ HTML = r"""<!doctype html>
         </label>
         <button id="refreshButton" type="button">Refresh</button>
         <label class="check"><input id="liveToggle" type="checkbox" checked> Live</label>
+        <label class="check" title="Show and process raw decoded frames without CameraInfo undistortion. Applies to preview, evidence export, frame cache, and ONNX overlay auto-cache.">
+          <input id="skipUndistort" type="checkbox">
+          Skip undistort
+        </label>
         <button id="freezeButton" type="button">Freeze</button>
         <span id="status" class="status"></span>
       </div>
@@ -393,6 +397,7 @@ HTML = r"""<!doctype html>
     const evidenceStatusEl = document.getElementById("evidenceStatus");
     const cacheDirEl = document.getElementById("cacheDir");
     const cacheStatusEl = document.getElementById("cacheStatus");
+    const skipUndistortEl = document.getElementById("skipUndistort");
     const saveOverlayVariantEl = document.getElementById("saveOverlayVariant");
     const saveFilledVariantEl = document.getElementById("saveFilledVariant");
     const saveOutlineVariantEl = document.getElementById("saveOutlineVariant");
@@ -420,6 +425,15 @@ HTML = r"""<!doctype html>
     function round(value, digits) {
       const scale = 10 ** digits;
       return Math.round(value * scale) / scale;
+    }
+    function roundMaskValue(value, normalized) {
+      if (normalized) {
+        const clamped = clamp(Number(value), 0, 1);
+        if (clamped < 0.005) return 0.0;
+        if (clamped > 0.995) return 1.0;
+        return round(clamped, 2);
+      }
+      return Math.round(Number(value));
     }
     function activePoints() {
       if (!state.polygons[state.activePolygon]) state.polygons[state.activePolygon] = [];
@@ -473,6 +487,14 @@ HTML = r"""<!doctype html>
     }
     function streamForCameraId(cameraId) {
       return state.streams.find((stream) => cameraIdFromStream(stream) === cameraId);
+    }
+    function frameUrl(key) {
+      const params = new URLSearchParams({
+        key,
+        t: Date.now().toString(),
+      });
+      if (skipUndistortEl.checked) params.set("skip_undistort", "1");
+      return `/api/frame?${params.toString()}`;
     }
 
     function pointerToImagePoint(event) {
@@ -555,19 +577,31 @@ HTML = r"""<!doctype html>
       const width = canvas.width;
       const height = canvas.height;
       return points.flatMap((point) => {
-        if (normalized) return [round(point.x / width, 6), round(point.y / height, 6)];
-        return [round(point.x, 2), round(point.y, 2)];
+        if (normalized) {
+          return [roundMaskValue(point.x / width, true), roundMaskValue(point.y / height, true)];
+        }
+        return [roundMaskValue(point.x, false), roundMaskValue(point.y, false)];
       });
     }
-    function formatArray(values) {
-      return `[${values.map((value) => Number.isInteger(value) ? value.toString() : value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")).join(", ")}]`;
+    function normalizeMaskValues(values, normalized) {
+      if (!Array.isArray(values)) return [];
+      return values.map((value) => roundMaskValue(value, normalized));
+    }
+    function formatNumber(value, normalized) {
+      if (normalized && (value === 0 || value === 1)) return value.toFixed(1);
+      if (Number.isInteger(value)) return value.toString();
+      return value.toFixed(normalized ? 2 : 0).replace(/0+$/, "").replace(/\.$/, "");
+    }
+    function formatArray(values, normalized) {
+      return `[${values.map((value) => formatNumber(value, normalized)).join(", ")}]`;
     }
     function updateOutput() {
       const cameraId = currentCameraId();
       const normalized = normalizedEl.checked ? "true" : "false";
+      const isNormalized = normalizedEl.checked;
       const polygons = validPolygons();
       const first = polygons[0] || [];
-      const firstMask = first.length ? formatArray(outputPoints(first)) : "[]";
+      const firstMask = first.length ? formatArray(outputPoints(first), isNormalized) : "[]";
       const fill = currentFillBgr();
       paramOutputEl.value =
         `ego_mask.fill_value_bgr: [${fill.join(", ")}]\n` +
@@ -580,7 +614,7 @@ HTML = r"""<!doctype html>
       } else {
         const yamlLines = ["polygons:"];
         polygons.forEach((points) => {
-          yamlLines.push(`  - points: ${formatArray(outputPoints(points))}`);
+          yamlLines.push(`  - points: ${formatArray(outputPoints(points), isNormalized)}`);
           yamlLines.push(`    normalized: ${normalized}`);
         });
         yamlOutputEl.value = `${yamlLines.join("\n")}\n`;
@@ -632,14 +666,17 @@ HTML = r"""<!doctype html>
       const rawPolygons = Array.isArray(mask.polygons) && mask.polygons.length
         ? mask.polygons
         : [mask.mask || []];
-      const polygons = rawPolygons.filter((values) => Array.isArray(values) && values.length > 0);
+      const normalized = Boolean(mask.normalized);
+      const polygons = rawPolygons
+        .filter((values) => Array.isArray(values) && values.length > 0)
+        .map((values) => normalizeMaskValues(values, normalized));
       const validPolygons = polygons.filter((values) => values.length >= 6);
       if (!mask.enable && validPolygons.length === 0) return emptyMask();
       return {
         enable: validPolygons.length > 0,
         mask: validPolygons[0] || [],
         polygons,
-        normalized: Boolean(mask.normalized),
+        normalized,
         draft: Boolean(mask.draft),
       };
     }
@@ -820,7 +857,7 @@ HTML = r"""<!doctype html>
         const image = new Image();
         image.onload = () => resolve(image);
         image.onerror = () => reject(new Error("failed to load frame"));
-        image.src = `/api/frame?key=${encodeURIComponent(key)}&t=${Date.now()}`;
+        image.src = frameUrl(key);
       });
     }
     async function saveEvidence() {
@@ -893,7 +930,11 @@ HTML = r"""<!doctype html>
       const response = await fetch("/api/cache_batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ camera_ids: cameraIds, cache_dir: cacheDir }),
+        body: JSON.stringify({
+          camera_ids: cameraIds,
+          cache_dir: cacheDir,
+          skip_undistort: skipUndistortEl.checked,
+        }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -901,7 +942,8 @@ HTML = r"""<!doctype html>
         return;
       }
       const readyCount = data.items.filter((item) => item.projection_ready).length;
-      setCacheStatus(`cached ${data.items.length} frames, projection ready ${readyCount}/${data.items.length}`);
+      const stage = skipUndistortEl.checked ? "raw" : "undistorted";
+      setCacheStatus(`cached ${data.items.length} ${stage} frames, projection ready ${readyCount}/${data.items.length}`);
     }
     async function runOnnxOverlay() {
       const cameraIds = parseCameraIds();
@@ -915,6 +957,7 @@ HTML = r"""<!doctype html>
         output_dir: onnxOutputDirEl.value.trim(),
         camera_ids: cameraIds,
         allow_identity_projection: onnxIdentityProjectionEl.checked,
+        skip_undistort: skipUndistortEl.checked,
         mask: onnxMaskPayload(cameraIds),
       };
       if (!payload.cache_dir || !payload.model_dir || !payload.output_dir) {
@@ -935,7 +978,8 @@ HTML = r"""<!doctype html>
         return;
       }
       const cacheText = data.cache && data.cache.saved ? "auto-cached" : "cache ok";
-      setOnnxStatus(`done: ${data.output_dir} (${cacheText})`);
+      const stage = skipUndistortEl.checked ? "raw cache" : "undistorted cache";
+      setOnnxStatus(`done: ${data.output_dir} (${cacheText}, ${stage})`);
       setOnnxLog(formatOnnxLog(data));
     }
     async function openOnnxOutputFolder() {
@@ -980,13 +1024,17 @@ HTML = r"""<!doctype html>
     }
     function updateStats() {
       const stream = currentStream();
+      const liveMode = skipUndistortEl.checked
+        ? "raw decoded"
+        : (stream && stream.is_undistorted ? "undistorted" : "original/fallback");
+      const mode = stream && stream.image_stage ? stream.image_stage : liveMode;
       const rows = [
         ["Camera ID", currentCameraId().toString(), "Inferred from the selected Camera stream and used for the current camera_N_mask."],
         ["Frame", imageSizeText()],
         ["Stream", stream ? stream.image_topic : "none"],
         ["Type", stream ? stream.image_type : "none"],
         ["CameraInfo", stream && stream.has_camera_info ? stream.camera_info_topic : "not paired"],
-        ["Mode", stream && stream.is_undistorted ? "undistorted" : "original/fallback"],
+        ["Mode", mode],
         ["Projection", stream && stream.projection_ready ? "ready" : (stream && stream.projection_error ? stream.projection_error : "not ready")],
         ["Camera IDs", parseCameraIds().join(", ") || "none", "Batch camera ids for evidence export, frame cache capture, and ONNX overlay input order."],
         ["Polygons", validPolygons().length.toString()],
@@ -1064,7 +1112,7 @@ HTML = r"""<!doctype html>
         state.lastFrameOk = false;
         draw();
       };
-      image.src = `/api/frame?key=${encodeURIComponent(state.selectedKey)}&t=${Date.now()}`;
+      image.src = frameUrl(state.selectedKey);
     }
 
     function importPoints(text) {
@@ -1184,6 +1232,11 @@ HTML = r"""<!doctype html>
     });
     cameraIdEl.addEventListener("change", () => {
       applyUiMaskForCamera();
+    });
+    skipUndistortEl.addEventListener("change", () => {
+      setStatus(skipUndistortEl.checked ? "using raw decoded frames" : "using undistorted frames");
+      loadFrame();
+      updateStats();
     });
 
     setInterval(() => {
@@ -1455,6 +1508,7 @@ class CameraMaskDesignerNode(Node):
                         "camera_info_topic": stream.camera_info_topic,
                         "has_camera_info": stream.camera_info is not None,
                         "is_undistorted": stream.camera_info is not None and not stream.latest_error,
+                        "image_stage": "",
                         "last_frame_age_sec": age,
                         "width": width,
                         "height": height,
@@ -1466,8 +1520,10 @@ class CameraMaskDesignerNode(Node):
                 )
         return summaries
 
-    def encoded_frame(self, key: str) -> tuple[Optional[bytes], str]:
-        image_bgr, error = self._frame_bgr(key)
+    def encoded_frame(
+        self, key: str, skip_undistort: bool = False
+    ) -> tuple[Optional[bytes], str]:
+        image_bgr, error = self._frame_bgr(key, skip_undistort=skip_undistort)
         if image_bgr is None:
             return None, error
 
@@ -1478,8 +1534,10 @@ class CameraMaskDesignerNode(Node):
             return None, "failed to encode frame"
         return encoded.tobytes(), ""
 
-    def save_cached_frame(self, key: str, cache_dir_text: str) -> dict[str, object]:
-        image_bgr, error = self._frame_bgr(key)
+    def save_cached_frame(
+        self, key: str, cache_dir_text: str, skip_undistort: bool = False
+    ) -> dict[str, object]:
+        image_bgr, error = self._frame_bgr(key, skip_undistort=skip_undistort)
         if image_bgr is None:
             raise RuntimeError(error)
 
@@ -1501,7 +1559,13 @@ class CameraMaskDesignerNode(Node):
             "camera_id": _infer_camera_id(stream.image_topic, -1),
             "camera_info_topic": stream.camera_info_topic,
             "has_camera_info": stream.camera_info is not None,
-            "is_undistorted": stream.camera_info is not None,
+            "is_undistorted": stream.camera_info is not None and not skip_undistort,
+            "undistort_skipped": bool(skip_undistort),
+            "image_stage": (
+                "raw_decoded"
+                if skip_undistort
+                else ("undistorted" if stream.camera_info is not None else "original/fallback")
+            ),
             "width": int(image_bgr.shape[1]),
             "height": int(image_bgr.shape[0]),
             "encoding": "bgr8-jpeg",
@@ -1525,6 +1589,9 @@ class CameraMaskDesignerNode(Node):
         return {
             "image_path": str(image_path),
             "metadata_path": str(metadata_path),
+            "is_undistorted": bool(metadata.get("is_undistorted", False)),
+            "undistort_skipped": bool(metadata.get("undistort_skipped", False)),
+            "image_stage": str(metadata.get("image_stage", "")),
             "projection_ready": bool(metadata.get("projection_ready", False)),
             "projection_error": str(metadata.get("projection_error", "")),
         }
@@ -1589,7 +1656,7 @@ class CameraMaskDesignerNode(Node):
         return metadata
 
     def save_cached_frames_by_camera_ids(
-        self, camera_ids: list[int], cache_dir_text: str
+        self, camera_ids: list[int], cache_dir_text: str, skip_undistort: bool = False
     ) -> dict[str, object]:
         if not camera_ids:
             raise RuntimeError("camera_ids is empty")
@@ -1603,7 +1670,9 @@ class CameraMaskDesignerNode(Node):
             )
             if stream is None:
                 raise RuntimeError(f"camera {camera_id}: stream not found")
-            result = self.save_cached_frame(stream.key, cache_dir_text)
+            result = self.save_cached_frame(
+                stream.key, cache_dir_text, skip_undistort=skip_undistort
+            )
             result["camera_id"] = str(camera_id)
             items.append(result)
         return {"items": items}
@@ -1615,7 +1684,9 @@ class CameraMaskDesignerNode(Node):
             raise RuntimeError("unknown stream")
         return stream
 
-    def _frame_bgr(self, key: str) -> tuple[Optional[np.ndarray], str]:
+    def _frame_bgr(
+        self, key: str, skip_undistort: bool = False
+    ) -> tuple[Optional[np.ndarray], str]:
         try:
             stream = self._stream_for_key(key)
         except RuntimeError as error:
@@ -1627,7 +1698,7 @@ class CameraMaskDesignerNode(Node):
             camera_info = stream.camera_info
 
         try:
-            if camera_info is not None:
+            if camera_info is not None and not skip_undistort:
                 image_bgr = self._undistort(stream, image_bgr, camera_info)
         except Exception as error:  # noqa: BLE001 - return UI-readable error.
             return None, str(error)
@@ -1720,6 +1791,7 @@ class CachedFrameProvider:
                         "camera_info_topic": metadata.get("camera_info_topic"),
                         "has_camera_info": bool(metadata.get("has_camera_info", False)),
                         "is_undistorted": bool(metadata.get("is_undistorted", True)),
+                        "image_stage": str(metadata.get("image_stage", "")),
                         "last_frame_age_sec": 0.0,
                         "width": metadata.get("width"),
                         "height": metadata.get("height"),
@@ -1733,7 +1805,9 @@ class CachedFrameProvider:
                 self._logger.warn(f"failed to read cache metadata {metadata_path}: {error}")
         return summaries
 
-    def encoded_frame(self, key: str) -> tuple[Optional[bytes], str]:
+    def encoded_frame(
+        self, key: str, skip_undistort: bool = False
+    ) -> tuple[Optional[bytes], str]:
         for metadata_path in sorted(self._cache_dir.glob("*.json")):
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
             if str(metadata.get("key", metadata_path.stem)) != key:
@@ -1744,11 +1818,13 @@ class CachedFrameProvider:
             return image_path.read_bytes(), ""
         return None, "unknown cached frame"
 
-    def save_cached_frame(self, key: str, cache_dir_text: str) -> dict[str, object]:
+    def save_cached_frame(
+        self, key: str, cache_dir_text: str, skip_undistort: bool = False
+    ) -> dict[str, object]:
         raise RuntimeError("cache saving is unavailable in offline cache mode")
 
     def save_cached_frames_by_camera_ids(
-        self, camera_ids: list[int], cache_dir_text: str
+        self, camera_ids: list[int], cache_dir_text: str, skip_undistort: bool = False
     ) -> dict[str, object]:
         raise RuntimeError("cache saving is unavailable in offline cache mode")
 
@@ -1797,7 +1873,10 @@ class DesignerRequestHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/frame":
             params = parse_qs(parsed.query)
             key = params.get("key", [""])[0]
-            payload, error = self.server.node.encoded_frame(key)
+            skip_undistort = _parse_query_bool(params, "skip_undistort")
+            payload, error = self.server.node.encoded_frame(
+                key, skip_undistort=skip_undistort
+            )
             if payload is None:
                 self._send_error(HTTPStatus.NOT_FOUND, error)
                 return
@@ -1819,7 +1898,9 @@ class DesignerRequestHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/cache":
                 result = self.server.node.save_cached_frame(
-                    str(payload.get("key", "")), str(payload.get("cache_dir", ""))
+                    str(payload.get("key", "")),
+                    str(payload.get("cache_dir", "")),
+                    skip_undistort=bool(payload.get("skip_undistort", False)),
                 )
                 self._send_bytes(json.dumps(result).encode("utf-8"), "application/json")
                 return
@@ -1827,6 +1908,7 @@ class DesignerRequestHandler(BaseHTTPRequestHandler):
                 result = self.server.node.save_cached_frames_by_camera_ids(
                     _parse_camera_ids_payload(payload.get("camera_ids", [])),
                     str(payload.get("cache_dir", "")),
+                    skip_undistort=bool(payload.get("skip_undistort", False)),
                 )
                 self._send_bytes(json.dumps(result).encode("utf-8"), "application/json")
                 return
@@ -1908,8 +1990,9 @@ def save_param_file(payload: dict[str, object]) -> dict[str, object]:
     while len(fill_values) < 3:
         fill_values.append(0)
 
-    enable = bool(payload.get("enable", bool(mask_values)))
     normalized = bool(payload.get("normalized", True))
+    mask_values = [_round_mask_value(value, normalized) for value in mask_values]
+    enable = bool(payload.get("enable", bool(mask_values)))
     text = _replace_fill_value_bgr(text, fill_values)
     text = _replace_camera_mask_block(text, camera_id, enable, mask_values, normalized)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1994,11 +2077,13 @@ def run_onnx_overlay(payload: dict[str, object], frame_provider: object) -> dict
     if not camera_ids:
         raise RuntimeError("camera_ids is empty")
     allow_identity_projection = bool(payload.get("allow_identity_projection", False))
+    skip_undistort = bool(payload.get("skip_undistort", False))
     cache_result = ensure_onnx_frame_cache(
         frame_provider,
         cache_dir,
         camera_ids,
         require_projection=not allow_identity_projection,
+        skip_undistort=skip_undistort,
     )
 
     script = Path(__file__).with_name("streampetr_onnx_overlay.py")
@@ -2025,6 +2110,7 @@ def run_onnx_overlay(payload: dict[str, object], frame_provider: object) -> dict
     result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     details = {
         "cache": cache_result,
+        "skip_undistort": skip_undistort,
         "command": command,
         "returncode": result.returncode,
         "stdout": result.stdout,
@@ -2039,6 +2125,7 @@ def run_onnx_overlay(payload: dict[str, object], frame_provider: object) -> dict
         "output_dir": str(output_dir),
         "camera_ids": camera_ids,
         "cache": cache_result,
+        "skip_undistort": skip_undistort,
         "command": command,
         "returncode": result.returncode,
         "stdout": result.stdout,
@@ -2047,21 +2134,27 @@ def run_onnx_overlay(payload: dict[str, object], frame_provider: object) -> dict
 
 
 def ensure_onnx_frame_cache(
-    frame_provider: object, cache_dir: Path, camera_ids: list[int], require_projection: bool
+    frame_provider: object,
+    cache_dir: Path,
+    camera_ids: list[int],
+    require_projection: bool,
+    skip_undistort: bool,
 ) -> dict[str, object]:
-    before = inspect_onnx_frame_cache(cache_dir, camera_ids, require_projection)
+    before = inspect_onnx_frame_cache(cache_dir, camera_ids, require_projection, skip_undistort)
     if before["ready"]:
         return {"saved": False, **before}
 
     try:
-        saved = frame_provider.save_cached_frames_by_camera_ids(camera_ids, str(cache_dir))
+        saved = frame_provider.save_cached_frames_by_camera_ids(
+            camera_ids, str(cache_dir), skip_undistort=skip_undistort
+        )
     except Exception as error:  # noqa: BLE001 - expose why live auto-cache could not happen.
         raise RuntimeError(
             "ONNX frame cache is incomplete and automatic frame cache failed: "
             f"{error}. Cache status: {before}"
         ) from error
 
-    after = inspect_onnx_frame_cache(cache_dir, camera_ids, require_projection)
+    after = inspect_onnx_frame_cache(cache_dir, camera_ids, require_projection, skip_undistort)
     if not after["ready"]:
         raise RuntimeError(
             "automatic frame cache did not produce ONNX-ready metadata. "
@@ -2071,7 +2164,7 @@ def ensure_onnx_frame_cache(
 
 
 def inspect_onnx_frame_cache(
-    cache_dir: Path, camera_ids: list[int], require_projection: bool
+    cache_dir: Path, camera_ids: list[int], require_projection: bool, skip_undistort: bool
 ) -> dict[str, object]:
     selected: dict[int, dict[str, object]] = {}
     for metadata_path in sorted(cache_dir.expanduser().resolve().glob("*.json")):
@@ -2083,33 +2176,59 @@ def inspect_onnx_frame_cache(
         if camera_id < 0:
             continue
         image_path = metadata_path.parent / str(metadata.get("image_file", ""))
-        selected[camera_id] = {
+        actual_skip_undistort = _metadata_undistort_skipped(metadata)
+        entry = {
             "metadata_path": str(metadata_path),
             "image_path": str(image_path),
             "image_exists": image_path.exists(),
+            "is_undistorted": bool(metadata.get("is_undistorted", False)),
+            "undistort_skipped": actual_skip_undistort,
+            "image_stage": str(metadata.get("image_stage", "")),
             "projection_ready": _metadata_has_projection_matrix(metadata),
             "projection_error": str(metadata.get("projection_error", "")),
         }
+        current = selected.get(camera_id)
+        if current is None or (
+            bool(current.get("undistort_skipped", False)) != skip_undistort
+            and actual_skip_undistort == skip_undistort
+        ):
+            selected[camera_id] = entry
 
     missing = []
     missing_projection = []
+    wrong_undistort_stage = []
     entries = []
     for camera_id in camera_ids:
         entry = selected.get(camera_id)
         if entry is None or not bool(entry.get("image_exists", False)):
             missing.append(camera_id)
             continue
+        if bool(entry.get("undistort_skipped", False)) != skip_undistort:
+            wrong_undistort_stage.append(camera_id)
         if require_projection and not bool(entry.get("projection_ready", False)):
             missing_projection.append(camera_id)
         entries.append({"camera_id": camera_id, **entry})
 
     return {
-        "ready": not missing and not missing_projection,
+        "ready": not missing and not missing_projection and not wrong_undistort_stage,
         "require_projection": require_projection,
+        "skip_undistort": skip_undistort,
         "missing_camera_ids": missing,
         "missing_projection_camera_ids": missing_projection,
+        "wrong_undistort_stage_camera_ids": wrong_undistort_stage,
         "entries": entries,
     }
+
+
+def _metadata_undistort_skipped(metadata: dict[str, object]) -> bool:
+    if "undistort_skipped" in metadata:
+        return bool(metadata.get("undistort_skipped", False))
+    return not bool(metadata.get("is_undistorted", False))
+
+
+def _parse_query_bool(params: dict[str, list[str]], key: str) -> bool:
+    value = params.get(key, [""])[0].strip().lower()
+    return value in {"1", "true", "yes", "on"}
 
 
 def _metadata_has_projection_matrix(metadata: dict[str, object]) -> bool:
@@ -2303,18 +2422,31 @@ def _format_camera_mask_block(
     return (
         f"{indent}camera_{camera_id}_mask:\n"
         f"{child_indent}enable: {'true' if enable else 'false'}\n"
-        f"{child_indent}mask: {_format_number_array(mask_values)}\n"
+        f"{child_indent}mask: {_format_mask_array(mask_values, normalized)}\n"
         f"{child_indent}normalized: {'true' if normalized else 'false'}\n"
     )
 
 
-def _format_number_array(values: list[float]) -> str:
+def _round_mask_value(value: float, normalized: bool) -> float:
+    if normalized:
+        clamped = max(0.0, min(1.0, float(value)))
+        if clamped < 0.005:
+            return 0.0
+        if clamped > 0.995:
+            return 1.0
+        return int(clamped * 100.0 + 0.5) / 100.0
+    return float(round(value))
+
+
+def _format_mask_array(values: list[float], normalized: bool) -> str:
     formatted = []
     for value in values:
-        if abs(value - round(value)) < 1e-9:
+        if normalized and value in (0.0, 1.0):
+            formatted.append(f"{value:.1f}")
+        elif abs(value - round(value)) < 1e-9:
             formatted.append(str(int(round(value))))
         else:
-            formatted.append(f"{value:.6f}".rstrip("0").rstrip("."))
+            formatted.append(f"{value:.2f}".rstrip("0").rstrip("."))
     return "[" + ", ".join(formatted) + "]"
 
 

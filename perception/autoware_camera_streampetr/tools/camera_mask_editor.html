@@ -331,6 +331,19 @@
       const scale = 10 ** digits;
       return Math.round(value * scale) / scale;
     }
+    function roundMaskValue(value, normalized) {
+      if (normalized) {
+        const clamped = clamp(Number(value), 0, 1);
+        if (clamped < 0.005) {
+          return 0.0;
+        }
+        if (clamped > 0.995) {
+          return 1.0;
+        }
+        return round(clamped, 2);
+      }
+      return Math.round(Number(value));
+    }
 
     function activePoints() {
       if (!state.polygons[state.activePolygon]) {
@@ -445,22 +458,33 @@
       const height = state.image ? state.image.height : canvas.height;
       return points.flatMap((point) => {
         if (normalized) {
-          return [round(point.x / width, 6), round(point.y / height, 6)];
+          return [roundMaskValue(point.x / width, true), roundMaskValue(point.y / height, true)];
         }
-        return [round(point.x, 2), round(point.y, 2)];
+        return [roundMaskValue(point.x, false), roundMaskValue(point.y, false)];
       });
     }
 
-    function formatArray(values) {
-      return `[${values.map((value) => Number.isInteger(value) ? value.toString() : value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")).join(", ")}]`;
+    function formatNumber(value, normalized) {
+      if (normalized && (value === 0 || value === 1)) {
+        return value.toFixed(1);
+      }
+      if (Number.isInteger(value)) {
+        return value.toString();
+      }
+      return value.toFixed(normalized ? 2 : 0).replace(/0+$/, "").replace(/\.$/, "");
+    }
+
+    function formatArray(values, normalized) {
+      return `[${values.map((value) => formatNumber(value, normalized)).join(", ")}]`;
     }
 
     function updateOutput() {
       const cameraId = clamp(Number.parseInt(cameraIdEl.value || "0", 10), 0, 10);
       const normalized = normalizedEl.checked ? "true" : "false";
+      const isNormalized = normalizedEl.checked;
       const polygons = validPolygons();
       const first = polygons[0] || [];
-      const firstMask = first.length ? formatArray(outputPoints(first)) : "[]";
+      const firstMask = first.length ? formatArray(outputPoints(first), isNormalized) : "[]";
       const fill = [
         clamp(Number.parseInt(fillBEl.value || "0", 10), 0, 255),
         clamp(Number.parseInt(fillGEl.value || "0", 10), 0, 255),
@@ -479,7 +503,7 @@
       } else {
         const yamlLines = ["polygons:"];
         polygons.forEach((points) => {
-          yamlLines.push(`  - points: ${formatArray(outputPoints(points))}`);
+          yamlLines.push(`  - points: ${formatArray(outputPoints(points), isNormalized)}`);
           yamlLines.push(`    normalized: ${normalized}`);
         });
         yamlOutputEl.value = `${yamlLines.join("\n")}\n`;
