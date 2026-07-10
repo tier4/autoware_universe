@@ -215,9 +215,10 @@ DracArtifact assess_drac(
       const auto & traj_type_str = object_trajectory.getObjectIdentification().trajectory_type;
       const auto & object_id = object_trajectory.getObjectIdentification().uuid;
 
+      constexpr double obj_trajectory_time_horizon = 8.0;
       const auto object_deceleration_trajectory = trajectory::generate_object_trajectory(
         context, object_id, traj_type_str, -ego_dec, global_params.time_resolution,
-        8.0 + drac_params_collision_time_threshold);
+        obj_trajectory_time_horizon + drac_params_collision_time_threshold);
 
       auto finding_dec_object_motion = find_collision_timing(
         ego_deceleration_trajectory, object_deceleration_trajectory, error_pet_th,
@@ -296,9 +297,11 @@ DracArtifact assess(
   const DracParamMap & drac_param_map, const GlobalParams & global_params,
   const VehicleInfo & vehicle_info)
 {
-  // todo (takagi): remove magic number 8.0, -1.0 and use the parameters.
-  const auto nominal_speed_object_trajectories =
-    generate_object_trajectories(context, 8.0, -1.0, global_params.time_resolution, drac_param_map);
+  constexpr double obj_trajectory_time_horizon = 8.0;
+  constexpr double obj_nominal_acc = -1.0;
+  const auto nominal_speed_object_trajectories = generate_object_trajectories(
+    context, obj_trajectory_time_horizon, obj_nominal_acc, global_params.time_resolution,
+    drac_param_map);
 
   return assess_drac(
     ego_trajectory_cache, context, drac_param_map, vehicle_info, nominal_speed_object_trajectories,
