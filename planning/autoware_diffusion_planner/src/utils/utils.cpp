@@ -124,7 +124,7 @@ geometry_msgs::msg::Pose shift_x(const geometry_msgs::msg::Pose & pose, const do
   return shifted_pose;
 }
 
-Eigen::Matrix4d project_pose_onto_polyline(
+PolylineProjection project_pose_onto_polyline(
   const double query_x, const double query_y, const std::vector<Eigen::Matrix4d> & polyline)
 {
   if (polyline.size() < 2) {
@@ -136,6 +136,8 @@ Eigen::Matrix4d project_pose_onto_polyline(
   double best_dist_sq = std::numeric_limits<double>::max();
   Eigen::Vector2d best_foot = query;
   Eigen::Quaterniond best_orientation = Eigen::Quaterniond::Identity();
+  // (closest segment index + intra-segment ratio); position of the foot along the polyline.
+  double best_interpolation_index = 0.0;
 
   for (size_t i = 0; i + 1 < polyline.size(); ++i) {
     // Endpoints of the i-th line segment in the xy-plane.
@@ -172,6 +174,7 @@ Eigen::Matrix4d project_pose_onto_polyline(
       const Eigen::Quaterniond start_orientation(polyline[i].block<3, 3>(0, 0));
       const Eigen::Quaterniond end_orientation(polyline[i + 1].block<3, 3>(0, 0));
       best_orientation = start_orientation.slerp(ratio, end_orientation);
+      best_interpolation_index = static_cast<double>(i) + ratio;
     }
   }
 
@@ -179,7 +182,7 @@ Eigen::Matrix4d project_pose_onto_polyline(
   projected.block<3, 3>(0, 0) = best_orientation.normalized().toRotationMatrix();
   projected(0, 3) = best_foot.x();
   projected(1, 3) = best_foot.y();
-  return projected;
+  return PolylineProjection{projected, best_interpolation_index};
 }
 
 Eigen::Matrix4d inverse(const Eigen::Matrix4d & mat)

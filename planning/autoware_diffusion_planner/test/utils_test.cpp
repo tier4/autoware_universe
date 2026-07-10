@@ -195,7 +195,7 @@ TEST_F(UtilsTest, ProjectPoseOntoPolylineOnVertexIsNoOp)
   const std::vector<Eigen::Matrix4d> polyline{
     make_pose(0.0, 0.0, 0.0), make_pose(1.0, 0.0, 0.0), make_pose(2.0, 0.0, 0.0)};
 
-  const Eigen::Matrix4d projected = utils::project_pose_onto_polyline(1.0, 0.0, polyline);
+  const Eigen::Matrix4d projected = utils::project_pose_onto_polyline(1.0, 0.0, polyline).pose;
 
   EXPECT_NEAR(projected(0, 3), 1.0, 1e-9);
   EXPECT_NEAR(projected(1, 3), 0.0, 1e-9);
@@ -208,7 +208,7 @@ TEST_F(UtilsTest, ProjectPoseOntoPolylineLateralOffset)
   const std::vector<Eigen::Matrix4d> polyline{
     make_pose(0.0, 0.0, 0.0), make_pose(10.0, 0.0, 0.0)};
 
-  const Eigen::Matrix4d projected = utils::project_pose_onto_polyline(3.0, 2.0, polyline);
+  const Eigen::Matrix4d projected = utils::project_pose_onto_polyline(3.0, 2.0, polyline).pose;
 
   EXPECT_NEAR(projected(0, 3), 3.0, 1e-9);
   EXPECT_NEAR(projected(1, 3), 0.0, 1e-9);
@@ -221,7 +221,7 @@ TEST_F(UtilsTest, ProjectPoseOntoPolylineClampsToEndpoint)
   const std::vector<Eigen::Matrix4d> polyline{
     make_pose(0.0, 0.0, 0.0), make_pose(10.0, 0.0, 0.0)};
 
-  const Eigen::Matrix4d projected = utils::project_pose_onto_polyline(15.0, 5.0, polyline);
+  const Eigen::Matrix4d projected = utils::project_pose_onto_polyline(15.0, 5.0, polyline).pose;
 
   EXPECT_NEAR(projected(0, 3), 10.0, 1e-9);
   EXPECT_NEAR(projected(1, 3), 0.0, 1e-9);
@@ -234,7 +234,7 @@ TEST_F(UtilsTest, ProjectPoseOntoPolylineSlerpsHeading)
   const std::vector<Eigen::Matrix4d> polyline{
     make_pose(0.0, 0.0, 0.0), make_pose(2.0, 0.0, M_PI_2)};
 
-  const Eigen::Matrix4d projected = utils::project_pose_onto_polyline(1.0, 0.0, polyline);
+  const Eigen::Matrix4d projected = utils::project_pose_onto_polyline(1.0, 0.0, polyline).pose;
 
   EXPECT_NEAR(projected(0, 3), 1.0, 1e-9);
   EXPECT_NEAR(projected(1, 3), 0.0, 1e-9);
@@ -248,7 +248,7 @@ TEST_F(UtilsTest, ProjectPoseOntoPolylineSelectsClosestSegment)
     make_pose(0.0, 0.0, 0.0), make_pose(1.0, 0.0, 0.0), make_pose(1.0, 5.0, M_PI_2)};
 
   // Closest to the second (vertical) segment.
-  const Eigen::Matrix4d projected = utils::project_pose_onto_polyline(1.3, 3.0, polyline);
+  const Eigen::Matrix4d projected = utils::project_pose_onto_polyline(1.3, 3.0, polyline).pose;
 
   EXPECT_NEAR(projected(0, 3), 1.0, 1e-9);
   EXPECT_NEAR(projected(1, 3), 3.0, 1e-9);

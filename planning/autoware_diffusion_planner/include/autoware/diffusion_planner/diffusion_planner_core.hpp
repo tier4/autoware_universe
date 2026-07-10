@@ -106,6 +106,11 @@ struct FrameContext
   Eigen::Matrix4d ego_to_map_transform;
   std::vector<AgentHistory> ego_centric_neighbor_histories;
   rclcpp::Time frame_time;
+  // Ego pose snapped onto the previous planning trajectory (map frame) and the interpolation time
+  // of the snapped foot along that trajectory. Set only when ego_snap_to_prev_trajectory actually
+  // snapped this frame; nullopt otherwise.
+  std::optional<Eigen::Matrix4d> snapped_pose;
+  std::optional<double> snapped_interpolation_time_s;
 };
 
 struct DiffusionPlannerParams

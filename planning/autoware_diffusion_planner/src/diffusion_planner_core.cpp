@@ -14,6 +14,7 @@
 
 #include "autoware/diffusion_planner/diffusion_planner_core.hpp"
 
+#include "autoware/diffusion_planner/constants.hpp"
 #include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/inference/guidance/centerline_guidance.hpp"
@@ -267,6 +268,8 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   // OUTPUT_T segments. The foot of the perpendicular to the closest segment becomes the next ego
   // pose. Note that kinematic_state here is already in the model frame (center frame when shift_x
   // is enabled), which matches the frame the previous trajectory was generated in.
+  std::optional<Eigen::Matrix4d> snapped_pose_opt;
+  std::optional<double> snapped_interpolation_time_s_opt;
   if (
     params_.ego_snap_to_prev_trajectory && last_ego_to_map_transform_.has_value() &&
     !last_agent_poses_map_.empty() && !last_agent_poses_map_[0].empty() &&
@@ -280,8 +283,9 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
     prev_trajectory.push_back(last_ego_to_map_transform_.value());
     prev_trajectory.insert(prev_trajectory.end(), prev_poses.begin(), prev_poses.end());
 
-    const Eigen::Matrix4d snapped_pose = utils::project_pose_onto_polyline(
+    const utils::PolylineProjection projection = utils::project_pose_onto_polyline(
       kinematic_state.pose.pose.position.x, kinematic_state.pose.pose.position.y, prev_trajectory);
+    const Eigen::Matrix4d & snapped_pose = projection.pose;
 
     kinematic_state.pose.pose.position.x = snapped_pose(0, 3);
     kinematic_state.pose.pose.position.y = snapped_pose(1, 3);
@@ -290,6 +294,13 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
     kinematic_state.pose.pose.orientation.y = q.y();
     kinematic_state.pose.pose.orientation.z = q.z();
     kinematic_state.pose.pose.orientation.w = q.w();
+
+    // The polyline's first vertex is the previous planning start (t = 0) and each subsequent
+    // vertex advances by one prediction time step, so the interpolation index (segment index +
+    // intra-segment ratio) maps to time via the per-step duration.
+    snapped_pose_opt = snapped_pose;
+    snapped_interpolation_time_s_opt =
+      projection.interpolation_index * constants::PREDICTION_TIME_STEP_S;
   }
 
   // Get transforms
@@ -330,8 +341,9 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
 
   const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
   const FrameContext frame_context{
-    frame_kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
-    frame_time};
+    frame_kinematic_state,     *ego_acceleration, ego_to_map_transform,
+    processed_neighbor_histories, frame_time,      snapped_pose_opt,
+    snapped_interpolation_time_s_opt};
 
   return frame_context;
 }

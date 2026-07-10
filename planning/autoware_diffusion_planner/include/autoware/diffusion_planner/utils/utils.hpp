@@ -70,6 +70,19 @@ std::pair<float, float> rotation_matrix_to_cos_sin(const Eigen::Matrix3d & rotat
 geometry_msgs::msg::Pose shift_x(const geometry_msgs::msg::Pose & pose, const double shift_length);
 
 /**
+ * @brief Result of projecting a query point onto a polyline.
+ */
+struct PolylineProjection
+{
+  //! Projected pose (foot of the perpendicular) as a 4x4 transformation matrix.
+  Eigen::Matrix4d pose;
+  //! Position of the foot along the polyline, expressed as (closest segment index +
+  //! intra-segment ratio in [0, 1]). Multiplying by the per-segment time step yields the
+  //! interpolation time of the foot along the polyline.
+  double interpolation_index;
+};
+
+/**
  * @brief Projects a 2D query point onto a polyline and returns the pose at the foot of the
  *        perpendicular to the closest line segment.
  *
@@ -82,9 +95,9 @@ geometry_msgs::msg::Pose shift_x(const geometry_msgs::msg::Pose & pose, const do
  * @param query_x X coordinate of the query point.
  * @param query_y Y coordinate of the query point.
  * @param polyline Sequence of poses (must contain at least two elements) forming the polyline.
- * @return A 4x4 transformation matrix representing the projected pose.
+ * @return The projected pose together with the interpolation index of the foot along the polyline.
  */
-Eigen::Matrix4d project_pose_onto_polyline(
+PolylineProjection project_pose_onto_polyline(
   double query_x, double query_y, const std::vector<Eigen::Matrix4d> & polyline);
 
 /**
