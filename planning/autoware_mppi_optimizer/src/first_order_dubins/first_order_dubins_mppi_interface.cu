@@ -742,7 +742,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const int vel_x_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X);
   const int accel_cmd_idx =
     static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
-  const int steer_cmd_idx = 
+  const int steer_cmd_idx =
     static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
 
   const size_t num_points = std::min(output.points.size(), static_cast<size_t>(kMppiHorizon));
