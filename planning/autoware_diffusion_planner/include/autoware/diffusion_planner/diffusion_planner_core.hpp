@@ -134,6 +134,7 @@ struct DiffusionPlannerParams
   int64_t delay_step;
   double line_string_max_step_m;
   bool use_time_interpolation;
+  bool ego_snap_to_prev_trajectory;
   int dpm_solver_steps;
   double start_guidance_reference_distance_m;
   double start_guidance_max_scale;
@@ -338,6 +339,9 @@ private:
   AgentData agent_data_;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map_;
   std::vector<std::vector<std::vector<Eigen::Matrix4d>>> last_agent_poses_map_;
+  // Ego pose (in map frame) used as the planning start of the previous cycle. Together with
+  // last_agent_poses_map_ it forms the previous planning trajectory used to snap the ego pose.
+  std::optional<Eigen::Matrix4d> last_ego_to_map_transform_;
 
   // Lanelet map
   LaneletRoute::ConstSharedPtr route_ptr_;

@@ -206,6 +206,8 @@ void DiffusionPlanner::set_up_params()
   params_.delay_step = this->declare_parameter<int64_t>("delay_step", 0);
   params_.line_string_max_step_m = this->declare_parameter<double>("line_string_max_step_m", 5.0);
   params_.use_time_interpolation = this->declare_parameter<bool>("use_time_interpolation", false);
+  params_.ego_snap_to_prev_trajectory =
+    this->declare_parameter<bool>("ego_snap_to_prev_trajectory", true);
   params_.start_guidance_reference_distance_m =
     this->declare_parameter<double>("guidance.start_guidance.reference_distance_m", 10.0);
   params_.start_guidance_max_scale =
@@ -337,6 +339,8 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<int64_t>(parameters, "delay_step", temp_params.delay_step);
     update_param<double>(parameters, "line_string_max_step_m", temp_params.line_string_max_step_m);
     update_param<bool>(parameters, "use_time_interpolation", temp_params.use_time_interpolation);
+    update_param<bool>(
+      parameters, "ego_snap_to_prev_trajectory", temp_params.ego_snap_to_prev_trajectory);
     update_param<double>(
       parameters, "guidance.start_guidance.reference_distance_m",
       temp_params.start_guidance_reference_distance_m);

@@ -84,6 +84,7 @@ DiffusionPlannerCore::DiffusionPlannerCore(
 void DiffusionPlannerCore::load_model()
 {
   last_agent_poses_map_.clear();
+  last_ego_to_map_transform_.reset();
   diffusion_planner_inference_.reset();
   utils::check_weight_version(params_.args_path);
   observation_normalization_ = utils::load_observation_normalization(params_.args_path);
@@ -260,6 +261,37 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
       utils::shift_x(kinematic_state.pose.pose, vehicle_spec_.base_link_to_center);
   }
 
+  // Snap the ego pose onto the previous planning trajectory. The previous trajectory is the
+  // polyline formed by the previous planning start pose (last_ego_to_map_transform_) followed by
+  // the previous prediction (last_agent_poses_map_[0][0]), i.e. OUTPUT_T + 1 points forming
+  // OUTPUT_T segments. The foot of the perpendicular to the closest segment becomes the next ego
+  // pose. Note that kinematic_state here is already in the model frame (center frame when shift_x
+  // is enabled), which matches the frame the previous trajectory was generated in.
+  if (
+    params_.ego_snap_to_prev_trajectory && last_ego_to_map_transform_.has_value() &&
+    !last_agent_poses_map_.empty() && !last_agent_poses_map_[0].empty() &&
+    !last_agent_poses_map_[0][0].empty()) {
+    constexpr int64_t batch_idx = 0;
+    constexpr int64_t agent_idx = 0;
+    const auto & prev_poses = last_agent_poses_map_[batch_idx][agent_idx];
+
+    std::vector<Eigen::Matrix4d> prev_trajectory;
+    prev_trajectory.reserve(prev_poses.size() + 1);
+    prev_trajectory.push_back(last_ego_to_map_transform_.value());
+    prev_trajectory.insert(prev_trajectory.end(), prev_poses.begin(), prev_poses.end());
+
+    const Eigen::Matrix4d snapped_pose = utils::project_pose_onto_polyline(
+      kinematic_state.pose.pose.position.x, kinematic_state.pose.pose.position.y, prev_trajectory);
+
+    kinematic_state.pose.pose.position.x = snapped_pose(0, 3);
+    kinematic_state.pose.pose.position.y = snapped_pose(1, 3);
+    const Eigen::Quaterniond q(snapped_pose.block<3, 3>(0, 0));
+    kinematic_state.pose.pose.orientation.x = q.x();
+    kinematic_state.pose.pose.orientation.y = q.y();
+    kinematic_state.pose.pose.orientation.z = q.z();
+    kinematic_state.pose.pose.orientation.w = q.w();
+  }
+
   // Get transforms
   const geometry_msgs::msg::Pose & pose_base_link = kinematic_state.pose.pose;
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(pose_base_link);
@@ -287,10 +319,18 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   preprocess::process_traffic_signals(
     traffic_signals, traffic_light_id_map_, current_time, traffic_light_msg_timeout_s);
 
-  // Create frame context
+  // Create frame context. create_input_data re-applies shift_x to
+  // frame_context.ego_kinematic_state, so store the base_link-frame pose (undo the shift applied
+  // above) to keep the (possibly snapped) pose consistent across the whole frame.
+  Odometry frame_kinematic_state = kinematic_state;
+  if (params_.shift_x) {
+    frame_kinematic_state.pose.pose =
+      utils::shift_x(kinematic_state.pose.pose, -vehicle_spec_.base_link_to_center);
+  }
+
   const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
   const FrameContext frame_context{
-    *ego_kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
+    frame_kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
     frame_time};
 
   return frame_context;
@@ -508,6 +548,9 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
   const auto agent_poses =
     postprocess::parse_predictions(denormalized_predictions, frame_context.ego_to_map_transform);
   last_agent_poses_map_ = agent_poses;
+  // Remember the planning start pose (map frame). It is the first point of the previous planning
+  // trajectory used to snap the ego pose in the next cycle.
+  last_ego_to_map_transform_ = frame_context.ego_to_map_transform;
 
   const bool enable_force_stop =
     frame_context.ego_kinematic_state.twist.twist.linear.x > std::numeric_limits<double>::epsilon();
