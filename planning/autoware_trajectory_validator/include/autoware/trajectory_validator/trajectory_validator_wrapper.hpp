@@ -60,6 +60,8 @@ using autoware_trajectory_validator::msg::ValidationReportArray;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 
+using ValidationReports = std::vector<ValidationReport>;
+
 /**
  * @brief Adapter for TrajectoryValidator: manages plugin loading, parameter updates,
  * diagnostics, and debug publishing.
@@ -85,7 +87,7 @@ public:
    * @param input_trajectories Candidate trajectories to validate.
    * @param context Current world state snapshot.
    */
-  CandidateTrajectories validate_trajectories(
+  TrajectoryValidatorReport validate_trajectories(
     const CandidateTrajectories & input_trajectories, const ValidatorContext & context);
 
 private:

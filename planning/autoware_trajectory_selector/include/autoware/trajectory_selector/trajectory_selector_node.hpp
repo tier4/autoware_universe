@@ -16,11 +16,12 @@
 #define AUTOWARE__TRAJECTORY_SELECTOR__TRAJECTORY_SELECTOR_NODE_HPP_
 
 #include "autoware/trajectory_validator/detail/validator_context.hpp"
-#include "autoware/trajectory_validator/trajectory_validator_wrapper.hpp"
 #include "autoware_trajectory_selector/autoware_trajectory_selector_param.hpp"
 
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/trajectory_concatenator/trajectory_concatenator_wrapper.hpp>
+#include <autoware/trajectory_ranker/trajectory_ranker_wrapper.hpp>
+#include <autoware/trajectory_validator/trajectory_validator_wrapper.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -39,10 +40,18 @@ namespace autoware::trajectory_selector
 {
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_internal_planning_msgs::msg::CandidateTrajectory;
+using autoware_internal_planning_msgs::msg::ScoredCandidateTrajectories;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
+using autoware_planning_msgs::msg::LaneletRoute;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
+
+using autoware_trajectory_validator::msg::RiskLevel;
+using trajectory_ranker::RankerInputTrajectories;
+using trajectory_ranker::RankerInputTrajectory;
+using trajectory_ranker::TrajectorySource;
+using trajectory_validator::ValidationReports;
 
 /**
  * @brief Concatenates candidate trajectories from multiple planners, validates them, and
@@ -71,6 +80,12 @@ private:
   void map_callback(const LaneletMapBin::ConstSharedPtr msg);
 
   /**
+   * @brief Converts and stores the received lanelet route.
+   * @param msg Lanelet route message.
+   */
+  void route_callback(const autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr msg);
+
+  /**
    * @brief Forwards incoming candidate trajectories to the concatenator and trigger the
    * concatenation.
    * @param msg Incoming candidate trajectories message.
@@ -85,13 +100,20 @@ private:
   void on_trajectories(const CandidateTrajectories::ConstSharedPtr msg);
 
   /**
-   * @brief Concatenates buffered trajectories, validates them, and publishes the result.
+   * @brief Concatenates buffered trajectories, validates them, ranks them, and publishes the
+   * result.
    */
-  void concatenate_and_validate();
+  void process_trajectories();
 
   /** @brief Collects the latest sensor data needed for validation; returns an error string if any
    * mandatory input is unavailable. */
   tl::expected<trajectory_validator::FilterContext, std::string> take_validator_data();
+
+  /** @brief Collects the latest data needed for ranking */
+  trajectory_ranker::RankerContext take_ranker_data();
+
+  trajectory_ranker::RankerInputTrajectories to_ranker_input_trajectories(
+    const CandidateTrajectories & trajectories, const ValidationReports & validation_reports);
 
   /** @brief Update parameters */
   void update_parameters();
@@ -101,8 +123,11 @@ private:
 
   std::unique_ptr<trajectory_concatenator::TrajectoryConcatenatorWrapper> concatenator_ptr_;
   std::unique_ptr<trajectory_validator::TrajectoryValidatorWrapper> validator_ptr_;
+  std::unique_ptr<trajectory_ranker::TrajectoryRankerWrapper> ranker_ptr_;
   rclcpp::TimerBase::SharedPtr timer_;
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
+  LaneletRoute::ConstSharedPtr route_ptr_;
+  std::shared_ptr<route_handler::RouteHandler> route_handler_ptr_;
 
   // Polling Subscribers
   autoware_utils_rclcpp::InterProcessPollingSubscriber<Odometry> sub_odometry_{
@@ -114,17 +139,16 @@ private:
   autoware_utils_rclcpp::InterProcessPollingSubscriber<
     autoware_perception_msgs::msg::TrafficLightGroupArray>
     sub_traffic_lights_{this, "~/input/traffic_signals"};
-  autoware_utils_rclcpp::InterProcessPollingSubscriber<
-    autoware_planning_msgs::msg::LaneletRoute, autoware_utils_rclcpp::polling_policy::Latest>
-    sub_route_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
 
   // Normal Subscribers
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;
+  rclcpp::Subscription<autoware_planning_msgs::msg::LaneletRoute>::SharedPtr sub_route_;
   rclcpp::Subscription<CandidateTrajectories>::SharedPtr sub_trajectories_generative_;
   rclcpp::Subscription<CandidateTrajectories>::SharedPtr sub_trajectories_backup_;
 
   // Publishers
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
+  rclcpp::Publisher<ScoredCandidateTrajectories>::SharedPtr pub_scored_trajectories_;
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
     pub_processing_time_detail_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};

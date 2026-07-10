@@ -135,7 +135,7 @@ void TrajectoryValidatorWrapper::publishers()
     std::make_shared<autoware_utils_debug::DebugPublisher>(node_ptr_, "~/debug/validator");
 }
 
-CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
+TrajectoryValidatorReport TrajectoryValidatorWrapper::validate_trajectories(
   const autoware_internal_planning_msgs::msg::CandidateTrajectories & input_trajectories,
   const ValidatorContext & context)
 {
@@ -161,7 +161,7 @@ CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
 
   publish_debug(report.evaluation_tables, report.processing_time_ms, context.odometry->pose.pose);
 
-  return input_trajectories;
+  return report;
 }
 
 void TrajectoryValidatorWrapper::publish_validation_reports(
