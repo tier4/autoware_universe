@@ -15,16 +15,16 @@
 #include "autoware/map_based_prediction/priority_predictor/signal_stop_hysteresis.hpp"
 #include "autoware/map_based_prediction/priority_predictor/traffic_signal_stop_predictor.hpp"
 
-#include <autoware/lanelet2_utils/nn_search.hpp>
 #include <rclcpp/time.hpp>
 
 #include <gtest/gtest.h>
+#include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
 #include <lanelet2_core/primitives/Point.h>
-#include <lanelet2_routing/LaneletPath.h>
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <vector>
@@ -33,7 +33,6 @@ namespace autoware::map_based_prediction::priority_predictor
 {
 namespace
 {
-using autoware::experimental::lanelet2_utils::LaneletRTree;
 using autoware_perception_msgs::msg::TrafficLightElement;
 using autoware_perception_msgs::msg::TrafficLightGroup;
 
@@ -89,75 +88,43 @@ PosePath makeRefPath(const double length)
   return ref_path;
 }
 
-PredictedPath makePredictedPathAlongX(const double length)
+// The stop clipping associates a path with the stop line it crosses (geometry), so the
+// map-wide index must list every signalized lanelet with its stop line (and skip plain
+// lanelets), regardless of connectivity.
+TEST(PriorityUtils, CollectSignalizedStopLinesIndexesSignalizedLanelets)
 {
-  PredictedPath predicted_path;
-  for (double x = 0.0; x <= length + 1e-6; x += 0.5) {
-    geometry_msgs::msg::Pose pose;
-    pose.position.x = x;
-    pose.position.y = 0.5;
-    predicted_path.path.push_back(pose);
-  }
-  return predicted_path;
-}
-
-LaneletRTree makeRoadLaneletRTree(const lanelet::ConstLanelets & lanelets)
-{
-  return LaneletRTree(lanelets);
-}
-
-TEST(PriorityUtils, FindsTrafficLightLaneletOnPath)
-{
-  lanelet::Id id = 4000;
-  const auto approach = makeLanelet(id, 0.0);
-  auto junction = makeLanelet(id, 5.0);
-  const auto stop_line = makeStopLine(id, 6.0);
-  attachTrafficLight(junction, id, stop_line);
-  const lanelet::routing::LaneletPath path(lanelet::ConstLanelets{approach, junction});
-  lanelet::ConstLanelet signal_lanelet;
-  ASSERT_TRUE(findTrafficLightLaneletOnPath(path, signal_lanelet));
-  EXPECT_EQ(signal_lanelet.id(), junction.id());
-  const auto got = getStopLineOrEntryEdge(signal_lanelet);
-  ASSERT_TRUE(got.has_value());
-  EXPECT_EQ(got->id(), stop_line.id());
-}
-
-TEST(PriorityUtils, FindsTrafficLightLaneletOnPredictedPath)
-{
-  lanelet::Id id = 4050;
-  const auto approach = makeLanelet(id, 0.0);
-  auto junction = makeLanelet(id, 5.0);
-  const auto stop_line = makeStopLine(id, 6.0);
-  attachTrafficLight(junction, id, stop_line);
-  const LaneletRTree rtree = makeRoadLaneletRTree({approach, junction});
-  const PredictedPath predicted_path = makePredictedPathAlongX(10.0);
-  lanelet::ConstLanelet signal_lanelet;
-  ASSERT_TRUE(findTrafficLightLaneletOnPredictedPath(predicted_path, rtree, signal_lanelet));
-  EXPECT_EQ(signal_lanelet.id(), junction.id());
-}
-
-TEST(PriorityUtils, NoTrafficLightLaneletOnPath)
-{
-  lanelet::Id id = 4100;
-  const auto a = makeLanelet(id, 0.0);
-  const auto b = makeLanelet(id, 5.0);
-  const lanelet::routing::LaneletPath path(lanelet::ConstLanelets{a, b});
-  lanelet::ConstLanelet signal_lanelet;
-  EXPECT_FALSE(findTrafficLightLaneletOnPath(path, signal_lanelet));
-}
-
-TEST(PriorityUtils, FindsFirstTrafficLightLaneletOnPath)
-{
-  lanelet::Id id = 4200;
-  const auto approach = makeLanelet(id, 0.0);
+  lanelet::Id id = 4400;
+  auto plain = makeLanelet(id, 0.0);
   auto first = makeLanelet(id, 5.0);
   auto second = makeLanelet(id, 10.0);
-  attachTrafficLight(first, id, makeStopLine(id, 6.0));
-  attachTrafficLight(second, id, makeStopLine(id, 11.0));
-  const lanelet::routing::LaneletPath path(lanelet::ConstLanelets{approach, first, second});
-  lanelet::ConstLanelet signal_lanelet;
-  ASSERT_TRUE(findTrafficLightLaneletOnPath(path, signal_lanelet));
-  EXPECT_EQ(signal_lanelet.id(), first.id());
+  const auto sl_first = makeStopLine(id, 6.0);
+  const auto sl_second = makeStopLine(id, 11.0);
+  attachTrafficLight(first, id, sl_first);
+  attachTrafficLight(second, id, sl_second);
+  const auto map = lanelet::utils::createMap({plain, first, second});
+
+  const auto index = collect_signalized_stop_lines(*map);
+  ASSERT_EQ(index.size(), 2U);
+  const std::vector<lanelet::Id> lanelet_ids{index.at(0).lanelet.id(), index.at(1).lanelet.id()};
+  EXPECT_NE(std::find(lanelet_ids.begin(), lanelet_ids.end(), first.id()), lanelet_ids.end());
+  EXPECT_NE(std::find(lanelet_ids.begin(), lanelet_ids.end(), second.id()), lanelet_ids.end());
+  for (const auto & entry : index) {
+    EXPECT_LE(entry.min_x, entry.max_x);
+    EXPECT_LE(entry.min_y, entry.max_y);
+  }
+}
+
+// Clipping only fires when the path truly crosses the finite stop-line chord: a chord
+// beyond the path end or offset beside it must not be treated as crossed.
+TEST(PriorityUtils, PathCrossesStopLineOnlyWhenSegmentsIntersect)
+{
+  lanelet::Id id = 6300;
+  const PosePath path = makeRefPath(50.0);
+  EXPECT_TRUE(path_crosses_stop_line(path, makeStopLine(id, 10.0)));
+  EXPECT_FALSE(path_crosses_stop_line(path, makeStopLine(id, 60.0)));
+  const lanelet::LineString3d beside(
+    id++, {makePoint(id++, 10.0, 2.0), makePoint(id++, 10.0, 4.0)});
+  EXPECT_FALSE(path_crosses_stop_line(path, beside));
 }
 
 TEST(PriorityUtils, GetStopLineOrEntryEdgeFallsBackToEntryEdge)

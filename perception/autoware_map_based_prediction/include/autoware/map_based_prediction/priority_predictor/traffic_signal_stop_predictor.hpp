@@ -20,7 +20,6 @@
 #include "autoware/map_based_prediction/priority_predictor/debug_priority_pred.hpp"
 #include "autoware/map_based_prediction/priority_predictor/signal_stop_hysteresis.hpp"
 
-#include <autoware/lanelet2_utils/nn_search.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
@@ -30,7 +29,6 @@
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
 #include <lanelet2_core/primitives/Point.h>
-#include <lanelet2_routing/Forward.h>
 
 #include <memory>
 #include <optional>
@@ -62,18 +60,21 @@ bool hasStopLineAhead(
   const geometry_msgs::msg::Point & position, const PosePath & ref_path,
   const lanelet::ConstLineString3d & stop_line);
 
-bool findTrafficLightLaneletOnPath(
-  const lanelet::routing::LaneletPath & lanelet_path, lanelet::ConstLanelet & signal_lanelet);
+bool path_crosses_stop_line(const PosePath & path, const lanelet::ConstLineString3d & stop_line);
 
-lanelet::routing::LaneletPath buildLaneletPathFromPredictedPath(
-  const PredictedPath & predicted_path,
-  const autoware::experimental::lanelet2_utils::LaneletRTree & road_lanelet_rtree,
-  double sample_interval_m = 3.0);
+// A signalized road lanelet with its stop line and that stop line's bounding box,
+// precomputed once from the map for per-path stop-line lookup.
+struct SignalizedStopLine
+{
+  lanelet::ConstLanelet lanelet;
+  lanelet::ConstLineString3d stop_line;
+  double min_x{};
+  double min_y{};
+  double max_x{};
+  double max_y{};
+};
 
-bool findTrafficLightLaneletOnPredictedPath(
-  const PredictedPath & predicted_path,
-  const autoware::experimental::lanelet2_utils::LaneletRTree & road_lanelet_rtree,
-  lanelet::ConstLanelet & signal_lanelet);
+std::vector<SignalizedStopLine> collect_signalized_stop_lines(const lanelet::LaneletMap & lanelet_map);
 
 bool evaluateSignalStopRequirement(
   const lanelet::ConstLanelet & lanelet, const std::optional<TrafficLightGroup> & signal);
@@ -123,7 +124,7 @@ public:
 
 private:
   std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_;
-  std::optional<autoware::experimental::lanelet2_utils::LaneletRTree> road_lanelet_rtree_;
+  std::vector<SignalizedStopLine> signalized_stop_lines_;
   std::unordered_map<lanelet::Id, TrafficLightGroup> traffic_signal_id_map_;
   std::unordered_map<lanelet::Id, TrafficLightGroup> stabilized_traffic_signal_id_map_;
   std::unordered_map<lanelet::Id, SignalStabilizeState> signal_stabilize_state_;
