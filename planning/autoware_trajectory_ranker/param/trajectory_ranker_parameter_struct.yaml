@@ -1,0 +1,266 @@
+trajectory_ranker_params:
+  ranked_generator_name_prefixes:
+    type: string_array
+    default_value: [DiffusionPlanner_, MinimumRuleBasedPlanner]
+    description: List of ranked generator name prefixes
+    read_only: false
+
+  safety:
+    levels:
+      type: string_array
+      default_value: [safe, low_caution, high_caution, danger, fatal]
+      description: List of safety levels
+      read_only: false
+    penalty:
+      type: double_array
+      default_value: [0.0, 0.1, 0.2, 0.3, 0.4]
+      description: List of safety penalties
+      read_only: false
+    scale:
+      type: double
+      default_value: 10.0
+      description: Safety scale
+      read_only: false
+
+  source:
+    levels:
+      type: string_array
+      default_value: [diffusion_planner, backup_planner]
+      description: List of source levels
+      read_only: false
+    penalty:
+      type: double_array
+      default_value: [0.0, 0.1]
+      description: List of source penalties
+      read_only: false
+    scale:
+      type: double
+
+  comfort:
+    plugin_names:
+      type: string_array
+      default_value:
+        - autoware::trajectory_ranker::metrics::LateralAcceleration
+        - autoware::trajectory_ranker::metrics::LongitudinalJerk
+        - autoware::trajectory_ranker::metrics::TravelDistance
+        - autoware::trajectory_ranker::metrics::LateralDeviation
+        - autoware::trajectory_ranker::metrics::SteeringConsistency
+        - autoware::trajectory_ranker::metrics::TrajectoryConsistency
+      description: List of comfort plugin names
+      read_only: false
+    scale:
+      type: double
+      default_value: 1.0
+      description: Comfort scale
+      read_only: false
+    trajectory_history_size:
+      type: int
+      default_value: 10
+      description: Trajectory history size
+      read_only: false
+      validation:
+        bounds<>: [1, 100]
+    lateral_acceleration:
+      enable:
+        type: bool
+        default_value: true
+        description: Enable lateral acceleration
+        read_only: false
+      weight:
+        type: double
+        default_value: 0.1
+        description: Lateral acceleration weight
+        read_only: false
+      decay_weight:
+        type: double_array
+        default_value:
+          [
+            1.0,
+            0.8,
+            0.64,
+            0.51,
+            0.41,
+            0.33,
+            0.26,
+            0.21,
+            0.17,
+            0.13,
+            0.10,
+            0.08,
+            0.067,
+            0.053,
+            0.043,
+            0.034,
+          ]
+        description: Lateral acceleration decay weight
+        read_only: false
+    longitudinal_jerk:
+      enable:
+        type: bool
+        default_value: true
+        description: Enable longitudinal jerk
+        read_only: false
+      weight:
+        type: double
+        default_value: 0.1
+        description: Longitudinal jerk weight
+        read_only: false
+      decay_weight:
+        type: double_array
+        default_value:
+          [
+            1.0,
+            0.8,
+            0.64,
+            0.51,
+            0.41,
+            0.33,
+            0.26,
+            0.21,
+            0.17,
+            0.13,
+            0.10,
+            0.08,
+            0.067,
+            0.053,
+            0.043,
+            0.034,
+          ]
+        description: Longitudinal jerk decay weight
+        read_only: false
+    travel_distance:
+      enable:
+        type: bool
+        default_value: true
+        description: Enable travel distance
+        read_only: false
+      weight:
+        type: double
+        default_value: 0.3
+        description: Travel distance weight
+        read_only: false
+      decay_weight:
+        type: double_array
+        default_value:
+          [
+            1.0,
+            0.8,
+            0.64,
+            0.51,
+            0.41,
+            0.33,
+            0.26,
+            0.21,
+            0.17,
+            0.13,
+            0.10,
+            0.08,
+            0.067,
+            0.053,
+            0.043,
+            0.034,
+          ]
+        description: Travel distance decay weight
+        read_only: false
+    lateral_deviation:
+      enable:
+        type: bool
+        default_value: true
+        description: Enable lateral deviation
+        read_only: false
+      weight:
+        type: double
+        default_value: 0.3
+        description: Lateral deviation weight
+        read_only: false
+      decay_weight:
+        type: double_array
+        default_value:
+          [
+            1.0,
+            0.8,
+            0.64,
+            0.51,
+            0.41,
+            0.33,
+            0.26,
+            0.21,
+            0.17,
+            0.13,
+            0.10,
+            0.08,
+            0.067,
+            0.053,
+            0.043,
+            0.034,
+          ]
+        description: Lateral deviation decay weight
+        read_only: false
+    steering_consistency:
+      enable:
+        type: bool
+        default_value: true
+        description: Enable steering consistency
+        read_only: false
+      weight:
+        type: double
+        default_value: 0.3
+        description: Steering consistency weight
+        read_only: false
+      decay_weight:
+        type: double_array
+        default_value:
+          [
+            1.0,
+            0.8,
+            0.64,
+            0.51,
+            0.41,
+            0.33,
+            0.26,
+            0.21,
+            0.17,
+            0.13,
+            0.10,
+            0.08,
+            0.067,
+            0.053,
+            0.043,
+            0.034,
+          ]
+        description: Steering consistency decay weight
+        read_only: false
+    trajectory_consistency:
+      enable:
+        type: bool
+        default_value: true
+        description: Enable trajectory consistency
+        read_only: false
+      weight:
+        type: double
+        default_value: 0.2
+        description: Trajectory consistency weight
+        read_only: false
+      decay_weight:
+        type: double_array
+        default_value:
+          [
+            1.0,
+            0.8,
+            0.64,
+            0.51,
+            0.41,
+            0.33,
+            0.26,
+            0.21,
+            0.17,
+            0.13,
+            0.10,
+            0.08,
+            0.067,
+            0.053,
+            0.043,
+            0.034,
+          ]
+        description: Trajectory consistency decay weight
+        read_only: false

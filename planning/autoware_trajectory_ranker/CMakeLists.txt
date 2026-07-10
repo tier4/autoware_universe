@@ -9,6 +9,10 @@ generate_parameter_library(trajectory_ranker_parameters
   param/trajectory_ranker_parameters.yaml
 )
 
+generate_parameter_library(${PROJECT_NAME}_param
+  param/trajectory_ranker_parameter_struct.yaml
+)
+
 include_directories(
   SYSTEM
 )
@@ -21,6 +25,16 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 
 ament_auto_add_library(simple_trajectory_ranker_node SHARED
   src/simple_trajectory_ranker_node.cpp
+)
+
+set(trajectory_ranker_lib_target ${PROJECT_NAME}_lib)
+
+ament_auto_add_library(${trajectory_ranker_lib_target} SHARED
+  src/trajectory_ranker_wrapper.cpp
+)
+
+target_link_libraries(${trajectory_ranker_lib_target}
+  ${PROJECT_NAME}_param
 )
 
 target_link_libraries(${PROJECT_NAME}
