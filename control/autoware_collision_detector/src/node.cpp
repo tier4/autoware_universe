@@ -224,7 +224,9 @@ PredictedObjects CollisionDetectorNode::filterObjects(const PredictedObjects & i
 
     // Determine if the object should be excluded based on its classification
     const auto classification =
-      autoware::object_recognition_utils::getHighestProbLabel(object.classification);
+      object.classification.empty()
+        ? autoware_perception_msgs::msg::ObjectClassification::UNKNOWN
+        : autoware::object_recognition_utils::getHighestProbLabel(object.classification);
     bool should_be_excluded = shouldBeExcluded(classification);
 
     const bool is_within_range_and_filtering_class = is_within_range && should_be_excluded;

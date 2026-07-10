@@ -277,7 +277,9 @@ struct ObjectFilter
           if (object.kinematics.initial_twist_with_covariance.twist.linear.x > max_velocity_th_)
             return true;
           const auto label =
-            autoware::object_recognition_utils::getHighestProbLabel(object.classification);
+            object.classification.empty()
+              ? ObjectClassification::UNKNOWN
+              : autoware::object_recognition_utils::getHighestProbLabel(object.classification);
           if (classification_to_object_type.count(label) == 0) return true;
           return object_types_.count(classification_to_object_type.at(label)) == 0;
         }),
