@@ -64,12 +64,6 @@ TrajectoryPoints create_straight_trajectory_points(const std::vector<double> & x
   return traj_points;
 }
 
-AssessmentTrajectories make_assessment_trajectories(
-  const bool map_based, const bool constant_curvature)
-{
-  return AssessmentTrajectories{map_based, constant_curvature};
-}
-
 template <typename ParamMap>
 ParamMap make_param_map_with_assessment_trajectories(const AssessmentTrajectories & assessment)
 {
@@ -101,19 +95,6 @@ autoware_perception_msgs::msg::Shape create_cylinder_shape(const double diameter
   shape.dimensions.y = diameter;
   shape.dimensions.z = 1.5;
   return shape;
-}
-
-autoware_perception_msgs::msg::PredictedPath create_straight_predicted_path(
-  const double y, const double confidence, const std::vector<double> & xs)
-{
-  autoware_perception_msgs::msg::PredictedPath predicted_path;
-  predicted_path.confidence = confidence;
-  predicted_path.time_step = rclcpp::Duration::from_seconds(kDefaultTimeResolution);
-  predicted_path.path.reserve(xs.size());
-  for (const auto x : xs) {
-    predicted_path.path.push_back(create_pose(x, y, 0.0));
-  }
-  return predicted_path;
 }
 
 autoware_perception_msgs::msg::PredictedObject create_predicted_object(
@@ -311,29 +292,6 @@ TEST(TrajectoryUtilitiesTest, ObjectIdentificationObjectConstructorBuildsIdsFrom
     identification.object_id_string(), autoware_utils_uuid::to_hex_string(object.object_id));
 }
 
-TEST(TrajectoryUtilitiesTest, GeneratePredictedPathTrajectoryUsesHighestConfidencePath)
-{
-  const auto shape = create_bounding_box_shape(4.0, 2.0);
-  const auto initial_pose = create_pose(0.0, 0.0, 0.0);
-  const auto initial_twist = create_twist(1.0);
-  const std::vector<autoware_perception_msgs::msg::PredictedPath> predicted_paths = {
-    create_straight_predicted_path(10.0, 0.1, {0.0, 1.0, 2.0, 3.0, 4.0}),
-    create_straight_predicted_path(0.0, 0.9, {0.0, 1.0, 2.0, 3.0, 4.0})};
-  const auto object = create_predicted_object(initial_pose, initial_twist, shape, predicted_paths);
-
-  const auto trajectory_data = trajectory::generate_predicted_path_trajectory(
-    object, 0.0, 0.0, rclcpp::Duration::from_seconds(0.1), 0.35, builtin_interfaces::msg::Time{},
-    kDefaultTimeResolution);
-
-  EXPECT_EQ(trajectory_data.getObjectIdentification().trajectory_type, "map_based_predicted_path");
-  EXPECT_NEAR(trajectory_data.getTimes().front(), 0.1, 1e-6);
-  EXPECT_NEAR(trajectory_data.getTimes().back(), 0.35, 1e-6);
-  EXPECT_NEAR(trajectory_data.getPoses().at(0).position.x, 0.1, 1e-6);
-  EXPECT_NEAR(trajectory_data.getPoses().at(1).position.x, 0.2, 1e-6);
-  EXPECT_NEAR(trajectory_data.getPoses().at(2).position.x, 0.3, 1e-6);
-  EXPECT_DOUBLE_EQ(trajectory_data.getPoses().at(0).position.y, 0.0);
-}
-
 TEST(TrajectoryUtilitiesTest, ComputeLongitudinalVelocityUsesPathYawForPathLongerThanEpsilon)
 {
   // The path length is intentionally between 1e-3 and 1e3 to catch threshold typos.
@@ -396,86 +354,6 @@ TEST(TrajectoryUtilitiesTest, GenerateConstantCurvaturePathTrajectoryMatchesPred
       tf2::getYaw(trajectory_data.getPoses().at(i).orientation),
       tf2::getYaw(expected_poses.at(i).orientation), 1e-6);
   }
-}
-TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesRespectsEnabledTypes)
-{
-  const auto shape = create_bounding_box_shape(4.0, 2.0);
-  const auto object = create_predicted_object(
-    create_pose(0.0, 0.0, 0.0), create_twist(1.0), shape,
-    {create_straight_predicted_path(0.0, 1.0, {0.0, 1.0, 2.0})});
-
-  auto odometry = std::make_shared<nav_msgs::msg::Odometry>();
-  odometry->header.stamp = rclcpp::Time(1, 0, RCL_ROS_TIME);
-  odometry->pose.pose = create_pose(0.0, 0.0, 0.0);
-
-  auto predicted_objects = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
-  predicted_objects->header.stamp = odometry->header.stamp;
-  predicted_objects->objects.push_back(object);
-
-  FilterContext context;
-  context.odometry = odometry;
-  context.predicted_objects = predicted_objects;
-
-  const auto count_trajectory_type =
-    [](const std::vector<TrajectoryData> & trajectories, const std::string & trajectory_type) {
-      return std::count_if(trajectories.begin(), trajectories.end(), [&](const auto & trajectory) {
-        return trajectory.getObjectIdentification().trajectory_type == trajectory_type;
-      });
-    };
-
-  const auto all_enabled_drac_param_map = make_param_map_with_assessment_trajectories<DracParamMap>(
-    make_assessment_trajectories(true, true));
-  const auto all_enabled = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0, 0.1, all_enabled_drac_param_map);
-  EXPECT_EQ(all_enabled.size(), 2u);
-  EXPECT_EQ(count_trajectory_type(all_enabled, "map_based_predicted_path"), 1);
-  EXPECT_EQ(count_trajectory_type(all_enabled, "constant_curvature_path"), 1);
-
-  const auto constant_curvature_drac_param_map =
-    make_param_map_with_assessment_trajectories<DracParamMap>(
-      make_assessment_trajectories(false, true));
-  const auto constant_curvature_only = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0, 0.1, constant_curvature_drac_param_map);
-  ASSERT_EQ(constant_curvature_only.size(), 1u);
-  EXPECT_EQ(
-    constant_curvature_only.front().getObjectIdentification().trajectory_type,
-    "constant_curvature_path");
-
-  const auto predicted_path_only_drac_param_map =
-    make_param_map_with_assessment_trajectories<DracParamMap>(
-      make_assessment_trajectories(true, false));
-  const auto predicted_path_only = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0, 0.1, predicted_path_only_drac_param_map);
-  EXPECT_EQ(predicted_path_only.size(), 1u);
-  EXPECT_EQ(count_trajectory_type(predicted_path_only, "map_based_predicted_path"), 1);
-}
-
-TEST(TrajectoryUtilitiesTest, GenerateObjectTrajectoriesReturnsEmptyWhenAllTypesDisabled)
-{
-  const auto shape = create_bounding_box_shape(4.0, 2.0);
-  const auto object = create_predicted_object(
-    create_pose(0.0, 0.0, 0.0), create_twist(1.0), shape,
-    {create_straight_predicted_path(0.0, 1.0, {0.0, 1.0, 2.0})});
-
-  auto odometry = std::make_shared<nav_msgs::msg::Odometry>();
-  odometry->header.stamp = rclcpp::Time(1, 0, RCL_ROS_TIME);
-  odometry->pose.pose = create_pose(0.0, 0.0, 0.0);
-
-  auto predicted_objects = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
-  predicted_objects->header.stamp = odometry->header.stamp;
-  predicted_objects->objects.push_back(object);
-
-  FilterContext context;
-  context.odometry = odometry;
-  context.predicted_objects = predicted_objects;
-
-  const auto drac_param_map = make_param_map_with_assessment_trajectories<DracParamMap>(
-    make_assessment_trajectories(false, false));
-
-  const auto trajectories = collision_timing_assessment::generate_object_trajectories(
-    context, 0.2, 0.0, 0.1, drac_param_map);
-
-  EXPECT_TRUE(trajectories.empty());
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety

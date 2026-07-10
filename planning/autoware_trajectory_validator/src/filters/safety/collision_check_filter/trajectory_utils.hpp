@@ -431,17 +431,9 @@ TrajectoryData generate_ego_trajectory(
   const rclcpp::Time & current_time, double time_resolution,
   const EgoTrajectoryGenerationParams & params);
 
-TrajectoryData generate_ego_trajectory(
-  const geometry_msgs::msg::Twist & initial_twist, double braking_lag, double assumed_acceleration,
-  double max_time, double time_resolution, const TrajectoryPoints & traj_points,
-  const footprint::EgoDimensions & ego_dimensions);
-
-TrajectoryData generate_ego_trajectory(
-  const TrajectoryPoints & traj_points, const FilterContext & context, double max_time,
-  double time_resolution, const footprint::EgoDimensions & ego_dimensions);
-
 TrajectoryData generate_predicted_path_trajectory(
-  const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
+  const autoware_perception_msgs::msg::PredictedObject & predicted_object,
+  const autoware_perception_msgs::msg::PredictedPath & predicted_path, double braking_lag,
   double assumed_acceleration, rclcpp::Duration start_time, double max_time,
   const builtin_interfaces::msg::Time & stamp, double time_resolution);
 
@@ -449,10 +441,6 @@ TrajectoryData generate_constant_curvature_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
   double assumed_acceleration, rclcpp::Duration start_time, double max_time,
   const builtin_interfaces::msg::Time & stamp, double time_resolution);
-
-TrajectoryData generate_object_trajectory(
-  const FilterContext & context, unique_identifier_msgs::msg::UUID object_id,
-  const std::string & traj_type_str, double acc, double time_resolution, double time_horizon);
 }  // namespace autoware::trajectory_validator::plugin::safety::trajectory
 
 #endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__TRAJECTORY_UTILS_HPP_

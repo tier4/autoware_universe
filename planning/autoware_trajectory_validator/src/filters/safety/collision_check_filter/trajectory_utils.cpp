@@ -583,23 +583,20 @@ const TrajectoryData & EgoTrajectoryCache::get_or_compute_trajectory_data(
 }
 
 TrajectoryData generate_predicted_path_trajectory(
-  const autoware_perception_msgs::msg::PredictedObject & predicted_object, double braking_lag,
+  const autoware_perception_msgs::msg::PredictedObject & predicted_object,
+  const autoware_perception_msgs::msg::PredictedPath & predicted_path, double braking_lag,
   double assumed_acceleration, rclcpp::Duration start_time, double max_time,
   const builtin_interfaces::msg::Time & stamp, double time_resolution)
+
 {
-  const auto most_confident_path_it = std::max_element(
-    predicted_object.kinematics.predicted_paths.begin(),
-    predicted_object.kinematics.predicted_paths.end(),
-    [](const auto & a, const auto & b) { return a.confidence < b.confidence; });
   auto [times, distances] = time_distance::compute_motion_profile_1d(
     predicted_object.kinematics.initial_twist_with_covariance.twist, braking_lag,
     assumed_acceleration, start_time.seconds(),
     std::min(
-      max_time, most_confident_path_it->path.size() *
-                  rclcpp::Duration(most_confident_path_it->time_step).seconds()),
+      max_time, predicted_path.path.size() * rclcpp::Duration(predicted_path.time_step).seconds()),
     time_resolution);
 
-  auto poses = pose::compute_pose_trajectory(most_confident_path_it->path, distances);
+  auto poses = pose::compute_pose_trajectory(predicted_path.path, distances);
   auto footprints = footprint::compute_footprint_trajectory(poses, predicted_object.shape);
 
   return TrajectoryData(
@@ -628,43 +625,4 @@ TrajectoryData generate_constant_curvature_trajectory(
     std::move(times), std::move(distances), std::move(poses), std::move(footprints));
 }
 
-TrajectoryData generate_object_trajectory(
-  const FilterContext & context, const unique_identifier_msgs::msg::UUID object_id,
-  const std::string & traj_type_str, const double acc, const double time_resolution,
-  const double time_horizon)
-{
-  const auto find_predicted_object =
-    [&object_id](
-      const auto & predicted_objects) -> const autoware_perception_msgs::msg::PredictedObject & {
-    auto it = std::find_if(
-      predicted_objects.begin(), predicted_objects.end(),
-      [&object_id](const auto & object) { return object.object_id == object_id; });
-    assert(it != predicted_objects.end());
-    return *it;
-  };
-
-  if (traj_type_str.find("map_based_predicted_path") != std::string::npos) {
-    assert(context.predicted_objects);
-    const auto & predicted_object = find_predicted_object(context.predicted_objects->objects);
-    const rclcpp::Duration objects_reference_time =
-      rclcpp::Time(context.predicted_objects->header.stamp) -
-      rclcpp::Time(context.odometry->header.stamp);
-    return generate_predicted_path_trajectory(
-      predicted_object, 0.0, acc, objects_reference_time, time_horizon,
-      context.predicted_objects->header.stamp, time_resolution);
-  }
-
-  if (traj_type_str.find("constant_curvature_path") != std::string::npos) {
-    assert(context.predicted_objects);
-    const auto & predicted_object = find_predicted_object(context.predicted_objects->objects);
-    const rclcpp::Duration objects_reference_time =
-      rclcpp::Time(context.predicted_objects->header.stamp) -
-      rclcpp::Time(context.odometry->header.stamp);
-    return generate_constant_curvature_trajectory(
-      predicted_object, 0.0, acc, objects_reference_time, time_horizon,
-      context.predicted_objects->header.stamp, time_resolution);
-  }
-
-  throw std::logic_error("Unsupported trajectory type in DRAC assessment: " + traj_type_str);
-}
 }  // namespace autoware::trajectory_validator::plugin::safety::trajectory
