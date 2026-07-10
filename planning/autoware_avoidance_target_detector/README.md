@@ -1,31 +1,40 @@
 # autoware_avoidance_target_detector
 
-Experimental toy package for developing auxiliary planning functions. The reference node (`AvoidanceTargetDetectorNode`) shows how to wire the library; the reusable pieces are **`ExtendedRouteHandler`** (route / boundary construction) and **`ObjectSelector`** (avoidance target and driving-along vehicle filtering).
+Experimental toy package for developing auxiliary planning functions. The reference node (`AvoidanceTargetDetectorNode`) shows how to wire the library; the reusable pieces are **`ExtendedRouteHandler`** (route / boundary construction) and the object selectors (avoidance target and driving-along vehicle filtering).
+
+The object-selection logic is templated on the object message type (`ObjectSelectorBase<ObjectT>`) and exposed as two concrete types:
+
+- **`PredictedObjectSelector`** (`= ObjectSelectorBase<PredictedObject>`) — for `autoware_perception_msgs/msg/PredictedObjects`.
+- **`TrackedObjectSelector`** (`= ObjectSelectorBase<TrackedObject>`) — for `autoware_perception_msgs/msg/TrackedObjects`.
+
+Per-object state is held by `AvoidanceTargetDetectorBase<ObjectT>`, aliased as **`AvoidanceTargetDetectorPredicted`** and **`AvoidanceTargetDetectorTracked`**.
 
 When integrating into another package, your node typically owns:
 
 ```cpp
 std::shared_ptr<ExtendedRouteHandler> extended_route_handler_;
-ObjectSelector object_selector_;
+PredictedObjectSelector object_selector_;          // predicted-objects pipeline
+TrackedObjectSelector tracked_object_selector_;    // tracked-objects pipeline
 ```
 
 Headers:
 
 - `autoware/avoidance_target_detector/boundary.hpp` — `ExtendedRouteHandler`, `RouteBounds`, `to_path_msg`
-- `autoware/avoidance_target_detector/object_filtering.hpp` — `ObjectSelector`
+- `autoware/avoidance_target_detector/object_filtering.hpp` — `PredictedObjectSelector`, `TrackedObjectSelector`
 
 ---
 
 ## Required subscriptions
 
-Rebuild `ExtendedRouteHandler` whenever the **map** or **route** changes. On each **objects** update, call `ObjectSelector::update_objects()` first, then `get_avoidance_targets()` and/or `get_driving_along_vehicles()` (with the latest trajectory and route handler).
+Rebuild `ExtendedRouteHandler` whenever the **map** or **route** changes. On each **objects** update, call `update_objects()` first, then `get_avoidance_targets()` and/or `get_driving_along_vehicles()` (with the latest trajectory and route handler). The same applies to the tracked-objects pipeline via `TrackedObjectSelector`.
 
-| Topic (reference node)    | Message type                                    | Role                                                  |
-| ------------------------- | ----------------------------------------------- | ----------------------------------------------------- |
-| `~/input/lanelet_map_bin` | `autoware_map_msgs/msg/LaneletMapBin`           | Vector map. QoS: transient local.                     |
-| `~/input/route`           | `autoware_planning_msgs/msg/LaneletRoute`       | Current route. QoS: transient local.                  |
-| `~/input/trajectory`      | `autoware_planning_msgs/msg/Trajectory`         | Reference trajectory for deviation / distance checks. |
-| `~/input/objects`         | `autoware_perception_msgs/msg/PredictedObjects` | Predicted objects to filter.                          |
+| Topic (reference node)    | Message type                                    | Role                                                                                                 |
+| ------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `~/input/lanelet_map_bin` | `autoware_map_msgs/msg/LaneletMapBin`           | Vector map. QoS: transient local.                                                                    |
+| `~/input/route`           | `autoware_planning_msgs/msg/LaneletRoute`       | Current route. QoS: transient local.                                                                 |
+| `~/input/trajectory`      | `autoware_planning_msgs/msg/Trajectory`         | Reference trajectory for deviation / distance checks.                                                |
+| `~/input/objects`         | `autoware_perception_msgs/msg/PredictedObjects` | Predicted objects to filter.                                                                         |
+| `~/input/tracked_objects` | `autoware_perception_msgs/msg/TrackedObjects`   | Tracked objects to filter (reuses the route/ego state maintained by the predicted-objects callback). |
 
 Until map, route, and trajectory are available, boundary and object-selection APIs are not meaningful.
 
@@ -165,9 +174,9 @@ Path to_path_msg(const RouteBounds & bounds, const Trajectory & trajectory);
 
 ---
 
-### `ObjectSelector`
+### `ObjectSelectorBase<ObjectT>` (`PredictedObjectSelector` / `TrackedObjectSelector`)
 
-Per-object Bayesian filters are updated via `update_objects()`. Getter methods (`get_avoidance_targets()`, `get_driving_along_vehicles()`) read the latest filter state. Reuse the same `ObjectSelector` instance across callbacks.
+Per-object Bayesian filters are updated via `update_objects()`. Getter methods (`get_avoidance_targets()`, `get_driving_along_vehicles()`) read the latest filter state. Reuse the same selector instance across callbacks. The signatures below use `PredictedObjects` for the predicted pipeline; the tracked pipeline is identical with `TrackedObjects` substituted for the container type.
 
 #### `update_objects()`
 
@@ -267,12 +276,14 @@ ros2 launch autoware_avoidance_target_detector avoidance_target_detector.launch.
 
 Default remaps are defined in `launch/avoidance_target_detector.launch.xml`.
 
-| Output (reference node)           | Default topic                                                       |
-| --------------------------------- | ------------------------------------------------------------------- |
-| `~/output/avoidance_targets`      | `/planning/avoidance_target_detector/output/avoidance_targets`      |
-| `~/output/driving_along_vehicles` | `/planning/avoidance_target_detector/output/driving_along_vehicles` |
-| `~/output/drivable_area`          | `/planning/avoidance_target_detector/output/drivable_area`          |
-| `~/debug/near_segment_polygon`    | `/planning/avoidance_target_detector/debug/near_segment_polygon`    |
+| Output (reference node)                   | Default topic                                                               |
+| ----------------------------------------- | --------------------------------------------------------------------------- |
+| `~/output/avoidance_targets`              | `/planning/avoidance_target_detector/output/avoidance_targets`              |
+| `~/output/driving_along_vehicles`         | `/planning/avoidance_target_detector/output/driving_along_vehicles`         |
+| `~/output/tracked_avoidance_targets`      | `/planning/avoidance_target_detector/output/tracked_avoidance_targets`      |
+| `~/output/tracked_driving_along_vehicles` | `/planning/avoidance_target_detector/output/tracked_driving_along_vehicles` |
+| `~/output/drivable_area`                  | `/planning/avoidance_target_detector/output/drivable_area`                  |
+| `~/debug/near_segment_polygon`            | `/planning/avoidance_target_detector/debug/near_segment_polygon`            |
 
 ---
 
@@ -281,7 +292,7 @@ Default remaps are defined in `launch/avoidance_target_detector.launch.xml`.
 | File                                            | Role                                                                |
 | ----------------------------------------------- | ------------------------------------------------------------------- |
 | `boundary.hpp` / `boundary.cpp`                 | `ExtendedRouteHandler`, traffic rules, `RouteBounds`, `to_path_msg` |
-| `object_filtering.hpp` / `object_filtering.cpp` | `ObjectSelector`, filters                                           |
+| `object_filtering.hpp` / `object_filtering.cpp` | `PredictedObjectSelector`, `TrackedObjectSelector`, filters         |
 | `parameter.hpp` / `parameter.cpp`               | Shared constants                                                    |
 | `node.hpp` / `node.cpp`                         | Example ROS 2 node                                                  |
 
