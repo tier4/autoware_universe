@@ -49,6 +49,11 @@ public:
   using Matrix2x2 = std::array<std::array<double, 2>, 2>;
 
   explicit TwoClassFilter(const PredictedObject & object, const rclcpp::Time & last_update_time);
+  TwoClassFilter(const TwoClassFilter &) = default;
+  TwoClassFilter(TwoClassFilter &&) noexcept = default;
+  TwoClassFilter & operator=(const TwoClassFilter &) = default;
+  TwoClassFilter & operator=(TwoClassFilter &&) noexcept = default;
+  virtual ~TwoClassFilter() = default;
 
   [[nodiscard]] double get_posterior() const { return posterior_; }
   [[nodiscard]] bool is_initialized() const { return is_initialized_; }
@@ -82,7 +87,7 @@ private:
 };
 
 /** Filters objects by classification label and probability. */
-class TargetFilter : public TwoClassFilter
+class TargetFilter final : public TwoClassFilter
 {
 public:
   using TwoClassFilter::TwoClassFilter;
@@ -97,7 +102,7 @@ private:
 };
 
 /** Filters objects by linear velocity (stationary vs moving). */
-class StationaryFilter : public TwoClassFilter
+class StationaryFilter final : public TwoClassFilter
 {
 public:
   using TwoClassFilter::TwoClassFilter;
@@ -112,7 +117,7 @@ private:
 };
 
 /** Filters objects by on-trajectory lateral deviation pattern. */
-class DeviationFilter : public TwoClassFilter
+class DeviationFilter final : public TwoClassFilter
 {
 public:
   using TwoClassFilter::TwoClassFilter;
