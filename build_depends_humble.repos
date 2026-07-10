@@ -76,3 +76,4 @@ repositories:
     type: git
     url: https://github.com/autowarefoundation/bevdet_vendor.git
     version: 0.1.0
+    
