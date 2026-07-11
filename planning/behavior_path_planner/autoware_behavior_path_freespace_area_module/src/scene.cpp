@@ -154,8 +154,10 @@ void FreespaceAreaModule::initVariables()
   state_ = FreespaceAreaState::IDLE;
   mode_ = FreespaceAreaMode::NONE;
   composed_path_ = PathWithLaneId();
+  latched_raw_pose_array_ = geometry_msgs::msg::PoseArray();
   latched_response_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   stopped_since_.reset();
+  maneuver_started_ = false;
   {
     std::lock_guard<std::mutex> guard(worker_ctx_->mutex);
     worker_ctx_->request.reset();
@@ -245,8 +247,13 @@ std::optional<FreespaceAreaModule::ActivationContext> FreespaceAreaModule::evalu
     ctx.area = transit->area;
     ctx.entry_lanelets = transit->entry_lanelets;
     ctx.exit_lanelets = transit->exit_lanelets;
-    ctx.mode =
-      transit->exit_lanelets.empty() ? FreespaceAreaMode::TERMINAL : FreespaceAreaMode::TRANSIT;
+    // A route whose goal lies INSIDE the area can still carry lanelets after the area (the
+    // mission planner appends the nearest lanelet(s) when snapping such goals), so the presence
+    // of exit lanelets alone must not force TRANSIT: the maneuver has to terminate at the
+    // in-area goal.
+    ctx.mode = (transit->exit_lanelets.empty() || rh->isGoalInRouteArea())
+                 ? FreespaceAreaMode::TERMINAL
+                 : FreespaceAreaMode::TRANSIT;
   } else {
     ctx.area = *area_at_ego;
     ctx.mode = rh->isGoalInRouteArea() ? FreespaceAreaMode::TERMINAL : FreespaceAreaMode::TRANSIT;
@@ -350,7 +357,30 @@ bool FreespaceAreaModule::isLatchInvalid(const geometry_msgs::msg::Pose & start_
   const bool near_goal =
     autoware_utils::calc_distance2d(ego_pose.position, latched_goal_pose_.position) <
     parameters_->goal_position_tolerance * 3.0;
-  if (v < 0.05 && !near_goal) {
+  // Stopping at a cusp is the intended stop-and-reverse behavior of the downstream
+  // direction_change module, NOT a stuck condition. Replanning there would generate a new A*
+  // path from the cusp pose whose segment structure no longer matches the maneuver in progress
+  // (the first segment of the new path is a reverse move, plus seam artifacts at the entry
+  // junction), which resets/corrupts the segment-switching state machine into a livelock.
+  const bool near_cusp = [&]() {
+    constexpr double cusp_stop_radius = 3.0;  // [m] generous: cusp stop accuracy + wheelbase
+    for (size_t i = 1; i < composed_path_.points.size(); ++i) {
+      const double yaw_prev = tf2::getYaw(composed_path_.points[i - 1].point.pose.orientation);
+      const double yaw_curr = tf2::getYaw(composed_path_.points[i].point.pose.orientation);
+      const double dyaw = autoware_utils::normalize_radian(yaw_curr - yaw_prev);
+      if (std::abs(dyaw) > M_PI_2) {
+        const double d = autoware_utils::calc_distance2d(
+          ego_pose.position, composed_path_.points[i].point.pose.position);
+        if (d < cusp_stop_radius) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }();
+  // Only meaningful once ego has reached the maneuver (same rationale as the lateral check):
+  // before engagement / on the entry lane a standstill is not "stuck on the area segment".
+  if (v < 0.05 && !near_goal && !near_cusp && lon_to_path_start >= 0.0) {
     if (!stopped_since_) {
       stopped_since_ = clock_->now();
     } else if ((clock_->now() - *stopped_since_).seconds() > parameters_->stuck_time_threshold) {
@@ -419,6 +449,18 @@ BehaviorModuleOutput FreespaceAreaModule::plan()
     lanes.insert(lanes.end(), current_ctx_.exit_lanelets.begin(), current_ctx_.exit_lanelets.end());
     PathWithLaneId area_path = utils::convertWayPointsToPathWithLaneId(
       adopted->waypoints, parameters_->planner_velocity, lanes);
+
+    // Keep the RAW (vehicle-heading) waypoint poses for the periodic obstacle re-check:
+    // encodeTravelDirectionOrientation flips the yaw of reverse runs to make cusps detectable
+    // downstream, but the vehicle footprint is asymmetric around base_link (front >> rear), so a
+    // footprint placed at a flipped pose is displaced by roughly the vehicle length and can
+    // falsely collide with the area boundary, causing a permanent replan loop.
+    latched_raw_pose_array_.header = adopted->waypoints.header;
+    latched_raw_pose_array_.poses.clear();
+    for (const auto & wp : adopted->waypoints.waypoints) {
+      latched_raw_pose_array_.poses.push_back(wp.pose.pose);
+    }
+
     freespace_area_utils::encodeTravelDirectionOrientation(area_path);
 
     composed_path_ = area_path;
@@ -449,8 +491,8 @@ void FreespaceAreaModule::requestPlan(
     *planner_data_->costmap, current_ctx_.area, {start_pose, goal_pose}, crop_margin);
   req.start_pose = start_pose;
   req.goal_pose = goal_pose;
-  if (!composed_path_.points.empty()) {
-    req.latched_trajectory = freespace_area_utils::toPoseArray(composed_path_);
+  if (!composed_path_.points.empty() && !latched_raw_pose_array_.poses.empty()) {
+    req.latched_trajectory = latched_raw_pose_array_;
   }
   std::lock_guard<std::mutex> guard(worker_ctx_->mutex);
   worker_ctx_->request = req;
@@ -465,8 +507,16 @@ BehaviorModuleOutput FreespaceAreaModule::composeOutput()
   path.header = planner_data_->route_handler->getRouteHeader();
 
   // 1. Truncate the previous (lane) path at the area entry (nearest to the A* start pose).
+  // The prefix is only for the APPROACH along the entry lane. Once ego is on the maneuver
+  // (longitudinally past the A* start) it must be dropped: at that point the upstream lane
+  // reference path is generated around ego and contains the entry/exit centerline kink at the
+  // lane<->area junction (the two lanes meet head-to-head, ~180 deg apart), which downstream
+  // cusp detection (direction_change) would misread as an additional direction switch.
   const auto & prev_points = previous_output.path.points;
-  if (!prev_points.empty()) {
+  if (current_ctx_.ego_inside_area) {
+    maneuver_started_ = true;
+  }
+  if (!prev_points.empty() && !maneuver_started_) {
     const auto entry_idx = findNearestIndex(prev_points, latched_start_pose_.position);
     const size_t end_idx = std::min(entry_idx, prev_points.size() - 1);
     path.points.assign(prev_points.begin(), prev_points.begin() + end_idx + 1);
@@ -529,9 +579,15 @@ BehaviorModuleOutput FreespaceAreaModule::composeOutput()
   // The planner_manager uses the "single free space pull over" branch whenever drivable_margin is
   // non-zero (see PlannerManager::generateCombinedDrivableArea), which offsets the path bounds by
   // this margin. This works through arbitrary Area geometry without needing lanelet bounds.
+  // The margin must exceed the swept half-width of the A* path: path_optimizer smooths the
+  // path (deviating from it laterally) and checks the full vehicle footprint against these
+  // bounds; with only 0.5*width+shape_margin it flags "outside drivable area" on the
+  // high-curvature approach to a cusp and inserts a stop several meters before it, deadlocking
+  // the stop-and-reverse maneuver. drivable_area_margin_buffer provides that slack.
   DrivableAreaInfo drivable_area_info;
-  drivable_area_info.drivable_margin =
-    0.5 * vehicle_info_.vehicle_width_m + parameters_->planner_vehicle_shape_margin;
+  drivable_area_info.drivable_margin = 0.5 * vehicle_info_.vehicle_width_m +
+                                       parameters_->planner_vehicle_shape_margin +
+                                       parameters_->drivable_area_margin_buffer;
   output.drivable_area_info = drivable_area_info;
 
   return output;

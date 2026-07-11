@@ -68,3 +68,4 @@
         junction_inset_distance: 2.0  # [m] inset of the A* start/goal from the lane<->area boundary along the entry/exit centerlines (boundary poses sit on the Area edge where the footprint check is marginal)
         goal_position_tolerance: 0.3  # [m] terminal-mode arrival position tolerance
         goal_yaw_tolerance_deg: 15.0  # [deg] terminal-mode arrival yaw tolerance
+        drivable_area_margin_buffer: 1.0  # [m] extra half-width added to the drivable corridor around the composed path beyond 0.5*vehicle_width+vehicle_shape_margin; gives path_optimizer room to smooth near cusps without tripping its outside-drivable-area stop

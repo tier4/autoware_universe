@@ -23,6 +23,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
+#include <geometry_msgs/msg/pose_array.hpp>
 
 #include <lanelet2_core/primitives/Area.h>
 #include <lanelet2_core/primitives/Lanelet.h>
@@ -155,10 +156,16 @@ private:
   PathWithLaneId composed_path_{};
   geometry_msgs::msg::Pose latched_start_pose_{};
   geometry_msgs::msg::Pose latched_goal_pose_{};
+  // Raw A* waypoint poses (vehicle heading, not cusp-encoded) for obstacle re-checks.
+  geometry_msgs::msg::PoseArray latched_raw_pose_array_{};
   rclcpp::Time latched_response_stamp_{0, 0, RCL_ROS_TIME};
 
   // Stuck detection.
   std::optional<rclcpp::Time> stopped_since_{};
+
+  // Latched true once ego has entered the area during this activation; from then on the
+  // lane-path prefix is no longer prepended in composeOutput() (see comment there).
+  bool maneuver_started_{false};
 
   // Route change detection.
   std::optional<std::array<uint8_t, 16>> route_uuid_{};

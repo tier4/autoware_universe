@@ -171,6 +171,23 @@ void DirectionChangeModule::updateData()
     return;
   }
 
+  // When the route traverses a lanelet2 freespace Area, an upstream module (freespace_area) plans
+  // the Lane->Area->Lane maneuver with A* and encodes its reverse segments as yaw flips (>90 deg)
+  // at cusp points in previous_output.path. That geometry lives inside the Area, which has no
+  // lanelet centerline, so the centerline reconstruction below cannot represent it and would
+  // discard the reverse segments. In that case operate directly on the upstream path so the
+  // encoded direction changes are preserved. The classic lane-based scenario (no Area in the
+  // route) is untouched and keeps using the centerline reconstruction.
+  if (planner_data_ && planner_data_->route_handler &&
+      !planner_data_->route_handler->getRouteAreas().empty()) {
+    reference_path_ = previous_output.path;
+    RCLCPP_DEBUG(
+      getLogger(),
+      "Route contains a freespace Area; using upstream module output path directly (%zu points)",
+      reference_path_.points.size());
+    return;
+  }
+
   if (planner_data_ && planner_data_->route_handler) {
     const auto centerline_path = getReferencePathFromDirectionChangeLanelets(
       previous_output.path, planner_data_->route_handler);
@@ -343,10 +360,21 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     if (current_segment_index_ >= num_segments) {
       current_segment_index_ = num_segments - 1u;
     }
+    // A cusp index marks the FIRST point of a new travel-direction run (the yaw flip is between
+    // cusp-1 and cusp). Segments must therefore be the homogeneous runs
+    // [prev_cusp .. next_cusp - 1]; the last point of a segment is the physical cusp pose where
+    // the vehicle stops and switches direction. Including the next run's first point (old
+    // behavior: end = cusp index) appended a doubling-back pose with ~180 deg flipped yaw at the
+    // segment end, which path_optimizer rejects as outside the drivable area and answers with a
+    // stop point meters before the cusp -> the cusp is never reached and the maneuver deadlocks.
     auto segmentBounds = [&](size_t seg_idx, size_t & start, size_t & end) {
       start = (seg_idx == 0u) ? 0u : cusp_point_indices_[seg_idx - 1u];
-      end = (seg_idx < cusp_point_indices_.size()) ? cusp_point_indices_[seg_idx]
-                                                   : (current_reference_path.points.size() - 1u);
+      if (seg_idx < cusp_point_indices_.size()) {
+        const size_t next_run_start = cusp_point_indices_[seg_idx];
+        end = (next_run_start > start) ? next_run_start - 1u : start;
+      } else {
+        end = current_reference_path.points.size() - 1u;
+      }
     };
     size_t c_start = 0, c_end = 0;
     segmentBounds(current_segment_index_, c_start, c_end);

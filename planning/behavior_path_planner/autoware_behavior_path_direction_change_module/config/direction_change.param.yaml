@@ -16,14 +16,14 @@
       # Detection of direction change points in path
       # ========================================
       cusp_detection_angle_threshold_deg: 90.0  # [deg] Angle threshold to detect cusp point
-      cusp_detection_distance_threshold: 0.2  # [m] Distance threshold to detect approaching cusp
+      cusp_detection_distance_threshold: 1.0  # [m] Distance to segment end below which ego is considered AT_CUSP. Must cover the controller's terminal stop accuracy (ego can settle tens of cm before the trajectory end); the direction switch is additionally gated by the sustained-stop check.
       cusp_detection_distance_start_approaching: 10.0  # [m] Distance to start approaching cusp (transition to APPROACHING_CUSP)
 
       # ========================================
       # State transition parameters
       # Vehicle stop detection and state transitions
       # ========================================
-      stop_velocity_threshold: 0.5  # [m/s] Velocity threshold to determine vehicle has stopped
+      stop_velocity_threshold: 0.1  # [m/s] Velocity threshold to determine vehicle has stopped. Must demand a genuine standstill: with a loose threshold the segment switch fires while the vehicle is still creeping toward the cusp, skipping short (sub-meter) direction-change segments entirely.
       th_stopped_time: 0.090  # [s] Duration velocity must stay below stop_velocity_threshold before direction switch at cusp
 
       # ========================================

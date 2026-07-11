@@ -101,6 +101,8 @@ void FreespaceAreaModuleManager::init(rclcpp::Node * node)
     node->declare_parameter<double>(ns + "path.junction_inset_distance", 2.0);
   p.goal_position_tolerance = node->declare_parameter<double>(ns + "path.goal_position_tolerance");
   p.goal_yaw_tolerance_deg = node->declare_parameter<double>(ns + "path.goal_yaw_tolerance_deg");
+  p.drivable_area_margin_buffer =
+    node->declare_parameter<double>(ns + "path.drivable_area_margin_buffer", 1.0);
 
   parameters_ = std::make_shared<FreespaceAreaParameters>(p);
 }

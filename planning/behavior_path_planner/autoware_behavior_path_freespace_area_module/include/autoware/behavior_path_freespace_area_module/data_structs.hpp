@@ -57,6 +57,7 @@ struct FreespaceAreaParameters
   double junction_inset_distance;
   double goal_position_tolerance;
   double goal_yaw_tolerance_deg;
+  double drivable_area_margin_buffer;
 };
 
 // Request handed to the asynchronous planning worker.
