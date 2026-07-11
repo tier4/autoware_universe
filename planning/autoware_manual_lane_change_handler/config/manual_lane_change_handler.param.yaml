@@ -5,3 +5,4 @@
     enable_correct_goal_pose: false
     consider_no_drivable_lanes: false # This flag is for considering no_drivable_lanes in planning or not.
     check_footprint_inside_lanes: true
+    allow_area_routing: false # Manual lane change routes never pass through freespace areas.
