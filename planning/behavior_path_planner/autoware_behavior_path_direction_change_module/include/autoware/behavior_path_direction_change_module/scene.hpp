@@ -22,12 +22,10 @@
 
 #include <autoware_internal_planning_msgs/msg/path_with_lane_id.hpp>
 
-#include <deque>
 #include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 namespace autoware::behavior_path_planner
@@ -86,9 +84,9 @@ private:
 
   // Helper functions
   bool shouldActivateModule() const;
-  /// Push current odometry and return true if velocity has been below stop_velocity_threshold for
-  /// at least th_stopped_time
-  bool isSustainedStoppedForDirectionSwitch();
+  /// Detect (and latch per path-start pose) whether the first run of the current reference path
+  /// must be driven in reverse. Only meaningful on area routes; see the implementation comment.
+  void updateFirstSegmentDirectionLatch(const PathWithLaneId & current_reference_path);
 
   // Member variables
   PathWithLaneId reference_path_{};
@@ -106,15 +104,13 @@ private:
   // Latched per path-start pose; see plan().
   bool first_segment_is_reverse_{false};
   std::optional<geometry_msgs::msg::Pose> direction_detect_ref_pose_{};
-  geometry_msgs::msg::Point
-    first_cusp_position_;  // Position of current segment end (cusp) for debug/log
-  bool has_valid_cusp_{false};
+  // True once ego has actually driven (v >= stop_velocity_threshold) within the current segment.
+  // Gates the AT_CUSP segment switch: a standstill right after a (re)plan must not advance past
+  // a segment shorter than cusp_detection_distance_threshold that was never driven.
+  bool has_moved_in_segment_{false};
 
   // Sustained stop: timestamp when velocity first dropped below stop_velocity_threshold at cusp
   std::optional<rclcpp::Time> cusp_stopped_since_{};
-
-  // Sustained stop: buffer (timestamp, velocity) for direction switch at cusp
-  std::deque<std::pair<rclcpp::Time, double>> odometry_buffer_direction_switch_{};
 
   // Debug data
   mutable DirectionChangeDebugData debug_data_;

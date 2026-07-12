@@ -134,7 +134,7 @@ private:
   BehaviorModuleOutput composeOutput();
 
   // Latch / replan bookkeeping.
-  bool isLatchInvalid(const geometry_msgs::msg::Pose & start_pose);
+  bool isLatchInvalid();
   void requestPlan(
     const geometry_msgs::msg::Pose & start_pose, const geometry_msgs::msg::Pose & goal_pose);
 

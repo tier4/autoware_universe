@@ -264,9 +264,8 @@ std::optional<FreespaceAreaModule::ActivationContext> FreespaceAreaModule::evalu
       ctx.entry_lanelets = area_transit->entry_lanelets;
       ctx.exit_lanelets = area_transit->exit_lanelets;
     }
-    ctx.mode = (ctx.exit_lanelets.empty() || rh->isGoalInRouteArea())
-                 ? FreespaceAreaMode::TERMINAL
-                 : FreespaceAreaMode::TRANSIT;
+    ctx.mode = (ctx.exit_lanelets.empty() || rh->isGoalInRouteArea()) ? FreespaceAreaMode::TERMINAL
+                                                                      : FreespaceAreaMode::TRANSIT;
   }
 
   bool within_lookahead = ego_inside;
@@ -329,7 +328,7 @@ geometry_msgs::msg::Pose FreespaceAreaModule::computeGoalPose(const ActivationCo
   return exit_path.points.front().point.pose;
 }
 
-bool FreespaceAreaModule::isLatchInvalid(const geometry_msgs::msg::Pose & start_pose)
+bool FreespaceAreaModule::isLatchInvalid()
 {
   if (composed_path_.points.empty()) {
     return true;
@@ -402,7 +401,6 @@ bool FreespaceAreaModule::isLatchInvalid(const geometry_msgs::msg::Pose & start_
     stopped_since_.reset();
   }
 
-  (void)start_pose;
   return false;
 }
 
@@ -424,7 +422,7 @@ BehaviorModuleOutput FreespaceAreaModule::plan()
     planner_data_->costmap &&
     (clock_->now() - rclcpp::Time(planner_data_->costmap->header.stamp)).seconds() < 1.0;
 
-  const bool need_replan = isLatchInvalid(start_pose);
+  const bool need_replan = isLatchInvalid();
   if (need_replan) {
     composed_path_ = PathWithLaneId();
     state_ = FreespaceAreaState::PLANNING;
@@ -613,6 +611,12 @@ BehaviorModuleOutput FreespaceAreaModule::composeOutput()
   // bounds; with only 0.5*width+shape_margin it flags "outside drivable area" on the
   // high-curvature approach to a cusp and inserts a stop several meters before it, deadlocking
   // the stop-and-reverse maneuver. drivable_area_margin_buffer provides that slack.
+  // Known limitation: where the A* path hugs the Area boundary, this corridor can exceed the
+  // Area polygon by up to drivable_area_margin_buffer, so path_optimizer may smooth the path
+  // slightly outside it (the A* plan itself keeps the footprint inside via the costmap).
+  // Clipping the corridor to the Area polygon is not currently expressible through
+  // DrivableAreaInfo: enable_expanding_freespace_areas only consumes parking-lot polygons whose
+  // points are shared with the lane bounds, which a lanelet2 freespace Area does not satisfy.
   DrivableAreaInfo drivable_area_info;
   drivable_area_info.drivable_margin = 0.5 * vehicle_info_.vehicle_width_m +
                                        parameters_->planner_vehicle_shape_margin +

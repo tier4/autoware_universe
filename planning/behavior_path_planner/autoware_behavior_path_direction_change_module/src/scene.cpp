@@ -78,6 +78,27 @@ void logDirectionChangeDebugInfo(
 
   RCLCPP_INFO_STREAM(logger, ss.str());
 }
+
+const char * toString(const autoware::behavior_path_planner::PathSegmentState & state)
+{
+  using autoware::behavior_path_planner::PathSegmentState;
+  switch (state) {
+    case PathSegmentState::IDLE:
+      return "IDLE";
+    case PathSegmentState::FORWARD_FOLLOWING:
+      return "FORWARD_FOLLOWING";
+    case PathSegmentState::APPROACHING_CUSP:
+      return "APPROACHING_CUSP";
+    case PathSegmentState::AT_CUSP:
+      return "AT_CUSP";
+    case PathSegmentState::REVERSE_FOLLOWING:
+      return "REVERSE_FOLLOWING";
+    case PathSegmentState::COMPLETED:
+      return "COMPLETED";
+    default:
+      return "UNKNOWN";
+  }
+}
 }  // namespace
 
 namespace autoware::behavior_path_planner
@@ -112,7 +133,7 @@ void DirectionChangeModule::initVariables()
   cusp_point_indices_.clear();
   current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
   current_segment_index_ = 0;
-  odometry_buffer_direction_switch_.clear();
+  has_moved_in_segment_ = false;
   cusp_stopped_since_.reset();
   resetPathCandidate();
   resetPathReference();
@@ -178,8 +199,9 @@ void DirectionChangeModule::updateData()
   // discard the reverse segments. In that case operate directly on the upstream path so the
   // encoded direction changes are preserved. The classic lane-based scenario (no Area in the
   // route) is untouched and keeps using the centerline reconstruction.
-  if (planner_data_ && planner_data_->route_handler &&
-      !planner_data_->route_handler->getRouteAreas().empty()) {
+  if (
+    planner_data_ && planner_data_->route_handler &&
+    !planner_data_->route_handler->getRouteAreas().empty()) {
     reference_path_ = previous_output.path;
     RCLCPP_DEBUG(
       getLogger(),
@@ -264,37 +286,52 @@ bool DirectionChangeModule::shouldActivateModule() const
   return false;
 }
 
-bool DirectionChangeModule::isSustainedStoppedForDirectionSwitch()
+void DirectionChangeModule::updateFirstSegmentDirectionLatch(
+  const PathWithLaneId & current_reference_path)
 {
-  if (!planner_data_ || !planner_data_->self_odometry || !clock_) {
-    return false;
+  // Travel direction of the FIRST run. Cusp-encoded paths (freespace_area) orient every pose
+  // along the TRAVEL direction, so run geometry cannot distinguish forward from reverse; the
+  // discriminator is the vehicle heading: a first run whose pose yaw opposes ego's heading must
+  // be driven in reverse (A* plans that start inside an Area can begin with a reverse run).
+  // Ego's heading is only a valid reference while ego is at the path start (a fresh plan), so
+  // the result is LATCHED per path-start pose and re-evaluated only when the start changes
+  // (new plan or replan). Classic lane-based routes (no Area) keep the fixed even==forward rule.
+  const bool is_area_route = planner_data_ && planner_data_->route_handler &&
+                             !planner_data_->route_handler->getRouteAreas().empty();
+  if (!is_area_route) {
+    first_segment_is_reverse_ = false;
+    direction_detect_ref_pose_.reset();
+    return;
   }
-  const rclcpp::Time now = clock_->now();
-  const double v = std::abs(planner_data_->self_odometry->twist.twist.linear.x);
-  odometry_buffer_direction_switch_.emplace_back(now, v);
-
-  const rclcpp::Duration window = rclcpp::Duration::from_seconds(parameters_->th_stopped_time);
-  const rclcpp::Time cutoff = now - window;
-  while (!odometry_buffer_direction_switch_.empty() &&
-         rclcpp::Time(odometry_buffer_direction_switch_.front().first) < cutoff) {
-    odometry_buffer_direction_switch_.pop_front();
+  if (current_reference_path.points.empty() || !planner_data_->self_odometry) {
+    return;
   }
-
-  if (odometry_buffer_direction_switch_.size() < 2u) {
-    return false;
-  }
-  const double span_sec = (rclcpp::Time(odometry_buffer_direction_switch_.back().first) -
-                           rclcpp::Time(odometry_buffer_direction_switch_.front().first))
-                            .seconds();
-  if (span_sec < parameters_->th_stopped_time) {
-    return false;
-  }
-  for (const auto & entry : odometry_buffer_direction_switch_) {
-    if (entry.second >= parameters_->stop_velocity_threshold) {
-      return false;
+  const auto & first_pose = current_reference_path.points.front().point.pose;
+  const bool start_changed = [&]() {
+    if (!direction_detect_ref_pose_) {
+      return true;
     }
+    const double dist =
+      autoware_utils::calc_distance2d(first_pose.position, direction_detect_ref_pose_->position);
+    const double dyaw = std::abs(
+      autoware_utils::normalize_radian(
+        tf2::getYaw(first_pose.orientation) -
+        tf2::getYaw(direction_detect_ref_pose_->orientation)));
+    return dist > 0.5 || dyaw > M_PI_4;
+  }();
+  if (!start_changed) {
+    return;
   }
-  return true;
+  const double ego_yaw = tf2::getYaw(planner_data_->self_odometry->pose.pose.orientation);
+  const double path_yaw = tf2::getYaw(first_pose.orientation);
+  first_segment_is_reverse_ =
+    std::abs(autoware_utils::normalize_radian(path_yaw - ego_yaw)) > M_PI_2;
+  direction_detect_ref_pose_ = first_pose;
+  // A new/replanned path renumbers the segments, so the driven-in-segment latch must restart.
+  has_moved_in_segment_ = false;
+  if (first_segment_is_reverse_) {
+    RCLCPP_INFO(getLogger(), "First path run opposes ego heading: treating segment 0 as REVERSE");
+  }
 }
 
 BehaviorModuleOutput DirectionChangeModule::plan()
@@ -310,44 +347,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
   cusp_point_indices_ =
     detectCuspPoints(current_reference_path, parameters_->cusp_detection_angle_threshold_deg);
 
-  // Travel direction of the FIRST run. Cusp-encoded paths (freespace_area) orient every pose
-  // along the TRAVEL direction, so run geometry cannot distinguish forward from reverse; the
-  // discriminator is the vehicle heading: a first run whose pose yaw opposes ego's heading must
-  // be driven in reverse (A* plans that start inside an Area can begin with a reverse run).
-  // Ego's heading is only a valid reference while ego is at the path start (a fresh plan), so
-  // the result is LATCHED per path-start pose and re-evaluated only when the start changes
-  // (new plan or replan). Classic lane-based routes (no Area) keep the fixed even==forward rule.
-  const bool is_area_route = planner_data_ && planner_data_->route_handler &&
-                             !planner_data_->route_handler->getRouteAreas().empty();
-  if (!is_area_route) {
-    first_segment_is_reverse_ = false;
-    direction_detect_ref_pose_.reset();
-  } else if (!current_reference_path.points.empty() && planner_data_->self_odometry) {
-    const auto & first_pose = current_reference_path.points.front().point.pose;
-    const bool start_changed = [&]() {
-      if (!direction_detect_ref_pose_) {
-        return true;
-      }
-      const double dist = autoware_utils::calc_distance2d(
-        first_pose.position, direction_detect_ref_pose_->position);
-      const double dyaw = std::abs(
-        autoware_utils::normalize_radian(
-          tf2::getYaw(first_pose.orientation) -
-          tf2::getYaw(direction_detect_ref_pose_->orientation)));
-      return dist > 0.5 || dyaw > M_PI_4;
-    }();
-    if (start_changed) {
-      const double ego_yaw = tf2::getYaw(planner_data_->self_odometry->pose.pose.orientation);
-      const double path_yaw = tf2::getYaw(first_pose.orientation);
-      first_segment_is_reverse_ =
-        std::abs(autoware_utils::normalize_radian(path_yaw - ego_yaw)) > M_PI_2;
-      direction_detect_ref_pose_ = first_pose;
-      if (first_segment_is_reverse_) {
-        RCLCPP_INFO(
-          getLogger(), "First path run opposes ego heading: treating segment 0 as REVERSE");
-      }
-    }
-  }
+  updateFirstSegmentDirectionLatch(current_reference_path);
   const auto is_reverse_segment = [this](const size_t seg_idx) {
     return ((seg_idx % 2) == 1) != first_segment_is_reverse_;
   };
@@ -377,8 +377,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     // This prevents oscillation when cusp detection becomes unstable after passing cusp
     if (
       current_segment_state_ == PathSegmentState::AT_CUSP ||
-      current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING ||
-      first_segment_is_reverse_) {
+      current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING || first_segment_is_reverse_) {
       // Also entered when the whole (cusp-free) path is a single reverse run, e.g. an A* plan
       // from inside a freespace Area that backs straight to the goal.
       RCLCPP_DEBUG(
@@ -425,33 +424,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     segmentBounds(current_segment_index_, c_start, c_end);
     const bool is_last_segment = (current_segment_index_ >= cusp_point_indices_.size());
 
-    if (c_end < current_reference_path.points.size()) {
-      first_cusp_position_ = current_reference_path.points[c_end].point.pose.position;
-      has_valid_cusp_ = true;
-    } else {
-      has_valid_cusp_ = false;
-    }
     RCLCPP_DEBUG_EXPRESSION(
       getLogger(), parameters_->print_debug_info,
       "segment_index=%zu, c_start=%zu, c_end=%zu, is_last_segment=%d", current_segment_index_,
       c_start, c_end, static_cast<int>(is_last_segment));
-
-    /* Critical Safety Check: Lane Continuity with Reverse Exit
-    const bool safety_check_passed = checkLaneContinuitySafety(
-      reference_path_, cusp_point_indices_, planner_data_->route_handler);
-
-    RCLCPP_DEBUG_EXPRESSION(
-      getLogger(), parameters_->print_debug_info,
-      "Safety check result: %s", safety_check_passed ? "PASSED" : "FAILED");
-    if (!safety_check_passed) {
-      RCLCPP_DEBUG_EXPRESSION(
-        getLogger(), parameters_->print_debug_info,
-        "FATAL: Lane continuity safety check failed. Returning path without modification.");
-      output.path = reference_path_;
-      output.turn_signal_info = getPreviousModuleOutput().turn_signal_info;
-      output.drivable_area_info = getPreviousModuleOutput().drivable_area_info;
-      return output;
-    }*/
 
     if (!planner_data_ || !planner_data_->self_odometry) {
       RCLCPP_WARN(getLogger(), "No ego odometry available, defaulting to forward segment");
@@ -480,31 +456,16 @@ BehaviorModuleOutput DirectionChangeModule::plan()
           getLogger(), "Could not find nearest index for ego pose, defaulting to forward segment");
         current_segment_state_ = PathSegmentState::FORWARD_FOLLOWING;
       } else {
-        auto stateToString = [](const PathSegmentState & s) {
-          switch (s) {
-            case PathSegmentState::IDLE:
-              return "IDLE";
-            case PathSegmentState::FORWARD_FOLLOWING:
-              return "FORWARD_FOLLOWING";
-            case PathSegmentState::APPROACHING_CUSP:
-              return "APPROACHING_CUSP";
-            case PathSegmentState::AT_CUSP:
-              return "AT_CUSP";
-            case PathSegmentState::REVERSE_FOLLOWING:
-              return "REVERSE_FOLLOWING";
-            case PathSegmentState::COMPLETED:
-              return "COMPLETED";
-            default:
-              return "UNKNOWN";
-          }
-        };
         const double vehicle_velocity =
           std::abs(planner_data_->self_odometry->twist.twist.linear.x);
+        if (vehicle_velocity >= parameters_->stop_velocity_threshold) {
+          has_moved_in_segment_ = true;
+        }
         RCLCPP_INFO_EXPRESSION(
           getLogger(), parameters_->print_debug_info,
           "state=%s, ego_nearest_idx=%zu, c_start=%zu, c_end=%zu, distance_to_cusp=%.2f, "
           "vehicle_velocity=%.2f m/s",
-          stateToString(current_segment_state_), ego_nearest_idx, c_start, c_end, distance_to_cusp,
+          toString(current_segment_state_), ego_nearest_idx, c_start, c_end, distance_to_cusp,
           vehicle_velocity);
 
         PathSegmentState new_state = current_segment_state_;
@@ -531,7 +492,17 @@ BehaviorModuleOutput DirectionChangeModule::plan()
               }
               break;
             case PathSegmentState::AT_CUSP: {
-              if (vehicle_velocity < parameters_->stop_velocity_threshold) {
+              // The direction switch requires ego to have actually REACHED the cusp; a sustained
+              // standstill alone is not enough. Right after a (re)plan the vehicle is stopped at
+              // the path start, and when the current run is shorter than
+              // cusp_detection_distance_threshold the state machine gets here before the run was
+              // ever driven - advancing on that standstill would skip the run entirely (e.g. a
+              // short initial reverse run of an A* plan starting inside a freespace Area).
+              // "Reached" = ego drove within this segment, or the run is shorter than the
+              // arrival tolerance to begin with (then it is already at the cusp).
+              const bool reached_cusp =
+                has_moved_in_segment_ || distance_to_cusp <= parameters_->th_arrived_distance;
+              if (reached_cusp && vehicle_velocity < parameters_->stop_velocity_threshold) {
                 if (!cusp_stopped_since_.has_value()) {
                   cusp_stopped_since_ = clock_->now();
                 }
@@ -568,13 +539,14 @@ BehaviorModuleOutput DirectionChangeModule::plan()
                   } else {
                     // Normal transition to next segment
                     current_segment_index_++;
+                    has_moved_in_segment_ = false;
                     new_state = !is_reverse_segment(current_segment_index_)
                                   ? PathSegmentState::FORWARD_FOLLOWING
                                   : PathSegmentState::REVERSE_FOLLOWING;
                   }
                 }
               } else {
-                // Velocity exceeded threshold: reset stop timer
+                // Still moving, or the cusp is not reached yet: reset the stop timer
                 if (cusp_stopped_since_.has_value()) {
                   cusp_stopped_since_.reset();
                 }
@@ -597,8 +569,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         if (new_state != current_segment_state_) {
           RCLCPP_INFO(
             getLogger(), "State transition: %s -> %s, segment_index=%zu",
-            stateToString(current_segment_state_), stateToString(new_state),
-            current_segment_index_);
+            toString(current_segment_state_), toString(new_state), current_segment_index_);
           if (new_state == PathSegmentState::AT_CUSP) {
             cusp_stopped_since_.reset();
           }
@@ -641,12 +612,12 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         p.point.pose.orientation = autoware_utils::create_quaternion_from_yaw(yaw);
         p.point.longitudinal_velocity_mps =
           (i == 0) ? -backward_slow_speed : -backward_cruise_speed;
-        if (!p.lane_ids.empty() && p.lane_ids.size() > 1) {
+        if (p.lane_ids.size() > 1) {
           int64_t max_lane_id = *std::max_element(p.lane_ids.begin(), p.lane_ids.end());
           p.lane_ids = {max_lane_id};
         }
-        output.path.points.back().point.longitudinal_velocity_mps = 0.0;
       }
+      output.path.points.back().point.longitudinal_velocity_mps = 0.0;
       RCLCPP_DEBUG_EXPRESSION(
         getLogger(), parameters_->print_debug_info,
         "Publishing REVERSE segment: %zu points (indices %zu-%zu)", output.path.points.size(),
@@ -725,35 +696,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
       }
     }
 
-    // Convert state to string
-    std::string state_str;
-    switch (current_segment_state_) {
-      case PathSegmentState::IDLE:
-        state_str = "IDLE";
-        break;
-      case PathSegmentState::FORWARD_FOLLOWING:
-        state_str = "FORWARD_FOLLOWING";
-        break;
-      case PathSegmentState::APPROACHING_CUSP:
-        state_str = "APPROACHING_CUSP";
-        break;
-      case PathSegmentState::AT_CUSP:
-        state_str = "AT_CUSP";
-        break;
-      case PathSegmentState::REVERSE_FOLLOWING:
-        state_str = "REVERSE_FOLLOWING";
-        break;
-      case PathSegmentState::COMPLETED:
-        state_str = "COMPLETED";
-        break;
-      default:
-        state_str = "UNKNOWN";
-        break;
-    }
-
     if (parameters_->print_debug_info) {
       std::ostringstream ss;
-      ss << "Path analysis: state=" << state_str << " path_points=" << path_msg.points.size()
+      ss << "Path analysis: state=" << toString(current_segment_state_)
+         << " path_points=" << path_msg.points.size()
          << " has_stop_point=" << (has_stop_point ? "YES" : "NO")
          << " first_vel=" << first_point_vel << " last_vel=" << last_point_vel;
       if (has_stop_point) {
