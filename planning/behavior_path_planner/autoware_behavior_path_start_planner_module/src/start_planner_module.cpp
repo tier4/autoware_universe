@@ -483,6 +483,13 @@ bool StartPlannerModule::isExecutionRequested() const
     return true;
   }
 
+  // A departure from inside a lanelet2 freespace Area of the route is planned by the
+  // freespace_area module (A*), not by a lane pull-out. Requesting here would auto-approve a
+  // permanent "no safe pull out path" stop path that excludes the freespace_area module.
+  if (planner_data_->route_handler->getRouteAreaAtPose(planner_data_->self_odometry->pose.pose)) {
+    return false;
+  }
+
   // Return false and do not request execution if any of the following conditions are true:
   // - The start pose is on the centerline or on "waypoints" (custom centerline)
   // - The vehicle has already arrived at the start position planner.
