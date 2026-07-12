@@ -256,7 +256,17 @@ std::optional<FreespaceAreaModule::ActivationContext> FreespaceAreaModule::evalu
                  : FreespaceAreaMode::TRANSIT;
   } else {
     ctx.area = *area_at_ego;
-    ctx.mode = rh->isGoalInRouteArea() ? FreespaceAreaMode::TERMINAL : FreespaceAreaMode::TRANSIT;
+    // No upcoming transit from the closest route lanelet. This happens when the area segment is
+    // not AHEAD of that lanelet: Area→Lane routes (the area is the FIRST route segment and the
+    // closest route lanelet is the exit lane after it), or mid-maneuver when ego is nearer to
+    // the exit lane than to the entry lane. Recover entry/exit from the area's own segment.
+    if (const auto area_transit = rh->getAreaTransit(area_at_ego->id())) {
+      ctx.entry_lanelets = area_transit->entry_lanelets;
+      ctx.exit_lanelets = area_transit->exit_lanelets;
+    }
+    ctx.mode = (ctx.exit_lanelets.empty() || rh->isGoalInRouteArea())
+                 ? FreespaceAreaMode::TERMINAL
+                 : FreespaceAreaMode::TRANSIT;
   }
 
   bool within_lookahead = ego_inside;
