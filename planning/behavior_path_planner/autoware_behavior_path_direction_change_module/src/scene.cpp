@@ -310,6 +310,48 @@ BehaviorModuleOutput DirectionChangeModule::plan()
   cusp_point_indices_ =
     detectCuspPoints(current_reference_path, parameters_->cusp_detection_angle_threshold_deg);
 
+  // Travel direction of the FIRST run. Cusp-encoded paths (freespace_area) orient every pose
+  // along the TRAVEL direction, so run geometry cannot distinguish forward from reverse; the
+  // discriminator is the vehicle heading: a first run whose pose yaw opposes ego's heading must
+  // be driven in reverse (A* plans that start inside an Area can begin with a reverse run).
+  // Ego's heading is only a valid reference while ego is at the path start (a fresh plan), so
+  // the result is LATCHED per path-start pose and re-evaluated only when the start changes
+  // (new plan or replan). Classic lane-based routes (no Area) keep the fixed even==forward rule.
+  const bool is_area_route = planner_data_ && planner_data_->route_handler &&
+                             !planner_data_->route_handler->getRouteAreas().empty();
+  if (!is_area_route) {
+    first_segment_is_reverse_ = false;
+    direction_detect_ref_pose_.reset();
+  } else if (!current_reference_path.points.empty() && planner_data_->self_odometry) {
+    const auto & first_pose = current_reference_path.points.front().point.pose;
+    const bool start_changed = [&]() {
+      if (!direction_detect_ref_pose_) {
+        return true;
+      }
+      const double dist = autoware_utils::calc_distance2d(
+        first_pose.position, direction_detect_ref_pose_->position);
+      const double dyaw = std::abs(
+        autoware_utils::normalize_radian(
+          tf2::getYaw(first_pose.orientation) -
+          tf2::getYaw(direction_detect_ref_pose_->orientation)));
+      return dist > 0.5 || dyaw > M_PI_4;
+    }();
+    if (start_changed) {
+      const double ego_yaw = tf2::getYaw(planner_data_->self_odometry->pose.pose.orientation);
+      const double path_yaw = tf2::getYaw(first_pose.orientation);
+      first_segment_is_reverse_ =
+        std::abs(autoware_utils::normalize_radian(path_yaw - ego_yaw)) > M_PI_2;
+      direction_detect_ref_pose_ = first_pose;
+      if (first_segment_is_reverse_) {
+        RCLCPP_INFO(
+          getLogger(), "First path run opposes ego heading: treating segment 0 as REVERSE");
+      }
+    }
+  }
+  const auto is_reverse_segment = [this](const size_t seg_idx) {
+    return ((seg_idx % 2) == 1) != first_segment_is_reverse_;
+  };
+
   RCLCPP_INFO_EXPRESSION(
     getLogger(), parameters_->print_debug_info, "plan(): path_points=%zu, cusp_points=%zu",
     reference_path_.points.size(), cusp_point_indices_.size());
@@ -335,7 +377,10 @@ BehaviorModuleOutput DirectionChangeModule::plan()
     // This prevents oscillation when cusp detection becomes unstable after passing cusp
     if (
       current_segment_state_ == PathSegmentState::AT_CUSP ||
-      current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING) {
+      current_segment_state_ == PathSegmentState::REVERSE_FOLLOWING ||
+      first_segment_is_reverse_) {
+      // Also entered when the whole (cusp-free) path is a single reverse run, e.g. an A* plan
+      // from inside a freespace Area that backs straight to the goal.
       RCLCPP_DEBUG(
         getLogger(), "No cusp detected but already in reverse state, maintaining backward path");
       // Continue publishing backward path: reverse orientations and velocities
@@ -465,8 +510,8 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         PathSegmentState new_state = current_segment_state_;
 
         if (is_last_segment) {
-          // Last segment: no APPROACHING/AT_CUSP; keep FORWARD or REVERSE by parity
-          if (current_segment_index_ % 2 == 0) {
+          // Last segment: no APPROACHING/AT_CUSP; keep FORWARD or REVERSE by travel direction
+          if (!is_reverse_segment(current_segment_index_)) {
             new_state = PathSegmentState::FORWARD_FOLLOWING;
           } else {
             new_state = PathSegmentState::REVERSE_FOLLOWING;
@@ -523,7 +568,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
                   } else {
                     // Normal transition to next segment
                     current_segment_index_++;
-                    new_state = (current_segment_index_ % 2 == 0)
+                    new_state = !is_reverse_segment(current_segment_index_)
                                   ? PathSegmentState::FORWARD_FOLLOWING
                                   : PathSegmentState::REVERSE_FOLLOWING;
                   }
@@ -572,7 +617,7 @@ BehaviorModuleOutput DirectionChangeModule::plan()
         current_reference_path.points.begin() + static_cast<std::ptrdiff_t>(c_end) + 1);
     }
 
-    const bool apply_reversal = (current_segment_index_ % 2 == 1);
+    const bool apply_reversal = is_reverse_segment(current_segment_index_);
     if (apply_reversal && !output.path.points.empty()) {
       const double max_yaw_step_rad =
         autoware_utils::deg2rad(parameters_->reverse_path_densify_max_yaw_step_deg);

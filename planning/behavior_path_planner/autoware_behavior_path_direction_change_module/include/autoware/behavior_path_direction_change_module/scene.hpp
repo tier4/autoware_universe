@@ -100,7 +100,12 @@ private:
 
   // Path segment state tracking for separate forward/backward publishing (multi-cusp)
   PathSegmentState current_segment_state_{PathSegmentState::FORWARD_FOLLOWING};
-  size_t current_segment_index_{0};  // Segment index (0 = first forward, 1 = first reverse, ...)
+  size_t current_segment_index_{0};  // Segment index (travel direction alternates per segment)
+  // Travel direction of segment 0. Usually forward, but an A* plan that starts inside a
+  // freespace Area may begin with a reverse run (cusp-encoded pose yaw opposes ego heading).
+  // Latched per path-start pose; see plan().
+  bool first_segment_is_reverse_{false};
+  std::optional<geometry_msgs::msg::Pose> direction_detect_ref_pose_{};
   geometry_msgs::msg::Point
     first_cusp_position_;  // Position of current segment end (cusp) for debug/log
   bool has_valid_cusp_{false};
