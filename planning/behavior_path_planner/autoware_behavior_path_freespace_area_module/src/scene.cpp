@@ -520,6 +520,25 @@ BehaviorModuleOutput FreespaceAreaModule::composeOutput()
     const auto entry_idx = findNearestIndex(prev_points, latched_start_pose_.position);
     const size_t end_idx = std::min(entry_idx, prev_points.size() - 1);
     path.points.assign(prev_points.begin(), prev_points.begin() + end_idx + 1);
+
+    // The entry and exit lanes meet head-to-head at the junction, so the upstream lane reference
+    // centerline reverses ~180 deg there. Nearest-index truncation can keep trailing point(s) that
+    // overshoot the A* start and carry that reversed orientation. Left in the prefix, they make the
+    // drivable-area corridor (built by lateral offset of each point's pose in generateDrivableArea)
+    // fold over itself right before the area entry, and add a spurious cusp to the centerline. Drop
+    // trailing points that double back so the prefix connects monotonically to the A* start.
+    while (path.points.size() >= 2) {
+      const auto & last = path.points.back().point.pose.position;
+      const auto & prev = path.points[path.points.size() - 2].point.pose.position;
+      const double seg_yaw = std::atan2(last.y - prev.y, last.x - prev.x);
+      const double to_start_yaw = std::atan2(
+        latched_start_pose_.position.y - last.y, latched_start_pose_.position.x - last.x);
+      if (std::abs(autoware_utils::normalize_radian(to_start_yaw - seg_yaw)) > M_PI_2) {
+        path.points.pop_back();  // 'last' overshoots the A* start (would require doubling back)
+      } else {
+        break;
+      }
+    }
   }
 
   auto append_point = [&path](const autoware_internal_planning_msgs::msg::PathPointWithLaneId & p) {
