@@ -104,6 +104,11 @@ void ManualLaneChangeHandler::route_callback(const LaneletRoute::ConstSharedPtr 
 
   const auto & route_handler = planner_->getRouteHandler();
   std::for_each(route.segments.begin(), route.segments.end(), [&](auto & segment) {
+    // Freespace Area segments have no lanelet behind the primitive id (laneletLayer lookup
+    // throws) and no left/right neighbors to sort; keep them as-is.
+    if (segment.preferred_primitive.primitive_type == "area") {
+      return;
+    }
     segment.primitives =
       sort_primitives_left_to_right(route_handler, segment.preferred_primitive, segment.primitives);
   });
