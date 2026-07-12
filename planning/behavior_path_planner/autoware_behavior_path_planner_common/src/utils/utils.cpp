@@ -488,6 +488,13 @@ bool isEgoOutOfRoute(
   const std::optional<PoseWithUuidStamped> & modified_goal,
   const std::shared_ptr<RouteHandler> & route_handler)
 {
+  // Ego inside a freespace Area of the route is ON the route. Without this, an Area→Lane route
+  // (ego starts inside the area, no scene module approved yet) is rejected here before any
+  // module can request execution, and the planner_manager falls back to a goal-around stub path.
+  if (route_handler->getRouteAreaAtPose(self_pose).has_value()) {
+    return false;
+  }
+
   const Pose & goal_pose = (modified_goal && modified_goal->uuid == route_handler->getRouteUuid())
                              ? modified_goal->pose
                              : route_handler->getGoalPose();
