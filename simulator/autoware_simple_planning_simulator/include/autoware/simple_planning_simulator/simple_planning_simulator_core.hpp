@@ -201,6 +201,10 @@ private:
   /* flags */
   bool is_initialized_ = false;         //!< @brief flag to check the initial position is set
   bool add_measurement_noise_ = false;  //!< @brief flag to add measurement noise
+  bool use_latched_initial_pose_z_ =
+    false;                               //!< @brief use Z from latest initial pose after re-init
+  double latched_initial_pose_z_ = 0.0;  //!< @brief latched initial z in origin_frame_id_
+  rclcpp::Time latched_initial_pose_time_{0, 0, RCL_ROS_TIME};  //!< @brief stamp of latched pose
 
   InputCommand current_input_command_{};
 
@@ -342,6 +346,12 @@ private:
    * @param [in] twist initial velocity and angular velocity
    */
   void set_initial_state_with_transform(const PoseStamped & pose, const Twist & twist);
+
+  /**
+   * @brief latch Z from initial pose in origin_frame_id_ until a newer trajectory arrives
+   * @param [in] pose initial position and orientation with header
+   */
+  void latch_initial_pose_z(const PoseStamped & pose);
 
   /**
    * @brief publish velocity
