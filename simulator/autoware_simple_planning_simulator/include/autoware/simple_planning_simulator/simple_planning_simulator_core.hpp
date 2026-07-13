@@ -52,6 +52,7 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <variant>
@@ -204,7 +205,7 @@ private:
   bool use_latched_initial_pose_z_ =
     false;                               //!< @brief use Z from latest initial pose after re-init
   double latched_initial_pose_z_ = 0.0;  //!< @brief latched initial z in origin_frame_id_
-  rclcpp::Time latched_initial_pose_time_{0, 0, RCL_ROS_TIME};  //!< @brief stamp of latched pose
+  std::optional<rclcpp::Time> latched_initial_pose_time_;  //!< @brief stamp of latched pose
 
   InputCommand current_input_command_{};
 
