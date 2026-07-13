@@ -37,7 +37,8 @@ private:
   rclcpp::Publisher<DrivingModeFlag>::SharedPtr pub_available_;
   rclcpp::Publisher<DrivingModeFlag>::SharedPtr pub_continuable_;
 
-  std::unordered_map<uint32_t, BaseUnit *> mode_to_unit_;
+  std::unordered_map<uint32_t, BaseUnit *> available_units_;
+  std::unordered_map<uint32_t, BaseUnit *> continuable_units_;
 };
 
 }  // namespace autoware::diagnostic_graph_aggregator
