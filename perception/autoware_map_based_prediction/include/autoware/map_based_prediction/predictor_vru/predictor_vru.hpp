@@ -55,7 +55,7 @@ public:
     // Signal interaction
     bool use_crosswalk_signal{true};
     // Road-border deceleration-aware path cut (pedestrian/bicycle)
-    std::vector<std::string> road_border_boundary_types{"road_border"};
+    std::vector<std::string> road_border_boundary_types{"road_border", "guard_rail"};
     // Sub-module params
     TrafficSignalModule::Params traffic_signal;
     CrosswalkUserHistoryManager::Params history;

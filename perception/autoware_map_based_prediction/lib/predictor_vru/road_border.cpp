@@ -17,11 +17,7 @@
 #include "autoware/map_based_prediction/path_cut/path_cut_utils.hpp"
 
 #include <autoware/object_recognition_utils/object_classification.hpp>
-#include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
-#include <autoware_utils/geometry/geometry.hpp>
-
-#include <geometry_msgs/msg/point.hpp>
 
 #include <boost/geometry.hpp>
 
@@ -34,9 +30,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <limits>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -45,43 +39,14 @@ namespace autoware::map_based_prediction
 
 namespace
 {
-// A crossing point together with its planar distance from the segment start, so the caller can pick
-// the earliest crossing without recomputing the distance.
-struct SegmentCrossing
-{
-  double distance_from_start{0.0};
-  geometry_msgs::msg::Point point{};
-};
-
-std::optional<SegmentCrossing> nearest_segment_crossing(
-  const geometry_msgs::msg::Point & a, const geometry_msgs::msg::Point & b,
-  const lanelet::ConstLineString3d & border)
-{
-  std::optional<SegmentCrossing> nearest;
-  for (size_t j = 1; j < border.size(); ++j) {
-    const auto c1 = lanelet::utils::conversion::toGeomMsgPt(border[j - 1]);
-    const auto c2 = lanelet::utils::conversion::toGeomMsgPt(border[j]);
-    if (const auto crossing = autoware_utils::intersect(a, b, c1, c2)) {
-      const double d = std::hypot(crossing->x - a.x, crossing->y - a.y);
-      if (!nearest || d < nearest->distance_from_start) {
-        nearest = SegmentCrossing{d, *crossing};
-      }
-    }
-  }
-  return nearest;
-}
-
-bool point_near_crosswalk(const lanelet::LaneletMap & map, const geometry_msgs::msg::Point & p)
+bool point_near_crosswalk(const lanelet::LaneletMap & map, const lanelet::BasicPoint2d & point)
 {
   // Tolerance so a crossing that lands just outside a crosswalk polygon still counts as inside it:
   // the road_border linestring and the crosswalk boundary rarely share exact vertices.
   constexpr double margin = 1.0;
-  const lanelet::BasicPoint2d point2d{p.x, p.y};
   const lanelet::BoundingBox2d search_box{
-    lanelet::BasicPoint2d{p.x - margin, p.y - margin},
-    lanelet::BasicPoint2d{p.x + margin, p.y + margin}};
-  const auto candidates = map.laneletLayer.search(search_box);
-  for (const auto & candidate : candidates) {
+    point - lanelet::BasicPoint2d{margin, margin}, point + lanelet::BasicPoint2d{margin, margin}};
+  for (const auto & candidate : map.laneletLayer.search(search_box)) {
     const std::string subtype = candidate.attributeOr(lanelet::AttributeName::Subtype, "none");
     if (
       subtype != lanelet::AttributeValueString::Crosswalk &&
@@ -89,28 +54,12 @@ bool point_near_crosswalk(const lanelet::LaneletMap & map, const geometry_msgs::
       continue;
     }
     if (
-      lanelet::geometry::inside(candidate, point2d) ||
-      boost::geometry::distance(point2d, candidate.polygon2d()) <= margin) {
+      lanelet::geometry::inside(candidate, point) ||
+      boost::geometry::distance(point, candidate.polygon2d()) <= margin) {
       return true;
     }
   }
   return false;
-}
-
-double object_speed(const autoware_perception_msgs::msg::TrackedObject & object)
-{
-  const auto & v = object.kinematics.twist_with_covariance.twist.linear;
-  return std::hypot(v.x, v.y);
-}
-
-lanelet::BasicLineString2d to_basic_path_2d(const PredictedPath & path)
-{
-  lanelet::BasicLineString2d ls;
-  ls.reserve(path.path.size());
-  for (const auto & pose : path.path) {
-    ls.emplace_back(pose.position.x, pose.position.y);
-  }
-  return ls;
 }
 }  // namespace
 
@@ -132,10 +81,9 @@ void RoadBorderModule::build_from_map(
         std::const_pointer_cast<lanelet::LineStringData>(linestring.constData()));
     }
   }
-  if (borders.empty()) {
-    return;
+  if (!borders.empty()) {
+    road_border_layer_ = lanelet::utils::createMap(borders);
   }
-  road_border_layer_ = lanelet::utils::createMap(borders);
 }
 
 PredictedPath RoadBorderModule::cut_path_at_road_border(
@@ -143,52 +91,44 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
   const autoware_perception_msgs::msg::TrackedObject & object,
   const path_cut::MaxDecelerationParams & max_decel_params) const
 {
-  if (!road_border_layer_ || predicted_path.path.size() < 2) {
+  const auto & poses = predicted_path.path;
+  if (!road_border_layer_ || poses.size() < 2) {
     return predicted_path;
   }
 
-  const auto path_ls = to_basic_path_2d(predicted_path);
+  lanelet::BasicLineString2d path_ls;
+  path_ls.reserve(poses.size());
+  for (const auto & pose : poses) {
+    path_ls.emplace_back(pose.position.x, pose.position.y);
+  }
   const auto candidates =
     road_border_layer_->lineStringLayer.search(lanelet::geometry::boundingBox2d(path_ls));
 
-  std::optional<size_t> cut_index;
-  double distance_to_line = 0.0;
-  geometry_msgs::msg::Point crossing_point;
-  double arc_length = 0.0;
-  for (size_t seg = 0; seg + 1 < predicted_path.path.size() && !cut_index; ++seg) {
-    const auto & a = predicted_path.path.at(seg).position;
-    const auto & b = predicted_path.path.at(seg + 1).position;
-    std::optional<SegmentCrossing> earliest;
-    for (const auto & border : candidates) {
-      const auto crossing = nearest_segment_crossing(a, b, border);
-      if (crossing && (!earliest || crossing->distance_from_start < earliest->distance_from_start)) {
-        earliest = crossing;
+  double distance_to_cut = 0.0;  // arc length up to pose[seg], where the path is truncated
+  for (size_t seg = 0; seg + 1 < poses.size(); ++seg) {
+    const lanelet::BasicLineString2d segment(lanelet::BasicPoints2d{path_ls[seg], path_ls[seg + 1]});
+    const bool crosses = std::any_of(
+      candidates.begin(), candidates.end(), [&](const auto & border) {
+        return boost::geometry::intersects(segment, lanelet::utils::to2D(border).basicLineString());
+      });
+
+    if (crosses) {
+      const lanelet::BasicPoint2d crossing = 0.5 * (path_ls[seg] + path_ls[seg + 1]);
+      if (lanelet_map_ptr_ && point_near_crosswalk(*lanelet_map_ptr_, crossing)) {
+        return predicted_path;
       }
+      const auto & v = object.kinematics.twist_with_covariance.twist.linear;
+      const double max_deceleration = path_cut::max_deceleration_for_label(
+        max_decel_params, autoware::object_recognition_utils::getHighestProbLabel(
+                            object.classification));
+      if (!path_cut::can_stop_before_the_line(distance_to_cut, std::hypot(v.x, v.y), max_deceleration)) {
+        return predicted_path;
+      }
+      return path_cut::force_cut_at_index(predicted_path, seg);
     }
-    if (earliest) {
-      cut_index = seg;
-      distance_to_line = std::max(arc_length + earliest->distance_from_start, 0.0);
-      crossing_point = earliest->point;
-    }
-    arc_length += std::hypot(b.x - a.x, b.y - a.y);
+    distance_to_cut += (path_ls[seg + 1] - path_ls[seg]).norm();
   }
-
-  if (!cut_index) {
-    return predicted_path;
-  }
-  if (lanelet_map_ptr_ && point_near_crosswalk(*lanelet_map_ptr_, crossing_point)) {
-    return predicted_path;
-  }
-
-  const double speed = object_speed(object);
-  const uint8_t label =
-    autoware::object_recognition_utils::getHighestProbLabel(object.classification);
-  const double max_deceleration = path_cut::max_deceleration_for_label(max_decel_params, label);
-  if (!path_cut::can_stop_before_the_line(distance_to_line, speed, max_deceleration)) {
-    return predicted_path;
-  }
-
-  return path_cut::force_cut_at_index(predicted_path, cut_index.value());
+  return predicted_path;
 }
 
 }  // namespace autoware::map_based_prediction

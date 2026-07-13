@@ -72,7 +72,7 @@
         pedestrian: 0.5
         bicycle: 1.0
         motorcycle: 2.0
-      boundary_types: ["road_border"] # lanelet linestring types cut for pedestrian/bicycle
+      boundary_types: ["road_border", "guard_rail"] # lanelet linestring types cut for pedestrian/bicycle
 
     # debug parameters
     publish_processing_time: false

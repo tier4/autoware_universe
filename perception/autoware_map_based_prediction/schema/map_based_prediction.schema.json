@@ -316,7 +316,7 @@
               "items": {
                 "type": "string"
               },
-              "default": ["road_border"],
+              "default": ["road_border", "guard_rail"],
               "description": "lanelet linestring types treated as road boundary for pedestrian/bicycle path cut"
             }
           },
