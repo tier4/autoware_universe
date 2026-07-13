@@ -152,6 +152,43 @@ lanelet::BasicPolygon2d get_near_segment_polygon(
 
 ![Original and extended route comparison](assets/orignal_and_extended_route_lanelets.png)
 
+#### `get_velocity_limit(point)`
+
+```cpp
+std::optional<double> get_velocity_limit(const lanelet::BasicPoint2d & point) const;
+std::optional<double> get_velocity_limit(const lanelet::Point2d & point) const;
+std::optional<double> get_velocity_limit(const geometry_msgs::msg::Point & point) const;
+```
+
+Looks up the speed limit [m/s] at a map position on the route map.
+
+| Argument | Description                                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `point`  | Query position (map frame). Overloads accept `lanelet::BasicPoint2d`, `lanelet::Point2d`, or `geometry_msgs::msg::Point`. |
+
+| Returns                 | Description                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| `std::optional<double>` | Speed limit in m/s, or `std::nullopt` if no limit can be resolved for the point. |
+
+**Behavior:**
+
+1. Finds up to 5 nearest lanelets on `route_map_` that contain the point.
+2. For each lanelet, reads its speed-limit attribute when present.
+3. If a lanelet has no speed-limit attribute but is a `road_shoulder` or `pedestrian_lane`, falls back to the left/right neighbor from the extended routing graph.
+4. When multiple limits are found, returns the **minimum**.
+
+**Preconditions:** `create_map()` completed (`route_map_` and `extended_routing_graph_` ready).
+
+**Example:**
+
+```cpp
+const auto & ego_position = trajectory.points.front().pose.position;
+const auto velocity_limit = extended_route_handler_->get_velocity_limit(ego_position);
+if (velocity_limit) {
+  // *velocity_limit is in m/s
+}
+```
+
 ---
 
 ### Route bounds and `to_path_msg`
