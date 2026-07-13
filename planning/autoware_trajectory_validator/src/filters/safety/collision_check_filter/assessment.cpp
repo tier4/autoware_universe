@@ -129,64 +129,105 @@ std::optional<CollisionDetail> find_collision_timing(
   return make_collision_detail(worst_pet_timing.value(), first_collision_timing.value());
 }
 
-DracArtifact make_safe_artifact(CollisionDetail & collision_result)
-
+struct DracRiskTable
 {
-  CollisionEvaluation result{
-    RiskLevel::SAFE,
-    std::move(collision_result),
-  };
-  return DracArtifact{result.risk, 0.0, {result}};
-}
+  double safe_acceleration_limit{1.5};
+  double danger_acceleration_limit{3.0};
+  bool enable_abandon{false};
+};
 
-DracArtifact compute_drac(
-  const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
-  const TrajectoryData & object_trajectory, const DracParams & drac_params,
-  const GlobalParams & global_params, const VehicleInfo & vehicle_info)
+RiskLevel::_level_type identify_risk_level(
+  std::optional<double> required_acceleration, DracRiskTable risk_table)
 {
-  const std::vector<double> ego_acceleration_list{0.0, -1.0, -2.0, -3.0, -4.0, -5.0, -6.0};
-
-  for (auto ego_acc : ego_acceleration_list) {
-    trajectory::EgoTrajectoryGenerationParams ego_traj_params{
-      drac_params.ego_total_braking_delay, ego_acc,
-      trajectory::footprint::make_ego_dimensions(vehicle_info, drac_params.ego_footprint_margin)};
-    auto & ego_trajectory = ego_trajectory_cache.get_or_compute_trajectory_data(ego_traj_params);
-
-    auto collision_result = find_collision_timing(
-      ego_trajectory, object_trajectory, PetThreshold{0.3, 0.3}, global_params.time_resolution);
-    if (!collision_result.has_value()) {
-      return;
-    }
+  if (!required_acceleration.has_value()) {
+    return risk_table.enable_abandon ? RiskLevel::HIGH_CAUTION : RiskLevel::FATAL;
   }
 
-  // todo(takagi): implement
-  CollisionEvaluation result{};
-  return DracArtifact{result.risk, 0.0, {result}};
+  if (required_acceleration >= risk_table.safe_acceleration_limit) {
+    return RiskLevel::SAFE;
+  } else if (required_acceleration >= risk_table.danger_acceleration_limit) {
+    return RiskLevel::DANGER;
+  } else {
+    return RiskLevel::FATAL;
+  }
 }
 
-DracArtifact assess_drac_constant_curvature_ego_first(CollisionDetail & nominal_collision_result)
+std::pair<std::optional<double>, std::optional<CollisionDetail>> assess_ego_drac(
+  const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
+  const TrajectoryData & object_trajectory, const DracParams & drac_params,
+  const GlobalParams & global_params)
 {
-  return make_safe_artifact(nominal_collision_result);
+  const std::vector<double> ego_acceleration_list{-1.0, -2.0, -3.0, -4.0, -5.0, -6.0};
+
+  std::optional<CollisionDetail> last_detected_collision{};
+  for (auto ego_acc : ego_acceleration_list) {
+    trajectory::EgoTrajectoryGenerationParams ego_traj_params{
+      drac_params.ego_total_braking_delay, ego_acc, drac_params.ego_footprint_margin};
+    auto & ego_trajectory = ego_trajectory_cache.get_or_compute_trajectory_data(ego_traj_params);
+
+    auto detected_collision = find_collision_timing(
+      ego_trajectory, object_trajectory, PetThreshold{0.3, 0.3}, global_params.time_resolution);
+    if (!detected_collision.has_value()) {
+      return {ego_acc, last_detected_collision};
+    }
+    last_detected_collision = std::move(detected_collision);
+  }
+
+  trajectory::EgoTrajectoryGenerationParams limit_ego_traj_params{
+    0.0, ego_acceleration_list.back(), drac_params.ego_footprint_margin};
+  auto & limit_ego_trajectory =
+    ego_trajectory_cache.get_or_compute_trajectory_data(limit_ego_traj_params);
+  auto collision_result = find_collision_timing(
+    limit_ego_trajectory, object_trajectory, PetThreshold{0.3, 0.3}, global_params.time_resolution);
+  if (!collision_result.has_value()) {
+    return {ego_acceleration_list.back(), last_detected_collision};
+  }
+
+  return {std::nullopt, collision_result};
 }
 
-DracArtifact assess_drac_constant_curvature_object_first(
+// std::pair<std::optional<double>, CollisionDetail> assess_object_drac(
+//   const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
+//   const TrajectoryData & object_trajectory, const DracParams & drac_params,
+//   const GlobalParams & global_params)
+// {
+// }
+
+DracEvaluation assess_drac_constant_curvature_ego_first(CollisionDetail && nominal_collision_result)
+{
+  DracEvaluation evaluation{};
+  evaluation.method = "constant_curvature, ego first";
+  evaluation.risk = RiskLevel::SAFE;
+  evaluation.ego_drac_acceleration = std::nullopt;
+  evaluation.detail = std::move(nominal_collision_result);
+  return evaluation;
+}
+
+DracEvaluation assess_drac_constant_curvature_object_first(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
   const TrajectoryData & object_constant_curvature_trajectory, const DracParams & drac_params,
-  const GlobalParams & global_params, const VehicleInfo & vehicle_info)
+  const GlobalParams & global_params, CollisionDetail && nominal_collision_result)
 {
-  return compute_drac(
-    ego_trajectory_cache, object_constant_curvature_trajectory, drac_params, global_params,
-    vehicle_info);
+  auto [required_acceleration, last_collision] = assess_ego_drac(
+    ego_trajectory_cache, object_constant_curvature_trajectory, drac_params, global_params);
+
+  DracEvaluation evaluation{};
+  evaluation.method = "map_based, on_blinker, object first";
+  evaluation.risk = identify_risk_level(required_acceleration, DracRiskTable{});
+  evaluation.ego_drac_acceleration = required_acceleration;
+  evaluation.detail = std::move(last_collision).value_or(std::move(nominal_collision_result));
+  return evaluation;
 }
 
 DracArtifact assess_constant_curvature(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
   const autoware_perception_msgs::msg::PredictedObject & object, const DracParams & drac_params,
-  const GlobalParams & global_params, const VehicleInfo & vehicle_info)
+  const GlobalParams & global_params)
 {
+  DracArtifact drac_artifact{};
+
   trajectory::EgoTrajectoryGenerationParams ego_traj_params{
-    drac_params.ego_total_braking_delay, 0.0,
-    trajectory::footprint::make_ego_dimensions(vehicle_info, drac_params.ego_footprint_margin)};
+    drac_params.ego_total_braking_delay, 0.0, drac_params.ego_footprint_margin};
 
   const auto & ego_nominal_trajectory =
     ego_trajectory_cache.get_or_compute_trajectory_data(ego_traj_params);
@@ -200,57 +241,84 @@ DracArtifact assess_constant_curvature(
     ego_nominal_trajectory, object_constant_curvature_trajectory, PetThreshold{0.3, 0.3},
     global_params.time_resolution);
   if (!nominal_collision_result.has_value()) {
-    return DracArtifact{};
+    return drac_artifact;
   }
 
   if (nominal_collision_result.value().first_collision_timing.pet > 0.0) {
-    return assess_drac_constant_curvature_ego_first(std::move(nominal_collision_result.value()));
+    drac_artifact.merge(
+      assess_drac_constant_curvature_ego_first(std::move(nominal_collision_result.value())));
   } else {
-    return assess_drac_constant_curvature_object_first(
+    drac_artifact.merge(assess_drac_constant_curvature_object_first(
       ego_trajectory_cache, object_constant_curvature_trajectory, drac_params, global_params,
-      vehicle_info);
+      std::move(nominal_collision_result.value())));
   }
+  return drac_artifact;
 }
 
-DracArtifact assess_drac_off_blinker_ego_first(CollisionDetail & nominal_collision_result)
+DracEvaluation assess_drac_off_blinker_ego_first(CollisionDetail && nominal_collision_result)
 {
-  return make_safe_artifact(nominal_collision_result);
+  DracEvaluation evaluation{};
+  evaluation.method = "map_basaed, off_blinker, ego first";
+  evaluation.risk = RiskLevel::SAFE;
+  evaluation.ego_drac_acceleration = std::nullopt;
+  evaluation.detail = std::move(nominal_collision_result);
+  return evaluation;
 }
 
-DracArtifact assess_drac_off_blinker_object_first(CollisionDetail & nominal_collision_result)
+DracEvaluation assess_drac_off_blinker_object_first(CollisionDetail && nominal_collision_result)
 {
-  return make_safe_artifact(nominal_collision_result);
+  DracEvaluation evaluation{};
+  evaluation.method = "map_basaed, off_blinker, object first";
+  evaluation.risk = RiskLevel::SAFE;
+  evaluation.ego_drac_acceleration = std::nullopt;
+  evaluation.detail = std::move(nominal_collision_result);
+  return evaluation;
 }
 
-DracArtifact assess_drac_on_blinker_ego_first(
+DracEvaluation assess_drac_on_blinker_ego_first(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
   const TrajectoryData & object_map_based_trajectory, const DracParams & drac_params,
-  const GlobalParams & global_params, const VehicleInfo & vehicle_info)
+  const GlobalParams & global_params, CollisionDetail && nominal_collision_result)
 {
-  // todo: add object deceleration
-  return compute_drac(
-    ego_trajectory_cache, object_map_based_trajectory, drac_params, global_params, vehicle_info);
+  // todo(takagi): add object decleleration.
+
+  auto [required_acceleration, last_collision] =
+    assess_ego_drac(ego_trajectory_cache, object_map_based_trajectory, drac_params, global_params);
+
+  DracEvaluation evaluation{};
+  evaluation.method = "map_based, on_blinker, object first";
+  evaluation.risk = identify_risk_level(required_acceleration, DracRiskTable{});
+  evaluation.ego_drac_acceleration = required_acceleration;
+  evaluation.detail = std::move(last_collision).value_or(std::move(nominal_collision_result));
+  return evaluation;
 }
 
-DracArtifact assess_drac_on_blinker_object_first(
+DracEvaluation assess_drac_on_blinker_object_first(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
   const TrajectoryData & object_map_based_trajectory, const DracParams & drac_params,
-  const GlobalParams & global_params, const VehicleInfo & vehicle_info)
+  const GlobalParams & global_params, CollisionDetail && nominal_collision_result)
 {
-  return compute_drac(
-    ego_trajectory_cache, object_map_based_trajectory, drac_params, global_params, vehicle_info);
+  auto [required_acceleration, last_collision] =
+    assess_ego_drac(ego_trajectory_cache, object_map_based_trajectory, drac_params, global_params);
+
+  DracEvaluation evaluation{};
+  evaluation.method = "map_based, on_blinker, object first";
+  evaluation.risk = identify_risk_level(required_acceleration, DracRiskTable{});
+  evaluation.ego_drac_acceleration = required_acceleration;
+  evaluation.detail = std::move(last_collision).value_or(std::move(nominal_collision_result));
+  return evaluation;
 }
 
 DracArtifact assess_map_baased(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
+  const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
   const autoware_perception_msgs::msg::PredictedObject & object, const DracParams & drac_params,
-  const GlobalParams & global_params, const VehicleInfo & vehicle_info)
+  const GlobalParams & global_params)
 {
   DracArtifact drac_artifact{};
 
   trajectory::EgoTrajectoryGenerationParams ego_traj_params{
-    drac_params.ego_total_braking_delay, 0.0,
-    trajectory::footprint::make_ego_dimensions(vehicle_info, drac_params.ego_footprint_margin)};
+    drac_params.ego_total_braking_delay, 0.0, drac_params.ego_footprint_margin};
 
   for (const auto & obj_predicted_path : object.kinematics.predicted_paths) {
     const auto predicted_path_nominal_trajectory = trajectory::generate_predicted_path_trajectory(
@@ -267,8 +335,7 @@ DracArtifact assess_map_baased(
       continue;
     }
 
-    constexpr bool ego_has_blinker = false;
-    if (!ego_has_blinker) {
+    if (ego_turn_indicator.command == autoware_vehicle_msgs::msg::TurnIndicatorsCommand::DISABLE) {
       if (nominal_collision_result.value().first_collision_timing.pet > 0.0) {
         drac_artifact.merge(
           assess_drac_off_blinker_ego_first(std::move(nominal_collision_result.value())));
@@ -280,11 +347,11 @@ DracArtifact assess_map_baased(
       if (nominal_collision_result.value().first_collision_timing.pet > 0.0) {
         drac_artifact.merge(assess_drac_on_blinker_ego_first(
           ego_trajectory_cache, predicted_path_nominal_trajectory, drac_params, global_params,
-          vehicle_info));
+          std::move(nominal_collision_result.value())));
       } else {
         drac_artifact.merge(assess_drac_on_blinker_object_first(
           ego_trajectory_cache, predicted_path_nominal_trajectory, drac_params, global_params,
-          vehicle_info));
+          std::move(nominal_collision_result.value())));
       }
     }
   }
@@ -292,9 +359,10 @@ DracArtifact assess_map_baased(
 }
 
 DracArtifact assess(
-  const trajectory::EgoTrajectoryCache & ego_trajectory_cache, const FilterContext & context,
-  const DracParamMap & drac_param_map, const GlobalParams & global_params,
-  const VehicleInfo & vehicle_info)
+  const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
+  const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
+  const FilterContext & context, const DracParamMap & drac_param_map,
+  const GlobalParams & global_params)
 {
   DracArtifact drac_artifact{};
 
@@ -306,12 +374,12 @@ DracArtifact assess(
 
     if (drac_params.assessment_trajectories.constant_curvature) {
       drac_artifact.merge(assess_constant_curvature(
-        ego_trajectory_cache, predicted_object, drac_params, global_params, vehicle_info));
+        ego_trajectory_cache, predicted_object, drac_params, global_params));
     }
 
     if (drac_params.assessment_trajectories.map_based) {
       drac_artifact.merge(assess_map_baased(
-        ego_trajectory_cache, predicted_object, drac_params, global_params, vehicle_info));
+        ego_trajectory_cache, ego_turn_indicator, predicted_object, drac_params, global_params));
     }
   }
   return drac_artifact;
@@ -376,7 +444,7 @@ RssDetail assess_required_acceleration(
 
 RssArtifact assess(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache, const FilterContext & context,
-  const RssParamMap & rss_param_map, const VehicleInfo & vehicle_info)
+  const RssParamMap & rss_param_map)
 {
   if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
     return {};
@@ -392,8 +460,7 @@ RssArtifact assess(
     }
 
     trajectory::EgoTrajectoryGenerationParams ego_traj_params{
-      0.0, 0.0,
-      trajectory::footprint::make_ego_dimensions(vehicle_info, rss_params.ego_footprint_margin)};
+      0.0, 0.0, rss_params.ego_footprint_margin};
     const auto & ego_trajectory =
       ego_trajectory_cache.get_or_compute_trajectory_data(ego_traj_params);
 

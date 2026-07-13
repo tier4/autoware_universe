@@ -259,6 +259,35 @@ TEST(TrajectoryUtilitiesTest, ComputeFootprintTrajectoryForVehicleAppliesSpecifi
       -vehicle_info.min_longitudinal_offset_m + 0.5, vehicle_info.vehicle_width_m + 0.6));
 }
 
+TEST(TrajectoryUtilitiesTest, EgoTrajectoryCacheAppliesVehicleInfoAndFootprintMargin)
+{
+  CandidateTrajectory candidate_trajectory;
+  candidate_trajectory.points = create_straight_trajectory_points({0.0, 1.0});
+  for (size_t i = 0; i < candidate_trajectory.points.size(); ++i) {
+    auto & point = candidate_trajectory.points.at(i);
+    point.longitudinal_velocity_mps = 1.0;
+    point.time_from_start = rclcpp::Duration::from_seconds(static_cast<double>(i));
+  }
+
+  const auto vehicle_info = create_vehicle_info();
+  const rclcpp::Time reference_time(candidate_trajectory.header.stamp);
+  const trajectory::EgoTrajectoryCache cache(
+    candidate_trajectory, reference_time, reference_time, kDefaultTimeResolution, vehicle_info);
+  const EgoFootprintMargin margin{0.3, 0.7, 0.5};
+
+  const auto & trajectory_data = cache.get_or_compute_trajectory_data({0.0, 0.0, margin});
+  const auto & cached_trajectory_data = cache.get_or_compute_trajectory_data({0.0, 0.0, margin});
+
+  EXPECT_EQ(&trajectory_data, &cached_trajectory_data);
+  expect_same_polygon(
+    footprint_to_polygon2d(trajectory_data.getFootprints(), 0U),
+    autoware_utils_geometry::to_footprint(
+      candidate_trajectory.points.front().pose,
+      vehicle_info.max_longitudinal_offset_m + margin.front,
+      -vehicle_info.min_longitudinal_offset_m + margin.rear,
+      vehicle_info.vehicle_width_m + 2.0 * margin.lateral));
+}
+
 TEST(TrajectoryUtilitiesTest, ObjectIdentificationClassificationConstructorSetsDefaults)
 {
   const auto identification = TrajectoryIdentification{"EGO"};

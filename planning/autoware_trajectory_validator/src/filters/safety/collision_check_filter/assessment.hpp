@@ -32,9 +32,10 @@
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
 DracArtifact assess(
-  const trajectory::EgoTrajectoryCache & ego_trajectory_cache, const FilterContext & context,
-  const DracParamMap & drac_param_map, const GlobalParams & global_params,
-  const VehicleInfo & vehicle_info);
+  const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
+  const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
+  const FilterContext & context, const DracParamMap & drac_param_map,
+  const GlobalParams & global_params);
 }  // namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 
 namespace autoware::trajectory_validator::plugin::safety::rss_deceleration
@@ -72,7 +73,7 @@ std::optional<double> compute_distance_to_collision(
 
 RssArtifact assess(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache, const FilterContext & context,
-  const RssParamMap & rss_param_map, const VehicleInfo & vehicle_info);
+  const RssParamMap & rss_param_map);
 }  // namespace autoware::trajectory_validator::plugin::safety::rss_deceleration
 
 #endif  // FILTERS__SAFETY__COLLISION_CHECK_FILTER__ASSESSMENT_HPP_

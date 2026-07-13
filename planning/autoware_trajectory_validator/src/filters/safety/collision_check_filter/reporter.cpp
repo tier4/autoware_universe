@@ -121,11 +121,11 @@ void process_drac_artifacts(
   visualization_msgs::msg::MarkerArray & debug_markers, double time_resolution)
 {
   drac_continuous_times.update(
-    current_time, drac_artifact.object_evaluations, [](const auto & evaluation) {
+    current_time, drac_artifact.evaluations, [](const auto & evaluation) {
       return evaluation.detail.object_identification.trajectory_id_string();
     });
 
-  if (drac_artifact.risk == RiskLevel::SAFE || drac_artifact.object_evaluations.empty()) {
+  if (drac_artifact.risk == RiskLevel::SAFE || drac_artifact.evaluations.empty()) {
     return;
   }
 
@@ -133,7 +133,7 @@ void process_drac_artifacts(
   std::string marker_messages{};
   const bool has_error = drac_artifact.risk == RiskLevel::DANGER;
   const RiskLevel::_level_type log_level = has_error ? RiskLevel::DANGER : RiskLevel::HIGH_CAUTION;
-  for (const auto & evaluation : drac_artifact.object_evaluations) {
+  for (const auto & evaluation : drac_artifact.evaluations) {
     const auto & timing = evaluation.detail;
     const auto & obj_id = timing.object_identification;
 
@@ -142,8 +142,8 @@ void process_drac_artifacts(
       "stamp: {}.{};",
       obj_id.classification, obj_id.trajectory_id_string(), timing.worst_pet_timing.pet,
       timing.first_collision_timing.ttc,
-      drac_artifact.required_acceleration.has_value()
-        ? std::to_string(drac_artifact.required_acceleration.value())
+      evaluation.ego_drac_acceleration.has_value()
+        ? std::to_string(evaluation.ego_drac_acceleration.value())
         : "Cant be avoided",
       drac_continuous_times.get_time(obj_id.trajectory_id_string()), obj_id.stamp.sec,
       obj_id.stamp.nanosec);

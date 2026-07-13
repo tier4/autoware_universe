@@ -285,15 +285,6 @@ namespace autoware::trajectory_validator::plugin::safety::trajectory
 {
 namespace footprint
 {
-EgoDimensions make_ego_dimensions(
-  const VehicleInfo & vehicle_info, const EgoFootprintMargin & ego_footprint_margin)
-{
-  return EgoDimensions{
-    vehicle_info.max_longitudinal_offset_m + ego_footprint_margin.front,
-    -vehicle_info.min_longitudinal_offset_m + ego_footprint_margin.rear,
-    vehicle_info.vehicle_width_m + 2.0 * ego_footprint_margin.lateral};
-}
-
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory, const std::vector<Point2d> & base_poly)
 {
@@ -492,7 +483,8 @@ std::vector<double> serialize_distances(const CandidateTrajectory & candidate_tr
 TrajectoryData generate_ego_trajectory(
   const TrajectoryInterpolator & trajectory_interpolator,
   const rclcpp::Time & sampling_reference_time, const rclcpp::Time & current_time,
-  const double time_resolution, const EgoTrajectoryGenerationParams & params)
+  const double time_resolution, const VehicleInfo & vehicle_info,
+  const EgoTrajectoryGenerationParams & params)
 {
   const rclcpp::Time trajectory_start_time =
     trajectory_interpolator.reference_time_ +
@@ -549,7 +541,11 @@ TrajectoryData generate_ego_trajectory(
     throw std::invalid_argument("no samples are available for the requested time range");
   }
 
-  auto footprints = footprint::compute_footprint_trajectory(poses, params.ego_dimensions);
+  const footprint::EgoDimensions ego_dimensions{
+    vehicle_info.max_longitudinal_offset_m + params.ego_footprint_margin.front,
+    -vehicle_info.min_longitudinal_offset_m + params.ego_footprint_margin.rear,
+    vehicle_info.vehicle_width_m + 2.0 * params.ego_footprint_margin.lateral};
+  auto footprints = footprint::compute_footprint_trajectory(poses, ego_dimensions);
 
   return TrajectoryData(
     TrajectoryIdentification{"EGO"}, std::move(times), std::move(distances), std::move(poses),
@@ -558,8 +554,9 @@ TrajectoryData generate_ego_trajectory(
 
 EgoTrajectoryCache::EgoTrajectoryCache(
   const CandidateTrajectory & candidate_traj, const rclcpp::Time & sampling_reference_time,
-  const rclcpp::Time & current_time, const double time_resolution)
+  const rclcpp::Time & current_time, const double time_resolution, const VehicleInfo & vehicle_info)
 : trajectory_interpolator_(candidate_traj),
+  vehicle_info_(vehicle_info),
   sampling_reference_time_(sampling_reference_time),
   current_time_(current_time),
   time_resolution_(time_resolution)
@@ -581,9 +578,9 @@ const TrajectoryData & EgoTrajectoryCache::get_or_compute_trajectory_data(
   }
 
   const auto [inserted_it, inserted] = trajectory_data_cache_.emplace(
-    params,
-    generate_ego_trajectory(
-      trajectory_interpolator_, sampling_reference_time_, current_time_, time_resolution_, params));
+    params, generate_ego_trajectory(
+              trajectory_interpolator_, sampling_reference_time_, current_time_, time_resolution_,
+              vehicle_info_, params));
   static_cast<void>(inserted);
   return inserted_it->second;
 }

@@ -45,11 +45,11 @@ static constexpr double TIME_INDEX_EPSILON = 1e-3;
 
 struct TrajectoryIdentification
 {
-  const std::string classification;
-  const builtin_interfaces::msg::Time stamp{};
-  const unique_identifier_msgs::msg::UUID uuid{};
-  const std::string trajectory_type{};
-  const double acceleration{};
+  std::string classification;
+  builtin_interfaces::msg::Time stamp{};
+  unique_identifier_msgs::msg::UUID uuid{};
+  std::string trajectory_type{};
+  double acceleration{};
 
   TrajectoryIdentification() = default;
   explicit TrajectoryIdentification(std::string classification)
@@ -93,13 +93,40 @@ struct CollisionDetail
   Polygon2d object_hull;
 };
 
-struct CollisionEvaluation
+struct DracEvaluation
 {
+  std::string method;
   RiskLevel::_level_type risk;
-  // std::string method;
-  // double drac_acceleration;
+  std::optional<double> ego_drac_acceleration;
   CollisionDetail detail;
 };
+
+struct DracArtifact
+{
+  RiskLevel::_level_type risk{RiskLevel::SAFE};
+  std::vector<DracEvaluation> evaluations{};
+
+  void merge(DracArtifact && other)
+  {
+    if (other.risk > risk) {
+      risk = other.risk;
+    }
+
+    evaluations.reserve(evaluations.size() + other.evaluations.size());
+    for (auto & evaluation : other.evaluations) {
+      evaluations.push_back(std::move(evaluation));
+    }
+  }
+
+  void merge(DracEvaluation && element)
+  {
+    if (element.risk > risk) {
+      risk = element.risk;
+    }
+    evaluations.push_back(std::move(element));
+  }
+};
+
 struct RssDetail
 {
   TrajectoryIdentification object_identification;
@@ -110,31 +137,6 @@ struct RssEvaluation
 {
   RiskLevel::_level_type risk;
   RssDetail detail;
-};
-
-struct DracArtifact
-{
-  RiskLevel::_level_type risk{RiskLevel::SAFE};
-  std::optional<double> required_acceleration{0.0};
-  std::vector<CollisionEvaluation> object_evaluations{};
-
-  void merge(DracArtifact other)
-  {
-    if (other.risk > risk) {
-      risk = other.risk;
-    }
-
-    if (!required_acceleration.has_value() || !other.required_acceleration.has_value()) {
-      required_acceleration = std::nullopt;
-    } else if (required_acceleration.value() > other.required_acceleration.value()) {
-      required_acceleration = other.required_acceleration;
-    }
-
-    object_evaluations.reserve(object_evaluations.size() + other.object_evaluations.size());
-    for (auto & evaluation : other.object_evaluations) {
-      object_evaluations.push_back(std::move(evaluation));
-    }
-  }
 };
 
 struct RssArtifact

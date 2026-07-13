@@ -341,9 +341,6 @@ struct EgoDimensions
   double vehicle_width{0.0};
 };
 
-EgoDimensions make_ego_dimensions(
-  const VehicleInfo & vehicle_info, const EgoFootprintMargin & ego_footprint_margin);
-
 FootprintTrajectory compute_footprint_trajectory(
   const PoseTrajectory & pose_trajectory,
   const autoware_perception_msgs::msg::Shape & object_shape);
@@ -356,16 +353,16 @@ struct EgoTrajectoryGenerationParams
 {
   double braking_lag{0.0};
   double assumed_acceleration{0.0};
-  footprint::EgoDimensions ego_dimensions{};
+  EgoFootprintMargin ego_footprint_margin{};
 
   bool operator<(const EgoTrajectoryGenerationParams & rhs) const
   {
     return std::tie(
-             braking_lag, assumed_acceleration, ego_dimensions.front_offset,
-             ego_dimensions.rear_overhang, ego_dimensions.vehicle_width) <
+             braking_lag, assumed_acceleration, ego_footprint_margin.front,
+             ego_footprint_margin.rear, ego_footprint_margin.lateral) <
            std::tie(
-             rhs.braking_lag, rhs.assumed_acceleration, rhs.ego_dimensions.front_offset,
-             rhs.ego_dimensions.rear_overhang, rhs.ego_dimensions.vehicle_width);
+             rhs.braking_lag, rhs.assumed_acceleration, rhs.ego_footprint_margin.front,
+             rhs.ego_footprint_margin.rear, rhs.ego_footprint_margin.lateral);
   }
 };
 
@@ -412,6 +409,7 @@ class EgoTrajectoryCache
 {
 private:
   const TrajectoryInterpolator trajectory_interpolator_;
+  const VehicleInfo vehicle_info_;
   rclcpp::Time sampling_reference_time_;
   rclcpp::Time current_time_;
   double time_resolution_;
@@ -420,16 +418,11 @@ private:
 public:
   EgoTrajectoryCache(
     const CandidateTrajectory & candidate_traj, const rclcpp::Time & sampling_reference_time,
-    const rclcpp::Time & current_time, double time_resolution);
+    const rclcpp::Time & current_time, double time_resolution, const VehicleInfo & vehicle_info);
 
   const TrajectoryData & get_or_compute_trajectory_data(
     const EgoTrajectoryGenerationParams & params) const;
 };
-
-TrajectoryData generate_ego_trajectory(
-  const CandidateTrajectory & candidate_traj, const rclcpp::Time & sampling_reference_time,
-  const rclcpp::Time & current_time, double time_resolution,
-  const EgoTrajectoryGenerationParams & params);
 
 TrajectoryData generate_predicted_path_trajectory(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object,
