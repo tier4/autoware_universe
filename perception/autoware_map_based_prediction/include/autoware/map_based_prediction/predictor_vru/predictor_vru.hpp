@@ -54,8 +54,7 @@ public:
     double max_crosswalk_user_on_road_distance{2.0};
     // Signal interaction
     bool use_crosswalk_signal{true};
-    // Road-border deceleration-aware path cut
-    bool road_border_enable{true};
+    // Road-border deceleration-aware path cut (pedestrian/bicycle)
     std::vector<std::string> road_border_boundary_types{"road_border"};
     // Sub-module params
     TrafficSignalModule::Params traffic_signal;

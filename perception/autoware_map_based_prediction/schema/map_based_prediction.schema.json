@@ -310,17 +310,6 @@
                 }
               },
               "required": ["vehicle", "pedestrian", "bicycle", "motorcycle"]
-            }
-          },
-          "required": ["max_deceleration"]
-        },
-        "road_border": {
-          "type": "object",
-          "properties": {
-            "enable": {
-              "type": "boolean",
-              "default": true,
-              "description": "enable deceleration-aware path cut for pedestrians/bicycles at road boundaries"
             },
             "boundary_types": {
               "type": "array",
@@ -328,10 +317,10 @@
                 "type": "string"
               },
               "default": ["road_border"],
-              "description": "lanelet linestring types treated as road boundary for the path cut"
+              "description": "lanelet linestring types treated as road boundary for pedestrian/bicycle path cut"
             }
           },
-          "required": ["enable", "boundary_types"]
+          "required": ["max_deceleration", "boundary_types"]
         }
       },
       "required": [
@@ -367,8 +356,7 @@
         "publish_debug_markers",
         "processing_time_tolerance",
         "processing_time_consecutive_excess_tolerance",
-        "path_cut",
-        "road_border"
+        "path_cut"
       ]
     }
   },

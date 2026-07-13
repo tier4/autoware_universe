@@ -253,14 +253,10 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
     debug::append_path_cut_event_markers(
       debug_markers, predicted_path, cut_path, predicted_object, PathCutSource::Fence, stamp);
 
-    PredictedPath border_cut_path = cut_path;
-    if (params_.road_border_enable) {
-      border_cut_path =
-        road_border_module_.cut_path_at_road_border(cut_path, mutable_object, max_decel_params_);
-      debug::append_path_cut_event_markers(
-        debug_markers, cut_path, border_cut_path, predicted_object, PathCutSource::RoadBorder,
-        stamp);
-    }
+    const PredictedPath border_cut_path =
+      road_border_module_.cut_path_at_road_border(cut_path, mutable_object, max_decel_params_);
+    debug::append_path_cut_event_markers(
+      debug_markers, cut_path, border_cut_path, predicted_object, PathCutSource::RoadBorder, stamp);
     predicted_object.kinematics.predicted_paths.push_back(border_cut_path);
   }
 
