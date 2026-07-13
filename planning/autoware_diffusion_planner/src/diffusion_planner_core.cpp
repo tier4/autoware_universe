@@ -283,6 +283,23 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
     prev_trajectory.push_back(last_ego_to_map_transform_.value());
     prev_trajectory.insert(prev_trajectory.end(), prev_poses.begin(), prev_poses.end());
 
+    bool all_close = true;
+    constexpr int64_t num_check = 10;
+    for (int64_t i = 0; i < num_check; ++i) {
+      const auto p0 = prev_trajectory[i];
+      const auto p1 = prev_trajectory[i + 1];
+      const auto dist = std::hypot(p1(0, 3) - p0(0, 3), p1(1, 3) - p0(1, 3));
+      if (dist > 1.0) {
+        all_close = false;
+        break;
+      }
+    }
+    if (all_close) {
+      for (int64_t i = 0; i < num_check; ++i) {
+        prev_trajectory[i + 1](0, 3) = prev_trajectory[i](0, 3);
+      }
+    }
+
     const utils::PolylineProjection projection = utils::project_pose_onto_polyline(
       kinematic_state.pose.pose.position.x, kinematic_state.pose.pose.position.y, prev_trajectory);
     const Eigen::Matrix4d & snapped_pose = projection.pose;
@@ -341,8 +358,8 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
 
   const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
   const FrameContext frame_context{
-    frame_kinematic_state,     *ego_acceleration, ego_to_map_transform,
-    processed_neighbor_histories, frame_time,      snapped_pose_opt,
+    frame_kinematic_state,           *ego_acceleration, ego_to_map_transform,
+    processed_neighbor_histories,    frame_time,        snapped_pose_opt,
     snapped_interpolation_time_s_opt};
 
   return frame_context;
