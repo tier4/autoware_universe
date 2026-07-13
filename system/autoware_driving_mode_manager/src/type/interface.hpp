@@ -46,7 +46,7 @@ public:
   virtual void publish_diagnostics(bool ok, const std::string & message) = 0;
 
   virtual void publish_debug_flags(const DebugFlags & flags) = 0;
-  virtual void publish_debug_request(const RequestModes & request) = 0;
+  virtual void publish_debug_request(const DebugStatus & status) = 0;
 
   virtual void log_info(const std::string & message) = 0;
   virtual void log_warn(const std::string & message) = 0;

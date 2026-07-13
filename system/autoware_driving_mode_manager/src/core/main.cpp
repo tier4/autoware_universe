@@ -156,7 +156,12 @@ void ManagerMain::publish_debug_flags() const
 
 void ManagerMain::publish_debug_request() const
 {
-  interface_->publish_debug_request(request_);
+  DebugStatus status;
+  status.request = request_;
+  status.initializing = is_initial_request_;
+  status.transitioning = !tasks_.empty();
+  status.unavailable_modes = temporary_unavailable_modes_;
+  interface_->publish_debug_request(status);
 }
 
 void ManagerMain::on_trajectory_source(const TrajectorySource & source)
