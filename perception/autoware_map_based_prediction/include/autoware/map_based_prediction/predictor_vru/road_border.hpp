@@ -18,9 +18,9 @@
 #include "autoware/map_based_prediction/path_cut/path_cut_utils.hpp"
 #include "autoware/map_based_prediction/path_generator/path_generator.hpp"
 
-#include <lanelet2_core/LaneletMap.h>
-
 #include <autoware_perception_msgs/msg/tracked_object.hpp>
+
+#include <lanelet2_core/LaneletMap.h>
 
 #include <memory>
 #include <string>

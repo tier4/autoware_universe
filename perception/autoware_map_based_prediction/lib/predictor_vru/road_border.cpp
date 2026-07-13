@@ -87,8 +87,7 @@ void RoadBorderModule::build_from_map(
 }
 
 PredictedPath RoadBorderModule::cut_path_at_road_border(
-  const PredictedPath & predicted_path,
-  const autoware_perception_msgs::msg::TrackedObject & object,
+  const PredictedPath & predicted_path, const autoware_perception_msgs::msg::TrackedObject & object,
   const path_cut::MaxDecelerationParams & max_decel_params) const
 {
   const auto & poses = predicted_path.path;
@@ -106,9 +105,10 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
 
   double distance_to_cut = 0.0;  // arc length up to pose[seg], where the path is truncated
   for (size_t seg = 0; seg + 1 < poses.size(); ++seg) {
-    const lanelet::BasicLineString2d segment(lanelet::BasicPoints2d{path_ls[seg], path_ls[seg + 1]});
-    const bool crosses = std::any_of(
-      candidates.begin(), candidates.end(), [&](const auto & border) {
+    const lanelet::BasicLineString2d segment(
+      lanelet::BasicPoints2d{path_ls[seg], path_ls[seg + 1]});
+    const bool crosses =
+      std::any_of(candidates.begin(), candidates.end(), [&](const auto & border) {
         return boost::geometry::intersects(segment, lanelet::utils::to2D(border).basicLineString());
       });
 
@@ -119,9 +119,10 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
       }
       const auto & v = object.kinematics.twist_with_covariance.twist.linear;
       const double max_deceleration = path_cut::max_deceleration_for_label(
-        max_decel_params, autoware::object_recognition_utils::getHighestProbLabel(
-                            object.classification));
-      if (!path_cut::can_stop_before_the_line(distance_to_cut, std::hypot(v.x, v.y), max_deceleration)) {
+        max_decel_params,
+        autoware::object_recognition_utils::getHighestProbLabel(object.classification));
+      if (!path_cut::can_stop_before_the_line(
+            distance_to_cut, std::hypot(v.x, v.y), max_deceleration)) {
         return predicted_path;
       }
       return path_cut::force_cut_at_index(predicted_path, seg);
