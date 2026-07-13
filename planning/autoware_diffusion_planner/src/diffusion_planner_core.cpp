@@ -251,12 +251,10 @@ void DiffusionPlannerCore::update_force_takeoff_state(
   const std::shared_ptr<const AutowareState> & autoware_state, const rclcpp::Time & current_time)
 {
   const auto logger = rclcpp::get_logger("diffusion_planner_core");
+  static rclcpp::Clock steady_clock(RCL_STEADY_TIME);
 
   const auto & linear = kinematic_state.twist.twist.linear;
   const double speed = std::hypot(linear.x, linear.y);
-  if (!last_moving_time_ || speed >= constants::MOVING_VELOCITY_THRESHOLD_MPS) {
-    last_moving_time_ = current_time;
-  }
 
   const auto & ego_position = kinematic_state.pose.pose.position;
   const bool agent_nearby =
@@ -271,6 +269,9 @@ void DiffusionPlannerCore::update_force_takeoff_state(
     engage_transition = previous_autoware_state_.has_value() &&
                         *previous_autoware_state_ != AutowareState::DRIVING &&
                         autoware_state->state == AutowareState::DRIVING;
+    if (autoware_state->state != AutowareState::DRIVING) {
+      engage_time_.reset();
+    }
     previous_autoware_state_ = autoware_state->state;
   }
 
@@ -285,31 +286,57 @@ void DiffusionPlannerCore::update_force_takeoff_state(
       RCLCPP_INFO(
         logger, "Force takeoff released: ego speed %.2f m/s reached release threshold %.2f m/s",
         speed, params_.force_takeoff_release_speed_mps);
+    } else {
+      RCLCPP_INFO_THROTTLE(
+        logger, steady_clock, 1000,
+        "Force takeoff active: overriding ego history/state with synthetic %.2f m/s motion (real "
+        "ego speed %.2f m/s)",
+        params_.force_takeoff_synthetic_speed_mps, speed);
     }
     return;
   }
 
-  if (!params_.force_takeoff_enable || !engage_transition) {
+  if (engage_transition && params_.force_takeoff_enable) {
+    engage_time_ = current_time;
+    RCLCPP_INFO(
+      logger,
+      "Engage transition detected (autoware state -> DRIVING). Force takeoff will activate if the "
+      "ego does not move within %.2f s",
+      params_.force_takeoff_stationary_duration_s);
+  }
+
+  if (!engage_time_) {
     return;
   }
 
-  const double stationary_duration_s = (current_time - *last_moving_time_).seconds();
-  if (stationary_duration_s <= params_.force_takeoff_stationary_duration_s) {
+  const double stalled_duration_s = (current_time - *engage_time_).seconds();
+
+  if (speed >= constants::MOVING_VELOCITY_THRESHOLD_MPS) {
+    RCLCPP_INFO(
+      logger, "Force takeoff not needed: ego started moving %.2f s after engage (speed %.2f m/s)",
+      stalled_duration_s, speed);
+    engage_time_.reset();
+    return;
+  }
+
+  if (stalled_duration_s <= params_.force_takeoff_stationary_duration_s) {
     return;
   }
   if (agent_nearby) {
-    RCLCPP_INFO(
-      logger, "Force takeoff not activated at engage: agent within %.1f m",
-      params_.force_takeoff_min_agent_distance_m);
+    RCLCPP_INFO_THROTTLE(
+      logger, steady_clock, 1000,
+      "Force takeoff pending: ego stalled for %.2f s since engage but an agent is within %.1f m",
+      stalled_duration_s, params_.force_takeoff_min_agent_distance_m);
     return;
   }
 
   force_takeoff_active_ = true;
+  engage_time_.reset();
   RCLCPP_INFO(
     logger,
-    "Force takeoff activated: ego stationary for %.1f s, overriding ego history with synthetic "
-    "%.2f m/s motion",
-    stationary_duration_s, params_.force_takeoff_synthetic_speed_mps);
+    "Force takeoff activated: ego stalled for %.2f s since engage, overriding ego history with "
+    "synthetic %.2f m/s motion",
+    stalled_duration_s, params_.force_takeoff_synthetic_speed_mps);
 }
 
 std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(

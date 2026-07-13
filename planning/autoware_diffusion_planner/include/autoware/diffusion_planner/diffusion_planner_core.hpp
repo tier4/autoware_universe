@@ -351,10 +351,10 @@ private:
   /**
    * @brief Update the force-takeoff state machine for the current frame.
    *
-   * Activates the ego history/state override when the autoware state transitions to DRIVING
-   * (engage) while the ego has been stationary for longer than the configured duration and no
-   * tracked object is within the configured radius. Deactivates once the ego reaches the release
-   * speed, or aborts if an agent enters the radius while active.
+   * When the autoware state transitions to DRIVING (engage), starts a stall timer. If the ego
+   * still has not started moving stationary_duration_s after the engage and no tracked object is
+   * within the configured radius, activates the ego history/state override. Deactivates once the
+   * ego reaches the release speed, or aborts if an agent enters the radius while active.
    *
    * @param kinematic_state Current ego odometry
    * @param objects Tracked objects (unfiltered)
@@ -367,7 +367,7 @@ private:
 
   // Force takeoff state
   std::optional<uint8_t> previous_autoware_state_;
-  std::optional<rclcpp::Time> last_moving_time_;
+  std::optional<rclcpp::Time> engage_time_;
   bool force_takeoff_active_{false};
 
   // History data

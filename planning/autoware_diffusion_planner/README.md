@@ -164,14 +164,15 @@ ros2 launch autoware_launch planning_simulator.launch.xml \
 
 - **ONNX Runtime** inference for fast neural network execution
 - **ROS 2 publishers** for planned trajectories, predicted objects, and debug markers
-- **Force takeoff**: when the Autoware state transitions to `DRIVING` (engage) while the ego has
-  been stationary for more than `force_takeoff.stationary_duration_s` and no tracked object is
-  within `force_takeoff.min_agent_distance_m`, the ego history and current state fed to the model
-  are replaced with a synthetic straight-line motion at `force_takeoff.synthetic_speed_mps`
-  (zero acceleration) to help the model start moving. The override is released once the real ego
-  speed reaches `force_takeoff.release_speed_mps`, and aborted immediately if an agent enters the
-  radius. Configurable via the `force_takeoff.*` parameters; requires the `~/input/autoware_state`
-  topic (remapped to `/autoware/state` by default).
+- **Force takeoff**: when the Autoware state transitions to `DRIVING` (engage), a stall timer
+  starts. If the ego still has not started moving `force_takeoff.stationary_duration_s` after the
+  engage and no tracked object is within `force_takeoff.min_agent_distance_m`, the ego history and
+  current state fed to the model are replaced with a synthetic straight-line motion at
+  `force_takeoff.synthetic_speed_mps` (zero acceleration) to help the model start moving. The
+  override is released once the real ego speed reaches `force_takeoff.release_speed_mps`, and
+  aborted immediately if an agent enters the radius. Configurable via the `force_takeoff.*`
+  parameters; requires the `~/input/autoware_state` topic (remapped to `/autoware/state` by
+  default).
 
 ---
 

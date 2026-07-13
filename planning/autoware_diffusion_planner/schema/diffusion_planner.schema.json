@@ -279,7 +279,7 @@
               "type": "number",
               "default": 3.0,
               "minimum": 0,
-              "description": "Minimum duration the ego must have been stationary at engage to activate [s]"
+              "description": "Activate if the ego has not started moving this long after the engage transition [s]"
             },
             "release_speed_mps": {
               "type": "number",
