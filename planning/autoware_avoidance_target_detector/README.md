@@ -4,17 +4,19 @@ Experimental toy package for developing auxiliary planning functions. The refere
 
 The object-selection logic is templated on the object message type (`ObjectSelectorBase<ObjectT>`) and exposed as two concrete types:
 
-- **`PredictedObjectSelector`** (`= ObjectSelectorBase<PredictedObject>`) — for `autoware_perception_msgs/msg/PredictedObjects`.
-- **`TrackedObjectSelector`** (`= ObjectSelectorBase<TrackedObject>`) — for `autoware_perception_msgs/msg/TrackedObjects`.
+- **`PredictedObjectSelector`** (`= ObjectSelectorBase<PredictedObject>`) — for `autoware_perception_msgs/msg/PredictedObjects`
+- **`TrackedObjectSelector`** (`= ObjectSelectorBase<TrackedObject>`) — for `autoware_perception_msgs/msg/TrackedObjects`
 
-Per-object state is held by `AvoidanceTargetDetectorBase<ObjectT>`, aliased as **`AvoidanceTargetDetectorPredicted`** and **`AvoidanceTargetDetectorTracked`**.
+Choose **one** of these based on which object topic you subscribe to. You do **not** need both. Per-object state is held by `AvoidanceTargetDetectorBase<ObjectT>`, aliased as **`AvoidanceTargetDetectorPredicted`** and **`AvoidanceTargetDetectorTracked`**.
 
-When integrating into another package, your node typically owns:
+When integrating into another package, own a route handler and the selector that matches your subscription:
 
 ```cpp
 std::shared_ptr<ExtendedRouteHandler> extended_route_handler_;
-PredictedObjectSelector object_selector_;          // predicted-objects pipeline
-TrackedObjectSelector tracked_object_selector_;    // tracked-objects pipeline
+
+// Use exactly one of the following:
+PredictedObjectSelector object_selector_;        // if you subscribe to PredictedObjects
+// TrackedObjectSelector object_selector_;       // if you subscribe to TrackedObjects
 ```
 
 Headers:
@@ -26,15 +28,14 @@ Headers:
 
 ## Required subscriptions
 
-Rebuild `ExtendedRouteHandler` whenever the **map** or **route** changes. On each **objects** update, call `update_objects()` first, then `get_avoidance_targets()` and/or `get_driving_along_vehicles()` (with the latest trajectory and route handler). The same applies to the tracked-objects pipeline via `TrackedObjectSelector`.
+Rebuild `ExtendedRouteHandler` whenever the **map** or **route** changes. On each **objects** update, call `update_objects()` first, then `get_avoidance_targets()` and/or `get_driving_along_vehicles()` (with the latest trajectory and route handler).
 
-| Topic (reference node)    | Message type                                    | Role                                                        |
-| ------------------------- | ----------------------------------------------- | ----------------------------------------------------------- |
-| `~/input/lanelet_map_bin` | `autoware_map_msgs/msg/LaneletMapBin`           | Vector map. QoS: transient local.                           |
-| `~/input/route`           | `autoware_planning_msgs/msg/LaneletRoute`       | Current route. QoS: transient local.                        |
-| `~/input/trajectory`      | `autoware_planning_msgs/msg/Trajectory`         | Reference trajectory for deviation / distance checks.       |
-| `~/input/objects`         | `autoware_perception_msgs/msg/PredictedObjects` | Predicted objects to filter.                                |
-| `~/input/tracked_objects` | `autoware_perception_msgs/msg/TrackedObjects`   | Tracked objects to filter when `use_tracked_objects:=true`. |
+| Topic (reference node)                             | Message type                               | Role                                                  |
+| -------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------- |
+| `~/input/lanelet_map_bin`                          | `autoware_map_msgs/msg/LaneletMapBin`      | Vector map. QoS: transient local.                     |
+| `~/input/route`                                    | `autoware_planning_msgs/msg/LaneletRoute`  | Current route. QoS: transient local.                  |
+| `~/input/trajectory`                               | `autoware_planning_msgs/msg/Trajectory`    | Reference trajectory for deviation / distance checks. |
+| `~/input/objects` **or** `~/input/tracked_objects` | `PredictedObjects` **or** `TrackedObjects` | Object stream to filter. Subscribe to **only one**.   |
 
 Until map, route, and trajectory are available, boundary and object-selection APIs are not meaningful.
 
@@ -52,7 +53,7 @@ Minimal pattern (see `src/node.cpp`):
 extended_route_handler_ = std::make_shared<ExtendedRouteHandler>(*map_bin_, *route_);
 extended_route_handler_->create_map();
 
-// Each cycle (with trajectory + objects):
+// Each cycle (with trajectory + objects of the chosen type):
 const auto & bounds = extended_route_handler_->get_extended_route_bounds();  // or get_original_route_bounds()
 pub_drivable_area_path_->publish(to_path_msg(bounds, trajectory));
 
@@ -62,18 +63,17 @@ object_selector_.update_objects(
 
 const auto targets = object_selector_.get_avoidance_targets(objects, trajectory, bounds);
 
-const auto driving_along = object_selector_.get_driving_along_vehicles(
-  objects, *extended_route_handler_, ego_trajectory_, trajectory);
+const auto driving_along = object_selector_.get_driving_along_vehicles(objects);
 ```
 
 Parameter `use_extended_route_bounds` (reference node) switches between original and extended route bounds for the drivable area.
 
-Parameter `use_tracked_objects` (reference node, default `false`) selects which object pipeline is active:
+Parameter `use_tracked_objects` (reference node, default `false`) picks which object source the reference node uses. Both sources are **not** required:
 
-- `false` — subscribe to `~/input/objects` and run `PredictedObjectSelector`
-- `true` — subscribe to `~/input/tracked_objects` and run `TrackedObjectSelector`
+- `false` — subscribe only to `~/input/objects` (`PredictedObjects`) and run `PredictedObjectSelector`
+- `true` — subscribe only to `~/input/tracked_objects` (`TrackedObjects`) and run `TrackedObjectSelector`
 
-Only one subscription and its matching output publishers are created.
+Only the chosen subscription and its matching output publishers are created.
 
 ---
 
@@ -220,7 +220,9 @@ Path to_path_msg(const RouteBounds & bounds, const Trajectory & trajectory);
 
 ### `ObjectSelectorBase<ObjectT>` (`PredictedObjectSelector` / `TrackedObjectSelector`)
 
-Per-object Bayesian filters are updated via `update_objects()`. Getter methods (`get_avoidance_targets()`, `get_driving_along_vehicles()`) read the latest filter state. Reuse the same selector instance across callbacks. The signatures below use `PredictedObjects` for the predicted pipeline; the tracked pipeline is identical with `TrackedObjects` substituted for the container type.
+Per-object Bayesian filters are updated via `update_objects()`. Getter methods (`get_avoidance_targets()`, `get_driving_along_vehicles()`) read the latest filter state. Reuse the same selector instance across callbacks.
+
+Pick the selector that matches your object subscription — you only need one. The signatures below use `PredictedObjects`; for tracked objects, substitute `TrackedObjects` / `TrackedObjectSelector` the same way.
 
 #### `update_objects()`
 
@@ -234,14 +236,14 @@ void update_objects(
   bool ego_trajectory_built);
 ```
 
-| Argument                 | Description                                                                                                                                                                                                           |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `current_time`           | ROS time for this update cycle. Used for filter staleness, hysteresis timing, and Bayesian updates. Typically `node->get_clock()->now()`.                                                                             |
-| `objects`                | Full predicted-objects message for the current frame. Every object in `objects.objects` is observed; objects not seen for longer than `FilterManagerParams::stale_threshold_seconds` are removed from internal state. |
-| `trajectory`             | Reference trajectory (same source as subscribed trajectory). Must have **at least two points** for deviation and distance checks.                                                                                     |
-| `extended_route_handler` | Handler with built `route_map_` and `route_map_routing_graph_`. Used for driving-along spatial checks during observation.                                                                                             |
-| `ego_trajectory`         | Built ego history trajectory. Used with `trajectory` to build the near-segment polygon and resolve ego lanelets.                                                                                                      |
-| `ego_trajectory_built`   | Whether `ego_trajectory` is valid. When false, driving-along spatial checks are skipped for that cycle.                                                                                                               |
+| Argument                 | Description                                                                                                                                                                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `current_time`           | ROS time for this update cycle. Used for filter staleness, hysteresis timing, and Bayesian updates. Typically `node->get_clock()->now()`.                                                                                                                                   |
+| `objects`                | Full objects message for the current frame (`PredictedObjects` or `TrackedObjects`, matching the selector). Every object in `objects.objects` is observed; objects not seen for longer than `FilterManagerParams::stale_threshold_seconds` are removed from internal state. |
+| `trajectory`             | Reference trajectory (same source as subscribed trajectory). Must have **at least two points** for deviation and distance checks.                                                                                                                                           |
+| `extended_route_handler` | Handler with built `route_map_` and `route_map_routing_graph_`. Used for driving-along spatial checks during observation.                                                                                                                                                   |
+| `ego_trajectory`         | Built ego history trajectory. Used with `trajectory` to build the near-segment polygon and resolve ego lanelets.                                                                                                                                                            |
+| `ego_trajectory_built`   | Whether `ego_trajectory` is valid. When false, driving-along spatial checks are skipped for that cycle.                                                                                                                                                                     |
 
 Call once per objects callback before any getter in the same cycle. Runs per-object Bayesian observation, driving-along spatial evaluation (for moving objects of interest), and stale pruning. Hysteresis tracking runs inside each getter.
 
@@ -256,13 +258,13 @@ PredictedObjects get_avoidance_targets(
 
 | Argument       | Description                                                                                                                                                                                     |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `objects`      | Same predicted-objects message passed to `update_objects()` for this cycle.                                                                                                                     |
+| `objects`      | Same objects message passed to `update_objects()` for this cycle.                                                                                                                               |
 | `trajectory`   | Reference trajectory. Used for on-trajectory deviation, longitudinal extent filtering, and lateral corridor checks.                                                                             |
 | `route_bounds` | Left/right corridor for lateral filtering. Objects whose footprint lies entirely outside the bounds are removed. Typically from `get_original_route_bounds()` or `get_extended_route_bounds()`. |
 
-| Returns            | Description                                                                                |
-| ------------------ | ------------------------------------------------------------------------------------------ |
-| `PredictedObjects` | Subset of input objects classified as stationary avoidance targets. Empty if none qualify. |
+| Returns                               | Description                                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `PredictedObjects` / `TrackedObjects` | Subset of input objects classified as stationary avoidance targets. Matches the input type. |
 
 **Brief behavior:**
 
@@ -273,42 +275,36 @@ PredictedObjects get_avoidance_targets(
 #### `get_driving_along_vehicles()`
 
 ```cpp
-PredictedObjects get_driving_along_vehicles(
-  const PredictedObjects & objects,
-  const ExtendedRouteHandler & extended_route_handler,
-  const autoware::experimental::trajectory::Trajectory<TrajectoryPoint> & ego_trajectory,
-  const Trajectory & trajectory);
+PredictedObjects get_driving_along_vehicles(const PredictedObjects & objects);
+// or, when using tracked objects:
+// TrackedObjects get_driving_along_vehicles(const TrackedObjects & objects);
 ```
 
 Selects **moving vehicles along the extended route corridor** near ego (e.g. traffic in sibling / adjacent lanes), complementary to stationary `get_avoidance_targets()`.
 
-**Preconditions:** `update_objects()` called for the same `objects` in the same cycle with the same `extended_route_handler`, `ego_trajectory`, and `ego_trajectory_built` flag.
+**Preconditions:** `update_objects()` called for the same `objects` in the same cycle.
 
-| Argument                 | Description                                                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------------------- |
-| `objects`                | Same predicted-objects message passed to `update_objects()` for this cycle.                       |
-| `extended_route_handler` | Retained for API compatibility with the reference node. Spatial checks run in `update_objects()`. |
-| `ego_trajectory`         | Retained for API compatibility with the reference node.                                           |
-| `trajectory`             | Retained for API compatibility with the reference node.                                           |
+| Argument  | Description                                                                                                |
+| --------- | ---------------------------------------------------------------------------------------------------------- |
+| `objects` | Same objects message passed to `update_objects()` for this cycle (`PredictedObjects` or `TrackedObjects`). |
 
-| Returns            | Description                                                           |
-| ------------------ | --------------------------------------------------------------------- |
-| `PredictedObjects` | Subset of input objects whose tracked state is `is_moving_vehicle()`. |
+| Returns                               | Description                                                                           |
+| ------------------------------------- | ------------------------------------------------------------------------------------- |
+| `PredictedObjects` / `TrackedObjects` | Subset of input objects whose state is `is_moving_vehicle()`. Matches the input type. |
 
 **Selection criteria:**
 
-1. **Tracked state** — `is_moving_vehicle()` after driving-along hysteresis (updated when this getter is called).
+1. **Moving-vehicle state** — `is_moving_vehicle()` after driving-along hysteresis (updated when this getter is called).
 
 Spatial checks (near-segment overlap, lanelet on `route_map_`, not routably connected to ego without lane change) are evaluated during `update_objects()` for moving objects of interest and folded into the driving-along candidate signal before tracking.
 
-**Reference node:**
+**Reference node outputs** (only the pair matching `use_tracked_objects` is published):
 
-| Topic                             | Message type                                         |
-| --------------------------------- | ---------------------------------------------------- |
-| `~/output/driving_along_vehicles` | `autoware_perception_msgs/msg/PredictedObjects`      |
-| `~/debug/near_segment_polygon`    | `visualization_msgs/msg/MarkerArray` (debug polygon) |
-
-Default output remap: `/planning/avoidance_target_detector/output/driving_along_vehicles`.
+| Topic                                     | Message type                                    | When                         |
+| ----------------------------------------- | ----------------------------------------------- | ---------------------------- |
+| `~/output/driving_along_vehicles`         | `autoware_perception_msgs/msg/PredictedObjects` | `use_tracked_objects:=false` |
+| `~/output/tracked_driving_along_vehicles` | `autoware_perception_msgs/msg/TrackedObjects`   | `use_tracked_objects:=true`  |
+| `~/debug/near_segment_polygon`            | `visualization_msgs/msg/MarkerArray`            | always                       |
 
 ---
 
@@ -320,14 +316,14 @@ ros2 launch autoware_avoidance_target_detector avoidance_target_detector.launch.
 
 Default remaps are defined in `launch/avoidance_target_detector.launch.xml`.
 
-| Output (reference node)                   | Default topic                                                               |
-| ----------------------------------------- | --------------------------------------------------------------------------- |
-| `~/output/avoidance_targets`              | `/planning/avoidance_target_detector/output/avoidance_targets`              |
-| `~/output/driving_along_vehicles`         | `/planning/avoidance_target_detector/output/driving_along_vehicles`         |
-| `~/output/tracked_avoidance_targets`      | `/planning/avoidance_target_detector/output/tracked_avoidance_targets`      |
-| `~/output/tracked_driving_along_vehicles` | `/planning/avoidance_target_detector/output/tracked_driving_along_vehicles` |
-| `~/output/drivable_area`                  | `/planning/avoidance_target_detector/output/drivable_area`                  |
-| `~/debug/near_segment_polygon`            | `/planning/avoidance_target_detector/debug/near_segment_polygon`            |
+| Output (reference node)                   | Default topic                                                                                                  |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `~/output/avoidance_targets`              | `/planning/avoidance_target_detector/output/avoidance_targets` (when `use_tracked_objects:=false`)             |
+| `~/output/driving_along_vehicles`         | `/planning/avoidance_target_detector/output/driving_along_vehicles` (when `use_tracked_objects:=false`)        |
+| `~/output/tracked_avoidance_targets`      | `/planning/avoidance_target_detector/output/tracked_avoidance_targets` (when `use_tracked_objects:=true`)      |
+| `~/output/tracked_driving_along_vehicles` | `/planning/avoidance_target_detector/output/tracked_driving_along_vehicles` (when `use_tracked_objects:=true`) |
+| `~/output/drivable_area`                  | `/planning/avoidance_target_detector/output/drivable_area`                                                     |
+| `~/debug/near_segment_polygon`            | `/planning/avoidance_target_detector/debug/near_segment_polygon`                                               |
 
 ---
 
