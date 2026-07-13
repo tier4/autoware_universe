@@ -30,12 +30,52 @@ namespace autoware::minimum_rule_based_planner
 {
 
 /**
+ * @brief Type of a map-defined stop line, classified by its collection source.
+ *
+ * The type determines whether the vehicle must stop (mandatory) or only may need to stop
+ * (possibility). See is_possibility_type().
+ */
+enum class StopLineType {
+  RoadMarking,   //!< explicit stop-line road marking (temporary stop line): mandatory
+  TrafficLight,  //!< stop line referenced by a traffic light (signal): possibility
+  TrafficSign,   //!< reference line of a traffic sign (e.g. stop sign): mandatory
+};
+
+/**
+ * @brief A map-defined stop line together with its classified type.
+ */
+struct StopLine
+{
+  lanelet::ConstLineString3d line;
+  StopLineType type;
+};
+
+/**
+ * @brief Whether the stop line is a "possibility" target (the vehicle may need to stop) rather
+ *        than a mandatory stop target.
+ *
+ * Signals (traffic lights) are treated as possibility targets; painted stop lines and stop signs
+ * are mandatory. The go trajectory only stops at mandatory targets, while the stop trajectory
+ * stops at both mandatory and possibility targets.
+ */
+bool is_possibility_type(StopLineType type);
+
+/**
+ * @brief Parameters used to select a feasible stop point along a trajectory.
+ */
+struct StopSelectionParams
+{
+  double max_deceleration;  //!< maximum deceleration used for the braking-distance check [m/s^2]
+  double stop_margin_distance;  //!< distance to stop before the stop line crossing [m]
+  double base_link_to_front;    //!< vehicle front offset from base_link [m]
+};
+
+/**
  * @brief Plans stops at map-defined locations where the vehicle may need to stop
  *        (stop lines, crosswalks, private-area exits, etc.).
  *
- * As a first step this only extracts candidate stop lines from the map and
- * exposes them for visualization. Stop-distance computation and velocity
- * insertion are added in later steps.
+ * Extracts candidate stop lines from the map, classifies them by type, and selects the nearest
+ * reachable stop point along the trajectory.
  */
 class StopPlanner
 {
@@ -43,18 +83,16 @@ public:
   explicit StopPlanner(const rclcpp::Logger & logger);
 
   /**
-   * @brief Collect stop lines from the map along the given route lanelets.
+   * @brief Collect stop lines from the map along the given route lanelets, tagged by type.
    *
    * Sources:
-   *  - RoadMarking regulatory elements whose line string type is "stop_line"
-   *    (e.g. painted stop lines, crosswalk stop lines)
-   *  - stop lines referenced by traffic lights
-   *  - reference lines of traffic signs (e.g. stop signs at intersections)
+   *  - RoadMarking regulatory elements whose line string type is "stop_line" -> RoadMarking
+   *  - stop lines referenced by traffic lights -> TrafficLight
+   *  - reference lines of traffic signs (e.g. stop signs) -> TrafficSign
    *
    * Duplicate line strings (shared between lanelets) are returned only once.
    */
-  std::vector<lanelet::ConstLineString3d> collect_stop_lines(
-    const lanelet::ConstLanelets & route_lanelets) const;
+  std::vector<StopLine> collect_stop_lines(const lanelet::ConstLanelets & route_lanelets) const;
 
   /**
    * @brief Keep only the stop lines that intersect the given trajectory (in 2D).
@@ -62,21 +100,24 @@ public:
    * Used to narrow the map-defined stop lines down to the ones actually crossed
    * by the currently planned trajectory.
    */
-  std::vector<lanelet::ConstLineString3d> filter_stop_lines_on_trajectory(
-    const std::vector<lanelet::ConstLineString3d> & stop_lines,
+  std::vector<StopLine> filter_stop_lines_on_trajectory(
+    const std::vector<StopLine> & stop_lines,
     const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points) const;
 
   /**
-   * @brief Arc length along the trajectory (measured from its first point) to the nearest
-   *        stop line crossing.
+   * @brief Select the arc length (from the trajectory start) of the nearest reachable stop point.
    *
-   * For every stop line, the 2D intersection points with the trajectory polyline are computed
-   * and the smallest signed arc length among them is returned. Returns nullopt when none of the
-   * stop lines cross the trajectory.
+   * For every stop line whose type is allowed (all types when @p include_possibility is true,
+   * mandatory types only otherwise), the nearest 2D crossing is converted to a stop point by
+   * subtracting the vehicle front offset and the stop margin. The nearest positive stop point is
+   * returned only if it is reachable given @p ego_velocity and the maximum deceleration (braking
+   * distance). Returns nullopt when no reachable stop point exists.
    */
-  std::optional<double> calc_nearest_stop_arc_length(
-    const std::vector<lanelet::ConstLineString3d> & stop_lines,
-    const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points) const;
+  std::optional<double> select_stop_arc_length(
+    const std::vector<StopLine> & stop_lines,
+    const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
+    const double ego_velocity, const StopSelectionParams & params,
+    const bool include_possibility) const;
 
   /**
    * @brief Build a MarkerArray visualizing the collected stop lines.
@@ -84,7 +125,7 @@ public:
    * The markers are published in the "map" frame.
    */
   visualization_msgs::msg::MarkerArray create_stop_line_marker_array(
-    const std::vector<lanelet::ConstLineString3d> & stop_lines) const;
+    const std::vector<StopLine> & stop_lines) const;
 
 private:
   rclcpp::Logger logger_;

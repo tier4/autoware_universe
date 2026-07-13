@@ -74,7 +74,19 @@ private:
     const Trajectory & trajectory, const InputData & input_data) const;
   Trajectory smooth_trajectory(const Trajectory & trajectory, const InputData & input_data) const;
   void apply_modifiers(Trajectory & trajectory, const InputData & input_data) const;
-  std::optional<Trajectory> plan_stop(const Trajectory & trajectory) const;
+
+  //! result of a stop plan: the stop point arc length and the trajectory with the stop embedded
+  struct StopResult
+  {
+    double stop_point_arc_length;
+    Trajectory trajectory;
+  };
+  //! Plan a stop at map-defined stop lines. When @p include_possibility_targets is true, signals
+  //! and other possibility targets are also considered (used for the stop trajectory); otherwise
+  //! only mandatory targets are considered (used for the go trajectory).
+  std::optional<StopResult> plan_stop(
+    const Trajectory & trajectory, const InputData & input_data,
+    const bool include_possibility_targets) const;
   Trajectory optimize_velocity(const Trajectory & trajectory, const InputData & input_data) const;
 
   void publish_candidate_trajectories(
@@ -190,6 +202,7 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_stop_lines_marker_;
   rclcpp::Publisher<PathWithLaneId>::SharedPtr pub_debug_path_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_stop_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;
   /** @} */
 };
