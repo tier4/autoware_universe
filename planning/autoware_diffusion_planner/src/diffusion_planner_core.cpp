@@ -14,6 +14,7 @@
 
 #include "autoware/diffusion_planner/diffusion_planner_core.hpp"
 
+#include "autoware/diffusion_planner/constants.hpp"
 #include "autoware/diffusion_planner/conversion/agent.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/inference/guidance/centerline_guidance.hpp"
@@ -28,6 +29,8 @@
 #ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ONNXRUNTIME
 #include "autoware/diffusion_planner/inference/onnxruntime_inference.hpp"
 #endif
+
+#include <rclcpp/logging.hpp>
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
 #include <autoware_internal_planning_msgs/msg/generator_info.hpp>
@@ -243,6 +246,72 @@ void DiffusionPlannerCore::set_map(
     lanelet_map_ptr, params_.line_string_max_step_m);
 }
 
+void DiffusionPlannerCore::update_force_takeoff_state(
+  const Odometry & kinematic_state, const TrackedObjects & objects,
+  const std::shared_ptr<const AutowareState> & autoware_state, const rclcpp::Time & current_time)
+{
+  const auto logger = rclcpp::get_logger("diffusion_planner_core");
+
+  const auto & linear = kinematic_state.twist.twist.linear;
+  const double speed = std::hypot(linear.x, linear.y);
+  if (!last_moving_time_ || speed >= constants::MOVING_VELOCITY_THRESHOLD_MPS) {
+    last_moving_time_ = current_time;
+  }
+
+  const auto & ego_position = kinematic_state.pose.pose.position;
+  const bool agent_nearby =
+    std::any_of(objects.objects.begin(), objects.objects.end(), [&](const auto & object) {
+      const auto & object_position = object.kinematics.pose_with_covariance.pose.position;
+      return std::hypot(object_position.x - ego_position.x, object_position.y - ego_position.y) <
+             params_.force_takeoff_min_agent_distance_m;
+    });
+
+  bool engage_transition = false;
+  if (autoware_state) {
+    engage_transition = previous_autoware_state_.has_value() &&
+                        *previous_autoware_state_ != AutowareState::DRIVING &&
+                        autoware_state->state == AutowareState::DRIVING;
+    previous_autoware_state_ = autoware_state->state;
+  }
+
+  if (force_takeoff_active_) {
+    if (agent_nearby) {
+      force_takeoff_active_ = false;
+      RCLCPP_INFO(
+        logger, "Force takeoff aborted: agent detected within %.1f m",
+        params_.force_takeoff_min_agent_distance_m);
+    } else if (speed >= params_.force_takeoff_release_speed_mps) {
+      force_takeoff_active_ = false;
+      RCLCPP_INFO(
+        logger, "Force takeoff released: ego speed %.2f m/s reached release threshold %.2f m/s",
+        speed, params_.force_takeoff_release_speed_mps);
+    }
+    return;
+  }
+
+  if (!params_.force_takeoff_enable || !engage_transition) {
+    return;
+  }
+
+  const double stationary_duration_s = (current_time - *last_moving_time_).seconds();
+  if (stationary_duration_s <= params_.force_takeoff_stationary_duration_s) {
+    return;
+  }
+  if (agent_nearby) {
+    RCLCPP_INFO(
+      logger, "Force takeoff not activated at engage: agent within %.1f m",
+      params_.force_takeoff_min_agent_distance_m);
+    return;
+  }
+
+  force_takeoff_active_ = true;
+  RCLCPP_INFO(
+    logger,
+    "Force takeoff activated: ego stationary for %.1f s, overriding ego history with synthetic "
+    "%.2f m/s motion",
+    stationary_duration_s, params_.force_takeoff_synthetic_speed_mps);
+}
+
 std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   const std::shared_ptr<const Odometry> & ego_kinematic_state,
   const std::shared_ptr<const AccelWithCovarianceStamped> & ego_acceleration,
@@ -250,7 +319,8 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   const std::vector<std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
     traffic_signals,
   const std::shared_ptr<const TurnIndicatorsReport> & turn_indicators,
-  const LaneletRoute::ConstSharedPtr & route_ptr, const rclcpp::Time & current_time)
+  const LaneletRoute::ConstSharedPtr & route_ptr,
+  const std::shared_ptr<const AutowareState> & autoware_state, const rclcpp::Time & current_time)
 {
   route_ptr_ = (!route_ptr_ || route_ptr) ? route_ptr : route_ptr_;
 
@@ -280,6 +350,12 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(pose_base_link);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
 
+  // Update force takeoff state (uses the unfiltered object list so that the proximity gate is
+  // not bypassed by ignore_neighbors)
+  if (objects) {
+    update_force_takeoff_state(*ego_kinematic_state, *objects, autoware_state, current_time);
+  }
+
   // Update ego history
   ego_history_.push_back(kinematic_state);
   if (ego_history_.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
@@ -304,9 +380,9 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
 
   // Create frame context
   const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
-  const FrameContext frame_context{
-    *ego_kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
-    frame_time};
+  const FrameContext frame_context{*ego_kinematic_state, *ego_acceleration,
+                                   ego_to_map_transform, processed_neighbor_histories,
+                                   frame_time,           force_takeoff_active_};
 
   return frame_context;
 }
@@ -370,16 +446,31 @@ InputDataMap DiffusionPlannerCore::create_input_data(const FrameContext & frame_
   {
     const std::optional<rclcpp::Time> reference_time =
       params_.use_time_interpolation ? std::make_optional(frame_context.frame_time) : std::nullopt;
+    std::deque<nav_msgs::msg::Odometry> synthetic_history;
+    if (frame_context.force_takeoff_active) {
+      synthetic_history = preprocess::create_synthetic_ego_history(
+        pose_center, frame_context.frame_time, EGO_HISTORY_SHAPE[1],
+        params_.force_takeoff_synthetic_speed_mps, constants::PREDICTION_TIME_STEP_S);
+    }
+    const auto & history_source =
+      frame_context.force_takeoff_active ? synthetic_history : ego_history_;
     const std::vector<float> single_ego_agent_past = preprocess::create_ego_agent_past(
-      ego_history_, EGO_HISTORY_SHAPE[1], map_to_ego_transform, reference_time);
+      history_source, EGO_HISTORY_SHAPE[1], map_to_ego_transform, reference_time);
     input_data_map["ego_agent_past"] =
       utils::replicate_for_batch(single_ego_agent_past, params_.batch_size);
   }
   // Ego state
   {
+    auto kinematic_state = frame_context.ego_kinematic_state;
+    auto acceleration = frame_context.ego_acceleration;
+    if (frame_context.force_takeoff_active) {
+      // Simulate the ego already moving straight at constant speed with zero acceleration
+      kinematic_state.twist.twist = geometry_msgs::msg::Twist{};
+      kinematic_state.twist.twist.linear.x = params_.force_takeoff_synthetic_speed_mps;
+      acceleration.accel.accel = geometry_msgs::msg::Accel{};
+    }
     const auto ego_current_state = preprocess::create_ego_current_state(
-      frame_context.ego_kinematic_state, frame_context.ego_acceleration,
-      static_cast<float>(vehicle_spec_.wheel_base));
+      kinematic_state, acceleration, static_cast<float>(vehicle_spec_.wheel_base));
     input_data_map["ego_current_state"] =
       utils::replicate_for_batch(ego_current_state, params_.batch_size);
   }

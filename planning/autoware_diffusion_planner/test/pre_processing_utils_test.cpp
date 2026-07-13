@@ -170,4 +170,65 @@ TEST_F(PreprocessingUtilsTest, CreateEgoCurrentState)
   EXPECT_FLOAT_EQ(result[9], 0.1f);
 }
 
+TEST_F(PreprocessingUtilsTest, CreateSyntheticEgoHistoryStraightLine)
+{
+  const size_t num_timesteps = 31;
+  const double speed_mps = 1.5;
+  const double time_step_s = 0.1;
+  const rclcpp::Time current_time(123, 0, RCL_ROS_TIME);
+
+  geometry_msgs::msg::Pose current_pose;
+  current_pose.position.x = 10.0;
+  current_pose.position.y = -5.0;
+  current_pose.orientation.w = 1.0;  // identity: heading along +x
+
+  const auto history = preprocess::create_synthetic_ego_history(
+    current_pose, current_time, num_timesteps, speed_mps, time_step_s);
+
+  ASSERT_EQ(history.size(), num_timesteps);
+
+  // Last entry is the current pose at the current time
+  EXPECT_DOUBLE_EQ(history.back().pose.pose.position.x, current_pose.position.x);
+  EXPECT_DOUBLE_EQ(history.back().pose.pose.position.y, current_pose.position.y);
+  EXPECT_EQ(rclcpp::Time(history.back().header.stamp), current_time);
+
+  for (size_t t = 0; t < num_timesteps; ++t) {
+    const auto & odom = history[t];
+    const double steps_back = static_cast<double>(num_timesteps - 1 - t);
+    // Poses are shifted backwards along the heading by speed * dt each step
+    EXPECT_NEAR(
+      odom.pose.pose.position.x, current_pose.position.x - steps_back * speed_mps * time_step_s,
+      1e-9);
+    EXPECT_NEAR(odom.pose.pose.position.y, current_pose.position.y, 1e-9);
+    // Timestamps are spaced time_step_s apart, ending at current_time
+    EXPECT_NEAR(
+      (current_time - rclcpp::Time(odom.header.stamp)).seconds(), steps_back * time_step_s, 1e-9);
+    // Constant longitudinal speed
+    EXPECT_DOUBLE_EQ(odom.twist.twist.linear.x, speed_mps);
+  }
+}
+
+TEST_F(PreprocessingUtilsTest, CreateSyntheticEgoHistoryFollowsHeading)
+{
+  const size_t num_timesteps = 5;
+  const double speed_mps = 2.0;
+  const double time_step_s = 0.1;
+  const rclcpp::Time current_time(10, 0);
+
+  geometry_msgs::msg::Pose current_pose;
+  // Heading along +y (yaw = pi/2)
+  current_pose.orientation.z = std::sin(M_PI_4);
+  current_pose.orientation.w = std::cos(M_PI_4);
+
+  const auto history = preprocess::create_synthetic_ego_history(
+    current_pose, current_time, num_timesteps, speed_mps, time_step_s);
+
+  ASSERT_EQ(history.size(), num_timesteps);
+  // Oldest entry is shifted backwards along +y
+  EXPECT_NEAR(history.front().pose.pose.position.x, 0.0, 1e-9);
+  EXPECT_NEAR(
+    history.front().pose.pose.position.y,
+    -static_cast<double>(num_timesteps - 1) * speed_mps * time_step_s, 1e-9);
+}
+
 }  // namespace autoware::diffusion_planner::test

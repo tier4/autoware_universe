@@ -216,6 +216,15 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<double>("guidance.centerline_guidance.start_time_s", 2.0);
   params_.use_mppi_optimizer = this->declare_parameter<bool>("use_mppi_optimizer", false);
   params_.shadow_mode = this->declare_parameter<bool>("shadow_mode", false);
+  params_.force_takeoff_enable = this->declare_parameter<bool>("force_takeoff.enable", true);
+  params_.force_takeoff_synthetic_speed_mps =
+    this->declare_parameter<double>("force_takeoff.synthetic_speed_mps", 1.5);
+  params_.force_takeoff_stationary_duration_s =
+    this->declare_parameter<double>("force_takeoff.stationary_duration_s", 3.0);
+  params_.force_takeoff_release_speed_mps =
+    this->declare_parameter<double>("force_takeoff.release_speed_mps", 0.5);
+  params_.force_takeoff_min_agent_distance_m =
+    this->declare_parameter<double>("force_takeoff.min_agent_distance_m", 20.0);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_cost_params(*this);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
 
@@ -374,6 +383,18 @@ SetParametersResult DiffusionPlanner::on_parameter(
     }
     update_param<bool>(parameters, "use_mppi_optimizer", temp_params.use_mppi_optimizer);
     update_param<bool>(parameters, "shadow_mode", temp_params.shadow_mode);
+    update_param<bool>(parameters, "force_takeoff.enable", temp_params.force_takeoff_enable);
+    update_param<double>(
+      parameters, "force_takeoff.synthetic_speed_mps",
+      temp_params.force_takeoff_synthetic_speed_mps);
+    update_param<double>(
+      parameters, "force_takeoff.stationary_duration_s",
+      temp_params.force_takeoff_stationary_duration_s);
+    update_param<double>(
+      parameters, "force_takeoff.release_speed_mps", temp_params.force_takeoff_release_speed_mps);
+    update_param<double>(
+      parameters, "force_takeoff.min_agent_distance_m",
+      temp_params.force_takeoff_min_agent_distance_m);
     const bool args_path_changed = temp_params.args_path != previous_args_path;
     const bool model_paths_changed =
       temp_params.model_type != previous_model_type ||
@@ -530,11 +551,12 @@ void DiffusionPlanner::on_timer()
   auto traffic_signals = sub_traffic_signals_.take_data();
   auto temp_route_ptr = route_subscriber_.take_data();
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
+  auto autoware_state_ptr = sub_autoware_state_.take_data();
 
   // Prepare frame context using core
   const std::optional<FrameContext> frame_context = core_->create_frame_context(
     ego_kinematic_state, ego_acceleration, objects, traffic_signals, turn_indicators_ptr,
-    temp_route_ptr, this->now());
+    temp_route_ptr, autoware_state_ptr, this->now());
 
   if (!frame_context) {
     // Log detailed information about missing inputs

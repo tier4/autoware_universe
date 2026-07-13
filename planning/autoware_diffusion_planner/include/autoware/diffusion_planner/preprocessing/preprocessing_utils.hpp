@@ -85,6 +85,26 @@ std::vector<float> create_ego_agent_past(
   const std::optional<rclcpp::Time> & reference_time = std::nullopt);
 
 /**
+ * @brief Creates a synthetic ego history simulating straight-line motion at constant speed.
+ *
+ * Generates num_timesteps odometry messages ending at current_pose (the last entry), with
+ * preceding poses shifted backwards along the pose heading by speed_mps * time_step_s each
+ * step. All entries carry a constant longitudinal twist of speed_mps and timestamps spaced
+ * time_step_s apart, ending at current_time. Used by the force-takeoff feature to make the
+ * model believe the ego is already moving.
+ *
+ * @param[in] current_pose  Current ego pose in map frame (most recent history entry)
+ * @param[in] current_time  Timestamp of the most recent history entry
+ * @param[in] num_timesteps Number of history entries to generate
+ * @param[in] speed_mps     Simulated constant longitudinal speed [m/s]
+ * @param[in] time_step_s   Time step between consecutive history entries [s]
+ * @return Deque of odometry messages, oldest first
+ */
+std::deque<nav_msgs::msg::Odometry> create_synthetic_ego_history(
+  const geometry_msgs::msg::Pose & current_pose, const rclcpp::Time & current_time,
+  size_t num_timesteps, double speed_mps, double time_step_s);
+
+/**
  * @brief Creates random sampled trajectories for diffusion model input.
  *
  * This function generates a set of random sampled trajectories based on the specified

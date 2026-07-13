@@ -261,6 +261,47 @@
             "slowdown_accel_threshold"
           ]
         },
+        "force_takeoff": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable the force takeoff feature (synthetic ego history override at engage)"
+            },
+            "synthetic_speed_mps": {
+              "type": "number",
+              "default": 1.5,
+              "minimum": 0,
+              "description": "Simulated constant longitudinal speed for the synthetic ego history [m/s]"
+            },
+            "stationary_duration_s": {
+              "type": "number",
+              "default": 3.0,
+              "minimum": 0,
+              "description": "Minimum duration the ego must have been stationary at engage to activate [s]"
+            },
+            "release_speed_mps": {
+              "type": "number",
+              "default": 0.5,
+              "minimum": 0,
+              "description": "Real ego speed at which the synthetic override is released [m/s]"
+            },
+            "min_agent_distance_m": {
+              "type": "number",
+              "default": 20.0,
+              "minimum": 0,
+              "description": "No tracked object may be within this radius of the ego for the override to activate or stay active [m]"
+            }
+          },
+          "required": [
+            "enable",
+            "synthetic_speed_mps",
+            "stationary_duration_s",
+            "release_speed_mps",
+            "min_agent_distance_m"
+          ]
+        },
         "debug_params": {
           "type": "object",
           "properties": {

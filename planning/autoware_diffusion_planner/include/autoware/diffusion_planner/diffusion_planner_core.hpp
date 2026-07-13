@@ -35,6 +35,7 @@
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_system_msgs/msg/autoware_state.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -61,6 +62,7 @@ using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Trajectory;
+using autoware_system_msgs::msg::AutowareState;
 using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using autoware_vehicle_msgs::msg::TurnIndicatorsReport;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
@@ -106,6 +108,7 @@ struct FrameContext
   Eigen::Matrix4d ego_to_map_transform;
   std::vector<AgentHistory> ego_centric_neighbor_histories;
   rclcpp::Time frame_time;
+  bool force_takeoff_active{false};
 };
 
 struct DiffusionPlannerParams
@@ -141,6 +144,11 @@ struct DiffusionPlannerParams
   double centerline_guidance_start_time_s;
   bool use_mppi_optimizer;
   bool shadow_mode;
+  bool force_takeoff_enable;
+  double force_takeoff_synthetic_speed_mps;
+  double force_takeoff_stationary_duration_s;
+  double force_takeoff_release_speed_mps;
+  double force_takeoff_min_agent_distance_m;
 };
 
 /**
@@ -189,6 +197,7 @@ public:
    * @param traffic_signals Traffic signal information
    * @param turn_indicators Current turn indicator state
    * @param route_ptr Route information
+   * @param autoware_state Latest autoware state (nullptr if no new message)
    * @param current_time Current timestamp
    * @return FrameContext containing preprocessed data, or nullopt if data is incomplete
    */
@@ -200,7 +209,8 @@ public:
       std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
       traffic_signals,
     const std::shared_ptr<const TurnIndicatorsReport> & turn_indicators,
-    const LaneletRoute::ConstSharedPtr & route_ptr, const rclcpp::Time & current_time);
+    const LaneletRoute::ConstSharedPtr & route_ptr,
+    const std::shared_ptr<const AutowareState> & autoware_state, const rclcpp::Time & current_time);
 
   /**
    * @brief Build model input tensors from frame context.
@@ -337,6 +347,28 @@ private:
    *        apply the latest hold duration / keep offset parameters to each of them.
    */
   void sync_turn_indicator_managers();
+
+  /**
+   * @brief Update the force-takeoff state machine for the current frame.
+   *
+   * Activates the ego history/state override when the autoware state transitions to DRIVING
+   * (engage) while the ego has been stationary for longer than the configured duration and no
+   * tracked object is within the configured radius. Deactivates once the ego reaches the release
+   * speed, or aborts if an agent enters the radius while active.
+   *
+   * @param kinematic_state Current ego odometry
+   * @param objects Tracked objects (unfiltered)
+   * @param autoware_state Latest autoware state (nullptr if no new message)
+   * @param current_time Current timestamp
+   */
+  void update_force_takeoff_state(
+    const Odometry & kinematic_state, const TrackedObjects & objects,
+    const std::shared_ptr<const AutowareState> & autoware_state, const rclcpp::Time & current_time);
+
+  // Force takeoff state
+  std::optional<uint8_t> previous_autoware_state_;
+  std::optional<rclcpp::Time> last_moving_time_;
+  bool force_takeoff_active_{false};
 
   // History data
   std::deque<nav_msgs::msg::Odometry> ego_history_;

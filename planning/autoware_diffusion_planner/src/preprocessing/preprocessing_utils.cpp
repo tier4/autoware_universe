@@ -19,6 +19,7 @@
 #include "autoware/diffusion_planner/utils/utils.hpp"
 
 #include <autoware_utils_geometry/geometry.hpp>
+#include <rclcpp/duration.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -201,6 +202,25 @@ std::vector<float> create_ego_agent_past(
   }
 
   return ego_agent_past;
+}
+
+std::deque<nav_msgs::msg::Odometry> create_synthetic_ego_history(
+  const geometry_msgs::msg::Pose & current_pose, const rclcpp::Time & current_time,
+  const size_t num_timesteps, const double speed_mps, const double time_step_s)
+{
+  std::deque<nav_msgs::msg::Odometry> synthetic_history;
+
+  for (size_t t = 0; t < num_timesteps; ++t) {
+    const auto steps_back = static_cast<double>(num_timesteps - 1 - t);
+    nav_msgs::msg::Odometry odometry;
+    odometry.header.stamp = current_time - rclcpp::Duration::from_seconds(steps_back * time_step_s);
+    odometry.header.frame_id = "map";
+    odometry.pose.pose = utils::shift_x(current_pose, -steps_back * time_step_s * speed_mps);
+    odometry.twist.twist.linear.x = speed_mps;
+    synthetic_history.push_back(odometry);
+  }
+
+  return synthetic_history;
 }
 
 std::vector<float> create_sampled_trajectories(const double temperature)
