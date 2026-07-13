@@ -134,7 +134,11 @@ void SingleStepInference::load_engine(const std::string & model_path)
   add_input_tensor("goal_pose", GOAL_POSE_SHAPE);
   add_input_tensor("ego_shape", EGO_SHAPE_SHAPE);
   add_input_tensor("turn_indicators", TURN_INDICATORS_SHAPE);
-  add_input_tensor("delay", DELAY_SHAPE);
+  // The legacy waypoint model takes a `delay` input for delay compensation; the temporal
+  // ego-only model does not expose it. Only register it when the model actually has it.
+  if (g_sampled_trajectory_len > OUTPUT_T) {
+    add_input_tensor("delay", DELAY_SHAPE);
+  }
 
   network_io.emplace_back("prediction", to_dynamic_dims(output_shape(), batch_size_));
   network_io.emplace_back(
@@ -178,7 +182,9 @@ void SingleStepInference::bindBuffers()
   network_trt_ptr_->setInputShape("ego_shape", to_dims_with_batch(EGO_SHAPE_SHAPE, batch_size_));
   network_trt_ptr_->setInputShape(
     "turn_indicators", to_dims_with_batch(TURN_INDICATORS_SHAPE, batch_size_));
-  network_trt_ptr_->setInputShape("delay", to_dims_with_batch(DELAY_SHAPE, batch_size_));
+  if (g_sampled_trajectory_len > OUTPUT_T) {
+    network_trt_ptr_->setInputShape("delay", to_dims_with_batch(DELAY_SHAPE, batch_size_));
+  }
 
   // Bind tensor addresses once (GPU buffers are pre-allocated and stable)
   network_trt_ptr_->setTensorAddress("sampled_trajectories", sampled_trajectories_d_.get());
@@ -198,7 +204,9 @@ void SingleStepInference::bindBuffers()
   network_trt_ptr_->setTensorAddress("goal_pose", goal_pose_d_.get());
   network_trt_ptr_->setTensorAddress("ego_shape", ego_shape_d_.get());
   network_trt_ptr_->setTensorAddress("turn_indicators", turn_indicators_d_.get());
-  network_trt_ptr_->setTensorAddress("delay", delay_d_.get());
+  if (g_sampled_trajectory_len > OUTPUT_T) {
+    network_trt_ptr_->setTensorAddress("delay", delay_d_.get());
+  }
   network_trt_ptr_->setTensorAddress("prediction", output_d_.get());
   network_trt_ptr_->setTensorAddress("turn_indicator_logit", turn_indicator_logit_d_.get());
 }
@@ -220,7 +228,9 @@ void SingleStepInference::transferInputsToDevice(const preprocess::InputDataMap 
   transfer_float_input(input_data_map.at("goal_pose"), goal_pose_d_, stream_);
   transfer_float_input(input_data_map.at("ego_shape"), ego_shape_d_, stream_);
   transfer_float_input(input_data_map.at("turn_indicators"), turn_indicators_d_, stream_);
-  transfer_float_input(input_data_map.at("delay"), delay_d_, stream_);
+  if (g_sampled_trajectory_len > OUTPUT_T) {
+    transfer_float_input(input_data_map.at("delay"), delay_d_, stream_);
+  }
 
   transfer_speed_mask(
     input_data_map.at("lanes_speed_limit"), lanes_has_speed_limit_d_,

@@ -348,7 +348,13 @@ InputDataMap DiffusionPlannerCore::create_input_data(const FrameContext & frame_
   int64_t delay_step = 0;
   {
     const int64_t copy_steps = std::clamp<int64_t>(params_.delay_step, 0, OUTPUT_T / 2);
-    const bool has_previous_output = !last_agent_poses_map_.empty();
+    // The warm-start below seeds the sampled-trajectory prefix with the previous frame's poses
+    // encoded in waypoint-normalization statistics ((x-10)/20, ...). That is only valid for the
+    // legacy waypoint latent. Velocity-latent (temporal ego) models expect a pure-noise latent
+    // here (std=0.5 displacement space), so seeding it injects out-of-distribution values into
+    // step 0 every cycle. Restrict the warm-start to legacy models.
+    const bool is_legacy_waypoint_latent = g_sampled_trajectory_len > OUTPUT_T;
+    const bool has_previous_output = !last_agent_poses_map_.empty() && is_legacy_waypoint_latent;
 
     for (int64_t b = 0; b < params_.batch_size; b++) {
       std::vector<float> sampled_trajectories =
