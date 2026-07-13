@@ -103,6 +103,19 @@ void DiffusionPlannerCore::load_model()
   last_agent_poses_map_.clear();
   diffusion_planner_inference_.reset();
   utils::check_weight_version(params_.args_path);
+
+  // Configure runtime-adaptive prediction dimensions from the model's args.json.
+  // Full models predict ego + neighbors (num_prediction_agents == MAX_NUM_AGENTS); ego-only
+  // models (predicted_neighbor_num == 0) predict only the ego trajectory.
+  const auto prediction_dims =
+    utils::load_prediction_dims(params_.args_path, MAX_NUM_AGENTS, OUTPUT_T);
+  g_num_prediction_agents = prediction_dims.num_prediction_agents;
+  g_sampled_trajectory_len = prediction_dims.sampled_trajectory_len;
+  RCLCPP_INFO(
+    rclcpp::get_logger("diffusion_planner"),
+    "Prediction dimensions: num_prediction_agents=%ld, sampled_trajectory_len=%ld",
+    static_cast<long>(g_num_prediction_agents), static_cast<long>(g_sampled_trajectory_len));
+
   observation_normalization_ = utils::load_observation_normalization(params_.args_path);
   state_normalization_ = utils::load_state_normalization(params_.args_path);
 
@@ -345,7 +358,7 @@ InputDataMap DiffusionPlannerCore::create_input_data(const FrameContext & frame_
         constexpr int64_t agent_idx = 0;
         delay_step = copy_steps;
         for (int64_t t = 0; t <= copy_steps; ++t) {
-          const size_t dst_base = agent_idx * (OUTPUT_T + 1) * POSE_DIM + (t)*POSE_DIM;
+          const size_t dst_base = agent_idx * g_sampled_trajectory_len * POSE_DIM + (t)*POSE_DIM;
           const Eigen::Matrix4d pose_ego =
             map_to_ego_transform * last_agent_poses_map_[b][agent_idx][t];
           const float shifted_x = static_cast<float>(pose_ego(0, 3));

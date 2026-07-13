@@ -81,6 +81,31 @@ inline constexpr std::array<int64_t, 2> TURN_INDICATOR_LOGIT_SHAPE = {1, TURN_IN
 
 inline constexpr std::array<int64_t, 4> SAMPLED_TRAJECTORIES_SHAPE = {
   1, MAX_NUM_AGENTS, OUTPUT_T + 1, POSE_DIM};
+
+// -----------------------------------------------------------------------------
+// Runtime-adaptive prediction dimensions.
+//
+// The number of agents the model *predicts* (ego + predicted neighbors) and the
+// length of the `sampled_trajectories` input depend on the trained model:
+//   - full model      : predicted_neighbor_num > 0  -> num_prediction_agents = 321,
+//                        legacy action head          -> sampled_trajectory_len = OUTPUT_T + 1
+//   - ego-only model   : predicted_neighbor_num == 0 -> num_prediction_agents = 1,
+//                        temporal ego decoder         -> sampled_trajectory_len = OUTPUT_T
+// These are set once at model load from args.json (see DiffusionPlannerCore::load_model);
+// the defaults preserve the original full-model behavior. The input *context*
+// (neighbor_agents_past = MAX_NUM_NEIGHBORS) is unaffected.
+inline int64_t g_num_prediction_agents = MAX_NUM_AGENTS;
+inline int64_t g_sampled_trajectory_len = OUTPUT_T + 1;
+
+inline std::array<int64_t, 4> output_shape()
+{
+  return {1, g_num_prediction_agents, OUTPUT_T, POSE_DIM};
+}
+inline std::array<int64_t, 4> sampled_trajectories_shape()
+{
+  return {1, g_num_prediction_agents, g_sampled_trajectory_len, POSE_DIM};
+}
+
 inline constexpr std::array<int64_t, 3> EGO_HISTORY_SHAPE = {1, INPUT_T + 1, POSE_DIM};
 inline constexpr std::array<int64_t, 2> EGO_CURRENT_STATE_SHAPE = {1, 10};
 inline constexpr std::array<int64_t, 4> NEIGHBOR_SHAPE = {1, MAX_NUM_NEIGHBORS, INPUT_T + 1, 11};

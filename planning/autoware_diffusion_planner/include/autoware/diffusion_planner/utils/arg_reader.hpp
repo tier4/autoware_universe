@@ -77,6 +77,44 @@ inline void check_weight_version(const std::string & json_path)
   }
 }
 
+// Prediction I/O dimensions that vary by trained model.
+struct PredictionDims
+{
+  int64_t num_prediction_agents;   // ego + predicted neighbors (== predicted_neighbor_num + 1)
+  int64_t sampled_trajectory_len;  // length of the sampled_trajectories input
+};
+
+// Reads args.json and derives the model-dependent prediction dimensions.
+// Falls back to the provided defaults (the full-model contract) when keys are absent.
+inline PredictionDims load_prediction_dims(
+  const std::string & json_path, int64_t default_num_agents, int64_t output_t)
+{
+  std::ifstream file(json_path);
+  if (!file) {
+    throw std::runtime_error("Could not open JSON file: " + json_path);
+  }
+  json j;
+  file >> j;
+
+  const int64_t predicted_neighbor_num =
+    (j.contains("predicted_neighbor_num") && !j["predicted_neighbor_num"].is_null())
+      ? j["predicted_neighbor_num"].get<int64_t>()
+      : (default_num_agents - 1);
+  const int64_t future_len = (j.contains("future_len") && !j["future_len"].is_null())
+                               ? j["future_len"].get<int64_t>()
+                               : output_t;
+  const bool temporal_decoder = j.contains("decoder_tokenization") &&
+                                j["decoder_tokenization"].is_string() &&
+                                j["decoder_tokenization"].get<std::string>() == "temporal";
+
+  PredictionDims dims;
+  dims.num_prediction_agents = predicted_neighbor_num + 1;
+  // The legacy action head appends the current state to the sampled trajectory (future_len + 1);
+  // the temporal ego decoder does not.
+  dims.sampled_trajectory_len = temporal_decoder ? future_len : future_len + 1;
+  return dims;
+}
+
 inline ObservationNormalization load_observation_normalization(const std::string & json_path)
 {
   std::ifstream file(json_path);

@@ -208,7 +208,8 @@ std::vector<float> create_sampled_trajectories(const double temperature)
   std::random_device rd;
   std::mt19937 gen(rd());
   std::normal_distribution<float> dist(0.0f, 1.0f);
-  std::vector<float> sampled_trajectories((MAX_NUM_NEIGHBORS + 1) * (OUTPUT_T + 1) * POSE_DIM);
+  std::vector<float> sampled_trajectories(
+    g_num_prediction_agents * g_sampled_trajectory_len * POSE_DIM);
   for (float & val : sampled_trajectories) {
     val = dist(gen) * static_cast<float>(temperature);
   }

@@ -38,7 +38,7 @@ SingleStepInference::SingleStepInference(
   use_cuda_graph_(use_cuda_graph)
 {
   const size_t sampled_trajectories_size =
-    batch_size_ * num_elements_without_batch(SAMPLED_TRAJECTORIES_SHAPE);
+    batch_size_ * num_elements_without_batch(sampled_trajectories_shape());
   const size_t ego_history_size = batch_size_ * num_elements_without_batch(EGO_HISTORY_SHAPE);
   const size_t ego_current_state_size =
     batch_size_ * num_elements_without_batch(EGO_CURRENT_STATE_SHAPE);
@@ -61,7 +61,7 @@ SingleStepInference::SingleStepInference(
   const size_t turn_indicators_size =
     batch_size_ * num_elements_without_batch(TURN_INDICATORS_SHAPE);
   const size_t delay_size = batch_size_ * num_elements_without_batch(DELAY_SHAPE);
-  const size_t output_size = batch_size_ * num_elements_without_batch(OUTPUT_SHAPE);
+  const size_t output_size = batch_size_ * num_elements_without_batch(output_shape());
   const size_t turn_indicator_logit_size =
     batch_size_ * num_elements_without_batch(TURN_INDICATOR_LOGIT_SHAPE);
 
@@ -118,7 +118,7 @@ void SingleStepInference::load_engine(const std::string & model_path)
     network_io.emplace_back(name, dims);
   };
 
-  add_input_tensor("sampled_trajectories", SAMPLED_TRAJECTORIES_SHAPE);
+  add_input_tensor("sampled_trajectories", sampled_trajectories_shape());
   add_input_tensor("ego_agent_past", EGO_HISTORY_SHAPE);
   add_input_tensor("ego_current_state", EGO_CURRENT_STATE_SHAPE);
   add_input_tensor("neighbor_agents_past", NEIGHBOR_SHAPE);
@@ -136,7 +136,7 @@ void SingleStepInference::load_engine(const std::string & model_path)
   add_input_tensor("turn_indicators", TURN_INDICATORS_SHAPE);
   add_input_tensor("delay", DELAY_SHAPE);
 
-  network_io.emplace_back("prediction", to_dynamic_dims(OUTPUT_SHAPE, batch_size_));
+  network_io.emplace_back("prediction", to_dynamic_dims(output_shape(), batch_size_));
   network_io.emplace_back(
     "turn_indicator_logit", to_dynamic_dims(TURN_INDICATOR_LOGIT_SHAPE, batch_size_));
 
@@ -150,7 +150,7 @@ void SingleStepInference::bindBuffers()
 {
   // Set input shapes once (fixed batch_size)
   network_trt_ptr_->setInputShape(
-    "sampled_trajectories", to_dims_with_batch(SAMPLED_TRAJECTORIES_SHAPE, batch_size_));
+    "sampled_trajectories", to_dims_with_batch(sampled_trajectories_shape(), batch_size_));
   network_trt_ptr_->setInputShape(
     "ego_agent_past", to_dims_with_batch(EGO_HISTORY_SHAPE, batch_size_));
   network_trt_ptr_->setInputShape(
