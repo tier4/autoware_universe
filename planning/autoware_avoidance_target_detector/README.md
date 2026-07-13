@@ -28,13 +28,13 @@ Headers:
 
 Rebuild `ExtendedRouteHandler` whenever the **map** or **route** changes. On each **objects** update, call `update_objects()` first, then `get_avoidance_targets()` and/or `get_driving_along_vehicles()` (with the latest trajectory and route handler). The same applies to the tracked-objects pipeline via `TrackedObjectSelector`.
 
-| Topic (reference node)    | Message type                                    | Role                                                                                                 |
-| ------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `~/input/lanelet_map_bin` | `autoware_map_msgs/msg/LaneletMapBin`           | Vector map. QoS: transient local.                                                                    |
-| `~/input/route`           | `autoware_planning_msgs/msg/LaneletRoute`       | Current route. QoS: transient local.                                                                 |
-| `~/input/trajectory`      | `autoware_planning_msgs/msg/Trajectory`         | Reference trajectory for deviation / distance checks.                                                |
-| `~/input/objects`         | `autoware_perception_msgs/msg/PredictedObjects` | Predicted objects to filter.                                                                         |
-| `~/input/tracked_objects` | `autoware_perception_msgs/msg/TrackedObjects`   | Tracked objects to filter (reuses the route/ego state maintained by the predicted-objects callback). |
+| Topic (reference node)    | Message type                                    | Role                                                        |
+| ------------------------- | ----------------------------------------------- | ----------------------------------------------------------- |
+| `~/input/lanelet_map_bin` | `autoware_map_msgs/msg/LaneletMapBin`           | Vector map. QoS: transient local.                           |
+| `~/input/route`           | `autoware_planning_msgs/msg/LaneletRoute`       | Current route. QoS: transient local.                        |
+| `~/input/trajectory`      | `autoware_planning_msgs/msg/Trajectory`         | Reference trajectory for deviation / distance checks.       |
+| `~/input/objects`         | `autoware_perception_msgs/msg/PredictedObjects` | Predicted objects to filter.                                |
+| `~/input/tracked_objects` | `autoware_perception_msgs/msg/TrackedObjects`   | Tracked objects to filter when `use_tracked_objects:=true`. |
 
 Until map, route, and trajectory are available, boundary and object-selection APIs are not meaningful.
 
@@ -67,6 +67,13 @@ const auto driving_along = object_selector_.get_driving_along_vehicles(
 ```
 
 Parameter `use_extended_route_bounds` (reference node) switches between original and extended route bounds for the drivable area.
+
+Parameter `use_tracked_objects` (reference node, default `false`) selects which object pipeline is active:
+
+- `false` — subscribe to `~/input/objects` and run `PredictedObjectSelector`
+- `true` — subscribe to `~/input/tracked_objects` and run `TrackedObjectSelector`
+
+Only one subscription and its matching output publishers are created.
 
 ---
 
