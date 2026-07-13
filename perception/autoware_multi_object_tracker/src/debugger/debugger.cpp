@@ -24,7 +24,7 @@
 namespace autoware::multi_object_tracker
 {
 TrackerDebugger::TrackerDebugger(
-  autoware::agnocast_wrapper::Node & node, const std::string & frame_id,
+  rclcpp::Node & node, const std::string & frame_id,
   const std::vector<types::InputChannel> & channels_config)
 : node_(node), diagnostic_updater_(&node), object_debugger_(frame_id, channels_config)
 {
@@ -32,9 +32,8 @@ TrackerDebugger::TrackerDebugger(
   loadParameters();
   // initialize debug publishers
   if (debug_settings_.publish_processing_time) {
-    processing_time_publisher_ = std::make_unique<
-      autoware_utils_debug::BasicDebugPublisher<autoware::agnocast_wrapper::Node>>(
-      &node_, "multi_object_tracker");
+    processing_time_publisher_ =
+      std::make_unique<autoware_utils_debug::DebugPublisher>(&node_, "multi_object_tracker");
   }
 
   if (debug_settings_.publish_tentative_objects) {

@@ -19,8 +19,6 @@
 #include "autoware/multi_object_tracker/odometry.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#include <autoware/agnocast_wrapper/node.hpp>
-
 #include <autoware_perception_msgs/msg/detected_objects.hpp>
 
 #include <deque>
@@ -38,7 +36,7 @@ class InputStream
 {
 public:
   InputStream(
-    autoware::agnocast_wrapper::Node & node, const types::InputChannel & input_channel,
+    rclcpp::Node & node, const types::InputChannel & input_channel,
     std::shared_ptr<Odometry> odometry);
 
   void setTriggerFunction(std::function<void(const uint &)> func_trigger)
@@ -46,8 +44,7 @@ public:
     func_trigger_ = func_trigger;
   }
 
-  void onMessage(
-    const AUTOWARE_MESSAGE_CONST_SHARED_PTR(autoware_perception_msgs::msg::DetectedObjects) msg);
+  void onMessage(const autoware_perception_msgs::msg::DetectedObjects::ConstSharedPtr msg);
   void updateTimingStatus(const rclcpp::Time & now, const rclcpp::Time & objects_time);
 
   bool isTimeInitialized() const { return initial_count_ > 0; }
@@ -69,7 +66,7 @@ public:
   rclcpp::Time getLatestMeasurementTime() const { return latest_measurement_time_; }
 
 private:
-  autoware::agnocast_wrapper::Node & node_;
+  rclcpp::Node & node_;
   const types::InputChannel channel_;
   std::shared_ptr<Odometry> odometry_;
 
@@ -91,7 +88,7 @@ private:
 class InputManager
 {
 public:
-  InputManager(autoware::agnocast_wrapper::Node & node, std::shared_ptr<Odometry> odometry);
+  InputManager(rclcpp::Node & node, std::shared_ptr<Odometry> odometry);
   void init(const std::vector<types::InputChannel> & input_channels);
 
   void setTriggerFunction(std::function<void()> func_trigger) { func_trigger_ = func_trigger; }
@@ -100,10 +97,10 @@ public:
   bool getObjects(const rclcpp::Time & now, ObjectsList & objects_list);
 
 private:
-  autoware::agnocast_wrapper::Node & node_;
+  rclcpp::Node & node_;
   std::shared_ptr<Odometry> odometry_;
 
-  std::vector<AUTOWARE_SUBSCRIPTION_PTR(autoware_perception_msgs::msg::DetectedObjects)>
+  std::vector<rclcpp::Subscription<autoware_perception_msgs::msg::DetectedObjects>::SharedPtr>
     sub_objects_array_{};
 
   bool is_initialized_{false};

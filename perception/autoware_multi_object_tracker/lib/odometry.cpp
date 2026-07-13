@@ -18,6 +18,8 @@
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
+#include <tf2_ros/create_timer_ros.h>
+
 #include <memory>
 #include <string>
 
@@ -25,15 +27,19 @@ namespace autoware::multi_object_tracker
 {
 
 Odometry::Odometry(
-  autoware::agnocast_wrapper::Node & node, const std::string & world_frame_id,
-  const std::string & ego_frame_id, bool enable_odometry_uncertainty)
+  rclcpp::Node & node, const std::string & world_frame_id, const std::string & ego_frame_id,
+  bool enable_odometry_uncertainty)
 : node_(node),
   ego_frame_id_(ego_frame_id),
   world_frame_id_(world_frame_id),
   tf_buffer_(node_.get_clock()),
-  tf_listener_(tf_buffer_, node_),
+  tf_listener_(tf_buffer_),
   enable_odometry_uncertainty_(enable_odometry_uncertainty)
 {
+  // Create tf timer
+  auto cti = std::make_shared<tf2_ros::CreateTimerROS>(
+    node_.get_node_base_interface(), node_.get_node_timers_interface());
+  tf_buffer_.setCreateTimerInterface(cti);
 }
 
 void Odometry::updateTfCache(
