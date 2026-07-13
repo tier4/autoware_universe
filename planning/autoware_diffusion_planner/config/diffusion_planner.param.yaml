@@ -36,6 +36,8 @@
     line_string_max_step_m: 5.0
     use_time_interpolation: false
     ego_snap_to_prev_trajectory: true
+    ego_snap_max_position_error_m: 0.3
+    ego_snap_max_yaw_error_deg: 5.0
     use_mppi_optimizer: false
     shadow_mode: false
     planning_factor:

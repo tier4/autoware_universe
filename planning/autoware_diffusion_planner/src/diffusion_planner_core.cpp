@@ -304,20 +304,42 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
       kinematic_state.pose.pose.position.x, kinematic_state.pose.pose.position.y, prev_trajectory);
     const Eigen::Matrix4d & snapped_pose = projection.pose;
 
-    kinematic_state.pose.pose.position.x = snapped_pose(0, 3);
-    kinematic_state.pose.pose.position.y = snapped_pose(1, 3);
-    const Eigen::Quaterniond q(snapped_pose.block<3, 3>(0, 0));
-    kinematic_state.pose.pose.orientation.x = q.x();
-    kinematic_state.pose.pose.orientation.y = q.y();
-    kinematic_state.pose.pose.orientation.z = q.z();
-    kinematic_state.pose.pose.orientation.w = q.w();
+    // Reject the snap when the actual ego pose is too far (in position or heading) from the
+    // snapped pose. In that case the previous planning trajectory no longer reflects reality
+    // (e.g. large tracking error or a disturbance), so keeping the raw ego pose is safer than
+    // forcing it onto a stale trajectory.
+    const double position_error_m = std::hypot(
+      kinematic_state.pose.pose.position.x - snapped_pose(0, 3),
+      kinematic_state.pose.pose.position.y - snapped_pose(1, 3));
+    const Eigen::Quaterniond current_q(
+      kinematic_state.pose.pose.orientation.w, kinematic_state.pose.pose.orientation.x,
+      kinematic_state.pose.pose.orientation.y, kinematic_state.pose.pose.orientation.z);
+    const double current_yaw =
+      std::atan2(current_q.toRotationMatrix()(1, 0), current_q.toRotationMatrix()(0, 0));
+    const double snapped_yaw = std::atan2(snapped_pose(1, 0), snapped_pose(0, 0));
+    const double yaw_error_rad = std::abs(
+      std::atan2(std::sin(current_yaw - snapped_yaw), std::cos(current_yaw - snapped_yaw)));
 
-    // The polyline's first vertex is the previous planning start (t = 0) and each subsequent
-    // vertex advances by one prediction time step, so the interpolation index (segment index +
-    // intra-segment ratio) maps to time via the per-step duration.
-    snapped_pose_opt = snapped_pose;
-    snapped_interpolation_time_s_opt =
-      projection.interpolation_index * constants::PREDICTION_TIME_STEP_S;
+    const double yaw_error_deg = yaw_error_rad * 180.0 / M_PI;
+
+    if (
+      position_error_m <= params_.ego_snap_max_position_error_m &&
+      yaw_error_deg <= params_.ego_snap_max_yaw_error_deg) {
+      kinematic_state.pose.pose.position.x = snapped_pose(0, 3);
+      kinematic_state.pose.pose.position.y = snapped_pose(1, 3);
+      const Eigen::Quaterniond q(snapped_pose.block<3, 3>(0, 0));
+      kinematic_state.pose.pose.orientation.x = q.x();
+      kinematic_state.pose.pose.orientation.y = q.y();
+      kinematic_state.pose.pose.orientation.z = q.z();
+      kinematic_state.pose.pose.orientation.w = q.w();
+
+      // The polyline's first vertex is the previous planning start (t = 0) and each subsequent
+      // vertex advances by one prediction time step, so the interpolation index (segment index +
+      // intra-segment ratio) maps to time via the per-step duration.
+      snapped_pose_opt = snapped_pose;
+      snapped_interpolation_time_s_opt =
+        projection.interpolation_index * constants::PREDICTION_TIME_STEP_S;
+    }
   }
 
   // Get transforms

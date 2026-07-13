@@ -140,6 +140,8 @@ struct DiffusionPlannerParams
   double line_string_max_step_m;
   bool use_time_interpolation;
   bool ego_snap_to_prev_trajectory;
+  double ego_snap_max_position_error_m;
+  double ego_snap_max_yaw_error_deg;
   int dpm_solver_steps;
   double start_guidance_reference_distance_m;
   double start_guidance_max_scale;
