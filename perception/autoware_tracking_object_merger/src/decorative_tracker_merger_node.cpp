@@ -106,6 +106,16 @@ DecorativeTrackerMergerNode::DecorativeTrackerMergerNode(const rclcpp::NodeOptio
   debug_object_pub_ =
     create_publisher<TrackedObjects>("debug/interpolated_sub_object", rclcpp::QoS{1});
 
+  RCLCPP_INFO(
+    this->get_logger(),
+    "[AGN_DEBUG] decorative_tracker_merger resolved topics: "
+    "input/main_object='%s' input/sub_object='%s' output/object='%s'",
+    this->get_node_base_interface()->resolve_topic_or_service_name("input/main_object", false)
+      .c_str(),
+    this->get_node_base_interface()->resolve_topic_or_service_name("input/sub_object", false)
+      .c_str(),
+    this->get_node_base_interface()->resolve_topic_or_service_name("output/object", false).c_str());
+
   // logging
   logging_.enable = declare_parameter<bool>("enable_logging");
   logging_.path = declare_parameter<std::string>("logging_file_path");
@@ -211,6 +221,16 @@ void DecorativeTrackerMergerNode::mainObjectsCallback(
   stop_watch_ptr_->toc("delay_main_objects", true);
   diagnostics_interface_ptr_->clear();
 
+  {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] decorative_tracker_merger received main_object (input/main_object): "
+      "%zu objects, stamp=%d.%09u",
+      main_objects->objects.size(), main_objects->header.stamp.sec,
+      main_objects->header.stamp.nanosec);
+  }
+
   // check if main objects is empty and duration
   if (main_objects->objects.empty() && is_empty_previous_main_objects_) {
     is_empty_previous_main_objects_ = true;
@@ -225,6 +245,12 @@ void DecorativeTrackerMergerNode::mainObjectsCallback(
   TrackedObjects transformed_objects;
   if (!autoware::object_recognition_utils::transformObjects(
         *main_objects, merge_frame_id_, tf_buffer_, transformed_objects)) {
+    static rclcpp::Clock agn_debug_tf_fail_clock{RCL_STEADY_TIME};
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), agn_debug_tf_fail_clock, 1000,
+      "[AGN_DEBUG] decorative_tracker_merger dropping main_object: "
+      "transformObjects to frame '%s' failed (TF unavailable?)",
+      merge_frame_id_.c_str());
     return;
   }
   TrackedObjects::ConstSharedPtr transformed_main_objects =
@@ -298,10 +324,25 @@ void DecorativeTrackerMergerNode::subObjectsCallback(
   stop_watch_ptr_->toc("delay_sub_objects", true);
   diagnostics_interface_ptr_->clear();
 
+  {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] decorative_tracker_merger received sub_object (input/sub_object): "
+      "%zu objects, stamp=%d.%09u",
+      msg->objects.size(), msg->header.stamp.sec, msg->header.stamp.nanosec);
+  }
+
   /* transform to target merge coordinate */
   TrackedObjects transformed_objects;
   if (!autoware::object_recognition_utils::transformObjects(
         *msg, merge_frame_id_, tf_buffer_, transformed_objects)) {
+    static rclcpp::Clock agn_debug_tf_fail_clock{RCL_STEADY_TIME};
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), agn_debug_tf_fail_clock, 1000,
+      "[AGN_DEBUG] decorative_tracker_merger dropping sub_object: "
+      "transformObjects to frame '%s' failed (TF unavailable?)",
+      merge_frame_id_.c_str());
     return;
   }
   TrackedObjects::ConstSharedPtr transformed_sub_objects =

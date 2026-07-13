@@ -484,6 +484,11 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
   // publishers
   pub_objects_ = this->create_publisher<PredictedObjects>("~/output/objects", rclcpp::QoS{1});
 
+  RCLCPP_INFO(
+    this->get_logger(),
+    "[AGN_DEBUG] map_based_prediction resolved topics: ~/input/objects='%s' ~/output/objects='%s'",
+    sub_objects_->get_topic_name(), pub_objects_->get_topic_name());
+
   // stopwatch
   stop_watch_ptr_ = std::make_unique<autoware_utils::StopWatch<std::chrono::milliseconds>>();
   stop_watch_ptr_->tic("cyclic_time");
@@ -601,6 +606,8 @@ void MapBasedPredictionNode::updateDiagnostics(
 void MapBasedPredictionNode::mapCallback(const LaneletMapBin::ConstSharedPtr msg)
 {
   RCLCPP_DEBUG(get_logger(), "[Map Based Prediction]: Start loading lanelet");
+  RCLCPP_INFO(
+    get_logger(), "[AGN_DEBUG] map_based_prediction received LaneletMapBin on /vector_map");
   lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::remove_const(
     autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*msg));
 
@@ -632,6 +639,15 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
 
   stop_watch_ptr_->toc("processing_time", true);
 
+  {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] map_based_prediction received TrackedObjects on ~/input/objects: "
+      "%zu objects, stamp=%d.%09u",
+      in_objects->objects.size(), in_objects->header.stamp.sec, in_objects->header.stamp.nanosec);
+  }
+
   // take traffic_signal
   {
     const auto msg = sub_traffic_signals_.take_data();
@@ -642,6 +658,11 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
 
   // Guard for map pointer and frame transformation
   if (!lanelet_map_ptr_) {
+    static rclcpp::Clock agn_debug_no_map_clock{RCL_STEADY_TIME};
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), agn_debug_no_map_clock, 1000,
+      "[AGN_DEBUG] map_based_prediction dropping objectsCallback: lanelet_map_ptr_ is null "
+      "(no lanelet map received yet on /vector_map)");
     return;
   }
 
@@ -653,7 +674,14 @@ void MapBasedPredictionNode::objectsCallback(const TrackedObjects::ConstSharedPt
       "map",                        // target
       in_objects->header.frame_id,  // src
       in_objects->header.stamp, rclcpp::Duration::from_seconds(0.1));
-    if (!world2map_transform) return;
+    if (!world2map_transform) {
+      static rclcpp::Clock agn_debug_no_tf_clock{RCL_STEADY_TIME};
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), agn_debug_no_tf_clock, 1000,
+        "[AGN_DEBUG] map_based_prediction dropping objectsCallback: no TF from '%s' to 'map'",
+        in_objects->header.frame_id.c_str());
+      return;
+    }
   }
 
   // Get objects detected time

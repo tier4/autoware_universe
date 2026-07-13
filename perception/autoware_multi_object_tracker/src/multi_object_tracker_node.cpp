@@ -464,6 +464,15 @@ void MultiObjectTracker::publish(const rclcpp::Time & time) const
 
   // Publish
   tracked_objects_pub_->publish(output_msg);
+  {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_INFO_THROTTLE(
+      this->get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] multi_object_tracker published TrackedObjects on '%s': %zu objects, "
+      "stamp=%d.%09u",
+      tracked_objects_pub_->get_topic_name(), output_msg.objects.size(),
+      output_msg.header.stamp.sec, output_msg.header.stamp.nanosec);
+  }
 
   if (publish_merged_objects_) {
     const auto tf_base_to_world = odometry_->getTransform(time);
