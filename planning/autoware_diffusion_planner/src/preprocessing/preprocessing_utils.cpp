@@ -205,11 +205,15 @@ std::vector<float> create_ego_agent_past(
 
 std::vector<float> create_sampled_trajectories(const double temperature)
 {
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::normal_distribution<float> dist(0.0f, 1.0f);
   std::vector<float> sampled_trajectories(
-    g_num_prediction_agents * g_sampled_trajectory_len * POSE_DIM);
+    static_cast<size_t>(g_num_prediction_agents) * g_sampled_trajectory_len * POSE_DIM, 0.0f);
+  // At temperature 0 the latent is pure zeros (matches training noise_scale=0); skip the RNG.
+  if (temperature == 0.0) {
+    return sampled_trajectories;
+  }
+  // Reuse a persistent generator instead of reseeding a random_device + mt19937 every cycle.
+  static thread_local std::mt19937 gen{std::random_device{}()};
+  std::normal_distribution<float> dist(0.0f, 1.0f);
   for (float & val : sampled_trajectories) {
     val = dist(gen) * static_cast<float>(temperature);
   }

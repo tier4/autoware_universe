@@ -103,6 +103,14 @@ inline PredictionDims load_prediction_dims(
   const int64_t future_len = (j.contains("future_len") && !j["future_len"].is_null())
                                ? j["future_len"].get<int64_t>()
                                : output_t;
+  // The prediction horizon (OUTPUT_T) is compile-time constant throughout the node; a model with a
+  // different future_len would be silently mis-parsed. Fail with a clear message instead.
+  if (future_len != output_t) {
+    throw std::runtime_error(
+      "Model future_len (" + std::to_string(future_len) + ") does not match the node's OUTPUT_T (" +
+      std::to_string(output_t) + "). This build only supports future_len == " +
+      std::to_string(output_t) + ".");
+  }
   const bool temporal_decoder = j.contains("decoder_tokenization") &&
                                 j["decoder_tokenization"].is_string() &&
                                 j["decoder_tokenization"].get<std::string>() == "temporal";
