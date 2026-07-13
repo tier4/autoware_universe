@@ -91,7 +91,7 @@ void append_tensorrt_provider(
 
 std::vector<FloatInput> single_step_float_inputs(const preprocess::InputDataMap & input_data_map)
 {
-  return {
+  std::vector<FloatInput> inputs = {
     {"sampled_trajectories", &input_data_map.at("sampled_trajectories")},
     {"ego_agent_past", &input_data_map.at("ego_agent_past")},
     {"ego_current_state", &input_data_map.at("ego_current_state")},
@@ -105,8 +105,12 @@ std::vector<FloatInput> single_step_float_inputs(const preprocess::InputDataMap 
     {"line_strings", &input_data_map.at("line_strings")},
     {"goal_pose", &input_data_map.at("goal_pose")},
     {"ego_shape", &input_data_map.at("ego_shape")},
-    {"turn_indicators", &input_data_map.at("turn_indicators")},
-    {"delay", &input_data_map.at("delay")}};
+    {"turn_indicators", &input_data_map.at("turn_indicators")}};
+  // Legacy waypoint models take a `delay` input; temporal velocity models do not expose it.
+  if (g_sampled_trajectory_len > OUTPUT_T) {
+    inputs.push_back({"delay", &input_data_map.at("delay")});
+  }
+  return inputs;
 }
 
 std::vector<FloatInput> encoder_float_inputs(const preprocess::InputDataMap & input_data_map)
@@ -227,8 +231,9 @@ std::unordered_map<std::string, std::vector<float>> OrtModel::run(
     if (name == "sampled_trajectories") {
       add_float_tensor(
         name, data,
-        {static_cast<int64_t>(data.size() / (MAX_NUM_AGENTS * (OUTPUT_T + 1) * POSE_DIM)),
-         MAX_NUM_AGENTS, OUTPUT_T + 1, POSE_DIM});
+        {static_cast<int64_t>(
+           data.size() / (g_num_prediction_agents * g_sampled_trajectory_len * POSE_DIM)),
+         g_num_prediction_agents, g_sampled_trajectory_len, POSE_DIM});
     } else if (name == "ego_agent_past") {
       add_float_tensor(
         name, data,

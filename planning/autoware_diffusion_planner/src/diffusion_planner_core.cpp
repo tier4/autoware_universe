@@ -116,6 +116,19 @@ void DiffusionPlannerCore::load_model()
     "Prediction dimensions: num_prediction_agents=%ld, sampled_trajectory_len=%ld",
     static_cast<long>(g_num_prediction_agents), static_cast<long>(g_sampled_trajectory_len));
 
+  // Velocity-latent (temporal ego) models integrate displacements into absolute waypoints inside
+  // the ONNX graph and expect a pure-noise latent with no current-state prefix. The multi_step
+  // path (external DPM solver, waypoint prefix constraint, waypoint-space start/stop/centerline
+  // guidance, waypoint-statistics denormalization, no cumsum) assumes the legacy waypoint latent
+  // and would silently emit invalid trajectories. Fail fast on that mismatch instead.
+  const bool is_velocity_latent = g_sampled_trajectory_len <= OUTPUT_T;
+  if (is_velocity_latent && params_.model_type != "single_step") {
+    throw std::runtime_error(
+      "Velocity-representation (temporal ego) weights require model.type='single_step'; got '" +
+      params_.model_type + "'. The multi_step path assumes the legacy waypoint latent and is "
+                           "incompatible with this model.");
+  }
+
   observation_normalization_ = utils::load_observation_normalization(params_.args_path);
   state_normalization_ = utils::load_state_normalization(params_.args_path);
 
