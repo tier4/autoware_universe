@@ -219,6 +219,19 @@ If the target object is inside the road or crosswalk, this module outputs one or
 
 In the case where the target object is inside the road, the additional path(s) to reach the nearest crosswalk are only generated if the distance between the object and the crosswalk is not higher than parameter `max_crosswalk_user_on_road_distance`.
 
+#### Cutting predicted paths at road boundaries (for pedestrians and bicycles)
+
+The straight predicted path of a pedestrian or bicycle is cut where it first crosses a road boundary (a lanelet linestring whose `type` is listed in `road_border.boundary_types`, `road_border` by default), but only when the object can stop before that boundary within the class-specific maximum deceleration `path_cut.max_deceleration.{pedestrian,bicycle}`. The stopping distance uses the constant-deceleration model $v^2 / (2a)$. When the object cannot stop in time it is assumed to keep crossing, so the path is left uncut. No cut is applied when the crossing point lies inside a crosswalk or walkway, since crossing there is expected.
+
+This is separate from the unconditional cuts applied for fences and vegetation.
+
+| Parameter                            | Unit    | Type          | Description                                                          |
+| ------------------------------------ | ------- | ------------- | ------------------------------------------------------------------- |
+| `road_border.enable`                 | -       | bool          | enable the deceleration-aware road-boundary path cut                |
+| `road_border.boundary_types`         | -       | list(string)  | lanelet linestring types treated as road boundary                   |
+| `path_cut.max_deceleration.pedestrian` | [m/s^2] | double      | max deceleration used to decide whether a pedestrian can stop        |
+| `path_cut.max_deceleration.bicycle`  | [m/s^2] | double        | max deceleration used to decide whether a bicycle can stop           |
+
 ## Inputs / Outputs
 
 ### Input

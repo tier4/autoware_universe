@@ -1,0 +1,208 @@
+// Copyright 2026 TIER IV, inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "autoware/map_based_prediction/path_cut/path_cut_utils.hpp"
+#include "autoware/map_based_prediction/predictor_vru/road_border.hpp"
+
+#include <autoware_lanelet2_extension/utility/query.hpp>
+
+#include <autoware_perception_msgs/msg/object_classification.hpp>
+#include <autoware_perception_msgs/msg/tracked_object.hpp>
+
+#include <gtest/gtest.h>
+#include <lanelet2_core/primitives/Lanelet.h>
+#include <lanelet2_core/primitives/LineString.h>
+#include <lanelet2_core/primitives/Point.h>
+
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace autoware::map_based_prediction
+{
+namespace
+{
+using autoware_perception_msgs::msg::ObjectClassification;
+using autoware_perception_msgs::msg::TrackedObject;
+
+// road border is a vertical line crossing the straight path (along +x) at x = kBorderX.
+constexpr double kBorderX = 5.5;
+
+lanelet::LineString3d make_road_border(const lanelet::Id id)
+{
+  lanelet::LineString3d border(
+    id, {lanelet::Point3d(id + 1, kBorderX, -10.0, 0.0),
+         lanelet::Point3d(id + 2, kBorderX, 10.0, 0.0)});
+  border.attributes()[lanelet::AttributeNamesString::Type] = std::string("road_border");
+  return border;
+}
+
+// crosswalk rectangle covering x in [x_min, x_max], y in [-2, 2].
+lanelet::Lanelet make_crosswalk(const lanelet::Id id, const double x_min, const double x_max)
+{
+  const lanelet::LineString3d left(
+    id + 1,
+    {lanelet::Point3d(id + 2, x_min, -2.0, 0.0), lanelet::Point3d(id + 3, x_max, -2.0, 0.0)});
+  const lanelet::LineString3d right(
+    id + 4, {lanelet::Point3d(id + 5, x_min, 2.0, 0.0), lanelet::Point3d(id + 6, x_max, 2.0, 0.0)});
+  lanelet::Lanelet crosswalk(id, left, right);
+  crosswalk.attributes()[lanelet::AttributeNamesString::Subtype] = std::string("crosswalk");
+  return crosswalk;
+}
+
+std::shared_ptr<lanelet::LaneletMap> make_map()
+{
+  return lanelet::utils::createMap(lanelet::LineStrings3d{make_road_border(100)});
+}
+
+std::shared_ptr<lanelet::LaneletMap> make_map_with_crosswalk(const double x_min, const double x_max)
+{
+  std::shared_ptr<lanelet::LaneletMap> map =
+    lanelet::utils::createMap(lanelet::Lanelets{make_crosswalk(200, x_min, x_max)});
+  map->add(make_road_border(100));
+  return map;
+}
+
+PredictedPath make_straight_path(const size_t num_poses)
+{
+  PredictedPath path;
+  path.confidence = 1.0F;
+  path.time_step.sec = 0;
+  path.time_step.nanosec = 500000000;
+  for (size_t i = 0; i < num_poses; ++i) {
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = static_cast<double>(i);
+    pose.position.y = 0.0;
+    path.path.push_back(pose);
+  }
+  return path;
+}
+
+TrackedObject make_object(const uint8_t label, const double speed)
+{
+  TrackedObject object;
+  ObjectClassification classification;
+  classification.label = label;
+  classification.probability = 1.0;
+  object.classification.push_back(classification);
+  object.kinematics.twist_with_covariance.twist.linear.x = speed;
+  return object;
+}
+
+RoadBorderModule make_module(std::shared_ptr<lanelet::LaneletMap> map)
+{
+  RoadBorderModule module;
+  module.build_from_map(std::move(map), {"road_border"});
+  return module;
+}
+
+TEST(RoadBorderModule, CutsWhenPedestrianCanStopBeforeBorder)
+{
+  const auto module = make_module(make_map());
+  const auto path = make_straight_path(11);
+  const auto object = make_object(ObjectClassification::PEDESTRIAN, 1.0);
+  path_cut::MaxDecelerationParams params;
+  params.pedestrian = 2.0;  // stopping distance 0.25 << border distance 5.5
+
+  const auto cut = module.cut_path_at_road_border(path, object, params);
+
+  EXPECT_LT(cut.path.size(), path.path.size());
+  ASSERT_FALSE(cut.path.empty());
+  EXPECT_LT(cut.path.back().position.x, kBorderX);
+}
+
+TEST(RoadBorderModule, KeepsPathWhenPedestrianCannotStop)
+{
+  const auto module = make_module(make_map());
+  const auto path = make_straight_path(11);
+  const auto object = make_object(ObjectClassification::PEDESTRIAN, 5.0);
+  path_cut::MaxDecelerationParams params;
+  params.pedestrian = 0.5;  // stopping distance 25 > border distance 5.5
+
+  const auto cut = module.cut_path_at_road_border(path, object, params);
+
+  EXPECT_EQ(cut.path.size(), path.path.size());
+}
+
+TEST(RoadBorderModule, DoesNotCutInsideCrosswalk)
+{
+  const auto module = make_module(make_map_with_crosswalk(4.0, 7.0));
+  const auto path = make_straight_path(11);
+  const auto object = make_object(ObjectClassification::PEDESTRIAN, 1.0);
+  path_cut::MaxDecelerationParams params;
+  params.pedestrian = 2.0;  // would cut, but crossing is inside the crosswalk
+
+  const auto cut = module.cut_path_at_road_border(path, object, params);
+
+  EXPECT_EQ(cut.path.size(), path.path.size());
+}
+
+TEST(RoadBorderModule, DoesNotCutJustOutsideCrosswalkWithinMargin)
+{
+  // crossing at x = 5.5 is 0.5 m from the crosswalk edge at x = 6.0 (within the 1.0 m margin).
+  const auto module = make_module(make_map_with_crosswalk(6.0, 9.0));
+  const auto path = make_straight_path(11);
+  const auto object = make_object(ObjectClassification::PEDESTRIAN, 1.0);
+  path_cut::MaxDecelerationParams params;
+  params.pedestrian = 2.0;
+
+  const auto cut = module.cut_path_at_road_border(path, object, params);
+
+  EXPECT_EQ(cut.path.size(), path.path.size());
+}
+
+TEST(RoadBorderModule, CutsWhenCrosswalkIsBeyondMargin)
+{
+  // crossing at x = 5.5 is 2.5 m from the crosswalk edge at x = 8.0 (beyond the 1.0 m margin).
+  const auto module = make_module(make_map_with_crosswalk(8.0, 11.0));
+  const auto path = make_straight_path(11);
+  const auto object = make_object(ObjectClassification::PEDESTRIAN, 1.0);
+  path_cut::MaxDecelerationParams params;
+  params.pedestrian = 2.0;
+
+  const auto cut = module.cut_path_at_road_border(path, object, params);
+
+  EXPECT_LT(cut.path.size(), path.path.size());
+}
+
+TEST(RoadBorderModule, KeepsPathWhenNoBorderCrossing)
+{
+  const auto module = make_module(make_map());
+  const auto path = make_straight_path(4);  // reaches only x = 3, border at 5.5
+  const auto object = make_object(ObjectClassification::PEDESTRIAN, 1.0);
+  path_cut::MaxDecelerationParams params;
+  params.pedestrian = 2.0;
+
+  const auto cut = module.cut_path_at_road_border(path, object, params);
+
+  EXPECT_EQ(cut.path.size(), path.path.size());
+}
+
+TEST(RoadBorderModule, UsesClassSpecificDeceleration)
+{
+  const auto module = make_module(make_map());
+  const auto path = make_straight_path(11);
+  path_cut::MaxDecelerationParams params;
+  params.pedestrian = 0.1;  // stopping distance 20 > 5.5 -> keep
+  params.bicycle = 10.0;    // stopping distance 0.2 < 5.5 -> cut
+
+  const auto pedestrian = make_object(ObjectClassification::PEDESTRIAN, 2.0);
+  const auto bicycle = make_object(ObjectClassification::BICYCLE, 2.0);
+
+  EXPECT_EQ(module.cut_path_at_road_border(path, pedestrian, params).path.size(), path.path.size());
+  EXPECT_LT(module.cut_path_at_road_border(path, bicycle, params).path.size(), path.path.size());
+}
+
+}  // namespace
+}  // namespace autoware::map_based_prediction

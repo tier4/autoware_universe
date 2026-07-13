@@ -73,6 +73,11 @@
         bicycle: 1.0
         motorcycle: 2.0
 
+    # deceleration-aware path cut for pedestrians/bicycles at road boundaries
+    road_border:
+      enable: true
+      boundary_types: ["road_border"] # lanelet linestring types treated as road boundary
+
     # debug parameters
     publish_processing_time: false
     publish_processing_time_detail: false

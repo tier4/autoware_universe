@@ -16,9 +16,11 @@
 #define AUTOWARE__MAP_BASED_PREDICTION__PREDICTOR_VRU__PREDICTOR_VRU_HPP_
 
 #include "autoware/map_based_prediction/data_structure.hpp"
+#include "autoware/map_based_prediction/path_cut/path_cut_utils.hpp"
 #include "autoware/map_based_prediction/path_generator/path_generator.hpp"
 #include "autoware/map_based_prediction/predictor_vru/fence.hpp"
 #include "autoware/map_based_prediction/predictor_vru/history.hpp"
+#include "autoware/map_based_prediction/predictor_vru/road_border.hpp"
 #include "autoware/map_based_prediction/predictor_vru/traffic_signal.hpp"
 #include "autoware/map_based_prediction/predictor_vru/vegetation.hpp"
 
@@ -32,6 +34,7 @@
 #include <lanelet2_core/LaneletMap.h>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace autoware::map_based_prediction
@@ -51,6 +54,9 @@ public:
     double max_crosswalk_user_on_road_distance{2.0};
     // Signal interaction
     bool use_crosswalk_signal{true};
+    // Road-border deceleration-aware path cut
+    bool road_border_enable{true};
+    std::vector<std::string> road_border_boundary_types{"road_border"};
     // Sub-module params
     TrafficSignalModule::Params traffic_signal;
     CrosswalkUserHistoryManager::Params history;
@@ -71,6 +77,11 @@ public:
   }
 
   const Params & getParams() const { return params_; }
+
+  void set_max_deceleration(const path_cut::MaxDecelerationParams & max_decel_params)
+  {
+    max_decel_params_ = max_decel_params;
+  }
 
   void setLaneletMap(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr);
 
@@ -108,10 +119,12 @@ private:
   // Sub-modules
   FenceModule fence_module_;
   VegetationModule vegetation_module_;
+  RoadBorderModule road_border_module_;
   TrafficSignalModule traffic_signal_module_;
   CrosswalkUserHistoryManager history_manager_;
 
   Params params_{};
+  path_cut::MaxDecelerationParams max_decel_params_{};
 
   PredictedObject getPredictedObjectAsCrosswalkUser(
     const TrackedObject & object, const rclcpp::Time & stamp,
