@@ -425,7 +425,10 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_time(
     trajectory_points_.at(lower_idx).pose, trajectory_points_.at(upper_idx).pose, ratio);
 
   return InterpolatedState{
-    motion_utils::calcSignedArcLength(trajectory_points_, 0U, pose.position), pose,
+    interpolation::lerp(
+      static_cast<double>(dist_from_fronts_.at(lower_idx)),
+      static_cast<double>(dist_from_fronts_.at(upper_idx)), ratio),
+    pose,
     interpolation::lerp(
       static_cast<double>(trajectory_points_.at(lower_idx).longitudinal_velocity_mps),
       static_cast<double>(trajectory_points_.at(upper_idx).longitudinal_velocity_mps), ratio)};
@@ -450,7 +453,10 @@ InterpolatedState TrajectoryInterpolator::interpolate_state_from_dist(
     trajectory_points_.at(lower_idx).pose, trajectory_points_.at(upper_idx).pose, ratio);
 
   return InterpolatedState{
-    motion_utils::calcSignedArcLength(trajectory_points_, 0U, pose.position), pose,
+    interpolation::lerp(
+      static_cast<double>(dist_from_fronts_.at(lower_idx)),
+      static_cast<double>(dist_from_fronts_.at(upper_idx)), ratio),
+    pose,
     interpolation::lerp(
       static_cast<double>(trajectory_points_.at(lower_idx).longitudinal_velocity_mps),
       static_cast<double>(trajectory_points_.at(upper_idx).longitudinal_velocity_mps), ratio)};
