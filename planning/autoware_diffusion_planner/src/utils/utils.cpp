@@ -139,7 +139,9 @@ PolylineProjection project_pose_onto_polyline(
   // (closest segment index + intra-segment ratio); position of the foot along the polyline.
   double best_interpolation_index = 0.0;
 
-  for (size_t i = 0; i + 1 < polyline.size(); ++i) {
+  const size_t kMaxIndex = 5;
+
+  for (size_t i = 0; i + 1 <= kMaxIndex && i + 1 < polyline.size(); ++i) {
     // Endpoints of the i-th line segment in the xy-plane.
     const Eigen::Vector2d segment_start(polyline[i](0, 3), polyline[i](1, 3));
     const Eigen::Vector2d segment_end(polyline[i + 1](0, 3), polyline[i + 1](1, 3));
