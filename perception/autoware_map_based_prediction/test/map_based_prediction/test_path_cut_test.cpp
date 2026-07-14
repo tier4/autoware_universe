@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #include "autoware/map_based_prediction/path_cut/path_cut_utils.hpp"
-#include "autoware/map_based_prediction/predictor_vru/road_border.hpp"
+#include "autoware/map_based_prediction/predictor_vru/deceleration_aware_path_cut_vru.hpp"
 
 #include <autoware_lanelet2_extension/utility/query.hpp>
 
@@ -203,14 +203,14 @@ TrackedObject make_object(const uint8_t label, const double speed)
   return object;
 }
 
-RoadBorderModule make_module(std::shared_ptr<lanelet::LaneletMap> map)
+DecelerationAwarePathCutVruModule make_module(std::shared_ptr<lanelet::LaneletMap> map)
 {
-  RoadBorderModule module;
+  DecelerationAwarePathCutVruModule module;
   module.build_from_map(std::move(map), {"road_border"});
   return module;
 }
 
-TEST(RoadBorderModule, CutsWhenPedestrianCanStopBeforeBorder)
+TEST(DecelerationAwarePathCutVruModule, CutsWhenPedestrianCanStopBeforeBorder)
 {
   const auto module = make_module(make_map());
   const auto path = make_straight_path(11);
@@ -218,14 +218,14 @@ TEST(RoadBorderModule, CutsWhenPedestrianCanStopBeforeBorder)
   path_cut::MaxDecelerationParams params;
   params.pedestrian = 2.0;  // stopping distance 0.25 << border distance 5.5
 
-  const auto cut = module.cut_path_at_road_border(path, object, params);
+  const auto cut = module.cut_path_at_boundary(path, object, params);
 
   EXPECT_LT(cut.path.size(), path.path.size());
   ASSERT_FALSE(cut.path.empty());
   EXPECT_LT(cut.path.back().position.x, kBorderX);
 }
 
-TEST(RoadBorderModule, KeepsPathWhenPedestrianCannotStop)
+TEST(DecelerationAwarePathCutVruModule, KeepsPathWhenPedestrianCannotStop)
 {
   const auto module = make_module(make_map());
   const auto path = make_straight_path(11);
@@ -233,12 +233,12 @@ TEST(RoadBorderModule, KeepsPathWhenPedestrianCannotStop)
   path_cut::MaxDecelerationParams params;
   params.pedestrian = 0.5;  // stopping distance 25 > border distance 5.5
 
-  const auto cut = module.cut_path_at_road_border(path, object, params);
+  const auto cut = module.cut_path_at_boundary(path, object, params);
 
   EXPECT_EQ(cut.path.size(), path.path.size());
 }
 
-TEST(RoadBorderModule, DoesNotCutInsideCrosswalk)
+TEST(DecelerationAwarePathCutVruModule, DoesNotCutInsideCrosswalk)
 {
   const auto module = make_module(make_map_with_crosswalk(4.0, 7.0));
   const auto path = make_straight_path(11);
@@ -246,12 +246,12 @@ TEST(RoadBorderModule, DoesNotCutInsideCrosswalk)
   path_cut::MaxDecelerationParams params;
   params.pedestrian = 2.0;  // would cut, but crossing is inside the crosswalk
 
-  const auto cut = module.cut_path_at_road_border(path, object, params);
+  const auto cut = module.cut_path_at_boundary(path, object, params);
 
   EXPECT_EQ(cut.path.size(), path.path.size());
 }
 
-TEST(RoadBorderModule, DoesNotCutJustOutsideCrosswalkWithinMargin)
+TEST(DecelerationAwarePathCutVruModule, DoesNotCutJustOutsideCrosswalkWithinMargin)
 {
   // crossing at x = 5.5 is 0.5 m from the crosswalk edge at x = 6.0 (within the 1.0 m margin).
   const auto module = make_module(make_map_with_crosswalk(6.0, 9.0));
@@ -260,12 +260,12 @@ TEST(RoadBorderModule, DoesNotCutJustOutsideCrosswalkWithinMargin)
   path_cut::MaxDecelerationParams params;
   params.pedestrian = 2.0;
 
-  const auto cut = module.cut_path_at_road_border(path, object, params);
+  const auto cut = module.cut_path_at_boundary(path, object, params);
 
   EXPECT_EQ(cut.path.size(), path.path.size());
 }
 
-TEST(RoadBorderModule, CutsWhenCrosswalkIsBeyondMargin)
+TEST(DecelerationAwarePathCutVruModule, CutsWhenCrosswalkIsBeyondMargin)
 {
   // crossing at x = 5.5 is 2.5 m from the crosswalk edge at x = 8.0 (beyond the 1.0 m margin).
   const auto module = make_module(make_map_with_crosswalk(8.0, 11.0));
@@ -274,12 +274,12 @@ TEST(RoadBorderModule, CutsWhenCrosswalkIsBeyondMargin)
   path_cut::MaxDecelerationParams params;
   params.pedestrian = 2.0;
 
-  const auto cut = module.cut_path_at_road_border(path, object, params);
+  const auto cut = module.cut_path_at_boundary(path, object, params);
 
   EXPECT_LT(cut.path.size(), path.path.size());
 }
 
-TEST(RoadBorderModule, KeepsPathWhenNoBorderCrossing)
+TEST(DecelerationAwarePathCutVruModule, KeepsPathWhenNoBorderCrossing)
 {
   const auto module = make_module(make_map());
   const auto path = make_straight_path(4);  // reaches only x = 3, border at 5.5
@@ -287,12 +287,12 @@ TEST(RoadBorderModule, KeepsPathWhenNoBorderCrossing)
   path_cut::MaxDecelerationParams params;
   params.pedestrian = 2.0;
 
-  const auto cut = module.cut_path_at_road_border(path, object, params);
+  const auto cut = module.cut_path_at_boundary(path, object, params);
 
   EXPECT_EQ(cut.path.size(), path.path.size());
 }
 
-TEST(RoadBorderModule, UsesClassSpecificDeceleration)
+TEST(DecelerationAwarePathCutVruModule, UsesClassSpecificDeceleration)
 {
   const auto module = make_module(make_map());
   const auto path = make_straight_path(11);
@@ -303,8 +303,8 @@ TEST(RoadBorderModule, UsesClassSpecificDeceleration)
   const auto pedestrian = make_object(ObjectClassification::PEDESTRIAN, 2.0);
   const auto bicycle = make_object(ObjectClassification::BICYCLE, 2.0);
 
-  EXPECT_EQ(module.cut_path_at_road_border(path, pedestrian, params).path.size(), path.path.size());
-  EXPECT_LT(module.cut_path_at_road_border(path, bicycle, params).path.size(), path.path.size());
+  EXPECT_EQ(module.cut_path_at_boundary(path, pedestrian, params).path.size(), path.path.size());
+  EXPECT_LT(module.cut_path_at_boundary(path, bicycle, params).path.size(), path.path.size());
 }
 
 }  // namespace

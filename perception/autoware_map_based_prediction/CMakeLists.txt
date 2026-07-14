@@ -35,8 +35,8 @@ ament_auto_add_library(map_based_prediction_node SHARED
   lib/predictor_vru/history.cpp
   lib/predictor_vru/traffic_signal.cpp
   lib/predictor_vru/fence.cpp
-  lib/predictor_vru/vegetation.cpp
-  lib/predictor_vru/road_border.cpp
+  lib/predictor_vru/force_path_cut.cpp
+  lib/predictor_vru/deceleration_aware_path_cut_vru.cpp
   lib/predictor_vru/path_cut_debug.cpp
   lib/path_cut/path_cut_utils.cpp
   lib/utils.cpp

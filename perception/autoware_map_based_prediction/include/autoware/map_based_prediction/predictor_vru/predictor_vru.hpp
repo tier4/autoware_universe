@@ -19,10 +19,10 @@
 #include "autoware/map_based_prediction/path_cut/path_cut_utils.hpp"
 #include "autoware/map_based_prediction/path_generator/path_generator.hpp"
 #include "autoware/map_based_prediction/predictor_vru/fence.hpp"
+#include "autoware/map_based_prediction/predictor_vru/force_path_cut.hpp"
 #include "autoware/map_based_prediction/predictor_vru/history.hpp"
-#include "autoware/map_based_prediction/predictor_vru/road_border.hpp"
+#include "autoware/map_based_prediction/predictor_vru/deceleration_aware_path_cut_vru.hpp"
 #include "autoware/map_based_prediction/predictor_vru/traffic_signal.hpp"
-#include "autoware/map_based_prediction/predictor_vru/vegetation.hpp"
 
 #include <autoware_utils/system/time_keeper.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -54,8 +54,10 @@ public:
     double max_crosswalk_user_on_road_distance{2.0};
     // Signal interaction
     bool use_crosswalk_signal{true};
-    // Road-border deceleration-aware path cut (pedestrian/bicycle)
-    std::vector<std::string> road_border_boundary_types{"road_border", "guard_rail"};
+    // Deceleration-aware path cut boundary types (pedestrian/bicycle)
+    std::vector<std::string> deceleration_aware_boundary_types{"road_border"};
+    // Force path cut (deceleration-agnostic) boundary types
+    std::vector<std::string> force_path_cut_boundary_types{"vegetation", "guard_rail"};
     // Sub-module params
     TrafficSignalModule::Params traffic_signal;
     CrosswalkUserHistoryManager::Params history;
@@ -117,8 +119,8 @@ private:
 
   // Sub-modules
   FenceModule fence_module_;
-  VegetationModule vegetation_module_;
-  RoadBorderModule road_border_module_;
+  ForcePathCutModule force_path_cut_module_;
+  DecelerationAwarePathCutVruModule deceleration_aware_path_cut_module_;
   TrafficSignalModule traffic_signal_module_;
   CrosswalkUserHistoryManager history_manager_;
 

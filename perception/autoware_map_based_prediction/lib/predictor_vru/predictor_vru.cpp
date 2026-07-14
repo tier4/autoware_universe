@@ -150,8 +150,9 @@ void PredictorVru::setLaneletMap(std::shared_ptr<lanelet::LaneletMap> lanelet_ma
   crosswalks_.insert(crosswalks_.end(), walkways.begin(), walkways.end());
 
   fence_module_.buildFromMap(lanelet_map_ptr_);
-  vegetation_module_.build_from_map(lanelet_map_ptr_);
-  road_border_module_.build_from_map(lanelet_map_ptr_, params_.road_border_boundary_types);
+  force_path_cut_module_.build_from_map(lanelet_map_ptr_, params_.force_path_cut_boundary_types);
+  deceleration_aware_path_cut_module_.build_from_map(
+    lanelet_map_ptr_, params_.deceleration_aware_boundary_types);
 }
 
 void PredictorVru::loadCurrentCrosswalkUsers(const TrackedObjects & objects)
@@ -254,7 +255,8 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
       debug_markers, predicted_path, cut_path, predicted_object, PathCutSource::Fence, stamp);
 
     const PredictedPath border_cut_path =
-      road_border_module_.cut_path_at_road_border(cut_path, mutable_object, max_decel_params_);
+      deceleration_aware_path_cut_module_.cut_path_at_boundary(
+        cut_path, mutable_object, max_decel_params_);
     debug::append_path_cut_event_markers(
       debug_markers, cut_path, border_cut_path, predicted_object, PathCutSource::RoadBorder, stamp);
     predicted_object.kinematics.predicted_paths.push_back(border_cut_path);
@@ -401,14 +403,14 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
     predicted_object.kinematics.predicted_paths.push_back(predicted_path);
   }
 
-  const std::vector<PredictedPath> paths_cut_with_vegetation =
-    vegetation_module_.cut_paths_crossing_vegetation(predicted_object);
+  const std::vector<PredictedPath> paths_cut_with_boundary =
+    force_path_cut_module_.cut_paths_crossing_boundary(predicted_object);
 
   debug::append_path_cut_event_markers(
-    debug_markers, predicted_object.kinematics.predicted_paths, paths_cut_with_vegetation,
+    debug_markers, predicted_object.kinematics.predicted_paths, paths_cut_with_boundary,
     predicted_object, PathCutSource::Vegetation, stamp);
 
-  predicted_object.kinematics.predicted_paths = paths_cut_with_vegetation;
+  predicted_object.kinematics.predicted_paths = paths_cut_with_boundary;
   const auto n_path = predicted_object.kinematics.predicted_paths.size();
   for (auto & predicted_path : predicted_object.kinematics.predicted_paths) {
     predicted_path.confidence = 1.0 / n_path;
