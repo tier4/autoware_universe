@@ -53,7 +53,6 @@ constexpr int kMppiHorizon = 80;
 constexpr int kRefHorizon = kMppiHorizon;
 constexpr float kDt = 0.1F;
 constexpr int kNumRollouts = 32 * 1024;
-constexpr float kLambda = 1500.0F;
 constexpr float kInitArcLength = 1.5F;
 constexpr size_t kTrackingIndexResetThreshold = 15U;
 // constexpr int kMaxVizRollouts = 200;  // rollout viz disabled
@@ -84,6 +83,7 @@ void applyUserCostParams(
   cost_params.boundary_threshold_right = user.boundary_threshold_right;
   cost_params.accel_cmd_coeff = user.accel_cmd_coeff;
   cost_params.steer_cmd_coeff = user.steer_cmd_coeff;
+  cost_params.steer_rate_coeff = user.steer_rate_coeff;
   cost_params.lateral_acceleration_coeff = user.lateral_acceleration_coeff;
   cost_params.lateral_jerk_coeff = user.lateral_jerk_coeff;
   cost_params.longitudinal_jerk_coeff = user.longitudinal_jerk_coeff;
@@ -295,7 +295,7 @@ void selectTopRolloutIndices(
 
 void buildRolloutVisualization(
   Mppi & controller, SAMPLER & sampler, DYN & model, const DYN::state_array & x_at_optimization,
-  FirstOrderDubinsMppiDebug & debug)
+  const float lambda, FirstOrderDubinsMppiDebug & debug)
 {
   const Mppi::state_trajectory state_trajectory = controller.getActualStateSeq();
   fillOptimalHorizonPoints(state_trajectory, debug.optimal_horizon);
@@ -311,7 +311,7 @@ void buildRolloutVisualization(
   for (size_t i = 0; i < normalized_weights.size(); ++i) {
     const float w = static_cast<float>(importance(static_cast<int>(i)));
     normalized_weights[i] = (normalizer > 0.0F) ? w / normalizer : 0.0F;
-    raw_costs[i] = (w > 0.0F) ? (baseline - kLambda * std::log(w)) : (baseline + 1.0e30F);
+    raw_costs[i] = (w > 0.0F) ? (baseline - lambda * std::log(w)) : (baseline + 1.0e30F);
   }
 
   std::vector<int> rollout_indices;
@@ -429,7 +429,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     sampler = SAMPLER(sp);
 
     controller = std::make_unique<Mppi>(
-      &model, &cost, &feedback, &sampler, kDt, 1, kLambda, 0.0F, kMppiHorizon, u_nom);
+      &model, &cost, &feedback, &sampler, kDt, 1, user_cost_params_.lambda, 0.0F, kMppiHorizon,
+      u_nom);
     auto cp = controller->getParams();
     cp.dynamics_rollout_dim_ = dim3(32, 2, 1);
     cp.cost_rollout_dim_ = dim3(32, 2, 1);
@@ -451,7 +452,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       "wheel_base=%.2f, max_steer=%.2f, steer_std=%.3f, acc_tau=%.2f, steer_tau=%.2f, "
       "steer_rate_lim=%.2f, vel_rate_lim=%.2f, ego=%.2fx%.2f, axle_to_center=%.2f, "
       "desired_speed=%.2f, boundary_threshold=%.2f, obs_margin=%.2f)",
-      kMppiHorizon, kNumRollouts, kDt, kLambda, vehicle_params.wheel_base,
+      kMppiHorizon, kNumRollouts, kDt, user_cost_params_.lambda, vehicle_params.wheel_base,
       vehicle_params.max_steer_angle, steer_std, vehicle_params.acc_time_constant,
       vehicle_params.steer_time_constant, vehicle_params.steer_rate_lim,
       vehicle_params.vel_rate_lim, vehicle_params.ego_length, vehicle_params.ego_width,
@@ -744,6 +745,9 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
   const int steer_cmd_idx =
     static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
+  const int steer_state_idx =
+    static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE);
+  const float steer_tau = std::max(impl_->vehicle_params.steer_time_constant, 1.0e-4F);
 
   const size_t num_points = std::min(output.points.size(), static_cast<size_t>(kMppiHorizon));
 
@@ -760,6 +764,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     const float tracked_y = state_trajectory(pos_y_idx, col);
     const float tracked_yaw = state_trajectory(yaw_idx, col);
     const float tracked_v = state_trajectory(vel_x_idx, col);
+    const float steer_cmd = u_opt_traj(steer_cmd_idx, col);
+    const float steer_state = state_trajectory(steer_state_idx, col);
 
     const float ref_x = static_cast<float>(in_point.pose.position.x);
     const float ref_y = static_cast<float>(in_point.pose.position.y);
@@ -774,7 +780,10 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     out_point.pose.orientation = quaternionFromYaw(tracked_yaw);
     out_point.longitudinal_velocity_mps = tracked_v;
     out_point.acceleration_mps2 = u_opt_traj(accel_cmd_idx, col);
-    out_point.front_wheel_angle_rad = u_opt_traj(steer_cmd_idx, col);
+    out_point.front_wheel_angle_rad = steer_cmd;
+    // Store first-order steer rate for debug viz / cost-consistent signal:
+    // δ̇ = (steer_cmd - steer) / steer_time_constant
+    out_point.heading_rate_rps = (steer_cmd - steer_state) / steer_tau;
     ++i;
   }
 

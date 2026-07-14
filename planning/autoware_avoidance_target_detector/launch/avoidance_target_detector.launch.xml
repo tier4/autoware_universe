@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
+  <!--
+    Avoidance targets are published by diffusion_planner_node.
+    Keep this launch disabled unless you need the standalone node for debugging.
+  -->
+  <arg name="launch_avoidance_target_detector_node" default="false"/>
+
   <arg name="input_objects" default="/planning/trajectory_generator/neural_network_based_planner/diffusion_planner_node/output/predicted_objects"/>
   <arg name="input_tracked_objects" default="/perception/object_recognition/tracking/objects"/>
   <arg name="input_trajectory" default="/planning/trajectory_generator/neural_network_based_planner/diffusion_planner_node/output/trajectory"/>
@@ -15,22 +21,24 @@
   <arg name="vehicle_info_param_path" default="$(find-pkg-share j6_gen2_description)/config/vehicle_info.param.yaml"/>
   <arg name="use_tracked_objects" default="false"/>
 
-  <node pkg="autoware_avoidance_target_detector" exec="autoware_avoidance_target_detector_node" name="avoidance_target_detector" output="screen">
-    <param from="$(var vehicle_info_param_path)"/>
-    <param name="use_tracked_objects" value="$(var use_tracked_objects)"/>
-    <remap from="~/input/objects" to="$(var input_objects)"/>
-    <remap from="~/input/tracked_objects" to="$(var input_tracked_objects)"/>
-    <remap from="~/input/trajectory" to="$(var input_trajectory)"/>
-    <remap from="~/input/route" to="$(var input_route)"/>
-    <remap from="~/input/lanelet_map_bin" to="$(var input_lanelet_map_bin)"/>
-    <remap from="~/output/avoidance_targets" to="$(var output_avoidance_targets)"/>
-    <remap from="~/output/driving_along_vehicles" to="$(var output_driving_along_vehicles)"/>
-    <remap from="~/output/tracked_avoidance_targets" to="$(var output_tracked_avoidance_targets)"/>
-    <remap from="~/output/tracked_driving_along_vehicles" to="$(var output_tracked_driving_along_vehicles)"/>
-    <remap from="~/debug/avoidance_targets" to="$(var debug_avoidance_targets)"/>
-    <remap from="~/output/drivable_area" to="$(var output_drivable_area)"/>
-    <remap from="~/debug/near_segment_polygon" to="$(var debug_near_segment_polygon)"/>
-    <param name="longitudinal_distance_filter.tolerance_m" value="2.0"/>
-    <param name="lateral_distance_filter.tolerance_m" value="1.0"/>
-  </node>
+  <group if="$(var launch_avoidance_target_detector_node)">
+    <node pkg="autoware_avoidance_target_detector" exec="autoware_avoidance_target_detector_node" name="avoidance_target_detector" output="screen">
+      <param from="$(var vehicle_info_param_path)"/>
+      <param name="use_tracked_objects" value="$(var use_tracked_objects)"/>
+      <remap from="~/input/objects" to="$(var input_objects)"/>
+      <remap from="~/input/tracked_objects" to="$(var input_tracked_objects)"/>
+      <remap from="~/input/trajectory" to="$(var input_trajectory)"/>
+      <remap from="~/input/route" to="$(var input_route)"/>
+      <remap from="~/input/lanelet_map_bin" to="$(var input_lanelet_map_bin)"/>
+      <remap from="~/output/avoidance_targets" to="$(var output_avoidance_targets)"/>
+      <remap from="~/output/driving_along_vehicles" to="$(var output_driving_along_vehicles)"/>
+      <remap from="~/output/tracked_avoidance_targets" to="$(var output_tracked_avoidance_targets)"/>
+      <remap from="~/output/tracked_driving_along_vehicles" to="$(var output_tracked_driving_along_vehicles)"/>
+      <remap from="~/debug/avoidance_targets" to="$(var debug_avoidance_targets)"/>
+      <remap from="~/output/drivable_area" to="$(var output_drivable_area)"/>
+      <remap from="~/debug/near_segment_polygon" to="$(var debug_near_segment_polygon)"/>
+      <param name="longitudinal_distance_filter.tolerance_m" value="2.0"/>
+      <param name="lateral_distance_filter.tolerance_m" value="1.0"/>
+    </node>
+  </group>
 </launch>
