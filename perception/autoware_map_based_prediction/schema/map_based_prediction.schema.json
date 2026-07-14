@@ -296,12 +296,12 @@
                 "pedestrian": {
                   "type": "number",
                   "default": 0.5,
-                  "description": "max deceleration [m/s^2] for pedestrian (road-border path cut)"
+                  "description": "max deceleration [m/s^2] for pedestrian (reserved, not consumed yet)"
                 },
                 "bicycle": {
                   "type": "number",
                   "default": 1.0,
-                  "description": "max deceleration [m/s^2] for bicycle (road-border path cut)"
+                  "description": "max deceleration [m/s^2] for bicycle (reserved, not consumed yet)"
                 },
                 "motorcycle": {
                   "type": "number",
