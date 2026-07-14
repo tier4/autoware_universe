@@ -65,7 +65,7 @@
       signal_retention_timeout: 15.0
       signal_observation_timeout: 20.0
 
-    # deceleration-aware path cut (per-class max deceleration for VRU)
+    # per-class max deceleration [m/s^2] for deceleration-aware path cut (stop-line clip)
     path_cut:
       max_deceleration:
         vehicle: 3.0 #m/s^2
