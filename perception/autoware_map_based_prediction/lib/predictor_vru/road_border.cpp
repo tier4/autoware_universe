@@ -60,14 +60,14 @@ std::vector<autoware_utils_geometry::LineString2d> collect_candidate_road_border
   return linestrings_2d;
 }
 
-double arc_length_to_index(const PredictedPath & predicted_path, const size_t index)
+double arc_length_to_index(const PredictedPath & path, const size_t index)
 {
-  const auto & poses = predicted_path.path;
+  const auto & poses = path.path;
   double length = 0.0;
   for (size_t i = 0; i + 1 < poses.size() && i < index; ++i) {
-    const lanelet::BasicPoint2d here(poses.at(i).position.x, poses.at(i).position.y);
-    const lanelet::BasicPoint2d next(poses.at(i + 1).position.x, poses.at(i + 1).position.y);
-    length += (next - here).norm();
+    const double dx = poses.at(i + 1).position.x - poses.at(i).position.x;
+    const double dy = poses.at(i + 1).position.y - poses.at(i).position.y;
+    length += std::hypot(dx, dy);
   }
   return length;
 }
