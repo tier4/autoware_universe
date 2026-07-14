@@ -287,7 +287,9 @@ DracEvaluation assess_drac_on_blinker_ego_first(
 
   DracEvaluation evaluation{};
   evaluation.method = "map_based, on_blinker, object first";
-  evaluation.risk = identify_risk_level(required_acceleration, DracRiskTable{});
+  DracRiskTable risk_table;
+  risk_table.enable_abandon = true;
+  evaluation.risk = identify_risk_level(required_acceleration, risk_table);
   evaluation.ego_drac_acceleration = required_acceleration;
   evaluation.detail = std::move(last_collision).value_or(std::move(nominal_collision_result));
   return evaluation;
