@@ -23,6 +23,7 @@
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <utility>
 
@@ -143,6 +144,13 @@ double applyDiffLimitFilter(
   const double input_val, const double prev_val, const double dt, const double max_val,
   const double min_val)
 {
+  if (!std::isfinite(input_val)) {
+    return std::isfinite(prev_val) ? prev_val : 0.0;
+  }
+  if (!std::isfinite(prev_val) || !std::isfinite(dt) || dt <= 0.0) {
+    return input_val;
+  }
+
   const double diff_raw = (input_val - prev_val) / dt;
   const double diff = std::min(std::max(diff_raw, min_val), max_val);
   const double filtered_val = prev_val + diff * dt;

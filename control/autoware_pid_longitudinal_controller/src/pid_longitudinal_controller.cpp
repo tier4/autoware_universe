@@ -22,6 +22,7 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <string>
@@ -607,6 +608,11 @@ void PidLongitudinalController::changeControlState(
     if (control_state == ControlState::EMERGENCY) {
       RCLCPP_ERROR(logger_, "Emergency Stop since %s", reason.c_str());
     }
+    // Avoid propagating non-finite previous commands into STOPPED brake hold.
+    if (control_state == ControlState::STOPPED) {
+      m_prev_ctrl_cmd = Motion{};
+      m_prev_raw_ctrl_cmd = Motion{};
+    }
   }
   m_control_state = control_state;
 }
@@ -828,6 +834,10 @@ PidLongitudinalController::Motion PidLongitudinalController::calcCtrlCmd(
     }
     m_debug_values.setValues(DebugValues::TYPE::ACC_CMD_SLOPE_APPLIED, ctrl_cmd_as_pedal_pos.acc);
 
+    // Keep rate-limit history consistent with the stopped command so a previously
+    // contaminated m_prev_ctrl_cmd (e.g. NaN) cannot overwrite the brake hold.
+    m_prev_ctrl_cmd = ctrl_cmd_as_pedal_pos;
+
     RCLCPP_DEBUG(
       logger_, "[Stopped]. vel: %3.3f, acc: %3.3f", ctrl_cmd_as_pedal_pos.vel,
       ctrl_cmd_as_pedal_pos.acc);
@@ -897,8 +907,36 @@ PidLongitudinalController::Motion PidLongitudinalController::calcCtrlCmd(
 
   storeAccelCmd(m_prev_raw_ctrl_cmd.acc);
 
+  if (!std::isfinite(ctrl_cmd_as_pedal_pos.acc)) {
+    RCLCPP_ERROR_THROTTLE(
+      logger_, *clock_, 3000,
+      "Computed acceleration is non-finite before rate limiting. Falling back to stopped_acc.");
+    ctrl_cmd_as_pedal_pos.acc = m_stopped_state_params.acc;
+  }
+  if (!std::isfinite(ctrl_cmd_as_pedal_pos.vel)) {
+    RCLCPP_ERROR_THROTTLE(
+      logger_, *clock_, 3000,
+      "Computed velocity is non-finite before rate limiting. Falling back to 0.");
+    ctrl_cmd_as_pedal_pos.vel = 0.0;
+  }
+  if (!std::isfinite(m_prev_ctrl_cmd.acc) || !std::isfinite(m_prev_ctrl_cmd.vel)) {
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 3000,
+      "Previous control command has non-finite values (vel: %f, acc: %f). Resetting.",
+      m_prev_ctrl_cmd.vel, m_prev_ctrl_cmd.acc);
+    m_prev_ctrl_cmd = ctrl_cmd_as_pedal_pos;
+  }
+
   ctrl_cmd_as_pedal_pos.acc = longitudinal_utils::applyDiffLimitFilter(
     ctrl_cmd_as_pedal_pos.acc, m_prev_ctrl_cmd.acc, control_data.dt, m_max_acc_cmd_diff);
+
+  if (!std::isfinite(ctrl_cmd_as_pedal_pos.acc)) {
+    RCLCPP_ERROR_THROTTLE(
+      logger_, *clock_, 3000,
+      "Acceleration became non-finite after rate limiting. Falling back to stopped_acc.");
+    ctrl_cmd_as_pedal_pos.acc = m_stopped_state_params.acc;
+    m_prev_ctrl_cmd.acc = ctrl_cmd_as_pedal_pos.acc;
+  }
 
   // update debug visualization
   updateDebugVelAcc(control_data);
@@ -919,6 +957,7 @@ autoware_control_msgs::msg::Longitudinal PidLongitudinalController::createCtrlCm
   cmd.stamp = clock_->now();
   cmd.velocity = static_cast<decltype(cmd.velocity)>(ctrl_cmd.vel);
   cmd.acceleration = static_cast<decltype(cmd.acceleration)>(ctrl_cmd.acc);
+  cmd.is_defined_acceleration = std::isfinite(ctrl_cmd.acc);
 
   // store current velocity history
   m_vel_hist.emplace_back(clock_->now(), current_vel);
@@ -927,7 +966,14 @@ autoware_control_msgs::msg::Longitudinal PidLongitudinalController::createCtrlCm
     m_vel_hist.erase(m_vel_hist.begin());
   }
 
-  m_prev_ctrl_cmd = ctrl_cmd;
+  // Do not store non-finite values into the rate-limit history.
+  if (std::isfinite(ctrl_cmd.vel) && std::isfinite(ctrl_cmd.acc)) {
+    m_prev_ctrl_cmd = ctrl_cmd;
+  } else {
+    RCLCPP_ERROR_THROTTLE(
+      logger_, *clock_, 3000,
+      "Skip storing non-finite control command (vel: %f, acc: %f).", ctrl_cmd.vel, ctrl_cmd.acc);
+  }
 
   return cmd;
 }
