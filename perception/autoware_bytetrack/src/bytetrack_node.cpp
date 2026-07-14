@@ -51,11 +51,21 @@ ByteTrackNode::ByteTrackNode(const rclcpp::NodeOptions & node_options)
 void ByteTrackNode::on_connect()
 {
   using std::placeholders::_1;
-  if (
-    objects_pub_->get_subscription_count() == 0 &&
-    objects_pub_->get_intra_process_subscription_count() == 0) {
+  const uint32_t sub_count = objects_pub_->get_subscription_count();
+  const uint32_t intra_count = objects_pub_->get_intra_process_subscription_count();
+  if (sub_count == 0 && intra_count == 0) {
+    // This tears down the input subscription, not just the publish.
+    RCLCPP_WARN(
+      get_logger(),
+      "[AGN_DEBUG] bytetrack RESETTING rect subscription: no subscribers seen on '%s' "
+      "(get_subscription_count()=%u intra=%u)",
+      objects_pub_->get_topic_name(), sub_count, intra_count);
     detection_rect_sub_.reset();
   } else if (!detection_rect_sub_) {
+    RCLCPP_INFO(
+      get_logger(),
+      "[AGN_DEBUG] bytetrack subscribing to rect input: '%s' get_subscription_count()=%u intra=%u",
+      objects_pub_->get_topic_name(), sub_count, intra_count);
     detection_rect_sub_ =
       this->create_subscription<tier4_perception_msgs::msg::DetectedObjectsWithFeature>(
         "~/in/rect", 1, std::bind(&ByteTrackNode::on_rect, this, _1));

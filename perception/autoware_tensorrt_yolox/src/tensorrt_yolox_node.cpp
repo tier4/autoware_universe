@@ -119,13 +119,28 @@ TrtYoloXNode::TrtYoloXNode(const rclcpp::NodeOptions & node_options)
 void TrtYoloXNode::onConnect()
 {
   using std::placeholders::_1;
+  const uint32_t objects_sub_count = objects_pub_->get_subscription_count();
+  const uint32_t objects_intra_count = objects_pub_->get_intra_process_subscription_count();
   if (
-    objects_pub_->get_subscription_count() == 0 &&
-    objects_pub_->get_intra_process_subscription_count() == 0 &&
-    image_pub_.getNumSubscribers() == 0 && mask_pub_.getNumSubscribers() == 0 &&
-    color_mask_pub_.getNumSubscribers() == 0) {
+    objects_sub_count == 0 && objects_intra_count == 0 && image_pub_.getNumSubscribers() == 0 &&
+    mask_pub_.getNumSubscribers() == 0 && color_mask_pub_.getNumSubscribers() == 0) {
+    // This does not merely skip a publish: it tears down the image input, so the node goes
+    // permanently silent until onConnect() fires again with a non-zero count.
+    RCLCPP_WARN(
+      get_logger(),
+      "[AGN_DEBUG] tensorrt_yolox SHUTTING DOWN image subscription: no subscribers seen on '%s' "
+      "(get_subscription_count()=%u intra=%u), image=%d mask=%d color_mask=%d",
+      objects_pub_->get_topic_name(), objects_sub_count, objects_intra_count,
+      static_cast<int>(image_pub_.getNumSubscribers()),
+      static_cast<int>(mask_pub_.getNumSubscribers()),
+      static_cast<int>(color_mask_pub_.getNumSubscribers()));
     image_sub_.shutdown();
   } else if (!image_sub_) {
+    RCLCPP_INFO(
+      get_logger(),
+      "[AGN_DEBUG] tensorrt_yolox subscribing to image input: '%s' get_subscription_count()=%u "
+      "intra=%u",
+      objects_pub_->get_topic_name(), objects_sub_count, objects_intra_count);
     image_sub_ = image_transport::create_subscription(
       this, "~/in/image", std::bind(&TrtYoloXNode::onImage, this, _1), "raw",
       rmw_qos_profile_sensor_data);

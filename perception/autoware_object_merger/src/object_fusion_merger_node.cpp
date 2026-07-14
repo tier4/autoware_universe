@@ -257,9 +257,27 @@ void ObjectFusionMergerNode::callback(
 {
   stop_watch_ptr_->toc("processing_time", true);
 
-  if (
-    fused_objects_pub_->get_subscription_count() < 1 &&
-    other_objects_pub_->get_subscription_count() < 1) {
+  {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] object_fusion_merger received: main=%zu objects sub=%zu objects, stamp=%d.%09u",
+      main_objects_msg->objects.size(), sub_objects_msg->objects.size(),
+      main_objects_msg->header.stamp.sec, main_objects_msg->header.stamp.nanosec);
+  }
+
+  const uint32_t fused_sub_count = fused_objects_pub_->get_subscription_count();
+  const uint32_t other_sub_count = other_objects_pub_->get_subscription_count();
+  if (fused_sub_count < 1 && other_sub_count < 1) {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] object_fusion_merger SKIPPING whole callback: "
+      "get_subscription_count() fused('%s')=%u (intra=%u) other('%s')=%u (intra=%u)",
+      fused_objects_pub_->get_topic_name(), fused_sub_count,
+      fused_objects_pub_->get_intra_process_subscription_count(),
+      other_objects_pub_->get_topic_name(), other_sub_count,
+      other_objects_pub_->get_intra_process_subscription_count());
     return;
   }
 
@@ -282,6 +300,15 @@ void ObjectFusionMergerNode::callback(
   auto other_output = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(other_objects_pub_);
   *fused_output = result.fused_objects;
   *other_output = result.other_objects;
+  {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] object_fusion_merger published: fused('%s')=%zu objects "
+      "other('%s')=%zu objects",
+      fused_objects_pub_->get_topic_name(), fused_output->objects.size(),
+      other_objects_pub_->get_topic_name(), other_output->objects.size());
+  }
   fused_objects_pub_->publish(std::move(fused_output));
   other_objects_pub_->publish(std::move(other_output));
 

@@ -338,8 +338,26 @@ void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::objectCallback(
 {
   stop_watch_ptr_->tic("processing_time");
 
+  {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] object_lanelet_filter received input: %zu objects, stamp=%d.%09u",
+      input_msg->objects.size(), input_msg->header.stamp.sec, input_msg->header.stamp.nanosec);
+  }
+
   // Guard
-  if (object_pub_->get_subscription_count() < 1) return;
+  const uint32_t sub_count = object_pub_->get_subscription_count();
+  if (sub_count < 1) {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] object_lanelet_filter SKIPPING whole callback on '%s': "
+      "get_subscription_count()=%u (intra=%u), %zu input objects dropped",
+      object_pub_->get_topic_name(), sub_count,
+      object_pub_->get_intra_process_subscription_count(), input_msg->objects.size());
+    return;
+  }
 
   auto output_object_msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(object_pub_);
   output_object_msg->header = input_msg->header;
@@ -381,6 +399,15 @@ void ObjectLaneletFilterBase<ObjsMsgType, ObjMsgType>::objectCallback(
   }
 
   const auto output_stamp = output_object_msg->header.stamp;
+  {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] object_lanelet_filter published on '%s': %zu objects, stamp=%d.%09u, "
+      "sub_count=%u",
+      object_pub_->get_topic_name(), output_object_msg->objects.size(), output_stamp.sec,
+      output_stamp.nanosec, sub_count);
+  }
   object_pub_->publish(std::move(output_object_msg));
   published_time_publisher_->publish_if_subscribed(object_pub_, output_stamp);
 

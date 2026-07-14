@@ -330,6 +330,18 @@ void RoiClusterFusionNode::postprocess(
 
 void RoiClusterFusionNode::publish(const ClusterMsgType & output_msg)
 {
+  // [AGN_DEBUG] Unlike the FusionNode base and roi_pointcloud_fusion, this override has no
+  // subscription-count gate: if this line never appears, the collector never completed and the node
+  // is starved of inputs rather than skipping the publish.
+  {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] roi_cluster_fusion published on '%s': %zu feature_objects, sub_count=%u intra=%u",
+      agnocast_pub_ptr_->get_topic_name(), output_msg.feature_objects.size(),
+      agnocast_pub_ptr_->get_subscription_count(),
+      agnocast_pub_ptr_->get_intra_process_subscription_count());
+  }
   // TODO(Koichi98): replace publish function in FusionNode with agnocast_wrapper
   auto agnocast_output_msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(agnocast_pub_ptr_);
   *agnocast_output_msg = output_msg;

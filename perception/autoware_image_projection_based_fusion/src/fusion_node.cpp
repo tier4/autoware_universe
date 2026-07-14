@@ -41,6 +41,43 @@
 
 namespace autoware::image_projection_based_fusion
 {
+
+namespace
+{
+// [AGN_DEBUG] ExportObj is one of DetectedObjects / DetectedObjectsWithFeature / PointCloud2, so the
+// payload size lives under a different member for each. Resolve it at compile time.
+template <class T, class = void>
+struct agn_debug_has_objects : std::false_type
+{
+};
+template <class T>
+struct agn_debug_has_objects<T, std::void_t<decltype(std::declval<const T &>().objects)>>
+: std::true_type
+{
+};
+template <class T, class = void>
+struct agn_debug_has_feature_objects : std::false_type
+{
+};
+template <class T>
+struct agn_debug_has_feature_objects<
+  T, std::void_t<decltype(std::declval<const T &>().feature_objects)>> : std::true_type
+{
+};
+
+template <class T>
+size_t agn_debug_payload_size(const T & msg)
+{
+  if constexpr (agn_debug_has_objects<T>::value) {
+    return msg.objects.size();
+  } else if constexpr (agn_debug_has_feature_objects<T>::value) {
+    return msg.feature_objects.size();
+  } else {
+    (void)msg;
+    return 0;
+  }
+}
+}  // namespace
 using autoware_utils::ScopedTimeTrack;
 
 template <class Msg3D, class Msg2D, class ExportObj>
@@ -563,9 +600,24 @@ void FusionNode<Msg3D, Msg2D, ExportObj>::publish(const ExportObj & output_msg)
     return;
   }
 
-  if (pub_ptr_->get_subscription_count() < 1) {
-    RCLCPP_DEBUG(get_logger(), "No subscribers, skipping publish.");
+  const uint32_t sub_count = pub_ptr_->get_subscription_count();
+  if (sub_count < 1) {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] fusion_node SKIPPING publish on '%s': get_subscription_count()=%u "
+      "(intra=%zu), %zu items dropped",
+      pub_ptr_->get_topic_name(), sub_count, pub_ptr_->get_intra_process_subscription_count(),
+      agn_debug_payload_size(output_msg));
     return;
+  }
+
+  {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] fusion_node published on '%s': %zu items, sub_count=%u",
+      pub_ptr_->get_topic_name(), agn_debug_payload_size(output_msg), sub_count);
   }
 
   pub_ptr_->publish(output_msg);

@@ -214,7 +214,22 @@ void RoiPointCloudFusionNode::publish(const ClusterMsgType & output_msg)
   const auto objects_sub_count = agnocast_pub_ptr_->get_subscription_count() +
                                  agnocast_pub_ptr_->get_intra_process_subscription_count();
   if (objects_sub_count < 1) {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] roi_pointcloud_fusion SKIPPING publish on '%s': "
+      "get_subscription_count()=%u intra=%u, %zu feature_objects dropped",
+      agnocast_pub_ptr_->get_topic_name(), agnocast_pub_ptr_->get_subscription_count(),
+      agnocast_pub_ptr_->get_intra_process_subscription_count(),
+      output_msg.feature_objects.size());
     return;
+  }
+  {
+    static rclcpp::Clock agn_debug_clock{RCL_STEADY_TIME};
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), agn_debug_clock, 1000,
+      "[AGN_DEBUG] roi_pointcloud_fusion published on '%s': %zu feature_objects, sub_count=%u",
+      agnocast_pub_ptr_->get_topic_name(), output_msg.feature_objects.size(), objects_sub_count);
   }
   // TODO(Koichi98): replace publish function in FusionNode with agnocast_wrapper
   auto agnocast_output_msg = ALLOCATE_OUTPUT_MESSAGE_UNIQUE(agnocast_pub_ptr_);
