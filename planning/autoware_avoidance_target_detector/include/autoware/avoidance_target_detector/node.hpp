@@ -15,12 +15,9 @@
 #ifndef AUTOWARE__AVOIDANCE_TARGET_DETECTOR__NODE_HPP_
 #define AUTOWARE__AVOIDANCE_TARGET_DETECTOR__NODE_HPP_
 
-#include "autoware/avoidance_target_detector/boundary.hpp"
-#include "autoware/avoidance_target_detector/object_filtering.hpp"
-#include "autoware/avoidance_target_detector/parameter.hpp"
+#include "autoware/avoidance_target_detector/avoidance_target_detector_logic.hpp"
 #include "autoware_utils/ros/polling_subscriber.hpp"
 
-#include <autoware/trajectory/trajectory_point.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
@@ -42,33 +39,17 @@ using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
 using autoware_planning_msgs::msg::Path;
 using autoware_planning_msgs::msg::Trajectory;
-using autoware_planning_msgs::msg::TrajectoryPoint;
 using visualization_msgs::msg::MarkerArray;
 
 /** ROS 2 node that detects and publishes avoidance target objects. */
 class AvoidanceTargetDetectorNode : public rclcpp::Node
 {
 public:
-  /**
-   * @brief Construct the avoidance target detector node.
-   * @param node_options Node options for component loading.
-   */
   explicit AvoidanceTargetDetectorNode(const rclcpp::NodeOptions & node_options);
 
 private:
-  /**
-   * @brief Callback for incoming predicted objects.
-   * @param msg Predicted objects message.
-   */
   void on_objects(const PredictedObjects::ConstSharedPtr msg);
-
-  /**
-   * @brief Callback for incoming tracked objects.
-   * @param msg Tracked objects message.
-   */
   void on_tracked_objects(const TrackedObjects::ConstSharedPtr msg);
-
-  void update_ego_trajectory(const TrajectoryPoint & ego_point);
 
   rclcpp::Subscription<PredictedObjects>::SharedPtr sub_objects_;
   rclcpp::Subscription<TrackedObjects>::SharedPtr sub_tracked_objects_;
@@ -88,16 +69,10 @@ private:
   rclcpp::Publisher<Path>::SharedPtr pub_drivable_area_path_;
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_near_segment_polygon_;
 
-  std::shared_ptr<ExtendedRouteHandler> extended_route_handler_;
-  PredictedObjectSelector object_selector_;
-  TrackedObjectSelector tracked_object_selector_;
-
+  std::unique_ptr<AvoidanceTargetDetectorLogic> logic_;
   LaneletMapBin::ConstSharedPtr map_bin_;
   Trajectory::ConstSharedPtr trajectory_;
   LaneletRoute::ConstSharedPtr route_;
-
-  autoware::experimental::trajectory::Trajectory<TrajectoryPoint> ego_trajectory_;
-  bool ego_trajectory_built_{false};
 };
 
 }  // namespace autoware::avoidance_target_detector
