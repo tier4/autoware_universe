@@ -35,7 +35,6 @@
 #include <lanelet2_core/LaneletMap.h>
 
 #include <memory>
-#include <string>
 #include <vector>
 
 namespace autoware::map_based_prediction

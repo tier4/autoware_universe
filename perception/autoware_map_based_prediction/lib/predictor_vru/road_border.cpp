@@ -122,7 +122,7 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
   const path_cut::MaxDecelerationParams & max_decel_params) const
 {
   const auto & poses = predicted_path.path;
-  if (!road_border_layer_ || poses.size() < 2) {
+  if (!road_border_layer_ || poses.size() < 2 || !path_cut::shape_has_footprint(object.shape)) {
     return predicted_path;
   }
 

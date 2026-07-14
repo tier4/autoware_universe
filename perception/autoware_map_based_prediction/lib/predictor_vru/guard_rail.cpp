@@ -56,8 +56,8 @@ std::vector<autoware_utils_geometry::LineString2d> collect_candidate_guard_rail_
 
 void GuardRailModule::build_from_map(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr)
 {
+  guard_rail_layer_ = nullptr;
   if (!lanelet_map_ptr) {
-    guard_rail_layer_ = nullptr;
     return;
   }
 
@@ -69,7 +69,9 @@ void GuardRailModule::build_from_map(std::shared_ptr<lanelet::LaneletMap> lanele
         std::const_pointer_cast<lanelet::LineStringData>(linestring.constData()));
     }
   }
-  guard_rail_layer_ = lanelet::utils::createMap(guard_rails);
+  if (!guard_rails.empty()) {
+    guard_rail_layer_ = lanelet::utils::createMap(guard_rails);
+  }
 }
 
 std::vector<PredictedPath> GuardRailModule::cut_paths_crossing_guard_rail(

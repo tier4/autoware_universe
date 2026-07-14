@@ -32,6 +32,8 @@ namespace autoware::map_based_prediction::path_cut
 
 double calc_footprint_search_margin(const autoware_perception_msgs::msg::Shape & shape);
 
+bool shape_has_footprint(const autoware_perception_msgs::msg::Shape & shape);
+
 bool has_required_info(const autoware_perception_msgs::msg::PredictedObject & predicted_object);
 
 lanelet::BoundingBox2d footprint_search_bbox(

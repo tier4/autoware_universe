@@ -52,13 +52,9 @@ double calc_footprint_search_margin(const autoware_perception_msgs::msg::Shape &
   return std::max(shape.dimensions.x, shape.dimensions.y) * 0.5;
 }
 
-bool has_required_info(const autoware_perception_msgs::msg::PredictedObject & predicted_object)
+bool shape_has_footprint(const autoware_perception_msgs::msg::Shape & shape)
 {
   using autoware_perception_msgs::msg::Shape;
-  if (predicted_object.kinematics.predicted_paths.empty()) {
-    return false;
-  }
-  const auto & shape = predicted_object.shape;
   switch (shape.type) {
     case Shape::BOUNDING_BOX:
       return shape.dimensions.x > 0.0 && shape.dimensions.y > 0.0;
@@ -69,6 +65,12 @@ bool has_required_info(const autoware_perception_msgs::msg::PredictedObject & pr
     default:
       return false;
   }
+}
+
+bool has_required_info(const autoware_perception_msgs::msg::PredictedObject & predicted_object)
+{
+  return !predicted_object.kinematics.predicted_paths.empty() &&
+         shape_has_footprint(predicted_object.shape);
 }
 
 lanelet::BoundingBox2d footprint_search_bbox(
