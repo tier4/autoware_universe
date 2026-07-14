@@ -52,6 +52,7 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
     param_name(prefix, "longitudinal_jerk_coeff"), defaults.longitudinal_jerk_coeff);
   node.declare_parameter(
     param_name(prefix, "obstacle_collision_margin"), defaults.obstacle_collision_margin);
+  node.declare_parameter(param_name(prefix, "road_border_margin"), defaults.road_border_margin);
   node.declare_parameter(param_name(prefix, "goal_pos_coeff"), defaults.goal_pos_coeff);
   node.declare_parameter(param_name(prefix, "goal_speed_coeff"), defaults.goal_speed_coeff);
   node.declare_parameter(param_name(prefix, "goal_yaw_coeff"), defaults.goal_yaw_coeff);
@@ -94,6 +95,8 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
     node.get_parameter(param_name(prefix, "longitudinal_jerk_coeff")).as_double());
   params.obstacle_collision_margin = static_cast<float>(
     node.get_parameter(param_name(prefix, "obstacle_collision_margin")).as_double());
+  params.road_border_margin =
+    static_cast<float>(node.get_parameter(param_name(prefix, "road_border_margin")).as_double());
   params.goal_pos_coeff =
     static_cast<float>(node.get_parameter(param_name(prefix, "goal_pos_coeff")).as_double());
   params.goal_speed_coeff =

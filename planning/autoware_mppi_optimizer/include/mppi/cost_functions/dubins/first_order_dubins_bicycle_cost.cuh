@@ -41,6 +41,8 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float ego_axle_to_box_center = 0.2F;
   /** Added to ego half-length/width in OBB collision test (~standoff to obstacle surfaces). */
   float obstacle_collision_margin = 0.2F;
+  /** Added to ego half-length/width for OBB vs road-border segment tests. */
+  float road_border_margin = 0.2F;
   /** Pull toward ref end position (Euclidean distance [m]); 0 disables. */
   float goal_pos_coeff = 1000.0F;
   /** Pull toward ref end speed: coeff * (v - ref_v_end)^2; 0 disables. */
@@ -60,6 +62,7 @@ class FirstOrderDubinsBicycleCostImpl : public Cost<CLASS_T, PARAMS_T, DYN_PARAM
 public:
   static constexpr int kMaxObstacles = 64;
   static constexpr int kMaxDrivablePolygonVertices = 1024;
+  static constexpr int kMaxRoadBorderSegments = 128;
 
   using PARENT_CLASS = Cost<CLASS_T, PARAMS_T, DYN_PARAMS_T>;
   using output_array = typename PARENT_CLASS::output_array;
@@ -85,6 +88,11 @@ public:
 
   void setDrivableAreaPolygon(const float * x, const float * y, int count);
 
+  /** Open left/right border polylines; converted to consecutive segments (no end caps). */
+  void setRoadBorderPolylines(
+    const float * left_x, const float * left_y, int left_count, const float * right_x,
+    const float * right_y, int right_count);
+
   void clearDrivableArea();
 
   __host__ __device__ float computeTrackValue(float x, float y) const;
@@ -98,9 +106,11 @@ public:
 
   __host__ __device__ bool isOffRoad(const float x, const float y) const;
 
-  /** True when outside drivable polygon (rear axle); falls back to ref lateral offset near the poly
-   * boundary. */
+  /** True on OBB–border collision (with road_border_margin) or rear axle outside polygon. */
   __host__ __device__ bool isEgoOutsideDrivableArea(
+    const float x, const float y, const float yaw) const;
+
+  __host__ __device__ bool egoIntersectsRoadBorders(
     const float x, const float y, const float yaw) const;
 
   __host__ __device__ bool egoIntersectsObstacleAtStep(
@@ -150,6 +160,11 @@ public:
   int num_drivable_vertices_ = 0;
   float drivable_poly_x_[kMaxDrivablePolygonVertices] = {};
   float drivable_poly_y_[kMaxDrivablePolygonVertices] = {};
+  int num_road_border_segments_ = 0;
+  float road_border_x0_[kMaxRoadBorderSegments] = {};
+  float road_border_y0_[kMaxRoadBorderSegments] = {};
+  float road_border_x1_[kMaxRoadBorderSegments] = {};
+  float road_border_y1_[kMaxRoadBorderSegments] = {};
 
 private:
   void dataToDevice();
