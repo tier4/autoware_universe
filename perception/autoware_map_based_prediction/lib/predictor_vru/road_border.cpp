@@ -72,13 +72,30 @@ double arc_length_to_index(const PredictedPath & path, const size_t index)
   return length;
 }
 
-bool point_near_crosswalk(const lanelet::LaneletMap & map, const lanelet::BasicPoint2d & point)
+std::optional<lanelet::BasicPoint2d> first_border_crossing_point(
+  const PredictedPath & predicted_path,
+  const std::vector<autoware_utils_geometry::LineString2d> & borders)
 {
-  // Tolerance so a crossing that lands just outside a crosswalk polygon still counts as inside it:
-  // the road_border linestring and the crosswalk boundary rarely share exact vertices.
-  constexpr double margin = 1.0;
-  const lanelet::BoundingBox2d search_box{
-    point - lanelet::BasicPoint2d{margin, margin}, point + lanelet::BasicPoint2d{margin, margin}};
+  const auto & poses = predicted_path.path;
+  for (size_t i = 0; i + 1 < poses.size(); ++i) {
+    const autoware_utils_geometry::LineString2d segment{
+      {poses.at(i).position.x, poses.at(i).position.y},
+      {poses.at(i + 1).position.x, poses.at(i + 1).position.y}};
+    for (const auto & border : borders) {
+      std::vector<autoware_utils_geometry::Point2d> intersections;
+      boost::geometry::intersection(segment, border, intersections);
+      if (!intersections.empty()) {
+        const auto & p = intersections.front();
+        return lanelet::BasicPoint2d(p.x(), p.y());
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+bool point_inside_crosswalk(const lanelet::LaneletMap & map, const lanelet::BasicPoint2d & point)
+{
+  const lanelet::BoundingBox2d search_box{point, point};
   for (const auto & candidate : map.laneletLayer.search(search_box)) {
     const std::string subtype = candidate.attributeOr(lanelet::AttributeName::Subtype, "none");
     if (
@@ -86,9 +103,7 @@ bool point_near_crosswalk(const lanelet::LaneletMap & map, const lanelet::BasicP
       subtype != lanelet::AttributeValueString::Walkway) {
       continue;
     }
-    if (
-      lanelet::geometry::inside(candidate, point) ||
-      boost::geometry::distance(point, candidate.polygon2d()) <= margin) {
+    if (lanelet::geometry::inside(candidate, point)) {
       return true;
     }
   }
@@ -136,9 +151,11 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
     return predicted_path;
   }
 
-  const lanelet::BasicPoint2d crossing(
-    poses.at(*crossing_index).position.x, poses.at(*crossing_index).position.y);
-  if (lanelet_map_ptr_ && point_near_crosswalk(*lanelet_map_ptr_, crossing)) {
+  const std::optional<lanelet::BasicPoint2d> crossing_point =
+    first_border_crossing_point(predicted_path, candidates);
+  if (
+    lanelet_map_ptr_ && crossing_point &&
+    point_inside_crosswalk(*lanelet_map_ptr_, *crossing_point)) {
     return predicted_path;
   }
 

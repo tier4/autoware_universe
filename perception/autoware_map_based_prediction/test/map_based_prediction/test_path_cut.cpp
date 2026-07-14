@@ -259,20 +259,7 @@ TEST(RoadBorderModule, DoesNotCutInsideCrosswalk)
   EXPECT_EQ(cut.path.size(), path.path.size());
 }
 
-TEST(RoadBorderModule, DoesNotCutJustOutsideCrosswalkWithinMargin)
-{
-  const auto module = make_module(make_map_with_crosswalk(5.5, 9.0));
-  const auto path = make_straight_path(11);
-  const auto object = make_object(ObjectClassification::PEDESTRIAN, 1.0);
-  path_cut::MaxDecelerationParams params;
-  params.pedestrian = 2.0;
-
-  const auto cut = module.cut_path_at_road_border(path, object, params);
-
-  EXPECT_EQ(cut.path.size(), path.path.size());
-}
-
-TEST(RoadBorderModule, CutsWhenCrosswalkIsBeyondMargin)
+TEST(RoadBorderModule, CutsWhenCrossingIsOutsideCrosswalk)
 {
   const auto module = make_module(make_map_with_crosswalk(8.0, 11.0));
   const auto path = make_straight_path(11);
