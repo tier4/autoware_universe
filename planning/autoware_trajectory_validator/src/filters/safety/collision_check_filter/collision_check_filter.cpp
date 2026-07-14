@@ -125,7 +125,7 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     debug_markers_, global_params_.time_resolution);
 
   return ValidationResult{
-    calc_worst_risk({drac_artifact.risk, rss_artifact.risk}) != RiskLevel::DANGER,
+    calc_worst_risk({drac_artifact.risk, rss_artifact.risk}) >= RiskLevel::DANGER,
     generate_metric_reports(drac_artifact, rss_artifact), std::move(planning_factors)};
 }
 

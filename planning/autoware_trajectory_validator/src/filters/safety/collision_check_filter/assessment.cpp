@@ -467,6 +467,7 @@ RssArtifact assess(
     const auto rss_detail = assess_required_acceleration(
       ego_trajectory, context.odometry->twist.twist, object, rss_params,
       context.predicted_objects->header.stamp);
+    // todo(takagi): fix risk level
     const auto risk_level =
       rss_detail.rss_acceleration < rss_params.error_threshold.ego_acceleration ? RiskLevel::DANGER
                                                                                 : RiskLevel::SAFE;

@@ -154,9 +154,6 @@ RiskLevel::_level_type calc_worst_risk(const Container & evaluations)
     if (eval.risk > worst) {
       worst = eval.risk;
     }
-    if (worst == RiskLevel::DANGER) {
-      break;
-    }
   }
   return worst;
 }
@@ -168,9 +165,6 @@ inline RiskLevel::_level_type calc_worst_risk(std::initializer_list<RiskLevel::_
   for (const auto & risk : risks) {
     if (risk > worst) {
       worst = risk;
-    }
-    if (worst == RiskLevel::DANGER) {
-      break;
     }
   }
   return worst;

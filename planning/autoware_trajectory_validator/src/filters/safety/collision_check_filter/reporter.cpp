@@ -125,15 +125,16 @@ void process_drac_artifacts(
       return evaluation.detail.object_identification.trajectory_id_string();
     });
 
-  if (drac_artifact.risk == RiskLevel::SAFE || drac_artifact.evaluations.empty()) {
+  if (drac_artifact.evaluations.empty()) {
     return;
   }
 
   std::string log_messages{};
   std::string marker_messages{};
-  const bool has_error = drac_artifact.risk == RiskLevel::DANGER;
-  const RiskLevel::_level_type log_level = has_error ? RiskLevel::DANGER : RiskLevel::HIGH_CAUTION;
   for (const auto & evaluation : drac_artifact.evaluations) {
+    if (evaluation.risk == RiskLevel::SAFE) {
+      continue;
+    }
     const auto & timing = evaluation.detail;
     const auto & obj_id = timing.object_identification;
 
@@ -152,7 +153,7 @@ void process_drac_artifacts(
     reporter::add_debug_markers(
       debug_markers, current_time, "drac_collision", obj_id.trajectory_id_string(),
       timing.ego_trajectory, timing.object_trajectory, timing.ego_hull, timing.object_hull);
-    if (has_error) {
+    if (evaluation.risk >= RiskLevel::DANGER) {
       add_collision_planning_factor(
         time_resolution, odometry.header.stamp, odometry.pose.pose, timing, "DRAC",
         artifacts.planning_factors);
@@ -160,7 +161,7 @@ void process_drac_artifacts(
   }
 
   artifacts.error_msg += marker_messages;
-  reporter::log_collision_messages(log_level, log_messages);
+  reporter::log_collision_messages(drac_artifact.risk, log_messages);
 }
 
 void process_rss_artifacts(
@@ -200,7 +201,7 @@ void process_rss_artifacts(
   }
 
   artifacts.error_msg += marker_messages;
-  reporter::log_collision_messages(RiskLevel::DANGER, log_messages);
+  reporter::log_collision_messages(rss_artifact.risk, log_messages);
 }
 }  // namespace
 
@@ -339,11 +340,11 @@ void log_collision_messages(const RiskLevel::_level_type level, const std::strin
   if (messages.empty()) {
     return;
   }
-  if (level == RiskLevel::DANGER) {
+  if (level >= RiskLevel::DANGER) {
     RCLCPP_ERROR(rclcpp::get_logger("CollisionCheckFilter"), "Not feasible: %s", messages.c_str());
     return;
   }
-  RCLCPP_WARN(rclcpp::get_logger("CollisionCheckFilter"), "Warning: %s", messages.c_str());
+  RCLCPP_DEBUG(rclcpp::get_logger("CollisionCheckFilter"), "Warning: %s", messages.c_str());
 }
 
 autoware_internal_planning_msgs::msg::PlanningFactorArray process_collision_artifacts(
