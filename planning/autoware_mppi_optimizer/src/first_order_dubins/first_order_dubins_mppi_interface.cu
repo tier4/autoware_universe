@@ -424,17 +424,32 @@ struct FirstOrderDubinsMppiInterface::Impl
     dyn.max_steer_angle = vehicle_params.max_steer_angle;
     dyn.accel_time_constant = vehicle_params.acc_time_constant;
     dyn.steer_time_constant = vehicle_params.steer_time_constant;
+    // Discrete dead time: delayed ZOH of command, n = round(Td / dt), capped at 2 steps.
+    dyn.accel_delay_steps = std::clamp(
+      static_cast<int>(std::lround(std::max(0.0F, vehicle_params.acc_time_delay) / kDt)), 0, 2);
+    dyn.steer_delay_steps = std::clamp(
+      static_cast<int>(std::lround(std::max(0.0F, vehicle_params.steer_time_delay) / kDt)), 0, 2);
+    dyn.inv_dt = 1.0F / kDt;
     dyn.max_steer_rate = vehicle_params.steer_rate_lim;
     dyn.min_accel = vehicle_params.min_accel();
     dyn.max_accel = vehicle_params.max_accel();
     model.setParams(dyn);
 
-    if (vehicle_params.acc_time_delay > 0.0F || vehicle_params.steer_time_delay > 0.0F) {
+    const float acc_steps_raw = std::max(0.0F, vehicle_params.acc_time_delay) / kDt;
+    const float steer_steps_raw = std::max(0.0F, vehicle_params.steer_time_delay) / kDt;
+    if (acc_steps_raw > 2.0F || steer_steps_raw > 2.0F) {
       RCLCPP_WARN_ONCE(
         mppiLogger(),
-        "MPPI FirstOrderDubinsBicycle ignores acc_time_delay=%.3f and steer_time_delay=%.3f "
-        "(no dead-time state in dynamics model)",
-        vehicle_params.acc_time_delay, vehicle_params.steer_time_delay);
+        "MPPI command delay exceeds 2*dt (acc=%.2f, steer=%.2f steps raw); "
+        "delay line caps at 2 steps (dt=%.2f s)",
+        acc_steps_raw, steer_steps_raw, kDt);
+    } else if (dyn.accel_delay_steps > 0 || dyn.steer_delay_steps > 0) {
+      RCLCPP_INFO_ONCE(
+        mppiLogger(),
+        "MPPI FirstOrderDubinsBicycle delayed ZOH: "
+        "acc_Td=%.3f s -> %d steps, steer_Td=%.3f s -> %d steps, dt=%.2f s",
+        vehicle_params.acc_time_delay, dyn.accel_delay_steps, vehicle_params.steer_time_delay,
+        dyn.steer_delay_steps, kDt);
     }
 
     cost.GPUSetup();
@@ -554,7 +569,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     const Trajectory & reference, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-    const TrackedObjects & tracked_objects_in, const std::optional<Path> & drivable_area)
+    const TrackedObjects & tracked_objects_in,
+    const std::optional<RoadBorderBounds> & road_borders)
   {
     if (!initialized) {
       setup();
@@ -564,13 +580,14 @@ struct FirstOrderDubinsMppiInterface::Impl
     tracked_objects = tracked_objects_in;
     path = trajectoryToPath2D(reference);
     obstacles.clear();
-    if (drivable_area) {
+    if (road_borders && road_borders->left_bound.size() >= 2U &&
+        road_borders->right_bound.size() >= 2U) {
       drivable_polygon =
-        boundsToDrivablePolygon(drivable_area->left_bound, drivable_area->right_bound);
+        boundsToDrivablePolygon(road_borders->left_bound, road_borders->right_bound);
       boundsToFloatPolylines(
-        drivable_area->left_bound, road_border_left_x, road_border_left_y);
+        road_borders->left_bound, road_border_left_x, road_border_left_y);
       boundsToFloatPolylines(
-        drivable_area->right_bound, road_border_right_x, road_border_right_y);
+        road_borders->right_bound, road_border_right_x, road_border_right_y);
     } else {
       drivable_polygon = mppi::path::Polygon2D{};
       road_border_left_x.clear();
@@ -607,6 +624,11 @@ struct FirstOrderDubinsMppiInterface::Impl
       steeringTireAngleRad(steering_status), -vehicle_params.max_steer_angle,
       vehicle_params.max_steer_angle);
     x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE)) = ego_steer;
+    // Seed delay line with measured actuation (steady-state: pipeline held that command).
+    x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::ACC_CMD_Z1)) = ego_accel;
+    x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::ACC_CMD_Z2)) = ego_accel;
+    x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_CMD_Z1)) = ego_steer;
+    x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_CMD_Z2)) = ego_steer;
 
     const mppi::path::PathProjection proj = mppi::path::projectPoseOntoPath(
       path, x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)),
@@ -777,7 +799,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const Trajectory & input, const Odometry & odometry,
   const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
   const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-  const TrackedObjects & tracked_objects, const std::optional<Path> & drivable_area)
+  const TrackedObjects & tracked_objects, const std::optional<RoadBorderBounds> & road_borders)
 {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -795,7 +817,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const auto start_time = std::chrono::steady_clock::now();
 
   impl_->updateDiffusionReference(
-    input, odometry, acceleration, steering_status, tracked_objects, drivable_area);
+    input, odometry, acceleration, steering_status, tracked_objects, road_borders);
   const FirstOrderDubinsMppiControl control = impl_->runStep();
 
   const auto state_trajectory = impl_->controller->getActualStateSeq();
@@ -815,6 +837,9 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const float steer_tau = std::max(impl_->vehicle_params.steer_time_constant, 1.0e-4F);
 
   const size_t num_points = std::min(output.points.size(), static_cast<size_t>(kMppiHorizon));
+  constexpr float k_stopped_vel_eps = 1.0e-3F;
+  const float current_vel = static_cast<float>(odometry.twist.twist.linear.x);
+  const bool use_reference_velocity = std::abs(current_vel) < k_stopped_vel_eps;
 
   float max_pos_delta = 0.0F;
   float max_vel_delta = 0.0F;
@@ -843,7 +868,9 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     out_point.pose.position.y = tracked_y;
     out_point.pose.position.z = in_point.pose.position.z;
     out_point.pose.orientation = quaternionFromYaw(tracked_yaw);
-    out_point.longitudinal_velocity_mps = tracked_v;
+    // When stopped, keep the diffusion velocity profile so the longitudinal controller can
+    // depart (MPPI state vel at t=0 is ego speed and would create a false stop at the traj head).
+    out_point.longitudinal_velocity_mps = use_reference_velocity ? ref_v : tracked_v;
     out_point.acceleration_mps2 = u_opt_traj(accel_cmd_idx, col);
     out_point.front_wheel_angle_rad = steer_cmd;
     // Store first-order steer rate for debug viz / cost-consistent signal:

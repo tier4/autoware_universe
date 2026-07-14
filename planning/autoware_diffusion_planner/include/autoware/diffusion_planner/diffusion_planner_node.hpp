@@ -18,6 +18,7 @@
 #include "autoware/diffusion_planner/diffusion_planner_core.hpp"
 #include "autoware/diffusion_planner/utils/planning_factor_utils.hpp"
 #include "autoware/avoidance_target_detector/avoidance_target_detector_logic.hpp"
+#include "autoware/avoidance_target_detector/boundary.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
 
@@ -196,13 +197,10 @@ private:
     const std::shared_ptr<const TrackedObjects> & tracked_objects);
 
   /**
-   * Publish avoidance / driving-along targets and drivable-area bounds.
-   * @return Drivable area Path (left/right bounds) when detection succeeds, else nullopt.
+   * Build left/right route corridor bounds for MPPI road-border costing.
+   * @return Bounds when map/route are ready, else nullopt.
    */
-  std::optional<Path> publish_avoidance_targets(
-    const rclcpp::Time & stamp, const Trajectory & trajectory,
-    const PredictedObjects & predicted_objects,
-    const std::shared_ptr<const TrackedObjects> & tracked_objects);
+  std::optional<autoware::mppi_optimizer::RoadBorderBounds> get_route_bounds_for_mppi();
 
   /**
    * @brief Publish guidance triggered status as a debug message.
@@ -314,10 +312,14 @@ private:
 
   std::unique_ptr<autoware::avoidance_target_detector::AvoidanceTargetDetectorLogic>
     avoidance_target_detector_;
+  std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
+    extended_route_handler_;
   bool use_extended_route_bounds_{true};
   LaneletMapBin::ConstSharedPtr map_bin_;
   LaneletMapBin::ConstSharedPtr cached_avoidance_map_;
   LaneletRoute::ConstSharedPtr cached_avoidance_route_;
+  LaneletMapBin::ConstSharedPtr cached_route_bounds_map_;
+  LaneletRoute::ConstSharedPtr cached_route_bounds_route_;
 };
 
 }  // namespace autoware::diffusion_planner

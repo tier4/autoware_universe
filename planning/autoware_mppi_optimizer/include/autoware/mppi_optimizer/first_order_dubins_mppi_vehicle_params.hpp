@@ -29,7 +29,10 @@ struct FirstOrderDubinsMppiVehicleParams
   float wheel_base{0.32F};
   float max_steer_angle{0.45F};
 
-  /** Actuation dynamics; names match simulator_model.param.yaml. */
+  /** Actuation dynamics; names match simulator_model.param.yaml.
+   * Dead times map to an integer-sample delayed ZOH of the command
+   * (n = round(time_delay / MPPI dt)).
+   */
   float acc_time_constant{0.1F};
   float steer_time_constant{0.27F};
   float steer_rate_lim{5.0F};

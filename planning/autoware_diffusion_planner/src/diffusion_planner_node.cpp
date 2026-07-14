@@ -638,8 +638,11 @@ void DiffusionPlanner::on_timer()
   }
 
   // Run avoidance-target / drivable-area detection on the diffusion trajectory before MPPI.
-  const std::optional<Path> drivable_area_for_mppi = publish_avoidance_targets(
+  publish_avoidance_targets(
     frame_time, planner_output.trajectory, planner_output.predicted_objects, objects);
+  // Build left/right route bounds for MPPI road-border costing.
+  const std::optional<autoware::mppi_optimizer::RoadBorderBounds> road_borders_for_mppi =
+    get_route_bounds_for_mppi();
 
   if (params_.use_mppi_optimizer) {
     autoware_utils_debug::ScopedTimeTrack mppi_st("mppi_optimizer", *time_keeper_);
@@ -663,7 +666,7 @@ void DiffusionPlanner::on_timer()
         steering_status ? std::make_optional(*steering_status) : std::nullopt;
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
-        ego_steering, *objects, drivable_area_for_mppi);
+        ego_steering, *objects, road_borders_for_mppi);
       record_section_time(
         *stop_watch_ptr_, "mppi_optimizer/optimize_trajectory", *diagnostics_inference_);
       if (!params_.shadow_mode) {
@@ -843,6 +846,62 @@ std::optional<Path> DiffusionPlanner::publish_avoidance_targets(
     pub_tracked_driving_along_vehicles_->publish(tracked_output->tracked_driving_along_vehicles);
   }
   return drivable_area;
+}
+
+std::optional<autoware::mppi_optimizer::RoadBorderBounds>
+DiffusionPlanner::get_route_bounds_for_mppi()
+{
+  const auto route = core_->get_route();
+  if (!map_bin_ || !route || route->segments.empty()) {
+    return std::nullopt;
+  }
+
+  const bool route_or_map_updated =
+    map_bin_ != cached_route_bounds_map_ || route != cached_route_bounds_route_;
+  if (route_or_map_updated || !extended_route_handler_) {
+    extended_route_handler_ =
+      std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(
+        *map_bin_, *route);
+    extended_route_handler_->create_map();
+    cached_route_bounds_map_ = map_bin_;
+    cached_route_bounds_route_ = route;
+  }
+
+  if (!extended_route_handler_->getOriginalRouteHandler()->isHandlerReady()) {
+    return std::nullopt;
+  }
+
+  const auto & bounds = use_extended_route_bounds_
+                          ? extended_route_handler_->get_extended_route_bounds()
+                          : extended_route_handler_->get_original_route_bounds();
+  if (bounds.first.size() < 2 || bounds.second.size() < 2) {
+    return std::nullopt;
+  }
+
+  auto to_geometry_points = [](const lanelet::LineString2d & linestring) {
+    std::vector<geometry_msgs::msg::Point> points;
+    points.reserve(linestring.size());
+    for (const auto & point : linestring) {
+      geometry_msgs::msg::Point geometry_point;
+      geometry_point.x = point.x();
+      geometry_point.y = point.y();
+      geometry_point.z = 0.0;
+      points.push_back(geometry_point);
+    }
+    return points;
+  };
+
+  autoware::mppi_optimizer::RoadBorderBounds road_borders;
+  road_borders.left_bound = to_geometry_points(bounds.first);
+  road_borders.right_bound = to_geometry_points(bounds.second);
+
+  // Keep Path publication for RViz debug of the corridor borders.
+  Path drivable_area;
+  drivable_area.left_bound = road_borders.left_bound;
+  drivable_area.right_bound = road_borders.right_bound;
+  pub_drivable_area_->publish(drivable_area);
+
+  return road_borders;
 }
 
 }  // namespace autoware::diffusion_planner

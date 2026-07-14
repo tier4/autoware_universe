@@ -23,6 +23,7 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/point.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
 #include <memory>
@@ -37,6 +38,13 @@ using autoware_perception_msgs::msg::TrackedObjects;
 using autoware_planning_msgs::msg::Path;
 using autoware_planning_msgs::msg::Trajectory;
 using nav_msgs::msg::Odometry;
+
+/** Route corridor borders used for the road-border / drivable-area crash cost. */
+struct RoadBorderBounds
+{
+  std::vector<geometry_msgs::msg::Point> left_bound;
+  std::vector<geometry_msgs::msg::Point> right_bound;
+};
 
 struct FirstOrderDubinsMppiState
 {
@@ -122,15 +130,15 @@ public:
    * @param steering_status Optional ego tire steering angle [rad] from vehicle status.
    * @param tracked_objects Perception tracked objects used as dynamic obstacles
    * (constant-velocity).
-   * @param drivable_area Optional route Path whose left_bound/right_bound form a closed
-   *        drivable polygon for the crash cost. Cleared when absent or empty.
+   * @param road_borders Optional left/right corridor polylines for the road-border crash cost.
+   *        Cleared when absent or either side has fewer than two points.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
     const Trajectory & input, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
     const TrackedObjects & tracked_objects,
-    const std::optional<Path> & drivable_area = std::nullopt);
+    const std::optional<RoadBorderBounds> & road_borders = std::nullopt);
 
 private:
   struct Impl;

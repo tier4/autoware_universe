@@ -1,12 +1,14 @@
 /**
  * Kinematic Dubins bicycle with first-order actuation on longitudinal acceleration and steering.
  *
- * State: speed, yaw, position, steer angle, applied acceleration.
+ * State: speed, yaw, position, steer angle, applied acceleration, and a 2-deep command delay
+ * line (ACC_CMD_Z1/Z2, STEER_CMD_Z1/Z2) for discrete dead time.
  * Controls: acceleration command [m/s^2], steer angle command [rad].
  *
- *   d(accel)/dt = (u_accel - accel) / accel_time_constant
+ *   u_eff[k] = u_cmd[k - n]   (integer-sample delayed ZOH of the command)
+ *   d(accel)/dt = (u_eff_accel - accel) / accel_time_constant
  *   d(v)/dt     = accel
- *   d(steer)/dt = (u_steer - steer) / steer_time_constant   (rate-limited)
+ *   d(steer)/dt = (u_eff_steer - steer) / steer_time_constant   (rate-limited)
  *   d(yaw)/dt   = (v / L) * tan(steer)
  *   d(x,y)/dt   = v * [cos(yaw), sin(yaw)]
  */
@@ -27,6 +29,10 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
     POS_Y,
     STEER_ANGLE,
     ACCELERATION,
+    ACC_CMD_Z1,   // command delayed by ~1 dt
+    ACC_CMD_Z2,   // command delayed by ~2 dt
+    STEER_CMD_Z1,
+    STEER_CMD_Z2,
     NUM_STATES
   };
 
@@ -59,6 +65,11 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
   float max_steer_rate = 3.0F;
   float min_accel = -6.0F;
   float max_accel = 4.0F;
+  /** Integer dead time in MPPI steps: u_eff[k] = u[k - n], n in {0,1,2}. */
+  int accel_delay_steps = 0;
+  int steer_delay_steps = 0;
+  /** 1 / MPPI dt — converts discrete delay-line shifts into Euler-compatible derivatives. */
+  float inv_dt = 10.0F;
 };
 
 using namespace MPPI_internal;

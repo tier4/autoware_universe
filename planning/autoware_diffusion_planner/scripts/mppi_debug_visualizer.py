@@ -116,6 +116,10 @@ def trajectory_steer_rate(points) -> List[float]:
     return [float(p.heading_rate_rps) for p in points]
 
 
+def to_degrees(values: Sequence[float]) -> List[float]:
+    return [math.degrees(v) for v in values]
+
+
 def estimate_dt(points) -> float:
     if len(points) < 2:
         return 0.1
@@ -230,15 +234,15 @@ class MppiDebugVisualizer(Node):
         return MppiDebugFrame(
             reference_xy=trajectory_xy(points),
             optimized_xy=None,
-            reference_heading=trajectory_heading(points),
+            reference_heading=to_degrees(trajectory_heading(points)),
             optimized_heading=[],
             reference_vel=velocities,
             optimized_vel=[],
             reference_accel=accel,
             optimized_accel=[],
-            reference_steer=steer,
+            reference_steer=to_degrees(steer),
             optimized_steer=[],
-            reference_steer_rate=steer_rate,
+            reference_steer_rate=to_degrees(steer_rate),
             optimized_steer_rate=[],
             stamp_text=stamp,
         )
@@ -342,7 +346,7 @@ class MppiDebugVisualizer(Node):
         self._ax_heading.clear()
         self._ax_heading.set_title("Heading")
         self._ax_heading.set_xlabel("point index")
-        self._ax_heading.set_ylabel("yaw [rad]")
+        self._ax_heading.set_ylabel("yaw [deg]")
         self._ax_heading.grid(True)
         if n_compare > 0:
             self._ax_heading.plot(
@@ -396,7 +400,7 @@ class MppiDebugVisualizer(Node):
         self._ax_steer.clear()
         self._ax_steer.set_title("Steering (MPPI: optimal control sequence)")
         self._ax_steer.set_xlabel("point index")
-        self._ax_steer.set_ylabel("δ [rad]")
+        self._ax_steer.set_ylabel("δ [deg]")
         self._ax_steer.grid(True)
         if n_compare > 0:
             self._ax_steer.plot(
@@ -420,7 +424,7 @@ class MppiDebugVisualizer(Node):
         self._ax_steer_rate.clear()
         self._ax_steer_rate.set_title("Steering rate δ̇ = (δ_cmd − δ) / τ")
         self._ax_steer_rate.set_xlabel("point index")
-        self._ax_steer_rate.set_ylabel("δ̇ [rad/s]")
+        self._ax_steer_rate.set_ylabel("δ̇ [deg/s]")
         self._ax_steer_rate.grid(True)
         if frame.optimized_steer_rate:
             idx_rate = list(range(len(frame.optimized_steer_rate)))
