@@ -63,16 +63,6 @@ bool is_point_near_crosswalk(const lanelet::LaneletMap & map, const lanelet::Bas
   return false;
 }
 
-lanelet::BasicLineString2d to_basic_line_string(const std::vector<geometry_msgs::msg::Pose> & poses)
-{
-  lanelet::BasicLineString2d path_ls;
-  path_ls.reserve(poses.size());
-  for (const auto & pose : poses) {
-    path_ls.emplace_back(pose.position.x, pose.position.y);
-  }
-  return path_ls;
-}
-
 template <typename Candidates>
 std::optional<size_t> find_boundary_crossing_index(
   const lanelet::BasicLineString2d & path_ls, const Candidates & candidates)
@@ -132,7 +122,7 @@ PredictedPath DecelerationAwarePathCutVruModule::cut_path_at_boundary(
     return predicted_path;
   }
 
-  const lanelet::BasicLineString2d path_ls = to_basic_line_string(poses);
+  const lanelet::BasicLineString2d path_ls = path_cut::to_basic_line_string(poses);
   const auto candidates =
     boundary_layer_->lineStringLayer.search(lanelet::geometry::boundingBox2d(path_ls));
 

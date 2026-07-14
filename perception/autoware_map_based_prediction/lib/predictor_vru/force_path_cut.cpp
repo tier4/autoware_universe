@@ -75,16 +75,6 @@ bool has_required_info(const autoware_perception_msgs::msg::PredictedObject & pr
   }
 }
 
-lanelet::BasicLineString2d to_basic_line_string(const std::vector<geometry_msgs::msg::Pose> & poses)
-{
-  lanelet::BasicLineString2d path_ls;
-  path_ls.reserve(poses.size());
-  for (const auto & pose : poses) {
-    path_ls.emplace_back(pose.position.x, pose.position.y);
-  }
-  return path_ls;
-}
-
 std::vector<autoware_utils_geometry::Polygon2d> collect_candidate_polygons(
   const lanelet::LaneletMap & polygon_layer, const std::vector<PredictedPath> & predicted_paths,
   const autoware_perception_msgs::msg::Shape & object_shape)
@@ -213,8 +203,8 @@ std::vector<PredictedPath> ForcePathCutModule::cut_paths_crossing_boundary(
     std::optional<size_t> last_kept_index =
       find_polygon_last_kept_index(predicted_path, object_shape, candidate_polygons);
     if (linestring_layer_) {
-      const std::optional<size_t> linestring_index =
-        find_linestring_last_kept_index(to_basic_line_string(predicted_path.path), *linestring_layer_);
+      const std::optional<size_t> linestring_index = find_linestring_last_kept_index(
+        path_cut::to_basic_line_string(predicted_path.path), *linestring_layer_);
       if (linestring_index && (!last_kept_index || *linestring_index < *last_kept_index)) {
         last_kept_index = linestring_index;
       }

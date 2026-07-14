@@ -16,9 +16,13 @@
 #define AUTOWARE__MAP_BASED_PREDICTION__PATH_CUT__PATH_CUT_UTILS_HPP_
 
 #include <autoware_perception_msgs/msg/predicted_path.hpp>
+#include <geometry_msgs/msg/pose.hpp>
+
+#include <lanelet2_core/primitives/LineString.h>
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace autoware::map_based_prediction::path_cut
 {
@@ -39,6 +43,8 @@ double distance_to_stop_with_max_deceleration(double speed, double max_decelerat
 bool can_stop_before_the_line(double distance_to_line, double speed, double max_deceleration);
 
 PredictedPath force_cut_at_index(const PredictedPath & path, size_t last_kept_index);
+
+lanelet::BasicLineString2d to_basic_line_string(const std::vector<geometry_msgs::msg::Pose> & poses);
 
 }  // namespace autoware::map_based_prediction::path_cut
 
