@@ -225,8 +225,11 @@ bool ObstacleStop::set_stop_point(TrajectoryPoints & traj_points, const InputDat
     return false;
   }
 
+  const auto ego_arc_length = debug_data_.trajectory_shape.ego_arc_length();
+  const auto ego_to_stop_arc_length = target_stop_point_arc_length - ego_arc_length;
+
   if (
-    target_stop_point_arc_length < stopping_params_.arrived_distance_threshold ||
+    ego_to_stop_arc_length < stopping_params_.arrived_distance_threshold ||
     !utils::insert_stop_point(
       traj_points, target_stop_point_arc_length, debug_data_.trajectory_shape.trajectory_length)) {
     utils::replace_trajectory_with_stop_point(
@@ -237,7 +240,7 @@ bool ObstacleStop::set_stop_point(TrajectoryPoints & traj_points, const InputDat
   const auto & ego_pose = input.current_odometry->pose.pose;
   auto distance =
     motion_utils::calcSignedArcLength(traj_points, ego_pose.position, stop_pose.position);
-  if (std::isnan(distance)) distance = 0.0;
+  if (std::isnan(distance) || distance < 1e-3) distance = 0.0;
   planning_factor_interface_->add(distance, stop_pose, PlanningFactor::STOP, safety_factors_);
 
   RCLCPP_WARN_THROTTLE(
