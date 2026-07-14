@@ -117,9 +117,6 @@ class ExtendedRouteHandler
 public:
   ExtendedRouteHandler(const LaneletMapBin & map, const LaneletRoute & route);
 
-  /** Build the extended route map and routing graph from the original map and route. */
-  void create_map();
-
   /** Write the route map to the debug OSM file. Temporary debug code. Must be removed before
    * release. */
   void export_debug_map() const;
@@ -160,6 +157,9 @@ public:
     const geometry_msgs::msg::Point & following_end_point) const;
 
 private:
+  /** Build the extended route map and routing graph from the original map and route. */
+  void create_map();
+
   [[nodiscard]] std::optional<std::size_t> find_segment_index_for_point(
     const geometry_msgs::msg::Point & point) const;
 

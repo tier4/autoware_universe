@@ -469,6 +469,7 @@ ExtendedRouteHandler::ExtendedRouteHandler(const LaneletMapBin & map, const Lane
 {
   original_route_handler_->setMap(map);
   original_route_handler_->setRoute(route);
+  create_map();
 }
 
 void ExtendedRouteHandler::create_map()

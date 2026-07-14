@@ -14,6 +14,7 @@
 
 #include "autoware/diffusion_planner/diffusion_planner_node.hpp"
 
+#include "autoware/diffusion_planner/avoidance_target_filter.hpp"
 #include "autoware/diffusion_planner/constants.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
@@ -161,6 +162,9 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
   sub_map_ = create_subscription<HADMapBin>(
     "~/input/vector_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&DiffusionPlanner::on_map, this, std::placeholders::_1));
+  sub_route_ = create_subscription<LaneletRoute>(
+    "~/input/route", rclcpp::QoS{1}.transient_local(),
+    std::bind(&DiffusionPlanner::on_route, this, std::placeholders::_1));
 
   // Parameter Callback
   set_param_res_ = add_on_set_parameters_callback(
@@ -641,9 +645,14 @@ void DiffusionPlanner::on_timer()
       const auto steering_status = sub_steering_status_.take_data();
       const std::optional<SteeringReport> ego_steering =
         steering_status ? std::make_optional(*steering_status) : std::nullopt;
+
+      const TrackedObjects filtered_objects = filter_avoidance_targets(
+        frame_context->ego_kinematic_state.pose.pose, frame_time, *objects,
+        planner_output.trajectory);
+
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
-        ego_steering, *objects);
+        ego_steering, filtered_objects);
       record_section_time(
         *stop_watch_ptr_, "mppi_optimizer/optimize_trajectory", *diagnostics_inference_);
       if (!params_.shadow_mode) {
@@ -769,10 +778,56 @@ void DiffusionPlanner::publish_planning_factor(const Trajectory & trajectory)
   planning_factor_interface_->publish();
 }
 
+TrackedObjects DiffusionPlanner::filter_avoidance_targets(
+  const Pose & ego_pose, const rclcpp::Time & stamp, const TrackedObjects & objects,
+  const Trajectory & reference)
+{
+  if (!avoidance_target_filter_) {
+    avoidance_target_filter_ = std::make_unique<AvoidanceTargetFilter>();
+  }
+
+  avoidance_target_filter_->update_ego_trajectory(ego_pose);
+
+  if (!avoidance_target_filter_->has_context()) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+      "Avoidance target filter has no route context; passing tracked objects unfiltered to MPPI");
+    return objects;
+  }
+
+  TrackedObjects filtered = avoidance_target_filter_->filter(stamp, objects, reference);
+  RCLCPP_DEBUG(
+    get_logger(), "MPPI avoidance target filter: %zu raw -> %zu filtered objects",
+    objects.objects.size(), filtered.objects.size());
+  return filtered;
+}
+
+void DiffusionPlanner::update_avoidance_route_context()
+{
+  if (!map_bin_ || !route_) {
+    return;
+  }
+  if (!avoidance_target_filter_) {
+    avoidance_target_filter_ = std::make_unique<AvoidanceTargetFilter>();
+  }
+  avoidance_target_filter_->set_route_context(*map_bin_, *route_);
+}
+
 void DiffusionPlanner::on_map(const HADMapBin::ConstSharedPtr map_msg)
 {
+  map_bin_ = map_msg;
   lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*map_msg);
   core_->set_map(lanelet_map_ptr_);
+  update_avoidance_route_context();
+}
+
+void DiffusionPlanner::on_route(const LaneletRoute::ConstSharedPtr route_msg)
+{
+  if (!route_msg || route_msg->segments.empty()) {
+    return;
+  }
+  route_ = route_msg;
+  update_avoidance_route_context();
 }
 
 }  // namespace autoware::diffusion_planner

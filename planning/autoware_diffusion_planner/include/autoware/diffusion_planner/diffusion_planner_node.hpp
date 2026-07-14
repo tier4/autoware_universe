@@ -54,6 +54,8 @@
 
 namespace autoware::diffusion_planner
 {
+class AvoidanceTargetFilter;
+
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
@@ -154,6 +156,18 @@ private:
   void on_map(const HADMapBin::ConstSharedPtr map_msg);
 
   /**
+   * @brief Callback for receiving a new lanelet route.
+   * @param route_msg The received route message.
+   */
+  void on_route(const LaneletRoute::ConstSharedPtr route_msg);
+
+  /**
+   * @brief Rebuild the avoidance target filter route context when both map and route are available.
+   * @details Called from on_map / on_route only; route and map updates are infrequent.
+   */
+  void update_avoidance_route_context();
+
+  /**
    * @brief Publish visualization markers for debugging.
    * @param input_data_map Input data used for inference.
    * @param ego_to_map_transform Transform from ego to map frame for visualization.
@@ -177,6 +191,15 @@ private:
   void publish_mppi_debug(
     const autoware::mppi_optimizer::FirstOrderDubinsMppiDebug & debug, const std::string & frame_id,
     const rclcpp::Time & stamp);
+
+  /**
+   * @brief Filter tracked objects down to avoidance targets for the MPPI optimizer.
+   * @details Uses the route context built by on_map / on_route. When no context is available,
+   *          the objects are returned unfiltered with a throttled warning.
+   */
+  autoware_perception_msgs::msg::TrackedObjects filter_avoidance_targets(
+    const Pose & ego_pose, const rclcpp::Time & stamp,
+    const autoware_perception_msgs::msg::TrackedObjects & objects, const Trajectory & reference);
 
   /**
    * @brief Publish guidance triggered status as a debug message.
@@ -266,6 +289,7 @@ private:
     LaneletMapBin, autoware_utils::polling_policy::Newest>
     vector_map_subscriber_{this, "~/input/vector_map", rclcpp::QoS{1}.transient_local()};
   rclcpp::Subscription<HADMapBin>::SharedPtr sub_map_;
+  rclcpp::Subscription<LaneletRoute>::SharedPtr sub_route_;
   UUID generator_uuid_;
   VehicleInfo vehicle_info_;
 
@@ -279,6 +303,12 @@ private:
   DiffusionPlannerPlanningFactorParams planning_factor_params_;
 
   std::unique_ptr<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface> mppi_optimizer_;
+
+  // Raw map / route kept for building the avoidance target filter's route context
+  // (updated from on_map / on_route, not from the planning timer).
+  HADMapBin::ConstSharedPtr map_bin_{nullptr};
+  LaneletRoute::ConstSharedPtr route_{nullptr};
+  std::unique_ptr<AvoidanceTargetFilter> avoidance_target_filter_;
 };
 
 }  // namespace autoware::diffusion_planner

@@ -105,7 +105,6 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
 
   if (map_or_route_updated && route_ && map_bin_) {
     extended_route_handler_ = std::make_shared<ExtendedRouteHandler>(*map_bin_, *route_);
-    extended_route_handler_->create_map();
     extended_route_handler_->export_debug_map();
   }
 

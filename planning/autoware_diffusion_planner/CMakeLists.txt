@@ -80,6 +80,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
   set(DIFFUSION_PLANNER_SOURCES
     src/diffusion_planner_core.cpp
     src/diffusion_planner_node.cpp
+    src/avoidance_target_filter.cpp
     src/conversion/lanelet.cpp
     src/conversion/agent.cpp
     src/postprocessing/postprocessing_utils.cpp
