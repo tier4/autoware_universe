@@ -40,6 +40,7 @@ ament_auto_add_library(map_based_prediction_node SHARED
   lib/predictor_vru/road_border.cpp
   lib/predictor_vru/path_cut_debug.cpp
   lib/path_cut/path_cut_utils.cpp
+  lib/path_cut/footprint_path_cut.cpp
   lib/utils.cpp
 )
 
