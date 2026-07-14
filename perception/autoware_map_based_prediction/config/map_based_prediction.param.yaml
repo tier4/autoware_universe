@@ -66,16 +66,13 @@
       signal_observation_timeout: 20.0
 
     # deceleration-aware path cut (per-class max deceleration; road-boundary types for VRU)
-    deceleration_aware_path_cut:
+    path_cut:
       max_deceleration:
         vehicle: 3.0 #m/s^2
-        motorcycle: 2.0
-        bicycle: 1.0
         pedestrian: 0.5
-      boundary_types: ["road_border"] # lanelet linestring types cut for pedestrian/bicycle
-
-    force_path_cut:
-      boundary_types: ["vegetation", "guard_rail"] # lanelet linestring types cut for pedestrian/bicycle
+        bicycle: 1.0
+        motorcycle: 2.0
+      boundary_types: ["road_border"] # lanelet linestring types deceleration-aware-cut for pedestrian/bicycle (guard_rail is force-cut separately)
 
     # debug parameters
     publish_processing_time: false

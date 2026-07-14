@@ -71,14 +71,4 @@ PredictedPath force_cut_at_index(const PredictedPath & path, const size_t last_k
   return cut;
 }
 
-lanelet::BasicLineString2d to_basic_line_string(const std::vector<geometry_msgs::msg::Pose> & poses)
-{
-  lanelet::BasicLineString2d path_ls;
-  path_ls.reserve(poses.size());
-  for (const auto & pose : poses) {
-    path_ls.emplace_back(pose.position.x, pose.position.y);
-  }
-  return path_ls;
-}
-
 }  // namespace autoware::map_based_prediction::path_cut

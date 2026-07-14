@@ -112,14 +112,10 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
 
   // --- Deceleration-aware path cut (per class max deceleration) ---
   path_cut::MaxDecelerationParams max_decel_params;
-  max_decel_params.vehicle =
-    declare_parameter<double>("deceleration_aware_path_cut.max_deceleration.vehicle");
-  max_decel_params.pedestrian =
-    declare_parameter<double>("deceleration_aware_path_cut.max_deceleration.pedestrian");
-  max_decel_params.bicycle =
-    declare_parameter<double>("deceleration_aware_path_cut.max_deceleration.bicycle");
-  max_decel_params.motorcycle =
-    declare_parameter<double>("deceleration_aware_path_cut.max_deceleration.motorcycle");
+  max_decel_params.vehicle = declare_parameter<double>("path_cut.max_deceleration.vehicle");
+  max_decel_params.pedestrian = declare_parameter<double>("path_cut.max_deceleration.pedestrian");
+  max_decel_params.bicycle = declare_parameter<double>("path_cut.max_deceleration.bicycle");
+  max_decel_params.motorcycle = declare_parameter<double>("path_cut.max_deceleration.motorcycle");
   state_.priority_predictor->set_max_deceleration(max_decel_params);
 
   // --- VRU predictor ---
@@ -150,10 +146,8 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
       declare_parameter<double>("crossing_intention_duration");
     vru_params.history.no_crossing_intention_duration =
       declare_parameter<double>("no_crossing_intention_duration");
-    vru_params.deceleration_aware_boundary_types =
-      declare_parameter<std::vector<std::string>>("deceleration_aware_path_cut.boundary_types");
-    vru_params.force_path_cut_boundary_types =
-      declare_parameter<std::vector<std::string>>("force_path_cut.boundary_types");
+    vru_params.road_border_boundary_types =
+      declare_parameter<std::vector<std::string>>("path_cut.boundary_types");
     state_.predictor_vru->setParams(vru_params);
     state_.predictor_vru->set_max_deceleration(max_decel_params);
   }

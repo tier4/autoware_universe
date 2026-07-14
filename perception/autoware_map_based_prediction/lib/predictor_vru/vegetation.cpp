@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/map_based_prediction/predictor_vru/force_path_cut.hpp"
+#include "autoware/map_based_prediction/predictor_vru/vegetation.hpp"
 
 #include "autoware/map_based_prediction/path_cut/path_cut_utils.hpp"
 
-#include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_utils_geometry/boost_geometry.hpp>
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
@@ -26,9 +25,7 @@
 #include <boost/geometry.hpp>
 
 #include <lanelet2_core/geometry/BoundingBox.h>
-#include <lanelet2_core/geometry/LineString.h>
 #include <lanelet2_core/geometry/Polygon.h>
-#include <lanelet2_core/primitives/LineString.h>
 #include <lanelet2_core/primitives/Polygon.h>
 
 #include <algorithm>
@@ -75,8 +72,8 @@ bool has_required_info(const autoware_perception_msgs::msg::PredictedObject & pr
   }
 }
 
-std::vector<autoware_utils_geometry::Polygon2d> collect_candidate_polygons(
-  const lanelet::LaneletMap & polygon_layer, const std::vector<PredictedPath> & predicted_paths,
+std::vector<autoware_utils_geometry::Polygon2d> collect_candidate_vegetation_polygons(
+  const lanelet::LaneletMap & vegetation_layer, const std::vector<PredictedPath> & predicted_paths,
   const autoware_perception_msgs::msg::Shape & object_shape)
 {
   lanelet::BoundingBox2d search_bbox;
@@ -90,127 +87,78 @@ std::vector<autoware_utils_geometry::Polygon2d> collect_candidate_polygons(
     }
   }
 
-  const auto candidates = polygon_layer.polygonLayer.search(search_bbox);
-  std::vector<autoware_utils_geometry::Polygon2d> polygons_2d;
-  polygons_2d.reserve(candidates.size());
+  const auto candidates = vegetation_layer.polygonLayer.search(search_bbox);
+  std::vector<autoware_utils_geometry::Polygon2d> vegetation_polygons_2d;
+  vegetation_polygons_2d.reserve(candidates.size());
   for (const auto & candidate : candidates) {
     autoware_utils_geometry::Polygon2d polygon;
     boost::geometry::convert(lanelet::utils::to2D(candidate.basicPolygon()), polygon);
     boost::geometry::correct(polygon);
-    polygons_2d.push_back(polygon);
+    vegetation_polygons_2d.push_back(polygon);
   }
-  return polygons_2d;
+  return vegetation_polygons_2d;
 }
 
-// Index of the last pose to keep when the footprint first enters a boundary polygon.
-std::optional<size_t> find_polygon_last_kept_index(
+std::optional<size_t> find_vegetation_crossing_index(
   const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & object_shape,
-  const std::vector<autoware_utils_geometry::Polygon2d> & polygons_2d)
+  const std::vector<autoware_utils_geometry::Polygon2d> & vegetation_polygons_2d)
 {
-  if (polygons_2d.empty()) {
+  if (vegetation_polygons_2d.empty()) {
     return std::nullopt;
   }
   for (auto i = 0UL; i < predicted_path.path.size(); ++i) {
     const autoware_utils_geometry::Polygon2d footprint =
       autoware_utils_geometry::to_polygon2d(predicted_path.path.at(i), object_shape);
-    for (const auto & polygon : polygons_2d) {
-      // NOTE: intersects_convex (GJK) treats both polygons as convex. A non-convex boundary area
+    for (const auto & vegetation_polygon : vegetation_polygons_2d) {
+      // NOTE: intersects_convex (GJK) treats both polygons as convex. A non-convex vegetation area
       // is evaluated as its convex hull, but this works effectively.
-      if (autoware_utils_geometry::intersects_convex(footprint, polygon)) {
-        // Drop the entering pose and beyond, keeping at least one pose.
-        return std::max<size_t>(i, 1UL) - 1UL;
+      if (autoware_utils_geometry::intersects_convex(footprint, vegetation_polygon)) {
+        return i;
       }
-    }
-  }
-  return std::nullopt;
-}
-
-// Index of the last pose to keep when the path first crosses a boundary linestring.
-std::optional<size_t> find_linestring_last_kept_index(
-  const lanelet::BasicLineString2d & path_ls, const lanelet::LaneletMap & linestring_layer)
-{
-  if (path_ls.size() < 2) {
-    return std::nullopt;
-  }
-  const auto candidates =
-    linestring_layer.lineStringLayer.search(lanelet::geometry::boundingBox2d(path_ls));
-  for (size_t seg = 0; seg + 1 < path_ls.size(); ++seg) {
-    const lanelet::BasicLineString2d segment(
-      lanelet::BasicPoints2d{path_ls[seg], path_ls[seg + 1]});
-    const bool crosses = std::any_of(candidates.begin(), candidates.end(), [&](const auto & border) {
-      return boost::geometry::intersects(segment, lanelet::utils::to2D(border).basicLineString());
-    });
-    if (crosses) {
-      return seg;
     }
   }
   return std::nullopt;
 }
 }  // namespace
 
-void ForcePathCutModule::build_from_map(
-  std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr,
-  const std::vector<std::string> & boundary_types)
+void VegetationModule::build_from_map(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr)
 {
-  polygon_layer_ = nullptr;
-  linestring_layer_ = nullptr;
   if (!lanelet_map_ptr) {
+    vegetation_layer_ = nullptr;
     return;
   }
 
-  const auto is_boundary_type = [&boundary_types](const std::string & value) {
-    return std::find(boundary_types.begin(), boundary_types.end(), value) != boundary_types.end();
-  };
-
-  lanelet::Polygons3d polygons;
+  lanelet::Polygons3d vegetations;
   for (const auto & polygon : lanelet_map_ptr->polygonLayer) {
+    const std::string type = polygon.attributeOr(lanelet::AttributeName::Type, "none");
     const std::string subtype = polygon.attributeOr(lanelet::AttributeName::Subtype, "none");
-    if (is_boundary_type(subtype)) {
-      polygons.emplace_back(std::const_pointer_cast<lanelet::LineStringData>(polygon.constData()));
+    if (type == "area" && subtype == "vegetation") {
+      vegetations.emplace_back(
+        std::const_pointer_cast<lanelet::LineStringData>(polygon.constData()));
     }
   }
-  if (!polygons.empty()) {
-    polygon_layer_ = lanelet::utils::createMap(polygons);
-  }
-
-  lanelet::LineStrings3d linestrings;
-  for (const auto & linestring : lanelet_map_ptr->lineStringLayer) {
-    const std::string type = linestring.attributeOr(lanelet::AttributeName::Type, "none");
-    if (is_boundary_type(type)) {
-      linestrings.emplace_back(
-        std::const_pointer_cast<lanelet::LineStringData>(linestring.constData()));
-    }
-  }
-  if (!linestrings.empty()) {
-    linestring_layer_ = lanelet::utils::createMap(linestrings);
-  }
+  vegetation_layer_ = lanelet::utils::createMap(vegetations);
 }
 
-std::vector<PredictedPath> ForcePathCutModule::cut_paths_crossing_boundary(
+std::vector<PredictedPath> VegetationModule::cut_paths_crossing_vegetation(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object) const
 {
   std::vector<PredictedPath> cut_paths = predicted_object.kinematics.predicted_paths;
-  if (!has_required_info(predicted_object) || (!polygon_layer_ && !linestring_layer_)) {
+  if (!has_required_info(predicted_object) || !vegetation_layer_) {
     return cut_paths;
   }
 
   const autoware_perception_msgs::msg::Shape & object_shape = predicted_object.shape;
   const std::vector<autoware_utils_geometry::Polygon2d> candidate_polygons =
-    polygon_layer_ ? collect_candidate_polygons(*polygon_layer_, cut_paths, object_shape)
-                   : std::vector<autoware_utils_geometry::Polygon2d>{};
+    collect_candidate_vegetation_polygons(*vegetation_layer_, cut_paths, object_shape);
 
   for (PredictedPath & predicted_path : cut_paths) {
-    std::optional<size_t> last_kept_index =
-      find_polygon_last_kept_index(predicted_path, object_shape, candidate_polygons);
-    if (linestring_layer_) {
-      const std::optional<size_t> linestring_index = find_linestring_last_kept_index(
-        path_cut::to_basic_line_string(predicted_path.path), *linestring_layer_);
-      if (linestring_index && (!last_kept_index || *linestring_index < *last_kept_index)) {
-        last_kept_index = linestring_index;
-      }
-    }
-    if (last_kept_index) {
-      predicted_path = path_cut::force_cut_at_index(predicted_path, *last_kept_index);
+    const std::optional<size_t> crossing_index =
+      find_vegetation_crossing_index(predicted_path, object_shape, candidate_polygons);
+    if (crossing_index) {
+      // Drop the crossing pose and beyond, keeping at least one pose.
+      const size_t last_kept_index = std::max<size_t>(*crossing_index, 1UL) - 1UL;
+      predicted_path = path_cut::force_cut_at_index(predicted_path, last_kept_index);
     }
   }
   return cut_paths;

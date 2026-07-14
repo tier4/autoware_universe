@@ -282,7 +282,7 @@
           "type": "number",
           "default": 1.0
         },
-        "deceleration_aware_path_cut": {
+        "path_cut": {
           "type": "object",
           "properties": {
             "max_deceleration": {
@@ -317,24 +317,10 @@
                 "type": "string"
               },
               "default": ["road_border"],
-              "description": "lanelet linestring types treated as road boundary for the deceleration-aware pedestrian/bicycle path cut"
+              "description": "lanelet linestring types deceleration-aware-cut as road boundary for pedestrian/bicycle path cut (guard_rail is force-cut separately)"
             }
           },
           "required": ["max_deceleration", "boundary_types"]
-        },
-        "force_path_cut": {
-          "type": "object",
-          "properties": {
-            "boundary_types": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "default": ["vegetation", "guard_rail"],
-              "description": "lanelet polygon subtypes or linestring types that force-cut the path unconditionally"
-            }
-          },
-          "required": ["boundary_types"]
         }
       },
       "required": [
@@ -370,8 +356,7 @@
         "publish_debug_markers",
         "processing_time_tolerance",
         "processing_time_consecutive_excess_tolerance",
-        "deceleration_aware_path_cut",
-        "force_path_cut"
+        "path_cut"
       ]
     }
   },

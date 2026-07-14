@@ -13,11 +13,14 @@
 // limitations under the License.
 
 #include "autoware/map_based_prediction/path_cut/path_cut_utils.hpp"
-#include "autoware/map_based_prediction/predictor_vru/deceleration_aware_path_cut_vru.hpp"
+#include "autoware/map_based_prediction/predictor_vru/guard_rail.hpp"
+#include "autoware/map_based_prediction/predictor_vru/road_border.hpp"
 
 #include <autoware_lanelet2_extension/utility/query.hpp>
 
 #include <autoware_perception_msgs/msg/object_classification.hpp>
+#include <autoware_perception_msgs/msg/predicted_object.hpp>
+#include <autoware_perception_msgs/msg/shape.hpp>
 #include <autoware_perception_msgs/msg/tracked_object.hpp>
 
 #include <gtest/gtest.h>
@@ -187,6 +190,7 @@ PredictedPath make_straight_path(const size_t num_poses)
     geometry_msgs::msg::Pose pose;
     pose.position.x = static_cast<double>(i);
     pose.position.y = 0.0;
+    pose.orientation.w = 1.0;
     path.path.push_back(pose);
   }
   return path;
@@ -200,17 +204,22 @@ TrackedObject make_object(const uint8_t label, const double speed)
   classification.probability = 1.0;
   object.classification.push_back(classification);
   object.kinematics.twist_with_covariance.twist.linear.x = speed;
+  // Footprint half-length 0.6 m in x, so the box first reaches the border (x = 5.5) at pose x = 5.
+  object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+  object.shape.dimensions.x = 1.2;
+  object.shape.dimensions.y = 1.0;
+  object.shape.dimensions.z = 1.0;
   return object;
 }
 
-DecelerationAwarePathCutVruModule make_module(std::shared_ptr<lanelet::LaneletMap> map)
+RoadBorderModule make_module(std::shared_ptr<lanelet::LaneletMap> map)
 {
-  DecelerationAwarePathCutVruModule module;
+  RoadBorderModule module;
   module.build_from_map(std::move(map), {"road_border"});
   return module;
 }
 
-TEST(DecelerationAwarePathCutVruModule, CutsWhenPedestrianCanStopBeforeBorder)
+TEST(RoadBorderModule, CutsWhenPedestrianCanStopBeforeBorder)
 {
   const auto module = make_module(make_map());
   const auto path = make_straight_path(11);
@@ -218,14 +227,14 @@ TEST(DecelerationAwarePathCutVruModule, CutsWhenPedestrianCanStopBeforeBorder)
   path_cut::MaxDecelerationParams params;
   params.pedestrian = 2.0;  // stopping distance 0.25 << border distance 5.5
 
-  const auto cut = module.cut_path_at_boundary(path, object, params);
+  const auto cut = module.cut_path_at_road_border(path, object, params);
 
   EXPECT_LT(cut.path.size(), path.path.size());
   ASSERT_FALSE(cut.path.empty());
   EXPECT_LT(cut.path.back().position.x, kBorderX);
 }
 
-TEST(DecelerationAwarePathCutVruModule, KeepsPathWhenPedestrianCannotStop)
+TEST(RoadBorderModule, KeepsPathWhenPedestrianCannotStop)
 {
   const auto module = make_module(make_map());
   const auto path = make_straight_path(11);
@@ -233,12 +242,12 @@ TEST(DecelerationAwarePathCutVruModule, KeepsPathWhenPedestrianCannotStop)
   path_cut::MaxDecelerationParams params;
   params.pedestrian = 0.5;  // stopping distance 25 > border distance 5.5
 
-  const auto cut = module.cut_path_at_boundary(path, object, params);
+  const auto cut = module.cut_path_at_road_border(path, object, params);
 
   EXPECT_EQ(cut.path.size(), path.path.size());
 }
 
-TEST(DecelerationAwarePathCutVruModule, DoesNotCutInsideCrosswalk)
+TEST(RoadBorderModule, DoesNotCutInsideCrosswalk)
 {
   const auto module = make_module(make_map_with_crosswalk(4.0, 7.0));
   const auto path = make_straight_path(11);
@@ -246,40 +255,42 @@ TEST(DecelerationAwarePathCutVruModule, DoesNotCutInsideCrosswalk)
   path_cut::MaxDecelerationParams params;
   params.pedestrian = 2.0;  // would cut, but crossing is inside the crosswalk
 
-  const auto cut = module.cut_path_at_boundary(path, object, params);
+  const auto cut = module.cut_path_at_road_border(path, object, params);
 
   EXPECT_EQ(cut.path.size(), path.path.size());
 }
 
-TEST(DecelerationAwarePathCutVruModule, DoesNotCutJustOutsideCrosswalkWithinMargin)
+TEST(RoadBorderModule, DoesNotCutJustOutsideCrosswalkWithinMargin)
 {
-  // crossing at x = 5.5 is 0.5 m from the crosswalk edge at x = 6.0 (within the 1.0 m margin).
-  const auto module = make_module(make_map_with_crosswalk(6.0, 9.0));
+  // footprint crosses at pose x = 5, which is 0.5 m from the crosswalk edge at x = 5.5 (within the
+  // 1.0 m margin).
+  const auto module = make_module(make_map_with_crosswalk(5.5, 9.0));
   const auto path = make_straight_path(11);
   const auto object = make_object(ObjectClassification::PEDESTRIAN, 1.0);
   path_cut::MaxDecelerationParams params;
   params.pedestrian = 2.0;
 
-  const auto cut = module.cut_path_at_boundary(path, object, params);
+  const auto cut = module.cut_path_at_road_border(path, object, params);
 
   EXPECT_EQ(cut.path.size(), path.path.size());
 }
 
-TEST(DecelerationAwarePathCutVruModule, CutsWhenCrosswalkIsBeyondMargin)
+TEST(RoadBorderModule, CutsWhenCrosswalkIsBeyondMargin)
 {
-  // crossing at x = 5.5 is 2.5 m from the crosswalk edge at x = 8.0 (beyond the 1.0 m margin).
+  // footprint crosses at pose x = 5, which is 3.0 m from the crosswalk edge at x = 8.0 (beyond the
+  // 1.0 m margin).
   const auto module = make_module(make_map_with_crosswalk(8.0, 11.0));
   const auto path = make_straight_path(11);
   const auto object = make_object(ObjectClassification::PEDESTRIAN, 1.0);
   path_cut::MaxDecelerationParams params;
   params.pedestrian = 2.0;
 
-  const auto cut = module.cut_path_at_boundary(path, object, params);
+  const auto cut = module.cut_path_at_road_border(path, object, params);
 
   EXPECT_LT(cut.path.size(), path.path.size());
 }
 
-TEST(DecelerationAwarePathCutVruModule, KeepsPathWhenNoBorderCrossing)
+TEST(RoadBorderModule, KeepsPathWhenNoBorderCrossing)
 {
   const auto module = make_module(make_map());
   const auto path = make_straight_path(4);  // reaches only x = 3, border at 5.5
@@ -287,12 +298,12 @@ TEST(DecelerationAwarePathCutVruModule, KeepsPathWhenNoBorderCrossing)
   path_cut::MaxDecelerationParams params;
   params.pedestrian = 2.0;
 
-  const auto cut = module.cut_path_at_boundary(path, object, params);
+  const auto cut = module.cut_path_at_road_border(path, object, params);
 
   EXPECT_EQ(cut.path.size(), path.path.size());
 }
 
-TEST(DecelerationAwarePathCutVruModule, UsesClassSpecificDeceleration)
+TEST(RoadBorderModule, UsesClassSpecificDeceleration)
 {
   const auto module = make_module(make_map());
   const auto path = make_straight_path(11);
@@ -303,8 +314,102 @@ TEST(DecelerationAwarePathCutVruModule, UsesClassSpecificDeceleration)
   const auto pedestrian = make_object(ObjectClassification::PEDESTRIAN, 2.0);
   const auto bicycle = make_object(ObjectClassification::BICYCLE, 2.0);
 
-  EXPECT_EQ(module.cut_path_at_boundary(path, pedestrian, params).path.size(), path.path.size());
-  EXPECT_LT(module.cut_path_at_boundary(path, bicycle, params).path.size(), path.path.size());
+  EXPECT_EQ(module.cut_path_at_road_border(path, pedestrian, params).path.size(), path.path.size());
+  EXPECT_LT(module.cut_path_at_road_border(path, bicycle, params).path.size(), path.path.size());
+}
+
+}  // namespace
+}  // namespace autoware::map_based_prediction
+
+namespace autoware::map_based_prediction
+{
+namespace
+{
+using autoware_perception_msgs::msg::PredictedObject;
+using autoware_perception_msgs::msg::Shape;
+
+// guard_rail is a vertical line crossing the straight path (along +x) at x = kGuardRailX.
+constexpr double kGuardRailX = 5.5;
+
+lanelet::LineString3d make_guard_rail(const lanelet::Id id)
+{
+  lanelet::LineString3d guard_rail(
+    id, {lanelet::Point3d(id + 1, kGuardRailX, -10.0, 0.0),
+         lanelet::Point3d(id + 2, kGuardRailX, 10.0, 0.0)});
+  guard_rail.attributes()[lanelet::AttributeNamesString::Type] = std::string("guard_rail");
+  return guard_rail;
+}
+
+std::shared_ptr<lanelet::LaneletMap> make_guard_rail_map()
+{
+  return lanelet::utils::createMap(lanelet::LineStrings3d{make_guard_rail(300)});
+}
+
+// Bounding-box object whose footprint spans dim_x/dim_y around each pose on a straight +x path.
+PredictedObject make_box_object(const size_t num_poses, const double dim_x, const double dim_y)
+{
+  PredictedObject object;
+  object.shape.type = Shape::BOUNDING_BOX;
+  object.shape.dimensions.x = dim_x;
+  object.shape.dimensions.y = dim_y;
+  object.shape.dimensions.z = 1.0;
+
+  PredictedPath path;
+  path.confidence = 1.0F;
+  path.time_step.sec = 0;
+  path.time_step.nanosec = 500000000;
+  for (size_t i = 0; i < num_poses; ++i) {
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = static_cast<double>(i);
+    pose.position.y = 0.0;
+    pose.orientation.w = 1.0;
+    path.path.push_back(pose);
+  }
+  object.kinematics.predicted_paths.push_back(path);
+  return object;
+}
+
+GuardRailModule make_guard_rail_module(std::shared_ptr<lanelet::LaneletMap> map)
+{
+  GuardRailModule module;
+  module.build_from_map(std::move(map));
+  return module;
+}
+
+TEST(GuardRailModule, ForceCutsWhenFootprintCrossesGuardRail)
+{
+  const auto module = make_guard_rail_module(make_guard_rail_map());
+  const auto object = make_box_object(11, 1.0, 1.0);  // reaches x = 10, crosses border at 5.5
+
+  const auto cut = module.cut_paths_crossing_guard_rail(object);
+
+  ASSERT_EQ(cut.size(), 1U);
+  EXPECT_LT(cut.front().path.size(), object.kinematics.predicted_paths.front().path.size());
+  ASSERT_FALSE(cut.front().path.empty());
+  EXPECT_LT(cut.front().path.back().position.x, kGuardRailX);
+}
+
+TEST(GuardRailModule, KeepsPathWhenNoCrossing)
+{
+  const auto module = make_guard_rail_module(make_guard_rail_map());
+  const auto object = make_box_object(4, 1.0, 1.0);  // footprint reaches only x = 3.5, border at 5.5
+
+  const auto cut = module.cut_paths_crossing_guard_rail(object);
+
+  ASSERT_EQ(cut.size(), 1U);
+  EXPECT_EQ(cut.front().path.size(), object.kinematics.predicted_paths.front().path.size());
+}
+
+TEST(GuardRailModule, ConsidersFootprintWidthBeyondCenterline)
+{
+  // Centerline reaches only x = 5 (< 5.5), but the 2 m-long footprint reaches x = 6 and crosses.
+  const auto module = make_guard_rail_module(make_guard_rail_map());
+  const auto object = make_box_object(6, 2.0, 1.0);
+
+  const auto cut = module.cut_paths_crossing_guard_rail(object);
+
+  ASSERT_EQ(cut.size(), 1U);
+  EXPECT_LT(cut.front().path.size(), object.kinematics.predicted_paths.front().path.size());
 }
 
 }  // namespace

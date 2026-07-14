@@ -31,7 +31,7 @@
 namespace autoware::map_based_prediction
 {
 
-enum class PathCutSource { Vegetation, Fence, RoadBorder };
+enum class PathCutSource { Vegetation, Fence, RoadBorder, GuardRail };
 
 struct PathCutDebug
 {
