@@ -650,10 +650,6 @@ void DiffusionPlanner::on_timer()
         frame_context->ego_kinematic_state.pose.pose, frame_time, *objects,
         planner_output.trajectory);
 
-      RCLCPP_INFO(
-        get_logger(), "Filtered objects: %zu -> %zu", objects->objects.size(),
-        filtered_objects.objects.size());
-
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
         ego_steering, filtered_objects);
