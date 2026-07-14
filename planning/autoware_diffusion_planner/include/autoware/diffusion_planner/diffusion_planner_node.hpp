@@ -186,7 +186,11 @@ private:
     const autoware::mppi_optimizer::FirstOrderDubinsMppiDebug & debug, const std::string & frame_id,
     const rclcpp::Time & stamp);
 
-  void publish_avoidance_targets(
+  /**
+   * Publish avoidance / driving-along targets and drivable-area bounds.
+   * @return Drivable area Path (left/right bounds) when detection succeeds, else nullopt.
+   */
+  std::optional<Path> publish_avoidance_targets(
     const rclcpp::Time & stamp, const Trajectory & trajectory,
     const PredictedObjects & predicted_objects,
     const std::shared_ptr<const TrackedObjects> & tracked_objects);
