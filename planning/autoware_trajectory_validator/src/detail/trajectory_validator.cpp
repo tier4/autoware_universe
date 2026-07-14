@@ -14,7 +14,7 @@
 
 #include "autoware/trajectory_validator/detail/trajectory_validator.hpp"
 
-#include "autoware/trajectory_validator/detail/assessment.hpp"
+#include "autoware/trajectory_validator/detail/risk_utils.hpp"
 
 #include <autoware_utils_system/stop_watch.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>

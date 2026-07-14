@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_validator/detail/assessment.hpp"
+#include "autoware/trajectory_validator/detail/risk_utils.hpp"
 
 #include <gtest/gtest.h>
 
@@ -37,12 +37,12 @@ MetricReport make_metric(const RiskLevelType level)
   return metric;
 }
 
-TEST(AssessmentTest, RiskLevelArrayReturnsSafeForEmptyInput)
+TEST(RiskUtilsTest, RiskLevelArrayReturnsSafeForEmptyInput)
 {
   EXPECT_EQ(worst_risk_level(std::vector<RiskLevel>{}), RiskLevel::SAFE);
 }
 
-TEST(AssessmentTest, RiskLevelArrayReturnsWorstRisk)
+TEST(RiskUtilsTest, RiskLevelArrayReturnsWorstRisk)
 {
   const std::vector<RiskLevel> risks{
     make_risk(RiskLevel::SAFE), make_risk(RiskLevel::HIGH_CAUTION),
@@ -51,7 +51,7 @@ TEST(AssessmentTest, RiskLevelArrayReturnsWorstRisk)
   EXPECT_EQ(worst_risk_level(risks), RiskLevel::HIGH_CAUTION);
 }
 
-TEST(AssessmentTest, RiskLevelArrayTreatsFatalAsWorst)
+TEST(RiskUtilsTest, RiskLevelArrayTreatsFatalAsWorst)
 {
   const std::vector<RiskLevel> risks{
     make_risk(RiskLevel::DANGER), make_risk(RiskLevel::FATAL), make_risk(RiskLevel::HIGH_CAUTION)};
@@ -59,12 +59,12 @@ TEST(AssessmentTest, RiskLevelArrayTreatsFatalAsWorst)
   EXPECT_EQ(worst_risk_level(risks), RiskLevel::FATAL);
 }
 
-TEST(AssessmentTest, MetricReportArrayReturnsSafeForEmptyInput)
+TEST(RiskUtilsTest, MetricReportArrayReturnsSafeForEmptyInput)
 {
   EXPECT_EQ(worst_risk_level(std::vector<MetricReport>{}), RiskLevel::SAFE);
 }
 
-TEST(AssessmentTest, MetricReportArrayReturnsWorstRisk)
+TEST(RiskUtilsTest, MetricReportArrayReturnsWorstRisk)
 {
   const std::vector<MetricReport> metrics{
     make_metric(RiskLevel::LOW_CAUTION), make_metric(RiskLevel::DANGER),
@@ -73,7 +73,7 @@ TEST(AssessmentTest, MetricReportArrayReturnsWorstRisk)
   EXPECT_EQ(worst_risk_level(metrics), RiskLevel::DANGER);
 }
 
-TEST(AssessmentTest, MetricReportArrayTreatsFatalAsWorst)
+TEST(RiskUtilsTest, MetricReportArrayTreatsFatalAsWorst)
 {
   const std::vector<MetricReport> metrics{
     make_metric(RiskLevel::SAFE), make_metric(RiskLevel::DANGER), make_metric(RiskLevel::FATAL)};

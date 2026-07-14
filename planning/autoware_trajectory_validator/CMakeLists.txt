@@ -137,10 +137,10 @@ if(BUILD_TESTING)
     autoware_trajectory_validator_plugins
   )
 
-  ament_add_gtest(test_assessment
-    test/detail/test_assessment.cpp
+  ament_add_gtest(test_risk_utils
+    test/detail/test_risk_utils.cpp
   )
-  target_link_libraries(test_assessment
+  target_link_libraries(test_risk_utils
     ${trajectory_validator_lib_target}
   )
 

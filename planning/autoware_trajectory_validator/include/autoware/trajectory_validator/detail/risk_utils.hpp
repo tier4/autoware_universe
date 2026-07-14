@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__ASSESSMENT_HPP_
-#define AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__ASSESSMENT_HPP_
+#ifndef AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_UTILS_HPP_
+#define AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_UTILS_HPP_
 
 #include "autoware_trajectory_validator/msg/metric_report.hpp"
 #include "autoware_trajectory_validator/msg/risk_level.hpp"
@@ -55,4 +55,4 @@ inline RiskLevelType worst_risk_level(const std::vector<MetricReport> & metrics)
   return worst;
 }
 }  // namespace autoware::trajectory_validator
-#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__ASSESSMENT_HPP_
+#endif  // AUTOWARE__TRAJECTORY_VALIDATOR__DETAIL__RISK_UTILS_HPP_
