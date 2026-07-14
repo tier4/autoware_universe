@@ -14,9 +14,9 @@
 
 #include "autoware/diffusion_planner/diffusion_planner_node.hpp"
 
-#include "autoware/diffusion_planner/avoidance_target_filter.hpp"
 #include "autoware/diffusion_planner/constants.hpp"
 #include "autoware/diffusion_planner/dimensions.hpp"
+#include "autoware/diffusion_planner/mppi_related/avoidance_target_filter.hpp"
 #include "autoware/diffusion_planner/preprocessing/preprocessing_utils.hpp"
 #include "autoware/diffusion_planner/utils/marker_utils.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
@@ -649,6 +649,10 @@ void DiffusionPlanner::on_timer()
       const TrackedObjects filtered_objects = filter_avoidance_targets(
         frame_context->ego_kinematic_state.pose.pose, frame_time, *objects,
         planner_output.trajectory);
+
+      RCLCPP_INFO(
+        get_logger(), "Filtered objects: %zu -> %zu", objects->objects.size(),
+        filtered_objects.objects.size());
 
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,

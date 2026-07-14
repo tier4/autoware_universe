@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__DIFFUSION_PLANNER__AVOIDANCE_TARGET_FILTER_HPP_
-#define AUTOWARE__DIFFUSION_PLANNER__AVOIDANCE_TARGET_FILTER_HPP_
+#ifndef AUTOWARE__DIFFUSION_PLANNER__MPPI_RELATED__AVOIDANCE_TARGET_FILTER_HPP_
+#define AUTOWARE__DIFFUSION_PLANNER__MPPI_RELATED__AVOIDANCE_TARGET_FILTER_HPP_
 
 #include <rclcpp/time.hpp>
 
@@ -85,4 +85,4 @@ private:
 
 }  // namespace autoware::diffusion_planner
 
-#endif  // AUTOWARE__DIFFUSION_PLANNER__AVOIDANCE_TARGET_FILTER_HPP_
+#endif  // AUTOWARE__DIFFUSION_PLANNER__MPPI_RELATED__AVOIDANCE_TARGET_FILTER_HPP_

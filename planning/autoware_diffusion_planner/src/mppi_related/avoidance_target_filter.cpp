@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/diffusion_planner/avoidance_target_filter.hpp"
+#include "autoware/diffusion_planner/mppi_related/avoidance_target_filter.hpp"
 
 #include "autoware/avoidance_target_detector/boundary.hpp"
 #include "autoware/avoidance_target_detector/object_filtering.hpp"
@@ -64,7 +64,9 @@ struct AvoidanceTargetFilter::Impl
   RouteContextSignature signature;
 };
 
-AvoidanceTargetFilter::AvoidanceTargetFilter() : impl_{std::make_unique<Impl>()} {}
+AvoidanceTargetFilter::AvoidanceTargetFilter() : impl_{std::make_unique<Impl>()}
+{
+}
 AvoidanceTargetFilter::~AvoidanceTargetFilter() = default;
 AvoidanceTargetFilter::AvoidanceTargetFilter(AvoidanceTargetFilter &&) noexcept = default;
 AvoidanceTargetFilter & AvoidanceTargetFilter::operator=(AvoidanceTargetFilter &&) noexcept =
@@ -135,8 +137,7 @@ TrackedObjects AvoidanceTargetFilter::filter(
     now, objects, reference, *impl_->extended_route_handler, impl_->ego_trajectory,
     impl_->ego_trajectory_built);
 
-  TrackedObjects filtered =
-    impl_->selector.get_avoidance_targets(objects, reference, route_bounds);
+  TrackedObjects filtered = impl_->selector.get_avoidance_targets(objects, reference, route_bounds);
 
   // Selector treats these as disjoint from stationary avoidance targets.
   if (impl_->ego_trajectory_built && !reference.points.empty()) {
