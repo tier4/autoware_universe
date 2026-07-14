@@ -152,7 +152,7 @@ void PredictorVru::setLaneletMap(std::shared_ptr<lanelet::LaneletMap> lanelet_ma
   fence_module_.buildFromMap(lanelet_map_ptr_);
   vegetation_module_.build_from_map(lanelet_map_ptr_);
   guard_rail_module_.build_from_map(lanelet_map_ptr_);
-  road_border_module_.build_from_map(lanelet_map_ptr_, params_.road_border_boundary_types);
+  road_border_module_.build_from_map(lanelet_map_ptr_);
 }
 
 void PredictorVru::loadCurrentCrosswalkUsers(const TrackedObjects & objects)

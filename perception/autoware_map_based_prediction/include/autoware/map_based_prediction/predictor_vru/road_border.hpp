@@ -34,9 +34,7 @@ class RoadBorderModule
 public:
   RoadBorderModule() = default;
 
-  void build_from_map(
-    std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr,
-    const std::vector<std::string> & boundary_types);
+  void build_from_map(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr);
 
   [[nodiscard]] PredictedPath cut_path_at_road_border(
     const PredictedPath & predicted_path,

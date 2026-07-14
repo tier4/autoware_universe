@@ -214,7 +214,7 @@ TrackedObject make_object(const uint8_t label, const double speed)
 RoadBorderModule make_module(std::shared_ptr<lanelet::LaneletMap> map)
 {
   RoadBorderModule module;
-  module.build_from_map(std::move(map), {"road_border"});
+  module.build_from_map(std::move(map));
   return module;
 }
 

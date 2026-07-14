@@ -146,8 +146,6 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
       declare_parameter<double>("crossing_intention_duration");
     vru_params.history.no_crossing_intention_duration =
       declare_parameter<double>("no_crossing_intention_duration");
-    vru_params.road_border_boundary_types =
-      declare_parameter<std::vector<std::string>>("path_cut.boundary_types");
     state_.predictor_vru->setParams(vru_params);
     state_.predictor_vru->set_max_deceleration(max_decel_params);
   }

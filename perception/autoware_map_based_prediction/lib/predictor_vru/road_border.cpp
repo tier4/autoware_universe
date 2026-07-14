@@ -96,9 +96,7 @@ bool point_near_crosswalk(const lanelet::LaneletMap & map, const lanelet::BasicP
 }
 }  // namespace
 
-void RoadBorderModule::build_from_map(
-  std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr,
-  const std::vector<std::string> & boundary_types)
+void RoadBorderModule::build_from_map(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr)
 {
   lanelet_map_ptr_ = lanelet_map_ptr;
   road_border_layer_ = nullptr;
@@ -109,7 +107,7 @@ void RoadBorderModule::build_from_map(
   lanelet::LineStrings3d borders;
   for (const auto & linestring : lanelet_map_ptr_->lineStringLayer) {
     const std::string type = linestring.attributeOr(lanelet::AttributeName::Type, "none");
-    if (std::find(boundary_types.begin(), boundary_types.end(), type) != boundary_types.end()) {
+    if (type == "road_border") {
       borders.emplace_back(
         std::const_pointer_cast<lanelet::LineStringData>(linestring.constData()));
     }

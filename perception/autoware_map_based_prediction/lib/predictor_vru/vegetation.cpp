@@ -80,7 +80,7 @@ std::vector<PredictedPath> VegetationModule::cut_paths_crossing_vegetation(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object) const
 {
   std::vector<PredictedPath> cut_paths = predicted_object.kinematics.predicted_paths;
-  if (!path_cut::object_has_footprint(predicted_object) || !vegetation_layer_) {
+  if (!path_cut::has_required_info(predicted_object) || !vegetation_layer_) {
     return cut_paths;
   }
 

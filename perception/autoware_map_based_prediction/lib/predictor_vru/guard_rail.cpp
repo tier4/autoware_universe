@@ -76,7 +76,7 @@ std::vector<PredictedPath> GuardRailModule::cut_paths_crossing_guard_rail(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object) const
 {
   std::vector<PredictedPath> cut_paths = predicted_object.kinematics.predicted_paths;
-  if (!path_cut::object_has_footprint(predicted_object) || !guard_rail_layer_) {
+  if (!path_cut::has_required_info(predicted_object) || !guard_rail_layer_) {
     return cut_paths;
   }
 

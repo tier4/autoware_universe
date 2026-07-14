@@ -310,17 +310,9 @@
                 }
               },
               "required": ["vehicle", "pedestrian", "bicycle", "motorcycle"]
-            },
-            "boundary_types": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "default": ["road_border"],
-              "description": "lanelet linestring types deceleration-aware-cut as road boundary for pedestrian/bicycle path cut (guard_rail is force-cut separately)"
             }
           },
-          "required": ["max_deceleration", "boundary_types"]
+          "required": ["max_deceleration"]
         }
       },
       "required": [
