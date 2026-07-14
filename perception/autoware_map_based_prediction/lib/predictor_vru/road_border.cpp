@@ -60,7 +60,6 @@ std::vector<autoware_utils_geometry::LineString2d> collect_candidate_road_border
   return linestrings_2d;
 }
 
-// Arc length from the path start up to predicted_path.path.at(index).
 double arc_length_to_index(const PredictedPath & predicted_path, const size_t index)
 {
   const auto & poses = predicted_path.path;
@@ -155,7 +154,6 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
     return predicted_path;
   }
 
-  // Drop the crossing pose and beyond, keeping at least one pose.
   return path_cut::force_cut_at_index(predicted_path, std::max<size_t>(*crossing_index, 1UL) - 1UL);
 }
 

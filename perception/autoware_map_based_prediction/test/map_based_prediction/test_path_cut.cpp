@@ -204,7 +204,6 @@ TrackedObject make_object(const uint8_t label, const double speed)
   classification.probability = 1.0;
   object.classification.push_back(classification);
   object.kinematics.twist_with_covariance.twist.linear.x = speed;
-  // Footprint half-length 0.6 m in x, so the box first reaches the border (x = 5.5) at pose x = 5.
   object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
   object.shape.dimensions.x = 1.2;
   object.shape.dimensions.y = 1.0;
@@ -262,8 +261,6 @@ TEST(RoadBorderModule, DoesNotCutInsideCrosswalk)
 
 TEST(RoadBorderModule, DoesNotCutJustOutsideCrosswalkWithinMargin)
 {
-  // footprint crosses at pose x = 5, which is 0.5 m from the crosswalk edge at x = 5.5 (within the
-  // 1.0 m margin).
   const auto module = make_module(make_map_with_crosswalk(5.5, 9.0));
   const auto path = make_straight_path(11);
   const auto object = make_object(ObjectClassification::PEDESTRIAN, 1.0);
@@ -277,8 +274,6 @@ TEST(RoadBorderModule, DoesNotCutJustOutsideCrosswalkWithinMargin)
 
 TEST(RoadBorderModule, CutsWhenCrosswalkIsBeyondMargin)
 {
-  // footprint crosses at pose x = 5, which is 3.0 m from the crosswalk edge at x = 8.0 (beyond the
-  // 1.0 m margin).
   const auto module = make_module(make_map_with_crosswalk(8.0, 11.0));
   const auto path = make_straight_path(11);
   const auto object = make_object(ObjectClassification::PEDESTRIAN, 1.0);
@@ -328,7 +323,6 @@ namespace
 using autoware_perception_msgs::msg::PredictedObject;
 using autoware_perception_msgs::msg::Shape;
 
-// guard_rail is a vertical line crossing the straight path (along +x) at x = kGuardRailX.
 constexpr double kGuardRailX = 5.5;
 
 lanelet::LineString3d make_guard_rail(const lanelet::Id id)
@@ -345,7 +339,6 @@ std::shared_ptr<lanelet::LaneletMap> make_guard_rail_map()
   return lanelet::utils::createMap(lanelet::LineStrings3d{make_guard_rail(300)});
 }
 
-// Bounding-box object whose footprint spans dim_x/dim_y around each pose on a straight +x path.
 PredictedObject make_box_object(const size_t num_poses, const double dim_x, const double dim_y)
 {
   PredictedObject object;
@@ -379,7 +372,7 @@ GuardRailModule make_guard_rail_module(std::shared_ptr<lanelet::LaneletMap> map)
 TEST(GuardRailModule, ForceCutsWhenFootprintCrossesGuardRail)
 {
   const auto module = make_guard_rail_module(make_guard_rail_map());
-  const auto object = make_box_object(11, 1.0, 1.0);  // reaches x = 10, crosses border at 5.5
+  const auto object = make_box_object(11, 1.0, 1.0);
 
   const auto cut = module.cut_paths_crossing_guard_rail(object);
 
@@ -392,7 +385,7 @@ TEST(GuardRailModule, ForceCutsWhenFootprintCrossesGuardRail)
 TEST(GuardRailModule, KeepsPathWhenNoCrossing)
 {
   const auto module = make_guard_rail_module(make_guard_rail_map());
-  const auto object = make_box_object(4, 1.0, 1.0);  // footprint reaches only x = 3.5, border at 5.5
+  const auto object = make_box_object(4, 1.0, 1.0);
 
   const auto cut = module.cut_paths_crossing_guard_rail(object);
 
@@ -402,7 +395,6 @@ TEST(GuardRailModule, KeepsPathWhenNoCrossing)
 
 TEST(GuardRailModule, ConsidersFootprintWidthBeyondCenterline)
 {
-  // Centerline reaches only x = 5 (< 5.5), but the 2 m-long footprint reaches x = 6 and crosses.
   const auto module = make_guard_rail_module(make_guard_rail_map());
   const auto object = make_box_object(6, 2.0, 1.0);
 

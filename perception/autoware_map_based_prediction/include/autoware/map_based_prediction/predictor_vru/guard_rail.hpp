@@ -27,17 +27,13 @@
 namespace autoware::map_based_prediction
 {
 
-/// Linestring counterpart of VegetationModule: an unconditional (deceleration-agnostic) path cut
-/// where the object footprint crosses a guard_rail linestring.
 class GuardRailModule
 {
 public:
   GuardRailModule() = default;
 
-  /// @pre lanelet_map_ptr is non-null when building from a map; nullptr clears the layer.
   void build_from_map(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr);
 
-  /// Return the object's predicted paths trimmed where the footprint enters a guard_rail.
   [[nodiscard]] std::vector<PredictedPath> cut_paths_crossing_guard_rail(
     const autoware_perception_msgs::msg::PredictedObject & predicted_object) const;
 

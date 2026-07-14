@@ -92,7 +92,6 @@ std::vector<PredictedPath> VegetationModule::cut_paths_crossing_vegetation(
     const std::optional<size_t> crossing_index =
       path_cut::find_footprint_crossing_index(predicted_path, object_shape, candidate_polygons);
     if (crossing_index) {
-      // Drop the crossing pose and beyond, keeping at least one pose.
       const size_t last_kept_index = std::max<size_t>(*crossing_index, 1UL) - 1UL;
       predicted_path = path_cut::force_cut_at_index(predicted_path, last_kept_index);
     }

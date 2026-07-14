@@ -30,25 +30,20 @@
 namespace autoware::map_based_prediction::path_cut
 {
 
-/// Half-diagonal (bounding box) / radius (cylinder) of the object footprint, used as search margin.
 double footprint_search_margin(const autoware_perception_msgs::msg::Shape & shape);
 
-/// Whether the object has predicted paths and dimensions that yield a usable footprint.
 bool object_has_footprint(const autoware_perception_msgs::msg::PredictedObject & predicted_object);
 
-/// Axis-aligned box covering every path pose expanded by the footprint search margin.
 lanelet::BoundingBox2d footprint_search_bbox(
   const std::vector<PredictedPath> & predicted_paths,
   const autoware_perception_msgs::msg::Shape & object_shape);
 lanelet::BoundingBox2d footprint_search_bbox(
   const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & object_shape);
 
-/// First pose index whose footprint crosses any of the linestrings; nullopt if none.
 std::optional<size_t> find_footprint_crossing_index(
   const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & object_shape,
   const std::vector<autoware_utils_geometry::LineString2d> & linestrings_2d);
 
-/// First pose index whose footprint crosses any of the polygons; nullopt if none.
 std::optional<size_t> find_footprint_crossing_index(
   const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & object_shape,
   const std::vector<autoware_utils_geometry::Polygon2d> & polygons_2d);
