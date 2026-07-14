@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__TRAJECTORY_RANKER__TRAJECTORY_RANKER_WRAPPER_HPP_
 #define AUTOWARE__TRAJECTORY_RANKER__TRAJECTORY_RANKER_WRAPPER_HPP_
 
+#include "autoware/trajectory_ranker/trajectory_ranker.hpp"
+
 #include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
@@ -22,8 +24,11 @@
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+#include <autoware_utils_rclcpp/polling_subscriber.hpp>
+
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_internal_planning_msgs/msg/scored_candidate_trajectories.hpp>
+#include <autoware_trajectory_validator/msg/validation_report.hpp>
 
 #include <memory>
 #include <string>
@@ -33,6 +38,7 @@ namespace autoware::trajectory_ranker
 {
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_internal_planning_msgs::msg::ScoredCandidateTrajectories;
+using autoware_trajectory_validator::msg::ValidationReport;
 
 class TrajectoryRankerWrapper
 {
@@ -43,7 +49,7 @@ public:
     vehicle_info_utils::VehicleInfo vehicle_info,
     std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
 
-  ScoredCandidateTrajectories rank_trajectories(const CandidateTrajectories & input_trajectories);
+  ScoredCandidateTrajectories rank_trajectories(const CandidateTrajectories & input_trajectories, const RankerContext & context);
 
 private:
   void update_parameters();
@@ -51,7 +57,12 @@ private:
   rclcpp::Node * node_ptr_{nullptr};
   std::string interface_name_{"trajectory_ranker"};
   rclcpp::Logger logger_;
-  vehicle_info_utils::VehicleInfo vehicle_info_;
+  std::shared_ptr<vehicle_info_utils::VehicleInfo> vehicle_info_;
+  std::shared_ptr<nav_msgs::msg::Odometry> odometry_;
+  std::unique_ptr<TrajectoryRanker> ranker_ptr_;
+  std::shared_ptr<RouteHandler> route_handler_;
+  std::shared_ptr<Evaluator> evaluator_;
+
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};
   std::unique_ptr<trajectory_ranker_params::ParamListener> param_listener_;
   trajectory_ranker_params::Params params_;

@@ -23,11 +23,12 @@ namespace autoware::trajectory_ranker
 TrajectoryRankerWrapper::TrajectoryRankerWrapper(
   rclcpp::Node & node,
   rclcpp::node_interfaces::NodeParametersInterface::SharedPtr node_parameters_interface,
-  vehicle_info_utils::VehicleInfo vehicle_info,
+  VehicleInfo vehicle_info,
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
 : node_ptr_(&node),
   logger_(node.get_logger().get_child(interface_name_)),
-  vehicle_info_(vehicle_info),
+  vehicle_info_(std::make_shared<VehicleInfo>(vehicle_info)),
+  route_handler_(std::make_shared<RouteHandler>()),
   time_keeper_(std::move(time_keeper)),
   param_listener_(
     std::make_unique<trajectory_ranker_params::ParamListener>(node_parameters_interface))
@@ -37,6 +38,10 @@ TrajectoryRankerWrapper::TrajectoryRankerWrapper(
   }
 
   params_ = param_listener_->get_params();
+
+  evaluator_ = std::make_shared<Evaluator>(route_handler_, vehicle_info_, node.get_logger(), params_.evaluation, node_ptr_);
+
+  ranker_ptr_ = std::make_unique<TrajectoryRanker>(evaluator_, params_);
 }
 
 void TrajectoryRankerWrapper::update_parameters()
@@ -48,13 +53,17 @@ void TrajectoryRankerWrapper::update_parameters()
 }
 
 ScoredCandidateTrajectories TrajectoryRankerWrapper::rank_trajectories(
-  const CandidateTrajectories & input_trajectories)
+  const CandidateTrajectories & input_trajectories, const RankerContext & context)
 {
   update_parameters();
 
-  (void)input_trajectories;
+  auto result = ranker_ptr_->process(input_trajectories, context);
+  if (!result) {
+    RCLCPP_ERROR(logger_, "Failed to rank trajectories: %s", result.error().c_str());
+    return ScoredCandidateTrajectories();
+  }
 
-  return ScoredCandidateTrajectories();
+  return result.value();
 }
 
 }  // namespace autoware::trajectory_ranker

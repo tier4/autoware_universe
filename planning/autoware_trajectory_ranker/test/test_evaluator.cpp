@@ -117,10 +117,9 @@ protected:
 
     // Create CoreData with proper constructor
     auto ideal = std::make_shared<TrajectoryPoints>();
-    auto objects = std::make_shared<PredictedObjects>();
     auto lanes = std::make_shared<lanelet::ConstLanelets>();
 
-    return std::make_shared<CoreData>(points, ideal, objects, lanes, tag);
+    return std::make_shared<CoreData>(points, ideal, lanes, tag);
   }
 
   std::shared_ptr<rclcpp::Node> node_;

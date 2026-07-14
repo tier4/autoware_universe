@@ -37,8 +37,6 @@ namespace autoware::trajectory_ranker::metrics
 {
 
 using autoware::trajectory_ranker::CoreData;
-using autoware_perception_msgs::msg::PredictedObject;
-using autoware_perception_msgs::msg::PredictedObjects;
 
 class TestMetrics : public ::testing::Test
 {
@@ -93,9 +91,8 @@ protected:
     }
 
     auto ideal = std::make_shared<TrajectoryPoints>();
-    auto objects = std::make_shared<PredictedObjects>();
     auto lanes = std::make_shared<lanelet::ConstLanelets>();
-    auto core_data = std::make_shared<CoreData>(points, ideal, objects, lanes, "test");
+    auto core_data = std::make_shared<CoreData>(points, ideal, lanes, "test");
 
     result_ =
       std::make_shared<autoware::trajectory_ranker::DataInterface>(core_data, 6);  // 6 metrics
@@ -190,10 +187,9 @@ TEST_F(TestMetrics, MetricWithEmptyTrajectory)
   // Create empty result
   auto empty_points = std::make_shared<TrajectoryPoints>();
   auto empty_ideal = std::make_shared<TrajectoryPoints>();
-  auto empty_objects = std::make_shared<PredictedObjects>();
   auto empty_lanes = std::make_shared<lanelet::ConstLanelets>();
   auto empty_core_data =
-    std::make_shared<CoreData>(empty_points, empty_ideal, empty_objects, empty_lanes, "empty");
+    std::make_shared<CoreData>(empty_points, empty_ideal, empty_lanes, "empty");
   auto empty_result =
     std::make_shared<autoware::trajectory_ranker::DataInterface>(empty_core_data, 6);
 
@@ -249,14 +245,13 @@ TEST_F(TestMetrics, TrajectoryConsistencyMetric)
   }
 
   // Setup test data with trajectory history
-  auto objects = std::make_shared<PredictedObjects>();
   auto lanes = std::make_shared<lanelet::ConstLanelets>();
   std_msgs::msg::Header header;
   header.stamp = rclcpp::Time(static_cast<int64_t>(5 * 1e8));  // Current time
   unique_identifier_msgs::msg::UUID uuid;
 
   auto core_data = std::make_shared<CoreData>(
-    current_points, current_points, nullptr, objects, lanes, header, uuid, trajectory_history);
+    current_points, current_points, nullptr, lanes, header, uuid, trajectory_history);
 
   auto result = std::make_shared<autoware::trajectory_ranker::DataInterface>(core_data, 7);
 
@@ -289,7 +284,6 @@ TEST_F(TestMetrics, TrajectoryConsistencyWithEmptyHistory)
     points->push_back(pt);
   }
 
-  auto objects = std::make_shared<PredictedObjects>();
   auto lanes = std::make_shared<lanelet::ConstLanelets>();
   auto empty_history = std::make_shared<std::deque<autoware_planning_msgs::msg::Trajectory>>();
 
@@ -298,7 +292,7 @@ TEST_F(TestMetrics, TrajectoryConsistencyWithEmptyHistory)
   unique_identifier_msgs::msg::UUID uuid;
 
   auto core_data = std::make_shared<CoreData>(
-    points, points, nullptr, objects, lanes, header, uuid, empty_history);
+    points, points, nullptr, lanes, header, uuid, empty_history);
 
   auto result = std::make_shared<autoware::trajectory_ranker::DataInterface>(core_data, 7);
 

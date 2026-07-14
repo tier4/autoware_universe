@@ -128,7 +128,7 @@ ScoredCandidateTrajectories::ConstSharedPtr TrajectoryRanker::score(
     auto trajectory_history_ptr = std::make_shared<std::deque<Trajectory>>(trajectory_history_);
 
     auto core_data = std::make_shared<CoreData>(
-      original_points, sampled_points, previous_points_, objects_ptr, preferred_lanes,
+      original_points, sampled_points, previous_points_, preferred_lanes,
       candidate.header, candidate.generator_id, trajectory_history_ptr,
       candidate.turn_indicators_command);
 
