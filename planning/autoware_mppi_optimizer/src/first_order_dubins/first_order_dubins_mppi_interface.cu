@@ -22,6 +22,7 @@
 #include <mppi/cost_functions/moving_car_obstacles.hpp>
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
 #include <mppi/feedback_controllers/zero_feedback.cuh>
+#include <mppi/path/drivable_area.hpp>
 #include <mppi/path/path2d.hpp>
 #include <mppi/path/path_projection.hpp>
 #include <mppi/sampling_distributions/gaussian/gaussian.cuh>
@@ -124,6 +125,29 @@ mppi::path::Path2D trajectoryToPath2D(const Trajectory & trajectory)
     throw std::runtime_error("Trajectory must contain at least two points for MPPI tracking");
   }
   return mppi::path::Path2D::catmullRom(control_xy, false, 8);
+}
+
+/** Closed polygon: left_bound forward, then right_bound reversed (same winding as corridor polys). */
+mppi::path::Polygon2D boundsToDrivablePolygon(
+  const std::vector<geometry_msgs::msg::Point> & left_bound,
+  const std::vector<geometry_msgs::msg::Point> & right_bound)
+{
+  mppi::path::Polygon2D poly;
+  if (left_bound.size() < 2U || right_bound.size() < 2U) {
+    return poly;
+  }
+
+  poly.x.reserve(left_bound.size() + right_bound.size());
+  poly.y.reserve(left_bound.size() + right_bound.size());
+  for (const auto & p : left_bound) {
+    poly.x.push_back(static_cast<float>(p.x));
+    poly.y.push_back(static_cast<float>(p.y));
+  }
+  for (auto it = right_bound.rbegin(); it != right_bound.rend(); ++it) {
+    poly.x.push_back(static_cast<float>(it->x));
+    poly.y.push_back(static_cast<float>(it->y));
+  }
+  return poly;
 }
 
 float yawFromOdometry(const Odometry & odometry)
@@ -344,6 +368,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   Trajectory diffusion_reference;
   TrackedObjects tracked_objects;
   mppi::path::Path2D path;
+  mppi::path::Polygon2D drivable_polygon;
   std::vector<mppi::cost::MovingCarObstacle> obstacles;
 
   DYN model;
@@ -510,7 +535,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     const Trajectory & reference, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-    const TrackedObjects & tracked_objects_in)
+    const TrackedObjects & tracked_objects_in, const std::optional<Path> & drivable_area)
   {
     if (!initialized) {
       setup();
@@ -520,6 +545,12 @@ struct FirstOrderDubinsMppiInterface::Impl
     tracked_objects = tracked_objects_in;
     path = trajectoryToPath2D(reference);
     obstacles.clear();
+    if (drivable_area) {
+      drivable_polygon =
+        boundsToDrivablePolygon(drivable_area->left_bound, drivable_area->right_bound);
+    } else {
+      drivable_polygon = mppi::path::Polygon2D{};
+    }
 
     const size_t new_start_idx = findTrackingStartIndex(reference, odometry);
     const bool large_index_jump =
@@ -561,6 +592,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     const std::vector<mppi::path::PathReferenceSample> ref =
       buildDiffusionReferenceHorizon(diffusion_reference, tracking_start_idx, path);
     mppi::cost::fillFirstOrderDubinsBicycleCostFromPathReference<kRefHorizon>(cost, ref);
+    mppi::cost::fillFirstOrderDubinsBicycleCostDrivablePolygon<kRefHorizon>(cost, drivable_polygon);
 
     int obstacle_count = 0;
     if (!tracked_objects.objects.empty()) {
@@ -713,7 +745,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const Trajectory & input, const Odometry & odometry,
   const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
   const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-  const TrackedObjects & tracked_objects)
+  const TrackedObjects & tracked_objects, const std::optional<Path> & drivable_area)
 {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -730,7 +762,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
 
   const auto start_time = std::chrono::steady_clock::now();
 
-  impl_->updateDiffusionReference(input, odometry, acceleration, steering_status, tracked_objects);
+  impl_->updateDiffusionReference(
+    input, odometry, acceleration, steering_status, tracked_objects, drivable_area);
   const FirstOrderDubinsMppiControl control = impl_->runStep();
 
   const auto state_trajectory = impl_->controller->getActualStateSeq();

@@ -638,7 +638,7 @@ void DiffusionPlanner::on_timer()
   }
 
   // Run avoidance-target / drivable-area detection on the diffusion trajectory before MPPI.
-  publish_avoidance_targets(
+  const std::optional<Path> drivable_area_for_mppi = publish_avoidance_targets(
     frame_time, planner_output.trajectory, planner_output.predicted_objects, objects);
 
   if (params_.use_mppi_optimizer) {
@@ -663,7 +663,7 @@ void DiffusionPlanner::on_timer()
         steering_status ? std::make_optional(*steering_status) : std::nullopt;
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
-        ego_steering, *objects);
+        ego_steering, *objects, drivable_area_for_mppi);
       record_section_time(
         *stop_watch_ptr_, "mppi_optimizer/optimize_trajectory", *diagnostics_inference_);
       if (!params_.shadow_mode) {
@@ -796,14 +796,14 @@ void DiffusionPlanner::on_map(const HADMapBin::ConstSharedPtr map_msg)
   core_->set_map(lanelet_map_ptr_);
 }
 
-void DiffusionPlanner::publish_avoidance_targets(
+std::optional<Path> DiffusionPlanner::publish_avoidance_targets(
   const rclcpp::Time & stamp, const Trajectory & trajectory,
   const PredictedObjects & predicted_objects,
   const std::shared_ptr<const TrackedObjects> & tracked_objects)
 {
   const auto route = core_->get_route();
   if (!avoidance_target_detector_ || !map_bin_ || !route || route->segments.empty()) {
-    return;
+    return std::nullopt;
   }
 
   const bool route_or_map_updated =
@@ -816,9 +816,10 @@ void DiffusionPlanner::publish_avoidance_targets(
   }
 
   if (!avoidance_target_detector_->is_ready()) {
-    return;
+    return std::nullopt;
   }
 
+  std::optional<Path> drivable_area;
   const auto predicted_output = avoidance_target_detector_->process_predicted_objects(
     stamp, predicted_objects, trajectory);
   if (predicted_output) {
@@ -828,10 +829,11 @@ void DiffusionPlanner::publish_avoidance_targets(
     }
     pub_avoidance_targets_->publish(predicted_output->avoidance_targets);
     pub_driving_along_vehicles_->publish(predicted_output->driving_along_vehicles);
+    drivable_area = predicted_output->drivable_area;
   }
 
   if (!tracked_objects) {
-    return;
+    return drivable_area;
   }
 
   const auto tracked_output = avoidance_target_detector_->process_tracked_objects(
@@ -840,6 +842,7 @@ void DiffusionPlanner::publish_avoidance_targets(
     pub_tracked_avoidance_targets_->publish(tracked_output->tracked_avoidance_targets);
     pub_tracked_driving_along_vehicles_->publish(tracked_output->tracked_driving_along_vehicles);
   }
+  return drivable_area;
 }
 
 }  // namespace autoware::diffusion_planner

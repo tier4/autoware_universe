@@ -19,6 +19,7 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params.hpp"
 
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
+#include <autoware_planning_msgs/msg/path.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -33,6 +34,7 @@ namespace autoware::mppi_optimizer
 {
 
 using autoware_perception_msgs::msg::TrackedObjects;
+using autoware_planning_msgs::msg::Path;
 using autoware_planning_msgs::msg::Trajectory;
 using nav_msgs::msg::Odometry;
 
@@ -120,12 +122,15 @@ public:
    * @param steering_status Optional ego tire steering angle [rad] from vehicle status.
    * @param tracked_objects Perception tracked objects used as dynamic obstacles
    * (constant-velocity).
+   * @param drivable_area Optional route Path whose left_bound/right_bound form a closed
+   *        drivable polygon for the crash cost. Cleared when absent or empty.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
     const Trajectory & input, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-    const TrackedObjects & tracked_objects);
+    const TrackedObjects & tracked_objects,
+    const std::optional<Path> & drivable_area = std::nullopt);
 
 private:
   struct Impl;
