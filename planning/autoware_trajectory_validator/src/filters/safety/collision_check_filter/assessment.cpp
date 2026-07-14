@@ -111,7 +111,7 @@ std::optional<CollisionDetail> find_collision_timing(
           continue;
         }
 
-        return CandidateFinding{ref_start_time, pet, ref_index_range, *test_index_range};
+        return CandidateFinding{ref_start_time, pet, ref_index_range, test_index_range.value()};
       }
       return std::nullopt;
     };
