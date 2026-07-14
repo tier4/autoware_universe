@@ -20,6 +20,7 @@
 
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_trajectory_ranker/trajectory_ranker_parameters.hpp>
+#include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -58,8 +59,6 @@ private:
   ScoredCandidateTrajectories::ConstSharedPtr score(
     const CandidateTrajectories::ConstSharedPtr msg);
 
-  std::shared_ptr<EvaluatorParameters> parameters() const;
-
   autoware_utils_rclcpp::InterProcessPollingSubscriber<PredictedObjects> sub_objects_{
     this, "~/input/objects"};
 
@@ -72,9 +71,11 @@ private:
 
   rclcpp::Publisher<ScoredCandidateTrajectories>::SharedPtr pub_trajectories_;
 
-  std::unique_ptr<evaluation::ParamListener> listener_;
+  std::unique_ptr<trajectory_ranker_params::ParamListener> param_listener_;
   std::shared_ptr<RouteHandler> route_handler_;
   std::shared_ptr<Evaluator> evaluator_;
+
+  trajectory_ranker_params::Params params_;
 
   std::shared_ptr<TrajectoryPoints> previous_points_;
   std::deque<autoware_planning_msgs::msg::Trajectory> trajectory_history_;

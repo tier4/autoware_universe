@@ -15,6 +15,8 @@
 #include "autoware/trajectory_ranker/data_structs.hpp"
 #include "autoware/trajectory_ranker/evaluation.hpp"
 
+#include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
+
 #include <autoware/route_handler/route_handler.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -68,7 +70,7 @@ protected:
       vehicle_info_utils::VehicleInfoUtils(*node_).getVehicleInfo());
 
     // Create evaluator
-    evaluator_ = std::make_unique<Evaluator>(route_handler_, vehicle_info_, node_->get_logger());
+    evaluator_ = std::make_unique<Evaluator>(route_handler_, vehicle_info_, node_->get_logger(), params_.evaluation);
 
     // Create sample trajectory
     createSampleTrajectory();
@@ -126,19 +128,20 @@ protected:
   std::shared_ptr<vehicle_info_utils::VehicleInfo> vehicle_info_;
   std::unique_ptr<Evaluator> evaluator_;
   std::shared_ptr<TrajectoryPoints> sample_points_;
+  trajectory_ranker_params::Params params_;
 };
 
 TEST_F(TestEvaluator, LoadMetric)
 {
   // Test loading a metric
   EXPECT_NO_THROW(
-    evaluator_->load_metric("autoware::trajectory_ranker::metrics::TravelDistance", 0, 0.1));
+    evaluator_->load_metric("autoware::trajectory_ranker::metrics::TravelDistance", 0));
 }
 
 TEST_F(TestEvaluator, UnloadMetric)
 {
   // Load and then unload a metric
-  evaluator_->load_metric("autoware::trajectory_ranker::metrics::TravelDistance", 0, 0.1);
+  evaluator_->load_metric("autoware::trajectory_ranker::metrics::TravelDistance", 0);
   EXPECT_NO_THROW(
     evaluator_->unload_metric("autoware::trajectory_ranker::metrics::TravelDistance"));
 }
@@ -185,13 +188,8 @@ TEST_F(TestEvaluator, BestWithoutMetrics)
   // Setup with previous trajectory
   evaluator_->setup(sample_points_);
 
-  // Create evaluation parameters for no metrics case
-  auto params = std::make_shared<EvaluatorParameters>(0, 10);
-  params->metrics_max_value = {};
-  params->score_weight = {};
-
   // Without metrics loaded, should still return a result
-  auto best = evaluator_->best(params);
+  auto best = evaluator_->best();
   EXPECT_NE(best, nullptr);
 }
 
@@ -204,12 +202,8 @@ TEST_F(TestEvaluator, BestWithExclude)
 
   evaluator_->setup(sample_points_);
 
-  auto params = std::make_shared<EvaluatorParameters>(1, 10);
-  params->metrics_max_value = {1.0};
-  params->score_weight = {1.0};
-
   // Exclude trajectory_1
-  auto best = evaluator_->best(params, "trajectory_1");
+  auto best = evaluator_->best("trajectory_1");
   EXPECT_NE(best, nullptr);
   EXPECT_NE(best->tag(), "trajectory_1");
 }
@@ -217,8 +211,8 @@ TEST_F(TestEvaluator, BestWithExclude)
 TEST_F(TestEvaluator, MultipleMetricsEvaluation)
 {
   // Load multiple metrics
-  evaluator_->load_metric("autoware::trajectory_ranker::metrics::TravelDistance", 0, 0.1);
-  evaluator_->load_metric("autoware::trajectory_ranker::metrics::LateralAcceleration", 1, 0.1);
+  evaluator_->load_metric("autoware::trajectory_ranker::metrics::TravelDistance", 0);
+  evaluator_->load_metric("autoware::trajectory_ranker::metrics::LateralAcceleration", 1);
 
   // Add trajectories
   evaluator_->add(createCoreData("straight", 0.0));
@@ -227,11 +221,7 @@ TEST_F(TestEvaluator, MultipleMetricsEvaluation)
   evaluator_->setup(sample_points_);
 
   // Create parameters with weights for both metrics
-  auto params = std::make_shared<EvaluatorParameters>(2, 10);
-  params->metrics_max_value = {10.0, 3.0};  // Max distance, max lateral accel
-  params->score_weight = {0.5, 0.5};        // Equal weights
-
-  auto best = evaluator_->best(params);
+  auto best = evaluator_->best();
   EXPECT_NE(best, nullptr);
 
   // Check that all results were evaluated

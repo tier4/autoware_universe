@@ -33,21 +33,22 @@ namespace autoware::trajectory_ranker
 {
 TrajectoryRanker::TrajectoryRanker(const rclcpp::NodeOptions & options)
 : Node("trajectory_ranker", options),
-  listener_{std::make_unique<evaluation::ParamListener>(get_node_parameters_interface())},
+  param_listener_{std::make_unique<trajectory_ranker_params::ParamListener>(get_node_parameters_interface())},
   route_handler_{std::make_shared<RouteHandler>()},
   previous_points_{nullptr}
 {
-  max_history_size_ = static_cast<size_t>(listener_->get_params().trajectory_history_size);
+  params_ = param_listener_->get_params();
 
   // Vehicle info for evaluator
   const auto vehicle_info = std::make_shared<vehicle_info_utils::VehicleInfo>(
     vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo());
 
-  evaluator_ = std::make_shared<Evaluator>(route_handler_, vehicle_info, get_logger(), this);
+  evaluator_ = std::make_shared<Evaluator>(route_handler_, vehicle_info, get_logger(), params_.evaluation, this);
 
-  const auto metrics = listener_->get_params().metrics;
-  for (size_t i = 0; i < metrics.name.size(); i++) {
-    evaluator_->load_metric(metrics.name.at(i), i, listener_->get_params().resolution);
+  size_t i = 0;
+  for (const auto & metric : params_.evaluation.plugin_names) {
+    evaluator_->load_metric(metric, i);
+    i++;
   }
 
   // Setup subscriptions
@@ -116,12 +117,10 @@ ScoredCandidateTrajectories::ConstSharedPtr TrajectoryRanker::score(
 
   evaluator_->clear();
 
-  const auto params = parameters();
-
   // Process each candidate trajectory
   for (const auto & candidate : msg->candidate_trajectories) {
     auto sampled = utils::sampling(
-      candidate.points, odometry_ptr->pose.pose, params->sample_num, params->resolution);
+      candidate.points, odometry_ptr->pose.pose, params_.evaluation.sampling_number, params_.evaluation.sampling_resolution);
     auto sampled_points = std::make_shared<TrajectoryPoints>(std::move(sampled));
     auto original_points = std::make_shared<TrajectoryPoints>(candidate.points);
 
@@ -136,7 +135,7 @@ ScoredCandidateTrajectories::ConstSharedPtr TrajectoryRanker::score(
     evaluator_->add(core_data);
   }
 
-  const auto best_data = evaluator_->best(params);
+  const auto best_data = evaluator_->best();
   previous_points_ = best_data == nullptr ? nullptr : best_data->points();
 
   // Update trajectory history buffer with the best trajectory
@@ -149,7 +148,7 @@ ScoredCandidateTrajectories::ConstSharedPtr TrajectoryRanker::score(
     trajectory_history_.push_back(best_trajectory);
 
     // Limit buffer size
-    if (trajectory_history_.size() > max_history_size_) {
+    if (trajectory_history_.size() > static_cast<size_t>(params_.evaluation.trajectory_history_size)) {
       trajectory_history_.pop_front();
     }
   }
@@ -171,43 +170,6 @@ ScoredCandidateTrajectories::ConstSharedPtr TrajectoryRanker::score(
 
   output.scored_candidate_trajectories = trajectories;
   return std::make_shared<ScoredCandidateTrajectories>(output);
-}
-
-std::shared_ptr<EvaluatorParameters> TrajectoryRanker::parameters() const
-{
-  const auto node_params = listener_->get_params();
-
-  const auto parameters =
-    std::make_shared<EvaluatorParameters>(node_params.metrics.name.size(), node_params.sample_num);
-
-  // Convert double to float
-  parameters->resolution = static_cast<float>(node_params.resolution);
-
-  // Convert vector<double> to vector<float>
-  parameters->score_weight.assign(node_params.score_weight.begin(), node_params.score_weight.end());
-
-  // Convert time_decay_weight vectors
-  auto convert_vector = [](const std::vector<double> & src) {
-    std::vector<float> dst;
-    dst.reserve(src.size());
-    for (const auto & val : src) {
-      dst.push_back(static_cast<float>(val));
-    }
-    return dst;
-  };
-
-  parameters->time_decay_weight.at(0) = convert_vector(node_params.time_decay_weight.s0);
-  parameters->time_decay_weight.at(1) = convert_vector(node_params.time_decay_weight.s1);
-  parameters->time_decay_weight.at(2) = convert_vector(node_params.time_decay_weight.s2);
-  parameters->time_decay_weight.at(3) = convert_vector(node_params.time_decay_weight.s3);
-  parameters->time_decay_weight.at(4) = convert_vector(node_params.time_decay_weight.s4);
-  parameters->time_decay_weight.at(5) = convert_vector(node_params.time_decay_weight.s5);
-
-  // Convert metrics_max_value
-  parameters->metrics_max_value.assign(
-    node_params.metrics.maximum.begin(), node_params.metrics.maximum.end());
-
-  return parameters;
 }
 
 }  // namespace autoware::trajectory_ranker

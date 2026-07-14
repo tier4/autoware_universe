@@ -44,13 +44,15 @@ public:
   explicit Evaluator(
     const std::shared_ptr<RouteHandler> & route_handler,
     const std::shared_ptr<VehicleInfo> & vehicle_info, const rclcpp::Logger & logger,
+    const trajectory_ranker_params::Params::Evaluation & params,
     rclcpp::Node * node = nullptr)
   : plugin_loader_(
       "autoware_trajectory_ranker", "autoware::trajectory_ranker::metrics::MetricInterface"),
     route_handler_{route_handler},
     vehicle_info_{vehicle_info},
     logger_{logger},
-    node_ptr_{node}
+    node_ptr_{node},
+    params_{params}
   {
   }
 
@@ -58,9 +60,8 @@ public:
    * @brief Dynamically loads a metric plugin
    * @param name Metric plugin name to load
    * @param index Index for this metric in the evaluation
-   * @param time_resolution Time resolution for metric evaluation [s]
    */
-  void load_metric(const std::string & name, const size_t index, const double time_resolution);
+  void load_metric(const std::string & name, const size_t index);
 
   /**
    * @brief Unloads a metric plugin
@@ -82,12 +83,10 @@ public:
 
   /**
    * @brief Evaluates all trajectories and returns the best one
-   * @param parameters Evaluation parameters (weights, max values, etc.)
    * @param exclude Tag of trajectory to exclude from selection
    * @return Best scoring trajectory interface
    */
-  std::shared_ptr<DataInterface> best(
-    const std::shared_ptr<EvaluatorParameters> & parameters, const std::string & exclude = "");
+  std::shared_ptr<DataInterface> best(const std::string & exclude = "");
 
   /**
    * @brief Clears all evaluation results
@@ -110,34 +109,23 @@ public:
 protected:
   /**
    * @brief Evaluates all trajectories using loaded metrics
-   * @param max_value Maximum values for normalization per metric
    */
-  void evaluate(const std::vector<float> & max_value);
+  void evaluate();
 
   /**
    * @brief Compresses multi-dimensional metric scores
-   * @param weight Weight matrix for compression
    */
-  void compress(const std::vector<std::vector<float>> & weight);
+  void compress();
 
   /**
    * @brief Normalizes metric scores
-   * @param weight Weight matrix for normalization
    */
-  void normalize(const std::vector<std::vector<float>> & weight);
+  void normalize();
 
   /**
    * @brief Applies final weights to compressed scores
-   * @param weight Weight vector for final scoring
    */
-  void weighting(const std::vector<float> & weight);
-
-  /**
-   * @brief Selects best trajectory from evaluated results
-   * @param exclude Tag of trajectory to exclude
-   * @return Best scoring trajectory interface
-   */
-  std::shared_ptr<DataInterface> best(const std::string & exclude = "") const;
+  void weighting();
 
   /**
    * @brief Gets route handler
@@ -165,6 +153,8 @@ private:
   rclcpp::Logger logger_;
 
   rclcpp::Node * node_ptr_{nullptr};
+
+  EvaluatorParameters params_;
 };
 
 }  // namespace autoware::trajectory_ranker

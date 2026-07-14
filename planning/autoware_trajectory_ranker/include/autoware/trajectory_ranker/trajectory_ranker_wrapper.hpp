@@ -15,7 +15,7 @@
 #ifndef AUTOWARE__TRAJECTORY_RANKER__TRAJECTORY_RANKER_WRAPPER_HPP_
 #define AUTOWARE__TRAJECTORY_RANKER__TRAJECTORY_RANKER_WRAPPER_HPP_
 
-#include <autoware_trajectory_ranker/autoware_trajectory_ranker_parameters.hpp>
+#include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>

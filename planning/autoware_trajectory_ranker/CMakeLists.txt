@@ -5,10 +5,6 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 pluginlib_export_plugin_description_file(autoware_trajectory_ranker plugins.xml)
 
-generate_parameter_library(trajectory_ranker_parameters
-  param/trajectory_ranker_parameters.yaml
-)
-
 generate_parameter_library(${PROJECT_NAME}_param
   param/trajectory_ranker_parameter_struct.yaml
 )
@@ -38,7 +34,7 @@ target_link_libraries(${trajectory_ranker_lib_target}
 )
 
 target_link_libraries(${PROJECT_NAME}
-  trajectory_ranker_parameters
+  ${PROJECT_NAME}_param
 )
 
 target_compile_options(${PROJECT_NAME} PUBLIC
@@ -59,10 +55,9 @@ autoware_agnocast_wrapper_register_node(simple_trajectory_ranker_node
   AGNOCAST_EXECUTOR CallbackIsolatedAgnocastExecutor
 )
 
-ament_auto_add_library(autoware_trajectory_ranker_plugins SHARED
+ament_auto_add_library(${PROJECT_NAME}_plugins SHARED
   src/metrics/lateral_acceleration_metric.cpp
   src/metrics/longitudinal_jerk_metric.cpp
-  src/metrics/time_to_collision_metric.cpp
   src/metrics/distance_metric.cpp
   src/metrics/lateral_deviation_metric.cpp
   src/metrics/steering_consistency_metric.cpp
@@ -70,8 +65,9 @@ ament_auto_add_library(autoware_trajectory_ranker_plugins SHARED
   src/metrics/metrics_utils.cpp
 )
 
-target_link_libraries(autoware_trajectory_ranker_plugins
+target_link_libraries(${PROJECT_NAME}_plugins
   ${PROJECT_NAME}
+  ${trajectory_ranker_lib_target}
 )
 
 if(BUILD_TESTING)
@@ -89,7 +85,7 @@ if(BUILD_TESTING)
     test/test_metrics_utils.cpp
   )
   target_link_libraries(test_metrics_utils
-    autoware_trajectory_ranker_plugins
+    ${PROJECT_NAME}_plugins
   )
 
   ament_add_gtest(test_evaluator
@@ -97,7 +93,7 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_evaluator
     ${PROJECT_NAME}
-    autoware_trajectory_ranker_plugins
+    ${PROJECT_NAME}_plugins
   )
 
   ament_add_gtest(test_metrics
@@ -105,7 +101,7 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_metrics
     ${PROJECT_NAME}
-    autoware_trajectory_ranker_plugins
+    ${PROJECT_NAME}_plugins
   )
 
   ament_add_gtest(test_simple_trajectory_ranker_node

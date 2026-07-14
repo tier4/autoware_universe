@@ -24,6 +24,8 @@
 #include <std_msgs/msg/header.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
 
+#include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
+
 #include <lanelet2_core/LaneletMap.h>
 
 #include <deque>
@@ -95,21 +97,15 @@ struct CoreData
   TurnIndicatorsCommand turn_indicators_command;
 };
 
-struct EvaluatorParameters
+struct EvaluatorParameters : public trajectory_ranker_params::Params::Evaluation
 {
-  explicit EvaluatorParameters(const size_t metrics_num, const size_t sample_num)
-  : sample_num{sample_num},
-    time_decay_weight(metrics_num, std::vector<float>(sample_num, 0.0f)),
-    score_weight(metrics_num, 0.0f),
-    metrics_max_value(metrics_num, 0.0f)
+  std::vector<std::vector<double>> time_decay_weight;
+  std::vector<double> score_weight;
+
+  explicit EvaluatorParameters(const trajectory_ranker_params::Params::Evaluation & params)
+  : trajectory_ranker_params::Params::Evaluation(params)
   {
   }
-
-  size_t sample_num;
-  float resolution;
-  std::vector<std::vector<float>> time_decay_weight;  // [metrics][samples]
-  std::vector<float> score_weight;
-  std::vector<float> metrics_max_value;
 };
 
 // Result of evaluation

@@ -17,6 +17,8 @@
 
 #include "autoware/trajectory_ranker/interface/metrics_interface.hpp"
 
+#include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
+
 #include <memory>
 
 namespace autoware::trajectory_ranker::metrics
@@ -28,10 +30,17 @@ public:
   TravelDistance() : MetricInterface("TravelDistance") {}
 
   void evaluate(
-    const std::shared_ptr<autoware::trajectory_ranker::DataInterface> & result,
-    const float max_value) const override;
+    const std::shared_ptr<autoware::trajectory_ranker::DataInterface> & result) const override;
 
   bool is_deviation() const override { return false; }
+
+  void setup_parameters(const trajectory_ranker_params::Params::Evaluation & params) override;
+
+  double weight() const override { return params_.weight; }
+  std::vector<double> decay_weights() const override { return params_.decay_weight; }
+
+private:
+  trajectory_ranker_params::Params::Evaluation::TravelDistance params_;
 };
 
 }  // namespace autoware::trajectory_ranker::metrics
