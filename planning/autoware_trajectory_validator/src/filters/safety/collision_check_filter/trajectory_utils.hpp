@@ -151,11 +151,6 @@ public:
         "Trajectory times must be in ascending order classification: " +
         identification_.classification);
     }
-    if (!std::is_sorted(distances_.begin(), distances_.end())) {
-      throw std::invalid_argument(
-        "Trajectory distances must be in ascending order classification: " +
-        identification_.classification);
-    }
   }
 
   TrajectoryData() = delete;
@@ -174,7 +169,6 @@ public:
 
     const bool has_no_overlap =
       time_range.second < times_.front() || time_range.first > times_.back();
-
     if (has_no_overlap) {
       return std::nullopt;
     }
