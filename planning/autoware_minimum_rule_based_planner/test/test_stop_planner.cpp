@@ -20,10 +20,12 @@
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 
 #include <gtest/gtest.h>
+#include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
 #include <lanelet2_core/primitives/Point.h>
 
+#include <memory>
 #include <vector>
 
 namespace autoware::minimum_rule_based_planner
@@ -54,7 +56,7 @@ std::vector<TrajectoryPoint> make_straight_trajectory(size_t num_points)
 
 // A vertical (crossing) stop line at arc length x_cross, spanning y in [-2, 2].
 StopLine make_crossing_stop_line(
-  lanelet::Id id, double x_cross, StopLineType type = StopLineType::RoadMarking)
+  lanelet::Id id, double x_cross, StopLineType type = StopLineType::StopLine)
 {
   lanelet::LineString3d line(
     id, {lanelet::Point3d(id * 10 + 1, x_cross, -2.0, 0.0),
@@ -79,10 +81,14 @@ StopSelectionParams make_params()
 
 TEST(StopPlannerTest, PossibilityTypeClassification)
 {
-  // Signals are possibility targets; painted stop lines and stop signs are mandatory.
+  // Mandatory stop targets (停止対象箇所): the go trajectory also stops.
+  EXPECT_FALSE(is_possibility_type(StopLineType::StopLine));
+  EXPECT_FALSE(is_possibility_type(StopLineType::Walkway));
+  // Possibility stop targets (停止可能性対象箇所): only the stop trajectory additionally stops.
+  EXPECT_TRUE(is_possibility_type(StopLineType::Crosswalk));
   EXPECT_TRUE(is_possibility_type(StopLineType::TrafficLight));
-  EXPECT_FALSE(is_possibility_type(StopLineType::RoadMarking));
-  EXPECT_FALSE(is_possibility_type(StopLineType::TrafficSign));
+  EXPECT_TRUE(is_possibility_type(StopLineType::Intersection));
+  EXPECT_TRUE(is_possibility_type(StopLineType::PrivateArea));
 }
 
 // ============================================================
@@ -99,7 +105,7 @@ TEST(StopPlannerTest, FilterKeepsOnlyCrossingLines)
   // A stop line far to the side that does not cross the trajectory.
   lanelet::LineString3d off_line(
     2, {lanelet::Point3d(21, 5.0, 10.0, 0.0), lanelet::Point3d(22, 5.0, 12.0, 0.0)});
-  stop_lines.push_back(StopLine{off_line, StopLineType::RoadMarking});
+  stop_lines.push_back(StopLine{off_line, StopLineType::StopLine});
 
   const auto filtered = planner.filter_stop_lines_on_trajectory(stop_lines, trajectory);
   ASSERT_EQ(filtered.size(), 1u);
@@ -151,6 +157,22 @@ TEST(StopPlannerTest, SelectRejectsUnreachableStopPoint)
   EXPECT_FALSE(arc.has_value());
 }
 
+TEST(StopPlannerTest, SelectSkipsUnreachableNearestForReachableFarther)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  const auto trajectory = make_straight_trajectory(80);
+  // Nearest crossing at 20 m (stop point 15 m) is unreachable at 20 m/s (braking distance 50 m);
+  // a farther crossing at 70 m (stop point 65 m) is reachable and should be selected.
+  const std::vector<StopLine> stop_lines{
+    make_crossing_stop_line(1, 20.0), make_crossing_stop_line(2, 70.0)};
+
+  const auto arc = planner.select_stop_arc_length(
+    stop_lines, trajectory, /*ego_velocity=*/20.0, make_params(), /*include_possibility=*/false);
+  ASSERT_TRUE(arc.has_value());
+  // 70 - 4 - 1 = 65
+  EXPECT_NEAR(*arc, 65.0, 1e-6);
+}
+
 TEST(StopPlannerTest, SelectExcludesPossibilityTargetsForGoTrajectory)
 {
   StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
@@ -193,12 +215,97 @@ TEST(StopPlannerTest, CollectTagsRoadMarkingStopLine)
   lanelet.addRegulatoryElement(
     lanelet::autoware::RoadMarking::make(500, lanelet::AttributeMap(), stop_line));
 
-  const lanelet::ConstLanelets route_lanelets{lanelet};
-  const auto stop_lines = planner.collect_stop_lines(route_lanelets);
+  RouteContext ctx;
+  ctx.route_lanelets = {lanelet};
+  const auto stop_lines = planner.collect_stop_lines(ctx);
 
   ASSERT_EQ(stop_lines.size(), 1u);
   EXPECT_EQ(stop_lines.front().line.id(), 100);
-  EXPECT_EQ(stop_lines.front().type, StopLineType::RoadMarking);
+  EXPECT_EQ(stop_lines.front().type, StopLineType::StopLine);
+}
+
+namespace
+{
+// Build a straight road lanelet along +x, spanning [x_start, x_start + length] in x, 4 m wide.
+lanelet::Lanelet make_road_lanelet(lanelet::Id id, double x_start, double length)
+{
+  const double x_end = x_start + length;
+  const lanelet::Id base = id * 100;
+  lanelet::LineString3d left(
+    base + 1,
+    {lanelet::Point3d(base + 2, x_start, 2.0, 0.0), lanelet::Point3d(base + 3, x_end, 2.0, 0.0)});
+  lanelet::LineString3d right(
+    base + 4,
+    {lanelet::Point3d(base + 5, x_start, -2.0, 0.0), lanelet::Point3d(base + 6, x_end, -2.0, 0.0)});
+  return lanelet::Lanelet(id, left, right);
+}
+}  // namespace
+
+TEST(StopPlannerTest, CollectDetectsIntersectionEntry)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+
+  auto approach = make_road_lanelet(1, 0.0, 10.0);
+  auto intersection = make_road_lanelet(2, 10.0, 10.0);
+  intersection.attributes()["turn_direction"] = "right";
+
+  RouteContext ctx;
+  ctx.route_lanelets = {approach, intersection};
+  const auto stop_lines = planner.collect_stop_lines(ctx);
+
+  ASSERT_EQ(stop_lines.size(), 1u);
+  EXPECT_EQ(stop_lines.front().type, StopLineType::Intersection);
+  // Entry edge is at the intersection lanelet start (x = 10).
+  EXPECT_NEAR(stop_lines.front().line.front().x(), 10.0, 1e-6);
+}
+
+TEST(StopPlannerTest, CollectDetectsPrivateAreaTransition)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+
+  auto public_lanelet = make_road_lanelet(1, 0.0, 10.0);
+  auto private_lanelet = make_road_lanelet(2, 10.0, 10.0);
+  private_lanelet.attributes()[lanelet::AttributeNamesString::Location] =
+    lanelet::AttributeValueString::Private;
+
+  // Private-area detection scans the preferred (single-chain) lane sequence.
+  RouteContext ctx;
+  ctx.preferred_lanelets = {public_lanelet, private_lanelet};
+  const auto stop_lines = planner.collect_stop_lines(ctx);
+
+  ASSERT_EQ(stop_lines.size(), 1u);
+  EXPECT_EQ(stop_lines.front().type, StopLineType::PrivateArea);
+  EXPECT_NEAR(stop_lines.front().line.front().x(), 10.0, 1e-6);
+}
+
+TEST(StopPlannerTest, CollectDetectsWalkwayCrossingEntrySideOnly)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+
+  // Road along +x; the ego drives from x=0 toward x=20.
+  auto road = make_road_lanelet(1, 0.0, 20.0);
+
+  // A walkway lanelet crossing the road at x ~ 10, its two bounds at x=9 (near) and x=11 (far).
+  lanelet::LineString3d near_bound(
+    700, {lanelet::Point3d(701, 9.0, -3.0, 0.0), lanelet::Point3d(702, 9.0, 3.0, 0.0)});
+  lanelet::LineString3d far_bound(
+    710, {lanelet::Point3d(711, 11.0, -3.0, 0.0), lanelet::Point3d(712, 11.0, 3.0, 0.0)});
+  lanelet::Lanelet walkway(720, near_bound, far_bound);
+  walkway.attributes()[lanelet::AttributeNamesString::Subtype] =
+    lanelet::AttributeValueString::Walkway;
+
+  auto map = std::make_shared<lanelet::LaneletMap>();
+  map->add(walkway);
+
+  RouteContext ctx;
+  ctx.lanelet_map_ptr = map;
+  ctx.preferred_lanelets = {road};
+  const auto stop_lines = planner.collect_stop_lines(ctx);
+
+  // Only the entry-side (near, x=9) bound is used, not both bounds.
+  ASSERT_EQ(stop_lines.size(), 1u);
+  EXPECT_EQ(stop_lines.front().type, StopLineType::Walkway);
+  EXPECT_EQ(stop_lines.front().line.id(), 700);
 }
 
 }  // namespace autoware::minimum_rule_based_planner

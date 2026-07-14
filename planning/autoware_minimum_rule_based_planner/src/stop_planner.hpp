@@ -15,6 +15,8 @@
 #ifndef STOP_PLANNER_HPP_
 #define STOP_PLANNER_HPP_
 
+#include "path_planner.hpp"
+
 #include <rclcpp/logger.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
@@ -30,15 +32,18 @@ namespace autoware::minimum_rule_based_planner
 {
 
 /**
- * @brief Type of a map-defined stop line, classified by its collection source.
+ * @brief Type of a map-defined stop target, classified by the map element that induces it.
  *
- * The type determines whether the vehicle must stop (mandatory) or only may need to stop
- * (possibility). See is_possibility_type().
+ * The type determines whether the vehicle must stop (mandatory stop target, 停止対象箇所) or only
+ * may need to stop (possibility stop target, 停止可能性対象箇所). See is_possibility_type().
  */
 enum class StopLineType {
-  RoadMarking,   //!< explicit stop-line road marking (temporary stop line): mandatory
-  TrafficLight,  //!< stop line referenced by a traffic light (signal): possibility
-  TrafficSign,   //!< reference line of a traffic sign (e.g. stop sign): mandatory
+  StopLine,      //!< 一時停止線: painted stop line / stop sign            -> mandatory
+  Walkway,       //!< 歩道: walkway the route crosses                      -> mandatory
+  Crosswalk,     //!< 横断歩道: crosswalk the route crosses                -> possibility
+  TrafficLight,  //!< 信号: stop line referenced by a traffic light        -> possibility
+  Intersection,  //!< 交差点: lanelet with a turn_direction attribute      -> possibility
+  PrivateArea,   //!< 私有地入退出: private-area entry/exit transition      -> possibility
 };
 
 /**
@@ -51,12 +56,12 @@ struct StopLine
 };
 
 /**
- * @brief Whether the stop line is a "possibility" target (the vehicle may need to stop) rather
- *        than a mandatory stop target.
+ * @brief Whether the stop target is a "possibility" target (停止可能性対象箇所) rather than a
+ *        mandatory stop target (停止対象箇所).
  *
- * Signals (traffic lights) are treated as possibility targets; painted stop lines and stop signs
- * are mandatory. The go trajectory only stops at mandatory targets, while the stop trajectory
- * stops at both mandatory and possibility targets.
+ * Mandatory (go trajectory stops): 一時停止線 (StopLine), 歩道 (Walkway).
+ * Possibility (only the stop trajectory additionally stops): 横断歩道 (Crosswalk), 信号
+ * (TrafficLight), 交差点 (Intersection), 私有地入退出 (PrivateArea).
  */
 bool is_possibility_type(StopLineType type);
 
@@ -83,16 +88,21 @@ public:
   explicit StopPlanner(const rclcpp::Logger & logger);
 
   /**
-   * @brief Collect stop lines from the map along the given route lanelets, tagged by type.
+   * @brief Collect stop targets along the given route lanelets, tagged by type.
    *
-   * Sources:
-   *  - RoadMarking regulatory elements whose line string type is "stop_line" -> RoadMarking
-   *  - stop lines referenced by traffic lights -> TrafficLight
-   *  - reference lines of traffic signs (e.g. stop signs) -> TrafficSign
+   * Detection sources:
+   *  - RoadMarking (type=stop_line) + traffic sign reference lines -> StopLine
+   *  - crosswalk / walkway lanelets that geometrically cross the route path (searched over the
+   *    whole map layer, since walkways carry no regulatory element) -> Crosswalk / Walkway,
+   *    using only the entry-side bound as the stop line
+   *  - traffic light stop lines -> TrafficLight
+   *  - lanelets with a turn_direction attribute -> Intersection (entry edge)
+   *  - private-area (location=private) entry/exit transitions along the preferred lane sequence
+   *    -> PrivateArea (entry edge)
    *
-   * Duplicate line strings (shared between lanelets) are returned only once.
+   * Duplicate targets (shared between lanelets) are returned only once.
    */
-  std::vector<StopLine> collect_stop_lines(const lanelet::ConstLanelets & route_lanelets) const;
+  std::vector<StopLine> collect_stop_lines(const RouteContext & route_context) const;
 
   /**
    * @brief Keep only the stop lines that intersect the given trajectory (in 2D).

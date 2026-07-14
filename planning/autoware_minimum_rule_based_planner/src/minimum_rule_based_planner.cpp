@@ -426,7 +426,7 @@ std::optional<MinimumRuleBasedPlannerNode::StopResult> MinimumRuleBasedPlannerNo
 
   // Collect map-defined stop lines along the route and keep only those crossed by the trajectory.
   const auto candidate_stop_lines =
-    stop_planner_->collect_stop_lines(path_planner_->route_context().route_lanelets);
+    stop_planner_->collect_stop_lines(path_planner_->route_context());
   const auto stop_lines =
     stop_planner_->filter_stop_lines_on_trajectory(candidate_stop_lines, trajectory.points);
 
