@@ -818,7 +818,9 @@ void DiffusionPlanner::on_map(const HADMapBin::ConstSharedPtr map_msg)
   map_bin_ = map_msg;
   lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*map_msg);
   core_->set_map(lanelet_map_ptr_);
-  update_avoidance_route_context();
+  if (params_.use_mppi_optimizer) {
+    update_avoidance_route_context();
+  }
 }
 
 void DiffusionPlanner::on_route(const LaneletRoute::ConstSharedPtr route_msg)
@@ -827,7 +829,9 @@ void DiffusionPlanner::on_route(const LaneletRoute::ConstSharedPtr route_msg)
     return;
   }
   route_ = route_msg;
-  update_avoidance_route_context();
+  if (params_.use_mppi_optimizer) {
+    update_avoidance_route_context();
+  }
 }
 
 }  // namespace autoware::diffusion_planner
