@@ -22,6 +22,8 @@ namespace autoware::mppi_optimizer
  * mppi_optimizer.param.yaml */
 struct FirstOrderDubinsMppiCostParams
 {
+  /** Softmax temperature for trajectory weighting (higher = softer weighting). */
+  float lambda{3000.0F};
   float desired_speed{3.0F};
   float speed_coeff{500.0F};
   float track_coeff{1000.0F};
@@ -32,10 +34,12 @@ struct FirstOrderDubinsMppiCostParams
   float boundary_threshold_right{-1.0F};
   float accel_cmd_coeff{0.0F};
   float steer_cmd_coeff{0.0F};
+  float steer_rate_coeff{0.0F};
   float lateral_acceleration_coeff{300.0F};
   float lateral_jerk_coeff{300.0F};
   float longitudinal_jerk_coeff{10.0F};
   float obstacle_collision_margin{0.5F};
+  float road_border_margin{0.2F};
   float goal_pos_coeff{1000.0F};
   float goal_speed_coeff{0.0F};
   float goal_yaw_coeff{500.0F};

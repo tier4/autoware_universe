@@ -17,6 +17,7 @@
 
 #include "autoware/diffusion_planner/diffusion_planner_core.hpp"
 #include "autoware/diffusion_planner/utils/planning_factor_utils.hpp"
+#include "autoware/avoidance_target_detector/avoidance_target_detector_logic.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
 
@@ -38,7 +39,10 @@
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
+#include <autoware_planning_msgs/msg/lanelet_route.hpp>
+#include <autoware_planning_msgs/msg/path.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
@@ -48,6 +52,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -57,6 +62,9 @@ namespace autoware::diffusion_planner
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
+using autoware_perception_msgs::msg::TrackedObjects;
+using autoware_planning_msgs::msg::LaneletRoute;
+using autoware_planning_msgs::msg::Path;
 using autoware_planning_msgs::msg::Trajectory;
 using autoware_vehicle_msgs::msg::SteeringReport;
 using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
@@ -179,6 +187,15 @@ private:
     const rclcpp::Time & stamp);
 
   /**
+   * Publish avoidance / driving-along targets and drivable-area bounds.
+   * @return Drivable area Path (left/right bounds) when detection succeeds, else nullopt.
+   */
+  std::optional<Path> publish_avoidance_targets(
+    const rclcpp::Time & stamp, const Trajectory & trajectory,
+    const PredictedObjects & predicted_objects,
+    const std::shared_ptr<const TrackedObjects> & tracked_objects);
+
+  /**
    * @brief Publish guidance triggered status as a debug message.
    * @param guidance_triggered Map of guidance name to triggered flags per batch.
    * @param timestamp Timestamp of the current frame.
@@ -232,6 +249,12 @@ private:
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_mppi_markers_{nullptr};
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_{nullptr};
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_{nullptr};
+  rclcpp::Publisher<PredictedObjects>::SharedPtr pub_avoidance_targets_{nullptr};
+  rclcpp::Publisher<PredictedObjects>::SharedPtr pub_driving_along_vehicles_{nullptr};
+  rclcpp::Publisher<TrackedObjects>::SharedPtr pub_tracked_avoidance_targets_{nullptr};
+  rclcpp::Publisher<TrackedObjects>::SharedPtr pub_tracked_driving_along_vehicles_{nullptr};
+  rclcpp::Publisher<Path>::SharedPtr pub_drivable_area_{nullptr};
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_near_segment_polygon_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_lane_marker_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_linestring_marker_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_route_marker_{nullptr};
@@ -279,6 +302,13 @@ private:
   DiffusionPlannerPlanningFactorParams planning_factor_params_;
 
   std::unique_ptr<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface> mppi_optimizer_;
+
+  std::unique_ptr<autoware::avoidance_target_detector::AvoidanceTargetDetectorLogic>
+    avoidance_target_detector_;
+  bool use_extended_route_bounds_{true};
+  LaneletMapBin::ConstSharedPtr map_bin_;
+  LaneletMapBin::ConstSharedPtr cached_avoidance_map_;
+  LaneletRoute::ConstSharedPtr cached_avoidance_route_;
 };
 
 }  // namespace autoware::diffusion_planner

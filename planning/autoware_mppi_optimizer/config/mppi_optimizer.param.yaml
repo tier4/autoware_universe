@@ -2,7 +2,9 @@
   ros__parameters:
     # Vehicle actuation dynamics are loaded from $(vehicle_model)_description/config/simulator_model.param.yaml
 
-    # FirstOrderDubinsBicycleCostParams (see first_order_dubins_bicycle_cost.cuh)
+    # MPPI controller / FirstOrderDubinsBicycleCostParams
+    # (see first_order_dubins_mppi_interface.cu, first_order_dubins_bicycle_cost.cuh)
+    lambda: 3000.0
     desired_speed: 2.5
     speed_coeff: 500.0
     track_coeff: 1000.0
@@ -11,13 +13,15 @@
     boundary_threshold: 0.8
     boundary_threshold_left: -1.0
     boundary_threshold_right: -1.0
-    lateral_acceleration_coeff: 300.0
+    lateral_acceleration_coeff: 500.0
     lateral_jerk_coeff: 3000.0
-    longitudinal_jerk_coeff: 10.0
-    accel_cmd_coeff: 0.0
+    longitudinal_jerk_coeff: 1000.0
+    accel_cmd_coeff: 200.0
     steer_cmd_coeff: 1000.0
+    steer_rate_coeff: 3000.0
     goal_pos_coeff: 1000.0
     goal_speed_coeff: 200.0
     goal_yaw_coeff: 500.0
     goal_terminal_scale: 10.0
-    obstacle_collision_margin: 0.2
+    obstacle_collision_margin: 0.5
+    road_border_margin: 0.2

@@ -11,6 +11,7 @@ using O = FirstOrderDubinsBicycleParams::OutputIndex;
 using C = FirstOrderDubinsBicycleParams::ControlIndex;
 using mppi::cost::detail::distancePointToSegment;
 using mppi::cost::detail::orientedBoxCorners;
+using mppi::cost::detail::orientedBoxIntersectsSegment;
 using mppi::cost::detail::orientedBoxesOverlap;
 using mppi::cost::detail::pointInPolygon;
 using mppi::cost::detail::signedLateralOffsetPointToSegment;
@@ -39,7 +40,7 @@ __host__ __device__ float referenceEndYaw(
 template <class PARAMS_T>
 __host__ __device__ void comfortTerms(
   const PARAMS_T & params, const float * u, const float * y, float & lateral_accel,
-  float & lateral_jerk, float & longitudinal_jerk)
+  float & lateral_jerk, float & longitudinal_jerk, float & steer_rate)
 {
   const float v = y[static_cast<int>(O::BASELINK_VEL_B_X)];
   const float steer = y[static_cast<int>(O::STEER_ANGLE)];
@@ -53,7 +54,7 @@ __host__ __device__ void comfortTerms(
 
   longitudinal_jerk = (accel_cmd - accel) / accel_tau;
 
-  const float steer_rate = (steer_cmd - steer) / steer_tau;
+  steer_rate = (steer_cmd - steer) / steer_tau;
   const float curvature = tanf(steer) / wheel_base;
 #ifdef __CUDA_ARCH__
   const float sec_sq = 1.0F / fmaxf(cosf(steer) * cosf(steer), 1.0E-6F);
@@ -119,6 +120,21 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     cudaMemcpyHostToDevice, this->stream_));
   HANDLE_ERROR(cudaMemcpyAsync(
     this->cost_d_->drivable_poly_y_, drivable_poly_y_, sizeof(drivable_poly_y_),
+    cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaMemcpyAsync(
+    &this->cost_d_->num_road_border_segments_, &num_road_border_segments_,
+    sizeof(num_road_border_segments_), cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaMemcpyAsync(
+    this->cost_d_->road_border_x0_, road_border_x0_, sizeof(road_border_x0_),
+    cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaMemcpyAsync(
+    this->cost_d_->road_border_y0_, road_border_y0_, sizeof(road_border_y0_),
+    cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaMemcpyAsync(
+    this->cost_d_->road_border_x1_, road_border_x1_, sizeof(road_border_x1_),
+    cudaMemcpyHostToDevice, this->stream_));
+  HANDLE_ERROR(cudaMemcpyAsync(
+    this->cost_d_->road_border_y1_, road_border_y1_, sizeof(road_border_y1_),
     cudaMemcpyHostToDevice, this->stream_));
 }
 
@@ -225,10 +241,46 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  setRoadBorderPolylines(
+    const float * left_x, const float * left_y, const int left_count, const float * right_x,
+    const float * right_y, const int right_count)
+{
+  num_road_border_segments_ = 0;
+  const float * poly_x[2] = {left_x, right_x};
+  const float * poly_y[2] = {left_y, right_y};
+  const int poly_n[2] = {left_count, right_count};
+  for (int side = 0; side < 2; ++side) {
+    const float * px = poly_x[side];
+    const float * py = poly_y[side];
+    const int count = poly_n[side];
+    const int remaining = kMaxRoadBorderSegments - num_road_border_segments_;
+    if (px == nullptr || py == nullptr || count < 2 || remaining <= 0) {
+      continue;
+    }
+    const int n_out = std::min(count, remaining + 1);
+    for (int i = 0; i + 1 < n_out; ++i) {
+      const int i0 = (i * (count - 1)) / (n_out - 1);
+      const int i1 = ((i + 1) * (count - 1)) / (n_out - 1);
+      if (i0 == i1) {
+        continue;
+      }
+      road_border_x0_[num_road_border_segments_] = px[i0];
+      road_border_y0_[num_road_border_segments_] = py[i0];
+      road_border_x1_[num_road_border_segments_] = px[i1];
+      road_border_y1_[num_road_border_segments_] = py[i1];
+      ++num_road_border_segments_;
+    }
+  }
+  dataToDevice();
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearDrivableArea()
 {
   num_drivable_vertices_ = 0;
+  num_road_border_segments_ = 0;
   dataToDevice();
 }
 
@@ -355,20 +407,50 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T,
+  DYN_PARAMS_T>::egoIntersectsRoadBorders(const float x, const float y, const float yaw) const
+{
+  if (num_road_border_segments_ <= 0) {
+    return false;
+  }
+
+#ifdef __CUDA_ARCH__
+  const float ego_cos = cosf(yaw);
+  const float ego_sin = sinf(yaw);
+#else
+  const float ego_cos = std::cos(yaw);
+  const float ego_sin = std::sin(yaw);
+#endif
+  const float ego_cx = x + this->params_.ego_axle_to_box_center * ego_cos;
+  const float ego_cy = y + this->params_.ego_axle_to_box_center * ego_sin;
+  const float margin = this->params_.road_border_margin;
+  const float ego_hl = this->params_.ego_length * 0.5F + margin;
+  const float ego_hw = this->params_.ego_width * 0.5F + margin;
+
+  for (int i = 0; i < num_road_border_segments_; ++i) {
+    if (orientedBoxIntersectsSegment(
+          ego_cx, ego_cy, ego_cos, ego_sin, ego_hl, ego_hw, road_border_x0_[i], road_border_y0_[i],
+          road_border_x1_[i], road_border_y1_[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+__host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
   DYN_PARAMS_T>::isEgoOutsideDrivableArea(const float x, const float y, const float yaw) const
 {
-  (void)yaw;
+  if (egoIntersectsRoadBorders(x, y, yaw)) {
+    return true;
+  }
+
   if (num_drivable_vertices_ < 3) {
     return isOffRoad(x, y);
   }
 
-  // Rear-axle containment in the drivable polygon. Corner checks are too strict on tight curves.
-  if (pointInPolygon(x, y, drivable_poly_x_, drivable_poly_y_, num_drivable_vertices_)) {
-    return false;
-  }
-
-  // Polygon boundary is piecewise-linear; defer to ref lateral offset near the corridor edge.
-  return isOffRoad(x, y);
+  // Hard containment: rear axle must stay inside the closed route polygon.
+  return !pointInPolygon(x, y, drivable_poly_x_, drivable_poly_y_, num_drivable_vertices_);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -557,10 +639,13 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
   float lateral_accel = 0.0F;
   float lateral_jerk = 0.0F;
   float longitudinal_jerk = 0.0F;
-  comfortTerms(this->params_, u.data(), y.data(), lateral_accel, lateral_jerk, longitudinal_jerk);
+  float steer_rate = 0.0F;
+  comfortTerms(
+    this->params_, u.data(), y.data(), lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
   return this->params_.lateral_acceleration_coeff * std::abs(lateral_accel) +
          this->params_.lateral_jerk_coeff * std::abs(lateral_jerk) +
-         this->params_.longitudinal_jerk_coeff * std::abs(longitudinal_jerk);
+         this->params_.longitudinal_jerk_coeff * std::abs(longitudinal_jerk) +
+         this->params_.steer_rate_coeff * std::abs(steer_rate);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -572,10 +657,12 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   float lateral_accel = 0.0F;
   float lateral_jerk = 0.0F;
   float longitudinal_jerk = 0.0F;
-  comfortTerms(this->params_, u, y, lateral_accel, lateral_jerk, longitudinal_jerk);
+  float steer_rate = 0.0F;
+  comfortTerms(this->params_, u, y, lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
   return this->params_.lateral_acceleration_coeff * fabsf(lateral_accel) +
          this->params_.lateral_jerk_coeff * fabsf(lateral_jerk) +
-         this->params_.longitudinal_jerk_coeff * fabsf(longitudinal_jerk);
+         this->params_.longitudinal_jerk_coeff * fabsf(longitudinal_jerk) +
+         this->params_.steer_rate_coeff * fabsf(steer_rate);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>

@@ -22,6 +22,7 @@
 #include <mppi/cost_functions/moving_car_obstacles.hpp>
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
 #include <mppi/feedback_controllers/zero_feedback.cuh>
+#include <mppi/path/drivable_area.hpp>
 #include <mppi/path/path2d.hpp>
 #include <mppi/path/path_projection.hpp>
 #include <mppi/sampling_distributions/gaussian/gaussian.cuh>
@@ -53,7 +54,6 @@ constexpr int kMppiHorizon = 80;
 constexpr int kRefHorizon = kMppiHorizon;
 constexpr float kDt = 0.1F;
 constexpr int kNumRollouts = 32 * 1024;
-constexpr float kLambda = 1500.0F;
 constexpr float kInitArcLength = 1.5F;
 constexpr size_t kTrackingIndexResetThreshold = 15U;
 // constexpr int kMaxVizRollouts = 200;  // rollout viz disabled
@@ -84,10 +84,12 @@ void applyUserCostParams(
   cost_params.boundary_threshold_right = user.boundary_threshold_right;
   cost_params.accel_cmd_coeff = user.accel_cmd_coeff;
   cost_params.steer_cmd_coeff = user.steer_cmd_coeff;
+  cost_params.steer_rate_coeff = user.steer_rate_coeff;
   cost_params.lateral_acceleration_coeff = user.lateral_acceleration_coeff;
   cost_params.lateral_jerk_coeff = user.lateral_jerk_coeff;
   cost_params.longitudinal_jerk_coeff = user.longitudinal_jerk_coeff;
   cost_params.obstacle_collision_margin = user.obstacle_collision_margin;
+  cost_params.road_border_margin = user.road_border_margin;
   cost_params.goal_pos_coeff = user.goal_pos_coeff;
   cost_params.goal_speed_coeff = user.goal_speed_coeff;
   cost_params.goal_yaw_coeff = user.goal_yaw_coeff;
@@ -124,6 +126,43 @@ mppi::path::Path2D trajectoryToPath2D(const Trajectory & trajectory)
     throw std::runtime_error("Trajectory must contain at least two points for MPPI tracking");
   }
   return mppi::path::Path2D::catmullRom(control_xy, false, 8);
+}
+
+/** Closed polygon: left_bound forward, then right_bound reversed (same winding as corridor polys). */
+mppi::path::Polygon2D boundsToDrivablePolygon(
+  const std::vector<geometry_msgs::msg::Point> & left_bound,
+  const std::vector<geometry_msgs::msg::Point> & right_bound)
+{
+  mppi::path::Polygon2D poly;
+  if (left_bound.size() < 2U || right_bound.size() < 2U) {
+    return poly;
+  }
+
+  poly.x.reserve(left_bound.size() + right_bound.size());
+  poly.y.reserve(left_bound.size() + right_bound.size());
+  for (const auto & p : left_bound) {
+    poly.x.push_back(static_cast<float>(p.x));
+    poly.y.push_back(static_cast<float>(p.y));
+  }
+  for (auto it = right_bound.rbegin(); it != right_bound.rend(); ++it) {
+    poly.x.push_back(static_cast<float>(it->x));
+    poly.y.push_back(static_cast<float>(it->y));
+  }
+  return poly;
+}
+
+void boundsToFloatPolylines(
+  const std::vector<geometry_msgs::msg::Point> & bound, std::vector<float> & xs,
+  std::vector<float> & ys)
+{
+  xs.clear();
+  ys.clear();
+  xs.reserve(bound.size());
+  ys.reserve(bound.size());
+  for (const auto & p : bound) {
+    xs.push_back(static_cast<float>(p.x));
+    ys.push_back(static_cast<float>(p.y));
+  }
 }
 
 float yawFromOdometry(const Odometry & odometry)
@@ -295,7 +334,7 @@ void selectTopRolloutIndices(
 
 void buildRolloutVisualization(
   Mppi & controller, SAMPLER & sampler, DYN & model, const DYN::state_array & x_at_optimization,
-  FirstOrderDubinsMppiDebug & debug)
+  const float lambda, FirstOrderDubinsMppiDebug & debug)
 {
   const Mppi::state_trajectory state_trajectory = controller.getActualStateSeq();
   fillOptimalHorizonPoints(state_trajectory, debug.optimal_horizon);
@@ -311,7 +350,7 @@ void buildRolloutVisualization(
   for (size_t i = 0; i < normalized_weights.size(); ++i) {
     const float w = static_cast<float>(importance(static_cast<int>(i)));
     normalized_weights[i] = (normalizer > 0.0F) ? w / normalizer : 0.0F;
-    raw_costs[i] = (w > 0.0F) ? (baseline - kLambda * std::log(w)) : (baseline + 1.0e30F);
+    raw_costs[i] = (w > 0.0F) ? (baseline - lambda * std::log(w)) : (baseline + 1.0e30F);
   }
 
   std::vector<int> rollout_indices;
@@ -344,6 +383,11 @@ struct FirstOrderDubinsMppiInterface::Impl
   Trajectory diffusion_reference;
   TrackedObjects tracked_objects;
   mppi::path::Path2D path;
+  mppi::path::Polygon2D drivable_polygon;
+  std::vector<float> road_border_left_x;
+  std::vector<float> road_border_left_y;
+  std::vector<float> road_border_right_x;
+  std::vector<float> road_border_right_y;
   std::vector<mppi::cost::MovingCarObstacle> obstacles;
 
   DYN model;
@@ -429,7 +473,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     sampler = SAMPLER(sp);
 
     controller = std::make_unique<Mppi>(
-      &model, &cost, &feedback, &sampler, kDt, 1, kLambda, 0.0F, kMppiHorizon, u_nom);
+      &model, &cost, &feedback, &sampler, kDt, 1, user_cost_params_.lambda, 0.0F, kMppiHorizon,
+      u_nom);
     auto cp = controller->getParams();
     cp.dynamics_rollout_dim_ = dim3(32, 2, 1);
     cp.cost_rollout_dim_ = dim3(32, 2, 1);
@@ -451,7 +496,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       "wheel_base=%.2f, max_steer=%.2f, steer_std=%.3f, acc_tau=%.2f, steer_tau=%.2f, "
       "steer_rate_lim=%.2f, vel_rate_lim=%.2f, ego=%.2fx%.2f, axle_to_center=%.2f, "
       "desired_speed=%.2f, boundary_threshold=%.2f, obs_margin=%.2f)",
-      kMppiHorizon, kNumRollouts, kDt, kLambda, vehicle_params.wheel_base,
+      kMppiHorizon, kNumRollouts, kDt, user_cost_params_.lambda, vehicle_params.wheel_base,
       vehicle_params.max_steer_angle, steer_std, vehicle_params.acc_time_constant,
       vehicle_params.steer_time_constant, vehicle_params.steer_rate_lim,
       vehicle_params.vel_rate_lim, vehicle_params.ego_length, vehicle_params.ego_width,
@@ -509,7 +554,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     const Trajectory & reference, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-    const TrackedObjects & tracked_objects_in)
+    const TrackedObjects & tracked_objects_in, const std::optional<Path> & drivable_area)
   {
     if (!initialized) {
       setup();
@@ -519,6 +564,20 @@ struct FirstOrderDubinsMppiInterface::Impl
     tracked_objects = tracked_objects_in;
     path = trajectoryToPath2D(reference);
     obstacles.clear();
+    if (drivable_area) {
+      drivable_polygon =
+        boundsToDrivablePolygon(drivable_area->left_bound, drivable_area->right_bound);
+      boundsToFloatPolylines(
+        drivable_area->left_bound, road_border_left_x, road_border_left_y);
+      boundsToFloatPolylines(
+        drivable_area->right_bound, road_border_right_x, road_border_right_y);
+    } else {
+      drivable_polygon = mppi::path::Polygon2D{};
+      road_border_left_x.clear();
+      road_border_left_y.clear();
+      road_border_right_x.clear();
+      road_border_right_y.clear();
+    }
 
     const size_t new_start_idx = findTrackingStartIndex(reference, odometry);
     const bool large_index_jump =
@@ -560,6 +619,12 @@ struct FirstOrderDubinsMppiInterface::Impl
     const std::vector<mppi::path::PathReferenceSample> ref =
       buildDiffusionReferenceHorizon(diffusion_reference, tracking_start_idx, path);
     mppi::cost::fillFirstOrderDubinsBicycleCostFromPathReference<kRefHorizon>(cost, ref);
+    if (!road_border_left_x.empty() && !road_border_right_x.empty()) {
+      mppi::cost::fillFirstOrderDubinsBicycleCostDrivableAreaFromBounds<kRefHorizon>(
+        cost, road_border_left_x, road_border_left_y, road_border_right_x, road_border_right_y);
+    } else {
+      mppi::cost::fillFirstOrderDubinsBicycleCostDrivablePolygon<kRefHorizon>(cost, drivable_polygon);
+    }
 
     int obstacle_count = 0;
     if (!tracked_objects.objects.empty()) {
@@ -712,7 +777,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const Trajectory & input, const Odometry & odometry,
   const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
   const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-  const TrackedObjects & tracked_objects)
+  const TrackedObjects & tracked_objects, const std::optional<Path> & drivable_area)
 {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -729,7 +794,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
 
   const auto start_time = std::chrono::steady_clock::now();
 
-  impl_->updateDiffusionReference(input, odometry, acceleration, steering_status, tracked_objects);
+  impl_->updateDiffusionReference(
+    input, odometry, acceleration, steering_status, tracked_objects, drivable_area);
   const FirstOrderDubinsMppiControl control = impl_->runStep();
 
   const auto state_trajectory = impl_->controller->getActualStateSeq();
@@ -744,6 +810,9 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
   const int steer_cmd_idx =
     static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
+  const int steer_state_idx =
+    static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE);
+  const float steer_tau = std::max(impl_->vehicle_params.steer_time_constant, 1.0e-4F);
 
   const size_t num_points = std::min(output.points.size(), static_cast<size_t>(kMppiHorizon));
 
@@ -760,6 +829,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     const float tracked_y = state_trajectory(pos_y_idx, col);
     const float tracked_yaw = state_trajectory(yaw_idx, col);
     const float tracked_v = state_trajectory(vel_x_idx, col);
+    const float steer_cmd = u_opt_traj(steer_cmd_idx, col);
+    const float steer_state = state_trajectory(steer_state_idx, col);
 
     const float ref_x = static_cast<float>(in_point.pose.position.x);
     const float ref_y = static_cast<float>(in_point.pose.position.y);
@@ -774,7 +845,10 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     out_point.pose.orientation = quaternionFromYaw(tracked_yaw);
     out_point.longitudinal_velocity_mps = tracked_v;
     out_point.acceleration_mps2 = u_opt_traj(accel_cmd_idx, col);
-    out_point.front_wheel_angle_rad = u_opt_traj(steer_cmd_idx, col);
+    out_point.front_wheel_angle_rad = steer_cmd;
+    // Store first-order steer rate for debug viz / cost-consistent signal:
+    // δ̇ = (steer_cmd - steer) / steer_time_constant
+    out_point.heading_rate_rps = (steer_cmd - steer_state) / steer_tau;
     ++i;
   }
 

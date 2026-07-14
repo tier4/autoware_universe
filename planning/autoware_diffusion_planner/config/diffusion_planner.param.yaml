@@ -37,6 +37,8 @@
     use_time_interpolation: false
     use_mppi_optimizer: false
     shadow_mode: false
+    avoidance_target_detector:
+      use_extended_route_bounds: true
     planning_factor:
       enable_stop: true
       enable_slowdown: false

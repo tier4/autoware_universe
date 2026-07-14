@@ -176,6 +176,75 @@ __host__ __device__ inline bool pointInPolygon(
   }
   return inside;
 }
+
+/** Liang–Barsky segment vs axis-aligned box (inclusive bounds). */
+__host__ __device__ inline bool segmentIntersectsAxisAlignedBox(
+  const float x0, const float y0, const float x1, const float y1, const float xmin,
+  const float xmax, const float ymin, const float ymax)
+{
+  const float dx = x1 - x0;
+  const float dy = y1 - y0;
+  float t0 = 0.0F;
+  float t1 = 1.0F;
+
+  const float p[4] = {-dx, dx, -dy, dy};
+  const float q[4] = {x0 - xmin, xmax - x0, y0 - ymin, ymax - y0};
+  for (int i = 0; i < 4; ++i) {
+#ifdef __CUDA_ARCH__
+    if (fabsf(p[i]) < 1.0E-12F) {
+#else
+    if (std::fabs(p[i]) < 1.0E-12F) {
+#endif
+      if (q[i] < 0.0F) {
+        return false;
+      }
+      continue;
+    }
+    const float r = q[i] / p[i];
+    if (p[i] < 0.0F) {
+      if (r > t1) {
+        return false;
+      }
+      if (r > t0) {
+        t0 = r;
+      }
+    } else {
+      if (r < t0) {
+        return false;
+      }
+      if (r < t1) {
+        t1 = r;
+      }
+    }
+  }
+  return true;
+}
+
+/**
+ * Oriented box (center, yaw; body +x forward, +y left) vs world-frame segment.
+ * half_length / half_width should already include any desired margin.
+ */
+__host__ __device__ inline bool orientedBoxIntersectsSegment(
+  const float cx, const float cy, const float cos_yaw, const float sin_yaw,
+  const float half_length, const float half_width, const float sx0, const float sy0,
+  const float sx1, const float sy1)
+{
+  const float fx = cos_yaw;
+  const float fy = sin_yaw;
+  const float lx = -sin_yaw;
+  const float ly = cos_yaw;
+
+  const float d0x = sx0 - cx;
+  const float d0y = sy0 - cy;
+  const float d1x = sx1 - cx;
+  const float d1y = sy1 - cy;
+  const float a0 = d0x * fx + d0y * fy;
+  const float a1 = d0x * lx + d0y * ly;
+  const float b0 = d1x * fx + d1y * fy;
+  const float b1 = d1x * lx + d1y * ly;
+  return segmentIntersectsAxisAlignedBox(
+    a0, a1, b0, b1, -half_length, half_length, -half_width, half_width);
+}
 }  // namespace detail
 }  // namespace cost
 }  // namespace mppi

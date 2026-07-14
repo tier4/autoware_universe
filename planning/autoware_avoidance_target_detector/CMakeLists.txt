@@ -5,6 +5,7 @@ find_package(autoware_cmake REQUIRED)
 autoware_package()
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
+  src/avoidance_target_detector_logic.cpp
   src/node.cpp
   src/object_filtering.cpp
   src/boundary.cpp

@@ -131,7 +131,10 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     ${CUBLAS_LIBRARIES}
     ${autoware_mppi_optimizer_LIBRARIES}
   )
-  ament_target_dependencies(autoware_diffusion_planner_component autoware_mppi_optimizer)
+  ament_target_dependencies(autoware_diffusion_planner_component
+    autoware_avoidance_target_detector
+    autoware_mppi_optimizer
+  )
 
   if(onnxruntime_FOUND)
     if(TARGET onnxruntime::onnxruntime)
@@ -187,6 +190,12 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     )
   endif()
 endif()
+
+install(PROGRAMS
+  scripts/mppi_debug_visualizer.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_auto_package(
   INSTALL_TO_SHARE
   config
