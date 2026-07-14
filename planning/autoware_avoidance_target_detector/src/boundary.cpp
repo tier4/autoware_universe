@@ -534,6 +534,8 @@ void ExtendedRouteHandler::create_map()
   }
   original_route_bounds_ = build_route_bounds(original_primitive_lists);
   extended_route_bounds_ = build_route_bounds(extended_primitive_lists);
+  original_route_polygon_ = build_route_polygon(original_route_bounds_);
+  extended_route_polygon_ = build_route_polygon(extended_route_bounds_);
 
   route_map_routing_graph_ = traffic_rules::create_goal_purpose_routing_graph(*route_map_);
 }
@@ -621,6 +623,37 @@ std::pair<lanelet::LineString2d, lanelet::LineString2d> ExtendedRouteHandler::bu
   }
 
   return std::make_pair(left_bound, right_bound);
+}
+
+lanelet::Polygon2d ExtendedRouteHandler::build_route_polygon(const RouteBounds & bounds)
+{
+  const auto & left_bound = bounds.first;
+  const auto right_bound_reversed = bounds.second.invert();
+  if (left_bound.size() + right_bound_reversed.size() < 3) {
+    return {};
+  }
+
+  lanelet::Polygon2d polygon(lanelet::utils::getId());
+  polygon.reserve(left_bound.size() + right_bound_reversed.size());
+  for (const auto & point : left_bound) {
+    polygon.push_back(
+      lanelet::Point2d(point.id(), {point.basicPoint().x(), point.basicPoint().y(), 0.0}));
+  }
+  for (const auto & point : right_bound_reversed) {
+    polygon.push_back(
+      lanelet::Point2d(point.id(), {point.basicPoint().x(), point.basicPoint().y(), 0.0}));
+  }
+  return polygon;
+}
+
+const lanelet::Polygon2d & ExtendedRouteHandler::get_original_route_polygon() const
+{
+  return original_route_polygon_;
+}
+
+const lanelet::Polygon2d & ExtendedRouteHandler::get_extended_route_polygon() const
+{
+  return extended_route_polygon_;
 }
 
 std::optional<std::size_t> ExtendedRouteHandler::find_segment_index_for_lanelet(
