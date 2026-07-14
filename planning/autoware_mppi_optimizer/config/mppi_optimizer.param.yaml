@@ -23,4 +23,5 @@
     goal_speed_coeff: 200.0
     goal_yaw_coeff: 500.0
     goal_terminal_scale: 10.0
-    obstacle_collision_margin: 0.2
+    obstacle_collision_margin: 0.5
+    road_border_margin: 0.2

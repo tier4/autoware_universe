@@ -89,6 +89,7 @@ void applyUserCostParams(
   cost_params.lateral_jerk_coeff = user.lateral_jerk_coeff;
   cost_params.longitudinal_jerk_coeff = user.longitudinal_jerk_coeff;
   cost_params.obstacle_collision_margin = user.obstacle_collision_margin;
+  cost_params.road_border_margin = user.road_border_margin;
   cost_params.goal_pos_coeff = user.goal_pos_coeff;
   cost_params.goal_speed_coeff = user.goal_speed_coeff;
   cost_params.goal_yaw_coeff = user.goal_yaw_coeff;
@@ -148,6 +149,20 @@ mppi::path::Polygon2D boundsToDrivablePolygon(
     poly.y.push_back(static_cast<float>(it->y));
   }
   return poly;
+}
+
+void boundsToFloatPolylines(
+  const std::vector<geometry_msgs::msg::Point> & bound, std::vector<float> & xs,
+  std::vector<float> & ys)
+{
+  xs.clear();
+  ys.clear();
+  xs.reserve(bound.size());
+  ys.reserve(bound.size());
+  for (const auto & p : bound) {
+    xs.push_back(static_cast<float>(p.x));
+    ys.push_back(static_cast<float>(p.y));
+  }
 }
 
 float yawFromOdometry(const Odometry & odometry)
@@ -369,6 +384,10 @@ struct FirstOrderDubinsMppiInterface::Impl
   TrackedObjects tracked_objects;
   mppi::path::Path2D path;
   mppi::path::Polygon2D drivable_polygon;
+  std::vector<float> road_border_left_x;
+  std::vector<float> road_border_left_y;
+  std::vector<float> road_border_right_x;
+  std::vector<float> road_border_right_y;
   std::vector<mppi::cost::MovingCarObstacle> obstacles;
 
   DYN model;
@@ -548,8 +567,16 @@ struct FirstOrderDubinsMppiInterface::Impl
     if (drivable_area) {
       drivable_polygon =
         boundsToDrivablePolygon(drivable_area->left_bound, drivable_area->right_bound);
+      boundsToFloatPolylines(
+        drivable_area->left_bound, road_border_left_x, road_border_left_y);
+      boundsToFloatPolylines(
+        drivable_area->right_bound, road_border_right_x, road_border_right_y);
     } else {
       drivable_polygon = mppi::path::Polygon2D{};
+      road_border_left_x.clear();
+      road_border_left_y.clear();
+      road_border_right_x.clear();
+      road_border_right_y.clear();
     }
 
     const size_t new_start_idx = findTrackingStartIndex(reference, odometry);
@@ -592,7 +619,12 @@ struct FirstOrderDubinsMppiInterface::Impl
     const std::vector<mppi::path::PathReferenceSample> ref =
       buildDiffusionReferenceHorizon(diffusion_reference, tracking_start_idx, path);
     mppi::cost::fillFirstOrderDubinsBicycleCostFromPathReference<kRefHorizon>(cost, ref);
-    mppi::cost::fillFirstOrderDubinsBicycleCostDrivablePolygon<kRefHorizon>(cost, drivable_polygon);
+    if (!road_border_left_x.empty() && !road_border_right_x.empty()) {
+      mppi::cost::fillFirstOrderDubinsBicycleCostDrivableAreaFromBounds<kRefHorizon>(
+        cost, road_border_left_x, road_border_left_y, road_border_right_x, road_border_right_y);
+    } else {
+      mppi::cost::fillFirstOrderDubinsBicycleCostDrivablePolygon<kRefHorizon>(cost, drivable_polygon);
+    }
 
     int obstacle_count = 0;
     if (!tracked_objects.objects.empty()) {

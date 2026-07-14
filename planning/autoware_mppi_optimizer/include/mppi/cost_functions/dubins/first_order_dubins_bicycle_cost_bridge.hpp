@@ -102,6 +102,36 @@ inline void fillFirstOrderDubinsBicycleCostDrivablePolygon(
   cost.setDrivableAreaPolygon(x.data(), y.data(), kMax);
 }
 
+/** Closed polygon + left/right open border polylines for OBB–segment crash checks. */
+template <int NUM_TIMESTEPS>
+inline void fillFirstOrderDubinsBicycleCostDrivableAreaFromBounds(
+  FirstOrderDubinsBicycleCost<NUM_TIMESTEPS> & cost, const std::vector<float> & left_x,
+  const std::vector<float> & left_y, const std::vector<float> & right_x,
+  const std::vector<float> & right_y)
+{
+  if (left_x.size() < 2U || left_y.size() != left_x.size() || right_x.size() < 2U ||
+      right_y.size() != right_x.size()) {
+    cost.clearDrivableArea();
+    return;
+  }
+
+  mppi::path::Polygon2D poly;
+  poly.x.reserve(left_x.size() + right_x.size());
+  poly.y.reserve(left_y.size() + right_y.size());
+  poly.x.insert(poly.x.end(), left_x.begin(), left_x.end());
+  poly.y.insert(poly.y.end(), left_y.begin(), left_y.end());
+  for (auto it = right_x.rbegin(); it != right_x.rend(); ++it) {
+    poly.x.push_back(*it);
+  }
+  for (auto it = right_y.rbegin(); it != right_y.rend(); ++it) {
+    poly.y.push_back(*it);
+  }
+  fillFirstOrderDubinsBicycleCostDrivablePolygon<NUM_TIMESTEPS>(cost, poly);
+  cost.setRoadBorderPolylines(
+    left_x.data(), left_y.data(), static_cast<int>(left_x.size()), right_x.data(), right_y.data(),
+    static_cast<int>(right_x.size()));
+}
+
 /** Drivable surface for a stadium-style closed path. */
 template <int NUM_TIMESTEPS>
 inline void fillFirstOrderDubinsBicycleCostStadiumDrivablePolygon(
