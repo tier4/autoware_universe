@@ -24,6 +24,7 @@
 #include <iterator>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety
@@ -156,7 +157,53 @@ Polygon2d footprint_to_polygon2d(const FootprintTrajectory & footprints, const s
     footprints);
 }
 
+TrajectoryData create_trajectory_data(const TimeTrajectory & times)
+{
+  TravelDistanceTrajectory distances;
+  PoseTrajectory poses;
+  distances.reserve(times.size());
+  poses.reserve(times.size());
+  for (size_t i = 0; i < times.size(); ++i) {
+    distances.push_back(static_cast<double>(i));
+    poses.push_back(create_pose(static_cast<double>(i), 0.0));
+  }
+
+  auto footprints =
+    trajectory::footprint::compute_footprint_trajectory(poses, create_bounding_box_shape());
+  return TrajectoryData{
+    TrajectoryIdentification{"test"}, times, std::move(distances), std::move(poses),
+    std::move(footprints)};
+}
+
 }  // namespace
+
+TEST(TrajectoryUtilitiesTest, ResolveCoveringIndexRangeHandlesAvailableTimeRange)
+{
+  const auto trajectory_data = create_trajectory_data({0.0, 1.0, 2.0});
+
+  const auto contained = trajectory_data.resolve_covering_index_range({0.5, 1.5});
+  ASSERT_TRUE(contained);
+  EXPECT_EQ(contained->first, 0U);
+  EXPECT_EQ(contained->second, 2U);
+
+  const auto partially_before = trajectory_data.resolve_covering_index_range({-1.0, 0.5});
+  ASSERT_TRUE(partially_before);
+  EXPECT_EQ(partially_before->first, 0U);
+  EXPECT_EQ(partially_before->second, 1U);
+
+  const auto partially_after = trajectory_data.resolve_covering_index_range({1.5, 3.0});
+  ASSERT_TRUE(partially_after);
+  EXPECT_EQ(partially_after->first, 1U);
+  EXPECT_EQ(partially_after->second, 2U);
+}
+
+TEST(TrajectoryUtilitiesTest, ResolveCoveringIndexRangeRejectsUnavailableTimeRange)
+{
+  const auto trajectory_data = create_trajectory_data({0.0, 1.0, 2.0});
+
+  EXPECT_FALSE(trajectory_data.resolve_covering_index_range({-2.0, -1.0}));
+  EXPECT_FALSE(trajectory_data.resolve_covering_index_range({3.0, 4.0}));
+}
 
 TEST(TrajectoryUtilitiesTest, ComputePoseTrajectoryInterpolatesAndClamps)
 {

@@ -33,12 +33,16 @@ std::optional<CollisionDetail> find_collision_timing(
   const double max_pet_threshold = std::max(
     pet_find_range.ego_first_passing_time_gap, pet_find_range.object_first_passing_time_gap);
 
+  const auto overall_test_index_range = test_trajectory.resolve_covering_index_range(
+    {ref_trajectory.getTimes().front() - pet_find_range.object_first_passing_time_gap,
+     ref_trajectory.getTimes().back() + pet_find_range.ego_first_passing_time_gap});
+  if (!overall_test_index_range) {
+    return std::nullopt;
+  }
+
   if (!boost::geometry::intersects(
         ref_trajectory.get_or_compute_overall_envelope(),
-        test_trajectory.get_or_compute_envelope(
-          TimeRange{
-            ref_trajectory.getTimes().front() - pet_find_range.object_first_passing_time_gap,
-            ref_trajectory.getTimes().back() + pet_find_range.ego_first_passing_time_gap}))) {
+        test_trajectory.get_or_compute_envelope(*overall_test_index_range))) {
     return std::nullopt;
   }
 
@@ -47,7 +51,7 @@ std::optional<CollisionDetail> find_collision_timing(
     double ttc;
     double pet;
     IndexRange ref_index_range;
-    TimeRange test_time_range;
+    IndexRange test_index_range;
   };
 
   const auto make_collision_detail =
@@ -61,7 +65,7 @@ std::optional<CollisionDetail> find_collision_timing(
       ref_trajectory.getPoses(),
       test_trajectory.getPoses(),
       ref_trajectory.get_or_compute_convex(worst_pet.ref_index_range),
-      test_trajectory.get_or_compute_convex(worst_pet.test_time_range)};
+      test_trajectory.get_or_compute_convex(worst_pet.test_index_range)};
   };
 
   std::optional<CandidateFinding> first_collision_timing{};
@@ -78,40 +82,47 @@ std::optional<CollisionDetail> find_collision_timing(
     const double current_pet_limit =
       worst_pet_timing.has_value() ? std::abs(worst_pet_timing->pet) : max_pet_threshold;
 
-    if (!boost::geometry::intersects(
-          ref_envelope, test_trajectory.get_or_compute_envelope(
-                          TimeRange{
-                            ref_start_time - current_pet_limit,
-                            ref_trajectory.getTimes().back() + current_pet_limit}))) {
+    const auto rough_test_index_range = test_trajectory.resolve_covering_index_range(
+      {ref_start_time - current_pet_limit, ref_end_time + current_pet_limit});
+    if (!rough_test_index_range) {
       continue;
     }
 
-    const auto has_intersects = [&](const TimeRange & time_range) -> bool {
+    if (!boost::geometry::intersects(
+          ref_envelope, test_trajectory.get_or_compute_envelope(rough_test_index_range.value()))) {
+      continue;
+    }
+
+    const auto has_intersects = [&](const IndexRange & index_range) -> bool {
       if (!boost::geometry::intersects(
-            ref_envelope, test_trajectory.get_or_compute_envelope(time_range))) {
+            ref_envelope, test_trajectory.get_or_compute_envelope(index_range))) {
         return false;
       }
 
       return geometry::intersects_sat(
-        ref_convex, test_trajectory.get_or_compute_convex(time_range));
+        ref_convex, test_trajectory.get_or_compute_convex(index_range));
+    };
+
+    const auto find_candidate = [&](const double pet_range) -> std::optional<CandidateFinding> {
+      for (const double pet : {-pet_range, pet_range}) {
+        const auto test_index_range =
+          test_trajectory.resolve_covering_index_range({ref_start_time + pet, ref_end_time + pet});
+        if (!test_index_range || !has_intersects(test_index_range.value())) {
+          continue;
+        }
+
+        return CandidateFinding{ref_start_time, pet, ref_index_range, *test_index_range};
+      }
+      return std::nullopt;
     };
 
     for (double pet_range = 0.0; pet_range < current_pet_limit; pet_range += time_resolution) {
-      const TimeRange test_time_range_before{ref_start_time - pet_range, ref_end_time - pet_range};
-      const bool has_intersects_before = has_intersects(test_time_range_before);
-
-      const TimeRange test_time_range_after{ref_start_time + pet_range, ref_end_time + pet_range};
-      const bool has_intersects_after = has_intersects(test_time_range_after);
-
-      if (!has_intersects_before && !has_intersects_after) {
+      const auto candidate = find_candidate(pet_range);
+      if (!candidate) {
         continue;
       }
 
-      const double pet = has_intersects_before ? -pet_range : pet_range;
-      const TimeRange test_time_range =
-        has_intersects_before ? test_time_range_before : test_time_range_after;
-
-      worst_pet_timing = CandidateFinding{ref_start_time, pet, ref_index_range, test_time_range};
+      worst_pet_timing = *candidate;
       if (!first_collision_timing.has_value()) {
         first_collision_timing = worst_pet_timing;
       }
@@ -131,8 +142,8 @@ std::optional<CollisionDetail> find_collision_timing(
 
 struct DracRiskTable
 {
-  double safe_acceleration_limit{1.5};
-  double danger_acceleration_limit{3.0};
+  double safe_acceleration_limit{-1.5};
+  double danger_acceleration_limit{-3.0};
   bool enable_abandon{false};
 };
 
@@ -212,7 +223,7 @@ DracEvaluation assess_drac_constant_curvature_object_first(
     ego_trajectory_cache, object_constant_curvature_trajectory, drac_params, global_params);
 
   DracEvaluation evaluation{};
-  evaluation.method = "map_based, on_blinker, object first";
+  evaluation.method = "constant_curvature, object first";
   evaluation.risk = identify_risk_level(required_acceleration, DracRiskTable{});
   evaluation.ego_drac_acceleration = required_acceleration;
   evaluation.detail = std::move(last_collision).value_or(std::move(nominal_collision_result));
@@ -286,7 +297,7 @@ DracEvaluation assess_drac_on_blinker_ego_first(
     assess_ego_drac(ego_trajectory_cache, object_map_based_trajectory, drac_params, global_params);
 
   DracEvaluation evaluation{};
-  evaluation.method = "map_based, on_blinker, object first";
+  evaluation.method = "map_based, on_blinker, ego first";
   DracRiskTable risk_table;
   risk_table.enable_abandon = true;
   evaluation.risk = identify_risk_level(required_acceleration, risk_table);

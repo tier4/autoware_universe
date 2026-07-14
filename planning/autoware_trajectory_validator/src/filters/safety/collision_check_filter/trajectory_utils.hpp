@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -70,15 +71,6 @@ private:
     const auto it = std::lower_bound(times_.begin(), times_.end(), t - TIME_INDEX_EPSILON);
     if (it == times_.end()) return times_.size() - 1;
     return std::distance(times_.begin(), it);
-  }
-
-  IndexRange resolve_covering_index_range(const TimeRange & key_time) const
-  {
-    assert(key_time.first <= key_time.second);
-
-    auto start_index = get_same_or_earlier_time_index(key_time.first);
-    auto end_index = get_same_or_later_time_index(key_time.second);
-    return {start_index, end_index};
   }
 
   Box2d compute_envelope(const IndexRange & key) const
@@ -153,6 +145,17 @@ public:
         "Trajectory sizes mismatch (times vs footprints) classification: " +
         identification_.classification);
     }
+
+    if (!std::is_sorted(times_.begin(), times_.end())) {
+      throw std::invalid_argument(
+        "Trajectory times must be in ascending order classification: " +
+        identification_.classification);
+    }
+    if (!std::is_sorted(distances_.begin(), distances_.end())) {
+      throw std::invalid_argument(
+        "Trajectory distances must be in ascending order classification: " +
+        identification_.classification);
+    }
   }
 
   TrajectoryData() = delete;
@@ -165,6 +168,22 @@ public:
 
   size_t size() const { return times_.size(); }
 
+  std::optional<IndexRange> resolve_covering_index_range(const TimeRange & time_range) const
+  {
+    assert(time_range.first <= time_range.second);
+
+    const bool has_no_overlap =
+      time_range.second < times_.front() || time_range.first > times_.back();
+
+    if (has_no_overlap) {
+      return std::nullopt;
+    }
+
+    const auto start_index = get_same_or_earlier_time_index(time_range.first);
+    const auto end_index = get_same_or_later_time_index(time_range.second);
+    return IndexRange{start_index, end_index};
+  }
+
   const Box2d & get_or_compute_envelope(const IndexRange & key) const
   {
     assert(key.first <= key.second);
@@ -174,11 +193,6 @@ public:
       it->second = compute_envelope(key);
     }
     return it->second;
-  }
-
-  const Box2d & get_or_compute_envelope(const TimeRange & key_time) const
-  {
-    return get_or_compute_envelope(resolve_covering_index_range(key_time));
   }
 
   const Box2d & get_or_compute_overall_envelope() const
@@ -195,11 +209,6 @@ public:
       it->second = compute_convex(key);
     }
     return it->second;
-  }
-
-  const Polygon2d & get_or_compute_convex(const TimeRange & key_time) const
-  {
-    return get_or_compute_convex(resolve_covering_index_range(key_time));
   }
 };
 }  // namespace autoware::trajectory_validator::plugin::safety

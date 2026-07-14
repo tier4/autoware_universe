@@ -95,7 +95,7 @@ struct CollisionDetail
 
 struct DracEvaluation
 {
-  std::string method;
+  std::string method;  // todo(takagi): use enum
   RiskLevel::_level_type risk;
   std::optional<double> ego_drac_acceleration;
   CollisionDetail detail;
