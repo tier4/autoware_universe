@@ -30,8 +30,10 @@ namespace autoware::avoidance_target_detector
 AvoidanceTargetDetectorNode::AvoidanceTargetDetectorNode(const rclcpp::NodeOptions & node_options)
 : Node{"avoidance_target_detector", node_options},
   pub_drivable_area_path_{create_publisher<Path>("~/output/drivable_area", 1)},
-  pub_near_segment_polygon_{
-    create_publisher<MarkerArray>("~/debug/near_segment_polygon", rclcpp::QoS{1}.transient_local())}
+  pub_near_segment_polygon_{create_publisher<MarkerArray>(
+    "~/debug/near_segment_polygon", rclcpp::QoS{1}.transient_local())},
+  pub_route_polygon_{
+    create_publisher<MarkerArray>("~/debug/route_polygon", rclcpp::QoS{1}.transient_local())}
 {
   declare_parameter<bool>("use_extended_route_bounds", true);
   declare_parameter<bool>("use_tracked_objects", false);
@@ -130,6 +132,21 @@ void AvoidanceTargetDetectorNode::publish_debug_visualizations(const Trajectory 
                                 ? extended_route_handler_->get_extended_route_bounds()
                                 : extended_route_handler_->get_original_route_bounds();
   pub_drivable_area_path_->publish(to_path_msg(route_bounds, *trajectory_));
+
+  {
+    using autoware_utils_visualization::create_marker_color;
+    using autoware_utils_visualization::create_marker_scale;
+    const auto & route_polygon = use_extended_bounds
+                                   ? extended_route_handler_->get_extended_route_polygon()
+                                   : extended_route_handler_->get_original_route_polygon();
+    const auto route_polygon_2d = route_polygon.basicPolygon();
+    if (route_polygon_2d.size() >= 3) {
+      pub_route_polygon_->publish(
+        autoware::experimental::marker_utils::create_lanelet_polygon_marker_array(
+          route_polygon_2d, get_clock()->now(), "route_polygon", 0,
+          create_marker_scale(0.4, 0.0, 0.0), create_marker_color(0.0, 0.7, 1.0, 0.5), 0.0));
+    }
+  }
 
   if (ego_trajectory_built_ && !trajectory_msg.points.empty()) {
     const auto ego_points = ego_trajectory_.restore();
