@@ -280,6 +280,22 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   const std::shared_ptr<const TurnIndicatorsReport> & turn_indicators,
   const LaneletRoute::ConstSharedPtr & route_ptr, const rclcpp::Time & current_time)
 {
+  const TrackedObjectsGrid no_fixed_grid;
+  return create_frame_context(
+    ego_kinematic_state, ego_acceleration, objects, no_fixed_grid, traffic_signals, turn_indicators,
+    route_ptr, current_time);
+}
+
+std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
+  const std::shared_ptr<const Odometry> & ego_kinematic_state,
+  const std::shared_ptr<const AccelWithCovarianceStamped> & ego_acceleration,
+  const std::shared_ptr<const TrackedObjects> & objects,
+  const TrackedObjectsGrid & tracked_objects_grid,
+  const std::vector<std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
+    traffic_signals,
+  const std::shared_ptr<const TurnIndicatorsReport> & turn_indicators,
+  const LaneletRoute::ConstSharedPtr & route_ptr, const rclcpp::Time & current_time)
+{
   route_ptr_ = (!route_ptr_ || route_ptr) ? route_ptr : route_ptr_;
 
   TrackedObjects empty_object_list;
@@ -294,6 +310,16 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   }
 
   if (!route_ptr_) {
+    return std::nullopt;
+  }
+
+  if (
+    !tracked_objects_grid.empty() &&
+    tracked_objects_grid.size() != static_cast<size_t>(INPUT_T_WITH_CURRENT)) {
+    RCLCPP_ERROR(
+      rclcpp::get_logger("diffusion_planner"),
+      "The fixed tracked-object grid has %zu entries; expected exactly %ld",
+      tracked_objects_grid.size(), static_cast<long>(INPUT_T_WITH_CURRENT));
     return std::nullopt;
   }
 
@@ -365,10 +391,31 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
     turn_indicators_history_.pop_front();
   }
 
-  // Update neighbor agent data
-  agent_data_.update_histories(*effective_objects);
-  const auto processed_neighbor_histories =
-    agent_data_.transformed_and_trimmed_histories(map_to_ego_transform, NEIGHBOR_SHAPE[1]);
+  // Update neighbor agent data. The fixed-grid path rebuilds the history from exactly the same
+  // number of 10 Hz snapshots used by the training converter. In particular, an empty grid slot
+  // is an actual empty frame: it must erase tracks for that tick rather than being skipped.
+  std::vector<AgentHistory> processed_neighbor_histories;
+  if (params_.ignore_neighbors) {
+    processed_neighbor_histories.clear();
+  } else if (!tracked_objects_grid.empty()) {
+    AgentData fixed_grid_agent_data;
+    for (const auto & grid_snapshot : tracked_objects_grid) {
+      if (grid_snapshot) {
+        fixed_grid_agent_data.update_histories(*grid_snapshot);
+      } else {
+        TrackedObjects empty_snapshot;
+        fixed_grid_agent_data.update_histories(empty_snapshot);
+      }
+    }
+    processed_neighbor_histories = fixed_grid_agent_data.transformed_and_trimmed_histories(
+      map_to_ego_transform, NEIGHBOR_SHAPE[1]);
+  } else {
+    // Keep the legacy API deterministic for offline callers that have not supplied a sampled grid.
+    // The ROS node always uses the fixed-grid overload below.
+    agent_data_.update_histories(*effective_objects);
+    processed_neighbor_histories =
+      agent_data_.transformed_and_trimmed_histories(map_to_ego_transform, NEIGHBOR_SHAPE[1]);
+  }
 
   // Update traffic light map
   const auto & traffic_light_msg_timeout_s = params_.traffic_light_group_msg_timeout_seconds;

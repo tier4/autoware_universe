@@ -521,6 +521,60 @@ void DiffusionPlanner::on_timer()
   diagnostics_inference_->clear();
 
   const rclcpp::Time current_time(get_clock()->now());
+
+  // Drain every tracked-object message and retain its transport timestamp. The training
+  // converter selects by the recorder/arrival clock, so using only the latest message at this
+  // callback would lose intermediate snapshots whenever inference or the executor runs late.
+  // Do this before model/map readiness checks so startup delays cannot overflow the DDS queue and
+  // discard the temporal context that is still inside the retention window.
+  const int64_t current_time_ns = current_time.nanoseconds();
+  const auto tracked_object_messages = sub_tracked_objects_.take_data(current_time_ns);
+  const bool planner_time_discontinuity =
+    last_neighbor_reference_time_ns_ &&
+    (current_time_ns < *last_neighbor_reference_time_ns_ ||
+     current_time_ns - *last_neighbor_reference_time_ns_ >
+       static_cast<int64_t>(params_.ego_history_reset_gap_s * 1.0e9));
+  if (planner_time_discontinuity) {
+    // Do not bridge a ROS-clock restart or a planner pause with old object snapshots. This mirrors
+    // DiffusionPlannerCore's ego-history reset.
+    tracked_objects_buffer_.clear();
+  }
+  last_neighbor_reference_time_ns_ = current_time_ns;
+
+  for (const auto & timed_message : tracked_object_messages) {
+    if (timed_message.used_header_fallback) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+        "Tracked-object transport timestamp is unavailable or uses a different clock domain; "
+        "falling back to header.stamp for fixed-grid selection");
+    }
+    tracked_objects_buffer_.add(timed_message.selection_time_ns, timed_message.message);
+  }
+
+  // The training converter samples at a planner-clock tick using latest-at-or-before (ZOH). The
+  // ego message header remains the model/output frame timestamp; the grid selection clock is the
+  // planner clock, matching the converter's frame timestamp.
+  auto objects = tracked_objects_buffer_.latest_at_or_before(current_time_ns);
+  const auto latest_object_selection_time =
+    tracked_objects_buffer_.latest_time_ns_at_or_before(current_time_ns);
+  const bool stale_object_header =
+    !params_.ignore_neighbors && objects &&
+    current_time_ns - rclcpp::Time(objects->header.stamp).nanoseconds() >
+      static_cast<int64_t>(params_.ego_history_reset_gap_s * 1.0e9);
+  const bool stale_object_selection =
+    !params_.ignore_neighbors && (!latest_object_selection_time ||
+                                  current_time_ns - *latest_object_selection_time >
+                                    static_cast<int64_t>(params_.ego_history_reset_gap_s * 1.0e9));
+  if (stale_object_selection || stale_object_header) {
+    // The converter marks a frame stale once the required tracked-object source is older than the
+    // reset threshold. Clear the retained snapshots as well, otherwise the next valid frame could
+    // rebuild a history across the stale interval.
+    tracked_objects_buffer_.clear();
+    objects.reset();
+  }
+  const auto tracked_objects_grid = tracked_objects_buffer_.sample(
+    current_time_ns, static_cast<size_t>(INPUT_T_WITH_CURRENT), 100'000'000LL);
+
   if (!core_->is_model_loaded()) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
@@ -539,8 +593,6 @@ void DiffusionPlanner::on_timer()
     return;
   }
 
-  // Take data from subscribers
-  auto objects = sub_tracked_objects_.take_data();
   auto ego_kinematic_state = sub_current_odometry_.take_data();
   auto ego_acceleration = sub_current_acceleration_.take_data();
   auto traffic_signals = sub_traffic_signals_.take_data();
@@ -549,8 +601,8 @@ void DiffusionPlanner::on_timer()
 
   // Prepare frame context using core
   const std::optional<FrameContext> frame_context = core_->create_frame_context(
-    ego_kinematic_state, ego_acceleration, objects, traffic_signals, turn_indicators_ptr,
-    temp_route_ptr, this->now());
+    ego_kinematic_state, ego_acceleration, objects, tracked_objects_grid.messages, traffic_signals,
+    turn_indicators_ptr, temp_route_ptr, current_time);
 
   if (!frame_context) {
     // Log detailed information about missing inputs

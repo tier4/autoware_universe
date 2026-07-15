@@ -16,7 +16,9 @@
 #define AUTOWARE__DIFFUSION_PLANNER__DIFFUSION_PLANNER_NODE_HPP_
 
 #include "autoware/diffusion_planner/diffusion_planner_core.hpp"
+#include "autoware/diffusion_planner/preprocessing/fixed_time_grid.hpp"
 #include "autoware/diffusion_planner/utils/planning_factor_utils.hpp"
+#include "autoware/diffusion_planner/utils/timestamped_polling_subscriber.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
 
@@ -47,7 +49,9 @@
 #include <std_srvs/srv/set_bool.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -252,8 +256,12 @@ private:
     this, "~/input/steering_status"};
   autoware_utils::InterProcessPollingSubscriber<AccelWithCovarianceStamped>
     sub_current_acceleration_{this, "~/input/acceleration"};
-  autoware_utils::InterProcessPollingSubscriber<TrackedObjects> sub_tracked_objects_{
-    this, "~/input/tracked_objects"};
+  TimestampedPollingSubscriber<TrackedObjects> sub_tracked_objects_{
+    this, "~/input/tracked_objects", rclcpp::QoS{64}, [](const TrackedObjects & message) {
+      return rclcpp::Time(message.header.stamp).nanoseconds();
+    }};
+  preprocess::FixedTimeGridBuffer<TrackedObjects> tracked_objects_buffer_{6'000'000'000LL};
+  std::optional<int64_t> last_neighbor_reference_time_ns_;
   autoware_utils::InterProcessPollingSubscriber<
     autoware_perception_msgs::msg::TrafficLightGroupArray, autoware_utils::polling_policy::All>
     sub_traffic_signals_{this, "~/input/traffic_signals", rclcpp::QoS{10}};

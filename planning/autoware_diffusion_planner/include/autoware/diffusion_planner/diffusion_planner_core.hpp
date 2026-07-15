@@ -72,6 +72,7 @@ using utils::ObservationNormalization;
 using utils::StateNormalization;
 using InputDataMap = std::unordered_map<std::string, std::vector<float>>;
 using AgentPoses = std::vector<std::vector<std::vector<Eigen::Matrix4d>>>;
+using TrackedObjectsGrid = std::vector<TrackedObjects::ConstSharedPtr>;
 
 struct VehicleSpec
 {
@@ -197,6 +198,31 @@ public:
     const std::shared_ptr<const Odometry> & ego_kinematic_state,
     const std::shared_ptr<const AccelWithCovarianceStamped> & ego_acceleration,
     const std::shared_ptr<const TrackedObjects> & objects,
+    const std::vector<
+      std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
+      traffic_signals,
+    const std::shared_ptr<const TurnIndicatorsReport> & turn_indicators,
+    const LaneletRoute::ConstSharedPtr & route_ptr, const rclcpp::Time & current_time);
+
+  /**
+   * @brief Prepare a frame using a fixed-rate tracked-object history.
+   *
+   * @param ego_kinematic_state Current ego vehicle odometry
+   * @param ego_acceleration Current ego vehicle acceleration
+   * @param objects Current tracked-object snapshot for stale checks and downstream consumers
+   * @param tracked_objects_grid Exactly INPUT_T_WITH_CURRENT snapshots sampled on the training
+   *   clock. Null entries are startup-padding ticks and are treated as empty snapshots.
+   * @param traffic_signals Traffic light information
+   * @param turn_indicators Current turn indicator state
+   * @param route_ptr Route information
+   * @param current_time Current planner clock timestamp
+   * @return FrameContext containing preprocessed data, or nullopt if data is incomplete
+   */
+  std::optional<FrameContext> create_frame_context(
+    const std::shared_ptr<const Odometry> & ego_kinematic_state,
+    const std::shared_ptr<const AccelWithCovarianceStamped> & ego_acceleration,
+    const std::shared_ptr<const TrackedObjects> & objects,
+    const TrackedObjectsGrid & tracked_objects_grid,
     const std::vector<
       std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
       traffic_signals,

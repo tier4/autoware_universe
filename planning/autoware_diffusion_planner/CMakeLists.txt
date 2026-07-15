@@ -173,6 +173,8 @@ if(TRT_AVAIL AND CUDA_AVAIL)
       test/postprocessing_utils_edge_case_test.cpp
       test/preprocessing_utils_edge_case_test.cpp
       test/agent_edge_case_test.cpp
+      test/fixed_time_grid_test.cpp
+      test/fixed_neighbor_history_test.cpp
       test/lanelet_edge_case_test.cpp
       test/diffusion_planner_integration_test.cpp
       test/rtc_prefix_test.cpp
@@ -187,6 +189,16 @@ if(TRT_AVAIL AND CUDA_AVAIL)
     )
   endif()
 endif()
+
+# The fixed-rate neighbor sampler is independent of TensorRT/CUDA. Keep its deterministic unit
+# test buildable in CPU-only environments so the temporal contract can be checked without loading
+# the planner inference component.
+if(BUILD_TESTING AND NOT (TRT_AVAIL AND CUDA_AVAIL))
+  find_package(ament_cmake_ros REQUIRED)
+  ament_add_ros_isolated_gtest(
+    test_diffusion_planner_fixed_time_grid test/fixed_time_grid_test.cpp)
+endif()
+
 ament_auto_package(
   INSTALL_TO_SHARE
   config
