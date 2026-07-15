@@ -297,6 +297,32 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
     return std::nullopt;
   }
 
+  // The converter drops frames when any required temporal input is older than 500 ms.  The
+  // runtime subscribers use the Latest polling policy, so a non-null pointer can otherwise be an
+  // arbitrarily old message after a producer stalls.  Do not run the model on that stale scene;
+  // clear all temporal state so the next fresh frame starts a clean sequence.  The route is
+  // intentionally excluded because it is a persistent planning state rather than a frame-rate
+  // sensor input.
+  const auto input_age_s = [&current_time](const rclcpp::Time & message_time) {
+    return (current_time - message_time).seconds();
+  };
+  const double max_input_age_s = params_.ego_history_reset_gap_s;
+  const bool stale_objects =
+    !params_.ignore_neighbors &&
+    input_age_s(rclcpp::Time(objects->header.stamp)) > max_input_age_s;
+  const bool stale_temporal_input =
+    input_age_s(rclcpp::Time(ego_kinematic_state->header.stamp)) > max_input_age_s ||
+    input_age_s(rclcpp::Time(ego_acceleration->header.stamp)) > max_input_age_s ||
+    stale_objects ||
+    input_age_s(rclcpp::Time(turn_indicators->stamp)) > max_input_age_s;
+  if (stale_temporal_input) {
+    ego_history_.clear();
+    turn_indicators_history_.clear();
+    agent_data_.clear_histories();
+    last_agent_poses_map_.clear();
+    return std::nullopt;
+  }
+
   Odometry kinematic_state = *ego_kinematic_state;
   if (params_.shift_x) {
     kinematic_state.pose.pose =
@@ -329,7 +355,7 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
 
   // Update ego history
   ego_history_.push_back(kinematic_state);
-  if (ego_history_.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
+  if (ego_history_.size() > EGO_HISTORY_BUFFER_SIZE) {
     ego_history_.pop_front();
   }
 

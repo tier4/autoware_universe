@@ -70,7 +70,8 @@ float state_normalizer_value(
  */
 Trajectory get_trajectory_from_poses(
   const std::vector<Eigen::Matrix4d> & poses, const double base_x, const double base_y,
-  const double base_z, const rclcpp::Time & stamp, const int64_t velocity_smoothing_window,
+  [[maybe_unused]] const double base_z, const rclcpp::Time & stamp,
+  const int64_t velocity_smoothing_window,
   const bool enable_force_stop, const double stopping_threshold);
 };  // namespace
 
@@ -379,7 +380,6 @@ Trajectory get_trajectory_from_poses(
 
   double prev_x = base_x;
   double prev_y = base_y;
-  double prev_z = base_z;
 
   for (size_t i = 0; i < poses.size(); ++i) {
     const double curr_time = dt * static_cast<double>(i + 1);
@@ -400,13 +400,15 @@ Trajectory get_trajectory_from_poses(
     p.pose.orientation.z = quaternion.z();
     p.pose.orientation.w = quaternion.w();
 
+    // longitudinal_velocity_mps is a ground-plane trajectory speed.  Including dz makes a
+    // pitched road or map-frame height change look like extra forward speed and is especially
+    // undesirable for HDP, whose per-step displacement is defined in the ego x/y plane.
     const double distance = std::hypot(
-      p.pose.position.x - prev_x, p.pose.position.y - prev_y, p.pose.position.z - prev_z);
+      p.pose.position.x - prev_x, p.pose.position.y - prev_y);
     p.longitudinal_velocity_mps = static_cast<float>(distance / dt);
 
     prev_x = p.pose.position.x;
     prev_y = p.pose.position.y;
-    prev_z = p.pose.position.z;
     trajectory.points.push_back(p);
   }
 

@@ -18,6 +18,7 @@
 #include "autoware/diffusion_planner/conversion/lanelet.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -107,6 +108,12 @@ inline std::array<int64_t, 4> sampled_trajectories_shape()
 }
 
 inline constexpr std::array<int64_t, 3> EGO_HISTORY_SHAPE = {1, INPUT_T + 1, POSE_DIM};
+// Keep extra runtime samples so that the fixed 0.1 s interpolation grid remains covered even
+// when a 10 Hz planner cycle arrives slightly earlier than the nominal period.  The model still
+// receives exactly EGO_HISTORY_SHAPE[1] samples; the additional entries are only interpolation
+// support and are discarded when the input tensor is built.
+inline constexpr std::size_t EGO_HISTORY_BUFFER_SIZE =
+  static_cast<std::size_t>(EGO_HISTORY_SHAPE[1] * 2);
 inline constexpr std::array<int64_t, 2> EGO_CURRENT_STATE_SHAPE = {1, 10};
 inline constexpr std::array<int64_t, 4> NEIGHBOR_SHAPE = {1, MAX_NUM_NEIGHBORS, INPUT_T + 1, 11};
 inline constexpr std::array<int64_t, 3> STATIC_OBJECTS_SHAPE = {1, NUM_STATIC_OBJECTS, 10};

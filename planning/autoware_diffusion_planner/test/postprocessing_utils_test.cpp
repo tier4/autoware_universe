@@ -130,4 +130,31 @@ TEST(PostprocessingUtilsTest, DisabledForceStopPreservesTemporalRestart)
   EXPECT_NEAR(trajectory.points[2].pose.position.x, 0.82, 1e-6);
 }
 
+TEST(PostprocessingUtilsTest, LongitudinalVelocityIgnoresMapHeightChange)
+{
+  constexpr auto prediction_shape = OUTPUT_SHAPE;
+  const auto batch_size = prediction_shape[0];
+  const auto agent_size = prediction_shape[1];
+  const auto rows = prediction_shape[2];
+  const auto cols = prediction_shape[3];
+  std::vector<float> data(
+    static_cast<size_t>(batch_size * agent_size * rows * cols), 0.0F);
+
+  for (int64_t time_idx = 0; time_idx < rows; ++time_idx) {
+    const auto index = static_cast<size_t>(time_idx * cols);
+    data[index] = static_cast<float>(time_idx + 1) * 0.5F;
+    data[index + 2] = 1.0F;
+  }
+
+  Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
+  const auto agent_poses = postprocess::parse_predictions(data, transform);
+  geometry_msgs::msg::Point base_position;
+  base_position.z = -1.0;
+  const auto trajectory = postprocess::create_ego_trajectory(
+    agent_poses, rclcpp::Time(123, 0), base_position, 0, 1, false, 0.0);
+
+  EXPECT_NEAR(trajectory.points[0].longitudinal_velocity_mps, 5.0, 1e-6);
+  EXPECT_NEAR(trajectory.points[1].longitudinal_velocity_mps, 5.0, 1e-6);
+}
+
 }  // namespace autoware::diffusion_planner::test
