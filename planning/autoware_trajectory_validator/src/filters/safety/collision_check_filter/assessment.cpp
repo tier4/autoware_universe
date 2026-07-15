@@ -316,7 +316,7 @@ DracEvaluation assess_drac_object_prioritized_object_earlier(
   return evaluation;
 }
 
-DracArtifact assess_map_baased(
+DracArtifact assess_map_based(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
   const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
   const autoware_perception_msgs::msg::PredictedObject & object, const DracParams & drac_params,
@@ -385,7 +385,7 @@ DracArtifact assess(
     }
 
     if (drac_params.assessment_trajectories.map_based) {
-      drac_artifact.merge(assess_map_baased(
+      drac_artifact.merge(assess_map_based(
         ego_trajectory_cache, ego_turn_indicator, predicted_object, drac_params, global_params));
     }
   }
