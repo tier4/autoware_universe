@@ -176,8 +176,57 @@ struct DracParams
   };
 
   DracParams() = default;
-  // TODO(takagi): Parse validator parameters into the new DracParams hierarchy.
-  DracParams(const validator::Params &, const std::string_view) {}
+  DracParams(const validator::Params & node_params, const std::string_view key)
+  {
+    const auto & drac = node_params.collision_check.drac;
+
+    const auto parse_assessment = [&key](const auto & input, DracAssessment & output) {
+      output.enable_assessment = extract_labeled_param<bool>(input.enable_assessment, key);
+
+      const auto & input_acceleration = input.ego_drac_acceleration;
+      auto & output_acceleration = output.ego_drac_assessment;
+      output_acceleration.safe_limit =
+        extract_labeled_param<double>(input_acceleration.safe_limit, key);
+      output_acceleration.danger_limit =
+        extract_labeled_param<double>(input_acceleration.danger_limit, key);
+      output_acceleration.fatal_limit =
+        extract_labeled_param<double>(input_acceleration.fatal_limit, key);
+      output_acceleration.enable_abandon =
+        extract_labeled_param<bool>(input_acceleration.enable_abandon, key);
+    };
+
+    enable_assessment = extract_labeled_param<bool>(drac.enable_assessment, key);
+    pet_margin.ego_earlier = extract_labeled_param<double>(drac.pet_margin.ego_earlier, key);
+    pet_margin.object_earlier = extract_labeled_param<double>(drac.pet_margin.object_earlier, key);
+    ego_footprint_margin.lateral =
+      extract_labeled_param<double>(drac.ego_footprint_margin.lateral, key);
+    ego_footprint_margin.front =
+      extract_labeled_param<double>(drac.ego_footprint_margin.front, key);
+    ego_footprint_margin.rear = extract_labeled_param<double>(drac.ego_footprint_margin.rear, key);
+    ego_reaction_braking_delay.nominal =
+      extract_labeled_param<double>(drac.ego_reaction_braking_delay.nominal, key);
+    ego_reaction_braking_delay.departure =
+      extract_labeled_param<double>(drac.ego_reaction_braking_delay.departure, key);
+
+    constant_curvature.enable_assessment =
+      extract_labeled_param<bool>(drac.constant_curvature.enable_assessment, key);
+    constant_curvature.object_time_horizon =
+      extract_labeled_param<double>(drac.constant_curvature.object_time_horizon, key);
+    parse_assessment(drac.constant_curvature.ego_earlier, constant_curvature.ego_earlier);
+    parse_assessment(drac.constant_curvature.object_earlier, constant_curvature.object_earlier);
+
+    map_based.enable_assessment =
+      extract_labeled_param<bool>(drac.map_based.enable_assessment, key);
+    parse_assessment(
+      drac.map_based.ego_prioritized_ego_earlier, map_based.ego_prioritized_ego_earlier);
+    parse_assessment(
+      drac.map_based.ego_prioritized_object_earlier, map_based.ego_prioritized_object_earlier);
+    parse_assessment(
+      drac.map_based.object_prioritized_ego_earlier, map_based.object_prioritized_ego_earlier);
+    parse_assessment(
+      drac.map_based.object_prioritized_object_earlier,
+      map_based.object_prioritized_object_earlier);
+  }
 
   bool enable_assessment{true};
   PetMargin pet_margin{};

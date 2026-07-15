@@ -252,8 +252,7 @@ DracArtifact assess_constant_curvature(
 
   if (nominal_collision_result.value().first_collision_timing.pet > 0.0) {
     if (drac_params.constant_curvature.ego_earlier.enable_assessment) {
-      // throw std::invalid_argument("constant_curvature.ego_earlier is not implemented.");
-      return drac_artifact;
+      throw std::invalid_argument("constant_curvature.ego_earlier is not implemented.");
     }
   } else {
     if (drac_params.constant_curvature.object_earlier.enable_assessment) {
@@ -339,14 +338,13 @@ DracArtifact assess_map_based(
         if (!drac_params.map_based.ego_prioritized_ego_earlier.enable_assessment) {
           continue;
         }
-        // throw std::invalid_argument("map_based.ego_prioritized_ego_earlier is not implemented.");
+        throw std::invalid_argument("map_based.ego_prioritized_ego_earlier is not implemented.");
 
       } else {
         if (!drac_params.map_based.ego_prioritized_object_earlier.enable_assessment) {
           continue;
         }
-        // throw std::invalid_argument("map_based.ego_prioritized_object_earlier is not
-        // implemented.");
+        throw std::invalid_argument("map_based.ego_prioritized_object_earlier is not implemented.");
       }
     } else {
       if (nominal_collision_result.value().first_collision_timing.pet > 0.0) {
