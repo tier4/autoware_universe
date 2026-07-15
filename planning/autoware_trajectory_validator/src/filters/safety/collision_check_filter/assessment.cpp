@@ -172,7 +172,7 @@ std::pair<std::optional<double>, std::optional<CollisionDetail>> assess_ego_drac
 {
   std::vector<double> ego_acceleration_list{
     params.acceleration.safe_limit, params.acceleration.danger_limit,
-    params.acceleration.vehicle_limit};
+    params.acceleration.fatal_limit};
 
   std::optional<CollisionDetail> last_detected_collision{};
   for (auto ego_acceleration : ego_acceleration_list) {

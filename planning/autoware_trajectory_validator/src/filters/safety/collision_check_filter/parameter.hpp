@@ -148,7 +148,7 @@ struct DracParams
   {
     double safe_limit{-1.5};
     double danger_limit{-3.0};
-    double vehicle_limit{-6.0};
+    double fatal_limit{-6.0};
     bool enable_abandon{false};
   };
 
