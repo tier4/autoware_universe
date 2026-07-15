@@ -96,4 +96,38 @@ TEST(PostprocessingUtilsTest, WindowOnePreservesPerStepVelocity)
   EXPECT_NEAR(trajectory.points[3].longitudinal_velocity_mps, 4.0, 1e-6);
 }
 
+TEST(PostprocessingUtilsTest, DisabledForceStopPreservesTemporalRestart)
+{
+  constexpr auto prediction_shape = OUTPUT_SHAPE;
+  const auto batch_size = prediction_shape[0];
+  const auto agent_size = prediction_shape[1];
+  const auto rows = prediction_shape[2];
+  const auto cols = prediction_shape[3];
+  std::vector<float> data(
+    static_cast<size_t>(batch_size * agent_size * rows * cols), 0.0F);
+
+  // A brief low-speed step is followed by a restart.  HDP must preserve this
+  // learned temporal sequence when the legacy force-stop heuristic is disabled.
+  constexpr std::array<float, 4> x_positions = {0.4F, 0.42F, 0.82F, 1.22F};
+  for (int64_t time_idx = 0; time_idx < rows; ++time_idx) {
+    const auto x = time_idx < static_cast<int64_t>(x_positions.size())
+                     ? x_positions[static_cast<size_t>(time_idx)]
+                     : x_positions.back() +
+                         0.4F * static_cast<float>(
+                                  time_idx - static_cast<int64_t>(x_positions.size()) + 1);
+    data[static_cast<size_t>(time_idx * cols)] = x;
+    data[static_cast<size_t>(time_idx * cols + 2)] = 1.0F;
+  }
+
+  Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
+  const auto agent_poses = postprocess::parse_predictions(data, transform);
+  geometry_msgs::msg::Point base_position;
+  const auto trajectory = postprocess::create_ego_trajectory(
+    agent_poses, rclcpp::Time(123, 0), base_position, 0, 1, false, 0.3);
+
+  EXPECT_NEAR(trajectory.points[1].longitudinal_velocity_mps, 0.2, 1e-6);
+  EXPECT_NEAR(trajectory.points[2].longitudinal_velocity_mps, 4.0, 1e-6);
+  EXPECT_NEAR(trajectory.points[2].pose.position.x, 0.82, 1e-6);
+}
+
 }  // namespace autoware::diffusion_planner::test
