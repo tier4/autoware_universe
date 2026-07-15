@@ -14,17 +14,22 @@
 
 #include "stop_planner.hpp"
 
+#include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/autoware_traffic_light.hpp>
+#include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/road_marking.hpp>
 #include <autoware_lanelet2_extension/visualization/visualization.hpp>
 
 #include <boost/geometry/algorithms/intersection.hpp>
 #include <boost/geometry/algorithms/intersects.hpp>
 
+#include <lanelet2_core/geometry/Lanelet.h>
 #include <lanelet2_core/geometry/LineString.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 
+#include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -142,6 +147,25 @@ std::optional<lanelet::ConstLineString3d> entry_side_bound(
   return lanelet.rightBound();
 }
 
+const char * to_string(const StopLineType type)
+{
+  switch (type) {
+    case StopLineType::StopLine:
+      return "stop_line";
+    case StopLineType::Walkway:
+      return "walkway";
+    case StopLineType::Crosswalk:
+      return "crosswalk";
+    case StopLineType::TrafficLight:
+      return "traffic_light";
+    case StopLineType::Intersection:
+      return "intersection";
+    case StopLineType::PrivateArea:
+      return "private_area";
+  }
+  return "unknown";
+}
+
 bool is_crosswalk_or_walkway(const lanelet::ConstLanelet & lanelet, bool & is_walkway)
 {
   const auto subtype = lanelet.attributeOr(lanelet::AttributeNamesString::Subtype, std::string(""));
@@ -149,14 +173,37 @@ bool is_crosswalk_or_walkway(const lanelet::ConstLanelet & lanelet, bool & is_wa
                subtype == lanelet::AttributeValueString::SharedWalkway;
   return is_walkway || subtype == lanelet::AttributeValueString::Crosswalk;
 }
+
+// Explicit stop line for a crosswalk/walkway lanelet from a RoadMarking regulatory element whose
+// "crosswalk_id" attribute points back to the lanelet (upstream getStopLineFromMap equivalent).
+std::optional<lanelet::ConstLineString3d> road_marking_stop_line_for_crosswalk(
+  const lanelet::ConstLanelet & crosswalk)
+{
+  for (const auto & road_marking :
+       crosswalk.regulatoryElementsAs<lanelet::autoware::RoadMarking>()) {
+    const auto & marking = road_marking->roadMarking();
+    const auto type = marking.attributeOr(lanelet::AttributeName::Type, std::string("none"));
+    const auto target_id = marking.attributeOr("crosswalk_id", lanelet::Id(lanelet::InvalId));
+    if (type == lanelet::AttributeValueString::StopLine && target_id == crosswalk.id()) {
+      return marking;
+    }
+  }
+  return std::nullopt;
+}
 }  // namespace
 
-StopPlanner::StopPlanner(const rclcpp::Logger & logger) : logger_(logger)
+StopPlanner::StopPlanner(
+  const rclcpp::Logger & logger, std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper)
+: logger_(logger),
+  time_keeper_(
+    time_keeper ? std::move(time_keeper) : std::make_shared<autoware_utils_debug::TimeKeeper>())
 {
 }
 
 std::vector<StopLine> StopPlanner::collect_stop_lines(const RouteContext & route_context) const
 {
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
   const auto & route_lanelets = route_context.route_lanelets;
   const auto & preferred_lanelets = route_context.preferred_lanelets;
 
@@ -165,60 +212,98 @@ std::vector<StopLine> StopPlanner::collect_stop_lines(const RouteContext & route
   // for synthesized entry edges (which all share lanelet::InvalId as a line string id).
   std::set<std::pair<int, lanelet::Id>> added;
 
-  const auto add_line =
-    [&](const lanelet::ConstLineString3d & ls, const StopLineType type, const lanelet::Id key_id) {
-      if (added.insert({static_cast<int>(type), key_id}).second) {
-        stop_lines.push_back(StopLine{ls, type});
-      }
-    };
-
-  for (const auto & lanelet : route_lanelets) {
-    // 1. 一時停止線: explicit stop line road markings.
-    for (const auto & road_marking :
-         lanelet.regulatoryElementsAs<lanelet::autoware::RoadMarking>()) {
-      const auto & marking = road_marking->roadMarking();
-      // NOTE: use std::string so the comparison is by content. Passing a string literal would
-      // deduce const char* and compare pointers (never equal).
-      if (
-        marking.attributeOr(lanelet::AttributeName::Type, std::string("none")) ==
-        lanelet::AttributeValueString::StopLine) {
-        add_line(marking, StopLineType::StopLine, marking.id());
-      }
+  const auto add_line = [&](
+                          const lanelet::ConstLineString3d & ls, const StopLineType type,
+                          const lanelet::Id key_id, const bool without_explicit_stop_line = false) {
+    if (added.insert({static_cast<int>(type), key_id}).second) {
+      stop_lines.push_back(StopLine{ls, type, without_explicit_stop_line});
     }
+  };
 
-    // 1'. 一時停止線: reference lines of traffic signs (e.g. stop signs).
-    for (const auto & traffic_sign : lanelet.regulatoryElementsAs<lanelet::TrafficSign>()) {
-      for (const auto & ref_line : traffic_sign->refLines()) {
-        add_line(ref_line, StopLineType::StopLine, ref_line.id());
+  {
+    autoware_utils_debug::ScopedTimeTrack st_route("route_regulatory_elements", *time_keeper_);
+    for (const auto & lanelet : route_lanelets) {
+      // 1. 一時停止線: explicit stop line road markings.
+      for (const auto & road_marking :
+           lanelet.regulatoryElementsAs<lanelet::autoware::RoadMarking>()) {
+        const auto & marking = road_marking->roadMarking();
+        // NOTE: use std::string so the comparison is by content. Passing a string literal would
+        // deduce const char* and compare pointers (never equal).
+        if (
+          marking.attributeOr(lanelet::AttributeName::Type, std::string("none")) ==
+          lanelet::AttributeValueString::StopLine) {
+          add_line(marking, StopLineType::StopLine, marking.id());
+        }
       }
-    }
 
-    // 2. 信号: stop lines referenced by traffic lights.
-    for (const auto & traffic_light :
-         lanelet.regulatoryElementsAs<lanelet::autoware::AutowareTrafficLight>()) {
-      if (const auto stop_line = traffic_light->stopLine()) {
-        add_line(*stop_line, StopLineType::TrafficLight, stop_line->id());
+      // 1'. 一時停止線: reference lines of traffic signs (e.g. stop signs).
+      for (const auto & traffic_sign : lanelet.regulatoryElementsAs<lanelet::TrafficSign>()) {
+        for (const auto & ref_line : traffic_sign->refLines()) {
+          add_line(ref_line, StopLineType::StopLine, ref_line.id());
+        }
       }
-    }
 
-    // 3. 交差点: lanelets carrying a turn_direction attribute.
-    if (lanelet.hasAttribute("turn_direction")) {
-      add_line(make_entry_edge(lanelet), StopLineType::Intersection, lanelet.id());
+      // 2. 信号: stop lines referenced by traffic lights.
+      for (const auto & traffic_light :
+           lanelet.regulatoryElementsAs<lanelet::autoware::AutowareTrafficLight>()) {
+        if (const auto stop_line = traffic_light->stopLine()) {
+          add_line(*stop_line, StopLineType::TrafficLight, stop_line->id());
+        }
+      }
+
+      // 3. 交差点: lanelets carrying a turn_direction attribute.
+      if (lanelet.hasAttribute("turn_direction")) {
+        add_line(make_entry_edge(lanelet), StopLineType::Intersection, lanelet.id());
+      }
     }
   }
 
-  // 4. 横断歩道 / 歩道: crosswalk / walkway lanelets that geometrically cross the route path.
-  // Walkways carry no regulatory element, so we search the whole map layer by subtype and keep the
-  // ones the route path crosses. Only the entry-side bound is used as the stop line.
+  // 4. 横断歩道 / 歩道: crosswalk / walkway lanelets overlapping the route lanelets, found via
+  // the map's spatial index (RTree) per route lanelet plus a 2D polygon-overlap check — the same
+  // approach as the upstream behavior_velocity crosswalk/walkway modules
+  // (RoutingGraphContainer::conflictingInGraph), without needing a pedestrian routing graph.
   if (route_context.lanelet_map_ptr) {
+    autoware_utils_debug::ScopedTimeTrack st_scan("crosswalk_walkway_search", *time_keeper_);
+
+    // Explicit stop lines from crosswalk regulatory elements referenced by the route lanelets:
+    // crosswalk lanelet id -> stop line.
+    std::map<lanelet::Id, lanelet::ConstLineString3d> regelem_stop_lines;
+    for (const auto & lanelet : route_lanelets) {
+      for (const auto & crosswalk_regelem :
+           lanelet.regulatoryElementsAs<lanelet::autoware::Crosswalk>()) {
+        const auto crosswalk_stop_lines = crosswalk_regelem->stopLines();
+        if (!crosswalk_stop_lines.empty()) {
+          regelem_stop_lines.emplace(
+            crosswalk_regelem->crosswalkLanelet().id(), crosswalk_stop_lines.front());
+        }
+      }
+    }
+
     const auto route_path = build_route_path(preferred_lanelets);
-    for (const auto & lanelet : route_context.lanelet_map_ptr->laneletLayer) {
-      bool is_walkway = false;
-      if (!is_crosswalk_or_walkway(lanelet, is_walkway)) continue;
-      const auto entry_bound = entry_side_bound(route_path, lanelet);
-      if (!entry_bound) continue;  // not crossed by the route path
-      const auto type = is_walkway ? StopLineType::Walkway : StopLineType::Crosswalk;
-      add_line(*entry_bound, type, entry_bound->id());
+    std::set<lanelet::Id> found_crosswalks;
+    for (const auto & route_lanelet : preferred_lanelets) {
+      const auto nearby_lanelets = route_context.lanelet_map_ptr->laneletLayer.search(
+        lanelet::geometry::boundingBox2d(route_lanelet));
+      for (const auto & candidate : nearby_lanelets) {
+        bool is_walkway = false;
+        if (!is_crosswalk_or_walkway(candidate, is_walkway)) continue;
+        if (found_crosswalks.count(candidate.id()) > 0) continue;
+        if (!lanelet::geometry::overlaps2d(route_lanelet, candidate)) continue;
+        found_crosswalks.insert(candidate.id());
+
+        const auto type = is_walkway ? StopLineType::Walkway : StopLineType::Crosswalk;
+        // Stop line priority (upstream semantics): an explicit stop line from the crosswalk
+        // regulatory element, then a RoadMarking bound to the crosswalk by its "crosswalk_id"
+        // attribute, and only as a fallback the entry-side bound of the crosswalk lanelet.
+        if (const auto it = regelem_stop_lines.find(candidate.id());
+            it != regelem_stop_lines.end()) {
+          add_line(it->second, type, it->second.id());
+        } else if (const auto marking_line = road_marking_stop_line_for_crosswalk(candidate)) {
+          add_line(*marking_line, type, marking_line->id());
+        } else if (const auto entry_bound = entry_side_bound(route_path, candidate)) {
+          add_line(*entry_bound, type, entry_bound->id(), /*without_explicit_stop_line=*/true);
+        }
+      }
     }
   }
 
@@ -240,6 +325,8 @@ std::vector<StopLine> StopPlanner::filter_stop_lines_on_trajectory(
   const std::vector<StopLine> & stop_lines,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points) const
 {
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
   // Need at least one segment to intersect against.
   if (stop_lines.empty() || trajectory_points.size() < 2) {
     return {};
@@ -264,9 +351,12 @@ std::vector<StopLine> StopPlanner::filter_stop_lines_on_trajectory(
 std::optional<double> StopPlanner::select_stop_arc_length(
   const std::vector<StopLine> & stop_lines,
   const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
-  const double ego_velocity, const StopSelectionParams & params,
+  const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity,
+  const double ego_acceleration, const StopSelectionParams & params,
   const bool include_possibility) const
 {
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
   if (stop_lines.empty() || trajectory_points.size() < 2) {
     return std::nullopt;
   }
@@ -277,9 +367,17 @@ std::optional<double> StopPlanner::select_stop_arc_length(
     trajectory_line.emplace_back(point.pose.position.x, point.pose.position.y);
   }
 
-  // Reachability: the vehicle can only stop at points at least a braking distance ahead, given the
-  // current speed and the maximum deceleration.
-  const double braking_distance = ego_velocity * ego_velocity / (2.0 * params.max_deceleration);
+  // Reachability: the vehicle can only stop at points at least a braking distance ahead. The
+  // braking distance accounts for the jerk-limited ramp-up to the maximum deceleration; the
+  // fallback formula is only reachable with degenerate limits, which parameter validation
+  // prevents. The remaining distance is measured from the ego position, not from the trajectory
+  // start, which lies a backward path length behind the vehicle.
+  const double braking_distance =
+    autoware::motion_utils::calculate_stop_distance(
+      ego_velocity, ego_acceleration, params.max_deceleration, params.max_jerk)
+      .value_or(ego_velocity * ego_velocity / (2.0 * params.max_deceleration));
+  const double ego_arc_length =
+    autoware::motion_utils::calcSignedArcLength(trajectory_points, 0UL, ego_pose.position);
 
   // Nearest *reachable* stop point (already adjusted for vehicle front offset and stop margin)
   // among the allowed stop line types. Unreachable candidates (too close to stop for) are skipped
@@ -301,11 +399,18 @@ std::optional<double> StopPlanner::select_stop_arc_length(
       crossing.y = intersection.y();
       const double crossing_arc_length =
         autoware::motion_utils::calcSignedArcLength(trajectory_points, 0UL, crossing);
-      // Stop so the vehicle front bumper stops a margin before the crossing point.
+      // Stop so the vehicle front bumper stops a margin before the crossing point. Crosswalks and
+      // walkways without an explicit stop line use the larger stop_distance_from_crosswalk margin
+      // (upstream behavior_velocity semantics).
+      const double stop_margin = stop_line.without_explicit_stop_line
+                                   ? params.stop_distance_from_crosswalk
+                                   : params.stop_margin_distance;
       const double stop_point_arc_length =
-        crossing_arc_length - params.base_link_to_front - params.stop_margin_distance;
-      // Skip stop points behind the vehicle and those too close to stop for.
-      if (stop_point_arc_length <= 0.0 || stop_point_arc_length < braking_distance) {
+        crossing_arc_length - params.base_link_to_front - stop_margin;
+      // Skip stop points the vehicle has already passed and those too close to stop for with the
+      // maximum deceleration (both judged on the remaining distance from ego).
+      const double distance_to_stop_point = stop_point_arc_length - ego_arc_length;
+      if (distance_to_stop_point <= 0.0 || distance_to_stop_point < braking_distance) {
         continue;
       }
       if (
@@ -321,6 +426,8 @@ std::optional<double> StopPlanner::select_stop_arc_length(
 visualization_msgs::msg::MarkerArray StopPlanner::create_stop_line_marker_array(
   const std::vector<StopLine> & stop_lines) const
 {
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
   constexpr float marker_thickness_m = 0.3f;
 
   // Split the candidates into mandatory stop targets (停止対象箇所) and possibility targets
@@ -360,6 +467,33 @@ visualization_msgs::msg::MarkerArray StopPlanner::create_stop_line_marker_array(
     lanelet::visualization::lineStringsAsMarkerArray(
       possibility_lines, "stop_possibility", make_color(1.0f, 1.0f, 0.0f, 0.8f),
       marker_thickness_m));
+
+  // Type labels: view-facing text floating above the middle of each stop line. The height is
+  // staggered per type (1.0 m + 0.3 m per enum value) so labels of overlapping lines of
+  // different types do not cover each other.
+  constexpr double text_z_offset_m = 1.0;
+  constexpr double text_z_step_per_type_m = 0.3;
+  constexpr double text_height_m = 0.5;
+  int32_t text_id = 0;
+  for (const auto & stop_line : stop_lines) {
+    visualization_msgs::msg::Marker text_marker;
+    text_marker.header.frame_id = "map";
+    text_marker.ns = "stop_line_type";
+    text_marker.id = text_id++;
+    text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    text_marker.action = visualization_msgs::msg::Marker::ADD;
+    const auto & front = stop_line.line.front();
+    const auto & back = stop_line.line.back();
+    text_marker.pose.position.x = 0.5 * (front.x() + back.x());
+    text_marker.pose.position.y = 0.5 * (front.y() + back.y());
+    text_marker.pose.position.z = 0.5 * (front.z() + back.z()) + text_z_offset_m +
+                                  text_z_step_per_type_m * static_cast<double>(stop_line.type);
+    text_marker.pose.orientation.w = 1.0;
+    text_marker.scale.z = text_height_m;
+    text_marker.color = make_color(1.0f, 1.0f, 1.0f, 0.9f);
+    text_marker.text = to_string(stop_line.type);
+    marker_array.markers.push_back(text_marker);
+  }
 
   return marker_array;
 }

@@ -107,14 +107,26 @@ minimum_rule_based_planner:
   stop_planning:
     stop_margin_distance:
       type: double
-      default_value: 1.0
+      default_value: 0.0
       description: distance to stop before the stop line crossing point (in addition to the vehicle front offset) [m]
+      validation:
+        gt_eq<>: [0.0]
+    stop_distance_from_crosswalk:
+      type: double
+      default_value: 3.5
+      description: distance to stop before a crosswalk/walkway that has no explicit stop line in the map (in addition to the vehicle front offset) [m]
       validation:
         gt_eq<>: [0.0]
     max_deceleration:
       type: double
       default_value: 4.0
       description: maximum deceleration used to judge whether a stop line is reachable (braking distance) [m/s^2]
+      validation:
+        gt<>: [0.0]
+    max_jerk:
+      type: double
+      default_value: 5.0
+      description: maximum jerk used for the jerk-aware braking distance in the reachability judgement [m/s^3]
       validation:
         gt<>: [0.0]
     stop_point_diff_threshold:

@@ -81,13 +81,18 @@ private:
     double stop_point_arc_length;
     Trajectory trajectory;
   };
-  //! Plan a stop at map-defined stop lines. When @p include_possibility_targets is true, signals
-  //! and other possibility targets are also considered (used for the stop trajectory); otherwise
-  //! only mandatory targets are considered (used for the go trajectory).
+  //! Plan a stop at map-defined stop lines from the pre-collected route stop line candidates.
+  //! When @p include_possibility_targets is true, signals and other possibility targets are also
+  //! considered (used for the stop trajectory); otherwise only mandatory targets are considered
+  //! (used for the go trajectory).
   std::optional<StopResult> plan_stop(
+    const Trajectory & trajectory, const std::vector<StopLine> & candidate_stop_lines,
+    const InputData & input_data, const bool include_possibility_targets) const;
+  //! @param update_smoother_state whether this call may update the velocity smoother's
+  //! prev-output state (true only for the go trajectory; see VelocitySmoother::optimize)
+  Trajectory optimize_velocity(
     const Trajectory & trajectory, const InputData & input_data,
-    const bool include_possibility_targets) const;
-  Trajectory optimize_velocity(const Trajectory & trajectory, const InputData & input_data) const;
+    const bool update_smoother_state) const;
 
   void publish_candidate_trajectories(
     const Trajectory & go_trajectory, const std::optional<Trajectory> & stop_trajectory) const;
@@ -123,6 +128,12 @@ private:
   std::unique_ptr<PathPlanner> path_planner_;
   //! StopPlanner extracts map-defined stop locations along the route
   std::unique_ptr<StopPlanner> stop_planner_;
+  //! Cache of the collected stop lines. Collection scans the whole lanelet layer and depends only
+  //! on the map and the route, so it is re-run only when either changes (pointer identity) instead
+  //! of twice per cycle.
+  std::vector<StopLine> stop_lines_cache_;
+  LaneletRoute::ConstSharedPtr stop_lines_cache_route_ptr_;
+  LaneletMapBin::ConstSharedPtr stop_lines_cache_map_ptr_;
   /** @} */
 
 private:

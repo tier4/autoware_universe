@@ -14,6 +14,7 @@
 
 #include "stop_planner.hpp"
 
+#include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/road_marking.hpp>
 #include <rclcpp/logger.hpp>
 
@@ -68,9 +69,20 @@ StopSelectionParams make_params()
 {
   StopSelectionParams params;
   params.max_deceleration = 4.0;
+  params.max_jerk = 5.0;
   params.stop_margin_distance = 1.0;
+  params.stop_distance_from_crosswalk = 3.5;
   params.base_link_to_front = 4.0;
   return params;
+}
+
+// Ego pose on the straight trajectory (y = 0, facing +x).
+geometry_msgs::msg::Pose make_ego_pose(double x)
+{
+  geometry_msgs::msg::Pose pose;
+  pose.position.x = x;
+  pose.orientation.w = 1.0;
+  return pose;
 }
 
 }  // namespace
@@ -124,10 +136,30 @@ TEST(StopPlannerTest, SelectAppliesFrontOffsetAndMargin)
 
   // Ego stopped: braking distance is 0, so the stop point is reachable.
   const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, /*ego_velocity=*/0.0, make_params(), /*include_possibility=*/false);
+    stop_lines, trajectory, make_ego_pose(0.0), /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
+    make_params(), /*include_possibility=*/false);
   ASSERT_TRUE(arc.has_value());
   // crossing (20) - front offset (4) - margin (1) = 15
   EXPECT_NEAR(*arc, 15.0, 1e-6);
+}
+
+TEST(StopPlannerTest, SelectAppliesCrosswalkMarginWithoutExplicitStopLine)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  const auto trajectory = make_straight_trajectory(30);
+
+  // A walkway bound used as the stop line because the map has no explicit stop line: the larger
+  // stop_distance_from_crosswalk margin applies instead of stop_margin_distance.
+  auto stop_line = make_crossing_stop_line(1, 20.0, StopLineType::Walkway);
+  stop_line.without_explicit_stop_line = true;
+  const std::vector<StopLine> stop_lines{stop_line};
+
+  const auto arc = planner.select_stop_arc_length(
+    stop_lines, trajectory, make_ego_pose(0.0), /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
+    make_params(), /*include_possibility=*/false);
+  ASSERT_TRUE(arc.has_value());
+  // crossing (20) - front offset (4) - stop_distance_from_crosswalk (3.5) = 12.5
+  EXPECT_NEAR(*arc, 12.5, 1e-6);
 }
 
 TEST(StopPlannerTest, SelectPicksNearest)
@@ -138,7 +170,8 @@ TEST(StopPlannerTest, SelectPicksNearest)
     make_crossing_stop_line(1, 40.0), make_crossing_stop_line(2, 20.0)};
 
   const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, 0.0, make_params(), /*include_possibility=*/false);
+    stop_lines, trajectory, make_ego_pose(0.0), 0.0, 0.0, make_params(),
+    /*include_possibility=*/false);
   ASSERT_TRUE(arc.has_value());
   // nearest crossing is 20 -> 20 - 4 - 1 = 15
   EXPECT_NEAR(*arc, 15.0, 1e-6);
@@ -150,10 +183,11 @@ TEST(StopPlannerTest, SelectRejectsUnreachableStopPoint)
   const auto trajectory = make_straight_trajectory(30);
   const std::vector<StopLine> stop_lines{make_crossing_stop_line(1, 20.0)};
 
-  // Stop point arc = 15 m. Braking distance at 20 m/s with a = 4 is 20^2/(2*4) = 50 m > 15 m,
-  // so the vehicle cannot stop in time and no stop point should be selected.
+  // Stop point arc = 15 m. The jerk-aware braking distance at 20 m/s (a = 4, j = 5) is about
+  // 57.9 m > 15 m, so the vehicle cannot stop in time and no stop point should be selected.
   const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, /*ego_velocity=*/20.0, make_params(), /*include_possibility=*/false);
+    stop_lines, trajectory, make_ego_pose(0.0), /*ego_velocity=*/20.0, /*ego_acceleration=*/0.0,
+    make_params(), /*include_possibility=*/false);
   EXPECT_FALSE(arc.has_value());
 }
 
@@ -161,13 +195,14 @@ TEST(StopPlannerTest, SelectSkipsUnreachableNearestForReachableFarther)
 {
   StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
   const auto trajectory = make_straight_trajectory(80);
-  // Nearest crossing at 20 m (stop point 15 m) is unreachable at 20 m/s (braking distance 50 m);
-  // a farther crossing at 70 m (stop point 65 m) is reachable and should be selected.
+  // Nearest crossing at 20 m (stop point 15 m) is unreachable at 20 m/s (jerk-aware braking
+  // distance ~57.9 m); a farther crossing at 70 m (stop point 65 m) is reachable and selected.
   const std::vector<StopLine> stop_lines{
     make_crossing_stop_line(1, 20.0), make_crossing_stop_line(2, 70.0)};
 
   const auto arc = planner.select_stop_arc_length(
-    stop_lines, trajectory, /*ego_velocity=*/20.0, make_params(), /*include_possibility=*/false);
+    stop_lines, trajectory, make_ego_pose(0.0), /*ego_velocity=*/20.0, /*ego_acceleration=*/0.0,
+    make_params(), /*include_possibility=*/false);
   ASSERT_TRUE(arc.has_value());
   // 70 - 4 - 1 = 65
   EXPECT_NEAR(*arc, 65.0, 1e-6);
@@ -184,13 +219,104 @@ TEST(StopPlannerTest, SelectExcludesPossibilityTargetsForGoTrajectory)
   // Go trajectory: possibility targets are ignored -> no stop.
   EXPECT_FALSE(planner
                  .select_stop_arc_length(
-                   stop_lines, trajectory, 0.0, make_params(), /*include_possibility=*/false)
+                   stop_lines, trajectory, make_ego_pose(0.0), 0.0, 0.0, make_params(),
+                   /*include_possibility=*/false)
                  .has_value());
   // Stop trajectory: possibility targets are considered -> stop.
   EXPECT_TRUE(planner
                 .select_stop_arc_length(
-                  stop_lines, trajectory, 0.0, make_params(), /*include_possibility=*/true)
+                  stop_lines, trajectory, make_ego_pose(0.0), 0.0, 0.0, make_params(),
+                  /*include_possibility=*/true)
                 .has_value());
+}
+
+TEST(StopPlannerTest, SelectMeasuresBrakingDistanceFromEgo)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  // The trajectory starts behind the vehicle (backward path length), so arc lengths from the
+  // trajectory start must not be used as the remaining distance.
+  const auto trajectory = make_straight_trajectory(30);
+  const std::vector<StopLine> stop_lines{make_crossing_stop_line(1, 20.0)};
+
+  // Stop point arc = 15 m from the trajectory start, but ego is at x = 10, so the remaining
+  // distance is only 5 m. The jerk-aware braking distance at 8 m/s (a = 4, j = 5) is ~11.1 m
+  // > 5 m -> must be skipped. (Judged from the trajectory start, 15 m > 11.1 m would wrongly
+  // keep it.)
+  const auto arc = planner.select_stop_arc_length(
+    stop_lines, trajectory, make_ego_pose(10.0), /*ego_velocity=*/8.0, /*ego_acceleration=*/0.0,
+    make_params(), /*include_possibility=*/false);
+  EXPECT_FALSE(arc.has_value());
+
+  // With enough remaining distance (ego at x = 2 -> 13 m > 11.1 m) the stop point is kept.
+  const auto arc_reachable = planner.select_stop_arc_length(
+    stop_lines, trajectory, make_ego_pose(2.0), /*ego_velocity=*/8.0, /*ego_acceleration=*/0.0,
+    make_params(), /*include_possibility=*/false);
+  ASSERT_TRUE(arc_reachable.has_value());
+  EXPECT_NEAR(*arc_reachable, 15.0, 1e-6);
+}
+
+TEST(StopPlannerTest, SelectUsesJerkAwareBrakingDistance)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  const auto trajectory = make_straight_trajectory(30);
+  const std::vector<StopLine> stop_lines{make_crossing_stop_line(1, 20.0)};
+
+  // Remaining distance from ego (x = 5) to the stop point (arc 15) is 10 m. The constant-decel
+  // braking distance 8^2/(2*4) = 8 m would keep the candidate, but the jerk-limited ramp-up to
+  // the maximum deceleration (j = 5) stretches the real braking distance to ~11.1 m, so the
+  // candidate must be skipped.
+  const auto arc = planner.select_stop_arc_length(
+    stop_lines, trajectory, make_ego_pose(5.0), /*ego_velocity=*/8.0, /*ego_acceleration=*/0.0,
+    make_params(), /*include_possibility=*/false);
+  EXPECT_FALSE(arc.has_value());
+}
+
+TEST(StopPlannerTest, SelectSkipsStopPointPassedByEgo)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  const auto trajectory = make_straight_trajectory(30);
+  const std::vector<StopLine> stop_lines{make_crossing_stop_line(1, 20.0)};
+
+  // Stop point arc = 15 m; ego (base_link) is already at x = 16, past the stop point. Even though
+  // the arc length from the trajectory start is positive, the candidate must be dropped.
+  const auto arc = planner.select_stop_arc_length(
+    stop_lines, trajectory, make_ego_pose(16.0), /*ego_velocity=*/1.0, /*ego_acceleration=*/0.0,
+    make_params(), /*include_possibility=*/false);
+  EXPECT_FALSE(arc.has_value());
+}
+
+// ============================================================
+// create_stop_line_marker_array
+// ============================================================
+
+TEST(StopPlannerTest, MarkerArrayContainsTypeLabels)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  const std::vector<StopLine> stop_lines{
+    make_crossing_stop_line(1, 10.0, StopLineType::StopLine),
+    make_crossing_stop_line(2, 20.0, StopLineType::TrafficLight)};
+
+  const auto marker_array = planner.create_stop_line_marker_array(stop_lines);
+
+  std::vector<visualization_msgs::msg::Marker> labels;
+  for (const auto & marker : marker_array.markers) {
+    if (marker.ns == "stop_line_type") {
+      labels.push_back(marker);
+    }
+  }
+  ASSERT_EQ(labels.size(), 2u);
+  for (const auto & label : labels) {
+    EXPECT_EQ(label.type, visualization_msgs::msg::Marker::TEXT_VIEW_FACING);
+  }
+  EXPECT_EQ(labels[0].text, "stop_line");
+  EXPECT_EQ(labels[1].text, "traffic_light");
+  // The label height is staggered per type (1.0 m + 0.3 m per enum value; line z = 0 in this
+  // fixture): StopLine (enum 0) -> 1.0, TrafficLight (enum 3) -> 1.9.
+  EXPECT_NEAR(labels[0].pose.position.z, 1.0, 1e-6);
+  EXPECT_NEAR(labels[1].pose.position.z, 1.9, 1e-6);
+  // The two labels sit at the middle of their stop lines (y spans [-2, 2] -> y = 0).
+  EXPECT_NEAR(labels[0].pose.position.x, 10.0, 1e-6);
+  EXPECT_NEAR(labels[1].pose.position.x, 20.0, 1e-6);
 }
 
 // ============================================================
@@ -302,10 +428,91 @@ TEST(StopPlannerTest, CollectDetectsWalkwayCrossingEntrySideOnly)
   ctx.preferred_lanelets = {road};
   const auto stop_lines = planner.collect_stop_lines(ctx);
 
-  // Only the entry-side (near, x=9) bound is used, not both bounds.
+  // Only the entry-side (near, x=9) bound is used, not both bounds. The bound is a fallback for a
+  // missing explicit stop line, so the crosswalk stop distance applies.
   ASSERT_EQ(stop_lines.size(), 1u);
   EXPECT_EQ(stop_lines.front().type, StopLineType::Walkway);
   EXPECT_EQ(stop_lines.front().line.id(), 700);
+  EXPECT_TRUE(stop_lines.front().without_explicit_stop_line);
+}
+
+namespace
+{
+// A walkway lanelet crossing the +x road at x in [9, 11].
+lanelet::Lanelet make_crossing_walkway(lanelet::Id id)
+{
+  const lanelet::Id base = id * 10;
+  lanelet::LineString3d near_bound(
+    base, {lanelet::Point3d(base + 1, 9.0, -3.0, 0.0), lanelet::Point3d(base + 2, 9.0, 3.0, 0.0)});
+  lanelet::LineString3d far_bound(
+    base + 3,
+    {lanelet::Point3d(base + 4, 11.0, -3.0, 0.0), lanelet::Point3d(base + 5, 11.0, 3.0, 0.0)});
+  lanelet::Lanelet walkway(id, near_bound, far_bound);
+  walkway.attributes()[lanelet::AttributeNamesString::Subtype] =
+    lanelet::AttributeValueString::Walkway;
+  return walkway;
+}
+}  // namespace
+
+TEST(StopPlannerTest, CollectPrefersCrosswalkRegelemStopLine)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+
+  auto road = make_road_lanelet(1, 0.0, 20.0);
+  auto walkway = make_crossing_walkway(720);
+
+  // Explicit stop line provided by a crosswalk regulatory element attached to the road lanelet.
+  lanelet::LineString3d explicit_stop_line(
+    800, {lanelet::Point3d(801, 7.0, -2.0, 0.0), lanelet::Point3d(802, 7.0, 2.0, 0.0)});
+  lanelet::Polygon3d crosswalk_area;
+  road.addRegulatoryElement(
+    lanelet::autoware::Crosswalk::make(
+      900, lanelet::AttributeMap(), walkway, crosswalk_area, {explicit_stop_line}));
+
+  auto map = std::make_shared<lanelet::LaneletMap>();
+  map->add(walkway);
+
+  RouteContext ctx;
+  ctx.lanelet_map_ptr = map;
+  ctx.route_lanelets = {road};
+  ctx.preferred_lanelets = {road};
+  const auto stop_lines = planner.collect_stop_lines(ctx);
+
+  // The regelem stop line (x=7) wins over the walkway's entry-side bound (x=9).
+  ASSERT_EQ(stop_lines.size(), 1u);
+  EXPECT_EQ(stop_lines.front().type, StopLineType::Walkway);
+  EXPECT_EQ(stop_lines.front().line.id(), 800);
+  EXPECT_FALSE(stop_lines.front().without_explicit_stop_line);
+}
+
+TEST(StopPlannerTest, CollectPrefersCrosswalkIdRoadMarkingStopLine)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+
+  auto road = make_road_lanelet(1, 0.0, 20.0);
+  auto walkway = make_crossing_walkway(720);
+
+  // Explicit stop line bound to the walkway via a RoadMarking with a crosswalk_id attribute.
+  lanelet::LineString3d explicit_stop_line(
+    800, {lanelet::Point3d(801, 7.5, -2.0, 0.0), lanelet::Point3d(802, 7.5, 2.0, 0.0)});
+  explicit_stop_line.attributes()[lanelet::AttributeNamesString::Type] =
+    lanelet::AttributeValueString::StopLine;
+  explicit_stop_line.attributes()["crosswalk_id"] = 720;
+  walkway.addRegulatoryElement(
+    lanelet::autoware::RoadMarking::make(900, lanelet::AttributeMap(), explicit_stop_line));
+
+  auto map = std::make_shared<lanelet::LaneletMap>();
+  map->add(walkway);
+
+  RouteContext ctx;
+  ctx.lanelet_map_ptr = map;
+  ctx.preferred_lanelets = {road};
+  const auto stop_lines = planner.collect_stop_lines(ctx);
+
+  // The crosswalk_id road marking (x=7.5) wins over the walkway's entry-side bound (x=9).
+  ASSERT_EQ(stop_lines.size(), 1u);
+  EXPECT_EQ(stop_lines.front().type, StopLineType::Walkway);
+  EXPECT_EQ(stop_lines.front().line.id(), 800);
 }
 
 }  // namespace autoware::minimum_rule_based_planner

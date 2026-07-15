@@ -17,14 +17,17 @@
 
 #include "path_planner.hpp"
 
+#include <autoware_utils_debug/time_keeper.hpp>
 #include <rclcpp/logger.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
 
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -53,6 +56,10 @@ struct StopLine
 {
   lanelet::ConstLineString3d line;
   StopLineType type;
+  //! true when the geometry is a crosswalk/walkway bound used because the map has no explicit
+  //! stop line for it; such targets use the larger stop_distance_from_crosswalk margin
+  //! (upstream behavior_velocity semantics) instead of stop_margin_distance.
+  bool without_explicit_stop_line{false};
 };
 
 /**
@@ -71,8 +78,11 @@ bool is_possibility_type(StopLineType type);
 struct StopSelectionParams
 {
   double max_deceleration;  //!< maximum deceleration used for the braking-distance check [m/s^2]
+  double max_jerk;          //!< maximum jerk used for the braking-distance check [m/s^3]
   double stop_margin_distance;  //!< distance to stop before the stop line crossing [m]
-  double base_link_to_front;    //!< vehicle front offset from base_link [m]
+  //! distance to stop before a crosswalk/walkway without an explicit stop line [m]
+  double stop_distance_from_crosswalk;
+  double base_link_to_front;  //!< vehicle front offset from base_link [m]
 };
 
 /**
@@ -85,16 +95,22 @@ struct StopSelectionParams
 class StopPlanner
 {
 public:
-  explicit StopPlanner(const rclcpp::Logger & logger);
+  //! @param time_keeper processing-time tracker; a private no-op instance is created when omitted
+  //! (e.g. in unit tests), so the tracking scopes are always valid.
+  explicit StopPlanner(
+    const rclcpp::Logger & logger,
+    std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper = nullptr);
 
   /**
    * @brief Collect stop targets along the given route lanelets, tagged by type.
    *
    * Detection sources:
    *  - RoadMarking (type=stop_line) + traffic sign reference lines -> StopLine
-   *  - crosswalk / walkway lanelets that geometrically cross the route path (searched over the
-   *    whole map layer, since walkways carry no regulatory element) -> Crosswalk / Walkway,
-   *    using only the entry-side bound as the stop line
+   *  - crosswalk / walkway lanelets overlapping the route lanelets -> Crosswalk / Walkway, found
+   *    via the map's spatial index (RTree) per route lanelet plus a polygon-overlap check, since
+   *    walkways carry no regulatory element. The stop line is, in priority order: the crosswalk
+   *    regulatory element's stop line, a RoadMarking bound to the crosswalk by its "crosswalk_id"
+   *    attribute, or the entry-side bound of the crosswalk lanelet.
    *  - traffic light stop lines -> TrafficLight
    *  - lanelets with a turn_direction attribute -> Intersection (entry edge)
    *  - private-area (location=private) entry/exit transitions along the preferred lane sequence
@@ -119,26 +135,32 @@ public:
    *
    * For every stop line whose type is allowed (all types when @p include_possibility is true,
    * mandatory types only otherwise), the nearest 2D crossing is converted to a stop point by
-   * subtracting the vehicle front offset and the stop margin. The nearest positive stop point is
-   * returned only if it is reachable given @p ego_velocity and the maximum deceleration (braking
-   * distance). Returns nullopt when no reachable stop point exists.
+   * subtracting the vehicle front offset and the stop margin. Reachability is judged on the
+   * remaining distance from @p ego_pose (not from the trajectory start, which lies behind the
+   * vehicle): a candidate is kept only while the remaining distance is positive and at least the
+   * jerk-aware braking distance from @p ego_velocity and @p ego_acceleration under the maximum
+   * deceleration and jerk, so a stop point the vehicle can no longer stop for (or has already
+   * passed) is dropped. Returns the nearest such candidate, or nullopt when none exists.
    */
   std::optional<double> select_stop_arc_length(
     const std::vector<StopLine> & stop_lines,
     const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & trajectory_points,
-    const double ego_velocity, const StopSelectionParams & params,
+    const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity,
+    const double ego_acceleration, const StopSelectionParams & params,
     const bool include_possibility) const;
 
   /**
    * @brief Build a MarkerArray visualizing the collected stop lines.
    *
-   * The markers are published in the "map" frame.
+   * Besides the line markers, each stop line gets a text label with its type name, floating 1 m
+   * above the line (namespace "stop_line_type"). The markers are published in the "map" frame.
    */
   visualization_msgs::msg::MarkerArray create_stop_line_marker_array(
     const std::vector<StopLine> & stop_lines) const;
 
 private:
   rclcpp::Logger logger_;
+  std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
 };
 
 }  // namespace autoware::minimum_rule_based_planner
