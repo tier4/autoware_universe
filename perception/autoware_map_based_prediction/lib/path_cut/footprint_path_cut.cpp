@@ -73,7 +73,7 @@ bool has_required_info(const autoware_perception_msgs::msg::PredictedObject & pr
          shape_has_footprint(predicted_object.shape);
 }
 
-lanelet::BoundingBox2d footprint_search_bbox(
+lanelet::BoundingBox2d get_bbox_contain_path_with_footprint(
   const std::vector<PredictedPath> & predicted_paths,
   const autoware_perception_msgs::msg::Shape & object_shape)
 {
@@ -85,7 +85,7 @@ lanelet::BoundingBox2d footprint_search_bbox(
   return search_bbox;
 }
 
-lanelet::BoundingBox2d footprint_search_bbox(
+lanelet::BoundingBox2d get_bbox_contain_path_with_footprint(
   const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & object_shape)
 {
   lanelet::BoundingBox2d search_bbox;

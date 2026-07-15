@@ -49,7 +49,7 @@ std::vector<autoware_utils_geometry::LineString2d> collect_candidate_road_border
   const autoware_perception_msgs::msg::Shape & object_shape)
 {
   const auto candidates = road_border_layer.lineStringLayer.search(
-    path_cut::footprint_search_bbox(predicted_path, object_shape));
+    path_cut::get_bbox_contain_path_with_footprint(predicted_path, object_shape));
   std::vector<autoware_utils_geometry::LineString2d> linestrings_2d;
   linestrings_2d.reserve(candidates.size());
   for (const auto & candidate : candidates) {
@@ -72,7 +72,7 @@ double arc_length_to_index(const PredictedPath & path, const size_t index)
   return length;
 }
 
-std::optional<lanelet::BasicPoint2d> first_border_crossing_point(
+std::optional<lanelet::BasicPoint2d> get_first_border_crossing_point(
   const PredictedPath & predicted_path,
   const std::vector<autoware_utils_geometry::LineString2d> & borders)
 {
@@ -92,8 +92,8 @@ std::optional<lanelet::BasicPoint2d> first_border_crossing_point(
   }
   return std::nullopt;
 }
-
-bool point_inside_crosswalk(const lanelet::LaneletMap & map, const lanelet::BasicPoint2d & point)
+// TODO change is_point_inside_crosswalk
+bool is_point_inside_crosswalk(const lanelet::LaneletMap & map, const lanelet::BasicPoint2d & point)
 {
   const lanelet::BoundingBox2d search_box{point, point};
   for (const auto & candidate : map.laneletLayer.search(search_box)) {
@@ -152,10 +152,10 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
   }
 
   const std::optional<lanelet::BasicPoint2d> crossing_point =
-    first_border_crossing_point(predicted_path, candidates);
+    get_first_border_crossing_point(predicted_path, candidates);
   if (
     lanelet_map_ptr_ && crossing_point &&
-    point_inside_crosswalk(*lanelet_map_ptr_, *crossing_point)) {
+    is_point_inside_crosswalk(*lanelet_map_ptr_, *crossing_point)) {
     return predicted_path;
   }
 

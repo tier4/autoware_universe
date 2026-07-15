@@ -42,7 +42,7 @@ std::vector<autoware_utils_geometry::LineString2d> collect_candidate_guard_rail_
   const autoware_perception_msgs::msg::Shape & object_shape)
 {
   const auto candidates = guard_rail_layer.lineStringLayer.search(
-    path_cut::footprint_search_bbox(predicted_paths, object_shape));
+    path_cut::get_bbox_contain_path_with_footprint(predicted_paths, object_shape));
   std::vector<autoware_utils_geometry::LineString2d> guard_rail_linestrings_2d;
   guard_rail_linestrings_2d.reserve(candidates.size());
   for (const auto & candidate : candidates) {

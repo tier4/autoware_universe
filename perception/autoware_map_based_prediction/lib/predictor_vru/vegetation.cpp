@@ -44,7 +44,7 @@ std::vector<autoware_utils_geometry::Polygon2d> collect_candidate_vegetation_pol
   const autoware_perception_msgs::msg::Shape & object_shape)
 {
   const auto candidates = vegetation_layer.polygonLayer.search(
-    path_cut::footprint_search_bbox(predicted_paths, object_shape));
+    path_cut::get_bbox_contain_path_with_footprint(predicted_paths, object_shape));
   std::vector<autoware_utils_geometry::Polygon2d> vegetation_polygons_2d;
   vegetation_polygons_2d.reserve(candidates.size());
   for (const auto & candidate : candidates) {
