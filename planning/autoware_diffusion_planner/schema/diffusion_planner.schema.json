@@ -173,8 +173,14 @@
         },
         "use_time_interpolation": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Whether to interpolate ego past trajectory at regular time intervals"
+        },
+        "ego_history_reset_gap_s": {
+          "type": "number",
+          "default": 0.5,
+          "exclusiveMinimum": 0,
+          "description": "Reset ego, turn-indicator, neighbor, and legacy warm-start histories when the ego timestamp gap exceeds this threshold [s]"
         },
         "guidance": {
           "type": "object",

@@ -136,6 +136,8 @@ private:
  */
 struct AgentData
 {
+  void clear_histories() { histories_map_.clear(); }
+
   void update_histories(const TrackedObjects & objects);
 
   // Transform histories, trim to max_num_agent, and return the processed vector.

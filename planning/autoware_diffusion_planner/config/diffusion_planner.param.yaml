@@ -34,7 +34,8 @@
     shift_x: false
     delay_step: 0
     line_string_max_step_m: 5.0
-    use_time_interpolation: false
+    use_time_interpolation: true
+    ego_history_reset_gap_s: 0.5
     use_mppi_optimizer: false
     shadow_mode: false
     planning_factor:

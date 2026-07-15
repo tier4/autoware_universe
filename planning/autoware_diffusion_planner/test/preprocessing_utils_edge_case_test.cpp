@@ -23,11 +23,13 @@
 #include <gtest/gtest.h>
 #include <tf2/LinearMath/Quaternion.h>
 
+#include <array>
 #include <cmath>
 #include <deque>
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::diffusion_planner::test
@@ -308,6 +310,31 @@ TEST_F(PreprocessingUtilsEdgeCaseTest, CreateEgoAgentPastTimeInterpolation)
       << "timestep " << t;
     EXPECT_NEAR(result[base + EGO_AGENT_PAST_IDX_Y], 0.0f, 1e-3f);
   }
+}
+
+TEST_F(PreprocessingUtilsEdgeCaseTest, CreateEgoAgentPastInterpolatesIrregularTimestamps)
+{
+  // The target grid is 0.0, 0.1, 0.2 s, while the source has a 0.2 s gap at
+  // the beginning.  The middle pose must be interpolated, not treated as the
+  // next fixed-rate sample.
+  std::deque<nav_msgs::msg::Odometry> odom_msgs;
+  const std::array<std::pair<uint32_t, double>, 3> samples = {
+    {{0u, 0.0}, {200000000u, 2.0}, {300000000u, 3.0}}};
+  for (const auto & [stamp_ns, position_x] : samples) {
+    nav_msgs::msg::Odometry odom;
+    odom.header.stamp.sec = 0;
+    odom.header.stamp.nanosec = stamp_ns;
+    odom.pose.pose.position.x = position_x;
+    odom.pose.pose.orientation.w = 1.0;
+    odom_msgs.push_back(odom);
+  }
+
+  const auto result = preprocess::create_ego_agent_past(
+    odom_msgs, 3, Eigen::Matrix4d::Identity(), rclcpp::Time(0, 200000000u));
+
+  EXPECT_NEAR(result[0 + EGO_AGENT_PAST_IDX_X], 0.0F, 1e-3F);
+  EXPECT_NEAR(result[4 + EGO_AGENT_PAST_IDX_X], 1.0F, 1e-3F);
+  EXPECT_NEAR(result[8 + EGO_AGENT_PAST_IDX_X], 2.0F, 1e-3F);
 }
 
 }  // namespace autoware::diffusion_planner::test

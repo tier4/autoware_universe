@@ -308,6 +308,25 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(pose_base_link);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
 
+  // All temporal inputs are trained on a fixed 0.1 s grid.  A short planner
+  // overrun is recoverable by ego-pose interpolation, but a long timestamp
+  // discontinuity cannot be reconstructed and must not carry stale state
+  // across the gap.
+  const rclcpp::Time current_ego_time(ego_kinematic_state->header.stamp);
+  if (!ego_history_.empty()) {
+    const rclcpp::Time previous_ego_time(ego_history_.back().header.stamp);
+    const double ego_history_gap_s = (current_ego_time - previous_ego_time).seconds();
+    if (ego_history_gap_s < 0.0 || ego_history_gap_s > params_.ego_history_reset_gap_s) {
+      RCLCPP_WARN(
+        rclcpp::get_logger("diffusion_planner"),
+        "Resetting temporal histories after ego timestamp gap of %.3f s", ego_history_gap_s);
+      ego_history_.clear();
+      turn_indicators_history_.clear();
+      agent_data_.clear_histories();
+      last_agent_poses_map_.clear();
+    }
+  }
+
   // Update ego history
   ego_history_.push_back(kinematic_state);
   if (ego_history_.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {

@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <fstream>
 #include <functional>
@@ -205,7 +206,12 @@ void DiffusionPlanner::set_up_params()
   params_.shift_x = this->declare_parameter<bool>("shift_x", false);
   params_.delay_step = this->declare_parameter<int64_t>("delay_step", 0);
   params_.line_string_max_step_m = this->declare_parameter<double>("line_string_max_step_m", 5.0);
-  params_.use_time_interpolation = this->declare_parameter<bool>("use_time_interpolation", false);
+  params_.use_time_interpolation = this->declare_parameter<bool>("use_time_interpolation", true);
+  params_.ego_history_reset_gap_s =
+    this->declare_parameter<double>("ego_history_reset_gap_s", 0.5);
+  if (!std::isfinite(params_.ego_history_reset_gap_s) || params_.ego_history_reset_gap_s <= 0.0) {
+    throw std::invalid_argument("ego_history_reset_gap_s must be finite and greater than zero");
+  }
   params_.start_guidance_reference_distance_m =
     this->declare_parameter<double>("guidance.start_guidance.reference_distance_m", 10.0);
   params_.start_guidance_max_scale =
@@ -338,6 +344,8 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<double>(parameters, "line_string_max_step_m", temp_params.line_string_max_step_m);
     update_param<bool>(parameters, "use_time_interpolation", temp_params.use_time_interpolation);
     update_param<double>(
+      parameters, "ego_history_reset_gap_s", temp_params.ego_history_reset_gap_s);
+    update_param<double>(
       parameters, "guidance.start_guidance.reference_distance_m",
       temp_params.start_guidance_reference_distance_m);
     update_param<double>(
@@ -370,6 +378,14 @@ SetParametersResult DiffusionPlanner::on_parameter(
 #else
       result.reason += "; ONNX Runtime support is not available in this build";
 #endif
+      return result;
+    }
+    if (
+      !std::isfinite(temp_params.ego_history_reset_gap_s) ||
+      temp_params.ego_history_reset_gap_s <= 0.0) {
+      SetParametersResult result;
+      result.successful = false;
+      result.reason = "ego_history_reset_gap_s must be finite and greater than zero";
       return result;
     }
     update_param<bool>(parameters, "use_mppi_optimizer", temp_params.use_mppi_optimizer);
