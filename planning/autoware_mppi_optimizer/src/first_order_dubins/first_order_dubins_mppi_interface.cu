@@ -337,6 +337,39 @@ void buildRolloutVisualization(
 }
 #endif
 
+/// @brief check if the given trajectory needs to be optimized
+[[nodiscard]] bool is_optimization_required(const autoware::mppi_optimizer::Trajectory & trajectory)
+{
+  const auto is_stopping = std::find_if(
+                             trajectory.points.begin(), trajectory.points.end(),
+                             [&](const autoware_planning_msgs::msg::TrajectoryPoint & p) {
+                               return p.longitudinal_velocity_mps < 0.02;
+                             }) != trajectory.points.end();
+  auto length = 0.0;
+  for (auto i = 0UL; i + 1 < trajectory.points.size(); ++i) {
+    length += std::hypot(
+      trajectory.points[i].pose.position.x - trajectory.points[i + 1].pose.position.x,
+      trajectory.points[i].pose.position.y - trajectory.points[i + 1].pose.position.y);
+  }
+  const auto is_short = length < 4.0;
+  return !is_stopping || !is_short;
+}
+
+/// @brief override initial 0 velocities with engage velocities
+void set_initial_engage_velocity(autoware::mppi_optimizer::Trajectory & trajectory)
+{
+  constexpr auto engage_velocity = 0.25;
+  if (trajectory.points.size() < 3) return;
+  const auto wants_to_move = std::find_if(
+                               trajectory.points.begin(), trajectory.points.end(),
+                               [&](const autoware_planning_msgs::msg::TrajectoryPoint & p) {
+                                 return p.longitudinal_velocity_mps > engage_velocity;
+                               }) != trajectory.points.end();
+  if (wants_to_move && trajectory.points[0].longitudinal_velocity_mps < 0.05) {
+    trajectory.points[0].longitudinal_velocity_mps = engage_velocity;
+    trajectory.points[1].longitudinal_velocity_mps = engage_velocity;
+  }
+}
 }  // namespace
 
 struct FirstOrderDubinsMppiInterface::Impl
@@ -717,9 +750,14 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
   FirstOrderDubinsMppiOptimizationResult result;
-  if (input.points.size() < 2U) {
+  const auto not_enough_input_points = input.points.size() < 2U;
+  const auto optimization_required = is_optimization_required(input);
+  if (not_enough_input_points || !optimization_required) {
     RCLCPP_WARN(
-      mppiLogger(), "MPPI skipped: trajectory has %zu points (need >= 2)", input.points.size());
+      mppiLogger(), "MPPI skipped: %s",
+      not_enough_input_points ? "trajectory has fewer than 2 points"
+                              : "trajectory does not require optimization");
+
     result.trajectory = input;
     result.debug.reference_trajectory = input;
     result.debug.optimized_trajectory = input;
@@ -806,6 +844,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const auto elapsed_ms =
     std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start_time)
       .count();
+
+  set_initial_engage_velocity(output);
 
   result.trajectory = output;
   result.debug.reference_trajectory = input;
