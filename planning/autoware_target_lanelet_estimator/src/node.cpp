@@ -35,12 +35,26 @@ namespace autoware::target_lanelet_estimator
 {
 namespace
 {
-// Heatmap color from posterior probability: cold blue -> hot red, more opaque when higher.
+// Ego heatmap color from posterior probability: cold blue -> hot red, more opaque when higher.
 std_msgs::msg::ColorRGBA probability_to_marker_color(double probability)
 {
   const float t = static_cast<float>(std::clamp(probability, 0.0, 1.0));
   return autoware_utils::create_marker_color(t, 0.0f, 1.0f - t, 0.3f + 0.5f * t);
 }
+
+// Object heatmap in a different hue (green -> yellow) so surrounding vehicles are told apart from
+// the ego, whose lanelets they may share.
+std_msgs::msg::ColorRGBA object_probability_to_marker_color(double probability)
+{
+  const float t = static_cast<float>(std::clamp(probability, 0.0, 1.0));
+  return autoware_utils::create_marker_color(t, 1.0f, 0.0f, 0.3f + 0.5f * t);
+}
+
+// Draw objects as a narrow centered band lifted above the ego full-width fill, so an object sharing
+// a lanelet with the ego shows as a distinct stripe on top instead of overlapping the whole lane.
+constexpr double object_marker_z_offset = 0.1;
+constexpr double object_band_lateral_from = 0.35;
+constexpr double object_band_lateral_to = 0.65;
 
 LaneletProbabilityMap create_probability_map(
   const std::vector<LaneletProbability> & lanelet_probabilities)
@@ -75,10 +89,11 @@ lanelet::BasicPoint3d interpolate_linestring(const lanelet::ConstLineString3d & 
   return line[i0].basicPoint() * (1.0 - t) + line[i1].basicPoint() * t;
 }
 
-// Fill a lanelet as a triangle strip between its left and right bounds.
-// Robust by construction (no ear-clipping), so it never produces invalid triangles.
-std::vector<geometry_msgs::msg::Point> create_lanelet_triangle_list(
-  const lanelet::ConstLanelet & lanelet)
+// Fill a lanelet as a triangle strip between two lateral fractions of its width (0 = left bound,
+// 1 = right bound). Robust by construction (no ear-clipping), so it never produces invalid
+// triangles. (0, 1) fills the whole lanelet; a centered sub-range draws a narrower band.
+std::vector<geometry_msgs::msg::Point> create_lanelet_band_triangles(
+  const lanelet::ConstLanelet & lanelet, double lateral_from, double lateral_to)
 {
   const auto left = lanelet.leftBound();
   const auto right = lanelet.rightBound();
@@ -87,16 +102,21 @@ std::vector<geometry_msgs::msg::Point> create_lanelet_triangle_list(
     return triangles;
   }
 
+  const auto lateral_point = [&](double longitudinal, double lateral) {
+    const auto l = interpolate_linestring(left, longitudinal);
+    const auto r = interpolate_linestring(right, longitudinal);
+    return to_msg_point(l * (1.0 - lateral) + r * lateral);
+  };
+
   const size_t segments = std::max(left.size(), right.size()) - 1;
   for (size_t i = 0; i < segments; ++i) {
     const double r0 = static_cast<double>(i) / static_cast<double>(segments);
     const double r1 = static_cast<double>(i + 1) / static_cast<double>(segments);
-    const auto left_start = to_msg_point(interpolate_linestring(left, r0));
-    const auto left_end = to_msg_point(interpolate_linestring(left, r1));
-    const auto right_start = to_msg_point(interpolate_linestring(right, r0));
-    const auto right_end = to_msg_point(interpolate_linestring(right, r1));
-    triangles.insert(
-      triangles.end(), {left_start, right_start, right_end, left_start, right_end, left_end});
+    const auto from_start = lateral_point(r0, lateral_from);
+    const auto from_end = lateral_point(r1, lateral_from);
+    const auto to_start = lateral_point(r0, lateral_to);
+    const auto to_end = lateral_point(r1, lateral_to);
+    triangles.insert(triangles.end(), {from_start, to_start, to_end, from_start, to_end, from_end});
   }
   return triangles;
 }
@@ -183,6 +203,8 @@ TargetLaneletEstimatorNode::TargetLaneletEstimatorNode(const rclcpp::NodeOptions
   pub_target_lanelet_probabilities_ =
     create_publisher<Float64MultiArrayStamped>("~/output/target_lanelet_probabilities", 1);
   pub_out_of_lanelet_ = create_publisher<BoolStamped>("~/output/out_of_lanelet", 1);
+  pub_ego_text_ = create_publisher<StringStamped>("~/debug/ego_target_text", 1);
+  pub_object_text_ = create_publisher<StringStamped>("~/debug/object_target_text", 1);
 
   track_objects_ = declare_parameter<bool>("track_objects");
   target_object_uuid_ = declare_parameter<std::string>("target_object_uuid");
@@ -257,22 +279,32 @@ void TargetLaneletEstimatorNode::run_estimation()
     *route_, poses, vehicle_info_.createFootprint(), lanelet_map_, routing_graph_, params_);
   const auto & result = ego_tracker_.get_target_lanelets();
 
-  std::stringstream log_stream;
-  log_stream << std::fixed << std::setprecision(2);
   for (const auto & lanelet : result.lanelet_probabilities) {
     // once the trajectory reaches a lanelet it stays on the colored trail
     if (lanelet.likelihood > 0.0) {
       covered_lanelet_ids_.insert(lanelet.id);
     }
   }
+
+  // detailed per-lanelet text goes to a dedicated topic (echo it in its own terminal); the console
+  // keeps only a brief count so the ego and object logs do not clutter each other.
+  std::stringstream text;
+  text << std::fixed << std::setprecision(2) << "ego target lanelets ("
+       << result.target_lanelet_ids.size() << "):";
   const auto probability_by_id = create_probability_map(result.lanelet_probabilities);
   for (const auto id : result.target_lanelet_ids) {
-    log_stream << " " << id << ":" << probability_by_id.at(id);
+    text << " " << id << ":" << probability_by_id.at(id);
   }
+  if (result.out_of_lanelet) {
+    text << " (out_of_lanelet)";
+  }
+  StringStamped text_msg;
+  text_msg.stamp = now();
+  text_msg.data = text.str();
+  pub_ego_text_->publish(text_msg);
   RCLCPP_INFO_THROTTLE(
-    get_logger(), *get_clock(), 1000, "target lanelets (%zu):%s%s",
-    result.target_lanelet_ids.size(), log_stream.str().c_str(),
-    result.out_of_lanelet ? " (out_of_lanelet)" : "");
+    get_logger(), *get_clock(), 1000, "ego target lanelets: %zu%s",
+    result.target_lanelet_ids.size(), result.out_of_lanelet ? " (out_of_lanelet)" : "");
 
   publish_result(result);
   publish_markers(result);
@@ -311,6 +343,31 @@ void TargetLaneletEstimatorNode::on_objects(const PredictedObjects::ConstSharedP
   for (auto it = object_trackers_.begin(); it != object_trackers_.end();) {
     it = present_uuids.count(it->first) ? std::next(it) : object_trackers_.erase(it);
   }
+
+  // detailed per-object text goes to its own topic (echo it in a separate terminal); the console
+  // keeps only a brief count so it does not interleave with the ego log.
+  std::stringstream text;
+  text << std::fixed << std::setprecision(2) << "objects tracked: " << object_trackers_.size();
+  size_t objects_with_target = 0;
+  for (const auto & [uuid, tracker] : object_trackers_) {
+    const auto & result = tracker.get_target_lanelets();
+    if (result.target_lanelet_ids.empty()) {
+      continue;
+    }
+    ++objects_with_target;
+    const auto probability_by_id = create_probability_map(result.lanelet_probabilities);
+    text << "\n  " << uuid.substr(0, 8) << ":";
+    for (const auto id : result.target_lanelet_ids) {
+      text << " " << id << ":" << probability_by_id.at(id);
+    }
+  }
+  StringStamped text_msg;
+  text_msg.stamp = now();
+  text_msg.data = text.str();
+  pub_object_text_->publish(text_msg);
+  RCLCPP_INFO_THROTTLE(
+    get_logger(), *get_clock(), 1000, "objects tracked: %zu (with target lanelets: %zu)",
+    object_trackers_.size(), objects_with_target);
 
   publish_object_markers();
 }
@@ -365,7 +422,9 @@ void TargetLaneletEstimatorNode::ensure_route_triangles()
       const auto route_lanelet = lanelet_map_->laneletLayer.get(primitive.id);
       LaneletTriangles triangles;
       triangles.id = primitive.id;
-      triangles.points = create_lanelet_triangle_list(route_lanelet);
+      triangles.points = create_lanelet_band_triangles(route_lanelet, 0.0, 1.0);
+      triangles.narrow_points = create_lanelet_band_triangles(
+        route_lanelet, object_band_lateral_from, object_band_lateral_to);
       route_triangles_.push_back(std::move(triangles));
     }
   }
@@ -419,7 +478,7 @@ void TargetLaneletEstimatorNode::publish_object_markers()
   std::unordered_map<lanelet::Id, const std::vector<geometry_msgs::msg::Point> *> triangles_by_id;
   triangles_by_id.reserve(route_triangles_.size());
   for (const auto & triangles : route_triangles_) {
-    triangles_by_id[triangles.id] = &triangles.points;
+    triangles_by_id[triangles.id] = &triangles.narrow_points;  // narrow band so it sits inside ego
   }
 
   // objects move, so clear the previous markers and redraw the current target lanelets each cycle
@@ -448,8 +507,9 @@ void TargetLaneletEstimatorNode::publish_object_markers()
       marker.scale.y = 1.0;
       marker.scale.z = 1.0;
       marker.pose.orientation.w = 1.0;
+      marker.pose.position.z = object_marker_z_offset;
       marker.points = *it->second;
-      marker.color = probability_to_marker_color(probability_by_id.at(id));
+      marker.color = object_probability_to_marker_color(probability_by_id.at(id));
       marker_array.markers.push_back(marker);
     }
   }

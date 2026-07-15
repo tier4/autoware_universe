@@ -22,6 +22,7 @@
 #include <autoware_internal_debug_msgs/msg/bool_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/float64_multi_array_stamped.hpp>
 #include <autoware_internal_debug_msgs/msg/int64_multi_array_stamped.hpp>
+#include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
@@ -43,6 +44,7 @@ namespace autoware::target_lanelet_estimator
 using autoware_internal_debug_msgs::msg::BoolStamped;
 using autoware_internal_debug_msgs::msg::Float64MultiArrayStamped;
 using autoware_internal_debug_msgs::msg::Int64MultiArrayStamped;
+using autoware_internal_debug_msgs::msg::StringStamped;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::LaneletRoute;
@@ -53,7 +55,8 @@ using autoware_planning_msgs::msg::Trajectory;
 struct LaneletTriangles
 {
   lanelet::Id id{lanelet::InvalId};
-  std::vector<geometry_msgs::msg::Point> points;
+  std::vector<geometry_msgs::msg::Point> points;         // full-width fill, used for the ego
+  std::vector<geometry_msgs::msg::Point> narrow_points;  // centered narrow band, used for objects
 };
 
 class TargetLaneletEstimatorNode : public rclcpp::Node
@@ -82,6 +85,8 @@ private:
   rclcpp::Publisher<Int64MultiArrayStamped>::SharedPtr pub_target_lanelet_ids_;
   rclcpp::Publisher<Float64MultiArrayStamped>::SharedPtr pub_target_lanelet_probabilities_;
   rclcpp::Publisher<BoolStamped>::SharedPtr pub_out_of_lanelet_;
+  rclcpp::Publisher<StringStamped>::SharedPtr pub_ego_text_;     // ego target lanelets, for echo
+  rclcpp::Publisher<StringStamped>::SharedPtr pub_object_text_;  // object target lanelets, for echo
 
   lanelet::LaneletMapConstPtr lanelet_map_;
   lanelet::routing::RoutingGraphConstPtr routing_graph_;
