@@ -35,6 +35,26 @@ minimum_rule_based_planner:
         default_value: 1.0
         description: offset before goal for smooth connection [m]
 
+    early_stop:
+      expected_ego_speed_parking:
+        type: double
+        default_value: 5.5
+        description: expected ego speed during pull over to the side of the road [m/s]
+
+      max_lat_accl_parking:
+        type: double
+        default_value: 1.5
+        description: expected max lateral acceleration during pull over to the side of the road [m/s^2]
+
+      max_lat_jark_parking:
+        type: double
+        default_value: 0.5
+        description: expected max lateral jerk during pull over to the side of the road [m/s^3]
+      dist_to_stop_parking:
+        type: double
+        default_value: 5
+        description: stopping distance after lateral offset during pull over to the side of the road [m]
+
     # Parameters for lanelet matching (different from EB smoother's ego_nearest_* params)
     ego_nearest_lanelet:
       dist_threshold:
