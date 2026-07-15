@@ -319,6 +319,10 @@ private:
 
   ObservationNormalization observation_normalization_;
   StateNormalization state_normalization_;
+  // HDP predicts per-step ego displacements (velocity representation), while legacy
+  // models predict waypoint positions.  The former must not use the legacy
+  // multi-point velocity smoothing in postprocessing.
+  bool is_velocity_representation_{false};
 
   // Inference engine
   std::unique_ptr<Inference> diffusion_planner_inference_{nullptr};

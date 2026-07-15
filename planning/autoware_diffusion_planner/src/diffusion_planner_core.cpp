@@ -102,6 +102,7 @@ void DiffusionPlannerCore::load_model()
 {
   last_agent_poses_map_.clear();
   diffusion_planner_inference_.reset();
+  is_velocity_representation_ = false;
   utils::check_weight_version(params_.args_path);
 
   // Configure runtime-adaptive prediction dimensions from the model's args.json.
@@ -128,6 +129,7 @@ void DiffusionPlannerCore::load_model()
       params_.model_type + "'. The multi_step path assumes the legacy waypoint latent and is "
                            "incompatible with this model.");
   }
+  is_velocity_representation_ = is_velocity_latent;
 
   observation_normalization_ = utils::load_observation_normalization(params_.args_path);
   state_normalization_ = utils::load_state_normalization(params_.args_path);
@@ -568,10 +570,17 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
                                 : turn_indicators_history_.back().report;
 
   // Trajectory and CandidateTrajectories
+  // Legacy waypoint models need the configured moving average because their
+  // velocity is reconstructed from independently predicted positions.  HDP's
+  // cumulative waypoint output is generated from per-step displacement actions;
+  // differencing it recovers those actions, so applying the legacy moving
+  // average would alter the learned velocity profile and add preview delay.
+  const int64_t trajectory_velocity_smoothing_window =
+    is_velocity_representation_ ? 1 : params_.velocity_smoothing_window;
   for (int i = 0; i < params_.batch_size; i++) {
     auto trajectory = postprocess::create_ego_trajectory(
       agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose.position, i,
-      params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
+      trajectory_velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
 
     if (params_.shift_x) {
       for (auto & point : trajectory.points) {

@@ -137,7 +137,7 @@
           "type": "integer",
           "default": 8,
           "minimum": 1,
-          "description": "Window size for velocity smoothing. Set to 1 to disable smoothing."
+          "description": "Window size for legacy waypoint-model velocity smoothing. HDP velocity models automatically use 1 because their cumulative waypoint output is derived from per-step displacement actions."
         },
         "stopping_threshold": {
           "type": "number",
