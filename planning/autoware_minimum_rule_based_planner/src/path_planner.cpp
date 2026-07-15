@@ -1091,9 +1091,6 @@ std::optional<double> cal_early_stop(
     }
   }
 
-  std::cout << "goal_reachable : " << goal_reachable << std::endl;
-  std::cout << "goal_neighbors : " << goal_neighbors << std::endl;
-
   if(!goal_reachable){
     //goal offset function is disabled when planed trajectory don't include goal
     return 0.0;
@@ -1116,8 +1113,6 @@ std::optional<double> cal_early_stop(
   {
     return std::nullopt;
   }
-  std::cout << "target_lat_dist : " << target_lat_dist << std::endl;
-  std::cout << "dist_offset : " << *dist_offset << std::endl;
   return *dist_offset;
 }
 // ---------------------------------------------------------------------------
