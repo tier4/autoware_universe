@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "autoware/target_lanelet_estimator/impl.hpp"
+#include "autoware/target_lanelet_estimator/tracker.hpp"
 
 #include <gtest/gtest.h>
 #include <lanelet2_core/LaneletMap.h>
@@ -81,6 +82,29 @@ Trajectory make_trajectory(const std::vector<std::pair<double, double>> & xy_poi
     trajectory.points.push_back(point);
   }
   return trajectory;
+}
+
+// Rectangular local-frame footprint, like the one built from an object bounding box.
+autoware_utils_geometry::LinearRing2d make_footprint(double length, double width)
+{
+  const double half_length = 0.5 * length;
+  const double half_width = 0.5 * width;
+  autoware_utils_geometry::LinearRing2d footprint;
+  footprint.push_back(autoware_utils_geometry::Point2d(half_length, half_width));
+  footprint.push_back(autoware_utils_geometry::Point2d(half_length, -half_width));
+  footprint.push_back(autoware_utils_geometry::Point2d(-half_length, -half_width));
+  footprint.push_back(autoware_utils_geometry::Point2d(-half_length, half_width));
+  footprint.push_back(autoware_utils_geometry::Point2d(half_length, half_width));
+  return footprint;
+}
+
+std::vector<geometry_msgs::msg::Pose> to_poses(const Trajectory & trajectory)
+{
+  std::vector<geometry_msgs::msg::Pose> poses;
+  for (const auto & point : trajectory.points) {
+    poses.push_back(point.pose);
+  }
+  return poses;
 }
 
 VehicleInfo make_vehicle_info()
@@ -277,6 +301,69 @@ TEST_F(GetTargetLaneletsTest, NextSegmentPriorUsesRoutingRelation)
   EXPECT_NEAR(prior_of(result.lanelet_probabilities, lane_d), 0.32, 1e-6);
   EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_c), 1.0, 1e-6);
   EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_d), 0.0, 1e-6);
+}
+
+// The poses + footprint overload used for objects matches the ego vehicle_info overload when fed
+// the ego footprint, confirming the ego wrapper only forwards to the generic core.
+TEST_F(GetTargetLaneletsTest, PosesFootprintOverloadMatchesVehicleInfoOverload)
+{
+  const auto route = make_route({lane_a, lane_b});
+  const auto trajectory = make_trajectory({{0.0, 1.25}, {2.0, 1.25}, {4.0, 1.25}});
+  const auto previous_posteriors = initialize_lanelet_probabilities(route);
+
+  const auto from_vehicle_info = get_target_lanelets(
+    route, trajectory, lanelet_map_, vehicle_info_, previous_posteriors, nullptr);
+  const auto from_poses = get_target_lanelets(
+    route, to_poses(trajectory), vehicle_info_.createFootprint(), lanelet_map_, previous_posteriors,
+    nullptr);
+
+  EXPECT_NEAR(
+    posterior_of(from_poses.lanelet_probabilities, lane_a),
+    posterior_of(from_vehicle_info.lanelet_probabilities, lane_a), 1e-9);
+  EXPECT_NEAR(
+    likelihood_of(from_poses.lanelet_probabilities, lane_a),
+    likelihood_of(from_vehicle_info.lanelet_probabilities, lane_a), 1e-9);
+}
+
+// The generic core works with an arbitrary footprint, i.e. the surrounding-object path.
+TEST_F(GetTargetLaneletsTest, ArbitraryFootprintIsSupported)
+{
+  const auto route = make_route({lane_a, lane_b});
+  const auto poses = to_poses(make_trajectory({{0.0, 0.0}, {2.0, 0.0}, {4.0, 0.0}}));
+  const auto footprint = make_footprint(4.0, 1.0);  // like an object bounding box, width 1.0 m
+
+  const auto result = get_target_lanelets(
+    route, poses, footprint, lanelet_map_, initialize_lanelet_probabilities(route), nullptr);
+
+  EXPECT_NEAR(likelihood_of(result.lanelet_probabilities, lane_a), 1.0, 1e-6);
+  EXPECT_NEAR(posterior_of(result.lanelet_probabilities, lane_a), 1.0, 1e-6);
+  ASSERT_EQ(result.target_lanelet_ids.size(), 1u);
+  EXPECT_TRUE(has_target_lanelet(result, lane_a));
+}
+
+// A fresh tracker starts from the initial probabilities and reinforces the posterior over updates.
+TEST_F(GetTargetLaneletsTest, TrackerBuildsUpPosteriorOverUpdates)
+{
+  const auto route = make_route({lane_a, lane_b});
+  // footprint centered at y=1.25 keeps 0.75 of the area on lane A every cycle
+  const auto poses = to_poses(make_trajectory({{0.0, 1.25}, {2.0, 1.25}, {4.0, 1.25}}));
+  const auto routing_graph = make_routing_graph(lanelet_map_);
+  const auto base_footprint = vehicle_info_.createFootprint();
+
+  LaneletProbabilityTracker tracker;
+  EXPECT_TRUE(
+    tracker.get_posteriors().empty());  // fresh tracker falls back to initial probabilities
+
+  tracker.update(route, poses, base_footprint, lanelet_map_, routing_graph, {});
+  const double first = posterior_of(tracker.get_target_lanelets().lanelet_probabilities, lane_a);
+  // get_posteriors mirrors the stored result and feeds the next update as its prior
+  EXPECT_NEAR(tracker.get_posteriors().at(lane_a), first, 1e-9);
+
+  tracker.update(route, poses, base_footprint, lanelet_map_, routing_graph, {});
+  const double second = posterior_of(tracker.get_target_lanelets().lanelet_probabilities, lane_a);
+
+  EXPECT_GT(first, 0.5);
+  EXPECT_GT(second, first);  // repeated evidence reinforces the posterior
 }
 
 }  // namespace autoware::target_lanelet_estimator
