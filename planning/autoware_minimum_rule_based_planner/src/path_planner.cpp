@@ -1056,25 +1056,17 @@ std::optional<double> cal_early_stop(
     }
   }
 
-  std::unordered_set<lanelet::Id> registered_goal_neighbors;
-  lanelet::ConstLanelets goal_neighbors;
-
-  auto add_to_neighbors = [&](const lanelet::ConstLanelet & ll) {
-    if (registered_goal_neighbors.insert(ll.id()).second) {
-      goal_neighbors.push_back(ll);
-    }
-  };
-
+  std::unordered_set<lanelet::Id> goal_neighbors;
   for (const auto & lanelet : goal_lanelets){
-    add_to_neighbors(lanelet);
+    goal_neighbors.insert(lanelet.id());
     const auto left_lanelets = planner_data.routing_graph_ptr->lefts(lanelet);
     for (const auto & left_lanelet : left_lanelets){
-      add_to_neighbors(left_lanelet);
+      goal_neighbors.insert(left_lanelet.id());
     }
 
     const auto right_lanelets = planner_data.routing_graph_ptr->rights(lanelet);
     for (const auto & right_lanelet : right_lanelets){
-      add_to_neighbors(right_lanelet);
+      goal_neighbors.insert(right_lanelet.id());
     }
   }
 
@@ -1085,7 +1077,7 @@ std::optional<double> cal_early_stop(
 
   bool goal_reachable = false;
   for (const auto & lanelet_traj : trajectory_lanelets) {
-    if (registered_goal_neighbors.count(lanelet_traj.id())) {
+    if (goal_neighbors.count(lanelet_traj.id())) {
       goal_reachable = true;
       break;
     }
