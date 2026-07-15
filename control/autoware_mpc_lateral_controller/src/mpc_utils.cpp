@@ -18,6 +18,7 @@
 #include "autoware/interpolation/linear_interpolation.hpp"
 #include "autoware/interpolation/spline_interpolation.hpp"
 #include "autoware/motion_utils/trajectory/trajectory.hpp"
+#include "autoware/mpc_lateral_controller/taubin_curvature.hpp"
 #include "autoware_utils/geometry/geometry.hpp"
 #include "autoware_utils/math/normalization.hpp"
 
@@ -246,12 +247,30 @@ void calcTrajectoryCurvature(
 std::vector<double> calcTrajectoryCurvature(
   const int curvature_smoothing_num, const MPCTrajectory & traj)
 {
-  std::vector<double> curvature_vec(traj.x.size());
+  const size_t n = traj.x.size();
+  std::vector<double> curvature_vec(n);
+  if (n < 3) {
+    return curvature_vec;
+  }
+
+  const int max_smoothing_num = static_cast<int>(std::floor(0.5 * (static_cast<double>(n - 1))));
+
+  Eigen::MatrixX2d pts(static_cast<Eigen::Index>(n), 2);
+  if (max_smoothing_num < curvature_smoothing_num) {
+    for (size_t i = 0; i < n; ++i) {
+      pts(static_cast<Eigen::Index>(i), 0) = traj.x.at(i);
+      pts(static_cast<Eigen::Index>(i), 1) = traj.y.at(i);
+    }
+    // Get a constant curvature and assign to all indices
+    const double kappa = taubin_curvature(pts).kappa;
+    curvature_vec.assign(n, kappa);
+    return curvature_vec;
+  }
 
   /* calculate curvature by circle fitting from three points */
   geometry_msgs::msg::Point p1, p2, p3;
-  const int max_smoothing_num =
-    static_cast<int>(std::floor(0.5 * (static_cast<double>(traj.x.size() - 1))));
+
+
   const size_t L = static_cast<size_t>(std::min(curvature_smoothing_num, max_smoothing_num));
   for (size_t i = L; i < traj.x.size() - L; ++i) {
     const size_t curr_idx = i;
