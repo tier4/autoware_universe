@@ -26,6 +26,7 @@
 #include <autoware_lanelet2_extension/utility/message_conversion.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_lanelet2_extension/utility/utilities.hpp>
+#include <autoware/lanelet2_utils/kind.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 #include <autoware_utils/math/normalization.hpp>
 
@@ -1028,11 +1029,30 @@ std::optional<double> cal_early_stop(
   const auto nearest_lanelets = lanelet::geometry::findNearest(planner_data.lanelet_map_ptr->laneletLayer, goal_point_2d, 5);
 
   lanelet::ConstLanelets goal_lanelets;
+  auto add_to_goal_lanelets = [&](const auto & lls){
+    for (const auto & ll : lls){
+      if(
+        autoware::experimental::lanelet2_utils::is_road_lane(ll) &&
+        std::find(goal_lanelets.begin(), goal_lanelets.end(), ll) == goal_lanelets.end()){
+        goal_lanelets.push_back(ll);
+      }
+    }
+  };
   for (const auto & [dist, ll] : nearest_lanelets) {
     if (
       lanelet::geometry::inside(ll, goal_point_2d) &&
       std::find(goal_lanelets.begin(), goal_lanelets.end(), ll) == goal_lanelets.end()) {
-      goal_lanelets.push_back(ll);
+
+      if(autoware::experimental::lanelet2_utils::is_shoulder_lane(ll)){
+        const auto left_lanelets = planner_data.lanelet_map_ptr->laneletLayer.findUsages(ll.leftBound());
+        add_to_goal_lanelets(left_lanelets);
+
+        const auto right_lanelets = planner_data.lanelet_map_ptr->laneletLayer.findUsages(ll.rightBound());
+        add_to_goal_lanelets(right_lanelets);
+      }
+      else{
+        goal_lanelets.push_back(ll);
+      }
     }
   }
 
