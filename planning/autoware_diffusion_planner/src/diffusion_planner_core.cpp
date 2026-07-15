@@ -603,9 +603,17 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
   // average would alter the learned velocity profile and add preview delay.
   const int64_t trajectory_velocity_smoothing_window =
     is_velocity_representation_ ? 1 : params_.velocity_smoothing_window;
+  // parse_predictions() is expressed around the shifted reference pose when shift_x is enabled.
+  // Use that same reference as the base for the first displacement; passing the unshifted
+  // base_link position would add the base_link-to-center offset to the first speed calculation.
+  const geometry_msgs::msg::Pose trajectory_base_pose =
+    params_.shift_x
+      ? utils::shift_x(
+          frame_context.ego_kinematic_state.pose.pose, vehicle_spec_.base_link_to_center)
+      : frame_context.ego_kinematic_state.pose.pose;
   for (int i = 0; i < params_.batch_size; i++) {
     auto trajectory = postprocess::create_ego_trajectory(
-      agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose.position, i,
+      agent_poses, timestamp, trajectory_base_pose.position, i,
       trajectory_velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
 
     if (params_.shift_x) {
