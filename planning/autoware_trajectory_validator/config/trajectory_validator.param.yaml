@@ -59,8 +59,8 @@
           object_prioritized_object_earlier:
             enable_assessment: true
             ego_drac_acceleration:
-              safe: -1.5
-              danger: -3.0
+              safe_limit: -1.5
+              danger_limit: -3.0
               fatal_limit: -6.0
               enable_abandon: false
       rss:
