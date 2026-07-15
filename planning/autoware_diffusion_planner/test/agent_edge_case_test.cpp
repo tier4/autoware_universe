@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "autoware/diffusion_planner/conversion/agent.hpp"
+#include "autoware/diffusion_planner/dimensions.hpp"
 
 #include <Eigen/Dense>
 #include <autoware_utils/geometry/geometry.hpp>
@@ -23,6 +24,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <vector>
 
@@ -64,5 +66,57 @@ protected:
 
   TrackedObject tracked_object_;
 };
+
+TEST_F(AgentEdgeCaseTest, NewlyObservedAgentUsesLeadingZeroPadding)
+{
+  TrackedObjects objects;
+  objects.header.stamp.sec = 1;
+  objects.header.stamp.nanosec = 0;
+  objects.objects.push_back(tracked_object_);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+
+  const auto histories = agent_data.transformed_and_trimmed_histories(
+    Eigen::Matrix4d::Identity(), 1);
+  ASSERT_EQ(histories.size(), 1U);
+
+  const auto values = histories.front().as_array();
+  ASSERT_EQ(values.size(), static_cast<size_t>(INPUT_T_WITH_CURRENT * AGENT_STATE_DIM));
+  for (size_t i = 0; i < static_cast<size_t>(INPUT_T_WITH_CURRENT - 1) * AGENT_STATE_DIM; ++i) {
+    EXPECT_FLOAT_EQ(values[i], 0.0F) << "padding index " << i;
+  }
+  EXPECT_FLOAT_EQ(values[(INPUT_T_WITH_CURRENT - 1) * AGENT_STATE_DIM], 1.0F);
+  EXPECT_FLOAT_EQ(values[(INPUT_T_WITH_CURRENT - 1) * AGENT_STATE_DIM + 1], 2.0F);
+}
+
+TEST_F(AgentEdgeCaseTest, KeepsNonUnknownObjectsForTrainingContract)
+{
+  TrackedObjects objects;
+  objects.header.stamp.sec = 1;
+  objects.header.stamp.nanosec = 0;
+
+  auto hazard_object = tracked_object_;
+  hazard_object.object_id = autoware_utils_uuid::generate_uuid();
+  hazard_object.shape.type = autoware_perception_msgs::msg::Shape::POLYGON;
+  hazard_object.classification.front().label =
+    autoware_perception_msgs::msg::ObjectClassification::HAZARD;
+  objects.objects.push_back(hazard_object);
+
+  auto unknown_object = tracked_object_;
+  unknown_object.object_id = autoware_utils_uuid::generate_uuid();
+  unknown_object.classification.front().label =
+    autoware_perception_msgs::msg::ObjectClassification::UNKNOWN;
+  objects.objects.push_back(unknown_object);
+
+  AgentData agent_data;
+  agent_data.update_histories(objects);
+
+  const auto histories = agent_data.transformed_and_trimmed_histories(
+    Eigen::Matrix4d::Identity(), 2);
+  ASSERT_EQ(histories.size(), 1U);
+  EXPECT_EQ(histories.front().get_latest_state().object_id,
+            autoware_utils_uuid::to_hex_string(hazard_object.object_id));
+}
 
 }  // namespace autoware::diffusion_planner::test
