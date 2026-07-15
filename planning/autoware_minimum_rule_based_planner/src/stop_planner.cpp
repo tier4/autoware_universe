@@ -28,6 +28,8 @@
 #include <lanelet2_core/geometry/LineString.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 
+#include <algorithm>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <optional>
@@ -78,14 +80,43 @@ bool is_private(const lanelet::ConstLanelet & lanelet)
 }
 
 // Synthesize the entry edge of a lanelet (the segment joining the first points of its left and
-// right bounds) as a virtual stop line for zones without an explicit painted line.
+// right bounds) as a virtual stop line for zones without an explicit painted line. The line id is
+// the negated source lanelet id: it must be unique per edge because the marker visualization
+// dedups line strings by id (sharing InvalId would drop every synthesized edge but the first),
+// and negative so it can never collide with a real map line string id (always positive).
 lanelet::ConstLineString3d make_entry_edge(const lanelet::ConstLanelet & lanelet)
 {
   const auto & lp = lanelet.leftBound().front();
   const auto & rp = lanelet.rightBound().front();
   return lanelet::LineString3d(
-    lanelet::InvalId, {lanelet::Point3d(lanelet::InvalId, lp.x(), lp.y(), lp.z()),
-                       lanelet::Point3d(lanelet::InvalId, rp.x(), rp.y(), rp.z())});
+    -lanelet.id(), {lanelet::Point3d(lanelet::InvalId, lp.x(), lp.y(), lp.z()),
+                    lanelet::Point3d(lanelet::InvalId, rp.x(), rp.y(), rp.z())});
+}
+
+// Point at half the arc length of the line string. Unlike the chord midpoint of the two
+// endpoints, this always lies on the line even when it bends.
+lanelet::BasicPoint3d arc_length_midpoint(const lanelet::ConstLineString3d & line)
+{
+  if (line.empty()) return lanelet::BasicPoint3d(0.0, 0.0, 0.0);
+
+  double total_length = 0.0;
+  for (size_t i = 0; i + 1 < line.size(); ++i) {
+    total_length += (line[i + 1].basicPoint() - line[i].basicPoint()).norm();
+  }
+
+  const double half_length = 0.5 * total_length;
+  double accumulated = 0.0;
+  for (size_t i = 0; i + 1 < line.size(); ++i) {
+    const auto p0 = line[i].basicPoint();
+    const auto p1 = line[i + 1].basicPoint();
+    const double segment_length = (p1 - p0).norm();
+    if (segment_length > 0.0 && accumulated + segment_length >= half_length) {
+      const double ratio = (half_length - accumulated) / segment_length;
+      return p0 + ratio * (p1 - p0);
+    }
+    accumulated += segment_length;
+  }
+  return line.back().basicPoint();
 }
 
 // Concatenate the centerlines of the given lanelets into a single reference path used to reason
@@ -174,6 +205,90 @@ bool is_crosswalk_or_walkway(const lanelet::ConstLanelet & lanelet, bool & is_wa
   return is_walkway || subtype == lanelet::AttributeValueString::Crosswalk;
 }
 
+// Arc-length range [begin, end] of each lanelet's centerline on the concatenated route path.
+std::vector<std::pair<double, double>> lanelet_arc_ranges(const lanelet::ConstLanelets & lanelets)
+{
+  std::vector<std::pair<double, double>> ranges;
+  ranges.reserve(lanelets.size());
+  double accumulated = 0.0;
+  for (const auto & lanelet : lanelets) {
+    double length = 0.0;
+    const auto & centerline = lanelet.centerline();
+    for (size_t i = 0; i + 1 < centerline.size(); ++i) {
+      length += std::hypot(
+        centerline[i + 1].x() - centerline[i].x(), centerline[i + 1].y() - centerline[i].y());
+    }
+    ranges.emplace_back(accumulated, accumulated + length);
+    accumulated += length;
+  }
+  return ranges;
+}
+
+// Arc lengths (on the route path) where the path crosses the outline of the given lanelet
+// polygon, restricted to [min_arc, max_arc].
+std::vector<double> lanelet_outline_crossing_arcs(
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & route_path,
+  const lanelet::ConstLanelet & lanelet, const double min_arc, const double max_arc)
+{
+  std::vector<double> arcs;
+  if (route_path.size() < 2) return arcs;
+
+  lanelet::BasicLineString2d path_2d;
+  path_2d.reserve(route_path.size());
+  for (const auto & point : route_path) {
+    path_2d.emplace_back(point.pose.position.x, point.pose.position.y);
+  }
+
+  const auto outline = lanelet.polygon2d().basicPolygon();
+  lanelet::BasicLineString2d ring(outline.begin(), outline.end());
+  if (ring.empty()) return arcs;
+  ring.push_back(ring.front());  // close the ring
+
+  std::vector<lanelet::BasicPoint2d> crossings;
+  boost::geometry::intersection(path_2d, ring, crossings);
+  for (const auto & crossing : crossings) {
+    geometry_msgs::msg::Point point;
+    point.x = crossing.x();
+    point.y = crossing.y();
+    const double arc = autoware::motion_utils::calcSignedArcLength(route_path, 0UL, point);
+    if (arc >= min_arc && arc <= max_arc) {
+      arcs.push_back(arc);
+    }
+  }
+  return arcs;
+}
+
+// Synthesize a stop line perpendicular to the route path at the given arc length.
+lanelet::ConstLineString3d make_perpendicular_line(
+  const std::vector<autoware_planning_msgs::msg::TrajectoryPoint> & route_path, const double arc,
+  const double half_width, const lanelet::Id id)
+{
+  double accumulated = 0.0;
+  for (size_t i = 0; i + 1 < route_path.size(); ++i) {
+    const auto & p0 = route_path[i].pose.position;
+    const auto & p1 = route_path[i + 1].pose.position;
+    const double segment_length = std::hypot(p1.x - p0.x, p1.y - p0.y);
+    const bool is_last_segment = (i + 2 == route_path.size());
+    if (segment_length > 0.0 && (accumulated + segment_length >= arc || is_last_segment)) {
+      const double ratio = std::clamp((arc - accumulated) / segment_length, 0.0, 1.0);
+      const double cx = p0.x + ratio * (p1.x - p0.x);
+      const double cy = p0.y + ratio * (p1.y - p0.y);
+      const double cz = p0.z + ratio * (p1.z - p0.z);
+      const double nx = -(p1.y - p0.y) / segment_length;
+      const double ny = (p1.x - p0.x) / segment_length;
+      return lanelet::LineString3d(
+        id, {lanelet::Point3d(lanelet::InvalId, cx - nx * half_width, cy - ny * half_width, cz),
+             lanelet::Point3d(lanelet::InvalId, cx + nx * half_width, cy + ny * half_width, cz)});
+    }
+    accumulated += segment_length;
+  }
+  // degenerate path: fall back to a point-sized line at the first point
+  const auto & p = route_path.front().pose.position;
+  return lanelet::LineString3d(
+    id, {lanelet::Point3d(lanelet::InvalId, p.x, p.y, p.z),
+         lanelet::Point3d(lanelet::InvalId, p.x, p.y, p.z)});
+}
+
 // Explicit stop line for a crosswalk/walkway lanelet from a RoadMarking regulatory element whose
 // "crosswalk_id" attribute points back to the lanelet (upstream getStopLineFromMap equivalent).
 std::optional<lanelet::ConstLineString3d> road_marking_stop_line_for_crosswalk(
@@ -258,6 +373,8 @@ std::vector<StopLine> StopPlanner::collect_stop_lines(const RouteContext & route
     }
   }
 
+  const auto route_path = build_route_path(preferred_lanelets);
+
   // 4. 横断歩道 / 歩道: crosswalk / walkway lanelets overlapping the route lanelets, found via
   // the map's spatial index (RTree) per route lanelet plus a 2D polygon-overlap check — the same
   // approach as the upstream behavior_velocity crosswalk/walkway modules
@@ -279,7 +396,6 @@ std::vector<StopLine> StopPlanner::collect_stop_lines(const RouteContext & route
       }
     }
 
-    const auto route_path = build_route_path(preferred_lanelets);
     std::set<lanelet::Id> found_crosswalks;
     for (const auto & route_lanelet : preferred_lanelets) {
       const auto nearby_lanelets = route_context.lanelet_map_ptr->laneletLayer.search(
@@ -307,14 +423,98 @@ std::vector<StopLine> StopPlanner::collect_stop_lines(const RouteContext & route
     }
   }
 
-  // 5. 私有地入退出: transitions of the location attribute between private and non-private along
-  // the preferred lane sequence (a single ordered chain, unlike the flattened route_lanelets which
-  // interleaves parallel lanes). Stop at the entry edge of the lanelet being entered.
-  for (size_t i = 1; i < preferred_lanelets.size(); ++i) {
-    if (is_private(preferred_lanelets[i]) != is_private(preferred_lanelets[i - 1])) {
-      add_line(
-        make_entry_edge(preferred_lanelets[i]), StopLineType::PrivateArea,
-        preferred_lanelets[i].id());
+  // 5. 私有地入退出: maximal runs of location=private lanelets along the preferred lane sequence
+  // (a single ordered chain, unlike the flattened route_lanelets which interleaves parallel
+  // lanes). Following the upstream merge_from_private semantics, the stop line is placed where
+  // the route path actually leaves the public road (entry) or enters it again (exit) — the
+  // private connector lanelet spatially overlaps the public road at its ends, so its start/end
+  // edges lie on the roadway and are not usable as stop positions. The road-departure/entry
+  // points are found as crossings of the route path with the outlines of non-private road
+  // lanelets overlapping the connector; when none is found (e.g. no overlap in the map, or no
+  // map available) the lanelet entry edge is used as a fallback.
+  {
+    const auto arc_ranges = lanelet_arc_ranges(preferred_lanelets);
+    constexpr double stop_line_half_width_m = 3.0;
+    // Synthesized-line id offsets: keep private entry/exit line ids distinct from each other and
+    // from the -id intersection entry edges possibly synthesized for the same connector lanelet
+    // (the marker visualization dedups line strings by id).
+    constexpr lanelet::Id private_entry_id_offset = INT64_C(1) << 40;
+    constexpr lanelet::Id private_exit_id_offset = INT64_C(1) << 41;
+
+    // Non-private road lanelets spatially overlapping the given connector lanelet.
+    const auto overlapping_public_roads = [&](const lanelet::ConstLanelet & connector) {
+      lanelet::ConstLanelets public_roads;
+      if (!route_context.lanelet_map_ptr) return public_roads;
+      const auto nearby_lanelets = route_context.lanelet_map_ptr->laneletLayer.search(
+        lanelet::geometry::boundingBox2d(connector));
+      for (const auto & candidate : nearby_lanelets) {
+        if (candidate.id() == connector.id()) continue;
+        if (
+          candidate.attributeOr(lanelet::AttributeNamesString::Subtype, std::string("")) !=
+          lanelet::AttributeValueString::Road)
+          continue;
+        if (is_private(candidate)) continue;
+        if (!lanelet::geometry::overlaps2d(connector, candidate)) continue;
+        public_roads.push_back(candidate);
+      }
+      return public_roads;
+    };
+
+    for (size_t i = 0; i < preferred_lanelets.size();) {
+      if (!is_private(preferred_lanelets[i])) {
+        ++i;
+        continue;
+      }
+      const size_t run_start = i;
+      while (i < preferred_lanelets.size() && is_private(preferred_lanelets[i])) ++i;
+      const size_t run_end = i - 1;
+
+      // 進入: stop where the route path leaves the public road (the farthest crossing with an
+      // overlapping public road outline inside the entry connector lanelet).
+      if (run_start > 0) {
+        const auto & connector = preferred_lanelets[run_start];
+        std::optional<double> departure_arc;
+        for (const auto & road : overlapping_public_roads(connector)) {
+          for (const double arc : lanelet_outline_crossing_arcs(
+                 route_path, road, arc_ranges[run_start].first, arc_ranges[run_start].second)) {
+            if (!departure_arc || arc > *departure_arc) departure_arc = arc;
+          }
+        }
+        if (departure_arc) {
+          add_line(
+            make_perpendicular_line(
+              route_path, *departure_arc, stop_line_half_width_m,
+              -(connector.id() + private_entry_id_offset)),
+            StopLineType::PrivateArea, connector.id() + private_entry_id_offset);
+        } else {
+          add_line(make_entry_edge(connector), StopLineType::PrivateArea, connector.id());
+        }
+      }
+
+      // 退出: stop where the route path enters the public road again (the nearest crossing with
+      // an overlapping public road outline inside the exit connector lanelet) — equivalent to the
+      // upstream merge_from_private stop before the first conflicting lane.
+      if (run_end + 1 < preferred_lanelets.size()) {
+        const auto & connector = preferred_lanelets[run_end];
+        std::optional<double> merge_arc;
+        for (const auto & road : overlapping_public_roads(connector)) {
+          for (const double arc : lanelet_outline_crossing_arcs(
+                 route_path, road, arc_ranges[run_end].first, arc_ranges[run_end].second)) {
+            if (!merge_arc || arc < *merge_arc) merge_arc = arc;
+          }
+        }
+        if (merge_arc) {
+          add_line(
+            make_perpendicular_line(
+              route_path, *merge_arc, stop_line_half_width_m,
+              -(connector.id() + private_exit_id_offset)),
+            StopLineType::PrivateArea, connector.id() + private_exit_id_offset);
+        } else {
+          add_line(
+            make_entry_edge(preferred_lanelets[run_end + 1]), StopLineType::PrivateArea,
+            preferred_lanelets[run_end + 1].id());
+        }
+      }
     }
   }
 
@@ -399,12 +599,18 @@ std::optional<double> StopPlanner::select_stop_arc_length(
       crossing.y = intersection.y();
       const double crossing_arc_length =
         autoware::motion_utils::calcSignedArcLength(trajectory_points, 0UL, crossing);
-      // Stop so the vehicle front bumper stops a margin before the crossing point. Crosswalks and
-      // walkways without an explicit stop line use the larger stop_distance_from_crosswalk margin
-      // (upstream behavior_velocity semantics).
-      const double stop_margin = stop_line.without_explicit_stop_line
-                                   ? params.stop_distance_from_crosswalk
-                                   : params.stop_margin_distance;
+      // Stop so the vehicle front bumper stops a margin before the crossing point. The base
+      // margin is stop_margin_distance; crosswalks/walkways without an explicit stop line and
+      // private-area boundaries additionally keep their type-specific stop distance (upstream
+      // behavior_velocity semantics: stop_distance_from_crosswalk / merge_from_private
+      // stopline_margin).
+      double stop_margin = params.stop_margin_distance;
+      if (stop_line.without_explicit_stop_line) {
+        stop_margin += params.stop_distance_from_crosswalk;
+      }
+      if (stop_line.type == StopLineType::PrivateArea) {
+        stop_margin += params.stop_distance_from_private_area;
+      }
       const double stop_point_arc_length =
         crossing_arc_length - params.base_link_to_front - stop_margin;
       // Skip stop points the vehicle has already passed and those too close to stop for with the
@@ -482,12 +688,11 @@ visualization_msgs::msg::MarkerArray StopPlanner::create_stop_line_marker_array(
     text_marker.id = text_id++;
     text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
     text_marker.action = visualization_msgs::msg::Marker::ADD;
-    const auto & front = stop_line.line.front();
-    const auto & back = stop_line.line.back();
-    text_marker.pose.position.x = 0.5 * (front.x() + back.x());
-    text_marker.pose.position.y = 0.5 * (front.y() + back.y());
-    text_marker.pose.position.z = 0.5 * (front.z() + back.z()) + text_z_offset_m +
-                                  text_z_step_per_type_m * static_cast<double>(stop_line.type);
+    const auto midpoint = arc_length_midpoint(stop_line.line);
+    text_marker.pose.position.x = midpoint.x();
+    text_marker.pose.position.y = midpoint.y();
+    text_marker.pose.position.z =
+      midpoint.z() + text_z_offset_m + text_z_step_per_type_m * static_cast<double>(stop_line.type);
     text_marker.pose.orientation.w = 1.0;
     text_marker.scale.z = text_height_m;
     text_marker.color = make_color(1.0f, 1.0f, 1.0f, 0.9f);

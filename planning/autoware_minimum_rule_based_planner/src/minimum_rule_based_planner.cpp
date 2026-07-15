@@ -461,6 +461,8 @@ std::optional<MinimumRuleBasedPlannerNode::StopResult> MinimumRuleBasedPlannerNo
   selection_params.stop_margin_distance = params_.stop_planning.stop_margin_distance;
   selection_params.stop_distance_from_crosswalk =
     params_.stop_planning.stop_distance_from_crosswalk;
+  selection_params.stop_distance_from_private_area =
+    params_.stop_planning.stop_distance_from_private_area;
   selection_params.base_link_to_front = vehicle_info_.max_longitudinal_offset_m;
 
   const double ego_velocity = input_data.odometry_ptr->twist.twist.linear.x;

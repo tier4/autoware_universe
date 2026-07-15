@@ -80,8 +80,11 @@ struct StopSelectionParams
   double max_deceleration;  //!< maximum deceleration used for the braking-distance check [m/s^2]
   double max_jerk;          //!< maximum jerk used for the braking-distance check [m/s^3]
   double stop_margin_distance;  //!< distance to stop before the stop line crossing [m]
-  //! distance to stop before a crosswalk/walkway without an explicit stop line [m]
+  //! distance to stop before a crosswalk/walkway without an explicit stop line, added to
+  //! stop_margin_distance [m]
   double stop_distance_from_crosswalk;
+  //! distance to stop before a private-area boundary, added to stop_margin_distance [m]
+  double stop_distance_from_private_area;
   double base_link_to_front;  //!< vehicle front offset from base_link [m]
 };
 
@@ -113,8 +116,11 @@ public:
    *    attribute, or the entry-side bound of the crosswalk lanelet.
    *  - traffic light stop lines -> TrafficLight
    *  - lanelets with a turn_direction attribute -> Intersection (entry edge)
-   *  - private-area (location=private) entry/exit transitions along the preferred lane sequence
-   *    -> PrivateArea (entry edge)
+   *  - private-area (location=private) runs along the preferred lane sequence -> PrivateArea.
+   *    The stop line is placed where the route path leaves the public road (entry) or enters it
+   *    again (exit, upstream merge_from_private semantics), found as crossings with the outlines
+   *    of non-private road lanelets overlapping the connector lanelet; the connector's entry
+   *    edge is used as a fallback when no overlapping road is found.
    *
    * Duplicate targets (shared between lanelets) are returned only once.
    */

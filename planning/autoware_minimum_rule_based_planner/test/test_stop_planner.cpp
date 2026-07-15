@@ -72,6 +72,7 @@ StopSelectionParams make_params()
   params.max_jerk = 5.0;
   params.stop_margin_distance = 1.0;
   params.stop_distance_from_crosswalk = 3.5;
+  params.stop_distance_from_private_area = 3.0;
   params.base_link_to_front = 4.0;
   return params;
 }
@@ -148,8 +149,8 @@ TEST(StopPlannerTest, SelectAppliesCrosswalkMarginWithoutExplicitStopLine)
   StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
   const auto trajectory = make_straight_trajectory(30);
 
-  // A walkway bound used as the stop line because the map has no explicit stop line: the larger
-  // stop_distance_from_crosswalk margin applies instead of stop_margin_distance.
+  // A walkway bound used as the stop line because the map has no explicit stop line: the
+  // stop_distance_from_crosswalk margin applies on top of stop_margin_distance.
   auto stop_line = make_crossing_stop_line(1, 20.0, StopLineType::Walkway);
   stop_line.without_explicit_stop_line = true;
   const std::vector<StopLine> stop_lines{stop_line};
@@ -158,8 +159,26 @@ TEST(StopPlannerTest, SelectAppliesCrosswalkMarginWithoutExplicitStopLine)
     stop_lines, trajectory, make_ego_pose(0.0), /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
     make_params(), /*include_possibility=*/false);
   ASSERT_TRUE(arc.has_value());
-  // crossing (20) - front offset (4) - stop_distance_from_crosswalk (3.5) = 12.5
-  EXPECT_NEAR(*arc, 12.5, 1e-6);
+  // crossing (20) - front offset (4) - (stop_margin (1) + stop_distance_from_crosswalk (3.5))
+  EXPECT_NEAR(*arc, 11.5, 1e-6);
+}
+
+TEST(StopPlannerTest, SelectAppliesPrivateAreaMargin)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  const auto trajectory = make_straight_trajectory(30);
+
+  // A private-area boundary line: the stop_distance_from_private_area margin applies on top of
+  // stop_margin_distance so the vehicle keeps a gap to the boundary.
+  const std::vector<StopLine> stop_lines{
+    make_crossing_stop_line(1, 20.0, StopLineType::PrivateArea)};
+
+  const auto arc = planner.select_stop_arc_length(
+    stop_lines, trajectory, make_ego_pose(0.0), /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
+    make_params(), /*include_possibility=*/true);
+  ASSERT_TRUE(arc.has_value());
+  // crossing (20) - front offset (4) - (stop_margin (1) + stop_distance_from_private_area (3))
+  EXPECT_NEAR(*arc, 12.0, 1e-6);
 }
 
 TEST(StopPlannerTest, SelectPicksNearest)
@@ -383,6 +402,9 @@ TEST(StopPlannerTest, CollectDetectsIntersectionEntry)
   EXPECT_EQ(stop_lines.front().type, StopLineType::Intersection);
   // Entry edge is at the intersection lanelet start (x = 10).
   EXPECT_NEAR(stop_lines.front().line.front().x(), 10.0, 1e-6);
+  // Synthesized edges carry a unique id (negated source lanelet id): the marker visualization
+  // dedups line strings by id, so sharing InvalId would drop every synthesized line but the first.
+  EXPECT_EQ(stop_lines.front().line.id(), -2);
 }
 
 TEST(StopPlannerTest, CollectDetectsPrivateAreaTransition)
@@ -402,6 +424,85 @@ TEST(StopPlannerTest, CollectDetectsPrivateAreaTransition)
   ASSERT_EQ(stop_lines.size(), 1u);
   EXPECT_EQ(stop_lines.front().type, StopLineType::PrivateArea);
   EXPECT_NEAR(stop_lines.front().line.front().x(), 10.0, 1e-6);
+  EXPECT_EQ(stop_lines.front().line.id(), -2);
+}
+
+TEST(StopPlannerTest, CollectPlacesPrivateEntryAtRoadDeparture)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+
+  // Route: public road x[0,10], then a private connector branching off to the upper side.
+  auto route_road = make_road_lanelet(1, 0.0, 10.0);
+  lanelet::LineString3d conn_left(
+    200, {lanelet::Point3d(201, 10.0, 2.0, 0.0), lanelet::Point3d(202, 20.0, 12.0, 0.0)});
+  lanelet::LineString3d conn_right(
+    210, {lanelet::Point3d(211, 10.0, -2.0, 0.0), lanelet::Point3d(212, 24.0, 8.0, 0.0)});
+  lanelet::Lanelet connector(2, conn_left, conn_right);
+  connector.attributes()[lanelet::AttributeNamesString::Location] =
+    lanelet::AttributeValueString::Private;
+
+  // The straight public road continues (map only, not on the route) and overlaps the connector.
+  auto straight_road = make_road_lanelet(9, 10.0, 20.0);
+  straight_road.attributes()[lanelet::AttributeNamesString::Subtype] =
+    lanelet::AttributeValueString::Road;
+
+  auto map = std::make_shared<lanelet::LaneletMap>();
+  map->add(straight_road);
+
+  RouteContext ctx;
+  ctx.lanelet_map_ptr = map;
+  ctx.preferred_lanelets = {route_road, connector};
+  const auto stop_lines = planner.collect_stop_lines(ctx);
+
+  // The stop line sits where the connector centerline leaves the straight road (y = 2), not at
+  // the connector start edge (x = 10, on the roadway).
+  ASSERT_EQ(stop_lines.size(), 1u);
+  EXPECT_EQ(stop_lines.front().type, StopLineType::PrivateArea);
+  const auto & line = stop_lines.front().line;
+  const double mid_x = 0.5 * (line.front().x() + line.back().x());
+  const double mid_y = 0.5 * (line.front().y() + line.back().y());
+  EXPECT_NEAR(mid_y, 2.0, 0.2);
+  EXPECT_GT(mid_x, 10.5);
+  EXPECT_LT(mid_x, 20.0);
+}
+
+TEST(StopPlannerTest, CollectPlacesPrivateExitAtRoadEntry)
+{
+  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+
+  // Route: a private connector descending from the premises into the road, then the public road.
+  // (travel direction is down-right, so the +x-shifted bound is the left one)
+  lanelet::LineString3d conn_left(
+    200, {lanelet::Point3d(201, 6.0, 10.0, 0.0), lanelet::Point3d(202, 14.0, -2.0, 0.0)});
+  lanelet::LineString3d conn_right(
+    210, {lanelet::Point3d(211, 2.0, 10.0, 0.0), lanelet::Point3d(212, 10.0, -2.0, 0.0)});
+  lanelet::Lanelet connector(2, conn_left, conn_right);
+  connector.attributes()[lanelet::AttributeNamesString::Location] =
+    lanelet::AttributeValueString::Private;
+  auto merged_road = make_road_lanelet(3, 12.0, 18.0);
+
+  // The public road being entered (map only) overlaps the connector's lower part.
+  auto road = make_road_lanelet(9, 0.0, 30.0);
+  road.attributes()[lanelet::AttributeNamesString::Subtype] = lanelet::AttributeValueString::Road;
+
+  auto map = std::make_shared<lanelet::LaneletMap>();
+  map->add(road);
+
+  RouteContext ctx;
+  ctx.lanelet_map_ptr = map;
+  ctx.preferred_lanelets = {connector, merged_road};
+  const auto stop_lines = planner.collect_stop_lines(ctx);
+
+  // The stop line sits where the connector centerline first enters the road (y = 2), i.e. before
+  // merging — upstream merge_from_private semantics — not at the merged lanelet start (x = 12).
+  ASSERT_EQ(stop_lines.size(), 1u);
+  EXPECT_EQ(stop_lines.front().type, StopLineType::PrivateArea);
+  const auto & line = stop_lines.front().line;
+  const double mid_x = 0.5 * (line.front().x() + line.back().x());
+  const double mid_y = 0.5 * (line.front().y() + line.back().y());
+  EXPECT_NEAR(mid_y, 2.0, 0.3);
+  EXPECT_GT(mid_x, 5.0);
+  EXPECT_LT(mid_x, 13.0);
 }
 
 TEST(StopPlannerTest, CollectDetectsWalkwayCrossingEntrySideOnly)
