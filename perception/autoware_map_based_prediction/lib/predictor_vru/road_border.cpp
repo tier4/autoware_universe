@@ -170,8 +170,7 @@ std::vector<LineString2d> remove_crosswalk_corridor(
   for (const auto & candidate : candidates) {
     auto pieces = clip_out_corridors(candidate, corridors);
     result.insert(
-      result.end(), std::make_move_iterator(pieces.begin()),
-      std::make_move_iterator(pieces.end()));
+      result.end(), std::make_move_iterator(pieces.begin()), std::make_move_iterator(pieces.end()));
   }
   return result;
 }
@@ -216,13 +215,12 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
       *lanelet_map_ptr_,
       path_cut::get_bbox_contain_path_with_footprint(predicted_path, object_shape),
       crosswalk_corridor_extend_margin);
-      
+
   const std::vector<autoware_utils_geometry::LineString2d> candidates_removed_crosswalk_area =
     remove_crosswalk_corridor(candidates, crosswalk_corridors);
 
-  const std::optional<size_t> road_border_crossing_index =
-    path_cut::find_footprint_crossing_index(
-      predicted_path, object_shape, candidates_removed_crosswalk_area);
+  const std::optional<size_t> road_border_crossing_index = path_cut::find_footprint_crossing_index(
+    predicted_path, object_shape, candidates_removed_crosswalk_area);
   if (!road_border_crossing_index) {
     return predicted_path;
   }
