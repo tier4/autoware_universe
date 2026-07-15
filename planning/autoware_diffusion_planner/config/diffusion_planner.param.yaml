@@ -37,6 +37,12 @@
     use_time_interpolation: false
     use_mppi_optimizer: false
     shadow_mode: false
+    force_takeoff:
+      enable: true
+      only_after_engage: true # true: arm only at the engage transition; false: arm whenever the ego is static after having engaged once
+      stationary_duration_s: 3.0 # [s] activate if the ego has not started moving this long
+      release_speed_mps: 0.5 # [m/s] disable start guidance once the real ego speed reaches this
+      min_agent_distance_m: 20.0 # [m] no tracked object may be within this radius
     planning_factor:
       enable_stop: true
       enable_slowdown: false

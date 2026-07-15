@@ -40,6 +40,7 @@
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <autoware_system_msgs/msg/autoware_state.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
@@ -47,7 +48,9 @@
 #include <std_srvs/srv/set_bool.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -58,6 +61,7 @@ using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_map_msgs::msg::LaneletMapBin;
 using autoware_perception_msgs::msg::PredictedObjects;
 using autoware_planning_msgs::msg::Trajectory;
+using autoware_system_msgs::msg::AutowareState;
 using autoware_vehicle_msgs::msg::SteeringReport;
 using autoware_vehicle_msgs::msg::TurnIndicatorsCommand;
 using HADMapBin = autoware_map_msgs::msg::LaneletMapBin;
@@ -75,6 +79,15 @@ struct DiffusionPlannerDebugParams
   bool publish_debug_route{true};
   bool publish_debug_map{false};
   bool publish_debug_linestrings{true};
+};
+
+struct ForceTakeoffParams
+{
+  bool enable{true};
+  bool only_after_engage{true};
+  double stationary_duration_s{3.0};
+  double release_speed_mps{0.5};
+  double min_agent_distance_m{20.0};
 };
 
 struct DiffusionPlannerPlanningFactorParams
@@ -212,6 +225,18 @@ private:
   void on_set_centerline_guidance_enabled(
     const SetBool::Request::SharedPtr request, const SetBool::Response::SharedPtr response);
 
+  /**
+   * @brief Force takeoff state machine: enables start (take-off) guidance when the ego stays
+   * stationary after engage, and disables it once the ego starts moving.
+   * @param odometry Current ego odometry.
+   * @param objects Currently tracked objects (proximity gate).
+   * @param autoware_state Latest Autoware state message (may be null if none arrived yet).
+   * @param current_time Current ROS time.
+   */
+  void update_force_takeoff_guidance(
+    const Odometry & odometry, const TrackedObjects & objects,
+    const AutowareState::ConstSharedPtr & autoware_state, const rclcpp::Time & current_time);
+
   // Core logic instance
   std::unique_ptr<DiffusionPlannerCore> core_;
 
@@ -259,6 +284,8 @@ private:
     sub_traffic_signals_{this, "~/input/traffic_signals", rclcpp::QoS{10}};
   autoware_utils::InterProcessPollingSubscriber<TurnIndicatorsReport> sub_turn_indicators_{
     this, "~/input/turn_indicators"};
+  autoware_utils::InterProcessPollingSubscriber<AutowareState> sub_autoware_state_{
+    this, "~/input/autoware_state"};
   autoware_utils::InterProcessPollingSubscriber<
     LaneletRoute, autoware_utils::polling_policy::Newest>
     route_subscriber_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
@@ -279,6 +306,14 @@ private:
   DiffusionPlannerPlanningFactorParams planning_factor_params_;
 
   std::unique_ptr<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface> mppi_optimizer_;
+
+  // Force takeoff (start guidance) state
+  ForceTakeoffParams force_takeoff_params_;
+  std::optional<uint8_t> previous_autoware_state_;
+  bool has_engaged_{false};
+  std::optional<rclcpp::Time> stall_start_time_;
+  bool force_takeoff_active_{false};
+  bool start_guidance_enabled_by_service_{false};
 };
 
 }  // namespace autoware::diffusion_planner

@@ -261,6 +261,46 @@
             "slowdown_accel_threshold"
           ]
         },
+        "force_takeoff": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable the force takeoff feature (auto-enables start guidance when the ego stalls)"
+            },
+            "only_after_engage": {
+              "type": "boolean",
+              "default": true,
+              "description": "If true, arm the stall timer only at the engage transition; if false, arm it whenever the ego is stationary after having engaged at least once"
+            },
+            "stationary_duration_s": {
+              "type": "number",
+              "default": 3.0,
+              "minimum": 0,
+              "description": "Activate if the ego has not started moving this long [s]"
+            },
+            "release_speed_mps": {
+              "type": "number",
+              "default": 0.5,
+              "minimum": 0,
+              "description": "Real ego speed at which start guidance is disabled again [m/s]"
+            },
+            "min_agent_distance_m": {
+              "type": "number",
+              "default": 20.0,
+              "minimum": 0,
+              "description": "No tracked object may be within this radius of the ego for the guidance to activate or stay active [m]"
+            }
+          },
+          "required": [
+            "enable",
+            "only_after_engage",
+            "stationary_duration_s",
+            "release_speed_mps",
+            "min_agent_distance_m"
+          ]
+        },
         "debug_params": {
           "type": "object",
           "properties": {

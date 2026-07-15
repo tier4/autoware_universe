@@ -27,7 +27,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <functional>
 #include <iomanip>
@@ -216,6 +218,17 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<double>("guidance.centerline_guidance.start_time_s", 2.0);
   params_.use_mppi_optimizer = this->declare_parameter<bool>("use_mppi_optimizer", false);
   params_.shadow_mode = this->declare_parameter<bool>("shadow_mode", false);
+
+  // force takeoff (start guidance) params
+  force_takeoff_params_.enable = this->declare_parameter<bool>("force_takeoff.enable", true);
+  force_takeoff_params_.only_after_engage =
+    this->declare_parameter<bool>("force_takeoff.only_after_engage", true);
+  force_takeoff_params_.stationary_duration_s =
+    this->declare_parameter<double>("force_takeoff.stationary_duration_s", 3.0);
+  force_takeoff_params_.release_speed_mps =
+    this->declare_parameter<double>("force_takeoff.release_speed_mps", 0.5);
+  force_takeoff_params_.min_agent_distance_m =
+    this->declare_parameter<double>("force_takeoff.min_agent_distance_m", 20.0);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_cost_params(*this);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
 
@@ -411,6 +424,22 @@ SetParametersResult DiffusionPlanner::on_parameter(
   }
 
   {
+    ForceTakeoffParams temp_force_takeoff_params = force_takeoff_params_;
+    update_param<bool>(parameters, "force_takeoff.enable", temp_force_takeoff_params.enable);
+    update_param<bool>(
+      parameters, "force_takeoff.only_after_engage", temp_force_takeoff_params.only_after_engage);
+    update_param<double>(
+      parameters, "force_takeoff.stationary_duration_s",
+      temp_force_takeoff_params.stationary_duration_s);
+    update_param<double>(
+      parameters, "force_takeoff.release_speed_mps", temp_force_takeoff_params.release_speed_mps);
+    update_param<double>(
+      parameters, "force_takeoff.min_agent_distance_m",
+      temp_force_takeoff_params.min_agent_distance_m);
+    force_takeoff_params_ = temp_force_takeoff_params;
+  }
+
+  {
     DiffusionPlannerDebugParams temp_debug_params = debug_params_;
     update_param<bool>(
       parameters, "debug_params.publish_debug_map", temp_debug_params.publish_debug_map);
@@ -431,6 +460,12 @@ SetParametersResult DiffusionPlanner::on_parameter(
 void DiffusionPlanner::on_set_start_guidance_enabled(
   const SetBool::Request::SharedPtr request, const SetBool::Response::SharedPtr response)
 {
+  start_guidance_enabled_by_service_ = request->data;
+  if (force_takeoff_active_) {
+    // Operator override: the service call wins over the force takeoff state machine.
+    force_takeoff_active_ = false;
+    RCLCPP_INFO(get_logger(), "Force takeoff cancelled by set_start_guidance_enabled service call");
+  }
   core_->set_start_guidance_enabled(request->data);
 
   response->success = true;
@@ -530,6 +565,11 @@ void DiffusionPlanner::on_timer()
   auto traffic_signals = sub_traffic_signals_.take_data();
   auto temp_route_ptr = route_subscriber_.take_data();
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
+  auto autoware_state_ptr = sub_autoware_state_.take_data();
+
+  if (ego_kinematic_state && objects) {
+    update_force_takeoff_guidance(*ego_kinematic_state, *objects, autoware_state_ptr, current_time);
+  }
 
   // Prepare frame context using core
   const std::optional<FrameContext> frame_context = core_->create_frame_context(
@@ -686,6 +726,112 @@ void DiffusionPlanner::on_timer()
   processing_time_msg.stamp = get_clock()->now();
   processing_time_msg.data = stop_watch_ptr_->toc("processing_time", true);
   debug_processing_time_pub_->publish(processing_time_msg);
+}
+
+void DiffusionPlanner::update_force_takeoff_guidance(
+  const Odometry & odometry, const TrackedObjects & objects,
+  const AutowareState::ConstSharedPtr & autoware_state, const rclcpp::Time & current_time)
+{
+  const auto & linear = odometry.twist.twist.linear;
+  const double speed = std::hypot(linear.x, linear.y);
+
+  const auto & ego_position = odometry.pose.pose.position;
+  const bool agent_nearby = std::any_of(
+    objects.objects.begin(), objects.objects.end(), [&](const auto & object) {
+      const auto & position = object.kinematics.pose_with_covariance.pose.position;
+      return std::hypot(position.x - ego_position.x, position.y - ego_position.y) <
+             force_takeoff_params_.min_agent_distance_m;
+    });
+
+  bool engage_transition = false;
+  if (autoware_state) {
+    const uint8_t state = autoware_state->state;
+    engage_transition = previous_autoware_state_.has_value() &&
+                        *previous_autoware_state_ != AutowareState::DRIVING &&
+                        state == AutowareState::DRIVING;
+    if (state == AutowareState::DRIVING) {
+      has_engaged_ = true;
+    }
+    previous_autoware_state_ = state;
+  }
+
+  if (force_takeoff_active_) {
+    if (agent_nearby) {
+      force_takeoff_active_ = false;
+      core_->set_start_guidance_enabled(start_guidance_enabled_by_service_);
+      RCLCPP_WARN(
+        get_logger(), "Force takeoff aborted: agent within %.2f m of the ego",
+        force_takeoff_params_.min_agent_distance_m);
+    } else if (speed >= force_takeoff_params_.release_speed_mps) {
+      force_takeoff_active_ = false;
+      core_->set_start_guidance_enabled(start_guidance_enabled_by_service_);
+      RCLCPP_INFO(get_logger(), "Force takeoff released: ego speed %.2f m/s", speed);
+    } else {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+        "Force takeoff active: start guidance enabled until ego speed reaches %.2f m/s",
+        force_takeoff_params_.release_speed_mps);
+    }
+    return;
+  }
+
+  if (!force_takeoff_params_.enable) {
+    stall_start_time_.reset();
+    return;
+  }
+
+  if (force_takeoff_params_.only_after_engage) {
+    // Arm the stall timer only at the engage transition.
+    if (engage_transition) {
+      stall_start_time_ = current_time;
+      RCLCPP_INFO(
+        get_logger(),
+        "Engage transition detected: force takeoff will activate if the ego does not move within "
+        "%.2f s",
+        force_takeoff_params_.stationary_duration_s);
+    }
+  } else if (has_engaged_) {
+    // Arm the stall timer whenever the ego is stationary, once engaged at least once.
+    if (speed < constants::MOVING_VELOCITY_THRESHOLD_MPS) {
+      if (!stall_start_time_.has_value()) {
+        stall_start_time_ = current_time;
+      }
+    } else {
+      stall_start_time_.reset();
+    }
+  }
+
+  if (!stall_start_time_.has_value()) {
+    return;
+  }
+
+  if (speed >= constants::MOVING_VELOCITY_THRESHOLD_MPS) {
+    RCLCPP_INFO(
+      get_logger(), "Force takeoff not needed: ego started moving %.2f s after engage (%.2f m/s)",
+      (current_time - *stall_start_time_).seconds(), speed);
+    stall_start_time_.reset();
+    return;
+  }
+
+  const double stalled_duration_s = (current_time - *stall_start_time_).seconds();
+  if (stalled_duration_s <= force_takeoff_params_.stationary_duration_s) {
+    return;
+  }
+
+  if (agent_nearby) {
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
+      "Force takeoff pending: ego stalled for %.2f s but an agent is within %.2f m",
+      stalled_duration_s, force_takeoff_params_.min_agent_distance_m);
+    return;
+  }
+
+  force_takeoff_active_ = true;
+  stall_start_time_.reset();
+  core_->set_start_guidance_enabled(true);
+  RCLCPP_INFO(
+    get_logger(), "Force takeoff activated: ego stalled for %.2f s, enabling start guidance",
+    stalled_duration_s);
 }
 
 void DiffusionPlanner::publish_guidance_status(
