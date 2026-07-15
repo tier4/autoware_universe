@@ -142,10 +142,7 @@ struct TrajectoryShape
   double trajectory_length;
   double forward_traj_length;
 
-  [[nodiscard]] double ego_arc_length() const
-  {
-    return trajectory_length - forward_traj_length;
-  }
+  [[nodiscard]] double ego_arc_length() const { return trajectory_length - forward_traj_length; }
 };
 
 struct DebugData

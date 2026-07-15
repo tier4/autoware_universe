@@ -90,12 +90,12 @@ std::optional<std::pair<double, double>> get_curvature_at_end(
     return std::nullopt;
   }
 
-  const auto yaw = autoware_utils_geometry::calc_azimuth_angle(mid_pose.value().position, last_p.pose.position);
+  const auto yaw =
+    autoware_utils_geometry::calc_azimuth_angle(mid_pose.value().position, last_p.pose.position);
   return std::make_pair(curvature, yaw);
 }
 
-TrajectoryPoints extend_trajectory(
-  const TrajectoryPoints & trajectory_points, const double length)
+TrajectoryPoints extend_trajectory(const TrajectoryPoints & trajectory_points, const double length)
 {
   if (length < 1e-3 || trajectory_points.empty()) return trajectory_points;
 
@@ -105,8 +105,8 @@ TrajectoryPoints extend_trajectory(
   constexpr double lookback_distance = 2.0;  // [m]
   const auto curvature_at_end = get_curvature_at_end(trajectory_points, lookback_distance);
   const auto [curvature, yaw] = curvature_at_end
-    ? curvature_at_end.value()
-    : std::pair{0.0, tf2::getYaw(last_p.pose.orientation)};
+                                  ? curvature_at_end.value()
+                                  : std::pair{0.0, tf2::getYaw(last_p.pose.orientation)};
 
   const auto end_vel = last_p.longitudinal_velocity_mps;
   constexpr double low_speed_threshold = 0.5;

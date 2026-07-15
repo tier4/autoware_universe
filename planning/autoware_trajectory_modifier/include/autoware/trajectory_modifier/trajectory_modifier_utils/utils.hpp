@@ -48,8 +48,7 @@ bool stop_point_exists(
   const TrajectoryPoints & traj_points, const double stop_point_arc_length,
   const double duplicate_check_threshold = 0.0);
 
-bool insert_stop_point(
-  TrajectoryPoints & trajectory, const double stop_point_arc_length, const double traj_length);
+bool insert_stop_point(TrajectoryPoints & trajectory, const double stop_point_arc_length);
 
 bool is_stop_trajectory(const TrajectoryPoints & trajectory, const double stopped_vel_th = 1e-3);
 
