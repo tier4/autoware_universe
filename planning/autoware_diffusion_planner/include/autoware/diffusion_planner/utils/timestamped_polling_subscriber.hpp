@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__UTILS__TIMESTAMPED_POLLING_SUBSCRIBER_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__UTILS__TIMESTAMPED_POLLING_SUBSCRIBER_HPP_
 
+#include "autoware/diffusion_planner/utils/timestamp_selection.hpp"
+
 #include <rclcpp/rclcpp.hpp>
 
 #include <cassert>
@@ -34,12 +36,14 @@ namespace autoware::diffusion_planner
  *
  * autoware_utils' polling subscriber intentionally exposes only the deserialized message. The
  * fixed-rate training contract, however, selects by the recorder/arrival clock, not by the message
- * header. `received_timestamp` is the closest runtime equivalent. Rosbag playback does not
- * preserve the original bag timestamp in DDS metadata, so the current planner clock is used to
- * detect a transport clock-domain mismatch and select the header in that case. This small
- * Node-local adapter preserves that timestamp without changing the shared utility API. It uses the
- * same non-executing callback-group pattern as InterProcessPollingSubscriber and drains the DDS
- * queue synchronously from the planner timer.
+ * header. `received_timestamp` is the closest runtime equivalent. When it is in a different clock
+ * domain, a matching `source_timestamp` is preferred because some middleware/player combinations
+ * preserve a source-clock timestamp even when the local receive timestamp is wall-clock time.
+ * Rosbag playback still may not preserve the original bag timestamp in either DDS field, so the
+ * current planner clock is used to detect a transport clock-domain mismatch and select the header
+ * in that case. This small Node-local adapter preserves that timestamp without changing the shared
+ * utility API. It uses the same non-executing callback-group pattern as
+ * InterProcessPollingSubscriber and drains the DDS queue synchronously from the planner timer.
  */
 template <typename MessageT>
 class TimestampedPollingSubscriber
@@ -85,31 +89,10 @@ public:
       const int64_t received_timestamp = rmw_message_info.received_timestamp;
       const int64_t source_timestamp = rmw_message_info.source_timestamp;
       const int64_t header_timestamp = header_timestamp_ ? header_timestamp_(*message) : 0;
-      const int64_t transport_timestamp =
-        received_timestamp > 0 ? received_timestamp : source_timestamp;
-      const auto is_near_reference = [reference_time_ns](const int64_t timestamp_ns) {
-        if (timestamp_ns <= 0 || reference_time_ns <= 0) {
-          return true;
-        }
-        const int64_t difference = timestamp_ns > reference_time_ns
-                                     ? timestamp_ns - reference_time_ns
-                                     : reference_time_ns - timestamp_ns;
-        return difference <= CLOCK_DOMAIN_MISMATCH_NS;
-      };
-      if (transport_timestamp > 0 && is_near_reference(transport_timestamp)) {
-        data.push_back(TimedMessage{transport_timestamp, message, false});
-      } else if (header_timestamp_ && header_timestamp > 0 && is_near_reference(header_timestamp)) {
-        data.push_back(TimedMessage{header_timestamp, message, true});
-      } else if (transport_timestamp > 0) {
-        // No timestamp is close to the planner clock. Keep the transport timestamp so the normal
-        // staleness gate can reject it deterministically instead of crashing the timer callback.
-        data.push_back(TimedMessage{transport_timestamp, message, false});
-      } else if (header_timestamp_ && header_timestamp > 0) {
-        data.push_back(TimedMessage{header_timestamp, message, true});
-      } else {
-        throw std::runtime_error(
-          "TimestampedPollingSubscriber received no usable transport or header timestamp");
-      }
+      const auto selection = utils::select_timestamp(
+        received_timestamp, source_timestamp, header_timestamp, reference_time_ns,
+        CLOCK_DOMAIN_MISMATCH_NS);
+      data.push_back(TimedMessage{selection.time_ns, message, selection.used_header_fallback});
     }
     return data;
   }

@@ -175,6 +175,7 @@ if(TRT_AVAIL AND CUDA_AVAIL)
       test/agent_edge_case_test.cpp
       test/fixed_time_grid_test.cpp
       test/fixed_neighbor_history_test.cpp
+      test/timestamp_selection_test.cpp
       test/lanelet_edge_case_test.cpp
       test/diffusion_planner_integration_test.cpp
       test/rtc_prefix_test.cpp
@@ -196,7 +197,9 @@ endif()
 if(BUILD_TESTING AND NOT (TRT_AVAIL AND CUDA_AVAIL))
   find_package(ament_cmake_ros REQUIRED)
   ament_add_ros_isolated_gtest(
-    test_diffusion_planner_fixed_time_grid test/fixed_time_grid_test.cpp)
+    test_diffusion_planner_fixed_time_grid
+    test/fixed_time_grid_test.cpp
+    test/timestamp_selection_test.cpp)
 endif()
 
 ament_auto_package(

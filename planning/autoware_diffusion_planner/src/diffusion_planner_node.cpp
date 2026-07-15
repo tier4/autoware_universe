@@ -551,9 +551,11 @@ void DiffusionPlanner::on_timer()
     tracked_objects_buffer_.add(timed_message.selection_time_ns, timed_message.message);
   }
 
-  // The training converter samples at a planner-clock tick using latest-at-or-before (ZOH). The
-  // ego message header remains the model/output frame timestamp; the grid selection clock is the
-  // planner clock, matching the converter's frame timestamp.
+  // The training converter samples at a bag-specific 10 Hz tick using latest-at-or-before (ZOH).
+  // Its absolute tick origin is unavailable online, so the closest safe runtime contract is a
+  // right-aligned 100 ms grid ending at the current planner clock. This preserves the trained
+  // interval/ZOH/no-future semantics without delaying the neighbor current state relative to ego.
+  // The ego message header remains the model/output frame timestamp.
   auto objects = tracked_objects_buffer_.latest_at_or_before(current_time_ns);
   const auto latest_object_selection_time =
     tracked_objects_buffer_.latest_time_ns_at_or_before(current_time_ns);

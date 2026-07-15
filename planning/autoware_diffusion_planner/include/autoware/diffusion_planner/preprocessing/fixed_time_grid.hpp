@@ -32,8 +32,10 @@ namespace autoware::diffusion_planner::preprocess
  * @brief A bounded, timestamp-ordered buffer for zero-order-hold sampling.
  *
  * The training converter selects the latest message whose bag timestamp is at or before each
- * fixed-rate tick.  This class contains that selection rule without depending on ROS types, so it
- * can be tested independently of a ROS executor.
+ * fixed-rate tick. This class contains that selection rule without depending on ROS types, so it
+ * can be tested independently of a ROS executor. The online caller right-aligns the grid to its
+ * current planner clock: the converter's absolute origin is bag-specific and is not observable by
+ * a live node, while the interval and zero-order-hold rules are preserved exactly.
  *
  * Messages are ordered by selection_time_ns, not by their message header.  The caller is
  * responsible for supplying the clock that corresponds to the training converter's bag/arrival
@@ -117,7 +119,9 @@ public:
    * @brief Sample a fixed-rate, right-aligned time grid using zero-order hold.
    *
    * For a 31-step, 10 Hz grid and reference_time_ns T, the targets are
-   * T - 3.0 s, T - 2.9 s, ..., T. No future message is ever selected.
+   * T - 3.0 s, T - 2.9 s, ..., T. No future message is ever selected. The caller should not round
+   * T to a global epoch grid unless it also buffers the other model inputs, because that would
+   * make the neighbor current state older than the ego current state by up to one period.
    */
   [[nodiscard]] GridSample sample(
     const int64_t reference_time_ns, const size_t time_length, const int64_t period_ns) const
