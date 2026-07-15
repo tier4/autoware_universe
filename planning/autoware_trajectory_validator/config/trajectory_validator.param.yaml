@@ -41,7 +41,7 @@
             pedestrian: 1.5
             bicycle: 1.5
           ego_earlier:
-            enable_assessment: false
+            enable_assessment: false # Not evaluated. Must be false
           object_earlier:
             enable_assessment: true
             ego_drac_acceleration:
@@ -52,9 +52,9 @@
         map_based:
           enable_assessment: true
           ego_prioritized_ego_earlier:
-            enable_assessment: false
+            enable_assessment: false # Not evaluated. Must be false
           ego_prioritized_object_earlier:
-            enable_assessment: false
+            enable_assessment: false # Not evaluated. Must be false
           object_prioritized_ego_earlier:
             enable_assessment: true
             ego_drac_acceleration:
