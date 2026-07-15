@@ -44,6 +44,13 @@ namespace autoware::map_based_prediction
 
 namespace
 {
+using autoware_utils_geometry::LineString2d;
+using autoware_utils_geometry::MultiLineString2d;
+using autoware_utils_geometry::Point2d;
+using autoware_utils_geometry::Polygon2d;
+
+constexpr double crosswalk_corridor_extend_margin = 1.0;
+
 std::vector<autoware_utils_geometry::LineString2d> collect_candidate_road_border_linestrings(
   const lanelet::LaneletMap & road_border_layer, const PredictedPath & predicted_path,
   const autoware_perception_msgs::msg::Shape & object_shape)
@@ -72,34 +79,51 @@ double arc_length_to_index(const PredictedPath & path, const size_t index)
   return length;
 }
 
-std::optional<lanelet::BasicPoint2d> get_first_border_crossing_point(
-  const PredictedPath & predicted_path,
-  const std::vector<autoware_utils_geometry::LineString2d> & borders)
+Point2d extend_outward(const Point2d & end, const Point2d & inner, const double margin)
 {
-  const auto & poses = predicted_path.path;
-  for (size_t i = 0; i + 1 < poses.size(); ++i) {
-    const autoware_utils_geometry::LineString2d segment{
-      {poses.at(i).position.x, poses.at(i).position.y},
-      {poses.at(i + 1).position.x, poses.at(i + 1).position.y}};
-    for (const auto & border : borders) {
-      std::vector<autoware_utils_geometry::Point2d> intersections;
-      boost::geometry::intersection(segment, border, intersections);
-      if (!intersections.empty()) {
-        const auto & p = intersections.front();
-        return lanelet::BasicPoint2d(p.x(), p.y());
-      }
-    }
+  const double dx = end.x() - inner.x();
+  const double dy = end.y() - inner.y();
+  const double len = std::hypot(dx, dy);
+  if (len < 1e-6) {
+    return end;
   }
-  return std::nullopt;
+  return {end.x() + dx / len * margin, end.y() + dy / len * margin};
 }
 
-bool is_point_inside_crosswalk(
-  const lanelet::LaneletMap & map, const std::optional<lanelet::BasicPoint2d> & point)
+std::vector<Point2d> to_extended_bound_points(
+  const lanelet::ConstLineString3d & bound, const double extend_margin)
 {
-  if (!point) {
-    return false;
+  std::vector<Point2d> points;
+  points.reserve(bound.size());
+  for (const auto & p : bound) {
+    points.emplace_back(p.x(), p.y());
   }
-  const lanelet::BoundingBox2d search_box{*point, *point};
+  if (points.size() >= 2) {
+    points.front() = extend_outward(points.front(), points.at(1), extend_margin);
+    points.back() = extend_outward(points.back(), points.at(points.size() - 2), extend_margin);
+  }
+  return points;
+}
+
+Polygon2d build_extended_crosswalk_polygon(
+  const lanelet::ConstLanelet & crosswalk, const double extend_margin)
+{
+  const auto left = to_extended_bound_points(crosswalk.leftBound(), extend_margin);
+  const auto right = to_extended_bound_points(crosswalk.rightBound(), extend_margin);
+
+  Polygon2d corridor;
+  auto & outer = corridor.outer();
+  outer.insert(outer.end(), left.begin(), left.end());
+  outer.insert(outer.end(), right.rbegin(), right.rend());
+  boost::geometry::correct(corridor);
+  return corridor;
+}
+
+std::vector<Polygon2d> collect_crosswalk_corridors(
+  const lanelet::LaneletMap & map, const lanelet::BoundingBox2d & search_box,
+  const double extend_margin)
+{
+  std::vector<Polygon2d> corridors;
   for (const auto & candidate : map.laneletLayer.search(search_box)) {
     const std::string subtype = candidate.attributeOr(lanelet::AttributeName::Subtype, "none");
     if (
@@ -107,11 +131,49 @@ bool is_point_inside_crosswalk(
       subtype != lanelet::AttributeValueString::Walkway) {
       continue;
     }
-    if (lanelet::geometry::inside(candidate, *point)) {
-      return true;
+    corridors.push_back(build_extended_crosswalk_polygon(candidate, extend_margin));
+  }
+  return corridors;
+}
+
+std::vector<LineString2d> clip_out_corridors(
+  const LineString2d & candidate, const std::vector<Polygon2d> & corridors)
+{
+  std::vector<LineString2d> pieces{candidate};
+  for (const auto & corridor : corridors) {
+    std::vector<LineString2d> next;
+    for (const auto & piece : pieces) {
+      MultiLineString2d outside;
+      boost::geometry::difference(piece, corridor, outside);
+      for (auto & part : outside) {
+        if (part.size() >= 2) {
+          next.push_back(std::move(part));
+        }
+      }
+    }
+    pieces = std::move(next);
+    if (pieces.empty()) {
+      break;
     }
   }
-  return false;
+  return pieces;
+}
+
+std::vector<LineString2d> remove_crosswalk_corridor(
+  const std::vector<LineString2d> & candidates, const std::vector<Polygon2d> & corridors)
+{
+  if (corridors.empty()) {
+    return candidates;
+  }
+  std::vector<LineString2d> result;
+  result.reserve(candidates.size());
+  for (const auto & candidate : candidates) {
+    auto pieces = clip_out_corridors(candidate, corridors);
+    result.insert(
+      result.end(), std::make_move_iterator(pieces.begin()),
+      std::make_move_iterator(pieces.end()));
+  }
+  return result;
 }
 }  // namespace
 
@@ -149,15 +211,19 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
   const std::vector<autoware_utils_geometry::LineString2d> candidates =
     collect_candidate_road_border_linestrings(*road_border_layer_, predicted_path, object_shape);
 
-  const std::optional<size_t> road_border_crossing_index =
-    path_cut::find_footprint_crossing_index(predicted_path, object_shape, candidates);
-  if (!road_border_crossing_index) {
-    return predicted_path;
-  }
+  const std::vector<autoware_utils_geometry::Polygon2d> crosswalk_corridors =
+    collect_crosswalk_corridors(
+      *lanelet_map_ptr_,
+      path_cut::get_bbox_contain_path_with_footprint(predicted_path, object_shape),
+      crosswalk_corridor_extend_margin);
+      
+  const std::vector<autoware_utils_geometry::LineString2d> candidates_removed_crosswalk_area =
+    remove_crosswalk_corridor(candidates, crosswalk_corridors);
 
-  const std::optional<lanelet::BasicPoint2d> road_border_crossing_point =
-    get_first_border_crossing_point(predicted_path, candidates);
-  if (is_point_inside_crosswalk(*lanelet_map_ptr_, road_border_crossing_point)) {
+  const std::optional<size_t> road_border_crossing_index =
+    path_cut::find_footprint_crossing_index(
+      predicted_path, object_shape, candidates_removed_crosswalk_area);
+  if (!road_border_crossing_index) {
     return predicted_path;
   }
 
