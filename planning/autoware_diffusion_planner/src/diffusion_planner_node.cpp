@@ -241,9 +241,9 @@ void DiffusionPlanner::set_up_params()
   debug_params_.publish_debug_map =
     this->declare_parameter<bool>("debug_params.publish_debug_map", false);
   debug_params_.publish_debug_route =
-    this->declare_parameter<bool>("debug_params.publish_debug_route", true);
+    this->declare_parameter<bool>("debug_params.publish_debug_route", false);
   debug_params_.publish_debug_linestrings =
-    this->declare_parameter<bool>("debug_params.publish_debug_linestrings", true);
+    this->declare_parameter<bool>("debug_params.publish_debug_linestrings", false);
 }
 
 void DiffusionPlanner::load_model()
@@ -600,9 +600,12 @@ void DiffusionPlanner::on_timer()
   auto turn_indicators_ptr = sub_turn_indicators_.take_data();
 
   // Prepare frame context using core
-  const std::optional<FrameContext> frame_context = core_->create_frame_context(
-    ego_kinematic_state, ego_acceleration, objects, tracked_objects_grid.messages, traffic_signals,
-    turn_indicators_ptr, temp_route_ptr, current_time);
+  const std::optional<FrameContext> frame_context = [&]() {
+    autoware_utils_debug::ScopedTimeTrack stage("create_frame_context", *time_keeper_);
+    return core_->create_frame_context(
+      ego_kinematic_state, ego_acceleration, objects, tracked_objects_grid.messages,
+      traffic_signals, turn_indicators_ptr, temp_route_ptr, current_time);
+  }();
 
   if (!frame_context) {
     // Log detailed information about missing inputs
@@ -627,11 +630,23 @@ void DiffusionPlanner::on_timer()
   }
 
   const rclcpp::Time frame_time(frame_context->frame_time);
-  InputDataMap input_data_map = core_->create_input_data(*frame_context);
+  InputDataMap * input_data_map_ptr = nullptr;
+  {
+    autoware_utils_debug::ScopedTimeTrack stage("create_input_data", *time_keeper_);
+    input_data_map_ptr = &core_->create_input_data(*frame_context);
+  }
+  InputDataMap & input_data_map = *input_data_map_ptr;
 
-  publish_debug_markers(input_data_map, frame_context->ego_to_map_transform, frame_time);
+  {
+    autoware_utils_debug::ScopedTimeTrack stage("publish_debug_markers", *time_keeper_);
+    publish_debug_markers(input_data_map, frame_context->ego_to_map_transform, frame_time);
+  }
 
-  publish_first_traffic_light_on_route(*frame_context);
+  {
+    autoware_utils_debug::ScopedTimeTrack stage(
+      "publish_first_traffic_light_on_route", *time_keeper_);
+    publish_first_traffic_light_on_route(*frame_context);
+  }
 
   // Calculate and record metrics for diagnostics using core
   diagnostics_inference_->add_key_value(
@@ -646,8 +661,13 @@ void DiffusionPlanner::on_timer()
     "valid_neighbor_count", core_->count_valid_elements(input_data_map, "neighbor_agents_past"));
 
   // normalization of data
-  preprocess::normalize_input_data(input_data_map, core_->get_observation_normalization());
-  if (!utils::check_input_map(input_data_map)) {
+  bool valid_input_map = false;
+  {
+    autoware_utils_debug::ScopedTimeTrack stage("normalize_and_validate", *time_keeper_);
+    preprocess::normalize_input_data(input_data_map, core_->get_observation_normalization());
+    valid_input_map = utils::check_input_map(input_data_map);
+  }
+  if (!valid_input_map) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
       "Input data contains invalid values");
@@ -658,7 +678,10 @@ void DiffusionPlanner::on_timer()
   }
 
   // Run inference using core
-  auto inference_result = core_->run_inference(input_data_map);
+  const InferenceResult inference_result = [&]() {
+    autoware_utils_debug::ScopedTimeTrack stage("run_inference", *time_keeper_);
+    return core_->run_inference(input_data_map);
+  }();
 
   if (!inference_result) {
     RCLCPP_WARN_STREAM_THROTTLE(
@@ -676,6 +699,7 @@ void DiffusionPlanner::on_timer()
 
   PlannerOutput planner_output;
   try {
+    autoware_utils_debug::ScopedTimeTrack stage("create_planner_output", *time_keeper_);
     planner_output =
       core_->create_planner_output(*inference_result, *frame_context, frame_time, generator_uuid_);
   } catch (const std::exception & e) {
@@ -737,14 +761,17 @@ void DiffusionPlanner::on_timer()
     record_section_time(*stop_watch_ptr_, "mppi_optimizer", *diagnostics_inference_);
   }
 
-  publish_guidance_status(planner_output.guidance_triggered, frame_time);
+  {
+    autoware_utils_debug::ScopedTimeTrack stage("publish_outputs", *time_keeper_);
+    publish_guidance_status(planner_output.guidance_triggered, frame_time);
 
-  pub_trajectory_->publish(planner_output.trajectory);
-  pub_trajectories_->publish(planner_output.candidate_trajectories);
-  pub_objects_->publish(planner_output.predicted_objects);
-  pub_turn_indicators_->publish(planner_output.turn_indicators_command);
+    pub_trajectory_->publish(planner_output.trajectory);
+    pub_trajectories_->publish(planner_output.candidate_trajectories);
+    pub_objects_->publish(planner_output.predicted_objects);
+    pub_turn_indicators_->publish(planner_output.turn_indicators_command);
 
-  publish_planning_factor(planner_output.trajectory);
+    publish_planning_factor(planner_output.trajectory);
+  }
 
   // Publish diagnostics
   diagnostics_inference_->publish(frame_time);

@@ -95,6 +95,10 @@ SingleStepInference::SingleStepInference(
     autoware::cuda_utils::make_unique_host<float[]>(output_num_elements_, cudaHostAllocDefault);
   logit_pinned_ =
     autoware::cuda_utils::make_unique_host<float[]>(logit_num_elements_, cudaHostAllocDefault);
+  lanes_speed_limit_mask_host_.resize(
+    batch_size_ * num_elements_without_batch(LANES_SPEED_LIMIT_SHAPE));
+  route_lanes_speed_limit_mask_host_.resize(
+    batch_size_ * num_elements_without_batch(ROUTE_LANES_SPEED_LIMIT_SHAPE));
 
   load_engine(model_path);
   CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
@@ -234,10 +238,12 @@ void SingleStepInference::transferInputsToDevice(const preprocess::InputDataMap 
 
   transfer_speed_mask(
     input_data_map.at("lanes_speed_limit"), lanes_has_speed_limit_d_,
-    batch_size_ * num_elements_without_batch(LANES_SPEED_LIMIT_SHAPE), stream_);
+    batch_size_ * num_elements_without_batch(LANES_SPEED_LIMIT_SHAPE),
+    lanes_speed_limit_mask_host_, stream_);
   transfer_speed_mask(
     input_data_map.at("route_lanes_speed_limit"), route_lanes_has_speed_limit_d_,
-    batch_size_ * num_elements_without_batch(ROUTE_LANES_SPEED_LIMIT_SHAPE), stream_);
+    batch_size_ * num_elements_without_batch(ROUTE_LANES_SPEED_LIMIT_SHAPE),
+    route_lanes_speed_limit_mask_host_, stream_);
 }
 
 SingleStepInference::InferenceResult SingleStepInference::infer(
@@ -248,9 +254,11 @@ SingleStepInference::InferenceResult SingleStepInference::infer(
   transferInputsToDevice(input_data_map);
 
   const bool status = enqueue_trt(*network_trt_ptr_, network_cuda_graph_, stream_, use_cuda_graph_);
-  CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
 
   if (!status) {
+    // H2D copies were queued before enqueue_trt().  Drain the stream before the reusable host
+    // input map can be overwritten by the next planner tick, even on an inference failure.
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream_));
     return tl::unexpected(std::string{"Failed to enqueue and do inference."});
   }
 

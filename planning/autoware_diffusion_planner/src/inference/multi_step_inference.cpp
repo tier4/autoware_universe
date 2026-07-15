@@ -93,6 +93,11 @@ MultiStepInference::MultiStepInference(
     model_output_num_elements_, cudaHostAllocDefault);
   logit_pinned_ =
     autoware::cuda_utils::make_unique_host<float[]>(logit_num_elements_, cudaHostAllocDefault);
+  lanes_speed_limit_mask_host_.resize(
+    batch_size_ * num_elements_without_batch(LANES_SPEED_LIMIT_SHAPE));
+  route_lanes_speed_limit_mask_host_.resize(
+    batch_size_ * num_elements_without_batch(ROUTE_LANES_SPEED_LIMIT_SHAPE));
+  default_diffusion_time_host_.assign(batch_size_ * MAX_NUM_AGENTS * (OUTPUT_T + 1), 1.0f);
 
   load_engines(encoder_model_path, decoder_model_path, turn_indicator_model_path);
   CHECK_CUDA_ERROR(cudaStreamCreate(&stream_));
@@ -280,16 +285,17 @@ void MultiStepInference::transfer_inputs_to_device(const preprocess::InputDataMa
   if (diffusion_time_it != input_data_map.end()) {
     transfer_float_input(diffusion_time_it->second, diffusion_time_d_, stream_);
   } else {
-    const std::vector<float> diffusion_time(batch_size_ * MAX_NUM_AGENTS * (OUTPUT_T + 1), 1.0f);
-    transfer_float_input(diffusion_time, diffusion_time_d_, stream_);
+    transfer_float_input(default_diffusion_time_host_, diffusion_time_d_, stream_);
   }
 
   transfer_speed_mask(
     input_data_map.at("lanes_speed_limit"), lanes_has_speed_limit_d_,
-    batch_size_ * num_elements_without_batch(LANES_SPEED_LIMIT_SHAPE), stream_);
+    batch_size_ * num_elements_without_batch(LANES_SPEED_LIMIT_SHAPE),
+    lanes_speed_limit_mask_host_, stream_);
   transfer_speed_mask(
     input_data_map.at("route_lanes_speed_limit"), route_lanes_has_speed_limit_d_,
-    batch_size_ * num_elements_without_batch(ROUTE_LANES_SPEED_LIMIT_SHAPE), stream_);
+    batch_size_ * num_elements_without_batch(ROUTE_LANES_SPEED_LIMIT_SHAPE),
+    route_lanes_speed_limit_mask_host_, stream_);
 }
 
 std::vector<float> MultiStepInference::create_diffusion_time(float t) const

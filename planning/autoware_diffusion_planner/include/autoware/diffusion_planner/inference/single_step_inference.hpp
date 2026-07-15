@@ -24,6 +24,7 @@
 
 #include <cuda_runtime_api.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -98,6 +99,8 @@ private:
   autoware::cuda_utils::CudaUniquePtrHost<float[]> logit_pinned_;
   size_t output_num_elements_{0};
   size_t logit_num_elements_{0};
+  std::vector<uint8_t> lanes_speed_limit_mask_host_;
+  std::vector<uint8_t> route_lanes_speed_limit_mask_host_;
 
   cudaStream_t stream_{nullptr};
 

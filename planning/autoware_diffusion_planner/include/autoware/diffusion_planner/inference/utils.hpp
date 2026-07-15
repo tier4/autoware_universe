@@ -43,13 +43,17 @@ public:
   CudaGraphExecutor & operator=(const CudaGraphExecutor &) = delete;
 
   bool is_captured() const;
+  bool capture_failed() const;
   void reset();
   bool capture(cudaStream_t stream, const std::function<bool(cudaStream_t)> & enqueue);
-  bool launch(cudaStream_t stream) const;
+  bool launch(cudaStream_t stream);
 
 private:
+  void reset_graphs();
+
   cudaGraph_t graph_{nullptr};
   cudaGraphExec_t graph_exec_{nullptr};
+  bool capture_failed_{false};
 };
 
 template <class Container>
@@ -112,9 +116,9 @@ void transfer_float_input(
 template <class DevicePtr>
 void transfer_speed_mask(
   const std::vector<float> & speed_limit, const DevicePtr & device_ptr, const size_t count,
-  cudaStream_t stream)
+  std::vector<uint8_t> & bool_array, cudaStream_t stream)
 {
-  std::vector<uint8_t> bool_array(count);
+  bool_array.resize(count);
   for (size_t i = 0; i < count; ++i) {
     bool_array[i] = speed_limit[i] > std::numeric_limits<float>::epsilon();
   }

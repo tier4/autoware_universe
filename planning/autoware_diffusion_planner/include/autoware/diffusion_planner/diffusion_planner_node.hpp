@@ -76,9 +76,9 @@ using visualization_msgs::msg::MarkerArray;
 
 struct DiffusionPlannerDebugParams
 {
-  bool publish_debug_route{true};
+  bool publish_debug_route{false};
   bool publish_debug_map{false};
-  bool publish_debug_linestrings{true};
+  bool publish_debug_linestrings{false};
 };
 
 struct DiffusionPlannerPlanningFactorParams

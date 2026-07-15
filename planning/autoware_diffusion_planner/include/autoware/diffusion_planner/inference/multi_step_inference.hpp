@@ -26,6 +26,7 @@
 
 #include <cuda_runtime_api.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -92,6 +93,9 @@ private:
   size_t encoding_num_elements_{0};
   size_t model_output_num_elements_{0};
   size_t logit_num_elements_{0};
+  std::vector<uint8_t> lanes_speed_limit_mask_host_;
+  std::vector<uint8_t> route_lanes_speed_limit_mask_host_;
+  std::vector<float> default_diffusion_time_host_;
 
   cudaStream_t stream_{nullptr};
 

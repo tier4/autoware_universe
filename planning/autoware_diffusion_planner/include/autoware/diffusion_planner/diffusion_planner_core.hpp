@@ -233,9 +233,9 @@ public:
    * @brief Build model input tensors from frame context.
    *
    * @param frame_context Preprocessed frame context
-   * @return Map of input data for the model
+   * @return Reference to the planner-owned input map. It remains valid until the next call.
    */
-  InputDataMap create_input_data(const FrameContext & frame_context);
+  InputDataMap & create_input_data(const FrameContext & frame_context);
 
   /**
    * @brief Set the lanelet map context.
@@ -375,6 +375,11 @@ private:
   AgentData agent_data_;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map_;
   std::vector<std::vector<std::vector<Eigen::Matrix4d>>> last_agent_poses_map_;
+
+  // Keep the tensor map and its vectors alive between planner ticks.  The model input is fully
+  // overwritten on every call, while retaining allocations avoids rebuilding the same buffers at
+  // 10 Hz.  The map is only used by the single-threaded timer callback until the next call.
+  InputDataMap input_data_map_;
 
   // Lanelet map
   LaneletRoute::ConstSharedPtr route_ptr_;

@@ -46,7 +46,12 @@ bool CudaGraphExecutor::is_captured() const
   return graph_exec_ != nullptr;
 }
 
-void CudaGraphExecutor::reset()
+bool CudaGraphExecutor::capture_failed() const
+{
+  return capture_failed_;
+}
+
+void CudaGraphExecutor::reset_graphs()
 {
   if (graph_exec_) {
     cudaGraphExecDestroy(graph_exec_);
@@ -58,30 +63,50 @@ void CudaGraphExecutor::reset()
   }
 }
 
+void CudaGraphExecutor::reset()
+{
+  reset_graphs();
+  capture_failed_ = false;
+}
+
 bool CudaGraphExecutor::capture(
   cudaStream_t stream, const std::function<bool(cudaStream_t)> & enqueue)
 {
-  reset();
+  if (capture_failed_) {
+    return false;
+  }
+  reset_graphs();
   if (cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal) != cudaSuccess) {
+    capture_failed_ = true;
     return false;
   }
 
   const bool status = enqueue(stream);
   if (cudaStreamEndCapture(stream, &graph_) != cudaSuccess || !status || !graph_) {
-    reset();
+    reset_graphs();
+    capture_failed_ = true;
     return false;
   }
 
   if (cudaGraphInstantiate(&graph_exec_, graph_, 0) != cudaSuccess) {
-    reset();
+    reset_graphs();
+    capture_failed_ = true;
     return false;
   }
   return true;
 }
 
-bool CudaGraphExecutor::launch(cudaStream_t stream) const
+bool CudaGraphExecutor::launch(cudaStream_t stream)
 {
-  return graph_exec_ && cudaGraphLaunch(graph_exec_, stream) == cudaSuccess;
+  if (!graph_exec_) {
+    return false;
+  }
+  if (cudaGraphLaunch(graph_exec_, stream) != cudaSuccess) {
+    capture_failed_ = true;
+    reset_graphs();
+    return false;
+  }
+  return true;
 }
 
 size_t num_elements(const std::vector<int64_t> & shape)
@@ -137,12 +162,17 @@ std::unique_ptr<TrtCommon> setup_engine(
 bool enqueue_trt(
   TrtCommon & trt, CudaGraphExecutor & cuda_graph, cudaStream_t stream, const bool use_cuda_graph)
 {
-  if (!use_cuda_graph) {
+  if (!use_cuda_graph || cuda_graph.capture_failed()) {
     return trt.enqueueV3(stream);
   }
 
   if (cuda_graph.is_captured()) {
-    return cuda_graph.launch(stream);
+    if (cuda_graph.launch(stream)) {
+      return true;
+    }
+    // A graph can become invalid after a TensorRT/plugin or CUDA runtime change.  Mark it as
+    // disabled and try the ordinary enqueue for this frame; future frames use the same fallback.
+    return trt.enqueueV3(stream);
   }
 
   const bool status = trt.enqueueV3(stream);
@@ -151,6 +181,9 @@ bool enqueue_trt(
     return false;
   }
 
+  // A failed capture is a runtime capability issue, not an inference failure.  Keep the normal
+  // enqueue result for this frame and permanently fall back to normal TensorRT enqueue for the
+  // lifetime of this engine instead of retrying capture on every 10 Hz tick.
   cuda_graph.capture(
     stream, [&trt](cudaStream_t capture_stream) { return trt.enqueueV3(capture_stream); });
   return true;

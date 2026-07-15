@@ -5,7 +5,7 @@
       type: "multi_step"
       backend: "tensorrt" # "tensorrt" "ort_cpu" "ort_cuda" "ort_tensorrt"
       precision: "fp32"
-      use_cuda_graph: false
+      use_cuda_graph: true
       args_path: $(var data_path)/diffusion_planner/v5.0/diffusion_planner.param.json
       single_step_model:
         onnx_model_path: $(var data_path)/diffusion_planner/v5.0/diffusion_planner.onnx
@@ -45,6 +45,6 @@
       stop_velocity_threshold: 0.1       # [m/s]
       slowdown_accel_threshold: -0.3     # [m/s^2]
     debug_params:
-      publish_debug_route: true
+      publish_debug_route: false
       publish_debug_map: false
-      publish_debug_linestrings: true
+      publish_debug_linestrings: false

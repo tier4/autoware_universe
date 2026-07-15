@@ -277,12 +277,12 @@
             },
             "publish_debug_route": {
               "type": "boolean",
-              "default": true,
+              "default": false,
               "description": "Publish debug route markers"
             },
             "publish_debug_linestrings": {
               "type": "boolean",
-              "default": true,
+              "default": false,
               "description": "Publish debug linestring markers"
             }
           },
