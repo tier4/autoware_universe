@@ -235,7 +235,7 @@ bool ObstacleStop::set_stop_point(TrajectoryPoints & traj_points, const InputDat
 
   if (
     ego_to_stop_arc_length < stopping_params_.arrived_distance_threshold ||
-    !utils::insert_stop_point(traj_points, target_stop_point_arc_length)) {
+    !utils::insert_stop_point(traj_points, target_stop_point_arc_length, trajectory_time_step_)) {
     utils::replace_trajectory_with_stop_point(
       traj_points, input.current_odometry->pose.pose, trajectory_time_step_);
   }

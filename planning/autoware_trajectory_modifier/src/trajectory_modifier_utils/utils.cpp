@@ -102,9 +102,15 @@ bool stop_point_exists(
   return false;
 }
 
-bool insert_stop_point(TrajectoryPoints & trajectory, const double stop_point_arc_length)
+bool insert_stop_point(
+  TrajectoryPoints & trajectory, const double stop_point_arc_length, const double time_step)
 {
-  if (trajectory.empty() || stop_point_arc_length < 1e-3) return false;
+  if (trajectory.empty()) return false;
+
+  if (stop_point_arc_length < 1e-3) {
+    replace_trajectory_with_stop_point(trajectory, trajectory.front().pose, time_step);
+    return true;
+  }
 
   constexpr double overlap_threshold = 0.1;
 

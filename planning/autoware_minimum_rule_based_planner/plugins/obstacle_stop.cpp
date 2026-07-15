@@ -165,7 +165,7 @@ void ObstacleStop::set_stop_point(TrajectoryPoints & traj_points, const Modifier
   if (
     target_stop_point_arc_length < params_.arrived_distance_threshold ||
     !insert_stop_point(traj_points, target_stop_point_arc_length)) {
-    replace_trajectory_with_stop_point(traj_points, data.odometry_ptr->pose.pose, 0.1);
+    replace_trajectory_with_stop_point(traj_points, data.odometry_ptr->pose.pose);
   }
 
   const auto & stop_pose = traj_points.back().pose;
