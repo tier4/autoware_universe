@@ -230,8 +230,8 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<double>("guidance.centerline_guidance.start_time_s", 2.0);
   params_.use_mppi_optimizer = this->declare_parameter<bool>("use_mppi_optimizer", false);
   params_.shadow_mode = this->declare_parameter<bool>("shadow_mode", false);
-  use_extended_route_bounds_ = this->declare_parameter<bool>(
-    "avoidance_target_detector.use_extended_route_bounds", true);
+  use_extended_route_bounds_ =
+    this->declare_parameter<bool>("avoidance_target_detector.use_extended_route_bounds", true);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_cost_params(*this);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
 
@@ -664,9 +664,11 @@ void DiffusionPlanner::on_timer()
       const auto steering_status = sub_steering_status_.take_data();
       const std::optional<SteeringReport> ego_steering =
         steering_status ? std::make_optional(*steering_status) : std::nullopt;
+      const auto filtered_tracked_objects = avoidance_target_detector_->process_tracked_objects(
+        frame_time, *objects, planner_output.trajectory);
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
-        ego_steering, *objects, road_borders_for_mppi);
+        ego_steering, filtered_tracked_objects->tracked_avoidance_targets, road_borders_for_mppi);
       record_section_time(
         *stop_watch_ptr_, "mppi_optimizer/optimize_trajectory", *diagnostics_inference_);
       if (!params_.shadow_mode) {
@@ -823,8 +825,8 @@ std::optional<Path> DiffusionPlanner::publish_avoidance_targets(
   }
 
   std::optional<Path> drivable_area;
-  const auto predicted_output = avoidance_target_detector_->process_predicted_objects(
-    stamp, predicted_objects, trajectory);
+  const auto predicted_output =
+    avoidance_target_detector_->process_predicted_objects(stamp, predicted_objects, trajectory);
   if (predicted_output) {
     pub_drivable_area_->publish(predicted_output->drivable_area);
     if (predicted_output->near_segment_polygon) {
@@ -839,8 +841,8 @@ std::optional<Path> DiffusionPlanner::publish_avoidance_targets(
     return drivable_area;
   }
 
-  const auto tracked_output = avoidance_target_detector_->process_tracked_objects(
-    stamp, *tracked_objects, trajectory);
+  const auto tracked_output =
+    avoidance_target_detector_->process_tracked_objects(stamp, *tracked_objects, trajectory);
   if (tracked_output) {
     pub_tracked_avoidance_targets_->publish(tracked_output->tracked_avoidance_targets);
     pub_tracked_driving_along_vehicles_->publish(tracked_output->tracked_driving_along_vehicles);
