@@ -25,7 +25,10 @@
           ego_earlier: 0.6
           object_earlier: 1.0
         ego_footprint_margin:
-          lateral: 0.3
+          lateral:
+            base: 0.3
+            pedestrian: 0.5
+            bicycle: 0.5
           front: 1.0
           rear: 0.0
         ego_reaction_braking_delay:
@@ -33,7 +36,10 @@
           departure: 1.0
         constant_curvature:
           enable_assessment: true
-          object_time_horizon: 1.0
+          object_time_horizon:
+            base: 1.0
+            pedestrian: 1.5
+            bicycle: 1.5
           ego_earlier:
             enable_assessment: false
           object_earlier:
