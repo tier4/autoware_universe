@@ -92,10 +92,14 @@ std::optional<lanelet::BasicPoint2d> get_first_border_crossing_point(
   }
   return std::nullopt;
 }
-// TODO change is_point_inside_crosswalk
-bool is_point_inside_crosswalk(const lanelet::LaneletMap & map, const lanelet::BasicPoint2d & point)
+
+bool is_point_inside_crosswalk(
+  const lanelet::LaneletMap & map, const std::optional<lanelet::BasicPoint2d> & point)
 {
-  const lanelet::BoundingBox2d search_box{point, point};
+  if (!point) {
+    return false;
+  }
+  const lanelet::BoundingBox2d search_box{*point, *point};
   for (const auto & candidate : map.laneletLayer.search(search_box)) {
     const std::string subtype = candidate.attributeOr(lanelet::AttributeName::Subtype, "none");
     if (
@@ -103,7 +107,7 @@ bool is_point_inside_crosswalk(const lanelet::LaneletMap & map, const lanelet::B
       subtype != lanelet::AttributeValueString::Walkway) {
       continue;
     }
-    if (lanelet::geometry::inside(candidate, point)) {
+    if (lanelet::geometry::inside(candidate, *point)) {
       return true;
     }
   }
@@ -145,17 +149,15 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
   const std::vector<autoware_utils_geometry::LineString2d> candidates =
     collect_candidate_road_border_linestrings(*road_border_layer_, predicted_path, object_shape);
 
-  const std::optional<size_t> crossing_index =
+  const std::optional<size_t> road_border_crossing_index =
     path_cut::find_footprint_crossing_index(predicted_path, object_shape, candidates);
-  if (!crossing_index) {
+  if (!road_border_crossing_index) {
     return predicted_path;
   }
 
-  const std::optional<lanelet::BasicPoint2d> crossing_point =
+  const std::optional<lanelet::BasicPoint2d> road_border_crossing_point =
     get_first_border_crossing_point(predicted_path, candidates);
-  if (
-    lanelet_map_ptr_ && crossing_point &&
-    is_point_inside_crosswalk(*lanelet_map_ptr_, *crossing_point)) {
+  if (is_point_inside_crosswalk(*lanelet_map_ptr_, road_border_crossing_point)) {
     return predicted_path;
   }
 
@@ -163,13 +165,13 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
   const double max_deceleration = path_cut::max_deceleration_for_label(
     max_decel_params,
     autoware::object_recognition_utils::getHighestProbLabel(object.classification));
-  const double distance_to_cross = arc_length_to_index(predicted_path, *crossing_index);
+  const double distance_to_cross = arc_length_to_index(predicted_path, *road_border_crossing_index);
   if (!path_cut::can_stop_before_the_line(
         distance_to_cross, std::hypot(v.x, v.y), max_deceleration)) {
     return predicted_path;
   }
 
-  return path_cut::force_cut_at_index(predicted_path, std::max<size_t>(*crossing_index, 1UL) - 1UL);
+  return path_cut::force_cut_at_index(predicted_path, std::max<size_t>(*road_border_crossing_index, 1UL) - 1UL);
 }
 
 }  // namespace autoware::map_based_prediction
