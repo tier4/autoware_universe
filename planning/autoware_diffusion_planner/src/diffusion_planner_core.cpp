@@ -577,8 +577,15 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
     postprocess::parse_predictions(denormalized_predictions, frame_context.ego_to_map_transform);
   last_agent_poses_map_ = agent_poses;
 
-  const bool enable_force_stop =
+  // The legacy waypoint model needs the historical force-stop post-processing because its
+  // velocity is reconstructed from a spatial path and can keep moving after the first stop
+  // point. HDP is trained on a complete 10 Hz per-step displacement sequence. Its low-speed and
+  // restart decisions are therefore part of the learned temporal output; copying one pose over
+  // the remainder of the horizon after a single threshold crossing would discard that output and
+  // can turn a transient low-speed prediction into an artificial hard stop.
+  const bool ego_is_moving =
     frame_context.ego_kinematic_state.twist.twist.linear.x > std::numeric_limits<double>::epsilon();
+  const bool enable_force_stop = !is_velocity_representation_ && ego_is_moving;
 
   PlannerOutput output;
   output.denoising_steps = postprocess::create_denoising_steps_message(
