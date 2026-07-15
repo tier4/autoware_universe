@@ -157,25 +157,32 @@ RiskLevel::_level_type identify_risk_level(
   }
 }
 
+struct EgoDracAssessmentParams
+{
+  DracParams::PetMargin pet_margin{};
+  EgoFootprintMargin ego_footprint_margin{};
+  DracParams::EgoDracAcceleration acceleration{};
+  double braking_delay{};
+};
+
 std::pair<std::optional<double>, std::optional<CollisionDetail>> assess_ego_drac(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
-  const TrajectoryData & object_trajectory, const DracParams & drac_params,
-  const DracParams::EgoDracAcceleration & acceleration_params, const double braking_delay,
+  const TrajectoryData & object_trajectory, const EgoDracAssessmentParams & params,
   const GlobalParams & global_params)
 {
   std::vector<double> ego_acceleration_list{
-    acceleration_params.safe_limit, acceleration_params.danger_limit,
-    acceleration_params.vehicle_limit};
+    params.acceleration.safe_limit, params.acceleration.danger_limit,
+    params.acceleration.vehicle_limit};
 
   std::optional<CollisionDetail> last_detected_collision{};
   for (auto ego_acceleration : ego_acceleration_list) {
     trajectory::EgoTrajectoryGenerationParams ego_traj_params{
-      braking_delay, ego_acceleration, drac_params.ego_footprint_margin};
+      params.braking_delay, ego_acceleration, params.ego_footprint_margin};
     const auto & ego_trajectory =
       ego_trajectory_cache.get_or_compute_trajectory_data(ego_traj_params);
 
     auto detected_collision = find_collision_timing(
-      ego_trajectory, object_trajectory, drac_params.pet_margin, global_params.time_resolution);
+      ego_trajectory, object_trajectory, params.pet_margin, global_params.time_resolution);
     if (!detected_collision.has_value()) {
       return {ego_acceleration, last_detected_collision};
     }
@@ -183,11 +190,11 @@ std::pair<std::optional<double>, std::optional<CollisionDetail>> assess_ego_drac
   }
 
   trajectory::EgoTrajectoryGenerationParams limit_ego_traj_params{
-    0.0, ego_acceleration_list.back(), drac_params.ego_footprint_margin};
+    0.0, ego_acceleration_list.back(), params.ego_footprint_margin};
   const auto & limit_ego_trajectory =
     ego_trajectory_cache.get_or_compute_trajectory_data(limit_ego_traj_params);
   auto collision_result = find_collision_timing(
-    limit_ego_trajectory, object_trajectory, drac_params.pet_margin, global_params.time_resolution);
+    limit_ego_trajectory, object_trajectory, params.pet_margin, global_params.time_resolution);
   if (!collision_result.has_value()) {
     return {ego_acceleration_list.back(), last_detected_collision};
   }
@@ -200,16 +207,16 @@ DracEvaluation assess_drac_constant_curvature_object_first(
   const TrajectoryData & object_constant_curvature_trajectory, const DracParams & drac_params,
   const GlobalParams & global_params, CollisionDetail && nominal_collision_result)
 {
-  const auto & assessment_params = drac_params.constant_curvature.object_earlier;
+  const auto ego_drac_params = EgoDracAssessmentParams{
+    drac_params.pet_margin, drac_params.ego_footprint_margin,
+    drac_params.constant_curvature.object_earlier.ego_drac_assessment,
+    drac_params.ego_reaction_braking_delay.nominal};
   auto [required_acceleration, last_collision] = assess_ego_drac(
-    ego_trajectory_cache, object_constant_curvature_trajectory, drac_params,
-    assessment_params.ego_drac_assessment, drac_params.ego_reaction_braking_delay.nominal,
-    global_params);
+    ego_trajectory_cache, object_constant_curvature_trajectory, ego_drac_params, global_params);
 
   DracEvaluation evaluation{};
   evaluation.method = "constant_curvature, object earlier";
-  evaluation.risk =
-    identify_risk_level(required_acceleration, assessment_params.ego_drac_assessment);
+  evaluation.risk = identify_risk_level(required_acceleration, ego_drac_params.acceleration);
   evaluation.ego_drac_acceleration = required_acceleration;
   evaluation.detail = std::move(last_collision).value_or(std::move(nominal_collision_result));
   return evaluation;
@@ -264,16 +271,16 @@ DracEvaluation assess_drac_object_prioritized_ego_earlier(
   const GlobalParams & global_params, CollisionDetail && nominal_collision_result)
 {
   // todo(takagi): add object deceleration.
-  const auto & assessment_params = drac_params.map_based.object_prioritized_ego_earlier;
+  const auto ego_drac_params = EgoDracAssessmentParams{
+    drac_params.pet_margin, drac_params.ego_footprint_margin,
+    drac_params.map_based.object_prioritized_ego_earlier.ego_drac_assessment,
+    drac_params.ego_reaction_braking_delay.nominal};
   auto [required_acceleration, last_collision] = assess_ego_drac(
-    ego_trajectory_cache, object_map_based_trajectory, drac_params,
-    assessment_params.ego_drac_assessment, drac_params.ego_reaction_braking_delay.departure,
-    global_params);
+    ego_trajectory_cache, object_map_based_trajectory, ego_drac_params, global_params);
 
   DracEvaluation evaluation{};
   evaluation.method = "map_based, object prioritized, ego earlier";
-  evaluation.risk =
-    identify_risk_level(required_acceleration, assessment_params.ego_drac_assessment);
+  evaluation.risk = identify_risk_level(required_acceleration, ego_drac_params.acceleration);
   evaluation.ego_drac_acceleration = required_acceleration;
   evaluation.detail = std::move(last_collision).value_or(std::move(nominal_collision_result));
   return evaluation;
@@ -284,16 +291,16 @@ DracEvaluation assess_drac_object_prioritized_object_earlier(
   const TrajectoryData & object_map_based_trajectory, const DracParams & drac_params,
   const GlobalParams & global_params, CollisionDetail && nominal_collision_result)
 {
-  const auto & assessment_params = drac_params.map_based.object_prioritized_object_earlier;
+  const auto ego_drac_params = EgoDracAssessmentParams{
+    drac_params.pet_margin, drac_params.ego_footprint_margin,
+    drac_params.map_based.object_prioritized_object_earlier.ego_drac_assessment,
+    drac_params.ego_reaction_braking_delay.nominal};
   auto [required_acceleration, last_collision] = assess_ego_drac(
-    ego_trajectory_cache, object_map_based_trajectory, drac_params,
-    assessment_params.ego_drac_assessment, drac_params.ego_reaction_braking_delay.departure,
-    global_params);
+    ego_trajectory_cache, object_map_based_trajectory, ego_drac_params, global_params);
 
   DracEvaluation evaluation{};
   evaluation.method = "map_based, object prioritized, object earlier";
-  evaluation.risk =
-    identify_risk_level(required_acceleration, assessment_params.ego_drac_assessment);
+  evaluation.risk = identify_risk_level(required_acceleration, ego_drac_params.acceleration);
   evaluation.ego_drac_acceleration = required_acceleration;
   evaluation.detail = std::move(last_collision).value_or(std::move(nominal_collision_result));
   return evaluation;
