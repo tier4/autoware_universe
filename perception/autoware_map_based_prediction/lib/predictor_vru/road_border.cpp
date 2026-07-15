@@ -171,7 +171,8 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
     return predicted_path;
   }
 
-  return path_cut::force_cut_at_index(predicted_path, std::max<size_t>(*road_border_crossing_index, 1UL) - 1UL);
+  return path_cut::force_cut_at_index(
+    predicted_path, std::max<size_t>(*road_border_crossing_index, 1UL) - 1UL);
 }
 
 }  // namespace autoware::map_based_prediction
