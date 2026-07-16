@@ -167,46 +167,60 @@ std::vector<Polygon2d> collect_extended_crosswalk_polygons_in_box(
 
 void RoadBorderModule::build_from_map(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr)
 {
-  cut_road_border_map_.reset();
   if (!lanelet_map_ptr) {
+    road_border_layer_ = nullptr;
     return;
   }
 
-  const auto to_lanelet_linestring = [](const LineString2d & line) {
+  lanelet::LineStrings3d road_borders;
+  for (const auto & linestring : lanelet_map_ptr->lineStringLayer) {
+    if (const std::string type = linestring.attributeOr(lanelet::AttributeName::Type, "none");
+        type == "road_border") {
+      road_borders.emplace_back(
+        std::const_pointer_cast<lanelet::LineStringData>(linestring.constData()));
+    }
+  }
+
+  // remove parts of road borders that overlap with crosswalks
+  const auto create_road_border_linestring = [](const LineString2d & line, const double z) {
     lanelet::Points3d points;
     points.reserve(line.size());
     for (const auto & p : line) {
-      points.emplace_back(lanelet::utils::getId(), p.x(), p.y(), 0.0);
+      points.emplace_back(lanelet::utils::getId(), p.x(), p.y(), z);
     }
+    // create item with new id because od avoid conflict with the original road border id .
     lanelet::LineString3d linestring(lanelet::utils::getId(), std::move(points));
     linestring.attributes()[lanelet::AttributeName::Type] = std::string("road_border");
     return linestring;
   };
 
-  lanelet::LineStrings3d cut_borders;
-  for (const auto & linestring : lanelet_map_ptr->lineStringLayer) {
-    const std::string type = linestring.attributeOr(lanelet::AttributeName::Type, "none");
-    if (type != "road_border") {
-      continue;
-    }
-
-    LineString2d border;
-    boost::geometry::convert(lanelet::utils::to2D(linestring).basicLineString(), border);
-    if (border.size() < 2) {
+  lanelet::LineStrings3d road_borders_removed_crosswalks_part;
+  for (const auto & road_border : road_borders) {
+    LineString2d lines_of_border;
+    boost::geometry::convert(lanelet::utils::to2D(road_border).basicLineString(), lines_of_border);
+    if (lines_of_border.size() < 2) {
       continue;
     }
 
     Box2d border_box;
-    boost::geometry::envelope(border, border_box);
-    const std::vector<Polygon2d> crosswalk_polygons =
+    boost::geometry::envelope(lines_of_border, border_box);
+    const std::vector<Polygon2d> extended_crosswalk_polygons =
       crosswalk::collect_extended_crosswalk_polygons_in_box(
         *lanelet_map_ptr, to_lanelet_box(border_box), crosswalk_extend_margin);
 
-    for (const auto & piece : clip_out_with_polygons(border, crosswalk_polygons)) {
-      cut_borders.push_back(to_lanelet_linestring(piece));
+    if (extended_crosswalk_polygons.empty()) {
+      road_borders_removed_crosswalks_part.push_back(road_border);
+      continue;
+    }
+
+    // clipping introduces new endpoints, so these pieces get fresh ids;
+    const double z = road_border.front().z();
+    for (const auto & piece :
+         clip_out_with_polygons(lines_of_border, extended_crosswalk_polygons)) {
+      road_borders_removed_crosswalks_part.push_back(create_road_border_linestring(piece, z));
     }
   }
-  cut_road_border_map_ = lanelet::utils::createMap(cut_borders);
+  road_border_layer_ = lanelet::utils::createMap(road_borders_removed_crosswalks_part);
 }
 
 PredictedPath RoadBorderModule::cut_path_at_road_border(
@@ -215,7 +229,7 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
 {
   const auto & poses = predicted_path.path;
   if (
-    !cut_road_border_map_ || cut_road_border_map_->lineStringLayer.empty() || poses.size() < 2 ||
+    !road_border_layer_ || road_border_layer_->lineStringLayer.empty() || poses.size() < 2 ||
     !path_cut::shape_has_footprint(object.shape)) {
     return predicted_path;
   }
@@ -224,19 +238,7 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
   const lanelet::BoundingBox2d search_box =
     path_cut::get_bbox_contain_path_with_footprint(predicted_path, object_shape);
 
-  const auto to_linestrings_2d = [](const lanelet::ConstLineStrings3d & linestrings) {
-    std::vector<LineString2d> linestrings_2d;
-    linestrings_2d.reserve(linestrings.size());
-    for (const auto & linestring : linestrings) {
-      LineString2d linestring_2d;
-      boost::geometry::convert(lanelet::utils::to2D(linestring).basicLineString(), linestring_2d);
-      linestrings_2d.push_back(std::move(linestring_2d));
-    }
-    return linestrings_2d;
-  };
-
-  const std::vector<LineString2d> candidates =
-    to_linestrings_2d(cut_road_border_map_->lineStringLayer.search(search_box));
+  const auto candidates = road_border_layer_->lineStringLayer.search(search_box);
 
   const std::optional<size_t> road_border_crossing_index =
     path_cut::find_footprint_crossing_index(predicted_path, object_shape, candidates);

@@ -42,9 +42,7 @@ public:
     const path_cut::MaxDecelerationParams & max_decel_params) const;
 
 private:
-  // road_border linestrings with the crosswalk sections clipped out. synthesized geometry: ids are
-  // freshly generated and z is dropped, so this is not a view of the original map.
-  lanelet::LaneletMapConstUPtr cut_road_border_map_;
+  lanelet::LaneletMapConstUPtr road_border_layer_{nullptr};
 };
 
 }  // namespace autoware::map_based_prediction

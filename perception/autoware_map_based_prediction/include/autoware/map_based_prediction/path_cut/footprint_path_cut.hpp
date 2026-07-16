@@ -22,6 +22,7 @@
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/shape.hpp>
 
+#include <lanelet2_core/Forward.h>
 #include <lanelet2_core/primitives/BoundingBox.h>
 
 #include <optional>
@@ -45,6 +46,10 @@ lanelet::BoundingBox2d get_bbox_contain_path_with_footprint(
 std::optional<size_t> find_footprint_crossing_index(
   const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & object_shape,
   const std::vector<autoware_utils_geometry::LineString2d> & linestrings_2d);
+
+std::optional<size_t> find_footprint_crossing_index(
+  const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & object_shape,
+  const lanelet::ConstLineStrings3d & linestrings);
 
 std::optional<size_t> find_footprint_crossing_index(
   const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & object_shape,

@@ -19,8 +19,14 @@
 
 #include <boost/geometry.hpp>
 
+#include <lanelet2_core/geometry/LineString.h>
+#include <lanelet2_core/primitives/LineString.h>
+
 #include <algorithm>
 #include <cmath>
+#include <optional>
+#include <utility>
+#include <vector>
 
 namespace autoware::map_based_prediction::path_cut
 {
@@ -110,6 +116,20 @@ std::optional<size_t> find_footprint_crossing_index(
     }
   }
   return std::nullopt;
+}
+
+std::optional<size_t> find_footprint_crossing_index(
+  const PredictedPath & predicted_path, const autoware_perception_msgs::msg::Shape & object_shape,
+  const lanelet::ConstLineStrings3d & linestrings)
+{
+  std::vector<autoware_utils_geometry::LineString2d> linestrings_2d;
+  linestrings_2d.reserve(linestrings.size());
+  for (const auto & linestring : linestrings) {
+    autoware_utils_geometry::LineString2d linestring_2d;
+    boost::geometry::convert(lanelet::utils::to2D(linestring).basicLineString(), linestring_2d);
+    linestrings_2d.push_back(std::move(linestring_2d));
+  }
+  return find_footprint_crossing_index(predicted_path, object_shape, linestrings_2d);
 }
 
 std::optional<size_t> find_footprint_crossing_index(
