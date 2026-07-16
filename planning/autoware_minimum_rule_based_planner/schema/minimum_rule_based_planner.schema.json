@@ -72,7 +72,9 @@
                   "default": 1.0,
                   "minimum": 0.0
                 }
-              }
+              },
+              "required": [],
+              "additionalProperties": false
             },
             "ego_nearest_lanelet": {
               "type": "object",
