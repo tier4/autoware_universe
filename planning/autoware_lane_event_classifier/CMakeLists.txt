@@ -20,6 +20,7 @@ generate_parameter_library(lane_event_classifier_parameters
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/lane_event_classifier_node.cpp
   src/debug.cpp
+  src/lane_tracker.cpp
   src/lane_following/checker.cpp
 )
 
@@ -39,8 +40,17 @@ rclcpp_components_register_node(${PROJECT_NAME}_lib
 )
 
 if(BUILD_TESTING)
+  find_package(ament_cmake_ros REQUIRED)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
+
+  ament_add_ros_isolated_gtest(test_lane_tracker
+    test/test_lane_tracker.cpp
+  )
+  target_link_libraries(test_lane_tracker ${PROJECT_NAME}_lib "${cpp_typesupport_target}")
+  # Suppress deprecated-declarations from generate_parameter_library internals (pulled in
+  # transitively via the node/debug headers).
+  target_compile_options(test_lane_tracker PRIVATE -Wno-deprecated-declarations)
 
   # Per-classifier gtests (lane_following, lane_change, lane_crossing) are added alongside each
   # classifier's real logic in its own follow-up PR.

@@ -13,7 +13,9 @@ The state is published on `/planning/driving_factor` as a `DrivingState`. A down
 stores every frame, so the log can later show when the vehicle changed lanes, aborted, or drifted,
 and for how long.
 
-The node does not control the vehicle; it only observes and labels it.
+!!! note
+
+    The node doesn't do anything else except publishing driving states. No MRM and no control involved.
 
 ---
 
@@ -31,6 +33,12 @@ The node does not control the vehicle; it only observes and labels it.
 | _(polled)_ route           | `LaneletRoute`         | The mission and its preferred primitives.                                                                      |
 | _(polled)_ objects         | `PredictedObjects`     | Perceived objects (used by crossing logic).                                                                    |
 | _(polled)_ turn indicators | `TurnIndicatorsReport` | Optional hint for the lane-change confidence booster. Never a precondition — if missing, the cycle still runs. |
+
+!!! note
+
+    A **route primitive** is the sequence of lanes, the planned path, that the ego will try to drive on
+
+with best effort. So "is this lane a route primitive?" asks whether the lane is part of that path.
 
 ### Publication
 
@@ -124,7 +132,7 @@ cycle. Adding a classifier is: implement the interface, then register it in `bui
 | `LaneFollowingChecker`             | 🚧 stub — always reports following                               |
 | `LaneChangeClassifier`             | 🚧 stub — reports no event                                       |
 | `IntentionalCrossingClassifier`    | 🚧 stub — reports no event                                       |
-| `LaneTracker` (map/reference lane) | ⏭️ TBA — the map is subscribed and stashed, but not yet consumed |
+| `LaneTracker` (map/reference lane) | ✅ implemented — owns the map, routing graph, and reference lane |
 
 ---
 
