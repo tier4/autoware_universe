@@ -15,6 +15,7 @@
 #include "autoware_lane_event_classifier/debug.hpp"
 
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 
 #include <algorithm>
 #include <string>
@@ -67,6 +68,11 @@ void LaneEventClassifierDebug::publish_markers(
   pub_markers_->publish(markers);
 }
 
+void LaneEventClassifierDebug::log_reset(const std::string & reason) const
+{
+  RCLCPP_INFO(logger_, "%s", fmt::format("[lane_event] tracking state reset: {}", reason).c_str());
+}
+
 void LaneEventClassifierDebug::log_warn(const std::string & message) const
 {
   RCLCPP_WARN_THROTTLE(logger_, *clock_, 1000, "%s", message.c_str());
@@ -74,13 +80,48 @@ void LaneEventClassifierDebug::log_warn(const std::string & message) const
 
 void LaneEventClassifierDebug::log_state(
   uint8_t current_state, const LaneEventInput & input,
-  const LaneFollowingResult & lane_following_result,
+  const LaneFollowingResult & lane_following_result, const LaneTracker & lane_tracker,
   const std::vector<std::unique_ptr<LaneEventClassifierBase>> & classifiers)
 {
   const auto & ego_pos = input.odometry_ptr->pose.pose.position;
+  const auto & reference_lane = lane_tracker.reference_lane();
   const auto & [is_lane_following, lane_following_reason] = lane_following_result;
   const bool ego_departed = !is_lane_following;
   const auto following_reason = to_string(lane_following_reason);
+
+  // Trace reference lane (re)anchoring and the "stuck reference lane" condition (reference lane can
+  // no longer follow ego).
+  if (reference_lane.reference_lane_id != previous_reference_lane_id_) {
+    RCLCPP_INFO(
+      logger_, "%s",
+      fmt::format(
+        "[lane_event] reference lane {} -> {} (ego now in lane {})", previous_reference_lane_id_,
+        reference_lane.reference_lane_id, lane_tracker.last_selected_lane_id())
+        .c_str());
+    previous_reference_lane_id_ = reference_lane.reference_lane_id;
+  }
+  if (!lane_tracker.is_reference_lane_held() && lane_tracker.is_last_reanchor_blocked()) {
+    log_warn(
+      fmt::format(
+        "[lane_event] reference lane STUCK at {} but ego is now in lane {} (not a next lane of the "
+        "reference lane) -> footprint will read as a lateral departure",
+        reference_lane.reference_lane_id, lane_tracker.last_selected_lane_id()));
+  }
+
+  // Built lazily — it scans the map, so only when a log line is actually emitted.
+  const auto build_lanes_context = [&]() {
+    std::vector<lanelet::Id> route_lane_ids;
+    route_lane_ids.reserve(input.route_ptr->segments.size());
+    for (const auto & segment : input.route_ptr->segments) {
+      route_lane_ids.push_back(static_cast<lanelet::Id>(segment.preferred_primitive.id));
+    }
+    return fmt::format(
+      "route=[{}] ego_now=[{}] reference_next=[{}] footprint_lanes=[{}]",
+      fmt::join(route_lane_ids, ","),
+      fmt::join(lane_tracker.lanelet_ids_at({ego_pos.x, ego_pos.y}), ","),
+      fmt::join(lane_tracker.next_lane_ids(reference_lane.reference_lane_id), ","),
+      fmt::join(lane_tracker.footprint_lane_ids(input.footprint), ","));
+  };
 
   if (current_state != previously_published_state_) {
     std::string reasons;
@@ -93,16 +134,21 @@ void LaneEventClassifierDebug::log_state(
     RCLCPP_INFO(
       logger_, "%s",
       fmt::format(
-        "[lane_event] {} -> {} | ego=({:.2f}, {:.2f}) following={} ({}) | why: {}",
+        "[lane_event] {} -> {} | ego=({:.2f}, {:.2f}) reference_lane={} on_route={} "
+        "following={} ({}) | why: {} | {}",
         state_to_string(previously_published_state_), state_to_string(current_state), ego_pos.x,
-        ego_pos.y, is_lane_following, following_reason, reasons.empty() ? "(none)" : reasons)
+        ego_pos.y, reference_lane.reference_lane_id, reference_lane.is_reference_lane_on_route,
+        is_lane_following, following_reason, reasons.empty() ? "(none)" : reasons,
+        build_lanes_context())
         .c_str());
     previously_published_state_ = current_state;
   } else if (current_state == DrivingState::LANE_FOLLOWING && ego_departed) {
     RCLCPP_INFO_THROTTLE(
       logger_, *clock_, 1000, "%s",
       fmt::format(
-        "[lane_event] departure accumulating: ego not lane following ({})", following_reason)
+        "[lane_event] departure accumulating: ego not lane following ({}) vs "
+        "reference_lane={} | {}",
+        following_reason, reference_lane.reference_lane_id, build_lanes_context())
         .c_str());
   }
 }
