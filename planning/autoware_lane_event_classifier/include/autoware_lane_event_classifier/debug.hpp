@@ -15,9 +15,9 @@
 #ifndef AUTOWARE_LANE_EVENT_CLASSIFIER__DEBUG_HPP_
 #define AUTOWARE_LANE_EVENT_CLASSIFIER__DEBUG_HPP_
 
+#include <autoware_lane_event_classifier/detail/lane_tracker.hpp>
 #include <autoware_lane_event_classifier/lane_event_classifier_base.hpp>
 #include <autoware_lane_event_classifier/lane_following/checker.hpp>
-#include <autoware_lane_event_classifier/lane_tracker.hpp>
 #include <autoware_lane_event_classifier/types.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/rclcpp.hpp>

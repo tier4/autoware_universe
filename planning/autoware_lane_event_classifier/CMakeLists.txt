@@ -20,7 +20,7 @@ generate_parameter_library(lane_event_classifier_parameters
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/lane_event_classifier_node.cpp
   src/debug.cpp
-  src/lane_tracker.cpp
+  src/detail/lane_tracker.cpp
   src/lane_following/checker.cpp
 )
 
@@ -28,7 +28,6 @@ target_link_libraries(${PROJECT_NAME}_lib
   lane_event_classifier_parameters
 )
 
-# Suppress deprecated-declarations from generate_parameter_library internals
 target_compile_options(${PROJECT_NAME}_lib PRIVATE -Wno-deprecated-declarations)
 
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
@@ -48,12 +47,8 @@ if(BUILD_TESTING)
     test/test_lane_tracker.cpp
   )
   target_link_libraries(test_lane_tracker ${PROJECT_NAME}_lib "${cpp_typesupport_target}")
-  # Suppress deprecated-declarations from generate_parameter_library internals (pulled in
-  # transitively via the node/debug headers).
   target_compile_options(test_lane_tracker PRIVATE -Wno-deprecated-declarations)
 
-  # Per-classifier gtests (lane_following, lane_change, lane_crossing) are added alongside each
-  # classifier's real logic in its own follow-up PR.
 endif()
 
 ament_auto_package(

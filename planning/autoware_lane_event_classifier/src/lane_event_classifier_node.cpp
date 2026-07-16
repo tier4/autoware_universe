@@ -16,7 +16,7 @@
 
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/universe_utils/system/stop_watch.hpp>
-#include <autoware_lane_event_classifier/geometry_utils.hpp>
+#include <autoware_lane_event_classifier/detail/geometry_utils.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 
 #include <cmath>
