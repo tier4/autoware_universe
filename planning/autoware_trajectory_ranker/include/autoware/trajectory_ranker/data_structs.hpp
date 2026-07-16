@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__TRAJECTORY_RANKER__DATA_STRUCTS_HPP_
 #define AUTOWARE__TRAJECTORY_RANKER__DATA_STRUCTS_HPP_
 
+#include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
+
 #include <autoware_internal_planning_msgs/msg/candidate_trajectory.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -23,8 +25,6 @@
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <unique_identifier_msgs/msg/uuid.hpp>
-
-#include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 

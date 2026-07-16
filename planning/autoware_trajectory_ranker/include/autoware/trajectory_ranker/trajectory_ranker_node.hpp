@@ -19,8 +19,8 @@
 #include "autoware/trajectory_ranker/evaluation.hpp"
 
 #include <autoware/route_handler/route_handler.hpp>
-#include <autoware_trajectory_ranker/trajectory_ranker_parameters.hpp>
 #include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
+#include <autoware_trajectory_ranker/trajectory_ranker_parameters.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
 #include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <rclcpp/rclcpp.hpp>

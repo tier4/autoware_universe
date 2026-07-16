@@ -18,17 +18,16 @@
 #include "autoware/trajectory_ranker/trajectory_ranker.hpp"
 
 #include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
+#include <autoware_trajectory_validator/msg/validation_report.hpp>
 #include <autoware_utils_debug/debug_publisher.hpp>
 #include <autoware_utils_debug/time_keeper.hpp>
+#include <autoware_utils_rclcpp/polling_subscriber.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <autoware_utils_rclcpp/polling_subscriber.hpp>
-
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_internal_planning_msgs/msg/scored_candidate_trajectories.hpp>
-#include <autoware_trajectory_validator/msg/validation_report.hpp>
 
 #include <memory>
 #include <string>
@@ -49,7 +48,8 @@ public:
     vehicle_info_utils::VehicleInfo vehicle_info,
     std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
 
-  ScoredCandidateTrajectories rank_trajectories(const CandidateTrajectories & input_trajectories, const RankerContext & context);
+  ScoredCandidateTrajectories rank_trajectories(
+    const CandidateTrajectories & input_trajectories, const RankerContext & context);
 
 private:
   void update_parameters();

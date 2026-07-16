@@ -44,8 +44,7 @@ public:
   explicit Evaluator(
     const std::shared_ptr<RouteHandler> & route_handler,
     const std::shared_ptr<VehicleInfo> & vehicle_info, const rclcpp::Logger & logger,
-    const trajectory_ranker_params::Params::Evaluation & params,
-    rclcpp::Node * node = nullptr)
+    const trajectory_ranker_params::Params::Evaluation & params, rclcpp::Node * node = nullptr)
   : plugin_loader_(
       "autoware_trajectory_ranker", "autoware::trajectory_ranker::metrics::MetricInterface"),
     route_handler_{route_handler},
@@ -105,6 +104,8 @@ public:
    * @return Trajectory interface if found, nullptr otherwise
    */
   std::shared_ptr<DataInterface> get(const std::string & tag) const;
+
+  [[nodiscard]] double score(const std::shared_ptr<CoreData> & core_data);
 
 protected:
   /**

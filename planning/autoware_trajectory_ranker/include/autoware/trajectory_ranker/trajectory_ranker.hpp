@@ -12,34 +12,53 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__TRAJECTORY_RANKER__METRICS__TRAJECTORY_RANKER_HPP_
-#define AUTOWARE__TRAJECTORY_RANKER__METRICS__TRAJECTORY_RANKER_HPP_
+#ifndef AUTOWARE__TRAJECTORY_RANKER__TRAJECTORY_RANKER_HPP_
+#define AUTOWARE__TRAJECTORY_RANKER__TRAJECTORY_RANKER_HPP_
 
-#include "autoware/trajectory_ranker/interface/metrics_interface.hpp"
 #include "autoware/trajectory_ranker/evaluation.hpp"
+#include "autoware/trajectory_ranker/interface/metrics_interface.hpp"
 
 #include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
-
-#include <nav_msgs/msg/odometry.hpp>
-#include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_trajectory_validator/msg/validation_report.hpp>
 
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_internal_planning_msgs/msg/scored_candidate_trajectories.hpp>
-#include <autoware_trajectory_validator/msg/validation_report.hpp>
+#include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+
+#include <deque>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace autoware::trajectory_ranker
 {
-using metrics::MetricInterface;
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
+using autoware_internal_planning_msgs::msg::CandidateTrajectory;
 using autoware_internal_planning_msgs::msg::ScoredCandidateTrajectories;
+using autoware_internal_planning_msgs::msg::ScoredCandidateTrajectory;
 using autoware_trajectory_validator::msg::ValidationReport;
+using metrics::MetricInterface;
+
+using ValidationReports = std::vector<ValidationReport::ConstSharedPtr>;
 
 struct RankerContext
 {
-  ValidationReport::ConstSharedPtr validation_report;
+  std::shared_ptr<ValidationReports> validation_reports;
   nav_msgs::msg::Odometry::ConstSharedPtr odometry;
   std::shared_ptr<RouteHandler> route_handler;
 };
+
+struct ScoredTrajectory
+{
+  CandidateTrajectory candidate_trajectory;
+  double safety_penalty{};
+  double source_penalty{};
+  double quality_penalty{};
+  double score{};
+};
+using ScoredTrajectories = std::vector<ScoredTrajectory>;
 
 class TrajectoryRanker
 {
@@ -49,14 +68,27 @@ public:
    * @param evaluator Evaluator to use for ranking trajectories.
    * @param params Parameters for the ranker.
    */
-  explicit TrajectoryRanker(const std::shared_ptr<Evaluator> & evaluator, const trajectory_ranker_params::Params & params)
+  explicit TrajectoryRanker(
+    const std::shared_ptr<Evaluator> & evaluator, const trajectory_ranker_params::Params & params)
   : evaluator_(evaluator), params_(params)
   {
   }
 
-  tl::expected<ScoredCandidateTrajectories, std::string> process(const CandidateTrajectories & candidate_trajectories, const RankerContext & context);
+  tl::expected<ScoredCandidateTrajectories, std::string> process(
+    const CandidateTrajectories & candidate_trajectories, const RankerContext & context);
 
 private:
+  void evaluate_safety(
+    ScoredTrajectories & scored_trajectories, const RankerContext & context) const;
+  void evaluate_source(
+    ScoredTrajectories & scored_trajectories,
+    const std::unordered_map<std::string, std::string> & generator_id_to_name_map) const;
+  void evaluate_quality(
+    ScoredTrajectories & scored_trajectories, const RankerContext & context) const;
+  void score_trajectories(ScoredTrajectories & scored_trajectories) const;
+
+  void update_trajectory_history(const ScoredTrajectories & scored_trajectories);
+
   std::shared_ptr<Evaluator> evaluator_;
 
   std::shared_ptr<TrajectoryPoints> previous_points_;
@@ -67,4 +99,4 @@ private:
 
 }  // namespace autoware::trajectory_ranker
 
-#endif  // AUTOWARE__TRAJECTORY_RANKER__METRICS__TRAJECTORY_RANKER_HPP_
+#endif  // AUTOWARE__TRAJECTORY_RANKER__TRAJECTORY_RANKER_HPP_

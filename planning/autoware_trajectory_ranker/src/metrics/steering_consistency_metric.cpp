@@ -52,7 +52,8 @@ void SteeringConsistency::evaluate(
   result->set_metric(index(), steering_command);
 }
 
-void SteeringConsistency::setup_parameters(const trajectory_ranker_params::Params::Evaluation & params)
+void SteeringConsistency::setup_parameters(
+  const trajectory_ranker_params::Params::Evaluation & params)
 {
   params_ = params.steering_consistency;
 }

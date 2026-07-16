@@ -1,16 +1,23 @@
 /**:
   ros__parameters:
+    generator_name_prefixes:
+      - "DiffusionPlanner_"
+      - "MinimumRuleBasedPlanner"
+
     safety:
+      enable: true
       levels: ["safe", "low_caution", "high_caution", "danger", "fatal"]
       penalty: [0.0, 0.1, 0.2, 0.3, 0.4]
       scale: 10.0
 
     source:
+      enable: true
       levels: ["diffusion_planner", "backup_planner"]
       penalty: [0.0, 0.1]
       scale: 5.0
 
     evaluation:
+      enable: true
       plugin_names:
         - "autoware::trajectory_ranker::metrics::LateralAcceleration"
         - "autoware::trajectory_ranker::metrics::LongitudinalJerk"

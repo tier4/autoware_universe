@@ -19,6 +19,7 @@
 #include "autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp"
 
 #include <memory>
+#include <vector>
 
 namespace autoware::trajectory_ranker::metrics
 {

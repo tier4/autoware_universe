@@ -31,7 +31,8 @@
 namespace autoware::trajectory_ranker::metrics
 {
 
-void TrajectoryConsistency::setup_parameters(const trajectory_ranker_params::Params::Evaluation & params)
+void TrajectoryConsistency::setup_parameters(
+  const trajectory_ranker_params::Params::Evaluation & params)
 {
   params_ = params.trajectory_consistency;
 }
@@ -211,7 +212,8 @@ void TrajectoryConsistency::evaluate(
 
   // Normalize variance to [0, 1] range using max_value as reference
   // Convert variance (m^2) to metric score
-  const float normalized_variance = std::min(1.0f, static_cast<float>(total_variance / params_.maximum));
+  const float normalized_variance =
+    std::min(1.0f, static_cast<float>(total_variance / params_.maximum));
 
   // Apply this metric value to all points in the trajectory
   // (consistency is a trajectory-level metric, not point-wise)

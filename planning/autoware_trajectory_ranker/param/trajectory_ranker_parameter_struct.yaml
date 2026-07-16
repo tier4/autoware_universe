@@ -1,11 +1,16 @@
 trajectory_ranker_params:
-  ranked_generator_name_prefixes:
+  generator_name_prefixes:
     type: string_array
     default_value: [DiffusionPlanner_, MinimumRuleBasedPlanner]
-    description: List of ranked generator name prefixes
+    description: List of generator name prefixes
     read_only: false
 
   safety:
+    enable:
+      type: bool
+      default_value: true
+      description: Enable safety evaluation
+      read_only: false
     levels:
       type: string_array
       default_value: [safe, low_caution, high_caution, danger, fatal]
@@ -23,6 +28,11 @@ trajectory_ranker_params:
       read_only: false
 
   source:
+    enable:
+      type: bool
+      default_value: true
+      description: Enable source evaluation
+      read_only: false
     levels:
       type: string_array
       default_value: [diffusion_planner, backup_planner]
@@ -37,6 +47,11 @@ trajectory_ranker_params:
       type: double
 
   evaluation:
+    enable:
+      type: bool
+      default_value: true
+      description: Enable evaluation by metrics
+      read_only: false
     plugin_names:
       type: string_array
       default_value:
@@ -70,12 +85,31 @@ trajectory_ranker_params:
       read_only: false
       validation:
         bounds<>: [1, 100]
-    decay_weight_base: &base_decay_param {
-      type: double_array,
-      default_value: [1.0, 0.8, 0.64, 0.51, 0.41, 0.33, 0.26, 0.21, 0.17, 0.13, 0.10, 0.08, 0.067, 0.053, 0.043, 0.034],
-      validation: { fixed_size<>: [16] },
-      read_only: false
-    }
+    decay_weight_base:
+      &base_decay_param {
+        type: double_array,
+        default_value:
+          [
+            1.0,
+            0.8,
+            0.64,
+            0.51,
+            0.41,
+            0.33,
+            0.26,
+            0.21,
+            0.17,
+            0.13,
+            0.10,
+            0.08,
+            0.067,
+            0.053,
+            0.043,
+            0.034,
+          ],
+        validation: { fixed_size<>: [16] },
+        read_only: false,
+      }
     lateral_acceleration:
       enable:
         type: bool

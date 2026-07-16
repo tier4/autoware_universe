@@ -25,8 +25,7 @@
 namespace autoware::trajectory_ranker
 {
 
-void Evaluator::load_metric(
-  const std::string & name, const size_t index)
+void Evaluator::load_metric(const std::string & name, const size_t index)
 {
   try {
     auto plugin = plugin_loader_.createSharedInstance(name);
@@ -161,5 +160,34 @@ std::shared_ptr<DataInterface> Evaluator::best(const std::string & exclude)
   if (results_.end() == itr) return nullptr;
 
   return *itr;
+}
+
+double Evaluator::score(const std::shared_ptr<CoreData> & core_data)
+{
+  // evaluate the core data
+  const auto ptr = std::make_shared<DataInterface>(core_data, plugins_.size());
+  for (const auto & plugin : plugins_) {
+    plugin->evaluate(ptr);
+  }
+
+  // compress
+  std::vector<std::vector<float>> decay_weight;
+  decay_weight.reserve(params_.time_decay_weight.size());
+  for (const auto & w : params_.time_decay_weight) {
+    decay_weight.emplace_back(w.begin(), w.end());
+  }
+  ptr->compress(decay_weight);
+
+  // normalize
+  for (const auto & plugin : plugins_) {
+    ptr->normalize(0.0f, ptr->score(plugin->index()), plugin->index());
+  }
+
+  // weighting
+  const auto score_weight =
+    std::vector<float>(params_.score_weight.begin(), params_.score_weight.end());
+  ptr->weighting(score_weight);
+
+  return ptr->total();
 }
 }  // namespace autoware::trajectory_ranker

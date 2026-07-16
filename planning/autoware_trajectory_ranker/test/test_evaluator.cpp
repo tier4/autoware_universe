@@ -15,9 +15,8 @@
 #include "autoware/trajectory_ranker/data_structs.hpp"
 #include "autoware/trajectory_ranker/evaluation.hpp"
 
-#include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
-
 #include <autoware/route_handler/route_handler.hpp>
+#include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -70,7 +69,8 @@ protected:
       vehicle_info_utils::VehicleInfoUtils(*node_).getVehicleInfo());
 
     // Create evaluator
-    evaluator_ = std::make_unique<Evaluator>(route_handler_, vehicle_info_, node_->get_logger(), params_.evaluation);
+    evaluator_ = std::make_unique<Evaluator>(
+      route_handler_, vehicle_info_, node_->get_logger(), params_.evaluation);
 
     // Create sample trajectory
     createSampleTrajectory();

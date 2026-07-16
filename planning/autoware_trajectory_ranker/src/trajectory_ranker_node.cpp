@@ -33,7 +33,8 @@ namespace autoware::trajectory_ranker
 {
 TrajectoryRanker::TrajectoryRanker(const rclcpp::NodeOptions & options)
 : Node("trajectory_ranker", options),
-  param_listener_{std::make_unique<trajectory_ranker_params::ParamListener>(get_node_parameters_interface())},
+  param_listener_{
+    std::make_unique<trajectory_ranker_params::ParamListener>(get_node_parameters_interface())},
   route_handler_{std::make_shared<RouteHandler>()},
   previous_points_{nullptr}
 {
@@ -43,7 +44,8 @@ TrajectoryRanker::TrajectoryRanker(const rclcpp::NodeOptions & options)
   const auto vehicle_info = std::make_shared<vehicle_info_utils::VehicleInfo>(
     vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo());
 
-  evaluator_ = std::make_shared<Evaluator>(route_handler_, vehicle_info, get_logger(), params_.evaluation, this);
+  evaluator_ = std::make_shared<Evaluator>(
+    route_handler_, vehicle_info, get_logger(), params_.evaluation, this);
 
   size_t i = 0;
   for (const auto & metric : params_.evaluation.plugin_names) {
@@ -120,7 +122,8 @@ ScoredCandidateTrajectories::ConstSharedPtr TrajectoryRanker::score(
   // Process each candidate trajectory
   for (const auto & candidate : msg->candidate_trajectories) {
     auto sampled = utils::sampling(
-      candidate.points, odometry_ptr->pose.pose, params_.evaluation.sampling_number, params_.evaluation.sampling_resolution);
+      candidate.points, odometry_ptr->pose.pose, params_.evaluation.sampling_number,
+      params_.evaluation.sampling_resolution);
     auto sampled_points = std::make_shared<TrajectoryPoints>(std::move(sampled));
     auto original_points = std::make_shared<TrajectoryPoints>(candidate.points);
 
@@ -128,9 +131,8 @@ ScoredCandidateTrajectories::ConstSharedPtr TrajectoryRanker::score(
     auto trajectory_history_ptr = std::make_shared<std::deque<Trajectory>>(trajectory_history_);
 
     auto core_data = std::make_shared<CoreData>(
-      original_points, sampled_points, previous_points_, preferred_lanes,
-      candidate.header, candidate.generator_id, trajectory_history_ptr,
-      candidate.turn_indicators_command);
+      original_points, sampled_points, previous_points_, preferred_lanes, candidate.header,
+      candidate.generator_id, trajectory_history_ptr, candidate.turn_indicators_command);
 
     evaluator_->add(core_data);
   }
@@ -148,7 +150,9 @@ ScoredCandidateTrajectories::ConstSharedPtr TrajectoryRanker::score(
     trajectory_history_.push_back(best_trajectory);
 
     // Limit buffer size
-    if (trajectory_history_.size() > static_cast<size_t>(params_.evaluation.trajectory_history_size)) {
+    if (
+      trajectory_history_.size() >
+      static_cast<size_t>(params_.evaluation.trajectory_history_size)) {
       trajectory_history_.pop_front();
     }
   }

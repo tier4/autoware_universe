@@ -18,7 +18,6 @@
 #include "autoware/trajectory_ranker/interface/data_interface.hpp"
 
 #include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
-
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -26,6 +25,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace autoware::trajectory_ranker::metrics
 {
@@ -54,8 +54,7 @@ public:
    * @param result Trajectory data interface to evaluate
    * @param max_value Maximum value for normalization
    */
-  virtual void evaluate(
-    const std::shared_ptr<DataInterface> & result) const = 0;
+  virtual void evaluate(const std::shared_ptr<DataInterface> & result) const = 0;
 
   /**
    * @brief Checks if this metric measures deviation from ideal
@@ -70,8 +69,7 @@ public:
    */
   void init(
     const std::shared_ptr<VehicleInfo> & vehicle_info,
-    const trajectory_ranker_params::Params::Evaluation & params,
-    rclcpp::Node * node = nullptr)
+    const trajectory_ranker_params::Params::Evaluation & params, rclcpp::Node * node = nullptr)
   {
     vehicle_info_ = vehicle_info;
     node_ptr_ = node;
@@ -82,7 +80,10 @@ public:
   /**
    * @brief Setup metric-specific parameters (optional override)
    */
-  virtual void setup_parameters([[maybe_unused]] const trajectory_ranker_params::Params::Evaluation & params) {}
+  virtual void setup_parameters(
+    [[maybe_unused]] const trajectory_ranker_params::Params::Evaluation & params)
+  {
+  }
 
   /**
    * @brief Sets the metric index for storage in result arrays

@@ -51,7 +51,8 @@ void LateralAcceleration::evaluate(
   result->set_metric(index(), lateral_accelerations);
 }
 
-void LateralAcceleration::setup_parameters(const trajectory_ranker_params::Params::Evaluation & params)
+void LateralAcceleration::setup_parameters(
+  const trajectory_ranker_params::Params::Evaluation & params)
 {
   params_ = params.lateral_acceleration;
 }

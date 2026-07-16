@@ -22,7 +22,6 @@
 #include "autoware/trajectory_ranker/metrics/trajectory_consistency_metric.hpp"
 
 #include <autoware_trajectory_ranker/autoware_trajectory_ranker_param.hpp>
-
 #include <autoware_vehicle_info_utils/vehicle_info_utils.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -291,8 +290,8 @@ TEST_F(TestMetrics, TrajectoryConsistencyWithEmptyHistory)
   header.stamp = rclcpp::Time(0);
   unique_identifier_msgs::msg::UUID uuid;
 
-  auto core_data = std::make_shared<CoreData>(
-    points, points, nullptr, lanes, header, uuid, empty_history);
+  auto core_data =
+    std::make_shared<CoreData>(points, points, nullptr, lanes, header, uuid, empty_history);
 
   auto result = std::make_shared<autoware::trajectory_ranker::DataInterface>(core_data, 7);
 
