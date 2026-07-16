@@ -18,7 +18,6 @@
 #include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware/trajectory/utils/pretty_build.hpp>
-#include <autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp>
 #include <autoware/velocity_smoother/resample.hpp>
 #include <autoware_utils/geometry/geometry.hpp>
 
@@ -296,16 +295,23 @@ void MinimumRuleBasedPlannerNode::on_timer()
   apply_modifiers(trajectory, input_data);
 
   // 7. Plan the go/stop trajectories with map-defined stop points
-  const auto [go_base, stop_base] = plan_go_and_stop_trajectories(trajectory, input_data);
+  map_based_stop_planner_->set_planner_data(
+    input_data.lanelet_map_bin_ptr, input_data.route_ptr, path_planner_->route_context());
+  const auto stop_result = map_based_stop_planner_->plan(
+    trajectory, input_data.odometry_ptr->pose.pose, input_data.odometry_ptr->twist.twist.linear.x,
+    input_data.acceleration_ptr->accel.accel.linear.x, make_map_based_stop_params());
+  pub_stop_lines_marker_->publish(stop_result.stop_line_markers);
 
   // 8. Velocity optimization
   // NOTE(odashima): the stop trajectory must not update the smoother's prev-output state: it
   // would drag the go trajectory's initial speed down to the stop profile on the next cycle.
-  const auto go_trajectory = optimize_velocity(go_base, input_data, /*update_smoother_state=*/true);
-  const auto stop_trajectory = stop_base
-                                 ? std::make_optional(optimize_velocity(
-                                     *stop_base, input_data, /*update_smoother_state=*/false))
-                                 : std::nullopt;
+  const auto go_trajectory =
+    optimize_velocity(stop_result.go_trajectory, input_data, /*update_smoother_state=*/true);
+  const auto stop_trajectory =
+    stop_result.stop_trajectory
+      ? std::make_optional(optimize_velocity(
+          *stop_result.stop_trajectory, input_data, /*update_smoother_state=*/false))
+      : std::nullopt;
 
   // 9. Create and publish CandidateTrajectories message
   publish_candidate_trajectories(go_trajectory, stop_trajectory);
@@ -315,37 +321,17 @@ void MinimumRuleBasedPlannerNode::on_timer()
   publish_processing_time();
 }
 
-std::pair<Trajectory, std::optional<Trajectory>>
-MinimumRuleBasedPlannerNode::plan_go_and_stop_trajectories(
-  const Trajectory & trajectory, const InputData & input_data)
+StopSelectionParams MinimumRuleBasedPlannerNode::make_map_based_stop_params() const
 {
-  // Stop line collection scans the whole lanelet layer and depends only on the map and the
-  // route, so the result is cached and re-collected only when either changes.
-  if (
-    input_data.route_ptr != stop_lines_cache_route_ptr_ ||
-    input_data.lanelet_map_bin_ptr != stop_lines_cache_map_ptr_) {
-    stop_lines_cache_ = map_based_stop_planner_->collect_stop_lines(path_planner_->route_context());
-    stop_lines_cache_route_ptr_ = input_data.route_ptr;
-    stop_lines_cache_map_ptr_ = input_data.lanelet_map_bin_ptr;
-  }
-
-  // The go trajectory stops only at mandatory targets (e.g. stop lines); the stop trajectory
-  // additionally stops at possibility targets (e.g. traffic lights).
-  const auto go_stop =
-    plan_stop(trajectory, stop_lines_cache_, input_data, /*include_possibility_targets=*/false);
-  const auto stop_stop =
-    plan_stop(trajectory, stop_lines_cache_, input_data, /*include_possibility_targets=*/true);
-
-  // The stop trajectory is produced only when it embeds a stop point different from the go
-  // trajectory's.
-  const bool stop_differs_from_go =
-    stop_stop &&
-    (!go_stop || std::abs(stop_stop->stop_point_arc_length - go_stop->stop_point_arc_length) >
-                   params_.map_based_stop.stop_point_diff_threshold);
-
-  return {
-    go_stop ? go_stop->trajectory : trajectory,
-    stop_differs_from_go ? std::make_optional(stop_stop->trajectory) : std::nullopt};
+  StopSelectionParams params;
+  params.max_deceleration = params_.map_based_stop.max_deceleration;
+  params.max_jerk = params_.map_based_stop.max_jerk;
+  params.stop_margin_distance = params_.map_based_stop.stop_margin_distance;
+  params.stop_distance_from_crosswalk = params_.map_based_stop.stop_distance_from_crosswalk;
+  params.stop_distance_from_private_area = params_.map_based_stop.stop_distance_from_private_area;
+  params.base_link_to_front = vehicle_info_.max_longitudinal_offset_m;
+  params.stop_point_diff_threshold = params_.map_based_stop.stop_point_diff_threshold;
+  return params;
 }
 
 void MinimumRuleBasedPlannerNode::publish_debug_outputs(
@@ -361,64 +347,6 @@ void MinimumRuleBasedPlannerNode::publish_debug_outputs(
       pub_debug_stop_trajectory_->publish(*stop_trajectory);
     }
   }
-}
-
-std::optional<MinimumRuleBasedPlannerNode::StopResult> MinimumRuleBasedPlannerNode::plan_stop(
-  const Trajectory & trajectory, const std::vector<StopLine> & candidate_stop_lines,
-  const InputData & input_data, const bool include_possibility_targets) const
-{
-  // Distinguish the two calls per cycle in the processing-time tree.
-  autoware_utils_debug::ScopedTimeTrack st(
-    include_possibility_targets ? "plan_stop(stop)" : "plan_stop(go)", *time_keeper_);
-
-  if (trajectory.points.size() < 2) return std::nullopt;
-
-  const auto stop_lines = map_based_stop_planner_->filter_stop_lines_on_trajectory(
-    candidate_stop_lines, trajectory.points);
-
-  // Visualize only for the superset call (all targets) to avoid publishing twice per cycle.
-  if (include_possibility_targets) {
-    pub_stop_lines_marker_->publish(
-      map_based_stop_planner_->create_stop_line_marker_array(stop_lines));
-  }
-
-  if (stop_lines.empty()) return std::nullopt;
-
-  StopSelectionParams selection_params;
-  selection_params.max_deceleration = params_.map_based_stop.max_deceleration;
-  selection_params.max_jerk = params_.map_based_stop.max_jerk;
-  selection_params.stop_margin_distance = params_.map_based_stop.stop_margin_distance;
-  selection_params.stop_distance_from_crosswalk =
-    params_.map_based_stop.stop_distance_from_crosswalk;
-  selection_params.stop_distance_from_private_area =
-    params_.map_based_stop.stop_distance_from_private_area;
-  selection_params.base_link_to_front = vehicle_info_.max_longitudinal_offset_m;
-
-  const double ego_velocity = input_data.odometry_ptr->twist.twist.linear.x;
-  const double ego_acceleration = input_data.acceleration_ptr->accel.accel.linear.x;
-  const auto stop_point_arc_length = map_based_stop_planner_->select_stop_arc_length(
-    stop_lines, trajectory.points, input_data.odometry_ptr->pose.pose, ego_velocity,
-    ego_acceleration, selection_params, include_possibility_targets);
-  if (!stop_point_arc_length) return std::nullopt;
-
-  // If an earlier stage (e.g. the ObstacleStop modifier) already stops the vehicle before this
-  // stop point, there is nothing to add.
-  if (autoware::trajectory_modifier::utils::stop_point_exists(
-        trajectory.points, *stop_point_arc_length)) {
-    return std::nullopt;
-  }
-
-  autoware_utils_debug::ScopedTimeTrack st_insert("insert_stop_point", *time_keeper_);
-
-  const double trajectory_length = autoware::motion_utils::calcArcLength(trajectory.points);
-
-  Trajectory stop_trajectory = trajectory;
-  if (!autoware::trajectory_modifier::utils::insert_stop_point(
-        stop_trajectory.points, *stop_point_arc_length, trajectory_length)) {
-    return std::nullopt;
-  }
-
-  return StopResult{*stop_point_arc_length, std::move(stop_trajectory)};
 }
 
 void MinimumRuleBasedPlannerNode::publish_processing_time()

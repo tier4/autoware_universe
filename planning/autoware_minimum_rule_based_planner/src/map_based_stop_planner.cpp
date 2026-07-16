@@ -16,6 +16,7 @@
 
 #include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware/trajectory_modifier/trajectory_modifier_utils/utils.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/autoware_traffic_light.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/road_marking.hpp>
@@ -311,6 +312,82 @@ MapBasedStopPlanner::MapBasedStopPlanner(
   time_keeper_(
     time_keeper ? std::move(time_keeper) : std::make_shared<autoware_utils_debug::TimeKeeper>())
 {
+}
+
+void MapBasedStopPlanner::set_planner_data(
+  const LaneletMapBin::ConstSharedPtr & lanelet_map_bin_ptr,
+  const LaneletRoute::ConstSharedPtr & route_ptr, const RouteContext & route_context)
+{
+  if (lanelet_map_bin_ptr == stop_lines_map_ptr_ && route_ptr == stop_lines_route_ptr_) {
+    return;
+  }
+  stop_lines_ = collect_stop_lines(route_context);
+  stop_lines_map_ptr_ = lanelet_map_bin_ptr;
+  stop_lines_route_ptr_ = route_ptr;
+}
+
+MapBasedStopPlanner::Result MapBasedStopPlanner::plan(
+  const Trajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose,
+  const double ego_velocity, const double ego_acceleration,
+  const StopSelectionParams & params) const
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  Result result;
+  result.go_trajectory = trajectory;
+
+  if (trajectory.points.size() < 2) return result;
+
+  const auto stop_lines = filter_stop_lines_on_trajectory(stop_lines_, trajectory.points);
+  result.stop_line_markers = create_stop_line_marker_array(stop_lines);
+  if (stop_lines.empty()) return result;
+
+  // The go trajectory stops only at mandatory targets (e.g. stop lines); the stop trajectory
+  // additionally stops at possibility targets (e.g. traffic lights).
+  const auto go_stop = plan_single_stop(
+    stop_lines, trajectory, ego_pose, ego_velocity, ego_acceleration, params,
+    /*include_possibility=*/false);
+  const auto stop_stop = plan_single_stop(
+    stop_lines, trajectory, ego_pose, ego_velocity, ego_acceleration, params,
+    /*include_possibility=*/true);
+
+  if (go_stop) result.go_trajectory = go_stop->trajectory;
+
+  const bool stop_differs_from_go =
+    stop_stop &&
+    (!go_stop || std::abs(stop_stop->stop_point_arc_length - go_stop->stop_point_arc_length) >
+                   params.stop_point_diff_threshold);
+  if (stop_differs_from_go) result.stop_trajectory = stop_stop->trajectory;
+
+  return result;
+}
+
+std::optional<MapBasedStopPlanner::SingleStopResult> MapBasedStopPlanner::plan_single_stop(
+  const std::vector<StopLine> & stop_lines, const Trajectory & trajectory,
+  const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity,
+  const double ego_acceleration, const StopSelectionParams & params,
+  const bool include_possibility) const
+{
+  autoware_utils_debug::ScopedTimeTrack st(
+    include_possibility ? "plan_single_stop(stop)" : "plan_single_stop(go)", *time_keeper_);
+
+  const auto stop_point_arc_length = select_stop_arc_length(
+    stop_lines, trajectory.points, ego_pose, ego_velocity, ego_acceleration, params,
+    include_possibility);
+  if (!stop_point_arc_length) return std::nullopt;
+
+  if (autoware::trajectory_modifier::utils::stop_point_exists(
+        trajectory.points, *stop_point_arc_length)) {
+    return std::nullopt;
+  }
+
+  const double trajectory_length = autoware::motion_utils::calcArcLength(trajectory.points);
+  Trajectory stop_trajectory = trajectory;
+  if (!autoware::trajectory_modifier::utils::insert_stop_point(
+        stop_trajectory.points, *stop_point_arc_length, trajectory_length)) {
+    return std::nullopt;
+  }
+  return SingleStopResult{*stop_point_arc_length, std::move(stop_trajectory)};
 }
 
 std::vector<StopLine> MapBasedStopPlanner::collect_stop_lines(

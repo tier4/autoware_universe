@@ -74,22 +74,58 @@ struct StopSelectionParams
   //! extra stop distance before a private-area boundary [m]
   double stop_distance_from_private_area;
   double base_link_to_front;  //!< vehicle front offset from base_link [m]
+  //! min arc-length difference for the stop trajectory's stop point to be treated as different
+  //! from the go trajectory's [m]
+  double stop_point_diff_threshold;
 };
 
 /**
  * @brief Plans stops at map-defined locations (stop lines, crosswalks, intersections, etc.).
  *
- * Extracts candidate stop lines from the map, classifies them by type, and selects the nearest
- * reachable stop point along the trajectory.
+ * Extracts candidate stop lines from the map, classifies them by type, and plans the go/stop
+ * trajectories with the nearest reachable stop point embedded. set_planner_data() + plan() is
+ * the node-facing interface; the collect/filter/select building blocks are also public for
+ * node-independent testing.
  */
 class MapBasedStopPlanner
 {
 public:
+  //! Result of plan().
+  struct Result
+  {
+    //! stops at mandatory targets only (equals the input trajectory when there is none)
+    Trajectory go_trajectory;
+    //! additionally stops at possibility targets; set only when its stop point differs from the
+    //! go trajectory's
+    std::optional<Trajectory> stop_trajectory;
+    visualization_msgs::msg::MarkerArray stop_line_markers;
+  };
+
   //! @param time_keeper processing-time tracker; a private no-op instance is created when omitted
   //! (e.g. in unit tests), so the tracking scopes are always valid.
   explicit MapBasedStopPlanner(
     const rclcpp::Logger & logger,
     std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper = nullptr);
+
+  //! Update the cached stop lines. Collection depends only on the map and the route, so it is
+  //! re-run only when either changes (pointer identity).
+  void set_planner_data(
+    const LaneletMapBin::ConstSharedPtr & lanelet_map_bin_ptr,
+    const LaneletRoute::ConstSharedPtr & route_ptr, const RouteContext & route_context);
+
+  /**
+   * @brief Plan the go and stop trajectories with map-defined stop points embedded.
+   *
+   * The go trajectory stops only at mandatory targets; the stop trajectory additionally stops at
+   * possibility targets and is set only when its stop point differs from the go trajectory's.
+   * A stop point is not inserted when an upstream stop (e.g. obstacle stop) already stops the
+   * vehicle before it. Velocities are not planned here; the returned trajectories are shape-only
+   * inputs for the velocity optimization.
+   */
+  Result plan(
+    const Trajectory & trajectory, const geometry_msgs::msg::Pose & ego_pose,
+    const double ego_velocity, const double ego_acceleration,
+    const StopSelectionParams & params) const;
 
   /**
    * @brief Collect stop targets along the given route, tagged by type.
@@ -136,8 +172,25 @@ public:
     const std::vector<StopLine> & stop_lines) const;
 
 private:
+  //! One stop pass: the nearest reachable stop point among the allowed types, embedded on a copy.
+  struct SingleStopResult
+  {
+    double stop_point_arc_length;
+    Trajectory trajectory;
+  };
+  std::optional<SingleStopResult> plan_single_stop(
+    const std::vector<StopLine> & stop_lines, const Trajectory & trajectory,
+    const geometry_msgs::msg::Pose & ego_pose, const double ego_velocity,
+    const double ego_acceleration, const StopSelectionParams & params,
+    const bool include_possibility) const;
+
   rclcpp::Logger logger_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
+
+  //! Stop lines collected from the map along the route, cached by set_planner_data().
+  std::vector<StopLine> stop_lines_;
+  LaneletMapBin::ConstSharedPtr stop_lines_map_ptr_;
+  LaneletRoute::ConstSharedPtr stop_lines_route_ptr_;
 };
 
 }  // namespace autoware::minimum_rule_based_planner

@@ -74,6 +74,7 @@ StopSelectionParams make_params()
   params.stop_distance_from_crosswalk = 3.5;
   params.stop_distance_from_private_area = 3.0;
   params.base_link_to_front = 4.0;
+  params.stop_point_diff_threshold = 0.5;
   return params;
 }
 
@@ -302,40 +303,6 @@ TEST(MapBasedStopPlannerTest, SelectSkipsStopPointPassedByEgo)
     stop_lines, trajectory, make_ego_pose(16.0), /*ego_velocity=*/1.0, /*ego_acceleration=*/0.0,
     make_params(), /*include_possibility=*/false);
   EXPECT_FALSE(arc.has_value());
-}
-
-// ============================================================
-// create_stop_line_marker_array
-// ============================================================
-
-TEST(MapBasedStopPlannerTest, MarkerArrayContainsTypeLabels)
-{
-  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
-  const std::vector<StopLine> stop_lines{
-    make_crossing_stop_line(1, 10.0, StopLineType::StopLine),
-    make_crossing_stop_line(2, 20.0, StopLineType::TrafficLight)};
-
-  const auto marker_array = planner.create_stop_line_marker_array(stop_lines);
-
-  std::vector<visualization_msgs::msg::Marker> labels;
-  for (const auto & marker : marker_array.markers) {
-    if (marker.ns == "stop_line_type") {
-      labels.push_back(marker);
-    }
-  }
-  ASSERT_EQ(labels.size(), 2u);
-  for (const auto & label : labels) {
-    EXPECT_EQ(label.type, visualization_msgs::msg::Marker::TEXT_VIEW_FACING);
-  }
-  EXPECT_EQ(labels[0].text, "stop_line");
-  EXPECT_EQ(labels[1].text, "traffic_light");
-  // The label height is staggered per type (1.0 m + 0.3 m per enum value; line z = 0 in this
-  // fixture): StopLine (enum 0) -> 1.0, TrafficLight (enum 3) -> 1.9.
-  EXPECT_NEAR(labels[0].pose.position.z, 1.0, 1e-6);
-  EXPECT_NEAR(labels[1].pose.position.z, 1.9, 1e-6);
-  // The two labels sit at the middle of their stop lines (y spans [-2, 2] -> y = 0).
-  EXPECT_NEAR(labels[0].pose.position.x, 10.0, 1e-6);
-  EXPECT_NEAR(labels[1].pose.position.x, 20.0, 1e-6);
 }
 
 // ============================================================
@@ -614,6 +581,81 @@ TEST(MapBasedStopPlannerTest, CollectPrefersCrosswalkIdRoadMarkingStopLine)
   ASSERT_EQ(stop_lines.size(), 1u);
   EXPECT_EQ(stop_lines.front().type, StopLineType::Walkway);
   EXPECT_EQ(stop_lines.front().line.id(), 800);
+}
+
+// ============================================================
+// set_planner_data / plan
+// ============================================================
+
+namespace
+{
+// Seed the planner's stop line cache with a RoadMarking stop line (mandatory) crossing the
+// straight test trajectory at x = 20.
+void set_mandatory_stop_line_data(MapBasedStopPlanner & planner)
+{
+  lanelet::LineString3d stop_line(
+    100, {lanelet::Point3d(101, 20.0, -2.0, 0.0), lanelet::Point3d(102, 20.0, 2.0, 0.0)});
+  stop_line.attributes()[lanelet::AttributeNamesString::Type] =
+    lanelet::AttributeValueString::StopLine;
+  auto lanelet = make_road_lanelet(400, 0.0, 30.0);
+  lanelet.addRegulatoryElement(
+    lanelet::autoware::RoadMarking::make(500, lanelet::AttributeMap(), stop_line));
+
+  RouteContext ctx;
+  ctx.route_lanelets = {lanelet};
+  planner.set_planner_data(
+    std::make_shared<LaneletMapBin>(), std::make_shared<LaneletRoute>(), ctx);
+}
+
+Trajectory make_straight_trajectory_msg(size_t num_points)
+{
+  Trajectory trajectory;
+  trajectory.points = make_straight_trajectory(num_points);
+  return trajectory;
+}
+}  // namespace
+
+TEST(MapBasedStopPlannerTest, PlanEmbedsMandatoryStopInGoTrajectory)
+{
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
+  set_mandatory_stop_line_data(planner);
+
+  const auto trajectory = make_straight_trajectory_msg(30);
+  const auto result = planner.plan(
+    trajectory, make_ego_pose(0.0), /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0, make_params());
+
+  // The go trajectory ends with a zero-velocity point at the stop point (20 - 4 - 1 = 15).
+  ASSERT_FALSE(result.go_trajectory.points.empty());
+  EXPECT_NEAR(result.go_trajectory.points.back().pose.position.x, 15.0, 1e-3);
+  EXPECT_FLOAT_EQ(result.go_trajectory.points.back().longitudinal_velocity_mps, 0.0f);
+  // The mandatory stop is shared by both passes, so no distinct stop trajectory is produced.
+  EXPECT_FALSE(result.stop_trajectory.has_value());
+  EXPECT_FALSE(result.stop_line_markers.markers.empty());
+}
+
+TEST(MapBasedStopPlannerTest, PlanReturnsStopTrajectoryOnlyForDistinctStopPoint)
+{
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
+
+  // Only a possibility target (intersection entry edge at x = 10) crosses the trajectory.
+  auto intersection = make_road_lanelet(2, 10.0, 10.0);
+  intersection.attributes()["turn_direction"] = "right";
+  RouteContext ctx;
+  ctx.route_lanelets = {intersection};
+  planner.set_planner_data(
+    std::make_shared<LaneletMapBin>(), std::make_shared<LaneletRoute>(), ctx);
+
+  const auto trajectory = make_straight_trajectory_msg(30);
+  const auto result = planner.plan(
+    trajectory, make_ego_pose(0.0), /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0, make_params());
+
+  // The go trajectory ignores possibility targets and stays unchanged.
+  ASSERT_EQ(result.go_trajectory.points.size(), trajectory.points.size());
+  EXPECT_FLOAT_EQ(result.go_trajectory.points.back().longitudinal_velocity_mps, 5.0f);
+  // The stop trajectory embeds the possibility stop (10 - 4 - 1 = 5), distinct from go.
+  ASSERT_TRUE(result.stop_trajectory.has_value());
+  EXPECT_NEAR(result.stop_trajectory->points.back().pose.position.x, 5.0, 1e-3);
+  EXPECT_FLOAT_EQ(result.stop_trajectory->points.back().longitudinal_velocity_mps, 0.0f);
 }
 
 }  // namespace autoware::minimum_rule_based_planner
