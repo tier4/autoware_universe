@@ -11,3 +11,28 @@ lane_event_classifier:
     description: While the reference lane is held, distance from the ego to that lane above which the tracking state is reset (countermeasure for a manual takeover that drives away from the route)
     validation:
       gt<>: [0.0]
+  lane_following:
+    connected_sequence_length_m:
+      type: double
+      default_value: 200.0
+      description: Fore/aft distance walked from the reference lane to build the connected lane sequence
+      validation:
+        gt<>: [0.0]
+    lateral_tolerance_m:
+      type: double
+      default_value: 0.3
+      description: Lateral margin around the connected lane sequence still treated as lane following
+      validation:
+        gt_eq<>: [0.0]
+    enable_road_shoulder_exemption:
+      type: bool
+      default_value: true
+      description: Treat the ego overlapping a road shoulder as lane following (road-shoulder exemption)
+    enable_turn_lane_exemption:
+      type: bool
+      default_value: true
+      description: Treat going out of lane in a turn/intersection lane as lane following (turn-lane exemption)
+    enable_virtual_boundary_exemption:
+      type: bool
+      default_value: true
+      description: Treat crossing a virtual boundary linestring as lane following (virtual-boundary exemption)

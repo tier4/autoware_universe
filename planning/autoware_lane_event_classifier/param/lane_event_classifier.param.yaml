@@ -2,3 +2,9 @@
   ros__parameters:
     reposition_jump_margin_m: 0.5
     lane_departure_reset_distance_m: 5.0
+    lane_following:
+      connected_sequence_length_m: 200.0
+      lateral_tolerance_m: 0.3
+      enable_road_shoulder_exemption: true
+      enable_turn_lane_exemption: true
+      enable_virtual_boundary_exemption: true

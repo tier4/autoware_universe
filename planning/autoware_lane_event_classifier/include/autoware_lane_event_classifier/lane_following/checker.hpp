@@ -15,10 +15,18 @@
 #ifndef AUTOWARE_LANE_EVENT_CLASSIFIER__LANE_FOLLOWING__CHECKER_HPP_
 #define AUTOWARE_LANE_EVENT_CLASSIFIER__LANE_FOLLOWING__CHECKER_HPP_
 
+#include <autoware_lane_event_classifier/lane_event_classifier_parameters.hpp>
+
+#include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_core/primitives/Lanelet.h>
+#include <lanelet2_routing/RoutingGraph.h>
+
 #include <string_view>
+#include <unordered_set>
 
 namespace autoware::lane_event_classifier
 {
+using LaneFollowingConfig = ::lane_event_classifier::Params::LaneFollowing;
 
 /** @brief Which rule decided the lane-following outcome (for tracing / logging). */
 enum class LaneFollowingReason {
@@ -41,27 +49,43 @@ struct LaneFollowingResult
 /** @brief Returns a short label for the reason (tracing / logging). */
 [[nodiscard]] std::string_view to_string(LaneFollowingReason reason);
 
-/**
- * @brief Evaluates the lane-following check and reports which rule decided the outcome.
- *
- * @note Stub: the classification logic (and its parameters) are added in a follow-up PR. Every
- * call currently reports the ego as following (LaneFollowingReason::no_reference_lane), so the
- * node always publishes LANE_FOLLOWING. The interface is kept stable so the node/debug wiring does
- * not change when the real logic lands.
+/** @brief Runs the lane-following check and reports which rule decided the outcome. See
+docs/lane_following.md
  */
 class LaneFollowingChecker
 {
 public:
   LaneFollowingChecker() = default;
+  explicit LaneFollowingChecker(LaneFollowingConfig config);
 
   /**
-   * @brief Evaluates the lane-following check for the current cycle.
-   *
-   * @note Stub: always reports the ego as following. The real logic (added in a follow-up PR)
-   * queries the reference lane / connected sequence from the tracker, so this signature will gain
-   * those inputs then.
+   * @brief Runs the check for the ego reference point against the reference lane.
+   * @param lanelet_map_ptr Owned lanelet map.
+   * @param routing_graph_ptr Owned routing graph.
+   * @param reference_lane_id The reference lane id.
+   * @param ego_point Ego reference point (base_link) in the map frame.
    */
-  [[nodiscard]] LaneFollowingResult evaluate() const;
+  [[nodiscard]] LaneFollowingResult evaluate(
+    const lanelet::LaneletMapPtr & lanelet_map_ptr,
+    const lanelet::routing::RoutingGraphConstPtr & routing_graph_ptr, lanelet::Id reference_lane_id,
+    const lanelet::BasicPoint2d & ego_point) const;
+
+private:
+  /**
+   * @brief Connected-lane-sequence ids for the reference lane, memoized while it and the graph are
+   * unchanged.
+   * @param reference_lane The reference lanelet.
+   * @param routing_graph_ptr Routing graph to traverse.
+   */
+  [[nodiscard]] const std::unordered_set<lanelet::Id> & connected_sequence_ids(
+    const lanelet::ConstLanelet & reference_lane,
+    const lanelet::routing::RoutingGraphConstPtr & routing_graph_ptr) const;
+
+  LaneFollowingConfig config_{};
+
+  mutable lanelet::routing::RoutingGraphConstPtr cached_graph_ptr_;
+  mutable lanelet::Id cached_reference_lane_id_{lanelet::InvalId};
+  mutable std::unordered_set<lanelet::Id> cached_sequence_ids_;
 };
 
 }  // namespace autoware::lane_event_classifier
