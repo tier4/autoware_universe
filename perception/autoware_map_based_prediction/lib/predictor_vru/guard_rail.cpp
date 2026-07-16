@@ -89,7 +89,7 @@ std::vector<PredictedPath> GuardRailModule::cut_paths_crossing_guard_rail(
   for (PredictedPath & predicted_path : cut_paths) {
     const std::optional<size_t> crossing_index =
       path_cut::find_footprint_crossing_index(predicted_path, object_shape, candidate_linestrings);
-    if (crossing_index) {
+    if (crossing_index.has_value()) {
       const size_t last_kept_index = std::max<size_t>(*crossing_index, 1UL) - 1UL;
       predicted_path = path_cut::force_cut_at_index(predicted_path, last_kept_index);
     }

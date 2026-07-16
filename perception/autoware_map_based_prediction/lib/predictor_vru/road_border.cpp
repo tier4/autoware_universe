@@ -225,7 +225,7 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
 
   const std::optional<size_t> road_border_crossing_index =
     path_cut::find_footprint_crossing_index(predicted_path, object_shape, candidates);
-  if (!road_border_crossing_index) {
+  if (!road_border_crossing_index.has_value()) {
     return predicted_path;
   }
 

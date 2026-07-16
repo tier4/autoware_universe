@@ -115,7 +115,7 @@ PredictedPath FenceModule::cutPathBeforeFences(const PredictedPath & predicted_p
     }
   }
 
-  if (!closest_cross_index) {
+  if (!closest_cross_index.has_value()) {
     return predicted_path;
   }
   return path_cut::force_cut_at_index(predicted_path, closest_cross_index.value());
