@@ -16,8 +16,8 @@
 #define MINIMUM_RULE_BASED_PLANNER_HPP_
 
 #include "autoware/trajectory_optimizer/trajectory_optimizer_structs.hpp"
+#include "map_based_stop_planner.hpp"
 #include "path_planner.hpp"
-#include "stop_planner.hpp"
 #include "velocity_smoother.hpp"
 
 #include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
@@ -34,6 +34,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace autoware::minimum_rule_based_planner
@@ -75,16 +76,23 @@ private:
   Trajectory smooth_trajectory(const Trajectory & trajectory, const InputData & input_data) const;
   void apply_modifiers(Trajectory & trajectory, const InputData & input_data) const;
 
+  //! Plan the go and stop trajectories from the modified trajectory: refresh the stop line
+  //! cache and embed map-defined stop points (mandatory targets only for go, mandatory +
+  //! possibility targets for stop). Velocities are not planned here; the returned trajectories
+  //! are shape-only inputs for optimize_velocity(). The stop trajectory is returned only when it
+  //! embeds a stop point different from the go trajectory's.
+  std::pair<Trajectory, std::optional<Trajectory>> plan_go_and_stop_trajectories(
+    const Trajectory & trajectory, const InputData & input_data);
+
   //! result of a stop plan: the stop point arc length and the trajectory with the stop embedded
   struct StopResult
   {
     double stop_point_arc_length;
     Trajectory trajectory;
   };
-  //! Plan a stop at map-defined stop lines from the pre-collected route stop line candidates.
-  //! When @p include_possibility_targets is true, signals and other possibility targets are also
-  //! considered (used for the stop trajectory); otherwise only mandatory targets are considered
-  //! (used for the go trajectory).
+  //! Plan a stop at map-defined stop lines from the pre-collected stop line candidates.
+  //! When @p include_possibility_targets is true, possibility targets (e.g. traffic lights) are
+  //! considered in addition to the mandatory ones.
   std::optional<StopResult> plan_stop(
     const Trajectory & trajectory, const std::vector<StopLine> & candidate_stop_lines,
     const InputData & input_data, const bool include_possibility_targets) const;
@@ -96,6 +104,11 @@ private:
 
   void publish_candidate_trajectories(
     const Trajectory & go_trajectory, const std::optional<Trajectory> & stop_trajectory) const;
+
+  void publish_debug_outputs(
+    const PathWithLaneId & path, const Trajectory & go_trajectory,
+    const std::optional<Trajectory> & stop_trajectory) const;
+  void publish_processing_time();
 
   void publish_debug_trajectory(
     const std::string & plugin_name, const TrajectoryPoints & traj_points) const;
@@ -126,11 +139,10 @@ private:
    */
   //! PathPlanner encapsulates path planning, trajectory shifting, and conversion
   std::unique_ptr<PathPlanner> path_planner_;
-  //! StopPlanner extracts map-defined stop locations along the route
-  std::unique_ptr<StopPlanner> stop_planner_;
-  //! Cache of the collected stop lines. Collection scans the whole lanelet layer and depends only
-  //! on the map and the route, so it is re-run only when either changes (pointer identity) instead
-  //! of twice per cycle.
+  //! MapBasedStopPlanner extracts map-defined stop locations along the route
+  std::unique_ptr<MapBasedStopPlanner> map_based_stop_planner_;
+  //! Cache of the collected stop lines: collection depends only on the map and the route, so it
+  //! is re-run only when either changes (pointer identity).
   std::vector<StopLine> stop_lines_cache_;
   LaneletRoute::ConstSharedPtr stop_lines_cache_route_ptr_;
   LaneletMapBin::ConstSharedPtr stop_lines_cache_map_ptr_;

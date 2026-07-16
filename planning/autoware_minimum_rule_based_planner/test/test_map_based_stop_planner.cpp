@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "stop_planner.hpp"
+#include "map_based_stop_planner.hpp"
 
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/road_marking.hpp>
@@ -92,12 +92,12 @@ geometry_msgs::msg::Pose make_ego_pose(double x)
 // is_possibility_type
 // ============================================================
 
-TEST(StopPlannerTest, PossibilityTypeClassification)
+TEST(MapBasedStopPlannerTest, PossibilityTypeClassification)
 {
-  // Mandatory stop targets (停止対象箇所): the go trajectory also stops.
+  // Mandatory stop targets: the go trajectory also stops.
   EXPECT_FALSE(is_possibility_type(StopLineType::StopLine));
   EXPECT_FALSE(is_possibility_type(StopLineType::Walkway));
-  // Possibility stop targets (停止可能性対象箇所): only the stop trajectory additionally stops.
+  // Possibility stop targets: only the stop trajectory additionally stops.
   EXPECT_TRUE(is_possibility_type(StopLineType::Crosswalk));
   EXPECT_TRUE(is_possibility_type(StopLineType::TrafficLight));
   EXPECT_TRUE(is_possibility_type(StopLineType::Intersection));
@@ -108,9 +108,9 @@ TEST(StopPlannerTest, PossibilityTypeClassification)
 // filter_stop_lines_on_trajectory
 // ============================================================
 
-TEST(StopPlannerTest, FilterKeepsOnlyCrossingLines)
+TEST(MapBasedStopPlannerTest, FilterKeepsOnlyCrossingLines)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
   const auto trajectory = make_straight_trajectory(20);
 
   std::vector<StopLine> stop_lines;
@@ -129,9 +129,9 @@ TEST(StopPlannerTest, FilterKeepsOnlyCrossingLines)
 // select_stop_arc_length
 // ============================================================
 
-TEST(StopPlannerTest, SelectAppliesFrontOffsetAndMargin)
+TEST(MapBasedStopPlannerTest, SelectAppliesFrontOffsetAndMargin)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
   const auto trajectory = make_straight_trajectory(30);
   const std::vector<StopLine> stop_lines{make_crossing_stop_line(1, 20.0)};
 
@@ -144,9 +144,9 @@ TEST(StopPlannerTest, SelectAppliesFrontOffsetAndMargin)
   EXPECT_NEAR(*arc, 15.0, 1e-6);
 }
 
-TEST(StopPlannerTest, SelectAppliesCrosswalkMarginWithoutExplicitStopLine)
+TEST(MapBasedStopPlannerTest, SelectAppliesCrosswalkMarginWithoutExplicitStopLine)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
   const auto trajectory = make_straight_trajectory(30);
 
   // A walkway bound used as the stop line because the map has no explicit stop line: the
@@ -163,9 +163,9 @@ TEST(StopPlannerTest, SelectAppliesCrosswalkMarginWithoutExplicitStopLine)
   EXPECT_NEAR(*arc, 11.5, 1e-6);
 }
 
-TEST(StopPlannerTest, SelectAppliesPrivateAreaMargin)
+TEST(MapBasedStopPlannerTest, SelectAppliesPrivateAreaMargin)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
   const auto trajectory = make_straight_trajectory(30);
 
   // A private-area boundary line: the stop_distance_from_private_area margin applies on top of
@@ -181,9 +181,9 @@ TEST(StopPlannerTest, SelectAppliesPrivateAreaMargin)
   EXPECT_NEAR(*arc, 12.0, 1e-6);
 }
 
-TEST(StopPlannerTest, SelectPicksNearest)
+TEST(MapBasedStopPlannerTest, SelectPicksNearest)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
   const auto trajectory = make_straight_trajectory(60);
   const std::vector<StopLine> stop_lines{
     make_crossing_stop_line(1, 40.0), make_crossing_stop_line(2, 20.0)};
@@ -196,9 +196,9 @@ TEST(StopPlannerTest, SelectPicksNearest)
   EXPECT_NEAR(*arc, 15.0, 1e-6);
 }
 
-TEST(StopPlannerTest, SelectRejectsUnreachableStopPoint)
+TEST(MapBasedStopPlannerTest, SelectRejectsUnreachableStopPoint)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
   const auto trajectory = make_straight_trajectory(30);
   const std::vector<StopLine> stop_lines{make_crossing_stop_line(1, 20.0)};
 
@@ -210,9 +210,9 @@ TEST(StopPlannerTest, SelectRejectsUnreachableStopPoint)
   EXPECT_FALSE(arc.has_value());
 }
 
-TEST(StopPlannerTest, SelectSkipsUnreachableNearestForReachableFarther)
+TEST(MapBasedStopPlannerTest, SelectSkipsUnreachableNearestForReachableFarther)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
   const auto trajectory = make_straight_trajectory(80);
   // Nearest crossing at 20 m (stop point 15 m) is unreachable at 20 m/s (jerk-aware braking
   // distance ~57.9 m); a farther crossing at 70 m (stop point 65 m) is reachable and selected.
@@ -227,9 +227,9 @@ TEST(StopPlannerTest, SelectSkipsUnreachableNearestForReachableFarther)
   EXPECT_NEAR(*arc, 65.0, 1e-6);
 }
 
-TEST(StopPlannerTest, SelectExcludesPossibilityTargetsForGoTrajectory)
+TEST(MapBasedStopPlannerTest, SelectExcludesPossibilityTargetsForGoTrajectory)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
   const auto trajectory = make_straight_trajectory(30);
   // Only a signal (possibility) target crosses the trajectory.
   const std::vector<StopLine> stop_lines{
@@ -249,9 +249,9 @@ TEST(StopPlannerTest, SelectExcludesPossibilityTargetsForGoTrajectory)
                 .has_value());
 }
 
-TEST(StopPlannerTest, SelectMeasuresBrakingDistanceFromEgo)
+TEST(MapBasedStopPlannerTest, SelectMeasuresBrakingDistanceFromEgo)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
   // The trajectory starts behind the vehicle (backward path length), so arc lengths from the
   // trajectory start must not be used as the remaining distance.
   const auto trajectory = make_straight_trajectory(30);
@@ -274,9 +274,9 @@ TEST(StopPlannerTest, SelectMeasuresBrakingDistanceFromEgo)
   EXPECT_NEAR(*arc_reachable, 15.0, 1e-6);
 }
 
-TEST(StopPlannerTest, SelectUsesJerkAwareBrakingDistance)
+TEST(MapBasedStopPlannerTest, SelectUsesJerkAwareBrakingDistance)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
   const auto trajectory = make_straight_trajectory(30);
   const std::vector<StopLine> stop_lines{make_crossing_stop_line(1, 20.0)};
 
@@ -290,9 +290,9 @@ TEST(StopPlannerTest, SelectUsesJerkAwareBrakingDistance)
   EXPECT_FALSE(arc.has_value());
 }
 
-TEST(StopPlannerTest, SelectSkipsStopPointPassedByEgo)
+TEST(MapBasedStopPlannerTest, SelectSkipsStopPointPassedByEgo)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
   const auto trajectory = make_straight_trajectory(30);
   const std::vector<StopLine> stop_lines{make_crossing_stop_line(1, 20.0)};
 
@@ -308,9 +308,9 @@ TEST(StopPlannerTest, SelectSkipsStopPointPassedByEgo)
 // create_stop_line_marker_array
 // ============================================================
 
-TEST(StopPlannerTest, MarkerArrayContainsTypeLabels)
+TEST(MapBasedStopPlannerTest, MarkerArrayContainsTypeLabels)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
   const std::vector<StopLine> stop_lines{
     make_crossing_stop_line(1, 10.0, StopLineType::StopLine),
     make_crossing_stop_line(2, 20.0, StopLineType::TrafficLight)};
@@ -342,9 +342,9 @@ TEST(StopPlannerTest, MarkerArrayContainsTypeLabels)
 // collect_stop_lines
 // ============================================================
 
-TEST(StopPlannerTest, CollectTagsRoadMarkingStopLine)
+TEST(MapBasedStopPlannerTest, CollectTagsRoadMarkingStopLine)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
 
   // Build a stop-line road marking and attach it to a lanelet as a regulatory element.
   lanelet::LineString3d stop_line(
@@ -386,9 +386,9 @@ lanelet::Lanelet make_road_lanelet(lanelet::Id id, double x_start, double length
 }
 }  // namespace
 
-TEST(StopPlannerTest, CollectDetectsIntersectionEntry)
+TEST(MapBasedStopPlannerTest, CollectDetectsIntersectionEntry)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
 
   auto approach = make_road_lanelet(1, 0.0, 10.0);
   auto intersection = make_road_lanelet(2, 10.0, 10.0);
@@ -407,9 +407,9 @@ TEST(StopPlannerTest, CollectDetectsIntersectionEntry)
   EXPECT_EQ(stop_lines.front().line.id(), -2);
 }
 
-TEST(StopPlannerTest, CollectDetectsPrivateAreaTransition)
+TEST(MapBasedStopPlannerTest, CollectDetectsPrivateAreaTransition)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
 
   auto public_lanelet = make_road_lanelet(1, 0.0, 10.0);
   auto private_lanelet = make_road_lanelet(2, 10.0, 10.0);
@@ -427,9 +427,9 @@ TEST(StopPlannerTest, CollectDetectsPrivateAreaTransition)
   EXPECT_EQ(stop_lines.front().line.id(), -2);
 }
 
-TEST(StopPlannerTest, CollectPlacesPrivateEntryAtRoadDeparture)
+TEST(MapBasedStopPlannerTest, CollectPlacesPrivateEntryAtRoadDeparture)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
 
   // Route: public road x[0,10], then a private connector branching off to the upper side.
   auto route_road = make_road_lanelet(1, 0.0, 10.0);
@@ -466,9 +466,9 @@ TEST(StopPlannerTest, CollectPlacesPrivateEntryAtRoadDeparture)
   EXPECT_LT(mid_x, 20.0);
 }
 
-TEST(StopPlannerTest, CollectPlacesPrivateExitAtRoadEntry)
+TEST(MapBasedStopPlannerTest, CollectPlacesPrivateExitAtRoadEntry)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
 
   // Route: a private connector descending from the premises into the road, then the public road.
   // (travel direction is down-right, so the +x-shifted bound is the left one)
@@ -505,9 +505,9 @@ TEST(StopPlannerTest, CollectPlacesPrivateExitAtRoadEntry)
   EXPECT_LT(mid_x, 13.0);
 }
 
-TEST(StopPlannerTest, CollectDetectsWalkwayCrossingEntrySideOnly)
+TEST(MapBasedStopPlannerTest, CollectDetectsWalkwayCrossingEntrySideOnly)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
 
   // Road along +x; the ego drives from x=0 toward x=20.
   auto road = make_road_lanelet(1, 0.0, 20.0);
@@ -555,9 +555,9 @@ lanelet::Lanelet make_crossing_walkway(lanelet::Id id)
 }
 }  // namespace
 
-TEST(StopPlannerTest, CollectPrefersCrosswalkRegelemStopLine)
+TEST(MapBasedStopPlannerTest, CollectPrefersCrosswalkRegelemStopLine)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
 
   auto road = make_road_lanelet(1, 0.0, 20.0);
   auto walkway = make_crossing_walkway(720);
@@ -586,9 +586,9 @@ TEST(StopPlannerTest, CollectPrefersCrosswalkRegelemStopLine)
   EXPECT_FALSE(stop_lines.front().without_explicit_stop_line);
 }
 
-TEST(StopPlannerTest, CollectPrefersCrosswalkIdRoadMarkingStopLine)
+TEST(MapBasedStopPlannerTest, CollectPrefersCrosswalkIdRoadMarkingStopLine)
 {
-  StopPlanner planner(rclcpp::get_logger("test_stop_planner"));
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
 
   auto road = make_road_lanelet(1, 0.0, 20.0);
   auto walkway = make_crossing_walkway(720);
