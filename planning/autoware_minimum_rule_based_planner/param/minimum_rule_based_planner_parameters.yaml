@@ -38,17 +38,17 @@ minimum_rule_based_planner:
     early_stop:
       expected_ego_speed_parking:
         type: double
-        default_value: 3.0
+        default_value: 2.8
         description: expected ego speed during pull over to the side of the road [m/s]
 
       max_lat_accel_parking:
         type: double
-        default_value: 0.2
+        default_value: 0.8
         description: expected max lateral acceleration during pull over to the side of the road [m/s^2]
 
       max_lat_jerk_parking:
         type: double
-        default_value: 0.5
+        default_value: 999
         description: expected max lateral jerk during pull over to the side of the road [m/s^3]
       dist_to_stop_parking:
         type: double
