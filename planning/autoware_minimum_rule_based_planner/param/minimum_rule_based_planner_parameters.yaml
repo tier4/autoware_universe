@@ -24,17 +24,6 @@ minimum_rule_based_planner:
         default_value: 10.0
         description: ratio to expand interval bound of group according to lateral distance
 
-    smooth_goal_connection:
-      search_radius_range:
-        type: double
-        default_value: 7.5
-        description: search radius range for smooth goal connection [m]
-
-      pre_goal_offset:
-        type: double
-        default_value: 1.0
-        description: offset before goal for smooth connection [m]
-
     early_stop:
       expected_ego_speed_parking:
         type: double

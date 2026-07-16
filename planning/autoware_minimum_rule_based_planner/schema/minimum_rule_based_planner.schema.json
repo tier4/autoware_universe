@@ -45,25 +45,6 @@
               "required": [],
               "additionalProperties": false
             },
-            "smooth_goal_connection": {
-              "type": "object",
-              "properties": {
-                "search_radius_range": {
-                  "type": "number",
-                  "description": "Search radius for goal connection [m]",
-                  "default": 7.5,
-                  "minimum": 0.0
-                },
-                "pre_goal_offset": {
-                  "type": "number",
-                  "description": "Offset before goal for smooth connection [m]",
-                  "default": 1.0,
-                  "minimum": 0.0
-                }
-              },
-              "required": [],
-              "additionalProperties": false
-            },
             "ego_nearest_lanelet": {
               "type": "object",
               "properties": {
