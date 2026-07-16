@@ -17,12 +17,12 @@
 
 #include <autoware/vehicle_info_utils/vehicle_info_utils.hpp>
 #include <autoware_lane_event_classifier/debug.hpp>
+#include <autoware_lane_event_classifier/detail/lane_tracker.hpp>
 #include <autoware_lane_event_classifier/lane_change/classifier.hpp>
 #include <autoware_lane_event_classifier/lane_crossing/classifier.hpp>
 #include <autoware_lane_event_classifier/lane_event_classifier_base.hpp>
 #include <autoware_lane_event_classifier/lane_event_classifier_parameters.hpp>
 #include <autoware_lane_event_classifier/lane_following/checker.hpp>
-#include <autoware_lane_event_classifier/lane_tracker.hpp>
 #include <autoware_lane_event_classifier/msg/driving_factor.hpp>
 #include <autoware_lane_event_classifier/types.hpp>
 #include <autoware_utils/ros/polling_subscriber.hpp>

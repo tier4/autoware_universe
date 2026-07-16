@@ -14,7 +14,7 @@
 
 #include "synthetic_lanelet_maps.hpp"
 
-#include <autoware_lane_event_classifier/lane_tracker.hpp>
+#include <autoware_lane_event_classifier/detail/lane_tracker.hpp>
 
 #include <gtest/gtest.h>
 #include <lanelet2_core/LaneletMap.h>
