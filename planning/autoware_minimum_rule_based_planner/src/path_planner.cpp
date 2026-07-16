@@ -1003,16 +1003,16 @@ lanelet::ConstLanelet select_route_preferred_lanelet(
 std::optional<double> cal_margin2goal(
   const double target_lat_dist, 
   const double expected_ego_speed_parking, 
-  const double max_lat_accl_parking, 
+  const double max_lat_accel_parking, 
   const double max_lat_jerk_parking, 
   const double dist_to_stop)
 {
-  if(max_lat_accl_parking < 1e-9 || max_lat_jerk_parking < 1e-9 || dist_to_stop < 0.0){
+  if(max_lat_accel_parking < 1e-9 || max_lat_jerk_parking < 1e-9 || dist_to_stop < 0.0){
     return std::nullopt;
   }
 
   constexpr double pi2 = autoware_utils::pi*autoware_utils::pi;
-  const double dist_to_limit_lat_accel = expected_ego_speed_parking*std::sqrt(2*autoware_utils::pi*std::abs(target_lat_dist)/max_lat_accl_parking);
+  const double dist_to_limit_lat_accel = expected_ego_speed_parking*std::sqrt(2*autoware_utils::pi*std::abs(target_lat_dist)/max_lat_accel_parking);
   const double dist_to_limit_lat_jerk = expected_ego_speed_parking*std::cbrt(4*pi2*std::abs(target_lat_dist)/max_lat_jerk_parking);
   return std::max(dist_to_limit_lat_accel, dist_to_limit_lat_jerk) + dist_to_stop;
 }
@@ -1021,7 +1021,7 @@ std::optional<double> cal_early_stop(
   const PathPointTrajectory & trajectory,
   const RouteContext & planner_data,
   const double expected_ego_speed_parking, 
-  const double max_lat_accl_parking, 
+  const double max_lat_accel_parking, 
   const double max_lat_jerk_parking, 
   const double dist_to_stop)
 {
@@ -1097,11 +1097,11 @@ std::optional<double> cal_early_stop(
   const auto dist_offset = cal_margin2goal(
     target_lat_dist,
     expected_ego_speed_parking,
-    max_lat_accl_parking, 
+    max_lat_accel_parking, 
     max_lat_jerk_parking,
     dist_to_stop
   );
-  if(!dist_offset)
+  if(!dist_offset.has_value())
   {
     return std::nullopt;
   }
@@ -1639,7 +1639,7 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
     extended_lanelet_sequence, path_points_with_lane_id, extended_arc_length + s_start);
   const auto s_path_end = utils::get_arc_length_on_path(
     extended_lanelet_sequence, path_points_with_lane_id, extended_arc_length + s_end);
-  
+
   // Crop start first so that goal connection shortening does not skip start cropping
   if (s_path_start > 0 && trajectory->length() > s_path_start) {
     trajectory->crop(s_path_start, trajectory->length() - s_path_start);
@@ -1653,10 +1653,10 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
     *trajectory, 
     route_context_,
     params_.path_planning.early_stop.expected_ego_speed_parking,
-    params_.path_planning.early_stop.max_lat_accl_parking, 
-    params_.path_planning.early_stop.max_lat_jark_parking,
+    params_.path_planning.early_stop.max_lat_accel_parking, 
+    params_.path_planning.early_stop.max_lat_jerk_parking,
     params_.path_planning.early_stop.dist_to_stop_parking);
-  if(!early_stop_dist){
+  if(!early_stop_dist.has_value()){
     RCLCPP_ERROR(logger_, "Failed to calculate early stop distance");
     return std::nullopt;
   }
