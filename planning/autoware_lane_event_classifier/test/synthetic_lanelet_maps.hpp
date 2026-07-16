@@ -17,7 +17,7 @@
 #ifndef SYNTHETIC_LANELET_MAPS_HPP_
 #define SYNTHETIC_LANELET_MAPS_HPP_
 
-#include <autoware_lane_event_classifier/geometry_utils.hpp>
+#include <autoware_lane_event_classifier/detail/geometry_utils.hpp>
 #include <autoware_lane_event_classifier/types.hpp>
 
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
