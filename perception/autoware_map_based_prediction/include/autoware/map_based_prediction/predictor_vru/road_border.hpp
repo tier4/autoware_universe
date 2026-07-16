@@ -18,11 +18,16 @@
 #include "autoware/map_based_prediction/path_cut/path_cut_utils.hpp"
 #include "autoware/map_based_prediction/path_generator/path_generator.hpp"
 
+#include <autoware_utils_geometry/boost_geometry.hpp>
+
 #include <autoware_perception_msgs/msg/tracked_object.hpp>
+
+#include <boost/geometry/index/rtree.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 
 #include <memory>
+#include <utility>
 
 namespace autoware::map_based_prediction
 {
@@ -40,8 +45,12 @@ public:
     const path_cut::MaxDecelerationParams & max_decel_params) const;
 
 private:
-  std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr_{nullptr};
-  lanelet::LaneletMapUPtr road_border_layer_{nullptr};
+  using RoadBorderNode =
+    std::pair<autoware_utils_geometry::Box2d, autoware_utils_geometry::LineString2d>;
+  using RoadBorderRtree =
+    boost::geometry::index::rtree<RoadBorderNode, boost::geometry::index::quadratic<16>>;
+
+  RoadBorderRtree road_border_rtree_;
 };
 
 }  // namespace autoware::map_based_prediction

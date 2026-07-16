@@ -18,7 +18,6 @@
 #include "autoware/map_based_prediction/path_cut/path_cut_utils.hpp"
 
 #include <autoware/object_recognition_utils/object_classification.hpp>
-#include <autoware_lanelet2_extension/utility/query.hpp>
 #include <autoware_utils_geometry/boost_geometry.hpp>
 
 #include <autoware_perception_msgs/msg/shape.hpp>
@@ -45,6 +44,7 @@ namespace autoware::map_based_prediction
 
 namespace
 {
+using autoware_utils_geometry::Box2d;
 using autoware_utils_geometry::LineString2d;
 using autoware_utils_geometry::MultiLineString2d;
 using autoware_utils_geometry::Point2d;
@@ -52,18 +52,16 @@ using autoware_utils_geometry::Polygon2d;
 
 constexpr double crosswalk_corridor_extend_margin = 1.0;
 
-std::vector<autoware_utils_geometry::LineString2d> collect_candidate_road_border_linestrings(
-  const lanelet::LaneletMap & road_border_layer, const lanelet::BoundingBox2d & search_box)
+Box2d to_box2d(const lanelet::BoundingBox2d & box)
 {
-  const auto candidates = road_border_layer.lineStringLayer.search(search_box);
-  std::vector<autoware_utils_geometry::LineString2d> linestrings_2d;
-  linestrings_2d.reserve(candidates.size());
-  for (const auto & candidate : candidates) {
-    autoware_utils_geometry::LineString2d linestring;
-    boost::geometry::convert(lanelet::utils::to2D(candidate).basicLineString(), linestring);
-    linestrings_2d.push_back(linestring);
-  }
-  return linestrings_2d;
+  return {Point2d(box.min().x(), box.min().y()), Point2d(box.max().x(), box.max().y())};
+}
+
+lanelet::BoundingBox2d to_lanelet_box(const Box2d & box)
+{
+  return {
+    lanelet::BasicPoint2d(box.min_corner().x(), box.min_corner().y()),
+    lanelet::BasicPoint2d(box.max_corner().x(), box.max_corner().y())};
 }
 
 Point2d extend_outward(const Point2d & end, const Point2d & inner, const double margin)
@@ -156,22 +154,6 @@ std::vector<LineString2d> clip_out_with_polygons(
   return pieces;
 }
 
-std::vector<LineString2d> remove_lines_overlapping_polygons(
-  const std::vector<LineString2d> & candidates, const std::vector<Polygon2d> & corridors_polygons)
-{
-  if (corridors_polygons.empty()) {
-    return candidates;
-  }
-  std::vector<LineString2d> result;
-  result.reserve(candidates.size());
-  for (const auto & candidate : candidates) {
-    auto pieces = clip_out_with_polygons(candidate, corridors_polygons);
-    result.insert(
-      result.end(), std::make_move_iterator(pieces.begin()), std::make_move_iterator(pieces.end()));
-  }
-  return result;
-}
-
 double arc_length_to_index(const PredictedPath & path, const size_t index)
 {
   const auto & poses = path.path;
@@ -187,23 +169,36 @@ double arc_length_to_index(const PredictedPath & path, const size_t index)
 
 void RoadBorderModule::build_from_map(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr)
 {
-  lanelet_map_ptr_ = lanelet_map_ptr;
-  road_border_layer_ = nullptr;
-  if (!lanelet_map_ptr_) {
+  road_border_rtree_.clear();
+  if (!lanelet_map_ptr) {
     return;
   }
 
-  lanelet::LineStrings3d borders;
-  for (const auto & linestring : lanelet_map_ptr_->lineStringLayer) {
+  std::vector<RoadBorderNode> nodes;
+  for (const auto & linestring : lanelet_map_ptr->lineStringLayer) {
     const std::string type = linestring.attributeOr(lanelet::AttributeName::Type, "none");
-    if (type == "road_border") {
-      borders.emplace_back(
-        std::const_pointer_cast<lanelet::LineStringData>(linestring.constData()));
+    if (type != "road_border") {
+      continue;
+    }
+
+    LineString2d border;
+    boost::geometry::convert(lanelet::utils::to2D(linestring).basicLineString(), border);
+    if (border.size() < 2) {
+      continue;
+    }
+
+    Box2d border_box;
+    boost::geometry::envelope(border, border_box);
+    const std::vector<Polygon2d> crosswalk_corridors = collect_crosswalk_polygons(
+      *lanelet_map_ptr, to_lanelet_box(border_box), crosswalk_corridor_extend_margin);
+
+    for (auto & piece : clip_out_with_polygons(border, crosswalk_corridors)) {
+      Box2d piece_box;
+      boost::geometry::envelope(piece, piece_box);
+      nodes.emplace_back(piece_box, std::move(piece));
     }
   }
-  if (!borders.empty()) {
-    road_border_layer_ = lanelet::utils::createMap(borders);
-  }
+  road_border_rtree_ = RoadBorderRtree(nodes);
 }
 
 PredictedPath RoadBorderModule::cut_path_at_road_border(
@@ -211,7 +206,9 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
   const path_cut::MaxDecelerationParams & max_decel_params) const
 {
   const auto & poses = predicted_path.path;
-  if (!road_border_layer_ || poses.size() < 2 || !path_cut::shape_has_footprint(object.shape)) {
+  if (
+    road_border_rtree_.empty() || poses.size() < 2 ||
+    !path_cut::shape_has_footprint(object.shape)) {
     return predicted_path;
   }
 
@@ -219,17 +216,15 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
   const lanelet::BoundingBox2d search_box =
     path_cut::get_bbox_contain_path_with_footprint(predicted_path, object_shape);
 
-  const std::vector<autoware_utils_geometry::LineString2d> candidates =
-    collect_candidate_road_border_linestrings(*road_border_layer_, search_box);
+  std::vector<autoware_utils_geometry::LineString2d> candidates;
+  for (auto it =
+         road_border_rtree_.qbegin(boost::geometry::index::intersects(to_box2d(search_box)));
+       it != road_border_rtree_.qend(); ++it) {
+    candidates.push_back(it->second);
+  }
 
-  const std::vector<autoware_utils_geometry::Polygon2d> crosswalk_corridors =
-    collect_crosswalk_polygons(*lanelet_map_ptr_, search_box, crosswalk_corridor_extend_margin);
-
-  const std::vector<autoware_utils_geometry::LineString2d> candidates_removed_crosswalk_area =
-    remove_lines_overlapping_polygons(candidates, crosswalk_corridors);
-
-  const std::optional<size_t> road_border_crossing_index = path_cut::find_footprint_crossing_index(
-    predicted_path, object_shape, candidates_removed_crosswalk_area);
+  const std::optional<size_t> road_border_crossing_index =
+    path_cut::find_footprint_crossing_index(predicted_path, object_shape, candidates);
   if (!road_border_crossing_index) {
     return predicted_path;
   }
