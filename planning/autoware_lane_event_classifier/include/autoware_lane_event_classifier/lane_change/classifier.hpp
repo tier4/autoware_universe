@@ -15,37 +15,94 @@
 #ifndef AUTOWARE_LANE_EVENT_CLASSIFIER__LANE_CHANGE__CLASSIFIER_HPP_
 #define AUTOWARE_LANE_EVENT_CLASSIFIER__LANE_CHANGE__CLASSIFIER_HPP_
 
+#include <autoware_lane_event_classifier/detail/lane_tracker.hpp>
+#include <autoware_lane_event_classifier/lane_change/geometry.hpp>
 #include <autoware_lane_event_classifier/lane_event_classifier_base.hpp>
-#include <autoware_lane_event_classifier/types.hpp>
+#include <autoware_lane_event_classifier/lane_event_classifier_parameters.hpp>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace autoware::lane_event_classifier
 {
+using LaneChangeConfig = ::lane_event_classifier::Params::LaneChange;
 
 /**
- * @brief Recognises a lane change and reports its state.
+ * @brief Trajectory-driven, predictive lane-change classifier.
  *
- * @note Stub: the classification logic (and its parameters / tracker inputs) are added in a
- * follow-up PR. Every cycle it reports LANE_FOLLOWING, i.e. no event, so it never overrides the
- * node's published state. It exists here to exercise the classifier-loading path end-to-end.
+ * Onset is decided by where the planned trajectory crosses the reference lane's lateral boundary
+ * toward a route primitive (computed by LaneChangeGeometry from the LaneTracker's generic queries);
+ * it can confirm before the ego body leaves the reference lane. Completion (settle) and abort
+ * completion use the full footprint. See docs/lane_change.md.
  */
 class LaneChangeClassifier : public LaneEventClassifierBase
 {
 public:
-  explicit LaneChangeClassifier(bool enabled) : enabled_{enabled} {}
-
-  void update(const LaneEventInput & /*input*/) override {}
-
-  [[nodiscard]] uint8_t get_state() const override { return DrivingState::LANE_FOLLOWING; }
-
-  [[nodiscard]] bool is_enabled() const override { return enabled_; }
-
-  [[nodiscard]] std::string name() const override { return "lane_change"; }
+  LaneChangeClassifier(bool enabled, LaneChangeConfig config, const LaneTracker & tracker);
+  void update(const LaneEventInput & input) final;
+  [[nodiscard]] uint8_t get_state() const final;
+  [[nodiscard]] bool is_enabled() const final;
+  [[nodiscard]] std::string name() const final { return "lane_change"; }
+  [[nodiscard]] std::string debug_reason() const final { return debug_reason_; }
 
 private:
-  bool enabled_;
+  /** @brief Internal maneuver phase; maps to the reported DrivingState. */
+  enum class Phase : uint8_t { idle, changing, aborting };
+
+  /** @brief idle: confirm a persisted trajectory crossing → LANE_CHANGING (onset). */
+  void detect_onset(
+    const LaneEventInput & input, const LaneChangeObservation & observation, double now_s);
+
+  /** @brief changing: confirm the footprint settled in the target primitive → completion, or a
+   * persisted trajectory return toward the reference lane → ABORTING. */
+  void detect_completion_or_abort(const LaneChangeObservation & observation, double now_s);
+
+  /** @brief aborting: complete the abort once the footprint is back in the reference lane, settle
+   * if the footprint reached the target primitive, or re-commit on a persisted crossing →
+   * LANE_CHANGING.
+   */
+  void detect_abort_completion_or_recommit(
+    const LaneEventInput & input, const LaneChangeObservation & observation, double now_s);
+
+  /** @brief True when a confidence signal (footprint off route, or blinker toward target) is
+   * present.
+   */
+  [[nodiscard]] static bool has_confidence_signal(
+    const LaneEventInput & input, const LaneChangeObservation & observation,
+    const LaneChangeCrossing & crossing);
+
+  /** @brief Accumulates a valid crossing over the crossing-persistence window (shortened by a
+   * confidence signal); true on confirm. */
+  [[nodiscard]] bool accumulate_crossing(
+    const LaneChangeCrossing & crossing, double now_s, bool has_confidence_signal);
+
+  /** @brief Accumulates the footprint-settled-in-target-primitive test over the settle window. */
+  [[nodiscard]] bool accumulate_settle(const LaneChangeObservation & observation, double now_s);
+
+  /** @brief Clears all persistence timers on a phase transition. */
+  void reset_timers();
+
+  bool enabled_{false};
+  LaneChangeConfig config_;
+  const LaneTracker & tracker_;  // generic lane queries (owned by the node)
+  LaneChangeGeometry geometry_;  // derives the per-cycle observation from the tracker
+
+  Phase phase_{Phase::idle};
+  std::string debug_reason_;
+
+  // Crossing persistence (onset in idle, re-commit in aborting).
+  std::optional<LaneChangeCrossing> tracked_crossing_;
+  double crossing_start_s_{0.0};
+
+  // Settle persistence (footprint fully inside a target route primitive).
+  bool settle_active_{false};
+  lanelet::Id settle_lane_id_{lanelet::InvalId};
+  double settle_start_s_{0.0};
+
+  // Abort persistence (trajectory heads back into the reference lane).
+  bool abort_active_{false};
+  double abort_start_s_{0.0};
 };
 
 }  // namespace autoware::lane_event_classifier

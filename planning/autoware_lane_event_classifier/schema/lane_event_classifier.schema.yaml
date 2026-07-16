@@ -36,3 +36,40 @@ lane_event_classifier:
       type: bool
       default_value: true
       description: Treat crossing a virtual boundary linestring as lane following (virtual-boundary exemption)
+  lane_change:
+    enable_classifier:
+      type: bool
+      default_value: true
+      description: Enable or disable LaneChangeClassifier
+    crossing_persist_duration_s:
+      type: double
+      default_value: 0.3
+      description: Seconds the trajectory crossing must persist (same target + stable location) before onset
+      validation:
+        gt<>: [0.0]
+    settle_confirm_duration_s:
+      type: double
+      default_value: 0.7
+      description: Seconds the footprint must stay fully inside the target route primitive to confirm a settle
+      validation:
+        gt<>: [0.0]
+    crossing_look_ahead_m:
+      type: double
+      default_value: 30.0
+      description: Arc length ahead along the trajectory scanned for a lane-change crossing
+      validation:
+        gt<>: [0.0]
+    crossing_position_tolerance_m:
+      type: double
+      default_value: 2.0
+      description: Positional tolerance on the crossing location for the onset both-persistence test
+      validation:
+        gt<>: [0.0]
+    confidence_factor:
+      type: double
+      default_value: 0.3
+      description: Fraction the crossing-persistence window is shortened to when a confidence signal is present (0 < factor < 1; keep above 0 so it shortens but never bypasses the window)
+      # A single two-sided validator: two separate validators (gt + lt) would emit two
+      # floating_point_range entries, overflowing ParameterDescriptor's size-1 bounded vector.
+      validation:
+        bounds<>: [0.0, 1.0]

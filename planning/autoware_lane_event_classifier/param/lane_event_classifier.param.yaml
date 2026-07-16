@@ -8,3 +8,10 @@
       enable_road_shoulder_exemption: true
       enable_turn_lane_exemption: true
       enable_virtual_boundary_exemption: true
+    lane_change:
+      enable_classifier: true
+      crossing_persist_duration_s: 0.3
+      settle_confirm_duration_s: 0.7
+      crossing_look_ahead_m: 30.0
+      crossing_position_tolerance_m: 2.0
+      confidence_factor: 0.3

@@ -3,8 +3,9 @@
 ## What this does
 
 `LaneFollowingChecker` answers one question each cycle: **is the ego still inside the lane it is
-supposed to be following**? It takes the reference lane the tracker is holding, walks the lanes
-connected to it along the route, and tests the ego reference point against that set. The answer is a
+supposed to be following**? It takes the [reference lane](../README.md#key-words) the tracker is
+holding, walks the lanes connected to it along the route, and tests the [ego reference
+point](#key-words) against that set. The answer is a
 verdict (`is_following`) plus the rule that produced it (`reason`).
 
 The node uses the verdict as the default label. When no classifier claims an event, a passing check
@@ -14,9 +15,11 @@ job.
 
 ## Key words
 
+Reference lane is shared across the package (defined in the [README](../README.md#key-words)). The
+terms below are specific to the lane-following check.
+
 | Term                | Meaning                                                                                                                          |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Reference lane      | The lane the tracker is holding for the ego this cycle. Input to the check; the check never changes it.                          |
 | Connected sequence  | The reference lane plus every lane reachable from it fore and aft along the routing graph, out to `connected_sequence_length_m`. |
 | Ego reference point | The `base_link` position (a single point), not the vehicle footprint. The check tests this point.                                |
 | Exemption           | A rule that reports following even though the ego point is outside the connected sequence and its tolerance band.                |
@@ -64,7 +67,7 @@ departure.
 
 ### Inside the connected sequence
 
-The connected sequence is built once per (reference lane, routing graph) and memoized. If the ego
+The [connected sequence](#key-words) is built once per (reference lane, routing graph) and memoized. If the ego
 point lies inside any lane in that sequence, the ego is following. This is the common case on a
 straight or gently curving route.
 
@@ -89,7 +92,7 @@ sequence, the check reports following. Controlled by `enable_turn_lane_exemption
 
 ### Virtual-boundary exemption
 
-Where a lane's edge is a virtual boundary rather than a painted line, crossing it is not a real lane
+Where a lane's edge is a [virtual boundary](#key-words) rather than a painted line, crossing it is not a real lane
 departure. The check finds the nearest sequence boundary to the ego point; if that boundary is a
 virtual linestring, it reports following. Controlled by `enable_virtual_boundary_exemption`.
 

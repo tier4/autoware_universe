@@ -59,11 +59,13 @@ void LaneEventClassifierNode::build_classifiers()
   lane_following_checker_ = LaneFollowingChecker(params_.lane_following);
 
   // Classifiers are constructed here (no plugin/pluginlib): the node owns a vector of concrete
-  // LaneEventClassifierBase implementations and iterates it in on_trajectory(). Each classifier's
-  // real logic and its enable/config parameters are added in its own follow-up PR; today they are
-  // no-op stubs so the loading and aggregation path is exercised end-to-end.
+  // LaneEventClassifierBase implementations and iterates it in on_trajectory(). Each classifier
+  // derives its own per-cycle geometry from the shared LaneTracker's generic queries. The
+  // intentional-crossing classifier is still a no-op stub until its own follow-up PR.
   classifiers_.clear();
-  classifiers_.emplace_back(std::make_unique<LaneChangeClassifier>(true));
+  classifiers_.emplace_back(
+    std::make_unique<LaneChangeClassifier>(
+      params_.lane_change.enable_classifier, params_.lane_change, lane_tracker_));
   classifiers_.emplace_back(std::make_unique<IntentionalCrossingClassifier>(true));
 }
 

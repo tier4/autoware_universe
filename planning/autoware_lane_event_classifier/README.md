@@ -19,6 +19,18 @@ and for how long.
 
 ---
 
+## Key words
+
+These terms are shared across the classifiers. Each classifier's own doc links here on first use and
+defines only the terms specific to it.
+
+| Term            | Meaning                                                                                                                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reference lane  | The lane the tracker is holding for the ego this cycle. Locked while an event runs, released and re-anchored to the ego's current lane when the event ends.                                |
+| Route primitive | A preferred lane of the current route, one of the planned-path lanes the ego drives on a best-effort basis. So "is this lane a route primitive?" asks whether the lane is part of that path. |
+
+---
+
 ## Inputs and output
 
 **Trigger.** The node runs once per planned trajectory message. `/planning/trajectory` is the clock.
@@ -33,12 +45,6 @@ and for how long.
 | _(polled)_ route           | `LaneletRoute`         | The mission and its preferred primitives.                                                                     |
 | _(polled)_ objects         | `PredictedObjects`     | Perceived objects (used by crossing logic).                                                                   |
 | _(polled)_ turn indicators | `TurnIndicatorsReport` | Optional hint for the lane-change confidence booster. Never a precondition, if missing, the cycle still runs. |
-
-!!! note
-
-    A **route primitive** is the sequence of lanes, the planned path, that the ego will try to drive on
-
-with best effort. So "is this lane a route primitive?" asks whether the lane is part of that path.
 
 ### Publication
 
@@ -131,7 +137,7 @@ cycle. Adding a classifier is: implement the interface, then register it in `bui
 | Node I/O (subscriptions/publisher) | ✅ implemented                                                         |
 | Classifier loading + aggregation   | ✅ implemented                                                         |
 | `LaneFollowingChecker`             | ✅ implemented, see [`docs/lane_following.md`](docs/lane_following.md) |
-| `LaneChangeClassifier`             | 🚧 stub, reports no event                                              |
+| `LaneChangeClassifier`             | ✅ implemented, see [docs/lane_change.md](docs/lane_change.md)         |
 | `IntentionalCrossingClassifier`    | 🚧 stub, reports no event                                              |
 | `LaneTracker` (map/reference lane) | ✅ implemented, owns the map, routing graph, and reference lane        |
 
@@ -149,6 +155,8 @@ Defaults: [`param/lane_event_classifier.param.yaml`](param/lane_event_classifier
 
 Lane-following check parameters (`lane_following.*`) are documented in [`docs/lane_following.md`](docs/lane_following.md#parameters).
 
-Each classifier gains its own enable flag and parameters when its logic lands.
+Lane-change classifier parameters (`lane_change.*`) are documented in [`docs/lane_change.md`](docs/lane_change.md#parameters).
+
+The intentional-crossing classifier gains its own enable flag and parameters when its logic lands.
 
 ---
