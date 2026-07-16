@@ -45,6 +45,35 @@
               "required": [],
               "additionalProperties": false
             },
+            "early_stop": {
+              "type": "object",
+              "properties": {
+                "expected_ego_speed_parking":{
+                  "type": "number",
+                  "description": "expected ego speed during pull over to the side of the road [m/s]",
+                  "default": 2.8,
+                  "minimum": 0.0
+                },
+                "max_lat_accel_parking":{
+                  "type": "number",
+                  "description": "expected max lateral acceleration during pull over to the side of the road [m/s^2]",
+                  "default": 0.8,
+                  "minimum": 0.0
+                },
+                "max_lat_jerk_parking":{
+                  "type": "number",
+                  "description": "expected max lateral jerk during pull over to the side of the road [m/s^3]",
+                  "default": 999,
+                  "minimum": 0.0
+                },
+                "dist_to_stop_parking":{
+                  "type": "number",
+                  "description": "stopping distance after lateral offset during pull over to the side of the road [m]",
+                  "default": 1.0,
+                  "minimum": 0.0
+                }
+              }
+            },
             "ego_nearest_lanelet": {
               "type": "object",
               "properties": {

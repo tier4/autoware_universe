@@ -41,7 +41,7 @@ minimum_rule_based_planner:
         description: expected max lateral jerk during pull over to the side of the road [m/s^3]
       dist_to_stop_parking:
         type: double
-        default_value: 1
+        default_value: 1.0
         description: stopping distance after lateral offset during pull over to the side of the road [m]
 
     # Parameters for lanelet matching (different from EB smoother's ego_nearest_* params)
