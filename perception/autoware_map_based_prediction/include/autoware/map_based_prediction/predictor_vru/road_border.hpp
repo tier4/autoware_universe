@@ -22,12 +22,9 @@
 
 #include <autoware_perception_msgs/msg/tracked_object.hpp>
 
-#include <boost/geometry/index/rtree.hpp>
-
 #include <lanelet2_core/LaneletMap.h>
 
 #include <memory>
-#include <utility>
 
 namespace autoware::map_based_prediction
 {
@@ -45,12 +42,9 @@ public:
     const path_cut::MaxDecelerationParams & max_decel_params) const;
 
 private:
-  using RoadBorderNode =
-    std::pair<autoware_utils_geometry::Box2d, autoware_utils_geometry::LineString2d>;
-  using RoadBorderRtree =
-    boost::geometry::index::rtree<RoadBorderNode, boost::geometry::index::quadratic<16>>;
-
-  RoadBorderRtree road_border_rtree_;
+  // road_border linestrings with the crosswalk sections clipped out. synthesized geometry: ids are
+  // freshly generated and z is dropped, so this is not a view of the original map.
+  lanelet::LaneletMapConstUPtr cut_road_border_map_;
 };
 
 }  // namespace autoware::map_based_prediction

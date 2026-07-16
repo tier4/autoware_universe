@@ -50,12 +50,7 @@ using autoware_utils_geometry::MultiLineString2d;
 using autoware_utils_geometry::Point2d;
 using autoware_utils_geometry::Polygon2d;
 
-constexpr double crosswalk_corridor_extend_margin = 1.0;
-
-Box2d to_box2d(const lanelet::BoundingBox2d & box)
-{
-  return {Point2d(box.min().x(), box.min().y()), Point2d(box.max().x(), box.max().y())};
-}
+constexpr double crosswalk_extend_margin = 1.0;
 
 lanelet::BoundingBox2d to_lanelet_box(const Box2d & box)
 {
@@ -64,82 +59,15 @@ lanelet::BoundingBox2d to_lanelet_box(const Box2d & box)
     lanelet::BasicPoint2d(box.max_corner().x(), box.max_corner().y())};
 }
 
-Point2d extend_outward(const Point2d & end, const Point2d & inner, const double margin)
-{
-  const double dx = end.x() - inner.x();
-  const double dy = end.y() - inner.y();
-  const double len = std::hypot(dx, dy);
-  if (len < 1e-6) {
-    return end;
-  }
-  return {end.x() + dx / len * margin, end.y() + dy / len * margin};
-}
-
-std::vector<Point2d> to_extended_bound_points(
-  const lanelet::ConstLineString3d & bound, const double extend_margin)
-{
-  std::vector<Point2d> points;
-  points.reserve(bound.size());
-  for (const auto & p : bound) {
-    points.emplace_back(p.x(), p.y());
-  }
-  if (points.size() >= 2) {
-    points.front() = extend_outward(points.front(), points.at(1), extend_margin);
-    points.back() = extend_outward(points.back(), points.at(points.size() - 2), extend_margin);
-  }
-  return points;
-}
-
-Polygon2d build_extended_crosswalk_polygon(
-  const lanelet::ConstLanelet & crosswalk, const double extend_margin)
-{
-  const auto left = to_extended_bound_points(crosswalk.leftBound(), extend_margin);
-  const auto right = to_extended_bound_points(crosswalk.rightBound(), extend_margin);
-
-  Polygon2d corridor;
-  auto & outer = corridor.outer();
-  outer.insert(outer.end(), left.begin(), left.end());
-  outer.insert(outer.end(), right.rbegin(), right.rend());
-  boost::geometry::correct(corridor);
-  return corridor;
-}
-
-lanelet::BoundingBox2d expand_box(const lanelet::BoundingBox2d & box, const double margin)
-{
-  const lanelet::BasicPoint2d offset(margin, margin);
-  return {box.min() - offset, box.max() + offset};
-}
-
-std::vector<Polygon2d> collect_crosswalk_polygons(
-  const lanelet::LaneletMap & map, const lanelet::BoundingBox2d & search_box,
-  const double extend_margin)
-{
-  std::vector<Polygon2d> corridors;
-  for (const auto & candidate : map.laneletLayer.search(expand_box(search_box, extend_margin))) {
-    const std::string subtype = candidate.attributeOr(lanelet::AttributeName::Subtype, "none");
-    if (
-      subtype != lanelet::AttributeValueString::Crosswalk &&
-      subtype != lanelet::AttributeValueString::Walkway) {
-      continue;
-    }
-    Polygon2d corridor = build_extended_crosswalk_polygon(candidate, extend_margin);
-    if (!boost::geometry::is_valid(corridor)) {
-      continue;
-    }
-    corridors.push_back(std::move(corridor));
-  }
-  return corridors;
-}
-
 std::vector<LineString2d> clip_out_with_polygons(
-  const LineString2d & candidate, const std::vector<Polygon2d> & corridors_polygons)
+  const LineString2d & candidate, const std::vector<Polygon2d> & polygons)
 {
   std::vector<LineString2d> pieces{candidate};
-  for (const auto & corridor : corridors_polygons) {
+  for (const auto & polygon : polygons) {
     std::vector<LineString2d> next;
     for (const auto & piece : pieces) {
       MultiLineString2d outside;
-      boost::geometry::difference(piece, corridor, outside);
+      boost::geometry::difference(piece, polygon, outside);
       for (auto & part : outside) {
         if (part.size() >= 2) {
           next.push_back(std::move(part));
@@ -165,16 +93,97 @@ double arc_length_to_index(const PredictedPath & path, const size_t index)
   }
   return length;
 }
+
+namespace crosswalk
+{
+Point2d extend_outward(const Point2d & end, const Point2d & inner, const double margin)
+{
+  const double dx = end.x() - inner.x();
+  const double dy = end.y() - inner.y();
+  const double len = std::hypot(dx, dy);
+  if (len < 1e-6) {
+    return end;
+  }
+  return {end.x() + dx / len * margin, end.y() + dy / len * margin};
+}
+
+std::vector<Point2d> get_points_with_extended_ends(
+  const lanelet::ConstLineString3d & bound, const double extend_margin)
+{
+  std::vector<Point2d> points;
+  points.reserve(bound.size());
+  for (const auto & p : bound) {
+    points.emplace_back(p.x(), p.y());
+  }
+  if (points.size() >= 2) {
+    points.front() = extend_outward(points.front(), points.at(1), extend_margin);
+    points.back() = extend_outward(points.back(), points.at(points.size() - 2), extend_margin);
+  }
+  return points;
+}
+
+Polygon2d build_extended_crosswalk_polygon(
+  const lanelet::ConstLanelet & crosswalk_lanelet, const double extend_margin)
+{
+  const auto left = get_points_with_extended_ends(crosswalk_lanelet.leftBound(), extend_margin);
+  const auto right = get_points_with_extended_ends(crosswalk_lanelet.rightBound(), extend_margin);
+
+  Polygon2d polygon;
+  auto & outer = polygon.outer();
+  outer.insert(outer.end(), left.begin(), left.end());
+  outer.insert(outer.end(), right.rbegin(), right.rend());
+  boost::geometry::correct(polygon);
+  return polygon;
+}
+
+lanelet::BoundingBox2d expand_box(const lanelet::BoundingBox2d & box, const double margin)
+{
+  const lanelet::BasicPoint2d offset(margin, margin);
+  return {box.min() - offset, box.max() + offset};
+}
+
+std::vector<Polygon2d> collect_extended_crosswalk_polygons_in_box(
+  const lanelet::LaneletMap & map, const lanelet::BoundingBox2d & search_box,
+  const double extend_margin)
+{
+  std::vector<Polygon2d> polygons;
+  for (const auto & candidate : map.laneletLayer.search(expand_box(search_box, extend_margin))) {
+    const std::string subtype = candidate.attributeOr(lanelet::AttributeName::Subtype, "none");
+    if (
+      subtype != lanelet::AttributeValueString::Crosswalk &&
+      subtype != lanelet::AttributeValueString::Walkway) {
+      continue;
+    }
+    Polygon2d polygon = build_extended_crosswalk_polygon(candidate, extend_margin);
+    if (!boost::geometry::is_valid(polygon)) {
+      continue;
+    }
+    polygons.push_back(std::move(polygon));
+  }
+  return polygons;
+}
+}  // namespace crosswalk
 }  // namespace
 
 void RoadBorderModule::build_from_map(std::shared_ptr<lanelet::LaneletMap> lanelet_map_ptr)
 {
-  road_border_rtree_.clear();
+  cut_road_border_map_.reset();
   if (!lanelet_map_ptr) {
     return;
   }
 
-  std::vector<RoadBorderNode> nodes;
+  const auto to_lanelet_linestring = [](const LineString2d & line) {
+    lanelet::Points3d points;
+    points.reserve(line.size());
+    for (const auto & p : line) {
+      points.emplace_back(lanelet::utils::getId(), p.x(), p.y(), 0.0);
+    }
+    lanelet::LineString3d linestring(lanelet::utils::getId(), std::move(points));
+    linestring.attributes()[lanelet::AttributeName::Type] = std::string("road_border");
+    return linestring;
+  };
+
+  lanelet::LineStrings3d cut_borders;
   for (const auto & linestring : lanelet_map_ptr->lineStringLayer) {
     const std::string type = linestring.attributeOr(lanelet::AttributeName::Type, "none");
     if (type != "road_border") {
@@ -189,16 +198,15 @@ void RoadBorderModule::build_from_map(std::shared_ptr<lanelet::LaneletMap> lanel
 
     Box2d border_box;
     boost::geometry::envelope(border, border_box);
-    const std::vector<Polygon2d> crosswalk_corridors = collect_crosswalk_polygons(
-      *lanelet_map_ptr, to_lanelet_box(border_box), crosswalk_corridor_extend_margin);
+    const std::vector<Polygon2d> crosswalk_polygons =
+      crosswalk::collect_extended_crosswalk_polygons_in_box(
+        *lanelet_map_ptr, to_lanelet_box(border_box), crosswalk_extend_margin);
 
-    for (auto & piece : clip_out_with_polygons(border, crosswalk_corridors)) {
-      Box2d piece_box;
-      boost::geometry::envelope(piece, piece_box);
-      nodes.emplace_back(piece_box, std::move(piece));
+    for (const auto & piece : clip_out_with_polygons(border, crosswalk_polygons)) {
+      cut_borders.push_back(to_lanelet_linestring(piece));
     }
   }
-  road_border_rtree_ = RoadBorderRtree(nodes);
+  cut_road_border_map_ = lanelet::utils::createMap(cut_borders);
 }
 
 PredictedPath RoadBorderModule::cut_path_at_road_border(
@@ -207,7 +215,7 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
 {
   const auto & poses = predicted_path.path;
   if (
-    road_border_rtree_.empty() || poses.size() < 2 ||
+    !cut_road_border_map_ || cut_road_border_map_->lineStringLayer.empty() || poses.size() < 2 ||
     !path_cut::shape_has_footprint(object.shape)) {
     return predicted_path;
   }
@@ -216,12 +224,19 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
   const lanelet::BoundingBox2d search_box =
     path_cut::get_bbox_contain_path_with_footprint(predicted_path, object_shape);
 
-  std::vector<autoware_utils_geometry::LineString2d> candidates;
-  for (auto it =
-         road_border_rtree_.qbegin(boost::geometry::index::intersects(to_box2d(search_box)));
-       it != road_border_rtree_.qend(); ++it) {
-    candidates.push_back(it->second);
-  }
+  const auto to_linestrings_2d = [](const lanelet::ConstLineStrings3d & linestrings) {
+    std::vector<LineString2d> linestrings_2d;
+    linestrings_2d.reserve(linestrings.size());
+    for (const auto & linestring : linestrings) {
+      LineString2d linestring_2d;
+      boost::geometry::convert(lanelet::utils::to2D(linestring).basicLineString(), linestring_2d);
+      linestrings_2d.push_back(std::move(linestring_2d));
+    }
+    return linestrings_2d;
+  };
+
+  const std::vector<LineString2d> candidates =
+    to_linestrings_2d(cut_road_border_map_->lineStringLayer.search(search_box));
 
   const std::optional<size_t> road_border_crossing_index =
     path_cut::find_footprint_crossing_index(predicted_path, object_shape, candidates);
