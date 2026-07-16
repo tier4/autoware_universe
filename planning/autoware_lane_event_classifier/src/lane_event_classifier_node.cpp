@@ -56,7 +56,7 @@ LaneEventClassifierNode::LaneEventClassifierNode(const rclcpp::NodeOptions & nod
 
 void LaneEventClassifierNode::build_classifiers()
 {
-  lane_following_checker_ = LaneFollowingChecker();
+  lane_following_checker_ = LaneFollowingChecker(params_.lane_following);
 
   // Classifiers are constructed here (no plugin/pluginlib): the node owns a vector of concrete
   // LaneEventClassifierBase implementations and iterates it in on_trajectory(). Each classifier's
@@ -210,8 +210,11 @@ void LaneEventClassifierNode::on_trajectory(
   lane_tracker_.update(input_);
   const double lane_tracker_time_ms = stop_watch.toc("lane_tracker");
 
+  const auto & ego_position = input_.odometry_ptr->pose.pose.position;
   stop_watch.tic("lane_following");
-  const auto lane_following_result = lane_following_checker_.evaluate();
+  const auto lane_following_result = lane_following_checker_.evaluate(
+    lane_tracker_.lanelet_map_ptr(), lane_tracker_.routing_graph_ptr(),
+    lane_tracker_.reference_lane().reference_lane_id, {ego_position.x, ego_position.y});
   const double lane_following_time_ms = stop_watch.toc("lane_following");
 
   uint8_t current_state_val = DrivingState::LANE_FOLLOWING;

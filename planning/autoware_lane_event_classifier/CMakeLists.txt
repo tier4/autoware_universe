@@ -49,6 +49,13 @@ if(BUILD_TESTING)
   target_link_libraries(test_lane_tracker ${PROJECT_NAME}_lib "${cpp_typesupport_target}")
   target_compile_options(test_lane_tracker PRIVATE -Wno-deprecated-declarations)
 
+  ament_add_ros_isolated_gtest(test_lane_following
+    test/test_lane_following.cpp
+  )
+  target_link_libraries(test_lane_following ${PROJECT_NAME}_lib "${cpp_typesupport_target}")
+  target_compile_definitions(test_lane_following PRIVATE
+    "TEST_MAP_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/test/map/lanelet2_map.osm\"")
+  target_compile_options(test_lane_following PRIVATE -Wno-deprecated-declarations)
 endif()
 
 ament_auto_package(
