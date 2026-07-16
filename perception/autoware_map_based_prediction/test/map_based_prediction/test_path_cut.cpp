@@ -167,17 +167,35 @@ lanelet::Lanelet make_crosswalk(const lanelet::Id id, const double x_min, const 
   return crosswalk;
 }
 
+// bounds running in opposite directions, which makes the corridor polygon self-intersecting.
+lanelet::Lanelet make_bowtie_crosswalk(const lanelet::Id id, const double x_min, const double x_max)
+{
+  const lanelet::LineString3d left(
+    id + 1,
+    {lanelet::Point3d(id + 2, x_min, -2.0, 0.0), lanelet::Point3d(id + 3, x_max, -2.0, 0.0)});
+  const lanelet::LineString3d right(
+    id + 4, {lanelet::Point3d(id + 5, x_max, 2.0, 0.0), lanelet::Point3d(id + 6, x_min, 2.0, 0.0)});
+  lanelet::Lanelet crosswalk(id, left, right);
+  crosswalk.attributes()[lanelet::AttributeNamesString::Subtype] = std::string("crosswalk");
+  return crosswalk;
+}
+
 std::shared_ptr<lanelet::LaneletMap> make_map()
 {
   return lanelet::utils::createMap(lanelet::LineStrings3d{make_road_border(100)});
 }
 
-std::shared_ptr<lanelet::LaneletMap> make_map_with_crosswalk(const double x_min, const double x_max)
+std::shared_ptr<lanelet::LaneletMap> make_map_with_crosswalk_lanelet(lanelet::Lanelet crosswalk)
 {
   std::shared_ptr<lanelet::LaneletMap> map =
-    lanelet::utils::createMap(lanelet::Lanelets{make_crosswalk(200, x_min, x_max)});
+    lanelet::utils::createMap(lanelet::Lanelets{std::move(crosswalk)});
   map->add(make_road_border(100));
   return map;
+}
+
+std::shared_ptr<lanelet::LaneletMap> make_map_with_crosswalk(const double x_min, const double x_max)
+{
+  return make_map_with_crosswalk_lanelet(make_crosswalk(200, x_min, x_max));
 }
 
 PredictedPath make_straight_path(const size_t num_poses)
@@ -262,6 +280,35 @@ TEST(RoadBorderModule, DoesNotCutInsideCrosswalk)
 TEST(RoadBorderModule, CutsWhenCrossingIsOutsideCrosswalk)
 {
   const auto module = make_module(make_map_with_crosswalk(8.0, 11.0));
+  const auto path = make_straight_path(11);
+  const auto object = make_object(ObjectClassification::PEDESTRIAN, 1.0);
+  path_cut::MaxDecelerationParams params;
+  params.pedestrian = 2.0;
+
+  const auto cut = module.cut_path_at_road_border(path, object, params);
+
+  EXPECT_LT(cut.path.size(), path.path.size());
+}
+
+TEST(RoadBorderModule, DoesNotCutWithinCrosswalkExtendMargin)
+{
+  // border at 5.5 is outside the crosswalk but within its 1.0 m extension
+  const auto module = make_module(make_map_with_crosswalk(6.0, 9.0));
+  const auto path = make_straight_path(11);
+  const auto object = make_object(ObjectClassification::PEDESTRIAN, 1.0);
+  path_cut::MaxDecelerationParams params;
+  params.pedestrian = 2.0;
+
+  const auto cut = module.cut_path_at_road_border(path, object, params);
+
+  EXPECT_EQ(cut.path.size(), path.path.size());
+}
+
+TEST(RoadBorderModule, HandlesInvalidCrosswalkPolygon)
+{
+  // a corridor that cannot be clipped with must not throw, and must not suppress the cut
+  const auto module =
+    make_module(make_map_with_crosswalk_lanelet(make_bowtie_crosswalk(200, 4.0, 7.0)));
   const auto path = make_straight_path(11);
   const auto object = make_object(ObjectClassification::PEDESTRIAN, 1.0);
   path_cut::MaxDecelerationParams params;

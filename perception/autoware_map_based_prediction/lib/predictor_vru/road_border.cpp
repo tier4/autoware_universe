@@ -53,11 +53,9 @@ using autoware_utils_geometry::Polygon2d;
 constexpr double crosswalk_corridor_extend_margin = 1.0;
 
 std::vector<autoware_utils_geometry::LineString2d> collect_candidate_road_border_linestrings(
-  const lanelet::LaneletMap & road_border_layer, const PredictedPath & predicted_path,
-  const autoware_perception_msgs::msg::Shape & object_shape)
+  const lanelet::LaneletMap & road_border_layer, const lanelet::BoundingBox2d & search_box)
 {
-  const auto candidates = road_border_layer.lineStringLayer.search(
-    path_cut::get_bbox_contain_path_with_footprint(predicted_path, object_shape));
+  const auto candidates = road_border_layer.lineStringLayer.search(search_box);
   std::vector<autoware_utils_geometry::LineString2d> linestrings_2d;
   linestrings_2d.reserve(candidates.size());
   for (const auto & candidate : candidates) {
@@ -66,18 +64,6 @@ std::vector<autoware_utils_geometry::LineString2d> collect_candidate_road_border
     linestrings_2d.push_back(linestring);
   }
   return linestrings_2d;
-}
-
-double arc_length_to_index(const PredictedPath & path, const size_t index)
-{
-  const auto & poses = path.path;
-  double length = 0.0;
-  for (size_t i = 0; i + 1 < poses.size() && i < index; ++i) {
-    const double dx = poses.at(i + 1).position.x - poses.at(i).position.x;
-    const double dy = poses.at(i + 1).position.y - poses.at(i).position.y;
-    length += std::hypot(dx, dy);
-  }
-  return length;
 }
 
 Point2d extend_outward(const Point2d & end, const Point2d & inner, const double margin)
@@ -120,28 +106,38 @@ Polygon2d build_extended_crosswalk_polygon(
   return corridor;
 }
 
-std::vector<Polygon2d> collect_crosswalk_corridors(
+lanelet::BoundingBox2d expand_box(const lanelet::BoundingBox2d & box, const double margin)
+{
+  const lanelet::BasicPoint2d offset(margin, margin);
+  return {box.min() - offset, box.max() + offset};
+}
+
+std::vector<Polygon2d> collect_crosswalk_polygons(
   const lanelet::LaneletMap & map, const lanelet::BoundingBox2d & search_box,
   const double extend_margin)
 {
   std::vector<Polygon2d> corridors;
-  for (const auto & candidate : map.laneletLayer.search(search_box)) {
+  for (const auto & candidate : map.laneletLayer.search(expand_box(search_box, extend_margin))) {
     const std::string subtype = candidate.attributeOr(lanelet::AttributeName::Subtype, "none");
     if (
       subtype != lanelet::AttributeValueString::Crosswalk &&
       subtype != lanelet::AttributeValueString::Walkway) {
       continue;
     }
-    corridors.push_back(build_extended_crosswalk_polygon(candidate, extend_margin));
+    Polygon2d corridor = build_extended_crosswalk_polygon(candidate, extend_margin);
+    if (!boost::geometry::is_valid(corridor)) {
+      continue;
+    }
+    corridors.push_back(std::move(corridor));
   }
   return corridors;
 }
 
-std::vector<LineString2d> clip_out_corridors(
-  const LineString2d & candidate, const std::vector<Polygon2d> & corridors)
+std::vector<LineString2d> clip_out_with_polygons(
+  const LineString2d & candidate, const std::vector<Polygon2d> & corridors_polygons)
 {
   std::vector<LineString2d> pieces{candidate};
-  for (const auto & corridor : corridors) {
+  for (const auto & corridor : corridors_polygons) {
     std::vector<LineString2d> next;
     for (const auto & piece : pieces) {
       MultiLineString2d outside;
@@ -160,20 +156,32 @@ std::vector<LineString2d> clip_out_corridors(
   return pieces;
 }
 
-std::vector<LineString2d> remove_crosswalk_corridor(
-  const std::vector<LineString2d> & candidates, const std::vector<Polygon2d> & corridors)
+std::vector<LineString2d> remove_lines_overlapping_polygons(
+  const std::vector<LineString2d> & candidates, const std::vector<Polygon2d> & corridors_polygons)
 {
-  if (corridors.empty()) {
+  if (corridors_polygons.empty()) {
     return candidates;
   }
   std::vector<LineString2d> result;
   result.reserve(candidates.size());
   for (const auto & candidate : candidates) {
-    auto pieces = clip_out_corridors(candidate, corridors);
+    auto pieces = clip_out_with_polygons(candidate, corridors_polygons);
     result.insert(
       result.end(), std::make_move_iterator(pieces.begin()), std::make_move_iterator(pieces.end()));
   }
   return result;
+}
+
+double arc_length_to_index(const PredictedPath & path, const size_t index)
+{
+  const auto & poses = path.path;
+  double length = 0.0;
+  for (size_t i = 0; i + 1 < poses.size() && i < index; ++i) {
+    const double dx = poses.at(i + 1).position.x - poses.at(i).position.x;
+    const double dy = poses.at(i + 1).position.y - poses.at(i).position.y;
+    length += std::hypot(dx, dy);
+  }
+  return length;
 }
 }  // namespace
 
@@ -208,17 +216,17 @@ PredictedPath RoadBorderModule::cut_path_at_road_border(
   }
 
   const autoware_perception_msgs::msg::Shape & object_shape = object.shape;
+  const lanelet::BoundingBox2d search_box =
+    path_cut::get_bbox_contain_path_with_footprint(predicted_path, object_shape);
+
   const std::vector<autoware_utils_geometry::LineString2d> candidates =
-    collect_candidate_road_border_linestrings(*road_border_layer_, predicted_path, object_shape);
+    collect_candidate_road_border_linestrings(*road_border_layer_, search_box);
 
   const std::vector<autoware_utils_geometry::Polygon2d> crosswalk_corridors =
-    collect_crosswalk_corridors(
-      *lanelet_map_ptr_,
-      path_cut::get_bbox_contain_path_with_footprint(predicted_path, object_shape),
-      crosswalk_corridor_extend_margin);
+    collect_crosswalk_polygons(*lanelet_map_ptr_, search_box, crosswalk_corridor_extend_margin);
 
   const std::vector<autoware_utils_geometry::LineString2d> candidates_removed_crosswalk_area =
-    remove_crosswalk_corridor(candidates, crosswalk_corridors);
+    remove_lines_overlapping_polygons(candidates, crosswalk_corridors);
 
   const std::optional<size_t> road_border_crossing_index = path_cut::find_footprint_crossing_index(
     predicted_path, object_shape, candidates_removed_crosswalk_area);
