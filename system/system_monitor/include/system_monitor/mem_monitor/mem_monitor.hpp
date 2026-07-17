@@ -21,11 +21,11 @@
 #define SYSTEM_MONITOR__MEM_MONITOR__MEM_MONITOR_HPP_
 
 #include <diagnostic_updater/diagnostic_updater.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <climits>
 #include <map>
 #include <string>
-#include <rclcpp/rclcpp.hpp>
 
 class MemMonitor : public rclcpp::Node
 {

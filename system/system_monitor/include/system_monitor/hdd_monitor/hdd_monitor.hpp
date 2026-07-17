@@ -22,12 +22,12 @@
 
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <hdd_reader/hdd_reader.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <climits>
 #include <map>
 #include <string>
 #include <vector>
-#include <rclcpp/rclcpp.hpp>
 
 /**
  * @brief error and warning temperature levels
