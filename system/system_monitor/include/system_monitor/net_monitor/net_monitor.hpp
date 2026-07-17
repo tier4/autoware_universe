@@ -28,6 +28,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <rclcpp/rclcpp.hpp>
 
 #define toMbit(X) (static_cast<float>(X) / 1000000 * 8)
 

@@ -26,6 +26,7 @@
 #include <map>
 #include <string>
 #include <thread>
+#include <rclcpp/rclcpp.hpp>
 
 class NTPMonitor : public rclcpp::Node
 {
