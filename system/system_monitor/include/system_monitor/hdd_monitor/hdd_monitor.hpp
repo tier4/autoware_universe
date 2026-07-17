@@ -27,6 +27,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <rclcpp/rclcpp.hpp>
 
 /**
  * @brief error and warning temperature levels

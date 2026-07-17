@@ -29,6 +29,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <rclcpp/rclcpp.hpp>
 
 /**
  * @brief CPU temperature information
