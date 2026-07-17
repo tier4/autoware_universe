@@ -73,3 +73,76 @@ lane_event_classifier:
       # floating_point_range entries, overflowing ParameterDescriptor's size-1 bounded vector.
       validation:
         bounds<>: [0.0, 1.0]
+  lane_crossing:
+    enable_classifier:
+      type: bool
+      default_value: true
+      description: Enable or disable IntentionalCrossingClassifier
+    crossing_look_ahead_m:
+      type: double
+      default_value: 30.0
+      description: Arc length ahead along the trajectory scanned for a lane-crossing crossing
+      validation:
+        gt<>: [0.0]
+    crossing_persist_duration_s:
+      type: double
+      default_value: 0.3
+      description: Seconds the trajectory crossing must persist (same target + stable location) before onset
+      validation:
+        gt<>: [0.0]
+    crossing_position_tolerance_m:
+      type: double
+      default_value: 2.0
+      description: Positional tolerance on the crossing location for the onset both-persistence test
+      validation:
+        gt<>: [0.0]
+    footprint_boundary_overshoot_m:
+      type: double
+      default_value: 0.3
+      description: Minimum distance the ego footprint must poke past the reference lane boundary for the footprint (physical) onset signal to count, so a slight overhang from cornering is not read as a crossing. A partial dodge holds well below a full lane width, so this stays small; the qualifying-object requirement is the primary false-positive guard
+      validation:
+        gt<>: [0.0]
+    settle_confirm_duration_s:
+      type: double
+      default_value: 0.7
+      description: Seconds the footprint must stay back inside the reference straight sequence to confirm the return
+      validation:
+        gt<>: [0.0]
+    confidence_factor:
+      type: double
+      default_value: 0.3
+      description: Fraction the crossing-persistence window is shortened to when a confidence signal (blinker toward the crossing side) is present (0 < factor < 1; keep above 0 so it shortens but never bypasses the window)
+      # A single two-sided validator: two separate validators (gt + lt) would emit two
+      # floating_point_range entries, overflowing ParameterDescriptor's size-1 bounded vector.
+      validation:
+        bounds<>: [0.0, 1.0]
+    object_static_speed_threshold_mps:
+      type: double
+      default_value: 0.5
+      description: Below this speed a perceived object counts as a static obstacle worth crossing to avoid
+      validation:
+        gt<>: [0.0]
+    object_longitudinal_window_m:
+      type: double
+      default_value: 30.0
+      description: Ahead-of-ego arc-length window along the reference straight sequence in which a qualifying object must lie
+      validation:
+        gt<>: [0.0]
+    object_overlap_area_threshold_m2:
+      type: double
+      default_value: 1.0
+      description: Minimum intersection area between the object footprint and the reference straight sequence for the object to qualify
+      validation:
+        gt<>: [0.0]
+    object_qualifying_memory_s:
+      type: double
+      default_value: 3.0
+      description: Seconds a qualifying static object stays remembered, so a transient perception dropout (a velocity spike or an overlap drop as the ego dodges past it) at the crossing moment does not cancel onset. A genuinely moving object never sustains a qualifying reading, so it never latches.
+      validation:
+        gt<>: [0.0]
+    max_crossing_duration_s:
+      type: double
+      default_value: 10.0
+      description: Hard backstop; a crossing that neither returns nor becomes a lane change within this time is force-completed
+      validation:
+        gt<>: [0.0]

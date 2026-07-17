@@ -20,6 +20,7 @@
 #include <autoware_lane_event_classifier/detail/geometry_utils.hpp>
 #include <autoware_lane_event_classifier/types.hpp>
 
+#include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_report.hpp>
@@ -189,15 +190,43 @@ inline LaneEventInput make_input(
   return input;
 }
 
-// Builds an input carrying an explicit planned trajectory, footprint, and turn indicator — used by
-// the trajectory-driven lane-change tests. The ego pose is the odom position; timing comes from the
-// stamp (advance it between cycles to drive the debounce timers).
+// A static (or optionally moving) bounding-box object at (x, y). Identity orientation keeps the box
+// axis-aligned. Used by the lane-crossing tests to place an obstacle to avoid.
+inline autoware_perception_msgs::msg::PredictedObject make_object(
+  double x, double y, double size_x = 2.0, double size_y = 2.0, double speed_mps = 0.0)
+{
+  autoware_perception_msgs::msg::PredictedObject object;
+  auto & pose = object.kinematics.initial_pose_with_covariance.pose;
+  pose.position.x = x;
+  pose.position.y = y;
+  pose.orientation.w = 1.0;
+  object.kinematics.initial_twist_with_covariance.twist.linear.x = speed_mps;
+  object.shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
+  object.shape.dimensions.x = size_x;
+  object.shape.dimensions.y = size_y;
+  object.shape.dimensions.z = 1.5;
+  return object;
+}
+
+inline autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr make_objects(
+  const std::vector<autoware_perception_msgs::msg::PredictedObject> & objects)
+{
+  auto message = std::make_shared<autoware_perception_msgs::msg::PredictedObjects>();
+  message->objects = objects;
+  return message;
+}
+
+// Builds an input carrying an explicit planned trajectory, footprint, turn indicator, and optional
+// perceived objects — used by the trajectory-driven lane-change and lane-crossing tests. The ego
+// pose is the odom position; timing comes from the stamp (advance it between cycles to drive the
+// debounce timers).
 inline LaneEventInput make_trajectory_input(
   const std::vector<lanelet::Id> & route_lane_ids, const lanelet::BasicPoint2d & ego,
   int32_t stamp_sec, uint32_t stamp_nanosec,
   const std::vector<lanelet::BasicPoint2d> & trajectory_points,
   const std::vector<lanelet::BasicPoint2d> & footprint,
-  uint8_t turn_indicator = autoware_vehicle_msgs::msg::TurnIndicatorsReport::DISABLE)
+  uint8_t turn_indicator = autoware_vehicle_msgs::msg::TurnIndicatorsReport::DISABLE,
+  autoware_perception_msgs::msg::PredictedObjects::ConstSharedPtr objects_ptr = nullptr)
 {
   LaneEventInput input;
 
@@ -231,6 +260,7 @@ inline LaneEventInput make_trajectory_input(
 
   input.footprint = footprint;
   input.turn_indicator = turn_indicator;
+  input.objects_ptr = objects_ptr;
   return input;
 }
 

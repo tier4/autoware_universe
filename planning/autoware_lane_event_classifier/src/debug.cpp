@@ -151,6 +151,23 @@ void LaneEventClassifierDebug::log_state(
         following_reason, reference_lane.reference_lane_id, build_lanes_context())
         .c_str());
   }
+
+  // Per-cycle classifier reasoning (throttled): surfaces why an event did or did not fire even while
+  // the published state is steady (e.g. a crossing that never onsets because no object qualifies).
+  std::string classifier_reasons;
+  for (const auto & classifier : classifiers) {
+    const auto reason = classifier->debug_reason();
+    if (reason.empty()) {
+      continue;
+    }
+    classifier_reasons += classifier_reasons.empty() ? "" : "; ";
+    classifier_reasons += fmt::format("{}: {}", classifier->name(), reason);
+  }
+  if (!classifier_reasons.empty()) {
+    RCLCPP_INFO_THROTTLE(
+      logger_, *clock_, 1000, "%s",
+      fmt::format("[lane_event] classifiers | {}", classifier_reasons).c_str());
+  }
 }
 
 void LaneEventClassifierDebug::publish_processing_time(

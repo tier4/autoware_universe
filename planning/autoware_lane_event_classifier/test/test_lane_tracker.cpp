@@ -150,6 +150,36 @@ TEST(LaneTrackerTest, hold_freezes_reference_until_released)
   EXPECT_EQ(tracker.reference_lane().reference_lane_id, id_b);
 }
 
+// Regression: after an event completes in a lane that is not a forward successor of the reference
+// (a lane change into a parallel lane), releasing the hold must re-anchor the reference to that
+// parallel lane. Without the release the reference stays pinned to the origin lane forever (the
+// tracker only advances into a forward successor), so the classifier re-detects the same crossing
+// every cycle. The node wires hold-on-active / release-on-completion to drive exactly this.
+TEST(LaneTrackerTest, release_reanchors_to_parallel_lane_after_hold)
+{
+  lanelet::Id id_a = lanelet::InvalId;
+  lanelet::Id id_b = lanelet::InvalId;
+  LaneTracker tracker;
+  ASSERT_TRUE(tracker.set_lanelet_map(make_parallel_map(id_a, id_b)).has_value());
+
+  tracker.update(make_input({id_a, id_b}, 5.0, 0.0, 0, 0));
+  ASSERT_EQ(tracker.reference_lane().reference_lane_id, id_a);
+
+  // An event begins: the node freezes the reference lane, and the ego crosses fully into the parallel
+  // lane_b (not a next lane of lane_a). The reference must stay pinned to lane_a.
+  tracker.hold_reference_lane();
+  tracker.update(make_input({id_a, id_b}, 5.0, 4.0, 1, 0));
+  EXPECT_EQ(tracker.reference_lane().reference_lane_id, id_a);
+
+  // The event completes: releasing re-anchors the reference to the parallel lane the ego settled into
+  // (lane_b) rather than leaving it stuck on lane_a. lane_b is not a successor of lane_a, so this only
+  // works because release clears the reference first.
+  tracker.release_reference_lane();
+  tracker.update(make_input({id_a, id_b}, 5.0, 4.0, 2, 0));
+  EXPECT_EQ(tracker.reference_lane().reference_lane_id, id_b);
+  EXPECT_FALSE(tracker.is_last_reanchor_blocked());
+}
+
 TEST(LaneTrackerTest, distance_to_lane_reports_inside_outside_and_unknown)
 {
   lanelet::Id lane_id = lanelet::InvalId;

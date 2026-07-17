@@ -34,62 +34,6 @@ namespace autoware::lane_event_classifier
 namespace
 {
 namespace lanelet2_utils = autoware::experimental::lanelet2_utils;
-
-// Onset exemption (docs/lane_change.md, "Exemptions"): a turn-direction ("left"/"right") or
-// intersection lanelet is exempt from lane-change onset.
-bool is_turn_direction_lane(const lanelet::ConstLanelet & lane)
-{
-  if (lanelet2_utils::is_intersection_lanelet(lane)) {
-    return true;
-  }
-  const auto turn_direction = lane.attributeOr("turn_direction", std::string{});
-  return turn_direction == "left" || turn_direction == "right";
-}
-
-// Ordered trajectory points from the one nearest the ego, forward, until the accumulated arc length
-// reaches look_ahead_m.
-std::vector<lanelet::BasicPoint2d> forward_trajectory_points(
-  const autoware_planning_msgs::msg::Trajectory & trajectory, const lanelet::BasicPoint2d & ego,
-  double look_ahead_m)
-{
-  std::vector<lanelet::BasicPoint2d> points;
-  if (trajectory.points.empty()) {
-    return points;
-  }
-  const auto point_of = [](const auto & trajectory_point) {
-    return lanelet::BasicPoint2d{
-      trajectory_point.pose.position.x, trajectory_point.pose.position.y};
-  };
-  const auto find_nearest_index = [&]() {
-    std::size_t nearest_index = 0;
-    double nearest_distance_sq = std::numeric_limits<double>::max();
-    for (std::size_t index = 0; index < trajectory.points.size(); ++index) {
-      const double distance_sq =
-        (std::invoke(point_of, trajectory.points[index]) - ego).squaredNorm();
-      if (distance_sq < nearest_distance_sq) {
-        nearest_distance_sq = distance_sq;
-        nearest_index = index;
-      }
-    }
-    return nearest_index;
-  };
-
-  const std::size_t nearest_index = std::invoke(find_nearest_index);
-  points.reserve(trajectory.points.size() - nearest_index);
-  lanelet::BasicPoint2d previous = std::invoke(point_of, trajectory.points[nearest_index]);
-  points.push_back(previous);
-  double accumulated_length = 0.0;
-  for (std::size_t index = nearest_index + 1; index < trajectory.points.size(); ++index) {
-    const lanelet::BasicPoint2d current = std::invoke(point_of, trajectory.points[index]);
-    accumulated_length += (current - previous).norm();
-    points.push_back(current);
-    previous = current;
-    if (accumulated_length >= look_ahead_m) {
-      break;
-    }
-  }
-  return points;
-}
 }  // namespace
 
 LaneChangeGeometry::LaneChangeGeometry(double crossing_look_ahead_m)
