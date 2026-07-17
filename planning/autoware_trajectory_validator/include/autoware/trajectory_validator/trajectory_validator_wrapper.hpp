@@ -60,6 +60,8 @@ using autoware_trajectory_validator::msg::ValidationReportArray;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 
+using ValidationReports = std::vector<ValidationReport>;
+
 /**
  * @brief Adapter for TrajectoryValidator: manages plugin loading, parameter updates,
  * diagnostics, and debug publishing.
@@ -87,6 +89,8 @@ public:
    */
   CandidateTrajectories validate_trajectories(
     const CandidateTrajectories & input_trajectories, const ValidatorContext & context);
+
+  const ValidationReports & validation_reports() const;
 
 private:
   /** @brief Creates the debug publisher. */
@@ -172,6 +176,7 @@ private:
   validator::Params validator_params_;
   vehicle_info_utils::VehicleInfo vehicle_info_;
   std::unique_ptr<TrajectoryValidator> validator_ptr_;
+  TrajectoryValidatorReport validator_report_;
 
   // Plugin infrastructure
   pluginlib::ClassLoader<plugin::ValidatorInterface> plugin_loader_;

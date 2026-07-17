@@ -105,12 +105,12 @@ void TrajectoryRanker::evaluate_safety(
     [&](const CandidateTrajectory & candidate_trajectory) -> RiskLevel::_level_type {
     auto itr =
       std::find_if(validation_reports.begin(), validation_reports.end(), [&](const auto & report) {
-        return candidate_trajectory.generator_id.uuid == report->generator_id.uuid;
+        return candidate_trajectory.generator_id.uuid == report.generator_id.uuid;
       });
     if (itr == validation_reports.end()) {
       return RiskLevel::FATAL;
     }
-    return itr->get()->risk.level;
+    return itr->risk.level;
   };
 
   auto get_safety_penalty = [&](const RiskLevel::_level_type risk_level) -> double {

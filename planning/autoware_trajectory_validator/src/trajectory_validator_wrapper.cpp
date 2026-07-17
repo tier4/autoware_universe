@@ -143,9 +143,9 @@ CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
 
   update_parameters();
 
-  const auto report = validator_ptr_->process(input_trajectories, context);
+  validator_report_ = validator_ptr_->process(input_trajectories, context);
 
-  for (const auto & table : report.evaluation_tables) {
+  for (const auto & table : validator_report_.evaluation_tables) {
     for (const auto & eval : table.plugin_evaluations) {
       if (!eval.is_feasible) {
         RCLCPP_WARN_THROTTLE(
@@ -155,13 +155,20 @@ CandidateTrajectories TrajectoryValidatorWrapper::validate_trajectories(
     }
   }
 
-  publish_validation_reports(report.validation_reports);
-  publish_planning_factor(report.planning_factors);
-  publish_diagnostic(report.validation_reports);
+  publish_validation_reports(validator_report_.validation_reports);
+  publish_planning_factor(validator_report_.planning_factors);
+  publish_diagnostic(validator_report_.validation_reports);
 
-  publish_debug(report.evaluation_tables, report.processing_time_ms, context.odometry->pose.pose);
+  publish_debug(
+    validator_report_.evaluation_tables, validator_report_.processing_time_ms,
+    context.odometry->pose.pose);
 
   return input_trajectories;
+}
+
+const ValidationReports & TrajectoryValidatorWrapper::validation_reports() const
+{
+  return validator_report_.validation_reports;
 }
 
 void TrajectoryValidatorWrapper::publish_validation_reports(

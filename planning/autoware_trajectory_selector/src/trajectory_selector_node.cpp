@@ -22,7 +22,8 @@
 namespace autoware::trajectory_selector
 {
 TrajectorySelectorNode::TrajectorySelectorNode(const rclcpp::NodeOptions & node_options)
-: Node{"trajectory_selector_node", node_options}
+: Node{"trajectory_selector_node", node_options},
+  route_handler_ptr_{std::make_shared<route_handler::RouteHandler>()}
 {
   subscribers();
   publishers();
@@ -31,6 +32,10 @@ TrajectorySelectorNode::TrajectorySelectorNode(const rclcpp::NodeOptions & node_
     *this, get_node_parameters_interface());
 
   validator_ptr_ = std::make_unique<trajectory_validator::TrajectoryValidatorWrapper>(
+    *this, get_node_parameters_interface(),
+    autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo(), time_keeper_);
+
+  ranker_ptr_ = std::make_unique<trajectory_ranker::TrajectoryRankerWrapper>(
     *this, get_node_parameters_interface(),
     autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo(), time_keeper_);
 
@@ -45,6 +50,10 @@ void TrajectorySelectorNode::subscribers()
     "~/input/lanelet2_map", rclcpp::QoS{1}.transient_local(),
     std::bind(&TrajectorySelectorNode::map_callback, this, std::placeholders::_1));
 
+  sub_route_ = create_subscription<autoware_planning_msgs::msg::LaneletRoute>(
+    "~/input/lanelet_route", rclcpp::QoS{1}.transient_local(),
+    std::bind(&TrajectorySelectorNode::route_callback, this, std::placeholders::_1));
+
   sub_trajectories_generative_ = create_subscription<CandidateTrajectories>(
     "~/input/trajectories_generative", 1,
     std::bind(&TrajectorySelectorNode::on_anchor_trajectories, this, std::placeholders::_1));
@@ -57,7 +66,8 @@ void TrajectorySelectorNode::subscribers()
 void TrajectorySelectorNode::publishers()
 {
   pub_trajectories_ = create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
-
+  pub_scored_trajectories_ =
+    create_publisher<ScoredCandidateTrajectories>("~/output/scored_trajectories", 1);
   pub_processing_time_detail_ = create_publisher<autoware_utils_debug::ProcessingTimeDetail>(
     "~/debug/processing_time_detail_ms/trajectory_selector", 1);
   time_keeper_ = std::make_shared<autoware_utils_debug::TimeKeeper>(pub_processing_time_detail_);
@@ -69,12 +79,22 @@ void TrajectorySelectorNode::map_callback(const LaneletMapBin::ConstSharedPtr ms
 
   lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::remove_const(
     autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*msg));
+  if (msg != nullptr) route_handler_ptr_->setMap(*msg);
+}
+
+void TrajectorySelectorNode::route_callback(
+  const autoware_planning_msgs::msg::LaneletRoute::ConstSharedPtr msg)
+{
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
+  route_ptr_ = msg;
+  if (msg != nullptr) route_handler_ptr_->setRoute(*msg);
 }
 
 void TrajectorySelectorNode::on_anchor_trajectories(const CandidateTrajectories::ConstSharedPtr msg)
 {
   concatenator_ptr_->add_candidate(*msg);
-  concatenate_and_validate();
+  process_trajectories();
   timer_->reset();
 }
 void TrajectorySelectorNode::on_trajectories(const CandidateTrajectories::ConstSharedPtr msg)
@@ -108,7 +128,7 @@ TrajectorySelectorNode::take_validator_data()
       std::make_shared<autoware_perception_msgs::msg::TrafficLightGroupArray>();
   }
 
-  context.route = sub_route_.take_data();
+  context.route = route_ptr_;
 
   context.segmented_pointcloud = sub_segmented_pointcloud_.take_data();
 
@@ -124,7 +144,16 @@ TrajectorySelectorNode::take_validator_data()
   return context;
 }
 
-void TrajectorySelectorNode::concatenate_and_validate()
+trajectory_ranker::RankerContext TrajectorySelectorNode::take_ranker_data()
+{
+  trajectory_ranker::RankerContext context;
+  context.route_handler = route_handler_ptr_;
+  context.odometry = sub_odometry_.take_data();
+  context.validation_reports = &validator_ptr_->validation_reports();
+  return context;
+}
+
+void TrajectorySelectorNode::process_trajectories()
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -146,19 +175,23 @@ void TrajectorySelectorNode::concatenate_and_validate()
     validator_ptr_->validate_trajectories(concatenated_trajectories, context_opt.value());
 
   pub_trajectories_->publish(validated_trajectories);
+
+  auto scored_trajectories =
+    ranker_ptr_->rank_trajectories(validated_trajectories, take_ranker_data());
+  pub_scored_trajectories_->publish(scored_trajectories);
 }
 
 void TrajectorySelectorNode::update_parameters()
 {
-  if (selector_params_listener_.is_old(selector_params_)) {
-    const auto new_params = selector_params_listener_.get_params();
-    const auto is_new_fallback_timer_period =
-      new_params.fallback_period_ms != selector_params_.fallback_period_ms;
-    selector_params_ = new_params;
-    if (is_new_fallback_timer_period) update_fallback_timer();
+  if (!selector_params_listener_.is_old(selector_params_)) return;
 
-    RCLCPP_INFO(get_logger(), "Trajectory Selector parameters are updated.");
-  }
+  const auto new_params = selector_params_listener_.get_params();
+  const auto is_new_fallback_timer_period =
+    new_params.fallback_period_ms != selector_params_.fallback_period_ms;
+  selector_params_ = new_params;
+  if (is_new_fallback_timer_period) update_fallback_timer();
+
+  RCLCPP_INFO(get_logger(), "Trajectory Selector parameters are updated.");
 }
 void TrajectorySelectorNode::update_fallback_timer()
 {
@@ -170,7 +203,7 @@ void TrajectorySelectorNode::update_fallback_timer()
     selector_params_.fallback_period_ms);
   timer_ = rclcpp::create_timer(
     this, get_clock(), std::chrono::milliseconds(selector_params_.fallback_period_ms),
-    std::bind(&TrajectorySelectorNode::concatenate_and_validate, this));
+    std::bind(&TrajectorySelectorNode::process_trajectories, this));
 }
 }  // namespace autoware::trajectory_selector
 

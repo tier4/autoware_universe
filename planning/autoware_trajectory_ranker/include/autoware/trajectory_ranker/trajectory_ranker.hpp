@@ -41,11 +41,11 @@ using autoware_internal_planning_msgs::msg::ScoredCandidateTrajectory;
 using autoware_trajectory_validator::msg::ValidationReport;
 using metrics::MetricInterface;
 
-using ValidationReports = std::vector<ValidationReport::ConstSharedPtr>;
+using ValidationReports = std::vector<ValidationReport>;
 
 struct RankerContext
 {
-  std::shared_ptr<ValidationReports> validation_reports;
+  const ValidationReports * validation_reports{nullptr};
   nav_msgs::msg::Odometry::ConstSharedPtr odometry;
   std::shared_ptr<RouteHandler> route_handler;
 };
