@@ -899,28 +899,24 @@ lanelet::ConstLanelet select_route_preferred_lanelet(
 }
 
 std::optional<double> cal_margin2goal(
-  const double target_lat_dist, 
-  const double expected_ego_speed_parking, 
-  const double max_lat_accel_parking, 
-  const double max_lat_jerk_parking, 
+  const double target_lat_dist,
+  const double expected_ego_speed_parking,
+  const double max_lat_accel_parking,
   const double dist_to_stop)
 {
-  if(max_lat_accel_parking < 1e-9 || max_lat_jerk_parking < 1e-9 || dist_to_stop < 0.0){
+  if(max_lat_accel_parking < 1e-9 || dist_to_stop < 0.0){
     return std::nullopt;
   }
 
-  constexpr double pi2 = autoware_utils::pi*autoware_utils::pi;
   const double dist_to_limit_lat_accel = expected_ego_speed_parking*std::sqrt(2*autoware_utils::pi*std::abs(target_lat_dist)/max_lat_accel_parking);
-  const double dist_to_limit_lat_jerk = expected_ego_speed_parking*std::cbrt(4*pi2*std::abs(target_lat_dist)/max_lat_jerk_parking);
-  return std::max(dist_to_limit_lat_accel, dist_to_limit_lat_jerk) + dist_to_stop;
+  return dist_to_limit_lat_accel + dist_to_stop;
 }
 
 std::optional<double> cal_early_stop(
   const PathPointTrajectory & trajectory,
   const RouteContext & planner_data,
-  const double expected_ego_speed_parking, 
-  const double max_lat_accel_parking, 
-  const double max_lat_jerk_parking, 
+  const double expected_ego_speed_parking,
+  const double max_lat_accel_parking,
   const double dist_to_stop)
 {
   const auto goal_point_2d = lanelet::BasicPoint2d(planner_data.goal_pose.position.x, planner_data.goal_pose.position.y);
@@ -995,8 +991,7 @@ std::optional<double> cal_early_stop(
   const auto dist_offset = cal_margin2goal(
     target_lat_dist,
     expected_ego_speed_parking,
-    max_lat_accel_parking, 
-    max_lat_jerk_parking,
+    max_lat_accel_parking,
     dist_to_stop
   );
   if(!dist_offset.has_value())
@@ -1551,8 +1546,7 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
     *trajectory, 
     route_context_,
     params_.path_planning.early_stop.expected_ego_speed_parking,
-    params_.path_planning.early_stop.max_lat_accel_parking, 
-    params_.path_planning.early_stop.max_lat_jerk_parking,
+    params_.path_planning.early_stop.max_lat_accel_parking,
     params_.path_planning.early_stop.dist_to_stop_parking);
   if(!early_stop_dist.has_value()){
     RCLCPP_ERROR(logger_, "Failed to calculate early stop distance");

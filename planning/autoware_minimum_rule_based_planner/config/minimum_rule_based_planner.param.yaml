@@ -14,7 +14,6 @@
       early_stop:
         expected_ego_speed_parking: 2.8
         max_lat_accel_parking: 0.8
-        max_lat_jerk_parking: 999
         dist_to_stop_parking: 1.0
 
       ego_nearest_lanelet:

@@ -35,10 +35,6 @@ minimum_rule_based_planner:
         default_value: 0.8
         description: expected max lateral acceleration during pull over to the side of the road [m/s^2]
 
-      max_lat_jerk_parking:
-        type: double
-        default_value: 999
-        description: expected max lateral jerk during pull over to the side of the road [m/s^3]
       dist_to_stop_parking:
         type: double
         default_value: 1.0

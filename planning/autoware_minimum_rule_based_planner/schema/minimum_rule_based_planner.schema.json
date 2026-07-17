@@ -60,12 +60,6 @@
                   "default": 0.8,
                   "minimum": 0.0
                 },
-                "max_lat_jerk_parking":{
-                  "type": "number",
-                  "description": "expected max lateral jerk during pull over to the side of the road [m/s^3]",
-                  "default": 999,
-                  "minimum": 0.0
-                },
                 "dist_to_stop_parking":{
                   "type": "number",
                   "description": "stopping distance after lateral offset during pull over to the side of the road [m]",
