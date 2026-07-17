@@ -336,7 +336,8 @@
         "turn_indicator_hold_duration",
         "planning_factor",
         "debug_params",
-        "guidance"
+        "guidance",
+        "force_takeoff"
       ]
     }
   },

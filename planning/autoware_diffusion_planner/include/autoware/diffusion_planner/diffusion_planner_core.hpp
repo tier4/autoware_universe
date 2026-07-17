@@ -197,7 +197,7 @@ public:
    * @param traffic_signals Traffic signal information
    * @param turn_indicators Current turn indicator state
    * @param route_ptr Route information
-   * @param autoware_state Latest autoware state (nullptr if no new message)
+   * @param autoware_state Latest cached autoware state (nullptr only before the first message)
    * @param current_time Current timestamp
    * @return FrameContext containing preprocessed data, or nullopt if data is incomplete
    */
@@ -240,6 +240,31 @@ public:
    * @return true if map is loaded, false otherwise
    */
   bool is_map_loaded() const { return lane_segment_context_ != nullptr; }
+
+  /**
+   * @brief Update the force-takeoff state machine for the current frame.
+   *
+   * When the autoware state transitions to DRIVING (engage), starts a stall timer. If the ego
+   * still has not started moving stationary_duration_s after the engage and no tracked object is
+   * within the configured radius, activates the ego history/state override. Deactivates once the
+   * ego reaches the release speed; aborts immediately if an agent enters the radius while active,
+   * if the autoware state leaves DRIVING, or if force_takeoff.enable is set to false.
+   *
+   * Public for direct unit testing; called every frame by create_frame_context.
+   *
+   * @param kinematic_state Current ego odometry
+   * @param objects Tracked objects (unfiltered)
+   * @param autoware_state Latest cached autoware state (nullptr only before the first message)
+   * @param current_time Current timestamp
+   */
+  void update_force_takeoff_state(
+    const Odometry & kinematic_state, const TrackedObjects & objects,
+    const std::shared_ptr<const AutowareState> & autoware_state, const rclcpp::Time & current_time);
+
+  /**
+   * @brief Whether the force takeoff override is currently active.
+   */
+  bool is_force_takeoff_active() const { return force_takeoff_active_; }
 
   /**
    * @brief Enable or disable start guidance.
@@ -347,23 +372,6 @@ private:
    *        apply the latest hold duration / keep offset parameters to each of them.
    */
   void sync_turn_indicator_managers();
-
-  /**
-   * @brief Update the force-takeoff state machine for the current frame.
-   *
-   * When the autoware state transitions to DRIVING (engage), starts a stall timer. If the ego
-   * still has not started moving stationary_duration_s after the engage and no tracked object is
-   * within the configured radius, activates the ego history/state override. Deactivates once the
-   * ego reaches the release speed, or aborts if an agent enters the radius while active.
-   *
-   * @param kinematic_state Current ego odometry
-   * @param objects Tracked objects (unfiltered)
-   * @param autoware_state Latest autoware state (nullptr if no new message)
-   * @param current_time Current timestamp
-   */
-  void update_force_takeoff_state(
-    const Odometry & kinematic_state, const TrackedObjects & objects,
-    const std::shared_ptr<const AutowareState> & autoware_state, const rclcpp::Time & current_time);
 
   // Force takeoff state
   std::optional<uint8_t> previous_autoware_state_;

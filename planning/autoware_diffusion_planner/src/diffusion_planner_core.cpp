@@ -253,6 +253,38 @@ void DiffusionPlannerCore::update_force_takeoff_state(
   const auto logger = rclcpp::get_logger("diffusion_planner_core");
   static rclcpp::Clock steady_clock(RCL_STEADY_TIME);
 
+  // Track the autoware state and detect the engage transition first, so state bookkeeping stays
+  // correct regardless of the enable switch below.
+  bool engage_transition = false;
+  if (autoware_state) {
+    engage_transition = previous_autoware_state_.has_value() &&
+                        *previous_autoware_state_ != AutowareState::DRIVING &&
+                        autoware_state->state == AutowareState::DRIVING;
+    previous_autoware_state_ = autoware_state->state;
+  }
+  const bool driving = previous_autoware_state_.has_value() &&
+                       *previous_autoware_state_ == AutowareState::DRIVING;
+
+  // Dynamic kill switch: disabling the parameter clears the armed timer and any active override.
+  if (!params_.force_takeoff_enable) {
+    engage_time_.reset();
+    if (force_takeoff_active_) {
+      force_takeoff_active_ = false;
+      RCLCPP_INFO(logger, "Force takeoff released: force_takeoff.enable set to false while active");
+    }
+    return;
+  }
+
+  // Leaving DRIVING (disengage, emergency, goal reached) aborts both armed and active states.
+  if (!driving) {
+    engage_time_.reset();
+    if (force_takeoff_active_) {
+      force_takeoff_active_ = false;
+      RCLCPP_WARN(logger, "Force takeoff aborted: autoware state left DRIVING");
+    }
+    return;
+  }
+
   const auto & linear = kinematic_state.twist.twist.linear;
   const double speed = std::hypot(linear.x, linear.y);
 
@@ -263,17 +295,6 @@ void DiffusionPlannerCore::update_force_takeoff_state(
       return std::hypot(object_position.x - ego_position.x, object_position.y - ego_position.y) <
              params_.force_takeoff_min_agent_distance_m;
     });
-
-  bool engage_transition = false;
-  if (autoware_state) {
-    engage_transition = previous_autoware_state_.has_value() &&
-                        *previous_autoware_state_ != AutowareState::DRIVING &&
-                        autoware_state->state == AutowareState::DRIVING;
-    if (autoware_state->state != AutowareState::DRIVING) {
-      engage_time_.reset();
-    }
-    previous_autoware_state_ = autoware_state->state;
-  }
 
   if (force_takeoff_active_) {
     if (agent_nearby) {
@@ -296,7 +317,7 @@ void DiffusionPlannerCore::update_force_takeoff_state(
     return;
   }
 
-  if (engage_transition && params_.force_takeoff_enable) {
+  if (engage_transition) {
     engage_time_ = current_time;
     RCLCPP_INFO(
       logger,
