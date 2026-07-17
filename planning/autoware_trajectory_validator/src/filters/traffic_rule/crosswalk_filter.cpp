@@ -208,19 +208,6 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(
 
   if (traj_points.size() < 2) return target_crosswalks;
 
-  // constexpr double zero_vel_threshold = 0.1;
-  // const auto start_move_it = std::find_if(traj_points.begin(), traj_points.end(), [&](const auto
-  // & p) {
-  //   return p.longitudinal_velocity_mps > zero_vel_threshold;
-  // });
-
-  // // skip check for non-moving trajectory
-  // if (start_move_it == traj_points.end()) return target_crosswalks;
-
-  // // skip check if ego is stopping for sufficient time
-  // const auto start_move_time = rclcpp::Duration(start_move_it->time_from_start).seconds();
-  // if (start_move_time > 3.0) return target_crosswalks;
-
   const auto crosswalks_on_route =
     collect_crosswalk_reg_elems_from_route(*context.lanelet_map, *context.route);
 
@@ -233,8 +220,10 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(
 
   auto stop_distance = autoware::motion_utils::calculate_stop_distance(
     current_vel, current_acc, decel_limit, jerk_limit);
-  if (!stop_distance) stop_distance = std::numeric_limits<double>::max();
-  const auto lookahead_distance_m = *stop_distance;
+  const auto lookahead_distance_m = stop_distance
+                                      ? *stop_distance + params_.arrived_distance_threshold +
+                                          vehicle_info_ptr_->max_longitudinal_offset_m
+                                      : std::numeric_limits<double>::max();
 
   lanelet::BasicLineString2d trajectory_ls;
   double length = 0.0;
@@ -392,7 +381,7 @@ bool CrosswalkFilter::is_obstructing_crosswalk(
   if (cw_objects.empty()) return false;
 
   const auto required_waiting_time = [&]() {
-    auto min_object_duration = std::numeric_limits<double>::max();
+    auto min_object_duration = params_.stop_duration;
     for (const auto & obj : cw_objects) {
       if (obj.ignore) continue;
       const auto duration = rclcpp::Duration(obj.last_seen_time - obj.first_seen_time).seconds();
@@ -445,21 +434,48 @@ void CrosswalkFilter::update_debug_data(
     debug_markers_.markers.push_back(marker);
   };
 
-  int id = 0;
+  auto add_text_marker = [&](
+                           const std::string & text, const auto & pose, const std::string & ns,
+                           const int id, const std_msgs::msg::ColorRGBA & color) {
+    visualization_msgs::msg::Marker marker = autoware_utils::create_default_marker(
+      "map", current_time, ns, id, Marker::TEXT_VIEW_FACING,
+      autoware_utils::create_marker_scale(0.2, 0.2, 0.2), color);
+    marker.pose = pose;
+    marker.lifetime = rclcpp::Duration::from_seconds(0.2);
+    marker.text = text;
+    debug_markers_.markers.push_back(marker);
+  };
+
   const auto magenta = autoware_utils::create_marker_color(1.0, 0.0, 1.0, 1.0);
   const auto yellow = autoware_utils::create_marker_color(1.0, 1.0, 0.0, 1.0);
-  for (const auto & cw : target_crosswalks) {
-    add_polygon_marker(cw.crosswalk_polygon, "target_crosswalks", id, magenta);
-    add_line_marker(cw.crosswalk_info.stop_line, "target_stop_lines", id, magenta);
+  const auto green = autoware_utils::create_marker_color(0.0, 1.0, 0.0, 1.0);
+  const auto red = autoware_utils::create_marker_color(1.0, 0.0, 0.0, 1.0);
+  const auto white = autoware_utils::create_marker_color(1.0, 1.0, 1.0, 1.0);
+
+  auto add_objects_marker = [&](const auto & cw) {
     int obj_id = 0;
     if (crosswalk_objects_map_.count(cw.crosswalk_info.crosswalk->id())) {
       for (const auto & cw_object : crosswalk_objects_map_[cw.crosswalk_info.crosswalk->id()]) {
+        const auto obj_duration = (cw_object.last_seen_time - cw_object.first_seen_time).seconds();
+        const auto color = cw_object.ignore ? green : obj_duration > 1e-3 ? red : yellow;
         auto obj_polygon = autoware_utils_geometry::to_polygon2d(
           cw_object.object.kinematics.initial_pose_with_covariance.pose, cw_object.object.shape);
-        add_polygon_marker(obj_polygon.outer(), "target_objects", obj_id, yellow);
+        add_polygon_marker(obj_polygon.outer(), "target_objects", obj_id, color);
+        if (!cw_object.ignore)
+          add_text_marker(
+            std::to_string(obj_duration),
+            cw_object.object.kinematics.initial_pose_with_covariance.pose,
+            "target_objects_duration", obj_id, white);
         obj_id++;
       }
     }
+  };
+
+  int id = 0;
+  for (const auto & cw : target_crosswalks) {
+    add_polygon_marker(cw.crosswalk_polygon, "target_crosswalks", id, magenta);
+    add_line_marker(cw.crosswalk_info.stop_line, "target_stop_lines", id, magenta);
+    add_objects_marker(cw);
     id++;
   }
 }
