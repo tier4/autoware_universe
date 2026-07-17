@@ -14,6 +14,7 @@
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
+#include "autoware/mppi_optimizer/mppi_debug_trajectory_logger.hpp"
 #include "autoware/mppi_optimizer/tracked_objects_obstacles.hpp"
 
 #include <mppi/controllers/MPPI/mppi_controller.cuh>
@@ -394,6 +395,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   FirstOrderDubinsBicycleParams dyn;
   FirstOrderDubinsMppiVehicleParams vehicle_params{};
   FirstOrderDubinsMppiCostParams user_cost_params_{};
+  MppiDebugTrajectoryLogger debug_trajectory_logger;
   COST cost;
   FirstOrderDubinsBicycleCostParams<kRefHorizon> cost_params{};
   SAMPLER sampler;
@@ -756,6 +758,15 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
   impl_->user_cost_params_ = params;
 }
 
+void FirstOrderDubinsMppiInterface::setDebugTrajectoryLogging(
+  const bool enable, const std::string & directory)
+{
+  if (!impl_) {
+    throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
+  }
+  impl_->debug_trajectory_logger.configure(enable, directory);
+}
+
 FirstOrderDubinsMppiControl FirstOrderDubinsMppiInterface::computeStep(
   FirstOrderDubinsMppiState & state, float & arc_length, float sim_time)
 {
@@ -859,9 +870,20 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   result.trajectory = output;
   result.debug.reference_trajectory = input;
   result.debug.optimized_trajectory = output;
+  result.debug.reference_trajectory.header = input.header;
+  result.debug.optimized_trajectory.header = input.header;
+  if (result.debug.reference_trajectory.header.stamp.sec == 0 &&
+      result.debug.reference_trajectory.header.stamp.nanosec == 0) {
+    result.debug.reference_trajectory.header.stamp = odometry.header.stamp;
+    result.debug.optimized_trajectory.header.stamp = odometry.header.stamp;
+  }
   // Rollout visualization disabled (CPU replay of top-K samples was ~80ms).
   fillOptimalHorizonPoints(impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
   result.debug.baseline_cost = impl_->controller->getBaselineCost();
+
+  impl_->debug_trajectory_logger.logFrame(
+    result.debug.reference_trajectory, result.debug.optimized_trajectory,
+    result.debug.baseline_cost);
 
   RCLCPP_INFO(
     mppiLogger(),

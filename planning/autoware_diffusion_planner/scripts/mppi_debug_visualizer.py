@@ -13,16 +13,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Live comparison of diffusion-planner reference vs MPPI-optimized trajectories."""
+"""Live or offline comparison of diffusion-planner reference vs MPPI-optimized trajectories.
+
+Offline logs (written when enable_debug_trajectory_log:=true):
+  <log_dir>/index.csv
+  <log_dir>/000000_reference.csv
+  <log_dir>/000000_optimized.csv
+  ...
+
+Trajectory CSV columns:
+  t_from_start_s,x,y,z,yaw,v,a,steer,steer_rate
+
+Offline retune mode (--enable-retune) overlays a third retuned trajectory and lets you
+re-run mppi_offline_retune with editable cost weights.
+"""
 
 from __future__ import annotations
 
 import argparse
+import csv
 from dataclasses import dataclass
 from dataclasses import field
 import math
+import os
+from pathlib import Path
+import shutil
+import subprocess
 import sys
+import tempfile
 import threading
+from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Sequence
@@ -32,6 +52,8 @@ from autoware_planning_msgs.msg import Trajectory
 import matplotlib
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Button
+from matplotlib.widgets import Slider
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy
@@ -39,6 +61,40 @@ from rclpy.qos import HistoryPolicy
 from rclpy.qos import QoSProfile
 from rclpy.qos import ReliabilityPolicy
 from rclpy.utilities import remove_ros_args
+
+
+DEFAULT_PARAMS: Dict[str, float] = {
+    "lambda": 3000.0,
+    "speed_coeff": 500.0,
+    "track_coeff": 1000.0,
+    "heading_coeff": 500.0,
+    "crash_coeff": 100000.0,
+    "boundary_threshold": 0.8,
+    "accel_cmd_coeff": 200.0,
+    "steer_cmd_coeff": 1000.0,
+    "steer_rate_coeff": 3000.0,
+    "lateral_acceleration_coeff": 500.0,
+    "lateral_jerk_coeff": 3000.0,
+    "longitudinal_jerk_coeff": 1000.0,
+    "goal_pos_coeff": 1000.0,
+    "goal_yaw_coeff": 500.0,
+    "road_border_margin": 0.2,
+}
+
+SLIDER_SPECS: List[Tuple[str, float, float]] = [
+    ("lambda", 100.0, 20000.0),
+    ("track_coeff", 0.0, 5000.0),
+    ("speed_coeff", 0.0, 5000.0),
+    ("heading_coeff", 0.0, 5000.0),
+    ("steer_cmd_coeff", 0.0, 5000.0),
+    ("steer_rate_coeff", 0.0, 10000.0),
+    ("accel_cmd_coeff", 0.0, 2000.0),
+    ("lateral_jerk_coeff", 0.0, 10000.0),
+    ("longitudinal_jerk_coeff", 0.0, 5000.0),
+    ("boundary_threshold", 0.1, 5.0),
+    ("road_border_margin", 0.0, 1.0),
+    ("crash_coeff", 1000.0, 500000.0),
+]
 
 
 def yaw_from_pose(pose) -> float:
@@ -109,8 +165,6 @@ def finite_difference_acceleration(velocities: Sequence[float], dt: float) -> Li
     return accel
 
 
-
-
 def trajectory_steer_rate(points) -> List[float]:
     """Read cost-consistent steer rate stored in heading_rate_rps by MPPI debug fill."""
     return [float(p.heading_rate_rps) for p in points]
@@ -119,29 +173,399 @@ def trajectory_steer_rate(points) -> List[float]:
 def estimate_dt(points) -> float:
     if len(points) < 2:
         return 0.1
-    durations = [
-        p.time_from_start.sec + p.time_from_start.nanosec * 1e-9 for p in points
-    ]
+    durations = [p.time_from_start.sec + p.time_from_start.nanosec * 1e-9 for p in points]
     if durations[-1] > durations[0]:
         return max((durations[-1] - durations[0]) / max(len(points) - 1, 1), 1e-3)
     return 0.1
 
 
 @dataclass
+class LoadedTrajectory:
+    x: List[float] = field(default_factory=list)
+    y: List[float] = field(default_factory=list)
+    heading: List[float] = field(default_factory=list)
+    vel: List[float] = field(default_factory=list)
+    accel: List[float] = field(default_factory=list)
+    steer: List[float] = field(default_factory=list)
+    steer_rate: List[float] = field(default_factory=list)
+
+
+@dataclass
 class MppiDebugFrame:
     reference_xy: Optional[Tuple[List[float], List[float]]] = None
     optimized_xy: Optional[Tuple[List[float], List[float]]] = None
+    retuned_xy: Optional[Tuple[List[float], List[float]]] = None
     reference_heading: List[float] = field(default_factory=list)
     optimized_heading: List[float] = field(default_factory=list)
+    retuned_heading: List[float] = field(default_factory=list)
     reference_vel: List[float] = field(default_factory=list)
     optimized_vel: List[float] = field(default_factory=list)
+    retuned_vel: List[float] = field(default_factory=list)
     reference_accel: List[float] = field(default_factory=list)
     optimized_accel: List[float] = field(default_factory=list)
+    retuned_accel: List[float] = field(default_factory=list)
     reference_steer: List[float] = field(default_factory=list)
     optimized_steer: List[float] = field(default_factory=list)
+    retuned_steer: List[float] = field(default_factory=list)
     reference_steer_rate: List[float] = field(default_factory=list)
     optimized_steer_rate: List[float] = field(default_factory=list)
+    retuned_steer_rate: List[float] = field(default_factory=list)
     stamp_text: str = ""
+    metrics_text: str = ""
+
+
+def load_trajectory_csv(path: Path) -> LoadedTrajectory:
+    traj = LoadedTrajectory()
+    if not path.is_file():
+        return traj
+    with path.open(newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            traj.x.append(float(row["x"]))
+            traj.y.append(float(row["y"]))
+            traj.heading.append(float(row["yaw"]))
+            traj.vel.append(float(row["v"]))
+            traj.accel.append(float(row["a"]))
+            traj.steer.append(float(row["steer"]))
+            traj.steer_rate.append(float(row["steer_rate"]))
+    return traj
+
+
+def discover_log_frames(log_dir: Path) -> List[int]:
+    index_path = log_dir / "index.csv"
+    frame_ids: List[int] = []
+    if index_path.is_file():
+        with index_path.open(newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                frame_ids.append(int(row["frame_id"]))
+        return frame_ids
+
+    for ref in sorted(log_dir.glob("*_reference.csv")):
+        stem = ref.name[: -len("_reference.csv")]
+        if stem.isdigit():
+            frame_ids.append(int(stem))
+    return sorted(frame_ids)
+
+
+def max_pos_err(
+    ref_xy: Optional[Tuple[List[float], List[float]]],
+    opt_xy: Optional[Tuple[List[float], List[float]]],
+) -> float:
+    if not ref_xy or not opt_xy or not ref_xy[0] or not opt_xy[0]:
+        return float("nan")
+    n = min(len(ref_xy[0]), len(opt_xy[0]))
+    return max(
+        math.hypot(opt_xy[0][i] - ref_xy[0][i], opt_xy[1][i] - ref_xy[1][i]) for i in range(n)
+    )
+
+
+def max_vel_err(ref_v: Sequence[float], opt_v: Sequence[float]) -> float:
+    if not ref_v or not opt_v:
+        return float("nan")
+    n = min(len(ref_v), len(opt_v))
+    return max(abs(opt_v[i] - ref_v[i]) for i in range(n))
+
+
+def frame_from_loaded(
+    reference: LoadedTrajectory,
+    optimized: LoadedTrajectory,
+    stamp_text: str,
+    retuned: Optional[LoadedTrajectory] = None,
+) -> MppiDebugFrame:
+    frame = MppiDebugFrame(
+        reference_xy=(reference.x, reference.y) if reference.x else None,
+        optimized_xy=(optimized.x, optimized.y) if optimized.x else None,
+        retuned_xy=(retuned.x, retuned.y) if retuned and retuned.x else None,
+        reference_heading=reference.heading,
+        optimized_heading=optimized.heading,
+        retuned_heading=retuned.heading if retuned else [],
+        reference_vel=reference.vel,
+        optimized_vel=optimized.vel,
+        retuned_vel=retuned.vel if retuned else [],
+        reference_accel=reference.accel,
+        optimized_accel=optimized.accel,
+        retuned_accel=retuned.accel if retuned else [],
+        reference_steer=reference.steer,
+        optimized_steer=optimized.steer,
+        retuned_steer=retuned.steer if retuned else [],
+        reference_steer_rate=reference.steer_rate,
+        optimized_steer_rate=optimized.steer_rate,
+        retuned_steer_rate=retuned.steer_rate if retuned else [],
+        stamp_text=stamp_text,
+    )
+    orig_pos = max_pos_err(frame.reference_xy, frame.optimized_xy)
+    orig_vel = max_vel_err(frame.reference_vel, frame.optimized_vel)
+    parts = [f"orig max|pos|={orig_pos:.3f}m max|v|={orig_vel:.3f}m/s"]
+    if frame.retuned_xy:
+        ret_pos = max_pos_err(frame.reference_xy, frame.retuned_xy)
+        ret_vel = max_vel_err(frame.reference_vel, frame.retuned_vel)
+        parts.append(f"retune max|pos|={ret_pos:.3f}m max|v|={ret_vel:.3f}m/s")
+    frame.metrics_text = "  |  ".join(parts)
+    return frame
+
+
+def draw_frame(axes, frame: MppiDebugFrame) -> None:
+    ax_xy, ax_heading, ax_vel, ax_accel, ax_steer, ax_steer_rate = axes
+
+    lengths = [len(frame.reference_vel), len(frame.optimized_vel)]
+    if frame.retuned_vel:
+        lengths.append(len(frame.retuned_vel))
+    n_compare = min(l for l in lengths if l > 0) if any(lengths) else 0
+
+    ax_xy.clear()
+    ax_xy.set_title("Trajectory (diffusion ref vs MPPI)")
+    ax_xy.set_xlabel("x [m]")
+    ax_xy.set_ylabel("y [m]")
+    ax_xy.grid(True)
+    if frame.reference_xy and len(frame.reference_xy[0]) > 0:
+        ax_xy.plot(
+            frame.reference_xy[0],
+            frame.reference_xy[1],
+            color="cyan",
+            linestyle="--",
+            linewidth=2,
+            label="diffusion reference",
+        )
+    if frame.optimized_xy and len(frame.optimized_xy[0]) > 0:
+        ax_xy.plot(
+            frame.optimized_xy[0],
+            frame.optimized_xy[1],
+            color="red",
+            linewidth=2,
+            label="MPPI optimized (logged)",
+        )
+    if frame.retuned_xy and len(frame.retuned_xy[0]) > 0:
+        ax_xy.plot(
+            frame.retuned_xy[0],
+            frame.retuned_xy[1],
+            color="tab:green",
+            linewidth=2.2,
+            label="MPPI retuned",
+        )
+    overlay = frame.stamp_text
+    if frame.metrics_text:
+        overlay = f"{overlay}\n{frame.metrics_text}" if overlay else frame.metrics_text
+    if overlay:
+        ax_xy.text(
+            0.02,
+            0.98,
+            overlay,
+            transform=ax_xy.transAxes,
+            verticalalignment="top",
+            fontsize=9,
+            bbox={"facecolor": "white", "alpha": 0.85},
+        )
+    if (
+        (frame.reference_xy and len(frame.reference_xy[0]) > 0)
+        or (frame.optimized_xy and len(frame.optimized_xy[0]) > 0)
+        or (frame.retuned_xy and len(frame.retuned_xy[0]) > 0)
+    ):
+        ax_xy.relim()
+        ax_xy.autoscale_view()
+    ax_xy.set_aspect("equal", adjustable="datalim")
+    ax_xy.legend(loc="best")
+
+    idx = list(range(n_compare)) if n_compare > 0 else []
+
+    ax_heading.clear()
+    ax_heading.set_title("Heading")
+    ax_heading.set_xlabel("point index")
+    ax_heading.set_ylabel("yaw [rad]")
+    ax_heading.grid(True)
+    if n_compare > 0:
+        ax_heading.plot(
+            idx, frame.reference_heading[:n_compare], "c--", linewidth=2, label="diffusion"
+        )
+        ax_heading.plot(
+            idx, frame.optimized_heading[:n_compare], "r-", linewidth=2, label="MPPI logged"
+        )
+        if frame.retuned_heading:
+            ax_heading.plot(
+                idx,
+                frame.retuned_heading[:n_compare],
+                color="tab:green",
+                linewidth=2.2,
+                label="MPPI retuned",
+            )
+        ax_heading.legend(loc="best")
+
+    ax_vel.clear()
+    ax_vel.set_title("Longitudinal velocity")
+    ax_vel.set_xlabel("point index")
+    ax_vel.set_ylabel("v [m/s]")
+    ax_vel.grid(True)
+    if n_compare > 0:
+        ax_vel.plot(idx, frame.reference_vel[:n_compare], "c--", linewidth=2, label="diffusion")
+        ax_vel.plot(idx, frame.optimized_vel[:n_compare], "r-", linewidth=2, label="MPPI logged")
+        if frame.retuned_vel:
+            ax_vel.plot(
+                idx,
+                frame.retuned_vel[:n_compare],
+                color="tab:green",
+                linewidth=2.2,
+                label="MPPI retuned",
+            )
+        ax_vel.legend(loc="best")
+
+    ax_accel.clear()
+    ax_accel.set_title("Acceleration")
+    ax_accel.set_xlabel("point index")
+    ax_accel.set_ylabel("a [m/s²]")
+    ax_accel.grid(True)
+    if n_compare > 0:
+        ax_accel.plot(
+            idx,
+            frame.reference_accel[:n_compare],
+            color="tab:blue",
+            linestyle="--",
+            linewidth=2,
+            label="diffusion accel",
+        )
+        ax_accel.plot(
+            idx,
+            frame.optimized_accel[:n_compare],
+            color="tab:blue",
+            linewidth=2,
+            label="MPPI logged",
+        )
+        if frame.retuned_accel:
+            ax_accel.plot(
+                idx,
+                frame.retuned_accel[:n_compare],
+                color="tab:green",
+                linewidth=2.2,
+                label="MPPI retuned",
+            )
+        ax_accel.legend(loc="best")
+
+    ax_steer.clear()
+    ax_steer.set_title("Steering")
+    ax_steer.set_xlabel("point index")
+    ax_steer.set_ylabel("δ [rad]")
+    ax_steer.grid(True)
+    if n_compare > 0:
+        ax_steer.plot(
+            idx,
+            frame.reference_steer[:n_compare],
+            color="tab:orange",
+            linestyle="--",
+            linewidth=2,
+            label="diffusion δ",
+        )
+        ax_steer.plot(
+            idx,
+            frame.optimized_steer[:n_compare],
+            color="tab:orange",
+            linewidth=2,
+            label="MPPI logged",
+        )
+        if frame.retuned_steer:
+            ax_steer.plot(
+                idx,
+                frame.retuned_steer[:n_compare],
+                color="tab:green",
+                linewidth=2.2,
+                label="MPPI retuned",
+            )
+        ax_steer.legend(loc="best")
+
+    ax_steer_rate.clear()
+    ax_steer_rate.set_title("Steering rate δ̇ = (δ_cmd − δ) / τ")
+    ax_steer_rate.set_xlabel("point index")
+    ax_steer_rate.set_ylabel("δ̇ [rad/s]")
+    ax_steer_rate.grid(True)
+    plotted = False
+    if frame.optimized_steer_rate:
+        idx_rate = list(range(len(frame.optimized_steer_rate)))
+        ax_steer_rate.plot(
+            idx_rate,
+            frame.optimized_steer_rate,
+            color="tab:purple",
+            linewidth=2,
+            label="MPPI logged δ̇",
+        )
+        plotted = True
+    if frame.retuned_steer_rate:
+        idx_rate = list(range(len(frame.retuned_steer_rate)))
+        ax_steer_rate.plot(
+            idx_rate,
+            frame.retuned_steer_rate,
+            color="tab:green",
+            linewidth=2.2,
+            label="MPPI retuned δ̇",
+        )
+        plotted = True
+    if plotted:
+        ax_steer_rate.legend(loc="best")
+
+
+def create_figure(*, with_retune_panel: bool = False):
+    if with_retune_panel:
+        fig = plt.figure(figsize=(17, 12))
+        gs = gridspec.GridSpec(
+            5, 3, figure=fig, width_ratios=[1.25, 1.0, 0.78], wspace=0.30, hspace=0.42
+        )
+        ax_xy = fig.add_subplot(gs[:, 0])
+        ax_heading = fig.add_subplot(gs[0, 1])
+        ax_vel = fig.add_subplot(gs[1, 1])
+        ax_accel = fig.add_subplot(gs[2, 1])
+        ax_steer = fig.add_subplot(gs[3, 1])
+        ax_steer_rate = fig.add_subplot(gs[4, 1])
+    else:
+        fig = plt.figure(figsize=(14, 12))
+        gs = gridspec.GridSpec(5, 2, figure=fig, width_ratios=[1.2, 1.0], wspace=0.28, hspace=0.42)
+        ax_xy = fig.add_subplot(gs[:, 0])
+        ax_heading = fig.add_subplot(gs[0, 1])
+        ax_vel = fig.add_subplot(gs[1, 1])
+        ax_accel = fig.add_subplot(gs[2, 1])
+        ax_steer = fig.add_subplot(gs[3, 1])
+        ax_steer_rate = fig.add_subplot(gs[4, 1])
+    fig.canvas.manager.set_window_title("Diffusion Planner MPPI Debug Visualizer")
+    return fig, (ax_xy, ax_heading, ax_vel, ax_accel, ax_steer, ax_steer_rate)
+
+
+def load_params_yaml(path: Optional[Path]) -> Dict[str, float]:
+    params = dict(DEFAULT_PARAMS)
+    if path is None or not path.is_file():
+        return params
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip().strip('"')
+        if key in params:
+            try:
+                params[key] = float(value)
+            except ValueError:
+                pass
+    return params
+
+
+def find_retune_binary(explicit: str = "") -> Path:
+    if explicit:
+        return Path(explicit)
+    env = os.environ.get("MPPI_OFFLINE_RETUNE")
+    if env:
+        return Path(env)
+    which = shutil.which("mppi_offline_retune")
+    if which:
+        return Path(which)
+    try:
+        prefix = subprocess.check_output(
+            ["ros2", "pkg", "prefix", "autoware_mppi_optimizer"], text=True
+        ).strip()
+        candidate = Path(prefix) / "lib" / "autoware_mppi_optimizer" / "mppi_offline_retune"
+        if candidate.is_file():
+            return candidate
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    raise FileNotFoundError(
+        "mppi_offline_retune not found. Build autoware_mppi_optimizer and source install, "
+        "or set MPPI_OFFLINE_RETUNE / --retune-bin."
+    )
 
 
 class MppiDebugVisualizer(Node):
@@ -170,23 +594,16 @@ class MppiDebugVisualizer(Node):
             Trajectory, f"{prefix}/optimized_trajectory", self.on_optimized_trajectory, qos
         )
 
-        self._fig = plt.figure(figsize=(14, 12))
-        gs = gridspec.GridSpec(5, 2, figure=self._fig, width_ratios=[1.2, 1.0], wspace=0.28, hspace=0.42)
-        self._ax_xy = self._fig.add_subplot(gs[:, 0])
-        self._ax_heading = self._fig.add_subplot(gs[0, 1])
-        self._ax_vel = self._fig.add_subplot(gs[1, 1])
-        self._ax_accel = self._fig.add_subplot(gs[2, 1])
-        self._ax_steer = self._fig.add_subplot(gs[3, 1])
-        self._ax_steer_rate = self._fig.add_subplot(gs[4, 1])
-
-        self._fig.canvas.manager.set_window_title("Diffusion Planner MPPI Debug Visualizer")
+        self._fig, self._axes = create_figure()
         self._configure_window_no_focus_steal()
         plt.show(block=False)
 
-        self.get_logger().info("MPPI debug visualizer started.")
+        self.get_logger().info("MPPI debug visualizer started (live).")
         self.get_logger().info(f"Reference: {prefix}/reference_trajectory")
         self.get_logger().info(f"Optimized: {prefix}/optimized_trajectory")
-        self.get_logger().info("Subscriptions use RELIABLE QoS (matches diffusion_planner publishers).")
+        self.get_logger().info(
+            "Subscriptions use RELIABLE QoS (matches diffusion_planner publishers)."
+        )
         self.get_logger().info("Ensure use_mppi_optimizer:=true in diffusion_planner params.")
 
         self.create_timer(1.0 / update_hz, self.on_timer)
@@ -217,16 +634,14 @@ class MppiDebugVisualizer(Node):
         if is_optimized:
             accel = trajectory_acceleration(points)
             steer = trajectory_steering(points, self._wheel_base, prefer_message=True)
-            # Cost formula: δ̇ = (steer_cmd - steer) / τ, published as heading_rate_rps
             steer_rate = trajectory_steer_rate(points)
         else:
             accel = trajectory_acceleration(points)
             if all(abs(a) < 1e-9 for a in accel) and len(velocities) > 1:
                 accel = finite_difference_acceleration(velocities, dt)
             steer = trajectory_steering(points, self._wheel_base)
-            # Diffusion has no first-order steer lag state; leave empty (plot MPPI only)
             steer_rate = []
-        stamp = f"{msg.header.stamp.sec}.{msg.header.stamp.nanosec:09d}"
+        stamp = f"stamp: {msg.header.stamp.sec}.{msg.header.stamp.nanosec:09d}"
         return MppiDebugFrame(
             reference_xy=trajectory_xy(points),
             optimized_xy=None,
@@ -288,153 +703,174 @@ class MppiDebugVisualizer(Node):
                 reference_steer_rate=list(self._frame.reference_steer_rate),
                 optimized_steer_rate=list(self._frame.optimized_steer_rate),
                 stamp_text=self._frame.stamp_text,
+                metrics_text=self._frame.metrics_text,
             )
-
-        n_compare = 0
-        if frame.reference_vel and frame.optimized_vel:
-            n_compare = min(len(frame.reference_vel), len(frame.optimized_vel))
-
-        # XY path
-        self._ax_xy.clear()
-        self._ax_xy.set_title("Trajectory (diffusion ref vs MPPI optimized)")
-        self._ax_xy.set_xlabel("x [m]")
-        self._ax_xy.set_ylabel("y [m]")
-        self._ax_xy.grid(True)
-        if frame.reference_xy and len(frame.reference_xy[0]) > 0:
-            self._ax_xy.plot(
-                frame.reference_xy[0],
-                frame.reference_xy[1],
-                color="cyan",
-                linestyle="--",
-                linewidth=2,
-                label="diffusion reference",
-            )
-        if frame.optimized_xy and len(frame.optimized_xy[0]) > 0:
-            self._ax_xy.plot(
-                frame.optimized_xy[0],
-                frame.optimized_xy[1],
-                color="red",
-                linewidth=2,
-                label="MPPI optimized",
-            )
-        if frame.stamp_text:
-            self._ax_xy.text(
-                0.02,
-                0.98,
-                f"stamp: {frame.stamp_text}",
-                transform=self._ax_xy.transAxes,
-                verticalalignment="top",
-                fontsize=9,
-                bbox={"facecolor": "white", "alpha": 0.8},
-            )
-        if (
-            (frame.reference_xy and len(frame.reference_xy[0]) > 0)
-            or (frame.optimized_xy and len(frame.optimized_xy[0]) > 0)
-        ):
-            self._ax_xy.relim()
-            self._ax_xy.autoscale_view()
-        self._ax_xy.set_aspect("equal", adjustable="datalim")
-        self._ax_xy.legend(loc="best")
-
-        idx = list(range(n_compare)) if n_compare > 0 else []
-
-        # Heading
-        self._ax_heading.clear()
-        self._ax_heading.set_title("Heading")
-        self._ax_heading.set_xlabel("point index")
-        self._ax_heading.set_ylabel("yaw [rad]")
-        self._ax_heading.grid(True)
-        if n_compare > 0:
-            self._ax_heading.plot(
-                idx, frame.reference_heading[:n_compare], "c--", linewidth=2, label="diffusion"
-            )
-            self._ax_heading.plot(
-                idx, frame.optimized_heading[:n_compare], "r-", linewidth=2, label="MPPI"
-            )
-            self._ax_heading.legend(loc="best")
-
-        # Velocity
-        self._ax_vel.clear()
-        self._ax_vel.set_title("Longitudinal velocity")
-        self._ax_vel.set_xlabel("point index")
-        self._ax_vel.set_ylabel("v [m/s]")
-        self._ax_vel.grid(True)
-        if n_compare > 0:
-            self._ax_vel.plot(
-                idx, frame.reference_vel[:n_compare], "c--", linewidth=2, label="diffusion"
-            )
-            self._ax_vel.plot(
-                idx, frame.optimized_vel[:n_compare], "r-", linewidth=2, label="MPPI"
-            )
-            self._ax_vel.legend(loc="best")
-
-        # Acceleration
-        self._ax_accel.clear()
-        self._ax_accel.set_title("Acceleration (MPPI: optimal control sequence)")
-        self._ax_accel.set_xlabel("point index")
-        self._ax_accel.set_ylabel("a [m/s²]")
-        self._ax_accel.grid(True)
-        if n_compare > 0:
-            self._ax_accel.plot(
-                idx,
-                frame.reference_accel[:n_compare],
-                color="tab:blue",
-                linestyle="--",
-                linewidth=2,
-                label="diffusion accel",
-            )
-            self._ax_accel.plot(
-                idx,
-                frame.optimized_accel[:n_compare],
-                color="tab:blue",
-                linewidth=2,
-                label="MPPI accel cmd",
-            )
-            self._ax_accel.legend(loc="best")
-
-        # Steering
-        self._ax_steer.clear()
-        self._ax_steer.set_title("Steering (MPPI: optimal control sequence)")
-        self._ax_steer.set_xlabel("point index")
-        self._ax_steer.set_ylabel("δ [rad]")
-        self._ax_steer.grid(True)
-        if n_compare > 0:
-            self._ax_steer.plot(
-                idx,
-                frame.reference_steer[:n_compare],
-                color="tab:orange",
-                linestyle="--",
-                linewidth=2,
-                label="diffusion δ",
-            )
-            self._ax_steer.plot(
-                idx,
-                frame.optimized_steer[:n_compare],
-                color="tab:orange",
-                linewidth=2,
-                label="MPPI steer cmd",
-            )
-            self._ax_steer.legend(loc="best")
-
-        # Steering rate
-        self._ax_steer_rate.clear()
-        self._ax_steer_rate.set_title("Steering rate δ̇ = (δ_cmd − δ) / τ")
-        self._ax_steer_rate.set_xlabel("point index")
-        self._ax_steer_rate.set_ylabel("δ̇ [rad/s]")
-        self._ax_steer_rate.grid(True)
-        if frame.optimized_steer_rate:
-            idx_rate = list(range(len(frame.optimized_steer_rate)))
-            self._ax_steer_rate.plot(
-                idx_rate,
-                frame.optimized_steer_rate,
-                color="tab:purple",
-                linewidth=2,
-                label="MPPI δ̇",
-            )
-            self._ax_steer_rate.legend(loc="best")
-
+            if frame.reference_xy and frame.optimized_xy:
+                frame.metrics_text = (
+                    f"max|pos|={max_pos_err(frame.reference_xy, frame.optimized_xy):.3f}m  "
+                    f"max|v|={max_vel_err(frame.reference_vel, frame.optimized_vel):.3f}m/s"
+                )
+        draw_frame(self._axes, frame)
         self._fig.canvas.draw_idle()
         self._fig.canvas.flush_events()
+
+
+class OfflineLogVisualizer:
+    def __init__(
+        self,
+        log_dir: Path,
+        *,
+        start_frame: int = 0,
+        autoplay: bool = False,
+        enable_retune: bool = False,
+        params_yaml: Optional[Path] = None,
+        retune_bin: Optional[Path] = None,
+        wheel_base: float = 4.76,
+        ego_width: float = 1.9,
+        ego_length: float = 5.0,
+    ) -> None:
+        self._log_dir = log_dir
+        self._frame_ids = discover_log_frames(log_dir)
+        if not self._frame_ids:
+            raise FileNotFoundError(f"No MPPI debug frames found in {log_dir}")
+        self._index = 0
+        if start_frame in self._frame_ids:
+            self._index = self._frame_ids.index(start_frame)
+        self._autoplay = autoplay
+        self._enable_retune = enable_retune
+        self._params_yaml = params_yaml
+        self._params = load_params_yaml(params_yaml)
+        self._wheel_base = wheel_base
+        self._ego_width = ego_width
+        self._ego_length = ego_length
+        self._status = "Ready"
+        self._out_dir = Path(tempfile.mkdtemp(prefix="mppi_retune_")) if enable_retune else None
+        self._retune_bin = retune_bin
+        self._fig, self._axes = create_figure(with_retune_panel=enable_retune)
+        self._fig.canvas.mpl_connect("key_press_event", self._on_key)
+        self._sliders: Dict[str, Slider] = {}
+        if enable_retune:
+            if self._retune_bin is None:
+                self._retune_bin = find_retune_binary()
+            self._build_retune_controls()
+        self._show_current()
+        plt.show(block=False)
+        keys = "left/right or n/p = step, home/end, a = autoplay, q = quit"
+        if enable_retune:
+            keys += ", r = retune"
+        print(f"Offline MPPI log: {log_dir} ({len(self._frame_ids)} frames). Keys: {keys}.")
+
+    def _build_retune_controls(self) -> None:
+        slider_h = 0.022
+        top = 0.92
+        for i, (name, vmin, vmax) in enumerate(SLIDER_SPECS):
+            ax = self._fig.add_axes([0.72, top - i * (slider_h + 0.010), 0.26, slider_h])
+            self._sliders[name] = Slider(
+                ax, name, vmin, vmax, valinit=self._params.get(name, DEFAULT_PARAMS[name])
+            )
+        ax_prev = self._fig.add_axes([0.72, 0.06, 0.07, 0.035])
+        ax_next = self._fig.add_axes([0.80, 0.06, 0.07, 0.035])
+        ax_run = self._fig.add_axes([0.88, 0.06, 0.10, 0.035])
+        self._btn_prev = Button(ax_prev, "Prev")
+        self._btn_next = Button(ax_next, "Next")
+        self._btn_run = Button(ax_run, "Retune")
+        self._btn_prev.on_clicked(lambda _e: self._step(-1))
+        self._btn_next.on_clicked(lambda _e: self._step(1))
+        self._btn_run.on_clicked(lambda _e: self._retune_current())
+        self._fig.canvas.manager.set_window_title("MPPI Offline Compare + Retune")
+
+    def _load_frame(self, frame_id: int) -> MppiDebugFrame:
+        tag = f"{frame_id:06d}"
+        reference = load_trajectory_csv(self._log_dir / f"{tag}_reference.csv")
+        optimized = load_trajectory_csv(self._log_dir / f"{tag}_optimized.csv")
+        retuned = None
+        if self._out_dir is not None:
+            retuned = load_trajectory_csv(self._out_dir / f"{tag}_optimized.csv")
+            if not retuned.x:
+                retuned = None
+        stamp = f"frame: {frame_id} / {self._frame_ids[-1]}"
+        if self._enable_retune:
+            stamp = f"{stamp}   |   {self._status}"
+        return frame_from_loaded(reference, optimized, stamp_text=stamp, retuned=retuned)
+
+    def _show_current(self) -> None:
+        frame_id = self._frame_ids[self._index]
+        draw_frame(self._axes, self._load_frame(frame_id))
+        self._fig.canvas.draw_idle()
+        self._fig.canvas.flush_events()
+
+    def _step(self, delta: int) -> None:
+        self._index = max(0, min(len(self._frame_ids) - 1, self._index + delta))
+        self._show_current()
+
+    def _current_params(self) -> Dict[str, float]:
+        params = dict(self._params)
+        for name, slider in self._sliders.items():
+            params[name] = float(slider.val)
+        return params
+
+    def _retune_current(self) -> None:
+        if not self._enable_retune or self._retune_bin is None or self._out_dir is None:
+            return
+        frame_id = self._frame_ids[self._index]
+        params = self._current_params()
+        cmd = [
+            str(self._retune_bin),
+            "--log-dir",
+            str(self._log_dir),
+            "--out-dir",
+            str(self._out_dir),
+            "--frame",
+            str(frame_id),
+            "--copy-reference",
+            "--wheel-base",
+            str(self._wheel_base),
+            "--ego-width",
+            str(self._ego_width),
+            "--ego-length",
+            str(self._ego_length),
+        ]
+        if self._params_yaml is not None:
+            cmd.extend(["--params-yaml", str(self._params_yaml)])
+        for key, value in params.items():
+            cmd.extend(["--set", f"{key}={value}"])
+
+        self._status = f"Retuning frame {frame_id}..."
+        self._show_current()
+        try:
+            completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            self._status = completed.stdout.strip().splitlines()[-1] if completed.stdout else "OK"
+        except subprocess.CalledProcessError as exc:
+            err = (exc.stderr or exc.stdout or str(exc)).strip()
+            self._status = f"Retune failed: {err[-240:]}"
+        self._show_current()
+
+    def _on_key(self, event) -> None:
+        if event.key in ("right", "n"):
+            self._step(1)
+        elif event.key in ("left", "p"):
+            self._step(-1)
+        elif event.key == "home":
+            self._index = 0
+            self._show_current()
+        elif event.key == "end":
+            self._index = len(self._frame_ids) - 1
+            self._show_current()
+        elif event.key == "a":
+            self._autoplay = not self._autoplay
+        elif event.key == "r" and self._enable_retune:
+            self._retune_current()
+        elif event.key == "q":
+            plt.close(self._fig)
+
+    def spin(self) -> None:
+        while plt.fignum_exists(self._fig.number):
+            if self._autoplay:
+                if self._index < len(self._frame_ids) - 1:
+                    self._step(1)
+                else:
+                    self._autoplay = False
+            plt.pause(0.05)
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
@@ -452,10 +888,44 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         help="Prefix for ~/debug/mppi/{reference,optimized}_trajectory topics",
     )
     parser.add_argument(
+        "--log-dir",
+        type=str,
+        default="",
+        help="If set, replay CSVs from enable_debug_trajectory_log (offline; no ROS topics)",
+    )
+    parser.add_argument(
+        "--start-frame",
+        type=int,
+        default=0,
+        help="Initial frame id when using --log-dir",
+    )
+    parser.add_argument(
+        "--autoplay",
+        action="store_true",
+        help="Auto-advance frames when using --log-dir (toggle with 'a')",
+    )
+    parser.add_argument(
+        "--enable-retune",
+        action="store_true",
+        help="Offline: show cost sliders and re-run MPPI (requires mppi_offline_retune)",
+    )
+    parser.add_argument(
+        "--params-yaml",
+        default="",
+        help="Baseline mppi_optimizer.param.yaml for --enable-retune",
+    )
+    parser.add_argument(
+        "--retune-bin",
+        default="",
+        help="Path to mppi_offline_retune (auto-detected if empty)",
+    )
+    parser.add_argument("--ego-width", type=float, default=1.9)
+    parser.add_argument("--ego-length", type=float, default=5.0)
+    parser.add_argument(
         "--update-hz",
         type=float,
         default=10.0,
-        help="Matplotlib refresh rate",
+        help="Matplotlib refresh rate (live mode)",
     )
     parser.add_argument(
         "--wheel-base",
@@ -469,18 +939,43 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
 def main() -> None:
     filtered_argv = remove_ros_args(args=sys.argv)
     cli = parse_args(filtered_argv[1:])
-    rclpy.init(args=filtered_argv)
-
-    node = MppiDebugVisualizer(
-        topic_prefix=cli.topic_prefix.rstrip("/"),
-        update_hz=cli.update_hz,
-        wheel_base=cli.wheel_base,
-    )
 
     try:
         matplotlib.rcParams["figure.raise_window"] = False
     except KeyError:
         pass
+
+    if cli.log_dir:
+        log_dir = Path(cli.log_dir).expanduser().resolve()
+        params_yaml = Path(cli.params_yaml).expanduser().resolve() if cli.params_yaml else None
+        retune_bin = Path(cli.retune_bin) if cli.retune_bin else None
+        if cli.enable_retune and retune_bin is None:
+            retune_bin = find_retune_binary()
+        visualizer = OfflineLogVisualizer(
+            log_dir,
+            start_frame=cli.start_frame,
+            autoplay=cli.autoplay,
+            enable_retune=cli.enable_retune,
+            params_yaml=params_yaml,
+            retune_bin=retune_bin,
+            wheel_base=cli.wheel_base,
+            ego_width=cli.ego_width,
+            ego_length=cli.ego_length,
+        )
+        try:
+            visualizer.spin()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            plt.close("all")
+        return
+
+    rclpy.init(args=filtered_argv)
+    node = MppiDebugVisualizer(
+        topic_prefix=cli.topic_prefix.rstrip("/"),
+        update_hz=cli.update_hz,
+        wheel_base=cli.wheel_base,
+    )
 
     try:
         while rclpy.ok():
