@@ -25,3 +25,7 @@
     goal_terminal_scale: 10.0
     obstacle_collision_margin: 0.5
     road_border_margin: 0.2
+
+    # Optional offline debug logging for mppi_debug_visualizer.py --log-dir
+    enable_debug_trajectory_log: true
+    debug_trajectory_log_directory: "/tmp/mppi_debug_log"

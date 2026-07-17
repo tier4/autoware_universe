@@ -27,6 +27,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -99,6 +100,13 @@ public:
 
   /** Configure MPPI cost weights (FirstOrderDubinsBicycleCostParams). */
   void setCostParams(const FirstOrderDubinsMppiCostParams & params);
+
+  /**
+   * @brief Optionally write reference/optimized trajectories for offline viz.
+   * @param enable When true, each optimizeTrajectory writes CSVs under directory.
+   * @param directory Output folder (created if missing). Ignored when enable is false.
+   */
+  void setDebugTrajectoryLogging(bool enable, const std::string & directory = "");
 
   /**
    * @brief Run one MPPI control step and propagate the vehicle state forward.

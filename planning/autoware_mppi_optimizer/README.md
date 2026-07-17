@@ -35,3 +35,60 @@ autoware_mppi_optimizer/
 ```bash
 ros2 launch autoware_mppi_optimizer mppi_optimizer.launch.xml
 ```
+
+## Offline debug logging + retune
+
+Enable CSV logging from the diffusion planner / MPPI params:
+
+```yaml
+enable_debug_trajectory_log: true
+debug_trajectory_log_directory: "/tmp/mppi_debug_log"
+```
+
+Each cycle writes:
+
+```text
+/tmp/mppi_debug_log/
+  index.csv
+  000000_reference.csv
+  000000_optimized.csv
+  ...
+```
+
+### Replay only
+
+```bash
+ros2 run autoware_diffusion_planner mppi_debug_visualizer.py -- \
+  --log-dir /tmp/mppi_debug_log
+```
+
+### Batch retune (CLI)
+
+```bash
+ros2 run autoware_mppi_optimizer mppi_offline_retune -- \
+  --log-dir /tmp/mppi_debug_log \
+  --out-dir /tmp/mppi_retune \
+  --params-yaml $(ros2 pkg prefix autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml \
+  --set track_coeff=2000 --set steer_rate_coeff=5000 \
+  --copy-reference
+```
+
+### Interactive compare + retune
+
+Same plots as `mppi_debug_visualizer.py` (XY, heading, velocity, accel, steer, steer-rate),
+with diffusion reference (cyan), logged MPPI (red), and retuned MPPI (green):
+
+```bash
+# Option A — visualizer with retune panel
+ros2 run autoware_diffusion_planner mppi_debug_visualizer.py -- \
+  --log-dir /tmp/mppi_debug_log \
+  --enable-retune \
+  --params-yaml $(ros2 pkg prefix autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml
+
+# Option B — wrapper alias
+ros2 run autoware_mppi_optimizer mppi_offline_tuner.py -- \
+  --log-dir /tmp/mppi_debug_log \
+  --params-yaml $(ros2 pkg prefix autoware_mppi_optimizer)/share/autoware_mppi_optimizer/config/mppi_optimizer.param.yaml
+```
+
+Adjust sliders, press **Retune** (or `r`). Overlay updates in place; metrics show max position/velocity error vs the reference.

@@ -232,6 +232,10 @@ void DiffusionPlanner::set_up_params()
   params_.shadow_mode = this->declare_parameter<bool>("shadow_mode", false);
   use_extended_route_bounds_ = this->declare_parameter<bool>(
     "avoidance_target_detector.use_extended_route_bounds", true);
+  enable_mppi_debug_trajectory_log_ =
+    this->declare_parameter<bool>("enable_debug_trajectory_log", false);
+  mppi_debug_trajectory_log_directory_ = this->declare_parameter<std::string>(
+    "debug_trajectory_log_directory", "/tmp/mppi_debug_log");
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_cost_params(*this);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
 
@@ -650,6 +654,8 @@ void DiffusionPlanner::on_timer()
         autoware::mppi_optimizer::get_first_order_dubins_mppi_cost_params(*this));
       mppi_optimizer_->setVehicleParams(
         autoware::mppi_optimizer::get_first_order_dubins_mppi_vehicle_params(*this));
+      mppi_optimizer_->setDebugTrajectoryLogging(
+        enable_mppi_debug_trajectory_log_, mppi_debug_trajectory_log_directory_);
     }
 
     try {
