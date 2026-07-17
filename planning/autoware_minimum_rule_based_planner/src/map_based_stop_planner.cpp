@@ -81,7 +81,7 @@ bool is_private(const lanelet::ConstLanelet & lanelet)
 // Synthesize the entry edge of a lanelet (the segment joining the first points of its left and
 // right bounds) as a virtual stop line for zones without an explicit painted line.
 // NOTE(odashima): synthesized line ids must be unique and negative. The marker visualization
-// (lineStringsAsMarkerArray) dedups line strings by id, so sharing InvalId would drop every
+// (lineStringsAsMarkerArray) de-duplicates line strings by id, so sharing InvalId would drop every
 // synthesized line but the first; negative ids can never collide with real map ids.
 lanelet::ConstLineString3d make_entry_edge(const lanelet::ConstLanelet & lanelet)
 {
@@ -399,8 +399,8 @@ std::vector<StopLine> MapBasedStopPlanner::collect_stop_lines(
   const auto & preferred_lanelets = route_context.preferred_lanelets;
 
   std::vector<StopLine> stop_lines;
-  // Dedup key is (type, id): the line string id for map lines, or the source lanelet id for
-  // synthesized entry edges.
+  // De-duplication key is (type, id): the line string id for map lines, or the source lanelet id
+  // for synthesized entry edges.
   std::set<std::pair<int, lanelet::Id>> added;
 
   const auto add_line = [&](
@@ -507,7 +507,7 @@ std::vector<StopLine> MapBasedStopPlanner::collect_stop_lines(
     const auto arc_ranges = lanelet_arc_ranges(preferred_lanelets);
     constexpr double stop_line_half_width_m = 3.0;
     // NOTE(odashima): keep private entry/exit line ids distinct from each other and from the -id
-    // intersection edges possibly synthesized for the same lanelet (marker dedup by id).
+    // intersection edges possibly synthesized for the same lanelet (marker de-duplication by id).
     constexpr lanelet::Id private_entry_id_offset = INT64_C(1) << 40;
     constexpr lanelet::Id private_exit_id_offset = INT64_C(1) << 41;
 

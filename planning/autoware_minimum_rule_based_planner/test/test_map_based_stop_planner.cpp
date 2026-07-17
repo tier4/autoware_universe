@@ -370,7 +370,8 @@ TEST(MapBasedStopPlannerTest, CollectDetectsIntersectionEntry)
   // Entry edge is at the intersection lanelet start (x = 10).
   EXPECT_NEAR(stop_lines.front().line.front().x(), 10.0, 1e-6);
   // Synthesized edges carry a unique id (negated source lanelet id): the marker visualization
-  // dedups line strings by id, so sharing InvalId would drop every synthesized line but the first.
+  // de-duplicates line strings by id, so sharing InvalId would drop every synthesized line but the
+  // first.
   EXPECT_EQ(stop_lines.front().line.id(), -2);
 }
 
