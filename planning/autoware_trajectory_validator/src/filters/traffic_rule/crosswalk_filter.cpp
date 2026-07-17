@@ -280,7 +280,7 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(
 
   for (const auto & cw : intersecting_crosswalks) {
     auto crosswalk_polygon = cw.crosswalk->crosswalkLanelet().polygon2d().basicPolygon();
-    const bool is_crossing = trajectory_footprint_length < cw.arc_length_to_stop_line_m;
+    const bool is_crossing = trajectory_footprint_length >= cw.arc_length_to_stop_line_m;
     target_crosswalks.emplace_back(cw, crosswalk_polygon, is_crossing);
   }
 
