@@ -21,12 +21,12 @@
 #define SYSTEM_MONITOR__NTP_MONITOR__NTP_MONITOR_HPP_
 
 #include <diagnostic_updater/diagnostic_updater.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <climits>
 #include <map>
 #include <string>
 #include <thread>
-#include <rclcpp/rclcpp.hpp>
 
 class NTPMonitor : public rclcpp::Node
 {

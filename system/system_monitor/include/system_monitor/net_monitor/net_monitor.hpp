@@ -23,12 +23,12 @@
 #include "system_monitor/net_monitor/nl80211.hpp"
 
 #include <diagnostic_updater/diagnostic_updater.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <climits>
 #include <map>
 #include <string>
 #include <vector>
-#include <rclcpp/rclcpp.hpp>
 
 #define toMbit(X) (static_cast<float>(X) / 1000000 * 8)
 
