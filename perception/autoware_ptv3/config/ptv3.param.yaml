@@ -39,6 +39,7 @@
         vegetation: VEGETATION
         noise: NOISE
       filter:
+        class_probability_threshold: 0.05
         classes: ["drivable_flat", "non_drivable_flat", "noise"]
         output_format: ""
         apply_to_segmentation: true
