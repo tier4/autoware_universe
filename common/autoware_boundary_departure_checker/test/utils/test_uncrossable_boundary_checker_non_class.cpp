@@ -22,6 +22,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -333,10 +334,14 @@ TEST(UncrossableBoundaryUtilsTest, TestEvaluateProjectionsSeverityBackwardBuffer
   input.left.push_back(create_pt(2, 14.0, 2.8));
   input.left.push_back(create_pt(3, 15.0, 1.9));
 
+  geometry_msgs::msg::Pose traj_first_pose;
+  traj_first_pose.orientation.w = 1.0;
+  const double rear_overhang_m = 2.0;
+
   // Act:
   auto result = input.transform_each_side([&](const auto & side_value) {
-    const auto min_to_bounds =
-      severity_evaluator::filter_and_assign_departure_types(side_value, param, min_braking_dist);
+    const auto min_to_bounds = severity_evaluator::filter_and_assign_departure_types(
+      side_value, param, min_braking_dist, traj_first_pose, rear_overhang_m);
     return severity_evaluator::apply_backward_buffer_and_filter(min_to_bounds, param);
   });
 
@@ -367,5 +372,140 @@ TEST(UncrossableBoundaryUtilsTest, TestBuildUncrossableBoundariesRTree)
   std::vector<SegmentWithIdx> results = rtree.query(Point2d{0.5, 0.0}, 1);
   ASSERT_EQ(results.size(), 1);
   EXPECT_EQ(results.front().second.linestring_id, ls1.id());
+}
+
+// Straight trajectory along +x with footprint sides spanning x in [-2, 2] around each point;
+// `first` is the front corner, `second` the rear corner of each side. base_link of the first
+// footprint sits at x = 0, its front corner at x = 2 and its rear corner at x = -2.
+namespace
+{
+TrajectoryPoints make_straight_trajectory()
+{
+  return {
+    make_trajectory_point(0.0, 0.0, 0.0), make_trajectory_point(10.0, 0.0, 1.0),
+    make_trajectory_point(20.0, 0.0, 2.0)};
+}
+
+FootprintSideSegmentsArray make_straight_footprints()
+{
+  return {
+    make_footprint_sides(Segment2d{{2.0, 1.0}, {-2.0, 1.0}}, Segment2d{{2.0, -1.0}, {-2.0, -1.0}}),
+    make_footprint_sides(Segment2d{{12.0, 1.0}, {8.0, 1.0}}, Segment2d{{12.0, -1.0}, {8.0, -1.0}}),
+    make_footprint_sides(
+      Segment2d{{22.0, 1.0}, {18.0, 1.0}}, Segment2d{{22.0, -1.0}, {18.0, -1.0}})};
+}
+
+UncrossableBoundaryDepartureParam make_departure_param()
+{
+  UncrossableBoundaryDepartureParam param;
+  param.lateral_margin_m = 0.5;
+  param.time_to_departure_cutoff_s = 2.0;
+  param.longitudinal_margin_m = 1.0;
+  return param;
+}
+
+geometry_msgs::msg::Pose make_first_pose_facing_x()
+{
+  geometry_msgs::msg::Pose pose;  // position at origin, heading +x
+  pose.orientation.w = 1.0;
+  return pose;
+}
+
+// Rear overhang of the synthetic footprints: base_link (x = 0) to rear corner (x = -2).
+constexpr double g_rear_overhang_m = 2.0;
+constexpr double g_min_braking_dist = 10.0;
+}  // namespace
+
+TEST(UncrossableBoundaryTest, TestBehindFirstPointProjectionIgnored)
+{
+  // A boundary projection lying behind the trajectory's first pose (the ego has already passed it)
+  // must be ignored and must not raise a spurious critical departure. Driven from a trajectory.
+
+  // Arrange: boundary crosses the left side of the first footprint at x = -1, i.e. 1 m behind
+  // base_link (which is at x = 0).
+  const auto ego_pred_traj = make_straight_trajectory();
+  const auto ego_sides = make_straight_footprints();
+  BoundarySegmentsBySide boundaries = make_boundaries({Segment2d{{-1.0, 0.5}, {-1.0, 1.5}}});
+
+  // Act:
+  const auto projections = boundary_segment_finder::get_closest_boundary_segments_from_side(
+    ego_pred_traj, boundaries, ego_sides);
+
+  // Sanity: the contact point really is behind the first pose.
+  ASSERT_FALSE(projections.left.empty());
+  const auto & behind = projections.left.front();
+  EXPECT_DOUBLE_EQ(behind.dist_along_trajectory_m, 0.0);
+  EXPECT_DOUBLE_EQ(behind.pt_on_ego.x(), -1.0);
+
+  const auto filtered = severity_evaluator::filter_and_assign_departure_types(
+    projections.left, make_departure_param(), g_min_braking_dist, make_first_pose_facing_x(),
+    g_rear_overhang_m);
+
+  // Assert: the behind-first-point projection is classified NONE and no critical departure fires.
+  ASSERT_FALSE(filtered.empty());
+  EXPECT_TRUE(filtered.front().is_none_departure());
+  EXPECT_TRUE(std::none_of(filtered.begin(), filtered.end(), [](const ProjectionToBound & proj) {
+    return proj.is_critical();
+  }));
+}
+
+TEST(UncrossableBoundaryTest, TestAheadOfBaseLinkNotIgnored)
+{
+  // Guard must not be over-eager: a contact that is ahead of base_link but behind the front corner
+  // (i.e. beside the vehicle body) is still an upcoming departure and must be retained.
+
+  // Arrange: boundary crosses the left side of the first footprint at x = 1, which is ahead of
+  // base_link (x = 0) but behind the front corner (x = 2).
+  const auto ego_pred_traj = make_straight_trajectory();
+  const auto ego_sides = make_straight_footprints();
+  BoundarySegmentsBySide boundaries = make_boundaries({Segment2d{{1.0, 0.5}, {1.0, 1.5}}});
+
+  // Act:
+  const auto projections = boundary_segment_finder::get_closest_boundary_segments_from_side(
+    ego_pred_traj, boundaries, ego_sides);
+
+  ASSERT_FALSE(projections.left.empty());
+  const auto & ahead = projections.left.front();
+  EXPECT_DOUBLE_EQ(ahead.pt_on_ego.x(), 1.0);
+  // The offset-from-front is positive, so a front-referenced check would have wrongly dropped this.
+  EXPECT_LT(ahead.dist_along_trajectory_m - ahead.ego_front_to_proj_offset_m, 0.0);
+
+  const auto filtered = severity_evaluator::filter_and_assign_departure_types(
+    projections.left, make_departure_param(), g_min_braking_dist, make_first_pose_facing_x(),
+    g_rear_overhang_m);
+
+  // Assert: the ahead-of-base_link projection is retained and flagged critical.
+  ASSERT_FALSE(filtered.empty());
+  EXPECT_FALSE(filtered.front().is_none_departure());
+  EXPECT_TRUE(std::any_of(filtered.begin(), filtered.end(), [](const ProjectionToBound & proj) {
+    return proj.is_critical();
+  }));
+}
+
+TEST(UncrossableBoundaryTest, TestAtFrontProjectionNotIgnored)
+{
+  // A boundary crossing at (not behind) the ego front-most point still yields a critical departure.
+
+  // Arrange: boundary crosses the front segment of the first footprint at x = 2 (the front corner).
+  const auto ego_pred_traj = make_straight_trajectory();
+  const auto ego_sides = make_straight_footprints();
+  BoundarySegmentsBySide boundaries = make_boundaries({Segment2d{{1.0, 0.0}, {3.0, 0.0}}});
+
+  // Act:
+  const auto projections = boundary_segment_finder::get_closest_boundary_segments_from_side(
+    ego_pred_traj, boundaries, ego_sides);
+
+  ASSERT_FALSE(projections.left.empty());
+  const auto & at_front = projections.left.front();
+  EXPECT_DOUBLE_EQ(at_front.ego_front_to_proj_offset_m, 0.0);
+
+  const auto filtered = severity_evaluator::filter_and_assign_departure_types(
+    projections.left, make_departure_param(), g_min_braking_dist, make_first_pose_facing_x(),
+    g_rear_overhang_m);
+
+  // Assert: the at-front projection is retained and flagged critical.
+  EXPECT_TRUE(std::any_of(filtered.begin(), filtered.end(), [](const ProjectionToBound & proj) {
+    return proj.is_critical();
+  }));
 }
 }  // namespace autoware::boundary_departure_checker

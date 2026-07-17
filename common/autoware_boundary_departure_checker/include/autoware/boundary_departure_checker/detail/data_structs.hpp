@@ -213,6 +213,9 @@ struct DepartureCheckThresholds
 struct ProjectionEvaluationMetrics
 {
   double lon_dist_to_departure{0.0};  ///< longitudinal distance to departure [m]
+  bool is_behind_first_point{false};  ///< true if the projection lies behind the trajectory's
+                                      ///< first pose (already passed by the ego) and must be
+                                      ///< ignored as an upcoming departure
   double time_from_start{0.0};        ///< time from the start of the trajectory [s]
   double lat_dist{0.0};               ///< lateral distance to the boundary [m]
 };

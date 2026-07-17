@@ -20,6 +20,8 @@
 
 #include <autoware_vehicle_info_utils/vehicle_info.hpp>
 
+#include <geometry_msgs/msg/pose.hpp>
+
 #include <optional>
 
 namespace autoware::boundary_departure_checker::severity_evaluator
@@ -29,11 +31,16 @@ namespace autoware::boundary_departure_checker::severity_evaluator
  * @param[in] side_value list of projections for a side
  * @param[in] param checker parameters
  * @param[in] min_braking_dist minimum braking distance [m]
+ * @param[in] traj_first_pose pose of the trajectory's first point; projections behind it are
+ * ignored
+ * @param[in] rear_overhang_m distance from base_link to the ego rear [m]; only projections whose
+ * footprint can reach behind the first pose (arc length below this) are checked
  * @return filtered projections with assigned types
  */
 ProjectionsToBound filter_and_assign_departure_types(
   const ProjectionsToBound & side_value, const UncrossableBoundaryDepartureParam & param,
-  const double min_braking_dist);
+  const double min_braking_dist, const geometry_msgs::msg::Pose & traj_first_pose,
+  const double rear_overhang_m);
 
 /**
  * @brief Apply backward buffer to projections and filter them.
@@ -59,12 +66,15 @@ DepartureType assign_departure_type(
  * @param[in] param checker parameters
  * @param[in] ego_state current ego dynamic state
  * @param[in] vehicle_info vehicle information
+ * @param[in] traj_first_pose pose of the trajectory's first point; projections behind it are
+ * ignored
  * @return evaluated critical point pairs for both sides
  */
 Side<std::optional<CriticalPointPair>> evaluate_projections_severity(
   const Side<ProjectionsToBound> & projections_to_bound,
   const UncrossableBoundaryDepartureParam & param, const EgoDynamicState & ego_state,
-  const vehicle_info_utils::VehicleInfo & vehicle_info);
+  const vehicle_info_utils::VehicleInfo & vehicle_info,
+  const geometry_msgs::msg::Pose & traj_first_pose);
 
 /**
  * @brief Check if any side has a critical departure.

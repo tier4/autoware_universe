@@ -15,6 +15,9 @@
 #include "autoware/boundary_departure_checker/detail/severity_evaluator.hpp"
 
 #include <autoware/motion_utils/distance/distance.hpp>
+#include <autoware_utils_geometry/pose_deviation.hpp>
+
+#include <geometry_msgs/msg/point.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -23,7 +26,8 @@ namespace autoware::boundary_departure_checker::severity_evaluator
 {
 ProjectionsToBound filter_and_assign_departure_types(
   const ProjectionsToBound & side_value, const UncrossableBoundaryDepartureParam & param,
-  const double min_braking_dist)
+  const double min_braking_dist, const geometry_msgs::msg::Pose & traj_first_pose,
+  const double rear_overhang_m)
 {
   ProjectionsToBound out;
   out.reserve(side_value.size());
@@ -40,6 +44,20 @@ ProjectionsToBound filter_and_assign_departure_types(
     ProjectionEvaluationMetrics metrics;
     metrics.lon_dist_to_departure =
       original_candidate.dist_along_trajectory_m - original_candidate.ego_front_to_proj_offset_m;
+
+    // Only a footprint whose rear can reach behind the trajectory's first pose (arc length below
+    // one rear overhang) can produce a projection behind it; farther footprints are always ahead.
+    // Restricting the check to those keeps the straight-line longitudinal projection valid even on
+    // curved trajectories, where a far, curved-back point could otherwise appear behind.
+    if (original_candidate.dist_along_trajectory_m < rear_overhang_m) {
+      geometry_msgs::msg::Point projection_point;
+      projection_point.x = original_candidate.pt_on_ego.x();
+      projection_point.y = original_candidate.pt_on_ego.y();
+      const auto lon_dist_from_first_point =
+        autoware_utils_geometry::calc_longitudinal_deviation(traj_first_pose, projection_point);
+      metrics.is_behind_first_point = lon_dist_from_first_point < 0.0;
+    }
+
     metrics.time_from_start = original_candidate.time_from_start;
     metrics.lat_dist = original_candidate.lat_dist;
 
@@ -88,6 +106,12 @@ DepartureType assign_departure_type(
     return DepartureType::NONE;
   }
 
+  // Ignore projections that lie behind the trajectory's first pose; the ego has already passed
+  // them, so they are not upcoming departures.
+  if (metrics.is_behind_first_point) {
+    return DepartureType::NONE;
+  }
+
   if (
     metrics.lon_dist_to_departure > thresholds.min_braking_distance &&
     metrics.time_from_start > thresholds.cutoff_time) {
@@ -100,13 +124,14 @@ DepartureType assign_departure_type(
 Side<std::optional<CriticalPointPair>> evaluate_projections_severity(
   const Side<ProjectionsToBound> & projections_to_bound,
   const UncrossableBoundaryDepartureParam & param, const EgoDynamicState & ego_state,
-  const vehicle_info_utils::VehicleInfo & vehicle_info)
+  const vehicle_info_utils::VehicleInfo & vehicle_info,
+  const geometry_msgs::msg::Pose & traj_first_pose)
 {
   const auto min_braking_dist = calc_minimum_braking_distance(ego_state, param, vehicle_info);
 
   return projections_to_bound.transform_each_side([&](const auto & side_value) {
-    const auto min_to_bounds =
-      filter_and_assign_departure_types(side_value, param, min_braking_dist);
+    const auto min_to_bounds = filter_and_assign_departure_types(
+      side_value, param, min_braking_dist, traj_first_pose, vehicle_info.rear_overhang_m);
     return apply_backward_buffer_and_filter(min_to_bounds, param);
   });
 }

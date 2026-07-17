@@ -55,7 +55,7 @@ std::optional<Side<std::optional<CriticalPointPair>>> BoundaryDepartureEvaluator
       predicted_traj, boundary_segments, footprints_sides);
 
   return severity_evaluator::evaluate_projections_severity(
-    projections_to_bound, param_, ego_state, vehicle_info_);
+    projections_to_bound, param_, ego_state, vehicle_info_, predicted_traj.front().pose);
 }
 
 }  // namespace autoware::boundary_departure_checker
