@@ -39,6 +39,10 @@ namespace autoware::map_based_prediction
 
 namespace
 {
+// Crosswalk polygons are expanded by this margin before the containment test so that intersection
+// points lying exactly on (or just outside) the crosswalk edge are still recognised as inside.
+constexpr double kCrosswalkContainmentMargin = 0.5;  // [m]
+
 bool does_path_cross_boundary(
   const lanelet::BasicLineString2d & predicted_path,
   const lanelet::ConstLineString3d & boundary_line)
@@ -47,26 +51,34 @@ bool does_path_cross_boundary(
     predicted_path, lanelet::utils::to2D(boundary_line.basicLineString()));
 }
 
-bool is_point_within_crosswalk(
+std::optional<lanelet::ConstLanelet> find_crosswalk_at_point(
   const lanelet::LaneletMap * crosswalk_layer, const lanelet::BasicPoint2d & point)
 {
   if (!crosswalk_layer) {
-    return false;
+    return std::nullopt;
   }
-  const lanelet::BoundingBox2d query(point, point);
+  const lanelet::BasicPoint2d margin(kCrosswalkContainmentMargin, kCrosswalkContainmentMargin);
+  const lanelet::BoundingBox2d query(point - margin, point + margin);
   for (const auto & crosswalk : crosswalk_layer->laneletLayer.search(query)) {
-    if (boost::geometry::within(point, crosswalk.polygon2d().basicPolygon())) {
-      return true;
+    // distance() is 0 when the point is inside the polygon and the gap to the edge otherwise, so
+    // this is equivalent to a within() test against a polygon expanded by the margin.
+    if (
+      boost::geometry::distance(point, crosswalk.polygon2d().basicPolygon()) <=
+      kCrosswalkContainmentMargin) {
+      return crosswalk;
     }
   }
-  return false;
+  return std::nullopt;
 }
 
-// A crossing on this segment counts as a cut point unless every intersection with the boundary
-// falls inside a crosswalk / walkway (i.e. the object is predicted to cross at a crosswalk).
+// A crossing on this segment counts as a cut point unless every intersection with the boundary is
+// exempt. An intersection is exempt when it falls inside a crosswalk / walkway whose signal is not
+// red (no signal or non-red) i.e. a legitimate crossing. An intersection outside any crosswalk, or
+// inside a crosswalk with a red signal, is a cuttable jump-out.
 bool segment_has_cuttable_crossing(
   const lanelet::BasicLineString2d & path_segment, const lanelet::ConstLineString3d & boundary,
-  const lanelet::LaneletMap * crosswalk_layer)
+  const lanelet::LaneletMap * crosswalk_layer,
+  const RoadBoundaryModule::CrosswalkSignalRedFn & is_crosswalk_signal_red)
 {
   const auto boundary_2d = lanelet::utils::to2D(boundary).basicLineString();
   if (!boost::geometry::intersects(path_segment, boundary_2d)) {
@@ -79,7 +91,9 @@ bool segment_has_cuttable_crossing(
     return true;
   }
   for (const auto & intersection : intersections) {
-    if (!is_point_within_crosswalk(crosswalk_layer, intersection)) {
+    const auto crosswalk = find_crosswalk_at_point(crosswalk_layer, intersection);
+    const bool exempt = crosswalk.has_value() && !is_crosswalk_signal_red(crosswalk.value());
+    if (!exempt) {
       return true;
     }
   }
@@ -88,6 +102,7 @@ bool segment_has_cuttable_crossing(
 
 std::optional<size_t> find_road_boundary_crossing_index(
   const lanelet::LaneletMap & road_boundary_layer, const lanelet::LaneletMap * crosswalk_layer,
+  const RoadBoundaryModule::CrosswalkSignalRedFn & is_crosswalk_signal_red,
   const PredictedPath & predicted_path)
 {
   const auto & path = predicted_path.path;
@@ -117,7 +132,8 @@ std::optional<size_t> find_road_boundary_crossing_index(
     const lanelet::BasicLineString2d path_segment(
       lanelet::BasicPoints2d{predicted_path_ls.at(i), predicted_path_ls.at(i + 1)});
     for (const auto & boundary : crossed_boundaries) {
-      if (segment_has_cuttable_crossing(path_segment, boundary, crosswalk_layer)) {
+      if (segment_has_cuttable_crossing(
+            path_segment, boundary, crosswalk_layer, is_crosswalk_signal_red)) {
         return i;
       }
     }
@@ -161,7 +177,7 @@ void RoadBoundaryModule::build_from_map(std::shared_ptr<lanelet::LaneletMap> lan
 
 std::vector<PredictedPath> RoadBoundaryModule::cut_paths_crossing_road_boundary(
   const autoware_perception_msgs::msg::PredictedObject & predicted_object,
-  const bool object_within_road) const
+  const bool object_within_road, const CrosswalkSignalRedFn & is_crosswalk_signal_red) const
 {
   std::vector<PredictedPath> cut_paths = predicted_object.kinematics.predicted_paths;
   // Objects already inside a road lanelet are left untouched so that a path exiting the road
@@ -178,8 +194,8 @@ std::vector<PredictedPath> RoadBoundaryModule::cut_paths_crossing_road_boundary(
     autoware::object_recognition_utils::getHighestProbLabel(predicted_object.classification));
 
   for (PredictedPath & predicted_path : cut_paths) {
-    const std::optional<size_t> crossing_index =
-      find_road_boundary_crossing_index(*road_boundary_layer_, crosswalk_layer_.get(), predicted_path);
+    const std::optional<size_t> crossing_index = find_road_boundary_crossing_index(
+      *road_boundary_layer_, crosswalk_layer_.get(), is_crosswalk_signal_red, predicted_path);
     if (!crossing_index) {
       continue;
     }

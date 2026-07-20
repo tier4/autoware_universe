@@ -405,8 +405,12 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
 
   predicted_object.kinematics.predicted_paths = paths_cut_with_vegetation;
 
+  const auto is_crosswalk_signal_red = [this](const lanelet::ConstLanelet & crosswalk) {
+    return params_.use_crosswalk_signal && traffic_signal_module_.isRedSignal(crosswalk);
+  };
   const std::vector<PredictedPath> paths_cut_with_road_boundary =
-    road_boundary_module_.cut_paths_crossing_road_boundary(predicted_object, within_road);
+    road_boundary_module_.cut_paths_crossing_road_boundary(
+      predicted_object, within_road, is_crosswalk_signal_red);
 
   debug::append_path_cut_event_markers(
     debug_markers, predicted_object.kinematics.predicted_paths, paths_cut_with_road_boundary,
