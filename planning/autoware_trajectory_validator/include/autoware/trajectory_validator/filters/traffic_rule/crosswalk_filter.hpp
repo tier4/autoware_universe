@@ -22,7 +22,7 @@
 #include <autoware_utils_geometry/geometry.hpp>
 #include <autoware_utils_uuid/uuid_helper.hpp>
 
-#include <autoware_perception_msgs/msg/detail/object_classification__struct.hpp>
+#include <autoware_perception_msgs/msg/object_classification.hpp>
 
 #include <unordered_map>
 #include <unordered_set>

@@ -118,6 +118,7 @@ protected:
     context_.route = route;
   }
 
+  // cSpell: ignore unsignaled
   /// Build a road lanelet with an unsignaled crosswalk RE.
   /// Stop line is at @p stop_line_x. Pedestrian detection end-caps are around y = ±6..±8.
   void create_and_set_map_with_crosswalk(const double stop_line_x)

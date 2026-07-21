@@ -15,6 +15,7 @@
 #include "autoware/trajectory_validator/filters/traffic_rule/crosswalk_filter.hpp"
 
 #include <autoware/motion_utils/distance/distance.hpp>
+#include <autoware/object_recognition_utils/object_classification.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/Forward.hpp>
 #include <autoware_lanelet2_extension/regulatory_elements/crosswalk.hpp>
 #include <autoware_lanelet2_extension/utility/query.hpp>
@@ -360,8 +361,9 @@ void CrosswalkFilter::update_target_objects(
     std::remove_if(
       objects.begin(), objects.end(),
       [&](const auto & object) {
-        auto label = object.classification.empty() ? ObjectClassification::UNKNOWN
-                                                   : object.classification.front().label;
+        auto label = object.classification.empty()
+                       ? ObjectClassification::UNKNOWN
+                       : object_recognition_utils::getHighestProbLabel(object.classification);
         return object_types_.count(label) == 0;
       }),
     objects.end());

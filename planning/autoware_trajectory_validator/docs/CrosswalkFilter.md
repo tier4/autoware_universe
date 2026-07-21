@@ -2,6 +2,8 @@
 
 ## Purpose/Role
 
+<!-- cspell: ignore unsignaled -->
+
 This filter rejects trajectories that would proceed to cross an unsignaled crosswalk without waiting long enough for nearby VRUs (vulnerable road users) that appear to be waiting to cross.
 
 It focuses on pedestrians/bicycles **waiting** at the sidewalk near the crosswalk edge. Objects that are already inside the crosswalk area are ignored. Signaled (traffic-light-controlled) crosswalks are excluded; those cases are expected to be handled by traffic-light logic elsewhere.
