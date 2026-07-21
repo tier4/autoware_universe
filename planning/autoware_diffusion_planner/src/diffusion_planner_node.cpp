@@ -857,11 +857,6 @@ DiffusionPlanner::get_route_bounds_for_mppi()
   road_borders.left_bound = to_geometry_points(bounds.first);
   road_borders.right_bound = to_geometry_points(bounds.second);
 
-  // Keep Path publication for RViz debug of the corridor borders.
-  Path drivable_area;
-  drivable_area.left_bound = road_borders.left_bound;
-  drivable_area.right_bound = road_borders.right_bound;
-
   return road_borders;
 }
 
