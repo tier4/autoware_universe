@@ -303,7 +303,8 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(
     }
   }
 
-  auto longitudinal_offset_m = vehicle_info_ptr_->max_longitudinal_offset_m - params_.overshoot_tolerance;
+  auto longitudinal_offset_m =
+    vehicle_info_ptr_->max_longitudinal_offset_m - params_.overshoot_tolerance;
 
   const auto trajectory_footprint_length = length + longitudinal_offset_m;
   if (length < params_.arrived_distance_threshold) {
