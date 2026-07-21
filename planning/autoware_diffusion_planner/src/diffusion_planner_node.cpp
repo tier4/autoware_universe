@@ -91,8 +91,6 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
   pub_mppi_markers_ = this->create_publisher<MarkerArray>("~/debug/mppi/markers", 1);
   pub_mppi_encoded_road_borders_ =
     this->create_publisher<Path>("~/debug/mppi/encoded_road_borders", 1);
-  pub_yaw_rate_based_steering_ =
-    this->create_publisher<SteeringReport>("~/debug/yaw_rate_based_steering", 1);
   pub_trajectories_ = this->create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
   pub_objects_ =
     this->create_publisher<PredictedObjects>("~/output/predicted_objects", rclcpp::QoS(1));
@@ -589,9 +587,6 @@ void DiffusionPlanner::on_timer()
   const rclcpp::Time frame_time(frame_context->frame_time);
   InputDataMap input_data_map = core_->create_input_data(*frame_context);
 
-  // Publish before normalize_input_data so the value matches the physical NN feature.
-  publish_yaw_rate_based_steering(input_data_map, frame_time);
-
   publish_debug_markers(input_data_map, frame_context->ego_to_map_transform, frame_time);
 
   publish_first_traffic_light_on_route(*frame_context);
@@ -804,21 +799,6 @@ void DiffusionPlanner::publish_mppi_debug(
     encoded_borders.right_bound.push_back(p);
   }
   pub_mppi_encoded_road_borders_->publish(encoded_borders);
-}
-
-void DiffusionPlanner::publish_yaw_rate_based_steering(
-  const InputDataMap & input_data_map, const rclcpp::Time & stamp) const
-{
-  constexpr size_t kSteeringIndex = 8;  // ego_current_state: [..., steering, yaw_rate]
-  const auto it = input_data_map.find("ego_current_state");
-  if (it == input_data_map.end() || it->second.size() <= kSteeringIndex) {
-    return;
-  }
-
-  SteeringReport msg;
-  msg.stamp = stamp;
-  msg.steering_tire_angle = it->second[kSteeringIndex];
-  pub_yaw_rate_based_steering_->publish(msg);
 }
 
 void DiffusionPlanner::publish_planning_factor(const Trajectory & trajectory)

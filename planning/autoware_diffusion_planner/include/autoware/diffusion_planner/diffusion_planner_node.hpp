@@ -187,12 +187,6 @@ private:
     const rclcpp::Time & stamp);
 
   /**
-   * @brief Publish the bicycle-model steering inferred from yaw-rate (NN ego_current_state).
-   */
-  void publish_yaw_rate_based_steering(
-    const InputDataMap & input_data_map, const rclcpp::Time & stamp) const;
-
-  /**
    * Publish avoidance / driving-along targets and drivable-area bounds.
    * @return Drivable area Path (left/right bounds) when detection succeeds, else nullopt.
    */
@@ -254,7 +248,6 @@ private:
   rclcpp::Publisher<Trajectory>::SharedPtr pub_mppi_optimized_trajectory_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_mppi_markers_{nullptr};
   rclcpp::Publisher<Path>::SharedPtr pub_mppi_encoded_road_borders_{nullptr};
-  rclcpp::Publisher<SteeringReport>::SharedPtr pub_yaw_rate_based_steering_{nullptr};
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_{nullptr};
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_{nullptr};
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_avoidance_targets_{nullptr};
