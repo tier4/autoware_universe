@@ -60,9 +60,15 @@
                   "default": 0.8,
                   "minimum": 0.0
                 },
-                "dist_to_stop_parking": {
+                "max_decel_parking": {
                   "type": "number",
-                  "description": "stopping distance after lateral offset during pull over to the side of the road [m]",
+                  "description": "max longitudinal deceleration used to compute the stopping distance during pull over [m/s^2]",
+                  "default": 1.0,
+                  "minimum": 0.0
+                },
+                "max_jerk_parking": {
+                  "type": "number",
+                  "description": "max longitudinal jerk used to compute the stopping distance during pull over [m/s^3]",
                   "default": 1.0,
                   "minimum": 0.0
                 }

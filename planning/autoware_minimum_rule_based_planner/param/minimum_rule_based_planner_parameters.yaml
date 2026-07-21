@@ -35,10 +35,15 @@ minimum_rule_based_planner:
         default_value: 0.8
         description: expected max lateral acceleration during pull over to the side of the road [m/s^2]
 
-      dist_to_stop_parking:
+      max_decel_parking:
         type: double
         default_value: 1.0
-        description: stopping distance after lateral offset during pull over to the side of the road [m]
+        description: max longitudinal deceleration used to compute the stopping distance during pull over [m/s^2]
+
+      max_jerk_parking:
+        type: double
+        default_value: 1.0
+        description: max longitudinal jerk used to compute the stopping distance during pull over [m/s^3]
 
     # Parameters for lanelet matching (different from EB smoother's ego_nearest_* params)
     ego_nearest_lanelet:

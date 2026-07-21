@@ -15,6 +15,7 @@
 #include "path_planner.hpp"
 
 #include <autoware/lanelet2_utils/kind.hpp>
+#include <autoware/motion_utils/distance/distance.hpp>
 #include <autoware/motion_utils/resample/resample.hpp>
 #include <autoware/motion_utils/trajectory/conversion.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
@@ -901,22 +902,30 @@ lanelet::ConstLanelet select_route_preferred_lanelet(
 
 std::optional<double> cal_margin2goal(
   const double target_lat_dist, const double expected_ego_speed_parking,
-  const double max_lat_accel_parking, const double dist_to_stop)
+  const double max_lat_accel_parking, const double max_decel_parking, const double max_jerk_parking)
 {
-  if (max_lat_accel_parking < 1e-9 || dist_to_stop < 0.0) {
+  if (max_lat_accel_parking < 1e-9) {
+    return std::nullopt;
+  }
+  constexpr double initial_accel_stopping = 0.0;
+  constexpr double initial_delay_stopping = 0.0;
+  const auto dist_to_stop = autoware::motion_utils::calculate_stop_distance(
+    expected_ego_speed_parking, initial_accel_stopping, max_decel_parking, max_jerk_parking,
+    initial_delay_stopping);
+  if (!dist_to_stop.has_value()) {
     return std::nullopt;
   }
 
   const double dist_to_limit_lat_accel =
     expected_ego_speed_parking *
     std::sqrt(2 * autoware_utils::pi * std::abs(target_lat_dist) / max_lat_accel_parking);
-  return dist_to_limit_lat_accel + dist_to_stop;
+  return dist_to_limit_lat_accel + *dist_to_stop;
 }
 
 std::optional<double> cal_early_stop(
   const PathPointTrajectory & trajectory, const RouteContext & planner_data,
   const double expected_ego_speed_parking, const double max_lat_accel_parking,
-  const double dist_to_stop)
+  const double max_decel_parking, const double max_jerk_parking)
 {
   const auto goal_point_2d =
     lanelet::BasicPoint2d(planner_data.goal_pose.position.x, planner_data.goal_pose.position.y);
@@ -992,7 +1001,8 @@ std::optional<double> cal_early_stop(
   }
 
   const auto dist_offset = cal_margin2goal(
-    target_lat_dist, expected_ego_speed_parking, max_lat_accel_parking, dist_to_stop);
+    target_lat_dist, expected_ego_speed_parking, max_lat_accel_parking, max_decel_parking,
+    max_jerk_parking);
   if (!dist_offset.has_value()) {
     return std::nullopt;
   }
@@ -1543,7 +1553,8 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
   const auto early_stop_dist = cal_early_stop(
     *trajectory, route_context_, params_.path_planning.early_stop.expected_ego_speed_parking,
     params_.path_planning.early_stop.max_lat_accel_parking,
-    params_.path_planning.early_stop.dist_to_stop_parking);
+    params_.path_planning.early_stop.max_decel_parking,
+    params_.path_planning.early_stop.max_jerk_parking);
   if (!early_stop_dist.has_value()) {
     RCLCPP_ERROR(logger_, "Failed to calculate early stop distance");
     return std::nullopt;
