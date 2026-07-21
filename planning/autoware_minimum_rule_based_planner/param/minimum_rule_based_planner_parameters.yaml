@@ -28,21 +28,29 @@ minimum_rule_based_planner:
       expected_ego_speed_parking:
         type: double
         default_value: 2.8
+        validation:
+          gt<>: [0.0]
         description: expected ego speed during pull over to the side of the road [m/s]
 
       max_lat_accel_parking:
         type: double
         default_value: 0.8
+        validation:
+          gt<>: [0.0]
         description: expected max lateral acceleration during pull over to the side of the road [m/s^2]
 
       max_decel_parking:
         type: double
         default_value: 1.0
+        validation:
+          gt<>: [0.1]
         description: max longitudinal deceleration used to compute the stopping distance during pull over [m/s^2]
 
       max_jerk_parking:
         type: double
         default_value: 1.0
+        validation:
+          gt<>: [0.1]
         description: max longitudinal jerk used to compute the stopping distance during pull over [m/s^3]
 
     # Parameters for lanelet matching (different from EB smoother's ego_nearest_* params)

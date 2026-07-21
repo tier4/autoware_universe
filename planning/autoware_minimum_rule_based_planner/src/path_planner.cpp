@@ -977,9 +977,6 @@ std::optional<double> cal_early_stop(
   const auto trajectory_lanelets =
     autoware::minimum_rule_based_planner::utils::extract_lanelets_from_trajectory(
       trajectory, planner_data);
-  if (trajectory_lanelets.empty()) {
-    return std::nullopt;
-  }
 
   bool goal_reachable = false;
   for (const auto & lanelet_traj : trajectory_lanelets) {
@@ -1565,11 +1562,6 @@ std::optional<PathWithLaneId> PathPlanner::generate_path(
   // Crop end
   if (trajectory->length() > adjusted_s_path_end_earlystop) {
     trajectory->crop(0., adjusted_s_path_end_earlystop);
-  }
-
-  if (trajectory->length() < 1e-3) {
-    RCLCPP_WARN(logger_, "Trajectory length too short after cropping: %f", trajectory->length());
-    return std::nullopt;
   }
 
   // Compose the polished path

@@ -64,13 +64,13 @@
                   "type": "number",
                   "description": "max longitudinal deceleration used to compute the stopping distance during pull over [m/s^2]",
                   "default": 1.0,
-                  "minimum": 0.0
+                  "minimum": 0.1
                 },
                 "max_jerk_parking": {
                   "type": "number",
                   "description": "max longitudinal jerk used to compute the stopping distance during pull over [m/s^3]",
                   "default": 1.0,
-                  "minimum": 0.0
+                  "minimum": 0.1
                 }
               },
               "required": [],
