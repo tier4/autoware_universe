@@ -279,8 +279,7 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(
   auto stop_distance = autoware::motion_utils::calculate_stop_distance(
     current_vel, current_acc, decel_limit, jerk_limit);
   const auto lookahead_distance_m = stop_distance
-                                      ? *stop_distance + params_.arrived_distance_threshold +
-                                          vehicle_info_ptr_->max_longitudinal_offset_m
+                                      ? *stop_distance + params_.arrived_distance_threshold
                                       : std::numeric_limits<double>::max();
 
   lanelet::BasicLineString2d trajectory_ls;
@@ -304,8 +303,7 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(
     }
   }
 
-  constexpr double overshoot_tolerance_m = 0.1;
-  auto longitudinal_offset_m = vehicle_info_ptr_->max_longitudinal_offset_m - overshoot_tolerance_m;
+  auto longitudinal_offset_m = vehicle_info_ptr_->max_longitudinal_offset_m - params_.overshoot_tolerance;
 
   const auto trajectory_footprint_length = length + longitudinal_offset_m;
   if (length < params_.arrived_distance_threshold) {
