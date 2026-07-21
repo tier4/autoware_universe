@@ -146,6 +146,13 @@ if(BUILD_TESTING)
     autoware_trajectory_validator_plugins
   )
 
+  ament_add_gtest(test_crosswalk_filter
+    test/plugins/test_crosswalk_filter.cpp
+  )
+  target_link_libraries(test_crosswalk_filter
+    autoware_trajectory_validator_plugins
+  )
+
   ament_add_gtest(test_risk_utils
     test/detail/test_risk_utils.cpp
   )
