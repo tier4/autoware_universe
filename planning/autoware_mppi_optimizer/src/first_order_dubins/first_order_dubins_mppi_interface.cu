@@ -23,11 +23,11 @@
 #include <mppi/cost_functions/moving_car_obstacles.hpp>
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
 #include <mppi/feedback_controllers/zero_feedback.cuh>
-#include <mppi/path/drivable_area.hpp>
 #include <mppi/path/path2d.hpp>
 #include <mppi/path/path_projection.hpp>
 #include <mppi/sampling_distributions/gaussian/gaussian.cuh>
 #include <mppi/utils/gpu_err_chk.cuh>
+#include <rclcpp/clock.hpp>
 #include <rclcpp/logging.hpp>
 
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
@@ -129,29 +129,6 @@ mppi::path::Path2D trajectoryToPath2D(const Trajectory & trajectory)
   return mppi::path::Path2D::catmullRom(control_xy, false, 8);
 }
 
-/** Closed polygon: left_bound forward, then right_bound reversed (same winding as corridor polys). */
-mppi::path::Polygon2D boundsToDrivablePolygon(
-  const std::vector<geometry_msgs::msg::Point> & left_bound,
-  const std::vector<geometry_msgs::msg::Point> & right_bound)
-{
-  mppi::path::Polygon2D poly;
-  if (left_bound.size() < 2U || right_bound.size() < 2U) {
-    return poly;
-  }
-
-  poly.x.reserve(left_bound.size() + right_bound.size());
-  poly.y.reserve(left_bound.size() + right_bound.size());
-  for (const auto & p : left_bound) {
-    poly.x.push_back(static_cast<float>(p.x));
-    poly.y.push_back(static_cast<float>(p.y));
-  }
-  for (auto it = right_bound.rbegin(); it != right_bound.rend(); ++it) {
-    poly.x.push_back(static_cast<float>(it->x));
-    poly.y.push_back(static_cast<float>(it->y));
-  }
-  return poly;
-}
-
 void boundsToFloatPolylines(
   const std::vector<geometry_msgs::msg::Point> & bound, std::vector<float> & xs,
   std::vector<float> & ys)
@@ -219,11 +196,13 @@ std::vector<mppi::path::PathReferenceSample> buildDiffusionReferenceHorizon(
   std::vector<mppi::path::PathReferenceSample> ref(static_cast<size_t>(kRefHorizon));
   float arc_hint = kInitArcLength;
 
+  // GPU rollout costs the *post-step* state at timestep t against ref[t]
+  // (see mppi_common.cu: step → computeRunningCost(y,…,t)).
+  // That post-step state is at time (t+1)*dt, same as DP points[t]. So ref[t] = DP[t].
   size_t k = 0;
   for (auto & sample : ref) {
     const size_t idx = std::min(start_idx + k, trajectory.points.size() - 1U);
     const auto & point = trajectory.points[idx];
-
     sample.t = static_cast<float>(k) * kDt;
     sample.x = static_cast<float>(point.pose.position.x);
     sample.y = static_cast<float>(point.pose.position.y);
@@ -384,7 +363,6 @@ struct FirstOrderDubinsMppiInterface::Impl
   Trajectory diffusion_reference;
   TrackedObjects tracked_objects;
   mppi::path::Path2D path;
-  mppi::path::Polygon2D drivable_polygon;
   std::vector<float> road_border_left_x;
   std::vector<float> road_border_left_y;
   std::vector<float> road_border_right_x;
@@ -416,6 +394,9 @@ struct FirstOrderDubinsMppiInterface::Impl
   size_t tracking_start_idx{0U};
   float arc_length{kInitArcLength};
   float sim_time{0.0F};
+  bool ignore_obstacles{false};
+  bool ignore_drivable_area{false};
+  bool force_cold_start_each_step{false};
 
   Impl() : feedback(&model, kDt), sampler(SAMPLER::SAMPLING_PARAMS_T{}) {}
 
@@ -562,19 +543,20 @@ struct FirstOrderDubinsMppiInterface::Impl
       setup();
     }
 
+    if (force_cold_start_each_step) {
+      resetTrackingState();
+    }
+
     diffusion_reference = reference;
-    tracked_objects = tracked_objects_in;
+    tracked_objects = ignore_obstacles ? TrackedObjects{} : tracked_objects_in;
     path = trajectoryToPath2D(reference);
     obstacles.clear();
-    if (drivable_area) {
-      drivable_polygon =
-        boundsToDrivablePolygon(drivable_area->left_bound, drivable_area->right_bound);
+    if (!ignore_drivable_area && drivable_area) {
       boundsToFloatPolylines(
         drivable_area->left_bound, road_border_left_x, road_border_left_y);
       boundsToFloatPolylines(
         drivable_area->right_bound, road_border_right_x, road_border_right_y);
     } else {
-      drivable_polygon = mppi::path::Polygon2D{};
       road_border_left_x.clear();
       road_border_left_y.clear();
       road_border_right_x.clear();
@@ -624,8 +606,15 @@ struct FirstOrderDubinsMppiInterface::Impl
     if (!road_border_left_x.empty() && !road_border_right_x.empty()) {
       mppi::cost::fillFirstOrderDubinsBicycleCostDrivableAreaFromBounds<kRefHorizon>(
         cost, road_border_left_x, road_border_left_y, road_border_right_x, road_border_right_y);
+      static rclcpp::Clock border_log_clock{RCL_ROS_TIME};
+      RCLCPP_INFO_THROTTLE(
+        mppiLogger(), border_log_clock, 1000,
+        "MPPI road borders: left_pts=%zu right_pts=%zu -> left_segs=%d right_segs=%d total=%d/%d",
+        road_border_left_x.size(), road_border_right_x.size(), cost.numLeftRoadBorderSegments(),
+        cost.numRightRoadBorderSegments(), cost.numRoadBorderSegments(),
+        COST::kMaxRoadBorderSegments);
     } else {
-      mppi::cost::fillFirstOrderDubinsBicycleCostDrivablePolygon<kRefHorizon>(cost, drivable_polygon);
+      cost.clearDrivableArea();
     }
 
     int obstacle_count = 0;
@@ -765,6 +754,24 @@ void FirstOrderDubinsMppiInterface::setDebugTrajectoryLogging(
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
   }
   impl_->debug_trajectory_logger.configure(enable, directory);
+  impl_->debug_trajectory_logger.writeParamsOnce(impl_->user_cost_params_, impl_->vehicle_params);
+}
+
+void FirstOrderDubinsMppiInterface::setAblationOptions(
+  const bool ignore_obstacles, const bool ignore_drivable_area,
+  const bool force_cold_start_each_step)
+{
+  if (!impl_) {
+    throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
+  }
+  impl_->ignore_obstacles = ignore_obstacles;
+  impl_->ignore_drivable_area = ignore_drivable_area;
+  impl_->force_cold_start_each_step = force_cold_start_each_step;
+  RCLCPP_INFO(
+    mppiLogger(),
+    "MPPI ablation options: ignore_obstacles=%s ignore_drivable_area=%s force_cold_start_each_step=%s",
+    ignore_obstacles ? "true" : "false", ignore_drivable_area ? "true" : "false",
+    force_cold_start_each_step ? "true" : "false");
 }
 
 FirstOrderDubinsMppiControl FirstOrderDubinsMppiInterface::computeStep(
@@ -825,7 +832,30 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE);
   const float steer_tau = std::max(impl_->vehicle_params.steer_time_constant, 1.0e-4F);
 
-  const size_t num_points = std::min(output.points.size(), static_cast<size_t>(kMppiHorizon));
+  // GPU costs post-step state at timestep t against ref[t] (= DP[t] at time (t+1)*dt).
+  // Map: points[i] <- state[i+1], control[i].
+  //
+  // Vendor mismatch: GPU rollouts take H steps (mppi_common.cu: t = 0..H-1) and cost the
+  // final post-step state x[H], but host getActualStateSeq() only runs H-1 steps
+  // (controller.cuh: i < num_timesteps - 1) and stores x[0..H-1]. Reconstruct x[H] here
+  // with one dynamics step so the last DP point is not left as a duplicate of x[H-1].
+  const int n_state = static_cast<int>(state_trajectory.cols());
+  const int n_ctrl = static_cast<int>(u_opt_traj.cols());
+  const size_t num_points = std::min(
+    {output.points.size(), static_cast<size_t>(std::max(0, n_state)),
+     static_cast<size_t>(std::max(0, n_ctrl))});
+
+  DYN::state_array x_final = DYN::state_array::Zero();
+  DYN::state_array x_final_dot = DYN::state_array::Zero();
+  DYN::output_array y_final = DYN::output_array::Zero();
+  const bool have_final_state = n_state > 0 && n_ctrl > 0;
+  if (have_final_state) {
+    DYN::state_array x_tail = state_trajectory.col(n_state - 1);
+    DYN::control_array u_tail = u_opt_traj.col(n_ctrl - 1);
+    impl_->model.enforceConstraints(x_tail, u_tail);
+    impl_->model.step(
+      x_tail, x_final, x_final_dot, u_tail, y_final, static_cast<float>(n_state - 1), kDt);
+  }
 
   float max_pos_delta = 0.0F;
   float max_vel_delta = 0.0F;
@@ -835,13 +865,20 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
       break;
     }
     const auto & in_point = input.points[i];
-    const int col = static_cast<int>(i);
-    const float tracked_x = state_trajectory(pos_x_idx, col);
-    const float tracked_y = state_trajectory(pos_y_idx, col);
-    const float tracked_yaw = state_trajectory(yaw_idx, col);
-    const float tracked_v = state_trajectory(vel_x_idx, col);
-    const float steer_cmd = u_opt_traj(steer_cmd_idx, col);
-    const float steer_state = state_trajectory(steer_state_idx, col);
+    const int control_col = static_cast<int>(i);
+    const bool use_final = (control_col + 1 >= n_state) && have_final_state;
+
+    const float tracked_x =
+      use_final ? x_final(pos_x_idx) : state_trajectory(pos_x_idx, control_col + 1);
+    const float tracked_y =
+      use_final ? x_final(pos_y_idx) : state_trajectory(pos_y_idx, control_col + 1);
+    const float tracked_yaw =
+      use_final ? x_final(yaw_idx) : state_trajectory(yaw_idx, control_col + 1);
+    const float tracked_v =
+      use_final ? x_final(vel_x_idx) : state_trajectory(vel_x_idx, control_col + 1);
+    const float steer_cmd = u_opt_traj(steer_cmd_idx, control_col);
+    const float steer_before = use_final ? state_trajectory(steer_state_idx, n_state - 1)
+                                         : state_trajectory(steer_state_idx, control_col);
 
     const float ref_x = static_cast<float>(in_point.pose.position.x);
     const float ref_y = static_cast<float>(in_point.pose.position.y);
@@ -855,11 +892,11 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     out_point.pose.position.z = in_point.pose.position.z;
     out_point.pose.orientation = quaternionFromYaw(tracked_yaw);
     out_point.longitudinal_velocity_mps = tracked_v;
-    out_point.acceleration_mps2 = u_opt_traj(accel_cmd_idx, col);
+    out_point.acceleration_mps2 = u_opt_traj(accel_cmd_idx, control_col);
     out_point.front_wheel_angle_rad = steer_cmd;
     // Store first-order steer rate for debug viz / cost-consistent signal:
     // δ̇ = (steer_cmd - steer) / steer_time_constant
-    out_point.heading_rate_rps = (steer_cmd - steer_state) / steer_tau;
+    out_point.heading_rate_rps = (steer_cmd - steer_before) / steer_tau;
     ++i;
   }
 
@@ -880,9 +917,20 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   // Rollout visualization disabled (CPU replay of top-K samples was ~80ms).
   fillOptimalHorizonPoints(impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
   result.debug.baseline_cost = impl_->controller->getBaselineCost();
+  impl_->cost.getEncodedRoadBorderPolylines(
+    result.debug.encoded_road_border_left, result.debug.encoded_road_border_right);
 
+  MppiDebugEgoState ego;
+  ego.x = odometry.pose.pose.position.x;
+  ego.y = odometry.pose.pose.position.y;
+  ego.z = odometry.pose.pose.position.z;
+  ego.yaw = yawFromOdometry(odometry);
+  ego.v = odometry.twist.twist.linear.x;
+  ego.accel = longitudinalAccelerationMps2(acceleration);
+  ego.steer = steeringTireAngleRad(steering_status);
+  impl_->debug_trajectory_logger.writeParamsOnce(impl_->user_cost_params_, impl_->vehicle_params);
   impl_->debug_trajectory_logger.logFrame(
-    result.debug.reference_trajectory, result.debug.optimized_trajectory,
+    result.debug.reference_trajectory, result.debug.optimized_trajectory, ego,
     result.debug.baseline_cost);
 
   RCLCPP_INFO(

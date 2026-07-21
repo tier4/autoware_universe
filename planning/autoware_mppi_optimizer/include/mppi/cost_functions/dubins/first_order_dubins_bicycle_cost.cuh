@@ -9,6 +9,9 @@
 #include <mppi/cost_functions/cost.cuh>
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
 
+#include <utility>
+#include <vector>
+
 template <int NUM_TIMESTEPS>
 struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
 {
@@ -95,6 +98,19 @@ public:
 
   void clearDrivableArea();
 
+  /** Host-only diagnostics after setRoadBorderPolylines (not copied to device). */
+  int numRoadBorderSegments() const { return num_road_border_segments_; }
+  int numLeftRoadBorderSegments() const { return num_left_road_border_segments_; }
+  int numRightRoadBorderSegments() const { return num_right_road_border_segments_; }
+
+  /**
+   * @brief Reconstruct polylines from the encoded segments actually used by the crash cost.
+   * Left segments occupy [0, num_left); right occupy [num_left, num_left+num_right).
+   */
+  void getEncodedRoadBorderPolylines(
+    std::vector<std::pair<float, float>> & left_polyline,
+    std::vector<std::pair<float, float>> & right_polyline) const;
+
   __host__ __device__ float computeTrackValue(float x, float y) const;
 
   __host__ __device__ float computeHeadingValue(float yaw, int timestep) const;
@@ -106,7 +122,7 @@ public:
 
   __host__ __device__ bool isOffRoad(const float x, const float y) const;
 
-  /** True on OBB–border collision (with road_border_margin) or rear axle outside polygon. */
+  /** True on OBB–border collision (with road_border_margin), else polygon / track fallback. */
   __host__ __device__ bool isEgoOutsideDrivableArea(
     const float x, const float y, const float yaw) const;
 
@@ -161,6 +177,8 @@ public:
   float drivable_poly_x_[kMaxDrivablePolygonVertices] = {};
   float drivable_poly_y_[kMaxDrivablePolygonVertices] = {};
   int num_road_border_segments_ = 0;
+  int num_left_road_border_segments_ = 0;
+  int num_right_road_border_segments_ = 0;
   float road_border_x0_[kMaxRoadBorderSegments] = {};
   float road_border_y0_[kMaxRoadBorderSegments] = {};
   float road_border_x1_[kMaxRoadBorderSegments] = {};

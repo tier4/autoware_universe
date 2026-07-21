@@ -17,12 +17,17 @@
 
 Offline logs (written when enable_debug_trajectory_log:=true):
   <log_dir>/index.csv
+  <log_dir>/cost_params.csv
+  <log_dir>/vehicle_params.csv
   <log_dir>/000000_reference.csv
   <log_dir>/000000_optimized.csv
+  <log_dir>/000000_ego.csv
   ...
 
 Trajectory CSV columns:
   t_from_start_s,x,y,z,yaw,v,a,steer,steer_rate
+Ego CSV columns:
+  x,y,z,yaw,v,accel,steer
 
 Offline retune mode (--enable-retune) overlays a third retuned trajectory and lets you
 re-run mppi_offline_retune with editable cost weights.
@@ -49,6 +54,7 @@ from typing import Sequence
 from typing import Tuple
 
 from autoware_planning_msgs.msg import Trajectory
+from autoware_vehicle_msgs.msg import SteeringReport
 import matplotlib
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
@@ -93,7 +99,7 @@ SLIDER_SPECS: List[Tuple[str, float, float]] = [
     ("longitudinal_jerk_coeff", 0.0, 5000.0),
     ("boundary_threshold", 0.1, 5.0),
     ("road_border_margin", 0.0, 1.0),
-    ("crash_coeff", 1000.0, 500000.0),
+    ("crash_coeff", 0.0, 500000.0),
 ]
 
 
@@ -210,6 +216,8 @@ class MppiDebugFrame:
     reference_steer_rate: List[float] = field(default_factory=list)
     optimized_steer_rate: List[float] = field(default_factory=list)
     retuned_steer_rate: List[float] = field(default_factory=list)
+    measured_steer: Optional[float] = None
+    yaw_rate_based_steer: Optional[float] = None
     stamp_text: str = ""
     metrics_text: str = ""
 
@@ -468,6 +476,23 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
                 linewidth=2.2,
                 label="MPPI retuned",
             )
+    if frame.measured_steer is not None:
+        ax_steer.axhline(
+            frame.measured_steer,
+            color="tab:blue",
+            linestyle=":",
+            linewidth=1.8,
+            label=f"measured δ={frame.measured_steer:.3f}",
+        )
+    if frame.yaw_rate_based_steer is not None:
+        ax_steer.axhline(
+            frame.yaw_rate_based_steer,
+            color="tab:red",
+            linestyle="-.",
+            linewidth=1.8,
+            label=f"yaw-rate δ={frame.yaw_rate_based_steer:.3f}",
+        )
+    if n_compare > 0 or frame.measured_steer is not None or frame.yaw_rate_based_steer is not None:
         ax_steer.legend(loc="best")
 
     ax_steer_rate.clear()
@@ -544,6 +569,54 @@ def load_params_yaml(path: Optional[Path]) -> Dict[str, float]:
     return params
 
 
+def load_key_value_csv(path: Path) -> Dict[str, float]:
+    out: Dict[str, float] = {}
+    if not path.is_file():
+        return out
+    with path.open(newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            key = (row.get("key") or "").strip()
+            if not key:
+                continue
+            try:
+                out[key] = float(row["value"])
+            except (KeyError, ValueError, TypeError):
+                continue
+    return out
+
+
+def load_params_from_log(log_dir: Path, params_yaml: Optional[Path]) -> Dict[str, float]:
+    """Prefer logged cost_params.csv, then yaml, then defaults."""
+    params = dict(DEFAULT_PARAMS)
+    logged = load_key_value_csv(log_dir / "cost_params.csv")
+    for key, value in logged.items():
+        if key in params:
+            params[key] = value
+    if params_yaml is not None:
+        yaml_params = load_params_yaml(params_yaml)
+        # Yaml only fills keys still at default when log is missing; if log exists, keep log.
+        if not logged:
+            params.update({k: v for k, v in yaml_params.items() if k in params})
+        else:
+            # Still allow yaml to supply keys absent from the log file.
+            for key, value in yaml_params.items():
+                if key in params and key not in logged:
+                    params[key] = value
+    return params
+
+
+def load_vehicle_from_log(
+    log_dir: Path, wheel_base: float, ego_width: float, ego_length: float
+) -> Tuple[float, float, float]:
+    logged = load_key_value_csv(log_dir / "vehicle_params.csv")
+    return (
+        logged.get("wheel_base", wheel_base),
+        logged.get("ego_width", ego_width),
+        logged.get("ego_length", ego_length),
+    )
+
+
 def find_retune_binary(explicit: str = "") -> Path:
     if explicit:
         return Path(explicit)
@@ -569,7 +642,15 @@ def find_retune_binary(explicit: str = "") -> Path:
 
 
 class MppiDebugVisualizer(Node):
-    def __init__(self, *, topic_prefix: str, update_hz: float, wheel_base: float) -> None:
+    def __init__(
+        self,
+        *,
+        topic_prefix: str,
+        update_hz: float,
+        wheel_base: float,
+        yaw_rate_steering_topic: str = "",
+        measured_steering_topic: str = "/vehicle/status/steering_status",
+    ) -> None:
         super().__init__("mppi_debug_visualizer")
 
         update_hz = max(update_hz, 1.0)
@@ -578,6 +659,8 @@ class MppiDebugVisualizer(Node):
         self._frame = MppiDebugFrame()
         self._logged_reference = False
         self._logged_optimized = False
+        self._logged_yaw_rate_steer = False
+        self._logged_measured_steer = False
 
         qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -585,13 +668,32 @@ class MppiDebugVisualizer(Node):
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
         )
+        # Vehicle status topics are typically SensorDataQoS (BEST_EFFORT).
+        measured_qos = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+        )
 
         prefix = topic_prefix.rstrip("/")
+        if yaw_rate_steering_topic:
+            yaw_rate_topic = yaw_rate_steering_topic
+        else:
+            # topic_prefix ends with .../debug/mppi → sibling .../debug/yaw_rate_based_steering
+            yaw_rate_topic = f"{prefix.rsplit('/mppi', 1)[0]}/yaw_rate_based_steering"
+
         self.create_subscription(
             Trajectory, f"{prefix}/reference_trajectory", self.on_reference_trajectory, qos
         )
         self.create_subscription(
             Trajectory, f"{prefix}/optimized_trajectory", self.on_optimized_trajectory, qos
+        )
+        self.create_subscription(
+            SteeringReport, yaw_rate_topic, self.on_yaw_rate_based_steering, qos
+        )
+        self.create_subscription(
+            SteeringReport, measured_steering_topic, self.on_measured_steering, measured_qos
         )
 
         self._fig, self._axes = create_figure()
@@ -601,6 +703,8 @@ class MppiDebugVisualizer(Node):
         self.get_logger().info("MPPI debug visualizer started (live).")
         self.get_logger().info(f"Reference: {prefix}/reference_trajectory")
         self.get_logger().info(f"Optimized: {prefix}/optimized_trajectory")
+        self.get_logger().info(f"Yaw-rate steer: {yaw_rate_topic}")
+        self.get_logger().info(f"Measured steer: {measured_steering_topic}")
         self.get_logger().info(
             "Subscriptions use RELIABLE QoS (matches diffusion_planner publishers)."
         )
@@ -687,6 +791,24 @@ class MppiDebugVisualizer(Node):
             self._logged_optimized = True
             self.get_logger().info(f"Receiving optimized_trajectory ({len(msg.points)} points).")
 
+    def on_yaw_rate_based_steering(self, msg: SteeringReport) -> None:
+        with self._lock:
+            self._frame.yaw_rate_based_steer = float(msg.steering_tire_angle)
+        if not self._logged_yaw_rate_steer:
+            self._logged_yaw_rate_steer = True
+            self.get_logger().info(
+                f"Receiving yaw-rate based steering ({msg.steering_tire_angle:.4f} rad)."
+            )
+
+    def on_measured_steering(self, msg: SteeringReport) -> None:
+        with self._lock:
+            self._frame.measured_steer = float(msg.steering_tire_angle)
+        if not self._logged_measured_steer:
+            self._logged_measured_steer = True
+            self.get_logger().info(
+                f"Receiving measured steering ({msg.steering_tire_angle:.4f} rad)."
+            )
+
     def on_timer(self) -> None:
         with self._lock:
             frame = MppiDebugFrame(
@@ -702,6 +824,8 @@ class MppiDebugVisualizer(Node):
                 optimized_steer=list(self._frame.optimized_steer),
                 reference_steer_rate=list(self._frame.reference_steer_rate),
                 optimized_steer_rate=list(self._frame.optimized_steer_rate),
+                measured_steer=self._frame.measured_steer,
+                yaw_rate_based_steer=self._frame.yaw_rate_based_steer,
                 stamp_text=self._frame.stamp_text,
                 metrics_text=self._frame.metrics_text,
             )
@@ -709,6 +833,16 @@ class MppiDebugVisualizer(Node):
                 frame.metrics_text = (
                     f"max|pos|={max_pos_err(frame.reference_xy, frame.optimized_xy):.3f}m  "
                     f"max|v|={max_vel_err(frame.reference_vel, frame.optimized_vel):.3f}m/s"
+                )
+            if frame.measured_steer is not None and frame.yaw_rate_based_steer is not None:
+                delta = frame.yaw_rate_based_steer - frame.measured_steer
+                steer_txt = (
+                    f"δ_meas={frame.measured_steer:.3f}  "
+                    f"δ_yaw={frame.yaw_rate_based_steer:.3f}  "
+                    f"Δ={delta:+.3f} rad"
+                )
+                frame.metrics_text = (
+                    f"{frame.metrics_text}  |  {steer_txt}" if frame.metrics_text else steer_txt
                 )
         draw_frame(self._axes, frame)
         self._fig.canvas.draw_idle()
@@ -739,11 +873,18 @@ class OfflineLogVisualizer:
         self._autoplay = autoplay
         self._enable_retune = enable_retune
         self._params_yaml = params_yaml
-        self._params = load_params_yaml(params_yaml)
-        self._wheel_base = wheel_base
-        self._ego_width = ego_width
-        self._ego_length = ego_length
+        self._params = load_params_from_log(log_dir, params_yaml)
+        self._wheel_base, self._ego_width, self._ego_length = load_vehicle_from_log(
+            log_dir, wheel_base, ego_width, ego_length
+        )
         self._status = "Ready"
+        if enable_retune and not (log_dir / "000000_ego.csv").is_file():
+            # Any frame's ego file; check first available frame.
+            first_tag = f"{self._frame_ids[0]:06d}"
+            if not (log_dir / f"{first_tag}_ego.csv").is_file():
+                self._status = (
+                    "WARNING: no *_ego.csv — retune uses ref[0] IC; re-log after rebuild"
+                )
         self._out_dir = Path(tempfile.mkdtemp(prefix="mppi_retune_")) if enable_retune else None
         self._retune_bin = retune_bin
         self._fig, self._axes = create_figure(with_retune_panel=enable_retune)
@@ -759,6 +900,11 @@ class OfflineLogVisualizer:
         if enable_retune:
             keys += ", r = retune"
         print(f"Offline MPPI log: {log_dir} ({len(self._frame_ids)} frames). Keys: {keys}.")
+        if enable_retune:
+            print(
+                f"Retune vehicle: wheel_base={self._wheel_base}, "
+                f"ego_length={self._ego_length}, ego_width={self._ego_width}"
+            )
 
     def _build_retune_controls(self) -> None:
         slider_h = 0.022
@@ -933,6 +1079,19 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         default=4.76,
         help="Wheel base [m] used to derive steering from path curvature when unset (j6_gen2 ~4.76)",
     )
+    parser.add_argument(
+        "--yaw-rate-steering-topic",
+        default="",
+        help=(
+            "SteeringReport topic for diffusion yaw-rate based steer "
+            "(default: sibling of --topic-prefix: .../debug/yaw_rate_based_steering)"
+        ),
+    )
+    parser.add_argument(
+        "--measured-steering-topic",
+        default="/vehicle/status/steering_status",
+        help="SteeringReport topic for measured tire angle used by MPPI",
+    )
     return parser.parse_args(argv)
 
 
@@ -975,6 +1134,8 @@ def main() -> None:
         topic_prefix=cli.topic_prefix.rstrip("/"),
         update_hz=cli.update_hz,
         wheel_base=cli.wheel_base,
+        yaw_rate_steering_topic=cli.yaw_rate_steering_topic,
+        measured_steering_topic=cli.measured_steering_topic,
     )
 
     try:

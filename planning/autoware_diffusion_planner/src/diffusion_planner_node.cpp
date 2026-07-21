@@ -89,6 +89,10 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
   pub_mppi_optimized_trajectory_ =
     this->create_publisher<Trajectory>("~/debug/mppi/optimized_trajectory", 1);
   pub_mppi_markers_ = this->create_publisher<MarkerArray>("~/debug/mppi/markers", 1);
+  pub_mppi_encoded_road_borders_ =
+    this->create_publisher<Path>("~/debug/mppi/encoded_road_borders", 1);
+  pub_yaw_rate_based_steering_ =
+    this->create_publisher<SteeringReport>("~/debug/yaw_rate_based_steering", 1);
   pub_trajectories_ = this->create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
   pub_objects_ =
     this->create_publisher<PredictedObjects>("~/output/predicted_objects", rclcpp::QoS(1));
@@ -236,6 +240,10 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<bool>("enable_debug_trajectory_log", false);
   mppi_debug_trajectory_log_directory_ = this->declare_parameter<std::string>(
     "debug_trajectory_log_directory", "/tmp/mppi_debug_log");
+  mppi_ignore_obstacles_ = this->declare_parameter<bool>("ignore_obstacles", false);
+  mppi_ignore_drivable_area_ = this->declare_parameter<bool>("ignore_drivable_area", false);
+  mppi_force_cold_start_each_step_ =
+    this->declare_parameter<bool>("force_cold_start_each_step", false);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_cost_params(*this);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
 
@@ -581,6 +589,9 @@ void DiffusionPlanner::on_timer()
   const rclcpp::Time frame_time(frame_context->frame_time);
   InputDataMap input_data_map = core_->create_input_data(*frame_context);
 
+  // Publish before normalize_input_data so the value matches the physical NN feature.
+  publish_yaw_rate_based_steering(input_data_map, frame_time);
+
   publish_debug_markers(input_data_map, frame_context->ego_to_map_transform, frame_time);
 
   publish_first_traffic_light_on_route(*frame_context);
@@ -656,6 +667,8 @@ void DiffusionPlanner::on_timer()
         autoware::mppi_optimizer::get_first_order_dubins_mppi_vehicle_params(*this));
       mppi_optimizer_->setDebugTrajectoryLogging(
         enable_mppi_debug_trajectory_log_, mppi_debug_trajectory_log_directory_);
+      mppi_optimizer_->setAblationOptions(
+        mppi_ignore_obstacles_, mppi_ignore_drivable_area_, mppi_force_cold_start_each_step_);
     }
 
     try {
@@ -769,6 +782,43 @@ void DiffusionPlanner::publish_mppi_debug(
   pub_mppi_optimized_trajectory_->publish(optimized);
   pub_mppi_markers_->publish(
     autoware::mppi_optimizer::createMppiDebugMarkers(debug, frame_id, stamp));
+
+  // Path with only the downsampled border polylines MPPI actually encodes (vs full drivable_area).
+  Path encoded_borders;
+  encoded_borders.header.stamp = stamp;
+  encoded_borders.header.frame_id = frame_id;
+  encoded_borders.left_bound.reserve(debug.encoded_road_border_left.size());
+  for (const auto & [x, y] : debug.encoded_road_border_left) {
+    geometry_msgs::msg::Point p;
+    p.x = x;
+    p.y = y;
+    p.z = 0.0;
+    encoded_borders.left_bound.push_back(p);
+  }
+  encoded_borders.right_bound.reserve(debug.encoded_road_border_right.size());
+  for (const auto & [x, y] : debug.encoded_road_border_right) {
+    geometry_msgs::msg::Point p;
+    p.x = x;
+    p.y = y;
+    p.z = 0.0;
+    encoded_borders.right_bound.push_back(p);
+  }
+  pub_mppi_encoded_road_borders_->publish(encoded_borders);
+}
+
+void DiffusionPlanner::publish_yaw_rate_based_steering(
+  const InputDataMap & input_data_map, const rclcpp::Time & stamp) const
+{
+  constexpr size_t kSteeringIndex = 8;  // ego_current_state: [..., steering, yaw_rate]
+  const auto it = input_data_map.find("ego_current_state");
+  if (it == input_data_map.end() || it->second.size() <= kSteeringIndex) {
+    return;
+  }
+
+  SteeringReport msg;
+  msg.stamp = stamp;
+  msg.steering_tire_angle = it->second[kSteeringIndex];
+  pub_yaw_rate_based_steering_->publish(msg);
 }
 
 void DiffusionPlanner::publish_planning_factor(const Trajectory & trajectory)

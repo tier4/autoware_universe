@@ -65,6 +65,9 @@ struct FirstOrderDubinsMppiDebug
   Trajectory optimized_trajectory;
   std::vector<std::pair<float, float>> optimal_horizon;
   std::vector<FirstOrderDubinsMppiRollout> rollouts;
+  /** Polylines from the encoded road-border segments actually used by the crash cost. */
+  std::vector<std::pair<float, float>> encoded_road_border_left;
+  std::vector<std::pair<float, float>> encoded_road_border_right;
   float baseline_cost{0.0F};
 };
 
@@ -109,6 +112,12 @@ public:
   void setDebugTrajectoryLogging(bool enable, const std::string & directory = "");
 
   /**
+   * @brief Ablation options to mirror mppi_offline_retune conditions in online sim.
+   */
+  void setAblationOptions(
+    bool ignore_obstacles, bool ignore_drivable_area, bool force_cold_start_each_step);
+
+  /**
    * @brief Run one MPPI control step and propagate the vehicle state forward.
    * @param state Current ego state (updated in place).
    * @param arc_length Current arc length along the reference path (updated in place).
@@ -130,8 +139,8 @@ public:
    * @param steering_status Optional ego tire steering angle [rad] from vehicle status.
    * @param tracked_objects Perception tracked objects used as dynamic obstacles
    * (constant-velocity).
-   * @param drivable_area Optional route Path whose left_bound/right_bound form a closed
-   *        drivable polygon for the crash cost. Cleared when absent or empty.
+   * @param drivable_area Optional route Path whose left_bound/right_bound are used as open
+   *        road-border polylines for the OBB crash cost. Cleared when absent or empty.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
     const Trajectory & input, const Odometry & odometry,

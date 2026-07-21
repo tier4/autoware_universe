@@ -47,6 +47,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -56,8 +57,11 @@ namespace
 using autoware::mppi_optimizer::FirstOrderDubinsMppiCostParams;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiInterface;
 using autoware::mppi_optimizer::FirstOrderDubinsMppiVehicleParams;
+using autoware::mppi_optimizer::MppiDebugEgoState;
 using autoware::mppi_optimizer::formatMppiDebugFrameId;
 using autoware::mppi_optimizer::listMppiDebugFrameIds;
+using autoware::mppi_optimizer::loadMppiDebugEgoCsv;
+using autoware::mppi_optimizer::loadMppiDebugKeyValueCsv;
 using autoware::mppi_optimizer::loadMppiDebugTrajectoryCsv;
 using autoware::mppi_optimizer::writeMppiDebugTrajectoryCsv;
 using autoware_planning_msgs::msg::Trajectory;
@@ -79,6 +83,10 @@ void printUsage(const char * argv0)
        "  --max-steer-angle RAD  Max steer [rad] (default 0.7)\n"
        "  --steer-tau S          Steer time constant [s] (default 0.27)\n"
        "  --copy-reference       Also copy reference CSVs into out-dir\n"
+       "\n"
+       "Loads cost_params.csv / vehicle_params.csv / *_ego.csv from --log-dir when present.\n"
+       "CLI --set and vehicle flags override those. Without *_ego.csv, ego IC falls back to\n"
+       "reference[0] (will not match online MPPI).\n"
        "  --help\n";
 }
 
@@ -182,6 +190,103 @@ void loadParamsYaml(const std::string & path, FirstOrderDubinsMppiCostParams & p
       // Ignore unknown / non-float keys in the yaml.
     }
   }
+}
+
+void applyVehicleParam(
+  FirstOrderDubinsMppiVehicleParams & params, const std::string & key, const float value)
+{
+  if (key == "ego_length") {
+    params.ego_length = value;
+  } else if (key == "ego_width") {
+    params.ego_width = value;
+  } else if (key == "ego_axle_to_box_center") {
+    params.ego_axle_to_box_center = value;
+  } else if (key == "wheel_base") {
+    params.wheel_base = value;
+  } else if (key == "max_steer_angle") {
+    params.max_steer_angle = value;
+  } else if (key == "acc_time_constant") {
+    params.acc_time_constant = value;
+  } else if (key == "steer_time_constant") {
+    params.steer_time_constant = value;
+  } else if (key == "steer_rate_lim") {
+    params.steer_rate_lim = value;
+  } else if (key == "vel_rate_lim") {
+    params.vel_rate_lim = value;
+  } else if (key == "acc_time_delay") {
+    params.acc_time_delay = value;
+  } else if (key == "steer_time_delay") {
+    params.steer_time_delay = value;
+  } else {
+    throw std::runtime_error("Unknown vehicle param: " + key);
+  }
+}
+
+void loadCostParamsFromLog(const std::string & log_dir, FirstOrderDubinsMppiCostParams & params)
+{
+  std::unordered_map<std::string, float> kv;
+  if (!loadMppiDebugKeyValueCsv(log_dir + "/cost_params.csv", kv)) {
+    return;
+  }
+  for (const auto & [key, value] : kv) {
+    try {
+      applyCostParam(params, key, value);
+    } catch (const std::exception &) {
+      // Ignore unknown keys.
+    }
+  }
+  std::cerr << "Loaded cost params from " << log_dir << "/cost_params.csv\n";
+}
+
+void loadVehicleParamsFromLog(
+  const std::string & log_dir, FirstOrderDubinsMppiVehicleParams & params)
+{
+  std::unordered_map<std::string, float> kv;
+  if (!loadMppiDebugKeyValueCsv(log_dir + "/vehicle_params.csv", kv)) {
+    return;
+  }
+  for (const auto & [key, value] : kv) {
+    try {
+      applyVehicleParam(params, key, value);
+    } catch (const std::exception &) {
+      // Ignore unknown keys.
+    }
+  }
+  std::cerr << "Loaded vehicle params from " << log_dir << "/vehicle_params.csv\n";
+}
+
+Odometry odometryFromEgo(const MppiDebugEgoState & ego, const Trajectory & reference)
+{
+  Odometry odom;
+  odom.header = reference.header;
+  if (odom.header.frame_id.empty()) {
+    odom.header.frame_id = "map";
+  }
+  odom.child_frame_id = "base_link";
+  odom.pose.pose.position.x = ego.x;
+  odom.pose.pose.position.y = ego.y;
+  odom.pose.pose.position.z = ego.z;
+  odom.pose.pose.orientation = autoware::mppi_optimizer::quaternionFromYaw(ego.yaw);
+  odom.twist.twist.linear.x = ego.v;
+  return odom;
+}
+
+geometry_msgs::msg::AccelWithCovarianceStamped accelFromEgo(
+  const MppiDebugEgoState & ego, const Trajectory & reference)
+{
+  geometry_msgs::msg::AccelWithCovarianceStamped accel;
+  accel.header = reference.header;
+  accel.accel.accel.linear.x = ego.accel;
+  return accel;
+}
+
+autoware_vehicle_msgs::msg::SteeringReport steeringFromEgo(
+  const MppiDebugEgoState & ego, const Trajectory & reference)
+{
+  autoware_vehicle_msgs::msg::SteeringReport steering;
+  steering.stamp = reference.header.stamp;
+  steering.steering_tire_angle = static_cast<float>(ego.steer);
+  return steering;
 }
 
 Odometry odometryFromReference(const Trajectory & reference)
@@ -317,17 +422,33 @@ int run(int argc, char ** argv)
     printUsage(argv[0]);
     return 1;
   }
+
+  // Prefer params captured at log time; then yaml; then CLI --set / vehicle flags.
+  loadCostParamsFromLog(log_dir, cost_params);
+  loadVehicleParamsFromLog(log_dir, vehicle_params);
+
   if (!params_yaml.empty()) {
     loadParamsYaml(params_yaml, cost_params);
-    // Re-apply --set overrides after yaml so CLI wins; re-parse argv for --set only.
-    for (int i = 1; i + 1 < argc; ++i) {
-      if (std::string(argv[i]) == "--set") {
-        std::string key;
-        std::string value;
-        if (parseKeyValue(argv[i + 1], key, value)) {
-          applyCostParam(cost_params, key, std::stof(value));
-        }
+  }
+  // Re-apply --set / vehicle CLI so they win over log + yaml.
+  for (int i = 1; i + 1 < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--set") {
+      std::string key;
+      std::string value;
+      if (parseKeyValue(argv[i + 1], key, value)) {
+        applyCostParam(cost_params, key, std::stof(value));
       }
+    } else if (arg == "--wheel-base") {
+      vehicle_params.wheel_base = std::stof(argv[i + 1]);
+    } else if (arg == "--ego-length") {
+      vehicle_params.ego_length = std::stof(argv[i + 1]);
+    } else if (arg == "--ego-width") {
+      vehicle_params.ego_width = std::stof(argv[i + 1]);
+    } else if (arg == "--max-steer-angle") {
+      vehicle_params.max_steer_angle = std::stof(argv[i + 1]);
+    } else if (arg == "--steer-tau") {
+      vehicle_params.steer_time_constant = std::stof(argv[i + 1]);
     }
   }
 
@@ -343,12 +464,6 @@ int run(int argc, char ** argv)
     std::cerr << "No frames found in " << log_dir << "\n";
     return 1;
   }
-
-  FirstOrderDubinsMppiInterface mppi;
-  mppi.setCostParams(cost_params);
-  mppi.setVehicleParams(vehicle_params);
-  // Disable nested logging; we write retuned files ourselves.
-  mppi.setDebugTrajectoryLogging(false);
 
   std::ofstream index_out(out_dir + "/index.csv");
   index_out << "frame_id,stamp_sec,stamp_nsec,baseline_cost,n_reference,n_optimized\n";
@@ -367,12 +482,38 @@ int run(int argc, char ** argv)
     }
     reference.header.frame_id = "map";
 
-    const Odometry odom = odometryFromReference(reference);
-    const auto accel = accelFromReference(reference);
-    const auto steering = steeringFromReference(reference);
+    const std::string ego_path = log_dir + "/" + tag + "_ego.csv";
+    MppiDebugEgoState ego;
+    Odometry odom;
+    geometry_msgs::msg::AccelWithCovarianceStamped accel;
+    autoware_vehicle_msgs::msg::SteeringReport steering;
+    if (loadMppiDebugEgoCsv(ego_path, ego)) {
+      odom = odometryFromEgo(ego, reference);
+      accel = accelFromEgo(ego, reference);
+      steering = steeringFromEgo(ego, reference);
+    } else {
+      static bool warned_missing_ego = false;
+      if (!warned_missing_ego) {
+        std::cerr
+          << "WARNING: missing " << tag
+          << "_ego.csv (and possibly others). Falling back to reference[0] as ego IC.\n"
+             "Re-log with a build that writes *_ego.csv / cost_params.csv / vehicle_params.csv "
+             "for faithful replay. Obstacles and road borders are still not logged.\n";
+        warned_missing_ego = true;
+      }
+      odom = odometryFromReference(reference);
+      accel = accelFromReference(reference);
+      steering = steeringFromReference(reference);
+    }
     const autoware_perception_msgs::msg::TrackedObjects empty_objects;
 
-    const auto result = mppi.optimizeTrajectory(
+    // Fresh controller each frame so warm-start from other frames does not leak.
+    FirstOrderDubinsMppiInterface frame_mppi;
+    frame_mppi.setCostParams(cost_params);
+    frame_mppi.setVehicleParams(vehicle_params);
+    frame_mppi.setDebugTrajectoryLogging(false);
+
+    const auto result = frame_mppi.optimizeTrajectory(
       reference, odom, accel, steering, empty_objects, std::nullopt);
 
     const std::string opt_path = out_dir + "/" + tag + "_optimized.csv";
