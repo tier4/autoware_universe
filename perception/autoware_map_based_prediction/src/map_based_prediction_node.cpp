@@ -147,6 +147,7 @@ MapBasedPredictionNode::MapBasedPredictionNode(const rclcpp::NodeOptions & node_
     vru_params.history.no_crossing_intention_duration =
       declare_parameter<double>("no_crossing_intention_duration");
     state_.predictor_vru->setParams(vru_params);
+    state_.predictor_vru->set_max_deceleration(max_decel_params);
   }
 
   // --- Path generator for unknown-class objects ---

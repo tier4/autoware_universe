@@ -151,6 +151,8 @@ void PredictorVru::setLaneletMap(std::shared_ptr<lanelet::LaneletMap> lanelet_ma
 
   fence_module_.buildFromMap(lanelet_map_ptr_);
   vegetation_module_.build_from_map(lanelet_map_ptr_);
+  guard_rail_module_.build_from_map(lanelet_map_ptr_);
+  road_border_module_.build_from_map(lanelet_map_ptr_);
 }
 
 void PredictorVru::loadCurrentCrosswalkUsers(const TrackedObjects & objects)
@@ -251,7 +253,12 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
     const PredictedPath cut_path = fence_module_.cutPathBeforeFences(predicted_path);
     debug::append_path_cut_event_markers(
       debug_markers, predicted_path, cut_path, predicted_object, PathCutSource::Fence, stamp);
-    predicted_object.kinematics.predicted_paths.push_back(cut_path);
+
+    const PredictedPath border_cut_path =
+      road_border_module_.cut_path_at_road_border(cut_path, mutable_object, max_decel_params_);
+    debug::append_path_cut_event_markers(
+      debug_markers, cut_path, border_cut_path, predicted_object, PathCutSource::RoadBorder, stamp);
+    predicted_object.kinematics.predicted_paths.push_back(border_cut_path);
   }
 
   boost::optional<lanelet::ConstLanelet> crossing_crosswalk{boost::none};
@@ -403,6 +410,15 @@ PredictedObject PredictorVru::getPredictedObjectAsCrosswalkUser(
     predicted_object, PathCutSource::Vegetation, stamp);
 
   predicted_object.kinematics.predicted_paths = paths_cut_with_vegetation;
+
+  const std::vector<PredictedPath> paths_cut_with_guard_rail =
+    guard_rail_module_.cut_paths_crossing_guard_rail(predicted_object);
+
+  debug::append_path_cut_event_markers(
+    debug_markers, predicted_object.kinematics.predicted_paths, paths_cut_with_guard_rail,
+    predicted_object, PathCutSource::GuardRail, stamp);
+
+  predicted_object.kinematics.predicted_paths = paths_cut_with_guard_rail;
   const auto n_path = predicted_object.kinematics.predicted_paths.size();
   for (auto & predicted_path : predicted_object.kinematics.predicted_paths) {
     predicted_path.confidence = 1.0 / n_path;
