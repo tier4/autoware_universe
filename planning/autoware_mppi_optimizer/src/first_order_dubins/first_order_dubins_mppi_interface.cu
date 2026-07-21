@@ -128,7 +128,8 @@ mppi::path::Path2D trajectoryToPath2D(const Trajectory & trajectory)
   return mppi::path::Path2D::catmullRom(control_xy, false, 8);
 }
 
-/** Closed polygon: left_bound forward, then right_bound reversed (same winding as corridor polys). */
+/** Closed polygon: left_bound forward, then right_bound reversed (same winding as corridor polys).
+ */
 mppi::path::Polygon2D boundsToDrivablePolygon(
   const std::vector<geometry_msgs::msg::Point> & left_bound,
   const std::vector<geometry_msgs::msg::Point> & right_bound)
@@ -569,8 +570,7 @@ struct FirstOrderDubinsMppiInterface::Impl
     const Trajectory & reference, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-    const TrackedObjects & tracked_objects_in,
-    const std::optional<RoadBorderBounds> & road_borders)
+    const TrackedObjects & tracked_objects_in, const std::optional<RoadBorderBounds> & road_borders)
   {
     if (!initialized) {
       setup();
@@ -580,14 +580,13 @@ struct FirstOrderDubinsMppiInterface::Impl
     tracked_objects = tracked_objects_in;
     path = trajectoryToPath2D(reference);
     obstacles.clear();
-    if (road_borders && road_borders->left_bound.size() >= 2U &&
-        road_borders->right_bound.size() >= 2U) {
+    if (
+      road_borders && road_borders->left_bound.size() >= 2U &&
+      road_borders->right_bound.size() >= 2U) {
       drivable_polygon =
         boundsToDrivablePolygon(road_borders->left_bound, road_borders->right_bound);
-      boundsToFloatPolylines(
-        road_borders->left_bound, road_border_left_x, road_border_left_y);
-      boundsToFloatPolylines(
-        road_borders->right_bound, road_border_right_x, road_border_right_y);
+      boundsToFloatPolylines(road_borders->left_bound, road_border_left_x, road_border_left_y);
+      boundsToFloatPolylines(road_borders->right_bound, road_border_right_x, road_border_right_y);
     } else {
       drivable_polygon = mppi::path::Polygon2D{};
       road_border_left_x.clear();
@@ -645,7 +644,8 @@ struct FirstOrderDubinsMppiInterface::Impl
       mppi::cost::fillFirstOrderDubinsBicycleCostDrivableAreaFromBounds<kRefHorizon>(
         cost, road_border_left_x, road_border_left_y, road_border_right_x, road_border_right_y);
     } else {
-      mppi::cost::fillFirstOrderDubinsBicycleCostDrivablePolygon<kRefHorizon>(cost, drivable_polygon);
+      mppi::cost::fillFirstOrderDubinsBicycleCostDrivablePolygon<kRefHorizon>(
+        cost, drivable_polygon);
     }
 
     int obstacle_count = 0;

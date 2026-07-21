@@ -109,8 +109,9 @@ inline void fillFirstOrderDubinsBicycleCostDrivableAreaFromBounds(
   const std::vector<float> & left_y, const std::vector<float> & right_x,
   const std::vector<float> & right_y)
 {
-  if (left_x.size() < 2U || left_y.size() != left_x.size() || right_x.size() < 2U ||
-      right_y.size() != right_x.size()) {
+  if (
+    left_x.size() < 2U || left_y.size() != left_x.size() || right_x.size() < 2U ||
+    right_y.size() != right_x.size()) {
     cost.clearDrivableArea();
     return;
   }

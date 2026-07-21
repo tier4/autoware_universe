@@ -43,10 +43,8 @@ __host__ __device__ __forceinline__ void firstOrderDubinsBicycleDeriv(
   const float steer_z1 = state[static_cast<int>(S::STEER_CMD_Z1)];
   const float steer_z2 = state[static_cast<int>(S::STEER_CMD_Z2)];
 
-  const float accel_cmd_eff =
-    delayedCommand(accel_cmd, accel_z1, accel_z2, p.accel_delay_steps);
-  const float steer_cmd_eff =
-    delayedCommand(steer_cmd, steer_z1, steer_z2, p.steer_delay_steps);
+  const float accel_cmd_eff = delayedCommand(accel_cmd, accel_z1, accel_z2, p.accel_delay_steps);
+  const float steer_cmd_eff = delayedCommand(steer_cmd, steer_z1, steer_z2, p.steer_delay_steps);
 
   const float accel_tau = fmaxf(p.accel_time_constant, 1.0E-4F);
   const float steer_tau = fmaxf(p.steer_time_constant, 1.0E-4F);

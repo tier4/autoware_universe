@@ -29,8 +29,8 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
     POS_Y,
     STEER_ANGLE,
     ACCELERATION,
-    ACC_CMD_Z1,   // command delayed by ~1 dt
-    ACC_CMD_Z2,   // command delayed by ~2 dt
+    ACC_CMD_Z1,  // command delayed by ~1 dt
+    ACC_CMD_Z2,  // command delayed by ~2 dt
     STEER_CMD_Z1,
     STEER_CMD_Z2,
     NUM_STATES

@@ -34,7 +34,8 @@ float get_float_param(rclcpp::Node & node, const std::string & name, const float
   return static_cast<float>(node.get_parameter(name).as_double());
 }
 
-void override_from_diffusion_planner_sysid(rclcpp::Node & node, FirstOrderDubinsMppiVehicleParams & params)
+void override_from_diffusion_planner_sysid(
+  rclcpp::Node & node, FirstOrderDubinsMppiVehicleParams & params)
 {
   const std::string version_key = std::string(k_diffusion_sysid_prefix) + ".version";
   if (!node.has_parameter(version_key)) {
@@ -45,7 +46,8 @@ void override_from_diffusion_planner_sysid(rclcpp::Node & node, FirstOrderDubins
   const std::string ns =
     std::string(k_diffusion_sysid_prefix) + ".v" + std::to_string(version) + ".";
 
-  params.acc_time_constant = get_float_param(node, ns + "acc_time_constant", params.acc_time_constant);
+  params.acc_time_constant =
+    get_float_param(node, ns + "acc_time_constant", params.acc_time_constant);
   params.steer_time_constant =
     get_float_param(node, ns + "steer_time_constant", params.steer_time_constant);
   params.acc_time_delay = get_float_param(node, ns + "acc_time_delay", params.acc_time_delay);

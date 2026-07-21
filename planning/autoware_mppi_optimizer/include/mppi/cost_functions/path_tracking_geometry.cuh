@@ -225,9 +225,8 @@ __host__ __device__ inline bool segmentIntersectsAxisAlignedBox(
  * half_length / half_width should already include any desired margin.
  */
 __host__ __device__ inline bool orientedBoxIntersectsSegment(
-  const float cx, const float cy, const float cos_yaw, const float sin_yaw,
-  const float half_length, const float half_width, const float sx0, const float sy0,
-  const float sx1, const float sy1)
+  const float cx, const float cy, const float cos_yaw, const float sin_yaw, const float half_length,
+  const float half_width, const float sx0, const float sy0, const float sx1, const float sy1)
 {
   const float fx = cos_yaw;
   const float fy = sin_yaw;

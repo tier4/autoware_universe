@@ -109,8 +109,6 @@ def finite_difference_acceleration(velocities: Sequence[float], dt: float) -> Li
     return accel
 
 
-
-
 def trajectory_steer_rate(points) -> List[float]:
     """Read cost-consistent steer rate stored in heading_rate_rps by MPPI debug fill."""
     return [float(p.heading_rate_rps) for p in points]
@@ -123,9 +121,7 @@ def to_degrees(values: Sequence[float]) -> List[float]:
 def estimate_dt(points) -> float:
     if len(points) < 2:
         return 0.1
-    durations = [
-        p.time_from_start.sec + p.time_from_start.nanosec * 1e-9 for p in points
-    ]
+    durations = [p.time_from_start.sec + p.time_from_start.nanosec * 1e-9 for p in points]
     if durations[-1] > durations[0]:
         return max((durations[-1] - durations[0]) / max(len(points) - 1, 1), 1e-3)
     return 0.1
@@ -175,7 +171,9 @@ class MppiDebugVisualizer(Node):
         )
 
         self._fig = plt.figure(figsize=(14, 12))
-        gs = gridspec.GridSpec(5, 2, figure=self._fig, width_ratios=[1.2, 1.0], wspace=0.28, hspace=0.42)
+        gs = gridspec.GridSpec(
+            5, 2, figure=self._fig, width_ratios=[1.2, 1.0], wspace=0.28, hspace=0.42
+        )
         self._ax_xy = self._fig.add_subplot(gs[:, 0])
         self._ax_heading = self._fig.add_subplot(gs[0, 1])
         self._ax_vel = self._fig.add_subplot(gs[1, 1])
@@ -190,7 +188,9 @@ class MppiDebugVisualizer(Node):
         self.get_logger().info("MPPI debug visualizer started.")
         self.get_logger().info(f"Reference: {prefix}/reference_trajectory")
         self.get_logger().info(f"Optimized: {prefix}/optimized_trajectory")
-        self.get_logger().info("Subscriptions use RELIABLE QoS (matches diffusion_planner publishers).")
+        self.get_logger().info(
+            "Subscriptions use RELIABLE QoS (matches diffusion_planner publishers)."
+        )
         self.get_logger().info("Ensure use_mppi_optimizer:=true in diffusion_planner params.")
 
         self.create_timer(1.0 / update_hz, self.on_timer)
@@ -331,9 +331,8 @@ class MppiDebugVisualizer(Node):
                 fontsize=9,
                 bbox={"facecolor": "white", "alpha": 0.8},
             )
-        if (
-            (frame.reference_xy and len(frame.reference_xy[0]) > 0)
-            or (frame.optimized_xy and len(frame.optimized_xy[0]) > 0)
+        if (frame.reference_xy and len(frame.reference_xy[0]) > 0) or (
+            frame.optimized_xy and len(frame.optimized_xy[0]) > 0
         ):
             self._ax_xy.relim()
             self._ax_xy.autoscale_view()
@@ -367,9 +366,7 @@ class MppiDebugVisualizer(Node):
             self._ax_vel.plot(
                 idx, frame.reference_vel[:n_compare], "c--", linewidth=2, label="diffusion"
             )
-            self._ax_vel.plot(
-                idx, frame.optimized_vel[:n_compare], "r-", linewidth=2, label="MPPI"
-            )
+            self._ax_vel.plot(idx, frame.optimized_vel[:n_compare], "r-", linewidth=2, label="MPPI")
             self._ax_vel.legend(loc="best")
 
         # Acceleration
