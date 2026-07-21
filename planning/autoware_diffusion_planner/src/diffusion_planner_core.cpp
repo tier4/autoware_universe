@@ -145,18 +145,26 @@ void DiffusionPlannerCore::load_model()
       params_.single_step_model_path, params_.plugins_path, params_.batch_size,
       params_.trt_precision, params_.use_cuda_graph);
   } else if (params_.backend == "tensorrt" && params_.model_type == "multi_step") {
+    const std::string & turn_indicator_model_path =
+      params_.use_independent_turn_indicator ? params_.independent_turn_indicator_model_path
+                                             : params_.turn_indicator_model_path;
     diffusion_planner_inference_ = std::make_unique<MultiStepInference>(
-      params_.encoder_model_path, params_.decoder_model_path, params_.turn_indicator_model_path,
-      params_.plugins_path, params_.batch_size, params_.trt_precision, params_.use_cuda_graph,
-      params_.dpm_solver_steps, std::move(guidances));
+      params_.encoder_model_path, params_.decoder_model_path, turn_indicator_model_path,
+      params_.use_independent_turn_indicator, params_.plugins_path, params_.batch_size,
+      params_.trt_precision, params_.use_cuda_graph, params_.dpm_solver_steps,
+      std::move(guidances));
 #ifdef AUTOWARE_DIFFUSION_PLANNER_USE_ONNXRUNTIME
   } else if (is_onnxruntime_backend(params_.backend) && params_.model_type == "single_step") {
     diffusion_planner_inference_ = std::make_unique<OnnxruntimeSingleStepInference>(
       params_.single_step_model_path, onnxruntime_execution_provider_from_backend(params_.backend),
       params_.plugins_path, params_.batch_size);
   } else if (is_onnxruntime_backend(params_.backend) && params_.model_type == "multi_step") {
+    const std::string & turn_indicator_model_path =
+      params_.use_independent_turn_indicator ? params_.independent_turn_indicator_model_path
+                                             : params_.turn_indicator_model_path;
     diffusion_planner_inference_ = std::make_unique<OnnxruntimeMultiStepInference>(
-      params_.encoder_model_path, params_.decoder_model_path, params_.turn_indicator_model_path,
+      params_.encoder_model_path, params_.decoder_model_path, turn_indicator_model_path,
+      params_.use_independent_turn_indicator,
       onnxruntime_execution_provider_from_backend(params_.backend), params_.plugins_path,
       params_.batch_size, params_.dpm_solver_steps, std::move(guidances));
 #endif

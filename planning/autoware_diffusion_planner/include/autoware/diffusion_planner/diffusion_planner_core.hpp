@@ -115,6 +115,8 @@ struct DiffusionPlannerParams
   std::string encoder_model_path;
   std::string decoder_model_path;
   std::string turn_indicator_model_path;
+  std::string independent_turn_indicator_model_path;
+  bool use_independent_turn_indicator;
   std::string args_path;
   std::string plugins_path;
   std::string backend;

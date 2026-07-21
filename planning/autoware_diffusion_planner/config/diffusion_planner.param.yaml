@@ -13,6 +13,8 @@
         encoder_onnx_model_path: $(var data_path)/diffusion_planner/v5.0/diffusion_planner_encoder.onnx
         decoder_onnx_model_path: $(var data_path)/diffusion_planner/v5.0/diffusion_planner_decoder.onnx
         turn_indicator_onnx_model_path: $(var data_path)/diffusion_planner/v5.0/diffusion_planner_turn_indicator.onnx
+        independent_turn_indicator_onnx_model_path: $(var data_path)/diffusion_planner/v5.0/diffusion_planner_independent_turn_indicator.onnx
+        use_independent_turn_indicator: false
         dpm_solver_steps: 10
     guidance:
       start_guidance:

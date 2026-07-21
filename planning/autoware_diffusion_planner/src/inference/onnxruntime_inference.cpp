@@ -370,11 +370,12 @@ InferenceResult OnnxruntimeSingleStepInference::infer(
 
 OnnxruntimeMultiStepInference::OnnxruntimeMultiStepInference(
   const std::string & encoder_model_path, const std::string & decoder_model_path,
-  const std::string & turn_indicator_model_path, const std::string & execution_provider,
-  const std::string & plugins_path, const int batch_size, const int dpm_solver_steps,
-  std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances)
+  const std::string & turn_indicator_model_path, const bool use_independent_turn_indicator,
+  const std::string & execution_provider, const std::string & plugins_path, const int batch_size,
+  const int dpm_solver_steps, std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances)
 : batch_size_(batch_size),
   dpm_solver_steps_(dpm_solver_steps),
+  use_independent_turn_indicator_(use_independent_turn_indicator),
   guidances_(std::move(guidances)),
   encoder_model_(encoder_model_path, parse_execution_provider(execution_provider), plugins_path),
   decoder_model_(decoder_model_path, parse_execution_provider(execution_provider), plugins_path),
@@ -471,8 +472,25 @@ InferenceResult OnnxruntimeMultiStepInference::infer(
 
     auto solver_result = run_dpm_solver(input_data_map);
 
-    const auto turn_indicator_outputs = turn_indicator_model_.run(
-      {{"encoding", encoding_}, {"final_x0", solver_result.final_x}}, {}, {"turn_indicator_logit"});
+    std::vector<float> turn_indicator_logit;
+    if (use_independent_turn_indicator_) {
+      const std::unordered_map<std::string, std::vector<float>> float_inputs = {
+        {"final_x0", solver_result.final_x},
+        {"lanes", input_data_map.at("lanes")},
+        {"lanes_speed_limit", input_data_map.at("lanes_speed_limit")},
+        {"route_lanes", input_data_map.at("route_lanes")},
+        {"route_lanes_speed_limit", input_data_map.at("route_lanes_speed_limit")},
+        {"turn_indicators", input_data_map.at("turn_indicators")}};
+      const auto turn_indicator_outputs = turn_indicator_model_.run(
+        float_inputs, speed_limit_bool_inputs(input_data_map),
+        {"independent_turn_indicator_logit"});
+      turn_indicator_logit = turn_indicator_outputs.at("independent_turn_indicator_logit");
+    } else {
+      const auto turn_indicator_outputs = turn_indicator_model_.run(
+        {{"encoding", encoding_}, {"final_x0", solver_result.final_x}}, {},
+        {"turn_indicator_logit"});
+      turn_indicator_logit = turn_indicator_outputs.at("turn_indicator_logit");
+    }
 
     std::vector<float> denoising_predictions;
     for (const auto & step : solver_result.denoising_steps) {
@@ -483,8 +501,8 @@ InferenceResult OnnxruntimeMultiStepInference::infer(
     std::chrono::duration<double, std::milli> elapsed = end - start;
 
     InferenceOutput output;
-    output.outputs = std::make_pair(
-      std::move(solver_result.final_x), turn_indicator_outputs.at("turn_indicator_logit"));
+    output.outputs =
+      std::make_pair(std::move(solver_result.final_x), std::move(turn_indicator_logit));
     output.denoising_predictions = std::move(denoising_predictions);
     output.denoising_timesteps = std::move(solver_result.denoising_timesteps);
     output.inference_time_ms = elapsed.count();

@@ -35,11 +35,13 @@ using autoware::tensorrt_common::ProfileDims;
 
 MultiStepInference::MultiStepInference(
   const std::string & encoder_model_path, const std::string & decoder_model_path,
-  const std::string & turn_indicator_model_path, const std::string & plugins_path, int batch_size,
-  const std::string & precision, bool use_cuda_graph, int dpm_solver_steps,
+  const std::string & turn_indicator_model_path, bool use_independent_turn_indicator,
+  const std::string & plugins_path, int batch_size, const std::string & precision,
+  bool use_cuda_graph, int dpm_solver_steps,
   std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances)
 : batch_size_(batch_size),
   dpm_solver_steps_(dpm_solver_steps),
+  use_independent_turn_indicator_(use_independent_turn_indicator),
   plugins_path_(plugins_path),
   precision_(precision),
   use_cuda_graph_(use_cuda_graph),
@@ -164,10 +166,23 @@ void MultiStepInference::load_engines(
     turn_indicator_profile_dims.emplace_back(make_profile_dims(name, dims, batch_size_));
     turn_indicator_network_io.emplace_back(name, dims);
   };
-  add_turn_indicator_tensor("encoding", encoding_shape);
-  add_turn_indicator_tensor("final_x0", model_output_shape);
-  turn_indicator_network_io.emplace_back(
-    "turn_indicator_logit", to_dynamic_dims(TURN_INDICATOR_LOGIT_SHAPE, batch_size_));
+  if (use_independent_turn_indicator_) {
+    add_turn_indicator_tensor("final_x0", model_output_shape);
+    add_turn_indicator_tensor("lanes", LANES_SHAPE);
+    add_turn_indicator_tensor("lanes_speed_limit", LANES_SPEED_LIMIT_SHAPE);
+    add_turn_indicator_tensor("lanes_has_speed_limit", LANES_HAS_SPEED_LIMIT_SHAPE);
+    add_turn_indicator_tensor("route_lanes", ROUTE_LANES_SHAPE);
+    add_turn_indicator_tensor("route_lanes_speed_limit", ROUTE_LANES_SPEED_LIMIT_SHAPE);
+    add_turn_indicator_tensor("route_lanes_has_speed_limit", ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE);
+    add_turn_indicator_tensor("turn_indicators", TURN_INDICATORS_SHAPE);
+    turn_indicator_network_io.emplace_back(
+      "independent_turn_indicator_logit", to_dynamic_dims(TURN_INDICATOR_LOGIT_SHAPE, batch_size_));
+  } else {
+    add_turn_indicator_tensor("encoding", encoding_shape);
+    add_turn_indicator_tensor("final_x0", model_output_shape);
+    turn_indicator_network_io.emplace_back(
+      "turn_indicator_logit", to_dynamic_dims(TURN_INDICATOR_LOGIT_SHAPE, batch_size_));
+  }
 
   turn_indicator_trt_ptr_ = setup_engine(
     turn_indicator_model_path, plugins_path_, batch_size_, precision_, turn_indicator_network_io,
@@ -250,13 +265,44 @@ void MultiStepInference::bind_turn_indicator_buffers()
   const std::vector<int64_t> final_x0_shape = {1, MAX_NUM_AGENTS, OUTPUT_T + 1, POSE_DIM};
 
   turn_indicator_trt_ptr_->setInputShape(
-    "encoding", to_dims_with_batch(encoding_shape, batch_size_));
-  turn_indicator_trt_ptr_->setInputShape(
     "final_x0", to_dims_with_batch(final_x0_shape, batch_size_));
-
-  turn_indicator_trt_ptr_->setTensorAddress("encoding", encoding_d_.get());
   turn_indicator_trt_ptr_->setTensorAddress("final_x0", model_output_d_.get());
-  turn_indicator_trt_ptr_->setTensorAddress("turn_indicator_logit", turn_indicator_logit_d_.get());
+
+  if (use_independent_turn_indicator_) {
+    turn_indicator_trt_ptr_->setInputShape("lanes", to_dims_with_batch(LANES_SHAPE, batch_size_));
+    turn_indicator_trt_ptr_->setInputShape(
+      "lanes_speed_limit", to_dims_with_batch(LANES_SPEED_LIMIT_SHAPE, batch_size_));
+    turn_indicator_trt_ptr_->setInputShape(
+      "lanes_has_speed_limit", to_dims_with_batch(LANES_HAS_SPEED_LIMIT_SHAPE, batch_size_));
+    turn_indicator_trt_ptr_->setInputShape(
+      "route_lanes", to_dims_with_batch(ROUTE_LANES_SHAPE, batch_size_));
+    turn_indicator_trt_ptr_->setInputShape(
+      "route_lanes_speed_limit", to_dims_with_batch(ROUTE_LANES_SPEED_LIMIT_SHAPE, batch_size_));
+    turn_indicator_trt_ptr_->setInputShape(
+      "route_lanes_has_speed_limit",
+      to_dims_with_batch(ROUTE_LANES_HAS_SPEED_LIMIT_SHAPE, batch_size_));
+    turn_indicator_trt_ptr_->setInputShape(
+      "turn_indicators", to_dims_with_batch(TURN_INDICATORS_SHAPE, batch_size_));
+
+    turn_indicator_trt_ptr_->setTensorAddress("lanes", lanes_d_.get());
+    turn_indicator_trt_ptr_->setTensorAddress("lanes_speed_limit", lanes_speed_limit_d_.get());
+    turn_indicator_trt_ptr_->setTensorAddress(
+      "lanes_has_speed_limit", lanes_has_speed_limit_d_.get());
+    turn_indicator_trt_ptr_->setTensorAddress("route_lanes", route_lanes_d_.get());
+    turn_indicator_trt_ptr_->setTensorAddress(
+      "route_lanes_speed_limit", route_lanes_speed_limit_d_.get());
+    turn_indicator_trt_ptr_->setTensorAddress(
+      "route_lanes_has_speed_limit", route_lanes_has_speed_limit_d_.get());
+    turn_indicator_trt_ptr_->setTensorAddress("turn_indicators", turn_indicators_d_.get());
+    turn_indicator_trt_ptr_->setTensorAddress(
+      "independent_turn_indicator_logit", turn_indicator_logit_d_.get());
+  } else {
+    turn_indicator_trt_ptr_->setInputShape(
+      "encoding", to_dims_with_batch(encoding_shape, batch_size_));
+    turn_indicator_trt_ptr_->setTensorAddress("encoding", encoding_d_.get());
+    turn_indicator_trt_ptr_->setTensorAddress(
+      "turn_indicator_logit", turn_indicator_logit_d_.get());
+  }
 }
 
 void MultiStepInference::transfer_inputs_to_device(const preprocess::InputDataMap & input_data_map)

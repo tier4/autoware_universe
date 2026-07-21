@@ -71,6 +71,16 @@
                   "default": "$(var data_path)/diffusion_planner/v5.0/diffusion_planner_turn_indicator.onnx",
                   "description": "Path to the turn indicator ONNX model file"
                 },
+                "independent_turn_indicator_onnx_model_path": {
+                  "type": "string",
+                  "default": "$(var data_path)/diffusion_planner/v5.0/diffusion_planner_independent_turn_indicator.onnx",
+                  "description": "Path to the independent turn indicator ONNX model file (used when use_independent_turn_indicator is true)"
+                },
+                "use_independent_turn_indicator": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "If true, use the independent turn indicator model (does not depend on the encoder output) instead of the standard turn indicator model."
+                },
                 "dpm_solver_steps": {
                   "type": "integer",
                   "default": 10,
@@ -82,6 +92,8 @@
                 "encoder_onnx_model_path",
                 "decoder_onnx_model_path",
                 "turn_indicator_onnx_model_path",
+                "independent_turn_indicator_onnx_model_path",
+                "use_independent_turn_indicator",
                 "dpm_solver_steps"
               ]
             }

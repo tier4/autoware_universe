@@ -182,6 +182,10 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<std::string>("model.multi_step_model.decoder_onnx_model_path", "");
   params_.turn_indicator_model_path = this->declare_parameter<std::string>(
     "model.multi_step_model.turn_indicator_onnx_model_path", "");
+  params_.independent_turn_indicator_model_path = this->declare_parameter<std::string>(
+    "model.multi_step_model.independent_turn_indicator_onnx_model_path", "");
+  params_.use_independent_turn_indicator =
+    this->declare_parameter<bool>("model.multi_step_model.use_independent_turn_indicator", false);
   params_.dpm_solver_steps =
     this->declare_parameter<int>("model.multi_step_model.dpm_solver_steps", 10);
   params_.backend = this->declare_parameter<std::string>("model.backend", "tensorrt");
@@ -262,10 +266,15 @@ void DiffusionPlanner::load_model()
       get_logger(), "Loaded decoder_model_path="
                       << params_.decoder_model_path
                       << " (hash=" << compute_file_hash_hex(params_.decoder_model_path) << ")");
+    const auto & turn_indicator_model_path = params_.use_independent_turn_indicator
+                                               ? params_.independent_turn_indicator_model_path
+                                               : params_.turn_indicator_model_path;
     RCLCPP_INFO_STREAM(
       get_logger(), "Loaded turn_indicator_model_path="
-                      << params_.turn_indicator_model_path << " (hash="
-                      << compute_file_hash_hex(params_.turn_indicator_model_path) << ")");
+                      << turn_indicator_model_path
+                      << " (hash=" << compute_file_hash_hex(turn_indicator_model_path)
+                      << ", independent=" << std::boolalpha
+                      << params_.use_independent_turn_indicator << ")");
   }
   RCLCPP_INFO_STREAM(
     get_logger(), "Loaded args_path=" << params_.args_path << " (hash="
@@ -298,6 +307,9 @@ SetParametersResult DiffusionPlanner::on_parameter(
     const auto previous_encoder_model_path = params_.encoder_model_path;
     const auto previous_decoder_model_path = params_.decoder_model_path;
     const auto previous_turn_indicator_model_path = params_.turn_indicator_model_path;
+    const auto previous_independent_turn_indicator_model_path =
+      params_.independent_turn_indicator_model_path;
+    const auto previous_use_independent_turn_indicator = params_.use_independent_turn_indicator;
     const auto previous_batch_size = params_.batch_size;
     const auto previous_dpm_solver_steps = params_.dpm_solver_steps;
     const auto previous_backend = params_.backend;
@@ -315,6 +327,12 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<std::string>(
       parameters, "model.multi_step_model.turn_indicator_onnx_model_path",
       temp_params.turn_indicator_model_path);
+    update_param<std::string>(
+      parameters, "model.multi_step_model.independent_turn_indicator_onnx_model_path",
+      temp_params.independent_turn_indicator_model_path);
+    update_param<bool>(
+      parameters, "model.multi_step_model.use_independent_turn_indicator",
+      temp_params.use_independent_turn_indicator);
     update_param<int>(
       parameters, "model.multi_step_model.dpm_solver_steps", temp_params.dpm_solver_steps);
     update_param<std::string>(parameters, "model.backend", temp_params.backend);
@@ -380,7 +398,10 @@ SetParametersResult DiffusionPlanner::on_parameter(
       temp_params.single_step_model_path != previous_single_step_model_path ||
       temp_params.encoder_model_path != previous_encoder_model_path ||
       temp_params.decoder_model_path != previous_decoder_model_path ||
-      temp_params.turn_indicator_model_path != previous_turn_indicator_model_path;
+      temp_params.turn_indicator_model_path != previous_turn_indicator_model_path ||
+      temp_params.independent_turn_indicator_model_path !=
+        previous_independent_turn_indicator_model_path ||
+      temp_params.use_independent_turn_indicator != previous_use_independent_turn_indicator;
     const bool batch_size_changed = temp_params.batch_size != previous_batch_size;
     const bool dpm_solver_steps_changed = temp_params.dpm_solver_steps != previous_dpm_solver_steps;
     const bool backend_changed = temp_params.backend != previous_backend;

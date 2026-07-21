@@ -41,8 +41,9 @@ public:
 
   MultiStepInference(
     const std::string & encoder_model_path, const std::string & decoder_model_path,
-    const std::string & turn_indicator_model_path, const std::string & plugins_path, int batch_size,
-    const std::string & precision = "fp32", bool use_cuda_graph = false, int dpm_solver_steps = 10,
+    const std::string & turn_indicator_model_path, bool use_independent_turn_indicator,
+    const std::string & plugins_path, int batch_size, const std::string & precision = "fp32",
+    bool use_cuda_graph = false, int dpm_solver_steps = 10,
     std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances = {});
   ~MultiStepInference() override;
 
@@ -54,6 +55,7 @@ public:
 private:
   int batch_size_{1};
   int dpm_solver_steps_{10};
+  bool use_independent_turn_indicator_{false};
   std::string plugins_path_;
   std::string precision_{"fp32"};
   bool use_cuda_graph_{false};

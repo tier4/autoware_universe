@@ -72,8 +72,9 @@ class OnnxruntimeMultiStepInference : public Inference
 public:
   OnnxruntimeMultiStepInference(
     const std::string & encoder_model_path, const std::string & decoder_model_path,
-    const std::string & turn_indicator_model_path, const std::string & execution_provider,
-    const std::string & plugins_path, int batch_size, int dpm_solver_steps = 10,
+    const std::string & turn_indicator_model_path, bool use_independent_turn_indicator,
+    const std::string & execution_provider, const std::string & plugins_path, int batch_size,
+    int dpm_solver_steps = 10,
     std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances = {});
 
   InferenceResult infer(const preprocess::InputDataMap & input_data_map) override;
@@ -81,6 +82,7 @@ public:
 private:
   int batch_size_{1};
   int dpm_solver_steps_{10};
+  bool use_independent_turn_indicator_{false};
   std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances_;
   OrtModel encoder_model_;
   OrtModel decoder_model_;
