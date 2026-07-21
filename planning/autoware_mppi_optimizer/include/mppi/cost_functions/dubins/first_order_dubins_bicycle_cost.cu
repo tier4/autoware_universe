@@ -247,29 +247,43 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
     const float * right_y, const int right_count)
 {
   num_road_border_segments_ = 0;
+  num_left_road_border_segments_ = 0;
+  num_right_road_border_segments_ = 0;
   const float * poly_x[2] = {left_x, right_x};
   const float * poly_y[2] = {left_y, right_y};
   const int poly_n[2] = {left_count, right_count};
+  // Split the segment budget evenly so one long bound cannot starve the other.
+  const int max_segs_per_side = kMaxRoadBorderSegments / 2;
   for (int side = 0; side < 2; ++side) {
     const float * px = poly_x[side];
     const float * py = poly_y[side];
     const int count = poly_n[side];
-    const int remaining = kMaxRoadBorderSegments - num_road_border_segments_;
-    if (px == nullptr || py == nullptr || count < 2 || remaining <= 0) {
+    if (px == nullptr || py == nullptr || count < 2 || max_segs_per_side <= 0) {
       continue;
     }
-    const int n_out = std::min(count, remaining + 1);
+    const int segments_before = num_road_border_segments_;
+    // n_out vertices → at most n_out-1 segments, capped at max_segs_per_side.
+    const int n_out = std::min(count, max_segs_per_side + 1);
     for (int i = 0; i + 1 < n_out; ++i) {
       const int i0 = (i * (count - 1)) / (n_out - 1);
       const int i1 = ((i + 1) * (count - 1)) / (n_out - 1);
       if (i0 == i1) {
         continue;
       }
+      if (num_road_border_segments_ >= kMaxRoadBorderSegments) {
+        break;
+      }
       road_border_x0_[num_road_border_segments_] = px[i0];
       road_border_y0_[num_road_border_segments_] = py[i0];
       road_border_x1_[num_road_border_segments_] = px[i1];
       road_border_y1_[num_road_border_segments_] = py[i1];
       ++num_road_border_segments_;
+    }
+    const int segments_added = num_road_border_segments_ - segments_before;
+    if (side == 0) {
+      num_left_road_border_segments_ = segments_added;
+    } else {
+      num_right_road_border_segments_ = segments_added;
     }
   }
   dataToDevice();
@@ -281,7 +295,35 @@ void FirstOrderDubinsBicycleCostImpl<
 {
   num_drivable_vertices_ = 0;
   num_road_border_segments_ = 0;
+  num_left_road_border_segments_ = 0;
+  num_right_road_border_segments_ = 0;
   dataToDevice();
+}
+
+template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
+void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
+  getEncodedRoadBorderPolylines(
+    std::vector<std::pair<float, float>> & left_polyline,
+    std::vector<std::pair<float, float>> & right_polyline) const
+{
+  left_polyline.clear();
+  right_polyline.clear();
+  const int n_left = num_left_road_border_segments_;
+  const int n_right = num_right_road_border_segments_;
+  if (n_left > 0) {
+    left_polyline.emplace_back(road_border_x0_[0], road_border_y0_[0]);
+    for (int i = 0; i < n_left; ++i) {
+      left_polyline.emplace_back(road_border_x1_[i], road_border_y1_[i]);
+    }
+  }
+  if (n_right > 0) {
+    const int start = n_left;
+    right_polyline.emplace_back(road_border_x0_[start], road_border_y0_[start]);
+    for (int i = 0; i < n_right; ++i) {
+      const int idx = start + i;
+      right_polyline.emplace_back(road_border_x1_[idx], road_border_y1_[idx]);
+    }
+  }
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -441,16 +483,17 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T,
   DYN_PARAMS_T>::isEgoOutsideDrivableArea(const float x, const float y, const float yaw) const
 {
-  if (egoIntersectsRoadBorders(x, y, yaw)) {
-    return true;
+  // Prefer open left/right border segments when present (route bounds path).
+  if (num_road_border_segments_ > 0) {
+    return egoIntersectsRoadBorders(x, y, yaw);
   }
 
-  if (num_drivable_vertices_ < 3) {
-    return isOffRoad(x, y);
+  // Optional closed-polygon path (e.g. stadium corridor helpers).
+  if (num_drivable_vertices_ >= 3) {
+    return !pointInPolygon(x, y, drivable_poly_x_, drivable_poly_y_, num_drivable_vertices_);
   }
 
-  // Hard containment: rear axle must stay inside the closed route polygon.
-  return !pointInPolygon(x, y, drivable_poly_x_, drivable_poly_y_, num_drivable_vertices_);
+  return isOffRoad(x, y);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>

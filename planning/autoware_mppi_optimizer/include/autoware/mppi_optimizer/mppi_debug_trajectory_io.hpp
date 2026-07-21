@@ -15,6 +15,8 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__MPPI_DEBUG_TRAJECTORY_IO_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__MPPI_DEBUG_TRAJECTORY_IO_HPP_
 
+#include "autoware/mppi_optimizer/mppi_debug_trajectory_logger.hpp"
+
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
@@ -28,6 +30,7 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace autoware::mppi_optimizer
@@ -108,6 +111,60 @@ inline bool loadMppiDebugTrajectoryCsv(
     trajectory.points.push_back(point);
   }
   return !trajectory.points.empty();
+}
+
+inline bool loadMppiDebugEgoCsv(const std::string & path, MppiDebugEgoState & ego)
+{
+  std::ifstream in(path);
+  if (!in) {
+    return false;
+  }
+  std::string line;
+  if (!std::getline(in, line)) {
+    return false;
+  }
+  if (!std::getline(in, line) || line.empty()) {
+    return false;
+  }
+  std::stringstream ss(line);
+  std::string cell;
+  std::vector<double> vals;
+  while (std::getline(ss, cell, ',')) {
+    vals.push_back(std::stod(cell));
+  }
+  if (vals.size() < 7U) {
+    return false;
+  }
+  ego.x = vals[0];
+  ego.y = vals[1];
+  ego.z = vals[2];
+  ego.yaw = vals[3];
+  ego.v = vals[4];
+  ego.accel = vals[5];
+  ego.steer = vals[6];
+  return true;
+}
+
+inline bool loadMppiDebugKeyValueCsv(
+  const std::string & path, std::unordered_map<std::string, float> & out)
+{
+  std::ifstream in(path);
+  if (!in) {
+    return false;
+  }
+  std::string line;
+  std::getline(in, line);  // header
+  while (std::getline(in, line)) {
+    if (line.empty()) {
+      continue;
+    }
+    const auto comma = line.find(',');
+    if (comma == std::string::npos) {
+      continue;
+    }
+    out[line.substr(0, comma)] = std::stof(line.substr(comma + 1));
+  }
+  return !out.empty();
 }
 
 inline std::vector<uint64_t> listMppiDebugFrameIds(const std::string & log_dir)

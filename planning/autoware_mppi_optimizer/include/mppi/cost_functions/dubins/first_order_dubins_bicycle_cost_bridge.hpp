@@ -115,18 +115,7 @@ inline void fillFirstOrderDubinsBicycleCostDrivableAreaFromBounds(
     return;
   }
 
-  mppi::path::Polygon2D poly;
-  poly.x.reserve(left_x.size() + right_x.size());
-  poly.y.reserve(left_y.size() + right_y.size());
-  poly.x.insert(poly.x.end(), left_x.begin(), left_x.end());
-  poly.y.insert(poly.y.end(), left_y.begin(), left_y.end());
-  for (auto it = right_x.rbegin(); it != right_x.rend(); ++it) {
-    poly.x.push_back(*it);
-  }
-  for (auto it = right_y.rbegin(); it != right_y.rend(); ++it) {
-    poly.y.push_back(*it);
-  }
-  fillFirstOrderDubinsBicycleCostDrivablePolygon<NUM_TIMESTEPS>(cost, poly);
+  cost.clearDrivableArea();
   cost.setRoadBorderPolylines(
     left_x.data(), left_y.data(), static_cast<int>(left_x.size()), right_x.data(), right_y.data(),
     static_cast<int>(right_x.size()));

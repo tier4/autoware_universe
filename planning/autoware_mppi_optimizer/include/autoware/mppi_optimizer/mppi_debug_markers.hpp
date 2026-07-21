@@ -97,6 +97,41 @@ inline Marker makeLineStripMarker(
   return marker;
 }
 
+inline Marker makeLineListMarker(
+  const rclcpp::Time & stamp, const std::string & frame_id, const std::string & ns, const int id,
+  const ColorRGBA & color, const double line_width,
+  const std::vector<std::pair<float, float>> & polyline, const float z_val = 0.0F)
+{
+  Marker marker;
+  marker.header.stamp = stamp;
+  marker.header.frame_id = frame_id;
+  marker.ns = ns;
+  marker.id = id;
+  marker.type = Marker::LINE_LIST;
+  marker.action = Marker::ADD;
+  marker.pose.orientation.w = 1.0;
+  marker.scale.x = line_width;
+  marker.color = color;
+  marker.lifetime = builtin_interfaces::msg::Duration{}.set__sec(0).set__nanosec(500000000);
+  if (polyline.size() < 2U) {
+    return marker;
+  }
+  marker.points.reserve((polyline.size() - 1U) * 2U);
+  for (size_t i = 0; i + 1U < polyline.size(); ++i) {
+    geometry_msgs::msg::Point p0;
+    p0.x = polyline[i].first;
+    p0.y = polyline[i].second;
+    p0.z = z_val;
+    geometry_msgs::msg::Point p1;
+    p1.x = polyline[i + 1U].first;
+    p1.y = polyline[i + 1U].second;
+    p1.z = z_val;
+    marker.points.push_back(p0);
+    marker.points.push_back(p1);
+  }
+  return marker;
+}
+
 inline MarkerArray createMppiDebugMarkers(
   const FirstOrderDubinsMppiDebug & debug, const std::string & frame_id, const rclcpp::Time & stamp)
 {
@@ -118,6 +153,21 @@ inline MarkerArray createMppiDebugMarkers(
     marker_array.markers.push_back(makeLineStripMarker(
       stamp, frame_id, "mppi_optimal", 0, makeColor(1.0F, 0.0F, 0.0F, 1.0F), 0.2,
       debug.optimal_horizon, 0.5F));
+  }
+
+  marker_array.markers.push_back(makeDeleteAllMarker(stamp, frame_id, "mppi_encoded_road_border_left"));
+  marker_array.markers.push_back(
+    makeDeleteAllMarker(stamp, frame_id, "mppi_encoded_road_border_right"));
+  if (debug.encoded_road_border_left.size() >= 2U) {
+    // LINE_LIST shows individual chords after the 128-segment downsampling.
+    marker_array.markers.push_back(makeLineListMarker(
+      stamp, frame_id, "mppi_encoded_road_border_left", 0, makeColor(1.0F, 0.2F, 1.0F, 1.0F), 0.25,
+      debug.encoded_road_border_left, 0.3F));
+  }
+  if (debug.encoded_road_border_right.size() >= 2U) {
+    marker_array.markers.push_back(makeLineListMarker(
+      stamp, frame_id, "mppi_encoded_road_border_right", 0, makeColor(0.2F, 1.0F, 0.2F, 1.0F), 0.25,
+      debug.encoded_road_border_right, 0.3F));
   }
 
   marker_array.markers.push_back(makeDeleteAllMarker(stamp, frame_id, "mppi_rollout"));
