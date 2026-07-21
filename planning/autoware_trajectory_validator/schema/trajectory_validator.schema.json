@@ -420,9 +420,15 @@
               "description": "List of object types to consider as target object (e.g., 'pedestrian', 'bicycle').",
               "default": ["pedestrian", "bicycle"]
             },
-            "object_distance_th": {
+            "lon_detection_margin": {
               "type": "number",
-              "description": "Distance of object from crosswalk to consider as target object [m].",
+              "description": "Longitudinal extrusion length of sidewalk-side from crosswalk edge [m].",
+              "default": 2.0,
+              "minimum": 0.0
+            },
+            "lat_detection_margin": {
+              "type": "number",
+              "description": "Lateral extrusion length of sidewalk-side from crosswalk edge [m].",
               "default": 1.0,
               "minimum": 0.0
             },

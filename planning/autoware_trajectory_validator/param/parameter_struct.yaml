@@ -330,10 +330,15 @@ validator:
       default_value: [pedestrian, bicycle]
       description: object types to consider as target object
       read_only: false
-    object_distance_th:
+    lon_detection_margin:
+      type: double
+      default_value: 2.0
+      description: longitudinal extrusion length of sidewalk-side from crosswalk edge (m)
+      read_only: false
+    lat_detection_margin:
       type: double
       default_value: 1.0
-      description: distance of object from crosswalk to consider as target object (m)
+      description: lateral extrusion length of sidewalk-side from crosswalk edge (m)
       read_only: false
     object_clear_time_th:
       type: double

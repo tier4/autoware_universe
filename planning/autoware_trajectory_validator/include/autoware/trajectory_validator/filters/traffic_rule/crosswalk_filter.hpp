@@ -53,12 +53,16 @@ struct TargetCrosswalk
 {
   CrosswalkOnTrajectory crosswalk_info;
   lanelet::BasicPolygon2d crosswalk_polygon;
+  lanelet::BasicPolygons2d detection_areas;
   bool is_crossing{false};
 
   TargetCrosswalk(
     const CrosswalkOnTrajectory & crosswalk_info, const lanelet::BasicPolygon2d & crosswalk_polygon,
-    const bool is_crossing)
-  : crosswalk_info(crosswalk_info), crosswalk_polygon(crosswalk_polygon), is_crossing(is_crossing)
+    const lanelet::BasicPolygons2d & detection_areas, const bool is_crossing)
+  : crosswalk_info(crosswalk_info),
+    crosswalk_polygon(crosswalk_polygon),
+    detection_areas(detection_areas),
+    is_crossing(is_crossing)
   {
   }
 };

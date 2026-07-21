@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <string>
@@ -84,6 +85,63 @@ std::vector<lanelet::CrosswalkConstPtr> collect_crosswalk_reg_elems_from_route(
     crosswalks_on_route.push_back(cw);
   }
   return crosswalks_on_route;
+}
+
+lanelet::BasicPoint2d extrude_bound_end(
+  const lanelet::BasicSegment2d & segment, const double extra_distance)
+{
+  const auto direction_vector = (segment.second - segment.first).normalized();
+  return segment.second + extra_distance * direction_vector;
+}
+
+/// @brief Build sidewalk-side waiting areas as end caps extruded from the crosswalk lanelet ends.
+/// Longitudinal extrusion follows the pedestrian direction; lateral expansion widens each end
+/// along the crosswalk end edge so pedestrians standing beside / in front of the entry are covered.
+lanelet::BasicPolygons2d get_detection_areas(
+  const lanelet::CrosswalkConstPtr & crosswalk, const double lon_margin, const double lat_margin)
+{
+  if (lon_margin <= 1e-3) return lanelet::BasicPolygons2d{};
+
+  const auto & crosswalk_lanelet = crosswalk->crosswalkLanelet();
+  const auto left = crosswalk_lanelet.leftBound2d();
+  const auto right = crosswalk_lanelet.rightBound2d();
+  if (left.size() < 2 || right.size() < 2) {
+    return lanelet::BasicPolygons2d{};
+  }
+
+  const std::vector<std::function<lanelet::BasicSegment2d(const lanelet::ConstLineString2d &)>>
+    segment_getters = {
+      [](const auto & ls) -> lanelet::BasicSegment2d {
+        return {ls[1].basicPoint2d(), ls[0].basicPoint2d()};
+      },
+      [](const auto & ls) -> lanelet::BasicSegment2d {
+        return {ls[ls.size() - 2].basicPoint2d(), ls[ls.size() - 1].basicPoint2d()};
+      }};
+
+  lanelet::BasicPolygons2d detection_areas;
+  for (const auto & segment_getter : segment_getters) {
+    const auto left_segment = segment_getter(left);
+    const auto right_segment = segment_getter(right);
+    const auto target_left = extrude_bound_end(left_segment, lon_margin);
+    const auto target_right = extrude_bound_end(right_segment, lon_margin);
+
+    // Widen the end cap along the end edge (left <-> right).
+    const auto end_edge = right_segment.second - left_segment.second;
+    const auto end_edge_length = end_edge.norm();
+    if (end_edge_length <= 1e-3) {
+      continue;
+    }
+    const auto lateral_dir = end_edge / end_edge_length;
+
+    const auto left_near = left_segment.second - lat_margin * lateral_dir;
+    const auto right_near = right_segment.second + lat_margin * lateral_dir;
+    const auto left_far = target_left - lat_margin * lateral_dir;
+    const auto right_far = target_right + lat_margin * lateral_dir;
+
+    detection_areas.emplace_back(
+      lanelet::BasicPolygon2d{left_near, left_far, right_far, right_near});
+  }
+  return detection_areas;
 }
 
 using autoware::trajectory_validator::plugin::traffic_rule::CrosswalkOnTrajectory;
@@ -270,7 +328,10 @@ std::vector<TargetCrosswalk> CrosswalkFilter::get_target_crosswalks(
   for (const auto & cw : intersecting_crosswalks) {
     auto crosswalk_polygon = cw.crosswalk->crosswalkLanelet().polygon2d().basicPolygon();
     const bool is_crossing = trajectory_footprint_length >= cw.arc_length_to_stop_line_m;
-    target_crosswalks.emplace_back(cw, crosswalk_polygon, is_crossing);
+    target_crosswalks.emplace_back(
+      cw, crosswalk_polygon,
+      get_detection_areas(cw.crosswalk, params_.lon_detection_margin, params_.lat_detection_margin),
+      is_crossing);
   }
 
   return target_crosswalks;
@@ -346,15 +407,21 @@ void CrosswalkFilter::update_target_objects(
       cw_objects.end());
   };
 
-  for (const auto & cw : target_crosswalks) {
-    auto cw_polygon = cw.crosswalk_polygon;
-    for (const auto & object : objects) {
-      const auto obj_position = object.kinematics.initial_pose_with_covariance.pose.position;
+  auto is_inside_detection_areas =
+    [&](const PredictedObject & obj, const lanelet::BasicPolygons2d & detection_areas) {
+      const auto obj_position = obj.kinematics.initial_pose_with_covariance.pose.position;
       lanelet::BasicPoint2d obj_point(obj_position.x, obj_position.y);
-      const double dist = lanelet::geometry::distance(cw_polygon, obj_point);
-      if (dist < 0.0) continue;
-      if (dist > params_.object_distance_th) continue;
-      update_object(object, cw.crosswalk_info.crosswalk->id(), is_stopped_at_crosswalk(cw));
+      return std::any_of(detection_areas.begin(), detection_areas.end(), [&](const auto & area) {
+        return lanelet::geometry::distance2d(area, obj_point) < 1e-3;
+      });
+    };
+
+  for (const auto & cw : target_crosswalks) {
+    auto detection_areas = cw.detection_areas;
+    bool is_ego_stopped_at_cw = is_stopped_at_crosswalk(cw);
+    for (const auto & object : objects) {
+      if (!is_inside_detection_areas(object, detection_areas)) continue;
+      update_object(object, cw.crosswalk_info.crosswalk->id(), is_ego_stopped_at_cw);
     }
     clear_old_objects(cw.crosswalk_info.crosswalk->id());
   }
@@ -413,10 +480,30 @@ void CrosswalkFilter::update_debug_data(
     marker.lifetime = rclcpp::Duration::from_seconds(0.2);
 
     for (const auto & p : polygon) {
-      marker.points.push_back(autoware_utils_geometry::create_point(p.x(), p.y(), z));
+      marker.points.push_back(autoware_utils::create_marker_position(p.x(), p.y(), z));
     }
     if (!marker.points.empty()) {
       marker.points.push_back(marker.points.front());
+    }
+    debug_markers_.markers.push_back(marker);
+  };
+
+  auto add_multi_polygon_marker = [&](
+                                    const auto & polygons, const std::string & ns, const int id,
+                                    const std_msgs::msg::ColorRGBA & color) {
+    visualization_msgs::msg::Marker marker = autoware_utils::create_default_marker(
+      "map", current_time, ns, id, Marker::LINE_LIST,
+      autoware_utils::create_marker_scale(0.1, 0.1, 0.1), color);
+    marker.lifetime = rclcpp::Duration::from_seconds(0.2);
+    for (const auto & polygon : polygons) {
+      if (polygon.empty()) {
+        continue;
+      }
+      boost::geometry::for_each_segment(polygon, [&](const auto & s) {
+        const auto & [p1, p2] = s;
+        marker.points.push_back(autoware_utils::create_marker_position(p1.x(), p1.y(), z));
+        marker.points.push_back(autoware_utils::create_marker_position(p2.x(), p2.y(), z));
+      });
     }
     debug_markers_.markers.push_back(marker);
   };
@@ -429,7 +516,7 @@ void CrosswalkFilter::update_debug_data(
       autoware_utils::create_marker_scale(0.15, 0.15, 0.15), color);
     marker.lifetime = rclcpp::Duration::from_seconds(0.2);
     for (const auto & p : line) {
-      marker.points.push_back(autoware_utils_geometry::create_point(p.x(), p.y(), z));
+      marker.points.push_back(autoware_utils::create_marker_position(p.x(), p.y(), z));
     }
     debug_markers_.markers.push_back(marker);
   };
@@ -457,7 +544,7 @@ void CrosswalkFilter::update_debug_data(
     if (crosswalk_objects_map_.count(cw.crosswalk_info.crosswalk->id())) {
       for (const auto & cw_object : crosswalk_objects_map_[cw.crosswalk_info.crosswalk->id()]) {
         const auto obj_duration = (cw_object.last_seen_time - cw_object.first_seen_time).seconds();
-        const auto color = cw_object.ignore ? green : obj_duration > 1e-3 ? red : yellow;
+        const auto color = cw_object.ignore ? green : red;
         auto obj_polygon = autoware_utils_geometry::to_polygon2d(
           cw_object.object.kinematics.initial_pose_with_covariance.pose, cw_object.object.shape);
         add_polygon_marker(obj_polygon.outer(), "target_objects", obj_id, color);
@@ -474,6 +561,7 @@ void CrosswalkFilter::update_debug_data(
   int id = 0;
   for (const auto & cw : target_crosswalks) {
     add_polygon_marker(cw.crosswalk_polygon, "target_crosswalks", id, magenta);
+    add_multi_polygon_marker(cw.detection_areas, "detection_areas", id, yellow);
     add_line_marker(cw.crosswalk_info.stop_line, "target_stop_lines", id, magenta);
     add_objects_marker(cw);
     id++;
