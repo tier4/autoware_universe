@@ -19,6 +19,7 @@
   <arg name="output_drivable_area" default="/planning/avoidance_target_detector/output/drivable_area"/>
   <arg name="debug_near_segment_polygon" default="/planning/avoidance_target_detector/debug/near_segment_polygon"/>
   <arg name="vehicle_info_param_path" default="$(find-pkg-share j6_gen2_description)/config/vehicle_info.param.yaml"/>
+  <arg name="use_tracked_objects" default="false"/>
 
   <group if="$(var launch_avoidance_target_detector_node)">
     <node pkg="autoware_avoidance_target_detector" exec="autoware_avoidance_target_detector_node" name="avoidance_target_detector" output="screen">

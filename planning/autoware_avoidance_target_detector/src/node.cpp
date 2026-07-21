@@ -23,19 +23,6 @@ namespace autoware::avoidance_target_detector
 
 AvoidanceTargetDetectorNode::AvoidanceTargetDetectorNode(const rclcpp::NodeOptions & node_options)
 : Node{"avoidance_target_detector", node_options},
-  sub_objects_{create_subscription<PredictedObjects>(
-    "~/input/objects", rclcpp::QoS{1},
-    std::bind(&AvoidanceTargetDetectorNode::on_objects, this, std::placeholders::_1))},
-  sub_tracked_objects_{create_subscription<TrackedObjects>(
-    "~/input/tracked_objects", rclcpp::QoS{1},
-    std::bind(&AvoidanceTargetDetectorNode::on_tracked_objects, this, std::placeholders::_1))},
-  pub_avoidance_targets_{create_publisher<PredictedObjects>("~/output/avoidance_targets", 1)},
-  pub_driving_along_vehicles_{
-    create_publisher<PredictedObjects>("~/output/driving_along_vehicles", 1)},
-  pub_tracked_avoidance_targets_{
-    create_publisher<TrackedObjects>("~/output/tracked_avoidance_targets", 1)},
-  pub_tracked_driving_along_vehicles_{
-    create_publisher<TrackedObjects>("~/output/tracked_driving_along_vehicles", 1)},
   pub_drivable_area_path_{create_publisher<Path>("~/output/drivable_area", 1)},
   pub_near_segment_polygon_{
     create_publisher<MarkerArray>("~/debug/near_segment_polygon", rclcpp::QoS{1}.transient_local())}
