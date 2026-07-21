@@ -25,8 +25,6 @@
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
 
-#include <autoware_perception_msgs/msg/detail/tracked_objects__struct.hpp>
-
 #include <algorithm>
 #include <array>
 #include <cstddef>
