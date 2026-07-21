@@ -6,6 +6,14 @@
     "trajectory_selector": {
       "type": "object",
       "properties": {
+        "generator_name_prefixes": {
+          "type": "array",
+          "description": "List of generator name prefixes",
+          "default": ["DiffusionPlanner_", "MinimumRuleBasedPlanner"],
+          "items": {
+            "type": "string"
+          }
+        },
         "fallback_period_ms": {
           "type": "integer",
           "default": 150,

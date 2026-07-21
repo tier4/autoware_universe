@@ -48,6 +48,12 @@ using autoware_planning_msgs::msg::LaneletRoute;
 using geometry_msgs::msg::AccelWithCovarianceStamped;
 using nav_msgs::msg::Odometry;
 
+using autoware_trajectory_validator::msg::RiskLevel;
+using trajectory_ranker::RankerInputTrajectories;
+using trajectory_ranker::RankerInputTrajectory;
+using trajectory_ranker::TrajectorySource;
+using trajectory_validator::ValidationReports;
+
 /**
  * @brief Concatenates candidate trajectories from multiple planners, validates them, and
  * publishes the surviving set.
@@ -106,6 +112,9 @@ private:
 
   /** @brief Collects the latest data needed for ranking */
   trajectory_ranker::RankerContext take_ranker_data();
+
+  trajectory_ranker::RankerInputTrajectories to_ranker_input_trajectories(
+    const CandidateTrajectories & trajectories, const ValidationReports & validation_reports);
 
   /** @brief Update parameters */
   void update_parameters();

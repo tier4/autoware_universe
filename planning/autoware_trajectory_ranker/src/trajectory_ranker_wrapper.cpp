@@ -53,7 +53,7 @@ void TrajectoryRankerWrapper::update_parameters()
 }
 
 ScoredCandidateTrajectories TrajectoryRankerWrapper::rank_trajectories(
-  const CandidateTrajectories & input_trajectories, const RankerContext & context)
+  const RankerInputTrajectories & input_trajectories, const RankerContext & context)
 {
   update_parameters();
 

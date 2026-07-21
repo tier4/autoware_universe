@@ -45,14 +45,26 @@ using ValidationReports = std::vector<ValidationReport>;
 
 struct RankerContext
 {
-  const ValidationReports * validation_reports{nullptr};
   nav_msgs::msg::Odometry::ConstSharedPtr odometry;
   std::shared_ptr<RouteHandler> route_handler;
 };
 
-struct ScoredTrajectory
+enum class TrajectorySource : uint8_t {
+  DIFFUSION_PLANNER = 0,
+  BACKUP_PLANNER,
+};
+
+struct RankerInputTrajectory
 {
   CandidateTrajectory candidate_trajectory;
+  autoware_trajectory_validator::msg::RiskLevel::_level_type risk_level{};
+  TrajectorySource source{};
+};
+using RankerInputTrajectories = std::vector<RankerInputTrajectory>;
+
+struct ScoredTrajectory
+{
+  RankerInputTrajectory input_trajectory;
   double safety_penalty{};
   double source_penalty{};
   double quality_penalty{};
@@ -75,14 +87,11 @@ public:
   }
 
   tl::expected<ScoredCandidateTrajectories, std::string> process(
-    const CandidateTrajectories & candidate_trajectories, const RankerContext & context);
+    const RankerInputTrajectories & input_trajectories, const RankerContext & context);
 
 private:
-  void evaluate_safety(
-    ScoredTrajectories & scored_trajectories, const RankerContext & context) const;
-  void evaluate_source(
-    ScoredTrajectories & scored_trajectories,
-    const std::unordered_map<std::string, std::string> & generator_id_to_name_map) const;
+  void evaluate_safety(ScoredTrajectories & scored_trajectories) const;
+  void evaluate_source(ScoredTrajectories & scored_trajectories) const;
   void evaluate_quality(
     ScoredTrajectories & scored_trajectories, const RankerContext & context) const;
   void score_trajectories(ScoredTrajectories & scored_trajectories) const;

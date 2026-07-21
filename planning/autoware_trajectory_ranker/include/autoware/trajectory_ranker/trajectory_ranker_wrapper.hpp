@@ -49,7 +49,7 @@ public:
     std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper);
 
   ScoredCandidateTrajectories rank_trajectories(
-    const CandidateTrajectories & input_trajectories, const RankerContext & context);
+    const RankerInputTrajectories & input_trajectories, const RankerContext & context);
 
 private:
   void update_parameters();

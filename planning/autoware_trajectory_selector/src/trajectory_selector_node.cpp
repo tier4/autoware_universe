@@ -14,10 +14,12 @@
 
 #include "autoware/trajectory_selector/trajectory_selector_node.hpp"
 
+#include <autoware_utils_uuid/uuid_helper.hpp>
 #include <rclcpp/node_interfaces/node_parameters_interface.hpp>
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 namespace autoware::trajectory_selector
 {
@@ -149,15 +151,74 @@ trajectory_ranker::RankerContext TrajectorySelectorNode::take_ranker_data()
   trajectory_ranker::RankerContext context;
   context.route_handler = route_handler_ptr_;
   context.odometry = sub_odometry_.take_data();
-  context.validation_reports = &validator_ptr_->validation_reports();
   return context;
+}
+
+RiskLevel::_level_type get_trajectory_risk_level(
+  const CandidateTrajectory & traj, const ValidationReports & validation_reports)
+{
+  auto itr =
+    std::find_if(validation_reports.begin(), validation_reports.end(), [&](const auto & report) {
+      return autoware_utils_uuid::to_hex_string(traj.generator_id) ==
+             autoware_utils_uuid::to_hex_string(report.generator_id);
+    });
+  if (itr == validation_reports.end()) {
+    return RiskLevel::FATAL;
+  }
+  return itr->risk.level;
+}
+
+std::optional<TrajectorySource> generator_name_prefix_to_source(
+  const std::string & generator_name_prefix)
+{
+  static const std::unordered_map<std::string, TrajectorySource> generator_name_prefix_to_source = {
+    {"DiffusionPlanner_", TrajectorySource::DIFFUSION_PLANNER},
+    {"MinimumRuleBasedPlanner", TrajectorySource::BACKUP_PLANNER},
+  };
+  if (generator_name_prefix_to_source.count(generator_name_prefix) == 0) {
+    return std::nullopt;
+  }
+  return generator_name_prefix_to_source.at(generator_name_prefix);
+}
+
+trajectory_ranker::RankerInputTrajectories TrajectorySelectorNode::to_ranker_input_trajectories(
+  const CandidateTrajectories & trajectories, const ValidationReports & validation_reports)
+{
+  // Create map from UUID to generator name
+  std::unordered_map<std::string, std::string> uuid_to_name;
+  uuid_to_name.reserve(trajectories.generator_info.size());
+  for (const auto & info : trajectories.generator_info) {
+    uuid_to_name[autoware_utils_uuid::to_hex_string(info.generator_id)] = info.generator_name.data;
+  }
+
+  auto get_source =
+    [&](const std::string & name) -> std::optional<trajectory_ranker::TrajectorySource> {
+    for (const auto & prefix : selector_params_.generator_name_prefixes) {
+      if (name.rfind(prefix, 0) == 0) {
+        return generator_name_prefix_to_source(prefix);
+      }
+    }
+    return std::nullopt;
+  };
+
+  RankerInputTrajectories input_trajectories;
+  input_trajectories.reserve(trajectories.candidate_trajectories.size());
+  for (const auto & candidate : trajectories.candidate_trajectories) {
+    const auto risk_level = get_trajectory_risk_level(candidate, validation_reports);
+    auto name_it = uuid_to_name.find(autoware_utils_uuid::to_hex_string(candidate.generator_id));
+    if (name_it == uuid_to_name.end()) continue;
+    const auto source = get_source(name_it->second);
+    if (!source) continue;
+    input_trajectories.push_back(RankerInputTrajectory{candidate, risk_level, source.value()});
+  }
+  return input_trajectories;
 }
 
 void TrajectorySelectorNode::process_trajectories()
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
-  auto concatenated_trajectories = concatenator_ptr_->get_concatenated();
+  const auto concatenated_trajectories = concatenator_ptr_->get_concatenated();
 
   if (concatenated_trajectories.candidate_trajectories.empty()) {
     RCLCPP_WARN_THROTTLE(
@@ -171,13 +232,16 @@ void TrajectorySelectorNode::process_trajectories()
     return;
   }
 
-  auto validated_trajectories =
+  auto validation_reports =
     validator_ptr_->validate_trajectories(concatenated_trajectories, context_opt.value());
 
-  pub_trajectories_->publish(validated_trajectories);
+  pub_trajectories_->publish(concatenated_trajectories);
 
-  auto scored_trajectories =
-    ranker_ptr_->rank_trajectories(validated_trajectories, take_ranker_data());
+  const auto input_trajectories =
+    to_ranker_input_trajectories(concatenated_trajectories, validation_reports);
+
+  const auto scored_trajectories =
+    ranker_ptr_->rank_trajectories(input_trajectories, take_ranker_data());
   pub_scored_trajectories_->publish(scored_trajectories);
 }
 

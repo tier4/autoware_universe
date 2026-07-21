@@ -87,10 +87,8 @@ public:
    * @param input_trajectories Candidate trajectories to validate.
    * @param context Current world state snapshot.
    */
-  CandidateTrajectories validate_trajectories(
+  ValidationReports validate_trajectories(
     const CandidateTrajectories & input_trajectories, const ValidatorContext & context);
-
-  const ValidationReports & validation_reports() const;
 
 private:
   /** @brief Creates the debug publisher. */
@@ -176,7 +174,6 @@ private:
   validator::Params validator_params_;
   vehicle_info_utils::VehicleInfo vehicle_info_;
   std::unique_ptr<TrajectoryValidator> validator_ptr_;
-  TrajectoryValidatorReport validator_report_;
 
   // Plugin infrastructure
   pluginlib::ClassLoader<plugin::ValidatorInterface> plugin_loader_;

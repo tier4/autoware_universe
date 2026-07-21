@@ -28,6 +28,7 @@
 
 namespace
 {
+using autoware::trajectory_ranker::TrajectorySource;
 using autoware_trajectory_validator::msg::RiskLevel;
 using std::string;
 std::string to_risk_string(const RiskLevel::_level_type risk_level)
@@ -45,16 +46,16 @@ std::string to_risk_string(const RiskLevel::_level_type risk_level)
   return risk_level_to_string.at(risk_level);
 }
 
-std::string get_source_from_generator_name_prefix(const std::string & generator_name_prefix)
+std::string to_source_string(const TrajectorySource source)
 {
-  static const std::unordered_map<std::string, std::string> generator_name_prefix_to_source = {
-    {"DiffusionPlanner_", "diffusion_planner"},
-    {"MinimumRuleBasedPlanner", "backup_planner"},
+  static const std::unordered_map<TrajectorySource, std::string> source_to_string = {
+    {TrajectorySource::DIFFUSION_PLANNER, "diffusion_planner"},
+    {TrajectorySource::BACKUP_PLANNER, "backup_planner"},
   };
-  if (generator_name_prefix_to_source.count(generator_name_prefix) == 0) {
+  if (source_to_string.count(source) == 0) {
     return "";
   }
-  return generator_name_prefix_to_source.at(generator_name_prefix);
+  return source_to_string.at(source);
 }
 }  // namespace
 
@@ -62,24 +63,16 @@ namespace autoware::trajectory_ranker
 {
 
 tl::expected<ScoredCandidateTrajectories, std::string> TrajectoryRanker::process(
-  const CandidateTrajectories & candidate_trajectories, const RankerContext & context)
+  const RankerInputTrajectories & input_trajectories, const RankerContext & context)
 {
   ScoredTrajectories scored_trajectories;
 
-  // Create map from UUID to generator name
-  std::unordered_map<std::string, std::string> generator_id_to_name_map;
-  generator_id_to_name_map.reserve(candidate_trajectories.generator_info.size());
-  for (const auto & info : candidate_trajectories.generator_info) {
-    generator_id_to_name_map[autoware_utils_uuid::to_hex_string(info.generator_id)] =
-      info.generator_name.data;
+  for (const auto & input_trajectory : input_trajectories) {
+    scored_trajectories.emplace_back(ScoredTrajectory{input_trajectory});
   }
 
-  for (const auto & candidate : candidate_trajectories.candidate_trajectories) {
-    scored_trajectories.emplace_back(ScoredTrajectory{candidate});
-  }
-
-  evaluate_safety(scored_trajectories, context);
-  evaluate_source(scored_trajectories, generator_id_to_name_map);
+  evaluate_safety(scored_trajectories);
+  evaluate_source(scored_trajectories);
   evaluate_quality(scored_trajectories, context);
   score_trajectories(scored_trajectories);
   update_trajectory_history(scored_trajectories);
@@ -87,31 +80,16 @@ tl::expected<ScoredCandidateTrajectories, std::string> TrajectoryRanker::process
   ScoredCandidateTrajectories output;
   for (const auto & scored_trajectory : scored_trajectories) {
     ScoredCandidateTrajectory scored_candidate;
-    scored_candidate.candidate_trajectory = scored_trajectory.candidate_trajectory;
+    scored_candidate.candidate_trajectory = scored_trajectory.input_trajectory.candidate_trajectory;
     scored_candidate.score = static_cast<float>(scored_trajectory.score);
     output.scored_candidate_trajectories.push_back(scored_candidate);
   }
   return output;
 }
 
-void TrajectoryRanker::evaluate_safety(
-  ScoredTrajectories & scored_trajectories, const RankerContext & context) const
+void TrajectoryRanker::evaluate_safety(ScoredTrajectories & scored_trajectories) const
 {
-  if (!params_.safety.enable || context.validation_reports == nullptr) return;
-
-  auto & validation_reports = *context.validation_reports;
-
-  auto get_risk_level =
-    [&](const CandidateTrajectory & candidate_trajectory) -> RiskLevel::_level_type {
-    auto itr =
-      std::find_if(validation_reports.begin(), validation_reports.end(), [&](const auto & report) {
-        return candidate_trajectory.generator_id.uuid == report.generator_id.uuid;
-      });
-    if (itr == validation_reports.end()) {
-      return RiskLevel::FATAL;
-    }
-    return itr->risk.level;
-  };
+  if (!params_.safety.enable) return;
 
   auto get_safety_penalty = [&](const RiskLevel::_level_type risk_level) -> double {
     const auto risk_string = to_risk_string(risk_level);
@@ -124,14 +102,12 @@ void TrajectoryRanker::evaluate_safety(
   };
 
   for (auto & scored_trajectory : scored_trajectories) {
-    const auto risk_level = get_risk_level(scored_trajectory.candidate_trajectory);
+    const auto risk_level = scored_trajectory.input_trajectory.risk_level;
     scored_trajectory.safety_penalty = get_safety_penalty(risk_level);
   }
 }
 
-void TrajectoryRanker::evaluate_source(
-  ScoredTrajectories & scored_trajectories,
-  const std::unordered_map<std::string, std::string> & generator_id_to_name_map) const
+void TrajectoryRanker::evaluate_source(ScoredTrajectories & scored_trajectories) const
 {
   if (!params_.source.enable) return;
 
@@ -144,11 +120,8 @@ void TrajectoryRanker::evaluate_source(
   };
 
   for (auto & scored_trajectory : scored_trajectories) {
-    const auto generator_id = scored_trajectory.candidate_trajectory.generator_id;
-    const auto generator_name =
-      generator_id_to_name_map.at(autoware_utils_uuid::to_hex_string(generator_id));
-    const auto source = get_source_from_generator_name_prefix(generator_name);
-    scored_trajectory.source_penalty = get_source_penalty(source);
+    const auto source = scored_trajectory.input_trajectory.source;
+    scored_trajectory.source_penalty = get_source_penalty(to_source_string(source));
   }
 }
 
@@ -171,7 +144,7 @@ void TrajectoryRanker::evaluate_quality(
 
   // Process each candidate trajectory
   for (auto & scored_trajectory : scored_trajectories) {
-    const auto & candidate = scored_trajectory.candidate_trajectory;
+    const auto & candidate = scored_trajectory.input_trajectory.candidate_trajectory;
     auto sampled = utils::sampling(
       candidate.points, context.odometry->pose.pose, params_.evaluation.sampling_number,
       params_.evaluation.sampling_resolution);
@@ -207,8 +180,8 @@ void TrajectoryRanker::update_trajectory_history(const ScoredTrajectories & scor
   if (best_itr == scored_trajectories.end()) return;
 
   Trajectory best_trajectory;
-  best_trajectory.header = best_itr->candidate_trajectory.header;
-  best_trajectory.points = best_itr->candidate_trajectory.points;
+  best_trajectory.header = best_itr->input_trajectory.candidate_trajectory.header;
+  best_trajectory.points = best_itr->input_trajectory.candidate_trajectory.points;
   trajectory_history_.push_back(best_trajectory);
 
   if (
