@@ -217,7 +217,6 @@ class MppiDebugFrame:
     optimized_steer_rate: List[float] = field(default_factory=list)
     retuned_steer_rate: List[float] = field(default_factory=list)
     measured_steer: Optional[float] = None
-    yaw_rate_based_steer: Optional[float] = None
     stamp_text: str = ""
     metrics_text: str = ""
 
@@ -484,15 +483,7 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             linewidth=1.8,
             label=f"measured δ={frame.measured_steer:.3f}",
         )
-    if frame.yaw_rate_based_steer is not None:
-        ax_steer.axhline(
-            frame.yaw_rate_based_steer,
-            color="tab:red",
-            linestyle="-.",
-            linewidth=1.8,
-            label=f"yaw-rate δ={frame.yaw_rate_based_steer:.3f}",
-        )
-    if n_compare > 0 or frame.measured_steer is not None or frame.yaw_rate_based_steer is not None:
+    if n_compare > 0 or frame.measured_steer is not None:
         ax_steer.legend(loc="best")
 
     ax_steer_rate.clear()
@@ -648,7 +639,6 @@ class MppiDebugVisualizer(Node):
         topic_prefix: str,
         update_hz: float,
         wheel_base: float,
-        yaw_rate_steering_topic: str = "",
         measured_steering_topic: str = "/vehicle/status/steering_status",
     ) -> None:
         super().__init__("mppi_debug_visualizer")
@@ -659,7 +649,6 @@ class MppiDebugVisualizer(Node):
         self._frame = MppiDebugFrame()
         self._logged_reference = False
         self._logged_optimized = False
-        self._logged_yaw_rate_steer = False
         self._logged_measured_steer = False
 
         qos = QoSProfile(
@@ -677,20 +666,12 @@ class MppiDebugVisualizer(Node):
         )
 
         prefix = topic_prefix.rstrip("/")
-        if yaw_rate_steering_topic:
-            yaw_rate_topic = yaw_rate_steering_topic
-        else:
-            # topic_prefix ends with .../debug/mppi → sibling .../debug/yaw_rate_based_steering
-            yaw_rate_topic = f"{prefix.rsplit('/mppi', 1)[0]}/yaw_rate_based_steering"
 
         self.create_subscription(
             Trajectory, f"{prefix}/reference_trajectory", self.on_reference_trajectory, qos
         )
         self.create_subscription(
             Trajectory, f"{prefix}/optimized_trajectory", self.on_optimized_trajectory, qos
-        )
-        self.create_subscription(
-            SteeringReport, yaw_rate_topic, self.on_yaw_rate_based_steering, qos
         )
         self.create_subscription(
             SteeringReport, measured_steering_topic, self.on_measured_steering, measured_qos
@@ -703,7 +684,6 @@ class MppiDebugVisualizer(Node):
         self.get_logger().info("MPPI debug visualizer started (live).")
         self.get_logger().info(f"Reference: {prefix}/reference_trajectory")
         self.get_logger().info(f"Optimized: {prefix}/optimized_trajectory")
-        self.get_logger().info(f"Yaw-rate steer: {yaw_rate_topic}")
         self.get_logger().info(f"Measured steer: {measured_steering_topic}")
         self.get_logger().info(
             "Subscriptions use RELIABLE QoS (matches diffusion_planner publishers)."
@@ -791,15 +771,6 @@ class MppiDebugVisualizer(Node):
             self._logged_optimized = True
             self.get_logger().info(f"Receiving optimized_trajectory ({len(msg.points)} points).")
 
-    def on_yaw_rate_based_steering(self, msg: SteeringReport) -> None:
-        with self._lock:
-            self._frame.yaw_rate_based_steer = float(msg.steering_tire_angle)
-        if not self._logged_yaw_rate_steer:
-            self._logged_yaw_rate_steer = True
-            self.get_logger().info(
-                f"Receiving yaw-rate based steering ({msg.steering_tire_angle:.4f} rad)."
-            )
-
     def on_measured_steering(self, msg: SteeringReport) -> None:
         with self._lock:
             self._frame.measured_steer = float(msg.steering_tire_angle)
@@ -825,7 +796,6 @@ class MppiDebugVisualizer(Node):
                 reference_steer_rate=list(self._frame.reference_steer_rate),
                 optimized_steer_rate=list(self._frame.optimized_steer_rate),
                 measured_steer=self._frame.measured_steer,
-                yaw_rate_based_steer=self._frame.yaw_rate_based_steer,
                 stamp_text=self._frame.stamp_text,
                 metrics_text=self._frame.metrics_text,
             )
@@ -834,13 +804,8 @@ class MppiDebugVisualizer(Node):
                     f"max|pos|={max_pos_err(frame.reference_xy, frame.optimized_xy):.3f}m  "
                     f"max|v|={max_vel_err(frame.reference_vel, frame.optimized_vel):.3f}m/s"
                 )
-            if frame.measured_steer is not None and frame.yaw_rate_based_steer is not None:
-                delta = frame.yaw_rate_based_steer - frame.measured_steer
-                steer_txt = (
-                    f"δ_meas={frame.measured_steer:.3f}  "
-                    f"δ_yaw={frame.yaw_rate_based_steer:.3f}  "
-                    f"Δ={delta:+.3f} rad"
-                )
+            if frame.measured_steer is not None:
+                steer_txt = f"δ_meas={frame.measured_steer:.3f}"
                 frame.metrics_text = (
                     f"{frame.metrics_text}  |  {steer_txt}" if frame.metrics_text else steer_txt
                 )
@@ -1080,14 +1045,6 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         help="Wheel base [m] used to derive steering from path curvature when unset (j6_gen2 ~4.76)",
     )
     parser.add_argument(
-        "--yaw-rate-steering-topic",
-        default="",
-        help=(
-            "SteeringReport topic for diffusion yaw-rate based steer "
-            "(default: sibling of --topic-prefix: .../debug/yaw_rate_based_steering)"
-        ),
-    )
-    parser.add_argument(
         "--measured-steering-topic",
         default="/vehicle/status/steering_status",
         help="SteeringReport topic for measured tire angle used by MPPI",
@@ -1134,7 +1091,6 @@ def main() -> None:
         topic_prefix=cli.topic_prefix.rstrip("/"),
         update_hz=cli.update_hz,
         wheel_base=cli.wheel_base,
-        yaw_rate_steering_topic=cli.yaw_rate_steering_topic,
         measured_steering_topic=cli.measured_steering_topic,
     )
 
