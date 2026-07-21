@@ -489,6 +489,8 @@ TrajectoryData generate_ego_trajectory(
   const rclcpp::Time trajectory_end_time =
     trajectory_interpolator.reference_time_ +
     rclcpp::Duration::from_seconds(trajectory_interpolator.time_from_refs_.back());
+  const rclcpp::Time stop_hold_time =
+    trajectory_interpolator.reference_time_ + rclcpp::Duration::from_seconds(8.0);
 
   const auto braking_profile =
     detail::compute_braking_profile(trajectory_interpolator, current_time, params);
@@ -529,7 +531,7 @@ TrajectoryData generate_ego_trajectory(
           0.5 * params.assumed_acceleration * elapsed_braking_time * elapsed_braking_time;
         auto sample_state = trajectory_interpolator.interpolate_state_from_dist(sample_distance);
         append_sample(time_from_sampling_reference.seconds(), sample_state);
-        if (sampling_time >= braking_profile->end_time && sampling_time >= trajectory_end_time) {
+        if (sampling_time >= braking_profile->end_time && sampling_time >= stop_hold_time) {
           break;
         }
       }
