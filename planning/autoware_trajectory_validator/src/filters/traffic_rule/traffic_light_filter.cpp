@@ -128,6 +128,7 @@ autoware::traffic_light_compliance_checker::Parameters to_checker_params(
   p.checked_trajectory_length.deceleration_limit =
     params.checked_trajectory_length.deceleration_limit;
   p.checked_trajectory_length.jerk_limit = params.checked_trajectory_length.jerk_limit;
+  p.allow_if_cannot_stop_distance = params.allow_if_cannot_stop_distance;
   return p;
 }
 }  // namespace
