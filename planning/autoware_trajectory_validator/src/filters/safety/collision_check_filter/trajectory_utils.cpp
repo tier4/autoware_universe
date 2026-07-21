@@ -529,7 +529,7 @@ TrajectoryData generate_ego_trajectory(
           0.5 * params.assumed_acceleration * elapsed_braking_time * elapsed_braking_time;
         auto sample_state = trajectory_interpolator.interpolate_state_from_dist(sample_distance);
         append_sample(time_from_sampling_reference.seconds(), sample_state);
-        if (sampling_time >= braking_profile->end_time) {
+        if (sampling_time >= braking_profile->end_time && sampling_time >= trajectory_end_time) {
           break;
         }
       }
