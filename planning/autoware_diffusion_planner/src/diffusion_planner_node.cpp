@@ -25,6 +25,8 @@
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
 
+#include <autoware_perception_msgs/msg/detail/tracked_objects__struct.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -630,7 +632,9 @@ void DiffusionPlanner::on_timer()
 
   if (params_.use_mppi_optimizer) {
     // Run avoidance-target / drivable-area detection on the diffusion trajectory before MPPI.
-    publish_avoidance_targets(frame_time, planner_output.trajectory, objects);
+    const auto avoidance_targets =
+      extract_avoidance_targets(frame_time, planner_output.trajectory, objects);
+    pub_tracked_avoidance_targets_->publish(avoidance_targets);
     // Build left/right route bounds for MPPI road-border costing.
     const std::optional<autoware::mppi_optimizer::RoadBorderBounds> road_borders_for_mppi =
       get_route_bounds_for_mppi();
@@ -655,7 +659,7 @@ void DiffusionPlanner::on_timer()
         steering_status ? std::make_optional(*steering_status) : std::nullopt;
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
-        ego_steering, *objects, road_borders_for_mppi);
+        ego_steering, avoidance_targets, road_borders_for_mppi);
       record_section_time(
         *stop_watch_ptr_, "mppi_optimizer/optimize_trajectory", *diagnostics_inference_);
       if (!params_.shadow_mode) {
@@ -788,39 +792,30 @@ void DiffusionPlanner::on_map(const HADMapBin::ConstSharedPtr map_msg)
   avoidance_target_detector_->update_map(*map_msg);
 }
 
-std::optional<Path> DiffusionPlanner::publish_avoidance_targets(
+TrackedObjects DiffusionPlanner::extract_avoidance_targets(
   const rclcpp::Time & stamp, const Trajectory & trajectory,
   const std::shared_ptr<const TrackedObjects> & tracked_objects)
 {
   const auto route = core_->get_route();
   if (!avoidance_target_detector_ || !route || route->segments.empty()) {
-    RCLCPP_INFO(get_logger(), "route not ok");
-    return std::nullopt;
+    return TrackedObjects();
   }
 
   avoidance_target_detector_->set_use_extended_route_bounds(use_extended_route_bounds_);
   avoidance_target_detector_->update_route_if_new(*route);
 
   if (!avoidance_target_detector_->is_ready()) {
-    RCLCPP_INFO(get_logger(), "avoidance_target_detector not ready");
-    return std::nullopt;
+    return TrackedObjects();
   }
-
-  std::optional<Path> drivable_area;
 
   if (!tracked_objects) {
-    RCLCPP_INFO(get_logger(), "no tracked objects");
-    return drivable_area;
+    return TrackedObjects();
   }
 
-  const auto tracked_output =
+  const auto opt_objects =
     avoidance_target_detector_->process_tracked_objects(stamp, *tracked_objects, trajectory);
-  if (!tracked_output) {
-    RCLCPP_INFO(get_logger(), "tracked_output not ok");
-    return drivable_area;
-  }
-  pub_tracked_avoidance_targets_->publish(*tracked_output);
-  return drivable_area;
+
+  return (!!opt_objects) ? *opt_objects : TrackedObjects();
 }
 
 std::optional<autoware::mppi_optimizer::RoadBorderBounds>

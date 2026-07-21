@@ -39,6 +39,7 @@
 #include <autoware_internal_debug_msgs/msg/string_stamped.hpp>
 #include <autoware_internal_planning_msgs/msg/candidate_trajectories.hpp>
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
+#include <autoware_perception_msgs/msg/detail/tracked_objects__struct.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_perception_msgs/msg/traffic_light_group.hpp>
@@ -188,10 +189,10 @@ private:
     const rclcpp::Time & stamp);
 
   /**
-   * Publish avoidance / driving-along targets and drivable-area bounds.
-   * @return Drivable area Path (left/right bounds) when detection succeeds, else nullopt.
+   * Get avoidance targets by filtering tracked_objects;
+   * @return Filtered tracked obiects
    */
-  std::optional<Path> publish_avoidance_targets(
+  TrackedObjects extract_avoidance_targets(
     const rclcpp::Time & stamp, const Trajectory & trajectory,
     const std::shared_ptr<const TrackedObjects> & tracked_objects);
 
