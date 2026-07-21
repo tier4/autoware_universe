@@ -999,7 +999,24 @@ void ObjectSelectorBase<ObjectT>::update_objects(
 }
 
 template <typename ObjectT>
-typename ObjectSelectorBase<ObjectT>::Objects ObjectSelectorBase<ObjectT>::get_avoidance_targets(
+typename ObjectSelectorBase<ObjectT>::Objects
+ObjectSelectorBase<ObjectT>::get_all_avoidance_targets(
+  const Objects & objects, const Trajectory & trajectory, const RouteBounds & route_bounds)
+{
+  Objects avoidance_targets = get_stopped_avoidance_targets(objects, trajectory, route_bounds);
+
+  const Objects driving_along_vehicles = get_driving_along_vehicles(objects);
+
+  avoidance_targets.objects.insert(
+    avoidance_targets.objects.end(), driving_along_vehicles.objects.begin(),
+    driving_along_vehicles.objects.end());
+
+  return avoidance_targets;
+}
+
+template <typename ObjectT>
+typename ObjectSelectorBase<ObjectT>::Objects
+ObjectSelectorBase<ObjectT>::get_stopped_avoidance_targets(
   const Objects & objects, const Trajectory & trajectory, const RouteBounds & route_bounds)
 {
   track_avoidance_targets();
@@ -1035,14 +1052,8 @@ typename ObjectSelectorBase<ObjectT>::Objects ObjectSelectorBase<ObjectT>::get_a
 
 template <typename ObjectT>
 typename ObjectSelectorBase<ObjectT>::Objects
-ObjectSelectorBase<ObjectT>::get_driving_along_vehicles(
-  const Objects & objects, const ExtendedRouteHandler & extended_route_handler,
-  const aw_trajectory::Trajectory<TrajectoryPoint> & ego_trajectory, const Trajectory & trajectory)
+ObjectSelectorBase<ObjectT>::get_driving_along_vehicles(const Objects & objects)
 {
-  (void)extended_route_handler;
-  (void)ego_trajectory;
-  (void)trajectory;
-
   track_driving_along_vehicles();
 
   Objects driving_along_vehicles = objects;

@@ -22,6 +22,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <autoware_map_msgs/msg/lanelet_map_bin.hpp>
+#include <autoware_perception_msgs/msg/detail/predicted_objects__struct.hpp>
 #include <autoware_perception_msgs/msg/predicted_objects.hpp>
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_planning_msgs/msg/lanelet_route.hpp>
@@ -33,6 +34,7 @@
 
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace autoware::avoidance_target_detector
 {
@@ -55,31 +57,33 @@ public:
   void set_use_extended_route_bounds(bool use_extended_route_bounds);
 
   /** Rebuild the extended route handler when map or route changes. */
-  void update_map_and_route(const LaneletMapBin & map, const LaneletRoute & route);
+  void update_map(const LaneletMapBin & map);
+  void update_route_if_new(const LaneletRoute & route);
 
   [[nodiscard]] bool is_ready() const;
 
-  struct PredictedOutput
-  {
-    PredictedObjects avoidance_targets;
-    PredictedObjects driving_along_vehicles;
-    Path drivable_area;
-    std::optional<MarkerArray> near_segment_polygon;
-  };
-
-  [[nodiscard]] std::optional<PredictedOutput> process_predicted_objects(
+  [[nodiscard]] std::optional<PredictedObjects> process_predicted_objects(
     const rclcpp::Time & current_time, const PredictedObjects & objects,
     const Trajectory & trajectory);
 
-  struct TrackedOutput
-  {
-    TrackedObjects tracked_avoidance_targets;
-    TrackedObjects tracked_driving_along_vehicles;
-  };
-
-  [[nodiscard]] std::optional<TrackedOutput> process_tracked_objects(
+  [[nodiscard]] std::optional<TrackedObjects> process_tracked_objects(
     const rclcpp::Time & current_time, const TrackedObjects & objects,
     const Trajectory & trajectory);
+
+  [[nodiscard]] std::vector<lanelet::LineString2d> get_road_borders() const
+  {
+    return extended_route_handler_->get_road_borders();
+  }
+
+  [[nodiscard]] const RouteBounds & get_original_route_bounds() const
+  {
+    return extended_route_handler_->get_original_route_bounds();
+  }
+
+  [[nodiscard]] const RouteBounds & get_extended_route_bounds() const
+  {
+    return extended_route_handler_->get_extended_route_bounds();
+  }
 
 private:
   void update_ego_trajectory(const TrajectoryPoint & ego_point);
@@ -91,9 +95,6 @@ private:
 
   bool use_extended_route_bounds_{true};
   std::shared_ptr<ExtendedRouteHandler> extended_route_handler_;
-  LaneletMapBin::ConstSharedPtr map_bin_;
-  LaneletRoute::ConstSharedPtr route_;
-  Trajectory::ConstSharedPtr trajectory_;
   PredictedObjectSelector object_selector_;
   TrackedObjectSelector tracked_object_selector_;
   autoware::experimental::trajectory::Trajectory<TrajectoryPoint> ego_trajectory_;

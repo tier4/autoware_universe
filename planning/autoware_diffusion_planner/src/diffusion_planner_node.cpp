@@ -92,17 +92,8 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
   pub_trajectories_ = this->create_publisher<CandidateTrajectories>("~/output/trajectories", 1);
   pub_objects_ =
     this->create_publisher<PredictedObjects>("~/output/predicted_objects", rclcpp::QoS(1));
-  pub_avoidance_targets_ =
-    this->create_publisher<PredictedObjects>("~/output/avoidance_targets", rclcpp::QoS(1));
-  pub_driving_along_vehicles_ =
-    this->create_publisher<PredictedObjects>("~/output/driving_along_vehicles", rclcpp::QoS(1));
   pub_tracked_avoidance_targets_ =
     this->create_publisher<TrackedObjects>("~/output/tracked_avoidance_targets", rclcpp::QoS(1));
-  pub_tracked_driving_along_vehicles_ = this->create_publisher<TrackedObjects>(
-    "~/output/tracked_driving_along_vehicles", rclcpp::QoS(1));
-  pub_drivable_area_ = this->create_publisher<Path>("~/output/drivable_area", rclcpp::QoS(1));
-  pub_near_segment_polygon_ = this->create_publisher<MarkerArray>(
-    "~/debug/near_segment_polygon", rclcpp::QoS(1).transient_local());
   pub_route_marker_ = this->create_publisher<MarkerArray>("~/debug/route_marker", 10);
   pub_lane_marker_ = this->create_publisher<MarkerArray>("~/debug/lane_marker", 10);
   pub_linestring_marker_ = this->create_publisher<MarkerArray>("~/debug/linestring_marker", 10);
@@ -639,8 +630,7 @@ void DiffusionPlanner::on_timer()
 
   if (params_.use_mppi_optimizer) {
     // Run avoidance-target / drivable-area detection on the diffusion trajectory before MPPI.
-    publish_avoidance_targets(
-      frame_time, planner_output.trajectory, planner_output.predicted_objects, objects);
+    publish_avoidance_targets(frame_time, planner_output.trajectory, objects);
     // Build left/right route bounds for MPPI road-border costing.
     const std::optional<autoware::mppi_optimizer::RoadBorderBounds> road_borders_for_mppi =
       get_route_bounds_for_mppi();
@@ -793,57 +783,43 @@ void DiffusionPlanner::publish_planning_factor(const Trajectory & trajectory)
 
 void DiffusionPlanner::on_map(const HADMapBin::ConstSharedPtr map_msg)
 {
-  map_bin_ = map_msg;
   lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*map_msg);
   core_->set_map(lanelet_map_ptr_);
+  avoidance_target_detector_->update_map(*map_msg);
 }
 
 std::optional<Path> DiffusionPlanner::publish_avoidance_targets(
   const rclcpp::Time & stamp, const Trajectory & trajectory,
-  const PredictedObjects & predicted_objects,
   const std::shared_ptr<const TrackedObjects> & tracked_objects)
 {
   const auto route = core_->get_route();
-  if (!avoidance_target_detector_ || !map_bin_ || !route || route->segments.empty()) {
+  if (!avoidance_target_detector_ || !route || route->segments.empty()) {
+    RCLCPP_INFO(get_logger(), "route not ok");
     return std::nullopt;
   }
 
-  const bool route_or_map_updated =
-    map_bin_ != cached_avoidance_map_ || route != cached_avoidance_route_;
-  if (route_or_map_updated) {
-    avoidance_target_detector_->set_use_extended_route_bounds(use_extended_route_bounds_);
-    avoidance_target_detector_->update_map_and_route(*map_bin_, *route);
-    cached_avoidance_map_ = map_bin_;
-    cached_avoidance_route_ = route;
-  }
+  avoidance_target_detector_->set_use_extended_route_bounds(use_extended_route_bounds_);
+  avoidance_target_detector_->update_route_if_new(*route);
 
   if (!avoidance_target_detector_->is_ready()) {
+    RCLCPP_INFO(get_logger(), "avoidance_target_detector not ready");
     return std::nullopt;
   }
 
   std::optional<Path> drivable_area;
-  const auto predicted_output =
-    avoidance_target_detector_->process_predicted_objects(stamp, predicted_objects, trajectory);
-  if (predicted_output) {
-    pub_drivable_area_->publish(predicted_output->drivable_area);
-    if (predicted_output->near_segment_polygon) {
-      pub_near_segment_polygon_->publish(*predicted_output->near_segment_polygon);
-    }
-    pub_avoidance_targets_->publish(predicted_output->avoidance_targets);
-    pub_driving_along_vehicles_->publish(predicted_output->driving_along_vehicles);
-    drivable_area = predicted_output->drivable_area;
-  }
 
   if (!tracked_objects) {
+    RCLCPP_INFO(get_logger(), "no tracked objects");
     return drivable_area;
   }
 
   const auto tracked_output =
     avoidance_target_detector_->process_tracked_objects(stamp, *tracked_objects, trajectory);
-  if (tracked_output) {
-    pub_tracked_avoidance_targets_->publish(tracked_output->tracked_avoidance_targets);
-    pub_tracked_driving_along_vehicles_->publish(tracked_output->tracked_driving_along_vehicles);
+  if (!tracked_output) {
+    RCLCPP_INFO(get_logger(), "tracked_output not ok");
+    return drivable_area;
   }
+  pub_tracked_avoidance_targets_->publish(*tracked_output);
   return drivable_area;
 }
 
@@ -851,28 +827,15 @@ std::optional<autoware::mppi_optimizer::RoadBorderBounds>
 DiffusionPlanner::get_route_bounds_for_mppi()
 {
   const auto route = core_->get_route();
-  if (!map_bin_ || !route || route->segments.empty()) {
-    return std::nullopt;
-  }
+  avoidance_target_detector_->update_route_if_new(*route);
 
-  const bool route_or_map_updated =
-    map_bin_ != cached_route_bounds_map_ || route != cached_route_bounds_route_;
-  if (route_or_map_updated || !extended_route_handler_) {
-    extended_route_handler_ =
-      std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(
-        *map_bin_, *route);
-    extended_route_handler_->create_map();
-    cached_route_bounds_map_ = map_bin_;
-    cached_route_bounds_route_ = route;
-  }
-
-  if (!extended_route_handler_->getOriginalRouteHandler()->isHandlerReady()) {
+  if (!avoidance_target_detector_->is_ready()) {
     return std::nullopt;
   }
 
   const auto & bounds = use_extended_route_bounds_
-                          ? extended_route_handler_->get_extended_route_bounds()
-                          : extended_route_handler_->get_original_route_bounds();
+                          ? avoidance_target_detector_->get_extended_route_bounds()
+                          : avoidance_target_detector_->get_original_route_bounds();
   if (bounds.first.size() < 2 || bounds.second.size() < 2) {
     return std::nullopt;
   }
@@ -898,7 +861,6 @@ DiffusionPlanner::get_route_bounds_for_mppi()
   Path drivable_area;
   drivable_area.left_bound = road_borders.left_bound;
   drivable_area.right_bound = road_borders.right_bound;
-  pub_drivable_area_->publish(drivable_area);
 
   return road_borders;
 }

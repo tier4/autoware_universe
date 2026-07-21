@@ -17,11 +17,14 @@
 #include <autoware/marker_utils/marker_conversion.hpp>
 #include <autoware_utils_visualization/marker_helper.hpp>
 
+#include <vector>
+
 namespace autoware::avoidance_target_detector
 {
 
 AvoidanceTargetDetectorLogic::AvoidanceTargetDetectorLogic(const bool use_extended_route_bounds)
-: use_extended_route_bounds_(use_extended_route_bounds)
+: use_extended_route_bounds_(use_extended_route_bounds),
+  extended_route_handler_(std::make_shared<ExtendedRouteHandler>())
 {
 }
 
@@ -31,24 +34,24 @@ void AvoidanceTargetDetectorLogic::set_use_extended_route_bounds(
   use_extended_route_bounds_ = use_extended_route_bounds;
 }
 
-void AvoidanceTargetDetectorLogic::update_map_and_route(
-  const LaneletMapBin & map, const LaneletRoute & route)
+void AvoidanceTargetDetectorLogic::update_map(const LaneletMapBin & map_bin)
 {
-  if (route.segments.empty()) {
-    return;
-  }
+  extended_route_handler_->update_map(map_bin);
+}
 
-  map_bin_ = std::make_shared<LaneletMapBin>(map);
-  route_ = std::make_shared<LaneletRoute>(route);
-  extended_route_handler_ = std::make_shared<ExtendedRouteHandler>(*map_bin_, *route_);
-  extended_route_handler_->create_map();
-  extended_route_handler_->export_debug_map();
+void AvoidanceTargetDetectorLogic::update_route_if_new(const LaneletRoute & route)
+{
+  const bool route_updated =
+    (route.uuid != extended_route_handler_->getOriginalRouteHandler()->getRouteUuid());
+  if (route_updated) {
+    extended_route_handler_->update_route(route);
+    extended_route_handler_->create_route_map();
+  }
 }
 
 bool AvoidanceTargetDetectorLogic::is_ready() const
 {
-  return route_ && extended_route_handler_ &&
-         extended_route_handler_->getOriginalRouteHandler()->isHandlerReady();
+  return extended_route_handler_->getOriginalRouteHandler()->isHandlerReady();
 }
 
 void AvoidanceTargetDetectorLogic::update_ego_trajectory(const TrajectoryPoint & ego_point)
@@ -112,8 +115,7 @@ std::optional<MarkerArray> AvoidanceTargetDetectorLogic::create_near_segment_pol
     create_marker_color(1.0, 0.5, 0.0, 0.7), 0.0);
 }
 
-std::optional<AvoidanceTargetDetectorLogic::PredictedOutput>
-AvoidanceTargetDetectorLogic::process_predicted_objects(
+std::optional<PredictedObjects> AvoidanceTargetDetectorLogic::process_predicted_objects(
   const rclcpp::Time & current_time, const PredictedObjects & objects,
   const Trajectory & trajectory)
 {
@@ -121,52 +123,29 @@ AvoidanceTargetDetectorLogic::process_predicted_objects(
     return std::nullopt;
   }
 
-  trajectory_ = std::make_shared<Trajectory>(trajectory);
   update_ego_trajectory(trajectory.points.front());
 
   object_selector_.update_objects(
     current_time, objects, trajectory, *extended_route_handler_, ego_trajectory_,
     ego_trajectory_built_);
 
-  PredictedOutput output;
-  output.drivable_area = to_path_msg(route_bounds(), trajectory);
-  output.near_segment_polygon = create_near_segment_polygon_marker(current_time, trajectory);
-  output.avoidance_targets =
-    object_selector_.get_avoidance_targets(objects, trajectory, route_bounds());
-
-  if (ego_trajectory_built_) {
-    output.driving_along_vehicles = object_selector_.get_driving_along_vehicles(
-      objects, *extended_route_handler_, ego_trajectory_, trajectory);
-  }
-
-  return output;
+  return object_selector_.get_all_avoidance_targets(objects, trajectory, route_bounds());
 }
 
-std::optional<AvoidanceTargetDetectorLogic::TrackedOutput>
-AvoidanceTargetDetectorLogic::process_tracked_objects(
-  const rclcpp::Time & current_time, const TrackedObjects & objects,
-  const Trajectory & trajectory)
+std::optional<TrackedObjects> AvoidanceTargetDetectorLogic::process_tracked_objects(
+  const rclcpp::Time & current_time, const TrackedObjects & objects, const Trajectory & trajectory)
 {
-  if (!is_ready() || !trajectory_ || trajectory.points.empty()) {
+  if (!is_ready() || trajectory.points.empty()) {
     return std::nullopt;
   }
 
-  const Trajectory trajectory_msg = *trajectory_;
+  update_ego_trajectory(trajectory.points.front());
 
   tracked_object_selector_.update_objects(
-    current_time, objects, trajectory_msg, *extended_route_handler_, ego_trajectory_,
+    current_time, objects, trajectory, *extended_route_handler_, ego_trajectory_,
     ego_trajectory_built_);
 
-  TrackedOutput output;
-  output.tracked_avoidance_targets =
-    tracked_object_selector_.get_avoidance_targets(objects, trajectory_msg, route_bounds());
-
-  if (ego_trajectory_built_) {
-    output.tracked_driving_along_vehicles = tracked_object_selector_.get_driving_along_vehicles(
-      objects, *extended_route_handler_, ego_trajectory_, trajectory_msg);
-  }
-
-  return output;
+  return tracked_object_selector_.get_all_avoidance_targets(objects, trajectory, route_bounds());
 }
 
 }  // namespace autoware::avoidance_target_detector

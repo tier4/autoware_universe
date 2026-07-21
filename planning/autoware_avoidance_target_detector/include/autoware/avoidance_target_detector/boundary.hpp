@@ -92,6 +92,7 @@ std::optional<lanelet::ConstLanelet> get_right_lanelet(
 class ExtendedLaneletSegments
 {
 public:
+  ExtendedLaneletSegments() = default;
   explicit ExtendedLaneletSegments(const LaneletRoute & route);
 
   struct Segment
@@ -115,10 +116,17 @@ private:
 class ExtendedRouteHandler
 {
 public:
-  ExtendedRouteHandler(const LaneletMapBin & map, const LaneletRoute & route);
+  ExtendedRouteHandler();
+
+  /** Update the map on the original route handler. */
+  void update_map(const LaneletMapBin & map);
+
+  /** Update the route on the original route handler and recompute the extended lanelet segments.
+   * Warns and returns without doing anything when the map has not been set yet. */
+  void update_route(const LaneletRoute & route);
 
   /** Build the extended route map and routing graph from the original map and route. */
-  void create_map();
+  void create_route_map();
 
   /** Write the route map to the debug OSM file. Temporary debug code. Must be removed before
    * release. */

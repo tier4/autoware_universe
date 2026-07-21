@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/avoidance_target_detector/avoidance_target_detector_logic.hpp"
 #include "autoware/avoidance_target_detector/node.hpp"
+
+#include "autoware/avoidance_target_detector/avoidance_target_detector_logic.hpp"
+
+#include <memory>
 
 namespace autoware::avoidance_target_detector
 {
@@ -60,7 +63,8 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
 
   if (route_ && map_bin_) {
     logic_->set_use_extended_route_bounds(get_parameter("use_extended_route_bounds").as_bool());
-    logic_->update_map_and_route(*map_bin_, *route_);
+    logic_->update_map(*map_bin_);
+    logic_->update_route_if_new(*route_);
   }
 
   if (!logic_->is_ready()) {
@@ -77,12 +81,7 @@ void AvoidanceTargetDetectorNode::on_objects(const PredictedObjects::ConstShared
     return;
   }
 
-  pub_drivable_area_path_->publish(output->drivable_area);
-  if (output->near_segment_polygon) {
-    pub_near_segment_polygon_->publish(*output->near_segment_polygon);
-  }
-  pub_avoidance_targets_->publish(output->avoidance_targets);
-  pub_driving_along_vehicles_->publish(output->driving_along_vehicles);
+  pub_avoidance_targets_->publish(*output);
 }
 
 void AvoidanceTargetDetectorNode::on_tracked_objects(const TrackedObjects::ConstSharedPtr msg)
@@ -95,14 +94,12 @@ void AvoidanceTargetDetectorNode::on_tracked_objects(const TrackedObjects::Const
     return;
   }
 
-  const auto output =
-    logic_->process_tracked_objects(get_clock()->now(), *msg, *trajectory_);
+  const auto output = logic_->process_tracked_objects(get_clock()->now(), *msg, *trajectory_);
   if (!output) {
     return;
   }
 
-  pub_tracked_avoidance_targets_->publish(output->tracked_avoidance_targets);
-  pub_tracked_driving_along_vehicles_->publish(output->tracked_driving_along_vehicles);
+  pub_tracked_avoidance_targets_->publish(*output);
 }
 
 }  // namespace autoware::avoidance_target_detector

@@ -16,6 +16,8 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <autoware_lanelet2_extension/projection/mgrs_projector.hpp>
+#include <rclcpp/logger.hpp>
+#include <rclcpp/logging.hpp>
 
 #include <autoware_planning_msgs/msg/path_point.hpp>
 #include <geometry_msgs/msg/point.hpp>
@@ -461,17 +463,32 @@ void ExtendedLaneletSegments::build(
   }
 }
 
-ExtendedRouteHandler::ExtendedRouteHandler(const LaneletMapBin & map, const LaneletRoute & route)
-: route_{route},
-  route_map_{std::make_shared<lanelet::LaneletMap>()},
-  extended_lanelet_segments_{route},
+ExtendedRouteHandler::ExtendedRouteHandler()
+: route_map_{std::make_shared<lanelet::LaneletMap>()},
   original_route_handler_{std::make_shared<RouteHandler>()}
 {
-  original_route_handler_->setMap(map);
-  original_route_handler_->setRoute(route);
 }
 
-void ExtendedRouteHandler::create_map()
+void ExtendedRouteHandler::update_map(const LaneletMapBin & map)
+{
+  original_route_handler_->setMap(map);
+}
+
+void ExtendedRouteHandler::update_route(const LaneletRoute & route)
+{
+  if (!original_route_handler_->isMapMsgReady()) {
+    RCLCPP_WARN(
+      rclcpp::get_logger("autoware_avoidance_target_detector"),
+      "ExtendedRouteHandler::update_route called before the map was set; ignoring route update.");
+    return;
+  }
+
+  original_route_handler_->setRoute(route);
+  route_ = route;
+  extended_lanelet_segments_ = ExtendedLaneletSegments(route);
+}
+
+void ExtendedRouteHandler::create_route_map()
 {
   const auto map = original_route_handler_->getLaneletMapPtr();
   extended_routing_graph_ = traffic_rules::create_goal_purpose_routing_graph(*map);

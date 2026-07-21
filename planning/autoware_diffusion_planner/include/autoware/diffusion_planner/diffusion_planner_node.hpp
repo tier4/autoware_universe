@@ -15,10 +15,10 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__DIFFUSION_PLANNER_NODE_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__DIFFUSION_PLANNER_NODE_HPP_
 
-#include "autoware/diffusion_planner/diffusion_planner_core.hpp"
-#include "autoware/diffusion_planner/utils/planning_factor_utils.hpp"
 #include "autoware/avoidance_target_detector/avoidance_target_detector_logic.hpp"
 #include "autoware/avoidance_target_detector/boundary.hpp"
+#include "autoware/diffusion_planner/diffusion_planner_core.hpp"
+#include "autoware/diffusion_planner/utils/planning_factor_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
 
@@ -193,7 +193,6 @@ private:
    */
   std::optional<Path> publish_avoidance_targets(
     const rclcpp::Time & stamp, const Trajectory & trajectory,
-    const PredictedObjects & predicted_objects,
     const std::shared_ptr<const TrackedObjects> & tracked_objects);
 
   /**
@@ -256,12 +255,7 @@ private:
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_mppi_markers_{nullptr};
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_{nullptr};
   rclcpp::Publisher<PredictedObjects>::SharedPtr pub_objects_{nullptr};
-  rclcpp::Publisher<PredictedObjects>::SharedPtr pub_avoidance_targets_{nullptr};
-  rclcpp::Publisher<PredictedObjects>::SharedPtr pub_driving_along_vehicles_{nullptr};
   rclcpp::Publisher<TrackedObjects>::SharedPtr pub_tracked_avoidance_targets_{nullptr};
-  rclcpp::Publisher<TrackedObjects>::SharedPtr pub_tracked_driving_along_vehicles_{nullptr};
-  rclcpp::Publisher<Path>::SharedPtr pub_drivable_area_{nullptr};
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_near_segment_polygon_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_lane_marker_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_linestring_marker_{nullptr};
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_route_marker_{nullptr};
@@ -315,11 +309,6 @@ private:
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler>
     extended_route_handler_;
   bool use_extended_route_bounds_{true};
-  LaneletMapBin::ConstSharedPtr map_bin_;
-  LaneletMapBin::ConstSharedPtr cached_avoidance_map_;
-  LaneletRoute::ConstSharedPtr cached_avoidance_route_;
-  LaneletMapBin::ConstSharedPtr cached_route_bounds_map_;
-  LaneletRoute::ConstSharedPtr cached_route_bounds_route_;
 };
 
 }  // namespace autoware::diffusion_planner

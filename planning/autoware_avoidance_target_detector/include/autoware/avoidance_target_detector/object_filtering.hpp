@@ -239,18 +239,13 @@ public:
     const autoware::experimental::trajectory::Trajectory<TrajectoryPoint> & ego_trajectory,
     bool ego_trajectory_built);
 
-  /**
-   * @brief Select avoidance targets from objects using updated filter state.
-   * @details Call update_objects() first in the same cycle. Runs avoidance-target tracking,
-   *          then removes non-targets and objects outside longitudinal and lateral distance bounds.
-   */
-  [[nodiscard]] Objects get_avoidance_targets(
+  [[nodiscard]] Objects get_all_avoidance_targets(
     const Objects & objects, const Trajectory & trajectory, const RouteBounds & route_bounds);
 
-  [[nodiscard]] Objects get_driving_along_vehicles(
-    const Objects & objects, const ExtendedRouteHandler & extended_route_handler,
-    const autoware::experimental::trajectory::Trajectory<TrajectoryPoint> & ego_trajectory,
-    const Trajectory & trajectory);
+  [[nodiscard]] Objects get_stopped_avoidance_targets(
+    const Objects & objects, const Trajectory & trajectory, const RouteBounds & route_bounds);
+
+  [[nodiscard]] Objects get_driving_along_vehicles(const Objects & objects);
 
 private:
   void track_avoidance_targets();
