@@ -30,6 +30,7 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include <lanelet2_core/primitives/Point.h>
 #include <lanelet2_core/primitives/Polygon.h>
 
 #include <memory>
@@ -83,6 +84,12 @@ public:
   [[nodiscard]] const RouteBounds & get_extended_route_bounds() const
   {
     return extended_route_handler_->get_extended_route_bounds();
+  }
+
+  template <typename PointT>
+  [[nodiscard]] std::optional<double> get_velocity_limit(const PointT & point) const
+  {
+    return extended_route_handler_->get_velocity_limit(point);
   }
 
 private:
