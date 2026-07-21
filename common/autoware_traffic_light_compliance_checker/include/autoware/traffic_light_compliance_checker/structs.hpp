@@ -107,6 +107,7 @@ struct Parameters
   double stable_duration_threshold_unknown;
   double amber_rejection_hysteresis_duration;
   double ego_stopped_velocity_threshold;
+  double allow_if_cannot_stop_distance;
   struct CheckedTrajectoryLength
   {
     double deceleration_limit;
