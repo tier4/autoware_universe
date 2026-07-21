@@ -18,7 +18,7 @@
     longitudinal_jerk_coeff: 1000.0
     accel_cmd_coeff: 200.0
     steer_cmd_coeff: 1000.0
-    steer_rate_coeff: 3000.0
+    steer_rate_coeff: 5000.0
     goal_pos_coeff: 1000.0
     goal_speed_coeff: 200.0
     goal_yaw_coeff: 500.0
