@@ -292,6 +292,12 @@
               "default": 20.0,
               "minimum": 0,
               "description": "No tracked object may be within this radius of the ego for the override to activate or stay active [m]"
+            },
+            "max_distance_to_start_m": {
+              "type": "number",
+              "default": 5.0,
+              "minimum": 0,
+              "description": "Do not activate the override if the ego is farther than this from the route start pose [m]"
             }
           },
           "required": [
@@ -299,7 +305,8 @@
             "synthetic_speed_mps",
             "stationary_duration_s",
             "release_speed_mps",
-            "min_agent_distance_m"
+            "min_agent_distance_m",
+            "max_distance_to_start_m"
           ]
         },
         "debug_params": {

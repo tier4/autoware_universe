@@ -248,7 +248,8 @@ void DiffusionPlannerCore::set_map(
 
 void DiffusionPlannerCore::update_force_takeoff_state(
   const Odometry & kinematic_state, const TrackedObjects & objects,
-  const std::shared_ptr<const AutowareState> & autoware_state, const rclcpp::Time & current_time)
+  const std::shared_ptr<const AutowareState> & autoware_state,
+  const geometry_msgs::msg::Pose & route_start_pose, const rclcpp::Time & current_time)
 {
   const auto logger = rclcpp::get_logger("diffusion_planner_core");
   static rclcpp::Clock steady_clock(RCL_STEADY_TIME);
@@ -343,6 +344,22 @@ void DiffusionPlannerCore::update_force_takeoff_state(
   if (stalled_duration_s <= params_.force_takeoff_stationary_duration_s) {
     return;
   }
+
+  // The synthetic override is only meant for the takeoff at the route start: a stall far from the
+  // start pose (e.g. re-engage after manual intervention mid-route) must not be overridden. The
+  // ego is stationary, so the distance cannot recover: cancel the timer instead of staying pending.
+  const double distance_to_start = std::hypot(
+    ego_position.x - route_start_pose.position.x, ego_position.y - route_start_pose.position.y);
+  if (distance_to_start > params_.force_takeoff_max_distance_to_start_m) {
+    RCLCPP_INFO(
+      logger,
+      "Force takeoff cancelled: ego is %.2f m from the route start pose (max %.2f m), not a "
+      "takeoff situation",
+      distance_to_start, params_.force_takeoff_max_distance_to_start_m);
+    engage_time_.reset();
+    return;
+  }
+
   if (agent_nearby) {
     RCLCPP_INFO_THROTTLE(
       logger, steady_clock, 1000,
@@ -401,7 +418,8 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   // Update force takeoff state (uses the unfiltered object list so that the proximity gate is
   // not bypassed by ignore_neighbors)
   if (objects) {
-    update_force_takeoff_state(*ego_kinematic_state, *objects, autoware_state, current_time);
+    update_force_takeoff_state(
+      *ego_kinematic_state, *objects, autoware_state, route_ptr_->start_pose, current_time);
   }
 
   // Update ego history

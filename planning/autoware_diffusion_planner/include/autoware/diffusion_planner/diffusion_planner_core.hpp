@@ -149,6 +149,7 @@ struct DiffusionPlannerParams
   double force_takeoff_stationary_duration_s;
   double force_takeoff_release_speed_mps;
   double force_takeoff_min_agent_distance_m;
+  double force_takeoff_max_distance_to_start_m;
 };
 
 /**
@@ -245,21 +246,24 @@ public:
    * @brief Update the force-takeoff state machine for the current frame.
    *
    * When the autoware state transitions to DRIVING (engage), starts a stall timer. If the ego
-   * still has not started moving stationary_duration_s after the engage and no tracked object is
-   * within the configured radius, activates the ego history/state override. Deactivates once the
-   * ego reaches the release speed; aborts immediately if an agent enters the radius while active,
-   * if the autoware state leaves DRIVING, or if force_takeoff.enable is set to false.
+   * still has not started moving stationary_duration_s after the engage, is within
+   * max_distance_to_start_m of the route start pose, and no tracked object is within the
+   * configured radius, activates the ego history/state override. Deactivates once the ego reaches
+   * the release speed; aborts immediately if an agent enters the radius while active, if the
+   * autoware state leaves DRIVING, or if force_takeoff.enable is set to false.
    *
    * Public for direct unit testing; called every frame by create_frame_context.
    *
    * @param kinematic_state Current ego odometry
    * @param objects Tracked objects (unfiltered)
    * @param autoware_state Latest cached autoware state (nullptr only before the first message)
+   * @param route_start_pose Start pose of the current route
    * @param current_time Current timestamp
    */
   void update_force_takeoff_state(
     const Odometry & kinematic_state, const TrackedObjects & objects,
-    const std::shared_ptr<const AutowareState> & autoware_state, const rclcpp::Time & current_time);
+    const std::shared_ptr<const AutowareState> & autoware_state,
+    const geometry_msgs::msg::Pose & route_start_pose, const rclcpp::Time & current_time);
 
   /**
    * @brief Whether the force takeoff override is currently active.

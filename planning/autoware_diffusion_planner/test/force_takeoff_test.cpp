@@ -17,6 +17,7 @@
 #include <rclcpp/time.hpp>
 
 #include <autoware_system_msgs/msg/autoware_state.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 
 #include <gtest/gtest.h>
 
@@ -39,6 +40,7 @@ protected:
     params.force_takeoff_stationary_duration_s = 3.0;
     params.force_takeoff_release_speed_mps = 0.5;
     params.force_takeoff_min_agent_distance_m = 20.0;
+    params.force_takeoff_max_distance_to_start_m = 5.0;
     params_ = params;
 
     VehicleInfo vehicle_info{};
@@ -79,8 +81,13 @@ protected:
     const double t, const double speed_mps, const uint8_t state,
     const std::vector<double> & agent_distances_m = {})
   {
+    // The ego odometry in these tests sits at the origin, so the route start pose is placed
+    // route_start_distance_m_ away from it along x.
+    geometry_msgs::msg::Pose route_start_pose;
+    route_start_pose.position.x = route_start_distance_m_;
     core_->update_force_takeoff_state(
-      make_odometry(speed_mps), make_objects(agent_distances_m), make_state(state), at(t));
+      make_odometry(speed_mps), make_objects(agent_distances_m), make_state(state),
+      route_start_pose, at(t));
   }
 
   // Engage at t=0 (WAITING_FOR_ENGAGE -> DRIVING) with the ego stopped.
@@ -92,6 +99,7 @@ protected:
 
   DiffusionPlannerParams params_;
   std::unique_ptr<DiffusionPlannerCore> core_;
+  double route_start_distance_m_{0.0};
 };
 
 TEST_F(ForceTakeoffTest, ActivatesAfterStallAndReleasesOnSpeed)
@@ -188,6 +196,28 @@ TEST_F(ForceTakeoffTest, DisableWhileArmedClearsTimer)
   tick(5.0, 0.0, AutowareState::DRIVING);
   EXPECT_FALSE(core_->is_force_takeoff_active())
     << "an armed timer must be cleared by the kill switch, not resumed on re-enable";
+}
+
+TEST_F(ForceTakeoffTest, DoesNotActivateFarFromRouteStart)
+{
+  route_start_distance_m_ = 6.0;  // beyond max_distance_to_start_m (5.0)
+  engage();
+  tick(3.5, 0.0, AutowareState::DRIVING);
+  EXPECT_FALSE(core_->is_force_takeoff_active())
+    << "a stall far from the route start pose must not be overridden";
+
+  // The timer is cancelled, not pending: it must not fire later either.
+  tick(20.0, 0.0, AutowareState::DRIVING);
+  EXPECT_FALSE(core_->is_force_takeoff_active());
+}
+
+TEST_F(ForceTakeoffTest, ActivatesWithinMaxDistanceToStart)
+{
+  route_start_distance_m_ = 4.0;  // within max_distance_to_start_m (5.0)
+  engage();
+  tick(3.5, 0.0, AutowareState::DRIVING);
+  EXPECT_TRUE(core_->is_force_takeoff_active())
+    << "a stall within the route-start radius must still activate";
 }
 
 TEST_F(ForceTakeoffTest, NoActivationWithoutEngageTransition)

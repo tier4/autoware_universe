@@ -225,6 +225,8 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<double>("force_takeoff.release_speed_mps", 0.5);
   params_.force_takeoff_min_agent_distance_m =
     this->declare_parameter<double>("force_takeoff.min_agent_distance_m", 20.0);
+  params_.force_takeoff_max_distance_to_start_m =
+    this->declare_parameter<double>("force_takeoff.max_distance_to_start_m", 5.0);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_cost_params(*this);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
 
@@ -395,6 +397,9 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<double>(
       parameters, "force_takeoff.min_agent_distance_m",
       temp_params.force_takeoff_min_agent_distance_m);
+    update_param<double>(
+      parameters, "force_takeoff.max_distance_to_start_m",
+      temp_params.force_takeoff_max_distance_to_start_m);
     const bool args_path_changed = temp_params.args_path != previous_args_path;
     const bool model_paths_changed =
       temp_params.model_type != previous_model_type ||
