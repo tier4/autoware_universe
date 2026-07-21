@@ -45,6 +45,28 @@ validator:
         default_value: .NAN
         description: sampling interval used in collision check trajectory generation
         read_only: false
+    stopped_object_tracking:
+      stopped_velocity_threshold:
+        type: double
+        default_value: 0.1
+        description: planar speed below which an object is considered stopped (m/s)
+        read_only: false
+        validation:
+          gt<>: [0.0]
+      stopped_duration_threshold:
+        type: double
+        default_value: 3.0
+        description: continuous stop duration required to consider an object stopped long enough (s)
+        read_only: false
+        validation:
+          gt_eq<>: [0.0]
+      history_timeout:
+        type: double
+        default_value: 1.0
+        description: time after the last observation before a stopped-object record is removed (s)
+        read_only: false
+        validation:
+          gt_eq<>: [0.0]
     drac:
       enable_assessment:
         base:

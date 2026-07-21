@@ -130,6 +130,22 @@ struct GlobalParams
   }
 };
 
+struct StoppedObjectTrackingParams
+{
+  double stopped_velocity_threshold{0.1};
+  double stopped_duration_threshold{3.0};
+  double history_timeout{1.0};
+
+  StoppedObjectTrackingParams() = default;
+  explicit StoppedObjectTrackingParams(
+    const validator::Params::CollisionCheck::StoppedObjectTracking & params)
+  : stopped_velocity_threshold(params.stopped_velocity_threshold),
+    stopped_duration_threshold(params.stopped_duration_threshold),
+    history_timeout(params.history_timeout)
+  {
+  }
+};
+
 struct DracParams
 {
   struct PetMargin

@@ -13,6 +13,10 @@
     collision_check:
       global_setting:
         time_resolution: 0.1
+      stopped_object_tracking:
+        stopped_velocity_threshold: 0.1  # [m/s]
+        stopped_duration_threshold: 3.0  # [s]
+        history_timeout: 1.0  # [s]
       drac:
         enable_assessment:
           # default value is true.
