@@ -22,6 +22,11 @@
           "validation": {
             "gt_eq<>": 100
           }
+        },
+        "enable_ranker": {
+          "type": "boolean",
+          "default": false,
+          "description": "enable trajectory ranker"
         }
       },
       "required": ["fallback_period_ms"],

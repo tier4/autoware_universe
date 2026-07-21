@@ -10,3 +10,9 @@ selector:
     default_value: 150
     description: fallback timer period in milliseconds.
     read_only: false
+
+  enable_ranker:
+    type: bool
+    default_value: false
+    description: enable trajectory ranker
+    read_only: false

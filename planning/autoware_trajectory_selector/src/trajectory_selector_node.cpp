@@ -240,6 +240,8 @@ void TrajectorySelectorNode::process_trajectories()
   const auto input_trajectories =
     to_ranker_input_trajectories(concatenated_trajectories, validation_reports);
 
+  if (!selector_params_.enable_ranker) return;
+
   const auto scored_trajectories =
     ranker_ptr_->rank_trajectories(input_trajectories, take_ranker_data());
   pub_scored_trajectories_->publish(scored_trajectories);
