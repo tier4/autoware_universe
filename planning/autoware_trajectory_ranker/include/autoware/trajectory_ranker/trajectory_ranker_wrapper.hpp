@@ -53,6 +53,7 @@ public:
 
 private:
   void update_parameters();
+  void update_last_best_trajectory_info(const ScoredTrajectory & best_trajectory_info);
 
   rclcpp::Node * node_ptr_{nullptr};
   std::string interface_name_{"trajectory_ranker"};
@@ -62,6 +63,8 @@ private:
   std::unique_ptr<TrajectoryRanker> ranker_ptr_;
   std::shared_ptr<RouteHandler> route_handler_;
   std::shared_ptr<Evaluator> evaluator_;
+
+  std::optional<ScoredTrajectory> last_best_trajectory_info_;
 
   mutable std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_{nullptr};
   std::unique_ptr<trajectory_ranker_params::ParamListener> param_listener_;

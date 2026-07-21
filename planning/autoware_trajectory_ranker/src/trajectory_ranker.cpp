@@ -62,7 +62,7 @@ std::string to_source_string(const TrajectorySource source)
 namespace autoware::trajectory_ranker
 {
 
-tl::expected<ScoredCandidateTrajectories, std::string> TrajectoryRanker::process(
+tl::expected<RankerResult, std::string> TrajectoryRanker::process(
   const RankerInputTrajectories & input_trajectories, const RankerContext & context)
 {
   ScoredTrajectories scored_trajectories;
@@ -75,16 +75,26 @@ tl::expected<ScoredCandidateTrajectories, std::string> TrajectoryRanker::process
   evaluate_source(scored_trajectories);
   evaluate_quality(scored_trajectories, context);
   score_trajectories(scored_trajectories);
-  update_trajectory_history(scored_trajectories);
 
-  ScoredCandidateTrajectories output;
+  RankerResult result;
   for (const auto & scored_trajectory : scored_trajectories) {
     ScoredCandidateTrajectory scored_candidate;
     scored_candidate.candidate_trajectory = scored_trajectory.input_trajectory.candidate_trajectory;
     scored_candidate.score = static_cast<float>(scored_trajectory.score);
-    output.scored_candidate_trajectories.push_back(scored_candidate);
+    result.scored_trajectories.scored_candidate_trajectories.push_back(scored_candidate);
   }
-  return output;
+
+  auto best_itr = std::max_element(
+    scored_trajectories.begin(), scored_trajectories.end(),
+    [](const auto & a, const auto & b) { return a.score < b.score; });
+  if (best_itr == scored_trajectories.end()) {
+    return tl::unexpected("No best trajectory found");
+  }
+
+  result.best_trajectory_info = *best_itr;
+  update_trajectory_history(result.best_trajectory_info);
+
+  return result;
 }
 
 void TrajectoryRanker::evaluate_safety(ScoredTrajectories & scored_trajectories) const
@@ -172,16 +182,11 @@ void TrajectoryRanker::score_trajectories(ScoredTrajectories & scored_trajectori
   }
 }
 
-void TrajectoryRanker::update_trajectory_history(const ScoredTrajectories & scored_trajectories)
+void TrajectoryRanker::update_trajectory_history(const ScoredTrajectory & best_trajectory_info)
 {
-  auto best_itr = std::max_element(
-    scored_trajectories.begin(), scored_trajectories.end(),
-    [](const auto & a, const auto & b) { return a.score < b.score; });
-  if (best_itr == scored_trajectories.end()) return;
-
   Trajectory best_trajectory;
-  best_trajectory.header = best_itr->input_trajectory.candidate_trajectory.header;
-  best_trajectory.points = best_itr->input_trajectory.candidate_trajectory.points;
+  best_trajectory.header = best_trajectory_info.input_trajectory.candidate_trajectory.header;
+  best_trajectory.points = best_trajectory_info.input_trajectory.candidate_trajectory.points;
   trajectory_history_.push_back(best_trajectory);
 
   if (

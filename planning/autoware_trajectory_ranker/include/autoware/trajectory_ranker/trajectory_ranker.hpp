@@ -72,6 +72,12 @@ struct ScoredTrajectory
 };
 using ScoredTrajectories = std::vector<ScoredTrajectory>;
 
+struct RankerResult
+{
+  ScoredCandidateTrajectories scored_trajectories;
+  ScoredTrajectory best_trajectory_info;
+};
+
 class TrajectoryRanker
 {
 public:
@@ -86,7 +92,7 @@ public:
   {
   }
 
-  tl::expected<ScoredCandidateTrajectories, std::string> process(
+  tl::expected<RankerResult, std::string> process(
     const RankerInputTrajectories & input_trajectories, const RankerContext & context);
 
 private:
@@ -96,7 +102,7 @@ private:
     ScoredTrajectories & scored_trajectories, const RankerContext & context) const;
   void score_trajectories(ScoredTrajectories & scored_trajectories) const;
 
-  void update_trajectory_history(const ScoredTrajectories & scored_trajectories);
+  void update_trajectory_history(const ScoredTrajectory & best_trajectory_info);
 
   std::shared_ptr<Evaluator> evaluator_;
 

@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <autoware/trajectory_ranker/trajectory_ranker_wrapper.hpp>
+#include "autoware/trajectory_ranker/trajectory_ranker_wrapper.hpp"
+
+#include <magic_enum.hpp>
 
 #include <memory>
+#include <string>
 #include <utility>
 
 namespace autoware::trajectory_ranker
@@ -63,7 +66,33 @@ ScoredCandidateTrajectories TrajectoryRankerWrapper::rank_trajectories(
     return ScoredCandidateTrajectories();
   }
 
-  return result.value();
+  update_last_best_trajectory_info(result.value().best_trajectory_info);
+
+  return result.value().scored_trajectories;
+}
+
+void TrajectoryRankerWrapper::update_last_best_trajectory_info(
+  const ScoredTrajectory & best_trajectory_info)
+{
+  auto source = std::string(magic_enum::enum_name(best_trajectory_info.input_trajectory.source));
+  auto last_source =
+    last_best_trajectory_info_
+      ? std::string(magic_enum::enum_name(last_best_trajectory_info_->input_trajectory.source))
+      : "none";
+  bool is_same_source = last_source == source;
+  last_best_trajectory_info_ = best_trajectory_info;
+
+  if (is_same_source) return;
+  RCLCPP_WARN(
+    logger_, "[Ranker] Best trajectory source changed from %s to %s", last_source.c_str(),
+    source.c_str());
+  RCLCPP_INFO(
+    logger_,
+    "[Ranker] Best trajectory info: safety_penalty -> %f, source_penalty -> %f, quality_penalty -> "
+    "%f, "
+    "score -> %f",
+    last_best_trajectory_info_->safety_penalty, last_best_trajectory_info_->source_penalty,
+    last_best_trajectory_info_->quality_penalty, last_best_trajectory_info_->score);
 }
 
 }  // namespace autoware::trajectory_ranker
