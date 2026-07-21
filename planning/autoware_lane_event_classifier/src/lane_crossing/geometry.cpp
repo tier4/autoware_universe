@@ -12,28 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <autoware/lanelet2_utils/geometry.hpp>
 #include <autoware/lanelet2_utils/kind.hpp>
-#include <autoware/object_recognition_utils/matching.hpp>
 #include <autoware_lane_event_classifier/detail/geometry_utils.hpp>
 #include <autoware_lane_event_classifier/lane_crossing/geometry.hpp>
 #include <autoware_utils_geometry/boost_geometry.hpp>
-#include <autoware_utils_geometry/boost_polygon_utils.hpp>
 
-#include <boost/geometry/algorithms/correct.hpp>
 #include <boost/geometry/algorithms/distance.hpp>
 #include <boost/geometry/algorithms/intersection.hpp>
 
-#include <lanelet2_core/geometry/Lanelet.h>
-#include <lanelet2_core/geometry/LineString.h>
-
 #include <fmt/format.h>
 #include <fmt/ranges.h>
+#include <lanelet2_core/geometry/Lanelet.h>
+#include <lanelet2_core/geometry/LineString.h>
 
 #include <algorithm>
 #include <cmath>
 #include <functional>
-#include <iterator>
 #include <limits>
 #include <optional>
 #include <string>
@@ -49,7 +43,6 @@ namespace
 namespace lanelet2_utils = autoware::experimental::lanelet2_utils;
 using autoware_utils_geometry::LineString2d;
 using autoware_utils_geometry::Point2d;
-using autoware_utils_geometry::Polygon2d;
 
 // A point range (trajectory samples or a lanelet bound) as a boost linestring for intersection.
 template <class PointRange>
@@ -63,34 +56,316 @@ LineString2d to_line_string(const PointRange & points)
   return line_string;
 }
 
-// A lanelet's 2D polygon as a corrected boost polygon, ready for the overlap-area helpers.
-Polygon2d to_boost_polygon(const lanelet::ConstLanelet & lane)
+// The left / right boundary polylines of the lane sequence, each spanning the whole forward
+// straight sequence.
+struct LaneSequenceBounds
 {
-  const auto basic_polygon = lane.polygon2d().basicPolygon();
-  Polygon2d polygon;
-  polygon.outer().reserve(basic_polygon.size() + 1);
-  for (const auto & point : basic_polygon) {
-    polygon.outer().emplace_back(point.x(), point.y());
+  LineString2d left;
+  LineString2d right;
+};
+
+// The lane-sequence boundary spans the whole forward straight sequence, not just the single
+// reference lanelet the ego sits in: the ego dodges around an object that can be many metres ahead,
+// so the poke crosses the boundary of whichever sequence lane lies at the object. Concatenating the
+// sequence lanes' left/right bounds gives one continuous boundary polyline per side (consecutive
+// route lanes share their junction endpoints).
+LaneSequenceBounds build_lane_sequence_bounds(const lanelet::ConstLanelets & lane_sequence)
+{
+  LaneSequenceBounds bounds;
+  for (const auto & lane : lane_sequence) {
+    const auto lane_left = to_line_string(lane.leftBound2d());
+    const auto lane_right = to_line_string(lane.rightBound2d());
+    bounds.left.insert(bounds.left.end(), lane_left.cbegin(), lane_left.cend());
+    bounds.right.insert(bounds.right.end(), lane_right.cbegin(), lane_right.cend());
   }
-  boost::geometry::correct(polygon);
-  return polygon;
+  return bounds;
+}
+
+// Which lane-sequence boundary a point sits nearer to (the boundary the ego crosses there).
+bool point_is_nearer_left_boundary(
+  const lanelet::BasicPoint2d & point, const LaneSequenceBounds & bounds)
+{
+  const Point2d boost_point{point.x(), point.y()};
+  const double distance_to_left = boost::geometry::distance(boost_point, bounds.left);
+  const double distance_to_right = boost::geometry::distance(boost_point, bounds.right);
+  return distance_to_left <= distance_to_right;
+}
+
+// A single crossing of the lane-sequence boundary: which side, and where.
+struct CrossingCandidate
+{
+  bool is_to_left{false};
+  lanelet::BasicPoint2d point{0.0, 0.0};
+};
+
+// ---------------------------------------------------------------------------------------------
+// Source (a) - predictive: the planned trajectory centerline forms a closed departure around the
+// object (crosses a boundary out before it, back in after it). Early, but blind to a shallow dodge
+// where only the body crosses; source (b) covers that.
+// ---------------------------------------------------------------------------------------------
+
+// Arc length along the trajectory polyline to the projection of a query point onto it. Both the
+// boundary crossings (which lie on the trajectory, so the projection is exact) and the candidate
+// objects are placed in this single arc frame, so "exit before the object, re-enter after" reduces
+// to comparing arc lengths.
+double project_arc_length(
+  const std::vector<lanelet::BasicPoint2d> & path, double query_x, double query_y)
+{
+  double best_arc = 0.0;
+  double best_distance_sq = std::numeric_limits<double>::max();
+  double cumulative = 0.0;
+  for (std::size_t index = 0; index + 1 < path.size(); ++index) {
+    const double ax = path[index].x();
+    const double ay = path[index].y();
+    const double dx = path[index + 1].x() - ax;
+    const double dy = path[index + 1].y() - ay;
+    const double segment_length_sq = dx * dx + dy * dy;
+    double ratio = 0.0;
+    if (segment_length_sq > 0.0) {
+      ratio = ((query_x - ax) * dx + (query_y - ay) * dy) / segment_length_sq;
+      ratio = std::clamp(ratio, 0.0, 1.0);
+    }
+    const double projection_x = ax + ratio * dx;
+    const double projection_y = ay + ratio * dy;
+    const double distance_sq = (query_x - projection_x) * (query_x - projection_x) +
+                               (query_y - projection_y) * (query_y - projection_y);
+    const double segment_length = std::sqrt(segment_length_sq);
+    if (distance_sq < best_distance_sq) {
+      best_distance_sq = distance_sq;
+      best_arc = cumulative + ratio * segment_length;
+    }
+    cumulative += segment_length;
+  }
+  return best_arc;
+}
+
+// A point where the trajectory crosses a lane-sequence boundary, in the trajectory-arc frame.
+struct BoundaryCrossing
+{
+  double arc_m{0.0};
+  bool is_to_left{false};
+  lanelet::BasicPoint2d point{0.0, 0.0};
+};
+
+// Every trajectory-vs-boundary crossing, ordered by arc length along the trajectory. The trajectory
+// starts inside the sequence, so the crossings alternate exit, re-enter, exit, ...
+std::vector<BoundaryCrossing> get_ordered_boundary_crossings(
+  const std::vector<lanelet::BasicPoint2d> & trajectory_points, const LaneSequenceBounds & bounds)
+{
+  std::vector<BoundaryCrossing> crossings;
+  if (trajectory_points.size() < 2) {
+    return crossings;
+  }
+  const auto trajectory_line = to_line_string(trajectory_points);
+  const auto collect = [&](const LineString2d & boundary, bool is_to_left) {
+    std::vector<Point2d> hits;
+    boost::geometry::intersection(trajectory_line, boundary, hits);
+    for (const auto & hit : hits) {
+      crossings.push_back(
+        {project_arc_length(trajectory_points, hit.x(), hit.y()), is_to_left, {hit.x(), hit.y()}});
+    }
+  };
+  collect(bounds.left, true);
+  collect(bounds.right, false);
+  std::sort(
+    crossings.begin(), crossings.end(),
+    [](const BoundaryCrossing & a, const BoundaryCrossing & b) { return a.arc_m < b.arc_m; });
+  return crossings;
+}
+
+// A closed sideways departure: the trajectory exits the lane sequence at exit_arc and re-enters at
+// reenter_arc. Only closed departures count - a path that leaves and never returns within the
+// look-ahead is a lane change, not a crossing, and is dropped here.
+struct DepartureInterval
+{
+  double exit_arc_m{0.0};
+  double reenter_arc_m{0.0};
+  bool is_to_left{false};
+  lanelet::BasicPoint2d exit_point{0.0, 0.0};
+};
+
+std::vector<DepartureInterval> get_departure_intervals(
+  const std::vector<BoundaryCrossing> & crossings)
+{
+  std::vector<DepartureInterval> intervals;
+  for (std::size_t index = 0; index + 1 < crossings.size(); index += 2) {
+    const auto & exit = crossings[index];
+    const auto & reenter = crossings[index + 1];
+    intervals.push_back({exit.arc_m, reenter.arc_m, exit.is_to_left, exit.point});
+  }
+  return intervals;
+}
+
+// The first (nearest to the ego) departure that goes around a candidate object: the object's arc
+// falls strictly between the exit and the re-enter. Absent when no departure brackets any
+// candidate.
+std::optional<CrossingCandidate> get_trajectory_crossing(
+  const std::vector<lanelet::BasicPoint2d> & trajectory_points, const LaneSequenceBounds & bounds,
+  const std::vector<geometry_msgs::msg::Pose> & candidate_object_poses,
+  std::size_t & departure_count)
+{
+  const auto crossings = get_ordered_boundary_crossings(trajectory_points, bounds);
+  const auto departures = get_departure_intervals(crossings);
+  departure_count = departures.size();
+
+  std::vector<double> candidate_arcs;
+  candidate_arcs.reserve(candidate_object_poses.size());
+  for (const auto & pose : candidate_object_poses) {
+    candidate_arcs.push_back(
+      project_arc_length(trajectory_points, pose.position.x, pose.position.y));
+  }
+  for (const auto & departure : departures) {
+    const bool brackets_candidate =
+      std::any_of(candidate_arcs.cbegin(), candidate_arcs.cend(), [&departure](const double arc) {
+        return arc > departure.exit_arc_m && arc < departure.reenter_arc_m;
+      });
+    if (brackets_candidate) {
+      return CrossingCandidate{departure.is_to_left, departure.exit_point};
+    }
+  }
+  return std::nullopt;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Source (b) - physical: the current ego footprint (the real body, so a yawed corner poking over
+// the line counts) crosses the lane-sequence boundary into a lane outside the sequence. This fires
+// the moment the body is over the boundary, regardless of where the planned centerline sits.
+// ---------------------------------------------------------------------------------------------
+
+// The footprint corner poking deepest into a neighbour lane, with how far it overshoots the
+// reference boundary. Only corners inside the neighbour lane count; the overshoot is that corner's
+// distance past the reference boundary. Absent when no corner is inside the neighbour.
+struct NeighbourOvershoot
+{
+  double overshoot_m{0.0};
+  std::optional<lanelet::BasicPoint2d> deepest_corner;
+};
+
+NeighbourOvershoot deepest_footprint_overshoot(
+  const LaneTracker & tracker, lanelet::Id reference_lane_id, lanelet::Id neighbour_id,
+  const std::vector<lanelet::BasicPoint2d> & footprint)
+{
+  NeighbourOvershoot deepest;
+  for (const auto & corner : footprint) {
+    const auto inside_neighbour = tracker.distance_to_lane(neighbour_id, corner);
+    if (!inside_neighbour || *inside_neighbour > 0.0) {
+      continue;  // this corner is not inside the neighbour lane
+    }
+    const auto overshoot = tracker.distance_to_lane(reference_lane_id, corner);
+    if (overshoot && *overshoot > deepest.overshoot_m) {
+      deepest.overshoot_m = *overshoot;
+      deepest.deepest_corner = corner;
+    }
+  }
+  return deepest;
+}
+
+// The footprint crossing (deepest qualifying corner across the neighbour lanes) plus a
+// per-neighbour note breakdown for the diagnostic. A shoulder neighbour is exempt (that is a
+// road-shoulder use, handled by the lane-following check). A corner must poke past the reference
+// boundary by more than footprint_boundary_overshoot_m so a slight cornering graze does not count.
+struct FootprintCrossing
+{
+  std::optional<CrossingCandidate> crossing;
+  std::string note;
+};
+
+FootprintCrossing get_footprint_crossing(
+  const LaneTracker & tracker, lanelet::Id reference_lane_id,
+  const std::unordered_set<lanelet::Id> & sequence_ids,
+  const std::vector<lanelet::BasicPoint2d> & footprint,
+  const std::vector<lanelet::Id> & footprint_ids, const LaneSequenceBounds & bounds,
+  double footprint_boundary_overshoot_m)
+{
+  std::optional<CrossingCandidate> best;
+  double deepest_overshoot_m = footprint_boundary_overshoot_m;
+  std::vector<std::string> notes;
+  for (const auto neighbour_id : footprint_ids) {
+    if (sequence_ids.count(neighbour_id) != 0) {
+      continue;  // a lane of the sequence, not a crossing
+    }
+    const auto overshoot =
+      deepest_footprint_overshoot(tracker, reference_lane_id, neighbour_id, footprint);
+    const auto neighbour_lane = tracker.get_lanelet(neighbour_id);
+    const bool is_shoulder = neighbour_lane && lanelet2_utils::is_shoulder_lane(*neighbour_lane);
+    notes.push_back(
+      fmt::format(
+        "{}:{:.2f}m{}", neighbour_id, overshoot.overshoot_m,
+        is_shoulder ? " shoulder-exempt" : ""));
+    if (is_shoulder) {
+      continue;
+    }
+    if (overshoot.deepest_corner && overshoot.overshoot_m >= deepest_overshoot_m) {
+      deepest_overshoot_m = overshoot.overshoot_m;
+      best = CrossingCandidate{
+        point_is_nearer_left_boundary(*overshoot.deepest_corner, bounds),
+        *overshoot.deepest_corner};
+    }
+  }
+  return {best, notes.empty() ? std::string{"none"} : fmt::format("{}", fmt::join(notes, " "))};
+}
+
+// A crossing decision plus its diagnostic (nullopt crossing with a reason when there is none or an
+// exemption applies).
+struct ResolvedCrossing
+{
+  std::optional<LaneCrossingCrossing> crossing;
+  std::string diagnostic;
+};
+
+// Turn a chosen crossing into the observation crossing: apply the virtual-boundary exemption on the
+// crossed side and find the best-effort off-sequence target lane at the crossing point.
+ResolvedCrossing resolve_crossing(
+  const LaneTracker & tracker, const lanelet::ConstLanelet & reference_lane,
+  const std::unordered_set<lanelet::Id> & sequence_ids, const CrossingCandidate & candidate,
+  const std::string & source, const std::string & detail)
+{
+  const bool is_to_left = candidate.is_to_left;
+  const lanelet::BasicPoint2d crossing_point = candidate.point;
+
+  // Onset exemption (docs/lane_crossing.md, "Exemptions"): a virtual crossed boundary.
+  const auto & crossed_bound =
+    is_to_left ? reference_lane.leftBound() : reference_lane.rightBound();
+  if (is_virtual_linestring(crossed_bound)) {
+    return {
+      std::nullopt,
+      fmt::format("exempt: crossed {} boundary is virtual", is_to_left ? "left" : "right")};
+  }
+
+  // Best-effort target lane: a lanelet sharing the crossed boundary at the crossing point that is
+  // not part of the reference straight sequence. It may stay InvalId when no neighbour lane is
+  // mapped (a dodge over the line into open space is still a crossing); the classifier keys
+  // persistence on the side and the crossing point, not on this id.
+  lanelet::Id target_lane_id = lanelet::InvalId;
+  for (const auto id : tracker.lanelet_ids_at(crossing_point)) {
+    if (sequence_ids.count(id) != 0) {
+      continue;
+    }
+    target_lane_id = id;
+    break;
+  }
+
+  LaneCrossingCrossing crossing;
+  crossing.target_lane_id = target_lane_id;
+  crossing.crossing_point = crossing_point;
+  crossing.is_to_left = is_to_left;
+  return {
+    crossing, fmt::format(
+                "crossing to {} (target={} via {}; {})", is_to_left ? "left" : "right",
+                target_lane_id, source, detail)};
 }
 }  // namespace
 
 LaneCrossingGeometry::LaneCrossingGeometry(
-  double crossing_look_ahead_m, double footprint_boundary_overshoot_m,
-  double object_static_speed_threshold_mps, double object_longitudinal_window_m,
-  double object_overlap_area_threshold_m2)
+  double crossing_look_ahead_m, double footprint_boundary_overshoot_m)
 : crossing_look_ahead_m_{crossing_look_ahead_m},
-  footprint_boundary_overshoot_m_{footprint_boundary_overshoot_m},
-  object_static_speed_threshold_mps_{object_static_speed_threshold_mps},
-  object_longitudinal_window_m_{object_longitudinal_window_m},
-  object_overlap_area_threshold_m2_{object_overlap_area_threshold_m2}
+  footprint_boundary_overshoot_m_{footprint_boundary_overshoot_m}
 {
 }
 
 LaneCrossingObservation LaneCrossingGeometry::observe(
-  const LaneTracker & tracker, const LaneEventInput & input) const
+  const LaneTracker & tracker, const LaneEventInput & input,
+  const std::vector<geometry_msgs::msg::Pose> & candidate_object_poses) const
 {
   LaneCrossingObservation observation;
   if (!input.odometry_ptr || !input.route_ptr) {
@@ -103,8 +378,9 @@ LaneCrossingObservation LaneCrossingGeometry::observe(
   }
 
   // Compute the per-cycle intermediates once and share them across the helpers below: the forward
-  // trajectory samples feed the predictive crossing, the footprint lanes feed both the return and
-  // the full-entry escape, and the straight sequence classifies which lanes count as "the corridor".
+  // trajectory samples feed the predictive crossing, the footprint lanes feed the physical
+  // crossing, the return, and the full-entry escape, and the straight sequence classifies which
+  // lanes count as part of the lane sequence.
   const auto trajectory_points = std::invoke([&]() -> std::vector<lanelet::BasicPoint2d> {
     if (!input.trajectory_ptr) {
       return {};
@@ -118,11 +394,11 @@ LaneCrossingObservation LaneCrossingGeometry::observe(
     tracker.straight_lane_sequence_ids(*reference_lane_opt, crossing_look_ahead_m_);
 
   observation.is_on_route_straight = driving_straight_stays_on_route(tracker, reference_lane_id);
-  observation.crossing = compute_crossing(
+  auto crossing_result = compute_crossing(
     tracker, *reference_lane_opt, sequence_ids, trajectory_points, input.footprint, footprint_ids,
-    observation.crossing_diagnostic);
-  observation.has_qualifying_object =
-    compute_has_qualifying_object(tracker, input, reference_lane_id, observation.object_diagnostic);
+    candidate_object_poses);
+  observation.crossing = std::move(crossing_result.crossing);
+  observation.crossing_diagnostic = std::move(crossing_result.diagnostic);
   observation.is_footprint_inside_reference_sequence =
     compute_is_footprint_inside_reference_sequence(tracker, input, sequence_ids, footprint_ids);
   observation.full_entry_lane_id =
@@ -142,303 +418,80 @@ bool LaneCrossingGeometry::driving_straight_stays_on_route(
   });
 }
 
-std::optional<LaneCrossingCrossing> LaneCrossingGeometry::compute_crossing(
+LaneCrossingGeometry::CrossingResult LaneCrossingGeometry::compute_crossing(
   const LaneTracker & tracker, const lanelet::ConstLanelet & reference_lane,
   const std::unordered_set<lanelet::Id> & sequence_ids,
   const std::vector<lanelet::BasicPoint2d> & trajectory_points,
   const std::vector<lanelet::BasicPoint2d> & footprint,
-  const std::vector<lanelet::Id> & footprint_ids, std::string & diagnostic) const
+  const std::vector<lanelet::Id> & footprint_ids,
+  const std::vector<geometry_msgs::msg::Pose> & candidate_object_poses) const
 {
   const bool has_trajectory = trajectory_points.size() >= 2;
   const bool has_footprint = footprint.size() >= 3;
   if (!has_trajectory && !has_footprint) {
-    diagnostic = "no trajectory or footprint";
-    return std::nullopt;
+    return {std::nullopt, "no trajectory or footprint"};
   }
   const auto reference_lane_id = reference_lane.id();
 
-  // Scope gate (docs/lane_crossing.md, "Scope"): only on-route-straight driving. The reference lane
-  // is a route primitive whose straight successor is also a route primitive, so going straight stays
-  // on-route and a lateral move is a dodge, not a lane change. This is the exact complement of the
-  // lane-change straight-on-route skip, so the two classifiers never double-classify.
+  // On-route-straight condition (docs/lane_crossing.md, "Scope"): only on-route-straight driving.
+  // The reference lane is a route primitive whose straight successor is also a route primitive, so
+  // going straight stays on-route and a lateral move is a dodge, not a lane change. This is the
+  // exact complement of the lane-change straight-on-route skip, so the two classifiers never
+  // double-classify.
   if (!driving_straight_stays_on_route(tracker, reference_lane_id)) {
-    diagnostic = "out of scope (not straight-on-route)";
-    return std::nullopt;
+    return {std::nullopt, "out of scope (not straight-on-route)"};
   }
 
-  // Onset exemption (docs/lane_crossing.md, "Exemptions"): a turn-direction / intersection reference
-  // lane. Going out of lane there is turning, not dodging, so no crossing is possible.
+  // Onset exemption (docs/lane_crossing.md, "Exemptions"): a turn-direction / intersection
+  // reference lane. Going out of lane there is turning, not dodging, so no crossing is possible.
   if (is_turn_direction_lane(reference_lane)) {
-    diagnostic = "exempt: reference lane is a turn/intersection lane";
-    return std::nullopt;
+    return {std::nullopt, "exempt: reference lane is a turn/intersection lane"};
   }
 
-  // Onset (docs/lane_crossing.md, "Onset"): a lane crossing is a PARTIAL sideways move, so the
-  // planned path stays mostly inside the (wide) origin lane and never places a sample point inside
-  // the neighbour lanelet the way a committed lane change does. Detect it from two sources:
-  //   1. Predictive: the forward trajectory centerline crosses a corridor boundary linestring.
-  //   2. Physical: the ego footprint occupies a lane OUTSIDE the straight sequence. This is the
-  //      timely signal - the tracker already reports it (footprint_lane_ids) the moment the body
-  //      enters the neighbour, and it fires even when the planned centreline never leaves the lane.
-  //
-  // The corridor boundary spans the whole forward straight sequence, not just the single reference
-  // lanelet the ego sits in: the ego dodges around a static object that can be many metres ahead, so
-  // the poke crosses the boundary of whichever sequence lane lies at the object, not necessarily the
-  // reference lanelet. Concatenating the sequence lanes' left/right bounds gives one continuous
-  // boundary polyline per side (consecutive route lanes share their junction endpoints).
-  const auto corridor_lanes =
-    get_forward_route_lane_sequence(tracker, reference_lane_id, crossing_look_ahead_m_);
-  LineString2d left_bound_line;
-  LineString2d right_bound_line;
-  for (const auto & lane : corridor_lanes) {
-    const auto lane_left = to_line_string(lane.leftBound2d());
-    const auto lane_right = to_line_string(lane.rightBound2d());
-    left_bound_line.insert(left_bound_line.end(), lane_left.cbegin(), lane_left.cend());
-    right_bound_line.insert(right_bound_line.end(), lane_right.cbegin(), lane_right.cend());
+  // A crossing is only meaningful when the ego has an object to go around: both sources are gated
+  // on a candidate object ahead on the sequence (docs/lane_crossing.md, "Onset").
+  if (candidate_object_poses.empty()) {
+    return {std::nullopt, "no crossing (no candidate object to go around)"};
   }
 
-  // A candidate crossing point goes into the left or right bucket depending on which corridor
-  // boundary it sits nearer to (that is the boundary the ego is crossing).
-  std::vector<Point2d> left_intersections;
-  std::vector<Point2d> right_intersections;
-  const auto assign_to_side = [&](const Point2d & point) {
-    const double distance_to_left = boost::geometry::distance(point, left_bound_line);
-    const double distance_to_right = boost::geometry::distance(point, right_bound_line);
-    if (distance_to_left <= distance_to_right) {
-      left_intersections.push_back(point);
-    } else {
-      right_intersections.push_back(point);
-    }
-  };
+  const auto lane_sequence =
+    tracker.get_forward_route_lane_sequence(reference_lane_id, crossing_look_ahead_m_);
+  const auto lane_sequence_bounds = build_lane_sequence_bounds(lane_sequence);
 
-  // Source 1 - predictive trajectory crossing.
-  int trajectory_hit_count = 0;
-  if (has_trajectory) {
-    const auto trajectory_line = to_line_string(trajectory_points);
-    std::vector<Point2d> hits;
-    boost::geometry::intersection(trajectory_line, left_bound_line, hits);
-    trajectory_hit_count += static_cast<int>(hits.size());
-    left_intersections.insert(left_intersections.end(), hits.begin(), hits.end());
-    hits.clear();
-    boost::geometry::intersection(trajectory_line, right_bound_line, hits);
-    trajectory_hit_count += static_cast<int>(hits.size());
-    right_intersections.insert(right_intersections.end(), hits.begin(), hits.end());
+  // Source (a) - predictive trajectory bracket (early, centerline based).
+  std::size_t departure_count = 0;
+  const auto trajectory_crossing = has_trajectory ? get_trajectory_crossing(
+                                                      trajectory_points, lane_sequence_bounds,
+                                                      candidate_object_poses, departure_count)
+                                                  : std::nullopt;
+
+  // Source (b) - physical footprint crossing (robust, the real body over the line).
+  const auto footprint_crossing =
+    has_footprint ? get_footprint_crossing(
+                      tracker, reference_lane_id, sequence_ids, footprint, footprint_ids,
+                      lane_sequence_bounds, footprint_boundary_overshoot_m_)
+                  : FootprintCrossing{std::nullopt, "none"};
+
+  // Predictive fires earlier, so prefer it when present; otherwise the body-over-the-line signal
+  // still onsets a shallow dodge the centerline never shows.
+  const std::string detail = fmt::format(
+    "departures={} candidates={} footprint_neighbours=[{}]", departure_count,
+    candidate_object_poses.size(), footprint_crossing.note);
+  if (trajectory_crossing) {
+    return std::invoke([&] {
+      auto resolved = resolve_crossing(
+        tracker, reference_lane, sequence_ids, *trajectory_crossing, "trajectory", detail);
+      return CrossingResult{std::move(resolved.crossing), std::move(resolved.diagnostic)};
+    });
   }
-
-  // Source 2 - physical footprint occupancy of a non-sequence neighbour lane. Guard a cornering
-  // graze (docs/lane_crossing.md, "Exemptions"): a rigid body overhangs the boundary slightly on a
-  // curve without the driver avoiding anything, so only count the neighbour when the body pokes past
-  // the reference boundary by more than footprint_boundary_overshoot_m. A shoulder neighbour is
-  // exempt (that is a road-shoulder use, handled by the lane-following check).
-  std::vector<std::string> footprint_notes;  // per-neighbour breakdown for the diagnostic
-  if (has_footprint) {
-    for (const auto neighbour_id : footprint_ids) {
-      if (sequence_ids.count(neighbour_id) != 0) {
-        continue;  // a lane of the corridor, not a crossing
-      }
-      double neighbour_overshoot_m = 0.0;
-      std::optional<Point2d> deepest_corner;
-      for (const auto & corner : footprint) {
-        const auto inside_neighbour = tracker.distance_to_lane(neighbour_id, corner);
-        if (!inside_neighbour || *inside_neighbour > 0.0) {
-          continue;  // this corner is not inside the neighbour lane
-        }
-        const auto overshoot = tracker.distance_to_lane(reference_lane_id, corner);
-        if (overshoot && *overshoot > neighbour_overshoot_m) {
-          neighbour_overshoot_m = *overshoot;
-          deepest_corner = Point2d{corner.x(), corner.y()};
-        }
-      }
-      const auto neighbour_lane = tracker.get_lanelet(neighbour_id);
-      const bool is_shoulder =
-        neighbour_lane && lanelet2_utils::is_shoulder_lane(*neighbour_lane);
-      footprint_notes.push_back(fmt::format(
-        "{}:{:.2f}m{}", neighbour_id, neighbour_overshoot_m, is_shoulder ? " shoulder-exempt" : ""));
-      if (is_shoulder) {
-        continue;
-      }
-      if (deepest_corner && neighbour_overshoot_m >= footprint_boundary_overshoot_m_) {
-        assign_to_side(*deepest_corner);
-      }
-    }
+  if (footprint_crossing.crossing) {
+    return std::invoke([&] {
+      auto resolved = resolve_crossing(
+        tracker, reference_lane, sequence_ids, *footprint_crossing.crossing, "footprint", detail);
+      return CrossingResult{std::move(resolved.crossing), std::move(resolved.diagnostic)};
+    });
   }
-
-  // The crossing point is the boundary crossing nearest the ego (the outbound crossing); the
-  // trajectory front (else the footprint) is the ego end of the samples.
-  const lanelet::BasicPoint2d ego_point =
-    has_trajectory ? trajectory_points.front() : footprint.front();
-  const auto nearest_intersection =
-    [&ego_point](const std::vector<Point2d> & intersections)
-    -> std::optional<std::pair<lanelet::BasicPoint2d, double>> {
-    std::optional<std::pair<lanelet::BasicPoint2d, double>> nearest;
-    for (const auto & intersection : intersections) {
-      const double distance_to_ego =
-        std::hypot(intersection.x() - ego_point.x(), intersection.y() - ego_point.y());
-      if (!nearest || distance_to_ego < nearest->second) {
-        nearest =
-          std::make_pair(lanelet::BasicPoint2d{intersection.x(), intersection.y()}, distance_to_ego);
-      }
-    }
-    return nearest;
-  };
-  const auto left_crossing = nearest_intersection(left_intersections);
-  const auto right_crossing = nearest_intersection(right_intersections);
-  const auto footprint_summary =
-    footprint_notes.empty() ? std::string{"none"} : fmt::format("{}", fmt::join(footprint_notes, " "));
-  if (!left_crossing && !right_crossing) {
-    diagnostic = fmt::format(
-      "no crossing (traj_hits={} footprint_neighbours=[{}] overshoot_min={:.2f}m)",
-      trajectory_hit_count, footprint_summary, footprint_boundary_overshoot_m_);
-    return std::nullopt;
-  }
-
-  // Side: whichever boundary the crossing reaches first from the ego.
-  const bool is_to_left = (left_crossing && right_crossing)
-                            ? left_crossing->second <= right_crossing->second
-                            : static_cast<bool>(left_crossing);
-  const lanelet::BasicPoint2d crossing_point =
-    is_to_left ? left_crossing->first : right_crossing->first;
-
-  // Onset exemption (docs/lane_crossing.md, "Exemptions"): a virtual crossed boundary.
-  const auto & crossed_bound = is_to_left ? reference_lane.leftBound() : reference_lane.rightBound();
-  if (is_virtual_linestring(crossed_bound)) {
-    diagnostic = fmt::format("exempt: crossed {} boundary is virtual", is_to_left ? "left" : "right");
-    return std::nullopt;
-  }
-
-  // Best-effort target lane: a lanelet sharing the crossed boundary at the crossing point that is
-  // not part of the reference straight sequence. It may stay InvalId when no neighbour lane is
-  // mapped (a dodge over the line into open space is still a crossing); the classifier keys
-  // persistence on the side and the crossing point, not on this id.
-  lanelet::Id target_lane_id = lanelet::InvalId;
-  for (const auto id : tracker.lanelet_ids_at(crossing_point)) {
-    if (sequence_ids.count(id) != 0) {
-      continue;
-    }
-    target_lane_id = id;
-    break;
-  }
-
-  diagnostic = fmt::format(
-    "crossing to {} (target={} traj_hits={} footprint_neighbours=[{}])",
-    is_to_left ? "left" : "right", target_lane_id, trajectory_hit_count, footprint_summary);
-  LaneCrossingCrossing crossing;
-  crossing.target_lane_id = target_lane_id;
-  crossing.crossing_point = crossing_point;
-  crossing.is_to_left = is_to_left;
-  return crossing;
-}
-
-lanelet::ConstLanelets LaneCrossingGeometry::get_forward_route_lane_sequence(
-  const LaneTracker & tracker, lanelet::Id reference_lane_id, double downstream_length_m)
-{
-  lanelet::ConstLanelets sequence;
-  const auto reference_lane_opt = tracker.get_lanelet(reference_lane_id);
-  if (!reference_lane_opt) {
-    return sequence;
-  }
-  sequence.push_back(*reference_lane_opt);
-  std::unordered_set<lanelet::Id> visited_ids{reference_lane_id};
-  lanelet::Id current_id = reference_lane_id;
-
-  // Walk the on-route straight continuation, adding a full window of downstream length beyond the
-  // reference lane: the ego can be anywhere along the reference lane, so covering that extra window
-  // guarantees an object (or a dodge crossing) up to downstream_length_m ahead of the ego is in the
-  // sequence. Under the onset scope gate a route-primitive successor exists at each straight step.
-  double downstream_length = 0.0;
-  while (downstream_length < downstream_length_m) {
-    const auto next_ids = tracker.next_lane_ids(current_id);
-    const auto next_on_route = std::find_if(
-      next_ids.cbegin(), next_ids.cend(), [&](const lanelet::Id next_id) {
-        return visited_ids.count(next_id) == 0 && tracker.is_route_primitive(next_id);
-      });
-    if (next_on_route == next_ids.cend()) {
-      break;
-    }
-    const auto next_lane_opt = tracker.get_lanelet(*next_on_route);
-    if (!next_lane_opt) {
-      break;
-    }
-    sequence.push_back(*next_lane_opt);
-    downstream_length += lanelet::geometry::length2d(*next_lane_opt);
-    visited_ids.insert(*next_on_route);
-    current_id = *next_on_route;
-  }
-  return sequence;
-}
-
-bool LaneCrossingGeometry::compute_has_qualifying_object(
-  const LaneTracker & tracker, const LaneEventInput & input, lanelet::Id reference_lane_id,
-  std::string & diagnostic) const
-{
-  if (!input.objects_ptr || input.objects_ptr->objects.empty()) {
-    diagnostic = "no perceived objects";
-    return false;
-  }
-  const auto forward_lanes =
-    get_forward_route_lane_sequence(tracker, reference_lane_id, object_longitudinal_window_m_);
-  if (forward_lanes.empty()) {
-    diagnostic = "no forward corridor";
-    return false;
-  }
-
-  std::vector<Polygon2d> forward_lane_polygons;
-  forward_lane_polygons.reserve(forward_lanes.size());
-  std::transform(
-    forward_lanes.cbegin(), forward_lanes.cend(), std::back_inserter(forward_lane_polygons),
-    [](const lanelet::ConstLanelet & lane) { return to_boost_polygon(lane); });
-
-  const double ego_arc_length =
-    lanelet2_utils::get_arc_coordinates(forward_lanes, input.odometry_ptr->pose.pose).length;
-
-  // Scan every object against the corridor and keep counts + the best candidate for the diagnostic,
-  // so the log can explain why a crossing did or did not have a qualifying object this cycle.
-  int in_corridor_count = 0;   // overlaps the corridor above the area threshold (any speed/position)
-  int qualifying_count = 0;    // static AND ahead within the window AND overlapping above threshold
-  double nearest_ahead_m = std::numeric_limits<double>::max();
-  double nearest_ahead_overlap_m2 = 0.0;
-  double nearest_ahead_speed_mps = 0.0;
-  for (const auto & object : input.objects_ptr->objects) {
-    // Qualifying object (docs/lane_crossing.md, "Qualifying object"): static, ahead within the
-    // longitudinal window, and overlapping the reference straight sequence above the area threshold.
-    const auto object_polygon = autoware_utils_geometry::to_polygon2d(object);
-    double overlap_area = 0.0;
-    for (const auto & lane_polygon : forward_lane_polygons) {
-      overlap_area +=
-        autoware::object_recognition_utils::getIntersectionArea(object_polygon, lane_polygon);
-    }
-    if (overlap_area < object_overlap_area_threshold_m2_) {
-      continue;
-    }
-    ++in_corridor_count;
-
-    const auto & velocity = object.kinematics.initial_twist_with_covariance.twist.linear;
-    const double object_speed_mps = std::hypot(velocity.x, velocity.y);
-    const auto & object_pose = object.kinematics.initial_pose_with_covariance.pose;
-    const double distance_ahead =
-      lanelet2_utils::get_arc_coordinates(forward_lanes, object_pose).length - ego_arc_length;
-    if (distance_ahead > 0.0 && distance_ahead < nearest_ahead_m) {
-      nearest_ahead_m = distance_ahead;
-      nearest_ahead_overlap_m2 = overlap_area;
-      nearest_ahead_speed_mps = object_speed_mps;
-    }
-    const bool object_is_ahead_of_ego =
-      distance_ahead > 0.0 && distance_ahead <= object_longitudinal_window_m_;
-    if (object_is_ahead_of_ego && object_speed_mps < object_static_speed_threshold_mps_) {
-      ++qualifying_count;
-    }
-  }
-
-  if (in_corridor_count == 0) {
-    diagnostic = fmt::format("{} objects, none overlap corridor", input.objects_ptr->objects.size());
-  } else {
-    diagnostic = fmt::format(
-      "corridor_objects={} qualifying={} nearest_ahead={:.1f}m (overlap={:.1f}m2 speed={:.1f}mps)",
-      in_corridor_count, qualifying_count,
-      nearest_ahead_m == std::numeric_limits<double>::max() ? -1.0 : nearest_ahead_m,
-      nearest_ahead_overlap_m2, nearest_ahead_speed_mps);
-  }
-  return qualifying_count > 0;
+  return {std::nullopt, fmt::format("no crossing ({})", detail)};
 }
 
 bool LaneCrossingGeometry::compute_is_footprint_inside_reference_sequence(
@@ -449,11 +502,10 @@ bool LaneCrossingGeometry::compute_is_footprint_inside_reference_sequence(
   if (input.footprint.empty()) {
     return false;
   }
-  return std::any_of(
-    footprint_ids.cbegin(), footprint_ids.cend(), [&](const lanelet::Id lane_id) {
-      return sequence_ids.count(lane_id) != 0 &&
-             tracker.is_footprint_fully_inside_lane(lane_id, input.footprint);
-    });
+  return std::any_of(footprint_ids.cbegin(), footprint_ids.cend(), [&](const lanelet::Id lane_id) {
+    return sequence_ids.count(lane_id) != 0 &&
+           tracker.is_footprint_fully_inside_lane(lane_id, input.footprint);
+  });
 }
 
 std::optional<lanelet::Id> LaneCrossingGeometry::compute_full_entry_lane_id(
@@ -464,9 +516,10 @@ std::optional<lanelet::Id> LaneCrossingGeometry::compute_full_entry_lane_id(
   if (input.footprint.empty()) {
     return std::nullopt;
   }
-  // Full entry into a lane outside the straight sequence: the move is a lane change, not a crossing.
-  const auto full_entry = std::find_if(
-    footprint_ids.cbegin(), footprint_ids.cend(), [&](const lanelet::Id lane_id) {
+  // Full entry into a lane outside the straight sequence: the move is a lane change, not a
+  // crossing.
+  const auto full_entry =
+    std::find_if(footprint_ids.cbegin(), footprint_ids.cend(), [&](const lanelet::Id lane_id) {
       return sequence_ids.count(lane_id) == 0 &&
              tracker.is_footprint_fully_inside_lane(lane_id, input.footprint);
     });

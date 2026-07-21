@@ -152,8 +152,9 @@ void LaneEventClassifierDebug::log_state(
         .c_str());
   }
 
-  // Per-cycle classifier reasoning (throttled): surfaces why an event did or did not fire even while
-  // the published state is steady (e.g. a crossing that never onsets because no object qualifies).
+  // Per-cycle classifier reasoning (throttled): surfaces why an event did or did not fire even
+  // while the published state is steady (e.g. a crossing that never onsets because no object
+  // qualifies).
   std::string classifier_reasons;
   for (const auto & classifier : classifiers) {
     const auto reason = classifier->debug_reason();

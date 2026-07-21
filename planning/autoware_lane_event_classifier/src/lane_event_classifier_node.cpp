@@ -68,7 +68,11 @@ void LaneEventClassifierNode::build_classifiers()
       params_.lane_change.enable_classifier, params_.lane_change, lane_tracker_));
   classifiers_.emplace_back(
     std::make_unique<IntentionalCrossingClassifier>(
-      params_.lane_crossing.enable_classifier, params_.lane_crossing, lane_tracker_));
+      params_.lane_crossing.enable_classifier, params_.lane_crossing, lane_tracker_,
+      LaneCrossingGeometry{
+        params_.lane_crossing.crossing_look_ahead_m,
+        params_.lane_crossing.footprint_boundary_overshoot_m},
+      LaneCrossingObjects{params_.lane_crossing.object_longitudinal_window_m}));
 }
 
 void LaneEventClassifierNode::map_callback(
@@ -256,12 +260,12 @@ void LaneEventClassifierNode::on_trajectory(
   pub_driving_factor_->publish(out);
 
   // Freeze the reference lane while an event is active, and release it once the event ends. A
-  // maneuver ends in a lane that is not a forward successor of the reference (e.g. a lane change into
-  // a parallel lane), and the tracker only re-anchors into a forward successor; without releasing,
-  // the reference would stay pinned to the origin lane forever and the classifier would re-detect the
-  // same crossing every cycle. Releasing re-anchors the tracker to the lane the ego settled into.
-  // Holding also activates the far-departure reset in check_tracking_state (a manual takeover that
-  // drives away from the held lane), which is gated on the reference lane being held.
+  // maneuver ends in a lane that is not a forward successor of the reference (e.g. a lane change
+  // into a parallel lane), and the tracker only re-anchors into a forward successor; without
+  // releasing, the reference would stay pinned to the origin lane forever and the classifier would
+  // re-detect the same crossing every cycle. Releasing re-anchors the tracker to the lane the ego
+  // settled into. Holding also activates the far-departure reset in check_tracking_state (a manual
+  // takeover that drives away from the held lane), which is gated on the reference lane being held.
   if (is_any_event_active && !lane_tracker_.is_reference_lane_held()) {
     lane_tracker_.hold_reference_lane();
   } else if (!is_any_event_active && lane_tracker_.is_reference_lane_held()) {

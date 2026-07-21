@@ -20,12 +20,12 @@ When the classifier is idle it reports no event, and the node labels the cycle f
 [Reference lane](../README.md#key-words) and [route primitive](../README.md#key-words) are shared
 across the package. The terms below are specific to lane change.
 
-| Term                  | Meaning                                                                                                                                                                                                                                    |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Term                   | Meaning                                                                                                                                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Straight lane sequence | The reference lane plus every lane reachable straight (fore and aft) within `crossing_look_ahead_m`. Staying in this set is going straight. The [lane-following check](lane_following.md) builds the same set with a longer reach (`connected_sequence_length_m`). |
-| Crossing              | The first point where the planned trajectory leaves the straight lane sequence sideways into another lane.                                                                                                                                    |
-| Settle                | The footprint fully inside a route primitive other than the reference lane. This is how a change completes.                                                                                                                                   |
-| Ego footprint         | The vehicle body polygon. Onset uses the trajectory (a prediction); settle and abort completion use the footprint (the real body).                                                                                                            |
+| Crossing               | The first point where the planned trajectory leaves the straight lane sequence sideways into another lane.                                                                                                                                                         |
+| Settle                 | The footprint fully inside a route primitive other than the reference lane. This is how a change completes.                                                                                                                                                        |
+| Ego footprint          | The vehicle body polygon. Onset uses the trajectory (a prediction); settle and abort completion use the footprint (the real body).                                                                                                                                 |
 
 ## How the classifier decides
 
@@ -131,14 +131,14 @@ tracking-state reset.
 Schema: [`schema/lane_event_classifier.schema.yaml`](../schema/lane_event_classifier.schema.yaml).
 Defaults: [`param/lane_event_classifier.param.yaml`](../param/lane_event_classifier.param.yaml).
 
-| Name                            | Default | Meaning                                                                                            |
-| ------------------------------- | ------- | ------------------------------------------------------------------------------------------------- |
-| `enable_classifier`             | true    | Turn the lane-change classifier on or off.                                                        |
-| `crossing_look_ahead_m`         | 30.0    | Arc length ahead along the trajectory scanned for a crossing.                                      |
-| `crossing_persist_duration_s`   | 0.3     | Seconds a crossing (and an abort return) must persist before it is confirmed.                      |
-| `crossing_position_tolerance_m` | 2.0     | How far the crossing point may move and still count as the same crossing.                          |
-| `confidence_factor`             | 0.3     | Fraction the persistence window shrinks to when a confidence signal is present (0 < factor < 1).   |
-| `settle_confirm_duration_s`     | 0.7     | Seconds the footprint must stay fully inside the target route primitive to confirm a completion.   |
+| Name                            | Default | Meaning                                                                                          |
+| ------------------------------- | ------- | ------------------------------------------------------------------------------------------------ |
+| `enable_classifier`             | true    | Turn the lane-change classifier on or off.                                                       |
+| `crossing_look_ahead_m`         | 30.0    | Arc length ahead along the trajectory scanned for a crossing.                                    |
+| `crossing_persist_duration_s`   | 0.3     | Seconds a crossing (and an abort return) must persist before it is confirmed.                    |
+| `crossing_position_tolerance_m` | 2.0     | How far the crossing point may move and still count as the same crossing.                        |
+| `confidence_factor`             | 0.3     | Fraction the persistence window shrinks to when a confidence signal is present (0 < factor < 1). |
+| `settle_confirm_duration_s`     | 0.7     | Seconds the footprint must stay fully inside the target route primitive to confirm a completion. |
 
 ## Design notes
 

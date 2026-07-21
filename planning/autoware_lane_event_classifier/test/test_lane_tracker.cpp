@@ -165,15 +165,15 @@ TEST(LaneTrackerTest, release_reanchors_to_parallel_lane_after_hold)
   tracker.update(make_input({id_a, id_b}, 5.0, 0.0, 0, 0));
   ASSERT_EQ(tracker.reference_lane().reference_lane_id, id_a);
 
-  // An event begins: the node freezes the reference lane, and the ego crosses fully into the parallel
-  // lane_b (not a next lane of lane_a). The reference must stay pinned to lane_a.
+  // An event begins: the node freezes the reference lane, and the ego crosses fully into the
+  // parallel lane_b (not a next lane of lane_a). The reference must stay pinned to lane_a.
   tracker.hold_reference_lane();
   tracker.update(make_input({id_a, id_b}, 5.0, 4.0, 1, 0));
   EXPECT_EQ(tracker.reference_lane().reference_lane_id, id_a);
 
-  // The event completes: releasing re-anchors the reference to the parallel lane the ego settled into
-  // (lane_b) rather than leaving it stuck on lane_a. lane_b is not a successor of lane_a, so this only
-  // works because release clears the reference first.
+  // The event completes: releasing re-anchors the reference to the parallel lane the ego settled
+  // into (lane_b) rather than leaving it stuck on lane_a. lane_b is not a successor of lane_a, so
+  // this only works because release clears the reference first.
   tracker.release_reference_lane();
   tracker.update(make_input({id_a, id_b}, 5.0, 4.0, 2, 0));
   EXPECT_EQ(tracker.reference_lane().reference_lane_id, id_b);

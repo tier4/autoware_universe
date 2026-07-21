@@ -23,8 +23,5 @@
       footprint_boundary_overshoot_m: 0.3
       settle_confirm_duration_s: 0.7
       confidence_factor: 0.3
-      object_static_speed_threshold_mps: 0.5
-      object_longitudinal_window_m: 30.0
-      object_overlap_area_threshold_m2: 1.0
+      object_longitudinal_window_m: 100.0
       object_qualifying_memory_s: 3.0
-      max_crossing_duration_s: 10.0

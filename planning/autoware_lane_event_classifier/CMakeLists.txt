@@ -25,6 +25,7 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/lane_change/geometry.cpp
   src/lane_change/classifier.cpp
   src/lane_crossing/geometry.cpp
+  src/lane_crossing/objects.cpp
   src/lane_crossing/classifier.cpp
 )
 

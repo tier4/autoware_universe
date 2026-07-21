@@ -17,30 +17,33 @@
 
 #include <autoware_lane_event_classifier/detail/lane_tracker.hpp>
 #include <autoware_lane_event_classifier/lane_crossing/geometry.hpp>
+#include <autoware_lane_event_classifier/lane_crossing/objects.hpp>
 #include <autoware_lane_event_classifier/lane_event_classifier_base.hpp>
 #include <autoware_lane_event_classifier/lane_event_classifier_parameters.hpp>
+
+#include <geometry_msgs/msg/pose.hpp>
 
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace autoware::lane_event_classifier
 {
 using LaneCrossingConfig = ::lane_event_classifier::Params::LaneCrossing;
 
 /**
- * @brief Trajectory-driven, predictive intentional-lane-crossing classifier.
- *
- * A crossing is a partial sideways move over a lane boundary to pass a static obstacle, then a
- * return to the origin lane; a move that fully enters the adjacent lane is a lane change. Onset is
- * predictive (from the planned trajectory, mirroring LaneChangeClassifier) and only fires when the
- * ego is going straight on-route with a qualifying object to avoid. Abort is not modelled in this
+ * @brief Predictive intentional-lane-crossing classifier: a partial sideways dodge over a lane
+ * boundary to pass an object ahead, then a return; a move that fully enters the neighbour is a lane
+ * change. Onset is trajectory (predictive) plus footprint (physical). Abort is not modelled in this
  * pass. See docs/lane_crossing.md.
  */
 class IntentionalCrossingClassifier : public LaneEventClassifierBase
 {
 public:
-  IntentionalCrossingClassifier(bool enabled, LaneCrossingConfig config, const LaneTracker & tracker);
+  IntentionalCrossingClassifier(
+    bool enabled, LaneCrossingConfig config, const LaneTracker & tracker,
+    LaneCrossingGeometry geometry, LaneCrossingObjects objects);
   void update(const LaneEventInput & input) final;
   [[nodiscard]] uint8_t get_state() const final;
   [[nodiscard]] bool is_enabled() const final;
@@ -51,14 +54,18 @@ private:
   /** @brief Internal maneuver phase; maps to the reported DrivingState. */
   enum class Phase : uint8_t { idle, crossing };
 
-  /** @brief idle: confirm a persisted trajectory crossing with a qualifying object present →
-   * INTENTIONAL_LANE_CROSSING (onset). */
+  /** @brief idle phase: fire onset (→ INTENTIONAL_LANE_CROSSING) when a crossing persists. See
+   * docs/lane_crossing.md, "Onset". */
   void detect_onset(
     const LaneEventInput & input, const LaneCrossingObservation & observation, double now_s);
 
-  /** @brief crossing: complete once the footprint returns into the reference straight sequence,
-   * escape to idle on a full entry into an adjacent lane (a lane change), or force-complete on the
-   * backstop timer. */
+  /** @brief The candidate object poses for this cycle: perceived now, else the remembered set. See
+   * docs/lane_crossing.md, "Candidate object". */
+  [[nodiscard]] std::vector<geometry_msgs::msg::Pose> effective_candidate_object_poses(
+    std::vector<geometry_msgs::msg::Pose> perceived_poses, double now_s);
+
+  /** @brief crossing phase: end once the ego is fully inside one lane (return or full entry). See
+   * docs/lane_crossing.md, "Finishing". */
   void detect_completion(const LaneCrossingObservation & observation, double now_s);
 
   /** @brief True when a confidence signal (blinker toward the crossing side) is present. */
@@ -79,7 +86,8 @@ private:
   bool enabled_{false};
   LaneCrossingConfig config_;
   const LaneTracker & tracker_;    // generic lane queries (owned by the node)
-  LaneCrossingGeometry geometry_;  // derives the per-cycle observation from the tracker
+  LaneCrossingGeometry geometry_;  // boundary / footprint half (injected)
+  LaneCrossingObjects objects_;    // perceived-object half (injected)
 
   Phase phase_{Phase::idle};
   std::string debug_reason_;
@@ -88,17 +96,13 @@ private:
   std::optional<LaneCrossingCrossing> tracked_crossing_;
   double crossing_start_s_{0.0};
 
-  // Qualifying-object memory: the last time a qualifying static object was seen, so a transient
-  // perception dropout at the crossing moment does not cancel onset (docs/lane_crossing.md, "Onset").
-  bool has_seen_qualifying_object_{false};
-  double last_qualifying_object_s_{0.0};
+  // Candidate memory (docs/lane_crossing.md, "Candidate object"): recent poses + last-seen stamp.
+  std::vector<geometry_msgs::msg::Pose> remembered_candidate_poses_;
+  double last_candidate_seen_s_{0.0};
 
   // Return persistence (footprint back inside the reference straight sequence).
   bool return_active_{false};
   double return_start_s_{0.0};
-
-  // Committed-crossing timestamp for the max-duration backstop.
-  double crossing_committed_s_{0.0};
 };
 
 }  // namespace autoware::lane_event_classifier

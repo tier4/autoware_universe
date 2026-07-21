@@ -116,6 +116,17 @@ public:
   [[nodiscard]] const std::unordered_set<lanelet::Id> & straight_lane_sequence_ids(
     const lanelet::ConstLanelet & lane, double look_ahead_m) const;
 
+  /** @brief The ordered, forward-only on-route straight sequence starting at the given lane: the
+   * lane itself followed by each route-primitive straight successor, accumulating at least
+   * downstream_length_m of lane length beyond the starting lane.
+   *
+   * Unlike the fore/aft membership set of straight_lane_sequence_ids, this is a forward-only,
+   * route-filtered, *ordered* run of lanelets, suitable for concatenating boundaries or measuring
+   * forward arc length along the lane sequence. Returned by value; empty if the lane id is unknown.
+   */
+  [[nodiscard]] lanelet::ConstLanelets get_forward_route_lane_sequence(
+    lanelet::Id reference_lane_id, double downstream_length_m) const;
+
   /** @brief Returns true if lane_id is a preferred primitive of the current route.
    *
    * O(1) lookup against the route-primitive set cached in update(); the set is rebuilt only when

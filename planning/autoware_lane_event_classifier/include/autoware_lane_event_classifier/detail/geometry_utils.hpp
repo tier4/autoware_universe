@@ -119,7 +119,8 @@ inline std::vector<lanelet::BasicPoint2d> forward_trajectory_points(
     return points;
   }
   const auto point_of = [](const auto & trajectory_point) {
-    return lanelet::BasicPoint2d{trajectory_point.pose.position.x, trajectory_point.pose.position.y};
+    return lanelet::BasicPoint2d{
+      trajectory_point.pose.position.x, trajectory_point.pose.position.y};
   };
   const auto find_nearest_index = [&]() {
     std::size_t nearest_index = 0;

@@ -24,9 +24,9 @@ and for how long.
 These terms are shared across the classifiers. Each classifier's own doc links here on first use and
 defines only the terms specific to it.
 
-| Term            | Meaning                                                                                                                                                                                   |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Reference lane  | The lane the tracker is holding for the ego this cycle. Locked while an event runs, released and re-anchored to the ego's current lane when the event ends.                                |
+| Term            | Meaning                                                                                                                                                                                      |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reference lane  | The lane the tracker is holding for the ego this cycle. Locked while an event runs, released and re-anchored to the ego's current lane when the event ends.                                  |
 | Route primitive | A preferred lane of the current route, one of the planned-path lanes the ego drives on a best-effort basis. So "is this lane a route primitive?" asks whether the lane is part of that path. |
 
 ---
@@ -138,7 +138,7 @@ cycle. Adding a classifier is: implement the interface, then register it in `bui
 | Classifier loading + aggregation   | ✅ implemented                                                         |
 | `LaneFollowingChecker`             | ✅ implemented, see [`docs/lane_following.md`](docs/lane_following.md) |
 | `LaneChangeClassifier`             | ✅ implemented, see [docs/lane_change.md](docs/lane_change.md)         |
-| `IntentionalCrossingClassifier`    | 🚧 stub, reports no event                                              |
+| `IntentionalCrossingClassifier`    | ✅ implemented, see [docs/lane_crossing.md](docs/lane_crossing.md)     |
 | `LaneTracker` (map/reference lane) | ✅ implemented, owns the map, routing graph, and reference lane        |
 
 ---
@@ -157,6 +157,6 @@ Lane-following check parameters (`lane_following.*`) are documented in [`docs/la
 
 Lane-change classifier parameters (`lane_change.*`) are documented in [`docs/lane_change.md`](docs/lane_change.md#parameters).
 
-The intentional-crossing classifier gains its own enable flag and parameters when its logic lands.
+Intentional-crossing classifier parameters (`lane_crossing.*`) are documented in [`docs/lane_crossing.md`](docs/lane_crossing.md#parameters).
 
 ---

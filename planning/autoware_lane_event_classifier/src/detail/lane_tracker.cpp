@@ -161,6 +161,44 @@ const std::unordered_set<lanelet::Id> & LaneTracker::straight_lane_sequence_ids(
   return cached_lane_sequence_ids_;
 }
 
+lanelet::ConstLanelets LaneTracker::get_forward_route_lane_sequence(
+  lanelet::Id reference_lane_id, double downstream_length_m) const
+{
+  lanelet::ConstLanelets sequence;
+  const auto reference_lane_opt = get_lanelet(reference_lane_id);
+  if (!reference_lane_opt) {
+    return sequence;
+  }
+  sequence.push_back(*reference_lane_opt);
+  std::unordered_set<lanelet::Id> visited_ids{reference_lane_id};
+  lanelet::Id current_id = reference_lane_id;
+
+  // Walk the on-route straight continuation, adding a full window of downstream length beyond the
+  // reference lane: the ego can be anywhere along the reference lane, so covering that extra window
+  // guarantees an object (or a dodge crossing) up to downstream_length_m ahead of the ego is in the
+  // sequence. Under the onset scope gate a route-primitive successor exists at each straight step.
+  double downstream_length = 0.0;
+  while (downstream_length < downstream_length_m) {
+    const auto next_ids = next_lane_ids(current_id);
+    const auto next_on_route =
+      std::find_if(next_ids.cbegin(), next_ids.cend(), [&](const lanelet::Id next_id) {
+        return visited_ids.count(next_id) == 0 && is_route_primitive(next_id);
+      });
+    if (next_on_route == next_ids.cend()) {
+      break;
+    }
+    const auto next_lane_opt = get_lanelet(*next_on_route);
+    if (!next_lane_opt) {
+      break;
+    }
+    sequence.push_back(*next_lane_opt);
+    downstream_length += lanelet::geometry::length2d(*next_lane_opt);
+    visited_ids.insert(*next_on_route);
+    current_id = *next_on_route;
+  }
+  return sequence;
+}
+
 bool LaneTracker::is_footprint_fully_inside_lane(
   lanelet::Id lane_id, const std::vector<lanelet::BasicPoint2d> & footprint) const
 {

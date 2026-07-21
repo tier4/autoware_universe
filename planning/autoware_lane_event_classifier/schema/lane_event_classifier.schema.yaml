@@ -99,7 +99,7 @@ lane_event_classifier:
     footprint_boundary_overshoot_m:
       type: double
       default_value: 0.3
-      description: Minimum distance the ego footprint must poke past the reference lane boundary for the footprint (physical) onset signal to count, so a slight overhang from cornering is not read as a crossing. A partial dodge holds well below a full lane width, so this stays small; the qualifying-object requirement is the primary false-positive guard
+      description: Minimum distance an ego footprint corner must poke past the reference lane boundary into a lane outside the sequence for the physical (footprint) crossing source to count, so a slight overhang from cornering is not read as a crossing
       validation:
         gt<>: [0.0]
     settle_confirm_duration_s:
@@ -116,33 +116,15 @@ lane_event_classifier:
       # floating_point_range entries, overflowing ParameterDescriptor's size-1 bounded vector.
       validation:
         bounds<>: [0.0, 1.0]
-    object_static_speed_threshold_mps:
-      type: double
-      default_value: 0.5
-      description: Below this speed a perceived object counts as a static obstacle worth crossing to avoid
-      validation:
-        gt<>: [0.0]
     object_longitudinal_window_m:
       type: double
-      default_value: 30.0
-      description: Ahead-of-ego arc-length window along the reference straight sequence in which a qualifying object must lie
-      validation:
-        gt<>: [0.0]
-    object_overlap_area_threshold_m2:
-      type: double
-      default_value: 1.0
-      description: Minimum intersection area between the object footprint and the reference straight sequence for the object to qualify
+      default_value: 100.0
+      description: Ahead-of-ego arc-length window along the reference straight sequence in which a candidate object must lie
       validation:
         gt<>: [0.0]
     object_qualifying_memory_s:
       type: double
       default_value: 3.0
-      description: Seconds a qualifying static object stays remembered, so a transient perception dropout (a velocity spike or an overlap drop as the ego dodges past it) at the crossing moment does not cancel onset. A genuinely moving object never sustains a qualifying reading, so it never latches.
-      validation:
-        gt<>: [0.0]
-    max_crossing_duration_s:
-      type: double
-      default_value: 10.0
-      description: Hard backstop; a crossing that neither returns nor becomes a lane change within this time is force-completed
+      description: Seconds the most recent candidate objects stay remembered, so a transient perception dropout as the ego dodges past them does not cancel onset
       validation:
         gt<>: [0.0]
