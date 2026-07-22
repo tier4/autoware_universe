@@ -16,6 +16,7 @@
 #define AUTOWARE__DIFFUSION_PLANNER__MPPI_UTILS__HPP_
 
 #include <autoware/avoidance_target_detector/boundary.hpp>
+#include <autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp>
 
 #include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -218,6 +219,22 @@ inline std::vector<DrivableAreaSegment> get_drivable_area_subset(
   drivable_area_rtree.query(
     boost::geometry::index::intersects(query_box), std::back_inserter(drivable_area_subset));
   return drivable_area_subset;
+}
+
+template <class Segment>
+inline std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> to_mppi_segments(
+  const std::vector<Segment> & segments)
+{
+  std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> result;
+  result.reserve(segments.size());
+  for (const auto & segment : segments) {
+    result.push_back({
+      static_cast<float>(boost::geometry::get<0, 0>(segment)),
+      static_cast<float>(boost::geometry::get<0, 1>(segment)),
+      static_cast<float>(boost::geometry::get<1, 0>(segment)),
+      static_cast<float>(boost::geometry::get<1, 1>(segment))});
+  }
+  return result;
 }
 
 /**

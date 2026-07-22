@@ -71,6 +71,15 @@ struct FirstOrderDubinsMppiOptimizationResult
   FirstOrderDubinsMppiDebug debug;
 };
 
+/** Static 2D line segment supplied to the MPPI cost function in map coordinates. */
+struct FirstOrderDubinsMppiSegment
+{
+  float x0{0.0F};
+  float y0{0.0F};
+  float x1{0.0F};
+  float y1{0.0F};
+};
+
 /**
  * @brief Host-side interface to the first-order Dubins MPPI controller used in the
  *        two-lane double-park path-tracking example.
@@ -120,12 +129,16 @@ public:
    * @param steering_status Optional ego tire steering angle [rad] from vehicle status.
    * @param tracked_objects Perception tracked objects used as dynamic obstacles
    * (constant-velocity).
+   * @param road_borders Static road-border segments used as hard obstacles.
+   * @param drivable_area Static drivable-area boundary segments used as a soft constraint.
    */
   FirstOrderDubinsMppiOptimizationResult optimizeTrajectory(
     const Trajectory & input, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-    const TrackedObjects & tracked_objects);
+    const TrackedObjects & tracked_objects,
+    const std::vector<FirstOrderDubinsMppiSegment> & road_borders,
+    const std::vector<FirstOrderDubinsMppiSegment> & drivable_area);
 
 private:
   struct Impl;

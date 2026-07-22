@@ -6,6 +6,7 @@
 #ifndef MPPI_COST_FUNCTIONS_FIRST_ORDER_DUBINS_BICYCLE_COST_CUH_
 #define MPPI_COST_FUNCTIONS_FIRST_ORDER_DUBINS_BICYCLE_COST_CUH_
 
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include <mppi/cost_functions/cost.cuh>
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
 
@@ -17,8 +18,7 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float track_coeff = 1000.0F;
   /** Pull toward ref heading at each horizon step: coeff * (yaw - ref_yaw[t])^2; 0 disables. */
   float heading_coeff = 500.0F;
-  /** Per-violation crash penalty; latched crash_status counts violations (1=off-road or hit,
-   * 2=both). */
+  /** Per-violation crash penalty; latched crash_status counts simultaneous hard violations. */
   float crash_coeff = 100000.0F;
   float boundary_threshold = 0.8F;
   /** Off-road if signed lateral offset exceeds these (path-left = +); <0 falls back to
@@ -39,6 +39,10 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float ego_axle_to_box_center = 0.2F;
   /** Added to ego half-length/width in OBB collision test (~standoff to obstacle surfaces). */
   float obstacle_collision_margin = 0.2F;
+  /** Added to the ego footprint when testing collision with road-border segments. */
+  float road_border_collision_margin = 0.2F;
+  /** Per-timestep soft cost when the ego footprint crosses a drivable-area boundary. */
+  float drivable_area_crossing_coeff = 10000.0F;
   /** Pull toward ref end position (Euclidean distance [m]); 0 disables. */
   float goal_pos_coeff = 1000.0F;
   /** Pull toward ref end speed: coeff * (v - ref_v_end)^2; 0 disables. */
@@ -58,6 +62,8 @@ class FirstOrderDubinsBicycleCostImpl : public Cost<CLASS_T, PARAMS_T, DYN_PARAM
 public:
   static constexpr int kMaxObstacles = 64;
   static constexpr int kMaxDrivablePolygonVertices = 1024;
+  static constexpr int kMaxRoadBorderSegments = 256;
+  static constexpr int kMaxDrivableAreaSegments = 256;
 
   using PARENT_CLASS = Cost<CLASS_T, PARAMS_T, DYN_PARAMS_T>;
   using output_array = typename PARENT_CLASS::output_array;
@@ -81,6 +87,16 @@ public:
 
   void clearObstacles();
 
+  void setRoadBorderSegments(
+    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment>& segments);
+
+  void clearRoadBorders();
+
+  void setDrivableAreaSegments(
+    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment>& segments);
+
+  void clearDrivableAreaSegments();
+
   void setDrivableAreaPolygon(const float * x, const float * y, int count);
 
   void clearDrivableArea();
@@ -102,6 +118,14 @@ public:
 
   __host__ __device__ bool egoIntersectsObstacleAtStep(
     const float x, const float y, const float yaw, int timestep) const;
+
+  /** Placeholder for ego-footprint collision against static road-border segments. */
+  __host__ __device__ bool egoIntersectsRoadBorder(
+    const float x, const float y, const float yaw) const;
+
+  /** Placeholder for ego-footprint crossing of drivable-area boundary segments. */
+  __host__ __device__ bool egoCrossesDrivableAreaBoundary(
+    const float x, const float y, const float yaw) const;
 
   __host__ __device__ bool isCrashLatched(const int * crash_status) const;
 
@@ -144,6 +168,16 @@ public:
   float obs_yaw_[kMaxObstacles][NUM_TIMESTEPS] = {};
   float obs_half_length_[kMaxObstacles] = {};
   float obs_half_width_[kMaxObstacles] = {};
+  int num_road_border_segments_ = 0;
+  float road_border_x0_[kMaxRoadBorderSegments] = {};
+  float road_border_y0_[kMaxRoadBorderSegments] = {};
+  float road_border_x1_[kMaxRoadBorderSegments] = {};
+  float road_border_y1_[kMaxRoadBorderSegments] = {};
+  int num_drivable_area_segments_ = 0;
+  float drivable_area_x0_[kMaxDrivableAreaSegments] = {};
+  float drivable_area_y0_[kMaxDrivableAreaSegments] = {};
+  float drivable_area_x1_[kMaxDrivableAreaSegments] = {};
+  float drivable_area_y1_[kMaxDrivableAreaSegments] = {};
   int num_drivable_vertices_ = 0;
   float drivable_poly_x_[kMaxDrivablePolygonVertices] = {};
   float drivable_poly_y_[kMaxDrivablePolygonVertices] = {};

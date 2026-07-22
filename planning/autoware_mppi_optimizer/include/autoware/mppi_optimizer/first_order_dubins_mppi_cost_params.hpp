@@ -36,6 +36,8 @@ struct FirstOrderDubinsMppiCostParams
   float lateral_jerk_coeff{300.0F};
   float longitudinal_jerk_coeff{10.0F};
   float obstacle_collision_margin{0.5F};
+  float road_border_collision_margin{0.2F};
+  float drivable_area_crossing_coeff{10000.0F};
   float goal_pos_coeff{1000.0F};
   float goal_speed_coeff{0.0F};
   float goal_yaw_coeff{500.0F};

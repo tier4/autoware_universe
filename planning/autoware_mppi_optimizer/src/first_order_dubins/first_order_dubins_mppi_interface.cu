@@ -88,6 +88,8 @@ void applyUserCostParams(
   cost_params.lateral_jerk_coeff = user.lateral_jerk_coeff;
   cost_params.longitudinal_jerk_coeff = user.longitudinal_jerk_coeff;
   cost_params.obstacle_collision_margin = user.obstacle_collision_margin;
+  cost_params.road_border_collision_margin = user.road_border_collision_margin;
+  cost_params.drivable_area_crossing_coeff = user.drivable_area_crossing_coeff;
   cost_params.goal_pos_coeff = user.goal_pos_coeff;
   cost_params.goal_speed_coeff = user.goal_speed_coeff;
   cost_params.goal_yaw_coeff = user.goal_yaw_coeff;
@@ -377,6 +379,8 @@ struct FirstOrderDubinsMppiInterface::Impl
 {
   Trajectory diffusion_reference;
   TrackedObjects tracked_objects;
+  std::vector<FirstOrderDubinsMppiSegment> road_borders;
+  std::vector<FirstOrderDubinsMppiSegment> drivable_area;
   mppi::path::Path2D path;
   std::vector<mppi::cost::MovingCarObstacle> obstacles;
 
@@ -398,8 +402,18 @@ struct FirstOrderDubinsMppiInterface::Impl
   std::vector<float> obs_traj_yaw;
   std::vector<float> obs_half_length;
   std::vector<float> obs_half_width;
+  std::vector<float> road_border_x0;
+  std::vector<float> road_border_y0;
+  std::vector<float> road_border_x1;
+  std::vector<float> road_border_y1;
+  std::vector<float> drivable_area_x0;
+  std::vector<float> drivable_area_y0;
+  std::vector<float> drivable_area_x1;
+  std::vector<float> drivable_area_y1;
 
   bool initialized{false};
+  bool road_border_capacity_warning_emitted{false};
+  bool drivable_area_capacity_warning_emitted{false};
   int step_count{0};
   size_t tracking_start_idx{0U};
   float arc_length{kInitArcLength};
@@ -484,13 +498,15 @@ struct FirstOrderDubinsMppiInterface::Impl
       "MPPI GPU initialized (horizon=%d, rollouts=%d, dt=%.2f, lambda=%.1f, "
       "wheel_base=%.2f, max_steer=%.2f, steer_std=%.3f, acc_tau=%.2f, steer_tau=%.2f, "
       "steer_rate_lim=%.2f, vel_rate_lim=%.2f, ego=%.2fx%.2f, axle_to_center=%.2f, "
-      "desired_speed=%.2f, boundary_threshold=%.2f, obs_margin=%.2f)",
+      "desired_speed=%.2f, boundary_threshold=%.2f, obs_margin=%.2f, "
+      "road_border_margin=%.2f, drivable_crossing_coeff=%.1f)",
       kMppiHorizon, kNumRollouts, kDt, kLambda, vehicle_params.wheel_base,
       vehicle_params.max_steer_angle, steer_std, vehicle_params.acc_time_constant,
       vehicle_params.steer_time_constant, vehicle_params.steer_rate_lim,
       vehicle_params.vel_rate_lim, vehicle_params.ego_length, vehicle_params.ego_width,
       vehicle_params.ego_axle_to_box_center, cost_params.desired_speed,
-      cost_params.boundary_threshold, cost_params.obstacle_collision_margin);
+      cost_params.boundary_threshold, cost_params.obstacle_collision_margin,
+      cost_params.road_border_collision_margin, cost_params.drivable_area_crossing_coeff);
   }
 
   void resetTrackingState()
@@ -543,7 +559,9 @@ struct FirstOrderDubinsMppiInterface::Impl
     const Trajectory & reference, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-    const TrackedObjects & tracked_objects_in)
+    const TrackedObjects & tracked_objects_in,
+    const std::vector<FirstOrderDubinsMppiSegment> & road_borders_in,
+    const std::vector<FirstOrderDubinsMppiSegment> & drivable_area_in)
   {
     if (!initialized) {
       setup();
@@ -551,6 +569,18 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     diffusion_reference = reference;
     tracked_objects = tracked_objects_in;
+    road_borders = road_borders_in;
+    drivable_area = drivable_area_in;
+    if (road_borders.size() > static_cast<size_t>(COST::kMaxRoadBorderSegments)) {
+      RCLCPP_WARN(
+        mppiLogger(), "Road-border segment count %zu exceeds GPU capacity %d; truncating",
+        road_borders.size(), COST::kMaxRoadBorderSegments);
+    }
+    if (drivable_area.size() > static_cast<size_t>(COST::kMaxDrivableAreaSegments)) {
+      RCLCPP_WARN(
+        mppiLogger(), "Drivable-area segment count %zu exceeds GPU capacity %d; truncating",
+        drivable_area.size(), COST::kMaxDrivableAreaSegments);
+    }
     path = trajectoryToPath2D(reference);
     obstacles.clear();
 
@@ -589,6 +619,20 @@ struct FirstOrderDubinsMppiInterface::Impl
     arc_length = proj.arc_length_s;
   }
 
+  void uploadBoundarySegments()
+  {
+    if (road_borders.empty()) {
+      cost.clearRoadBorders();
+    } else {
+      cost.setRoadBorderSegments(road_borders);
+    }
+    if (drivable_area.empty()) {
+      cost.clearDrivableAreaSegments();
+    } else {
+      cost.setDrivableAreaSegments(drivable_area);
+    }
+  }
+
   FirstOrderDubinsMppiControl runStep()
   {
     const std::vector<mppi::path::PathReferenceSample> ref =
@@ -620,6 +664,7 @@ struct FirstOrderDubinsMppiInterface::Impl
       obstacle_count > 0 ? obs_traj_yaw.data() : nullptr,
       obstacle_count > 0 ? obs_half_length.data() : nullptr,
       obstacle_count > 0 ? obs_half_width.data() : nullptr, obstacle_count, kRefHorizon);
+    uploadBoundarySegments();
 
     controller->updateImportanceSampler(u_nom);
     controller->computeControl(x, 1);
@@ -746,7 +791,9 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const Trajectory & input, const Odometry & odometry,
   const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
   const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-  const TrackedObjects & tracked_objects)
+  const TrackedObjects & tracked_objects,
+  const std::vector<FirstOrderDubinsMppiSegment> & road_borders,
+  const std::vector<FirstOrderDubinsMppiSegment> & drivable_area)
 {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -763,7 +810,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
 
   const auto start_time = std::chrono::steady_clock::now();
 
-  impl_->updateDiffusionReference(input, odometry, acceleration, steering_status, tracked_objects);
+  impl_->updateDiffusionReference(
+    input, odometry, acceleration, steering_status, tracked_objects, road_borders, drivable_area);
   const FirstOrderDubinsMppiControl control = impl_->runStep();
 
   const auto state_trajectory = impl_->controller->getActualStateSeq();
@@ -859,11 +907,13 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     mppiLogger(),
     "MPPI tracked diffusion ref in %.1f ms: start_idx=%zu steps=%d output points size=%zu "
     "points=%zu rollouts=%zu "
-    "obstacles=%zu u_accel=%.3f u_steer=%.3f baseline_cost=%.2f max_pos_err=%.3f m "
+    "obstacles=%zu road_borders=%zu drivable_segments=%zu u_accel=%.3f u_steer=%.3f "
+    "baseline_cost=%.2f max_pos_err=%.3f m "
     "max_vel_err=%.3f m/s",
     elapsed_ms, impl_->tracking_start_idx, impl_->step_count, output.points.size(), num_points,
-    result.debug.rollouts.size(), tracked_objects.objects.size(), control.accel_cmd,
-    control.steer_cmd, result.debug.baseline_cost, max_pos_delta, max_vel_delta);
+    result.debug.rollouts.size(), tracked_objects.objects.size(), road_borders.size(),
+    drivable_area.size(), control.accel_cmd, control.steer_cmd, result.debug.baseline_cost,
+    max_pos_delta, max_vel_delta);
 
   return result;
 }
