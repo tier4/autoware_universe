@@ -418,10 +418,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     // Steer exploration scales with wheelbase: larger vehicles need larger delta-steer to change
     // yaw.
     constexpr float kReferenceWheelBase = 0.32F;
-    constexpr float kReferenceSteerStd = 0.03F;
-    const float steer_std = std::clamp(
-      kReferenceSteerStd * (vehicle_params.wheel_base / kReferenceWheelBase), kReferenceSteerStd,
-      0.12F);
+    constexpr float kReferenceSteerStd = 0.001F;
+    const float steer_std = kReferenceSteerStd * (vehicle_params.wheel_base / kReferenceWheelBase);
 
     sp.std_dev[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD)] =
       steer_std;
