@@ -671,7 +671,8 @@ void DiffusionPlanner::on_timer()
       avoidance_targets.objects.insert(avoidance_targets.objects.end(), driving_along_targets.objects.begin(), driving_along_targets.objects.end());
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
-        ego_steering, avoidance_targets);
+        ego_steering, avoidance_targets, to_mppi_segments(road_borders_subset),
+        to_mppi_segments(drivable_area_subset));
       record_section_time(
         *stop_watch_ptr_, "mppi_optimizer/optimize_trajectory", *diagnostics_inference_);
       if (!params_.shadow_mode) {

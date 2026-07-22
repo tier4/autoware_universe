@@ -24,6 +24,8 @@
     goal_yaw_coeff: 500.0
     goal_terminal_scale: 10.0
     obstacle_collision_margin: 0.2
+    road_border_collision_margin: 0.2
+    drivable_area_crossing_coeff: 10000.0
 
     # Optional offline debug logging for mppi_debug_visualizer.py --log-dir
     # Empty directory resolves to $XDG_CACHE_HOME/autoware/mppi_debug_log
