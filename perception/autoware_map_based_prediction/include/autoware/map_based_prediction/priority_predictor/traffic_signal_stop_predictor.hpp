@@ -75,6 +75,22 @@ bool findTrafficLightLaneletOnPredictedPath(
   const autoware::experimental::lanelet2_utils::LaneletRTree & road_lanelet_rtree,
   lanelet::ConstLanelet & signal_lanelet);
 
+// The lanelet that carries the traffic-light regulatory element (used for the signal lookup and the
+// stop line) and the lanelet whose turn_direction governs whether the signal requires a stop.
+struct SignalLanelets
+{
+  lanelet::ConstLanelet traffic_light_lanelet;
+  lanelet::ConstLanelet maneuver_lanelet;
+};
+
+// Resolve both lanelets for a lanelet path. The traffic-light lanelet is the first lanelet on the
+// path carrying a traffic light. Its turn_direction is used when present; otherwise (e.g. a shared
+// approach lanelet with no turn_direction) the turn_direction is taken from the first downstream
+// lanelet that has one, so that arrow signals are evaluated against the direction the path actually
+// takes through the intersection (right arrow -> keep the right-turn path, stop straight/left).
+std::optional<SignalLanelets> resolveSignalLanelets(
+  const lanelet::routing::LaneletPath & lanelet_path);
+
 bool evaluateSignalStopRequirement(
   const lanelet::ConstLanelet & lanelet, const std::optional<TrafficLightGroup> & signal);
 

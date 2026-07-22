@@ -309,6 +309,37 @@ TEST(PriorityUtils, SignalStopNotRequiredForMatchingArrow)
   EXPECT_TRUE(evaluateSignalStopRequirement(right_lane, signal));
 }
 
+TEST(PriorityUtils, ManeuverLaneletTakenFromDownstreamTurnWhenApproachHasNoTurnDirection)
+{
+  lanelet::Id id = 5600;
+  auto approach = makeLanelet(id, 0.0);  // carries the traffic light, no turn_direction
+  auto right_turn = makeLanelet(id, 5.0);
+  right_turn.setAttribute("turn_direction", "right");
+  attachTrafficLight(approach, id, makeStopLine(id, 1.0));
+
+  const lanelet::routing::LaneletPath path(lanelet::ConstLanelets{approach, right_turn});
+  const auto resolved = resolveSignalLanelets(path);
+  ASSERT_TRUE(resolved.has_value());
+  // Stop line stays on the traffic-light lanelet, turn_direction comes from the turn lanelet.
+  EXPECT_EQ(resolved->traffic_light_lanelet.id(), approach.id());
+  EXPECT_EQ(resolved->maneuver_lanelet.id(), right_turn.id());
+}
+
+TEST(PriorityUtils, ManeuverLaneletIsTrafficLightLaneletWhenItHasTurnDirection)
+{
+  lanelet::Id id = 5700;
+  const auto approach = makeLanelet(id, 0.0);
+  auto junction = makeLanelet(id, 5.0);
+  junction.setAttribute("turn_direction", "straight");
+  attachTrafficLight(junction, id, makeStopLine(id, 6.0));
+
+  const lanelet::routing::LaneletPath path(lanelet::ConstLanelets{approach, junction});
+  const auto resolved = resolveSignalLanelets(path);
+  ASSERT_TRUE(resolved.has_value());
+  EXPECT_EQ(resolved->traffic_light_lanelet.id(), junction.id());
+  EXPECT_EQ(resolved->maneuver_lanelet.id(), junction.id());
+}
+
 TEST(PriorityUtils, GetStopLineFromTrafficLight)
 {
   lanelet::Id id = 6100;

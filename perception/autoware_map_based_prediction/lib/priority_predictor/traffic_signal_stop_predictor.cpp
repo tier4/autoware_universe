@@ -309,6 +309,31 @@ double weakenConfidenceInLaneChange(const Maneuver & maneuver, const double stop
   return maneuver == Maneuver::LANE_FOLLOW ? stop_weight : stop_weight * lane_change_penalty;
 }
 
+std::optional<SignalLanelets> resolveSignalLanelets(
+  const lanelet::routing::LaneletPath & lanelet_path)
+{
+  std::optional<lanelet::ConstLanelet> traffic_light_lanelet;
+  for (const auto & way_lanelet : lanelet_path) {
+    if (!traffic_light_lanelet) {
+      if (!hasTrafficLight(way_lanelet)) {
+        continue;
+      }
+      traffic_light_lanelet = way_lanelet;
+      if (way_lanelet.hasAttribute("turn_direction")) {
+        return SignalLanelets{*traffic_light_lanelet, way_lanelet};
+      }
+      continue;
+    }
+    if (way_lanelet.hasAttribute("turn_direction")) {
+      return SignalLanelets{*traffic_light_lanelet, way_lanelet};
+    }
+  }
+  if (traffic_light_lanelet) {
+    return SignalLanelets{*traffic_light_lanelet, *traffic_light_lanelet};
+  }
+  return std::nullopt;
+}
+
 namespace
 {
 
@@ -353,18 +378,24 @@ std::vector<PredictedPath> addTrafficSignalStopHypotheses(
       continue;
     }
 
-    lanelet::ConstLanelet target_lanelet_signal_object;
-    if (!findTrafficLightLaneletOnPredictedPath(
-          predicted_path, road_lanelet_rtree, target_lanelet_signal_object)) {
+    constexpr double sample_interval_m = 3.0;
+    const auto lanelet_path =
+      buildLaneletPathFromPredictedPath(predicted_path, road_lanelet_rtree, sample_interval_m);
+    const auto signal_lanelets = resolveSignalLanelets(lanelet_path);
+    if (!signal_lanelets) {
       continue;
     }
+    const lanelet::ConstLanelet & target_lanelet_signal_object =
+      signal_lanelets->traffic_light_lanelet;
     const std::optional<TrafficLightGroup> signal_status =
       getSignalForLanelet(traffic_signal_id_map, target_lanelet_signal_object);
     const std::optional<lanelet::ConstLineString3d> related_stop_line =
       getStopLineOrEntryEdge(target_lanelet_signal_object);
 
+    // Evaluate the arrow/turn logic against the lanelet the path actually turns through, so that a
+    // right arrow keeps the right-turn path while still stopping straight/left paths.
     const bool signal_requires_stop =
-      evaluateSignalStopRequirement(target_lanelet_signal_object, signal_status);
+      evaluateSignalStopRequirement(signal_lanelets->maneuver_lanelet, signal_status);
     const bool stop_line_ahead =
       related_stop_line && hasStopLineAhead(
                              object.kinematics.pose_with_covariance.pose.position,
