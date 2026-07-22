@@ -62,8 +62,7 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
   const rclcpp::Node & node, const std::string & prefix)
 {
   FirstOrderDubinsMppiCostParams params;
-  params.lambda =
-    static_cast<float>(node.get_parameter(param_name(prefix, "lambda")).as_double());
+  params.lambda = static_cast<float>(node.get_parameter(param_name(prefix, "lambda")).as_double());
   params.desired_speed =
     static_cast<float>(node.get_parameter(param_name(prefix, "desired_speed")).as_double());
   params.speed_coeff =
