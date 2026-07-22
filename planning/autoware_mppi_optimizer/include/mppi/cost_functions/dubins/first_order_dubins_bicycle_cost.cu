@@ -1,6 +1,7 @@
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cuh>
 #include <mppi/cost_functions/path_tracking_geometry.cuh>
 #include <mppi/utils/angle_utils.cuh>
+#include "mppi/cost_functions/sat.cuh"
 
 #include <algorithm>
 #include <cmath>
@@ -496,12 +497,23 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::egoIntersectsRoadBorder(
   const float x, const float y, const float yaw) const
 {
-  // TODO(Maxime): Implement ego-footprint collision against road-border segments using
-  // road_border_collision_margin.
-  (void)x;
-  (void)y;
-  (void)yaw;
-  return false;
+  const float half_length = this->params_.ego_length * 0.5f;
+  const float half_width  = this->params_.ego_width * 0.5f;
+  const float offset      = this->params_.ego_axle_to_box_center;
+  const float front_ext = offset + half_length;
+  const float back_ext  = half_length - offset; // Positive distance backward from axle
+  const float left_ext  = half_width;           // Assuming symmetric width
+  const float right_ext = half_width;
+  const float margin    = this->params_.road_border_collision_margin;
+
+  return checkRectSegmentIntersections(
+      x, y, yaw,
+      front_ext, back_ext, left_ext, right_ext,
+      margin,
+      road_border_x0_, road_border_y0_,
+      road_border_x1_, road_border_y1_,
+      num_road_border_segments_
+  );
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -509,11 +521,24 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::egoCrossesDrivableAreaBoundary(
   const float x, const float y, const float yaw) const
 {
-  // TODO(Maxime): Implement ego-footprint intersection with drivable-area boundary segments.
-  (void)x;
-  (void)y;
-  (void)yaw;
-  return false;
+  const float half_length = this->params_.ego_length * 0.5f;
+  const float half_width  = this->params_.ego_width * 0.5f;
+  const float offset      = this->params_.ego_axle_to_box_center;
+
+  const float front_ext = offset + half_length;
+  const float back_ext  = half_length - offset;
+  const float left_ext  = half_width;
+  const float right_ext = half_width;
+  const float margin = 0.0f;
+
+  return checkRectSegmentIntersections(
+      x, y, yaw,
+      front_ext, back_ext, left_ext, right_ext,
+      margin,
+      drivable_area_x0_, drivable_area_y0_,
+      drivable_area_x1_, drivable_area_y1_,
+      num_drivable_area_segments_
+  );
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -530,7 +555,7 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   detectAndLatchCrash(
     const float x, const float y, const float yaw, const int timestep, int * crash_status) const
 {
-  const bool off_road = isEgoOutsideDrivableArea(x, y, yaw);
+  const bool off_road = false; // isEgoOutsideDrivableArea(x, y, yaw);
   const bool hit_car = egoIntersectsObstacleAtStep(x, y, yaw, timestep);
   const bool hit_road_border = egoIntersectsRoadBorder(x, y, yaw);
   const int violations =
