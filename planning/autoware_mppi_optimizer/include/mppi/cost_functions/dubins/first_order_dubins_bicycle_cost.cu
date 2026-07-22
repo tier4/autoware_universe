@@ -1,3 +1,5 @@
+#include "mppi/cost_functions/sat.cuh"
+
 #include <mppi/cost_functions/dubins/first_order_dubins_bicycle_cost.cuh>
 #include <mppi/cost_functions/path_tracking_geometry.cuh>
 #include <mppi/utils/angle_utils.cuh>
@@ -250,7 +252,7 @@ void FirstOrderDubinsBicycleCostImpl<
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   setRoadBorderSegments(
-    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment>& segments)
+    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> & segments)
 {
   const int n = std::min(static_cast<int>(segments.size()), kMaxRoadBorderSegments);
   num_road_border_segments_ = n;
@@ -264,8 +266,8 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
-  clearRoadBorders()
+void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearRoadBorders()
 {
   num_road_border_segments_ = 0;
   dataToDevice();
@@ -274,7 +276,7 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
   setDrivableAreaSegments(
-    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment>& segments)
+    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> & segments)
 {
   const int n = std::min(static_cast<int>(segments.size()), kMaxDrivableAreaSegments);
   num_drivable_area_segments_ = n;
@@ -288,8 +290,8 @@ void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAM
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
-  clearDrivableAreaSegments()
+void FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::clearDrivableAreaSegments()
 {
   num_drivable_area_segments_ = 0;
   dataToDevice();
@@ -484,27 +486,41 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
-  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::egoIntersectsRoadBorder(
-  const float x, const float y, const float yaw) const
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
+  DYN_PARAMS_T>::egoIntersectsRoadBorder(const float x, const float y, const float yaw) const
 {
-  // TODO(Maxime): Implement ego-footprint collision against road-border segments using
-  // road_border_collision_margin.
-  (void)x;
-  (void)y;
-  (void)yaw;
-  return false;
+  const float half_length = this->params_.ego_length * 0.5f;
+  const float half_width = this->params_.ego_width * 0.5f;
+  const float offset = this->params_.ego_axle_to_box_center;
+  const float front_ext = offset + half_length;
+  const float back_ext = half_length - offset;  // Positive distance backward from axle
+  const float left_ext = half_width;            // Assuming symmetric width
+  const float right_ext = half_width;
+  const float margin = this->params_.road_border_collision_margin;
+
+  return checkRectSegmentIntersections(
+    x, y, yaw, front_ext, back_ext, left_ext, right_ext, margin, road_border_x0_, road_border_y0_,
+    road_border_x1_, road_border_y1_, num_road_border_segments_);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
-  CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::egoCrossesDrivableAreaBoundary(
-  const float x, const float y, const float yaw) const
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
+  DYN_PARAMS_T>::egoCrossesDrivableAreaBoundary(const float x, const float y, const float yaw) const
 {
-  // TODO(Maxime): Implement ego-footprint intersection with drivable-area boundary segments.
-  (void)x;
-  (void)y;
-  (void)yaw;
-  return false;
+  const float half_length = this->params_.ego_length * 0.5f;
+  const float half_width = this->params_.ego_width * 0.5f;
+  const float offset = this->params_.ego_axle_to_box_center;
+
+  const float front_ext = offset + half_length;
+  const float back_ext = half_length - offset;
+  const float left_ext = half_width;
+  const float right_ext = half_width;
+  const float margin = 0.0f;
+
+  return checkRectSegmentIntersections(
+    x, y, yaw, front_ext, back_ext, left_ext, right_ext, margin, drivable_area_x0_,
+    drivable_area_y0_, drivable_area_x1_, drivable_area_y1_, num_drivable_area_segments_);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -524,7 +540,8 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   const bool beyond_lateral_bound = exceedsLateralBoundary(x, y);
   const bool hit_car = egoIntersectsObstacleAtStep(x, y, yaw, timestep);
   const bool hit_road_border = egoIntersectsRoadBorder(x, y, yaw);
-  const int violations = static_cast<int>(beyond_lateral_bound) + static_cast<int>(hit_car) + static_cast<int>(hit_road_border);
+  const int violations = static_cast<int>(beyond_lateral_bound) + static_cast<int>(hit_car) +
+                         static_cast<int>(hit_road_border);
   if (violations > 0) {
     if (crash_status != nullptr) {
       crash_status[0] = violations;
