@@ -28,6 +28,7 @@
 #include <lanelet2_core/geometry/Lanelet.h>
 #include <lanelet2_core/geometry/LineString.h>
 #include <lanelet2_core/primitives/BasicRegulatoryElements.h>
+#include <lanelet2_routing/RoutingGraph.h>
 
 #include <algorithm>
 #include <cmath>
@@ -321,7 +322,8 @@ void MapBasedStopPlanner::set_planner_data(
   if (lanelet_map_bin_ptr == stop_lines_map_ptr_ && route_ptr == stop_lines_route_ptr_) {
     return;
   }
-  stop_lines_ = collect_stop_lines(route_context);
+  intersection_debug_lanelets_ = {};
+  stop_lines_ = collect_stop_lines(route_context, &intersection_debug_lanelets_);
   stop_lines_map_ptr_ = lanelet_map_bin_ptr;
   stop_lines_route_ptr_ = route_ptr;
 }
@@ -340,6 +342,32 @@ MapBasedStopPlanner::Result MapBasedStopPlanner::plan(
 
   const auto stop_lines = filter_stop_lines_on_trajectory(stop_lines_, trajectory.points);
   result.stop_line_markers = create_stop_line_marker_array(stop_lines);
+
+  // Debug visualization of the intersection lanelet groups behind the non-priority judgement.
+  {
+    const auto append_lanelets = [&result](
+                                   const std::string & ns, const lanelet::ConstLanelets & lanelets,
+                                   const std_msgs::msg::ColorRGBA & color) {
+      if (lanelets.empty()) return;
+      const auto markers =
+        lanelet::visualization::laneletsAsTriangleMarkerArray(ns, lanelets, color);
+      result.stop_line_markers.markers.insert(
+        result.stop_line_markers.markers.end(), markers.markers.begin(), markers.markers.end());
+    };
+    append_lanelets(
+      "intersection_conflicting_lanelets", intersection_debug_lanelets_.conflicting,
+      make_color(1.0f, 0.5f, 0.0f, 0.4f));
+    append_lanelets(
+      "intersection_yield_lanelets", intersection_debug_lanelets_.yield,
+      make_color(0.0f, 1.0f, 0.0f, 0.4f));
+    append_lanelets(
+      "intersection_ego_lanelets", intersection_debug_lanelets_.ego,
+      make_color(0.0f, 0.5f, 1.0f, 0.4f));
+    append_lanelets(
+      "intersection_attention_lanelets", intersection_debug_lanelets_.attention,
+      make_color(1.0f, 0.0f, 0.0f, 0.5f));
+  }
+
   if (stop_lines.empty()) return result;
 
   // The go trajectory stops only at mandatory targets (e.g. stop lines); the stop trajectory
@@ -391,7 +419,7 @@ std::optional<MapBasedStopPlanner::SingleStopResult> MapBasedStopPlanner::plan_s
 }
 
 std::vector<StopLine> MapBasedStopPlanner::collect_stop_lines(
-  const RouteContext & route_context) const
+  const RouteContext & route_context, IntersectionDebugLanelets * debug_lanelets) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -441,15 +469,11 @@ std::vector<StopLine> MapBasedStopPlanner::collect_stop_lines(
           add_line(*stop_line, StopLineType::TrafficLight, stop_line->id());
         }
       }
-
-      // Lanelets carrying a turn_direction attribute -> Intersection.
-      if (lanelet.hasAttribute("turn_direction")) {
-        add_line(make_entry_edge(lanelet), StopLineType::Intersection, lanelet.id());
-      }
     }
   }
 
   const auto route_path = build_route_path(preferred_lanelets);
+  const auto arc_ranges = lanelet_arc_ranges(preferred_lanelets);
 
   // Crosswalk / walkway lanelets overlapping the route lanelets, found via the map's spatial
   // index (RTree) per route lanelet plus a 2D polygon-overlap check. Walkways carry no regulatory
@@ -497,6 +521,107 @@ std::vector<StopLine> MapBasedStopPlanner::collect_stop_lines(
     }
   }
 
+  // Intersection
+  {
+    autoware_utils_debug::ScopedTimeTrack st_intersection(
+      "intersection_conflict_search", *time_keeper_);
+    constexpr double stop_line_half_width_m = 3.0;
+    constexpr lanelet::Id intersection_conflict_id_offset = INT64_C(1) << 42;
+    const auto & routing_graph = route_context.routing_graph_ptr;
+
+    const auto contains = [](const lanelet::ConstLanelets & lanelets, const lanelet::Id id) {
+      return std::any_of(
+        lanelets.begin(), lanelets.end(), [id](const auto & ll) { return ll.id() == id; });
+    };
+
+    for (size_t i = 0; i < preferred_lanelets.size(); ++i) {
+      const auto & lanelet = preferred_lanelets[i];
+      if (!lanelet.hasAttribute("turn_direction")) continue;
+
+      // Without a routing graph the conflict topology is unknown; fall back to the entry edge.
+      if (!routing_graph) {
+        add_line(make_entry_edge(lanelet), StopLineType::Intersection, lanelet.id());
+        continue;
+      }
+
+      // A signalized straight lane is arbitrated by the signal (vm-03-10).
+      const auto turn_direction = lanelet.attributeOr("turn_direction", std::string(""));
+      const bool has_traffic_light = !lanelet.regulatoryElementsAs<lanelet::TrafficLight>().empty();
+      if (turn_direction == "straight" && has_traffic_light) continue;
+
+      // Lanes yielding to ego: yield lanelets (and their upstreams) of RightOfWay regulatory
+      // elements that grant ego the right of way.
+      lanelet::ConstLanelets yield_lanelets;
+      for (const auto & right_of_way : lanelet.regulatoryElementsAs<lanelet::RightOfWay>()) {
+        if (!contains(right_of_way->rightOfWayLanelets(), lanelet.id())) continue;
+        for (const auto & yield_lanelet : right_of_way->yieldLanelets()) {
+          yield_lanelets.push_back(yield_lanelet);
+          for (const auto & previous : routing_graph->previous(yield_lanelet)) {
+            yield_lanelets.push_back(previous);
+          }
+        }
+      }
+
+      // Ego's own lanes: the assigned lanelet, its upstreams and their sibling branches.
+      lanelet::ConstLanelets ego_lanelets{lanelet};
+      for (const auto & previous : routing_graph->previous(lanelet)) {
+        ego_lanelets.push_back(previous);
+        for (const auto & following : routing_graph->following(previous)) {
+          ego_lanelets.push_back(following);
+        }
+      }
+
+      lanelet::ConstLanelets conflicting_lanelets;
+      for (const auto & conflicting : routing_graph->conflicting(lanelet)) {
+        if (const auto conflicting_lanelet = conflicting.lanelet()) {
+          conflicting_lanelets.push_back(*conflicting_lanelet);
+        }
+      }
+
+      // Priority lanes ego must yield to. Empty means ego has priority (or the turn does not
+      // cross another lane): no stop line.
+      lanelet::ConstLanelets attention_lanelets;
+      for (const auto & conflicting_lanelet : conflicting_lanelets) {
+        if (contains(yield_lanelets, conflicting_lanelet.id())) continue;
+        if (contains(ego_lanelets, conflicting_lanelet.id())) continue;
+        attention_lanelets.push_back(conflicting_lanelet);
+      }
+
+      if (debug_lanelets) {
+        const auto append_unique =
+          [&contains](lanelet::ConstLanelets & to, const lanelet::ConstLanelets & from) {
+            for (const auto & ll : from) {
+              if (!contains(to, ll.id())) to.push_back(ll);
+            }
+          };
+        append_unique(debug_lanelets->conflicting, conflicting_lanelets);
+        append_unique(debug_lanelets->yield, yield_lanelets);
+        append_unique(debug_lanelets->ego, ego_lanelets);
+        append_unique(debug_lanelets->attention, attention_lanelets);
+      }
+
+      if (attention_lanelets.empty()) continue;
+
+      // First point (within this intersection lanelet) where the route path enters a priority
+      // lane's outline.
+      std::optional<double> first_conflict_arc;
+      for (const auto & attention_lanelet : attention_lanelets) {
+        for (const double arc : lanelet_outline_crossing_arcs(
+               route_path, attention_lanelet, arc_ranges[i].first, arc_ranges[i].second)) {
+          if (!first_conflict_arc || arc < *first_conflict_arc) first_conflict_arc = arc;
+        }
+      }
+      // The route never enters a priority lane (e.g. the conflict area lies off the path).
+      if (!first_conflict_arc) continue;
+
+      add_line(
+        make_perpendicular_line(
+          route_path, *first_conflict_arc, stop_line_half_width_m,
+          -(lanelet.id() + intersection_conflict_id_offset)),
+        StopLineType::Intersection, lanelet.id() + intersection_conflict_id_offset);
+    }
+  }
+
   // Maximal runs of location=private lanelets along the preferred lane sequence -> PrivateArea.
   // The private connector lanelet spatially overlaps the public road at its ends, so its entry
   // edge lies on the roadway; instead, the stop line is placed where the route path actually
@@ -504,7 +629,6 @@ std::vector<StopLine> MapBasedStopPlanner::collect_stop_lines(
   // path with the outlines of non-private road lanelets overlapping the connector. The connector
   // entry edge is only a fallback when no overlapping road is found.
   {
-    const auto arc_ranges = lanelet_arc_ranges(preferred_lanelets);
     constexpr double stop_line_half_width_m = 3.0;
     // NOTE(odashima): keep private entry/exit line ids distinct from each other and from the -id
     // intersection edges possibly synthesized for the same lanelet (marker de-duplication by id).
@@ -669,6 +793,9 @@ std::optional<double> MapBasedStopPlanner::select_stop_arc_length(
       }
       if (stop_line.type == StopLineType::PrivateArea) {
         stop_margin += params.stop_distance_from_private_area;
+      }
+      if (stop_line.type == StopLineType::Intersection) {
+        stop_margin += params.stop_distance_from_intersection;
       }
       const double stop_point_arc_length =
         crossing_arc_length - params.base_link_to_front - stop_margin;

@@ -329,6 +329,7 @@ StopSelectionParams MinimumRuleBasedPlannerNode::make_map_based_stop_params() co
   params.stop_margin_distance = params_.map_based_stop.stop_margin_distance;
   params.stop_distance_from_crosswalk = params_.map_based_stop.stop_distance_from_crosswalk;
   params.stop_distance_from_private_area = params_.map_based_stop.stop_distance_from_private_area;
+  params.stop_distance_from_intersection = params_.map_based_stop.stop_distance_from_intersection;
   params.base_link_to_front = vehicle_info_.max_longitudinal_offset_m;
   params.stop_point_diff_threshold = params_.map_based_stop.stop_point_diff_threshold;
   return params;

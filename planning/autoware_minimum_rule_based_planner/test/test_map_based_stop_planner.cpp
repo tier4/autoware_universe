@@ -22,11 +22,15 @@
 
 #include <gtest/gtest.h>
 #include <lanelet2_core/LaneletMap.h>
+#include <lanelet2_core/primitives/BasicRegulatoryElements.h>
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
 #include <lanelet2_core/primitives/Point.h>
+#include <lanelet2_routing/RoutingGraph.h>
+#include <lanelet2_traffic_rules/TrafficRulesFactory.h>
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace autoware::minimum_rule_based_planner
@@ -73,6 +77,7 @@ StopSelectionParams make_params()
   params.stop_margin_distance = 1.0;
   params.stop_distance_from_crosswalk = 3.5;
   params.stop_distance_from_private_area = 3.0;
+  params.stop_distance_from_intersection = 1.0;
   params.base_link_to_front = 4.0;
   params.stop_point_diff_threshold = 0.5;
   return params;
@@ -162,6 +167,24 @@ TEST(MapBasedStopPlannerTest, SelectAppliesCrosswalkMarginWithoutExplicitStopLin
   ASSERT_TRUE(arc.has_value());
   // crossing (20) - front offset (4) - (stop_margin (1) + stop_distance_from_crosswalk (3.5))
   EXPECT_NEAR(*arc, 11.5, 1e-6);
+}
+
+TEST(MapBasedStopPlannerTest, SelectAppliesIntersectionMargin)
+{
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
+  const auto trajectory = make_straight_trajectory(30);
+
+  // An intersection conflict line: the stop_distance_from_intersection margin applies on top of
+  // stop_margin_distance so the vehicle keeps a gap to the priority lane.
+  const std::vector<StopLine> stop_lines{
+    make_crossing_stop_line(1, 20.0, StopLineType::Intersection)};
+
+  const auto arc = planner.select_stop_arc_length(
+    stop_lines, trajectory, make_ego_pose(0.0), /*ego_velocity=*/0.0, /*ego_acceleration=*/0.0,
+    make_params(), /*include_possibility=*/true);
+  ASSERT_TRUE(arc.has_value());
+  // crossing (20) - front offset (4) - (stop_margin (1) + stop_distance_from_intersection (1))
+  EXPECT_NEAR(*arc, 14.0, 1e-6);
 }
 
 TEST(MapBasedStopPlannerTest, SelectAppliesPrivateAreaMargin)
@@ -353,7 +376,7 @@ lanelet::Lanelet make_road_lanelet(lanelet::Id id, double x_start, double length
 }
 }  // namespace
 
-TEST(MapBasedStopPlannerTest, CollectDetectsIntersectionEntry)
+TEST(MapBasedStopPlannerTest, CollectFallsBackToIntersectionEntryEdgeWithoutRoutingGraph)
 {
   MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
 
@@ -361,8 +384,9 @@ TEST(MapBasedStopPlannerTest, CollectDetectsIntersectionEntry)
   auto intersection = make_road_lanelet(2, 10.0, 10.0);
   intersection.attributes()["turn_direction"] = "right";
 
+  // Without a routing graph the conflict topology is unknown: the entry edge is used.
   RouteContext ctx;
-  ctx.route_lanelets = {approach, intersection};
+  ctx.preferred_lanelets = {approach, intersection};
   const auto stop_lines = planner.collect_stop_lines(ctx);
 
   ASSERT_EQ(stop_lines.size(), 1u);
@@ -373,6 +397,136 @@ TEST(MapBasedStopPlannerTest, CollectDetectsIntersectionEntry)
   // de-duplicates line strings by id, so sharing InvalId would drop every synthesized line but the
   // first.
   EXPECT_EQ(stop_lines.front().line.id(), -2);
+}
+
+namespace
+{
+// A road lanelet the German vehicle traffic rules accept, so it takes part in the routing graph.
+lanelet::Lanelet make_routable_lanelet(lanelet::Id id, double x_start, double length)
+{
+  auto lanelet = make_road_lanelet(id, x_start, length);
+  lanelet.attributes()[lanelet::AttributeNamesString::Subtype] =
+    lanelet::AttributeValueString::Road;
+  lanelet.attributes()[lanelet::AttributeNamesString::Location] =
+    lanelet::AttributeValueString::Urban;
+  lanelet.attributes()["one_way"] = "yes";
+  return lanelet;
+}
+
+// A routable lanelet along +y spanning x in [x_start, x_start + 4], crossing the +x road.
+lanelet::Lanelet make_crossing_road_lanelet(lanelet::Id id, double x_start)
+{
+  const lanelet::Id base = id * 100;
+  lanelet::LineString3d left(
+    base + 1, {lanelet::Point3d(base + 2, x_start + 4.0, -10.0, 0.0),
+               lanelet::Point3d(base + 3, x_start + 4.0, 10.0, 0.0)});
+  lanelet::LineString3d right(
+    base + 4, {lanelet::Point3d(base + 5, x_start, -10.0, 0.0),
+               lanelet::Point3d(base + 6, x_start, 10.0, 0.0)});
+  lanelet::Lanelet lanelet(id, left, right);
+  lanelet.attributes()[lanelet::AttributeNamesString::Subtype] =
+    lanelet::AttributeValueString::Road;
+  lanelet.attributes()[lanelet::AttributeNamesString::Location] =
+    lanelet::AttributeValueString::Urban;
+  lanelet.attributes()["one_way"] = "yes";
+  return lanelet;
+}
+
+// A route context whose routing graph is built from the given lanelets (German vehicle rules).
+RouteContext make_routing_graph_context(const std::vector<lanelet::Lanelet> & lanelets)
+{
+  auto map = std::make_shared<lanelet::LaneletMap>();
+  for (const auto & lanelet : lanelets) {
+    map->add(lanelet);
+  }
+  const auto traffic_rules = lanelet::traffic_rules::TrafficRulesFactory::create(
+    lanelet::Locations::Germany, lanelet::Participants::Vehicle);
+  RouteContext ctx;
+  ctx.lanelet_map_ptr = map;
+  ctx.routing_graph_ptr = lanelet::routing::RoutingGraph::build(*map, *traffic_rules);
+  return ctx;
+}
+}  // namespace
+
+TEST(MapBasedStopPlannerTest, CollectStopsBeforeConflictingPriorityLane)
+{
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
+
+  auto approach = make_routable_lanelet(1, 0.0, 10.0);
+  auto intersection = make_routable_lanelet(2, 10.0, 10.0);
+  intersection.attributes()["turn_direction"] = "right";
+  // A priority lane crossing the intersection lanelet at x in [14, 18]; no RightOfWay grants ego
+  // priority over it, so ego is non-priority and must stop before entering it.
+  auto crossing = make_crossing_road_lanelet(3, 14.0);
+
+  auto ctx = make_routing_graph_context({approach, intersection, crossing});
+  ctx.preferred_lanelets = {approach, intersection};
+  const auto stop_lines = planner.collect_stop_lines(ctx);
+
+  ASSERT_EQ(stop_lines.size(), 1u);
+  EXPECT_EQ(stop_lines.front().type, StopLineType::Intersection);
+  // The stop line sits where the route centerline enters the crossing lane (x = 14), not at the
+  // intersection lanelet entry (x = 10).
+  const auto & line = stop_lines.front().line;
+  EXPECT_NEAR(0.5 * (line.front().x() + line.back().x()), 14.0, 0.1);
+  EXPECT_NEAR(0.5 * (line.front().y() + line.back().y()), 0.0, 0.1);
+}
+
+TEST(MapBasedStopPlannerTest, CollectSkipsIntersectionWhenEgoHasPriority)
+{
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
+
+  auto approach = make_routable_lanelet(1, 0.0, 10.0);
+  auto intersection = make_routable_lanelet(2, 10.0, 10.0);
+  intersection.attributes()["turn_direction"] = "right";
+  auto crossing = make_crossing_road_lanelet(3, 14.0);
+  // A RightOfWay regulatory element grants ego priority: the crossing lane yields to ego.
+  intersection.addRegulatoryElement(
+    lanelet::RightOfWay::make(999, lanelet::AttributeMap(), {intersection}, {crossing}));
+
+  auto ctx = make_routing_graph_context({approach, intersection, crossing});
+  ctx.preferred_lanelets = {approach, intersection};
+  const auto stop_lines = planner.collect_stop_lines(ctx);
+
+  EXPECT_TRUE(stop_lines.empty());
+}
+
+TEST(MapBasedStopPlannerTest, CollectSkipsIntersectionWithoutConflictingLane)
+{
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
+
+  // A branching turn (turn_direction present) that crosses no other lane: no stop line.
+  auto approach = make_routable_lanelet(1, 0.0, 10.0);
+  auto intersection = make_routable_lanelet(2, 10.0, 10.0);
+  intersection.attributes()["turn_direction"] = "left";
+
+  auto ctx = make_routing_graph_context({approach, intersection});
+  ctx.preferred_lanelets = {approach, intersection};
+  const auto stop_lines = planner.collect_stop_lines(ctx);
+
+  EXPECT_TRUE(stop_lines.empty());
+}
+
+TEST(MapBasedStopPlannerTest, CollectSkipsSignalizedStraightIntersection)
+{
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
+
+  auto approach = make_routable_lanelet(1, 0.0, 10.0);
+  auto intersection = make_routable_lanelet(2, 10.0, 10.0);
+  intersection.attributes()["turn_direction"] = "straight";
+  auto crossing = make_crossing_road_lanelet(3, 14.0);
+  // A signalized straight lane is arbitrated by the signal: no intersection stop line even
+  // though a conflicting lane exists.
+  lanelet::LineString3d light_bar(
+    800, {lanelet::Point3d(801, 12.0, -2.0, 3.0), lanelet::Point3d(802, 12.0, 2.0, 3.0)});
+  intersection.addRegulatoryElement(
+    lanelet::TrafficLight::make(998, lanelet::AttributeMap(), {light_bar}));
+
+  auto ctx = make_routing_graph_context({approach, intersection, crossing});
+  ctx.preferred_lanelets = {approach, intersection};
+  const auto stop_lines = planner.collect_stop_lines(ctx);
+
+  EXPECT_TRUE(stop_lines.empty());
 }
 
 TEST(MapBasedStopPlannerTest, CollectDetectsPrivateAreaTransition)
@@ -638,11 +792,12 @@ TEST(MapBasedStopPlannerTest, PlanReturnsStopTrajectoryOnlyForDistinctStopPoint)
 {
   MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
 
-  // Only a possibility target (intersection entry edge at x = 10) crosses the trajectory.
+  // Only a possibility target (intersection entry edge at x = 10, routing-graph-less fallback)
+  // crosses the trajectory.
   auto intersection = make_road_lanelet(2, 10.0, 10.0);
   intersection.attributes()["turn_direction"] = "right";
   RouteContext ctx;
-  ctx.route_lanelets = {intersection};
+  ctx.preferred_lanelets = {intersection};
   planner.set_planner_data(
     std::make_shared<LaneletMapBin>(), std::make_shared<LaneletRoute>(), ctx);
 
@@ -653,9 +808,9 @@ TEST(MapBasedStopPlannerTest, PlanReturnsStopTrajectoryOnlyForDistinctStopPoint)
   // The go trajectory ignores possibility targets and stays unchanged.
   ASSERT_EQ(result.go_trajectory.points.size(), trajectory.points.size());
   EXPECT_FLOAT_EQ(result.go_trajectory.points.back().longitudinal_velocity_mps, 5.0f);
-  // The stop trajectory embeds the possibility stop (10 - 4 - 1 = 5), distinct from go.
+  // The stop trajectory embeds the possibility stop (10 - 4 - (1 + 1) = 4), distinct from go.
   ASSERT_TRUE(result.stop_trajectory.has_value());
-  EXPECT_NEAR(result.stop_trajectory->points.back().pose.position.x, 5.0, 1e-3);
+  EXPECT_NEAR(result.stop_trajectory->points.back().pose.position.x, 4.0, 1e-3);
   EXPECT_FLOAT_EQ(result.stop_trajectory->points.back().longitudinal_velocity_mps, 0.0f);
 }
 

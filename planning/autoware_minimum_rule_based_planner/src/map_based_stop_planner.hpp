@@ -73,10 +73,22 @@ struct StopSelectionParams
   double stop_distance_from_crosswalk;
   //! extra stop distance before a private-area boundary [m]
   double stop_distance_from_private_area;
+  //! extra stop distance before the first conflicting priority lane in an intersection [m]
+  double stop_distance_from_intersection;
   double base_link_to_front;  //!< vehicle front offset from base_link [m]
   //! min arc-length difference for the stop trajectory's stop point to be treated as different
   //! from the go trajectory's [m]
   double stop_point_diff_threshold;
+};
+
+//! Intersection lanelet groups collected during stop-line collection, for debug visualization.
+struct IntersectionDebugLanelets
+{
+  lanelet::ConstLanelets conflicting;  //!< routing-graph conflicting lanelets
+  lanelet::ConstLanelets yield;        //!< lanes yielding to ego (RightOfWay) and their upstreams
+  lanelet::ConstLanelets ego;          //!< ego's own lanes (assigned, upstreams, sibling branches)
+  //! priority lanes ego must yield to (conflicting - yield - ego); the stop target
+  lanelet::ConstLanelets attention;
 };
 
 /**
@@ -137,13 +149,20 @@ public:
    *    RoadMarking bound to the crosswalk by its "crosswalk_id" attribute, or the entry-side
    *    bound of the crosswalk lanelet.
    *  - traffic light stop lines -> TrafficLight
-   *  - lanelets with a turn_direction attribute -> Intersection (entry edge)
+   *  - lanelets with a turn_direction attribute -> Intersection, placed where the route first
+   *    enters a conflicting priority lane (routing-graph conflicting lanelets minus the
+   *    RightOfWay yield lanes and ego lanes); no line when ego has priority. Falls back to the
+   *    lanelet entry edge when no routing graph is available.
    *  - location=private runs along the preferred lane sequence -> PrivateArea, placed where the
    *    route leaves the public road (entry) or enters it again (exit).
    *
    * Duplicate targets (shared between lanelets) are returned only once.
+   *
+   * When @p debug_lanelets is given, the intersection lanelet groups (conflicting / yield / ego)
+   * are accumulated into it for visualization.
    */
-  std::vector<StopLine> collect_stop_lines(const RouteContext & route_context) const;
+  std::vector<StopLine> collect_stop_lines(
+    const RouteContext & route_context, IntersectionDebugLanelets * debug_lanelets = nullptr) const;
 
   //! Keep only the stop lines that intersect the given trajectory (in 2D).
   std::vector<StopLine> filter_stop_lines_on_trajectory(
@@ -189,6 +208,8 @@ private:
 
   //! Stop lines collected from the map along the route, cached by set_planner_data().
   std::vector<StopLine> stop_lines_;
+  //! Intersection lanelet groups collected alongside stop_lines_, for debug markers.
+  IntersectionDebugLanelets intersection_debug_lanelets_;
   LaneletMapBin::ConstSharedPtr stop_lines_map_ptr_;
   LaneletRoute::ConstSharedPtr stop_lines_route_ptr_;
 };

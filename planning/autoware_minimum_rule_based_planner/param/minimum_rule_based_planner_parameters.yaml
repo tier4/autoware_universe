@@ -123,6 +123,12 @@ minimum_rule_based_planner:
       description: distance to stop before a private-area boundary (added to stop_margin_distance and the vehicle front offset) [m]
       validation:
         gt_eq<>: [0.0]
+    stop_distance_from_intersection:
+      type: double
+      default_value: 1.0
+      description: distance to stop before the first conflicting priority lane in an intersection (added to stop_margin_distance and the vehicle front offset) [m]
+      validation:
+        gt_eq<>: [0.0]
     max_deceleration:
       type: double
       default_value: 4.0
