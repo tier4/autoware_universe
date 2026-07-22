@@ -361,9 +361,9 @@ def frame_from_loaded(
 
 def draw_frame(axes, frame: MppiDebugFrame) -> None:
     if len(axes) >= 8:
-        ax_xy, ax_heading, ax_vel, ax_accel, ax_steer, ax_steer_rate, ax_cost, ax_weight = axes
+        ax_xy, ax_heading, ax_vel, ax_accel, ax_steer_cmd, ax_steer_meas, ax_cost, ax_weight = axes
     else:
-        ax_xy, ax_heading, ax_vel, ax_accel, ax_steer, ax_steer_rate = axes
+        ax_xy, ax_heading, ax_vel, ax_accel, ax_steer_cmd, ax_steer_meas = axes
         ax_cost = ax_weight = None
 
     lengths = [len(frame.reference_vel), len(frame.optimized_vel)]
@@ -497,44 +497,90 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             )
         ax_accel.legend(loc="best")
 
-    # Drop previous measured-history twin before clear (twins survive Axes.clear()).
-    prev_twin = getattr(ax_steer, "_measured_steer_twin", None)
-    if prev_twin is not None:
+    # Drop previous rate twin before clear (twins survive Axes.clear()).
+    prev_rate_twin = getattr(ax_steer_cmd, "_steer_rate_twin", None)
+    if prev_rate_twin is not None:
         try:
-            prev_twin.remove()
+            prev_rate_twin.remove()
         except (AttributeError, ValueError):
             pass
-        ax_steer._measured_steer_twin = None
+        ax_steer_cmd._steer_rate_twin = None
 
-    ax_steer.clear()
-    ax_steer.set_title("Steering")
-    ax_steer.set_xlabel("point index")
-    ax_steer.set_ylabel("δ [rad]")
-    ax_steer.grid(True)
+    ax_steer_cmd.clear()
+    ax_steer_cmd.set_title("Command steer δ_cmd + steer rate δ̇")
+    ax_steer_cmd.set_xlabel("point index")
+    ax_steer_cmd.set_ylabel("δ_cmd [rad]", color="tab:orange")
+    ax_steer_cmd.tick_params(axis="y", labelcolor="tab:orange")
+    ax_steer_cmd.grid(True)
+    cmd_handles = []
+    cmd_labels = []
     if n_compare > 0:
-        ax_steer.plot(
+        (h_ref,) = ax_steer_cmd.plot(
             idx,
             frame.reference_steer[:n_compare],
             color="tab:orange",
             linestyle="--",
             linewidth=2,
-            label="diffusion δ",
+            label="diffusion δ_cmd",
         )
-        ax_steer.plot(
+        (h_opt,) = ax_steer_cmd.plot(
             idx,
             frame.optimized_steer[:n_compare],
             color="tab:orange",
             linewidth=2,
-            label="MPPI logged",
+            label="MPPI logged δ_cmd",
         )
+        cmd_handles.extend([h_ref, h_opt])
+        cmd_labels.extend(["diffusion δ_cmd", "MPPI logged δ_cmd"])
         if frame.retuned_steer:
-            ax_steer.plot(
+            (h_ret,) = ax_steer_cmd.plot(
                 idx,
                 frame.retuned_steer[:n_compare],
-                color="tab:green",
+                color="darkorange",
                 linewidth=2.2,
-                label="MPPI retuned",
+                label="MPPI retuned δ_cmd",
             )
+            cmd_handles.append(h_ret)
+            cmd_labels.append("MPPI retuned δ_cmd")
+
+    ax_rate = ax_steer_cmd.twinx()
+    ax_steer_cmd._steer_rate_twin = ax_rate
+    ax_rate.set_ylabel("δ̇ [rad/s]", color="tab:purple")
+    ax_rate.tick_params(axis="y", labelcolor="tab:purple")
+    rate_handles = []
+    rate_labels = []
+    if frame.optimized_steer_rate:
+        idx_rate = list(range(len(frame.optimized_steer_rate)))
+        (h_rate,) = ax_rate.plot(
+            idx_rate,
+            frame.optimized_steer_rate,
+            color="tab:purple",
+            linewidth=2,
+            label="MPPI logged δ̇",
+        )
+        rate_handles.append(h_rate)
+        rate_labels.append("MPPI logged δ̇")
+    if frame.retuned_steer_rate:
+        idx_rate = list(range(len(frame.retuned_steer_rate)))
+        (h_rate_ret,) = ax_rate.plot(
+            idx_rate,
+            frame.retuned_steer_rate,
+            color="tab:green",
+            linewidth=2.2,
+            label="MPPI retuned δ̇",
+        )
+        rate_handles.append(h_rate_ret)
+        rate_labels.append("MPPI retuned δ̇")
+    if cmd_handles or rate_handles:
+        ax_steer_cmd.legend(
+            cmd_handles + rate_handles, cmd_labels + rate_labels, loc="best", fontsize=8
+        )
+
+    ax_steer_meas.clear()
+    ax_steer_meas.set_title(f"Measured steering history (last {MEASURED_STEER_HISTORY_S:.0f}s)")
+    ax_steer_meas.set_xlabel("time [s] (0 = now)")
+    ax_steer_meas.set_ylabel("δ_meas [rad]")
+    ax_steer_meas.grid(True)
     has_measured_history = (
         len(frame.measured_steer_times) > 0
         and len(frame.measured_steer_times) == len(frame.measured_steer_history)
@@ -543,52 +589,24 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
         t_end = frame.measured_steer_times[-1]
         t_rel = [t - t_end for t in frame.measured_steer_times]
         latest = frame.measured_steer_history[-1]
-        # Time axis on top so trajectory steers can keep point-index on the bottom.
-        ax_meas = ax_steer.twiny()
-        ax_steer._measured_steer_twin = ax_meas
-        ax_meas.plot(
+        ax_steer_meas.plot(
             t_rel,
             frame.measured_steer_history,
             color="tab:blue",
             linewidth=1.8,
-            label=f"measured δ (last {MEASURED_STEER_HISTORY_S:.0f}s, now={latest:.3f})",
+            label=f"δ_meas (now={latest:.3f})",
         )
-        ax_meas.set_xlim(-MEASURED_STEER_HISTORY_S, 0.0)
-        ax_meas.set_xlabel("measured time [s] (0 = now)")
-        handles_b, labels_b = ax_steer.get_legend_handles_labels()
-        handles_t, labels_t = ax_meas.get_legend_handles_labels()
-        ax_steer.legend(handles_b + handles_t, labels_b + labels_t, loc="best")
-    elif n_compare > 0:
-        ax_steer.legend(loc="best")
-
-    ax_steer_rate.clear()
-    ax_steer_rate.set_title("Steering rate δ̇ = (δ_cmd − δ) / τ")
-    ax_steer_rate.set_xlabel("point index")
-    ax_steer_rate.set_ylabel("δ̇ [rad/s]")
-    ax_steer_rate.grid(True)
-    plotted = False
-    if frame.optimized_steer_rate:
-        idx_rate = list(range(len(frame.optimized_steer_rate)))
-        ax_steer_rate.plot(
-            idx_rate,
-            frame.optimized_steer_rate,
-            color="tab:purple",
-            linewidth=2,
-            label="MPPI logged δ̇",
+        ax_steer_meas.set_xlim(-MEASURED_STEER_HISTORY_S, 0.0)
+        ax_steer_meas.legend(loc="best")
+    else:
+        ax_steer_meas.text(
+            0.5,
+            0.5,
+            "waiting for /vehicle/status/steering_status",
+            ha="center",
+            va="center",
+            transform=ax_steer_meas.transAxes,
         )
-        plotted = True
-    if frame.retuned_steer_rate:
-        idx_rate = list(range(len(frame.retuned_steer_rate)))
-        ax_steer_rate.plot(
-            idx_rate,
-            frame.retuned_steer_rate,
-            color="tab:green",
-            linewidth=2.2,
-            label="MPPI retuned δ̇",
-        )
-        plotted = True
-    if plotted:
-        ax_steer_rate.legend(loc="best")
 
     if ax_cost is not None:
         ax_cost.clear()
@@ -645,10 +663,19 @@ def create_figure(*, with_retune_panel: bool = False):
         ax_heading = fig.add_subplot(gs[0, 1])
         ax_vel = fig.add_subplot(gs[1, 1])
         ax_accel = fig.add_subplot(gs[2, 1])
-        ax_steer = fig.add_subplot(gs[3, 1])
-        ax_steer_rate = fig.add_subplot(gs[4:, 1])
+        ax_steer_cmd = fig.add_subplot(gs[3, 1])
+        ax_steer_meas = fig.add_subplot(gs[4:, 1])
         fig.canvas.manager.set_window_title("Diffusion Planner MPPI Debug Visualizer")
-        return fig, (ax_xy, ax_heading, ax_vel, ax_accel, ax_steer, ax_steer_rate, ax_cost, ax_weight)
+        return fig, (
+            ax_xy,
+            ax_heading,
+            ax_vel,
+            ax_accel,
+            ax_steer_cmd,
+            ax_steer_meas,
+            ax_cost,
+            ax_weight,
+        )
 
     fig = plt.figure(figsize=(14, 12))
     gs = gridspec.GridSpec(5, 2, figure=fig, width_ratios=[1.2, 1.0], wspace=0.28, hspace=0.42)
@@ -656,10 +683,10 @@ def create_figure(*, with_retune_panel: bool = False):
     ax_heading = fig.add_subplot(gs[0, 1])
     ax_vel = fig.add_subplot(gs[1, 1])
     ax_accel = fig.add_subplot(gs[2, 1])
-    ax_steer = fig.add_subplot(gs[3, 1])
-    ax_steer_rate = fig.add_subplot(gs[4, 1])
+    ax_steer_cmd = fig.add_subplot(gs[3, 1])
+    ax_steer_meas = fig.add_subplot(gs[4, 1])
     fig.canvas.manager.set_window_title("Diffusion Planner MPPI Debug Visualizer")
-    return fig, (ax_xy, ax_heading, ax_vel, ax_accel, ax_steer, ax_steer_rate)
+    return fig, (ax_xy, ax_heading, ax_vel, ax_accel, ax_steer_cmd, ax_steer_meas)
 
 
 def load_params_yaml(path: Optional[Path]) -> Dict[str, float]:
@@ -771,6 +798,7 @@ class MppiDebugVisualizer(Node):
         self._logged_reference = False
         self._logged_optimized = False
         self._logged_measured_steer = False
+        self._measured_steer_history: Deque[Tuple[float, float]] = deque()
 
         qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -893,16 +921,28 @@ class MppiDebugVisualizer(Node):
             self.get_logger().info(f"Receiving optimized_trajectory ({len(msg.points)} points).")
 
     def on_measured_steering(self, msg: SteeringReport) -> None:
+        steer = float(msg.steering_tire_angle)
+        # SteeringReport carries stamp (not header).
+        stamp = float(msg.stamp.sec) + 1.0e-9 * float(msg.stamp.nanosec)
+        if stamp <= 0.0:
+            stamp = self.get_clock().now().nanoseconds * 1.0e-9
         with self._lock:
-            self._frame.measured_steer = float(msg.steering_tire_angle)
+            self._frame.measured_steer = steer
+            self._measured_steer_history.append((stamp, steer))
+            cutoff = stamp - MEASURED_STEER_HISTORY_S
+            while self._measured_steer_history and self._measured_steer_history[0][0] < cutoff:
+                self._measured_steer_history.popleft()
         if not self._logged_measured_steer:
             self._logged_measured_steer = True
             self.get_logger().info(
-                f"Receiving measured steering ({msg.steering_tire_angle:.4f} rad)."
+                f"Receiving measured steering ({steer:.4f} rad); "
+                f"plotting last {MEASURED_STEER_HISTORY_S:.0f}s history."
             )
 
     def on_timer(self) -> None:
         with self._lock:
+            meas_times = [t for t, _ in self._measured_steer_history]
+            meas_vals = [v for _, v in self._measured_steer_history]
             frame = MppiDebugFrame(
                 reference_xy=self._frame.reference_xy,
                 optimized_xy=self._frame.optimized_xy,
@@ -917,6 +957,8 @@ class MppiDebugVisualizer(Node):
                 reference_steer_rate=list(self._frame.reference_steer_rate),
                 optimized_steer_rate=list(self._frame.optimized_steer_rate),
                 measured_steer=self._frame.measured_steer,
+                measured_steer_times=meas_times,
+                measured_steer_history=meas_vals,
                 stamp_text=self._frame.stamp_text,
                 metrics_text=self._frame.metrics_text,
             )
