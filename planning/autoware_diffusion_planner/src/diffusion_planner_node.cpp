@@ -636,6 +636,8 @@ void DiffusionPlanner::on_timer()
       extended_route_handler_->create_map();
       const auto road_borders = extended_route_handler_->get_road_borders();
       road_border_rtree_ = prepare_road_border_rtree(road_borders);
+      drivable_area_rtree_ =
+        prepare_drivable_area_rtree(extended_route_handler_->get_extended_route_bounds());
     }
 
     try {
@@ -648,7 +650,6 @@ void DiffusionPlanner::on_timer()
       const std::optional<SteeringReport> ego_steering =
         steering_status ? std::make_optional(*steering_status) : std::nullopt;
 
-      const auto drivable_area = extended_route_handler_->get_extended_route_bounds();
       object_selector_.update_objects(now(), *objects, planner_output.trajectory, *extended_route_handler_);
       auto avoidance_targets =
         object_selector_.get_avoidance_targets(*objects, planner_output.trajectory, extended_route_handler_->get_extended_route_bounds());
@@ -658,8 +659,10 @@ void DiffusionPlanner::on_timer()
       const auto margin = vehicle_info_.max_lateral_offset_m * 2.0 + 1.0;
       const auto road_borders_subset =
         get_road_border_subset(road_border_rtree_, planner_output.trajectory, margin);
+      const auto drivable_area_subset =
+        get_drivable_area_subset(drivable_area_rtree_, planner_output.trajectory, margin);
       pub_mppi_markers_->publish(generate_mppi_debug_markers(
-        road_borders_subset, drivable_area, avoidance_targets, driving_along_targets));
+        road_borders_subset, drivable_area_subset, avoidance_targets, driving_along_targets));
 
       avoidance_targets.objects.insert(avoidance_targets.objects.end(), driving_along_targets.objects.begin(), driving_along_targets.objects.end());
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(

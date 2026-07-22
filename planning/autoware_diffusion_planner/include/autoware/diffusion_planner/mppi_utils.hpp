@@ -49,6 +49,9 @@ namespace autoware::diffusion_planner
 using RoadBorderSegment = autoware_utils_geometry::Segment2d;
 using RoadBorderRtree =
   boost::geometry::index::rtree<RoadBorderSegment, boost::geometry::index::rstar<16>>;
+using DrivableAreaSegment = autoware_utils_geometry::Segment2d;
+using DrivableAreaRtree =
+  boost::geometry::index::rtree<DrivableAreaSegment, boost::geometry::index::rstar<16>>;
 
 namespace detail
 {
@@ -106,15 +109,19 @@ void append_geometry_segments(
     geometry, [&](const auto & segment) { append_segment(marker, segment, z); });
 }
 
-inline void append_lanelet_linestring_segments(
-  visualization_msgs::msg::Marker & marker, const lanelet::LineString2d & line_string,
-  const double z)
+template <class Segment>
+void append_lanelet_linestring_segments(
+  std::vector<Segment> & segments, const lanelet::LineString2d & line_string)
 {
+  if (line_string.size() < 2) {
+    return;
+  }
+
+  segments.reserve(segments.size() + line_string.size() - 1);
   for (std::size_t i = 0; i + 1 < line_string.size(); ++i) {
-    const RoadBorderSegment segment(
+    segments.emplace_back(
       autoware_utils_geometry::Point2d(line_string[i].x(), line_string[i].y()),
       autoware_utils_geometry::Point2d(line_string[i + 1].x(), line_string[i + 1].y()));
-    append_segment(marker, segment, z);
   }
 }
 
@@ -128,17 +135,20 @@ inline RoadBorderRtree prepare_road_border_rtree(
 {
   std::vector<RoadBorderSegment> segments;
   for (const auto & road_border : road_borders) {
-    if (road_border.size() < 2) {
-      continue;
-    }
-
-    segments.reserve(segments.size() + road_border.size() - 1);
-    for (std::size_t i = 0; i + 1 < road_border.size(); ++i) {
-      segments.emplace_back(
-        autoware_utils_geometry::Point2d(road_border[i].x(), road_border[i].y()),
-        autoware_utils_geometry::Point2d(road_border[i + 1].x(), road_border[i + 1].y()));
-    }
+    detail::append_lanelet_linestring_segments(segments, road_border);
   }
+  return {segments.begin(), segments.end()};
+}
+
+/**
+ * @brief Build a spatial index containing every segment of both drivable-area bounds.
+ */
+inline DrivableAreaRtree prepare_drivable_area_rtree(
+  const autoware::avoidance_target_detector::RouteBounds & drivable_area)
+{
+  std::vector<DrivableAreaSegment> segments;
+  detail::append_lanelet_linestring_segments(segments, drivable_area.first);
+  detail::append_lanelet_linestring_segments(segments, drivable_area.second);
   return {segments.begin(), segments.end()};
 }
 
@@ -177,11 +187,45 @@ inline std::vector<RoadBorderSegment> get_road_border_subset(
 }
 
 /**
+ * @brief Retrieve drivable-area segments intersecting the trajectory bounding box plus a margin.
+ */
+inline std::vector<DrivableAreaSegment> get_drivable_area_subset(
+  const DrivableAreaRtree & drivable_area_rtree,
+  const autoware_planning_msgs::msg::Trajectory & trajectory, const double margin)
+{
+  if (trajectory.points.empty() || drivable_area_rtree.empty()) {
+    return {};
+  }
+
+  double min_x = std::numeric_limits<double>::max();
+  double min_y = std::numeric_limits<double>::max();
+  double max_x = std::numeric_limits<double>::lowest();
+  double max_y = std::numeric_limits<double>::lowest();
+  for (const auto & trajectory_point : trajectory.points) {
+    const auto & position = trajectory_point.pose.position;
+    min_x = std::min(min_x, position.x);
+    min_y = std::min(min_y, position.y);
+    max_x = std::max(max_x, position.x);
+    max_y = std::max(max_y, position.y);
+  }
+
+  const double nonnegative_margin = std::max(0.0, margin);
+  const lanelet::BoundingBox2d query_box(
+    lanelet::BasicPoint2d(min_x - nonnegative_margin, min_y - nonnegative_margin),
+    lanelet::BasicPoint2d(max_x + nonnegative_margin, max_y + nonnegative_margin));
+
+  std::vector<DrivableAreaSegment> drivable_area_subset;
+  drivable_area_rtree.query(
+    boost::geometry::index::intersects(query_box), std::back_inserter(drivable_area_subset));
+  return drivable_area_subset;
+}
+
+/**
  * @brief Create LINE_LIST debug markers for the inputs supplied to the MPPI optimizer.
  */
 inline visualization_msgs::msg::MarkerArray generate_mppi_debug_markers(
   const std::vector<RoadBorderSegment> & road_borders,
-  const autoware::avoidance_target_detector::RouteBounds & drivable_area,
+  const std::vector<DrivableAreaSegment> & drivable_area,
   const autoware_perception_msgs::msg::TrackedObjects & avoidance_targets,
   const autoware_perception_msgs::msg::TrackedObjects & driving_along_targets)
 {
@@ -197,10 +241,9 @@ inline visualization_msgs::msg::MarkerArray generate_mppi_debug_markers(
   auto drivable_area_marker = detail::create_mppi_line_list_marker(
     "mppi_drivable_area",
     detail::create_marker_color(0.0F, 1.0F, 0.0F));
-  detail::append_lanelet_linestring_segments(
-    drivable_area_marker, drivable_area.first, marker_z);
-  detail::append_lanelet_linestring_segments(
-    drivable_area_marker, drivable_area.second, marker_z);
+  for (const auto & drivable_area_segment : drivable_area) {
+    detail::append_segment(drivable_area_marker, drivable_area_segment, marker_z);
+  }
 
   auto avoidance_targets_marker = detail::create_mppi_line_list_marker(
     "mppi_avoidance_targets",

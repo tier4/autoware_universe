@@ -285,6 +285,7 @@ private:
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler> extended_route_handler_;
   autoware::avoidance_target_detector::TrackedObjectSelector object_selector_;
   RoadBorderRtree road_border_rtree_;
+  DrivableAreaRtree drivable_area_rtree_;
   HADMapBin lanelet_map_msg_;
   LaneletRoute prev_route_;
 };
