@@ -100,7 +100,7 @@
           "type": "number",
           "default": 10.0,
           "exclusiveMinimum": 0,
-          "description": "Planning frequency in Hz"
+          "description": "Planning frequency in Hz; HDP velocity models require the Python 10 Hz grid"
         },
         "ignore_neighbors": {
           "type": "boolean",
@@ -137,17 +137,12 @@
           "type": "integer",
           "default": 8,
           "minimum": 1,
-          "description": "Window size for velocity smoothing. Set to 1 to disable smoothing."
+          "description": "Window size for legacy waypoint-model velocity smoothing. HDP velocity models automatically use 1 because their cumulative waypoint output is derived from per-step displacement actions."
         },
         "stopping_threshold": {
           "type": "number",
           "default": 0.3,
           "description": "Threshold for keeping the stopping state [m/s]"
-        },
-        "turn_indicator_keep_offset": {
-          "type": "number",
-          "default": -1.25,
-          "description": "Offset to add to the KEEP turn indicator logit for bias adjustment"
         },
         "turn_indicator_hold_duration": {
           "type": "number",
@@ -158,6 +153,11 @@
           "type": "boolean",
           "default": false,
           "description": "Whether to shift the ego center position by half the wheel base"
+        },
+        "prepend_current_ego_state": {
+          "type": "boolean",
+          "default": true,
+          "description": "For velocity-representation models, prepend the measured ego state at t=0 so controllers can interpolate the reference during planner latency"
         },
         "delay_step": {
           "type": "integer",
@@ -173,8 +173,14 @@
         },
         "use_time_interpolation": {
           "type": "boolean",
-          "default": false,
-          "description": "Whether to interpolate ego past trajectory at regular time intervals"
+          "default": true,
+          "description": "Whether to interpolate ego past trajectory at regular 0.1 s intervals; required for HDP velocity models"
+        },
+        "ego_history_reset_gap_s": {
+          "type": "number",
+          "default": 0.5,
+          "exclusiveMinimum": 0,
+          "description": "Reset ego, turn-indicator, neighbor, and legacy warm-start histories when the ego timestamp gap exceeds this threshold [s]"
         },
         "guidance": {
           "type": "object",
@@ -291,8 +297,8 @@
         "temperature",
         "velocity_smoothing_window",
         "stopping_threshold",
-        "turn_indicator_keep_offset",
         "turn_indicator_hold_duration",
+        "prepend_current_ego_state",
         "planning_factor",
         "debug_params",
         "guidance"

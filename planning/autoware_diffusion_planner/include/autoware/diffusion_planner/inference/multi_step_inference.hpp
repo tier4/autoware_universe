@@ -69,6 +69,7 @@ private:
   autoware::cuda_utils::CudaUniquePtr<float[]> sampled_trajectories_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> diffusion_time_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> ego_history_d_;
+  autoware::cuda_utils::CudaUniquePtr<float[]> ego_current_state_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> neighbor_agents_past_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> static_objects_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> lanes_d_;
@@ -81,9 +82,8 @@ private:
   autoware::cuda_utils::CudaUniquePtr<float[]> line_strings_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> goal_pose_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> ego_shape_d_;
-  autoware::cuda_utils::CudaUniquePtr<float[]> turn_indicators_d_;
-
   autoware::cuda_utils::CudaUniquePtr<float[]> encoding_d_;
+  autoware::cuda_utils::CudaUniquePtr<float[]> global_route_condition_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> model_output_d_;
   autoware::cuda_utils::CudaUniquePtr<float[]> turn_indicator_logit_d_;
 

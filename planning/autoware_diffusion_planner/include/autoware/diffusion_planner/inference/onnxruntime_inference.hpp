@@ -84,8 +84,9 @@ private:
   std::unordered_map<std::string, std::shared_ptr<Guidance>> guidances_;
   OrtModel encoder_model_;
   OrtModel decoder_model_;
-  OrtModel turn_indicator_model_;
+  std::unique_ptr<OrtModel> turn_indicator_model_;
   std::vector<float> encoding_;
+  std::vector<float> global_route_condition_;
   std::vector<float> decoder_neighbor_agents_past_;
 
   DpmSolver::SampleResult run_dpm_solver(const preprocess::InputDataMap & input_data_map);

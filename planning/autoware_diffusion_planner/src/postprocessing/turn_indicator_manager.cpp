@@ -15,14 +15,29 @@
 #include "autoware/diffusion_planner/postprocessing/turn_indicator_manager.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <vector>
 
 namespace autoware::diffusion_planner::postprocess
 {
-TurnIndicatorManager::TurnIndicatorManager(
-  const rclcpp::Duration & hold_duration, const float keep_offset)
-: hold_duration_(hold_duration), keep_offset_(keep_offset)
+namespace
+{
+uint8_t raw_state_to_command(const std::size_t raw_state)
+{
+  switch (raw_state) {
+    case TURN_INDICATOR_OUTPUT_DISABLE:
+      return TurnIndicatorsCommand::DISABLE;
+    case TURN_INDICATOR_OUTPUT_ENABLE_LEFT:
+      return TurnIndicatorsCommand::ENABLE_LEFT;
+    case TURN_INDICATOR_OUTPUT_ENABLE_RIGHT:
+      return TurnIndicatorsCommand::ENABLE_RIGHT;
+    default:
+      return TurnIndicatorsCommand::DISABLE;
+  }
+}
+}  // namespace
+
+TurnIndicatorManager::TurnIndicatorManager(const rclcpp::Duration & hold_duration)
+: hold_duration_(hold_duration)
 {
 }
 
@@ -31,58 +46,36 @@ void TurnIndicatorManager::set_hold_duration(const rclcpp::Duration & hold_durat
   hold_duration_ = hold_duration;
 }
 
-void TurnIndicatorManager::set_keep_offset(const float keep_offset)
-{
-  keep_offset_ = keep_offset;
-}
-
 TurnIndicatorsCommand TurnIndicatorManager::evaluate(
-  std::vector<float> turn_indicator_logit, const rclcpp::Time & stamp, const int64_t prev_report)
+  const std::vector<float> & turn_indicator_logit, const rclcpp::Time & stamp)
 {
   TurnIndicatorsCommand command_msg;
   command_msg.stamp = stamp;
 
-  if (turn_indicator_logit.empty()) {
+  if (turn_indicator_logit.size() != static_cast<std::size_t>(TURN_INDICATOR_OUTPUT_DIM)) {
+    // A missing or stale-shape auxiliary output must never leave the previous
+    // command latched indefinitely.
+    stable_command_ = TurnIndicatorsCommand::DISABLE;
+    last_command_stamp_ = rclcpp::Time{};
     command_msg.command = TurnIndicatorsCommand::DISABLE;
     return command_msg;
   }
 
-  if (last_non_keep_stamp_.nanoseconds() > 0) {
-    const auto expiration = last_non_keep_stamp_ + hold_duration_;
+  if (last_command_stamp_.nanoseconds() > 0) {
+    const auto expiration = last_command_stamp_ + hold_duration_;
     if (stamp <= expiration) {
-      command_msg.command = last_non_keep_command_;
+      command_msg.command = stable_command_;
       return command_msg;
     }
   }
 
-  turn_indicator_logit[TURN_INDICATOR_OUTPUT_KEEP] += keep_offset_;
+  const auto max_it = std::max_element(turn_indicator_logit.begin(), turn_indicator_logit.end());
+  const auto predicted_command = raw_state_to_command(
+    static_cast<std::size_t>(std::distance(turn_indicator_logit.begin(), max_it)));
+  stable_command_ = predicted_command;
+  last_command_stamp_ = stamp;
 
-  const float max_logit =
-    *std::max_element(turn_indicator_logit.begin(), turn_indicator_logit.end());
-
-  std::vector<float> probabilities(turn_indicator_logit.size());
-  float sum = 0.0001f;  // small constant to avoid division by zero
-  for (size_t i = 0; i < turn_indicator_logit.size(); ++i) {
-    probabilities[i] = std::exp(turn_indicator_logit[i] - max_logit);
-    sum += probabilities[i];
-  }
-
-  for (float & prob : probabilities) {
-    prob /= sum;
-  }
-
-  const size_t max_idx = std::distance(
-    probabilities.begin(), std::max_element(probabilities.begin(), probabilities.end()));
-  const bool keep_selected = (max_idx == TURN_INDICATOR_OUTPUT_KEEP);
-  const uint8_t predicted_command =
-    keep_selected ? static_cast<uint8_t>(prev_report) : static_cast<uint8_t>(max_idx);
-  command_msg.command = predicted_command;
-
-  if (!keep_selected) {
-    last_non_keep_command_ = command_msg.command;
-    last_non_keep_stamp_ = stamp;
-  }
-
+  command_msg.command = stable_command_;
   return command_msg;
 }
 

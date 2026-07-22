@@ -80,9 +80,8 @@ void append_tensorrt_provider(
     values.push_back(plugins_path.c_str());
   }
   if (!keys.empty()) {
-    Ort::ThrowOnError(
-      Ort::GetApi().UpdateTensorRTProviderOptions(
-        trt_options, keys.data(), values.data(), keys.size()));
+    Ort::ThrowOnError(Ort::GetApi().UpdateTensorRTProviderOptions(
+      trt_options, keys.data(), values.data(), keys.size()));
   }
   Ort::ThrowOnError(
     Ort::GetApi().SessionOptionsAppendExecutionProvider_TensorRT_V2(session_options, trt_options));
@@ -91,7 +90,7 @@ void append_tensorrt_provider(
 
 std::vector<FloatInput> single_step_float_inputs(const preprocess::InputDataMap & input_data_map)
 {
-  return {
+  std::vector<FloatInput> inputs = {
     {"sampled_trajectories", &input_data_map.at("sampled_trajectories")},
     {"ego_agent_past", &input_data_map.at("ego_agent_past")},
     {"ego_current_state", &input_data_map.at("ego_current_state")},
@@ -104,9 +103,12 @@ std::vector<FloatInput> single_step_float_inputs(const preprocess::InputDataMap 
     {"polygons", &input_data_map.at("polygons")},
     {"line_strings", &input_data_map.at("line_strings")},
     {"goal_pose", &input_data_map.at("goal_pose")},
-    {"ego_shape", &input_data_map.at("ego_shape")},
-    {"turn_indicators", &input_data_map.at("turn_indicators")},
-    {"delay", &input_data_map.at("delay")}};
+    {"ego_shape", &input_data_map.at("ego_shape")}};
+  // Legacy waypoint models take a `delay` input; temporal velocity models do not expose it.
+  if (g_sampled_trajectory_len > OUTPUT_T) {
+    inputs.push_back({"delay", &input_data_map.at("delay")});
+  }
+  return inputs;
 }
 
 std::vector<FloatInput> encoder_float_inputs(const preprocess::InputDataMap & input_data_map)
@@ -122,8 +124,7 @@ std::vector<FloatInput> encoder_float_inputs(const preprocess::InputDataMap & in
     {"polygons", &input_data_map.at("polygons")},
     {"line_strings", &input_data_map.at("line_strings")},
     {"goal_pose", &input_data_map.at("goal_pose")},
-    {"ego_shape", &input_data_map.at("ego_shape")},
-    {"turn_indicators", &input_data_map.at("turn_indicators")}};
+    {"ego_shape", &input_data_map.at("ego_shape")}};
 }
 
 std::unordered_map<std::string, std::vector<uint8_t>> speed_limit_bool_inputs(
@@ -204,9 +205,8 @@ std::unordered_map<std::string, std::vector<float>> OrtModel::run(
     }
     input_names.push_back(name);
     input_name_ptrs.push_back(input_names.back().c_str());
-    input_tensors.push_back(
-      Ort::Value::CreateTensor<float>(
-        memory_info_, const_cast<float *>(data.data()), data.size(), shape.data(), shape.size()));
+    input_tensors.push_back(Ort::Value::CreateTensor<float>(
+      memory_info_, const_cast<float *>(data.data()), data.size(), shape.data(), shape.size()));
   };
 
   const auto add_bool_tensor = [&](
@@ -217,18 +217,18 @@ std::unordered_map<std::string, std::vector<float>> OrtModel::run(
     }
     input_names.push_back(name);
     input_name_ptrs.push_back(input_names.back().c_str());
-    input_tensors.push_back(
-      Ort::Value::CreateTensor(
-        memory_info_, const_cast<uint8_t *>(data.data()), data.size() * sizeof(uint8_t),
-        shape.data(), shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL));
+    input_tensors.push_back(Ort::Value::CreateTensor(
+      memory_info_, const_cast<uint8_t *>(data.data()), data.size() * sizeof(uint8_t), shape.data(),
+      shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL));
   };
 
   for (const auto & [name, data] : float_inputs) {
     if (name == "sampled_trajectories") {
       add_float_tensor(
         name, data,
-        {static_cast<int64_t>(data.size() / (MAX_NUM_AGENTS * (OUTPUT_T + 1) * POSE_DIM)),
-         MAX_NUM_AGENTS, OUTPUT_T + 1, POSE_DIM});
+        {static_cast<int64_t>(
+           data.size() / (g_num_prediction_agents * g_sampled_trajectory_len * POSE_DIM)),
+         g_num_prediction_agents, g_sampled_trajectory_len, POSE_DIM});
     } else if (name == "ego_agent_past") {
       add_float_tensor(
         name, data,
@@ -280,9 +280,6 @@ std::unordered_map<std::string, std::vector<float>> OrtModel::run(
       add_float_tensor(name, data, {static_cast<int64_t>(data.size() / POSE_DIM), POSE_DIM});
     } else if (name == "ego_shape") {
       add_float_tensor(name, data, {static_cast<int64_t>(data.size() / 3), 3});
-    } else if (name == "turn_indicators") {
-      add_float_tensor(
-        name, data, {static_cast<int64_t>(data.size() / (INPUT_T + 1)), INPUT_T + 1});
     } else if (name == "delay") {
       add_float_tensor(name, data, {static_cast<int64_t>(data.size()), 1});
     } else if (name == "encoding") {
@@ -353,7 +350,8 @@ InferenceResult OnnxruntimeSingleStepInference::infer(
   try {
     const auto outputs = model_.run(
       to_float_input_map(single_step_float_inputs(input_data_map)),
-      speed_limit_bool_inputs(input_data_map), {"prediction", "turn_indicator_logit"});
+      speed_limit_bool_inputs(input_data_map),
+      {"prediction", "turn_indicator_logit"});
 
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double, std::milli> elapsed = end - start;
@@ -377,10 +375,10 @@ OnnxruntimeMultiStepInference::OnnxruntimeMultiStepInference(
   dpm_solver_steps_(dpm_solver_steps),
   guidances_(std::move(guidances)),
   encoder_model_(encoder_model_path, parse_execution_provider(execution_provider), plugins_path),
-  decoder_model_(decoder_model_path, parse_execution_provider(execution_provider), plugins_path),
-  turn_indicator_model_(
-    turn_indicator_model_path, parse_execution_provider(execution_provider), plugins_path)
+  decoder_model_(decoder_model_path, parse_execution_provider(execution_provider), plugins_path)
 {
+  turn_indicator_model_ = std::make_unique<OrtModel>(
+    turn_indicator_model_path, parse_execution_provider(execution_provider), plugins_path);
 }
 
 std::vector<float> OnnxruntimeMultiStepInference::create_diffusion_time(float t) const
@@ -466,13 +464,19 @@ InferenceResult OnnxruntimeMultiStepInference::infer(
   try {
     const auto encoder_outputs = encoder_model_.run(
       to_float_input_map(encoder_float_inputs(input_data_map)),
-      speed_limit_bool_inputs(input_data_map), {"encoding"});
+      speed_limit_bool_inputs(input_data_map), {"encoding", "global_route_condition"});
     encoding_ = encoder_outputs.at("encoding");
+    global_route_condition_ = encoder_outputs.at("global_route_condition");
 
     auto solver_result = run_dpm_solver(input_data_map);
 
-    const auto turn_indicator_outputs = turn_indicator_model_.run(
-      {{"encoding", encoding_}, {"final_x0", solver_result.final_x}}, {}, {"turn_indicator_logit"});
+    const auto turn_indicator_outputs = turn_indicator_model_->run(
+      {{"encoding", encoding_},
+       {"final_x0", solver_result.final_x},
+       {"global_route_condition", global_route_condition_},
+       {"ego_current_state", input_data_map.at("ego_current_state")}},
+      {}, {"turn_indicator_logit"});
+    const auto turn_indicator_logit = turn_indicator_outputs.at("turn_indicator_logit");
 
     std::vector<float> denoising_predictions;
     for (const auto & step : solver_result.denoising_steps) {
@@ -483,8 +487,8 @@ InferenceResult OnnxruntimeMultiStepInference::infer(
     std::chrono::duration<double, std::milli> elapsed = end - start;
 
     InferenceOutput output;
-    output.outputs = std::make_pair(
-      std::move(solver_result.final_x), turn_indicator_outputs.at("turn_indicator_logit"));
+    output.outputs =
+      std::make_pair(std::move(solver_result.final_x), std::move(turn_indicator_logit));
     output.denoising_predictions = std::move(denoising_predictions);
     output.denoising_timesteps = std::move(solver_result.denoising_timesteps);
     output.inference_time_ms = elapsed.count();

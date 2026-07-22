@@ -23,6 +23,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <vector>
 
@@ -58,6 +59,139 @@ TEST(PostprocessingUtilsTest, CreateTrajectoryAndMultipleTrajectories)
     agent_poses, stamp, base_position, 0, velocity_smoothing_window, enable_force_stop,
     stopping_threshold);
   ASSERT_EQ(traj.points.size(), expected_points);
+}
+
+TEST(PostprocessingUtilsTest, WindowOnePreservesPerStepVelocity)
+{
+  constexpr auto prediction_shape = OUTPUT_SHAPE;
+  const auto batch_size = prediction_shape[0];
+  const auto agent_size = prediction_shape[1];
+  const auto rows = prediction_shape[2];
+  const auto cols = prediction_shape[3];
+  std::vector<float> data(batch_size * agent_size * rows * cols, 0.0f);
+
+  // Use non-uniform per-step displacements so a window larger than one would
+  // produce observably different velocities.
+  constexpr std::array<float, 4> x_positions = {0.1F, 0.3F, 0.6F, 1.0F};
+  for (int64_t time_idx = 0; time_idx < rows; ++time_idx) {
+    const auto x = time_idx < static_cast<int64_t>(x_positions.size())
+                     ? x_positions[static_cast<size_t>(time_idx)]
+                     : x_positions.back() +
+                         0.1F * static_cast<float>(
+                                  time_idx - static_cast<int64_t>(x_positions.size()) + 1);
+    const auto index = (time_idx * cols);
+    data[index] = x;
+    data[index + 2] = 1.0F;
+  }
+
+  Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
+  const auto agent_poses = postprocess::parse_predictions(data, transform);
+  geometry_msgs::msg::Point base_position;
+  const auto trajectory = postprocess::create_ego_trajectory(
+    agent_poses, rclcpp::Time(123, 0), base_position, 0, 1, false, 0.0);
+
+  EXPECT_NEAR(trajectory.points[0].longitudinal_velocity_mps, 1.0, 1e-6);
+  EXPECT_NEAR(trajectory.points[1].longitudinal_velocity_mps, 2.0, 1e-6);
+  EXPECT_NEAR(trajectory.points[2].longitudinal_velocity_mps, 3.0, 1e-6);
+  EXPECT_NEAR(trajectory.points[3].longitudinal_velocity_mps, 4.0, 1e-6);
+}
+
+TEST(PostprocessingUtilsTest, DisabledForceStopPreservesTemporalRestart)
+{
+  constexpr auto prediction_shape = OUTPUT_SHAPE;
+  const auto batch_size = prediction_shape[0];
+  const auto agent_size = prediction_shape[1];
+  const auto rows = prediction_shape[2];
+  const auto cols = prediction_shape[3];
+  std::vector<float> data(
+    static_cast<size_t>(batch_size * agent_size * rows * cols), 0.0F);
+
+  // A brief low-speed step is followed by a restart.  HDP must preserve this
+  // learned temporal sequence when the legacy force-stop heuristic is disabled.
+  constexpr std::array<float, 4> x_positions = {0.4F, 0.42F, 0.82F, 1.22F};
+  for (int64_t time_idx = 0; time_idx < rows; ++time_idx) {
+    const auto x = time_idx < static_cast<int64_t>(x_positions.size())
+                     ? x_positions[static_cast<size_t>(time_idx)]
+                     : x_positions.back() +
+                         0.4F * static_cast<float>(
+                                  time_idx - static_cast<int64_t>(x_positions.size()) + 1);
+    data[static_cast<size_t>(time_idx * cols)] = x;
+    data[static_cast<size_t>(time_idx * cols + 2)] = 1.0F;
+  }
+
+  Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
+  const auto agent_poses = postprocess::parse_predictions(data, transform);
+  geometry_msgs::msg::Point base_position;
+  const auto trajectory = postprocess::create_ego_trajectory(
+    agent_poses, rclcpp::Time(123, 0), base_position, 0, 1, false, 0.3);
+
+  EXPECT_NEAR(trajectory.points[1].longitudinal_velocity_mps, 0.2, 1e-6);
+  EXPECT_NEAR(trajectory.points[2].longitudinal_velocity_mps, 4.0, 1e-6);
+  EXPECT_NEAR(trajectory.points[2].pose.position.x, 0.82, 1e-6);
+}
+
+TEST(PostprocessingUtilsTest, LongitudinalVelocityIgnoresMapHeightChange)
+{
+  constexpr auto prediction_shape = OUTPUT_SHAPE;
+  const auto batch_size = prediction_shape[0];
+  const auto agent_size = prediction_shape[1];
+  const auto rows = prediction_shape[2];
+  const auto cols = prediction_shape[3];
+  std::vector<float> data(
+    static_cast<size_t>(batch_size * agent_size * rows * cols), 0.0F);
+
+  for (int64_t time_idx = 0; time_idx < rows; ++time_idx) {
+    const auto index = static_cast<size_t>(time_idx * cols);
+    data[index] = static_cast<float>(time_idx + 1) * 0.5F;
+    data[index + 2] = 1.0F;
+  }
+
+  Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
+  const auto agent_poses = postprocess::parse_predictions(data, transform);
+  geometry_msgs::msg::Point base_position;
+  base_position.z = -1.0;
+  const auto trajectory = postprocess::create_ego_trajectory(
+    agent_poses, rclcpp::Time(123, 0), base_position, 0, 1, false, 0.0);
+
+  EXPECT_NEAR(trajectory.points[0].longitudinal_velocity_mps, 5.0, 1e-6);
+  EXPECT_NEAR(trajectory.points[1].longitudinal_velocity_mps, 5.0, 1e-6);
+}
+
+TEST(PostprocessingUtilsTest, PrependsMeasuredCurrentEgoStateAtTimeZero)
+{
+  Trajectory trajectory;
+  trajectory.header.frame_id = "map";
+  trajectory.header.stamp = rclcpp::Time(123, 456);
+  trajectory.points.resize(2);
+  trajectory.points[0].time_from_start = rclcpp::Duration::from_seconds(0.1);
+  trajectory.points[0].pose.position.x = 11.0;
+  trajectory.points[1].time_from_start = rclcpp::Duration::from_seconds(0.2);
+
+  geometry_msgs::msg::Pose current_pose;
+  current_pose.position.x = 10.0;
+  current_pose.position.y = -2.0;
+  current_pose.orientation.w = 1.0;
+
+  postprocess::prepend_current_ego_state(
+    trajectory, current_pose, 9.0, 0.2, -0.3, 0.04);
+
+  ASSERT_EQ(trajectory.points.size(), 3U);
+  EXPECT_DOUBLE_EQ(
+    rclcpp::Duration(trajectory.points[0].time_from_start).seconds(), 0.0);
+  EXPECT_DOUBLE_EQ(trajectory.points[0].pose.position.x, 10.0);
+  EXPECT_DOUBLE_EQ(trajectory.points[0].pose.position.y, -2.0);
+  EXPECT_FLOAT_EQ(trajectory.points[0].longitudinal_velocity_mps, 9.0F);
+  EXPECT_FLOAT_EQ(trajectory.points[0].lateral_velocity_mps, 0.2F);
+  EXPECT_FLOAT_EQ(trajectory.points[0].acceleration_mps2, -0.3F);
+  EXPECT_FLOAT_EQ(trajectory.points[0].heading_rate_rps, 0.04F);
+  EXPECT_DOUBLE_EQ(
+    rclcpp::Duration(trajectory.points[1].time_from_start).seconds(), 0.1);
+  EXPECT_DOUBLE_EQ(trajectory.points[1].pose.position.x, 11.0);
+
+  // Reapplying the helper must not create duplicate t=0 points.
+  postprocess::prepend_current_ego_state(
+    trajectory, current_pose, 9.0, 0.2, -0.3, 0.04);
+  EXPECT_EQ(trajectory.points.size(), 3U);
 }
 
 }  // namespace autoware::diffusion_planner::test

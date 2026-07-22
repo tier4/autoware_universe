@@ -66,10 +66,9 @@ void normalize_input_data(InputDataMap & input_data_map, const NormalizationMap 
   };
 
   for (auto & [key, value] : input_data_map) {
-    // Skip normalization for ego_shape, sampled_trajectories, turn_indicators, and delay
+    // Skip normalization for ego_shape, sampled_trajectories, and delay
     if (
-      key == "ego_shape" || key == "sampled_trajectories" || key == "turn_indicators" ||
-      key == "delay") {
+      key == "ego_shape" || key == "sampled_trajectories" || key == "delay") {
       continue;
     }
 
@@ -205,10 +204,15 @@ std::vector<float> create_ego_agent_past(
 
 std::vector<float> create_sampled_trajectories(const double temperature)
 {
-  std::random_device rd;
-  std::mt19937 gen(rd());
+  std::vector<float> sampled_trajectories(
+    static_cast<size_t>(g_num_prediction_agents) * g_sampled_trajectory_len * POSE_DIM, 0.0f);
+  // At temperature 0 the latent is pure zeros (matches training noise_scale=0); skip the RNG.
+  if (temperature == 0.0) {
+    return sampled_trajectories;
+  }
+  // Reuse a persistent generator instead of reseeding a random_device + mt19937 every cycle.
+  static thread_local std::mt19937 gen{std::random_device{}()};
   std::normal_distribution<float> dist(0.0f, 1.0f);
-  std::vector<float> sampled_trajectories((MAX_NUM_NEIGHBORS + 1) * (OUTPUT_T + 1) * POSE_DIM);
   for (float & val : sampled_trajectories) {
     val = dist(gen) * static_cast<float>(temperature);
   }

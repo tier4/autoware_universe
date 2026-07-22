@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <fstream>
 #include <functional>
@@ -198,14 +199,18 @@ void DiffusionPlanner::set_up_params()
   params_.velocity_smoothing_window =
     this->declare_parameter<int64_t>("velocity_smoothing_window", 8);
   params_.stopping_threshold = this->declare_parameter<double>("stopping_threshold", 0.3);
-  params_.turn_indicator_keep_offset =
-    this->declare_parameter<float>("turn_indicator_keep_offset", -1.25f);
   params_.turn_indicator_hold_duration =
     this->declare_parameter<double>("turn_indicator_hold_duration", 0.0);
   params_.shift_x = this->declare_parameter<bool>("shift_x", false);
+  params_.prepend_current_ego_state =
+    this->declare_parameter<bool>("prepend_current_ego_state", true);
   params_.delay_step = this->declare_parameter<int64_t>("delay_step", 0);
   params_.line_string_max_step_m = this->declare_parameter<double>("line_string_max_step_m", 5.0);
-  params_.use_time_interpolation = this->declare_parameter<bool>("use_time_interpolation", false);
+  params_.use_time_interpolation = this->declare_parameter<bool>("use_time_interpolation", true);
+  params_.ego_history_reset_gap_s = this->declare_parameter<double>("ego_history_reset_gap_s", 0.5);
+  if (!std::isfinite(params_.ego_history_reset_gap_s) || params_.ego_history_reset_gap_s <= 0.0) {
+    throw std::invalid_argument("ego_history_reset_gap_s must be finite and greater than zero");
+  }
   params_.start_guidance_reference_distance_m =
     this->declare_parameter<double>("guidance.start_guidance.reference_distance_m", 10.0);
   params_.start_guidance_max_scale =
@@ -329,14 +334,16 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<int64_t>(
       parameters, "velocity_smoothing_window", temp_params.velocity_smoothing_window);
     update_param<double>(parameters, "stopping_threshold", temp_params.stopping_threshold);
-    update_param<float>(
-      parameters, "turn_indicator_keep_offset", temp_params.turn_indicator_keep_offset);
     update_param<double>(
       parameters, "turn_indicator_hold_duration", temp_params.turn_indicator_hold_duration);
     update_param<bool>(parameters, "shift_x", temp_params.shift_x);
+    update_param<bool>(
+      parameters, "prepend_current_ego_state", temp_params.prepend_current_ego_state);
     update_param<int64_t>(parameters, "delay_step", temp_params.delay_step);
     update_param<double>(parameters, "line_string_max_step_m", temp_params.line_string_max_step_m);
     update_param<bool>(parameters, "use_time_interpolation", temp_params.use_time_interpolation);
+    update_param<double>(
+      parameters, "ego_history_reset_gap_s", temp_params.ego_history_reset_gap_s);
     update_param<double>(
       parameters, "guidance.start_guidance.reference_distance_m",
       temp_params.start_guidance_reference_distance_m);
@@ -370,6 +377,20 @@ SetParametersResult DiffusionPlanner::on_parameter(
 #else
       result.reason += "; ONNX Runtime support is not available in this build";
 #endif
+      return result;
+    }
+    if (
+      !std::isfinite(temp_params.ego_history_reset_gap_s) ||
+      temp_params.ego_history_reset_gap_s <= 0.0) {
+      SetParametersResult result;
+      result.successful = false;
+      result.reason = "ego_history_reset_gap_s must be finite and greater than zero";
+      return result;
+    }
+    if (core_->is_velocity_representation() && !temp_params.use_time_interpolation) {
+      SetParametersResult result;
+      result.successful = false;
+      result.reason = "Velocity-representation HDP requires use_time_interpolation=true";
       return result;
     }
     update_param<bool>(parameters, "use_mppi_optimizer", temp_params.use_mppi_optimizer);
@@ -534,7 +555,7 @@ void DiffusionPlanner::on_timer()
   // Prepare frame context using core
   const std::optional<FrameContext> frame_context = core_->create_frame_context(
     ego_kinematic_state, ego_acceleration, objects, traffic_signals, turn_indicators_ptr,
-    temp_route_ptr, this->now());
+    temp_route_ptr, current_time);
 
   if (!frame_context) {
     // Log detailed information about missing inputs
