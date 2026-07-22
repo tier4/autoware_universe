@@ -53,7 +53,7 @@ void TrajectorySelectorNode::subscribers()
     std::bind(&TrajectorySelectorNode::map_callback, this, std::placeholders::_1));
 
   sub_route_ = create_subscription<autoware_planning_msgs::msg::LaneletRoute>(
-    "~/input/lanelet_route", rclcpp::QoS{1}.transient_local(),
+    "~/input/route", rclcpp::QoS{1}.transient_local(),
     std::bind(&TrajectorySelectorNode::route_callback, this, std::placeholders::_1));
 
   sub_trajectories_generative_ = create_subscription<CandidateTrajectories>(
