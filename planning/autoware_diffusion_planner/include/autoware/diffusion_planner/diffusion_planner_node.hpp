@@ -18,7 +18,8 @@
 #include "autoware/diffusion_planner/diffusion_planner_core.hpp"
 #include "autoware/diffusion_planner/utils/planning_factor_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
-#include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
+#include "autoware/avoidance_target_detector/boundary.hpp"
+#include "autoware/avoidance_target_detector/object_filtering.hpp"
 
 #include <autoware/lanelet2_utils/conversion.hpp>
 #include <autoware/planning_factor_interface/planning_factor_interface.hpp>
@@ -278,7 +279,12 @@ private:
     planning_factor_interface_;
   DiffusionPlannerPlanningFactorParams planning_factor_params_;
 
+  /* MPPI : will be moved to another package */
   std::unique_ptr<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface> mppi_optimizer_;
+  std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler> extended_route_handler_;
+  autoware::avoidance_target_detector::PredictedObjectSelector object_selector_;
+  HADMapBin lanelet_map_msg_;
+  LaneletRoute prev_route_;
 };
 
 }  // namespace autoware::diffusion_planner

@@ -624,12 +624,15 @@ void DiffusionPlanner::on_timer()
   if (params_.use_mppi_optimizer) {
     autoware_utils_debug::ScopedTimeTrack mppi_st("mppi_optimizer", *time_keeper_);
     stop_watch_ptr_->tic("mppi_optimizer");
-    if (!mppi_optimizer_) {
+    if (!mppi_optimizer_ || prev_route_.header.stamp != core_->get_route()->header.stamp) {
+      RCLCPP_WARN(get_logger(), "/!\\ RESET MPPI");
       mppi_optimizer_ = std::make_unique<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface>();
       mppi_optimizer_->setCostParams(
         autoware::mppi_optimizer::get_first_order_dubins_mppi_cost_params(*this));
       mppi_optimizer_->setVehicleParams(
         autoware::mppi_optimizer::get_first_order_dubins_mppi_vehicle_params(*this));
+      prev_route_ = *core_->get_route();
+      extended_route_handler_ = std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(lanelet_map_msg_, prev_route_);
     }
 
     try {
@@ -641,6 +644,10 @@ void DiffusionPlanner::on_timer()
       const auto steering_status = sub_steering_status_.take_data();
       const std::optional<SteeringReport> ego_steering =
         steering_status ? std::make_optional(*steering_status) : std::nullopt;
+
+      const auto road_borders = extended_route_handler_->get_road_borders();
+      const auto drivable_area = extended_route_handler_->get_extended_route_bounds();
+
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
         ego_steering, *objects);
@@ -736,13 +743,10 @@ void DiffusionPlanner::publish_mppi_debug(
   auto optimized = debug.optimized_trajectory;
   reference.header.stamp = stamp;
   reference.header.frame_id = frame_id;
-  optimized.header.stamp = stamp;
-  optimized.header.frame_id = frame_id;
+  optimized.header = reference.header;
 
   pub_mppi_reference_trajectory_->publish(reference);
   pub_mppi_optimized_trajectory_->publish(optimized);
-  pub_mppi_markers_->publish(
-    autoware::mppi_optimizer::createMppiDebugMarkers(debug, frame_id, stamp));
 }
 
 void DiffusionPlanner::publish_planning_factor(const Trajectory & trajectory)
@@ -771,6 +775,7 @@ void DiffusionPlanner::publish_planning_factor(const Trajectory & trajectory)
 
 void DiffusionPlanner::on_map(const HADMapBin::ConstSharedPtr map_msg)
 {
+  lanelet_map_msg_ = *map_msg;
   lanelet_map_ptr_ = autoware::experimental::lanelet2_utils::from_autoware_map_msgs(*map_msg);
   core_->set_map(lanelet_map_ptr_);
 }
