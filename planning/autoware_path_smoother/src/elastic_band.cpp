@@ -78,6 +78,7 @@ std::vector<double> toStdVector(const Eigen::VectorXd & eigen_vec)
 
 std_msgs::msg::Header createHeader(const rclcpp::Time & now)
 {
+  // Create header.
   std_msgs::msg::Header header;
   header.frame_id = "map";
   header.stamp = now;
