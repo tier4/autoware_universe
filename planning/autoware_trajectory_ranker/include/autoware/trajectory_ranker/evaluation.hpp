@@ -42,17 +42,18 @@ class Evaluator
 {
 public:
   explicit Evaluator(
-    const std::shared_ptr<RouteHandler> & route_handler,
     const std::shared_ptr<VehicleInfo> & vehicle_info, const rclcpp::Logger & logger,
     const trajectory_ranker_params::Params::Evaluation & params, rclcpp::Node * node = nullptr)
   : plugin_loader_(
       "autoware_trajectory_ranker", "autoware::trajectory_ranker::metrics::MetricInterface"),
-    route_handler_{route_handler},
     vehicle_info_{vehicle_info},
     logger_{logger},
     node_ptr_{node},
     params_{params}
   {
+    for (size_t i = 0; i < params_.plugin_names.size(); i++) {
+      load_metric(params_.plugin_names.at(i), i);
+    }
   }
 
   /**
@@ -107,6 +108,16 @@ public:
 
   [[nodiscard]] double score(const std::shared_ptr<CoreData> & core_data);
 
+  void update_parameters(const trajectory_ranker_params::Params::Evaluation & params)
+  {
+    params_ = EvaluatorParameters(params);
+    for (auto & plugin : plugins_) {
+      plugin->setup_parameters(params);
+      params_.time_decay_weight.push_back(plugin->decay_weights());
+      params_.score_weight.push_back(plugin->weight());
+    }
+  }
+
 protected:
   /**
    * @brief Evaluates all trajectories using loaded metrics
@@ -129,12 +140,6 @@ protected:
   void weighting();
 
   /**
-   * @brief Gets route handler
-   * @return Shared pointer to route handler
-   */
-  std::shared_ptr<RouteHandler> route_handler() const { return route_handler_; }
-
-  /**
    * @brief Gets vehicle info
    * @return Shared pointer to vehicle info
    */
@@ -146,8 +151,6 @@ private:
   std::vector<std::shared_ptr<metrics::MetricInterface>> plugins_;
 
   std::vector<std::shared_ptr<DataInterface>> results_;
-
-  std::shared_ptr<RouteHandler> route_handler_;
 
   std::shared_ptr<VehicleInfo> vehicle_info_;
 

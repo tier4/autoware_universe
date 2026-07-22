@@ -95,6 +95,12 @@ public:
   tl::expected<RankerResult, std::string> process(
     const RankerInputTrajectories & input_trajectories, const RankerContext & context);
 
+  void update_parameters(const trajectory_ranker_params::Params & params)
+  {
+    params_ = params;
+    evaluator_->update_parameters(params.evaluation);
+  }
+
 private:
   void evaluate_safety(ScoredTrajectories & scored_trajectories) const;
   void evaluate_source(ScoredTrajectories & scored_trajectories) const;

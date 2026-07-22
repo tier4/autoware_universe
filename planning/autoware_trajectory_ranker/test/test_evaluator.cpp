@@ -61,16 +61,13 @@ protected:
     node_->declare_parameter<double>("vehicle_height", 2.5);
     node_->declare_parameter<double>("max_steer_angle", 0.7);
 
-    // Setup route handler (mock)
-    route_handler_ = std::make_shared<route_handler::RouteHandler>();
-
     // Setup vehicle info
     vehicle_info_ = std::make_shared<vehicle_info_utils::VehicleInfo>(
       vehicle_info_utils::VehicleInfoUtils(*node_).getVehicleInfo());
 
     // Create evaluator
-    evaluator_ = std::make_unique<Evaluator>(
-      route_handler_, vehicle_info_, node_->get_logger(), params_.evaluation);
+    evaluator_ =
+      std::make_unique<Evaluator>(vehicle_info_, node_->get_logger(), params_.evaluation);
 
     // Create sample trajectory
     createSampleTrajectory();
@@ -123,7 +120,6 @@ protected:
   }
 
   std::shared_ptr<rclcpp::Node> node_;
-  std::shared_ptr<route_handler::RouteHandler> route_handler_;
   std::shared_ptr<vehicle_info_utils::VehicleInfo> vehicle_info_;
   std::unique_ptr<Evaluator> evaluator_;
   std::shared_ptr<TrajectoryPoints> sample_points_;

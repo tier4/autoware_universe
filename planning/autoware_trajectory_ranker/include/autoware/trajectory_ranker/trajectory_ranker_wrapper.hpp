@@ -59,9 +59,7 @@ private:
   std::string interface_name_{"trajectory_ranker"};
   rclcpp::Logger logger_;
   std::shared_ptr<vehicle_info_utils::VehicleInfo> vehicle_info_;
-  std::shared_ptr<nav_msgs::msg::Odometry> odometry_;
   std::unique_ptr<TrajectoryRanker> ranker_ptr_;
-  std::shared_ptr<RouteHandler> route_handler_;
   std::shared_ptr<Evaluator> evaluator_;
 
   std::optional<ScoredTrajectory> last_best_trajectory_info_;

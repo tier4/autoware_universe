@@ -30,7 +30,6 @@ TrajectoryRankerWrapper::TrajectoryRankerWrapper(
 : node_ptr_(&node),
   logger_(node.get_logger().get_child(interface_name_)),
   vehicle_info_(std::make_shared<VehicleInfo>(vehicle_info)),
-  route_handler_(std::make_shared<RouteHandler>()),
   time_keeper_(std::move(time_keeper)),
   param_listener_(
     std::make_unique<trajectory_ranker_params::ParamListener>(node_parameters_interface))
@@ -41,23 +40,26 @@ TrajectoryRankerWrapper::TrajectoryRankerWrapper(
 
   params_ = param_listener_->get_params();
 
-  evaluator_ = std::make_shared<Evaluator>(
-    route_handler_, vehicle_info_, node.get_logger(), params_.evaluation, node_ptr_);
+  evaluator_ =
+    std::make_shared<Evaluator>(vehicle_info_, node.get_logger(), params_.evaluation, node_ptr_);
 
   ranker_ptr_ = std::make_unique<TrajectoryRanker>(evaluator_, params_);
 }
 
 void TrajectoryRankerWrapper::update_parameters()
 {
-  if (param_listener_->is_old(params_)) {
-    params_ = param_listener_->get_params();
-    RCLCPP_INFO(logger_, "Trajectory Ranker parameters are updated.");
-  }
+  if (!param_listener_->is_old(params_)) return;
+
+  params_ = param_listener_->get_params();
+  if (ranker_ptr_) ranker_ptr_->update_parameters(params_);
+  RCLCPP_INFO(logger_, "Trajectory Ranker parameters are updated.");
 }
 
 ScoredCandidateTrajectories TrajectoryRankerWrapper::rank_trajectories(
   const RankerInputTrajectories & input_trajectories, const RankerContext & context)
 {
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
   update_parameters();
 
   auto result = ranker_ptr_->process(input_trajectories, context);
@@ -74,6 +76,8 @@ ScoredCandidateTrajectories TrajectoryRankerWrapper::rank_trajectories(
 void TrajectoryRankerWrapper::update_last_best_trajectory_info(
   const ScoredTrajectory & best_trajectory_info)
 {
+  autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+
   auto source = std::string(magic_enum::enum_name(best_trajectory_info.input_trajectory.source));
   auto last_source =
     last_best_trajectory_info_

@@ -88,11 +88,15 @@ tl::expected<RankerResult, std::string> TrajectoryRanker::process(
     scored_trajectories.begin(), scored_trajectories.end(),
     [](const auto & a, const auto & b) { return a.score < b.score; });
   if (best_itr == scored_trajectories.end()) {
+    previous_points_ = nullptr;
     return tl::unexpected("No best trajectory found");
   }
 
   result.best_trajectory_info = *best_itr;
   update_trajectory_history(result.best_trajectory_info);
+
+  previous_points_ = std::make_shared<TrajectoryPoints>(
+    result.best_trajectory_info.input_trajectory.candidate_trajectory.points);
 
   return result;
 }
@@ -105,10 +109,11 @@ void TrajectoryRanker::evaluate_safety(ScoredTrajectories & scored_trajectories)
     const auto risk_string = to_risk_string(risk_level);
     const auto idx =
       std::find(params_.safety.levels.begin(), params_.safety.levels.end(), risk_string);
-    if (idx == params_.safety.levels.end()) {
-      return 1.0;
-    }
-    return params_.safety.penalty.at(idx - params_.safety.levels.begin());
+    if (idx == params_.safety.levels.end()) return 1.0;
+
+    size_t penalty_index = idx - params_.safety.levels.begin();
+    if (penalty_index >= params_.safety.penalty.size()) return 1.0;
+    return params_.safety.penalty.at(penalty_index);
   };
 
   for (auto & scored_trajectory : scored_trajectories) {
@@ -123,10 +128,11 @@ void TrajectoryRanker::evaluate_source(ScoredTrajectories & scored_trajectories)
 
   auto get_source_penalty = [&](const std::string & source) -> double {
     const auto idx = std::find(params_.source.levels.begin(), params_.source.levels.end(), source);
-    if (idx == params_.source.levels.end()) {
-      return 1.0;
-    }
-    return params_.source.penalty.at(idx - params_.source.levels.begin());
+    if (idx == params_.source.levels.end()) return 1.0;
+
+    size_t penalty_index = idx - params_.source.levels.begin();
+    if (penalty_index >= params_.source.penalty.size()) return 1.0;
+    return params_.source.penalty.at(penalty_index);
   };
 
   for (auto & scored_trajectory : scored_trajectories) {
@@ -140,7 +146,9 @@ void TrajectoryRanker::evaluate_quality(
 {
   if (!params_.evaluation.enable) return;
 
-  if (!context.route_handler->isHandlerReady() || context.odometry == nullptr) {
+  if (
+    !context.route_handler || !context.route_handler->isHandlerReady() ||
+    context.odometry == nullptr) {
     return;
   }
 
@@ -173,6 +181,7 @@ void TrajectoryRanker::evaluate_quality(
 void TrajectoryRanker::score_trajectories(ScoredTrajectories & scored_trajectories) const
 {
   const auto max_cost = params_.safety.scale + params_.source.scale + params_.evaluation.scale;
+  if (max_cost < 1e-6) return;
   for (auto & scored_trajectory : scored_trajectories) {
     auto cost = params_.safety.scale * scored_trajectory.safety_penalty;
     cost += params_.source.scale * scored_trajectory.source_penalty;
