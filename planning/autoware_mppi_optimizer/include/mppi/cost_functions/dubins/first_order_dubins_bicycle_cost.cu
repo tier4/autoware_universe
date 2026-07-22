@@ -12,7 +12,6 @@ using C = FirstOrderDubinsBicycleParams::ControlIndex;
 using mppi::cost::detail::distancePointToSegment;
 using mppi::cost::detail::orientedBoxCorners;
 using mppi::cost::detail::orientedBoxesOverlap;
-using mppi::cost::detail::pointInPolygon;
 using mppi::cost::detail::signedLateralOffsetPointToSegment;
 using mppi::cost::detail::vectorLength;
 
@@ -358,16 +357,7 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   DYN_PARAMS_T>::isEgoOutsideDrivableArea(const float x, const float y, const float yaw) const
 {
   (void)yaw;
-  if (num_drivable_vertices_ < 3) {
-    return isOffRoad(x, y);
-  }
-
-  // Rear-axle containment in the drivable polygon. Corner checks are too strict on tight curves.
-  if (pointInPolygon(x, y, drivable_poly_x_, drivable_poly_y_, num_drivable_vertices_)) {
-    return false;
-  }
-
-  // Polygon boundary is piecewise-linear; defer to ref lateral offset near the corridor edge.
+  // crash only on reference-track lateral limits.
   return isOffRoad(x, y);
 }
 
