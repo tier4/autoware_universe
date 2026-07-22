@@ -36,7 +36,7 @@ namespace autoware::minimum_rule_based_planner
 
 //! Type of a map-defined stop target, classified by the map element that induces it.
 enum class StopLineType {
-  StopLine,      //!< painted stop line / stop sign          -> mandatory
+  StopLine,      //!< stop line referenced by a traffic sign -> mandatory
   Walkway,       //!< walkway the route crosses              -> mandatory
   Crosswalk,     //!< crosswalk the route crosses            -> possibility
   TrafficLight,  //!< stop line referenced by traffic light  -> possibility
@@ -143,7 +143,9 @@ public:
    * @brief Collect stop targets along the given route, tagged by type.
    *
    * Detection sources:
-   *  - RoadMarking (type=stop_line) + traffic sign reference lines -> StopLine
+   *  - traffic sign reference lines (vm-02-02 stop sign) -> StopLine. Stop lines referenced
+   *    only by RoadMarking regulatory elements (vm-03-14 intersection guidance lines) are not
+   *    mandatory stops and are intentionally not collected.
    *  - crosswalk / walkway lanelets overlapping the route lanelets -> Crosswalk / Walkway.
    *    The stop line is, in priority order: the crosswalk regulatory element's stop line, a
    *    RoadMarking bound to the crosswalk by its "crosswalk_id" attribute, or the entry-side

@@ -332,16 +332,60 @@ TEST(MapBasedStopPlannerTest, SelectSkipsStopPointPassedByEgo)
 // collect_stop_lines
 // ============================================================
 
-TEST(MapBasedStopPlannerTest, CollectTagsRoadMarkingStopLine)
+namespace
+{
+// A stop line crossing the straight test road at x = 5.
+lanelet::LineString3d make_map_stop_line(lanelet::Id id)
+{
+  lanelet::LineString3d stop_line(
+    id, {lanelet::Point3d(id + 1, 5.0, -1.0, 0.0), lanelet::Point3d(id + 2, 5.0, 1.0, 0.0)});
+  stop_line.attributes()[lanelet::AttributeNamesString::Type] =
+    lanelet::AttributeValueString::StopLine;
+  return stop_line;
+}
+
+// A traffic sign regulatory element (subtype stop_sign) whose ref_line is the given stop line.
+lanelet::RegulatoryElementPtr make_stop_sign_regelem(
+  lanelet::Id id, const lanelet::LineString3d & stop_line)
+{
+  lanelet::LineString3d sign(
+    id + 10, {lanelet::Point3d(id + 11, 5.0, 2.0, 0.0), lanelet::Point3d(id + 12, 5.0, 2.5, 0.0)});
+  sign.attributes()[lanelet::AttributeNamesString::Type] = "traffic_sign";
+  sign.attributes()[lanelet::AttributeNamesString::Subtype] = "stop_sign";
+  return lanelet::TrafficSign::make(
+    id, lanelet::AttributeMap(), {{sign}, "stop_sign"}, {}, {stop_line});
+}
+}  // namespace
+
+TEST(MapBasedStopPlannerTest, CollectTagsTrafficSignRefLine)
 {
   MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
 
-  // Build a stop-line road marking and attach it to a lanelet as a regulatory element.
-  lanelet::LineString3d stop_line(
-    100, {lanelet::Point3d(101, 5.0, -1.0, 0.0), lanelet::Point3d(102, 5.0, 1.0, 0.0)});
-  stop_line.attributes()[lanelet::AttributeNamesString::Type] =
-    lanelet::AttributeValueString::StopLine;
+  // Attach a stop sign whose ref_line is the stop line to a lanelet (vm-02-02).
+  const auto stop_line = make_map_stop_line(100);
+  lanelet::LineString3d left(
+    200, {lanelet::Point3d(201, 0.0, 1.0, 0.0), lanelet::Point3d(202, 10.0, 1.0, 0.0)});
+  lanelet::LineString3d right(
+    300, {lanelet::Point3d(301, 0.0, -1.0, 0.0), lanelet::Point3d(302, 10.0, -1.0, 0.0)});
+  lanelet::Lanelet lanelet(400, left, right);
+  lanelet.addRegulatoryElement(make_stop_sign_regelem(500, stop_line));
 
+  RouteContext ctx;
+  ctx.route_lanelets = {lanelet};
+  const auto stop_lines = planner.collect_stop_lines(ctx);
+
+  ASSERT_EQ(stop_lines.size(), 1u);
+  EXPECT_EQ(stop_lines.front().line.id(), 100);
+  EXPECT_EQ(stop_lines.front().type, StopLineType::StopLine);
+}
+
+TEST(MapBasedStopPlannerTest, CollectIgnoresRoadMarkingStopLine)
+{
+  MapBasedStopPlanner planner(rclcpp::get_logger("test_map_based_stop_planner"));
+
+  // A stop line referenced only by a RoadMarking regulatory element (vm-03-14 intersection
+  // guidance line) is not a legally mandatory stop and must not be collected.
+  const auto stop_line = make_map_stop_line(100);
   lanelet::LineString3d left(
     200, {lanelet::Point3d(201, 0.0, 1.0, 0.0), lanelet::Point3d(202, 10.0, 1.0, 0.0)});
   lanelet::LineString3d right(
@@ -354,9 +398,7 @@ TEST(MapBasedStopPlannerTest, CollectTagsRoadMarkingStopLine)
   ctx.route_lanelets = {lanelet};
   const auto stop_lines = planner.collect_stop_lines(ctx);
 
-  ASSERT_EQ(stop_lines.size(), 1u);
-  EXPECT_EQ(stop_lines.front().line.id(), 100);
-  EXPECT_EQ(stop_lines.front().type, StopLineType::StopLine);
+  EXPECT_TRUE(stop_lines.empty());
 }
 
 namespace
@@ -744,7 +786,7 @@ TEST(MapBasedStopPlannerTest, CollectPrefersCrosswalkIdRoadMarkingStopLine)
 
 namespace
 {
-// Seed the planner's stop line cache with a RoadMarking stop line (mandatory) crossing the
+// Seed the planner's stop line cache with a stop-sign ref_line (mandatory) crossing the
 // straight test trajectory at x = 20.
 void set_mandatory_stop_line_data(MapBasedStopPlanner & planner)
 {
@@ -753,8 +795,7 @@ void set_mandatory_stop_line_data(MapBasedStopPlanner & planner)
   stop_line.attributes()[lanelet::AttributeNamesString::Type] =
     lanelet::AttributeValueString::StopLine;
   auto lanelet = make_road_lanelet(400, 0.0, 30.0);
-  lanelet.addRegulatoryElement(
-    lanelet::autoware::RoadMarking::make(500, lanelet::AttributeMap(), stop_line));
+  lanelet.addRegulatoryElement(make_stop_sign_regelem(500, stop_line));
 
   RouteContext ctx;
   ctx.route_lanelets = {lanelet};

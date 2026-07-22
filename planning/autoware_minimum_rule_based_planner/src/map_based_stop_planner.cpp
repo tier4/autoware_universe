@@ -442,20 +442,8 @@ std::vector<StopLine> MapBasedStopPlanner::collect_stop_lines(
   {
     autoware_utils_debug::ScopedTimeTrack st_route("route_regulatory_elements", *time_keeper_);
     for (const auto & lanelet : route_lanelets) {
-      // Explicit stop line road markings -> StopLine.
-      for (const auto & road_marking :
-           lanelet.regulatoryElementsAs<lanelet::autoware::RoadMarking>()) {
-        const auto & marking = road_marking->roadMarking();
-        // NOTE(odashima): compare through std::string. Passing a string literal deduces
-        // const char * and compares pointers (never equal).
-        if (
-          marking.attributeOr(lanelet::AttributeName::Type, std::string("none")) ==
-          lanelet::AttributeValueString::StopLine) {
-          add_line(marking, StopLineType::StopLine, marking.id());
-        }
-      }
-
-      // Reference lines of traffic signs (e.g. stop signs) -> StopLine.
+      // Only stop lines referenced by a traffic sign (vm-02-02: stop sign) are legally mandatory
+      // stops -> StopLine.
       for (const auto & traffic_sign : lanelet.regulatoryElementsAs<lanelet::TrafficSign>()) {
         for (const auto & ref_line : traffic_sign->refLines()) {
           add_line(ref_line, StopLineType::StopLine, ref_line.id());
