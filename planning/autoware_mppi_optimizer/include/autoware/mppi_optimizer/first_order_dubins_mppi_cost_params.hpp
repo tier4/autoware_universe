@@ -24,10 +24,6 @@ struct FirstOrderDubinsMppiCostParams
 {
   /** Softmax temperature for trajectory weighting (higher = softer weighting). */
   float lambda{3000.0F};
-  /** Butterworth cutoff applied to sampled control noise (Hz). Must be in (0, Nyquist). */
-  float low_pass_cutoff_frequency_hz{1.0F};
-  /** Butterworth order applied to sampled control noise. Supported values are 1 and 2. */
-  int low_pass_filter_order{2};
   float desired_speed{3.0F};
   float speed_coeff{500.0F};
   float track_coeff{1000.0F};

@@ -5,9 +5,6 @@
     # MPPI controller / FirstOrderDubinsBicycleCostParams
     # (see first_order_dubins_mppi_interface.cu, first_order_dubins_bicycle_cost.cuh)
     lambda: 3000.0
-    # LP-MPPI Butterworth filter for sampled noise. With dt=0.1 s, Nyquist is 5 Hz.
-    low_pass_cutoff_frequency_hz: 1.0
-    low_pass_filter_order: 2
     desired_speed: 2.5
     speed_coeff: 500.0
     track_coeff: 1000.0
