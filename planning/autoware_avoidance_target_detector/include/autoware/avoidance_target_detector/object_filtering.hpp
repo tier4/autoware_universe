@@ -239,6 +239,10 @@ public:
     const autoware::experimental::trajectory::Trajectory<TrajectoryPoint> & ego_trajectory,
     bool ego_trajectory_built);
 
+  void update_objects(
+    const rclcpp::Time & current_time, const Objects & objects, const Trajectory & trajectory,
+    const ExtendedRouteHandler & extended_route_handler);
+
   /**
    * @brief Select avoidance targets from objects using updated filter state.
    * @details Call update_objects() first in the same cycle. Runs avoidance-target tracking,
