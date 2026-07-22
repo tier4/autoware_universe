@@ -24,7 +24,7 @@
 #include <mppi/feedback_controllers/zero_feedback.cuh>
 #include <mppi/path/path2d.hpp>
 #include <mppi/path/path_projection.hpp>
-#include <mppi/sampling_distributions/gaussian/gaussian.cuh>
+#include <mppi/sampling_distributions/low_pass_gaussian/low_pass_gaussian.cuh>
 #include <mppi/utils/gpu_err_chk.cuh>
 #include <rclcpp/logging.hpp>
 
@@ -66,7 +66,7 @@ rclcpp::Logger mppiLogger()
 using DYN = FirstOrderDubinsBicycle;
 using COST = FirstOrderDubinsBicycleCost<kRefHorizon>;
 using FB = ZeroFeedback<DYN, kMppiHorizon>;
-using SAMPLER = mppi::sampling_distributions::GaussianDistribution<DYN::DYN_PARAMS_T>;
+using SAMPLER = mppi::sampling_distributions::LowPassGaussianDistribution<DYN::DYN_PARAMS_T>;
 using Mppi = VanillaMPPIController<DYN, COST, FB, kMppiHorizon, kNumRollouts, SAMPLER>;
 
 void applyUserCostParams(
@@ -423,6 +423,20 @@ struct FirstOrderDubinsMppiInterface::Impl
 
   void setup()
   {
+    constexpr float kNyquistFrequencyHz = 0.5F / kDt;
+    if (
+      user_cost_params_.low_pass_cutoff_frequency_hz <= 0.0F ||
+      user_cost_params_.low_pass_cutoff_frequency_hz >= kNyquistFrequencyHz) {
+      throw std::invalid_argument(
+        "low_pass_cutoff_frequency_hz must be greater than 0 and less than the 5 Hz Nyquist "
+        "frequency");
+    }
+    if (
+      user_cost_params_.low_pass_filter_order != 1 &&
+      user_cost_params_.low_pass_filter_order != 2) {
+      throw std::invalid_argument("low_pass_filter_order must be 1 or 2");
+    }
+
     dyn = FirstOrderDubinsBicycleParams{};
     dyn.wheel_base = vehicle_params.wheel_base;
     dyn.max_steer_angle = vehicle_params.max_steer_angle;
@@ -473,6 +487,9 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     sp.std_dev[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD)] =
       steer_std;
+    sp.cutoff_frequency_hz = user_cost_params_.low_pass_cutoff_frequency_hz;
+    sp.filter_order = user_cost_params_.low_pass_filter_order;
+    sp.sampling_period_s = kDt;
     sp.sum_strides = std::max(32, (kNumRollouts + 1023) / 1024);
     sampler = SAMPLER(sp);
 
@@ -497,11 +514,14 @@ struct FirstOrderDubinsMppiInterface::Impl
     RCLCPP_INFO(
       mppiLogger(),
       "MPPI GPU initialized (horizon=%d, rollouts=%d, dt=%.2f, lambda=%.1f, "
+      "lp_cutoff=%.2fHz, lp_order=%d, "
       "wheel_base=%.2f, max_steer=%.2f, steer_std=%.3f, acc_tau=%.2f, steer_tau=%.2f, "
       "steer_rate_lim=%.2f, vel_rate_lim=%.2f, ego=%.2fx%.2f, axle_to_center=%.2f, "
       "desired_speed=%.2f, boundary_threshold=%.2f, obs_margin=%.2f, road_border_margin=%.2f, "
       "drivable_area_coeff=%.2f",
-      kMppiHorizon, kNumRollouts, kDt, user_cost_params_.lambda, vehicle_params.wheel_base,
+      kMppiHorizon, kNumRollouts, kDt, user_cost_params_.lambda,
+      user_cost_params_.low_pass_cutoff_frequency_hz,
+      user_cost_params_.low_pass_filter_order, vehicle_params.wheel_base,
       vehicle_params.max_steer_angle, steer_std, vehicle_params.acc_time_constant,
       vehicle_params.steer_time_constant, vehicle_params.steer_rate_lim,
       vehicle_params.vel_rate_lim, vehicle_params.ego_length, vehicle_params.ego_width,

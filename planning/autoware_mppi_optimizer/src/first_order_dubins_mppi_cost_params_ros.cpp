@@ -32,6 +32,10 @@ void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std:
 {
   const FirstOrderDubinsMppiCostParams defaults;
   node.declare_parameter(param_name(prefix, "lambda"), defaults.lambda);
+  node.declare_parameter(
+    param_name(prefix, "low_pass_cutoff_frequency_hz"), defaults.low_pass_cutoff_frequency_hz);
+  node.declare_parameter(
+    param_name(prefix, "low_pass_filter_order"), defaults.low_pass_filter_order);
   node.declare_parameter(param_name(prefix, "desired_speed"), defaults.desired_speed);
   node.declare_parameter(param_name(prefix, "speed_coeff"), defaults.speed_coeff);
   node.declare_parameter(param_name(prefix, "track_coeff"), defaults.track_coeff);
@@ -67,6 +71,10 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
 {
   FirstOrderDubinsMppiCostParams params;
   params.lambda = static_cast<float>(node.get_parameter(param_name(prefix, "lambda")).as_double());
+  params.low_pass_cutoff_frequency_hz = static_cast<float>(
+    node.get_parameter(param_name(prefix, "low_pass_cutoff_frequency_hz")).as_double());
+  params.low_pass_filter_order =
+    static_cast<int>(node.get_parameter(param_name(prefix, "low_pass_filter_order")).as_int());
   params.desired_speed =
     static_cast<float>(node.get_parameter(param_name(prefix, "desired_speed")).as_double());
   params.speed_coeff =
