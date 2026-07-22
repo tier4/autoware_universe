@@ -660,7 +660,7 @@ void DiffusionPlanner::on_timer()
       const auto driving_along_targets =
         object_selector_.get_driving_along_vehicles(*objects);
 
-      const auto margin = vehicle_info_.max_lateral_offset_m * 2.0 + 1.0;
+      const auto margin = vehicle_info_.max_longitudinal_offset_m + 1.0;
       const auto road_borders_subset =
         get_road_border_subset(road_border_rtree_, planner_output.trajectory, margin);
       const auto drivable_area_subset =
