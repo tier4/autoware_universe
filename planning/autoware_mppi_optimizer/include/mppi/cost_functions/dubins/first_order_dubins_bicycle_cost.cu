@@ -39,7 +39,7 @@ __host__ __device__ float referenceEndYaw(
 template <class PARAMS_T>
 __host__ __device__ void comfortTerms(
   const PARAMS_T & params, const float * u, const float * y, float & lateral_accel,
-  float & lateral_jerk, float & longitudinal_jerk)
+  float & lateral_jerk, float & longitudinal_jerk, float & steer_rate)
 {
   const float v = y[static_cast<int>(O::BASELINK_VEL_B_X)];
   const float steer = y[static_cast<int>(O::STEER_ANGLE)];
@@ -53,7 +53,7 @@ __host__ __device__ void comfortTerms(
 
   longitudinal_jerk = (accel_cmd - accel) / accel_tau;
 
-  const float steer_rate = (steer_cmd - steer) / steer_tau;
+  steer_rate = (steer_cmd - steer) / steer_tau;
   const float curvature = tanf(steer) / wheel_base;
 #ifdef __CUDA_ARCH__
   const float sec_sq = 1.0F / fmaxf(cosf(steer) * cosf(steer), 1.0E-6F);
@@ -694,10 +694,13 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
   float lateral_accel = 0.0F;
   float lateral_jerk = 0.0F;
   float longitudinal_jerk = 0.0F;
-  comfortTerms(this->params_, u.data(), y.data(), lateral_accel, lateral_jerk, longitudinal_jerk);
+  float steer_rate = 0.0F;
+  comfortTerms(
+    this->params_, u.data(), y.data(), lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
   return this->params_.lateral_acceleration_coeff * std::abs(lateral_accel) +
          this->params_.lateral_jerk_coeff * std::abs(lateral_jerk) +
-         this->params_.longitudinal_jerk_coeff * std::abs(longitudinal_jerk);
+         this->params_.longitudinal_jerk_coeff * std::abs(longitudinal_jerk) +
+         this->params_.steer_rate_coeff * std::abs(steer_rate);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -709,10 +712,12 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   float lateral_accel = 0.0F;
   float lateral_jerk = 0.0F;
   float longitudinal_jerk = 0.0F;
-  comfortTerms(this->params_, u, y, lateral_accel, lateral_jerk, longitudinal_jerk);
+  float steer_rate = 0.0F;
+  comfortTerms(this->params_, u, y, lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
   return this->params_.lateral_acceleration_coeff * fabsf(lateral_accel) +
          this->params_.lateral_jerk_coeff * fabsf(lateral_jerk) +
-         this->params_.longitudinal_jerk_coeff * fabsf(longitudinal_jerk);
+         this->params_.longitudinal_jerk_coeff * fabsf(longitudinal_jerk) +
+         this->params_.steer_rate_coeff * fabsf(steer_rate);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
