@@ -246,7 +246,7 @@ inline visualization_msgs::msg::MarkerArray generate_mppi_debug_markers(
   const autoware_perception_msgs::msg::TrackedObjects & avoidance_targets,
   const autoware_perception_msgs::msg::TrackedObjects & driving_along_targets)
 {
-  constexpr double marker_z = 0.1;
+  constexpr double marker_z = 100.0;
 
   auto road_borders_marker = detail::create_mppi_line_list_marker(
     "mppi_road_borders",
