@@ -283,7 +283,7 @@ private:
   /* MPPI : will be moved to another package */
   std::unique_ptr<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface> mppi_optimizer_;
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler> extended_route_handler_;
-  autoware::avoidance_target_detector::PredictedObjectSelector object_selector_;
+  autoware::avoidance_target_detector::TrackedObjectSelector object_selector_;
   RoadBorderRtree road_border_rtree_;
   HADMapBin lanelet_map_msg_;
   LaneletRoute prev_route_;

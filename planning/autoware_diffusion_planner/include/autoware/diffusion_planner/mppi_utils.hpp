@@ -17,7 +17,7 @@
 
 #include <autoware/avoidance_target_detector/boundary.hpp>
 
-#include <autoware_perception_msgs/msg/predicted_objects.hpp>
+#include <autoware_perception_msgs/msg/tracked_objects.hpp>
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 
 #include <autoware_utils_geometry/boost_geometry.hpp>
@@ -182,8 +182,8 @@ inline std::vector<RoadBorderSegment> get_road_border_subset(
 inline visualization_msgs::msg::MarkerArray generate_mppi_debug_markers(
   const std::vector<RoadBorderSegment> & road_borders,
   const autoware::avoidance_target_detector::RouteBounds & drivable_area,
-  const autoware_perception_msgs::msg::PredictedObjects & avoidance_targets,
-  const autoware_perception_msgs::msg::PredictedObjects & driving_along_targets)
+  const autoware_perception_msgs::msg::TrackedObjects & avoidance_targets,
+  const autoware_perception_msgs::msg::TrackedObjects & driving_along_targets)
 {
   constexpr double marker_z = 0.1;
 
@@ -209,7 +209,7 @@ inline visualization_msgs::msg::MarkerArray generate_mppi_debug_markers(
     const auto footprint = autoware_utils_geometry::to_polygon2d(object);
     detail::append_geometry_segments(
       avoidance_targets_marker, footprint,
-      object.kinematics.initial_pose_with_covariance.pose.position.z + marker_z);
+      object.kinematics.pose_with_covariance.pose.position.z + marker_z);
   }
 
   auto driving_along_targets_marker = detail::create_mppi_line_list_marker(
@@ -219,7 +219,7 @@ inline visualization_msgs::msg::MarkerArray generate_mppi_debug_markers(
     const auto footprint = autoware_utils_geometry::to_polygon2d(object);
     detail::append_geometry_segments(
       driving_along_targets_marker, footprint,
-      object.kinematics.initial_pose_with_covariance.pose.position.z + marker_z);
+      object.kinematics.pose_with_covariance.pose.position.z + marker_z);
   }
 
   visualization_msgs::msg::MarkerArray marker_array;

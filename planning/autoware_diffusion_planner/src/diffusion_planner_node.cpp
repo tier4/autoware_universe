@@ -649,10 +649,11 @@ void DiffusionPlanner::on_timer()
         steering_status ? std::make_optional(*steering_status) : std::nullopt;
 
       const auto drivable_area = extended_route_handler_->get_extended_route_bounds();
-      const auto avoidance_targets =
-        object_selector_.get_avoidance_targets(planner_output.predicted_objects, planner_output.trajectory, extended_route_handler_->get_extended_route_bounds());
+      object_selector_.update_objects(now(), *objects, planner_output.trajectory, *extended_route_handler_);
+      auto avoidance_targets =
+        object_selector_.get_avoidance_targets(*objects, planner_output.trajectory, extended_route_handler_->get_extended_route_bounds());
       const auto driving_along_targets =
-        object_selector_.get_driving_along_vehicles(planner_output.predicted_objects);
+        object_selector_.get_driving_along_vehicles(*objects);
 
       const auto margin = vehicle_info_.max_lateral_offset_m * 2.0 + 1.0;
       const auto road_borders_subset =
@@ -660,9 +661,10 @@ void DiffusionPlanner::on_timer()
       pub_mppi_markers_->publish(generate_mppi_debug_markers(
         road_borders_subset, drivable_area, avoidance_targets, driving_along_targets));
 
+      avoidance_targets.objects.insert(avoidance_targets.objects.end(), driving_along_targets.objects.begin(), driving_along_targets.objects.end());
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
-        ego_steering, *objects);
+        ego_steering, avoidance_targets);
       record_section_time(
         *stop_watch_ptr_, "mppi_optimizer/optimize_trajectory", *diagnostics_inference_);
       if (!params_.shadow_mode) {
