@@ -840,6 +840,21 @@ FloatVecRoadBounds ExtendedRouteHandler::get_near_segment_bounds(
   return road_bounds;
 }
 
+FloatVecRoadBounds ExtendedRouteHandler::get_near_segment_bounds(
+  const Trajectory & trajectory) const
+{
+  FloatVecRoadBounds empty_road_bounds;
+
+  if (trajectory.points.empty()) {
+    return empty_road_bounds;
+  }
+
+  const auto start_point = trajectory.points.front().pose.position;
+  const auto end_point = trajectory.points.back().pose.position;
+
+  return get_near_segment_bounds(start_point, end_point);
+}
+
 std::optional<double> ExtendedRouteHandler::get_velocity_limit(
   const lanelet::BasicPoint2d & point) const
 {

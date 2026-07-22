@@ -180,6 +180,8 @@ public:
     const geometry_msgs::msg::Point & prev_end_point,
     const geometry_msgs::msg::Point & following_end_point) const;
 
+  [[nodiscard]] FloatVecRoadBounds get_near_segment_bounds(const Trajectory & trajectory) const;
+
   [[nodiscard]] std::optional<double> get_velocity_limit(const lanelet::BasicPoint2d & point) const;
   [[nodiscard]] std::optional<double> get_velocity_limit(const lanelet::Point2d & point) const;
   [[nodiscard]] std::optional<double> get_velocity_limit(
