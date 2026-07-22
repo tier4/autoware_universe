@@ -240,12 +240,17 @@ CrosswalkFilter::result_t CrosswalkFilter::is_feasible(
 
   update_target_objects(context, target_crosswalks);
 
-  const bool feasible = std::none_of(
-    target_crosswalks.begin(), target_crosswalks.end(),
-    [&](const auto & cw) { return is_obstructing_crosswalk(candidate_trajectory.points, cw); });
+  std::unordered_set<lanelet::Id> obstructing_crosswalk_ids;
+  const bool feasible =
+    std::none_of(target_crosswalks.begin(), target_crosswalks.end(), [&](const auto & cw) {
+      if (!is_obstructing_crosswalk(candidate_trajectory.points, cw)) return false;
+      obstructing_crosswalk_ids.insert(cw.crosswalk_info.crosswalk->id());
+      return true;
+    });
 
   update_debug_data(
-    target_crosswalks, context.odometry->header.stamp, context.odometry->pose.pose.position.z);
+    target_crosswalks, obstructing_crosswalk_ids, context.odometry->header.stamp,
+    context.odometry->pose.pose.position.z);
 
   RiskLevel risk_level;
   risk_level.level = feasible ? RiskLevel::SAFE : RiskLevel::DANGER;
@@ -466,18 +471,19 @@ bool CrosswalkFilter::is_obstructing_crosswalk(
 }
 
 void CrosswalkFilter::update_debug_data(
-  const std::vector<TargetCrosswalk> & target_crosswalks, const rclcpp::Time & current_time,
-  const double z)
+  const std::vector<TargetCrosswalk> & target_crosswalks,
+  const std::unordered_set<lanelet::Id> & obstructing_crosswalk_ids,
+  const rclcpp::Time & current_time, const double z)
 {
   using visualization_msgs::msg::Marker;
   debug_markers_.markers.clear();
 
   auto add_polygon_marker = [&](
                               const auto & polygon, const std::string & ns, const int id,
-                              const std_msgs::msg::ColorRGBA & color) {
+                              const std_msgs::msg::ColorRGBA & color, const double scale = 0.1) {
     visualization_msgs::msg::Marker marker = autoware_utils::create_default_marker(
       "map", current_time, ns, id, Marker::LINE_STRIP,
-      autoware_utils::create_marker_scale(0.1, 0.1, 0.1), color);
+      autoware_utils::create_marker_scale(scale, scale, scale), color);
     marker.lifetime = rclcpp::Duration::from_seconds(0.2);
 
     for (const auto & p : polygon) {
@@ -491,10 +497,11 @@ void CrosswalkFilter::update_debug_data(
 
   auto add_multi_polygon_marker = [&](
                                     const auto & polygons, const std::string & ns, const int id,
-                                    const std_msgs::msg::ColorRGBA & color) {
+                                    const std_msgs::msg::ColorRGBA & color,
+                                    const double scale = 0.1) {
     visualization_msgs::msg::Marker marker = autoware_utils::create_default_marker(
       "map", current_time, ns, id, Marker::LINE_LIST,
-      autoware_utils::create_marker_scale(0.1, 0.1, 0.1), color);
+      autoware_utils::create_marker_scale(scale, scale, scale), color);
     marker.lifetime = rclcpp::Duration::from_seconds(0.2);
     for (const auto & polygon : polygons) {
       if (polygon.empty()) {
@@ -511,10 +518,11 @@ void CrosswalkFilter::update_debug_data(
 
   auto add_line_marker = [&](
                            const lanelet::BasicLineString2d & line, const std::string & ns,
-                           const int id, const std_msgs::msg::ColorRGBA & color) {
+                           const int id, const std_msgs::msg::ColorRGBA & color,
+                           const double scale = 0.15) {
     visualization_msgs::msg::Marker marker = autoware_utils::create_default_marker(
       "map", current_time, ns, id, Marker::LINE_STRIP,
-      autoware_utils::create_marker_scale(0.15, 0.15, 0.15), color);
+      autoware_utils::create_marker_scale(scale, scale, scale), color);
     marker.lifetime = rclcpp::Duration::from_seconds(0.2);
     for (const auto & p : line) {
       marker.points.push_back(autoware_utils::create_marker_position(p.x(), p.y(), z));
@@ -524,10 +532,11 @@ void CrosswalkFilter::update_debug_data(
 
   auto add_text_marker = [&](
                            const std::string & text, const auto & pose, const std::string & ns,
-                           const int id, const std_msgs::msg::ColorRGBA & color) {
+                           const int id, const std_msgs::msg::ColorRGBA & color,
+                           const double scale = 0.2) {
     visualization_msgs::msg::Marker marker = autoware_utils::create_default_marker(
       "map", current_time, ns, id, Marker::TEXT_VIEW_FACING,
-      autoware_utils::create_marker_scale(0.2, 0.2, 0.2), color);
+      autoware_utils::create_marker_scale(scale, scale, scale), color);
     marker.pose = pose;
     marker.lifetime = rclcpp::Duration::from_seconds(0.2);
     marker.text = text;
@@ -540,31 +549,49 @@ void CrosswalkFilter::update_debug_data(
   const auto red = autoware_utils::create_marker_color(1.0, 0.0, 0.0, 1.0);
   const auto white = autoware_utils::create_marker_color(1.0, 1.0, 1.0, 1.0);
 
+  double remaining_time{};
   auto add_objects_marker = [&](const auto & cw) {
     int obj_id = 0;
+    remaining_time = 0.0;
     if (crosswalk_objects_map_.count(cw.crosswalk_info.crosswalk->id())) {
+      auto min_obj_duration = params_.stop_duration;
       for (const auto & cw_object : crosswalk_objects_map_[cw.crosswalk_info.crosswalk->id()]) {
         const auto obj_duration = (cw_object.last_seen_time - cw_object.first_seen_time).seconds();
         const auto color = cw_object.ignore ? green : red;
         auto obj_polygon = autoware_utils_geometry::to_polygon2d(
           cw_object.object.kinematics.initial_pose_with_covariance.pose, cw_object.object.shape);
         add_polygon_marker(obj_polygon.outer(), "target_objects", obj_id, color);
-        if (!cw_object.ignore)
+        if (!cw_object.ignore) {
           add_text_marker(
             std::to_string(obj_duration),
             cw_object.object.kinematics.initial_pose_with_covariance.pose,
             "target_objects_duration", obj_id, white);
+          min_obj_duration = std::min(min_obj_duration, obj_duration);
+        }
         obj_id++;
       }
+      remaining_time = params_.stop_duration - min_obj_duration;
     }
   };
 
   int id = 0;
   for (const auto & cw : target_crosswalks) {
+    bool is_obstructing = obstructing_crosswalk_ids.count(cw.crosswalk_info.crosswalk->id()) > 0;
     add_polygon_marker(cw.crosswalk_polygon, "target_crosswalks", id, magenta);
-    add_multi_polygon_marker(cw.detection_areas, "detection_areas", id, yellow);
-    add_line_marker(cw.crosswalk_info.stop_line, "target_stop_lines", id, magenta);
+    add_multi_polygon_marker(
+      cw.detection_areas, "detection_areas", id, is_obstructing ? red : yellow);
+    add_line_marker(
+      cw.crosswalk_info.stop_line, "target_stop_lines", id, is_obstructing ? red : magenta);
     add_objects_marker(cw);
+    if (is_obstructing) {
+      geometry_msgs::msg::Pose stop_line_pose;
+      stop_line_pose.position.x = cw.crosswalk_info.stop_line.front().x();
+      stop_line_pose.position.y = cw.crosswalk_info.stop_line.front().y();
+      stop_line_pose.position.z = z;
+      const std::string remaining_time_str =
+        "remaining waiting time:" + std::to_string(remaining_time) + " s";
+      add_text_marker(remaining_time_str, stop_line_pose, "remaining_time", id, white, 0.3);
+    }
     id++;
   }
 }

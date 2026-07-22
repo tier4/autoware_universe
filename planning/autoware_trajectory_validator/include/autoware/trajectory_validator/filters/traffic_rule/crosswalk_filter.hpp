@@ -149,7 +149,9 @@ private:
     const TrajectoryPoints & traj_points, const TargetCrosswalk & target_crosswalk) const;
 
   void update_debug_data(
-    const TargetCrosswalks & target_crosswalks, const rclcpp::Time & current_time, const double z);
+    const TargetCrosswalks & target_crosswalks,
+    const std::unordered_set<lanelet::Id> & obstructing_crosswalk_ids,
+    const rclcpp::Time & current_time, const double z);
 };
 
 }  // namespace autoware::trajectory_validator::plugin::traffic_rule
