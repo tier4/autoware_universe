@@ -23,7 +23,7 @@ The `traffic_light_compliance_checker` package provides a deterministic validati
 The execution flow follows a sequential logical from signal processing & filtering down to stop line interaction evaluations:
 
 1. **Filter signals and update status tracker:** Feeds raw perception data into the status tracker to clean up transient noise and tracking dropouts.
-2. **Generate Geometric Trajectory Linestring:** Removes path points situated behind the ego vehicle, clamps the forward path length at the maximum required stop distance, and extends trajectory end to account for ego front offset.
+2. **Generate Geometric Trajectory Linestring:** Removes path points situated behind the ego vehicle, keeps the full forward path until the first planned stop (`v≈0`), and extends trajectory end to account for ego front offset.
 3. **Extract and group map stop lines:** Sorts overlapping intersection lines into separate evaluation queues for red and amber constraints.
 4. **Evaluate Stop Line Violations:** Checks the trajectory linesting against active stop lines, records detected violations and generate compliance result.
 
@@ -35,7 +35,7 @@ skinparam backgroundColor #WHITE
 start
 
 :Filter signals and update status tracker;<<#LightBlue>>
-:Generate Trajectory Linestring\n(Cull backward points & clamp at max stop distance);<<#LightBlue>>
+:Generate Trajectory Linestring\n(Cull backward points; keep until first planned stop);<<#LightBlue>>
 :Extend trajectory linestring\n(Add physical front bumper footprint offset);<<#LightBlue>>
 :Extract and group map stop lines\n(Categorize into RED vs. AMBER targets);<<#LightBlue>>
 
