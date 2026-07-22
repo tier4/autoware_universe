@@ -441,9 +441,11 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   CLASS_T, NUM_TIMESTEPS, PARAMS_T,
   DYN_PARAMS_T>::isEgoOutsideDrivableArea(const float x, const float y, const float yaw) const
 {
+  (void)x;
+  (void)y;
   (void)yaw;
-  // crash only on reference-track lateral limits.
-  return isOffRoad(x, y);
+  // Boundary / polygonal / left-right corridor crash disabled.
+  return false;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>

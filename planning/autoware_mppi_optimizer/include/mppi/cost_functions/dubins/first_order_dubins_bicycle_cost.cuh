@@ -112,7 +112,7 @@ public:
 
   __host__ __device__ bool isOffRoad(const float x, const float y) const;
 
-  /** True when outside reference-track lateral limits (polygonal containment removed). */
+  /** Disabled: always false (no polygon / lateral-bound / road-border crash). */
   __host__ __device__ bool isEgoOutsideDrivableArea(
     const float x, const float y, const float yaw) const;
 
