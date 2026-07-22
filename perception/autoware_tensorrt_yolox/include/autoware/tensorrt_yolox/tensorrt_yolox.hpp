@@ -83,13 +83,22 @@ public:
    * @param[in] norm_factor scaling factor for preprocess
    * @param[in] cache_dir unused variable
    * @param[in] calib_config calibration configuration
+   * @param[in] enable_center_crop_inference if true, additionally run inference on a
+   * native-resolution center crop (of the model input size) and use its trusted detections to
+   * override the results from the resized (downscaled) inference
+   * @param[in] center_crop_edge_margin margin (px) within which a center-crop detection is treated
+   * as touching the crop border and therefore discarded (may be truncated)
+   * @param[in] center_crop_overlap_iou_threshold IoU above which a resized-inference detection is
+   * overridden by an overlapping center-crop detection
    */
   TrtYoloX(
     TrtCommonConfig & trt_config, const int num_class = 8, const float score_threshold = 0.3,
     const float nms_threshold = 0.7, const bool use_gpu_preprocess = false,
     const uint8_t gpu_id = 0, std::string calibration_image_list_path = std::string(),
     const double norm_factor = 1.0, [[maybe_unused]] const std::string & cache_dir = "",
-    const CalibrationConfig & calib_config = CalibrationConfig());
+    const CalibrationConfig & calib_config = CalibrationConfig(),
+    const bool enable_center_crop_inference = false, const int center_crop_edge_margin = 8,
+    const float center_crop_overlap_iou_threshold = 0.5f);
   /**
    * @brief Deconstruct TrtYoloX
    */
@@ -208,6 +217,42 @@ private:
   bool feedforwardAndDecode(
     const std::vector<cv::Mat> & images, ObjectArrays & objects, std::vector<cv::Mat> & masks,
     std::vector<cv::Mat> & color_masks);
+
+  /**
+   * @brief run a single batch-2 inference that processes the whole (resized) image together with a
+   * native-resolution center crop of the model input size, then merge the trusted (non
+   * border-touching) crop detections into the whole-image detections. The two views occupy the two
+   * batch slots of a batch-2 engine (batch element 0: whole image, element 1: center crop).
+   * @param[in] images batched images (expects a single image)
+   * @param[out] objects merged detection results
+   * @param[out] masks segmentation masks (only whole-image mask is propagated)
+   * @param[out] color_masks color segmentation masks
+   * @return true on success
+   */
+  bool inferenceWithCenterCropBatch(
+    const std::vector<cv::Mat> & images, ObjectArrays & objects, std::vector<cv::Mat> & masks,
+    std::vector<cv::Mat> & color_masks);
+
+  /**
+   * @brief whether a native-resolution center-crop pass can be run for the given images. Requires
+   * the option enabled, a batch-2 detection-only (non-multitask) model, a single input image, and
+   * an image at least as large as the model input in both dimensions.
+   */
+  bool canRunCenterCrop(const std::vector<cv::Mat> & images) const;
+
+  /**
+   * @brief merge trusted center-crop detections into resized-inference detections. Center-crop
+   * detections touching the crop border (within center_crop_edge_margin_) are discarded since they
+   * may be truncated; the remaining ones override overlapping resized-inference detections.
+   * @param[in,out] base_objects detections from resized inference in original image coordinates
+   * @param[in] crop_objects detections from the center crop in crop-local coordinates
+   * @param[in] crop_origin top-left corner of the crop in original image coordinates
+   * @param[in] crop_width width of the center crop
+   * @param[in] crop_height height of the center crop
+   */
+  void mergeCropObjects(
+    ObjectArray & base_objects, const ObjectArray & crop_objects, const cv::Point & crop_origin,
+    int crop_width, int crop_height) const;
   void decodeOutputs(float * prob, ObjectArray & objects, float scale, cv::Size & img_size) const;
   void generateGridsAndStride(
     const int target_w, const int target_h, const std::vector<int> & strides,
@@ -293,6 +338,13 @@ private:
   CudaUniquePtr<unsigned char[]> image_buf_d_;
   // normalization factor used for preprocessing
   double norm_factor_;
+
+  // flag whether to additionally run inference on a native-resolution center crop
+  bool enable_center_crop_inference_;
+  // margin (px) within which a center-crop detection is treated as touching the crop border
+  int center_crop_edge_margin_;
+  // IoU above which a resized-inference detection is overridden by a center-crop detection
+  float center_crop_overlap_iou_threshold_;
 
   std::vector<int> output_strides_;
 

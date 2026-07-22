@@ -14,6 +14,24 @@ Additionally, the package also supports traffic light detection by switching onn
 
 Zheng Ge, Songtao Liu, Feng Wang, Zeming Li, Jian Sun, "YOLOX: Exceeding YOLO Series in 2021", arXiv preprint arXiv:2107.08430, 2021 [[ref](https://arxiv.org/abs/2107.08430)]
 
+### Native-resolution center-crop inference
+
+By default the whole input image is resized (letterboxed) down to the model input size before inference. For large images this downscaling shrinks small/distant objects and hurts detection accuracy near the image center.
+
+When `enable_center_crop_inference` is set to `true`, the node infers, in a **single batch-2 enqueue**, both the whole (resized) image and a **center crop of the original image whose size equals the model input size** (e.g. a 960x960 crop for a 960x960 model). The two views are placed in the two batch slots: element 0 (whole image, resized/letterboxed) and element 1 (center crop). Because the crop is fed to the network without any downscaling, objects in the central region are inferred at native resolution, and running them together avoids a second inference call.
+
+The two result sets are then merged as follows:
+
+- Center-crop detections whose bounding box touches the crop border (within `center_crop_edge_margin` pixels) are discarded, since they may be truncated by the crop.
+- Each remaining (trusted) crop detection overrides overlapping detections from the whole-image pass: any whole-image detection with `IoU > center_crop_overlap_iou_threshold` against a trusted crop detection is dropped, and the trusted crop detections are added.
+- Whole-image detections that are not overridden (e.g. objects outside the crop region) are kept as-is.
+
+Requirements and limitations:
+
+- Because the whole image and the crop are inferred together in the two batch slots, **the ONNX model must be exported with a batch size of 2**; otherwise the center-crop pass is skipped (and a batch-2 model fed a single image would fail to set the input shape). This only applies when the option is enabled (it is `false` by default).
+- The center-crop pass is applied to **detection-only** models processing a single image. Multitask (semantic segmentation) models fall back to the normal single-batch inference.
+- Images smaller than the model input size in either dimension fall back to the whole-image result only.
+
 ## Inputs / Outputs
 
 ### Input

@@ -3,6 +3,7 @@
 
     score_threshold: 0.35
     nms_threshold: 0.7
+    color_map_path: "" # not used
 
     precision: "fp16" # Operation precision to be used on inference. Valid value is one of: [fp32, fp16, int8].
     calibration_algorithm: "Entropy" # Calibration algorithm to be used for quantization when precision==int8. Valid value is one of: [Entropy, (Legacy | Percentile), MinMax].
@@ -14,6 +15,19 @@
     preprocess_on_gpu: true # If true, pre-processing is performed on GPU.
     gpu_id: 0 # GPU ID to select CUDA Device
     calibration_image_list_path: "" # Path to a file which contains path to images. Those images will be used for int8 quantization.
+
+
+    # Additionally run inference on a native-resolution center crop (of the model input size) and
+    # override the resized-inference results with its trusted (non border-touching) detections.
+    # This recovers small/distant objects near the image center that are lost when the whole image
+    # is downscaled to the model input size. Note: enabling roughly doubles the inference cost.
+    enable_center_crop_inference: true  
+    # Margin (px) within which a center-crop detection is treated as touching the crop border and
+    # discarded (may be truncated by the crop).
+    center_crop_edge_margin: 8
+    # IoU above which a resized-inference detection is overridden by an overlapping center-crop
+    # detection.
+    center_crop_overlap_iou_threshold: 0.5
 
     # default params of tensorrt_yolox package, only effective for semantic segmentation model
     is_roi_overlap_segmentation: false

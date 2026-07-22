@@ -41,7 +41,9 @@ TrtYoloX::TrtYoloX(
   TrtCommonConfig & trt_config, const int num_class, const float score_threshold,
   const float nms_threshold, const bool use_gpu_preprocess, const uint8_t gpu_id,
   std::string calibration_image_list_path, const double norm_factor,
-  [[maybe_unused]] const std::string & cache_dir, const CalibrationConfig & calib_config)
+  [[maybe_unused]] const std::string & cache_dir, const CalibrationConfig & calib_config,
+  const bool enable_center_crop_inference, const int center_crop_edge_margin,
+  const float center_crop_overlap_iou_threshold)
 : gpu_id_(gpu_id), is_gpu_initialized_(false)
 {
   if (!setCudaDeviceId(gpu_id_)) {
@@ -52,6 +54,9 @@ TrtYoloX::TrtYoloX(
   src_width_ = -1;
   src_height_ = -1;
   norm_factor_ = norm_factor;
+  enable_center_crop_inference_ = enable_center_crop_inference;
+  center_crop_edge_margin_ = center_crop_edge_margin;
+  center_crop_overlap_iou_threshold_ = center_crop_overlap_iou_threshold;
   multitask_ = 0;
   stream_ = makeCudaStream();
 
@@ -463,6 +468,13 @@ bool TrtYoloX::doInference(
     return false;
   }
 
+  // When enabled, infer the whole (resized) image together with a native-resolution center crop in
+  // a single doubled-batch enqueue. This recovers small/distant objects near the image center that
+  // are lost when the whole image is downscaled to the model input size.
+  if (canRunCenterCrop(images)) {
+    return inferenceWithCenterCropBatch(images, objects, masks, color_masks);
+  }
+
   if (use_gpu_preprocess_) {
     preprocessGpu(images);
   } else {
@@ -862,6 +874,135 @@ bool TrtYoloX::feedforwardAndDecode(
     }
   }
   return true;
+}
+
+bool TrtYoloX::canRunCenterCrop(const std::vector<cv::Mat> & images) const
+{
+  if (!enable_center_crop_inference_) {
+    return false;
+  }
+  // The whole image and its center crop are placed in the two batch slots of a batch-2 engine, so
+  // the model must be exported with a batch size of 2. The center crop is built from a single
+  // source image via the multi-scale ROI preprocessing, and the segmentation (multitask) buffers
+  // assume a homogeneous batch, so restrict it to a single detection-only image.
+  if (batch_size_ != 2 || images.size() != 1 || multitask_ > 0) {
+    return false;
+  }
+  const auto input_dims = trt_common_->getTensorShape(0);
+  const int crop_width = input_dims.d[3];
+  const int crop_height = input_dims.d[2];
+  // Skip images smaller than the model input, as cropping would not preserve the native resolution.
+  return images[0].cols >= crop_width && images[0].rows >= crop_height;
+}
+
+bool TrtYoloX::inferenceWithCenterCropBatch(
+  const std::vector<cv::Mat> & images, ObjectArrays & objects, std::vector<cv::Mat> & masks,
+  std::vector<cv::Mat> & color_masks)
+{
+  const auto & image = images[0];
+  const auto input_dims = trt_common_->getTensorShape(0);
+  const int crop_width = input_dims.d[3];
+  const int crop_height = input_dims.d[2];
+  const int x0 = (image.cols - crop_width) / 2;
+  const int y0 = (image.rows - crop_height) / 2;
+
+  // Batch element 0: whole image resized/letterboxed to the model input (scale < 1).
+  // Batch element 1: native-resolution center crop, whose size equals the model input (scale = 1),
+  // so the central region is inferred without any downscaling.
+  const cv::Rect crop_roi(x0, y0, crop_width, crop_height);
+  const std::vector<cv::Rect> rois = {cv::Rect(0, 0, image.cols, image.rows), crop_roi};
+
+  // Fill the two batch slots from the single source image in one preprocessing call.
+  if (use_gpu_preprocess_) {
+    multiScalePreprocessGpu(image, rois);
+  } else {
+    multiScalePreprocess(image, rois);
+  }
+
+  // Decode helper images: element 0 carries the whole-image size, element 1 the crop size. This
+  // lets the shared decode map each batch element back to its own coordinate space.
+  std::vector<cv::Mat> decode_images = {image, image(crop_roi).clone()};
+  ObjectArrays batched_objects;
+  std::vector<cv::Mat> batched_masks(decode_images.size());
+  std::vector<cv::Mat> batched_color_masks(decode_images.size());
+
+  const bool success =
+    needs_output_decode_
+      ? feedforwardAndDecode(decode_images, batched_objects, batched_masks, batched_color_masks)
+      : feedforward(decode_images, batched_objects);
+  if (!success) {
+    return false;
+  }
+
+  // Merge the trusted (non border-touching) crop detections into the whole-image detections.
+  ObjectArray merged = batched_objects.at(0);
+  mergeCropObjects(merged, batched_objects.at(1), cv::Point(x0, y0), crop_width, crop_height);
+
+  objects.clear();
+  objects.emplace_back(std::move(merged));
+
+  // canRunCenterCrop() guarantees multitask_ == 0 here, so no segmentation mask is produced;
+  // silence unused-parameter warnings while keeping the signature aligned with doInference().
+  (void)masks;
+  (void)color_masks;
+  return true;
+}
+
+void TrtYoloX::mergeCropObjects(
+  ObjectArray & base_objects, const ObjectArray & crop_objects, const cv::Point & crop_origin,
+  int crop_width, int crop_height) const
+{
+  // Keep only crop detections that are fully contained inside the crop (not touching any border
+  // within the configured margin), then shift them into original image coordinates. Border-touching
+  // detections are discarded because they may be truncated by the crop.
+  ObjectArray trusted_objects;
+  trusted_objects.reserve(crop_objects.size());
+  for (const auto & object : crop_objects) {
+    const int left = object.x_offset;
+    const int top = object.y_offset;
+    const int right = object.x_offset + object.width;
+    const int bottom = object.y_offset + object.height;
+    if (
+      left <= center_crop_edge_margin_ || top <= center_crop_edge_margin_ ||
+      right >= crop_width - center_crop_edge_margin_ ||
+      bottom >= crop_height - center_crop_edge_margin_) {
+      continue;
+    }
+    Object shifted = object;
+    shifted.x_offset = object.x_offset + crop_origin.x;
+    shifted.y_offset = object.y_offset + crop_origin.y;
+    trusted_objects.emplace_back(shifted);
+  }
+  if (trusted_objects.empty()) {
+    return;
+  }
+
+  // The crop detections are trusted over the resized ones: drop any resized detection that
+  // sufficiently overlaps a trusted crop detection, then append all trusted crop detections.
+  ObjectArray merged;
+  merged.reserve(base_objects.size() + trusted_objects.size());
+  for (const auto & base : base_objects) {
+    const float base_area = static_cast<float>(base.width) * static_cast<float>(base.height);
+    bool overridden = false;
+    for (const auto & trusted : trusted_objects) {
+      const float inter_area = intersectionArea(base, trusted);
+      if (inter_area <= 0.0f) {
+        continue;
+      }
+      const float trusted_area =
+        static_cast<float>(trusted.width) * static_cast<float>(trusted.height);
+      const float union_area = base_area + trusted_area - inter_area;
+      if (union_area > 0.0f && inter_area / union_area > center_crop_overlap_iou_threshold_) {
+        overridden = true;
+        break;
+      }
+    }
+    if (!overridden) {
+      merged.emplace_back(base);
+    }
+  }
+  merged.insert(merged.end(), trusted_objects.begin(), trusted_objects.end());
+  base_objects = std::move(merged);
 }
 
 // This method is assumed to be called when specified YOLOX model contains

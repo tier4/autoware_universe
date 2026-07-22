@@ -60,6 +60,15 @@ TrtYoloXNode::TrtYoloXNode(const rclcpp::NodeOptions & node_options)
     this->declare_parameter<std::string>("calibration_image_list_path");
   const uint8_t gpu_id = this->declare_parameter<uint8_t>("gpu_id");
 
+  // Native-resolution center-crop inference: additionally infer on a model-input-sized center crop
+  // of the original image and override the resized-inference results with its trusted detections.
+  const bool enable_center_crop_inference =
+    this->declare_parameter<bool>("enable_center_crop_inference", false);
+  const int center_crop_edge_margin =
+    this->declare_parameter<int>("center_crop_edge_margin", 8);
+  const float center_crop_overlap_iou_threshold =
+    static_cast<float>(this->declare_parameter<double>("center_crop_overlap_iou_threshold", 0.5));
+
   const std::string label_path = this->declare_parameter<std::string>("label_path");
   const std::string semseg_color_map_path =
     this->declare_parameter<std::string>("semantic_segmentation_color_map_path", "");
@@ -117,7 +126,8 @@ TrtYoloXNode::TrtYoloXNode(const rclcpp::NodeOptions & node_options)
 
   trt_yolox_ = std::make_unique<tensorrt_yolox::TrtYoloX>(
     trt_config, roi_class_name_list_.size(), score_threshold, nms_threshold, preprocess_on_gpu,
-    gpu_id, calibration_image_list_path, norm_factor, cache_dir, calib_config);
+    gpu_id, calibration_image_list_path, norm_factor, cache_dir, calib_config,
+    enable_center_crop_inference, center_crop_edge_margin, center_crop_overlap_iou_threshold);
 
   if (!trt_yolox_->isGPUInitialized()) {
     RCLCPP_ERROR(this->get_logger(), "GPU %d does not exist or is not suitable.", gpu_id);
