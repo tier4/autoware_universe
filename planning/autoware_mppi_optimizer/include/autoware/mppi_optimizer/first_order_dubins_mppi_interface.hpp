@@ -118,6 +118,14 @@ public:
     bool ignore_obstacles, bool ignore_drivable_area, bool force_cold_start_each_step);
 
   /**
+   * @brief Copy per-rollout raw costs and normalized importance weights from the last
+   *        optimizeTrajectory / computeStep call (for offline retune histograms).
+   * @param stride Keep every N-th sample (1 = all rollouts). Use >1 to limit CSV size.
+   */
+  bool copySampleCostDistribution(
+    std::vector<float> & raw_costs, std::vector<float> & normalized_weights, int stride = 1) const;
+
+  /**
    * @brief Run one MPPI control step and propagate the vehicle state forward.
    * @param state Current ego state (updated in place).
    * @param arc_length Current arc length along the reference path (updated in place).

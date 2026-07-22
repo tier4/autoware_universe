@@ -63,6 +63,7 @@ using autoware::mppi_optimizer::listMppiDebugFrameIds;
 using autoware::mppi_optimizer::loadMppiDebugEgoCsv;
 using autoware::mppi_optimizer::loadMppiDebugKeyValueCsv;
 using autoware::mppi_optimizer::loadMppiDebugTrajectoryCsv;
+using autoware::mppi_optimizer::writeMppiDebugCostsCsv;
 using autoware::mppi_optimizer::writeMppiDebugTrajectoryCsv;
 using autoware_planning_msgs::msg::Trajectory;
 using nav_msgs::msg::Odometry;
@@ -521,6 +522,22 @@ int run(int argc, char ** argv)
       std::cerr << "Failed to write " << opt_path << "\n";
       return 1;
     }
+
+    // Stride keeps the CSV / histogram manageable (~4k samples from 32k rollouts).
+    std::vector<float> raw_costs;
+    std::vector<float> normalized_weights;
+    constexpr int kCostVizStride = 8;
+    if (frame_mppi.copySampleCostDistribution(raw_costs, normalized_weights, kCostVizStride)) {
+      const std::string costs_path = out_dir + "/" + tag + "_costs.csv";
+      if (!writeMppiDebugCostsCsv(costs_path, raw_costs, normalized_weights)) {
+        std::cerr << "Failed to write " << costs_path << "\n";
+        return 1;
+      }
+    } else {
+      std::cerr << "WARNING: could not copy sample cost distribution for frame " << frame_id
+                << "\n";
+    }
+
     if (copy_reference) {
       const std::string out_ref = out_dir + "/" + tag + "_reference.csv";
       if (!writeMppiDebugTrajectoryCsv(out_ref, reference)) {

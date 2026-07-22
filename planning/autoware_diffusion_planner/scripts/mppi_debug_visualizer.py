@@ -29,6 +29,10 @@ Trajectory CSV columns:
 Ego CSV columns:
   x,y,z,yaw,v,accel,steer
 
+Retune also writes <out_dir>/NNNNNN_costs.csv:
+  rollout_index,raw_cost,normalized_weight
+(used for cost / weight distribution histograms in --enable-retune mode).
+
 Offline retune mode (--enable-retune) overlays a third retuned trajectory and lets you
 re-run mppi_offline_retune with editable cost weights.
 """
@@ -36,6 +40,7 @@ re-run mppi_offline_retune with editable cost weights.
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import csv
 from dataclasses import dataclass
 from dataclasses import field
@@ -47,6 +52,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from typing import Deque
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -68,6 +74,9 @@ from rclpy.qos import QoSProfile
 from rclpy.qos import ReliabilityPolicy
 from rclpy.utilities import remove_ros_args
 
+
+# Rolling window for live measured tire-angle history (replaces a constant axhline).
+MEASURED_STEER_HISTORY_S = 8.0
 
 DEFAULT_PARAMS: Dict[str, float] = {
     "lambda": 3000.0,
@@ -217,6 +226,11 @@ class MppiDebugFrame:
     optimized_steer_rate: List[float] = field(default_factory=list)
     retuned_steer_rate: List[float] = field(default_factory=list)
     measured_steer: Optional[float] = None
+    # Live measured δ history: parallel stamp [s] and tire angle [rad] over MEASURED_STEER_HISTORY_S.
+    measured_steer_times: List[float] = field(default_factory=list)
+    measured_steer_history: List[float] = field(default_factory=list)
+    raw_costs: List[float] = field(default_factory=list)
+    normalized_weights: List[float] = field(default_factory=list)
     stamp_text: str = ""
     metrics_text: str = ""
 
@@ -236,6 +250,27 @@ def load_trajectory_csv(path: Path) -> LoadedTrajectory:
             traj.steer.append(float(row["steer"]))
             traj.steer_rate.append(float(row["steer_rate"]))
     return traj
+
+
+@dataclass
+class LoadedCostDistribution:
+    raw_costs: List[float] = field(default_factory=list)
+    normalized_weights: List[float] = field(default_factory=list)
+
+
+def load_costs_csv(path: Path) -> LoadedCostDistribution:
+    dist = LoadedCostDistribution()
+    if not path.is_file():
+        return dist
+    with path.open(newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                dist.raw_costs.append(float(row["raw_cost"]))
+                dist.normalized_weights.append(float(row["normalized_weight"]))
+            except (KeyError, ValueError, TypeError):
+                continue
+    return dist
 
 
 def discover_log_frames(log_dir: Path) -> List[int]:
@@ -279,6 +314,7 @@ def frame_from_loaded(
     optimized: LoadedTrajectory,
     stamp_text: str,
     retuned: Optional[LoadedTrajectory] = None,
+    costs: Optional[LoadedCostDistribution] = None,
 ) -> MppiDebugFrame:
     frame = MppiDebugFrame(
         reference_xy=(reference.x, reference.y) if reference.x else None,
@@ -299,6 +335,8 @@ def frame_from_loaded(
         reference_steer_rate=reference.steer_rate,
         optimized_steer_rate=optimized.steer_rate,
         retuned_steer_rate=retuned.steer_rate if retuned else [],
+        raw_costs=costs.raw_costs if costs else [],
+        normalized_weights=costs.normalized_weights if costs else [],
         stamp_text=stamp_text,
     )
     orig_pos = max_pos_err(frame.reference_xy, frame.optimized_xy)
@@ -308,12 +346,25 @@ def frame_from_loaded(
         ret_pos = max_pos_err(frame.reference_xy, frame.retuned_xy)
         ret_vel = max_vel_err(frame.reference_vel, frame.retuned_vel)
         parts.append(f"retune max|pos|={ret_pos:.3f}m max|v|={ret_vel:.3f}m/s")
+    if frame.raw_costs:
+        finite_costs = [c for c in frame.raw_costs if abs(c) < 1.0e20]
+        if finite_costs:
+            parts.append(
+                f"cost med={sorted(finite_costs)[len(finite_costs) // 2]:.1f} "
+                f"min={min(finite_costs):.1f}"
+            )
+    if frame.normalized_weights:
+        parts.append(f"w_max={max(frame.normalized_weights):.4f}")
     frame.metrics_text = "  |  ".join(parts)
     return frame
 
 
 def draw_frame(axes, frame: MppiDebugFrame) -> None:
-    ax_xy, ax_heading, ax_vel, ax_accel, ax_steer, ax_steer_rate = axes
+    if len(axes) >= 8:
+        ax_xy, ax_heading, ax_vel, ax_accel, ax_steer, ax_steer_rate, ax_cost, ax_weight = axes
+    else:
+        ax_xy, ax_heading, ax_vel, ax_accel, ax_steer, ax_steer_rate = axes
+        ax_cost = ax_weight = None
 
     lengths = [len(frame.reference_vel), len(frame.optimized_vel)]
     if frame.retuned_vel:
@@ -446,6 +497,15 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             )
         ax_accel.legend(loc="best")
 
+    # Drop previous measured-history twin before clear (twins survive Axes.clear()).
+    prev_twin = getattr(ax_steer, "_measured_steer_twin", None)
+    if prev_twin is not None:
+        try:
+            prev_twin.remove()
+        except (AttributeError, ValueError):
+            pass
+        ax_steer._measured_steer_twin = None
+
     ax_steer.clear()
     ax_steer.set_title("Steering")
     ax_steer.set_xlabel("point index")
@@ -475,15 +535,30 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
                 linewidth=2.2,
                 label="MPPI retuned",
             )
-    if frame.measured_steer is not None:
-        ax_steer.axhline(
-            frame.measured_steer,
+    has_measured_history = (
+        len(frame.measured_steer_times) > 0
+        and len(frame.measured_steer_times) == len(frame.measured_steer_history)
+    )
+    if has_measured_history:
+        t_end = frame.measured_steer_times[-1]
+        t_rel = [t - t_end for t in frame.measured_steer_times]
+        latest = frame.measured_steer_history[-1]
+        # Time axis on top so trajectory steers can keep point-index on the bottom.
+        ax_meas = ax_steer.twiny()
+        ax_steer._measured_steer_twin = ax_meas
+        ax_meas.plot(
+            t_rel,
+            frame.measured_steer_history,
             color="tab:blue",
-            linestyle=":",
             linewidth=1.8,
-            label=f"measured δ={frame.measured_steer:.3f}",
+            label=f"measured δ (last {MEASURED_STEER_HISTORY_S:.0f}s, now={latest:.3f})",
         )
-    if n_compare > 0 or frame.measured_steer is not None:
+        ax_meas.set_xlim(-MEASURED_STEER_HISTORY_S, 0.0)
+        ax_meas.set_xlabel("measured time [s] (0 = now)")
+        handles_b, labels_b = ax_steer.get_legend_handles_labels()
+        handles_t, labels_t = ax_meas.get_legend_handles_labels()
+        ax_steer.legend(handles_b + handles_t, labels_b + labels_t, loc="best")
+    elif n_compare > 0:
         ax_steer.legend(loc="best")
 
     ax_steer_rate.clear()
@@ -515,28 +590,74 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
     if plotted:
         ax_steer_rate.legend(loc="best")
 
+    if ax_cost is not None:
+        ax_cost.clear()
+        ax_cost.set_title("Retune cost distribution")
+        ax_cost.set_xlabel("raw cost")
+        ax_cost.set_ylabel("count")
+        ax_cost.grid(True, alpha=0.3)
+        finite_costs = [c for c in frame.raw_costs if abs(c) < 1.0e20]
+        if finite_costs:
+            ax_cost.hist(finite_costs, bins=80, color="tab:purple", alpha=0.85)
+            ax_cost.axvline(
+                min(finite_costs), color="tab:green", linestyle="--", linewidth=1.5, label="min"
+            )
+            ax_cost.legend(loc="best", fontsize=8)
+        else:
+            ax_cost.text(0.5, 0.5, "Retune to populate", ha="center", va="center", transform=ax_cost.transAxes)
+
+    if ax_weight is not None:
+        ax_weight.clear()
+        ax_weight.set_title("Retune weight distribution")
+        ax_weight.set_xlabel("normalized weight")
+        ax_weight.set_ylabel("count")
+        ax_weight.grid(True, alpha=0.3)
+        if frame.normalized_weights:
+            # Log-x helps when mass concentrates near zero.
+            positive = [w for w in frame.normalized_weights if w > 0.0]
+            if positive:
+                ax_weight.hist(positive, bins=80, color="tab:orange", alpha=0.85, log=True)
+                ax_weight.axvline(
+                    max(positive), color="tab:red", linestyle="--", linewidth=1.5, label="max"
+                )
+                ax_weight.legend(loc="best", fontsize=8)
+            else:
+                ax_weight.text(0.5, 0.5, "All weights zero", ha="center", va="center", transform=ax_weight.transAxes)
+        else:
+            ax_weight.text(0.5, 0.5, "Retune to populate", ha="center", va="center", transform=ax_weight.transAxes)
+
 
 def create_figure(*, with_retune_panel: bool = False):
     if with_retune_panel:
-        fig = plt.figure(figsize=(17, 12))
+        fig = plt.figure(figsize=(17, 14))
         gs = gridspec.GridSpec(
-            5, 3, figure=fig, width_ratios=[1.25, 1.0, 0.78], wspace=0.30, hspace=0.42
+            6,
+            3,
+            figure=fig,
+            width_ratios=[1.25, 1.0, 0.78],
+            height_ratios=[1.0, 1.0, 1.0, 1.0, 0.85, 0.85],
+            wspace=0.30,
+            hspace=0.45,
         )
-        ax_xy = fig.add_subplot(gs[:, 0])
+        ax_xy = fig.add_subplot(gs[0:4, 0])
+        ax_cost = fig.add_subplot(gs[4, 0])
+        ax_weight = fig.add_subplot(gs[5, 0])
         ax_heading = fig.add_subplot(gs[0, 1])
         ax_vel = fig.add_subplot(gs[1, 1])
         ax_accel = fig.add_subplot(gs[2, 1])
         ax_steer = fig.add_subplot(gs[3, 1])
-        ax_steer_rate = fig.add_subplot(gs[4, 1])
-    else:
-        fig = plt.figure(figsize=(14, 12))
-        gs = gridspec.GridSpec(5, 2, figure=fig, width_ratios=[1.2, 1.0], wspace=0.28, hspace=0.42)
-        ax_xy = fig.add_subplot(gs[:, 0])
-        ax_heading = fig.add_subplot(gs[0, 1])
-        ax_vel = fig.add_subplot(gs[1, 1])
-        ax_accel = fig.add_subplot(gs[2, 1])
-        ax_steer = fig.add_subplot(gs[3, 1])
-        ax_steer_rate = fig.add_subplot(gs[4, 1])
+        ax_steer_rate = fig.add_subplot(gs[4:, 1])
+        fig.canvas.manager.set_window_title("Diffusion Planner MPPI Debug Visualizer")
+        return fig, (ax_xy, ax_heading, ax_vel, ax_accel, ax_steer, ax_steer_rate, ax_cost, ax_weight)
+
+    fig = plt.figure(figsize=(14, 12))
+    gs = gridspec.GridSpec(5, 2, figure=fig, width_ratios=[1.2, 1.0], wspace=0.28, hspace=0.42)
+    ax_xy = fig.add_subplot(gs[:, 0])
+    ax_heading = fig.add_subplot(gs[0, 1])
+    ax_vel = fig.add_subplot(gs[1, 1])
+    ax_accel = fig.add_subplot(gs[2, 1])
+    ax_steer = fig.add_subplot(gs[3, 1])
+    ax_steer_rate = fig.add_subplot(gs[4, 1])
     fig.canvas.manager.set_window_title("Diffusion Planner MPPI Debug Visualizer")
     return fig, (ax_xy, ax_heading, ax_vel, ax_accel, ax_steer, ax_steer_rate)
 
@@ -895,14 +1016,20 @@ class OfflineLogVisualizer:
         reference = load_trajectory_csv(self._log_dir / f"{tag}_reference.csv")
         optimized = load_trajectory_csv(self._log_dir / f"{tag}_optimized.csv")
         retuned = None
+        costs = None
         if self._out_dir is not None:
             retuned = load_trajectory_csv(self._out_dir / f"{tag}_optimized.csv")
             if not retuned.x:
                 retuned = None
+            costs = load_costs_csv(self._out_dir / f"{tag}_costs.csv")
+            if not costs.raw_costs:
+                costs = None
         stamp = f"frame: {frame_id} / {self._frame_ids[-1]}"
         if self._enable_retune:
             stamp = f"{stamp}   |   {self._status}"
-        return frame_from_loaded(reference, optimized, stamp_text=stamp, retuned=retuned)
+        return frame_from_loaded(
+            reference, optimized, stamp_text=stamp, retuned=retuned, costs=costs
+        )
 
     def _show_current(self) -> None:
         frame_id = self._frame_ids[self._index]

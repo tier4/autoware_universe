@@ -71,6 +71,25 @@ inline bool writeMppiDebugTrajectoryCsv(
   return true;
 }
 
+inline bool writeMppiDebugCostsCsv(
+  const std::string & path, const std::vector<float> & raw_costs,
+  const std::vector<float> & normalized_weights)
+{
+  if (raw_costs.size() != normalized_weights.size()) {
+    return false;
+  }
+  std::ofstream out(path);
+  if (!out) {
+    return false;
+  }
+  out << "rollout_index,raw_cost,normalized_weight\n";
+  out << std::setprecision(9) << std::fixed;
+  for (size_t i = 0; i < raw_costs.size(); ++i) {
+    out << i << "," << raw_costs[i] << "," << normalized_weights[i] << "\n";
+  }
+  return true;
+}
+
 inline bool loadMppiDebugTrajectoryCsv(
   const std::string & path, autoware_planning_msgs::msg::Trajectory & trajectory)
 {

@@ -445,10 +445,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     // Steer exploration scales with wheelbase: larger vehicles need larger delta-steer to change
     // yaw.
     constexpr float kReferenceWheelBase = 0.32F;
-    constexpr float kReferenceSteerStd = 0.03F;
-    const float steer_std = std::clamp(
-      kReferenceSteerStd * (vehicle_params.wheel_base / kReferenceWheelBase), kReferenceSteerStd,
-      0.12F);
+    constexpr float kReferenceSteerStd = 0.001F;
+    const float steer_std = kReferenceSteerStd * (vehicle_params.wheel_base / kReferenceWheelBase);
 
     sp.std_dev[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD)] =
       steer_std;
@@ -774,6 +772,37 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
     force_cold_start_each_step ? "true" : "false");
 }
 
+bool FirstOrderDubinsMppiInterface::copySampleCostDistribution(
+  std::vector<float> & raw_costs, std::vector<float> & normalized_weights, const int stride) const
+{
+  raw_costs.clear();
+  normalized_weights.clear();
+  if (!impl_ || !impl_->controller || !impl_->initialized) {
+    return false;
+  }
+
+  // IMPORTANT: take by value (not const-ref-to-temporary). nvcc has historically broken
+  // lifetime extension for large Eigen return temporaries, which caused heap corruption
+  // (munmap_chunk: invalid pointer) when reading getSampledCostSeq() via const auto&.
+  const Mppi::sampled_cost_traj importance = impl_->controller->getSampledCostSeq();
+  const float baseline = impl_->controller->getBaselineCost();
+  const float normalizer = impl_->controller->getNormalizerCost();
+  const float lambda = std::max(impl_->user_cost_params_.lambda, 1.0e-6F);
+  const int stride_n = std::max(1, stride);
+  const int num_rollouts = static_cast<int>(importance.size());
+  const int kept = (num_rollouts + stride_n - 1) / stride_n;
+  raw_costs.reserve(static_cast<size_t>(kept));
+  normalized_weights.reserve(static_cast<size_t>(kept));
+
+  for (int i = 0; i < num_rollouts; i += stride_n) {
+    const float w = importance(i);
+    normalized_weights.push_back((normalizer > 0.0F) ? (w / normalizer) : 0.0F);
+    raw_costs.push_back(
+      (w > 0.0F) ? (baseline - lambda * std::log(w)) : (baseline + 1.0e6F));
+  }
+  return !raw_costs.empty();
+}
+
 FirstOrderDubinsMppiControl FirstOrderDubinsMppiInterface::computeStep(
   FirstOrderDubinsMppiState & state, float & arc_length, float sim_time)
 {
@@ -914,7 +943,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     result.debug.reference_trajectory.header.stamp = odometry.header.stamp;
     result.debug.optimized_trajectory.header.stamp = odometry.header.stamp;
   }
-  // Rollout visualization disabled (CPU replay of top-K samples was ~80ms).
+  // Rollout XY visualization disabled (CPU replay of top-K samples was ~80ms).
   fillOptimalHorizonPoints(impl_->controller->getActualStateSeq(), result.debug.optimal_horizon);
   result.debug.baseline_cost = impl_->controller->getBaselineCost();
   impl_->cost.getEncodedRoadBorderPolylines(
