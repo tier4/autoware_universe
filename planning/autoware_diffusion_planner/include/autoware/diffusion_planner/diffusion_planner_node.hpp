@@ -16,6 +16,7 @@
 #define AUTOWARE__DIFFUSION_PLANNER__DIFFUSION_PLANNER_NODE_HPP_
 
 #include "autoware/diffusion_planner/diffusion_planner_core.hpp"
+#include "autoware/diffusion_planner/mppi_utils.hpp"
 #include "autoware/diffusion_planner/utils/planning_factor_utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
 #include "autoware/avoidance_target_detector/boundary.hpp"
@@ -283,6 +284,7 @@ private:
   std::unique_ptr<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface> mppi_optimizer_;
   std::shared_ptr<autoware::avoidance_target_detector::ExtendedRouteHandler> extended_route_handler_;
   autoware::avoidance_target_detector::PredictedObjectSelector object_selector_;
+  RoadBorderRtree road_border_rtree_;
   HADMapBin lanelet_map_msg_;
   LaneletRoute prev_route_;
 };

@@ -78,6 +78,7 @@ void record_section_time(
 {
   diagnostics.add_key_value(section_name, stop_watch.toc(section_name));
 }
+
 }  // namespace
 
 DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
@@ -627,7 +628,6 @@ void DiffusionPlanner::on_timer()
     autoware_utils_debug::ScopedTimeTrack mppi_st("mppi_optimizer", *time_keeper_);
     stop_watch_ptr_->tic("mppi_optimizer");
     if (!mppi_optimizer_ || prev_route_.header.stamp != core_->get_route()->header.stamp) {
-      RCLCPP_WARN(get_logger(), "/!\\ RESET MPPI");
       mppi_optimizer_ = std::make_unique<autoware::mppi_optimizer::FirstOrderDubinsMppiInterface>();
       mppi_optimizer_->setCostParams(
         autoware::mppi_optimizer::get_first_order_dubins_mppi_cost_params(*this));
@@ -637,6 +637,9 @@ void DiffusionPlanner::on_timer()
         autoware::mppi_optimizer::get_first_order_dubins_mppi_runtime_options(*this));
       prev_route_ = *core_->get_route();
       extended_route_handler_ = std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(lanelet_map_msg_, prev_route_);
+      extended_route_handler_->create_map();
+      const auto road_borders = extended_route_handler_->get_road_borders();
+      road_border_rtree_ = prepare_road_border_rtree(road_borders);
     }
 
     try {
@@ -649,8 +652,17 @@ void DiffusionPlanner::on_timer()
       const std::optional<SteeringReport> ego_steering =
         steering_status ? std::make_optional(*steering_status) : std::nullopt;
 
-      const auto road_borders = extended_route_handler_->get_road_borders();
       const auto drivable_area = extended_route_handler_->get_extended_route_bounds();
+      const auto avoidance_targets =
+        object_selector_.get_avoidance_targets(planner_output.predicted_objects, planner_output.trajectory, extended_route_handler_->get_extended_route_bounds());
+      const auto driving_along_targets =
+        object_selector_.get_driving_along_vehicles(planner_output.predicted_objects);
+
+      const auto margin = vehicle_info_.max_lateral_offset_m * 2.0 + 1.0;
+      const auto road_borders_subset =
+        get_road_border_subset(road_border_rtree_, planner_output.trajectory, margin);
+      pub_mppi_markers_->publish(generate_mppi_debug_markers(
+        road_borders_subset, drivable_area, avoidance_targets, driving_along_targets));
 
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
