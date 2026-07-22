@@ -366,8 +366,7 @@ void set_initial_engage_velocity(autoware::mppi_optimizer::Trajectory & trajecto
                                  return p.longitudinal_velocity_mps > engage_velocity;
                                }) != trajectory.points.end();
   if (
-    wants_to_move && trajectory.points[0].longitudinal_velocity_mps < 0.05 &&
-    trajectory.points[1].longitudinal_velocity_mps < 0.05) {
+    wants_to_move && trajectory.points[0].longitudinal_velocity_mps < 0.05) {
     trajectory.points[0].longitudinal_velocity_mps = engage_velocity;
     trajectory.points[1].longitudinal_velocity_mps = engage_velocity;
   }
