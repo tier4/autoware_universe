@@ -87,7 +87,7 @@ public:
    * @param input_trajectories Candidate trajectories to validate.
    * @param context Current world state snapshot.
    */
-  ValidationReports validate_trajectories(
+  TrajectoryValidatorReport validate_trajectories(
     const CandidateTrajectories & input_trajectories, const ValidatorContext & context);
 
 private:

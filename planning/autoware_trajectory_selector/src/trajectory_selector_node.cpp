@@ -232,13 +232,15 @@ void TrajectorySelectorNode::process_trajectories()
     return;
   }
 
-  auto validation_reports =
+  const auto validator_report =
     validator_ptr_->validate_trajectories(concatenated_trajectories, context_opt.value());
+  const auto & valid_trajectories = validator_report.valid_trajectories;
+  const auto & validation_reports = validator_report.validation_reports;
 
   pub_trajectories_->publish(concatenated_trajectories);
 
   const auto input_trajectories =
-    to_ranker_input_trajectories(concatenated_trajectories, validation_reports);
+    to_ranker_input_trajectories(valid_trajectories, validation_reports);
 
   if (!selector_params_.enable_ranker) return;
 
