@@ -18,6 +18,7 @@
 #include "autoware/diffusion_planner/conversion/lanelet.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -33,7 +34,7 @@ inline constexpr int64_t MAX_NUM_AGENTS = MAX_NUM_NEIGHBORS + 1;  // Including e
 inline constexpr int64_t HIDDEN_DIM = 256;
 inline constexpr int64_t ENCODING_TOKEN_NUM =
   MAX_NUM_AGENTS + NUM_STATIC_OBJECTS + NUM_SEGMENTS_IN_LANE + NUM_SEGMENTS_IN_ROUTE +
-  NUM_POLYGONS + NUM_LINE_STRINGS + 3;  // goal_pose, ego_shape, turn_indicator
+  NUM_POLYGONS + NUM_LINE_STRINGS + 2;  // goal_pose, ego_shape
 inline constexpr int64_t POINTS_PER_SEGMENT = 20;
 inline constexpr int64_t POINTS_PER_POLYGON = 40;
 inline constexpr int64_t POINTS_PER_LINE_STRING = 20;
@@ -71,17 +72,52 @@ inline constexpr int64_t OUTPUT_T = 80;                       // Output timestam
 inline constexpr int64_t POSE_DIM = 4;                        // x, y, cos(yaw), sin(yaw)
 inline constexpr std::array<int64_t, 4> OUTPUT_SHAPE = {1, MAX_NUM_AGENTS, OUTPUT_T, POSE_DIM};
 
-inline constexpr int64_t TURN_INDICATOR_OUTPUT_NONE = 0;
-inline constexpr int64_t TURN_INDICATOR_OUTPUT_DISABLE = 1;
-inline constexpr int64_t TURN_INDICATOR_OUTPUT_ENABLE_LEFT = 2;
-inline constexpr int64_t TURN_INDICATOR_OUTPUT_ENABLE_RIGHT = 3;
-inline constexpr int64_t TURN_INDICATOR_OUTPUT_KEEP = 4;
-inline constexpr int64_t TURN_INDICATOR_OUTPUT_DIM = 5;
+// The Python head predicts three dense classes:
+//   0 = Autoware DISABLE, 1 = ENABLE_LEFT, 2 = ENABLE_RIGHT.
+// The raw Autoware TurnIndicatorsReport values are 1/2/3 and are mapped to
+// this dense index space in the training code.  KEEP is not a model class;
+// command persistence is deployment-side logic.
+inline constexpr int64_t TURN_INDICATOR_OUTPUT_DISABLE = 0;
+inline constexpr int64_t TURN_INDICATOR_OUTPUT_ENABLE_LEFT = 1;
+inline constexpr int64_t TURN_INDICATOR_OUTPUT_ENABLE_RIGHT = 2;
+inline constexpr int64_t TURN_INDICATOR_OUTPUT_DIM = 3;
 inline constexpr std::array<int64_t, 2> TURN_INDICATOR_LOGIT_SHAPE = {1, TURN_INDICATOR_OUTPUT_DIM};
+inline constexpr std::array<int64_t, 2> GLOBAL_ROUTE_CONDITION_SHAPE = {1, HIDDEN_DIM};
 
 inline constexpr std::array<int64_t, 4> SAMPLED_TRAJECTORIES_SHAPE = {
   1, MAX_NUM_AGENTS, OUTPUT_T + 1, POSE_DIM};
+
+// -----------------------------------------------------------------------------
+// Runtime-adaptive prediction dimensions.
+//
+// The number of agents the model *predicts* (ego + predicted neighbors) and the
+// length of the `sampled_trajectories` input depend on the trained model:
+//   - full model      : predicted_neighbor_num > 0  -> num_prediction_agents = 321,
+//                        legacy action head          -> sampled_trajectory_len = OUTPUT_T + 1
+//   - ego-only model   : predicted_neighbor_num == 0 -> num_prediction_agents = 1,
+//                        temporal ego decoder         -> sampled_trajectory_len = OUTPUT_T
+// These are set once at model load from args.json (see DiffusionPlannerCore::load_model);
+// the defaults preserve the original full-model behavior. The input *context*
+// (neighbor_agents_past = MAX_NUM_NEIGHBORS) is unaffected.
+inline int64_t g_num_prediction_agents = MAX_NUM_AGENTS;
+inline int64_t g_sampled_trajectory_len = OUTPUT_T + 1;
+
+inline std::array<int64_t, 4> output_shape()
+{
+  return {1, g_num_prediction_agents, OUTPUT_T, POSE_DIM};
+}
+inline std::array<int64_t, 4> sampled_trajectories_shape()
+{
+  return {1, g_num_prediction_agents, g_sampled_trajectory_len, POSE_DIM};
+}
+
 inline constexpr std::array<int64_t, 3> EGO_HISTORY_SHAPE = {1, INPUT_T + 1, POSE_DIM};
+// Keep extra runtime samples so that the fixed 0.1 s interpolation grid remains covered even
+// when a 10 Hz planner cycle arrives slightly earlier than the nominal period.  The model still
+// receives exactly EGO_HISTORY_SHAPE[1] samples; the additional entries are only interpolation
+// support and are discarded when the input tensor is built.
+inline constexpr std::size_t EGO_HISTORY_BUFFER_SIZE =
+  static_cast<std::size_t>(EGO_HISTORY_SHAPE[1] * 2);
 inline constexpr std::array<int64_t, 2> EGO_CURRENT_STATE_SHAPE = {1, 10};
 inline constexpr std::array<int64_t, 4> NEIGHBOR_SHAPE = {1, MAX_NUM_NEIGHBORS, INPUT_T + 1, 11};
 inline constexpr std::array<int64_t, 3> STATIC_OBJECTS_SHAPE = {1, NUM_STATIC_OBJECTS, 10};
@@ -101,7 +137,6 @@ inline constexpr std::array<int64_t, 4> LINE_STRINGS_SHAPE = {
   1, NUM_LINE_STRINGS, POINTS_PER_LINE_STRING, 2 + LINE_STRING_TYPE_NUM};
 inline constexpr std::array<int64_t, 2> GOAL_POSE_SHAPE = {1, POSE_DIM};
 inline constexpr std::array<int64_t, 2> EGO_SHAPE_SHAPE = {1, 3};
-inline constexpr std::array<int64_t, 2> TURN_INDICATORS_SHAPE = {1, INPUT_T + 1};
 inline constexpr std::array<int64_t, 2> DELAY_SHAPE = {1, 1};
 }  // namespace autoware::diffusion_planner
 #endif  // AUTOWARE__DIFFUSION_PLANNER__DIMENSIONS_HPP_

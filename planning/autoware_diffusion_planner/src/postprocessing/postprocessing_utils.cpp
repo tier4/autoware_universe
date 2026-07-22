@@ -49,7 +49,7 @@ float state_normalizer_value(
   if (values.size() == POSE_DIM) {
     return values[dim];
   }
-  if (values.size() >= static_cast<size_t>(MAX_NUM_AGENTS * POSE_DIM)) {
+  if (values.size() >= static_cast<size_t>(g_num_prediction_agents * POSE_DIM)) {
     return values[agent * POSE_DIM + dim];
   }
   throw std::runtime_error("Unsupported state normalizer shape.");
@@ -70,7 +70,8 @@ float state_normalizer_value(
  */
 Trajectory get_trajectory_from_poses(
   const std::vector<Eigen::Matrix4d> & poses, const double base_x, const double base_y,
-  const double base_z, const rclcpp::Time & stamp, const int64_t velocity_smoothing_window,
+  [[maybe_unused]] const double base_z, const rclcpp::Time & stamp,
+  const int64_t velocity_smoothing_window,
   const bool enable_force_stop, const double stopping_threshold);
 };  // namespace
 
@@ -83,34 +84,35 @@ std::vector<float> denormalize_prediction(
     throw std::runtime_error("State normalizer is empty.");
   }
 
-  const size_t output_trajectory_size = static_cast<size_t>(MAX_NUM_AGENTS) * OUTPUT_T * POSE_DIM;
-  const size_t solver_trajectory_size =
-    static_cast<size_t>(MAX_NUM_AGENTS) * (OUTPUT_T + 1) * POSE_DIM;
+  const int64_t num_agents = g_num_prediction_agents;
+  // Length of the sampled/solver trajectory that carries an explicit current-state slot.
+  // Only meaningful when it is strictly longer than the prediction horizon (legacy action head).
+  const int64_t solver_len = g_sampled_trajectory_len;
+  const size_t output_trajectory_size = static_cast<size_t>(num_agents) * OUTPUT_T * POSE_DIM;
+  const size_t solver_trajectory_size = static_cast<size_t>(num_agents) * solver_len * POSE_DIM;
 
-  const bool has_current_state =
-    !prediction.empty() && prediction.size() % solver_trajectory_size == 0;
+  const bool has_current_state = solver_len > OUTPUT_T && !prediction.empty() &&
+                                 prediction.size() % solver_trajectory_size == 0;
   if (
     prediction.empty() || (!has_current_state && prediction.size() % output_trajectory_size != 0)) {
     throw std::runtime_error("Unsupported prediction shape for state denormalization.");
   }
 
+  const int64_t src_len = has_current_state ? solver_len : OUTPUT_T;
   const int64_t batch_size = static_cast<int64_t>(
     prediction.size() / (has_current_state ? solver_trajectory_size : output_trajectory_size));
-  const int64_t output_t = keep_current_state && has_current_state ? OUTPUT_T + 1 : OUTPUT_T;
-  std::vector<float> denormalized(batch_size * MAX_NUM_AGENTS * output_t * POSE_DIM);
+  const int64_t output_t = keep_current_state && has_current_state ? solver_len : OUTPUT_T;
+  std::vector<float> denormalized(batch_size * num_agents * output_t * POSE_DIM);
 
   for (int64_t b = 0; b < batch_size; ++b) {
-    for (int64_t agent = 0; agent < MAX_NUM_AGENTS; ++agent) {
+    for (int64_t agent = 0; agent < num_agents; ++agent) {
       for (int64_t t = 0; t < output_t; ++t) {
         for (int64_t d = 0; d < POSE_DIM; ++d) {
           const int64_t src_t = has_current_state && !keep_current_state ? t + 1 : t;
-          const size_t src_idx = ((static_cast<size_t>(b) * MAX_NUM_AGENTS + agent) *
-                                    (has_current_state ? OUTPUT_T + 1 : OUTPUT_T) +
-                                  src_t) *
-                                   POSE_DIM +
-                                 d;
+          const size_t src_idx =
+            ((static_cast<size_t>(b) * num_agents + agent) * src_len + src_t) * POSE_DIM + d;
           const size_t dst_idx =
-            ((static_cast<size_t>(b) * MAX_NUM_AGENTS + agent) * output_t + t) * POSE_DIM + d;
+            ((static_cast<size_t>(b) * num_agents + agent) * output_t + t) * POSE_DIM + d;
           denormalized[dst_idx] =
             prediction[src_idx] * state_normalizer_value(state_std, agent, d) +
             state_normalizer_value(state_mean, agent, d);
@@ -128,8 +130,9 @@ Float32MultiArray create_denoising_steps_message(
   Float32MultiArray msg;
 
   const auto num_steps = denoising_timesteps.size();
-  const auto trajectory_points = static_cast<size_t>(OUTPUT_T + 1);
-  const auto trajectory_size = static_cast<size_t>(MAX_NUM_AGENTS) * trajectory_points * POSE_DIM;
+  const auto trajectory_points = static_cast<size_t>(g_sampled_trajectory_len);
+  const auto trajectory_size =
+    static_cast<size_t>(g_num_prediction_agents) * trajectory_points * POSE_DIM;
   if (num_steps == 0 || trajectory_size == 0 || denoising_predictions.empty()) {
     return msg;
   }
@@ -177,10 +180,11 @@ Float32MultiArray create_denoising_steps_message(
 std::vector<std::vector<std::vector<Eigen::Matrix4d>>> parse_predictions(
   const std::vector<float> & prediction, const Eigen::Matrix4d & transform_ego_to_map)
 {
-  const int64_t batch_size = prediction.size() / (MAX_NUM_AGENTS * OUTPUT_T * POSE_DIM);
+  const int64_t num_agents = g_num_prediction_agents;
+  const int64_t batch_size = prediction.size() / (num_agents * OUTPUT_T * POSE_DIM);
 
   // Ensure prediction has enough data
-  const size_t required_size = batch_size * MAX_NUM_AGENTS * OUTPUT_T * POSE_DIM;
+  const size_t required_size = batch_size * num_agents * OUTPUT_T * POSE_DIM;
   if (prediction.size() < required_size) {
     throw std::runtime_error(
       "Prediction vector size (" + std::to_string(prediction.size()) +
@@ -191,13 +195,13 @@ std::vector<std::vector<std::vector<Eigen::Matrix4d>>> parse_predictions(
   std::vector<std::vector<std::vector<Eigen::Matrix4d>>> parsed_predictions(
     batch_size,
     std::vector<std::vector<Eigen::Matrix4d>>(
-      MAX_NUM_AGENTS, std::vector<Eigen::Matrix4d>(OUTPUT_T, Eigen::Matrix4d::Identity())));
+      num_agents, std::vector<Eigen::Matrix4d>(OUTPUT_T, Eigen::Matrix4d::Identity())));
 
   for (int64_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
-    for (int64_t agent_idx = 0; agent_idx < MAX_NUM_AGENTS; ++agent_idx) {
+    for (int64_t agent_idx = 0; agent_idx < num_agents; ++agent_idx) {
       for (int64_t time_idx = 0; time_idx < OUTPUT_T; ++time_idx) {
         const int64_t pred_base_idx =
-          (batch_idx * MAX_NUM_AGENTS * OUTPUT_T + agent_idx * OUTPUT_T + time_idx) * POSE_DIM;
+          (batch_idx * num_agents * OUTPUT_T + agent_idx * OUTPUT_T + time_idx) * POSE_DIM;
 
         const double x = static_cast<double>(prediction[pred_base_idx + 0]);
         const double y = static_cast<double>(prediction[pred_base_idx + 1]);
@@ -245,8 +249,13 @@ PredictedObjects create_predicted_objects(
   constexpr double time_step{0.1};
 
   // ego_centric_agent_data contains neighbor history information ordered by distance.
+  // Ego-only models (g_num_prediction_agents == 1) predict no neighbors, so this loop is empty.
+  const int64_t num_predicted_neighbors = g_num_prediction_agents - 1;
   for (int64_t neighbor_id = 0; neighbor_id < MAX_NUM_NEIGHBORS; ++neighbor_id) {
     if (static_cast<size_t>(neighbor_id) >= ego_centric_histories.size()) {
+      break;
+    }
+    if (neighbor_id >= num_predicted_neighbors) {
       break;
     }
 
@@ -322,6 +331,30 @@ Trajectory create_ego_trajectory(
     stopping_threshold);
 }
 
+void prepend_current_ego_state(
+  Trajectory & trajectory, const geometry_msgs::msg::Pose & pose,
+  const double longitudinal_velocity_mps, const double lateral_velocity_mps,
+  const double acceleration_mps2, const double heading_rate_rps)
+{
+  if (trajectory.points.empty()) {
+    return;
+  }
+
+  constexpr double time_epsilon_s = 1.0e-6;
+  if (rclcpp::Duration(trajectory.points.front().time_from_start).seconds() <= time_epsilon_s) {
+    return;
+  }
+
+  TrajectoryPoint current;
+  current.pose = pose;
+  current.longitudinal_velocity_mps = static_cast<float>(longitudinal_velocity_mps);
+  current.lateral_velocity_mps = static_cast<float>(lateral_velocity_mps);
+  current.acceleration_mps2 = static_cast<float>(acceleration_mps2);
+  current.heading_rate_rps = static_cast<float>(heading_rate_rps);
+  // time_from_start is value-initialized to exactly zero.
+  trajectory.points.insert(trajectory.points.begin(), current);
+}
+
 int64_t count_valid_elements(
   const std::vector<float> & data, int64_t len, int64_t dim2, int64_t dim3, int64_t batch_idx)
 {
@@ -361,7 +394,8 @@ namespace
 {
 Trajectory get_trajectory_from_poses(
   const std::vector<Eigen::Matrix4d> & poses, const double base_x, const double base_y,
-  const double base_z, const rclcpp::Time & stamp, const int64_t velocity_smoothing_window,
+  [[maybe_unused]] const double base_z, const rclcpp::Time & stamp,
+  const int64_t velocity_smoothing_window,
   const bool enable_force_stop, const double stopping_threshold)
 {
   Trajectory trajectory;
@@ -371,7 +405,6 @@ Trajectory get_trajectory_from_poses(
 
   double prev_x = base_x;
   double prev_y = base_y;
-  double prev_z = base_z;
 
   for (size_t i = 0; i < poses.size(); ++i) {
     const double curr_time = dt * static_cast<double>(i + 1);
@@ -392,13 +425,15 @@ Trajectory get_trajectory_from_poses(
     p.pose.orientation.z = quaternion.z();
     p.pose.orientation.w = quaternion.w();
 
+    // longitudinal_velocity_mps is a ground-plane trajectory speed.  Including dz makes a
+    // pitched road or map-frame height change look like extra forward speed and is especially
+    // undesirable for HDP, whose per-step displacement is defined in the ego x/y plane.
     const double distance = std::hypot(
-      p.pose.position.x - prev_x, p.pose.position.y - prev_y, p.pose.position.z - prev_z);
+      p.pose.position.x - prev_x, p.pose.position.y - prev_y);
     p.longitudinal_velocity_mps = static_cast<float>(distance / dt);
 
     prev_x = p.pose.position.x;
     prev_y = p.pose.position.y;
-    prev_z = p.pose.position.z;
     trajectory.points.push_back(p);
   }
 

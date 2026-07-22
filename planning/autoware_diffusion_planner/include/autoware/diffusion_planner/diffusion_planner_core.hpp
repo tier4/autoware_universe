@@ -128,12 +128,13 @@ struct DiffusionPlannerParams
   std::vector<double> temperature_list;
   int64_t velocity_smoothing_window;
   double stopping_threshold;
-  float turn_indicator_keep_offset;
   double turn_indicator_hold_duration;
   bool shift_x;
+  bool prepend_current_ego_state;
   int64_t delay_step;
   double line_string_max_step_m;
   bool use_time_interpolation;
+  double ego_history_reset_gap_s;
   int dpm_solver_steps;
   double start_guidance_reference_distance_m;
   double start_guidance_max_scale;
@@ -172,6 +173,8 @@ public:
    *         model version is incompatible, or if TensorRT engine setup fails.
    */
   void load_model();
+
+  [[nodiscard]] bool is_velocity_representation() const { return is_velocity_representation_; }
 
   /**
    * @brief Update parameters without losing internal state.
@@ -319,6 +322,10 @@ private:
 
   ObservationNormalization observation_normalization_;
   StateNormalization state_normalization_;
+  // HDP predicts per-step ego displacements (velocity representation), while legacy
+  // models predict waypoint positions.  The former must not use the legacy
+  // multi-point velocity smoothing in postprocessing.
+  bool is_velocity_representation_{false};
 
   // Inference engine
   std::unique_ptr<Inference> diffusion_planner_inference_{nullptr};
@@ -340,7 +347,6 @@ private:
 
   // History data
   std::deque<nav_msgs::msg::Odometry> ego_history_;
-  std::deque<TurnIndicatorsReport> turn_indicators_history_;
   AgentData agent_data_;
   std::map<lanelet::Id, TrafficSignalStamped> traffic_light_id_map_;
   std::vector<std::vector<std::vector<Eigen::Matrix4d>>> last_agent_poses_map_;

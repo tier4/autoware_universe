@@ -29,12 +29,15 @@
     temperature: [0.0]
     velocity_smoothing_window: 8
     stopping_threshold: 0.3
-    turn_indicator_keep_offset: -1.25
     turn_indicator_hold_duration: 1.0
     shift_x: false
+    # HDP predicts +0.1 s onward. Publish the measured t=0 ego state so temporal control can
+    # interpolate through planner latency instead of clamping to the first future point.
+    prepend_current_ego_state: true
     delay_step: 0
     line_string_max_step_m: 5.0
-    use_time_interpolation: false
+    use_time_interpolation: true
+    ego_history_reset_gap_s: 0.5
     use_mppi_optimizer: false
     shadow_mode: false
     planning_factor:

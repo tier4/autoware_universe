@@ -55,7 +55,8 @@ AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timest
   timestamp(timestamp),
   label(get_model_label(object)),
   object_id(autoware_utils_uuid::to_hex_string(object.object_id)),
-  original_info(object)
+  original_info(object),
+  is_valid(true)
 {
 }
 
@@ -83,7 +84,8 @@ AgentState::AgentState(const TrackedObject & object, const rclcpp::Time & timest
   };
 }
 
-void AgentData::update_histories(const TrackedObjects & objects)
+void AgentData::update_histories(
+  const TrackedObjects & objects, const bool include_polygon_objects)
 {
   const rclcpp::Time objects_timestamp(objects.header.stamp);
   std::vector<std::string> found_ids;
@@ -91,7 +93,9 @@ void AgentData::update_histories(const TrackedObjects & objects)
     if (get_model_label(object) == AgentLabel::IGNORE) {
       continue;
     }
-    if (object.shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
+    if (
+      !include_polygon_objects &&
+      object.shape.type == autoware_perception_msgs::msg::Shape::POLYGON) {
       continue;
     }
     const std::string object_id = autoware_utils_uuid::to_hex_string(object.object_id);

@@ -75,13 +75,15 @@ DiffusionPlannerCore::DiffusionPlannerCore(
   const DiffusionPlannerParams & params, const VehicleInfo & vehicle_info)
 : params_(params), vehicle_spec_(vehicle_info)
 {
+  // The no-signal HDP graph has 15 ONNX inputs (sampled trajectory plus 14
+  // scene/context inputs). The compatibility `delay` entry is also retained
+  // for the legacy waypoint path.
   sync_turn_indicator_managers();
 }
 
 void DiffusionPlannerCore::sync_turn_indicator_managers()
 {
   const auto hold_duration = rclcpp::Duration::from_seconds(params_.turn_indicator_hold_duration);
-  const float keep_offset = params_.turn_indicator_keep_offset;
   const size_t desired = static_cast<size_t>(std::max<int>(params_.batch_size, 1));
 
   if (turn_indicator_managers_.size() > desired) {
@@ -90,11 +92,10 @@ void DiffusionPlannerCore::sync_turn_indicator_managers()
       turn_indicator_managers_.end());
   }
   while (turn_indicator_managers_.size() < desired) {
-    turn_indicator_managers_.emplace_back(hold_duration, keep_offset);
+    turn_indicator_managers_.emplace_back(hold_duration);
   }
   for (auto & manager : turn_indicator_managers_) {
     manager.set_hold_duration(hold_duration);
-    manager.set_keep_offset(keep_offset);
   }
 }
 
@@ -102,7 +103,61 @@ void DiffusionPlannerCore::load_model()
 {
   last_agent_poses_map_.clear();
   diffusion_planner_inference_.reset();
+  is_velocity_representation_ = false;
   utils::check_weight_version(params_.args_path);
+  // Validate the Python/export contract before allocating a TensorRT engine.  In
+  // particular, ego_history_frames is an internal Python crop (21 in the current
+  // checkpoint); the external ego_agent_past tensor remains the 31-frame contract.
+  utils::validate_velocity_model_contract(params_.args_path);
+
+  // Configure runtime-adaptive prediction dimensions from the model's args.json.
+  // Full models predict ego + neighbors (num_prediction_agents == MAX_NUM_AGENTS); ego-only
+  // models (predicted_neighbor_num == 0) predict only the ego trajectory.
+  const auto prediction_dims =
+    utils::load_prediction_dims(params_.args_path, MAX_NUM_AGENTS, OUTPUT_T);
+  g_num_prediction_agents = prediction_dims.num_prediction_agents;
+  g_sampled_trajectory_len = prediction_dims.sampled_trajectory_len;
+  RCLCPP_INFO(
+    rclcpp::get_logger("diffusion_planner"),
+    "Prediction dimensions: num_prediction_agents=%ld, sampled_trajectory_len=%ld",
+    static_cast<long>(g_num_prediction_agents), static_cast<long>(g_sampled_trajectory_len));
+
+  // Velocity-latent (temporal ego) models integrate displacements into absolute waypoints inside
+  // the ONNX graph and expect a pure-noise latent with no current-state prefix. The multi_step
+  // path (external DPM solver, waypoint prefix constraint, waypoint-space start/stop/centerline
+  // guidance, waypoint-statistics denormalization, no cumsum) assumes the legacy waypoint latent
+  // and would silently emit invalid trajectories. Fail fast on that mismatch instead.
+  const bool is_velocity_latent = g_sampled_trajectory_len <= OUTPUT_T;
+  if (is_velocity_latent && params_.model_type != "single_step") {
+    throw std::runtime_error(
+      "Velocity-representation (temporal ego) weights require model.type='single_step'; got '" +
+      params_.model_type +
+      "'. The multi_step path assumes the legacy waypoint latent and is "
+      "incompatible with this model.");
+  }
+  is_velocity_representation_ = is_velocity_latent;
+
+  if (is_velocity_latent) {
+    // The Python converter builds all temporal inputs on a 10 Hz grid and the
+    // HDP output is a fixed 0.1 s displacement sequence.  Running the planner
+    // at another rate would change the meaning of the six-step neighbor window,
+    // the 21-frame ego window, and the published trajectory timestamps.
+    constexpr double expected_frequency_hz = 1.0 / constants::PREDICTION_TIME_STEP_S;
+    if (
+      !std::isfinite(params_.planning_frequency_hz) ||
+      std::abs(params_.planning_frequency_hz - expected_frequency_hz) > 1e-6) {
+      throw std::runtime_error(
+        "Velocity-representation HDP requires planning_frequency_hz=" +
+        std::to_string(expected_frequency_hz) + " to match the Python 10 Hz data grid; got " +
+        std::to_string(params_.planning_frequency_hz) + ".");
+    }
+    if (!params_.use_time_interpolation) {
+      throw std::runtime_error(
+        "Velocity-representation HDP requires use_time_interpolation=true so ego_agent_past "
+        "is sampled on the Python 0.1 s grid.");
+    }
+  }
+
   observation_normalization_ = utils::load_observation_normalization(params_.args_path);
   state_normalization_ = utils::load_state_normalization(params_.args_path);
 
@@ -249,7 +304,7 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   const std::shared_ptr<const TrackedObjects> & objects,
   const std::vector<std::shared_ptr<const autoware_perception_msgs::msg::TrafficLightGroupArray>> &
     traffic_signals,
-  const std::shared_ptr<const TurnIndicatorsReport> & turn_indicators,
+  [[maybe_unused]] const std::shared_ptr<const TurnIndicatorsReport> & turn_indicators,
   const LaneletRoute::ConstSharedPtr & route_ptr, const rclcpp::Time & current_time)
 {
   route_ptr_ = (!route_ptr_ || route_ptr) ? route_ptr : route_ptr_;
@@ -261,11 +316,33 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
     effective_objects = std::make_shared<TrackedObjects>(empty_object_list);
   }
 
-  if (!effective_objects || !ego_kinematic_state || !ego_acceleration || !turn_indicators) {
+  if (!effective_objects || !ego_kinematic_state || !ego_acceleration) {
     return std::nullopt;
   }
 
   if (!route_ptr_) {
+    return std::nullopt;
+  }
+
+  // The converter drops frames when any required temporal input is older than 500 ms.  The
+  // runtime subscribers use the Latest polling policy, so a non-null pointer can otherwise be an
+  // arbitrarily old message after a producer stalls.  Do not run the model on that stale scene;
+  // clear all temporal state so the next fresh frame starts a clean sequence.  The route is
+  // intentionally excluded because it is a persistent planning state rather than a frame-rate
+  // sensor input.
+  const auto input_age_s = [&current_time](const rclcpp::Time & message_time) {
+    return (current_time - message_time).seconds();
+  };
+  const double max_input_age_s = params_.ego_history_reset_gap_s;
+  const bool stale_objects =
+    !params_.ignore_neighbors && input_age_s(rclcpp::Time(objects->header.stamp)) > max_input_age_s;
+  const bool stale_temporal_input =
+    input_age_s(rclcpp::Time(ego_kinematic_state->header.stamp)) > max_input_age_s ||
+    input_age_s(rclcpp::Time(ego_acceleration->header.stamp)) > max_input_age_s || stale_objects;
+  if (stale_temporal_input) {
+    ego_history_.clear();
+    agent_data_.clear_histories();
+    last_agent_poses_map_.clear();
     return std::nullopt;
   }
 
@@ -280,20 +357,35 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(pose_base_link);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
 
+  // All temporal inputs are trained on a fixed 0.1 s grid.  A short planner
+  // overrun is recoverable by ego-pose interpolation, but a long timestamp
+  // discontinuity cannot be reconstructed and must not carry stale state
+  // across the gap.
+  const rclcpp::Time current_ego_time(ego_kinematic_state->header.stamp);
+  if (!ego_history_.empty()) {
+    const rclcpp::Time previous_ego_time(ego_history_.back().header.stamp);
+    const double ego_history_gap_s = (current_ego_time - previous_ego_time).seconds();
+    if (ego_history_gap_s < 0.0 || ego_history_gap_s > params_.ego_history_reset_gap_s) {
+      RCLCPP_WARN(
+        rclcpp::get_logger("diffusion_planner"),
+        "Resetting temporal histories after ego timestamp gap of %.3f s", ego_history_gap_s);
+      ego_history_.clear();
+      agent_data_.clear_histories();
+      last_agent_poses_map_.clear();
+    }
+  }
+
   // Update ego history
   ego_history_.push_back(kinematic_state);
-  if (ego_history_.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
+  if (ego_history_.size() > EGO_HISTORY_BUFFER_SIZE) {
     ego_history_.pop_front();
   }
 
-  // Update turn indicators history
-  turn_indicators_history_.push_back(*turn_indicators);
-  if (turn_indicators_history_.size() > static_cast<size_t>(TURN_INDICATORS_SHAPE[1])) {
-    turn_indicators_history_.pop_front();
-  }
-
   // Update neighbor agent data
-  agent_data_.update_histories(*effective_objects);
+  // The HDP training converter keeps non-UNKNOWN Polygon objects in the
+  // neighbor context.  Match that contract only for HDP; legacy waypoint
+  // deployments retain the historical Polygon filtering behavior.
+  agent_data_.update_histories(*effective_objects, is_velocity_representation_);
   const auto processed_neighbor_histories =
     agent_data_.transformed_and_trimmed_histories(map_to_ego_transform, NEIGHBOR_SHAPE[1]);
 
@@ -335,7 +427,13 @@ InputDataMap DiffusionPlannerCore::create_input_data(const FrameContext & frame_
   int64_t delay_step = 0;
   {
     const int64_t copy_steps = std::clamp<int64_t>(params_.delay_step, 0, OUTPUT_T / 2);
-    const bool has_previous_output = !last_agent_poses_map_.empty();
+    // The warm-start below seeds the sampled-trajectory prefix with the previous frame's poses
+    // encoded in waypoint-normalization statistics ((x-10)/20, ...). That is only valid for the
+    // legacy waypoint latent. Velocity-latent (temporal ego) models expect a pure-noise latent
+    // here (std=0.5 displacement space), so seeding it injects out-of-distribution values into
+    // step 0 every cycle. Restrict the warm-start to legacy models.
+    const bool is_legacy_waypoint_latent = g_sampled_trajectory_len > OUTPUT_T;
+    const bool has_previous_output = !last_agent_poses_map_.empty() && is_legacy_waypoint_latent;
 
     for (int64_t b = 0; b < params_.batch_size; b++) {
       std::vector<float> sampled_trajectories =
@@ -345,7 +443,7 @@ InputDataMap DiffusionPlannerCore::create_input_data(const FrameContext & frame_
         constexpr int64_t agent_idx = 0;
         delay_step = copy_steps;
         for (int64_t t = 0; t <= copy_steps; ++t) {
-          const size_t dst_base = agent_idx * (OUTPUT_T + 1) * POSE_DIM + (t)*POSE_DIM;
+          const size_t dst_base = agent_idx * g_sampled_trajectory_len * POSE_DIM + (t)*POSE_DIM;
           const Eigen::Matrix4d pose_ego =
             map_to_ego_transform * last_agent_poses_map_[b][agent_idx][t];
           const float shifted_x = static_cast<float>(pose_ego(0, 3));
@@ -472,19 +570,6 @@ InputDataMap DiffusionPlannerCore::create_input_data(const FrameContext & frame_
     input_data_map["ego_shape"] = utils::replicate_for_batch(single_ego_shape, params_.batch_size);
   }
 
-  // turn indicators
-  {
-    // copy from back to front, and use the front value for padding if not enough history
-    std::vector<float> single_turn_indicators(INPUT_T + 1, 0.0f);
-    for (int64_t t = 0; t < INPUT_T + 1; ++t) {
-      const int64_t index = std::max(
-        static_cast<int64_t>(turn_indicators_history_.size()) - 1 - t, static_cast<int64_t>(0));
-      single_turn_indicators[INPUT_T - t] = turn_indicators_history_[index].report;
-    }
-    input_data_map["turn_indicators"] =
-      utils::replicate_for_batch(single_turn_indicators, params_.batch_size);
-  }
-
   // control delay
   {
     const std::vector<float> single_delay = {static_cast<float>(delay_step)};
@@ -524,27 +609,64 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
     postprocess::parse_predictions(denormalized_predictions, frame_context.ego_to_map_transform);
   last_agent_poses_map_ = agent_poses;
 
-  const bool enable_force_stop =
+  // The legacy waypoint model needs the historical force-stop post-processing because its
+  // velocity is reconstructed from a spatial path and can keep moving after the first stop
+  // point. HDP is trained on a complete 10 Hz per-step displacement sequence. Its low-speed and
+  // restart decisions are therefore part of the learned temporal output; copying one pose over
+  // the remainder of the horizon after a single threshold crossing would discard that output and
+  // can turn a transient low-speed prediction into an artificial hard stop.
+  const bool ego_is_moving =
     frame_context.ego_kinematic_state.twist.twist.linear.x > std::numeric_limits<double>::epsilon();
+  const bool enable_force_stop = !is_velocity_representation_ && ego_is_moving;
 
   PlannerOutput output;
   output.denoising_steps = postprocess::create_denoising_steps_message(
     denormalized_denoising_predictions, inference_output.denoising_timesteps);
 
-  const int64_t prev_report = turn_indicators_history_.empty()
-                                ? TurnIndicatorsReport::DISABLE
-                                : turn_indicators_history_.back().report;
-
   // Trajectory and CandidateTrajectories
+  // Legacy waypoint models need the configured moving average because their
+  // velocity is reconstructed from independently predicted positions.  HDP's
+  // cumulative waypoint output is generated from per-step displacement actions;
+  // differencing it recovers those actions, so applying the legacy moving
+  // average would alter the learned velocity profile and add preview delay.
+  const int64_t trajectory_velocity_smoothing_window =
+    is_velocity_representation_ ? 1 : params_.velocity_smoothing_window;
+  // parse_predictions() is expressed around the shifted reference pose when shift_x is enabled.
+  // Use that same reference as the base for the first displacement; passing the unshifted
+  // base_link position would add the base_link-to-center offset to the first speed calculation.
+  const geometry_msgs::msg::Pose trajectory_base_pose =
+    params_.shift_x
+      ? utils::shift_x(
+          frame_context.ego_kinematic_state.pose.pose, vehicle_spec_.base_link_to_center)
+      : frame_context.ego_kinematic_state.pose.pose;
+  const auto expected_turn_indicator_logit_size =
+    static_cast<size_t>(std::max(params_.batch_size, 0)) *
+    static_cast<size_t>(TURN_INDICATOR_OUTPUT_DIM);
+  const bool turn_indicator_output_valid =
+    turn_indicator_logit.size() == expected_turn_indicator_logit_size;
+  if (!turn_indicator_output_valid) {
+    throw std::runtime_error(
+      "Turn-indicator output has " + std::to_string(turn_indicator_logit.size()) +
+      " values; expected " + std::to_string(expected_turn_indicator_logit_size) +
+      " for the final three-class model.");
+  }
   for (int i = 0; i < params_.batch_size; i++) {
     auto trajectory = postprocess::create_ego_trajectory(
-      agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose.position, i,
-      params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
+      agent_poses, timestamp, trajectory_base_pose.position, i,
+      trajectory_velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
 
     if (params_.shift_x) {
       for (auto & point : trajectory.points) {
         point.pose = utils::shift_x(point.pose, -vehicle_spec_.base_link_to_center);
       }
+    }
+
+    if (is_velocity_representation_ && params_.prepend_current_ego_state) {
+      const auto & twist = frame_context.ego_kinematic_state.twist.twist;
+      const auto & acceleration = frame_context.ego_acceleration.accel.accel;
+      postprocess::prepend_current_ego_state(
+        trajectory, frame_context.ego_kinematic_state.pose.pose, twist.linear.x, twist.linear.y,
+        acceleration.linear.x, twist.angular.z);
     }
 
     if (i == 0) {
@@ -557,7 +679,7 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
       turn_indicator_logit.begin() + TURN_INDICATOR_OUTPUT_DIM * i,
       turn_indicator_logit.begin() + TURN_INDICATOR_OUTPUT_DIM * (i + 1));
     const TurnIndicatorsCommand turn_indicators_command =
-      turn_indicator_managers_.at(i).evaluate(single_turn_indicator_logit, timestamp, prev_report);
+      turn_indicator_managers_.at(i).evaluate(single_turn_indicator_logit, timestamp);
 
     if (i == 0) {
       // Publish the first trajectory's command on the standalone turn indicator topic.

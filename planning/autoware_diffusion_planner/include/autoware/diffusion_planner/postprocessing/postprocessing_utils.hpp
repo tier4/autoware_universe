@@ -27,6 +27,7 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
 #include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 
 #include <cassert>
@@ -92,6 +93,19 @@ Trajectory create_ego_trajectory(
   const rclcpp::Time & stamp, const geometry_msgs::msg::Point & base_position,
   const int64_t batch_index, const int64_t velocity_smoothing_window, const bool enable_force_stop,
   const double stopping_threshold);
+
+/**
+ * @brief Prepend the measured ego state at trajectory time zero.
+ *
+ * Velocity-representation models predict the first future state at +0.1 s.  A temporal
+ * controller needs a measured t=0 state to interpolate the reference during planner latency;
+ * without it, the controller clamps every newly received trajectory to the +0.1 s point.
+ * The operation is idempotent and leaves an empty trajectory unchanged.
+ */
+void prepend_current_ego_state(
+  Trajectory & trajectory, const geometry_msgs::msg::Pose & pose,
+  double longitudinal_velocity_mps, double lateral_velocity_mps, double acceleration_mps2,
+  double heading_rate_rps);
 
 /**
  * @brief Counts valid elements in a tensor with shape (B, len, dim2, dim3).
