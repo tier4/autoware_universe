@@ -129,6 +129,7 @@ struct DiffusionPlannerParams
   int64_t velocity_smoothing_window;
   double stopping_threshold;
   double turn_indicator_hold_duration;
+  double turn_indicator_on_confirmation_duration;
   bool shift_x;
   bool prepend_current_ego_state;
   int64_t delay_step;

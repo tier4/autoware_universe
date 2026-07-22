@@ -202,6 +202,8 @@ void DiffusionPlanner::set_up_params()
   params_.stopping_threshold = this->declare_parameter<double>("stopping_threshold", 0.3);
   params_.turn_indicator_hold_duration =
     this->declare_parameter<double>("turn_indicator_hold_duration", 0.0);
+  params_.turn_indicator_on_confirmation_duration =
+    this->declare_parameter<double>("turn_indicator_on_confirmation_duration", 0.2);
   params_.shift_x = this->declare_parameter<bool>("shift_x", false);
   params_.prepend_current_ego_state =
     this->declare_parameter<bool>("prepend_current_ego_state", true);
@@ -338,6 +340,9 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<double>(parameters, "stopping_threshold", temp_params.stopping_threshold);
     update_param<double>(
       parameters, "turn_indicator_hold_duration", temp_params.turn_indicator_hold_duration);
+    update_param<double>(
+      parameters, "turn_indicator_on_confirmation_duration",
+      temp_params.turn_indicator_on_confirmation_duration);
     update_param<bool>(parameters, "shift_x", temp_params.shift_x);
     update_param<bool>(
       parameters, "prepend_current_ego_state", temp_params.prepend_current_ego_state);

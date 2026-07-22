@@ -36,14 +36,17 @@ uint8_t raw_state_to_command(const std::size_t raw_state)
 }
 }  // namespace
 
-TurnIndicatorManager::TurnIndicatorManager(const rclcpp::Duration & hold_duration)
-: hold_duration_(hold_duration)
+TurnIndicatorManager::TurnIndicatorManager(
+  const rclcpp::Duration & hold_duration, const rclcpp::Duration & on_confirmation_duration)
+: hold_duration_(hold_duration), on_confirmation_duration_(on_confirmation_duration)
 {
 }
 
-void TurnIndicatorManager::set_hold_duration(const rclcpp::Duration & hold_duration)
+void TurnIndicatorManager::set_durations(
+  const rclcpp::Duration & hold_duration, const rclcpp::Duration & on_confirmation_duration)
 {
   hold_duration_ = hold_duration;
+  on_confirmation_duration_ = on_confirmation_duration;
 }
 
 TurnIndicatorsCommand TurnIndicatorManager::evaluate(
@@ -56,24 +59,45 @@ TurnIndicatorsCommand TurnIndicatorManager::evaluate(
     // A missing or stale-shape auxiliary output must never leave the previous
     // command latched indefinitely.
     stable_command_ = TurnIndicatorsCommand::DISABLE;
-    last_command_stamp_ = rclcpp::Time{};
+    has_candidate_ = false;
+    has_last_stamp_ = false;
     command_msg.command = TurnIndicatorsCommand::DISABLE;
     return command_msg;
   }
 
-  if (last_command_stamp_.nanoseconds() > 0) {
-    const auto expiration = last_command_stamp_ + hold_duration_;
-    if (stamp <= expiration) {
-      command_msg.command = stable_command_;
-      return command_msg;
-    }
+  // A backwards timestamp (simulation reset, bag loop) invalidates any evidence
+  // window in progress; keep the stable command and restart confirmation.
+  if (has_last_stamp_ && stamp < last_stamp_) {
+    has_candidate_ = false;
   }
+  last_stamp_ = stamp;
+  has_last_stamp_ = true;
 
   const auto max_it = std::max_element(turn_indicator_logit.begin(), turn_indicator_logit.end());
-  const auto predicted_command = raw_state_to_command(
+  const uint8_t observed = raw_state_to_command(
     static_cast<std::size_t>(std::distance(turn_indicator_logit.begin(), max_it)));
-  stable_command_ = predicted_command;
-  last_command_stamp_ = stamp;
+
+  if (observed == stable_command_) {
+    // Agreement with the published command discards any pending contrary evidence.
+    has_candidate_ = false;
+  } else {
+    // Track the contrary observation; a different contrary observation restarts the
+    // window so only strictly consistent evidence can change the command.
+    if (!has_candidate_ || candidate_command_ != observed) {
+      has_candidate_ = true;
+      candidate_command_ = observed;
+      candidate_since_ = stamp;
+    }
+    // Activating from DISABLE only needs the short window; releasing an active
+    // signal (turn-off or direction flip) needs the long one.
+    const rclcpp::Duration & required_duration =
+      (stable_command_ == TurnIndicatorsCommand::DISABLE) ? on_confirmation_duration_
+                                                          : hold_duration_;
+    if ((stamp - candidate_since_) >= required_duration) {
+      stable_command_ = candidate_command_;
+      has_candidate_ = false;
+    }
+  }
 
   command_msg.command = stable_command_;
   return command_msg;

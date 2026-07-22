@@ -84,6 +84,8 @@ DiffusionPlannerCore::DiffusionPlannerCore(
 void DiffusionPlannerCore::sync_turn_indicator_managers()
 {
   const auto hold_duration = rclcpp::Duration::from_seconds(params_.turn_indicator_hold_duration);
+  const auto on_confirmation_duration =
+    rclcpp::Duration::from_seconds(params_.turn_indicator_on_confirmation_duration);
   const size_t desired = static_cast<size_t>(std::max<int>(params_.batch_size, 1));
 
   if (turn_indicator_managers_.size() > desired) {
@@ -92,10 +94,10 @@ void DiffusionPlannerCore::sync_turn_indicator_managers()
       turn_indicator_managers_.end());
   }
   while (turn_indicator_managers_.size() < desired) {
-    turn_indicator_managers_.emplace_back(hold_duration);
+    turn_indicator_managers_.emplace_back(hold_duration, on_confirmation_duration);
   }
   for (auto & manager : turn_indicator_managers_) {
-    manager.set_hold_duration(hold_duration);
+    manager.set_durations(hold_duration, on_confirmation_duration);
   }
 }
 

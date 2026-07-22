@@ -30,6 +30,7 @@
     velocity_smoothing_window: 8
     stopping_threshold: 0.3
     turn_indicator_hold_duration: 1.0
+    turn_indicator_on_confirmation_duration: 0.2
     shift_x: false
     # HDP predicts +0.1 s onward. Publish the measured t=0 ego state so temporal control can
     # interpolate through planner latency instead of clamping to the first future point.
