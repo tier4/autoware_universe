@@ -18,6 +18,7 @@
     lane_crossing:
       enable_classifier: true
       crossing_look_ahead_m: 30.0
+      predictive_lateral_trigger_distance_m: 0.5
       crossing_persist_duration_s: 0.3
       crossing_position_tolerance_m: 2.0
       footprint_boundary_overshoot_m: 0.3

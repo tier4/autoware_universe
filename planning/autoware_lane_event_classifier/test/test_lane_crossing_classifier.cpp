@@ -96,6 +96,26 @@ lanelet::BasicPoint2d nearest_point_on(
   return nearest;
 }
 
+// A point inset_m inside lane id's right boundary at longitudinal fraction frac (still inside the
+// lane, close to the shared 47|48 boundary). Places the ego laterally near the crossed boundary so
+// the predictive lateral-proximity gate is satisfied, mirroring the real onset where the body has
+// already drifted toward the line it dodges across.
+lanelet::BasicPoint2d point_near_right_boundary(
+  const lanelet::LaneletMapPtr & map, lanelet::Id id, double frac, double inset_m)
+{
+  const auto right_bound = map->laneletLayer.get(id).rightBound2d();
+  std::vector<lanelet::BasicPoint2d> bound_points;
+  bound_points.reserve(right_bound.size());
+  for (const auto & point : right_bound) {
+    bound_points.emplace_back(point.x(), point.y());
+  }
+  const lanelet::BasicPoint2d boundary_point = point_at_fraction(bound_points, frac);
+  const lanelet::BasicPoint2d center_point =
+    nearest_point_on(centerline_points(map, id), boundary_point);
+  const lanelet::BasicPoint2d inward = (center_point - boundary_point).normalized();
+  return boundary_point + inward * inset_m;
+}
+
 // Builds a trajectory that starts on lane_ids.front() and sweeps laterally through the listed lanes
 // (in order) while advancing forward along the first lane. A single sweep {47, 48} commits to the
 // neighbour and never returns - the lane-change signature, not a crossing.
@@ -194,7 +214,9 @@ public:
   Simulator(lanelet::LaneletMapPtr map, LaneCrossingConfig config)
   : classifier_{
       true, config, tracker_,
-      LaneCrossingGeometry{config.crossing_look_ahead_m, config.footprint_boundary_overshoot_m},
+      LaneCrossingGeometry{
+        config.crossing_look_ahead_m, config.footprint_boundary_overshoot_m,
+        config.predictive_lateral_trigger_distance_m},
       LaneCrossingObjects{config.object_longitudinal_window_m}}
   {
     const auto result = tracker_.set_lanelet_map(map);
@@ -230,6 +252,7 @@ LaneCrossingConfig make_config()
   LaneCrossingConfig config;
   config.enable_classifier = true;
   config.crossing_look_ahead_m = 50.0;
+  config.predictive_lateral_trigger_distance_m = 0.75;
   config.crossing_persist_duration_s = 0.3;
   config.crossing_position_tolerance_m = 2.0;
   config.footprint_boundary_overshoot_m = 0.5;
@@ -257,9 +280,8 @@ bool run_until_crossing(
 {
   for (int cycle = 0; cycle < max_cycles; ++cycle) {
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    const uint8_t state = sim.step(
-      test_maps::make_trajectory_input(
-        route, ego, sec, nsec, trajectory, {ego}, TurnIndicatorsReport::DISABLE, objects));
+    const uint8_t state = sim.step(test_maps::make_trajectory_input(
+      route, ego, sec, nsec, trajectory, {ego}, TurnIndicatorsReport::DISABLE, objects));
     if (state == DS::INTENTIONAL_LANE_CROSSING) {
       return true;
     }
@@ -281,7 +303,7 @@ TEST(LaneCrossingTest, onset_then_return_completes)
   const std::vector<lanelet::Id> route{route_ids().begin(), route_ids().end()};
 
   const auto crossing_trajectory = build_out_and_back_trajectory(map, 47, 48, 0.3, 0.9, 25);
-  const auto ego_in_47 = crossing_trajectory.front();
+  const auto ego_in_47 = point_near_right_boundary(map, 47, 0.3, 0.4);  // near the crossed boundary
   const auto object_point = point_at_fraction(centerline_points(map, 47), 0.5);
   const auto objects =
     test_maps::make_objects({test_maps::make_object(object_point.x(), object_point.y())});
@@ -300,10 +322,9 @@ TEST(LaneCrossingTest, onset_then_return_completes)
   for (int cycle = 0; cycle < 12; ++cycle) {
     time_ms += 100;
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    state = sim.step(
-      test_maps::make_trajectory_input(
-        route, point_in_47, sec, nsec, return_trajectory, footprint_47,
-        TurnIndicatorsReport::DISABLE, objects));
+    state = sim.step(test_maps::make_trajectory_input(
+      route, point_in_47, sec, nsec, return_trajectory, footprint_47, TurnIndicatorsReport::DISABLE,
+      objects));
     if (state == DS::UNKNOWN) {
       completed = true;
       break;
@@ -323,15 +344,45 @@ TEST(LaneCrossingTest, no_object_is_not_a_crossing)
   const std::vector<lanelet::Id> route{route_ids().begin(), route_ids().end()};
 
   const auto crossing_trajectory = build_out_and_back_trajectory(map, 47, 48, 0.3, 0.9, 25);
-  const auto ego_in_47 = crossing_trajectory.front();
+  const auto ego_in_47 = point_near_right_boundary(map, 47, 0.3, 0.4);  // near the crossed boundary
 
   int64_t time_ms = 0;
   for (int cycle = 0; cycle < 15; ++cycle) {
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    const uint8_t state = sim.step(
-      test_maps::make_trajectory_input(
-        route, ego_in_47, sec, nsec, crossing_trajectory, {ego_in_47}));
+    const uint8_t state = sim.step(test_maps::make_trajectory_input(
+      route, ego_in_47, sec, nsec, crossing_trajectory, {ego_in_47}));
     EXPECT_NE(state, DS::INTENTIONAL_LANE_CROSSING) << "no obstacle, so no intentional crossing";
+    time_ms += 100;
+  }
+}
+
+// Lateral-proximity gate on the predictive source: the trajectory pokes out and back around an
+// object ahead (a closed departure that brackets a candidate), but the ego is still centred in lane
+// 47, far from the crossed boundary. The dodge is only planned; the body has not drifted toward the
+// line, so the predictive source must NOT onset. This is the field case where a plan far ahead
+// flipped the state into INTENTIONAL_LANE_CROSSING while the ego sat centred (and stationary).
+TEST(LaneCrossingTest, centered_ego_far_from_boundary_does_not_predictively_onset)
+{
+  auto map = load_test_map();
+  ASSERT_TRUE(static_cast<bool>(map));
+
+  Simulator sim{map, make_config()};
+  const std::vector<lanelet::Id> route{route_ids().begin(), route_ids().end()};
+
+  const auto crossing_trajectory = build_out_and_back_trajectory(map, 47, 48, 0.3, 0.9, 25);
+  const auto ego_centered = point_at_fraction(centerline_points(map, 47), 0.3);  // lane centre
+  const auto object_point = point_at_fraction(centerline_points(map, 47), 0.5);
+  const auto objects =
+    test_maps::make_objects({test_maps::make_object(object_point.x(), object_point.y())});
+
+  int64_t time_ms = 0;
+  for (int cycle = 0; cycle < 15; ++cycle) {
+    const auto [sec, nsec] = stamp_from_ms(time_ms);
+    const uint8_t state = sim.step(test_maps::make_trajectory_input(
+      route, ego_centered, sec, nsec, crossing_trajectory, {ego_centered},
+      TurnIndicatorsReport::DISABLE, objects));
+    EXPECT_NE(state, DS::INTENTIONAL_LANE_CROSSING)
+      << "a dodge only planned ahead, ego still centred, must not predictively onset";
     time_ms += 100;
   }
 }
@@ -357,10 +408,9 @@ TEST(LaneCrossingTest, monotonic_sweep_into_neighbour_is_not_a_crossing)
   int64_t time_ms = 0;
   for (int cycle = 0; cycle < 15; ++cycle) {
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    const uint8_t state = sim.step(
-      test_maps::make_trajectory_input(
-        route, ego_in_47, sec, nsec, sweep_trajectory, {ego_in_47}, TurnIndicatorsReport::DISABLE,
-        objects));
+    const uint8_t state = sim.step(test_maps::make_trajectory_input(
+      route, ego_in_47, sec, nsec, sweep_trajectory, {ego_in_47}, TurnIndicatorsReport::DISABLE,
+      objects));
     EXPECT_NE(state, DS::INTENTIONAL_LANE_CROSSING)
       << "a path that commits to the neighbour is a lane change, not a crossing";
     time_ms += 100;
@@ -379,7 +429,7 @@ TEST(LaneCrossingTest, moving_object_can_qualify)
   const std::vector<lanelet::Id> route{route_ids().begin(), route_ids().end()};
 
   const auto crossing_trajectory = build_out_and_back_trajectory(map, 47, 48, 0.3, 0.9, 25);
-  const auto ego_in_47 = crossing_trajectory.front();
+  const auto ego_in_47 = point_near_right_boundary(map, 47, 0.3, 0.4);  // near the crossed boundary
   const auto object_point = point_at_fraction(centerline_points(map, 47), 0.5);
   const auto objects = test_maps::make_objects(
     {test_maps::make_object(object_point.x(), object_point.y(), 2.0, 2.0, 5.0)});  // 5 m/s
@@ -401,7 +451,7 @@ TEST(LaneCrossingTest, staggered_objects_one_bracketed_is_a_crossing)
   const std::vector<lanelet::Id> route{route_ids().begin(), route_ids().end()};
 
   const auto crossing_trajectory = build_out_and_back_trajectory(map, 47, 48, 0.3, 0.9, 25);
-  const auto ego_in_47 = crossing_trajectory.front();
+  const auto ego_in_47 = point_near_right_boundary(map, 47, 0.3, 0.4);  // near the crossed boundary
   const auto centerline_47 = centerline_points(map, 47);
   const auto near_object = point_at_fraction(centerline_47, 0.5);  // at the poke
   const auto far_object = point_at_fraction(centerline_47, 0.95);  // beyond the re-enter
@@ -425,7 +475,7 @@ TEST(LaneCrossingTest, full_entry_into_adjacent_lane_escapes)
   const std::vector<lanelet::Id> route{route_ids().begin(), route_ids().end()};
 
   const auto crossing_trajectory = build_out_and_back_trajectory(map, 47, 48, 0.3, 0.9, 25);
-  const auto ego_in_47 = crossing_trajectory.front();
+  const auto ego_in_47 = point_near_right_boundary(map, 47, 0.3, 0.4);  // near the crossed boundary
   const auto object_point = point_at_fraction(centerline_points(map, 47), 0.5);
   const auto objects =
     test_maps::make_objects({test_maps::make_object(object_point.x(), object_point.y())});
@@ -440,10 +490,9 @@ TEST(LaneCrossingTest, full_entry_into_adjacent_lane_escapes)
   const auto through_48_trajectory = build_lane_trajectory(map, {48}, 0.7, 0.95, 20);
   time_ms += 100;
   const auto [sec, nsec] = stamp_from_ms(time_ms);
-  const uint8_t state = sim.step(
-    test_maps::make_trajectory_input(
-      route, point_in_48, sec, nsec, through_48_trajectory, footprint_48,
-      TurnIndicatorsReport::DISABLE, objects));
+  const uint8_t state = sim.step(test_maps::make_trajectory_input(
+    route, point_in_48, sec, nsec, through_48_trajectory, footprint_48,
+    TurnIndicatorsReport::DISABLE, objects));
   EXPECT_NE(state, DS::INTENTIONAL_LANE_CROSSING)
     << "full entry into 48 past the object is a lane change, not a crossing";
 }
@@ -465,16 +514,15 @@ TEST(LaneCrossingTest, candidate_memory_bridges_perception_dropout)
 
   const auto straight_trajectory = build_lane_trajectory(map, {47}, 0.3, 0.6, 20);
   const auto crossing_trajectory = build_out_and_back_trajectory(map, 47, 48, 0.3, 0.9, 25);
-  const auto ego_in_47 = straight_trajectory.front();
+  const auto ego_in_47 = point_near_right_boundary(map, 47, 0.3, 0.4);  // near the crossed boundary
 
   int64_t time_ms = 0;
   // Phase 1: going straight, the object is perceived and latches the candidate memory. No crossing.
   for (int cycle = 0; cycle < 4; ++cycle) {
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    sim.step(
-      test_maps::make_trajectory_input(
-        route, ego_in_47, sec, nsec, straight_trajectory, {ego_in_47},
-        TurnIndicatorsReport::DISABLE, objects));
+    sim.step(test_maps::make_trajectory_input(
+      route, ego_in_47, sec, nsec, straight_trajectory, {ego_in_47}, TurnIndicatorsReport::DISABLE,
+      objects));
     time_ms += 100;
   }
   // Phase 2: the ego dodges while perception drops the object entirely. The remembered candidate
@@ -482,10 +530,9 @@ TEST(LaneCrossingTest, candidate_memory_bridges_perception_dropout)
   bool became_crossing = false;
   for (int cycle = 0; cycle < 6; ++cycle) {
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    const uint8_t state = sim.step(
-      test_maps::make_trajectory_input(
-        route, ego_in_47, sec, nsec, crossing_trajectory, {ego_in_47},
-        TurnIndicatorsReport::DISABLE, nullptr));
+    const uint8_t state = sim.step(test_maps::make_trajectory_input(
+      route, ego_in_47, sec, nsec, crossing_trajectory, {ego_in_47}, TurnIndicatorsReport::DISABLE,
+      nullptr));
     if (state == DS::INTENTIONAL_LANE_CROSSING) {
       became_crossing = true;
       break;
@@ -520,10 +567,9 @@ TEST(LaneCrossingTest, footprint_over_boundary_is_a_crossing)
   bool became_crossing = false;
   for (int cycle = 0; cycle < 10; ++cycle) {
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    state = sim.step(
-      test_maps::make_trajectory_input(
-        route, ego_in_47, sec, nsec, straight_trajectory, footprint, TurnIndicatorsReport::DISABLE,
-        objects));
+    state = sim.step(test_maps::make_trajectory_input(
+      route, ego_in_47, sec, nsec, straight_trajectory, footprint, TurnIndicatorsReport::DISABLE,
+      objects));
     if (state == DS::INTENTIONAL_LANE_CROSSING) {
       became_crossing = true;
       break;
@@ -555,10 +601,9 @@ TEST(LaneCrossingTest, slight_cornering_overhang_is_not_a_crossing)
   int64_t time_ms = 0;
   for (int cycle = 0; cycle < 15; ++cycle) {
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    const uint8_t state = sim.step(
-      test_maps::make_trajectory_input(
-        route, ego_in_47, sec, nsec, straight_trajectory, footprint, TurnIndicatorsReport::DISABLE,
-        objects));
+    const uint8_t state = sim.step(test_maps::make_trajectory_input(
+      route, ego_in_47, sec, nsec, straight_trajectory, footprint, TurnIndicatorsReport::DISABLE,
+      objects));
     EXPECT_NE(state, DS::INTENTIONAL_LANE_CROSSING)
       << "a slight cornering overhang is not a crossing";
     time_ms += 100;
@@ -590,10 +635,9 @@ TEST(LaneCrossingTest, long_dodge_does_not_time_out)
   bool became_crossing = false;
   for (int cycle = 0; cycle < 10; ++cycle) {
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    state = sim.step(
-      test_maps::make_trajectory_input(
-        route, ego_in_47, sec, nsec, straight_trajectory, straddle_footprint,
-        TurnIndicatorsReport::DISABLE, objects));
+    state = sim.step(test_maps::make_trajectory_input(
+      route, ego_in_47, sec, nsec, straight_trajectory, straddle_footprint,
+      TurnIndicatorsReport::DISABLE, objects));
     if (state == DS::INTENTIONAL_LANE_CROSSING) {
       became_crossing = true;
       break;
@@ -607,10 +651,9 @@ TEST(LaneCrossingTest, long_dodge_does_not_time_out)
   for (int cycle = 0; cycle < 200; ++cycle) {
     time_ms += 100;
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    state = sim.step(
-      test_maps::make_trajectory_input(
-        route, ego_in_47, sec, nsec, straight_trajectory, straddle_footprint,
-        TurnIndicatorsReport::DISABLE, objects));
+    state = sim.step(test_maps::make_trajectory_input(
+      route, ego_in_47, sec, nsec, straight_trajectory, straddle_footprint,
+      TurnIndicatorsReport::DISABLE, objects));
     ASSERT_EQ(state, DS::INTENTIONAL_LANE_CROSSING)
       << "a long dodge must not time out at cycle " << cycle;
   }
@@ -623,10 +666,9 @@ TEST(LaneCrossingTest, long_dodge_does_not_time_out)
   for (int cycle = 0; cycle < 12; ++cycle) {
     time_ms += 100;
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    state = sim.step(
-      test_maps::make_trajectory_input(
-        route, point_in_47, sec, nsec, return_trajectory, footprint_47,
-        TurnIndicatorsReport::DISABLE, objects));
+    state = sim.step(test_maps::make_trajectory_input(
+      route, point_in_47, sec, nsec, return_trajectory, footprint_47, TurnIndicatorsReport::DISABLE,
+      objects));
     if (state == DS::UNKNOWN) {
       completed = true;
       break;
@@ -658,10 +700,9 @@ TEST(LaneCrossingTest, object_gone_while_straddling_stays_crossing)
   bool became_crossing = false;
   for (int cycle = 0; cycle < 10; ++cycle) {
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    state = sim.step(
-      test_maps::make_trajectory_input(
-        route, ego_in_47, sec, nsec, straight_trajectory, straddle_footprint,
-        TurnIndicatorsReport::DISABLE, objects));
+    state = sim.step(test_maps::make_trajectory_input(
+      route, ego_in_47, sec, nsec, straight_trajectory, straddle_footprint,
+      TurnIndicatorsReport::DISABLE, objects));
     if (state == DS::INTENTIONAL_LANE_CROSSING) {
       became_crossing = true;
       break;
@@ -675,10 +716,9 @@ TEST(LaneCrossingTest, object_gone_while_straddling_stays_crossing)
   for (int cycle = 0; cycle < 60; ++cycle) {
     time_ms += 100;
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    state = sim.step(
-      test_maps::make_trajectory_input(
-        route, ego_in_47, sec, nsec, straight_trajectory, straddle_footprint,
-        TurnIndicatorsReport::DISABLE, nullptr));
+    state = sim.step(test_maps::make_trajectory_input(
+      route, ego_in_47, sec, nsec, straight_trajectory, straddle_footprint,
+      TurnIndicatorsReport::DISABLE, nullptr));
     ASSERT_EQ(state, DS::INTENTIONAL_LANE_CROSSING)
       << "a straddling ego does not end the crossing at cycle " << cycle;
   }
@@ -696,7 +736,7 @@ TEST(LaneCrossingTest, full_crossover_ends_even_with_object_ahead)
   const std::vector<lanelet::Id> route{route_ids().begin(), route_ids().end()};
 
   const auto crossing_trajectory = build_out_and_back_trajectory(map, 47, 48, 0.3, 0.9, 25);
-  const auto ego_in_47 = crossing_trajectory.front();
+  const auto ego_in_47 = point_near_right_boundary(map, 47, 0.3, 0.4);  // near the crossed boundary
   const auto object_point = point_at_fraction(centerline_points(map, 47), 0.6);  // stays ahead
   const auto objects =
     test_maps::make_objects({test_maps::make_object(object_point.x(), object_point.y())});
@@ -710,10 +750,9 @@ TEST(LaneCrossingTest, full_crossover_ends_even_with_object_ahead)
   const auto through_48_trajectory = build_lane_trajectory(map, {48}, 0.3, 0.8, 20);
   time_ms += 100;
   const auto [sec, nsec] = stamp_from_ms(time_ms);
-  const uint8_t state = sim.step(
-    test_maps::make_trajectory_input(
-      route, point_in_48, sec, nsec, through_48_trajectory, footprint_48,
-      TurnIndicatorsReport::DISABLE, objects));
+  const uint8_t state = sim.step(test_maps::make_trajectory_input(
+    route, point_in_48, sec, nsec, through_48_trajectory, footprint_48,
+    TurnIndicatorsReport::DISABLE, objects));
   EXPECT_NE(state, DS::INTENTIONAL_LANE_CROSSING)
     << "a full crossover into the neighbour ends the crossing (now a lane change)";
 }
@@ -739,10 +778,9 @@ TEST(LaneCrossingTest, lane_change_regime_is_not_a_crossing)
   int64_t time_ms = 0;
   for (int cycle = 0; cycle < 15; ++cycle) {
     const auto [sec, nsec] = stamp_from_ms(time_ms);
-    const uint8_t state = sim.step(
-      test_maps::make_trajectory_input(
-        route, ego_in_48, sec, nsec, crossing_trajectory, {ego_in_48},
-        TurnIndicatorsReport::DISABLE, objects));
+    const uint8_t state = sim.step(test_maps::make_trajectory_input(
+      route, ego_in_48, sec, nsec, crossing_trajectory, {ego_in_48}, TurnIndicatorsReport::DISABLE,
+      objects));
     EXPECT_NE(state, DS::INTENTIONAL_LANE_CROSSING)
       << "crossing from an off-route lane is a lane change";
     time_ms += 100;

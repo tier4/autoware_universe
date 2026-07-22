@@ -81,7 +81,13 @@ lane_event_classifier:
     crossing_look_ahead_m:
       type: double
       default_value: 30.0
-      description: Arc length ahead along the trajectory scanned for a lane-crossing crossing
+      description: Fore/aft reach used to build the route-sequence membership set, and the boundary length used as a fallback when no planned trajectory is available. The predictive departure scan itself uses the planned trajectory's own arc length, not this value.
+      validation:
+        gt<>: [0.0]
+    predictive_lateral_trigger_distance_m:
+      type: double
+      default_value: 0.5
+      description: Maximum nearest distance from the ego footprint to the crossed-side lane-sequence boundary for the predictive (trajectory) crossing source to onset. Keeps a dodge that is only planned far ahead, while the ego is still centred in the lane, from onsetting until the body has actually drifted close to the boundary it will cross.
       validation:
         gt<>: [0.0]
     crossing_persist_duration_s:

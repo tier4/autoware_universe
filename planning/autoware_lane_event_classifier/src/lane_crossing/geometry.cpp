@@ -56,6 +56,39 @@ LineString2d to_line_string(const PointRange & points)
   return line_string;
 }
 
+// Total arc length of a polyline (0.0 for fewer than two points).
+double polyline_arc_length(const std::vector<lanelet::BasicPoint2d> & points)
+{
+  double length = 0.0;
+  for (std::size_t index = 0; index + 1 < points.size(); ++index) {
+    length += (points[index + 1] - points[index]).norm();
+  }
+  return length;
+}
+
+// Nearest distance from the ego footprint to a boundary polyline, projecting onto the footprint
+// segments (not just its corners) so a boundary lying opposite an edge measures the true gap. The
+// footprint ring is closed so its final edge is included. Returns +inf when either side is empty,
+// so an absent footprint fails the lateral gate rather than passing it silently.
+double footprint_distance_to_boundary(
+  const std::vector<lanelet::BasicPoint2d> & footprint, const LineString2d & boundary)
+{
+  if (footprint.empty() || boundary.empty()) {
+    return std::numeric_limits<double>::max();
+  }
+  if (footprint.size() == 1) {
+    return boost::geometry::distance(
+      Point2d{footprint.front().x(), footprint.front().y()}, boundary);
+  }
+  LineString2d ring = to_line_string(footprint);
+  const Point2d first = ring.front();  // by value: push_back below may reallocate the buffer
+  const Point2d last = ring.back();
+  if (first.x() != last.x() || first.y() != last.y()) {
+    ring.push_back(first);  // close the footprint so the last edge is measured too
+  }
+  return boost::geometry::distance(ring, boundary);
+}
+
 // The left / right boundary polylines of the lane sequence, each spanning the whole forward
 // straight sequence.
 struct LaneSequenceBounds
@@ -197,12 +230,16 @@ std::vector<DepartureInterval> get_departure_intervals(
 }
 
 // The first (nearest to the ego) departure that goes around a candidate object: the object's arc
-// falls strictly between the exit and the re-enter. Absent when no departure brackets any
-// candidate.
+// falls strictly between the exit and the re-enter, and the ego body is laterally near the boundary
+// that departure crosses. Absent when no departure both brackets a candidate and has the ego close
+// to its side. The lateral-proximity gate keeps the predictive source from onsetting off a dodge
+// planned far ahead while the ego is still centred in the lane (the trajectory look-ahead now spans
+// the whole planned path, so the bracket alone would fire too eagerly).
 std::optional<CrossingCandidate> get_trajectory_crossing(
   const std::vector<lanelet::BasicPoint2d> & trajectory_points, const LaneSequenceBounds & bounds,
   const std::vector<geometry_msgs::msg::Pose> & candidate_object_poses,
-  std::size_t & departure_count)
+  double distance_to_left_boundary_m, double distance_to_right_boundary_m,
+  double lateral_trigger_distance_m, std::size_t & departure_count)
 {
   const auto crossings = get_ordered_boundary_crossings(trajectory_points, bounds);
   const auto departures = get_departure_intervals(crossings);
@@ -219,9 +256,15 @@ std::optional<CrossingCandidate> get_trajectory_crossing(
       std::any_of(candidate_arcs.cbegin(), candidate_arcs.cend(), [&departure](const double arc) {
         return arc > departure.exit_arc_m && arc < departure.reenter_arc_m;
       });
-    if (brackets_candidate) {
-      return CrossingCandidate{departure.is_to_left, departure.exit_point};
+    if (!brackets_candidate) {
+      continue;
     }
+    const double lateral_distance_m =
+      departure.is_to_left ? distance_to_left_boundary_m : distance_to_right_boundary_m;
+    if (lateral_distance_m > lateral_trigger_distance_m) {
+      continue;  // ego not yet close to this side's boundary; the dodge is only planned ahead
+    }
+    return CrossingCandidate{departure.is_to_left, departure.exit_point};
   }
   return std::nullopt;
 }
@@ -288,10 +331,8 @@ FootprintCrossing get_footprint_crossing(
       deepest_footprint_overshoot(tracker, reference_lane_id, neighbour_id, footprint);
     const auto neighbour_lane = tracker.get_lanelet(neighbour_id);
     const bool is_shoulder = neighbour_lane && lanelet2_utils::is_shoulder_lane(*neighbour_lane);
-    notes.push_back(
-      fmt::format(
-        "{}:{:.2f}m{}", neighbour_id, overshoot.overshoot_m,
-        is_shoulder ? " shoulder-exempt" : ""));
+    notes.push_back(fmt::format(
+      "{}:{:.2f}m{}", neighbour_id, overshoot.overshoot_m, is_shoulder ? " shoulder-exempt" : ""));
     if (is_shoulder) {
       continue;
     }
@@ -357,9 +398,11 @@ ResolvedCrossing resolve_crossing(
 }  // namespace
 
 LaneCrossingGeometry::LaneCrossingGeometry(
-  double crossing_look_ahead_m, double footprint_boundary_overshoot_m)
+  double crossing_look_ahead_m, double footprint_boundary_overshoot_m,
+  double predictive_lateral_trigger_distance_m)
 : crossing_look_ahead_m_{crossing_look_ahead_m},
-  footprint_boundary_overshoot_m_{footprint_boundary_overshoot_m}
+  footprint_boundary_overshoot_m_{footprint_boundary_overshoot_m},
+  predictive_lateral_trigger_distance_m_{predictive_lateral_trigger_distance_m}
 {
 }
 
@@ -381,14 +424,20 @@ LaneCrossingObservation LaneCrossingGeometry::observe(
   // trajectory samples feed the predictive crossing, the footprint lanes feed the physical
   // crossing, the return, and the full-entry escape, and the straight sequence classifies which
   // lanes count as part of the lane sequence.
+  // The predictive source scans the whole planned trajectory rather than a fixed distance, so the
+  // look-ahead is the trajectory's own arc length. Fall back to the configured reach only when no
+  // usable trajectory is available (a footprint-only cycle), so the boundary still spans the ego's
+  // surroundings for the physical source.
   const auto trajectory_points = std::invoke([&]() -> std::vector<lanelet::BasicPoint2d> {
     if (!input.trajectory_ptr) {
       return {};
     }
     const auto & ego_position = input.odometry_ptr->pose.pose.position;
     return forward_trajectory_points(
-      *input.trajectory_ptr, {ego_position.x, ego_position.y}, crossing_look_ahead_m_);
+      *input.trajectory_ptr, {ego_position.x, ego_position.y}, std::numeric_limits<double>::max());
   });
+  const double boundary_look_ahead_m =
+    trajectory_points.size() >= 2 ? polyline_arc_length(trajectory_points) : crossing_look_ahead_m_;
   const auto footprint_ids = tracker.footprint_lane_ids(input.footprint);
   const auto & sequence_ids =
     tracker.straight_lane_sequence_ids(*reference_lane_opt, crossing_look_ahead_m_);
@@ -396,7 +445,7 @@ LaneCrossingObservation LaneCrossingGeometry::observe(
   observation.is_on_route_straight = driving_straight_stays_on_route(tracker, reference_lane_id);
   auto crossing_result = compute_crossing(
     tracker, *reference_lane_opt, sequence_ids, trajectory_points, input.footprint, footprint_ids,
-    candidate_object_poses);
+    candidate_object_poses, boundary_look_ahead_m);
   observation.crossing = std::move(crossing_result.crossing);
   observation.crossing_diagnostic = std::move(crossing_result.diagnostic);
   observation.is_footprint_inside_reference_sequence =
@@ -424,7 +473,8 @@ LaneCrossingGeometry::CrossingResult LaneCrossingGeometry::compute_crossing(
   const std::vector<lanelet::BasicPoint2d> & trajectory_points,
   const std::vector<lanelet::BasicPoint2d> & footprint,
   const std::vector<lanelet::Id> & footprint_ids,
-  const std::vector<geometry_msgs::msg::Pose> & candidate_object_poses) const
+  const std::vector<geometry_msgs::msg::Pose> & candidate_object_poses,
+  double boundary_look_ahead_m) const
 {
   const bool has_trajectory = trajectory_points.size() >= 2;
   const bool has_footprint = footprint.size() >= 3;
@@ -455,15 +505,24 @@ LaneCrossingGeometry::CrossingResult LaneCrossingGeometry::compute_crossing(
   }
 
   const auto lane_sequence =
-    tracker.get_forward_route_lane_sequence(reference_lane_id, crossing_look_ahead_m_);
+    tracker.get_forward_route_lane_sequence(reference_lane_id, boundary_look_ahead_m);
   const auto lane_sequence_bounds = build_lane_sequence_bounds(lane_sequence);
 
-  // Source (a) - predictive trajectory bracket (early, centerline based).
+  // Ego lateral proximity to each side's boundary, gating the predictive source: it onsets only
+  // once the body is within predictive_lateral_trigger_distance_m_ of the boundary it will cross.
+  const double distance_to_left_boundary_m =
+    footprint_distance_to_boundary(footprint, lane_sequence_bounds.left);
+  const double distance_to_right_boundary_m =
+    footprint_distance_to_boundary(footprint, lane_sequence_bounds.right);
+
+  // Source (a) - predictive trajectory bracket (early, centerline based, ego-near-boundary gated).
   std::size_t departure_count = 0;
-  const auto trajectory_crossing = has_trajectory ? get_trajectory_crossing(
-                                                      trajectory_points, lane_sequence_bounds,
-                                                      candidate_object_poses, departure_count)
-                                                  : std::nullopt;
+  const auto trajectory_crossing =
+    has_trajectory ? get_trajectory_crossing(
+                       trajectory_points, lane_sequence_bounds, candidate_object_poses,
+                       distance_to_left_boundary_m, distance_to_right_boundary_m,
+                       predictive_lateral_trigger_distance_m_, departure_count)
+                   : std::nullopt;
 
   // Source (b) - physical footprint crossing (robust, the real body over the line).
   const auto footprint_crossing =
@@ -475,8 +534,10 @@ LaneCrossingGeometry::CrossingResult LaneCrossingGeometry::compute_crossing(
   // Predictive fires earlier, so prefer it when present; otherwise the body-over-the-line signal
   // still onsets a shallow dodge the centerline never shows.
   const std::string detail = fmt::format(
-    "departures={} candidates={} footprint_neighbours=[{}]", departure_count,
-    candidate_object_poses.size(), footprint_crossing.note);
+    "departures={} candidates={} lateral_to_boundary=(L{:.2f} R{:.2f})<=trigger{:.2f} "
+    "footprint_neighbours=[{}]",
+    departure_count, candidate_object_poses.size(), distance_to_left_boundary_m,
+    distance_to_right_boundary_m, predictive_lateral_trigger_distance_m_, footprint_crossing.note);
   if (trajectory_crossing) {
     return std::invoke([&] {
       auto resolved = resolve_crossing(

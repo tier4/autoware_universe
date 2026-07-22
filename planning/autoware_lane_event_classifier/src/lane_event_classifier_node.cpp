@@ -63,16 +63,15 @@ void LaneEventClassifierNode::build_classifiers()
   // derives its own per-cycle geometry from the shared LaneTracker's generic queries. Vector order
   // is the arbitration priority: lane change first, then intentional crossing.
   classifiers_.clear();
-  classifiers_.emplace_back(
-    std::make_unique<LaneChangeClassifier>(
-      params_.lane_change.enable_classifier, params_.lane_change, lane_tracker_));
-  classifiers_.emplace_back(
-    std::make_unique<IntentionalCrossingClassifier>(
-      params_.lane_crossing.enable_classifier, params_.lane_crossing, lane_tracker_,
-      LaneCrossingGeometry{
-        params_.lane_crossing.crossing_look_ahead_m,
-        params_.lane_crossing.footprint_boundary_overshoot_m},
-      LaneCrossingObjects{params_.lane_crossing.object_longitudinal_window_m}));
+  classifiers_.emplace_back(std::make_unique<LaneChangeClassifier>(
+    params_.lane_change.enable_classifier, params_.lane_change, lane_tracker_));
+  classifiers_.emplace_back(std::make_unique<IntentionalCrossingClassifier>(
+    params_.lane_crossing.enable_classifier, params_.lane_crossing, lane_tracker_,
+    LaneCrossingGeometry{
+      params_.lane_crossing.crossing_look_ahead_m,
+      params_.lane_crossing.footprint_boundary_overshoot_m,
+      params_.lane_crossing.predictive_lateral_trigger_distance_m},
+    LaneCrossingObjects{params_.lane_crossing.object_longitudinal_window_m}));
 }
 
 void LaneEventClassifierNode::map_callback(

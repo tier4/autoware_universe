@@ -69,7 +69,9 @@ struct LaneCrossingObservation
 class LaneCrossingGeometry
 {
 public:
-  LaneCrossingGeometry(double crossing_look_ahead_m, double footprint_boundary_overshoot_m);
+  LaneCrossingGeometry(
+    double crossing_look_ahead_m, double footprint_boundary_overshoot_m,
+    double predictive_lateral_trigger_distance_m);
 
   /** @brief Builds the observation for this cycle from the tracker's (already refreshed) state.
    * @param candidate_object_poses Objects the ego might cross to avoid (from LaneCrossingObjects):
@@ -103,14 +105,17 @@ private:
    * @param trajectory_points Forward trajectory samples (computed once per cycle by observe).
    * @param footprint The ego footprint corners in the map frame (the physical body this cycle).
    * @param footprint_ids Lanes the footprint touches (computed once per cycle by observe).
-   * @param candidate_object_poses Objects the ego might cross to avoid; onset requires one. */
+   * @param candidate_object_poses Objects the ego might cross to avoid; onset requires one.
+   * @param boundary_look_ahead_m Forward length the lane-sequence boundary is built to (the planned
+   * trajectory's own arc length when available; a fallback otherwise). */
   [[nodiscard]] CrossingResult compute_crossing(
     const LaneTracker & tracker, const lanelet::ConstLanelet & reference_lane,
     const std::unordered_set<lanelet::Id> & sequence_ids,
     const std::vector<lanelet::BasicPoint2d> & trajectory_points,
     const std::vector<lanelet::BasicPoint2d> & footprint,
     const std::vector<lanelet::Id> & footprint_ids,
-    const std::vector<geometry_msgs::msg::Pose> & candidate_object_poses) const;
+    const std::vector<geometry_msgs::msg::Pose> & candidate_object_poses,
+    double boundary_look_ahead_m) const;
 
   /** @brief True when the footprint is fully inside a lane of the reference straight sequence.
    * @param footprint_ids Lanes the footprint touches (computed once per cycle by observe). */
@@ -126,9 +131,18 @@ private:
     const std::unordered_set<lanelet::Id> & sequence_ids,
     const std::vector<lanelet::Id> & footprint_ids);
 
-  double crossing_look_ahead_m_;           // arc length ahead scanned for a trajectory crossing
+  double crossing_look_ahead_m_;           // fore/aft reach for the route-sequence membership set,
+                                           // and the boundary-length fallback when no trajectory is
+                                           // available (the departure scan itself uses the planned
+                                           // trajectory's own length)
   double footprint_boundary_overshoot_m_;  // min body overshoot past the boundary for the footprint
                                            // (physical) crossing source
+  double
+    predictive_lateral_trigger_distance_m_;  // max nearest distance from the ego footprint to
+                                             // the crossed-side boundary for the predictive
+                                             // (trajectory) source to onset: it fires only once
+                                             // the body has drifted close to the boundary it
+                                             // will cross, not off a dodge merely planned ahead
 };
 
 }  // namespace autoware::lane_event_classifier
