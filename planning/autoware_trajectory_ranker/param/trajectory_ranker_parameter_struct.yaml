@@ -52,7 +52,7 @@ trajectory_ranker_params:
   evaluation:
     enable:
       type: bool
-      default_value: true
+      default_value: false
       description: Enable evaluation by metrics
       read_only: false
     plugin_names:
