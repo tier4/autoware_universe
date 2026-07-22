@@ -17,6 +17,8 @@
         max_decel_parking: 1.0
         max_jerk_parking: 1.0
 
+      lane_change_failure_stop_margin: 0.0
+
       ego_nearest_lanelet:
         dist_threshold: 3.0
         yaw_threshold: 1.046
