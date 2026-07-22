@@ -48,6 +48,15 @@ using autoware_planning_msgs::msg::Trajectory;
 /** Left and right route boundary linestrings. */
 using RouteBounds = std::pair<lanelet::LineString2d, lanelet::LineString2d>;
 
+/** Left and right road boundary points as flat float coordinate vectors. */
+struct FloatVecRoadBounds
+{
+  std::vector<float> road_border_left_x;
+  std::vector<float> road_border_left_y;
+  std::vector<float> road_border_right_x;
+  std::vector<float> road_border_right_y;
+};
+
 namespace traffic_rules
 {
 
@@ -164,6 +173,10 @@ public:
   }
 
   [[nodiscard]] lanelet::BasicPolygon2d get_near_segment_polygon(
+    const geometry_msgs::msg::Point & prev_end_point,
+    const geometry_msgs::msg::Point & following_end_point) const;
+
+  [[nodiscard]] FloatVecRoadBounds get_near_segment_bounds(
     const geometry_msgs::msg::Point & prev_end_point,
     const geometry_msgs::msg::Point & following_end_point) const;
 

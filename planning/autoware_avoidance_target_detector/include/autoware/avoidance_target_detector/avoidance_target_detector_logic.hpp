@@ -92,6 +92,13 @@ public:
     return extended_route_handler_->get_velocity_limit(point);
   }
 
+  [[nodiscard]] const FloatVecRoadBounds get_near_segment_bounds(
+    const geometry_msgs::msg::Point & ego_point,
+    const geometry_msgs::msg::Point & trajectory_end_point)
+  {
+    return extended_route_handler_->get_near_segment_bounds(ego_point, trajectory_end_point);
+  }
+
 private:
   void update_ego_trajectory(const TrajectoryPoint & ego_point);
 

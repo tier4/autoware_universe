@@ -788,6 +788,58 @@ lanelet::BasicPolygon2d ExtendedRouteHandler::get_near_segment_polygon(
   return lanelet::BasicPolygon2d(ring);
 }
 
+FloatVecRoadBounds ExtendedRouteHandler::get_near_segment_bounds(
+  const geometry_msgs::msg::Point & prev_end_point,
+  const geometry_msgs::msg::Point & following_end_point) const
+{
+  FloatVecRoadBounds road_bounds;
+
+  const auto segments = get_near_segments(prev_end_point, following_end_point);
+  if (segments.empty()) {
+    return road_bounds;
+  }
+
+  std::vector<lanelet::LineString2d> left_bounds;
+  std::vector<lanelet::LineString2d> right_bounds;
+  left_bounds.reserve(segments.size());
+  right_bounds.reserve(segments.size());
+
+  for (const auto & segment : segments) {
+    if (segment.siblings_included_primitives.empty()) {
+      continue;
+    }
+    const auto bounds = get_primitive_set_bounds(segment.siblings_included_primitives);
+    if (bounds.first.empty() || bounds.second.empty()) {
+      continue;
+    }
+    left_bounds.push_back(bounds.first);
+    right_bounds.push_back(bounds.second);
+  }
+
+  if (left_bounds.empty() || right_bounds.empty()) {
+    return road_bounds;
+  }
+
+  const auto left_compound_bound = lanelet::CompoundLineString2d(left_bounds);
+  const auto right_compound_bound = lanelet::CompoundLineString2d(right_bounds);
+
+  road_bounds.road_border_left_x.reserve(left_compound_bound.size());
+  road_bounds.road_border_left_y.reserve(left_compound_bound.size());
+  for (const auto & point : left_compound_bound) {
+    road_bounds.road_border_left_x.push_back(static_cast<float>(point.x()));
+    road_bounds.road_border_left_y.push_back(static_cast<float>(point.y()));
+  }
+
+  road_bounds.road_border_right_x.reserve(right_compound_bound.size());
+  road_bounds.road_border_right_y.reserve(right_compound_bound.size());
+  for (const auto & point : right_compound_bound) {
+    road_bounds.road_border_right_x.push_back(static_cast<float>(point.x()));
+    road_bounds.road_border_right_y.push_back(static_cast<float>(point.y()));
+  }
+
+  return road_bounds;
+}
+
 std::optional<double> ExtendedRouteHandler::get_velocity_limit(
   const lanelet::BasicPoint2d & point) const
 {
