@@ -47,9 +47,9 @@ SimpleTrajectoryRanker::SimpleTrajectoryRanker(const rclcpp::NodeOptions & optio
     std::make_shared<autoware_utils_debug::TimeKeeper>(debug_processing_time_detail_pub_);
 
   // Parameters
-  ranked_generator_name_prefixes_ =
+  generator_name_prefixes_ =
     autoware_utils_rclcpp::get_or_declare_parameter<std::vector<std::string>>(
-      *this, "ranked_generator_name_prefixes");
+      *this, "generator_name_prefixes");
 }
 
 void SimpleTrajectoryRanker::trajectories_callback(
@@ -67,7 +67,7 @@ void SimpleTrajectoryRanker::trajectories_callback(
   std::unordered_map<
     std::string, std::vector<autoware_internal_planning_msgs::msg::ScoredCandidateTrajectory>>
     trajectories_per_prefix;
-  for (const auto & prefix : ranked_generator_name_prefixes_) {
+  for (const auto & prefix : generator_name_prefixes_) {
     trajectories_per_prefix[prefix] = {};
   }
   std::vector<autoware_internal_planning_msgs::msg::ScoredCandidateTrajectory>
@@ -81,10 +81,10 @@ void SimpleTrajectoryRanker::trajectories_callback(
     bool matched = false;
     const auto generator_name_it = uuid_to_name.find(generator_id_str);
     if (generator_name_it != uuid_to_name.end()) {
-      for (size_t i = 0; i < ranked_generator_name_prefixes_.size(); ++i) {
-        const auto & prefix = ranked_generator_name_prefixes_[i];
+      for (size_t i = 0; i < generator_name_prefixes_.size(); ++i) {
+        const auto & prefix = generator_name_prefixes_[i];
         if (generator_name_it->second.rfind(prefix, 0) == 0) {
-          scored_trajectory.score = static_cast<double>(ranked_generator_name_prefixes_.size() - i);
+          scored_trajectory.score = static_cast<double>(generator_name_prefixes_.size() - i);
           trajectories_per_prefix[prefix].push_back(scored_trajectory);
           matched = true;
           break;
@@ -99,7 +99,7 @@ void SimpleTrajectoryRanker::trajectories_callback(
   autoware_internal_planning_msgs::msg::ScoredCandidateTrajectories scored_msg;
   scored_msg.generator_info = msg->generator_info;
   scored_msg.scored_candidate_trajectories.reserve(msg->candidate_trajectories.size());
-  for (const auto & prefix : ranked_generator_name_prefixes_) {
+  for (const auto & prefix : generator_name_prefixes_) {
     const auto & trajectories = trajectories_per_prefix[prefix];
     scored_msg.scored_candidate_trajectories.insert(
       scored_msg.scored_candidate_trajectories.end(), trajectories.begin(), trajectories.end());
