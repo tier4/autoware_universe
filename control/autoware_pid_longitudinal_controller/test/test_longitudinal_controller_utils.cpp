@@ -26,7 +26,9 @@
 #include "geometry_msgs/msg/quaternion.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
+#include <cmath>
 #include <limits>
+#include <vector>
 
 namespace longitudinal_utils =
   ::autoware::motion::control::pid_longitudinal_controller::longitudinal_utils;
@@ -456,6 +458,34 @@ TEST(TestLongitudinalControllerUtils, lerpTrajectoryPoint)
   EXPECT_NEAR(result.first.pose.position.z, pose.position.z, abs_err);
   EXPECT_NEAR(result.first.longitudinal_velocity_mps, 15.0, abs_err);
   EXPECT_NEAR(result.first.acceleration_mps2, 15.0, abs_err);
+}
+
+TEST(TestLongitudinalControllerUtils, lerpTrajectoryPoint_zeroLengthSegment)
+{
+  using autoware_planning_msgs::msg::TrajectoryPoint;
+  using geometry_msgs::msg::Pose;
+  const double abs_err = 1e-5;
+  std::vector<TrajectoryPoint> points;
+  TrajectoryPoint p;
+  p.pose.position.x = 0.0;
+  p.pose.position.y = 0.0;
+  p.pose.position.z = 0.0;
+  p.longitudinal_velocity_mps = 1.5;
+  p.acceleration_mps2 = -2.5;
+  points.push_back(p);
+  points.push_back(p);
+
+  Pose pose;
+  pose.position.x = 0.0;
+  pose.position.y = 0.0;
+  pose.position.z = 0.0;
+
+  const auto result = longitudinal_utils::lerpTrajectoryPoint(points, pose, 3.0, 0.7);
+
+  EXPECT_TRUE(std::isfinite(result.first.longitudinal_velocity_mps));
+  EXPECT_TRUE(std::isfinite(result.first.acceleration_mps2));
+  EXPECT_NEAR(result.first.longitudinal_velocity_mps, 1.5, abs_err);
+  EXPECT_NEAR(result.first.acceleration_mps2, -2.5, abs_err);
 }
 
 TEST(TestLongitudinalControllerUtils, applyDiffLimitFilter)
