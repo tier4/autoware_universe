@@ -112,11 +112,7 @@ public:
 
   __host__ __device__ float computeSignedLateralOffset(float x, float y) const;
 
-  __host__ __device__ bool isOffRoad(const float x, const float y) const;
-
-  /** Disabled: always false (no polygon / lateral-bound / road-border crash). */
-  __host__ __device__ bool isEgoOutsideDrivableArea(
-    const float x, const float y, const float yaw) const;
+  __host__ __device__ bool deviatesFromReference(const float x, const float y) const;
 
   __host__ __device__ bool egoIntersectsObstacleAtStep(
     const float x, const float y, const float yaw, int timestep) const;

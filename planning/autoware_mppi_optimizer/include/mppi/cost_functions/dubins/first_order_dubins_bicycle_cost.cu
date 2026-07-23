@@ -392,24 +392,20 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
     return x - ref_x_[0];
   }
 
-  float best_abs = 1.0E8F;
+  float best_abs = 0.0F;
   float best_signed = 0.0F;
   for (int i = 0; i < NUM_TIMESTEPS - 1; ++i) {
     const float signed_offset =
       signedLateralOffsetPointToSegment(x, y, ref_x_[i], ref_y_[i], ref_x_[i + 1], ref_y_[i + 1]);
-#ifdef __CUDA_ARCH__
     const float abs_offset = fabsf(signed_offset);
     if (abs_offset < best_abs) {
       best_abs = abs_offset;
       best_signed = signed_offset;
     }
-#else
-    const float abs_offset = std::fabs(signed_offset);
     if (abs_offset < best_abs) {
       best_abs = abs_offset;
       best_signed = signed_offset;
     }
-#endif
   }
 
   return best_signed;
@@ -417,7 +413,7 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 __host__ __device__ bool
-FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::isOffRoad(
+FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::deviatesFromReference(
   const float x, const float y) const
 {
   const bool asymmetric =
@@ -434,18 +430,6 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
                               : this->params_.boundary_threshold;
   const float signed_lat = computeSignedLateralOffset(x, y);
   return signed_lat > left_limit || signed_lat < -right_limit;
-}
-
-template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-__host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
-  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
-  DYN_PARAMS_T>::isEgoOutsideDrivableArea(const float x, const float y, const float yaw) const
-{
-  (void)x;
-  (void)y;
-  (void)yaw;
-  // Boundary / polygonal / left-right corridor crash disabled.
-  return false;
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -557,11 +541,11 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   detectAndLatchCrash(
     const float x, const float y, const float yaw, const int timestep, int * crash_status) const
 {
-  const bool off_road = false; // isEgoOutsideDrivableArea(x, y, yaw);
+  const bool deviating_from_reference = deviatesFromReference(x, y);
   const bool hit_car = egoIntersectsObstacleAtStep(x, y, yaw, timestep);
   const bool hit_road_border = egoIntersectsRoadBorder(x, y, yaw);
   const int violations =
-    static_cast<int>(off_road) + static_cast<int>(hit_car) + static_cast<int>(hit_road_border);
+    static_cast<int>(deviating_from_reference) + static_cast<int>(hit_car) + static_cast<int>(hit_road_border);
   if (violations > 0) {
     if (crash_status != nullptr) {
       crash_status[0] = violations;
