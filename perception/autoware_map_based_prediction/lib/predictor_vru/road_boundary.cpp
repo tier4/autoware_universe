@@ -201,8 +201,8 @@ std::vector<PredictedPath> RoadBoundaryModule::cut_paths_crossing_road_boundary(
     }
     // Only cut when the object can decelerate to a stop before the boundary. If it cannot stop in
     // time, the jump-out onto the road is unavoidable and the full path is kept.
-    const double distance_to_cross = autoware::motion_utils::calcSignedArcLength(
-      predicted_path.path, 0, crossing_index.value());
+    const double distance_to_cross =
+      autoware::motion_utils::calcSignedArcLength(predicted_path.path, 0, crossing_index.value());
     if (!path_cut::can_stop_before_the_line(distance_to_cross, object_speed, max_deceleration)) {
       continue;
     }

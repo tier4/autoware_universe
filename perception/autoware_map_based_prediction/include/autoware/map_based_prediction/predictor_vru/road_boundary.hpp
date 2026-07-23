@@ -57,8 +57,8 @@ public:
   /// represents a legitimate crossing. The exemption is overridden when @p is_crosswalk_signal_red
   /// reports the crosswalk's signal as red: in that case the jump-out is cut like any other.
   [[nodiscard]] std::vector<PredictedPath> cut_paths_crossing_road_boundary(
-    const autoware_perception_msgs::msg::PredictedObject & predicted_object, bool object_within_road,
-    const CrosswalkSignalRedFn & is_crosswalk_signal_red) const;
+    const autoware_perception_msgs::msg::PredictedObject & predicted_object,
+    bool object_within_road, const CrosswalkSignalRedFn & is_crosswalk_signal_red) const;
 
 private:
   lanelet::LaneletMapUPtr road_boundary_layer_{nullptr};
