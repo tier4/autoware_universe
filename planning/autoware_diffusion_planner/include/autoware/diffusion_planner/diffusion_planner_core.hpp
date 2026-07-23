@@ -24,6 +24,7 @@
 #include "autoware/diffusion_planner/preprocessing/lane_segments.hpp"
 #include "autoware/diffusion_planner/preprocessing/traffic_signals.hpp"
 #include "autoware/diffusion_planner/utils/arg_reader.hpp"
+#include "autoware/diffusion_planner/utils/trajectory_stitcher.hpp"
 
 #include <Eigen/Dense>
 #include <autoware/vehicle_info_utils/vehicle_info.hpp>
@@ -103,9 +104,11 @@ struct FrameContext
 {
   nav_msgs::msg::Odometry ego_kinematic_state;
   geometry_msgs::msg::AccelWithCovarianceStamped ego_acceleration;
+  geometry_msgs::msg::Pose planning_origin;
   Eigen::Matrix4d ego_to_map_transform;
   std::vector<AgentHistory> ego_centric_neighbor_histories;
   rclcpp::Time frame_time;
+  StitchingStatus stitching_status;
 };
 
 struct DiffusionPlannerParams
@@ -141,6 +144,7 @@ struct DiffusionPlannerParams
   double centerline_guidance_start_time_s;
   bool use_mppi_optimizer;
   bool shadow_mode;
+  TrajectoryStitcherParams stitching;
 };
 
 /**
@@ -339,6 +343,7 @@ private:
   void sync_turn_indicator_managers();
 
   // History data
+  TrajectoryStitcher trajectory_stitcher_;
   std::deque<nav_msgs::msg::Odometry> ego_history_;
   std::deque<TurnIndicatorsReport> turn_indicators_history_;
   AgentData agent_data_;

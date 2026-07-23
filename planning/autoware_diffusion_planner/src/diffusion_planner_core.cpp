@@ -73,7 +73,7 @@ std::string onnxruntime_execution_provider_from_backend(const std::string & back
 
 DiffusionPlannerCore::DiffusionPlannerCore(
   const DiffusionPlannerParams & params, const VehicleInfo & vehicle_info)
-: params_(params), vehicle_spec_(vehicle_info)
+: params_(params), vehicle_spec_(vehicle_info), trajectory_stitcher_(params.stitching)
 {
   sync_turn_indicator_managers();
 }
@@ -101,6 +101,7 @@ void DiffusionPlannerCore::sync_turn_indicator_managers()
 void DiffusionPlannerCore::load_model()
 {
   last_agent_poses_map_.clear();
+  trajectory_stitcher_.reset();
   diffusion_planner_inference_.reset();
   utils::check_weight_version(params_.args_path);
   observation_normalization_ = utils::load_observation_normalization(params_.args_path);
@@ -175,6 +176,7 @@ void DiffusionPlannerCore::load_model()
 void DiffusionPlannerCore::update_params(const DiffusionPlannerParams & params)
 {
   params_ = params;
+  trajectory_stitcher_.update_params(params_.stitching);
   sync_turn_indicator_managers();
   if (start_guidance_) {
     StartGuidanceConfig start_guidance_config;
@@ -269,15 +271,21 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
     return std::nullopt;
   }
 
+  const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
+  const bool mppi_overwrite_active = params_.use_mppi_optimizer && !params_.shadow_mode;
+  const StitchingStatus stitching_status = trajectory_stitcher_.compute_planning_origin(
+    frame_time, *ego_kinematic_state, route_ptr_->uuid, mppi_overwrite_active);
+
   Odometry kinematic_state = *ego_kinematic_state;
+  geometry_msgs::msg::Pose origin_pose = stitching_status.planning_origin;
   if (params_.shift_x) {
     kinematic_state.pose.pose =
       utils::shift_x(kinematic_state.pose.pose, vehicle_spec_.base_link_to_center);
+    origin_pose = utils::shift_x(origin_pose, vehicle_spec_.base_link_to_center);
   }
 
   // Get transforms
-  const geometry_msgs::msg::Pose & pose_base_link = kinematic_state.pose.pose;
-  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(pose_base_link);
+  const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(origin_pose);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
 
   // Update ego history
@@ -285,6 +293,8 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
   if (ego_history_.size() > static_cast<size_t>(EGO_HISTORY_SHAPE[1])) {
     ego_history_.pop_front();
   }
+  trajectory_stitcher_.push_planning_origin_history(
+    frame_time, origin_pose, static_cast<size_t>(EGO_HISTORY_SHAPE[1]));
 
   // Update turn indicators history
   turn_indicators_history_.push_back(*turn_indicators);
@@ -303,10 +313,14 @@ std::optional<FrameContext> DiffusionPlannerCore::create_frame_context(
     traffic_signals, traffic_light_id_map_, current_time, traffic_light_msg_timeout_s);
 
   // Create frame context
-  const rclcpp::Time frame_time(ego_kinematic_state->header.stamp);
   const FrameContext frame_context{
-    *ego_kinematic_state, *ego_acceleration, ego_to_map_transform, processed_neighbor_histories,
-    frame_time};
+    *ego_kinematic_state,
+    *ego_acceleration,
+    stitching_status.planning_origin,
+    ego_to_map_transform,
+    processed_neighbor_histories,
+    frame_time,
+    stitching_status};
 
   return frame_context;
 }
@@ -322,9 +336,8 @@ InputDataMap DiffusionPlannerCore::create_input_data(const FrameContext & frame_
 
   const geometry_msgs::msg::Pose & pose_center =
     params_.shift_x
-      ? utils::shift_x(
-          frame_context.ego_kinematic_state.pose.pose, vehicle_spec_.base_link_to_center)
-      : frame_context.ego_kinematic_state.pose.pose;
+      ? utils::shift_x(frame_context.planning_origin, vehicle_spec_.base_link_to_center)
+      : frame_context.planning_origin;
   const Eigen::Matrix4d ego_to_map_transform = utils::pose_to_matrix4d(pose_center);
   const Eigen::Matrix4d map_to_ego_transform = utils::inverse(ego_to_map_transform);
   const auto & center_x = static_cast<float>(pose_center.position.x);
@@ -370,8 +383,12 @@ InputDataMap DiffusionPlannerCore::create_input_data(const FrameContext & frame_
   {
     const std::optional<rclcpp::Time> reference_time =
       params_.use_time_interpolation ? std::make_optional(frame_context.frame_time) : std::nullopt;
+    const bool use_on_plan_history =
+      params_.stitching.enable && params_.stitching.history_mode == "on_plan";
+    const auto & history_source =
+      use_on_plan_history ? trajectory_stitcher_.planning_origin_history() : ego_history_;
     const std::vector<float> single_ego_agent_past = preprocess::create_ego_agent_past(
-      ego_history_, EGO_HISTORY_SHAPE[1], map_to_ego_transform, reference_time);
+      history_source, EGO_HISTORY_SHAPE[1], map_to_ego_transform, reference_time);
     input_data_map["ego_agent_past"] =
       utils::replicate_for_batch(single_ego_agent_past, params_.batch_size);
   }
@@ -538,7 +555,7 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
   // Trajectory and CandidateTrajectories
   for (int i = 0; i < params_.batch_size; i++) {
     auto trajectory = postprocess::create_ego_trajectory(
-      agent_poses, timestamp, frame_context.ego_kinematic_state.pose.pose.position, i,
+      agent_poses, timestamp, frame_context.planning_origin.position, i,
       params_.velocity_smoothing_window, enable_force_stop, params_.stopping_threshold);
 
     if (params_.shift_x) {
@@ -591,6 +608,9 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
 
   output.guidance_triggered = inference_output.guidance_triggered;
 
+  trajectory_stitcher_.set_previous_trajectory(
+    output.trajectory, frame_context.planning_origin, route_ptr_->uuid);
+
   return output;
 }
 
@@ -603,9 +623,8 @@ DiffusionPlannerCore::get_first_traffic_light_on_route(const FrameContext & fram
 
   const geometry_msgs::msg::Pose & pose_center =
     params_.shift_x
-      ? utils::shift_x(
-          frame_context.ego_kinematic_state.pose.pose, vehicle_spec_.base_link_to_center)
-      : frame_context.ego_kinematic_state.pose.pose;
+      ? utils::shift_x(frame_context.planning_origin, vehicle_spec_.base_link_to_center)
+      : frame_context.planning_origin;
 
   const double center_x = pose_center.position.x;
   const double center_y = pose_center.position.y;
