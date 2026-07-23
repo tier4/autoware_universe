@@ -176,6 +176,60 @@
           "default": false,
           "description": "Whether to interpolate ego past trajectory at regular time intervals"
         },
+        "stitching": {
+          "type": "object",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "default": false,
+              "description": "Plan from a virtual pose time-matched on the previous trajectory instead of the measured ego pose"
+            },
+            "history_mode": {
+              "type": "string",
+              "enum": ["real", "on_plan"],
+              "default": "real",
+              "description": "Source of the ego history input: measured odometry (real) or past planning origins (on_plan)"
+            },
+            "time_offset_s": {
+              "type": "number",
+              "default": 0.0,
+              "description": "Additional time offset applied when matching the virtual pose on the previous trajectory [s]"
+            },
+            "lateral_deviation_threshold_m": {
+              "type": "number",
+              "default": 0.3,
+              "exclusiveMinimum": 0,
+              "description": "Lateral deviation between ego and previous trajectory above which planning resets to the measured pose [m]"
+            },
+            "longitudinal_deviation_threshold_m": {
+              "type": "number",
+              "default": 2.0,
+              "exclusiveMinimum": 0,
+              "description": "Longitudinal deviation between ego and the time-matched point above which planning resets to the measured pose [m]"
+            },
+            "lateral_rearm_threshold_m": {
+              "type": "number",
+              "default": 0.1,
+              "exclusiveMinimum": 0,
+              "description": "Lateral deviation below which stitching re-arms after a reset [m]"
+            },
+            "max_trajectory_age_s": {
+              "type": "number",
+              "default": 0.35,
+              "exclusiveMinimum": 0,
+              "description": "Maximum age of the previous trajectory to allow stitching [s]"
+            }
+          },
+          "required": [
+            "enable",
+            "history_mode",
+            "time_offset_s",
+            "lateral_deviation_threshold_m",
+            "longitudinal_deviation_threshold_m",
+            "lateral_rearm_threshold_m",
+            "max_trajectory_age_s"
+          ]
+        },
         "guidance": {
           "type": "object",
           "properties": {
@@ -293,6 +347,7 @@
         "stopping_threshold",
         "turn_indicator_keep_offset",
         "turn_indicator_hold_duration",
+        "stitching",
         "planning_factor",
         "debug_params",
         "guidance"

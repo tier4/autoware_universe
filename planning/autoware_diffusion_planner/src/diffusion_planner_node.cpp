@@ -206,6 +206,18 @@ void DiffusionPlanner::set_up_params()
   params_.delay_step = this->declare_parameter<int64_t>("delay_step", 0);
   params_.line_string_max_step_m = this->declare_parameter<double>("line_string_max_step_m", 5.0);
   params_.use_time_interpolation = this->declare_parameter<bool>("use_time_interpolation", false);
+  params_.stitching.enable = this->declare_parameter<bool>("stitching.enable", false);
+  params_.stitching.history_mode =
+    this->declare_parameter<std::string>("stitching.history_mode", "real");
+  params_.stitching.time_offset_s = this->declare_parameter<double>("stitching.time_offset_s", 0.0);
+  params_.stitching.lateral_deviation_threshold_m =
+    this->declare_parameter<double>("stitching.lateral_deviation_threshold_m", 0.3);
+  params_.stitching.longitudinal_deviation_threshold_m =
+    this->declare_parameter<double>("stitching.longitudinal_deviation_threshold_m", 2.0);
+  params_.stitching.lateral_rearm_threshold_m =
+    this->declare_parameter<double>("stitching.lateral_rearm_threshold_m", 0.1);
+  params_.stitching.max_trajectory_age_s =
+    this->declare_parameter<double>("stitching.max_trajectory_age_s", 0.35);
   params_.start_guidance_reference_distance_m =
     this->declare_parameter<double>("guidance.start_guidance.reference_distance_m", 10.0);
   params_.start_guidance_max_scale =
@@ -337,6 +349,49 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<int64_t>(parameters, "delay_step", temp_params.delay_step);
     update_param<double>(parameters, "line_string_max_step_m", temp_params.line_string_max_step_m);
     update_param<bool>(parameters, "use_time_interpolation", temp_params.use_time_interpolation);
+    update_param<bool>(parameters, "stitching.enable", temp_params.stitching.enable);
+    update_param<std::string>(
+      parameters, "stitching.history_mode", temp_params.stitching.history_mode);
+    update_param<double>(
+      parameters, "stitching.time_offset_s", temp_params.stitching.time_offset_s);
+    update_param<double>(
+      parameters, "stitching.lateral_deviation_threshold_m",
+      temp_params.stitching.lateral_deviation_threshold_m);
+    update_param<double>(
+      parameters, "stitching.longitudinal_deviation_threshold_m",
+      temp_params.stitching.longitudinal_deviation_threshold_m);
+    update_param<double>(
+      parameters, "stitching.lateral_rearm_threshold_m",
+      temp_params.stitching.lateral_rearm_threshold_m);
+    update_param<double>(
+      parameters, "stitching.max_trajectory_age_s", temp_params.stitching.max_trajectory_age_s);
+    if (
+      temp_params.stitching.history_mode != "real" &&
+      temp_params.stitching.history_mode != "on_plan") {
+      SetParametersResult result;
+      result.successful = false;
+      result.reason = "stitching.history_mode must be either 'real' or 'on_plan'";
+      return result;
+    }
+    if (
+      temp_params.stitching.lateral_deviation_threshold_m <= 0.0 ||
+      temp_params.stitching.longitudinal_deviation_threshold_m <= 0.0 ||
+      temp_params.stitching.lateral_rearm_threshold_m <= 0.0 ||
+      temp_params.stitching.max_trajectory_age_s <= 0.0) {
+      SetParametersResult result;
+      result.successful = false;
+      result.reason = "stitching thresholds and max_trajectory_age_s must be positive";
+      return result;
+    }
+    if (
+      temp_params.stitching.lateral_rearm_threshold_m >
+      temp_params.stitching.lateral_deviation_threshold_m) {
+      SetParametersResult result;
+      result.successful = false;
+      result.reason =
+        "stitching.lateral_rearm_threshold_m must not exceed lateral_deviation_threshold_m";
+      return result;
+    }
     update_param<double>(
       parameters, "guidance.start_guidance.reference_distance_m",
       temp_params.start_guidance_reference_distance_m);
