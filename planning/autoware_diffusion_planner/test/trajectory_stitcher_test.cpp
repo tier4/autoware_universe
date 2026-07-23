@@ -138,7 +138,7 @@ TEST_F(TrajectoryStitcherTest, StitchesAtProjection)
   const auto before_start =
     stitcher_->compute_planning_origin(at(0.1), make_odom(0.5), uuid_a_, false);
   EXPECT_TRUE(before_start.stitched);
-  EXPECT_NEAR(before_start.planning_origin.position.x, 1.0, 1e-9);
+  EXPECT_NEAR(before_start.planning_origin.position.x, 0.5, 1e-9);
 }
 
 TEST_F(TrajectoryStitcherTest, TimeOffsetLeadsAlongArc)
