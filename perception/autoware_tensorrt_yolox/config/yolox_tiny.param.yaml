@@ -28,6 +28,8 @@
     enable_center_crop_inference: false # Infer the whole (resized) image together with a native-resolution center crop (of the model input size) in a single batch-2 enqueue, and override the whole-image results with the crop's trusted (non border-touching) detections. Recovers small/distant central objects lost when downscaling. Requires a detection-only model exported with a batch size of 2.
     center_crop_edge_margin: 8 # Margin (px) within which a center-crop detection is treated as touching the crop border and discarded (may be truncated).
     center_crop_overlap_iou_threshold: 0.5 # IoU above which a resized-inference detection is overridden by an overlapping center-crop detection.
+    center_crop_x_ratio: 0.5 # Horizontal position of the crop center as a fraction of the image width (0.5 = image center).
+    center_crop_y_ratio: 0.5 # Vertical position of the crop center as a fraction of the image height (0.5 = center; smaller shifts the crop up, e.g. for traffic lights).
 
     precision: "fp16" # Operation precision to be used on inference. Valid value is one of: [fp32, fp16, int8].
     calibration_algorithm: "MinMax" # Calibration algorithm to be used for quantization when precision==int8. Valid value is one of: [Entropy, (Legacy | Percentile), MinMax].

@@ -68,6 +68,10 @@ TrtYoloXNode::TrtYoloXNode(const rclcpp::NodeOptions & node_options)
     this->declare_parameter<int>("center_crop_edge_margin", 8);
   const float center_crop_overlap_iou_threshold =
     static_cast<float>(this->declare_parameter<double>("center_crop_overlap_iou_threshold", 0.5));
+  const float center_crop_x_ratio =
+    static_cast<float>(this->declare_parameter<double>("center_crop_x_ratio", 0.5));
+  const float center_crop_y_ratio =
+    static_cast<float>(this->declare_parameter<double>("center_crop_y_ratio", 0.5));
 
   const std::string label_path = this->declare_parameter<std::string>("label_path");
   const std::string semseg_color_map_path =
@@ -127,7 +131,8 @@ TrtYoloXNode::TrtYoloXNode(const rclcpp::NodeOptions & node_options)
   trt_yolox_ = std::make_unique<tensorrt_yolox::TrtYoloX>(
     trt_config, roi_class_name_list_.size(), score_threshold, nms_threshold, preprocess_on_gpu,
     gpu_id, calibration_image_list_path, norm_factor, cache_dir, calib_config,
-    enable_center_crop_inference, center_crop_edge_margin, center_crop_overlap_iou_threshold);
+    enable_center_crop_inference, center_crop_edge_margin, center_crop_overlap_iou_threshold,
+    center_crop_x_ratio, center_crop_y_ratio);
 
   if (!trt_yolox_->isGPUInitialized()) {
     RCLCPP_ERROR(this->get_logger(), "GPU %d does not exist or is not suitable.", gpu_id);

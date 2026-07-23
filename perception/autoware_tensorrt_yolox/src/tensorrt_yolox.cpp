@@ -43,7 +43,8 @@ TrtYoloX::TrtYoloX(
   std::string calibration_image_list_path, const double norm_factor,
   [[maybe_unused]] const std::string & cache_dir, const CalibrationConfig & calib_config,
   const bool enable_center_crop_inference, const int center_crop_edge_margin,
-  const float center_crop_overlap_iou_threshold)
+  const float center_crop_overlap_iou_threshold, const float center_crop_x_ratio,
+  const float center_crop_y_ratio)
 : gpu_id_(gpu_id), is_gpu_initialized_(false)
 {
   if (!setCudaDeviceId(gpu_id_)) {
@@ -57,6 +58,8 @@ TrtYoloX::TrtYoloX(
   enable_center_crop_inference_ = enable_center_crop_inference;
   center_crop_edge_margin_ = center_crop_edge_margin;
   center_crop_overlap_iou_threshold_ = center_crop_overlap_iou_threshold;
+  center_crop_x_ratio_ = center_crop_x_ratio;
+  center_crop_y_ratio_ = center_crop_y_ratio;
   multitask_ = 0;
   stream_ = makeCudaStream();
 
@@ -903,8 +906,15 @@ bool TrtYoloX::inferenceWithCenterCropBatch(
   const auto input_dims = trt_common_->getTensorShape(0);
   const int crop_width = input_dims.d[3];
   const int crop_height = input_dims.d[2];
-  const int x0 = (image.cols - crop_width) / 2;
-  const int y0 = (image.rows - crop_height) / 2;
+  // Place the crop so its center sits at (x_ratio * width, y_ratio * height), then clamp the
+  // top-left corner so the crop stays fully inside the image. A smaller y ratio shifts the crop
+  // toward the top of the image, e.g. to cover traffic lights.
+  const int x0 = std::clamp(
+    static_cast<int>(center_crop_x_ratio_ * image.cols - crop_width / 2.0), 0,
+    image.cols - crop_width);
+  const int y0 = std::clamp(
+    static_cast<int>(center_crop_y_ratio_ * image.rows - crop_height / 2.0), 0,
+    image.rows - crop_height);
 
   // Batch element 0: whole image resized/letterboxed to the model input (scale < 1).
   // Batch element 1: native-resolution center crop, whose size equals the model input (scale = 1),

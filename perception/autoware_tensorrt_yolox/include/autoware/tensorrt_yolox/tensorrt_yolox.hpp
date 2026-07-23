@@ -90,6 +90,10 @@ public:
    * as touching the crop border and therefore discarded (may be truncated)
    * @param[in] center_crop_overlap_iou_threshold IoU above which a resized-inference detection is
    * overridden by an overlapping center-crop detection
+   * @param[in] center_crop_x_ratio horizontal position of the crop center as a fraction of the
+   * image width (0.5 = image center); the crop is clamped to stay inside the image
+   * @param[in] center_crop_y_ratio vertical position of the crop center as a fraction of the image
+   * height (0.5 = image center; use a smaller value to shift the crop up, e.g. for traffic lights)
    */
   TrtYoloX(
     TrtCommonConfig & trt_config, const int num_class = 8, const float score_threshold = 0.3,
@@ -98,7 +102,8 @@ public:
     const double norm_factor = 1.0, [[maybe_unused]] const std::string & cache_dir = "",
     const CalibrationConfig & calib_config = CalibrationConfig(),
     const bool enable_center_crop_inference = false, const int center_crop_edge_margin = 8,
-    const float center_crop_overlap_iou_threshold = 0.5f);
+    const float center_crop_overlap_iou_threshold = 0.5f, const float center_crop_x_ratio = 0.5f,
+    const float center_crop_y_ratio = 0.5f);
   /**
    * @brief Deconstruct TrtYoloX
    */
@@ -345,6 +350,10 @@ private:
   int center_crop_edge_margin_;
   // IoU above which a resized-inference detection is overridden by a center-crop detection
   float center_crop_overlap_iou_threshold_;
+  // crop center position as a fraction of the image size (0.5 = image center). A smaller y ratio
+  // shifts the crop toward the top of the image (e.g. to cover traffic lights).
+  float center_crop_x_ratio_;
+  float center_crop_y_ratio_;
 
   std::vector<int> output_strides_;
 

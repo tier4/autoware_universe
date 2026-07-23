@@ -18,7 +18,9 @@ Zheng Ge, Songtao Liu, Feng Wang, Zeming Li, Jian Sun, "YOLOX: Exceeding YOLO Se
 
 By default the whole input image is resized (letterboxed) down to the model input size before inference. For large images this downscaling shrinks small/distant objects and hurts detection accuracy near the image center.
 
-When `enable_center_crop_inference` is set to `true`, the node infers, in a **single batch-2 enqueue**, both the whole (resized) image and a **center crop of the original image whose size equals the model input size** (e.g. a 960x960 crop for a 960x960 model). The two views are placed in the two batch slots: element 0 (whole image, resized/letterboxed) and element 1 (center crop). Because the crop is fed to the network without any downscaling, objects in the central region are inferred at native resolution, and running them together avoids a second inference call.
+When `enable_center_crop_inference` is set to `true`, the node infers, in a **single batch-2 enqueue**, both the whole (resized) image and a **crop of the original image whose size equals the model input size** (e.g. a 960x960 crop for a 960x960 model). The two views are placed in the two batch slots: element 0 (whole image, resized/letterboxed) and element 1 (the crop). Because the crop is fed to the network without any downscaling, objects in the cropped region are inferred at native resolution, and running them together avoids a second inference call.
+
+By default the crop is centered, but its position is configurable via `center_crop_x_ratio` and `center_crop_y_ratio`, which set the crop center as a fraction of the image size (0.5 = image center). The crop is then clamped to stay fully inside the image. Since traffic lights sit in the upper part of the frame, a smaller `center_crop_y_ratio` (e.g. `0.3`) shifts the crop upward to cover them.
 
 The two result sets are then merged as follows:
 

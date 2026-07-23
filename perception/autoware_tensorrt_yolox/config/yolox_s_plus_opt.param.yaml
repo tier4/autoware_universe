@@ -37,6 +37,10 @@
     # IoU above which a resized-inference detection is overridden by an overlapping center-crop
     # detection.
     center_crop_overlap_iou_threshold: 0.5
+    # Crop center position as a fraction of the image size (0.5 = image center). Use a smaller y
+    # ratio to shift the crop toward the top of the image (e.g. to cover traffic lights).
+    center_crop_x_ratio: 0.5
+    center_crop_y_ratio: 0.5
 
     precision: "int8" # Operation precision to be used on inference. Valid value is one of: [fp32, fp16, int8].
     calibration_algorithm: "Entropy" # Calibration algorithm to be used for quantization when precision==int8. Valid value is one of: [Entropy, (Legacy | Percentile), MinMax].

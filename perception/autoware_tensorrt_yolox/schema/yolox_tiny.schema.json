@@ -57,6 +57,20 @@
           "description": "IoU above which a resized-inference detection is overridden by an overlapping center-crop detection.",
           "default": 0.5
         },
+        "center_crop_x_ratio": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Horizontal position of the crop center as a fraction of the image width (0.5 = image center).",
+          "default": 0.5
+        },
+        "center_crop_y_ratio": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vertical position of the crop center as a fraction of the image height (0.5 = image center; use a smaller value to shift the crop up, e.g. for traffic lights).",
+          "default": 0.5
+        },
         "precision": {
           "type": "string",
           "description": "Operation precision for inference. Valid options: [fp32, fp16, int8].",
@@ -118,6 +132,8 @@
         "enable_center_crop_inference",
         "center_crop_edge_margin",
         "center_crop_overlap_iou_threshold",
+        "center_crop_x_ratio",
+        "center_crop_y_ratio",
         "precision",
         "calibration_algorithm",
         "dla_core_id",
