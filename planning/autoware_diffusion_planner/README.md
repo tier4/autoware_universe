@@ -173,12 +173,11 @@ By default the planner anchors every plan at the measured ego pose. Any controll
 error is then folded back into the next plan, which can amplify drift in closed loop,
 especially in curves. When `stitching.enable` is true, the planner instead plans from a
 virtual pose on its own previous trajectory: the ego position is projected onto the previous
-path by arc length (so the anchor always stays abreast of the vehicle), then blended toward
-the measured pose by `stitching.correction_gain` (0 = pure stitching, 1 = plan from the
-measured pose). The gain lets the planner acknowledge a fraction of the tracking error each
-cycle and plan an active recovery, while still attenuating the error feedback loop that
-causes drift amplification. The model inputs, the diffusion anchor, and the output transform
-all use this planning origin. The measured kinematics (velocity, acceleration, yaw rate) are
+path by arc length, so the anchor always stays abreast of the vehicle while staying on the
+reference path. Tracking error never feeds back into the plan; the controller closes the
+loop on a stable reference and the deviation gate hands control back to the measured pose
+when the error grows too large. The model inputs, the diffusion anchor, and the output
+transform all use this planning origin. The measured kinematics (velocity, acceleration, yaw rate) are
 always taken from odometry.
 
 Stitching falls back to the measured pose (a reset) when the previous plan is not a valid

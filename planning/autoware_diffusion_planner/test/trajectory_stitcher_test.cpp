@@ -44,7 +44,6 @@ protected:
   void SetUp() override
   {
     params_.enable = true;
-    params_.correction_gain = 0.0;
     params_.rearm_cooldown_s = 1.0;
     stitcher_ = std::make_unique<TrajectoryStitcher>(params_);
   }
@@ -140,20 +139,6 @@ TEST_F(TrajectoryStitcherTest, StitchesAtProjection)
     stitcher_->compute_planning_origin(at(0.1), make_odom(0.5), uuid_a_, false);
   EXPECT_TRUE(before_start.stitched);
   EXPECT_NEAR(before_start.planning_origin.position.x, 1.0, 1e-9);
-}
-
-TEST_F(TrajectoryStitcherTest, CorrectionGainBlendsTowardEgo)
-{
-  params_.correction_gain = 0.5;
-  stitcher_->update_params(params_);
-  store_default_trajectory();
-  arm();
-
-  const auto status =
-    stitcher_->compute_planning_origin(at(0.1), make_odom(2.0, 0.08), uuid_a_, false);
-  EXPECT_TRUE(status.stitched);
-  EXPECT_NEAR(status.planning_origin.position.x, 2.0, 1e-9);
-  EXPECT_NEAR(status.planning_origin.position.y, 0.04, 1e-9);
 }
 
 TEST_F(TrajectoryStitcherTest, TimeOffsetLeadsAlongArc)

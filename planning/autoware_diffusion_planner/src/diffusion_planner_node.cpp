@@ -215,8 +215,6 @@ void DiffusionPlanner::set_up_params()
   params_.stitching.enable = this->declare_parameter<bool>("stitching.enable", false);
   params_.stitching.history_mode =
     this->declare_parameter<std::string>("stitching.history_mode", "real");
-  params_.stitching.correction_gain =
-    this->declare_parameter<double>("stitching.correction_gain", 0.3);
   params_.stitching.time_offset_s = this->declare_parameter<double>("stitching.time_offset_s", 0.0);
   params_.stitching.lateral_deviation_threshold_m =
     this->declare_parameter<double>("stitching.lateral_deviation_threshold_m", 0.3);
@@ -363,8 +361,6 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<std::string>(
       parameters, "stitching.history_mode", temp_params.stitching.history_mode);
     update_param<double>(
-      parameters, "stitching.correction_gain", temp_params.stitching.correction_gain);
-    update_param<double>(
       parameters, "stitching.time_offset_s", temp_params.stitching.time_offset_s);
     update_param<double>(
       parameters, "stitching.lateral_deviation_threshold_m",
@@ -397,13 +393,10 @@ SetParametersResult DiffusionPlanner::on_parameter(
       result.reason = "stitching thresholds and max_trajectory_age_s must be positive";
       return result;
     }
-    if (
-      temp_params.stitching.correction_gain < 0.0 || temp_params.stitching.correction_gain > 1.0 ||
-      temp_params.stitching.rearm_cooldown_s < 0.0) {
+    if (temp_params.stitching.rearm_cooldown_s < 0.0) {
       SetParametersResult result;
       result.successful = false;
-      result.reason =
-        "stitching.correction_gain must be within [0, 1] and rearm_cooldown_s non-negative";
+      result.reason = "stitching.rearm_cooldown_s must be non-negative";
       return result;
     }
     if (

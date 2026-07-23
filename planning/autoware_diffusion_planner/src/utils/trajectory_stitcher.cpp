@@ -114,16 +114,8 @@ StitchingStatus TrajectoryStitcher::compute_planning_origin(
     active_ = true;
   }
 
-  const geometry_msgs::msg::Pose projected_pose =
+  status.planning_origin =
     autoware::motion_utils::calcInterpolatedPose(points, std::max(target_arc, 0.0), false);
-
-  geometry_msgs::msg::Pose origin = projected_pose;
-  const double gain = params_.correction_gain;
-  origin.position.x += gain * (ego_position.x - projected_pose.position.x);
-  origin.position.y += gain * (ego_position.y - projected_pose.position.y);
-  origin.position.z += gain * (ego_position.z - projected_pose.position.z);
-
-  status.planning_origin = origin;
   status.stitched = true;
   return status;
 }

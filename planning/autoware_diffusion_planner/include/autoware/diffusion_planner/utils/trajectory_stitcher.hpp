@@ -33,7 +33,6 @@ struct TrajectoryStitcherParams
 {
   bool enable{false};
   std::string history_mode{"real"};  // "real" | "on_plan"
-  double correction_gain{0.3};       // 0 = pure stitching, 1 = plan from measured pose
   double time_offset_s{0.0};         // arc lead along the previous path at current speed [s]
   double lateral_deviation_threshold_m{0.3};
   double longitudinal_deviation_threshold_m{2.0};
