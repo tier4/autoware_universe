@@ -219,6 +219,8 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<double>("stitching.reference_blend_gain", 0.3);
   params_.stitching.path_correction_gain =
     this->declare_parameter<double>("stitching.path_correction_gain", 0.25);
+  params_.stitching.yaw_correction_gain =
+    this->declare_parameter<double>("stitching.yaw_correction_gain", 0.05);
   params_.stitching.time_offset_s = this->declare_parameter<double>("stitching.time_offset_s", 0.0);
   params_.stitching.lateral_deviation_threshold_m =
     this->declare_parameter<double>("stitching.lateral_deviation_threshold_m", 0.3);
@@ -369,6 +371,8 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<double>(
       parameters, "stitching.path_correction_gain", temp_params.stitching.path_correction_gain);
     update_param<double>(
+      parameters, "stitching.yaw_correction_gain", temp_params.stitching.yaw_correction_gain);
+    update_param<double>(
       parameters, "stitching.time_offset_s", temp_params.stitching.time_offset_s);
     update_param<double>(
       parameters, "stitching.lateral_deviation_threshold_m",
@@ -410,12 +414,15 @@ SetParametersResult DiffusionPlanner::on_parameter(
     if (
       temp_params.stitching.path_correction_gain <= 0.0 ||
       temp_params.stitching.path_correction_gain > 1.0 ||
+      temp_params.stitching.yaw_correction_gain <= 0.0 ||
+      temp_params.stitching.yaw_correction_gain > 1.0 ||
       temp_params.stitching.reference_blend_gain <= 0.0 ||
       temp_params.stitching.reference_blend_gain > 1.0) {
       SetParametersResult result;
       result.successful = false;
       result.reason =
-        "stitching.path_correction_gain and reference_blend_gain must be within (0, 1]";
+        "stitching.path_correction_gain, yaw_correction_gain and reference_blend_gain must be "
+        "within (0, 1]";
       return result;
     }
     if (

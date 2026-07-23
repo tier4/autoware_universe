@@ -202,7 +202,14 @@
               "default": 0.25,
               "exclusiveMinimum": 0,
               "maximum": 1,
-              "description": "Per-cycle pull of the odometry-predicted anchor toward the path projection (1 = raw projection)"
+              "description": "Per-cycle positional pull of the odometry-predicted anchor toward the path projection (1 = raw projection)"
+            },
+            "yaw_correction_gain": {
+              "type": "number",
+              "default": 0.05,
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "description": "Per-cycle yaw pull of the odometry-predicted anchor toward the path tangent"
             },
             "time_offset_s": {
               "type": "number",
@@ -245,6 +252,7 @@
             "history_mode",
             "reference_blend_gain",
             "path_correction_gain",
+            "yaw_correction_gain",
             "time_offset_s",
             "lateral_deviation_threshold_m",
             "longitudinal_deviation_threshold_m",

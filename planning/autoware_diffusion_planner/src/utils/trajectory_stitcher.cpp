@@ -150,7 +150,7 @@ StitchingStatus TrajectoryStitcher::compute_planning_origin(
       autoware_utils_geometry::create_quaternion_from_yaw(std::atan2(dy, dx));
   } else {
     projection = autoware::motion_utils::calcInterpolatedPose(points, target_arc, false);
-    constexpr double tangent_half_baseline = 2.5;
+    constexpr double tangent_half_baseline = 5.0;
     const double back_arc = std::max(target_arc - tangent_half_baseline, 0.0);
     const double front_arc = std::min(target_arc + tangent_half_baseline, total_arc);
     const auto back_pose = autoware::motion_utils::calcInterpolatedPose(points, back_arc, false);
@@ -184,11 +184,12 @@ StitchingStatus TrajectoryStitcher::compute_planning_origin(
     const double predicted_yaw = wrap_angle(anchor_yaw + body_dyaw);
 
     const double gain = params_.path_correction_gain;
+    const double yaw_gain = params_.yaw_correction_gain;
     origin.position.x = predicted_x + gain * (projection.position.x - predicted_x);
     origin.position.y = predicted_y + gain * (projection.position.y - predicted_y);
     origin.position.z = projection.position.z;
     origin.orientation = autoware_utils_geometry::create_quaternion_from_yaw(wrap_angle(
-      predicted_yaw + gain * wrap_angle(yaw_of(projection.orientation) - predicted_yaw)));
+      predicted_yaw + yaw_gain * wrap_angle(yaw_of(projection.orientation) - predicted_yaw)));
   }
   filtered_origin_ = origin;
   last_ego_pose_ = ego_odometry.pose.pose;
