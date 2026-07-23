@@ -155,10 +155,6 @@ public:
     return extended_route_bounds_;
   }
 
-  [[nodiscard]] const lanelet::Polygon2d & get_original_route_polygon() const;
-
-  [[nodiscard]] const lanelet::Polygon2d & get_extended_route_polygon() const;
-
   [[nodiscard]] lanelet::BasicPolygon2d get_near_segment_polygon(
     const geometry_msgs::msg::Point & prev_end_point,
     const geometry_msgs::msg::Point & following_end_point) const;
@@ -182,8 +178,6 @@ private:
   [[nodiscard]] RouteBounds build_route_bounds(
     const std::vector<const std::vector<int64_t> *> & segment_primitives) const;
 
-  [[nodiscard]] static lanelet::Polygon2d build_route_polygon(const RouteBounds & bounds);
-
   LaneletRoute route_;
   lanelet::LaneletMapPtr route_map_;
   ExtendedLaneletSegments extended_lanelet_segments_;
@@ -192,8 +186,6 @@ private:
   std::shared_ptr<RouteHandler> original_route_handler_;
   RouteBounds original_route_bounds_;
   RouteBounds extended_route_bounds_;
-  lanelet::Polygon2d original_route_polygon_;
-  lanelet::Polygon2d extended_route_polygon_;
 };
 
 /**

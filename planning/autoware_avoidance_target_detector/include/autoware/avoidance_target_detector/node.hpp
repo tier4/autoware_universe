@@ -97,7 +97,6 @@ private:
   rclcpp::Publisher<TrackedObjects>::SharedPtr pub_tracked_driving_along_vehicles_;
   rclcpp::Publisher<Path>::SharedPtr pub_drivable_area_path_;
   rclcpp::Publisher<MarkerArray>::SharedPtr pub_near_segment_polygon_;
-  rclcpp::Publisher<MarkerArray>::SharedPtr pub_route_polygon_;
 
   std::shared_ptr<ExtendedRouteHandler> extended_route_handler_;
   PredictedObjectSelector object_selector_;
