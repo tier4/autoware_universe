@@ -218,36 +218,32 @@ validator:
           default_value: false
           description: Use map based predicted path trajectories for DRAC assessment
           read_only: false
-        mutual_yield_timeout_resolution:
+        mutual_yield_timeout_arbitration:
           enabled:
-            type: bool
-            default_value: false
-            description: Resolve mutual-yield deadlocks after both participants have waited long enough
-            read_only: false
-          min_wait_time:
             base:
-              type: double
-              default_value: .NAN
-              description: Default minimum wait time before resolving a mutual-yield deadlock (s)
-              read_only: false
-            unknown:
-              &drac_labeled_wait_time_override {
-                type: double,
-                default_value: .NAN,
-                description: Per-class override. NaN uses the base value.,
+              &drac_labeled_mutual_yield_enabled {
+                type: bool,
+                default_value: false,
+                description: Enable mutual-yield arbitration for this object class,
                 read_only: false,
               }
-            car: *drac_labeled_wait_time_override
-            truck: *drac_labeled_wait_time_override
-            bus: *drac_labeled_wait_time_override
-            trailer: *drac_labeled_wait_time_override
-            motorcycle: *drac_labeled_wait_time_override
-            bicycle: *drac_labeled_wait_time_override
-            pedestrian: *drac_labeled_wait_time_override
-            animal: *drac_labeled_wait_time_override
-            hazard: *drac_labeled_wait_time_override
-            over_drivable: *drac_labeled_wait_time_override
-            under_drivable: *drac_labeled_wait_time_override
+            unknown: *drac_labeled_mutual_yield_enabled
+            car: *drac_labeled_mutual_yield_enabled
+            truck: *drac_labeled_mutual_yield_enabled
+            bus: *drac_labeled_mutual_yield_enabled
+            trailer: *drac_labeled_mutual_yield_enabled
+            motorcycle: *drac_labeled_mutual_yield_enabled
+            bicycle: *drac_labeled_mutual_yield_enabled
+            pedestrian: *drac_labeled_mutual_yield_enabled
+            animal: *drac_labeled_mutual_yield_enabled
+            hazard: *drac_labeled_mutual_yield_enabled
+            over_drivable: *drac_labeled_mutual_yield_enabled
+            under_drivable: *drac_labeled_mutual_yield_enabled
+          min_wait_time:
+            type: double
+            default_value: .NAN
+            description: Minimum wait time before resolving a mutual-yield deadlock (s)
+            read_only: false
         ego_prioritized_ego_earlier: *drac_assessment
         ego_prioritized_object_earlier: *drac_assessment
         object_prioritized_ego_earlier: *drac_assessment

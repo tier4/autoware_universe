@@ -365,9 +365,10 @@ DracArtifact assess_map_based(
   }
 
   if (
+    drac_params.map_based.mutual_yield_timeout_arbitration.enabled &&
     stop_trackers.get_stopped_duration(object.object_id) >
-    rclcpp::Duration::from_seconds(
-      drac_params.map_based.mutual_yield_timeout_resolution.min_wait_time)) {
+      rclcpp::Duration::from_seconds(
+        drac_params.map_based.mutual_yield_timeout_arbitration.min_wait_time)) {
     for (auto evaluation : drac_artifact.evaluations) {
       evaluation.risk = RiskLevel::SAFE;
     }

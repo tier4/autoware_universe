@@ -100,24 +100,26 @@ TEST(StopTrackingParams, ConvertsEgoAndObjectParametersIndependently)
   EXPECT_DOUBLE_EQ(object_params.history_timeout, 0.4);
 }
 
-TEST(DracParams, ExtractsMutualYieldTimeoutResolutionPerObjectLabel)
+TEST(DracParams, ExtractsMutualYieldArbitrationPerObjectLabel)
 {
   validator::Params node_params;
-  auto & mutual_yield = node_params.collision_check.drac.map_based.mutual_yield_timeout_resolution;
-  mutual_yield.enabled = true;
-  mutual_yield.min_wait_time.base = 1.0;
-  mutual_yield.min_wait_time.pedestrian = 3.0;
-  mutual_yield.min_wait_time.bicycle = 4.0;
+  auto & mutual_yield = node_params.collision_check.drac.map_based.mutual_yield_timeout_arbitration;
+  mutual_yield.enabled.base = false;
+  mutual_yield.enabled.pedestrian = true;
+  mutual_yield.enabled.bicycle = true;
+  mutual_yield.min_wait_time = 3.0;
 
   const DracParams car_params(node_params, "car");
-  EXPECT_TRUE(car_params.map_based.mutual_yield_timeout_resolution.enabled);
-  EXPECT_DOUBLE_EQ(car_params.map_based.mutual_yield_timeout_resolution.min_wait_time, 1.0);
+  EXPECT_FALSE(car_params.map_based.mutual_yield_timeout_arbitration.enabled);
+  EXPECT_DOUBLE_EQ(car_params.map_based.mutual_yield_timeout_arbitration.min_wait_time, 3.0);
 
   const DracParams pedestrian_params(node_params, "pedestrian");
-  EXPECT_DOUBLE_EQ(pedestrian_params.map_based.mutual_yield_timeout_resolution.min_wait_time, 3.0);
+  EXPECT_TRUE(pedestrian_params.map_based.mutual_yield_timeout_arbitration.enabled);
+  EXPECT_DOUBLE_EQ(pedestrian_params.map_based.mutual_yield_timeout_arbitration.min_wait_time, 3.0);
 
   const DracParams bicycle_params(node_params, "bicycle");
-  EXPECT_DOUBLE_EQ(bicycle_params.map_based.mutual_yield_timeout_resolution.min_wait_time, 4.0);
+  EXPECT_TRUE(bicycle_params.map_based.mutual_yield_timeout_arbitration.enabled);
+  EXPECT_DOUBLE_EQ(bicycle_params.map_based.mutual_yield_timeout_arbitration.min_wait_time, 3.0);
 }
 
 TEST(ObjectStopTracker, ReportsContinuousStopDuration)

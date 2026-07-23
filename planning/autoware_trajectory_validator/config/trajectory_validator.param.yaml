@@ -58,12 +58,12 @@
               enable_abandon: false
         map_based:
           enable_assessment: true
-          mutual_yield_timeout_resolution:
-            enabled: true
-            min_wait_time:
-              base: 1.0
-              pedestrian: 3.0
-              bicycle: 3.0
+          mutual_yield_timeout_arbitration:
+            enabled:
+              base: false
+              pedestrian: true
+              bicycle: true
+            min_wait_time: 3.0
           ego_prioritized_ego_earlier:
             enable_assessment: false # Not evaluated. Must be false
           ego_prioritized_object_earlier:

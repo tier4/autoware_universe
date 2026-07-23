@@ -43,6 +43,26 @@
       "required": [],
       "additionalProperties": false
     },
+    "mutual_yield_enabled_per_class": {
+      "type": "object",
+      "properties": {
+        "base": { "type": "boolean", "default": false },
+        "unknown": { "type": "boolean", "default": false },
+        "car": { "type": "boolean", "default": false },
+        "truck": { "type": "boolean", "default": false },
+        "bus": { "type": "boolean", "default": false },
+        "trailer": { "type": "boolean", "default": false },
+        "motorcycle": { "type": "boolean", "default": false },
+        "bicycle": { "type": "boolean", "default": false },
+        "pedestrian": { "type": "boolean", "default": false },
+        "animal": { "type": "boolean", "default": false },
+        "hazard": { "type": "boolean", "default": false },
+        "over_drivable": { "type": "boolean", "default": false },
+        "under_drivable": { "type": "boolean", "default": false }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
     "labeled_double": {
       "type": "object",
       "properties": {
@@ -225,6 +245,21 @@
                       "type": "boolean",
                       "default": false,
                       "description": "Use map-based predicted path trajectories for DRAC assessment."
+                    },
+                    "mutual_yield_timeout_arbitration": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "$ref": "#/definitions/mutual_yield_enabled_per_class"
+                        },
+                        "min_wait_time": {
+                          "type": "number",
+                          "minimum": 0.0,
+                          "description": "Minimum wait time before resolving a mutual-yield deadlock [s]."
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": false
                     },
                     "ego_prioritized_ego_earlier": {
                       "$ref": "#/definitions/drac_assessment"

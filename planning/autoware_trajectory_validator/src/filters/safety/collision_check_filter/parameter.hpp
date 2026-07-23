@@ -192,14 +192,14 @@ struct DracParams
 
   struct MapBased
   {
-    struct MutualYieldTimeoutResolution
+    struct MutualYieldArbitration
     {
       bool enabled{false};
       double min_wait_time{1.0};
     };
 
     bool enable_assessment{};
-    MutualYieldTimeoutResolution mutual_yield_timeout_resolution{};
+    MutualYieldArbitration mutual_yield_timeout_arbitration{};
     DracAssessment ego_prioritized_ego_earlier{};
     DracAssessment ego_prioritized_object_earlier{};
     DracAssessment object_prioritized_ego_earlier{};
@@ -248,11 +248,11 @@ struct DracParams
 
     map_based.enable_assessment =
       extract_labeled_param<bool>(drac.map_based.enable_assessment, key);
-    const auto & mutual_yield_timeout_resolution = drac.map_based.mutual_yield_timeout_resolution;
-    map_based.mutual_yield_timeout_resolution.enabled =
-      extract_labeled_param<bool>(mutual_yield_timeout_resolution.enabled, key);
-    map_based.mutual_yield_timeout_resolution.min_wait_time =
-      extract_labeled_param<double>(mutual_yield_timeout_resolution.min_wait_time, key);
+    const auto & mutual_yield_timeout_arbitration = drac.map_based.mutual_yield_timeout_arbitration;
+    map_based.mutual_yield_timeout_arbitration.enabled =
+      extract_labeled_param<bool>(mutual_yield_timeout_arbitration.enabled, key);
+    map_based.mutual_yield_timeout_arbitration.min_wait_time =
+      extract_labeled_param<double>(mutual_yield_timeout_arbitration.min_wait_time, key);
     parse_assessment(
       drac.map_based.ego_prioritized_ego_earlier, map_based.ego_prioritized_ego_earlier);
     parse_assessment(
