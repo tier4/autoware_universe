@@ -92,6 +92,7 @@
       max_acceleration: 5.0 # m/s^2
       max_deceleration: 5.0 # m/s^2 (positive but represents deceleration)
       max_distance_deviation: 100.0 # m
+      max_lateral_acceleration: 9.8 # m/s^2
       max_steering_angle: 0.8 # rad
       max_steering_rate: 0.3 # rad/s
 

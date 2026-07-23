@@ -47,6 +47,8 @@ private:
     const TrajectoryPoints & traj_points, const FilterContext & context) const;
   MetricReport check_distance_deviation(
     const TrajectoryPoints & traj_points, const FilterContext & context) const;
+  MetricReport check_lateral_acceleration(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
   MetricReport check_steering_angle(
     const TrajectoryPoints & traj_points, const FilterContext & context) const;
   MetricReport check_steering_rate(
@@ -55,11 +57,12 @@ private:
   using Checker = MetricReport (TrajectoryFeasibilityFilter::*)(
     const TrajectoryPoints &, const FilterContext &) const;
 
-  inline static const std::array<Checker, 6> checkers_ = {{
+  inline static const std::array<Checker, 7> checkers_ = {{
     &TrajectoryFeasibilityFilter::check_speed,
     &TrajectoryFeasibilityFilter::check_acceleration,
     &TrajectoryFeasibilityFilter::check_deceleration,
     &TrajectoryFeasibilityFilter::check_distance_deviation,
+    &TrajectoryFeasibilityFilter::check_lateral_acceleration,
     &TrajectoryFeasibilityFilter::check_steering_angle,
     &TrajectoryFeasibilityFilter::check_steering_rate,
   }};  //!< Array of checker functions
@@ -110,6 +113,16 @@ std::pair<double, bool> is_deceleration_ok(
 std::pair<double, bool> is_distance_deviation_ok(
   const TrajectoryPoints & traj_points, const FilterContext & context,
   double max_distance_deviation);
+
+/**
+ * @brief Check if the trajectory respects the maximum lateral acceleration constraint.
+ *
+ * @param traj_points Vector of trajectory points to check
+ * @param max_lateral_acceleration Maximum allowed absolute lateral acceleration (m/s^2)
+ * @return Pair of max observation and a boolean indicating if no point violated
+ */
+std::pair<double, bool> is_lateral_acceleration_ok(
+  const TrajectoryPoints & traj_points, double max_lateral_acceleration);
 
 /**
  * @brief Check if the trajectory respects the maximum steering angle constraint.
