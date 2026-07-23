@@ -14,6 +14,7 @@
 
 #include "autoware/trajectory_validator/filters/safety/trajectory_feasibility_filter.hpp"
 
+#include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
@@ -214,6 +215,22 @@ MetricReport TrajectoryFeasibilityFilter::check_lateral_acceleration(
     .risk(risk_level);
 }
 
+MetricReport TrajectoryFeasibilityFilter::check_velocity_deviation(
+  const TrajectoryPoints & traj_points, const FilterContext & context) const
+{
+  const auto [max_observed, is_ok] =
+    is_velocity_deviation_ok(traj_points, context, params_.max_velocity_deviation);
+
+  RiskLevel risk_level;
+  risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
+  return autoware_trajectory_validator::build<MetricReport>()
+    .validator_name(get_name())
+    .validator_category(category())
+    .metric_name("velocity_deviation")
+    .metric_value(max_observed)
+    .risk(risk_level);
+}
+
 MetricReport TrajectoryFeasibilityFilter::check_steering_angle(
   const TrajectoryPoints & traj_points, const FilterContext &) const
 {
@@ -333,6 +350,21 @@ std::pair<double, bool> is_lateral_acceleration_ok(
     }
   }
   return {max_observed, is_ok};
+}
+
+std::pair<double, bool> is_velocity_deviation_ok(
+  const TrajectoryPoints & traj_points, const FilterContext & context,
+  double max_velocity_deviation)
+{
+  if (!context.odometry || traj_points.empty()) {
+    return {0.0, true};
+  }
+  const auto nearest_idx = autoware::motion_utils::findFirstNearestIndexWithSoftConstraints(
+    traj_points, context.odometry->pose.pose);
+  const double ego_speed = context.odometry->twist.twist.linear.x;
+  const double velocity_deviation =
+    std::abs(traj_points.at(nearest_idx).longitudinal_velocity_mps - ego_speed);
+  return {velocity_deviation, velocity_deviation <= max_velocity_deviation};
 }
 
 std::pair<double, bool> is_steering_angle_ok(
