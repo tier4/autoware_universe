@@ -145,11 +145,8 @@ struct StopTrackingParams
 
   explicit StopTrackingParams(
     const validator::Params::CollisionCheck::Drac::StopTracking::Object & params)
-  : stopped_velocity_threshold(
-      extract_labeled_param<double>(
-        params.stopped_velocity_threshold, kCollisionCheckParamBaseKey)),
-    history_timeout(
-      extract_labeled_param<double>(params.history_timeout, kCollisionCheckParamBaseKey))
+  : stopped_velocity_threshold(params.stopped_velocity_threshold),
+    history_timeout(params.history_timeout)
   {
   }
 };
