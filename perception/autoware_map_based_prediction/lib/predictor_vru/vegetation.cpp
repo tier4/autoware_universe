@@ -16,6 +16,7 @@
 
 #include "autoware/map_based_prediction/path_cut/path_cut_utils.hpp"
 
+#include <autoware_utils/geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_geometry/boost_geometry.hpp>
 
 #include <boost/geometry.hpp>
@@ -33,13 +34,54 @@ namespace autoware::map_based_prediction
 
 namespace
 {
+using Point2d = autoware_utils_geometry::Point2d;
+using Polygon2d = autoware_utils_geometry::Polygon2d;
+
+Polygon2d footprint_polygon_at_pose(
+  const geometry_msgs::msg::Pose & pose, const autoware_perception_msgs::msg::Shape & shape)
+{
+  auto polygon = autoware_utils::to_polygon2d(pose, shape);
+  boost::geometry::correct(polygon);
+  return polygon;
+}
+
+void extend_bbox_with_polygon(
+  lanelet::BoundingBox2d & bbox, const Polygon2d & polygon)
+{
+  for (const auto & point : polygon.outer()) {
+    bbox.extend(lanelet::BasicPoint2d(point.x(), point.y()));
+  }
+}
+
+Polygon2d convex_polygon_covering_segment_footprints(
+  const geometry_msgs::msg::Pose & start_pose, const geometry_msgs::msg::Pose & end_pose,
+  const autoware_perception_msgs::msg::Shape & shape)
+{
+  const auto start_polygon = footprint_polygon_at_pose(start_pose, shape);
+  const auto end_polygon = footprint_polygon_at_pose(end_pose, shape);
+
+  boost::geometry::model::multi_point<Point2d> points;
+  for (const auto & point : start_polygon.outer()) {
+    points.push_back(point);
+  }
+  for (const auto & point : end_polygon.outer()) {
+    points.push_back(point);
+  }
+
+  Polygon2d hull;
+  boost::geometry::convex_hull(points, hull);
+  boost::geometry::correct(hull);
+  return hull;
+}
+
 std::vector<autoware_utils_geometry::Polygon2d> collect_candidate_vegetation_polygons(
-  const lanelet::LaneletMap & vegetation_layer, const std::vector<PredictedPath> & predicted_paths)
+  const lanelet::LaneletMap & vegetation_layer, const std::vector<PredictedPath> & predicted_paths,
+  const autoware_perception_msgs::msg::Shape & object_shape)
 {
   lanelet::BoundingBox2d search_bbox;
   for (const auto & predicted_path : predicted_paths) {
     for (const auto & pose : predicted_path.path) {
-      search_bbox.extend(lanelet::BasicPoint2d(pose.position.x, pose.position.y));
+      extend_bbox_with_polygon(search_bbox, footprint_polygon_at_pose(pose, object_shape));
     }
   }
 
@@ -57,21 +99,19 @@ std::vector<autoware_utils_geometry::Polygon2d> collect_candidate_vegetation_pol
 
 std::optional<size_t> find_vegetation_crossing_index(
   const PredictedPath & predicted_path,
-  const std::vector<autoware_utils_geometry::Polygon2d> & vegetation_polygons_2d)
+  const std::vector<autoware_utils_geometry::Polygon2d> & vegetation_polygons_2d,
+  const autoware_perception_msgs::msg::Shape & object_shape)
 {
   const auto & path = predicted_path.path;
   if (path.size() < 2 || vegetation_polygons_2d.empty()) {
     return std::nullopt;
   }
-  // Judge on the predicted-path segment (the polyline between consecutive path points) rather than
-  // the object footprint: the discretized footprint polygon can miss a thin/oblique crossing with
-  // the vegetation area.
+
   for (auto i = 0UL; i + 1 < path.size(); ++i) {
-    autoware_utils_geometry::LineString2d path_segment;
-    path_segment.emplace_back(path.at(i).position.x, path.at(i).position.y);
-    path_segment.emplace_back(path.at(i + 1).position.x, path.at(i + 1).position.y);
+    const auto swept_polygon =
+      convex_polygon_covering_segment_footprints(path.at(i), path.at(i + 1), object_shape);
     for (const auto & vegetation_polygon : vegetation_polygons_2d) {
-      if (boost::geometry::intersects(path_segment, vegetation_polygon)) {
+      if (boost::geometry::intersects(swept_polygon, vegetation_polygon)) {
         return i;
       }
     }
@@ -108,11 +148,12 @@ std::vector<PredictedPath> VegetationModule::cut_paths_crossing_vegetation(
   }
 
   const std::vector<autoware_utils_geometry::Polygon2d> candidate_polygons =
-    collect_candidate_vegetation_polygons(*vegetation_layer_, cut_paths);
+    collect_candidate_vegetation_polygons(
+      *vegetation_layer_, cut_paths, predicted_object.shape);
 
   for (PredictedPath & predicted_path : cut_paths) {
     const std::optional<size_t> crossing_index =
-      find_vegetation_crossing_index(predicted_path, candidate_polygons);
+      find_vegetation_crossing_index(predicted_path, candidate_polygons, predicted_object.shape);
     if (crossing_index) {
       // Keep the last pose before the segment enters the vegetation area.
       predicted_path = path_cut::force_cut_at_index(predicted_path, crossing_index.value());
