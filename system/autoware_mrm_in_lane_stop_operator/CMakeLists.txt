@@ -10,6 +10,7 @@ ament_auto_add_library(${PROJECT_NAME}_component SHARED
 
 rclcpp_components_register_node(${PROJECT_NAME}_component
   PLUGIN "autoware::mrm_in_lane_stop_operator::MrmInLaneStopOperator"
+  EXECUTOR "MultiThreadedExecutor"
   EXECUTABLE ${PROJECT_NAME}_node
 )
 
