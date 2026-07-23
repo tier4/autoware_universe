@@ -281,9 +281,17 @@ TrafficLightComplianceChecker::check_with_filtered_signals(
 
   std::vector<autoware_planning_msgs::msg::TrajectoryPoint> trajectory;
   lanelet::BasicLineString2d trajectory_ls;
-  // Check the full forward trajectory until the first planned stop (v≈0).
-  // Do not cap by comfortable ego stopping distance: at low ego_v that horizon
-  // shrinks to <1 m and misses red stop lines a few meters ahead.
+  const auto ego_stopping_distance = autoware::motion_utils::calculate_stop_distance(
+    input.current_velocity, input.current_acceleration,
+    params_.checked_trajectory_length.deceleration_limit,
+    params_.checked_trajectory_length.jerk_limit, params_.delay_response_time);
+  // Floor by min_lookahead_distance so low ego speed still covers nearby stop lines,
+  // while keeping the comfortable-stop cap so far lights are not over-checked
+  // (important for traffic_light_filter which rejects trajectories).
+  // stop_overshoot_margin extends the scan so a stop just past the line is not truncated.
+  const auto max_trajectory_length = std::max(
+    params_.min_lookahead_distance,
+    ego_stopping_distance.value_or(0.0) + params_.stop_overshoot_margin);
   auto length = 0.0;
   auto backward_length = 0.0;
   std::optional<lanelet::BasicPoint2d> stop_point;
@@ -308,6 +316,7 @@ TrafficLightComplianceChecker::check_with_filtered_signals(
       stop_point = trajectory_ls.back();
       break;
     }
+    if (length > max_trajectory_length) break;
   }
 
   if (trajectory_ls.size() < 2) {
