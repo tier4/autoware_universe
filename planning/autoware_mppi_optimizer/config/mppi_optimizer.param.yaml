@@ -4,6 +4,7 @@
 
     # MPPI controller / FirstOrderDubinsBicycleCostParams
     # (see first_order_dubins_mppi_interface.cu, first_order_dubins_bicycle_cost.cuh)
+    skip_if_invalid: true
     lambda: 3000.0
     desired_speed: 2.5
     speed_coeff: 500.0

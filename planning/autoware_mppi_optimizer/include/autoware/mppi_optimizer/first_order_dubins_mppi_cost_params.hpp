@@ -22,6 +22,8 @@ namespace autoware::mppi_optimizer
  * mppi_optimizer.param.yaml */
 struct FirstOrderDubinsMppiCostParams
 {
+  /** Return the input trajectory unchanged when the optimized trajectory has crashed. */
+  bool skip_if_invalid{true};
   /** Softmax temperature for trajectory weighting (higher = softer weighting). */
   float lambda{1500.0F};
   float desired_speed{3.0F};

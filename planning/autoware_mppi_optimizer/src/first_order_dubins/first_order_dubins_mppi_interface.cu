@@ -850,6 +850,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
 
   float max_pos_delta = 0.0F;
   float max_vel_delta = 0.0F;
+  int crash_status = 0;
   size_t i = 0;
   for (auto & out_point : output.points) {
     if (i >= num_points) {
@@ -867,6 +868,11 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
       use_final ? x_final(yaw_idx) : state_trajectory(yaw_idx, control_col + 1);
     const float tracked_v =
       use_final ? x_final(vel_x_idx) : state_trajectory(vel_x_idx, control_col + 1);
+
+    if (impl_->user_cost_params_.skip_if_invalid && crash_status == 0) {
+      (void)impl_->cost.detectAndLatchCrash(
+        tracked_x, tracked_y, tracked_yaw, control_col, &crash_status);
+    }
 
     const float ref_x = static_cast<float>(in_point.pose.position.x);
     const float ref_y = static_cast<float>(in_point.pose.position.y);
@@ -918,6 +924,17 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     elapsed_ms, impl_->tracking_start_idx, impl_->step_count, output.points.size(), num_points,
     result.debug.rollouts.size(), tracked_objects.objects.size(), control.accel_cmd,
     control.steer_cmd, result.debug.baseline_cost, max_pos_delta, max_vel_delta);
+
+  if (impl_->user_cost_params_.skip_if_invalid && crash_status != 0) {
+    result.trajectory = input;
+    result.debug.reference_trajectory = input;
+    result.debug.optimized_trajectory = input;
+    RCLCPP_WARN(
+      mppiLogger(),
+      "MPPI output rejected with crash_status=%d; returning the input trajectory unchanged",
+      crash_status);
+    return result;
+  }
 
   return result;
 }
