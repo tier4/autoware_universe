@@ -20,6 +20,7 @@
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -116,24 +117,36 @@ StitchingStatus TrajectoryStitcher::compute_planning_origin(
 
   // The stored trajectory has no point at the plan origin (the first point is the model's
   // first prediction step), so positions behind it are extrapolated along the first segment.
-  // Orientation comes from the path tangent: the model-predicted headings are too noisy to
-  // anchor the planning frame.
+  // Orientation is the yaw of the path tangent: the model-predicted headings are too noisy
+  // to anchor the planning frame, and any pitch would foreshorten the planar model inputs.
+  geometry_msgs::msg::Pose origin;
   if (target_arc < 0.0) {
     const auto & first = points[0].pose;
     const auto & second = points[1].pose;
     const double dx = second.position.x - first.position.x;
     const double dy = second.position.y - first.position.y;
     const double segment_length = std::hypot(dx, dy);
-    geometry_msgs::msg::Pose origin = first;
+    origin = first;
     origin.position.x += target_arc * dx / segment_length;
     origin.position.y += target_arc * dy / segment_length;
-    origin.orientation =
-      autoware_utils_geometry::create_quaternion_from_yaw(std::atan2(dy, dx));
-    status.planning_origin = origin;
+    origin.orientation = autoware_utils_geometry::create_quaternion_from_yaw(std::atan2(dy, dx));
   } else {
-    status.planning_origin =
-      autoware::motion_utils::calcInterpolatedPose(points, target_arc, true);
+    origin = autoware::motion_utils::calcInterpolatedPose(points, target_arc, false);
+    constexpr double tangent_probe_arc = 0.5;
+    const bool probe_forward = target_arc + tangent_probe_arc <= total_arc;
+    const double probe_arc =
+      probe_forward ? target_arc + tangent_probe_arc : std::max(target_arc - tangent_probe_arc, 0.0);
+    const auto probe_pose =
+      autoware::motion_utils::calcInterpolatedPose(points, probe_arc, false);
+    const double dx = probe_forward ? probe_pose.position.x - origin.position.x
+                                    : origin.position.x - probe_pose.position.x;
+    const double dy = probe_forward ? probe_pose.position.y - origin.position.y
+                                    : origin.position.y - probe_pose.position.y;
+    if (std::hypot(dx, dy) > 1e-3) {
+      origin.orientation = autoware_utils_geometry::create_quaternion_from_yaw(std::atan2(dy, dx));
+    }
   }
+  status.planning_origin = origin;
   status.stitched = true;
   return status;
 }
