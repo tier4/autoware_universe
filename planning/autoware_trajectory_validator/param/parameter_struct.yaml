@@ -42,6 +42,11 @@ validator:
       default_value: 5.0
       description: Maximum allowed absolute velocity deviation from the ego speed (m/s)
       read_only: false
+    max_yaw_deviation:
+      type: double
+      default_value: 0.35
+      description: Maximum allowed absolute yaw deviation from the ego pose (rad)
+      read_only: false
     max_steering_angle:
       type: double
       default_value: 0.8

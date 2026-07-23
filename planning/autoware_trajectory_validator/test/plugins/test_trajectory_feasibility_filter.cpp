@@ -26,7 +26,7 @@ namespace
 {
 autoware_planning_msgs::msg::TrajectoryPoint create_trajectory_point(
   double x, double y, double z, double vx, double vy, double time_from_start_sec,
-  double heading_rate_rps = 0.0, double acceleration_mps2 = 0.0)
+  double heading_rate_rps = 0.0, double acceleration_mps2 = 0.0, double yaw = 0.0)
 {
   autoware_planning_msgs::msg::TrajectoryPoint point;
   point.pose.position.x = x;
@@ -36,6 +36,9 @@ autoware_planning_msgs::msg::TrajectoryPoint create_trajectory_point(
   point.lateral_velocity_mps = vy;
   point.heading_rate_rps = heading_rate_rps;
   point.acceleration_mps2 = acceleration_mps2;
+  tf2::Quaternion q;
+  q.setRPY(0.0, 0.0, yaw);
+  point.pose.orientation = tf2::toMsg(q);
   point.time_from_start.sec = static_cast<int32_t>(time_from_start_sec);
   point.time_from_start.nanosec =
     static_cast<uint32_t>((time_from_start_sec - static_cast<int32_t>(time_from_start_sec)) * 1e9);
@@ -249,6 +252,32 @@ TEST(TrajectoryFeasibilityFilterTest, InfeasibleWhenVelocityDeviationExceedsMax)
   EXPECT_FALSE(result.value().is_feasible);
 }
 
+TEST(TrajectoryFeasibilityFilterTest, InfeasibleWhenYawDeviationExceedsMax)
+{
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    create_trajectory_point(1.0, 0.0, 0.0, 5.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+    create_trajectory_point(2.0, 0.0, 0.0, 5.0, 0.0, 2.0, 0.0, 0.0, 0.0)};
+
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+
+  TrajectoryFeasibilityFilter filter;
+  validator::Params params;
+  params.trajectory_feasibility.max_yaw_deviation = 0.1;
+  filter.update_parameters(params);
+  filter.set_vehicle_info(vehicle_info);
+
+  FilterContext context;
+  context.odometry = create_odometry(1.0, 0.0, 1.57);
+  CandidateTrajectory candidate_trajectory;
+  candidate_trajectory.points = traj_points;
+  auto result = filter.is_feasible(candidate_trajectory, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible);
+}
+
 TEST(TrajectoryFeasibilityFilterTest, InfeasibleWhenSteeringAngleExceedsMax)
 {
   // Create a trajectory that exceeds max steering angle after smoothing
@@ -437,6 +466,21 @@ TEST(IsVelocityDeviationOkTest, FalseWhenVelocityDeviationAboveMax)
   context.odometry = create_odometry(1.0, 0.0, 0.0, 0.0);
 
   const auto [_, is_ok] = is_velocity_deviation_ok(traj_points, context, 0.1);
+
+  EXPECT_FALSE(is_ok);
+}
+
+TEST(IsYawDeviationOkTest, FalseWhenYawDeviationAboveMax)
+{
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    create_trajectory_point(1.0, 0.0, 0.0, 5.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+    create_trajectory_point(2.0, 0.0, 0.0, 5.0, 0.0, 2.0, 0.0, 0.0, 0.0)};
+
+  FilterContext context;
+  context.odometry = create_odometry(1.0, 0.0, 1.57);
+
+  const auto [_, is_ok] = is_yaw_deviation_ok(traj_points, context, 0.1);
 
   EXPECT_FALSE(is_ok);
 }

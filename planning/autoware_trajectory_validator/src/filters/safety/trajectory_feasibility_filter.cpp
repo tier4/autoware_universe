@@ -19,6 +19,11 @@
 #include <autoware_utils_geometry/geometry.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
 
+#include <autoware_planning_msgs/msg/trajectory.hpp>
+
+#include <angles/angles/angles.h>
+#include <tf2/utils.h>
+
 #include <algorithm>
 #include <string>
 #include <utility>
@@ -104,6 +109,13 @@ std::vector<std::optional<double>> to_steering_angles(
     }
   }
   return smoothed_angles;
+}
+
+autoware_planning_msgs::msg::Trajectory to_trajectory(const TrajectoryPoints & traj_points)
+{
+  autoware_planning_msgs::msg::Trajectory trajectory;
+  trajectory.points = traj_points;
+  return trajectory;
 }
 }  // namespace
 
@@ -227,6 +239,22 @@ MetricReport TrajectoryFeasibilityFilter::check_velocity_deviation(
     .validator_name(get_name())
     .validator_category(category())
     .metric_name("velocity_deviation")
+    .metric_value(max_observed)
+    .risk(risk_level);
+}
+
+MetricReport TrajectoryFeasibilityFilter::check_yaw_deviation(
+  const TrajectoryPoints & traj_points, const FilterContext & context) const
+{
+  const auto [max_observed, is_ok] =
+    is_yaw_deviation_ok(traj_points, context, params_.max_yaw_deviation);
+
+  RiskLevel risk_level;
+  risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
+  return autoware_trajectory_validator::build<MetricReport>()
+    .validator_name(get_name())
+    .validator_category(category())
+    .metric_name("yaw_deviation")
     .metric_value(max_observed)
     .risk(risk_level);
 }
@@ -365,6 +393,23 @@ std::pair<double, bool> is_velocity_deviation_ok(
   const double velocity_deviation =
     std::abs(traj_points.at(nearest_idx).longitudinal_velocity_mps - ego_speed);
   return {velocity_deviation, velocity_deviation <= max_velocity_deviation};
+}
+
+std::pair<double, bool> is_yaw_deviation_ok(
+  const TrajectoryPoints & traj_points, const FilterContext & context, double max_yaw_deviation)
+{
+  if (!context.odometry || traj_points.empty()) {
+    return {0.0, true};
+  }
+  const auto trajectory = to_trajectory(traj_points);
+  const auto & ego_pose = context.odometry->pose.pose;
+  const auto interpolated_trajectory_point =
+    autoware::motion_utils::calcInterpolatedPoint(trajectory, ego_pose);
+  const double yaw_deviation = std::abs(
+    angles::shortest_angular_distance(
+      tf2::getYaw(interpolated_trajectory_point.pose.orientation),
+      tf2::getYaw(ego_pose.orientation)));
+  return {yaw_deviation, yaw_deviation <= max_yaw_deviation};
 }
 
 std::pair<double, bool> is_steering_angle_ok(
