@@ -316,6 +316,13 @@ public:
    */
   const LaneletRoute::ConstSharedPtr & get_route() const { return route_ptr_; }
 
+  /**
+   * @brief Get the trajectory stitcher (for debug output).
+   *
+   * @return Const reference to the trajectory stitcher
+   */
+  const TrajectoryStitcher & trajectory_stitcher() const { return trajectory_stitcher_; }
+
 private:
   // Parameters
   DiffusionPlannerParams params_;

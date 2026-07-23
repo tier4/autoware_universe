@@ -15,16 +15,22 @@
 #ifndef AUTOWARE__DIFFUSION_PLANNER__UTILS__MARKER_UTILS_HPP_
 #define AUTOWARE__DIFFUSION_PLANNER__UTILS__MARKER_UTILS_HPP_
 
+#include "autoware/diffusion_planner/utils/trajectory_stitcher.hpp"
+
 #include <Eigen/Dense>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/time.hpp>
 
+#include <autoware_planning_msgs/msg/trajectory.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/detail/color_rgba__struct.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <array>
 #include <cstdint>
+#include <deque>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -93,5 +99,30 @@ MarkerArray create_linestring_marker(
   const Eigen::Matrix4d & transform_ego_to_map, const std::vector<float> & linestring_vector,
   const std::vector<int64_t> & shape, const Time & stamp, const rclcpp::Duration & lifetime,
   const std::string & frame_id = "base_link");
+
+/**
+ * @brief Creates markers visualizing the trajectory stitching state.
+ *
+ * Markers (all in map frame):
+ * - stitching_origin: arrow at the planning origin, green when stitched, red on reset
+ * - stitching_deviation: line between the measured ego position and the planning origin
+ * - stitching_status: text with mode, reset reason, and lateral/longitudinal deviations
+ * - stitching_reference: the previous-trajectory segment the plan is stitched against
+ * - stitching_origin_history: past planning origins (the on_plan ego history source)
+ *
+ * @param status Stitching status of the current frame.
+ * @param ego_pose The measured ego pose.
+ * @param previous_trajectory The stored previous trajectory, if any.
+ * @param planning_origin_history Past planning origins.
+ * @param stamp The timestamp to assign to the marker messages.
+ * @param lifetime The duration for which the markers should remain visible.
+ * @param reference_duration_s Duration of the previous-trajectory segment to display [s].
+ * @return MarkerArray containing the generated stitching markers.
+ */
+MarkerArray create_stitching_markers(
+  const StitchingStatus & status, const geometry_msgs::msg::Pose & ego_pose,
+  const std::optional<autoware_planning_msgs::msg::Trajectory> & previous_trajectory,
+  const std::deque<nav_msgs::msg::Odometry> & planning_origin_history, const Time & stamp,
+  const rclcpp::Duration & lifetime, const double reference_duration_s = 2.0);
 }  // namespace autoware::diffusion_planner::utils
 #endif  // AUTOWARE__DIFFUSION_PLANNER__UTILS__MARKER_UTILS_HPP_

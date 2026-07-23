@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdio>
 #include <fstream>
 #include <functional>
 #include <iomanip>
@@ -111,6 +112,11 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
     this->create_publisher<std_msgs::msg::Float32MultiArray>("~/debug/denoising_steps", 1);
   pub_guidance_status_ = this->create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
     "~/debug/guidance_status", 1);
+  pub_stitching_status_ = this->create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
+    "~/debug/stitching/status", 1);
+  pub_stitching_origin_ =
+    this->create_publisher<geometry_msgs::msg::PoseStamped>("~/debug/stitching/planning_origin", 1);
+  pub_stitching_markers_ = this->create_publisher<MarkerArray>("~/debug/stitching/markers", 1);
 
   set_up_params();
   vehicle_info_ = autoware::vehicle_info_utils::VehicleInfoUtils(*this).getVehicleInfo();
@@ -607,6 +613,17 @@ void DiffusionPlanner::on_timer()
     return;
   }
 
+  const auto & stitching_status = frame_context->stitching_status;
+  diagnostics_inference_->add_key_value("stitching_active", stitching_status.stitched);
+  diagnostics_inference_->add_key_value("stitching_reset_reason", stitching_status.reset_reason);
+  diagnostics_inference_->add_key_value(
+    "stitching_lateral_deviation_m", stitching_status.lateral_deviation_m);
+  diagnostics_inference_->add_key_value(
+    "stitching_longitudinal_deviation_m", stitching_status.longitudinal_deviation_m);
+  if (params_.stitching.enable) {
+    publish_stitching_debug(*frame_context);
+  }
+
   if (traffic_signals.empty()) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), constants::LOG_THROTTLE_INTERVAL_MS,
@@ -781,6 +798,35 @@ void DiffusionPlanner::publish_guidance_status(
   msg.data = result;
 
   pub_guidance_status_->publish(msg);
+}
+
+void DiffusionPlanner::publish_stitching_debug(const FrameContext & frame_context) const
+{
+  const auto & status = frame_context.stitching_status;
+  const rclcpp::Time stamp = frame_context.frame_time;
+
+  autoware_internal_debug_msgs::msg::StringStamped status_msg;
+  status_msg.stamp = stamp;
+  char buffer[128];
+  const std::string mode_text =
+    status.stitched ? std::string("STITCH") : "RESET(" + status.reset_reason + ")";
+  snprintf(
+    buffer, sizeof(buffer), "%s d_lat=%.3f d_lon=%.2f", mode_text.c_str(),
+    status.lateral_deviation_m, status.longitudinal_deviation_m);
+  status_msg.data = buffer;
+  pub_stitching_status_->publish(status_msg);
+
+  geometry_msgs::msg::PoseStamped origin_msg;
+  origin_msg.header.stamp = stamp;
+  origin_msg.header.frame_id = "map";
+  origin_msg.pose = status.planning_origin;
+  pub_stitching_origin_->publish(origin_msg);
+
+  const auto & stitcher = core_->trajectory_stitcher();
+  const auto markers = utils::create_stitching_markers(
+    status, frame_context.ego_kinematic_state.pose.pose, stitcher.previous_trajectory(),
+    stitcher.planning_origin_history(), stamp, rclcpp::Duration::from_seconds(0.2));
+  pub_stitching_markers_->publish(markers);
 }
 
 void DiffusionPlanner::publish_mppi_debug(

@@ -23,7 +23,10 @@
 #include <geometry_msgs/msg/point.hpp>  // Include the header for Point
 
 #include <cstdint>
+#include <cstdio>
+#include <deque>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -315,6 +318,103 @@ MarkerArray create_lane_marker(
     if (!marker_right_bound.points.empty()) {
       marker_array.markers.push_back(marker_right_bound);
     }
+  }
+
+  return marker_array;
+}
+
+MarkerArray create_stitching_markers(
+  const StitchingStatus & status, const geometry_msgs::msg::Pose & ego_pose,
+  const std::optional<autoware_planning_msgs::msg::Trajectory> & previous_trajectory,
+  const std::deque<nav_msgs::msg::Odometry> & planning_origin_history, const Time & stamp,
+  const rclcpp::Duration & lifetime, const double reference_duration_s)
+{
+  MarkerArray marker_array;
+
+  const auto make_color = [](const float r, const float g, const float b, const float a) {
+    ColorRGBA color;
+    color.r = r;
+    color.g = g;
+    color.b = b;
+    color.a = a;
+    return color;
+  };
+  const ColorRGBA mode_color =
+    status.stitched ? make_color(0.1f, 0.9f, 0.2f, 0.9f) : make_color(0.9f, 0.15f, 0.1f, 0.9f);
+
+  const auto make_marker = [&](const std::string & ns, const int32_t type) {
+    Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = stamp;
+    marker.ns = ns;
+    marker.id = 0;
+    marker.type = type;
+    marker.action = Marker::ADD;
+    marker.lifetime = lifetime;
+    marker.pose.orientation.w = 1.0;
+    return marker;
+  };
+
+  {
+    Marker origin_marker = make_marker("stitching_origin", Marker::ARROW);
+    origin_marker.pose = status.planning_origin;
+    origin_marker.scale.x = 1.2;
+    origin_marker.scale.y = 0.25;
+    origin_marker.scale.z = 0.25;
+    origin_marker.color = mode_color;
+    marker_array.markers.push_back(origin_marker);
+  }
+
+  {
+    Marker deviation_marker = make_marker("stitching_deviation", Marker::LINE_LIST);
+    deviation_marker.scale.x = 0.05;
+    deviation_marker.color = make_color(1.0f, 0.85f, 0.1f, 0.9f);
+    deviation_marker.points.push_back(ego_pose.position);
+    deviation_marker.points.push_back(status.planning_origin.position);
+    marker_array.markers.push_back(deviation_marker);
+  }
+
+  {
+    Marker text_marker = make_marker("stitching_status", Marker::TEXT_VIEW_FACING);
+    text_marker.pose.position = ego_pose.position;
+    text_marker.pose.position.z += 3.0;
+    text_marker.scale.z = 0.6;
+    text_marker.color = mode_color;
+    const std::string mode_text =
+      status.stitched ? std::string("STITCH") : "RESET(" + status.reset_reason + ")";
+    char buffer[128];
+    snprintf(
+      buffer, sizeof(buffer), "%s\nd_lat: %.3f m\nd_lon: %.2f m", mode_text.c_str(),
+      status.lateral_deviation_m, status.longitudinal_deviation_m);
+    text_marker.text = buffer;
+    marker_array.markers.push_back(text_marker);
+  }
+
+  if (previous_trajectory) {
+    Marker reference_marker = make_marker("stitching_reference", Marker::LINE_STRIP);
+    reference_marker.scale.x = 0.1;
+    reference_marker.color = make_color(0.1f, 0.7f, 0.9f, 0.8f);
+    for (const auto & point : previous_trajectory->points) {
+      if (rclcpp::Duration(point.time_from_start).seconds() > reference_duration_s) {
+        break;
+      }
+      reference_marker.points.push_back(point.pose.position);
+    }
+    if (reference_marker.points.size() >= 2) {
+      marker_array.markers.push_back(reference_marker);
+    }
+  }
+
+  if (!planning_origin_history.empty()) {
+    Marker history_marker = make_marker("stitching_origin_history", Marker::SPHERE_LIST);
+    history_marker.scale.x = 0.15;
+    history_marker.scale.y = 0.15;
+    history_marker.scale.z = 0.15;
+    history_marker.color = make_color(1.0f, 0.5f, 0.0f, 0.6f);
+    for (const auto & odometry : planning_origin_history) {
+      history_marker.points.push_back(odometry.pose.pose.position);
+    }
+    marker_array.markers.push_back(history_marker);
   }
 
   return marker_array;

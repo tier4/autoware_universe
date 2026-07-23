@@ -78,6 +78,11 @@ public:
     return planning_origin_history_;
   }
 
+  const std::optional<autoware_planning_msgs::msg::Trajectory> & previous_trajectory() const
+  {
+    return prev_trajectory_;
+  }
+
   void reset();
 
 private:

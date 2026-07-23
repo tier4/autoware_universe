@@ -42,6 +42,7 @@
 #include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <autoware_vehicle_msgs/msg/steering_report.hpp>
 #include <autoware_vehicle_msgs/msg/turn_indicators_command.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_srvs/srv/set_bool.hpp>
@@ -188,6 +189,12 @@ private:
     const rclcpp::Time & timestamp);
 
   /**
+   * @brief Publish trajectory stitching state as debug topics and markers.
+   * @param frame_context Context of the current frame (stitching status, ego pose).
+   */
+  void publish_stitching_debug(const FrameContext & frame_context) const;
+
+  /**
    * @brief Callback for dynamic parameter updates.
    * @param parameters Updated parameters.
    * @return Result of parameter update.
@@ -242,6 +249,10 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr pub_denoising_steps_{nullptr};
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
     pub_guidance_status_{nullptr};
+  rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
+    pub_stitching_status_{nullptr};
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_stitching_origin_{nullptr};
+  rclcpp::Publisher<MarkerArray>::SharedPtr pub_stitching_markers_{nullptr};
   rclcpp::Service<SetBool>::SharedPtr set_start_guidance_enabled_service_{nullptr};
   rclcpp::Service<SetBool>::SharedPtr set_stop_guidance_enabled_service_{nullptr};
   rclcpp::Service<SetBool>::SharedPtr set_centerline_guidance_enabled_service_{nullptr};
