@@ -409,10 +409,9 @@ std::optional<MapBasedStopPlanner::SingleStopResult> MapBasedStopPlanner::plan_s
     return std::nullopt;
   }
 
-  const double trajectory_length = autoware::motion_utils::calcArcLength(trajectory.points);
   Trajectory stop_trajectory = trajectory;
   if (!autoware::trajectory_modifier::utils::insert_stop_point(
-        stop_trajectory.points, *stop_point_arc_length, trajectory_length)) {
+        stop_trajectory.points, *stop_point_arc_length)) {
     return std::nullopt;
   }
   return SingleStopResult{*stop_point_arc_length, std::move(stop_trajectory)};
