@@ -26,6 +26,20 @@
 
 namespace autoware::diffusion_planner
 {
+namespace
+{
+
+double yaw_of(const geometry_msgs::msg::Quaternion & q)
+{
+  return std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+}
+
+double wrap_angle(const double angle)
+{
+  return std::atan2(std::sin(angle), std::cos(angle));
+}
+
+}  // namespace
 
 TrajectoryStitcher::TrajectoryStitcher(const TrajectoryStitcherParams & params) : params_(params)
 {
@@ -47,6 +61,8 @@ StitchingStatus TrajectoryStitcher::compute_planning_origin(
     status.stitched = false;
     status.reset_reason = reason;
     active_ = false;
+    filtered_origin_.reset();
+    last_ego_pose_.reset();
     return status;
   };
 
@@ -117,35 +133,66 @@ StitchingStatus TrajectoryStitcher::compute_planning_origin(
 
   // The stored trajectory has no point at the plan origin (the first point is the model's
   // first prediction step), so positions behind it are extrapolated along the first segment.
-  // Orientation is the yaw of the path tangent: the model-predicted headings are too noisy
-  // to anchor the planning frame, and any pitch would foreshorten the planar model inputs.
-  geometry_msgs::msg::Pose origin;
+  // Orientation is the yaw of the path tangent measured over a long baseline: the
+  // model-predicted headings and short-baseline tangents are too noisy to anchor the
+  // planning frame, and any pitch would foreshorten the planar model inputs.
+  geometry_msgs::msg::Pose projection;
   if (target_arc < 0.0) {
     const auto & first = points[0].pose;
     const auto & second = points[1].pose;
     const double dx = second.position.x - first.position.x;
     const double dy = second.position.y - first.position.y;
     const double segment_length = std::hypot(dx, dy);
-    origin = first;
-    origin.position.x += target_arc * dx / segment_length;
-    origin.position.y += target_arc * dy / segment_length;
-    origin.orientation = autoware_utils_geometry::create_quaternion_from_yaw(std::atan2(dy, dx));
+    projection = first;
+    projection.position.x += target_arc * dx / segment_length;
+    projection.position.y += target_arc * dy / segment_length;
+    projection.orientation =
+      autoware_utils_geometry::create_quaternion_from_yaw(std::atan2(dy, dx));
   } else {
-    origin = autoware::motion_utils::calcInterpolatedPose(points, target_arc, false);
-    constexpr double tangent_probe_arc = 0.5;
-    const bool probe_forward = target_arc + tangent_probe_arc <= total_arc;
-    const double probe_arc =
-      probe_forward ? target_arc + tangent_probe_arc : std::max(target_arc - tangent_probe_arc, 0.0);
-    const auto probe_pose =
-      autoware::motion_utils::calcInterpolatedPose(points, probe_arc, false);
-    const double dx = probe_forward ? probe_pose.position.x - origin.position.x
-                                    : origin.position.x - probe_pose.position.x;
-    const double dy = probe_forward ? probe_pose.position.y - origin.position.y
-                                    : origin.position.y - probe_pose.position.y;
+    projection = autoware::motion_utils::calcInterpolatedPose(points, target_arc, false);
+    constexpr double tangent_half_baseline = 2.5;
+    const double back_arc = std::max(target_arc - tangent_half_baseline, 0.0);
+    const double front_arc = std::min(target_arc + tangent_half_baseline, total_arc);
+    const auto back_pose = autoware::motion_utils::calcInterpolatedPose(points, back_arc, false);
+    const auto front_pose = autoware::motion_utils::calcInterpolatedPose(points, front_arc, false);
+    const double dx = front_pose.position.x - back_pose.position.x;
+    const double dy = front_pose.position.y - back_pose.position.y;
     if (std::hypot(dx, dy) > 1e-3) {
-      origin.orientation = autoware_utils_geometry::create_quaternion_from_yaw(std::atan2(dy, dx));
+      projection.orientation =
+        autoware_utils_geometry::create_quaternion_from_yaw(std::atan2(dy, dx));
     }
   }
+
+  // Complementary filter: the anchor advances by the measured ego motion increment
+  // (localization-grade, carries no accumulated tracking error) and is pulled toward the
+  // path projection by path_correction_gain, which attenuates the projection noise
+  // inherited from the model output points.
+  geometry_msgs::msg::Pose origin = projection;
+  if (filtered_origin_ && last_ego_pose_) {
+    const double prev_ego_yaw = yaw_of(last_ego_pose_->orientation);
+    const double ego_dx = ego_position.x - last_ego_pose_->position.x;
+    const double ego_dy = ego_position.y - last_ego_pose_->position.y;
+    const double body_dx = std::cos(prev_ego_yaw) * ego_dx + std::sin(prev_ego_yaw) * ego_dy;
+    const double body_dy = -std::sin(prev_ego_yaw) * ego_dx + std::cos(prev_ego_yaw) * ego_dy;
+    const double body_dyaw = wrap_angle(yaw_of(ego_odometry.pose.pose.orientation) - prev_ego_yaw);
+
+    const double anchor_yaw = yaw_of(filtered_origin_->orientation);
+    const double predicted_x = filtered_origin_->position.x + std::cos(anchor_yaw) * body_dx -
+                               std::sin(anchor_yaw) * body_dy;
+    const double predicted_y = filtered_origin_->position.y + std::sin(anchor_yaw) * body_dx +
+                               std::cos(anchor_yaw) * body_dy;
+    const double predicted_yaw = wrap_angle(anchor_yaw + body_dyaw);
+
+    const double gain = params_.path_correction_gain;
+    origin.position.x = predicted_x + gain * (projection.position.x - predicted_x);
+    origin.position.y = predicted_y + gain * (projection.position.y - predicted_y);
+    origin.position.z = projection.position.z;
+    origin.orientation = autoware_utils_geometry::create_quaternion_from_yaw(wrap_angle(
+      predicted_yaw + gain * wrap_angle(yaw_of(projection.orientation) - predicted_yaw)));
+  }
+  filtered_origin_ = origin;
+  last_ego_pose_ = ego_odometry.pose.pose;
+
   status.planning_origin = origin;
   status.stitched = true;
   return status;
@@ -178,6 +225,8 @@ void TrajectoryStitcher::reset()
   clear_previous_trajectory();
   planning_origin_history_.clear();
   rearm_allowed_time_.reset();
+  filtered_origin_.reset();
+  last_ego_pose_.reset();
   active_ = false;
 }
 

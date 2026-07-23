@@ -32,8 +32,9 @@ namespace autoware::diffusion_planner
 struct TrajectoryStitcherParams
 {
   bool enable{false};
-  std::string history_mode{"real"};  // "real" | "on_plan"
-  double time_offset_s{0.0};         // arc lead along the previous path at current speed [s]
+  std::string history_mode{"real"};   // "real" | "on_plan"
+  double path_correction_gain{0.25};  // per-cycle pull toward the path projection (1 = raw)
+  double time_offset_s{0.0};          // arc lead along the previous path at current speed [s]
   double lateral_deviation_threshold_m{0.3};
   double longitudinal_deviation_threshold_m{2.0};
   double lateral_rearm_threshold_m{0.1};
@@ -93,6 +94,8 @@ private:
   unique_identifier_msgs::msg::UUID prev_route_uuid_;
   std::deque<nav_msgs::msg::Odometry> planning_origin_history_;
   std::optional<rclcpp::Time> rearm_allowed_time_;
+  std::optional<geometry_msgs::msg::Pose> filtered_origin_;
+  std::optional<geometry_msgs::msg::Pose> last_ego_pose_;
   bool active_{false};
 };
 

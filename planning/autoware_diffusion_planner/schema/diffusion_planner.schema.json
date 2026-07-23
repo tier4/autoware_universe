@@ -190,6 +190,13 @@
               "default": "real",
               "description": "Source of the ego history input: measured odometry (real) or past planning origins (on_plan)"
             },
+            "path_correction_gain": {
+              "type": "number",
+              "default": 0.25,
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "description": "Per-cycle pull of the odometry-predicted anchor toward the path projection (1 = raw projection)"
+            },
             "time_offset_s": {
               "type": "number",
               "default": 0.0,
@@ -229,6 +236,7 @@
           "required": [
             "enable",
             "history_mode",
+            "path_correction_gain",
             "time_offset_s",
             "lateral_deviation_threshold_m",
             "longitudinal_deviation_threshold_m",

@@ -44,6 +44,7 @@ protected:
   void SetUp() override
   {
     params_.enable = true;
+    params_.path_correction_gain = 1.0;
     params_.rearm_cooldown_s = 1.0;
     stitcher_ = std::make_unique<TrajectoryStitcher>(params_);
   }
@@ -139,6 +140,38 @@ TEST_F(TrajectoryStitcherTest, StitchesAtProjection)
     stitcher_->compute_planning_origin(at(0.1), make_odom(0.5), uuid_a_, false);
   EXPECT_TRUE(before_start.stitched);
   EXPECT_NEAR(before_start.planning_origin.position.x, 0.5, 1e-9);
+}
+
+TEST_F(TrajectoryStitcherTest, FilterSmoothsProjectionNoise)
+{
+  params_.path_correction_gain = 0.25;
+  stitcher_->update_params(params_);
+  store_default_trajectory();
+  arm();
+
+  auto shifted = make_trajectory();
+  for (auto & point : shifted.points) {
+    point.pose.position.y += 0.1;
+  }
+  stitcher_->set_previous_trajectory(shifted, uuid_a_);
+
+  const auto status = stitcher_->compute_planning_origin(at(0.2), make_odom(2.0), uuid_a_, false);
+  EXPECT_TRUE(status.stitched);
+  EXPECT_NEAR(status.planning_origin.position.x, 2.0, 1e-6);
+  EXPECT_NEAR(status.planning_origin.position.y, 0.025, 1e-6);
+}
+
+TEST_F(TrajectoryStitcherTest, FilterFollowsEgoMotion)
+{
+  params_.path_correction_gain = 0.25;
+  stitcher_->update_params(params_);
+  store_default_trajectory();
+  arm();
+
+  const auto status = stitcher_->compute_planning_origin(at(0.2), make_odom(2.0), uuid_a_, false);
+  EXPECT_TRUE(status.stitched);
+  EXPECT_NEAR(status.planning_origin.position.x, 2.0, 1e-6);
+  EXPECT_NEAR(status.planning_origin.position.y, 0.0, 1e-6);
 }
 
 TEST_F(TrajectoryStitcherTest, TimeOffsetLeadsAlongArc)

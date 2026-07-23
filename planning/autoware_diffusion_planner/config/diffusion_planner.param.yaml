@@ -38,6 +38,7 @@
     stitching:
       enable: false
       history_mode: "real" # "real" | "on_plan"
+      path_correction_gain: 0.25 # per-cycle pull of the anchor toward the path projection (1 = raw)
       time_offset_s: 0.0
       lateral_deviation_threshold_m: 0.3
       longitudinal_deviation_threshold_m: 2.0
