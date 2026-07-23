@@ -33,6 +33,7 @@ struct TrajectoryStitcherParams
 {
   bool enable{false};
   std::string history_mode{"real"};   // "real" | "on_plan"
+  double reference_blend_gain{0.3};   // per-cycle blend of the new plan into the reference path
   double path_correction_gain{0.25};  // per-cycle pull toward the path projection (1 = raw)
   double time_offset_s{0.0};          // arc lead along the previous path at current speed [s]
   double lateral_deviation_threshold_m{0.3};

@@ -202,7 +202,32 @@ void TrajectoryStitcher::set_previous_trajectory(
   const autoware_planning_msgs::msg::Trajectory & trajectory,
   const unique_identifier_msgs::msg::UUID & route_uuid)
 {
-  prev_trajectory_ = trajectory;
+  // The reference path is a per-point lateral EMA of successive plans: plan shape noise
+  // averages out across cycles while intentional divergence beyond the deviation threshold
+  // passes through unblended.
+  if (!prev_trajectory_ || route_uuid != prev_route_uuid_ || prev_trajectory_->points.size() < 2) {
+    prev_trajectory_ = trajectory;
+    prev_route_uuid_ = route_uuid;
+    return;
+  }
+
+  const auto reference_points =
+    autoware::motion_utils::removeOverlapPoints(prev_trajectory_->points);
+  autoware_planning_msgs::msg::Trajectory blended = trajectory;
+  if (reference_points.size() >= 2) {
+    const double keep = 1.0 - params_.reference_blend_gain;
+    for (auto & point : blended.points) {
+      const double offset =
+        autoware::motion_utils::calcLateralOffset(reference_points, point.pose.position);
+      if (!std::isfinite(offset) || std::abs(offset) > params_.lateral_deviation_threshold_m) {
+        continue;
+      }
+      const double yaw = yaw_of(point.pose.orientation);
+      point.pose.position.x += keep * offset * std::sin(yaw);
+      point.pose.position.y -= keep * offset * std::cos(yaw);
+    }
+  }
+  prev_trajectory_ = blended;
   prev_route_uuid_ = route_uuid;
 }
 

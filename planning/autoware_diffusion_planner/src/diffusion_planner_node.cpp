@@ -215,6 +215,8 @@ void DiffusionPlanner::set_up_params()
   params_.stitching.enable = this->declare_parameter<bool>("stitching.enable", false);
   params_.stitching.history_mode =
     this->declare_parameter<std::string>("stitching.history_mode", "real");
+  params_.stitching.reference_blend_gain =
+    this->declare_parameter<double>("stitching.reference_blend_gain", 0.3);
   params_.stitching.path_correction_gain =
     this->declare_parameter<double>("stitching.path_correction_gain", 0.25);
   params_.stitching.time_offset_s = this->declare_parameter<double>("stitching.time_offset_s", 0.0);
@@ -363,6 +365,8 @@ SetParametersResult DiffusionPlanner::on_parameter(
     update_param<std::string>(
       parameters, "stitching.history_mode", temp_params.stitching.history_mode);
     update_param<double>(
+      parameters, "stitching.reference_blend_gain", temp_params.stitching.reference_blend_gain);
+    update_param<double>(
       parameters, "stitching.path_correction_gain", temp_params.stitching.path_correction_gain);
     update_param<double>(
       parameters, "stitching.time_offset_s", temp_params.stitching.time_offset_s);
@@ -405,10 +409,13 @@ SetParametersResult DiffusionPlanner::on_parameter(
     }
     if (
       temp_params.stitching.path_correction_gain <= 0.0 ||
-      temp_params.stitching.path_correction_gain > 1.0) {
+      temp_params.stitching.path_correction_gain > 1.0 ||
+      temp_params.stitching.reference_blend_gain <= 0.0 ||
+      temp_params.stitching.reference_blend_gain > 1.0) {
       SetParametersResult result;
       result.successful = false;
-      result.reason = "stitching.path_correction_gain must be within (0, 1]";
+      result.reason =
+        "stitching.path_correction_gain and reference_blend_gain must be within (0, 1]";
       return result;
     }
     if (

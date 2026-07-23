@@ -44,6 +44,7 @@ protected:
   void SetUp() override
   {
     params_.enable = true;
+    params_.reference_blend_gain = 1.0;
     params_.path_correction_gain = 1.0;
     params_.rearm_cooldown_s = 1.0;
     stitcher_ = std::make_unique<TrajectoryStitcher>(params_);
@@ -140,6 +141,42 @@ TEST_F(TrajectoryStitcherTest, StitchesAtProjection)
     stitcher_->compute_planning_origin(at(0.1), make_odom(0.5), uuid_a_, false);
   EXPECT_TRUE(before_start.stitched);
   EXPECT_NEAR(before_start.planning_origin.position.x, 0.5, 1e-9);
+}
+
+TEST_F(TrajectoryStitcherTest, ReferenceBlendAveragesPlans)
+{
+  params_.reference_blend_gain = 0.3;
+  stitcher_->update_params(params_);
+  store_default_trajectory();
+
+  auto shifted = make_trajectory(20, 0.1);
+  for (auto & point : shifted.points) {
+    point.pose.position.y += 0.2;
+  }
+  stitcher_->set_previous_trajectory(shifted, uuid_a_);
+
+  // reference y = 0.3 * 0.2 + 0.7 * 0.0 = 0.06
+  const auto status = stitcher_->compute_planning_origin(at(0.2), make_odom(2.0), uuid_a_, false);
+  EXPECT_TRUE(status.stitched);
+  EXPECT_NEAR(status.planning_origin.position.y, 0.06, 1e-6);
+}
+
+TEST_F(TrajectoryStitcherTest, ReferenceBlendPassesLargeDivergence)
+{
+  params_.reference_blend_gain = 0.3;
+  stitcher_->update_params(params_);
+  store_default_trajectory();
+
+  auto avoidance = make_trajectory(20, 0.1);
+  for (auto & point : avoidance.points) {
+    point.pose.position.y += 1.0;
+  }
+  stitcher_->set_previous_trajectory(avoidance, uuid_a_);
+
+  const auto status =
+    stitcher_->compute_planning_origin(at(0.2), make_odom(2.0, 1.0), uuid_a_, false);
+  EXPECT_TRUE(status.stitched);
+  EXPECT_NEAR(status.planning_origin.position.y, 1.0, 1e-6);
 }
 
 TEST_F(TrajectoryStitcherTest, FilterSmoothsProjectionNoise)

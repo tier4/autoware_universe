@@ -190,6 +190,13 @@
               "default": "real",
               "description": "Source of the ego history input: measured odometry (real) or past planning origins (on_plan)"
             },
+            "reference_blend_gain": {
+              "type": "number",
+              "default": 0.3,
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "description": "Per-cycle lateral blend of the new plan into the persistent reference path (1 = replace, no averaging)"
+            },
             "path_correction_gain": {
               "type": "number",
               "default": 0.25,
@@ -236,6 +243,7 @@
           "required": [
             "enable",
             "history_mode",
+            "reference_blend_gain",
             "path_correction_gain",
             "time_offset_s",
             "lateral_deviation_threshold_m",
