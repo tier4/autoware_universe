@@ -46,15 +46,6 @@ bool is_history_expired(
 {
   return (observation_time - record.last_seen).seconds() > params.history_timeout;
 }
-
-std::optional<rclcpp::Duration> calculate_stopped_duration(
-  const detail::StopTimeRecord * record, const std::optional<rclcpp::Time> & last_update_time)
-{
-  if (record == nullptr || !last_update_time.has_value()) {
-    return std::nullopt;
-  }
-  return last_update_time.value() - record->stopped_since;
-}
 }  // namespace
 
 ObjectStopTracker::ObjectStopTracker(const StopTrackingParams & params)
@@ -112,8 +103,10 @@ std::optional<rclcpp::Duration> ObjectStopTracker::get_stopped_duration(
   const unique_identifier_msgs::msg::UUID & object_id) const
 {
   const auto iter = stop_times_.find(object_id.uuid);
-  const auto * record = iter != stop_times_.end() ? &iter->second : nullptr;
-  return calculate_stopped_duration(record, last_update_time_);
+  if (iter == stop_times_.end() || !last_update_time_.has_value()) {
+    return std::nullopt;
+  }
+  return last_update_time_.value() - iter->second.stopped_since;
 }
 
 EgoStopTracker::EgoStopTracker(const StopTrackingParams & params)
@@ -159,15 +152,17 @@ void EgoStopTracker::update(const nav_msgs::msg::Odometry & odometry)
 
 std::optional<rclcpp::Duration> EgoStopTracker::get_stopped_duration() const
 {
-  const auto * record = stop_time_.has_value() ? &stop_time_.value() : nullptr;
-  return calculate_stopped_duration(record, last_update_time_);
+  if (!stop_time_.has_value() || !last_update_time_.has_value()) {
+    return std::nullopt;
+  }
+  return last_update_time_.value() - stop_time_->stopped_since;
 }
 
 std::optional<rclcpp::Duration> StopTrackers::get_stopped_duration(
   const unique_identifier_msgs::msg::UUID & object_id) const
 {
-  const auto ego_duration = ego_.get_stopped_duration();
-  const auto object_duration = object_.get_stopped_duration(object_id);
+  const auto ego_duration = ego.get_stopped_duration();
+  const auto object_duration = object.get_stopped_duration(object_id);
 
   if (!ego_duration.has_value() || !object_duration.has_value()) {
     return std::nullopt;
