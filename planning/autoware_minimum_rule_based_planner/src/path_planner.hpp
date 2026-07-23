@@ -18,10 +18,10 @@
 #include "type_alias.hpp"
 
 #include <autoware_utils_debug/time_keeper.hpp>
+#include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/clock.hpp>
 #include <rclcpp/logger.hpp>
 
-#include <builtin_interfaces/msg/time.hpp>
 #include <lanelet2_core/geometry/Lanelet.h>
 #include <lanelet2_routing/RoutingGraph.h>
 #include <lanelet2_traffic_rules/TrafficRules.h>
