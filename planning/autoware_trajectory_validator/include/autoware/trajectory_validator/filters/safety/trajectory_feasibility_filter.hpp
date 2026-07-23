@@ -39,18 +39,27 @@ public:
   void update_parameters(const validator::Params & params) final;
 
 private:
-  MetricReport check_speed(const TrajectoryPoints & traj_points) const;
-  MetricReport check_acceleration(const TrajectoryPoints & traj_points) const;
-  MetricReport check_deceleration(const TrajectoryPoints & traj_points) const;
-  MetricReport check_steering_angle(const TrajectoryPoints & traj_points) const;
-  MetricReport check_steering_rate(const TrajectoryPoints & traj_points) const;
+  MetricReport check_speed(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
+  MetricReport check_acceleration(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
+  MetricReport check_deceleration(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
+  MetricReport check_distance_deviation(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
+  MetricReport check_steering_angle(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
+  MetricReport check_steering_rate(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
 
-  using Checker = MetricReport (TrajectoryFeasibilityFilter::*)(const TrajectoryPoints &) const;
+  using Checker = MetricReport (TrajectoryFeasibilityFilter::*)(
+    const TrajectoryPoints &, const FilterContext &) const;
 
-  inline static const std::array<Checker, 5> checkers_ = {{
+  inline static const std::array<Checker, 6> checkers_ = {{
     &TrajectoryFeasibilityFilter::check_speed,
     &TrajectoryFeasibilityFilter::check_acceleration,
     &TrajectoryFeasibilityFilter::check_deceleration,
+    &TrajectoryFeasibilityFilter::check_distance_deviation,
     &TrajectoryFeasibilityFilter::check_steering_angle,
     &TrajectoryFeasibilityFilter::check_steering_rate,
   }};  //!< Array of checker functions
@@ -89,6 +98,18 @@ std::pair<double, bool> is_acceleration_ok(
  */
 std::pair<double, bool> is_deceleration_ok(
   const TrajectoryPoints & traj_points, double max_deceleration);
+
+/**
+ * @brief Check if the trajectory respects the maximum lateral distance deviation from the ego pose.
+ *
+ * @param traj_points Vector of trajectory points to check
+ * @param context Evaluation context containing current odometry
+ * @param max_distance_deviation Maximum allowed absolute lateral distance deviation (m)
+ * @return Pair of max observation and a boolean indicating if no point violated
+ */
+std::pair<double, bool> is_distance_deviation_ok(
+  const TrajectoryPoints & traj_points, const FilterContext & context,
+  double max_distance_deviation);
 
 /**
  * @brief Check if the trajectory respects the maximum steering angle constraint.

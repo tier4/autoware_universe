@@ -14,6 +14,7 @@
 
 #include "autoware/trajectory_validator/filters/safety/trajectory_feasibility_filter.hpp"
 
+#include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
 
@@ -116,7 +117,7 @@ void TrajectoryFeasibilityFilter::update_parameters(const validator::Params & pa
 }
 
 TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
-  const CandidateTrajectory & candidate_trajectory, const FilterContext &)
+  const CandidateTrajectory & candidate_trajectory, const FilterContext & context)
 {
   const auto & traj_points = candidate_trajectory.points;
   if (!vehicle_info_ptr_) {
@@ -128,7 +129,7 @@ TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
   bool is_feasible = true;
   std::vector<MetricReport> metrics;
   for (const auto & checker : checkers_) {
-    auto report = (this->*checker)(traj_points);
+    auto report = (this->*checker)(traj_points, context);
     is_feasible &= report.risk.level == RiskLevel::SAFE;
     metrics.push_back(report);
   }
@@ -136,7 +137,8 @@ TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
   return ValidationResult{is_feasible, std::move(metrics)};
 }
 
-MetricReport TrajectoryFeasibilityFilter::check_speed(const TrajectoryPoints & traj_points) const
+MetricReport TrajectoryFeasibilityFilter::check_speed(
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] = is_speed_ok(traj_points, params_.max_speed);
 
@@ -151,7 +153,7 @@ MetricReport TrajectoryFeasibilityFilter::check_speed(const TrajectoryPoints & t
 }
 
 MetricReport TrajectoryFeasibilityFilter::check_acceleration(
-  const TrajectoryPoints & traj_points) const
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] = is_acceleration_ok(traj_points, params_.max_acceleration);
 
@@ -166,7 +168,7 @@ MetricReport TrajectoryFeasibilityFilter::check_acceleration(
 }
 
 MetricReport TrajectoryFeasibilityFilter::check_deceleration(
-  const TrajectoryPoints & traj_points) const
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] = is_deceleration_ok(traj_points, params_.max_deceleration);
 
@@ -180,8 +182,24 @@ MetricReport TrajectoryFeasibilityFilter::check_deceleration(
     .risk(risk_level);
 }
 
+MetricReport TrajectoryFeasibilityFilter::check_distance_deviation(
+  const TrajectoryPoints & traj_points, const FilterContext & context) const
+{
+  const auto [max_observed, is_ok] =
+    is_distance_deviation_ok(traj_points, context, params_.max_distance_deviation);
+
+  RiskLevel risk_level;
+  risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
+  return autoware_trajectory_validator::build<MetricReport>()
+    .validator_name(get_name())
+    .validator_category(category())
+    .metric_name("distance_deviation")
+    .metric_value(max_observed)
+    .risk(risk_level);
+}
+
 MetricReport TrajectoryFeasibilityFilter::check_steering_angle(
-  const TrajectoryPoints & traj_points) const
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] =
     is_steering_angle_ok(traj_points, *vehicle_info_ptr_, params_.max_steering_angle);
@@ -197,7 +215,7 @@ MetricReport TrajectoryFeasibilityFilter::check_steering_angle(
 }
 
 MetricReport TrajectoryFeasibilityFilter::check_steering_rate(
-  const TrajectoryPoints & traj_points) const
+  const TrajectoryPoints & traj_points, const FilterContext &) const
 {
   const auto [max_observed, is_ok] =
     is_steering_rate_ok(traj_points, *vehicle_info_ptr_, params_.max_steering_rate);
@@ -256,6 +274,21 @@ std::pair<double, bool> is_deceleration_ok(
     }
   }
   return {max_observed, is_ok};
+}
+
+std::pair<double, bool> is_distance_deviation_ok(
+  const TrajectoryPoints & traj_points, const FilterContext & context,
+  double max_distance_deviation)
+{
+  if (!context.odometry || traj_points.size() < 2) {
+    return {0.0, true};
+  }
+  const auto nearest_idx = autoware::motion_utils::findNearestSegmentIndex(
+    traj_points, context.odometry->pose.pose.position);
+  const double distance_deviation = std::abs(
+    autoware::motion_utils::calcLateralOffset(
+      traj_points, context.odometry->pose.pose.position, nearest_idx));
+  return {distance_deviation, distance_deviation <= max_distance_deviation};
 }
 
 std::pair<double, bool> is_steering_angle_ok(

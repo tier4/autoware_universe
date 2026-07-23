@@ -27,6 +27,11 @@ validator:
       default_value: 5.0
       description: Maximum allowed deceleration (m/s^2, positive but represents deceleration)
       read_only: false
+    max_distance_deviation:
+      type: double
+      default_value: 100.0
+      description: Maximum allowed absolute lateral distance deviation from the ego pose (m)
+      read_only: false
     max_steering_angle:
       type: double
       default_value: 0.8
