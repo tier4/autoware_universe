@@ -18,6 +18,7 @@
 
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
+#include <autoware_utils_geometry/geometry.hpp>
 
 #include <cmath>
 #include <string>
@@ -115,6 +116,8 @@ StitchingStatus TrajectoryStitcher::compute_planning_origin(
 
   // The stored trajectory has no point at the plan origin (the first point is the model's
   // first prediction step), so positions behind it are extrapolated along the first segment.
+  // Orientation comes from the path tangent: the model-predicted headings are too noisy to
+  // anchor the planning frame.
   if (target_arc < 0.0) {
     const auto & first = points[0].pose;
     const auto & second = points[1].pose;
@@ -124,10 +127,12 @@ StitchingStatus TrajectoryStitcher::compute_planning_origin(
     geometry_msgs::msg::Pose origin = first;
     origin.position.x += target_arc * dx / segment_length;
     origin.position.y += target_arc * dy / segment_length;
+    origin.orientation =
+      autoware_utils_geometry::create_quaternion_from_yaw(std::atan2(dy, dx));
     status.planning_origin = origin;
   } else {
     status.planning_origin =
-      autoware::motion_utils::calcInterpolatedPose(points, target_arc, false);
+      autoware::motion_utils::calcInterpolatedPose(points, target_arc, true);
   }
   status.stitched = true;
   return status;
