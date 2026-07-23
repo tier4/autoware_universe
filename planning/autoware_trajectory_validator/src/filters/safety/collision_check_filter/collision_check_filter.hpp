@@ -18,7 +18,7 @@
 #include "autoware/trajectory_validator/validator_interface.hpp"
 #include "parameter.hpp"
 #include "reporter.hpp"
-#include "stopped_object_tracker.hpp"
+#include "stop_tracker.hpp"
 #include "types.hpp"
 
 #include <vector>
@@ -39,7 +39,7 @@ private:
   GlobalParams global_params_;
   DracParamMap drac_param_map_;
   RssParamMap rss_param_map_;
-  StoppedObjectTracker stopped_object_tracker_;
+  StopTrackers stop_tracker_;
 
   reporter::ContinuousDetectionTimes rss_continuous_times_;
   reporter::ContinuousDetectionTimes drac_continuous_times_;

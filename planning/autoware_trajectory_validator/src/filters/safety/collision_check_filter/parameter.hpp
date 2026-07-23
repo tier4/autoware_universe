@@ -130,18 +130,26 @@ struct GlobalParams
   }
 };
 
-struct StoppedObjectTrackingParams
+struct StopTrackingParams
 {
-  double stopped_velocity_threshold{0.1};
-  double stopped_duration_threshold{3.0};
-  double history_timeout{1.0};
+  double stopped_velocity_threshold{0.3};
+  double history_timeout{0.5};
 
-  StoppedObjectTrackingParams() = default;
-  explicit StoppedObjectTrackingParams(
-    const validator::Params::CollisionCheck::StoppedObjectTracking & params)
+  StopTrackingParams() = default;
+  explicit StopTrackingParams(
+    const validator::Params::CollisionCheck::Drac::StopTracking::Ego & params)
   : stopped_velocity_threshold(params.stopped_velocity_threshold),
-    stopped_duration_threshold(params.stopped_duration_threshold),
     history_timeout(params.history_timeout)
+  {
+  }
+
+  explicit StopTrackingParams(
+    const validator::Params::CollisionCheck::Drac::StopTracking::Object & params)
+  : stopped_velocity_threshold(
+      extract_labeled_param<double>(
+        params.stopped_velocity_threshold, kCollisionCheckParamBaseKey)),
+    history_timeout(
+      extract_labeled_param<double>(params.history_timeout, kCollisionCheckParamBaseKey))
   {
   }
 };
@@ -184,7 +192,14 @@ struct DracParams
 
   struct MapBased
   {
+    struct MutualYieldTimeoutResolution
+    {
+      bool enabled{false};
+      double min_wait_time{1.0};
+    };
+
     bool enable_assessment{};
+    MutualYieldTimeoutResolution mutual_yield_timeout_resolution{};
     DracAssessment ego_prioritized_ego_earlier{};
     DracAssessment ego_prioritized_object_earlier{};
     DracAssessment object_prioritized_ego_earlier{};
@@ -233,6 +248,11 @@ struct DracParams
 
     map_based.enable_assessment =
       extract_labeled_param<bool>(drac.map_based.enable_assessment, key);
+    const auto & mutual_yield_timeout_resolution = drac.map_based.mutual_yield_timeout_resolution;
+    map_based.mutual_yield_timeout_resolution.enabled =
+      extract_labeled_param<bool>(mutual_yield_timeout_resolution.enabled, key);
+    map_based.mutual_yield_timeout_resolution.min_wait_time =
+      extract_labeled_param<double>(mutual_yield_timeout_resolution.min_wait_time, key);
     parse_assessment(
       drac.map_based.ego_prioritized_ego_earlier, map_based.ego_prioritized_ego_earlier);
     parse_assessment(

@@ -38,7 +38,7 @@ ament_auto_add_library(autoware_trajectory_validator_plugins SHARED
   src/filters/safety/collision_check_filter/collision_check_filter.cpp
   src/filters/safety/collision_check_filter/reporter.cpp
   src/filters/safety/collision_check_filter/assessment.cpp
-  src/filters/safety/collision_check_filter/stopped_object_tracker.cpp
+  src/filters/safety/collision_check_filter/stop_tracker.cpp
   src/filters/safety/collision_check_filter/trajectory_utils.cpp
   src/filters/traffic_rule/traffic_light_filter.cpp
 )
@@ -110,10 +110,10 @@ if(BUILD_TESTING)
     autoware_trajectory_validator_plugins
   )
 
-  ament_add_gtest(test_stopped_object_tracker
-    test/plugins/collision_check_filter/test_stopped_object_tracker.cpp
+  ament_add_gtest(test_stop_tracker
+    test/plugins/collision_check_filter/test_stop_tracker.cpp
   )
-  target_link_libraries(test_stopped_object_tracker
+  target_link_libraries(test_stop_tracker
     autoware_trajectory_validator_plugins
   )
 

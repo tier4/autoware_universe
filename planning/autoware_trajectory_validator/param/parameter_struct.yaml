@@ -45,29 +45,38 @@ validator:
         default_value: .NAN
         description: sampling interval used in collision check trajectory generation
         read_only: false
-    stopped_object_tracking:
-      stopped_velocity_threshold:
-        type: double
-        default_value: 0.1
-        description: planar speed below which an object is considered stopped (m/s)
-        read_only: false
-        validation:
-          gt<>: [0.0]
-      stopped_duration_threshold:
-        type: double
-        default_value: 3.0
-        description: continuous stop duration required to consider an object stopped long enough (s)
-        read_only: false
-        validation:
-          gt_eq<>: [0.0]
-      history_timeout:
-        type: double
-        default_value: 1.0
-        description: time after the last observation before a stopped-object record is removed (s)
-        read_only: false
-        validation:
-          gt_eq<>: [0.0]
     drac:
+      stop_tracking:
+        ego:
+          stopped_velocity_threshold:
+            type: double
+            default_value: 0.01
+            description: planar speed below which the ego vehicle is considered stopped (m/s)
+            read_only: false
+            validation:
+              gt<>: [0.0]
+          history_timeout:
+            type: double
+            default_value: 0.3
+            description: maximum observation gap retained in the ego stop history (s)
+            read_only: false
+            validation:
+              gt_eq<>: [0.0]
+        object:
+          stopped_velocity_threshold:
+            type: double
+            default_value: 0.3
+            description: planar speed below which an object is considered stopped (m/s)
+            read_only: false
+            validation:
+              gt<>: [0.0]
+          history_timeout:
+            type: double
+            default_value: 0.3
+            description: time after the last observation before an object stop record is removed (s)
+            read_only: false
+            validation:
+              gt_eq<>: [0.0]
       enable_assessment:
         base:
           &drac_ea {
@@ -217,6 +226,36 @@ validator:
           default_value: false
           description: Use map based predicted path trajectories for DRAC assessment
           read_only: false
+        mutual_yield_timeout_resolution:
+          enabled:
+            type: bool
+            default_value: false
+            description: Resolve mutual-yield deadlocks after both participants have waited long enough
+            read_only: false
+          min_wait_time:
+            base:
+              type: double
+              default_value: .NAN
+              description: Default minimum wait time before resolving a mutual-yield deadlock (s)
+              read_only: false
+            unknown:
+              &drac_labeled_wait_time_override {
+                type: double,
+                default_value: .NAN,
+                description: Per-class override. NaN uses the base value.,
+                read_only: false,
+              }
+            car: *drac_labeled_wait_time_override
+            truck: *drac_labeled_wait_time_override
+            bus: *drac_labeled_wait_time_override
+            trailer: *drac_labeled_wait_time_override
+            motorcycle: *drac_labeled_wait_time_override
+            bicycle: *drac_labeled_wait_time_override
+            pedestrian: *drac_labeled_wait_time_override
+            animal: *drac_labeled_wait_time_override
+            hazard: *drac_labeled_wait_time_override
+            over_drivable: *drac_labeled_wait_time_override
+            under_drivable: *drac_labeled_wait_time_override
         ego_prioritized_ego_earlier: *drac_assessment
         ego_prioritized_object_earlier: *drac_assessment
         object_prioritized_ego_earlier: *drac_assessment

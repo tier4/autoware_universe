@@ -13,11 +13,14 @@
     collision_check:
       global_setting:
         time_resolution: 0.1
-      stopped_object_tracking:
-        stopped_velocity_threshold: 0.1  # [m/s]
-        stopped_duration_threshold: 3.0  # [s]
-        history_timeout: 1.0  # [s]
       drac:
+        stop_tracking:
+          ego:
+            stopped_velocity_threshold: 0.01
+            history_timeout: 0.3
+          object:
+            stopped_velocity_threshold: 0.3
+            history_timeout: 0.3
         enable_assessment:
           # default value is true.
           unknown: false
@@ -55,6 +58,12 @@
               enable_abandon: false
         map_based:
           enable_assessment: true
+          mutual_yield_timeout_resolution:
+            enabled: true
+            min_wait_time:
+              base: 1.0
+              pedestrian: 3.0
+              bicycle: 3.0
           ego_prioritized_ego_earlier:
             enable_assessment: false # Not evaluated. Must be false
           ego_prioritized_object_earlier:
