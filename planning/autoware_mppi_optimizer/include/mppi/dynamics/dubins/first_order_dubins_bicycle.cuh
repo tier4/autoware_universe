@@ -1,14 +1,16 @@
 /**
  * Kinematic Dubins bicycle with first-order actuation on longitudinal acceleration and steering.
  *
- * State: speed, yaw, position, steer angle, applied acceleration.
+ * State: speed, yaw, position, steer angle, applied acceleration, prediction time.
  * Controls: acceleration command [m/s^2], steer angle command [rad].
  *
  *   d(accel)/dt = (u_accel - accel) / accel_time_constant
  *   d(v)/dt     = accel
- *   d(steer)/dt = (u_steer - steer) / steer_time_constant   (rate-limited)
+ *   d(steer)/dt = 0                                          while t < steer_time_delay
+ *   d(steer)/dt = (u_steer - steer) / steer_time_constant   otherwise (rate-limited)
  *   d(yaw)/dt   = (v / L) * tan(steer)
  *   d(x,y)/dt   = v * [cos(yaw), sin(yaw)]
+ *   d(t)/dt     = 1
  */
 #pragma once
 
@@ -27,6 +29,7 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
     POS_Y,
     STEER_ANGLE,
     ACCELERATION,
+    PREDICTION_TIME,
     NUM_STATES
   };
 
@@ -55,6 +58,8 @@ struct FirstOrderDubinsBicycleParams : public DynamicsParams
   float accel_time_constant = 0.15F;
   /** First-order lag: steer_dot = (u_steer - steer) / steer_time_constant */
   float steer_time_constant = 0.08F;
+  /** Hold the measured initial steering angle for this long at the start of each rollout. */
+  float steer_time_delay = 0.0F;
   float max_steer_angle = 0.45F;
   float max_steer_rate = 3.0F;
   float min_accel = -6.0F;
