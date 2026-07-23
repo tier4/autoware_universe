@@ -31,6 +31,7 @@
 #include <autoware_perception_msgs/msg/traffic_light_group_array.hpp>
 #include <geometry_msgs/msg/accel_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <memory>
 #include <string>
@@ -117,6 +118,9 @@ private:
   autoware_utils_rclcpp::InterProcessPollingSubscriber<
     autoware_planning_msgs::msg::LaneletRoute, autoware_utils_rclcpp::polling_policy::Latest>
     sub_route_{this, "~/input/route", rclcpp::QoS{1}.transient_local()};
+  autoware_utils_rclcpp::InterProcessPollingSubscriber<sensor_msgs::msg::PointCloud2>
+    sub_segmented_pointcloud_{
+      this, "~/input/segmented_pointcloud", autoware_utils_rclcpp::single_depth_sensor_qos()};
 
   // Normal Subscribers
   rclcpp::Subscription<LaneletMapBin>::SharedPtr sub_map_;

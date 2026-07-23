@@ -45,6 +45,7 @@
   <depend>nav_msgs</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
   <depend>tl_expected</depend>
   <depend>unique_identifier_msgs</depend>
 
