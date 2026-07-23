@@ -385,13 +385,13 @@ DracArtifact assess(
   const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
   const nav_msgs::msg::Odometry & odometry,
   const autoware_perception_msgs::msg::PredictedObjects & predicted_objects,
-  StopTrackers & stop_tracker, const DracParamMap & drac_param_map,
+  StopTrackers & stop_trackers, const DracParamMap & drac_param_map,
   const GlobalParams & global_params)
 {
   DracArtifact drac_artifact{};
 
-  stop_tracker.ego_.update(odometry);
-  stop_tracker.object_.update(predicted_objects);
+  stop_trackers.ego.update(odometry);
+  stop_trackers.object.update(predicted_objects);
 
   for (const auto & predicted_object : predicted_objects.objects) {
     const auto & drac_params = drac_param_map.at(to_type_string(predicted_object.classification));
@@ -406,7 +406,7 @@ DracArtifact assess(
 
     if (drac_params.map_based.enable_assessment) {
       drac_artifact.merge(assess_map_based(
-        ego_trajectory_cache, ego_turn_indicator, predicted_object, stop_tracker, drac_params,
+        ego_trajectory_cache, ego_turn_indicator, predicted_object, stop_trackers, drac_params,
         global_params));
     }
   }

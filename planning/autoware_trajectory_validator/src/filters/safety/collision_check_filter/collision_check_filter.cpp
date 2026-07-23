@@ -34,8 +34,8 @@ void CollisionCheckFilter::update_parameters(const validator::Params & node_para
 {
   global_params_ = GlobalParams(node_params.collision_check.global_setting);
   const auto & stop_tracking_params = node_params.collision_check.drac.stop_tracking;
-  stop_tracker_.ego_.set_parameters(StopTrackingParams(stop_tracking_params.ego));
-  stop_tracker_.object_.set_parameters(StopTrackingParams(stop_tracking_params.object));
+  stop_tracker_.ego.set_parameters(StopTrackingParams(stop_tracking_params.ego));
+  stop_tracker_.object.set_parameters(StopTrackingParams(stop_tracking_params.object));
 
   drac_param_map_ = create_param_map_per_object<DracParams>(node_params);
   rss_param_map_ = create_param_map_per_object<RssParams>(node_params);

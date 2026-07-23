@@ -142,6 +142,26 @@ TEST(ObjectStopTracker, ReportsContinuousStopDuration)
   EXPECT_DOUBLE_EQ(duration_at_three_seconds.value().seconds(), 3.0);
 }
 
+TEST(ObjectStopTracker, RepeatedObservationTimestampIsANoOp)
+{
+  StopTrackingParams params;
+  params.history_timeout = 10.0;
+  ObjectStopTracker tracker(params);
+  const auto id = make_uuid(7);
+  const auto stopped_object = make_object(id, 0.0);
+
+  update_with_object(tracker, make_time(10'000'000'000LL), stopped_object);
+  update_with_object(tracker, make_time(13'000'000'000LL), stopped_object);
+  ASSERT_TRUE(tracker.get_stopped_duration(id).has_value());
+  EXPECT_DOUBLE_EQ(tracker.get_stopped_duration(id).value().seconds(), 3.0);
+
+  // Re-observing the same timestamp (e.g. another candidate trajectory in the same planning
+  // cycle) must not alter the tracked duration.
+  update_with_object(tracker, make_time(13'000'000'000LL), stopped_object);
+  ASSERT_TRUE(tracker.get_stopped_duration(id).has_value());
+  EXPECT_DOUBLE_EQ(tracker.get_stopped_duration(id).value().seconds(), 3.0);
+}
+
 TEST(ObjectStopTracker, MovingObjectRemovesAndResetsItsStopHistory)
 {
   StopTrackingParams params;
@@ -236,6 +256,24 @@ TEST(EgoStopTracker, ReportsContinuousStopDuration)
   const auto duration_at_three_seconds = tracker.get_stopped_duration();
   ASSERT_TRUE(duration_at_three_seconds.has_value());
   EXPECT_DOUBLE_EQ(duration_at_three_seconds.value().seconds(), 3.0);
+}
+
+TEST(EgoStopTracker, RepeatedObservationTimestampIsANoOp)
+{
+  StopTrackingParams params;
+  params.history_timeout = 10.0;
+  EgoStopTracker tracker(params);
+
+  tracker.update(make_odometry(make_time(10'000'000'000LL), 0.0));
+  tracker.update(make_odometry(make_time(13'000'000'000LL), 0.0));
+  ASSERT_TRUE(tracker.get_stopped_duration().has_value());
+  EXPECT_DOUBLE_EQ(tracker.get_stopped_duration().value().seconds(), 3.0);
+
+  // Re-observing the same timestamp (e.g. another candidate trajectory in the same planning
+  // cycle) must not alter the tracked duration.
+  tracker.update(make_odometry(make_time(13'000'000'000LL), 0.0));
+  ASSERT_TRUE(tracker.get_stopped_duration().has_value());
+  EXPECT_DOUBLE_EQ(tracker.get_stopped_duration().value().seconds(), 3.0);
 }
 
 TEST(EgoStopTracker, MovingEgoRemovesAndResetsStopHistory)

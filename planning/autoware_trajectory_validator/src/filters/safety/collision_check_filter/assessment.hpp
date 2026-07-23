@@ -37,7 +37,7 @@ DracArtifact assess(
   const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
   const nav_msgs::msg::Odometry & odometry,
   const autoware_perception_msgs::msg::PredictedObjects & predicted_objects,
-  StopTrackers & stop_tracker, const DracParamMap & drac_param_map,
+  StopTrackers & stop_trackers, const DracParamMap & drac_param_map,
   const GlobalParams & global_params);
 }  // namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 

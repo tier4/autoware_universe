@@ -73,8 +73,13 @@ void ObjectStopTracker::update(const autoware_perception_msgs::msg::PredictedObj
 {
   const rclcpp::Time observation_time(objects.header.stamp);
 
-  if (last_update_time_.has_value() && observation_time < last_update_time_.value()) {
-    stop_times_.clear();
+  if (last_update_time_.has_value()) {
+    if (observation_time == last_update_time_.value()) {
+      return;  // Same observation already processed (e.g. repeated within one planning cycle).
+    }
+    if (observation_time < last_update_time_.value()) {
+      stop_times_.clear();
+    }
   }
   last_update_time_ = observation_time;
 
@@ -126,8 +131,13 @@ void EgoStopTracker::update(const nav_msgs::msg::Odometry & odometry)
 {
   const rclcpp::Time observation_time(odometry.header.stamp);
 
-  if (last_update_time_.has_value() && observation_time < last_update_time_.value()) {
-    stop_time_.reset();
+  if (last_update_time_.has_value()) {
+    if (observation_time == last_update_time_.value()) {
+      return;  // Same observation already processed (e.g. repeated within one planning cycle).
+    }
+    if (observation_time < last_update_time_.value()) {
+      stop_time_.reset();
+    }
   }
   last_update_time_ = observation_time;
 

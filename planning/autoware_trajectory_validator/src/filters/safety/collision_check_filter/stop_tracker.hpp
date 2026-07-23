@@ -54,7 +54,12 @@ public:
 
   void set_parameters(const StopTrackingParams & params);
 
-  /** @brief Updates stop histories using PredictedObjects.header.stamp as the observation time. */
+  /**
+   * @brief Updates stop histories using PredictedObjects.header.stamp as the observation time.
+   *
+   * Calls that repeat the previous observation timestamp are ignored, so invoking this multiple
+   * times per planning cycle (once per candidate trajectory) is safe and does not accumulate.
+   */
   void update(const autoware_perception_msgs::msg::PredictedObjects & objects);
 
   /** @brief Returns the continuous stop duration, or nullopt if the object is not tracked. */
@@ -84,7 +89,12 @@ public:
 
   void set_parameters(const StopTrackingParams & params);
 
-  /** @brief Updates the ego stop history using Odometry.header.stamp as the observation time. */
+  /**
+   * @brief Updates the ego stop history using Odometry.header.stamp as the observation time.
+   *
+   * Calls that repeat the previous observation timestamp are ignored, so invoking this multiple
+   * times per planning cycle (once per candidate trajectory) is safe and does not accumulate.
+   */
   void update(const nav_msgs::msg::Odometry & odometry);
 
   /** @brief Returns the continuous ego stop duration, or nullopt if the ego is moving. */
@@ -102,8 +112,8 @@ private:
 class StopTrackers
 {
 public:
-  EgoStopTracker ego_;
-  ObjectStopTracker object_;
+  EgoStopTracker ego;
+  ObjectStopTracker object;
   [[nodiscard]] std::optional<rclcpp::Duration> get_stopped_duration(
     const unique_identifier_msgs::msg::UUID & object_id) const;
 };
