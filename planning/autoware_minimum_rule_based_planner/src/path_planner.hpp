@@ -21,6 +21,7 @@
 #include <rclcpp/clock.hpp>
 #include <rclcpp/logger.hpp>
 
+#include <builtin_interfaces/msg/time.hpp>
 #include <lanelet2_core/geometry/Lanelet.h>
 #include <lanelet2_routing/RoutingGraph.h>
 #include <lanelet2_traffic_rules/TrafficRules.h>
@@ -110,10 +111,11 @@ public:
 
   // Path planning
   std::optional<PathWithLaneId> plan_path(
-    const geometry_msgs::msg::Pose & current_pose, double ego_velocity);
+    const geometry_msgs::msg::Pose & current_pose, double ego_velocity,
+    const builtin_interfaces::msg::Time & stamp);
   std::optional<PathWithLaneId> generate_path(
     const lanelet::LaneletSequence & lanelet_sequence, double s_start, double s_end,
-    double ego_velocity);
+    double ego_velocity, const builtin_interfaces::msg::Time & stamp);
 
   // Trajectory shifting
   Trajectory shift_trajectory_to_ego(
