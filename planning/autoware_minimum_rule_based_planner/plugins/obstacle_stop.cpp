@@ -55,7 +55,7 @@ void ObstacleStop::on_initialize(const MinimumRuleBasedPlannerParams & params)
       params_.pointcloud.clustering.max_size);
 
   object_filter_ = std::make_unique<trajectory_modifier::utils::obstacle_stop::ObjectFilter>(
-    params_.objects.object_types, params_.objects.max_velocity_th,
+    params_.objects.object_types,
     params_.objects.stopped_velocity_th, params_.objects.max_lateral_velocity_th,
     params_.objects.safety_buffer);
 

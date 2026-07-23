@@ -232,10 +232,6 @@ minimum_rule_based_planner:
         type: string_array
         default_value: [car, truck, bus, trailer, motorcycle, bicycle, pedestrian, hazard]
         description: object types to consider for obstacle stop
-      max_velocity_th:
-        type: double
-        default_value: 3.0
-        description: maximum velocity threshold for target object [m/s]
       stopped_velocity_th:
         type: double
         default_value: 0.3

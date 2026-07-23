@@ -48,7 +48,6 @@
 
       objects:
         object_types: ["car", "truck", "bus", "trailer", "motorcycle", "bicycle", "pedestrian", "hazard"] # object types to consider for obstacle stop
-        max_velocity_th: 3.0      # maximum velocity threshold for target object [m/s]
         stopped_velocity_th: 0.3 # [m/s]
         max_lateral_velocity_th: 1.0 # [m/s] max lateral velocity (w.r.t ego traj) to consider for obstacle stop
         safety_buffer: 0.1 # [m] safety buffer to expand object shape
