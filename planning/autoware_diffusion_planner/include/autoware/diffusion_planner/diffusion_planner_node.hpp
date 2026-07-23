@@ -240,6 +240,8 @@ private:
     pub_traffic_signal_{nullptr};
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_inference_time_{nullptr};
   rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr pub_denoising_steps_{nullptr};
+  rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr pub_turn_indicator_logit_{
+    nullptr};
   rclcpp::Publisher<autoware_internal_debug_msgs::msg::StringStamped>::SharedPtr
     pub_guidance_status_{nullptr};
   rclcpp::Service<SetBool>::SharedPtr set_start_guidance_enabled_service_{nullptr};

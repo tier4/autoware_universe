@@ -111,6 +111,8 @@ DiffusionPlanner::DiffusionPlanner(const rclcpp::NodeOptions & options)
     this->create_publisher<std_msgs::msg::Float64>("~/debug/inference_time_ms", 1);
   pub_denoising_steps_ =
     this->create_publisher<std_msgs::msg::Float32MultiArray>("~/debug/denoising_steps", 1);
+  pub_turn_indicator_logit_ = this->create_publisher<std_msgs::msg::Float32MultiArray>(
+    "~/debug/turn_indicator_logit", 1);
   pub_guidance_status_ = this->create_publisher<autoware_internal_debug_msgs::msg::StringStamped>(
     "~/debug/guidance_status", 1);
 
@@ -705,6 +707,9 @@ void DiffusionPlanner::on_timer()
   pub_trajectories_->publish(planner_output.candidate_trajectories);
   pub_objects_->publish(planner_output.predicted_objects);
   pub_turn_indicators_->publish(planner_output.turn_indicators_command);
+  if (!planner_output.turn_indicator_logit.data.empty()) {
+    pub_turn_indicator_logit_->publish(planner_output.turn_indicator_logit);
+  }
 
   publish_planning_factor(planner_output.trajectory);
 

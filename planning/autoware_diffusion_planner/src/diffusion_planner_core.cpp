@@ -686,6 +686,9 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
     if (i == 0) {
       // Publish the first trajectory's command on the standalone turn indicator topic.
       output.turn_indicators_command = turn_indicators_command;
+      // Expose the raw pre-debounce logits so the published command can be audited
+      // against the model's per-cycle observation.
+      output.turn_indicator_logit.data = single_turn_indicator_logit;
     }
 
     const auto candidate_trajectory = autoware_internal_planning_msgs::build<
