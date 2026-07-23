@@ -167,6 +167,58 @@ ros2 launch autoware_launch planning_simulator.launch.xml \
 
 ---
 
+## Trajectory Stitching
+
+By default the planner anchors every plan at the measured ego pose. Any controller tracking
+error is then folded back into the next plan, which can amplify drift in closed loop,
+especially in curves. When `stitching.enable` is true, the planner instead plans from a
+virtual pose taken from its own previous trajectory at the point that trajectory scheduled
+for the current time. The model inputs, the diffusion anchor, and the output transform all
+use this planning origin. The measured kinematics (velocity, acceleration, yaw rate) are
+always taken from odometry.
+
+Stitching falls back to the measured pose (a reset) when the previous plan is not a valid
+anchor. Reset reasons, published in diagnostics and on `~/debug/stitching/status`:
+
+| Reason                   | Meaning                                                                  |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `disabled`               | `stitching.enable` is false                                              |
+| `mppi_active`            | The MPPI optimizer overwrites the published trajectory (non-shadow mode) |
+| `no_previous_trajectory` | First cycle, or state cleared by a model reload                          |
+| `stale_trajectory`       | Previous trajectory older than `stitching.max_trajectory_age_s`          |
+| `route_changed`          | Route UUID changed since the previous plan                               |
+| `low_speed`              | Ego slower than 0.2 m/s (or reversing)                                   |
+| `elapsed_beyond_horizon` | Elapsed time exceeds the previous trajectory horizon                     |
+| `degenerate_trajectory`  | Previous trajectory has too few distinct points for geometric queries    |
+| `deviation_exceeded`     | Ego deviated laterally or longitudinally beyond the thresholds           |
+| `waiting_rearm`          | After a reset, waiting for lateral deviation below the re-arm threshold  |
+
+The deviation gate has hysteresis: once tripped, stitching only resumes when the lateral
+deviation falls below `stitching.lateral_rearm_threshold_m`.
+
+Two ego-history modes are available for A/B comparison via `stitching.history_mode`:
+
+- `real`: the model's ego history input comes from measured odometry (default)
+- `on_plan`: the ego history input comes from the past planning origins, so the model sees a
+  history consistent with its own plans instead of the measured drift
+
+Debug outputs when stitching is enabled: `~/debug/stitching/status` (mode, reset reason,
+deviations), `~/debug/stitching/planning_origin` (PoseStamped of the virtual pose), and
+`~/debug/stitching/markers` (origin arrow colored green for stitch and red for reset, the
+ego-to-origin deviation line, a status text, the previous-trajectory reference segment, and
+the planning-origin history points). Diagnostics keys `stitching_active`,
+`stitching_reset_reason`, `stitching_lateral_deviation_m` and
+`stitching_longitudinal_deviation_m` are always published under `inference_status`.
+
+Downstream constraint: stitching assumes the pipeline does not re-anchor the trajectory at
+the ego pose. The following trajectory_optimizer plugins would fight stitching and must stay
+disabled while it is enabled: the velocity optimizer options `smooth_velocities` and
+`limit_lateral_acceleration` (both clip the trajectory at the point nearest to ego), the
+kinematic feasibility enforcer (re-anchors the path at ego), and the MPT and temporal MPT
+optimizers (use ego pose as the optimization anchor).
+
+---
+
 ## Parameters
 
 {{ json_to_markdown("planning/autoware_diffusion_planner/schema/diffusion_planner.schema.json") }}
@@ -189,15 +241,18 @@ Parameters can be set via YAML (see `config/diffusion_planner.param.yaml`).
 
 ## Outputs
 
-| Topic                           | Message Type                                              | Description                                                |
-| ------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------- |
-| `~/output/trajectory`           | autoware_planning_msgs/msg/Trajectory                     | Planned trajectory for the ego vehicle                     |
-| `~/output/trajectories`         | autoware_internal_planning_msgs/msg/CandidateTrajectories | Multiple candidate trajectories                            |
-| `~/output/predicted_objects`    | autoware_perception_msgs/msg/PredictedObjects             | Predicted future states of dynamic objects                 |
-| `~/output/turn_indicators`      | autoware_vehicle_msgs/msg/TurnIndicatorsCommand           | Planned turn indicator command                             |
-| `~/output/debug/traffic_signal` | autoware_perception_msgs/msg/TrafficLightGroup            | First traffic light on route (ego forward) for RViz/ad_api |
-| `~/debug/lane_marker`           | visualization_msgs/msg/MarkerArray                        | Lane debug markers                                         |
-| `~/debug/route_marker`          | visualization_msgs/msg/MarkerArray                        | Route debug markers                                        |
+| Topic                               | Message Type                                              | Description                                                |
+| ----------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------- |
+| `~/output/trajectory`               | autoware_planning_msgs/msg/Trajectory                     | Planned trajectory for the ego vehicle                     |
+| `~/output/trajectories`             | autoware_internal_planning_msgs/msg/CandidateTrajectories | Multiple candidate trajectories                            |
+| `~/output/predicted_objects`        | autoware_perception_msgs/msg/PredictedObjects             | Predicted future states of dynamic objects                 |
+| `~/output/turn_indicators`          | autoware_vehicle_msgs/msg/TurnIndicatorsCommand           | Planned turn indicator command                             |
+| `~/output/debug/traffic_signal`     | autoware_perception_msgs/msg/TrafficLightGroup            | First traffic light on route (ego forward) for RViz/ad_api |
+| `~/debug/lane_marker`               | visualization_msgs/msg/MarkerArray                        | Lane debug markers                                         |
+| `~/debug/route_marker`              | visualization_msgs/msg/MarkerArray                        | Route debug markers                                        |
+| `~/debug/stitching/status`          | autoware_internal_debug_msgs/msg/StringStamped            | Trajectory stitching mode, reset reason, and deviations    |
+| `~/debug/stitching/planning_origin` | geometry_msgs/msg/PoseStamped                             | Planning origin (virtual or measured pose)                 |
+| `~/debug/stitching/markers`         | visualization_msgs/msg/MarkerArray                        | Trajectory stitching debug markers                         |
 
 ---
 
