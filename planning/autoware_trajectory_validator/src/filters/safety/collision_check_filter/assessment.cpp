@@ -364,17 +364,19 @@ DracArtifact assess_map_based(
     }
   }
 
-  if (
-    drac_params.map_based.mutual_yield_timeout_arbitration.enabled &&
-    stop_trackers.get_stopped_duration(object.object_id) >
-      rclcpp::Duration::from_seconds(
-        drac_params.map_based.mutual_yield_timeout_arbitration.min_wait_time)) {
-    for (auto evaluation : drac_artifact.evaluations) {
-      evaluation.risk = RiskLevel::SAFE;
+  if (drac_params.map_based.mutual_yield_timeout_arbitration.enabled) {
+    const auto stopped_duration = stop_trackers.get_stopped_duration(object.object_id);
+    if (
+      stopped_duration.has_value() &&
+      stopped_duration.value() >
+        rclcpp::Duration::from_seconds(
+          drac_params.map_based.mutual_yield_timeout_arbitration.min_wait_time)) {
+      for (auto & evaluation : drac_artifact.evaluations) {
+        evaluation.risk = RiskLevel::SAFE;
+      }
+      drac_artifact.risk = RiskLevel::SAFE;
     }
-    drac_artifact.risk = RiskLevel::SAFE;
   }
-
   return drac_artifact;
 }
 
