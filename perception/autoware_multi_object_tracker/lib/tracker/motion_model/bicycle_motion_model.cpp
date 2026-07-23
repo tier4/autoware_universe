@@ -269,6 +269,8 @@ bool BicycleMotionModel::updateStatePoseWheel(
   Eigen::Matrix<double, DIM_Y, 1> Y;
   Y << x, y, wheel_base;
 
+  // Measure the edge face center as an exact linear blend of the two endpoints:
+  // face = (1 + gamma) * p_near - gamma * p_far
   Eigen::Matrix<double, DIM_Y, DIM> C = Eigen::Matrix<double, DIM_Y, DIM>::Zero();
   if (measure_front) {
     // The front face anchors on p2 = (X2, Y2) with gamma_front
