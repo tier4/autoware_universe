@@ -489,6 +489,8 @@ TrajectoryData generate_ego_trajectory(
   const rclcpp::Time trajectory_end_time =
     trajectory_interpolator.reference_time_ +
     rclcpp::Duration::from_seconds(trajectory_interpolator.time_from_refs_.back());
+
+  // todo(takagi): remove magin num
   const rclcpp::Time stop_hold_time =
     trajectory_interpolator.reference_time_ + rclcpp::Duration::from_seconds(8.0);
 

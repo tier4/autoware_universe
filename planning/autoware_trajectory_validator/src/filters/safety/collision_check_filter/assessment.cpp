@@ -270,7 +270,6 @@ DracEvaluation assess_drac_object_prioritized_ego_earlier(
   const GlobalParams & global_params, CollisionDetail && nominal_collision_result)
 {
   // todo(takagi): add object deceleration.
-
   const auto ego_drac_params = EgoDracAssessmentParams{
     drac_params.pet_margin, drac_params.ego_footprint_margin,
     drac_params.map_based.object_prioritized_ego_earlier.ego_drac_assessment,
