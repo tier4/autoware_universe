@@ -24,16 +24,34 @@ minimum_rule_based_planner:
         default_value: 10.0
         description: ratio to expand interval bound of group according to lateral distance
 
-    smooth_goal_connection:
-      search_radius_range:
+    early_stop:
+      expected_ego_speed_parking:
         type: double
-        default_value: 7.5
-        description: search radius range for smooth goal connection [m]
+        default_value: 2.8
+        validation:
+          gt<>: [0.0]
+        description: expected ego speed during pull over to the side of the road [m/s]
 
-      pre_goal_offset:
+      max_lat_accel_parking:
+        type: double
+        default_value: 0.8
+        validation:
+          gt<>: [0.0]
+        description: expected max lateral acceleration during pull over to the side of the road [m/s^2]
+
+      max_decel_parking:
         type: double
         default_value: 1.0
-        description: offset before goal for smooth connection [m]
+        validation:
+          gt<>: [0.1]
+        description: max longitudinal deceleration used to compute the stopping distance during pull over [m/s^2]
+
+      max_jerk_parking:
+        type: double
+        default_value: 1.0
+        validation:
+          gt<>: [0.1]
+        description: max longitudinal jerk used to compute the stopping distance during pull over [m/s^3]
 
     # Parameters for lanelet matching (different from EB smoother's ego_nearest_* params)
     ego_nearest_lanelet:
@@ -67,6 +85,12 @@ minimum_rule_based_planner:
         description: delta arc length for output trajectory [m]
         validation:
           gt<>: [0.0]
+
+    lane_change_failure_stop_margin:
+      type: double
+      default_value: 0.0
+      validation:
+        gt_eq<>: [0.0]
 
     # Path Shift to Ego Parameters
     path_shift:

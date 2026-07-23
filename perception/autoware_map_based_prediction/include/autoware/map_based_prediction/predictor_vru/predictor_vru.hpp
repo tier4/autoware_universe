@@ -19,6 +19,7 @@
 #include "autoware/map_based_prediction/path_generator/path_generator.hpp"
 #include "autoware/map_based_prediction/predictor_vru/fence.hpp"
 #include "autoware/map_based_prediction/predictor_vru/history.hpp"
+#include "autoware/map_based_prediction/predictor_vru/road_boundary.hpp"
 #include "autoware/map_based_prediction/predictor_vru/traffic_signal.hpp"
 #include "autoware/map_based_prediction/predictor_vru/vegetation.hpp"
 
@@ -51,6 +52,8 @@ public:
     double max_crosswalk_user_on_road_distance{2.0};
     // Signal interaction
     bool use_crosswalk_signal{true};
+    // Deceleration-aware road-boundary path cut
+    path_cut::MaxDecelerationParams max_deceleration;
     // Sub-module params
     TrafficSignalModule::Params traffic_signal;
     CrosswalkUserHistoryManager::Params history;
@@ -66,6 +69,7 @@ public:
     params_ = params;
     traffic_signal_module_.setParams(params.traffic_signal);
     history_manager_.setParams(params.history);
+    road_boundary_module_.set_max_deceleration(params.max_deceleration);
     path_generator_ = std::make_shared<PathGenerator>(
       params.prediction_sampling_time_interval, params.min_crosswalk_user_velocity);
   }
@@ -108,6 +112,7 @@ private:
   // Sub-modules
   FenceModule fence_module_;
   VegetationModule vegetation_module_;
+  RoadBoundaryModule road_boundary_module_;
   TrafficSignalModule traffic_signal_module_;
   CrosswalkUserHistoryManager history_manager_;
 
