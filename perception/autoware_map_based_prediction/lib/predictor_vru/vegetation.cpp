@@ -45,8 +45,7 @@ Polygon2d footprint_polygon_at_pose(
   return polygon;
 }
 
-void extend_bbox_with_polygon(
-  lanelet::BoundingBox2d & bbox, const Polygon2d & polygon)
+void extend_bbox_with_polygon(lanelet::BoundingBox2d & bbox, const Polygon2d & polygon)
 {
   for (const auto & point : polygon.outer()) {
     bbox.extend(lanelet::BasicPoint2d(point.x(), point.y()));
@@ -148,8 +147,7 @@ std::vector<PredictedPath> VegetationModule::cut_paths_crossing_vegetation(
   }
 
   const std::vector<autoware_utils_geometry::Polygon2d> candidate_polygons =
-    collect_candidate_vegetation_polygons(
-      *vegetation_layer_, cut_paths, predicted_object.shape);
+    collect_candidate_vegetation_polygons(*vegetation_layer_, cut_paths, predicted_object.shape);
 
   for (PredictedPath & predicted_path : cut_paths) {
     const std::optional<size_t> crossing_index =
