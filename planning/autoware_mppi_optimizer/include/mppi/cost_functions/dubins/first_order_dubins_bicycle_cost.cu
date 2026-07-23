@@ -360,8 +360,8 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   (void)x;
   (void)y;
   (void)yaw;
-  // Boundary / polygonal / left-right corridor crash disabled.
-  return false;
+// Polygon boundary is piecewise-linear; defer to ref lateral offset near the corridor edge.
+return isOffRoad(x, y);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
