@@ -23,7 +23,7 @@ namespace autoware::mppi_optimizer
 struct FirstOrderDubinsMppiCostParams
 {
   /** Softmax temperature for trajectory weighting (higher = softer weighting). */
-  float lambda{3000.0F};
+  float lambda{1500.0F};
   float desired_speed{3.0F};
   float speed_coeff{500.0F};
   float track_coeff{1000.0F};
