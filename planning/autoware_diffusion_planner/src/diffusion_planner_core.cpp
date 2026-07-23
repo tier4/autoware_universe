@@ -608,8 +608,7 @@ PlannerOutput DiffusionPlannerCore::create_planner_output(
 
   output.guidance_triggered = inference_output.guidance_triggered;
 
-  trajectory_stitcher_.set_previous_trajectory(
-    output.trajectory, frame_context.planning_origin, route_ptr_->uuid);
+  trajectory_stitcher_.set_previous_trajectory(output.trajectory, route_ptr_->uuid);
 
   return output;
 }

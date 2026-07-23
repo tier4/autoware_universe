@@ -38,10 +38,12 @@
     stitching:
       enable: false
       history_mode: "real" # "real" | "on_plan"
+      correction_gain: 0.3 # 0 = pure stitching, 1 = plan from measured pose
       time_offset_s: 0.0
       lateral_deviation_threshold_m: 0.3
       longitudinal_deviation_threshold_m: 2.0
       lateral_rearm_threshold_m: 0.1
+      rearm_cooldown_s: 1.0
       max_trajectory_age_s: 0.35
     use_mppi_optimizer: false
     shadow_mode: false

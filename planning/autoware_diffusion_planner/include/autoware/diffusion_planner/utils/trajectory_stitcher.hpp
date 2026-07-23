@@ -33,10 +33,12 @@ struct TrajectoryStitcherParams
 {
   bool enable{false};
   std::string history_mode{"real"};  // "real" | "on_plan"
-  double time_offset_s{0.0};
+  double correction_gain{0.3};       // 0 = pure stitching, 1 = plan from measured pose
+  double time_offset_s{0.0};         // arc lead along the previous path at current speed [s]
   double lateral_deviation_threshold_m{0.3};
   double longitudinal_deviation_threshold_m{2.0};
   double lateral_rearm_threshold_m{0.1};
+  double rearm_cooldown_s{1.0};
   double max_trajectory_age_s{0.35};
 };
 
@@ -67,7 +69,6 @@ public:
 
   void set_previous_trajectory(
     const autoware_planning_msgs::msg::Trajectory & trajectory,
-    const geometry_msgs::msg::Pose & planning_origin,
     const unique_identifier_msgs::msg::UUID & route_uuid);
 
   void push_planning_origin_history(
@@ -86,19 +87,13 @@ public:
   void reset();
 
 private:
-  std::optional<geometry_msgs::msg::Pose> interpolate_pose_at(double elapsed_s) const;
-
-  bool compute_deviation(
-    const geometry_msgs::msg::Point & real_position,
-    const geometry_msgs::msg::Point & virtual_position, StitchingStatus & status) const;
-
   void clear_previous_trajectory();
 
   TrajectoryStitcherParams params_;
   std::optional<autoware_planning_msgs::msg::Trajectory> prev_trajectory_;
-  geometry_msgs::msg::Pose prev_origin_;
   unique_identifier_msgs::msg::UUID prev_route_uuid_;
   std::deque<nav_msgs::msg::Odometry> planning_origin_history_;
+  std::optional<rclcpp::Time> rearm_allowed_time_;
   bool active_{false};
 };
 

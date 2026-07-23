@@ -190,10 +190,17 @@
               "default": "real",
               "description": "Source of the ego history input: measured odometry (real) or past planning origins (on_plan)"
             },
+            "correction_gain": {
+              "type": "number",
+              "default": 0.3,
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Fraction of the ego tracking error acknowledged by the planning origin each cycle (0 = pure stitching, 1 = plan from measured pose)"
+            },
             "time_offset_s": {
               "type": "number",
               "default": 0.0,
-              "description": "Additional time offset applied when matching the virtual pose on the previous trajectory [s]"
+              "description": "Arc-length lead along the previous trajectory at the current speed [s]"
             },
             "lateral_deviation_threshold_m": {
               "type": "number",
@@ -213,6 +220,12 @@
               "exclusiveMinimum": 0,
               "description": "Lateral deviation below which stitching re-arms after a reset [m]"
             },
+            "rearm_cooldown_s": {
+              "type": "number",
+              "default": 1.0,
+              "minimum": 0,
+              "description": "Minimum time planning stays anchored at the measured pose after a deviation reset [s]"
+            },
             "max_trajectory_age_s": {
               "type": "number",
               "default": 0.35,
@@ -223,10 +236,12 @@
           "required": [
             "enable",
             "history_mode",
+            "correction_gain",
             "time_offset_s",
             "lateral_deviation_threshold_m",
             "longitudinal_deviation_threshold_m",
             "lateral_rearm_threshold_m",
+            "rearm_cooldown_s",
             "max_trajectory_age_s"
           ]
         },

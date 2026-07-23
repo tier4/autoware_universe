@@ -172,9 +172,13 @@ ros2 launch autoware_launch planning_simulator.launch.xml \
 By default the planner anchors every plan at the measured ego pose. Any controller tracking
 error is then folded back into the next plan, which can amplify drift in closed loop,
 especially in curves. When `stitching.enable` is true, the planner instead plans from a
-virtual pose taken from its own previous trajectory at the point that trajectory scheduled
-for the current time. The model inputs, the diffusion anchor, and the output transform all
-use this planning origin. The measured kinematics (velocity, acceleration, yaw rate) are
+virtual pose on its own previous trajectory: the ego position is projected onto the previous
+path by arc length (so the anchor always stays abreast of the vehicle), then blended toward
+the measured pose by `stitching.correction_gain` (0 = pure stitching, 1 = plan from the
+measured pose). The gain lets the planner acknowledge a fraction of the tracking error each
+cycle and plan an active recovery, while still attenuating the error feedback loop that
+causes drift amplification. The model inputs, the diffusion anchor, and the output transform
+all use this planning origin. The measured kinematics (velocity, acceleration, yaw rate) are
 always taken from odometry.
 
 Stitching falls back to the measured pose (a reset) when the previous plan is not a valid
@@ -188,13 +192,14 @@ anchor. Reset reasons, published in diagnostics and on `~/debug/stitching/status
 | `stale_trajectory`       | Previous trajectory older than `stitching.max_trajectory_age_s`          |
 | `route_changed`          | Route UUID changed since the previous plan                               |
 | `low_speed`              | Ego slower than 0.2 m/s (or reversing)                                   |
-| `elapsed_beyond_horizon` | Elapsed time exceeds the previous trajectory horizon                     |
+| `beyond_horizon`         | Ego projection falls outside the previous trajectory                     |
 | `degenerate_trajectory`  | Previous trajectory has too few distinct points for geometric queries    |
-| `deviation_exceeded`     | Ego deviated laterally or longitudinally beyond the thresholds           |
-| `waiting_rearm`          | After a reset, waiting for lateral deviation below the re-arm threshold  |
+| `deviation_exceeded`     | Ego deviated laterally beyond `stitching.lateral_deviation_threshold_m`  |
+| `waiting_rearm`          | After a deviation reset, waiting for the cooldown and re-convergence     |
 
-The deviation gate has hysteresis: once tripped, stitching only resumes when the lateral
-deviation falls below `stitching.lateral_rearm_threshold_m`.
+The deviation gate has hysteresis: once tripped, planning stays anchored at the measured
+pose for at least `stitching.rearm_cooldown_s`, and stitching only resumes when the lateral
+deviation is also below `stitching.lateral_rearm_threshold_m`.
 
 Two ego-history modes are available for A/B comparison via `stitching.history_mode`:
 

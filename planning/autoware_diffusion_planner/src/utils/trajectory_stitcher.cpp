@@ -16,9 +16,10 @@
 
 #include "autoware/diffusion_planner/constants.hpp"
 
+#include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
-#include <autoware_utils_geometry/geometry.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -71,45 +72,67 @@ StitchingStatus TrajectoryStitcher::compute_planning_origin(
     return reset_with("low_speed");
   }
 
-  const double elapsed_s = age_s + params_.time_offset_s;
-  const auto virtual_pose = interpolate_pose_at(elapsed_s);
-  if (!virtual_pose) {
-    return reset_with("elapsed_beyond_horizon");
-  }
-
-  if (!compute_deviation(ego_odometry.pose.pose.position, virtual_pose->position, status)) {
+  const auto points = autoware::motion_utils::removeOverlapPoints(prev_trajectory_->points);
+  if (points.size() < 2) {
     return reset_with("degenerate_trajectory");
   }
 
-  const double abs_lat = std::abs(status.lateral_deviation_m);
-  const double abs_lon = std::abs(status.longitudinal_deviation_m);
+  const auto & ego_position = ego_odometry.pose.pose.position;
+  const size_t segment_index =
+    autoware::motion_utils::findNearestSegmentIndex(points, ego_position);
+  const double ego_arc =
+    autoware::motion_utils::calcSignedArcLength(points, 0, segment_index) +
+    autoware::motion_utils::calcLongitudinalOffsetToSegment(points, segment_index, ego_position);
+  const double lateral_deviation = autoware::motion_utils::calcLateralOffset(points, ego_position);
+  if (!std::isfinite(ego_arc) || !std::isfinite(lateral_deviation)) {
+    return reset_with("degenerate_trajectory");
+  }
+
+  const double lead_arc = ego_odometry.twist.twist.linear.x * params_.time_offset_s;
+  const double target_arc = ego_arc + lead_arc;
+  const double total_arc = autoware::motion_utils::calcArcLength(points);
+  if (target_arc < -params_.longitudinal_deviation_threshold_m || target_arc > total_arc) {
+    return reset_with("beyond_horizon");
+  }
+
+  status.lateral_deviation_m = lateral_deviation;
+  status.longitudinal_deviation_m = lead_arc;
+
+  const double abs_lat = std::abs(lateral_deviation);
   if (active_) {
-    if (
-      abs_lat > params_.lateral_deviation_threshold_m ||
-      abs_lon > params_.longitudinal_deviation_threshold_m) {
+    if (abs_lat > params_.lateral_deviation_threshold_m) {
+      rearm_allowed_time_ = frame_time + rclcpp::Duration::from_seconds(params_.rearm_cooldown_s);
       return reset_with("deviation_exceeded");
     }
   } else {
-    if (
-      abs_lat >= params_.lateral_rearm_threshold_m ||
-      abs_lon >= params_.longitudinal_deviation_threshold_m) {
+    if (rearm_allowed_time_ && frame_time < *rearm_allowed_time_) {
+      return reset_with("waiting_rearm");
+    }
+    if (abs_lat >= params_.lateral_rearm_threshold_m) {
       return reset_with("waiting_rearm");
     }
     active_ = true;
   }
 
-  status.planning_origin = *virtual_pose;
+  const geometry_msgs::msg::Pose projected_pose =
+    autoware::motion_utils::calcInterpolatedPose(points, std::max(target_arc, 0.0), false);
+
+  geometry_msgs::msg::Pose origin = projected_pose;
+  const double gain = params_.correction_gain;
+  origin.position.x += gain * (ego_position.x - projected_pose.position.x);
+  origin.position.y += gain * (ego_position.y - projected_pose.position.y);
+  origin.position.z += gain * (ego_position.z - projected_pose.position.z);
+
+  status.planning_origin = origin;
   status.stitched = true;
   return status;
 }
 
 void TrajectoryStitcher::set_previous_trajectory(
   const autoware_planning_msgs::msg::Trajectory & trajectory,
-  const geometry_msgs::msg::Pose & planning_origin,
   const unique_identifier_msgs::msg::UUID & route_uuid)
 {
   prev_trajectory_ = trajectory;
-  prev_origin_ = planning_origin;
   prev_route_uuid_ = route_uuid;
 }
 
@@ -131,61 +154,8 @@ void TrajectoryStitcher::reset()
 {
   clear_previous_trajectory();
   planning_origin_history_.clear();
+  rearm_allowed_time_.reset();
   active_ = false;
-}
-
-std::optional<geometry_msgs::msg::Pose> TrajectoryStitcher::interpolate_pose_at(
-  const double elapsed_s) const
-{
-  const auto & points = prev_trajectory_->points;
-  if (points.empty()) {
-    return std::nullopt;
-  }
-
-  const auto time_of = [](const autoware_planning_msgs::msg::TrajectoryPoint & point) {
-    return rclcpp::Duration(point.time_from_start).seconds();
-  };
-
-  if (elapsed_s > time_of(points.back())) {
-    return std::nullopt;
-  }
-
-  geometry_msgs::msg::Pose previous_pose = prev_origin_;
-  double previous_time = 0.0;
-  for (const auto & point : points) {
-    const double point_time = time_of(point);
-    if (elapsed_s <= point_time) {
-      const double ratio = (point_time > previous_time)
-                             ? (elapsed_s - previous_time) / (point_time - previous_time)
-                             : 0.0;
-      return autoware_utils_geometry::calc_interpolated_pose(
-        previous_pose, point.pose, ratio, false);
-    }
-    previous_time = point_time;
-    previous_pose = point.pose;
-  }
-  return std::nullopt;
-}
-
-bool TrajectoryStitcher::compute_deviation(
-  const geometry_msgs::msg::Point & real_position,
-  const geometry_msgs::msg::Point & virtual_position, StitchingStatus & status) const
-{
-  const auto points = autoware::motion_utils::removeOverlapPoints(prev_trajectory_->points);
-  if (points.size() < 2) {
-    return false;
-  }
-
-  const double lateral_deviation = autoware::motion_utils::calcLateralOffset(points, real_position);
-  const double longitudinal_deviation =
-    autoware::motion_utils::calcSignedArcLength(points, real_position, virtual_position);
-  if (!std::isfinite(lateral_deviation) || !std::isfinite(longitudinal_deviation)) {
-    return false;
-  }
-
-  status.lateral_deviation_m = lateral_deviation;
-  status.longitudinal_deviation_m = longitudinal_deviation;
-  return true;
 }
 
 void TrajectoryStitcher::clear_previous_trajectory()
