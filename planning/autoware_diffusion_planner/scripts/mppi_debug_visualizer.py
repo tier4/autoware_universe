@@ -306,6 +306,88 @@ def max_vel_err(ref_v: Sequence[float], opt_v: Sequence[float]) -> float:
     return max(abs(opt_v[i] - ref_v[i]) for i in range(n))
 
 
+def _wrap_pi(angle: float) -> float:
+    return math.atan2(math.sin(angle), math.cos(angle))
+
+
+def signed_lateral_offset_point_to_segment(
+    px: float, py: float, x0: float, y0: float, x1: float, y1: float
+) -> float:
+    """Match mppi::cost::detail::signedLateralOffsetPointToSegment (+ = left of tangent)."""
+    dx = x1 - x0
+    dy = y1 - y0
+    len_sq = dx * dx + dy * dy
+    if len_sq < 1.0e-8:
+        return px - x0
+    t = max(0.0, min(1.0, ((px - x0) * dx + (py - y0) * dy) / len_sq))
+    cx = x0 + t * dx
+    cy = y0 + t * dy
+    length = math.hypot(dx, dy)
+    return ((px - cx) * (-dy) + (py - cy) * dx) / length
+
+
+def closest_segment_lat_and_tangent(
+    px: float, py: float, ref_x: Sequence[float], ref_y: Sequence[float]
+) -> Tuple[float, float]:
+    """Signed lateral to closest ref segment and that segment's tangent yaw."""
+    n = min(len(ref_x), len(ref_y))
+    if n <= 0:
+        return float("nan"), float("nan")
+    if n == 1:
+        return px - ref_x[0], 0.0
+    best_abs = 1.0e8
+    best_signed = 0.0
+    best_yaw = 0.0
+    for i in range(n - 1):
+        signed_offset = signed_lateral_offset_point_to_segment(
+            px, py, ref_x[i], ref_y[i], ref_x[i + 1], ref_y[i + 1]
+        )
+        abs_offset = abs(signed_offset)
+        if abs_offset < best_abs:
+            best_abs = abs_offset
+            best_signed = signed_offset
+            best_yaw = math.atan2(ref_y[i + 1] - ref_y[i], ref_x[i + 1] - ref_x[i])
+    return best_signed, best_yaw
+
+
+def signed_lateral_series(
+    traj_xy: Optional[Tuple[List[float], List[float]]],
+    ref_xy: Optional[Tuple[List[float], List[float]]],
+) -> List[float]:
+    if not traj_xy or not ref_xy or not traj_xy[0] or not ref_xy[0]:
+        return []
+    ref_x, ref_y = ref_xy
+    return [
+        closest_segment_lat_and_tangent(traj_xy[0][i], traj_xy[1][i], ref_x, ref_y)[0]
+        for i in range(len(traj_xy[0]))
+    ]
+
+
+def heading_error_closest_series(
+    traj_xy: Optional[Tuple[List[float], List[float]]],
+    traj_heading: Sequence[float],
+    ref_xy: Optional[Tuple[List[float], List[float]]],
+) -> List[float]:
+    """Δψ = yaw − tangent at closest reference segment (path-relative heading error)."""
+    if not traj_xy or not ref_xy or not traj_xy[0] or not ref_xy[0] or not traj_heading:
+        return []
+    ref_x, ref_y = ref_xy
+    n = min(len(traj_xy[0]), len(traj_heading))
+    out: List[float] = []
+    for i in range(n):
+        _lat, tangent_yaw = closest_segment_lat_and_tangent(
+            traj_xy[0][i], traj_xy[1][i], ref_x, ref_y
+        )
+        out.append(_wrap_pi(traj_heading[i] - tangent_yaw))
+    return out
+
+
+def max_abs(series: Sequence[float]) -> float:
+    if not series:
+        return float("nan")
+    return max(abs(v) for v in series)
+
+
 def frame_from_loaded(
     reference: LoadedTrajectory,
     optimized: LoadedTrajectory,
@@ -338,11 +420,29 @@ def frame_from_loaded(
     )
     orig_pos = max_pos_err(frame.reference_xy, frame.optimized_xy)
     orig_vel = max_vel_err(frame.reference_vel, frame.optimized_vel)
-    parts = [f"orig max|pos|={orig_pos:.3f}m max|v|={orig_vel:.3f}m/s"]
+    orig_lat = max_abs(signed_lateral_series(frame.optimized_xy, frame.reference_xy))
+    orig_dpsi = max_abs(
+        heading_error_closest_series(
+            frame.optimized_xy, frame.optimized_heading, frame.reference_xy
+        )
+    )
+    parts = [
+        f"orig max|e_lat|={orig_lat:.3f}m max|Δψ_path|={orig_dpsi:.3f}rad "
+        f"max|pos_idx|={orig_pos:.3f}m max|v|={orig_vel:.3f}m/s"
+    ]
     if frame.retuned_xy:
         ret_pos = max_pos_err(frame.reference_xy, frame.retuned_xy)
         ret_vel = max_vel_err(frame.reference_vel, frame.retuned_vel)
-        parts.append(f"retune max|pos|={ret_pos:.3f}m max|v|={ret_vel:.3f}m/s")
+        ret_lat = max_abs(signed_lateral_series(frame.retuned_xy, frame.reference_xy))
+        ret_dpsi = max_abs(
+            heading_error_closest_series(
+                frame.retuned_xy, frame.retuned_heading, frame.reference_xy
+            )
+        )
+        parts.append(
+            f"retune max|e_lat|={ret_lat:.3f}m max|Δψ_path|={ret_dpsi:.3f}rad "
+            f"max|pos_idx|={ret_pos:.3f}m max|v|={ret_vel:.3f}m/s"
+        )
     if frame.raw_costs:
         finite_costs = [c for c in frame.raw_costs if abs(c) < 1.0e20]
         if finite_costs:
@@ -357,12 +457,11 @@ def frame_from_loaded(
 
 
 def draw_frame(axes, frame: MppiDebugFrame) -> None:
-    if len(axes) >= 10:
+    if len(axes) >= 9:
         (
             ax_xy,
-            ax_x,
-            ax_y,
-            ax_heading,
+            ax_lat,
+            ax_heading_err,
             ax_vel,
             ax_accel,
             ax_steer_cmd,
@@ -370,13 +469,23 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
             ax_cost,
             ax_weight,
         ) = axes
-    elif len(axes) >= 8:
-        ax_xy, ax_x, ax_y, ax_heading, ax_vel, ax_accel, ax_steer_cmd, ax_steer_meas = axes
+        ax_heading = None
+    elif len(axes) >= 7:
+        (
+            ax_xy,
+            ax_lat,
+            ax_heading_err,
+            ax_vel,
+            ax_accel,
+            ax_steer_cmd,
+            ax_steer_meas,
+        ) = axes
         ax_cost = ax_weight = None
+        ax_heading = None
     else:
-        # Backward-compatible unpack (pre x/y tracking axes).
+        # Pre path-error layout (absolute heading plot).
         ax_xy, ax_heading, ax_vel, ax_accel, ax_steer_cmd, ax_steer_meas = axes
-        ax_x = ax_y = ax_cost = ax_weight = None
+        ax_lat = ax_heading_err = ax_cost = ax_weight = None
 
     lengths = [len(frame.reference_vel), len(frame.optimized_vel)]
     if frame.retuned_vel:
@@ -444,66 +553,88 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
 
     idx = list(range(n_compare)) if n_compare > 0 else []
 
-    def _plot_xy_component(ax, title: str, ylabel: str, component: int) -> None:
-        if ax is None:
-            return
-        ax.clear()
-        ax.set_title(title)
-        ax.set_xlabel("point index")
-        ax.set_ylabel(ylabel)
-        ax.grid(True)
-        if n_compare <= 0:
-            return
-        if frame.reference_xy and len(frame.reference_xy[component]) >= n_compare:
-            ax.plot(
-                idx,
-                frame.reference_xy[component][:n_compare],
-                "c--",
-                linewidth=2,
-                label="diffusion",
-            )
-        if frame.optimized_xy and len(frame.optimized_xy[component]) >= n_compare:
-            ax.plot(
-                idx,
-                frame.optimized_xy[component][:n_compare],
-                "r-",
+    if ax_lat is not None:
+        ax_lat.clear()
+        ax_lat.set_title("Signed lateral (closest segment)")
+        ax_lat.set_xlabel("optimized point index")
+        ax_lat.set_ylabel("e_lat [m] (+left)")
+        ax_lat.grid(True)
+        ax_lat.axhline(0.0, color="0.7", linewidth=0.8, linestyle=":")
+        lat_opt = signed_lateral_series(frame.optimized_xy, frame.reference_xy)
+        lat_ret = signed_lateral_series(frame.retuned_xy, frame.reference_xy)
+        if lat_opt:
+            ax_lat.plot(
+                list(range(len(lat_opt))),
+                lat_opt,
+                color="tab:red",
                 linewidth=2,
                 label="MPPI logged",
             )
-        if frame.retuned_xy and len(frame.retuned_xy[component]) >= n_compare:
-            ax.plot(
-                idx,
-                frame.retuned_xy[component][:n_compare],
+        if lat_ret:
+            ax_lat.plot(
+                list(range(len(lat_ret))),
+                lat_ret,
                 color="tab:green",
                 linewidth=2.2,
                 label="MPPI retuned",
             )
-        ax.legend(loc="best")
+        if lat_opt or lat_ret:
+            ax_lat.legend(loc="best", fontsize=8)
 
-    _plot_xy_component(ax_x, "X tracking", "x [m]", 0)
-    _plot_xy_component(ax_y, "Y tracking", "y [m]", 1)
+    if ax_heading_err is not None:
+        ax_heading_err.clear()
+        ax_heading_err.set_title("Heading error vs closest-segment tangent")
+        ax_heading_err.set_xlabel("optimized point index")
+        ax_heading_err.set_ylabel("Δψ_path [rad]")
+        ax_heading_err.grid(True)
+        ax_heading_err.axhline(0.0, color="0.7", linewidth=0.8, linestyle=":")
+        dpsi_opt = heading_error_closest_series(
+            frame.optimized_xy, frame.optimized_heading, frame.reference_xy
+        )
+        dpsi_ret = heading_error_closest_series(
+            frame.retuned_xy, frame.retuned_heading, frame.reference_xy
+        )
+        if dpsi_opt:
+            ax_heading_err.plot(
+                list(range(len(dpsi_opt))),
+                dpsi_opt,
+                color="tab:red",
+                linewidth=2,
+                label="MPPI logged",
+            )
+        if dpsi_ret:
+            ax_heading_err.plot(
+                list(range(len(dpsi_ret))),
+                dpsi_ret,
+                color="tab:green",
+                linewidth=2.2,
+                label="MPPI retuned",
+            )
+        if dpsi_opt or dpsi_ret:
+            ax_heading_err.legend(loc="best", fontsize=8)
 
-    ax_heading.clear()
-    ax_heading.set_title("Heading")
-    ax_heading.set_xlabel("point index")
-    ax_heading.set_ylabel("yaw [rad]")
-    ax_heading.grid(True)
-    if n_compare > 0:
-        ax_heading.plot(
-            idx, frame.reference_heading[:n_compare], "c--", linewidth=2, label="diffusion"
-        )
-        ax_heading.plot(
-            idx, frame.optimized_heading[:n_compare], "r-", linewidth=2, label="MPPI logged"
-        )
-        if frame.retuned_heading:
+    if ax_heading is not None:
+        ax_heading.clear()
+        ax_heading.set_title("Heading")
+        ax_heading.set_xlabel("point index")
+        ax_heading.set_ylabel("yaw [rad]")
+        ax_heading.grid(True)
+        if n_compare > 0:
             ax_heading.plot(
-                idx,
-                frame.retuned_heading[:n_compare],
-                color="tab:green",
-                linewidth=2.2,
-                label="MPPI retuned",
+                idx, frame.reference_heading[:n_compare], "c--", linewidth=2, label="diffusion"
             )
-        ax_heading.legend(loc="best")
+            ax_heading.plot(
+                idx, frame.optimized_heading[:n_compare], "r-", linewidth=2, label="MPPI logged"
+            )
+            if frame.retuned_heading:
+                ax_heading.plot(
+                    idx,
+                    frame.retuned_heading[:n_compare],
+                    color="tab:green",
+                    linewidth=2.2,
+                    label="MPPI retuned",
+                )
+            ax_heading.legend(loc="best")
 
     ax_vel.clear()
     ax_vel.set_title("Longitudinal velocity")
@@ -724,32 +855,30 @@ def draw_frame(axes, frame: MppiDebugFrame) -> None:
 
 def create_figure(*, with_retune_panel: bool = False):
     if with_retune_panel:
-        fig = plt.figure(figsize=(17, 16))
+        fig = plt.figure(figsize=(17, 15))
         gs = gridspec.GridSpec(
-            8,
+            7,
             3,
             figure=fig,
             width_ratios=[1.25, 1.0, 0.78],
-            height_ratios=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.85, 0.85],
+            height_ratios=[1.0, 1.0, 1.0, 1.0, 1.0, 0.85, 0.85],
             wspace=0.30,
             hspace=0.45,
         )
-        ax_xy = fig.add_subplot(gs[0:6, 0])
-        ax_cost = fig.add_subplot(gs[6, 0])
-        ax_weight = fig.add_subplot(gs[7, 0])
-        ax_x = fig.add_subplot(gs[0, 1])
-        ax_y = fig.add_subplot(gs[1, 1])
-        ax_heading = fig.add_subplot(gs[2, 1])
-        ax_vel = fig.add_subplot(gs[3, 1])
-        ax_accel = fig.add_subplot(gs[4, 1])
-        ax_steer_cmd = fig.add_subplot(gs[5, 1])
-        ax_steer_meas = fig.add_subplot(gs[6:, 1])
+        ax_xy = fig.add_subplot(gs[0:5, 0])
+        ax_cost = fig.add_subplot(gs[5, 0])
+        ax_weight = fig.add_subplot(gs[6, 0])
+        ax_lat = fig.add_subplot(gs[0, 1])
+        ax_heading_err = fig.add_subplot(gs[1, 1])
+        ax_vel = fig.add_subplot(gs[2, 1])
+        ax_accel = fig.add_subplot(gs[3, 1])
+        ax_steer_cmd = fig.add_subplot(gs[4, 1])
+        ax_steer_meas = fig.add_subplot(gs[5:, 1])
         fig.canvas.manager.set_window_title("Diffusion Planner MPPI Debug Visualizer")
         return fig, (
             ax_xy,
-            ax_x,
-            ax_y,
-            ax_heading,
+            ax_lat,
+            ax_heading_err,
             ax_vel,
             ax_accel,
             ax_steer_cmd,
@@ -758,18 +887,25 @@ def create_figure(*, with_retune_panel: bool = False):
             ax_weight,
         )
 
-    fig = plt.figure(figsize=(14, 14))
-    gs = gridspec.GridSpec(7, 2, figure=fig, width_ratios=[1.2, 1.0], wspace=0.28, hspace=0.42)
+    fig = plt.figure(figsize=(14, 13))
+    gs = gridspec.GridSpec(6, 2, figure=fig, width_ratios=[1.2, 1.0], wspace=0.28, hspace=0.42)
     ax_xy = fig.add_subplot(gs[:, 0])
-    ax_x = fig.add_subplot(gs[0, 1])
-    ax_y = fig.add_subplot(gs[1, 1])
-    ax_heading = fig.add_subplot(gs[2, 1])
-    ax_vel = fig.add_subplot(gs[3, 1])
-    ax_accel = fig.add_subplot(gs[4, 1])
-    ax_steer_cmd = fig.add_subplot(gs[5, 1])
-    ax_steer_meas = fig.add_subplot(gs[6, 1])
+    ax_lat = fig.add_subplot(gs[0, 1])
+    ax_heading_err = fig.add_subplot(gs[1, 1])
+    ax_vel = fig.add_subplot(gs[2, 1])
+    ax_accel = fig.add_subplot(gs[3, 1])
+    ax_steer_cmd = fig.add_subplot(gs[4, 1])
+    ax_steer_meas = fig.add_subplot(gs[5, 1])
     fig.canvas.manager.set_window_title("Diffusion Planner MPPI Debug Visualizer")
-    return fig, (ax_xy, ax_x, ax_y, ax_heading, ax_vel, ax_accel, ax_steer_cmd, ax_steer_meas)
+    return fig, (
+        ax_xy,
+        ax_lat,
+        ax_heading_err,
+        ax_vel,
+        ax_accel,
+        ax_steer_cmd,
+        ax_steer_meas,
+    )
 
 
 def load_params_yaml(path: Optional[Path]) -> Dict[str, float]:
@@ -1047,7 +1183,8 @@ class MppiDebugVisualizer(Node):
             )
             if frame.reference_xy and frame.optimized_xy:
                 frame.metrics_text = (
-                    f"max|pos|={max_pos_err(frame.reference_xy, frame.optimized_xy):.3f}m  "
+                    f"max|e_lat|={max_abs(signed_lateral_series(frame.optimized_xy, frame.reference_xy)):.3f}m  "
+                    f"max|Δψ_path|={max_abs(heading_error_closest_series(frame.optimized_xy, frame.optimized_heading, frame.reference_xy)):.3f}rad  "
                     f"max|v|={max_vel_err(frame.reference_vel, frame.optimized_vel):.3f}m/s"
                 )
             if frame.measured_steer is not None:
