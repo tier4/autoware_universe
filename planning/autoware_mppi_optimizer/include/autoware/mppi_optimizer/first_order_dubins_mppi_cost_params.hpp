@@ -18,10 +18,13 @@
 namespace autoware::mppi_optimizer
 {
 
-/** Host-side cost weights; defaults match first_order_dubins_bicycle_cost.cuh and
+/** Host-side MPPI configuration and cost weights; defaults match
+ * first_order_dubins_bicycle_cost.cuh and
  * mppi_optimizer.param.yaml */
 struct FirstOrderDubinsMppiCostParams
 {
+  /** Return the input trajectory unchanged when the optimized trajectory has crashed. */
+  bool skip_if_invalid{true};
   /** Softmax temperature for trajectory weighting (higher = softer weighting). */
   float lambda{3000.0F};
   float desired_speed{3.0F};

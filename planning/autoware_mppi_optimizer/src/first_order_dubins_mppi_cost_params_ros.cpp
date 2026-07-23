@@ -31,6 +31,7 @@ std::string param_name(const std::string & prefix, const std::string & name)
 void declare_first_order_dubins_mppi_cost_params(rclcpp::Node & node, const std::string & prefix)
 {
   const FirstOrderDubinsMppiCostParams defaults;
+  node.declare_parameter(param_name(prefix, "skip_if_invalid"), defaults.skip_if_invalid);
   node.declare_parameter(param_name(prefix, "lambda"), defaults.lambda);
   node.declare_parameter(param_name(prefix, "desired_speed"), defaults.desired_speed);
   node.declare_parameter(param_name(prefix, "speed_coeff"), defaults.speed_coeff);
@@ -66,6 +67,8 @@ FirstOrderDubinsMppiCostParams get_first_order_dubins_mppi_cost_params(
   const rclcpp::Node & node, const std::string & prefix)
 {
   FirstOrderDubinsMppiCostParams params;
+  params.skip_if_invalid =
+    node.get_parameter(param_name(prefix, "skip_if_invalid")).as_bool();
   params.lambda = static_cast<float>(node.get_parameter(param_name(prefix, "lambda")).as_double());
   params.desired_speed =
     static_cast<float>(node.get_parameter(param_name(prefix, "desired_speed")).as_double());
