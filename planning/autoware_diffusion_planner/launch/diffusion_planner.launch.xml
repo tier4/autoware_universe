@@ -21,7 +21,7 @@
   <arg name="input_turn_indicators" default="~/input/turn_indicators"/>
   <arg name="build_only" default="false" description="shutdown node after model initialization"/>
 
-  <node pkg="autoware_diffusion_planner" exec="autoware_diffusion_planner_node" name="diffusion_planner_node" output="both" launch-prefix="konsole -e gdb -ex run --args">
+  <node pkg="autoware_diffusion_planner" exec="autoware_diffusion_planner_node" name="diffusion_planner_node" output="both">
     <param from="$(var diffusion_planner_param_path)" allow_substs="true"/>
     <param from="$(var simulator_model_param_path)"/>
     <param from="$(var mppi_optimizer_param_path)"/>
