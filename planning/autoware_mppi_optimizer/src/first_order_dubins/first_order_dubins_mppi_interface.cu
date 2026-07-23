@@ -428,17 +428,17 @@ struct FirstOrderDubinsMppiInterface::Impl
     dyn.max_steer_angle = vehicle_params.max_steer_angle;
     dyn.accel_time_constant = vehicle_params.acc_time_constant;
     dyn.steer_time_constant = vehicle_params.steer_time_constant;
-    dyn.steer_time_delay = std::max(vehicle_params.steer_time_delay, 0.0F);
     dyn.max_steer_rate = vehicle_params.steer_rate_lim;
     dyn.min_accel = vehicle_params.min_accel();
     dyn.max_accel = vehicle_params.max_accel();
     model.setParams(dyn);
 
-    if (vehicle_params.acc_time_delay > 0.0F) {
+    if (vehicle_params.acc_time_delay > 0.0F || vehicle_params.steer_time_delay > 0.0F) {
       RCLCPP_WARN_ONCE(
-        mppiLogger(), "MPPI FirstOrderDubinsBicycle ignores acc_time_delay=%.3f "
-                      "(no acceleration dead-time state in dynamics model)",
-        vehicle_params.acc_time_delay);
+        mppiLogger(),
+        "MPPI FirstOrderDubinsBicycle ignores acc_time_delay=%.3f and steer_time_delay=%.3f "
+        "(no dead-time state in dynamics model)",
+        vehicle_params.acc_time_delay, vehicle_params.steer_time_delay);
     }
 
     cost.GPUSetup();
@@ -498,13 +498,12 @@ struct FirstOrderDubinsMppiInterface::Impl
       mppiLogger(),
       "MPPI GPU initialized (horizon=%d, rollouts=%d, dt=%.2f, lambda=%.1f, "
       "wheel_base=%.2f, max_steer=%.2f, steer_std=%.3f, acc_tau=%.2f, steer_tau=%.2f, "
-      "steer_delay=%.2f, steer_rate_lim=%.2f, vel_rate_lim=%.2f, ego=%.2fx%.2f, "
-      "axle_to_center=%.2f, "
+      "steer_rate_lim=%.2f, vel_rate_lim=%.2f, ego=%.2fx%.2f, axle_to_center=%.2f, "
       "desired_speed=%.2f, boundary_threshold=%.2f, obs_margin=%.2f, road_border_margin=%.2f, "
       "drivable_area_coeff=%.2f",
       kMppiHorizon, kNumRollouts, kDt, user_cost_params_.lambda, vehicle_params.wheel_base,
       vehicle_params.max_steer_angle, steer_std, vehicle_params.acc_time_constant,
-      vehicle_params.steer_time_constant, dyn.steer_time_delay, vehicle_params.steer_rate_lim,
+      vehicle_params.steer_time_constant, vehicle_params.steer_rate_lim,
       vehicle_params.vel_rate_lim, vehicle_params.ego_length, vehicle_params.ego_width,
       vehicle_params.ego_axle_to_box_center, cost_params.desired_speed,
       cost_params.boundary_threshold, cost_params.obstacle_collision_margin,
@@ -614,7 +613,6 @@ struct FirstOrderDubinsMppiInterface::Impl
       steeringTireAngleRad(steering_status), -vehicle_params.max_steer_angle,
       vehicle_params.max_steer_angle);
     x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE)) = ego_steer;
-    x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::PREDICTION_TIME)) = 0.0F;
 
     const mppi::path::PathProjection proj = mppi::path::projectPoseOntoPath(
       path, x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)),
@@ -825,10 +823,10 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const int pos_y_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y);
   const int yaw_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW);
   const int vel_x_idx = static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X);
-  const int steer_angle_idx =
-    static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE);
   const int accel_cmd_idx =
     static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD);
+  const int steer_cmd_idx =
+    static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
 
   // GPU costs post-step state at timestep t against ref[t] (= DP[t] at time (t+1)*dt).
   // Map: points[i] <- state[i+1], control[i].
@@ -875,8 +873,6 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
       use_final ? x_final(yaw_idx) : state_trajectory(yaw_idx, control_col + 1);
     const float tracked_v =
       use_final ? x_final(vel_x_idx) : state_trajectory(vel_x_idx, control_col + 1);
-    const float tracked_steer =
-      use_final ? x_final(steer_angle_idx) : state_trajectory(steer_angle_idx, control_col + 1);
 
     if (impl_->user_cost_params_.skip_if_invalid && crash_status == 0) {
       (void)impl_->cost.detectAndLatchCrash(
@@ -896,10 +892,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     out_point.pose.orientation = quaternionFromYaw(tracked_yaw);
     out_point.longitudinal_velocity_mps = tracked_v;
     out_point.acceleration_mps2 = u_opt_traj(accel_cmd_idx, control_col);
-    // TrajectoryPoint stores the physical wheel angle at this state, not MPPI's requested steering
-    // command. The modeled state is initialized from the steering report and evolves through the
-    // configured steering delay, lag, and rate limit.
-    out_point.front_wheel_angle_rad = tracked_steer;
+    out_point.front_wheel_angle_rad = u_opt_traj(steer_cmd_idx, control_col);
     ++i;
   }
 

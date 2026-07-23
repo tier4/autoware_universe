@@ -21,7 +21,6 @@ __host__ __device__ void firstOrderDubinsBicycleDeriv(
   const float yaw = state[static_cast<int>(S::YAW)];
   const float steer = state[static_cast<int>(S::STEER_ANGLE)];
   const float accel = state[static_cast<int>(S::ACCELERATION)];
-  const float prediction_time = state[static_cast<int>(S::PREDICTION_TIME)];
   const float accel_cmd = control[static_cast<int>(C::ACCELERATION_CMD)];
   const float steer_cmd = control[static_cast<int>(C::STEER_CMD)];
 
@@ -38,14 +37,8 @@ __host__ __device__ void firstOrderDubinsBicycleDeriv(
   state_der[static_cast<int>(S::POS_X)] = v * cos_yaw;
   state_der[static_cast<int>(S::POS_Y)] = v * sin_yaw;
 
-  // This is a dead-time hold approximation, not a delayed command FIFO: controls sampled during
-  // the delay do not change the steering state. It keeps the initial predicted wheel angle
-  // consistent with the measured actuator state until a new command can physically take effect.
-  const float steer_dot = prediction_time < fmaxf(p.steer_time_delay, 0.0F)
-                            ? 0.0F
-                            : clampSteerRate(p, (steer_cmd - steer) / steer_tau);
+  const float steer_dot = clampSteerRate(p, (steer_cmd - steer) / steer_tau);
   state_der[static_cast<int>(S::STEER_ANGLE)] = steer_dot;
-  state_der[static_cast<int>(S::PREDICTION_TIME)] = 1.0F;
 }
 }  // namespace
 
@@ -176,6 +169,5 @@ FirstOrderDubinsBicycleImpl<CLASS_T, PARAMS_T>::stateFromMap(
   set_if("POS_Y", static_cast<int>(S::POS_Y));
   set_if("STEER_ANGLE", static_cast<int>(S::STEER_ANGLE));
   set_if("ACCELERATION", static_cast<int>(S::ACCELERATION));
-  set_if("PREDICTION_TIME", static_cast<int>(S::PREDICTION_TIME));
   return s;
 }
