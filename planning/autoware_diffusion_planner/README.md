@@ -172,13 +172,26 @@ ros2 launch autoware_launch planning_simulator.launch.xml \
 By default the planner anchors every plan at the measured ego pose. Any controller tracking
 error is then folded back into the next plan, which can amplify drift in closed loop,
 especially in curves. When `stitching.enable` is true, the planner instead plans from a
-virtual pose on its own previous trajectory: the ego position is projected onto the previous
-path by arc length, so the anchor always stays abreast of the vehicle while staying on the
-reference path. Tracking error never feeds back into the plan; the controller closes the
-loop on a stable reference and the deviation gate hands control back to the measured pose
-when the error grows too large. The model inputs, the diffusion anchor, and the output
-transform all use this planning origin. The measured kinematics (velocity, acceleration, yaw rate) are
-always taken from odometry.
+virtual pose on a persistent reference path built from its own previous plans. Tracking error
+never feeds back into the plan; the controller closes the loop on a stable reference and the
+deviation gate hands control back to the measured pose when the error grows too large. The
+model inputs, the diffusion anchor, and the output transform all use this planning origin.
+
+The anchor is derived in three noise-attenuating stages, since the reference is built from
+model output points whose noise would otherwise re-enter the planning frame:
+
+- The reference path is a per-point lateral exponential moving average of successive plans
+  (`stitching.reference_blend_gain`). Points where a new plan diverges beyond the lateral
+  deviation threshold pass through unblended, so intentional maneuvers are never diluted.
+- The ego position is projected onto this reference by arc length, with the anchor heading
+  taken as the yaw of the path tangent over a 10 m baseline (never pitch: the model inputs
+  are planar).
+- A complementary filter advances the previous anchor by the measured odometry increment and
+  pulls it toward the projection with `stitching.path_correction_gain` (position) and
+  `stitching.yaw_correction_gain` (heading). Odometry increments carry the ego kinematics but
+  not its accumulated tracking error, so grounding stays on-plan while frame jitter stays
+  localization-grade. The measured kinematics (velocity, acceleration, yaw rate) are
+  always taken from odometry.
 
 Stitching falls back to the measured pose (a reset) when the previous plan is not a valid
 anchor. Reset reasons, published in diagnostics and on `~/debug/stitching/status`:
