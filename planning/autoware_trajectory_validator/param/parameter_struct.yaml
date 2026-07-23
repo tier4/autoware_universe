@@ -50,33 +50,25 @@ validator:
         ego:
           stopped_velocity_threshold:
             type: double
-            default_value: 0.01
+            default_value: .NAN
             description: planar speed below which the ego vehicle is considered stopped (m/s)
             read_only: false
-            validation:
-              gt<>: [0.0]
           history_timeout:
             type: double
-            default_value: 0.3
+            default_value: .NAN
             description: maximum observation gap retained in the ego stop history (s)
             read_only: false
-            validation:
-              gt_eq<>: [0.0]
         object:
           stopped_velocity_threshold:
             type: double
-            default_value: 0.3
+            default_value: .NAN
             description: planar speed below which an object is considered stopped (m/s)
             read_only: false
-            validation:
-              gt<>: [0.0]
           history_timeout:
             type: double
-            default_value: 0.3
+            default_value: .NAN
             description: time after the last observation before an object stop record is removed (s)
             read_only: false
-            validation:
-              gt_eq<>: [0.0]
       enable_assessment:
         base:
           &drac_ea {

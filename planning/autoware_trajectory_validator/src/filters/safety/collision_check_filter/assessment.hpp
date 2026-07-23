@@ -30,11 +30,6 @@
 #include <utility>
 #include <vector>
 
-namespace autoware::trajectory_validator::plugin::safety
-{
-
-}
-
 namespace autoware::trajectory_validator::plugin::safety::collision_timing_assessment
 {
 DracArtifact assess(
