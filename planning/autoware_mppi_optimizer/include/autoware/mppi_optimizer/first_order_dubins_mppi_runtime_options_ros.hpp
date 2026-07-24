@@ -15,18 +15,22 @@
 #ifndef AUTOWARE__MPPI_OPTIMIZER__FIRST_ORDER_DUBINS_MPPI_RUNTIME_OPTIONS_ROS_HPP_
 #define AUTOWARE__MPPI_OPTIMIZER__FIRST_ORDER_DUBINS_MPPI_RUNTIME_OPTIONS_ROS_HPP_
 
-#include <rclcpp/node.hpp>
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options.hpp"
+
+#include <rclcpp/rclcpp.hpp>
+
+#include <string>
 
 namespace autoware::mppi_optimizer
 {
 
-class FirstOrderDubinsMppiInterface;
+/** Declare ROS parameters with defaults from FirstOrderDubinsMppiRuntimeOptions. */
+void declare_first_order_dubins_mppi_runtime_options(
+  rclcpp::Node & node, const std::string & prefix = "");
 
-/**
- * Declare MPPI runtime-option parameters on node, read their overrides, and apply them to optimizer.
- */
-void configure_first_order_dubins_mppi_runtime_options(
-  rclcpp::Node & node, FirstOrderDubinsMppiInterface & optimizer);
+/** Read declared MPPI runtime options from a node. */
+FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
+  const rclcpp::Node & node, const std::string & prefix = "");
 
 }  // namespace autoware::mppi_optimizer
 

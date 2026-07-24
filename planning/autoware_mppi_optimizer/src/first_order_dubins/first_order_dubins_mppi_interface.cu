@@ -702,6 +702,15 @@ void FirstOrderDubinsMppiInterface::setCostParams(const FirstOrderDubinsMppiCost
   impl_->user_cost_params_ = params;
 }
 
+void FirstOrderDubinsMppiInterface::setRuntimeOptions(
+  const FirstOrderDubinsMppiRuntimeOptions & options)
+{
+  setDebugTrajectoryLogging(
+    options.enable_debug_trajectory_log, options.debug_trajectory_log_directory);
+  setAblationOptions(
+    options.ignore_obstacles, options.ignore_drivable_area, options.force_cold_start_each_step);
+}
+
 void FirstOrderDubinsMppiInterface::setDebugTrajectoryLogging(
   const bool enable, const std::string & directory)
 {

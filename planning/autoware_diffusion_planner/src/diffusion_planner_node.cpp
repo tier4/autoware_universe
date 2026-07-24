@@ -219,6 +219,7 @@ void DiffusionPlanner::set_up_params()
   params_.shadow_mode = this->declare_parameter<bool>("shadow_mode", false);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_cost_params(*this);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
+  autoware::mppi_optimizer::declare_first_order_dubins_mppi_runtime_options(*this);
 
   // planning factor params
   planning_factor_params_.enable_stop =
@@ -631,8 +632,8 @@ void DiffusionPlanner::on_timer()
         autoware::mppi_optimizer::get_first_order_dubins_mppi_cost_params(*this));
       mppi_optimizer_->setVehicleParams(
         autoware::mppi_optimizer::get_first_order_dubins_mppi_vehicle_params(*this));
-      autoware::mppi_optimizer::configure_first_order_dubins_mppi_runtime_options(
-        *this, *mppi_optimizer_);
+      mppi_optimizer_->setRuntimeOptions(
+        autoware::mppi_optimizer::get_first_order_dubins_mppi_runtime_options(*this));
     }
 
     try {

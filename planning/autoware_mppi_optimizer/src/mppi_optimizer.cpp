@@ -38,9 +38,10 @@ MppiOptimizer::MppiOptimizer(const rclcpp::NodeOptions & options) : Node("mppi_o
   mppi_interface_ = std::make_unique<FirstOrderDubinsMppiInterface>();
   declare_first_order_dubins_mppi_cost_params(*this);
   declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
+  declare_first_order_dubins_mppi_runtime_options(*this);
   mppi_interface_->setCostParams(get_first_order_dubins_mppi_cost_params(*this));
   mppi_interface_->setVehicleParams(get_first_order_dubins_mppi_vehicle_params(*this));
-  configure_first_order_dubins_mppi_runtime_options(*this, *mppi_interface_);
+  mppi_interface_->setRuntimeOptions(get_first_order_dubins_mppi_runtime_options(*this));
 }
 
 void MppiOptimizer::on_trajectory(const Trajectory::ConstSharedPtr msg)

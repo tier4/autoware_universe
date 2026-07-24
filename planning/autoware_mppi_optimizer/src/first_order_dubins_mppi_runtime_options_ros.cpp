@@ -14,27 +14,48 @@
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options_ros.hpp"
 
-#include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
-
 #include <string>
 
 namespace autoware::mppi_optimizer
 {
-
-void configure_first_order_dubins_mppi_runtime_options(
-  rclcpp::Node & node, FirstOrderDubinsMppiInterface & optimizer)
+namespace
 {
-  const bool enable_debug_log =
-    node.declare_parameter<bool>("enable_debug_trajectory_log", false);
-  // Empty -> $XDG_CACHE_HOME/autoware/mppi_debug_log or $HOME/.cache/autoware/mppi_debug_log
-  const std::string debug_log_directory =
-    node.declare_parameter<std::string>("debug_trajectory_log_directory", "");
-  optimizer.setDebugTrajectoryLogging(enable_debug_log, debug_log_directory);
 
-  optimizer.setAblationOptions(
-    node.declare_parameter<bool>("ignore_obstacles", false),
-    node.declare_parameter<bool>("ignore_drivable_area", false),
-    node.declare_parameter<bool>("force_cold_start_each_step", false));
+std::string param_name(const std::string & prefix, const std::string & name)
+{
+  return prefix.empty() ? name : prefix + name;
+}
+
+}  // namespace
+
+void declare_first_order_dubins_mppi_runtime_options(
+  rclcpp::Node & node, const std::string & prefix)
+{
+  const FirstOrderDubinsMppiRuntimeOptions defaults;
+  node.declare_parameter(
+    param_name(prefix, "enable_debug_trajectory_log"), defaults.enable_debug_trajectory_log);
+  node.declare_parameter(
+    param_name(prefix, "debug_trajectory_log_directory"), defaults.debug_trajectory_log_directory);
+  node.declare_parameter(param_name(prefix, "ignore_obstacles"), defaults.ignore_obstacles);
+  node.declare_parameter(param_name(prefix, "ignore_drivable_area"), defaults.ignore_drivable_area);
+  node.declare_parameter(
+    param_name(prefix, "force_cold_start_each_step"), defaults.force_cold_start_each_step);
+}
+
+FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
+  const rclcpp::Node & node, const std::string & prefix)
+{
+  FirstOrderDubinsMppiRuntimeOptions options;
+  options.enable_debug_trajectory_log =
+    node.get_parameter(param_name(prefix, "enable_debug_trajectory_log")).as_bool();
+  options.debug_trajectory_log_directory =
+    node.get_parameter(param_name(prefix, "debug_trajectory_log_directory")).as_string();
+  options.ignore_obstacles = node.get_parameter(param_name(prefix, "ignore_obstacles")).as_bool();
+  options.ignore_drivable_area =
+    node.get_parameter(param_name(prefix, "ignore_drivable_area")).as_bool();
+  options.force_cold_start_each_step =
+    node.get_parameter(param_name(prefix, "force_cold_start_each_step")).as_bool();
+  return options;
 }
 
 }  // namespace autoware::mppi_optimizer
