@@ -636,7 +636,9 @@ void DiffusionPlanner::on_timer()
       mppi_optimizer_->setRuntimeOptions(
         autoware::mppi_optimizer::get_first_order_dubins_mppi_runtime_options(*this));
       prev_route_ = *core_->get_route();
-      extended_route_handler_ = std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(lanelet_map_msg_, prev_route_);
+      extended_route_handler_ =
+        std::make_shared<autoware::avoidance_target_detector::ExtendedRouteHandler>(
+          lanelet_map_msg_, prev_route_);
       extended_route_handler_->create_map();
       const auto road_borders = extended_route_handler_->get_road_borders();
       road_border_rtree_ = prepare_road_border_rtree(road_borders);
@@ -654,11 +656,11 @@ void DiffusionPlanner::on_timer()
       const std::optional<SteeringReport> ego_steering =
         steering_status ? std::make_optional(*steering_status) : std::nullopt;
 
-      object_selector_.update_objects(now(), *objects, planner_output.trajectory, *extended_route_handler_);
-      auto avoidance_targets =
-        object_selector_.get_avoidance_targets(*objects, planner_output.trajectory, extended_route_handler_->get_extended_route_bounds());
-      const auto driving_along_targets =
-        object_selector_.get_driving_along_vehicles(*objects);
+      object_selector_.update_objects(
+        now(), *objects, planner_output.trajectory, *extended_route_handler_);
+      auto avoidance_targets = object_selector_.get_avoidance_targets(
+        *objects, planner_output.trajectory, extended_route_handler_->get_extended_route_bounds());
+      const auto driving_along_targets = object_selector_.get_driving_along_vehicles(*objects);
 
       const auto margin = vehicle_info_.max_longitudinal_offset_m + 1.0;
       const auto road_borders_subset =
@@ -668,7 +670,9 @@ void DiffusionPlanner::on_timer()
       pub_mppi_markers_->publish(generate_mppi_debug_markers(
         road_borders_subset, drivable_area_subset, avoidance_targets, driving_along_targets));
 
-      avoidance_targets.objects.insert(avoidance_targets.objects.end(), driving_along_targets.objects.begin(), driving_along_targets.objects.end());
+      avoidance_targets.objects.insert(
+        avoidance_targets.objects.end(), driving_along_targets.objects.begin(),
+        driving_along_targets.objects.end());
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
         ego_steering, avoidance_targets, to_mppi_segments(road_borders_subset),

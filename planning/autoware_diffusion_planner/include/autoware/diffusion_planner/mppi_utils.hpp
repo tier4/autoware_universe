@@ -12,18 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AUTOWARE__DIFFUSION_PLANNER__MPPI_UTILS__HPP_
-#define AUTOWARE__DIFFUSION_PLANNER__MPPI_UTILS__HPP_
+#ifndef AUTOWARE__DIFFUSION_PLANNER__MPPI_UTILS_HPP_
+#define AUTOWARE__DIFFUSION_PLANNER__MPPI_UTILS_HPP_
 
 #include <autoware/avoidance_target_detector/boundary.hpp>
 #include <autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp>
-
-#include <autoware_perception_msgs/msg/tracked_objects.hpp>
-#include <autoware_planning_msgs/msg/trajectory.hpp>
-
 #include <autoware_utils_geometry/boost_geometry.hpp>
 #include <autoware_utils_geometry/boost_polygon_utils.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+
+#include <autoware_perception_msgs/msg/tracked_objects.hpp>
+#include <autoware_planning_msgs/msg/trajectory.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <std_msgs/msg/color_rgba.hpp>
 #include <std_msgs/msg/header.hpp>
@@ -58,8 +57,7 @@ namespace detail
 {
 
 inline visualization_msgs::msg::Marker create_mppi_line_list_marker(
-  const std::string & marker_namespace,
-  const std_msgs::msg::ColorRGBA & color)
+  const std::string & marker_namespace, const std_msgs::msg::ColorRGBA & color)
 {
   visualization_msgs::msg::Marker marker;
   marker.header.frame_id = "map";
@@ -228,11 +226,11 @@ inline std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> to_mpp
   std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> result;
   result.reserve(segments.size());
   for (const auto & segment : segments) {
-    result.push_back({
-      static_cast<float>(boost::geometry::get<0, 0>(segment)),
-      static_cast<float>(boost::geometry::get<0, 1>(segment)),
-      static_cast<float>(boost::geometry::get<1, 0>(segment)),
-      static_cast<float>(boost::geometry::get<1, 1>(segment))});
+    result.push_back(
+      {static_cast<float>(boost::geometry::get<0, 0>(segment)),
+       static_cast<float>(boost::geometry::get<0, 1>(segment)),
+       static_cast<float>(boost::geometry::get<1, 0>(segment)),
+       static_cast<float>(boost::geometry::get<1, 1>(segment))});
   }
   return result;
 }
@@ -249,22 +247,19 @@ inline visualization_msgs::msg::MarkerArray generate_mppi_debug_markers(
   constexpr double marker_z = 100.0;
 
   auto road_borders_marker = detail::create_mppi_line_list_marker(
-    "mppi_road_borders",
-    detail::create_marker_color(1.0F, 0.0F, 0.0F));
+    "mppi_road_borders", detail::create_marker_color(1.0F, 0.0F, 0.0F));
   for (const auto & road_border : road_borders) {
     detail::append_segment(road_borders_marker, road_border, marker_z);
   }
 
   auto drivable_area_marker = detail::create_mppi_line_list_marker(
-    "mppi_drivable_area",
-    detail::create_marker_color(0.0F, 1.0F, 0.0F));
+    "mppi_drivable_area", detail::create_marker_color(0.0F, 1.0F, 0.0F));
   for (const auto & drivable_area_segment : drivable_area) {
     detail::append_segment(drivable_area_marker, drivable_area_segment, marker_z);
   }
 
   auto avoidance_targets_marker = detail::create_mppi_line_list_marker(
-    "mppi_avoidance_targets",
-    detail::create_marker_color(1.0F, 0.5F, 0.0F));
+    "mppi_avoidance_targets", detail::create_marker_color(1.0F, 0.5F, 0.0F));
   for (const auto & object : avoidance_targets.objects) {
     const auto footprint = autoware_utils_geometry::to_polygon2d(object);
     detail::append_geometry_segments(
@@ -273,8 +268,7 @@ inline visualization_msgs::msg::MarkerArray generate_mppi_debug_markers(
   }
 
   auto driving_along_targets_marker = detail::create_mppi_line_list_marker(
-    "mppi_driving_along_targets",
-    detail::create_marker_color(0.0F, 0.5F, 1.0F));
+    "mppi_driving_along_targets", detail::create_marker_color(0.0F, 0.5F, 1.0F));
   for (const auto & object : driving_along_targets.objects) {
     const auto footprint = autoware_utils_geometry::to_polygon2d(object);
     detail::append_geometry_segments(
@@ -293,4 +287,4 @@ inline visualization_msgs::msg::MarkerArray generate_mppi_debug_markers(
 
 }  // namespace autoware::diffusion_planner
 
-#endif  // AUTOWARE__DIFFUSION_PLANNER__MPPI_UTILS__HPP_
+#endif  // AUTOWARE__DIFFUSION_PLANNER__MPPI_UTILS_HPP_

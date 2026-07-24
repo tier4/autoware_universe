@@ -7,6 +7,7 @@
 #define MPPI_COST_FUNCTIONS_FIRST_ORDER_DUBINS_BICYCLE_COST_CUH_
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
+
 #include <mppi/cost_functions/cost.cuh>
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
 
@@ -91,12 +92,12 @@ public:
   void clearObstacles();
 
   void setRoadBorderSegments(
-    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment>& segments);
+    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> & segments);
 
   void clearRoadBorders();
 
   void setDrivableAreaSegments(
-    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment>& segments);
+    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> & segments);
 
   void clearDrivableAreaSegments();
 
