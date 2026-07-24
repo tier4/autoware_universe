@@ -20,6 +20,7 @@
 #include "autoware/diffusion_planner/utils/marker_utils.hpp"
 #include "autoware/diffusion_planner/utils/utils.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp"
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options_ros.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
 
 #include <rclcpp/duration.hpp>
@@ -216,15 +217,6 @@ void DiffusionPlanner::set_up_params()
     this->declare_parameter<double>("guidance.centerline_guidance.start_time_s", 2.0);
   params_.use_mppi_optimizer = this->declare_parameter<bool>("use_mppi_optimizer", false);
   params_.shadow_mode = this->declare_parameter<bool>("shadow_mode", false);
-  enable_mppi_debug_trajectory_log_ =
-    this->declare_parameter<bool>("enable_debug_trajectory_log", false);
-  // Empty -> $XDG_CACHE_HOME/autoware/mppi_debug_log or $HOME/.cache/autoware/mppi_debug_log
-  mppi_debug_trajectory_log_directory_ =
-    this->declare_parameter<std::string>("debug_trajectory_log_directory", "");
-  mppi_ignore_obstacles_ = this->declare_parameter<bool>("ignore_obstacles", false);
-  mppi_ignore_drivable_area_ = this->declare_parameter<bool>("ignore_drivable_area", false);
-  mppi_force_cold_start_each_step_ =
-    this->declare_parameter<bool>("force_cold_start_each_step", false);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_cost_params(*this);
   autoware::mppi_optimizer::declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
 
@@ -639,10 +631,8 @@ void DiffusionPlanner::on_timer()
         autoware::mppi_optimizer::get_first_order_dubins_mppi_cost_params(*this));
       mppi_optimizer_->setVehicleParams(
         autoware::mppi_optimizer::get_first_order_dubins_mppi_vehicle_params(*this));
-      mppi_optimizer_->setDebugTrajectoryLogging(
-        enable_mppi_debug_trajectory_log_, mppi_debug_trajectory_log_directory_);
-      mppi_optimizer_->setAblationOptions(
-        mppi_ignore_obstacles_, mppi_ignore_drivable_area_, mppi_force_cold_start_each_step_);
+      autoware::mppi_optimizer::configure_first_order_dubins_mppi_runtime_options(
+        *this, *mppi_optimizer_);
     }
 
     try {
