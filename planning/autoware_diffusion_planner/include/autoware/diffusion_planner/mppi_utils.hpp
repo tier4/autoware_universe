@@ -220,10 +220,10 @@ inline std::vector<DrivableAreaSegment> get_drivable_area_subset(
 }
 
 template <class Segment>
-inline std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> to_mppi_segments(
+inline std::vector<autoware::mppi_optimizer::Segment> to_mppi_segments(
   const std::vector<Segment> & segments)
 {
-  std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> result;
+  std::vector<autoware::mppi_optimizer::Segment> result;
   result.reserve(segments.size());
   for (const auto & segment : segments) {
     result.push_back(

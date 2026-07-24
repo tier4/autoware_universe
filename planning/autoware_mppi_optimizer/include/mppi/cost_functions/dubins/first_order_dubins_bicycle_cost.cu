@@ -251,8 +251,7 @@ void FirstOrderDubinsBicycleCostImpl<
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
-  setRoadBorderSegments(
-    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> & segments)
+  setRoadBorderSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments)
 {
   const int n = std::min(static_cast<int>(segments.size()), kMaxRoadBorderSegments);
   num_road_border_segments_ = n;
@@ -275,8 +274,7 @@ void FirstOrderDubinsBicycleCostImpl<
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
 void FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::
-  setDrivableAreaSegments(
-    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> & segments)
+  setDrivableAreaSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments)
 {
   const int n = std::min(static_cast<int>(segments.size()), kMaxDrivableAreaSegments);
   num_drivable_area_segments_ = n;

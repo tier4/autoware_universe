@@ -63,7 +63,7 @@ void MppiOptimizer::on_trajectory(const Trajectory::ConstSharedPtr msg)
 
   try {
     const autoware_perception_msgs::msg::TrackedObjects empty_tracked_objects;
-    const std::vector<FirstOrderDubinsMppiSegment> empty_segments;
+    const std::vector<Segment> empty_segments;
     const auto result = mppi_interface_->optimizeTrajectory(
       *msg, *odometry, std::nullopt, ego_steering, empty_tracked_objects, empty_segments,
       empty_segments);

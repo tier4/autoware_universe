@@ -74,7 +74,7 @@ struct FirstOrderDubinsMppiOptimizationResult
 };
 
 /** Static 2D line segment supplied to the MPPI cost function in map coordinates. */
-struct FirstOrderDubinsMppiSegment
+struct Segment
 {
   float x0{0.0F};
   float y0{0.0F};
@@ -163,9 +163,8 @@ public:
     const Trajectory & input, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-    const TrackedObjects & tracked_objects,
-    const std::vector<FirstOrderDubinsMppiSegment> & road_borders,
-    const std::vector<FirstOrderDubinsMppiSegment> & drivable_area);
+    const TrackedObjects & tracked_objects, const std::vector<Segment> & road_borders,
+    const std::vector<Segment> & drivable_area);
 
 private:
   struct Impl;

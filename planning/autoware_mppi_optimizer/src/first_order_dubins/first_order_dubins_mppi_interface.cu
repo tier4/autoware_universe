@@ -379,8 +379,8 @@ struct FirstOrderDubinsMppiInterface::Impl
 {
   Trajectory diffusion_reference;
   TrackedObjects tracked_objects;
-  std::vector<FirstOrderDubinsMppiSegment> road_borders;
-  std::vector<FirstOrderDubinsMppiSegment> drivable_area;
+  std::vector<Segment> road_borders;
+  std::vector<Segment> drivable_area;
   mppi::path::Path2D path;
   std::vector<mppi::cost::MovingCarObstacle> obstacles;
 
@@ -563,9 +563,8 @@ struct FirstOrderDubinsMppiInterface::Impl
     const Trajectory & reference, const Odometry & odometry,
     const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
     const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-    const TrackedObjects & tracked_objects_in,
-    const std::vector<FirstOrderDubinsMppiSegment> & road_borders_in,
-    const std::vector<FirstOrderDubinsMppiSegment> & drivable_area_in)
+    const TrackedObjects & tracked_objects_in, const std::vector<Segment> & road_borders_in,
+    const std::vector<Segment> & drivable_area_in)
   {
     if (!initialized) {
       setup();
@@ -871,9 +870,8 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const Trajectory & input, const Odometry & odometry,
   const std::optional<geometry_msgs::msg::AccelWithCovarianceStamped> & acceleration,
   const std::optional<autoware_vehicle_msgs::msg::SteeringReport> & steering_status,
-  const TrackedObjects & tracked_objects,
-  const std::vector<FirstOrderDubinsMppiSegment> & road_borders,
-  const std::vector<FirstOrderDubinsMppiSegment> & drivable_area)
+  const TrackedObjects & tracked_objects, const std::vector<Segment> & road_borders,
+  const std::vector<Segment> & drivable_area)
 {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");

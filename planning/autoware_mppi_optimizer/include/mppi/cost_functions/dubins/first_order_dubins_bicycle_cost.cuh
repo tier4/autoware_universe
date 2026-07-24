@@ -91,13 +91,11 @@ public:
 
   void clearObstacles();
 
-  void setRoadBorderSegments(
-    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> & segments);
+  void setRoadBorderSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments);
 
   void clearRoadBorders();
 
-  void setDrivableAreaSegments(
-    const std::vector<autoware::mppi_optimizer::FirstOrderDubinsMppiSegment> & segments);
+  void setDrivableAreaSegments(const std::vector<autoware::mppi_optimizer::Segment> & segments);
 
   void clearDrivableAreaSegments();
 
