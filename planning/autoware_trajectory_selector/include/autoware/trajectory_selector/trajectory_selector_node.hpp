@@ -111,7 +111,8 @@ private:
   tl::expected<trajectory_validator::FilterContext, std::string> take_validator_data();
 
   /** @brief Collects the latest data needed for ranking */
-  trajectory_ranker::RankerContext take_ranker_data(const CandidateTrajectories & candidate_trajectories);
+  trajectory_ranker::RankerContext take_ranker_data(
+    const CandidateTrajectories & candidate_trajectories);
 
   trajectory_ranker::RankerInputTrajectories to_ranker_input_trajectories(
     const CandidateTrajectories & trajectories, const ValidationReports & validation_reports);

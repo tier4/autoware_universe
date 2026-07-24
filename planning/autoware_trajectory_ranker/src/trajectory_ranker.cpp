@@ -101,8 +101,9 @@ tl::expected<RankerResult, std::string> TrajectoryRanker::process(
 
   for (const auto & traj : result.scored_trajectories.scored_candidate_trajectories) {
     auto it = std::find_if(
-      context.generator_info.begin(), context.generator_info.end(),
-      [&](const auto & info) { return traj.candidate_trajectory.generator_id.uuid == info.generator_id.uuid; });
+      context.generator_info.begin(), context.generator_info.end(), [&](const auto & info) {
+        return traj.candidate_trajectory.generator_id.uuid == info.generator_id.uuid;
+      });
     if (it != context.generator_info.end()) {
       result.scored_trajectories.generator_info.push_back(*it);
     }

@@ -9,7 +9,11 @@
         "generator_name_prefixes": {
           "type": "array",
           "description": "List of generator name prefixes",
-          "default": ["DiffusionPlanner_", "MinimumRuleBasedPlanner_Go", "MinimumRuleBasedPlanner_Stop"],
+          "default": [
+            "DiffusionPlanner_",
+            "MinimumRuleBasedPlanner_Go",
+            "MinimumRuleBasedPlanner_Stop"
+          ],
           "items": {
             "type": "string"
           }

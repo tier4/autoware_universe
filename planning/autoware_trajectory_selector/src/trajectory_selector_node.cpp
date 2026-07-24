@@ -146,7 +146,8 @@ TrajectorySelectorNode::take_validator_data()
   return context;
 }
 
-trajectory_ranker::RankerContext TrajectorySelectorNode::take_ranker_data(const CandidateTrajectories & candidate_trajectories)
+trajectory_ranker::RankerContext TrajectorySelectorNode::take_ranker_data(
+  const CandidateTrajectories & candidate_trajectories)
 {
   trajectory_ranker::RankerContext context;
   context.route_handler = route_handler_ptr_;
