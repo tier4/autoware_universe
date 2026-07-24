@@ -14,9 +14,11 @@
 
 #include "autoware/trajectory_validator/filters/safety/trajectory_feasibility_filter.hpp"
 
+#include <autoware/lanelet2_utils/nn_search.hpp>
 #include <autoware/motion_utils/trajectory/interpolation.hpp>
 #include <autoware/motion_utils/trajectory/trajectory.hpp>
 #include <autoware_utils_geometry/geometry.hpp>
+#include <autoware_utils_math/unit_conversion.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
 
 #include <autoware_planning_msgs/msg/trajectory.hpp>
@@ -117,6 +119,37 @@ autoware_planning_msgs::msg::Trajectory to_trajectory(const TrajectoryPoints & t
   trajectory.points = traj_points;
   return trajectory;
 }
+
+/**
+ * @brief Convert a lanelet's speed limit attribute to m/s, if it exists.
+ */
+std::optional<double> to_lanelet_speed_limit_mps(const lanelet::ConstLanelet & lanelet)
+{
+  constexpr char attribute_name[] = "speed_limit";
+
+  const auto result = lanelet.attribute(attribute_name).as<double>().map([](const auto v) {
+    return autoware_utils_math::kmph2mps(v);
+  });
+
+  return result.has_value() ? std::make_optional(result.value()) : std::nullopt;
+}
+
+/**
+ * @brief Find the speed limit of the nearest lanelet to a given pose, in m/s.
+ */
+std::optional<double> find_nearest_lanelet_speed_limit_mps(
+  const lanelet::LaneletMap & lanelet_map, const geometry_msgs::msg::Pose & search_pose)
+{
+  const auto nearest_lanelets =
+    autoware::experimental::lanelet2_utils::find_nearest(lanelet_map.laneletLayer, search_pose, 10);
+  for (const auto & [_, nearest_lanelet] : nearest_lanelets) {
+    if (const auto speed_limit_mps = to_lanelet_speed_limit_mps(nearest_lanelet)) {
+      return speed_limit_mps;
+    }
+  }
+
+  return std::nullopt;
+}
 }  // namespace
 
 TrajectoryFeasibilityFilter::TrajectoryFeasibilityFilter()
@@ -162,6 +195,35 @@ MetricReport TrajectoryFeasibilityFilter::check_speed(
     .validator_category(category())
     .metric_name("speed")
     .metric_value(max_observed)
+    .risk(risk_level);
+}
+
+MetricReport TrajectoryFeasibilityFilter::check_lanelet_speed_limit(
+  const TrajectoryPoints & traj_points, const FilterContext & context) const
+{
+  double observed_speed = 0.0;
+  bool is_ok = true;
+
+  if (!traj_points.empty() && context.odometry && context.lanelet_map) {
+    const auto nearest_idx =
+      autoware::motion_utils::findNearestIndex(traj_points, context.odometry->pose.pose.position);
+    const auto & nearest_point = traj_points.at(nearest_idx);
+    observed_speed = to_speed(nearest_point);
+
+    if (
+      const auto speed_limit_mps =
+        find_nearest_lanelet_speed_limit_mps(*context.lanelet_map, nearest_point.pose)) {
+      is_ok = observed_speed <= *speed_limit_mps;
+    }
+  }
+
+  RiskLevel risk_level;
+  risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
+  return autoware_trajectory_validator::build<MetricReport>()
+    .validator_name(get_name())
+    .validator_category(category())
+    .metric_name("lanelet_speed_limit")
+    .metric_value(observed_speed)
     .risk(risk_level);
 }
 

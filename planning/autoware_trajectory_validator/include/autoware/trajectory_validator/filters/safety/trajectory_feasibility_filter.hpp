@@ -41,6 +41,8 @@ public:
 private:
   MetricReport check_speed(
     const TrajectoryPoints & traj_points, const FilterContext & context) const;
+  MetricReport check_lanelet_speed_limit(
+    const TrajectoryPoints & traj_points, const FilterContext & context) const;
   MetricReport check_acceleration(
     const TrajectoryPoints & traj_points, const FilterContext & context) const;
   MetricReport check_deceleration(
@@ -61,8 +63,9 @@ private:
   using Checker = MetricReport (TrajectoryFeasibilityFilter::*)(
     const TrajectoryPoints &, const FilterContext &) const;
 
-  inline static const std::array<Checker, 9> checkers_ = {{
+  inline static const std::array<Checker, 10> checkers_ = {{
     &TrajectoryFeasibilityFilter::check_speed,
+    &TrajectoryFeasibilityFilter::check_lanelet_speed_limit,
     &TrajectoryFeasibilityFilter::check_acceleration,
     &TrajectoryFeasibilityFilter::check_deceleration,
     &TrajectoryFeasibilityFilter::check_distance_deviation,

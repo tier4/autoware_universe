@@ -45,6 +45,24 @@ autoware_planning_msgs::msg::TrajectoryPoint create_trajectory_point(
   return point;
 }
 
+std::shared_ptr<lanelet::LaneletMap> create_lanelet_map_with_speed_limit(
+  const double speed_limit_kmph)
+{
+  lanelet::Point3d left_start(lanelet::utils::getId(), 0.0, -2.0, 0.0);
+  lanelet::Point3d left_end(lanelet::utils::getId(), 20.0, -2.0, 0.0);
+  lanelet::Point3d right_start(lanelet::utils::getId(), 0.0, 2.0, 0.0);
+  lanelet::Point3d right_end(lanelet::utils::getId(), 20.0, 2.0, 0.0);
+
+  lanelet::LineString3d left_bound(lanelet::utils::getId(), {left_start, left_end});
+  lanelet::LineString3d right_bound(lanelet::utils::getId(), {right_start, right_end});
+
+  lanelet::Lanelet lanelet(lanelet::utils::getId(), left_bound, right_bound);
+  lanelet.setAttribute("subtype", "road");
+  lanelet.setAttribute("speed_limit", std::to_string(speed_limit_kmph));
+
+  return lanelet::utils::createMap({lanelet});
+}
+
 nav_msgs::msg::Odometry::SharedPtr create_odometry(
   double x, double y, double yaw, double longitudinal_velocity = 0.0)
 {
@@ -113,6 +131,39 @@ TEST(TrajectoryFeasibilityFilterTest, InfeasibleWhenSpeedExceedsMax)
   CandidateTrajectory candidate_trajectory;
   candidate_trajectory.points = traj_points;
   auto result = filter.is_feasible(candidate_trajectory, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible);
+}
+
+TEST(VehicleConstraintFilterTest, InfeasibleWhenNearestTrajectoryPointExceedsLaneletSpeedLimit)
+{
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
+    create_trajectory_point(5.0, 0.0, 0.0, 9.0, 0.0, 1.0),
+    create_trajectory_point(10.0, 0.0, 0.0, 5.0, 0.0, 2.0)};
+
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+
+  TrajectoryFeasibilityFilter filter;
+
+  validator::Params params;
+  params.trajectory_feasibility.max_speed = 20.0;
+  params.trajectory_feasibility.max_acceleration = 10.0;
+  params.trajectory_feasibility.max_deceleration = 10.0;
+  params.trajectory_feasibility.max_steering_angle = 1.0;
+  params.trajectory_feasibility.max_steering_rate = 1.0;
+  filter.update_parameters(params);
+  filter.set_vehicle_info(vehicle_info);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 0.0, 0.0);
+  context.lanelet_map = create_lanelet_map_with_speed_limit(30.0);
+
+  CandidateTrajectory candidate_trajectory;
+  candidate_trajectory.points = traj_points;
+  const auto result = filter.is_feasible(candidate_trajectory, context);
 
   ASSERT_TRUE(result.has_value());
   EXPECT_FALSE(result.value().is_feasible);
