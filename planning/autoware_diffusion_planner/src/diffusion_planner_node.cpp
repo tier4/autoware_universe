@@ -22,6 +22,7 @@
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options_ros.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
+#include "autoware/mppi_optimizer/mppi_debug_markers.hpp"
 
 #include <rclcpp/duration.hpp>
 #include <rclcpp/logging.hpp>
@@ -667,16 +668,19 @@ void DiffusionPlanner::on_timer()
         get_road_border_subset(road_border_rtree_, planner_output.trajectory, margin);
       const auto drivable_area_subset =
         get_drivable_area_subset(drivable_area_rtree_, planner_output.trajectory, margin);
-      pub_mppi_markers_->publish(generate_mppi_debug_markers(
-        road_borders_subset, drivable_area_subset, avoidance_targets, driving_along_targets));
 
-      avoidance_targets.objects.insert(
-        avoidance_targets.objects.end(), driving_along_targets.objects.begin(),
+      auto all_targets = avoidance_targets;
+      all_targets.objects.insert(
+        all_targets.objects.end(), driving_along_targets.objects.begin(),
         driving_along_targets.objects.end());
       const auto mppi_result = mppi_optimizer_->optimizeTrajectory(
         planner_output.trajectory, frame_context->ego_kinematic_state, ego_acceleration_for_mppi,
         ego_steering, avoidance_targets, to_mppi_segments(road_borders_subset),
         to_mppi_segments(drivable_area_subset));
+      pub_mppi_markers_->publish(
+        autoware::mppi_optimizer::createMppiDebugMarkers(
+          mppi_result.debug, road_borders_subset, drivable_area_subset, avoidance_targets,
+          driving_along_targets, frame_context->ego_kinematic_state.pose.pose.position.z));
       record_section_time(
         *stop_watch_ptr_, "mppi_optimizer/optimize_trajectory", *diagnostics_inference_);
       if (!params_.shadow_mode) {

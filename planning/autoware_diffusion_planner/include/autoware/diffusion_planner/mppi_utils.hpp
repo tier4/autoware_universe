@@ -39,8 +39,6 @@
 #include <cstddef>
 #include <iterator>
 #include <limits>
-#include <string>
-#include <utility>
 #include <vector>
 
 namespace autoware::diffusion_planner
@@ -55,59 +53,6 @@ using DrivableAreaRtree =
 
 namespace detail
 {
-
-inline visualization_msgs::msg::Marker create_mppi_line_list_marker(
-  const std::string & marker_namespace, const std_msgs::msg::ColorRGBA & color)
-{
-  visualization_msgs::msg::Marker marker;
-  marker.header.frame_id = "map";
-  marker.ns = marker_namespace;
-  marker.id = 0;
-  marker.type = visualization_msgs::msg::Marker::LINE_LIST;
-  marker.action = visualization_msgs::msg::Marker::ADD;
-  marker.pose.orientation.w = 1.0;
-  marker.scale.x = 0.15;
-  marker.color = color;
-  return marker;
-}
-
-inline std_msgs::msg::ColorRGBA create_marker_color(
-  const float red, const float green, const float blue)
-{
-  std_msgs::msg::ColorRGBA color;
-  color.r = red;
-  color.g = green;
-  color.b = blue;
-  color.a = 1.0F;
-  return color;
-}
-
-template <class Segment>
-void append_segment(
-  visualization_msgs::msg::Marker & marker, const Segment & segment, const double z)
-{
-  geometry_msgs::msg::Point first;
-  first.x = boost::geometry::get<0, 0>(segment);
-  first.y = boost::geometry::get<0, 1>(segment);
-  first.z = z;
-
-  geometry_msgs::msg::Point second;
-  second.x = boost::geometry::get<1, 0>(segment);
-  second.y = boost::geometry::get<1, 1>(segment);
-  second.z = z;
-
-  marker.points.push_back(first);
-  marker.points.push_back(second);
-}
-
-template <class Geometry>
-void append_geometry_segments(
-  visualization_msgs::msg::Marker & marker, const Geometry & geometry, const double z)
-{
-  boost::geometry::for_each_segment(
-    geometry, [&](const auto & segment) { append_segment(marker, segment, z); });
-}
-
 template <class Segment>
 void append_lanelet_linestring_segments(
   std::vector<Segment> & segments, const lanelet::LineString2d & line_string)
@@ -123,7 +68,6 @@ void append_lanelet_linestring_segments(
       autoware_utils_geometry::Point2d(line_string[i + 1].x(), line_string[i + 1].y()));
   }
 }
-
 }  // namespace detail
 
 /**
@@ -233,56 +177,6 @@ inline std::vector<autoware::mppi_optimizer::Segment> to_mppi_segments(
        static_cast<float>(boost::geometry::get<1, 1>(segment))});
   }
   return result;
-}
-
-/**
- * @brief Create LINE_LIST debug markers for the inputs supplied to the MPPI optimizer.
- */
-inline visualization_msgs::msg::MarkerArray generate_mppi_debug_markers(
-  const std::vector<RoadBorderSegment> & road_borders,
-  const std::vector<DrivableAreaSegment> & drivable_area,
-  const autoware_perception_msgs::msg::TrackedObjects & avoidance_targets,
-  const autoware_perception_msgs::msg::TrackedObjects & driving_along_targets)
-{
-  constexpr double marker_z = 100.0;
-
-  auto road_borders_marker = detail::create_mppi_line_list_marker(
-    "mppi_road_borders", detail::create_marker_color(1.0F, 0.0F, 0.0F));
-  for (const auto & road_border : road_borders) {
-    detail::append_segment(road_borders_marker, road_border, marker_z);
-  }
-
-  auto drivable_area_marker = detail::create_mppi_line_list_marker(
-    "mppi_drivable_area", detail::create_marker_color(0.0F, 1.0F, 0.0F));
-  for (const auto & drivable_area_segment : drivable_area) {
-    detail::append_segment(drivable_area_marker, drivable_area_segment, marker_z);
-  }
-
-  auto avoidance_targets_marker = detail::create_mppi_line_list_marker(
-    "mppi_avoidance_targets", detail::create_marker_color(1.0F, 0.5F, 0.0F));
-  for (const auto & object : avoidance_targets.objects) {
-    const auto footprint = autoware_utils_geometry::to_polygon2d(object);
-    detail::append_geometry_segments(
-      avoidance_targets_marker, footprint,
-      object.kinematics.pose_with_covariance.pose.position.z + marker_z);
-  }
-
-  auto driving_along_targets_marker = detail::create_mppi_line_list_marker(
-    "mppi_driving_along_targets", detail::create_marker_color(0.0F, 0.5F, 1.0F));
-  for (const auto & object : driving_along_targets.objects) {
-    const auto footprint = autoware_utils_geometry::to_polygon2d(object);
-    detail::append_geometry_segments(
-      driving_along_targets_marker, footprint,
-      object.kinematics.pose_with_covariance.pose.position.z + marker_z);
-  }
-
-  visualization_msgs::msg::MarkerArray marker_array;
-  marker_array.markers.reserve(4);
-  marker_array.markers.push_back(std::move(road_borders_marker));
-  marker_array.markers.push_back(std::move(drivable_area_marker));
-  marker_array.markers.push_back(std::move(avoidance_targets_marker));
-  marker_array.markers.push_back(std::move(driving_along_targets_marker));
-  return marker_array;
 }
 
 }  // namespace autoware::diffusion_planner

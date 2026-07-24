@@ -958,49 +958,6 @@ void ObjectSelectorBase<ObjectT>::track_driving_along_vehicles()
 template <typename ObjectT>
 void ObjectSelectorBase<ObjectT>::update_objects(
   const rclcpp::Time & current_time, const Objects & objects, const Trajectory & trajectory,
-  const ExtendedRouteHandler & extended_route_handler,
-  const aw_trajectory::Trajectory<TrajectoryPoint> & ego_trajectory,
-  const bool ego_trajectory_built)
-{
-  const auto route_map = extended_route_handler.getRouteMap();
-  const auto routing_graph = extended_route_handler.getRouteMapRoutingGraph();
-
-  lanelet::BasicPolygon2d near_segment_polygon;
-  std::vector<lanelet::ConstLanelet> ego_lanelets;
-  if (ego_trajectory_built && !trajectory.points.empty()) {
-    const auto ego_points = ego_trajectory.restore();
-    if (!ego_points.empty()) {
-      near_segment_polygon = extended_route_handler.get_near_segment_polygon(
-        ego_points.front().pose.position, trajectory.points.back().pose.position);
-      if (route_map) {
-        ego_lanelets = get_nearest_lanelets(*route_map, ego_points.back().pose.position);
-      }
-    }
-  }
-
-  for (const auto & object : objects.objects) {
-    if (!is_object_of_interest(object)) {
-      continue;
-    }
-    const auto object_id_str = autoware_utils_uuid::to_hex_string(object.object_id);
-    const auto it = object_filters_.try_emplace(object_id_str, object, current_time).first;
-    it->second.observe_and_update_all(
-      current_time, object, trajectory, route_map, routing_graph, near_segment_polygon,
-      ego_lanelets);
-  }
-
-  for (auto it = object_filters_.begin(); it != object_filters_.end();) {
-    if (it->second.is_stale(current_time)) {
-      it = object_filters_.erase(it);
-    } else {
-      ++it;
-    }
-  }
-}
-
-template <typename ObjectT>
-void ObjectSelectorBase<ObjectT>::update_objects(
-  const rclcpp::Time & current_time, const Objects & objects, const Trajectory & trajectory,
   const ExtendedRouteHandler & extended_route_handler)
 {
   const auto route_map = extended_route_handler.getRouteMap();
