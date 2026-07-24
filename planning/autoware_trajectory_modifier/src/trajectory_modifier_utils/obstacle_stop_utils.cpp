@@ -334,7 +334,7 @@ ObjectState get_object_state_at_time(
     motion_utils::findNearestSegmentIndex(trajectory_points, predicted_obj_pose.position);
   const auto p1 = trajectory_points.at(nearest_seg).pose.position;
   const auto p2 = trajectory_points.at(nearest_seg + 1).pose.position;
-  auto lon_vel = [&](){
+  auto lon_vel = [&]() {
     const auto traj_dir = Eigen::Vector2d(p2.x - p1.x, p2.y - p1.y).normalized();
     const Eigen::Rotation2Dd obj_rot(tf2::getYaw(predicted_obj_pose.orientation));
     const auto obj_vel = object.kinematics.initial_twist_with_covariance.twist.linear;

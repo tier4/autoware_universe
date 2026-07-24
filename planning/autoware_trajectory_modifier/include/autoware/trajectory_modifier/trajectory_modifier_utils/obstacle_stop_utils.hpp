@@ -251,11 +251,9 @@ struct ObjectFilter
    * @param safety_buffer Safety buffer to expand object shape [m].
    */
   ObjectFilter(
-    const std::vector<std::string> & object_type_strings, 
-    const double stopped_velocity_th, const double max_lateral_velocity_th,
-    const double safety_buffer)
-  : 
-    stopped_velocity_th_(stopped_velocity_th),
+    const std::vector<std::string> & object_type_strings, const double stopped_velocity_th,
+    const double max_lateral_velocity_th, const double safety_buffer)
+  : stopped_velocity_th_(stopped_velocity_th),
     max_lateral_velocity_th_(max_lateral_velocity_th),
     safety_buffer_(safety_buffer)
   {
@@ -304,9 +302,8 @@ struct ObjectFilter
    * @brief Update allow-listed types and velocity thresholds without reconstructing the filter.
    */
   void set_params(
-    const std::vector<std::string> & object_type_strings,
-    const double stopped_velocity_th, const double max_lateral_velocity_th,
-    const double safety_buffer)
+    const std::vector<std::string> & object_type_strings, const double stopped_velocity_th,
+    const double max_lateral_velocity_th, const double safety_buffer)
   {
     object_types_.clear();
     for (const auto & object_type_string : object_type_strings) {
