@@ -40,7 +40,7 @@ trajectory_ranker_params:
       read_only: false
     penalty:
       type: double_array
-      default_value: [0.0, 0.5, 0.6]
+      default_value: [0.0, 0.45, 0.5]
       description: List of source penalties
       read_only: false
     scale:
