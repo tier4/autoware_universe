@@ -3,6 +3,7 @@ project(autoware_trajectory_validator)
 
 find_package(autoware_cmake REQUIRED)
 autoware_package()
+find_package(PCL REQUIRED)
 pluginlib_export_plugin_description_file(autoware_trajectory_validator plugins.xml)
 
 generate_parameter_library(${PROJECT_NAME}_param
@@ -34,6 +35,8 @@ target_compile_options(${trajectory_validator_lib_target} PUBLIC
 
 ament_auto_add_library(autoware_trajectory_validator_plugins SHARED
   src/filters/safety/point_cloud_collision_check_filter.cpp
+  src/filters/safety/point_cloud_collision_check/pointcloud_preprocessing.cpp
+  src/filters/safety/point_cloud_collision_check/debug_marker.cpp
   src/filters/safety/uncrossable_boundary_departure.cpp
   src/filters/safety/vehicle_constraint_filter.cpp
     src/filters/safety/collision_check_filter/collision_check_filter.cpp
@@ -45,8 +48,17 @@ ament_auto_add_library(autoware_trajectory_validator_plugins SHARED
 
 set_target_properties(autoware_trajectory_validator_plugins PROPERTIES CXX_VISIBILITY_PRESET default)
 
+target_compile_options(autoware_trajectory_validator_plugins PUBLIC
+  -Wno-error=deprecated-declarations
+)
+
 target_link_libraries(autoware_trajectory_validator_plugins
   ${trajectory_validator_lib_target}
+  ${PCL_LIBRARIES}
+)
+
+target_include_directories(autoware_trajectory_validator_plugins SYSTEM PUBLIC
+  ${PCL_INCLUDE_DIRS}
 )
 
 # Clear stale Python interpreter state so rosidl can resolve it correctly.
@@ -73,6 +85,20 @@ else()
   target_link_libraries(${trajectory_validator_lib_target} "${cpp_typesupport_target}")
 endif()
 
+ament_auto_add_executable(pcc_bag_runner
+  src/tool/pcc_bag_runner.cpp
+)
+target_link_libraries(pcc_bag_runner
+  autoware_trajectory_validator_plugins
+)
+
+ament_auto_add_executable(pcc_path_analyzer
+  src/tool/pcc_path_analyzer.cpp
+)
+target_link_libraries(pcc_path_analyzer
+  autoware_trajectory_validator_plugins
+)
+
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_cmake_ros REQUIRED)
@@ -86,6 +112,13 @@ if(BUILD_TESTING)
     test/plugins/test_vehicle_constraint_filter.cpp
   )
   target_link_libraries(test_vehicle_constraint_filter
+    autoware_trajectory_validator_plugins
+  )
+
+  ament_add_gtest(test_point_cloud_collision_check_filter
+    test/plugins/test_point_cloud_collision_check_filter.cpp
+  )
+  target_link_libraries(test_point_cloud_collision_check_filter
     autoware_trajectory_validator_plugins
   )
 

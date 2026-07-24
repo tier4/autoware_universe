@@ -17,6 +17,8 @@
 
 #include "autoware/trajectory_validator/validator_interface.hpp"
 
+#include <memory>
+
 namespace autoware::trajectory_validator::plugin::safety
 {
 /**
@@ -27,11 +29,16 @@ class PointCloudCollisionCheckFilter final : public plugin::ValidatorInterface
 {
 public:
   PointCloudCollisionCheckFilter();
+  ~PointCloudCollisionCheckFilter() override;
 
   result_t is_feasible(
     const CandidateTrajectory & candidate_trajectory, const FilterContext & context) final;
 
   void update_parameters(const validator::Params & params) final;
+
+private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
 };
 }  // namespace autoware::trajectory_validator::plugin::safety
 
