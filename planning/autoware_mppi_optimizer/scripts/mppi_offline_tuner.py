@@ -41,24 +41,22 @@ def find_visualizer() -> Path:
         if candidate.is_file() and candidate.suffix == ".py":
             return candidate
         raise FileNotFoundError(f"MPPI_DEBUG_VISUALIZER={env!r} is not an existing .py file.")
+    # Prefer sibling script in this package (source tree or install).
+    here = Path(__file__).resolve()
+    candidate = here.with_name("mppi_debug_visualizer.py")
+    if candidate.is_file():
+        return candidate
     try:
         prefix = subprocess.check_output(
-            ["ros2", "pkg", "prefix", "autoware_diffusion_planner"],
+            ["ros2", "pkg", "prefix", "autoware_mppi_optimizer"],
             text=True,
             timeout=30,
         ).strip()
-        candidate = Path(prefix) / "lib" / "autoware_diffusion_planner" / "mppi_debug_visualizer.py"
+        candidate = Path(prefix) / "lib" / "autoware_mppi_optimizer" / "mppi_debug_visualizer.py"
         if candidate.is_file():
             return candidate
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         pass
-    # Source-tree fallback (dev without install).
-    here = Path(__file__).resolve()
-    candidate = (
-        here.parents[2] / "autoware_diffusion_planner" / "scripts" / "mppi_debug_visualizer.py"
-    )
-    if candidate.is_file():
-        return candidate
     raise FileNotFoundError(
         "mppi_debug_visualizer.py not found. Source the workspace or set MPPI_DEBUG_VISUALIZER."
     )

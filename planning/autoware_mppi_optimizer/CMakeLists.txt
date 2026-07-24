@@ -139,6 +139,7 @@ if(CUDA_AVAIL AND TRT_AVAIL)
   )
   install(PROGRAMS
     scripts/mppi_offline_tuner.py
+    scripts/mppi_debug_visualizer.py
     DESTINATION lib/${PROJECT_NAME}
   )
 endif()
