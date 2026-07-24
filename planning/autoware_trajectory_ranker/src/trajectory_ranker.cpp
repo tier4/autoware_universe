@@ -50,7 +50,8 @@ std::string to_source_string(const TrajectorySource source)
 {
   static const std::unordered_map<TrajectorySource, std::string> source_to_string = {
     {TrajectorySource::DIFFUSION_PLANNER, "diffusion_planner"},
-    {TrajectorySource::BACKUP_PLANNER, "backup_planner"},
+    {TrajectorySource::BACKUP_PLANNER_GO, "backup_planner_go"},
+    {TrajectorySource::BACKUP_PLANNER_STOP, "backup_planner_stop"},
   };
   if (source_to_string.count(source) == 0) {
     return "";

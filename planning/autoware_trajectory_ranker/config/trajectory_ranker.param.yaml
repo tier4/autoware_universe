@@ -2,7 +2,8 @@
   ros__parameters:
     generator_name_prefixes:
       - "DiffusionPlanner_"
-      - "MinimumRuleBasedPlanner"
+      - "MinimumRuleBasedPlanner_Go"
+      - "MinimumRuleBasedPlanner_Stop"
 
     safety:
       enable: true
@@ -12,7 +13,7 @@
 
     source:
       enable: true
-      levels: ["diffusion_planner", "backup_planner"]
+      levels: ["diffusion_planner", "backup_planner_go", "backup_planner_stop"]
       penalty: [0.0, 0.5]
       scale: 5.0
 

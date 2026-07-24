@@ -51,7 +51,8 @@ struct RankerContext
 
 enum class TrajectorySource : uint8_t {
   DIFFUSION_PLANNER = 0,
-  BACKUP_PLANNER,
+  BACKUP_PLANNER_GO,
+  BACKUP_PLANNER_STOP,
 };
 
 struct RankerInputTrajectory

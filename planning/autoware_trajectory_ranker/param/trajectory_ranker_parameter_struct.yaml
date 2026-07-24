@@ -1,7 +1,7 @@
 trajectory_ranker_params:
   generator_name_prefixes:
     type: string_array
-    default_value: [DiffusionPlanner_, MinimumRuleBasedPlanner]
+    default_value: [DiffusionPlanner_, MinimumRuleBasedPlanner_Go, MinimumRuleBasedPlanner_Stop]
     description: List of generator name prefixes
     read_only: false
 
@@ -35,12 +35,12 @@ trajectory_ranker_params:
       read_only: false
     levels:
       type: string_array
-      default_value: [diffusion_planner, backup_planner]
+      default_value: [diffusion_planner, backup_planner_go, backup_planner_stop]
       description: List of source levels
       read_only: false
     penalty:
       type: double_array
-      default_value: [0.0, 0.5]
+      default_value: [0.0, 0.5, 0.6]
       description: List of source penalties
       read_only: false
     scale:
