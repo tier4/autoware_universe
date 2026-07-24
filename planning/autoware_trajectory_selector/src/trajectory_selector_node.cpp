@@ -146,11 +146,12 @@ TrajectorySelectorNode::take_validator_data()
   return context;
 }
 
-trajectory_ranker::RankerContext TrajectorySelectorNode::take_ranker_data()
+trajectory_ranker::RankerContext TrajectorySelectorNode::take_ranker_data(const CandidateTrajectories & candidate_trajectories)
 {
   trajectory_ranker::RankerContext context;
   context.route_handler = route_handler_ptr_;
   context.odometry = sub_odometry_.take_data();
+  context.generator_info = candidate_trajectories.generator_info;
   return context;
 }
 
@@ -246,7 +247,7 @@ void TrajectorySelectorNode::process_trajectories()
   if (!selector_params_.enable_ranker) return;
 
   const auto scored_trajectories =
-    ranker_ptr_->rank_trajectories(input_trajectories, take_ranker_data());
+    ranker_ptr_->rank_trajectories(input_trajectories, take_ranker_data(valid_trajectories));
   pub_scored_trajectories_->publish(scored_trajectories);
 }
 

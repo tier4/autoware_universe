@@ -36,6 +36,7 @@ namespace autoware::trajectory_ranker
 {
 using autoware_internal_planning_msgs::msg::CandidateTrajectories;
 using autoware_internal_planning_msgs::msg::CandidateTrajectory;
+using autoware_internal_planning_msgs::msg::GeneratorInfo;
 using autoware_internal_planning_msgs::msg::ScoredCandidateTrajectories;
 using autoware_internal_planning_msgs::msg::ScoredCandidateTrajectory;
 using autoware_trajectory_validator::msg::ValidationReport;
@@ -47,6 +48,7 @@ struct RankerContext
 {
   nav_msgs::msg::Odometry::ConstSharedPtr odometry;
   std::shared_ptr<RouteHandler> route_handler;
+  std::vector<GeneratorInfo> generator_info;
 };
 
 enum class TrajectorySource : uint8_t {
