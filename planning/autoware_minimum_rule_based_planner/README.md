@@ -32,7 +32,7 @@ A minimum rule-based trajectory planner that generates safe and feasible traject
 
 | Topic                                 | Type                    | Description                                   |
 | ------------------------------------- | ----------------------- | --------------------------------------------- |
-| `~/output/candidate_trajectories`     | `CandidateTrajectories` | Planned trajectory                            |
+| `~/output/candidate_trajectories`     | `CandidateTrajectories` | Planned trajectory (with turn signal)         |
 | `~/debug/path_with_lane_id`           | `PathWithLaneId`        | Debug: planned path                           |
 | `~/debug/trajectory`                  | `Trajectory`            | Debug: final output trajectory                |
 | `~/debug/shifted_trajectory`          | `Trajectory`            | Debug: trajectory after path shifting         |

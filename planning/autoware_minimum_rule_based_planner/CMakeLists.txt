@@ -15,6 +15,8 @@ ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/minimum_rule_based_planner.cpp
   src/map_based_stop_planner.cpp
   src/path_planner.cpp
+  src/turn_indicator_decider.cpp
+  src/utils/turn_indicator_utils.cpp
   src/velocity_smoother.cpp
 )
 

@@ -228,6 +228,43 @@
           "required": [],
           "additionalProperties": false
         },
+        "turn_signal": {
+          "type": "object",
+          "properties": {
+            "intersection_search_distance": {
+              "type": "number",
+              "description": "Legal minimum lead distance before an intersection turn [m]",
+              "default": 30.0,
+              "minimum": 0.0
+            },
+            "search_time": {
+              "type": "number",
+              "description": "Lead time before a turn; activation distance = max(v * search_time, intersection_search_distance) [s]",
+              "default": 3.0,
+              "minimum": 0.0
+            },
+            "lateral_shift_threshold": {
+              "type": "number",
+              "description": "Minimum absolute lateral offset from the main-lane centerline to assert a left/right direction (pull-out / pull-over) [m]",
+              "default": 0.5,
+              "minimum": 0.0
+            },
+            "pull_over_search_distance": {
+              "type": "number",
+              "description": "Distance-to-goal at which the pull-over signal starts [m]",
+              "default": 30.0,
+              "minimum": 0.0
+            },
+            "min_blink_duration": {
+              "type": "number",
+              "description": "Minimum time a turn signal is held on once lit, to suppress chatter [s]",
+              "default": 3.0,
+              "minimum": 0.0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
         "obstacle_stop": {
           "type": "object",
           "properties": {

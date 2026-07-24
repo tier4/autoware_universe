@@ -172,6 +172,42 @@ minimum_rule_based_planner:
       validation:
         gt<>: [0.0]
 
+  turn_signal:
+    intersection_search_distance:
+      type: double
+      default_value: 30.0
+      description: legal minimum lead distance before an intersection turn [m]
+      validation:
+        gt_eq<>: [0.0]
+
+    search_time:
+      type: double
+      default_value: 3.0
+      description: lead time before a turn; activation distance = max(v * search_time, intersection_search_distance) [s]
+      validation:
+        gt_eq<>: [0.0]
+
+    lateral_shift_threshold:
+      type: double
+      default_value: 0.5
+      description: minimum absolute lateral offset from the main-lane centerline to assert a left/right direction (pull-out / pull-over) [m]
+      validation:
+        gt_eq<>: [0.0]
+
+    pull_over_search_distance:
+      type: double
+      default_value: 30.0
+      description: distance-to-goal at which the pull-over signal starts [m]
+      validation:
+        gt_eq<>: [0.0]
+
+    min_blink_duration:
+      type: double
+      default_value: 3.0
+      description: minimum time a turn signal is held on once lit, to suppress chatter [s]
+      validation:
+        gt_eq<>: [0.0]
+
   obstacle_stop:
     enable:
       type: bool

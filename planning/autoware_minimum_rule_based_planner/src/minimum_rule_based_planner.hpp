@@ -18,6 +18,7 @@
 #include "autoware/trajectory_optimizer/trajectory_optimizer_structs.hpp"
 #include "map_based_stop_planner.hpp"
 #include "path_planner.hpp"
+#include "turn_indicator_decider.hpp"
 #include "velocity_smoother.hpp"
 
 #include <autoware_trajectory_modifier/trajectory_modifier_param.hpp>
@@ -84,7 +85,8 @@ private:
     const bool update_smoother_state) const;
 
   void publish_candidate_trajectories(
-    const Trajectory & go_trajectory, const std::optional<Trajectory> & stop_trajectory) const;
+    const Trajectory & go_trajectory, const std::optional<Trajectory> & stop_trajectory,
+    const TurnIndicatorsCommand & turn_indicators_command) const;
 
   void publish_debug_outputs(
     const PathWithLaneId & path, const Trajectory & go_trajectory,
@@ -122,6 +124,17 @@ private:
   std::unique_ptr<PathPlanner> path_planner_;
   //! MapBasedStopPlanner plans the go/stop trajectories with map-defined stop points embedded
   std::unique_ptr<MapBasedStopPlanner> map_based_stop_planner_;
+  /** @} */
+
+private:
+  /**
+   ***********************************************************
+   * @defgroup turn-indicator turn signal output
+   * Decides the turn-signal command (intersection / pull-out / pull-over) written into every
+   * candidate trajectory's turn_indicators_command field.
+   * @{
+   */
+  std::unique_ptr<TurnIndicatorDecider> turn_indicator_decider_;
   /** @} */
 
 private:

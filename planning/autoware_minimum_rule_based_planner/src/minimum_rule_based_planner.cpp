@@ -22,6 +22,7 @@
 #include <autoware_utils/geometry/geometry.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <string>
@@ -80,6 +81,18 @@ void assign_time_from_start(
     traj_points.at(i).time_from_start = rclcpp::Duration::from_seconds(times.at(i) - ego_time);
   }
 }
+
+turn_indicator::TurnSignalParams make_turn_signal_params(
+  const minimum_rule_based_planner::Params & p)
+{
+  turn_indicator::TurnSignalParams params;
+  params.intersection_search_distance = p.turn_signal.intersection_search_distance;
+  params.search_time = p.turn_signal.search_time;
+  params.lateral_shift_threshold = p.turn_signal.lateral_shift_threshold;
+  params.pull_over_search_distance = p.turn_signal.pull_over_search_distance;
+  params.min_blink_duration = p.turn_signal.min_blink_duration;
+  return params;
+}
 }  // namespace
 
 MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptions & options)
@@ -121,6 +134,8 @@ MinimumRuleBasedPlannerNode::MinimumRuleBasedPlannerNode(const rclcpp::NodeOptio
   path_planner_ =
     std::make_unique<PathPlanner>(get_logger(), get_clock(), time_keeper_, params_, vehicle_info_);
   map_based_stop_planner_ = std::make_unique<MapBasedStopPlanner>(get_logger(), time_keeper_);
+  turn_indicator_decider_ =
+    std::make_unique<TurnIndicatorDecider>(make_turn_signal_params(params_));
   timer_ = rclcpp::create_timer(
     this, get_clock(), rclcpp::Rate(params_.planning_frequency_hz).period(),
     std::bind(&MinimumRuleBasedPlannerNode::on_timer, this));
@@ -306,6 +321,17 @@ void MinimumRuleBasedPlannerNode::on_timer()
     return;
   }
 
+  // 2.5 Decide the turn-signal command from the path (still carries lane_ids, which are lost in
+  //     convert_path_to_trajectory). The same command is written into every candidate trajectory,
+  //     since the go/stop candidates share the path shape and differ only in stop position.
+  TurnIndicatorsCommand turn_indicators_command;
+  {
+    autoware_utils_debug::ScopedTimeTrack st_ti("turn_indicators", *time_keeper_);
+    turn_indicators_command = turn_indicator_decider_->decide(
+      *path, path_planner_->route_context(), input_data.odometry_ptr->pose.pose,
+      input_data.odometry_ptr->twist.twist.linear.x, now());
+  }
+
   // 3. Convert path to trajectory
   auto trajectory =
     path_planner_->convert_path_to_trajectory(*path, params_.path_planning.output.delta_arc_length);
@@ -340,7 +366,7 @@ void MinimumRuleBasedPlannerNode::on_timer()
       : std::nullopt;
 
   // 9. Create and publish CandidateTrajectories message
-  publish_candidate_trajectories(go_trajectory, stop_trajectory);
+  publish_candidate_trajectories(go_trajectory, stop_trajectory, turn_indicators_command);
 
   // 10. Publish debug information
   publish_debug_outputs(*path, go_trajectory, stop_trajectory);
@@ -520,7 +546,8 @@ Trajectory MinimumRuleBasedPlannerNode::optimize_velocity(
 }
 
 void MinimumRuleBasedPlannerNode::publish_candidate_trajectories(
-  const Trajectory & go_trajectory, const std::optional<Trajectory> & stop_trajectory) const
+  const Trajectory & go_trajectory, const std::optional<Trajectory> & stop_trajectory,
+  const TurnIndicatorsCommand & turn_indicators_command) const
 {
   autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
 
@@ -534,13 +561,16 @@ void MinimumRuleBasedPlannerNode::publish_candidate_trajectories(
     msg.generator_info.push_back(generator_info);
   };
 
-  const auto add_candidate = [&msg, &add_generator_info](
+  // The go/stop candidates share the same path shape (they differ only in stop position), so the
+  // same turn-signal command is written into both.
+  const auto add_candidate = [&msg, &add_generator_info, &turn_indicators_command](
                                const UUID & generator_id, const std::string & generator_name,
                                const Trajectory & trajectory) {
     autoware_internal_planning_msgs::msg::CandidateTrajectory candidate_traj;
     candidate_traj.header = trajectory.header;
     candidate_traj.generator_id = generator_id;
     candidate_traj.points = trajectory.points;
+    candidate_traj.turn_indicators_command = turn_indicators_command;
     msg.candidate_trajectories.push_back(candidate_traj);
 
     add_generator_info(generator_id, generator_name);
@@ -641,6 +671,7 @@ void MinimumRuleBasedPlannerNode::update_params()
 {
   params_ = param_listener_->get_params();
   path_planner_->update_params(params_);
+  turn_indicator_decider_->update_params(make_turn_signal_params(params_));
 
   for (auto & modifier : modifier_plugins_) {
     modifier->update_params(params_);
