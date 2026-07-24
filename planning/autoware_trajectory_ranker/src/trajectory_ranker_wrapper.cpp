@@ -83,13 +83,24 @@ void TrajectoryRankerWrapper::update_last_best_trajectory_info(
     last_best_trajectory_info_
       ? std::string(magic_enum::enum_name(last_best_trajectory_info_->input_trajectory.source))
       : "none";
-  bool is_same_source = last_source == source;
+  bool is_source_changed = last_source != source;
   last_best_trajectory_info_ = best_trajectory_info;
 
-  if (is_same_source) return;
-  RCLCPP_WARN(
-    logger_, "[Ranker] Best trajectory source changed from %s to %s", last_source.c_str(),
-    source.c_str());
+  bool is_low_score = last_best_trajectory_info_->score < 0.5;
+
+  if (is_source_changed) {
+    RCLCPP_WARN(
+      logger_, "[Ranker] Best trajectory source changed from %s to %s", last_source.c_str(),
+      source.c_str());
+  }
+
+  if (is_low_score) {
+    RCLCPP_WARN(
+      logger_, "[Ranker] Best trajectory score is low: %f", last_best_trajectory_info_->score);
+  }
+
+  if (!is_source_changed && !is_low_score) return;
+
   RCLCPP_INFO(
     logger_,
     "[Ranker] Best trajectory info: safety_penalty -> %f, source_penalty -> %f, quality_penalty -> "

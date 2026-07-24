@@ -89,7 +89,7 @@ tl::expected<RankerResult, std::string> TrajectoryRanker::process(
     [](const auto & a, const auto & b) { return a.score < b.score; });
   if (best_itr == scored_trajectories.end()) {
     previous_points_ = nullptr;
-    return tl::unexpected("No best trajectory found");
+    return tl::make_unexpected<std::string>("No best trajectory found.");
   }
 
   result.best_trajectory_info = *best_itr;
