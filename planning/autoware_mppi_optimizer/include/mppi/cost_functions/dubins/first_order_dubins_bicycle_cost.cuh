@@ -17,11 +17,11 @@ struct FirstOrderDubinsBicycleCostParams : public CostParams<2>
   float track_coeff = 1000.0F;
   /** Pull toward ref heading at each horizon step: coeff * (yaw - ref_yaw[t])^2; 0 disables. */
   float heading_coeff = 500.0F;
-  /** Per-violation crash penalty; latched crash_status counts violations (1=off-road or hit,
+  /** Per-violation crash penalty; latched crash_status counts violations (1=lateral bound or hit,
    * 2=both). */
   float crash_coeff = 100000.0F;
   float boundary_threshold = 0.8F;
-  /** Off-road if signed lateral offset exceeds these (path-left = +); <0 falls back to
+  /** Beyond bound if signed lateral offset exceeds these (path-left = +); <0 falls back to
    * boundary_threshold. */
   float boundary_threshold_left = -1.0F;
   float boundary_threshold_right = -1.0F;
@@ -96,12 +96,8 @@ public:
 
   __host__ __device__ float computeSignedLateralOffset(float x, float y) const;
 
-  __host__ __device__ bool isOffRoad(const float x, const float y) const;
-
-  /** True when outside drivable polygon (rear axle); falls back to ref lateral offset near the poly
-   * boundary. */
-  __host__ __device__ bool isEgoOutsideDrivableArea(
-    const float x, const float y, const float yaw) const;
+  /** True if |signed lateral offset to ref| exceeds boundary_threshold(_left/_right). */
+  __host__ __device__ bool exceedsLateralBoundary(const float x, const float y) const;
 
   __host__ __device__ bool egoIntersectsObstacleAtStep(
     const float x, const float y, const float yaw, int timestep) const;
