@@ -332,9 +332,9 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-__host__ __device__ bool
-FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::isOffRoad(
-  const float x, const float y) const
+__host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
+  DYN_PARAMS_T>::exceedsLateralBoundary(const float x, const float y) const
 {
   const bool asymmetric =
     this->params_.boundary_threshold_left >= 0.0F || this->params_.boundary_threshold_right >= 0.0F;
@@ -350,18 +350,6 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
                               : this->params_.boundary_threshold;
   const float signed_lat = computeSignedLateralOffset(x, y);
   return signed_lat > left_limit || signed_lat < -right_limit;
-}
-
-template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-__host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
-  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
-  DYN_PARAMS_T>::isEgoOutsideDrivableArea(const float x, const float y, const float yaw) const
-{
-  (void)x;
-  (void)y;
-  (void)yaw;
-// Polygon boundary is piecewise-linear; defer to ref lateral offset near the corridor edge.
-return isOffRoad(x, y);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -424,9 +412,9 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   detectAndLatchCrash(
     const float x, const float y, const float yaw, const int timestep, int * crash_status) const
 {
-  const bool off_road = isEgoOutsideDrivableArea(x, y, yaw);
+  const bool beyond_lateral_bound = exceedsLateralBoundary(x, y);
   const bool hit_car = egoIntersectsObstacleAtStep(x, y, yaw, timestep);
-  const int violations = static_cast<int>(off_road) + static_cast<int>(hit_car);
+  const int violations = static_cast<int>(beyond_lateral_bound) + static_cast<int>(hit_car);
   if (violations > 0) {
     if (crash_status != nullptr) {
       crash_status[0] = violations;

@@ -761,14 +761,11 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   DYN::state_array x_final = DYN::state_array::Zero();
   DYN::state_array x_final_dot = DYN::state_array::Zero();
   DYN::output_array y_final = DYN::output_array::Zero();
-  const bool have_final_state = n_state > 0 && n_ctrl > 0;
-  if (have_final_state) {
-    DYN::state_array x_tail = state_trajectory.col(n_state - 1);
-    DYN::control_array u_tail = u_opt_traj.col(n_ctrl - 1);
-    impl_->model.enforceConstraints(x_tail, u_tail);
-    impl_->model.step(
-      x_tail, x_final, x_final_dot, u_tail, y_final, static_cast<float>(n_state - 1), kDt);
-  }
+  DYN::state_array x_tail = state_trajectory.col(n_state - 1);
+  DYN::control_array u_tail = u_opt_traj.col(n_ctrl - 1);
+  impl_->model.enforceConstraints(x_tail, u_tail);
+  impl_->model.step(
+    x_tail, x_final, x_final_dot, u_tail, y_final, static_cast<float>(n_state - 1), kDt);
 
   float max_pos_delta = 0.0F;
   float max_vel_delta = 0.0F;
@@ -779,7 +776,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     }
     const auto & in_point = input.points[i];
     const int control_col = static_cast<int>(i);
-    const bool use_final = (control_col + 1 >= n_state) && have_final_state;
+    const bool use_final = control_col + 1 >= n_state;
 
     const float tracked_x =
       use_final ? x_final(pos_x_idx) : state_trajectory(pos_x_idx, control_col + 1);
