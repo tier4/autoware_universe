@@ -473,6 +473,11 @@
               "description": "Threshold to check if the ego vehicle has arrived at crosswalk stop line [m].",
               "default": 5.0,
               "minimum": 0.0
+            },
+            "use_trajectory_time": {
+              "type": "boolean",
+              "description": "Whether to use the embedded trajectory time to evaluate the stop duration.",
+              "default": false
             }
           },
           "required": [],

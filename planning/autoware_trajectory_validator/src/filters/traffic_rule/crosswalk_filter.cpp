@@ -503,6 +503,8 @@ bool CrosswalkFilter::is_obstructing_crosswalk(
   safety_factor.is_safe = false;
   safety_factors.factors.push_back(safety_factor);
 
+  if (!params_.use_trajectory_time) return true;
+
   // check if stopping duration is sufficient
   const auto start_move_time = rclcpp::Duration(start_move_it->time_from_start).seconds();
   return start_move_time < required_waiting_time;

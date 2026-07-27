@@ -375,6 +375,11 @@ validator:
       default_value: 5.0
       description: threshold to check if the ego vehicle has arrived at crosswalk stop line (m)
       read_only: false
+    use_trajectory_time:
+      type: bool
+      default_value: false
+      description: whether to use the embedded trajectory time to evaluate the stop duration
+      read_only: false
 
   traffic_light:
     deceleration_limit:
