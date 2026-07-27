@@ -39,7 +39,7 @@ __host__ __device__ float referenceEndYaw(
 template <class PARAMS_T>
 __host__ __device__ void comfortTerms(
   const PARAMS_T & params, const float * u, const float * y, float & lateral_accel,
-  float & lateral_jerk, float & longitudinal_jerk)
+  float & lateral_jerk, float & longitudinal_jerk, float & steer_rate)
 {
   const float v = y[static_cast<int>(O::BASELINK_VEL_B_X)];
   const float steer = y[static_cast<int>(O::STEER_ANGLE)];
@@ -53,7 +53,7 @@ __host__ __device__ void comfortTerms(
 
   longitudinal_jerk = (accel_cmd - accel) / accel_tau;
 
-  const float steer_rate = (steer_cmd - steer) / steer_tau;
+  steer_rate = (steer_cmd - steer) / steer_tau;
   const float curvature = tanf(steer) / wheel_base;
 #ifdef __CUDA_ARCH__
   const float sec_sq = 1.0F / fmaxf(cosf(steer) * cosf(steer), 1.0E-6F);
@@ -332,9 +332,9 @@ __host__ __device__ float FirstOrderDubinsBicycleCostImpl<
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-__host__ __device__ bool
-FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>::isOffRoad(
-  const float x, const float y) const
+__host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
+  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
+  DYN_PARAMS_T>::exceedsLateralBoundary(const float x, const float y) const
 {
   const bool asymmetric =
     this->params_.boundary_threshold_left >= 0.0F || this->params_.boundary_threshold_right >= 0.0F;
@@ -350,25 +350,6 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
                               : this->params_.boundary_threshold;
   const float signed_lat = computeSignedLateralOffset(x, y);
   return signed_lat > left_limit || signed_lat < -right_limit;
-}
-
-template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
-__host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
-  CLASS_T, NUM_TIMESTEPS, PARAMS_T,
-  DYN_PARAMS_T>::isEgoOutsideDrivableArea(const float x, const float y, const float yaw) const
-{
-  (void)yaw;
-  if (num_drivable_vertices_ < 3) {
-    return isOffRoad(x, y);
-  }
-
-  // Rear-axle containment in the drivable polygon. Corner checks are too strict on tight curves.
-  if (pointInPolygon(x, y, drivable_poly_x_, drivable_poly_y_, num_drivable_vertices_)) {
-    return false;
-  }
-
-  // Polygon boundary is piecewise-linear; defer to ref lateral offset near the corridor edge.
-  return isOffRoad(x, y);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -431,9 +412,9 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   detectAndLatchCrash(
     const float x, const float y, const float yaw, const int timestep, int * crash_status) const
 {
-  const bool off_road = isEgoOutsideDrivableArea(x, y, yaw);
+  const bool beyond_lateral_bound = exceedsLateralBoundary(x, y);
   const bool hit_car = egoIntersectsObstacleAtStep(x, y, yaw, timestep);
-  const int violations = static_cast<int>(off_road) + static_cast<int>(hit_car);
+  const int violations = static_cast<int>(beyond_lateral_bound) + static_cast<int>(hit_car);
   if (violations > 0) {
     if (crash_status != nullptr) {
       crash_status[0] = violations;
@@ -557,10 +538,13 @@ float FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARA
   float lateral_accel = 0.0F;
   float lateral_jerk = 0.0F;
   float longitudinal_jerk = 0.0F;
-  comfortTerms(this->params_, u.data(), y.data(), lateral_accel, lateral_jerk, longitudinal_jerk);
+  float steer_rate = 0.0F;
+  comfortTerms(
+    this->params_, u.data(), y.data(), lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
   return this->params_.lateral_acceleration_coeff * std::abs(lateral_accel) +
          this->params_.lateral_jerk_coeff * std::abs(lateral_jerk) +
-         this->params_.longitudinal_jerk_coeff * std::abs(longitudinal_jerk);
+         this->params_.longitudinal_jerk_coeff * std::abs(longitudinal_jerk) +
+         this->params_.steer_rate_coeff * std::abs(steer_rate);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>
@@ -572,10 +556,12 @@ FirstOrderDubinsBicycleCostImpl<CLASS_T, NUM_TIMESTEPS, PARAMS_T, DYN_PARAMS_T>:
   float lateral_accel = 0.0F;
   float lateral_jerk = 0.0F;
   float longitudinal_jerk = 0.0F;
-  comfortTerms(this->params_, u, y, lateral_accel, lateral_jerk, longitudinal_jerk);
+  float steer_rate = 0.0F;
+  comfortTerms(this->params_, u, y, lateral_accel, lateral_jerk, longitudinal_jerk, steer_rate);
   return this->params_.lateral_acceleration_coeff * fabsf(lateral_accel) +
          this->params_.lateral_jerk_coeff * fabsf(lateral_jerk) +
-         this->params_.longitudinal_jerk_coeff * fabsf(longitudinal_jerk);
+         this->params_.longitudinal_jerk_coeff * fabsf(longitudinal_jerk) +
+         this->params_.steer_rate_coeff * fabsf(steer_rate);
 }
 
 template <class CLASS_T, int NUM_TIMESTEPS, class PARAMS_T, class DYN_PARAMS_T>

@@ -6,7 +6,7 @@
     shadow_mode_filter_names:
       [
         "safety::UncrossableBoundaryDepartureFilter",
-        "safety::VehicleConstraintFilter",
+        "safety::TrajectoryFeasibilityFilter",
         "traffic_rule::TrafficLightFilter",
       ]
 
@@ -100,7 +100,7 @@
         error_threshold:
           ego_acceleration: -4.0
 
-    vehicle_constraint:
+    trajectory_feasibility:
       max_speed: 16.7 # m/s
       max_acceleration: 5.0 # m/s^2
       max_deceleration: 5.0 # m/s^2 (positive but represents deceleration)

@@ -365,7 +365,8 @@ std::optional<PathWithLaneId> MinimumRuleBasedPlannerNode::plan_path(const Input
     return *input_data.test_path_with_lane_id_ptr;
   }
   return path_planner_->plan_path(
-    input_data.odometry_ptr->pose.pose, input_data.odometry_ptr->twist.twist.linear.x);
+    input_data.odometry_ptr->pose.pose, input_data.odometry_ptr->twist.twist.linear.x,
+    input_data.odometry_ptr->header.stamp);
 }
 
 Trajectory MinimumRuleBasedPlannerNode::shift_trajectory_to_ego(

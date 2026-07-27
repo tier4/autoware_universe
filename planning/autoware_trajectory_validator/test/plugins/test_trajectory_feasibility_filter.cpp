@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_validator/filters/safety/vehicle_constraint_filter.hpp"
+#include "autoware/trajectory_validator/filters/safety/trajectory_feasibility_filter.hpp"
 
 #include <gtest/gtest.h>
 
@@ -39,7 +39,7 @@ autoware_planning_msgs::msg::TrajectoryPoint create_trajectory_point(
 
 namespace autoware::trajectory_validator::plugin::safety::testing
 {
-TEST(VehicleConstraintFilterTest, FeasibleWhenAllConstraintsSatisfied)
+TEST(TrajectoryFeasibilityFilterTest, FeasibleWhenAllConstraintsSatisfied)
 {
   // Create a simple trajectory that satisfies all constraints
   TrajectoryPoints traj_points = {
@@ -50,13 +50,13 @@ TEST(VehicleConstraintFilterTest, FeasibleWhenAllConstraintsSatisfied)
   VehicleInfo vehicle_info;
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
 
-  VehicleConstraintFilter filter;
+  TrajectoryFeasibilityFilter filter;
   validator::Params params;
-  params.vehicle_constraint.max_speed = 10.0;
-  params.vehicle_constraint.max_acceleration = 2.0;
-  params.vehicle_constraint.max_deceleration = 2.0;
-  params.vehicle_constraint.max_steering_angle = 0.5;
-  params.vehicle_constraint.max_steering_rate = 0.1;
+  params.trajectory_feasibility.max_speed = 10.0;
+  params.trajectory_feasibility.max_acceleration = 2.0;
+  params.trajectory_feasibility.max_deceleration = 2.0;
+  params.trajectory_feasibility.max_steering_angle = 0.5;
+  params.trajectory_feasibility.max_steering_rate = 0.1;
   filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
@@ -69,7 +69,7 @@ TEST(VehicleConstraintFilterTest, FeasibleWhenAllConstraintsSatisfied)
   EXPECT_TRUE(result.value().is_feasible);
 }
 
-TEST(VehicleConstraintFilterTest, InfeasibleWhenSpeedExceedsMax)
+TEST(TrajectoryFeasibilityFilterTest, InfeasibleWhenSpeedExceedsMax)
 {
   // Create a trajectory that exceeds max speed
   TrajectoryPoints traj_points = {
@@ -80,10 +80,10 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSpeedExceedsMax)
   VehicleInfo vehicle_info;
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
 
-  VehicleConstraintFilter filter;
+  TrajectoryFeasibilityFilter filter;
 
   validator::Params params;
-  params.vehicle_constraint.max_speed = 10.0;
+  params.trajectory_feasibility.max_speed = 10.0;
   filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
@@ -96,7 +96,7 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSpeedExceedsMax)
   EXPECT_FALSE(result.value().is_feasible);
 }
 
-TEST(VehicleConstraintFilterTest, InfeasibleWhenAccelerationExceedsMax)
+TEST(TrajectoryFeasibilityFilterTest, InfeasibleWhenAccelerationExceedsMax)
 {
   // Create a trajectory that exceeds max acceleration
   TrajectoryPoints traj_points = {
@@ -108,9 +108,9 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenAccelerationExceedsMax)
   VehicleInfo vehicle_info;
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
 
-  VehicleConstraintFilter filter;
+  TrajectoryFeasibilityFilter filter;
   validator::Params params;
-  params.vehicle_constraint.max_acceleration = 2.0;
+  params.trajectory_feasibility.max_acceleration = 2.0;
   filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
@@ -123,7 +123,7 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenAccelerationExceedsMax)
   EXPECT_FALSE(result.value().is_feasible);
 }
 
-TEST(VehicleConstraintFilterTest, InfeasibleWhenDecelerationExceedsMax)
+TEST(TrajectoryFeasibilityFilterTest, InfeasibleWhenDecelerationExceedsMax)
 {
   // Create a trajectory that exceeds max deceleration
   TrajectoryPoints traj_points = {
@@ -135,10 +135,10 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenDecelerationExceedsMax)
   VehicleInfo vehicle_info;
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
 
-  VehicleConstraintFilter filter;
+  TrajectoryFeasibilityFilter filter;
 
   validator::Params params;
-  params.vehicle_constraint.max_deceleration = 2.0;
+  params.trajectory_feasibility.max_deceleration = 2.0;
   filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
@@ -151,7 +151,7 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenDecelerationExceedsMax)
   EXPECT_FALSE(result.value().is_feasible);
 }
 
-TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringAngleExceedsMax)
+TEST(TrajectoryFeasibilityFilterTest, InfeasibleWhenSteeringAngleExceedsMax)
 {
   // Create a trajectory that exceeds max steering angle after smoothing
   TrajectoryPoints traj_points = {
@@ -166,10 +166,10 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringAngleExceedsMax)
   VehicleInfo vehicle_info;
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
 
-  VehicleConstraintFilter filter;
+  TrajectoryFeasibilityFilter filter;
 
   validator::Params params;
-  params.vehicle_constraint.max_steering_angle = 0.5;
+  params.trajectory_feasibility.max_steering_angle = 0.5;
   filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 
@@ -182,7 +182,7 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringAngleExceedsMax)
   EXPECT_FALSE(result.value().is_feasible);
 }
 
-TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringRateExceedsMax)
+TEST(TrajectoryFeasibilityFilterTest, InfeasibleWhenSteeringRateExceedsMax)
 {
   // Create a trajectory that exceeds max steering rate after smoothing
   TrajectoryPoints traj_points = {
@@ -199,10 +199,10 @@ TEST(VehicleConstraintFilterTest, InfeasibleWhenSteeringRateExceedsMax)
   VehicleInfo vehicle_info;
   vehicle_info.wheel_base_m = 2.5;  // Example wheelbase
 
-  VehicleConstraintFilter filter;
+  TrajectoryFeasibilityFilter filter;
 
   validator::Params params;
-  params.vehicle_constraint.max_steering_rate = 0.1;
+  params.trajectory_feasibility.max_steering_rate = 0.1;
   filter.update_parameters(params);
   filter.set_vehicle_info(vehicle_info);
 

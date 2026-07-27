@@ -324,7 +324,7 @@
           "required": [],
           "additionalProperties": false
         },
-        "vehicle_constraint": {
+        "trajectory_feasibility": {
           "type": "object",
           "properties": {
             "max_speed": {

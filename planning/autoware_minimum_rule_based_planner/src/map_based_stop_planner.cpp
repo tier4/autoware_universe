@@ -349,23 +349,28 @@ MapBasedStopPlanner::Result MapBasedStopPlanner::plan(
                                    const std::string & ns, const lanelet::ConstLanelets & lanelets,
                                    const std_msgs::msg::ColorRGBA & color) {
       if (lanelets.empty()) return;
-      const auto markers =
-        lanelet::visualization::laneletsAsTriangleMarkerArray(ns, lanelets, color);
+      auto markers = lanelet::visualization::laneletsBoundaryAsMarkerArray(
+        lanelets, color, /*viz_centerline=*/false);
+      int32_t marker_id = 0;
+      for (auto & marker : markers.markers) {
+        marker.ns = ns;
+        marker.id = marker_id++;
+      }
       result.stop_line_markers.markers.insert(
         result.stop_line_markers.markers.end(), markers.markers.begin(), markers.markers.end());
     };
     append_lanelets(
       "intersection_conflicting_lanelets", intersection_debug_lanelets_.conflicting,
-      make_color(1.0f, 0.5f, 0.0f, 0.4f));
+      make_color(1.0f, 0.5f, 0.0f, 0.99f));
     append_lanelets(
       "intersection_yield_lanelets", intersection_debug_lanelets_.yield,
-      make_color(0.0f, 1.0f, 0.0f, 0.4f));
+      make_color(0.0f, 1.0f, 0.0f, 0.99f));
     append_lanelets(
       "intersection_ego_lanelets", intersection_debug_lanelets_.ego,
-      make_color(0.0f, 0.5f, 1.0f, 0.4f));
+      make_color(0.0f, 0.5f, 1.0f, 0.99f));
     append_lanelets(
       "intersection_attention_lanelets", intersection_debug_lanelets_.attention,
-      make_color(1.0f, 0.0f, 0.0f, 0.5f));
+      make_color(1.0f, 0.0f, 0.0f, 0.99f));
   }
 
   if (stop_lines.empty()) return result;

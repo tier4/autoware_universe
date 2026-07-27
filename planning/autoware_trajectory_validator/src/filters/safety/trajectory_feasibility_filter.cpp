@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "autoware/trajectory_validator/filters/safety/vehicle_constraint_filter.hpp"
+#include "autoware/trajectory_validator/filters/safety/trajectory_feasibility_filter.hpp"
 
 #include <autoware_utils_geometry/geometry.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
@@ -105,16 +105,17 @@ std::vector<std::optional<double>> to_steering_angles(
 }
 }  // namespace
 
-VehicleConstraintFilter::VehicleConstraintFilter() : ValidatorInterface("vehicle_constraint_filter")
+TrajectoryFeasibilityFilter::TrajectoryFeasibilityFilter()
+: ValidatorInterface("trajectory_feasibility_filter")
 {
 }
 
-void VehicleConstraintFilter::update_parameters(const validator::Params & params)
+void TrajectoryFeasibilityFilter::update_parameters(const validator::Params & params)
 {
-  params_ = params.vehicle_constraint;
+  params_ = params.trajectory_feasibility;
 }
 
-VehicleConstraintFilter::result_t VehicleConstraintFilter::is_feasible(
+TrajectoryFeasibilityFilter::result_t TrajectoryFeasibilityFilter::is_feasible(
   const CandidateTrajectory & candidate_trajectory, const FilterContext &)
 {
   const auto & traj_points = candidate_trajectory.points;
@@ -135,7 +136,7 @@ VehicleConstraintFilter::result_t VehicleConstraintFilter::is_feasible(
   return ValidationResult{is_feasible, std::move(metrics)};
 }
 
-MetricReport VehicleConstraintFilter::check_speed(const TrajectoryPoints & traj_points) const
+MetricReport TrajectoryFeasibilityFilter::check_speed(const TrajectoryPoints & traj_points) const
 {
   const auto [max_observed, is_ok] = is_speed_ok(traj_points, params_.max_speed);
 
@@ -149,7 +150,8 @@ MetricReport VehicleConstraintFilter::check_speed(const TrajectoryPoints & traj_
     .risk(risk_level);
 }
 
-MetricReport VehicleConstraintFilter::check_acceleration(const TrajectoryPoints & traj_points) const
+MetricReport TrajectoryFeasibilityFilter::check_acceleration(
+  const TrajectoryPoints & traj_points) const
 {
   const auto [max_observed, is_ok] = is_acceleration_ok(traj_points, params_.max_acceleration);
 
@@ -163,7 +165,8 @@ MetricReport VehicleConstraintFilter::check_acceleration(const TrajectoryPoints 
     .risk(risk_level);
 }
 
-MetricReport VehicleConstraintFilter::check_deceleration(const TrajectoryPoints & traj_points) const
+MetricReport TrajectoryFeasibilityFilter::check_deceleration(
+  const TrajectoryPoints & traj_points) const
 {
   const auto [max_observed, is_ok] = is_deceleration_ok(traj_points, params_.max_deceleration);
 
@@ -177,7 +180,7 @@ MetricReport VehicleConstraintFilter::check_deceleration(const TrajectoryPoints 
     .risk(risk_level);
 }
 
-MetricReport VehicleConstraintFilter::check_steering_angle(
+MetricReport TrajectoryFeasibilityFilter::check_steering_angle(
   const TrajectoryPoints & traj_points) const
 {
   const auto [max_observed, is_ok] =
@@ -193,7 +196,7 @@ MetricReport VehicleConstraintFilter::check_steering_angle(
     .risk(risk_level);
 }
 
-MetricReport VehicleConstraintFilter::check_steering_rate(
+MetricReport TrajectoryFeasibilityFilter::check_steering_rate(
   const TrajectoryPoints & traj_points) const
 {
   const auto [max_observed, is_ok] =
@@ -302,4 +305,4 @@ std::pair<double, bool> is_steering_rate_ok(
 namespace safety = autoware::trajectory_validator::plugin::safety;
 
 PLUGINLIB_EXPORT_CLASS(
-  safety::VehicleConstraintFilter, autoware::trajectory_validator::plugin::ValidatorInterface)
+  safety::TrajectoryFeasibilityFilter, autoware::trajectory_validator::plugin::ValidatorInterface)

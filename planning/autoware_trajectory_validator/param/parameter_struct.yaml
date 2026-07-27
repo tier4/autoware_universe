@@ -11,7 +11,7 @@ validator:
     description: List of filter names that run in which results are logged but do not affect trajectory feasibility.
     read_only: false
 
-  vehicle_constraint:
+  trajectory_feasibility:
     max_speed:
       type: double
       default_value: 16.7
