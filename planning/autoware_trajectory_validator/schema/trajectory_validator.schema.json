@@ -83,6 +83,23 @@
       "required": [],
       "additionalProperties": false
     },
+    "stop_tracking_params": {
+      "type": "object",
+      "properties": {
+        "stopped_velocity_threshold": {
+          "type": "number",
+          "description": "Planar speed below which the vehicle or object is considered stopped [m/s].",
+          "exclusiveMinimum": 0.0
+        },
+        "history_timeout": {
+          "type": "number",
+          "description": "Maximum observation gap retained in the stop history [s].",
+          "minimum": 0.0
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
     "drac_assessment": {
       "type": "object",
       "properties": {
@@ -176,6 +193,15 @@
               "type": "object",
               "description": "Deceleration Rate to Avoid Collision (DRAC) assessment settings.",
               "properties": {
+                "stop_tracking": {
+                  "type": "object",
+                  "properties": {
+                    "ego": { "$ref": "#/definitions/stop_tracking_params" },
+                    "object": { "$ref": "#/definitions/stop_tracking_params" }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                },
                 "enable_assessment": { "$ref": "#/definitions/enable_assessment_per_class" },
                 "pet_margin": {
                   "type": "object",
