@@ -491,8 +491,8 @@ __host__ __device__ bool FirstOrderDubinsBicycleCostImpl<
   const float half_width = this->params_.ego_width * 0.5f;
   const float offset = this->params_.ego_axle_to_box_center;
   const float front_ext = offset + half_length;
-  const float back_ext = half_length - offset;  // Positive distance backward from axle
-  const float left_ext = half_width;            // Assuming symmetric width
+  const float back_ext = half_length - offset;
+  const float left_ext = half_width;
   const float right_ext = half_width;
   const float margin = this->params_.road_border_collision_margin;
 
