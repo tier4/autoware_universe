@@ -35,7 +35,8 @@ target_compile_options(${trajectory_validator_lib_target} PUBLIC
 
 ament_auto_add_library(autoware_trajectory_validator_plugins SHARED
   src/filters/safety/point_cloud_collision_check_filter.cpp
-  src/filters/safety/point_cloud_collision_check/pointcloud_preprocessing.cpp
+  src/filters/safety/point_cloud_collision_check/obstacle_stop.cpp
+  src/filters/safety/point_cloud_collision_check/planner_data_lite.cpp
   src/filters/safety/point_cloud_collision_check/debug_marker.cpp
   src/filters/safety/uncrossable_boundary_departure.cpp
   src/filters/safety/vehicle_constraint_filter.cpp

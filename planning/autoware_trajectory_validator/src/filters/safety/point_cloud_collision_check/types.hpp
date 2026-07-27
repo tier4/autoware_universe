@@ -19,58 +19,120 @@
 #include <autoware_utils_geometry/boost_geometry.hpp>
 #include <rclcpp/time.hpp>
 
+#include <autoware_perception_msgs/msg/object_classification.hpp>
+#include <autoware_perception_msgs/msg/shape.hpp>
 #include <autoware_planning_msgs/msg/trajectory_point.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose.hpp>
-
-#include <Eigen/Core>
+#include <unique_identifier_msgs/msg/uuid.hpp>
 
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <tuple>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_check
 {
 using autoware_planning_msgs::msg::TrajectoryPoint;
+using ObjectClassification = autoware_perception_msgs::msg::ObjectClassification;
 using Polygon2d = autoware_utils_geometry::Polygon2d;
+using Shape = autoware_perception_msgs::msg::Shape;
+using UUID = unique_identifier_msgs::msg::UUID;
 
-// 点群由来障害物のラベル。認識物体は扱わないため POINTCLOUD 固定。
 struct StopObstacleClassification
 {
-  enum class Type { POINTCLOUD };
-  Type label{Type::POINTCLOUD};
+  enum class Type {
+    UNKNOWN,
+    CAR,
+    TRUCK,
+    BUS,
+    TRAILER,
+    MOTORCYCLE,
+    BICYCLE,
+    PEDESTRIAN,
+    ANIMAL,
+    HAZARD,
+    POINTCLOUD
+  };
 
-  std::string to_string() const { return "pointcloud"; }
+  inline static const std::unordered_map<Type, std::string> to_string_map = {
+    {Type::UNKNOWN, "unknown"},      {Type::CAR, "car"},
+    {Type::TRUCK, "truck"},          {Type::BUS, "bus"},
+    {Type::TRAILER, "trailer"},      {Type::MOTORCYCLE, "motorcycle"},
+    {Type::BICYCLE, "bicycle"},      {Type::PEDESTRIAN, "pedestrian"},
+    {Type::ANIMAL, "animal"},        {Type::HAZARD, "hazard"},
+    {Type::POINTCLOUD, "pointcloud"}};
+
+  explicit StopObstacleClassification(const ObjectClassification object_classification)
+  {
+    switch (object_classification.label) {
+      case ObjectClassification::UNKNOWN:
+        label = Type::UNKNOWN;
+        break;
+      case ObjectClassification::CAR:
+        label = Type::CAR;
+        break;
+      case ObjectClassification::TRUCK:
+        label = Type::TRUCK;
+        break;
+      case ObjectClassification::BUS:
+        label = Type::BUS;
+        break;
+      case ObjectClassification::TRAILER:
+        label = Type::TRAILER;
+        break;
+      case ObjectClassification::MOTORCYCLE:
+        label = Type::MOTORCYCLE;
+        break;
+      case ObjectClassification::BICYCLE:
+        label = Type::BICYCLE;
+        break;
+      case ObjectClassification::PEDESTRIAN:
+        label = Type::PEDESTRIAN;
+        break;
+      case ObjectClassification::ANIMAL:
+        label = Type::ANIMAL;
+        break;
+      case ObjectClassification::HAZARD:
+        label = Type::HAZARD;
+        break;
+      default:
+        throw std::invalid_argument("Undefined ObjectClassification label");
+    }
+  }
+  explicit StopObstacleClassification(
+    const std::vector<ObjectClassification> & object_classifications)
+  : StopObstacleClassification(object_classifications.at(0))
+  {
+  }
+  explicit StopObstacleClassification(Type v) : label(v) {}
+  StopObstacleClassification() = default;
+
+  std::string to_string() const { return to_string_map.at(label); }
+
+  Type label{};
+
   bool operator==(const StopObstacleClassification & other) const { return label == other.label; }
   bool operator!=(const StopObstacleClassification & other) const { return !(*this == other); }
 };
 
-// 衝突点と、その衝突点までの（軌道に沿った）距離。
 struct CollisionPointWithDist
 {
   geometry_msgs::msg::Point point{};
   double dist_to_collide{};
 };
 
-// 点群由来の停止候補。map 系の世界点で時系列追跡し、速度は map 系の世界変位ベクトル
-// (Δp/dt) を成分ごとに LPF する（決定10）。dist_to_collide は候補依存量のため保持せず、
-// 読み出し時に各候補軌道へ射影して求める。
 struct PointcloudStopCandidate
 {
-  std::vector<Eigen::Vector2d> initial_velocities{};
-  autoware::signal_processing::LowpassFilter1d vel_lpf_x{0.0};
-  autoware::signal_processing::LowpassFilter1d vel_lpf_y{0.0};
+  std::vector<double> initial_velocities{};
+  autoware::signal_processing::LowpassFilter1d vel_lpf{0.0};
   rclcpp::Time latest_collision_pointcloud_time;
-  geometry_msgs::msg::Point latest_world_point{};
-
-  bool has_velocity() const
-  {
-    return vel_lpf_x.getValue().has_value() && vel_lpf_y.getValue().has_value();
-  }
+  CollisionPointWithDist latest_collision_point;
 };
 
-// 検出ポリゴン生成パラメータ。生成結果キャッシュのキーにもなるため operator< を持つ。
 struct PolygonParam
 {
   std::optional<double> trimming_length{};
@@ -84,9 +146,27 @@ struct PolygonParam
   }
 };
 
-// 停止対象として確定した点群障害物。
 struct StopObstacle
 {
+  StopObstacle(
+    const UUID & arg_uuid, const rclcpp::Time & arg_stamp,
+    const StopObstacleClassification & arg_object_classification,
+    const geometry_msgs::msg::Pose & arg_pose, const Shape & arg_shape,
+    const double arg_lon_velocity, const geometry_msgs::msg::Point & arg_collision_point,
+    const double arg_dist_to_collide_on_decimated_traj, const PolygonParam & arg_polygon_param,
+    const std::optional<double> arg_braking_dist = std::nullopt)
+  : uuid(arg_uuid),
+    stamp(arg_stamp),
+    pose(arg_pose),
+    velocity(arg_lon_velocity),
+    shape(arg_shape),
+    collision_point(arg_collision_point),
+    dist_to_collide_on_decimated_traj(arg_dist_to_collide_on_decimated_traj),
+    classification(arg_object_classification),
+    polygon_param(arg_polygon_param),
+    braking_dist(arg_braking_dist)
+  {
+  }
   StopObstacle(
     const rclcpp::Time & arg_stamp, const StopObstacleClassification & arg_object_classification,
     const double arg_lon_velocity, const geometry_msgs::msg::Point & arg_collision_point,
@@ -100,12 +180,19 @@ struct StopObstacle
     polygon_param(arg_polygon_param),
     braking_dist(arg_braking_dist)
   {
+    if (arg_object_classification.label != StopObstacleClassification::Type::POINTCLOUD) {
+      throw std::invalid_argument(
+        "Constructor for pointcloud StopObstacle must be called with POINTCLOUD label");
+    }
     pose.position = arg_collision_point;
+    shape.type = autoware_perception_msgs::msg::Shape::BOUNDING_BOX;
   }
-
+  UUID uuid{};
   rclcpp::Time stamp;
   geometry_msgs::msg::Pose pose;
   double velocity;
+
+  Shape shape;
   geometry_msgs::msg::Point collision_point;
   double dist_to_collide_on_decimated_traj;
   StopObstacleClassification classification;
@@ -113,7 +200,6 @@ struct StopObstacle
   std::optional<double> braking_dist;
 };
 
-// 衝突検出に用いる軌道ポリゴン群と、その元の軌道点列。両者は 1 対 1 対応する。
 struct DetectionPolygon
 {
   const std::vector<TrajectoryPoint> traj_points;
