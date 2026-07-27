@@ -32,7 +32,6 @@
 namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_check
 {
 
-// 移植元 ObstacleStopModule の点群経路（`filter_stop_obstacle_for_point_cloud` 系）に対応する。
 class ObstacleStop
 {
 public:
@@ -49,8 +48,7 @@ private:
     const bool enable_to_consider_current_pose, const double time_to_convergence,
     const double decimate_trajectory_step_length) const;
 
-  // 前提: is_feasible は1サイクルに1候補のみを処理する（単一候補前提）。同一 stamp で
-  // 複数の異なる軌道が来ると global return と arc-length 基準の距離が混線し誤判定し得る。
+  // 前提: is_feasible は1サイクルに1候補のみを処理する（単一候補前提）。
   void upsert_pointcloud_stop_candidates(
     const CollisionPointWithDist & nearest_collision_point,
     const std::vector<TrajectoryPoint> & traj_points, rclcpp::Time latest_point_cloud_time);

@@ -102,8 +102,7 @@ struct StopPlanningParam
   double obstacle_velocity_threshold_enter_fixed_stop{};
 };
 
-// [plugin 固有] 移植元では PlannerData のコンストラクタと node が読む値。
-// PlannerData::trajectory_polygon_collision_check と ego_nearest_* の設定元。
+
 struct TrajectoryPolygonParam
 {
   bool enable_to_consider_current_pose{};
@@ -114,8 +113,7 @@ struct TrajectoryPolygonParam
   double goal_extended_trajectory_length{};
 };
 
-// [plugin 固有] generated validator::Params::PointCloudCollisionCheck から、移植元が
-// node から読む各パラメータ構造体をまとめて構築する。
+
 struct Params
 {
   CommonParam common{};

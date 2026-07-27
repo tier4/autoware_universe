@@ -34,6 +34,7 @@ namespace
 {
 namespace mvp = autoware::motion_velocity_planner;
 
+// motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:129-135
 double calc_x_offset_to_bumper(const bool is_driving_forward, const VehicleInfo & vehicle_info)
 {
   if (is_driving_forward) {
@@ -42,6 +43,7 @@ double calc_x_offset_to_bumper(const bool is_driving_forward, const VehicleInfo 
   return vehicle_info.min_longitudinal_offset_m;
 }
 
+// motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:157-180
 double calc_braking_dist_along_trajectory(
   [[maybe_unused]] const StopObstacleClassification::Type label, const double lon_vel,
   const RSSParam & rss_params)
@@ -50,6 +52,7 @@ double calc_braking_dist_along_trajectory(
   return error_considered_vel * error_considered_vel * 0.5 / -rss_params.pointcloud_deceleration;
 }
 
+// motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:183-205
 PolygonParam create_polygon_param(
   const ObstacleFilteringParam::TrimTrajectoryParam & trim_trajectory_param,
   const std::optional<double> ego_braking_distance,
@@ -74,6 +77,8 @@ PolygonParam create_polygon_param(
 
 }  // namespace
 
+// motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:222-228
+// （init のうちパラメータ構築部）
 void ObstacleStop::update_parameters(const Params & params)
 {
   common_param_ = params.common;
@@ -83,10 +88,12 @@ void ObstacleStop::update_parameters(const Params & params)
   pointcloud_segmentation_param_ = params.pointcloud_segmentation;
 }
 
+// motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:280-341（plan）
 std::vector<StopObstacle> ObstacleStop::calc_obstacle_stop(
   const std::vector<TrajectoryPoint> & raw_trajectory_points,
   const std::shared_ptr<const PlannerData> planner_data)
 {
+  // autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   const double x_offset_to_bumper =
     calc_x_offset_to_bumper(planner_data->is_driving_forward, planner_data->vehicle_info_);
   trajectory_polygon_for_inside_map_.clear();
@@ -96,10 +103,6 @@ std::vector<StopObstacle> ObstacleStop::calc_obstacle_stop(
     planner_data->ego_nearest_dist_threshold, planner_data->ego_nearest_yaw_threshold,
     planner_data->trajectory_polygon_collision_check.decimate_trajectory_step_length,
     stop_planning_param_.stop_margin);
-  // [plugin 固有] 2 点未満だと cropForwardPoints / create_one_step_polygons が成立しない
-  if (decimated_traj_points.size() < 2) {
-    return {};
-  }
 
   auto stop_obstacles_for_point_cloud = filter_stop_obstacle_for_point_cloud(
     planner_data->current_odometry, raw_trajectory_points, decimated_traj_points,
@@ -109,6 +112,7 @@ std::vector<StopObstacle> ObstacleStop::calc_obstacle_stop(
   return stop_obstacles_for_point_cloud;
 }
 
+// motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:344-353
 std::optional<double> ObstacleStop::calc_ego_forwarding_braking_distance(
   const std::vector<TrajectoryPoint> & traj_points, const nav_msgs::msg::Odometry & odometry) const
 {
@@ -120,11 +124,14 @@ std::optional<double> ObstacleStop::calc_ego_forwarding_braking_distance(
     common_param_.max_jerk, common_param_.min_jerk);
 }
 
+// motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:356-431
 std::optional<CollisionPointWithDist> ObstacleStop::get_nearest_collision_point(
   const std::vector<TrajectoryPoint> & traj_points, const std::vector<Polygon2d> & traj_polygons,
   const Pointcloud & point_cloud, const double x_offset_to_bumper,
   const VehicleInfo & vehicle_info) const
 {
+  // autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
+  
   if (traj_points.size() != traj_polygons.size()) {
     RCLCPP_ERROR(
       logger_, "The size of trajectory points and polygons do not match: %zu vs %zu",
@@ -190,10 +197,12 @@ std::optional<CollisionPointWithDist> ObstacleStop::get_nearest_collision_point(
   return std::nullopt;
 }
 
+// motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:520-578
 void ObstacleStop::upsert_pointcloud_stop_candidates(
   const CollisionPointWithDist & nearest_collision_point,
   const std::vector<TrajectoryPoint> & traj_points, rclcpp::Time latest_point_cloud_time)
 {
+  // autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   const auto & vel_params = pointcloud_segmentation_param_.velocity_estimation;
   const auto & assoc_params = pointcloud_segmentation_param_.time_series_association;
 
@@ -245,12 +254,14 @@ void ObstacleStop::upsert_pointcloud_stop_candidates(
   pointcloud_stop_candidates.push_back(new_stop_candidate);
 }
 
+// motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:582-686
 std::vector<StopObstacle> ObstacleStop::filter_stop_obstacle_for_point_cloud(
   const nav_msgs::msg::Odometry & odometry, const std::vector<TrajectoryPoint> & traj_points,
   const std::vector<TrajectoryPoint> & decimated_traj_points, const Pointcloud & point_cloud,
   const VehicleInfo & vehicle_info, const double x_offset_to_bumper,
   const TrajectoryPolygonCollisionCheck & trajectory_polygon_collision_check)
 {
+  // autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
   const auto & filtering_param =
     obstacle_filtering_params_.at(StopObstacleClassification::Type::POINTCLOUD);
 
@@ -341,6 +352,7 @@ std::vector<StopObstacle> ObstacleStop::filter_stop_obstacle_for_point_cloud(
   return stop_obstacles;
 }
 
+// motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:1368-1391
 DetectionPolygon ObstacleStop::get_trajectory_polygon(
   const std::vector<TrajectoryPoint> & decimated_traj_points, const VehicleInfo & vehicle_info,
   const geometry_msgs::msg::Pose & current_ego_pose, const PolygonParam & polygon_param,
