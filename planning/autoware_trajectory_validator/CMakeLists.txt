@@ -86,20 +86,6 @@ else()
   target_link_libraries(${trajectory_validator_lib_target} "${cpp_typesupport_target}")
 endif()
 
-ament_auto_add_executable(pcc_bag_runner
-  src/tool/pcc_bag_runner.cpp
-)
-target_link_libraries(pcc_bag_runner
-  autoware_trajectory_validator_plugins
-)
-
-ament_auto_add_executable(pcc_path_analyzer
-  src/tool/pcc_path_analyzer.cpp
-)
-target_link_libraries(pcc_path_analyzer
-  autoware_trajectory_validator_plugins
-)
-
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_cmake_ros REQUIRED)
