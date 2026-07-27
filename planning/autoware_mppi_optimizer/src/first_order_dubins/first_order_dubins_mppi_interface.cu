@@ -408,6 +408,7 @@ struct FirstOrderDubinsMppiInterface::Impl
   bool ignore_obstacles{false};
   bool ignore_drivable_area{false};
   bool force_cold_start_each_step{false};
+  bool skip_if_invalid{false};
 
   Impl() : feedback(&model, kDt), sampler(SAMPLER::SAMPLING_PARAMS_T{}) {}
 
@@ -741,7 +742,8 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
   setDebugTrajectoryLogging(
     options.enable_debug_trajectory_log, options.debug_trajectory_log_directory);
   setAblationOptions(
-    options.ignore_obstacles, options.ignore_drivable_area, options.force_cold_start_each_step);
+    options.ignore_obstacles, options.ignore_drivable_area, options.force_cold_start_each_step,
+    options.skip_if_invalid);
 }
 
 void FirstOrderDubinsMppiInterface::setDebugTrajectoryLogging(
@@ -756,7 +758,7 @@ void FirstOrderDubinsMppiInterface::setDebugTrajectoryLogging(
 
 void FirstOrderDubinsMppiInterface::setAblationOptions(
   const bool ignore_obstacles, const bool ignore_drivable_area,
-  const bool force_cold_start_each_step)
+  const bool force_cold_start_each_step, const bool skip_if_invalid)
 {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -764,12 +766,13 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
   impl_->ignore_obstacles = ignore_obstacles;
   impl_->ignore_drivable_area = ignore_drivable_area;
   impl_->force_cold_start_each_step = force_cold_start_each_step;
+  impl_->skip_if_invalid = skip_if_invalid;
   RCLCPP_INFO(
     mppiLogger(),
     "MPPI ablation options: ignore_obstacles=%s ignore_drivable_area=%s "
-    "force_cold_start_each_step=%s",
+    "force_cold_start_each_step=%s skip_if_invalid=%s",
     ignore_obstacles ? "true" : "false", ignore_drivable_area ? "true" : "false",
-    force_cold_start_each_step ? "true" : "false");
+    force_cold_start_each_step ? "true" : "false", skip_if_invalid ? "true" : "false");
 }
 
 bool FirstOrderDubinsMppiInterface::copySampleCostDistribution(
@@ -888,6 +891,7 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
 
   float max_pos_delta = 0.0F;
   float max_vel_delta = 0.0F;
+  int crash_status = 0;
   size_t i = 0;
   for (auto & out_point : output.points) {
     if (i >= num_points) {
@@ -905,6 +909,11 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
       use_final ? x_final(yaw_idx) : state_trajectory(yaw_idx, control_col + 1);
     const float tracked_v =
       use_final ? x_final(vel_x_idx) : state_trajectory(vel_x_idx, control_col + 1);
+
+    if (impl_->skip_if_invalid && crash_status == 0) {
+      (void)impl_->cost.detectAndLatchCrash(
+        tracked_x, tracked_y, tracked_yaw, control_col, &crash_status);
+    }
 
     const float ref_x = static_cast<float>(in_point.pose.position.x);
     const float ref_y = static_cast<float>(in_point.pose.position.y);
@@ -958,6 +967,16 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
     elapsed_ms, impl_->tracking_start_idx, impl_->step_count, output.points.size(), num_points,
     result.debug.rollouts.size(), tracked_objects.objects.size(), control.accel_cmd,
     control.steer_cmd, result.debug.baseline_cost, max_pos_delta, max_vel_delta);
+
+  if (impl_->skip_if_invalid && crash_status != 0) {
+    result.trajectory = input;
+    result.debug.reference_trajectory = input;
+    result.debug.optimized_trajectory = input;
+    RCLCPP_WARN(
+      mppiLogger(),
+      "MPPI output rejected with crash_status=%d; returning the input trajectory unchanged",
+      crash_status);
+  }
 
   return result;
 }

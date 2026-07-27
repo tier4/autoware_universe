@@ -25,10 +25,11 @@ struct FirstOrderDubinsMppiRuntimeOptions
 {
   bool enable_debug_trajectory_log{false};
   /** Empty -> $XDG_CACHE_HOME/autoware/mppi_debug_log or $HOME/.cache/autoware/mppi_debug_log. */
-  std::string debug_trajectory_log_directory{};
+  std::string debug_trajectory_log_directory;
   bool ignore_obstacles{false};
   bool ignore_drivable_area{false};
   bool force_cold_start_each_step{false};
+  bool skip_if_invalid{false};
 };
 
 }  // namespace autoware::mppi_optimizer
