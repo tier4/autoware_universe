@@ -221,7 +221,7 @@ void TrajectoryOptimizer::on_traj([[maybe_unused]] const CandidateTrajectories::
   const double elapsed_ms =
     std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_opt_start)
       .count();
-  RCLCPP_INFO(
+  RCLCPP_DEBUG(
     get_logger(),
     "Trajectory optimizer: total execution time %.3f ms (%zu candidate trajectories, %zu plugins)",
     elapsed_ms, output_trajectories.candidate_trajectories.size(), plugins_.size());
