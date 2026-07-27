@@ -33,6 +33,9 @@ namespace autoware::trajectory_validator::plugin::safety
 void CollisionCheckFilter::update_parameters(const validator::Params & node_params)
 {
   global_params_ = GlobalParams(node_params.collision_check.global_setting);
+  const auto & stop_tracking_params = node_params.collision_check.drac.stop_tracking;
+  stop_tracker_.ego.set_parameters(StopTrackingParams(stop_tracking_params.ego));
+  stop_tracker_.object.set_parameters(StopTrackingParams(stop_tracking_params.object));
 
   drac_param_map_ = create_param_map_per_object<DracParams>(node_params);
   rss_param_map_ = create_param_map_per_object<RssParams>(node_params);
@@ -100,7 +103,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
   const CandidateTrajectory & candidate_trajectory, const FilterContext & context)
 {
   const auto & traj_points = candidate_trajectory.points;
-  if (!context.predicted_objects || context.predicted_objects->objects.empty()) {
+
+  if (!context.odometry || !context.predicted_objects) {
     clear_detection_times();
     return {};  // No objects to check collision with
   }
@@ -116,8 +120,8 @@ CollisionCheckFilter::result_t CollisionCheckFilter::is_feasible(
     *vehicle_info_ptr_);
 
   const auto drac_artifact = collision_timing_assessment::assess(
-    ego_trajectory_cache, candidate_trajectory.turn_indicators_command, context, drac_param_map_,
-    global_params_);
+    ego_trajectory_cache, candidate_trajectory.turn_indicators_command, *context.odometry,
+    *context.predicted_objects, stop_tracker_, drac_param_map_, global_params_);
   const auto rss_artifact = rss_deceleration::assess(ego_trajectory_cache, context, rss_param_map_);
 
   auto planning_factors = reporter::process_collision_artifacts(

@@ -174,13 +174,8 @@ TEST(TrajectoryFeasibilityFilterTest, InfeasibleWhenVelocityDeviationExceedsMax)
 {
   TrajectoryPoints traj_points = {
     create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
-    create_trajectory_point(1.0, 0.0, 0.0, 5.0, 0.0, 1.0),
-    create_trajectory_point(2.0, 0.0, 0.0, 5.0, 0.0, 2.0)};
 
-  VehicleInfo vehicle_info;
-  vehicle_info.wheel_base_m = 2.5;
-
-  TrajectoryFeasibilityFilter filter;
+    TrajectoryFeasibilityFilter filter;
   validator::Params params;
   params.trajectory_feasibility.max_velocity_deviation = 0.1;
   filter.update_parameters(params);
@@ -188,6 +183,58 @@ TEST(TrajectoryFeasibilityFilterTest, InfeasibleWhenVelocityDeviationExceedsMax)
 
   FilterContext context;
   context.odometry = create_odometry(1.0, 0.0, 0.0, 0.0);
+  CandidateTrajectory candidate_trajectory;
+  candidate_trajectory.points = traj_points;
+  auto result = filter.is_feasible(candidate_trajectory, context);
+}
+
+TEST(TrajectoryFeasibilityFilterTest, InfeasibleWhenLateralAccelerationExceedsMax)
+{
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 10.0, 0.0, 0.0),
+    create_trajectory_point(1.0, 0.0, 0.0, 10.0, 0.0, 1.0),
+    create_trajectory_point(2.0, 0.0, 0.0, 10.0, 0.0, 2.0),
+    create_trajectory_point(2.0, 1.0, 0.0, 10.0, 0.0, 3.0),
+    create_trajectory_point(2.0, 2.0, 0.0, 10.0, 0.0, 4.0)};
+
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+
+  TrajectoryFeasibilityFilter filter;
+
+  validator::Params params;
+  params.trajectory_feasibility.max_lateral_acceleration = 1.0;
+  filter.update_parameters(params);
+  filter.set_vehicle_info(vehicle_info);
+
+  FilterContext context;
+  CandidateTrajectory candidate_trajectory;
+  candidate_trajectory.points = traj_points;
+  auto result = filter.is_feasible(candidate_trajectory, context);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_FALSE(result.value().is_feasible);
+}
+
+TEST(TrajectoryFeasibilityFilterTest, InfeasibleWhenDistanceDeviationExceedsMax)
+{
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
+    create_trajectory_point(1.0, 0.0, 0.0, 5.0, 0.0, 1.0),
+    create_trajectory_point(2.0, 0.0, 0.0, 5.0, 0.0, 2.0)};
+
+  VehicleInfo vehicle_info;
+  vehicle_info.wheel_base_m = 2.5;
+
+  TrajectoryFeasibilityFilter filter;
+
+  validator::Params params;
+  params.trajectory_feasibility.max_distance_deviation = 0.1;
+  filter.update_parameters(params);
+  filter.set_vehicle_info(vehicle_info);
+
+  FilterContext context;
+  context.odometry = create_odometry(1.0, 1.0, 0.0);
   CandidateTrajectory candidate_trajectory;
   candidate_trajectory.points = traj_points;
   auto result = filter.is_feasible(candidate_trajectory, context);
@@ -348,13 +395,40 @@ TEST(IsVelocityDeviationOkTest, FalseWhenVelocityDeviationAboveMax)
 {
   TrajectoryPoints traj_points = {
     create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
+
+    FilterContext context;
+  context.odometry = create_odometry(1.0, 0.0, 0.0, 0.0);
+
+  const auto [_, is_ok] = is_velocity_deviation_ok(traj_points, context, 0.1);
+
+  EXPECT_FALSE(is_ok);
+}
+
+TEST(IsLateralAccelerationOkTest, FalseWhenAnyLateralAccelerationAboveMax)
+{
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 10.0, 0.0, 0.0),
+    create_trajectory_point(1.0, 0.0, 0.0, 10.0, 0.0, 1.0),
+    create_trajectory_point(2.0, 0.0, 0.0, 10.0, 0.0, 2.0),
+    create_trajectory_point(2.0, 1.0, 0.0, 10.0, 0.0, 3.0),
+    create_trajectory_point(2.0, 2.0, 0.0, 10.0, 0.0, 4.0)};
+
+  const auto [_, is_ok] = is_lateral_acceleration_ok(traj_points, 1.0);
+
+  EXPECT_FALSE(is_ok);
+}
+
+TEST(IsDistanceDeviationOkTest, FalseWhenDistanceDeviationAboveMax)
+{
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
     create_trajectory_point(1.0, 0.0, 0.0, 5.0, 0.0, 1.0),
     create_trajectory_point(2.0, 0.0, 0.0, 5.0, 0.0, 2.0)};
 
   FilterContext context;
-  context.odometry = create_odometry(1.0, 0.0, 0.0, 0.0);
+  context.odometry = create_odometry(1.0, 1.0, 0.0);
 
-  const auto [_, is_ok] = is_velocity_deviation_ok(traj_points, context, 0.1);
+  const auto [_, is_ok] = is_distance_deviation_ok(traj_points, context, 0.1);
 
   EXPECT_FALSE(is_ok);
 }

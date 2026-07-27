@@ -16,6 +16,7 @@
 
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_cost_params_ros.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_interface.hpp"
+#include "autoware/mppi_optimizer/first_order_dubins_mppi_runtime_options_ros.hpp"
 #include "autoware/mppi_optimizer/first_order_dubins_mppi_vehicle_params_ros.hpp"
 
 #include <rclcpp_components/register_node_macro.hpp>
@@ -37,8 +38,10 @@ MppiOptimizer::MppiOptimizer(const rclcpp::NodeOptions & options) : Node("mppi_o
   mppi_interface_ = std::make_unique<FirstOrderDubinsMppiInterface>();
   declare_first_order_dubins_mppi_cost_params(*this);
   declare_first_order_dubins_mppi_vehicle_dynamics_params(*this);
+  declare_first_order_dubins_mppi_runtime_options(*this);
   mppi_interface_->setCostParams(get_first_order_dubins_mppi_cost_params(*this));
   mppi_interface_->setVehicleParams(get_first_order_dubins_mppi_vehicle_params(*this));
+  mppi_interface_->setRuntimeOptions(get_first_order_dubins_mppi_runtime_options(*this));
 }
 
 void MppiOptimizer::on_trajectory(const Trajectory::ConstSharedPtr msg)
