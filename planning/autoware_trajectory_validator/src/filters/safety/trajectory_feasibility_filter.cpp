@@ -21,6 +21,9 @@
 #include <autoware_utils_math/unit_conversion.hpp>
 #include <builtin_interfaces/msg/duration.hpp>
 
+#include <autoware_planning_msgs/msg/trajectory.hpp>
+
+#include <angles/angles.h>
 #include <lanelet2_core/geometry/LaneletMap.h>
 #include <tf2/utils.h>
 
