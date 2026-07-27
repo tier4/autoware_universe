@@ -31,6 +31,10 @@ validator:
       type: double
       default_value: 9.8
       description: Maximum allowed absolute lateral acceleration (m/s^2)
+    max_distance_deviation:
+      type: double
+      default_value: 100.0
+      description: Maximum allowed absolute lateral distance deviation from the ego pose (m)
       read_only: false
     max_steering_angle:
       type: double

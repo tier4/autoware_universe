@@ -289,7 +289,7 @@
           "required": [],
           "additionalProperties": false
         },
-        "vehicle_constraint": {
+        "trajectory_feasibility": {
           "type": "object",
           "properties": {
             "max_speed": {
@@ -308,6 +308,12 @@
               "type": "number",
               "description": "Maximum allowed deceleration magnitude [m/s²] (positive value representing deceleration).",
               "default": 5.0,
+              "minimum": 0.0
+            },
+            "max_distance_deviation": {
+              "type": "number",
+              "description": "Maximum allowed distance deviation from the reference trajectory [m].",
+              "default": 100.0,
               "minimum": 0.0
             },
             "max_steering_angle": {

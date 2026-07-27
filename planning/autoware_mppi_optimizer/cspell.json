@@ -1,5 +1,27 @@
 {
   "version": "0.2",
   "language": "en",
-  "words": ["cudacc", "cufft", "curand", "cuh", "dubins", "MPPI", "mppi", "rollouts"]
+  "words": [
+    "autoplay",
+    "cudacc",
+    "cufft",
+    "curand",
+    "cuh",
+    "datalim",
+    "dpsi",
+    "dubins",
+    "execv",
+    "expt",
+    "fignum",
+    "gridspec",
+    "labelcolor",
+    "MPPI",
+    "mppi",
+    "pythonsecurity",
+    "relim",
+    "retuned",
+    "rollouts",
+    "runpy",
+    "valinit"
+  ]
 }
