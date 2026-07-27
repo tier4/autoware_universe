@@ -45,11 +45,26 @@ double calc_x_offset_to_bumper(const bool is_driving_forward, const VehicleInfo 
 
 // motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:157-180
 double calc_braking_dist_along_trajectory(
-  [[maybe_unused]] const StopObstacleClassification::Type label, const double lon_vel,
-  const RSSParam & rss_params)
+  const StopObstacleClassification::Type label, const double lon_vel, const RSSParam & rss_params)
 {
+  const double braking_acc = [&]() {
+    if (label == StopObstacleClassification::Type::POINTCLOUD) {
+      return rss_params.pointcloud_deceleration;
+    }
+    if (
+      label == StopObstacleClassification::Type::UNKNOWN ||
+      label == StopObstacleClassification::Type::PEDESTRIAN) {
+      return rss_params.no_wheel_objects_deceleration;
+    }
+    if (
+      label == StopObstacleClassification::Type::BICYCLE ||
+      label == StopObstacleClassification::Type::MOTORCYCLE) {
+      return rss_params.two_wheel_objects_deceleration;
+    }
+    return rss_params.vehicle_objects_deceleration;
+  }();
   const double error_considered_vel = std::max(lon_vel + rss_params.velocity_offset, 0.0);
-  return error_considered_vel * error_considered_vel * 0.5 / -rss_params.pointcloud_deceleration;
+  return error_considered_vel * error_considered_vel * 0.5 / -braking_acc;
 }
 
 // motion_velocity_obstacle_stop_module/obstacle_stop_module.cpp:183-205
@@ -131,7 +146,7 @@ std::optional<CollisionPointWithDist> ObstacleStop::get_nearest_collision_point(
   const VehicleInfo & vehicle_info) const
 {
   // autoware_utils_debug::ScopedTimeTrack st(__func__, *time_keeper_);
-  
+
   if (traj_points.size() != traj_polygons.size()) {
     RCLCPP_ERROR(
       logger_, "The size of trajectory points and polygons do not match: %zu vs %zu",
@@ -166,7 +181,7 @@ std::optional<CollisionPointWithDist> ObstacleStop::get_nearest_collision_point(
         if (dist_from_base_link > rough_dist_th) {
           continue;
         }
-        autoware_utils_geometry::Point2d obstacle_point_2d{obstacle_point.x, obstacle_point.y};
+        Point2d obstacle_point_2d{obstacle_point.x, obstacle_point.y};
         if (boost::geometry::within(obstacle_point_2d, traj_polygons.at(traj_index))) {
           collision_geom_points.push_back(obstacle_point);
         }
@@ -313,6 +328,8 @@ std::vector<StopObstacle> ObstacleStop::filter_stop_obstacle_for_point_cloud(
       continue;
     }
 
+    // const double time_delay =
+    //   (clock_->now() - stop_candidate.latest_collision_pointcloud_time).seconds();
     const double time_delay =
       (now_stamp - stop_candidate.latest_collision_pointcloud_time).seconds();
     const double time_compensated_dist_to_collide =

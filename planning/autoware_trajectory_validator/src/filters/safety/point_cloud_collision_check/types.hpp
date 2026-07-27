@@ -38,6 +38,7 @@ namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_
 {
 using autoware_planning_msgs::msg::TrajectoryPoint;
 using ObjectClassification = autoware_perception_msgs::msg::ObjectClassification;
+using Point2d = autoware_utils_geometry::Point2d;
 using Polygon2d = autoware_utils_geometry::Polygon2d;
 using Shape = autoware_perception_msgs::msg::Shape;
 using UUID = unique_identifier_msgs::msg::UUID;

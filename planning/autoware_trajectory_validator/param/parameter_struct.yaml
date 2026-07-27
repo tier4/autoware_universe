@@ -592,6 +592,21 @@ validator:
         default_value: true
         description: If true, use the obstacle braking distance for RSS-style stops.
         read_only: false
+      two_wheel_objects_deceleration:
+        type: double
+        default_value: -3.0
+        description: Assumed deceleration for BICYCLE and MOTORCYCLE (m/s^2, negative). Unused while only pointcloud obstacles are handled; kept to match the porting source.
+        read_only: false
+      vehicle_objects_deceleration:
+        type: double
+        default_value: -1.2
+        description: Assumed deceleration for CAR, TRUCK and other vehicles (m/s^2, negative). Unused while only pointcloud obstacles are handled; kept to match the porting source.
+        read_only: false
+      no_wheel_objects_deceleration:
+        type: double
+        default_value: -10.0
+        description: Assumed deceleration for PEDESTRIAN and UNKNOWN (m/s^2, negative). Unused while only pointcloud obstacles are handled; kept to match the porting source.
+        read_only: false
       pointcloud_deceleration:
         type: double
         default_value: -1.0

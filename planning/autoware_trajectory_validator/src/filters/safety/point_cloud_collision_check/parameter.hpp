@@ -91,6 +91,10 @@ struct PointcloudSegmentationParam
 struct RSSParam
 {
   bool use_rss_stop{};
+
+  double two_wheel_objects_deceleration{};
+  double vehicle_objects_deceleration{};
+  double no_wheel_objects_deceleration{};
   double pointcloud_deceleration{};
   double velocity_offset{};
 };
@@ -102,7 +106,6 @@ struct StopPlanningParam
   double obstacle_velocity_threshold_enter_fixed_stop{};
 };
 
-
 struct TrajectoryPolygonParam
 {
   bool enable_to_consider_current_pose{};
@@ -112,7 +115,6 @@ struct TrajectoryPolygonParam
   double decimate_trajectory_step_length{};
   double goal_extended_trajectory_length{};
 };
-
 
 struct Params
 {
@@ -175,6 +177,12 @@ struct Params
 
     stop_planning.stop_margin = p.stop_margin;
     stop_planning.rss_params.use_rss_stop = p.rss_params.use_rss_stop;
+    stop_planning.rss_params.two_wheel_objects_deceleration =
+      p.rss_params.two_wheel_objects_deceleration;
+    stop_planning.rss_params.vehicle_objects_deceleration =
+      p.rss_params.vehicle_objects_deceleration;
+    stop_planning.rss_params.no_wheel_objects_deceleration =
+      p.rss_params.no_wheel_objects_deceleration;
     stop_planning.rss_params.pointcloud_deceleration = p.rss_params.pointcloud_deceleration;
     stop_planning.rss_params.velocity_offset = p.rss_params.velocity_offset;
     stop_planning.obstacle_velocity_threshold_enter_fixed_stop =
