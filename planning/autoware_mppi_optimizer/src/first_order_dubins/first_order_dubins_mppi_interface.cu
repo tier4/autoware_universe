@@ -23,9 +23,9 @@
 #include <mppi/cost_functions/moving_car_obstacles.hpp>
 #include <mppi/dynamics/dubins/first_order_dubins_bicycle.cuh>
 #include <mppi/feedback_controllers/zero_feedback.cuh>
-#include <mppi/path/path2d.hpp>
-#include <mppi/path/path_projection.hpp>
+#include <mppi/sampling_distributions/colored_noise/colored_noise.cuh>
 #include <mppi/sampling_distributions/gaussian/gaussian.cuh>
+#include <mppi/sampling_distributions/smooth-MPPI/smooth-MPPI.cuh>
 #include <mppi/utils/gpu_err_chk.cuh>
 #include <rclcpp/logging.hpp>
 
@@ -53,9 +53,8 @@ namespace
 constexpr int kMppiHorizon = 80;
 constexpr int kRefHorizon = kMppiHorizon;
 constexpr float kDt = 0.1F;
+constexpr size_t kMaxIter = 10;
 constexpr int kNumRollouts = 32 * 1024;
-constexpr float kInitArcLength = 1.5F;
-constexpr size_t kTrackingIndexResetThreshold = 15U;
 // constexpr int kMaxVizRollouts = 200;  // rollout viz disabled
 constexpr char kLoggerName[] = "first_order_dubins_mppi";
 
@@ -67,7 +66,17 @@ rclcpp::Logger mppiLogger()
 using DYN = FirstOrderDubinsBicycle;
 using COST = FirstOrderDubinsBicycleCost<kRefHorizon>;
 using FB = ZeroFeedback<DYN, kMppiHorizon>;
+
+#define USE_COLOURED_NOISE
+
+#ifdef USE_COLOURED_NOISE
+using SAMPLER = mppi::sampling_distributions::ColoredNoiseDistribution<DYN::DYN_PARAMS_T>;
+#elif defined(USE_SMOOTH_MPPI)
+using SAMPLER = mppi::sampling_distributions::SmoothMPPIDistribution<DYN::DYN_PARAMS_T>;
+#else
 using SAMPLER = mppi::sampling_distributions::GaussianDistribution<DYN::DYN_PARAMS_T>;
+#endif
+
 using Mppi = VanillaMPPIController<DYN, COST, FB, kMppiHorizon, kNumRollouts, SAMPLER>;
 
 void applyUserCostParams(
@@ -115,20 +124,6 @@ void fromHostState(DYN::state_array & x, const FirstOrderDubinsMppiState & state
   x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X)) = state.vel_x;
 }
 
-mppi::path::Path2D trajectoryToPath2D(const Trajectory & trajectory)
-{
-  std::vector<std::pair<float, float>> control_xy;
-  control_xy.reserve(trajectory.points.size());
-  for (const auto & point : trajectory.points) {
-    control_xy.emplace_back(
-      static_cast<float>(point.pose.position.x), static_cast<float>(point.pose.position.y));
-  }
-  if (control_xy.size() < 2U) {
-    throw std::runtime_error("Trajectory must contain at least two points for MPPI tracking");
-  }
-  return mppi::path::Path2D::catmullRom(control_xy, false, 8);
-}
-
 float yawFromOdometry(const Odometry & odometry)
 {
   return static_cast<float>(tf2::getYaw(odometry.pose.pose.orientation));
@@ -159,45 +154,40 @@ geometry_msgs::msg::Quaternion quaternionFromYaw(const float yaw)
   return tf2::toMsg(quaternion);
 }
 
-size_t findTrackingStartIndex(const Trajectory & trajectory, const Odometry & odometry)
-{
-  const float ego_x = static_cast<float>(odometry.pose.pose.position.x);
-  const float ego_y = static_cast<float>(odometry.pose.pose.position.y);
-
-  const auto dist_sq_to_ego = [&](const auto & point) {
-    const float dx = static_cast<float>(point.pose.position.x) - ego_x;
-    const float dy = static_cast<float>(point.pose.position.y) - ego_y;
-    return dx * dx + dy * dy;
-  };
-
-  const auto nearest = std::min_element(
-    trajectory.points.begin(), trajectory.points.end(),
-    [&](const auto & a, const auto & b) { return dist_sq_to_ego(a) < dist_sq_to_ego(b); });
-  return static_cast<size_t>(std::distance(trajectory.points.begin(), nearest));
-}
-
+/**
+ * Build the MPPI cost reference horizon.
+ *
+ * Diffusion trajectories are already time-offset (first point ≈ t = dt = 0.1 s). MPPI costs the
+ * *post-step* state at each horizon index t (step then cost with ref[t]), so:
+ *   ref[t] = input trajectory points[t] as published (no ego prepend, no path projection)
+ * Empty input falls back to holding the ego sample.
+ */
 std::vector<mppi::path::PathReferenceSample> buildDiffusionReferenceHorizon(
-  const Trajectory & trajectory, const size_t start_idx, const mppi::path::Path2D & path)
+  const Trajectory & trajectory, const float ego_x, const float ego_y, const float ego_yaw,
+  const float ego_v)
 {
   std::vector<mppi::path::PathReferenceSample> ref(static_cast<size_t>(kRefHorizon));
-  float arc_hint = kInitArcLength;
+  if (trajectory.points.empty()) {
+    for (size_t k = 0; k < ref.size(); ++k) {
+      ref[k].t = static_cast<float>(k + 1U) * kDt;
+      ref[k].x = ego_x;
+      ref[k].y = ego_y;
+      ref[k].yaw = ego_yaw;
+      ref[k].v = ego_v;
+      ref[k].arc_length_s = 0.0F;
+    }
+    return ref;
+  }
 
-  size_t k = 0;
-  for (auto & sample : ref) {
-    const size_t idx = std::min(start_idx + k, trajectory.points.size() - 1U);
+  for (size_t k = 0; k < ref.size(); ++k) {
+    const size_t idx = std::min(k, trajectory.points.size() - 1U);
     const auto & point = trajectory.points[idx];
-
-    sample.t = static_cast<float>(k) * kDt;
-    sample.x = static_cast<float>(point.pose.position.x);
-    sample.y = static_cast<float>(point.pose.position.y);
-    sample.yaw = static_cast<float>(tf2::getYaw(point.pose.orientation));
-    sample.v = point.longitudinal_velocity_mps;
-
-    const mppi::path::PathProjection proj =
-      mppi::path::projectPoseOntoPath(path, sample.x, sample.y, arc_hint);
-    sample.arc_length_s = proj.arc_length_s;
-    arc_hint = proj.arc_length_s;
-    ++k;
+    ref[k].t = static_cast<float>(k + 1U) * kDt;
+    ref[k].x = static_cast<float>(point.pose.position.x);
+    ref[k].y = static_cast<float>(point.pose.position.y);
+    ref[k].yaw = static_cast<float>(tf2::getYaw(point.pose.orientation));
+    ref[k].v = point.longitudinal_velocity_mps;
+    ref[k].arc_length_s = 0.0F;
   }
 
   return ref;
@@ -417,12 +407,13 @@ struct FirstOrderDubinsMppiInterface::Impl
   bool drivable_area_capacity_warning_emitted{false};
   int step_count{0};
   size_t tracking_start_idx{0U};
-  float arc_length{kInitArcLength};
   float sim_time{0.0F};
   bool ignore_obstacles{false};
   bool ignore_drivable_area{false};
   bool force_cold_start_each_step{false};
   bool skip_if_invalid{false};
+  /** Warm-start u_nom from shifted previous u_opt when available. */
+  bool use_last_control_as_nominal{false};
 
   Impl() : feedback(&model, kDt), sampler(SAMPLER::SAMPLING_PARAMS_T{}) {}
 
@@ -468,21 +459,36 @@ struct FirstOrderDubinsMppiInterface::Impl
     SAMPLER::SAMPLING_PARAMS_T sp{};
     sp.std_dev[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD)] =
       0.35F;
-    // Steer exploration scales with wheelbase: larger vehicles need larger delta-steer to change
-    // yaw.
+    // Steer exploration: keep modest. Large i.i.d. Gaussian std injects high-frequency δ_cmd
+    // jitter into the importance-weighted average. Lateral reach comes from optimizing around
+    // a zero (or explicit) steer seed, not from huge white noise.
+    // Historical: 0.001 * (L/0.32) ≈ 0.015 rad on j6; 0.01 * (L/0.32) ≈ 0.15 rad was too noisy.
     constexpr float kReferenceWheelBase = 0.32F;
-    constexpr float kReferenceSteerStd = 0.001F;
+    constexpr float kReferenceSteerStd = 2e-3F;
     const float steer_std = kReferenceSteerStd * (vehicle_params.wheel_base / kReferenceWheelBase);
 
     sp.std_dev[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD)] =
       steer_std;
     sp.sum_strides = std::max(32, (kNumRollouts + 1023) / 1024);
+#ifdef USE_COLOURED_NOISE
+    // Power-law PSD exponents (0 = white, 1 = pink, 2 = brown). Pink steer keeps lateral
+    // reach while cutting high-frequency δ_cmd chatter from i.i.d. Gaussian samples.
+    sp.exponents[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::ACCELERATION_CMD)] =
+      0.5F;
+    sp.exponents[static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD)] = 2.0F;
+#elif defined(USE_SMOOTH_MPPI)
+    // Smooth-MPPI samples action derivatives and integrates with dt.
+    sp.dt = kDt;
+#endif
     sampler = SAMPLER(sp);
 
+    // Temperature must come from user_cost_params_.lambda (yaml / retune --set), not a
+    // compile-time constant — otherwise slider/param changes never reach the softmax.
+    const float lambda = user_cost_params_.lambda;
     controller = std::make_unique<Mppi>(
-      &model, &cost, &feedback, &sampler, kDt, 1, user_cost_params_.lambda, 0.0F, kMppiHorizon,
-      u_nom);
+      &model, &cost, &feedback, &sampler, kDt, kMaxIter, lambda, 0.0F, kMppiHorizon, u_nom);
     auto cp = controller->getParams();
+    cp.lambda_ = lambda;
     cp.dynamics_rollout_dim_ = dim3(32, 2, 1);
     cp.cost_rollout_dim_ = dim3(32, 2, 1);
     cp.seed_ = 1U;
@@ -494,7 +500,6 @@ struct FirstOrderDubinsMppiInterface::Impl
     initialized = true;
     step_count = 0;
     tracking_start_idx = 0U;
-    arc_length = kInitArcLength;
     sim_time = 0.0F;
 
     RCLCPP_INFO(
@@ -517,8 +522,16 @@ struct FirstOrderDubinsMppiInterface::Impl
   {
     step_count = 0;
     u_opt.setZero();
-    arc_length = kInitArcLength;
     sim_time = 0.0F;
+  }
+
+  void seedNominalControlFromLastOptimized()
+  {
+    // Drop the control already applied at the previous cycle; hold the terminal command.
+    for (int t = 0; t < kMppiHorizon - 1; ++t) {
+      u_nom.col(t) = u_opt.col(t + 1);
+    }
+    u_nom.col(kMppiHorizon - 1) = u_opt.col(kMppiHorizon - 1);
   }
 
   void seedNominalControlFromDiffusionReference(
@@ -535,28 +548,27 @@ struct FirstOrderDubinsMppiInterface::Impl
     const float min_accel = vehicle_params.min_accel();
     const float max_accel = vehicle_params.max_accel();
     const float max_steer = vehicle_params.max_steer_angle;
-    const float wheel_base = vehicle_params.wheel_base;
 
     for (int t = 0; t < kMppiHorizon; ++t) {
       const size_t idx = std::min(start_idx + static_cast<size_t>(t), reference.points.size() - 1U);
       const auto & point = reference.points[idx];
       u_nom(accel_idx, t) = std::clamp(point.acceleration_mps2, min_accel, max_accel);
 
-      float steer = point.front_wheel_angle_rad;
-      if (std::abs(steer) <= 1.0E-6F && idx + 1U < reference.points.size()) {
-        const auto & next = reference.points[idx + 1U];
-        const float dx = static_cast<float>(next.pose.position.x - point.pose.position.x);
-        const float dy = static_cast<float>(next.pose.position.y - point.pose.position.y);
-        const float ds = std::hypot(dx, dy);
-        if (ds > 1.0E-6F) {
-          const float yaw0 = static_cast<float>(tf2::getYaw(point.pose.orientation));
-          const float yaw1 = static_cast<float>(tf2::getYaw(next.pose.orientation));
-          const float dyaw = std::atan2(std::sin(yaw1 - yaw0), std::cos(yaw1 - yaw0));
-          steer = std::atan(wheel_base * (dyaw / ds));
-        }
-      }
-      u_nom(steer_idx, t) = std::clamp(steer, -max_steer, max_steer);
+      // Only use an explicit steer command if the reference provides one. Do NOT derive steer
+      // from path curvature: that pre-solves lateral tracking inside u_nom, so MPPI δ_cmd
+      // barely moves when track/heading costs are retuned (samples stay glued to the seed).
+      u_nom(steer_idx, t) = std::clamp(point.front_wheel_angle_rad, -max_steer, max_steer);
     }
+  }
+
+  void seedNominalControl(const Trajectory & reference, const size_t start_idx)
+  {
+    // After a tracking reset, step_count is 0 and u_opt was cleared — fall back to DP seed.
+    if (use_last_control_as_nominal && step_count > 0) {
+      seedNominalControlFromLastOptimized();
+      return;
+    }
+    seedNominalControlFromDiffusionReference(reference, start_idx);
   }
 
   void updateDiffusionReference(
@@ -588,21 +600,17 @@ struct FirstOrderDubinsMppiInterface::Impl
         mppiLogger(), "Drivable-area segment count %zu exceeds GPU capacity %d; truncating",
         drivable_area.size(), COST::kMaxDrivableAreaSegments);
     }
-    path = trajectoryToPath2D(reference);
     obstacles.clear();
     // Boundary crash is disabled on this stack (isEgoOutsideDrivableArea always false).
     // ignore_drivable_area remains an ablation API flag; it does not reintroduce road borders.
     (void)ignore_drivable_area;
 
-    const size_t new_start_idx = findTrackingStartIndex(reference, odometry);
-    const bool large_index_jump =
-      step_count > 0 && (new_start_idx > tracking_start_idx + kTrackingIndexResetThreshold ||
-                         tracking_start_idx > new_start_idx + kTrackingIndexResetThreshold);
-    if (step_count == 0 || large_index_jump) {
+    // Diffusion reference is already time-aligned (point[t] ≈ after step t). Seed from index 0.
+    tracking_start_idx = 0U;
+    if (step_count == 0) {
       resetTrackingState();
     }
-    tracking_start_idx = new_start_idx;
-    seedNominalControlFromDiffusionReference(reference, tracking_start_idx);
+    seedNominalControl(reference, tracking_start_idx);
 
     const float ego_yaw = yawFromOdometry(odometry);
     const float ego_v = static_cast<float>(odometry.twist.twist.linear.x);
@@ -622,11 +630,6 @@ struct FirstOrderDubinsMppiInterface::Impl
       steeringTireAngleRad(steering_status), -vehicle_params.max_steer_angle,
       vehicle_params.max_steer_angle);
     x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::STEER_ANGLE)) = ego_steer;
-
-    const mppi::path::PathProjection proj = mppi::path::projectPoseOntoPath(
-      path, x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)),
-      x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y)), arc_length);
-    arc_length = proj.arc_length_s;
   }
 
   void uploadBoundarySegments()
@@ -645,8 +648,11 @@ struct FirstOrderDubinsMppiInterface::Impl
 
   FirstOrderDubinsMppiControl runStep()
   {
-    const std::vector<mppi::path::PathReferenceSample> ref =
-      buildDiffusionReferenceHorizon(diffusion_reference, tracking_start_idx, path);
+    const std::vector<mppi::path::PathReferenceSample> ref = buildDiffusionReferenceHorizon(
+      diffusion_reference, x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)),
+      x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y)),
+      x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::YAW)),
+      x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X)));
     mppi::cost::fillFirstOrderDubinsBicycleCostFromPathReference<kRefHorizon>(cost, ref);
 
     int obstacle_count = 0;
@@ -692,11 +698,6 @@ struct FirstOrderDubinsMppiInterface::Impl
     model.step(x, x_next, xdot, u_apply, y, static_cast<float>(step_count), kDt);
     x = x_next;
 
-    const mppi::path::PathProjection proj = mppi::path::projectPoseOntoPath(
-      path, x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_X)),
-      x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::POS_Y)), arc_length);
-    arc_length = proj.arc_length_s;
-
     ++step_count;
     sim_time += kDt;
 
@@ -708,11 +709,10 @@ struct FirstOrderDubinsMppiInterface::Impl
 
     RCLCPP_DEBUG(
       mppiLogger(),
-      "MPPI track step %d: start_idx=%zu arc_s=%.2f ref_v0=%.2f u_accel=%.3f u_steer=%.3f "
+      "MPPI track step %d: start_idx=%zu ref_v0=%.2f u_accel=%.3f u_steer=%.3f "
       "ego_v=%.2f baseline_cost=%.2f",
-      step_count, tracking_start_idx, arc_length, ref.empty() ? 0.0F : ref.front().v,
-      control.accel_cmd, control.steer_cmd,
-      x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X)),
+      step_count, tracking_start_idx, ref.empty() ? 0.0F : ref.front().v, control.accel_cmd,
+      control.steer_cmd, x(static_cast<int>(FirstOrderDubinsBicycleParams::StateIndex::VEL_X)),
       controller->getBaselineCost());
 
     return control;
@@ -787,9 +787,8 @@ void FirstOrderDubinsMppiInterface::setRuntimeOptions(
     options.enable_debug_trajectory_log, options.debug_trajectory_log_directory);
   setAblationOptions(
     options.ignore_obstacles, options.ignore_drivable_area, options.force_cold_start_each_step,
-    options.skip_if_invalid);
+    options.skip_if_invalid, options.use_last_control_as_nominal);
 }
-
 void FirstOrderDubinsMppiInterface::setDebugTrajectoryLogging(
   const bool enable, const std::string & directory)
 {
@@ -802,7 +801,8 @@ void FirstOrderDubinsMppiInterface::setDebugTrajectoryLogging(
 
 void FirstOrderDubinsMppiInterface::setAblationOptions(
   const bool ignore_obstacles, const bool ignore_drivable_area,
-  const bool force_cold_start_each_step, const bool skip_if_invalid)
+  const bool force_cold_start_each_step, const bool skip_if_invalid,
+  const bool use_last_control_as_nominal)
 {
   if (!impl_) {
     throw std::runtime_error("FirstOrderDubinsMppiInterface implementation is missing");
@@ -817,6 +817,14 @@ void FirstOrderDubinsMppiInterface::setAblationOptions(
     "force_cold_start_each_step=%s skip_if_invalid=%s",
     ignore_obstacles ? "true" : "false", ignore_drivable_area ? "true" : "false",
     force_cold_start_each_step ? "true" : "false", skip_if_invalid ? "true" : "false");
+  impl_->use_last_control_as_nominal = use_last_control_as_nominal;
+  RCLCPP_INFO(
+    mppiLogger(),
+    "MPPI ablation options: ignore_obstacles=%s ignore_drivable_area=%s "
+    "force_cold_start_each_step=%s skip_if_invalid=%s use_last_control_as_nominal=%s",
+    ignore_obstacles ? "true" : "false", ignore_drivable_area ? "true" : "false",
+    force_cold_start_each_step ? "true" : "false", skip_if_invalid ? "true" : "false",
+    use_last_control_as_nominal ? "true" : "false");
 }
 
 bool FirstOrderDubinsMppiInterface::copySampleCostDistribution(
@@ -850,7 +858,7 @@ bool FirstOrderDubinsMppiInterface::copySampleCostDistribution(
 }
 
 FirstOrderDubinsMppiControl FirstOrderDubinsMppiInterface::computeStep(
-  FirstOrderDubinsMppiState & state, float & arc_length, float sim_time)
+  FirstOrderDubinsMppiState & state, float sim_time)
 {
   if (!impl_ || !impl_->initialized) {
     throw std::runtime_error(
@@ -858,11 +866,9 @@ FirstOrderDubinsMppiControl FirstOrderDubinsMppiInterface::computeStep(
   }
 
   fromHostState(impl_->x, state);
-  impl_->arc_length = arc_length;
   impl_->sim_time = sim_time;
   const FirstOrderDubinsMppiControl control = impl_->runStep();
   state = toHostState(impl_->x);
-  arc_length = impl_->arc_length;
   return control;
 }
 
@@ -910,8 +916,9 @@ FirstOrderDubinsMppiOptimizationResult FirstOrderDubinsMppiInterface::optimizeTr
   const int steer_cmd_idx =
     static_cast<int>(FirstOrderDubinsBicycleParams::ControlIndex::STEER_CMD);
 
-  // GPU costs post-step state at timestep t against ref[t] (= DP[t] at time (t+1)*dt).
-  // Map: points[i] <- state[i+1], control[i].
+  // Cost/plot alignment: MPPI costs post-step state at t against ref[t]=DP[t] (DP starts at
+  // ≈dt). Map published points[i] <- state[i+1], control[i] so index 0 is state after first
+  // step vs DP[0] — not ego. Ego is the IC only; it is never a cost or plot sample.
   //
   // Vendor mismatch: GPU rollouts take H steps (mppi_common.cu: t = 0..H-1) and cost the
   // final post-step state x[H], but host getActualStateSeq() only runs H-1 steps

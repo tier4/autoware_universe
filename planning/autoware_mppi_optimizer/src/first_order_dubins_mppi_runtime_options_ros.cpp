@@ -41,6 +41,8 @@ void declare_first_order_dubins_mppi_runtime_options(
   node.declare_parameter(
     param_name(prefix, "force_cold_start_each_step"), defaults.force_cold_start_each_step);
   node.declare_parameter(param_name(prefix, "skip_if_invalid"), defaults.skip_if_invalid);
+  node.declare_parameter(
+    param_name(prefix, "use_last_control_as_nominal"), defaults.use_last_control_as_nominal);
 }
 
 FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
@@ -57,6 +59,8 @@ FirstOrderDubinsMppiRuntimeOptions get_first_order_dubins_mppi_runtime_options(
   options.force_cold_start_each_step =
     node.get_parameter(param_name(prefix, "force_cold_start_each_step")).as_bool();
   options.skip_if_invalid = node.get_parameter(param_name(prefix, "skip_if_invalid")).as_bool();
+  options.use_last_control_as_nominal =
+    node.get_parameter(param_name(prefix, "use_last_control_as_nominal")).as_bool();
   return options;
 }
 
