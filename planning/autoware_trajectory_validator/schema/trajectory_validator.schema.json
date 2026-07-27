@@ -310,6 +310,12 @@
               "default": 5.0,
               "minimum": 0.0
             },
+            "max_distance_deviation": {
+              "type": "number",
+              "description": "Maximum allowed distance deviation from the reference trajectory [m].",
+              "default": 100.0,
+              "minimum": 0.0
+            },
             "max_steering_angle": {
               "type": "number",
               "description": "Maximum allowed front-wheel steering angle [rad].",
