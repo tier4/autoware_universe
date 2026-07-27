@@ -15,6 +15,7 @@
 #ifndef FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK__DEBUG_MARKER_HPP_
 #define FILTERS__SAFETY__POINT_CLOUD_COLLISION_CHECK__DEBUG_MARKER_HPP_
 
+#include "planner_data_lite.hpp"
 #include "types.hpp"
 
 #include <rclcpp/time.hpp>
@@ -66,23 +67,14 @@ struct DebugData
   std::array<float, 3> generator_color{};
 };
 
-// 前処理済み点群と自車位置を収集する。debug が null なら何もしない。
-void fill_detection_debug(
-  DebugData * debug, const pcl::PointCloud<pcl::PointXYZ>::Ptr & filtered_pointcloud_ptr,
-  const geometry_msgs::msg::Point & ego_position);
-
-// 停止対象（最近傍衝突点とその距離・追跡中の障害物）を収集する。debug が null なら何もしない。
-void fill_stop_obstacle_debug(DebugData * debug, const std::vector<StopObstacle> & stop_obstacles);
-
-// feasibility 判定の結果を収集する。debug が null なら何もしない。
-void fill_feasibility_debug(DebugData * debug, double required_distance, bool is_feasible);
-
-// 収集済みの DebugData から marker を組み立てて markers へ append する。debug が null
-// なら何もしない。 候補ごとの marker と、そのサイクルの先頭候補ならサマリバナーを積む。
+// 1 候補分の debug marker を組み立てて markers へ append する。debug は毎回作り直される。
+// 候補ごとの marker と、そのサイクルの先頭候補ならサマリバナーを積む。
 // 「先頭候補か」「候補通番」は markers の中身から判定するため、サイクルを跨ぐ状態を持たない。
 void emit_debug_markers(
-  visualization_msgs::msg::MarkerArray & markers, DebugData * debug,
-  const std::array<std::uint8_t, 16> & generator_uuid, const rclcpp::Time & stamp);
+  visualization_msgs::msg::MarkerArray & markers, DebugData & debug,
+  const PlannerData & planner_data, const std::vector<StopObstacle> & stop_obstacles,
+  double required_distance, bool is_feasible, const std::array<std::uint8_t, 16> & generator_uuid,
+  const rclcpp::Time & stamp);
 
 }  // namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_check
 

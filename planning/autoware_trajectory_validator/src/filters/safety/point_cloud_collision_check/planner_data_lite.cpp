@@ -239,9 +239,8 @@ std::vector<pcl::PointIndices> make_individual_cluster_indices(
 }  // namespace
 
 // [plugin 固有] 移植元 node.cpp:230-259（process_no_ground_pointcloud）に対応する。
-// 差分: plugin は TF buffer を持たないため、TF の代わりに odometry.pose（ego の map 上の姿勢
-// ＝base_link→map 変換）を affine として使う（決定9）。加えて名前ベースの field 読み取り
-// （決定6）と class_id フィルタ（決定4）を行う。
+// 入力点群のフォーマットが一定でないため field は名前で読み、class_id フィールドが在るときのみ
+// excluded_class_ids の点を除外する。
 pcl::PointCloud<pcl::PointXYZ> convert_pointcloud_to_map_frame(
   const sensor_msgs::msg::PointCloud2 & cloud, const geometry_msgs::msg::Pose & base_link_to_map,
   const std::vector<std::int64_t> & excluded_class_ids)

@@ -69,13 +69,6 @@ private:
     const std::vector<point_cloud_collision_check::StopObstacle> & stop_obstacles,
     const geometry_msgs::msg::Twist & twist) const;
 
-  /// @brief 1 候補分の debug marker を debug_markers_ へ積む。
-  /// ObstacleStop の内部状態は見ず、この層が持つ情報だけで組み立てる。
-  void emit_debug_markers(
-    const CandidateTrajectory & candidate_trajectory, const FilterContext & context,
-    const std::vector<point_cloud_collision_check::StopObstacle> & stop_obstacles,
-    bool is_feasible);
-
   // 停止候補 deque をサイクルをまたいで保持するため、状態は ObstacleStop 側に置く。
   std::unique_ptr<point_cloud_collision_check::ObstacleStop> obstacle_stop_;
   std::unique_ptr<point_cloud_collision_check::Params> params_;

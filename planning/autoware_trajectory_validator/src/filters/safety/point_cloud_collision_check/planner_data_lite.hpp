@@ -75,8 +75,8 @@ struct PointcloudPreprocessParams
   } euclidean_clustering;
 };
 
-/// @brief ptv3 PointCloud2 を名前ベースで読み（決定6）、map 系の pcl 点群にする。
-/// class_id フィールドが在るときのみ excluded_class_ids の点を除外する（決定4）。
+/// @brief ptv3 PointCloud2 を名前ベースで読み、map 系の pcl 点群にする。
+/// class_id フィールドが在るときのみ excluded_class_ids の点を除外する。
 pcl::PointCloud<pcl::PointXYZ> convert_pointcloud_to_map_frame(
   const sensor_msgs::msg::PointCloud2 & cloud, const geometry_msgs::msg::Pose & base_link_to_map,
   const std::vector<std::int64_t> & excluded_class_ids);

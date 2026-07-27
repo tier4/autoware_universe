@@ -48,7 +48,7 @@ std_msgs::msg::ColorRGBA make_color(const double r, const double g, const double
   return c;
 }
 
-// 候補ごとの色（per-cycle カウンタ k のカラーテーブル・決定10/可視化）。
+// 候補ごとの色（per-cycle カウンタ k のカラーテーブル）。
 std_msgs::msg::ColorRGBA candidate_color(const int k, const double a)
 {
   static const std::vector<std::array<double, 3>> table = {{0.1, 0.6, 1.0}, {1.0, 0.6, 0.1},
@@ -232,30 +232,23 @@ void add_cycle_debug_markers(
   }
 }
 
-}  // namespace
-
-void fill_detection_debug(
-  DebugData * debug, const pcl::PointCloud<pcl::PointXYZ>::Ptr & filtered_pointcloud_ptr,
-  const geometry_msgs::msg::Point & ego_position)
+// 前処理済み点群・自車位置・停止対象・feasibility 判定結果から DebugData を作る。
+DebugData make_debug_data(
+  const PlannerData & planner_data, const std::vector<StopObstacle> & stop_obstacles,
+  const double required_distance, const bool is_feasible)
 {
-  if (!debug) {
-    return;
-  }
-  debug->filtered_pointcloud_ptr = filtered_pointcloud_ptr;
-  debug->ego_position = ego_position;
-}
+  DebugData debug;
+  debug.filtered_pointcloud_ptr = planner_data.no_ground_pointcloud.get_filtered_pointcloud_ptr();
+  debug.ego_position = planner_data.current_odometry.pose.pose.position;
+  debug.required_distance = required_distance;
+  debug.is_feasible = is_feasible;
 
-void fill_stop_obstacle_debug(DebugData * debug, const std::vector<StopObstacle> & stop_obstacles)
-{
-  if (!debug) {
-    return;
-  }
   for (const auto & stop_obstacle : stop_obstacles) {
     DebugData::Track track;
     track.point = stop_obstacle.collision_point;
     track.velocity = stop_obstacle.velocity;
     track.settled = true;
-    debug->tracks.push_back(track);
+    debug.tracks.push_back(track);
   }
   const auto nearest = std::min_element(
     stop_obstacles.begin(), stop_obstacles.end(),
@@ -263,45 +256,38 @@ void fill_stop_obstacle_debug(DebugData * debug, const std::vector<StopObstacle>
       return a.dist_to_collide_on_decimated_traj < b.dist_to_collide_on_decimated_traj;
     });
   if (nearest != stop_obstacles.end()) {
-    debug->nearest_collision_point = nearest->collision_point;
-    debug->dist_to_collide = nearest->dist_to_collide_on_decimated_traj;
+    debug.nearest_collision_point = nearest->collision_point;
+    debug.dist_to_collide = nearest->dist_to_collide_on_decimated_traj;
   }
+  return debug;
 }
 
-void fill_feasibility_debug(
-  DebugData * debug, const double required_distance, const bool is_feasible)
-{
-  if (!debug) {
-    return;
-  }
-  debug->required_distance = required_distance;
-  debug->is_feasible = is_feasible;
-}
+}  // namespace
 
 void emit_debug_markers(
-  MarkerArray & markers, DebugData * debug, const std::array<std::uint8_t, 16> & generator_uuid,
+  MarkerArray & markers, DebugData & debug, const PlannerData & planner_data,
+  const std::vector<StopObstacle> & stop_obstacles, const double required_distance,
+  const bool is_feasible, const std::array<std::uint8_t, 16> & generator_uuid,
   const rclcpp::Time & stamp)
 {
-  if (!debug) {
-    return;
-  }
+  debug = make_debug_data(planner_data, stop_obstacles, required_distance, is_feasible);
+
   // take_debug_markers() が毎サイクル clear するので、入場時に空なら先頭候補。
   const bool first_candidate = markers.markers.empty();
   const int candidate_index = count_candidate_markers(markers);
 
-  debug->generator_color = generator_color_from_uuid(generator_uuid);
-  debug->has_generator_color = true;
-  add_candidate_debug_markers(markers, *debug, candidate_index, stamp);
+  debug.generator_color = generator_color_from_uuid(generator_uuid);
+  debug.has_generator_color = true;
+  add_candidate_debug_markers(markers, debug, candidate_index, stamp);
 
   if (!first_candidate) {
     return;
   }
   // 常時バナー：安全なら緑 SAFE、危険なら赤 STOP。点群 OK と追跡数も表示。
-  debug->status_level = debug->is_feasible ? 0 : 2;
-  debug->status_text =
-    std::string{"PCC: "} + (debug->is_feasible ? "SAFE" : "STOP REQUIRED") +
-    " | pointcloud:OK | tracked obstacles:" + std::to_string(debug->tracks.size());
-  add_cycle_debug_markers(markers, *debug, stamp);
+  debug.status_level = debug.is_feasible ? 0 : 2;
+  debug.status_text = std::string{"PCC: "} + (debug.is_feasible ? "SAFE" : "STOP REQUIRED") +
+                      " | pointcloud:OK | tracked obstacles:" + std::to_string(debug.tracks.size());
+  add_cycle_debug_markers(markers, debug, stamp);
 }
 
 }  // namespace autoware::trajectory_validator::plugin::safety::point_cloud_collision_check

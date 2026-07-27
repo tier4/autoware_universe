@@ -112,26 +112,6 @@ bool PointCloudCollisionCheckFilter::judge_stop_feasibility(
   return is_feasible;
 }
 
-void PointCloudCollisionCheckFilter::emit_debug_markers(
-  const CandidateTrajectory & candidate_trajectory, const FilterContext & context,
-  const std::vector<pcc::StopObstacle> & stop_obstacles, const bool is_feasible)
-{
-  if (!params_->enable_debug_markers) {
-    return;
-  }
-  *debug_data_ = pcc::DebugData{};
-  pcc::fill_detection_debug(
-    debug_data_.get(), planner_data_->no_ground_pointcloud.get_filtered_pointcloud_ptr(),
-    context.odometry->pose.pose.position);
-  pcc::fill_stop_obstacle_debug(debug_data_.get(), stop_obstacles);
-  // judge_stop_feasibility が未実装のため必要制動距離はまだ 0。
-  pcc::fill_feasibility_debug(debug_data_.get(), 0.0, is_feasible);
-
-  const rclcpp::Time stamp{context.odometry->header.stamp};
-  pcc::emit_debug_markers(
-    debug_markers_, debug_data_.get(), candidate_trajectory.generator_id.uuid, stamp);
-}
-
 PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feasible(
   const CandidateTrajectory & candidate_trajectory, const FilterContext & context)
 {
@@ -154,7 +134,12 @@ PointCloudCollisionCheckFilter::result_t PointCloudCollisionCheckFilter::is_feas
   ValidationResult result{};
   result.is_feasible = judge_stop_feasibility(stop_obstacles, context.odometry->twist.twist);
 
-  emit_debug_markers(candidate_trajectory, context, stop_obstacles, result.is_feasible);
+  if (params_->enable_debug_markers) {
+    // judge_stop_feasibility が未実装のため必要制動距離はまだ 0。
+    pcc::emit_debug_markers(
+      debug_markers_, *debug_data_, *planner_data_, stop_obstacles, 0.0, result.is_feasible,
+      candidate_trajectory.generator_id.uuid, rclcpp::Time{context.odometry->header.stamp});
+  }
 
   return result;
 }
