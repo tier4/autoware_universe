@@ -23,7 +23,7 @@
             stopped_velocity_threshold: 0.3
             history_timeout: 0.3
         enable_assessment:
-          # default target shape is [bbox].
+          base: [bbox]
           unknown: [""]
           over_drivable: [""]
           under_drivable: [""]
@@ -83,7 +83,7 @@
               enable_abandon: false
       rss:
         enable_assessment:
-          # default target shape is [bbox, polygon]. Use [""] to disable the class.
+          base: [bbox, polygon]
           motorcycle: [bbox]
           bicycle: [bbox]
           over_drivable: [""]
