@@ -6,10 +6,11 @@
       Filters trajectories that cross uncrossable boundaries
     </description>
   </class>
-  <class type="safety::VehicleConstraintFilter"
+  <class type="safety::TrajectoryFeasibilityFilter"
     base_class_type="autoware::trajectory_validator::plugin::ValidatorInterface">
     <description>
-      Filters trajectories that violate vehicle constraints such as maximum speed, acceleration, and steering angle
+      Filters trajectories that violate vehicle feasibility constraints such as maximum speed,
+      acceleration, and steering angle
     </description>
   </class>
   <class type="safety::CollisionCheckFilter"

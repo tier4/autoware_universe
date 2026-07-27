@@ -486,12 +486,13 @@ TrajectoryData generate_ego_trajectory(
   const double time_resolution, const VehicleInfo & vehicle_info,
   const EgoTrajectoryGenerationParams & params)
 {
-  const rclcpp::Time trajectory_start_time =
-    trajectory_interpolator.reference_time_ +
-    rclcpp::Duration::from_seconds(trajectory_interpolator.time_from_refs_.front());
   const rclcpp::Time trajectory_end_time =
     trajectory_interpolator.reference_time_ +
     rclcpp::Duration::from_seconds(trajectory_interpolator.time_from_refs_.back());
+
+  // todo(takagi): remove margin num
+  const rclcpp::Time stop_hold_time =
+    trajectory_interpolator.reference_time_ + rclcpp::Duration::from_seconds(8.0);
 
   const auto braking_profile =
     detail::compute_braking_profile(trajectory_interpolator, current_time, params);
@@ -512,33 +513,36 @@ TrajectoryData generate_ego_trajectory(
       rclcpp::Duration::from_seconds(static_cast<double>(n) * time_resolution);
     const auto sampling_time = sampling_reference_time + time_from_sampling_reference;
 
-    if (!braking_profile.has_value() || sampling_time < braking_profile->start_time) {
+    if (!braking_profile.has_value()) {
       auto sample_state = trajectory_interpolator.interpolate_state_from_time(sampling_time);
       append_sample(time_from_sampling_reference.seconds(), sample_state);
       if (sampling_time > trajectory_end_time) {
         break;
       }
     } else {
-      const double sample_distance = [&]() {
-        const double elapsed_time = (sampling_time - braking_profile->start_time).seconds();
-        if (elapsed_time <= 0.0) {
-          return 0.0;
+      if (sampling_time < braking_profile->start_time) {
+        auto sample_state = trajectory_interpolator.interpolate_state_from_time(sampling_time);
+        append_sample(time_from_sampling_reference.seconds(), sample_state);
+      } else {
+        const double elapsed_braking_time = std::min(
+          (sampling_time - braking_profile->start_time).seconds(),
+          (braking_profile->end_time - braking_profile->start_time).seconds());
+        const double sample_distance =
+          braking_profile->start_state.distance +
+          braking_profile->start_state.longitudinal_velocity * elapsed_braking_time +
+          0.5 * params.assumed_acceleration * elapsed_braking_time * elapsed_braking_time;
+        auto sample_state = trajectory_interpolator.interpolate_state_from_dist(sample_distance);
+        append_sample(time_from_sampling_reference.seconds(), sample_state);
+        if (sampling_time >= braking_profile->end_time && sampling_time >= stop_hold_time) {
+          break;
         }
-        return braking_profile->start_state.distance +
-               braking_profile->start_state.longitudinal_velocity * elapsed_time +
-               0.5 * params.assumed_acceleration * elapsed_time * elapsed_time;
-      }();
-      auto sample_state = trajectory_interpolator.interpolate_state_from_dist(sample_distance);
-      append_sample(time_from_sampling_reference.seconds(), sample_state);
-      if (sampling_time > braking_profile->end_time && sampling_time > trajectory_end_time) {
-        break;
       }
     }
   }
 
   if (times.empty()) {
     // append_sample() is executed before break.
-    throw std::invalid_argument("no samples are available for the requested time range");
+    throw std::runtime_error("no samples are available for the requested time range");
   }
 
   const footprint::EgoDimensions ego_dimensions{

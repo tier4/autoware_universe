@@ -308,13 +308,12 @@ DracEvaluation assess_drac_object_prioritized_object_earlier(
 DracArtifact assess_map_based(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
   const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
-  const autoware_perception_msgs::msg::PredictedObject & object, const DracParams & drac_params,
-  const GlobalParams & global_params)
+  const autoware_perception_msgs::msg::PredictedObject & object, const StopTrackers & stop_trackers,
+  const DracParams & drac_params, const GlobalParams & global_params)
 {
   DracArtifact drac_artifact{};
 
   const double braking_delay = drac_params.ego_reaction_braking_delay.nominal;
-
   trajectory::EgoTrajectoryGenerationParams ego_traj_params{
     braking_delay, 0.0, drac_params.ego_footprint_margin};
 
@@ -364,18 +363,37 @@ DracArtifact assess_map_based(
       }
     }
   }
+
+  if (drac_params.map_based.mutual_yield_timeout_arbitration.enabled) {
+    const auto stopped_duration = stop_trackers.get_stopped_duration(object.object_id);
+    if (
+      stopped_duration.has_value() &&
+      stopped_duration.value() >
+        rclcpp::Duration::from_seconds(
+          drac_params.map_based.mutual_yield_timeout_arbitration.min_wait_time)) {
+      for (auto & evaluation : drac_artifact.evaluations) {
+        evaluation.risk = RiskLevel::SAFE;
+      }
+      drac_artifact.risk = RiskLevel::SAFE;
+    }
+  }
   return drac_artifact;
 }
 
 DracArtifact assess(
   const trajectory::EgoTrajectoryCache & ego_trajectory_cache,
   const autoware_vehicle_msgs::msg::TurnIndicatorsCommand & ego_turn_indicator,
-  const FilterContext & context, const DracParamMap & drac_param_map,
+  const nav_msgs::msg::Odometry & odometry,
+  const autoware_perception_msgs::msg::PredictedObjects & predicted_objects,
+  StopTrackers & stop_trackers, const DracParamMap & drac_param_map,
   const GlobalParams & global_params)
 {
   DracArtifact drac_artifact{};
 
-  for (const auto & predicted_object : context.predicted_objects->objects) {
+  stop_trackers.ego.update(odometry);
+  stop_trackers.object.update(predicted_objects);
+
+  for (const auto & predicted_object : predicted_objects.objects) {
     const auto & drac_params = drac_param_map.at(to_type_string(predicted_object.classification));
     if (!drac_params.enable_assessment) {
       continue;
@@ -388,7 +406,8 @@ DracArtifact assess(
 
     if (drac_params.map_based.enable_assessment) {
       drac_artifact.merge(assess_map_based(
-        ego_trajectory_cache, ego_turn_indicator, predicted_object, drac_params, global_params));
+        ego_trajectory_cache, ego_turn_indicator, predicted_object, stop_trackers, drac_params,
+        global_params));
     }
   }
   return drac_artifact;

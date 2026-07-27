@@ -16,6 +16,7 @@
 #define MINIMUM_RULE_BASED_PLANNER_HPP_
 
 #include "autoware/trajectory_optimizer/trajectory_optimizer_structs.hpp"
+#include "map_based_stop_planner.hpp"
 #include "path_planner.hpp"
 #include "velocity_smoother.hpp"
 
@@ -73,16 +74,32 @@ private:
     const Trajectory & trajectory, const InputData & input_data) const;
   Trajectory smooth_trajectory(const Trajectory & trajectory, const InputData & input_data) const;
   void apply_modifiers(Trajectory & trajectory, const InputData & input_data) const;
-  Trajectory optimize_velocity(const Trajectory & trajectory, const InputData & input_data) const;
 
-  void publish_candidate_trajectories(const Trajectory & trajectory) const;
+  //! Build the MapBasedStopPlanner parameters from the node parameters and the vehicle info.
+  StopSelectionParams make_map_based_stop_params() const;
+  //! @param update_smoother_state whether this call may update the velocity smoother's
+  //! prev-output state (true only for the go trajectory; see VelocitySmoother::optimize)
+  Trajectory optimize_velocity(
+    const Trajectory & trajectory, const InputData & input_data,
+    const bool update_smoother_state) const;
+
+  void publish_candidate_trajectories(
+    const Trajectory & go_trajectory, const std::optional<Trajectory> & stop_trajectory) const;
+
+  void publish_debug_outputs(
+    const PathWithLaneId & path, const Trajectory & go_trajectory,
+    const std::optional<Trajectory> & stop_trajectory) const;
+  void publish_processing_time();
 
   void publish_debug_trajectory(
     const std::string & plugin_name, const TrajectoryPoints & traj_points) const;
 
   rclcpp::TimerBase::SharedPtr timer_;
   std::shared_ptr<::minimum_rule_based_planner::ParamListener> param_listener_;
-  const UUID generator_uuid_;
+  //! generator id for the always-published "Go" trajectory
+  const UUID go_generator_uuid_;
+  //! generator id for the optional "Stop" trajectory (map-defined stop lines)
+  const UUID stop_generator_uuid_;
   const VehicleInfo vehicle_info_;
   std::shared_ptr<autoware_utils_debug::TimeKeeper> time_keeper_;
   rclcpp::Publisher<autoware_utils_debug::ProcessingTimeDetail>::SharedPtr
@@ -103,6 +120,8 @@ private:
    */
   //! PathPlanner encapsulates path planning, trajectory shifting, and conversion
   std::unique_ptr<PathPlanner> path_planner_;
+  //! MapBasedStopPlanner plans the go/stop trajectories with map-defined stop points embedded
+  std::unique_ptr<MapBasedStopPlanner> map_based_stop_planner_;
   /** @} */
 
 private:
@@ -179,8 +198,10 @@ private:
   PathWithLaneId::ConstSharedPtr test_path_with_lane_id_ptr;
 
   rclcpp::Publisher<CandidateTrajectories>::SharedPtr pub_trajectories_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_stop_lines_marker_;
   rclcpp::Publisher<PathWithLaneId>::SharedPtr pub_debug_path_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_trajectory_;
+  rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_stop_trajectory_;
   rclcpp::Publisher<Trajectory>::SharedPtr pub_debug_shifted_trajectory_;
   /** @} */
 };
