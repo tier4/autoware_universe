@@ -89,11 +89,12 @@ if(BUILD_TESTING)
     ${PROJECT_NAME}_plugins
   )
 
-  ament_add_gtest(test_simple_trajectory_ranker_node
-    test/simple_trajectory_ranker_node_test.cpp
+  ament_add_gtest(test_trajectory_ranker_integration
+    test/test_trajectory_ranker_integration.cpp
   )
-  target_link_libraries(test_simple_trajectory_ranker_node
-    simple_trajectory_ranker_node
+  target_link_libraries(test_trajectory_ranker_integration
+    ${trajectory_ranker_lib_target}
+    ${PROJECT_NAME}_plugins
   )
 endif()
 
