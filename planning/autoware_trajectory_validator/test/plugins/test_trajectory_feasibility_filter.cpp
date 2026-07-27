@@ -50,8 +50,7 @@ autoware_planning_msgs::msg::TrajectoryPoint create_trajectory_point(
   return point;
 }
 
-std::shared_ptr<lanelet::LaneletMap> create_lanelet_map_with_speed_limit(
-  const double speed_limit_kmph)
+lanelet::Lanelet create_straight_lanelet()
 {
   lanelet::Point3d left_start(lanelet::utils::getId(), 0.0, -2.0, 0.0);
   lanelet::Point3d left_end(lanelet::utils::getId(), 20.0, -2.0, 0.0);
@@ -63,9 +62,22 @@ std::shared_ptr<lanelet::LaneletMap> create_lanelet_map_with_speed_limit(
 
   lanelet::Lanelet lanelet(lanelet::utils::getId(), left_bound, right_bound);
   lanelet.setAttribute("subtype", "road");
+
+  return lanelet;
+}
+
+std::shared_ptr<lanelet::LaneletMap> create_lanelet_map_with_speed_limit(
+  const double speed_limit_kmph)
+{
+  auto lanelet = create_straight_lanelet();
   lanelet.setAttribute("speed_limit", std::to_string(speed_limit_kmph));
 
   return lanelet::utils::createMap({lanelet});
+}
+
+std::shared_ptr<lanelet::LaneletMap> create_lanelet_map_without_speed_limit()
+{
+  return lanelet::utils::createMap({create_straight_lanelet()});
 }
 
 nav_msgs::msg::Odometry::SharedPtr create_odometry(
@@ -426,6 +438,140 @@ TEST(IsSpeedOkTest, FalseWhenAnySpeedAboveMax)
   const auto [_, is_ok] = is_speed_ok(traj_points, max_speed);
 
   EXPECT_FALSE(is_ok);
+}
+
+// --- is_lanelet_speed_limit_ok(...) tests ---
+
+namespace
+{
+// The lanelet under test declares 30 km/h, i.e. 8.333... m/s.
+constexpr double speed_limit_kmph = 30.0;
+
+TrajectoryPoints create_straight_trajectory(const double longitudinal_velocity)
+{
+  return {
+    create_trajectory_point(0.0, 0.0, 0.0, longitudinal_velocity, 0.0, 0.0),
+    create_trajectory_point(5.0, 0.0, 0.0, longitudinal_velocity, 0.0, 1.0),
+    create_trajectory_point(10.0, 0.0, 0.0, longitudinal_velocity, 0.0, 2.0)};
+}
+}  // namespace
+
+TEST(IsLaneletSpeedLimitOkTest, TrueWhenNearestSpeedBelowLimit)
+{
+  const auto traj_points = create_straight_trajectory(5.0);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 0.0, 0.0);
+  context.lanelet_map = create_lanelet_map_with_speed_limit(speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 5.0);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, FalseWhenNearestSpeedAboveLimit)
+{
+  const auto traj_points = create_straight_trajectory(15.0);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 0.0, 0.0);
+  context.lanelet_map = create_lanelet_map_with_speed_limit(speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 15.0);
+  EXPECT_FALSE(is_ok);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, ObservedSpeedIsTakenFromTheNearestPoint)
+{
+  // Only the point nearest to the ego pose is evaluated, so a faster point elsewhere is ignored.
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
+    create_trajectory_point(5.0, 0.0, 0.0, 5.0, 0.0, 1.0),
+    create_trajectory_point(10.0, 0.0, 0.0, 15.0, 0.0, 2.0)};
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 0.0, 0.0);
+  context.lanelet_map = create_lanelet_map_with_speed_limit(speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 5.0);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, TrueWhenNearestLaneletHasNoSpeedLimit)
+{
+  const auto traj_points = create_straight_trajectory(15.0);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 0.0, 0.0);
+  context.lanelet_map = create_lanelet_map_without_speed_limit();
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 15.0);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, TrueWhenNoLaneletIsNearby)
+{
+  // The trajectory runs far away from the only mapped lanelet, so no speed limit applies.
+  TrajectoryPoints traj_points = {
+    create_trajectory_point(0.0, 1000.0, 0.0, 15.0, 0.0, 0.0),
+    create_trajectory_point(5.0, 1000.0, 0.0, 15.0, 0.0, 1.0),
+    create_trajectory_point(10.0, 1000.0, 0.0, 15.0, 0.0, 2.0)};
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 1000.0, 0.0);
+  context.lanelet_map = create_lanelet_map_with_speed_limit(speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 15.0);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, TrueWhenOdometryIsMissing)
+{
+  const auto traj_points = create_straight_trajectory(15.0);
+
+  FilterContext context;
+  context.lanelet_map = create_lanelet_map_with_speed_limit(speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 0.0);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, TrueWhenLaneletMapIsMissing)
+{
+  const auto traj_points = create_straight_trajectory(15.0);
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 0.0, 0.0);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 0.0);
+  EXPECT_TRUE(is_ok);
+}
+
+TEST(IsLaneletSpeedLimitOkTest, TrueWhenTrajectoryIsEmpty)
+{
+  const TrajectoryPoints traj_points;
+
+  FilterContext context;
+  context.odometry = create_odometry(5.1, 0.0, 0.0);
+  context.lanelet_map = create_lanelet_map_with_speed_limit(speed_limit_kmph);
+
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
+
+  EXPECT_DOUBLE_EQ(observed_speed, 0.0);
+  EXPECT_TRUE(is_ok);
 }
 
 // --- is_acceleration_ok(...) tests ---

@@ -122,6 +122,11 @@ std::optional<double> to_lanelet_speed_limit_mps(const lanelet::ConstLanelet & l
 {
   constexpr char attribute_name[] = "speed_limit";
 
+  // NOTE: `attribute()` throws NoSuchAttributeError if the attribute is not present.
+  if (!lanelet.hasAttribute(attribute_name)) {
+    return std::nullopt;
+  }
+
   const auto result = lanelet.attribute(attribute_name).as<double>().map([](const auto v) {
     return autoware_utils_math::kmph2mps(v);
   });
@@ -203,21 +208,7 @@ MetricReport TrajectoryFeasibilityFilter::check_speed(
 MetricReport TrajectoryFeasibilityFilter::check_lanelet_speed_limit(
   const TrajectoryPoints & traj_points, const FilterContext & context) const
 {
-  double observed_speed = 0.0;
-  bool is_ok = true;
-
-  if (!traj_points.empty() && context.odometry && context.lanelet_map) {
-    const auto nearest_idx =
-      autoware::motion_utils::findNearestIndex(traj_points, context.odometry->pose.pose.position);
-    const auto & nearest_point = traj_points.at(nearest_idx);
-    observed_speed = to_speed(nearest_point);
-
-    if (
-      const auto speed_limit_mps =
-        find_nearest_lanelet_speed_limit_mps(*context.lanelet_map, nearest_point.pose)) {
-      is_ok = observed_speed <= *speed_limit_mps;
-    }
-  }
+  const auto [observed_speed, is_ok] = is_lanelet_speed_limit_ok(traj_points, context);
 
   RiskLevel risk_level;
   risk_level.level = is_ok ? RiskLevel::SAFE : RiskLevel::HIGH_CAUTION;
@@ -368,6 +359,27 @@ std::pair<double, bool> is_speed_ok(const TrajectoryPoints & traj_points, double
     }
   }
   return {max_observed, is_ok};
+}
+
+std::pair<double, bool> is_lanelet_speed_limit_ok(
+  const TrajectoryPoints & traj_points, const FilterContext & context)
+{
+  if (traj_points.empty() || !context.odometry || !context.lanelet_map) {
+    return {0.0, true};
+  }
+
+  const auto nearest_idx =
+    autoware::motion_utils::findNearestIndex(traj_points, context.odometry->pose.pose.position);
+  const auto & nearest_point = traj_points.at(nearest_idx);
+  const double observed_speed = to_speed(nearest_point);
+
+  const auto speed_limit_mps =
+    find_nearest_lanelet_speed_limit_mps(*context.lanelet_map, nearest_point.pose);
+  if (!speed_limit_mps) {
+    return {observed_speed, true};
+  }
+
+  return {observed_speed, observed_speed <= *speed_limit_mps};
 }
 
 std::pair<double, bool> is_acceleration_ok(

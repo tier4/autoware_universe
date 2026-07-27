@@ -91,6 +91,18 @@ private:
 std::pair<double, bool> is_speed_ok(const TrajectoryPoints & traj_points, double max_speed);
 
 /**
+ * @brief Check if the trajectory respects the speed limit of the lanelet nearest to the ego pose.
+ *
+ * @param traj_points Vector of trajectory points to check
+ * @param context Evaluation context containing current odometry and the lanelet map
+ * @return Pair of the observed speed and a boolean indicating if the speed limit was not violated.
+ * Returns `{0.0, true}` if odometry or the lanelet map is unavailable, and reports the observed
+ * speed as OK if no nearby lanelet declares a speed limit.
+ */
+std::pair<double, bool> is_lanelet_speed_limit_ok(
+  const TrajectoryPoints & traj_points, const FilterContext & context);
+
+/**
  * @brief Check if the trajectory respects the maximum acceleration constraint.
  *
  * @param traj_points Vector of trajectory points to check
