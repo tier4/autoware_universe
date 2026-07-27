@@ -70,12 +70,6 @@ inline std::string_view to_type_string(
   return to_type_string(autoware::object_recognition_utils::getHighestProbLabel(obj));
 }
 
-inline bool is_supported_target_shape_type(const uint8_t shape_type)
-{
-  using autoware_perception_msgs::msg::Shape;
-  return shape_type == Shape::BOUNDING_BOX || shape_type == Shape::POLYGON;
-}
-
 inline bool is_disabled_target_shape_config(const std::vector<std::string> & shape_names)
 {
   return shape_names.size() == 1U && shape_names.front().empty();
