@@ -27,6 +27,10 @@ validator:
       default_value: 5.0
       description: Maximum allowed deceleration (m/s^2, positive but represents deceleration)
       read_only: false
+    max_velocity_deviation:
+      type: double
+      default_value: 100.0
+      description: Maximum allowed absolute velocity deviation from the ego speed (m/s)
     max_lateral_acceleration:
       type: double
       default_value: 9.8

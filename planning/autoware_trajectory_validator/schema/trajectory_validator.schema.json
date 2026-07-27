@@ -371,6 +371,12 @@
               "default": 5.0,
               "minimum": 0.0
             },
+            "max_velocity_deviation": {
+              "type": "number",
+              "description": "Maximum allowed velocity deviation from the reference trajectory [m/s].",
+              "default": 100.0,
+              "minimum": 0.0
+            },
             "max_lateral_acceleration": {
               "type": "number",
               "description": "Maximum allowed lateral acceleration [m/s²].",
